@@ -27,6 +27,10 @@ harness://task/active
 harness://task/{task_id}
 harness://task/{task_id}/summary
 harness://task/{task_id}/spine
+harness://task/{task_id}/journey
+harness://task/{task_id}/decision-packets
+harness://task/{task_id}/change-unit-dag
+harness://task/{task_id}/judgment-context
 harness://task/{task_id}/reports/latest
 harness://task/{task_id}/evidence-manifest
 harness://task/{task_id}/bundle/current
@@ -38,6 +42,13 @@ harness://status/card
 ```
 
 Resource reads must not create Task records, decisions, projection jobs, or reconcile items. If a resource detects stale projection, it reports freshness; it does not repair it.
+
+The Journey resources are projection-oriented reads over canonical state:
+
+- `harness://task/{task_id}/journey` returns the current Journey Card and Journey Spine-oriented refs.
+- `harness://task/{task_id}/decision-packets` returns active, resolved, deferred, and blocked Decision Packet summaries for the Task.
+- `harness://task/{task_id}/change-unit-dag` returns Change Unit dependency refs and ordering summaries.
+- `harness://task/{task_id}/judgment-context` returns the minimum current context needed for a user judgment, with optional pull refs separated from required context.
 
 ## Common Tool Envelope
 
@@ -85,7 +96,7 @@ EventRef:
 
 ProjectionJobRef:
   projection_job_id: string
-  projection_kind: TASK | APR | RUN-SUMMARY | EVIDENCE-MANIFEST | EVAL | DIRECT-RESULT | MANUAL-QA | TDD-TRACE | DOMAIN-LANGUAGE | MODULE-MAP | INTERFACE-CONTRACT
+  projection_kind: TASK | APR | DEC | RUN-SUMMARY | EVIDENCE-MANIFEST | EVAL | DIRECT-RESULT | MANUAL-QA | TDD-TRACE | DOMAIN-LANGUAGE | MODULE-MAP | INTERFACE-CONTRACT
   target_ref: string
   projection_version: integer
 
@@ -103,6 +114,7 @@ StateSummary:
   assurance_level: none | self_checked | detached_verified
   gates:
     scope_gate: not_required | required | pending | passed | failed | blocked
+    decision_gate: not_required | required | pending | resolved | deferred | blocked
     approval_gate: not_required | required | pending | granted | denied | expired
     design_gate: not_required | required | pending | passed | partial | waived | stale | blocked
     evidence_gate: not_required | none | partial | sufficient | stale | blocked
@@ -142,7 +154,7 @@ An artifact ref points to a durable evidence file registered in the artifact sto
 ```yaml
 ArtifactRef:
   artifact_id: string
-  kind: diff | log | screenshot | checkpoint | bundle | manifest | qa_capture | export_component | other
+  kind: diff | log | screenshot | checkpoint | bundle | manifest | qa_capture | export_component | design_probe | prototype | architecture_scan | decision_context | other
   uri: string
   sha256: string
   size_bytes: integer
@@ -165,14 +177,14 @@ ArtifactInput:
   source_kind: staged_file | existing_artifact
   existing_artifact_ref: ArtifactRef | null
   staged: StagedArtifactSource | null
-  kind: diff | log | screenshot | checkpoint | bundle | manifest | qa_capture | export_component | other
+  kind: diff | log | screenshot | checkpoint | bundle | manifest | qa_capture | export_component | design_probe | prototype | architecture_scan | decision_context | other
   redaction_state: none | redacted | secret_omitted | blocked
   produced_by: lead_agent | evaluator | operator | harness
   retention_class: task | project | export | temporary
   relation:
     task_id: string
     run_id: string | null
-    record_kind: run | eval | manual_qa_record | verification_bundle | export | other
+    record_kind: task | change_unit | run | decision_packet | shared_design | residual_risk | evidence_manifest | eval | manual_qa_record | tdd_trace | journey_spine_entry | verification_bundle | export | other
     record_id_hint: string | null
   description: string | null
 
@@ -198,17 +210,164 @@ Record or projection references use `StateRecordRef`, not `ArtifactRef`:
 
 ```yaml
 StateRecordRef:
-  record_kind: task | change_unit | run | approval | decision_request | evidence_manifest | eval | manual_qa_record | tdd_trace | reconcile_item | projection
+  record_kind: task | change_unit | change_unit_dependency | run | approval | decision_packet | journey_spine_entry | shared_design | residual_risk | evidence_manifest | eval | manual_qa_record | tdd_trace | reconcile_item | projection
   record_id: string
   projection_path: string | null
 ```
+
+Evidence references and approval scope use these shared shapes:
+
+```yaml
+EvidenceRefs:
+  state_refs: StateRecordRef[]
+  artifact_refs: ArtifactRef[]
+
+ApprovalScope:
+  sensitive_categories: string[]
+  allowed_paths: string[]
+  allowed_tools: string[]
+  allowed_commands: string[]
+  allowed_network_targets: string[]
+  secret_scope: string[]
+  baseline_ref: string | null
+
+EndToEndPath:
+  trigger_or_input: string | null
+  domain_logic: string | null
+  persistence_or_state: string | null
+  api_or_caller_boundary: string | null
+  ui_or_observable_output: string | null
+```
+
+`DEC` is the Decision Packet visibility projection job kind. Full DEC and Decision Packet template text is owned by Appendix A and Batch 6, not this API schema file.
+
+Decision Packet, Journey Card, Judgment Context, Autonomy Boundary, and residual-risk summaries are public MCP schemas. They describe API payloads only; owner docs define the canonical kernel records.
+
+```yaml
+DecisionPacket:
+  decision_packet_id: string
+  task_id: string
+  change_unit_id: string | null
+  status: proposed | pending_user | resolved | deferred | rejected | blocked | superseded
+  decision_kind: approval | scope_confirmation | design_choice | architecture_choice | product_tradeoff | autonomy_boundary | verification_waiver | qa_waiver | acceptance | residual_risk_acceptance | reconcile
+  context:
+    why_now: string
+    source_refs: StateRecordRef[]
+    evidence_refs: EvidenceRefs
+  state_summary_at_request: StateSummary
+  what_user_is_deciding: string
+  what_agent_may_decide_without_user: string[]
+  affected_gates:
+    - scope_gate | decision_gate | approval_gate | design_gate | evidence_gate | verification_gate | qa_gate | acceptance_gate
+  affected_acceptance_criteria:
+    - criteria_id: string
+      statement: string
+  options: DecisionPacketOption[]
+  recommendation: DecisionPacketRecommendation | null
+  deferral_consequence: string
+  user_context: DecisionPacketUserContext
+  approval_scope: ApprovalScope | null
+  reconcile_item_id: string | null
+  created_at: string
+  resolved_at: string | null
+
+DecisionPacketOption:
+  option_id: string
+  label: string
+  benefits: string[]
+  costs: string[]
+  risks: string[]
+  reversibility: reversible | partially_reversible | irreversible | unknown
+  confidence: low | medium | high
+  suitable_when: string[]
+  evidence_refs: EvidenceRefs
+
+DecisionPacketRecommendation:
+  option_id: string | null
+  reason: string
+  uncertainty: string | null
+  when_to_revisit: string | null
+
+DecisionPacketUserContext:
+  minimum_context: string[]
+  optional_pull_refs: StateRecordRef[]
+
+DecisionPacketCandidate:
+  task_id: string
+  change_unit_id: string | null
+  decision_kind: approval | scope_confirmation | design_choice | architecture_choice | product_tradeoff | autonomy_boundary | verification_waiver | qa_waiver | acceptance | residual_risk_acceptance | reconcile
+  context:
+    why_now: string
+    source_refs: StateRecordRef[]
+    evidence_refs: EvidenceRefs
+  state_summary_at_request: StateSummary
+  what_user_is_deciding: string
+  what_agent_may_decide_without_user: string[]
+  affected_gates:
+    - scope_gate | decision_gate | approval_gate | design_gate | evidence_gate | verification_gate | qa_gate | acceptance_gate
+  affected_acceptance_criteria:
+    - criteria_id: string
+      statement: string
+  options: DecisionPacketOption[]
+  recommendation: DecisionPacketRecommendation | null
+  deferral_consequence: string
+  user_context: DecisionPacketUserContext
+  expires_at: string | null
+  approval_scope: ApprovalScope | null
+  reconcile_item_id: string | null
+
+JourneyCardSummary:
+  task_id: string
+  state: StateSummary
+  current_position: string
+  next_action: string
+  active_change_unit_ref: StateRecordRef | null
+  active_decision_packet_refs: StateRecordRef[]
+  blocker_refs: StateRecordRef[]
+  residual_risk_summary: ResidualRiskSummary | null
+  projection_freshness:
+    status: current | stale | failed | unknown
+    stale_refs: StateRecordRef[]
+
+JudgmentContext:
+  task_ref: StateRecordRef
+  journey_card: JourneyCardSummary | null
+  current_state_summary: StateSummary
+  minimum_context: string[]
+  relevant_refs: StateRecordRef[]
+  evidence_refs: EvidenceRefs
+  active_decision_packet_refs: StateRecordRef[]
+  optional_pull_refs: StateRecordRef[]
+  stale_or_missing_refs: StateRecordRef[]
+
+AutonomyBoundarySummary:
+  change_unit_id: string | null
+  status: absent | proposed | active | exceeded | stale
+  autonomy_profile: human_in_loop | afk_eligible | evaluator_only | read_only_advisor | null
+  what_agent_may_do: string[]
+  what_agent_may_decide_without_user: string[]
+  what_requires_user_judgment: string[]
+  stop_conditions: string[]
+  triggered_stop_conditions: string[]
+  related_decision_packet_refs: StateRecordRef[]
+
+ResidualRiskSummary:
+  status: none | visible | not_visible | accepted | blocked
+  close_relevant_count: integer
+  not_visible_refs: StateRecordRef[]
+  unaccepted_refs: StateRecordRef[]
+  accepted_refs: StateRecordRef[]
+  summary: string
+```
+
+Autonomy Boundary summaries describe judgment latitude, not scope authority. They do not authorize paths, tools, commands, network targets, secret access, or sensitive categories outside the active Change Unit scope and any required approval.
 
 ## Validator Result Schema
 
 ```yaml
 ValidatorResult:
   validator_id: string
-  validator_kind: state | scope | approval | evidence | verification | qa | acceptance | design | artifact | projection | connector | capability
+  validator_kind: state | scope | decision | approval | evidence | verification | qa | acceptance | design | autonomy_boundary | residual_risk | artifact | projection | connector | capability
   status: passed | warning | failed | blocked | skipped
   guarantee_level: cooperative | detective | preventive | isolated
   checked_at: string
@@ -230,6 +389,15 @@ ValidatorResult:
 
 The `surface_capability_check` validator uses this schema with `validator_kind=capability`.
 
+Stable design and agency validator ids used by this API are:
+
+- `decision_quality_check`
+- `autonomy_boundary_check`
+- `feedback_loop_check`
+- `tdd_trace_required`
+- `codebase_stewardship_check`
+- `residual_risk_visibility_check`
+
 ## Error Taxonomy
 
 | Code | Meaning |
@@ -239,6 +407,9 @@ The `surface_capability_check` validator uses this schema with `validator_kind=c
 | `NO_ACTIVE_CHANGE_UNIT` | a write-capable operation has no active scoped Change Unit |
 | `SCOPE_REQUIRED` | scope confirmation is required before the requested write can proceed |
 | `SCOPE_VIOLATION` | intended paths, tools, commands, network, secrets, or categories exceed scope |
+| `DECISION_REQUIRED` | blocking product judgment requires a Decision Packet before the requested action can proceed |
+| `DECISION_UNRESOLVED` | a relevant Decision Packet is pending, deferred without coverage, rejected, blocked, stale, or incompatible with the requested action |
+| `AUTONOMY_BOUNDARY_EXCEEDED` | the intended operation exceeds the active Change Unit Autonomy Boundary |
 | `APPROVAL_REQUIRED` | sensitive change requires approval before proceeding |
 | `APPROVAL_DENIED` | the relevant approval was denied |
 | `APPROVAL_EXPIRED` | approval expired or drifted from baseline/scope |
@@ -250,9 +421,12 @@ The `surface_capability_check` validator uses this schema with `validator_kind=c
 | `ACCEPTANCE_REQUIRED` | required user acceptance is pending or rejected |
 | `PROJECTION_STALE` | projection freshness is stale or failed for the requested action |
 | `RECONCILE_REQUIRED` | human-editable or managed-block drift requires reconcile |
+| `RESIDUAL_RISK_NOT_VISIBLE` | close-relevant residual risk has not been made visible before acceptance or risk-accepted close |
 | `ARTIFACT_MISSING` | a referenced artifact file is missing or integrity check failed |
 | `BASELINE_STALE` | baseline no longer matches the repository state required by the operation |
 | `VALIDATOR_FAILED` | one or more required validators failed |
+
+`DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `AUTONOMY_BOUNDARY_EXCEEDED`, and `RESIDUAL_RISK_NOT_VISIBLE` are stable public `ErrorCode` values. Validator-specific detail still belongs in `ValidatorResult.findings`.
 
 ## Idempotency And State Conflict Behavior
 
@@ -264,7 +438,7 @@ For state-changing tools, Core compares `expected_state_version` with current pr
 
 ### `harness.status`
 
-Purpose: return project, surface, active Task, gate, guarantee, projection, and pending-decision status.
+Purpose: return project, surface, active Task, Journey Card, gate, guarantee, projection, active Decision Packet, Autonomy Boundary, residual-risk, and pending-decision status.
 
 Allowed actor: `user`, `lead_agent`, `evaluator`, `operator`.
 
@@ -279,6 +453,10 @@ StatusRequest:
     projections: boolean
     pending_decisions: boolean
     guarantees: boolean
+    journey_card: boolean
+    decision_packets: boolean
+    autonomy_boundary: boolean
+    residual_risk: boolean
 ```
 
 Response schema:
@@ -288,7 +466,11 @@ StatusResponse:
   base: ToolResponseBase
   active_task: StateSummary | null
   status_card: string
+  journey_card: JourneyCardSummary | null
   pending_decisions: StateRecordRef[]
+  active_decision_packet_refs: StateRecordRef[]
+  autonomy_boundary_summary: AutonomyBoundarySummary | null
+  residual_risk_summary: ResidualRiskSummary | null
   projection_freshness:
     status: current | stale | failed | unknown
     stale_refs: StateRecordRef[]
@@ -303,7 +485,9 @@ Events emitted: none.
 
 Projection jobs enqueued: none.
 
-Validators run: optional `surface_capability_check`, optional projection freshness read.
+`pending_decisions` contains unresolved user-action Decision Packets. `active_decision_packet_refs` contains all Decision Packets relevant to the current phase or requested action, including pending, deferred, blocked, or recently resolved packets. Both fields use `StateRecordRef` entries with `record_kind=decision_packet`.
+
+Validators run: optional `surface_capability_check`, optional `decision_gate_check`, optional `autonomy_boundary_check`, optional residual-risk visibility read, optional projection freshness read.
 
 Possible errors: `MCP_UNAVAILABLE`, `PROJECTION_STALE`.
 
@@ -368,7 +552,7 @@ Request schema:
 NextRequest:
   envelope: ToolEnvelope
   task_id: string | null
-  focus: status | shaping | implementation | verification | qa | acceptance | reconcile
+  focus: status | shaping | decision | implementation | verification | qa | acceptance | reconcile
   include_instruction_bundle: boolean
 ```
 
@@ -388,6 +572,8 @@ NextResponse:
     relevant_refs: StateRecordRef[]
     artifact_refs: ArtifactRef[]
   pending_decisions: StateRecordRef[]
+  judgment_context: JudgmentContext | null
+  autonomy_boundary: AutonomyBoundarySummary | null
 ```
 
 State transition summary: no state transition.
@@ -396,9 +582,11 @@ Events emitted: none.
 
 Projection jobs enqueued: none.
 
-Validators run: optional `surface_capability_check`, optional `docs_consistency`.
+`pending_decisions` contains unresolved user-action Decision Packets. Deferred, blocked, or recently resolved packets that still affect the current phase or requested action appear through `judgment_context.active_decision_packet_refs`.
 
-Possible errors: `NO_ACTIVE_TASK`, `MCP_UNAVAILABLE`, `PROJECTION_STALE`, `RECONCILE_REQUIRED`.
+Validators run: optional `surface_capability_check`, optional `decision_gate_check`, optional `autonomy_boundary_check`, optional `docs_consistency`.
+
+Possible errors: `NO_ACTIVE_TASK`, `MCP_UNAVAILABLE`, `PROJECTION_STALE`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `RECONCILE_REQUIRED`.
 
 Idempotency behavior: read-only; repeated requests do not mutate state.
 
@@ -437,15 +625,17 @@ Response schema:
 ```yaml
 PrepareWriteResponse:
   base: ToolResponseBase
-  decision: allowed | blocked | approval_required | state_conflict
+  decision: allowed | blocked | approval_required | decision_required | state_conflict
   state: StateSummary | null
   change_unit_id: string | null
   baseline_ref: string | null
+  active_decision_packet_refs: StateRecordRef[]
   blocked_reasons:
     - code: string
       message: string
       related_error: ErrorCode
   approval_request_candidate: ApprovalRequestCandidate | null
+  decision_packet_candidate: DecisionPacketCandidate | null
   guarantee_display:
     level: cooperative | detective | preventive | isolated
     notes: string[]
@@ -461,15 +651,19 @@ ApprovalRequestCandidate:
 
 `approval_request_candidate` is present only when `decision=approval_required` or when Core can suggest a new approval request. Otherwise it is `null`.
 
-State transition summary: may move Task to `executing`, `waiting_user`, or `blocked`; may set `scope_gate=pending/blocked`, `approval_gate=pending/expired`, or stale evidence/approval markers.
+`active_decision_packet_refs` contains all Decision Packets relevant to the intended write, including pending, deferred, blocked, or recently resolved packets.
 
-Events emitted: `prepare_write_allowed`, `prepare_write_blocked`, `scope_required`, `approval_required`, `baseline_stale_detected`, `capability_insufficient_detected`.
+`decision_packet_candidate` is present when `decision=decision_required` and no compatible Decision Packet already exists. Its fields match `RequestUserDecisionRequest` after the envelope. It is a non-mutating candidate payload for a later `harness.request_user_decision` call; returning it from `prepare_write` does not create or update a Decision Packet.
+
+State transition summary: may move Task to `executing`, `waiting_user`, or `blocked`; may set `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=pending/expired`, or stale evidence/approval markers.
+
+Events emitted: `prepare_write_allowed`, `prepare_write_blocked`, `scope_required`, `decision_required`, `autonomy_boundary_exceeded`, `approval_required`, `baseline_stale_detected`, `capability_insufficient_detected`.
 
 Projection jobs enqueued: `TASK`; `APR` when approval is required.
 
-Validators run: `state_envelope`, `active_task`, `active_change_unit`, `scope_coverage`, `changed_paths_intent`, `baseline_freshness`, `approval_scope`, `surface_capability_check`, design precondition validators that apply before write.
+Validators run: `state_envelope`, `active_task`, `active_change_unit`, `scope_coverage`, `changed_paths_intent`, `autonomy_boundary_check`, `baseline_freshness`, `approval_scope`, `decision_gate_check`, `decision_quality_check`, `feedback_loop_check`, `tdd_trace_required`, `codebase_stewardship_check`, `surface_capability_check`, design precondition validators that apply before write.
 
-Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `BASELINE_STALE`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `VALIDATOR_FAILED`.
+Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `BASELINE_STALE`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `VALIDATOR_FAILED`.
 
 Idempotency behavior: repeated allowed/blocked decision with same payload returns the original decision and event refs; changed payload with same key returns `STATE_CONFLICT`.
 
@@ -520,6 +714,11 @@ ShapingUpdatePayload:
       allowed_network_targets: string[]
       secret_scope: string[]
       sensitive_categories: string[]
+      autonomy_profile: human_in_loop | afk_eligible | evaluator_only | read_only_advisor | null
+      agent_may_do: string[]
+      user_judgment_required: string[]
+      afk_stop_conditions: string[]
+      end_to_end_path: EndToEndPath | null
       validator_profile: string[]
       completion_conditions: string[]
       evaluator_focus: string[]
@@ -574,7 +773,7 @@ TddTraceUpdate:
   non_tdd_justification: string | null
 ```
 
-The `payload` branch must match `kind`; all other branches must be `null` or absent. `ArtifactInput` values are resolved during the same Core transaction; response fields contain the committed `ArtifactRef` values. Change Unit creation and update for MVP happens through `kind=shaping_update` with `change_unit_updates`; `operation=create` creates a `change_units` record, and `operation=select_active` updates the Task's `active_change_unit_id`.
+The `payload` branch must match `kind`; all other branches must be `null` or absent. `ArtifactInput` values are resolved during the same Core transaction; response fields contain the committed `ArtifactRef` values. Change Unit creation and update for MVP happens through `kind=shaping_update` with `change_unit_updates`; `operation=create` creates a `change_units` record, and `operation=select_active` updates the Task's `active_change_unit_id`. `allowed_paths`, `allowed_tools`, `allowed_commands`, `allowed_network_targets`, `secret_scope`, and `sensitive_categories` are scope fields. `autonomy_profile`, `agent_may_do`, `user_judgment_required`, and `afk_stop_conditions` describe Autonomy Boundary judgment latitude only.
 
 Response schema:
 
@@ -596,7 +795,7 @@ Events emitted: `run_recorded`, `shaping_updated`, `implementation_recorded`, `d
 
 Projection jobs enqueued: `TASK`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`; `DIRECT-RESULT` for `kind=direct`; `TDD-TRACE` when updated.
 
-Validators run: `state_envelope`, `changed_paths`, `scope_coverage`, `approval_scope`, `baseline_freshness`, `artifact_integrity`, `evidence_sufficiency`, applicable design-quality validators, `surface_capability_check`.
+Validators run: `state_envelope`, `changed_paths`, `scope_coverage`, `approval_scope`, `baseline_freshness`, `artifact_integrity`, `evidence_sufficiency`, `decision_quality_check`, `autonomy_boundary_check`, `feedback_loop_check`, `tdd_trace_required`, `codebase_stewardship_check`, applicable design-quality validators, `surface_capability_check`.
 
 Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_VIOLATION`, `APPROVAL_REQUIRED`, `APPROVAL_EXPIRED`, `ARTIFACT_MISSING`, `BASELINE_STALE`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`.
 
@@ -604,7 +803,7 @@ Idempotency behavior: repeated request returns the same run, artifact records, e
 
 ### `harness.request_user_decision`
 
-Purpose: create a structured user decision request.
+Purpose: create a structured Decision Packet for a user judgment that blocks progress, write, close, risk acceptance, waiver, or reconcile.
 
 Allowed actor: `lead_agent`, `evaluator`, `operator`.
 
@@ -613,60 +812,63 @@ Request schema:
 ```yaml
 RequestUserDecisionRequest:
   envelope: ToolEnvelope
-  decision_kind: approval | scope_confirmation | design_choice | qa_waiver | acceptance | reconcile
   task_id: string
   change_unit_id: string | null
-  prompt: string
-  options:
-    - option_id: string
-      label: string
-      consequence: string
-  recommendation: string | null
+  decision_kind: approval | scope_confirmation | design_choice | architecture_choice | product_tradeoff | autonomy_boundary | verification_waiver | qa_waiver | acceptance | residual_risk_acceptance | reconcile
+  context:
+    why_now: string
+    source_refs: StateRecordRef[]
+    evidence_refs: EvidenceRefs
+  state_summary_at_request: StateSummary | null
+  what_user_is_deciding: string
+  what_agent_may_decide_without_user: string[]
+  affected_gates:
+    - scope_gate | decision_gate | approval_gate | design_gate | evidence_gate | verification_gate | qa_gate | acceptance_gate
+  affected_acceptance_criteria:
+    - criteria_id: string
+      statement: string
+  options: DecisionPacketOption[]
+  recommendation: DecisionPacketRecommendation | null
+  deferral_consequence: string
+  user_context: DecisionPacketUserContext
   expires_at: string | null
   approval_scope: ApprovalScope | null
   reconcile_item_id: string | null
-
-ApprovalScope:
-  sensitive_categories: string[]
-  allowed_paths: string[]
-  allowed_tools: string[]
-  allowed_commands: string[]
-  allowed_network_targets: string[]
-  secret_scope: string[]
-  baseline_ref: string | null
 ```
 
-`approval_scope` is required when `decision_kind=approval`. For all other `decision_kind` values it must be `null` or omitted.
+Core stores a canonical `DecisionPacket`. If `state_summary_at_request` is `null`, Core derives it from current state during the same transaction. The stored `state_summary_at_request` is a request-time snapshot and is not updated by later Task transitions. `approval_scope` is required when `decision_kind=approval`; for all other `decision_kind` values it must be `null` or omitted. A `residual_risk_acceptance` packet must include the risk visibility context in `user_context.minimum_context` and relevant risk refs in `context.source_refs`.
 
 Response schema:
 
 ```yaml
 RequestUserDecisionResponse:
   base: ToolResponseBase
-  decision_request_id: string
+  decision_packet_id: string
+  decision_packet_ref: StateRecordRef
+  decision_packet: DecisionPacket
   approval_id: string | null
   reconcile_item_id: string | null
   state: StateSummary
   user_visible_summary: string
 ```
 
-`pending_decisions` returned by status and next-action responses contain `StateRecordRef` entries with `record_kind=decision_request`.
+`pending_decisions` returned by status and next-action responses contain unresolved user-action `StateRecordRef` entries with `record_kind=decision_packet`. `active_decision_packet_refs` fields include all Decision Packets relevant to the current phase or requested action, including pending, deferred, blocked, or recently resolved packets.
 
-State transition summary: records a pending decision and usually moves Task to `waiting_user`; approval requests set `approval_gate=pending`; scope confirmation sets `scope_gate=pending`; acceptance sets `acceptance_gate=pending`.
+State transition summary: records a pending Decision Packet and usually moves Task to `waiting_user`; product judgment sets `decision_gate=pending`; approval requests set `approval_gate=pending`; scope confirmation sets `scope_gate=pending`; acceptance and residual-risk acceptance set or keep `acceptance_gate=pending` when acceptance is required.
 
-Events emitted: `user_decision_requested`, `approval_requested`, `scope_confirmation_requested`, `design_choice_requested`, `qa_waiver_requested`, `acceptance_requested`, `reconcile_decision_requested`.
+Events emitted: `decision_packet_created`, `user_decision_requested`, `approval_requested`, `scope_confirmation_requested`, `design_choice_requested`, `architecture_choice_requested`, `autonomy_boundary_decision_requested`, `verification_waiver_requested`, `qa_waiver_requested`, `acceptance_requested`, `residual_risk_acceptance_requested`, `reconcile_decision_requested`.
 
-Projection jobs enqueued: `TASK`; `APR` for approval; affected projection for reconcile.
+Projection jobs enqueued: `TASK`, `DEC`; `APR` for approval; affected projection for reconcile.
 
-Validators run: `state_envelope`, `decision_request_validity`, `approval_scope` for approval decisions, `reconcile_required` for reconcile decisions.
+Validators run: `state_envelope`, `decision_packet_validity`, `decision_quality_check`, `autonomy_boundary_check` when the packet affects the active Change Unit boundary, `approval_scope` for approval decisions, `reconcile_required` for reconcile decisions, `residual_risk_visibility_check` for risk-acceptance decisions.
 
-Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `APPROVAL_REQUIRED`, `RECONCILE_REQUIRED`, `PROJECTION_STALE`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
+Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `DECISION_REQUIRED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `APPROVAL_REQUIRED`, `RECONCILE_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `PROJECTION_STALE`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
 
-Idempotency behavior: repeated request returns the same pending decision record; a different prompt/scope/options with the same key returns `STATE_CONFLICT`.
+Idempotency behavior: repeated request returns the same Decision Packet, related records, events, and projection jobs; a different packet payload with the same key returns `STATE_CONFLICT`.
 
 ### `harness.record_user_decision`
 
-Purpose: record the user's answer to a pending approval, scope, design, QA waiver, acceptance, or reconcile decision.
+Purpose: record the user's answer to a pending Decision Packet and optionally record accepted residual risk.
 
 Allowed actor: `user`, `operator`.
 
@@ -675,12 +877,13 @@ Request schema:
 ```yaml
 RecordUserDecisionRequest:
   envelope: ToolEnvelope
-  decision_request_id: string
-  decision_kind: approval | scope_confirmation | design_choice | qa_waiver | acceptance | reconcile
+  decision_packet_id: string
+  decision_kind: approval | scope_confirmation | design_choice | architecture_choice | product_tradeoff | autonomy_boundary | verification_waiver | qa_waiver | acceptance | residual_risk_acceptance | reconcile
   selected_option_id: string
   decision: RecordUserDecisionPayload
   note: string
   waiver_reason: string | null
+  accepted_risks: AcceptedRiskInput[]
 
 RecordUserDecisionPayload:
   approval:
@@ -689,38 +892,59 @@ RecordUserDecisionPayload:
     value: confirmed | rejected | revise_scope
   design_choice:
     value: selected | rejected | defer
+  architecture_choice:
+    value: selected | rejected | defer
+  product_tradeoff:
+    value: selected | rejected | defer
+  autonomy_boundary:
+    value: accepted | rejected | revise_boundary | defer
+  verification_waiver:
+    value: waived | rejected
   qa_waiver:
     value: waived | rejected
   acceptance:
     value: accepted | rejected
+  residual_risk_acceptance:
+    value: accepted | rejected | defer
   reconcile:
     value: merge | reject | convert_to_note | create_decision | defer
+
+AcceptedRiskInput:
+  residual_risk_ref: StateRecordRef | null
+  risk_summary: string
+  accepted_scope: string[]
+  acceptance_consequence: string
+  follow_up_required: boolean
+  follow_up: string | null
+  evidence_refs: EvidenceRefs
 ```
 
-The payload branch must match `decision_kind`; other branches must be absent.
+The payload branch must match `decision_kind`; other branches must be absent. `accepted_risks` is allowed only when the Decision Packet and current Judgment Context made the close-relevant residual risk visible before the user decision. Core records accepted risk as residual-risk state refs; it does not treat risk acceptance as detached verification.
 
 Response schema:
 
 ```yaml
 RecordUserDecisionResponse:
   base: ToolResponseBase
-  decision_request_id: string
+  decision_packet_id: string
+  decision_packet_ref: StateRecordRef
   state: StateSummary
   updated_records: StateRecordRef[]
+  accepted_risk_refs: StateRecordRef[]
   next_action: string
 ```
 
-State transition summary: updates the targeted gate or reconcile item; approval grant/deny updates `approval_gate`; accepted scope updates `scope_gate`; QA waiver updates `qa_gate`; acceptance updates `acceptance_gate`; reconcile may create accepted state records.
+State transition summary: resolves, defers, rejects, or blocks the targeted Decision Packet; updates affected gates or reconcile item; approval grant/deny updates `approval_gate`; accepted scope updates `scope_gate`; user-resolved product judgment updates `decision_gate`; accepted Autonomy Boundary decisions may update the active Change Unit boundary; verification waiver updates `verification_gate=waived_by_user`; QA waiver updates `qa_gate`; acceptance updates `acceptance_gate`; accepted residual risk records accepted-risk refs without upgrading assurance; reconcile may create accepted state records.
 
-Events emitted: `user_decision_recorded`, `approval_granted`, `approval_denied`, `scope_confirmed`, `scope_rejected`, `design_choice_recorded`, `qa_waiver_recorded`, `acceptance_recorded`, `reconcile_resolved`.
+Events emitted: `user_decision_recorded`, `decision_packet_resolved`, `decision_packet_deferred`, `decision_packet_rejected`, `approval_granted`, `approval_denied`, `scope_confirmed`, `scope_rejected`, `design_choice_recorded`, `architecture_choice_recorded`, `autonomy_boundary_decision_recorded`, `verification_waiver_recorded`, `qa_waiver_recorded`, `acceptance_recorded`, `residual_risk_accepted`, `reconcile_resolved`.
 
-Projection jobs enqueued: `TASK`; `APR` for approval; `MANUAL-QA` for QA waiver when represented as a QA record; affected design/task projections for reconcile.
+Projection jobs enqueued: `TASK`, `DEC`; `APR` for approval; `MANUAL-QA` for QA waiver when represented as a QA record; affected design/task projections for reconcile and Decision Packet visibility.
 
-Validators run: `state_envelope`, `pending_decision_exists`, `approval_scope`, `qa_waiver_reason`, `reconcile_target_validity`.
+Validators run: `state_envelope`, `pending_decision_packet_exists`, `decision_quality_check`, `autonomy_boundary_check`, `approval_scope`, `qa_waiver_reason`, `residual_risk_visibility_check`, `reconcile_target_validity`.
 
-Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `SCOPE_VIOLATION`, `QA_REQUIRED`, `ACCEPTANCE_REQUIRED`, `RECONCILE_REQUIRED`, `PROJECTION_STALE`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
+Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `DECISION_UNRESOLVED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `SCOPE_VIOLATION`, `QA_REQUIRED`, `ACCEPTANCE_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `RECONCILE_REQUIRED`, `PROJECTION_STALE`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
 
-Idempotency behavior: repeated decision returns the same updated records and events; attempting to change an already-recorded decision with the same key returns `STATE_CONFLICT`.
+Idempotency behavior: repeated decision returns the same Decision Packet resolution, accepted-risk refs, updated records, and events; attempting to change an already-recorded decision with the same key returns `STATE_CONFLICT`.
 
 ### `harness.launch_verify`
 
@@ -849,8 +1073,11 @@ RecordManualQaRequest:
       path: string | null
   artifact_inputs: ArtifactInput[]
   waiver_reason: string | null
+  waiver_decision_packet_ref: StateRecordRef | null
   next_action: rework | accept | waive | block | none
 ```
+
+For `result=waived`, product/user risk or policy-required judgment requires a `qa_waiver` Decision Packet referenced by `waiver_decision_packet_ref`. `waiver_reason` alone is allowed only for a low-risk waiver when policy permits it.
 
 Response schema:
 
@@ -864,15 +1091,15 @@ RecordManualQaResponse:
   next_action: string
 ```
 
-State transition summary: records Manual QA; `passed` can set `qa_gate=passed`; `failed` sets `qa_gate=failed` and routes to rework/blocked; `waived` requires waiver reason and sets `qa_gate=waived`.
+State transition summary: records Manual QA; `passed` can set `qa_gate=passed`; `failed` sets `qa_gate=failed` and routes to rework/blocked; `waived` requires either a compatible `qa_waiver` Decision Packet or a policy-permitted low-risk waiver reason and sets `qa_gate=waived`.
 
 Events emitted: `manual_qa_recorded`, `qa_passed`, `qa_failed`, `qa_waived`, `artifact_registered`.
 
-Projection jobs enqueued: `TASK`, `MANUAL-QA`; optionally `EVIDENCE-MANIFEST`.
+Projection jobs enqueued: `TASK`, `MANUAL-QA`; `DEC` when a waiver Decision Packet affects visibility; optionally `EVIDENCE-MANIFEST`.
 
-Validators run: `state_envelope`, `manual_qa_required`, `qa_waiver_reason`, `artifact_integrity`, `evidence_sufficiency`.
+Validators run: `state_envelope`, `manual_qa_required`, `decision_quality_check`, `residual_risk_visibility_check`, `qa_waiver_reason`, `artifact_integrity`, `evidence_sufficiency`.
 
-Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `QA_REQUIRED`, `ARTIFACT_MISSING`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
+Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `QA_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `ARTIFACT_MISSING`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
 
 Idempotency behavior: repeated request returns the same Manual QA record and gate update; waiver reason and artifact inputs must match.
 
@@ -905,9 +1132,12 @@ CloseTaskResponse:
     - code: ErrorCode
       message: string
       required_next_action: string
+      related_refs: StateRecordRef[]
   final_report_refs: StateRecordRef[]
   artifact_refs: ArtifactRef[]
 ```
+
+Close blockers include unresolved, missing, deferred-without-coverage, blocked, rejected, stale, or incompatible blocking Decision Packets, and close-relevant residual risk that is not visible before acceptance or a risk-accepted close.
 
 State transition summary: successful completion moves Task to `completed` with result and close reason; cancellation/supersession moves Task to `cancelled`; failed close leaves Task non-terminal and reports blockers.
 
@@ -915,8 +1145,8 @@ Events emitted: `close_requested`, `task_closed`, `task_cancelled`, `task_supers
 
 Projection jobs enqueued: `TASK`; latest required reports as needed for final freshness.
 
-Validators run: `state_envelope`, `active_run_absent`, `active_change_unit_complete`, `scope_coverage`, `approval_scope`, `design_gate_close`, `evidence_sufficiency`, `same_session_verify_guard`, `manual_qa_required`, `acceptance_required`, `projection_freshness`.
+Validators run: `state_envelope`, `active_run_absent`, `active_change_unit_complete`, `scope_coverage`, `decision_gate_check`, `decision_quality_check`, `autonomy_boundary_check`, `approval_scope`, `design_gate_close`, `feedback_loop_check`, `tdd_trace_required`, `codebase_stewardship_check`, `evidence_sufficiency`, `same_session_verify_guard`, `manual_qa_required`, `residual_risk_visibility_check`, `acceptance_required`, `projection_freshness`.
 
-Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `EVIDENCE_INSUFFICIENT`, `VERIFY_NOT_DETACHED`, `QA_REQUIRED`, `ACCEPTANCE_REQUIRED`, `PROJECTION_STALE`, `RECONCILE_REQUIRED`, `ARTIFACT_MISSING`, `BASELINE_STALE`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
+Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `EVIDENCE_INSUFFICIENT`, `VERIFY_NOT_DETACHED`, `QA_REQUIRED`, `ACCEPTANCE_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `PROJECTION_STALE`, `RECONCILE_REQUIRED`, `ARTIFACT_MISSING`, `BASELINE_STALE`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
 
 Idempotency behavior: repeated successful close returns the same terminal state and report refs; a second close with a different intent or close reason returns `STATE_CONFLICT`.
