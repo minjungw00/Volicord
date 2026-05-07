@@ -101,16 +101,21 @@ MVP Core can run as a single process with these internal modules:
 |---|---|
 | State store | current records, state versions, locks, and `state.sqlite.task_events` |
 | Task workflow | intake, mode selection, next action, gate updates, close decisions |
+| Journey module | Journey Spine reconstruction, Journey Spine Entry support records, Journey Card inputs, and continuity refs |
+| Decision module | Decision Packet lifecycle, `decision_gate` aggregation, user judgment routing, and residual-risk visibility inputs |
 | Approval module | scope-bound approval request, decision, expiry, and drift handling |
 | Evidence module | run records, artifact refs, evidence manifests, and coverage checks |
 | Verification module | verification bundles, evaluator runs, Eval records, and independence checks |
 | Manual QA module | QA records and `qa_gate` aggregation |
 | Projection module | projection jobs, managed blocks, freshness, and report paths |
 | Reconcile module | human-editable proposals, managed drift, and accepted-state routing |
-| Validator runner | core, design-quality, artifact, projection, and connector checks |
+| Validator runner | core, decision, autonomy/boundary, design-quality, artifact, projection, and connector checks |
+| Autonomy/Boundary validator responsibility | Autonomy Boundary compatibility, agent latitude, user-judgment requirements, AFK stop conditions, and boundary drift findings |
 | Connector adapter | reference surface registration, capability reporting, and capture hints |
 
 Core is the only component that updates canonical operational state. Agents, CLI commands, projectors, and reconnect/recovery flows must enter through Core logic or use recovery code that preserves the same state compatibility rules.
+
+Decision, Journey, and Autonomy/Boundary modules do not create a new authority tier. Their canonical records live in `state.sqlite` current records plus `state.sqlite.task_events`, their raw evidence lives in the artifact store, and their Markdown views remain projections or proposal surfaces.
 
 ## State Transaction Flow
 
@@ -151,8 +156,8 @@ The boundary is:
 | Item | Authority | Examples |
 |---|---|---|
 | Raw artifact | Durable evidence file in artifact store | diff, log, screenshot, checkpoint, bundle, manifest file |
-| State record | Canonical structured record in `state.sqlite` | Task, Change Unit, Run, Approval, Eval, Manual QA record, Evidence Manifest, Artifact record |
-| Markdown report | Human-readable projection from records and artifact refs | TASK, APR, RUN-SUMMARY, EVAL, DIRECT-RESULT, EVIDENCE-MANIFEST |
+| State record | Canonical structured record in `state.sqlite` | Task, Change Unit, Decision Packet, Journey Spine Entry, Residual Risk, Run, Approval, Eval, Manual QA record, Evidence Manifest, Shared Design, Artifact record |
+| Markdown report | Human-readable projection from records and artifact refs | TASK, Journey Card/Spine views, Decision Packet views, APR, RUN-SUMMARY, EVAL, DIRECT-RESULT, EVIDENCE-MANIFEST |
 
 These named report kinds are projections or state-backed records by default. They may refer to evidence files in the artifact store, and an export may include snapshots of them, but that does not make the Markdown report the canonical evidence file.
 
@@ -184,20 +189,25 @@ Reconcile can merge, reject, convert to note, create a decision, create or updat
 
 Validators sit beside Core and return structured results to Core. Core decides whether the result blocks a transition, marks a gate stale/partial/blocked, requests a user decision, or only affects display.
 
-MVP validator categories:
+Stable MVP validator IDs:
 
-- state and envelope validation
-- active Task and active Change Unit checks
-- changed path and scope checks
-- baseline freshness
-- approval scope
-- evidence sufficiency
-- same-session verification guard
-- projection freshness and managed-hash checks
-- minimal design-quality checks
-- `surface_capability_check`
+- `decision_gate_check`
+- `decision_quality_check`
+- `autonomy_boundary_check`
+- `feedback_loop_check`
+- `tdd_trace_required`
+- `codebase_stewardship_check`
+- `residual_risk_visibility_check`
+- `shared_design_alignment`
+- `vertical_slice_shape`
+- `domain_language_consistency`
+- `module_interface_review`
+- `manual_qa_required`
+- `context_hygiene_check`
 
-Adapters and sidecars translate surface capability into observable facts. They do not create a kernel gate for capability. Capability appears through validator results, `prepare_write` blocked reasons, and guarantee display.
+Core preconditions such as state/envelope validation, active Task, active Change Unit, changed paths, baseline freshness, approval scope, evidence sufficiency, artifact integrity, verification independence, same-session verification guard, projection freshness, and surface capability may run beside these validators.
+
+Adapters and sidecars translate surface capability into observable facts. They do not create a kernel gate for capability. Capability appears through precondition results, `prepare_write` blocked reasons, and guarantee display.
 
 ## Guarantee Levels
 

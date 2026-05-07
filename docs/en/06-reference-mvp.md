@@ -19,13 +19,18 @@ MVP includes:
 - artifact registry and durable artifact files
 - baseline capture
 - `prepare_write` gate with scope, approval, baseline, and capability checks
+- Journey/Decision skeleton for task continuity, Decision Packets, and user judgment routing
+- shaping kernel support for Change Units, autonomy boundaries, dependency metadata, and end-to-end path intent
 - approval, evidence, verification, Manual QA, and acceptance gate support
+- decision, autonomy boundary, feedback loop, codebase stewardship, residual-risk visibility, and agency conformance checks
 - TASK, APR, RUN-SUMMARY, EVIDENCE-MANIFEST, EVAL, DIRECT-RESULT projections
 - optional minimal TDD-TRACE and MANUAL-QA projections where policy requires them
 - detached verification bundle or manual evaluator instruction bundle
 - doctor, recover, reconcile, export, and conformance smoke entrypoints
 
 MVP excludes the later automation cataloged in `appendix/C-later-roadmap.md`, including broader surface expansion, richer capture automation, advanced orchestration, analytics, and team profile export/import.
+
+Parallel orchestration automation remains later. MVP may store Change Unit dependency DAG metadata only when it is needed for serial shaping, write checks, close blockers, or visibility; it does not schedule parallel lanes, isolate concurrent baselines, or reconcile concurrent execution.
 
 ## Implementation Sequence
 
@@ -40,55 +45,66 @@ Exit criteria:
 - project runtime directory contains `project.yaml`, `state.sqlite`, and artifact directories
 - doctor can report project/runtime readiness
 
-### MVP-1: Core State And MCP Facade
+### MVP-1: Core State, Journey/Decision Skeleton, MCP Facade
 
-Implement Core transaction wrapper, locks, state version checks, idempotency replay records, read resources, `harness.status`, `harness.intake`, and `harness.next`.
+Implement Core transaction wrapper, locks, state version checks, idempotency replay records, read resources, Journey Spine reconstruction, Decision Packet records, `decision_gate` aggregation, `harness.status`, `harness.intake`, and `harness.next`.
 
 Exit criteria:
 
 - active Task absent status works
 - advisor Task can intake, run read-only, and close through Core
+- Task status can expose current Journey/Decision state from committed records
+- blocking user judgment can create or associate a Decision Packet and update `decision_gate`
 - every state mutation updates current records and appends `state.sqlite.task_events` in one transaction
 
-### MVP-2: Write Gate, Approval, Baseline, Artifacts
+### MVP-2: Shaping Kernel, Write Gate, Approval, Baseline, Artifacts
 
-Implement Change Unit records, gate records, baseline capture, artifact registration, `harness.prepare_write`, approval request/decision flow, and minimal changed-path/scope/approval/baseline validators.
+Implement Change Unit records, Change Unit dependency metadata, gate records, baseline capture, artifact registration, `harness.prepare_write`, approval request/decision flow, shaping updates, autonomy boundary fields, and minimal changed-path/scope/approval/baseline/decision/autonomy validators.
 
 Exit criteria:
 
 - product write without active scoped Change Unit is blocked
 - sensitive dependency or schema change requires approval
+- intended work outside the active Autonomy Boundary is blocked or routed to a Decision Packet
+- unresolved or incompatible blocking Decision Packets block affected writes
 - approval scope drift can expire or block approval
+- Change Unit shaping records end-to-end path intent, user-judgment requirements, AFK stop conditions, and dependency metadata when needed
 - raw artifacts are stored with hash and redaction metadata
 
-### MVP-3: Runs, Evidence, Projection, Reconcile
+### MVP-3: Runs, Evidence, Feedback Loop, Projection, Reconcile
 
-Implement `harness.record_run`, run records, evidence manifest records, projection jobs, TASK/APR/RUN-SUMMARY/EVIDENCE-MANIFEST/DIRECT-RESULT renderers, managed block hashes, and reconcile item creation for managed drift or human-editable proposals.
+Implement `harness.record_run`, run records, evidence manifest records, feedback loop checks, codebase stewardship checks, projection jobs, TASK/APR/RUN-SUMMARY/EVIDENCE-MANIFEST/DIRECT-RESULT renderers, managed block hashes, and reconcile item creation for managed drift or human-editable proposals.
 
 Exit criteria:
 
 - implementation and direct runs register artifacts and update evidence
+- findings from runs, checks, QA inputs, or evaluator notes route back into state, evidence, a Decision Packet, a Change Unit update, or a close blocker
+- codebase stewardship issues that affect scope, design, module boundaries, or user judgment are visible as validator results or blockers
 - projection job failure is separate from state failure
 - managed Markdown edits create reconcile items instead of mutating state
 
-### MVP-4: Verification, Manual QA, Close
+### MVP-4: Verification, Manual QA, Residual Risk, Close
 
-Implement `harness.launch_verify`, `harness.record_eval`, `harness.record_manual_qa`, `harness.close_task`, verification independence checks, Manual QA aggregation, and close blockers.
+Implement `harness.launch_verify`, `harness.record_eval`, `harness.record_manual_qa`, `harness.close_task`, verification independence checks, Manual QA aggregation, residual-risk visibility checks, decision gate close checks, and close blockers.
 
 Exit criteria:
 
 - work cannot close as `detached_verified` from same-session self-review
 - verification waiver closes with `completed_with_risk_accepted`, not `detached_verified`
 - required Manual QA and acceptance block close independently
+- close-relevant residual risk is visible before acceptance or risk-accepted close
+- unresolved, stale, incompatible, or deferred-without-coverage blocking Decision Packets block close
 - direct work can close self-checked unless policy or user requested detached verification
 
-### MVP-5: Operator Smoke And Conformance
+### MVP-5: Operator Smoke, Agency Conformance, Later-Boundary Checks
 
-Implement minimal doctor, recover, reconcile, export, artifact integrity check, and fixture-based conformance smoke.
+Implement minimal doctor, recover, reconcile, export, artifact integrity check, fixture-based conformance smoke, and agency conformance smoke for Journey visibility, explicit product judgment, Autonomy Boundary respect, and residual-risk visibility.
 
 Exit criteria:
 
-- conformance smoke covers no-active-task status, advisor close, direct close, approval-required block, evidence-insufficient close block, same-session verification guard, projection failure separation, reconcile required, and MCP-unavailable write hold
+- conformance smoke covers no-active-task status, advisor close, direct close, approval-required block, decision-required block, autonomy-boundary block, evidence-insufficient close block, same-session verification guard, residual-risk visibility, feedback-loop routing, codebase-stewardship finding visibility, projection failure separation, reconcile required, and MCP-unavailable write hold
+- agency conformance checks verify the user can follow the Journey, see unresolved decisions, see what the agent may do without asking, and see close-relevant residual risk before acceptance
+- parallel orchestration automation remains later; any MVP dependency DAG support is metadata-only
 - export includes state snapshots, report projections, artifact refs, and redaction status
 
 ## Runtime Storage
@@ -201,6 +217,7 @@ CREATE TABLE tasks (
 CREATE TABLE task_gates (
   task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
   scope_gate TEXT NOT NULL,
+  decision_gate TEXT NOT NULL,
   approval_gate TEXT NOT NULL,
   design_gate TEXT NOT NULL,
   evidence_gate TEXT NOT NULL,
@@ -218,6 +235,11 @@ CREATE TABLE change_units (
   purpose TEXT NOT NULL,
   non_goals_json TEXT NOT NULL DEFAULT '[]',
   slice_type TEXT NOT NULL,
+  autonomy_profile TEXT NOT NULL,
+  agent_may_do_json TEXT NOT NULL DEFAULT '[]',
+  user_judgment_required_json TEXT NOT NULL DEFAULT '[]',
+  afk_stop_conditions_json TEXT NOT NULL DEFAULT '[]',
+  end_to_end_path_json TEXT NOT NULL DEFAULT '{}',
   horizontal_exception_reason TEXT,
   follow_up_vertical_change_unit_id TEXT,
   allowed_paths_json TEXT NOT NULL DEFAULT '[]',
@@ -229,6 +251,22 @@ CREATE TABLE change_units (
   validator_profile_json TEXT NOT NULL DEFAULT '[]',
   completion_conditions_json TEXT NOT NULL DEFAULT '[]',
   evaluator_focus_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE baselines (
+  baseline_ref TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  change_unit_id TEXT,
+  repo_head TEXT NOT NULL,
+  branch TEXT NOT NULL,
+  dirty INTEGER NOT NULL,
+  tree_hash TEXT NOT NULL,
+  included_paths_json TEXT NOT NULL DEFAULT '[]',
+  ignored_paths_json TEXT NOT NULL DEFAULT '[]',
+  diff_artifact_id TEXT REFERENCES artifacts(artifact_id),
   status TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -256,6 +294,7 @@ CREATE TABLE approvals (
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   change_unit_id TEXT,
   decision_request_id TEXT,
+  decision_packet_id TEXT REFERENCES decision_packets(decision_packet_id),
   status TEXT NOT NULL,
   sensitive_categories_json TEXT NOT NULL DEFAULT '[]',
   allowed_paths_json TEXT NOT NULL DEFAULT '[]',
@@ -288,6 +327,107 @@ CREATE TABLE decision_requests (
   waiver_reason TEXT,
   created_at TEXT NOT NULL,
   decided_at TEXT
+);
+
+CREATE TABLE decision_packets (
+  decision_packet_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  change_unit_id TEXT,
+  decision_request_id TEXT,
+  decision_kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  question TEXT NOT NULL,
+  options_json TEXT NOT NULL DEFAULT '[]',
+  recommendation_json TEXT NOT NULL DEFAULT '{}',
+  affected_scope_json TEXT NOT NULL DEFAULT '{}',
+  autonomy_boundary_json TEXT NOT NULL DEFAULT '{}',
+  context_refs_json TEXT NOT NULL DEFAULT '[]',
+  context_artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+  residual_risk_refs_json TEXT NOT NULL DEFAULT '[]',
+  decision_json TEXT NOT NULL DEFAULT '{}',
+  superseded_by_decision_packet_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  decided_at TEXT
+);
+
+CREATE TABLE residual_risks (
+  residual_risk_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  change_unit_id TEXT,
+  source_record_kind TEXT NOT NULL,
+  source_record_id TEXT NOT NULL,
+  related_decision_packet_id TEXT REFERENCES decision_packets(decision_packet_id),
+  affected_scope_json TEXT NOT NULL DEFAULT '{}',
+  affected_acceptance_criteria_json TEXT NOT NULL DEFAULT '[]',
+  visibility_status TEXT NOT NULL,
+  accepted_risk_json TEXT NOT NULL DEFAULT '{}',
+  follow_up_requirement_json TEXT NOT NULL DEFAULT '{}',
+  close_impact TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  accepted_at TEXT
+);
+
+CREATE TABLE shared_designs (
+  shared_design_id TEXT PRIMARY KEY,
+  task_id TEXT REFERENCES tasks(task_id),
+  change_unit_id TEXT,
+  first_change_unit_id TEXT REFERENCES change_units(change_unit_id),
+  title TEXT NOT NULL,
+  design_kind TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  non_goals_json TEXT NOT NULL DEFAULT '[]',
+  acceptance_criteria_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL,
+  scope_json TEXT NOT NULL DEFAULT '{}',
+  assumptions_json TEXT NOT NULL DEFAULT '[]',
+  resolved_questions_json TEXT NOT NULL DEFAULT '[]',
+  domain_impact_refs_json TEXT NOT NULL DEFAULT '[]',
+  module_impact_refs_json TEXT NOT NULL DEFAULT '[]',
+  interface_impact_refs_json TEXT NOT NULL DEFAULT '[]',
+  options_json TEXT NOT NULL DEFAULT '[]',
+  selected_option_json TEXT NOT NULL DEFAULT '{}',
+  rejected_options_json TEXT NOT NULL DEFAULT '[]',
+  decision_packet_refs_json TEXT NOT NULL DEFAULT '[]',
+  artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE task_spine_entries (
+  task_spine_entry_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  change_unit_id TEXT,
+  sequence_no INTEGER NOT NULL,
+  entry_kind TEXT NOT NULL,
+  lifecycle_phase TEXT,
+  actor_kind TEXT NOT NULL,
+  source_record_kind TEXT,
+  source_record_id TEXT,
+  summary TEXT NOT NULL DEFAULT '',
+  refs_json TEXT NOT NULL DEFAULT '[]',
+  artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(task_id, sequence_no)
+);
+
+CREATE TABLE change_unit_dependencies (
+  change_unit_dependency_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  change_unit_id TEXT NOT NULL REFERENCES change_units(change_unit_id),
+  depends_on_change_unit_id TEXT NOT NULL REFERENCES change_units(change_unit_id),
+  dependency_kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  merge_risk TEXT NOT NULL,
+  visibility_note TEXT NOT NULL DEFAULT '',
+  close_impact TEXT NOT NULL,
+  rationale TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE evidence_manifests (
@@ -327,6 +467,8 @@ CREATE TABLE manual_qa_records (
   findings_json TEXT NOT NULL DEFAULT '[]',
   artifact_refs_json TEXT NOT NULL DEFAULT '[]',
   waiver_reason TEXT,
+  waiver_decision_packet_id TEXT REFERENCES decision_packets(decision_packet_id),
+  residual_risk_refs_json TEXT NOT NULL DEFAULT '[]',
   next_action TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
@@ -343,6 +485,16 @@ CREATE TABLE artifacts (
   redaction_state TEXT NOT NULL,
   produced_by TEXT NOT NULL,
   retention_class TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE artifact_links (
+  artifact_link_id TEXT PRIMARY KEY,
+  artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id),
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  record_kind TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  relation_kind TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 
@@ -486,13 +638,34 @@ CREATE TABLE locks (
 
 `task_events` remains append-only event history. `tool_invocations` stores request replay metadata needed to return the original committed response. Reusing an idempotency key with a different `request_hash` returns `STATE_CONFLICT`.
 
+`decision_packets` is the canonical state table for blocking product judgment and the authority path for `decision_gate`. `decision_requests` is only an interaction/routing compatibility table for implementation handoff, replay, or legacy request flow. A `decision_request` alone never satisfies `decision_gate`; Core must create or associate a compatible Decision Packet. Approval decisions link to Decision Packets through `approvals.decision_packet_id`; `decision_request_id` may remain as routing metadata but is not the approval authority path.
+
+`residual_risks` is the canonical table for close-relevant remaining uncertainty, accepted risk, follow-up requirements, and close impact. Decision Packets may reference residual risks through `decision_packets.residual_risk_refs_json`; they must not bury the only canonical residual-risk payload inside the Decision Packet.
+
+`artifact_links` is the queryable many-to-many attachment table for artifacts. Use it to attach artifacts to `run`, `decision_packet`, `shared_design`, `residual_risk`, `evidence_manifest`, `tdd_trace`, `manual_qa_record`, `eval`, and `export` records. Existing `artifact_refs_json` fields may preserve ordered or record-local context, but multi-record artifact reuse and artifact integrity checks should use `artifact_links`.
+
+Manual QA waiver rule: a QA waiver with product/user risk requires a compatible `qa_waiver` Decision Packet linked by `manual_qa_records.waiver_decision_packet_id` and any close-relevant risk refs in `manual_qa_records.residual_risk_refs_json`; otherwise the waiver is blocked.
+
+`change_unit_dependencies` is MVP DAG metadata for shaping, ordering, and close visibility. It is not a parallel orchestration scheduler and does not authorize multiple active implementation lanes.
+
+`baselines` stores BaselineCapture records in state with repo head, branch, dirty flag, tree hash, included/ignored paths, optional diff artifact, and status. `baseline_ref` fields in other tables refer to `baselines.baseline_ref`.
+
 Recommended indexes:
 
 ```sql
 CREATE INDEX idx_task_events_task_version ON task_events(task_id, state_version);
 CREATE INDEX idx_decision_requests_task_status ON decision_requests(task_id, status);
+CREATE INDEX idx_decision_packets_task_status ON decision_packets(task_id, status);
+CREATE INDEX idx_residual_risks_task_status ON residual_risks(task_id, status);
+CREATE INDEX idx_shared_designs_task_status ON shared_designs(task_id, status);
+CREATE INDEX idx_task_spine_entries_task_seq ON task_spine_entries(task_id, sequence_no);
+CREATE INDEX idx_change_unit_dependencies_task ON change_unit_dependencies(task_id, change_unit_id);
+CREATE INDEX idx_baselines_task_change_unit ON baselines(task_id, change_unit_id);
+CREATE INDEX idx_approvals_decision_packet ON approvals(decision_packet_id);
 CREATE INDEX idx_projection_jobs_status ON projection_jobs(status, projection_version);
 CREATE INDEX idx_artifacts_task_run ON artifacts(task_id, run_id);
+CREATE INDEX idx_artifact_links_artifact ON artifact_links(artifact_id);
+CREATE INDEX idx_artifact_links_record ON artifact_links(record_kind, record_id);
 CREATE INDEX idx_runs_task_status ON runs(task_id, status);
 CREATE INDEX idx_reconcile_items_status ON reconcile_items(status);
 ```
@@ -523,10 +696,15 @@ State-changing operations acquire a lock at the narrowest practical scope:
 |---|---|
 | project registration | project |
 | task intake/close | task |
+| shaping update | task and affected Change Unit |
+| decision packet create/resolve | task and affected Decision Packet |
+| residual risk create/update/accept | task and affected residual risk |
+| baseline capture | task and affected Change Unit |
 | prepare_write | task and active Change Unit |
 | record_run | task and run |
 | projection render | projection job |
 | artifact registration | artifact path |
+| artifact link registration | artifact and target record |
 | reconcile decision | reconcile item and affected task/design record |
 
 If a lock is expired, the next operation may take it after appending a recovery event. If `expected_state_version` is stale, the operation returns `STATE_CONFLICT` before mutation.
@@ -551,6 +729,10 @@ Reference layout:
         manifests/
         qa/
         tdd/
+        designs/
+        prototypes/
+        architecture/
+        decisions/
         exports/
         tmp/
 ```
@@ -563,9 +745,20 @@ Artifact filenames should include enough stable identity to avoid collisions:
 
 Markdown reports in the Product Repository are not raw artifacts by default. If an export needs a report snapshot, it can store that snapshot as an export component artifact while preserving the distinction between the report projection and raw evidence.
 
+### Artifact Kind Storage Notes
+
+The `artifacts.kind` field names durable evidence files. It does not make the artifact file the owner of the corresponding state record.
+
+| Artifact kind | Reference storage note |
+|---|---|
+| `design_probe` | Store exploratory design findings, sketches, or probe outputs under `artifacts/designs/`; accepted structure belongs in `shared_designs`, design support records, or Task/Change Unit state. |
+| `prototype` | Store prototype diffs, screenshots, logs, or throwaway proof artifacts under `artifacts/prototypes/`; product code remains in the Product Repository and committed harness meaning remains in state records. |
+| `architecture_scan` | Store module scans, dependency snapshots, boundary findings, or stewardship evidence under `artifacts/architecture/`; accepted module/interface facts remain in their owner records. |
+| `decision_context` | Store compact context bundles for user judgment under `artifacts/decisions/`; Decision Packet status and outcome remain in `state.sqlite`. |
+
 ### Artifact Registration Contract
 
-Artifact registration is part of the Core transition that records the producing Run, Eval, Manual QA record, verification bundle, or export component.
+Artifact registration is part of the Core transition that records the producing Run, Decision Packet context, Shared Design, Journey Spine Entry, Eval, Manual QA record, verification bundle, or export component.
 
 MVP registration steps:
 
@@ -573,9 +766,9 @@ MVP registration steps:
 2. Apply redaction or omission before hashing. Raw secrets must not be copied into durable artifact storage.
 3. Move or copy the stored bytes into the artifact directory using `{task_id}/{run_id-or-record_id}/{artifact_id}-{kind}.{ext}` under the matching kind directory.
 4. Compute `sha256`, `size_bytes`, `content_type`, and `redaction_state` from the stored bytes.
-5. Insert the `artifacts` row in the same Core transaction that records the related state record and appends `task_events`.
+5. Insert the `artifacts` row and required `artifact_links` rows in the same Core transaction that records the related state record and appends `task_events`.
 6. Return an `ArtifactRef` whose `uri` resolves through the artifact registry row.
-7. If the file move succeeds but the transaction fails, leave the file in `tmp/` or mark it orphaned for `recover`; do not create a committed artifact ref.
+7. If the file move succeeds but the transaction fails, leave the file in `tmp/` or mark it orphaned for `recover`; do not create a committed artifact ref or artifact link.
 
 `redaction_state` implementation:
 
@@ -591,6 +784,8 @@ Artifact integrity failures return `ARTIFACT_MISSING` or a validator failure and
 ## Baseline Capture
 
 Baseline capture records the repository state used by write, approval, evidence, and verification checks.
+
+MVP stores each capture in `baselines`; `baseline_ref` is the primary key used by Runs, approvals, evidence manifests, verification bundles, and validators. If a dirty diff is captured, `baselines.diff_artifact_id` points to the registered diff artifact and an `artifact_links` row attaches it to the baseline context.
 
 ```yaml
 BaselineCapture:
@@ -629,9 +824,13 @@ verify-bundle/
   baseline.json
   evidence-manifest.json
   approvals.json
+  decision-packets.json
+  residual-risks.json
   run-refs.json
   artifact-refs.json
+  artifact-links.json
   design-refs.json
+  journey-spine-entries.json
   evaluator-instructions.md
 ```
 
@@ -642,6 +841,8 @@ Launching verification sets or keeps `verification_gate=pending`. Only `harness.
 ## Projection Jobs
 
 Projection jobs are the durable outbox between committed state and Product Repository Markdown files. The `projection_jobs` table above owns job persistence.
+
+For MVP, Decision Packet visibility is rendered through TASK projections, status/next responses, and decision-packet read resources. A standalone DEC projection is optional until the projection/template batch enables it. This document does not define DEC template text.
 
 MVP job lifecycle:
 
@@ -689,11 +890,14 @@ Required reference behavior:
 - records runs through `harness.record_run`
 - uses artifact refs for diffs/logs/bundles
 - requests approval/scope/user decisions through MCP
+- treats Decision Packets as the state path for blocking product judgment
+- respects the active Change Unit Autonomy Boundary and AFK stop conditions
 - launches or prepares verification through `harness.launch_verify`
 - does not claim detached verification from same-session self-review
+- keeps feedback findings and close-relevant residual risk visible through state-backed records or validator results
 - holds product writes when MCP is unavailable
 
-Default guarantee display is cooperative/detective. Preventive or isolated claims require an implemented guard or isolation path and a passing `surface_capability_check`.
+Default guarantee display is cooperative/detective. Preventive or isolated claims require an implemented guard or isolation path and a passing capability precondition.
 
 ## Validator Runner Skeleton
 
@@ -712,42 +916,52 @@ run_validators(context, validator_ids):
   return results
 ```
 
-MVP validator set:
+Stable MVP validator IDs:
 
 | Validator | Purpose |
 |---|---|
-| `active_task` | Task exists and is non-terminal where required |
-| `active_change_unit` | write-capable run has active scoped Change Unit |
-| `changed_paths` | observed or intended paths stay inside scope |
-| `approval_scope` | sensitive paths/tools/network/secrets fit granted approval |
-| `baseline_freshness` | baseline still matches relevant repo state |
-| `artifact_integrity` | artifact files exist and match hash/size |
-| `evidence_sufficiency` | acceptance criteria map to supporting evidence |
-| `verification_independence` | Eval independence profile can support the requested assurance |
-| `same_session_verify_guard` | same-session review cannot upgrade assurance |
-| `manual_qa_required` | required QA is passed or validly waived |
-| `docs_consistency` | projection version and managed hash are consistent |
-| `surface_capability_check` | connected surface can satisfy required behavior |
+| `decision_gate_check` | blocking Decision Packets are present, compatible, and resolved or validly deferred for the requested operation |
+| `decision_quality_check` | Decision Packets include enough context, options, recommendation status, trade-offs, and affected-scope refs for user judgment |
+| `autonomy_boundary_check` | intended work stays inside the active Change Unit Autonomy Boundary or routes to user judgment |
+| `feedback_loop_check` | test, eval, QA, or operational findings have an explicit state route to rework, decision, risk, evidence, or close |
+| `tdd_trace_required` | required TDD evidence or allowed waiver exists |
+| `codebase_stewardship_check` | codebase health, module boundary, dependency, or maintainability concerns that need judgment are visible before write or close |
+| `residual_risk_visibility_check` | close-relevant residual risks are recorded and visible before acceptance or risk-accepted close |
+| `shared_design_alignment` | active Change Unit and runs align with the Shared Design contract or record a compatible decision |
 | `vertical_slice_shape` | required vertical slice or exception is recorded |
-| `tdd_trace` | required TDD evidence or allowed waiver exists |
-| `module_boundary_review` | module/interface review requirement is met |
+| `domain_language_consistency` | domain-language terms that affect the change are consistent or routed to design judgment |
+| `module_interface_review` | module/interface review requirement is met |
+| `manual_qa_required` | required QA is passed or validly waived |
+| `context_hygiene_check` | required context, projection freshness, managed hashes, and user-visible summaries are consistent enough for the requested operation |
+
+Core precondition checks such as active Task, active Change Unit, changed paths, approval scope, baseline freshness, artifact integrity, evidence sufficiency, verification independence, same-session verification guard, projection freshness, and surface capability may still run before or beside these validators. They should not be emitted as alternate design/agency validator IDs in MVP conformance.
+
+Compatibility aliases:
+
+| Older ID | Stable ID |
+|---|---|
+| `tdd_trace` | `tdd_trace_required` |
+| `module_boundary_review` | `module_interface_review` |
+| `docs_consistency` | `context_hygiene_check` |
+| `projection_freshness` | `context_hygiene_check` |
 
 ### Evidence and Verification Profile Implementation Notes
 
-The `evidence_sufficiency` validator reads only committed records and registered artifacts. Inputs are: Task, `task_gates`, Change Units, Runs, approvals, Evidence Manifests, Evals, Manual QA records, artifacts, and the relevant baseline ref. It computes whether the applicable Evidence Profile is absent, partial, sufficient, stale, or blocked, then updates or blocks through Core according to the kernel rules.
+The evidence sufficiency precondition reads only committed records and registered artifacts. Inputs are: Task, `task_gates`, Change Units, Decision Packets, Residual Risks, Shared Designs, Journey Spine Entries, Runs, approvals, Evidence Manifests, Evals, Manual QA records, artifacts, artifact links, and the relevant baseline ref. It computes whether the applicable Evidence Profile is absent, partial, sufficient, stale, or blocked, then updates or blocks through Core according to the kernel rules.
 
-The `verification_independence` validator reads `evals.independence_json`, `evaluator_run_id`, `target_run_id`, evaluator and target `surface_id`, `baseline_ref`, bundle artifact refs, and `actor_kind`. It confirms whether the Eval profile is `same_session`, `subagent_context`, `fresh_session`, `fresh_worktree`, `sandbox`, or `manual_bundle`, and whether that profile can support detached assurance for the target close path.
+The verification independence precondition reads `evals.independence_json`, `evaluator_run_id`, `target_run_id`, evaluator and target `surface_id`, `baseline_ref`, bundle artifact refs, and `actor_kind`. It confirms whether the Eval profile is `same_session`, `subagent_context`, `fresh_session`, `fresh_worktree`, `sandbox`, or `manual_bundle`, and whether that profile can support detached assurance for the target close path.
 
-No DDL change is required for these profiles in MVP. Existing JSON fields hold profile metadata: `evidence_manifests.criteria_json`, `evidence_manifests.supporting_refs_json`, `evidence_manifests.stale_if_json`, `evals.evidence_reviewed_json`, `evals.independence_json`, `evals.artifact_refs_json`, `runs.observed_changes_json`, `runs.command_results_json`, `runs.artifact_refs_json`, `approvals.*_json`, `manual_qa_records.findings_json`, and `validator_runs.findings_json`.
+No additional evidence/verification profile DDL is required beyond the MVP tables above. Existing JSON fields hold profile metadata: `change_units.autonomy_profile`, `change_units.agent_may_do_json`, `change_units.user_judgment_required_json`, `change_units.afk_stop_conditions_json`, `change_units.end_to_end_path_json`, `decision_packets.context_refs_json`, `decision_packets.context_artifact_refs_json`, `decision_packets.residual_risk_refs_json`, `residual_risks.accepted_risk_json`, `residual_risks.follow_up_requirement_json`, `evidence_manifests.criteria_json`, `evidence_manifests.supporting_refs_json`, `evidence_manifests.stale_if_json`, `evals.evidence_reviewed_json`, `evals.independence_json`, `evals.artifact_refs_json`, `runs.observed_changes_json`, `runs.command_results_json`, `runs.artifact_refs_json`, `approvals.*_json`, `manual_qa_records.findings_json`, `manual_qa_records.residual_risk_refs_json`, and `validator_runs.findings_json`.
 
 If an implementation cannot derive an input above from existing fields, add `TODO_IMPLEMENT` naming the exact table and field before changing DDL.
 
 | MVP stage | Hardening coverage |
 |---|---|
-| MVP-2 | `prepare_write`, scope, approval, baseline, artifact registration |
-| MVP-3 | `record_run`, evidence manifest, projection/reconcile |
-| MVP-4 | verification independence, Manual QA, acceptance, close blockers |
-| MVP-5 | conformance fixtures for the hardened rules |
+| MVP-1 | Journey/Decision skeleton, Decision Packet records, `decision_gate` aggregation |
+| MVP-2 | shaping kernel, `prepare_write`, scope, approval, baseline, decision/autonomy write checks, artifact registration |
+| MVP-3 | `record_run`, evidence manifest, `feedback_loop_check`, `codebase_stewardship_check`, projection/reconcile |
+| MVP-4 | verification independence, Manual QA, `residual_risk_visibility_check`, acceptance, close blockers |
+| MVP-5 | conformance and agency conformance fixtures for the hardened rules |
 
 Validator failure must be visible as state, blocked reasons, or close blockers. It must not be hidden in prose-only agent output.
 
@@ -777,6 +991,13 @@ export/
   manifest.json
   state/
     task.json
+    decision-packets.json
+    residual-risks.json
+    shared-designs.json
+    task-spine-entries.json
+    change-unit-dependencies.json
+    baselines.json
+    artifact-links.json
     runs.json
     approvals.json
     evidence-manifest.json
