@@ -15,7 +15,7 @@ Runtime behavior, user procedure, conformance fixture content, MCP schemas, SQLi
 | one-sentence definition, reader paths, document list, target tree summary | `README.md` |
 | shared reader mental model, three-space summary, core concepts introduction | `00-introduction.md` |
 | project purpose, target users, values, scope, non-goals, automation philosophy | `01-project-charter.md` |
-| why, failure model, MVP boundary, strategic invariants, kernel authority invariants, design stewardship defaults | `02-strategy.md` |
+| why, failure model, MVP boundary, Strategic Invariants, Kernel Authority Invariants, Design Stewardship Defaults | `02-strategy.md` |
 | entity meanings, lifecycle, gates, state transitions, close semantics, `prepare_write` and `close_task` logic | `03-kernel-spec.md` |
 | three spaces, runtime authority flow, artifact architecture, projection/reconcile architecture, guarantee levels | `04-runtime-architecture.md` |
 | MCP resources/tools, request/response schemas, error taxonomy, validator result schema, artifact ref shape | `05-mcp-api-and-schemas.md` |
@@ -35,14 +35,14 @@ Runtime behavior, user procedure, conformance fixture content, MCP schemas, SQLi
 
 Strategy는 세 원칙 그룹을 담당합니다. Strategic Invariants, Kernel Authority Invariants, Design Stewardship Defaults입니다. Owner doc이 업데이트되지 않았다면 helpful practices를 Kernel Authority Invariants로 승격하지 않습니다.
 
-Strategic invariant 문구는 구분된 약속을 보존해야 합니다.
+Strategic Invariants 문구는 구분된 약속을 보존해야 합니다.
 
 ```text
 Strategic agency는 사용자에게 남아 있습니다.
 작업 여정은 current state에서 따라갈 수 있어야 합니다.
 ```
 
-Kernel authority invariant 문구는 mandatory하고 structural하게 써야 합니다.
+Kernel Authority Invariants 문구는 mandatory하고 structural하게 써야 합니다.
 
 ```text
 Product write에는 active scoped Change Unit이 필요합니다.
@@ -50,7 +50,7 @@ Blocking product judgment에는 recorded Decision Packet이 필요합니다.
 Projection은 canonical state를 override할 수 없습니다.
 ```
 
-Design stewardship default 문구는 applicability, waiver, record, validator, close impact를 함께 드러내야 합니다.
+Design Stewardship Defaults 문구는 applicability, waiver, record, validator, close impact를 함께 드러내야 합니다.
 
 ```text
 Vertical slice는 적용 가능한 feature work의 default입니다.
@@ -172,8 +172,8 @@ Decision은 이미 내려졌지만 implementation detail, DDL, fixture coverage,
 ```text
 [ ] 이 concept에는 정확히 하나의 canonical owner가 있는가?
 [ ] Schema와 DDL은 owner docs에만 있는가?
-[ ] strategic invariants, kernel authority invariants, design stewardship defaults가 분리되어 있는가?
-[ ] design stewardship defaults가 applicability와 waiver boundaries를 함께 드러내는가?
+[ ] Strategic Invariants, Kernel Authority Invariants, Design Stewardship Defaults가 분리되어 있는가?
+[ ] Design Stewardship Defaults가 applicability와 waiver boundaries를 함께 드러내는가?
 [ ] MVP, v1, later labels가 명확한가?
 [ ] long-term analytics가 MVP requirements 밖에 있는가?
 [ ] source-of-truth 표현이 state/artifact/projection boundaries를 보존하는가?

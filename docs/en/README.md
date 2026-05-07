@@ -6,7 +6,7 @@ This file is `docs/en/README.md`, the entry point for the English harness docume
 
 ## Principle Groups
 
-Strategic invariants, kernel authority invariants, and design stewardship defaults are owned by [02-strategy.md](02-strategy.md#principle-groups). Kernel authority invariants are distinct from design stewardship defaults.
+Strategic Invariants, Kernel Authority Invariants, and Design Stewardship Defaults are owned by [02-strategy.md](02-strategy.md#principle-groups). Kernel Authority Invariants are distinct from Design Stewardship Defaults.
 
 ## Reader Paths
 
@@ -62,7 +62,7 @@ Documentation authors:
 
 ## MVP / v1 / Later
 
-MVP is a small local operating kernel that validates kernel authority invariants and agency conformance, not a platform that supports many agent surfaces at once.
+MVP is a small local operating kernel that validates Kernel Authority Invariants and Agency Conformance, not a platform that supports many agent surfaces at once.
 
 MVP focuses on one reference surface, local state, artifacts, public MCP tools, write gating, evidence, verification, Manual QA, acceptance, projections, reconcile, recovery, export, and fixture-based conformance.
 
@@ -103,7 +103,7 @@ docs/en/
 |---|---|
 | [00-introduction.md](00-introduction.md) | shared mental model for users and implementers |
 | [01-project-charter.md](01-project-charter.md) | project purpose, audience, values, scope, and non-goals |
-| [02-strategy.md](02-strategy.md) | strategic thesis, failure model, principle groups, design stewardship defaults |
+| [02-strategy.md](02-strategy.md) | strategic thesis, failure model, principle groups, Design Stewardship Defaults |
 | [03-kernel-spec.md](03-kernel-spec.md) | operating kernel, entities, lifecycle, gates, transitions, close semantics |
 | [04-runtime-architecture.md](04-runtime-architecture.md) | three spaces, runtime home, Core, artifact, projection/reconcile architecture |
 | [05-mcp-api-and-schemas.md](05-mcp-api-and-schemas.md) | MCP resources/tools, schemas, errors, validators, artifact refs |

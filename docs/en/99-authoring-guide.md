@@ -15,7 +15,7 @@ Use exactly one canonical owner for each concept. Other documents may include a 
 | one-sentence definition, reader paths, document list, target tree summary | `README.md` |
 | shared reader mental model, three-space summary, core concepts introduction | `00-introduction.md` |
 | project purpose, target users, values, scope, non-goals, automation philosophy | `01-project-charter.md` |
-| why, failure model, MVP boundary, strategic invariants, kernel authority invariants, design stewardship defaults | `02-strategy.md` |
+| why, failure model, MVP boundary, Strategic Invariants, Kernel Authority Invariants, Design Stewardship Defaults | `02-strategy.md` |
 | entity meanings, lifecycle, gates, state transitions, close semantics, `prepare_write` and `close_task` logic | `03-kernel-spec.md` |
 | three spaces, runtime authority flow, artifact architecture, projection/reconcile architecture, guarantee levels | `04-runtime-architecture.md` |
 | MCP resources/tools, request/response schemas, error taxonomy, validator result schema, artifact ref shape | `05-mcp-api-and-schemas.md` |
@@ -33,16 +33,16 @@ Use exactly one canonical owner for each concept. Other documents may include a 
 
 ## Principle Group Language
 
-The strategy owns three principle groups: Strategic Invariants, Kernel Authority Invariants, and Design Stewardship Defaults. Do not promote helpful practices into kernel authority invariants unless the owner doc is updated.
+The strategy owns three principle groups: Strategic Invariants, Kernel Authority Invariants, and Design Stewardship Defaults. Do not promote helpful practices into Kernel Authority Invariants unless the owner doc is updated.
 
-Strategic invariant language should preserve the differentiated promise:
+Strategic Invariants wording should preserve the differentiated promise:
 
 ```text
 Strategic agency stays with the user.
 The work journey remains followable from current state.
 ```
 
-Kernel authority invariant language should sound mandatory and structural:
+Kernel Authority Invariants wording should sound mandatory and structural:
 
 ```text
 Product write requires an active scoped Change Unit.
@@ -50,14 +50,14 @@ Blocking product judgment requires a recorded Decision Packet.
 Projection cannot override canonical state.
 ```
 
-Design stewardship default language should name applicability, waiver, record, validator, and close impact:
+Design Stewardship Defaults wording should name applicability, waiver, record, validator, and close impact:
 
 ```text
 Vertical slice is the default for feature work when it applies.
 A horizontal exception may be recorded with a reason and follow-up.
 ```
 
-Current design stewardship defaults are shared design, domain language consistency, vertical slice default, TDD trace for suitable work, module/interface review, codebase stewardship, Manual QA, feedback loops, and context hygiene.
+Current Design Stewardship Defaults are shared design, domain language consistency, vertical slice default, TDD trace for suitable work, module/interface review, codebase stewardship, Manual QA, feedback loops, and context hygiene.
 
 ## MVP, v1, And Later Labels
 
@@ -65,7 +65,7 @@ Use these labels consistently:
 
 | Label | Meaning |
 |---|---|
-| MVP | required for the reference implementation to validate kernel authority invariants and agency conformance |
+| MVP | required for the reference implementation to validate Kernel Authority Invariants and Agency Conformance |
 | v1 | plausible next version after MVP, still requiring fixtures and ownership |
 | later | useful future automation that must not read as an MVP requirement |
 
@@ -172,8 +172,8 @@ Do not use `TODO_REWRITE` in finished v2 canonical sections. A remaining `TODO_R
 ```text
 [ ] Does this concept have exactly one canonical owner?
 [ ] Are schema and DDL kept in their owner docs?
-[ ] Are strategic invariants, kernel authority invariants, and design stewardship defaults kept separate?
-[ ] Are design stewardship defaults written with applicability and waiver boundaries?
+[ ] Are Strategic Invariants, Kernel Authority Invariants, and Design Stewardship Defaults kept separate?
+[ ] Are Design Stewardship Defaults written with applicability and waiver boundaries?
 [ ] Are MVP, v1, and later labels clear?
 [ ] Are long-term analytics kept out of MVP requirements?
 [ ] Does source-of-truth phrasing preserve state/artifact/projection boundaries?

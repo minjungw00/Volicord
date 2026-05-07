@@ -2,7 +2,7 @@
 
 ## Document Role
 
-This document owns the strategic layer of the harness: why the harness exists, what failure modes it prevents, which principles preserve strategic agency, which principles are kernel authority invariants, and which defaults guide design stewardship. The operational state machine is defined in [03-kernel-spec.md](03-kernel-spec.md); design-quality policy details are expanded in [08-design-quality-policy-pack.md](08-design-quality-policy-pack.md).
+This document owns the strategic layer of the harness: why the harness exists, what failure modes it prevents, which principles preserve Strategic Agency, which principles are Kernel Authority Invariants, and which defaults guide Design Stewardship. The operational state machine is defined in [03-kernel-spec.md](03-kernel-spec.md); design-quality policy details are expanded in [08-design-quality-policy-pack.md](08-design-quality-policy-pack.md).
 
 This document does not define lifecycle transition tables, gate enum details, MCP request or response schemas, SQLite DDL, full projection templates, or surface-specific connector behavior.
 
@@ -84,11 +84,11 @@ The harness responds by treating Markdown reports as projections. Human-editable
 
 ## Minimal Harness Kernel
 
-The minimal kernel is the smallest implementable mechanism that preserves the kernel authority invariants:
+The minimal kernel is the smallest implementable mechanism that preserves the Kernel Authority Invariants:
 
 - Task and Change Unit records for continuity and write scope.
 - Lifecycle plus gates for state compatibility.
-- Decision Gates and recorded Decision Packets for blocking product judgments.
+- The `decision_gate` aggregate and recorded Decision Packets for blocking product judgments.
 - Approval, evidence, verification, QA, acceptance, and residual-risk records for distinct judgments.
 - `prepare_write` as the product-write decision point.
 - `close_task` as the completion decision point.
@@ -100,7 +100,7 @@ The kernel specification is the owner for entity semantics, lifecycle fields, ga
 
 ## Principle Groups
 
-The harness separates strategic promises, kernel authority rules, and design stewardship defaults. This keeps human agency visible without turning every good practice into a hard kernel gate.
+The harness separates Strategic Invariants, Kernel Authority Invariants, and Design Stewardship Defaults. This keeps human agency visible without turning every good practice into a hard kernel gate.
 
 ### Strategic Invariants
 
@@ -127,7 +127,7 @@ These invariants define the authority boundary of the local kernel. A system tha
 
 ### Design Stewardship Defaults
 
-The following are design stewardship defaults, not kernel authority invariants. They are important because they improve product quality, but they have applicability rules, allowed waivers, required records, validators, and close impact defined by the policy pack.
+The following are Design Stewardship Defaults, not Kernel Authority Invariants. They are important because they improve product quality, but they have applicability rules, allowed waivers, required records, validators, and close impact defined by the policy pack.
 
 - Shared design for work.
 - Domain language consistency.
@@ -217,7 +217,7 @@ MVP includes:
 - artifact registry and artifact store
 - public MCP tool surface
 - `prepare_write` gatekeeping
-- Decision Packet and Decision Gate support for blocking product judgment
+- Decision Packet and `decision_gate` support for blocking product judgment
 - approval, evidence, verification, Manual QA, and acceptance gate enforcement
 - Journey Card or equivalent compact status projection
 - required MVP report projections for Task status, approval, runs, evidence, Eval, and direct results
@@ -234,4 +234,4 @@ MVP does not include:
 - long-term analytics
 - team workflow management
 
-These later automation items are owned by [appendix/C-later-roadmap.md](appendix/C-later-roadmap.md). Later automation can strengthen the guarantee level, but it must not weaken the strategic agency model or the kernel authority invariant model.
+These later automation items are owned by [appendix/C-later-roadmap.md](appendix/C-later-roadmap.md). Later automation can strengthen the guarantee level, but it must not weaken the Strategic Agency model or the Kernel Authority Invariants model.

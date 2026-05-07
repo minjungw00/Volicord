@@ -214,7 +214,7 @@ A guarantee level where risky work is separated by a worktree, sandbox, process 
 
 ### Journey Card
 
-A compact human-readable projection of the current Task position: state, next action, scope, blockers, Decision Gates, evidence, verification, QA, acceptance, residual risk, and projection freshness. A Journey Card is display, not canonical state.
+A compact human-readable projection of the current Task position: state, next action, scope, blockers, the `decision_gate`, evidence, verification, QA, acceptance, residual risk, and projection freshness. A Journey Card is display, not canonical state.
 
 ### Journey Spine
 

@@ -66,7 +66,7 @@ The archived `docs/legacy-v1/` copies of these files, plus the old charter, stra
 | `04-reference-implementation.md` | split across kernel, API/schema, reference MVP, and later roadmap |
 | `07-document-and-artifact-contracts.md` | renamed/split into `07-document-projection.md` and `appendix/A-template-library.md` |
 | `09-design-quality-playbooks.md` | converted from playbook prose to policy contracts |
-| old 17-item invariant style | split into 7 core invariants plus policy defaults |
+| old 17-item invariant style | split into Strategic Invariants, Kernel Authority Invariants, and Design Stewardship Defaults |
 | single-axis status model | replaced by lifecycle plus gates |
 | event log phrasing as a separate store | replaced by `state.sqlite.task_events` wording |
 | projection as canonical-looking document authority | replaced by state/artifact/projection authority boundaries |
@@ -85,7 +85,7 @@ If a legacy behavior conflicts with a v2 owner doc, use the v2 owner doc.
 
 v1 mixed strategy, state, implementation, template, connector, operations, and design-quality guidance across fewer documents. v2 separates them by ownership:
 
-- strategy owns why, failure model, core invariants, and policy defaults
+- strategy owns why, failure model, Strategic Invariants, Kernel Authority Invariants, Design Stewardship Defaults, and MVP boundary
 - kernel owns state and gate behavior
 - API owns public MCP schemas
 - reference MVP owns implementation detail and DDL

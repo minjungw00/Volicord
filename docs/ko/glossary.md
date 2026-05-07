@@ -214,7 +214,7 @@ Risky work가 worktree, sandbox, process boundary 또는 동등한 isolation mec
 
 ### Journey Card
 
-Current Task position을 compact하게 보여주는 human-readable projection입니다. state, next action, scope, blockers, Decision Gates, evidence, verification, QA, acceptance, Residual Risk, projection freshness를 포함합니다. Journey Card는 display이며 canonical state가 아닙니다.
+Current Task position을 compact하게 보여주는 human-readable projection입니다. state, next action, scope, blockers, `decision_gate`, evidence, verification, QA, acceptance, Residual Risk, projection freshness를 포함합니다. Journey Card는 display이며 canonical state가 아닙니다.
 
 ### Journey Spine
 

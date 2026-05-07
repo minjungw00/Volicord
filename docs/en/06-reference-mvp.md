@@ -8,7 +8,7 @@ It does not own the public MCP schema source of truth. Implementers must use `05
 
 ## MVP Scope
 
-The MVP is a core invariant validation project, not a broad agent-surface integration project.
+The MVP is a kernel-authority and agency-conformance validation project, not a broad agent-surface integration project.
 
 MVP includes:
 
@@ -110,6 +110,8 @@ Exit criteria:
 ## Runtime Storage
 
 The reference storage uses SQLite for registry and per-project state. The DDL is a draft implementation contract; field names may gain indexes or migration helpers, but table ownership and authority boundaries should remain stable.
+
+`task_spine_entries` is the physical MVP table for public `journey_spine_entry` records and Journey Spine Entry wording. Public MCP/API naming remains `journey_spine_entry`; the table name preserves the task-local implementation shape.
 
 ### `project.yaml`
 
