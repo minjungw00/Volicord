@@ -2,17 +2,17 @@
 
 ## 문서 역할
 
-이 appendix는 v2 documentation rewrite를 위한 old-to-new document mapping, removed 또는 renamed section, compatibility guidance를 기록한다.
+이 appendix는 v2 documentation rewrite를 위한 old-to-new document mapping, removed 또는 renamed section, compatibility guidance를 기록합니다.
 
-Migration context 전용이다. Canonical runtime contract, kernel state semantic, MCP schema, projection template, user procedure, conformance rule은 담당하지 않는다.
+Migration context 전용입니다. Canonical runtime contract, kernel state semantic, MCP schema, projection template, user procedure, conformance rule은 이 문서가 소유하지 않습니다.
 
-## Migration Scope
+## Migration 범위
 
-Active canonical doc은 `docs/` 아래 v2 target file과 appendix A-C다. 이 appendix는 migration context이며 active canonical owner가 아니다.
+Active canonical doc은 `docs/` 아래 v2 target file과 appendix A-C입니다. 이 appendix는 migration context이며 active canonical owner가 아닙니다.
 
-Legacy v1 file과 rewrite manifest는 migration history를 위한 source material일 뿐이다. Batch H 이후 replaced legacy file은 더 이상 active-tree Markdown document로 retain되지 않는다. 이 appendix의 old-to-new mapping이 visible compatibility record다.
+Legacy v1 file과 rewrite manifest는 migration history를 위한 source material일 뿐입니다. Batch H 이후 replaced legacy file은 더 이상 active-tree Markdown document로 retain되지 않습니다. 이 appendix의 old-to-new mapping이 visible compatibility record입니다.
 
-`REWRITE-MANIFEST.md`는 migration input이다. Earlier simplification goal을 기록하고 three spaces, source-of-truth/projection separation, public MCP surface reduction, SQLite-centered runtime, MVP/later separation, four judgment separation, detached verification, design-quality principle 같은 preservation theme을 confirm한다. v2 owner doc을 override하지 않는다.
+`REWRITE-MANIFEST.md`는 migration input입니다. Earlier simplification goal을 기록하고 three spaces, source-of-truth/projection separation, public MCP surface reduction, SQLite-centered runtime, MVP/later separation, four judgment separation, detached verification, design-quality principle 같은 preservation theme을 confirm합니다. v2 owner doc을 override하지 않습니다.
 
 ## Old-To-New Mapping
 
@@ -35,7 +35,7 @@ Legacy v1 file과 rewrite manifest는 migration history를 위한 source materia
 
 ## Legacy Path Cleanup Status
 
-Batch H는 migration stub을 유지하는 대신 replaced legacy document를 active tree에서 제거한다. 이 path들은 canonical doc이 아니며, 여기 listed된 v2 destination을 사용한다.
+Batch H는 migration stub을 유지하는 대신 replaced legacy document를 active tree에서 제거합니다. 이 path들은 canonical doc이 아니며, 여기 listed된 v2 destination을 사용합니다.
 
 | Removed legacy path | v2 destination |
 |---|---|
@@ -48,7 +48,7 @@ Batch H는 migration stub을 유지하는 대신 replaced legacy document를 act
 | `docs/08-operations-and-conformance.md` | `docs/11-operations-and-conformance.md`, `docs/appendix/C-later-roadmap.md` |
 | `docs/09-design-quality-playbooks.md` | `docs/08-design-quality-policy-pack.md` |
 
-Archived `docs/legacy-v1/` copy들과 old charter, strategy, authoring guide, glossary, README, rewrite manifest도 active tree에서 제거되었다. Compatibility mapping은 `docs/appendix/D-migration-notes.md`에 남아 있다.
+Archived `docs/legacy-v1/` copy들과 old charter, strategy, authoring guide, glossary, README, rewrite manifest도 active tree에서 제거되었습니다. Compatibility mapping은 `docs/appendix/D-migration-notes.md`에 남아 있습니다.
 
 ## 주요 Removed 또는 Renamed Section
 
@@ -73,25 +73,25 @@ Archived `docs/legacy-v1/` copy들과 old charter, strategy, authoring guide, gl
 
 ## Compatibility Guidance
 
-Reader가 old file name을 만나면 위 mapping을 사용하고 v2 destination을 우선한다. Archived legacy document를 canonical doc으로 cite하지 않는다.
+Reader가 old file name을 만나면 위 mapping을 사용하고 v2 destination을 우선합니다. Archived legacy document를 canonical doc으로 cite하지 않습니다.
 
-Legacy section에 아직 옮겨지지 않은 useful example이 있으면 source material로만 취급한다. Active owner doc이 그 example이 main text, appendix, later roadmap, migration notes 중 어디에 속하는지 결정한다.
+Legacy section에 아직 옮겨지지 않은 useful example이 있으면 source material로만 취급합니다. Active owner doc이 그 example이 main text, appendix, later roadmap, migration notes 중 어디에 속하는지 결정합니다.
 
-Legacy term이 glossary와 conflict하면 `docs/glossary.md`를 사용한다.
+Legacy term이 glossary와 conflict하면 `docs/glossary.md`를 사용합니다.
 
-Legacy behavior가 v2 owner doc과 conflict하면 v2 owner doc을 사용한다.
+Legacy behavior가 v2 owner doc과 conflict하면 v2 owner doc을 사용합니다.
 
 ## Version Comparison Summary
 
-v1은 strategy, state, implementation, template, connector, operations, design-quality guidance를 더 적은 문서에 섞어 두었다. v2는 ownership에 따라 이를 분리한다.
+v1은 strategy, state, implementation, template, connector, operations, design-quality guidance를 더 적은 문서에 섞어 두었습니다. v2는 ownership에 따라 이를 분리합니다.
 
-- strategy는 why, failure model, core invariants, policy defaults를 담당한다
-- kernel은 state와 gate behavior를 담당한다
-- API는 public MCP schema를 담당한다
-- reference MVP는 implementation detail과 DDL을 담당한다
-- projection은 Markdown authority와 template tier를 담당한다
-- policy pack은 design-quality policy contract를 담당한다
-- integration은 capability profile을 담당한다
-- operations는 fixture-based conformance를 담당한다
+- strategy는 why, failure model, core invariants, policy defaults를 담당합니다
+- kernel은 state와 gate behavior를 담당합니다
+- API는 public MCP schema를 담당합니다
+- reference MVP는 implementation detail과 DDL을 담당합니다
+- projection은 Markdown authority와 template tier를 담당합니다
+- policy pack은 design-quality policy contract를 담당합니다
+- integration은 capability profile을 담당합니다
+- operations는 fixture-based conformance를 담당합니다
 
-Migration은 original product intent를 유지하되 duplicated authority, long user example, broad all-surface implication, MVP/later ambiguity를 제거한다.
+Migration은 original product intent를 유지하되 duplicated authority, long user example, broad all-surface implication, MVP/later ambiguity를 제거합니다. 이 문서는 canonical owner가 아니라 migration compatibility record입니다.

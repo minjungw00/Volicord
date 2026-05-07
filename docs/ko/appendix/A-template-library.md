@@ -16,6 +16,7 @@ Template은 rendered shape의 예시다. Canonical state가 아니며 kernel fie
 6. Approval, verification, Manual QA, acceptance를 visible하게 분리한다.
 7. Card가 `Manual QA: pending/passed/failed/waived`라고 말하더라도 `qa_gate`를 canonical로 취급한다.
 8. Template change는 projection change로 versioning한다.
+9. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Change Unit DAG, Residual Risk text는 canonical state가 아니라 projection output으로 취급한다.
 
 ## Required MVP Templates
 
@@ -33,7 +34,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 # TASK-0001 Task Title
 
 <!-- HARNESS:BEGIN managed -->
-## 현재 요약
+## Current Summary
 - mode:
 - lifecycle phase:
 - result:
@@ -43,6 +44,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - pending decision:
 - risk:
 - scope gate:
+- decision gate:
 - approval gate:
 - design gate:
 - evidence gate:
@@ -53,14 +55,52 @@ updated_at: 2026-05-06T09:30:15+09:00
 - latest report:
 - projection freshness:
 
-## 목표
+## Where We Are
+- current position:
+- active path:
+- current blocker:
+- latest meaningful evidence:
+- next state transition:
+
+## Judgment Context
+- pending decision packets:
+- what user is deciding:
+- what agent may decide without user:
+- recommendation:
+- main trade-off:
+- reversibility:
+- uncertainty:
+- minimum context to judge:
+- affected gates:
+
+## Autonomy Boundary
+- profile:
+- agent may do:
+- user judgment required:
+- AFK stop conditions:
+- boundary status:
+
+## Next Evidence
+- next evidence action:
+- evidence needed for:
+- expected artifact refs:
+- stale or missing evidence:
+
+## Residual Risk
+- close-relevant risk:
+- visibility status:
+- accepted risk refs:
+- follow-up required:
+- close impact:
+
+## Goal
 -
 
-## 범위
-### 포함
+## Scope
+### In
 -
 
-### 제외
+### Out
 -
 
 ## Acceptance Criteria
@@ -99,11 +139,11 @@ Long-running `work` task에는 이 section을 사용한다. 명시적으로 huma
 ````md
 <!-- HARNESS:BEGIN managed -->
 ## Shared Design Concept
-### 해결된 질문
+### Questions Resolved
 | ID | Question | User Answer | Decision / Assumption |
 |---|---|---|---|
 
-### 남은 모호함
+### Remaining Ambiguity
 - item / owner / stop condition:
 
 ## Domain Language Refs
@@ -119,7 +159,7 @@ Long-running `work` task에는 이 section을 사용한다. 명시적으로 huma
 | ID | blocked_by | unblocks | parallelizable_with | merge risk |
 |---|---|---|---|---|
 
-## Rolling Spine
+## Journey Spine
 ### Facts in Force
 - fact / evidence ref:
 
@@ -127,7 +167,7 @@ Long-running `work` task에는 이 section을 사용한다. 명시적으로 huma
 - assumption / expiry condition:
 
 ### Decisions in Force
-- DEC-0001:
+- DP-0001:
 
 ### Domain Terms in Force
 - term / meaning / code representation:
@@ -160,6 +200,19 @@ Long-running `work` task에는 이 section을 사용한다. 명시적으로 huma
 - slice type: vertical | enabling | cleanup | horizontal-exception
 - horizontal exception reason:
 - follow-up vertical CU:
+- autonomy profile:
+- agent may do:
+  - implementation detail:
+  - local refactor inside scope:
+  - evidence collection:
+- user judgment required:
+  - product direction:
+  - public interface or compatibility commitment:
+  - residual risk acceptance:
+- AFK stop conditions:
+  - boundary exceeded:
+  - evidence cannot be produced:
+  - close-relevant risk discovered:
 - end-to-end path:
   - trigger / input:
   - domain logic:
@@ -177,7 +230,13 @@ Long-running `work` task에는 이 section을 사용한다. 명시적으로 huma
   - changed_paths
   - approval_scope
   - vertical_slice_shape
-  - tdd_trace
+  - decision_quality_check
+  - autonomy_boundary_check
+  - feedback_loop_check
+  - tdd_trace_required
+  - module_interface_review
+  - codebase_stewardship_check
+  - residual_risk_visibility_check
   - evidence_sufficiency
 - sensitive categories:
   - none
@@ -216,6 +275,11 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Request Summary
 - proposed action:
+
+## Related Decision Packet
+- decision packet:
+- decision gate impact:
+- approval gate impact:
 
 ## Requested Scope
 - sensitive categories:
@@ -311,8 +375,13 @@ npm test -- --runInBand
 - changed_paths:
 - approval_scope:
 - vertical_slice_shape:
-- tdd_trace:
-- module_boundary_review:
+- decision_quality_check:
+- autonomy_boundary_check:
+- feedback_loop_check:
+- tdd_trace_required:
+- module_interface_review:
+- codebase_stewardship_check:
+- residual_risk_visibility_check:
 - lint:
 - test:
 - build:
@@ -331,7 +400,7 @@ npm test -- --runInBand
 ## Issues And Follow-Ups
 -
 
-## Spine Updates
+## Journey Spine Updates
 - new facts:
 - rejected options:
 - domain language update:
@@ -391,8 +460,13 @@ updated_at: 2026-05-06T09:50:00+09:00
 | Item | Status | Evidence Refs | Notes |
 |---|---|---|---|
 | vertical_slice_shape | passed | CU-01 | |
-| tdd_trace | passed | TDD-0001 | |
-| module_boundary_review | passed | DESIGN-0001 | |
+| decision_quality_check | passed | DP-0001 | |
+| autonomy_boundary_check | passed | CU-01 | |
+| feedback_loop_check | passed | TDD-0001, LOG-0001 | |
+| tdd_trace_required | passed | TDD-0001 | |
+| module_interface_review | passed | DESIGN-0001 | |
+| codebase_stewardship_check | passed | DOMAIN-LANGUAGE, MODULE-MAP, INTERFACE-CONTRACT | |
+| residual_risk_visibility_check | pending | RR-0001 | |
 | manual_qa_required | pending | QA-0001 | |
 
 ## Approval Refs
@@ -462,8 +536,13 @@ updated_at: 2026-05-06T10:05:00+09:00
 - [ ] acceptance_review
 - [ ] baseline_freshness
 - [ ] vertical_slice_shape
-- [ ] tdd_trace
-- [ ] module_boundary_review
+- [ ] decision_quality_check
+- [ ] autonomy_boundary_check
+- [ ] feedback_loop_check
+- [ ] tdd_trace_required
+- [ ] module_interface_review
+- [ ] codebase_stewardship_check
+- [ ] residual_risk_visibility_check
 - [ ] public_interface_change_review
 - [ ] manual_qa_required
 - [ ] lint
@@ -472,7 +551,10 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## Evidence Reviewed
 - task summary:
-- rolling spine:
+- Journey Spine:
+- Decision Packets:
+- Residual Risks:
+- Autonomy Boundary:
 - domain language:
 - module map:
 - interface contract:
@@ -492,6 +574,10 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## Design Quality Review
 - vertical slice:
+- Decision Packets:
+- Autonomy Boundary:
+- Residual Risks:
+- feedback loop:
 - TDD trace:
 - module/interface:
 - architecture drift:
@@ -770,8 +856,15 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## Result
 - result: pending | passed | failed | waived
+- qa_gate: pending | passed | failed | waived | not_required
+- qa_gate note: canonical close-relevant gate; this projection is display only
 - summary:
 - waiver reason:
+
+## Waiver And Risk
+- waiver Decision Packet:
+- residual risk refs:
+- accepted risk:
 
 ## Findings
 | Severity | Finding | Suggested Action | Follow-up CU |
@@ -791,56 +884,112 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ````md
 ---
-doc_type: decision
-decision_id: DEC-0001
+doc_type: decision_packet
+projection_kind: DEC
+projection_id: DEC-0001
+decision_packet_id: DP-0001
 task_id: TASK-0001
-status: proposed
+change_unit_id: CU-01
+decision_kind: product_tradeoff
+status: pending_user
 updated_at: 2026-05-06T09:30:15+09:00
 ---
 
-# DEC-0001 Decision Title
+# DEC-0001 Decision Packet Title
 
-## Problem
-- decision needed:
+## Why Now
+- trigger:
+- blocker:
+- affected operation:
+- why this cannot proceed under current state:
+
+## Current State
+- task state:
+- active change unit:
+- current gates:
+- latest evidence:
+- residual risk:
+- source refs:
+
+## What User Is Deciding
+- decision:
+- affected scope:
+- affected acceptance criteria:
+- affected gates:
+
+## What Agent May Decide Without User
+- implementation detail:
+- code organization inside approved scope:
+- evidence collection:
+- follow-up proposal:
+
+## Autonomy Boundary Impact, If Any
+- current boundary impact:
+- proposed boundary update:
+- user judgment required:
 
 ## Options
 ### Option A
-- suitable when:
+- choice:
 - benefits:
-- cost/risk:
+- costs:
+- risks:
+- reversibility: reversible | partially_reversible | irreversible | unknown
+- confidence: low | medium | high
+- evidence refs:
 
 ### Option B
-- suitable when:
+- choice:
 - benefits:
-- cost/risk:
+- costs:
+- risks:
+- reversibility: reversible | partially_reversible | irreversible | unknown
+- confidence: low | medium | high
+- evidence refs:
 
 ## Recommendation
 - recommendation:
 - reason:
+- uncertainty:
 
-## Final Decision
-- status:
-- decision:
-- decided at:
+## Consequence Of Deferring
+- consequence:
+- operation impact:
+- close impact:
+- residual risk or follow-up visibility:
+
+## Minimum Context To Judge
+- relevant facts:
+- assumptions:
+- constraints:
+- evidence refs:
+- residual risk refs:
+- related decisions:
+
+## User Decision And Accepted Risk
+- status: proposed | pending_user | resolved | deferred | rejected | blocked | superseded
+- selected option:
+- user decision:
+- decision note:
+- accepted risk:
+- accepted risk refs:
+- accepted consequence:
 - decided by:
-
-## Impact
-- code:
-- domain language:
-- module/interface:
-- docs:
-- operations:
-- tests:
-- user experience:
+- decided at:
 
 ## Follow-Up
 - [ ]
 
 ## References
 - TASK:
+- Change Unit:
 - DESIGN:
 - APR:
 - EVIDENCE-MANIFEST:
+- EVAL:
+- MANUAL-QA:
+- Residual Risk:
+- artifacts:
 ````
 
 ### DESIGN
@@ -977,59 +1126,99 @@ updated_at: 2026-05-06T10:30:00+09:00
 
 ## Expanded Cards
 
+### JOURNEY-CARD
+
+````text
+TASK-{id} {title}
+현재 위치: {mode} / {lifecycle_phase} / {current_position}
+다음 action: {next_action}
+
+판단 context:
+- pending decision: {decision_packet_ref|none}
+- user deciding: {what_user_is_deciding|none}
+- agent may decide: {what_agent_may_decide_without_user}
+
+Autonomy Boundary:
+- profile: {autonomy_profile}
+- agent may do: {agent_may_do}
+- user judgment required: {user_judgment_required}
+- AFK stop conditions: {afk_stop_conditions}
+
+Next evidence:
+- action: {next_evidence_action}
+- needed for: {evidence_needed_for}
+- latest evidence: {latest_evidence_ref|none}
+
+Residual risk:
+- status: {residual_risk_status}
+- close impact: {residual_risk_close_impact}
+- accepted risk: {accepted_risk_refs|none}
+
+Gates:
+- scope: {scope_gate}
+- decision: {decision_gate}
+- approval: {approval_gate}
+- evidence: {evidence_gate}
+- verification: {verification_gate}
+- Manual QA: {qa_gate display: pending|passed|failed|waived|not_required}
+- acceptance: {acceptance_gate}
+
+Projection freshness: {projection_freshness}
+````
+
 ### Compact Status Card
 
 ````text
 TASK-{id} {title}
-State: {mode} / {lifecycle_phase}
-Next action: {next_action}
-User decision: {pending_decision_summary|none}
+상태: {mode} / {lifecycle_phase}
+다음 action: {next_action}
+사용자 decision: {pending_decision_summary|none}
 Risk: {risk_summary}
 Evidence gate: {evidence_gate}
 Design gate: {design_gate}
 Manual QA: {qa_gate display: pending|passed|failed|waived|not_required}
-Latest report: {latest_report|none}
+최신 report: {latest_report|none}
 ````
 
 ### Approval Card
 
 ````text
-Approval is required.
+Approval이 필요합니다.
 
 {approval_id} {category}
-Request: {summary}
-Purpose: {why_needed}
-Allowed paths:
+요청: {summary}
+목적: {why_needed}
+허용 path:
 {allowed_paths}
 
-Allowed tools:
+허용 tool:
 {allowed_tools}
 
 Network:
 {allowed_network}
 
-Required secrets:
+필요한 secret:
 {required_secrets}
 
 Baseline:
 {baseline_ref}
 
-Risks:
+Risk:
 {risks}
 
-Alternatives:
+대안:
 {alternatives}
 
 Recommendation:
 {recommendation}
 
-Do you approve this scope?
+이 scope를 승인하시겠습니까?
 ````
 
 ### Verification Result Card
 
 ````text
-Verification complete.
+Verification이 완료되었습니다.
 
 {eval_id}
 Verdict: {verdict}
@@ -1038,7 +1227,7 @@ Verification independence: {verification_independence}
 Manual QA: {manual_qa_impact}
 Acceptance: {acceptance_impact}
 
-Evidence reviewed:
+검토한 evidence:
 - task summary: {task_summary_ref}
 - run summary: {run_summary_ref}
 - evidence manifest: {evidence_manifest_ref}
@@ -1048,7 +1237,7 @@ Evidence reviewed:
 - approvals: {approval_refs}
 - design refs: {design_refs}
 
-Remaining work:
+남은 작업:
 {blockers_or_rework}
 
 User follow-up:
@@ -1058,7 +1247,7 @@ User follow-up:
 ### Manual QA Card
 
 ````text
-Manual QA is required.
+Manual QA가 필요합니다.
 
 {manual_qa_record_id}
 Profile: {profile}
@@ -1066,16 +1255,20 @@ Target: {screen_or_flow}
 Checklist:
 - {checklist_item}
 
-Evidence to record:
+기록할 evidence:
 - screenshot or walkthrough note
 - browser log when relevant
 
-Record the QA result?
+QA result를 기록하시겠습니까?
 ````
 
 ## Template Change Notes
 
 - `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`는 canonical document가 아니라 canonical record에서 만든 projection이다.
 - `MANUAL-QA`는 record projection이다. Close-relevant gate는 `qa_gate`로 남는다.
+- `DEC`는 Decision Packet visibility projection이다. Core가 user decision 또는 reconcile action을 기록하기 전에는 decision을 resolve하지 않는다.
+- `JOURNEY-CARD`는 compact current-position projection이다. Write를 authorize하거나, decision을 resolve하거나, risk를 accept하거나, work를 close하지 않는다.
+- `TASK`, `DEC`, `JOURNEY-CARD`, Change Unit block의 Autonomy Boundary text는 judgment latitude만 설명한다. Scope와 approval은 별도 owner record와 gate로 남는다.
+- Residual-risk text는 residual-risk record와 accepted-risk ref에서 만든 projection이다. Detached verification이나 acceptance를 만들지 않는다.
 - `EVAL`은 independence context를 보여줘야 한다. Passed verdict만으로는 `detached_verified`가 생기지 않기 때문이다.
 - `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `DIRECT-RESULT`는 large evidence를 embed하지 않고 artifact ref로 evidence file에 link한다.

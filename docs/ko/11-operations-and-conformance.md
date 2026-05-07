@@ -2,15 +2,15 @@
 
 ## 문서 역할
 
-이 문서는 하네스의 operator procedure와 fixture-based conformance를 담당한다. Connect, doctor, serve MCP, projection refresh, reconcile, recover, export, artifact integrity, conformance suite를 포함한다.
+이 문서는 하네스의 운영자 절차와 fixture 기반 conformance를 담당합니다. 범위에는 connect, doctor, serve MCP, projection refresh, reconcile, recover, export, artifact integrity, conformance suite가 포함됩니다.
 
-Daily user workflow, MCP request/response schema, SQLite DDL, long-term analytics를 MVP requirement로 다루는 것은 담당하지 않는다.
+일상적인 사용자 workflow, MCP 요청/응답 schema, SQLite DDL, 장기 analytics를 MVP 요구사항으로 소유하지 않습니다.
 
-## Operations Scope
+## 운영 범위
 
-모든 operator entrypoint는 agent가 사용하는 같은 Core rule 위의 surface다. Operator tool은 diagnose, repair, export, fixture 실행을 할 수 있지만, 두 번째 state model을 만들면 안 된다.
+모든 운영자 entrypoint는 agent가 사용하는 것과 같은 Core 규칙 위에 놓인 surface입니다. 운영자 tool은 진단, repair, export, fixture 실행을 할 수 있지만 두 번째 state model을 만들면 안 됩니다.
 
-Required MVP operator entrypoint:
+필수 MVP 운영자 entrypoint:
 
 ```text
 harness connect
@@ -24,30 +24,30 @@ harness artifacts check
 harness conformance run
 ```
 
-정확한 command flag는 구현마다 달라질 수 있지만, reference MVP에는 아래 semantics가 필요하다.
+정확한 command flag는 구현마다 달라질 수 있지만, reference MVP에는 아래 semantics가 필요합니다.
 
 ## Connect
 
-`connect`는 Product Repository, Harness Runtime Home, 하나의 reference agent surface를 연결한다.
+`connect`는 Product Repository, Harness Runtime Home, 하나의 reference agent surface를 연결합니다.
 
-Required behavior:
+필수 동작:
 
-- repository root identify
-- local project register 또는 reuse
-- static project configuration create 또는 validate
-- per-project state와 artifact storage initialize
-- reference surface와 capability profile register
-- manifest를 통해 connector-managed file create 또는 refresh
-- MCP configuration이 harness server에 reach할 수 있는지 confirm
-- conformance smoke check를 run하거나 실행 command print
+- repository root를 식별합니다
+- local project를 등록하거나 재사용합니다
+- static project configuration을 만들거나 검증합니다
+- project별 state와 artifact storage를 초기화합니다
+- reference surface와 capability profile을 등록합니다
+- manifest를 통해 connector-managed file을 만들거나 refresh합니다
+- MCP configuration이 harness server에 닿을 수 있는지 확인합니다
+- conformance smoke check를 실행하거나 실행할 command를 출력합니다
 
-Connect는 human edit를 조용히 overwrite하지 않고 generated-file drift를 report해야 한다. Surface-specific generated file name은 surface cookbook에 둔다.
+Connect는 사람이 편집한 내용을 조용히 덮어쓰지 않고 generated-file drift를 보고해야 합니다. Surface별 generated file 이름은 surface cookbook에 속합니다.
 
 ## Doctor
 
-`doctor`는 readiness, drift, repair option을 report한다.
+`doctor`는 readiness, drift, repair option을 보고합니다.
 
-Required category:
+필수 category:
 
 | Category | Checks |
 |---|---|
@@ -55,10 +55,11 @@ Required category:
 | state | current state readability, locks, active Task consistency |
 | MCP | server reachability, read resource availability, public tool availability |
 | surface | capability profile, generated manifest, MCP config freshness |
-| artifacts | file existence, hash, size, redaction state, task/run relation |
+| artifacts | file existence, hash, size, redaction state, task/run or artifact-link relation |
 | projections | queued jobs, freshness, managed hash drift, failed renders |
 | reconcile | pending human edits, managed block drift, generated-file drift |
 | validators | required core, artifact, projection, connector, and policy validators |
+| agency/stewardship/context | Decision Packet and decision gate readiness, Autonomy Boundary readiness, residual-risk visibility, codebase stewardship, context freshness |
 
 Output level:
 
@@ -70,47 +71,49 @@ REPAIRABLE
 MANUAL
 ```
 
-Doctor는 current state failure와 projection stale 또는 projection failed status를 구분해야 한다.
+Doctor는 current state failure와 projection stale 또는 projection failed status를 구분해야 합니다.
 
 ## Serve MCP
 
-`serve mcp`는 local MCP server를 시작하거나 connection information을 print한다.
+`serve mcp`는 local MCP server를 시작하거나 connection information을 출력합니다.
 
-Required behavior:
+필수 동작:
 
-- mutation 없이 read resource expose
-- shell shortcut이 아니라 Core를 통해 public tool expose
-- state-changing call에 Core conflict와 idempotency behavior 요구
-- active project와 connected surface profile report
-- server가 runtime state 또는 artifact storage에 reach할 수 없으면 명확히 fail
+- mutation 없이 read resource를 expose합니다
+- shell shortcut이 아니라 Core를 통해 public tool을 expose합니다
+- state-changing call이 Core conflict와 idempotency behavior를 사용하게 합니다
+- active project와 connected surface profile을 보고합니다
+- server가 runtime state 또는 artifact storage에 닿을 수 없으면 명확히 실패합니다
 
-MCP가 unavailable이면 cooperative surface는 product write를 hold해야 한다. Stronger profile은 hold를 preventively 또는 isolation으로 enforce할 수 있지만, operations는 실제 guarantee level을 report해야 한다.
+MCP를 사용할 수 없으면 cooperative surface는 product write를 hold해야 합니다. Stronger profile은 hold를 예방적으로 또는 isolation으로 enforce할 수 있지만, operations는 실제 guarantee level을 그대로 보고해야 합니다.
 
 ## Projection Refresh
 
-Projection refresh는 committed state record와 artifact ref에서 Product Repository Markdown을 regenerate한다.
+Projection refresh는 committed state record와 artifact ref에서 Product Repository Markdown을 다시 생성합니다.
 
-Required behavior:
+필수 동작:
 
-- target의 latest projection version만 render
-- human-editable section preserve
-- overwrite 전에 managed block hash compare
-- managed-block drift에는 reconcile item 생성
-- projection job을 `completed`, `failed`, `pending`, `skipped`로 mark
-- projection failure를 Task result와 분리
+- target의 latest projection version만 render합니다
+- human-editable section을 보존합니다
+- overwrite 전에 managed block hash를 비교합니다
+- managed-block drift에는 reconcile item을 생성합니다
+- projection job을 `completed`, `failed`, `pending`, `skipped`로 mark합니다
+- projection failure를 Task result와 분리합니다
 
-Supported target:
+지원 target:
 
 ```text
-one Task
-all active Tasks
-approval/run/evidence/eval/direct reports for a Task
-design-quality projections when enabled
+하나의 Task
+모든 active Tasks
+Task의 approval/run/evidence/eval/direct reports
+활성화된 design-quality projections
 ```
+
+MVP에서 Decision Packet과 Journey Card visibility는 `TASK`, status, journey, judgment-context resource를 통해 render합니다. 전용 `DEC` refresh와 persisted `JOURNEY-CARD` refresh target은 활성화될 때 사용할 수 있는 optional extension target이지, 필수 MVP target이 아닙니다.
 
 ## Reconcile
 
-Reconcile은 human-editable input 또는 generated/managed drift를 explicit decision으로 바꾼다.
+Reconcile은 human-editable input 또는 generated/managed drift를 명시적인 decision으로 바꿉니다.
 
 Target:
 
@@ -126,70 +129,73 @@ Decision outcome:
 
 | Outcome | Meaning |
 |---|---|
-| merge | Core를 통해 proposal을 apply하고 state history append |
-| reject | canonical state를 unchanged로 두고 필요하면 projection refresh |
-| convert_to_note | content를 state가 아닌 human note로 keep |
-| create_decision | proposal을 pending user decision으로 전환 |
-| defer | reconcile item을 open 상태로 유지 |
+| merge | Core를 통해 proposal을 apply하고 state history를 append합니다 |
+| reject | canonical state를 그대로 두고 필요하면 projection을 refresh합니다 |
+| convert_to_note | content를 state가 아닌 human note로 보존합니다 |
+| create_decision | proposal을 pending user decision으로 전환합니다 |
+| defer | reconcile item을 open 상태로 유지합니다 |
 
-Reconcile은 edited Markdown 자체를 canonical state로 취급하면 안 된다.
+Reconcile은 edited Markdown 자체를 canonical state로 취급하면 안 됩니다.
 
 ## Recover
 
-Recover는 history를 rewrite하지 않고 interrupted 또는 inconsistent operational state를 repair한다.
+Recover는 history를 rewrite하지 않고 interrupted 또는 inconsistent operational state를 repair합니다.
 
-Required scenario:
+필수 scenario:
 
 | Scenario | Recovery behavior |
 |---|---|
-| agent crash during write | run을 interrupted로 mark하고 가능하면 diff/log artifact capture |
-| stale approval baseline | scope가 affected되면 approval expire 또는 re-request |
-| evaluator observes drift | verification blocked 또는 evidence stale로 mark |
-| artifact registry mismatch | file rescan, missing artifact를 stale로 mark, hash preserve |
-| projection job failed | retry 또는 failed로 mark하고 reconcile guidance 생성 |
-| managed Markdown edited | reconcile item 생성 |
-| lock expired | recovery event append 후 lock policy에 따라 release 또는 reacquire |
-| MCP unavailable | write hold와 next diagnosis step report |
+| agent crash during write | run을 interrupted로 mark하고 가능하면 diff/log artifact를 capture합니다 |
+| stale approval baseline | scope가 affected되면 approval을 expire하거나 다시 요청합니다 |
+| evaluator observes drift | verification을 blocked로 mark하거나 evidence를 stale로 mark합니다 |
+| artifact registry mismatch | file을 rescan하고 missing artifact를 stale로 mark하며 hash를 보존합니다 |
+| projection job failed | retry하거나 failed로 mark하고 reconcile guidance를 생성합니다 |
+| managed Markdown edited | reconcile item을 생성합니다 |
+| lock expired | recovery event를 append하고 lock policy에 따라 release하거나 reacquire합니다 |
+| MCP unavailable | write hold와 next diagnosis step을 보고합니다 |
 
-Recovery는 compensating event를 append할 수 있다. Evidence를 조용히 delete하거나, event history를 rewrite하거나, projection을 authoritative하게 만들면 안 된다.
+Recovery는 compensating event를 append할 수 있습니다. Evidence를 조용히 delete하거나, event history를 rewrite하거나, projection을 authoritative하게 만들면 안 됩니다.
 
 ## Export
 
-Export는 Task에 대한 review 또는 archival bundle을 만든다.
+Export는 Task에 대한 review 또는 archival bundle을 만듭니다.
 
-Required contents:
+필수 contents:
 
 - created time, task id, projection freshness, redaction summary가 있는 export manifest
 - Task와 related record의 state snapshot
+- Decision Packets, user decisions, residual risks, accepted-risk refs, Journey Spine entries 또는 continuity refs, 관련 Change Unit Autonomy Boundary summary
 - relevant report의 projection snapshot
-- artifact reference와 허용되는 경우 included raw artifact file
+- artifact reference와 허용되는 경우 포함된 raw artifact file
 - artifact integrity manifest
 - secret, sensitive log, PII에 대한 redaction 및 omission note
 
-Exported projection snapshot은 hash를 가질 수 있지만, 그렇다고 Markdown projection이 canonical evidence가 되지는 않는다. Raw evidence는 artifact file과 registered ref로 남는다.
+Exported projection snapshot은 hash를 가질 수 있지만, 그렇다고 Markdown projection이 canonical evidence가 되지는 않습니다. Raw evidence는 artifact file과 registered ref로 남습니다.
 
 ## Artifact Integrity
 
-Artifact integrity check는 artifact record와 stored file을 비교한다.
+Artifact integrity check는 artifact record와 stored file을 비교합니다.
 
-Required check:
+필수 check:
 
 - file exists
 - hash matches
 - size matches
-- content type이 known이거나 명시적으로 `other`
-- redaction state가 valid
-- task/run relation이 valid
-- retention class가 valid
-- projection 또는 evidence ref가 resolve됨
+- content type이 known이거나 명시적으로 `other`입니다
+- redaction state가 valid입니다
+- task/run 또는 artifact-link relation이 valid입니다
+- linked state record가 존재합니다
+- relation kind가 artifact kind와 호환됩니다
+- retention class가 valid입니다
+- projection 또는 evidence ref가 resolve됩니다
 
-Failure는 Core rule에 따라 related evidence, projection freshness, close readiness를 stale/blocked로 mark해야 한다. Missing artifact는 Markdown report를 edit해서 고치는 것이 아니다.
+Failure는 Core rule에 따라 related evidence, projection freshness, close readiness를 stale/blocked로 mark해야 합니다. Missing artifact는 Markdown report를 edit해서 고치는 것이 아닙니다.
 
 ## Conformance Fixture Format
 
-Conformance는 fixture-based다. Scenario table만으로는 충분하지 않다. 각 test fixture는 action을 drive하고 state, event, artifact, projection, error를 assert해야 한다.
+Conformance는 fixture 기반입니다. Scenario table만으로는 충분하지 않습니다. 각 test fixture는 action을 drive하고 state, events, artifacts, projections, errors를 assert해야 합니다.
 
-각 fixture는 이 shape를 포함해야 한다.
+각 fixture는 이 shape를 포함해야 합니다.
 
 ```yaml
 scenario_id: string
@@ -203,31 +209,53 @@ expected_projection: object
 expected_error: object | null
 ```
 
-`name`, `suite`, `tags`, `notes` 같은 optional metadata는 허용되지만, 위 required field는 반드시 있어야 한다.
+Fixture file과 suite catalog는 fixture body 밖에 metadata를 가질 수 있습니다. Fixture body 자체는 위 field만 사용해야 conformance runner가 behavior를 일관되게 비교할 수 있습니다.
+
+Suite catalog metadata는 Core에 전달되지 않으며 fixture body의 일부가 아닙니다. Suite, stage, tag별로 exact-shape fixture를 묶을 수 있습니다.
+
+```yaml
+suite: agency
+earliest_mvp_stage: MVP-4
+tags: [decision-gate, residual-risk, autonomy-boundary]
+fixtures:
+  - AGENCY-decision-packet-required-before-product-tradeoff-write
+  - AGENCY-residual-risk-visible-before-acceptance
+```
 
 ## Conformance Execution
 
-`harness conformance run`은 MCP tool과 operator command가 사용하는 같은 Core entrypoint를 통해 fixture를 실행한다. Prose output만 inspect해서 behavior를 assert하면 안 된다.
+`harness conformance run`은 MCP tool과 operator command가 사용하는 것과 같은 Core entrypoint를 통해 fixture를 실행합니다. 동작을 prose output만 검사해서 assert하면 안 됩니다. Core entrypoint를 실행하고 그 결과의 state, events, artifacts, projection, error를 비교해야 합니다.
 
 MVP execution semantic:
 
-1. Fixture YAML file을 load하고 required fixture shape를 validate한다.
-2. Fixture가 existing read-only sample을 명시적으로 target하지 않는 한 isolated runtime home과 temporary Product Repository를 만든다.
-3. `initial_state`에서 `registry.sqlite`, `project.yaml`, `state.sqlite`, artifact file, projection file, connector manifest를 seed한다.
-4. Core를 통해 `action`을 execute한다. MCP tool action은 public request schema를 사용한다. `projection_refresh`, `doctor_surface`, `recover`, `artifacts_check` 같은 operator action은 이 문서의 operator semantics를 사용한다.
-5. Resulting state summary, appended `task_events`, validator result, artifact registry/file integrity, projection job status, reconcile item, returned error code를 capture한다.
-6. Captured result를 `expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, `expected_error`와 compare한다.
-7. Fixture id, pass/fail, observed state summary, observed event, artifact integrity result, projection freshness, error comparison을 report한다.
+1. Fixture YAML file을 load하고 exact fixture body shape를 validate합니다.
+2. Fixture가 existing read-only sample을 명시적으로 target하지 않는 한 isolated runtime home과 temporary Product Repository를 만듭니다.
+3. `initial_state`에서 `registry.sqlite`, `project.yaml`, `state.sqlite`, artifact file, projection file, connector manifest를 seed합니다.
+4. Core를 통해 `action`을 execute합니다. MCP tool action은 public request schema를 사용합니다. `projection_refresh`, `doctor_surface`, `recover`, `artifacts_check` 같은 operator action은 이 문서의 operator semantics를 사용합니다.
+5. Resulting state summary, appended `task_events`, validator result, artifact registry/file integrity, projection job status, reconcile item, returned error code를 capture합니다.
+6. Captured result를 `expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, `expected_error`와 compare합니다.
+7. Fixture id, pass/fail, observed state summary, observed events, artifact integrity result, projection freshness, error comparison을 report합니다.
 
-Fixture execution은 deterministic해야 한다. Network access, wall-clock-sensitive expiry, external tool output은 suite가 integration smoke라고 명시적으로 선언하지 않는 한 stub하거나 seeded fixture input으로 표현해야 한다.
+Fixture execution은 deterministic해야 합니다. Network access, wall-clock-sensitive expiry, external tool output은 suite가 integration smoke라고 명시적으로 선언하지 않는 한 stub하거나 seeded fixture input으로 표현해야 합니다.
+
+## Agency, Stewardship, Context Suite
+
+Agency, stewardship, context hygiene는 MVP conformance suite입니다. 이 suite들은 `prepare_write`, `request_user_decision`, `record_user_decision`, `record_manual_qa`, `close_task`, `next` 같은 Core entrypoint와 Core를 호출하는 operator action을 통해 state behavior를 검증합니다. Journey Card, Decision Packet, residual-risk, status prose의 문구가 맞는지만 보고 통과 처리하면 안 됩니다.
+
+필수 suite 책임:
+
+| Suite | Required behavior |
+|---|---|
+| agency | Blocking product judgment는 affected write 또는 close 전에 compatible Decision Packet을 요구합니다. Product trade-off write는 hold됩니다. AFK Autonomy Boundary stop condition은 public commitment를 block합니다. Residual risk는 acceptance 또는 risk-accepted close 전에 visible이어야 합니다. Approval, QA, acceptance, residual-risk acceptance는 서로 구분된 상태로 남아야 합니다. |
+| stewardship | Design-quality와 codebase-stewardship validator는 canonical owner record와 ref를 통해 `design_gate`, `decision_gate`, `qa_gate`, close blocker, waiver eligibility에 영향을 줍니다. Public interface, module, domain, feedback-loop, TDD, Manual QA, waiver check는 schema나 DDL을 duplicate하지 않습니다. |
+| context-hygiene | Current Task state, Journey ref, evidence ref, freshness state가 authoritative합니다. Stale PRD, stale projection, closed issue, old design doc, long log는 reconcile되기 전까지 pull-only context입니다. Stale context는 write, close, acceptance, current-state replacement를 authorize할 수 없습니다. |
 
 ## Hardened MVP Fixture Coverage
 
-Hardened evidence, verification, connector rule은 required shape를 가진 fixture로 cover해야 한다. 각 fixture는 해당 behavior가 구현되어야 하는 가장 이른 MVP stage에 map한다.
+Hardened evidence, verification, connector rule은 required shape를 가진 fixture로 cover해야 합니다. Suite catalog는 scenario ID를 behavior가 구현되어야 하는 가장 이른 MVP stage에 mapping할 수 있지만, stage metadata는 fixture body의 일부가 아닙니다.
 
 ```yaml
 scenario_id: CORE-evidence-direct-docs-only-sufficient
-mvp_stage: MVP-4
 initial_state:
   active_task:
     mode: direct
@@ -265,7 +293,6 @@ expected_error: null
 
 ```yaml
 scenario_id: CORE-evidence-work-ac-missing-blocks-close
-mvp_stage: MVP-4
 initial_state:
   active_task:
     mode: work
@@ -305,7 +332,6 @@ expected_error:
 
 ```yaml
 scenario_id: CORE-evidence-ui-manual-qa-pending-blocks-close
-mvp_stage: MVP-4
 initial_state:
   active_task:
     mode: work
@@ -336,7 +362,6 @@ expected_error:
 
 ```yaml
 scenario_id: CORE-verify-manual-bundle-detached-passed
-mvp_stage: MVP-4
 initial_state:
   active_task:
     mode: work
@@ -378,7 +403,6 @@ expected_error: null
 
 ```yaml
 scenario_id: CORE-verify-subagent-context-not-detached-by-default
-mvp_stage: MVP-4
 initial_state:
   active_task:
     mode: work
@@ -410,8 +434,7 @@ expected_error:
 ```
 
 ```yaml
-scenario_id: CORE-verify-waiver-risk-accepted-not-detached
-mvp_stage: MVP-4
+scenario_id: CORE-verify-waiver-risk-accepted-visible-succeeds
 initial_state:
   active_task:
     mode: work
@@ -419,19 +442,39 @@ initial_state:
     assurance_level: self_checked
     gates:
       scope_gate: passed
+      decision_gate: resolved
       evidence_gate: sufficient
       verification_gate: waived_by_user
       qa_gate: not_required
       acceptance_gate: accepted
+  residual_risks:
+    - risk_id: RISK-VERIFY-001
+      close_relevant: true
+      visibility: visible
+      accepted: true
+      accepted_risk_ref: ARISK-VERIFY-001
+  decision_packets:
+    - decision_packet_id: DEC-VERIFY-WAIVER-001
+      decision_kind: verification_waiver
+      status: resolved
+      accepted_risk_refs: [ARISK-VERIFY-001]
+    - decision_packet_id: DEC-RISK-ACCEPT-001
+      decision_kind: residual_risk_acceptance
+      status: resolved
+      residual_risk_refs: [RISK-VERIFY-001]
 input:
   close_intent: accept_verification_risk
   waiver_reason: "User accepts remaining verification risk for urgent local-only fix."
+  accepted_risk_refs: [ARISK-VERIFY-001]
 action: close_task
 expected_state:
   lifecycle_phase: completed
   result: passed
   close_reason: completed_with_risk_accepted
   assurance_level: self_checked
+  residual_risk_summary:
+    status: accepted
+    accepted_refs: [ARISK-VERIFY-001]
 expected_events:
   - close_requested
   - risk_accepted_close_recorded
@@ -443,8 +486,53 @@ expected_error: null
 ```
 
 ```yaml
+scenario_id: CORE-verify-waiver-risk-accepted-hidden-blocks-close
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: waiting_user
+    assurance_level: self_checked
+    gates:
+      scope_gate: passed
+      evidence_gate: sufficient
+      verification_gate: waived_by_user
+      qa_gate: not_required
+      acceptance_gate: accepted
+  residual_risks:
+    - risk_id: RISK-VERIFY-HIDDEN-001
+      close_relevant: true
+      visibility: not_visible
+      accepted: false
+  decision_packets:
+    - decision_packet_id: DEC-VERIFY-WAIVER-002
+      decision_kind: verification_waiver
+      status: resolved
+      accepted_risk_refs: []
+input:
+  close_intent: accept_verification_risk
+  waiver_reason: "User accepts remaining verification risk for urgent local-only fix."
+action: close_task
+expected_state:
+  lifecycle_phase: waiting_user
+  assurance_level: self_checked
+  gates:
+    verification_gate: waived_by_user
+    acceptance_gate: accepted
+  residual_risk_summary:
+    status: not_visible
+    not_visible_refs: [RISK-VERIFY-HIDDEN-001]
+expected_events:
+  - close_requested
+  - close_blocked
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+expected_error:
+  code: RESIDUAL_RISK_NOT_VISIBLE
+```
+
+```yaml
 scenario_id: CONN-cooperative-guarantee-display
-mvp_stage: MVP-2
 initial_state:
   surface:
     surface_id: SURF-0001
@@ -470,7 +558,6 @@ expected_error: null
 
 ```yaml
 scenario_id: CONN-mcp-unavailable-write-hold
-mvp_stage: MVP-5
 initial_state:
   surface:
     guarantee_level: cooperative
@@ -493,7 +580,7 @@ expected_error:
   code: MCP_UNAVAILABLE
 ```
 
-## Core Fixture Examples
+## Core Fixture 예시
 
 ```yaml
 scenario_id: CORE-prepare-write-no-change-unit
@@ -571,7 +658,207 @@ expected_error:
   code: PROJECTION_STALE
 ```
 
-## Connector Fixture Examples
+## Agency Fixture 예시
+
+```yaml
+scenario_id: AGENCY-decision-packet-required-before-product-tradeoff-write
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: ready
+    active_change_unit_id: CU-TRADEOFF-001
+    gates:
+      scope_gate: passed
+      decision_gate: not_required
+      approval_gate: not_required
+      design_gate: passed
+  active_change_unit:
+    change_unit_id: CU-TRADEOFF-001
+    allowed_paths: ["src/pricing/checkout.ts"]
+    autonomy_boundary:
+      status: active
+      what_agent_may_do: ["Implement the selected checkout discount behavior."]
+      what_requires_user_judgment: ["Choose the revenue versus conversion trade-off."]
+    blocking_decision_requirements:
+      - decision_kind: product_tradeoff
+        status: absent
+        affected_paths: ["src/pricing/checkout.ts"]
+input:
+  intended_operation: "Change checkout discount precedence from margin-safe to conversion-optimized."
+  intended_paths: ["src/pricing/checkout.ts"]
+  intended_tools: ["edit"]
+  sensitive_categories: []
+  product_tradeoff:
+    topic: revenue_vs_conversion
+    options_known: true
+action: prepare_write
+expected_state:
+  lifecycle_phase: waiting_user
+  gates:
+    decision_gate: required
+  write_decision: decision_required
+  decision_packet_candidate:
+    decision_kind: product_tradeoff
+    affected_gates: [decision_gate]
+expected_events:
+  - prepare_write_blocked
+  - decision_required
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+expected_error:
+  code: DECISION_REQUIRED
+```
+
+```yaml
+scenario_id: AGENCY-residual-risk-visible-before-acceptance
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: waiting_user
+    gates:
+      evidence_gate: sufficient
+      verification_gate: passed
+      qa_gate: passed
+      acceptance_gate: pending
+  residual_risks:
+    - risk_id: RISK-ACCEPT-001
+      close_relevant: true
+      visibility: not_visible
+      accepted: false
+  decision_packets:
+    - decision_packet_id: DEC-ACCEPT-001
+      decision_kind: acceptance
+      status: pending_user
+      user_context:
+        minimum_context: ["acceptance criteria", "evidence summary"]
+input:
+  decision_packet_id: DEC-ACCEPT-001
+  decision_kind: acceptance
+  selected_option_id: accept
+  decision:
+    acceptance:
+      value: accepted
+  accepted_risks: []
+action: record_user_decision
+expected_state:
+  lifecycle_phase: waiting_user
+  gates:
+    acceptance_gate: pending
+  residual_risk_summary:
+    status: not_visible
+    not_visible_refs: [RISK-ACCEPT-001]
+  decision_packets:
+    DEC-ACCEPT-001: pending_user
+expected_events: []
+expected_artifacts: []
+expected_projection: {}
+expected_error:
+  code: RESIDUAL_RISK_NOT_VISIBLE
+```
+
+```yaml
+scenario_id: AGENCY-close-hidden-residual-risk-blocks-close
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: waiting_user
+    assurance_level: detached_verified
+    gates:
+      scope_gate: passed
+      decision_gate: resolved
+      approval_gate: not_required
+      design_gate: passed
+      evidence_gate: sufficient
+      verification_gate: passed
+      qa_gate: passed
+      acceptance_gate: accepted
+  residual_risks:
+    - risk_id: RISK-CLOSE-HIDDEN-001
+      close_relevant: true
+      visibility: not_visible
+      accepted: false
+input:
+  close_intent: complete
+  requested_close_reason: completed_verified
+action: close_task
+expected_state:
+  lifecycle_phase: waiting_user
+  result: none
+  assurance_level: detached_verified
+  gates:
+    evidence_gate: sufficient
+    verification_gate: passed
+    qa_gate: passed
+    acceptance_gate: accepted
+  residual_risk_summary:
+    status: not_visible
+    not_visible_refs: [RISK-CLOSE-HIDDEN-001]
+expected_events:
+  - close_requested
+  - close_blocked
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+expected_error:
+  code: RESIDUAL_RISK_NOT_VISIBLE
+```
+
+```yaml
+scenario_id: AGENCY-afk-boundary-blocks-public-api-change
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: ready
+    active_change_unit_id: CU-API-001
+    gates:
+      scope_gate: passed
+      decision_gate: not_required
+      approval_gate: granted
+      design_gate: passed
+  active_change_unit:
+    change_unit_id: CU-API-001
+    allowed_paths: ["src/api/public.ts"]
+    sensitive_categories: ["public_api_change"]
+    autonomy_boundary:
+      autonomy_profile: afk_eligible
+      status: active
+      what_agent_may_do: ["Refactor internal handler code."]
+      stop_conditions: ["public_api_change"]
+  approvals:
+    - approval_id: APR-API-001
+      sensitive_categories: ["public_api_change"]
+      allowed_paths: ["src/api/public.ts"]
+      status: granted
+input:
+  intended_operation: "Add a response field to the public API while the user is AFK."
+  intended_paths: ["src/api/public.ts"]
+  intended_tools: ["edit"]
+  sensitive_categories: ["public_api_change"]
+  afk: true
+  baseline_ref: BASE-API-001
+action: prepare_write
+expected_state:
+  lifecycle_phase: waiting_user
+  gates:
+    decision_gate: required
+    approval_gate: granted
+  autonomy_boundary_summary:
+    status: exceeded
+    triggered_stop_conditions: ["public_api_change"]
+  write_decision: decision_required
+expected_events:
+  - prepare_write_blocked
+  - autonomy_boundary_exceeded
+  - decision_required
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+expected_error:
+  code: AUTONOMY_BOUNDARY_EXCEEDED
+```
+
+## Connector Fixture 예시
 
 ```yaml
 scenario_id: CONN-generated-file-drift-reconcile
@@ -592,7 +879,17 @@ expected_error:
   code: RECONCILE_REQUIRED
 ```
 
-## Design-Quality Fixture Examples
+### Connector Agency Catalog Entries
+
+이 항목들은 catalog entry이지 fixture body가 아닙니다. Fixture file로 materialize될 때 각 scenario는 exact fixture shape를 사용하고, rendered prose가 아니라 Core state, events, projection ref, error를 assert합니다. Autonomy Boundary connector fixture는 이 catalog entry에서 Core behavior로 검증됩니다.
+
+| Scenario ID | Core action | Required assertions |
+|---|---|---|
+| `CONN-journey-card-shown-before-significant-resume` | `next` | `next`는 significant resume instruction bundle을 반환하기 전에 current Task state version, current Journey Card 또는 journey ref, active Change Unit ref, pending Decision Packet ref, residual-risk summary, projection freshness를 반환합니다. read에는 state event가 append되지 않습니다. |
+| `CONN-decision-packet-not-broad-approval` | `prepare_write` | Active Decision Packet 밖의 product judgment는 `decision_packet_candidate`와 함께 `decision_required`를 반환합니다. `approval_required`를 반환하지 않고 broad approval candidate를 만들지 않으며 `approval_gate=granted`를 set하지 않습니다. |
+| `CONN-autonomy-boundary-breach-stops-or-routes-to-decision` | `prepare_write` | Active Autonomy Boundary를 넘으면 `blocked` 또는 `decision_required`를 반환하고, `autonomy_boundary_exceeded`를 append하며, write를 held 상태로 유지하고, 기존 compatible Decision Packet을 reference하거나 candidate decision packet을 반환합니다. |
+
+## Design-Quality Fixture 예시
 
 ```yaml
 scenario_id: DESIGN-horizontal-feature-without-exception
@@ -642,16 +939,179 @@ expected_error:
   code: QA_REQUIRED
 ```
 
+## Stewardship Fixture 예시
+
+```yaml
+scenario_id: STEWARDSHIP-qa-waiver-reason-required
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: qa
+    gates:
+      qa_gate: pending
+      decision_gate: not_required
+  manual_qa_policy:
+    required: true
+    waiver_decision_packet_required: false
+    waiver_reason_required: true
+input:
+  qa_profile: ui_quality
+  performed_by: user
+  result: waived
+  findings: []
+  waiver_reason: null
+  waiver_decision_packet_ref: null
+  next_action: waive
+action: record_manual_qa
+expected_state:
+  lifecycle_phase: qa
+  gates:
+    qa_gate: pending
+    decision_gate: not_required
+  manual_qa_record_created: false
+  validators:
+    qa_waiver_reason: blocked
+expected_events: []
+expected_artifacts: []
+expected_projection: {}
+expected_error:
+  code: QA_REQUIRED
+```
+
+```yaml
+scenario_id: STEWARDSHIP-qa-waiver-product-risk-requires-decision-packet
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: qa
+    gates:
+      qa_gate: pending
+      decision_gate: not_required
+  manual_qa_policy:
+    required: true
+    waiver_decision_packet_required: true
+    waiver_reason_required: true
+    product_or_user_risk: true
+input:
+  qa_profile: workflow
+  performed_by: user
+  result: waived
+  findings: []
+  waiver_reason: "Known workflow risk accepted for a time-sensitive release."
+  waiver_decision_packet_ref: null
+  next_action: waive
+action: record_manual_qa
+expected_state:
+  lifecycle_phase: qa
+  gates:
+    qa_gate: pending
+    decision_gate: required
+  manual_qa_record_created: false
+  validators:
+    decision_quality_check: blocked
+    qa_waiver_reason: passed
+expected_events: []
+expected_artifacts: []
+expected_projection: {}
+expected_error:
+  code: DECISION_REQUIRED
+```
+
+### Stewardship Catalog Entries
+
+이 항목들은 fixture body가 아닙니다. Materialize된 각 fixture는 named Core action을 drive하고 validator result, gate change, event, projection, error code를 assert해야 합니다.
+
+| Scenario ID | Core action | Required assertions |
+|---|---|---|
+| `STEWARDSHIP-shared-design-required-for-ambiguous-work` | `prepare_write` | Shared Design record 없는 ambiguous `work`는 `design_gate=pending` 또는 `partial`을 유지하거나 set하고, `shared_design_alignment` failed 또는 blocked를 보고하며, user judgment로 해결 가능한지에 따라 `VALIDATOR_FAILED` 또는 `DECISION_REQUIRED`를 반환합니다. |
+| `STEWARDSHIP-feedback-loop-required-before-behavior-write` | `prepare_write` | Feedback-loop record 없는 behavior-affecting write는 write를 held 상태로 유지하고, `feedback_loop_check` blocked를 보고하며, `design_gate=pending` 또는 `partial`을 유지합니다. 나중에 check하겠다는 agent prose에 의존하지 않습니다. |
+| `STEWARDSHIP-public-interface-change-requires-module-interface-review` | `prepare_write` | Granted sensitive approval이 있는 `public_api_change`라도 module/interface review가 없으면 design precondition에 실패합니다. `module_interface_review`는 blocked이고, `design_gate`는 partial 또는 blocked이며, approval을 review로 취급하지 않습니다. |
+| `STEWARDSHIP-domain-language-conflict-marks-design-stale-or-partial` | `prepare_write` | Conflicting current domain term은 `domain_language_consistency` failed를 mark하고 `design_gate=stale` 또는 `partial`을 set합니다. Stale prose나 local naming guess는 canonical term을 update하지 않습니다. |
+| `STEWARDSHIP-close-blocked-by-public-interface-future-change-risk` | `close_task` | Public interface 또는 future-change risk에 대한 close-relevant codebase stewardship finding은 close를 block하고, `close_blocked`를 append하며, finding ref를 보존하고, Decision Packet으로 risk를 해결할 수 있는지에 따라 `VALIDATOR_FAILED` 또는 `DECISION_REQUIRED`를 반환합니다. |
+
+## Context Hygiene Fixture 예시
+
+```yaml
+scenario_id: CONTEXT-HYGIENE-stale-prd-not-treated-as-current-state
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: ready
+    active_change_unit_id: CU-SEARCH-001
+    acceptance_criteria:
+      - criteria_id: AC-01
+        statement: "Server-side search filters archived records."
+    gates:
+      scope_gate: passed
+      design_gate: passed
+  active_change_unit:
+    change_unit_id: CU-SEARCH-001
+    allowed_paths: ["src/search/serverFilter.ts"]
+    baseline_ref: BASE-CURRENT
+  context_refs:
+    - record_kind: projection
+      record_id: PRD-2025-OLD
+      label: "legacy search PRD"
+      freshness: stale
+      claims:
+        acceptance_criteria:
+          - "Client-side search filters archived records."
+        allowed_paths: ["src/search/clientFilter.ts"]
+input:
+  intended_operation: "Implement the stale PRD client-side filter."
+  intended_paths: ["src/search/clientFilter.ts"]
+  intended_tools: ["edit"]
+  sensitive_categories: []
+  context_ref_used: PRD-2025-OLD
+  baseline_ref: BASE-CURRENT
+action: prepare_write
+expected_state:
+  lifecycle_phase: blocked
+  gates:
+    scope_gate: blocked
+  write_decision: blocked
+  canonical_acceptance_criteria:
+    - criteria_id: AC-01
+      statement: "Server-side search filters archived records."
+  context_hygiene:
+    stale_refs: [PRD-2025-OLD]
+    stale_refs_treated_as: pull_only
+  validators:
+    context_hygiene_check: failed
+    scope_coverage: blocked
+expected_events:
+  - prepare_write_blocked
+  - scope_required
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+expected_error:
+  code: SCOPE_VIOLATION
+```
+
+### Context Hygiene Catalog Entries
+
+이 항목들은 fixture body가 아닙니다. Materialize된 각 fixture는 resume, status, evaluator prose의 문구 matching이 아니라 Core response와 captured state를 통해 behavior를 증명해야 합니다.
+
+| Scenario ID | Core action | Required assertions |
+|---|---|---|
+| `CONTEXT-HYGIENE-stale-task-projection-cannot-authorize-write` | `prepare_write` | Broader path나 old acceptance criteria를 나열하는 stale `TASK` projection은 write를 authorize할 수 없습니다. Current Change Unit scope와 current Task state가 우선하며, `context_hygiene_check`는 fail 또는 warn하고, seeded state에 따라 write는 `SCOPE_VIOLATION`, `BASELINE_STALE`, `PROJECTION_STALE`를 반환합니다. |
+| `CONTEXT-HYGIENE-resume-uses-current-state-not-chat-memory` | `next` | Resume은 current state, Journey ref, evidence ref, active Decision Packet, projection freshness를 Core에서 읽습니다. Stale chat-memory claim은 non-authoritative input으로 취급되며 state를 mutate하거나 gate를 satisfy하지 않습니다. |
+| `CONTEXT-HYGIENE-evaluator-bundle-stale-evidence-blocks-verification` | `record_eval` | Stale 또는 missing evidence ref가 있는 evaluator bundle은 detached verification을 passed로 set할 수 없습니다. `verification_gate`는 pending 또는 blocked로 남고, stale evidence ref가 보고되며, fixture는 `EVIDENCE_INSUFFICIENT` 또는 `VALIDATOR_FAILED`를 반환합니다. |
+
 ## Fixture Suites
 
-Minimum MVP suite:
+최소 MVP suite:
 
 - core: active status, advisor close, direct close, write gate, approval required, evidence insufficient, same-session verification guard, QA required, acceptance required, projection failure separation
-- connector: capability profile, MCP unavailable hold, generated manifest drift, changed-path detection, artifact capture, fallback guarantee display
-- design-quality: shared design required, vertical slice or exception, TDD trace required or waived, module/interface review, Manual QA policy, context hygiene stale projection
+- connector: capability profile, MCP unavailable hold, generated manifest drift, changed-path detection, artifact capture, fallback guarantee display, Journey Card before significant resume, Decision Packet not broad approval, Autonomy Boundary breach routing
+- agency: Decision Packet required for blocking product judgment, product trade-off write guard, AFK Autonomy Boundary stop conditions, residual-risk visibility before acceptance or risk-accepted close, distinct approval/QA/acceptance judgments
+- stewardship: shared design required, codebase stewardship close blockers, domain language conflicts, vertical slice or exception, feedback loop and TDD trace required or waived, public interface module/interface review, Manual QA policy and waiver checks
+- context-hygiene: current-state bundle, stale projection and stale PRD handling, stale `TASK` projection write guard, stale context pull-only behavior, evaluator bundle freshness, resume uses current state rather than chat memory
+- design-quality: kernel authority를 다시 정의하지 않으면서 agency, stewardship, context-hygiene, close-impact validator를 compose하는 policy-pack smoke coverage
 
-Conformance output은 fixture id, pass/fail, observed state summary, observed event, artifact integrity result, projection freshness, error code comparison을 포함해야 한다.
+Conformance output은 fixture id, pass/fail, observed state summary, observed events, artifact integrity result, projection freshness, error code comparison을 포함해야 합니다.
 
 ## Metrics Boundary
 
-Long-term operational metric은 derived analytics이지 MVP-critical state나 conformance requirement가 아니다. Approval turnaround, verification latency, projection stale duration, same-session guard frequency, surface fallback rate 같은 metric은 future version이 fixture와 implementation ownership으로 승격하기 전까지 [Appendix C](appendix/C-later-roadmap.md)에 둔다.
+Long-term operational metric은 derived analytics이지 MVP-critical state나 conformance requirement가 아닙니다. Approval turnaround, verification latency, projection stale duration, same-session guard frequency, surface fallback rate 같은 metric은 future version이 fixture와 implementation ownership으로 promote하기 전까지 [Appendix C](appendix/C-later-roadmap.md)에 둡니다.
