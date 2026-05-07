@@ -2,6 +2,10 @@
 
 ## Official Terms
 
+### Agency Conformance
+
+The degree to which harness behavior, projections, validators, and close decisions preserve the user's Strategic Agency. Agency conformance checks whether the work journey is followable, product judgment is explicit, autonomy boundaries are respected, Decision Packets exist for blocking product judgment, and residual risk is visible before acceptance.
+
 ### Acceptance
 
 The user's judgment that the result and remaining trade-offs are acceptable. Acceptance is separate from approval, assurance, verification, and Manual QA.
@@ -25,6 +29,10 @@ A recorded output used for evidence, recovery, or audit. See Raw Artifact for th
 ### Artifact Reference
 
 A structured pointer to a raw artifact file registered in the artifact store, including identity, kind, URI or path, hash, size, content type, redaction state, and task/run relationship.
+
+### Autonomy Boundary
+
+The recorded boundary inside which an agent may proceed without asking for additional product judgment. It is shaped by work mode, active Change Unit scope, approvals, policy requirements, Decision Gates, surface capability, and current blockers. It does not override `prepare_write`, Change Unit scope, sensitive approval, policy validators, QA, verification risk acceptance, or final acceptance.
 
 ### Assurance
 
@@ -68,6 +76,10 @@ none | completed_verified | completed_self_checked |
 completed_with_risk_accepted | cancelled | superseded
 ```
 
+### Codebase Stewardship
+
+The responsibility to preserve the product codebase as a durable asset. It includes attention to domain language, module boundaries, interface contracts, dependency direction, testability, maintainability, and future-change risk.
+
 ### Common Tool Envelope
 
 The shared fields carried by public MCP tool calls: `request_id`, `idempotency_key`, `expected_state_version`, `project_id`, optional `task_id`, `surface_id`, optional `run_id`, `actor_kind`, and `dry_run`.
@@ -84,13 +96,21 @@ A generated manifest that records connector-managed files, managed block hashes,
 
 The policy of keeping current state, evidence, and relevant references in context while avoiding stale chat, old PRDs, closed issues, and oversized raw artifacts unless they are explicitly needed.
 
+### Decision Gate
+
+A state-level blocker that requires product judgment before progress, write, or close can continue. A Decision Gate is resolved through a recorded decision path and does not substitute for approval, verification, Manual QA, or acceptance.
+
+### Decision Packet
+
+A recorded decision-support packet for blocking product judgment. It names the decision needed, options, recommendation when available, trade-offs, affected scope, evidence, residual risk, owner, status, and next action. Its canonical form is kernel state; Markdown renderings are projections or proposal surfaces.
+
 ### Design Gate
 
 The kernel gate for required design-quality preconditions such as shared design, domain language, TDD trace, module/interface review, or other policy-pack requirements.
 
 ### Design-Quality Policy Pack
 
-The set of policy contracts for shared design, domain language, vertical slice, TDD trace, module/interface review, Manual QA, and context hygiene. It influences design, QA, evidence, and close blockers but does not redefine the kernel state machine.
+The set of policy contracts for shared design, decision quality, autonomy boundary, domain language, vertical slice, feedback loop/TDD trace, module/interface review, codebase stewardship, Manual QA, and context hygiene. It influences design, QA, evidence, and close blockers but does not redefine the kernel state machine.
 
 ### Detached Verification
 
@@ -142,6 +162,10 @@ The close-relevant judgment that required acceptance criteria or completion cond
 
 A verification result record with verdict, checks performed, evidence reviewed, independence qualifier, blockers, and artifact references.
 
+### Feedback Loop
+
+A recorded path from checks and findings back into state, scope, design, evidence, follow-up work, or close status. Inputs can include tests, typecheck, lint, build, browser smoke, TDD red/green/refactor traces, Manual QA, Eval findings, user decisions, operational findings, and residual-risk decisions. Feedback loops keep findings from vanishing into chat.
+
 ### Fresh Session
 
 A verification independence profile where the evaluator starts from a task/evidence bundle rather than continuing the lead chat context, reviews the Evidence Manifest and changed files, and records an Eval.
@@ -187,6 +211,14 @@ A Markdown area where a human can write notes, proposals, questions, or correcti
 ### Isolated Guarantee
 
 A guarantee level where risky work is separated by a worktree, sandbox, process boundary, or equivalent isolation mechanism.
+
+### Journey Card
+
+A compact human-readable projection of the current Task position: state, next action, scope, blockers, Decision Gates, evidence, verification, QA, acceptance, residual risk, and projection freshness. A Journey Card is display, not canonical state.
+
+### Journey Spine
+
+The ordered, state-derived thread of a Task's work journey across Change Units, runs, decisions, Decision Packets, evidence, QA, acceptance, residual risk, and close status. It is reconstructed from kernel state and artifact references, not from chat memory.
 
 ### Interface Contract
 
@@ -274,6 +306,10 @@ A Markdown report generated from state records and artifact references, such as 
 
 The named report projection kinds are projections or records by default; evidence-file authority stays with registered artifact files.
 
+### Residual Risk
+
+Known remaining uncertainty, trade-off, limitation, or unchecked condition after evidence, verification, QA, and acceptance work. Residual risk must remain visible when it affects close, and user acceptance of risk does not create detached verification.
+
 ### Risk Accepted Close
 
 A successful close where the user accepts remaining verification risk. It uses `close_reason=completed_with_risk_accepted` and must not display `assurance_level=detached_verified`.
@@ -288,7 +324,7 @@ The kernel gate requiring product writes to be covered by an active scoped Chang
 
 ### Shared Design
 
-A design-quality record or projection of the shared understanding for a task: goal, scope, non-goals, acceptance criteria, assumptions, decisions, rejected options, domain impact, module/interface impact, and first Change Unit shape.
+A canonical design-support record of the shared understanding for a task: goal, scope, non-goals, acceptance criteria, assumptions, decisions, rejected options, domain impact, module/interface impact, and first Change Unit shape. Markdown renderings of Shared Design are projections and proposal surfaces.
 
 ### Source-of-truth
 
@@ -300,7 +336,11 @@ The append-only event history table inside `state.sqlite`. MVP does not use a se
 
 ### State Record
 
-A canonical structured record in kernel state, such as a Task, Change Unit, Run, Approval, Evidence Manifest, Eval, Manual QA record, Artifact record, or Reconcile Item.
+A canonical structured record in kernel state, such as a Task, Change Unit, Run, Approval, Decision Packet, Shared Design or other design-support record, Evidence Manifest, Eval, Manual QA record, Artifact record, residual-risk record, or Reconcile Item.
+
+### Strategic Agency
+
+The user's durable authority to understand the work journey and make or withhold judgment over goals, scope, design, trade-offs, codebase stewardship, QA, acceptance, and residual risk. The harness preserves Strategic Agency by making state, decisions, evidence, blockers, and remaining risk explicit outside chat.
 
 ### Surface Capability Check
 

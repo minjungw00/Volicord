@@ -15,13 +15,13 @@ Use exactly one canonical owner for each concept. Other documents may include a 
 | one-sentence definition, reader paths, document list, target tree summary | `README.md` |
 | shared reader mental model, three-space summary, core concepts introduction | `00-introduction.md` |
 | project purpose, target users, values, scope, non-goals, automation philosophy | `01-project-charter.md` |
-| why, failure model, MVP boundary, 7 core invariants, policy defaults list | `02-strategy.md` |
+| why, failure model, MVP boundary, strategic invariants, kernel authority invariants, design stewardship defaults | `02-strategy.md` |
 | entity meanings, lifecycle, gates, state transitions, close semantics, `prepare_write` and `close_task` logic | `03-kernel-spec.md` |
 | three spaces, runtime authority flow, artifact architecture, projection/reconcile architecture, guarantee levels | `04-runtime-architecture.md` |
 | MCP resources/tools, request/response schemas, error taxonomy, validator result schema, artifact ref shape | `05-mcp-api-and-schemas.md` |
 | reference MVP implementation order, SQLite DDL, migrations, storage layout, validator runner skeleton | `06-reference-mvp.md` |
 | Markdown projection principles, managed blocks, human-editable sections, template tiers, template summaries | `07-document-projection.md` |
-| shared design, domain language, vertical slice, TDD, module/interface, Manual QA, context hygiene policies | `08-design-quality-policy-pack.md` |
+| shared design, decision quality, autonomy boundary, domain language, vertical slice, feedback loop/TDD, module/interface, codebase stewardship, Manual QA, context hygiene policies | `08-design-quality-policy-pack.md` |
 | agent surface capability profile, common connector contract, fallback semantics | `09-agent-integration.md` |
 | user-facing conversation, status reading, resume procedure, approval/assurance/QA/acceptance explanation | `10-user-guide.md` |
 | connect, doctor, serve MCP, projection refresh, reconcile, recover, export, artifact integrity, conformance | `11-operations-and-conformance.md` |
@@ -31,25 +31,33 @@ Use exactly one canonical owner for each concept. Other documents may include a 
 | old-to-new mapping and migration notes | `appendix/D-migration-notes.md` |
 | official term definitions | `glossary.md` |
 
-## Core Invariant vs Policy Default
+## Principle Group Language
 
-Core invariants are limited to the seven items owned by `02-strategy.md`. Do not promote helpful practices into kernel invariants unless the owner doc is updated.
+The strategy owns three principle groups: Strategic Invariants, Kernel Authority Invariants, and Design Stewardship Defaults. Do not promote helpful practices into kernel authority invariants unless the owner doc is updated.
 
-Core invariant language should sound mandatory and structural:
+Strategic invariant language should preserve the differentiated promise:
+
+```text
+Strategic agency stays with the user.
+The work journey remains followable from current state.
+```
+
+Kernel authority invariant language should sound mandatory and structural:
 
 ```text
 Product write requires an active scoped Change Unit.
+Blocking product judgment requires a recorded Decision Packet.
 Projection cannot override canonical state.
 ```
 
-Policy default language should name applicability, waiver, record, validator, and close impact:
+Design stewardship default language should name applicability, waiver, record, validator, and close impact:
 
 ```text
 Vertical slice is the default for feature work when it applies.
 A horizontal exception may be recorded with a reason and follow-up.
 ```
 
-Current policy defaults are shared design, domain language consistency, vertical slice default, TDD trace for suitable work, module/interface review, Manual QA, and context hygiene.
+Current design stewardship defaults are shared design, domain language consistency, vertical slice default, TDD trace for suitable work, module/interface review, codebase stewardship, Manual QA, feedback loops, and context hygiene.
 
 ## MVP, v1, And Later Labels
 
@@ -57,7 +65,7 @@ Use these labels consistently:
 
 | Label | Meaning |
 |---|---|
-| MVP | required for the reference implementation to validate the core invariants |
+| MVP | required for the reference implementation to validate kernel authority invariants and agency conformance |
 | v1 | plausible next version after MVP, still requiring fixtures and ownership |
 | later | useful future automation that must not read as an MVP requirement |
 
@@ -115,7 +123,7 @@ SQLite DDL, migration/versioning, lock policy, artifact directory layout, and re
 
 Projection rules and template tiers belong in `07-document-projection.md`. Full template bodies and expanded report variants belong in `appendix/A-template-library.md`.
 
-User-facing examples may show status cards or short report snippets, but they must not become schema definitions.
+User-facing examples may show Journey Cards or short report snippets, but they must not become schema definitions.
 
 ## Current-State Writing
 
@@ -164,8 +172,8 @@ Do not use `TODO_REWRITE` in finished v2 canonical sections. A remaining `TODO_R
 ```text
 [ ] Does this concept have exactly one canonical owner?
 [ ] Are schema and DDL kept in their owner docs?
-[ ] Are core invariants still exactly the approved seven?
-[ ] Are policy defaults written with applicability and waiver boundaries?
+[ ] Are strategic invariants, kernel authority invariants, and design stewardship defaults kept separate?
+[ ] Are design stewardship defaults written with applicability and waiver boundaries?
 [ ] Are MVP, v1, and later labels clear?
 [ ] Are long-term analytics kept out of MVP requirements?
 [ ] Does source-of-truth phrasing preserve state/artifact/projection boundaries?

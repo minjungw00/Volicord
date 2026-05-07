@@ -23,9 +23,9 @@ Project purpose, audience, values, scope, and non-goals.
 
 ### Purpose
 
-The project exists to build a local harness for AI-assisted development: a small operating kernel that keeps work visible, bounded, evidenced, verifiable, and governed by explicit human judgment.
+The project exists to build a local harness for AI-assisted development: an agency-preserving local operating kernel that keeps the work journey followable and keeps strategic judgment with the user.
 
-The harness is not meant to replace conversation. It lets users begin in ordinary language while durable work facts live in local state, artifacts, and readable projections.
+The harness is not meant to replace conversation. It lets users begin in ordinary language while durable work facts live in local state, artifacts, and readable projections, so goals, scope, design, trade-offs, codebase stewardship, QA, acceptance, and residual risk remain inspectable.
 
 ### Target Users
 
@@ -42,9 +42,10 @@ Primary users:
 The project values:
 
 - Local authority: operational state and evidence are kept in the local harness runtime, not in a remote chat transcript.
-- Explicit boundaries: scope, approval, evidence, verification, Manual QA, and acceptance are visible as separate concerns.
+- Explicit boundaries: scope, approval, decisions, evidence, verification, Manual QA, acceptance, and residual risk are visible as separate concerns.
 - Honest assurance: the system should say what was checked and how independent that check was.
-- Human agency: the user keeps control of goals, sensitive approvals, product trade-offs, QA judgment, and acceptance.
+- Strategic agency: the user keeps control of goals, scope, design direction, product trade-offs, codebase stewardship, QA judgment, acceptance, and residual-risk acceptance.
+- Followable journey: current state, next action, decisions, evidence, and blockers should be reconstructable without relying on chat memory.
 - Small implementability: MVP choices should be concrete enough to build and test with fixtures.
 - Projection humility: Markdown helps humans read and propose changes, but it does not silently become operational truth.
 - Surface neutrality: capability is described by profile and guarantee level, not assumed from a product name.
@@ -81,7 +82,7 @@ Later automation belongs in [appendix/C-later-roadmap.md](appendix/C-later-roadm
 
 Automation should make the work easier to trust, not harder to understand.
 
-The harness should automate state recording, write checks, artifact registration, projection refresh, validator execution, recovery, export, and conformance where those actions are deterministic enough to test. It should ask for human judgment when the question is about intent, sensitive permission, product taste, trade-off acceptance, or risk.
+The harness should automate state recording, write checks, artifact registration, projection refresh, validator execution, recovery, export, and conformance where those actions are deterministic enough to test. It should ask for human judgment when the question is about intent, sensitive permission, design direction, codebase stewardship, product taste, trade-off acceptance, QA, acceptance, or residual risk.
 
 When automation cannot enforce a rule preventively, it should report the actual guarantee level and fall back to cooperative or detective behavior instead of pretending enforcement is stronger than it is.
 

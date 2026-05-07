@@ -2,37 +2,37 @@
 
 ## Document Role
 
-This document owns the strategic layer of the harness: why the harness exists, what failure modes it prevents, which principles are true kernel invariants, and which quality rules are policy defaults. The operational state machine is defined in `docs/03-kernel-spec.md`; design-quality policy details are expanded in `docs/08-design-quality-policy-pack.md`.
+This document owns the strategic layer of the harness: why the harness exists, what failure modes it prevents, which principles preserve strategic agency, which principles are kernel authority invariants, and which defaults guide design stewardship. The operational state machine is defined in [03-kernel-spec.md](03-kernel-spec.md); design-quality policy details are expanded in [08-design-quality-policy-pack.md](08-design-quality-policy-pack.md).
 
 This document does not define lifecycle transition tables, gate enum details, MCP request or response schemas, SQLite DDL, full projection templates, or surface-specific connector behavior.
 
 ## Strategic Thesis
 
-The harness is a small local operating kernel for AI-assisted development. Its purpose is not to make the chat transcript longer or to turn every task into heavyweight ceremony. Its purpose is to keep product work inside explicit state, scope, evidence, and human judgment boundaries.
+The harness is an agency-preserving local operating kernel for AI-assisted development. Its purpose is not to make the chat transcript longer or to turn every task into heavyweight ceremony. Its purpose is to let users follow the work journey and retain strategic judgment over goals, scope, design, trade-offs, codebase stewardship, QA, acceptance, and residual risk.
 
 The central thesis is:
 
 ```text
-AI agents can move quickly when the kernel keeps the durable truth small, explicit, and checkable.
+AI agents can move quickly without displacing the user when the kernel keeps the work journey explicit, the durable truth small, and product judgment recorded at decision gates.
 ```
 
-The user should be able to begin in ordinary language. The agent should be able to ask clarifying questions, shape work, make changes, record evidence, and request decisions. But the durable facts of the work live outside the chat transcript. Completion is not a feeling in the conversation; it is a state transition judged by the kernel.
+The user should be able to begin in ordinary language. The agent should be able to ask clarifying questions, shape work, make changes, record evidence, and request decisions. But the durable facts of the work live outside the chat transcript. Completion is not a feeling in the conversation; it is a state transition judged by the kernel after the relevant evidence, QA, acceptance, and residual-risk questions have been made explicit.
 
 The harness therefore separates three concerns:
 
 - Conversation is the operating surface.
 - Kernel state is the canonical operating record.
-- Markdown documents are human-readable projections and proposal surfaces.
+- Markdown documents, Journey Cards, and Journey Spine views are human-readable projections and proposal surfaces.
 
 ## Failure Model
 
 The harness is designed around failures that appear repeatedly in AI development workflows.
 
-### Context Failure
+### Work Journey Failure
 
-The user loses the thread because the current state, next action, open decisions, and evidence are buried in conversation. When a chat disappears or an agent session resumes cold, the task cannot be reconstructed reliably.
+The user loses the work journey because the current state, next action, open decisions, trade-offs, residual risk, and evidence are buried in conversation. When a chat disappears or an agent session resumes cold, the task cannot be reconstructed reliably.
 
-The harness responds by keeping Task state, Change Units, runs, decisions, evidence, and close status in canonical records, with projections generated for human reading.
+The harness responds by keeping Task state, Change Units, runs, decisions, Decision Packets, evidence, QA, acceptance, residual risk, and close status in canonical records, with projections generated for human reading.
 
 ### Scope And Approval Failure
 
@@ -52,9 +52,21 @@ The same agent that implemented the work self-reviews it and the system treats t
 
 The harness responds by separating self-checks from detached verification and by refusing to upgrade assurance from same-session review alone.
 
-### Human Judgment Failure
+### Strategic Agency Failure
 
-Approval, technical assurance, Manual QA, and acceptance collapse into one vague "looks good." The user cannot tell which question has been answered.
+The agent proceeds as though product judgment belongs to the agent because choices are hidden inside implementation. Goals, scope, design direction, codebase stewardship, QA judgment, acceptance, or residual risk can be decided implicitly without the user seeing the decision.
+
+The harness responds by preserving strategic agency. When progress is blocked on product judgment, the system records a Decision Packet that names the decision, options, trade-offs, recommendation when available, affected scope, evidence, residual risk, and next action.
+
+### Codebase Stewardship Failure
+
+Agent work can locally complete while the codebase becomes harder to understand, test, and change. A task may satisfy the immediate request but blur domain language, cross module or interface boundaries, widen scope into a horizontal slice, skip useful TDD traces, or leave quality findings disconnected from follow-up work.
+
+The harness responds by treating codebase stewardship as part of the work journey. Domain language, module and interface boundaries, vertical-slice shape, feedback loops, TDD traces, Manual QA findings, and Decision Packets for blocking design trade-offs keep local completion from hiding long-term maintainability risk.
+
+### Judgment Collapse Failure
+
+Approval, technical assurance, Manual QA, acceptance, and residual-risk acceptance collapse into one vague "looks good." The user cannot tell which question has been answered.
 
 The harness responds by separating those judgments:
 
@@ -62,6 +74,7 @@ The harness responds by separating those judgments:
 - Assurance: how has the result been technically checked?
 - Manual QA: has a human inspected the experiential result where needed?
 - Acceptance: does the user accept the result and remaining trade-offs?
+- Residual risk: what known uncertainty or trade-off remains, and has the user accepted it when close depends on that acceptance?
 
 ### Projection Failure
 
@@ -71,61 +84,82 @@ The harness responds by treating Markdown reports as projections. Human-editable
 
 ## Minimal Harness Kernel
 
-The minimal kernel is the smallest implementable mechanism that preserves the core invariants:
+The minimal kernel is the smallest implementable mechanism that preserves the kernel authority invariants:
 
 - Task and Change Unit records for continuity and write scope.
 - Lifecycle plus gates for state compatibility.
-- Approval, evidence, verification, QA, and acceptance records for distinct judgments.
+- Decision Gates and recorded Decision Packets for blocking product judgments.
+- Approval, evidence, verification, QA, acceptance, and residual-risk records for distinct judgments.
 - `prepare_write` as the product-write decision point.
 - `close_task` as the completion decision point.
 - `state.sqlite` current records plus `state.sqlite.task_events` for operational history.
 - Artifact store for raw evidence.
-- Projections for human-readable reports and user proposal surfaces.
+- Projections, Journey Cards, and Journey Spine views for human-readable reports and user proposal surfaces.
 
 The kernel specification is the owner for entity semantics, lifecycle fields, gate enums, transition rules, close semantics, waiver semantics, and invariant enforcement.
 
-## Core Invariants
+## Principle Groups
 
-These are the only core invariants. A system that violates one of them is no longer implementing the harness kernel.
+The harness separates strategic promises, kernel authority rules, and design stewardship defaults. This keeps human agency visible without turning every good practice into a hard kernel gate.
+
+### Strategic Invariants
+
+These invariants preserve the reason the harness exists. A system that violates them may still store records, but it no longer preserves the user's strategic agency.
+
+1. Strategic agency stays with the user.
+2. The work journey remains followable from current state.
+3. Product judgment is explicit for goals, scope, design, trade-offs, codebase stewardship, QA, acceptance, and residual risk.
+4. Agents may propose, implement, and verify within recorded autonomy boundaries, but they do not silently take over product judgment.
+5. Automation must make choices, blockers, evidence, and remaining risk easier to inspect.
+
+### Kernel Authority Invariants
+
+These invariants define the authority boundary of the local kernel. A system that violates one of them is no longer implementing the harness kernel.
 
 1. Chat is not state.
 2. Product write requires an active scoped Change Unit.
 3. Sensitive change requires explicit approval.
-4. Completion requires evidence coverage where evidence is required.
-5. Work cannot self-certify detached verification.
-6. Required QA and acceptance are separate gates.
-7. Projection cannot override canonical state.
+4. Blocking product judgment requires a recorded Decision Packet.
+5. Completion requires evidence coverage where evidence is required.
+6. Work cannot self-certify detached verification.
+7. Required QA and acceptance are separate gates.
+8. Projection cannot override canonical state.
 
-## Policy Defaults
+### Design Stewardship Defaults
 
-The following are design-quality policy defaults, not core invariants. They are important because they improve product quality, but they have applicability rules, allowed waivers, required records, validators, and close impact defined by the policy pack.
+The following are design stewardship defaults, not kernel authority invariants. They are important because they improve product quality, but they have applicability rules, allowed waivers, required records, validators, and close impact defined by the policy pack.
 
 - Shared design for work.
 - Domain language consistency.
 - Vertical slice default.
 - TDD trace for suitable work.
 - Module and interface review.
+- Codebase stewardship for module boundaries, interface contracts, dependency direction, testability, maintainability, and future-change risk.
 - Manual QA for UI, UX, copy, accessibility, visual output, and product taste.
+- Feedback loops from user decisions, QA findings, Eval findings, and residual-risk decisions back into state, scope, design, evidence, or follow-up work.
 - Context hygiene.
 
 The strategy keeps these defaults visible because they shape the product experience. The policy pack owns their detailed contracts.
 
 ## Human Judgment Model
 
-The harness assumes that the human provides direction and judgment, while agents provide options, implementation, evidence, and structured status.
+The harness assumes that the human provides strategic direction and judgment, while agents provide options, implementation, evidence, verification support, and structured status.
 
 The human owns:
 
 - goals and priorities
 - scope confirmation
+- design direction and product trade-offs
+- codebase stewardship judgment
 - sensitive-change approval
-- product trade-off decisions
 - Manual QA results where human inspection is required
 - final acceptance or rejection
+- residual-risk acceptance when close depends on it
 
 The agent owns:
 
 - surfacing choices and risks
+- preparing Decision Packets when product judgment blocks progress
 - proposing a Change Unit
 - staying inside approved scope
 - recording runs and evidence
@@ -136,6 +170,7 @@ The kernel owns:
 
 - whether a write is allowed
 - whether a task can close
+- whether a blocking product judgment has a recorded Decision Packet
 - whether evidence, verification, QA, and acceptance states are compatible
 - whether projections are fresh enough to trust as display
 
@@ -157,6 +192,8 @@ human-editable input -> reconcile_items -> accepted state event/record
 
 Domain Language, Module Map, and Interface Contract projections follow the same source-of-truth principle: their canonical records live in kernel state, and their Markdown forms are human-readable projections and proposal surfaces.
 
+Decision Packets, decisions, gate states, and residual-risk records follow the same authority boundary: their canonical form is kernel state, and any Markdown rendering is a projection or proposal surface.
+
 ## Guarantee Level Summary
 
 Guarantee level describes how strongly a connected agent surface can help enforce harness rules.
@@ -170,7 +207,7 @@ The MVP reference surface is primarily cooperative and detective. Preventive and
 
 ## MVP Boundary
 
-MVP is a core invariant validation project, not a broad agent-integration platform.
+MVP is a kernel authority and agency-conformance validation project, not a broad agent-integration platform.
 
 MVP includes:
 
@@ -180,9 +217,12 @@ MVP includes:
 - artifact registry and artifact store
 - public MCP tool surface
 - `prepare_write` gatekeeping
+- Decision Packet and Decision Gate support for blocking product judgment
 - approval, evidence, verification, Manual QA, and acceptance gate enforcement
+- Journey Card or equivalent compact status projection
 - required MVP report projections for Task status, approval, runs, evidence, Eval, and direct results
 - detached verification bundle or manual evaluator instruction bundle
+- agency-conformance smoke coverage for decision visibility and residual-risk visibility
 - basic doctor, recover, reconcile, export, and conformance smoke paths
 
 MVP does not include:
@@ -194,4 +234,4 @@ MVP does not include:
 - long-term analytics
 - team workflow management
 
-These later automation items are owned by [appendix/C-later-roadmap.md](appendix/C-later-roadmap.md). Later automation can strengthen the guarantee level, but it must not weaken the core invariant model.
+These later automation items are owned by [appendix/C-later-roadmap.md](appendix/C-later-roadmap.md). Later automation can strengthen the guarantee level, but it must not weaken the strategic agency model or the kernel authority invariant model.

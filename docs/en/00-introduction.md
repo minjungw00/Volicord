@@ -8,9 +8,9 @@ A shared mental model for users and implementers.
 
 - summary of the problems the harness reduces
 - summary of the three-space model
-- basic concepts for Task, Change Unit, Evidence, and Projection
+- basic concepts for Task, Change Unit, Strategic Agency, Decision Gate, Decision Packet, Evidence, Journey Card, Journey Spine, Residual Risk, and Projection
 - introduction to advisor/direct/work
-- status card example
+- Journey Card example
 - source-of-truth summary
 
 ## Does Not Own
@@ -24,14 +24,14 @@ A shared mental model for users and implementers.
 
 ### Why Harness Exists
 
-AI-assisted development moves quickly, but important work facts often stay trapped in chat: what the user asked for, what scope was agreed, what changed, what evidence exists, what still needs approval, and whether the result was actually checked.
+AI-assisted development moves quickly, but important work facts often stay trapped in chat: what the user asked for, what scope was agreed, what design direction was chosen, what changed, what evidence exists, what still needs approval or product judgment, whether the result was actually checked, and what residual risk remains.
 
-The harness gives that work a small local operating kernel. Conversation stays natural, but durable work state is recorded outside the chat so a task can be resumed, verified, reconciled, and closed from current state instead of memory.
+The harness gives that work an agency-preserving local operating kernel. Conversation stays natural, but durable work state is recorded outside the chat so a task can be followed, resumed, verified, reconciled, and closed from current state instead of memory.
 
 The short version:
 
 ```text
-Harness keeps AI development inside explicit state, scope, evidence, verification, and human judgment.
+Harness keeps the AI work journey followable while preserving user strategic agency through explicit state, scope, decisions, evidence, verification, QA, acceptance, and residual risk.
 ```
 
 ### The Three Spaces
@@ -50,8 +50,13 @@ This separation keeps product files, generated Markdown, chat text, and operatio
 
 - A Task is the user value unit: the thing the user wants done or answered.
 - A Change Unit is the scoped implementation unit that authorizes product writes.
+- Strategic Agency is the user's retained authority to understand the work journey and make or withhold judgment over goals, scope, design, trade-offs, codebase stewardship, QA, acceptance, and residual risk.
+- A Decision Gate is a point where progress is blocked until product judgment is recorded.
+- A Decision Packet records the decision needed, options, trade-offs, evidence, affected scope, residual risk, and next action for a blocking product judgment.
 - Evidence is recorded support for claims about the work, such as diffs, logs, tests, screenshots, run summaries, Eval records, or Manual QA records.
 - A raw artifact is a durable evidence file in the artifact store.
+- A Journey Spine is the ordered, state-derived thread of the Task, Change Units, decisions, runs, evidence, QA, acceptance, and residual risk.
+- A Journey Card is a compact projection of the current position in that journey.
 - A projection is a human-readable Markdown rendering of state records and artifact refs.
 - Reconcile is the explicit path for turning human-editable notes or projection drift into accepted state changes, rejected proposals, notes, decisions, or deferred items.
 
@@ -69,9 +74,9 @@ Harness uses three work modes:
 
 A task can start small. If the scope grows, the harness should make that visible and move the work into the shape needed for safe execution.
 
-### Reading A Status Card
+### Reading A Journey Card
 
-A status card is a derived display, not canonical state. It is there to answer four reader questions quickly:
+A Journey Card is a derived display, not canonical state. It is there to answer four reader questions quickly:
 
 - What task are we on?
 - What is the next safe action?
@@ -85,11 +90,14 @@ TASK-0044 Email login flow
 State: work / shaping
 Next action: decide failed-login UX
 Scope: login form, login API call, session storage
+Decision Gate: failed-login UX pending
+Decision Packet: DEC-0012 current
 Approval: dependency_change required
 Evidence: none
 Verification: not started
 Manual QA: pending
 Acceptance: pending
+Residual risk: none recorded
 Projection: current
 ```
 
