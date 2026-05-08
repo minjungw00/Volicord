@@ -942,7 +942,7 @@ RequestUserDecisionRequest:
   reconcile_item_id: string | null
 ```
 
-Core는 canonical `DecisionPacket`을 store합니다. `state_summary_at_request`가 `null`이면 Core가 같은 transaction 안에서 current state로부터 derive합니다. Stored `state_summary_at_request`는 request-time snapshot이며 이후 Task transitions로 update되지 않습니다. `approval_scope`는 `decision_kind=approval`일 때 required이며, 다른 `decision_kind` values에서는 `null` 또는 omitted여야 합니다. `decision_kind=approval`은 approval-shaped sensitive-change context일 뿐이며, 별도의 compatible Decision Packets와 gate updates 없이 product trade-offs, design direction, QA waiver, verification risk, final acceptance, residual-risk acceptance를 resolve할 수 없습니다. `residual_risk_acceptance` packet은 `user_context.minimum_context`에 risk visibility context를 포함하고 `context.source_refs`에 relevant risk refs를 포함해야 합니다.
+Core는 canonical `DecisionPacket`을 store합니다. 구현이 `decision_requests`도 create 또는 update한다면 그 rows는 routing, interaction, idempotency replay, legacy handoff metadata일 뿐이며 canonical `decision_packet_id`로 다시 link되어야 합니다. `decision_request` row만으로는 `decision_gate`를 절대 만족하지 않습니다. `state_summary_at_request`가 `null`이면 Core가 같은 transaction 안에서 current state로부터 derive합니다. Stored `state_summary_at_request`는 request-time snapshot이며 이후 Task transitions로 update되지 않습니다. `approval_scope`는 `decision_kind=approval`일 때 required이며, 다른 `decision_kind` values에서는 `null` 또는 omitted여야 합니다. `decision_kind=approval`은 approval-shaped sensitive-change context일 뿐이며, 별도의 compatible Decision Packets와 gate updates 없이 product trade-offs, design direction, QA waiver, verification risk, final acceptance, residual-risk acceptance를 resolve할 수 없습니다. `residual_risk_acceptance` packet은 `user_context.minimum_context`에 risk visibility context를 포함하고 `context.source_refs`에 relevant risk refs를 포함해야 합니다.
 
 Response schema:
 
@@ -1025,7 +1025,7 @@ AcceptedRiskInput:
   evidence_refs: EvidenceRefs
 ```
 
-Payload branch는 `decision_kind`와 match해야 하며, 다른 branches는 absent여야 합니다. `accepted_risks`는 Decision Packet과 current Judgment Context가 user decision 전에 close-relevant residual risk를 visible하게 만든 경우에만 allowed입니다. Core는 accepted risk를 residual-risk state refs로 기록하며, risk acceptance를 detached verification으로 취급하지 않습니다.
+Payload branch는 `decision_kind`와 match해야 하며, 다른 branches는 absent여야 합니다. `accepted_risks`는 Decision Packet과 current Judgment Context가 user decision 전에 close-relevant residual risk를 visible하게 만든 경우에만 allowed입니다. Core는 `decision_packet_id`가 식별하는 canonical `DecisionPacket`에 answer를 record합니다. 모든 `decision_requests` row는 routing/replay metadata로만 update되며 linked compatible Decision Packet 없이는 `decision_gate`를 satisfy할 수 없습니다. Core는 accepted risk를 residual-risk state refs로 기록하며, risk acceptance를 detached verification으로 취급하지 않습니다.
 
 Response schema:
 

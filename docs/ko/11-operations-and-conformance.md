@@ -296,7 +296,7 @@ Agency, stewardship, context hygiene는 MVP conformance suite입니다. 이 suit
 
 | Suite | Required behavior |
 |---|---|
-| agency | Blocking product judgment는 affected write 또는 close 전에 compatible Decision Packet을 요구합니다. Product trade-off write는 hold됩니다. AFK Autonomy Boundary stop condition은 public commitment를 block합니다. Known close-relevant residual risk는 successful close 전에 visible이어야 합니다. Risk-accepted close에는 추가로 accepted Residual Risk ref가 필요합니다. Approval, QA, acceptance, residual-risk acceptance는 서로 구분된 상태로 남아야 합니다. |
+| agency | Blocking product judgment는 affected write 또는 close 전에 compatible Decision Packet을 요구합니다. Decision request routing metadata만으로는 `decision_gate`를 satisfy하면 안 됩니다. Product trade-off write는 hold됩니다. AFK Autonomy Boundary stop condition은 public commitment를 block합니다. Known close-relevant residual risk는 successful close 전에 visible이어야 합니다. Risk-accepted close에는 추가로 accepted Residual Risk ref가 필요합니다. Approval, QA, acceptance, residual-risk acceptance는 서로 구분된 상태로 남아야 합니다. |
 | stewardship | Design-quality와 codebase-stewardship validator는 canonical owner record와 ref를 통해 `design_gate`, `decision_gate`, `qa_gate`, close blocker, waiver eligibility에 영향을 줍니다. Public interface, module, domain, feedback-loop, TDD, Manual QA, waiver check는 schema나 DDL을 duplicate하지 않습니다. |
 | context-hygiene | Current Task state, Journey ref, evidence ref, freshness state가 authoritative합니다. Stale PRD, stale projection, closed issue, old design doc, long log는 reconcile되기 전까지 pull-only context입니다. Stale context는 write, close, acceptance, current-state replacement를 authorize할 수 없습니다. |
 
@@ -1435,7 +1435,7 @@ expected_error:
 | Scenario ID | Core action | Required assertions |
 |---|---|---|
 | `CONN-journey-card-shown-before-significant-resume` | `next` | `next`는 significant resume instruction bundle을 반환하기 전에 current Task state version, current Journey Card 또는 journey ref, active Change Unit ref, pending Decision Packet ref, residual-risk summary, projection freshness를 반환합니다. read에는 state event가 append되지 않습니다. |
-| `CONN-decision-packet-not-broad-approval` | `prepare_write` | Active Decision Packet 밖의 product judgment는 `decision_packet_candidate`와 함께 `decision_required`를 반환합니다. `approval_required`를 반환하지 않고 broad approval candidate를 만들지 않으며 `approval_gate=granted`를 set하지 않습니다. |
+| `CONN-decision-packet-not-broad-approval` | `prepare_write` | Active Decision Packet 밖의 product judgment는 `decision_packet_candidate`와 함께 `decision_required`를 반환합니다. Decision request metadata는 routing/replay only이며 compatible Decision Packet 없이는 `decision_gate`를 satisfy할 수 없습니다. `approval_required`를 반환하지 않고 broad approval candidate를 만들지 않으며 `approval_gate=granted`를 set하지 않습니다. |
 | `CONN-autonomy-boundary-breach-stops-or-routes-to-decision` | `prepare_write` | Active Autonomy Boundary를 넘으면 `blocked` 또는 `decision_required`를 반환하고, `autonomy_boundary_exceeded`를 append하며, write를 held 상태로 유지하고, 기존 compatible Decision Packet을 reference하거나 candidate decision packet을 반환합니다. |
 
 ## Design-Quality Fixture 예시

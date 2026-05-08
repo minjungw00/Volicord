@@ -104,6 +104,10 @@ Current state, evidence, relevant references는 context에 유지하고, stale c
 
 Blocking product judgment를 지원하기 위해 기록하는 decision-support packet입니다. decision needed, options, 가능할 때 recommendation, trade-offs, affected scope, evidence, Residual Risk, owner, status, next action을 명시합니다. Decision Packet record ID는 `DEC-*`를 사용합니다. Record-level status는 `proposed`, `pending_user`, `resolved`, `deferred`, `rejected`, `blocked`, `superseded`이며 관련 statuses가 Task-level `decision_gate`에 반영됩니다. Canonical form은 kernel state입니다. MVP visibility는 Task/status/next/judgment-context 및 decision-packet surfaces를 통해 required이며, standalone `DEC` Markdown renderings는 enabled되지 않는 한 optional projection 또는 proposal surface입니다.
 
+### Decision Request
+
+Canonical Decision Packet을 가리킬 수 있는 routing, interaction, idempotency replay, legacy handoff metadata입니다. Decision Request는 decision authority가 아니며 그 자체로 `decision_gate`를 절대 satisfy하지 않습니다. Gate aggregation에는 linked compatible `decision_packet_id`를 통해서만 relevant합니다.
+
 ### Design Gate
 
 Shared design, domain language, TDD trace, module/interface review 또는 기타 policy-pack requirements 같은 required design-quality preconditions를 위한 kernel gate입니다.

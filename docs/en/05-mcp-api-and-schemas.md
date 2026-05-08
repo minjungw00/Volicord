@@ -942,7 +942,7 @@ RequestUserDecisionRequest:
   reconcile_item_id: string | null
 ```
 
-Core stores a canonical `DecisionPacket`. If `state_summary_at_request` is `null`, Core derives it from current state during the same transaction. The stored `state_summary_at_request` is a request-time snapshot and is not updated by later Task transitions. `approval_scope` is required when `decision_kind=approval`; for all other `decision_kind` values it must be `null` or omitted. `decision_kind=approval` is only the approval-shaped sensitive-change context and cannot resolve product trade-offs, design direction, QA waiver, verification risk, final acceptance, or residual-risk acceptance without separate compatible Decision Packets and gate updates. A `residual_risk_acceptance` packet must include the risk visibility context in `user_context.minimum_context` and relevant risk refs in `context.source_refs`.
+Core stores a canonical `DecisionPacket`. If the implementation also creates or updates `decision_requests`, those rows are routing, interaction, idempotency replay, or legacy handoff metadata only, and they must link back to the canonical `decision_packet_id`. A `decision_request` row alone never satisfies `decision_gate`. If `state_summary_at_request` is `null`, Core derives it from current state during the same transaction. The stored `state_summary_at_request` is a request-time snapshot and is not updated by later Task transitions. `approval_scope` is required when `decision_kind=approval`; for all other `decision_kind` values it must be `null` or omitted. `decision_kind=approval` is only the approval-shaped sensitive-change context and cannot resolve product trade-offs, design direction, QA waiver, verification risk, final acceptance, or residual-risk acceptance without separate compatible Decision Packets and gate updates. A `residual_risk_acceptance` packet must include the risk visibility context in `user_context.minimum_context` and relevant risk refs in `context.source_refs`.
 
 Response schema:
 
@@ -1025,7 +1025,7 @@ AcceptedRiskInput:
   evidence_refs: EvidenceRefs
 ```
 
-The payload branch must match `decision_kind`; other branches must be absent. `accepted_risks` is allowed only when the Decision Packet and current Judgment Context made the close-relevant residual risk visible before the user decision. Core records accepted risk as residual-risk state refs; it does not treat risk acceptance as detached verification.
+The payload branch must match `decision_kind`; other branches must be absent. `accepted_risks` is allowed only when the Decision Packet and current Judgment Context made the close-relevant residual risk visible before the user decision. Core records the answer against the canonical `DecisionPacket` identified by `decision_packet_id`; any `decision_requests` row is updated only as routing/replay metadata and cannot satisfy `decision_gate` without the linked compatible Decision Packet. Core records accepted risk as residual-risk state refs; it does not treat risk acceptance as detached verification.
 
 Response schema:
 

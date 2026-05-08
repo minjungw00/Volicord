@@ -170,9 +170,9 @@ Human-editable area: User Notes and Proposals.
 
 목적: sensitive change를 위한 readable approval request와 decision record다.
 
-Source: approval record, related Decision Packet, 구현이 별도 routing record를 둔다면 optional decision request routing record, Change Unit scope, sensitive category, allowed path/tool/command/network/secret, baseline, expiry, alternative, decision note.
+Source: approval record, related Decision Packet, 구현이 별도 routing record를 둔다면 optional decision request routing/replay record, Change Unit scope, sensitive category, allowed path/tool/command/network/secret, baseline, expiry, alternative, decision note.
 
-Boundary: approval은 product judgment를 resolve하지 않고, correctness를 prove하지 않고, evidence를 satisfy하지 않으며, verification이나 Manual QA를 replace하지 않고, acceptance를 imply하지 않으며, residual risk를 accept하지 않는다.
+Boundary: approval은 product judgment를 resolve하지 않고, correctness를 prove하지 않고, evidence를 satisfy하지 않으며, verification이나 Manual QA를 replace하지 않고, acceptance를 imply하지 않으며, residual risk를 accept하지 않는다. Decision request routing records는 decision authority가 아니며 linked compatible Decision Packet을 통하지 않고는 `decision_gate`에 영향을 줄 수 없다.
 
 ### RUN-SUMMARY
 
@@ -246,7 +246,7 @@ Source: record가 있을 때 `manual_qa_records` plus artifact refs, 그리고 a
 
 Source: `state.sqlite.decision_packets`, related Task와 Change Unit ref, affected gate, related approval 또는 reconcile record, residual-risk ref, evidence ref, artifact ref, decision event.
 
-Boundary: Markdown packet은 decision authority가 아니다. Canonical Decision Packet과 기록된 user decision 또는 reconcile action만 `decision_gate`, approval, Autonomy Boundary, residual risk, acceptance, close에 영향을 줄 수 있다.
+Boundary: Markdown packet은 decision authority가 아니다. Canonical Decision Packet과 기록된 user decision 또는 reconcile action만 `decision_gate`, approval, Autonomy Boundary, residual risk, acceptance, close에 영향을 줄 수 있다. Decision request routing metadata가 있더라도 authority source가 아니다.
 
 Identity: Decision Packet record는 자신의 `DEC-*` ID를 유지한다. Standalone Markdown projection은 `projection_kind: DEC`를 사용할 수 있지만, 이 kind label은 projection identity가 아니다. Projection에 distinct ID가 필요하면 `projection_id: DEC-PROJ-*`를 사용한다.
 

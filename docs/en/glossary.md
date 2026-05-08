@@ -104,6 +104,10 @@ The Task-level aggregate gate for blocking product judgment before progress, wri
 
 A recorded decision-support packet for blocking product judgment. It names the decision needed, options, recommendation when available, trade-offs, affected scope, evidence, residual risk, owner, status, and next action. Decision Packet record IDs use `DEC-*`. Its record-level status is `proposed`, `pending_user`, `resolved`, `deferred`, `rejected`, `blocked`, or `superseded`; relevant statuses feed the Task-level `decision_gate`. Its canonical form is kernel state. MVP visibility is required through Task/status/next/judgment-context and decision-packet surfaces; standalone `DEC` Markdown renderings are optional projections or proposal surfaces unless enabled.
 
+### Decision Request
+
+Routing, interaction, idempotency replay, or legacy handoff metadata that may point to a canonical Decision Packet. A Decision Request is not decision authority, never satisfies `decision_gate` by itself, and is only relevant to gate aggregation through a linked compatible `decision_packet_id`.
+
 ### Design Gate
 
 The kernel gate for required design-quality preconditions such as shared design, domain language, TDD trace, module/interface review, or other policy-pack requirements.

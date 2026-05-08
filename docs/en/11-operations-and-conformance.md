@@ -296,7 +296,7 @@ Required suite responsibilities:
 
 | Suite | Required behavior |
 |---|---|
-| agency | Blocking product judgment requires a compatible Decision Packet before affected write or close; product trade-off writes are held; AFK Autonomy Boundary stop conditions block public commitments; known close-relevant residual risk must be visible before any successful close; risk-accepted close additionally requires accepted Residual Risk refs; approval, QA, acceptance, and residual-risk acceptance remain distinct. |
+| agency | Blocking product judgment requires a compatible Decision Packet before affected write or close; decision request routing metadata alone must not satisfy `decision_gate`; product trade-off writes are held; AFK Autonomy Boundary stop conditions block public commitments; known close-relevant residual risk must be visible before any successful close; risk-accepted close additionally requires accepted Residual Risk refs; approval, QA, acceptance, and residual-risk acceptance remain distinct. |
 | stewardship | Design-quality and codebase-stewardship validators affect `design_gate`, `decision_gate`, `qa_gate`, close blockers, and waiver eligibility through canonical owner records and refs; public interface, module, domain, feedback-loop, TDD, Manual QA, and waiver checks do not duplicate schemas or DDL. |
 | context-hygiene | Current Task state, Journey refs, evidence refs, and freshness state are authoritative; stale PRDs, stale projections, closed issues, old design docs, and long logs are pull-only context until reconciled; stale context cannot authorize writes, close, acceptance, or current-state replacement. |
 
@@ -1435,7 +1435,7 @@ These are catalog entries, not fixture bodies. The concrete fixture examples abo
 | Scenario ID | Core action | Required assertions |
 |---|---|---|
 | `CONN-journey-card-shown-before-significant-resume` | `next` | `next` returns current Task state version, current Journey Card or journey ref, active Change Unit ref, pending Decision Packet refs, residual-risk summary, and projection freshness before returning a significant resume instruction bundle; no state events are appended for the read. |
-| `CONN-decision-packet-not-broad-approval` | `prepare_write` | Product judgment outside the active Decision Packet returns `decision_required` with a `decision_packet_candidate`; it does not return `approval_required`, does not create a broad approval candidate, and does not set `approval_gate=granted`. |
+| `CONN-decision-packet-not-broad-approval` | `prepare_write` | Product judgment outside the active Decision Packet returns `decision_required` with a `decision_packet_candidate`; any decision request metadata is routing/replay only and cannot satisfy `decision_gate` without a compatible Decision Packet; it does not return `approval_required`, does not create a broad approval candidate, and does not set `approval_gate=granted`. |
 | `CONN-autonomy-boundary-breach-stops-or-routes-to-decision` | `prepare_write` | Exceeding the active Autonomy Boundary returns `blocked` or `decision_required`, appends `autonomy_boundary_exceeded`, keeps the write held, and either references an existing compatible Decision Packet or returns a candidate decision packet. |
 
 ## Design-Quality Fixture Examples

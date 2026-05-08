@@ -170,9 +170,9 @@ Human-editable area: User Notes and Proposals.
 
 Purpose: a readable approval request and decision record for sensitive change.
 
-Sources: approval record, related Decision Packet, optional decision request routing record if implementation keeps one, Change Unit scope, sensitive categories, allowed paths/tools/commands/network/secrets, baseline, expiry, alternatives, decision note.
+Sources: approval record, related Decision Packet, optional decision request routing/replay record if implementation keeps one, Change Unit scope, sensitive categories, allowed paths/tools/commands/network/secrets, baseline, expiry, alternatives, decision note.
 
-Boundary: approval does not resolve product judgment, prove correctness, satisfy evidence, replace verification, replace Manual QA, imply acceptance, or accept residual risk.
+Boundary: approval does not resolve product judgment, prove correctness, satisfy evidence, replace verification, replace Manual QA, imply acceptance, or accept residual risk. Decision request routing records are not decision authority and cannot affect `decision_gate` except through a linked compatible Decision Packet.
 
 ### RUN-SUMMARY
 
@@ -246,7 +246,7 @@ Purpose: an optional readable projection of a Decision Packet for product judgme
 
 Sources: `state.sqlite.decision_packets`, related Task and Change Unit refs, affected gates, related approval or reconcile records, residual-risk refs, evidence refs, artifact refs, and decision events.
 
-Boundary: the Markdown packet is not the decision authority. Only the canonical Decision Packet and recorded user decision or reconcile action can affect `decision_gate`, approvals, Autonomy Boundary, residual risk, acceptance, or close.
+Boundary: the Markdown packet is not the decision authority. Only the canonical Decision Packet and recorded user decision or reconcile action can affect `decision_gate`, approvals, Autonomy Boundary, residual risk, acceptance, or close. Decision request routing metadata, when present, is not an authority source.
 
 Identity: the Decision Packet record keeps its `DEC-*` ID. Standalone Markdown projections may use `projection_kind: DEC`, but that kind label is not the projection identity; use `projection_id: DEC-PROJ-*` when the projection requires a distinct ID.
 

@@ -65,6 +65,8 @@ Decision Packet은 blocking product judgment를 위한 canonical state entity입
 
 Decision Packets는 `decision_gate`에 feed됩니다. Blocking product judgment는 chat text, broad approval, projection prose만으로 충족될 수 없습니다. Recorded Decision Packet과 그 resolution, deferral, blocked status가 해당 judgment에 대한 kernel authority path입니다.
 
+구현이 `decision_requests`를 유지한다면 이 rows는 routing, interaction, replay, legacy handoff metadata일 뿐입니다. Product judgment authority가 아니며, `decision_request` row만으로는 `decision_gate`를 절대 만족하지 않습니다.
+
 Decision Packet status는 record-level입니다.
 
 ```text
@@ -256,7 +258,7 @@ not_required | required | pending | resolved | deferred | blocked
 
 #### Decision Gate Aggregate Recompute
 
-`decision_gate`는 relevant blocking Decision Packets와 현재 detected된 blocking product-judgment needs에서 recompute됩니다. Relevant하다는 것은 packet 또는 detected blocker가 active Task, active Change Unit, requested operation, close intent, baseline, affected scope에 적용된다는 뜻입니다.
+`decision_gate`는 relevant blocking Decision Packets와 현재 detected된 blocking product-judgment needs에서 recompute됩니다. Relevant하다는 것은 packet 또는 detected blocker가 active Task, active Change Unit, requested operation, close intent, baseline, affected scope에 적용된다는 뜻입니다. Recompute path는 `decision_packets`와 detected blockers를 읽으며, linked compatible `decision_packet_id`를 통하지 않고는 `decision_requests`를 읽으면 안 됩니다.
 
 Recompute precedence는 다음과 같습니다.
 
@@ -436,7 +438,7 @@ Capability는 kernel이 write를 허용할지, rule을 얼마나 강하게 enfor
 | Run attempted with an invalid, stale, missing, consumed, or scope-exceeded Write Authorization | consumed로 기록하지 않습니다. 유용한 경우 attempted authorization ref를 validator findings, run violation payload, 또는 `task_events.payload_json`에 기록합니다. Scope, evidence, approval, verification, projections를 appropriate하게 stale 또는 blocked로 mark합니다. Authorization은 unconsumed로 남으며 stale, revoked, expired될 수 있습니다. |
 | Blocking product judgment detected with `decision_gate=not_required` | repair to `required` and request a Decision Packet |
 | `decision_gate=pending`, `resolved`, `deferred`, or product-judgment `blocked` without a linked Decision Packet | reject or repair by associating the canonical Decision Packet |
-| Product write attempted with required blocking Decision Packet absent or unresolved | block `prepare_write`; return a decision request rather than broad approval |
+| Product write attempted with required blocking Decision Packet absent or unresolved | block `prepare_write`; broad approval 대신 Decision Packet request 또는 candidate를 반환 |
 | Approval used as the authority path for product judgment, whether or not the sensitive scope matches | reject or repair by requiring a compatible Decision Packet |
 | `decision_gate=deferred` used for an operation not covered by the deferral | block `prepare_write` or close |
 | `decision_gate=resolved` where the recorded decision no longer matches the active Change Unit, Autonomy Boundary, baseline, or intended operation | repair to `required`, `pending`, or `blocked` |
