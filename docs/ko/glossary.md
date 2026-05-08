@@ -392,7 +392,7 @@ Policy가 허용하는 곳에서 gate requirement에 대한 explicit recorded ex
 
 ### Write Authorization
 
-`prepare_write`가 특정 allowed write attempt에 대해 create 또는 return하는 durable state record입니다. Idempotent replay를 제외하면 committed implementation 또는 direct run에 single-use이며, scope, approval, evidence, verification, Manual QA, acceptance, residual-risk visibility를 대체하지 않습니다.
+`prepare_write`가 특정 allowed write attempt에 대해 create하는 durable state record입니다. Distinct compatible `prepare_write` requests는 distinct authorization을 create하며, idempotent replay는 committed response를 반환할 수 있습니다. Committed implementation 또는 direct run에 single-use이며, scope, approval, evidence, verification, Manual QA, acceptance, residual-risk visibility를 대체하지 않습니다.
 
 ### Write Authority Summary
 

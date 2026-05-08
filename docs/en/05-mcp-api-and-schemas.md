@@ -725,19 +725,21 @@ ApprovalRequestCandidate:
 
 `approval_request_candidate` is present only when `decision=approval_required` or when Core can suggest a new approval request. Otherwise it is `null`.
 
-When `dry_run=false` and `decision=allowed`, the response must include a non-null `write_authorization_ref`; the `write_authorization` summary may also be returned when the caller requests expanded payloads or the implementation supports it. `authorization_effect` is `created` when Core creates a new authorization and `returned` when idempotency or compatibility returns an existing unconsumed authorization.
+When `dry_run=false` and `decision=allowed`, the response must include a non-null `write_authorization_ref`; the `write_authorization` summary may also be returned when the caller requests expanded payloads or the implementation supports it. `authorization_effect` is `created` when Core creates a new authorization.
+
+`authorization_effect=returned` is reserved for idempotent replay of the same committed `prepare_write` request and response with the same idempotency key, request hash, and state basis. A distinct compatible request creates a distinct Write Authorization; compatibility does not make authorizations reusable. Core may stale, expire, or revoke older unconsumed authorizations if their compatibility basis changes.
 
 When `dry_run=true` and the write would otherwise be allowed, Core returns `decision=allowed` with `authorization_effect=would_create`, but `write_authorization_ref` and `write_authorization` must be `null`, and no Write Authorization record, event, artifact, or projection job is created.
 
 For `decision=blocked`, `decision=approval_required`, `decision=decision_required`, and `decision=state_conflict`, both authorization fields must be `null` and `authorization_effect=none`.
 
-The returned authorization is specific to the intended operation and the current state, baseline, active Change Unit scope, approval refs, Decision Packet refs, sensitive categories, and guarantee level. It is consumed by `harness.record_run` through `write_authorization_id`; it is not a reusable grant.
+A Write Authorization is specific to the intended operation and the current state, baseline, active Change Unit scope, approval refs, Decision Packet refs, sensitive categories, and guarantee level. It is consumed by `harness.record_run` through `write_authorization_id`; it is not a reusable grant.
 
 `active_decision_packet_refs` contains all Decision Packets relevant to the intended write, including pending, deferred, blocked, or recently resolved packets.
 
 `decision_packet_candidate` is present when `decision=decision_required` and no compatible Decision Packet already exists. Its fields match `RequestUserDecisionRequest` after the envelope. It is a non-mutating candidate payload for a later `harness.request_user_decision` call; returning it from `prepare_write` does not create or update a Decision Packet.
 
-State transition summary: may move Task to `executing`, `waiting_user`, or `blocked`; may create or return a compatible Write Authorization when allowed; may set `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=pending/expired`, or stale evidence/approval markers.
+State transition summary: may move Task to `executing`, `waiting_user`, or `blocked`; may create a Write Authorization when allowed or return the already committed response for idempotent replay; may set `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=pending/expired`, or stale evidence/approval markers.
 
 Events emitted: `prepare_write_allowed`, `write_authorization_created`, `write_authorization_returned`, `prepare_write_blocked`, `scope_required`, `decision_required`, `autonomy_boundary_exceeded`, `approval_required`, `baseline_stale_detected`, `capability_insufficient_detected`.
 
@@ -860,6 +862,8 @@ The `payload` branch must match `kind`; all other branches must be `null` or abs
 
 `write_authorization_id` references the compatible Write Authorization returned by `harness.prepare_write`. For `kind=implementation` and `kind=direct`, `write_authorization_id` is required unless the Run records no product write and Core classifies it as read-only evidence or shaping. For `kind=shaping_update`, `write_authorization_id` must be `null`; MVP does not support shaping updates that also record observed product writes, so those writes must be recorded as `kind=implementation` or `kind=direct` with a compatible authorization. For `kind=verification_input`, keep `write_authorization_id` `null`; verification input that creates product writes should normally be disallowed in MVP.
 
+`runs.write_authorization_id` is populated only when a Run successfully consumes a compatible Write Authorization. A violation or audit Run that attempted to use an invalid, stale, missing, consumed, or scope-exceeded authorization must not populate `runs.write_authorization_id` as a consumed authorization. The attempted authorization ref, when useful for audit, should be recorded in validator findings, run violation payload, or `task_events.payload_json`. Such a violation Run may be recorded for audit or recovery if an observed product write already happened, but it must not satisfy evidence sufficiency, detached verification, QA, acceptance, or close readiness. The corresponding Write Authorization should remain unconsumed and may be marked stale, revoked, or expired according to the violation and compatibility basis.
+
 Response schema:
 
 ```yaml
@@ -875,7 +879,7 @@ RecordRunResponse:
   next_action: string
 ```
 
-`write_authorization_ref` is non-null when the committed Run consumes a Write Authorization.
+`write_authorization_ref` is non-null only when the committed Run successfully consumes a compatible Write Authorization.
 
 State transition summary: shaping updates can keep `shaping`, move to `ready`, or move to `waiting_user`; implementation moves toward `verifying`; direct can become close-eligible or escalate to work; verification input records evaluator bundle context without proving detached verification.
 

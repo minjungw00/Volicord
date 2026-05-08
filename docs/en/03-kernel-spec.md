@@ -49,7 +49,7 @@ A Task is the user value unit. It carries the current mode, lifecycle phase, res
 
 A Change Unit is the scoped implementation unit for product writes. It records purpose, non-goals, slice type, intended end-to-end path, autonomy boundary, allowed paths, allowed tools, validator profile, sensitive categories, approval needs, evidence expectations, QA expectations, dependencies, merge risk, completion conditions, and evaluator focus.
 
-Every product write requires an active Change Unit whose scope covers the intended write. A Task may have one or many Change Units, but only the active Change Unit scopes the current write. Core allows a specific write attempt through `prepare_write`, which creates or returns a compatible Write Authorization when the gates pass.
+Every product write requires an active Change Unit whose scope covers the intended write. A Task may have one or many Change Units, but only the active Change Unit scopes the current write. Core allows a specific write attempt through `prepare_write`, which creates a Write Authorization when the gates pass or returns the already committed response for idempotent replay of the same request.
 
 ### Autonomy Boundary
 
@@ -105,13 +105,15 @@ If a sensitive action also includes a product trade-off, architecture choice, QA
 
 ### Write Authorization
 
-A Write Authorization is the durable state record created or returned when `prepare_write` allows a product write.
+A Write Authorization is the durable state record created when `prepare_write` allows a product write.
 
 It records the Task, active Change Unit, intended operation, intended paths, intended tools, intended commands, intended network targets, intended secret access, sensitive categories, baseline, approval refs, relevant Decision Packet refs, guarantee level, status, created time, and consumption by a Run.
 
 A Write Authorization is not scope by itself. It is evidence that Core allowed a specific write attempt under the active scope and gates.
 
 A Write Authorization does not replace approval, evidence, verification, QA, acceptance, or residual-risk visibility.
+
+`authorization_effect=returned` is reserved for idempotent replay of the same committed `prepare_write` request with the same idempotency key, request hash, and state basis, or for returning the already committed response. A distinct compatible `prepare_write` request creates a distinct Write Authorization; compatibility does not make authorizations reusable. Core may stale, expire, or revoke older unconsumed authorizations if their compatibility basis changes.
 
 Write Authorization status is record-level:
 
@@ -430,8 +432,8 @@ The following combinations are invalid and must be rejected or repaired by the k
 | Product write attempted with no active Change Unit | block `prepare_write` |
 | Product write attempted when `scope_gate` is not `passed` | block or request scope confirmation |
 | Intended operation exceeds the active Change Unit Autonomy Boundary | block `prepare_write`; request user decision when product judgment can resolve it |
-| Implementation or direct Run recorded with no compatible unexpired, unconsumed Write Authorization | reject `record_run` or mark the Run blocked before evidence or close can rely on it |
-| Write Authorization consumed by a Run whose observed changes exceed authorized paths, tools, commands, network targets, or secret access | mark scope, evidence, approval, verification, and projections stale or blocked as appropriate; require compatible scope, approval, Decision Packet, or new write authorization before close |
+| Implementation or direct Run recorded with no compatible unexpired, unconsumed Write Authorization | reject `record_run` or record a violation/audit Run without populating `runs.write_authorization_id`; evidence, verification, QA, acceptance, and close cannot rely on it |
+| Run attempted with an invalid, stale, missing, consumed, or scope-exceeded Write Authorization | do not record it as consumed; record the attempted authorization ref in validator findings, run violation payload, or `task_events.payload_json` when useful; mark scope, evidence, approval, verification, and projections stale or blocked as appropriate; the authorization remains unconsumed and may be stale, revoked, or expired |
 | Blocking product judgment detected with `decision_gate=not_required` | repair to `required` and request a Decision Packet |
 | `decision_gate=pending`, `resolved`, `deferred`, or product-judgment `blocked` without a linked Decision Packet | reject or repair by associating the canonical Decision Packet |
 | Product write attempted with required blocking Decision Packet absent or unresolved | block `prepare_write`; return a decision request rather than broad approval |
@@ -493,7 +495,7 @@ write_authorization_violation_detected
 | Sensitive approval denied | `waiting_user` | `blocked` | `approval_gate=denied` |
 | Approval scope drifts or expires | any non-terminal phase | `waiting_user` or `blocked` | `approval_gate=expired` |
 | Autonomy boundary violation | any non-terminal phase | `waiting_user` or `blocked` | violation recorded; Decision Packet requested when product judgment can resolve it; otherwise scope or policy blocker recorded |
-| `prepare_write` allows write | `ready` or `executing` | `executing` | create or return Write Authorization; active Run may proceed |
+| `prepare_write` allows write | `ready` or `executing` | `executing` | create Write Authorization, or return the already committed response for idempotent replay; active Run may proceed |
 | `prepare_write` blocks write | any non-terminal phase | `waiting_user` or `blocked` | blocked reason recorded; `decision_gate`, `scope_gate`, or `approval_gate` updated according to blocker type |
 | Direct implementation and self-check recorded | `executing` | same phase with close eligibility or `waiting_user` | Run consumes compatible Write Authorization; artifacts and evidence recorded |
 | Work implementation recorded | `executing` | `verifying` | Run consumes compatible Write Authorization; evidence manifest updated |
@@ -560,11 +562,11 @@ The decision algorithm is:
 10. Run design-policy precondition checks that apply before writing. Required unmet design preconditions return `blocked` or `decision_required` according to policy.
 11. Evaluate Decision Packet requirements for the intended operation. A required blocking Decision Packet that is absent, pending, blocked, or deferred without coverage for the intended operation blocks the write and returns `decision_required` when user judgment can resolve it. A resolved Decision Packet must match the active Change Unit, Autonomy Boundary, baseline, and intended operation.
 12. Run surface capability checks. Capability failures are recorded as validator results, blocked reasons, and guarantee display changes; they do not create capability as a first-class kernel gate.
-13. If all required checks pass, create or return a compatible unexpired Write Authorization for the intended operation, record the decision, and return `allowed`.
+13. If all required checks pass, create a compatible unexpired Write Authorization for the intended operation, or return the already committed response for idempotent replay of the same request, record the decision, and return `allowed`.
 
 Required checks include active Task, active Change Unit, mode write eligibility, Autonomy Boundary compatibility, baseline freshness, intended paths, intended tools, intended commands, network targets, secret access, sensitive categories, approval scope, Decision Packet state, surface capability profile, and design policy preconditions.
 
-An `allowed` decision must create or reference a Write Authorization with `status=allowed`. Idempotent replay may return the existing compatible authorization instead of creating a new one. Blocked, approval-required, decision-required, or state-conflict results must not create a consumable Write Authorization for the attempted write.
+An `allowed` decision must create or reference a Write Authorization with `status=allowed`. `authorization_effect=returned` is reserved for idempotent replay of the same committed `prepare_write` request with the same idempotency key, request hash, and state basis, or for returning the already committed response. A distinct compatible request creates a distinct Write Authorization; compatibility does not make authorizations reusable. Blocked, approval-required, decision-required, or state-conflict results must not create a consumable Write Authorization for the attempted write. Core may stale, expire, or revoke older unconsumed authorizations if their compatibility basis changes.
 
 When product judgment is needed, `prepare_write` requests a user decision through a Decision Packet. It must not convert product judgment into broad approval. `approval_required` is reserved for sensitive-change approval.
 
@@ -576,9 +578,11 @@ If MCP is unavailable on a cooperative-only surface, product writes must be held
 
 Implementation and direct `record_run` calls that report product writes must consume a compatible, unexpired, unconsumed Write Authorization. The consumed authorization must match the active Task, active Change Unit, baseline, intended operation, sensitive categories, approval refs, relevant Decision Packet refs, and guarantee level required by the write.
 
+`runs.write_authorization_id` is populated only when a Run successfully consumes a compatible Write Authorization. A violation or audit Run that attempted to use an invalid, stale, missing, consumed, or scope-exceeded authorization must not populate `runs.write_authorization_id` as a consumed authorization. The attempted authorization ref, when useful for audit, should be recorded in validator findings, run violation payload, or `task_events.payload_json`.
+
 Core must verify observed changed paths against both the consumed Write Authorization and the active Change Unit. It also verifies recorded tools, commands, network targets, and secret access against the authorization when those observations are available from command results, artifacts, surface telemetry, or declared run data.
 
-If no product writes are reported and Write Authorization is still required by the Run kind, active Change Unit, or intended operation, Core rejects `record_run` when authorization is missing. If observed product writes already occurred but authorization is missing or exceeded, Core may record a blocked or violation Run for recovery and audit. That Run must not satisfy evidence sufficiency, and Core marks affected scope, evidence, approval, verification, and projection state stale or blocked.
+If no product writes are reported and Write Authorization is still required by the Run kind, active Change Unit, or intended operation, Core rejects `record_run` when authorization is missing. If observed product writes already occurred but authorization is missing or exceeded, Core may record a blocked or violation Run for recovery and audit. That Run must not satisfy evidence sufficiency, detached verification, QA, acceptance, or close readiness, and Core marks affected scope, evidence, approval, verification, and projection state stale or blocked. The corresponding Write Authorization, if any, remains unconsumed and may be marked stale, revoked, or expired according to the violation and compatibility basis.
 
 The Task cannot rely on a blocked or violation Run for close until the state is repaired through compatible scope, approval, Decision Packet resolution, evidence update, verification, or a new write authorization and Run.
 
@@ -632,7 +636,7 @@ Residual-risk acceptance means known remaining risk was made visible and accepte
 | Kernel Authority Invariant | Kernel enforcement points |
 |---|---|
 | Chat is not state. | State-changing actions create state records and `task_events`; projections and chat text cannot mutate state without MCP action or reconcile. |
-| Product write requires an active scoped Change Unit. | `prepare_write` blocks write-capable actions without active Task, active Change Unit, and passed scope gate; allowed writes create or return Write Authorization, and implementation/direct Runs must consume a compatible authorization. |
+| Product write requires an active scoped Change Unit. | `prepare_write` blocks write-capable actions without active Task, active Change Unit, and passed scope gate; allowed writes create Write Authorization or return the committed idempotent replay response, and implementation/direct Runs must consume a compatible authorization. |
 | Sensitive change requires explicit approval. | `prepare_write` detects sensitive categories, checks approval gate and approval scope, and blocks denied, expired, missing, or drifted approval; approval cannot satisfy product judgment outside its sensitive scope. |
 | Blocking product judgment requires a recorded Decision Packet. | `decision_gate`, `prepare_write`, `record_run`, and `close_task` require a canonical Decision Packet for blocking product judgment; unresolved or incompatible blocking packets prevent affected writes and close. |
 | Completion requires evidence coverage where evidence is required. | `close_task` requires `evidence_gate=sufficient` when evidence applies; required evidence cannot be waived for passed completion. |

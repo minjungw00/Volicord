@@ -57,7 +57,7 @@ Codex flow는 user agency를 보존해야 한다.
 - 중요한 work를 재개하기 전에 Journey Card를 보여준다.
 - Product judgment가 필요하면 포괄적인 승인을 묻지 말고 Decision Packet을 보여준다.
 - 한 번에 하나의 blocking question만 묻고, 가능하면 recommendation과 uncertainty를 함께 제시한다.
-- AFK 진행은 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval이 모두 맞을 때만 허용한다.
+- AFK 진행은 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval, 실제 product write 전 compatible `prepare_write` / Write Authorization이 모두 맞을 때만 허용한다.
 - Autonomy Boundary는 judgment latitude이지 write authority가 아니다.
 - Product write 전 Write Authority Summary를 보여준다.
 - MCP가 unavailable이면 product write를 hold한다.
@@ -207,7 +207,7 @@ Product code change, verification, approval, Manual QA, acceptance, resume, clos
 - Decision Packet이 필요하면 포괄적인 승인을 묻지 말고 packet을 보여준다.
 - 한 번에 하나의 blocking question만 묻고, 가능하면 recommendation과 uncertainty를 함께 제시한다.
 - Active scoped Change Unit 안에 머문다.
-- AFK implementation은 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval이 모두 맞을 때만 허용된다.
+- AFK implementation은 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval, 실제 product write 전 compatible `prepare_write` / Write Authorization이 모두 맞을 때만 허용된다.
 - Autonomy Boundary는 write authority가 아니다. `prepare_write`, Change Unit scope, approval, allowed path/tool/command/network/secret을 계속 따른다.
 - Planning direction, product trade-off, QA waiver, verification risk acceptance, final acceptance는 사람이 판단한다.
 - Run, command, changed file, artifact, evidence를 기록한다.
@@ -280,7 +280,7 @@ Product file을 edit하기 전에 `harness.prepare_write`를 call한다. Allowed
 - `prepare_write`가 blocked이면 product file을 edit하지 않는다.
 - MCP가 unavailable이면 product write를 hold하고, surface가 authoritative write decision을 제공할 수 없다고 보고한다.
 - Allowed path, tool, command, network, secret scope를 존중한다.
-- AFK는 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval이 모두 맞을 때만 계속한다.
+- AFK는 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval, 실제 product write 전 compatible `prepare_write` / Write Authorization이 모두 맞을 때만 계속한다.
 - Autonomy Boundary는 write authority가 아니다. `prepare_write`, Change Unit scope, allowed path/tool/command/network/secret, sensitive approval이 여전히 write를 control한다.
 - Approval, scope confirmation, Decision Packet, human-held judgment가 필요하면 멈춘다.
 - Blocking product judgment에는 `harness.request_user_decision`을 사용한다. Approval은 sensitive change를 위한 decision kind 중 하나다.

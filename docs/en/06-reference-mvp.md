@@ -67,7 +67,7 @@ Exit criteria:
 - sensitive dependency or schema change requires approval
 - intended work outside the active Autonomy Boundary is blocked or routed to a Decision Packet
 - unresolved or incompatible blocking Decision Packets block affected writes
-- allowed `prepare_write` creates or returns a durable Write Authorization ref
+- allowed `prepare_write` creates a durable Write Authorization ref, while idempotent replay returns the already committed response
 - approval scope drift can expire or block approval
 - Change Unit shaping records end-to-end path intent, user-judgment requirements, AFK stop conditions, and dependency metadata when needed
 - raw artifacts are stored with hash and redaction metadata
@@ -672,9 +672,11 @@ CREATE TABLE locks (
 
 `tasks.projection_status` is the TASK projection status summary. Per-kind projection freshness is tracked through `projection_jobs` and through the relevant projection records or artifact refs for APR, RUN-SUMMARY, EVIDENCE-MANIFEST, EVAL, DIRECT-RESULT, optional MANUAL-QA, optional TDD-TRACE, and other enabled projection kinds. Do not treat one Task field as owning all projection freshness.
 
-`write_authorizations` stores durable allow decisions from `prepare_write`. When `dry_run=false` and `prepare_write` returns `allowed`, Core creates or returns a compatible `write_authorizations` row and returns its ref. `updated_at` changes whenever authorization status changes; status history remains in `task_events`.
+`write_authorizations` stores durable allow decisions from `prepare_write`. When `dry_run=false` and `prepare_write` returns `allowed`, Core creates a distinct `write_authorizations` row for a distinct compatible request and returns its ref. `authorization_effect=returned` is reserved for idempotent replay of the same committed `prepare_write` request and response with the same idempotency key, request hash, and state basis. A distinct compatible request creates a distinct Write Authorization; compatibility does not make authorizations reusable. Core may stale, expire, or revoke older unconsumed authorizations if their compatibility basis changes. `updated_at` changes whenever authorization status changes; status history remains in `task_events`.
 
 Implementation and direct `record_run` calls consume a compatible unexpired authorization by recording `runs.write_authorization_id` and marking the authorization consumed with `consumed_by_run_id` and `consumed_at`. The reciprocal links `write_authorizations.consumed_by_run_id` and `runs.write_authorization_id` must point to each other in the same Core transaction. A mismatch is invalid state; `recover` must repair it or block affected close. Consuming an authorization does not make observed changes valid by itself; changed-path, tool, command, network, secret, Change Unit, approval, baseline, and Decision Packet validation still verifies the committed Run.
+
+`runs.write_authorization_id` is populated only when a Run successfully consumes a compatible Write Authorization. A violation or audit Run that attempted to use an invalid, stale, missing, consumed, or scope-exceeded authorization must not populate `runs.write_authorization_id`; store the attempted authorization ref in validator findings, run violation payload, or `task_events.payload_json` when useful. Such a Run may be recorded for audit or recovery if an observed product write already happened, but it must not satisfy evidence sufficiency, detached verification, QA, acceptance, or close readiness. The corresponding Write Authorization remains unconsumed and may be marked stale, revoked, or expired according to the violation and compatibility basis.
 
 Write Authorizations are single-use for storage. The unique partial index on `runs.write_authorization_id` prevents more than one committed Run row from consuming the same authorization. Idempotent replay returns the original Run and response metadata; it does not insert a second Run row.
 

@@ -57,7 +57,7 @@ The Codex flow should preserve user agency:
 - show the Journey Card before significant work resumes
 - surface a Decision Packet instead of asking for broad approval when product judgment is required
 - ask one blocking question at a time, with a recommendation and uncertainty when available
-- continue AFK only when active Change Unit scope, Autonomy Boundary latitude, and any granted sensitive approval all apply
+- continue AFK only when active Change Unit scope, Autonomy Boundary latitude, any granted sensitive approval, and compatible `prepare_write` / Write Authorization before actual product writes all apply
 - treat the Autonomy Boundary as judgment latitude, not write authority
 - show the Write Authority Summary before product writes
 - hold product writes if MCP is unavailable
@@ -207,7 +207,7 @@ Use Harness for product code changes, verification, approval, Manual QA, accepta
 - If a Decision Packet is required, present it instead of asking for broad approval.
 - Ask one blocking question at a time, with a recommendation and uncertainty when available.
 - Stay inside the active scoped Change Unit.
-- AFK implementation is only allowed when active Change Unit scope, Autonomy Boundary latitude, and any granted sensitive approval all apply.
+- AFK implementation is only allowed when active Change Unit scope, Autonomy Boundary latitude, any granted sensitive approval, and compatible `prepare_write` / Write Authorization before actual product writes all apply.
 - Autonomy Boundary is not write authority; still obey `prepare_write`, Change Unit scope, approvals, allowed paths/tools/commands/network/secrets.
 - Planning direction, product trade-offs, QA waiver, verification risk acceptance, and final acceptance are human-held.
 - Record runs, commands, changed files, artifacts, and evidence.
@@ -280,7 +280,7 @@ For small direct work, keep Harness mostly invisible: use narrow scope, call `ha
 - If `prepare_write` is blocked, do not edit product files.
 - If MCP is unavailable, hold product writes and report that the surface cannot provide an authoritative write decision.
 - Respect allowed paths, tools, commands, network, and secret scope.
-- Continue AFK only when active Change Unit scope, Autonomy Boundary latitude, and any granted sensitive approval all apply.
+- Continue AFK only when active Change Unit scope, Autonomy Boundary latitude, any granted sensitive approval, and compatible `prepare_write` / Write Authorization before actual product writes all apply.
 - Autonomy Boundary is not write authority; `prepare_write`, Change Unit scope, allowed paths/tools/commands/network/secrets, and sensitive approval still control writes.
 - Stop when approval, scope confirmation, a Decision Packet, or human-held judgment is required.
 - Use `harness.request_user_decision` for blocking product judgment; approval is one decision kind for sensitive changes.

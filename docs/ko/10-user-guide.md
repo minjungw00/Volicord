@@ -26,7 +26,7 @@
 작은 수정이면 direct로 처리하고, 커지면 work로 전환해.
 Decision Packet을 옵션, 추천안, 불확실성까지 보여줘.
 승인해. 범위는 방금 설명한 내용까지만이야.
-Active Change Unit scope와 Autonomy Boundary latitude가 모두 맞을 때만 AFK로 진행해. Sensitive categories에는 별도 granted approval이 필요해.
+Active Change Unit scope와 Autonomy Boundary latitude가 모두 맞을 때만 AFK로 진행해. Sensitive categories에는 별도 granted approval이 필요하고, 실제 product write에는 compatible `prepare_write` Write Authorization이 필요해.
 detached verify 시작해.
 Manual QA가 필요한지 판단해줘.
 수용하기 전에 residual risk를 보여줘.
@@ -80,6 +80,7 @@ TASK-0044 이메일 로그인 플로우 추가
 Decision Gate: pending
 Decision Packet: DEC-0012 로그인 실패 UX
 Autonomy Boundary: 합의된 로그인 플로우 세부 구현만 진행 가능
+Write Authority: not yet requested
 Approval: dependency_change 승인 필요
 Evidence: none
 Verification: not started
@@ -94,6 +95,7 @@ Projection: current
 - 요청과 범위가 맞는가.
 - 내가 답해야 할 Decision Packet이 있는가.
 - Autonomy Boundary 안에서 agent가 어디까지 진행할 수 있는가.
+- Write Authority가 아직 요청 전인지, blocked인지, intended write에 allowed인지.
 - approval, evidence, verification, Manual QA, residual risk, acceptance 중 무엇이 남았는가.
 - 다음 행동이 안전하게 진행 가능한가.
 
@@ -112,6 +114,7 @@ Journey Card는 일이 지금 어디에 있는지 보여주는 카드다. 오래
 - `Next action`: agent가 지금 안전하다고 보는 다음 행동
 - `Decision Packet`: 사용자가 답해야 할 제품 판단이 있는지
 - `Autonomy Boundary`: 추가 질문 없이 agent가 할 수 있는 일
+- `Write Authority`: intended write에 대한 specific `prepare_write` authorization이 있는지. Autonomy Boundary와 별개다.
 - `Evidence`, `Verification`, `Manual QA`: 무엇이 확인되었는지
 - `Residual risk`: 아직 남은 불확실성, 제한, trade-off
 - `Projection`: 사람이 읽는 뷰가 믿을 만큼 최신인지
@@ -122,6 +125,13 @@ Journey Card는 일이 지금 어디에 있는지 보여주는 카드다. 오래
 잠깐. Decision Packet부터 보여줘.
 그 다음 행동은 괜찮아. 그 경계 안에서 계속해.
 이번 run 끝나면 Journey Card를 새로 보여줘.
+```
+
+Write가 이미 authorized된 경우에도 line은 specific해야 한다.
+
+```text
+Write Authority: WA-0017 allowed for src/auth/login.ts and tests/auth/login.test.ts
+Guarantee: cooperative; changed-path validation detects violations after the fact
 ```
 
 ## Decision Packet 읽기
@@ -200,9 +210,9 @@ Assurance는 보통 `none`, `self_checked`, `detached_verified`로 보인다. `d
 
 ## AFK로 진행하게 할 때
 
-AFK로 진행한다는 말은 사용자가 자리를 비워도 agent가 계속 진행해도 된다는 뜻이다. 하지만 AFK는 active Change Unit scope와 Autonomy Boundary latitude가 모두 맞을 때만 허용되며, sensitive categories에는 별도 granted approval이 필요하다.
+AFK로 진행한다는 말은 사용자가 자리를 비워도 agent가 계속 진행해도 된다는 뜻이다. 하지만 AFK는 active Change Unit scope, Autonomy Boundary latitude, applicable한 granted sensitive approval이 모두 맞을 때만 허용된다. 실제 product write에는 writing 전에 compatible `prepare_write` / Write Authorization도 필요하다.
 
-Autonomy Boundary는 scope grant가 아니다. Agent는 여전히 `prepare_write`, active Change Unit scope, allowed paths, allowed tools, allowed commands, network targets, secret access, applicable한 sensitive approval을 따라야 한다.
+Autonomy Boundary는 scope grant나 write permission이 아니다. Agent는 여전히 `prepare_write`, active Change Unit scope, allowed paths, allowed tools, allowed commands, network targets, secret access, applicable한 sensitive approval을 따라야 한다.
 
 Agent는 보통 합의된 세부 구현, 허용된 check 실행, evidence 수집, summary 업데이트를 진행하고, 명확한 blocker를 남기고 멈출 수 있다.
 

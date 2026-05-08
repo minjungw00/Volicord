@@ -49,7 +49,7 @@ Always-on rule은 user agency도 보존해야 한다.
 - 중요한 work를 재개하기 전에 현재 Journey Card를 보여준다.
 - Decision Packet이 필요한 상황을 포괄적인 승인 질문으로 뭉개지 않는다.
 - 한 번에 하나의 blocking question만 묻고, 가능하면 recommendation과 uncertainty를 함께 제시한다.
-- AFK implementation은 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval이 모두 맞을 때만 허용한다.
+- AFK implementation은 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval, 실제 product write 전 compatible `prepare_write` / Write Authorization이 모두 맞을 때만 허용한다.
 - Autonomy Boundary는 judgment latitude이지 write authority가 아니다.
 - Work가 write를 시작하려 할 때 Write Authority Summary를 보여준다.
 - MCP가 unavailable이면 product write를 hold한다.
@@ -335,7 +335,7 @@ Overview scenarios:
 - 가능할 때 recommendation과 uncertainty가 있는 one blocking question
 - blocking product judgment에 포괄적인 승인 대신 Decision Packet 표시
 - Autonomy Boundary breach가 stop되거나 Decision Packet으로 route되는지
-- AFK work가 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval로 모두 cover되는지
+- AFK work가 active Change Unit scope, Autonomy Boundary latitude, 적용되는 granted sensitive approval, 실제 product write 전 compatible `prepare_write` / Write Authorization으로 모두 cover되는지
 - `prepare_write` allowed 및 blocked path
 - allowed write에 Write Authorization이 생성되고 Write Authority Summary로 노출되는지
 - write-capable `record_run`이 compatible Write Authorization을 consume하는지

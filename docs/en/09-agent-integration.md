@@ -49,7 +49,7 @@ Always-on rules should also preserve user agency:
 - show the current Journey Card before significant work resumes
 - do not ask for broad approval when a Decision Packet is required
 - ask one blocking question at a time, with a recommendation and uncertainty when available
-- allow AFK implementation only when active Change Unit scope, Autonomy Boundary latitude, and any granted sensitive approval all apply
+- allow AFK implementation only when active Change Unit scope, Autonomy Boundary latitude, any granted sensitive approval, and compatible `prepare_write` / Write Authorization before actual product writes all apply
 - treat the Autonomy Boundary as judgment latitude, not write authority
 - show the Write Authority Summary when work is about to write
 - hold product writes if MCP is unavailable
@@ -335,7 +335,7 @@ Overview scenarios:
 - one blocking question with recommendation and uncertainty when available
 - Decision Packet shown instead of broad approval for blocking product judgment
 - Autonomy Boundary breach stops or routes to Decision Packet
-- AFK work remains covered by active Change Unit scope, Autonomy Boundary latitude, and any granted sensitive approval that applies
+- AFK work remains covered by active Change Unit scope, Autonomy Boundary latitude, any granted sensitive approval that applies, and compatible `prepare_write` / Write Authorization before actual product writes
 - `prepare_write` allowed and blocked paths
 - Write Authorization created for allowed writes and exposed through Write Authority Summary
 - write-capable `record_run` consumes a compatible Write Authorization

@@ -725,19 +725,21 @@ ApprovalRequestCandidate:
 
 `approval_request_candidate`는 `decision=approval_required`이거나 Core가 new approval request를 suggest할 수 있을 때만 present합니다. 그 외에는 `null`입니다.
 
-`dry_run=false`이고 `decision=allowed`일 때 response는 non-null `write_authorization_ref`를 포함해야 합니다. Caller가 expanded payload를 request하거나 implementation이 support하면 `write_authorization` summary도 반환할 수 있습니다. `authorization_effect`는 Core가 새 authorization을 create하면 `created`, idempotency 또는 compatibility로 existing unconsumed authorization을 반환하면 `returned`입니다.
+`dry_run=false`이고 `decision=allowed`일 때 response는 non-null `write_authorization_ref`를 포함해야 합니다. Caller가 expanded payload를 request하거나 implementation이 support하면 `write_authorization` summary도 반환할 수 있습니다. `authorization_effect`는 Core가 새 authorization을 create하면 `created`입니다.
+
+`authorization_effect=returned`는 같은 idempotency key, request hash, state basis를 가진 동일한 committed `prepare_write` request와 response의 idempotent replay에만 reserved됩니다. Distinct compatible request는 distinct Write Authorization을 create합니다. Compatibility가 authorizations를 reusable하게 만들지는 않습니다. Compatibility basis가 바뀌면 Core는 오래된 unconsumed authorization을 stale, expire, revoke할 수 있습니다.
 
 `dry_run=true`이고 write가 otherwise allowed라면 Core는 `decision=allowed`와 `authorization_effect=would_create`를 반환합니다. 하지만 `write_authorization_ref`와 `write_authorization`은 반드시 `null`이어야 하고, Write Authorization record, event, artifact, projection job은 create되지 않습니다.
 
 `decision=blocked`, `decision=approval_required`, `decision=decision_required`, `decision=state_conflict`에서는 두 authorization fields가 모두 `null`이고 `authorization_effect=none`이어야 합니다.
 
-Returned authorization은 intended operation과 current state, baseline, active Change Unit scope, approval refs, Decision Packet refs, sensitive categories, guarantee level에 specific합니다. 이는 `write_authorization_id`를 통해 `harness.record_run`이 consume하며 reusable grant가 아닙니다.
+Write Authorization은 intended operation과 current state, baseline, active Change Unit scope, approval refs, Decision Packet refs, sensitive categories, guarantee level에 specific합니다. 이는 `write_authorization_id`를 통해 `harness.record_run`이 consume하며 reusable grant가 아닙니다.
 
 `active_decision_packet_refs`는 intended write와 relevant한 모든 Decision Packets를 포함합니다. Pending, deferred, blocked, recently resolved packets가 포함됩니다.
 
 `decision_packet_candidate`는 `decision=decision_required`이고 compatible Decision Packet이 아직 없을 때 present합니다. Fields는 envelope 이후의 `RequestUserDecisionRequest`와 match합니다. 이는 나중에 `harness.request_user_decision`을 호출하기 위한 non-mutating candidate payload입니다. `prepare_write`가 이를 반환해도 Decision Packet이 create 또는 update되지는 않습니다.
 
-State transition summary: Task를 `executing`, `waiting_user`, `blocked`로 옮길 수 있습니다. Allowed일 때 compatible Write Authorization을 create 또는 return할 수 있습니다. `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=pending/expired`, stale evidence/approval markers를 set할 수 있습니다.
+State transition summary: Task를 `executing`, `waiting_user`, `blocked`로 옮길 수 있습니다. Allowed일 때 Write Authorization을 create하거나 idempotent replay에 대해 already committed response를 반환할 수 있습니다. `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=pending/expired`, stale evidence/approval markers를 set할 수 있습니다.
 
 Events emitted: `prepare_write_allowed`, `write_authorization_created`, `write_authorization_returned`, `prepare_write_blocked`, `scope_required`, `decision_required`, `autonomy_boundary_exceeded`, `approval_required`, `baseline_stale_detected`, `capability_insufficient_detected`.
 
@@ -860,6 +862,8 @@ TddTraceUpdate:
 
 `write_authorization_id`는 `harness.prepare_write`가 반환한 compatible Write Authorization을 reference합니다. `kind=implementation`과 `kind=direct`에서는 Run이 product write를 기록하지 않고 Core가 read-only evidence 또는 shaping으로 classify하는 경우를 제외하면 `write_authorization_id`가 required입니다. `kind=shaping_update`에서는 `write_authorization_id`가 `null`이어야 합니다. MVP는 observed product writes도 함께 기록하는 shaping update를 support하지 않으므로, 그런 writes는 compatible authorization과 함께 `kind=implementation` 또는 `kind=direct`로 record해야 합니다. `kind=verification_input`에서는 `write_authorization_id`를 `null`로 둡니다. Product writes를 create하는 verification input은 MVP에서 보통 disallowed여야 합니다.
 
+`runs.write_authorization_id`는 Run이 compatible Write Authorization을 성공적으로 consume할 때만 populated됩니다. Invalid, stale, missing, consumed, scope-exceeded authorization을 사용하려 한 violation 또는 audit Run은 `runs.write_authorization_id`를 consumed authorization으로 populate하면 안 됩니다. Audit에 유용한 attempted authorization ref는 validator findings, run violation payload, 또는 `task_events.payload_json`에 기록해야 합니다. Observed product write가 이미 발생했다면 audit 또는 recovery를 위해 이런 violation Run을 record할 수 있지만, evidence sufficiency, detached verification, QA, acceptance, close readiness를 satisfy하면 안 됩니다. Corresponding Write Authorization은 unconsumed로 남아야 하며 violation과 compatibility basis에 따라 stale, revoked, expired로 mark될 수 있습니다.
+
 Response schema:
 
 ```yaml
@@ -875,7 +879,7 @@ RecordRunResponse:
   next_action: string
 ```
 
-`write_authorization_ref`는 committed Run이 Write Authorization을 consume할 때 non-null입니다.
+`write_authorization_ref`는 committed Run이 compatible Write Authorization을 성공적으로 consume할 때만 non-null입니다.
 
 State transition summary: shaping updates는 `shaping`을 유지하거나 `ready` 또는 `waiting_user`로 이동할 수 있습니다. Implementation은 `verifying` 쪽으로 이동합니다. Direct는 close-eligible이 되거나 work로 escalate할 수 있습니다. Verification input은 detached verification을 증명하지 않고 evaluator bundle context를 기록합니다.
 

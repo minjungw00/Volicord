@@ -49,7 +49,7 @@ Task는 사용자 가치 단위입니다. current mode, lifecycle phase, result,
 
 Change Unit은 product writes를 위한 scoped implementation unit입니다. purpose, non-goals, slice type, intended end-to-end path, autonomy boundary, allowed paths, allowed tools, validator profile, sensitive categories, approval needs, evidence expectations, QA expectations, dependencies, merge risk, completion conditions, evaluator focus를 기록합니다.
 
-모든 product write에는 intended write를 cover하는 active Change Unit이 필요합니다. Task는 하나 이상의 Change Units를 가질 수 있지만, current write의 scope가 되는 것은 active Change Unit뿐입니다. Core는 `prepare_write`를 통해 specific write attempt를 허용하며, gates가 pass하면 compatible Write Authorization을 create 또는 return합니다.
+모든 product write에는 intended write를 cover하는 active Change Unit이 필요합니다. Task는 하나 이상의 Change Units를 가질 수 있지만, current write의 scope가 되는 것은 active Change Unit뿐입니다. Core는 `prepare_write`를 통해 specific write attempt를 허용하며, gates가 pass하면 Write Authorization을 create하거나 같은 request의 idempotent replay에 대해 already committed response를 반환합니다.
 
 ### Autonomy Boundary
 
@@ -105,13 +105,15 @@ Sensitive action이 product trade-off, architecture choice, QA waiver, verificat
 
 ### Write Authorization
 
-Write Authorization은 `prepare_write`가 product write를 허용할 때 create 또는 return되는 durable state record입니다.
+Write Authorization은 `prepare_write`가 product write를 허용할 때 create되는 durable state record입니다.
 
 Task, active Change Unit, intended operation, intended paths, intended tools, intended commands, intended network targets, intended secret access, sensitive categories, baseline, approval refs, relevant Decision Packet refs, guarantee level, status, created time, Run에 의한 consumption을 기록합니다.
 
 Write Authorization은 그 자체로 scope가 아닙니다. Active scope와 gates 아래에서 Core가 specific write attempt를 허용했다는 evidence입니다.
 
 Write Authorization은 approval, evidence, verification, QA, acceptance, residual-risk visibility를 대체하지 않습니다.
+
+`authorization_effect=returned`는 같은 idempotency key, request hash, state basis를 가진 동일한 committed `prepare_write` request의 idempotent replay 또는 already committed response 반환에만 reserved됩니다. Distinct compatible `prepare_write` request는 distinct Write Authorization을 create합니다. Compatibility가 authorization을 reusable하게 만들지는 않습니다. Compatibility basis가 바뀌면 Core는 오래된 unconsumed authorization을 stale, expire, revoke할 수 있습니다.
 
 Write Authorization status는 record-level입니다.
 
@@ -430,8 +432,8 @@ Capability는 kernel이 write를 허용할지, rule을 얼마나 강하게 enfor
 | Product write attempted with no active Change Unit | block `prepare_write` |
 | Product write attempted when `scope_gate` is not `passed` | block or request scope confirmation |
 | Intended operation exceeds the active Change Unit Autonomy Boundary | block `prepare_write`; request user decision when product judgment can resolve it |
-| Implementation or direct Run recorded with no compatible unexpired, unconsumed Write Authorization | reject `record_run` or mark the Run blocked before evidence or close can rely on it |
-| Write Authorization consumed by a Run whose observed changes exceed authorized paths, tools, commands, network targets, or secret access | mark scope, evidence, approval, verification, and projections stale or blocked as appropriate; require compatible scope, approval, Decision Packet, or new write authorization before close |
+| Implementation or direct Run recorded with no compatible unexpired, unconsumed Write Authorization | `record_run`을 reject하거나 `runs.write_authorization_id`를 채우지 않는 violation/audit Run을 기록합니다. Evidence, verification, QA, acceptance, close는 이 Run에 의존할 수 없습니다. |
+| Run attempted with an invalid, stale, missing, consumed, or scope-exceeded Write Authorization | consumed로 기록하지 않습니다. 유용한 경우 attempted authorization ref를 validator findings, run violation payload, 또는 `task_events.payload_json`에 기록합니다. Scope, evidence, approval, verification, projections를 appropriate하게 stale 또는 blocked로 mark합니다. Authorization은 unconsumed로 남으며 stale, revoked, expired될 수 있습니다. |
 | Blocking product judgment detected with `decision_gate=not_required` | repair to `required` and request a Decision Packet |
 | `decision_gate=pending`, `resolved`, `deferred`, or product-judgment `blocked` without a linked Decision Packet | reject or repair by associating the canonical Decision Packet |
 | Product write attempted with required blocking Decision Packet absent or unresolved | block `prepare_write`; return a decision request rather than broad approval |
@@ -493,7 +495,7 @@ write_authorization_violation_detected
 | Sensitive approval denied | `waiting_user` | `blocked` | `approval_gate=denied` |
 | Approval scope drifts or expires | any non-terminal phase | `waiting_user` or `blocked` | `approval_gate=expired` |
 | Autonomy boundary violation | any non-terminal phase | `waiting_user` or `blocked` | violation recorded; Decision Packet requested when product judgment can resolve it; otherwise scope or policy blocker recorded |
-| `prepare_write` allows write | `ready` or `executing` | `executing` | create or return Write Authorization; active Run may proceed |
+| `prepare_write` allows write | `ready` or `executing` | `executing` | Write Authorization을 create하거나 idempotent replay에 대해 already committed response를 반환함; active Run may proceed |
 | `prepare_write` blocks write | any non-terminal phase | `waiting_user` or `blocked` | blocked reason recorded; `decision_gate`, `scope_gate`, or `approval_gate` updated according to blocker type |
 | Direct implementation and self-check recorded | `executing` | same phase with close eligibility or `waiting_user` | Run consumes compatible Write Authorization; artifacts and evidence recorded |
 | Work implementation recorded | `executing` | `verifying` | Run consumes compatible Write Authorization; evidence manifest updated |
@@ -560,11 +562,11 @@ Decision algorithm은 다음과 같습니다.
 10. Write 전에 적용되는 design-policy precondition checks를 실행합니다. Required unmet design preconditions는 policy에 따라 `blocked` 또는 `decision_required`를 반환합니다.
 11. Intended operation에 대한 Decision Packet requirements를 평가합니다. Required blocking Decision Packet이 absent, pending, blocked이거나 intended operation을 cover하지 않는 deferred 상태이면 write를 block하고, user judgment로 해결할 수 있을 때 `decision_required`를 반환합니다. Resolved Decision Packet은 active Change Unit, Autonomy Boundary, baseline, intended operation과 match해야 합니다.
 12. Surface capability checks를 실행합니다. Capability failures는 validator results, blocked reasons, guarantee display changes로 기록되며 capability를 first-class kernel gate로 만들지 않습니다.
-13. 모든 required checks가 pass하면 intended operation에 대한 compatible unexpired Write Authorization을 create 또는 return하고, decision을 record한 뒤 `allowed`를 반환합니다.
+13. 모든 required checks가 pass하면 intended operation에 대한 compatible unexpired Write Authorization을 create하거나 같은 request의 idempotent replay에 대해 already committed response를 반환하고, decision을 record한 뒤 `allowed`를 반환합니다.
 
 Required checks에는 active Task, active Change Unit, mode write eligibility, Autonomy Boundary compatibility, baseline freshness, intended paths, intended tools, intended commands, network targets, secret access, sensitive categories, approval scope, Decision Packet state, surface capability profile, design policy preconditions가 포함됩니다.
 
-`allowed` decision은 `status=allowed`인 Write Authorization을 create하거나 reference해야 합니다. Idempotent replay는 새 record를 만들지 않고 existing compatible authorization을 return할 수 있습니다. Blocked, approval-required, decision-required, state-conflict result는 attempted write에 대해 consumable Write Authorization을 만들면 안 됩니다.
+`allowed` decision은 `status=allowed`인 Write Authorization을 create하거나 reference해야 합니다. `authorization_effect=returned`는 같은 idempotency key, request hash, state basis를 가진 동일한 committed `prepare_write` request의 idempotent replay 또는 already committed response 반환에만 reserved됩니다. Distinct compatible request는 distinct Write Authorization을 create합니다. Compatibility가 authorization을 reusable하게 만들지는 않습니다. Blocked, approval-required, decision-required, state-conflict result는 attempted write에 대해 consumable Write Authorization을 만들면 안 됩니다. Compatibility basis가 바뀌면 Core는 오래된 unconsumed authorization을 stale, expire, revoke할 수 있습니다.
 
 Product judgment가 필요하면 `prepare_write`는 Decision Packet을 통해 user decision을 요청합니다. Product judgment를 broad approval로 바꾸면 안 됩니다. `approval_required`는 sensitive-change approval에만 사용합니다.
 
@@ -576,9 +578,11 @@ MCP를 사용할 수 없는 cooperative-only surface에서는 product writes를 
 
 Product writes를 report하는 implementation 및 direct `record_run` calls는 compatible, unexpired, unconsumed Write Authorization을 consume해야 합니다. Consumed authorization은 active Task, active Change Unit, baseline, intended operation, sensitive categories, approval refs, relevant Decision Packet refs, write에 필요한 guarantee level과 match해야 합니다.
 
+`runs.write_authorization_id`는 Run이 compatible Write Authorization을 성공적으로 consume할 때만 populated됩니다. Invalid, stale, missing, consumed, scope-exceeded authorization을 사용하려 한 violation 또는 audit Run은 `runs.write_authorization_id`를 consumed authorization으로 populate하면 안 됩니다. Audit에 유용한 attempted authorization ref는 validator findings, run violation payload, 또는 `task_events.payload_json`에 기록해야 합니다.
+
 Core는 observed changed paths를 consumed Write Authorization 및 active Change Unit 양쪽과 비교해 verify해야 합니다. 또한 command results, artifacts, surface telemetry, declared run data에서 observations가 available한 경우 recorded tools, commands, network targets, secret access도 authorization과 비교해 verify합니다.
 
-Product writes가 report되지 않았더라도 Run kind, active Change Unit, intended operation 때문에 Write Authorization이 required인 경우 authorization이 missing이면 Core는 `record_run`을 reject합니다. Observed product writes가 이미 발생했지만 authorization이 missing이거나 exceeded된 경우 Core는 recovery 및 audit을 위해 blocked 또는 violation Run을 record할 수 있습니다. 그 Run은 evidence sufficiency를 satisfy하면 안 되며, Core는 affected scope, evidence, approval, verification, projection state를 stale 또는 blocked로 mark합니다.
+Product writes가 report되지 않았더라도 Run kind, active Change Unit, intended operation 때문에 Write Authorization이 required인 경우 authorization이 missing이면 Core는 `record_run`을 reject합니다. Observed product writes가 이미 발생했지만 authorization이 missing이거나 exceeded된 경우 Core는 recovery 및 audit을 위해 blocked 또는 violation Run을 record할 수 있습니다. 그 Run은 evidence sufficiency, detached verification, QA, acceptance, close readiness를 satisfy하면 안 되며, Core는 affected scope, evidence, approval, verification, projection state를 stale 또는 blocked로 mark합니다. Corresponding Write Authorization이 있으면 unconsumed로 남고, violation과 compatibility basis에 따라 stale, revoked, expired로 mark될 수 있습니다.
 
 Blocked 또는 violation Run에 기대어 Task를 close할 수 없습니다. Compatible scope, approval, Decision Packet resolution, evidence update, verification, 또는 새 write authorization과 Run으로 state가 repair되어야 합니다.
 
@@ -632,7 +636,7 @@ Residual-risk acceptance는 known remaining risk가 requested close를 위해 vi
 | Kernel Authority Invariant | Kernel enforcement points |
 |---|---|
 | Chat is not state. | State-changing actions create state records and `task_events`; projections and chat text cannot mutate state without MCP action or reconcile. |
-| Product write requires an active scoped Change Unit. | `prepare_write` blocks write-capable actions without active Task, active Change Unit, and passed scope gate; allowed writes create or return Write Authorization, and implementation/direct Runs must consume a compatible authorization. |
+| Product write requires an active scoped Change Unit. | `prepare_write` blocks write-capable actions without active Task, active Change Unit, and passed scope gate; allowed writes create Write Authorization or return the committed idempotent replay response, and implementation/direct Runs must consume a compatible authorization. |
 | Sensitive change requires explicit approval. | `prepare_write` detects sensitive categories, checks approval gate and approval scope, and blocks denied, expired, missing, or drifted approval; approval cannot satisfy product judgment outside its sensitive scope. |
 | Blocking product judgment requires a recorded Decision Packet. | `decision_gate`, `prepare_write`, `record_run`, and `close_task` require a canonical Decision Packet for blocking product judgment; unresolved or incompatible blocking packets prevent affected writes and close. |
 | Completion requires evidence coverage where evidence is required. | `close_task` requires `evidence_gate=sufficient` when evidence applies; required evidence cannot be waived for passed completion. |

@@ -794,8 +794,11 @@ expected_state:
     run_id: RUN-WRITE-003
     kind: implementation
     status: violation
+    write_authorization_id: null
     observed_changes:
       changed_paths: ["src/a.ts", "src/b.ts"]
+    violation_payload:
+      attempted_write_authorization_id: WA-WRITE-003
     evidence_sufficiency_allowed: false
   write_authorization:
     write_authorization_id: WA-WRITE-003
@@ -1157,6 +1160,8 @@ expected_error:
 ```yaml
 scenario_id: CONN-journey-card-shown-before-significant-resume
 initial_state:
+  surface:
+    guarantee_level: cooperative
   active_task:
     task_id: TASK-RESUME-001
     state_version: 42
@@ -1166,6 +1171,7 @@ initial_state:
     gates:
       scope_gate: passed
       decision_gate: pending
+      approval_gate: not_required
       evidence_gate: partial
   active_change_unit:
     change_unit_id: CU-RESUME-001
@@ -1213,6 +1219,16 @@ expected_state:
         active_change_unit_ref:
           record_kind: change_unit
           record_id: CU-RESUME-001
+        write_authority_summary:
+          active_change_unit_ref:
+            record_kind: change_unit
+            record_id: CU-RESUME-001
+          write_authorization_ref: null
+          approval_status: not_required
+          guarantee_display:
+            level: cooperative
+            notes: []
+          note: "Autonomy Boundary is judgment latitude, not write authority."
         active_decision_packet_refs:
           - record_kind: decision_packet
             record_id: DEC-RESUME-001

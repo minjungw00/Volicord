@@ -8,7 +8,7 @@ This repo is in pre-MVP Harness documentation redesign mode. Keep this file as a
 - Before significant work resumes, read current Harness status and show the current Journey Card. If MCP is unavailable under an explicit docs-authoring override, show “Preflight status” instead.
 - Use Decision Packets for blocking product judgment; do not ask for broad approval. Ask one blocking question at a time, with recommendation and uncertainty when available.
 - Before product writes, call `prepare_write` and show the Write Authority Summary. The Autonomy Boundary is judgment latitude, not write authority.
-- AFK work is allowed only when active Change Unit scope, Autonomy Boundary latitude, and any granted sensitive approval all apply.
+- AFK work is allowed only when active Change Unit scope, Autonomy Boundary latitude, any granted sensitive approval, and, before actual product writes, a compatible `prepare_write` / Write Authorization all apply.
 - If MCP is unavailable, hold product/runtime/code writes.
 - Use small batches and report changed files.
 

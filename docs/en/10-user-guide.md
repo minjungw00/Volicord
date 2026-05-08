@@ -26,7 +26,7 @@ Start with the scope and questions.
 If this is small, handle it as direct; if it grows, move it to work.
 Show the Decision Packet with options, recommendation, and uncertainty.
 Approved. The scope is only what you just described.
-Proceed AFK only when active Change Unit scope and Autonomy Boundary latitude both apply; sensitive categories still need granted approval.
+Proceed AFK only when active Change Unit scope and Autonomy Boundary latitude both apply; sensitive categories still need granted approval, and actual product writes still need a compatible `prepare_write` Write Authorization.
 Start detached verify.
 Decide whether Manual QA is needed.
 Show residual risk before I accept.
@@ -80,6 +80,7 @@ Scope: login form, login API call, session storage
 Decision Gate: pending
 Decision Packet: DEC-0012 failed-login UX
 Autonomy Boundary: may implement agreed login flow details only
+Write Authority: not yet requested
 Approval: dependency_change required
 Evidence: none
 Verification: not started
@@ -94,6 +95,7 @@ Look for these things.
 - Does the request match the scope?
 - What Decision Packet, if any, do I need to answer?
 - What may the agent do inside the Autonomy Boundary?
+- Is Write Authority not yet requested, blocked, or allowed for the intended write?
 - What remains among approval, evidence, verification, Manual QA, residual risk, and acceptance?
 - Is the next action safe to proceed with?
 
@@ -112,6 +114,7 @@ Look for these lines:
 - `Next action`: what the agent thinks is safe to do next
 - `Decision Packet`: whether a product judgment is waiting for you
 - `Autonomy Boundary`: what the agent may do without another question
+- `Write Authority`: whether a specific `prepare_write` authorization exists for the intended write; it is separate from Autonomy Boundary
 - `Evidence`, `Verification`, and `Manual QA`: what has been checked
 - `Residual risk`: what uncertainty or trade-off remains
 - `Projection`: whether the readable view is current enough to trust
@@ -122,6 +125,13 @@ Useful phrases:
 Pause there. Show the Decision Packet first.
 That next action is fine. Continue inside that boundary.
 Refresh the Journey Card after this run.
+```
+
+When a write is already authorized, the line should stay specific:
+
+```text
+Write Authority: WA-0017 allowed for src/auth/login.ts and tests/auth/login.test.ts
+Guarantee: cooperative; changed-path validation detects violations after the fact
 ```
 
 ## Reading A Decision Packet
@@ -200,9 +210,9 @@ The user may accept verification risk and close the task, but that is a risk-acc
 
 ## What The Agent May Do AFK
 
-AFK implementation means the agent may continue while you are away. It is allowed only when active Change Unit scope and Autonomy Boundary latitude both apply, with granted approval separately required when sensitive categories apply.
+AFK implementation means the agent may continue while you are away. It is allowed only when active Change Unit scope, Autonomy Boundary latitude, and granted sensitive approval where applicable all apply. Actual product writes also require a compatible `prepare_write` / Write Authorization before writing.
 
-The Autonomy Boundary is not a scope grant. The agent still needs `prepare_write`, active Change Unit scope, allowed paths, allowed tools, allowed commands, and sensitive approval where applicable.
+The Autonomy Boundary is not a scope grant or write permission. The agent still needs `prepare_write`, active Change Unit scope, allowed paths, allowed tools, allowed commands, network targets, secret access, and sensitive approval where applicable.
 
 The agent may usually implement agreed details, run allowed checks, collect evidence, update summaries, and stop with a clear blocker.
 

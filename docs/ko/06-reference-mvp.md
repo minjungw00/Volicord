@@ -67,7 +67,7 @@ Exit criteria:
 - sensitive dependency 또는 schema change가 approval을 요구함
 - active Autonomy Boundary 밖의 intended work가 blocked되거나 Decision Packet으로 route됨
 - unresolved 또는 incompatible blocking Decision Packets가 affected writes를 block함
-- allowed `prepare_write`가 durable Write Authorization ref를 create 또는 return함
+- allowed `prepare_write`가 durable Write Authorization ref를 create하고, idempotent replay는 already committed response를 반환함
 - approval scope drift가 approval을 expire 또는 block할 수 있음
 - Change Unit shaping이 필요할 때 end-to-end path intent, user-judgment requirements, AFK stop conditions, dependency metadata를 기록함
 - raw artifacts가 hash와 redaction metadata와 함께 저장됨
@@ -670,9 +670,11 @@ CREATE TABLE locks (
 
 `tasks.projection_status`는 TASK projection status summary입니다. Per-kind projection freshness는 `projection_jobs`와 APR, RUN-SUMMARY, EVIDENCE-MANIFEST, EVAL, DIRECT-RESULT, optional MANUAL-QA, optional TDD-TRACE, 기타 enabled projection kinds의 relevant projection records 또는 artifact refs를 통해 tracked됩니다. 하나의 Task field가 모든 projection freshness를 소유한다고 취급하면 안 됩니다.
 
-`write_authorizations`는 `prepare_write`의 durable allow decisions를 저장합니다. `dry_run=false`이고 `prepare_write`가 `allowed`를 반환하면 Core는 compatible `write_authorizations` row를 create 또는 return하고 그 ref를 반환합니다. `updated_at`은 authorization status가 바뀔 때마다 변경됩니다. Status history는 `task_events`에 남습니다.
+`write_authorizations`는 `prepare_write`의 durable allow decisions를 저장합니다. `dry_run=false`이고 `prepare_write`가 `allowed`를 반환하면 Core는 distinct compatible request마다 distinct `write_authorizations` row를 create하고 그 ref를 반환합니다. `authorization_effect=returned`는 같은 idempotency key, request hash, state basis를 가진 동일한 committed `prepare_write` request와 response의 idempotent replay에만 reserved됩니다. Distinct compatible request는 distinct Write Authorization을 create합니다. Compatibility가 authorizations를 reusable하게 만들지는 않습니다. Compatibility basis가 바뀌면 Core는 오래된 unconsumed authorization을 stale, expire, revoke할 수 있습니다. `updated_at`은 authorization status가 바뀔 때마다 변경됩니다. Status history는 `task_events`에 남습니다.
 
 Implementation 및 direct `record_run` calls는 `runs.write_authorization_id`를 기록하고 authorization을 `consumed_by_run_id`, `consumed_at`과 함께 consumed로 mark하여 compatible unexpired authorization을 consume합니다. Reciprocal links인 `write_authorizations.consumed_by_run_id`와 `runs.write_authorization_id`는 같은 Core transaction 안에서 서로를 가리켜야 합니다. Mismatch는 invalid state이며, `recover`가 이를 repair하거나 affected close를 block해야 합니다. Authorization을 consume했다고 observed changes가 그 자체로 valid해지는 것은 아닙니다. Changed-path, tool, command, network, secret, Change Unit, approval, baseline, Decision Packet validation이 committed Run을 계속 verify합니다.
+
+`runs.write_authorization_id`는 Run이 compatible Write Authorization을 성공적으로 consume할 때만 populated됩니다. Invalid, stale, missing, consumed, scope-exceeded authorization을 사용하려 한 violation 또는 audit Run은 `runs.write_authorization_id`를 populate하면 안 됩니다. 유용한 경우 attempted authorization ref를 validator findings, run violation payload, 또는 `task_events.payload_json`에 저장합니다. Observed product write가 이미 발생했다면 audit 또는 recovery를 위해 이런 Run을 record할 수 있지만, evidence sufficiency, detached verification, QA, acceptance, close readiness를 satisfy하면 안 됩니다. Corresponding Write Authorization은 unconsumed로 남으며 violation과 compatibility basis에 따라 stale, revoked, expired로 mark될 수 있습니다.
 
 Write Authorizations는 storage상 single-use입니다. `runs.write_authorization_id`의 unique partial index는 하나의 authorization을 둘 이상의 committed Run row가 consume하지 못하게 합니다. Idempotent replay는 original Run과 response metadata를 반환하며, 두 번째 Run row를 insert하지 않습니다.
 
