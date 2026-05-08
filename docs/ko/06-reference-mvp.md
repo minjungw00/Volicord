@@ -679,7 +679,7 @@ CREATE TABLE locks (
 
 `task_events`는 `state.sqlite` 안의 append-only event history로 남습니다. MVP는 별도의 event store를 도입하지 않습니다. `task_events.state_version`은 affected scope의 resulting version을 기록합니다. Task events에서는 `tasks.state_version`이고, `task_id=null`인 project-level events에서는 `project_state.state_version`입니다.
 
-`tool_invocations`는 original committed response를 반환하는 데 필요한 request replay metadata를 저장합니다. `tool_invocations.state_version`은 `ToolResponseBase.state_version`에 반환되는 것과 같은 primary affected-scope version을 저장합니다. Core가 primary Task를 resolve하면 Task State Version이고, 그렇지 않으면 Project State Version입니다. 다른 `request_hash`로 idempotency key를 reuse하면 `STATE_CONFLICT`를 반환합니다.
+`tool_invocations`는 original committed response를 반환하는 데 필요한 request replay metadata를 저장합니다. `tool_invocations.request_hash`는 MCP API idempotency rules가 정의한 canonical request hash를 저장합니다. 즉 canonical JSON, UTF-8, `tool_name`, schema-normalized request body와 optional fields, sorted object keys, schema가 명시적으로 order-insignificant라고 하지 않는 한 schema-ordered arrays, NFC Unicode strings, 그리고 `request_id`와 `idempotency_key`만 제외하는 envelope coverage를 사용합니다. `tool_invocations.state_version`은 `ToolResponseBase.state_version`에 반환되는 것과 같은 primary affected-scope version을 저장합니다. Core가 primary Task를 resolve하면 Task State Version이고, 그렇지 않으면 Project State Version입니다. 다른 `request_hash`로 idempotency key를 reuse하면 `STATE_CONFLICT`를 반환합니다.
 
 `tasks.projection_status`는 TASK projection status summary입니다. Per-kind projection freshness는 `projection_jobs`와 APR, RUN-SUMMARY, EVIDENCE-MANIFEST, EVAL, DIRECT-RESULT, optional MANUAL-QA, optional TDD-TRACE, 기타 enabled projection kinds의 relevant projection records 또는 artifact refs를 통해 tracked됩니다. 하나의 Task field가 모든 projection freshness를 소유한다고 취급하면 안 됩니다.
 
@@ -885,6 +885,8 @@ BaselineCapture:
 
 Relevant HEAD, dirty diff, allowed path contents, approval scope, verification bundle inputs가 captured baseline과 더 이상 match하지 않으면 baseline은 stale입니다. Stale baseline은 affected records에 따라 approval, evidence, verification을 stale로 mark할 수 있습니다.
 
+`tree_hash`는 ignore rules가 ignored paths를 제외한 뒤 deterministic tree manifest에서 계산합니다. 각 entry는 leading `./`가 없는 normalized relative POSIX path를 사용합니다. Path strings는 sorting과 hashing 전에 Unicode NFC로 normalize하며 paths는 normalization 후 sort합니다. Regular file content는 저장된 bytes 그대로 hash하고 line-ending normalization을 하지 않으며, entry에는 content hash, file size, available한 경우 executable bit를 포함합니다. Symlink entry는 implementation이 symlink를 명시적으로 disallow하고 그 exclusion 또는 block을 record하지 않는 한 dereferenced content가 아니라 link target을 hash합니다. Equivalent snapshots가 같은 `tree_hash`를 만들도록 final manifest는 hashing 전에 canonical하게 serialize합니다.
+
 ## Verification Bundle Shape
 
 `harness.launch_verify`는 detached verification 또는 manual evaluator handoff를 위한 bundle artifact를 만듭니다. Bundle은 raw evidence metadata이지 Eval verdict가 아닙니다.
@@ -934,6 +936,8 @@ Rules:
 - compare managed hash before overwrite
 - create a reconcile item for managed drift
 - keep projection failure separate from Task result
+
+`managed_hash`는 projector canonicalization 후 projector가 소유하는 managed block body에서만 계산합니다. `HARNESS:BEGIN`과 `HARNESS:END` marker lines는 hash input에서 제외합니다. Projector는 hashing 전에 line endings를 LF로 normalize하고 해당 block의 projection rules에 따라 meaningful whitespace를 preserve합니다. `managed_hash`는 drift detection value일 뿐이며 Markdown projection을 canonical state로 만들지 않습니다.
 
 ### Projection Worker Execution
 

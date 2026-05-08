@@ -93,7 +93,9 @@ Managed block은 projector가 overwrite할 수 있는 유일한 Markdown area다
 
 - Managed block content는 committed state record와 artifact ref에서 생성된다.
 - Projector는 state version, projection version, rendered timestamp, managed hash를 기록한다.
+- Managed hash는 `HARNESS:BEGIN`과 `HARNESS:END` marker lines를 제외한 projector-owned managed block body에서 계산하며, line endings를 LF로 normalize하고 projector rules가 요구하는 meaningful whitespace를 preserve한다.
 - Rendering 전에 managed block hash가 last projected hash와 다르면 projector는 reconcile item을 create/update한다.
+- Managed hash는 drift detection에만 사용하며 rendered Markdown을 canonical state로 만들지 않는다.
 - Projector는 managed block 내부의 direct edit를 accepted state로 조용히 취급하지 않는다.
 - Managed block을 re-render할 때 unrelated human-editable section은 preserve해야 한다.
 - Failed render는 projection freshness를 `failed` 또는 `stale`로 mark하며 state를 rollback하지 않는다.

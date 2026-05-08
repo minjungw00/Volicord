@@ -288,6 +288,8 @@ fixtures:
 
 Conformance는 captured Core state, `task_events`, validator results, artifact registry/file integrity, projection job 또는 freshness state, returned error code를 통해 behavior를 증명해야 합니다. Rendered Markdown, Journey Card prose, status prose, agent prose만 matching해서는 fixture를 pass시킬 수 없습니다.
 
+Fixture runners는 `request_hash`, baseline `tree_hash`, projection `managed_hash`에 대해 reference implementation과 같은 canonicalization rules를 사용해야 합니다. Detailed algorithms는 MCP API, Reference MVP storage, Document Projection docs가 계속 소유합니다. Conformance fixtures는 그 source-of-truth boundaries를 다시 정의하지 않고 deterministic behavior를 assert합니다.
+
 ## Agency, Stewardship, Context Suite
 
 Agency, stewardship, context hygiene는 MVP conformance suite입니다. 이 suite들은 `prepare_write`, `request_user_decision`, `record_user_decision`, `record_manual_qa`, `close_task`, `next` 같은 Core entrypoint와 Core를 호출하는 operator action을 통해 state behavior를 검증합니다. Journey Card, Decision Packet, residual-risk, status prose의 문구가 맞는지만 보고 통과 처리하면 안 됩니다.

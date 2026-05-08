@@ -93,7 +93,9 @@ Rules:
 
 - Managed block content is generated from committed state records and artifact refs.
 - The projector records the state version, projection version, rendered timestamp, and managed hash.
+- The managed hash is computed from the projector-owned managed block body, excluding the `HARNESS:BEGIN` and `HARNESS:END` marker lines, after normalizing line endings to LF and preserving meaningful whitespace required by the projector rules.
 - If the managed block hash differs from the last projected hash before rendering, the projector creates or updates a reconcile item.
+- The managed hash is used only for drift detection; it never makes the rendered Markdown canonical state.
 - The projector does not silently treat a direct edit inside a managed block as accepted state.
 - Re-rendering a managed block must preserve unrelated human-editable sections.
 - A failed render marks projection freshness `failed` or `stale`; it does not roll back state.
