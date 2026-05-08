@@ -198,7 +198,7 @@ Long-running `work` task에는 이 section을 사용한다. 명시적으로 huma
 - assumption / expiry condition:
 
 ### Decisions in Force
-- DP-0001:
+- DEC-0001:
 
 ### Domain Terms in Force
 - term / meaning / code representation:
@@ -499,7 +499,7 @@ updated_at: 2026-05-06T09:50:00+09:00
 | Item | Status | Evidence Refs | Notes |
 |---|---|---|---|
 | vertical_slice_shape | passed | CU-01 | |
-| decision_quality_check | passed | DP-0001 | |
+| decision_quality_check | passed | DEC-0001 | |
 | autonomy_boundary_check | passed | CU-01 | |
 | feedback_loop_check | passed | TDD-0001, LOG-0001 | |
 | tdd_trace_required | passed | TDD-0001 | |
@@ -938,8 +938,8 @@ Appendix templates는 명시적으로 enabled되지 않는 한 optional variants
 ---
 doc_type: decision_packet
 projection_kind: DEC
-projection_id: DEC-0001
-decision_packet_id: DP-0001
+projection_id: DEC-PROJ-0001
+decision_packet_id: DEC-0001
 task_id: TASK-0001
 change_unit_id: CU-01
 decision_kind: product_tradeoff

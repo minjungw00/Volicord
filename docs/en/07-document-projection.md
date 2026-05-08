@@ -152,6 +152,8 @@ Persisted `JOURNEY-CARD` Markdown is optional. Current-position Journey Card out
 
 MVP Decision Packet visibility is required through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources. Standalone `DEC` / `DECISION-PACKET` Markdown is optional unless the standalone Decision Packet projection feature is enabled.
 
+Decision Packet record IDs use `DEC-*`. `DEC` as a `projection_kind` is only the projection kind label; when a standalone projection needs its own identity, use a separate `projection_id` such as `DEC-PROJ-0001`.
+
 ## Required MVP Templates
 
 ### TASK
@@ -245,6 +247,8 @@ Purpose: an optional readable projection of a Decision Packet for product judgme
 Sources: `state.sqlite.decision_packets`, related Task and Change Unit refs, affected gates, related approval or reconcile records, residual-risk refs, evidence refs, artifact refs, and decision events.
 
 Boundary: the Markdown packet is not the decision authority. Only the canonical Decision Packet and recorded user decision or reconcile action can affect `decision_gate`, approvals, Autonomy Boundary, residual risk, acceptance, or close.
+
+Identity: the Decision Packet record keeps its `DEC-*` ID. Standalone Markdown projections may use `projection_kind: DEC`, but that kind label is not the projection identity; use `projection_id: DEC-PROJ-*` when the projection requires a distinct ID.
 
 ### JOURNEY-CARD
 

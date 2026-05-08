@@ -152,6 +152,8 @@ Persisted `JOURNEY-CARD` Markdown은 optional이다. `harness.status`, `harness.
 
 MVP Decision Packet visibility는 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 required다. Standalone `DEC` / `DECISION-PACKET` Markdown은 standalone Decision Packet projection feature가 enabled인 경우가 아니면 optional이다.
 
+Decision Packet record ID는 `DEC-*`를 사용한다. `projection_kind`의 `DEC`는 projection kind label일 뿐이다. Standalone projection에 별도 identity가 필요하면 `DEC-PROJ-0001` 같은 별도 `projection_id`를 사용한다.
+
 ## Required MVP Templates
 
 ### TASK
@@ -245,6 +247,8 @@ Source: `manual_qa_records` plus artifact refs. User-facing card는 `Manual QA: 
 Source: `state.sqlite.decision_packets`, related Task와 Change Unit ref, affected gate, related approval 또는 reconcile record, residual-risk ref, evidence ref, artifact ref, decision event.
 
 Boundary: Markdown packet은 decision authority가 아니다. Canonical Decision Packet과 기록된 user decision 또는 reconcile action만 `decision_gate`, approval, Autonomy Boundary, residual risk, acceptance, close에 영향을 줄 수 있다.
+
+Identity: Decision Packet record는 자신의 `DEC-*` ID를 유지한다. Standalone Markdown projection은 `projection_kind: DEC`를 사용할 수 있지만, 이 kind label은 projection identity가 아니다. Projection에 distinct ID가 필요하면 `projection_id: DEC-PROJ-*`를 사용한다.
 
 ### JOURNEY-CARD
 
