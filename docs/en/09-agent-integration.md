@@ -20,11 +20,12 @@ An integrated surface should help the agent:
 - shape and update the Autonomy Boundary for what the agent may do without another user decision
 - check design-quality policies when they apply
 - call MCP tools for state changes
-- respect `prepare_write` before product writes
+- respect `prepare_write` and returned Write Authorization before product writes
+- show Write Authority separately from Autonomy Boundary
 - request or show Decision Packets for blocking product judgment
 - record runs, artifacts, evidence, user decisions, QA, and acceptance
 - distinguish approval, product decision, QA waiver, verification waiver, residual-risk acceptance, and final acceptance
-- surface residual risk before acceptance or risk-accepted close
+- make known close-relevant residual risk visible before any successful close
 - launch or package detached verification
 - refresh or reconcile projections
 
@@ -45,14 +46,16 @@ Always-on rules should be short. They should tell the agent when to use the harn
 
 Always-on rules should also preserve user agency:
 
-- show the Journey Card before significant work resumes
+- show the current Journey Card before significant work resumes
 - do not ask for broad approval when a Decision Packet is required
 - ask one blocking question at a time, with a recommendation and uncertainty when available
-- allow AFK implementation only inside the approved Change Unit and Autonomy Boundary
-- treat the Autonomy Boundary as judgment latitude, not a scope grant
+- allow AFK implementation only inside the active scoped Change Unit, Autonomy Boundary, and any granted sensitive approval that applies
+- treat the Autonomy Boundary as judgment latitude, not write authority
+- show the Write Authority summary when work is about to write
+- hold product writes if MCP is unavailable
 - keep planning direction, product trade-offs, QA waiver, verification risk acceptance, and final acceptance human-held
 
-Autonomy Boundary is not a scope grant. Allowed paths, tools, commands, network targets, secret access, and sensitive approvals still come from Change Unit scope, approval, and `prepare_write`.
+Write Authority is the current write boundary from the active scoped Change Unit's scope, `prepare_write`, approval, allowed paths/tools/commands/network/secrets, and compatible Decision Packet refs that remove product-judgment blockers. Decision Packets do not authorize writes by themselves. The Autonomy Boundary only says what judgment the agent may exercise without another user decision.
 
 They should not contain full state transition tables, MCP schemas, full templates, long design playbooks, or all historical project context.
 
@@ -66,10 +69,11 @@ The skill/playbook layer teaches procedure:
 - how to form a Change Unit
 - how to shape or update the Autonomy Boundary
 - how to request or show Decision Packets for blocking product judgment
+- how to show Write Authority before writes and record the compatible Write Authorization with the run
 - how to record user decisions
 - how to distinguish approval, product decision, QA waiver, verification waiver, residual-risk acceptance, and final acceptance
 - how to record TDD trace, evidence, Manual QA, and acceptance
-- how to surface residual risk before acceptance or risk-accepted close
+- how to make known close-relevant residual risk visible before any successful close, require accepted Residual Risk refs for risk-accepted close, and record acceptance only after close-relevant residual risk is visible
 - why work verification must be detached
 - how to handle stale projection and reconcile
 
@@ -215,25 +219,24 @@ Usually push:
 - Journey Card
 - active Decision Packet summary
 - Autonomy Boundary summary
-- active Task status and next action
-- active Change Unit scope
+- Write Authority summary
+- active scoped Change Unit
 - acceptance criteria snapshot
-- allowed paths and tools
-- approval status when relevant
-- latest evidence manifest and run summary refs
-- relevant policy warnings
+- approval status
+- latest evidence manifest/run refs
 - residual risk summary when close or acceptance is near
 
 Usually pull:
 
-- older PRDs, old designs, and closed issues
-- long logs and large diffs
-- module map
+- older PRDs
+- old designs
+- closed issues
+- long logs
+- module maps
 - interface contracts
 - domain language
 - coding standards
 - TDD guidance
-- architecture playbooks
 
 Evaluators should receive a tighter verification bundle that includes:
 
@@ -252,6 +255,12 @@ Evaluators should receive a tighter verification bundle that includes:
 - forbidden patterns
 
 This context model supports the Context Hygiene policy: current state and evidence are preferred over stale chat or old docs.
+
+## Direct Fast Path
+
+For small direct work, the agent should keep Harness mostly invisible: define a narrow active scope, call `prepare_write`, make the change, record changed paths, self-check evidence, and close if no blocker appears.
+
+If scope, risk, uncertainty, or file spread grows, escalate the same Task to `work` instead of turning direct mode into broad autonomy.
 
 ## Fallback Semantics
 
@@ -275,7 +284,9 @@ Use when risk requires separation. The connector launches work or verification i
 
 ### MCP Unavailable
 
-If MCP is unavailable, the connector must not claim authoritative state updates. For product writes, the safe behavior is to hold the write and direct the user/operator to reconnect or diagnose MCP. Stronger profiles may also enforce a preventive block.
+If MCP is unavailable, the connector must not claim authoritative state updates. For product/runtime/code writes, the safe behavior is to hold the write and direct the user/operator to reconnect or diagnose MCP. Stronger profiles may also enforce a preventive block.
+
+A pre-MVP Harness documentation-authoring batch may proceed only under an explicit `DOCS_AUTHORING_OVERRIDE` with an exact path allowlist. The connector must label this as a documentation-maintainer override, not Core authorization, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, or a canonical state transition.
 
 ### Weak Guard
 
@@ -290,7 +301,7 @@ Projection staleness is reported separately from state. A connector may continue
 The connector should name the missing capability, not the product name. Example:
 
 ```text
-The connected profile does not provide pre-tool guard. This work needs sidecar guard, another profile, or a smaller approved Change Unit.
+The connected profile does not provide pre-tool guard. This work needs sidecar guard, another profile, or a smaller active scoped Change Unit.
 ```
 
 ## Reference Surface Contract
@@ -317,15 +328,17 @@ Connector conformance should prove that a profile can uphold the common contract
 Overview scenarios:
 
 - status with and without an active Task
-- Journey Card shown before significant work resumes
+- current Journey Card shown before significant work resumes as required
 - intake classification into advisor/direct/work
 - work shaping with shared design and decisions
 - Change Unit scope and vertical/horizontal exception handling
 - one blocking question with recommendation and uncertainty when available
 - Decision Packet shown instead of broad approval for blocking product judgment
 - Autonomy Boundary breach stops or routes to Decision Packet
-- AFK work remains inside Change Unit and Autonomy Boundary
+- AFK work remains inside active scoped Change Unit, Autonomy Boundary, and any granted sensitive approval that applies
 - `prepare_write` allowed and blocked paths
+- Write Authorization created for allowed writes and exposed through Write Authority summary
+- write-capable `record_run` consumes a compatible Write Authorization
 - sensitive approval request, granted, denied, and expired paths
 - `record_run` with artifacts and evidence update
 - direct result projection
@@ -334,7 +347,10 @@ Overview scenarios:
 - Manual QA required, passed, failed, and waived
 - QA waiver with product/user risk routes through Decision Packet
 - acceptance required and recorded
-- residual risk shown before acceptance or risk-accepted close
+- acceptance focus includes residual risk visibility before acceptance is requested
+- Known close-relevant residual risk must be visible before any successful close
+- Risk-accepted close additionally requires accepted Residual Risk refs
+- Acceptance, when required, can be recorded only after close-relevant residual risk is visible
 - stale projection and reconcile flow
 - generated file drift detection
 - capability fallback when a required tier is missing

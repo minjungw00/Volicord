@@ -20,11 +20,12 @@ Integrated surface는 agent가 다음을 할 수 있게 도와야 한다.
 - 사용자 판단 없이 agent가 진행할 수 있는 일을 Autonomy Boundary로 shaping/update
 - design-quality policy가 적용될 때 check
 - state change에는 MCP tool call 사용
-- product write 전 `prepare_write` 존중
+- product write 전 `prepare_write`와 반환된 Write Authorization 존중
+- Write Authority를 Autonomy Boundary와 별도로 표시
 - blocking product judgment에는 Decision Packet을 request 또는 display
 - run, artifact, evidence, user decision, QA, acceptance 기록
 - approval, product decision, QA waiver, verification waiver, residual-risk acceptance, final acceptance 구분
-- acceptance 또는 risk-accepted close 전에 residual risk 표시
+- successful close 전에 알려진 close-relevant residual risk를 visible하게 표시
 - detached verification launch 또는 package
 - projection refresh 또는 reconcile
 
@@ -45,14 +46,16 @@ Always-on rule은 짧아야 한다. Agent에게 언제 harness를 쓰는지, sta
 
 Always-on rule은 user agency도 보존해야 한다.
 
-- 중요한 work를 재개하기 전에 Journey Card를 보여준다.
+- 중요한 work를 재개하기 전에 현재 Journey Card를 보여준다.
 - Decision Packet이 필요한 상황을 포괄적인 승인 질문으로 뭉개지 않는다.
 - 한 번에 하나의 blocking question만 묻고, 가능하면 recommendation과 uncertainty를 함께 제시한다.
-- AFK implementation은 approved Change Unit과 Autonomy Boundary 안에서만 허용한다.
-- Autonomy Boundary는 judgment latitude이지 scope grant가 아니다.
+- AFK implementation은 active scoped Change Unit, Autonomy Boundary, 적용되는 granted sensitive approval 안에서만 허용한다.
+- Autonomy Boundary는 judgment latitude이지 write authority가 아니다.
+- Work가 write를 시작하려 할 때 Write Authority summary를 보여준다.
+- MCP가 unavailable이면 product write를 hold한다.
 - Planning direction, product trade-off, QA waiver, verification risk acceptance, final acceptance는 사용자가 쥔다.
 
-Autonomy Boundary는 scope grant가 아니다. Allowed path, tool, command, network target, secret access, sensitive approval은 여전히 Change Unit scope, approval, `prepare_write`에서 온다.
+Write Authority는 active scoped Change Unit의 scope, `prepare_write`, approval, allowed path/tool/command/network/secret, product-judgment blocker를 제거하는 compatible Decision Packet ref에서 나온 현재 write boundary다. Decision Packet은 그 자체로 write를 authorize하지 않는다. Autonomy Boundary는 agent가 추가 user decision 없이 행사할 수 있는 judgment만 설명한다.
 
 Always-on rule에는 full state transition table, MCP schema, full template, 긴 design playbook, 모든 historical project context를 넣지 않는다.
 
@@ -66,10 +69,11 @@ Skill/playbook layer는 절차를 가르친다.
 - Change Unit을 어떻게 form할지
 - Autonomy Boundary를 어떻게 shaping/update할지
 - blocking product judgment에 Decision Packet을 어떻게 request 또는 display할지
+- write 전 Write Authority를 어떻게 보여주고 compatible Write Authorization을 run과 함께 기록할지
 - user decision을 어떻게 기록할지
 - approval, product decision, QA waiver, verification waiver, residual-risk acceptance, final acceptance를 어떻게 구분할지
 - TDD trace, evidence, Manual QA, acceptance를 어떻게 record할지
-- acceptance 또는 risk-accepted close 전에 residual risk를 어떻게 보여줄지
+- successful close 전에 알려진 close-relevant residual risk를 visible하게 하고, risk-accepted close에는 accepted Residual Risk refs를 요구하며, required acceptance는 close-relevant residual risk가 visible한 뒤에만 record하는 방법
 - work verification이 왜 detached되어야 하는지
 - stale projection과 reconcile을 어떻게 처리할지
 
@@ -215,25 +219,24 @@ Implementation agent에게는 작은 current context를 push하고, 큰 referenc
 - Journey Card
 - active Decision Packet summary
 - Autonomy Boundary summary
-- active Task status와 next action
-- active Change Unit scope
+- Write Authority summary
+- active scoped Change Unit
 - acceptance criteria snapshot
-- allowed path와 tool
-- relevant할 때 approval status
-- latest evidence manifest와 run summary ref
-- relevant policy warning
+- approval status
+- latest evidence manifest/run ref
 - close 또는 acceptance가 가까울 때 residual risk summary
 
 보통 pull:
 
-- old PRD, old design, closed issue
-- long log와 large diff
+- old PRD
+- old design
+- closed issue
+- long log
 - module map
 - interface contract
 - domain language
 - coding standard
 - TDD guidance
-- architecture playbook
 
 Evaluator는 더 tight한 verification bundle을 받아야 한다.
 
@@ -252,6 +255,12 @@ Evaluator는 더 tight한 verification bundle을 받아야 한다.
 - forbidden pattern
 
 이 context model은 Context Hygiene policy를 지원한다. Current state와 evidence는 stale chat이나 old doc보다 우선된다.
+
+## Direct Fast Path
+
+작은 direct work에서는 agent가 Harness를 대부분 보이지 않게 유지해야 한다. 좁은 active scope를 정하고, `prepare_write`를 call하고, 변경하고, changed path, self-check evidence를 기록한 뒤 blocker가 없으면 close한다.
+
+Scope, risk, uncertainty, file spread가 커지면 direct mode를 broad autonomy로 늘리지 말고 같은 Task를 `work`로 escalate한다.
 
 ## Fallback Semantics
 
@@ -275,7 +284,9 @@ Risk에 separation이 필요할 때 사용한다. Connector는 별도 worktree, 
 
 ### MCP Unavailable
 
-MCP가 unavailable이면 connector는 authoritative state update를 claim하면 안 된다. Product write의 safe behavior는 write를 hold하고 user/operator에게 MCP reconnect 또는 diagnose를 안내하는 것이다. Stronger profile은 preventive block도 enforce할 수 있다.
+MCP가 unavailable이면 connector는 authoritative state update를 claim하면 안 된다. Product/runtime/code write의 safe behavior는 write를 hold하고 user/operator에게 MCP reconnect 또는 diagnose를 안내하는 것이다. Stronger profile은 preventive block도 enforce할 수 있다.
+
+Pre-MVP Harness documentation-authoring batch는 exact path allowlist가 있는 명시적 `DOCS_AUTHORING_OVERRIDE` 아래에서만 진행할 수 있다. Connector는 이를 documentation-maintainer override로 label해야 하며, Core authorization, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, canonical state transition으로 label하면 안 된다.
 
 ### Weak Guard
 
@@ -290,7 +301,7 @@ Projection staleness는 state와 별도로 report된다. Connector가 canonical 
 Connector는 product name이 아니라 missing capability를 말해야 한다. 예:
 
 ```text
-Connected profile에 pre-tool guard가 없습니다. 이 작업에는 sidecar guard, 다른 profile, 또는 더 작은 approved Change Unit이 필요합니다.
+Connected profile에 pre-tool guard가 없습니다. 이 작업에는 sidecar guard, 다른 profile, 또는 더 작은 active scoped Change Unit이 필요합니다.
 ```
 
 ## Reference Surface Contract
@@ -317,15 +328,17 @@ Connector conformance는 profile이 declared capability tier에서 common contra
 Overview scenarios:
 
 - active Task 유무에 따른 status
-- significant work resume 전에 Journey Card 표시
+- significant work resume 전에 현재 Journey Card를 반드시 표시하는지
 - advisor/direct/work로 intake classification
 - shared design과 decision을 포함한 work shaping
 - Change Unit scope와 vertical/horizontal exception handling
 - 가능할 때 recommendation과 uncertainty가 있는 one blocking question
 - blocking product judgment에 포괄적인 승인 대신 Decision Packet 표시
 - Autonomy Boundary breach가 stop되거나 Decision Packet으로 route되는지
-- AFK work가 Change Unit과 Autonomy Boundary 안에 머무는지
+- AFK work가 active scoped Change Unit, Autonomy Boundary, 적용되는 granted sensitive approval 안에 머무는지
 - `prepare_write` allowed 및 blocked path
+- allowed write에 Write Authorization이 생성되고 Write Authority summary로 노출되는지
+- write-capable `record_run`이 compatible Write Authorization을 consume하는지
 - sensitive approval request, granted, denied, expired path
 - artifact와 evidence update가 있는 `record_run`
 - direct result projection
@@ -334,7 +347,10 @@ Overview scenarios:
 - Manual QA required, passed, failed, waived
 - product/user risk가 있는 QA waiver가 Decision Packet으로 route되는지
 - acceptance required 및 recorded
-- acceptance 또는 risk-accepted close 전에 residual risk 표시
+- acceptance focus에 acceptance 요청 전 residual risk visibility가 포함되는지
+- Known close-relevant residual risk가 successful close 전에 반드시 visible한지
+- Risk-accepted close에 추가로 accepted Residual Risk refs가 필요한지
+- Acceptance가 required인 경우 close-relevant residual risk가 visible한 뒤에만 record되는지
 - stale projection과 reconcile flow
 - generated file drift detection
 - required tier가 missing일 때 capability fallback
