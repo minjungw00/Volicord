@@ -310,7 +310,8 @@ updated_at: 2026-05-06T09:30:15+09:00
 - proposed action:
 
 ## Related Decision Packet
-- decision packet:
+- approval-shaped Decision Packet:
+- separate product-judgment Decision Packet, if required:
 - decision gate impact:
 - approval gate impact:
 
@@ -365,6 +366,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Boundary
 - approval은 product judgment를 resolve하지 않고, correctness를 prove하지 않고, verification이나 Manual QA를 replace하지 않고, acceptance를 imply하지 않으며, residual risk를 accept하지 않는다.
+- approval은 Write Authorization이 아니다. 이후 compatible `prepare_write` retry가 write를 allow해야 implementation 또는 direct `record_run`이 authorization을 consume할 수 있다.
 ````
 
 ### RUN-SUMMARY
@@ -971,9 +973,11 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Approval-Shaped Context, If Applicable
 - decision_kind=approval scope:
+- linked approval record:
 - sensitive categories:
 - separate Decision Packet이 필요한 product judgment:
 - approval boundary:
+- write authorization boundary:
 
 ## What User Is Deciding
 - decision:

@@ -303,7 +303,7 @@ Required suite responsibilities:
 
 | Suite | Required behavior |
 |---|---|
-| agency | Blocking product judgment requires a compatible Decision Packet before affected write or close; decision request routing metadata alone must not satisfy `decision_gate`; product trade-off writes are held; AFK Autonomy Boundary stop conditions block public commitments; known close-relevant residual risk must be visible before any successful close; risk-accepted close additionally requires accepted Residual Risk refs; approval, QA, acceptance, and residual-risk acceptance remain distinct. |
+| agency | Blocking product judgment requires a compatible Decision Packet before affected write or close; decision request routing metadata alone must not satisfy `decision_gate`; product trade-off writes are held; sensitive approval lifecycle keeps approval, Decision Packet, and Write Authorization distinct; AFK Autonomy Boundary stop conditions block public commitments; known close-relevant residual risk must be visible before any successful close; risk-accepted close additionally requires accepted Residual Risk refs; approval, QA, acceptance, and residual-risk acceptance remain distinct. |
 | stewardship | Design-quality and codebase-stewardship validators affect `design_gate`, `decision_gate`, `qa_gate`, close blockers, and waiver eligibility through canonical owner records and refs; public interface, module, domain, feedback-loop, TDD, Manual QA, and waiver checks do not duplicate schemas or DDL. |
 | context-hygiene | Current Task state, Journey refs, evidence refs, and freshness state are authoritative; stale PRDs, stale projections, closed issues, old design docs, and long logs are pull-only context until reconciled; stale context cannot authorize writes, close, acceptance, or current-state replacement. |
 
@@ -662,6 +662,8 @@ expected_error:
 ## Core Fixture Examples
 
 `prepare_write` allowed examples expect the Task to move from `ready` to `executing` because the kernel transition table owns and defines that transition.
+
+Approval lifecycle coverage should be materialized as separate exact-shape fixtures or as suite catalog sequencing, not by adding fixture body fields. The sequence must assert that the first `prepare_write` with uncovered sensitive categories returns `approval_required`, includes `approval_request_candidate`, and returns no Write Authorization; `request_user_decision(decision_kind=approval)` creates a canonical Decision Packet plus pending Approval record; `record_user_decision` updates the Approval record and `approval_gate` but still creates no Write Authorization; and only a retry `prepare_write` with a fresh idempotency key and current `expected_state_version` may create the Write Authorization when scope, baseline, sensitive categories, paths/tools/commands/network/secrets, Decision Packet refs, Approval refs, and capability checks remain compatible.
 
 ```yaml
 scenario_id: CORE-prepare-write-no-change-unit
@@ -2059,7 +2061,7 @@ These catalog entries are not fixture bodies. Materialized fixtures, including t
 
 Minimum MVP suites:
 
-- core: active status, advisor close, direct close, write gate, Write Authorization creation/required/invalid coverage, approval required, evidence insufficient, same-session verification guard, QA required, acceptance required, projection failure separation
+- core: active status, advisor close, direct close, write gate, Write Authorization creation/required/invalid coverage, approval required and approval lifecycle retry, evidence insufficient, same-session verification guard, QA required, acceptance required, projection failure separation
 - connector: capability profile, MCP unavailable hold, generated manifest drift, changed-path detection, artifact capture, fallback guarantee display, current Journey Card before significant resume, Decision Packet not broad approval, Autonomy Boundary breach routing
 - agency: Decision Packet required for blocking product judgment, product trade-off write guard, AFK Autonomy Boundary stop conditions, known close-relevant residual-risk visibility before any successful close, accepted Residual Risk refs for risk-accepted close, distinct approval/QA/acceptance judgments
 - stewardship: shared design required, codebase stewardship close blockers, domain language conflicts, vertical slice or exception, feedback loop and TDD trace required or waived, public interface module/interface review, public interface stewardship close blocker, Manual QA policy and waiver checks

@@ -279,6 +279,8 @@ not_required | required | pending | granted | denied | expired
 
 `approval_gate`는 sensitive categories가 있을 때만 required입니다. Display layer는 approval drift가 없을 때 `granted`의 alias로 `passed`를 보여줄 수 있지만 canonical value는 `granted`입니다.
 
+`approval_gate=granted`는 compatible Approval record가 sensitive scope를 cover한다는 뜻입니다. 이는 Write Authorization이 아니며 product judgment를 authorize하지도 않습니다. Write path는 `record_run`이 authorization을 consume하기 전에 여전히 fresh compatible `prepare_write` decision을 pass해야 합니다.
+
 ### Design Gate
 
 ```text
@@ -575,6 +577,8 @@ Required checks에는 active Task, active Change Unit, mode write eligibility, A
 `allowed` decision은 `status=allowed`인 Write Authorization을 create하거나 reference해야 합니다. `authorization_effect=returned`는 같은 idempotency key, request hash, state basis를 가진 동일한 committed `prepare_write` request의 idempotent replay 또는 already committed response 반환에만 reserved됩니다. Distinct compatible request는 distinct Write Authorization을 create합니다. Compatibility가 authorization을 reusable하게 만들지는 않습니다. Blocked, approval-required, decision-required, state-conflict result는 attempted write에 대해 consumable Write Authorization을 만들면 안 됩니다. Compatibility basis가 바뀌면 Core는 오래된 unconsumed authorization을 stale, expire, revoke할 수 있습니다.
 
 Product judgment가 필요하면 `prepare_write`는 Decision Packet을 통해 user decision을 요청합니다. Product judgment를 broad approval로 바꾸면 안 됩니다. `approval_required`는 sensitive-change approval에만 사용합니다.
+
+`approval_required`가 반환되면 consumable Write Authorization은 존재하지 않습니다. 이후 approval grant는 Approval record와 `approval_gate`를 update할 뿐입니다. Core는 이후 compatible `prepare_write` retry가 `allowed`를 반환할 때만 Write Authorization을 create합니다.
 
 MCP를 사용할 수 없는 cooperative-only surface에서는 product writes를 instruction으로 보류해야 합니다. 더 강한 guard 또는 isolation layer가 있으면 같은 decision을 preventively 또는 isolation으로 enforce할 수 있습니다.
 

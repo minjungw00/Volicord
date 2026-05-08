@@ -16,11 +16,11 @@ The kernel gate that records whether required user acceptance is not required, r
 
 ### Approval
 
-A prior user decision allowing a sensitive change to proceed within a defined scope. Approval is bound to paths, tools, commands or command classes, network targets, secret scope, baseline, sensitive categories, and expiry conditions.
+A prior user decision allowing a sensitive change to proceed within a defined scope. Approval is bound to paths, tools, commands or command classes, network targets, secret scope, baseline, sensitive categories, and expiry conditions. When approval is requested, Core captures the user judgment through an approval-shaped Decision Packet and linked Approval record; granted approval still requires a later compatible `prepare_write` result before any Write Authorization exists.
 
 ### Approval Gate
 
-The kernel gate for sensitive-change approval. It is required only when sensitive categories are present. Granted approval does not prove correctness or imply acceptance.
+The kernel gate for sensitive-change approval. It is required only when sensitive categories are present. Granted approval does not prove correctness, imply acceptance, resolve product judgment, or create Write Authorization.
 
 ### Artifact
 

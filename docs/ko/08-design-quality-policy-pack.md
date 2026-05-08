@@ -48,7 +48,7 @@ Policy validator는 MCP API document가 담당하는 validator result schema를 
 |---|---|
 | `name` | `decision_quality` |
 | `applies_when` | Design choice, product trade-off, scope expansion, public API/interface change, architecture choice, horizontal exception, verification waiver, QA waiver, known risk를 가진 acceptance가 있을 때. |
-| `default_requirement` | Decision이 실행되기 전에 Decision Packet을 기록한다. Packet에는 context, considered option, trade-off, recommendation, uncertainty, reversibility, evidence ref, deferral consequence, residual risk가 포함되어야 한다. Agent recommendation과 user judgment 또는 risk acceptance를 분리해 둔다. |
+| `default_requirement` | Decision이 실행되기 전에 Decision Packet을 기록한다. Packet에는 context, considered option, trade-off, recommendation, uncertainty, reversibility, evidence ref, deferral consequence, residual risk가 포함되어야 한다. Agent recommendation과 user judgment 또는 risk acceptance를 분리해 둔다. `decision_kind=approval`에서는 sensitive-change scope와 boundary가 명확한지 평가하고, approval-shaped context를 product judgment resolution으로 취급하지 않는다. |
 | `allowed_waiver` | Public interface, product, architecture, verification, QA, known-risk impact가 없고 사소하며 되돌리기 쉬운 choice에만 허용된다. Waiver에는 Decision Packet이 judgment를 개선하지 않는 이유를 기록해야 한다. |
 | `required_record` | Decision Packet record와 rendered될 때 optional `DEC` projection. |
 | `validator` | `decision_quality_check` |
@@ -60,7 +60,7 @@ Policy validator는 MCP API document가 담당하는 validator result schema를 
 | Field | Contract |
 |---|---|
 | `name` | `autonomy_boundary` |
-| `applies_when` | Agent가 ambiguous authority, user constraint, external side effect, irreversible edit, scope expansion, sensitive product judgment, public commitment, known stop condition이 있는 작업을 shaping하거나 executing할 때. |
+| `applies_when` | Agent가 ambiguous authority, user constraint, external side effect, irreversible edit, scope expansion, sensitive action, product judgment, public commitment, known stop condition이 있는 작업을 shaping하거나 executing할 때. |
 | `default_requirement` | Agent가 user input 없이 할 수 있는 것, user judgment가 필요한 것, stop condition을 기록한다. Canonical boundary는 active Change Unit에 둔다. Change Unit이 아직 없으면 Task 또는 Shared Design이 shaping/proposed boundary ref를 가질 수 있다. Boundary는 low-risk implementation detail에서는 agent가 진행하게 하되, product direction, risk acceptance, public interface commitment, human judgment가 필요한 policy waiver에서는 멈추게 해야 한다. Autonomy Boundary는 scope grant가 아니며 active Change Unit 밖의 path, tool, command, network, secret, sensitive category를 authorize하지 않는다. |
 | `allowed_waiver` | 요청에서 authority가 명확하고 stop condition이 현실적으로 trigger될 수 없는 좁은 `direct` work에 허용된다. Waiver에는 autonomy boundary가 필요 없는 이유를 기록해야 한다. |
 | `required_record` | Active Change Unit의 canonical Autonomy Boundary record, Change Unit 생성 전 Task 또는 Shared Design shaping/proposed boundary ref, user-judgment item에 대한 Decision Packet record, trigger된 stop-condition ref. |

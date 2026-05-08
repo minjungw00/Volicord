@@ -279,6 +279,8 @@ not_required | required | pending | granted | denied | expired
 
 `approval_gate` is required only when sensitive categories are present. A display layer may show `passed` as an alias for `granted` when no approval drift exists, but the canonical value remains `granted`.
 
+`approval_gate=granted` means a compatible Approval record covers the sensitive scope. It is not a Write Authorization and does not authorize product judgment; the write path must still pass a fresh compatible `prepare_write` decision before `record_run` can consume an authorization.
+
 ### Design Gate
 
 ```text
@@ -575,6 +577,8 @@ Required checks include active Task, active Change Unit, mode write eligibility,
 An `allowed` decision must create or reference a Write Authorization with `status=allowed`. `authorization_effect=returned` is reserved for idempotent replay of the same committed `prepare_write` request with the same idempotency key, request hash, and state basis, or for returning the already committed response. A distinct compatible request creates a distinct Write Authorization; compatibility does not make authorizations reusable. Blocked, approval-required, decision-required, or state-conflict results must not create a consumable Write Authorization for the attempted write. Core may stale, expire, or revoke older unconsumed authorizations if their compatibility basis changes.
 
 When product judgment is needed, `prepare_write` requests a user decision through a Decision Packet. It must not convert product judgment into broad approval. `approval_required` is reserved for sensitive-change approval.
+
+When `approval_required` is returned, no consumable Write Authorization exists. A later approval grant updates the Approval record and `approval_gate`; Core creates a Write Authorization only if a subsequent compatible `prepare_write` retry returns `allowed`.
 
 If MCP is unavailable on a cooperative-only surface, product writes must be held by instruction. If a stronger guard or isolation layer exists, the same decision may be enforced preventively or by isolation.
 

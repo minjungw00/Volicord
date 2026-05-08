@@ -303,7 +303,7 @@ Agency, stewardship, context hygiene는 MVP conformance suite입니다. 이 suit
 
 | Suite | Required behavior |
 |---|---|
-| agency | Blocking product judgment는 affected write 또는 close 전에 compatible Decision Packet을 요구합니다. Decision request routing metadata만으로는 `decision_gate`를 satisfy하면 안 됩니다. Product trade-off write는 hold됩니다. AFK Autonomy Boundary stop condition은 public commitment를 block합니다. Known close-relevant residual risk는 successful close 전에 visible이어야 합니다. Risk-accepted close에는 추가로 accepted Residual Risk ref가 필요합니다. Approval, QA, acceptance, residual-risk acceptance는 서로 구분된 상태로 남아야 합니다. |
+| agency | Blocking product judgment는 affected write 또는 close 전에 compatible Decision Packet을 요구합니다. Decision request routing metadata만으로는 `decision_gate`를 satisfy하면 안 됩니다. Product trade-off write는 hold됩니다. Sensitive approval lifecycle은 approval, Decision Packet, Write Authorization을 서로 구분된 상태로 유지합니다. AFK Autonomy Boundary stop condition은 public commitment를 block합니다. Known close-relevant residual risk는 successful close 전에 visible이어야 합니다. Risk-accepted close에는 추가로 accepted Residual Risk ref가 필요합니다. Approval, QA, acceptance, residual-risk acceptance는 서로 구분된 상태로 남아야 합니다. |
 | stewardship | Design-quality와 codebase-stewardship validator는 canonical owner record와 ref를 통해 `design_gate`, `decision_gate`, `qa_gate`, close blocker, waiver eligibility에 영향을 줍니다. Public interface, module, domain, feedback-loop, TDD, Manual QA, waiver check는 schema나 DDL을 duplicate하지 않습니다. |
 | context-hygiene | Current Task state, Journey ref, evidence ref, freshness state가 authoritative합니다. Stale PRD, stale projection, closed issue, old design doc, long log는 reconcile되기 전까지 pull-only context입니다. Stale context는 write, close, acceptance, current-state replacement를 authorize할 수 없습니다. |
 
@@ -662,6 +662,8 @@ expected_error:
 ## Core Fixture 예시
 
 `prepare_write` allowed 예시는 Task가 `ready`에서 `executing`으로 이동한다고 기대합니다. 이 transition은 kernel transition table이 소유하고 정의합니다.
+
+Approval lifecycle coverage는 fixture body field를 추가하지 말고 separate exact-shape fixtures 또는 suite catalog sequencing으로 materialize해야 합니다. 이 sequence는 uncovered sensitive categories가 있는 첫 `prepare_write`가 `approval_required`를 반환하고 `approval_request_candidate`를 포함하며 Write Authorization을 반환하지 않는 것, `request_user_decision(decision_kind=approval)`이 canonical Decision Packet과 pending Approval record를 create하는 것, `record_user_decision`이 Approval record와 `approval_gate`를 update하지만 여전히 Write Authorization을 create하지 않는 것, 그리고 fresh idempotency key와 current `expected_state_version`을 사용한 retry `prepare_write`만 scope, baseline, sensitive categories, paths/tools/commands/network/secrets, Decision Packet refs, Approval refs, capability checks가 compatible할 때 Write Authorization을 create할 수 있음을 assert해야 합니다.
 
 ```yaml
 scenario_id: CORE-prepare-write-no-change-unit
@@ -2059,7 +2061,7 @@ expected_error: null
 
 최소 MVP suite:
 
-- core: active status, advisor close, direct close, write gate, Write Authorization creation/required/invalid coverage, approval required, evidence insufficient, same-session verification guard, QA required, acceptance required, projection failure separation
+- core: active status, advisor close, direct close, write gate, Write Authorization creation/required/invalid coverage, approval required and approval lifecycle retry, evidence insufficient, same-session verification guard, QA required, acceptance required, projection failure separation
 - connector: capability profile, MCP unavailable hold, generated manifest drift, changed-path detection, artifact capture, fallback guarantee display, current Journey Card before significant resume, Decision Packet not broad approval, Autonomy Boundary breach routing
 - agency: Decision Packet required for blocking product judgment, product trade-off write guard, AFK Autonomy Boundary stop conditions, known close-relevant residual-risk visibility before any successful close, accepted Residual Risk refs for risk-accepted close, distinct approval/QA/acceptance judgments
 - stewardship: shared design required, codebase stewardship close blockers, domain language conflicts, vertical slice or exception, feedback loop and TDD trace required or waived, public interface module/interface review, public interface stewardship close blocker, Manual QA policy and waiver checks

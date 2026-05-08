@@ -310,7 +310,8 @@ updated_at: 2026-05-06T09:30:15+09:00
 - proposed action:
 
 ## Related Decision Packet
-- decision packet:
+- approval-shaped Decision Packet:
+- separate product-judgment Decision Packet, if required:
 - decision gate impact:
 - approval gate impact:
 
@@ -365,6 +366,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Boundary
 - approval does not resolve product judgment, prove correctness, replace verification, replace Manual QA, imply acceptance, or accept residual risk.
+- approval is not Write Authorization; a later compatible `prepare_write` retry must allow the write before implementation or direct `record_run` can consume authorization.
 ````
 
 ### RUN-SUMMARY
@@ -971,9 +973,11 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Approval-Shaped Context, If Applicable
 - decision_kind=approval scope:
+- linked approval record:
 - sensitive categories:
 - product judgment requiring separate Decision Packet:
 - approval boundary:
+- write authorization boundary:
 
 ## What User Is Deciding
 - decision:

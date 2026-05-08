@@ -48,7 +48,7 @@ Policy validators return the validator result schema owned by the MCP API docume
 |---|---|
 | `name` | `decision_quality` |
 | `applies_when` | Design choices, product trade-offs, scope expansion, public API/interface changes, architecture choices, horizontal exceptions, verification waiver, QA waiver, or acceptance with known risk. |
-| `default_requirement` | Record a Decision Packet before the decision is acted on. The packet must capture context, options considered, trade-offs, recommendation, uncertainty, reversibility, evidence refs, deferral consequence, and residual risk. Keep agent recommendation distinct from user judgment or risk acceptance. |
+| `default_requirement` | Record a Decision Packet before the decision is acted on. The packet must capture context, options considered, trade-offs, recommendation, uncertainty, reversibility, evidence refs, deferral consequence, and residual risk. Keep agent recommendation distinct from user judgment or risk acceptance. For `decision_kind=approval`, evaluate the clarity of the sensitive-change scope and boundary; do not treat approval-shaped context as resolving product judgment. |
 | `allowed_waiver` | Allowed only for trivial reversible choices with no public interface, product, architecture, verification, QA, or known-risk impact. Waiver must record why a Decision Packet would not improve judgment. |
 | `required_record` | Decision Packet records and optionally `DEC` projection when rendered. |
 | `validator` | `decision_quality_check` |
@@ -60,7 +60,7 @@ Policy validators return the validator result schema owned by the MCP API docume
 | Field | Contract |
 |---|---|
 | `name` | `autonomy_boundary` |
-| `applies_when` | Agent is shaping or executing work with ambiguous authority, user constraints, external side effects, irreversible edits, scope expansion, sensitive product judgment, public commitments, or known stop conditions. |
+| `applies_when` | Agent is shaping or executing work with ambiguous authority, user constraints, external side effects, irreversible edits, scope expansion, sensitive action, product judgment, public commitments, or known stop conditions. |
 | `default_requirement` | Record what the agent may do without user input, what requires user judgment, and stop conditions. The canonical boundary is on the active Change Unit; Task or Shared Design may carry shaping/proposed boundary refs before a Change Unit exists. The boundary should let the agent proceed on low-risk implementation details while pausing on product direction, risk acceptance, public interface commitments, or policy waivers that require human judgment. Autonomy Boundary is not a scope grant and does not authorize paths, tools, commands, network, secrets, or sensitive categories outside the active Change Unit. |
 | `allowed_waiver` | Allowed for narrow `direct` work where authority is obvious from the request and no stop condition can reasonably be triggered. Waiver must record why no autonomy boundary is needed. |
 | `required_record` | Canonical Autonomy Boundary record on the active Change Unit; Task or Shared Design shaping/proposed boundary refs before a Change Unit exists; Decision Packet records for user-judgment items; and stop-condition refs when triggered. |

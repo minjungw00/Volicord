@@ -204,6 +204,8 @@ Product judgment, approval, assurance, Manual QA, residual-risk acceptance, and 
 
 Examples that need approval include dependency additions, auth/permission changes, data model changes, public API changes, destructive writes, secret access, and production config changes. Approval does not mean correctness or acceptance.
 
+When approval itself needs your judgment, Harness may show it as an approval-shaped Decision Packet. In that case you are deciding whether the sensitive scope is allowed. That answer does not pick a product option, waive QA or verification, accept residual risk, or let the agent edit without the write check passing afterward.
+
 Product judgment should appear as a Decision Packet when it blocks progress. That packet should show options, trade-offs, recommendation, uncertainty, and what happens if the decision is deferred.
 
 Assurance usually appears as `none`, `self_checked`, or `detached_verified`. `detached_verified` means the result passed a separate verification boundary, not a same-session self-review.

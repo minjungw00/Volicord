@@ -204,6 +204,8 @@ Product judgment, approval, assurance, Manual QA, residual-risk acceptance, fina
 
 Approval이 필요한 예시는 dependency 추가, auth/permission 변경, data model 변경, public API 변경, destructive write, secret access, production config 변경이다. Approval은 correctness나 acceptance가 아니다.
 
+Approval 자체에 사용자의 판단이 필요하면 Harness는 approval-shaped Decision Packet으로 보여줄 수 있다. 이때 사용자가 결정하는 것은 sensitive scope를 허용할지 여부다. 이 답변은 product option을 선택하거나, QA나 verification을 waive하거나, residual risk를 accept하거나, 이후 write check 없이 agent가 edit하게 만들지 않는다.
+
 Product judgment가 진행을 막으면 Decision Packet으로 보여야 한다. Packet에는 option, trade-off, recommendation, uncertainty, decision을 미뤘을 때의 결과가 있어야 한다.
 
 Assurance는 보통 `none`, `self_checked`, `detached_verified`로 보인다. `detached_verified`는 같은 세션의 자기 검토가 아니라 별도 검증 경계에서 통과했다는 뜻이다.

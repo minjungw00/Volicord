@@ -757,7 +757,7 @@ ApprovalRequestCandidate:
   baseline_ref: string | null
 ```
 
-`approval_request_candidate` is present only when `decision=approval_required` or when Core can suggest a new approval request. Otherwise it is `null`.
+`approval_request_candidate` is present only when `decision=approval_required` or when Core can suggest a new approval request. Otherwise it is `null`. It is a non-mutating candidate for the `approval_scope` of a later `harness.request_user_decision(decision_kind=approval)` call; returning it from `prepare_write` does not create an Approval record, Decision Packet, or Write Authorization.
 
 When `dry_run=false` and `decision=allowed`, the response must include a non-null `write_authorization_ref`; the `write_authorization` summary may also be returned when the caller requests expanded payloads or the implementation supports it. `authorization_effect` is `created` when Core creates a new authorization.
 
@@ -784,6 +784,21 @@ Validators run: `state_envelope`, `active_task`, `active_change_unit`, `scope_co
 Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `BASELINE_STALE`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `VALIDATOR_FAILED`.
 
 Idempotency behavior: repeated allowed/blocked decision with same payload returns the original decision and event refs; changed payload with same key returns `STATE_CONFLICT`.
+
+#### Approval Lifecycle
+
+Sensitive-change approval follows this recipe:
+
+1. `harness.prepare_write` detects sensitive categories for the intended product write.
+2. If no compatible granted Approval covers the scope, baseline, sensitive categories, paths, tools, commands, network targets, secret access, and capability requirements, `prepare_write` returns `decision=approval_required`, includes an `approval_request_candidate`, sets both Write Authorization fields to `null`, and uses `authorization_effect=none`.
+3. The caller invokes `harness.request_user_decision` with `decision_kind=approval` and an `approval_scope` derived from the candidate and current intended write.
+4. Core creates a canonical Decision Packet for the approval-shaped user judgment and a pending Approval record. The response includes both `decision_packet_ref` and `approval_id`.
+5. The user or operator invokes `harness.record_user_decision` for that Decision Packet.
+6. Core records the Decision Packet resolution, updates the linked Approval record, and recomputes `approval_gate` as granted, denied, or expired.
+7. If the approval was granted, the caller retries `harness.prepare_write` with a fresh idempotency key and the current `expected_state_version`.
+8. Only that retry may create a Write Authorization. It succeeds only if the approved scope, baseline, sensitive categories, paths, tools, commands, network targets, secret scope, Decision Packet refs, Approval refs, and capability checks remain compatible with the current intended write.
+
+Approval authorizes sensitive categories inside the defined scope. Approval does not resolve product trade-offs, design direction, verification risk, QA waiver, final acceptance, or residual-risk acceptance. If the sensitive action also includes product judgment, Core must require a separate compatible Decision Packet before `prepare_write` can return `allowed`. Approval is not Write Authorization; actual product writes still require an allowed `prepare_write` result and compatible `harness.record_run` consumption of the returned Write Authorization.
 
 ### `harness.record_run`
 
@@ -964,7 +979,7 @@ RequestUserDecisionRequest:
   reconcile_item_id: string | null
 ```
 
-Core stores a canonical `DecisionPacket`. If the implementation also creates or updates `decision_requests`, those rows are routing, interaction, idempotency replay, or legacy handoff metadata only, and they must link back to the canonical `decision_packet_id`. A `decision_request` row alone never satisfies `decision_gate`. If `state_summary_at_request` is `null`, Core derives it from current state during the same transaction. The stored `state_summary_at_request` is a request-time snapshot and is not updated by later Task transitions. `approval_scope` is required when `decision_kind=approval`; for all other `decision_kind` values it must be `null` or omitted. `decision_kind=approval` is only the approval-shaped sensitive-change context and cannot resolve product trade-offs, design direction, QA waiver, verification risk, final acceptance, or residual-risk acceptance without separate compatible Decision Packets and gate updates. A `residual_risk_acceptance` packet must include the risk visibility context in `user_context.minimum_context` and relevant risk refs in `context.source_refs`.
+Core stores a canonical `DecisionPacket`. If the implementation also creates or updates `decision_requests`, those rows are routing, interaction, idempotency replay, or legacy handoff metadata only, and they must link back to the canonical `decision_packet_id`. A `decision_request` row alone never satisfies `decision_gate`. If `state_summary_at_request` is `null`, Core derives it from current state during the same transaction. The stored `state_summary_at_request` is a request-time snapshot and is not updated by later Task transitions. `approval_scope` is required when `decision_kind=approval`; for all other `decision_kind` values it must be `null` or omitted. `decision_kind=approval` is only the approval-shaped sensitive-change context and cannot resolve product trade-offs, design direction, QA waiver, verification risk, final acceptance, or residual-risk acceptance without separate compatible Decision Packets and gate updates. For `decision_kind=approval`, Core also creates a linked pending Approval record using the approval scope; the Approval is not granted until `harness.record_user_decision` resolves the Decision Packet. A `residual_risk_acceptance` packet must include the risk visibility context in `user_context.minimum_context` and relevant risk refs in `context.source_refs`.
 
 Response schema:
 
@@ -982,7 +997,7 @@ RequestUserDecisionResponse:
 
 `pending_decisions` returned by status and next-action responses contain unresolved user-action `StateRecordRef` entries with `record_kind=decision_packet`. `active_decision_packet_refs` fields include all Decision Packets relevant to the current phase or requested action, including pending, deferred, blocked, or recently resolved packets.
 
-State transition summary: records a pending Decision Packet and usually moves Task to `waiting_user`; product judgment sets `decision_gate=pending`; approval requests set `approval_gate=pending`; scope confirmation sets `scope_gate=pending`; acceptance and residual-risk acceptance set or keep `acceptance_gate=pending` when acceptance is required.
+State transition summary: records a pending Decision Packet and usually moves Task to `waiting_user`; product judgment sets `decision_gate=pending`; approval requests create a pending Approval record and set `approval_gate=pending`; scope confirmation sets `scope_gate=pending`; acceptance and residual-risk acceptance set or keep `acceptance_gate=pending` when acceptance is required.
 
 Events emitted: `decision_packet_created`, `user_decision_requested`, `approval_requested`, `scope_confirmation_requested`, `design_choice_requested`, `architecture_choice_requested`, `autonomy_boundary_decision_requested`, `verification_waiver_requested`, `qa_waiver_requested`, `acceptance_requested`, `residual_risk_acceptance_requested`, `reconcile_decision_requested`.
 
@@ -1062,7 +1077,7 @@ RecordUserDecisionResponse:
   next_action: string
 ```
 
-State transition summary: resolves, defers, rejects, or blocks the targeted Decision Packet; updates affected gates or reconcile item; approval grant/deny updates `approval_gate`; accepted scope updates `scope_gate`; user-resolved product judgment updates `decision_gate`; accepted Autonomy Boundary decisions may update the active Change Unit boundary; verification waiver updates `verification_gate=waived_by_user`; QA waiver updates `qa_gate`; acceptance updates `acceptance_gate`; accepted residual risk records accepted-risk refs without upgrading assurance; reconcile may create accepted state records.
+State transition summary: resolves, defers, rejects, or blocks the targeted Decision Packet; updates affected gates or reconcile item; approval grant/deny updates the linked Approval record and `approval_gate`, but does not create a Write Authorization; accepted scope updates `scope_gate`; user-resolved product judgment updates `decision_gate`; accepted Autonomy Boundary decisions may update the active Change Unit boundary; verification waiver updates `verification_gate=waived_by_user`; QA waiver updates `qa_gate`; acceptance updates `acceptance_gate`; accepted residual risk records accepted-risk refs without upgrading assurance; reconcile may create accepted state records.
 
 Events emitted: `user_decision_recorded`, `decision_packet_resolved`, `decision_packet_deferred`, `decision_packet_rejected`, `approval_granted`, `approval_denied`, `scope_confirmed`, `scope_rejected`, `design_choice_recorded`, `architecture_choice_recorded`, `autonomy_boundary_decision_recorded`, `verification_waiver_recorded`, `qa_waiver_recorded`, `acceptance_recorded`, `residual_risk_accepted`, `reconcile_resolved`.
 

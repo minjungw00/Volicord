@@ -16,11 +16,11 @@ Required user acceptance가 `not_required`, `required`, `pending`, `accepted`, `
 
 ### Approval
 
-정의된 scope 안에서 sensitive change를 진행할 수 있도록 허용하는 사전 user decision입니다. Approval은 paths, tools, commands 또는 command classes, network targets, secret scope, baseline, sensitive categories, expiry conditions에 묶입니다.
+정의된 scope 안에서 sensitive change를 진행할 수 있도록 허용하는 사전 user decision입니다. Approval은 paths, tools, commands 또는 command classes, network targets, secret scope, baseline, sensitive categories, expiry conditions에 묶입니다. Approval이 요청되면 Core는 approval-shaped Decision Packet과 linked Approval record를 통해 user judgment를 capture합니다. Granted approval이 있어도 Write Authorization이 생기려면 이후 compatible `prepare_write` result가 필요합니다.
 
 ### Approval Gate
 
-Sensitive-change approval을 위한 kernel gate입니다. Sensitive categories가 있을 때만 required입니다. Granted approval은 correctness를 증명하지 않고 acceptance를 뜻하지도 않습니다.
+Sensitive-change approval을 위한 kernel gate입니다. Sensitive categories가 있을 때만 required입니다. Granted approval은 correctness를 증명하지 않고, acceptance를 뜻하지 않으며, product judgment를 resolve하거나 Write Authorization을 create하지 않습니다.
 
 ### Artifact
 
