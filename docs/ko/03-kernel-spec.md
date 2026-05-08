@@ -281,7 +281,12 @@ not_required | required | pending | granted | denied | expired
 
 `approval_gate`는 sensitive categories가 있을 때만 required입니다. Display layer는 approval drift가 없을 때 `granted`의 alias로 `passed`를 보여줄 수 있지만 canonical value는 `granted`입니다.
 
-`approval_gate=granted`는 compatible Approval record가 sensitive scope를 cover한다는 뜻입니다. 이는 Write Authorization이 아니며 product judgment를 authorize하지도 않습니다. Write path는 `record_run`이 authorization을 consume하기 전에 여전히 fresh compatible `prepare_write` decision을 pass해야 합니다.
+- `approval_gate=not_required`는 현재 approval을 요구하는 sensitive category가 없다는 뜻입니다.
+- `approval_gate=required`는 sensitive approval이 필요하지만 committed approval-shaped Decision Packet과 linked pending Approval record가 아직 없다는 뜻입니다. 이는 `prepare_write`가 missing sensitive approval을 detect할 때 도달하는 state입니다.
+- `approval_gate=pending`은 `harness.request_user_decision(decision_kind=approval)`이 committed approval-shaped Decision Packet과 linked pending Approval record를 create했고 user/operator decision을 기다린다는 뜻입니다.
+- `approval_gate=granted`는 compatible Approval record가 sensitive scope를 cover한다는 뜻입니다. 이는 Write Authorization이 아니며 product judgment를 authorize하지도 않습니다. Write path는 `record_run`이 authorization을 consume하기 전에 여전히 fresh compatible `prepare_write` decision을 pass해야 합니다.
+- `approval_gate=denied`는 linked Approval record가 denied되었고 sensitive write가 계속 blocked라는 뜻입니다.
+- `approval_gate=expired`는 linked Approval record가 expired, drifted 되었거나 current baseline 또는 intended sensitive scope를 더 이상 cover하지 않는다는 뜻입니다.
 
 ### Design Gate
 
@@ -447,7 +452,7 @@ Capability는 kernel이 write를 허용할지, rule을 얼마나 강하게 enfor
 | `decision_gate=deferred` used for an operation not covered by the deferral | block `prepare_write` or close |
 | `decision_gate=resolved` where the recorded decision no longer matches the active Change Unit, Autonomy Boundary, baseline, or intended operation | repair to `required`, `pending`, or `blocked` |
 | Stored `decision_gate` differs from aggregate recomputation | recompute and repair before write or close |
-| Sensitive change with `approval_gate=not_required` | mark approval required and block or request approval |
+| Sensitive change with `approval_gate=not_required` | `approval_gate=required`로 repair하고 `prepare_write`를 block합니다. `request_user_decision(decision_kind=approval)`이 approval request를 commit하기 전에는 Approval, Decision Packet, Write Authorization, `APR`을 create하지 않습니다. |
 | Sensitive change with approval denied, expired, or outside approved scope | block `prepare_write` |
 | Required evidence with `evidence_gate=not_required` | repair to `none`, `partial`, `sufficient`, `stale`, or `blocked` |
 | `evidence_gate=none` while evidence records support required criteria | recompute evidence gate |
@@ -500,9 +505,10 @@ write_authorization_violation_detected
 | Decision deferred | `waiting_user` | previous runnable phase, `waiting_user`, or `blocked` | Decision Packet deferral recorded; `decision_gate=deferred`; residual risk or follow-up visibility recorded when relevant |
 | Change Unit scope is confirmed | `shaping` or `waiting_user` | `ready` | `scope_gate=passed` |
 | Scope is missing for intended write | any non-terminal phase | `waiting_user` or `blocked` | `scope_gate=pending` or `blocked` |
-| Sensitive approval requested | any non-terminal phase | `waiting_user` | `approval_gate=pending` |
-| Sensitive approval granted | `waiting_user` | previous runnable phase | `approval_gate=granted` |
-| Sensitive approval denied | `waiting_user` | `blocked` | `approval_gate=denied` |
+| `prepare_write`가 sensitive approval need를 detect | any non-terminal phase | `waiting_user` or `blocked` | `approval_gate=required`; approval-required blocker가 기록될 수 있음; candidate 때문에 Approval, Decision Packet, Write Authorization, `APR`은 create되지 않음 |
+| `request_user_decision(decision_kind=approval)`이 approval request를 commit | any non-terminal phase | `waiting_user` | approval-shaped Decision Packet과 linked pending Approval record를 create함; `approval_gate=pending` |
+| `record_user_decision`이 sensitive approval을 granted로 기록 | `waiting_user` | previous runnable phase | linked Approval record updated; `approval_gate=granted` |
+| `record_user_decision`이 sensitive approval을 denied로 기록 | `waiting_user` | `blocked` | linked Approval record updated; `approval_gate=denied` |
 | Approval scope drifts or expires | any non-terminal phase | `waiting_user` or `blocked` | `approval_gate=expired` |
 | Autonomy boundary violation | any non-terminal phase | `waiting_user` or `blocked` | violation recorded; Decision Packet requested when product judgment can resolve it; otherwise scope or policy blocker recorded |
 | `prepare_write` allows write | `ready` or `executing` | `executing` | Write Authorization을 create하거나 idempotent replay에 대해 already committed response를 반환함; active Run may proceed |
@@ -567,8 +573,8 @@ Decision algorithm은 다음과 같습니다.
 5. Intended operation을 active Change Unit Autonomy Boundary와 비교합니다. Operation이 recorded latitude를 넘으면 write를 block합니다. Product judgment로 gap을 해결할 수 있을 때 `decision_gate=required`를 set하거나 Decision Packet을 create/request하고 `decision_required`를 반환합니다. Resolved Decision Packet은 Autonomy Boundary를 update하거나 Change Unit scope changes를 propose할 수 있지만, active Change Unit scope와 any sensitive approval이 compatible해질 때까지 write는 계속 blocked입니다.
 6. Intended paths, tools, commands, network targets, secret access를 Change Unit과 비교합니다. Scope gaps는 `blocked`를 반환하거나 scope confirmation을 요구합니다.
 7. Baseline freshness를 확인합니다. Baseline이 stale이면 `blocked`를 반환하고 dependent approvals, Decision Packets, evidence를 applicable한 곳에서 stale 또는 incompatible로 mark합니다.
-8. Sensitive categories를 결정합니다. Sensitive categories가 있고 matching approval이 granted되지 않았다면 `approval_required`를 반환합니다.
-9. Approval scope를 validate합니다. Denied, expired, drifted, insufficient approval은 새 approval로 해결 가능한지에 따라 `blocked` 또는 `approval_required`를 반환합니다.
+8. Sensitive categories를 결정합니다. Sensitive categories가 있고 matching Approval이 granted되지 않았다면 `approval_gate=required`를 set 또는 유지하고, applicable한 committed non-dry-run decision에서는 approval-required blocker state를 record하며, `approval_required`를 반환하고 display 또는 나중의 `request_user_decision(decision_kind=approval)` 호출을 위한 `approval_request_candidate`를 optional하게 반환합니다. 이 path는 Approval record, Decision Packet, Write Authorization, `APR`을 create하면 안 됩니다.
+9. Approval scope를 validate합니다. Denied, expired, drifted, insufficient approval은 새 approval로 해결 가능한지에 따라 `blocked` 또는 `approval_required`를 반환합니다. 새 approval로 해결 가능하면 `request_user_decision(decision_kind=approval)`이 approval request를 commit할 때까지 gate는 `approval_gate=required`로 돌아갑니다.
 10. Write 전에 적용되는 design-policy precondition checks를 실행합니다. Required unmet design preconditions는 policy에 따라 `blocked` 또는 `decision_required`를 반환합니다.
 11. Intended operation에 대한 Decision Packet requirements를 평가합니다. Required blocking Decision Packet이 absent, pending, blocked이거나 intended operation을 cover하지 않는 deferred 상태이면 write를 block하고, user judgment로 해결할 수 있을 때 `decision_required`를 반환합니다. Resolved Decision Packet은 active Change Unit, Autonomy Boundary, baseline, intended operation과 match해야 합니다.
 12. Surface capability checks를 실행합니다. Capability failures는 validator results, blocked reasons, guarantee display changes로 기록되며 capability를 first-class kernel gate로 만들지 않습니다.
@@ -580,7 +586,7 @@ Required checks에는 active Task, active Change Unit, mode write eligibility, A
 
 Product judgment가 필요하면 `prepare_write`는 Decision Packet을 통해 user decision을 요청합니다. Product judgment를 broad approval로 바꾸면 안 됩니다. `approval_required`는 sensitive-change approval에만 사용합니다.
 
-`approval_required`가 반환되면 consumable Write Authorization은 존재하지 않습니다. 이후 approval grant는 Approval record와 `approval_gate`를 update할 뿐입니다. Core는 이후 compatible `prepare_write` retry가 `allowed`를 반환할 때만 Write Authorization을 create합니다.
+`approval_required`가 반환되면 consumable Write Authorization은 존재하지 않으며, candidate 때문에 Approval record, Decision Packet, `APR` projection이 create되지 않습니다. `request_user_decision(decision_kind=approval)`은 approval-shaped Decision Packet과 linked pending Approval record를 create하고, `approval_gate`를 `required`에서 `pending`으로 옮깁니다. `record_user_decision`은 그 linked Approval record를 update하고 `approval_gate`를 `granted`, `denied`, `expired` 중 하나로 옮깁니다. Core는 이후 compatible `prepare_write` retry가 `allowed`를 반환할 때만 Write Authorization을 create합니다.
 
 MCP를 사용할 수 없는 cooperative-only surface에서는 product writes를 instruction으로 보류해야 합니다. 더 강한 guard 또는 isolation layer가 있으면 같은 decision을 preventively 또는 isolation으로 enforce할 수 있습니다.
 

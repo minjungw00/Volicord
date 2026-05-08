@@ -41,7 +41,7 @@ Canonical kernel state, MCP request/response schema, SQLite DDL, design-quality 
 | Domain Language | `domain_terms` table | `DOMAIN-LANGUAGE` projection | Core transition 또는 reconcile, then projector |
 | Module Map | `module_map_items` table | `MODULE-MAP` projection | Core transition 또는 reconcile, then projector |
 | Interface Contract | `interface_contracts` table | `INTERFACE-CONTRACT` projection | Core transition 또는 reconcile, then projector |
-| Approval | `approvals`, decision record, event | `APR` projection과 approval card | `request_user_decision` / `record_user_decision`, then projector |
+| Approval | `approvals`, approval-shaped Decision Packet, 구현이 유지하는 경우 optional decision request routing/replay record, event; `approval_request_candidate` alone은 제외 | `APR` projection과 approval card | `request_user_decision(decision_kind=approval)`이 pending Approval record를 create하고, `record_user_decision`이 approval decision을 update한 뒤 projector |
 | Run summary | `runs` table plus artifact refs | `RUN-SUMMARY` projection | `record_run`, then projector |
 | Direct result | direct run record plus artifact refs | `DIRECT-RESULT` projection | `record_run` / `close_task`, then projector |
 | Evidence coverage | `evidence_manifests` plus artifact refs | `EVIDENCE-MANIFEST` projection | evidence module update, then projector |
@@ -63,6 +63,7 @@ Required authority statements:
 - Autonomy Boundary: active `state.sqlite.change_units` boundary field -> projection surface. 판단 재량이지 scope authority가 아니다.
 - Write Authority Summary: active scope, approval, Write Authorization, baseline, guarantee ref에서 만든 derived display다. 절대 canonical state가 아니며 work를 authorize할 수 없다.
 - Write Authorization: `state.sqlite.write_authorizations`는 specific allowed write attempt를 기록한다. Scope, approval, evidence, verification, QA, acceptance, residual-risk acceptance가 아니다.
+- Approval: `approvals`와 approval-shaped Decision Packet -> Approval record가 존재하거나 변경된 뒤에만 `APR` projection을 만든다. `prepare_write`가 반환한 `approval_request_candidate`는 candidate display로 표시할 수 있지만 `APR` source가 아니다.
 - Change Unit DAG: `state.sqlite.change_unit_dependencies`와 Change Unit ref -> dependency projection. scheduler 또는 authorization surface가 아니다.
 - Residual Risk: `state.sqlite.residual_risks`와 accepted-risk ref -> residual-risk display
 - Stewardship Impact Summary: owner record, validator result, ref에서 derive됨 -> `StewardshipImpactSummary` display. canonical record가 아니다.
@@ -172,9 +173,9 @@ Human-editable area: User Notes and Proposals.
 
 ### APR
 
-목적: sensitive change를 위한 readable approval request와 decision record다.
+목적: approval request가 committed된 뒤 sensitive change를 위한 readable approval request와 decision record다.
 
-Source: approval record, related Decision Packet, 구현이 별도 routing record를 둔다면 optional decision request routing/replay record, Change Unit scope, sensitive category, allowed path/tool/command/network/secret, baseline, expiry, alternative, decision note.
+Source: approval record, related approval-shaped Decision Packet, 구현이 별도 routing record를 둔다면 optional decision request routing/replay record, Change Unit scope, sensitive category, allowed path/tool/command/network/secret, baseline, expiry, alternative, decision note. `prepare_write`가 반환한 non-mutating `approval_request_candidate`는 `APR` source가 아니며, 표시한다면 candidate display로 표시해야 한다.
 
 Boundary: approval은 product judgment를 resolve하지 않고, correctness를 prove하지 않고, evidence를 satisfy하지 않으며, verification이나 Manual QA를 replace하지 않고, acceptance를 imply하지 않으며, residual risk를 accept하지 않는다. Decision request routing records는 decision authority가 아니며 linked compatible Decision Packet을 통하지 않고는 `decision_gate`에 영향을 줄 수 없다.
 
@@ -286,7 +287,7 @@ Projection freshness는 state version, projection job state, managed hash, artif
 | Projection | Generated when | Stale when |
 |---|---|---|
 | `TASK` | Task가 created, resumed, changed, refreshed될 때 | `state_version > projected_version`, managed block drift, unresolved reconcile required, stewardship owner ref 또는 design-quality validator result changed |
-| `APR` | approval request 또는 decision이 changed될 때 | approval status, scope, baseline, expiry, decision note가 changed |
+| `APR` | `request_user_decision(decision_kind=approval)`이 committed approval request를 create하거나, `record_user_decision`을 통해 approval decision이 changed될 때 | approval-shaped Decision Packet, linked Approval record status, scope, baseline, expiry, decision note가 changed |
 | `RUN-SUMMARY` | run이 completes 또는 interrupted될 때 | run relation changed, artifact ref missing, artifact integrity fails |
 | `EVIDENCE-MANIFEST` | evidence coverage가 changed될 때 | baseline drift, changed files modified, required evidence missing/stale, approval expired |
 | `EVAL` | verification result가 recorded될 때 | Eval 후 baseline changes, evidence becomes stale, independence relation invalidated |

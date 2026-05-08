@@ -279,7 +279,12 @@ not_required | required | pending | granted | denied | expired
 
 `approval_gate` is required only when sensitive categories are present. A display layer may show `passed` as an alias for `granted` when no approval drift exists, but the canonical value remains `granted`.
 
-`approval_gate=granted` means a compatible Approval record covers the sensitive scope. It is not a Write Authorization and does not authorize product judgment; the write path must still pass a fresh compatible `prepare_write` decision before `record_run` can consume an authorization.
+- `approval_gate=not_required` means no sensitive category currently requires approval.
+- `approval_gate=required` means sensitive approval is needed, but no committed approval-shaped Decision Packet and linked pending Approval record exists yet. This is the state `prepare_write` reaches when it detects missing sensitive approval.
+- `approval_gate=pending` means `harness.request_user_decision(decision_kind=approval)` has created the committed approval-shaped Decision Packet and linked pending Approval record, and the system is awaiting a user/operator decision.
+- `approval_gate=granted` means a compatible Approval record covers the sensitive scope. It is not a Write Authorization and does not authorize product judgment; the write path must still pass a fresh compatible `prepare_write` decision before `record_run` can consume an authorization.
+- `approval_gate=denied` means the linked Approval record was denied and the sensitive write remains blocked.
+- `approval_gate=expired` means the linked Approval record expired, drifted, or no longer covers the current baseline or intended sensitive scope.
 
 ### Design Gate
 
@@ -445,7 +450,7 @@ The following combinations are invalid and must be rejected or repaired by the k
 | `decision_gate=deferred` used for an operation not covered by the deferral | block `prepare_write` or close |
 | `decision_gate=resolved` where the recorded decision no longer matches the active Change Unit, Autonomy Boundary, baseline, or intended operation | repair to `required`, `pending`, or `blocked` |
 | Stored `decision_gate` differs from aggregate recomputation | recompute and repair before write or close |
-| Sensitive change with `approval_gate=not_required` | mark approval required and block or request approval |
+| Sensitive change with `approval_gate=not_required` | repair to `approval_gate=required` and block `prepare_write`; do not create Approval, Decision Packet, Write Authorization, or `APR` until `request_user_decision(decision_kind=approval)` commits the approval request |
 | Sensitive change with approval denied, expired, or outside approved scope | block `prepare_write` |
 | Required evidence with `evidence_gate=not_required` | repair to `none`, `partial`, `sufficient`, `stale`, or `blocked` |
 | `evidence_gate=none` while evidence records support required criteria | recompute evidence gate |
@@ -498,9 +503,10 @@ write_authorization_violation_detected
 | Decision deferred | `waiting_user` | previous runnable phase, `waiting_user`, or `blocked` | Decision Packet deferral recorded; `decision_gate=deferred`; residual risk or follow-up visibility recorded when relevant |
 | Change Unit scope is confirmed | `shaping` or `waiting_user` | `ready` | `scope_gate=passed` |
 | Scope is missing for intended write | any non-terminal phase | `waiting_user` or `blocked` | `scope_gate=pending` or `blocked` |
-| Sensitive approval requested | any non-terminal phase | `waiting_user` | `approval_gate=pending` |
-| Sensitive approval granted | `waiting_user` | previous runnable phase | `approval_gate=granted` |
-| Sensitive approval denied | `waiting_user` | `blocked` | `approval_gate=denied` |
+| Sensitive approval need detected by `prepare_write` | any non-terminal phase | `waiting_user` or `blocked` | `approval_gate=required`; approval-required blocker may be recorded; no Approval, Decision Packet, Write Authorization, or `APR` is created for the candidate |
+| Approval request committed by `request_user_decision(decision_kind=approval)` | any non-terminal phase | `waiting_user` | create approval-shaped Decision Packet and linked pending Approval record; `approval_gate=pending` |
+| Sensitive approval granted by `record_user_decision` | `waiting_user` | previous runnable phase | linked Approval record updated; `approval_gate=granted` |
+| Sensitive approval denied by `record_user_decision` | `waiting_user` | `blocked` | linked Approval record updated; `approval_gate=denied` |
 | Approval scope drifts or expires | any non-terminal phase | `waiting_user` or `blocked` | `approval_gate=expired` |
 | Autonomy boundary violation | any non-terminal phase | `waiting_user` or `blocked` | violation recorded; Decision Packet requested when product judgment can resolve it; otherwise scope or policy blocker recorded |
 | `prepare_write` allows write | `ready` or `executing` | `executing` | create Write Authorization, or return the already committed response for idempotent replay; active Run may proceed |
@@ -565,8 +571,8 @@ The decision algorithm is:
 5. Check the intended operation against the active Change Unit Autonomy Boundary. If the operation exceeds the recorded latitude, block the write. When product judgment can resolve the gap, set `decision_gate=required` or create/request a Decision Packet and return `decision_required`. A resolved Decision Packet may update the Autonomy Boundary or propose Change Unit scope changes, but the write remains blocked until the active Change Unit scope and any sensitive approval are compatible.
 6. Check intended paths, tools, commands, network targets, and secret access against the Change Unit. Scope gaps return `blocked` or require scope confirmation.
 7. Check baseline freshness. If the baseline is stale, return `blocked` and mark dependent approvals, Decision Packets, or evidence stale or incompatible where applicable.
-8. Determine sensitive categories. If sensitive categories exist and no matching approval is granted, return `approval_required`.
-9. Validate approval scope. Denied, expired, drifted, or insufficient approval returns `blocked` or `approval_required` depending on whether a new approval can resolve it.
+8. Determine sensitive categories. If sensitive categories exist and no matching Approval is granted, set or keep `approval_gate=required`, record approval-required blocker state for a committed non-dry-run decision when applicable, return `approval_required`, and optionally return an `approval_request_candidate` for display or a later `request_user_decision(decision_kind=approval)` call. This path must not create an Approval record, Decision Packet, Write Authorization, or `APR`.
+9. Validate approval scope. Denied, expired, drifted, or insufficient approval returns `blocked` or `approval_required` depending on whether a new approval can resolve it. If a new approval can resolve it, the gate returns to `approval_gate=required` until `request_user_decision(decision_kind=approval)` commits the approval request.
 10. Run design-policy precondition checks that apply before writing. Required unmet design preconditions return `blocked` or `decision_required` according to policy.
 11. Evaluate Decision Packet requirements for the intended operation. A required blocking Decision Packet that is absent, pending, blocked, or deferred without coverage for the intended operation blocks the write and returns `decision_required` when user judgment can resolve it. A resolved Decision Packet must match the active Change Unit, Autonomy Boundary, baseline, and intended operation.
 12. Run surface capability checks. Capability failures are recorded as validator results, blocked reasons, and guarantee display changes; they do not create capability as a first-class kernel gate.
@@ -578,7 +584,7 @@ An `allowed` decision must create or reference a Write Authorization with `statu
 
 When product judgment is needed, `prepare_write` requests a user decision through a Decision Packet. It must not convert product judgment into broad approval. `approval_required` is reserved for sensitive-change approval.
 
-When `approval_required` is returned, no consumable Write Authorization exists. A later approval grant updates the Approval record and `approval_gate`; Core creates a Write Authorization only if a subsequent compatible `prepare_write` retry returns `allowed`.
+When `approval_required` is returned, no consumable Write Authorization exists and no Approval record, Decision Packet, or `APR` projection is created for the candidate. `request_user_decision(decision_kind=approval)` creates the approval-shaped Decision Packet and linked pending Approval record, which moves `approval_gate` from `required` to `pending`. `record_user_decision` updates that linked Approval record and moves `approval_gate` to `granted`, `denied`, or `expired`. Core creates a Write Authorization only if a subsequent compatible `prepare_write` retry returns `allowed`.
 
 If MCP is unavailable on a cooperative-only surface, product writes must be held by instruction. If a stronger guard or isolation layer exists, the same decision may be enforced preventively or by isolation.
 

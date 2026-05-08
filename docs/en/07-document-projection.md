@@ -41,7 +41,7 @@ It does not define canonical kernel state, MCP request/response schemas, SQLite 
 | Domain Language | `domain_terms` table | `DOMAIN-LANGUAGE` projection | Core transition or reconcile, then projector |
 | Module Map | `module_map_items` table | `MODULE-MAP` projection | Core transition or reconcile, then projector |
 | Interface Contract | `interface_contracts` table | `INTERFACE-CONTRACT` projection | Core transition or reconcile, then projector |
-| Approval | `approvals`, decision records, and events | `APR` projection and approval card | `request_user_decision` / `record_user_decision`, then projector |
+| Approval | `approvals`, approval-shaped Decision Packet, optional decision request routing/replay record if implementation keeps one, and events; never `approval_request_candidate` alone | `APR` projection and approval card | `request_user_decision(decision_kind=approval)` creates the pending Approval record, `record_user_decision` updates the approval decision, then projector |
 | Run summary | `runs` table plus artifact refs | `RUN-SUMMARY` projection | `record_run`, then projector |
 | Direct result | direct run record plus artifact refs | `DIRECT-RESULT` projection | `record_run` / `close_task`, then projector |
 | Evidence coverage | `evidence_manifests` plus artifact refs | `EVIDENCE-MANIFEST` projection | evidence module update, then projector |
@@ -63,6 +63,7 @@ Required authority statements:
 - Autonomy Boundary: active `state.sqlite.change_units` boundary fields -> projection surfaces; it is judgment latitude, not scope authority
 - Write Authority Summary: derived display from active scope, approval, Write Authorization, baseline, and guarantee refs; it is never canonical state and cannot authorize work
 - Write Authorization: `state.sqlite.write_authorizations` records a specific allowed write attempt; it is not scope, approval, evidence, verification, QA, acceptance, or residual-risk acceptance
+- Approval: `approvals` plus the approval-shaped Decision Packet -> `APR` projection only after the Approval record exists or changes; an `approval_request_candidate` from `prepare_write` may appear as candidate display, but it is not an `APR` source
 - Change Unit DAG: `state.sqlite.change_unit_dependencies` and Change Unit refs -> dependency projection; it is not a scheduler or authorization surface
 - Residual Risk: `state.sqlite.residual_risks` and accepted-risk refs -> residual-risk displays
 - Stewardship Impact Summary: derived from owner records, validator results, and refs -> `StewardshipImpactSummary` display; it is not a canonical record
@@ -170,9 +171,9 @@ Human-editable area: User Notes and Proposals.
 
 ### APR
 
-Purpose: a readable approval request and decision record for sensitive change.
+Purpose: a readable approval request and decision record for sensitive change after the approval request has been committed.
 
-Sources: approval record, related Decision Packet, optional decision request routing/replay record if implementation keeps one, Change Unit scope, sensitive categories, allowed paths/tools/commands/network/secrets, baseline, expiry, alternatives, decision note.
+Sources: approval record, related approval-shaped Decision Packet, optional decision request routing/replay record if implementation keeps one, Change Unit scope, sensitive categories, allowed paths/tools/commands/network/secrets, baseline, expiry, alternatives, decision note. A non-mutating `approval_request_candidate` returned by `prepare_write` is not an `APR` source and must be displayed, if at all, as candidate display.
 
 Boundary: approval does not resolve product judgment, prove correctness, satisfy evidence, replace verification, replace Manual QA, imply acceptance, or accept residual risk. Decision request routing records are not decision authority and cannot affect `decision_gate` except through a linked compatible Decision Packet.
 
@@ -282,7 +283,7 @@ Projection freshness is computed from state versions, projection job state, mana
 | Projection | Generated when | Stale when |
 |---|---|---|
 | `TASK` | Task created, resumed, changed, or refreshed | `state_version > projected_version`, managed block drift, unresolved reconcile required, stewardship owner refs or design-quality validator results changed |
-| `APR` | approval request or decision changes | approval status, scope, baseline, expiry, or decision note changes |
+| `APR` | committed approval request is created by `request_user_decision(decision_kind=approval)`, or approval decision changes through `record_user_decision` | approval-shaped Decision Packet, linked Approval record status, scope, baseline, expiry, or decision note changes |
 | `RUN-SUMMARY` | run completes or is interrupted | run relation changes, artifact ref missing, artifact integrity fails |
 | `EVIDENCE-MANIFEST` | evidence coverage changes | baseline drift, changed files modified, required evidence missing/stale, approval expired |
 | `EVAL` | verification result recorded | baseline changes after Eval, evidence becomes stale, independence relation invalidated |

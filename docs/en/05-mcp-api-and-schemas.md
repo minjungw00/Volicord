@@ -784,7 +784,7 @@ ApprovalRequestCandidate:
   baseline_ref: string | null
 ```
 
-`approval_request_candidate` is present only when `decision=approval_required` or when Core can suggest a new approval request. Otherwise it is `null`. It is a non-mutating candidate for the `approval_scope` of a later `harness.request_user_decision(decision_kind=approval)` call; returning it from `prepare_write` does not create an Approval record, Decision Packet, or Write Authorization.
+`approval_request_candidate` is present only when `decision=approval_required` or when Core can suggest a new approval request. Otherwise it is `null`. It is a non-mutating candidate for the `approval_scope` of a later `harness.request_user_decision(decision_kind=approval)` call; returning it from `prepare_write` does not create an Approval record, Decision Packet, Write Authorization, or `APR` projection job. If a UI, status response, or next-action response shows this payload before the approval request is committed, it must label it as candidate display, not as an `APR` projection.
 
 When `dry_run=false` and `decision=allowed`, the response must include a non-null `write_authorization_ref`; the `write_authorization` summary may also be returned when the caller requests expanded payloads or the implementation supports it. `authorization_effect` is `created` when Core creates a new authorization.
 
@@ -800,11 +800,11 @@ A Write Authorization is specific to the intended operation and the current stat
 
 `decision_packet_candidate` is present when `decision=decision_required` and no compatible Decision Packet already exists. Its fields match `RequestUserDecisionRequest` after the envelope. It is a non-mutating candidate payload for a later `harness.request_user_decision` call; returning it from `prepare_write` does not create or update a Decision Packet.
 
-State transition summary: may move Task to `executing`, `waiting_user`, or `blocked`; may create a Write Authorization when allowed or return the already committed response for idempotent replay; may set `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=pending/expired`, or stale evidence/approval markers.
+State transition summary: may move Task to `executing`, `waiting_user`, or `blocked`; may create a Write Authorization when allowed or return the already committed response for idempotent replay; may set `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=required/expired`, or stale evidence/approval markers. `approval_gate=pending` starts when an approval-shaped Decision Packet and linked pending Approval record are created by `harness.request_user_decision(decision_kind=approval)`.
 
 Events emitted: `prepare_write_allowed`, `write_authorization_created`, `write_authorization_returned`, `prepare_write_blocked`, `scope_required`, `decision_required`, `autonomy_boundary_exceeded`, `approval_required`, `baseline_stale_detected`, `capability_insufficient_detected`.
 
-Projection jobs enqueued: `TASK`; `APR` when approval is required.
+Projection jobs enqueued: `TASK`. `prepare_write` must not enqueue `APR` merely because it returned `decision=approval_required` or an `approval_request_candidate`; `APR` is reserved for the committed Approval record and approval-shaped Decision Packet lifecycle.
 
 ValidatorResults emitted: `autonomy_boundary_check`, `decision_gate_check`, `decision_quality_check`, `feedback_loop_check`, `tdd_trace_required`, `codebase_stewardship_check`, applicable design-quality validators, `surface_capability_check`.
 
@@ -819,11 +819,11 @@ Idempotency behavior: repeated allowed/blocked decision with same payload return
 Sensitive-change approval follows this recipe:
 
 1. `harness.prepare_write` detects sensitive categories for the intended product write.
-2. If no compatible granted Approval covers the scope, baseline, sensitive categories, paths, tools, commands, network targets, secret access, and capability requirements, `prepare_write` returns `decision=approval_required`, includes an `approval_request_candidate`, sets both Write Authorization fields to `null`, and uses `authorization_effect=none`.
+2. If no compatible granted Approval covers the scope, baseline, sensitive categories, paths, tools, commands, network targets, secret access, and capability requirements, `prepare_write` returns `decision=approval_required`, includes an `approval_request_candidate`, sets both Write Authorization fields to `null`, uses `authorization_effect=none`, and may update Task blockers plus enqueue `TASK`. It must not create an Approval record, Decision Packet, Write Authorization, or `APR` projection job for this non-mutating candidate.
 3. The caller invokes `harness.request_user_decision` with `decision_kind=approval` and an `approval_scope` derived from the candidate and current intended write.
-4. Core creates a canonical Decision Packet for the approval-shaped user judgment and a pending Approval record. The response includes both `decision_packet_ref` and `approval_id`.
+4. Core creates a canonical Decision Packet for the approval-shaped user judgment and a pending Approval record. The response includes both `decision_packet_ref` and `approval_id`, and this committed approval request enqueues `APR`.
 5. The user or operator invokes `harness.record_user_decision` for that Decision Packet.
-6. Core records the Decision Packet resolution, updates the linked Approval record, and recomputes `approval_gate` as granted, denied, or expired.
+6. Core records the Decision Packet resolution, updates the linked Approval record, recomputes `approval_gate` as granted, denied, or expired, and enqueues `APR` again for the updated approval decision.
 7. If the approval was granted, the caller retries `harness.prepare_write` with a fresh idempotency key and the current `expected_state_version`.
 8. Only that retry may create a Write Authorization. It succeeds only if the approved scope, baseline, sensitive categories, paths, tools, commands, network targets, secret scope, Decision Packet refs, Approval refs, and capability checks remain compatible with the current intended write.
 
@@ -1032,7 +1032,7 @@ State transition summary: records a pending Decision Packet and usually moves Ta
 
 Events emitted: `decision_packet_created`, `user_decision_requested`, `approval_requested`, `scope_confirmation_requested`, `design_choice_requested`, `architecture_choice_requested`, `autonomy_boundary_decision_requested`, `verification_waiver_requested`, `qa_waiver_requested`, `acceptance_requested`, `residual_risk_acceptance_requested`, `reconcile_decision_requested`.
 
-Projection jobs enqueued: `TASK`; `DEC` when standalone Decision Packet projection is enabled; `APR` for approval where applicable; affected projection for reconcile.
+Projection jobs enqueued: `TASK`; `DEC` when standalone Decision Packet projection is enabled; `APR` only for `decision_kind=approval` after Core creates the canonical approval-shaped Decision Packet and linked pending Approval record; affected projection for reconcile.
 
 ValidatorResults emitted: `decision_quality_check`, `autonomy_boundary_check` when the packet affects the active Change Unit boundary, `residual_risk_visibility_check` for risk-acceptance decisions.
 
@@ -1114,7 +1114,7 @@ State transition summary: resolves, defers, rejects, or blocks the targeted Deci
 
 Events emitted: `user_decision_recorded`, `decision_packet_resolved`, `decision_packet_deferred`, `decision_packet_rejected`, `approval_granted`, `approval_denied`, `scope_confirmed`, `scope_rejected`, `design_choice_recorded`, `architecture_choice_recorded`, `autonomy_boundary_decision_recorded`, `verification_waiver_recorded`, `qa_waiver_recorded`, `acceptance_recorded`, `residual_risk_accepted`, `reconcile_resolved`.
 
-Projection jobs enqueued: `TASK`; `DEC` when standalone Decision Packet projection is enabled; `APR` for approval where applicable; `MANUAL-QA` for QA waiver when represented as a QA record; affected design/task projections for reconcile. Decision Packet visibility still appears through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources.
+Projection jobs enqueued: `TASK`; `DEC` when standalone Decision Packet projection is enabled; `APR` when the targeted Decision Packet is approval-shaped and the linked Approval record is updated; `MANUAL-QA` for QA waiver when represented as a QA record; affected design/task projections for reconcile. Decision Packet visibility still appears through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources.
 
 ValidatorResults emitted: `decision_quality_check`, `autonomy_boundary_check`, `residual_risk_visibility_check`.
 

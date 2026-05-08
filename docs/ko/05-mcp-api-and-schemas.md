@@ -784,7 +784,7 @@ ApprovalRequestCandidate:
   baseline_ref: string | null
 ```
 
-`approval_request_candidate`는 `decision=approval_required`이거나 Core가 new approval request를 suggest할 수 있을 때만 present합니다. 그 외에는 `null`입니다. 이는 이후 `harness.request_user_decision(decision_kind=approval)` 호출의 `approval_scope`에 사용할 non-mutating candidate입니다. `prepare_write`가 이를 반환해도 Approval record, Decision Packet, Write Authorization은 create되지 않습니다.
+`approval_request_candidate`는 `decision=approval_required`이거나 Core가 new approval request를 suggest할 수 있을 때만 present합니다. 그 외에는 `null`입니다. 이는 이후 `harness.request_user_decision(decision_kind=approval)` 호출의 `approval_scope`에 사용할 non-mutating candidate입니다. `prepare_write`가 이를 반환해도 Approval record, Decision Packet, Write Authorization, `APR` projection job은 create되지 않습니다. UI, status response, next-action response가 approval request commit 전에 이 payload를 표시한다면 이를 candidate display로 label해야 하며 `APR` projection이라고 부르면 안 됩니다.
 
 `dry_run=false`이고 `decision=allowed`일 때 response는 non-null `write_authorization_ref`를 포함해야 합니다. Caller가 expanded payload를 request하거나 implementation이 support하면 `write_authorization` summary도 반환할 수 있습니다. `authorization_effect`는 Core가 새 authorization을 create하면 `created`입니다.
 
@@ -800,11 +800,11 @@ Write Authorization은 intended operation과 current state, baseline, active Cha
 
 `decision_packet_candidate`는 `decision=decision_required`이고 compatible Decision Packet이 아직 없을 때 present합니다. Fields는 envelope 이후의 `RequestUserDecisionRequest`와 match합니다. 이는 나중에 `harness.request_user_decision`을 호출하기 위한 non-mutating candidate payload입니다. `prepare_write`가 이를 반환해도 Decision Packet이 create 또는 update되지는 않습니다.
 
-State transition summary: Task를 `executing`, `waiting_user`, `blocked`로 옮길 수 있습니다. Allowed일 때 Write Authorization을 create하거나 idempotent replay에 대해 already committed response를 반환할 수 있습니다. `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=pending/expired`, stale evidence/approval markers를 set할 수 있습니다.
+State transition summary: Task를 `executing`, `waiting_user`, `blocked`로 옮길 수 있습니다. Allowed일 때 Write Authorization을 create하거나 idempotent replay에 대해 already committed response를 반환할 수 있습니다. `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=required/expired`, stale evidence/approval markers를 set할 수 있습니다. `approval_gate=pending`은 `harness.request_user_decision(decision_kind=approval)`이 approval-shaped Decision Packet과 linked pending Approval record를 create할 때 시작됩니다.
 
 Events emitted: `prepare_write_allowed`, `write_authorization_created`, `write_authorization_returned`, `prepare_write_blocked`, `scope_required`, `decision_required`, `autonomy_boundary_exceeded`, `approval_required`, `baseline_stale_detected`, `capability_insufficient_detected`.
 
-Projection jobs enqueued: `TASK`; approval required일 때 `APR`.
+Projection jobs enqueued: `TASK`. `prepare_write`는 `decision=approval_required` 또는 `approval_request_candidate`를 반환했다는 이유만으로 `APR`을 enqueue하면 안 됩니다. `APR`은 committed Approval record와 approval-shaped Decision Packet lifecycle에만 reserved됩니다.
 
 ValidatorResults emitted: `autonomy_boundary_check`, `decision_gate_check`, `decision_quality_check`, `feedback_loop_check`, `tdd_trace_required`, `codebase_stewardship_check`, applicable design-quality validators, `surface_capability_check`.
 
@@ -819,11 +819,11 @@ Idempotency behavior: 같은 payload로 repeated allowed/blocked decision은 ori
 Sensitive-change approval은 다음 recipe를 따릅니다.
 
 1. `harness.prepare_write`가 intended product write의 sensitive categories를 detect합니다.
-2. Scope, baseline, sensitive categories, paths, tools, commands, network targets, secret access, capability requirements를 cover하는 compatible granted Approval이 없으면 `prepare_write`는 `decision=approval_required`를 반환하고, `approval_request_candidate`를 포함하며, 두 Write Authorization fields를 `null`로 두고 `authorization_effect=none`을 사용합니다.
+2. Scope, baseline, sensitive categories, paths, tools, commands, network targets, secret access, capability requirements를 cover하는 compatible granted Approval이 없으면 `prepare_write`는 `decision=approval_required`를 반환하고, `approval_request_candidate`를 포함하며, 두 Write Authorization fields를 `null`로 두고 `authorization_effect=none`을 사용하며, Task blockers를 update하고 `TASK`를 enqueue할 수 있습니다. 이 non-mutating candidate 때문에 Approval record, Decision Packet, Write Authorization, `APR` projection job을 create하면 안 됩니다.
 3. Caller는 candidate와 current intended write에서 derive한 `approval_scope`로 `harness.request_user_decision`을 `decision_kind=approval`과 함께 호출합니다.
-4. Core는 approval-shaped user judgment를 위한 canonical Decision Packet과 pending Approval record를 create합니다. Response는 `decision_packet_ref`와 `approval_id`를 모두 포함합니다.
+4. Core는 approval-shaped user judgment를 위한 canonical Decision Packet과 pending Approval record를 create합니다. Response는 `decision_packet_ref`와 `approval_id`를 모두 포함하며, 이 committed approval request가 `APR`을 enqueue합니다.
 5. User 또는 operator는 해당 Decision Packet에 대해 `harness.record_user_decision`을 호출합니다.
-6. Core는 Decision Packet resolution을 record하고 linked Approval record를 update하며 `approval_gate`를 granted, denied, expired 중 하나로 recompute합니다.
+6. Core는 Decision Packet resolution을 record하고 linked Approval record를 update하며 `approval_gate`를 granted, denied, expired 중 하나로 recompute하고, updated approval decision을 위해 `APR`을 다시 enqueue합니다.
 7. Approval이 granted이면 caller는 fresh idempotency key와 current `expected_state_version`으로 `harness.prepare_write`를 다시 호출합니다.
 8. 그 retry만 Write Authorization을 create할 수 있습니다. Approved scope, baseline, sensitive categories, paths, tools, commands, network targets, secret scope, Decision Packet refs, Approval refs, capability checks가 current intended write와 compatible할 때만 성공합니다.
 
@@ -1032,7 +1032,7 @@ State transition summary: pending Decision Packet을 record하고 보통 Task를
 
 Events emitted: `decision_packet_created`, `user_decision_requested`, `approval_requested`, `scope_confirmation_requested`, `design_choice_requested`, `architecture_choice_requested`, `autonomy_boundary_decision_requested`, `verification_waiver_requested`, `qa_waiver_requested`, `acceptance_requested`, `residual_risk_acceptance_requested`, `reconcile_decision_requested`.
 
-Projection jobs enqueued: `TASK`; applicable한 approval에는 `APR`; reconcile에는 affected projection.
+Projection jobs enqueued: `TASK`; Core가 canonical approval-shaped Decision Packet과 linked pending Approval record를 create한 뒤 `decision_kind=approval`에 대해서만 `APR`; reconcile에는 affected projection.
 
 Standalone Decision Packet projection이 enabled일 때만 optional `DEC` job을 enqueue합니다.
 
@@ -1116,7 +1116,7 @@ State transition summary: targeted Decision Packet을 resolve, defer, reject, bl
 
 Events emitted: `user_decision_recorded`, `decision_packet_resolved`, `decision_packet_deferred`, `decision_packet_rejected`, `approval_granted`, `approval_denied`, `scope_confirmed`, `scope_rejected`, `design_choice_recorded`, `architecture_choice_recorded`, `autonomy_boundary_decision_recorded`, `verification_waiver_recorded`, `qa_waiver_recorded`, `acceptance_recorded`, `residual_risk_accepted`, `reconcile_resolved`.
 
-Projection jobs enqueued: `TASK`; applicable한 approval에는 `APR`; QA waiver가 QA record로 represented될 때 `MANUAL-QA`; reconcile에는 affected design/task projections. Decision Packet visibility는 여전히 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 나타납니다.
+Projection jobs enqueued: `TASK`; targeted Decision Packet이 approval-shaped이고 linked Approval record가 update될 때 `APR`; QA waiver가 QA record로 represented될 때 `MANUAL-QA`; reconcile에는 affected design/task projections. Decision Packet visibility는 여전히 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 나타납니다.
 
 Standalone Decision Packet projection이 enabled일 때만 optional `DEC` job을 enqueue합니다.
 
