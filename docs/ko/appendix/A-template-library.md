@@ -16,7 +16,7 @@ Template은 rendered shape의 예시다. Canonical state가 아니며 kernel fie
 6. Approval, verification, Manual QA, acceptance를 visible하게 분리한다.
 7. Card가 `Manual QA: pending/passed/failed/waived`라고 말하더라도 `qa_gate`를 canonical로 취급한다.
 8. Template change는 projection change로 versioning한다.
-9. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority, 표시된 Write Authorization ref, Change Unit DAG, Residual Risk text는 canonical state나 canonical Write Authorization record 자체가 아니라 projection output으로 취급한다.
+9. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority, 표시된 Write Authorization ref, Change Unit DAG, Residual Risk text, Stewardship Impact text는 canonical state나 canonical Write Authorization record 자체가 아니라 projection output으로 취급한다.
 
 ## Required MVP Templates
 
@@ -109,12 +109,20 @@ updated_at: 2026-05-06T09:30:15+09:00
 - close impact:
 
 ## Stewardship Impact
-- domain language:
-- module boundary:
-- interface contract:
-- feedback loop:
-- future-change risk:
-- close impact:
+- summary shape: StewardshipImpactSummary
+- domain_language_impact: none | updated | conflict | unresolved
+- module_boundary_impact: none | local | public_boundary | unresolved
+- interface_contract_impact: none | compatible | breaking | unresolved
+- feedback_loop_status: defined | missing | waived
+- future_change_risk: none | visible | accepted | unresolved
+- close_impact: none | blocks_close | requires_decision | residual_risk
+- refs:
+  - domain terms:
+  - module map:
+  - interface contracts:
+  - feedback loop / TDD:
+  - residual risk:
+  - Decision Packets:
 
 ## Goal
 -

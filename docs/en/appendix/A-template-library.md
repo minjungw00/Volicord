@@ -16,7 +16,7 @@ Templates are examples of rendered shape. They are not canonical state and must 
 6. Keep approval, verification, Manual QA, and acceptance visibly separate.
 7. Treat `qa_gate` as canonical even when a card says `Manual QA: pending/passed/failed/waived`.
 8. Version template changes as projection changes.
-9. Treat Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority, displayed Write Authorization refs, Change Unit DAG, and Residual Risk text as projection output, not canonical state or the canonical Write Authorization record itself.
+9. Treat Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority, displayed Write Authorization refs, Change Unit DAG, Residual Risk text, and Stewardship Impact text as projection output, not canonical state or the canonical Write Authorization record itself.
 
 ## Required MVP Templates
 
@@ -109,12 +109,20 @@ updated_at: 2026-05-06T09:30:15+09:00
 - close impact:
 
 ## Stewardship Impact
-- domain language:
-- module boundary:
-- interface contract:
-- feedback loop:
-- future-change risk:
-- close impact:
+- summary shape: StewardshipImpactSummary
+- domain_language_impact: none | updated | conflict | unresolved
+- module_boundary_impact: none | local | public_boundary | unresolved
+- interface_contract_impact: none | compatible | breaking | unresolved
+- feedback_loop_status: defined | missing | waived
+- future_change_risk: none | visible | accepted | unresolved
+- close_impact: none | blocks_close | requires_decision | residual_risk
+- refs:
+  - domain terms:
+  - module map:
+  - interface contracts:
+  - feedback loop / TDD:
+  - residual risk:
+  - Decision Packets:
 
 ## Goal
 -

@@ -139,12 +139,27 @@ Policy validator는 MCP API document가 담당하는 validator result schema를 
 |---|---|
 | `name` | `codebase_stewardship` |
 | `applies_when` | Work가 durable code structure, domain concept, module ownership, interface contract, architecture direction, deep-module boundary, testing strategy, cross-cutting exception을 touch할 때. |
-| `default_requirement` | Change Unit의 stewardship view를 domain language, module map, interface contract, TDD/feedback loop, architecture watchpoint, deep-module boundary로 묶어 본다. Owner record를 source of truth로 사용하고, task-relevant ref만 기록하며, schema나 DDL을 duplicate하지 않고 drift에는 reconcile item을 만든다. |
+| `default_requirement` | Change Unit의 stewardship view를 domain language, module map, interface contract, TDD/feedback loop, architecture watchpoint, deep-module boundary로 묶어 본다. Stewardship review는 general code review checklist가 아니라, local task completion이 domain language, module boundary, interface contract, feedback loop, testability, maintainability, future-change cost의 degradation을 숨기지 못하게 하는 장치다. Owner record를 source of truth로 사용하고, task-relevant ref만 기록하며, schema나 DDL을 duplicate하지 않고 drift에는 reconcile item을 만든다. |
 | `allowed_waiver` | Durable structure, domain, interface, feedback-loop impact가 없는 isolated docs, comment, formatting, leaf edit에 허용된다. Waiver에는 stewardship review가 필요 없는 이유를 기록해야 한다. |
 | `required_record` | Task 또는 Change Unit stewardship ref, `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop 또는 `tdd_traces` ref, decision record, Task/Change Unit watchpoint, Journey Spine Entry ref, drift에 대한 reconcile item. Dedicated architecture watchpoint ref는 later DDL batch가 정의한 경우에만 사용할 수 있다. |
 | `validator` | `codebase_stewardship_check` |
 | `evidence` | Domain language ref, module map ref, interface contract ref, feedback loop ref, 사용된 경우 TDD trace ref, Task/Change Unit watchpoint, Journey Spine Entry ref, deep-module note, reconcile item ref, later DDL에서 정의된 경우에만 dedicated architecture watchpoint ref. |
 | `close_impact` | Required stewardship review가 없으면 `design_gate=pending`, `partial`, 또는 `stale`로 남는다. Unresolved drift가 public behavior, module boundary, acceptance criteria, verification confidence에 영향을 주면 close를 block할 수 있다. |
+
+### StewardshipImpactSummary Display Shape
+
+`StewardshipImpactSummary`는 Design Stewardship Default와 `codebase_stewardship` policy contract를 위한 derived display/summary shape다. Kernel Authority Invariant가 아니다. Derived display이지 canonical current record가 아니다. Owner record, validator result, ref에서 derive되며 새로운 canonical source of truth를 만들지 않는다.
+
+Domain term, module map item, interface contract, feedback loop/TDD record, residual risk, Decision Packet은 계속 owner record로 남는다. Summary는 close-relevant status를 compact하게 render하고 해당 owner로 돌아가는 ref를 표시한다.
+
+| Field | Values |
+|---|---|
+| `domain_language_impact` | `none` \| `updated` \| `conflict` \| `unresolved` |
+| `module_boundary_impact` | `none` \| `local` \| `public_boundary` \| `unresolved` |
+| `interface_contract_impact` | `none` \| `compatible` \| `breaking` \| `unresolved` |
+| `feedback_loop_status` | `defined` \| `missing` \| `waived` |
+| `future_change_risk` | `none` \| `visible` \| `accepted` \| `unresolved` |
+| `close_impact` | `none` \| `blocks_close` \| `requires_decision` \| `residual_risk` |
 
 ### Manual QA
 

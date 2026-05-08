@@ -20,7 +20,7 @@ It does not define canonical kernel state, MCP request/response schemas, SQLite 
 10. Large logs, diffs, traces, screenshots, bundles, and checkpoints are linked by artifact refs instead of embedded.
 11. Projection failure or staleness never changes the underlying task result.
 12. User-facing cards may use friendly labels, but canonical gate names remain the kernel fields.
-13. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority, Change Unit DAG, and Residual Risk displays are non-canonical projections from owner records and artifact refs.
+13. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority, Change Unit DAG, Residual Risk, and Stewardship Impact displays are non-canonical projections from owner records and artifact refs.
 
 ## Document Authority Matrix
 
@@ -35,6 +35,7 @@ It does not define canonical kernel state, MCP request/response schemas, SQLite 
 | Write Authorization | `state.sqlite.write_authorizations` plus related Task, Change Unit, approval, Decision Packet, baseline, and consumed Run refs | `TASK` write authority summary, Journey Card write authority line, `RUN-SUMMARY` relation | `prepare_write` creates or returns it; `record_run` consumes it, then projector |
 | Change Unit DAG | `state.sqlite.change_units`, `state.sqlite.change_unit_dependencies`, dependency-related events, and active Task state | `TASK` Change Unit Dependencies / DAG summary | shaping update or reconcile, then projector |
 | Residual Risk | `state.sqlite.residual_risks`, accepted-risk events/refs, related Decision Packets, evidence/QA/eval refs, and artifact refs | `TASK` Residual Risk, `DEC` accepted-risk context, Journey Card residual-risk line | Core transition from decision, evidence, QA, Eval, reconcile, or close flow, then projector |
+| Stewardship Impact Summary | `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop/TDD records, `state.sqlite.residual_risks`, `state.sqlite.decision_packets`, policy validator results, and related refs | `TASK` Stewardship Impact and status/resume stewardship displays | Owner record update, validator result, reconcile, or close flow, then projector |
 | User Notes | human-editable input -> `reconcile_items` -> accepted state event/record | `TASK` User Notes and Proposals | human edit, reconcile decision, Core event |
 | Shared Design | shared design records and events | `TASK` summary, `DESIGN`, `DEC` | Core transition or reconcile, then projector |
 | Domain Language | `domain_terms` table | `DOMAIN-LANGUAGE` projection | Core transition or reconcile, then projector |
@@ -64,6 +65,7 @@ Required authority statements:
 - Write Authorization: `state.sqlite.write_authorizations` records a specific allowed write attempt; it is not scope, approval, evidence, verification, QA, acceptance, or residual-risk acceptance
 - Change Unit DAG: `state.sqlite.change_unit_dependencies` and Change Unit refs -> dependency projection; it is not a scheduler or authorization surface
 - Residual Risk: `state.sqlite.residual_risks` and accepted-risk refs -> residual-risk displays
+- Stewardship Impact Summary: derived from owner records, validator results, and refs -> `StewardshipImpactSummary` display; it is not a canonical record
 
 ## Markdown Report Boundary
 
@@ -154,7 +156,9 @@ Persisted `JOURNEY-CARD` Markdown is optional. Current-position Journey Card out
 
 Purpose: the continuity projection for the active work. It summarizes where the work is, judgment context, Autonomy Boundary, Write Authority, Stewardship Impact, next evidence, residual risk, mode, lifecycle phase, next action, current gates, active Change Unit, pending decisions, evidence, report refs, and projection freshness.
 
-Sources: `state.sqlite` Task, task gates, active Change Unit, Change Unit dependencies, Write Authorization records, Write Authority display inputs, Decision Packets, Residual Risks, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval records, Journey Spine source records, Domain Language, Module Map, Interface Contract, design-quality validator results, artifact refs, projection freshness.
+Sources: `state.sqlite` Task, task gates, active Change Unit, Change Unit dependencies, Write Authorization records, Write Authority display inputs, Decision Packets, Residual Risks, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval records, Journey Spine source records, `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop/TDD records, design-quality validator results, artifact refs, projection freshness.
+
+Boundary: Stewardship Impact in `TASK` is the `StewardshipImpactSummary` display derived from owner records, validator results, and refs. It does not replace Domain Language, Module Map, Interface Contract, feedback loop/TDD, residual-risk, or Decision Packet owner records.
 
 Human-editable area: User Notes and Proposals.
 
@@ -269,7 +273,7 @@ Projection freshness is computed from state versions, projection job state, mana
 
 | Projection | Generated when | Stale when |
 |---|---|---|
-| `TASK` | Task created, resumed, changed, or refreshed | `state_version > projected_version`, managed block drift, unresolved reconcile required |
+| `TASK` | Task created, resumed, changed, or refreshed | `state_version > projected_version`, managed block drift, unresolved reconcile required, stewardship owner refs or design-quality validator results changed |
 | `APR` | approval request or decision changes | approval status, scope, baseline, expiry, or decision note changes |
 | `RUN-SUMMARY` | run completes or is interrupted | run relation changes, artifact ref missing, artifact integrity fails |
 | `EVIDENCE-MANIFEST` | evidence coverage changes | baseline drift, changed files modified, required evidence missing/stale, approval expired |

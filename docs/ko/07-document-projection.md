@@ -20,7 +20,7 @@ Canonical kernel state, MCP request/response schema, SQLite DDL, design-quality 
 10. Large log, diff, trace, screenshot, bundle, checkpoint는 embed하지 않고 artifact ref로 link한다.
 11. Projection failure 또는 staleness는 underlying task result를 절대 바꾸지 않는다.
 12. User-facing card는 friendly label을 사용할 수 있지만 canonical gate name은 kernel field로 남는다.
-13. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority, Change Unit DAG, Residual Risk 표시는 owner record와 artifact ref에서 만든 non-canonical projection이다.
+13. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority, Change Unit DAG, Residual Risk, Stewardship Impact 표시는 owner record와 artifact ref에서 만든 non-canonical projection이다.
 
 ## Document Authority Matrix
 
@@ -35,6 +35,7 @@ Canonical kernel state, MCP request/response schema, SQLite DDL, design-quality 
 | Write Authorization | `state.sqlite.write_authorizations`와 관련 Task, Change Unit, approval, Decision Packet, baseline, consumed Run ref | `TASK` write authority summary, Journey Card write authority line, `RUN-SUMMARY` relation | `prepare_write`가 create 또는 return하고, `record_run`이 consume한 뒤 projector |
 | Change Unit DAG | `state.sqlite.change_units`, `state.sqlite.change_unit_dependencies`, dependency 관련 event, active Task state | `TASK` Change Unit Dependencies / DAG summary | shaping update 또는 reconcile, then projector |
 | Residual Risk | `state.sqlite.residual_risks`, accepted-risk event/ref, related Decision Packet, evidence/QA/eval ref, artifact ref | `TASK` Residual Risk, `DEC` accepted-risk context, Journey Card residual-risk line | decision, evidence, QA, Eval, reconcile 또는 close flow에서 Core transition, then projector |
+| Stewardship Impact Summary | `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop/TDD record, `state.sqlite.residual_risks`, `state.sqlite.decision_packets`, policy validator result, related ref | `TASK` Stewardship Impact와 status/resume stewardship display | Owner record update, validator result, reconcile, close flow, then projector |
 | User Notes | human-editable input -> `reconcile_items` -> accepted state event/record | `TASK` User Notes and Proposals | human edit, reconcile decision, Core event |
 | Shared Design | shared design record와 event | `TASK` summary, `DESIGN`, `DEC` | Core transition 또는 reconcile, then projector |
 | Domain Language | `domain_terms` table | `DOMAIN-LANGUAGE` projection | Core transition 또는 reconcile, then projector |
@@ -64,6 +65,7 @@ Required authority statements:
 - Write Authorization: `state.sqlite.write_authorizations`는 specific allowed write attempt를 기록한다. Scope, approval, evidence, verification, QA, acceptance, residual-risk acceptance가 아니다.
 - Change Unit DAG: `state.sqlite.change_unit_dependencies`와 Change Unit ref -> dependency projection. scheduler 또는 authorization surface가 아니다.
 - Residual Risk: `state.sqlite.residual_risks`와 accepted-risk ref -> residual-risk display
+- Stewardship Impact Summary: owner record, validator result, ref에서 derive됨 -> `StewardshipImpactSummary` display. canonical record가 아니다.
 
 ## Markdown Report Boundary
 
@@ -154,7 +156,9 @@ Persisted `JOURNEY-CARD` Markdown은 optional이다. `harness.status`, `harness.
 
 목적: active work를 위한 continuity projection이다. 작업이 어디에 있는지, judgment context, Autonomy Boundary, Write Authority, Stewardship Impact, next evidence, residual risk, mode, lifecycle phase, next action, current gate, active Change Unit, pending decision, evidence, report ref, projection freshness를 요약한다.
 
-Source: `state.sqlite` Task, task gate, active Change Unit, Change Unit dependency, Write Authorization record, Write Authority display input, Decision Packet, Residual Risk, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval record, Journey Spine source record, Domain Language, Module Map, Interface Contract, design-quality validator result, artifact ref, projection freshness.
+Source: `state.sqlite` Task, task gate, active Change Unit, Change Unit dependency, Write Authorization record, Write Authority display input, Decision Packet, Residual Risk, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval record, Journey Spine source record, `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop/TDD record, design-quality validator result, artifact ref, projection freshness.
+
+Boundary: `TASK`의 Stewardship Impact는 owner record, validator result, ref에서 derive되는 `StewardshipImpactSummary` display다. Domain Language, Module Map, Interface Contract, feedback loop/TDD, residual-risk, Decision Packet owner record를 replace하지 않는다.
 
 Human-editable area: User Notes and Proposals.
 
@@ -269,7 +273,7 @@ Projection freshness는 state version, projection job state, managed hash, artif
 
 | Projection | Generated when | Stale when |
 |---|---|---|
-| `TASK` | Task가 created, resumed, changed, refreshed될 때 | `state_version > projected_version`, managed block drift, unresolved reconcile required |
+| `TASK` | Task가 created, resumed, changed, refreshed될 때 | `state_version > projected_version`, managed block drift, unresolved reconcile required, stewardship owner ref 또는 design-quality validator result changed |
 | `APR` | approval request 또는 decision이 changed될 때 | approval status, scope, baseline, expiry, decision note가 changed |
 | `RUN-SUMMARY` | run이 completes 또는 interrupted될 때 | run relation changed, artifact ref missing, artifact integrity fails |
 | `EVIDENCE-MANIFEST` | evidence coverage가 changed될 때 | baseline drift, changed files modified, required evidence missing/stale, approval expired |

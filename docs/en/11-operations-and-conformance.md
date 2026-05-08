@@ -211,6 +211,8 @@ expected_error: object | null
 
 Fixture files and suite catalogs may carry metadata outside the fixture body. The fixture body itself uses only the fields above so conformance runners can compare behavior consistently.
 
+Fixture seed shorthand: examples may use compact `owner_records`, `stewardship_findings`, or feedback-loop shorthand to keep the document readable. Executable fixture files must map that shorthand to owner records, validator runs, residual risks, or other records owned by DDL/API docs. The shorthand must not create a second state model. `StewardshipImpactSummary` assertions are derived display, not canonical current records, and should appear under `expected_state.derived` or projection assertions.
+
 Suite catalog metadata is not passed to Core and is not part of a fixture body. It can group exact-shape fixtures by suite, stage, and tags:
 
 ```yaml
@@ -246,7 +248,7 @@ Required suite responsibilities:
 
 | Suite | Required behavior |
 |---|---|
-| agency | Blocking product judgment requires a compatible Decision Packet before affected write or close; product trade-off writes are held; AFK Autonomy Boundary stop conditions block public commitments; residual risk is visible before acceptance or risk-accepted close; approval, QA, acceptance, and residual-risk acceptance remain distinct. |
+| agency | Blocking product judgment requires a compatible Decision Packet before affected write or close; product trade-off writes are held; AFK Autonomy Boundary stop conditions block public commitments; known close-relevant residual risk must be visible before any successful close; risk-accepted close additionally requires accepted Residual Risk refs; approval, QA, acceptance, and residual-risk acceptance remain distinct. |
 | stewardship | Design-quality and codebase-stewardship validators affect `design_gate`, `decision_gate`, `qa_gate`, close blockers, and waiver eligibility through canonical owner records and refs; public interface, module, domain, feedback-loop, TDD, Manual QA, and waiver checks do not duplicate schemas or DDL. |
 | context-hygiene | Current Task state, Journey refs, evidence refs, and freshness state are authoritative; stale PRDs, stale projections, closed issues, old design docs, and long logs are pull-only context until reconciled; stale context cannot authorize writes, close, acceptance, or current-state replacement. |
 
@@ -1017,17 +1019,265 @@ expected_error:
   code: DECISION_REQUIRED
 ```
 
+```yaml
+scenario_id: STEWARDSHIP-public-interface-change-requires-module-interface-review
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: ready
+    active_change_unit_id: CU-PUBLIC-IFACE-001
+    gates:
+      scope_gate: passed
+      approval_gate: granted
+      decision_gate: resolved
+      design_gate: passed
+  active_change_unit:
+    change_unit_id: CU-PUBLIC-IFACE-001
+    allowed_paths: ["src/api/public.ts"]
+    sensitive_categories: ["public_api_change"]
+    stewardship_refs:
+      domain_terms: [TERM-API-RESOURCE-001]
+      module_map_items: []
+      interface_contracts: []
+      feedback_loop_refs: [FBL-PUBLIC-API-001]
+  approvals:
+    - approval_id: APR-PUBLIC-API-001
+      sensitive_categories: ["public_api_change"]
+      allowed_paths: ["src/api/public.ts"]
+      status: granted
+  decision_packets:
+    - decision_packet_id: DEC-PUBLIC-API-001
+      decision_kind: architecture_choice
+      topic: public_interface_commitment
+      status: resolved
+  owner_records:
+    domain_terms:
+      - domain_term_id: TERM-API-RESOURCE-001
+        status: active
+    module_map_items: []
+    interface_contracts: []
+    feedback_loops:
+      - feedback_loop_id: FBL-PUBLIC-API-001
+        status: defined
+input:
+  intended_operation: "Change exported response fields on the public API."
+  intended_paths: ["src/api/public.ts"]
+  intended_tools: ["edit"]
+  sensitive_categories: ["public_api_change"]
+  baseline_ref: BASE-PUBLIC-API-001
+action: prepare_write
+expected_state:
+  lifecycle_phase: blocked
+  gates:
+    approval_gate: granted
+    decision_gate: resolved
+    design_gate: partial
+  write_decision: blocked
+  validators:
+    approval_scope: passed
+    module_interface_review: blocked
+    codebase_stewardship_check: blocked
+  derived:
+    stewardship_impact:
+      domain_language_impact: none
+      module_boundary_impact: unresolved
+      interface_contract_impact: unresolved
+      feedback_loop_status: defined
+      future_change_risk: unresolved
+      close_impact: blocks_close
+expected_events:
+  - prepare_write_blocked
+  - design_validator_failed
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+expected_error:
+  code: VALIDATOR_FAILED
+```
+
+```yaml
+scenario_id: STEWARDSHIP-domain-language-conflict-marks-design-stale-or-partial
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: ready
+    active_change_unit_id: CU-DOMAIN-TERM-001
+    gates:
+      scope_gate: passed
+      approval_gate: not_required
+      decision_gate: not_required
+      design_gate: passed
+  active_change_unit:
+    change_unit_id: CU-DOMAIN-TERM-001
+    allowed_paths: ["src/billing/customer.ts"]
+    stewardship_refs:
+      domain_terms: [TERM-CUSTOMER-001, TERM-CUSTOMER-002]
+      module_map_items: [MOD-BILLING-001]
+      interface_contracts: []
+      feedback_loop_refs: [FBL-BILLING-001]
+  owner_records:
+    domain_terms:
+      - domain_term_id: TERM-CUSTOMER-001
+        term: Customer
+        meaning_id: account_identity
+        status: active
+      - domain_term_id: TERM-CUSTOMER-002
+        term: Customer
+        meaning_id: billing_contact
+        status: conflict
+    module_map_items:
+      - module_map_item_id: MOD-BILLING-001
+        status: active
+    feedback_loops:
+      - feedback_loop_id: FBL-BILLING-001
+        status: defined
+input:
+  intended_operation: "Use Customer in billing code based on an unreconciled note."
+  intended_paths: ["src/billing/customer.ts"]
+  intended_tools: ["edit"]
+  sensitive_categories: []
+  proposed_local_term:
+    term: Customer
+    meaning_id: billing_contact
+    source_ref: NOTE-STALE-001
+action: prepare_write
+expected_state:
+  lifecycle_phase: blocked
+  gates:
+    design_gate: stale
+  write_decision: blocked
+  validators:
+    domain_language_consistency: failed
+    codebase_stewardship_check: failed
+  canonical_terms_unchanged:
+    - TERM-CUSTOMER-001
+    - TERM-CUSTOMER-002
+  derived:
+    stewardship_impact:
+      domain_language_impact: conflict
+      module_boundary_impact: local
+      interface_contract_impact: none
+      feedback_loop_status: defined
+      future_change_risk: visible
+      close_impact: blocks_close
+expected_events:
+  - prepare_write_blocked
+  - design_validator_failed
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+  DOMAIN-LANGUAGE: stale_or_enqueued
+expected_error:
+  code: VALIDATOR_FAILED
+```
+
+```yaml
+scenario_id: STEWARDSHIP-close-blocked-by-public-interface-future-change-risk
+initial_state:
+  active_task:
+    mode: work
+    lifecycle_phase: verifying
+    active_change_unit_id: CU-PUBLIC-RISK-001
+    gates:
+      scope_gate: passed
+      approval_gate: granted
+      decision_gate: resolved
+      design_gate: passed
+      evidence_gate: sufficient
+      verification_gate: passed
+      qa_gate: not_required
+      acceptance_gate: accepted
+  active_change_unit:
+    change_unit_id: CU-PUBLIC-RISK-001
+    allowed_paths: ["src/reports/publicExport.ts"]
+    stewardship_refs:
+      domain_terms: [TERM-REPORT-001]
+      module_map_items: [MOD-REPORTS-001]
+      interface_contracts: [IFACE-PUBLIC-EXPORT-001]
+      feedback_loop_refs: [FBL-REPORTS-001]
+  owner_records:
+    domain_terms:
+      - domain_term_id: TERM-REPORT-001
+        status: active
+    module_map_items:
+      - module_map_item_id: MOD-REPORTS-001
+        public_boundary: true
+    interface_contracts:
+      - interface_contract_id: IFACE-PUBLIC-EXPORT-001
+        compatibility_impact: breaking
+        review_status: reviewed
+    feedback_loops:
+      - feedback_loop_id: FBL-REPORTS-001
+        status: defined
+  stewardship_findings:
+    - finding_id: STEW-FIND-PUBLIC-RISK-001
+      kind: future_change_risk
+      close_relevant: true
+      status: unresolved
+      refs: [MOD-REPORTS-001, IFACE-PUBLIC-EXPORT-001]
+  residual_risks:
+    - risk_id: RISK-PUBLIC-FUTURE-001
+      close_relevant: true
+      visibility: visible
+      accepted: false
+      source_refs: [STEW-FIND-PUBLIC-RISK-001, IFACE-PUBLIC-EXPORT-001]
+input:
+  close_intent: complete
+  requested_close_reason: completed_verified
+action: close_task
+expected_state:
+  lifecycle_phase: waiting_user
+  result: none
+  gates:
+    decision_gate: required
+    design_gate: partial
+    evidence_gate: sufficient
+    verification_gate: passed
+    acceptance_gate: accepted
+  validators:
+    codebase_stewardship_check: blocked
+    module_interface_review: passed
+    residual_risk_visibility_check: passed
+  residual_risk_summary:
+    status: visible
+    visible_refs: [RISK-PUBLIC-FUTURE-001]
+  close_blockers:
+    - code: STEWARDSHIP_FUTURE_CHANGE_RISK
+      refs: [STEW-FIND-PUBLIC-RISK-001, IFACE-PUBLIC-EXPORT-001]
+  decision_packet_candidate:
+    decision_kind: residual_risk_acceptance
+    topic: public_interface_future_change_risk
+    finding_code: STEWARDSHIP_FUTURE_CHANGE_RISK
+    affected_gates: [decision_gate, design_gate]
+    residual_risk_refs: [RISK-PUBLIC-FUTURE-001]
+    finding_refs: [STEW-FIND-PUBLIC-RISK-001]
+  derived:
+    stewardship_impact:
+      domain_language_impact: none
+      module_boundary_impact: public_boundary
+      interface_contract_impact: breaking
+      feedback_loop_status: defined
+      future_change_risk: visible
+      close_impact: requires_decision
+expected_events:
+  - close_requested
+  - close_blocked
+  - decision_required
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+expected_error:
+  code: DECISION_REQUIRED
+```
+
 ### Stewardship Catalog Entries
 
-These catalog entries are not fixture bodies. Each materialized fixture must drive the named Core action and assert validator results, gate changes, events, projections, and error code.
+These remaining catalog entries are not fixture bodies. Each materialized fixture must drive the named Core action and assert validator results, gate changes, events, projections, and error code.
 
 | Scenario ID | Core action | Required assertions |
 |---|---|---|
 | `STEWARDSHIP-shared-design-required-for-ambiguous-work` | `prepare_write` | Ambiguous `work` without a Shared Design record keeps or sets `design_gate=pending` or `partial`, reports `shared_design_alignment` failed or blocked, and returns `VALIDATOR_FAILED` or `DECISION_REQUIRED` according to whether user judgment can resolve it. |
 | `STEWARDSHIP-feedback-loop-required-before-behavior-write` | `prepare_write` | Behavior-affecting write without a feedback-loop record keeps the write held, reports `feedback_loop_check` blocked, keeps `design_gate=pending` or `partial`, and does not rely on agent prose claiming a check will happen later. |
-| `STEWARDSHIP-public-interface-change-requires-module-interface-review` | `prepare_write` | A `public_api_change` with granted sensitive approval still fails design preconditions when module/interface review is absent; `module_interface_review` is blocked, `design_gate` is partial or blocked, and approval is not treated as review. |
-| `STEWARDSHIP-domain-language-conflict-marks-design-stale-or-partial` | `prepare_write` | Conflicting current domain terms mark `domain_language_consistency` failed and set `design_gate=stale` or `partial`; stale prose or local naming guesses do not update canonical terms. |
-| `STEWARDSHIP-close-blocked-by-public-interface-future-change-risk` | `close_task` | A close-relevant codebase stewardship finding about public interface or future-change risk blocks close, appends `close_blocked`, preserves the finding refs, and returns `VALIDATOR_FAILED` or `DECISION_REQUIRED` according to whether a Decision Packet can resolve the risk. |
 
 ## Context Hygiene Fixture Examples
 
@@ -1105,7 +1355,7 @@ Minimum MVP suites:
 
 - core: active status, advisor close, direct close, write gate, approval required, evidence insufficient, same-session verification guard, QA required, acceptance required, projection failure separation
 - connector: capability profile, MCP unavailable hold, generated manifest drift, changed-path detection, artifact capture, fallback guarantee display, Journey Card before significant resume, Decision Packet not broad approval, Autonomy Boundary breach routing
-- agency: Decision Packet required for blocking product judgment, product trade-off write guard, AFK Autonomy Boundary stop conditions, residual-risk visibility before acceptance or risk-accepted close, distinct approval/QA/acceptance judgments
+- agency: Decision Packet required for blocking product judgment, product trade-off write guard, AFK Autonomy Boundary stop conditions, known close-relevant residual-risk visibility before any successful close, accepted Residual Risk refs for risk-accepted close, distinct approval/QA/acceptance judgments
 - stewardship: shared design required, codebase stewardship close blockers, domain language conflicts, vertical slice or exception, feedback loop and TDD trace required or waived, public interface module/interface review, Manual QA policy and waiver checks
 - context-hygiene: current-state bundle, stale projection and stale PRD handling, stale `TASK` projection write guard, stale context pull-only behavior, evaluator bundle freshness, resume uses current state rather than chat memory
 - design-quality: policy-pack smoke coverage that composes agency, stewardship, context-hygiene, and close-impact validators without redefining kernel authority

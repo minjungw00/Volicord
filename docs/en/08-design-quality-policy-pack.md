@@ -139,12 +139,27 @@ Policy validators return the validator result schema owned by the MCP API docume
 |---|---|
 | `name` | `codebase_stewardship` |
 | `applies_when` | Work touches durable code structure, domain concepts, module ownership, interface contracts, architecture direction, deep-module boundaries, testing strategy, or cross-cutting exceptions. |
-| `default_requirement` | Group the stewardship view for the Change Unit: domain language, module map, interface contracts, TDD/feedback loops, architecture watchpoints, and deep-module boundaries. Use owner records as source of truth, record only task-relevant refs, and create reconcile items for drift instead of duplicating schemas or DDL. |
+| `default_requirement` | Group the stewardship view for the Change Unit: domain language, module map, interface contracts, TDD/feedback loops, architecture watchpoints, and deep-module boundaries. Stewardship review is not a general code review checklist. It prevents local task completion from hiding degradation in domain language, module boundary, interface contract, feedback loop, testability, maintainability, or future-change cost. Use owner records as source of truth, record only task-relevant refs, and create reconcile items for drift instead of duplicating schemas or DDL. |
 | `allowed_waiver` | Allowed for isolated docs, comments, formatting, or leaf edits with no durable structure, domain, interface, or feedback-loop impact. Waiver must record why stewardship review is unnecessary. |
 | `required_record` | Task or Change Unit stewardship refs, `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop or `tdd_traces` refs, decision records, Task/Change Unit watchpoints, Journey Spine Entry refs, and reconcile items for drift. Dedicated architecture watchpoint refs may be used only if a later DDL batch defines them. |
 | `validator` | `codebase_stewardship_check` |
 | `evidence` | Domain language refs, module map refs, interface contract refs, feedback loop refs, TDD trace refs when used, Task/Change Unit watchpoints, Journey Spine Entry refs, deep-module notes, reconcile item refs, and dedicated architecture watchpoint refs only if later defined. |
 | `close_impact` | Missing required stewardship review keeps `design_gate=pending`, `partial`, or `stale`; unresolved drift can block close when it affects public behavior, module boundaries, acceptance criteria, or verification confidence. |
+
+### StewardshipImpactSummary Display Shape
+
+`StewardshipImpactSummary` is a derived display/summary shape for the Design Stewardship Default and the `codebase_stewardship` policy contract. It is not a Kernel Authority Invariant. It is a derived display, not a canonical current record. It is derived from owner records, validator results, and refs; it does not create a new canonical source of truth.
+
+Domain terms, module map items, interface contracts, feedback loop/TDD records, residual risk, and Decision Packets remain the owner records. The summary renders compact close-relevant status and refs back to those owners.
+
+| Field | Values |
+|---|---|
+| `domain_language_impact` | `none` \| `updated` \| `conflict` \| `unresolved` |
+| `module_boundary_impact` | `none` \| `local` \| `public_boundary` \| `unresolved` |
+| `interface_contract_impact` | `none` \| `compatible` \| `breaking` \| `unresolved` |
+| `feedback_loop_status` | `defined` \| `missing` \| `waived` |
+| `future_change_risk` | `none` \| `visible` \| `accepted` \| `unresolved` |
+| `close_impact` | `none` \| `blocks_close` \| `requires_decision` \| `residual_risk` |
 
 ### Manual QA
 
