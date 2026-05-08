@@ -342,6 +342,18 @@ Implementation이 plan으로 굳어지기 전에 Task에 대해 최소한으로 
 
 Kernel state 안의 canonical structured record입니다. Task, Change Unit, Decision Packet, Journey Spine Entry, Residual Risk, Run, Approval, Write Authorization, Evidence Manifest, Eval, Manual QA record, Artifact record, Shared Design record, Domain Term, Module Map Item, Interface Contract, TDD Trace, Reconcile Item 등이 있습니다.
 
+### State Version
+
+Core-resolved state scope를 위한 optimistic-concurrency clock입니다. 적용되는 경우 Core는 envelope, tool-specific input, 또는 active Task에서 primary Task를 resolve합니다. `expected_state_version`, `ToolResponseBase.state_version`, `EventRef.state_version`, `task_events.state_version`은 하나의 global event-store sequence가 아니라 해당 affected scope에 따라 해석됩니다.
+
+### Project State Version
+
+`project_state.state_version`에 저장되는 project-scoped state clock입니다. Core-resolved primary Task가 없는 project-scoped mutations는 `expected_state_version`을 이 값과 비교하고 resulting value를 primary response `state_version`으로 반환합니다.
+
+### Task State Version
+
+`tasks.state_version`에 저장되는 task-scoped state clock입니다. Task-scoped mutations는 `expected_state_version`을 Core-resolved primary Task의 값과 비교하고 resulting value를 primary response `state_version`으로 반환합니다.
+
 ### Strategic Agency
 
 사용자가 작업 여정을 이해하고 goals, scope, design, trade-offs, Codebase Stewardship, QA, acceptance, Residual Risk에 대해 판단하거나 보류할 수 있는 지속적인 권한입니다. Harness는 chat 밖에서 state, decisions, evidence, blockers, remaining risk를 명시해 Strategic Agency를 보존합니다.

@@ -54,6 +54,8 @@ The Journey resources are projection-oriented reads over canonical state:
 
 Every public tool request carries an envelope. State-changing tools require a non-null `idempotency_key` and `expected_state_version`. Read-only tools accept the same envelope for tracing; they may set `expected_state_version` to `null`.
 
+State version scope is resolved by Core from the operation's primary addressed Task. The resolved primary Task may come from `ToolEnvelope.task_id`, a tool-specific `task_id`, or active Task resolution. Task-scoped mutations compare `expected_state_version` with that Task's `tasks.state_version`. If Core resolves no primary Task and the operation is project-scoped, it compares `expected_state_version` with `project_state.state_version`.
+
 ```yaml
 ToolEnvelope:
   request_id: string
@@ -85,6 +87,8 @@ ToolResponseBase:
 
 `dry_run=true` validates and returns the transition plan but does not update current records, append to `state.sqlite.task_events`, register artifacts, create consumable Write Authorization records, or enqueue projection jobs.
 
+`ToolResponseBase.state_version` returns the resulting version for the primary affected scope. For state-changing operations this is the Task State Version when Core resolves a primary Task, otherwise the Project State Version. Read-only responses return the current `state_version` for the primary read scope and do not increment it.
+
 ## Shared Schemas
 
 ```yaml
@@ -100,6 +104,8 @@ ProjectionJobRef:
   target_ref: string
   projection_version: integer
 ```
+
+`EventRef.state_version` is the resulting version for the event's affected scope. Task events use `tasks.state_version`; project-level events with `task_id=null` use `project_state.state_version`.
 
 ProjectionJobRef note: DEC is a valid projection_kind only for standalone Decision Packet Markdown when that feature is enabled. `DEC` is not an MVP-required projection job. Absence of a standalone `DEC` job must not reduce MVP Decision Packet visibility, which is required through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources.
 
@@ -466,7 +472,7 @@ Stable design and agency validator ids used by this API are:
 
 | Code | Meaning |
 |---|---|
-| `STATE_CONFLICT` | `expected_state_version` is stale, lock ownership changed, or the same idempotency key was reused with a different payload |
+| `STATE_CONFLICT` | `expected_state_version` is stale for the relevant state version scope, lock ownership changed, or the same idempotency key was reused with a different payload |
 | `NO_ACTIVE_TASK` | a Task is required but none is active or addressed |
 | `NO_ACTIVE_CHANGE_UNIT` | a write-capable operation has no active scoped Change Unit |
 | `SCOPE_REQUIRED` | scope confirmation is required before the requested write can proceed |
@@ -501,6 +507,8 @@ Stable design and agency validator ids used by this API are:
 Idempotency keys are scoped to `(project_id, tool_name, idempotency_key)`. Repeating the same payload with the same key returns the original committed response. Reusing a key with a different payload returns `STATE_CONFLICT`.
 
 For state-changing tools, Core compares `expected_state_version` with current project/task state. A mismatch returns `STATE_CONFLICT` and includes the current state version and a status summary in `details`. The caller must refresh state and either retry with a new idempotency key or replay the exact previous request.
+
+State conflict comparison is scope-specific. Core first resolves the primary addressed Task from `ToolEnvelope.task_id`, any tool-specific `task_id`, or active Task resolution. Task-scoped tools compare against that Task's `tasks.state_version`; project-scoped tools with no resolved primary Task compare against `project_state.state_version`. `STATE_CONFLICT.details` should include `scope` (`task` or `project`), `current_state_version`, `expected_state_version`, and the relevant `project_id` plus `task_id` when `scope=task`; it may also include a compact status summary for refresh guidance.
 
 ## Public Tools
 

@@ -342,6 +342,18 @@ The append-only event history table inside `state.sqlite`. MVP does not use a se
 
 A canonical structured record in kernel state, such as a Task, Change Unit, Decision Packet, Journey Spine Entry, Residual Risk, Run, Approval, Write Authorization, Evidence Manifest, Eval, Manual QA record, Artifact record, Shared Design record, Domain Term, Module Map Item, Interface Contract, TDD Trace, or Reconcile Item.
 
+### State Version
+
+An optimistic-concurrency clock for a Core-resolved state scope. Core resolves the primary Task from the envelope, tool-specific input, or active Task when one applies. `expected_state_version`, `ToolResponseBase.state_version`, `EventRef.state_version`, and `task_events.state_version` are interpreted by that affected scope, not as one global event-store sequence.
+
+### Project State Version
+
+The project-scoped state clock stored in `project_state.state_version`. Project-scoped mutations with no Core-resolved primary Task compare `expected_state_version` against this value and return the resulting value as the primary response `state_version`.
+
+### Task State Version
+
+The task-scoped state clock stored in `tasks.state_version`. Task-scoped mutations compare `expected_state_version` against the Core-resolved primary Task's value and return the resulting value as the primary response `state_version`.
+
 ### Strategic Agency
 
 The user's durable authority to understand the work journey and make or withhold judgment over goals, scope, design, trade-offs, codebase stewardship, QA, acceptance, and residual risk. The harness preserves Strategic Agency by making state, decisions, evidence, blockers, and remaining risk explicit outside chat.

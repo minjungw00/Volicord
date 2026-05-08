@@ -466,6 +466,8 @@ The following combinations are invalid and must be rejected or repaired by the k
 
 State transitions append an event to `state.sqlite.task_events` in the same transaction as current state changes.
 
+Each transition increments the correct affected-scope clock. Task-scoped transitions increment the Task State Version; project-level transitions with no Task increment the Project State Version. The appended event carries the resulting version for that affected scope.
+
 Write Authorization lifecycle events use this kernel event vocabulary:
 
 ```text

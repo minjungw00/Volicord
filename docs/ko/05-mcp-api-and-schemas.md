@@ -54,6 +54,8 @@ Journey resources는 canonical state 위의 projection-oriented reads입니다.
 
 모든 public tool request는 envelope를 가집니다. State-changing tools에는 non-null `idempotency_key`와 `expected_state_version`이 필요합니다. Read-only tools도 tracing을 위해 같은 envelope를 받을 수 있으며, `expected_state_version`을 `null`로 둘 수 있습니다.
 
+State version scope는 operation의 primary addressed Task에서 Core가 resolve합니다. Resolved primary Task는 `ToolEnvelope.task_id`, tool-specific `task_id`, 또는 active Task resolution에서 올 수 있습니다. Task-scoped mutations는 `expected_state_version`을 해당 Task의 `tasks.state_version`과 비교합니다. Core가 primary Task를 resolve하지 않고 operation이 project-scoped이면 `expected_state_version`을 `project_state.state_version`과 비교합니다.
+
 ```yaml
 ToolEnvelope:
   request_id: string
@@ -85,6 +87,8 @@ ToolResponseBase:
 
 `dry_run=true`는 validate하고 transition plan을 반환하지만 current records update, `state.sqlite.task_events` append, artifact registration, consumable Write Authorization records create, projection job enqueue를 하지 않습니다.
 
+`ToolResponseBase.state_version`은 primary affected scope의 resulting version을 반환합니다. State-changing operations에서는 Core가 primary Task를 resolve하면 Task State Version이고, 그렇지 않으면 Project State Version입니다. Read-only responses는 primary read scope의 current `state_version`을 반환하며 increment하지 않습니다.
+
 ## Shared Schemas
 
 ```yaml
@@ -100,6 +104,8 @@ ProjectionJobRef:
   target_ref: string
   projection_version: integer
 ```
+
+`EventRef.state_version`은 event의 affected scope에 대한 resulting version입니다. Task events는 `tasks.state_version`을 사용하고, `task_id=null`인 project-level events는 `project_state.state_version`을 사용합니다.
 
 ProjectionJobRef note: `DEC`는 해당 feature가 enabled일 때 standalone Decision Packet Markdown에만 사용하는 valid `projection_kind`입니다. `DEC`는 MVP-required projection job이 아닙니다. Standalone `DEC` job이 없어도 MVP Decision Packet visibility가 줄어들면 안 되며, 이 visibility는 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 required입니다.
 
@@ -466,7 +472,7 @@ ValidatorResult:
 
 | Code | Meaning |
 |---|---|
-| `STATE_CONFLICT` | `expected_state_version` is stale, lock ownership changed, or the same idempotency key was reused with a different payload |
+| `STATE_CONFLICT` | `expected_state_version` is stale for the relevant state version scope, lock ownership changed, or the same idempotency key was reused with a different payload |
 | `NO_ACTIVE_TASK` | a Task is required but none is active or addressed |
 | `NO_ACTIVE_CHANGE_UNIT` | a write-capable operation has no active scoped Change Unit |
 | `SCOPE_REQUIRED` | scope confirmation is required before the requested write can proceed |
@@ -501,6 +507,8 @@ ValidatorResult:
 Idempotency keys는 `(project_id, tool_name, idempotency_key)`에 scoped됩니다. 같은 key로 같은 payload를 반복하면 original committed response를 반환합니다. 같은 key를 다른 payload로 reuse하면 `STATE_CONFLICT`를 반환합니다.
 
 State-changing tools에서 Core는 `expected_state_version`을 current project/task state와 비교합니다. Mismatch는 `STATE_CONFLICT`를 반환하고 `details`에 current state version과 status summary를 포함합니다. Caller는 state를 refresh한 뒤 새 idempotency key로 retry하거나 exact previous request를 replay해야 합니다.
+
+State conflict 비교는 scope-specific입니다. Core는 먼저 `ToolEnvelope.task_id`, tool-specific `task_id`, 또는 active Task resolution에서 primary addressed Task를 resolve합니다. Task-scoped tools는 해당 Task의 `tasks.state_version`과 비교하고, resolved primary Task가 없는 project-scoped tools는 `project_state.state_version`과 비교합니다. `STATE_CONFLICT.details`에는 `scope`(`task` 또는 `project`), `current_state_version`, `expected_state_version`, relevant `project_id`, 그리고 `scope=task`일 때 `task_id`를 포함해야 합니다. Refresh guidance를 위한 compact status summary도 포함할 수 있습니다.
 
 ## Public Tools
 

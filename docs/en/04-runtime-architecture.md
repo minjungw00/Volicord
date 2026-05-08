@@ -134,6 +134,8 @@ Every state-changing operation uses one SQLite transaction for current records a
 10. render Markdown projections after commit
 ```
 
+Within that transaction, Core increments the affected scope clock. Task-scoped changes increment `tasks.state_version`; project-scoped changes with `task_id=null` increment `project_state.state_version`. Event rows record the resulting state version for their affected scope.
+
 Projection rendering happens after the transaction. A projection failure marks projection freshness as stale or failed and leaves the committed state intact. Projection cannot turn a passed task into a failed task, and it cannot repair canonical state without a later reconcile decision.
 
 ## Artifact Store Architecture

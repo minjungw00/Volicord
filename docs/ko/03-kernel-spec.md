@@ -466,6 +466,8 @@ Capability는 kernel이 write를 허용할지, rule을 얼마나 강하게 enfor
 
 State transitions는 current state changes와 같은 transaction 안에서 `state.sqlite.task_events`에 event를 append합니다.
 
+각 transition은 올바른 affected-scope clock을 increment합니다. Task-scoped transitions는 Task State Version을 increment하고, Task가 없는 project-level transitions는 Project State Version을 increment합니다. Appended event는 해당 affected scope의 resulting version을 가집니다.
+
 Write Authorization lifecycle events는 다음 kernel event vocabulary를 사용합니다.
 
 ```text

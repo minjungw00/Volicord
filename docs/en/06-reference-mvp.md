@@ -41,6 +41,7 @@ Create the runtime home, register one project, create `project.yaml`, initialize
 Exit criteria:
 
 - project appears in `registry.sqlite.projects`
+- one `project_state` row exists for the registered project before any project-scoped mutation can use `expected_state_version`
 - reference surface appears in `registry.sqlite.project_surfaces`
 - project runtime directory contains `project.yaml`, `state.sqlite`, and artifact directories
 - doctor can report project/runtime readiness
@@ -197,6 +198,12 @@ CREATE TABLE connector_manifests (
 ### `state.sqlite`
 
 ```sql
+CREATE TABLE project_state (
+  project_id TEXT PRIMARY KEY,
+  state_version INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE tasks (
   task_id TEXT PRIMARY KEY,
   state_version INTEGER NOT NULL,
@@ -668,7 +675,13 @@ CREATE TABLE locks (
 );
 ```
 
-`task_events` remains append-only event history. `tool_invocations` stores request replay metadata needed to return the original committed response. Reusing an idempotency key with a different `request_hash` returns `STATE_CONFLICT`.
+`project_state.state_version` is the project-scoped state clock. Core initializes exactly one `project_state` row for the registered project during runtime bootstrap, before any project-scoped mutation can compare `expected_state_version` with `project_state.state_version`.
+
+`tasks.state_version` is the task-scoped state clock. Task-scoped mutations compare `expected_state_version` with the Core-resolved primary Task's `tasks.state_version`; project-scoped mutations with no resolved primary Task compare it with `project_state.state_version`.
+
+`task_events` remains append-only event history inside `state.sqlite`; MVP does not introduce a separate event store. `task_events.state_version` records the resulting version for the affected scope. For task events this is `tasks.state_version`; for project-level events with `task_id=null` this is `project_state.state_version`.
+
+`tool_invocations` stores request replay metadata needed to return the original committed response. `tool_invocations.state_version` stores the same primary affected-scope version returned in `ToolResponseBase.state_version`: Task State Version when Core resolves a primary Task, otherwise Project State Version. Reusing an idempotency key with a different `request_hash` returns `STATE_CONFLICT`.
 
 `tasks.projection_status` is the TASK projection status summary. Per-kind projection freshness is tracked through `projection_jobs` and through the relevant projection records or artifact refs for APR, RUN-SUMMARY, EVIDENCE-MANIFEST, EVAL, DIRECT-RESULT, optional MANUAL-QA, optional TDD-TRACE, and other enabled projection kinds. Do not treat one Task field as owning all projection freshness.
 
@@ -769,7 +782,7 @@ State-changing operations acquire a lock at the narrowest practical scope:
 | artifact link registration | artifact and target record |
 | reconcile decision | reconcile item and affected task/design record |
 
-If a lock is expired, the next operation may take it after appending a recovery event. If `expected_state_version` is stale, the operation returns `STATE_CONFLICT` before mutation.
+If a lock is expired, the next operation may take it after appending a recovery event. If `expected_state_version` is stale for the relevant task or project scope, the operation returns `STATE_CONFLICT` before mutation.
 
 ## Artifact Directory Layout
 

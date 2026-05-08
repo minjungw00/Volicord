@@ -238,6 +238,8 @@ MVP execution semantic:
 6. Captured result를 `expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, `expected_error`와 compare합니다.
 7. Fixture id, pass/fail, observed state summary, observed events, artifact integrity result, projection freshness, error comparison을 report합니다.
 
+Fixture action이 `expected_state_version`을 포함하면 runner는 `ToolEnvelope.task_id`만이 아니라 Core-resolved primary Task에 따라 비교합니다. Task-scoped actions는 seeded 또는 Core-resolved primary Task State Version과 비교하고, resolved primary Task가 없는 project-scoped actions는 Project State Version과 비교합니다. Captured response와 `task_events`의 `state_version` values는 resulting affected-scope versions로 비교합니다. Read-only fixtures는 primary read scope의 unchanged version을 assert할 수 있습니다. 이 설명은 fixture body shape를 바꾸지 않고 comparison semantics만 명확히 합니다.
+
 Fixture execution은 deterministic해야 합니다. Network access, wall-clock-sensitive expiry, external tool output은 suite가 integration smoke라고 명시적으로 선언하지 않는 한 stub하거나 seeded fixture input으로 표현해야 합니다.
 
 ## Agency, Stewardship, Context Suite
