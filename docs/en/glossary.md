@@ -410,6 +410,10 @@ An explicit recorded exception to a gate requirement where policy allows it. Ver
 
 A durable state record created by `prepare_write` for a specific allowed write attempt. Distinct compatible `prepare_write` requests create distinct authorizations; idempotent replay may return the committed response. It is single-use for a committed implementation or direct run, and it does not replace scope, approval, evidence, verification, Manual QA, acceptance, or residual-risk visibility.
 
+### Write Authorization Lifecycle Events
+
+The stable Write Authorization lifecycle event vocabulary is `write_authorization_created`, `write_authorization_returned`, `write_authorization_consumed`, `write_authorization_expired`, `write_authorization_staled`, `write_authorization_revoked`, and `write_authorization_violation_detected`. `scope_violation_detected` is a general observed scope event, not a Write Authorization lifecycle event.
+
 ### Write Authority Summary
 
 A user-facing display summary of current write authority for an intended operation, derived from active Change Unit scope, `prepare_write`, approval, baseline, guarantee, Decision Packet refs, and any Write Authorization ref. It is display, not a separate authority record, and it does not authorize work by itself.

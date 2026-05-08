@@ -480,6 +480,8 @@ write_authorization_revoked
 write_authorization_violation_detected
 ```
 
+`scope_violation_detected`는 general observed scope event이며 Write Authorization lifecycle event가 아닙니다.
+
 | Trigger | From | To | Gate or record effect |
 |---|---|---|---|
 | User request is accepted | no active Task | `lifecycle_phase=intake`, `result=none` | create Task |
@@ -584,7 +586,7 @@ Product writes를 report하는 implementation 및 direct `record_run` calls는 c
 
 Core는 observed changed paths를 consumed Write Authorization 및 active Change Unit 양쪽과 비교해 verify해야 합니다. 또한 command results, artifacts, surface telemetry, declared run data에서 observations가 available한 경우 recorded tools, commands, network targets, secret access도 authorization과 비교해 verify합니다.
 
-Product writes가 report되지 않았더라도 Run kind, active Change Unit, intended operation 때문에 Write Authorization이 required인 경우 authorization이 missing이면 Core는 `record_run`을 reject합니다. Observed product writes가 이미 발생했지만 authorization이 missing이거나 exceeded된 경우 Core는 recovery 및 audit을 위해 blocked 또는 violation Run을 record할 수 있습니다. 그 Run은 evidence sufficiency, detached verification, QA, acceptance, close readiness를 satisfy하면 안 되며, Core는 affected scope, evidence, approval, verification, projection state를 stale 또는 blocked로 mark합니다. Corresponding Write Authorization이 있으면 unconsumed로 남고, violation과 compatibility basis에 따라 stale, revoked, expired로 mark될 수 있습니다.
+Product writes가 report되지 않았더라도 Run kind, active Change Unit, intended operation 때문에 Write Authorization이 required인 경우 authorization이 missing이면 Core는 `record_run`을 reject합니다. Observed product writes가 이미 발생했지만 authorization이 missing이거나 exceeded된 경우 Core는 recovery 및 audit을 위해 blocked 또는 violation Run을 record할 수 있습니다. 그 Run은 evidence sufficiency, detached verification, QA, acceptance, close readiness를 satisfy하면 안 되며, Core는 affected scope, evidence, approval, verification, projection state를 stale 또는 blocked로 mark합니다. Corresponding Write Authorization이 있으면 unconsumed로 남고, violation과 compatibility basis에 따라 stale, revoked, expired로 mark될 수 있습니다. Observed behavior가 general scope violation을 assert하면 Core는 `scope_violation_detected`도 append할 수 있습니다.
 
 Blocked 또는 violation Run에 기대어 Task를 close할 수 없습니다. Compatible scope, approval, Decision Packet resolution, evidence update, verification, 또는 새 write authorization과 Run으로 state가 repair되어야 합니다.
 

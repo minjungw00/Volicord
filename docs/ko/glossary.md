@@ -410,6 +410,10 @@ Policy가 허용하는 곳에서 gate requirement에 대한 explicit recorded ex
 
 `prepare_write`가 특정 allowed write attempt에 대해 create하는 durable state record입니다. Distinct compatible `prepare_write` requests는 distinct authorization을 create하며, idempotent replay는 committed response를 반환할 수 있습니다. Committed implementation 또는 direct run에 single-use이며, scope, approval, evidence, verification, Manual QA, acceptance, residual-risk visibility를 대체하지 않습니다.
 
+### Write Authorization Lifecycle Events
+
+Stable Write Authorization lifecycle event vocabulary는 `write_authorization_created`, `write_authorization_returned`, `write_authorization_consumed`, `write_authorization_expired`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_violation_detected`입니다. `scope_violation_detected`는 general observed scope event이며 Write Authorization lifecycle event가 아닙니다.
+
 ### Write Authority Summary
 
 Intended operation의 current write authority를 보여주는 user-facing display summary입니다. Active Change Unit scope, `prepare_write`, approval, baseline, guarantee, Decision Packet refs, Write Authorization ref에서 derive됩니다. 별도 authority record가 아닌 display이며 그 자체로 work를 authorize하지 않습니다.

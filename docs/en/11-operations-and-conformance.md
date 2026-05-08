@@ -862,6 +862,7 @@ expected_events:
   - run_recorded
   - write_authorization_violation_detected
   - write_authorization_staled
+  - scope_violation_detected
 expected_artifacts: []
 expected_projection:
   TASK: enqueued

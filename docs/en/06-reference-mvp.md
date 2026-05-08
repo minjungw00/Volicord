@@ -747,6 +747,8 @@ write_authorization_revoked
 write_authorization_violation_detected
 ```
 
+`scope_violation_detected` may be appended when a Run observes a general scope violation; it is not part of the Write Authorization lifecycle vocabulary.
+
 ## Migration And Versioning
 
 MVP uses integer schema versions recorded in a small internal migration ledger:

@@ -745,6 +745,8 @@ write_authorization_revoked
 write_authorization_violation_detected
 ```
 
+Run이 general scope violation을 observe하면 `scope_violation_detected`를 append할 수 있습니다. 이는 Write Authorization lifecycle vocabulary에 속하지 않습니다.
+
 ## Migration And Versioning
 
 MVP는 작은 internal migration ledger에 기록된 integer schema versions를 사용합니다.

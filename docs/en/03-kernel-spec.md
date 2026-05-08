@@ -480,6 +480,8 @@ write_authorization_revoked
 write_authorization_violation_detected
 ```
 
+`scope_violation_detected` is a general observed scope event, not a Write Authorization lifecycle event.
+
 | Trigger | From | To | Gate or record effect |
 |---|---|---|---|
 | User request is accepted | no active Task | `lifecycle_phase=intake`, `result=none` | create Task |
@@ -584,7 +586,7 @@ Implementation and direct `record_run` calls that report product writes must con
 
 Core must verify observed changed paths against both the consumed Write Authorization and the active Change Unit. It also verifies recorded tools, commands, network targets, and secret access against the authorization when those observations are available from command results, artifacts, surface telemetry, or declared run data.
 
-If no product writes are reported and Write Authorization is still required by the Run kind, active Change Unit, or intended operation, Core rejects `record_run` when authorization is missing. If observed product writes already occurred but authorization is missing or exceeded, Core may record a blocked or violation Run for recovery and audit. That Run must not satisfy evidence sufficiency, detached verification, QA, acceptance, or close readiness, and Core marks affected scope, evidence, approval, verification, and projection state stale or blocked. The corresponding Write Authorization, if any, remains unconsumed and may be marked stale, revoked, or expired according to the violation and compatibility basis.
+If no product writes are reported and Write Authorization is still required by the Run kind, active Change Unit, or intended operation, Core rejects `record_run` when authorization is missing. If observed product writes already occurred but authorization is missing or exceeded, Core may record a blocked or violation Run for recovery and audit. That Run must not satisfy evidence sufficiency, detached verification, QA, acceptance, or close readiness, and Core marks affected scope, evidence, approval, verification, and projection state stale or blocked. The corresponding Write Authorization, if any, remains unconsumed and may be marked stale, revoked, or expired according to the violation and compatibility basis. When the observed behavior asserts a general scope violation, Core may also append `scope_violation_detected`.
 
 The Task cannot rely on a blocked or violation Run for close until the state is repaired through compatible scope, approval, Decision Packet resolution, evidence update, verification, or a new write authorization and Run.
 
