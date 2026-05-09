@@ -20,6 +20,17 @@ Expect the agent to first answer three everyday questions, preferably in a compa
 - What evidence exists: what changed, if anything, what was checked, and what is still missing?
 - What judgment is needed now: choose a direction, approve a sensitive step, inspect QA, accept shown residual risk, or accept the result when acceptance is required?
 
+```mermaid
+flowchart LR
+  Request["Everyday request"] --> Status["compact status or Journey Card"]
+  Status --> Scope["scope<br/>included / out of bounds"]
+  Status --> Evidence["evidence<br/>changed / checked / missing"]
+  Status --> Judgment["judgment<br/>decision / approval / QA / risk / acceptance"]
+  Scope --> Next["safe next action"]
+  Evidence --> Next
+  Judgment --> Next
+```
+
 Only when one of those answers matters should the agent use the deeper labels: Decision Packet, Write Authority, Autonomy Boundary, Manual QA, acceptance, residual risk, approval, evidence, or verification.
 
 Most of the time, you only decide a few things:
@@ -81,6 +92,23 @@ The normal path should feel like a short conversation, not a work-management sys
 7. When the task path calls for it, verify, record Manual QA, show close-relevant residual risk, and ask for acceptance.
 8. Close.
 
+```mermaid
+flowchart LR
+  Status["status or intake"] --> Classify["classify<br/>advisor / direct / work"]
+  Classify --> Writes{"product write needed?"}
+  Writes -->|no| Advisor["advisor / no-write path"]
+  Advisor --> RecordOnly["record answer or result"]
+  Writes -->|yes| Scope["scope + Change Unit"]
+  Scope --> Decision{"product judgment blocked?"}
+  Decision -->|yes| Packet["Decision Packet"]
+  Decision -->|no| Prepare["prepare_write before writes"]
+  Packet --> Prepare
+  Prepare --> Evidence["record result + evidence"]
+  Evidence --> Checks["verify / QA / residual risk / acceptance"]
+  RecordOnly --> Checks
+  Checks --> Close["close when blockers clear"]
+```
+
 Many advisor or direct tasks skip some later checks. If final acceptance is not required, the status should say so or simply close after the applicable blockers are clear and residual risk has been shown or confirmed as none.
 
 Gates should be explained as why the task cannot safely proceed or close yet. Evidence insufficiency should be shown by acceptance criterion, not as an abstract internal condition. If a cooperative guarantee is shown, explain plainly that the surface is expected to follow Harness decisions but may not physically block every violating write before it happens.
@@ -138,6 +166,16 @@ Look for these things.
 - What remains among approval, evidence, verification, Manual QA, residual risk, and acceptance?
 - Is the next action safe to proceed with?
 
+```mermaid
+flowchart TD
+  Card["Status card"] --> Scope["request matches scope?"]
+  Card --> Decision["Decision Packet waiting?"]
+  Card --> Boundary["Autonomy Boundary clear?"]
+  Card --> Write["Write Authority requested, blocked, or allowed?"]
+  Card --> Remaining["approval, evidence, verification, QA, risk, acceptance"]
+  Remaining --> Next["safe next action"]
+```
+
 If the status looks wrong, say:
 
 ```text
@@ -157,6 +195,16 @@ Look for these lines:
 - `Evidence`, `Verification`, and `Manual QA`: what has been checked
 - `Residual risk`: what uncertainty or trade-off remains
 - `Projection`: whether the readable view is current enough to trust
+
+```mermaid
+flowchart LR
+  Journey["Journey Card"] --> Next["Next action"]
+  Journey --> Gate["Decision Packet / gates"]
+  Journey --> Boundaries["Autonomy Boundary + Write Authority"]
+  Journey --> Checks["Evidence + Verification + Manual QA"]
+  Journey --> Risk["Residual risk"]
+  Journey --> Freshness["Projection freshness"]
+```
 
 Useful phrases:
 
@@ -188,6 +236,16 @@ Read it in this order:
 - What may the agent decide without me?
 - What happens if I defer?
 - What residual risk or follow-up would remain?
+
+```mermaid
+flowchart LR
+  Why["why now?"] --> Decide["what decision?"]
+  Decide --> Options["options + trade-offs"]
+  Options --> Recommend["recommendation + uncertainty"]
+  Recommend --> Boundary["what may proceed without me?"]
+  Boundary --> Defer["deferral effect"]
+  Defer --> Risk["residual risk or follow-up"]
+```
 
 Good answers are specific:
 
@@ -239,6 +297,16 @@ Product judgment, approval, assurance, Manual QA, residual-risk acceptance, and 
 | Residual-risk acceptance | Does the user accept a known remaining risk or limitation? | approval, evidence, verification, Manual QA, final acceptance |
 | Final acceptance | Does the user accept the result and remaining trade-offs? | approval, evidence, verification, Manual QA, residual-risk acceptance |
 
+```mermaid
+flowchart TD
+  Judgments["User judgments stay separate"] --> Product["Product judgment<br/>Decision Packet"]
+  Judgments --> Approval["Approval<br/>sensitive action may proceed"]
+  Judgments --> Assurance["Assurance<br/>technical check level"]
+  Judgments --> QA["Manual QA<br/>human experience check"]
+  Judgments --> Risk["Residual-risk acceptance<br/>known risk accepted"]
+  Judgments --> Acceptance["Final acceptance<br/>result accepted"]
+```
+
 Examples that need approval include dependency additions, auth/permission changes, data model changes, public API changes, destructive writes, secret access, and production config changes. Approval does not mean correctness or acceptance.
 
 When approval itself needs your judgment, Harness may show it as an approval-shaped Decision Packet. In that case you are deciding whether the sensitive scope is allowed. That answer does not pick a product option, waive QA or verification, accept residual risk, or let the agent edit without the write check passing afterward.
@@ -252,6 +320,16 @@ The user may accept verification risk and close the task, but that is a risk-acc
 ## What The Agent May Do AFK
 
 AFK implementation means the agent may continue while you are away. It is allowed only when active Change Unit scope, Autonomy Boundary latitude, and granted sensitive approval where applicable all apply. Actual product writes also require a compatible `prepare_write` / Write Authorization before writing.
+
+```mermaid
+flowchart TD
+  AFK["AFK work request"] --> Ready{"scope, boundary, approval,<br/>and write authority apply?"}
+  Ready -->|no| StopGap["stop: boundary, scope,<br/>approval, or Write Authority gap"]
+  Ready -->|yes| Proceed["proceed inside boundary"]
+  Proceed --> Judgment{"human-held judgment appears?"}
+  Judgment -->|yes| StopJudgment["stop and ask user"]
+  Judgment -->|no| Continue["continue allowed work"]
+```
 
 The Autonomy Boundary is not a scope grant or write permission. The agent still needs `prepare_write`, active Change Unit scope, allowed paths, allowed tools, allowed commands, network targets, secret access, and sensitive approval where applicable.
 
@@ -282,6 +360,15 @@ Evidence: partial
 Close blocked: AC-02 supporting evidence missing
 ```
 
+```mermaid
+flowchart TD
+  Missing["Evidence missing or stale"] --> Map["map gap to acceptance criterion"]
+  Map --> Check["suggest enough checks or artifacts"]
+  Check --> Run["fresh run, log, diff, bundle, or scope reconfirmation"]
+  Run --> Record["record evidence"]
+  Record --> Gate["evidence gate can be reassessed"]
+```
+
 Say:
 
 ```text
@@ -293,6 +380,16 @@ If evidence is stale, the work may need a fresh run, fresh logs, a fresh diff, a
 ## Verify
 
 Work does not become `detached_verified` from the implementer's self-report alone.
+
+```mermaid
+flowchart TD
+  Need["Need verification?"] --> Boundary{"valid independence boundary?"}
+  Boundary -->|yes| Eval["record Eval"]
+  Eval --> Passed{"passed?"}
+  Passed -->|yes| Detached["may support detached_verified"]
+  Passed -->|no| Blocked["blocked or rework"]
+  Boundary -->|no / waived| Risk["risk-accepted close path only"]
+```
 
 ```text
 Start detached verify.
@@ -314,6 +411,17 @@ Residual risk is known remaining uncertainty, limitation, unchecked condition, o
 
 Accepting residual risk can allow close, but it does not replace approval, evidence, verification, Manual QA, or acceptance.
 
+```mermaid
+flowchart TD
+  Before["Before close or acceptance"] --> Known{"known close-relevant risk?"}
+  Known -->|yes| Show["show risk clearly"]
+  Show --> Decide{"user accepts risk?"}
+  Decide -->|yes| Accepted["risk accepted close may be possible"]
+  Decide -->|no| Rework["rework or add verification"]
+  Known -->|no| None["report ResidualRiskSummary.status=none"]
+  None --> Next["continue if other blockers are clear"]
+```
+
 Useful phrases:
 
 ```text
@@ -325,6 +433,22 @@ I do not accept that risk. Rework or add verification.
 ## Manual QA
 
 Manual QA is the user's judgment about qualities that a person needs to inspect, such as UX, workflow, copy, accessibility, and visual result.
+
+```mermaid
+flowchart TD
+  QA["Manual QA needed?"] --> Needed{"needed for this task shape?"}
+  Needed -->|yes| Inspect["human inspects experience"]
+  Inspect --> Result{"passed?"}
+  Result -->|yes| Record["record Manual QA passed"]
+  Result -->|no| Rework["rework or blocked"]
+  Needed -->|no| Risk{"waiver carries product/user risk?"}
+  Risk -->|no| Waive["record waiver reason"]
+  Risk -->|yes| Packet["Decision Packet"]
+  Packet --> Decision{"user decision"}
+  Decision -->|accept waiver| Waive
+  Decision -->|reject waiver| Rework
+  Decision -->|defer| Blocked["blocked"]
+```
 
 When a card says `Manual QA: pending`, that is the `qa_gate` display. It means the required QA has not yet produced a satisfying Manual QA record, not that there is a pending Manual QA record result.
 
@@ -350,6 +474,14 @@ Acceptance is the final user judgment that says, "I accept this result." It appe
 
 When acceptance is required, the task does not close until the user accepts the result and remaining trade-offs after close-relevant residual risk has been shown or reported as none. Passing verification, completing Manual QA, granting approval, or accepting a specific residual risk does not by itself count as final acceptance.
 
+```mermaid
+flowchart TD
+  Required["Final acceptance required?"] --> Risk["show close-relevant residual risk or status none"]
+  Risk --> User{"user accepts result?"}
+  User -->|yes| Close["close if other blockers are clear"]
+  User -->|no| Rework["rework or reject"]
+```
+
 ```text
 Accepted. Close this task.
 ```
@@ -372,6 +504,15 @@ Continue TASK-0044. Check harness state first.
 ```
 
 When resuming, check two questions.
+
+```mermaid
+flowchart LR
+  Resume["Resume request"] --> State["read harness state"]
+  State --> Journey["show Journey Card"]
+  Journey --> Next["what is the next action?"]
+  Journey --> Stopped["why is work stopped?"]
+  Stopped --> Action["continue, decide, reconcile, verify, or close"]
+```
 
 ```text
 What is the next action now?

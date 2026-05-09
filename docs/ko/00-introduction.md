@@ -28,6 +28,16 @@ AI 지원 개발은 빠르게 움직입니다. 하지만 중요한 작업 사실
 
 Harness는 이런 작업에 사용자의 전략적 판단권을 보존하는 로컬 운영 커널을 제공합니다. 대화는 자연스럽게 이어가되, 오래 남아야 하는 작업 상태는 chat 밖에 기록합니다. 그래서 Task는 기억이 아니라 현재 상태를 기준으로 따라가고, resume하고, verify하고, reconcile하고, close할 수 있습니다.
 
+```mermaid
+flowchart LR
+  Chat["chat 안에 갇힌 작업 사실<br/>scope, choices, evidence, risk"] --> Kernel["Local operating kernel<br/>chat 밖의 durable state"]
+  Kernel --> Follow["follow"]
+  Kernel --> Resume["resume"]
+  Kernel --> Verify["verify"]
+  Kernel --> Reconcile["reconcile"]
+  Kernel --> Close["close"]
+```
+
 짧게 말하면:
 
 ```text
@@ -43,6 +53,17 @@ Harness는 세 공간을 분리합니다.
 | Product Repository | 사용자의 실제 product workspace입니다. code, tests, 생성된 readable reports, 사람이 편집할 수 있는 proposal areas가 여기에 있습니다. |
 | Harness Server / Installation | 로컬 harness process와 tools입니다. MCP server, Core, validators, projector, connectors, operator commands가 여기에 속합니다. |
 | Harness Runtime Home | 로컬 운영 저장소입니다. project registration, project별 state, durable evidence artifacts가 여기에 있습니다. |
+
+```mermaid
+flowchart LR
+  Product["Product Repository<br/>code, tests, reports, proposal areas"]
+  Server["Harness Server / Installation<br/>MCP, Core, validators, projector, connectors"]
+  Runtime["Harness Runtime Home<br/>project registration, state.sqlite, artifacts"]
+
+  Server -->|"operational state 기록과 조회"| Runtime
+  Server -->|"checks와 projections 조율"| Product
+  Product -->|human-editable notes and proposals| Server
+```
 
 이 분리는 product files, 생성된 Markdown, chat text, operational state가 서로 뒤섞이지 않게 합니다. 정식 architecture 세부 내용은 [04-runtime-architecture.md](04-runtime-architecture.md)가 담당합니다.
 
@@ -61,6 +82,19 @@ Harness는 세 공간을 분리합니다.
 - Projection은 state records와 artifact refs를 사람이 읽을 수 있는 Markdown으로 렌더링한 것입니다.
 - Reconcile은 human-editable notes나 projection drift를 accepted state changes, rejected proposals, notes, decisions, deferred items로 바꾸는 명시적 경로입니다.
 
+```mermaid
+flowchart LR
+  Task["Task"] --> CU["Change Unit"]
+  Task --> DP["Decision Packet"]
+  Task --> EM["Evidence"]
+  EM --> Artifact["raw artifact"]
+  Task --> Spine["Journey Spine"]
+  Spine --> Card["Journey Card"]
+  State["state records + artifact refs"] --> Projection["Projection"]
+  Editable["human-editable input"] --> Reconcile["Reconcile"]
+  Reconcile --> State
+```
+
 자세한 entity와 gate 모델은 [03-kernel-spec.md](03-kernel-spec.md)가 담당합니다. Projection rules는 [07-document-projection.md](07-document-projection.md)가 담당합니다.
 
 ### 작업 모드
@@ -73,6 +107,19 @@ Harness는 세 가지 작업 모드를 사용합니다.
 | `direct` | 범위와 결과가 명확한 작고 위험이 낮은 변경. | Active scoped Change Unit 안에서 `prepare_write`와 applicable gates를 통해 확인됩니다. |
 | `work` | feature work, structural change, risky work, multi-step implementation. | Active scoped Change Unit 안에서 `prepare_write`와 applicable gates를 통해 확인되며 보통 더 강한 evidence와 verification이 필요합니다. |
 
+```mermaid
+flowchart TD
+  Request["User request"] --> Write{"Product write needed?"}
+  Write -->|no| Advisor["advisor<br/>explain, compare, review, plan"]
+  Write -->|yes| Small{"Small, obvious, low risk?"}
+  Small -->|yes| Direct["direct"]
+  Small -->|no| Work["work"]
+  Direct --> Scope["active scoped Change Unit"]
+  Work --> Scope
+  Scope --> Prepare["prepare_write + applicable gates"]
+  Direct -->|if scope grows| Work
+```
+
 Task는 작게 시작할 수 있습니다. 범위가 커지면 Harness는 그 사실을 보이게 하고, 안전하게 실행할 수 있는 형태로 작업을 옮겨야 합니다.
 
 ### Journey Card 읽기
@@ -83,6 +130,14 @@ Journey Card는 canonical state가 아니라 파생 display입니다. 네 가지
 - 다음으로 안전한 action은 무엇인가?
 - 어떤 user decisions 또는 gates가 진행을 막고 있는가?
 - readable projection은 믿을 만큼 최신인가?
+
+```mermaid
+flowchart LR
+  Q1["지금 어떤 Task인가?"] --> L1["Task, State, Scope"]
+  Q2["다음 action은 무엇인가?"] --> L2["Next action"]
+  Q3["무엇이 막고 있는가?"] --> L3["Decision Gate, Decision Packet, Approval"]
+  Q4["이 view를 믿어도 되는가?"] --> L4["Projection freshness"]
+```
 
 예:
 
@@ -120,6 +175,15 @@ Markdown reports:
 
 Human-editable sections:
   notes와 proposals를 위한 input surfaces
+```
+
+```mermaid
+flowchart TD
+  State["state.sqlite current records<br/>+ state.sqlite.task_events"] --> Reports["Markdown reports<br/>derived projections"]
+  Artifacts["artifact store<br/>raw evidence"] --> Reports
+  Editable["human-editable sections<br/>notes and proposals"] --> Reconcile["reconcile 또는 Core state-changing action"]
+  Reconcile --> State
+  Reports -->|display, not authority| Reader["human reader"]
 ```
 
 Human-editable input은 reconcile 또는 Core state-changing action이 accepted state event나 record를 기록한 뒤에만 operational truth가 됩니다.

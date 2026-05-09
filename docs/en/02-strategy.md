@@ -24,9 +24,31 @@ The harness therefore separates three concerns:
 - Kernel state is the canonical operating record.
 - Markdown documents, Journey Cards, and Journey Spine views are human-readable projections and proposal surfaces.
 
+```mermaid
+flowchart LR
+  Conversation["Conversation<br/>operating surface"] --> Kernel["Kernel state<br/>canonical operating record"]
+  Kernel --> Projections["Markdown, Journey Card, Journey Spine<br/>human-readable projections"]
+  Projections --> Reader["User reads status and proposals"]
+  Reader --> Conversation
+  Proposals["Human-editable proposals"] --> Reconcile["reconcile"]
+  Reconcile --> Kernel
+```
+
 ## Failure Model
 
 The harness is designed around failures that appear repeatedly in AI development workflows.
+
+```mermaid
+flowchart LR
+  Journey["Work journey failure"] --> JourneyResponse["state records + projections"]
+  Scope["Scope and approval failure"] --> ScopeResponse["Change Units + approval gates"]
+  Evidence["Evidence failure"] --> EvidenceResponse["Evidence Manifest + artifact store"]
+  Verify["Verification failure"] --> VerifyResponse["verification independence"]
+  Agency["Strategic agency failure"] --> AgencyResponse["Decision Packets"]
+  Stewardship["Codebase stewardship failure"] --> StewardshipResponse["Design Stewardship Defaults"]
+  Judgment["Judgment collapse failure"] --> JudgmentResponse["separate judgment records"]
+  Projection["Projection failure"] --> ProjectionResponse["projection + reconcile boundary"]
+```
 
 ### Work Journey Failure
 
@@ -96,11 +118,33 @@ The minimal kernel is the smallest implementable mechanism that preserves the Ke
 - Artifact store for raw evidence.
 - Projections, Journey Cards, and Journey Spine views for human-readable reports and user proposal surfaces.
 
+```mermaid
+flowchart TD
+  Kernel["Minimal Harness Kernel"] --> Continuity["Task + Change Unit records"]
+  Kernel --> Gates["lifecycle + gates"]
+  Kernel --> Decisions["decision_gate + Decision Packets"]
+  Kernel --> Judgments["approval, evidence, verification, QA, acceptance, residual risk"]
+  Kernel --> WriteClose["prepare_write + close_task"]
+  Kernel --> Storage["state.sqlite current records<br/>+ state.sqlite.task_events"]
+  Kernel --> Artifacts["artifact store"]
+  Kernel --> Views["projections, Journey Cards, Journey Spine"]
+```
+
 The kernel specification is the owner for entity semantics, lifecycle fields, gate enums, transition rules, close semantics, waiver semantics, and invariant enforcement.
 
 ## Principle Groups
 
 The harness separates Strategic Invariants, Kernel Authority Invariants, and Design Stewardship Defaults. This keeps human agency visible without turning every good practice into a hard kernel gate.
+
+```mermaid
+flowchart TD
+  Principles["Principle Groups"] --> Strategic["Strategic Invariants<br/>why Harness exists"]
+  Principles --> Authority["Kernel Authority Invariants<br/>hard authority boundary"]
+  Principles --> Design["Design Stewardship Defaults<br/>quality defaults with policy contracts"]
+  Strategic --> Agency["preserve Strategic Agency"]
+  Authority --> KernelBoundary["define kernel implementation boundary"]
+  Design --> PolicyPack["owned in 08-design-quality-policy-pack.md"]
+```
 
 ### Strategic Invariants
 
@@ -145,6 +189,15 @@ The strategy keeps these defaults visible because they shape the product experie
 
 The harness assumes that the human provides strategic direction and judgment, while agents provide options, implementation, evidence, verification support, and structured status.
 
+```mermaid
+flowchart LR
+  Human["Human<br/>direction and judgment"] --> Work["Harness work journey"]
+  Agent["Agent<br/>options, implementation, evidence"] --> Work
+  Kernel["Kernel<br/>write, gate, close compatibility"] --> Work
+  Work --> Status["structured status and blockers"]
+  Status --> Human
+```
+
 The human owns:
 
 - goals and priorities
@@ -178,6 +231,16 @@ The kernel owns:
 
 Approval answers whether a sensitive action may proceed inside a defined scope. A Decision Packet answers what product judgment the user is making.
 
+```mermaid
+flowchart TD
+  Blocker["Progress, write, or close blocker"] --> Kind{"What kind of question?"}
+  Kind -->|sensitive action| Approval["Approval<br/>may this proceed in scope?"]
+  Kind -->|product judgment| Decision["Decision Packet<br/>what should be decided?"]
+  Kind -->|mechanical compatibility| Mechanical["gate or error path<br/>scope, baseline, MCP"]
+  Approval --> Prepare["compatible prepare_write still required"]
+  Decision --> Gate["feeds decision_gate context"]
+```
+
 Approval never resolves product trade-off, design direction, QA waiver, verification risk, acceptance, or residual risk unless those judgments are separately recorded through the compatible authority path.
 
 Mechanical write blockers such as missing scope, missing approval, stale baseline, or MCP unavailable use their own gate or error path. A Decision Packet is required only when the blocker is product judgment or a user-owned waiver, risk, or acceptance decision.
@@ -201,6 +264,14 @@ The MVP reference surface is primarily cooperative and detective. Capability is 
 ## MVP Boundary
 
 MVP is a kernel authority and agency-conformance validation project, not a broad agent-integration platform.
+
+```mermaid
+flowchart LR
+  MVP["MVP boundary"] --> Includes["includes<br/>one project, one reference surface, local kernel"]
+  MVP --> Authority["validates<br/>Kernel Authority + Agency Conformance"]
+  MVP -->|does not include| Excludes["broad connectors, UI control plane, analytics, team workflow"]
+  Excludes --> Later["appendix/C-later-roadmap.md"]
+```
 
 MVP delivery is staged without changing final MVP scope. Kernel Smoke is the first runnable proof of the kernel authority path; Agency-Hardened MVP is the complete reference MVP that satisfies the agency, stewardship, verification, operations, and fixture-conformance requirements. The staged reading maps onto the existing MVP-0 through MVP-5 sequence and does not move MVP-critical authority or agency requirements to later. See [Reference MVP staging](06-reference-mvp.md#staged-delivery-interpretation) for the compact contract.
 

@@ -2,6 +2,50 @@
 
 ## 공식 용어
 
+이 diagrams는 독자용 map일 뿐입니다. 아래 정의와 linked owner documents가 canonical입니다.
+
+```mermaid
+flowchart LR
+  Task["Task"] --> CU["Change Unit"]
+  Task --> DP["Decision Packet"]
+  Task --> EM["Evidence Manifest"]
+  EM --> Artifact["Artifact"]
+  Task --> Eval["Eval"]
+  Task --> QA["Manual QA"]
+  Task --> Risk["Residual Risk"]
+  State["State records"] --> Projection["Projection"]
+  Input["human-editable input<br/>or projection drift"] --> Item["Reconcile Item"]
+  Item --> Accepted["accepted state event/record"]
+  Accepted --> State
+```
+
+Source-of-truth 용어는 operational state, raw evidence, projections, human input을 구분합니다.
+
+```mermaid
+flowchart TD
+  StateRecord["State Record<br/>canonical operational fact"] --> Projection["Projection"]
+  RawArtifact["Raw Artifact<br/>canonical evidence file"] --> Projection
+  Projection --> Markdown["Markdown Report<br/>readable derived view"]
+  HumanEditable["Human-editable Area<br/>notes and proposals"] --> Item["Reconcile Item"]
+  Item -->|accepted through reconcile| StateRecord
+  Markdown -->|display, not authority| Reader["human reader"]
+```
+
+Approval, Decision Packet, Write Authorization은 서로 다른 질문에 답합니다.
+
+```mermaid
+flowchart TD
+  Need["Need to proceed?"] --> Sensitive{"Sensitive action?"}
+  Need --> Judgment{"Product judgment blocked?"}
+  Need --> Write{"Specific product write?"}
+  Sensitive -->|yes| Approval["Approval<br/>may this sensitive scope proceed?"]
+  Judgment -->|yes| Packet["Decision Packet<br/>what judgment is being made?"]
+  Write -->|yes| Prepare["prepare_write"]
+  Prepare --> Authorization["Write Authorization<br/>specific allowed write attempt"]
+  Approval -->|does not create| Authorization
+  Packet -->|does not replace| Approval
+```
+
 ### Agency Conformance
 
 Harness behavior, projections, validators, close decisions가 사용자의 Strategic Agency를 얼마나 보존하는지를 나타내는 정도입니다. 작업 여정을 따라갈 수 있는지, product judgment가 명시적인지, Autonomy Boundary가 지켜지는지, blocking product judgment에 Decision Packet이 있는지, acceptance 전에 Residual Risk가 보이는지 확인합니다.

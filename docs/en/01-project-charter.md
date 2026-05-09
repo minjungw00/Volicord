@@ -27,6 +27,17 @@ The project exists to build a local harness for AI-assisted development: an agen
 
 The harness is not meant to replace conversation. It lets users begin in ordinary language while durable work facts live in local state, artifacts, and readable projections, so goals, scope, design, trade-offs, codebase stewardship, QA, acceptance, and residual risk remain inspectable.
 
+```mermaid
+flowchart LR
+  User["Ordinary language request"] --> Harness["Local harness"]
+  Harness --> State["local state"]
+  Harness --> Artifacts["artifacts"]
+  Harness --> Projections["readable projections"]
+  State --> Judgment["inspectable judgment"]
+  Artifacts --> Judgment
+  Projections --> Judgment
+```
+
 ### Target Users
 
 Primary users:
@@ -50,6 +61,18 @@ The project values:
 - Projection humility: Markdown helps humans read and propose changes, but it does not silently become operational truth.
 - Surface neutrality: capability is described by profile and guarantee level, not assumed from a product name.
 
+```mermaid
+flowchart TD
+  Values["Core Values"] --> Local["Local authority"]
+  Values --> Boundaries["Explicit boundaries"]
+  Values --> Assurance["Honest assurance"]
+  Values --> Agency["Strategic agency"]
+  Values --> Journey["Followable journey"]
+  Values --> Small["Small implementability"]
+  Values --> Projection["Projection humility"]
+  Values --> Surface["Surface neutrality"]
+```
+
 ### Scope
 
 Current scope is the v2 documentation set and the reference MVP it describes.
@@ -64,6 +87,16 @@ This charter leaves detailed ownership to the rest of the documentation set:
 - API and schemas: [05-mcp-api-and-schemas.md](05-mcp-api-and-schemas.md)
 - reference implementation plan: [06-reference-mvp.md](06-reference-mvp.md)
 
+```mermaid
+flowchart LR
+  Charter["Charter scope"] --> Docs["v2 documentation set"]
+  Charter --> MVP["reference MVP"]
+  MVP --> Kernel["one local project + one reference surface"]
+  MVP --> Evidence["state, artifacts, gates, evidence, projections"]
+  MVP --> Conformance["recovery, export, fixture conformance"]
+  Charter -->|delegates details to owner docs| Owners["strategy, kernel, runtime, API, MVP plan"]
+```
+
 ### Non-Goals
 
 Current non-goals:
@@ -76,6 +109,13 @@ Current non-goals:
 - building a dashboard, team workflow platform, long-term analytics layer, or broad connector ecosystem as MVP scope
 - hiding approval, QA, verification, acceptance, or remaining risk behind a single "done" label
 
+```mermaid
+flowchart LR
+  MVP["Current MVP boundary"] --> In["local kernel proof"]
+  MVP -->|not MVP| Out["dashboard, broad connectors, analytics, team workflow"]
+  Out --> Later["appendix/C-later-roadmap.md"]
+```
+
 Later automation belongs in [appendix/C-later-roadmap.md](appendix/C-later-roadmap.md) until a future version assigns ownership, fixtures, fallback behavior, and implementation scope.
 
 ### Automation Philosophy
@@ -85,6 +125,14 @@ Automation should make the work easier to trust, not harder to understand.
 Harness does not make the agent autonomous by default. Harness makes autonomy legible, scoped, evidenced, and interruptible.
 
 The harness should automate state recording, write checks, artifact registration, projection refresh, validator execution, recovery, export, and conformance where those actions are deterministic enough to test. It should ask for human judgment when the question is about intent, sensitive permission, design direction, codebase stewardship, product taste, trade-off acceptance, QA, acceptance, or residual risk.
+
+```mermaid
+flowchart LR
+  Work["Harness work"] --> Deterministic["Deterministic enough to test"]
+  Deterministic --> Auto["automate<br/>state, checks, artifacts, projections, validators"]
+  Work --> Judgment["Human-owned judgment"]
+  Judgment --> Human["ask the user<br/>intent, permission, design, taste, QA, acceptance, risk"]
+```
 
 When automation cannot enforce a rule preventively, it should report the actual guarantee level and fall back to cooperative or detective behavior instead of pretending enforcement is stronger than it is.
 

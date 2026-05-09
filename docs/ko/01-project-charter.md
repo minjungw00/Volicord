@@ -27,6 +27,17 @@
 
 Harness는 대화를 대체하지 않습니다. 사용자는 평범한 언어로 시작할 수 있고, 오래 남아야 하는 작업 사실은 로컬 state, artifacts, readable projections에 기록됩니다. 그래서 목표, 범위, 설계, 트레이드오프, Codebase Stewardship, QA, acceptance, Residual Risk가 계속 inspectable하게 남습니다.
 
+```mermaid
+flowchart LR
+  User["Ordinary language request"] --> Harness["Local harness"]
+  Harness --> State["local state"]
+  Harness --> Artifacts["artifacts"]
+  Harness --> Projections["readable projections"]
+  State --> Judgment["inspectable judgment"]
+  Artifacts --> Judgment
+  Projections --> Judgment
+```
+
 ### 대상 사용자
 
 주요 사용자는 다음과 같습니다.
@@ -50,6 +61,18 @@ Harness는 대화를 대체하지 않습니다. 사용자는 평범한 언어로
 - Projection humility: Markdown은 사람이 읽고 변경을 제안하는 데 도움을 주지만, 조용히 operational truth가 되지는 않습니다.
 - Surface neutrality: capability는 product name으로 가정하지 않고 profile과 guarantee level로 설명합니다.
 
+```mermaid
+flowchart TD
+  Values["Core Values"] --> Local["Local authority"]
+  Values --> Boundaries["Explicit boundaries"]
+  Values --> Assurance["Honest assurance"]
+  Values --> Agency["Strategic agency"]
+  Values --> Journey["Followable journey"]
+  Values --> Small["Small implementability"]
+  Values --> Projection["Projection humility"]
+  Values --> Surface["Surface neutrality"]
+```
+
 ### 범위
 
 현재 범위는 v2 documentation set과 그 문서가 설명하는 reference MVP입니다.
@@ -64,6 +87,16 @@ Reference MVP는 하나의 project, 하나의 reference agent surface, local run
 - API와 schemas: [05-mcp-api-and-schemas.md](05-mcp-api-and-schemas.md)
 - reference implementation plan: [06-reference-mvp.md](06-reference-mvp.md)
 
+```mermaid
+flowchart LR
+  Charter["Charter scope"] --> Docs["v2 documentation set"]
+  Charter --> MVP["reference MVP"]
+  MVP --> Kernel["one local project + one reference surface"]
+  MVP --> Evidence["state, artifacts, gates, evidence, projections"]
+  MVP --> Conformance["recovery, export, fixture conformance"]
+  Charter -->|delegates details to owner docs| Owners["strategy, kernel, runtime, API, MVP plan"]
+```
+
 ### 비목표
 
 현재 비목표는 다음과 같습니다.
@@ -76,6 +109,13 @@ Reference MVP는 하나의 project, 하나의 reference agent surface, local run
 - dashboard, team workflow platform, long-term analytics layer, broad connector ecosystem을 MVP 범위로 만들기
 - approval, QA, verification, acceptance, remaining risk를 하나의 `"done"` label 뒤에 숨기기
 
+```mermaid
+flowchart LR
+  MVP["Current MVP boundary"] --> In["local kernel proof"]
+  MVP -->|not MVP| Out["dashboard, broad connectors, analytics, team workflow"]
+  Out --> Later["appendix/C-later-roadmap.md"]
+```
+
 이후 자동화는 future version이 담당 문서, fixtures, fallback behavior, implementation scope를 부여하기 전까지 [appendix/C-later-roadmap.md](appendix/C-later-roadmap.md)에 둡니다.
 
 ### 자동화 철학
@@ -85,6 +125,14 @@ Reference MVP는 하나의 project, 하나의 reference agent surface, local run
 Harness는 agent를 기본적으로 autonomous하게 만들지 않습니다. Harness는 autonomy를 읽을 수 있고, 범위가 있으며, evidence가 있고, 중단 가능한 것으로 만듭니다.
 
 Harness는 state recording, write checks, artifact registration, projection refresh, validator execution, recovery, export, conformance처럼 충분히 deterministic해서 test할 수 있는 actions를 자동화해야 합니다. 질문이 intent, sensitive permission, design direction, Codebase Stewardship, product taste, trade-off acceptance, QA, acceptance, Residual Risk에 관한 것이라면 사람의 판단을 요청해야 합니다.
+
+```mermaid
+flowchart LR
+  Work["Harness work"] --> Deterministic["Deterministic enough to test"]
+  Deterministic --> Auto["automate<br/>state, checks, artifacts, projections, validators"]
+  Work --> Judgment["Human-owned judgment"]
+  Judgment --> Human["ask the user<br/>intent, permission, design, taste, QA, acceptance, risk"]
+```
 
 어떤 rule을 preventively enforce할 수 없을 때는 실제 guarantee level을 보고하고, 더 강한 enforcement가 있는 척하지 말고 cooperative 또는 detective behavior로 fallback해야 합니다.
 

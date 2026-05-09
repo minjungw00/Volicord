@@ -2,6 +2,50 @@
 
 ## Official Terms
 
+These diagrams are reader maps only. The definitions below and the linked owner documents remain canonical.
+
+```mermaid
+flowchart LR
+  Task["Task"] --> CU["Change Unit"]
+  Task --> DP["Decision Packet"]
+  Task --> EM["Evidence Manifest"]
+  EM --> Artifact["Artifact"]
+  Task --> Eval["Eval"]
+  Task --> QA["Manual QA"]
+  Task --> Risk["Residual Risk"]
+  State["State records"] --> Projection["Projection"]
+  Input["human-editable input<br/>or projection drift"] --> Item["Reconcile Item"]
+  Item --> Accepted["accepted state event/record"]
+  Accepted --> State
+```
+
+Source-of-truth terms keep operational state, raw evidence, projections, and human input distinct.
+
+```mermaid
+flowchart TD
+  StateRecord["State Record<br/>canonical operational fact"] --> Projection["Projection"]
+  RawArtifact["Raw Artifact<br/>canonical evidence file"] --> Projection
+  Projection --> Markdown["Markdown Report<br/>readable derived view"]
+  HumanEditable["Human-editable Area<br/>notes and proposals"] --> Item["Reconcile Item"]
+  Item -->|accepted through reconcile| StateRecord
+  Markdown -->|display, not authority| Reader["human reader"]
+```
+
+Approval, Decision Packets, and Write Authorization answer different questions.
+
+```mermaid
+flowchart TD
+  Need["Need to proceed?"] --> Sensitive{"Sensitive action?"}
+  Need --> Judgment{"Product judgment blocked?"}
+  Need --> Write{"Specific product write?"}
+  Sensitive -->|yes| Approval["Approval<br/>may this sensitive scope proceed?"]
+  Judgment -->|yes| Packet["Decision Packet<br/>what judgment is being made?"]
+  Write -->|yes| Prepare["prepare_write"]
+  Prepare --> Authorization["Write Authorization<br/>specific allowed write attempt"]
+  Approval -->|does not create| Authorization
+  Packet -->|does not replace| Approval
+```
+
 ### Agency Conformance
 
 The degree to which harness behavior, projections, validators, and close decisions preserve the user's Strategic Agency. Agency conformance checks whether the work journey is followable, product judgment is explicit, autonomy boundaries are respected, Decision Packets exist for blocking product judgment, and residual risk is visible before acceptance.
