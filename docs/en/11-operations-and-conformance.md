@@ -24,6 +24,29 @@ harness artifacts check
 harness conformance run
 ```
 
+```mermaid
+flowchart TD
+  Core["Core rules and state authority"]
+  Core --> Connect["harness connect"]
+  Core --> Doctor["harness doctor"]
+  Core --> Serve["harness serve mcp"]
+  Core --> Refresh["harness projection refresh"]
+  Core --> Reconcile["harness reconcile"]
+  Core --> Recover["harness recover"]
+  Core --> Export["harness export"]
+  Core --> Artifacts["harness artifacts check"]
+  Core --> Conformance["harness conformance run"]
+  Connect --> Setup["link repo, runtime home, surface"]
+  Doctor --> Readiness["report readiness, drift, repair options"]
+  Serve --> MCP["expose MCP resources and tools through Core"]
+  Refresh --> Projection["regenerate derived Markdown views"]
+  Reconcile --> Decisions["turn edits or drift into explicit decisions"]
+  Recover --> Repair["repair interrupted operational state"]
+  Export --> Bundle["create review or archival bundle"]
+  Artifacts --> Integrity["compare artifact records with files"]
+  Conformance --> Fixtures["execute exact-shape fixtures"]
+```
+
 Exact command flags may vary by implementation, but the semantics below are required for the reference MVP.
 
 ## Conformance Staging
@@ -33,6 +56,20 @@ Conformance can run incrementally, but staged execution must not change the fixt
 Kernel Smoke is the first runnable conformance target, drawn from a selected smoke slice across MVP-0 through early MVP-3 capabilities. It should prove project and Task state, scoped Change Unit behavior, `prepare_write` allow/block behavior, durable Write Authorization creation, `record_run` authorization consumption, artifact and evidence manifest basics, minimal projection enqueue/current behavior, writes or runs blocked when write authority is missing, close blocked when evidence or decision requirements are missing, and basic Core fixture execution. Passing Kernel Smoke proves the first runnable kernel authority path; it does not claim final MVP conformance.
 
 Agency-Hardened MVP is the final reference conformance target. It must add Decision Packet quality, sensitive approval lifecycle separation, residual-risk visibility before acceptance and close, detached verification guards, Manual QA, stewardship and context-hygiene validators, full feedback-loop checks, codebase stewardship coverage, projection/reconcile completeness, recover/export/artifact integrity behavior, later-boundary checks, and broader fixture coverage. Suite catalog metadata may map scenarios to the earliest MVP stage, but executable fixtures still assert through Core state, events, artifacts, projections, and errors.
+
+```mermaid
+flowchart LR
+  Kernel["Kernel Smoke<br/>first runnable authority path"] --> Harden["Agency-Hardened MVP<br/>final reference conformance"]
+  Kernel --> K1["project and Task state"]
+  Kernel --> K2["prepare_write and Write Authorization"]
+  Kernel --> K3["artifact, evidence, projection basics"]
+  Kernel --> K4["close and write blockers"]
+  Harden --> H1["Decision Packet quality"]
+  Harden --> H2["residual risk, verification, Manual QA"]
+  Harden --> H3["stewardship and context hygiene"]
+  Harden --> H4["recover, export, artifact integrity"]
+  Harden --> H5["projection and reconcile completeness"]
+```
 
 ## Docs-Maintenance Smoke Profile
 
@@ -53,6 +90,14 @@ Minimum report fields:
 
 Smoke categories should reference, not restate, the Authoring Guide checks: bilingual file and heading parity, broken cross references, owner-boundary drift, enum drift, Stable Event Catalog drift, stable `ValidatorResult` ID drift, `ProjectionKind` tier drift, glossary and source-of-truth phrasing drift, TODO rule compliance, and non-owner duplicate full-contract paragraphs.
 
+```mermaid
+flowchart LR
+  Start["docs-maintenance smoke profile"] --> Check["check Markdown docs against Authoring Guide categories"]
+  Check --> Report["report pass, warn, or fail per category"]
+  Report --> Output["console output or ephemeral report"]
+  Output --> Hold["no task_events, artifacts, projections, QA, acceptance, or close state"]
+```
+
 ## Connect
 
 `connect` links a Product Repository, Harness Runtime Home, and one reference agent surface.
@@ -67,6 +112,23 @@ Required behavior:
 - create or refresh connector-managed files through a manifest
 - confirm MCP configuration can reach the harness server
 - run a conformance smoke check or print the command to run it
+
+```mermaid
+sequenceDiagram
+  participant Op as Operator
+  participant Repo as Product Repository
+  participant Runtime as Harness Runtime Home
+  participant Surface as Reference Surface
+  participant MCP as MCP Config
+  participant Core as Core Smoke
+  Op->>Repo: identify repository root
+  Op->>Runtime: register or reuse project
+  Runtime->>Runtime: initialize state and artifact storage
+  Op->>Surface: register capability profile
+  Op->>Repo: create or refresh connector-managed files via manifest
+  Runtime->>MCP: confirm server reachability
+  Op->>Core: run smoke or print command
+```
 
 Connect must report generated-file drift instead of overwriting human edits silently. Surface-specific generated file names belong in the surface cookbook.
 
@@ -87,6 +149,22 @@ Required categories:
 | reconcile | pending human edits, managed block drift, generated-file drift |
 | validators/checks | required stable ValidatorResult-emitting validators, plus separately captured Core check/precondition categories |
 | agency/stewardship/context | Decision Packet and decision gate readiness, Autonomy Boundary readiness, residual-risk visibility, codebase stewardship, context freshness |
+
+```mermaid
+flowchart TD
+  Doctor["harness doctor"] --> Project["project"]
+  Doctor --> State["state"]
+  Doctor --> MCP["MCP"]
+  Doctor --> Surface["surface"]
+  Doctor --> Artifacts["artifacts"]
+  Doctor --> Projections["projections"]
+  Doctor --> Reconcile["reconcile"]
+  Doctor --> Validators["validators/checks"]
+  Doctor --> Agency["agency/stewardship/context"]
+  State --> JSON["JSON TEXT parse and shape validity"]
+  Projections --> Freshness["freshness and failed renders"]
+  Validators --> Stable["stable ValidatorResult IDs and Core checks"]
+```
 
 Output levels:
 
@@ -114,6 +192,17 @@ Required behavior:
 - report the active project and connected surface profile
 - fail clearly when the server cannot reach runtime state or artifact storage
 
+```mermaid
+flowchart TD
+  Start["harness serve mcp"] --> Server["server can reach runtime state and artifact storage?"]
+  Server -- "no" --> ServerFail["MCP_SERVER_UNAVAILABLE<br/>no authoritative Core response"]
+  Server -- "yes" --> Core["Core reachable for public tools"]
+  Core --> Resources["read resources exposed without mutation"]
+  Resources --> Surface["connected surface can use required MCP tools?"]
+  Surface -- "yes" --> Ready["MCP server ready for this surface"]
+  Surface -- "no" --> SurfaceFail["SURFACE_MCP_UNAVAILABLE<br/>surface cannot use required MCP tools"]
+```
+
 If MCP is unavailable, operations must distinguish `MCP_SERVER_UNAVAILABLE` from `SURFACE_MCP_UNAVAILABLE`. With `MCP_SERVER_UNAVAILABLE`, a tool call cannot reach Core and no authoritative Core response is possible; the next action is server diagnosis or reconnect before any state-change claim. With `SURFACE_MCP_UNAVAILABLE`, Core or an operator can observe that the connected surface lacks usable MCP, has stale MCP configuration, or cannot call required MCP tools. Cooperative surfaces must hold product/runtime/code writes by instruction; stronger profiles may enforce the hold preventively or through isolation. Operations must still report the actual guarantee level.
 
 ## Projection Refresh
@@ -136,6 +225,21 @@ one Task
 all active Tasks
 approval/run/evidence/eval/direct reports for a Task
 design-quality projections when enabled
+```
+
+```mermaid
+flowchart TD
+  Target["select refresh target"] --> Latest["render latest projection version"]
+  Latest --> Preserve["preserve human-editable sections"]
+  Preserve --> Hash["compare managed block hash"]
+  Hash -- "hash drift" --> Reconcile["create reconcile item"]
+  Hash -- "matches" --> Write["write derived Markdown view"]
+  Reconcile --> Skipped["mark job skipped or pending"]
+  Write --> Completed["mark job completed"]
+  Latest -- "render error" --> Failed["mark job failed"]
+  Completed --> Separate["keep projection status separate from Task result"]
+  Failed --> Separate
+  Skipped --> Separate
 ```
 
 For MVP, Decision Packet visibility is rendered through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources; Journey Card visibility is rendered through status, journey, next, and significant resume surfaces. Dedicated extension / appendix refresh targets for `DEC`, `DESIGN`, `EXPORT`, and persisted `JOURNEY-CARD` are optional when enabled, not required MVP smoke targets.
@@ -164,6 +268,22 @@ Decision outcomes:
 | create_decision | turn the proposal into a pending user decision |
 | defer | keep the reconcile item open |
 
+```mermaid
+flowchart TD
+  Input["human edit or managed/generated drift"] --> Item["create reconcile item"]
+  Item --> Review["review against canonical state and owner docs"]
+  Review --> Merge["merge"]
+  Review --> Reject["reject"]
+  Review --> Note["convert_to_note"]
+  Review --> Decision["create_decision"]
+  Review --> Defer["defer"]
+  Merge --> Core["apply through Core and append state history"]
+  Reject --> Refresh["canonical state unchanged; refresh if needed"]
+  Note --> Human["preserve as human note"]
+  Decision --> Pending["pending user decision"]
+  Defer --> Open["reconcile item remains open"]
+```
+
 Reconcile must not treat edited Markdown as canonical state by itself.
 
 ## Recover
@@ -184,6 +304,25 @@ Required scenarios:
 | lock expired | append recovery event and release or reacquire according to lock policy |
 | MCP unavailable | report `MCP_SERVER_UNAVAILABLE` or `SURFACE_MCP_UNAVAILABLE`, keep product/runtime/code writes held, and give the next diagnosis or reconnect step |
 
+```mermaid
+flowchart TD
+  Scenario["failure scenario"] --> Classify["classify recovery path"]
+  Classify --> Interrupted["agent crash during write"]
+  Classify --> Baseline["stale approval baseline"]
+  Classify --> Evidence["evaluator drift or artifact mismatch"]
+  Classify --> Projection["projection job failed or managed Markdown edited"]
+  Classify --> Storage["malformed or schema-incompatible storage JSON"]
+  Classify --> Lock["lock expired"]
+  Classify --> MCP["MCP unavailable"]
+  Interrupted --> Event["append compensating event"]
+  Baseline --> Approval["expire or re-request approval"]
+  Evidence --> Stale["mark evidence or verification stale/blocked"]
+  Projection --> Recon["retry, fail, or create reconcile guidance"]
+  Storage --> Repair["repair only from canonical state or raw artifacts"]
+  Lock --> Release["release or reacquire by policy"]
+  MCP --> Hold["hold product/runtime/code writes and diagnose"]
+```
+
 Recovery may append compensating events. It must not silently delete evidence, rewrite event history, or make projections authoritative.
 
 ## Export
@@ -199,6 +338,19 @@ Required contents:
 - artifact references and included raw artifact files when allowed
 - artifact integrity manifest
 - redaction and omission notes for secrets, sensitive logs, and PII
+
+```mermaid
+flowchart TD
+  Export["Task export bundle"] --> Manifest["export manifest"]
+  Export --> State["state snapshots"]
+  Export --> Decisions["Decision Packets and user decisions"]
+  Export --> Risks["residual risks and accepted-risk refs"]
+  Export --> Journey["Journey Spine or continuity refs"]
+  Export --> Projections["projection snapshots"]
+  Export --> Artifacts["artifact refs and allowed raw files"]
+  Export --> Integrity["artifact integrity manifest"]
+  Export --> Redaction["redaction and omission notes"]
+```
 
 Exported projection snapshots may have hashes, but that does not make the Markdown projection the canonical evidence. Raw evidence remains the artifact files and their registered refs.
 
@@ -219,6 +371,24 @@ Required checks:
 - retention class is valid
 - projection or evidence refs resolve
 
+```mermaid
+flowchart TD
+  Check["artifact integrity check"] --> Record["artifact record exists and links resolve"]
+  Check --> File["stored file exists"]
+  Check --> Hash["hash and size match"]
+  Check --> Type["content type and redaction state valid"]
+  Check --> Relation["task/run or artifact-link relation valid"]
+  Check --> Retention["retention class valid"]
+  Check --> ProjectionRefs["projection or evidence refs resolve"]
+  Record --> Consequence["mark related evidence, projection freshness, or close readiness stale/blocked on failure"]
+  File --> Consequence
+  Hash --> Consequence
+  Type --> Consequence
+  Relation --> Consequence
+  Retention --> Consequence
+  ProjectionRefs --> Consequence
+```
+
 Failures should mark related evidence, projection freshness, or close readiness stale/blocked according to Core rules. Missing artifacts are not fixed by editing Markdown reports.
 
 ## Conformance Fixture Format
@@ -237,6 +407,29 @@ expected_events: list
 expected_artifacts: list
 expected_projection: object
 expected_error: object | null
+```
+
+```mermaid
+classDiagram
+  class FixtureBody {
+    scenario_id
+    initial_state
+    input
+    action
+    expected_state
+    expected_events
+    expected_artifacts
+    expected_projection
+    expected_error
+  }
+  class SuiteCatalogMetadata {
+    suite
+    earliest_mvp_stage
+    tags
+    assertion_modes
+    fixtures
+  }
+  SuiteCatalogMetadata ..> FixtureBody : groups exact-shape fixtures
 ```
 
 Fixture files and suite catalogs may carry metadata outside the fixture body. The fixture body itself uses only the fields above so conformance runners can compare behavior consistently.
@@ -270,6 +463,21 @@ MVP execution semantics:
 6. Compare the captured results with `expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, and `expected_error`.
 7. Report fixture id, pass/fail, observed state summary, observed events, artifact integrity result, projection freshness, and error comparison.
 
+```mermaid
+sequenceDiagram
+  participant Runner as Conformance Runner
+  participant Fixture as Fixture YAML
+  participant Runtime as Isolated Runtime
+  participant Core as Core Entrypoint
+  participant Report as Conformance Report
+  Runner->>Fixture: load and validate exact body shape
+  Runner->>Runtime: seed state, artifacts, projections, manifests
+  Runner->>Core: execute action
+  Core-->>Runner: state, events, artifacts, projection status, error
+  Runner->>Runner: compare expected_state/events/artifacts/projection/error
+  Runner->>Report: emit fixture id, pass/fail, observed summaries
+```
+
 When a fixture action includes `expected_state_version`, the runner compares it according to the Core-resolved primary Task, not only `ToolEnvelope.task_id`. Task-scoped actions compare against the seeded or Core-resolved primary Task State Version; project-scoped actions with no resolved primary Task compare against the Project State Version. Captured response and `task_events` `state_version` values are compared as resulting affected-scope versions. Read-only fixtures may assert the unchanged version for the primary read scope. This clarifies comparison semantics without changing fixture body shape.
 
 Fixture execution should be deterministic. Network access, wall-clock-sensitive expiry, and external tool output must be stubbed or represented as seeded fixture inputs unless a suite explicitly declares itself an integration smoke.
@@ -289,6 +497,16 @@ Default comparison modes:
 | `expected_artifacts` | `contains_by_identity`; each listed artifact must match a registered artifact with the same `artifact_id` and `kind`, then any other listed artifact fields are matched recursively. |
 | `expected_projection` | `partial_by_kind`; each listed projection kind must satisfy the listed status assertion or partial object assertion for that kind. |
 | `expected_error` | `expected_error: null` asserts that the action returned no error. When `expected_error` is an object, `expected_error.code` is required and matched exactly against the primary `ToolError.code`, meaning `ToolResponseBase.errors[0].code` when the response has errors, selected by API-owned [Primary Error Code Precedence](05-mcp-api-and-schemas.md#primary-error-code-precedence). It must not match an arbitrary secondary error. `expected_error.details` is optional; when omitted, no details fields are asserted. When `details` is present, it is matched with `partial_deep` unless suite metadata sets `expected_error.details: exact`. |
+
+```mermaid
+flowchart TD
+  Modes["runner defaults or suite catalog metadata"] --> State["expected_state<br/>partial_deep by default"]
+  Modes --> Events["expected_events<br/>contains_ordered stable events"]
+  Modes --> Artifacts["expected_artifacts<br/>contains_by_identity"]
+  Modes --> Projection["expected_projection<br/>partial_by_kind"]
+  Modes --> Error["expected_error<br/>primary ToolError.code exact"]
+  Modes --> Boundary["comparison modes are not Core input, API enums, DDL, or fixture body fields"]
+```
 
 `expected_events` comparisons are over names from the [Kernel Stable Event Catalog](03-kernel-spec.md#stable-event-catalog). API tool detail/audit event lists do not expand this set. Non-catalog detail or local-audit events captured in `task_events` must not make a normal MVP fixture fail. When suite metadata sets `expected_events: exact`, exactness applies to the stable-event projection of the captured stream unless a future non-MVP/local suite explicitly opts into implementation-specific detail-event assertions. Validator IDs, Core check names, projection status shorthands, fixture seed shorthand, and scenario catalog IDs are not event names. Prose examples may mention non-catalog event names as illustrative or future extension ideas, but executable MVP fixtures must not require them until the kernel catalog promotes them.
 
@@ -347,6 +565,19 @@ Required suite responsibilities:
 | agency | Blocking product judgment requires a compatible Decision Packet before affected write or close; decision request routing metadata is optional compatibility data and alone must not satisfy `decision_gate`; product trade-off writes are held; sensitive approval lifecycle keeps approval, Decision Packet, and Write Authorization distinct; AFK Autonomy Boundary stop conditions block public commitments; known close-relevant residual risk must be visible before any successful close; if no known close-relevant risk exists, `ResidualRiskSummary.status=none` satisfies residual-risk visibility; risk-accepted close additionally requires accepted Residual Risk refs; approval, QA, acceptance, and residual-risk acceptance remain distinct. |
 | stewardship | Design-quality and codebase-stewardship validators affect `design_gate`, `decision_gate`, `qa_gate`, close blockers, and waiver eligibility through canonical owner records, refs, and policy-owned severity composition; public interface, module, domain, feedback-loop, TDD, Manual QA, and waiver checks do not duplicate schemas or DDL. |
 | context-hygiene | Current Task state, Journey refs, evidence refs, and freshness state are authoritative; stale PRDs, stale projections, closed issues, old design docs, and long logs are pull-only context until reconciled; stale context cannot authorize writes, close, acceptance, or current-state replacement. |
+
+```mermaid
+flowchart LR
+  Suites["MVP conformance suites"] --> Agency["agency"]
+  Suites --> Stewardship["stewardship"]
+  Suites --> Context["context-hygiene"]
+  Agency --> A1["Decision Packet and decision gate"]
+  Agency --> A2["approval, residual risk, Autonomy Boundary"]
+  Stewardship --> S1["design-quality validators and policy composition"]
+  Stewardship --> S2["domain, module, interface, feedback loop"]
+  Context --> C1["current Task state and Journey refs"]
+  Context --> C2["stale context is pull-only until reconciled"]
+```
 
 ## Hardened MVP Fixture Coverage
 

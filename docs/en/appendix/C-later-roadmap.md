@@ -10,6 +10,14 @@ It does not own kernel invariants, public MCP schemas, MVP implementation requir
 
 The MVP proves the local kernel: state, gates, artifacts, verification, projection, reconcile, and one reference surface. The items below are useful follow-ons after those basics are stable.
 
+```mermaid
+flowchart LR
+  MVP["MVP local kernel stable basics"] --> Basics["state, gates, artifacts, verification, projection, reconcile, one reference surface"]
+  Basics --> Stable["Kernel Smoke and Agency-Hardened MVP remain MVP owner-doc work"]
+  Basics --> Later["later automation candidates"]
+  Later --> Promote["future version only after owner decision"]
+```
+
 Kernel Smoke and Agency-Hardened MVP are both MVP delivery stages, not Appendix C scope. This appendix must not absorb kernel authority, Decision Packet, residual-risk visibility, detached verification, Manual QA, recover/export, or fixture-conformance behavior that the MVP owner documents require.
 
 Later items may become v1 work only after they have:
@@ -18,6 +26,28 @@ Later items may become v1 work only after they have:
 - a fixture or conformance target
 - a fallback behavior for unsupported surfaces
 - no dependency on treating projections as canonical state
+
+```mermaid
+flowchart TD
+  Candidate["later capability candidate"] --> Profile["clear capability profile requirement"]
+  Profile --> Fixture["fixture or conformance target"]
+  Fixture --> Fallback["fallback behavior for unsupported surfaces"]
+  Fallback --> Projection["no projection-as-canonical dependency"]
+  Projection --> Promote["eligible for explicit re-scope decision only"]
+  Candidate -- "missing any criterion" --> Later["remains Appendix C later item"]
+```
+
+```mermaid
+flowchart TD
+  LaterItems["Later items overview"] --> Dashboard["Dashboard"]
+  LaterItems --> BrowserQA["Browser QA Capture"]
+  LaterItems --> CrossSurface["Cross-Surface Verification"]
+  LaterItems --> Hooks["Native Hook Expansion"]
+  LaterItems --> Watcher["Advanced Sidecar Watcher"]
+  LaterItems --> Parallel["Parallel Orchestration"]
+  LaterItems --> Analytics["Analytics"]
+  LaterItems --> TeamProfiles["Team Profile Export And Import"]
+```
 
 ## Dashboard
 
@@ -60,6 +90,17 @@ Later because parallel execution depends on stable locks, baseline freshness, ap
 Analytics can derive rates and latencies from `state.sqlite.task_events`, runs, validator results, projection jobs, and reconcile items.
 
 Later because metrics are derived values, not authority. Candidate metrics include approval turnaround, verification latency, evidence insufficiency rate, projection stale duration, reconcile volume, and same-session verification guard triggers.
+
+```mermaid
+flowchart LR
+  Events["state.sqlite.task_events"] --> Metrics["derived metrics"]
+  Runs["runs"] --> Metrics
+  Validators["validator results"] --> Metrics
+  Projections["projection jobs"] --> Metrics
+  Reconcile["reconcile items"] --> Metrics
+  Metrics --> Interpretation["future user-facing interpretation rule"]
+  Metrics --> Boundary["non-authoritative: does not change state, gates, evidence, or projections"]
+```
 
 Candidate derived metrics from the legacy operations guide:
 

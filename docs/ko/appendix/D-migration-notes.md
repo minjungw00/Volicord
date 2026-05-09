@@ -33,6 +33,17 @@ Legacy v1 file과 rewrite manifest는 migration history를 위한 source materia
 | `docs/legacy-v1/glossary.md` | `docs/glossary.md` |
 | `docs/legacy-v1/REWRITE-MANIFEST.md` | `docs/appendix/D-migration-notes.md` |
 
+```mermaid
+flowchart LR
+  Intro["legacy README, overview, charter"] --> NewIntro["docs/README.md, 00-introduction.md, 01-project-charter.md"]
+  Strategy["legacy strategy and playbooks"] --> NewStrategy["02-strategy.md, 03-kernel-spec.md, 08-design-quality-policy-pack.md"]
+  Architecture["legacy architecture and reference implementation"] --> NewRuntime["04-runtime-architecture.md, 05-mcp-api-and-schemas.md, 06-reference-mvp.md"]
+  Projection["legacy document and artifact contracts"] --> NewProjection["07-document-projection.md, appendix/A-template-library.md"]
+  Integration["legacy agent integration"] --> NewIntegration["09-agent-integration.md, appendix/B-surface-cookbook.md"]
+  Operations["legacy operations and conformance"] --> NewOperations["11-operations-and-conformance.md, appendix/C-later-roadmap.md"]
+  Migration["REWRITE-MANIFEST.md"] --> ThisDoc["appendix/D-migration-notes.md"]
+```
+
 ## Legacy Path Cleanup Status
 
 Batch H는 migration stub을 유지하는 대신 replaced legacy document를 active tree에서 제거합니다. 이 path들은 canonical doc이 아니며, 여기 listed된 v2 destination을 사용합니다.
@@ -71,6 +82,16 @@ Archived `docs/legacy-v1/` copy들과 old charter, strategy, authoring guide, gl
 | event log phrasing as a separate store | `state.sqlite.task_events` wording으로 replaced |
 | projection as canonical-looking document authority | state/artifact/projection authority boundary로 replaced |
 
+```mermaid
+flowchart LR
+  LongExamples["long user walkthroughs"] --> ShortGuide["축약된 user-guide examples"]
+  ScenarioTables["scenario tables"] --> Fixtures["fixture-based conformance"]
+  Metrics["operational metrics list"] --> LaterAnalytics["later analytics roadmap"]
+  CI["broad CI operations ownership"] --> Entrypoints["MVP CI contract 전까지 conformance entrypoints"]
+  SurfaceExamples["all-surface setup examples"] --> Cookbook["surface cookbook 또는 deferred material"]
+  ProjectionAuthority["projection as canonical-looking authority"] --> Boundaries["state, artifact, projection authority boundary"]
+```
+
 ## Compatibility Guidance
 
 Reader가 old file name을 만나면 위 mapping을 사용하고 v2 destination을 우선합니다. Archived legacy document를 canonical doc으로 cite하지 않습니다.
@@ -93,5 +114,26 @@ v1은 strategy, state, implementation, template, connector, operations, design-q
 - policy pack은 design-quality policy contract를 담당합니다
 - integration은 capability profile을 담당합니다
 - operations는 fixture-based conformance를 담당합니다
+
+```mermaid
+flowchart TD
+  AppendixD["Appendix D<br/>migration context only"] -. "active contract를 소유하지 않음" .-> Owners["active v2 owner docs"]
+  Owners --> Strategy["strategy"]
+  Owners --> Kernel["kernel"]
+  Owners --> API["API"]
+  Owners --> Reference["reference MVP"]
+  Owners --> Projection["projection"]
+  Owners --> Policy["policy pack"]
+  Owners --> Integration["integration"]
+  Owners --> Operations["operations"]
+  Strategy --> Why["why와 MVP boundary"]
+  Kernel --> State["state와 gate behavior"]
+  API --> Schemas["public MCP schemas"]
+  Reference --> DDL["implementation detail과 DDL"]
+  Projection --> Markdown["Markdown authority와 template tiers"]
+  Policy --> Contracts["design-quality policy contracts"]
+  Integration --> Profiles["capability profiles"]
+  Operations --> Fixtures["fixture-based conformance"]
+```
 
 Migration은 original product intent를 유지하되 duplicated authority, long user example, broad all-surface implication, MVP/later ambiguity를 제거합니다. 이 문서는 canonical owner가 아니라 migration compatibility record입니다.

@@ -18,11 +18,46 @@ Templates are examples of rendered shape. They are not canonical state and must 
 8. Version template changes as projection changes.
 9. Treat Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority Summary, displayed Write Authorization refs, Change Unit DAG, Residual Risk text, Stewardship Impact text, and `source_state_version` as projection output, not canonical state or the canonical Write Authorization record itself.
 
+```mermaid
+flowchart TD
+  FrontMatter["front matter<br/>identity and source_state_version"] --> Managed["managed block<br/>generated state display"]
+  Managed --> Human["human-editable sections<br/>preserved across refresh"]
+  Human --> Artifacts["artifact refs<br/>raw evidence by reference"]
+  Artifacts --> Versioning["template versioning<br/>projection changes"]
+  Versioning --> Boundary["projection output<br/>not canonical state"]
+```
+
 ## Required MVP Templates
 
 These bodies correspond to the MVP-required `ProjectionKind` tier: `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, and `DIRECT-RESULT`.
 
+```mermaid
+flowchart LR
+  TaskRecords["Task, gates, Change Unit records"] --> TASK["TASK"]
+  ApprovalRecords["approval and decision-related records"] --> APR["APR"]
+  RunRecords["run records and command evidence"] --> RunSummary["RUN-SUMMARY"]
+  EvidenceRecords["evidence manifest records and artifact refs"] --> EvidenceManifest["EVIDENCE-MANIFEST"]
+  EvalRecords["detached verification records"] --> EVAL["EVAL"]
+  DirectRecords["direct request result records"] --> DirectResult["DIRECT-RESULT"]
+```
+
 ### TASK
+
+```mermaid
+flowchart TD
+  TASK["TASK projection"] --> Current["Current Summary"]
+  TASK --> Where["Where We Are"]
+  TASK --> Judgment["Judgment Context"]
+  TASK --> Autonomy["Autonomy Boundary"]
+  TASK --> Write["Write Authority Summary"]
+  TASK --> Evidence["Next Evidence"]
+  TASK --> Risk["Residual Risk"]
+  TASK --> Stewardship["Stewardship Impact"]
+  TASK --> Scope["Goal, Scope, Acceptance Criteria"]
+  TASK --> CU["Active Change Unit"]
+  TASK --> Reports["Evidence And Reports"]
+  TASK --> Notes["User Notes and Proposals"]
+```
 
 ````md
 ---
@@ -729,6 +764,20 @@ updated_at: 2026-05-06T09:40:00+09:00
 
 These bodies correspond to the MVP-optional `ProjectionKind` tier: `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `TDD-TRACE`, and `MANUAL-QA`. Render them only when policy applies, records exist, or the user/operator enables the projection.
 
+```mermaid
+flowchart LR
+  Policy["policy applies, records exist, or projection enabled"] --> Domain["DOMAIN-LANGUAGE"]
+  Policy --> Module["MODULE-MAP"]
+  Policy --> Interface["INTERFACE-CONTRACT"]
+  Policy --> TDD["TDD-TRACE"]
+  Policy --> ManualQA["MANUAL-QA"]
+  DomainSources["domain term records and proposals"] --> Domain
+  ModuleSources["module boundary records and reviews"] --> Module
+  InterfaceSources["interface contract records"] --> Interface
+  TDDSources["feedback-loop and test evidence refs"] --> TDD
+  QASources["Manual QA records and artifact refs"] --> ManualQA
+```
+
 ### DOMAIN-LANGUAGE
 
 ````md
@@ -972,6 +1021,18 @@ updated_at: 2026-05-06T10:05:00+09:00
 Appendix templates correspond to the extension / appendix `ProjectionKind` tier and are optional unless explicitly enabled. The `DEC` template is an optional standalone Decision Packet Markdown variant; its presence in Appendix A does not make standalone `DEC` an MVP-required projection. `DESIGN`, `EXPORT`, and persisted `JOURNEY-CARD` Markdown are also optional extension / appendix projections.
 
 ### DEC
+
+```mermaid
+flowchart TD
+  DEC["DEC reader map<br/>projection display only"] --> Why["Why Now"]
+  Why --> Current["Current State"]
+  Current --> Options["Options"]
+  Options --> Recommendation["Recommendation"]
+  Recommendation --> Deferral["Consequence Of Deferring"]
+  Deferral --> Context["Minimum Context To Judge"]
+  Context --> Decision["User Decision And Accepted Risk"]
+  Decision --> FollowUp["Follow-Up and References"]
+```
 
 ````md
 ---
@@ -1229,6 +1290,18 @@ updated_at: 2026-05-06T10:30:00+09:00
 ## Expanded Cards
 
 ### JOURNEY-CARD
+
+```mermaid
+flowchart TD
+  Card["JOURNEY-CARD reader map<br/>projection display only"] --> Position["current position and next action"]
+  Card --> Judgment["judgment context"]
+  Card --> Autonomy["Autonomy Boundary"]
+  Card --> Write["Write Authority Summary"]
+  Card --> Evidence["next evidence"]
+  Card --> Risk["residual risk"]
+  Card --> Gates["gates and close blockers"]
+  Card --> Freshness["freshness and continuity refs"]
+```
 
 ````text
 TASK-{id} {title}

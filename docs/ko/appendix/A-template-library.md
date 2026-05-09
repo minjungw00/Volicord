@@ -18,11 +18,46 @@ Template은 rendered shape의 예시다. Canonical state가 아니며 kernel fie
 8. Template change는 projection change로 versioning한다.
 9. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority Summary, 표시된 Write Authorization ref, Change Unit DAG, Residual Risk text, Stewardship Impact text, `source_state_version`은 canonical state나 canonical Write Authorization record 자체가 아니라 projection output으로 취급한다.
 
+```mermaid
+flowchart TD
+  FrontMatter["front matter<br/>identity와 source_state_version"] --> Managed["managed block<br/>generated state display"]
+  Managed --> Human["human-editable sections<br/>refresh 사이 preserve"]
+  Human --> Artifacts["artifact refs<br/>raw evidence by reference"]
+  Artifacts --> Versioning["template versioning<br/>projection changes"]
+  Versioning --> Boundary["projection output<br/>canonical state 아님"]
+```
+
 ## Required MVP Templates
 
 이 bodies는 MVP-required `ProjectionKind` tier에 해당한다: `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`.
 
+```mermaid
+flowchart LR
+  TaskRecords["Task, gates, Change Unit records"] --> TASK["TASK"]
+  ApprovalRecords["approval and decision-related records"] --> APR["APR"]
+  RunRecords["run records and command evidence"] --> RunSummary["RUN-SUMMARY"]
+  EvidenceRecords["evidence manifest records and artifact refs"] --> EvidenceManifest["EVIDENCE-MANIFEST"]
+  EvalRecords["detached verification records"] --> EVAL["EVAL"]
+  DirectRecords["direct request result records"] --> DirectResult["DIRECT-RESULT"]
+```
+
 ### TASK
+
+```mermaid
+flowchart TD
+  TASK["TASK projection"] --> Current["Current Summary"]
+  TASK --> Where["Where We Are"]
+  TASK --> Judgment["Judgment Context"]
+  TASK --> Autonomy["Autonomy Boundary"]
+  TASK --> Write["Write Authority Summary"]
+  TASK --> Evidence["Next Evidence"]
+  TASK --> Risk["Residual Risk"]
+  TASK --> Stewardship["Stewardship Impact"]
+  TASK --> Scope["Goal, Scope, Acceptance Criteria"]
+  TASK --> CU["Active Change Unit"]
+  TASK --> Reports["Evidence And Reports"]
+  TASK --> Notes["User Notes and Proposals"]
+```
 
 ````md
 ---
@@ -729,6 +764,20 @@ updated_at: 2026-05-06T09:40:00+09:00
 
 이 bodies는 MVP-optional `ProjectionKind` tier에 해당한다: `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `TDD-TRACE`, `MANUAL-QA`. Policy가 적용되거나, records가 있거나, user/operator가 projection을 enable할 때만 render한다.
 
+```mermaid
+flowchart LR
+  Policy["policy applies, records exist, or projection enabled"] --> Domain["DOMAIN-LANGUAGE"]
+  Policy --> Module["MODULE-MAP"]
+  Policy --> Interface["INTERFACE-CONTRACT"]
+  Policy --> TDD["TDD-TRACE"]
+  Policy --> ManualQA["MANUAL-QA"]
+  DomainSources["domain term records and proposals"] --> Domain
+  ModuleSources["module boundary records and reviews"] --> Module
+  InterfaceSources["interface contract records"] --> Interface
+  TDDSources["feedback-loop and test evidence refs"] --> TDD
+  QASources["Manual QA records and artifact refs"] --> ManualQA
+```
+
 ### DOMAIN-LANGUAGE
 
 ````md
@@ -972,6 +1021,18 @@ updated_at: 2026-05-06T10:05:00+09:00
 Appendix templates는 extension / appendix `ProjectionKind` tier에 해당하며 명시적으로 enabled되지 않는 한 optional입니다. `DEC` template은 optional standalone Decision Packet Markdown variant이며, Appendix A에 존재한다고 해서 standalone `DEC`가 MVP-required projection이 되지는 않습니다. `DESIGN`, `EXPORT`, persisted `JOURNEY-CARD` Markdown도 optional extension / appendix projections입니다.
 
 ### DEC
+
+```mermaid
+flowchart TD
+  DEC["DEC reader map<br/>projection display only"] --> Why["Why Now"]
+  Why --> Current["Current State"]
+  Current --> Options["Options"]
+  Options --> Recommendation["Recommendation"]
+  Recommendation --> Deferral["Consequence Of Deferring"]
+  Deferral --> Context["Minimum Context To Judge"]
+  Context --> Decision["User Decision And Accepted Risk"]
+  Decision --> FollowUp["Follow-Up and References"]
+```
 
 ````md
 ---
@@ -1229,6 +1290,18 @@ updated_at: 2026-05-06T10:30:00+09:00
 ## Expanded Cards
 
 ### JOURNEY-CARD
+
+```mermaid
+flowchart TD
+  Card["JOURNEY-CARD reader map<br/>projection display only"] --> Position["current position and next action"]
+  Card --> Judgment["judgment context"]
+  Card --> Autonomy["Autonomy Boundary"]
+  Card --> Write["Write Authority Summary"]
+  Card --> Evidence["next evidence"]
+  Card --> Risk["residual risk"]
+  Card --> Gates["gates and close blockers"]
+  Card --> Freshness["freshness and continuity refs"]
+```
 
 ````text
 TASK-{id} {title}

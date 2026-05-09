@@ -10,6 +10,14 @@ Kernel invariant, public MCP schema, MVP implementation requirement, MVP에 requ
 
 MVP는 local kernel을 입증합니다. 즉 state, gate, artifact, verification, projection, reconcile, one reference surface가 안정적으로 동작하는지를 먼저 증명합니다. 아래 항목들은 이 기본 요소가 안정된 뒤에 이어갈 수 있는 follow-on입니다.
 
+```mermaid
+flowchart LR
+  MVP["MVP local kernel stable basics"] --> Basics["state, gates, artifacts, verification, projection, reconcile, one reference surface"]
+  Basics --> Stable["Kernel Smoke와 Agency-Hardened MVP는 MVP owner-doc work"]
+  Basics --> Later["later automation candidates"]
+  Later --> Promote["future version은 owner decision 이후에만 가능"]
+```
+
 Kernel Smoke와 Agency-Hardened MVP는 모두 MVP delivery stage이지 Appendix C scope가 아닙니다. 이 appendix는 MVP owner docs가 요구하는 kernel authority, Decision Packet, residual-risk visibility, detached verification, Manual QA, recover/export, fixture-conformance behavior를 흡수하면 안 됩니다.
 
 Later item은 다음을 갖춘 뒤에만 v1 work가 될 수 있습니다.
@@ -18,6 +26,28 @@ Later item은 다음을 갖춘 뒤에만 v1 work가 될 수 있습니다.
 - fixture 또는 conformance target
 - unsupported surface에 대한 fallback behavior
 - projection을 canonical state로 취급하는 것에 대한 dependency 없음
+
+```mermaid
+flowchart TD
+  Candidate["later capability candidate"] --> Profile["clear capability profile requirement"]
+  Profile --> Fixture["fixture 또는 conformance target"]
+  Fixture --> Fallback["unsupported surface fallback behavior"]
+  Fallback --> Projection["projection-as-canonical dependency 없음"]
+  Projection --> Promote["명시적 re-scope decision에만 eligible"]
+  Candidate -- "criterion 누락" --> Later["Appendix C later item으로 유지"]
+```
+
+```mermaid
+flowchart TD
+  LaterItems["Later items overview"] --> Dashboard["Dashboard"]
+  LaterItems --> BrowserQA["Browser QA Capture"]
+  LaterItems --> CrossSurface["Cross-Surface Verification"]
+  LaterItems --> Hooks["Native Hook Expansion"]
+  LaterItems --> Watcher["Advanced Sidecar Watcher"]
+  LaterItems --> Parallel["Parallel Orchestration"]
+  LaterItems --> Analytics["Analytics"]
+  LaterItems --> TeamProfiles["Team Profile Export And Import"]
+```
 
 ## Dashboard
 
@@ -60,6 +90,17 @@ Parallel execution은 stable lock, baseline freshness, approval scope compositio
 Analytics는 `state.sqlite.task_events`, run, validator result, projection job, reconcile item에서 rate와 latency를 derive할 수 있습니다.
 
 Metric은 authority가 아니라 derived value이므로 later입니다. Candidate metric에는 approval turnaround, verification latency, evidence insufficiency rate, projection stale duration, reconcile volume, same-session verification guard trigger가 있습니다.
+
+```mermaid
+flowchart LR
+  Events["state.sqlite.task_events"] --> Metrics["derived metrics"]
+  Runs["runs"] --> Metrics
+  Validators["validator results"] --> Metrics
+  Projections["projection jobs"] --> Metrics
+  Reconcile["reconcile items"] --> Metrics
+  Metrics --> Interpretation["future user-facing interpretation rule"]
+  Metrics --> Boundary["non-authoritative: state, gates, evidence, projection을 변경하지 않음"]
+```
 
 Legacy operations guide의 candidate derived metric:
 

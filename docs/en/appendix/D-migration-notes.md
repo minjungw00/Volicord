@@ -33,6 +33,17 @@ Legacy v1 files and rewrite manifests are source material for migration history 
 | `docs/legacy-v1/glossary.md` | `docs/glossary.md` |
 | `docs/legacy-v1/REWRITE-MANIFEST.md` | `docs/appendix/D-migration-notes.md` |
 
+```mermaid
+flowchart LR
+  Intro["legacy README, overview, charter"] --> NewIntro["docs/README.md, 00-introduction.md, 01-project-charter.md"]
+  Strategy["legacy strategy and playbooks"] --> NewStrategy["02-strategy.md, 03-kernel-spec.md, 08-design-quality-policy-pack.md"]
+  Architecture["legacy architecture and reference implementation"] --> NewRuntime["04-runtime-architecture.md, 05-mcp-api-and-schemas.md, 06-reference-mvp.md"]
+  Projection["legacy document and artifact contracts"] --> NewProjection["07-document-projection.md, appendix/A-template-library.md"]
+  Integration["legacy agent integration"] --> NewIntegration["09-agent-integration.md, appendix/B-surface-cookbook.md"]
+  Operations["legacy operations and conformance"] --> NewOperations["11-operations-and-conformance.md, appendix/C-later-roadmap.md"]
+  Migration["REWRITE-MANIFEST.md"] --> ThisDoc["appendix/D-migration-notes.md"]
+```
+
 ## Legacy Path Cleanup Status
 
 Batch H removes replaced legacy documents from the active tree instead of keeping migration stubs. These paths are not canonical docs; use the v2 destination listed here.
@@ -71,6 +82,16 @@ The archived `docs/legacy-v1/` copies of these files, plus the old charter, stra
 | event log phrasing as a separate store | replaced by `state.sqlite.task_events` wording |
 | projection as canonical-looking document authority | replaced by state/artifact/projection authority boundaries |
 
+```mermaid
+flowchart LR
+  LongExamples["long user walkthroughs"] --> ShortGuide["shortened user-guide examples"]
+  ScenarioTables["scenario tables"] --> Fixtures["fixture-based conformance"]
+  Metrics["operational metrics list"] --> LaterAnalytics["later analytics roadmap"]
+  CI["broad CI operations ownership"] --> Entrypoints["conformance entrypoints until an MVP CI contract exists"]
+  SurfaceExamples["all-surface setup examples"] --> Cookbook["surface cookbook or deferred material"]
+  ProjectionAuthority["projection as canonical-looking authority"] --> Boundaries["state, artifact, and projection authority boundaries"]
+```
+
 ## Compatibility Guidance
 
 If a reader encounters an old file name, use the mapping above and prefer the v2 destination. Do not cite archived legacy documents as canonical docs.
@@ -93,5 +114,26 @@ v1 mixed strategy, state, implementation, template, connector, operations, and d
 - policy pack owns design-quality policy contracts
 - integration owns capability profiles
 - operations owns fixture-based conformance
+
+```mermaid
+flowchart TD
+  AppendixD["Appendix D<br/>migration context only"] -. "does not own active contracts" .-> Owners["active v2 owner docs"]
+  Owners --> Strategy["strategy"]
+  Owners --> Kernel["kernel"]
+  Owners --> API["API"]
+  Owners --> Reference["reference MVP"]
+  Owners --> Projection["projection"]
+  Owners --> Policy["policy pack"]
+  Owners --> Integration["integration"]
+  Owners --> Operations["operations"]
+  Strategy --> Why["why and MVP boundary"]
+  Kernel --> State["state and gate behavior"]
+  API --> Schemas["public MCP schemas"]
+  Reference --> DDL["implementation detail and DDL"]
+  Projection --> Markdown["Markdown authority and template tiers"]
+  Policy --> Contracts["design-quality policy contracts"]
+  Integration --> Profiles["capability profiles"]
+  Operations --> Fixtures["fixture-based conformance"]
+```
 
 The migration keeps the original product intent but removes duplicated authority, long user examples, broad all-surface implications, and MVP/later ambiguity.
