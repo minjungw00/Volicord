@@ -152,10 +152,12 @@ flowchart TD
 | `applies_when` | Before implementation starts, before a behavior-affecting write, when TDD is waived, when Manual QA is expected, or when the agent needs a credible way to learn whether the change works. |
 | `default_requirement` | Define the feedback loop before implementation: test, typecheck, lint, build, browser smoke, Manual QA, or an explicit alternate loop. The selected loop should be the smallest credible loop for the risk. TDD trace is one implementation of this policy, not the only implementation. |
 | `allowed_waiver` | Allowed for docs-only edits, comments, formatting, or advisory work with no implementation or product behavior impact. Waiver must record why no executable, browser, Manual QA, or alternate loop is useful. |
-| `required_record` | Task or Change Unit feedback-loop fields, selected-loop refs, validator results, `tdd_traces` when TDD is selected, Manual QA record when Manual QA is selected and performed, `qa_gate=pending` when required QA has no satisfying record yet, and evidence manifest refs when executed. |
+| `required_record` | A canonical `feedback_loops` record referenced with `record_kind=feedback_loop`, selected-loop refs, validator results, `tdd_traces` when TDD is selected, Manual QA record when Manual QA is selected and performed, `qa_gate=pending` when required QA has no satisfying record yet, and evidence manifest refs when executed. |
 | `validator` | `feedback_loop_check` |
-| `evidence` | Planned loop refs, test/typecheck/lint/build/browser smoke logs, Manual QA refs, alternate-loop justification, TDD trace refs when used. |
+| `evidence` | Feedback Loop refs, planned loop refs, test/typecheck/lint/build/browser smoke logs, Manual QA refs, alternate-loop justification, TDD trace refs when used. |
 | `close_impact` | Missing feedback loop definition keeps `design_gate=pending` or `partial`. Missing execution evidence can make evidence insufficient. Manual QA loop failures affect `qa_gate` through the Manual QA policy. |
+
+Public mutation path: selected-loop definitions and waivers are recorded with `FeedbackLoopUpdate` during `record_run(kind=shaping_update)`. Execution refs and status are updated with `EvidenceUpdates.feedback_loop_updates` during implementation/direct runs, or with `record_manual_qa.feedback_loop_ref` when Manual QA is the selected loop.
 
 ### TDD Trace
 
@@ -191,7 +193,7 @@ flowchart TD
 | `applies_when` | Work touches durable code structure, domain concepts, module ownership, interface contracts, architecture direction, deep-module boundaries, testing strategy, or cross-cutting exceptions. |
 | `default_requirement` | Group the stewardship view for the Change Unit: domain language, module map, interface contracts, TDD/feedback loops, architecture watchpoints, and deep-module boundaries. Stewardship review is not a general code review checklist. It prevents local task completion from hiding degradation in domain language, module boundary, interface contract, feedback loop, testability, maintainability, or future-change cost. Use owner records as source of truth, record only task-relevant refs, and create reconcile items for drift instead of duplicating schemas or DDL. |
 | `allowed_waiver` | Allowed for isolated docs, comments, formatting, or leaf edits with no durable structure, domain, interface, or feedback-loop impact. Waiver must record why stewardship review is unnecessary. |
-| `required_record` | Task or Change Unit stewardship refs, `domain_terms`, `module_map_items`, `interface_contracts` records, feedback loop or `tdd_traces` refs, decision records, Task/Change Unit watchpoints, Journey Spine Entry refs, and reconcile items for drift. Dedicated architecture watchpoint refs may be used only if a later DDL batch defines them. Canonical design-support refs use `record_kind=domain_term`, `record_kind=module_map_item`, and `record_kind=interface_contract`; Markdown projection refs are optional display/proposal refs. |
+| `required_record` | Task or Change Unit stewardship refs, `domain_terms`, `module_map_items`, `interface_contracts` records, `feedback_loops` records, `tdd_traces` refs when TDD is used, decision records, Task/Change Unit watchpoints, Journey Spine Entry refs, and reconcile items for drift. Dedicated architecture watchpoint refs may be used only if a later DDL batch defines them. Canonical design-support refs use `record_kind=domain_term`, `record_kind=module_map_item`, `record_kind=interface_contract`, and `record_kind=feedback_loop`; Markdown projection refs are optional display/proposal refs. |
 | `validator` | `codebase_stewardship_check` |
 | `evidence` | Domain term refs, module map item refs, interface contract refs, feedback loop refs, TDD trace refs when used, Task/Change Unit watchpoints, Journey Spine Entry refs, deep-module notes, reconcile item refs, and dedicated architecture watchpoint refs only if later defined. |
 | `close_impact` | Missing required stewardship review keeps `design_gate=pending`, `partial`, or `stale`; unresolved drift can block close when it affects public behavior, module boundaries, acceptance criteria, or verification confidence. |
@@ -201,7 +203,7 @@ flowchart LR
   DomainTerms["domain_terms"] --> Summary["StewardshipImpactSummary display"]
   ModuleMap["module_map_items"] --> Summary
   InterfaceContracts["interface_contracts"] --> Summary
-  FeedbackRefs["feedback loop / tdd_traces"] --> Summary
+  FeedbackRefs["feedback_loops / tdd_traces when TDD selected"] --> Summary
   DecisionPackets["Decision Packets"] --> Summary
   ResidualRisks["residual risks"] --> Summary
   Validator["codebase_stewardship_check"] --> Summary
@@ -212,7 +214,7 @@ flowchart LR
 
 `StewardshipImpactSummary` is a derived display/summary shape for the Design Stewardship Default and the `codebase_stewardship` policy contract. It is not a Kernel Authority Invariant. It is a derived display, not a canonical current record. It is derived from owner records, validator results, and refs; it does not create a new canonical source of truth.
 
-Domain terms, module map items, interface contracts, feedback loop/TDD records, residual risk, and Decision Packets remain the owner records. The summary renders compact close-relevant status and refs back to those owners.
+Domain terms, module map items, interface contracts, Feedback Loop records, TDD Trace records when TDD is selected, residual risk, and Decision Packets remain the owner records. The summary renders compact close-relevant status and refs back to those owners.
 
 ```mermaid
 flowchart TB
@@ -237,6 +239,8 @@ flowchart TB
 | `feedback_loop_status` | `defined` \| `missing` \| `waived` |
 | `future_change_risk` | `none` \| `visible` \| `accepted` \| `unresolved` |
 | `close_impact` | `none` \| `blocks_close` \| `requires_decision` \| `residual_risk` |
+
+`feedback_loop_status` is derived from referenced `feedback_loops` rows and validator results. A referenced `tdd_traces` row can satisfy execution evidence when TDD is selected, but it is not the canonical owner of the selected loop.
 
 ### Manual QA
 

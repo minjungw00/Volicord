@@ -164,7 +164,7 @@ The kernel gate for required design-quality preconditions such as shared design,
 
 ### Design-Quality Policy Pack
 
-The owner document for design-quality policy contracts and severity composition. It covers shared design, decision quality, autonomy boundary, domain language, vertical slice, feedback loop/TDD trace, module/interface review, codebase stewardship, Manual QA, and context hygiene. It influences gates, validators, evidence, write blockers, and close blockers but does not redefine the kernel state machine.
+The owner document for design-quality policy contracts and severity composition. It covers shared design, decision quality, autonomy boundary, domain language, vertical slice, feedback loop, TDD trace, module/interface review, codebase stewardship, Manual QA, and context hygiene. It influences gates, validators, evidence, write blockers, and close blockers but does not redefine the kernel state machine.
 
 ### Detached Verification
 
@@ -222,7 +222,7 @@ A verification result record with verdict, checks performed, evidence reviewed, 
 
 ### Feedback Loop
 
-A recorded path from checks and findings back into state, scope, design, evidence, follow-up work, or close status. Inputs can include tests, typecheck, lint, build, browser smoke, TDD red/green/refactor traces, Manual QA, Eval findings, user decisions, operational findings, and residual-risk decisions. Feedback loops keep findings from vanishing into chat.
+A canonical support record and recorded path from checks and findings back into state, scope, design, evidence, follow-up work, or close status. Inputs can include tests, typecheck, lint, build, browser smoke, TDD red/green/refactor traces, Manual QA, Eval findings, user decisions, operational findings, and residual-risk decisions. Public refs use `StateRecordRef.record_kind=feedback_loop`; public mutation uses `FeedbackLoopUpdate` on `record_run` or a Manual QA execution link. Feedback loops keep findings from vanishing into chat.
 
 ### Fixture Assertion Semantics
 
@@ -434,7 +434,7 @@ The kernel-owned compact list of `task_events.event_type` names that MVP conform
 
 ### State Record
 
-A canonical structured record in kernel state, such as a Task, Change Unit, Decision Packet, Journey Spine Entry, Residual Risk, Run, Approval, Write Authorization, Evidence Manifest, Eval, Manual QA record, Artifact record, Shared Design record, Domain Term, Module Map Item, Interface Contract, TDD Trace, or Reconcile Item.
+A canonical structured record in kernel state, such as a Task, Change Unit, Decision Packet, Journey Spine Entry, Residual Risk, Run, Approval, Write Authorization, Evidence Manifest, Eval, Manual QA record, Artifact record, Shared Design record, Domain Term, Module Map Item, Interface Contract, Feedback Loop, TDD Trace, or Reconcile Item.
 
 ### State Version
 
@@ -470,7 +470,7 @@ The user value unit tracked by the kernel. It carries mode, lifecycle phase, gat
 
 ### TDD Trace
 
-A record of red, green, and refactor evidence for a Change Unit, or a recorded non-TDD justification where policy allows it.
+A record of red, green, and refactor evidence for a Change Unit, or a recorded non-TDD justification where policy allows it. TDD Trace can be execution evidence for a Feedback Loop, but it is not the canonical selected-loop record.
 
 ### Verification
 

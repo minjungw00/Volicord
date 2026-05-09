@@ -57,12 +57,13 @@ flowchart TD
 | Write Authorization | `state.sqlite.write_authorizations` plus related Task, Change Unit, approval, Decision Packet, baseline, and consumed Run refs | `TASK` Write Authority Summary, Journey Card Write Authority Summary line, `RUN-SUMMARY` relation | `prepare_write` creates it; idempotent replay returns the already committed response; `record_run` consumes the authorization, then projector |
 | Change Unit DAG | `state.sqlite.change_units`, `state.sqlite.change_unit_dependencies`, dependency-related events, and active Task state | `TASK` Change Unit Dependencies / DAG summary | shaping update or reconcile, then projector |
 | Residual Risk | `state.sqlite.residual_risks`, accepted-risk metadata and residual-risk refs, related Decision Packets, evidence/QA/eval refs, and artifact refs | `TASK` Residual Risk, optional `DEC` accepted-risk context when standalone projection is enabled, Journey Card residual-risk line | Core transition from decision, evidence, QA, Eval, reconcile, or close flow, then projector |
-| Stewardship Impact Summary | `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop/TDD records, `state.sqlite.residual_risks`, `state.sqlite.decision_packets`, policy validator results, and related refs | `TASK` Stewardship Impact and status/resume stewardship displays | Owner record update, validator result, reconcile, or close flow, then projector |
+| Stewardship Impact Summary | `domain_terms`, `module_map_items`, `interface_contracts`, `feedback_loops`, TDD records when TDD is selected, `state.sqlite.residual_risks`, `state.sqlite.decision_packets`, policy validator results, and related refs | `TASK` Stewardship Impact and status/resume stewardship displays | Owner record update, validator result, reconcile, or close flow, then projector |
 | User Notes | human-editable input -> `reconcile_items` -> accepted state event/record | `TASK` User Notes and Proposals | human edit, reconcile decision, Core event |
 | Shared Design | shared design records and events | `TASK` summary, `DESIGN`, optional `DEC` when standalone projection is enabled | Core transition or reconcile, then projector |
 | Domain Language | `domain_terms` table | `DOMAIN-LANGUAGE` projection | Core transition or reconcile, then projector |
 | Module Map | `module_map_items` table | `MODULE-MAP` projection | Core transition or reconcile, then projector |
 | Interface Contract | `interface_contracts` table | `INTERFACE-CONTRACT` projection | Core transition or reconcile, then projector |
+| Feedback Loop | `feedback_loops` table plus refs to runs, artifacts, TDD traces, Manual QA, and evidence manifests | `TASK` Stewardship Impact and Evidence Manifest design-quality coverage; no standalone Feedback Loop projection in MVP | `FeedbackLoopUpdate` through `record_run` shaping or evidence update, `record_manual_qa` via `feedback_loop_ref`, or reconcile, then projector |
 | Approval | `approvals`, approval-shaped Decision Packet, optional decision request routing/replay record if implementation keeps one, and events; never `approval_request_candidate` alone | `APR` projection and approval card | `request_user_decision(decision_kind=approval)` creates the pending Approval record, `record_user_decision` updates the approval decision, then projector |
 | Run summary | `runs` table plus artifact refs | `RUN-SUMMARY` projection | `record_run`, then projector |
 | Direct result | direct run record plus artifact refs | `DIRECT-RESULT` projection | `record_run` / `close_task`, then projector |
@@ -100,6 +101,7 @@ Required authority statements:
 - Domain Language: `domain_terms` table -> `DOMAIN-LANGUAGE` projection; public refs to canonical term rows use `StateRecordRef.record_kind=domain_term`
 - Module Map: `module_map_items` table -> `MODULE-MAP` projection; public refs to canonical module rows use `StateRecordRef.record_kind=module_map_item`
 - Interface Contract: `interface_contracts` table -> `INTERFACE-CONTRACT` projection; public refs to canonical contract rows use `StateRecordRef.record_kind=interface_contract`
+- Feedback Loop: `feedback_loops` table -> `TASK` and Evidence Manifest display; public refs to canonical feedback-loop rows use `StateRecordRef.record_kind=feedback_loop`; TDD Trace refs remain separate execution evidence refs
 - Decision Packet: `state.sqlite.decision_packets` and related refs -> `TASK` Pending Decisions, status/next responses, judgment-context resources, and decision-packet resources; optional `DEC` projection when standalone projection is enabled
 - Journey Spine: reconstructed from owner records, artifact refs, `journey_spine_entries` supplements, and `state.sqlite.task_events`; it is not its own authority record
 - Journey Card: derived display from current state and refs; it is never canonical state
@@ -330,9 +332,9 @@ flowchart LR
 
 Purpose: the continuity projection for the active work. It summarizes where the work is, judgment context, Autonomy Boundary, Write Authority Summary, Stewardship Impact, next evidence, residual risk, mode, lifecycle phase, next action, current gates, active Change Unit, pending decisions, evidence, report refs, and projection freshness.
 
-Sources: `state.sqlite` Task, task gates, active Change Unit, Change Unit dependencies, Write Authorization records, Write Authority Summary display inputs, Decision Packets, Residual Risks, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval records, Journey Spine source records, `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop/TDD records, design-quality validator results, artifact refs, projection freshness.
+Sources: `state.sqlite` Task, task gates, active Change Unit, Change Unit dependencies, Write Authorization records, Write Authority Summary display inputs, Decision Packets, Residual Risks, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval records, Journey Spine source records, `domain_terms`, `module_map_items`, `interface_contracts`, `feedback_loops`, `tdd_traces` when TDD is selected, design-quality validator results, artifact refs, projection freshness.
 
-Boundary: Stewardship Impact in `TASK` is the `StewardshipImpactSummary` display derived from owner records, validator results, and refs. It does not replace Domain Language, Module Map, Interface Contract, feedback loop/TDD, residual-risk, or Decision Packet owner records.
+Boundary: Stewardship Impact in `TASK` is the `StewardshipImpactSummary` display derived from owner records, validator results, and refs. It does not replace Domain Language, Module Map, Interface Contract, Feedback Loop, TDD Trace, residual-risk, or Decision Packet owner records.
 
 Human-editable area: User Notes and Proposals.
 
@@ -356,7 +358,7 @@ Boundary: raw logs and diffs stay as artifacts; the report links to them.
 
 Purpose: a readable map from acceptance criteria and completion conditions to supporting evidence.
 
-Sources: evidence manifest record, acceptance criteria, changed file coverage, design-quality coverage, approval refs, artifact refs, related Run, Eval, Manual QA, and TDD trace refs.
+Sources: evidence manifest record, acceptance criteria, changed file coverage, design-quality coverage, approval refs, artifact refs, related Run, Eval, Feedback Loop, Manual QA, and TDD trace refs.
 
 Boundary: where evidence is required, close depends on the canonical `evidence_gate`, not the report text alone.
 
@@ -400,7 +402,7 @@ Source: `interface_contracts` table. Human edits are proposals that reconcile in
 
 Purpose: a readable red/green/refactor evidence trail or a recorded non-TDD justification.
 
-Source: `tdd_traces` plus artifact refs. Policy determines when the trace is required or waivable.
+Source: `tdd_traces` plus artifact refs. Policy determines when the trace is required or waivable. A `TDD-TRACE` projection shows TDD evidence; it does not define the selected Feedback Loop record.
 
 ### MANUAL-QA
 

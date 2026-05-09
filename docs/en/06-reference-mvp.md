@@ -139,7 +139,7 @@ Exit criteria:
 
 ### MVP-3: Runs, Evidence, Feedback Loop, Projection, Reconcile
 
-Implement `harness.record_run`, run records, Write Authorization consumption, evidence manifest records, feedback loop checks, codebase stewardship checks, projection jobs, MVP-required TASK/APR/RUN-SUMMARY/EVIDENCE-MANIFEST/DIRECT-RESULT renderers, managed block hashes, and reconcile item creation for managed drift or human-editable proposals.
+Implement `harness.record_run`, run records, Write Authorization consumption, evidence manifest records, Feedback Loop support records and checks, codebase stewardship checks, projection jobs, MVP-required TASK/APR/RUN-SUMMARY/EVIDENCE-MANIFEST/DIRECT-RESULT renderers, managed block hashes, and reconcile item creation for managed drift or human-editable proposals.
 
 Exit criteria:
 
@@ -214,6 +214,7 @@ erDiagram
   tasks ||--o{ task_events : has
   tasks ||--o{ projection_jobs : tracks
   tasks ||--o{ reconcile_items : tracks
+  tasks ||--o{ feedback_loops : has
   tasks ||--o{ tdd_traces : has
   tasks ||--o{ validator_runs : has
 ```
@@ -787,6 +788,26 @@ CREATE TABLE interface_contracts (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE feedback_loops (
+  feedback_loop_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  change_unit_id TEXT,
+  loop_kind TEXT NOT NULL,
+  loop_profile TEXT NOT NULL,
+  planned_loop TEXT NOT NULL,
+  selected_loop_refs_json TEXT NOT NULL DEFAULT '[]',
+  execution_refs_json TEXT NOT NULL DEFAULT '[]',
+  artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+  tdd_trace_refs_json TEXT NOT NULL DEFAULT '[]',
+  manual_qa_record_refs_json TEXT NOT NULL DEFAULT '[]',
+  evidence_manifest_refs_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL,
+  waiver_reason TEXT,
+  alternate_loop TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE tdd_traces (
   tdd_trace_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
@@ -869,7 +890,11 @@ Stored `write_authorizations` rows require non-null `basis_state_version`, inclu
 
 MVP final acceptance has no `acceptance_records` table. Acceptance is stored through the Decision Packet path, `task_gates.acceptance_gate`, and `state.sqlite.task_events`; the transition and payload rules are owned by [Kernel `close_task` State Logic](03-kernel-spec.md#close_task-state-logic) and [`harness.record_user_decision`](05-mcp-api-and-schemas.md#harnessrecord_user_decision). Close does not look for a separate acceptance row.
 
-`artifact_links` is the queryable many-to-many attachment table for artifacts. Use it to attach artifacts to `run`, `decision_packet`, `shared_design`, `residual_risk`, `evidence_manifest`, `tdd_trace`, `manual_qa_record`, `eval`, and `export` records. Existing `artifact_refs_json` fields may preserve ordered or record-local context, but multi-record artifact reuse and artifact integrity checks should use `artifact_links`.
+`feedback_loops` stores the selected Feedback Loop definition and its execution routing. `loop_kind` values are `test`, `typecheck`, `lint`, `build`, `browser_smoke`, `manual_qa`, `tdd`, `eval`, `operational`, or `alternate`. `loop_profile` classifies the chosen loop within that kind, and `planned_loop` describes the intended check. `status` values are `defined`, `executed`, `waived`, `blocked`, or `stale`. Create/update payloads come from `FeedbackLoopUpdate` in the MCP schema; `record_manual_qa` may update execution refs for an existing Manual QA feedback loop.
+
+Core must validate every JSON ref array before commit. `selected_loop_refs_json` and `execution_refs_json` store `StateRecordRef` arrays; `tdd_trace_refs_json`, `manual_qa_record_refs_json`, and `evidence_manifest_refs_json` are restricted to their matching record kinds. `artifact_refs_json` stores committed `ArtifactRef` values resolved from the public update payload or related tool request. `operation=create` requires a non-empty `loop_kind`, `loop_profile`, `planned_loop`, and valid `status`; `feedback_loop_id` may be Core-assigned or caller-supplied for deterministic fixture/import creation and must be unique. `operation=update` requires an existing row with the same `task_id` and compatible `change_unit_id`; nullable scalar payload fields leave stored values unchanged, while ref arrays and artifact refs are additive. `status=waived` requires `waiver_reason` or a referenced compatible waiver/decision record. `status=executed` requires at least one resulting execution, artifact, TDD trace, Manual QA, or evidence manifest ref. `tdd_traces` remains the canonical red/green/refactor evidence record when TDD is selected; it does not replace the `feedback_loops` row. `feedback_loop_check` reads these records as a validator and does not add a new kernel gate.
+
+`artifact_links` is the queryable many-to-many attachment table for artifacts. Use it to attach artifacts to `run`, `decision_packet`, `shared_design`, `residual_risk`, `evidence_manifest`, `feedback_loop`, `tdd_trace`, `manual_qa_record`, `eval`, and `export` records. Existing `artifact_refs_json` fields may preserve ordered or record-local context, but multi-record artifact reuse and artifact integrity checks should use `artifact_links`.
 
 `manual_qa_records.waiver_decision_packet_id` and `manual_qa_records.residual_risk_refs_json` are the storage hooks for QA waiver decisions and close-relevant risk refs. The waiver contract is owned by [Kernel Waiver Semantics](03-kernel-spec.md#waiver-semantics) and the Manual QA policy in [08-design-quality-policy-pack.md](08-design-quality-policy-pack.md#manual-qa).
 
@@ -887,6 +912,8 @@ CREATE INDEX idx_decision_requests_packet ON decision_requests(decision_packet_i
 CREATE INDEX idx_decision_packets_task_status ON decision_packets(task_id, status);
 CREATE INDEX idx_residual_risks_task_status ON residual_risks(task_id, status);
 CREATE INDEX idx_shared_designs_task_status ON shared_designs(task_id, status);
+CREATE INDEX idx_feedback_loops_task_status ON feedback_loops(task_id, status);
+CREATE INDEX idx_feedback_loops_change_unit ON feedback_loops(change_unit_id);
 CREATE INDEX idx_task_spine_entries_task_seq ON task_spine_entries(task_id, sequence_no);
 CREATE INDEX idx_change_unit_dependencies_task ON change_unit_dependencies(task_id, change_unit_id);
 CREATE INDEX idx_baselines_task_change_unit ON baselines(task_id, change_unit_id);

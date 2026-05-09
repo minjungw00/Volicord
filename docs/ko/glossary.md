@@ -164,7 +164,7 @@ Shared design, domain language, TDD trace, module/interface review 또는 기타
 
 ### Design-Quality Policy Pack
 
-Design-quality policy contracts와 severity composition의 owner document입니다. Shared design, decision quality, autonomy boundary, domain language, vertical slice, feedback loop/TDD trace, module/interface review, Codebase Stewardship, Manual QA, context hygiene를 다룹니다. Gates, validators, evidence, write blockers, close blockers에 영향을 주지만 kernel state machine을 재정의하지 않습니다.
+Design-quality policy contracts와 severity composition의 owner document입니다. Shared design, decision quality, autonomy boundary, domain language, vertical slice, feedback loop, TDD trace, module/interface review, Codebase Stewardship, Manual QA, context hygiene를 다룹니다. Gates, validators, evidence, write blockers, close blockers에 영향을 주지만 kernel state machine을 재정의하지 않습니다.
 
 ### Detached Verification
 
@@ -222,7 +222,7 @@ Verification result record입니다. verdict, checks performed, evidence reviewe
 
 ### Feedback Loop
 
-Checks와 findings가 state, scope, design, evidence, follow-up work, close status로 되돌아가는 recorded path입니다. Inputs에는 tests, typecheck, lint, build, browser smoke, TDD red/green/refactor traces, Manual QA, Eval findings, user decisions, operational findings, residual-risk decisions가 포함될 수 있습니다. Feedback loops는 findings가 chat 속에서 사라지지 않게 합니다.
+Checks와 findings가 state, scope, design, evidence, follow-up work, close status로 되돌아가는 canonical support record이자 recorded path입니다. Inputs에는 tests, typecheck, lint, build, browser smoke, TDD red/green/refactor traces, Manual QA, Eval findings, user decisions, operational findings, residual-risk decisions가 포함될 수 있습니다. Public refs는 `StateRecordRef.record_kind=feedback_loop`를 사용하며, public mutation은 `record_run`의 `FeedbackLoopUpdate` 또는 Manual QA execution link를 사용합니다. Feedback loops는 findings가 chat 속에서 사라지지 않게 합니다.
 
 ### Fixture Assertion Semantics
 
@@ -438,7 +438,7 @@ MVP conformance fixtures가 `expected_events`에서 assert할 수 있는 `task_e
 
 ### State Record
 
-Kernel state 안의 canonical structured record입니다. Task, Change Unit, Decision Packet, Journey Spine Entry, Residual Risk, Run, Approval, Write Authorization, Evidence Manifest, Eval, Manual QA record, Artifact record, Shared Design record, Domain Term, Module Map Item, Interface Contract, TDD Trace, Reconcile Item 등이 있습니다.
+Kernel state 안의 canonical structured record입니다. Task, Change Unit, Decision Packet, Journey Spine Entry, Residual Risk, Run, Approval, Write Authorization, Evidence Manifest, Eval, Manual QA record, Artifact record, Shared Design record, Domain Term, Module Map Item, Interface Contract, Feedback Loop, TDD Trace, Reconcile Item 등이 있습니다.
 
 ### State Version
 
@@ -474,7 +474,7 @@ Kernel이 track하는 user value unit입니다. mode, lifecycle phase, gates, re
 
 ### TDD Trace
 
-Change Unit에 대한 red, green, refactor evidence record 또는 policy가 허용하는 recorded non-TDD justification입니다.
+Change Unit에 대한 red, green, refactor evidence record 또는 policy가 허용하는 recorded non-TDD justification입니다. TDD Trace는 Feedback Loop의 execution evidence가 될 수 있지만 canonical selected-loop record는 아닙니다.
 
 ### Verification
 

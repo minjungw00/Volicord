@@ -57,12 +57,13 @@ flowchart TD
 | Write Authorization | `state.sqlite.write_authorizations`와 관련 Task, Change Unit, approval, Decision Packet, baseline, consumed Run ref | `TASK` Write Authority Summary, Journey Card Write Authority Summary line, `RUN-SUMMARY` relation | `prepare_write`가 create함; idempotent replay는 already committed response를 반환함; `record_run`이 authorization을 consume한 뒤 projector |
 | Change Unit DAG | `state.sqlite.change_units`, `state.sqlite.change_unit_dependencies`, dependency 관련 event, active Task state | `TASK` Change Unit Dependencies / DAG summary | shaping update 또는 reconcile, then projector |
 | Residual Risk | `state.sqlite.residual_risks`, accepted-risk metadata와 residual-risk refs, related Decision Packet, evidence/QA/eval ref, artifact ref | `TASK` Residual Risk, standalone projection이 enabled일 때 optional accepted-risk context, Journey Card residual-risk line | decision, evidence, QA, Eval, reconcile 또는 close flow에서 Core transition, then projector |
-| Stewardship Impact Summary | `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop/TDD record, `state.sqlite.residual_risks`, `state.sqlite.decision_packets`, policy validator result, related ref | `TASK` Stewardship Impact와 status/resume stewardship display | Owner record update, validator result, reconcile, close flow, then projector |
+| Stewardship Impact Summary | `domain_terms`, `module_map_items`, `interface_contracts`, `feedback_loops`, TDD가 selected된 경우 TDD records, `state.sqlite.residual_risks`, `state.sqlite.decision_packets`, policy validator results, related refs | `TASK` Stewardship Impact와 status/resume stewardship display | Owner record update, validator result, reconcile, close flow, then projector |
 | User Notes | human-editable input -> `reconcile_items` -> accepted state event/record | `TASK` User Notes and Proposals | human edit, reconcile decision, Core event |
 | Shared Design | shared design record와 event | `TASK` summary, `DESIGN`, standalone projection이 enabled일 때 optional standalone packet projection | Core transition 또는 reconcile, then projector |
 | Domain Language | `domain_terms` table | `DOMAIN-LANGUAGE` projection | Core transition 또는 reconcile, then projector |
 | Module Map | `module_map_items` table | `MODULE-MAP` projection | Core transition 또는 reconcile, then projector |
 | Interface Contract | `interface_contracts` table | `INTERFACE-CONTRACT` projection | Core transition 또는 reconcile, then projector |
+| Feedback Loop | `feedback_loops` table plus runs, artifacts, TDD traces, Manual QA, evidence manifests refs | `TASK` Stewardship Impact와 Evidence Manifest design-quality coverage; MVP에는 standalone Feedback Loop projection이 없음 | `record_run` shaping 또는 evidence update의 `FeedbackLoopUpdate`, `record_manual_qa`의 `feedback_loop_ref`, 또는 reconcile, then projector |
 | Approval | `approvals`, approval-shaped Decision Packet, 구현이 유지하는 경우 optional decision request routing/replay record, event; `approval_request_candidate` alone은 제외 | `APR` projection과 approval card | `request_user_decision(decision_kind=approval)`이 pending Approval record를 create하고, `record_user_decision`이 approval decision을 update한 뒤 projector |
 | Run summary | `runs` table plus artifact refs | `RUN-SUMMARY` projection | `record_run`, then projector |
 | Direct result | direct run record plus artifact refs | `DIRECT-RESULT` projection | `record_run` / `close_task`, then projector |
@@ -100,6 +101,7 @@ Required authority statements:
 - Domain Language: `domain_terms` table -> `DOMAIN-LANGUAGE` projection; canonical term row에 대한 public ref는 `StateRecordRef.record_kind=domain_term`을 사용한다
 - Module Map: `module_map_items` table -> `MODULE-MAP` projection; canonical module row에 대한 public ref는 `StateRecordRef.record_kind=module_map_item`을 사용한다
 - Interface Contract: `interface_contracts` table -> `INTERFACE-CONTRACT` projection; canonical contract row에 대한 public ref는 `StateRecordRef.record_kind=interface_contract`를 사용한다
+- Feedback Loop: `feedback_loops` table -> `TASK`와 Evidence Manifest display; canonical feedback-loop row에 대한 public ref는 `StateRecordRef.record_kind=feedback_loop`를 사용한다. TDD Trace refs는 separate execution evidence refs로 남는다
 - Decision Packet: `state.sqlite.decision_packets`와 관련 ref -> `TASK` Pending Decisions, status/next responses, judgment-context resources, decision-packet resources; standalone projection이 enabled일 때 optional standalone packet projection
 - Journey Spine: owner record, artifact ref, `journey_spine_entries` supplement, `state.sqlite.task_events`에서 재구성한다. 자체 authority record가 아니다.
 - Journey Card: current state와 ref에서 만든 derived display다. 절대 canonical state가 아니다.
@@ -332,9 +334,9 @@ flowchart LR
 
 목적: active work를 위한 continuity projection이다. 작업이 어디에 있는지, judgment context, Autonomy Boundary, Write Authority Summary, Stewardship Impact, next evidence, residual risk, mode, lifecycle phase, next action, current gate, active Change Unit, pending decision, evidence, report ref, projection freshness를 요약한다.
 
-Source: `state.sqlite` Task, task gate, active Change Unit, Change Unit dependency, Write Authorization record, Write Authority Summary display input, Decision Packet, Residual Risk, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval record, Journey Spine source record, `domain_terms`, `module_map_items`, `interface_contracts`, feedback loop/TDD record, design-quality validator result, artifact ref, projection freshness.
+Source: `state.sqlite` Task, task gate, active Change Unit, Change Unit dependency, Write Authorization record, Write Authority Summary display input, Decision Packet, Residual Risk, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval record, Journey Spine source record, `domain_terms`, `module_map_items`, `interface_contracts`, `feedback_loops`, TDD가 selected된 경우 `tdd_traces`, design-quality validator result, artifact ref, projection freshness.
 
-Boundary: `TASK`의 Stewardship Impact는 owner record, validator result, ref에서 derive되는 `StewardshipImpactSummary` display다. Domain Language, Module Map, Interface Contract, feedback loop/TDD, residual-risk, Decision Packet owner record를 replace하지 않는다.
+Boundary: `TASK`의 Stewardship Impact는 owner record, validator result, ref에서 derive되는 `StewardshipImpactSummary` display다. Domain Language, Module Map, Interface Contract, Feedback Loop, TDD Trace, residual-risk, Decision Packet owner record를 replace하지 않는다.
 
 Human-editable area: User Notes and Proposals.
 
@@ -358,7 +360,7 @@ Boundary: raw log와 diff는 artifact로 남고 report는 link한다.
 
 목적: acceptance criteria와 completion condition에서 supporting evidence로 가는 readable map이다.
 
-Source: evidence manifest record, acceptance criteria, changed file coverage, design-quality coverage, approval ref, artifact ref, related Run, Eval, Manual QA, TDD trace ref.
+Source: evidence manifest record, acceptance criteria, changed file coverage, design-quality coverage, approval ref, artifact ref, related Run, Eval, Feedback Loop, Manual QA, TDD trace ref.
 
 Boundary: evidence가 required인 곳에서 close는 report text alone이 아니라 canonical `evidence_gate`에 의존한다.
 
@@ -402,7 +404,7 @@ Source: `interface_contracts` table. Human edit는 interface contract record로 
 
 목적: readable red/green/refactor evidence trail 또는 recorded non-TDD justification이다.
 
-Source: `tdd_traces` plus artifact refs. Trace가 required인지 waivable인지는 policy가 결정한다.
+Source: `tdd_traces` plus artifact refs. Trace가 required인지 waivable인지는 policy가 결정한다. `TDD-TRACE` projection은 TDD evidence를 보여주며 selected Feedback Loop record를 define하지 않는다.
 
 ### MANUAL-QA
 

@@ -278,7 +278,7 @@ allowed | consumed | expired | stale | revoked
 
 ### Evidence Manifest
 
-Evidence Manifest는 acceptance criteria 또는 completion conditions를 evidence references에 mapping합니다. 각 criterion이 supported, unsupported, not applicable인지 기록하고 durable artifacts, run summaries, Eval records, TDD traces, Manual QA records, 기타 recorded evidence를 reference합니다. Evidence sufficiency는 이 manifest와 related records에서 판단합니다.
+Evidence Manifest는 acceptance criteria 또는 completion conditions를 evidence references에 mapping합니다. 각 criterion이 supported, unsupported, not applicable인지 기록하고 durable artifacts, run summaries, Eval records, Feedback Loop records, TDD traces, Manual QA records, 기타 recorded evidence를 reference합니다. Evidence sufficiency는 이 manifest와 related records에서 판단합니다.
 
 ### Eval
 
@@ -314,7 +314,8 @@ Kernel은 design support records의 entity meaning도 담당합니다.
 - Domain Term records는 Domain Language의 canonical source입니다.
 - Module Map Item records는 Module Map의 canonical source입니다.
 - Interface Contract records는 Interface Contract의 canonical source입니다.
-- TDD Trace records는 red, green, refactor evidence 또는 recorded non-TDD justification을 capture합니다.
+- Feedback Loop records는 selected feedback-loop definitions, planned loops, execution refs, waivers, alternate loops를 위한 canonical support records입니다.
+- TDD Trace records는 red, green, refactor evidence 또는 recorded non-TDD justification을 capture합니다. TDD는 가능한 Feedback Loop 구현 중 하나이지 Feedback Loop record 자체가 아닙니다.
 
 Policy requirements는 design-quality policy pack이 담당합니다. Storage DDL은 reference MVP document가 담당합니다.
 

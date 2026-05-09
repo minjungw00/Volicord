@@ -158,7 +158,8 @@ updated_at: 2026-05-06T09:30:15+09:00
   - domain term refs:
   - module map item refs:
   - interface contract refs:
-  - feedback loop / TDD:
+  - feedback loop refs:
+  - TDD trace refs when selected:
   - residual risk:
   - Decision Packets:
 
@@ -555,10 +556,10 @@ updated_at: 2026-05-06T09:50:00+09:00
 | vertical_slice_shape | passed | CU-01 | |
 | decision_quality_check | passed | DEC-0001 | |
 | autonomy_boundary_check | passed | CU-01 | |
-| feedback_loop_check | passed | TDD-0001, LOG-0001 | |
+| feedback_loop_check | passed | FBL-0001, TDD-0001, LOG-0001 | |
 | tdd_trace_required | passed | TDD-0001 | |
 | module_interface_review | passed | module_map_item: MMI-0001, interface_contract: IFACE-0001, DEC-0001 | |
-| codebase_stewardship_check | passed | domain_term: TERM-0001, module_map_item: MMI-0001, interface_contract: IFACE-0001 | |
+| codebase_stewardship_check | passed | domain_term: TERM-0001, module_map_item: MMI-0001, interface_contract: IFACE-0001, feedback_loop: FBL-0001 | |
 | residual_risk_visibility_check | pending | RR-0001 | |
 | manual_qa_required | pending | qa_gate; no satisfying Manual QA record yet | |
 
@@ -567,6 +568,7 @@ updated_at: 2026-05-06T09:50:00+09:00
 
 ## Evidence Refs
 - run summary:
+- feedback loop:
 - TDD trace:
 - Manual QA:
 - diff:
@@ -665,6 +667,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - module map item refs:
 - interface contract refs:
 - run summary:
+- feedback loop:
 - TDD trace:
 - Manual QA:
 - evidence manifest:
@@ -948,6 +951,7 @@ updated_at: 2026-05-06T09:40:00+09:00
 
 ## Non-TDD Justification
 - reason:
+- feedback loop ref:
 - alternate feedback loop:
 
 ## Evidence Refs
@@ -1218,6 +1222,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Verification Considerations
 - success criteria:
 - regression watchpoint:
+- selected feedback loop:
 - required TDD trace:
 - required Manual QA:
 - required evidence:

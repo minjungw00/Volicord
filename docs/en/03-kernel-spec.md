@@ -278,7 +278,7 @@ allowed | consumed | expired | stale | revoked
 
 ### Evidence Manifest
 
-An Evidence Manifest maps acceptance criteria or completion conditions to evidence references. It records whether each criterion is supported, unsupported, or not applicable, and it references durable artifacts, run summaries, Eval records, TDD traces, Manual QA records, or other recorded evidence. Evidence sufficiency is judged from this manifest and related records.
+An Evidence Manifest maps acceptance criteria or completion conditions to evidence references. It records whether each criterion is supported, unsupported, or not applicable, and it references durable artifacts, run summaries, Eval records, Feedback Loop records, TDD traces, Manual QA records, or other recorded evidence. Evidence sufficiency is judged from this manifest and related records.
 
 ### Eval
 
@@ -312,7 +312,8 @@ The kernel also owns the entity meaning for design support records:
 - Domain Term records are the canonical source for Domain Language.
 - Module Map Item records are the canonical source for Module Map.
 - Interface Contract records are the canonical source for Interface Contract.
-- TDD Trace records capture red, green, refactor evidence or a recorded non-TDD justification.
+- Feedback Loop records are the canonical support records for selected feedback-loop definitions, planned loops, execution refs, waivers, and alternate loops.
+- TDD Trace records capture red, green, refactor evidence or a recorded non-TDD justification. TDD is one possible Feedback Loop implementation, not the Feedback Loop record itself.
 
 Their policy requirements are owned by the design-quality policy pack. Their storage DDL is owned by the reference MVP document.
 

@@ -304,7 +304,7 @@ ArtifactInput:
   relation:
     task_id: string
     run_id: string | null
-    record_kind: task | change_unit | run | decision_packet | shared_design | residual_risk | evidence_manifest | eval | manual_qa_record | tdd_trace | journey_spine_entry | verification_bundle | export | other
+    record_kind: task | change_unit | run | decision_packet | shared_design | residual_risk | evidence_manifest | eval | manual_qa_record | feedback_loop | tdd_trace | journey_spine_entry | verification_bundle | export | other
     record_id_hint: string | null
   description: string | null
 
@@ -330,7 +330,7 @@ Record or projection references use `StateRecordRef`, not `ArtifactRef`:
 
 ```yaml
 StateRecordRef:
-  record_kind: task | change_unit | change_unit_dependency | run | approval | write_authorization | decision_packet | journey_spine_entry | shared_design | domain_term | module_map_item | interface_contract | residual_risk | evidence_manifest | eval | manual_qa_record | tdd_trace | reconcile_item | projection
+  record_kind: task | change_unit | change_unit_dependency | run | approval | write_authorization | decision_packet | journey_spine_entry | shared_design | domain_term | module_map_item | interface_contract | feedback_loop | residual_risk | evidence_manifest | eval | manual_qa_record | tdd_trace | reconcile_item | projection
   record_id: string
   projection_path: string | null
 ```
@@ -338,6 +338,8 @@ StateRecordRef:
 MVP has no `accepted_risk` `StateRecordRef.record_kind`. Public fields named `accepted_risk_refs`, `accepted_refs`, or accepted-risk equivalents must use `StateRecordRef` entries with `record_kind=residual_risk`; accepted risk is metadata/state on those Residual Risk records.
 
 Public refs to canonical design-support records use `record_kind=domain_term`, `record_kind=module_map_item`, or `record_kind=interface_contract` with the corresponding storage record id. Use `record_kind=projection` only when the ref targets a rendered Markdown projection such as `DOMAIN-LANGUAGE`, `MODULE-MAP`, or `INTERFACE-CONTRACT`.
+
+Public refs to canonical feedback-loop records use `record_kind=feedback_loop` with the `feedback_loops.feedback_loop_id`. Use `record_kind=tdd_trace` only for the red/green/refactor TDD evidence row; a Feedback Loop may cite a TDD Trace as execution evidence, but the TDD Trace does not replace the selected-loop definition.
 
 This diagram separates raw evidence registration from state-record references. `ArtifactInput` becomes an `ArtifactRef` only through Core validation and registration; state or projection records use `StateRecordRef`.
 
@@ -1187,6 +1189,7 @@ ShapingUpdatePayload:
       evaluator_focus: string[]
   design_record_refs: StateRecordRef[]
   pending_decision_refs: StateRecordRef[]
+  feedback_loop_updates: FeedbackLoopUpdate[]
 
 ImplementationPayload:
   observed_changes: ObservedChanges
@@ -1226,6 +1229,24 @@ EvidenceUpdates:
       status: supported | unsupported | not_applicable
       supporting_refs: StateRecordRef[]
       artifact_inputs: ArtifactInput[]
+  feedback_loop_updates: FeedbackLoopUpdate[]
+
+FeedbackLoopUpdate:
+  feedback_loop_id: string | null
+  operation: create | update
+  change_unit_id: string | null
+  loop_kind: test | typecheck | lint | build | browser_smoke | manual_qa | tdd | eval | operational | alternate | null
+  loop_profile: string | null
+  planned_loop: string | null
+  selected_loop_refs: StateRecordRef[]
+  execution_refs: StateRecordRef[]
+  artifact_inputs: ArtifactInput[]
+  tdd_trace_refs: StateRecordRef[]
+  manual_qa_record_refs: StateRecordRef[]
+  evidence_manifest_refs: StateRecordRef[]
+  status: defined | executed | waived | blocked | stale | null
+  waiver_reason: string | null
+  alternate_loop: string | null
 
 TddTraceUpdate:
   tdd_trace_id: string | null
@@ -1237,6 +1258,8 @@ TddTraceUpdate:
 ```
 
 The `payload` branch must match `kind`; all other branches must be `null` or absent. `ArtifactInput` values are resolved during the same Core transaction; response fields contain the committed `ArtifactRef` values. Change Unit creation and update for MVP happens through `kind=shaping_update` with `change_unit_updates`; `operation=create` creates a `change_units` record, and `operation=select_active` updates the Task's `active_change_unit_id`. `allowed_paths`, `allowed_tools`, `allowed_commands`, `allowed_network_targets`, `secret_scope`, and `sensitive_categories` are scope fields. `autonomy_profile`, `agent_may_do`, `user_judgment_required`, and `afk_stop_conditions` describe Autonomy Boundary judgment latitude only.
+
+Feedback Loop creation and definition happen through `ShapingUpdatePayload.feedback_loop_updates`. Execution evidence and status updates happen through `EvidenceUpdates.feedback_loop_updates`, or through `harness.record_manual_qa` when Manual QA is the selected loop. `operation=create` creates a canonical `feedback_loops` row and returns a `StateRecordRef` with `record_kind=feedback_loop`; public callers normally leave `feedback_loop_id` null for Core assignment, while executable fixture/import runners may supply a deterministic collision-free `FBL-*` ID. `operation=update` requires `feedback_loop_id` to name an existing feedback-loop row for the same Task and compatible Change Unit. On update, null scalar fields leave stored values unchanged, and ref arrays plus artifact inputs are additive. A TDD Trace may be listed in `tdd_trace_refs` when TDD is selected, but it remains execution evidence and does not replace the Feedback Loop row.
 
 `write_authorization_id` references the compatible Write Authorization returned by `harness.prepare_write`. For `kind=implementation` and `kind=direct`, `write_authorization_id` is required unless the Run records no product write and Core classifies it as read-only evidence or shaping. For `kind=shaping_update`, `write_authorization_id` must be `null`; MVP does not support shaping updates that also record observed product writes, so those writes must be recorded as `kind=implementation` or `kind=direct` with a compatible authorization. For `kind=verification_input`, keep `write_authorization_id` `null`; verification input that creates product writes should normally be disallowed in MVP.
 
@@ -1279,6 +1302,7 @@ RecordRunResponse:
   state: StateSummary
   write_authorization_ref: StateRecordRef | null
   evidence_manifest_ref: StateRecordRef | null
+  updated_feedback_loop_refs: StateRecordRef[]
   run_summary_ref: StateRecordRef | null
   direct_result_ref: StateRecordRef | null
   registered_artifacts: ArtifactRef[]
@@ -1291,7 +1315,7 @@ State transition summary: shaping updates can keep `shaping`, move to `ready`, o
 
 Stable EventRef values that may be returned: `run_recorded`, `write_authorization_consumed`, `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, `scope_violation_detected`, `evidence_manifest_updated`.
 
-Non-stable EventRef values that may be returned for implementation-local detail/audit: `shaping_updated`, `implementation_recorded`, `direct_result_recorded`, `verification_input_recorded`, `artifact_registered`, `tdd_trace_updated`.
+Non-stable EventRef values that may be returned for implementation-local detail/audit: `shaping_updated`, `implementation_recorded`, `direct_result_recorded`, `verification_input_recorded`, `artifact_registered`, `feedback_loop_updated`, `tdd_trace_updated`.
 
 Violation or audit Runs may emit `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, or `scope_violation_detected` for audit and recovery. Those Runs cannot satisfy evidence sufficiency, detached verification, QA, acceptance, or close readiness.
 
@@ -1619,6 +1643,7 @@ RecordManualQaRequest:
   artifact_inputs: ArtifactInput[]
   waiver_reason: string | null
   waiver_decision_packet_ref: StateRecordRef | null
+  feedback_loop_ref: StateRecordRef | null
   next_action: rework | accept | waive | block | none
 ```
 
@@ -1628,6 +1653,8 @@ RecordManualQaRequest:
 
 For `result=waived`, product/user risk or policy-required judgment requires a `qa_waiver` Decision Packet referenced by `waiver_decision_packet_ref`. `waiver_reason` alone is allowed only for a low-risk waiver when policy permits it.
 
+When Manual QA is the selected Feedback Loop, `feedback_loop_ref` should reference the canonical `feedback_loops` row with `record_kind=feedback_loop`. Core records the Manual QA row, appends the resulting Manual QA ref and registered artifacts to that Feedback Loop, and updates its status to `executed`, `blocked`, or `waived` according to the QA result. This link updates execution evidence only; it does not create the selected-loop definition.
+
 Response schema:
 
 ```yaml
@@ -1636,13 +1663,14 @@ RecordManualQaResponse:
   manual_qa_record_id: string
   state: StateSummary
   manual_qa_ref: StateRecordRef
+  updated_feedback_loop_refs: StateRecordRef[]
   registered_artifacts: ArtifactRef[]
   next_action: string
 ```
 
 State transition summary: records Manual QA; `passed` can set `qa_gate=passed`; `failed` sets `qa_gate=failed` and routes to rework/blocked; `waived` requires either a compatible `qa_waiver` Decision Packet or a policy-permitted low-risk waiver reason and sets `qa_gate=waived`. If required QA has not produced a satisfying record, or the latest relevant record does not satisfy policy, the aggregate gate remains `qa_gate=pending`.
 
-Non-stable EventRef values that may be returned for implementation-local detail/audit: `manual_qa_recorded`, `qa_passed`, `qa_failed`, `qa_waived`, `artifact_registered`.
+Non-stable EventRef values that may be returned for implementation-local detail/audit: `manual_qa_recorded`, `qa_passed`, `qa_failed`, `qa_waived`, `artifact_registered`, `feedback_loop_updated`.
 
 Projection jobs enqueued: `TASK`, `MANUAL-QA`; `DEC` when standalone Decision Packet projection is enabled and a waiver Decision Packet affects visibility; optionally `EVIDENCE-MANIFEST`. Waiver Decision Packet visibility still appears through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources.
 

@@ -152,10 +152,12 @@ flowchart TD
 | `applies_when` | Implementation 시작 전, behavior-affecting write 전, TDD가 waived될 때, Manual QA가 expected될 때, 또는 agent가 change가 작동하는지 배울 credible한 방법이 필요할 때. |
 | `default_requirement` | Implementation 전에 feedback loop를 정의한다. Loop는 test, typecheck, lint, build, browser smoke, Manual QA, explicit alternate loop 중 하나일 수 있다. 선택된 loop는 risk에 대해 가장 작은 credible loop여야 한다. TDD trace는 이 policy의 구현 방식 중 하나일 뿐 유일한 구현 방식은 아니다. |
 | `allowed_waiver` | Implementation 또는 product behavior impact가 없는 docs-only edit, comment, formatting, advisory work에 허용된다. Waiver에는 executable, browser, Manual QA, alternate loop가 유용하지 않은 이유를 기록해야 한다. |
-| `required_record` | Task 또는 Change Unit feedback-loop field, selected-loop ref, validator result, TDD가 선택된 경우 `tdd_traces`, Manual QA가 선택되고 performed된 경우 Manual QA record, required QA가 아직 satisfying record를 갖지 못한 경우 `qa_gate=pending`, 실행 후 evidence manifest ref. |
+| `required_record` | `record_kind=feedback_loop`으로 reference되는 canonical `feedback_loops` record, selected-loop refs, validator results, TDD가 선택된 경우 `tdd_traces`, Manual QA가 선택되고 performed된 경우 Manual QA record, required QA가 아직 satisfying record를 갖지 못한 경우 `qa_gate=pending`, 실행 후 evidence manifest refs. |
 | `validator` | `feedback_loop_check` |
-| `evidence` | Planned loop ref, test/typecheck/lint/build/browser smoke log, Manual QA ref, alternate-loop justification, 사용된 경우 TDD trace ref. |
+| `evidence` | Feedback Loop refs, planned loop refs, test/typecheck/lint/build/browser smoke logs, Manual QA refs, alternate-loop justification, 사용된 경우 TDD trace refs. |
 | `close_impact` | Feedback loop definition이 없으면 `design_gate=pending` 또는 `partial`로 남는다. Execution evidence가 없으면 evidence가 insufficient해질 수 있다. Manual QA loop failure는 Manual QA policy를 통해 `qa_gate`에 영향을 준다. |
+
+Public mutation path: selected-loop definitions와 waivers는 `record_run(kind=shaping_update)` 중 `FeedbackLoopUpdate`로 기록합니다. Execution refs와 status는 implementation/direct runs 중 `EvidenceUpdates.feedback_loop_updates`로 update하거나, Manual QA가 selected loop일 때 `record_manual_qa.feedback_loop_ref`로 update합니다.
 
 ### TDD Trace
 
@@ -191,7 +193,7 @@ flowchart TD
 | `applies_when` | Work가 durable code structure, domain concept, module ownership, interface contract, architecture direction, deep-module boundary, testing strategy, cross-cutting exception을 touch할 때. |
 | `default_requirement` | Change Unit의 stewardship view를 domain language, module map, interface contract, TDD/feedback loop, architecture watchpoint, deep-module boundary로 묶어 본다. Stewardship review는 general code review checklist가 아니라, local task completion이 domain language, module boundary, interface contract, feedback loop, testability, maintainability, future-change cost의 degradation을 숨기지 못하게 하는 장치다. Owner record를 source of truth로 사용하고, task-relevant ref만 기록하며, schema나 DDL을 duplicate하지 않고 drift에는 reconcile item을 만든다. |
 | `allowed_waiver` | Durable structure, domain, interface, feedback-loop impact가 없는 isolated docs, comment, formatting, leaf edit에 허용된다. Waiver에는 stewardship review가 필요 없는 이유를 기록해야 한다. |
-| `required_record` | Task 또는 Change Unit stewardship ref, `domain_terms`, `module_map_items`, `interface_contracts` records, feedback loop 또는 `tdd_traces` ref, decision record, Task/Change Unit watchpoint, Journey Spine Entry ref, drift에 대한 reconcile item. Dedicated architecture watchpoint ref는 later DDL batch가 정의한 경우에만 사용할 수 있다. Canonical design-support refs는 `record_kind=domain_term`, `record_kind=module_map_item`, `record_kind=interface_contract`를 사용하며, Markdown projection refs는 optional display/proposal refs이다. |
+| `required_record` | Task 또는 Change Unit stewardship refs, `domain_terms`, `module_map_items`, `interface_contracts` records, `feedback_loops` records, TDD가 사용된 경우 `tdd_traces` refs, decision records, Task/Change Unit watchpoints, Journey Spine Entry refs, drift에 대한 reconcile items. Dedicated architecture watchpoint ref는 later DDL batch가 정의한 경우에만 사용할 수 있다. Canonical design-support refs는 `record_kind=domain_term`, `record_kind=module_map_item`, `record_kind=interface_contract`, `record_kind=feedback_loop`을 사용하며, Markdown projection refs는 optional display/proposal refs이다. |
 | `validator` | `codebase_stewardship_check` |
 | `evidence` | Domain term ref, module map item ref, interface contract ref, feedback loop ref, 사용된 경우 TDD trace ref, Task/Change Unit watchpoint, Journey Spine Entry ref, deep-module note, reconcile item ref, later DDL에서 정의된 경우에만 dedicated architecture watchpoint ref. |
 | `close_impact` | Required stewardship review가 없으면 `design_gate=pending`, `partial`, 또는 `stale`로 남는다. Unresolved drift가 public behavior, module boundary, acceptance criteria, verification confidence에 영향을 주면 close를 block할 수 있다. |
@@ -201,7 +203,7 @@ flowchart LR
   DomainTerms["domain_terms"] --> Summary["StewardshipImpactSummary display"]
   ModuleMap["module_map_items"] --> Summary
   InterfaceContracts["interface_contracts"] --> Summary
-  FeedbackRefs["feedback loop / tdd_traces"] --> Summary
+  FeedbackRefs["feedback_loops / tdd_traces when TDD selected"] --> Summary
   DecisionPackets["Decision Packets"] --> Summary
   ResidualRisks["residual risks"] --> Summary
   Validator["codebase_stewardship_check"] --> Summary
@@ -212,7 +214,7 @@ flowchart LR
 
 `StewardshipImpactSummary`는 Design Stewardship Default와 `codebase_stewardship` policy contract를 위한 derived display/summary shape다. Kernel Authority Invariant가 아니다. Derived display이지 canonical current record가 아니다. Owner record, validator result, ref에서 derive되며 새로운 canonical source of truth를 만들지 않는다.
 
-Domain term, module map item, interface contract, feedback loop/TDD record, residual risk, Decision Packet은 계속 owner record로 남는다. Summary는 close-relevant status를 compact하게 render하고 해당 owner로 돌아가는 ref를 표시한다.
+Domain term, module map item, interface contract, Feedback Loop records, TDD가 selected된 경우 TDD Trace records, residual risk, Decision Packet은 계속 owner record로 남는다. Summary는 close-relevant status를 compact하게 render하고 해당 owner로 돌아가는 ref를 표시한다.
 
 ```mermaid
 flowchart TB
@@ -237,6 +239,8 @@ flowchart TB
 | `feedback_loop_status` | `defined` \| `missing` \| `waived` |
 | `future_change_risk` | `none` \| `visible` \| `accepted` \| `unresolved` |
 | `close_impact` | `none` \| `blocks_close` \| `requires_decision` \| `residual_risk` |
+
+`feedback_loop_status`는 referenced `feedback_loops` rows와 validator results에서 derive된다. TDD가 selected된 경우 referenced `tdd_traces` row는 execution evidence를 satisfy할 수 있지만 selected loop의 canonical owner는 아니다.
 
 ### Manual QA
 

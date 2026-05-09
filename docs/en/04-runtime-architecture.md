@@ -392,6 +392,8 @@ Stable MVP validator IDs:
 - `context_hygiene_check`
 - `surface_capability_check`
 
+`feedback_loop_check` reads Feedback Loop support records and related execution evidence; it does not introduce a separate kernel gate. Its consequences flow through `design_gate`, evidence sufficiency, blockers, or display in the same validator placement model as the other design-quality checks.
+
 Core preconditions and mechanical checks such as state/envelope validation, active Task, active Change Unit, changed paths, baseline freshness, approval scope, evidence sufficiency, artifact integrity, verification independence, same-session verification guard, and projection freshness may run before or beside these validators. They are not alternate validator IDs unless this section, the MCP API, or the Reference MVP explicitly promotes them into the stable ValidatorResult-emitting set. Surface capability is intentionally modeled as the `surface_capability_check` capability validator when emitted as a `ValidatorResult`.
 
 ```mermaid
