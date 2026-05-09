@@ -167,7 +167,7 @@ Required contents:
 
 - export manifest with created time, task id, projection freshness, and redaction summary
 - state snapshots for the Task and related records
-- Decision Packets, user decisions, residual risks, accepted-risk refs, Journey Spine entries or continuity refs, and relevant Change Unit Autonomy Boundary summaries
+- Decision Packets, user decisions, residual risks with accepted-risk metadata/refs, Journey Spine entries or continuity refs, and relevant Change Unit Autonomy Boundary summaries
 - projection snapshots for relevant reports
 - artifact references and included raw artifact files when allowed
 - artifact integrity manifest
@@ -214,7 +214,7 @@ expected_error: object | null
 
 Fixture files and suite catalogs may carry metadata outside the fixture body. The fixture body itself uses only the fields above so conformance runners can compare behavior consistently.
 
-Fixture seed shorthand: examples may use compact `owner_records`, `stewardship_findings`, or feedback-loop shorthand to keep the document readable. Executable fixture files must map that shorthand to owner records, validator runs, residual risks, or other records owned by DDL/API docs. The shorthand must not create a second state model. `StewardshipImpactSummary` assertions are derived display, not canonical current records, and should appear under `expected_state.derived` or projection assertions.
+Fixture seed shorthand: examples may use compact `owner_records`, `stewardship_findings`, or feedback-loop shorthand to keep the document readable. Executable fixture files must map that shorthand to owner records, validator runs, residual risks, or other records owned by DDL/API docs. The shorthand must not create a second state model. `StewardshipImpactSummary` assertions are derived display, not canonical current records, and should appear under `expected_state.derived` or projection assertions. Accepted residual-risk refs in fixture shorthand are refs to `residual_risk` records with accepted-risk metadata/state; executable MVP fixtures must not require standalone `ARISK-*` records.
 
 Executable fixtures that seed `write_authorizations` must produce valid stored rows. Each seeded authorization row must include `basis_state_version` explicitly, or the runner must derive it from the seeded affected-scope state version for the row's Task before inserting into `state.sqlite`. This is a storage-loader derivation rule only; it does not add fixture top-level fields or change the fixture body shape. Partial `expected_state.write_authorization` assertions may omit `basis_state_version` unless the fixture is testing idempotent replay, stale detection, expiry, or audit behavior. `basis_state_version` is the allow-decision basis, not the resulting `ToolResponseBase.state_version`.
 
@@ -258,12 +258,14 @@ Default comparison modes:
 | Fixture field | Default assertion mode |
 |---|---|
 | `expected_state` | `partial_deep`; listed fields must match recursively and unlisted fields are not asserted. Suite metadata may set `expected_state: exact`. |
-| `expected_events` | `contains_ordered`; listed events must appear in appended `task_events` order, with unrelated events allowed before, between, or after them. Suite metadata may set `expected_events: exact`. |
+| `expected_events` | `contains_ordered`; listed events must appear in ascending `task_events.event_seq` order, with unrelated events allowed before, between, or after them. Suite metadata may set `expected_events: exact`. |
 | `expected_artifacts` | `contains_by_identity`; each listed artifact must match a registered artifact with the same `artifact_id` and `kind`, then any other listed artifact fields are matched recursively. |
 | `expected_projection` | `partial_by_kind`; each listed projection kind must satisfy the listed status assertion or partial object assertion for that kind. |
 | `expected_error` | `expected_error: null` asserts that the action returned no error. When `expected_error` is an object, `expected_error.code` is required and matched exactly against the primary `ToolError.code`, meaning `ToolResponseBase.errors[0].code` when the response has errors, selected by API-owned [Primary Error Code Precedence](05-mcp-api-and-schemas.md#primary-error-code-precedence). It must not match an arbitrary secondary error. `expected_error.details` is optional; when omitted, no details fields are asserted. When `details` is present, it is matched with `partial_deep` unless suite metadata sets `expected_error.details: exact`. |
 
 `expected_events` may require only names from the [Kernel Stable Event Catalog](03-kernel-spec.md#stable-event-catalog). Validator IDs, Core check names, projection status shorthands, fixture seed shorthand, and scenario catalog IDs are not event names. Prose examples may mention non-catalog event names as illustrative or future extension ideas, but executable MVP fixtures must not require them until the kernel catalog promotes them.
+
+Conformance runners order captured `task_events` by `event_seq`. `state_version`, `created_at`, and `event_id` are not tie-breakers for `expected_events` ordering.
 
 Fixture authors should use `VALIDATOR_FAILED` as `expected_error.code` only when API precedence selects the generic validator fallback; a more specific typed blocker such as `EVIDENCE_INSUFFICIENT`, `QA_REQUIRED`, `PROJECTION_STALE`, or `ARTIFACT_MISSING` remains primary when it applies.
 
@@ -523,12 +525,12 @@ initial_state:
       close_relevant: true
       visibility: visible
       accepted: true
-      accepted_risk_ref: ARISK-VERIFY-001
+      accepted_residual_risk_ref: RISK-VERIFY-001
   decision_packets:
     - decision_packet_id: DEC-VERIFY-WAIVER-001
       decision_kind: verification_waiver
       status: resolved
-      accepted_risk_refs: [ARISK-VERIFY-001]
+      accepted_residual_risk_refs: [RISK-VERIFY-001]
     - decision_packet_id: DEC-RISK-ACCEPT-001
       decision_kind: residual_risk_acceptance
       status: resolved
@@ -536,7 +538,7 @@ initial_state:
 input:
   close_intent: accept_verification_risk
   waiver_reason: "User accepts remaining verification risk for urgent local-only fix."
-  accepted_risk_refs: [ARISK-VERIFY-001]
+  accepted_residual_risk_refs: [RISK-VERIFY-001]
 action: close_task
 expected_state:
   lifecycle_phase: completed
@@ -545,7 +547,7 @@ expected_state:
   assurance_level: self_checked
   residual_risk_summary:
     status: accepted
-    accepted_refs: [ARISK-VERIFY-001]
+    accepted_refs: [RISK-VERIFY-001]
 expected_events:
   - close_requested
   - risk_accepted_close_recorded
@@ -578,7 +580,7 @@ initial_state:
     - decision_packet_id: DEC-VERIFY-WAIVER-002
       decision_kind: verification_waiver
       status: resolved
-      accepted_risk_refs: []
+      accepted_residual_risk_refs: []
 input:
   close_intent: accept_verification_risk
   waiver_reason: "User accepts remaining verification risk for urgent local-only fix."

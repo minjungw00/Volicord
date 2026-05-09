@@ -107,7 +107,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Residual Risk
 - close-relevant risk:
 - visibility status:
-- accepted risk refs:
+- accepted residual-risk refs:
 - follow-up required:
 - close impact:
 
@@ -953,7 +953,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 ## Waiver And Risk
 - waiver Decision Packet:
 - residual risk refs:
-- accepted risk:
+- accepted residual-risk summary:
 
 ## Findings
 | Severity | Finding | Suggested Action | Follow-up CU |
@@ -1071,8 +1071,8 @@ updated_at: 2026-05-06T09:30:15+09:00
 - selected option:
 - user decision:
 - decision note:
-- accepted risk:
-- accepted risk refs:
+- accepted residual-risk summary:
+- accepted residual-risk refs:
 - accepted consequence:
 - decided by:
 - decided at:
@@ -1268,7 +1268,7 @@ Next evidence:
 Residual risk:
 - status: {residual_risk_status}
 - close impact: {residual_risk_close_impact}
-- accepted risk: {accepted_risk_refs|none}
+- accepted residual-risk refs: {accepted_residual_risk_refs|none}
 
 Gates:
 - scope: {scope_gate}
@@ -1390,6 +1390,6 @@ Record the QA result?
 - `JOURNEY-CARD` is a compact current-position projection. It does not authorize writes, resolve decisions, accept risk, satisfy evidence, replace verification, replace Manual QA, or close work.
 - Autonomy Boundary text in `TASK`, `DEC`, `JOURNEY-CARD`, and Change Unit blocks describes judgment latitude only; Write Authority Summary and Write Authorization displays remain separate, and scope and approval remain separate owner records and gates.
 - Write Authority Summary text is display from current scope, approval, baseline, guarantee, and Write Authorization refs. It does not authorize work, prove evidence, replace verification or Manual QA, imply acceptance, or accept residual risk.
-- Residual-risk text is a projection from residual-risk records and accepted-risk refs; it does not create detached verification or acceptance.
+- Residual-risk text is a projection from residual-risk records and accepted-risk metadata/refs on those records; it does not create detached verification or acceptance.
 - `EVAL` must show independence context because a passed verdict alone does not produce `detached_verified`.
 - `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, and `DIRECT-RESULT` link evidence files by artifact ref rather than embedding large evidence.

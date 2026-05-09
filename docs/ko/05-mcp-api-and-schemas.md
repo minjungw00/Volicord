@@ -89,15 +89,16 @@ ToolResponseBase:
   projection_jobs: ProjectionJobRef[]
 ```
 
-`dry_run=true`는 validate하고 transition plan을 반환하지만 current records update, `state.sqlite.task_events` append, artifact registration, consumable Write Authorization records create, projection job enqueue를 하지 않습니다.
+`dry_run=true`는 validate하고 transition plan을 반환하지만 current records update, `state.sqlite.task_events` append, artifact registration, consumable Write Authorization records create, projection job enqueue, `tool_invocations` idempotency replay row create/update를 하지 않습니다. Dry-run output은 non-authoritative diagnostics이며 그 `idempotency_key`는 replay를 위해 consumed되지 않습니다.
 
-`ToolResponseBase.state_version`은 primary affected scope의 resulting version을 반환합니다. State-changing operations에서는 Core가 primary Task를 resolve하면 Task State Version이고, 그렇지 않으면 Project State Version입니다. Read-only responses는 primary read scope의 current `state_version`을 반환하며 increment하지 않습니다.
+`ToolResponseBase.state_version`은 primary affected scope의 resulting version을 반환합니다. State-changing operations에서는 Core가 primary Task를 resolve하면 Task State Version이고, 그렇지 않으면 Project State Version입니다. Read-only responses는 primary read scope의 current `state_version`을 반환하며 increment하지 않습니다. `dry_run=true`가 mutation 없이 validate하거나 plan할 때 `state_version`은 current primary affected 또는 read scope version을 report합니다. Virtual resulting version, idempotency-key consumption, replay row, appended event, would-be clock increment를 뜻하지 않습니다.
 
 ## Shared Schemas
 
 ```yaml
 EventRef:
   event_id: string
+  event_seq: integer
   event_type: string
   task_id: string | null
   state_version: integer
@@ -110,6 +111,8 @@ ProjectionJobRef:
 ```
 
 `EventRef.state_version`은 event의 affected scope에 대한 resulting version입니다. Task events는 `tasks.state_version`을 사용하고, `task_id=null`인 project-level events는 `project_state.state_version`을 사용합니다.
+
+`EventRef.event_seq`는 `task_events.event_seq`를 mirror합니다. Responses는 events를 ascending `event_seq`로 나열합니다. Timestamps와 `event_id` lexical order는 deterministic event ordering에 사용하지 않습니다.
 
 Fixture assertions를 위한 event stability는 [Kernel Stable Event Catalog](03-kernel-spec.md#stable-event-catalog)가 담당합니다. 아래 tool sections는 해당 tool이 반환할 수 있는 `EventRef.event_type` 값을 나열합니다. Stable catalog에 없는 이름은 optional 또는 illustrative extension events이며 MVP `expected_events` fixtures가 요구하면 안 됩니다. ValidatorResult IDs, Core check names, projection status shorthands, fixture seed shorthand는 kernel catalog가 명시적으로 나열하지 않는 한 event names가 아닙니다.
 
@@ -241,6 +244,8 @@ StateRecordRef:
   record_id: string
   projection_path: string | null
 ```
+
+MVP에는 `accepted_risk` `StateRecordRef.record_kind`가 없습니다. `accepted_risk_refs`, `accepted_refs`, 또는 accepted-risk equivalent로 이름 붙은 public fields는 `record_kind=residual_risk`인 `StateRecordRef` entries를 사용해야 합니다. Accepted risk는 그 Residual Risk records의 metadata/state입니다.
 
 Evidence references, approval scope, write authorization, Write Authority Summary display, end-to-end paths는 다음 shared shapes를 사용합니다.
 
@@ -446,6 +451,8 @@ AcceptanceVisibilityContext:
 ```
 
 `ResidualRiskSummary.status=none`은 current Task와 requested action에 대해 Core가 알고 있는 close-relevant Residual Risk가 없다는 뜻입니다. 이는 acceptance와 ordinary successful close에서 residual-risk visibility를 satisfy하며, 이때 `close_relevant_count=0`이고 risk-ref arrays는 비어 있습니다. Core가 hidden, blocked, 또는 표시되지 않은 close-relevant risk를 알고 있다면 이 status를 반환하면 안 되며, 그런 경우 `not_visible` 또는 `blocked`를 사용합니다.
+
+`ResidualRiskSummary.accepted_refs`, `unaccepted_refs`, related acceptance visibility risk-ref arrays는 `record_kind=residual_risk`인 `StateRecordRef` entries를 포함합니다.
 
 Autonomy Boundary summaries는 scope authority가 아니라 judgment latitude를 설명합니다. Active Change Unit scope와 required approval 밖의 paths, tools, commands, network targets, secret access, sensitive categories를 authorize하지 않습니다.
 
@@ -1144,7 +1151,7 @@ AcceptedRiskInput:
   evidence_refs: EvidenceRefs
 ```
 
-Payload branch는 `decision_kind`와 match해야 하며, 다른 branches는 absent여야 합니다. `accepted_risks`는 Decision Packet과 current Judgment Context가 user decision 전에 close-relevant residual risk를 visible하게 만든 경우에만 allowed입니다. `decision_kind=acceptance`에서 Core는 close-relevant residual risk가 visible하거나 `ResidualRiskSummary.status=none`이 no known close-relevant risk를 confirm한 경우에만 acceptance를 record할 수 있습니다. Core는 `decision_packet_id`가 식별하는 canonical `DecisionPacket`에 answer를 record합니다. 모든 `decision_requests` row는 routing/replay metadata로만 update되며 linked compatible Decision Packet과 owner-record updates 없이는 `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, close를 satisfy할 수 없습니다. Core는 accepted risk를 residual-risk state refs로 기록하며, risk acceptance를 detached verification으로 취급하지 않습니다.
+Payload branch는 `decision_kind`와 match해야 하며, 다른 branches는 absent여야 합니다. `accepted_risks`는 Decision Packet과 current Judgment Context가 user decision 전에 close-relevant residual risk를 visible하게 만든 경우에만 allowed입니다. `decision_kind=acceptance`에서 Core는 close-relevant residual risk가 visible하거나 `ResidualRiskSummary.status=none`이 no known close-relevant risk를 confirm한 경우에만 acceptance를 record할 수 있습니다. Core는 `decision_packet_id`가 식별하는 canonical `DecisionPacket`에 answer를 record합니다. 모든 `decision_requests` row는 routing/replay metadata로만 update되며 linked compatible Decision Packet과 owner-record updates 없이는 `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, close를 satisfy할 수 없습니다. Core는 Residual Risk records를 update하고 residual-risk state refs를 반환하여 accepted risk를 기록하며, risk acceptance를 detached verification으로 취급하지 않습니다. `AcceptedRiskInput.residual_risk_ref=null`은 current Decision Packet과 Judgment Context가 해당 close-relevant risk를 이미 사용자에게 visible하게 만들고, Core가 같은 committed transition 안에서 Residual Risk record를 create하거나 associate할 수 있을 만큼 충분한 source/evidence context를 포함할 때만 allowed입니다. Visibility 또는 context가 없으면 Core는 hidden risk를 조용히 create하고 accept하지 말고 reject 또는 block해야 합니다.
 
 Response schema:
 
@@ -1159,7 +1166,7 @@ RecordUserDecisionResponse:
   next_action: string
 ```
 
-State transition summary: targeted Decision Packet을 resolve, defer, reject, block합니다. Affected gates 또는 reconcile item을 update합니다. Approval grant/deny는 linked Approval record와 `approval_gate`를 update하지만 Write Authorization을 create하지 않습니다. Accepted scope는 `scope_gate`를 update하고, user-resolved product judgment는 `decision_gate`를 update합니다. Accepted Autonomy Boundary decisions는 active Change Unit boundary를 update할 수 있습니다. Verification waiver는 `verification_gate=waived_by_user`를 update하고, QA waiver는 `qa_gate`를 update하고, acceptance는 `acceptance_gate`를 update합니다. Accepted residual risk는 assurance를 upgrade하지 않고 accepted-risk refs를 record합니다. Reconcile은 accepted state records를 create할 수 있습니다.
+State transition summary: targeted Decision Packet을 resolve, defer, reject, block합니다. Affected gates 또는 reconcile item을 update합니다. Approval grant/deny는 linked Approval record와 `approval_gate`를 update하지만 Write Authorization을 create하지 않습니다. Accepted scope는 `scope_gate`를 update하고, user-resolved product judgment는 `decision_gate`를 update합니다. Accepted Autonomy Boundary decisions는 active Change Unit boundary를 update할 수 있습니다. Verification waiver는 `verification_gate=waived_by_user`를 update하고, QA waiver는 `qa_gate`를 update합니다. Acceptance는 user decision을 Decision Packet에 record하고 `acceptance_gate`를 update합니다. Accepted residual risk는 assurance를 upgrade하지 않고 Residual Risk records를 update하며 그 refs를 반환합니다. Reconcile은 accepted state records를 create할 수 있습니다.
 
 Events emitted: `user_decision_recorded`, `decision_packet_resolved`, `decision_packet_deferred`, `decision_packet_rejected`, `approval_granted`, `approval_denied`, `scope_confirmed`, `scope_rejected`, `design_choice_recorded`, `architecture_choice_recorded`, `autonomy_boundary_decision_recorded`, `verification_waiver_recorded`, `qa_waiver_recorded`, `acceptance_recorded`, `residual_risk_accepted`, `reconcile_resolved`.
 

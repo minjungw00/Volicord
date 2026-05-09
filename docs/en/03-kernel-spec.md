@@ -83,7 +83,7 @@ proposed | pending_user | resolved | deferred | rejected | blocked | superseded
 
 ### Journey Spine
 
-A Journey Spine is the state-derived continuity model for the ordered work journey of a Task. It is reconstructed from Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, Acceptance, Close, artifact references, and `state.sqlite.task_events`.
+A Journey Spine is the state-derived continuity model for the ordered work journey of a Task. It is reconstructed from Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, `task_gates.acceptance_gate`, acceptance Decision Packet user-decision state, close events, artifact references, and `state.sqlite.task_events`.
 
 Journey Spine is not a separate source of truth. Journey Card and Journey Spine Markdown views are projections. They help humans resume and inspect work, but they do not override Task state, gate fields, Decision Packets, Evidence Manifests, Residual Risk records, artifact records, or `state.sqlite.task_events`.
 
@@ -91,7 +91,7 @@ Journey Spine is not a separate source of truth. Journey Card and Journey Spine 
 
 A Journey Spine Entry is the canonical support record for durable continuity annotations that cannot be fully reconstructed from existing state events or source records. It may record an annotation kind, ordering relationship, source refs, affected scope, summary, actor, time, and artifact refs.
 
-Journey Spine Entry records supplement reconstruction; they do not replace the owner records for Task state, Change Units, Runs, Decision Packets, Residual Risk, evidence, verification, QA, acceptance, close, or artifacts.
+Journey Spine Entry records supplement reconstruction; they do not replace the owner records for Task state, Change Units, Runs, Decision Packets, Residual Risk, evidence, verification, QA, acceptance gate/decision state, close state/events, or artifacts.
 
 ### Run
 
@@ -148,6 +148,8 @@ Manual QA is a human inspection record for UX, workflow, copy, accessibility, vi
 Residual Risk is a canonical close-relevant support record for known remaining uncertainty, trade-off, limitation, or unchecked condition. It records source refs, affected scope, related Decision Packet when applicable, visibility status, accepted risk when applicable, follow-up requirement, and close impact.
 
 Residual Risk records make remaining risk visible before acceptance or risk-accepted close. They do not create detached verification, replace evidence, waive QA, grant sensitive approval, or imply final acceptance.
+
+Accepted risk is not a separate canonical state record in MVP. Risk acceptance updates accepted-risk metadata/status on the relevant Residual Risk record and may append residual-risk acceptance events. Any public accepted-risk ref field that remains in an API or projection must point to a `StateRecordRef` with `record_kind=residual_risk`, not to an `accepted_risk` or `ARISK-*` record.
 
 ### Artifact
 
@@ -380,6 +382,8 @@ not_required | required | pending | accepted | rejected
 
 `acceptance_gate` records the user's final acceptance judgment where acceptance is required. It does not replace QA or verification.
 
+MVP final acceptance is stored through the canonical Decision Packet user-decision path, the Task's `acceptance_gate`, and `state.sqlite.task_events`. The kernel does not define a separate Acceptance state record for MVP.
+
 Residual-risk visibility is satisfied in either of two ways. If no known close-relevant Residual Risk exists, the current judgment context reports `ResidualRiskSummary.status=none`. If known close-relevant Residual Risk exists, that risk must be visible in the current judgment context before any successful close. Acceptance, when required, can be recorded only after close-relevant residual risk is visible or confirmed as `ResidualRiskSummary.status=none`. A risk-accepted close additionally requires visible and accepted Residual Risk refs, and residual-risk acceptance never upgrades assurance to `detached_verified`. `ResidualRiskSummary.status=none` must not hide or replace known close-relevant risk.
 
 ### Capability Boundary
@@ -478,6 +482,8 @@ The following combinations are invalid and must be rejected or repaired by the k
 State transitions append an event to `state.sqlite.task_events` in the same transaction as current state changes.
 
 Each transition increments the correct affected-scope clock. Task-scoped transitions increment the Task State Version; project-level transitions with no Task increment the Project State Version. The appended event carries the resulting version for that affected scope.
+
+Event ordering is the deterministic append order recorded by storage. Timestamps are audit metadata only and must not define the order used for Journey reconstruction, API event lists, or conformance `expected_events`.
 
 Write Authorization lifecycle events use this kernel event vocabulary:
 

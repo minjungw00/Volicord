@@ -14,6 +14,8 @@ The user's judgment that the result and remaining trade-offs are acceptable. Acc
 
 The kernel gate that records whether required user acceptance is not required, required, pending, accepted, or rejected. Acceptance cannot substitute for QA or verification.
 
+MVP final acceptance is recorded through a Decision Packet user decision, `task_gates.acceptance_gate`, and `state.sqlite.task_events`; there is no separate acceptance record or table.
+
 ### Approval
 
 A prior user decision allowing a sensitive change to proceed within a defined scope. Approval is bound to paths, tools, commands or command classes, network targets, secret scope, baseline, sensitive categories, and expiry conditions. When approval is requested, Core captures the user judgment through an approval-shaped Decision Packet and linked Approval record; granted approval still requires a later compatible `prepare_write` result before any Write Authorization exists.
@@ -230,11 +232,11 @@ A compact human-readable projection of the current Task position: state, next ac
 
 ### Journey Spine
 
-The state-derived continuity model for a Task's ordered work journey. It is reconstructed from Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, Acceptance, Close, artifact references, and `state.sqlite.task_events`, not from chat memory. Journey Card and Journey Spine Markdown views are projections.
+The state-derived continuity model for a Task's ordered work journey. It is reconstructed from Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, `task_gates.acceptance_gate`, acceptance Decision Packet user-decision state, close events, artifact references, and `state.sqlite.task_events`, not from chat memory. Journey Card and Journey Spine Markdown views are projections.
 
 ### Journey Spine Entry
 
-A canonical support record for durable continuity annotations that cannot be fully reconstructed from existing state events or owner records. Journey Spine Entry records supplement the Journey Spine; they do not replace Task, Change Unit, Run, Decision Packet, Residual Risk, evidence, verification, QA, acceptance, close, artifact, or event authority.
+A canonical support record for durable continuity annotations that cannot be fully reconstructed from existing state events or owner records. Journey Spine Entry records supplement the Journey Spine; they do not replace Task, Change Unit, Run, Decision Packet, Residual Risk, evidence, verification, QA, acceptance gate/decision state, close state/events, artifact, or event authority.
 
 ### Interface Contract
 
@@ -348,7 +350,7 @@ The idempotency hash of a tool request, computed from canonical UTF-8 JSON cover
 
 ### Residual Risk
 
-A canonical close-relevant support record for known remaining uncertainty, trade-off, limitation, or unchecked condition after evidence, verification, QA, and acceptance work. It records source refs, affected scope, related Decision Packet when applicable, visibility status, accepted risk when applicable, follow-up requirement, and close impact. Residual risk must remain visible when it affects close, and user acceptance of risk does not create detached verification.
+A canonical close-relevant support record for known remaining uncertainty, trade-off, limitation, or unchecked condition after evidence, verification, QA, and acceptance work. It records source refs, affected scope, related Decision Packet when applicable, visibility status, accepted risk when applicable, follow-up requirement, and close impact. Residual risk must remain visible when it affects close, and user acceptance of risk does not create detached verification. Accepted risk is metadata/state on the Residual Risk record in MVP, not a separate `accepted_risk` state record.
 
 ### Risk Accepted Close
 
@@ -372,7 +374,7 @@ The authoritative source for a fact. In the harness, operational state is canoni
 
 ### `state.sqlite.task_events`
 
-The append-only event history table inside `state.sqlite`. MVP does not use a separate event store.
+The append-only event history table inside `state.sqlite`. MVP does not use a separate event store. Deterministic order is `task_events.event_seq`, not timestamps or event IDs.
 
 ### Stable Event Catalog
 

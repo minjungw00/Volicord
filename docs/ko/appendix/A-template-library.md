@@ -107,7 +107,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Residual Risk
 - close-relevant risk:
 - visibility status:
-- accepted risk refs:
+- accepted residual-risk refs:
 - follow-up required:
 - close impact:
 
@@ -953,7 +953,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 ## Waiver And Risk
 - waiver Decision Packet:
 - residual risk refs:
-- accepted risk:
+- accepted residual-risk summary:
 
 ## Findings
 | Severity | Finding | Suggested Action | Follow-up CU |
@@ -1071,8 +1071,8 @@ updated_at: 2026-05-06T09:30:15+09:00
 - selected option:
 - user decision:
 - decision note:
-- accepted risk:
-- accepted risk refs:
+- accepted residual-risk summary:
+- accepted residual-risk refs:
 - accepted consequence:
 - decided by:
 - decided at:
@@ -1268,7 +1268,7 @@ Next evidence:
 Residual risk:
 - status: {residual_risk_status}
 - close impact: {residual_risk_close_impact}
-- accepted risk: {accepted_risk_refs|none}
+- accepted residual-risk refs: {accepted_residual_risk_refs|none}
 
 Gates:
 - scope: {scope_gate}
@@ -1390,6 +1390,6 @@ QA result를 기록하시겠습니까?
 - `JOURNEY-CARD`는 compact current-position projection이다. Write를 authorize하거나, decision을 resolve하거나, risk를 accept하거나, evidence를 satisfy하거나, verification 또는 Manual QA를 replace하거나, work를 close하지 않는다.
 - `DEC`, `JOURNEY-CARD`, Change Unit block, `TASK`의 Autonomy Boundary text는 judgment latitude만 설명한다. Write Authority Summary와 Write Authorization display는 별도로 남고, scope와 approval은 별도 owner record와 gate로 남는다.
 - Write Authority Summary text는 current scope, approval, baseline, guarantee, Write Authorization ref에서 만든 display다. Work를 authorize하거나, evidence를 prove하거나, verification 또는 Manual QA를 replace하거나, acceptance를 imply하거나, residual risk를 accept하지 않는다.
-- Residual-risk text는 residual-risk record와 accepted-risk ref에서 만든 projection이다. Detached verification이나 acceptance를 만들지 않는다.
+- Residual-risk text는 residual-risk record와 그 record 위의 accepted-risk metadata/refs에서 만든 projection이다. Detached verification이나 acceptance를 만들지 않는다.
 - `EVAL`은 independence context를 보여줘야 한다. Passed verdict만으로는 `detached_verified`가 생기지 않기 때문이다.
 - `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `DIRECT-RESULT`는 large evidence를 embed하지 않고 artifact ref로 evidence file에 link한다.

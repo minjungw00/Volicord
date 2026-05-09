@@ -585,6 +585,7 @@ CREATE TABLE artifact_links (
 
 CREATE TABLE task_events (
   event_id TEXT PRIMARY KEY,
+  event_seq INTEGER NOT NULL UNIQUE,
   task_id TEXT,
   state_version INTEGER NOT NULL,
   event_type TEXT NOT NULL,
@@ -726,9 +727,9 @@ CREATE TABLE locks (
 
 `tasks.state_version`은 task-scoped state clock입니다. Task-scoped mutations는 `expected_state_version`을 Core-resolved primary Task의 `tasks.state_version`과 비교하고, resolved primary Task가 없는 project-scoped mutations는 `project_state.state_version`과 비교합니다.
 
-`task_events`는 `state.sqlite` 안의 append-only event history로 남습니다. MVP는 별도의 event store를 도입하지 않습니다. `task_events.state_version`은 affected scope의 resulting version을 기록합니다. Task events에서는 `tasks.state_version`이고, `task_id=null`인 project-level events에서는 `project_state.state_version`입니다.
+`task_events`는 `state.sqlite` 안의 append-only event history로 남습니다. MVP는 별도의 event store를 도입하지 않습니다. `task_events.event_seq`는 database 안 모든 events의 deterministic global append sequence입니다. Core는 state change와 같은 write transaction 안에서 이를 allocate하며, Journey reconstruction, API event lists, conformance ordering은 timestamps가 아니라 ascending `event_seq`를 사용합니다. `task_events.state_version`은 affected scope의 resulting version을 기록합니다. Task events에서는 `tasks.state_version`이고, `task_id=null`인 project-level events에서는 `project_state.state_version`입니다. 여러 events가 같은 affected-scope `state_version`을 공유할 수 있지만 `event_seq`가 여전히 순서를 정의합니다.
 
-`tool_invocations`는 original committed response를 반환하는 데 필요한 request replay metadata를 저장합니다. `tool_invocations.request_hash`는 MCP API idempotency rules가 정의한 canonical request hash를 저장합니다. 즉 canonical JSON, UTF-8, `tool_name`, schema-normalized request body와 optional fields, sorted object keys, schema가 명시적으로 order-insignificant라고 하지 않는 한 schema-ordered arrays, NFC Unicode strings, 그리고 `request_id`와 `idempotency_key`만 제외하는 envelope coverage를 사용합니다. `tool_invocations.state_version`은 `ToolResponseBase.state_version`에 반환되는 것과 같은 primary affected-scope version을 저장합니다. Core가 primary Task를 resolve하면 Task State Version이고, 그렇지 않으면 Project State Version입니다. 다른 `request_hash`로 idempotency key를 reuse하면 `STATE_CONFLICT`를 반환합니다.
+`tool_invocations`는 original committed response를 반환하는 데 필요한 request replay metadata를 저장합니다. Committed non-dry-run tool calls만 `tool_invocations`를 create 또는 update합니다. `dry_run=true`는 replay row를 만들지 않고 authoritative replay를 위한 idempotency key를 consume하지 않습니다. 구현이 non-authoritative diagnostics를 보관하더라도 `tool_invocations`에 저장하거나 state-changing responses replay에 사용하면 안 됩니다. `tool_invocations.request_hash`는 MCP API idempotency rules가 정의한 canonical request hash를 저장합니다. 즉 canonical JSON, UTF-8, `tool_name`, schema-normalized request body와 optional fields, sorted object keys, schema가 명시적으로 order-insignificant라고 하지 않는 한 schema-ordered arrays, NFC Unicode strings, 그리고 `request_id`와 `idempotency_key`만 제외하는 envelope coverage를 사용합니다. `tool_invocations.state_version`은 `ToolResponseBase.state_version`에 반환되는 것과 같은 primary affected-scope version을 저장합니다. Core가 primary Task를 resolve하면 Task State Version이고, 그렇지 않으면 Project State Version입니다. 다른 `request_hash`로 idempotency key를 reuse하면 `STATE_CONFLICT`를 반환합니다.
 
 `tasks.projection_version`은 older TASK render가 newer render를 replace하지 못하게 하는 TASK projection/template/job version입니다. State clock이 아닙니다. `tasks.projected_version`은 retained되는 경우 TASK projection summary의 last rendered source state version cache일 뿐입니다. 모든 task-related `ProjectionKind`의 storage location으로 취급하면 안 됩니다.
 
@@ -748,7 +749,9 @@ Write Authorizations는 storage상 single-use입니다. `runs.write_authorizatio
 
 `decision_packets`는 blocking product judgment를 위한 canonical state table이며 `decision_gate`의 authority path입니다. `decision_requests`는 implementation handoff, replay, legacy request flow를 위한 optional interaction/routing compatibility table이며, minimal MVP 구현은 이를 생략할 수 있습니다. `decision_request`만으로는 `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, close를 절대 만족하지 않습니다. `decision_gate` aggregation은 linked compatible `decision_packet_id`를 통하지 않고는 `decision_requests` rows를 절대 읽지 않습니다. Compatible `decision_packets`와 currently detected blockers만 `decision_gate` authority path에 feed됩니다. Blocking product judgment가 있으면 Core는 compatible Decision Packet을 create하거나 associate해야 합니다. Approval decisions는 `approvals.decision_packet_id`를 통해 Decision Packets에 link됩니다. `decision_request_id`는 routing metadata로 남을 수 있지만 approval authority path는 아닙니다. `decision_requests`를 유지한다면 `decision_requests.decision_packet_id`는 routing 또는 replay staging 동안 nullable일 수 있지만, unlinked rows는 non-authoritative이며 gate aggregation이 읽으면 안 됩니다. `decision_requests`를 생략한다면 그 indexes도 생략하고 `approvals.decision_request_id`, `decision_packets.decision_request_id` 같은 nullable compatibility fields는 비워 둡니다.
 
-`residual_risks`는 close-relevant remaining uncertainty, accepted risk, follow-up requirements, close impact를 위한 canonical table입니다. Decision Packets는 `decision_packets.residual_risk_refs_json`을 통해 residual risks를 reference할 수 있지만, 유일한 canonical residual-risk payload를 Decision Packet 안에 묻어 두면 안 됩니다.
+`residual_risks`는 close-relevant remaining uncertainty, accepted risk, follow-up requirements, close impact를 위한 canonical table입니다. MVP에서 accepted-risk identity는 `residual_risk_id`입니다. 별도의 `accepted_risks` table이나 `ARISK-*` canonical record는 없습니다. `residual_risks.accepted_risk_json`, `status`, `accepted_at`은 residual-risk row에 accepted-risk metadata/state를 저장합니다. Decision Packets는 `decision_packets.residual_risk_refs_json`을 통해 residual risks를 reference할 수 있지만, 유일한 canonical residual-risk payload를 Decision Packet 안에 묻어 두면 안 됩니다.
+
+MVP final acceptance에는 `acceptance_records` table이 없습니다. `record_user_decision(decision_kind=acceptance)`는 user answer를 `decision_packets.decision_json`, `decided_at`을 포함한 canonical Decision Packet path에 저장하고, `task_gates.acceptance_gate`를 update하며, `acceptance_recorded` 같은 `state.sqlite.task_events`를 append합니다. Close는 그 gate와 관련 Decision Packet, event history를 읽으며 별도 acceptance row를 찾지 않습니다.
 
 `artifact_links`는 artifacts를 위한 queryable many-to-many attachment table입니다. `run`, `decision_packet`, `shared_design`, `residual_risk`, `evidence_manifest`, `tdd_trace`, `manual_qa_record`, `eval`, `export` records에 artifacts를 attach할 때 사용합니다. Existing `artifact_refs_json` fields는 ordered 또는 record-local context를 보존할 수 있지만, multi-record artifact reuse와 artifact integrity checks에는 `artifact_links`를 사용해야 합니다.
 
@@ -762,6 +765,7 @@ Recommended indexes:
 
 ```sql
 CREATE INDEX idx_task_events_task_version ON task_events(task_id, state_version);
+CREATE INDEX idx_task_events_task_seq ON task_events(task_id, event_seq);
 CREATE INDEX idx_decision_requests_task_status ON decision_requests(task_id, status); -- optional; decision_requests를 생략하면 omit
 CREATE INDEX idx_decision_requests_packet ON decision_requests(decision_packet_id); -- optional; decision_requests를 생략하면 omit
 CREATE INDEX idx_decision_packets_task_status ON decision_packets(task_id, status);
@@ -787,7 +791,9 @@ CREATE INDEX idx_manual_qa_records_task_change_unit ON manual_qa_records(task_id
 CREATE INDEX idx_reconcile_items_status ON reconcile_items(status);
 ```
 
-`task_events`는 application policy상 append-only입니다. Recovery는 compensating events를 append할 수 있지만 historical rows를 rewrite하면 안 됩니다.
+`task_events`는 application policy상 append-only입니다. `event_seq`는 monotonically allocated되며 절대 reused되지 않습니다. Recovery는 새 `event_seq` values를 가진 compensating events를 append하며 historical rows나 historical order를 rewrite하면 안 됩니다.
+
+Deterministic event order는 ascending `task_events.event_seq`입니다. `state_version`은 affected-scope concurrency/result clock이고 `created_at`은 audit metadata입니다. 여러 events가 같은 state version이나 timestamp를 공유할 수 있으므로 어느 field도 conformance ordering에는 충분하지 않습니다.
 
 Reference MVP event storage는 [Kernel Stable Event Catalog](03-kernel-spec.md#stable-event-catalog)를 따릅니다. Stable events는 계속 `state.sqlite.task_events` rows이며, 별도 event store는 도입하지 않습니다. Write Authorization lifecycle vocabulary는 그대로 다음과 같습니다.
 

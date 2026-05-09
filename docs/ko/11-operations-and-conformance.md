@@ -169,7 +169,7 @@ Export는 Task에 대한 review 또는 archival bundle을 만듭니다.
 
 - created time, task id, projection freshness, redaction summary가 있는 export manifest
 - Task와 related record의 state snapshot
-- Decision Packets, user decisions, residual risks, accepted-risk refs, Journey Spine entries 또는 continuity refs, 관련 Change Unit Autonomy Boundary summary
+- Decision Packets, user decisions, accepted-risk metadata/refs가 포함된 residual risks, Journey Spine entries 또는 continuity refs, 관련 Change Unit Autonomy Boundary summary
 - relevant report의 projection snapshot
 - artifact reference와 허용되는 경우 포함된 raw artifact file
 - artifact integrity manifest
@@ -216,7 +216,7 @@ expected_error: object | null
 
 Fixture file과 suite catalog는 fixture body 밖에 metadata를 가질 수 있습니다. Fixture body 자체는 위 field만 사용해야 conformance runner가 behavior를 일관되게 비교할 수 있습니다.
 
-Fixture seed shorthand: 예시는 문서 가독성을 위해 compact `owner_records`, `stewardship_findings`, feedback-loop shorthand를 사용할 수 있습니다. 실행 가능한 fixture file은 이 shorthand를 owner record, validator run, residual risk, 또는 DDL/API 문서가 소유하는 다른 record로 mapping해야 합니다. Shorthand는 두 번째 state model을 만들면 안 됩니다. `StewardshipImpactSummary` assertion은 derived display이지 canonical current record가 아니며 `expected_state.derived` 또는 projection assertion 아래에 두어야 합니다.
+Fixture seed shorthand: 예시는 문서 가독성을 위해 compact `owner_records`, `stewardship_findings`, feedback-loop shorthand를 사용할 수 있습니다. 실행 가능한 fixture file은 이 shorthand를 owner record, validator run, residual risk, 또는 DDL/API 문서가 소유하는 다른 record로 mapping해야 합니다. Shorthand는 두 번째 state model을 만들면 안 됩니다. `StewardshipImpactSummary` assertion은 derived display이지 canonical current record가 아니며 `expected_state.derived` 또는 projection assertion 아래에 두어야 합니다. Fixture shorthand의 accepted residual-risk refs는 accepted-risk metadata/state를 가진 `residual_risk` records에 대한 refs입니다. Executable MVP fixtures는 standalone `ARISK-*` records를 요구하면 안 됩니다.
 
 `write_authorizations`를 seed하는 executable fixtures는 valid stored rows를 만들어야 합니다. 각 seeded authorization row는 `basis_state_version`을 명시적으로 포함하거나, runner가 `state.sqlite`에 insert하기 전에 row의 Task에 대한 seeded affected-scope state version에서 이를 derive해야 합니다. 이는 storage-loader derivation rule일 뿐이며 fixture top-level field를 추가하거나 fixture body shape를 바꾸지 않습니다. Partial `expected_state.write_authorization` assertions는 idempotent replay, stale detection, expiry, audit behavior를 test하지 않는 한 `basis_state_version`을 생략할 수 있습니다. `basis_state_version`은 allow-decision basis이지 resulting `ToolResponseBase.state_version`이 아닙니다.
 
@@ -260,12 +260,14 @@ Default comparison modes:
 | Fixture field | Default assertion mode |
 |---|---|
 | `expected_state` | `partial_deep`; 나열된 field는 recursively match해야 하며 나열되지 않은 field는 assert하지 않습니다. Suite metadata가 `expected_state: exact`로 설정할 수 있습니다. |
-| `expected_events` | `contains_ordered`; 나열된 event는 appended `task_events` 순서대로 나타나야 하며 unrelated event가 앞, 사이, 뒤에 있어도 됩니다. Suite metadata가 `expected_events: exact`로 설정할 수 있습니다. |
+| `expected_events` | `contains_ordered`; 나열된 event는 ascending `task_events.event_seq` 순서대로 나타나야 하며 unrelated event가 앞, 사이, 뒤에 있어도 됩니다. Suite metadata가 `expected_events: exact`로 설정할 수 있습니다. |
 | `expected_artifacts` | `contains_by_identity`; 나열된 각 artifact는 같은 `artifact_id`와 `kind`를 가진 registered artifact와 match해야 하며, 그 밖에 나열된 artifact field는 recursively match합니다. |
 | `expected_projection` | `partial_by_kind`; 나열된 각 projection kind는 해당 kind에 대해 나열된 status assertion 또는 partial object assertion을 만족해야 합니다. |
 | `expected_error` | `expected_error: null`은 action이 error를 반환하지 않았음을 assert합니다. `expected_error`가 object이면 `expected_error.code`는 required이며 API가 소유한 [Primary Error Code Precedence](05-mcp-api-and-schemas.md#primary-error-code-precedence)에 따라 선택된 primary `ToolError.code`, 즉 response에 errors가 있으면 `ToolResponseBase.errors[0].code`와 exact match합니다. Arbitrary secondary error와 match하면 안 됩니다. `expected_error.details`는 optional입니다. Omitted이면 details field는 assert하지 않습니다. `details`가 present이면 suite metadata가 `expected_error.details: exact`로 설정하지 않는 한 `partial_deep`으로 match합니다. |
 
 `expected_events`는 [Kernel Stable Event Catalog](03-kernel-spec.md#stable-event-catalog)의 names만 요구할 수 있습니다. Validator IDs, Core check names, projection status shorthands, fixture seed shorthand, scenario catalog IDs는 event names가 아닙니다. Prose examples는 non-catalog event names를 illustrative 또는 future extension ideas로 언급할 수 있지만, executable MVP fixtures는 kernel catalog가 promote하기 전까지 이를 요구하면 안 됩니다.
+
+Conformance runner는 captured `task_events`를 `event_seq`로 order합니다. `state_version`, `created_at`, `event_id`는 `expected_events` ordering의 tie-breaker가 아닙니다.
 
 Fixture authors는 API precedence가 generic validator fallback을 선택할 때만 `VALIDATOR_FAILED`를 `expected_error.code`로 사용해야 합니다. `EVIDENCE_INSUFFICIENT`, `QA_REQUIRED`, `PROJECTION_STALE`, `ARTIFACT_MISSING` 같은 더 specific한 typed blocker가 적용되면 그 code가 primary입니다.
 
@@ -525,12 +527,12 @@ initial_state:
       close_relevant: true
       visibility: visible
       accepted: true
-      accepted_risk_ref: ARISK-VERIFY-001
+      accepted_residual_risk_ref: RISK-VERIFY-001
   decision_packets:
     - decision_packet_id: DEC-VERIFY-WAIVER-001
       decision_kind: verification_waiver
       status: resolved
-      accepted_risk_refs: [ARISK-VERIFY-001]
+      accepted_residual_risk_refs: [RISK-VERIFY-001]
     - decision_packet_id: DEC-RISK-ACCEPT-001
       decision_kind: residual_risk_acceptance
       status: resolved
@@ -538,7 +540,7 @@ initial_state:
 input:
   close_intent: accept_verification_risk
   waiver_reason: "User accepts remaining verification risk for urgent local-only fix."
-  accepted_risk_refs: [ARISK-VERIFY-001]
+  accepted_residual_risk_refs: [RISK-VERIFY-001]
 action: close_task
 expected_state:
   lifecycle_phase: completed
@@ -547,7 +549,7 @@ expected_state:
   assurance_level: self_checked
   residual_risk_summary:
     status: accepted
-    accepted_refs: [ARISK-VERIFY-001]
+    accepted_refs: [RISK-VERIFY-001]
 expected_events:
   - close_requested
   - risk_accepted_close_recorded
@@ -580,7 +582,7 @@ initial_state:
     - decision_packet_id: DEC-VERIFY-WAIVER-002
       decision_kind: verification_waiver
       status: resolved
-      accepted_risk_refs: []
+      accepted_residual_risk_refs: []
 input:
   close_intent: accept_verification_risk
   waiver_reason: "User accepts remaining verification risk for urgent local-only fix."

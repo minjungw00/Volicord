@@ -83,7 +83,7 @@ proposed | pending_user | resolved | deferred | rejected | blocked | superseded
 
 ### Journey Spine
 
-Journey Spine은 Task의 ordered work journey를 state에서 파생해 이어 주는 continuity model입니다. Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, Acceptance, Close, artifact references, `state.sqlite.task_events`에서 재구성됩니다.
+Journey Spine은 Task의 ordered work journey를 state에서 파생해 이어 주는 continuity model입니다. Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, `task_gates.acceptance_gate`, acceptance Decision Packet user-decision state, close events, artifact references, `state.sqlite.task_events`에서 재구성됩니다.
 
 Journey Spine은 별도의 source of truth가 아닙니다. Journey Card와 Journey Spine Markdown views는 projections입니다. 이들은 사람이 work를 resume하고 inspect하는 데 도움을 주지만 Task state, gate fields, Decision Packets, Evidence Manifests, Residual Risk records, artifact records, `state.sqlite.task_events`를 override하지 않습니다.
 
@@ -91,7 +91,7 @@ Journey Spine은 별도의 source of truth가 아닙니다. Journey Card와 Jour
 
 Journey Spine Entry는 existing state events나 source records만으로 완전히 재구성하기 어려운 durable continuity annotations를 위한 canonical support record입니다. annotation kind, ordering relationship, source refs, affected scope, summary, actor, time, artifact refs를 기록할 수 있습니다.
 
-Journey Spine Entry records는 reconstruction을 보완합니다. Task state, Change Units, Runs, Decision Packets, Residual Risk, evidence, verification, QA, acceptance, close, artifacts의 owner records를 대체하지 않습니다.
+Journey Spine Entry records는 reconstruction을 보완합니다. Task state, Change Units, Runs, Decision Packets, Residual Risk, evidence, verification, QA, acceptance gate/decision state, close state/events, artifacts의 owner records를 대체하지 않습니다.
 
 ### Run
 
@@ -150,6 +150,8 @@ Manual QA는 UX, workflow, copy, accessibility, visual output, product taste 또
 Residual Risk는 known remaining uncertainty, trade-off, limitation, unchecked condition을 위한 canonical close-relevant support record입니다. source refs, affected scope, applicable한 경우 related Decision Packet, visibility status, accepted risk, follow-up requirement, close impact를 기록합니다.
 
 Residual Risk records는 acceptance 또는 risk-accepted close 전에 remaining risk를 보이게 합니다. 이 records는 detached verification을 만들지 않고, evidence를 대체하지 않고, QA를 waive하지 않고, sensitive approval을 grant하지 않고, final acceptance를 뜻하지도 않습니다.
+
+Accepted risk는 MVP에서 별도의 canonical state record가 아닙니다. Risk acceptance는 관련 Residual Risk record의 accepted-risk metadata/status를 update하고 residual-risk acceptance events를 append할 수 있습니다. API 또는 projection에 남아 있는 public accepted-risk ref field는 `accepted_risk` 또는 `ARISK-*` record가 아니라 `record_kind=residual_risk`인 `StateRecordRef`를 가리켜야 합니다.
 
 ### Artifact
 
@@ -382,6 +384,8 @@ not_required | required | pending | accepted | rejected
 
 `acceptance_gate`는 acceptance가 required인 곳에서 사용자의 final acceptance judgment를 기록합니다. QA나 verification을 대체하지 않습니다.
 
+MVP final acceptance는 canonical Decision Packet user-decision path, Task의 `acceptance_gate`, `state.sqlite.task_events`를 통해 저장됩니다. Kernel은 MVP에서 별도의 Acceptance state record를 정의하지 않습니다.
+
 Residual-risk visibility는 두 가지 방식으로 satisfied됩니다. Known close-relevant Residual Risk가 없으면 current judgment context가 `ResidualRiskSummary.status=none`을 report합니다. Known close-relevant Residual Risk가 있으면 successful close 전에 그 risk가 current judgment context에서 visible해야 합니다. Acceptance가 required라면 close-relevant residual risk가 visible하거나 `ResidualRiskSummary.status=none`으로 confirmed된 뒤에만 record될 수 있습니다. Risk-accepted close에는 additionally visible하고 accepted된 Residual Risk refs가 필요하며, residual-risk acceptance는 assurance를 `detached_verified`로 upgrade하지 않습니다. `ResidualRiskSummary.status=none`은 known close-relevant risk를 숨기거나 대체하면 안 됩니다.
 
 ### Capability Boundary
@@ -480,6 +484,8 @@ Capability는 kernel이 write를 허용할지, rule을 얼마나 강하게 enfor
 State transitions는 current state changes와 같은 transaction 안에서 `state.sqlite.task_events`에 event를 append합니다.
 
 각 transition은 올바른 affected-scope clock을 increment합니다. Task-scoped transitions는 Task State Version을 increment하고, Task가 없는 project-level transitions는 Project State Version을 increment합니다. Appended event는 해당 affected scope의 resulting version을 가집니다.
+
+Event ordering은 storage가 기록한 deterministic append order입니다. Timestamps는 audit metadata일 뿐이며 Journey reconstruction, API event lists, conformance `expected_events`에서 사용하는 order를 정의하면 안 됩니다.
 
 Write Authorization lifecycle events는 다음 kernel event vocabulary를 사용합니다.
 

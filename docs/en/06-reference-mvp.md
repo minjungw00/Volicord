@@ -587,6 +587,7 @@ CREATE TABLE artifact_links (
 
 CREATE TABLE task_events (
   event_id TEXT PRIMARY KEY,
+  event_seq INTEGER NOT NULL UNIQUE,
   task_id TEXT,
   state_version INTEGER NOT NULL,
   event_type TEXT NOT NULL,
@@ -728,9 +729,9 @@ CREATE TABLE locks (
 
 `tasks.state_version` is the task-scoped state clock. Task-scoped mutations compare `expected_state_version` with the Core-resolved primary Task's `tasks.state_version`; project-scoped mutations with no resolved primary Task compare it with `project_state.state_version`.
 
-`task_events` remains append-only event history inside `state.sqlite`; MVP does not introduce a separate event store. `task_events.state_version` records the resulting version for the affected scope. For task events this is `tasks.state_version`; for project-level events with `task_id=null` this is `project_state.state_version`.
+`task_events` remains append-only event history inside `state.sqlite`; MVP does not introduce a separate event store. `task_events.event_seq` is the deterministic global append sequence for all events in the database. Core allocates it under the same write transaction as the state change, and Journey reconstruction, API event lists, and conformance ordering use ascending `event_seq`, never timestamps. `task_events.state_version` records the resulting version for the affected scope. For task events this is `tasks.state_version`; for project-level events with `task_id=null` this is `project_state.state_version`. Multiple events may share an affected-scope `state_version`; `event_seq` still defines their order.
 
-`tool_invocations` stores request replay metadata needed to return the original committed response. `tool_invocations.request_hash` stores the canonical request hash defined by the MCP API idempotency rules: canonical JSON, UTF-8, `tool_name`, schema-normalized request body and optional fields, sorted object keys, schema-ordered arrays unless explicitly order-insignificant, NFC Unicode strings, and envelope coverage that excludes only `request_id` and `idempotency_key`. `tool_invocations.state_version` stores the same primary affected-scope version returned in `ToolResponseBase.state_version`: Task State Version when Core resolves a primary Task, otherwise Project State Version. Reusing an idempotency key with a different `request_hash` returns `STATE_CONFLICT`.
+`tool_invocations` stores request replay metadata needed to return the original committed response. Only committed, non-dry-run tool calls create or update `tool_invocations`; `dry_run=true` creates no replay row and does not consume the idempotency key for authoritative replay. Non-authoritative diagnostics, if an implementation keeps them, must not be stored in `tool_invocations` or used to replay state-changing responses. `tool_invocations.request_hash` stores the canonical request hash defined by the MCP API idempotency rules: canonical JSON, UTF-8, `tool_name`, schema-normalized request body and optional fields, sorted object keys, schema-ordered arrays unless explicitly order-insignificant, NFC Unicode strings, and envelope coverage that excludes only `request_id` and `idempotency_key`. `tool_invocations.state_version` stores the same primary affected-scope version returned in `ToolResponseBase.state_version`: Task State Version when Core resolves a primary Task, otherwise Project State Version. Reusing an idempotency key with a different `request_hash` returns `STATE_CONFLICT`.
 
 `tasks.projection_version` is the TASK projection/template/job version used to prevent older TASK renders from replacing newer ones. It is not a state clock. `tasks.projected_version`, if retained, is only the TASK projection summary cache of the last rendered source state version. It must not be treated as the storage location for every task-related `ProjectionKind`.
 
@@ -748,7 +749,9 @@ Write Authorizations are single-use for storage. The unique partial index on `ru
 
 `decision_packets` is the canonical state table for blocking product judgment and the authority path for `decision_gate`. `decision_requests` is an optional interaction/routing compatibility table for implementation handoff, replay, or legacy request flow; a minimal MVP implementation may omit it. A `decision_request` alone never satisfies `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close. `decision_requests` rows are never read by `decision_gate` aggregation except through a linked compatible `decision_packet_id`. Only compatible `decision_packets` plus currently detected blockers feed the `decision_gate` authority path. Core must create or associate a compatible Decision Packet when blocking product judgment exists. Approval decisions link to Decision Packets through `approvals.decision_packet_id`; `decision_request_id` may remain as routing metadata but is not the approval authority path. If `decision_requests` is kept, `decision_requests.decision_packet_id` may remain nullable for routing or replay staging, but unlinked rows are non-authoritative and must not be read by gate aggregation. If `decision_requests` is omitted, omit its indexes and leave nullable compatibility fields such as `approvals.decision_request_id` and `decision_packets.decision_request_id` empty.
 
-`residual_risks` is the canonical table for close-relevant remaining uncertainty, accepted risk, follow-up requirements, and close impact. Decision Packets may reference residual risks through `decision_packets.residual_risk_refs_json`; they must not bury the only canonical residual-risk payload inside the Decision Packet.
+`residual_risks` is the canonical table for close-relevant remaining uncertainty, accepted risk, follow-up requirements, and close impact. Accepted-risk identity in MVP is the `residual_risk_id`; there is no separate `accepted_risks` table or `ARISK-*` canonical record. `residual_risks.accepted_risk_json`, `status`, and `accepted_at` store accepted-risk metadata/state on the residual-risk row. Decision Packets may reference residual risks through `decision_packets.residual_risk_refs_json`; they must not bury the only canonical residual-risk payload inside the Decision Packet.
+
+MVP final acceptance has no `acceptance_records` table. `record_user_decision(decision_kind=acceptance)` stores the user answer in the canonical Decision Packet path, including `decision_packets.decision_json` and `decided_at`, updates `task_gates.acceptance_gate`, and appends `state.sqlite.task_events` such as `acceptance_recorded`. Close reads that gate plus the relevant Decision Packet and event history; it does not look for a separate acceptance row.
 
 `artifact_links` is the queryable many-to-many attachment table for artifacts. Use it to attach artifacts to `run`, `decision_packet`, `shared_design`, `residual_risk`, `evidence_manifest`, `tdd_trace`, `manual_qa_record`, `eval`, and `export` records. Existing `artifact_refs_json` fields may preserve ordered or record-local context, but multi-record artifact reuse and artifact integrity checks should use `artifact_links`.
 
@@ -762,6 +765,7 @@ Recommended indexes:
 
 ```sql
 CREATE INDEX idx_task_events_task_version ON task_events(task_id, state_version);
+CREATE INDEX idx_task_events_task_seq ON task_events(task_id, event_seq);
 CREATE INDEX idx_decision_requests_task_status ON decision_requests(task_id, status); -- optional; omit when decision_requests is omitted
 CREATE INDEX idx_decision_requests_packet ON decision_requests(decision_packet_id); -- optional; omit when decision_requests is omitted
 CREATE INDEX idx_decision_packets_task_status ON decision_packets(task_id, status);
@@ -787,7 +791,9 @@ CREATE INDEX idx_manual_qa_records_task_change_unit ON manual_qa_records(task_id
 CREATE INDEX idx_reconcile_items_status ON reconcile_items(status);
 ```
 
-`task_events` is append-only by application policy. Recovery may append compensating events; it should not rewrite historical rows.
+`task_events` is append-only by application policy. `event_seq` is monotonically allocated and never reused. Recovery appends compensating events with new `event_seq` values; it should not rewrite historical rows or historical order.
+
+Deterministic event order is ascending `task_events.event_seq`. `state_version` is an affected-scope concurrency/result clock, and `created_at` is audit metadata; neither field is sufficient for conformance ordering when several events share a state version or timestamp.
 
 Reference MVP event storage follows the [Kernel Stable Event Catalog](03-kernel-spec.md#stable-event-catalog). Stable events remain rows in `state.sqlite.task_events`; no separate event store is introduced. The Write Authorization lifecycle vocabulary remains:
 

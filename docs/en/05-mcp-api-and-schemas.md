@@ -89,15 +89,16 @@ ToolResponseBase:
   projection_jobs: ProjectionJobRef[]
 ```
 
-`dry_run=true` validates and returns the transition plan but does not update current records, append to `state.sqlite.task_events`, register artifacts, create consumable Write Authorization records, or enqueue projection jobs.
+`dry_run=true` validates and returns the transition plan but does not update current records, append to `state.sqlite.task_events`, register artifacts, create consumable Write Authorization records, enqueue projection jobs, or create/update `tool_invocations` idempotency replay rows. Dry-run output is non-authoritative diagnostics; its `idempotency_key` is not consumed for replay.
 
-`ToolResponseBase.state_version` returns the resulting version for the primary affected scope. For state-changing operations this is the Task State Version when Core resolves a primary Task, otherwise the Project State Version. Read-only responses return the current `state_version` for the primary read scope and do not increment it.
+`ToolResponseBase.state_version` returns the resulting version for the primary affected scope. For state-changing operations this is the Task State Version when Core resolves a primary Task, otherwise the Project State Version. Read-only responses return the current `state_version` for the primary read scope and do not increment it. When `dry_run=true` validates or plans without mutation, `state_version` reports the current primary affected or read scope version; it does not imply a virtual resulting version, idempotency-key consumption, replay row, appended event, or would-be clock increment.
 
 ## Shared Schemas
 
 ```yaml
 EventRef:
   event_id: string
+  event_seq: integer
   event_type: string
   task_id: string | null
   state_version: integer
@@ -110,6 +111,8 @@ ProjectionJobRef:
 ```
 
 `EventRef.state_version` is the resulting version for the event's affected scope. Task events use `tasks.state_version`; project-level events with `task_id=null` use `project_state.state_version`.
+
+`EventRef.event_seq` mirrors `task_events.event_seq`. Responses list events in ascending `event_seq`; timestamps and `event_id` lexical order are never used for deterministic event ordering.
 
 Event stability for fixture assertions is owned by the [Kernel Stable Event Catalog](03-kernel-spec.md#stable-event-catalog). Tool sections below list possible `EventRef.event_type` values returned by that tool; names not present in the stable catalog are optional or illustrative extension events and must not be required by MVP `expected_events` fixtures. ValidatorResult IDs, Core check names, projection status shorthands, and fixture seed shorthand are not event names unless the kernel catalog explicitly lists them.
 
@@ -241,6 +244,8 @@ StateRecordRef:
   record_id: string
   projection_path: string | null
 ```
+
+MVP has no `accepted_risk` `StateRecordRef.record_kind`. Public fields named `accepted_risk_refs`, `accepted_refs`, or accepted-risk equivalents must use `StateRecordRef` entries with `record_kind=residual_risk`; accepted risk is metadata/state on those Residual Risk records.
 
 Evidence references, approval scope, write authorization, Write Authority Summary display, and end-to-end paths use these shared shapes:
 
@@ -446,6 +451,8 @@ AcceptanceVisibilityContext:
 ```
 
 `ResidualRiskSummary.status=none` means Core has no known close-relevant Residual Risk for the current Task and requested action. It satisfies residual-risk visibility for acceptance and ordinary successful close, with `close_relevant_count=0` and empty risk-ref arrays. It must not be returned when Core knows of hidden, blocked, or otherwise undisplayed close-relevant risk; those cases use `not_visible` or `blocked`.
+
+`ResidualRiskSummary.accepted_refs`, `unaccepted_refs`, and related acceptance visibility risk-ref arrays contain `StateRecordRef` entries with `record_kind=residual_risk`.
 
 Autonomy Boundary summaries describe judgment latitude, not scope authority. They do not authorize paths, tools, commands, network targets, secret access, or sensitive categories outside the active Change Unit scope and any required approval.
 
@@ -1142,7 +1149,7 @@ AcceptedRiskInput:
   evidence_refs: EvidenceRefs
 ```
 
-The payload branch must match `decision_kind`; other branches must be absent. `accepted_risks` is allowed only when the Decision Packet and current Judgment Context made the close-relevant residual risk visible before the user decision. For `decision_kind=acceptance`, Core may record acceptance only when close-relevant residual risk is visible or `ResidualRiskSummary.status=none` confirms no known close-relevant risk. Core records the answer against the canonical `DecisionPacket` identified by `decision_packet_id`; any `decision_requests` row is updated only as routing/replay metadata and cannot satisfy `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close without the linked compatible Decision Packet and owner-record updates. Core records accepted risk as residual-risk state refs; it does not treat risk acceptance as detached verification.
+The payload branch must match `decision_kind`; other branches must be absent. `accepted_risks` is allowed only when the Decision Packet and current Judgment Context made the close-relevant residual risk visible before the user decision. For `decision_kind=acceptance`, Core may record acceptance only when close-relevant residual risk is visible or `ResidualRiskSummary.status=none` confirms no known close-relevant risk. Core records the answer against the canonical `DecisionPacket` identified by `decision_packet_id`; any `decision_requests` row is updated only as routing/replay metadata and cannot satisfy `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close without the linked compatible Decision Packet and owner-record updates. Core records accepted risk by updating Residual Risk records and returning residual-risk state refs; it does not treat risk acceptance as detached verification. `AcceptedRiskInput.residual_risk_ref=null` is allowed only when the current Decision Packet and Judgment Context already made that close-relevant risk visible to the user and include enough source and evidence context for Core to create or associate a Residual Risk record in the same committed transition. If visibility or context is absent, Core must reject or block instead of silently creating and accepting a hidden risk.
 
 Response schema:
 
@@ -1157,7 +1164,7 @@ RecordUserDecisionResponse:
   next_action: string
 ```
 
-State transition summary: resolves, defers, rejects, or blocks the targeted Decision Packet; updates affected gates or reconcile item; approval grant/deny updates the linked Approval record and `approval_gate`, but does not create a Write Authorization; accepted scope updates `scope_gate`; user-resolved product judgment updates `decision_gate`; accepted Autonomy Boundary decisions may update the active Change Unit boundary; verification waiver updates `verification_gate=waived_by_user`; QA waiver updates `qa_gate`; acceptance updates `acceptance_gate`; accepted residual risk records accepted-risk refs without upgrading assurance; reconcile may create accepted state records.
+State transition summary: resolves, defers, rejects, or blocks the targeted Decision Packet; updates affected gates or reconcile item; approval grant/deny updates the linked Approval record and `approval_gate`, but does not create a Write Authorization; accepted scope updates `scope_gate`; user-resolved product judgment updates `decision_gate`; accepted Autonomy Boundary decisions may update the active Change Unit boundary; verification waiver updates `verification_gate=waived_by_user`; QA waiver updates `qa_gate`; acceptance records the user decision on the Decision Packet and updates `acceptance_gate`; accepted residual risk updates Residual Risk records and returns their refs without upgrading assurance; reconcile may create accepted state records.
 
 Events emitted: `user_decision_recorded`, `decision_packet_resolved`, `decision_packet_deferred`, `decision_packet_rejected`, `approval_granted`, `approval_denied`, `scope_confirmed`, `scope_rejected`, `design_choice_recorded`, `architecture_choice_recorded`, `autonomy_boundary_decision_recorded`, `verification_waiver_recorded`, `qa_waiver_recorded`, `acceptance_recorded`, `residual_risk_accepted`, `reconcile_resolved`.
 
