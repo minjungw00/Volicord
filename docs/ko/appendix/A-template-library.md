@@ -260,18 +260,22 @@ Long-running `work` task에는 이 section을 사용한다. 명시적으로 huma
   - read
   - edit
   - shell: `npm test -- ...`
-- validator profile:
+- check profile:
   - changed_paths
   - approval_scope
+  - evidence_sufficiency
+- ValidatorResult IDs:
   - vertical_slice_shape
+  - shared_design_alignment
   - decision_quality_check
   - autonomy_boundary_check
   - feedback_loop_check
   - tdd_trace_required
+  - domain_language_consistency
   - module_interface_review
   - codebase_stewardship_check
   - residual_risk_visibility_check
-  - evidence_sufficiency
+  - manual_qa_required
 - sensitive categories:
   - none
 - TDD:
@@ -417,21 +421,27 @@ updated_at: 2026-05-06T09:45:10+09:00
 npm test -- --runInBand
 ```
 
-## Validator Outcomes
+## Checks And Validator Outcomes
+### Core Checks And Command Checks
 - changed_paths:
 - approval_scope:
-- vertical_slice_shape:
-- decision_quality_check:
-- autonomy_boundary_check:
-- feedback_loop_check:
-- tdd_trace_required:
-- module_interface_review:
-- codebase_stewardship_check:
-- residual_risk_visibility_check:
 - lint:
 - test:
 - build:
 - evidence_sufficiency:
+
+### ValidatorResult IDs
+- vertical_slice_shape:
+- shared_design_alignment:
+- decision_quality_check:
+- autonomy_boundary_check:
+- feedback_loop_check:
+- tdd_trace_required:
+- domain_language_consistency:
+- module_interface_review:
+- codebase_stewardship_check:
+- residual_risk_visibility_check:
+- manual_qa_required:
 
 ## TDD Trace Summary
 - required:
@@ -581,7 +591,8 @@ updated_at: 2026-05-06T10:05:00+09:00
 - source bundle:
 - parent run:
 
-## Checks Performed
+## Checks And Validator Outcomes
+### Core Checks And Preconditions
 - [ ] changed_paths
 - [ ] approval_scope
 - [ ] same_session_verify_guard
@@ -589,19 +600,24 @@ updated_at: 2026-05-06T10:05:00+09:00
 - [ ] bundle_integrity
 - [ ] acceptance_review
 - [ ] baseline_freshness
+- [ ] public_interface_change_review
+- [ ] lint
+- [ ] test
+- [ ] build
+
+### ValidatorResult IDs
 - [ ] vertical_slice_shape
+- [ ] shared_design_alignment
 - [ ] decision_quality_check
 - [ ] autonomy_boundary_check
 - [ ] feedback_loop_check
 - [ ] tdd_trace_required
+- [ ] domain_language_consistency
 - [ ] module_interface_review
 - [ ] codebase_stewardship_check
 - [ ] residual_risk_visibility_check
-- [ ] public_interface_change_review
 - [ ] manual_qa_required
-- [ ] lint
-- [ ] test
-- [ ] build
+- [ ] surface_capability_check
 
 ## Evidence Reviewed
 - task summary:
@@ -680,12 +696,16 @@ updated_at: 2026-05-06T09:40:00+09:00
 ## Changed Files
 - `path/to/file`
 
-## Checks Performed
+## Checks And Validator Outcomes
+### Core Checks And Command Checks
 - changed_paths:
 - approval_scope:
 - test:
 - build:
+
+### ValidatorResult IDs
 - context_hygiene_check:
+- surface_capability_check:
 
 ## Outcome
 - result summary:
