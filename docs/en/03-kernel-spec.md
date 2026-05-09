@@ -65,7 +65,7 @@ A Decision Packet is the canonical state entity for blocking product judgment. I
 
 Decision Packets feed `decision_gate`. A blocking product judgment cannot be satisfied by chat text, broad approval, or projection prose alone. The recorded Decision Packet and its resolution, deferral, or blocked status are the kernel authority path for that judgment.
 
-If an implementation keeps `decision_requests`, they are routing, interaction, replay, or legacy handoff metadata only. They are not authority for product judgment, and a `decision_request` row alone never satisfies `decision_gate`.
+Minimal MVP implementations may omit `decision_requests`. If an implementation keeps them, they are routing, interaction, replay, or legacy handoff metadata only. They are not authority for product judgment, and a `decision_request` row alone never satisfies `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close.
 
 Decision Packet status is record-level:
 

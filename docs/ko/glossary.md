@@ -110,7 +110,7 @@ Blocking product judgment를 지원하기 위해 기록하는 decision-support p
 
 ### Decision Request
 
-Canonical Decision Packet을 가리킬 수 있는 routing, interaction, idempotency replay, legacy handoff metadata입니다. Decision Request는 decision authority가 아니며 그 자체로 `decision_gate`를 절대 satisfy하지 않습니다. Gate aggregation에는 linked compatible `decision_packet_id`를 통해서만 relevant합니다.
+Canonical Decision Packet을 가리킬 수 있는 optional routing, interaction, idempotency replay, legacy handoff metadata입니다. Minimal MVP 구현은 이를 생략할 수 있습니다. Decision Request는 decision authority가 아니며 그 자체로 `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, close를 절대 satisfy하지 않습니다. Gate aggregation에는 linked compatible `decision_packet_id`를 통해서만 relevant합니다.
 
 ### Design Gate
 

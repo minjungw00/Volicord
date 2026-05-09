@@ -110,7 +110,7 @@ A recorded decision-support packet for blocking product judgment. It names the d
 
 ### Decision Request
 
-Routing, interaction, idempotency replay, or legacy handoff metadata that may point to a canonical Decision Packet. A Decision Request is not decision authority, never satisfies `decision_gate` by itself, and is only relevant to gate aggregation through a linked compatible `decision_packet_id`.
+Optional routing, interaction, idempotency replay, or legacy handoff metadata that may point to a canonical Decision Packet. A minimal MVP implementation may omit it. A Decision Request is not decision authority, never satisfies `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close by itself, and is only relevant to gate aggregation through a linked compatible `decision_packet_id`.
 
 ### Design Gate
 

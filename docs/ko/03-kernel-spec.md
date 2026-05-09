@@ -65,7 +65,7 @@ Decision Packet은 blocking product judgment를 위한 canonical state entity입
 
 Decision Packets는 `decision_gate`에 feed됩니다. Blocking product judgment는 chat text, broad approval, projection prose만으로 충족될 수 없습니다. Recorded Decision Packet과 그 resolution, deferral, blocked status가 해당 judgment에 대한 kernel authority path입니다.
 
-구현이 `decision_requests`를 유지한다면 이 rows는 routing, interaction, replay, legacy handoff metadata일 뿐입니다. Product judgment authority가 아니며, `decision_request` row만으로는 `decision_gate`를 절대 만족하지 않습니다.
+Minimal MVP 구현은 `decision_requests`를 생략할 수 있습니다. 구현이 이를 유지한다면 이 rows는 routing, interaction, replay, legacy handoff metadata일 뿐입니다. Product judgment authority가 아니며, `decision_request` row만으로는 `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, close를 절대 만족하지 않습니다.
 
 Decision Packet status는 record-level입니다.
 

@@ -369,6 +369,7 @@ CREATE TABLE approvals (
   approval_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   change_unit_id TEXT,
+  -- Optional compatibility ref; decision_requests를 생략하면 null로 둡니다.
   decision_request_id TEXT,
   decision_packet_id TEXT REFERENCES decision_packets(decision_packet_id),
   status TEXT NOT NULL,
@@ -385,8 +386,13 @@ CREATE TABLE approvals (
   decided_at TEXT
 );
 
+-- Optional compatibility/routing table: routing, interaction, replay, legacy handoff metadata only.
+-- Minimal MVP implementations may omit this table.
+-- decision_packet_id는 routing/replay staging 동안 null일 수 있으며, unlinked rows는 non-authoritative입니다.
+-- Gate aggregation은 linked compatible decision_packet_id를 통해서만 row를 고려할 수 있습니다.
 CREATE TABLE decision_requests (
   decision_request_id TEXT PRIMARY KEY,
+  decision_packet_id TEXT REFERENCES decision_packets(decision_packet_id),
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   change_unit_id TEXT,
   decision_kind TEXT NOT NULL,
@@ -409,6 +415,7 @@ CREATE TABLE decision_packets (
   decision_packet_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   change_unit_id TEXT,
+  -- Optional compatibility ref; decision_requests를 생략하면 null로 둡니다.
   decision_request_id TEXT,
   decision_kind TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -736,7 +743,7 @@ Implementation 및 direct `record_run` calls는 `runs.write_authorization_id`를
 
 Write Authorizations는 storage상 single-use입니다. `runs.write_authorization_id`의 unique partial index는 하나의 authorization을 둘 이상의 committed Run row가 consume하지 못하게 합니다. Idempotent replay는 original Run과 response metadata를 반환하며, 두 번째 Run row를 insert하지 않습니다.
 
-`decision_packets`는 blocking product judgment를 위한 canonical state table이며 `decision_gate`의 authority path입니다. `decision_requests`는 implementation handoff, replay, legacy request flow를 위한 interaction/routing compatibility table일 뿐입니다. `decision_request`만으로는 `decision_gate`를 절대 만족하지 않습니다. `decision_gate` aggregation은 linked compatible `decision_packet_id`를 통하지 않고는 `decision_requests` rows를 절대 읽지 않습니다. Compatible `decision_packets`와 currently detected blockers만 `decision_gate` authority path에 feed됩니다. Blocking product judgment가 있으면 Core는 compatible Decision Packet을 create하거나 associate해야 합니다. Approval decisions는 `approvals.decision_packet_id`를 통해 Decision Packets에 link됩니다. `decision_request_id`는 routing metadata로 남을 수 있지만 approval authority path는 아닙니다.
+`decision_packets`는 blocking product judgment를 위한 canonical state table이며 `decision_gate`의 authority path입니다. `decision_requests`는 implementation handoff, replay, legacy request flow를 위한 optional interaction/routing compatibility table이며, minimal MVP 구현은 이를 생략할 수 있습니다. `decision_request`만으로는 `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, close를 절대 만족하지 않습니다. `decision_gate` aggregation은 linked compatible `decision_packet_id`를 통하지 않고는 `decision_requests` rows를 절대 읽지 않습니다. Compatible `decision_packets`와 currently detected blockers만 `decision_gate` authority path에 feed됩니다. Blocking product judgment가 있으면 Core는 compatible Decision Packet을 create하거나 associate해야 합니다. Approval decisions는 `approvals.decision_packet_id`를 통해 Decision Packets에 link됩니다. `decision_request_id`는 routing metadata로 남을 수 있지만 approval authority path는 아닙니다. `decision_requests`를 유지한다면 `decision_requests.decision_packet_id`는 routing 또는 replay staging 동안 nullable일 수 있지만, unlinked rows는 non-authoritative이며 gate aggregation이 읽으면 안 됩니다. `decision_requests`를 생략한다면 그 indexes도 생략하고 `approvals.decision_request_id`, `decision_packets.decision_request_id` 같은 nullable compatibility fields는 비워 둡니다.
 
 `residual_risks`는 close-relevant remaining uncertainty, accepted risk, follow-up requirements, close impact를 위한 canonical table입니다. Decision Packets는 `decision_packets.residual_risk_refs_json`을 통해 residual risks를 reference할 수 있지만, 유일한 canonical residual-risk payload를 Decision Packet 안에 묻어 두면 안 됩니다.
 
@@ -752,7 +759,8 @@ Recommended indexes:
 
 ```sql
 CREATE INDEX idx_task_events_task_version ON task_events(task_id, state_version);
-CREATE INDEX idx_decision_requests_task_status ON decision_requests(task_id, status);
+CREATE INDEX idx_decision_requests_task_status ON decision_requests(task_id, status); -- optional; decision_requests를 생략하면 omit
+CREATE INDEX idx_decision_requests_packet ON decision_requests(decision_packet_id); -- optional; decision_requests를 생략하면 omit
 CREATE INDEX idx_decision_packets_task_status ON decision_packets(task_id, status);
 CREATE INDEX idx_residual_risks_task_status ON residual_risks(task_id, status);
 CREATE INDEX idx_shared_designs_task_status ON shared_designs(task_id, status);

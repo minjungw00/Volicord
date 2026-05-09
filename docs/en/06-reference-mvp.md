@@ -371,6 +371,7 @@ CREATE TABLE approvals (
   approval_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   change_unit_id TEXT,
+  -- Optional compatibility ref; leave null when decision_requests is omitted.
   decision_request_id TEXT,
   decision_packet_id TEXT REFERENCES decision_packets(decision_packet_id),
   status TEXT NOT NULL,
@@ -387,8 +388,13 @@ CREATE TABLE approvals (
   decided_at TEXT
 );
 
+-- Optional compatibility/routing table for routing, interaction, replay, or legacy handoff metadata only.
+-- Minimal MVP implementations may omit this table.
+-- decision_packet_id may remain null for routing/replay staging; unlinked rows are non-authoritative.
+-- Gate aggregation may consider a row only through a linked compatible decision_packet_id.
 CREATE TABLE decision_requests (
   decision_request_id TEXT PRIMARY KEY,
+  decision_packet_id TEXT REFERENCES decision_packets(decision_packet_id),
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   change_unit_id TEXT,
   decision_kind TEXT NOT NULL,
@@ -411,6 +417,7 @@ CREATE TABLE decision_packets (
   decision_packet_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   change_unit_id TEXT,
+  -- Optional compatibility ref; leave null when decision_requests is omitted.
   decision_request_id TEXT,
   decision_kind TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -736,7 +743,7 @@ Implementation and direct `record_run` calls consume a compatible unexpired auth
 
 Write Authorizations are single-use for storage. The unique partial index on `runs.write_authorization_id` prevents more than one committed Run row from consuming the same authorization. Idempotent replay returns the original Run and response metadata; it does not insert a second Run row.
 
-`decision_packets` is the canonical state table for blocking product judgment and the authority path for `decision_gate`. `decision_requests` is only an interaction/routing compatibility table for implementation handoff, replay, or legacy request flow. A `decision_request` alone never satisfies `decision_gate`. `decision_requests` rows are never read by `decision_gate` aggregation except through a linked compatible `decision_packet_id`. Only compatible `decision_packets` plus currently detected blockers feed the `decision_gate` authority path. Core must create or associate a compatible Decision Packet when blocking product judgment exists. Approval decisions link to Decision Packets through `approvals.decision_packet_id`; `decision_request_id` may remain as routing metadata but is not the approval authority path.
+`decision_packets` is the canonical state table for blocking product judgment and the authority path for `decision_gate`. `decision_requests` is an optional interaction/routing compatibility table for implementation handoff, replay, or legacy request flow; a minimal MVP implementation may omit it. A `decision_request` alone never satisfies `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close. `decision_requests` rows are never read by `decision_gate` aggregation except through a linked compatible `decision_packet_id`. Only compatible `decision_packets` plus currently detected blockers feed the `decision_gate` authority path. Core must create or associate a compatible Decision Packet when blocking product judgment exists. Approval decisions link to Decision Packets through `approvals.decision_packet_id`; `decision_request_id` may remain as routing metadata but is not the approval authority path. If `decision_requests` is kept, `decision_requests.decision_packet_id` may remain nullable for routing or replay staging, but unlinked rows are non-authoritative and must not be read by gate aggregation. If `decision_requests` is omitted, omit its indexes and leave nullable compatibility fields such as `approvals.decision_request_id` and `decision_packets.decision_request_id` empty.
 
 `residual_risks` is the canonical table for close-relevant remaining uncertainty, accepted risk, follow-up requirements, and close impact. Decision Packets may reference residual risks through `decision_packets.residual_risk_refs_json`; they must not bury the only canonical residual-risk payload inside the Decision Packet.
 
@@ -752,7 +759,8 @@ Recommended indexes:
 
 ```sql
 CREATE INDEX idx_task_events_task_version ON task_events(task_id, state_version);
-CREATE INDEX idx_decision_requests_task_status ON decision_requests(task_id, status);
+CREATE INDEX idx_decision_requests_task_status ON decision_requests(task_id, status); -- optional; omit when decision_requests is omitted
+CREATE INDEX idx_decision_requests_packet ON decision_requests(decision_packet_id); -- optional; omit when decision_requests is omitted
 CREATE INDEX idx_decision_packets_task_status ON decision_packets(task_id, status);
 CREATE INDEX idx_residual_risks_task_status ON residual_risks(task_id, status);
 CREATE INDEX idx_shared_designs_task_status ON shared_designs(task_id, status);
