@@ -139,7 +139,7 @@ Harness는 Strategic Invariants, Kernel Authority Invariants, Design Stewardship
 - Feedback loops from user decisions, QA findings, Eval findings, and residual-risk decisions back into state, scope, design, evidence, or follow-up work.
 - Context hygiene.
 
-Strategy는 이 defaults를 보이게 둡니다. Product experience를 실제로 형성하기 때문입니다. 세부 contracts는 policy pack이 담당합니다.
+Strategy는 이 defaults를 보이게 둡니다. Product experience를 실제로 형성하기 때문입니다. 여러 applicable default가 merged gate, write-blocker, close-blocker, waiver, Decision Packet impact로 compose되는 방식까지 포함해 세부 contracts는 policy pack이 담당합니다. 그 composition은 policy outcome을 guide하지만 이 defaults를 Kernel Authority Invariants로 승격하지 않습니다.
 
 ## Human Judgment Model
 

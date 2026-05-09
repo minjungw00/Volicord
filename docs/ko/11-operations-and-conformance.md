@@ -281,6 +281,8 @@ Fixture authors는 API precedence가 generic validator fallback을 선택할 때
 
 `expected_state.validators` 아래의 validator assertion은 validator ID로 keyed됩니다. 나열된 각 validator ID는 captured validator results에 존재해야 하며 나열된 field를 partially match해야 합니다. 나열되지 않은 validator ID와 나열되지 않은 validator field는 assert하지 않습니다.
 
+Fixture가 design-quality severity를 assert할 때는 모든 relevant validator finding을 `expected_state.validators` 아래 visible하게 유지하고, policy-owned [Severity Composition Rule](08-design-quality-policy-pack.md#severity-composition-rule)이 만든 merged gate, write-blocker, close-blocker, waiver, Decision Packet outcome을 assert해야 합니다. Fixture는 policy schema를 추가하거나 더 강한 merged blocker가 있다는 이유만으로 lower-severity finding을 suppress하면 안 됩니다.
+
 `expected_state.checks` 아래의 Core check와 precondition assertion은 check/precondition name으로 keyed됩니다. 이 entries는 captured Core check output, blocked reasons, response summaries, 또는 runner가 관찰한 equivalent check status와 비교합니다. MCP API 또는 Reference MVP가 해당 ID를 stable ValidatorResult로 명시적으로 promote하지 않는 한 이 값들은 validator IDs가 아니며 `expected_state.validators` 아래에 두면 안 됩니다.
 
 `expected_state.checks.projection_freshness`는 Core mechanical projection freshness check를 assert합니다. `expected_state.validators.context_hygiene_check`는 higher-level context hygiene에 대한 stable ValidatorResult를 assert합니다. 그 validator가 projection freshness를 고려할 수는 있지만, mechanical check 자체의 fixture assertion 위치는 아닙니다.
@@ -326,7 +328,7 @@ Agency, stewardship, context hygiene는 MVP conformance suite입니다. 이 suit
 | Suite | Required behavior |
 |---|---|
 | agency | Blocking product judgment는 affected write 또는 close 전에 compatible Decision Packet을 요구합니다. Decision request routing metadata는 optional compatibility data이며 이것만으로는 `decision_gate`를 satisfy하면 안 됩니다. Product trade-off write는 hold됩니다. Sensitive approval lifecycle은 approval, Decision Packet, Write Authorization을 서로 구분된 상태로 유지합니다. AFK Autonomy Boundary stop condition은 public commitment를 block합니다. Known close-relevant residual risk는 successful close 전에 visible이어야 합니다. Known close-relevant risk가 없으면 `ResidualRiskSummary.status=none`이 residual-risk visibility를 satisfy합니다. Risk-accepted close에는 추가로 accepted Residual Risk ref가 필요합니다. Approval, QA, acceptance, residual-risk acceptance는 서로 구분된 상태로 남아야 합니다. |
-| stewardship | Design-quality와 codebase-stewardship validator는 canonical owner record와 ref를 통해 `design_gate`, `decision_gate`, `qa_gate`, close blocker, waiver eligibility에 영향을 줍니다. Public interface, module, domain, feedback-loop, TDD, Manual QA, waiver check는 schema나 DDL을 duplicate하지 않습니다. |
+| stewardship | Design-quality와 codebase-stewardship validator는 canonical owner record, ref, policy-owned severity composition을 통해 `design_gate`, `decision_gate`, `qa_gate`, close blocker, waiver eligibility에 영향을 줍니다. Public interface, module, domain, feedback-loop, TDD, Manual QA, waiver check는 schema나 DDL을 duplicate하지 않습니다. |
 | context-hygiene | Current Task state, Journey ref, evidence ref, freshness state가 authoritative합니다. Stale PRD, stale projection, closed issue, old design doc, long log는 reconcile되기 전까지 pull-only context입니다. Stale context는 write, close, acceptance, current-state replacement를 authorize할 수 없습니다. |
 
 ## Hardened MVP Fixture Coverage

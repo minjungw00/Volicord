@@ -139,7 +139,7 @@ The following are Design Stewardship Defaults, not Kernel Authority Invariants. 
 - Feedback loops from user decisions, QA findings, Eval findings, and residual-risk decisions back into state, scope, design, evidence, or follow-up work.
 - Context hygiene.
 
-The strategy keeps these defaults visible because they shape the product experience. The policy pack owns their detailed contracts.
+The strategy keeps these defaults visible because they shape the product experience. The policy pack owns their detailed contracts, including how multiple applicable defaults compose into merged gate, write-blocker, close-blocker, waiver, or Decision Packet impact. That composition guides policy outcomes without promoting these defaults into Kernel Authority Invariants.
 
 ## Human Judgment Model
 

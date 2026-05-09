@@ -120,7 +120,7 @@ The kernel gate for required design-quality preconditions such as shared design,
 
 ### Design-Quality Policy Pack
 
-The set of policy contracts for shared design, decision quality, autonomy boundary, domain language, vertical slice, feedback loop/TDD trace, module/interface review, codebase stewardship, Manual QA, and context hygiene. It influences design, QA, evidence, and close blockers but does not redefine the kernel state machine.
+The owner document for design-quality policy contracts and severity composition. It covers shared design, decision quality, autonomy boundary, domain language, vertical slice, feedback loop/TDD trace, module/interface review, codebase stewardship, Manual QA, and context hygiene. It influences gates, validators, evidence, write blockers, and close blockers but does not redefine the kernel state machine.
 
 ### Detached Verification
 
@@ -363,6 +363,10 @@ An execution attempt by an agent, evaluator, operator, or other actor against a 
 ### Scope Gate
 
 The kernel gate requiring product writes to be covered by an active scoped Change Unit. Scope is required for write-capable direct and work modes even when approval is not required.
+
+### Severity Composition
+
+The policy-owned rule for merging multiple applicable task-shape defaults, policy contracts, and validator findings. The same concern is the same policy-relevant target, not the whole Task or merely the same validator ID. The rule keeps all findings visible, preserves impacts across different affected gates or blocker targets, and uses the strongest applicable impact only for competing impacts on the same concern. It affects validators, gates, write blockers, close blockers, waivers, and Decision Packet needs, while public primary `ToolError` selection remains API-owned.
 
 ### Shared Design
 

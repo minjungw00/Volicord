@@ -1047,7 +1047,7 @@ Default guarantee display는 cooperative/detective입니다. Preventive 또는 i
 
 MVP validators는 API 문서의 shared result shape를 사용합니다. Runner는 의도적으로 작습니다.
 
-Minimal validator rollout은 [MVP Severity Defaults](08-design-quality-policy-pack.md#mvp-severity-defaults) matrix를 default severity router로 사용합니다. Runner는 처음에는 각 stable ID에 대해 shallow check를 구현할 수 있지만, matrix가 applicable policy를 `blocking before write`, `close blocker`, 또는 `Decision Packet required`로 표시하면 finding을 `warning`으로 낮추지 말고 gate/blocker-compatible result를 emit해야 합니다. `warning`과 `not_required` default는 policy contract, user request, sensitive category, public commitment, residual risk, conformance fixture가 severity를 올리지 않을 때만 유효합니다.
+Minimal validator rollout은 [MVP Severity Defaults](08-design-quality-policy-pack.md#mvp-severity-defaults) matrix와 그 [Severity Composition Rule](08-design-quality-policy-pack.md#severity-composition-rule)을 default severity router로 사용합니다. Runner는 처음에는 각 stable ID에 대해 shallow check를 구현할 수 있지만, 모든 relevant finding을 visible하게 유지하고, policy-owned rule을 통해 policy impact를 merge하며, API finding severity를 rewrite하는 대신 merged outcome을 gate/blocker-compatible result로 expose해야 합니다. Public primary `ToolError` 선택은 여전히 API가 소유한 [Primary Error Code Precedence](05-mcp-api-and-schemas.md#primary-error-code-precedence)를 따릅니다.
 
 Minimal runner shape:
 

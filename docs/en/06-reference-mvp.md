@@ -1045,7 +1045,7 @@ Default guarantee display is cooperative/detective. Preventive or isolated claim
 
 MVP validators use one shared result shape from the API document. The runner is intentionally small.
 
-Minimal validator rollout uses the [MVP Severity Defaults](08-design-quality-policy-pack.md#mvp-severity-defaults) matrix as the default severity router. The runner may initially implement shallow checks for each stable ID, but when the matrix marks an applicable policy as `blocking before write`, `close blocker`, or `Decision Packet required`, it must emit a gate/blocker-compatible result instead of downgrading the finding to `warning`. `warning` and `not_required` defaults remain valid only while the policy contract, user request, sensitive category, public commitment, residual risk, and conformance fixture do not raise severity.
+Minimal validator rollout uses the [MVP Severity Defaults](08-design-quality-policy-pack.md#mvp-severity-defaults) matrix and its [Severity Composition Rule](08-design-quality-policy-pack.md#severity-composition-rule) as the default severity router. The runner may initially implement shallow checks for each stable ID, but it must keep all relevant findings visible, merge their policy impacts through the policy-owned rule, and expose the merged outcome through gate/blocker-compatible results rather than by rewriting API finding severity. Public primary `ToolError` selection still follows API-owned [Primary Error Code Precedence](05-mcp-api-and-schemas.md#primary-error-code-precedence).
 
 Minimal runner shape:
 
