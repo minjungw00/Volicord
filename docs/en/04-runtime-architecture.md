@@ -283,7 +283,7 @@ flowchart LR
   Bytes["stored artifact bytes<br/>artifact directory"]
   Row["artifacts row<br/>kind, path, sha256, size, redaction_state"]
   Links["artifact_links rows"]
-  Records["runs / evidence manifests / evals / Manual QA / Decision Packets / exports"]
+  Records["owner records / rendered projection refs"]
   Reports["Markdown reports<br/>compact artifact refs"]
 
   Staged --> Redaction --> Bytes
@@ -293,7 +293,7 @@ flowchart LR
   Records --> Reports
 ```
 
-Core records artifact refs in runs, evidence manifests, Eval records, Manual QA records, projection reports, and exports. Large logs and patches should stay as raw artifacts; Markdown reports should link to artifact refs instead of embedding unbounded evidence.
+Core records artifact refs on existing owner records such as runs, evidence manifests, Eval records, Manual QA records, Decision Packets, and rendered projection refs. Export snapshots and components remain artifact files linked back to those owners or projections. Large logs and patches should stay as raw artifacts; Markdown reports should link to artifact refs instead of embedding unbounded evidence.
 
 Raw secrets should not be stored as artifacts. If secret-related evidence is required, Core records a redacted artifact, a secret handle, or an operator note that passed the relevant validator.
 

@@ -1023,7 +1023,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## Appendix Templates
 
-Appendix templates correspond to the extension / appendix `ProjectionKind` tier and are optional unless explicitly enabled. The `DEC` template is an optional standalone Decision Packet Markdown variant; its presence in Appendix A does not make standalone `DEC` an MVP-required projection. `DESIGN`, `EXPORT`, and persisted `JOURNEY-CARD` Markdown are also optional extension / appendix projections.
+Appendix templates correspond to the extension / appendix `ProjectionKind` tier and are optional unless explicitly enabled. The `DEC` template is an optional standalone Decision Packet Markdown variant; its presence in Appendix A does not make standalone `DEC` an MVP-required projection. `DESIGN`, `EXPORT`, and persisted `JOURNEY-CARD` Markdown are also optional extension / appendix projections. The `EXPORT` manifest is a projection output; its `export_id` is manifest identity, not a public `StateRecordRef.record_kind`.
 
 ### DEC
 
@@ -1284,8 +1284,8 @@ updated_at: 2026-05-06T10:30:00+09:00
 - optional design projections:
 
 ## Artifact Refs
-| Artifact ID | Kind | URI | SHA256 | Redaction State | Retention |
-|---|---|---|---|---|---|
+| Artifact ID | Kind | Owner Record | URI | SHA256 | Redaction State | Retention |
+|---|---|---|---|---|---|---|
 
 ## Redaction Summary
 - secrets omitted:

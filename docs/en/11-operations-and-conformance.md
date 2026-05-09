@@ -366,8 +366,9 @@ Required checks:
 - content type is known or explicitly `other`
 - redaction state is valid
 - task/run or artifact-link relation is valid
-- linked state record exists
-- relation kind is compatible with artifact kind
+- linked state owner or projection record exists
+- owner-link relation semantics are compatible with the artifact's kind, including artifacts whose kind is `bundle`, `manifest`, or `export_component`
+- bundle, manifest, and export-component artifacts are validated through their artifact row and owner links; the check must not look for nonexistent `verification_bundle` or `export` state tables
 - retention class is valid
 - projection or evidence refs resolve
 

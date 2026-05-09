@@ -74,7 +74,7 @@ Evidence, recovery, audit에 사용하는 recorded output입니다. Canonical ev
 
 ### Artifact Reference
 
-Artifact store에 registered된 raw artifact file을 가리키는 structured pointer입니다. identity, kind, URI 또는 path, hash, size, content type, redaction state, task/run relationship을 포함합니다.
+Artifact store에 registered된 raw artifact file을 가리키는 structured pointer입니다. identity, kind, URI 또는 path, hash, size, content type, redaction state, task/run relationship을 포함합니다. `bundle`, `manifest`, `export_component` 같은 artifact kind는 file을 설명합니다. Owner link는 여전히 existing state 또는 projection record를 가리킵니다.
 
 ### Autonomy Boundary
 

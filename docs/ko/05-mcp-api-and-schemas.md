@@ -304,7 +304,7 @@ ArtifactInput:
   relation:
     task_id: string
     run_id: string | null
-    record_kind: task | change_unit | run | decision_packet | shared_design | residual_risk | evidence_manifest | eval | manual_qa_record | feedback_loop | tdd_trace | journey_spine_entry | verification_bundle | export | other
+    record_kind: task | change_unit | run | decision_packet | shared_design | residual_risk | evidence_manifest | eval | manual_qa_record | feedback_loop | tdd_trace | journey_spine_entry | projection
     record_id_hint: string | null
   description: string | null
 
@@ -325,6 +325,7 @@ Rules:
 - `expected_sha256` 또는 `expected_size_bytes`가 있으면 Core는 commit 전에 stored bytes를 verify합니다.
 - Core는 final storage 전에 redaction rules를 적용하고 committed artifact를 `ArtifactRef`로 기록합니다.
 - Tool responses는 committed `ArtifactRef` values를 `registered_artifacts`, `bundle_ref`, 기타 response fields로 반환합니다.
+- `relation.record_kind`는 Core가 validate할 수 있는 existing canonical owner record 또는 rendered projection ref를 이름으로 지정해야 합니다. Verification bundles는 `ArtifactRef.kind=bundle` 또는 `manifest`를 사용합니다. Export outputs는 `ArtifactRef.kind=export_component` 또는 `retention_class=export`를 사용합니다. `verification_bundle`과 `export`는 MVP artifact relation record kind가 아닙니다.
 
 Record 또는 projection references는 `ArtifactRef`가 아니라 `StateRecordRef`를 사용합니다.
 
@@ -1531,6 +1532,8 @@ LaunchVerifyRequest:
 ```
 
 `include_artifacts`는 bundle에 include하거나 link할 already registered evidence를 reference합니다. `bundle_artifact_input`은 optional입니다. `null`이면 Core가 verification bundle을 assemble하고 register합니다. Present하면 Core가 supplied staged bundle을 validate하고 register합니다.
+
+Returned `bundle_ref`는 보통 `kind=bundle` 또는 `kind=manifest`를 가진 `ArtifactRef`입니다. Artifact link는 Task, launching Run, Evidence Manifest, Eval, rendered projection 같은 existing owner record를 가리켜야 하며 `verification_bundle` state record를 만들지 않습니다.
 
 Response schema:
 

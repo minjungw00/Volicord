@@ -1023,7 +1023,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## Appendix Templates
 
-Appendix templates는 extension / appendix `ProjectionKind` tier에 해당하며 명시적으로 enabled되지 않는 한 optional입니다. `DEC` template은 optional standalone Decision Packet Markdown variant이며, Appendix A에 존재한다고 해서 standalone `DEC`가 MVP-required projection이 되지는 않습니다. `DESIGN`, `EXPORT`, persisted `JOURNEY-CARD` Markdown도 optional extension / appendix projections입니다.
+Appendix templates는 extension / appendix `ProjectionKind` tier에 해당하며 명시적으로 enabled되지 않는 한 optional입니다. `DEC` template은 optional standalone Decision Packet Markdown variant이며, Appendix A에 존재한다고 해서 standalone `DEC`가 MVP-required projection이 되지는 않습니다. `DESIGN`, `EXPORT`, persisted `JOURNEY-CARD` Markdown도 optional extension / appendix projections입니다. `EXPORT` manifest는 projection output입니다. 그 `export_id`는 manifest identity이며 public `StateRecordRef.record_kind`가 아닙니다.
 
 ### DEC
 
@@ -1284,8 +1284,8 @@ updated_at: 2026-05-06T10:30:00+09:00
 - optional design projections:
 
 ## Artifact Refs
-| Artifact ID | Kind | URI | SHA256 | Redaction State | Retention |
-|---|---|---|---|---|---|
+| Artifact ID | Kind | Owner Record | URI | SHA256 | Redaction State | Retention |
+|---|---|---|---|---|---|---|
 
 ## Redaction Summary
 - secrets omitted:

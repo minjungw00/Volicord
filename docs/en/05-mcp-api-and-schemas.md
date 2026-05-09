@@ -304,7 +304,7 @@ ArtifactInput:
   relation:
     task_id: string
     run_id: string | null
-    record_kind: task | change_unit | run | decision_packet | shared_design | residual_risk | evidence_manifest | eval | manual_qa_record | feedback_loop | tdd_trace | journey_spine_entry | verification_bundle | export | other
+    record_kind: task | change_unit | run | decision_packet | shared_design | residual_risk | evidence_manifest | eval | manual_qa_record | feedback_loop | tdd_trace | journey_spine_entry | projection
     record_id_hint: string | null
   description: string | null
 
@@ -325,6 +325,7 @@ Rules:
 - If `expected_sha256` or `expected_size_bytes` is present, Core verifies the stored bytes before commit.
 - Core applies redaction rules before final storage and records the committed artifact as an `ArtifactRef`.
 - Tool responses return committed `ArtifactRef` values in `registered_artifacts`, `bundle_ref`, or other response fields.
+- `relation.record_kind` must name an existing canonical owner record or rendered projection ref that Core can validate. Verification bundles use `ArtifactRef.kind=bundle` or `manifest`; export outputs use `ArtifactRef.kind=export_component` or `retention_class=export`. Neither `verification_bundle` nor `export` is an MVP artifact relation record kind.
 
 Record or projection references use `StateRecordRef`, not `ArtifactRef`:
 
@@ -1527,6 +1528,8 @@ LaunchVerifyRequest:
 ```
 
 `include_artifacts` references already registered evidence to include in or link from the bundle. `bundle_artifact_input` is optional; when it is `null`, Core assembles and registers the verification bundle. When it is present, Core validates and registers the supplied staged bundle instead.
+
+The returned `bundle_ref` is an `ArtifactRef`, usually with `kind=bundle` or `kind=manifest`. Its artifact link must point to an existing owner record such as the Task, launching Run, Evidence Manifest, Eval, or a rendered projection; it does not create a `verification_bundle` state record.
 
 Response schema:
 

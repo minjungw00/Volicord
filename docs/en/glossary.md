@@ -74,7 +74,7 @@ A recorded output used for evidence, recovery, or audit. See Raw Artifact for th
 
 ### Artifact Reference
 
-A structured pointer to a raw artifact file registered in the artifact store, including identity, kind, URI or path, hash, size, content type, redaction state, and task/run relationship.
+A structured pointer to a raw artifact file registered in the artifact store, including identity, kind, URI or path, hash, size, content type, redaction state, and task/run relationship. Artifact kinds such as `bundle`, `manifest`, or `export_component` describe files; owner links still point to existing state or projection records.
 
 ### Autonomy Boundary
 
