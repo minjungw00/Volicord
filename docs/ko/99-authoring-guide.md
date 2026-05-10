@@ -204,6 +204,7 @@ Report severity guidance:
 | English/Korean heading parity | Paired files는 같은 heading order와 depth를 유지합니다. Heading text는 idiomatic할 수 있지만 stable names, IDs, enum values, schema names, DDL names, owner section links는 semantic하게 aligned되어야 합니다. |
 | Broken cross-reference detection | Markdown links, heading anchors, appendix links, paired-language entry links가 active docs로 resolve됩니다. Owner section link는 subject가 migration context일 때가 아니면 migration notes를 가리키면 안 됩니다. |
 | Owner-boundary drift | Public schemas는 `05-mcp-api-and-schemas.md`에, SQLite DDL과 reference storage details는 `06-reference-mvp.md`에, kernel transitions와 stable events는 `03-kernel-spec.md`에, projection rules와 template tiers는 `07-document-projection.md`에, full template bodies는 `appendix/A-template-library.md`에, fixture body shape와 fixture assertion semantics와 fixture suite behavior는 `11-operations-and-conformance.md`에, official definitions는 `glossary.md`에 둡니다. |
+| Fixture/action schema and code drift | Operations fixture examples의 `action`과 executable `input`은 `05-mcp-api-and-schemas.md`의 public MCP request schemas와 `11-operations-and-conformance.md`의 `ToolEnvelope` expansion convention에 aligned되어야 합니다. Required fixture events는 Kernel Stable Event Catalog names로 유지하고, `expected_error.code`와 `CloseTaskResponse.blockers[].code`는 API `ErrorCode` values여야 합니다. Finding code는 validator findings 또는 equivalent expected validator output에 남깁니다. 이 check는 fixture semantics를 여기서 restate하지 않고 Operations, API, Kernel owner로 link합니다. |
 | Enum drift across owners | State, gate, result, close, assurance, error, projection, validator, storage enum values는 이를 정의하는 owner doc과 일치해야 합니다. Non-owner docs는 필요할 때만 값을 summarize하고 owner로 link해야 합니다. |
 | Stable Event Catalog drift | Operations fixtures, API tool descriptions, Reference MVP conformance text가 fixture-stable로 요구하는 event name은 Kernel Stable Event Catalog에 있어야 합니다. Non-catalog names는 illustrative, implementation-local detail/audit, future extension으로 표시하거나 kernel owner를 통해 promote해야 합니다. |
 | Stable ValidatorResult ID drift | Stable `ValidatorResult` IDs는 API-owned list와 Reference MVP validator runner text와 일치해야 합니다. Core checks와 preconditions는 API 또는 Reference MVP owner가 promote하지 않는 한 validator IDs로 drift하면 안 됩니다. |
@@ -235,6 +236,7 @@ Decision은 이미 내려졌지만 implementation detail, DDL, fixture coverage,
 [ ] user-facing docs가 불필요한 internal gates를 가르치지 않고 judgment context를 드러내는가?
 [ ] user guide가 DB/API/connector internals를 피하는가?
 [ ] operations가 prose-only matching 대신 executable assertion이 있는 fixture-based conformance를 사용하는가?
+[ ] docs-maintenance가 Operations, API, Kernel owner links를 통해 fixture/action schema drift와 event/error-code drift를 확인하고 fixture semantics를 duplicate하지 않았는가?
 [ ] docs-maintenance conformance 관점에서 bilingual parity, links, owner boundaries, stable catalogs, glossary terms, source-of-truth phrasing, TODO rules를 검토했는가?
 [ ] docs-maintenance conformance references가 runtime validators나 canonical state transitions가 아니라 read-only documentation maintenance로 쓰였는가?
 [ ] non-owner full-contract paragraphs가 summaries plus owner links로 줄었는가?
