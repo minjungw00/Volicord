@@ -73,11 +73,13 @@ flowchart LR
 
 ## Docs-Maintenance Smoke Profile
 
-Docs-maintenance smoke profile은 operator가 실행하거나 사람이 수동 review해서 documentation set의 drift를 잡을 수 있습니다. 이는 Markdown docs에 대한 read-only maintenance check이지 Core fixture conformance가 아니며 canonical state transition도 아닙니다. `task_events`를 append하거나, artifacts를 만들거나, projections를 refresh하거나, QA 또는 acceptance state를 바꾸거나, runtime implementation readiness를 claim하면 안 됩니다.
+Docs-maintenance smoke profile은 operator가 실행하거나 사람이 수동 review해서 documentation set의 drift를 잡을 수 있습니다. 이는 Markdown docs에 대한 read-only maintenance check이지 Core fixture conformance, runtime validator, evidence, residual-risk acceptance, canonical state transition이 아닙니다. `task_events`를 append하거나, artifacts를 만들거나, projections를 refresh하거나, QA 또는 acceptance state를 만들거나, close readiness에 영향을 주거나, runtime implementation readiness를 claim하면 안 됩니다.
 
-[Authoring Guide](99-authoring-guide.md#docs-maintenance-conformance)가 rule bodies, pass/warn/fail interpretation, checklist를 담당합니다. 이 문서는 profile reporting에 대한 operator-maintenance expectation만 담당합니다. `TODO_IMPLEMENT`: 이 profile의 operator entrypoint wiring은 아직 specified되지 않았습니다. Reference MVP가 이 profile을 `harness conformance run` 또는 다른 operator entrypoint로 expose할 때는 separate docs-only profile로 유지합니다. Runtime conformance run은 operator가 docs profile을 명시적으로 select하지 않는 한 이를 포함하면 안 됩니다. 명시적으로 select하더라도 별도로 report하고 runtime Core fixture conformance로 count하지 않습니다. Task state, MVP runtime validator IDs, runtime fixture pass/fail, projection freshness, QA, acceptance, close readiness에 영향을 주면 안 됩니다.
+[Authoring Guide](99-authoring-guide.md#docs-maintenance-conformance)가 rule bodies, pass/warn/fail interpretation, checklist를 담당합니다. 이 문서는 reporting과 entrypoint exposure에 대한 operator-maintenance expectation만 담당합니다.
 
-Docs-maintenance profile의 console output 또는 ephemeral report는 허용됩니다. 이 documentation batch는 이 check를 위한 generated operational report files, stored artifacts, projection jobs, DDL, state records를 정의하지 않습니다.
+Minimal operator wiring contract: `harness conformance run` 또는 다른 operator entrypoint로 expose될 때 docs-maintenance는 명시적으로 선택하는 docs-only profile이며, 관례적 profile name은 `docs-maintenance`입니다. Runtime conformance run은 operator가 이 profile을 select하지 않는 한 포함하면 안 됩니다. 명시적으로 select하더라도 runtime Core fixture suite와 별도로 report하고 runtime fixture pass/fail 또는 implementation readiness로 count하지 않습니다. Task state, MVP runtime validator IDs, projection freshness, QA, acceptance, close readiness, canonical state transition에 영향을 주면 안 됩니다.
+
+Docs-maintenance profile의 console output 또는 ephemeral report만 이 문서에서 정의한 output입니다. Generated operational report files는 future explicit implementation contract가 필요합니다. 이 documentation batch는 이 check를 위한 stored artifacts, projection jobs, DDL, state records를 정의하지 않습니다.
 
 Minimum report fields:
 

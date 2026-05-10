@@ -73,11 +73,13 @@ flowchart LR
 
 ## Docs-Maintenance Smoke Profile
 
-A docs-maintenance smoke profile may be run by an operator or reviewed manually to catch drift in the documentation set. It is a read-only maintenance check over Markdown docs, not Core fixture conformance and not a canonical state transition. It must not append `task_events`, create artifacts, refresh projections, change QA or acceptance state, or claim runtime implementation readiness.
+A docs-maintenance smoke profile may be run by an operator or reviewed manually to catch drift in the documentation set. It is a read-only maintenance check over Markdown docs, not Core fixture conformance, a runtime validator, evidence, residual-risk acceptance, or a canonical state transition. It must not append `task_events`, create artifacts, refresh projections, create QA or acceptance state, affect close readiness, or claim runtime implementation readiness.
 
-The [Authoring Guide](99-authoring-guide.md#docs-maintenance-conformance) owns the rule bodies, pass/warn/fail interpretation, and checklist. This document owns only the operator-maintenance expectation for reporting the profile. `TODO_IMPLEMENT`: operator entrypoint wiring for this profile is not specified yet. When the reference MVP exposes the profile through `harness conformance run` or another operator entrypoint, keep it a separate docs-only profile. Runtime conformance runs must not include it unless an operator explicitly selects the docs profile; even then, report it separately and do not count it toward runtime Core fixture conformance. It must not affect Task state, MVP runtime validator IDs, runtime fixture pass/fail, projection freshness, QA, acceptance, or close readiness.
+The [Authoring Guide](99-authoring-guide.md#docs-maintenance-conformance) owns the rule bodies, pass/warn/fail interpretation, and checklist. This document owns only the operator-maintenance expectation for reporting and entrypoint exposure.
 
-Console output or an ephemeral report from the docs-maintenance profile is allowed. This documentation batch does not define generated operational report files, stored artifacts, projection jobs, DDL, or state records for this check.
+Minimal operator wiring contract: when exposed through `harness conformance run` or another operator entrypoint, docs-maintenance is an explicitly selected docs-only profile, conventionally named `docs-maintenance`. Runtime conformance runs must not include it unless an operator selects that profile. Even when selected, report it separately from runtime Core fixture suites and do not count it toward runtime fixture pass/fail or implementation readiness. It must not affect Task state, MVP runtime validator IDs, projection freshness, QA, acceptance, close readiness, or any canonical state transition.
+
+Console output or an ephemeral report from the docs-maintenance profile is the only output defined here. Generated operational report files require a future explicit implementation contract; this documentation batch does not define stored artifacts, projection jobs, DDL, or state records for this check.
 
 Minimum report fields:
 

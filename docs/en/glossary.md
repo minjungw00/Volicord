@@ -180,7 +180,7 @@ A work mode for small, low-risk changes with obvious scope and result. Direct pr
 
 ### Docs-Maintenance Conformance
 
-A read-only documentation maintenance check profile that detects drift in bilingual parity, links, owner boundaries, stable catalogs, glossary terms, source-of-truth phrasing, TODO usage, and non-owner duplicate contracts. Its rule bodies are owned by the Authoring Guide, and any operator smoke reporting is owned by Operations And Conformance. It is not Core fixture conformance, a runtime validator, or a canonical state transition; if exposed through an operator command, it is a separate docs-only profile whose console or ephemeral result does not affect runtime conformance or Task readiness.
+A read-only documentation maintenance check profile that detects drift in bilingual parity, links, owner boundaries, stable catalogs, glossary terms, source-of-truth phrasing, TODO usage, and non-owner duplicate contracts. Its rule bodies are owned by the Authoring Guide, and operator reporting and entrypoint expectations are owned by Operations And Conformance. It is not Core fixture conformance, a runtime validator, projection refresh, QA, acceptance, evidence, residual-risk acceptance, or a canonical state transition. If exposed through `harness conformance run` or another operator command, it is a separately selected docs-only profile, conventionally `docs-maintenance`, whose console or ephemeral result does not affect runtime fixture pass/fail, implementation readiness, close readiness, or Task state.
 
 ### Domain Language
 
