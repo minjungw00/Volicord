@@ -296,7 +296,7 @@ Recover는 history를 rewrite하지 않고 interrupted 또는 inconsistent opera
 
 | Scenario | Recovery behavior |
 |---|---|
-| agent crash during write | run을 interrupted로 mark하고 가능하면 diff/log artifact를 capture합니다 |
+| agent crash during write | `runs.status=interrupted`인 recovery Run을 commit하고 가능하면 diff/log artifact를 capture합니다. Captured artifacts는 recovery evidence이며 successful completion의 proof가 아닙니다 |
 | stale approval baseline | scope가 affected되면 approval을 expire하거나 다시 요청합니다 |
 | evaluator observes drift | verification을 blocked로 mark하거나 evidence를 stale로 mark합니다 |
 | artifact registry mismatch | file을 rescan하고 missing artifact를 stale로 mark하며 hash를 보존합니다 |
@@ -309,7 +309,7 @@ Recover는 history를 rewrite하지 않고 interrupted 또는 inconsistent opera
 ```mermaid
 flowchart TD
   Scenario["failure scenario"] --> Classify["recovery path classify"]
-  Classify --> Interrupted["agent crash during write"]
+  Classify --> Interrupted["agent crash during write<br/>runs.status=interrupted"]
   Classify --> Baseline["stale approval baseline"]
   Classify --> Evidence["evaluator drift 또는 artifact mismatch"]
   Classify --> Projection["projection job failed 또는 managed Markdown edited"]
@@ -490,7 +490,7 @@ Fixture execution은 deterministic해야 합니다. Network access, wall-clock-s
 
 Conformance runner는 MCP tools와 operator commands가 사용하는 동일한 Core storage loader를 통해 JSON `TEXT` fields를 seed하고 inspect해야 합니다. `initial_state`에 malformed JSON 또는 schema-incompatible JSON이 있는 fixture는 invalid state를 surface해야 하며, fixture action이 recovery path이고 safe reconstruction이 가능한 경우에는 repairable state issue를 surface해야 합니다. Runner는 JSON fields를 opaque strings로 취급해서 shape validation을 건너뛰면 안 되며, 이 expectation은 fixture body shape를 바꾸지 않습니다.
 
-Conformance runner는 status-like `TEXT` fields도 [Reference MVP](06-reference-mvp.md#canonical-enum-hardening)의 owner-bound hardening map을 통해 seed하고 inspect해야 합니다. Fixture seed loader는 promoted owner values가 있는 fields의 compact shorthand와 expanded rows를 validate해야 합니다. 여기에는 registry/project surface state를 seed할 때의 `project_surfaces.guarantee_level`, `runs.kind`, `write_authorizations.status`, `write_authorizations.guarantee_level`, `approvals.status`, `evidence_manifests.status`, `residual_risks.visibility_status`, `feedback_loops.loop_kind`, `feedback_loops.status`, `tdd_traces.status`, `validator_runs.status`, `validator_runs.guarantee_level`, `projection_jobs.projection_kind`, `projection_jobs.status`가 포함됩니다. `runs.status`, `decision_requests.status`, `residual_risks.status`, `connector_manifests.status`, `baselines.status`, `change_units.status`, `task_spine_entries.status`, `change_unit_dependencies.status`, `tool_invocations.status`, `reconcile_items.status`, 그리고 `shared_designs.status`, `domain_terms.status`, `module_map_items.status`, `interface_contracts.review_status` 같은 design-support fields처럼 Reference MVP `TODO_DECISION` 아래에 있는 fields는 아직 durable storage value set이 없습니다. Fixture examples는 `runs.status: completed` 또는 `runs.status: violation` 같은 provisional shorthand를 사용할 수 있지만, runner는 그런 labels를 database enum definition으로 취급하면 안 됩니다. Executable fixture는 owner-valid mapping이 promote된 뒤 그 mapping으로 expand하거나, scenario가 invalid state recovery를 명시적으로 test하지 않는 한 unknown values를 invalid seeded state로 취급해야 합니다. Expected-state status assertions는 arbitrary prose label이 아니라 captured owner values를 compare합니다.
+Conformance runner는 status-like `TEXT` fields도 [Reference MVP](06-reference-mvp.md#canonical-enum-hardening)의 owner-bound hardening map을 통해 seed하고 inspect해야 합니다. Fixture seed loader는 promoted owner values가 있는 fields의 compact shorthand와 expanded rows를 validate해야 합니다. 여기에는 registry/project surface state를 seed할 때의 `project_surfaces.guarantee_level`, `runs.kind`, `runs.status`, `write_authorizations.status`, `write_authorizations.guarantee_level`, `approvals.status`, `evidence_manifests.status`, `residual_risks.visibility_status`, `feedback_loops.loop_kind`, `feedback_loops.status`, `tdd_traces.status`, `validator_runs.status`, `validator_runs.guarantee_level`, `projection_jobs.projection_kind`, `projection_jobs.status`, `connector_manifests.status`, `baselines.status`, `change_units.status`, `tool_invocations.status`, `reconcile_items.status`, `domain_terms.status`, `module_map_items.status`, `interface_contracts.review_status`가 포함됩니다. 이 promoted values도 scenario prose labels가 아니라 owner-bound storage values입니다. 예를 들어 `runs.status: completed`, `runs.status: interrupted`, `runs.status: violation`은 이제 committed Runs에 대한 Reference MVP compatibility meaning과 함께만 valid합니다. Reference MVP `TODO_DECISION`에 여전히 남아 있는 `decision_requests.status`, `residual_risks.status`, `task_spine_entries.status`, `change_unit_dependencies.status`, 그리고 `shared_designs.status` 같은 unresolved design-support fields는 아직 durable storage value set이 없습니다. Executable fixture는 invalid state recovery를 명시적으로 test하는 scenario가 아닌 한 그런 unresolved fields를 arbitrary labels로 seed하면 안 됩니다. Expected-state status assertions는 prose label이 아니라 captured owner values를 compare합니다.
 
 ## Fixture Assertion Semantics
 

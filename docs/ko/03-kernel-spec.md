@@ -755,7 +755,7 @@ Capability는 kernel이 write를 허용할지, rule을 얼마나 강하게 enfor
 
 | Invalid combination | Required handling |
 |---|---|
-| `lifecycle_phase=completed` with `active_run_id` present | block close until the Run is recorded, interrupted, or cancelled |
+| `lifecycle_phase=completed` with `active_run_id` present | active execution attempt가 committed Run record(`runs.status=completed`, `interrupted`, `blocked`, `violation`) 또는 task cancellation으로 resolved될 때까지 close를 block합니다. `interrupted`, `blocked`, `violation`은 그 자체로 close readiness를 satisfy하지 않습니다 |
 | `lifecycle_phase=completed` with `result=none` | reject state transition |
 | `lifecycle_phase=completed` with `close_reason=none` | reject state transition |
 | `lifecycle_phase=cancelled` with `result` other than `cancelled` | reject state transition |
@@ -983,9 +983,11 @@ Product writes를 report하는 implementation 및 direct `record_run` calls는 c
 
 Core는 observed changed paths를 consumed Write Authorization 및 active Change Unit 양쪽과 비교해 verify해야 합니다. 또한 command results, artifacts, surface telemetry, declared run data에서 observations가 available한 경우 recorded tools, commands, network targets, secret access도 authorization과 비교해 verify합니다.
 
-Run kind, active Change Unit, intended operation, 또는 reported product-write observations 때문에 Write Authorization이 required인 경우 authorization이 missing이면 Core는 어떤 Run도 commit하기 전에 `record_run`을 reject합니다. Rejected pre-commit request에는 Run ID가 없고, stable `record_run` events를 emit하지 않으며, artifacts를 register하지 않고, projection changes를 enqueue하지 않습니다. Observed product writes가 이미 발생했지만 authorization이 missing이거나 exceeded된 경우 Core는 대신 recovery 및 audit을 위해 blocked 또는 violation Run을 record할 수 있습니다. Core는 이렇게 deliberate하게 committed된 audit 또는 violation Runs에만 Run ID를 assign하며, rejected pre-commit cases에는 Run ID를 fabricate하면 안 됩니다. 그 Run은 evidence sufficiency, detached verification, QA, acceptance, close readiness를 satisfy하면 안 되며, Core는 affected scope, evidence, approval, verification, projection state를 stale 또는 blocked로 mark합니다. Corresponding Write Authorization이 있으면 unconsumed로 남고, violation과 compatibility basis에 따라 stale, revoked, expired로 mark될 수 있습니다. Observed behavior가 general scope violation을 assert하면 Core는 `scope_violation_detected`도 append할 수 있습니다.
+Run kind, active Change Unit, intended operation, 또는 reported product-write observations 때문에 Write Authorization이 required인 경우 authorization이 missing이면 Core는 어떤 Run도 commit하기 전에 `record_run`을 reject합니다. Rejected pre-commit request에는 Run ID가 없고, stable `record_run` events를 emit하지 않으며, artifacts를 register하지 않고, projection changes를 enqueue하지 않습니다. Observed product writes가 이미 발생했지만 authorization이 missing이거나 exceeded된 경우 Core는 대신 recovery 및 audit을 위해 interrupted, blocked, violation Run을 record할 수 있습니다. Core는 이렇게 deliberate하게 committed된 recovery/audit Runs에만 Run ID를 assign하며, rejected pre-commit cases에는 Run ID를 fabricate하면 안 됩니다. 그 Run은 evidence sufficiency, detached verification, QA, acceptance, close readiness를 satisfy하면 안 되며, Core는 affected scope, evidence, approval, verification, projection state를 stale 또는 blocked로 mark합니다. Corresponding Write Authorization이 있으면 unconsumed로 남고, violation과 compatibility basis에 따라 stale, revoked, expired로 mark될 수 있습니다. Observed behavior가 general scope violation을 assert하면 Core는 `scope_violation_detected`도 append할 수 있습니다.
 
-Blocked 또는 violation Run에 기대어 Task를 close할 수 없습니다. Compatible scope, approval, Decision Packet resolution, evidence update, verification, 또는 새 write authorization과 Run으로 state가 repair되어야 합니다.
+Interrupted Run은 crash, interruption, abandoned session, equivalent recovery condition 때문에 started 또는 observed되었지만 정상 완료되지 않은 execution attempt에 대한 committed recovery Run입니다. Captured diff/log artifacts는 recovery evidence일 뿐입니다.
+
+Interrupted, blocked, violation Run에 기대어 Task를 close할 수 없습니다. Compatible scope, approval, Decision Packet resolution, evidence update, verification, 또는 새 write authorization과 Run으로 state가 repair되어야 합니다.
 
 MVP `shaping_update`는 product-write recording path가 아닙니다. Shaping-only Runs는 Write Authorization을 consume하지 않고 record될 수 있지만 product file changes를 포함하면 안 됩니다. `shaping_update`가 observed product writes도 report하면 Core는 이를 reject하고 compatible Write Authorization이 있는 `kind=implementation` 또는 `kind=direct`를 요구합니다.
 
@@ -1018,7 +1020,7 @@ flowchart TD
   AuthCheck -- no --> Persisted{"Observed product write already happened?"}
   Persisted -- no --> RejectPrecommit["reject before committing Run"]
   RejectPrecommit --> NoRunId["run_id=null; no artifacts, stable events, or projections"]
-  Persisted -- yes --> Violation["record blocked or violation Run for audit"]
+  Persisted -- yes --> Violation["record interrupted, blocked, or violation Run for audit/recovery"]
   Violation --> NoConsumption["do not populate runs.write_authorization_id"]
   Violation --> StaleState["mark affected scope, evidence, approval, verification, and projection state stale or blocked"]
 ```

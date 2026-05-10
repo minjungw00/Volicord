@@ -455,7 +455,7 @@ Failures are recorded rather than hidden:
 
 | Failure | Architecture-level handling |
 |---|---|
-| Agent crash during write | mark active run interrupted; capture diff/log snapshot when possible; register artifacts |
+| Agent crash during write | mark the active Run with `runs.status=interrupted` or commit an equivalent interrupted recovery Run; capture diff/log snapshots when possible and register them as recovery artifacts, not proof of successful completion |
 | Baseline drift after approval | mark approval or evidence stale; require reconfirmation when scope is affected |
 | Evaluator observes repo drift | block or stale verification; require fresh baseline or new bundle |
 | Artifact file missing | mark artifact/evidence stale; rescan or restore through recovery |

@@ -294,7 +294,7 @@ Required scenarios:
 
 | Scenario | Recovery behavior |
 |---|---|
-| agent crash during write | mark the run interrupted and capture diff/log artifacts when possible |
+| agent crash during write | commit a recovery Run with `runs.status=interrupted` and capture diff/log artifacts when possible; captured artifacts are recovery evidence, not proof of successful completion |
 | stale approval baseline | expire or re-request approval when scope is affected |
 | evaluator observes drift | mark verification blocked or evidence stale |
 | artifact registry mismatch | rescan files, mark missing artifacts stale, preserve hashes |
@@ -307,7 +307,7 @@ Required scenarios:
 ```mermaid
 flowchart TD
   Scenario["failure scenario"] --> Classify["classify recovery path"]
-  Classify --> Interrupted["agent crash during write"]
+  Classify --> Interrupted["agent crash during write<br/>runs.status=interrupted"]
   Classify --> Baseline["stale approval baseline"]
   Classify --> Evidence["evaluator drift or artifact mismatch"]
   Classify --> Projection["projection job failed or managed Markdown edited"]
@@ -488,7 +488,7 @@ Fixture execution should be deterministic. Network access, wall-clock-sensitive 
 
 Conformance runners must seed and inspect JSON `TEXT` fields through the same Core storage loaders used by MCP tools and operator commands. A fixture with malformed JSON or schema-incompatible JSON in `initial_state` must surface invalid state, or a repairable state issue when the fixture action is a recovery path and safe reconstruction is possible. The runner must not skip shape validation by treating JSON fields as opaque strings, and this expectation does not change the fixture body shape.
 
-Conformance runners must also seed and inspect status-like `TEXT` fields through the owner-bound hardening map in [Reference MVP](06-reference-mvp.md#canonical-enum-hardening). Fixture seed loaders must validate both compact shorthand and expanded rows for fields with promoted owner values, including `project_surfaces.guarantee_level` when seeding registry/project surface state, `runs.kind`, `write_authorizations.status`, `write_authorizations.guarantee_level`, `approvals.status`, `evidence_manifests.status`, `residual_risks.visibility_status`, `feedback_loops.loop_kind`, `feedback_loops.status`, `tdd_traces.status`, `validator_runs.status`, `validator_runs.guarantee_level`, `projection_jobs.projection_kind`, and `projection_jobs.status`. Fields listed under the Reference MVP `TODO_DECISION`, including `runs.status`, `decision_requests.status`, `residual_risks.status`, `connector_manifests.status`, `baselines.status`, `change_units.status`, `task_spine_entries.status`, `change_unit_dependencies.status`, `tool_invocations.status`, `reconcile_items.status`, and design-support fields such as `shared_designs.status`, `domain_terms.status`, `module_map_items.status`, and `interface_contracts.review_status`, do not yet have durable storage value sets. Fixture examples may use provisional shorthand such as `runs.status: completed` or `runs.status: violation`, but runners must not treat those labels as database enum definitions; an executable fixture must either expand them through an owner-valid mapping once promoted, or treat unknown values as invalid seeded state unless the scenario explicitly tests recovery from invalid state. Expected-state status assertions compare captured owner values, not arbitrary prose labels.
+Conformance runners must also seed and inspect status-like `TEXT` fields through the owner-bound hardening map in [Reference MVP](06-reference-mvp.md#canonical-enum-hardening). Fixture seed loaders must validate both compact shorthand and expanded rows for fields with promoted owner values, including `project_surfaces.guarantee_level` when seeding registry/project surface state, `runs.kind`, `runs.status`, `write_authorizations.status`, `write_authorizations.guarantee_level`, `approvals.status`, `evidence_manifests.status`, `residual_risks.visibility_status`, `feedback_loops.loop_kind`, `feedback_loops.status`, `tdd_traces.status`, `validator_runs.status`, `validator_runs.guarantee_level`, `projection_jobs.projection_kind`, `projection_jobs.status`, `connector_manifests.status`, `baselines.status`, `change_units.status`, `tool_invocations.status`, `reconcile_items.status`, `domain_terms.status`, `module_map_items.status`, and `interface_contracts.review_status`. These promoted values are still owner-bound storage values, not scenario prose labels; for example, `runs.status: completed`, `runs.status: interrupted`, and `runs.status: violation` are now valid only with the Reference MVP compatibility meanings for committed Runs. Fields still listed under the Reference MVP `TODO_DECISION`, including `decision_requests.status`, `residual_risks.status`, `task_spine_entries.status`, `change_unit_dependencies.status`, and unresolved design-support fields such as `shared_designs.status`, do not yet have durable storage value sets. Executable fixtures must not seed those unresolved fields with arbitrary labels unless the scenario explicitly tests recovery from invalid state; expected-state status assertions compare captured owner values, not prose labels.
 
 ## Fixture Assertion Semantics
 

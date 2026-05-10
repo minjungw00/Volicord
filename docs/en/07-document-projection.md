@@ -456,7 +456,7 @@ Projection freshness is computed from the current owner or affected-scope state 
 |---|---|---|
 | `TASK` | Task created, resumed, changed, or refreshed | current `tasks.state_version > projection_jobs.source_state_version` for the `TASK` projection, managed block drift, unresolved reconcile required, stewardship owner refs or design-quality validator results changed |
 | `APR` | committed approval request is created by `request_user_decision(decision_kind=approval)`, or approval decision changes through `record_user_decision` | approval-shaped Decision Packet, linked Approval record status, scope, baseline, expiry, or decision note changes |
-| `RUN-SUMMARY` | run completes or is interrupted | run relation changes, artifact ref missing, artifact integrity fails |
+| `RUN-SUMMARY` | `record_run` commits a Run, including `runs.status=completed`, `interrupted`, `blocked`, or `violation` | run relation changes, artifact ref missing, artifact integrity fails |
 | `EVIDENCE-MANIFEST` | evidence coverage changes | baseline drift, changed files modified, required evidence missing/stale, approval expired |
 | `EVAL` | verification result recorded | baseline changes after Eval, evidence becomes stale, independence relation invalidated |
 | `DIRECT-RESULT` | direct run closes or escalates | changed file drift, escalation state changes, artifact ref missing |

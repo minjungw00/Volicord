@@ -455,7 +455,7 @@ Failures는 숨기지 않고 기록합니다.
 
 | Failure | Architecture-level handling |
 |---|---|
-| Agent crash during write | mark active run interrupted; capture diff/log snapshot when possible; register artifacts |
+| Agent crash during write | active Run을 `runs.status=interrupted`로 mark하거나 equivalent interrupted recovery Run을 commit합니다. 가능하면 diff/log snapshots를 capture하고 successful completion의 proof가 아닌 recovery artifacts로 register합니다 |
 | Baseline drift after approval | mark approval or evidence stale; require reconfirmation when scope is affected |
 | Evaluator observes repo drift | block or stale verification; require fresh baseline or new bundle |
 | Artifact file missing | mark artifact/evidence stale; rescan or restore through recovery |
