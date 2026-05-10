@@ -994,7 +994,7 @@ State-changing operations는 가능한 가장 좁은 scope에서 lock을 acquire
 | residual risk create/update/accept | task and affected residual risk |
 | baseline capture | task and affected Change Unit |
 | prepare_write | task and active Change Unit; allowed일 때 write authorization |
-| record_run | task and run; consumed되는 write_authorization이 있으면 해당 authorization |
+| record_run | task and run; consumed되는 write authorization이 있으면 해당 authorization |
 | projection render | projection job |
 | artifact registration | artifact path |
 | artifact link registration | artifact and target record |

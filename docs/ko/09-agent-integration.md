@@ -229,7 +229,7 @@ Target profile value 예시:
 
 Capability profile은 version, MCP config, hook, permission, workspace policy, generated file, conformance result, capture method, QA capture method가 바뀌면 refresh해야 한다.
 
-## Guarantee Level
+## Guarantee Levels
 
 Integration은 [04-runtime-architecture.md](04-runtime-architecture.md#guarantee-levels)에 정의된 guarantee level을 사용하고, 이를 connected surface profile, current enforcement path, fallback choice에 적용한다.
 
