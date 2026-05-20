@@ -23,6 +23,8 @@ Kernel Smoke와 Agency-Hardened MVP는 모두 MVP delivery stage이지 Appendix 
 Later item은 다음을 갖춘 뒤에만 v1 work가 될 수 있습니다.
 
 - clear capability profile requirement
+- redaction 및 secret/PII handling policy
+- runtime surface를 capture하는 경우 test environment와 artifact retention policy
 - fixture 또는 conformance target
 - unsupported surface에 대한 fallback behavior
 - projection을 canonical state로 취급하는 것에 대한 dependency 없음
@@ -30,7 +32,8 @@ Later item은 다음을 갖춘 뒤에만 v1 work가 될 수 있습니다.
 ```mermaid
 flowchart TD
   Candidate["later capability candidate"] --> Profile["clear capability profile requirement"]
-  Profile --> Fixture["fixture 또는 conformance target"]
+  Profile --> Policy["redaction, test environment, retention policy"]
+  Policy --> Fixture["fixture 또는 conformance target"]
   Fixture --> Fallback["unsupported surface fallback behavior"]
   Fallback --> Projection["projection-as-canonical dependency 없음"]
   Projection --> Promote["명시적 re-scope decision에만 eligible"]
@@ -57,9 +60,13 @@ MVP는 dashboard가 display할 record, projection, conformance fixture를 먼저
 
 ## Browser QA Capture
 
-Automatic browser QA capture는 Manual QA record를 위해 screenshot, console log, network trace, accessibility snapshot, workflow recording을 수집할 수 있습니다.
+Browser QA Capture는 v1 priority candidate이지 MVP requirement가 아닙니다. Connected surface가 지원하는 경우 automatic 또는 assisted capture가 Manual QA record를 위해 screenshot, console log, network trace, accessibility snapshot, workflow recording을 수집할 수 있습니다.
 
-Reliable browser capture에는 additional surface capability, redaction policy, test environment setup, artifact retention rule이 필요하므로 later입니다. MVP는 automated browser capture를 요구하지 않고 Manual QA record와 artifact ref를 지원합니다.
+Promotion에는 declared `T6 QA Capture` capability profile, redaction 및 secret/PII handling policy, test environment setup, artifact retention rules, fixture 또는 conformance target, unsupported surface fallback behavior가 필요합니다.
+
+Captured browser QA material은 artifact refs를 통해 Manual QA records에 attach되어야 합니다. 일반적으로 `qa_capture`, `screenshot`, `log`, 또는 captured file이 console log, network trace, accessibility snapshot, workflow recording인 경우 `other`를 사용할 수 있습니다. 이는 QA evidence를 개선할 수 있지만 final acceptance가 아니며, human taste 또는 experience judgment가 필요한 경우 Manual QA judgment를 대체하지 않고, verification independence requirements도 충족하지 않는 한 detached verification을 대체하지 않습니다.
+
+Unsupported surface는 human Manual QA notes와 manually supplied artifacts로 fallback해야 합니다. MVP는 automated browser capture를 요구하지 않고 Manual QA record와 artifact refs를 지원합니다.
 
 ## Cross-Surface Verification
 

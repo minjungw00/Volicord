@@ -273,6 +273,8 @@ An artifact ref points to a durable evidence file registered in the artifact sto
 
 In the reference MVP, artifact registration is Task-scoped. `ArtifactRef.task_id` and `ArtifactInput.relation.task_id` are required and map to `artifacts.task_id` and `artifact_links.task_id`; `retention_class=project` affects retention policy, not artifact ownership scope.
 
+Later Browser QA Capture uses this artifact boundary instead of a new MVP schema. Screen captures normally use `screenshot`; grouped QA outputs can use `qa_capture`; console logs and network traces can use `log` or `qa_capture`; accessibility snapshots and workflow recordings can use `qa_capture` or `other` with a clear description. All such artifacts remain subject to redaction, secret/PII handling, Task-scoped ownership, and Manual QA record or Feedback Loop attachment rules.
+
 ```yaml
 ArtifactRef:
   artifact_id: string

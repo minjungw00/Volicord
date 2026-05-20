@@ -191,7 +191,7 @@ These layers can improve guarantee level, but they do not create a kernel capabi
 | `T3 Capture` | Surface can return diffs, logs, and run output reliably | structured output, wrapper, adapter |
 | `T4 Guard` | Surface can block or interrupt out-of-scope files, commands, network, or secrets before execution | hook, permission system, policy engine, sidecar |
 | `T5 Isolation` | Surface can run verification or risky work in a separate boundary | worktree, sandbox, fresh process, isolated runner |
-| `T6 QA Capture` | Surface can structure browser, screenshot, walkthrough, or Manual QA artifacts | browser runner, screenshot capture, QA note capture |
+| `T6 QA Capture` | Surface can structure browser, screenshot, walkthrough, workflow-recording, or Manual QA artifacts | browser runner, screenshot capture, console/network capture, accessibility snapshot, QA note capture |
 
 Normal interactive harness use is most natural at `T2` or higher. Reliable detached verification usually needs `T3` capture plus a real independence boundary. High-risk work should use `T4` guard or `T5` isolation when available. `T6` improves UI/UX evidence but is not required for MVP when a human QA note can be recorded.
 
@@ -204,6 +204,14 @@ flowchart TB
   T4 --> T5["T5 Isolation"]
   T5 --> T6["T6 QA Capture"]
 ```
+
+### T6 QA Capture Semantics
+
+`T6 QA Capture` describes the connected surface's ability to structure browser or workflow QA artifacts. It is useful for Manual QA profiles such as `browser_smoke`, `workflow`, `ui_quality`, and `accessibility`, but it is not a kernel gate and is not required for MVP.
+
+A profile that claims browser QA capture should name the supported capture types and fallback behavior. Candidate capture types include screenshot, console log, network trace, accessibility snapshot, and workflow recording. Captured files must follow redaction and secret/PII handling before durable storage and should be registered as artifact refs attached to the Manual QA record or Feedback Loop execution, commonly with artifact kinds such as `qa_capture`, `screenshot`, `log`, or `other` according to the API artifact schema.
+
+Browser QA Capture does not replace Manual QA judgment when human taste, experience quality, copy, accessibility interpretation, or visual review is required. It also does not replace detached verification unless the Eval path independently satisfies verification independence requirements. If a surface cannot capture a browser workflow, the connector should fall back to human Manual QA notes and manually supplied artifacts.
 
 ## Capability Profile
 
@@ -248,12 +256,17 @@ capabilities:
   local_sidecar: false
   browser_qa_capture: false
   screenshot_capture: false
+  console_log_capture: false
+  network_trace_capture: false
+  accessibility_snapshot_capture: false
+  workflow_recording_capture: false
 risks:
   - no pre-tool guard
 fallbacks:
   - cooperative prepare_write discipline
   - changed_paths validator
   - manual verification bundle
+  - human Manual QA notes and manually supplied QA artifacts
 ```
 
 Target profile values may include:
@@ -266,7 +279,7 @@ Target profile values may include:
 - `custom_agent`
 - `manual_bundle`
 
-Capability profiles must be refreshed when version, MCP config, hooks, permissions, workspace policy, generated files, conformance result, capture method, or QA capture method changes.
+Capability profiles must be refreshed when version, MCP config, hooks, permissions, workspace policy, generated files, conformance result, capture method, QA capture method, browser test environment, redaction policy, or artifact retention behavior changes.
 
 ## Guarantee Levels
 

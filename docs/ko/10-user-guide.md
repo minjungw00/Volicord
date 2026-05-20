@@ -520,6 +520,18 @@ QA를 생략하는 일이 product/user risk를 포함하면, 단순한 waiver re
 QA waiver를 결정하기 전에 Decision Packet으로 보여줘.
 ```
 
+### Browser QA Capture
+
+Connected surface가 Browser QA Capture를 지원하면 agent는 `browser_smoke`, `workflow`, `ui_quality`, `accessibility` 같은 Manual QA profile에 대해 browser QA pass를 제안할 수 있습니다. Capture는 screenshot, `qa_capture` bundle, console log, network trace, accessibility snapshot, workflow recording 같은 artifact refs를 Manual QA record에 attach할 수 있습니다.
+
+```text
+연결된 profile이 지원하면 이 checkout flow에 browser QA capture를 실행해. Screenshot과 console log를 Manual QA record에 attach해.
+```
+
+Browser QA Capture는 유용한 evidence이지 final acceptance가 아닙니다. Taste, experience quality, accessibility interpretation, copy, visual review에 사람의 판단이 필요하면 human Manual QA judgment를 대체하지 않습니다. Verification path가 별도로 independence requirements를 충족하지 않는 한 detached verification으로도 인정되지 않습니다.
+
+Surface가 browser workflow를 capture할 수 없으면 human Manual QA note와 manually supplied artifacts를 대신 요청합니다.
+
 ## Acceptance
 
 Acceptance는 "이 결과를 받아들인다"는 마지막 사용자 판단이다. 이는 task path가 final acceptance를 요구할 때만 나타난다.

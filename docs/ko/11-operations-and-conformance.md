@@ -59,6 +59,8 @@ Agency-Hardened MVP는 final reference conformance target입니다. Decision Pac
 
 MVP의 guard/freeze conformance는 cooperative/detective level에서 honest display와 behavior를 assert합니다. Freeze request는 work를 hold하거나, next action을 더 strict하게 만들거나, existing scope가 incompatible할 때 `prepare_write`가 block 또는 hold하게 만들 수 있습니다. Persistent owner-record change는 existing Core state-changing path, Decision Packet route, owner-record update path를 통해 일어날 때만 assert해야 합니다. Guard display는 current path가 cooperative인지 detective인지, 그리고 어떤 violation이 사후에만 detect될 수 있는지 report합니다. Preventive `T4` guard fixture는 reference surface가 covered operation에 대한 pre-tool blocking을 implement하고 prove하지 않는 한 v1-or-later입니다.
 
+Browser QA Capture conformance는 v1 priority candidate이지 MVP smoke requirement가 아닙니다. Future fixtures는 capability profile fields, redaction 및 secret/PII handling, browser test environment, artifact retention, capture artifact mapping, unsupported-surface fallback behavior가 정의된 뒤에만 declared `T6 QA Capture` behavior를 prove해야 합니다. MVP fixtures는 automated browser capture를 요구하지 않고 Manual QA records, artifact refs, QA waiver behavior, close blockers를 계속 prove합니다.
+
 ```mermaid
 flowchart LR
   Kernel["Kernel Smoke<br/>첫 runnable authority path"] --> Harden["Agency-Hardened MVP<br/>final reference conformance"]
@@ -581,6 +583,8 @@ Agency, stewardship, context hygiene는 MVP conformance suite입니다. 이 suit
 | context-hygiene | Current Task state, Journey ref, evidence ref, freshness state가 authoritative합니다. Stale PRD, stale projection, closed issue, old design doc, long log는 reconcile되기 전까지 pull-only context입니다. Stale context는 write, close, acceptance, current-state replacement를 authorize할 수 없습니다. |
 
 Status/next recommendations는 Role Lens recommendations를 포함해 read response로만 fixture-observable합니다. Fixture는 관련 있을 때 `recommended_playbooks`를 assert할 수 있지만, recommendation 자체로 state event, gate satisfaction, projection enqueue, artifact, evidence, verification, QA, acceptance, residual-risk acceptance, close, assurance upgrade가 발생하지 않았다는 점도 증명해야 합니다. Recommendation 또는 role lens가 product judgment를 imply하면 expected behavior는 Decision Packet ref 또는 Decision Packet request path이지 satisfied `decision_gate`가 아닙니다. Validator, evidence, Manual QA, residual-risk, release-handoff work를 identify하면 expected behavior는 routed recommendation 또는 candidate이지, 이후 public mutation fixture가 Core를 통해 record하기 전까지 committed owner record가 아닙니다.
+
+`browser-qa-candidate` recommendation도 같은 read-only rule을 따릅니다. Recommendation은 `T6 QA Capture` surface에서 Browser QA Capture가 유용하다고 이름 붙일 수 있지만, recommendation alone으로 state를 mutate하거나, projection을 enqueue하거나, artifact를 create하거나, evidence를 create 또는 satisfy하거나, verification을 perform 또는 record하거나, QA를 record하거나, QA 또는 verification을 waive하거나, residual risk를 accept하거나, result를 accept하거나, Task를 close하거나, assurance를 upgrade하면 안 됩니다. Actual artifacts, Manual QA records, QA gate updates, Eval results, close effects에는 이후 Core를 통한 public mutation이 필요합니다.
 
 ```mermaid
 flowchart LR
@@ -2897,6 +2901,16 @@ expected_error: null
 | `CONTEXT-HYGIENE-resume-uses-current-state-not-chat-memory` | `next` | Resume은 current state, Journey ref, evidence ref, active Decision Packet, projection freshness를 Core에서 읽습니다. Stale chat-memory claim은 non-authoritative input으로 취급되며 state를 mutate하거나 gate를 satisfy하지 않습니다. |
 | `CONTEXT-HYGIENE-evaluator-bundle-stale-evidence-blocks-verification` | `record_eval` | Stale 또는 missing evidence ref가 있는 evaluator bundle은 detached verification을 passed로 set할 수 없습니다. `verification_gate`는 pending 또는 blocked로 남고, stale evidence ref가 보고되며, fixture는 `EVIDENCE_INSUFFICIENT` 또는 `VALIDATOR_FAILED`를 반환합니다. |
 
+### V1 Browser QA Capture Candidate Entries
+
+이 catalog entries는 future candidates이지 MVP fixture bodies 또는 MVP smoke requirements가 아닙니다. Browser QA Capture capability profile, redaction policy, test environment, artifact retention, fixture target, fallback semantics가 정의된 뒤에만 executable이 됩니다.
+
+| Scenario ID | Core action | Required assertions |
+|---|---|---|
+| `BROWSER-QA-capture-artifacts-attach-to-manual-qa` | `record_manual_qa` | Capable `T6 QA Capture` profile이 supported screenshot, `qa_capture`, log 또는 console log, network trace, accessibility snapshot, workflow recording artifacts를 register하고, 이를 Manual QA record 또는 Feedback Loop execution에 link하며, redaction과 retention policy를 적용하고, normal Manual QA result semantics를 통해서만 `qa_gate`를 update합니다. |
+| `BROWSER-QA-capture-not-final-acceptance-or-detached-verification` | `record_manual_qa` 또는 `record_eval` | Browser QA artifacts는 evidence를 support할 수 있지만 final acceptance를 record하지 않고, required human Manual QA judgment를 대체하지 않으며, separate Eval path가 independence requirements를 satisfy하지 않는 한 `assurance_level=detached_verified`를 set하지 않습니다. |
+| `BROWSER-QA-unsupported-surface-falls-back-to-human-notes` | `record_manual_qa` 또는 `next` | Browser capture capability가 없는 surface는 missing `T6` capability를 report하고, human Manual QA notes와 manually supplied artifacts를 recommend하며, automated browser capture가 unavailable하다는 이유만으로 MVP smoke를 fail하지 않습니다. |
+
 ## Fixture Suites
 
 최소 MVP suite:
@@ -2908,6 +2922,10 @@ expected_error: null
 - stewardship: shared design required, codebase stewardship close blockers, domain language conflicts, vertical slice or exception, feedback loop and TDD trace required or waived, public interface module/interface review, public interface stewardship close blocker, two-stage review display and close-blocker routing, Manual QA policy and waiver checks
 - context-hygiene: current-state bundle, stale projection and stale PRD handling, stale `TASK` projection write guard, stale context pull-only behavior, evaluator bundle freshness, resume from current state rather than chat memory
 - design-quality: kernel authority를 다시 정의하지 않으면서 agency, stewardship, context-hygiene, close-impact validator를 compose하는 policy-pack smoke coverage
+
+Future v1 candidate suites:
+
+- browser-qa-capture: declared `T6 QA Capture` support, redaction and retention policy, browser test environment, capture artifact mapping, Manual QA attachment, detached-verification boundary, final-acceptance boundary, unsupported-surface fallback
 
 Conformance output은 fixture id, pass/fail, observed state summary, observed events, artifact integrity result, projection freshness, error code comparison을 포함해야 합니다.
 

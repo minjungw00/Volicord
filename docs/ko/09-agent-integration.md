@@ -191,7 +191,7 @@ Adapter와 sidecar는 surface behavior를 observable fact 또는 stronger enforc
 | `T3 Capture` | Surface가 diff, log, run output을 reliable하게 반환할 수 있음 | structured output, wrapper, adapter |
 | `T4 Guard` | Surface가 out-of-scope file, command, network, secret을 실행 전에 block 또는 interrupt할 수 있음 | hook, permission system, policy engine, sidecar |
 | `T5 Isolation` | Surface가 verification 또는 risky work를 별도 boundary에서 run할 수 있음 | worktree, sandbox, fresh process, isolated runner |
-| `T6 QA Capture` | Surface가 browser, screenshot, walkthrough, Manual QA artifact를 structure할 수 있음 | browser runner, screenshot capture, QA note capture |
+| `T6 QA Capture` | Surface가 browser, screenshot, walkthrough, workflow-recording, Manual QA artifact를 structure할 수 있음 | browser runner, screenshot capture, console/network capture, accessibility snapshot, QA note capture |
 
 일반 interactive harness use는 `T2` 이상에서 가장 자연스럽다. Reliable detached verification에는 보통 `T3` capture와 실제 independence boundary가 필요하다. High-risk work는 가능하면 `T4` guard 또는 `T5` isolation을 사용해야 한다. `T6`는 UI/UX evidence를 개선하지만, human QA note를 기록할 수 있다면 MVP에 필수는 아니다.
 
@@ -204,6 +204,14 @@ flowchart TB
   T4 --> T5["T5 Isolation"]
   T5 --> T6["T6 QA Capture"]
 ```
+
+### T6 QA Capture Semantics
+
+`T6 QA Capture`는 connected surface가 browser 또는 workflow QA artifacts를 structure할 수 있는 능력을 설명합니다. `browser_smoke`, `workflow`, `ui_quality`, `accessibility` 같은 Manual QA profile에 유용하지만 kernel gate가 아니며 MVP에 required가 아닙니다.
+
+Browser QA capture를 claim하는 profile은 supported capture type과 fallback behavior를 이름으로 밝혀야 합니다. Candidate capture type에는 screenshot, console log, network trace, accessibility snapshot, workflow recording이 포함됩니다. Captured files는 durable storage 전에 redaction 및 secret/PII handling을 따라야 하며, API artifact schema에 따라 일반적으로 `qa_capture`, `screenshot`, `log`, `other` 같은 artifact kind로 Manual QA record 또는 Feedback Loop execution에 attach되는 artifact refs로 register되어야 합니다.
+
+Browser QA Capture는 human taste, experience quality, copy, accessibility interpretation, visual review가 필요한 경우 Manual QA judgment를 대체하지 않습니다. Eval path가 verification independence requirements를 독립적으로 충족하지 않는 한 detached verification도 대체하지 않습니다. Surface가 browser workflow를 capture할 수 없으면 connector는 human Manual QA notes와 manually supplied artifacts로 fallback해야 합니다.
 
 ## Capability Profile
 
@@ -248,12 +256,17 @@ capabilities:
   local_sidecar: false
   browser_qa_capture: false
   screenshot_capture: false
+  console_log_capture: false
+  network_trace_capture: false
+  accessibility_snapshot_capture: false
+  workflow_recording_capture: false
 risks:
   - no pre-tool guard
 fallbacks:
   - cooperative prepare_write discipline
   - changed_paths validator
   - manual verification bundle
+  - human Manual QA notes and manually supplied QA artifacts
 ```
 
 Target profile value 예시:
@@ -266,7 +279,7 @@ Target profile value 예시:
 - `custom_agent`
 - `manual_bundle`
 
-Capability profile은 version, MCP config, hook, permission, workspace policy, generated file, conformance result, capture method, QA capture method가 바뀌면 refresh해야 한다.
+Capability profile은 version, MCP config, hook, permission, workspace policy, generated file, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact retention behavior가 바뀌면 refresh해야 한다.
 
 ## Guarantee Levels
 

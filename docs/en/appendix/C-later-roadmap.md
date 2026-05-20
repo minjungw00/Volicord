@@ -23,6 +23,8 @@ Kernel Smoke and Agency-Hardened MVP are both MVP delivery stages, not Appendix 
 Later items may become v1 work only after they have:
 
 - a clear capability profile requirement
+- a redaction and secret/PII handling policy
+- a test environment and artifact retention policy when they capture runtime surfaces
 - a fixture or conformance target
 - a fallback behavior for unsupported surfaces
 - no dependency on treating projections as canonical state
@@ -30,7 +32,8 @@ Later items may become v1 work only after they have:
 ```mermaid
 flowchart TD
   Candidate["later capability candidate"] --> Profile["clear capability profile requirement"]
-  Profile --> Fixture["fixture or conformance target"]
+  Profile --> Policy["redaction, test environment, and retention policy"]
+  Policy --> Fixture["fixture or conformance target"]
   Fixture --> Fallback["fallback behavior for unsupported surfaces"]
   Fallback --> Projection["no projection-as-canonical dependency"]
   Projection --> Promote["eligible for explicit re-scope decision only"]
@@ -57,9 +60,13 @@ Later because MVP should first stabilize the records, projections, and conforman
 
 ## Browser QA Capture
 
-Automatic browser QA capture can gather screenshots, console logs, network traces, accessibility snapshots, and workflow recordings for Manual QA records.
+Browser QA Capture is a v1 priority candidate, not an MVP requirement. Automatic or assisted capture can gather screenshots, console logs, network traces, accessibility snapshots, and workflow recordings for Manual QA records where the connected surface supports it.
 
-Later because reliable browser capture requires additional surface capability, redaction policy, test environment setup, and artifact retention rules. MVP supports Manual QA records and artifact refs without requiring automated browser capture.
+Promotion requires a declared `T6 QA Capture` capability profile, redaction and secret/PII handling policy, test environment setup, artifact retention rules, fixture or conformance target, and fallback behavior for unsupported surfaces.
+
+Captured browser QA material should attach to Manual QA records through artifact refs, commonly `qa_capture`, `screenshot`, `log`, or `other` when the captured file is a console log, network trace, accessibility snapshot, or workflow recording. It can improve QA evidence, but it is not final acceptance, does not replace Manual QA judgment when human taste or experience judgment is required, and does not replace detached verification unless the verification independence requirements are also met.
+
+Unsupported surfaces should fall back to human Manual QA notes and manually supplied artifacts. MVP supports Manual QA records and artifact refs without requiring automated browser capture.
 
 ## Cross-Surface Verification
 

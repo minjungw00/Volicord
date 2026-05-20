@@ -520,6 +520,18 @@ If skipping QA carries product or user risk, the waiver may require a Decision P
 Show the QA waiver Decision Packet before I decide.
 ```
 
+### Browser QA Capture
+
+When a connected surface supports Browser QA Capture, the agent may offer a browser QA pass for Manual QA profiles such as `browser_smoke`, `workflow`, `ui_quality`, or `accessibility`. The capture can attach artifact refs to the Manual QA record, such as screenshots, `qa_capture` bundles, console logs, network traces, accessibility snapshots, or workflow recordings.
+
+```text
+Run browser QA capture for this checkout flow if the connected profile supports it. Attach the screenshot and console log to the Manual QA record.
+```
+
+Browser QA Capture is helpful evidence, not final acceptance. It does not replace human Manual QA judgment when taste, experience quality, accessibility interpretation, copy, or visual review needs a person. It also does not count as detached verification unless the verification path separately meets the independence requirements.
+
+If the surface cannot capture the browser workflow, ask for a human Manual QA note and manually supplied artifacts instead.
+
 ## Acceptance
 
 Acceptance is the final user judgment that says, "I accept this result." It appears only when the task path requires final acceptance.
