@@ -189,6 +189,8 @@ release-handoff를 사용하고 PR과 deploy checklist note를 포함해줘.
 
 Report에는 close readiness, blocker, evidence ref, verification ref, Manual QA ref, residual-risk ref, changed file, projection freshness, redaction note, suggested checklist item이 포함된다고 보면 됩니다. 이 report는 external review 또는 deployment 준비를 돕지만, Harness는 handoff만으로 merge, deploy, production monitoring, approve, QA 또는 verification waiver, gate satisfaction, residual risk acceptance, result acceptance, assurance upgrade, task close를 하지 않습니다.
 
+Future context index나 local metric은 status와 handoff report를 더 쉽게 inspect하게 만들 수 있습니다. 하지만 pointer와 diagnostic으로만 취급해야 합니다. Current state, evidence, gate, decision, QA, verification, risk acceptance, close는 여전히 Harness state와 normal Core flow에서 나옵니다.
+
 ## 상태 카드 읽기
 
 좋은 하네스 세션은 먼저 짧은 상태 카드를 보여준다. 중요한 작업을 재개할 때는 일반 status card보다 Journey Card 또는 그에 준하는 current-position view가 먼저 나와야 한다.

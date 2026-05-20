@@ -436,6 +436,8 @@ Evaluator는 더 tight한 verification bundle을 받아야 한다.
 
 이 context model은 Context Hygiene policy를 지원한다. Current state와 evidence는 stale chat이나 old doc보다 우선된다.
 
+Later Context Index는 relevant projection, artifact ref, repo file, doc, note를 retrieve하는 데 도움을 줄 수 있지만 read-only context provider이지 connector authority path가 아니다. Main integration docs는 이 개념에 대해 [Appendix C](appendix/C-later-roadmap.md#context-index)를 가리켜야 한다. Indexed 또는 retrieved context는 write authorization, Decision Packet resolution, approval grant, gate satisfaction, evidence creation, verification perform 또는 record, QA recording, QA 또는 verification waiver, residual risk acceptance, result acceptance, assurance upgrade, projection enqueue 또는 refresh, projection freshness change, implementation readiness declaration, Task close를 하면 안 된다.
+
 ## Direct Fast Path
 
 작은 direct work에서는 agent가 Harness를 대부분 보이지 않게 유지해야 한다. 좁은 active scope를 정하고, `prepare_write`를 call하고, 변경하고, changed path, self-check evidence를 기록한 뒤 blocker가 없으면 close한다.

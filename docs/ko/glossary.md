@@ -146,6 +146,10 @@ Connector-managed files, managed block hashes, capability profile, surface targe
 
 Current state, evidence, relevant references는 context에 유지하고, stale chat, old PRDs, closed issues, oversized raw artifacts는 명시적으로 필요할 때만 가져오는 policy입니다.
 
+### Context Index
+
+Relevant projection, artifact ref, repo file, doc, note를 surface할 수 있는 later read-only context provider입니다. Indexed 또는 retrieved context는 write authorization, Decision Packet resolution, approval grant, gate satisfaction, evidence creation, verification perform 또는 record, QA recording, QA 또는 verification waiver, residual risk acceptance, result acceptance, assurance upgrade, projection enqueue 또는 refresh, projection freshness change, implementation readiness declaration, Task close를 하면 안 됩니다.
+
 ### Decision Gate
 
 진행, write, close 전에 필요한 blocking product judgment를 나타내는 Task-level aggregate gate입니다. Canonical field는 `decision_gate`이며 value set과 recompute rule은 [Decision Gate](03-kernel-spec.md#decision-gate)가 담당합니다. 관련 blocking Decision Packets와 detected blockers에서 recompute되며 approval, verification, Manual QA, acceptance를 대신하지 않습니다.
@@ -299,6 +303,10 @@ Module 또는 external boundary의 public interface, inputs, outputs, errors, co
 ### JSON `TEXT` Field
 
 저장된 값이 JSON인 SQLite `TEXT` column입니다. `TEXT` type은 MVP storage flexibility일 뿐입니다. Core는 commit 전에 API-owned 또는 storage-owned shape에 맞게 값을 validate해야 하며, malformed JSON 또는 schema-incompatible JSON은 invalid state입니다.
+
+### Local Derived Metrics
+
+`state.sqlite.task_events`, runs, validator results, projection jobs, reconcile items 같은 local record에서 derive되는 later diagnostic-only metric입니다. Metric readout은 rate, count, duration, guard-trigger summary를 report할 수 있지만 state mutate, gate satisfaction, write authorization, approval grant, evidence creation, projection enqueue 또는 refresh, projection freshness change, close readiness 또는 implementation readiness 변경, verification perform 또는 record, QA recording, QA 또는 verification waiver, residual risk acceptance, result acceptance, assurance upgrade, Task close를 하면 안 됩니다.
 
 ### Manual QA
 

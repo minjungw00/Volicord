@@ -189,6 +189,8 @@ Use release-handoff and include PR and deploy checklist notes.
 
 Expect a report with close readiness, blockers, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, redaction notes, and suggested checklist items. The report can help you prepare the external review or deployment, but Harness still does not merge, deploy, monitor production, approve, waive QA or verification, satisfy gates, accept residual risk, accept the result, upgrade assurance, or close the task from the handoff alone.
 
+Future context indexes or local metrics may make status and handoff reports easier to inspect. Treat them as pointers and diagnostics only; current state, evidence, gates, decisions, QA, verification, risk acceptance, and close still come from Harness state and the normal Core flows.
+
 ## Reading A Status Card
 
 A good harness session first shows a short status card. When significant work resumes, that card should be the Journey Card or an equivalent current-position view.

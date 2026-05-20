@@ -383,6 +383,8 @@ Boundary:
 - Release Handoff는 그 자체로 Task close, deploy, merge, approve, residual risk acceptance, result acceptance, QA 또는 verification waiver, assurance upgrade, gate satisfaction을 하지 않습니다.
 - Suggested checklist item은 advisory입니다. Blocking product judgment, risk acceptance, Manual QA, evidence, verification, approval need를 드러내면, 그 need는 기존 Decision Packet, evidence, Manual QA, Eval, residual-risk, approval, close path로 route됩니다.
 
+Diagnostic and reporting boundary: future [Local Derived Metrics](appendix/C-later-roadmap.md#local-derived-metrics)는 report 또는 operator diagnostic에 나타날 수 있지만, Appendix C가 later diagnostic-only analytics로 소유합니다. Metric readout은 state mutate, gate satisfaction, write authorization, approval grant, evidence creation, projection enqueue 또는 refresh, projection freshness change, close readiness 또는 implementation readiness 변경, verification perform 또는 record, QA recording, QA 또는 verification waiver, residual risk acceptance, result acceptance, assurance upgrade, Task close를 하면 안 됩니다.
+
 Release Handoff catalog entry:
 
 | Scenario ID | Operator action | Required assertions |

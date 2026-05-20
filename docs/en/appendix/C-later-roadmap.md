@@ -48,7 +48,8 @@ flowchart TD
   LaterItems --> Hooks["Native Hook Expansion"]
   LaterItems --> Watcher["Advanced Sidecar Watcher"]
   LaterItems --> Parallel["Parallel Orchestration"]
-  LaterItems --> Analytics["Analytics"]
+  LaterItems --> ContextIndex["Context Index"]
+  LaterItems --> LocalMetrics["Local Derived Metrics"]
   LaterItems --> TeamProfiles["Team Profile Export And Import"]
 ```
 
@@ -92,11 +93,29 @@ Parallel Change Unit orchestration can split work into multiple active implement
 
 Later because parallel execution depends on stable locks, baseline freshness, approval scope composition, artifact partitioning, and close semantics.
 
-## Analytics
+## Context Index
 
-Analytics can derive rates and latencies from `state.sqlite.task_events`, runs, validator results, projection jobs, and reconcile items.
+A Context Index is a read-only context provider that may help an agent find relevant projections, artifact refs, repo files, docs, or user notes without treating indexed knowledge as Harness state.
 
-Later because metrics are derived values, not authority. Candidate metrics include approval turnaround, verification latency, evidence insufficiency rate, projection stale duration, reconcile volume, and same-session verification guard triggers.
+Later because indexed memory can blur local authority if introduced before the kernel and source-of-truth boundaries are stable. A future Context Index may rank, summarize, or retrieve context, but indexed or retrieved context must not authorize writes, resolve Decision Packets, grant approval, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept residual risk, accept the result, upgrade assurance, enqueue or refresh projections, change projection freshness, declare implementation readiness, or close Tasks.
+
+```mermaid
+flowchart LR
+  Projections["projections"] --> Index["Context Index<br/>read-only retrieval"]
+  Artifacts["artifact refs"] --> Index
+  Repo["repo files"] --> Index
+  Docs["docs and notes"] --> Index
+  Index --> Agent["agent context"]
+  Index --> Boundary["non-authoritative context only"]
+```
+
+A Context Index should become v1 work only if a future decision assigns an owner, freshness and staleness rules, privacy/redaction behavior, connector capability expectations, fixture coverage, and a display rule that distinguishes retrieved context from canonical state.
+
+## Local Derived Metrics
+
+Local Derived Metrics can derive diagnostic rates, counts, durations, and guard-trigger summaries from `state.sqlite.task_events`, runs, validator results, projection jobs, and reconcile items.
+
+Later because metrics are derived values, not authority. They may help users spot process bottlenecks, reporting gaps, and recurring operational patterns, but they are diagnostic only. Metric readouts must not mutate state, satisfy gates, authorize writes, grant approval, create evidence, enqueue or refresh projections, change projection freshness, change close readiness or implementation readiness, perform or record verification, record QA, waive QA or verification, accept residual risk, accept the result, upgrade assurance, or close Tasks.
 
 ```mermaid
 flowchart LR
@@ -106,7 +125,7 @@ flowchart LR
   Projections["projection jobs"] --> Metrics
   Reconcile["reconcile items"] --> Metrics
   Metrics --> Interpretation["future user-facing interpretation rule"]
-  Metrics --> Boundary["non-authoritative: does not change state, gates, evidence, or projections"]
+  Metrics --> Boundary["non-authoritative diagnostics only"]
 ```
 
 Candidate derived metrics from the legacy operations guide:
@@ -125,11 +144,12 @@ Candidate derived metrics from the legacy operations guide:
 - `horizontal_exception_rate`
 - `tdd_red_missing_rate`
 - `manual_qa_pending_duration`
+- `evidence_insufficiency_rate`
 - `architecture_drift_warning_count`
 - `domain_language_mismatch_count`
 - `interface_review_required_count`
 
-These metrics should become v1 or MVP only if a future decision assigns an owner, fixture coverage, retention behavior, and a user-facing interpretation rule.
+These metrics should become v1 work only if a future decision assigns an owner, fixture coverage, retention behavior, privacy/redaction behavior when needed, and a user-facing interpretation rule. Even then, the metric value remains derived; any state change must still go through the normal Core owner path.
 
 ## Team Profile Export And Import
 

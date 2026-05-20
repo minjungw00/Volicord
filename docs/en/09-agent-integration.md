@@ -436,6 +436,8 @@ Evaluators should receive a tighter verification bundle that includes:
 
 This context model supports the Context Hygiene policy: current state and evidence are preferred over stale chat or old docs.
 
+A later Context Index may help retrieve relevant projections, artifact refs, repo files, docs, or notes, but it is a read-only context provider, not a connector authority path. Main integration docs should point to [Appendix C](appendix/C-later-roadmap.md#context-index) for that concept; indexed or retrieved context must not authorize writes, resolve Decision Packets, grant approval, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept residual risk, accept the result, upgrade assurance, enqueue or refresh projections, change projection freshness, declare implementation readiness, or close Tasks.
+
 ## Direct Fast Path
 
 For small direct work, the agent should keep Harness mostly invisible: define a narrow active scope, call `prepare_write`, make the change, record changed paths, self-check evidence, and close if no blocker appears.

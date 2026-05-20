@@ -146,6 +146,10 @@ A generated manifest that records connector-managed files, managed block hashes,
 
 The policy of keeping current state, evidence, and relevant references in context while avoiding stale chat, old PRDs, closed issues, and oversized raw artifacts unless they are explicitly needed.
 
+### Context Index
+
+A later read-only context provider that may surface relevant projections, artifact refs, repo files, docs, or notes. Indexed or retrieved context must not authorize writes, resolve Decision Packets, grant approval, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept residual risk, accept the result, upgrade assurance, enqueue or refresh projections, change projection freshness, declare implementation readiness, or close Tasks.
+
 ### Decision Gate
 
 The Task-level aggregate gate for blocking product judgment before progress, write, or close can continue. The canonical field is `decision_gate`; its value set and recompute rule are owned by [Decision Gate](03-kernel-spec.md#decision-gate). It is recomputed from relevant blocking Decision Packets and detected blockers, and it does not substitute for approval, verification, Manual QA, or acceptance.
@@ -299,6 +303,10 @@ The canonical record of a module or external boundary's public interface, inputs
 ### JSON `TEXT` Field
 
 A SQLite `TEXT` column whose stored value is JSON. The `TEXT` type is MVP storage flexibility only; Core must validate the value before commit against the API-owned or storage-owned shape, and malformed or schema-incompatible JSON is invalid state.
+
+### Local Derived Metrics
+
+Later diagnostic-only metrics derived from local records such as `state.sqlite.task_events`, runs, validator results, projection jobs, and reconcile items. Metric readouts may report rates, counts, durations, or guard-trigger summaries, but they must not mutate state, satisfy gates, authorize writes, grant approval, create evidence, enqueue or refresh projections, change projection freshness, change close readiness or implementation readiness, perform or record verification, record QA, waive QA or verification, accept residual risk, accept the result, upgrade assurance, or close Tasks.
 
 ### Manual QA
 
