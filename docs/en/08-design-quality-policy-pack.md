@@ -61,7 +61,23 @@ flowchart TB
   Stewardship --> Context["context_hygiene"]
 
   Human --> ManualQA["manual_qa"]
+  Pack --> Review["two-stage review display"]
+  Review --> SpecReview["Spec Compliance Review"]
+  Review --> StewardshipReview["Code Quality / Stewardship Review"]
 ```
+
+## Two-Stage Review Model
+
+Review guidance is displayed in two stages so agents and users can separate "did we build the requested thing?" from "is the implementation maintainable?" The stages are procedure and display, not new kernel gates, schemas, or canonical records.
+
+| Stage | Question | Typical coverage |
+|---|---|---|
+| Spec Compliance Review | Did the work satisfy the requested task under the current Harness authority? | Acceptance criteria coverage, Change Unit completion conditions, scope and Write Authority compatibility, Decision Packet compatibility, evidence coverage, and residual-risk visibility. |
+| Code Quality / Stewardship Review | Is the implementation maintainable inside this codebase? | Domain language, module/interface boundary, vertical slice shape, feedback loop or TDD trace, codebase stewardship, context hygiene, and follow-up risk. |
+
+Review stages may summarize validator results, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, and close blockers. They do not by themselves satisfy evidence, QA, verification, acceptance, residual-risk acceptance, approval, scope, or Write Authorization.
+
+Same-session review is not detached verification. A passed two-stage review may support `self_checked` confidence and may route findings into state, but it must not produce `assurance_level=detached_verified`. Detached verification still requires a valid independence boundary and Eval path.
 
 ### Shared Design
 
@@ -383,6 +399,13 @@ Severity can be raised above the matrix default by explicit user request, sensit
 | `codebase_stewardship` | `codebase_stewardship_check` | `design_gate` pending/partial/stale/passed and close blockers |
 | `manual_qa` | `manual_qa_required` | `qa_gate` pending/passed/failed/waived |
 | `context_hygiene` | `context_hygiene_check` | projection freshness, reconcile, evidence/design stale |
+
+Review-stage displays compose these existing policy validators; they do not introduce new validator IDs.
+
+| Review stage | Validator relationship | Possible routed outcomes |
+|---|---|---|
+| Spec Compliance Review | Reads acceptance/evidence state plus `shared_design_alignment`, `decision_quality_check`, `autonomy_boundary_check`, `feedback_loop_check`, `tdd_trace_required`, `manual_qa_required`, `context_hygiene_check`, and close-related residual-risk checks where applicable. | Validator result refs, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, or close blockers. |
+| Code Quality / Stewardship Review | Reads `domain_language_consistency`, `vertical_slice_shape`, `module_interface_review`, `codebase_stewardship_check`, `feedback_loop_check`, `tdd_trace_required`, and `context_hygiene_check`. | Stewardship validator findings, reconcile items, owner-record update recommendations, follow-up Change Unit recommendations, residual-risk candidates, or close blockers. |
 
 ```mermaid
 flowchart LR

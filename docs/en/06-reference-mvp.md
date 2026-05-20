@@ -23,6 +23,7 @@ MVP includes:
 - shaping kernel support for Change Units, autonomy boundaries, dependency metadata, and end-to-end path intent
 - approval, evidence, verification, Manual QA, and acceptance gate support
 - decision, autonomy boundary, feedback loop, codebase stewardship, residual-risk visibility, and agency conformance checks
+- two-stage review display support for Spec Compliance Review and Code Quality / Stewardship Review, sourced from existing state, validators, evidence, and refs
 - MVP-required `ProjectionKind` renderers named by [MCP API And Schemas](05-mcp-api-and-schemas.md#shared-schemas)
 - MVP-optional `ProjectionKind` renderers only where policy requires them, source records exist, or the user/operator enables them
 - detached verification bundle or manual evaluator instruction bundle
@@ -148,6 +149,7 @@ Exit criteria:
 - implementation and direct runs consume a compatible Write Authorization and detect observed changes outside the authorization
 - findings from runs, checks, QA inputs, or evaluator notes route back into state, evidence, a Decision Packet, a Change Unit update, or a close blocker
 - codebase stewardship issues that affect scope, design, module boundaries, or user judgment are visible as validator results or blockers
+- `TASK` and `RUN-SUMMARY` can render Review Stages as managed display sections without adding canonical records, new `ProjectionKind` values, or assurance upgrades
 - when `tdd_trace_required` applies, test-path writes to create the failing RED check can proceed through normal scope and authority checks, while non-test implementation writes are blocked until actual RED evidence exists or a valid TDD waiver records the non-TDD justification and alternate feedback loop
 - TDD trace refs, Feedback Loop refs, run logs, and artifacts can be linked into Evidence Manifest acceptance-criteria and changed-file coverage
 - projection job failure is separate from state failure
@@ -160,6 +162,7 @@ Implement `harness.launch_verify`, `harness.record_eval`, `harness.record_manual
 Exit criteria:
 
 - work cannot close as `detached_verified` from same-session self-review
+- a passed same-session two-stage review can support self-check findings but cannot satisfy detached verification or set `assurance_level=detached_verified`
 - verification waiver closes with `completed_with_risk_accepted`, not `detached_verified`
 - required Manual QA and acceptance block close independently
 - known close-relevant residual risk is visible before any successful close
@@ -174,7 +177,7 @@ Implement minimal doctor, recover, reconcile, export, artifact integrity check, 
 
 Exit criteria:
 
-- conformance smoke covers no-active-task status, advisor close, direct close, approval-required block, decision-required block, autonomy-boundary block, Write Authorization required and invalid cases, evidence-insufficient close block, same-session verification guard, residual-risk visibility, feedback-loop routing, codebase-stewardship finding visibility, projection failure separation, reconcile required, and MCP-unavailable write hold
+- conformance smoke covers no-active-task status, advisor close, direct close, approval-required block, decision-required block, autonomy-boundary block, Write Authorization required and invalid cases, evidence-insufficient close block, same-session verification guard, two-stage review close-blocker routing, residual-risk visibility, feedback-loop routing, codebase-stewardship finding visibility, projection failure separation, reconcile required, and MCP-unavailable write hold
 - agency conformance checks verify the user can follow the Journey, see unresolved decisions, see what the agent may do without asking, and see close-relevant residual risk before acceptance
 - parallel orchestration automation remains later; any MVP dependency DAG support is metadata-only
 - export includes state snapshots, report projections, artifact refs, and redaction status

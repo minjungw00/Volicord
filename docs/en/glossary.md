@@ -394,6 +394,10 @@ A Markdown report generated from state records and artifact references, such as 
 
 The named report projection kinds are projections generated from state records and artifact refs; evidence-file authority stays with registered artifact files.
 
+### Review Stages
+
+A managed display/procedure split that separates Spec Compliance Review from Code Quality / Stewardship Review. Spec Compliance Review asks whether the requested work is complete under current Harness authority. Code Quality / Stewardship Review asks whether the implementation is maintainable inside the codebase. Review Stages can route findings to validator results, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, or close blockers, but they are not canonical records, new `ProjectionKind` values, approval, evidence, verification, QA, acceptance, risk acceptance, close, or Write Authorization. Same-session Review Stages do not create `detached_verified` assurance.
+
 ### `request_hash`
 
 The idempotency hash of a tool request, computed from canonical UTF-8 JSON covering `tool_name`, the schema-normalized request body, and the envelope fields other than `request_id` and `idempotency_key`.

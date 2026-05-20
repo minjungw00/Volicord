@@ -61,7 +61,23 @@ flowchart TB
   Stewardship --> Context["context_hygiene"]
 
   Human --> ManualQA["manual_qa"]
+  Pack --> Review["two-stage review display"]
+  Review --> SpecReview["Spec Compliance Review"]
+  Review --> StewardshipReview["Code Quality / Stewardship Review"]
 ```
+
+## Two-Stage Review Model
+
+Review guidance는 두 stage로 표시하여 agent와 user가 "요청한 것을 만들었는가?"와 "구현이 유지보수 가능한가?"를 분리해 볼 수 있게 한다. 이 stages는 procedure와 display이지 새 kernel gate, schema, canonical record가 아니다.
+
+| Stage | Question | Typical coverage |
+|---|---|---|
+| Spec Compliance Review | 현재 Harness authority 안에서 요청된 task를 만족했는가? | Acceptance criteria coverage, Change Unit completion conditions, scope 및 Write Authority compatibility, Decision Packet compatibility, evidence coverage, residual-risk visibility. |
+| Code Quality / Stewardship Review | 이 implementation이 codebase 안에서 maintainable한가? | Domain language, module/interface boundary, vertical slice shape, feedback loop 또는 TDD trace, codebase stewardship, context hygiene, follow-up risk. |
+
+Review stages는 validator results, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, close blockers를 summarize할 수 있다. 그 자체로 evidence, QA, verification, acceptance, residual-risk acceptance, approval, scope, Write Authorization을 satisfy하지 않는다.
+
+Same-session review는 detached verification이 아니다. Passed two-stage review는 `self_checked` confidence를 support하고 findings를 state로 route할 수 있지만, `assurance_level=detached_verified`를 만들면 안 된다. Detached verification에는 여전히 valid independence boundary와 Eval path가 필요하다.
 
 ### Shared Design
 
@@ -383,6 +399,13 @@ Severity는 explicit user request, sensitive category, public commitment, public
 | `codebase_stewardship` | `codebase_stewardship_check` | `design_gate` pending/partial/stale/passed and close blockers |
 | `manual_qa` | `manual_qa_required` | `qa_gate` pending/passed/failed/waived |
 | `context_hygiene` | `context_hygiene_check` | projection freshness, reconcile, evidence/design stale |
+
+Review-stage displays는 기존 policy validators를 compose한다. 새 validator ID를 도입하지 않는다.
+
+| Review stage | Validator relationship | Possible routed outcomes |
+|---|---|---|
+| Spec Compliance Review | Acceptance/evidence state와, applicable한 경우 `shared_design_alignment`, `decision_quality_check`, `autonomy_boundary_check`, `feedback_loop_check`, `tdd_trace_required`, `manual_qa_required`, `context_hygiene_check`, close-related residual-risk checks를 읽는다. | Validator result refs, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, close blockers. |
+| Code Quality / Stewardship Review | `domain_language_consistency`, `vertical_slice_shape`, `module_interface_review`, `codebase_stewardship_check`, `feedback_loop_check`, `tdd_trace_required`, `context_hygiene_check`를 읽는다. | Stewardship validator findings, reconcile items, owner-record update recommendations, follow-up Change Unit recommendations, residual-risk candidates, close blockers. |
 
 ```mermaid
 flowchart LR

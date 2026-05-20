@@ -636,7 +636,7 @@ Verification independence profiles describe the minimum qualification needed bef
 
 | Profile | Minimum qualification |
 |---|---|
-| `same_session` | Not detached. May record self-check or review notes. Must not produce `detached_verified`. |
+| `same_session` | Not detached. May record self-check, Spec Compliance Review notes, or Code Quality / Stewardship Review notes. Must not produce `detached_verified`. |
 | `subagent_context` | Not detached by default. May qualify only if the implementation context, Write Authorization context, and reviewed bundle satisfy a stricter profile; otherwise treat as not detached. |
 | `fresh_session` | Detached candidate if the evaluator receives a task/evidence bundle rather than continuing lead chat context, reviews the Evidence Manifest and changed files, and records an Eval. |
 | `fresh_worktree` | Detached candidate if the evaluator checks baseline, changed paths, artifacts, and Evidence Manifest in a separate worktree or equivalent isolated repository state. |
@@ -1040,7 +1040,7 @@ The decision algorithm is:
 7. Check `approval_gate`. Sensitive changes require granted approval with no drift or expiry.
 8. Check `design_gate`. Required design gates must be passed or validly waived; stale, blocked, pending, or partial required design gates block close unless policy converts them to a recorded waiver.
 9. Check `evidence_gate`. Where evidence is required, only `sufficient` can close successfully.
-10. Check `verification_gate`. Work requires passed detached verification or explicit user verification waiver. Direct work defaults to not required, but optional passed detached verification may upgrade assurance. Same-session review cannot produce detached assurance. Verification waiver is separate from detached verification and cannot contribute to `assurance_level=detached_verified`.
+10. Check `verification_gate`. Work requires passed detached verification or explicit user verification waiver. Direct work defaults to not required, but optional passed detached verification may upgrade assurance. Same-session review, including passed Spec Compliance Review and Code Quality / Stewardship Review displays, cannot produce detached assurance. Verification waiver is separate from detached verification and cannot contribute to `assurance_level=detached_verified`.
 11. Check `qa_gate`. Required QA must be passed or validly waived. A Manual QA record result alone does not close the gate unless the kernel aggregates it into `qa_gate`.
 12. Check close-relevant residual risk. If no known close-relevant Residual Risk exists, `ResidualRiskSummary.status=none` satisfies residual-risk visibility. If known close-relevant Residual Risk exists, it must be visible in the current judgment context before any successful close. Risk-accepted close additionally requires visible and accepted Residual Risk refs. Verification risk acceptance additionally sets `verification_gate=waived_by_user`.
 13. Check `acceptance_gate`. Required acceptance can be recorded only after close-relevant residual risk is visible in the current judgment context or confirmed as `ResidualRiskSummary.status=none`. Rejection routes the Task back to shaping, execution, or cancellation.

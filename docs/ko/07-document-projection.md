@@ -114,6 +114,7 @@ Required authority statements:
 - Change Unit DAG: `state.sqlite.change_unit_dependencies`와 Change Unit ref -> dependency projection. scheduler 또는 authorization surface가 아니다.
 - Residual Risk: accepted-risk metadata/refs를 포함한 `state.sqlite.residual_risks` -> residual-risk display
 - Stewardship Impact Summary: owner record, validator result, ref에서 derive됨 -> `StewardshipImpactSummary` display. canonical record가 아니다.
+- Review Stages: Task, Change Unit, gates, evidence, validator results, residual-risk refs, stewardship owner refs -> Spec Compliance Review와 Code Quality / Stewardship Review라는 managed `TASK` 또는 `RUN-SUMMARY` display sections. Canonical records가 아니고, 새 `ProjectionKind` values가 아니며, detached verification이 아니다.
 
 ## Markdown Report Boundary
 
@@ -337,13 +338,15 @@ flowchart LR
 
 ### TASK
 
-목적: active work를 위한 continuity projection이다. 작업이 어디에 있는지, judgment context, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Stewardship Impact, next evidence, residual risk, mode, lifecycle phase, next action, current gate, active Change Unit, pending decision, evidence, report ref, projection freshness를 요약한다.
+목적: active work를 위한 continuity projection이다. 작업이 어디에 있는지, judgment context, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, Stewardship Impact, next evidence, residual risk, mode, lifecycle phase, next action, current gate, active Change Unit, pending decision, evidence, report ref, projection freshness를 요약한다.
 
-Source: `state.sqlite` Task, task gate, active Change Unit, Change Unit dependency, Write Authorization record, Write Authority Summary display input, Decision Packet, Residual Risk, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval record, Journey Spine source record, `domain_terms`, `module_map_items`, `interface_contracts`, `feedback_loops`, TDD가 selected된 경우 `tdd_traces`, design-quality validator result, expected evidence needs, artifact ref, projection freshness.
+Source: `state.sqlite` Task, task gate, active Change Unit, Change Unit dependency, Write Authorization record, Write Authority Summary display input, Decision Packet, Residual Risk, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval record, Journey Spine source record, `domain_terms`, `module_map_items`, `interface_contracts`, `feedback_loops`, TDD가 selected된 경우 `tdd_traces`, design-quality validator result, expected evidence needs, Review Stage display inputs, artifact ref, projection freshness.
 
 Boundary: `TASK`의 Stewardship Impact는 owner record, validator result, ref에서 derive되는 `StewardshipImpactSummary` display다. Domain Language, Module Map, Interface Contract, Feedback Loop, TDD Trace, residual-risk, Decision Packet owner record를 replace하지 않는다.
 
 Boundary: `TASK`의 Implementation Micro-Plan은 current Task와 Change Unit state에서 render되거나 그 state와 aligned된 lightweight execution aid다. 작은 step 또는 slice, purpose, active Change Unit scope alignment 또는 likely paths, relevant한 경우 selected feedback loop 또는 TDD status, expected evidence, stop condition을 보여줄 수 있다. Product write를 authorize하거나, scope를 넓히거나, approval을 satisfy하거나, evidence를 만들거나, edit만으로 state를 mutate하거나, `prepare_write`를 replace하지 않는다. 이에 대한 human-editable proposal도 accepted reconcile outcome 또는 Core state-changing action을 통해서만 state가 된다.
+
+Boundary: `TASK`의 Review Stages는 managed display sections다. Spec Compliance Review는 requested-result completeness를 Code Quality / Stewardship Review의 maintainability concerns와 분리한다. 이 sections는 validator results, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, close blockers를 가리킬 수 있지만 gates를 satisfy하거나, writes를 authorize하거나, risk를 accept하거나, Task를 close하거나, `detached_verified` assurance를 만들지 않는다.
 
 Human-editable area: User Notes and Proposals.
 
@@ -357,11 +360,11 @@ Boundary: approval은 product judgment를 resolve하지 않고, correctness를 p
 
 ### RUN-SUMMARY
 
-목적: execution run의 readable summary다.
+목적: execution run의 readable summary다. Run이 review findings 또는 self-check results를 기록했다면 Review Stages를 포함할 수 있다.
 
-Source: run record, actor/surface identity, baseline, Change Unit, 있는 경우 consumed Write Authorization ref, changed path, command result, validator result, artifact ref, evidence update, follow-up.
+Source: run record, actor/surface identity, baseline, Change Unit, 있는 경우 consumed Write Authorization ref, changed path, command result, validator result, recorded된 경우 Review Stage findings, artifact ref, evidence update, follow-up.
 
-Boundary: raw log와 diff는 artifact로 남고 report는 link한다.
+Boundary: raw log와 diff는 artifact로 남고 report는 link한다. `RUN-SUMMARY`의 same-session review content는 self-check 또는 stewardship signal일 뿐이며 detached verification으로 render될 수 없다.
 
 ### EVIDENCE-MANIFEST
 

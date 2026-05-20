@@ -114,6 +114,7 @@ Required authority statements:
 - Change Unit DAG: `state.sqlite.change_unit_dependencies` and Change Unit refs -> dependency projection; it is not a scheduler or authorization surface
 - Residual Risk: `state.sqlite.residual_risks` including accepted-risk metadata/refs -> residual-risk displays
 - Stewardship Impact Summary: derived from owner records, validator results, and refs -> `StewardshipImpactSummary` display; it is not a canonical record
+- Review Stages: Task, Change Unit, gates, evidence, validator results, residual-risk refs, and stewardship owner refs -> managed `TASK` or `RUN-SUMMARY` display sections named Spec Compliance Review and Code Quality / Stewardship Review; they are not canonical records, not new `ProjectionKind` values, and not detached verification
 
 ## Markdown Report Boundary
 
@@ -335,13 +336,15 @@ flowchart LR
 
 ### TASK
 
-Purpose: the continuity projection for the active work. It summarizes where the work is, judgment context, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Stewardship Impact, next evidence, residual risk, mode, lifecycle phase, next action, current gates, active Change Unit, pending decisions, evidence, report refs, and projection freshness.
+Purpose: the continuity projection for the active work. It summarizes where the work is, judgment context, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, Stewardship Impact, next evidence, residual risk, mode, lifecycle phase, next action, current gates, active Change Unit, pending decisions, evidence, report refs, and projection freshness.
 
-Sources: `state.sqlite` Task, task gates, active Change Unit, Change Unit dependencies, Write Authorization records, Write Authority Summary display inputs, Decision Packets, Residual Risks, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval records, Journey Spine source records, `domain_terms`, `module_map_items`, `interface_contracts`, `feedback_loops`, `tdd_traces` when TDD is selected, design-quality validator results, expected evidence needs, artifact refs, projection freshness.
+Sources: `state.sqlite` Task, task gates, active Change Unit, Change Unit dependencies, Write Authorization records, Write Authority Summary display inputs, Decision Packets, Residual Risks, latest Run, latest Evidence Manifest, latest Eval, latest Manual QA record, approval records, Journey Spine source records, `domain_terms`, `module_map_items`, `interface_contracts`, `feedback_loops`, `tdd_traces` when TDD is selected, design-quality validator results, expected evidence needs, Review Stage display inputs, artifact refs, projection freshness.
 
 Boundary: Stewardship Impact in `TASK` is the `StewardshipImpactSummary` display derived from owner records, validator results, and refs. It does not replace Domain Language, Module Map, Interface Contract, Feedback Loop, TDD Trace, residual-risk, or Decision Packet owner records.
 
 Boundary: Implementation Micro-Plan in `TASK` is a lightweight execution aid rendered from or aligned with current Task and Change Unit state. It may show small steps or slices, purpose, active Change Unit scope alignment or likely paths, selected feedback loop or TDD status when relevant, expected evidence, and stop conditions. It does not authorize product writes, expand scope, satisfy approval, create evidence, mutate state when edited, or replace `prepare_write`; human-editable proposals about it become state only through an accepted reconcile outcome or Core state-changing action.
+
+Boundary: Review Stages in `TASK` are managed display sections. Spec Compliance Review separates requested-result completeness from Code Quality / Stewardship Review maintainability concerns. The sections can point to validator results, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, and close blockers, but they do not satisfy gates, authorize writes, accept risk, close the task, or create `detached_verified` assurance.
 
 Human-editable area: User Notes and Proposals.
 
@@ -355,11 +358,11 @@ Boundary: approval does not resolve product judgment, prove correctness, satisfy
 
 ### RUN-SUMMARY
 
-Purpose: a readable summary of an execution run.
+Purpose: a readable summary of an execution run. It may include Review Stages when the run recorded review findings or self-check results.
 
-Sources: run record, actor/surface identity, baseline, Change Unit, consumed Write Authorization ref when present, changed paths, command results, validator results, artifact refs, evidence updates, follow-ups.
+Sources: run record, actor/surface identity, baseline, Change Unit, consumed Write Authorization ref when present, changed paths, command results, validator results, Review Stage findings when recorded, artifact refs, evidence updates, follow-ups.
 
-Boundary: raw logs and diffs stay as artifacts; the report links to them.
+Boundary: raw logs and diffs stay as artifacts; the report links to them. Same-session review content in a `RUN-SUMMARY` is self-check or stewardship signal only and cannot be rendered as detached verification.
 
 ### EVIDENCE-MANIFEST
 

@@ -575,7 +575,7 @@ Agency, stewardship, context hygiene는 MVP conformance suite입니다. 이 suit
 | Suite | Required behavior |
 |---|---|
 | agency | Blocking product judgment는 affected write 또는 close 전에 compatible Decision Packet을 요구합니다. Decision request routing metadata는 optional compatibility data이며 이것만으로는 `decision_gate`를 satisfy하면 안 됩니다. Product trade-off write는 hold됩니다. Sensitive approval lifecycle은 approval, Decision Packet, Write Authorization을 서로 구분된 상태로 유지합니다. AFK Autonomy Boundary stop condition은 public commitment를 block합니다. Known close-relevant residual risk는 successful close 전에 visible이어야 합니다. Known close-relevant risk가 없으면 `ResidualRiskSummary.status=none`이 residual-risk visibility를 satisfy합니다. Risk-accepted close에는 acceptance 전에 user에게 visible했던 risk를 가리키는 accepted Residual Risk refs가 추가로 필요합니다. Approval, QA, acceptance, residual-risk acceptance는 서로 구분된 상태로 남아야 합니다. |
-| stewardship | Design-quality와 codebase-stewardship validator는 canonical owner record, ref, policy-owned severity composition을 통해 `design_gate`, `decision_gate`, `qa_gate`, close blocker, waiver eligibility에 영향을 줍니다. Public interface, module, domain, feedback-loop, TDD, Manual QA, waiver check는 schema나 DDL을 duplicate하지 않습니다. |
+| stewardship | Design-quality와 codebase-stewardship validator는 canonical owner record, ref, policy-owned severity composition을 통해 `design_gate`, `decision_gate`, `qa_gate`, close blocker, waiver eligibility에 영향을 줍니다. Public interface, module, domain, feedback-loop, TDD, Manual QA, waiver check는 schema나 DDL을 duplicate하지 않습니다. Review Stage display는 새 authority를 만들지 않고 Spec Compliance Review와 Code Quality / Stewardship Review를 분리합니다. |
 | context-hygiene | Current Task state, Journey ref, evidence ref, freshness state가 authoritative합니다. Stale PRD, stale projection, closed issue, old design doc, long log는 reconcile되기 전까지 pull-only context입니다. Stale context는 write, close, acceptance, current-state replacement를 authorize할 수 없습니다. |
 
 Status/next recommendations는 read response로만 fixture-observable합니다. Fixture는 관련 있을 때 `recommended_playbooks`를 assert할 수 있지만, recommendation 자체로 state event, gate satisfaction, projection enqueue, artifact, evidence, verification, QA, acceptance, close가 발생하지 않았다는 점도 증명해야 합니다. Recommendation이 product judgment를 imply하면 expected behavior는 Decision Packet ref 또는 Decision Packet request path이지 satisfied `decision_gate`가 아닙니다.
@@ -589,6 +589,7 @@ flowchart LR
   Agency --> A2["approval, residual risk, Autonomy Boundary"]
   Stewardship --> S1["design-quality validators와 policy composition"]
   Stewardship --> S2["domain, module, interface, feedback loop"]
+  Stewardship --> S3["two-stage review routing"]
   Context --> C1["current Task state와 Journey refs"]
   Context --> C2["stale context는 reconcile 전 pull-only"]
 ```
@@ -2135,6 +2136,102 @@ expected_error:
 ```
 
 ```yaml
+scenario_id: DESIGN-two-stage-review-critical-spec-finding-blocks-close
+initial_state:
+  active_task:
+    task_id: TASK-REVIEW-SPEC-001
+    mode: work
+    lifecycle_phase: verifying
+    active_change_unit_id: CU-REVIEW-SPEC-001
+    acceptance_criteria:
+      - criteria_id: AC-LOGIN-001
+        statement: "Locked-account login returns the documented error state."
+      - criteria_id: AC-LOGIN-002
+        statement: "Successful login remains unchanged."
+    gates:
+      scope_gate: passed
+      decision_gate: not_required
+      approval_gate: not_required
+      design_gate: passed
+      evidence_gate: partial
+      verification_gate: passed
+      qa_gate: not_required
+      acceptance_gate: accepted
+  active_change_unit:
+    change_unit_id: CU-REVIEW-SPEC-001
+    completion_conditions:
+      - "All login acceptance criteria have evidence."
+    allowed_paths: ["src/auth/login.ts", "test/auth/login.test.ts"]
+  runs:
+    - run_id: RUN-REVIEW-SPEC-001
+      kind: implementation
+      status: completed
+      summary: "Same-session review found AC-LOGIN-001 still missing evidence; no stewardship blocker was found."
+  validator_results:
+    codebase_stewardship_check:
+      status: passed
+    context_hygiene_check:
+      status: passed
+  evals:
+    - eval_id: EVAL-REVIEW-SPEC-001
+      verdict: passed
+      independence_qualifier: manual_bundle
+      target_run_id: RUN-REVIEW-SPEC-001
+  evidence_manifests:
+    - evidence_manifest_id: EM-REVIEW-SPEC-001
+      status: partial
+      coverage:
+        AC-LOGIN-001: missing
+        AC-LOGIN-002: covered
+input:
+  task_id: TASK-REVIEW-SPEC-001
+  intent: complete
+  requested_close_reason: completed_verified
+  user_note: null
+  superseded_by_task_id: null
+action: close_task
+expected_state:
+  lifecycle_phase: verifying
+  gates:
+    evidence_gate: partial
+    design_gate: passed
+    verification_gate: passed
+  close_blockers:
+    - code: EVIDENCE_INSUFFICIENT
+      related_refs:
+        - record_kind: evidence_manifest
+          record_id: EM-REVIEW-SPEC-001
+        - record_kind: run
+          record_id: RUN-REVIEW-SPEC-001
+expected_response:
+  display:
+    review_stages:
+      display_only: true
+      canonical_state_record_created: false
+      spec_compliance_review:
+        status: failed
+        finding_code: ACCEPTANCE_CRITERION_UNCOVERED
+        acceptance_criteria_refs: [AC-LOGIN-001]
+        routed_to: close_blocker
+      code_quality_stewardship_review:
+        status: passed
+      authority_boundary:
+        satisfies_gates: false
+        authorizes_writes: false
+        accepts_risk: false
+        closes_task: false
+        creates_detached_assurance: false
+expected_events:
+  - close_requested
+  - close_blocked
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+expected_error:
+  code: EVIDENCE_INSUFFICIENT
+```
+
+```yaml
 scenario_id: DESIGN-tdd-required-non-test-write-blocked-before-red
 initial_state:
   active_task:
@@ -2594,6 +2691,7 @@ expected_error:
 | `STEWARDSHIP-shared-design-required-for-ambiguous-work` | `prepare_write` | Shared Design record 없는 ambiguous `work`는 `design_gate=pending` 또는 `partial`을 유지하거나 set하고, shared-design finding이 있는 `codebase_stewardship_check` failed 또는 blocked를 보고하며, user judgment로 해결 가능한지에 따라 `VALIDATOR_FAILED` 또는 `DECISION_REQUIRED`를 반환합니다. |
 | `STEWARDSHIP-feedback-loop-required-before-behavior-write` | `prepare_write` | Feedback-loop record 없는 behavior-affecting write는 write를 held 상태로 유지하고, `feedback_loop_check` blocked를 보고하며, `design_gate=pending` 또는 `partial`을 유지합니다. 나중에 check하겠다는 agent prose에 의존하지 않습니다. |
 | `STEWARDSHIP-tdd-required-test-path-write-can-create-red-check` | `prepare_write` | `tdd_trace_required`가 적용되고 intended write가 RED target 또는 plan이 설명하는 failing RED check를 만드는 scoped test path로 제한되면, 다른 scope, baseline, approval, autonomy, decision, capability checks가 모두 pass할 때 `prepare_write`가 write를 allow할 수 있다. Fixture는 RED target 또는 plan이 Evidence Manifest coverage를 satisfy하지 않고, later run이 GREEN evidence를 기록하기 전에는 GREEN evidence가 credited되지 않는다는 점도 assert해야 한다. |
+| `STEWARDSHIP-two-stage-review-display-is-not-authority` | `close_task` | Review Stage display text는 passed 또는 failed findings를 summarize할 수 있지만, close는 canonical gates, evidence, residual-risk visibility, QA, acceptance, close blockers에 의존한다. Passed display만으로 close, risk acceptance, detached assurance가 생기면 안 된다. |
 
 ## Context Hygiene Fixture 예시
 
@@ -2800,7 +2898,7 @@ expected_error: null
 - core: active status, advisor close, direct close, write gate, Write Authorization creation/required/invalid coverage, approval required and approval lifecycle retry, evidence insufficient, same-session verification guard, QA required, acceptance required, projection failure separation
 - connector: capability profile, MCP unavailable hold, generated manifest drift, changed-path detection, artifact capture, fallback guarantee display, current Journey Card before significant resume, Decision Packet not broad approval, Autonomy Boundary breach routing
 - agency: Decision Packet required for blocking product judgment, product trade-off write guard, AFK Autonomy Boundary stop conditions, known close-relevant residual-risk visibility before any successful close, `ResidualRiskSummary.status=none` for no known close-relevant risk, risk-accepted close에는 acceptance 전에 user에게 visible했던 risk를 가리키는 accepted Residual Risk refs가 필요함, distinct approval/QA/acceptance judgments
-- stewardship: shared design required, codebase stewardship close blockers, domain language conflicts, vertical slice or exception, feedback loop and TDD trace required or waived, public interface module/interface review, public interface stewardship close blocker, Manual QA policy and waiver checks
+- stewardship: shared design required, codebase stewardship close blockers, domain language conflicts, vertical slice or exception, feedback loop and TDD trace required or waived, public interface module/interface review, public interface stewardship close blocker, two-stage review display and close-blocker routing, Manual QA policy and waiver checks
 - context-hygiene: current-state bundle, stale projection and stale PRD handling, stale `TASK` projection write guard, stale context pull-only behavior, evaluator bundle freshness, resume from current state rather than chat memory
 - design-quality: kernel authority를 다시 정의하지 않으면서 agency, stewardship, context-hygiene, close-impact validator를 compose하는 policy-pack smoke coverage
 

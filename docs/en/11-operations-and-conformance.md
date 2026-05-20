@@ -573,7 +573,7 @@ Required suite responsibilities:
 | Suite | Required behavior |
 |---|---|
 | agency | Blocking product judgment requires a compatible Decision Packet before affected write or close; decision request routing metadata is optional compatibility data and alone must not satisfy `decision_gate`; product trade-off writes are held; sensitive approval lifecycle keeps approval, Decision Packet, and Write Authorization distinct; AFK Autonomy Boundary stop conditions block public commitments; known close-relevant residual risk must be visible before any successful close; if no known close-relevant risk exists, `ResidualRiskSummary.status=none` satisfies residual-risk visibility; risk-accepted close additionally requires accepted Residual Risk refs whose risks were visible before acceptance; approval, QA, acceptance, and residual-risk acceptance remain distinct. |
-| stewardship | Design-quality and codebase-stewardship validators affect `design_gate`, `decision_gate`, `qa_gate`, close blockers, and waiver eligibility through canonical owner records, refs, and policy-owned severity composition; public interface, module, domain, feedback-loop, TDD, Manual QA, and waiver checks do not duplicate schemas or DDL. |
+| stewardship | Design-quality and codebase-stewardship validators affect `design_gate`, `decision_gate`, `qa_gate`, close blockers, and waiver eligibility through canonical owner records, refs, and policy-owned severity composition; public interface, module, domain, feedback-loop, TDD, Manual QA, and waiver checks do not duplicate schemas or DDL; Review Stage displays separate Spec Compliance Review from Code Quality / Stewardship Review without creating new authority. |
 | context-hygiene | Current Task state, Journey refs, evidence refs, and freshness state are authoritative; stale PRDs, stale projections, closed issues, old design docs, and long logs are pull-only context until reconciled; stale context cannot authorize writes, close, acceptance, or current-state replacement. |
 
 Status/next recommendations are fixture-observable only as read responses. Fixtures may assert `recommended_playbooks` when relevant, but must also prove no state event, gate satisfaction, projection enqueue, artifact, evidence, verification, QA, acceptance, or close resulted from the recommendation itself. If a recommendation implies product judgment, the expected behavior is a Decision Packet ref or Decision Packet request path, not a satisfied `decision_gate`.
@@ -587,6 +587,7 @@ flowchart LR
   Agency --> A2["approval, residual risk, Autonomy Boundary"]
   Stewardship --> S1["design-quality validators and policy composition"]
   Stewardship --> S2["domain, module, interface, feedback loop"]
+  Stewardship --> S3["two-stage review routing"]
   Context --> C1["current Task state and Journey refs"]
   Context --> C2["stale context is pull-only until reconciled"]
 ```
@@ -2133,6 +2134,102 @@ expected_error:
 ```
 
 ```yaml
+scenario_id: DESIGN-two-stage-review-critical-spec-finding-blocks-close
+initial_state:
+  active_task:
+    task_id: TASK-REVIEW-SPEC-001
+    mode: work
+    lifecycle_phase: verifying
+    active_change_unit_id: CU-REVIEW-SPEC-001
+    acceptance_criteria:
+      - criteria_id: AC-LOGIN-001
+        statement: "Locked-account login returns the documented error state."
+      - criteria_id: AC-LOGIN-002
+        statement: "Successful login remains unchanged."
+    gates:
+      scope_gate: passed
+      decision_gate: not_required
+      approval_gate: not_required
+      design_gate: passed
+      evidence_gate: partial
+      verification_gate: passed
+      qa_gate: not_required
+      acceptance_gate: accepted
+  active_change_unit:
+    change_unit_id: CU-REVIEW-SPEC-001
+    completion_conditions:
+      - "All login acceptance criteria have evidence."
+    allowed_paths: ["src/auth/login.ts", "test/auth/login.test.ts"]
+  runs:
+    - run_id: RUN-REVIEW-SPEC-001
+      kind: implementation
+      status: completed
+      summary: "Same-session review found AC-LOGIN-001 still missing evidence; no stewardship blocker was found."
+  validator_results:
+    codebase_stewardship_check:
+      status: passed
+    context_hygiene_check:
+      status: passed
+  evals:
+    - eval_id: EVAL-REVIEW-SPEC-001
+      verdict: passed
+      independence_qualifier: manual_bundle
+      target_run_id: RUN-REVIEW-SPEC-001
+  evidence_manifests:
+    - evidence_manifest_id: EM-REVIEW-SPEC-001
+      status: partial
+      coverage:
+        AC-LOGIN-001: missing
+        AC-LOGIN-002: covered
+input:
+  task_id: TASK-REVIEW-SPEC-001
+  intent: complete
+  requested_close_reason: completed_verified
+  user_note: null
+  superseded_by_task_id: null
+action: close_task
+expected_state:
+  lifecycle_phase: verifying
+  gates:
+    evidence_gate: partial
+    design_gate: passed
+    verification_gate: passed
+  close_blockers:
+    - code: EVIDENCE_INSUFFICIENT
+      related_refs:
+        - record_kind: evidence_manifest
+          record_id: EM-REVIEW-SPEC-001
+        - record_kind: run
+          record_id: RUN-REVIEW-SPEC-001
+expected_response:
+  display:
+    review_stages:
+      display_only: true
+      canonical_state_record_created: false
+      spec_compliance_review:
+        status: failed
+        finding_code: ACCEPTANCE_CRITERION_UNCOVERED
+        acceptance_criteria_refs: [AC-LOGIN-001]
+        routed_to: close_blocker
+      code_quality_stewardship_review:
+        status: passed
+      authority_boundary:
+        satisfies_gates: false
+        authorizes_writes: false
+        accepts_risk: false
+        closes_task: false
+        creates_detached_assurance: false
+expected_events:
+  - close_requested
+  - close_blocked
+expected_artifacts: []
+expected_projection:
+  TASK: enqueued
+expected_error:
+  code: EVIDENCE_INSUFFICIENT
+```
+
+```yaml
 scenario_id: DESIGN-tdd-required-non-test-write-blocked-before-red
 initial_state:
   active_task:
@@ -2592,6 +2689,7 @@ These remaining catalog entries are not fixture bodies. Each materialized fixtur
 | `STEWARDSHIP-shared-design-required-for-ambiguous-work` | `prepare_write` | Ambiguous `work` without a Shared Design record keeps or sets `design_gate=pending` or `partial`, reports `codebase_stewardship_check` failed or blocked with a shared-design finding, and returns `VALIDATOR_FAILED` or `DECISION_REQUIRED` according to whether user judgment can resolve it. |
 | `STEWARDSHIP-feedback-loop-required-before-behavior-write` | `prepare_write` | Behavior-affecting write without a feedback-loop record keeps the write held, reports `feedback_loop_check` blocked, keeps `design_gate=pending` or `partial`, and does not rely on agent prose claiming a check will happen later. |
 | `STEWARDSHIP-tdd-required-test-path-write-can-create-red-check` | `prepare_write` | When `tdd_trace_required` applies and the intended write is limited to the scoped test path that creates the failing RED check described by the RED target or plan, `prepare_write` may allow the write if all other scope, baseline, approval, autonomy, decision, and capability checks pass; the fixture must still assert the RED target or plan does not satisfy Evidence Manifest coverage and no GREEN evidence is credited until a later run records it. |
+| `STEWARDSHIP-two-stage-review-display-is-not-authority` | `close_task` | Review Stage display text may summarize passed or failed findings, but close depends on canonical gates, evidence, residual-risk visibility, QA, acceptance, and close blockers; a passed display alone cannot close, accept risk, or create detached assurance. |
 
 ## Context Hygiene Fixture Examples
 
@@ -2798,7 +2896,7 @@ Minimum MVP suites:
 - core: active status, advisor close, direct close, write gate, Write Authorization creation/required/invalid coverage, approval required and approval lifecycle retry, evidence insufficient, same-session verification guard, QA required, acceptance required, projection failure separation
 - connector: capability profile, MCP unavailable hold, generated manifest drift, changed-path detection, artifact capture, fallback guarantee display, current Journey Card before significant resume, Decision Packet not broad approval, Autonomy Boundary breach routing
 - agency: Decision Packet required for blocking product judgment, product trade-off write guard, AFK Autonomy Boundary stop conditions, known close-relevant residual-risk visibility before any successful close, `ResidualRiskSummary.status=none` for no known close-relevant risk, accepted Residual Risk refs whose risks were visible before acceptance for risk-accepted close, distinct approval/QA/acceptance judgments
-- stewardship: shared design required, codebase stewardship close blockers, domain language conflicts, vertical slice or exception, feedback loop and TDD trace required or waived, public interface module/interface review, public interface stewardship close blocker, Manual QA policy and waiver checks
+- stewardship: shared design required, codebase stewardship close blockers, domain language conflicts, vertical slice or exception, feedback loop and TDD trace required or waived, public interface module/interface review, public interface stewardship close blocker, two-stage review display and close-blocker routing, Manual QA policy and waiver checks
 - context-hygiene: current-state bundle, stale projection and stale PRD handling, stale `TASK` projection write guard, stale context pull-only behavior, evaluator bundle freshness, resume from current state rather than chat memory
 - design-quality: policy-pack smoke coverage that composes agency, stewardship, context-hygiene, and close-impact validators without redefining kernel authority
 

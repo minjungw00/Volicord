@@ -16,7 +16,7 @@ Template은 rendered shape의 예시다. Canonical state가 아니며 kernel fie
 6. Approval, verification, Manual QA, acceptance를 visible하게 분리한다.
 7. Card가 `Manual QA: pending/passed/failed/waived`라고 말하더라도 `qa_gate`를 canonical로 취급한다.
 8. Template change는 projection change로 versioning한다.
-9. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, 표시된 Write Authorization ref, Change Unit DAG, Residual Risk text, Stewardship Impact text, `source_state_version`은 canonical state나 canonical Write Authorization record 자체가 아니라 projection output으로 취급한다.
+9. Decision Packet, Journey Card, Journey Spine, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, 표시된 Write Authorization ref, Change Unit DAG, Residual Risk text, Stewardship Impact text, `source_state_version`은 canonical state나 canonical Write Authorization record 자체가 아니라 projection output으로 취급한다.
 
 ```mermaid
 flowchart TD
@@ -53,6 +53,7 @@ flowchart TD
   TASK --> Autonomy["Autonomy Boundary"]
   TASK --> Write["Write Authority Summary"]
   TASK --> MicroPlan["Implementation Micro-Plan"]
+  TASK --> Review["Review Stages"]
   TASK --> Evidence["Next Evidence"]
   TASK --> Risk["Residual Risk"]
   TASK --> Stewardship["Stewardship Impact"]
@@ -143,6 +144,28 @@ updated_at: 2026-05-06T09:30:15+09:00
 | Step / Slice | Purpose | Active Change Unit Scope / Likely Paths | Feedback Loop / TDD | Expected Evidence | Stop / Ask User When |
 |---|---|---|---|---|---|
 | 1 | | | | | |
+
+## Review Stages
+- note: managed display only; same-session review는 detached verification이 아니다.
+
+### Spec Compliance Review
+- acceptance criteria coverage:
+- Change Unit completion conditions:
+- scope / Write Authority compatibility:
+- Decision Packet compatibility:
+- evidence coverage:
+- residual-risk visibility:
+- routed outcome:
+
+### Code Quality / Stewardship Review
+- domain language:
+- module / interface boundary:
+- vertical slice shape:
+- feedback loop / TDD:
+- codebase stewardship:
+- context hygiene:
+- follow-up risk:
+- routed outcome:
 
 ## Next Evidence
 - next evidence action:
@@ -503,6 +526,28 @@ npm test -- --runInBand
 - codebase_stewardship_check:
 - residual_risk_visibility_check:
 - manual_qa_required:
+
+## Review Stages
+- note: run-local review display only; same-session review는 `detached_verified` assurance를 만들 수 없다.
+
+### Spec Compliance Review
+- acceptance criteria coverage:
+- Change Unit completion conditions:
+- scope / Write Authority compatibility:
+- Decision Packet compatibility:
+- evidence coverage:
+- residual-risk visibility:
+- outcome refs:
+
+### Code Quality / Stewardship Review
+- domain language:
+- module / interface boundary:
+- vertical slice shape:
+- feedback loop / TDD:
+- codebase stewardship:
+- context hygiene:
+- follow-up risk:
+- outcome refs:
 
 ## TDD Trace Summary
 - required:

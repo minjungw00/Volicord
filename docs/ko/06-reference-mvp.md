@@ -23,6 +23,7 @@ MVP 포함 항목:
 - Change Units, autonomy boundaries, dependency metadata, end-to-end path intent를 위한 shaping kernel support
 - approval, evidence, verification, Manual QA, acceptance gate support
 - decision, autonomy boundary, feedback loop, codebase stewardship, residual-risk visibility, agency conformance checks
+- 기존 state, validators, evidence, refs에서 source되는 Spec Compliance Review와 Code Quality / Stewardship Review의 two-stage review display support
 - [MCP API와 스키마](05-mcp-api-and-schemas.md#shared-schemas)가 이름 붙이는 MVP-required `ProjectionKind` renderers
 - policy가 요구하거나, source record가 있거나, user/operator가 enable할 때만 사용하는 MVP-optional `ProjectionKind` renderers
 - detached verification bundle 또는 manual evaluator instruction bundle
@@ -148,6 +149,7 @@ Exit criteria:
 - implementation과 direct runs가 compatible Write Authorization을 consume하고 authorization 밖의 observed changes를 detect함
 - runs, checks, QA inputs, evaluator notes의 findings가 state, evidence, Decision Packet, Change Unit update, close blocker 중 하나로 route됨
 - scope, design, module boundaries, user judgment에 영향을 주는 codebase stewardship issues가 validator results 또는 blockers로 visible함
+- `TASK`와 `RUN-SUMMARY`가 canonical records, 새 `ProjectionKind` values, assurance upgrades를 추가하지 않고 Review Stages를 managed display sections로 render할 수 있음
 - `tdd_trace_required`가 적용될 때 failing RED check를 만들기 위한 test-path writes는 normal scope와 authority checks를 통해 proceed할 수 있고, non-test implementation writes는 actual RED evidence가 있거나 valid TDD waiver가 non-TDD justification과 alternate feedback loop를 기록할 때까지 blocked됨
 - TDD trace refs, Feedback Loop refs, run logs, artifacts를 Evidence Manifest acceptance-criteria 및 changed-file coverage에 link할 수 있음
 - projection job failure가 state failure와 분리됨
@@ -160,6 +162,7 @@ Exit criteria:
 Exit criteria:
 
 - work가 same-session self-review로 `detached_verified` close될 수 없음
+- passed same-session two-stage review는 self-check findings를 support할 수 있지만 detached verification을 satisfy하거나 `assurance_level=detached_verified`를 set할 수 없음
 - verification waiver는 `detached_verified`가 아니라 `completed_with_risk_accepted`로 close됨
 - required Manual QA와 acceptance가 독립적으로 close를 block함
 - known close-relevant residual risk가 successful close 전에 항상 visible함
@@ -174,7 +177,7 @@ Minimal doctor, recover, reconcile, export, artifact integrity check, fixture-ba
 
 Exit criteria:
 
-- conformance smoke가 no-active-task status, advisor close, direct close, approval-required block, decision-required block, autonomy-boundary block, Write Authorization required 및 invalid cases, evidence-insufficient close block, same-session verification guard, residual-risk visibility, feedback-loop routing, codebase-stewardship finding visibility, projection failure separation, reconcile required, MCP-unavailable write hold를 cover함
+- conformance smoke가 no-active-task status, advisor close, direct close, approval-required block, decision-required block, autonomy-boundary block, Write Authorization required 및 invalid cases, evidence-insufficient close block, same-session verification guard, two-stage review close-blocker routing, residual-risk visibility, feedback-loop routing, codebase-stewardship finding visibility, projection failure separation, reconcile required, MCP-unavailable write hold를 cover함
 - agency conformance checks가 사용자가 Journey를 따라갈 수 있고, unresolved decisions를 볼 수 있고, agent가 asking 없이 무엇을 할 수 있는지 볼 수 있고, acceptance 전에 close-relevant residual risk를 볼 수 있음을 verify함
 - parallel orchestration automation은 later로 남음. MVP dependency DAG support가 있더라도 metadata-only임
 - export가 state snapshots, report projections, artifact refs, redaction status를 포함함

@@ -387,6 +387,12 @@ flowchart TD
 
 Evidence가 stale이면 새 실행, 새 로그, 새 diff, 새 verification bundle, 또는 범위 재확인이 필요할 수 있다.
 
+## Reading Review Stages
+
+Harness는 review를 two stages로 보여줄 수 있다. Spec Compliance Review는 requested thing이 실제로 complete한지 묻는다: acceptance criteria, Change Unit completion conditions, write authority compatibility, decisions, evidence, visible residual risk. Code Quality / Stewardship Review는 implementation이 maintainable한지 묻는다: domain language, module/interface boundaries, slice shape, feedback loop 또는 TDD, codebase stewardship, context hygiene, follow-up risk.
+
+이 review stages는 validator results, missing evidence, Decision Packets, Change Unit updates, residual risk, close blockers를 가리킬 수 있다. Detached verification은 아니다. Passed same-session review는 useful하지만 Task를 `detached_verified`로 만들지 않는다.
+
 ## Verify
 
 Work는 구현자의 자기 보고만으로 `detached_verified`가 되지 않는다.

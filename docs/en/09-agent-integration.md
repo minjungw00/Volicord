@@ -117,11 +117,19 @@ The skill/playbook layer teaches procedure:
 - how to record user decisions
 - how to distinguish approval, product decision, QA waiver, verification waiver, residual-risk acceptance, and final acceptance
 - how to record TDD trace, evidence, Manual QA, and acceptance
+- how to run the two review stages: Spec Compliance Review first, then Code Quality / Stewardship Review
 - how to make known close-relevant residual risk visible before any successful close, require accepted Residual Risk refs for risk-accepted close, and record acceptance only after close-relevant residual risk is visible
 - why work verification must be detached
 - how to handle stale projection and reconcile
 
 Stage routing may use recommended playbooks such as shared-design, product-review, eng-review, tdd-loop, spec-review, code-quality-review, qa-review, guard-check, release-handoff, or browser-qa-candidate. These recommendations live inside the skill/playbook layer. They are display guidance only: they do not mutate state, authorize writes, satisfy gates, create evidence, verify work, waive QA, accept risk, or close a Task. If a recommended playbook proposes product judgment, the surface should route to an existing Decision Packet or the normal Decision Packet request path.
+
+Two-stage review procedure should keep the stages visibly separate:
+
+1. Spec Compliance Review checks whether the requested work is complete under current Harness authority: acceptance criteria, Change Unit completion conditions, scope/write authority compatibility, Decision Packet compatibility, evidence coverage, and residual-risk visibility.
+2. Code Quality / Stewardship Review checks whether the implementation is maintainable: domain language, module/interface boundary, vertical slice shape, feedback loop or TDD trace, codebase stewardship, context hygiene, and follow-up risk.
+
+Findings from either stage should route to validator results, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, or close blockers. Same-session review may be useful self-checking, but it is not detached verification and must not display `assurance_level=detached_verified`; detached verification still needs a valid independence boundary and Eval path.
 
 Core and validators enforce policy. The skill is guidance, not authority.
 

@@ -387,6 +387,12 @@ Show which acceptance criteria are missing evidence, and suggest what additional
 
 If evidence is stale, the work may need a fresh run, fresh logs, a fresh diff, a fresh verification bundle, or scope reconfirmation.
 
+## Reading Review Stages
+
+Harness may show review in two stages. Spec Compliance Review asks whether the requested thing is actually complete: acceptance criteria, Change Unit completion conditions, write authority compatibility, decisions, evidence, and visible residual risk. Code Quality / Stewardship Review asks whether the implementation is maintainable: domain language, module/interface boundaries, slice shape, feedback loop or TDD, codebase stewardship, context hygiene, and follow-up risk.
+
+These review stages can point to validator results, missing evidence, Decision Packets, Change Unit updates, residual risk, or close blockers. They are not detached verification. A passed same-session review is useful, but it does not make the task `detached_verified`.
+
 ## Verify
 
 Work does not become `detached_verified` from the implementer's self-report alone.

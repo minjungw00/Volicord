@@ -396,6 +396,10 @@ Task report, approval report, run summary, evidence manifest report, Eval report
 
 Named report projection kinds는 state records와 artifact refs에서 generated되는 projections입니다. Evidence-file authority는 registered artifact files에 남습니다.
 
+### Review Stages
+
+Spec Compliance Review와 Code Quality / Stewardship Review를 분리하는 managed display/procedure split입니다. Spec Compliance Review는 current Harness authority 안에서 requested work가 complete한지 묻습니다. Code Quality / Stewardship Review는 implementation이 codebase 안에서 maintainable한지 묻습니다. Review Stages는 findings를 validator results, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, close blockers로 route할 수 있지만 canonical records, 새 `ProjectionKind` values, approval, evidence, verification, QA, acceptance, risk acceptance, close, Write Authorization이 아닙니다. Same-session Review Stages는 `detached_verified` assurance를 만들지 않습니다.
+
 ### `request_hash`
 
 `tool_name`, schema-normalized request body, `request_id`와 `idempotency_key`를 제외한 envelope fields를 포함하는 canonical UTF-8 JSON에서 계산하는 tool request idempotency hash입니다.

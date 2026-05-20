@@ -117,11 +117,19 @@ Skill/playbook layer는 절차를 가르친다.
 - user decision을 어떻게 기록할지
 - approval, product decision, QA waiver, verification waiver, residual-risk acceptance, final acceptance를 어떻게 구분할지
 - TDD trace, evidence, Manual QA, acceptance를 어떻게 record할지
+- two review stages를 어떻게 실행할지: 먼저 Spec Compliance Review, 그 다음 Code Quality / Stewardship Review
 - successful close 전에 알려진 close-relevant residual risk를 visible하게 하고, risk-accepted close에는 accepted Residual Risk refs를 요구하며, required acceptance는 close-relevant residual risk가 visible한 뒤에만 record하는 방법
 - work verification이 왜 detached되어야 하는지
 - stale projection과 reconcile을 어떻게 처리할지
 
 Stage routing은 shared-design, product-review, eng-review, tdd-loop, spec-review, code-quality-review, qa-review, guard-check, release-handoff, browser-qa-candidate 같은 recommended playbooks를 사용할 수 있습니다. 이 recommendations는 skill/playbook layer 안에 있습니다. Display guidance일 뿐이며 state를 mutate하거나, write를 authorize하거나, gate를 satisfy하거나, evidence를 만들거나, work를 verify하거나, QA를 waive하거나, risk를 accept하거나, Task를 close하지 않습니다. Recommended playbook이 product judgment를 제안하면 surface는 existing Decision Packet 또는 normal Decision Packet request path로 route해야 합니다.
+
+Two-stage review procedure는 stages를 visible하게 분리해야 합니다.
+
+1. Spec Compliance Review는 requested work가 current Harness authority 안에서 complete한지 확인합니다: acceptance criteria, Change Unit completion conditions, scope/write authority compatibility, Decision Packet compatibility, evidence coverage, residual-risk visibility.
+2. Code Quality / Stewardship Review는 implementation이 maintainable한지 확인합니다: domain language, module/interface boundary, vertical slice shape, feedback loop 또는 TDD trace, codebase stewardship, context hygiene, follow-up risk.
+
+두 stage의 findings는 validator results, evidence gaps, Decision Packet candidates, Change Unit update recommendations, residual-risk candidates, close blockers로 route되어야 합니다. Same-session review는 useful self-checking일 수 있지만 detached verification이 아니며 `assurance_level=detached_verified`로 표시하면 안 됩니다. Detached verification에는 여전히 valid independence boundary와 Eval path가 필요합니다.
 
 Core와 validator가 policy를 enforce한다. Skill은 guidance이지 authority가 아니다.
 
