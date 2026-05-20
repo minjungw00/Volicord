@@ -82,6 +82,7 @@ Horizontal exception은 reason과 follow-up을 남겨 기록할 수 있습니다
 
 - Main docs는 later work를 non-MVP context로만 언급할 수 있으며 `appendix/C-later-roadmap.md`를 가리켜야 합니다.
 - Appendix C의 later-automation items나 team workflow expansion을 MVP requirements에 넣지 않습니다.
+- Browser QA Capture, preventive `T4` guard expansion, Context Index, analytics 또는 derived metrics, deployment/canary/rollback automation, team workflow, parallel orchestration은 owner document가 fixture coverage와 implementation ownership으로 명시적으로 promote하지 않는 한 v1-or-later로 취급합니다.
 - later item이 v1이 되면 main docs를 바꾸기 전에 conformance expectations와 owner를 추가합니다.
 - Derived metrics는 MVP-critical conformance signals로 명시적으로 승격되지 않는 한 analytics입니다.
 

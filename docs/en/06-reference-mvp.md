@@ -31,7 +31,7 @@ MVP includes:
 - detached verification bundle or manual evaluator instruction bundle
 - doctor, recover, reconcile, export, and conformance smoke entrypoints
 
-MVP excludes the later automation cataloged in `appendix/C-later-roadmap.md`, including broader surface expansion, richer capture automation, advanced orchestration, analytics, and team profile export/import.
+MVP excludes the later automation cataloged in `appendix/C-later-roadmap.md`, including broader surface expansion, Browser QA Capture as required automation, preventive `T4` guard expansion, Context Index, analytics or derived metrics, deployment/canary/rollback automation, parallel orchestration, team workflow, and team profile export/import.
 
 For guard/freeze UX, MVP may show cooperative or detective guard status for the reference surface and may hold or narrow work through existing Change Unit, Autonomy Boundary, and `prepare_write` behavior. v1 or later may add preventive `T4` fixtures only after a surface proves pre-tool blocking for the covered writes or commands. Surface names, command names, and UI labels do not upgrade the stored `guarantee_level`.
 

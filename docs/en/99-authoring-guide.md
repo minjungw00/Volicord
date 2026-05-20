@@ -82,6 +82,7 @@ Rules:
 
 - Main docs may mention later work only as non-MVP context and should point to `appendix/C-later-roadmap.md`.
 - Do not put Appendix C later-automation items or team workflow expansion into MVP requirements.
+- Treat Browser QA Capture, preventive `T4` guard expansion, Context Index, analytics or derived metrics, deployment/canary/rollback automation, team workflow, and parallel orchestration as v1-or-later unless an owner document explicitly promotes them with fixture coverage and implementation ownership.
 - If a later item becomes v1, add conformance expectations and an owner before changing main docs.
 - Derived metrics are analytics unless explicitly promoted as MVP-critical conformance signals.
 

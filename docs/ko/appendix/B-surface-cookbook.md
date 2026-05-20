@@ -400,6 +400,8 @@ mcp_server:
 
 ## Profile Examples
 
+이 예시는 connector-profile recipe이지 MVP reference-surface requirement가 아닙니다. `T4`, `T5`, `T6` example은 selected surface가 capability를 declare하고 relevant conformance coverage를 통과할 때만 인정됩니다. 그렇지 않으면 MVP reference surface는 proven cooperative 또는 detective guarantee level에 머뭅니다.
+
 ```mermaid
 flowchart TB
   Examples["conformance-proven profile examples"]

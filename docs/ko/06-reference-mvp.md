@@ -31,7 +31,7 @@ MVP 포함 항목:
 - detached verification bundle 또는 manual evaluator instruction bundle
 - doctor, recover, reconcile, export, conformance smoke entrypoints
 
-MVP는 `appendix/C-later-roadmap.md`에 정리된 later automation을 제외합니다. 여기에는 broader surface expansion, richer capture automation, advanced orchestration, analytics, team profile export/import가 포함됩니다.
+MVP는 `appendix/C-later-roadmap.md`에 정리된 later automation을 제외합니다. 여기에는 broader surface expansion, required automation으로서의 Browser QA Capture, preventive `T4` guard expansion, Context Index, analytics 또는 derived metrics, deployment/canary/rollback automation, parallel orchestration, team workflow, team profile export/import가 포함됩니다.
 
 Guard/freeze UX에서 MVP는 reference surface에 대해 cooperative 또는 detective guard status를 보여줄 수 있고, existing Change Unit, Autonomy Boundary, `prepare_write` behavior를 통해 work를 hold하거나 narrow할 수 있습니다. v1 또는 later는 surface가 covered write 또는 command에 대한 pre-tool blocking을 prove한 뒤에만 preventive `T4` fixtures를 추가할 수 있습니다. Surface name, command name, UI label은 stored `guarantee_level`을 upgrade하지 않습니다.
 
