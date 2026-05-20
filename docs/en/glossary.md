@@ -396,6 +396,10 @@ The single agent surface targeted by the MVP implementation. It demonstrates the
 
 Non-authoritative status/next display guidance computed from current state and policy/playbook context. It suggests a procedure for the current stage, such as review, TDD, QA, guard check, release handoff, or browser-QA candidacy. Its `playbook_id` is a stable display/routing string identifier, not a Core-owned closed enum or DDL-backed value set. It is not a canonical kernel record, has no DDL table, task event, or projection job of its own, does not authorize writes or satisfy gates, and routes product judgment to Decision Packet paths.
 
+### Release Handoff
+
+An optional report/export profile that summarizes release readiness for external PR, review, deployment, rollback, and monitoring processes. It includes close readiness, blockers, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, redaction notes, and suggested checklist items. It is not deployment authority, merge authority, approval, evidence, verification, QA, acceptance, residual-risk acceptance, assurance upgrade, production monitoring, or Task close.
+
 ### Role Lens
 
 A non-authoritative skill or playbook surface that lets a user ask for a product, engineering, design, security, QA, or release-handoff review posture. Role Lens output reuses existing routes such as `RecommendedPlaybook`, `DecisionPacketCandidate`, validator/evidence/Manual QA/residual-risk candidates, and release handoff input. It is not write authority, approval, evidence, verification, QA waiver, risk acceptance, final acceptance, close, or assurance upgrade.

@@ -1335,6 +1335,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 doc_type: export_manifest
 export_id: EXPORT-0001
 project_id: PRJ-0001
+profile: standard | release_handoff
 status: complete
 source_state_version: 50
 updated_at: 2026-05-06T10:30:00+09:00
@@ -1382,6 +1383,21 @@ updated_at: 2026-05-06T10:30:00+09:00
 - export hash:
 - manifest hash:
 - generated at:
+
+## Release Handoff
+- close readiness:
+- close blockers:
+- evidence refs:
+- verification refs:
+- Manual QA refs:
+- residual-risk refs:
+- changed files:
+- projection freshness:
+- redaction notes:
+- suggested PR checklist:
+- suggested deploy checklist:
+- suggested rollback or monitoring notes:
+- external authority reminder: Deployment, merge, approval, production monitoring, QA or verification waiver, gate satisfaction, final acceptance, residual-risk acceptance, assurance upgrade, and Task close remain outside this report.
 ````
 
 ## Expanded Cards

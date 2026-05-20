@@ -76,6 +76,7 @@ Proceed AFK only when active Change Unit scope and Autonomy Boundary latitude bo
 Start detached verify.
 Decide whether Manual QA is needed.
 Show close-relevant residual risk before I accept.
+Generate a release handoff for the PR and deploy review.
 Accepted. Close this task after final acceptance is requested.
 Final acceptance is not required here; close once applicable blockers are clear.
 Freeze this task to the current Change Unit and do not expand scope without a Decision Packet.
@@ -176,6 +177,17 @@ The TASK document may also show an Implementation Micro-Plan: a readable view of
 When TDD is required, expect the agent to name the feedback loop and RED target before implementation, write or run the failing RED check, then implement until the GREEN check passes. A plan for the RED check helps the agent create the test, but it is not RED evidence by itself. If the agent needs to skip TDD, Harness should record why and what alternate feedback loop will prove the behavior. A non-test implementation write may be blocked until actual RED evidence or that waiver exists.
 
 If Harness or the connected surface cannot use MCP reliably, product/runtime/code changes should pause until the connection or surface setup is diagnosed. A documentation-only bootstrap override, when explicitly granted for exact paths, is not the same thing as Harness authorization.
+
+## Generating Release Handoff
+
+Ask for Release Handoff when you want a release-readiness report for an external PR, review, deploy, rollback, or monitoring process.
+
+```text
+Generate a release handoff for this task.
+Use release-handoff and include PR and deploy checklist notes.
+```
+
+Expect a report with close readiness, blockers, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, redaction notes, and suggested checklist items. The report can help you prepare the external review or deployment, but Harness still does not merge, deploy, monitor production, approve, waive QA or verification, satisfy gates, accept residual risk, accept the result, upgrade assurance, or close the task from the handoff alone.
 
 ## Reading A Status Card
 

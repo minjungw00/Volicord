@@ -362,6 +362,33 @@ flowchart TD
 
 Exported projection snapshot은 hash를 가질 수 있지만, 그렇다고 Markdown projection이 canonical evidence가 되지는 않습니다. Raw evidence는 artifact file과 registered ref로 남습니다.
 
+### Release Handoff Export Profile
+
+Release Handoff는 release readiness visibility를 위한 optional report/export profile입니다. Harness에 deployment authority를 주지 않으면서 GStack-style ship summary가 필요할 때 유용합니다.
+
+이 profile은 다음을 요약합니다.
+
+- close readiness, active blocker, 다음 close-relevant action
+- evidence ref, verification ref, Manual QA ref, residual-risk ref
+- changed file과 affected Change Unit scope
+- projection freshness와 stale, failed, omitted projection snapshot
+- secret, sensitive log, PII, omitted artifact에 대한 redaction note
+- 사용자 external system을 위한 suggested PR, review, deployment, rollback, monitoring checklist item
+
+Release Handoff는 `EXPORT` projection/report로 render되거나, export bundle에 포함되거나, ephemeral report surface로 반환될 수 있습니다. 새로운 deployment authority record를 만들지 않습니다.
+
+Boundary:
+
+- Deployment, merge, approval, production monitoring, VCS review authority는 Harness 밖에 남습니다.
+- Release Handoff는 그 자체로 Task close, deploy, merge, approve, residual risk acceptance, result acceptance, QA 또는 verification waiver, assurance upgrade, gate satisfaction을 하지 않습니다.
+- Suggested checklist item은 advisory입니다. Blocking product judgment, risk acceptance, Manual QA, evidence, verification, approval need를 드러내면, 그 need는 기존 Decision Packet, evidence, Manual QA, Eval, residual-risk, approval, close path로 route됩니다.
+
+Release Handoff catalog entry:
+
+| Scenario ID | Operator action | Required assertions |
+|---|---|---|
+| `EXPORT-release-handoff-does-not-close-or-deploy` | `export` 또는 report read | Release Handoff report/export를 generate하거나 return할 때 close readiness, blocker, evidence ref, verification ref, Manual QA ref, residual-risk ref, changed file, projection freshness, redaction note, advisory PR/deploy/rollback/monitoring checklist item을 포함할 수 있습니다. Report/export만으로는 Task lifecycle을 mutate하거나, gate를 satisfy하거나, evidence를 create하거나, verification을 perform 또는 record하거나, QA를 record하거나, QA 또는 verification을 waive하거나, residual risk를 accept하거나, result를 accept하거나, Task를 close하거나, merge, deploy, production monitoring, assurance upgrade, deployment/merge authority creation을 하면 안 됩니다. Checklist finding이 blocking product judgment, risk acceptance, Manual QA, evidence, verification, approval need를 드러내면 기존 Decision Packet, evidence, Manual QA, Eval, residual-risk, approval, close path로 route합니다. |
+
 ## Artifact Integrity
 
 Artifact integrity check는 artifact record와 stored file을 비교합니다.

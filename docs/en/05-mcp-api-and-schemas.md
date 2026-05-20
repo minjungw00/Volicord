@@ -216,6 +216,8 @@ flowchart LR
 
 ProjectionKind extensibility does not make projections canonical state. Every projection job still renders a derived view from owner records and artifact refs. `DEC` is valid only for standalone Decision Packet Markdown when that feature is enabled, and it is not an MVP-required projection job. Absence of a standalone `DEC` job must not reduce MVP Decision Packet visibility, which is required through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources. Persisted `JOURNEY-CARD` Markdown is optional; current-position Journey Card output in `harness.status`, `harness.next`, and significant resume flows remains required for agency conformance.
 
+`EXPORT` may include report profiles such as Release Handoff when the export feature is enabled. Such profiles are projection/report surfaces only; they do not create deployment authority, merge authority, production-monitoring authority, final acceptance, residual-risk acceptance, assurance upgrades, or Task close authority.
+
 ```yaml
 ToolError:
   code: ErrorCode

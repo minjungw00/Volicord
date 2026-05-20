@@ -141,6 +141,7 @@ Later because MVP is a local kernel. Team sharing needs versioning, privacy revi
 
 The following are also later unless a future batch promotes them with fixtures and implementation ownership:
 
+- deployment, canary, rollback, merge, and production-monitoring automation; Release Handoff may exist earlier only as a v1 report/export profile that leaves those authorities external
 - artifact dashboard
 - worktree-based fresh verify automation
 - advanced architecture drift validator

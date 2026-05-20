@@ -145,6 +145,8 @@ flowchart LR
 
 These report kinds are projections generated from state records and artifact refs by default. They can link to evidence files in the artifact store, and an export can include snapshots of them, but that does not make the Markdown report canonical evidence.
 
+An optional Release Handoff report may reuse the `EXPORT` projection/report shape to summarize readiness for external VCS, review, deployment, and monitoring systems. It remains a derived report: deployment authority, merge authority, production monitoring, final acceptance, residual-risk acceptance, and Task close remain outside the report.
+
 ## Front Matter Metadata
 
 Projection front matter stays diagnostic and compact. It may identify the rendered object, show the projection version or status, mirror `source_state_version`, and include the rendered timestamp. It must not contain large state summaries, evidence bodies, gate rollups, or artifact inventories.
@@ -422,6 +424,14 @@ Source: `manual_qa_records` plus artifact refs when a record exists, and `qa_gat
 
 ## Appendix Variant Summaries
 
+### EXPORT
+
+Purpose: an optional export/report projection for review, archival, migration, or release handoff use. The Release Handoff profile summarizes close readiness, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, redaction notes, and suggested PR/deploy checklist items for external systems.
+
+Sources: current Task state and gates, active Change Unit, Journey Spine refs, Decision Packets, Residual Risks, latest Evidence Manifest, latest Eval, latest Manual QA record, changed-file coverage, projection jobs and freshness, artifact refs, export manifest metadata, and redaction/omission notes.
+
+Boundary: `EXPORT` reports are derived projections and artifact bundle indexes. They do not close a Task, deploy, merge, approve, accept residual risk, accept the result, waive checks, upgrade assurance, or replace the user's VCS, review process, deployment system, or production monitoring.
+
 ### DEC
 
 Purpose: an optional readable projection of a Decision Packet for product judgment, approval-shaped judgment, waiver, acceptance, residual-risk acceptance, or reconcile decision when standalone Decision Packet projection is enabled. It should make why the decision is needed now, what the user is deciding, what the agent may decide without the user, options, trade-offs, recommendation, uncertainty, deferral consequence, minimum context, final user decision, and accepted risk visible.
@@ -467,6 +477,7 @@ Projection freshness is computed from the current owner or affected-scope state 
 | `EVIDENCE-MANIFEST` | evidence coverage changes | baseline drift, changed files modified, required evidence missing/stale, approval expired |
 | `EVAL` | verification result recorded | baseline changes after Eval, evidence becomes stale, independence relation invalidated |
 | `DIRECT-RESULT` | direct run closes or escalates | changed file drift, escalation state changes, artifact ref missing |
+| `EXPORT` | export/report projection is generated, including a Release Handoff profile when enabled | any included Task/gate/Change Unit/Decision Packet/Residual Risk/evidence/verification/Manual QA/artifact/projection/redaction/checklist source changes or becomes unavailable |
 | `DEC` | standalone Decision Packet projection is enabled and a Decision Packet is created, requested, resolved, deferred, rejected, blocked, or superseded | packet status, affected scope, current-state context, related approval/reconcile state, residual-risk refs, or evidence refs change |
 | `JOURNEY-CARD` | card is rendered or persisted as a projection; `harness.status` and `harness.next` may also return it ephemerally without a projection job | any displayed Task/gate/Change Unit/Autonomy Boundary/Write Authorization/approval/baseline/guarantee/Decision Packet/Residual Risk/evidence/report/freshness source moves ahead of the rendered card |
 | `DOMAIN-LANGUAGE` | domain terms change | term conflict, accepted term record changes, related code representation moves |

@@ -216,6 +216,8 @@ flowchart LR
 
 ProjectionKind extensibility가 projection을 canonical state로 만들지는 않습니다. 모든 projection job은 여전히 owner record와 artifact ref에서 derived view를 render합니다. `DEC`는 해당 feature가 enabled일 때 standalone Decision Packet Markdown에만 valid하며, MVP-required projection job이 아닙니다. Standalone `DEC` job이 없어도 MVP Decision Packet visibility가 줄어들면 안 되며, 이 visibility는 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 required입니다. Persisted `JOURNEY-CARD` Markdown은 optional입니다. `harness.status`, `harness.next`, significant resume flows의 current-position Journey Card output은 agency conformance에 계속 required입니다.
 
+`EXPORT`는 export feature가 enabled일 때 Release Handoff 같은 report profile을 포함할 수 있습니다. 이런 profile은 projection/report surface일 뿐입니다. Deployment authority, merge authority, production-monitoring authority, final acceptance, residual-risk acceptance, assurance upgrade, Task close authority를 만들지 않습니다.
+
 ```yaml
 ToolError:
   code: ErrorCode

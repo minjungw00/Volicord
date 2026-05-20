@@ -76,6 +76,7 @@ Active Change Unit scope와 Autonomy Boundary latitude가 모두 맞을 때만 A
 detached verify 시작해.
 Manual QA가 필요한지 판단해줘.
 수용하기 전에 close-relevant residual risk를 보여줘.
+PR과 deploy review를 위한 release handoff를 생성해줘.
 Final acceptance 요청이 있으면 수용해. 이 작업 닫아.
 Final acceptance가 required가 아니면 applicable blockers가 clear된 뒤 닫아.
 이 task를 current Change Unit으로 freeze하고, Decision Packet 없이 scope를 넓히지 마.
@@ -176,6 +177,17 @@ TASK 문서는 Implementation Micro-Plan도 보여줄 수 있습니다. 이는 a
 TDD가 required이면 agent가 implementation 전에 feedback loop와 RED target을 먼저 말하고, failing RED check를 작성하거나 실행한 뒤 GREEN check가 pass할 때까지 구현한다고 보면 됩니다. RED check에 대한 plan은 test를 만드는 데 도움이 되지만 그 자체가 RED evidence는 아닙니다. Agent가 TDD를 생략해야 한다면 Harness는 이유와 behavior를 증명할 alternate feedback loop를 기록해야 합니다. Actual RED evidence 또는 그 waiver가 없으면 non-test implementation write가 block될 수 있습니다.
 
 Harness 또는 connected surface가 MCP를 reliable하게 사용할 수 없으면 product/runtime/code 변경은 connection 또는 surface setup이 diagnose될 때까지 pause해야 합니다. Exact path에 대해 명시적으로 granted된 documentation-only bootstrap override는 Harness authorization과 같지 않습니다.
+
+## Release Handoff 생성하기
+
+External PR, review, deploy, rollback, monitoring process를 위한 release-readiness report가 필요할 때 Release Handoff를 요청합니다.
+
+```text
+이 task의 release handoff를 생성해줘.
+release-handoff를 사용하고 PR과 deploy checklist note를 포함해줘.
+```
+
+Report에는 close readiness, blocker, evidence ref, verification ref, Manual QA ref, residual-risk ref, changed file, projection freshness, redaction note, suggested checklist item이 포함된다고 보면 됩니다. 이 report는 external review 또는 deployment 준비를 돕지만, Harness는 handoff만으로 merge, deploy, production monitoring, approve, QA 또는 verification waiver, gate satisfaction, residual risk acceptance, result acceptance, assurance upgrade, task close를 하지 않습니다.
 
 ## 상태 카드 읽기
 
