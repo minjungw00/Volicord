@@ -1,24 +1,40 @@
 # Harness Documentation / 하네스 문서
 
-This directory keeps the Harness documentation in parallel English and Korean trees.
-이 디렉토리는 하네스 문서를 영어와 한국어 트리로 나누어 보관합니다.
+This directory contains the Harness documentation in parallel English and Korean trees.
 
-## Languages / 언어
+이 디렉터리는 Harness 문서를 영어와 한국어 트리로 나누어 담고 있습니다.
 
-| Language | Entry point | Initial source baseline |
-|---|---|---|
-| English | [en/README.md](en/README.md) | `7c4da6f0c9d60d7b99546c25bb75408f0119f571` |
-| Korean | [ko/README.md](ko/README.md) | `88bade8fd7d96e508fcfcc594a18ab1f030cdd5a` |
+## Choose a Language / 언어 선택
 
-## Maintenance Note / 유지보수 메모
+| Language | Entry point |
+|---|---|
+| English | [en/README.md](en/README.md) |
+| Korean | [ko/README.md](ko/README.md) |
 
-Keep matching document names and heading structure under `docs/en` and `docs/ko` so that updates can be reviewed file by file.
-`docs/en`과 `docs/ko`의 문서 이름과 헤딩 구조를 맞춰 두면 변경 사항을 파일 단위로 비교하기 쉽습니다.
+## Reader Paths / 독자 경로
 
-Use the docs-maintenance conformance checklist in [en/99-authoring-guide.md](en/99-authoring-guide.md#docs-maintenance-conformance) / [ko/99-authoring-guide.md](ko/99-authoring-guide.md#docs-maintenance-conformance) to review parity, links, owner boundaries, stable catalogs, glossary terms, source-of-truth phrasing, and TODO usage.
-문서 parity, link, owner boundary, stable catalog, glossary term, source-of-truth 표현, TODO 사용은 [en/99-authoring-guide.md](en/99-authoring-guide.md#docs-maintenance-conformance) / [ko/99-authoring-guide.md](ko/99-authoring-guide.md#docs-maintenance-conformance)의 docs-maintenance conformance checklist로 검토합니다.
+The redesigned documentation is organized around five reader paths:
 
-## MVP Staging Note / MVP 단계 메모
+| Path | Purpose |
+|---|---|
+| Learn | Understand what Harness is, why it exists, and how its concepts fit together. |
+| Use | Follow Harness as a user during assisted development work. |
+| Build | Prepare to implement Harness after the redesigned docs are accepted. |
+| Reference | Look up stable contracts, schemas, policies, and detailed definitions. |
+| Maintain | Keep the documentation and future Harness system coherent over time. |
 
-Read the reference MVP as staged delivery, not reduced scope. The contract is in [en/06-reference-mvp.md](en/06-reference-mvp.md#staged-delivery-interpretation) and mirrored in [ko/06-reference-mvp.md](ko/06-reference-mvp.md#단계적-delivery-해석). Later automation remains in Appendix C.
-Reference MVP는 축소된 범위가 아니라 단계적 delivery로 읽습니다. Contract는 [en/06-reference-mvp.md](en/06-reference-mvp.md#staged-delivery-interpretation)에 있고 [ko/06-reference-mvp.md](ko/06-reference-mvp.md#단계적-delivery-해석)에 mirror됩니다. 이후 자동화는 Appendix C에 남습니다.
+재설계된 문서는 다섯 가지 독자 경로를 중심으로 정리합니다.
+
+| 경로 | 목적 |
+|---|---|
+| Learn | Harness가 무엇이고 왜 필요한지, 핵심 개념이 어떻게 이어지는지 이해합니다. |
+| Use | AI 지원 개발 과정에서 사용자가 Harness를 어떻게 따라가면 되는지 봅니다. |
+| Build | 재설계된 문서가 승인된 뒤 구현을 준비합니다. |
+| Reference | 안정적인 계약, schema, policy, 세부 정의를 찾아봅니다. |
+| Maintain | 문서와 이후 Harness 시스템의 일관성을 유지합니다. |
+
+## Parity / 문서 Parity
+
+English and Korean docs keep the same file map and semantic content. Semantic parity must be maintained across `docs/en` and `docs/ko`.
+
+영어 문서와 한국어 문서는 같은 파일 지도를 유지하고, 의미상 같은 내용을 담아야 합니다. 단, 한국어 문서는 자연스러운 한국어 제목과 문장 흐름을 사용할 수 있습니다.
