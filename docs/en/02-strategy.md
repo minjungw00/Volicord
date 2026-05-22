@@ -2,7 +2,7 @@
 
 ## Document Role
 
-This document owns the strategic layer of the harness: why the harness exists, what failure modes it prevents, which principles preserve Strategic Agency, which principles are Kernel Authority Invariants, and which defaults guide Design Stewardship. The operational state machine is defined in [03-kernel-spec.md](03-kernel-spec.md); design-quality policy details are expanded in [08-design-quality-policy-pack.md](08-design-quality-policy-pack.md).
+This document owns the strategic layer of the harness: why the harness exists, what failure modes it prevents, which principles preserve Strategic Agency, which principles are Kernel Authority Invariants, and which defaults guide Design Stewardship. The operational state machine is defined in [03-kernel-spec.md](03-kernel-spec.md); design-quality policy details are owned by [Design Quality Policies](reference/design-quality-policies.md).
 
 This document does not define lifecycle transition tables, gate enum details, MCP request or response schemas, SQLite DDL, full projection templates, or surface-specific connector behavior.
 
@@ -143,7 +143,7 @@ flowchart TD
   Principles --> Design["Design Stewardship Defaults<br/>quality defaults with policy contracts"]
   Strategic --> Agency["preserve Strategic Agency"]
   Authority --> KernelBoundary["define kernel implementation boundary"]
-  Design --> PolicyPack["owned in 08-design-quality-policy-pack.md"]
+  Design --> PolicyPack["owned in reference/design-quality-policies.md"]
 ```
 
 ### Strategic Invariants

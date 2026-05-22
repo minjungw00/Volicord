@@ -30,7 +30,7 @@ The redesigned documentation is organized around five reader paths:
 | Learn | Harness가 무엇이고 왜 필요한지, 핵심 개념이 어떻게 이어지는지 이해합니다. |
 | Use | AI 지원 개발 과정에서 사용자가 Harness를 어떻게 따라가면 되는지 봅니다. |
 | Build | 재설계된 문서가 승인된 뒤 구현을 준비합니다. |
-| Reference | 안정적인 계약, schema, design-quality policy, 세부 정의를 찾아봅니다. |
+| Reference | 안정적인 계약, schema, 설계 품질 정책, 세부 정의를 찾아봅니다. |
 | Maintain | 문서와 이후 Harness 시스템의 일관성을 유지합니다. |
 
 ## Parity / 문서 Parity

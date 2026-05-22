@@ -42,7 +42,7 @@ Harness는 사용자의 전략적 판단권을 보존합니다. 목표, 범위, 
 
 Harness는 작업 흐름을 따라갈 수 있게 합니다. 독자는 대화 기억에 기대지 않고도 현재 상태, 다음 행동, 결정, 근거, 막힌 지점을 재구성할 수 있어야 합니다.
 
-Harness는 design-quality policy를 보이게 유지하되 stewardship default를 kernel invariant로 만들지 않습니다. 정확한 policy contract는 [설계 품질 정책](../reference/design-quality-policies.md)에 있습니다.
+Harness는 설계 품질 정책을 보이게 유지하되 stewardship default를 kernel invariant로 만들지 않습니다. 정확한 정책 계약은 [설계 품질 정책](../reference/design-quality-policies.md)에 있습니다.
 
 Harness는 작고 만들 수 있는 MVP를 선호합니다. 첫 구현은 더 넓은 자동화로 커지기 전에, 구체적인 fixture로 권한과 사용자 판단권 모델을 증명해야 합니다.
 

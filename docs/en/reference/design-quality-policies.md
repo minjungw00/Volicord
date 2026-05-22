@@ -98,15 +98,7 @@ Each policy uses the same fields:
 
 Policy validators return the validator result schema owned by the MCP API document.
 
-```mermaid
-flowchart LR
-  Applies["applies_when"] --> Requirement["default_requirement"]
-  Requirement --> Waiver["allowed_waiver"]
-  Waiver --> Record["required_record"]
-  Record --> Validator["validator"]
-  Validator --> Evidence["evidence"]
-  Evidence --> CloseImpact["close_impact"]
-```
+The table above is the source of truth for field names. The field order helps readers scan from applicability through the requirement, waiver, record, validator, evidence, and close impact.
 
 ## Policy contracts
 
@@ -337,38 +329,13 @@ Example: A task passes tests but spreads a domain concept across three modules w
 | `evidence` | Domain term refs, module map item refs including module-local watchpoints, interface contract refs, feedback loop refs, TDD trace refs when used, Task/Change Unit watchpoints, Journey Spine Entry refs, deep-module notes, reconcile item refs, and dedicated architecture watchpoint refs only if later defined. |
 | `close_impact` | Missing required stewardship review keeps `design_gate=pending`, `partial`, or `stale`; unresolved drift can block close when it affects public behavior, module boundaries, acceptance criteria, or verification confidence. |
 
-```mermaid
-flowchart LR
-  DomainTerms["domain_terms"] --> Summary["StewardshipImpactSummary display"]
-  ModuleMap["module_map_items"] --> Summary
-  InterfaceContracts["interface_contracts"] --> Summary
-  FeedbackRefs["feedback_loops / tdd_traces when TDD selected"] --> Summary
-  DecisionPackets["Decision Packets"] --> Summary
-  ResidualRisks["residual risks"] --> Summary
-  Validator["codebase_stewardship_check"] --> Summary
-  Summary --> Display["close-relevant stewardship impact"]
-```
-
 #### StewardshipImpactSummary display shape
 
 `StewardshipImpactSummary` is a derived display/summary shape for the Design Stewardship Default and the `codebase_stewardship` policy contract. It is not a Kernel Authority Invariant. It is a derived display, not a canonical current record. It is derived from owner records, validator results, and refs; it does not create a new canonical source of truth.
 
 Domain terms, module map items, interface contracts, Feedback Loop records, TDD Trace records when TDD is selected, residual risk, and Decision Packets remain the owner records. The summary renders compact close-relevant status and refs back to those owners.
 
-```mermaid
-flowchart TB
-  Owners["owner records"] --> Derived["StewardshipImpactSummary"]
-  ValidatorResults["validator results"] --> Derived
-  Refs["Task / Change Unit refs"] --> Derived
-  Derived --> DomainImpact["domain_language_impact"]
-  Derived --> ModuleImpact["module_boundary_impact"]
-  Derived --> InterfaceImpact["interface_contract_impact"]
-  Derived --> FeedbackStatus["feedback_loop_status"]
-  Derived --> FutureRisk["future_change_risk"]
-  Derived --> CloseImpact["close_impact"]
-  Derived --> DisplayNote["display only, not canonical state"]
-  Derived -.-> Owners
-```
+Read the display shape in two parts: owner records, validator results, and Task/Change Unit refs are inputs; the fields below are the derived display values. The summary may point back to owners, but it does not replace them.
 
 | Field | Values |
 |---|---|
@@ -500,14 +467,7 @@ When more than one task shape, policy contract, or validator finding applies, po
 
 `not_required` < `warning` < gate impact such as `design_gate=pending`, `design_gate=partial`, `design_gate=stale`, or `qa_gate=pending` < `blocking before write` < `close blocker` < `Decision Packet required`.
 
-```mermaid
-flowchart LR
-  NotRequired["not_required"] --> Warning["warning"]
-  Warning --> Gate["gate impact"]
-  Gate --> WriteBlock["blocking before write"]
-  WriteBlock --> CloseBlock["close blocker"]
-  CloseBlock --> DecisionPacket["Decision Packet required"]
-```
+Read this order from weakest to strongest. It is the complete ordering for competing impacts on the same affected concern.
 
 This order decides whether a weaker default can be ignored for the same concern. It does not collapse different affected gates. If one finding affects `design_gate` and another affects `qa_gate`, `decision_gate`, evidence sufficiency, or residual-risk visibility, the merged result keeps all affected gates, blockers, and refs. `Decision Packet required` is a judgment-routing impact, not a replacement for write blockers, close blockers, evidence sufficiency, required QA, required approval, or residual-risk visibility. A Decision Packet may resolve the user-judgment part of a finding, while any independent write blocker or close blocker remains until its own policy or kernel condition is satisfied.
 

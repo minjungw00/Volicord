@@ -952,7 +952,7 @@ Core는 commit 전에 모든 JSON ref arrays를 validate해야 합니다. `selec
 
 `artifact_links.record_kind=projection`에서 `artifact_links.record_id`는 `projection_jobs.projection_job_id`를 저장합니다. 이 link는 Core가 해당 job을 linked rendered projection output으로 resolve할 수 있을 때만 valid합니다. 즉 job이 artifact link와 같은 `task_id`로 Task-scoped이고, matching `projection_kind`와 `target_ref`, `status=completed`, 그리고 rendered output을 위한 `output_path` 또는 documented projection ref가 필요합니다. `projection_jobs.target_ref`와 `output_path`는 validation and locator metadata이며 `artifact_links.record_id`를 대체하지 않습니다. Project-level projection jobs는 projection owner docs가 허용하는 곳에서 여전히 `projection_jobs`에 track될 수 있지만, current MVP artifact DDL은 그 jobs를 위한 project-scoped artifact rows 또는 artifact links를 만들지 않습니다. 이 contract는 MVP storage를 `projection_jobs`에 유지하며 `projections` table을 도입하지 않습니다.
 
-`manual_qa_records.waiver_decision_packet_id`와 `manual_qa_records.residual_risk_refs_json`은 QA waiver decisions와 close-relevant risk refs를 위한 storage hooks입니다. Waiver contract는 [Kernel Waiver Semantics](03-kernel-spec.md#waiver-semantics)와 [08-design-quality-policy-pack.md](08-design-quality-policy-pack.md#manual-qa)의 Manual QA policy가 담당합니다.
+`manual_qa_records.waiver_decision_packet_id`와 `manual_qa_records.residual_risk_refs_json`은 QA waiver decision과 close-relevant risk ref를 위한 storage hook입니다. Waiver contract는 [Kernel Waiver Semantics](03-kernel-spec.md#waiver-semantics)와 [설계 품질 정책](reference/design-quality-policies.md#manual-qa-manual_qa)의 Manual QA policy가 담당합니다.
 
 `change_unit_dependencies`는 shaping, ordering, close visibility를 위한 MVP DAG metadata입니다. Parallel orchestration scheduler가 아니며 multiple active implementation lanes를 authorize하지 않습니다.
 
@@ -1427,7 +1427,7 @@ Default guarantee display는 cooperative/detective입니다. Preventive 또는 i
 
 MVP validators는 API 문서의 shared result shape를 사용합니다. Runner는 의도적으로 작습니다.
 
-Minimal validator rollout은 [MVP Severity Defaults](08-design-quality-policy-pack.md#mvp-severity-defaults) matrix와 그 [Severity Composition Rule](08-design-quality-policy-pack.md#severity-composition-rule)을 default severity router로 사용합니다. Runner는 처음에는 각 stable ID에 대해 shallow check를 구현할 수 있지만, 모든 relevant finding을 visible하게 유지하고, policy-owned rule을 통해 policy impact를 merge하며, API finding severity를 rewrite하는 대신 merged outcome을 gate/blocker-compatible result로 expose해야 합니다. Public primary `ToolError` 선택은 여전히 API가 소유한 [Primary Error Code Precedence](05-mcp-api-and-schemas.md#primary-error-code-precedence)를 따릅니다.
+Minimal validator rollout은 [MVP Severity Defaults](reference/design-quality-policies.md#mvp-severity-defaults) matrix와 그 [Severity Composition Rule](reference/design-quality-policies.md#severity-composition-rule)을 default severity router로 사용합니다. Runner는 처음에는 각 stable ID에 대해 shallow check를 구현할 수 있지만, 모든 relevant finding을 보이게 유지하고, policy-owned rule로 policy impact를 합성하며, API finding severity를 다시 쓰는 대신 merged outcome을 gate/blocker-compatible result로 드러내야 합니다. Public primary `ToolError` 선택은 여전히 API가 소유한 [Primary Error Code Precedence](05-mcp-api-and-schemas.md#primary-error-code-precedence)를 따릅니다.
 
 Minimal runner shape:
 

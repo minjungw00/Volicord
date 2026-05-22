@@ -342,7 +342,7 @@ The kernel also owns the entity meaning for design support records:
 - Feedback Loop records are the canonical support records for selected feedback-loop definitions, planned loops, execution refs, waivers, and alternate loops.
 - TDD Trace records capture red, green, refactor evidence or a recorded non-TDD justification. TDD is one possible Feedback Loop implementation, not the Feedback Loop record itself.
 
-Their policy requirements are owned by the design-quality policy pack. Their storage DDL is owned by [Storage And DDL](storage-and-ddl.md).
+Their policy requirements are owned by [Design Quality Policies](design-quality-policies.md). Their storage DDL is owned by [Storage And DDL](storage-and-ddl.md).
 
 ## Boundaries and non-substitutions
 

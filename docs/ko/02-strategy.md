@@ -2,7 +2,7 @@
 
 ## 문서 역할
 
-이 문서는 Harness의 전략 계층을 담당합니다. Harness가 왜 존재하는지, 어떤 failure modes를 막는지, 어떤 원칙이 Strategic Agency를 보존하는지, 어떤 원칙이 Kernel Authority Invariants인지, 어떤 defaults가 Design Stewardship을 안내하는지 설명합니다. Operational state machine은 [03-kernel-spec.md](03-kernel-spec.md)가 정의하고, design-quality policy 세부 내용은 [08-design-quality-policy-pack.md](08-design-quality-policy-pack.md)가 확장합니다.
+이 문서는 Harness의 전략 계층을 담당합니다. Harness가 왜 존재하는지, 어떤 failure modes를 막는지, 어떤 원칙이 Strategic Agency를 보존하는지, 어떤 원칙이 Kernel Authority Invariants인지, 어떤 defaults가 Design Stewardship을 안내하는지 설명합니다. Operational state machine은 [03-kernel-spec.md](03-kernel-spec.md)가 정의하고, 설계 품질 정책의 세부 내용은 [설계 품질 정책](reference/design-quality-policies.md)이 담당합니다.
 
 이 문서는 lifecycle transition tables, gate enum details, MCP request 또는 response schemas, SQLite DDL, full projection templates, surface-specific connector behavior를 정의하지 않습니다.
 
@@ -143,7 +143,7 @@ flowchart TD
   Principles --> Design["Design Stewardship Defaults<br/>quality defaults with policy contracts"]
   Strategic --> Agency["preserve Strategic Agency"]
   Authority --> KernelBoundary["define kernel implementation boundary"]
-  Design --> PolicyPack["owned in 08-design-quality-policy-pack.md"]
+  Design --> PolicyPack["owned in reference/design-quality-policies.md"]
 ```
 
 ### Strategic Invariants

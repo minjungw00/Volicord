@@ -952,7 +952,7 @@ Core must validate every JSON ref array before commit. `selected_loop_refs_json`
 
 For `artifact_links.record_kind=projection`, `artifact_links.record_id` stores `projection_jobs.projection_job_id`. The link is valid only when Core can resolve that job to the rendered projection output it links: the job is Task-scoped to the same `task_id` as the artifact link, has matching `projection_kind` and `target_ref`, has `status=completed`, and has an `output_path` or documented projection ref for the rendered output. `projection_jobs.target_ref` and `output_path` are validation and locator metadata, not replacements for `artifact_links.record_id`. Project-level projection jobs may still be tracked in `projection_jobs` where projection owner docs allow them, but the current MVP artifact DDL does not create project-scoped artifact rows or artifact links for those jobs. This keeps MVP storage on `projection_jobs` and does not introduce a `projections` table.
 
-`manual_qa_records.waiver_decision_packet_id` and `manual_qa_records.residual_risk_refs_json` are the storage hooks for QA waiver decisions and close-relevant risk refs. The waiver contract is owned by [Kernel Waiver Semantics](03-kernel-spec.md#waiver-semantics) and the Manual QA policy in [08-design-quality-policy-pack.md](08-design-quality-policy-pack.md#manual-qa).
+`manual_qa_records.waiver_decision_packet_id` and `manual_qa_records.residual_risk_refs_json` are the storage hooks for QA waiver decisions and close-relevant risk refs. The waiver contract is owned by [Kernel Waiver Semantics](03-kernel-spec.md#waiver-semantics) and the Manual QA policy in [Design Quality Policies](reference/design-quality-policies.md#manual-qa-manual_qa).
 
 `change_unit_dependencies` is MVP DAG metadata for shaping, ordering, and close visibility. It is not a parallel orchestration scheduler and does not authorize multiple active implementation lanes.
 
@@ -1425,7 +1425,7 @@ Default guarantee display is cooperative/detective. Preventive or isolated claim
 
 MVP validators use one shared result shape from the API document. The runner is intentionally small.
 
-Minimal validator rollout uses the [MVP Severity Defaults](08-design-quality-policy-pack.md#mvp-severity-defaults) matrix and its [Severity Composition Rule](08-design-quality-policy-pack.md#severity-composition-rule) as the default severity router. The runner may initially implement shallow checks for each stable ID, but it must keep all relevant findings visible, merge their policy impacts through the policy-owned rule, and expose the merged outcome through gate/blocker-compatible results rather than by rewriting API finding severity. Public primary `ToolError` selection still follows API-owned [Primary Error Code Precedence](05-mcp-api-and-schemas.md#primary-error-code-precedence).
+Minimal validator rollout uses the [MVP Severity Defaults](reference/design-quality-policies.md#mvp-severity-defaults) matrix and its [Severity Composition Rule](reference/design-quality-policies.md#severity-composition-rule) as the default severity router. The runner may initially implement shallow checks for each stable ID, but it must keep all relevant findings visible, merge their policy impacts through the policy-owned rule, and expose the merged outcome through gate/blocker-compatible results rather than by rewriting API finding severity. Public primary `ToolError` selection still follows API-owned [Primary Error Code Precedence](05-mcp-api-and-schemas.md#primary-error-code-precedence).
 
 Minimal runner shape:
 

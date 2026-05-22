@@ -16,7 +16,7 @@
 
 ## 읽기 전에
 
-[구현 개요](implementation-overview.md)와 [첫 실행 가능한 조각](first-runnable-slice.md)을 먼저 읽습니다. 정확한 API 규칙은 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)를 보고, Storage와 DDL의 세부 내용은 [Storage와 DDL](../reference/storage-and-ddl.md)을 봅니다. Design-quality gate와 validator behavior는 [설계 품질 정책](../reference/design-quality-policies.md)을 봅니다.
+[구현 개요](implementation-overview.md)와 [첫 실행 가능한 조각](first-runnable-slice.md)을 먼저 읽습니다. 정확한 API 규칙은 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)를 보고, Storage와 DDL의 세부 내용은 [Storage와 DDL](../reference/storage-and-ddl.md)을 봅니다. 설계 품질 gate와 validator 동작은 [설계 품질 정책](../reference/design-quality-policies.md)을 봅니다.
 
 ## 핵심 생각
 
@@ -57,7 +57,7 @@ Kernel Smoke는 첫 실행 가능한 conformance 목표입니다. MVP-0부터 ea
 - 기본 Evidence Manifest
 - 최소 required projection 최신성 또는 enqueueing
 - 쓰기 권한이 없을 때 차단되는 쓰기 또는 Run
-- 근거 또는 decision requirement가 없을 때 차단되는 close
+- 근거 또는 decision 요구사항이 없을 때 차단되는 close
 - 기본 Core fixture 실행
 
 Kernel Smoke는 나머지 시스템이 완성되기 전에 Harness 쓰기 권한 루프를 증명하기 때문에 유용합니다. 최종 MVP conformance는 아닙니다.
@@ -171,7 +171,7 @@ Projection failure는 Core 상태 failure와 분리됩니다.
 - Decision Packet 닫기 확인
 - 닫기 차단 조건 표시
 
-MVP에서 자동 Browser QA Capture를 요구하지 않습니다. screenshot, console log, network trace, accessibility snapshot, workflow recording은 제공될 때 연결할 수 있지만, MVP 요구사항은 Manual QA record와 artifact ref입니다.
+MVP에서 자동 Browser QA Capture를 요구하지 않습니다. screenshot, console log, network trace, accessibility snapshot, workflow recording은 제공될 때 연결할 수 있지만, MVP 요구사항은 Manual QA 기록과 artifact ref입니다.
 
 ### MVP-5: Operator Smoke, Agency Conformance, Later-Boundary Checks
 

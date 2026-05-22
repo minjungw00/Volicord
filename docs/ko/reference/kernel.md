@@ -64,7 +64,7 @@
 - SQLite DDL과 storage layout. [Storage와 DDL](storage-and-ddl.md)을 봅니다.
 - 전체 projection template text
 - document projection rules. [문서 Projection 참조](document-projection.md)를 봅니다.
-- design-quality policy contract table. [설계 품질 정책](design-quality-policies.md)을 봅니다.
+- 설계 품질 정책 계약 표. [설계 품질 정책](design-quality-policies.md)을 봅니다.
 - connector capability profile과 surface recipe. 현재 담당 문서는 [Agent 통합](../09-agent-integration.md)이고, 이후 경로는 `reference/agent-integration.md`입니다.
 - 운영자 command syntax. 현재 담당 문서는 [운영과 Conformance](../11-operations-and-conformance.md)이고, 이후 경로는 `reference/operations-and-conformance.md`입니다.
 - template body
@@ -248,7 +248,7 @@ proposed | pending_user | resolved | deferred | rejected | blocked | superseded
 - `proposed`는 packet이 drafted 또는 detected되었지만 아직 active user request가 아니라는 뜻입니다.
 - `pending_user`는 packet이 사용자의 제품 판단을 기다린다는 뜻입니다.
 - `resolved`는 user decision 또는 accepted state 판단이 기록되었고 affected scope와 호환된다는 뜻입니다.
-- `deferred`는 사용자가 decision을 의도적으로 deferred했고 packet이 close impact, 남은 위험, follow-up visibility를 relevant한 곳에 기록했다는 뜻입니다.
+- `deferred`는 사용자가 decision을 의도적으로 deferred했고 packet이 close 영향, 남은 위험, follow-up visibility를 relevant한 곳에 기록했다는 뜻입니다.
 - `rejected`는 packet 또는 proposed decision path가 rejected되었다는 뜻입니다.
 - `blocked`는 현재 state에서 packet을 resolve하거나 defer할 수 없다는 뜻입니다.
 - `superseded`는 다른 Decision Packet, Change Unit, Task state가 이를 대체한다는 뜻입니다.
@@ -263,7 +263,7 @@ Journey Spine은 별도의 기준 출처가 아닙니다. Journey Card와 Journe
 
 Journey Spine Entry는 existing state events나 source records만으로 완전히 재구성하기 어려운 durable continuity annotation을 위한 canonical support record입니다. annotation kind, ordering relationship, source ref, affected scope, summary, actor, time, artifact refs를 기록할 수 있습니다.
 
-Journey Spine Entry records는 reconstruction을 보완합니다. Task state, Change Units, Runs, Decision Packets, Residual Risk, 근거, 검증, QA, acceptance gate/decision state, close state/events, artifacts의 owner records를 대체하지 않습니다.
+Journey Spine Entry records는 reconstruction을 보완합니다. Task state, Change Units, Runs, Decision Packets, Residual Risk, 근거, 검증, QA, acceptance gate/decision state, close state/events, artifacts의 owner 기록을 대체하지 않습니다.
 
 ### Run
 
@@ -319,11 +319,11 @@ Manual QA는 UX, workflow, copy, accessibility, visual output, product taste 또
 
 ### Residual Risk
 
-Residual Risk는 알려진 남은 불확실성, trade-off, limitation, unchecked condition을 위한 기준 close-relevant support record입니다. source ref, affected scope, applicable한 경우 related Decision Packet, visibility status, accepted risk, follow-up requirement, close impact를 기록합니다.
+Residual Risk는 알려진 남은 불확실성, trade-off, limitation, unchecked condition을 위한 기준 close-relevant support record입니다. source ref, affected scope, applicable한 경우 related Decision Packet, visibility status, accepted risk, follow-up requirement, close 영향을 기록합니다.
 
 Residual Risk records는 수용 또는 risk-accepted close 전에 남은 위험을 보이게 합니다. 이 records는 detached verification을 만들지 않고, 근거를 대체하지 않고, QA를 waive하지 않고, sensitive approval을 grant하지 않고, final acceptance를 뜻하지도 않습니다.
 
-Accepted risk는 MVP에서 별도의 기준 상태 기록이 아닙니다. Risk acceptance는 관련 Residual Risk record의 accepted-risk metadata/status를 갱신하고 residual-risk acceptance events를 append할 수 있습니다. API 또는 projection에 남아 있는 public accepted-risk ref field는 `accepted_risk` 또는 `ARISK-*` record가 아니라 `record_kind=residual_risk`인 `StateRecordRef`를 가리켜야 합니다.
+Accepted risk는 MVP에서 별도의 기준 상태 기록이 아닙니다. Risk acceptance는 관련 Residual Risk record의 accepted-risk metadata/status를 갱신하고 residual-risk acceptance events를 append할 수 있습니다. API 또는 projection에 남아 있는 public accepted-risk ref field는 `accepted_risk` 또는 `ARISK-*` 기록이 아니라 `record_kind=residual_risk`인 `StateRecordRef`를 가리켜야 합니다.
 
 ### Artifact
 
@@ -344,7 +344,7 @@ Kernel은 design support records의 entity meaning도 담당합니다.
 - Feedback Loop records는 selected feedback-loop definitions, planned loops, execution refs, waivers, alternate loops를 위한 canonical support records입니다.
 - TDD Trace records는 red, green, refactor 근거 또는 recorded non-TDD justification을 capture합니다. TDD는 가능한 Feedback Loop 구현 중 하나이지 Feedback Loop record 자체가 아닙니다.
 
-Policy requirements는 design-quality policy pack이 담당합니다. Storage DDL은 [Storage와 DDL](storage-and-ddl.md)이 담당합니다.
+정책 요구사항은 [설계 품질 정책](design-quality-policies.md)이 담당합니다. Storage DDL은 [Storage와 DDL](storage-and-ddl.md)이 담당합니다.
 
 ## Boundaries and non-substitutions
 
@@ -360,8 +360,8 @@ Policy requirements는 design-quality policy pack이 담당합니다. Storage DD
 - 근거 sufficiency는 대화 텍스트나 report prose만으로 판단하지 않습니다.
 - Eval verdict만으로 `detached_verified`가 되지 않습니다. Valid independence가 필요합니다.
 - Manual QA는 수용을 뜻하지 않고, 수용은 Manual QA를 뜻하지 않습니다.
-- Verification waiver, QA waiver, decision deferral은 서로 다른 개념이며 close impact도 다릅니다.
-- Capability는 first-class kernel gate가 아니지만 blocked reasons, validator results, guarantee display에 영향을 줄 수 있습니다.
+- Verification waiver, QA waiver, decision deferral은 서로 다른 개념이며 close 영향도 다릅니다.
+- Capability는 first-class kernel gate가 아니지만 blocked reasons, validator 결과, guarantee display에 영향을 줄 수 있습니다.
 
 User Notes authority는 다음과 같습니다.
 
@@ -439,11 +439,11 @@ not_required | required | pending | granted | denied | expired
 `approval_gate`는 sensitive categories가 있을 때만 required입니다. Display layer는 approval drift가 없을 때 `granted`의 alias로 `passed`를 보여줄 수 있지만 canonical value는 `granted`입니다.
 
 - `approval_gate=not_required`는 현재 approval을 요구하는 sensitive category가 없다는 뜻입니다.
-- `approval_gate=required`는 sensitive approval이 필요하지만 committed approval 형태의 Decision Packet과 연결된 pending Approval record가 아직 없다는 뜻입니다. 이는 `prepare_write`가 missing sensitive approval을 detect할 때 도달하는 state입니다.
+- `approval_gate=required`는 sensitive approval이 필요하지만 committed approval 형태의 Decision Packet과 연결된 pending Approval record는 아직 없다는 뜻입니다. 이는 `prepare_write`가 missing sensitive approval을 detect할 때 도달하는 state입니다.
 - `approval_gate=pending`은 `harness.request_user_decision(decision_kind=approval)`이 committed approval 형태의 Decision Packet과 연결된 pending Approval record를 만들었고 user/operator decision을 기다린다는 뜻입니다.
-- `approval_gate=granted`는 호환되는 Approval record가 sensitive scope를 포괄한다는 뜻입니다. 이는 Write Authorization이 아니며 제품 판단을 authorize하지도 않습니다. Write path는 `record_run`이 authorization을 사용한 것으로 기록하기 전에 여전히 fresh compatible `prepare_write` decision을 pass해야 합니다.
-- `approval_gate=denied`는 linked Approval record가 denied되었고 sensitive write가 계속 blocked라는 뜻입니다.
-- `approval_gate=expired`는 linked Approval record가 expired, drifted 되었거나 current baseline 또는 intended sensitive scope를 더 이상 포괄하지 않는다는 뜻입니다.
+- `approval_gate=granted`는 호환되는 Approval record를 통해 sensitive scope가 포괄된다는 뜻입니다. 이는 Write Authorization이 아니며 제품 판단을 authorize하지도 않습니다. Write path는 `record_run`이 authorization을 사용한 것으로 기록하기 전에 여전히 fresh compatible `prepare_write` decision을 pass해야 합니다.
+- `approval_gate=denied`는 linked Approval record의 상태가 denied이고 sensitive write가 계속 blocked라는 뜻입니다.
+- `approval_gate=expired`는 linked Approval record의 상태가 expired 또는 drifted이거나, current baseline 또는 intended sensitive scope를 더 이상 포괄하지 않는다는 뜻입니다.
 
 ### Design Gate
 
@@ -491,7 +491,7 @@ Examples:
 
 - Direct typo fix: changed path `docs/help.md`, diff artifact 또는 patch summary, self-check summary는 `direct docs-only` evidence를 support할 수 있습니다.
 - Work feature: AC-01은 passing test log와 changed path coverage에 map되고, AC-02는 build log와 run summary에 map됩니다. Evidence Manifest가 둘 다 supported로 기록합니다.
-- UI copy change: changed copy path, diff artifact, self-check, required Manual QA record가 close를 support합니다. Manual QA가 recorded되거나 validly waived되기 전에는 close가 blocked됩니다.
+- UI copy change: changed copy path, diff artifact, self-check, required Manual QA 기록은 close를 support합니다. Manual QA가 recorded되거나 validly waived되기 전에는 close가 blocked됩니다.
 
 
 ### Verification Gate
@@ -528,7 +528,7 @@ Rules:
 not_required | required | pending | passed | failed | waived
 ```
 
-`qa_gate`는 required human QA를 위한 canonical kernel gate입니다. Individual Manual QA records에는 record level result가 있고, gate는 close-relevant aggregate state입니다. `qa_gate=pending`은 required QA가 satisfying Manual QA record를 아직 만들지 못했거나 latest relevant Manual QA record가 policy를 satisfy하지 못한다는 뜻입니다. 이는 `manual_qa_record.result=pending`이라는 뜻이 아니며, 이 상태를 Manual QA record result로 저장하면 안 됩니다.
+`qa_gate`는 required human QA를 위한 canonical kernel gate입니다. Individual Manual QA records에는 record level result가 있고, gate는 close-relevant aggregate state입니다. `qa_gate=pending`은 required QA가 satisfying Manual QA record를 아직 만들지 못했거나 latest relevant Manual QA record는 policy를 satisfy하지 못한다는 뜻입니다. 이는 `manual_qa_record.result=pending`이라는 뜻이 아니며, 이 상태를 Manual QA record result로 저장하면 안 됩니다.
 
 ### Acceptance Gate
 
@@ -699,7 +699,7 @@ Stable event names는 MVP conformance fixtures가 `expected_events`에서 요구
 | Area | Stable event names |
 |---|---|
 | Write Authorization lifecycle | `write_authorization_created`, `write_authorization_returned`, `write_authorization_consumed`, `write_authorization_expired`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_violation_detected` |
-| `prepare_write` and write gates | `prepare_write_allowed`, `prepare_write_blocked`, `scope_required`, `decision_required`, `autonomy_boundary_exceeded`, `approval_required`, `baseline_stale_detected`, `capability_insufficient_detected` |
+| `prepare_write`와 쓰기 gate | `prepare_write_allowed`, `prepare_write_blocked`, `scope_required`, `decision_required`, `autonomy_boundary_exceeded`, `approval_required`, `baseline_stale_detected`, `capability_insufficient_detected` |
 | Run, evidence, and scope observation | `run_recorded`, `evidence_manifest_updated`, `scope_violation_detected` |
 | Verification | `eval_recorded`, `verification_passed`, `verify_not_detached_detected` |
 | Close and risk-accepted close | `close_requested`, `close_blocked`, `risk_accepted_close_recorded`, `task_closed`, `task_cancelled`, `task_superseded` |
@@ -773,7 +773,7 @@ Decision algorithm은 다음과 같습니다.
 9. Approval scope를 검증합니다. Denied, expired, drifted, insufficient approval은 새 approval로 해결 가능한지에 따라 `blocked` 또는 `approval_required`를 반환합니다. 새 approval로 해결 가능하면 `request_user_decision(decision_kind=approval)`이 approval request를 commit할 때까지 gate는 `approval_gate=required`로 돌아갑니다.
 10. Write 전에 적용되는 design-policy precondition checks를 실행합니다. Required unmet design preconditions는 policy에 따라 `blocked` 또는 `decision_required`를 반환합니다. Policy가 `tdd_trace`를 require하는 경우 `prepare_write`는 RED evidence를 만드는 test-path write와 existing RED evidence 또는 valid TDD waiver가 필요한 non-test implementation write를 구분할 수 있습니다.
 11. 의도한 작업에 대한 Decision Packet 요구사항을 평가합니다. 필수 차단 Decision Packet이 없거나, pending 또는 blocked 상태이거나, intended operation을 포괄하지 않는 deferred 상태이면 쓰기를 차단하고, 사용자 판단으로 해결할 수 있을 때 `decision_required`를 반환합니다. Resolved Decision Packet은 active Change Unit, Autonomy Boundary, baseline, intended operation과 맞아야 합니다.
-12. Surface capability checks를 실행합니다. Capability failures는 validator results, blocked reasons, guarantee display changes로 기록되며 capability를 first-class kernel gate로 만들지 않습니다.
+12. Surface capability checks를 실행합니다. Capability failures는 validator 결과, blocked reasons, guarantee display changes로 기록되며 capability를 first-class kernel gate로 만들지 않습니다.
 13. 모든 필수 확인이 pass하면 의도한 작업에 대한 호환되는 unexpired Write Authorization을 만들거나 같은 request의 idempotent replay에 대해 이미 commit된 response를 반환하고, decision을 기록한 뒤 `allowed`를 반환합니다.
 
 
@@ -820,7 +820,7 @@ Decision algorithm은 다음과 같습니다.
 3. Active Run이 아직 open이면 completion을 거부합니다.
 4. Active Change Unit을 확인합니다. 쓰기 가능한 Task에는 active Change Unit이 completed, explicitly deferred, 또는 policy에 따라 superseded되어야 합니다.
 5. `scope_gate`를 확인합니다. 제품 파일 쓰기에는 passed scope가 필요합니다.
-6. `decision_gate`와 blocking Decision Packets를 확인합니다. Required, pending, blocked, absent, incompatible blocking decisions는 close를 차단합니다. Deferred decisions는 close impact, 남은 위험, follow-up visibility가 recorded된 경우에만 호환됩니다.
+6. `decision_gate`와 blocking Decision Packets를 확인합니다. Required, pending, blocked, absent, incompatible blocking decisions는 close를 차단합니다. Deferred decisions는 close 영향, 남은 위험, follow-up visibility가 recorded된 경우에만 호환됩니다.
 7. `approval_gate`를 확인합니다. Sensitive changes에는 drift나 expiry가 없는 granted approval이 필요합니다.
 8. `design_gate`를 확인합니다. Required design gates는 passed이거나 validly waived되어야 합니다. Stale, blocked, pending, partial required design gates는 policy가 recorded waiver로 convert하지 않는 한 close를 차단합니다.
 9. `evidence_gate`를 확인합니다. 근거가 required인 곳에서는 `sufficient`만 successful close를 허용합니다.
@@ -856,7 +856,7 @@ Residual-risk acceptance는 알려진 남은 위험이 requested close를 위해
 
 ## Waiver semantics
 
-Waivers는 reason, actor, time, affected gate와 함께 기록해야 하는 explicit user 또는 policy decisions입니다.
+Waivers는 reason, actor, time, 영향받는 gate와 함께 기록해야 하는 explicit user 또는 policy decisions입니다.
 
 허용되는 waivers:
 
@@ -882,7 +882,7 @@ Decision deferral은 waiver가 아닙니다. Deferred Decision Packet은 affecte
 | 대화는 상태가 아닙니다. | 상태를 변경하는 actions는 상태 기록과 `task_events`를 만듭니다. Projections와 대화 텍스트는 MCP action 또는 reconcile 없이 기준 상태를 직접 바꿀 수 없습니다. |
 | 제품 파일 쓰기에는 active scoped Change Unit이 필요합니다. | `prepare_write`는 active Task, active Change Unit, passed scope gate가 없는 write-capable actions를 차단합니다. Allowed writes는 Write Authorization을 만들거나 committed idempotent replay response를 반환하며, implementation/direct Runs는 호환되는 authorization을 사용한 것으로 기록해야 합니다. |
 | Sensitive change에는 explicit approval이 필요합니다. | `prepare_write`는 sensitive categories를 detect하고 approval gate와 approval scope를 확인하며, denied, expired, missing, drifted approval을 차단합니다. Approval은 sensitive scope 밖의 제품 판단을 satisfy할 수 없습니다. |
-| 차단하는 제품 판단에는 기록된 Decision Packet이 필요합니다. | `decision_gate`, `prepare_write`, `record_run`, `close_task`는 차단하는 제품 판단에 대해 기준 Decision Packet을 요구합니다. Unresolved 또는 incompatible blocking packets는 affected writes와 close를 막습니다. |
+| 차단하는 제품 판단에는 기록된 Decision Packet이 필요합니다. | `decision_gate`, `prepare_write`, `record_run`, `close_task`는 차단하는 제품 판단에 대해 기준 Decision Packet을 요구합니다. Unresolved 또는 incompatible blocking packets는 영향받는 write와 close를 막습니다. |
 | 근거가 required인 곳에서는 completion에 근거 coverage가 필요합니다. | 근거가 적용될 때 `close_task`는 `evidence_gate=sufficient`를 요구합니다. Required evidence는 passed completion을 위해 waive할 수 없습니다. |
 | Work는 detached verification을 자체 인증할 수 없습니다. | `detached_verified`에는 Eval과 valid independence가 필요합니다. Same-session review와 verification waiver는 assurance를 upgrade할 수 없습니다. |
 | Required QA와 acceptance는 별도 gate입니다. | `qa_gate`와 `acceptance_gate`는 독립적으로 확인합니다. Manual QA records는 acceptance를 뜻하지 않고, acceptance는 QA를 뜻하지 않습니다. |
