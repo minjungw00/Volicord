@@ -15,7 +15,7 @@ Harness를 사용하거나 구현하기 전에 전체 그림과 핵심 개념을
 
 ## Use
 
-AI 지원 개발 세션에서 사용자가 Harness를 어떻게 따라가면 되는지 보는 경로입니다.
+AI 지원 개발 세션을 Harness 기준으로 진행할 때 보는 경로입니다. 먼저 사용자 가이드를 보고, agent가 어떻게 진행해야 하는지 확인할 때 세션 흐름을 봅니다.
 
 - [사용자 가이드](use/user-guide.md)
 - [Agent 세션 흐름](use/agent-session-flow.md)

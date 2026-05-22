@@ -15,7 +15,7 @@ Start here to understand Harness before using or building it. The recommended pa
 
 ## Use
 
-Use this path when you want to work with Harness during an AI-assisted development session.
+Use this path when you want to run an AI-assisted development session under Harness. Start with the user guide, then use the agent-session flow when you need to understand how the agent should proceed.
 
 - [User Guide](use/user-guide.md)
 - [Agent Session Flow](use/agent-session-flow.md)
