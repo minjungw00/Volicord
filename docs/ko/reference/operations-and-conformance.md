@@ -275,7 +275,7 @@ flowchart TD
 
 MVP에서 Decision Packet visibility는 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 렌더링합니다. Journey Card visibility는 status, journey, next, significant resume 접점을 통해 렌더링합니다.
 
-`DEC`, `DESIGN`, `EXPORT`, persisted `JOURNEY-CARD`를 위한 dedicated Extension / optional refresh targets는 enabled일 때 optional이며, required MVP smoke target이 아닙니다.
+`DEC`, `DESIGN`, `EXPORT`, persisted `JOURNEY-CARD`를 위한 Extension / optional tier의 전용 refresh target은 기능이 켜져 있을 때만 사용하며, MVP smoke 필수 대상이 아닙니다.
 
 ## reconcile
 
@@ -310,7 +310,7 @@ flowchart TD
   Review --> Note["convert_to_note"]
   Review --> Decision["create_decision"]
   Review --> Defer["defer"]
-  Merge --> Core["Core를 통해 apply하고 state history append"]
+  Merge --> Core["Core를 통해 apply하고 state history 추가"]
   Reject --> Refresh["기준 상태 unchanged; 필요하면 refresh"]
   Note --> Human["human note로 보존"]
   Decision --> Pending["pending user decision"]
@@ -347,7 +347,7 @@ flowchart TD
   Classify --> Storage["malformed 또는 schema-incompatible storage JSON"]
   Classify --> Lock["lock expired"]
   Classify --> MCP["MCP unavailable"]
-  Interrupted --> Event["compensating event append"]
+  Interrupted --> Event["compensating event 추가"]
   Baseline --> Approval["approval expire 또는 re-request"]
   Evidence --> Stale["evidence 또는 verification stale/blocked 표시"]
   Projection --> Recon["retry, fail, 또는 reconcile guidance 생성"]

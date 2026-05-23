@@ -52,7 +52,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Module Watchpoint Rollup
 - source: `module_map_items.watchpoints_json`
-- canonical owner: Module Map Item; dedicated architecture watchpoint refs는 later DDL batch가 정의한 경우에만 사용한다
+- canonical owner: Module Map Item; 전용 architecture watchpoint ref는 later DDL batch가 정의한 경우에만 사용한다
 - shallow module growth:
 - dependency direction risk:
 - public interface drift:

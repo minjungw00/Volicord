@@ -128,7 +128,7 @@ Relevant projection, artifact ref, repo file, doc, note를 보여줄 수 있는 
 
 ### Decision Packet
 
-Blocking product judgment를 지원하기 위해 기록하는 decision-support packet입니다. decision needed, options, 가능할 때 recommendation, trade-offs, affected scope, evidence, Residual Risk, owner, status, next action을 명시합니다. Decision Packet record ID는 `DEC-*`를 사용합니다. Record-level status는 [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute)와 public `DecisionPacket` schema가 담당하며, 관련 statuses가 Task-level `decision_gate`에 반영됩니다. 기준 형태는 kernel state입니다. MVP visibility는 Task/status/next/judgment-context 및 decision-packet 접점을 통해 required이며, standalone `DEC` Markdown 렌더링 결과는 enabled되지 않는 한 optional projection 또는 proposal 접점입니다.
+Blocking product judgment를 지원하기 위해 기록하는 decision-support packet입니다. decision needed, options, 가능할 때 recommendation, trade-offs, affected scope, evidence, Residual Risk, owner, status, next action을 명시합니다. Decision Packet record ID는 `DEC-*`를 사용합니다. Record-level status는 [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute)와 public `DecisionPacket` schema가 담당하며, 관련 statuses가 Task-level `decision_gate`에 반영됩니다. 기준 형태는 kernel state입니다. MVP visibility는 Task/status/next/judgment-context 및 decision-packet 접점을 통해 required이며, standalone `DEC` Markdown 렌더링 결과는 기능이 켜져 있을 때만 optional projection 또는 proposal 접점입니다.
 
 ### Decision Request
 
@@ -390,7 +390,7 @@ External PR, review, deployment, rollback, monitoring process를 위한 release 
 
 Task 보고서, approval 보고서, run summary, evidence manifest 보고서, Eval 보고서, direct-result 보고서처럼 state records와 artifact references에서 생성되는 Markdown 보고서입니다.
 
-Named 보고서 projection kinds는 state records와 artifact refs에서 생성되는 projections입니다. Evidence-file authority는 registered artifact files에 남습니다.
+이름 있는 보고서 projection kind 값은 state records와 artifact refs에서 생성되는 projections입니다. Evidence-file authority는 registered artifact files에 남습니다.
 
 ### Review Stages
 

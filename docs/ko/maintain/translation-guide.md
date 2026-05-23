@@ -44,7 +44,7 @@
 | boundary | Code나 identifier 맥락에서는 `boundary`를 유지합니다. 일반 prose에서는 `경계`를 씁니다. |
 | authority | Operational authority는 보통 `권한`으로 옮깁니다. 권한의 source를 강조해야 하면 `기준 권한`을 씁니다. |
 | canonical | Identifier 맥락에서는 `canonical`을 유지합니다. 일반 prose에서는 `기준` 또는 `기준 기록`을 씁니다. |
-| mutate | 영어 prose에서는 `change`나 `modify`를 선호합니다. 한국어에서는 `변경하다`를 씁니다. |
+| change / modify | 상태나 기록을 바꾸는 의미입니다. 한국어에서는 `변경하다`를 씁니다. |
 | surface | 문맥에 맞게 `interface`, `view`, `entrypoint`, `display area`나 그에 맞는 한국어 표현을 고릅니다. |
 | evidence | Product term으로 필요할 때만 `evidence`를 유지합니다. 일반 prose에서는 `근거` 또는 `증거`를 씁니다. |
 
@@ -53,9 +53,9 @@
 영어 기술어를 그대로 끼워 넣었지만 독자에게 더 선명해지지 않는 표현은 피합니다.
 
 ```text
-state를 mutate한다
-authority boundary를 preserve한다
-surface에 expose한다
+상태 변경을 영어 동사와 섞어 쓴다
+authority boundary 유지라고 쓴다
+surface 표시라고 쓴다
 projection freshness를 report한다
 ```
 
@@ -74,9 +74,9 @@ projection이 최신인지 표시한다
 
 | Before | After |
 |---|---|
-| `Core가 state를 mutate한다.` | `Core가 상태를 변경한다.` |
-| `Agent는 authority boundary를 preserve해야 한다.` | `Agent는 권한 경계를 유지해야 한다.` |
-| `이 surface는 blocker를 expose한다.` | `이 화면은 blocker를 보여준다.` |
+| `Core가 state 변경을 수행한다.` | `Core가 상태를 변경한다.` |
+| `Agent는 authority boundary 유지가 필요하다.` | `Agent는 권한 경계를 유지해야 한다.` |
+| `이 surface는 blocker 표시를 담당한다.` | `이 화면은 blocker를 보여준다.` |
 | `Operations는 projection freshness를 report한다.` | `Operations는 projection이 최신인지 표시한다.` |
 | `canonical source를 update한다.` | `기준 기록을 업데이트한다.` |
 | `context를 잃지 않도록 한다.` | 일반 prose에서는 `맥락을 잃지 않도록 한다.` |

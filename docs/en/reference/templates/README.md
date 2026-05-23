@@ -4,8 +4,6 @@
 
 Use these files when you need the rendered Markdown shape for projection templates and display cards. The projection rules, authority boundaries, and freshness behavior are defined in [Document Projection Reference](../document-projection.md).
 
-This directory index is [README](README.md).
-
 ## Template tiering
 
 Projection templates match the API `ProjectionKind` tiers:

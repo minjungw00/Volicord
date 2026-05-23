@@ -176,12 +176,12 @@ Fixture assertions를 위한 event stability는 [Kernel Stable Event Catalog](ke
 | Tier | Values | Requirement |
 |---|---|---|
 | MVP-required | `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT` | Reference implementation은 이 kind들을 지원하고 source 기록이 변경될 때 대기열에 넣고 렌더링해야 합니다. |
-| MVP-optional | `MANUAL-QA`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT` | Policy가 적용되거나, source 기록이 있거나, user/operator가 projection을 enable할 때 지원하거나 대기열에 넣습니다. |
-| Extension / optional | `DEC`, `DESIGN`, `EXPORT`, `JOURNEY-CARD` | 대응하는 optional projection이 enabled인 경우에만 지원할 수 있습니다. |
+| MVP-optional | `MANUAL-QA`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT` | Policy가 적용되거나, source 기록이 있거나, user/operator가 projection을 켤 때 지원하거나 대기열에 넣습니다. |
+| Extension / optional | `DEC`, `DESIGN`, `EXPORT`, `JOURNEY-CARD` | 대응하는 선택 projection이 켜진 경우에만 지원할 수 있습니다. |
 
-ProjectionKind extensibility가 projection을 기준 상태로 만들지는 않습니다. 모든 projection job은 여전히 owner 기록 및 artifact 참조에서 파생된 보기를 렌더링합니다. `DEC`는 해당 feature가 enabled일 때 standalone Decision Packet Markdown에만 valid하며, MVP-required projection job이 아닙니다. Standalone `DEC` job이 없어도 MVP Decision Packet visibility가 줄어들면 안 되며, 이 visibility는 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 제공되어야 합니다. Persisted `JOURNEY-CARD` Markdown은 선택 사항입니다. `harness.status`, `harness.next`, significant resume flow의 현재 위치 Journey Card output은 agency conformance에 계속 필요합니다.
+ProjectionKind extensibility가 projection을 기준 상태로 만들지는 않습니다. 모든 projection job은 여전히 owner 기록 및 artifact 참조에서 파생된 보기를 렌더링합니다. `DEC`는 해당 기능이 켜졌을 때 standalone Decision Packet Markdown에만 유효하며, MVP-required projection job이 아닙니다. Standalone `DEC` job이 없어도 MVP Decision Packet visibility가 줄어들면 안 되며, 이 visibility는 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 제공되어야 합니다. Persisted `JOURNEY-CARD` Markdown은 선택 사항입니다. `harness.status`, `harness.next`, significant resume flow의 현재 위치 Journey Card output은 agency conformance에 계속 필요합니다.
 
-`EXPORT`는 export feature가 enabled일 때 Release Handoff 같은 보고서 profile을 포함할 수 있습니다. 이런 profile은 projection/보고서 접점일 뿐입니다. Deployment authority, merge authority, production-monitoring authority, final acceptance, Residual Risk 수용, assurance 향상, Task close 권한을 만들지 않습니다.
+`EXPORT`는 export 기능이 켜졌을 때 Release Handoff 같은 보고서 profile을 포함할 수 있습니다. 이런 profile은 projection/보고서 접점일 뿐입니다. Deployment authority, merge authority, production-monitoring authority, final acceptance, Residual Risk 수용, assurance 향상, Task close 권한을 만들지 않습니다.
 
 ```yaml
 ToolError:
@@ -389,7 +389,7 @@ EndToEndPath:
 
 Client가 guard, freeze, careful-mode control을 렌더링할 때는 authority field를 추가하지 않고 이 기존 display shape를 사용합니다. `guarantee_display.level`과 `guarantee_display.notes`는 실제 연결된 capability와 현재 적용 경로를 설명해야 합니다. `blocked_reasons[].message`는 scope, MCP availability, approval, baseline, capability 같은 구체적인 보류 또는 차단 조건을 이름 붙여야 하며, "guard"나 "freeze" 같은 command label만으로 더 강한 guarantee를 암시하면 안 됩니다.
 
-`DEC`, `DESIGN`, `EXPORT`, `JOURNEY-CARD` 같은 Extension / optional `ProjectionKind` values는 해당 projection feature가 enabled일 때만 valid projection job kind입니다. MVP-required Decision Packet visibility는 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 제공됩니다. Persisted `JOURNEY-CARD` Markdown은 선택 사항으로 남지만 현재 위치 Journey Card output은 status, next, significant resume flows에서 필요합니다. 전체 projection template text는 [Template 참조](templates/README.md)에 있으며, 이 API schema file이 담당하지 않습니다.
+`DEC`, `DESIGN`, `EXPORT`, `JOURNEY-CARD` 같은 Extension / optional tier의 `ProjectionKind` 값은 해당 projection 기능이 켜졌을 때만 projection job kind로 유효합니다. MVP-required Decision Packet visibility는 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 제공됩니다. Persisted `JOURNEY-CARD` Markdown은 선택 사항으로 남지만 현재 위치 Journey Card output은 status, next, significant resume flows에서 필요합니다. 전체 projection template text는 [Template 참조](templates/README.md)에 있으며, 이 API schema file이 담당하지 않습니다.
 
 Decision Packet, Write Authorization, Write Authority Summary, Journey Card, Judgment Context, Autonomy Boundary, Recommended Playbook, acceptance visibility, residual-risk summaries는 public MCP schemas입니다. 이 schemas는 API payload만 설명합니다. 기준 kernel records는 owner docs가 정의합니다. 이 목록에서 `RecommendedPlaybook`은 display-only 예외입니다. 자체 기준 kernel record, DDL table, task event, projection job이 없습니다.
 
@@ -1220,7 +1220,7 @@ implementation-local detail/audit를 위해 반환될 수 있는 non-stable Even
 
 Projection job 대기열 추가: `TASK`; Core가 기준 approval-shaped Decision Packet과 linked pending Approval record를 만든 뒤 `decision_kind=approval`에 대해서만 `APR`; reconcile에는 affected projection.
 
-Standalone Decision Packet projection이 enabled일 때만 optional `DEC` job을 대기열에 넣습니다.
+Standalone Decision Packet projection이 켜져 있을 때만 optional `DEC` job을 대기열에 넣습니다.
 
 ValidatorResults emitted: `decision_quality_check`, `autonomy_boundary_check` when the packet affects the active Change Unit boundary, `residual_risk_visibility_check` for risk-acceptance decisions.
 
@@ -1306,7 +1306,7 @@ implementation-local detail/audit를 위해 반환될 수 있는 non-stable Even
 
 Projection job 대기열 추가: `TASK`; targeted Decision Packet이 approval-shaped이고 linked Approval 기록이 update될 때 `APR`; QA 면제가 QA 기록으로 represented될 때 `MANUAL-QA`; reconcile에는 affected design/task projection. Decision Packet visibility는 여전히 `TASK` projection, status/next response, judgment-context resource, decision-packet resource를 통해 나타납니다.
 
-Standalone Decision Packet projection이 enabled일 때만 optional `DEC` job을 대기열에 넣습니다.
+Standalone Decision Packet projection이 켜져 있을 때만 optional `DEC` job을 대기열에 넣습니다.
 
 ValidatorResults emitted: `decision_quality_check`, `autonomy_boundary_check`, `residual_risk_visibility_check`.
 
@@ -1487,7 +1487,7 @@ implementation-local detail/audit를 위해 반환될 수 있는 non-stable Even
 
 Projection job 대기열 추가: `TASK`, `MANUAL-QA`; optional `EVIDENCE-MANIFEST`. Waiver Decision Packet visibility는 여전히 `TASK` projection, status/next response, judgment-context resource, decision-packet resource를 통해 나타납니다.
 
-Standalone Decision Packet projection이 enabled되어 있고 waiver Decision Packet이 visibility에 영향을 줄 때만 optional `DEC` job을 대기열에 넣습니다.
+Standalone Decision Packet projection이 켜져 있고 waiver Decision Packet이 visibility에 영향을 줄 때만 optional `DEC` job을 대기열에 넣습니다.
 
 ValidatorResults emitted: `manual_qa_required`, `decision_quality_check`, `residual_risk_visibility_check`.
 
