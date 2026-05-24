@@ -180,6 +180,7 @@ Required categories:
 | reconcile | pending human edits, managed block drift, generated-file drift |
 | validators/checks | required stable ValidatorResult-emitting validators, plus separately captured Core check/precondition categories |
 | agency/stewardship/context | Decision Packet and decision gate readiness, Autonomy Boundary readiness, residual-risk visibility, codebase stewardship, context freshness |
+| security/threat model | local MCP binding/access expectation, registered project/task/surface consistency, connector drift, sensitive-category side effects, redaction or omission coverage |
 
 ```mermaid
 flowchart TD
@@ -192,6 +193,7 @@ flowchart TD
   Doctor --> Reconcile["reconcile"]
   Doctor --> Validators["validators/checks"]
   Doctor --> Agency["agency/stewardship/context"]
+  Doctor --> Security["security/threat model"]
   State --> JSON["JSON TEXT parse and shape validity"]
   Projections --> Freshness["freshness and failed renders"]
   Validators --> Stable["stable ValidatorResult IDs and Core checks"]
@@ -211,12 +213,15 @@ Doctor must distinguish current state failures from projection stale or projecti
 
 State checks include JSON `TEXT` fields in `registry.sqlite` and `state.sqlite`. Malformed JSON is a state failure. Schema-incompatible JSON is a state failure; doctor may mark it `REPAIRABLE` only when Core can safely reconstruct the expected value from other canonical state or raw artifacts without inventing user-owned judgment, otherwise it reports `FAIL` or `MANUAL`.
 
+Security-oriented doctor output is diagnostic and does not create new runtime authority. It should report when the MCP access mode does not match the local process/localhost expectation or the documented connector profile, when project/task/surface claims do not match registered state, when connector-managed files drift, when artifacts lack redaction or omission notes required by their sensitive category, and when sensitive operations including `destructive_write`, `network_write`, `external_service_write`, `secret_access`, `privacy_or_pii_change`, `data_export`, `infra_or_deployment_change`, `production_config_change`, `ci_cd_change`, `billing_or_cost_change`, or `telemetry_or_logging_change` appear outside the recorded scope/approval/Decision Packet/Write Authorization path.
+
 ## serve mcp
 
 `serve mcp` starts or prints connection information for the local MCP server.
 
 Required behavior:
 
+- report whether access is local process/localhost only or covered by a documented connector capability profile
 - expose read resources without mutation
 - expose public tools through Core, not shell shortcuts
 - require state-changing calls to use Core conflict and idempotency behavior
@@ -235,6 +240,8 @@ flowchart TD
 ```
 
 If MCP is unavailable, operations must distinguish diagnostic condition `MCP_SERVER_UNAVAILABLE` from diagnostic condition `SURFACE_MCP_UNAVAILABLE`. These labels are not additional public `ErrorCode` values. When either condition is surfaced through `ToolError`, operations must use the API-owned error selection and details shape: `MCP_UNAVAILABLE` remains the stable public availability code, while surface-side availability or capability cases may use `MCP_UNAVAILABLE` or `CAPABILITY_INSUFFICIENT` with `details.mcp_unavailable_kind` according to context. With `MCP_SERVER_UNAVAILABLE`, a tool call cannot reach Core and no authoritative Core response is possible; the next action is server diagnosis or reconnect before any state-change claim. With `SURFACE_MCP_UNAVAILABLE`, Core or an operator can observe that the connected surface lacks usable MCP, has stale MCP configuration, or cannot call required MCP tools. Cooperative surfaces must hold product/runtime/code writes by instruction; stronger profiles may enforce the hold preventively or through isolation. Operations must still report the actual guarantee level.
+
+`serve mcp` should treat unexpected callers, callers outside the documented local process/localhost expectation or connector access contract, and stale connector configuration as threat-model issues. It reports access mode, active project, surface identity, and capability profile so a user can see when a surface is not the one Core expects. It must not present a spoofed `surface_id`, `actor_kind`, or project/task selection as proof of authority; the public tool contract still resolves and validates those claims through Core.
 
 ## projection refresh
 
@@ -385,6 +392,8 @@ flowchart TD
 
 Exported projection snapshots may have hashes, but that does not make the Markdown projection the canonical evidence. Raw evidence remains the artifact files and their registered refs.
 
+Export is a `data_export`-category side effect when policy applies. Export must preserve the artifact boundary: included raw files are limited to allowed registered artifacts, projection snapshots remain snapshots, and the bundle carries redaction or omission notes for secrets, sensitive logs, screenshots, network traces, telemetry/logging content, and PII that were removed or blocked.
+
 ### Release Handoff Export Profile
 
 Release Handoff is an optional report/export profile for release readiness visibility. It is useful when a user wants a GStack-style ship summary without giving Harness deployment authority.
@@ -427,9 +436,11 @@ Required checks:
 - redaction state is valid
 - task/run or artifact-link relation is valid
 - linked state owner exists in the same Task scope as the artifact link, or `record_kind=projection` resolves to a completed same-Task `projection_jobs` row
+- no unregistered staging path or arbitrary `staged_uri` is accepted as a committed artifact
 - owner-link relation semantics are compatible with the artifact's kind, including artifacts whose kind is `bundle`, `manifest`, or `export_component`
 - for projection artifact links, `artifact_links.record_id` must equal `projection_jobs.projection_job_id`; integrity validates that job/output identity through the same Task scope as the artifact link, `target_ref`, `status=completed`, and `output_path` or a documented projection ref instead of looking for a separate `projections` table. Project-level projection jobs are not project-scoped artifact links in the current MVP.
 - bundle, manifest, and export-component artifacts are validated through their artifact row and owner links; the check must not look for nonexistent `verification_bundle` or `export` state tables
+- secret/PII handling is compatible with `redaction_state` and any export or capture notes
 - retention class is valid
 - projection or evidence refs resolve
 

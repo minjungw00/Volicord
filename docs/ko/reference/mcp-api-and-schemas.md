@@ -126,6 +126,18 @@ ToolEnvelope:
   dry_run: boolean
 ```
 
+### MCP boundary와 caller trust
+
+Public MCP contract는 registered project surface를 위한 local process 또는 localhost connection을 전제로 합니다. MCP server를 이 local boundary 밖에 노출하면 threat model이 달라지므로, documented connector capability profile, access-control contract, guarantee display가 필요합니다. 그런 stronger profile이 없다면 MCP endpoint에 닿을 수 있는 caller도 Core가 검증해야 하는 claim의 출처일 뿐, 자동으로 신뢰되는 권한이 아닙니다.
+
+Envelope field는 routing과 audit claim입니다.
+
+- `project_id`, `task_id`, `surface_id`, `run_id`는 addressed operation과 호환되는 record로 해석되어야 합니다. Caller가 다른 project, Task, surface, Run을 이름으로 지정한다고 authority가 생기지 않습니다.
+- `actor_kind`는 routing과 policy check를 위한 claimed actor role입니다. 그 자체만으로 approval, user acceptance, Decision Packet resolution, Manual QA judgment, detached verification independence를 충족하면 안 됩니다.
+- `idempotency_key`는 committed mutation의 중복을 막습니다. Authorization token이 아니며, 같은 `(project_id, tool_name, idempotency_key)` scope에서 같은 canonical request payload일 때만 replay가 valid합니다.
+- `expected_state_version`은 caller의 concurrency claim입니다. 최신이 아니거나 잘못된 version은 `STATE_CONFLICT`를 반환합니다. 이를 이용해 오래된 Task 또는 project view가 이기게 만들면 안 됩니다.
+- `dry_run=true`는 diagnostic만 반환합니다. Idempotency key를 예약하거나, Write Authorization을 만들거나, artifact를 attach하거나, later write가 안전하다는 proof를 만들지 않습니다.
+
 ## Common response
 
 Common response fields:
@@ -293,8 +305,10 @@ Rules:
 - `source_kind=staged_file` requires `staged` and must set `existing_artifact_ref` to `null`.
 - Existing artifact를 새 record에 attach할 때 Core는 artifact의 task relation을 verify하고 incompatible reuse를 reject합니다.
 - `staged_uri`는 arbitrary absolute path가 아니라 harness staging location 또는 approved capture adapter를 가리켜야 합니다.
-- `expected_sha256` 또는 `expected_size_bytes`가 있으면 Core는 commit 전에 stored bytes를 확인합니다.
+- `staged_uri`, `display_name`, supplied `content_type`은 Core가 staging 또는 capture source, stored bytes, redaction state, owner relation을 검증하기 전까지 trusted input이 아닙니다.
+- `expected_sha256` 또는 `expected_size_bytes`가 있으면 Core는 commit 전에 stored bytes를 확인합니다. 이 field가 제공되었는지와 무관하게 Core는 stored bytes에서 committed `sha256`, `size_bytes`, `content_type`을 기록합니다.
 - Core는 final storage 전에 redaction rules를 적용하고 committed artifact를 `ArtifactRef`로 기록합니다.
+- Secret 또는 PII를 포함할 수 있는 log, screenshot, network trace, export snapshot, 기타 captured evidence는 policy가 요구할 때 registration 전에 redacted, omitted, 또는 blocked 상태가 되어야 합니다.
 - Tool response는 기록된 `ArtifactRef` 값을 `registered_artifacts`, `bundle_ref`, 기타 response field로 반환합니다.
 - `relation.record_kind`는 Core가 검증할 수 있는 기존 기준 owner 기록 또는 렌더링된 projection 참조를 이름으로 지정해야 합니다. MVP의 non-projection owner에서는 concrete owner row가 `relation.task_id`와 같은 Task scope여야 합니다. 같은 owner kind의 project-scoped row는 future extension이 project-scoped artifact storage/API를 추가하기 전까지 artifact-link target이 아닙니다. Verification bundle은 `ArtifactRef.kind=bundle` 또는 `manifest`를 사용합니다. Export output은 `ArtifactRef.kind=export_component` 또는 `retention_class=export`를 사용합니다. `verification_bundle`과 `export`는 MVP artifact relation record kind가 아닙니다.
 - `relation.record_kind=projection`은 Core가 `projection_jobs`를 통해 찾을 수 있는, 이미 렌더링되었거나 기록된 Task-scoped projection output에만 valid합니다. MVP에서 `record_id_hint`는 `projection_jobs.projection_job_id`를 이름으로 지정하고, job의 `task_id`는 `relation.task_id`와 일치해야 합니다. Core는 hint를 검증할 때 `target_ref`와 `output_path`를 사용할 수 있지만, 이 값들이 identity에서 job id를 대체하지 않습니다. Project-level projection job은 owner docs가 허용하는 곳에서 존재할 수 있지만, 현재 MVP artifact API는 이를 위한 project-scoped artifact link를 등록하지 않습니다.

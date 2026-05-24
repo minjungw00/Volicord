@@ -1029,6 +1029,8 @@ Artifact filenames should include enough stable identity to avoid collisions:
 
 Markdown reports in the Product Repository are not raw artifacts by default. If an export needs a report snapshot, it can store that snapshot as an export component artifact while preserving the distinction between the report projection and raw evidence.
 
+The local layout is also a trust boundary. `state.sqlite`, `registry.sqlite`, and artifact files are authoritative only when they are reachable through the registered project layout and pass the owner, integrity, and shape checks owned by this document. Direct edits, copied artifact files, orphaned staging files, or manually changed connector state are not accepted as committed Harness meaning until Core, `doctor`, `recover`, or `artifacts check` validates or repairs them through the documented paths.
+
 ### Artifact Kind Storage Notes
 
 The `artifacts.kind` field names durable evidence files. It does not make the artifact file the owner of the corresponding state record.
@@ -1046,6 +1048,8 @@ The `artifacts.kind` field names durable evidence files. It does not make the ar
 ### Artifact Registration Contract
 
 Artifact registration is part of the Core transition that records the owner record, such as a Task, Run, Decision Packet context, Shared Design, Journey Spine Entry, Evidence Manifest, Eval, Manual QA record, Feedback Loop, TDD Trace, or rendered Task-scoped projection. Verification bundles and export components are artifact files linked to those owner records, not canonical `verification_bundle` or `export` state records.
+
+Artifact registration is the storage boundary for artifact poisoning. A staged path, capture adapter output, file name, extension, declared content type, and requested owner relation are untrusted until registration validates the source, applies redaction or omission, computes stored-byte integrity, and links the artifact to an existing Task-scoped owner record.
 
 MVP registration steps:
 
@@ -1089,6 +1093,8 @@ sequenceDiagram
 | `blocked` | a small metadata-only notice artifact explaining that capture was blocked; no forbidden content is stored |
 
 Artifact integrity failures return `ARTIFACT_MISSING` or a validator failure and mark related evidence or projection freshness stale according to the kernel rules.
+
+Owner validation is part of integrity, not a display convenience. An artifact that claims another Task, Run, projection job, Decision Packet, Evidence Manifest, Eval, Manual QA record, or other owner must be rejected unless the owner exists, is compatible with the artifact kind, and is in the same Task scope required by the artifact-link contract. Export components and verification bundles still link back to existing owners; they do not create standalone `export` or `verification_bundle` state records.
 
 ## Baseline capture format
 

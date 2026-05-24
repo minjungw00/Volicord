@@ -124,6 +124,18 @@ ToolEnvelope:
   dry_run: boolean
 ```
 
+### MCP boundary and caller trust
+
+The public MCP contract assumes a local process or localhost connection for a registered project surface. Exposing the MCP server beyond that local boundary changes the threat model and requires a documented connector capability profile, access-control contract, and guarantee display. Without that stronger profile, a caller that can reach the MCP endpoint is still treated as a source of claims that Core must validate, not as automatically trusted authority.
+
+Envelope fields are routing and audit claims:
+
+- `project_id`, `task_id`, `surface_id`, and `run_id` must resolve to records compatible with the addressed operation. A caller cannot create authority by naming another project, Task, surface, or Run.
+- `actor_kind` describes the claimed actor role for routing and policy checks. It must not by itself satisfy approval, user acceptance, Decision Packet resolution, Manual QA judgment, or detached verification independence.
+- `idempotency_key` prevents duplicate committed mutations. It is not an authorization token, and replay is valid only for the same canonical request payload in the same `(project_id, tool_name, idempotency_key)` scope.
+- `expected_state_version` is the caller's concurrency claim. A stale or wrong version returns `STATE_CONFLICT`; it must not be used to force an older Task or project view to win.
+- `dry_run=true` returns diagnostics only. It does not reserve an idempotency key, create a Write Authorization, attach artifacts, or prove that a later write is safe.
+
 ## Common response
 
 Common response fields:
@@ -291,8 +303,10 @@ Rules:
 - `source_kind=staged_file` requires `staged` and must set `existing_artifact_ref` to `null`.
 - When an existing artifact is attached to a new record, Core verifies the artifact's task relation and rejects incompatible reuse.
 - `staged_uri` must point to a harness staging location or an approved capture adapter, not an arbitrary absolute path supplied for trust.
-- If `expected_sha256` or `expected_size_bytes` is present, Core verifies the stored bytes before commit.
+- `staged_uri`, `display_name`, and supplied `content_type` are untrusted input until Core has validated the staging or capture source, stored bytes, redaction state, and owner relation.
+- If `expected_sha256` or `expected_size_bytes` is present, Core verifies the stored bytes before commit. Whether or not those fields are supplied, Core records committed `sha256`, `size_bytes`, and `content_type` from the stored bytes.
 - Core applies redaction rules before final storage and records the committed artifact as an `ArtifactRef`.
+- Logs, screenshots, network traces, export snapshots, and other captured evidence that may contain secrets or PII must be redacted, omitted, or blocked before registration when policy requires it.
 - Tool responses return committed `ArtifactRef` values in `registered_artifacts`, `bundle_ref`, or other response fields.
 - `relation.record_kind` must name an existing canonical owner record or rendered projection ref that Core can validate. For non-projection owners in MVP, the concrete owner row must be Task-scoped to `relation.task_id`; project-scoped rows of the same owner kind are not artifact-link targets until a future extension adds project-scoped artifact storage/API. Verification bundles use `ArtifactRef.kind=bundle` or `manifest`; export outputs use `ArtifactRef.kind=export_component` or `retention_class=export`. Neither `verification_bundle` nor `export` is an MVP artifact relation record kind.
 - `relation.record_kind=projection` is valid only for an already rendered or committed Task-scoped projection output that Core can resolve through `projection_jobs`. In MVP, `record_id_hint` names `projection_jobs.projection_job_id`, and the job's `task_id` must match `relation.task_id`; Core may use `target_ref` and `output_path` to validate the hint, but those values do not replace the job id as identity. Project-level projection jobs may still exist where owner docs allow them, but the current MVP artifact API does not register project-scoped artifact links for them.

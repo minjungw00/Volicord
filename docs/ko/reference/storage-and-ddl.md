@@ -1029,6 +1029,8 @@ Artifact filenames는 collision을 피할 만큼 stable identity를 포함해야
 
 Product Repository의 Markdown 보고서는 기본적으로 raw artifacts가 아닙니다. Export에 보고서 snapshot이 필요하면 그 snapshot을 export component artifact로 저장할 수 있지만, 보고서 projection과 raw evidence의 구분은 유지해야 합니다.
 
+Local layout 자체도 trust boundary입니다. `state.sqlite`, `registry.sqlite`, artifact file은 registered project layout을 통해 찾을 수 있고 이 문서가 소유하는 owner, integrity, shape check를 통과할 때만 authoritative합니다. Direct edit, 복사된 artifact file, orphaned staging file, 사람이 바꾼 connector state는 Core, `doctor`, `recover`, `artifacts check`가 documented path로 검증하거나 복구하기 전까지 committed Harness meaning으로 받아들이지 않습니다.
+
 ### Artifact Kind Storage Notes
 
 `artifacts.kind` field는 durable evidence files의 이름을 붙입니다. 그렇다고 artifact file이 대응하는 state record를 담당하는 것은 아닙니다.
@@ -1046,6 +1048,8 @@ Product Repository의 Markdown 보고서는 기본적으로 raw artifacts가 아
 ### Artifact Registration Contract
 
 Artifact 등록은 Task, Run, Decision Packet context, Shared Design, Journey Spine Entry, Evidence Manifest, Eval, Manual QA record, Feedback Loop, TDD Trace, 렌더링된 Task-scoped projection 같은 owner 기록을 기록하는 Core transition의 일부입니다. Verification bundle과 export component는 그 owner 기록에 link되는 artifact file이며 기준 `verification_bundle` 또는 `export` state record는 아닙니다.
+
+Artifact 등록은 artifact poisoning을 막는 storage boundary입니다. Staged path, capture adapter output, file name, extension, declared content type, requested owner relation은 source 검증, redaction 또는 omission 적용, stored-byte integrity 계산, 기존 Task-scoped owner record와의 link validation이 끝나기 전까지 trusted input이 아닙니다.
 
 MVP registration steps:
 
@@ -1089,6 +1093,8 @@ sequenceDiagram
 | `blocked` | a small metadata-only notice artifact explaining that capture was blocked; no forbidden content is stored |
 
 Artifact integrity failures는 `ARTIFACT_MISSING` 또는 validator failure를 반환하고, kernel rules에 따라 related evidence 또는 projection freshness를 `stale`로 표시합니다.
+
+Owner validation은 표시 편의를 위한 절차가 아니라 integrity의 일부입니다. Artifact가 다른 Task, Run, projection job, Decision Packet, Evidence Manifest, Eval, Manual QA record, 또는 다른 owner를 주장하더라도, 그 owner가 존재하고 artifact kind와 호환되며 artifact-link contract가 요구하는 같은 Task scope에 있지 않으면 reject해야 합니다. Export component와 verification bundle도 기존 owner로 다시 link되며 standalone `export` 또는 `verification_bundle` state record를 만들지 않습니다.
 
 ## Baseline capture format
 

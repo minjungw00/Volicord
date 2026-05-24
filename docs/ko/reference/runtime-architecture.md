@@ -28,6 +28,7 @@ Harness는 사용자의 Product Repository 옆에서 실행되는 로컬 권한 
 - Core process model
 - state transaction flow
 - artifact store architecture
+- local threat model과 trust boundary
 - projection과 reconcile architecture
 - guarantee levels
 - failure와 recovery overview
@@ -71,6 +72,25 @@ flowchart LR
 ```
 
 이 분리는 대화, Markdown 보고서, 생성된 connector 파일, 제품 소스 파일이 우연히 운영 상태가 되는 일을 막습니다.
+
+## Local threat model
+
+Harness는 로컬 권한 계층으로 설계되며, 일반적인 운영체제 보안 경계를 대신하지 않습니다. 이 로컬 threat model은 사용자가 관리하는 Product Repository, local Harness Server / Installation, Harness Runtime Home, 하나 이상의 연결된 agent 접점을 전제로 합니다. 이 공간 중 하나에 write access가 있는 local process나 file은 Harness에 영향을 주려고 할 수 있으므로, runtime은 가까이 있는 파일과 caller를 모두 같은 권한으로 보지 않고 별도의 trust zone으로 다룹니다.
+
+주요 boundary는 다음과 같습니다.
+
+| Boundary | Trust concern | Runtime handling |
+|---|---|---|
+| Product Repository | 사람이 편집할 수 있는 파일, 생성된 Markdown, 오래된 문서, connector-managed file이 직접 수정되거나 spoofed context로 쓰일 수 있습니다. | Product file은 input 또는 projection 접점입니다. Accepted operational meaning은 Core 또는 reconcile을 거쳐야 하며, managed-block drift를 조용히 state로 받아들이지 않습니다. |
+| Harness Server / Installation | MCP server와 operator tool은 local control plane입니다. 잘못된 process, 오래된 surface config, spoofed project/task/surface claim에서 호출이 들어올 수 있습니다. | Public tool은 Core를 통과하고 request-envelope validation, state-version check, idempotency, surface capability reporting, honest guarantee display를 사용합니다. Local binding과 access expectation은 API와 operations 계약이며, 모든 local process를 신뢰한다는 뜻이 아닙니다. |
+| Agent surface | 접점이 capability를 과장하거나, MCP를 건너뛰거나, user/evaluator/operator intent를 부정확하게 표현할 수 있습니다. | Capability는 connector profile, `surface_capability_check`, blocked reason, guarantee display로 관찰합니다. `actor_kind`는 routing에 쓰이지만 그 자체가 approval, acceptance, verification independence, user-owned judgment는 아닙니다. |
+| Connector files | Generated instruction, manifest, capture hint, local configuration이 drift되거나 손으로 수정될 수 있습니다. | Connector-managed file은 manifest와 drift reporting으로 확인합니다. Core record 없이 state authority를 만들지 않습니다. |
+| Harness Runtime Home | `registry.sqlite`, `project.yaml`, `state.sqlite`, `state.sqlite.task_events`, artifact directories는 운영 권한과 근거를 담습니다. | Core transaction, lock, state version, event history, doctor, recovery가 이 권한 경계를 보존합니다. Direct file edit는 Core 또는 recovery path가 검증하기 전까지 유효한 state change가 아닙니다. |
+| Artifact store | Staged file, screenshot, log, network trace, export component, copied evidence는 poisoning, tampering, 과도한 크기, secret/PII 포함 위험이 있습니다. | Artifact 등록은 approved staging/capture path, redaction 또는 omission, hash/size/content-type check, Task-scoped ownership, owner-record validation이 성공하기 전까지 input을 신뢰하지 않습니다. |
+
+Sensitive category는 side effect, security, compliance, product-contract, policy risk를 보는 지도입니다. Runtime-facing side effect에는 `destructive_write`, `network_write`, `external_service_write`, `data_export`, `infra_or_deployment_change`, `production_config_change`, `ci_cd_change`, `billing_or_cost_change`, `telemetry_or_logging_change`가 포함됩니다. `auth_change`, `permission_model_change`, `schema_change`, `dependency_change`, `public_api_change`, `secret_access`, `privacy_or_pii_change`, `license_or_compliance_change`, `model_or_prompt_policy_change`, `policy_override` 같은 product/security/compliance-sensitive category도 local operation이라는 이유나 가까운 file, connector, caller에서 시작되었다는 이유만으로 안전해지지 않습니다. Policy가 적용되면 해당되는 Harness 경로를 거쳐야 합니다. 예를 들어 범위 있는 작업을 위한 scope, 민감 행위 허용을 위한 Approval, 사용자 소유 판단을 위한 compatible Decision Packet, write-capable 작업을 위한 Write Authorization, 주장이나 close가 의존하는 evidence, 연결된 접점의 capability/guarantee reporting이 여기에 포함될 수 있습니다.
+
+Log, screenshot, artifact, projection, export, run summary에는 secret, PII, credential, token, private customer data, 민감한 운영 세부 정보가 들어갈 수 있습니다. 따라서 runtime architecture에서 redaction과 omission은 보기 좋은 보고서 formatting이 아니라 evidence handling의 일부입니다. Raw secrets는 durable artifact가 되면 안 되며, exported bundle은 내용이 제거되었거나 blocked되었을 때 redaction 또는 omission note를 포함해야 합니다.
 
 ## Product Repository
 

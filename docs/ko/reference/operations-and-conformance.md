@@ -180,6 +180,7 @@ Connect는 사람이 편집한 내용을 조용히 덮어쓰지 않고 generated
 | reconcile | pending human edits, managed block drift, generated-file drift |
 | validators/checks | required stable ValidatorResult-emitting validators와 별도로 capture되는 Core check/precondition categories |
 | agency/stewardship/context | Decision Packet and decision gate readiness, Autonomy Boundary readiness, residual-risk visibility, codebase stewardship, context freshness |
+| security/threat model | local MCP binding/access expectation, registered project/task/surface consistency, connector drift, sensitive-category side effect, redaction 또는 omission coverage |
 
 ```mermaid
 flowchart TD
@@ -192,6 +193,7 @@ flowchart TD
   Doctor --> Reconcile["reconcile"]
   Doctor --> Validators["validators/checks"]
   Doctor --> Agency["agency/stewardship/context"]
+  Doctor --> Security["security/threat model"]
   State --> JSON["JSON TEXT parse와 shape validity"]
   Projections --> Freshness["freshness와 failed render"]
   Validators --> Stable["stable ValidatorResult IDs와 Core checks"]
@@ -211,12 +213,15 @@ Doctor는 현재 상태 failure와 projection `stale` 또는 projection `failed`
 
 State checks는 `registry.sqlite`와 `state.sqlite`의 JSON `TEXT` fields를 포함합니다. Malformed JSON은 state failure입니다. Schema-incompatible JSON도 state failure입니다. Core가 사용자 소유 판단을 새로 만들지 않고 다른 기준 상태 또는 raw artifacts에서 expected value를 안전하게 재구성할 수 있을 때만 doctor가 이를 `REPAIRABLE`로 표시할 수 있으며, 그렇지 않으면 `FAIL` 또는 `MANUAL`을 보고합니다.
 
+Security-oriented doctor output은 diagnostic이며 새로운 runtime authority를 만들지 않습니다. MCP access mode가 local process/localhost expectation 또는 documented connector profile과 맞지 않을 때, project/task/surface claim이 registered state와 맞지 않을 때, connector-managed file이 drift되었을 때, artifact에 sensitive category가 요구하는 redaction 또는 omission note가 없을 때, `destructive_write`, `network_write`, `external_service_write`, `secret_access`, `privacy_or_pii_change`, `data_export`, `infra_or_deployment_change`, `production_config_change`, `ci_cd_change`, `billing_or_cost_change`, `telemetry_or_logging_change` 같은 sensitive operation이 recorded scope/approval/Decision Packet/Write Authorization path 밖에서 나타날 때 이를 보고해야 합니다.
+
 ## serve mcp
 
 `serve mcp`는 local MCP server를 시작하거나 connection information을 출력합니다.
 
 필수 동작:
 
+- access mode가 local process/localhost only인지, 아니면 documented connector capability profile로 설명되는지 보고합니다
 - 변경 없이 read resource를 제공합니다
 - shell shortcut이 아니라 Core를 통해 public tool을 제공합니다
 - state-changing call이 Core conflict와 idempotency behavior를 사용하게 합니다
@@ -235,6 +240,8 @@ flowchart TD
 ```
 
 MCP를 사용할 수 없으면 operations는 diagnostic condition인 `MCP_SERVER_UNAVAILABLE`과 `SURFACE_MCP_UNAVAILABLE`을 구분해야 합니다. 이 labels는 추가 public `ErrorCode` values가 아닙니다. 이 conditions를 `ToolError`로 드러낼 때 operations는 API-owned error selection과 details shape를 사용해야 합니다. `MCP_UNAVAILABLE`은 stable public availability code로 남고, 접점-side availability 또는 capability cases는 문맥에 따라 `MCP_UNAVAILABLE` 또는 `CAPABILITY_INSUFFICIENT`와 `details.mcp_unavailable_kind`로 표현될 수 있습니다. `MCP_SERVER_UNAVAILABLE`에서는 tool call이 Core에 닿을 수 없어 authoritative Core response가 불가능하므로, 상태 변경 주장 전에 server diagnosis 또는 reconnect가 next action입니다. `SURFACE_MCP_UNAVAILABLE`에서는 Core 또는 operator가 연결된 접점에서 사용할 수 있는 MCP가 없거나 MCP configuration이 최신이 아니거나 required MCP tools를 호출할 수 없음을 관찰할 수 있습니다. Cooperative 접점은 product/runtime/code write를 instruction으로 보류해야 하며, stronger profile은 보류를 예방적으로 또는 isolation으로 강제할 수 있습니다. Operations는 실제 guarantee level을 그대로 보고해야 합니다.
+
+`serve mcp`는 예상되지 않은 caller, documented local process/localhost expectation 또는 connector access contract 밖의 caller, stale connector configuration을 threat-model issue로 다뤄야 합니다. 사용자가 접점이 Core가 기대하는 접점인지 볼 수 있도록 access mode, active project, surface identity, capability profile을 보고합니다. Spoofed `surface_id`, `actor_kind`, project/task selection을 authority의 proof처럼 보여주면 안 됩니다. Public tool contract는 여전히 Core를 통해 이 claims를 해석하고 검증합니다.
 
 ## projection refresh
 
@@ -387,6 +394,8 @@ flowchart TD
 
 Exported projection snapshot은 hash를 가질 수 있지만, 그렇다고 Markdown projection이 기준 evidence가 되지는 않습니다. Raw evidence는 artifact file과 registered ref로 남습니다.
 
+Export는 policy가 적용될 때 `data_export` category side effect입니다. Export는 artifact boundary를 보존해야 합니다. 포함되는 raw file은 허용된 registered artifact로 제한하고, projection snapshot은 snapshot으로 남기며, bundle은 제거되었거나 blocked된 secret, sensitive log, screenshot, network trace, telemetry/logging content, PII에 대한 redaction 또는 omission note를 포함해야 합니다.
+
 ### Release Handoff Export Profile
 
 Release Handoff는 release readiness visibility를 위한 optional 보고서/export profile입니다. Harness에 deployment authority를 주지 않으면서 GStack-style ship summary가 필요할 때 유용합니다.
@@ -429,9 +438,11 @@ Artifact integrity check는 artifact record와 stored file을 비교합니다.
 - redaction state가 valid입니다
 - task/run 또는 artifact-link relation이 valid입니다
 - linked state owner가 artifact link와 같은 Task scope에 존재하거나, `record_kind=projection`이 completed same-Task `projection_jobs` row로 해석됩니다
+- unregistered staging path나 arbitrary `staged_uri`를 committed artifact로 받아들이지 않습니다
 - owner-link relation semantics가 artifact kind와 호환됩니다. 여기에는 kind가 `bundle`, `manifest`, `export_component`인 artifacts가 포함됩니다
 - projection artifact links에서는 `artifact_links.record_id`가 `projection_jobs.projection_job_id`와 같아야 합니다. Integrity는 separate `projections` table을 찾지 않고 artifact link와 같은 Task scope, `target_ref`, `status=completed`, `output_path` 또는 documented projection ref를 통해 해당 job/output identity를 검증합니다. Project-level projection jobs는 current MVP에서 project-scoped artifact links가 아닙니다
 - bundle, manifest, export-component artifacts는 artifact row와 owner links를 통해 검증합니다. Check가 존재하지 않는 `verification_bundle` 또는 `export` state table을 찾으면 안 됩니다
+- secret/PII handling이 `redaction_state` 및 export 또는 capture note와 호환됩니다
 - retention class가 valid입니다
 - projection 또는 evidence ref를 찾을 수 있습니다
 

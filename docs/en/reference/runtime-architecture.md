@@ -28,6 +28,7 @@ This document owns:
 - Core process model
 - state transaction flow
 - artifact store architecture
+- local threat model and trust boundaries
 - projection and reconcile architecture
 - guarantee levels
 - failure and recovery overview
@@ -71,6 +72,25 @@ flowchart LR
 ```
 
 This split prevents chat, Markdown reports, generated connector files, and product source files from becoming accidental operational state.
+
+## Local threat model
+
+Harness is designed as a local authority layer, not as a general operating-system security boundary. The local threat model assumes a user-controlled Product Repository, a local Harness Server / Installation, a Harness Runtime Home, and one or more connected agent surfaces. A local process or file with write access to any one of those spaces can try to influence Harness, so the runtime treats nearby files and callers as separate trust zones rather than interchangeable authority.
+
+The main boundaries are:
+
+| Boundary | Trust concern | Runtime handling |
+|---|---|---|
+| Product Repository | Human-editable files, generated Markdown, stale docs, and connector-managed files can be edited directly or used as spoofed context. | Product files are input or projection surfaces. Accepted operational meaning must flow through Core or reconcile, and managed-block drift is not silently accepted as state. |
+| Harness Server / Installation | The MCP server and operator tools are a local control plane that could receive calls from the wrong process, stale surface config, or a spoofed project/task/surface claim. | Public tools enter through Core, use request-envelope validation, state-version checks, idempotency, surface capability reporting, and honest guarantee display. Local binding and access expectations are API and operations contracts, not a claim that every local process is trusted. |
+| Agent surface | A surface may overstate its capability, skip MCP, or present user, evaluator, or operator intent inaccurately. | Capability is observed through connector profiles, `surface_capability_check`, blocked reasons, and guarantee display. `actor_kind` informs routing, but it is not by itself approval, acceptance, verification independence, or user-owned judgment. |
+| Connector files | Generated instructions, manifests, capture hints, and local configuration can drift or be hand-edited. | Connector-managed files are checked through manifests and drift reporting. They do not create state authority without Core records. |
+| Harness Runtime Home | `registry.sqlite`, `project.yaml`, `state.sqlite`, `state.sqlite.task_events`, and artifact directories hold operational authority and evidence. | Core transactions, locks, state versions, event history, doctor, and recovery preserve the authority boundary. Direct file edits are invalid state changes until a Core or recovery path validates them. |
+| Artifact store | Staged files, screenshots, logs, network traces, export components, and copied evidence can be poisoned, tampered with, oversized, or contain secrets/PII. | Artifact registration treats inputs as untrusted until an approved staging/capture path, redaction or omission, hash/size/content-type checks, Task-scoped ownership, and owner-record validation succeed. |
+
+Sensitive categories are the map for side-effect, security, compliance, product-contract, and policy risk. Runtime-facing side effects include `destructive_write`, `network_write`, `external_service_write`, `data_export`, `infra_or_deployment_change`, `production_config_change`, `ci_cd_change`, `billing_or_cost_change`, and `telemetry_or_logging_change`. Product/security/compliance-sensitive categories such as `auth_change`, `permission_model_change`, `schema_change`, `dependency_change`, `public_api_change`, `secret_access`, `privacy_or_pii_change`, `license_or_compliance_change`, `model_or_prompt_policy_change`, and `policy_override` are also not made safe by being local operations or by being initiated through a nearby file, connector, or caller. When policy applies, the applicable Harness paths still apply: scope for bounded work, Approval for sensitive operations, compatible Decision Packets for user-owned judgment, Write Authorization for write-capable work, evidence when claims or close depend on it, and capability/guarantee reporting for the connected surface.
+
+Logs, screenshots, artifacts, projections, exports, and run summaries may carry secrets, PII, credentials, tokens, private customer data, or sensitive operational details. Runtime architecture therefore treats redaction and omission as part of evidence handling, not as cosmetic report formatting. Raw secrets should not become durable artifacts, and exported bundles must carry redaction or omission notes when content was removed or blocked.
 
 ## Product Repository
 
