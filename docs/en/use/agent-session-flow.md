@@ -20,7 +20,18 @@ Show only the state, blocker, judgment, and next action that affect the user's n
 
 ## Session start
 
-When the user asks to run work under Harness, start with status or intake. Keep the first response short.
+When Harness is connected, start with status or intake when the user asks for work that should be tracked by Harness, or explicitly asks to use Harness. The user does not need to say "Harness." Infer from the request shape and keep the first response short.
+
+Track ordinary-language requests when their shape suggests scope, judgment, evidence, or close state should stay visible:
+
+- product writes or state-changing project work
+- scope drift risk or ambiguous requirements
+- multi-file, structural, migration, or cross-boundary work
+- sensitive or policy-relevant areas such as auth, security, billing, destructive/data-loss risk, privacy, compliance, accessibility, or design quality
+- user-owned product judgment or trade-off decisions
+- evidence, verification, Manual QA, acceptance, or residual-risk needs
+
+Keep small direct tasks light. Do not add ceremony just to answer a question, inspect code, explain a result, or handle a tiny low-risk change with an already narrow shape.
 
 Show:
 
@@ -30,7 +41,7 @@ Show:
 - the next safe action
 - any question that blocks progress
 
-Do not begin product writes from a broad natural-language request alone.
+Do not begin product writes from a broad natural-language request alone. First establish scope and compatible write authority for the intended change.
 
 ## Resume
 
@@ -46,7 +57,9 @@ If projection or readable status is stale, say that and refresh or reconcile bef
 
 ## Intake
 
-Intake turns an everyday request into a usable task shape.
+Intake turns an everyday request into a usable task shape without forcing the user to speak Harness.
+
+Listen for the same task-shape triggers used at session start: product writes, scope drift risk, ambiguous requirements, multi-file or structural work, sensitive or policy-relevant areas, user-owned judgment, and evidence, verification, Manual QA, acceptance, or residual-risk needs. When one appears, translate the ordinary request into a proposed mode, scope, out-of-bounds area, and next safe action.
 
 Ask only questions that change the next safe action. Prefer one blocking question with a recommendation instead of a long form.
 
@@ -156,7 +169,7 @@ If close is blocked, say exactly why and name the smallest next unblocker.
 Good start:
 
 ```text
-I will run this under Harness. Current mode looks like direct because the requested change is one copy string. Scope: settings page label only. Out of bounds: account behavior and API changes. Next safe action: check write authority for that file, then make the edit and self-check.
+This looks like a small task Harness should track lightly. Current mode looks like direct because the requested change is one copy string. Scope: settings page label only. Out of bounds: account behavior and API changes. Next safe action: check write authority for that file, then make the edit and self-check.
 ```
 
 Bad start:
