@@ -137,6 +137,14 @@ Policy validator는 MCP API document가 담당하는 validator 결과 형식에 
 
 예시: Breaking API change가 더 단순해 보이면, 실행 전에 선택지, 장단점, 호환성 위험, 추천안, user decision을 기록합니다.
 
+재사용 가능한 Decision Packet 예시:
+
+- `decision_kind=product_tradeoff`: 로그인 실패 피드백을 inline message, toast, modal/layer 중에서 고릅니다. 사용자 흐름, 방해 정도, 접근성, 문구, 제품 위험의 trade-off를 기록합니다.
+- `decision_kind=architecture_choice`: session cookie, JWT, social login 중에서 고릅니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 운영 복잡도, migration 경로, 추천안이 Task에 맞는 이유를 기록합니다.
+- `decision_kind=approval`: auth, permission, secret, data-export 작업입니다. Approval boundary는 민감한 단계를 허가할 수 있지만, 역할, exported fields, redaction, audit logging, retention, rollback, user notice가 아직 결정되지 않았다면 제품 또는 보안 판단에는 별도의 compatible Decision Packet이 필요합니다.
+- `decision_kind=qa_waiver` 또는 `decision_kind=verification_waiver`: QA 또는 verification을 생략합니다. 무엇을 확인하지 않는지, waiver가 비례적인 이유, 수용하는 사용자·제품·기술 위험, 가장 작은 신뢰 가능한 follow-up을 기록합니다.
+- `decision_kind=residual_risk_acceptance`: 알려진 남은 위험을 두고 close합니다. 사용자에게 보인 한계, 이미 있는 근거, close를 진행할 수 있는 이유, 사용자에게 보인 residual-risk ref, follow-up을 기록합니다.
+
 | Field | Contract |
 |---|---|
 | `name` | `decision_quality` |

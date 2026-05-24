@@ -126,6 +126,14 @@ Most judgment is one of these:
 
 When product judgment blocks progress, the agent should show a Decision Packet with options, trade-offs, recommendation, uncertainty, and deferral effect. It should not flatten that into a vague "approve everything?" question.
 
+A good Decision Packet should feel like decision support, not a permission slip. It should name the real choice, compare realistic paths, recommend one, and say what can safely continue if you defer, or why nothing should continue until you decide.
+
+Examples:
+
+- Product/UX: failed-login feedback could be an inline message, a toast, or a modal/layer. The packet should compare user flow, interruption, accessibility, and copy risk, then recommend a path.
+- Technical: session handling could use a server-backed session cookie, JWT, or social login. The packet should separate revocation, client compatibility, security, and implementation cost.
+- Security-sensitive: approval to access a secret, change permissions, or export data only answers whether that sensitive step may proceed. It does not decide which data is exported, who may export it, what gets redacted, or what audit trail is acceptable.
+
 ## Phrase reference
 
 Everyday work starts as a conversation, not as a command language. Use ordinary language first. Harness terms are there so the agent can explain a real stop, boundary, or close condition when precision helps.
@@ -235,6 +243,8 @@ These words answer different questions.
 Approval is not acceptance. Passing checks is not Manual QA. Accepting residual risk is not proof that the work is correct. Final acceptance, when required, should come after close-relevant residual risk has been shown or reported as none.
 
 Examples that may need approval include dependency additions, auth or permission changes, data model changes, public API changes, destructive writes, secret access, and production configuration changes.
+
+If the agent asks for a QA or verification waiver, it should say what is not being checked, what risk you would accept, and what follow-up remains. If it asks to close with residual risk, it should show the remaining limitation first, then ask whether you accept that risk for this Task.
 
 ## Close checklist
 

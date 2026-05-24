@@ -137,6 +137,14 @@ Use this when:
 
 Example: A breaking API change looks simpler. Record the options, trade-offs, compatibility risk, recommendation, and user decision before acting on it.
 
+Reusable Decision Packet examples:
+
+- `decision_kind=product_tradeoff`: failed-login feedback uses inline message, toast, or modal/layer. Record the user-flow, interruption, accessibility, copy, and product-risk trade-offs.
+- `decision_kind=architecture_choice`: session cookie, JWT, or social login. Record revocation, CSRF/XSS exposure, client compatibility, operational complexity, migration path, and why the recommendation fits the Task.
+- `decision_kind=approval`: auth, permission, secret, or data-export action. The approval boundary may authorize the sensitive step, but product or security judgment still needs a separate compatible Decision Packet when roles, exported fields, redaction, audit logging, retention, rollback, or user notice remain undecided.
+- `decision_kind=qa_waiver` or `decision_kind=verification_waiver`: skipped QA or verification. Record what is not checked, why the waiver is proportionate, the accepted user/product/technical risk, and the smallest credible follow-up.
+- `decision_kind=residual_risk_acceptance`: close with known remaining risk. Record the visible limitation, evidence already present, why close can still proceed, visible residual-risk refs, and follow-up.
+
 | Field | Contract |
 |---|---|
 | `name` | `decision_quality` |

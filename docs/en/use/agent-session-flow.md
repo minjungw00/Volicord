@@ -112,6 +112,14 @@ A user-facing Decision Packet should include:
 - what can continue if the decision is deferred, or why nothing should continue until it is made
 - residual risk or follow-up
 
+Useful examples:
+
+- Failed-login UX: compare inline message, toast, and modal/layer; recommend one based on flow, accessibility, interruption, and copy risk. If deferred, backend auth work may continue, but the final failed-login experience should not be claimed done.
+- Session approach: compare server-backed session cookie, JWT, and social login; explain revocation, CSRF/XSS exposure, client compatibility, operational complexity, and migration cost. If deferred, form scaffolding may continue only if it does not commit to the session model.
+- Security-sensitive change: approval to access a secret, change permissions, or export data is only an approval boundary. Separate product or security judgment may still be needed for roles, fields, redaction, audit logging, retention, rollback, and user notice.
+- QA or verification waiver: name the skipped check, accepted risk, and follow-up. Example: waive mobile Safari Manual QA for a copy-only change, accept wrapping risk, and keep a browser pass as release follow-up.
+- Residual-risk acceptance before close: show the remaining limitation, the evidence that does exist, why close can still be acceptable, and the follow-up that remains.
+
 Ask one blocking question at a time when possible.
 
 ## Product writes

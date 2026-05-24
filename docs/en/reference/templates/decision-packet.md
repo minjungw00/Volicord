@@ -31,6 +31,16 @@ Use `DEC` when standalone Decision Packet projection is enabled for product judg
 - Follow-Up
 - References
 
+## Example content cues
+
+Use the same rendered sections for these common Decision Packet shapes. These cues are not extra template sections.
+
+- Product/UX trade-off: failed-login feedback as inline message, toast, or modal/layer. Put flow, interruption, accessibility, copy, and product-risk differences under Options and Recommendation.
+- Technical choice: session cookie, JWT, or social login. Put revocation, CSRF/XSS exposure, client compatibility, implementation cost, and migration impact under Options and Minimum Context To Judge.
+- Security-sensitive approval: put the approval boundary under Approval-Shaped Context. If roles, exported fields, redaction, audit logging, retention, rollback, or user notice remain undecided, name them as unresolved product/security judgments and route them to separate compatible Decision Packets. Do not treat the approval packet as resolving those judgments.
+- QA or verification waiver: put the skipped check, accepted user/product/technical risk, and smallest credible follow-up under User Decision And Accepted Risk and Follow-Up.
+- Residual-risk acceptance before close: put the visible limitation, existing evidence, risk refs the user is being asked to accept, and remaining follow-up under Current State, Minimum Context To Judge, User Decision And Accepted Risk, and Follow-Up.
+
 ## Full template
 
 ````md
@@ -155,3 +165,5 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Notes
 
 This template is a rendered shape, not canonical state. MVP Decision Packet visibility still comes through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources unless standalone `DEC` projection is enabled.
+
+Repeat option subsections as needed. Some product choices have more than two realistic options.
