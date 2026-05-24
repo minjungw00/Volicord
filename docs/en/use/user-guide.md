@@ -18,6 +18,8 @@ The agent should translate your request into the right Harness steps. You should
 
 Use deeper Harness labels only when they help explain a real stop, boundary, or close condition.
 
+Harness is neither just a technical gate system nor just a planning checklist. It is decision support for product and technical judgment, while keeping approval, Write Authorization, verification, Manual QA, risk, and acceptance separate.
+
 ## Read this when
 
 Read this when Harness is connected and you want to understand how one AI-assisted task should be handled.
@@ -119,19 +121,23 @@ Judgment answers: "What do I need to decide before the work can safely continue 
 Most judgment is one of these:
 
 - choose a product direction or trade-off
+- choose a technical direction whose cost, compatibility, security, or maintenance impact you own
 - approve a sensitive step
 - decide whether Manual QA is needed or whether a waiver is acceptable
 - accept a known residual risk
 - accept the final result when final acceptance is required
 
-When product judgment blocks progress, the agent should show a Decision Packet with options, trade-offs, recommendation, uncertainty, and deferral effect. It should not flatten that into a vague "approve everything?" question.
+When product judgment or a user-owned technical choice blocks progress, the agent should show a Decision Packet with options, trade-offs, recommendation, uncertainty, and deferral effect. It should not flatten that into a vague "approve everything?" question.
 
 A good Decision Packet should feel like decision support, not a permission slip. It should name the real choice, compare realistic paths, recommend one, and say what can safely continue if you defer, or why nothing should continue until you decide.
 
 Examples:
 
 - Product/UX: failed-login feedback could be an inline message, a toast, or a modal/layer. The packet should compare user flow, interruption, accessibility, and copy risk, then recommend a path.
-- Technical: session handling could use a server-backed session cookie, JWT, or social login. The packet should separate revocation, client compatibility, security, and implementation cost.
+- Product/copy: failed-login wording could be terse and security-focused, recovery-oriented, or more specific at the field level. The packet should compare account enumeration risk, clarity, support burden, and product tone.
+- Product taste and QA: a polished interaction may need Manual QA for layout, accessibility interpretation, and feel; a simpler conservative behavior may be easier to verify. The packet should show the trade-off and what can continue if QA is deferred, or why nothing should continue until the decision is made.
+- Technical: session handling could use session auth, token auth, or social login. The packet should separate revocation, client compatibility, security, and implementation cost.
+- Technical: dependency additions, schema migrations, public API/interface changes, and module boundary changes can also need a Decision Packet when the choice affects compatibility, rollback, test boundary, or future maintenance.
 - Security-sensitive: approval to access a secret, change permissions, or export data only answers whether that sensitive step may proceed. It does not decide which data is exported, who may export it, what gets redacted, or what audit trail is acceptable.
 
 ## Phrase reference
@@ -147,7 +153,7 @@ Everyday work starts as a conversation, not as a command language. Use ordinary 
 | If this is small, just handle it; if it grows, use the tracked flow. | `direct` or `work` classification. |
 | Start with the scope and questions. | Task scope; active Change Unit when product writes may happen. |
 | Do not expand beyond the scope we just agreed. | Change Unit boundary. |
-| If scope needs to grow, show me the options and impact first. | Decision Packet for scope or product judgment. |
+| If scope needs to grow, show me the options and impact first. | Decision Packet for scope or user-owned judgment. |
 | Show what you can actually block and what you can only detect later. | guarantee level or surface capability. |
 | Check your work independently if possible. | detached verification. |
 | Decide whether Manual QA is needed. | Manual QA requirement or waiver. |
@@ -197,7 +203,7 @@ Typical flow:
 1. The agent checks status or starts intake.
 2. The agent classifies the request as `advisor`, `direct`, or `work`.
 3. The agent confirms scope and the active Change Unit when product writes may happen.
-4. If product judgment blocks progress, you answer a Decision Packet.
+4. If product or technical judgment blocks progress, you answer a Decision Packet.
 5. Before product writes, the agent checks write authority.
 6. After changes or advice, the agent records the relevant result and evidence when evidence applies.
 7. When needed, verification, Manual QA, residual risk, and acceptance are handled before close.
@@ -234,7 +240,7 @@ These words answer different questions.
 
 | Judgment | Question it answers |
 |---|---|
-| Decision | Which product direction, trade-off, waiver, or close-relevant choice should we take? |
+| Decision | Which product direction, technical direction, trade-off, waiver, or close-relevant choice should we take? |
 | Approval | May this sensitive action proceed? |
 | Manual QA | Did a person inspect the experience where human judgment matters? |
 | Residual-risk acceptance | Do you accept a known remaining limitation, uncertainty, or trade-off? |
@@ -242,7 +248,7 @@ These words answer different questions.
 
 Approval is not acceptance. Passing checks is not Manual QA. Accepting residual risk is not proof that the work is correct. Final acceptance, when required, should come after close-relevant residual risk has been shown or reported as none.
 
-Examples that may need approval include dependency additions, auth or permission changes, data model changes, public API changes, destructive writes, secret access, and production configuration changes.
+Examples that may need approval include dependency additions, auth or permission changes, data model changes, public API changes, destructive writes, secret access, and production configuration changes. Approval only answers whether a sensitive step may proceed; a separate Decision Packet may still be needed for the dependency, migration, interface, module-boundary, product, QA, or risk choice itself.
 
 If the agent asks for a QA or verification waiver, it should say what is not being checked, what risk you would accept, and what follow-up remains. If it asks to close with residual risk, it should show the remaining limitation first, then ask whether you accept that risk for this Task.
 

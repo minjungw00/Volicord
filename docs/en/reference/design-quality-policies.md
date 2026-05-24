@@ -21,7 +21,7 @@ This document does not define MCP schemas, SQLite DDL, state transition tables, 
 | Policy area | Plain-language question |
 |---|---|
 | `shared_design` | Do we know enough about goal, scope, non-goals, assumptions, product, implementation, verification, QA, or follow-up risks, and user-owned judgments to propose the first safe Change Unit? |
-| `decision_quality` | Is this a product, design, architecture, waiver, or risk choice that needs a recorded judgment path? |
+| `decision_quality` | Is this a product, design, technical, architecture, waiver, or risk choice that needs a recorded judgment path? |
 | `autonomy_boundary` | What may the agent do alone, and where must it stop for user judgment? |
 | `vertical_slice` | Is the work shaped as a thin end-to-end slice, or is a horizontal exception recorded? |
 | `feedback_loop` | How will the agent learn whether the change works before and after writing? |
@@ -130,17 +130,19 @@ Example: A user asks for "better onboarding." Before writing, record the goal, n
 
 Use this when:
 
-- A choice changes product direction, scope, architecture, public API, interface, or compatibility.
+- A choice changes product direction, technical direction with material cost, security, or maintenance impact, scope, architecture, dependency direction, schema/data model, public API, interface, module boundary, or compatibility.
 - A waiver accepts known risk, including QA or verification waiver risk.
-- A horizontal exception is a design or architecture choice.
+- A horizontal exception is a design, technical, or architecture choice.
 - The agent has a recommendation but the user owns the judgment.
 
 Example: A breaking API change looks simpler. Record the options, trade-offs, compatibility risk, recommendation, and user decision before acting on it.
 
 Reusable Decision Packet examples:
 
-- `decision_kind=product_tradeoff`: failed-login feedback uses inline message, toast, or modal/layer. Record the user-flow, interruption, accessibility, copy, and product-risk trade-offs.
-- `decision_kind=architecture_choice`: session cookie, JWT, or social login. Record revocation, CSRF/XSS exposure, client compatibility, operational complexity, migration path, and why the recommendation fits the Task.
+- `decision_kind=product_tradeoff`: failed-login feedback uses inline message, toast, or modal/layer. Record the user-flow, interruption, accessibility, copy, and product-risk trade-offs. A similar packet can cover whether a blocking form problem should use inline error text, a toast, or a modal/layer.
+- `decision_kind=product_tradeoff`: a product taste choice changes how opinionated the experience feels, such as an empty state that invites setup now versus a quieter page that waits for data. Record the product intent, user segment, clarity, interruption, Manual QA need, recommendation, uncertainty, and deferral effect, including what can continue if deferred or why nothing should continue until the decision is made.
+- `decision_kind=architecture_choice`: session auth, token auth, or social login. Record revocation, CSRF/XSS exposure, client compatibility, operational complexity, migration path, and why the recommendation fits the Task.
+- `decision_kind=architecture_choice`: dependency addition, schema migration, public API/interface change, or module boundary change. Record alternatives, blast radius, compatibility, rollback or migration cost, test boundary, future maintenance cost, recommendation, and deferral effect.
 - `decision_kind=approval`: auth, permission, secret, or data-export action. The approval boundary may authorize the sensitive step, but product or security judgment still needs a separate compatible Decision Packet when roles, exported fields, redaction, audit logging, retention, rollback, or user notice remain undecided.
 - `decision_kind=qa_waiver` or `decision_kind=verification_waiver`: skipped QA or verification. Record what is not checked, why the waiver is proportionate, the accepted user/product/technical risk, and the smallest credible follow-up.
 - `decision_kind=residual_risk_acceptance`: close with known remaining risk. Record the visible limitation, evidence already present, why close can still proceed, visible residual-risk refs, and follow-up.
@@ -148,13 +150,13 @@ Reusable Decision Packet examples:
 | Field | Contract |
 |---|---|
 | `name` | `decision_quality` |
-| `applies_when` | Design choices, product trade-offs, scope expansion, public API/interface changes, architecture choices, horizontal exceptions, verification waiver, QA waiver, or acceptance with known risk. |
-| `default_requirement` | Record a Decision Packet before the decision is acted on. The packet must capture context, options considered, trade-offs, recommendation, uncertainty, reversibility, evidence refs, deferral consequence, and residual risk. Keep agent recommendation distinct from user judgment or risk acceptance. For `decision_kind=approval`, evaluate the clarity of the sensitive-change scope and boundary; do not treat approval-shaped context as resolving product judgment. |
-| `allowed_waiver` | Allowed only for trivial reversible choices with no public interface, product, architecture, verification, QA, or known-risk impact. Waiver must record why a Decision Packet would not improve judgment. |
+| `applies_when` | Design choices, product trade-offs, product taste calls, Manual QA need when it depends on user-owned product, UX, accessibility, release-risk, or product-taste judgment, Manual QA waiver choices, scope expansion, dependency additions with durable impact, schema/data-model migrations, public API/interface changes, module boundary changes, architecture choices, horizontal exceptions, verification waiver, QA waiver, or acceptance with known risk. |
+| `default_requirement` | Record a Decision Packet before the decision is acted on. The packet must capture context, options considered, trade-offs, recommendation, uncertainty, reversibility, evidence refs, deferral consequence, and residual risk. Keep agent recommendation distinct from user judgment or risk acceptance. For `decision_kind=approval`, evaluate the clarity of the sensitive-change scope and boundary; do not treat approval-shaped context as resolving product, technical, security, QA, verification, acceptance, or residual-risk judgment. |
+| `allowed_waiver` | Allowed only for trivial reversible choices with no public interface, product, technical, architecture, maintenance, verification, QA, or known-risk impact. Waiver must record why a Decision Packet would not improve judgment. |
 | `required_record` | Decision Packet records and optionally `DEC` projection when rendered. |
 | `validator` | `decision_quality_check` |
 | `evidence` | Decision Packet refs, option refs, evidence manifest refs, risk/waiver refs, residual-risk state refs when risk acceptance is involved, and user acceptance refs when user judgment is required. |
-| `close_impact` | Missing required decision quality for blocking product judgment sets or keeps `decision_gate=required`, `pending`, or `blocked`. Keep `design_gate` impact only when the decision affects design quality. Unresolved user judgment, invalid deferral, or unaccepted residual risk blocks affected writes or close. Valid recorded acceptance may allow close with residual risk preserved in state refs. |
+| `close_impact` | Missing required decision quality for blocking user-owned judgment sets or keeps `decision_gate=required`, `pending`, or `blocked`. Keep `design_gate` impact only when the decision affects design quality. Unresolved user judgment, invalid deferral, or unaccepted residual risk blocks affected writes or close. Valid recorded acceptance may allow close with residual risk preserved in state refs. |
 
 ### Autonomy Boundary (`autonomy_boundary`)
 
@@ -438,7 +440,7 @@ Waivers must be explicit, scoped, and recorded. A waiver should include:
 
 Policy waivers can satisfy a design-quality requirement only where the policy contract allows it. They do not waive scope for product writes, sensitive-change approval, required evidence coverage, or required acceptance. Verification waivers are owned by the kernel close semantics and must not produce `assurance_level=detached_verified`.
 
-Waivers that involve verification, QA, public API/interface commitment, scope expansion, architecture direction, or acceptance with known risk should also satisfy `decision_quality` and respect any active `autonomy_boundary`.
+Waivers that involve verification, QA, public API/interface commitment, scope expansion, technical/architecture direction, dependency direction, schema/data-model migration, module boundary change, or acceptance with known risk should also satisfy `decision_quality` and respect any active `autonomy_boundary`.
 
 ```mermaid
 flowchart TD
@@ -446,7 +448,7 @@ flowchart TD
   Allowed -- no --> KeepImpact["keep gate, write, close, or decision impact"]
   Allowed -- yes --> Record["record policy, Task/Change Unit, reason, accepted risk, actor, expiry/follow-up, affected impact"]
   Record --> Kernel["kernel authority blockers still apply"]
-  Record --> Decision{"verification, QA, public API/interface, scope, architecture, or known risk?"}
+  Record --> Decision{"verification, QA, public API/interface, scope, technical/architecture, dependency/schema/module boundary, or known risk?"}
   Decision -- yes --> Quality["decision_quality_check required"]
   Decision -- yes --> Boundary["respect active autonomy_boundary"]
   Decision -- no --> Waived["policy-owned impact may be waived"]

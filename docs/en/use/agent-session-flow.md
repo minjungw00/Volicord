@@ -28,7 +28,7 @@ Track ordinary-language requests when their shape suggests scope, judgment, evid
 - scope drift risk or ambiguous requirements
 - multi-file, structural, migration, or cross-boundary work
 - sensitive or policy-relevant areas such as auth, security, billing, destructive/data-loss risk, privacy, compliance, accessibility, or design quality
-- user-owned product judgment or trade-off decisions
+- user-owned product judgment, technical direction with material cost, compatibility, security, maintenance, migration, interface, or risk impact, or trade-off decisions
 - evidence, verification, Manual QA, acceptance, or residual-risk needs
 
 Keep small direct tasks light. Do not add ceremony just to answer a question, inspect code, explain a result, or handle a tiny low-risk change with an already narrow shape.
@@ -99,9 +99,9 @@ Enough is known to propose the first safe Change Unit when the agent can state t
 
 Autonomy Boundary is not write authority. It only describes what judgment the agent may exercise without asking again. Actual product writes still require a compatible write check.
 
-## Blocking product judgment
+## Blocking user-owned judgment
 
-When product judgment blocks progress, show or request a Decision Packet. Do not replace it with broad approval.
+When product judgment or a user-owned technical choice blocks progress, show or request a Decision Packet. Do not replace it with broad approval or a vague "continue?" prompt.
 
 A user-facing Decision Packet should include:
 
@@ -115,7 +115,11 @@ A user-facing Decision Packet should include:
 Useful examples:
 
 - Failed-login UX: compare inline message, toast, and modal/layer; recommend one based on flow, accessibility, interruption, and copy risk. If deferred, backend auth work may continue, but the final failed-login experience should not be claimed done.
-- Session approach: compare server-backed session cookie, JWT, and social login; explain revocation, CSRF/XSS exposure, client compatibility, operational complexity, and migration cost. If deferred, form scaffolding may continue only if it does not commit to the session model.
+- Failed-login copy: compare terse security-focused wording, plain recovery wording, and more specific field-level guidance; recommend one based on account enumeration risk, clarity, support burden, and product tone. If deferred, validation wiring may continue, but release-ready copy and Manual QA should stay open.
+- Product taste and Manual QA need: compare a polished interaction that needs human visual review with a simpler conservative behavior that can be checked by tests and browser smoke. Explain the taste trade-off, QA cost, user impact, and what can continue if Manual QA is deferred, or why nothing should continue until the decision is made.
+- Session approach: compare session auth, token auth, and social login; explain revocation, CSRF/XSS exposure, client compatibility, operational complexity, and migration cost. If deferred, form scaffolding may continue only if it does not commit to the session model.
+- Dependency or migration choice: compare adding a dependency, using existing utilities, or postponing the capability; for schema/data-model migration, compare additive migration, compatibility shim, and breaking cleanup. Explain blast radius, rollback, test boundary, and maintenance cost.
+- Public API/interface or module boundary: compare preserving the current interface, adding a narrow extension, or moving responsibility across a module boundary. Explain caller impact, compatibility risk, boundary tests, and future-change cost.
 - Security-sensitive change: approval to access a secret, change permissions, or export data is only an approval boundary. Separate product or security judgment may still be needed for roles, fields, redaction, audit logging, retention, rollback, and user notice.
 - QA or verification waiver: name the skipped check, accepted risk, and follow-up. Example: waive mobile Safari Manual QA for a copy-only change, accept wrapping risk, and keep a browser pass as release follow-up.
 - Residual-risk acceptance before close: show the remaining limitation, the evidence that does exist, why close can still be acceptable, and the follow-up that remains.

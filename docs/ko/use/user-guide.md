@@ -18,6 +18,8 @@ Harness는 제품 파일이 바뀔 수 있거나, 범위가 흔들릴 수 있거
 
 Harness의 깊은 용어는 실제로 멈춘 이유, 경계, 닫기 조건을 설명할 때만 쓰면 됩니다.
 
+Harness는 단순한 기술 gate 시스템도, 단순한 계획 checklist도 아닙니다. 제품 판단과 기술 판단을 돕되 approval, Write Authorization, verification, Manual QA, risk, acceptance를 서로 분리해 두는 장치입니다.
+
 ## 이런 때 읽기
 
 Harness가 연결된 상태에서 AI와 함께 하는 작업 하나가 어떻게 처리되어야 하는지 알고 싶을 때 읽습니다.
@@ -119,19 +121,23 @@ Harness는 이런 경계를 활성 Change Unit 안에서 작업을 유지하는 
 대부분의 판단은 다음 중 하나입니다.
 
 - 제품 방향이나 장단점 선택
+- 비용, 호환성, 보안, 유지보수 영향이 사용자에게 달린 기술 방향 선택
 - 민감한 단계 승인
 - Manual QA가 필요한지, 또는 생략을 받아들일 수 있는지 결정
 - 알려진 남은 위험 수용
 - 최종 수용이 필요한 작업에서 결과 수용
 
-제품 판단이 진행을 막고 있으면 에이전트는 Decision Packet을 보여줘야 합니다. 옵션, 장단점, 추천, 불확실성, 미룰 경우의 영향이 있어야 합니다. 이를 막연한 "전부 승인할까요?"로 뭉개면 안 됩니다.
+제품 판단이나 사용자가 소유하는 기술 선택이 진행을 막고 있으면 에이전트는 Decision Packet을 보여줘야 합니다. 옵션, 장단점, 추천, 불확실성, 미룰 경우의 영향이 있어야 합니다. 이를 막연한 "전부 승인할까요?"로 뭉개면 안 됩니다.
 
 좋은 Decision Packet은 허가서가 아니라 판단을 도와주는 자료처럼 느껴져야 합니다. 실제로 골라야 할 선택을 이름 붙이고, 현실적인 경로를 비교하고, 하나를 추천하고, 결정을 미루면 무엇을 안전하게 계속할 수 있는지 또는 결정 전에는 왜 아무것도 계속하면 안 되는지 말해야 합니다.
 
 예시:
 
 - Product/UX: 로그인 실패 피드백은 inline message, toast, modal/layer 중 하나일 수 있습니다. Packet은 사용자 흐름, 방해 정도, 접근성, 문구 위험을 비교한 뒤 경로를 추천해야 합니다.
-- 기술 선택: 세션 처리는 server-backed session cookie, JWT, social login 중 하나를 쓸 수 있습니다. Packet은 폐기 가능성, client 호환성, 보안, 구현 비용을 분리해서 보여줘야 합니다.
+- Product/copy: 로그인 실패 문구는 보안을 우선한 짧은 문구, 복구를 쉽게 설명하는 문구, field-level에서 더 구체적인 안내 중 하나일 수 있습니다. Packet은 계정 enumeration 위험, 명확성, support burden, product tone을 비교해야 합니다.
+- Product taste와 QA: 더 polished한 interaction은 layout, accessibility 해석, feel을 위해 Manual QA가 필요할 수 있고, 더 보수적인 동작은 검증하기 쉽습니다. Packet은 trade-off와 QA를 미뤄도 계속할 수 있는 일, 또는 결정 전에는 진행하면 안 되는 이유를 보여줘야 합니다.
+- 기술 선택: 세션 처리는 session auth, token auth, social login 중 하나를 쓸 수 있습니다. Packet은 폐기 가능성, client 호환성, 보안, 구현 비용을 분리해서 보여줘야 합니다.
+- 기술 선택: dependency addition, schema migration, public API/interface change, module boundary change도 호환성, rollback, test boundary, future maintenance에 영향을 주면 Decision Packet이 필요할 수 있습니다.
 - 보안 민감 작업: secret 접근, 권한 변경, 데이터 export에 대한 approval은 그 민감한 단계를 진행해도 되는지만 답합니다. 어떤 데이터를 export할지, 누가 export할 수 있는지, 무엇을 마스킹할지, 어떤 감사 기록이 필요한지는 따로 결정해야 합니다.
 
 ## 문장 모음
@@ -147,7 +153,7 @@ Harness는 이런 경계를 활성 Change Unit 안에서 작업을 유지하는 
 | 작으면 바로 처리하고, 커지면 추적되는 흐름으로 진행해. | `direct` 또는 `work`로 분류. |
 | 범위와 질문부터 잡아줘. | Task 범위, 제품 파일을 쓸 수 있으면 활성 Change Unit. |
 | 방금 합의한 범위를 넘기지 마. | Change Unit 경계. |
-| 범위가 커져야 한다면, 먼저 선택지와 영향을 보여줘. | 범위나 제품 판단을 위한 Decision Packet. |
+| 범위가 커져야 한다면, 먼저 선택지와 영향을 보여줘. | 범위나 사용자 소유 판단을 위한 Decision Packet. |
 | 실제로 막을 수 있는 것과 나중에 발견만 할 수 있는 것을 나눠서 보여줘. | guarantee level 또는 surface capability. |
 | 가능하면 독립적으로 확인해줘. | detached verification. |
 | Manual QA가 필요한지 판단해줘. | Manual QA 필요 여부 또는 waiver. |
@@ -197,7 +203,7 @@ flowchart LR
 1. 에이전트가 상태를 확인하거나 요청 정리를 시작합니다.
 2. 요청을 `advisor`, `direct`, `work` 중 하나로 분류합니다.
 3. 제품 파일을 쓸 수 있는 경우 범위와 활성 Change Unit을 확인합니다.
-4. 제품 판단이 막고 있으면 사용자가 Decision Packet에 답합니다.
+4. 제품 또는 기술 판단이 막고 있으면 사용자가 Decision Packet에 답합니다.
 5. 제품 파일을 쓰기 전에 쓰기 권한을 확인합니다.
 6. 변경이나 조언 뒤에는 필요한 결과와 근거를 기록합니다.
 7. 필요하면 닫기 전에 검증, Manual QA, 남은 위험, 최종 수용을 처리합니다.
@@ -234,7 +240,7 @@ flowchart LR
 
 | 판단 | 답하는 질문 |
 |---|---|
-| 결정 | 어떤 제품 방향, 장단점, 생략, 닫기 관련 선택을 할 것인가? |
+| 결정 | 어떤 제품 방향, 기술 방향, 장단점, 생략, 닫기 관련 선택을 할 것인가? |
 | 승인 | 이 민감한 행동을 진행해도 되는가? |
 | Manual QA | 사람이 봐야 하는 경험 품질을 실제로 확인했는가? |
 | 남은 위험 수용 | 알려진 한계, 불확실성, 장단점을 받아들이는가? |
@@ -242,7 +248,7 @@ flowchart LR
 
 승인은 수용이 아닙니다. 확인을 통과했다고 Manual QA가 끝난 것도 아닙니다. 남은 위험을 수용해도 일이 맞게 끝났다는 근거가 되지는 않습니다. 최종 수용이 필요한 경우에는 닫기에 영향을 주는 남은 위험이 표시되었거나 없다고 보고된 뒤에 따로 요청되어야 합니다.
 
-의존성 추가, 인증이나 권한 변경, 데이터 모델 변경, 공개 API 변경, 파괴적 쓰기, secret 접근, 운영 설정 변경은 승인이 필요할 수 있습니다.
+의존성 추가, 인증이나 권한 변경, 데이터 모델 변경, 공개 API 변경, 파괴적 쓰기, secret 접근, 운영 설정 변경은 승인이 필요할 수 있습니다. Approval은 민감한 단계를 진행해도 되는지만 답합니다. Dependency, migration, interface, module boundary, 제품, QA, risk 선택 자체에는 별도의 Decision Packet이 여전히 필요할 수 있습니다.
 
 에이전트가 QA 또는 verification waiver를 요청한다면 무엇을 확인하지 않는지, 사용자가 어떤 위험을 받아들이는지, 어떤 후속 작업이 남는지 말해야 합니다. 남은 위험을 안고 close하자고 요청한다면 먼저 남은 한계를 보여준 뒤, 그 위험을 이 Task에서 수용하는지 물어야 합니다.
 

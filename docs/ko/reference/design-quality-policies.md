@@ -21,7 +21,7 @@
 | 정책 영역 | 쉬운 질문 |
 |---|---|
 | `shared_design` | 목표, 범위, 비목표, 가정, 제품·구현·검증·QA·후속 위험, 사용자 판단이 첫 번째 안전한 Change Unit을 제안할 만큼 구체화됐는가? |
-| `decision_quality` | 제품, 설계, 아키텍처, waiver, risk 선택에 기록된 판단 경로가 필요한가? |
+| `decision_quality` | 제품, 설계, 기술, 아키텍처, waiver, risk 선택에 기록된 판단 경로가 필요한가? |
 | `autonomy_boundary` | Agent가 혼자 할 수 있는 일과 사용자 판단을 위해 멈춰야 하는 지점은 무엇인가? |
 | `vertical_slice` | 작업이 얇은 end-to-end slice로 잡혔는가, 아니면 수평 예외가 기록됐는가? |
 | `feedback_loop` | Agent는 쓰기 전후에 변경이 동작하는지 어떻게 확인할 것인가? |
@@ -130,17 +130,19 @@ Policy validator는 MCP API document가 담당하는 validator 결과 형식에 
 
 이럴 때 사용합니다:
 
-- 선택이 제품 방향, scope, 아키텍처, public API, interface, 호환성을 바꿀 때.
+- 선택이 제품 방향, 비용·보안·유지보수 영향이 큰 기술 방향, scope, 아키텍처, dependency direction, schema/data model, public API, interface, module boundary, compatibility를 바꿀 때.
 - Waiver가 QA 또는 verification 면제 risk를 포함한 알려진 위험을 수용할 때.
-- 수평 예외가 design 또는 architecture choice일 때.
+- 수평 예외가 design, technical, 또는 architecture choice일 때.
 - Agent 추천안은 있지만 판단은 user가 소유할 때.
 
 예시: Breaking API change가 더 단순해 보이면, 실행 전에 선택지, 장단점, 호환성 위험, 추천안, user decision을 기록합니다.
 
 재사용 가능한 Decision Packet 예시:
 
-- `decision_kind=product_tradeoff`: 로그인 실패 피드백을 inline message, toast, modal/layer 중에서 고릅니다. 사용자 흐름, 방해 정도, 접근성, 문구, 제품 위험의 trade-off를 기록합니다.
-- `decision_kind=architecture_choice`: session cookie, JWT, social login 중에서 고릅니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 운영 복잡도, migration 경로, 추천안이 Task에 맞는 이유를 기록합니다.
+- `decision_kind=product_tradeoff`: 로그인 실패 피드백을 inline message, toast, modal/layer 중에서 고릅니다. 사용자 흐름, 방해 정도, 접근성, 문구, 제품 위험의 trade-off를 기록합니다. Blocking form problem을 inline error text, toast, modal/layer 중 무엇으로 보여줄지도 같은 방식의 packet으로 다룰 수 있습니다.
+- `decision_kind=product_tradeoff`: 비어 있는 화면이 바로 설정을 유도할지, 데이터가 생길 때까지 조용히 둘지처럼 경험의 product taste가 달라지는 선택입니다. 제품 의도, 사용자군, 명확성, 방해 정도, Manual QA 필요성, 추천안, 불확실성, 결정을 미뤘을 때 계속할 수 있는 일 또는 결정 전에는 진행하면 안 되는 이유를 기록합니다.
+- `decision_kind=architecture_choice`: session auth, token auth, social login 중에서 고릅니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 운영 복잡도, migration 경로, 추천안이 Task에 맞는 이유를 기록합니다.
+- `decision_kind=architecture_choice`: dependency addition, schema migration, public API/interface change, module boundary change입니다. 대안, 영향 범위, 호환성, rollback 또는 migration 비용, test boundary, 향후 유지보수 비용, 추천안, 결정을 미룰 때의 영향을 기록합니다.
 - `decision_kind=approval`: auth, permission, secret, data-export 작업입니다. Approval boundary는 민감한 단계를 허가할 수 있지만, 역할, exported fields, redaction, audit logging, retention, rollback, user notice가 아직 결정되지 않았다면 제품 또는 보안 판단에는 별도의 compatible Decision Packet이 필요합니다.
 - `decision_kind=qa_waiver` 또는 `decision_kind=verification_waiver`: QA 또는 verification을 생략합니다. 무엇을 확인하지 않는지, waiver가 비례적인 이유, 수용하는 사용자·제품·기술 위험, 가장 작은 신뢰 가능한 follow-up을 기록합니다.
 - `decision_kind=residual_risk_acceptance`: 알려진 남은 위험을 두고 close합니다. 사용자에게 보인 한계, 이미 있는 근거, close를 진행할 수 있는 이유, 사용자에게 보인 residual-risk ref, follow-up을 기록합니다.
@@ -148,13 +150,13 @@ Policy validator는 MCP API document가 담당하는 validator 결과 형식에 
 | Field | Contract |
 |---|---|
 | `name` | `decision_quality` |
-| `applies_when` | Design choice, 제품 장단점 판단, 범위 확장, public API/interface change, architecture choice, 수평 예외, verification 면제, QA 면제, 알려진 위험이 있는 acceptance가 있을 때. |
-| `default_requirement` | Decision이 실제 행동으로 이어지기 전에 Decision Packet을 기록한다. Packet에는 context, 검토한 선택지, 장단점, 추천안, uncertainty, reversibility, evidence ref, 결정을 미룰 때의 결과, residual risk가 포함되어야 한다. Agent 추천안과 사용자 판단 또는 위험 수용을 분리해 둔다. `decision_kind=approval`에서는 sensitive-change scope와 boundary가 명확한지 평가하고, approval 형태의 맥락을 제품 판단의 해결로 취급하지 않는다. |
-| `allowed_waiver` | 공개 interface, product, architecture, verification, QA, 알려진 위험 impact가 없고 사소하며 되돌리기 쉬운 choice에만 허용된다. Waiver에는 Decision Packet이 judgment를 개선하지 않는 이유를 기록해야 한다. |
+| `applies_when` | Design choice, 제품 장단점 판단, product taste 판단, Manual QA 필요 여부가 사용자 소유의 제품·UX·접근성·릴리스 위험·product taste 판단에 달린 경우, Manual QA waiver 선택, 범위 확장, durable impact가 있는 dependency addition, schema/data-model migration, public API/interface change, module boundary change, architecture choice, 수평 예외, verification 면제, QA 면제, 알려진 위험이 있는 acceptance가 있을 때. |
+| `default_requirement` | Decision이 실제 행동으로 이어지기 전에 Decision Packet을 기록한다. Packet에는 context, 검토한 선택지, 장단점, 추천안, uncertainty, reversibility, evidence ref, 결정을 미룰 때의 결과, residual risk가 포함되어야 한다. Agent 추천안과 사용자 판단 또는 위험 수용을 분리해 둔다. `decision_kind=approval`에서는 sensitive-change scope와 boundary가 명확한지 평가하고, approval 형태의 맥락을 제품, 기술, 보안, QA, verification, acceptance, residual-risk 판단의 해결로 취급하지 않는다. |
+| `allowed_waiver` | 공개 interface, 제품, 기술, 아키텍처, 유지보수, verification, QA, 알려진 위험 impact가 없고 사소하며 되돌리기 쉬운 선택에만 허용된다. Waiver에는 Decision Packet이 judgment를 개선하지 않는 이유를 기록해야 한다. |
 | `required_record` | Decision Packet 기록과 렌더링될 때 선택적 `DEC` projection. |
 | `validator` | `decision_quality_check` |
 | `evidence` | Decision Packet ref, option ref, evidence manifest ref, risk/waiver ref, 위험 수용이 포함될 때 residual-risk state ref, 사용자 판단이 필요할 때 user acceptance ref. |
-| `close_impact` | 차단하는 제품 판단에 필요한 decision quality가 없으면 `decision_gate=required`, `pending`, 또는 `blocked`로 설정하거나 유지한다. Design quality에 영향을 주는 decision일 때만 `design_gate`에 반영한다. 해소되지 않은 사용자 판단, invalid deferral, unaccepted residual risk는 영향받는 write 또는 close를 차단한다. 유효하게 기록된 acceptance는 residual risk를 state ref에 보존한 채 close를 허용할 수 있다. |
+| `close_impact` | 차단하는 사용자 소유 판단에 필요한 decision quality가 없으면 `decision_gate=required`, `pending`, 또는 `blocked`로 설정하거나 유지한다. Design quality에 영향을 주는 decision일 때만 `design_gate`에 반영한다. 해소되지 않은 사용자 판단, invalid deferral, unaccepted residual risk는 영향받는 write 또는 close를 차단한다. 유효하게 기록된 acceptance는 residual risk를 state ref에 보존한 채 close를 허용할 수 있다. |
 
 ### Autonomy Boundary (`autonomy_boundary`)
 
@@ -438,7 +440,7 @@ Waiver는 explicit, scoped, recorded여야 합니다. Waiver에는 다음을 포
 
 정책 waiver는 정책 계약이 허용하는 경우에만 설계 품질 요구사항을 충족한 것으로 볼 수 있습니다. product write 범위, 민감 변경 approval, 필요한 근거 범위, 필수 acceptance를 대신 면제하지 않습니다. Verification waiver는 kernel close semantics가 담당하며 `assurance_level=detached_verified`를 만들면 안 됩니다.
 
-Verification, QA, public API/interface 약속, 범위 확장, architecture direction, 알려진 위험이 있는 acceptance와 관련된 waiver는 `decision_quality`도 충족하고 active `autonomy_boundary`를 따라야 합니다.
+Verification, QA, public API/interface 약속, 범위 확장, technical/architecture direction, dependency direction, schema/data-model migration, module boundary change, 알려진 위험이 있는 acceptance와 관련된 waiver는 `decision_quality`도 충족하고 active `autonomy_boundary`를 따라야 합니다.
 
 ```mermaid
 flowchart TD
@@ -446,7 +448,7 @@ flowchart TD
   Allowed -- no --> KeepImpact["gate, write, close, decision impact 유지"]
   Allowed -- yes --> Record["policy, Task/Change Unit, reason, 수용한 위험, actor, expiry/follow-up, 영향받는 impact 기록"]
   Record --> Kernel["kernel authority blocker는 계속 적용"]
-  Record --> Decision{"verification, QA, public API/interface, scope, architecture, known risk 관련?"}
+  Record --> Decision{"verification, QA, public API/interface, scope, technical/architecture, dependency/schema/module boundary, known risk 관련?"}
   Decision -- yes --> Quality["decision_quality_check required"]
   Decision -- yes --> Boundary["active autonomy_boundary respect"]
   Decision -- no --> Waived["policy가 소유한 impact를 waive 가능"]
