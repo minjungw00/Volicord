@@ -14,7 +14,7 @@ Read this when you want the values and boundaries behind Harness before reading 
 
 ## Main idea
 
-Harness preserves user agency by making AI-assisted work followable from local state, durable evidence, and readable projections.
+Harness is an agency-preserving local authority kernel for AI-assisted product work. It preserves user agency by making work followable from local state, durable evidence, and readable projections.
 
 ## Purpose
 
@@ -22,7 +22,9 @@ Harness exists to make AI-assisted development followable without taking strateg
 
 The user should be able to begin in ordinary language. The agent should be able to clarify, propose, implement, check, and report. But the important facts of the work should not live only in the chat transcript. Harness keeps those facts in local state, durable evidence, and readable projections so the task can be resumed, checked, reconciled, and closed from current state.
 
-Harness is not ceremony for its own sake. It is a local operating record for work that would otherwise become blurry.
+Harness is not ceremony for its own sake. It maintains a local operating record for work that would otherwise become blurry.
+
+Harness keeps that operating record around task state, Change Unit scope, user judgment, Write Authorization, evidence, verification, QA, Acceptance, Residual Risk, and close. The point is not to replace the user's tools or conversation, but to make the work followable from current local state.
 
 ## Who it is for
 
@@ -52,7 +54,7 @@ Harness describes capability by actual guarantee level, not by product name. If 
 
 ## Strategic thesis
 
-Harness is an agency-preserving local operating kernel for AI-assisted development.
+Harness is an agency-preserving local authority kernel for AI-assisted product work.
 
 In plain terms: AI agents can move quickly without pushing the user out of the driver's seat when the system keeps the work journey explicit, keeps durable truth small, and records product judgment at the moments where judgment matters.
 
@@ -92,7 +94,13 @@ The MVP may be delivered in stages, but the final MVP still needs to prove the s
 
 ## Non-goals
 
-Harness does not replace the product repository, version control system, test runner, review process, or user judgment.
+Harness is not merely a chat workflow, prompt skill bundle, test harness, or evaluation harness.
+
+Harness can integrate with MCP tools/connectors, hooks, guardrails, adapters, sidecars, and isolation layers, but those surfaces are not the source of Harness authority. They help agents read context, call Harness tools, capture evidence, or enforce/detect boundaries when the connected profile supports it.
+
+Harness authority comes from Core and canonical local state around Task and Change Unit scope, Decision Packets, Approval, Write Authorization, evidence, verification, QA, acceptance, residual risk, and close.
+
+Harness also does not replace the product repository, version control system, test runner, review process, or user judgment.
 
 Harness does not treat chat history as durable state or generated Markdown reports as the operating record.
 

@@ -1,8 +1,8 @@
 # Harness Project / 하네스 프로젝트
 
-Harness is an agency-preserving local operating kernel for AI-assisted development. This repository currently holds the reader-centered documentation set prepared for human review.
+Harness is an agency-preserving local authority kernel for AI-assisted product work. It keeps a local operating record for work facts that need to survive chat. This repository currently holds the reader-centered documentation set prepared for human review.
 
-Harness는 AI 지원 개발에서 사용자의 판단권을 보존하는 로컬 운영 커널입니다. 이 저장소는 사람의 검토를 위해 준비된 독자 중심 문서 세트를 담고 있습니다.
+Harness는 AI 지원 제품 작업을 위한, 사용자 판단권을 보존하는 로컬 권한 커널입니다. 대화가 끝난 뒤에도 남아야 하는 작업 사실을 로컬 운영 기록으로 유지합니다. 이 저장소는 사람의 검토를 위해 준비된 독자 중심 문서 세트를 담고 있습니다.
 
 ## Current Phase / 현재 단계
 
