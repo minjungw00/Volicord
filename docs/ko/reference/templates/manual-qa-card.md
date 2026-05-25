@@ -60,7 +60,7 @@ Checklist:
 - 후속 작업:
 - 관련 refs:
 - 닫기 영향:
-- waiver record: {manual_qa_record_id와 waiver_reason; 사용자 소유 위험이 있으면 waiver_decision_packet_ref}
+- waiver source: {manual_qa_record_id와 waiver_reason; 사용자 소유 위험이 있으면 waiver_decision_packet_ref}
 
 Manual QA 결과를 기록하거나, 허용된 low-risk QA waiver 사유를 기록하거나, 사용자 소유 위험이 있으면 QA waiver Decision Packet을 요청하시겠습니까?
 ````

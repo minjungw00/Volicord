@@ -95,7 +95,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 | Artifact Ref | Redaction State | QA Effect | Note |
 |---|---|---|---|
 | ART-QA-0001 | secret_omitted | supports observable finding only | |
-| ART-QA-0002 | blocked | capture unavailable; QA remains pending/failed/waived/blocking until resolved | |
+| ART-QA-0002 | blocked | capture unavailable; QA path unresolved unless replaced or validly waived; `qa_gate` stays pending/failed or `waived` as applicable | |
 ````
 
 ## Notes

@@ -150,7 +150,7 @@ Useful examples:
 - Dependency or migration choice: compare adding a dependency, using existing utilities, or postponing the capability; for schema/data-model migration, compare additive migration, compatibility shim, and breaking cleanup. Explain blast radius, rollback, test boundary, and maintenance cost.
 - Public API/interface or module boundary: compare preserving the current interface, adding a narrow extension, or moving responsibility across a module boundary. Explain caller impact, compatibility risk, boundary tests, and future-change cost.
 - Security-sensitive change: approval to access a secret, change permissions, or export data is only an approval boundary. Separate product or security judgment may still be needed for roles, fields, redaction, audit logging, retention, rollback, and user notice.
-- QA or verification waiver: use the existing recording required for the Task. A QA waiver is recorded through Manual QA/gate state, a verification waiver is recorded as accepted verification risk, and user-owned risk in either waiver uses a Decision Packet. Name the skipped check or surface, accepted risk, follow-up, relevant refs, and close impact. Example: waive mobile Safari Manual QA for a copy-only change, accept wrapping risk, and keep a browser pass as release follow-up.
+- QA or verification waiver: use the existing recording required for the Task. A QA waiver is recorded through Manual QA/gate state and `qa_gate=waived`; product/user risk or policy-required judgment uses a QA waiver Decision Packet. A verification waiver is recorded as `verification_gate=waived_by_user`; when user-owned judgment is needed, use the relevant Decision Packet. Name the skipped check or surface, accepted risk, follow-up, relevant refs, and close impact. Example: waive mobile Safari Manual QA for a copy-only change, accept wrapping risk, and keep a browser pass as release follow-up.
 - Residual-risk acceptance before close: show the remaining limitation, the evidence that does exist, why close can still be acceptable, and the follow-up that remains.
 
 Ask one blocking question at a time when possible.
@@ -226,7 +226,7 @@ Before successful close, show or confirm:
 
 - scope match
 - evidence coverage or no evidence requirement
-- verification status or accepted verification risk
+- verification status, or `verification_gate=waived_by_user` with the relevant Decision Packet when required
 - Manual QA status or valid waiver
 - close-relevant residual risk shown or no known close-relevant residual risk reported
 - final acceptance recorded when required

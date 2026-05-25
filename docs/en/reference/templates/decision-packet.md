@@ -104,7 +104,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## What Agent May Decide Without User
 - implementation detail:
-- code organization inside approved scope:
+- code organization inside granted scope:
 - evidence collection:
 - follow-up proposal:
 

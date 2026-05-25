@@ -329,7 +329,7 @@ Rules:
 - `source_kind=existing_artifact` requires `existing_artifact_ref` and must set `staged` to `null`.
 - `source_kind=staged_file` requires `staged` and must set `existing_artifact_ref` to `null`.
 - Existing artifact를 새 record에 연결할 때 Core는 artifact의 task relation을 검증하고 incompatible reuse를 거부합니다.
-- `staged_uri`는 Harness staging location 또는 approved capture adapter output을 가리키는 locator이지, 임의 파일을 읽어도 된다는 권한이 아닙니다. Absolute path, parent traversal, symlink escape, repo-local path, caller-supplied URI는 staging 또는 capture adapter가 approved source로 canonicalize하기 전까지 신뢰하지 않습니다.
+- `staged_uri`는 Harness staging location 또는 등록된 capture adapter output을 가리키는 locator이지, 임의 파일을 읽어도 된다는 권한이 아닙니다. Absolute path, parent traversal, symlink escape, repo-local path, caller-supplied URI는 staging 또는 capture adapter가 trusted source로 canonicalize하기 전까지 신뢰하지 않습니다.
 - `staged_uri`, `display_name`, supplied `content_type`은 Core가 staging 또는 capture source, stored bytes, redaction state, owner relation을 검증하기 전까지 trusted input이 아닙니다.
 - `expected_sha256` 또는 `expected_size_bytes`가 있으면 Core는 commit 전에 stored bytes를 확인합니다. 이 field가 제공되었는지와 무관하게 Core는 redaction, omission, blocking이 적용된 뒤의 safe stored bytes에서 committed `sha256`, `size_bytes`, `content_type`을 기록합니다.
 - Core는 final storage 전에 redaction, omission, blocking policy를 적용하고 committed artifact를 `ArtifactRef`로 기록합니다.
@@ -1030,7 +1030,7 @@ Sensitive-change Approval은 다음 절차를 따릅니다.
 5. User 또는 operator는 해당 Decision Packet에 대해 `harness.record_user_decision`을 호출합니다.
 6. Core는 Decision Packet 해소를 기록하고 연결된 Approval 기록을 업데이트하며 `approval_gate`를 granted, denied, expired 중 하나로 다시 계산하고, 업데이트된 Approval 결정을 위해 `APR`을 다시 대기열에 넣습니다.
 7. Approval이 granted이면 caller는 fresh idempotency key와 current `expected_state_version`으로 `harness.prepare_write`를 다시 호출합니다.
-8. 그 retry만 Write Authorization을 만들 수 있습니다. Approved scope, baseline, sensitive categories, paths, tools, commands, network targets, secret scope, Decision Packet refs, Approval refs, capability checks가 current intended write와 compatible할 때만 성공합니다.
+8. 그 retry만 Write Authorization을 만들 수 있습니다. Granted Approval의 scope, baseline, sensitive categories, paths, tools, commands, network targets, secret scope, Decision Packet refs, Approval refs, capability checks가 current intended write와 compatible할 때만 성공합니다.
 
 Approval은 정해진 scope 안의 sensitive categories를 허가합니다. Approval은 제품 장단점, 설계 방향, 아키텍처 판단이나 중요한 기술 판단, 해결되지 않은 security 또는 product-security 판단, verification risk, QA 면제, final acceptance, Residual Risk 수용 같은 사용자 소유 판단을 해소하지 않습니다. Sensitive action이 사용자 소유의 제품 판단, 중요한 기술 판단이나 아키텍처 판단, 또는 해결되지 않은 security/product-security 판단도 포함하면 Core는 `prepare_write`가 `allowed`를 반환하기 전에 별도의 compatible Decision Packet을 요구해야 합니다. Approval은 Write Authorization이 아닙니다. 실제 제품 쓰기에는 여전히 allowed `prepare_write` result와 반환된 Write Authorization을 compatible하게 consume하는 `harness.record_run`이 필요합니다.
 
@@ -1349,7 +1349,7 @@ RecordUserDecisionResponse:
 
 `RecordUserDecisionResponse.accepted_risk_refs`는 `record_kind=residual_risk`인 `StateRecordRef` entries만 포함합니다. Standalone accepted-risk record kind는 없습니다.
 
-상태 전이 요약: targeted Decision Packet은 해소, defer, reject, block 상태로 처리합니다. Affected gate 또는 reconcile item을 업데이트합니다. Approval grant/deny는 연결된 Approval 기록과 `approval_gate`를 업데이트하지만 Write Authorization을 생성하지 않습니다. Accepted scope는 `scope_gate`를 업데이트하고, 사용자 소유 제품 장단점 판단 또는 중요한 기술/아키텍처 선택 같은 사용자가 해소한 `decision_gate` 대상 판단은 `decision_gate`를 업데이트합니다. Accepted Autonomy Boundary decision은 active Change Unit의 경계를 업데이트할 수 있습니다. Verification 면제는 `verification_gate=waived_by_user`를 업데이트하고, QA 면제는 `qa_gate`를 업데이트합니다. Acceptance는 user decision을 Decision Packet에 기록하고 `acceptance_gate`를 업데이트합니다. Accepted Residual Risk는 assurance를 높이지 않고 Residual Risk record를 업데이트하며 그 참조를 반환합니다. Reconcile은 accepted state 기록을 생성할 수 있습니다.
+상태 전이 요약: targeted Decision Packet은 해소, defer, reject, block 상태로 처리합니다. Affected gate 또는 reconcile item을 업데이트합니다. Approval grant/deny는 연결된 Approval 기록과 `approval_gate`를 업데이트하지만 Write Authorization을 생성하지 않습니다. Accepted scope는 `scope_gate`를 업데이트하고, 사용자 소유 제품 장단점 판단 또는 중요한 기술/아키텍처 선택 같은 사용자가 해소한 `decision_gate` 대상 판단은 `decision_gate`를 업데이트합니다. Accepted Autonomy Boundary decision은 active Change Unit의 경계를 업데이트할 수 있습니다. Verification-waiver Decision Packet은 `verification_gate=waived_by_user`를 업데이트하고, QA-waiver Decision Packet은 해당 packet이 필요한 waiver 기록일 때 `qa_gate=waived`를 업데이트합니다. Acceptance는 user decision을 Decision Packet에 기록하고 `acceptance_gate`를 업데이트합니다. Accepted Residual Risk는 assurance를 높이지 않고 Residual Risk record를 업데이트하며 그 참조를 반환합니다. Reconcile은 accepted state 기록을 생성할 수 있습니다.
 
 implementation-local detail/audit를 위해 반환될 수 있는 non-stable EventRef values: `user_decision_recorded`, `decision_packet_resolved`, `decision_packet_deferred`, `decision_packet_rejected`, `approval_granted`, `approval_denied`, `scope_confirmed`, `scope_rejected`, `design_choice_recorded`, `architecture_choice_recorded`, `autonomy_boundary_decision_recorded`, `verification_waiver_recorded`, `qa_waiver_recorded`, `acceptance_recorded`, `residual_risk_accepted`, `reconcile_resolved`.
 
@@ -1519,7 +1519,7 @@ Manual QA가 Change Unit에 적용되는 경우 `change_unit_id`를 제공해야
 
 Manual QA가 selected Feedback Loop인 경우 `feedback_loop_ref`는 `record_kind=feedback_loop`인 기준 `feedback_loops` row를 reference해야 합니다. Core는 Manual QA row를 record하고, resulting Manual QA 참조와 registered artifact를 그 Feedback Loop에 추가하며, QA result에 따라 status를 `executed`, `blocked`, 또는 `waived`로 업데이트합니다. 이 link는 execution evidence만 업데이트하며 selected-loop definition을 생성하지 않습니다.
 
-Manual QA artifact ref도 다른 evidence와 같은 이후 규칙을 따릅니다. `secret_omitted` QA artifact는 생략된 value를 증명하지 않고 보이는 workflow 또는 UI finding을 뒷받침할 수 있습니다. `blocked` QA capture artifact는 screenshot, log, trace, recording input을 사용할 수 없다는 표시입니다. Replacement capture, waiver, Decision Packet outcome, accepted risk, 또는 documented fallback이 QA path를 해소하지 않는 한 QA record 또는 aggregate `qa_gate`는 blocked, failed, pending, waived, 또는 unresolved impact를 보여야 합니다.
+Manual QA artifact ref도 다른 evidence와 같은 이후 규칙을 따릅니다. `secret_omitted` QA artifact는 생략된 value를 증명하지 않고 보이는 workflow 또는 UI finding을 뒷받침할 수 있습니다. `blocked` QA capture artifact는 screenshot, log, trace, recording input을 사용할 수 없다는 표시입니다. Replacement capture, waiver, Decision Packet outcome, accepted risk, 또는 documented fallback이 QA path를 해소하기 전까지 Manual QA record 또는 projection은 사용할 수 없는 input을 보여야 하며, aggregate `qa_gate`는 valid waiver가 `qa_gate=waived`를 set하지 않는 한 pending 또는 failed로 남아야 합니다.
 
 Response schema:
 

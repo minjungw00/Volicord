@@ -60,7 +60,7 @@ Close context:
 - Manual QA: {manual_qa_status_or_needed}
 - acceptance: {acceptance_status_or_needed}
 - residual risk: {residual_risk_summary|none}
-- verification waiver record: {Decision Packet ref and `verification_gate=waived_by_user` when waived|none}
+- verification waiver display: {Decision Packet ref when required; `verification_gate=waived_by_user` when waived|none}
 - relevant refs: {verification_waiver_refs|none}
 - close impact: {verification_waiver_close_impact|none}
 

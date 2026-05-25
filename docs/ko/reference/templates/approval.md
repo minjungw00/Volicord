@@ -121,7 +121,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - dependency install Approval은 그 dependency를 사용하는 architecture 방향을 결정하지 않는다.
 - secret access Approval은 secret 값을 artifacts, projections, exports, logs, screenshots, summaries에 노출해도 된다는 뜻이 아니다.
 - auth, permission, system-change Approval은 session auth, JWT, social login, role model, lockout behavior, user notice를 결정하지 않는다.
-- public API 방향, deployment, merge, final acceptance, 추가 write attempt에는 필요한 경우 각각 호환되는 권한 경로가 필요하다.
+- public API 방향, deployment, merge, final acceptance, 추가 write attempt에는 필요한 경우 각각 적용되는 기록된 decision 또는 authority가 필요하다.
 ````
 
 ## 메모

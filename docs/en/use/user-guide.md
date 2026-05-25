@@ -115,7 +115,7 @@ Harness may use four related labels for this:
 | Approval | Permission for a sensitive step. It is not acceptance, correctness, or user-owned judgment. |
 | Write Authorization | A one-attempt write allowance from `prepare_write`. It does not expand the scope or Autonomy Boundary. |
 
-If the agent asks you to approve something, the prompt should label the actual path. The user may be approving a sensitive action, confirming scope, resolving a Decision Packet, accepting residual risk, accepting the final result, or checking Write Authorization status. "Approved" should not be a catch-all label or blank check.
+If the agent asks you to approve something, the prompt should label the actual authority or recorded decision. The user may be approving a sensitive action, confirming scope, resolving a Decision Packet, accepting residual risk, accepting the final result, or checking Write Authorization status. "Approved" should not be a catch-all label or blank check.
 
 Useful phrases:
 
@@ -292,7 +292,7 @@ Common "approved" mix-ups:
 - Deciding a public API change is not permission to deploy, merge, or make additional writes.
 - Final acceptance means you accept the result when that task path requires it; it is not Write Authorization for more edits.
 
-If the agent asks for a QA or verification waiver, it should name the existing recording it will use. A QA waiver is attached to the Manual QA status, a verification waiver is recorded as accepted verification risk, and user-owned risk in the waiver needs a Decision Packet. That prompt should say what is not being checked, what risk you would accept, what follow-up remains, which refs matter, and how close is affected. A casual chat statement should not be treated as a close-relevant waiver when accepted risk is involved. If the agent asks to close with residual risk, it should show the remaining limitation first, then ask whether you accept that risk for this Task.
+If the agent asks for a QA or verification waiver, it should name the existing recording it will use. A QA waiver is recorded through Manual QA state and `qa_gate=waived`; when product/user risk or policy-required judgment is involved, it should reference a QA waiver Decision Packet. A verification waiver is recorded as `verification_gate=waived_by_user`; when the waiver needs user-owned judgment, it should reference the relevant Decision Packet. That prompt should say what is not being checked, what risk you would accept, what follow-up remains, which refs matter, and how close is affected. A casual chat statement should not be treated as a close-relevant waiver when accepted risk is involved. If the agent asks to close with residual risk, it should show the remaining limitation first, then ask whether you accept that risk for this Task.
 
 Applied examples:
 

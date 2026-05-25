@@ -60,7 +60,7 @@ Waiver recording:
 - follow-up:
 - relevant refs:
 - close impact:
-- waiver record: {manual_qa_record_id and waiver_reason; waiver_decision_packet_ref when user-owned risk is involved}
+- waiver source: {manual_qa_record_id and waiver_reason; waiver_decision_packet_ref when user-owned risk is involved}
 
 Record the Manual QA result, record an allowed low-risk QA waiver reason, or request a QA waiver Decision Packet for user-owned risk?
 ````

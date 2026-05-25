@@ -121,7 +121,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - dependency install approval does not decide the architecture direction for using that dependency.
 - secret access approval does not permit exposing secret values in artifacts, projections, exports, logs, screenshots, or summaries.
 - auth, permission, or system-change approval does not decide session auth, JWT, social login, role model, lockout behavior, or user notice.
-- public API direction, deployment, merge, final acceptance, and additional write attempts need their own compatible authority path when required.
+- public API direction, deployment, merge, final acceptance, and additional write attempts each need their own applicable recorded decision or authority when required.
 ````
 
 ## Notes

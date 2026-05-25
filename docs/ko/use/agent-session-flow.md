@@ -150,7 +150,7 @@ Autonomy Boundary 안에서는 agent가 기존 helper를 재사용할지, privat
 - Dependency 또는 migration 선택: dependency를 추가할지, 기존 utility를 쓸지, capability를 미룰지 비교합니다. Schema/data-model migration에서는 additive migration, compatibility shim, breaking cleanup을 비교합니다. 영향 범위, rollback, test boundary, 유지보수 비용을 설명합니다.
 - Public API/interface 또는 module boundary: 현재 interface를 유지할지, 좁은 extension을 추가할지, 책임을 module boundary 너머로 옮길지 비교합니다. Caller 영향, compatibility risk, boundary test, future-change cost를 설명합니다.
 - 보안 민감 변경: secret 접근, 권한 변경, 데이터 export에 대한 Approval은 Approval 경계일 뿐입니다. 역할, 필드, redaction, audit logging, retention, rollback, user notice에는 별도의 제품 또는 보안 판단이 여전히 필요할 수 있습니다.
-- QA 또는 verification waiver: 해당 Task에서 요구하는 기존 기록 방식을 사용합니다. QA waiver는 Manual QA/gate 상태로 기록하고, verification waiver는 accepted verification risk로 기록하며, 두 waiver 중 사용자 소유 위험이 있으면 Decision Packet을 사용합니다. 생략하는 확인이나 대상, 수용하는 위험, 후속 작업, 관련 refs, 닫기 영향을 이름 붙입니다. 예를 들어 copy-only 변경에서 mobile Safari Manual QA를 면제한다면 viewport wrapping 위험을 수용하고 release 전 browser pass를 후속 작업으로 남깁니다.
+- QA 또는 verification waiver: 해당 Task에서 요구하는 기존 기록 방식을 사용합니다. QA waiver는 Manual QA/gate 상태와 `qa_gate=waived`로 기록하고, product/user risk 또는 policy-required judgment가 있으면 QA waiver Decision Packet을 사용합니다. Verification waiver는 `verification_gate=waived_by_user`로 기록하고, 사용자 소유 판단이 필요하면 관련 Decision Packet을 사용합니다. 생략하는 확인이나 대상, 수용하는 위험, 후속 작업, 관련 refs, 닫기 영향을 이름 붙입니다. 예를 들어 copy-only 변경에서 mobile Safari Manual QA를 면제한다면 viewport wrapping 위험을 수용하고 release 전 browser pass를 후속 작업으로 남깁니다.
 - close 전 남은 위험 수용: 남은 한계, 이미 있는 근거, 그래도 close가 가능하다고 볼 수 있는 이유, 남는 후속 작업을 보여줍니다.
 
 가능하면 한 번에 하나의 막힘 질문만 묻습니다.
@@ -226,7 +226,7 @@ Manual QA는 UX, 흐름, 시각 결과, 문구, 접근성 해석처럼 사람이
 
 - 범위와 결과가 맞는지
 - 근거가 충분한지 또는 근거 요구가 없는지
-- 검증 상태 또는 수용된 검증 위험
+- 검증 상태, 또는 필요한 경우 관련 Decision Packet과 함께 `verification_gate=waived_by_user`
 - Manual QA 상태 또는 타당한 면제
 - 닫기에 영향을 주는 남은 위험 표시 또는 알려진 close-relevant residual risk가 없다는 보고
 - 필요한 경우 최종 수용 기록

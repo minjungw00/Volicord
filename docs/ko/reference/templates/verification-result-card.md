@@ -60,7 +60,7 @@ Acceptance: {acceptance_impact}
 - Manual QA: {manual_qa_status_or_needed}
 - 수용: {acceptance_status_or_needed}
 - Residual Risk: {residual_risk_summary|none}
-- verification waiver record: {waived이면 Decision Packet ref와 `verification_gate=waived_by_user`|none}
+- verification waiver display: {필요한 경우 Decision Packet ref; waived이면 `verification_gate=waived_by_user`|none}
 - 관련 refs: {verification_waiver_refs|none}
 - 닫기 영향: {verification_waiver_close_impact|none}
 

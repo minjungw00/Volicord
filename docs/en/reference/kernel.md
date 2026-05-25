@@ -238,7 +238,7 @@ The Autonomy Boundary does not replace Change Unit scope, sensitive approval, po
 
 A Decision Packet is the canonical state entity for blocking user-owned judgment. It records the decision needed, options, recommendation when available, trade-offs, affected scope, supporting evidence, residual risk, owner, status, and next action.
 
-Decision Packets feed `decision_gate`. Blocking user-owned judgment cannot be satisfied by chat text, broad approval, or projection prose alone. The recorded Decision Packet and its resolution, deferral, or blocked status are the kernel authority path for that judgment.
+Decision Packets feed `decision_gate`. Blocking user-owned judgment cannot be satisfied by chat text, broad approval, or projection prose alone. The recorded Decision Packet and its resolution, deferral, or blocked status are the canonical state source for that judgment.
 
 Minimal MVP implementations may omit `decision_requests`. If an implementation keeps them, they are routing, interaction, replay, or legacy handoff metadata only. They are not authority for user-owned judgment, and a `decision_request` row alone never satisfies `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close.
 
@@ -276,7 +276,7 @@ Implementation and direct Runs must consume a compatible, unexpired, unconsumed 
 
 ### Approval
 
-An Approval is a scope-bound prior decision for sensitive change. It records what was approved: paths, tools, commands or command classes, network targets, secret scope, baseline, sensitive categories, expiry conditions, and user decision. Approval authorizes sensitive categories inside defined scope. It does not prove correctness, replace evidence, satisfy QA, imply acceptance, or provide the authority path for user-owned judgment.
+An Approval is a scope-bound prior decision for sensitive change. It records the granted sensitive scope: paths, tools, commands or command classes, network targets, secret scope, baseline, sensitive categories, expiry conditions, and user decision. Approval authorizes sensitive categories inside defined scope. It does not prove correctness, replace evidence, satisfy QA, imply acceptance, or serve as the recorded source for user-owned judgment.
 
 If a sensitive action also includes user-owned product or material technical judgment, such as a product trade-off, architecture choice, material technical choice, QA waiver, verification risk, acceptance, residual-risk acceptance, or public interface commitment, the Approval record may authorize the sensitive category only. The user-owned judgment still requires a compatible Decision Packet.
 
@@ -382,7 +382,7 @@ Decision Packet and Residual Risk canonical source is kernel state. Decision Pac
 
 Journey Spine is derived from kernel state, registered artifact references, and `state.sqlite.task_events`. Journey Spine Entry canonical source is kernel state when durable continuity annotations are needed. Journey Cards and Journey Spine Markdown views are projections and cannot repair, close, or mutate state by themselves.
 
-Approval and Decision Packet authority are separate. Approval authorizes sensitive categories inside defined scope; it is not the authority path for user-owned product judgment or material technical judgment. If a sensitive action also includes user-owned product or material technical judgment, such as a product trade-off, architecture choice, material technical choice, QA waiver, verification risk, acceptance, residual-risk acceptance, or public interface commitment, the Approval may authorize only the sensitive category. The user-owned judgment still requires a compatible Decision Packet.
+Approval and Decision Packet authority are separate. Approval authorizes sensitive categories inside defined scope; it is not the recorded source for user-owned product judgment or material technical judgment. If a sensitive action also includes user-owned product or material technical judgment, such as a product trade-off, architecture choice, material technical choice, QA waiver, verification risk, acceptance, residual-risk acceptance, or public interface commitment, the Approval may authorize only the sensitive category. The user-owned judgment still requires a compatible Decision Packet.
 
 ## Gates
 
@@ -502,7 +502,7 @@ Examples:
 not_required | required | pending | passed | failed | waived_by_user | blocked
 ```
 
-`verification_gate=waived_by_user` records that the user accepted remaining verification risk. It must not become `assurance_level=detached_verified`.
+`verification_gate=waived_by_user` records that the user accepted remaining verification risk. When policy or user-owned risk requires a Decision Packet, the waiver must reference the relevant verification-waiver Decision Packet. It must not become `assurance_level=detached_verified`.
 
 ### Verification Independence Profiles
 
@@ -531,7 +531,7 @@ Rules:
 not_required | required | pending | passed | failed | waived
 ```
 
-`qa_gate` is the canonical kernel gate for required human QA. Individual Manual QA records have record-level results; the gate is the aggregate close-relevant state. `qa_gate=pending` means required QA has not yet produced a satisfying Manual QA record, or the latest relevant Manual QA record does not satisfy policy. It does not mean `manual_qa_record.result=pending`.
+`qa_gate` is the canonical kernel gate for required human QA. Individual Manual QA records have record-level results; the gate is the aggregate close-relevant state. `qa_gate=pending` means required QA has not yet produced a satisfying Manual QA record, or the latest relevant Manual QA record does not satisfy policy. It does not mean `manual_qa_record.result=pending`. `qa_gate=waived` requires a waiver reason, and product/user risk or policy-required judgment requires a QA waiver Decision Packet.
 
 ### Acceptance Gate
 
@@ -864,8 +864,8 @@ Waivers are explicit user or policy decisions that must be recorded with reason,
 Allowed waivers:
 
 - `design_gate=waived` when policy allows design-quality waiver.
-- `verification_gate=waived_by_user` when the user accepts remaining verification risk.
-- `qa_gate=waived` when required QA is waived with reason.
+- `verification_gate=waived_by_user` when the user accepts remaining verification risk, with the relevant verification-waiver Decision Packet when required.
+- `qa_gate=waived` when required QA is waived with reason, with a QA waiver Decision Packet when product/user risk or policy-required judgment is involved.
 
 Not allowed:
 
@@ -914,12 +914,12 @@ The following combinations are invalid and must be rejected or repaired by the k
 | Blocking user-owned judgment detected with `decision_gate=not_required` | repair to `required` and request a Decision Packet |
 | `decision_gate=pending`, `resolved`, `deferred`, or `blocked` for user-owned judgment without a linked Decision Packet | reject or repair by associating the canonical Decision Packet |
 | Product write attempted with required blocking Decision Packet absent or unresolved | block `prepare_write`; return a Decision Packet request or candidate rather than broad approval |
-| Approval used as the authority path for user-owned judgment, whether or not the sensitive scope matches | reject or repair by requiring a compatible Decision Packet |
+| Approval used as the recorded source for user-owned judgment, whether or not the sensitive scope matches | reject or repair by requiring a compatible Decision Packet |
 | `decision_gate=deferred` used for an operation not covered by the deferral | block `prepare_write` or close |
 | `decision_gate=resolved` where the recorded decision no longer matches the active Change Unit, Autonomy Boundary, baseline, or intended operation | repair to `required`, `pending`, or `blocked` |
 | Stored `decision_gate` differs from aggregate recomputation | recompute and repair before write or close |
 | Sensitive change with `approval_gate=not_required` | repair to `approval_gate=required` and block `prepare_write`; do not create Approval, Decision Packet, Write Authorization, or `APR` until `request_user_decision(decision_kind=approval)` commits the approval request |
-| Sensitive change with approval denied, expired, or outside approved scope | block `prepare_write` |
+| Sensitive change with Approval denied, expired, or outside the granted Approval scope | block `prepare_write` |
 | Required evidence with `evidence_gate=not_required` | repair to `none`, `partial`, `sufficient`, `stale`, or `blocked` |
 | `evidence_gate=none` while evidence records support required criteria | recompute evidence gate |
 | Completed passed result where required evidence is `none`, `partial`, `stale`, or `blocked` | block close |
