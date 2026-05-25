@@ -2,7 +2,7 @@
 
 ## 사용 시점
 
-상시 Harness context envelope를 짧은 현재 상태 표시로 보여줄 때 Compact Status Card를 사용합니다. 여기에는 Task 상태, next safe action, active Change Unit, 대기 중인 user decision, 쓰기 권한, guarantee level, gate, Manual QA, residual risk, projection freshness, latest refs가 포함됩니다.
+상시 Harness context envelope를 짧은 현재 상태 표시로 보여줄 때 Compact Status Card를 사용합니다. 여기에는 Task 상태, next safe action, active Change Unit, 대기 중인 user decision, 쓰기 권한, 보장 수준, gate, Manual QA, residual risk, projection freshness, latest refs가 포함됩니다.
 
 ## 기준 기록
 
@@ -10,7 +10,7 @@
 - active Change Unit summary
 - 대기 중인 Decision Packet summary
 - Write Authority summary
-- 연결 profile guarantee level
+- 연결 profile 보장 수준
 - 위험 summary
 - scope, approval, decision, design, evidence, verification, QA, acceptance gate
 - close blocker와 Manual QA summary
@@ -27,7 +27,7 @@
 - active Change Unit
 - 사용자 decision
 - 쓰기 권한
-- guarantee level
+- 보장 수준
 - gate summary
 - Manual QA
 - residual risk

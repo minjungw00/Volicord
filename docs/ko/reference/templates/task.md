@@ -317,7 +317,7 @@ Change Unit block sub-template:
   - trigger / input:
   - domain logic:
   - persistence:
-  - API / caller boundary:
+  - API / 호출자 경계:
   - UI / observable output:
 - allowed paths:
   - `src/...`
@@ -374,4 +374,4 @@ Change Unit block sub-template:
 
 `TASK`의 waiver 표시는 요약일 뿐입니다. 닫기에 영향을 주는 QA 또는 verification waiver는 waiver를 유효하게 만드는 기존 기록을 가리켜야 합니다. QA waiver는 `manual_qa_records`/`qa_gate=waived`와 필요한 경우 QA waiver Decision Packet을, verification waiver는 `verification_gate=waived_by_user`와 필요한 경우 그 Decision Packet을 가리킵니다. 생략한 확인이나 대상, 수용하는 위험, 후속 작업, 관련 refs, 닫기 영향도 함께 보여줘야 합니다. QA waiver는 Manual QA가 되지 않고, verification waiver는 detached verification을 만들지 않습니다.
 
-`TASK`, Journey, evidence, report section에 표시되는 artifact ref는 `redaction_state`를 보존해야 합니다. `secret_omitted` ref는 보이는 nonsecret evidence만 뒷받침할 수 있고, `blocked` ref는 원본 content가 아니라 committed metadata-only notice와 사용할 수 없는 input을 보여줍니다.
+`TASK`, Journey, evidence, report section에 표시되는 artifact ref는 `redaction_state`를 보존해야 합니다. `secret_omitted` ref는 보이는 nonsecret evidence만 뒷받침할 수 있고, `blocked` ref는 원본 content가 아니라 committed metadata-only notice와 사용할 수 없는 입력을 보여줍니다.

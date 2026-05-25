@@ -43,8 +43,8 @@ Approval 형태 표시 항목인 "이 Approval이 포괄하는 것", "이 Approv
 - 기술 선택: session cookie, JWT, social login 중에서 고르는 경우입니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 구현 비용, migration 영향은 Options와 Minimum Context To Judge에 둡니다.
 - Dependency Approval과 dependency decision 구분: 사용자가 install command나 dependency-file edit을 승인하는 경우 그 sensitive-action 경계는 Approval-Shaped Context에 둡니다. 그 dependency가 올바른 architecture 방향인지 선택하는 경우에는 technical choice를 What User Is Deciding과 Options에 둡니다.
 - 보안 민감 Approval: Approval 경계는 Approval-Shaped Context에 둡니다. 역할, exported fields, redaction, audit logging, retention, rollback, user notice가 아직 결정되지 않았다면 해결되지 않은 제품/보안 판단으로 표시하고 별도의 compatible Decision Packet으로 보냅니다. Approval packet 하나가 그 판단까지 해결한 것처럼 쓰면 안 됩니다.
-- Public API/interface decision: caller compatibility, migration path, documentation promise, rollback risk는 Options와 Minimum Context To Judge에 둡니다. Resolved API decision을 merge 권한, deployment 권한, Write Authorization처럼 다루면 안 됩니다.
-- QA 또는 verification waiver: 생략하는 확인이나 surface, 수용하는 사용자·제품·기술 위험, 관련 refs, 닫기 영향, 가장 작은 신뢰 가능한 follow-up은 User Decision And Accepted Risk와 Follow-Up에 둡니다.
+- Public API/interface decision: 호출자 호환성, migration path, documentation promise, rollback risk는 Options와 Minimum Context To Judge에 둡니다. Resolved API decision을 merge 권한, deployment 권한, Write Authorization처럼 다루면 안 됩니다.
+- QA 또는 verification waiver: 생략하는 확인이나 대상 접점, 수용하는 사용자·제품·기술 위험, 관련 refs, 닫기 영향, 가장 작은 신뢰 가능한 follow-up은 User Decision And Accepted Risk와 Follow-Up에 둡니다.
 - Close 전 residual-risk acceptance: 사용자에게 보인 한계, 기존 근거, 사용자가 수용할지 판단해야 하는 risk ref, 남은 follow-up은 Current State, Minimum Context To Judge, User Decision And Accepted Risk, Follow-Up에 둡니다.
 - Final acceptance: 최종 결과, evidence 상태, Manual QA와 verification 상태, close-relevant residual-risk visibility는 Current State와 Minimum Context To Judge에 둡니다. Final acceptance를 새 sensitive action, 추가 write, deployment, merge approval처럼 다루면 안 됩니다.
 

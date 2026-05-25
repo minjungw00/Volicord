@@ -126,7 +126,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 | Artifact Ref | Redaction State | Verification Effect | Note |
 |---|---|---|---|
 | ART-EVAL-0001 | secret_omitted | 보이는 nonsecret fact 검토; 생략된 값은 증명 안 됨 | |
-| ART-EVAL-0002 | blocked | 사용할 수 없는 input; verdict가 원본 payload에 의존하면 안 됨 | |
+| ART-EVAL-0002 | blocked | 사용할 수 없는 입력; verdict가 원본 payload에 의존하면 안 됨 | |
 
 ## Acceptance Criteria Review
 | AC ID | Statement | Evidence Reviewed | Result | Notes |
@@ -159,4 +159,4 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 Eval verdict만으로는 assurance를 높일 수 없습니다. `detached_verified`에는 valid independence, passed verification, same-session self-review violation 부재가 필요합니다.
 
-Eval projection은 생략되었거나 차단된 원본 bytes를 검토한 것처럼 암시하면 안 됩니다. `secret_omitted` evidence는 보이는 nonsecret claim만 뒷받침할 수 있습니다. Eval이 `blocked` payload에 의존한다면 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 verification path를 해소할 때까지 result는 `blocked` 또는 `inconclusive`로 남거나 `EVIDENCE_INSUFFICIENT`를 반환해야 합니다.
+Eval projection은 생략되었거나 차단된 원본 bytes를 검토한 것처럼 암시하면 안 됩니다. `secret_omitted` evidence는 보이는 nonsecret claim만 뒷받침할 수 있습니다. Eval이 `blocked` payload에 의존한다면 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 verification 경로를 해소할 때까지 result는 `blocked` 또는 `inconclusive`로 남거나 `EVIDENCE_INSUFFICIENT`를 반환해야 합니다.

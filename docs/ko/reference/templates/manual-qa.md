@@ -95,11 +95,11 @@ updated_at: 2026-05-06T10:05:00+09:00
 | Artifact Ref | Redaction State | QA Effect | Note |
 |---|---|---|---|
 | ART-QA-0001 | secret_omitted | observable finding만 지원 | |
-| ART-QA-0002 | blocked | capture 사용 불가; 대체되거나 유효하게 면제되기 전까지 QA path는 unresolved이며 `qa_gate`는 상황에 따라 pending/failed 또는 `waived` | |
+| ART-QA-0002 | blocked | capture 사용 불가; 대체되거나 유효하게 면제되기 전까지 QA 경로는 미해결이며 `qa_gate`는 상황에 따라 pending/failed 또는 `waived` | |
 ````
 
 ## 메모
 
 이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. `qa_gate`가 기준 close-relevant gate이며, 이 projection은 그 값을 표시만 합니다.
 
-Manual QA projection은 안전한 omission note, handle, blocked artifact notice를 보여줄 수 있지만 생략된 secret/PII 값이나 차단된 capture payload를 포함하면 안 됩니다. `secret_omitted` artifact는 보이는 workflow, UI, copy, accessibility, smoke-test observation을 뒷받침할 수 있습니다. `blocked` capture는 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 QA path를 해소하지 않는 한 사용할 수 없는 QA input입니다.
+Manual QA projection은 안전한 omission note, handle, blocked artifact notice를 보여줄 수 있지만 생략된 secret/PII 값이나 차단된 capture payload를 포함하면 안 됩니다. `secret_omitted` artifact는 보이는 workflow, UI, copy, accessibility, smoke-test observation을 뒷받침할 수 있습니다. `blocked` capture는 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 QA 경로를 해소하지 않는 한 사용할 수 없는 QA 입력입니다.
