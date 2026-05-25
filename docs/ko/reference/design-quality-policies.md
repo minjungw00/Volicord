@@ -30,7 +30,7 @@
 | `deep_module_interface` | 모듈 역할, 공개 interface, 호환성, 호출자 영향이 이해되었는가? |
 | `codebase_stewardship` | 로컬 Task 완료가 향후 유지보수성, 테스트 용이성, 도메인 언어, 경계 손상을 숨기고 있지 않은가? |
 | `manual_qa` | UX, workflow, copy, accessibility, visual output, product taste를 사람이 직접 봐야 하는가? |
-| `context_hygiene` | Agent가 오래된 chat이나 오래된 document가 아니라 현재의 집중된 맥락을 쓰고 있는가? |
+| `context_hygiene` | Agent가 compact current context envelope를 쓰고, 크거나 오래된 ref는 필요할 때만 가져오며, freshness drift를 warning하는가? |
 | `two_stage_review_display` | Spec compliance와 code stewardship을 새 gate 없이 분리해 보여 주는가? |
 
 ## 담당하는 참조 범위
@@ -379,7 +379,7 @@ Domain term, module map item, interface contract, Feedback Loop records, TDD가 
 | `allowed_waiver` | User/operator가 명시적으로 QA를 면제하고 waiver reason을 기록할 때 허용된다. Known product 또는 user risk를 수용하는 Manual QA 면제에는 decision quality가 필요하다. Legal, safety, privacy, high-impact user harm이 inspection을 요구하는 경우에는 적절하지 않다. |
 | `required_record` | `manual_qa_records`; `qa_gate`가 기준 aggregate gate. |
 | `validator` | `manual_qa_required` |
-| `evidence` | Manual QA record, screenshot, note, browser log, walkthrough ref, 발견 사항 ref. |
+| `evidence` | Manual QA record ref, screenshot ref, note, browser log ref, walkthrough ref, 발견 사항 ref. |
 | `close_impact` | Manual QA가 required이면 `qa_gate=pending` 또는 `failed`가 successful close를 차단한다. `qa_gate=waived`에는 waiver reason이 필요하다. QA failed는 rework를 만들거나 close를 차단하거나 explicit follow-up path를 요구해야 한다. |
 
 ### Context Hygiene (`context_hygiene`)
@@ -391,18 +391,18 @@ Domain term, module map item, interface contract, Feedback Loop records, TDD가 
 - Evaluator 또는 reviewer에게 focused current-state bundle이 필요할 때.
 - Projection freshness, reconcile item, acceptance criteria가 바뀌었을 때.
 
-예시: Task가 일주일 뒤 resume되면 current Task summary, latest evidence, Journey refs, policy refs, acceptance criteria를 전달합니다. Old PRD는 필요할 때만 가져오고 최신이 아닌 input으로 표시합니다.
+예시: Task가 일주일 뒤 resume되면 compact Harness context envelope, latest evidence/run/eval/QA refs, Journey refs, policy refs, acceptance criteria, projection freshness를 전달합니다. Old PRD는 필요할 때만 가져오고 최신이 아닌 input으로 표시합니다.
 
 | Field | Contract |
 |---|---|
 | `name` | `context_hygiene` |
-| `applies_when` | Work가 interruption 후 resume되거나, old PRD/design doc/issue가 있거나, code path가 moved되었거나, acceptance criteria가 changed되었거나, module/interface/domain 기록이 바뀌었거나, evaluator/reviewer가 focused bundle을 필요로 할 때. |
-| `default_requirement` | Current Task summary, Journey Card와 relevant Journey Spine ref, latest run/eval/evidence ref, relevant policy ref, current acceptance criteria를 전달한다. 오래된 PRD, closed issue, old design doc, coding standard, long log는 필요할 때만 pull-only reference로 가져온다. 최신이 아닌 doc을 표시하고 chat을 state로 취급하지 않는다. |
+| `applies_when` | Work가 interruption 후 resume되거나, old PRD/design doc/issue가 있거나, code path가 moved되었거나, acceptance criteria가 changed되었거나, module/interface/domain 기록이 바뀌었거나, projection `source_state_version` 또는 freshness가 unknown/stale이거나, evaluator/reviewer가 focused bundle을 필요로 할 때. |
+| `default_requirement` | Compact always-on context envelope를 push한다. 여기에는 active Task id/mode, next safe action, active Change Unit summary, blocking decisions, Write Authority status, guarantee level, gate summary, known이면 `source_state_version`을 포함한 projection freshness가 들어간다. 큰 proof와 history는 ref와 summary로 push한다. latest Evidence, Run, Eval, Manual QA, ArtifactRef, report, residual-risk, Journey, policy, acceptance-criteria, TDD, stewardship, module/interface, domain ref가 여기에 해당한다. 오래된 PRD, closed issue, old design doc, coding standard, long log, screenshot, diff, artifact, large trace는 필요할 때만 pull-only reference로 가져온다. 최신이 아닌 doc을 표시하고, projection freshness drift를 warning하며, chat을 state로 취급하지 않는다. |
 | `allowed_waiver` | Product state, design state, evidence state가 바뀌지 않는 short advisor-only work에 허용된다. |
-| `required_record` | Task summary, projection freshness, drift에 대한 reconcile item, evidence manifest, validator 결과. |
+| `required_record` | Compact envelope를 렌더링하는 데 필요한 source records: current Task summary/state, active Change Unit ref, Decision Packet refs, gate states, Write Authority summary, surface capability/guarantee summary, projection freshness, known이면 `source_state_version`, Evidence Manifest refs, Run refs, Eval refs, Manual QA refs, ArtifactRef refs, report refs, residual-risk refs, drift에 대한 reconcile items, validator 결과. Compact envelope 자체는 렌더링된/파생 current-context display이며, 기준 record, schema field, DDL value, authority input, storage object가 아니다. |
 | `validator` | `context_hygiene_check` |
-| `evidence` | Current projection ref, freshness state, 최신이 아닌 ref, reconcile item ref, evaluator용 bundle contents. |
-| `close_impact` | 최신이 아닌 critical context는 `design_gate=stale`, evidence `stale`, projection `stale`로 표시될 수 있다. Agent가 scope, evidence, current acceptance criteria를 안전하게 판단할 수 없으면 write 또는 close를 차단할 수 있다. |
+| `evidence` | Current projection ref, freshness state, `source_state_version`, 최신이 아닌 ref, reconcile item ref, evaluator용 bundle contents. |
+| `close_impact` | 최신이 아닌 critical context는 `design_gate=stale`, evidence `stale`, projection `stale`로 표시될 수 있다. Agent가 scope, evidence, current acceptance criteria, 또는 readable projection이 canonical state와 맞는지를 안전하게 판단할 수 없으면 write 또는 close를 차단할 수 있다. |
 
 ### Two-stage Review Display
 

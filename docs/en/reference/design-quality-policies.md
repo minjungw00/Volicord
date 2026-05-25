@@ -30,7 +30,7 @@ This document does not define MCP schemas, SQLite DDL, state transition tables, 
 | `deep_module_interface` | Are module roles, public interfaces, compatibility, and callers understood? |
 | `codebase_stewardship` | Does local task completion hide future maintenance, testability, domain, or boundary damage? |
 | `manual_qa` | Does a human need to inspect UX, workflow, copy, accessibility, visual output, or product taste? |
-| `context_hygiene` | Is the agent using current, focused context instead of stale chat or old documents? |
+| `context_hygiene` | Is the agent using a compact current context envelope, pulling large or stale refs only when needed, and warning on freshness drift? |
 | `two_stage_review_display` | Are spec compliance and code stewardship shown separately without creating new gates? |
 
 ## Reference scope
@@ -379,7 +379,7 @@ Example: A settings page copy change passes tests, but a person still needs to i
 | `allowed_waiver` | Allowed when the user/operator explicitly waives QA and records a waiver reason. QA waiver requires decision quality when accepting known product or user risk. Not appropriate when legal, safety, privacy, or high-impact user harm requires inspection. |
 | `required_record` | `manual_qa_records`; `qa_gate` is the canonical aggregate gate. |
 | `validator` | `manual_qa_required` |
-| `evidence` | Manual QA record, screenshots, notes, browser logs, walkthrough refs, finding refs. |
+| `evidence` | Manual QA record refs, screenshot refs, notes, browser log refs, walkthrough refs, and finding refs. |
 | `close_impact` | If Manual QA is required, `qa_gate=pending` or `failed` blocks successful close. `qa_gate=waived` requires a waiver reason. QA failed should create rework, block close, or require an explicit follow-up path. |
 
 ### Context Hygiene (`context_hygiene`)
@@ -391,18 +391,18 @@ Use this when:
 - An evaluator or reviewer needs a focused current-state bundle.
 - Projection freshness, reconcile items, or acceptance criteria changed.
 
-Example: A task resumes after a week. Push the current Task summary, latest evidence, Journey refs, policy refs, and acceptance criteria; pull old PRDs only if needed and mark stale inputs.
+Example: A task resumes after a week. Push the compact Harness context envelope, latest evidence/run/eval/QA refs, Journey refs, policy refs, acceptance criteria, and projection freshness; pull old PRDs only if needed and mark stale inputs.
 
 | Field | Contract |
 |---|---|
 | `name` | `context_hygiene` |
-| `applies_when` | Work resumes after interruption, old PRDs/design docs/issues exist, code paths have moved, acceptance criteria changed, module/interface/domain records changed, or evaluator/reviewer needs a focused bundle. |
-| `default_requirement` | Push current Task summary, Journey Card and relevant Journey Spine refs, latest run/eval/evidence refs, relevant policy refs, and current acceptance criteria. Pull stale PRDs, closed issues, old design docs, coding standards, and long logs only when needed as pull-only references. Mark stale docs and avoid treating chat as state. |
+| `applies_when` | Work resumes after interruption, old PRDs/design docs/issues exist, code paths have moved, acceptance criteria changed, module/interface/domain records changed, projection `source_state_version` or freshness is unknown/stale, or evaluator/reviewer needs a focused bundle. |
+| `default_requirement` | Push a compact always-on context envelope: active Task id/mode, next safe action, active Change Unit summary, blocking decisions, Write Authority status, guarantee level, gate summary, and projection freshness including `source_state_version` when known. Push large proof and history as refs and summaries: latest Evidence, Run, Eval, Manual QA, ArtifactRef, report, residual-risk, Journey, policy, acceptance-criteria, TDD, stewardship, module/interface, and domain refs. Pull stale PRDs, closed issues, old design docs, coding standards, long logs, screenshots, diffs, artifacts, and large traces only when needed as pull-only references. Mark stale docs, warn on projection freshness drift, and avoid treating chat as state. |
 | `allowed_waiver` | Allowed for short advisor-only work where no product state, design state, or evidence state is being changed. |
-| `required_record` | Task summary, projection freshness, reconcile items for drift, evidence manifest, and validator results. |
+| `required_record` | Source records needed to render the compact envelope: current Task summary/state, active Change Unit ref, Decision Packet refs, gate states, Write Authority summary, surface capability/guarantee summary, projection freshness, `source_state_version` when known, Evidence Manifest refs, Run refs, Eval refs, Manual QA refs, ArtifactRef refs, report refs, residual-risk refs, reconcile items for drift, and validator results. The compact envelope itself is rendered/derived current-context display, not a canonical record, schema field, DDL value, authority input, or storage object. |
 | `validator` | `context_hygiene_check` |
-| `evidence` | Current projection refs, freshness state, stale refs, reconcile item refs, bundle contents for evaluator. |
-| `close_impact` | Stale critical context may mark `design_gate=stale`, evidence stale, or projection stale. It can block write or close when the agent cannot safely determine scope, evidence, or current acceptance criteria. |
+| `evidence` | Current projection refs, freshness state, `source_state_version`, stale refs, reconcile item refs, and evaluator bundle contents. |
+| `close_impact` | Stale critical context may mark `design_gate=stale`, evidence stale, or projection stale. It can block write or close when the agent cannot safely determine scope, evidence, current acceptance criteria, or whether the readable projection matches canonical state. |
 
 ### Two-stage Review Display
 

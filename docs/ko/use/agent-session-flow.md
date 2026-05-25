@@ -18,6 +18,8 @@
 
 사용자의 다음 판단에 영향을 주는 상태, 막힘, 판단, 다음 행동만 보여줍니다.
 
+매 turn의 always-on context는 compact Harness envelope여야 합니다. 여기에는 active Task id와 mode, next safe action, active Change Unit summary, blocking decisions, write authority status, guarantee level, gate summary, projection freshness가 들어갑니다. Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, large trace는 default로 ref와 짧은 outcome만 보여주고, 다음 action이 내용을 실제로 살펴봐야 할 때만 pull합니다.
+
 ## 세션 시작
 
 Harness가 연결되어 있으면 사용자가 Harness 사용을 명시적으로 요청했을 때뿐 아니라 Harness가 추적해야 할 모양의 작업을 요청했을 때도 상태 확인이나 요청 정리로 시작합니다. 사용자가 꼭 "Harness"라고 말할 필요는 없습니다. 요청의 모양을 보고 판단하되, 첫 답변은 짧게 유지합니다.
@@ -35,11 +37,14 @@ Harness가 연결되어 있으면 사용자가 Harness 사용을 명시적으로
 
 보여줄 것:
 
-- 예상 모드: `advisor`, `direct`, `work`
+- active 또는 예상 Task id와 모드: `advisor`, `direct`, `work`
 - 현재 또는 제안 범위
 - 범위 밖
 - 다음 안전한 행동
 - 진행을 막는 질문이 있다면 그 질문
+- 쓰기가 가능하거나 가까울 때 write authority status
+- guarantee level과 접점이 실제로 block할 수 있는 것 또는 detect만 할 수 있는 것
+- compact gate, Manual QA, residual-risk, projection freshness status
 - guard, freeze, careful mode가 관련될 때 실행 전에 실제로 막을 수 있는 것과 실행 뒤에만 감지할 수 있는 것
 
 넓은 자연어 요청만으로 바로 제품 파일을 쓰기 시작하면 안 됩니다. 먼저 범위와 의도한 변경에 맞는 쓰기 권한을 확정해야 합니다.
@@ -54,7 +59,7 @@ Harness가 연결되어 있으면 사용자가 Harness 사용을 명시적으로
 활성 작업을 찾았습니다. 현재 범위는 X입니다. 다음 안전한 행동은 Y입니다. 제품 파일 쓰기는 아직 허용되지 않았습니다. 대기 중인 결정은 Z 하나입니다.
 ```
 
-Projection이나 읽기용 상태가 오래됐으면 그 사실을 말하고, 거기에 의존하기 전에 갱신하거나 Reconcile을 실행합니다.
+Projection, `source_state_version`, 읽기용 상태가 stale이거나 unknown이면 그 사실을 말하고, 거기에 의존하기 전에 갱신하거나 Reconcile을 실행합니다. 기준 상태를 직접 읽을 수 있으면 그 상태에서 계속할 수 있지만, 읽기용 projection은 권위 있는 source가 아니라고 warning합니다.
 
 ## 요청 정리
 
@@ -170,6 +175,8 @@ Cooperative 또는 detective hold를 실행 전에 막는 것처럼 설명하면
 ```
 
 근거가 부족하면 어떤 기준이나 주장이 뒷받침되지 않는지 말합니다. 단순히 "근거 게이트가 실패했습니다"라고만 말하지 않습니다.
+
+근거 표시는 refs-first로 합니다. Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, trace ref와 짧은 outcome을 보여주고, 사용자나 evaluator가 다음 action을 결정하기 위해 내용을 inspect해야 할 때만 excerpt를 embed합니다.
 
 ## 검증, Manual QA, 남은 위험, 수용
 

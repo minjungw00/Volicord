@@ -62,21 +62,22 @@ Harness가 연결된 상태에서 AI와 함께 하는 작업 하나가 어떻게
 
 ## 에이전트가 먼저 보여줘야 할 것
 
-시작할 때나 중요한 작업을 이어갈 때는 에이전트가 짧은 상태나 Journey Card를 먼저 보여줘야 합니다. 빠르게 훑을 수 있으면서도 다음 행동을 정할 만큼 구체적이어야 합니다.
+시작할 때나 중요한 작업을 이어갈 때는 에이전트가 짧은 상태나 Journey Card를 먼저 보여줘야 합니다. 빠르게 훑을 수 있으면서도 다음 행동을 정할 만큼 구체적이어야 하며, Task, mode, next action, Change Unit, blocking decisions, write authority, guarantee level, gate summary, projection freshness처럼 권한과 관련된 상태는 유지해야 합니다.
 
 ```text
-작업: 이메일 로그인 흐름 추가
+작업: TASK-123 이메일 로그인 흐름 추가
 모드: work
 다음 행동: 로그인 실패 UX 결정
-범위: 로그인 폼, 로그인 API 호출, 세션 저장
+Change Unit: 로그인 폼, 로그인 API 호출, 세션 저장
 범위 밖: 비밀번호 재설정, 계정 생성
 필요한 결정: 로그인 실패 메시지
 쓰기 권한: 아직 요청하지 않음
-근거: 아직 없음
-검증: 시작하지 않음
+Gates: scope=pending; decision=required; design=pending; evidence=none; verification=not_required; QA=pending
+Refs: evidence=none; run/eval/QA=none
 Manual QA: 필요할 가능성 있음
 남은 위험: 기록 없음
 접점 보호: cooperative; 실행 전 차단을 주장하지 않음. changed-path validation이 있으면 범위를 벗어난 쓰기를 실행 뒤에 감지할 수 있음
+Projection freshness: source_state_version v42 기준 current
 ```
 
 핵심은 다음 안전한 행동입니다. 상태가 오래됐거나 이상해 보이면 이렇게 말합니다.
@@ -84,6 +85,8 @@ Manual QA: 필요할 가능성 있음
 ```text
 상태 보여줘.
 ```
+
+Status card는 judgment-context와 다릅니다. Agent에게 사용자 판단이 필요하면 options, recommendation, uncertainty, 결정을 미뤘을 때 계속할 수 있는 일, relevant evidence 또는 design record ref가 있는 focused decision prompt를 별도로 붙여야 합니다.
 
 에이전트가 guard, freeze, careful mode 같은 말을 쓴다면 쉬운 말로 풀어야 합니다. 무엇을 실행 전에 실제로 막을 수 있고, 무엇은 실행 뒤에만 감지할 수 있는지 구분해야 합니다. Cooperative 또는 detective 접점에서 freeze는 범위 보류나 다음 행동을 더 엄격하게 제한하는 상태이지 실행 전 강제 차단이 아닙니다.
 
@@ -123,6 +126,8 @@ Harness는 이런 경계를 활성 Change Unit 안에서 작업을 유지하는 
 근거는 "이 일이 끝났다고 말할 수 있는 뒷받침이 무엇인가?"에 답합니다.
 
 근거는 에이전트가 "했습니다"라고 말하는 것이 아닙니다. 변경된 경로, 테스트 결과, 로그, 스크린샷, QA 기록, 검증 결과처럼 수용 기준을 뒷받침하는 자료입니다.
+
+큰 근거는 먼저 ref와 짧은 outcome으로 보여줘야 합니다. Log, screenshot, diff, trace, Run detail, Eval detail, Manual QA note, artifact는 사용자나 다음 reviewer가 내용을 inspect해야 할 때가 아니면 default context에 붙여 넣지 않습니다.
 
 자주 쓰는 말:
 

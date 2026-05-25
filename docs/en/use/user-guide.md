@@ -62,21 +62,22 @@ Show close-relevant residual risk before I accept.
 
 ## What the agent should show first
 
-At the start, or before significant resume, the agent should show a compact status or Journey Card. It should be short enough to scan and specific enough to act on.
+At the start, or before significant resume, the agent should show a compact status or Journey Card. It should be short enough to scan and specific enough to act on, while still showing authority-relevant status: task, mode, next action, Change Unit, blocking decisions, write authority, guarantee level, gate summary, and projection freshness.
 
 ```text
-Task: Add email login flow
+Task: TASK-123 Add email login flow
 Mode: work
 Next action: decide failed-login UX
-Scope: login form, login API call, session storage
+Change Unit: login form, login API call, session storage
 Out of bounds: password reset, account creation
 Decision needed: failed-login message
 Write authority: not requested yet
-Evidence: none yet
-Verification: not started
+Gates: scope=pending; decision=required; design=pending; evidence=none; verification=not_required; QA=pending
+Refs: evidence=none; run/eval/QA=none
 Manual QA: likely needed
 Residual risk: none recorded
 Surface protection: cooperative; no pre-execution blocking is claimed. If changed-path validation is available, out-of-scope writes may be detected after action.
+Projection freshness: current as of source_state_version v42
 ```
 
 Look for the next safe action. If the status looks stale or wrong, say:
@@ -84,6 +85,8 @@ Look for the next safe action. If the status looks stale or wrong, say:
 ```text
 Show the current status and next action again from state.
 ```
+
+The status card is not the same as judgment-context. When the agent needs your judgment, it should add a focused decision prompt with options, a recommendation, uncertainty, what can continue if you defer, and refs to the relevant evidence or design records.
 
 If the agent uses words like guard, freeze, or careful mode, it should explain them in ordinary terms: what can actually be blocked before execution, and what can only be detected later. A freeze on a cooperative or detective surface means a scope hold or stricter next-action posture, not hard prevention.
 
@@ -123,6 +126,8 @@ Harness may describe those boundaries as the active Change Unit, and it may use 
 Evidence answers: "What supports the claim that this work is done?"
 
 Evidence is not just "the agent says it changed the thing." It can include changed paths, test output, logs, screenshots, QA notes, verification results, or other artifacts that support the acceptance criteria.
+
+For large evidence, the agent should show refs and short outcomes first. Logs, screenshots, diffs, traces, Run details, Eval details, Manual QA notes, and artifacts should not be pasted into the default context unless you or the next reviewer need to inspect them.
 
 Useful phrase:
 

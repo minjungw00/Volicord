@@ -18,6 +18,8 @@ Read [User Guide](user-guide.md) first if you want the user-facing version.
 
 Show only the state, blocker, judgment, and next action that affect the user's next decision.
 
+The always-on turn context should be a compact Harness envelope: active Task id and mode, next safe action, active Change Unit summary, blocking decisions, write authority status, guarantee level, gate summary, and projection freshness. Evidence, Run, Eval, Manual QA, artifacts, logs, screenshots, diffs, and large traces should appear as refs and short outcomes by default, then be pulled only when the next action requires inspecting them.
+
 ## Session start
 
 When Harness is connected, start with status or intake when the user asks for work that should be tracked by Harness, or explicitly asks to use Harness. The user does not need to say "Harness." Infer from the request shape and keep the first response short.
@@ -35,11 +37,14 @@ Keep small direct tasks light. Do not add ceremony just to answer a question, in
 
 Show:
 
-- the likely mode: `advisor`, `direct`, or `work`
+- the active or likely Task id and mode: `advisor`, `direct`, or `work`
 - the current or proposed scope
 - what is out of bounds
 - the next safe action
 - any question that blocks progress
+- write authority status when writes are possible or near
+- guarantee level and what the surface can actually block or only detect
+- compact gate, Manual QA, residual-risk, and projection freshness status
 - when guard, freeze, or careful mode is relevant, what can actually be blocked before execution and what can only be detected after action
 
 Do not begin product writes from a broad natural-language request alone. First establish scope and compatible write authority for the intended change.
@@ -54,7 +59,7 @@ A good resume response says:
 I found the active task. Current scope is X. The next safe action is Y. Product writes are not authorized yet. One decision is pending: Z.
 ```
 
-If projection or readable status is stale, say that and refresh or reconcile before depending on it.
+If projection, `source_state_version`, or readable status is stale or unknown, say that and refresh or reconcile before depending on it. If canonical state is available directly, the agent may continue from that state while warning that the readable projection is not the source of authority.
 
 ## Intake
 
@@ -170,6 +175,8 @@ Evidence:
 ```
 
 When evidence is missing, name the criterion or claim that lacks support. Do not say only "evidence gate failed."
+
+Use refs-first evidence display. Cite Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, or trace refs with a short outcome, and embed excerpts only when the user or evaluator needs to inspect the content to decide the next action.
 
 ## Verification, Manual QA, residual risk, acceptance
 

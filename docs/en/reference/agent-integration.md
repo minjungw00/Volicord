@@ -261,33 +261,42 @@ The manifest concept is common. Surface-specific generated filenames belong in [
 
 ## Context Push/Pull Principles
 
-Implementation agents should receive small current context and pull larger references only when needed.
+Implementation agents should receive a compact always-on Harness context envelope every turn and pull larger references only when needed. The envelope is operational state, not history. It should use ids, one-line summaries, and freshness markers; keeping it around a screenful is useful guidance, not a schema limit.
 
-Usually push:
+Push every turn when available:
 
-- Journey Card or status card
-- active Decision Packet summary
-- Autonomy Boundary summary
-- Write Authority Summary when writes are near
-- active scoped Change Unit
-- acceptance criteria snapshot
+| Envelope item | Push shape |
+|---|---|
+| Active Task | Task id, title, mode, and lifecycle phase. |
+| Next safe action | The next action and smallest unblocker if blocked. |
+| Active Change Unit | One-line summary of in-scope work, out-of-bounds areas, and active Autonomy Boundary. |
+| Blocking decisions | Decision Packet ids and one-line questions, or `none`. |
+| Write authority | Display status such as not requested, allowed, blocked, stale, or unavailable, with scoped path/tool summary when relevant. |
+| Guarantee level | Actual connected profile level and the guard or detection behavior it can prove. Do not infer this from a surface name. |
+| Gate summary | Scope, approval, decision, design, evidence, verification, QA, acceptance, close blocker, Manual QA, and residual-risk status as compact values when relevant. |
+| Projection freshness | Projection id or ref, `source_state_version` when known, freshness state, and refresh/reconcile warning when needed. |
+
+Push refs or one-line summaries when relevant:
+
+- Journey Card or compact status card
+- current acceptance criteria snapshot
 - approval status
-- latest evidence manifest and run refs
-- residual-risk summary when close or acceptance is near
+- latest evidence manifest ref and coverage summary
+- latest Run, Eval, Manual QA, report, and residual-risk refs
+- relevant policy, TDD trace, stewardship, module/interface, and domain refs
 
-Usually pull:
+Keep these refs-first and pull the body only when needed:
 
-- older PRDs
-- old designs
-- closed issues
-- long logs
-- module maps
-- interface contracts
-- domain language
-- coding standards
-- TDD guidance
+- Evidence, Run, Eval, and Manual QA records
+- artifacts, logs, screenshots, diffs, workflow recordings, and large traces
+- older PRDs, old designs, closed issues, stale docs, and moved-path notes
+- module maps, interface contracts, domain language, coding standards, and TDD guidance
 
-Evaluators should receive a tighter verification bundle: acceptance criteria, changed files, approval scope, relevant Decision Packets, residual risk summary, Autonomy Boundary, deferred decisions, codebase stewardship refs, evidence manifest, required TDD trace, Manual QA requirement, artifact refs, and forbidden patterns.
+Refs-first means the connector should push stable ids, paths, hashes, summaries, outcomes, and freshness, not paste large bodies into the default prompt. Embed excerpts only when the next safe action requires inspecting the content, and keep the excerpt tied to its source ref.
+
+The compact status card renders the envelope for "where are we and what happens next?" Judgment-context is separate. Use judgment-context only when user judgment is needed, and include the decision question, options, recommendation, uncertainty, deferral effect, and relevant refs without turning the full evidence or artifact body into always-on context.
+
+Evaluators should receive a tighter verification bundle: acceptance criteria, changed files, approval scope, relevant Decision Packets, residual risk summary, Autonomy Boundary, deferred decisions, codebase stewardship refs, evidence manifest refs, required TDD trace refs, Manual QA requirement, artifact refs, freshness state, and forbidden patterns.
 
 A later Context Index may help retrieve relevant projections, artifact refs, repo files, docs, or notes. It is a read-only context provider, not a connector authority path.
 
@@ -308,7 +317,7 @@ If MCP is unavailable, the connector must not claim authoritative state updates.
 
 If MCP works but pre-tool guard is weak, low-risk direct work may proceed with cooperative `prepare_write` and detective changed-path validation. Medium/high-risk work should require stricter validation, a proven sidecar guard, explicit approval, detached verification, or isolation.
 
-Projection staleness is reported separately from state. A connector may continue from canonical state if it can read state directly, but actions that depend on Markdown projection should refresh or reconcile first.
+Projection staleness is reported separately from state. If `source_state_version` is older than the canonical state, unknown, or missing where it is expected, the connector should warn that readable projection context may be stale. A connector may continue from canonical state if it can read state directly, but actions that depend on Markdown projection should refresh or reconcile first and should not treat the stale projection as authority.
 
 ## Role Lens Behavior
 
