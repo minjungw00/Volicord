@@ -149,6 +149,7 @@ Required behavior:
 - initialize per-project state and artifact storage
 - register the reference surface and capability profile
 - create or refresh connector-managed files through a manifest
+- record connector profile freshness, capability profile version, detected version, last verification time, and conformance or operator-check basis in the connector manifest
 - confirm MCP configuration can reach the harness server
 - run a conformance smoke check or print the command to run it
 
@@ -169,7 +170,7 @@ sequenceDiagram
   Op->>Core: run smoke or print command
 ```
 
-Connect must report generated-file drift instead of overwriting human edits silently. Surface-specific generated file names belong in the surface cookbook.
+Connect must report generated/managed manifest drift instead of overwriting human edits silently. This includes generated files, managed blocks, MCP config snippets, and stale capability profile freshness. Surface-specific generated file names belong in the surface cookbook.
 
 Illustrative connect drift output:
 
@@ -192,10 +193,10 @@ Required categories:
 | project | registered project, repo root, static config validity |
 | state | current state readability, JSON field parse and shape validity, owner-bound status values, state-version and idempotency consistency, locks, active Task consistency |
 | MCP | server reachability, Core reachability, read resource availability, public tool availability |
-| surface | capability profile, generated manifest, MCP config freshness, required MCP tool-call ability |
+| surface | capability profile, profile freshness, stale capability profile detection, generated/managed manifest drift, MCP config freshness, required MCP tool-call ability |
 | artifacts | file existence, hash, size, redaction state, task/run or artifact-link relation |
 | projections | queued jobs, freshness, managed hash drift, failed renders |
-| reconcile | pending human edits, managed block drift, generated-file drift |
+| reconcile | pending human edits, managed block drift, generated/managed manifest drift |
 | validators/checks | required stable ValidatorResult-emitting validators, plus separately captured Core check/precondition categories |
 | agency/stewardship/context | Decision Packet and decision gate readiness, Autonomy Boundary readiness, residual-risk visibility, codebase stewardship, context freshness |
 | security/threat model | local MCP binding/access expectation, registered project/task/surface consistency, connector drift, sensitive-category side effects, redaction, omission, or block coverage |
@@ -366,7 +367,7 @@ Targets:
 - Domain Language proposals
 - Module Map proposals
 - Interface Contract proposals
-- connector generated-file drift
+- connector generated/managed manifest drift
 - stale projection references that affect current work
 
 Decision outcomes:
@@ -2042,6 +2043,8 @@ expected_error:
   code: RECONCILE_REQUIRED
 ```
 
+This example represents generated/managed manifest drift coverage. Connector conformance also checks stale capability profile detection and profile freshness reporting without adding fixture-only manifest fields here.
+
 ```yaml
 scenario_id: CONN-journey-card-shown-before-significant-resume
 initial_state:
@@ -3136,7 +3139,7 @@ These catalog entries are not fixture bodies. They make projection, reconcile, a
 | Scenario ID | Core or operator action | Required assertions |
 |---|---|---|
 | `CORE-projection-stale-state-current-distinction` | `status`, `next`, or `projection_refresh` | Current Task state remains readable and authoritative while a `TASK` projection is `stale` or latest refresh is `failed`; the fixture separately asserts current state version, projection freshness or job status, and any `PROJECTION_STALE` or projection-failure reporting. The projection problem does not mark the Task result failed, replace current state, satisfy gates, or authorize writes. |
-| `RECONCILE-managed-block-edit-routes-to-reconcile` | `projection_refresh` or `reconcile` | Human edits inside a managed block or generated-file drift produce a reconcile item and leave canonical state unchanged until an explicit reconcile decision is recorded; projection output is skipped, stale, failed, or refreshed according to the reconcile outcome, and fixture assertions compare the reconcile item, projection status, events, and error rather than edited Markdown text alone. |
+| `RECONCILE-managed-block-edit-routes-to-reconcile` | `projection_refresh` or `reconcile` | Human edits inside a managed block or generated/managed manifest drift produce a reconcile item and leave canonical state unchanged until an explicit reconcile decision is recorded; projection output is skipped, stale, failed, or refreshed according to the reconcile outcome, and fixture assertions compare the reconcile item, projection status, events, and error rather than edited Markdown text alone. |
 | `CORE-same-session-self-review-not-detached-verification` | `record_eval` or `close_task` | A same-session self-review, same chat transcript, or non-independent bundle can be useful context but cannot set detached verification passed or upgrade assurance. Fixtures assert the same-session violation or independence finding, keep `verification_gate` pending or blocked when detached verification is required, and keep close blocked unless another valid Eval path, waiver, or accepted risk resolves the requirement. |
 
 #### V1 Browser QA Capture Candidate Entries
@@ -3154,7 +3157,7 @@ These catalog entries are future candidates, not MVP fixture bodies or MVP smoke
 Minimum MVP suites:
 
 - core: active status, advisor close, direct close, write gate, Write Authorization creation/required/invalid coverage, approval required and approval lifecycle retry, evidence insufficient, same-session verification guard, QA required, acceptance required, projection failure separation, current-state versus stale-projection distinction
-- connector: natural-language intake without a startup phrase, plain-language routing to Harness records, capability profile, MCP unavailable hold, generated manifest drift, changed-path detection, artifact capture, fallback guarantee display, current Journey Card before significant resume, Decision Packet not broad approval, Autonomy Boundary breach routing
+- connector: natural-language intake without a startup phrase, plain-language routing to Harness records, capability profile, connector profile freshness, stale capability profile detection, MCP unavailable hold, generated/managed manifest drift, changed-path detection, artifact capture, manual artifact capture fallback when native capture is unavailable, fallback guarantee display that does not upgrade cooperative, detective, or manual fallback behavior to preventive or isolated, current Journey Card before significant resume, Decision Packet not broad approval, Autonomy Boundary breach routing
 - artifact-redaction: registered artifact boundary, `staged_uri` untrusted handling, task-scoped artifact relation validation, `secret_omitted` evidence sufficiency limits, committed `blocked` metadata-only notices, downstream display/evidence effects, artifact integrity checks, secret/PII omission reporting, and export/Release Handoff non-leakage
 - connector guard/freeze: cooperative/detective freeze and guard display, careful-mode non-authority behavior; preventive `T4` pre-tool blocking only when a surface-specific fixture proves the hook, wrapper, sidecar, or permission layer can block the covered operation before execution
 - agency: Decision Packet required for blocking user-owned judgment, Decision Packet quality with options/trade-offs/recommendation/uncertainty/deferral/residual-risk impact, user-owned product or material technical trade-off write guard, AFK Autonomy Boundary stop conditions, known close-relevant residual-risk visibility before any successful close, `ResidualRiskSummary.status=none` for no known close-relevant risk, accepted Residual Risk refs whose risks were visible before acceptance for risk-accepted close, distinct approval, QA, acceptance, and residual-risk acceptance

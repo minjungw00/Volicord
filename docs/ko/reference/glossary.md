@@ -114,7 +114,7 @@ Public MCP tool calls가 공통으로 갖는 fields입니다. `request_id`, `ide
 
 ### Connector Manifest
 
-Connector-managed files, managed block hashes, capability profile, 접점 target profile, drift status를 기록하는 generated manifest입니다. 생성된 접점 files가 조용히 overwrite되지 않게 합니다.
+Connector가 생성하거나 관리하는 path, MCP config snippet, managed block hash, capability/profile 최신성, capture/guard/isolation 설명 또는 mechanism, 수동 fallback 설명, drift 또는 stale status를 기록하는 generated manifest입니다. 생성되거나 관리되는 접점 file이 조용히 overwrite되지 않게 합니다. 전체 manifest contract는 [Agent 통합 참조](agent-integration.md#generated-manifest-기대사항)가 담당합니다.
 
 ### Context Hygiene
 

@@ -115,7 +115,7 @@ Target profile values may include:
 - `custom_agent`
 - `manual_bundle`
 
-Capability profiles must be refreshed when version, MCP config, hooks, permissions, workspace policy, generated files, conformance result, capture method, QA capture method, browser test environment, redaction policy, or artifact retention behavior changes.
+Capability profiles must be refreshed when version, MCP config, hooks, permissions, workspace policy, generated files or managed blocks, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact retention behavior, or isolation/guard wrapper behavior changes.
 
 ## Capability Profile Examples
 
@@ -245,15 +245,18 @@ Guard, freeze, and careful-mode labels are safety-control labels over the actual
 
 ## Generated Manifest Expectations
 
-Connectors may generate rules, skills, MCP config snippets, prompts, or local adapter files. Every generated or managed path must be recorded in a connector manifest.
+Connectors may generate rules, skills, MCP config snippets, prompts, or local adapter files. Every generated or managed path, managed block, MCP config snippet, and profile freshness marker must be recorded in a connector manifest.
 
 The manifest must:
 
-- name generated paths
-- record managed block hashes
-- record the capability profile used when generated
-- record the target surface profile
+- name generated and managed paths, including MCP config snippets and local adapter files
+- record managed block ids and hashes
+- record the capability profile used when generated, including `capability_profile_version`, `detected_version`, `last_verified_at`, and the conformance result or operator check that made it current
+- record the target surface profile and MCP tool/resource scope
+- record configured capture, QA capture, guard, and isolation mechanisms without claiming more than the profile proves
+- record manual artifact capture and manual verification bundle fallbacks when native capture or isolation is unavailable
 - record creation and update times
+- mark the profile or generated block stale when the surface version, MCP config, hooks, permissions, wrapper, sidecar, managed file, capture method, redaction policy, or retention behavior changes
 - detect drift before overwriting human edits
 - route drift to reconcile when needed
 
@@ -273,6 +276,7 @@ Push every turn when available:
 | Blocking decisions | Decision Packet ids and one-line questions, or `none`. |
 | Write authority | Display status such as not requested, allowed, blocked, stale, or unavailable, with scoped path/tool summary when relevant. |
 | Guarantee level | Actual connected profile level and the guard or detection behavior it can prove. Do not infer this from a surface name. |
+| Connector profile freshness | Connector manifest ref, `capability_profile_version`, `last_verified_at`, and stale reason when generated files, MCP config, hooks, wrappers, sidecars, capture, or isolation behavior changed. |
 | Gate summary | Scope, approval, decision, design, evidence, verification, QA, acceptance, close blocker, Manual QA, and residual-risk status as compact values when relevant. |
 | Projection freshness | Projection id or ref, `source_state_version` when known, freshness state, and refresh/reconcile warning when needed. |
 
@@ -316,6 +320,8 @@ If MCP is unavailable, the connector must not claim authoritative state updates.
 `MCP_SERVER_UNAVAILABLE` means the tool call cannot reach Core, so no authoritative Core response is possible. `SURFACE_MCP_UNAVAILABLE` means Core or an operator can observe that the connected surface lacks usable MCP, has stale MCP configuration, or cannot call required tools. Product/runtime/code writes hold until MCP is reconnected or diagnosed, unless the work is an explicit pre-MVP documentation-authoring batch under `DOCS_AUTHORING_OVERRIDE` with an exact path allowlist. That override is a documentation-maintainer override only; it is not Core authorization, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, or a canonical state transition.
 
 If MCP works but pre-tool guard is weak, low-risk direct work may proceed with cooperative `prepare_write` and detective changed-path validation. Medium/high-risk work should require stricter validation, a proven sidecar guard, explicit approval, detached verification, or isolation.
+
+If native capture is unavailable, the connector should fall back to manual artifact capture: named artifact refs for diffs, logs, screenshots, workflow notes, command output, or QA notes supplied by the user or operator. If native isolation or fresh evaluator support is unavailable, it should fall back to a manual verification bundle with acceptance criteria, changed files, relevant refs, artifact refs, freshness state, and forbidden patterns. These fallbacks are explicit evidence routes, not upgrades to preventive or isolated guarantee levels.
 
 Projection staleness is reported separately from state. If `source_state_version` is older than the canonical state, unknown, or missing where it is expected, the connector should warn that readable projection context may be stale. A connector may continue from canonical state if it can read state directly, but actions that depend on Markdown projection should refresh or reconcile first and should not treat the stale projection as authority.
 
@@ -368,7 +374,8 @@ Minimum reference expectations:
 - run summary and artifact capture sufficient for evidence manifests
 - manual verification bundle or fresh evaluator instructions
 - Manual QA note artifact support
-- connector manifest for generated files
+- connector manifest for generated files, managed blocks, MCP config snippets, and profile freshness
+- manual artifact capture fallback when native capture is unavailable
 - actual block-vs-detect status when guard, freeze, or careful-mode labels are shown
 - conformance smoke covering common state and fallback paths
 
@@ -404,6 +411,7 @@ Overview scenarios:
 - risk-accepted close additionally requires accepted Residual Risk refs
 - stale projection and reconcile flow
 - generated file drift detection
+- connector manifest profile freshness and stale capability profile detection
 - capability fallback when a required tier is missing
 - MCP unavailable product-write hold
 

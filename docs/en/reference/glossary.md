@@ -114,7 +114,7 @@ A guarantee level where the agent surface is expected to follow harness instruct
 
 ### Connector Manifest
 
-A generated manifest that records connector-managed files, managed block hashes, capability profile, surface target profile, and drift status. It prevents generated surface files from being silently overwritten.
+A generated manifest that records connector-generated and connector-managed paths, MCP config snippets, managed block hashes, capability/profile freshness, capture/guard/isolation notes or mechanisms, manual fallback notes, and drift or stale status. It prevents generated or managed surface files from being silently overwritten. The full manifest contract is owned by [Agent Integration Reference](agent-integration.md#generated-manifest-expectations).
 
 ### Context Hygiene
 

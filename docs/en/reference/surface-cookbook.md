@@ -20,10 +20,15 @@ Each recipe should keep only surface-specific material:
 - generated files or instructions
 - MCP configuration hints
 - capture, guard, and isolation options
+- guarantee boundary notes: what the named surface can block before execution, what it can only detect after action, what capture is native, and what falls back to manual artifacts or a manual verification bundle
 - common fallbacks
 - conformance risks
 
-Do not repeat generic kernel rules, public API schemas, or policy contracts here. Guard, freeze, and careful-mode labels may appear only as labels over the connected profile's actual cooperative, detective, preventive, or isolated capability. When a recipe uses one of those labels, it must say whether the behavior is a scope hold, a post-action detector, a proven pre-execution block, or isolation.
+Do not repeat generic kernel rules, public API schemas, or policy contracts here. The common contract determines what cooperative, detective, preventive, and isolated mean. A recipe only names the surface-specific path that can provide that behavior. Guard, freeze, and careful-mode labels may appear only as labels over the connected profile's actual capability. When a recipe uses one of those labels, it must say whether the behavior is a scope hold, a post-action detector, a proven pre-execution block, or isolation.
+
+The `guarantee_boundary` blocks below are recipe documentation notes, not public schema, DDL shape, or canonical Capability Profile fields. A connector may record equivalent facts in its Capability Profile or Connector Manifest only according to the [Agent Integration Reference](agent-integration.md) contract. Surface Cookbook names surface-specific paths and examples; it does not redefine guarantee levels.
+
+When a recipe lists a manual verification bundle under `fallback_isolation`, read it as verification/evaluator fallback input. A manual verification bundle does not by itself upgrade the connected surface to `preventive` or `isolated`. An `isolated` guarantee still requires a proven separate worktree, sandbox, process boundary, read-only bundle, or equivalent independence/isolation boundary.
 
 ## Codex
 
@@ -40,15 +45,24 @@ generated_files_or_instructions:
   - connector manifest entry
 mcp_configuration_hints:
   - prefer direct MCP tool calls for T2 or higher profiles
-  - record generated MCP config paths and managed hashes in the connector manifest
+  - record generated MCP config paths, managed hashes, and profile freshness in the connector manifest
+guarantee_boundary:
+  default_level: cooperative for AGENTS.md, skill, or command wording alone
+  can_block_before_execution: only covered operations through a wrapper, sidecar, host permission, or host hook that is available and proven for the concrete Codex profile
+  can_detect_after_action: changed paths, run/artifact gaps, and generated-file drift when validators or sidecars are active
+  native_capture: wrapper or explicit record_run discipline when configured
+  fallback_capture: manual artifact capture for diffs, logs, screenshots, command output, and QA notes
+  fallback_isolation: manual verification bundle or fresh worktree/evaluator profile when configured
 capture_guard_isolation_options:
   - sidecar changed-file watcher
   - changed_paths validator
   - wrapper or explicit record_run discipline for command output and artifacts
+  - manual artifact capture when wrapper or structured capture is unavailable
   - manual verification bundle when fresh evaluator support is unavailable
 common_fallbacks:
   - cooperative prepare_write discipline unless pre-tool guard is proven
   - detective changed-path validation
+  - manual artifact capture
   - manual verification bundle
   - docs-authoring override only for exact pre-MVP docs allowlists
 conformance_risks:
@@ -78,7 +92,14 @@ generated_files_or_instructions:
   - connector manifest entry
 mcp_configuration_hints:
   - keep MCP tool and resource availability explicit per host profile
-  - record hook and MCP generated paths in the connector manifest
+  - record hook paths, MCP generated paths, managed hashes, and profile freshness in the connector manifest
+guarantee_boundary:
+  default_level: cooperative for CLAUDE.md or skill wording alone
+  can_block_before_execution: only covered operations through configured and conformance-proven PreToolUse hooks, wrappers, sidecars, or permissions
+  can_detect_after_action: changed files, command output, log artifacts, and stop summaries through PostToolUse or Stop hooks when configured
+  native_capture: hook, wrapper, or structured run summary when configured
+  fallback_capture: manual artifact capture for diffs, logs, screenshots, command output, and QA notes
+  fallback_isolation: read-only evaluator, fresh worktree evaluator, or manual verification bundle
 capture_guard_isolation_options:
   - SessionStart hook for Journey Card or status card injection
   - UserPromptSubmit hook for intake and shaping guidance
@@ -90,6 +111,8 @@ capture_guard_isolation_options:
 common_fallbacks:
   - read-only evaluator profile
   - fresh worktree evaluator
+  - manual artifact capture
+  - manual verification bundle
   - stop-hook report draft
   - cooperative scope hold or careful-mode instruction when hooks are absent or unproven
 conformance_risks:
@@ -117,16 +140,26 @@ generated_files_or_instructions:
   - connector manifest entry
 mcp_configuration_hints:
   - keep extension context small and let the agent pull longer references through MCP resources
-  - record extension, wrapper, sidecar, and MCP generated paths in the connector manifest
+  - record extension, wrapper, sidecar, MCP generated paths, managed hashes, and profile freshness in the connector manifest
+guarantee_boundary:
+  default_level: cooperative for extension or prompt package wording alone
+  can_block_before_execution: only covered paths or commands through a proven CLI wrapper, sidecar-controlled run, policy layer, or host permission
+  can_detect_after_action: changed paths, command output, artifact gaps, and generated-file drift when wrapper, sidecar, or validators are active
+  native_capture: CLI wrapper, sidecar, or host capture when configured
+  fallback_capture: manual artifact capture for diffs, logs, screenshots, command output, and QA notes
+  fallback_isolation: isolated evaluator bundle or manual verification bundle
 capture_guard_isolation_options:
   - CLI wrapper for command and artifact capture
   - sidecar-controlled run for covered paths and commands
+  - manual artifact capture when native capture is unavailable
   - Manual QA note artifact when browser capture is unavailable
   - isolated evaluator bundle when host capture is weak
 common_fallbacks:
   - CLI wrapper
   - sidecar-controlled run
+  - manual artifact capture
   - Manual QA note artifact
+  - manual verification bundle
   - cooperative hold or narrowed boundary when only extension wording is available
 conformance_risks:
   - extension context can become too large
@@ -154,15 +187,25 @@ generated_files_or_instructions:
 mcp_configuration_hints:
   - distinguish VS Code local profiles from cloud profiles
   - prefer task or terminal wrappers when command output must become a run artifact
-  - record generated custom instruction, task, wrapper, and MCP paths in the connector manifest
+  - record generated custom instruction, task, wrapper, MCP paths, managed hashes, and profile freshness in the connector manifest
+guarantee_boundary:
+  default_level: cooperative for custom instruction or chat wording alone
+  can_block_before_execution: only covered operations through a proven VS Code task wrapper, terminal wrapper, sidecar, host permission, or cloud policy path
+  can_detect_after_action: task output, changed files, command logs, artifact gaps, and generated-file drift when wrapper, sidecar, or validators are active
+  native_capture: VS Code task, terminal wrapper, sidecar, or profile-specific capture when configured
+  fallback_capture: manual artifact capture for diffs, logs, screenshots, command output, and QA notes
+  fallback_isolation: fresh worktree/evaluator profile or manual verification bundle
 capture_guard_isolation_options:
   - VS Code task wrapper for owned task capture
   - sidecar adapter for changed-file or command observation
+  - manual artifact capture when task, wrapper, or sidecar capture is unavailable
   - profile-specific guard only when the host is proven to block covered operations
   - explicit approval card display for sensitive changes
 common_fallbacks:
   - VS Code task wrapper
   - sidecar adapter
+  - manual artifact capture
+  - manual verification bundle
   - explicit approval card
   - cooperative chat instruction for profiles without wrapper or sidecar support
 conformance_risks:
@@ -189,15 +232,24 @@ generated_files_or_instructions:
   - connector manifest entry
 mcp_configuration_hints:
   - keep project rules short and use MCP resources for longer references
-  - record generated rule, sidecar, and MCP paths in the connector manifest
+  - record generated rule, sidecar, MCP paths, managed hashes, and profile freshness in the connector manifest
+guarantee_boundary:
+  default_level: cooperative for Cursor project-rule wording alone
+  can_block_before_execution: only covered operations through proven IDE permission support, wrapper, sidecar, or policy path
+  can_detect_after_action: changed files, generated-file drift, artifact gaps, and validator findings when sidecar or validators are active
+  native_capture: sidecar, wrapper, or IDE capture when configured
+  fallback_capture: manual artifact capture for diffs, logs, screenshots, command output, and QA notes
+  fallback_isolation: manual verification bundle or fresh worktree/evaluator profile when configured
 capture_guard_isolation_options:
   - sidecar changed-file detection
   - generated file drift detection
   - IDE permission support when available and proven
+  - manual artifact capture when native capture is unavailable
   - manual verification bundle
 common_fallbacks:
   - sidecar changed-file detection
   - generated file drift detection
+  - manual artifact capture
   - manual verification bundle
   - cooperative project-rule instruction when IDE permissions are unproven
 conformance_risks:

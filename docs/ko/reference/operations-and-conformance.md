@@ -149,6 +149,7 @@ flowchart LR
 - project별 state와 artifact storage를 초기화합니다
 - 기준 접점과 capability profile을 등록합니다
 - manifest를 통해 connector-managed file을 만들거나 refresh합니다
+- Connector Manifest에 connector profile 최신성, capability profile version, detected version, last verification time, conformance 또는 operator-check 근거를 기록합니다
 - MCP configuration이 harness server에 닿을 수 있는지 확인합니다
 - conformance smoke check를 실행하거나 실행할 command를 출력합니다
 
@@ -169,7 +170,7 @@ sequenceDiagram
   Op->>Core: smoke 실행 또는 command 출력
 ```
 
-Connect는 사람이 편집한 내용을 조용히 덮어쓰지 않고 generated-file drift를 보고해야 합니다. 접점별 generated file 이름은 surface cookbook에 속합니다.
+Connect는 사람이 편집한 내용을 조용히 덮어쓰지 않고 generated/managed manifest drift를 보고해야 합니다. 여기에는 generated file, managed block, MCP config snippet, 오래된 capability profile 최신성이 포함됩니다. 접점별 generated file 이름은 surface cookbook에 속합니다.
 
 Connect drift output 예시:
 
@@ -192,10 +193,10 @@ authority   edited generated file은 Task state가 아니며 조용히 overwrite
 | project | registered project, repo root, static config 유효성 |
 | state | current state 읽기 가능성, JSON field parse와 shape 유효성, owner-bound status value, state-version과 idempotency 일관성, locks, active Task 일관성 |
 | MCP | server 도달성, Core 도달성, read resource 사용 가능 여부, public tool 사용 가능 여부 |
-| 접점 | capability profile, 생성 manifest, MCP config freshness, required MCP tool-call 가능 여부 |
+| 접점 | capability profile, profile 최신성, 오래된 capability profile 감지, generated/managed manifest drift, MCP config freshness, required MCP tool-call 가능 여부 |
 | artifacts | 파일 존재 여부, hash, size, redaction state, Task/Run 또는 artifact-link 관계 |
 | projections | 대기 중인 job, freshness, managed hash drift, 렌더링 실패 |
-| reconcile | 대기 중인 human edit, managed block drift, generated-file drift |
+| reconcile | 대기 중인 human edit, managed block drift, generated/managed manifest drift |
 | validators/checks | 필수 stable ValidatorResult 발행 validator와 별도로 수집되는 Core check/precondition category |
 | agency/stewardship/context | Decision Packet과 decision gate 준비 상태, Autonomy Boundary 준비 상태, Residual Risk 가시성, codebase stewardship, context freshness |
 | security/threat model | 로컬 MCP binding/access 기대사항, 등록된 project/Task/surface 일관성, connector drift, 민감 category 부작용, redaction, omission, block 적용 범위 |
@@ -368,7 +369,7 @@ Target:
 - Domain Language proposals
 - Module Map proposals
 - Interface Contract proposals
-- connector generated-file drift
+- connector generated/managed manifest drift
 - 현재 작업에 영향을 주는 최신이 아닌 projection references
 
 Decision outcome:
@@ -2044,6 +2045,8 @@ expected_error:
   code: RECONCILE_REQUIRED
 ```
 
+이 예시는 generated/managed manifest drift coverage를 나타냅니다. Connector conformance는 fixture-only manifest field를 여기 추가하지 않고도 오래된 capability profile 감지와 profile 최신성 보고를 함께 확인합니다.
+
 ```yaml
 scenario_id: CONN-journey-card-shown-before-significant-resume
 initial_state:
@@ -3138,7 +3141,7 @@ expected_error: null
 | Scenario ID | Core 또는 operator action | Required assertions |
 |---|---|---|
 | `CORE-projection-stale-state-current-distinction` | `status`, `next`, 또는 `projection_refresh` | `TASK` projection이 `stale`이거나 latest refresh가 `failed`여도 current Task state는 읽을 수 있고 authoritative하게 남습니다. Fixture는 current state version, projection freshness 또는 job status, `PROJECTION_STALE` 또는 projection-failure reporting을 분리해 검증합니다. Projection 문제는 Task result를 failed로 만들거나, current state를 대체하거나, gate를 충족하거나, write를 authorize하지 않습니다. |
-| `RECONCILE-managed-block-edit-routes-to-reconcile` | `projection_refresh` 또는 `reconcile` | Managed block 안의 human edit 또는 generated-file drift는 reconcile item을 만들고, explicit reconcile decision이 기록될 때까지 canonical state를 바꾸지 않습니다. Projection output은 reconcile outcome에 따라 skipped, stale, failed, refreshed 중 하나로 처리되며, fixture assertion은 edited Markdown text만 비교하지 않고 reconcile item, projection status, events, error를 비교합니다. |
+| `RECONCILE-managed-block-edit-routes-to-reconcile` | `projection_refresh` 또는 `reconcile` | Managed block 안의 human edit 또는 generated/managed manifest drift는 reconcile item을 만들고, explicit reconcile decision이 기록될 때까지 canonical state를 바꾸지 않습니다. Projection output은 reconcile outcome에 따라 skipped, stale, failed, refreshed 중 하나로 처리되며, fixture assertion은 edited Markdown text만 비교하지 않고 reconcile item, projection status, events, error를 비교합니다. |
 | `CORE-same-session-self-review-not-detached-verification` | `record_eval` 또는 `close_task` | Same-session self-review, 같은 chat transcript, independence가 없는 bundle은 useful context가 될 수 있지만 detached verification을 passed로 설정하거나 assurance를 올릴 수 없습니다. Fixture는 same-session violation 또는 independence finding을 검증하고, detached verification이 required이면 `verification_gate`를 pending 또는 blocked로 유지하며, 다른 valid Eval path, waiver, accepted risk가 해결하지 않는 한 close가 blocked로 남는지 검증합니다. |
 
 #### V1 Browser QA Capture Candidate Entries
@@ -3156,7 +3159,7 @@ expected_error: null
 최소 MVP suite:
 
 - core: 활성 상태 확인, advisor close 처리, direct close 처리, 쓰기 gate, Write Authorization 생성, 필수 조건, invalid case coverage, Approval 필요 조건과 Approval lifecycle retry, 근거 부족 처리, same-session verification guard 확인, QA 필요 조건 처리, acceptance 필요 조건 처리, projection failure 분리 확인, current-state와 stale-projection 구분
-- connector: startup phrase 없는 자연어 intake, plain-language 요청을 Harness record로 라우팅, capability profile, MCP unavailable 보류, 생성 manifest drift 감지, 변경 경로 감지, artifact 수집, fallback 시 보장 수준 표시, 중요한 재개 전에 현재 Journey Card 표시, Decision Packet을 포괄 승인처럼 다루지 않음, Autonomy Boundary 초과를 Decision Packet 또는 blocker로 라우팅
+- connector: startup phrase 없는 자연어 intake, plain-language 요청을 Harness record로 라우팅, capability profile, connector profile 최신성, 오래된 capability profile 감지, MCP unavailable 보류, generated/managed manifest drift 감지, 변경 경로 감지, artifact 수집, native capture가 없을 때 수동 artifact capture fallback, cooperative/detective/manual fallback 동작을 preventive 또는 isolated로 상향 표시하지 않는 fallback 보장 수준 표시, 중요한 재개 전에 현재 Journey Card 표시, Decision Packet을 포괄 승인처럼 다루지 않음, Autonomy Boundary 초과를 Decision Packet 또는 blocker로 라우팅
 - artifact-redaction: registered artifact 경계 확인, 신뢰할 수 없는 `staged_uri` 처리, Task-scoped artifact relation validation, `secret_omitted`의 evidence sufficiency 한계 확인, 커밋된 `blocked` metadata-only notice 확인, 이후 표시/근거 영향, artifact 무결성 확인, secret/PII omission reporting, export/Release Handoff 비노출
 - connector guard/freeze: cooperative/detective freeze와 guard 표시, careful-mode가 권한을 만들지 않는 동작. Preventive `T4` pre-tool blocking은 접점별 fixture가 hook, wrapper, sidecar, permission layer로 covered operation을 실행 전에 차단할 수 있음을 증명할 때만 포함합니다.
 - agency: 차단하는 사용자 소유 판단에는 Decision Packet 필요, options/trade-offs/recommendation/uncertainty/deferral/residual-risk impact를 갖춘 Decision Packet 품질 확인, 사용자 소유 제품 또는 중요한 technical trade-off write guard, AFK Autonomy Boundary stop conditions, successful close 전에 known close-relevant Residual Risk를 보이게 함, known close-relevant risk가 없을 때 `ResidualRiskSummary.status=none`, risk-accepted close에는 acceptance 전에 사용자에게 보였던 risk를 가리키는 accepted Residual Risk refs 필요, Approval, QA, acceptance, Residual Risk 수용 구분
