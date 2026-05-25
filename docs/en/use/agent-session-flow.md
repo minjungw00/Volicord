@@ -116,6 +116,16 @@ Use this distinction when explaining stops and permissions:
 | Approval | May this sensitive step proceed? | Allows a named sensitive action within its recorded scope and expiry. | Does not decide user-owned judgment, prove correctness, accept risk, or create Write Authorization. |
 | Write Authorization | May this exact write attempt happen now? | Records that Core allowed one compatible write attempt after the required checks. | Is not reusable and does not expand scope, Autonomy Boundary, or Approval. |
 
+When a prompt or status uses the word "approved," name the actual authority or judgment path: sensitive-action Approval, scope confirmation, Decision Packet resolution, residual-risk acceptance, final acceptance, or Write Authorization status. Do not use "approved" as a catch-all label.
+
+Examples:
+
+- Dependency install approval: approval to run the install or update dependency files does not decide that the new dependency is the right architecture choice. If that choice affects compatibility, rollback, cost, or maintenance, use a Decision Packet.
+- Secret access approval: approval to read or use a secret inside the requested scope does not permit exposing secret values in artifacts, projections, exports, logs, screenshots, or summaries.
+- Auth/system change approval: approval to touch auth files, permissions, or system configuration does not choose session auth, JWT, social login, role model, lockout behavior, or user notice.
+- Public API change decision: resolving the API direction decides the contract choice for the Task; it is not deployment authority, merge authority, or a reusable Write Authorization.
+- Final acceptance: accepting the result does not authorize more writes, approve new sensitive actions, or retroactively satisfy missing evidence, QA, verification, or Write Authorization.
+
 Inside the Autonomy Boundary, the agent may decide ordinary implementation details: whether to reuse an existing helper, how to split a private function, where to place focused tests, or which conservative internal approach best fits the agreed result. The agent must stop for user judgment before public API or module contract changes, security or privacy trade-offs, UX or product trade-offs, material technical direction such as dependency or migration choices, scope expansion, or residual-risk acceptance.
 
 ## Blocking user-owned judgment
@@ -247,6 +257,18 @@ Bad decision stop:
 
 ```text
 Need approval to continue.
+```
+
+Good approval summary:
+
+```text
+Approved for: install zod and update the package lock within CU-03. Not decided: whether validation should become part of the public API. Next safe action: retry prepare_write for the exact dependency-file write.
+```
+
+Bad approval summary:
+
+```text
+Approved, so I will finish the auth design, implement it, deploy it, and close.
 ```
 
 Good close block:

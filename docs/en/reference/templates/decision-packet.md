@@ -15,6 +15,10 @@ Use `DEC` when standalone Decision Packet projection is enabled for user-owned p
 - evidence and artifact refs
 - projection freshness inputs
 
+Approval-shaped display bullets such as "what this approval covers," "what this approval does not cover," and "secret exposure boundary" are rendered summaries derived from linked Approval records, approval scope, related Decision Packet refs, and current write or close context. They are not new canonical schema fields, DDL columns, state records, authority inputs, or independent gates.
+
+A resolved Decision Packet is not sensitive Approval unless it is the approval-shaped Decision Packet linked to an Approval record. Other Decision Packet resolutions may settle user-owned judgment, waivers, residual-risk acceptance, final acceptance, or reconcile choices, but they do not grant sensitive-action Approval.
+
 ## Rendered sections
 
 - Why Now
@@ -37,9 +41,12 @@ Use the same rendered sections for these common Decision Packet shapes. These cu
 
 - Product/UX trade-off: failed-login feedback as inline message, toast, or modal/layer. Put flow, interruption, accessibility, copy, and product-risk differences under Options and Recommendation.
 - Technical choice: session cookie, JWT, or social login. Put revocation, CSRF/XSS exposure, client compatibility, implementation cost, and migration impact under Options and Minimum Context To Judge.
+- Dependency approval versus dependency decision: if the user is approving an install command or dependency-file edit, put that sensitive-action boundary under Approval-Shaped Context. If the user is choosing whether the dependency is the right architecture direction, put the technical choice under What User Is Deciding and Options.
 - Security-sensitive approval: put the approval boundary under Approval-Shaped Context. If roles, exported fields, redaction, audit logging, retention, rollback, or user notice remain undecided, name them as unresolved product/security judgments and route them to separate compatible Decision Packets. Do not treat the approval packet as resolving those judgments.
+- Public API/interface decision: put caller compatibility, migration path, documentation promise, and rollback risk under Options and Minimum Context To Judge. Do not treat a resolved API decision as merge authority, deployment authority, or Write Authorization.
 - QA or verification waiver: put the skipped check or surface, accepted user/product/technical risk, relevant refs, close impact, and smallest credible follow-up under User Decision And Accepted Risk and Follow-Up.
 - Residual-risk acceptance before close: put the visible limitation, existing evidence, risk refs the user is being asked to accept, and remaining follow-up under Current State, Minimum Context To Judge, User Decision And Accepted Risk, and Follow-Up.
+- Final acceptance: put the final result, evidence status, Manual QA and verification status, and close-relevant residual-risk visibility under Current State and Minimum Context To Judge. Do not treat final acceptance as approval for new sensitive actions, additional writes, deployment, or merge.
 
 ## Full template
 
@@ -79,12 +86,18 @@ updated_at: 2026-05-06T09:30:15+09:00
 - decision_kind=approval scope:
 - linked approval record:
 - sensitive categories:
+- what this approval covers:
+- what this approval does not cover:
 - user-owned judgment requiring separate Decision Packet:
 - approval boundary:
 - write authorization boundary:
+- secret exposure boundary:
 
 ## What User Is Deciding
+- decision category:
 - decision:
+- what this decision settles:
+- what this decision does not settle:
 - affected scope:
 - affected acceptance criteria:
 - affected gates:

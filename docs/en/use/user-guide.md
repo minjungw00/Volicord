@@ -115,12 +115,15 @@ Harness may use four related labels for this:
 | Approval | Permission for a sensitive step. It is not acceptance, correctness, or user-owned judgment. |
 | Write Authorization | A one-attempt write allowance from `prepare_write`. It does not expand the scope or Autonomy Boundary. |
 
+If the agent asks you to approve something, the prompt should label the actual path. The user may be approving a sensitive action, confirming scope, resolving a Decision Packet, accepting residual risk, accepting the final result, or checking Write Authorization status. "Approved" should not be a catch-all label or blank check.
+
 Useful phrases:
 
 ```text
 Start with the scope and questions.
 That scope works. Do not expand beyond what we just agreed.
 If scope needs to grow, show me the options and impact first.
+What exactly am I approving here?
 ```
 
 Harness may describe those boundaries as the active Change Unit, and it may use a Decision Packet when a scope change needs your judgment. You do not need to lead with those labels.
@@ -280,6 +283,14 @@ These words answer different questions. Keep them separate near close, even when
 Approval is not acceptance. Tests passing do not mean Manual QA happened. Same-session self-review can be a useful self-check, but it is not detached verification. Accepting a result does not prove it is correct. Accepting residual risk is not proof either; it means the known uncertainty was visible and accepted for this Task. Final acceptance, when required, should come after close-relevant residual risk has been shown or reported as no known close-relevant risk.
 
 Examples that may need approval include dependency additions, auth or permission changes, data model changes, public API changes, destructive writes, secret access, and production configuration changes. Approval only answers whether a sensitive step may proceed; a separate Decision Packet may still be needed for the dependency, migration, interface, module-boundary, product, material technical, QA, or risk choice itself.
+
+Common "approved" mix-ups:
+
+- Approving a dependency install is not the same as choosing that dependency as the architecture direction.
+- Approving secret access is not permission to reveal secret values in artifacts, projections, exports, logs, screenshots, or summaries.
+- Approving auth or system-file access is not choosing session auth, JWT, social login, role design, lockout behavior, or user notice.
+- Deciding a public API change is not permission to deploy, merge, or make additional writes.
+- Final acceptance means you accept the result when that task path requires it; it is not Write Authorization for more edits.
 
 If the agent asks for a QA or verification waiver, it should use the Decision Packet or required recorded judgment path for the task. That prompt should say what is not being checked, what risk you would accept, what follow-up remains, which refs matter, and how close is affected. A casual chat statement should not be treated as a close-relevant waiver when accepted risk is involved. If the agent asks to close with residual risk, it should show the remaining limitation first, then ask whether you accept that risk for this Task.
 

@@ -16,9 +16,12 @@ Use `APR` after an approval request has been committed and Harness needs a reada
 
 A non-mutating `approval_request_candidate` returned by `prepare_write` is not an `APR` source and must be displayed, if at all, as candidate display.
 
+Boundary summary fields are rendered summaries derived from approval scope, linked Approval records, related Decision Packet refs, and current write or close context. They are not canonical schema fields, DDL columns, state records, authority inputs, or independent gates.
+
 ## Rendered sections
 
 - Request Summary
+- Boundary Summary
 - Related Decision Packet
 - Requested Scope
 - Why This Is Needed
@@ -48,6 +51,14 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Request Summary
 - proposed action:
+- sensitive action being approved:
+- what the word "approved" means here:
+
+## Boundary Summary
+- this request covers:
+- this request does not decide:
+- if granted, still requires later:
+- secret exposure boundary:
 
 ## Related Decision Packet
 - approval-shaped Decision Packet:
@@ -107,6 +118,10 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Boundary
 - approval does not resolve user-owned product or material technical judgment, prove correctness, replace verification, replace Manual QA, imply acceptance, or accept residual risk.
 - approval is not Write Authorization; a later compatible `prepare_write` retry must allow the write before implementation or direct `record_run` can consume authorization.
+- dependency install approval does not decide the architecture direction for using that dependency.
+- secret access approval does not permit exposing secret values in artifacts, projections, exports, logs, screenshots, or summaries.
+- auth, permission, or system-change approval does not decide session auth, JWT, social login, role model, lockout behavior, or user notice.
+- public API direction, deployment, merge, final acceptance, and additional write attempts need their own compatible authority path when required.
 ````
 
 ## Notes

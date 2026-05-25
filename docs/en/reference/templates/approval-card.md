@@ -13,6 +13,8 @@ Use the approval card when a pending approval needs a compact user-facing displa
 - baseline ref
 - risks, alternatives, and recommendation
 
+Coverage fields such as `{approval_covers}` and `{approval_does_not_cover}` are rendered summaries derived from approval scope, linked Approval records, related Decision Packet refs, and current write or close context. They are not canonical schema fields, DDL columns, state records, authority inputs, or independent gates.
+
 ## Rendered sections
 
 - approval requirement
@@ -27,6 +29,8 @@ Use the approval card when a pending approval needs a compact user-facing displa
 - risks
 - alternatives
 - recommendation
+- what this approval covers
+- what this approval does not cover
 - approval question
 
 ## Full template
@@ -38,6 +42,12 @@ Display only: approval must still be recorded through the canonical approval dec
 {approval_id} {category}
 Request: {summary}
 Purpose: {why_needed}
+This approval would cover:
+{approval_covers}
+
+This approval would not cover:
+{approval_does_not_cover}
+
 Allowed paths:
 {allowed_paths}
 
@@ -65,7 +75,7 @@ Alternatives:
 Recommendation:
 {recommendation}
 
-Do you approve this scope?
+Do you approve this sensitive action and scope only?
 ````
 
 ## Notes
@@ -73,3 +83,5 @@ Do you approve this scope?
 This template is a rendered card shape, not approval authority. Approval still requires the canonical approval decision path.
 
 Approval does not resolve user-owned product or material technical judgment, prove correctness, replace verification, replace Manual QA, imply acceptance, accept residual risk, or create Write Authorization.
+
+Approval cards should make the Approval boundary explicit. For example, dependency install Approval is not an architecture decision; secret access Approval is not permission to expose secret values; auth or system Approval is not a session/JWT/social-login choice; and final acceptance is not permission for additional writes.
