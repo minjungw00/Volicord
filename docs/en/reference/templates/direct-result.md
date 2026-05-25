@@ -102,6 +102,6 @@ updated_at: 2026-05-06T09:40:00+09:00
 
 Direct work may close self-checked by default unless policy or the user requires detached verification or other gates. A consumed Write Authorization ref may be displayed, but the projection does not become the canonical authorization record.
 
-Checks and tests in a Direct Result are evidence or self-check context. They do not become detached verification without a qualifying Eval, do not become Manual QA without a Manual QA result or valid waiver, and do not imply final acceptance. If direct work closes with accepted risk, the close summary should point to the required judgment path, Residual Risk refs, and follow-up instead of presenting the result as detached verified.
+Checks and tests in a Direct Result are evidence or self-check context. They do not become detached verification without a qualifying Eval, do not become Manual QA without a Manual QA result or valid waiver, and do not imply final acceptance. If direct work closes with accepted risk, the close summary should point to accepted Residual Risk refs, the Decision Packet that recorded the risk acceptance when one was required, and follow-up instead of presenting the result as detached verified.
 
 Direct result artifact refs must keep redaction state visible. `secret_omitted` supports only visible nonsecret evidence, and `blocked` means the raw input is unavailable until resolved by a replacement, waiver, Decision Packet outcome, accepted risk, or documented fallback.

@@ -12,7 +12,7 @@ Eval 결과의 verdict, assurance 영향, 검토한 evidence, 남은 작업, 사
 - 검토된 task, run, Evidence Manifest, TDD trace, diff, log, approval, design 참조
 - blocker 또는 rework
 - 사용자 후속 조치
-- close 맥락이 렌더링될 때 Manual QA, 수용, Residual Risk, waiver 판단 참조
+- close 맥락이 렌더링될 때 Manual QA, 수용, Residual Risk, verification-waiver Decision Packet refs, `verification_gate` status
 
 ## 렌더링 섹션
 
@@ -58,7 +58,7 @@ close 맥락:
 - Manual QA: {manual_qa_status_or_needed}
 - 수용: {acceptance_status_or_needed}
 - Residual Risk: {residual_risk_summary|none}
-- 판단 경로: {verification_waiver_required_judgment_ref|none}
+- verification waiver record: {waived이면 Decision Packet ref와 `verification_gate=waived_by_user`|none}
 - 관련 refs: {verification_waiver_refs|none}
 - close 영향: {verification_waiver_close_impact|none}
 
@@ -73,6 +73,6 @@ close 맥락:
 
 이 template은 렌더링 결과인 카드 형태일 뿐 verification 권한 자체가 아닙니다. Eval 기록과 gate 상태가 기준입니다.
 
-Verification은 기록된 review boundary에서 correctness를 확인합니다. Manual QA를 기록하거나, 사용자 수용을 암시하거나, Residual Risk를 수용하지 않습니다. 같은 세션의 self-review는 self-check 또는 review note로 보여줄 수 있지만 detached verification으로 렌더링하면 안 됩니다. Verification waiver는 필요한 판단 경로, 생략한 확인, 수용하는 위험, 후속 작업, 관련 refs, close 영향을 보여줘야 하며, detached verification을 만들거나 assurance를 높이지 않습니다.
+Verification은 기록된 review boundary에서 correctness를 확인합니다. Manual QA를 기록하거나, 사용자 수용을 암시하거나, Residual Risk를 수용하지 않습니다. 같은 세션의 self-review는 self-check 또는 review note로 보여줄 수 있지만 detached verification으로 렌더링하면 안 됩니다. Verification waiver는 required인 경우 사용자 소유 waiver를 기록한 Decision Packet, `verification_gate=waived_by_user`, 생략한 확인, 수용하는 위험, 후속 작업, 관련 refs, close 영향을 보여줘야 하며, detached verification을 만들거나 assurance를 높이지 않습니다.
 
 이 card는 omitted 또는 blocked raw bytes를 검토한 것처럼 암시하면 안 됩니다. `secret_omitted`는 visible nonsecret claim만 뒷받침할 수 있고, `blocked`는 documented resolution이 없는 한 unavailable input입니다.

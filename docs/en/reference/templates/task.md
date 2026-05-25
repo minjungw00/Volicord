@@ -370,6 +370,6 @@ Implementation Micro-Plan in `TASK` is a lightweight execution aid rendered from
 
 Review Stages in `TASK` are managed display sections. They do not satisfy gates, authorize writes, accept risk, close the task, or create `detached_verified` assurance.
 
-Waiver displays in `TASK` are summaries only. Close-relevant QA or verification waivers should point to the Decision Packet or required judgment path, skipped check or surface, accepted risk, follow-up, relevant refs, and close impact. A QA waiver does not become Manual QA, and a verification waiver does not create detached verification.
+Waiver displays in `TASK` are summaries only. Close-relevant QA or verification waivers should point to the existing record that makes the waiver valid: `manual_qa_records`/`qa_gate=waived` and a QA waiver Decision Packet when required, or `verification_gate=waived_by_user` and its Decision Packet when required. They should also show the skipped check or surface, accepted risk, follow-up, relevant refs, and close impact. A QA waiver does not become Manual QA, and a verification waiver does not create detached verification.
 
 Artifact refs shown in `TASK`, Journey, evidence, and report sections must preserve redaction state. `secret_omitted` refs may support only visible nonsecret evidence; `blocked` refs show committed metadata-only notices and unavailable input rather than raw content.

@@ -116,7 +116,7 @@ Use this distinction when explaining stops and permissions:
 | Approval | May this sensitive step proceed? | Allows a named sensitive action within its recorded scope and expiry. | Does not decide user-owned judgment, prove correctness, accept risk, or create Write Authorization. |
 | Write Authorization | May this exact write attempt happen now? | Records that Core allowed one compatible write attempt after the required checks. | Is not reusable and does not expand scope, Autonomy Boundary, or Approval. |
 
-When a prompt or status uses the word "approved," name the actual authority or judgment path: sensitive-action Approval, scope confirmation, Decision Packet resolution, residual-risk acceptance, final acceptance, or Write Authorization status. Do not use "approved" as a catch-all label.
+When a prompt or status uses the word "approved," name the exact authority or recorded decision: sensitive-action Approval, scope confirmation, Decision Packet resolution, residual-risk acceptance, final acceptance, or Write Authorization status. Do not use "approved" as a catch-all label.
 
 Examples:
 
@@ -150,7 +150,7 @@ Useful examples:
 - Dependency or migration choice: compare adding a dependency, using existing utilities, or postponing the capability; for schema/data-model migration, compare additive migration, compatibility shim, and breaking cleanup. Explain blast radius, rollback, test boundary, and maintenance cost.
 - Public API/interface or module boundary: compare preserving the current interface, adding a narrow extension, or moving responsibility across a module boundary. Explain caller impact, compatibility risk, boundary tests, and future-change cost.
 - Security-sensitive change: approval to access a secret, change permissions, or export data is only an approval boundary. Separate product or security judgment may still be needed for roles, fields, redaction, audit logging, retention, rollback, and user notice.
-- QA or verification waiver: use the Decision Packet or required recorded judgment path for the task, and name the skipped check or surface, accepted risk, follow-up, relevant refs, and close impact. Example: waive mobile Safari Manual QA for a copy-only change, accept wrapping risk, and keep a browser pass as release follow-up.
+- QA or verification waiver: use the existing recording required for the Task. A QA waiver is recorded through Manual QA/gate state, a verification waiver is recorded as accepted verification risk, and user-owned risk in either waiver uses a Decision Packet. Name the skipped check or surface, accepted risk, follow-up, relevant refs, and close impact. Example: waive mobile Safari Manual QA for a copy-only change, accept wrapping risk, and keep a browser pass as release follow-up.
 - Residual-risk acceptance before close: show the remaining limitation, the evidence that does exist, why close can still be acceptable, and the follow-up that remains.
 
 Ask one blocking question at a time when possible.

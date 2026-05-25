@@ -21,7 +21,7 @@ This document does not define MCP schemas, SQLite DDL, state transition tables, 
 | Policy area | Plain-language question |
 |---|---|
 | `shared_design` | Do we know enough about goal, scope, non-goals, assumptions, product, implementation, verification, QA, or follow-up risks, and user-owned judgments to propose the first safe Change Unit? |
-| `decision_quality` | Is this a product, design, technical, architecture, waiver, or risk choice that needs a recorded judgment path? |
+| `decision_quality` | Is this a product, design, technical, architecture, waiver, or risk choice that needs a Decision Packet or an existing waiver, Residual Risk, QA, or acceptance record? |
 | `autonomy_boundary` | What may the agent do alone, and where must it stop for user judgment? |
 | `vertical_slice` | Is the work shaped as a thin end-to-end slice, or is a horizontal exception recorded? |
 | `feedback_loop` | How will the agent learn whether the change works before and after writing? |

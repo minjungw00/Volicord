@@ -292,7 +292,7 @@ Common "approved" mix-ups:
 - Deciding a public API change is not permission to deploy, merge, or make additional writes.
 - Final acceptance means you accept the result when that task path requires it; it is not Write Authorization for more edits.
 
-If the agent asks for a QA or verification waiver, it should use the Decision Packet or required recorded judgment path for the task. That prompt should say what is not being checked, what risk you would accept, what follow-up remains, which refs matter, and how close is affected. A casual chat statement should not be treated as a close-relevant waiver when accepted risk is involved. If the agent asks to close with residual risk, it should show the remaining limitation first, then ask whether you accept that risk for this Task.
+If the agent asks for a QA or verification waiver, it should name the existing recording it will use. A QA waiver is attached to the Manual QA status, a verification waiver is recorded as accepted verification risk, and user-owned risk in the waiver needs a Decision Packet. That prompt should say what is not being checked, what risk you would accept, what follow-up remains, which refs matter, and how close is affected. A casual chat statement should not be treated as a close-relevant waiver when accepted risk is involved. If the agent asks to close with residual risk, it should show the remaining limitation first, then ask whether you accept that risk for this Task.
 
 Applied examples:
 

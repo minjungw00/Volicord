@@ -21,7 +21,7 @@
 | 정책 영역 | 쉬운 질문 |
 |---|---|
 | `shared_design` | 목표, 범위, 비목표, 가정, 제품·구현·검증·QA·후속 위험, 사용자 판단이 첫 번째 안전한 Change Unit을 제안할 만큼 구체화됐는가? |
-| `decision_quality` | 제품, 설계, 기술, 아키텍처, waiver, risk 선택에 기록된 판단 경로가 필요한가? |
+| `decision_quality` | 제품, 설계, 기술, 아키텍처, waiver, risk 선택에 Decision Packet 또는 기존 waiver, Residual Risk, QA, acceptance 기록이 필요한가? |
 | `autonomy_boundary` | Agent가 혼자 할 수 있는 일과 사용자 판단을 위해 멈춰야 하는 지점은 무엇인가? |
 | `vertical_slice` | 작업이 얇은 end-to-end slice로 잡혔는가, 아니면 수평 예외가 기록됐는가? |
 | `feedback_loop` | Agent는 쓰기 전후에 변경이 동작하는지 어떻게 확인할 것인가? |

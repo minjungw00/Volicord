@@ -12,7 +12,7 @@ Use the Manual QA card when required Manual QA needs a compact prompt showing th
 - target screen or flow
 - checklist items
 - expected screenshot, walkthrough note, or browser log evidence
-- Decision Packet or required judgment-path refs, plus Residual Risk refs, when QA is waived or deferred
+- waiver reason, QA waiver Decision Packet refs when required, and Residual Risk refs when QA is waived or deferred
 - verification, acceptance, and close-impact summaries
 
 ## Rendered sections
@@ -25,7 +25,7 @@ Use the Manual QA card when required Manual QA needs a compact prompt showing th
 - checklist
 - evidence to record
 - close context
-- waiver path
+- waiver recording
 - result prompt
 
 ## Full template
@@ -52,21 +52,21 @@ Close context:
 - acceptance impact: {acceptance_impact}
 - residual risk or follow-up: {residual_risk_or_follow_up|none}
 
-Waiver path:
+Waiver recording:
 - skipped Manual QA surface:
 - accepted risk:
 - follow-up:
 - relevant refs:
 - close impact:
-- Judgment path: {decision_packet_or_required_judgment_ref|required before waiver is treated as user-owned judgment}
+- waiver record: {manual_qa_record_id and waiver_reason; waiver_decision_packet_ref when user-owned risk is involved}
 
-Record the Manual QA result, or route a QA waiver through the required judgment path?
+Record the Manual QA result, record an allowed low-risk QA waiver reason, or request a QA waiver Decision Packet for user-owned risk?
 ````
 
 ## Notes
 
 This template is a rendered card shape, not canonical QA state. `qa_gate` remains the close-relevant gate.
 
-Manual QA is human inspection. Passing tests, browser smoke, screenshot capture, verification, or user acceptance may support the close context, but they do not become Manual QA unless a Manual QA result is recorded or a valid QA waiver is accepted through the required judgment path. A chat statement alone is not enough when the waiver affects close or accepted risk.
+Manual QA is human inspection. Passing tests, browser smoke, screenshot capture, verification, or user acceptance may support the close context, but they do not become Manual QA unless `record_manual_qa` records a Manual QA result or a valid QA waiver updates `qa_gate=waived` with a waiver reason and, when user-owned risk is involved, a compatible QA waiver Decision Packet. A chat statement alone is not enough when the waiver affects close or accepted risk.
 
-The card may ask for replacement evidence or a waiver path when an artifact is `secret_omitted` or `blocked`, but it must not display omitted values or blocked raw capture content.
+The card may ask for replacement evidence or waiver recording when an artifact is `secret_omitted` or `blocked`, but it must not display omitted values or blocked raw capture content.

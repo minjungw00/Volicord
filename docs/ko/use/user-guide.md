@@ -292,7 +292,7 @@ flowchart LR
 - Public API 변경을 결정하는 것은 deploy, merge, 추가 write를 허가하는 것이 아닙니다.
 - Final acceptance는 해당 Task 경로가 요구할 때 결과를 수용한다는 뜻입니다. 추가 edit를 위한 Write Authorization이 아닙니다.
 
-에이전트가 QA 또는 verification waiver를 요청한다면 해당 Task의 Decision Packet 또는 필요한 기록된 판단 경로를 사용해야 합니다. 그 판단 prompt는 무엇을 확인하지 않는지, 사용자가 어떤 위험을 받아들이는지, 어떤 후속 작업이 남는지, 어떤 refs가 관련되는지, close에 어떤 영향을 주는지 말해야 합니다. close에 영향을 주는 waiver나 위험 수용이 있다면 가벼운 채팅 문장만으로 waiver가 기록된 것처럼 다루면 안 됩니다. 남은 위험을 안고 close하자고 요청한다면 먼저 남은 한계를 보여준 뒤, 그 위험을 이 Task에서 수용하는지 물어야 합니다.
+에이전트가 QA 또는 verification waiver를 요청한다면 어떤 기존 기록 방식을 사용할지 이름 붙여야 합니다. QA waiver는 Manual QA 상태에 붙고, verification waiver는 accepted verification risk로 기록되며, waiver에 사용자 소유 위험이 있으면 Decision Packet이 필요합니다. 그 판단 prompt는 무엇을 확인하지 않는지, 사용자가 어떤 위험을 받아들이는지, 어떤 후속 작업이 남는지, 어떤 refs가 관련되는지, close에 어떤 영향을 주는지 말해야 합니다. close에 영향을 주는 waiver나 위험 수용이 있다면 가벼운 채팅 문장만으로 waiver가 기록된 것처럼 다루면 안 됩니다. 남은 위험을 안고 close하자고 요청한다면 먼저 남은 한계를 보여준 뒤, 그 위험을 이 Task에서 수용하는지 물어야 합니다.
 
 적용 예시:
 

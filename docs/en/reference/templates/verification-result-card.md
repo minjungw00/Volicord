@@ -12,7 +12,7 @@ Use the verification result card when an Eval result needs a compact user-facing
 - reviewed task, run, Evidence Manifest, TDD trace, diff, log, approval, and design refs
 - blockers or rework
 - user follow-up
-- Manual QA, acceptance, Residual Risk, and waiver judgment refs when close context is rendered
+- Manual QA, acceptance, Residual Risk, verification-waiver Decision Packet refs, and `verification_gate` status when close context is rendered
 
 ## Rendered sections
 
@@ -58,7 +58,7 @@ Close context:
 - Manual QA: {manual_qa_status_or_needed}
 - acceptance: {acceptance_status_or_needed}
 - residual risk: {residual_risk_summary|none}
-- judgment path: {verification_waiver_required_judgment_ref|none}
+- verification waiver record: {Decision Packet ref and `verification_gate=waived_by_user` when waived|none}
 - relevant refs: {verification_waiver_refs|none}
 - close impact: {verification_waiver_close_impact|none}
 
@@ -73,6 +73,6 @@ User follow-up:
 
 This template is a rendered card shape, not verification authority. Eval records and gate state remain canonical.
 
-Verification checks correctness from the recorded review boundary. It does not record Manual QA, imply user acceptance, or accept residual risk. Same-session self-review may be shown as a self-check or review note, but it must not be rendered as detached verification. A verification waiver should show the required judgment path, skipped check, accepted risk, follow-up, relevant refs, and close impact; it does not create detached verification or upgrade assurance.
+Verification checks correctness from the recorded review boundary. It does not record Manual QA, imply user acceptance, or accept residual risk. Same-session self-review may be shown as a self-check or review note, but it must not be rendered as detached verification. A verification waiver should show the Decision Packet that records the user-owned waiver when required, `verification_gate=waived_by_user`, skipped check, accepted risk, follow-up, relevant refs, and close impact; it does not create detached verification or upgrade assurance.
 
 The card must not imply omitted or blocked raw bytes were reviewed. `secret_omitted` can support only visible nonsecret claims; `blocked` is unavailable input unless a documented resolution exists.
