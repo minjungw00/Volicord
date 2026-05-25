@@ -44,7 +44,7 @@ Checklist:
 기록할 evidence:
 - screenshot or walkthrough note
 - browser log when relevant
-- redaction/omission/block note when evidence cannot be recorded as raw content
+- evidence를 원본 content로 기록할 수 없을 때의 redaction/omission/block note
 
 close 맥락:
 - 자동 검사: {check_refs|none; Manual QA 결과 아님}

@@ -104,4 +104,4 @@ updated_at: 2026-05-06T09:40:00+09:00
 
 Direct Result의 checks와 tests는 evidence 또는 self-check 맥락입니다. 조건을 충족하는 Eval 없이는 detached verification이 되지 않고, Manual QA 결과 또는 유효한 waiver 없이는 Manual QA가 되지 않으며, 최종 수용을 암시하지도 않습니다. Direct work가 위험 수용으로 close된다면 close 영향 요약은 결과를 detached verified처럼 보여주는 대신 accepted Residual Risk refs, 필요한 경우 risk acceptance를 기록한 Decision Packet, 후속 작업을 가리켜야 합니다.
 
-Direct Result의 ArtifactRef는 `redaction_state`를 보이게 유지해야 합니다. `secret_omitted`는 visible nonsecret evidence만 뒷받침하고, `blocked`는 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback으로 해소될 때까지 raw input이 unavailable하다는 뜻입니다.
+Direct Result의 ArtifactRef는 `redaction_state`를 보이게 유지해야 합니다. `secret_omitted`는 보이는 nonsecret evidence만 뒷받침하고, `blocked`는 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback으로 해소될 때까지 원본 input이 unavailable하다는 뜻입니다.

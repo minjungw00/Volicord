@@ -4,7 +4,7 @@
 
 Projection template과 표시 카드가 렌더링하는 Markdown 형태를 확인할 때 이 파일들을 사용합니다. Projection rule, 권한 경계, 최신성 동작은 [문서 Projection 참조](../document-projection.md)가 정의합니다.
 
-## Template tiering
+## Template 계층
 
 Projection template은 API `ProjectionKind` tier와 일치합니다.
 
@@ -16,17 +16,17 @@ Projection template은 API `ProjectionKind` tier와 일치합니다.
 
 Template은 렌더링 결과일 뿐 기준 상태가 아닙니다. Kernel field, MCP schema, SQLite DDL, gate behavior, artifact integrity rule을 재정의하면 안 됩니다.
 
-렌더링 예시는 이 경계를 독자가 바로 볼 수 있어야 합니다. `source_state_version`은 렌더링에 사용한 state clock을 가리키고, `projection_version` 또는 projection status는 render/template/job view를 가리키며, `updated_at`은 그 view가 만들어진 시각을 가리킵니다. Freshness line은 이 view가 source record와 아직 맞는지 표시할 뿐이며 Task result, gate value, approval, acceptance, evidence가 아닙니다.
+렌더링 예시는 이 경계를 독자가 바로 볼 수 있어야 합니다. `source_state_version`은 렌더링에 사용한 상태 clock을 가리키고, `projection_version` 또는 projection status는 렌더/template/job 보기를 가리키며, `updated_at`은 그 보기가 만들어진 시각을 가리킵니다. Freshness line은 이 보기가 source record와 아직 맞는지 표시할 뿐이며 Task result, gate value, Approval, acceptance, evidence가 아닙니다.
 
 Managed block은 projector가 소유하는 표시 영역입니다. Managed block을 직접 편집한 내용은 상태 변경이 아니라 drift이며 reconcile candidate가 되어야 합니다. `User Notes and Proposals` 같은 사람이 편집할 수 있는 section은 제안 접점입니다. Reconcile 또는 다른 Core state-changing path가 관련 `state.sqlite.task_events` row를 추가한 뒤에야 상태가 됩니다.
 
-Artifact ref를 렌더링하는 모든 template은 `redaction_state`를 보존해야 합니다. Large 또는 sensitive artifact body는 기본적으로 embed하지 않습니다. `secret_omitted` entry는 safe note 또는 handle을 보여줄 수 있고 visible nonsecret evidence만 뒷받침할 수 있습니다. `blocked` entry는 committed metadata-only notice를 unavailable input으로 보여줍니다. Template은 생략된 secret/PII value 또는 blocked raw payload bytes를 inline, reconstruct, summarize, export하면 안 됩니다.
+Artifact ref를 렌더링하는 모든 template은 `redaction_state`를 보존해야 합니다. 크거나 민감한 artifact 본문은 기본적으로 embed하지 않습니다. `secret_omitted` entry는 안전한 note 또는 handle을 보여줄 수 있고, 보이는 nonsecret evidence만 뒷받침할 수 있습니다. `blocked` entry는 커밋된 metadata-only notice를 사용할 수 없는 입력으로 보여줍니다. Template은 생략된 secret/PII value 또는 차단된 원본 payload를 inline, reconstruct, summarize, export하면 안 됩니다.
 
-`redaction_availability_summary`, omitted 또는 blocked impact line, `Downstream Effect` column 같은 display field는 렌더링된 summary일 뿐입니다. 이 값들은 `ArtifactRef.redaction_state`, owner 기록, downstream gate, 근거, QA, 검증, projection, export, Release Handoff 상태에서 파생되며, 새 기준 기록, schema field, DDL value, 권한 입력이 아닙니다.
+`redaction_availability_summary`, 생략/차단 영향 line, `이후 영향` column 같은 표시 field는 표시 전용 요약일 뿐입니다. 이 값들은 `ArtifactRef.redaction_state`, owner 기록, 이후 gate, 근거, QA, 검증, projection, export, Release Handoff 상태에서 파생되며, 새 기준 기록, schema field, DDL value, 권한 입력이 아닙니다.
 
-Decision Packet visibility는 standalone `DEC` Markdown projection에 의존하지 않습니다. MVP surface는 active Decision Packet을 `TASK`, status/next response, judgment-context resource, decision-packet resource를 통해 계속 보여줘야 합니다. Standalone `DEC`는 해당 projection이 켜져 있을 때만 쓰는 선택적 rendered view입니다.
+Decision Packet visibility는 standalone `DEC` Markdown projection에 의존하지 않습니다. MVP surface는 active Decision Packet을 `TASK`, status/next response, judgment-context resource, decision-packet resource를 통해 계속 보여줘야 합니다. Standalone `DEC`는 해당 projection이 켜져 있을 때만 쓰는 선택적 렌더링 보기입니다.
 
-표시 카드는 서로 다른 세 문제를 구분해야 합니다. Stale projection은 읽기용 view가 source record보다 뒤처졌을 수 있다는 뜻이고, stale state 또는 stale evidence는 underlying state, baseline, artifact input이 이동했거나 부족해졌다는 뜻이며, MCP unavailable은 surface가 필요한 Harness/Core capability에 닿지 못한다는 뜻입니다. 상태 변경은 owner record와 Core transition만 할 수 있습니다.
+표시 카드는 서로 다른 세 문제를 구분해야 합니다. Stale projection은 읽기용 보기가 source record보다 뒤처졌을 수 있다는 뜻이고, stale state 또는 stale evidence는 기반 state, baseline, artifact input이 이동했거나 부족해졌다는 뜻이며, MCP unavailable은 surface가 필요한 Harness/Core capability에 닿지 못한다는 뜻입니다. 상태 변경은 owner record와 Core transition만 할 수 있습니다.
 
 ## MVP-required templates
 

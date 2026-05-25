@@ -85,7 +85,7 @@ updated_at: 2026-05-06T10:30:00+09:00
 - raw files excluded by policy:
 
 ## Omitted Or Blocked Content
-| Artifact ID | Affected Owner Or Display | Redaction State | Downstream Effect | Note |
+| Artifact ID | Affected Owner Or Display | Redaction State | 이후 영향 | Note |
 |---|---|---|---|---|
 
 ## Integrity
@@ -106,13 +106,13 @@ updated_at: 2026-05-06T10:30:00+09:00
 - suggested PR checklist:
 - suggested deploy checklist:
 - suggested rollback 또는 monitoring notes:
-- external authority reminder: Deployment, merge, approval, production monitoring, QA 또는 verification waiver, gate satisfaction, final acceptance, residual-risk acceptance, assurance upgrade, Task close는 이 보고서 밖에 남는다.
+- 외부 권한 reminder: Deployment, merge, Approval, production monitoring, QA 또는 verification waiver, gate satisfaction, final acceptance, residual-risk acceptance, assurance upgrade, Task close는 이 보고서 밖에 남는다.
 ````
 
 ## 메모
 
 이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. `EXPORT`는 `ProjectionKind`일 뿐이며, export snapshot과 component는 owner 기록 또는 projection ref에 연결된 artifact로 남습니다.
 
-`EXPORT`는 기본적으로 raw secrets, PII, sensitive log, network trace, screenshot, 기타 sensitive artifact body를 embed하면 안 됩니다. Large 또는 sensitive artifact는 `ArtifactRef`로 나열합니다. Raw file은 policy와 retention이 허용할 때만 포함하고, `secret_omitted` 또는 `blocked` entry는 ref와 note로만 표현합니다.
+`EXPORT`는 기본적으로 원본 secret, PII, 민감 log, network trace, screenshot, 기타 민감 artifact 본문을 embed하면 안 됩니다. 크거나 민감한 artifact는 `ArtifactRef`로 나열합니다. 원본 file은 policy와 retention이 허용할 때만 포함하고, `secret_omitted` 또는 `blocked` entry는 ref와 note로만 표현합니다.
 
-`secret_omitted`에서는 export가 safe omission note 또는 handle, safe stored bytes에 대한 hash를 포함할 수 있지만 omitted value를 포함하면 안 됩니다. `blocked`에서는 export가 committed metadata-only notice artifact와 그 hash, size, content type을 포함할 수 있습니다. 이 fields는 금지된 raw payload가 아니라 notice bytes를 설명합니다. Release Handoff section은 export 전에 documented replacement, waiver, Decision Packet outcome, accepted risk, fallback으로 해소되지 않은 omission 또는 block impact를 unavailable, insufficient, unresolved input으로 동일하게 표시해야 합니다.
+`secret_omitted`에서는 export가 안전한 omission note 또는 handle, 안전하게 저장된 bytes에 대한 hash를 포함할 수 있지만 생략된 value를 포함하면 안 됩니다. `blocked`에서는 export가 커밋된 metadata-only notice artifact와 그 hash, size, content type을 포함할 수 있습니다. 이 field들은 금지된 원본 payload가 아니라 notice bytes를 설명합니다. Release Handoff section은 export 전에 documented replacement, waiver, Decision Packet outcome, accepted risk, fallback으로 해소되지 않은 omission 또는 block impact를 unavailable, insufficient, unresolved input으로 동일하게 표시해야 합니다.

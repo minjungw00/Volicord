@@ -76,7 +76,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - Manual QA:
 - acceptance gate:
 - active change unit:
-- write authority summary:
+- Write Authority Summary:
 - latest report:
 - projection freshness:
 
@@ -117,7 +117,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - approval status:
 - baseline:
 - guarantee:
-- note: Autonomy Boundary is judgment latitude, not write authority.
+- note: Autonomy Boundary는 판단 재량이지 쓰기 권한이 아니다.
 
 ## Implementation Micro-Plan
 - note: execution aid only; active Change Unit scope bounds writes and `prepare_write` creates Write Authorization.
@@ -252,7 +252,7 @@ Long-running `work` task를 위한 expanded TASK section:
 
 ## Implementation Micro-Plan Details
 - source alignment: current Task, active Change Unit, gates, related refs
-- boundary: 기준 상태 아님, scope authority 아님, approval 아님, Write Authorization 아님; active Change Unit이 scope 기준 source로 남음
+- boundary: 기준 상태 아님, 범위 권한 아님, Approval 아님, Write Authorization 아님; active Change Unit이 scope 기준 source로 남음
 
 ### Step Queue
 | Step | State Alignment | Scope Alignment / Likely Paths | Feedback Loop / TDD Status | Evidence Target | Stop Condition |
@@ -366,10 +366,10 @@ Change Unit block sub-template:
 
 `TASK`의 Stewardship Impact는 owner 기록, validator 결과, 참조에서 파생되는 `StewardshipImpactSummary` 표시입니다. Domain Language, Module Map, Interface Contract, Feedback Loop, TDD Trace, residual risk, Decision Packet owner 기록을 대체하지 않습니다.
 
-`TASK`의 Implementation Micro-Plan은 현재 Task와 Change Unit 상태에서 생성되거나 그 상태와 정렬된 가벼운 실행 보조 정보입니다. Product write를 허가하거나, scope를 넓히거나, approval을 충족하거나, 근거를 만들거나, edit만으로 상태를 변경하거나, `prepare_write`를 대체하지 않습니다.
+`TASK`의 Implementation Micro-Plan은 현재 Task와 Change Unit 상태에서 생성되거나 그 상태와 정렬된 가벼운 실행 보조 정보입니다. Product write를 허가하거나, scope를 넓히거나, Approval을 충족하거나, 근거를 만들거나, edit만으로 상태를 변경하거나, `prepare_write`를 대체하지 않습니다.
 
 `TASK`의 Review Stages는 관리되는 표시 섹션입니다. Gates를 충족하거나, write를 허가하거나, 위험을 수용하거나, Task를 닫거나, `detached_verified` assurance를 만들 수 없습니다.
 
-`TASK`의 waiver 표시는 요약일 뿐입니다. close에 영향을 주는 QA 또는 verification waiver는 waiver를 유효하게 만드는 기존 기록을 가리켜야 합니다. QA waiver는 `manual_qa_records`/`qa_gate=waived`와 필요한 경우 QA waiver Decision Packet을, verification waiver는 `verification_gate=waived_by_user`와 필요한 경우 그 Decision Packet을 가리킵니다. 생략한 확인이나 대상, 수용하는 위험, 후속 작업, 관련 refs, close 영향도 함께 보여줘야 합니다. QA waiver는 Manual QA가 되지 않고, verification waiver는 detached verification을 만들지 않습니다.
+`TASK`의 waiver 표시는 요약일 뿐입니다. close에 영향을 주는 QA 또는 verification waiver는 waiver를 유효하게 만드는 기존 기록을 가리켜야 합니다. QA waiver는 `manual_qa_records`/`qa_gate=waived`와 필요한 경우 QA waiver Decision Packet을, verification waiver는 `verification_gate=waived_by_user`와 필요한 경우 그 Decision Packet을 가리킵니다. 생략한 확인이나 대상, 수용하는 위험, 후속 작업, 관련 refs, 닫기 영향도 함께 보여줘야 합니다. QA waiver는 Manual QA가 되지 않고, verification waiver는 detached verification을 만들지 않습니다.
 
-`TASK`, Journey, evidence, report section에 표시되는 artifact ref는 `redaction_state`를 보존해야 합니다. `secret_omitted` ref는 visible nonsecret evidence만 뒷받침할 수 있고, `blocked` ref는 raw content가 아니라 committed metadata-only notice와 unavailable input을 보여줍니다.
+`TASK`, Journey, evidence, report section에 표시되는 artifact ref는 `redaction_state`를 보존해야 합니다. `secret_omitted` ref는 보이는 nonsecret evidence만 뒷받침할 수 있고, `blocked` ref는 원본 content가 아니라 committed metadata-only notice와 unavailable input을 보여줍니다.

@@ -2,22 +2,22 @@
 
 ## 사용 시점
 
-Standalone Decision Packet projection이 켜져 있고 사용자 소유의 제품 판단 또는 중요한 기술 판단, approval 형태의 judgment, waiver, acceptance, residual-risk acceptance, reconcile decision을 보여줘야 할 때 `DEC`를 사용합니다.
+Standalone Decision Packet projection이 켜져 있고 사용자 소유의 제품 판단 또는 중요한 기술 판단, Approval 형태의 판단, waiver, acceptance, residual-risk acceptance, reconcile decision을 보여줘야 할 때 `DEC`를 사용합니다.
 
 ## 기준 기록
 
 - `state.sqlite.decision_packets`
 - 관련 Task와 Change Unit 참조
 - 관련 `decision_gate` 상태와 decision event
-- approval-shaped decision의 approval 기록
+- Approval 형태 decision의 Approval 기록
 - 필요한 경우 관련 reconcile 기록
 - residual risk 참조
 - evidence 및 artifact 참조
 - projection 최신성 입력
 
-Approval-shaped display bullets인 "이 approval이 포괄하는 것", "이 approval이 포괄하지 않는 것", "secret 노출 경계"는 linked Approval records, approval scope, related Decision Packet refs, 현재 write 또는 close context에서 파생한 렌더링 요약입니다. 새로운 canonical schema field, DDL column, state record, authority input, independent gate가 아닙니다.
+Approval 형태 표시 항목인 "이 Approval이 포괄하는 것", "이 Approval이 포괄하지 않는 것", "secret 노출 경계"는 연결된 Approval 기록, Approval 범위, 관련 Decision Packet ref, 현재 쓰기 또는 닫기 context에서 파생한 표시 전용 요약입니다. 새로운 기준 schema field, DDL column, 상태 기록, 권한 입력, 독립 gate가 아닙니다.
 
-Resolved Decision Packet은 Approval record에 linked된 approval-shaped Decision Packet일 때만 sensitive-action Approval입니다. 그 밖의 Decision Packet resolution은 사용자 소유 판단, waiver, residual-risk acceptance, final acceptance, reconcile choice를 확정할 수 있지만 sensitive-action Approval을 부여하지 않습니다.
+해소된 Decision Packet은 Approval 기록에 연결된 Approval 형태 Decision Packet일 때만 sensitive-action Approval입니다. 그 밖의 Decision Packet resolution은 사용자 소유 판단, waiver, residual-risk acceptance, final acceptance, reconcile choice를 확정할 수 있지만 sensitive-action Approval을 부여하지 않습니다.
 
 ## 렌더링 섹션
 
@@ -41,8 +41,8 @@ Resolved Decision Packet은 Approval record에 linked된 approval-shaped Decisio
 
 - Product/UX trade-off: 로그인 실패 피드백을 inline message, toast, modal/layer 중에서 고르는 경우입니다. 흐름, 방해 정도, 접근성, 문구, 제품 위험의 차이는 Options와 Recommendation에 둡니다.
 - 기술 선택: session cookie, JWT, social login 중에서 고르는 경우입니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 구현 비용, migration 영향은 Options와 Minimum Context To Judge에 둡니다.
-- Dependency approval과 dependency decision 구분: 사용자가 install command나 dependency-file edit을 approve하는 경우 그 sensitive-action boundary는 Approval-Shaped Context에 둡니다. 그 dependency가 올바른 architecture 방향인지 선택하는 경우에는 technical choice를 What User Is Deciding과 Options에 둡니다.
-- 보안 민감 approval: approval boundary는 Approval-Shaped Context에 둡니다. 역할, exported fields, redaction, audit logging, retention, rollback, user notice가 아직 결정되지 않았다면 해결되지 않은 제품/보안 판단으로 표시하고 별도의 compatible Decision Packet으로 보냅니다. approval packet 하나가 그 판단까지 해결한 것처럼 쓰면 안 됩니다.
+- Dependency Approval과 dependency decision 구분: 사용자가 install command나 dependency-file edit을 승인하는 경우 그 sensitive-action 경계는 Approval-Shaped Context에 둡니다. 그 dependency가 올바른 architecture 방향인지 선택하는 경우에는 technical choice를 What User Is Deciding과 Options에 둡니다.
+- 보안 민감 Approval: Approval 경계는 Approval-Shaped Context에 둡니다. 역할, exported fields, redaction, audit logging, retention, rollback, user notice가 아직 결정되지 않았다면 해결되지 않은 제품/보안 판단으로 표시하고 별도의 compatible Decision Packet으로 보냅니다. Approval packet 하나가 그 판단까지 해결한 것처럼 쓰면 안 됩니다.
 - Public API/interface decision: caller compatibility, migration path, documentation promise, rollback risk는 Options와 Minimum Context To Judge에 둡니다. Resolved API decision을 merge 권한, deployment 권한, Write Authorization처럼 다루면 안 됩니다.
 - QA 또는 verification waiver: 생략하는 확인이나 surface, 수용하는 사용자·제품·기술 위험, 관련 refs, close 영향, 가장 작은 신뢰 가능한 follow-up은 User Decision And Accepted Risk와 Follow-Up에 둡니다.
 - Close 전 residual-risk acceptance: 사용자에게 보인 한계, 기존 근거, 사용자가 수용할지 판단해야 하는 risk ref, 남은 follow-up은 Current State, Minimum Context To Judge, User Decision And Accepted Risk, Follow-Up에 둡니다.
@@ -83,14 +83,14 @@ updated_at: 2026-05-06T09:30:15+09:00
 - source refs:
 
 ## Approval-Shaped Context, If Applicable
-- decision_kind=approval scope:
+- `decision_kind=approval` 범위:
 - linked approval record:
 - sensitive categories:
-- 이 approval이 포괄하는 것:
-- 이 approval이 포괄하지 않는 것:
+- 이 Approval이 포괄하는 것:
+- 이 Approval이 포괄하지 않는 것:
 - separate Decision Packet이 필요한 사용자 소유 판단:
-- approval boundary:
-- write authorization boundary:
+- Approval 경계:
+- Write Authorization 경계:
 - secret 노출 경계:
 
 ## What User Is Deciding
@@ -140,7 +140,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Consequence Of Deferring
 - consequence:
 - operation impact:
-- close impact:
+- 닫기 영향:
 - residual risk or follow-up visibility:
 
 ## Minimum Context To Judge
