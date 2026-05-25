@@ -16,6 +16,7 @@ Use `EXPORT` when an optional export or report projection is generated for revie
 - reconcile items
 - projection snapshots and projection freshness
 - artifact refs, redaction state, retention, and integrity metadata
+- redaction, omission, and blocked-artifact summaries
 
 ## Rendered sections
 
@@ -24,6 +25,7 @@ Use `EXPORT` when an optional export or report projection is generated for revie
 - Projection Snapshots
 - Artifact Refs
 - Redaction Summary
+- Omitted Or Blocked Content
 - Integrity
 - Release Handoff
 
@@ -70,13 +72,19 @@ updated_at: 2026-05-06T10:30:00+09:00
 - optional design projections:
 
 ## Artifact Refs
-| Artifact ID | Kind | Owner Record | URI | SHA256 | Redaction State | Retention |
-|---|---|---|---|---|---|---|
+| Artifact ID | Kind | Owner Record | URI | SHA256 | Redaction State | Retention | Omission/Block Note |
+|---|---|---|---|---|---|---|---|
 
 ## Redaction Summary
 - secrets omitted:
+- PII omitted:
 - redacted artifacts:
 - blocked artifacts:
+- raw files excluded by policy:
+
+## Omitted Or Blocked Content
+| Artifact ID | Affected Owner Or Display | Redaction State | Note |
+|---|---|---|---|
 
 ## Integrity
 - export hash:
@@ -92,7 +100,7 @@ updated_at: 2026-05-06T10:30:00+09:00
 - residual-risk refs:
 - changed files:
 - projection freshness:
-- redaction notes:
+- redaction/omission/block notes:
 - suggested PR checklist:
 - suggested deploy checklist:
 - suggested rollback or monitoring notes:
@@ -102,3 +110,5 @@ updated_at: 2026-05-06T10:30:00+09:00
 ## Notes
 
 This template is a rendered shape, not canonical state. `EXPORT` is a `ProjectionKind` only; export snapshots and components remain artifacts linked to owner records or projection refs.
+
+`EXPORT` must not embed raw secrets, PII, sensitive logs, network traces, screenshots, or other sensitive artifact bodies by default. Large or sensitive artifacts are listed by `ArtifactRef`; raw files are included only when policy and retention allow them, and `secret_omitted` or `blocked` entries stay represented by refs and notes.

@@ -248,6 +248,8 @@ policy_override
 
 An artifact ref points to a durable evidence file registered in the artifact store. Report projections and record projections use artifact refs when they need evidence-file references; the projection itself is not the evidence file.
 
+Artifact registration is not a loose file dump. A staged file becomes a public `ArtifactRef` only after Core validates the staging or capture source, stored-byte integrity, `redaction_state`, and Task-scoped owner relation.
+
 In the reference implementation, artifact registration is Task-scoped. `ArtifactRef.task_id` and `ArtifactInput.relation.task_id` are required and map to `artifacts.task_id` and `artifact_links.task_id`; `retention_class=project` affects retention policy, not artifact ownership scope.
 
 Later Browser QA Capture uses this artifact boundary instead of a new MVP schema. Screen captures normally use `screenshot`; grouped QA outputs can use `qa_capture`; console logs and network traces can use `log` or `qa_capture`; accessibility snapshots and workflow recordings can use `qa_capture` or `other` with a clear description. All such artifacts remain subject to redaction, secret/PII handling, Task-scoped ownership, and Manual QA record or Feedback Loop attachment rules.
@@ -269,6 +271,15 @@ ArtifactRef:
 ```
 
 For the reference implementation, `uri` uses `harness-artifact://{project_id}/{artifact_id}`. The local file path is resolved through the per-project `artifacts` registry row in `state.sqlite`, not by trusting an absolute path in the API payload.
+
+`redaction_state` is part of the public artifact contract:
+
+| State | User/operator meaning |
+|---|---|
+| `none` | No redaction, omission, or blocking was applied because the registered bytes are allowed evidence under the current policy. |
+| `redacted` | Sensitive content was removed before storage; the unredacted original is not available through Harness. |
+| `secret_omitted` | Secret values or PII are intentionally omitted or replaced by handles. The artifact may support claims whose nonsecret evidence remains visible, but it cannot prove the omitted values themselves. |
+| `blocked` | Capture or registration was blocked for forbidden content. Only a metadata notice may be exposed; evidence, QA, verification, projection, and export displays must show the block instead of implying the raw artifact is available. |
 
 Requests that create or attach evidence use `ArtifactInput`. A request may either reference an existing committed artifact or provide a staged file for Core to validate, register, and return as an `ArtifactRef`.
 
@@ -302,12 +313,13 @@ Rules:
 - `source_kind=existing_artifact` requires `existing_artifact_ref` and must set `staged` to `null`.
 - `source_kind=staged_file` requires `staged` and must set `existing_artifact_ref` to `null`.
 - When an existing artifact is attached to a new record, Core verifies the artifact's task relation and rejects incompatible reuse.
-- `staged_uri` must point to a harness staging location or an approved capture adapter, not an arbitrary absolute path supplied for trust.
+- `staged_uri` is a locator for a Harness staging location or an approved capture adapter output, not permission to read an arbitrary file. Absolute paths, parent traversal, symlink escapes, repo-local paths, and caller-supplied URIs are untrusted unless the staging or capture adapter has already canonicalized them into an approved source.
 - `staged_uri`, `display_name`, and supplied `content_type` are untrusted input until Core has validated the staging or capture source, stored bytes, redaction state, and owner relation.
 - If `expected_sha256` or `expected_size_bytes` is present, Core verifies the stored bytes before commit. Whether or not those fields are supplied, Core records committed `sha256`, `size_bytes`, and `content_type` from the stored bytes.
-- Core applies redaction rules before final storage and records the committed artifact as an `ArtifactRef`.
+- Core applies redaction, omission, or blocking policy before final storage and records the committed artifact as an `ArtifactRef`.
 - Logs, screenshots, network traces, export snapshots, and other captured evidence that may contain secrets or PII must be redacted, omitted, or blocked before registration when policy requires it.
-- Tool responses return committed `ArtifactRef` values in `registered_artifacts`, `bundle_ref`, or other response fields.
+- If policy requires omission or blocking, the committed ref records `redaction_state=secret_omitted` or `redaction_state=blocked`; callers must not treat omitted or blocked bytes as available evidence, QA material, verification input, projection body text, or export payload.
+- Tool responses return committed `ArtifactRef` values in `registered_artifacts`, `bundle_ref`, or other response fields. Responses must not echo `staged_uri` as authority or as a durable evidence URI.
 - `relation.record_kind` must name an existing canonical owner record or rendered projection ref that Core can validate. For non-projection owners in MVP, the concrete owner row must be Task-scoped to `relation.task_id`; project-scoped rows of the same owner kind are not artifact-link targets until a future extension adds project-scoped artifact storage/API. Verification bundles use `ArtifactRef.kind=bundle` or `manifest`; export outputs use `ArtifactRef.kind=export_component` or `retention_class=export`. Neither `verification_bundle` nor `export` is an MVP artifact relation record kind.
 - `relation.record_kind=projection` is valid only for an already rendered or committed Task-scoped projection output that Core can resolve through `projection_jobs`. In MVP, `record_id_hint` names `projection_jobs.projection_job_id`, and the job's `task_id` must match `relation.task_id`; Core may use `target_ref` and `output_path` to validate the hint, but those values do not replace the job id as identity. Project-level projection jobs may still exist where owner docs allow them, but the current MVP artifact API does not register project-scoped artifact links for them.
 

@@ -1031,6 +1031,8 @@ Markdown reports in the Product Repository are not raw artifacts by default. If 
 
 The local layout is also a trust boundary. `state.sqlite`, `registry.sqlite`, and artifact files are authoritative only when they are reachable through the registered project layout and pass the owner, integrity, and shape checks owned by this document. Direct edits, copied artifact files, orphaned staging files, or manually changed connector state are not accepted as committed Harness meaning until Core, `doctor`, `recover`, or `artifacts check` validates or repairs them through the documented paths.
 
+Files under `artifacts/tmp/` are staging inputs, not committed artifacts. A staged path becomes meaningful only when Core validates the path or capture adapter, writes the safe stored bytes under a registered artifact path, inserts the `artifacts` row, and links it to a same-Task owner in one committed transition.
+
 ### Artifact Kind Storage Notes
 
 The `artifacts.kind` field names durable evidence files. It does not make the artifact file the owner of the corresponding state record.
@@ -1041,7 +1043,7 @@ The `artifacts.kind` field names durable evidence files. It does not make the ar
 | `prototype` | Store prototype diffs, screenshots, logs, or throwaway proof artifacts under `artifacts/prototypes/`; product code remains in the Product Repository and committed harness meaning remains in state records. |
 | `architecture_scan` | Store module scans, dependency snapshots, boundary findings, or stewardship evidence under `artifacts/architecture/`; accepted module/interface facts remain in their owner records. |
 | `decision_context` | Store compact context bundles for user judgment under `artifacts/decisions/`; Decision Packet status and outcome remain in `state.sqlite`. |
-| `screenshot` / `qa_capture` / `log` | Store Manual QA screenshots, browser QA capture bundles, console logs, network traces, accessibility snapshots, or workflow recordings under the matching artifact area; the Manual QA record, Feedback Loop, Run, or Evidence Manifest remains the owner record. Automated browser capture is not required for MVP. |
+| `screenshot` / `qa_capture` / `log` | Store Manual QA screenshots, browser QA capture bundles, console logs, network traces, accessibility snapshots, or workflow recordings under the matching artifact area only after required redaction, omission, or blocking; the Manual QA record, Feedback Loop, Run, or Evidence Manifest remains the owner record. Automated browser capture is not required for MVP. |
 | `bundle` / `manifest` | Store verification bundles, evaluator instruction bundles, or artifact manifests under `artifacts/bundles/` or `artifacts/manifests/`; the owner remains an existing Task, Run, Evidence Manifest, Eval, or Task-scoped projection record. |
 | `export_component` | Store export manifest files, projection snapshots, state snapshots, or allowed raw-file copies under `artifacts/exports/`; link them back to the existing owner records they describe, not to an `export` state table. |
 
@@ -1049,12 +1051,12 @@ The `artifacts.kind` field names durable evidence files. It does not make the ar
 
 Artifact registration is part of the Core transition that records the owner record, such as a Task, Run, Decision Packet context, Shared Design, Journey Spine Entry, Evidence Manifest, Eval, Manual QA record, Feedback Loop, TDD Trace, or rendered Task-scoped projection. Verification bundles and export components are artifact files linked to those owner records, not canonical `verification_bundle` or `export` state records.
 
-Artifact registration is the storage boundary for artifact poisoning. A staged path, capture adapter output, file name, extension, declared content type, and requested owner relation are untrusted until registration validates the source, applies redaction or omission, computes stored-byte integrity, and links the artifact to an existing Task-scoped owner record.
+Artifact registration is the storage boundary for artifact poisoning. A staged path, capture adapter output, file name, extension, declared content type, and requested owner relation are untrusted until registration validates the source, applies redaction, omission, or blocking, computes stored-byte integrity, and links the artifact to an existing Task-scoped owner record. A `staged_uri` from the API is only a locator into approved staging or capture output; it cannot bypass this boundary by naming an arbitrary absolute path, symlink target, parent traversal, or repo-local file.
 
 MVP registration steps:
 
-1. Accept a connector-captured or operator-supplied file only from a staging path under the project artifact `tmp/` directory or from an approved capture adapter.
-2. Apply redaction or omission before hashing. Raw secrets must not be copied into durable artifact storage.
+1. Accept a connector-captured or operator-supplied file only from a canonical staging path under the project artifact `tmp/` directory or from an approved capture adapter.
+2. Apply redaction, omission, or blocking before hashing. Raw secrets and disallowed PII must not be copied into durable artifact storage.
 3. Move or copy the stored bytes into the artifact directory using `{task_id}/{run_id-or-record_id}/{artifact_id}-{kind}.{ext}` under the matching kind directory.
 4. Compute `sha256`, `size_bytes`, `content_type`, and `redaction_state` from the stored bytes.
 5. Insert the `artifacts` row and required `artifact_links` rows in the same Core transaction that records the related state record and appends `task_events`.
@@ -1070,7 +1072,7 @@ sequenceDiagram
   participant Events as state.sqlite.task_events
 
   Capture->>Core: staged file for registration
-  Core->>Core: validate source path and apply redaction or omission
+  Core->>Core: validate source path and apply redaction, omission, or blocking
   Core->>Store: move or copy stored bytes
   Store-->>Core: sha256, size_bytes, content_type, redaction_state
   Core->>State: insert artifacts row
@@ -1085,12 +1087,14 @@ sequenceDiagram
 
 `redaction_state` implementation:
 
-| State | Stored artifact bytes |
-|---|---|
-| `none` | original non-sensitive evidence |
-| `redacted` | redacted evidence; the unredacted original is not retained by the harness |
-| `secret_omitted` | evidence with secret values omitted or replaced by handles |
-| `blocked` | a small metadata-only notice artifact explaining that capture was blocked; no forbidden content is stored |
+| State | Stored artifact bytes | Storage consequence |
+|---|---|---|
+| `none` | original non-sensitive evidence | The hash and size cover the registered bytes. Raw inclusion in export or verification bundles still depends on retention and export policy. |
+| `redacted` | redacted evidence; the unredacted original is not retained by the harness | The hash and size cover the redacted bytes only. |
+| `secret_omitted` | evidence with secret values or PII omitted or replaced by handles | Omission notes or handles are stored; raw omitted values are not copied into artifact storage, projection snapshots, verification bundles, or export bundles. |
+| `blocked` | a small metadata-only notice artifact explaining that capture was blocked | No forbidden content is stored. Owner records may keep the blocked ref for audit, but the artifact bytes are not available evidence. |
+
+Evidence sufficiency, Manual QA, verification, projection, and export readers consume the committed `ArtifactRef` plus `redaction_state`. `secret_omitted` can support claims whose nonsecret evidence remains visible, but it cannot support claims that require the omitted bytes. `blocked` keeps the attempted capture visible for audit while leaving the related evidence, QA, verification, projection display, or export component blocked or insufficient until the owner flow records a replacement, waiver, Decision Packet outcome, or other documented resolution.
 
 Artifact integrity failures return `ARTIFACT_MISSING` or a validator failure and mark related evidence or projection freshness stale according to the kernel rules.
 
@@ -1207,7 +1211,7 @@ flowchart TD
   Bundle --> Instructions
 ```
 
-The manifest records task id, Change Unit id, baseline ref, source state version, included artifact ids, redaction summary, evaluator focus, and the expected independence context. The bundle may include copied raw artifacts when retention and redaction policy allow it; otherwise it includes artifact refs that the evaluator can resolve through the harness.
+The manifest records task id, Change Unit id, baseline ref, source state version, included artifact ids, redaction summary, evaluator focus, and the expected independence context. The bundle may include copied raw artifacts when retention and redaction policy allow it; otherwise it includes artifact refs that the evaluator can resolve through the harness. Artifacts with `redaction_state=secret_omitted` or `redaction_state=blocked` remain represented by refs and redaction, omission, or block notes, not by hidden raw bytes.
 
 Launching verification sets or keeps `verification_gate=pending`. Only `harness.record_eval` can record the verdict and update assurance.
 

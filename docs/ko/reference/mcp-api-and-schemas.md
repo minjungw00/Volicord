@@ -250,6 +250,8 @@ policy_override
 
 Artifact ref는 artifact store에 등록된 durable evidence file을 가리킵니다. Report projection과 record projection은 evidence-file reference가 필요할 때 artifact ref를 사용합니다. Projection 자체는 evidence file이 아닙니다.
 
+Artifact 등록은 임의 파일을 쌓아 두는 느슨한 파일 덤프가 아닙니다. Staged file은 Core가 staging 또는 capture source, stored-byte integrity, `redaction_state`, Task-scoped owner relation을 검증한 뒤에만 public `ArtifactRef`가 됩니다.
+
 Reference implementation에서 artifact 등록은 Task-scoped입니다. `ArtifactRef.task_id`와 `ArtifactInput.relation.task_id`는 required이며 `artifacts.task_id`와 `artifact_links.task_id`에 대응합니다. `retention_class=project`는 retention policy에 영향을 줄 뿐 artifact ownership scope를 바꾸지 않습니다.
 
 Later Browser QA Capture는 새 MVP schema가 아니라 이 artifact 경계를 사용합니다. Screen capture는 보통 `screenshot`을 사용하고, grouped QA outputs는 `qa_capture`를 사용할 수 있습니다. Console log와 network trace는 `log` 또는 `qa_capture`를 사용할 수 있고, accessibility snapshot과 workflow recording은 clear description과 함께 `qa_capture` 또는 `other`를 사용할 수 있습니다. 이러한 artifacts는 모두 redaction, secret/PII handling, Task-scoped ownership, Manual QA record 또는 Feedback Loop attachment rules를 따라야 합니다.
@@ -271,6 +273,15 @@ ArtifactRef:
 ```
 
 Reference implementation에서 `uri`는 `harness-artifact://{project_id}/{artifact_id}`를 사용합니다. Local file path는 API payload의 absolute path를 신뢰하지 않고 `state.sqlite` 안의 per-project `artifacts` registry row를 통해 찾습니다.
+
+`redaction_state`는 public artifact contract의 일부입니다.
+
+| State | User/operator meaning |
+|---|---|
+| `none` | 현재 policy에서 등록된 bytes를 evidence로 사용할 수 있어 redaction, omission, blocking을 적용하지 않았다는 뜻입니다. |
+| `redacted` | 저장 전에 민감한 내용이 제거되었습니다. Harness를 통해 unredacted original에 접근할 수 없습니다. |
+| `secret_omitted` | Secret value 또는 PII를 의도적으로 생략하거나 handle로 대체했습니다. Secret이 아닌 evidence가 남아 있는 주장에는 도움이 될 수 있지만, 생략된 값 자체를 증명하는 evidence는 아닙니다. |
+| `blocked` | 금지된 내용 때문에 capture 또는 등록이 차단되었습니다. Metadata notice만 노출될 수 있으며 evidence, QA, verification, projection, export display는 raw artifact가 available한 것처럼 보이지 않게 차단 상태를 표시해야 합니다. |
 
 Evidence를 만들거나 연결하는 request는 `ArtifactInput`을 사용합니다. Request는 기존 committed artifact를 reference하거나, Core가 검증하고 등록한 뒤 `ArtifactRef`로 반환할 staged file을 제공할 수 있습니다.
 
@@ -304,12 +315,13 @@ Rules:
 - `source_kind=existing_artifact` requires `existing_artifact_ref` and must set `staged` to `null`.
 - `source_kind=staged_file` requires `staged` and must set `existing_artifact_ref` to `null`.
 - Existing artifact를 새 record에 attach할 때 Core는 artifact의 task relation을 verify하고 incompatible reuse를 reject합니다.
-- `staged_uri`는 arbitrary absolute path가 아니라 harness staging location 또는 approved capture adapter를 가리켜야 합니다.
+- `staged_uri`는 Harness staging location 또는 approved capture adapter output을 가리키는 locator이지, 임의 파일을 읽어도 된다는 권한이 아닙니다. Absolute path, parent traversal, symlink escape, repo-local path, caller-supplied URI는 staging 또는 capture adapter가 approved source로 canonicalize하기 전까지 신뢰하지 않습니다.
 - `staged_uri`, `display_name`, supplied `content_type`은 Core가 staging 또는 capture source, stored bytes, redaction state, owner relation을 검증하기 전까지 trusted input이 아닙니다.
 - `expected_sha256` 또는 `expected_size_bytes`가 있으면 Core는 commit 전에 stored bytes를 확인합니다. 이 field가 제공되었는지와 무관하게 Core는 stored bytes에서 committed `sha256`, `size_bytes`, `content_type`을 기록합니다.
-- Core는 final storage 전에 redaction rules를 적용하고 committed artifact를 `ArtifactRef`로 기록합니다.
+- Core는 final storage 전에 redaction, omission, blocking policy를 적용하고 committed artifact를 `ArtifactRef`로 기록합니다.
 - Secret 또는 PII를 포함할 수 있는 log, screenshot, network trace, export snapshot, 기타 captured evidence는 policy가 요구할 때 registration 전에 redacted, omitted, 또는 blocked 상태가 되어야 합니다.
-- Tool response는 기록된 `ArtifactRef` 값을 `registered_artifacts`, `bundle_ref`, 기타 response field로 반환합니다.
+- Policy가 omission 또는 blocking을 요구하면 committed ref는 `redaction_state=secret_omitted` 또는 `redaction_state=blocked`를 기록합니다. Caller는 생략되었거나 차단된 bytes를 available evidence, QA material, verification input, projection body text, export payload로 취급하면 안 됩니다.
+- Tool response는 기록된 `ArtifactRef` 값을 `registered_artifacts`, `bundle_ref`, 기타 response field로 반환합니다. Response는 `staged_uri`를 권한이나 durable evidence URI처럼 다시 노출하면 안 됩니다.
 - `relation.record_kind`는 Core가 검증할 수 있는 기존 기준 owner 기록 또는 렌더링된 projection 참조를 이름으로 지정해야 합니다. MVP의 non-projection owner에서는 concrete owner row가 `relation.task_id`와 같은 Task scope여야 합니다. 같은 owner kind의 project-scoped row는 future extension이 project-scoped artifact storage/API를 추가하기 전까지 artifact-link target이 아닙니다. Verification bundle은 `ArtifactRef.kind=bundle` 또는 `manifest`를 사용합니다. Export output은 `ArtifactRef.kind=export_component` 또는 `retention_class=export`를 사용합니다. `verification_bundle`과 `export`는 MVP artifact relation record kind가 아닙니다.
 - `relation.record_kind=projection`은 Core가 `projection_jobs`를 통해 찾을 수 있는, 이미 렌더링되었거나 기록된 Task-scoped projection output에만 valid합니다. MVP에서 `record_id_hint`는 `projection_jobs.projection_job_id`를 이름으로 지정하고, job의 `task_id`는 `relation.task_id`와 일치해야 합니다. Core는 hint를 검증할 때 `target_ref`와 `output_path`를 사용할 수 있지만, 이 값들이 identity에서 job id를 대체하지 않습니다. Project-level projection job은 owner docs가 허용하는 곳에서 존재할 수 있지만, 현재 MVP artifact API는 이를 위한 project-scoped artifact link를 등록하지 않습니다.
 

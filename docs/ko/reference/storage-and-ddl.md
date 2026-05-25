@@ -1031,6 +1031,8 @@ Product Repository의 Markdown 보고서는 기본적으로 raw artifacts가 아
 
 Local layout 자체도 trust boundary입니다. `state.sqlite`, `registry.sqlite`, artifact file은 registered project layout을 통해 찾을 수 있고 이 문서가 소유하는 owner, integrity, shape check를 통과할 때만 authoritative합니다. Direct edit, 복사된 artifact file, orphaned staging file, 사람이 바꾼 connector state는 Core, `doctor`, `recover`, `artifacts check`가 documented path로 검증하거나 복구하기 전까지 committed Harness meaning으로 받아들이지 않습니다.
 
+`artifacts/tmp/` 아래 file은 staging input일 뿐 committed artifact가 아닙니다. Staged path는 Core가 path 또는 capture adapter를 검증하고, 안전한 stored bytes를 registered artifact path 아래에 쓰며, `artifacts` row를 insert하고, 같은 Task의 owner에 link하는 transition이 commit된 뒤에만 의미를 가집니다.
+
 ### Artifact Kind Storage Notes
 
 `artifacts.kind` field는 durable evidence files의 이름을 붙입니다. 그렇다고 artifact file이 대응하는 state record를 담당하는 것은 아닙니다.
@@ -1041,7 +1043,7 @@ Local layout 자체도 trust boundary입니다. `state.sqlite`, `registry.sqlite
 | `prototype` | Store prototype diffs, screenshots, logs, or throwaway proof artifacts under `artifacts/prototypes/`; product code remains in the Product Repository and committed harness meaning remains in state records. |
 | `architecture_scan` | Module scan, dependency snapshot, 경계 finding, stewardship evidence는 `artifacts/architecture/` 아래 저장합니다. Accepted module/interface facts는 owner 기록으로 남습니다. |
 | `decision_context` | Store compact context bundles for user judgment under `artifacts/decisions/`; Decision Packet status and outcome remain in `state.sqlite`. |
-| `screenshot` / `qa_capture` / `log` | Manual QA screenshot, browser QA capture bundle, console log, network trace, accessibility snapshot, workflow recording은 matching artifact area에 저장합니다. Manual QA record, Feedback Loop, Run, Evidence Manifest는 owner 기록으로 남습니다. Automated browser capture는 MVP에 required가 아닙니다. |
+| `screenshot` / `qa_capture` / `log` | Manual QA screenshot, browser QA capture bundle, console log, network trace, accessibility snapshot, workflow recording은 필요한 redaction, omission, blocking을 적용한 뒤에만 matching artifact area에 저장합니다. Manual QA record, Feedback Loop, Run, Evidence Manifest는 owner 기록으로 남습니다. Automated browser capture는 MVP에 required가 아닙니다. |
 | `bundle` / `manifest` | Verification bundle, evaluator instruction bundle, artifact manifest는 `artifacts/bundles/` 또는 `artifacts/manifests/` 아래 저장합니다. Owner는 existing Task, Run, Evidence Manifest, Eval, 또는 Task-scoped projection record로 남습니다. |
 | `export_component` | Export manifest file, projection snapshot, state snapshot, 허용된 raw-file copy는 `artifacts/exports/` 아래 저장합니다. 이 artifacts는 `export` state table이 아니라 describe하는 기존 owner 기록으로 다시 link합니다. |
 
@@ -1049,12 +1051,12 @@ Local layout 자체도 trust boundary입니다. `state.sqlite`, `registry.sqlite
 
 Artifact 등록은 Task, Run, Decision Packet context, Shared Design, Journey Spine Entry, Evidence Manifest, Eval, Manual QA record, Feedback Loop, TDD Trace, 렌더링된 Task-scoped projection 같은 owner 기록을 기록하는 Core transition의 일부입니다. Verification bundle과 export component는 그 owner 기록에 link되는 artifact file이며 기준 `verification_bundle` 또는 `export` state record는 아닙니다.
 
-Artifact 등록은 artifact poisoning을 막는 storage boundary입니다. Staged path, capture adapter output, file name, extension, declared content type, requested owner relation은 source 검증, redaction 또는 omission 적용, stored-byte integrity 계산, 기존 Task-scoped owner record와의 link validation이 끝나기 전까지 trusted input이 아닙니다.
+Artifact 등록은 artifact poisoning을 막는 storage boundary입니다. Staged path, capture adapter output, file name, extension, declared content type, requested owner relation은 source 검증, redaction, omission, blocking 적용, stored-byte integrity 계산, 기존 Task-scoped owner record와의 link validation이 끝나기 전까지 trusted input이 아닙니다. API의 `staged_uri`는 approved staging 또는 capture output을 가리키는 locator일 뿐입니다. Arbitrary absolute path, symlink target, parent traversal, repo-local file을 이름으로 지정해 이 boundary를 우회할 수 없습니다.
 
 MVP registration steps:
 
-1. Connector-captured 또는 operator-supplied file은 project artifact `tmp/` directory 아래 staging path나 approved capture adapter에서만 받습니다.
-2. Hashing 전에 redaction 또는 omission을 적용합니다. Raw secrets는 durable artifact storage로 복사하면 안 됩니다.
+1. Connector-captured 또는 operator-supplied file은 project artifact `tmp/` directory 아래 canonical staging path나 approved capture adapter에서만 받습니다.
+2. Hashing 전에 redaction, omission, blocking을 적용합니다. Raw secrets와 허용되지 않은 PII는 durable artifact storage로 복사하면 안 됩니다.
 3. Stored bytes를 matching kind directory 아래 `{task_id}/{run_id-or-record_id}/{artifact_id}-{kind}.{ext}` 형식으로 artifact directory에 move 또는 copy합니다.
 4. Stored bytes에서 `sha256`, `size_bytes`, `content_type`, `redaction_state`를 계산합니다.
 5. Related state record를 기록하고 `task_events`에 추가하는 같은 Core transaction에서 `artifacts` row와 required `artifact_links` row를 insert합니다.
@@ -1070,7 +1072,7 @@ sequenceDiagram
   participant Events as state.sqlite.task_events
 
   Capture->>Core: staged file for registration
-  Core->>Core: validate source path and apply redaction or omission
+  Core->>Core: validate source path and apply redaction, omission, or blocking
   Core->>Store: move or copy stored bytes
   Store-->>Core: sha256, size_bytes, content_type, redaction_state
   Core->>State: insert artifacts row
@@ -1085,12 +1087,14 @@ sequenceDiagram
 
 `redaction_state` implementation:
 
-| State | Stored artifact bytes |
-|---|---|
-| `none` | original non-sensitive evidence |
-| `redacted` | redacted evidence; the unredacted original is not retained by the harness |
-| `secret_omitted` | evidence with secret values omitted or replaced by handles |
-| `blocked` | a small metadata-only notice artifact explaining that capture was blocked; no forbidden content is stored |
+| State | Stored artifact bytes | Storage consequence |
+|---|---|---|
+| `none` | original non-sensitive evidence | Hash와 size는 등록된 bytes를 기준으로 합니다. Export 또는 verification bundle에 raw로 포함할 수 있는지는 여전히 retention과 export policy가 결정합니다. |
+| `redacted` | redacted evidence; the unredacted original is not retained by the harness | Hash와 size는 redacted bytes만 기준으로 합니다. |
+| `secret_omitted` | secret value 또는 PII를 생략하거나 handle로 대체한 evidence | Omission note 또는 handle만 저장합니다. 생략된 raw value는 artifact storage, projection snapshot, verification bundle, export bundle로 복사하지 않습니다. |
+| `blocked` | capture가 차단되었음을 설명하는 작은 metadata-only notice artifact | 금지된 내용은 저장하지 않습니다. Owner 기록은 audit을 위해 blocked ref를 유지할 수 있지만, artifact bytes는 available evidence가 아닙니다. |
+
+Evidence sufficiency, Manual QA, verification, projection, export reader는 committed `ArtifactRef`와 `redaction_state`를 함께 사용합니다. `secret_omitted`는 secret이 아닌 evidence가 남아 있는 주장을 뒷받침할 수 있지만 생략된 bytes가 필요한 주장은 뒷받침할 수 없습니다. `blocked`는 시도된 capture를 audit용으로 보이게 하되, owner flow가 replacement, waiver, Decision Packet outcome, 또는 다른 documented resolution을 기록하기 전까지 related evidence, QA, verification, projection display, export component를 blocked 또는 insufficient 상태로 남깁니다.
 
 Artifact integrity failures는 `ARTIFACT_MISSING` 또는 validator failure를 반환하고, kernel rules에 따라 related evidence 또는 projection freshness를 `stale`로 표시합니다.
 
@@ -1207,7 +1211,7 @@ flowchart TD
   Bundle --> Instructions
 ```
 
-Manifest는 task id, Change Unit id, baseline ref, source state version, included artifact ids, redaction summary, evaluator focus, expected independence context를 기록합니다. Bundle은 retention과 redaction policy가 허용하면 copied raw artifacts를 포함할 수 있고, 그렇지 않으면 evaluator가 Harness를 통해 찾을 수 있는 artifact refs를 포함합니다.
+Manifest는 task id, Change Unit id, baseline ref, source state version, included artifact ids, redaction summary, evaluator focus, expected independence context를 기록합니다. Bundle은 retention과 redaction policy가 허용하면 copied raw artifacts를 포함할 수 있고, 그렇지 않으면 evaluator가 Harness를 통해 찾을 수 있는 artifact refs를 포함합니다. `redaction_state=secret_omitted` 또는 `redaction_state=blocked`인 artifact는 숨겨진 raw bytes가 아니라 ref와 redaction/omission/block note로만 표현됩니다.
 
 Launching verification은 `verification_gate=pending`을 설정하거나 유지합니다. Verdict를 기록하고 assurance를 업데이트할 수 있는 것은 `harness.record_eval`뿐입니다.
 

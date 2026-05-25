@@ -16,6 +16,7 @@
 - reconcile item
 - projection snapshot과 projection 최신성
 - artifact 참조, redaction state, retention, integrity metadata
+- redaction, omission, blocked-artifact summary
 
 ## 렌더링 섹션
 
@@ -24,6 +25,7 @@
 - Projection Snapshots
 - Artifact Refs
 - Redaction Summary
+- Omitted Or Blocked Content
 - Integrity
 - Release Handoff
 
@@ -70,13 +72,19 @@ updated_at: 2026-05-06T10:30:00+09:00
 - optional design projections:
 
 ## Artifact Refs
-| Artifact ID | Kind | Owner Record | URI | SHA256 | Redaction State | Retention |
-|---|---|---|---|---|---|---|
+| Artifact ID | Kind | Owner Record | URI | SHA256 | Redaction State | Retention | Omission/Block Note |
+|---|---|---|---|---|---|---|---|
 
 ## Redaction Summary
 - secrets omitted:
+- PII omitted:
 - redacted artifacts:
 - blocked artifacts:
+- raw files excluded by policy:
+
+## Omitted Or Blocked Content
+| Artifact ID | Affected Owner Or Display | Redaction State | Note |
+|---|---|---|---|
 
 ## Integrity
 - export hash:
@@ -92,7 +100,7 @@ updated_at: 2026-05-06T10:30:00+09:00
 - residual-risk refs:
 - changed files:
 - projection freshness:
-- redaction notes:
+- redaction/omission/block notes:
 - suggested PR checklist:
 - suggested deploy checklist:
 - suggested rollback 또는 monitoring notes:
@@ -102,3 +110,5 @@ updated_at: 2026-05-06T10:30:00+09:00
 ## 메모
 
 이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. `EXPORT`는 `ProjectionKind`일 뿐이며, export snapshot과 component는 owner 기록 또는 projection ref에 연결된 artifact로 남습니다.
+
+`EXPORT`는 기본적으로 raw secrets, PII, sensitive log, network trace, screenshot, 기타 sensitive artifact body를 embed하면 안 됩니다. Large 또는 sensitive artifact는 `ArtifactRef`로 나열합니다. Raw file은 policy와 retention이 허용할 때만 포함하고, `secret_omitted` 또는 `blocked` entry는 ref와 note로만 표현합니다.

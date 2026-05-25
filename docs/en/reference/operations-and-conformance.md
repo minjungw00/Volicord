@@ -180,7 +180,7 @@ Required categories:
 | reconcile | pending human edits, managed block drift, generated-file drift |
 | validators/checks | required stable ValidatorResult-emitting validators, plus separately captured Core check/precondition categories |
 | agency/stewardship/context | Decision Packet and decision gate readiness, Autonomy Boundary readiness, residual-risk visibility, codebase stewardship, context freshness |
-| security/threat model | local MCP binding/access expectation, registered project/task/surface consistency, connector drift, sensitive-category side effects, redaction or omission coverage |
+| security/threat model | local MCP binding/access expectation, registered project/task/surface consistency, connector drift, sensitive-category side effects, redaction, omission, or block coverage |
 
 ```mermaid
 flowchart TD
@@ -213,7 +213,9 @@ Doctor must distinguish current state failures from projection stale or projecti
 
 State checks include JSON `TEXT` fields in `registry.sqlite` and `state.sqlite`. Malformed JSON is a state failure. Schema-incompatible JSON is a state failure; doctor may mark it `REPAIRABLE` only when Core can safely reconstruct the expected value from other canonical state or raw artifacts without inventing user-owned judgment, otherwise it reports `FAIL` or `MANUAL`.
 
-Security-oriented doctor output is diagnostic and does not create new runtime authority. It should report when the MCP access mode does not match the local process/localhost expectation or the documented connector profile, when project/task/surface claims do not match registered state, when connector-managed files drift, when artifacts lack redaction or omission notes required by their sensitive category, and when sensitive operations including `destructive_write`, `network_write`, `external_service_write`, `secret_access`, `privacy_or_pii_change`, `data_export`, `infra_or_deployment_change`, `production_config_change`, `ci_cd_change`, `billing_or_cost_change`, or `telemetry_or_logging_change` appear outside the recorded scope/approval/Decision Packet/Write Authorization path.
+Security-oriented doctor output is diagnostic and does not create new runtime authority. It should report when the MCP access mode does not match the local process/localhost expectation or the documented connector profile, when project/task/surface claims do not match registered state, when connector-managed files drift, when artifacts lack redaction, omission, or block metadata required by their sensitive category, and when sensitive operations including `destructive_write`, `network_write`, `external_service_write`, `secret_access`, `privacy_or_pii_change`, `data_export`, `infra_or_deployment_change`, `production_config_change`, `ci_cd_change`, `billing_or_cost_change`, or `telemetry_or_logging_change` appear outside the recorded scope/approval/Decision Packet/Write Authorization path.
+
+For artifacts, doctor treats missing redaction, omission, or block metadata as a security finding, not a cosmetic report issue. It must not recommend copying raw staged files into place as a repair unless Core can validate and register them through the artifact registration contract.
 
 ## serve mcp
 
@@ -375,7 +377,7 @@ Required contents:
 - projection snapshots for relevant reports
 - artifact references and included raw artifact files when allowed
 - artifact integrity manifest
-- redaction and omission notes for secrets, sensitive logs, and PII
+- redaction, omission, and block notes for secrets, sensitive logs, and PII
 
 ```mermaid
 flowchart TD
@@ -387,12 +389,14 @@ flowchart TD
   Export --> Projections["projection snapshots"]
   Export --> Artifacts["artifact refs and allowed raw files"]
   Export --> Integrity["artifact integrity manifest"]
-  Export --> Redaction["redaction and omission notes"]
+  Export --> Redaction["redaction, omission, and block notes"]
 ```
 
 Exported projection snapshots may have hashes, but that does not make the Markdown projection the canonical evidence. Raw evidence remains the artifact files and their registered refs.
 
-Export is a `data_export`-category side effect when policy applies. Export must preserve the artifact boundary: included raw files are limited to allowed registered artifacts, projection snapshots remain snapshots, and the bundle carries redaction or omission notes for secrets, sensitive logs, screenshots, network traces, telemetry/logging content, and PII that were removed or blocked.
+Export is a `data_export`-category side effect when policy applies. Export must preserve the artifact boundary: included raw files are limited to allowed registered artifacts, projection snapshots remain snapshots, and the bundle carries redaction, omission, or block notes for secrets, sensitive logs, screenshots, network traces, telemetry/logging content, and PII that were removed or blocked.
+
+Export must never widen access to staged, omitted, or blocked content. `secret_omitted` artifacts are represented by refs, hashes over the safe bytes, and omission notes or handles. `blocked` artifacts are represented by metadata-only notices and must be listed as unavailable raw evidence. Export manifests should name the affected artifact ref, the redaction, omission, or block category, and the affected evidence, QA, verification, projection, or Release Handoff display without including the secret or PII value.
 
 ### Release Handoff Export Profile
 
@@ -404,7 +408,7 @@ The profile summarizes:
 - evidence refs, verification refs, Manual QA refs, and residual-risk refs
 - changed files and affected Change Unit scope
 - projection freshness and any stale, failed, or omitted projection snapshots
-- redaction notes for secrets, sensitive logs, PII, and omitted artifacts
+- redaction, omission, or block notes for secrets, sensitive logs, PII, omitted artifacts, and blocked artifacts
 - suggested PR, review, deployment, rollback, and monitoring checklist items for the user's external systems
 
 Release Handoff may be rendered as an `EXPORT` projection/report, included in an export bundle, or returned as an ephemeral report surface. It does not create a new deployment authority record.
@@ -421,7 +425,7 @@ Release Handoff catalog entry:
 
 | Scenario ID | Operator action | Required assertions |
 |---|---|---|
-| `EXPORT-release-handoff-does-not-close-or-deploy` | `export` or report read | Generating or returning a Release Handoff report/export may include close readiness, blockers, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, redaction notes, and advisory PR/deploy/rollback/monitoring checklist items. The report/export alone must not mutate Task lifecycle, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept residual risk, accept the result, close a Task, merge, deploy, monitor production, upgrade assurance, or create deployment/merge authority. Checklist findings that reveal blocking user-owned judgment, risk acceptance, Manual QA, evidence, verification, or approval needs route to existing Decision Packet, evidence, Manual QA, Eval, residual-risk, approval, or close paths. |
+| `EXPORT-release-handoff-does-not-close-or-deploy` | `export` or report read | Generating or returning a Release Handoff report/export may include close readiness, blockers, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, redaction/omission/block notes, and advisory PR/deploy/rollback/monitoring checklist items. The report/export alone must not mutate Task lifecycle, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept residual risk, accept the result, close a Task, merge, deploy, monitor production, upgrade assurance, or create deployment/merge authority. Checklist findings that reveal blocking user-owned judgment, risk acceptance, Manual QA, evidence, verification, or approval needs route to existing Decision Packet, evidence, Manual QA, Eval, residual-risk, approval, or close paths. |
 
 ## artifacts check
 
@@ -441,6 +445,8 @@ Required checks:
 - for projection artifact links, `artifact_links.record_id` must equal `projection_jobs.projection_job_id`; integrity validates that job/output identity through the same Task scope as the artifact link, `target_ref`, `status=completed`, and `output_path` or a documented projection ref instead of looking for a separate `projections` table. Project-level projection jobs are not project-scoped artifact links in the current MVP.
 - bundle, manifest, and export-component artifacts are validated through their artifact row and owner links; the check must not look for nonexistent `verification_bundle` or `export` state tables
 - secret/PII handling is compatible with `redaction_state` and any export or capture notes
+- `secret_omitted` artifacts include omission notes or handles and no raw omitted values
+- `blocked` artifacts are metadata-only notices and do not contain the forbidden capture payload
 - retention class is valid
 - projection or evidence refs resolve
 
@@ -463,6 +469,8 @@ flowchart TD
 ```
 
 Failures should mark related evidence, projection freshness, or close readiness stale/blocked according to Core rules. Missing artifacts are not fixed by editing Markdown reports.
+
+When an artifact check observes `secret_omitted` or `blocked`, downstream operations report the effect instead of hiding it: Evidence Manifest and QA views show omitted or blocked refs, detached verification treats unavailable raw bytes as missing input unless the Eval path accepts the omission, projection displays show the redaction state rather than embedded content, and export/Release Handoff summaries list the omission or block without leaking the value.
 
 ## conformance run
 
@@ -594,6 +602,8 @@ When fixtures assert design-quality severity, all relevant validator findings sh
 Core check and precondition assertions nested under `expected_state.checks` are keyed by check/precondition name. These entries are compared against captured Core check output, blocked reasons, response summaries, or equivalent runner-observed check status. They are not validator IDs and must not be nested under `expected_state.validators` unless the MCP API or Storage And DDL explicitly promotes that ID to a stable ValidatorResult.
 
 `expected_state.checks.projection_freshness` asserts the Core mechanical projection freshness check. `expected_state.validators.context_hygiene_check` asserts the stable ValidatorResult for higher-level context hygiene; that validator may consider projection freshness, but it is not the fixture assertion location for the mechanical check itself.
+
+Fixtures that cover `secret_omitted` or `blocked` artifacts should assert the committed artifact `redaction_state` under `expected_artifacts` and the downstream state or display effect under the owning assertion location: evidence or QA state under `expected_state`, verification outcome under Eval-related state or error assertions, projection freshness/display availability under `expected_projection` or `expected_state.checks.projection_freshness`, and export or Release Handoff behavior through the existing fixture assertions captured from the operator action. Fixtures must not assert the omitted secret or PII value.
 
 Absence of a nested field inside any `expected_*` value means "not asserted", not "expected null". Empty default-mode collections such as `expected_artifacts: []` or `expected_projection: {}` are valid and assert no required entries. `expected_events: []` asserts that no stable catalog events are required; it does not assert that no `task_events` rows were appended, because committed transitions may append non-stable detail or local-audit events. A suite that needs to assert no extra stable entries must use compatible exact-mode metadata outside the fixture body.
 
