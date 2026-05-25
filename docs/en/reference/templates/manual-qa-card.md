@@ -15,6 +15,8 @@ Use the Manual QA card when required Manual QA needs a compact prompt showing th
 - waiver reason, QA waiver Decision Packet refs when required, and Residual Risk refs when QA is waived or deferred
 - verification, acceptance, and close-impact summaries
 
+Close context and waiver placeholders are derived display summaries from QA records, `qa_gate`, related gate states, Decision Packet refs, and Residual Risk refs. Waiver paths should render those refs or say that recording is still needed.
+
 ## Rendered sections
 
 - Manual QA requirement

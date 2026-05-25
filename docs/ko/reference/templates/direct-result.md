@@ -15,6 +15,8 @@
 - close assurance
 - 해당되는 경우 근거, 검증, Manual QA, 수용, Residual Risk 관련 close 영향 요약
 
+Close Summary line은 기존 gate와 owner-record ref에서 파생한 표시 전용 요약입니다. Direct work는 자신이 요약하는 기록 밖에 별도의 close field를 만들지 않습니다.
+
 ## 렌더링 섹션
 
 - Request

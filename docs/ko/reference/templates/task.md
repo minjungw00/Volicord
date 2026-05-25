@@ -19,6 +19,8 @@
 - Review Stage 표시 input
 - artifact ref 및 projection 최신성
 
+`TASK`의 생성된 judgment, close, waiver, review-stage, stewardship, projection-freshness 항목은 표시 binding입니다. 위에 나열한 owner record, gate, artifact, ref로 해소되어야 하며, 그런 source가 없으면 명시적인 absence/blocking 상태로 렌더링해야 합니다.
+
 ## 렌더링 섹션
 
 - Current Summary

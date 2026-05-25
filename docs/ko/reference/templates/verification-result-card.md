@@ -14,6 +14,8 @@ Eval 결과의 verdict, assurance 영향, 검토한 evidence, 남은 작업, 사
 - 사용자 후속 조치
 - close 맥락이 렌더링될 때 Manual QA, 수용, Residual Risk, verification-waiver Decision Packet refs, `verification_gate` status
 
+Close context와 verification-waiver placeholder는 Eval 기록, gate 상태, QA/acceptance 상태, Residual Risk ref, waiver Decision Packet ref에서 파생한 표시 전용 요약입니다. Waiver path는 그런 ref를 렌더링하거나 아직 기록이 필요하다고 표시해야 합니다.
+
 ## 렌더링 섹션
 
 - verification completion

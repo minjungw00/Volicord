@@ -14,6 +14,8 @@ Use the verification result card when an Eval result needs a compact user-facing
 - user follow-up
 - Manual QA, acceptance, Residual Risk, verification-waiver Decision Packet refs, and `verification_gate` status when close context is rendered
 
+Close context and verification-waiver placeholders are derived display summaries from Eval records, gate state, QA/acceptance status, Residual Risk refs, and waiver Decision Packet refs. Waiver paths should render those refs or say that recording is still needed.
+
 ## Rendered sections
 
 - verification completion

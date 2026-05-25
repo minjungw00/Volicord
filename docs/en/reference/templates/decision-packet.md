@@ -15,7 +15,7 @@ Use `DEC` when standalone Decision Packet projection is enabled for user-owned p
 - evidence and artifact refs
 - projection freshness inputs
 
-Approval-shaped display bullets such as "what this approval covers," "what this approval does not cover," and "secret exposure boundary" are rendered summaries derived from linked Approval records, approval scope, related Decision Packet refs, and current write or close context. They are not new canonical schema fields, DDL columns, state records, authority inputs, or independent gates.
+Approval-shaped display bullets such as "what this approval covers," "what this approval does not cover," and "secret exposure boundary" are derived display summaries from linked Approval records, approval scope, related Decision Packet refs, and current write or close context. They explain the boundary only; they do not grant Approval or settle separate user-owned judgment.
 
 A resolved Decision Packet is not sensitive Approval unless it is the approval-shaped Decision Packet linked to an Approval record. Other Decision Packet resolutions may settle user-owned judgment, waivers, residual-risk acceptance, final acceptance, or reconcile choices, but they do not grant sensitive-action Approval.
 

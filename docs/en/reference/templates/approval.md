@@ -16,7 +16,7 @@ Use `APR` after an approval request has been committed and Harness needs a reada
 
 A non-mutating `approval_request_candidate` returned by `prepare_write` is not an `APR` source and must be displayed, if at all, as candidate display.
 
-Boundary summary fields are rendered summaries derived from approval scope, linked Approval records, related Decision Packet refs, and current write or close context. They are not canonical schema fields, DDL columns, state records, authority inputs, or independent gates.
+Boundary Summary is a derived display block from approval scope, linked Approval records, related Decision Packet refs, and current write or close context. It is a user-facing boundary reminder, not an independent authority source or gate.
 
 ## Rendered sections
 

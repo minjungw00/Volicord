@@ -13,7 +13,7 @@ Use the approval card when a pending approval needs a compact user-facing displa
 - baseline ref
 - risks, alternatives, and recommendation
 
-Coverage fields such as `{approval_covers}` and `{approval_does_not_cover}` are rendered summaries derived from approval scope, linked Approval records, related Decision Packet refs, and current write or close context. They are not canonical schema fields, DDL columns, state records, authority inputs, or independent gates.
+Coverage placeholders such as `{approval_covers}` and `{approval_does_not_cover}` are derived display summaries from approval scope, linked Approval records, related Decision Packet refs, and current write or close context. They show the approval boundary only; the Approval record and decision path remain authoritative.
 
 ## Rendered sections
 

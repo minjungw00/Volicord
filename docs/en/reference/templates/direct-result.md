@@ -15,6 +15,8 @@ Use `DIRECT-RESULT` for a compact result report after small direct work closes o
 - close assurance
 - evidence, verification, Manual QA, acceptance, and residual-risk close summaries when applicable
 
+Close Summary lines are derived display summaries from existing gate and owner-record refs. Direct work does not create additional close fields beyond the records it summarizes.
+
 ## Rendered sections
 
 - Request

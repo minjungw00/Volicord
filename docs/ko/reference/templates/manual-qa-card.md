@@ -15,6 +15,8 @@
 - QA가 면제되거나 미뤄질 때 waiver reason, 필요한 경우 QA waiver Decision Packet refs, Residual Risk refs
 - 검증, 수용, close 영향 요약
 
+Close context와 waiver placeholder는 QA 기록, `qa_gate`, 관련 gate 상태, Decision Packet ref, Residual Risk ref에서 파생한 표시 전용 요약입니다. Waiver path는 그런 ref를 렌더링하거나 아직 기록이 필요하다고 표시해야 합니다.
+
 ## 렌더링 섹션
 
 - Manual QA requirement

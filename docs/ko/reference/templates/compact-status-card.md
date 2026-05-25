@@ -17,6 +17,8 @@
 - projection freshness와 `source_state_version`
 - 최신 report, Evidence Manifest, Run, Eval, Manual QA, ArtifactRef refs
 
+이 card의 summary placeholder는 위 기록에서 파생한 표시 binding입니다. Decision, close-blocker, residual-risk, freshness summary는 ref 또는 명시적인 absence를 보여줘야 하며, judgment context나 권한을 만들지 않습니다.
+
 ## 렌더링 섹션
 
 - task identity

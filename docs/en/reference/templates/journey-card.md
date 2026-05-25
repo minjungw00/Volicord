@@ -15,6 +15,8 @@ Use `JOURNEY-CARD` when a current-position card needs to show where the work is,
 - latest evidence, Eval, Manual QA, and report refs
 - projection freshness inputs
 
+Judgment, write-authority, close-impact, residual-risk, and freshness placeholders are display bindings derived from the records above. If a user decision is actually needed, render a Decision Packet or decision prompt rather than treating this card as the judgment-context source.
+
 ## Rendered sections
 
 - current position and next action

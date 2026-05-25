@@ -19,6 +19,8 @@ Use `TASK` as the continuity projection for active work. It summarizes where the
 - Review Stage display inputs
 - artifact refs and projection freshness
 
+Generated judgment, close, waiver, review-stage, stewardship, and projection-freshness entries in `TASK` are display bindings. They should resolve to the owner records, gates, artifacts, and refs named above, or render an explicit absence/blocking state when no such source exists.
+
 ## Rendered sections
 
 - Current Summary

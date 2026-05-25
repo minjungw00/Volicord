@@ -15,6 +15,8 @@
 - 최신 evidence, Eval, Manual QA, 보고서 참조
 - projection 최신성 입력
 
+Judgment, write-authority, close-impact, residual-risk, freshness placeholder는 위 기록에서 파생한 표시 binding입니다. 실제 사용자 decision이 필요하면 이 card를 judgment-context source로 취급하지 말고 Decision Packet 또는 decision prompt를 렌더링합니다.
+
 ## 렌더링 섹션
 
 - 현재 위치와 next action

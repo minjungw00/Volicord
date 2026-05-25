@@ -17,6 +17,8 @@ Use the compact status card when a short current-state display needs to show the
 - projection freshness and `source_state_version`
 - latest report, Evidence Manifest, Run, Eval, Manual QA, and ArtifactRef refs
 
+Summary placeholders in this card are display bindings derived from the records above. Decision, close-blocker, residual-risk, and freshness summaries should show refs or explicit absence; they do not create judgment context or authority.
+
 ## Rendered sections
 
 - task identity
