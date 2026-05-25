@@ -126,4 +126,4 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## 메모
 
-Approval은 사용자 소유의 제품 판단이나 중요한 기술 판단을 해결하지 않고, 정확성을 증명하지 않으며, 근거를 충족하거나 verification 또는 Manual QA를 대체하지 않습니다. 또한 acceptance 암시나 잔여 위험 수용도 하지 않습니다. Decision request routing 기록만으로는 decision 권한이 생기지 않습니다. Linked compatible Decision Packet을 통하지 않고는 `decision_gate`에 영향을 줄 수 없습니다.
+Boundary section은 사용자에게 보이는 안내입니다. Decision request routing 기록만으로는 decision authority가 생기지 않으며, linked compatible Decision Packet을 통하지 않고는 `decision_gate`에 영향을 줄 수 없습니다.

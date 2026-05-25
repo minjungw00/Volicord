@@ -54,11 +54,7 @@ Latest refs: report={latest_report_ref|none}; evidence={evidence_manifest_ref|no
 
 ## Notes
 
-This template is a rendered card shape, not canonical state. Gate values remain owned by canonical state.
-
-Projection freshness values are rendered from owner state; this template does not redefine their semantics.
-
-Projection freshness is readable-view freshness only. It is not Task result, state freshness, evidence freshness, approval, acceptance, or write authority.
+This template is a rendered card shape, not canonical state. Gate values remain owned by canonical state, and projection freshness is readable-view freshness only; it is not Task result, state freshness, evidence freshness, approval, acceptance, or write authority.
 
 This is not judgment-context. If user judgment is needed, render a separate decision prompt with options, recommendation, uncertainty, deferral effect, and relevant refs.
 

@@ -83,14 +83,14 @@ Projection freshness: source_state_version v42 기준 current
 핵심은 다음 안전한 행동입니다. 상태가 오래됐거나 이상해 보이면 이렇게 말합니다.
 
 ```text
-상태 보여줘.
+Harness 상태 기준으로 현재 상태와 next action을 다시 보여줘.
 ```
 
 Projection freshness는 작업 결과가 아니라 읽기용 view의 최신성으로 읽으면 됩니다. `current`는 card나 보고서가 표시한 state version과 맞는다는 뜻입니다. `stale`, `failed`, `unknown`은 그 읽기용 view를 믿기 전에 refresh 또는 reconcile이 필요할 수 있다는 뜻입니다.
 
-이것은 stale state, stale baseline, stale evidence와 다릅니다. 그런 상태는 실제 작업 입력이 바뀌었거나 오래됐거나 주장을 더 이상 뒷받침하지 못한다는 뜻이며, status card 자체가 current여도 write나 close를 막을 수 있습니다. MCP unavailable도 별개입니다. 에이전트가 필요한 Harness/Core capability에 닿지 못한다면 그 사실을 바로 말해야 하며, 연결이나 capability가 복구되기 전에는 기준 상태 변경, approval, gate update, close를 주장하면 안 됩니다.
+이것은 stale state, stale baseline, stale evidence와 다릅니다. 그런 상태는 실제 작업 입력이 바뀌었거나 오래됐거나 주장을 더 이상 뒷받침하지 못한다는 뜻이며, status card 자체가 current여도 write나 close를 막을 수 있습니다. MCP unavailable도 별개입니다. 에이전트가 필요한 Harness/Core capability에 닿지 못한다면 그 사실을 바로 말해야 하며, 연결이나 capability가 복구되기 전에는 기준 상태 변경, approval, gate update, projection repair, close를 주장하면 안 됩니다.
 
-Status card는 judgment-context와 다릅니다. Agent에게 사용자 판단이 필요하면 options, recommendation, uncertainty, 결정을 미뤘을 때 계속할 수 있는 일, relevant evidence 또는 design record ref가 있는 focused decision prompt를 별도로 붙여야 합니다.
+Status card는 judgment-context와 다릅니다. 에이전트에게 사용자 판단이 필요하면 선택지, 추천안, 불확실성, 결정을 미뤘을 때 계속할 수 있는 일, 관련 evidence 또는 design record ref를 담은 focused decision prompt를 별도로 붙여야 합니다.
 
 에이전트가 guard, freeze, careful mode 같은 말을 쓴다면 쉬운 말로 풀어야 합니다. 무엇을 실행 전에 실제로 막을 수 있고, 무엇은 실행 뒤에만 감지할 수 있는지 구분해야 합니다. Cooperative 또는 detective 접점에서 freeze는 범위 보류나 다음 행동을 더 엄격하게 제한하는 상태이지 실행 전 강제 차단이 아닙니다.
 

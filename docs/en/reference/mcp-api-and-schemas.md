@@ -673,7 +673,7 @@ Tool descriptions below separate `ValidatorResults emitted` from Core checks/pre
 `MCP_UNAVAILABLE` remains the stable public `ErrorCode`. Diagnostic detail distinguishes `MCP_SERVER_UNAVAILABLE` from `SURFACE_MCP_UNAVAILABLE` without adding public error codes:
 
 - `MCP_SERVER_UNAVAILABLE`: the tool call cannot reach Core, so no authoritative Core response is possible. The caller must diagnose or reconnect before claiming state changes.
-- `SURFACE_MCP_UNAVAILABLE`: Core or an operator can observe that the connected surface lacks usable MCP, has stale MCP configuration, or cannot call required MCP tools. Product writes are held by instruction on cooperative surfaces or blocked by stronger guards when available. Core responses may use `MCP_UNAVAILABLE` or `CAPABILITY_INSUFFICIENT` with `details.mcp_unavailable_kind` depending on context.
+- `SURFACE_MCP_UNAVAILABLE`: Core or an operator can observe that the connected surface lacks usable MCP, has stale MCP configuration, or cannot call required MCP tools. Product writes are held by instruction on cooperative surfaces or blocked before execution only when a stronger guard covers the operation. Core responses may use `MCP_UNAVAILABLE` or `CAPABILITY_INSUFFICIENT` with `details.mcp_unavailable_kind` depending on context.
 
 When a `ToolError` object is available for an MCP availability problem, `details.mcp_unavailable_kind` may be `server_unavailable`, `surface_mcp_unavailable`, `stale_connection`, or `unknown`.
 

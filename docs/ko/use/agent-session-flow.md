@@ -59,7 +59,7 @@ Harness가 연결되어 있으면 사용자가 Harness 사용을 명시적으로
 활성 작업을 찾았습니다. 현재 범위는 X입니다. 다음 안전한 행동은 Y입니다. 제품 파일 쓰기는 아직 허용되지 않았습니다. 대기 중인 결정은 Z 하나입니다.
 ```
 
-Projection, `source_state_version`, 읽기용 상태가 stale이거나 unknown이면 그 사실을 말하고, 거기에 의존하기 전에 갱신하거나 Reconcile을 실행합니다. 기준 상태를 직접 읽을 수 있으면 그 상태에서 계속할 수 있지만, 읽기용 projection은 권위 있는 source가 아니라고 warning합니다.
+Projection, `source_state_version`, 읽기용 상태가 stale이거나 unknown이면 그 사실을 말하고, 거기에 의존하기 전에 refresh 또는 reconcile합니다. 기준 상태를 직접 읽을 수 있으면 그 상태에서 계속할 수 있지만, 읽기용 projection은 권한의 출처가 아니라고 알려야 합니다.
 
 표시 문제는 구분해서 말합니다. Stale projection은 읽기용 card/report가 뒤처졌을 수 있으므로 신뢰할 수 있는 context로 쓰기 전에 refresh 또는 reconcile이 필요하다는 뜻입니다. Stale state, stale baseline, stale evidence는 실제 입력이 이동했거나 부족해져 write나 close를 막을 수 있다는 뜻입니다. MCP unavailable은 에이전트가 필요한 Harness/Core capability에 닿지 못한다는 뜻입니다. 그 capability가 다시 사용 가능해지기 전에는 기준 상태 변경, approval, gate update, projection repair, close를 주장하면 안 됩니다.
 

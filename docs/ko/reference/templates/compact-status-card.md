@@ -54,11 +54,7 @@ Latest refs: report={latest_report_ref|none}; evidence={evidence_manifest_ref|no
 
 ## 메모
 
-이 template은 렌더링 결과인 카드 형태일 뿐 기준 상태가 아닙니다. Gate value는 기준 상태가 계속 담당합니다.
-
-Projection freshness 값은 owner state에서 렌더링합니다. 이 template은 그 의미를 다시 정의하지 않습니다.
-
-Projection freshness는 읽기용 view의 최신성만 뜻합니다. Task result, state freshness, evidence freshness, approval, acceptance, write authority가 아닙니다.
+이 template은 렌더링 결과인 카드 형태일 뿐 기준 상태가 아닙니다. Gate value는 기준 상태가 계속 담당하며, projection freshness는 읽기용 view의 최신성만 뜻합니다. Task result, state freshness, evidence freshness, approval, acceptance, write authority가 아닙니다.
 
 이것은 judgment-context가 아닙니다. 사용자 판단이 필요하면 options, recommendation, uncertainty, deferral effect, relevant refs가 있는 decision prompt를 별도로 렌더링합니다.
 

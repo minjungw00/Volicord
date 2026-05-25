@@ -126,4 +126,4 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Notes
 
-Approval does not resolve user-owned product or material technical judgment, prove correctness, satisfy evidence, replace verification, replace Manual QA, imply acceptance, or accept residual risk. Decision request routing records are not decision authority and cannot affect `decision_gate` except through a linked compatible Decision Packet.
+The Boundary section is the user-facing reminder. Decision request routing records are not decision authority and cannot affect `decision_gate` except through a linked compatible Decision Packet.

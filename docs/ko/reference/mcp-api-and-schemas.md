@@ -675,7 +675,7 @@ Status, next, write, close flow에서 자주 드러나는 agency-critical subset
 `MCP_UNAVAILABLE`은 stable public `ErrorCode`로 유지합니다. Diagnostic detail은 public error code를 추가하지 않고 `MCP_SERVER_UNAVAILABLE`과 `SURFACE_MCP_UNAVAILABLE`을 구분합니다.
 
 - `MCP_SERVER_UNAVAILABLE`: tool call이 Core에 닿을 수 없어 authoritative Core response가 불가능합니다. Caller는 상태 변경을 주장하기 전에 진단하거나 reconnect해야 합니다.
-- `SURFACE_MCP_UNAVAILABLE`: Core 또는 operator는 연결된 접점에서 사용할 수 있는 MCP가 없거나, MCP configuration이 오래되었거나, required MCP tool을 호출할 수 없는 상태를 관찰할 수 있습니다. 제품 파일 쓰기는 cooperative 접점에서는 지시로 보류되고, 사용할 수 있는 더 강한 guard가 있으면 차단됩니다. Core response는 상황에 따라 `details.mcp_unavailable_kind`와 함께 `MCP_UNAVAILABLE` 또는 `CAPABILITY_INSUFFICIENT`를 사용할 수 있습니다.
+- `SURFACE_MCP_UNAVAILABLE`: Core 또는 operator는 연결된 접점에서 사용할 수 있는 MCP가 없거나, MCP configuration이 오래되었거나, required MCP tool을 호출할 수 없는 상태를 관찰할 수 있습니다. 제품 파일 쓰기는 cooperative 접점에서는 지시로 보류되고, 사용할 수 있는 더 강한 guard가 해당 operation을 포괄할 때만 실행 전에 차단됩니다. Core response는 상황에 따라 `details.mcp_unavailable_kind`와 함께 `MCP_UNAVAILABLE` 또는 `CAPABILITY_INSUFFICIENT`를 사용할 수 있습니다.
 
 MCP availability problem에 대해 `ToolError` object를 사용할 수 있는 경우 `details.mcp_unavailable_kind`는 `server_unavailable`, `surface_mcp_unavailable`, `stale_connection`, `unknown` 중 하나일 수 있습니다.
 
