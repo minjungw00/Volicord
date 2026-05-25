@@ -10,6 +10,8 @@
 
 Generic capability profile 예시는 [Agent 통합 참조](agent-integration.md#capability-profile-예시)를 봅니다.
 
+Surface recipe는 로컬 접근용 error code나 OS 수준 보안 보장을 새로 정의하지 않습니다. MCP access가 unavailable, stale, unknown, weak이거나 registered profile 밖에 있으면 API와 operations path를 사용합니다. 즉 diagnostic detail이 있는 `MCP_UNAVAILABLE` 또는 `CAPABILITY_INSUFFICIENT`, claim mismatch에 대한 normal state-conflict/scope/capability checks, 실제 guarantee display로 처리합니다. Surface별 MVP `UNAUTHORIZED` code를 도입하지 않습니다.
+
 ## Recipe shape
 
 각 recipe에는 접점별 내용만 둡니다.

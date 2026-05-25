@@ -287,7 +287,7 @@ Reference implementation에서 `uri`는 `harness-artifact://{project_id}/{artifa
 | `secret_omitted` | Secret value 또는 PII를 의도적으로 생략하거나 handle로 대체했습니다. Secret이 아닌 evidence가 남아 있는 주장에는 도움이 될 수 있지만, 생략된 값 자체를 증명하는 evidence는 아닙니다. |
 | `blocked` | 금지된 내용 때문에 capture 또는 raw payload 저장이 차단되었습니다. Core가 blocked artifact ref를 기록했다면 metadata notice만 노출될 수 있으며 evidence, QA, verification, projection, export display는 raw artifact가 available한 것처럼 보이지 않게 차단 상태를 표시해야 합니다. |
 
-`redacted`, `secret_omitted`, `blocked`에서 `sha256`, `size_bytes`, `content_type`은 숨겨진 원본이 아니라 committed safe stored bytes를 설명합니다. `blocked`의 경우 이 bytes는 Core가 audit과 downstream display를 위해 commit한 metadata-only notice이며, 금지된 raw payload가 아닙니다.
+`redacted`, `secret_omitted`, `blocked`에서 `sha256`, `size_bytes`, `content_type`은 숨겨진 원본이 아니라 committed safe stored bytes를 설명합니다. `blocked`의 경우 이 bytes는 Core가 audit과 downstream display를 위해 commit한 metadata-only notice이며, 금지된 raw payload가 아닙니다. 이 notice artifact 자체는 차단된 capture의 사용 가능한 원본 근거가 아닙니다.
 
 Evidence를 만들거나 연결하는 request는 `ArtifactInput`을 사용합니다. Request는 기존 committed artifact를 reference하거나, Core가 검증하고 등록한 뒤 `ArtifactRef`로 반환할 staged file을 제공할 수 있습니다.
 
@@ -580,7 +580,7 @@ AcceptanceVisibilityContext:
 
 Autonomy Boundary summaries는 scope authority가 아니라 judgment latitude를 설명합니다. Active Change Unit scope와 required approval 밖의 paths, tools, commands, network targets, secret access, sensitive categories를 허가하지 않습니다.
 
-`decision_kind=approval`은 stable public enum value로 유지됩니다. `DecisionPacket`과 `DecisionPacketCandidate` 모두에서 이 값은 sensitive-change approval만을 위한 approval-shaped judgment context를 뜻합니다. 제품 장단점, design direction, architecture 또는 중요한 technical direction, 해결되지 않은 security 또는 product-security 판단, QA 면제, verification risk, final acceptance, Residual Risk 수용 같은 사용자 소유 판단은 별도의 compatible Decision Packets와 gate updates로 표현되지 않는 한 이 값으로 해소할 수 없습니다.
+`decision_kind=approval`은 stable public enum value로 유지됩니다. `DecisionPacket`과 `DecisionPacketCandidate` 모두에서 이 값은 sensitive-change approval만을 위한 approval-shaped judgment context를 뜻합니다. 제품 장단점, 설계 방향, 아키텍처 판단이나 중요한 기술 판단, 해결되지 않은 security 또는 product-security 판단, QA 면제, verification risk, final acceptance, Residual Risk 수용 같은 사용자 소유 판단은 별도의 compatible Decision Packets와 gate updates로 표현되지 않는 한 이 값으로 해소할 수 없습니다.
 
 ## ValidatorResult
 
@@ -1020,7 +1020,7 @@ Sensitive-change approval은 다음 recipe를 따릅니다.
 7. Approval이 granted이면 caller는 fresh idempotency key와 current `expected_state_version`으로 `harness.prepare_write`를 다시 호출합니다.
 8. 그 retry만 Write Authorization을 만들 수 있습니다. Approved scope, baseline, sensitive categories, paths, tools, commands, network targets, secret scope, Decision Packet refs, Approval refs, capability checks가 current intended write와 compatible할 때만 성공합니다.
 
-Approval은 defined scope 안의 sensitive categories를 허가합니다. Approval은 제품 장단점, design direction, architecture 또는 중요한 technical direction, 해결되지 않은 security 또는 product-security 판단, verification risk, QA 면제, final acceptance, Residual Risk 수용 같은 사용자 소유 판단을 해소하지 않습니다. Sensitive action이 사용자 소유의 제품 판단, 중요한 technical/architecture 판단, 또는 해결되지 않은 security/product-security 판단도 포함하면 Core는 `prepare_write`가 `allowed`를 반환하기 전에 separate compatible Decision Packet을 요구해야 합니다. Approval은 Write Authorization이 아닙니다. Actual product writes에는 여전히 allowed `prepare_write` result와 반환된 Write Authorization을 compatible하게 consume하는 `harness.record_run`이 필요합니다.
+Approval은 defined scope 안의 sensitive categories를 허가합니다. Approval은 제품 장단점, 설계 방향, 아키텍처 판단이나 중요한 기술 판단, 해결되지 않은 security 또는 product-security 판단, verification risk, QA 면제, final acceptance, Residual Risk 수용 같은 사용자 소유 판단을 해소하지 않습니다. Sensitive action이 사용자 소유의 제품 판단, 중요한 기술 판단이나 아키텍처 판단, 또는 해결되지 않은 security/product-security 판단도 포함하면 Core는 `prepare_write`가 `allowed`를 반환하기 전에 separate compatible Decision Packet을 요구해야 합니다. Approval은 Write Authorization이 아닙니다. Actual product writes에는 여전히 allowed `prepare_write` result와 반환된 Write Authorization을 compatible하게 consume하는 `harness.record_run`이 필요합니다.
 
 ### `harness.record_run`
 
@@ -1233,7 +1233,7 @@ RequestUserDecisionRequest:
   reconcile_item_id: string | null
 ```
 
-Core는 기준 `DecisionPacket`을 저장합니다. Minimal MVP 구현은 `decision_requests`를 생략할 수 있으며, public request와 response schema는 Decision Request가 아니라 Decision Packet을 중심으로 유지됩니다. 구현이 `decision_requests`도 만들거나 업데이트한다면 해당 row는 routing, interaction, idempotency replay, legacy handoff metadata일 뿐이며 gate aggregation이 그 metadata를 고려하려면 먼저 기준 `decision_packet_id`로 다시 연결되어야 합니다. `decision_request` row만으로는 `decision_gate`, approval, acceptance, waiver, Residual Risk 수용, close를 절대 만족하지 않습니다. `state_summary_at_request`가 `null`이면 Core가 같은 transaction 안에서 current state로부터 파생합니다. Stored `state_summary_at_request`는 request-time snapshot이며 이후 Task transition으로 업데이트되지 않습니다. `approval_scope`는 `decision_kind=approval`일 때 required이며, 다른 `decision_kind` value에서는 `null` 또는 omitted여야 합니다. `decision_kind=approval`은 approval-shaped sensitive-change context일 뿐이며, 별도의 compatible Decision Packet과 gate update 없이 제품 장단점, design direction, architecture 또는 중요한 technical direction, 해결되지 않은 security 또는 product-security 판단, QA 면제, verification risk, final acceptance, Residual Risk 수용 같은 사용자 소유 판단을 해소할 수 없습니다. `decision_kind=approval`에서 Core는 approval scope를 사용해 linked pending Approval record도 생성합니다. Approval은 `harness.record_user_decision`이 Decision Packet을 해소하기 전에는 granted가 아닙니다. `residual_risk_acceptance` packet은 `user_context.minimum_context`에 risk visibility context를 포함하고 `context.source_refs`에 relevant risk ref를 포함해야 합니다.
+Core는 기준 `DecisionPacket`을 저장합니다. Minimal MVP 구현은 `decision_requests`를 생략할 수 있으며, public request와 response schema는 Decision Request가 아니라 Decision Packet을 중심으로 유지됩니다. 구현이 `decision_requests`도 만들거나 업데이트한다면 해당 row는 routing, interaction, idempotency replay, legacy handoff metadata일 뿐이며 gate aggregation이 그 metadata를 고려하려면 먼저 기준 `decision_packet_id`로 다시 연결되어야 합니다. `decision_request` row만으로는 `decision_gate`, approval, acceptance, waiver, Residual Risk 수용, close를 절대 만족하지 않습니다. `state_summary_at_request`가 `null`이면 Core가 같은 transaction 안에서 current state로부터 파생합니다. Stored `state_summary_at_request`는 request-time snapshot이며 이후 Task transition으로 업데이트되지 않습니다. `approval_scope`는 `decision_kind=approval`일 때 required이며, 다른 `decision_kind` value에서는 `null` 또는 omitted여야 합니다. `decision_kind=approval`은 approval-shaped sensitive-change context일 뿐이며, 별도의 compatible Decision Packet과 gate update 없이 제품 장단점, 설계 방향, 아키텍처 판단이나 중요한 기술 판단, 해결되지 않은 security 또는 product-security 판단, QA 면제, verification risk, final acceptance, Residual Risk 수용 같은 사용자 소유 판단을 해소할 수 없습니다. `decision_kind=approval`에서 Core는 approval scope를 사용해 linked pending Approval record도 생성합니다. Approval은 `harness.record_user_decision`이 Decision Packet을 해소하기 전에는 granted가 아닙니다. `residual_risk_acceptance` packet은 `user_context.minimum_context`에 risk visibility context를 포함하고 `context.source_refs`에 relevant risk ref를 포함해야 합니다.
 
 Response schema:
 
@@ -1251,7 +1251,7 @@ RequestUserDecisionResponse:
 
 Status와 next-action response가 반환하는 `pending_decisions`는 `record_kind=decision_packet`인 해소되지 않은 user-action `StateRecordRef` entry를 포함합니다. `active_decision_packet_refs` field는 pending, deferred, blocked, recently resolved packet을 포함해 current phase 또는 requested action과 relevant한 모든 Decision Packet을 포함합니다.
 
-State transition summary: pending Decision Packet을 record하고 보통 Task를 `waiting_user`로 옮깁니다. 사용자 소유 제품 장단점 판단 또는 중요한 technical/architecture choice 같은 `decision_gate` 대상 판단은 `decision_gate=pending`을 set합니다. Approval request는 pending Approval record를 생성하고 `approval_gate=pending`을 set하며, scope confirmation은 `scope_gate=pending`을 set합니다. Acceptance와 Residual Risk 수용은 acceptance가 required일 때 `acceptance_gate=pending`을 set하거나 유지합니다.
+State transition summary: pending Decision Packet을 record하고 보통 Task를 `waiting_user`로 옮깁니다. 사용자 소유 제품 장단점 판단 또는 중요한 기술/아키텍처 선택 같은 `decision_gate` 대상 판단은 `decision_gate=pending`을 set합니다. Approval request는 pending Approval record를 생성하고 `approval_gate=pending`을 set하며, scope confirmation은 `scope_gate=pending`을 set합니다. Acceptance와 Residual Risk 수용은 acceptance가 required일 때 `acceptance_gate=pending`을 set하거나 유지합니다.
 
 implementation-local detail/audit를 위해 반환될 수 있는 non-stable EventRef values: `decision_packet_created`, `user_decision_requested`, `approval_requested`, `scope_confirmation_requested`, `design_choice_requested`, `architecture_choice_requested`, `autonomy_boundary_decision_requested`, `verification_waiver_requested`, `qa_waiver_requested`, `acceptance_requested`, `residual_risk_acceptance_requested`, `reconcile_decision_requested`.
 
@@ -1337,7 +1337,7 @@ RecordUserDecisionResponse:
 
 `RecordUserDecisionResponse.accepted_risk_refs`는 `record_kind=residual_risk`인 `StateRecordRef` entries만 포함합니다. Standalone accepted-risk record kind는 없습니다.
 
-State transition summary: targeted Decision Packet은 해소, defer, reject, block 상태로 처리합니다. Affected gate 또는 reconcile item을 업데이트합니다. Approval grant/deny는 linked Approval 기록과 `approval_gate`를 업데이트하지만 Write Authorization을 생성하지 않습니다. Accepted scope는 `scope_gate`를 업데이트하고, 사용자 소유 제품 장단점 판단 또는 중요한 technical/architecture choice 같은 사용자가 해소한 `decision_gate` 대상 판단은 `decision_gate`를 업데이트합니다. Accepted Autonomy Boundary decision은 active Change Unit의 경계를 업데이트할 수 있습니다. Verification 면제는 `verification_gate=waived_by_user`를 업데이트하고, QA 면제는 `qa_gate`를 업데이트합니다. Acceptance는 user decision을 Decision Packet에 기록하고 `acceptance_gate`를 업데이트합니다. Accepted Residual Risk는 assurance를 높이지 않고 Residual Risk record를 업데이트하며 그 참조를 반환합니다. Reconcile은 accepted state 기록을 생성할 수 있습니다.
+State transition summary: targeted Decision Packet은 해소, defer, reject, block 상태로 처리합니다. Affected gate 또는 reconcile item을 업데이트합니다. Approval grant/deny는 linked Approval 기록과 `approval_gate`를 업데이트하지만 Write Authorization을 생성하지 않습니다. Accepted scope는 `scope_gate`를 업데이트하고, 사용자 소유 제품 장단점 판단 또는 중요한 기술/아키텍처 선택 같은 사용자가 해소한 `decision_gate` 대상 판단은 `decision_gate`를 업데이트합니다. Accepted Autonomy Boundary decision은 active Change Unit의 경계를 업데이트할 수 있습니다. Verification 면제는 `verification_gate=waived_by_user`를 업데이트하고, QA 면제는 `qa_gate`를 업데이트합니다. Acceptance는 user decision을 Decision Packet에 기록하고 `acceptance_gate`를 업데이트합니다. Accepted Residual Risk는 assurance를 높이지 않고 Residual Risk record를 업데이트하며 그 참조를 반환합니다. Reconcile은 accepted state 기록을 생성할 수 있습니다.
 
 implementation-local detail/audit를 위해 반환될 수 있는 non-stable EventRef values: `user_decision_recorded`, `decision_packet_resolved`, `decision_packet_deferred`, `decision_packet_rejected`, `approval_granted`, `approval_denied`, `scope_confirmed`, `scope_rejected`, `design_choice_recorded`, `architecture_choice_recorded`, `autonomy_boundary_decision_recorded`, `verification_waiver_recorded`, `qa_waiver_recorded`, `acceptance_recorded`, `residual_risk_accepted`, `reconcile_resolved`.
 

@@ -285,7 +285,7 @@ For the reference implementation, `uri` uses `harness-artifact://{project_id}/{a
 | `secret_omitted` | Secret values or PII are intentionally omitted or replaced by handles. The artifact may support claims whose nonsecret evidence remains visible, but it cannot prove the omitted values themselves. |
 | `blocked` | Capture or raw-payload storage was blocked for forbidden content. When Core records a blocked artifact ref, only a metadata notice may be exposed; evidence, QA, verification, projection, and export displays must show the block instead of implying the raw artifact is available. |
 
-For `redacted`, `secret_omitted`, and `blocked`, `sha256`, `size_bytes`, and `content_type` describe the committed safe stored bytes, not a hidden original. For `blocked`, those bytes are the metadata-only notice that Core committed for audit and downstream display; they are never the forbidden raw payload.
+For `redacted`, `secret_omitted`, and `blocked`, `sha256`, `size_bytes`, and `content_type` describe the committed safe stored bytes, not a hidden original. For `blocked`, those bytes are the metadata-only notice that Core committed for audit and downstream display; they are never the forbidden raw payload. The notice artifact itself is not available raw evidence for the blocked capture.
 
 Requests that create or attach evidence use `ArtifactInput`. A request may either reference an existing committed artifact or provide a staged file for Core to validate, register, and return as an `ArtifactRef`.
 

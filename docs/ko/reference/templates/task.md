@@ -300,10 +300,10 @@ Change Unit block sub-template:
   - local refactor inside scope:
   - evidence collection:
 - user judgment required:
-  - product direction:
-  - material technical direction:
-  - public interface or compatibility commitment:
-  - residual risk acceptance:
+  - 제품 방향:
+  - 중요한 기술 방향:
+  - public interface 또는 호환성 약속:
+  - 남은 위험 수용:
 - AFK stop conditions:
   - boundary exceeded:
   - evidence cannot be produced:

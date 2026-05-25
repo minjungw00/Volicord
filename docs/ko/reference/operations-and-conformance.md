@@ -403,7 +403,7 @@ Exported projection snapshot은 hash를 가질 수 있지만, 그렇다고 Markd
 
 Export는 policy가 적용될 때 `data_export` category side effect입니다. Export는 artifact boundary를 보존해야 합니다. 포함되는 raw file은 허용된 registered artifact로 제한하고, projection snapshot은 snapshot으로 남기며, bundle은 제거되었거나 blocked된 secret, sensitive log, screenshot, network trace, telemetry/logging content, PII에 대한 redaction, omission, block note를 포함해야 합니다.
 
-Export는 staged, omitted, blocked content에 대한 접근 범위를 넓히면 안 됩니다. `secret_omitted` artifact는 ref, 안전하게 저장된 bytes에 대한 hash, omission note 또는 handle로 표현합니다. `blocked` artifact는 committed metadata-only notice로 표현하며 unavailable raw evidence로 나열해야 합니다. 이 artifact의 hash, size, content type은 금지된 payload가 아니라 notice bytes를 가리킵니다. Export manifest는 secret 또는 PII value를 포함하지 않고 affected artifact ref, redaction, omission, block category, 영향을 받는 evidence, QA, verification, projection, Release Handoff display를 이름 붙여야 합니다.
+Export는 staged, omitted, blocked content에 대한 접근 범위를 넓히면 안 됩니다. `secret_omitted` artifact는 ref, 안전하게 저장된 bytes에 대한 hash, omission note 또는 handle로 표현합니다. `blocked` artifact는 committed metadata-only notice로 표현하며 사용할 수 없는 원본 근거로 나열해야 합니다. 이 artifact의 hash, size, content type은 금지된 payload가 아니라 notice bytes를 가리킵니다. Export manifest는 secret 또는 PII value를 포함하지 않고 affected artifact ref, redaction, omission, block category, 영향을 받는 evidence, QA, verification, projection, Release Handoff display를 이름 붙여야 합니다.
 
 ### Release Handoff Export Profile
 

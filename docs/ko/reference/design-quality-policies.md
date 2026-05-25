@@ -440,7 +440,7 @@ Waiver는 explicit, scoped, recorded여야 합니다. Waiver에는 다음을 포
 
 정책 waiver는 정책 계약이 허용하는 경우에만 설계 품질 요구사항을 충족한 것으로 볼 수 있습니다. product write 범위, 민감 변경 approval, 필요한 근거 범위, 필수 acceptance를 대신 면제하지 않습니다. Verification waiver는 kernel close semantics가 담당하며 `assurance_level=detached_verified`를 만들면 안 됩니다.
 
-Verification, QA, public API/interface 약속, 범위 확장, technical/architecture direction, dependency direction, schema/data-model migration, module boundary change, 알려진 위험이 있는 acceptance와 관련된 waiver는 `decision_quality`도 충족하고 active `autonomy_boundary`를 따라야 합니다.
+Verification, QA, public API/interface 약속, 범위 확장, 기술/아키텍처 방향, dependency 방향, schema/data-model migration, module boundary change, 알려진 위험이 있는 acceptance와 관련된 waiver는 `decision_quality`도 충족하고 active `autonomy_boundary`를 따라야 합니다.
 
 ```mermaid
 flowchart TD
@@ -448,7 +448,7 @@ flowchart TD
   Allowed -- no --> KeepImpact["gate, write, close, decision impact 유지"]
   Allowed -- yes --> Record["policy, Task/Change Unit, reason, 수용한 위험, actor, expiry/follow-up, 영향받는 impact 기록"]
   Record --> Kernel["kernel authority blocker는 계속 적용"]
-  Record --> Decision{"verification, QA, public API/interface, scope, technical/architecture, dependency/schema/module boundary, known risk 관련?"}
+  Record --> Decision{"verification, QA, public API/interface, scope, 기술/아키텍처, dependency/schema/module boundary, known risk 관련?"}
   Decision -- yes --> Quality["decision_quality_check required"]
   Decision -- yes --> Boundary["active autonomy_boundary respect"]
   Decision -- no --> Waived["policy가 소유한 impact를 waive 가능"]
