@@ -13,7 +13,7 @@
 - baseline 참조
 - 위험, 대안, 추천안
 
-`{approval_covers}`, `{approval_does_not_cover}` 같은 coverage placeholder는 Approval 범위, 연결된 Approval 기록, 관련 Decision Packet ref, 현재 쓰기 또는 닫기 context에서 파생한 표시 전용 요약입니다. Approval 경계만 보여주며, Approval 기록과 decision path가 계속 권위 source입니다.
+`{approval_covers}`, `{approval_does_not_cover}` 같은 coverage placeholder는 Approval 범위, 연결된 Approval 기록, 관련 Decision Packet ref, 현재 쓰기 또는 닫기 context에서 파생한 표시 전용 요약입니다. Approval 경계만 보여주며, Approval 기록과 decision path가 계속 권위 있는 source입니다.
 
 ## 렌더링 섹션
 

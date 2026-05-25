@@ -24,7 +24,7 @@ Template은 렌더링 결과일 뿐 기준 상태가 아닙니다. Kernel field,
 
 Managed block은 projector가 소유하는 표시 영역입니다. Managed block을 직접 편집한 내용은 상태 변경이 아니라 drift이며 reconcile candidate가 되어야 합니다. `User Notes and Proposals` 같은 사람이 편집할 수 있는 section은 제안 접점입니다. Reconcile 또는 다른 Core state-changing path가 관련 `state.sqlite.task_events` row를 추가한 뒤에야 상태가 됩니다.
 
-Artifact ref를 렌더링하는 모든 template은 `redaction_state`를 보존해야 합니다. 크거나 민감한 artifact 본문은 기본적으로 embed하지 않습니다. `secret_omitted` entry는 안전한 note 또는 handle을 보여줄 수 있고, 보이는 nonsecret evidence만 뒷받침할 수 있습니다. `blocked` entry는 커밋된 metadata-only notice를 사용할 수 없는 입력으로 보여줍니다. Template은 생략된 secret/PII value 또는 차단된 원본 payload를 inline, reconstruct, summarize, export하면 안 됩니다.
+Artifact ref를 렌더링하는 모든 template은 `redaction_state`를 보존해야 합니다. 크거나 민감한 artifact 본문은 기본적으로 포함하지 않습니다. `secret_omitted` entry는 안전한 note 또는 handle을 보여줄 수 있고, 보이는 nonsecret evidence만 뒷받침할 수 있습니다. `blocked` entry는 커밋된 metadata-only notice를 사용할 수 없는 입력으로 보여줍니다. Template은 생략된 secret/PII 값 또는 차단된 원본 payload를 inline 표시하거나 재구성하거나 요약하거나 export하면 안 됩니다.
 
 `redaction_availability_summary`, 생략/차단 영향 line, `이후 영향` column 같은 표시 field는 표시 전용 요약일 뿐입니다. 이 값들은 `ArtifactRef.redaction_state`, owner 기록, 이후 gate, 근거, QA, 검증, projection, export, Release Handoff 상태에서 파생됩니다.
 

@@ -78,7 +78,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - 후속 작업:
 - Residual Risk refs:
 - 수용된 Residual Risk 요약:
-- close 영향:
+- 닫기 영향:
 
 ## Findings
 | Severity | Finding | Suggested Action | Follow-up CU |
@@ -95,11 +95,11 @@ updated_at: 2026-05-06T10:05:00+09:00
 | Artifact Ref | Redaction State | QA Effect | Note |
 |---|---|---|---|
 | ART-QA-0001 | secret_omitted | observable finding만 지원 | |
-| ART-QA-0002 | blocked | capture unavailable; QA는 해소 전까지 pending/failed/waived/blocking | |
+| ART-QA-0002 | blocked | capture 사용 불가; QA는 해소 전까지 pending/failed/waived/blocking | |
 ````
 
 ## 메모
 
 이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. `qa_gate`가 기준 close-relevant gate이며, 이 projection은 그 값을 표시만 합니다.
 
-Manual QA projection은 safe omission note, handle, blocked artifact notice를 보여줄 수 있지만 omitted secret/PII value 또는 blocked capture payload를 embed하면 안 됩니다. `secret_omitted` artifact는 visible workflow, UI, copy, accessibility, smoke-test observation을 뒷받침할 수 있습니다. `blocked` capture는 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 QA path를 해소하지 않는 한 unavailable QA input입니다.
+Manual QA projection은 안전한 omission note, handle, blocked artifact notice를 보여줄 수 있지만 생략된 secret/PII 값이나 차단된 capture payload를 포함하면 안 됩니다. `secret_omitted` artifact는 보이는 workflow, UI, copy, accessibility, smoke-test observation을 뒷받침할 수 있습니다. `blocked` capture는 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 QA path를 해소하지 않는 한 사용할 수 없는 QA input입니다.

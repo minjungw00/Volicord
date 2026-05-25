@@ -60,4 +60,4 @@ Latest refs: report={latest_report_ref|none}; evidence={evidence_manifest_ref|no
 
 이것은 judgment-context가 아닙니다. 사용자 판단이 필요하면 options, recommendation, uncertainty, 미룰 때의 영향, relevant refs가 있는 decision prompt를 별도로 렌더링합니다.
 
-큰 기록은 refs-first로 둡니다. Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, large trace는 default로 embed하지 않습니다.
+큰 기록은 refs-first로 둡니다. Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, large trace는 default로 본문에 포함하지 않습니다.

@@ -88,4 +88,4 @@ Projection freshness: {projection_freshness}; source_state_version={source_state
 
 이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. Persisted `JOURNEY-CARD` Markdown은 선택 사항입니다. `status`, `next`, 중요한 resume flow에서 보여주는 현재 위치 Journey Card output도 읽기/표시용 접점입니다.
 
-Latest 또는 next evidence에 `secret_omitted`나 `blocked` artifact ref가 포함되면 이 card는 사용 가능성 영향만 표시해야 합니다. 생략된 value 또는 차단된 원본 payload 내용을 포함하면 안 됩니다.
+Latest 또는 next evidence에 `secret_omitted`나 `blocked` artifact ref가 포함되면 이 card는 사용 가능성 영향만 표시해야 합니다. 생략된 값 또는 차단된 원본 payload 내용을 포함하면 안 됩니다.
