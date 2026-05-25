@@ -74,6 +74,14 @@ flowchart TD
 
 Exact command flags may vary by implementation, but the semantics below are required for the reference MVP.
 
+## Operator diagnostics report facts, not new state
+
+Operator output should help a person decide what to do next without teaching a second state model. A useful diagnostic line names the category, level, observed fact, affected record or path when safe, operational effect, and next action. It also says when a finding is only diagnostic.
+
+For example, "projection `TASK` is stale" means the readable view is behind the owner records; it does not mean Task state failed. "generated-file drift detected" means a connector-managed file no longer matches the manifest; it is reported and routed to reconcile rather than overwritten. "recovery event appended" means history was extended with a compensating record; it does not mean older `task_events` were rewritten.
+
+These examples are display guidance. They do not add command flags, state tables, event names, public `ErrorCode` values, or fixture fields.
+
 ## Conformance staging
 
 Conformance can run incrementally, but staged execution must not change the fixture body shape or reduce final MVP requirements.
@@ -163,6 +171,16 @@ sequenceDiagram
 
 Connect must report generated-file drift instead of overwriting human edits silently. Surface-specific generated file names belong in the surface cookbook.
 
+Illustrative connect drift output:
+
+```text
+surface     WARN  connector-managed file drift
+observed    .harness/agent/generated/reference-instructions.md changed since manifest MAN-014
+effect      existing file kept; connector manifest/reconcile path records drift
+next        review the diff, then reconcile or reconnect with an explicit decision
+authority   edited generated file is not Task state and was not silently overwritten
+```
+
 ## doctor
 
 `doctor` reports readiness, drift, and repair options.
@@ -209,9 +227,35 @@ REPAIRABLE
 MANUAL
 ```
 
+Levels are operator report levels, not gate values:
+
+| Level | Meaning |
+|---|---|
+| `OK` | The checked surface, record, or file is usable for the covered operation. |
+| `WARN` | Work may continue with a visible reduced guarantee, stale context, or non-blocking risk. |
+| `FAIL` | The covered operation cannot safely rely on the checked input or capability. |
+| `REPAIRABLE` | Core or a documented operator path can repair the issue from canonical state, raw artifacts, or managed output without inventing user-owned judgment. |
+| `MANUAL` | A human must inspect, decide, restore, reconnect, or provide missing context before Core can rely on the result. |
+
 Doctor must distinguish current state failures from projection stale or projection failed status.
 
 State checks include JSON `TEXT` fields in `registry.sqlite` and `state.sqlite`. Malformed JSON is a state failure. Schema-incompatible JSON is a state failure; doctor may mark it `REPAIRABLE` only when Core can safely reconstruct the expected value from other canonical state or raw artifacts without inventing user-owned judgment, otherwise it reports `FAIL` or `MANUAL`.
+
+Compact doctor examples:
+
+| Category | Example report | Operational meaning |
+|---|---|---|
+| project | `project OK repo_root=/repo project_id=PRJ-0001` | Project registration and static config are readable. |
+| state | `state FAIL state.sqlite tasks.current_json malformed` | Current state is invalid; this is not a projection problem. Recovery may repair only if Core can reconstruct the shape. |
+| MCP | `MCP FAIL MCP_SERVER_UNAVAILABLE localhost endpoint refused` | Core cannot be reached through MCP, so no authoritative Core response or state-changing claim is available from that path. |
+| surface | `surface WARN SURFACE_MCP_UNAVAILABLE required tool not callable by SURFACE-REF` | Core may be reachable, but this connected surface cannot use the required MCP path; write-capable work is held according to the guarantee profile. |
+| artifacts | `artifacts FAIL ART-204 hash mismatch; evidence_gate may become stale` | The artifact record and stored file disagree; Markdown edits do not repair the evidence. |
+| projections | `projections WARN TASK stale source_state_version=41 current_task_state_version=44` | Task state may still be valid; the readable `TASK` view lags and should be refreshed or reconciled. |
+| projections | `projections FAIL RUN-SUMMARY failed render_error=template_input_missing` | The projection job failed; the Run record is not converted into a failed Run by this display failure. |
+| reconcile | `reconcile MANUAL generated-file drift .harness/agent/generated/reference-instructions.md` | The generated file is reported and routed for review; it is not silently overwritten or treated as state. |
+| validators/checks | `validators/checks WARN context_hygiene_check stale projection refs` | Stable validators and Core checks are reported separately; a mechanical projection freshness issue is not a new validator ID. |
+| agency/stewardship/context | `agency/stewardship/context FAIL Decision Packet required for user-owned trade-off` | The blocker routes to the Decision Packet path; broad approval or status prose cannot satisfy the decision. |
+| security/threat model | `security/threat model WARN socket permissions broader than profile` | The finding changes the reported guarantee and may block write-capable readiness, but file permissions are diagnostic rather than canonical state. |
 
 Security-oriented doctor output is diagnostic and does not create new runtime authority. It should report when the MCP access mode does not match the local process/localhost expectation or the documented connector profile, when project/task/surface claims do not match registered state, when connector-managed files drift, when artifacts lack redaction, omission, or block metadata required by their sensitive category, and when sensitive operations including `destructive_write`, `network_write`, `external_service_write`, `secret_access`, `privacy_or_pii_change`, `data_export`, `infra_or_deployment_change`, `production_config_change`, `ci_cd_change`, `billing_or_cost_change`, or `telemetry_or_logging_change` appear outside the recorded scope/approval/Decision Packet/Write Authorization path.
 
@@ -301,6 +345,16 @@ flowchart TD
 
 For MVP, Decision Packet visibility is rendered through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources; Journey Card visibility is rendered through status, journey, next, and significant resume surfaces. Dedicated refresh targets in the Extension / optional tier for `DEC`, `DESIGN`, `EXPORT`, and persisted `JOURNEY-CARD` are optional when enabled, not required MVP smoke targets.
 
+Illustrative projection refresh statuses:
+
+| Report line | Meaning |
+|---|---|
+| `TASK current source_state_version=44` | The rendered `TASK` view matches the committed Task state version and managed hash. |
+| `TASK stale source_state_version=41 current_task_state_version=44` | State moved ahead of the rendered view. The Task result did not fail; the view needs refresh or reconcile. |
+| `RUN-SUMMARY failed projection_job_id=PJOB-088` | The latest render failed. The committed Run keeps its own `runs.status`; projection failure is reported separately. |
+| `APR skipped managed_block_drift reconcile_item=REC-019` | The projector avoided overwriting a changed managed block and routed the drift to reconcile. |
+| optional `EXPORT` projection enabled: `EXPORT stale artifact ART-204 unavailable` | Applies only when the optional `EXPORT` projection/report surface is enabled. It does not make `EXPORT` an MVP-required refresh target, and it is not proof that the underlying Task state failed. |
+
 ## reconcile
 
 Reconcile turns human-editable input or generated/managed drift into an explicit decision.
@@ -343,6 +397,8 @@ flowchart TD
 
 Reconcile must not treat edited Markdown as canonical state by itself.
 
+When reconcile reports generated-file or managed-block drift, it should say which source was edited, what owner or manifest expected, and which decision path is open. A merged outcome applies through Core and appends state history. A rejected or converted-to-note outcome leaves canonical state unchanged and may refresh the projection or generated file from the owner records.
+
 ## recover
 
 Recover repairs interrupted or inconsistent operational state without rewriting history.
@@ -382,6 +438,20 @@ flowchart TD
 
 Recovery may append compensating events. It must not silently delete evidence, rewrite event history, or make projections authoritative.
 
+Illustrative recovery report:
+
+```text
+before      task_events max event_seq=104; active run observed during write
+action      recovery classified interrupted write
+after       appended recovery/audit task_events after event_seq=104
+after       committed recovery Run with runs.status=interrupted
+artifacts   registered safe diff/log snapshots when available
+not done    no earlier task_events rewritten; no evidence silently deleted
+not done    no Markdown projection edited into canonical state
+```
+
+Captured recovery artifacts can explain what was observed during interruption. They do not prove the interrupted implementation completed successfully and cannot satisfy evidence, verification, QA, acceptance, or close by themselves.
+
 ## export
 
 Export creates a review or archival bundle for a Task.
@@ -414,6 +484,36 @@ Exported projection snapshots may have hashes, but that does not make the Markdo
 Export is a `data_export`-category side effect when policy applies. Export must preserve the artifact boundary: included raw files are limited to allowed registered artifacts, projection snapshots remain snapshots, and the bundle carries redaction, omission, or block notes for secrets, sensitive logs, screenshots, network traces, telemetry/logging content, and PII that were removed or blocked.
 
 Export must never widen access to staged, omitted, or blocked content. `secret_omitted` artifacts are represented by refs, hashes over the safe bytes, and omission notes or handles. `blocked` artifacts are represented by committed metadata-only notices and must be listed as unavailable raw evidence; their hashes, sizes, and content types refer to the notice bytes, not the forbidden payload. Export manifests should name the affected artifact ref, the redaction, omission, or block category, and the affected evidence, QA, verification, projection, or Release Handoff display without including the secret or PII value.
+
+Illustrative export manifest summary:
+
+```yaml
+task_id: TASK-1234
+created_at: 2026-05-10T09:30:00Z
+included_projection_freshness:
+  TASK: current
+  EVAL: stale
+export_bundle_status: current
+decision_packets:
+  included: [DEC-010, DEC-011]
+residual_risks:
+  visible_refs: [RISK-004]
+  accepted_refs: [RISK-002]
+artifact_integrity:
+  checked: 18
+  passed: 17
+  unavailable: [ART-204]
+redaction_summary:
+  redacted: 2
+  secret_omitted: 1
+  blocked: 1
+omitted_artifacts:
+  - artifact_id: ART-204
+    reason: blocked
+    note: metadata-only notice included; raw payload unavailable
+```
+
+This display shape is illustrative. The required behavior is that export reports freshness for included projections, artifact integrity, Decision Packets, residual risks, omitted or blocked artifacts, and redaction/omission/block effects without copying raw staged, omitted, blocked, secret, or PII values into the bundle. `export_bundle_status` is report status for the bundle being produced; it is not a canonical state record or a required `EXPORT` projection job.
 
 ### Release Handoff Export Profile
 
@@ -490,6 +590,16 @@ Failures should mark related evidence, projection freshness, or close readiness 
 When an artifact check observes `secret_omitted` or `blocked`, downstream operations report the effect instead of hiding it: Evidence Manifest and QA views show omitted or blocked refs, detached verification treats unavailable raw bytes as missing input unless the Eval path accepts the omission or another documented resolution applies, projection displays show the redaction state rather than embedded content, and export/Release Handoff summaries list the omission or block without leaking the value. `secret_omitted` can support claims whose nonsecret evidence remains visible; `blocked` keeps the attempted capture auditable but leaves dependent evidence, QA, Eval, projection, export, or Release Handoff inputs blocked, insufficient, unavailable, or unresolved until a replacement, waiver, Decision Packet outcome, accepted risk, or documented fallback resolves the path.
 
 Artifact check diagnostics should also show boundary failures for staged inputs. A `staged_uri` that resolves outside project `artifacts/tmp/`, escapes through a symlink, uses parent traversal, names an arbitrary absolute path, or points at a repo-local file outside an approved capture adapter is reported as outside the approved staging/capture boundary. The report names the affected locator and owner relation when safe, marks the artifact input invalid or unavailable through existing artifact/check results, and must not copy, hash, display, or export the forbidden target as Harness evidence.
+
+Compact artifact check examples:
+
+| Finding | Reported effect |
+|---|---|
+| `ART-101 OK hash and size match` | Artifact can be used by owner refs subject to normal gate rules. |
+| `ART-204 FAIL hash mismatch` | Related evidence, projection freshness, or close readiness becomes stale/blocked according to Core rules. |
+| `ART-301 WARN redaction_state=secret_omitted` | Safe ref and omission note are shown; omitted raw value is not displayed or exported. |
+| `ART-302 FAIL redaction_state=blocked` | Metadata-only notice is committed; dependent evidence, QA, Eval, projection, export, or Release Handoff input stays unavailable until resolved. |
+| `staged_uri MANUAL outside approved staging boundary` | The caller-supplied path is not copied, hashed, displayed, exported, or accepted as committed evidence. |
 
 ## conformance run
 

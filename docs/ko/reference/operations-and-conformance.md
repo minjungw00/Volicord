@@ -74,6 +74,14 @@ flowchart TD
 
 정확한 command flag는 구현마다 달라질 수 있지만, reference MVP에는 아래 semantics가 필요합니다.
 
+## 운영 진단은 새 상태가 아니라 사실을 보고합니다
+
+Operator output은 사람이 다음 조치를 고를 수 있게 해야 하며, 두 번째 상태 모델을 가르치면 안 됩니다. 유용한 diagnostic line은 category, level, 관찰된 사실, 안전하게 표시할 수 있는 affected record 또는 path, operational effect, next action을 함께 이름 붙입니다. Finding이 diagnostic only인 경우도 분명히 말해야 합니다.
+
+예를 들어 "projection `TASK` is stale"은 사람이 읽는 view가 owner record보다 뒤처졌다는 뜻이지 Task state가 failed라는 뜻이 아닙니다. "generated-file drift detected"는 connector-managed file이 manifest와 더 이상 맞지 않는다는 뜻이며, 조용히 덮어쓰지 않고 보고한 뒤 reconcile로 보냅니다. "recovery event appended"는 compensating record로 history를 확장했다는 뜻이지 기존 `task_events`를 rewrite했다는 뜻이 아닙니다.
+
+이 예시는 display guidance입니다. Command flag, state table, event name, public `ErrorCode`, fixture field를 추가하지 않습니다.
+
 ## Conformance staging
 
 Conformance는 단계적으로 실행할 수 있지만, staged execution이 fixture body shape를 바꾸거나 final MVP 요구사항을 줄이면 안 됩니다.
@@ -163,6 +171,16 @@ sequenceDiagram
 
 Connect는 사람이 편집한 내용을 조용히 덮어쓰지 않고 generated-file drift를 보고해야 합니다. 접점별 generated file 이름은 surface cookbook에 속합니다.
 
+Connect drift output 예시:
+
+```text
+surface     WARN  connector-managed file drift
+observed    .harness/agent/generated/reference-instructions.md changed since manifest MAN-014
+effect      existing file kept; connector manifest/reconcile path records drift
+next        diff를 review한 뒤 explicit decision으로 reconcile 또는 reconnect 실행
+authority   edited generated file은 Task state가 아니며 조용히 overwrite되지 않았음
+```
+
 ## doctor
 
 `doctor`는 readiness, drift, repair option을 보고합니다.
@@ -209,9 +227,35 @@ REPAIRABLE
 MANUAL
 ```
 
+수준은 operator report level이지 gate value가 아닙니다.
+
+| Level | Meaning |
+|---|---|
+| `OK` | 확인한 접점, 기록, file을 covered operation에서 사용할 수 있습니다. |
+| `WARN` | 낮아진 보장 수준, 최신이 아닌 context, non-blocking risk를 표시한 상태로 work를 계속할 수 있습니다. |
+| `FAIL` | Covered operation이 확인한 input 또는 capability에 안전하게 의존할 수 없습니다. |
+| `REPAIRABLE` | Core 또는 문서화된 operator path가 사용자 소유 판단을 새로 만들지 않고 기준 상태, 원본 artifact, managed output에서 문제를 repair할 수 있습니다. |
+| `MANUAL` | Core가 결과에 의존하기 전에 사람이 inspect, decide, restore, reconnect하거나 missing context를 제공해야 합니다. |
+
 Doctor는 현재 상태 failure와 projection `stale` 또는 projection `failed` status를 구분해야 합니다.
 
 State checks는 `registry.sqlite`와 `state.sqlite`의 JSON `TEXT` fields를 포함합니다. Malformed JSON은 state failure입니다. Schema-incompatible JSON도 state failure입니다. Core가 사용자 소유 판단을 새로 만들지 않고 다른 기준 상태 또는 원본 artifact에서 expected value를 안전하게 재구성할 수 있을 때만 doctor가 이를 `REPAIRABLE`로 표시할 수 있으며, 그렇지 않으면 `FAIL` 또는 `MANUAL`을 보고합니다.
+
+Compact doctor 예시:
+
+| Category | Example report | Operational meaning |
+|---|---|---|
+| project | `project OK repo_root=/repo project_id=PRJ-0001` | Project registration과 static config를 읽을 수 있습니다. |
+| state | `state FAIL state.sqlite tasks.current_json malformed` | Current state가 invalid입니다. Projection 문제가 아니며, Core가 shape를 재구성할 수 있을 때만 recovery가 repair할 수 있습니다. |
+| MCP | `MCP FAIL MCP_SERVER_UNAVAILABLE localhost endpoint refused` | MCP를 통해 Core에 닿을 수 없으므로 이 path에서는 authoritative Core response나 state-changing claim이 없습니다. |
+| 접점 | `surface WARN SURFACE_MCP_UNAVAILABLE required tool not callable by SURFACE-REF` | Core는 reachable일 수 있지만 연결된 접점이 required MCP path를 사용할 수 없습니다. Write-capable work는 guarantee profile에 따라 held 상태입니다. |
+| artifacts | `artifacts FAIL ART-204 hash mismatch; evidence_gate may become stale` | Artifact record와 stored file이 일치하지 않습니다. Markdown edit로 evidence를 repair할 수 없습니다. |
+| projections | `projections WARN TASK stale source_state_version=41 current_task_state_version=44` | Task state는 여전히 valid할 수 있습니다. 사람이 읽는 `TASK` view가 뒤처졌으므로 refresh 또는 reconcile이 필요합니다. |
+| projections | `projections FAIL RUN-SUMMARY failed render_error=template_input_missing` | Projection job이 failed입니다. 이 display failure가 Run record를 failed Run으로 바꾸지는 않습니다. |
+| reconcile | `reconcile MANUAL generated-file drift .harness/agent/generated/reference-instructions.md` | Generated file을 보고하고 review로 보냅니다. 조용히 overwrite하거나 state로 취급하지 않습니다. |
+| validators/checks | `validators/checks WARN context_hygiene_check stale projection refs` | Stable validator와 Core check는 별도로 보고합니다. Mechanical projection freshness issue는 새 validator ID가 아닙니다. |
+| agency/stewardship/context | `agency/stewardship/context FAIL Decision Packet required for user-owned trade-off` | Blocker는 Decision Packet path로 route됩니다. Broad approval이나 status prose만으로 decision을 충족할 수 없습니다. |
+| security/threat model | `security/threat model WARN socket permissions broader than profile` | Finding은 보고되는 guarantee를 낮추고 write-capable readiness를 막을 수 있지만, file permission은 기준 상태가 아니라 diagnostic입니다. |
 
 Security-oriented doctor output은 진단 정보이며 새로운 runtime authority를 만들지 않습니다. MCP access mode가 로컬 프로세스/localhost 기대사항 또는 문서화된 connector profile과 맞지 않을 때, project/task/surface claim이 registered state와 맞지 않을 때, connector-managed file이 drift되었을 때, artifact에 sensitive category가 요구하는 redaction, omission, block metadata가 없을 때, `destructive_write`, `network_write`, `external_service_write`, `secret_access`, `privacy_or_pii_change`, `data_export`, `infra_or_deployment_change`, `production_config_change`, `ci_cd_change`, `billing_or_cost_change`, `telemetry_or_logging_change` 같은 sensitive operation이 recorded scope/approval/Decision Packet/Write Authorization path 밖에서 나타날 때 이를 보고해야 합니다.
 
@@ -303,6 +347,16 @@ MVP에서 Decision Packet visibility는 `TASK` projections, status/next response
 
 `DEC`, `DESIGN`, `EXPORT`, persisted `JOURNEY-CARD`를 위한 Extension / optional tier의 전용 refresh target은 기능이 켜져 있을 때만 사용하며, MVP smoke 필수 대상이 아닙니다.
 
+Projection refresh status 예시:
+
+| Report line | Meaning |
+|---|---|
+| `TASK current source_state_version=44` | 렌더링된 `TASK` view가 committed Task state version 및 managed hash와 일치합니다. |
+| `TASK stale source_state_version=41 current_task_state_version=44` | State가 렌더링된 view보다 앞서 이동했습니다. Task result가 failed된 것이 아니며, view에 refresh 또는 reconcile이 필요합니다. |
+| `RUN-SUMMARY failed projection_job_id=PJOB-088` | Latest render가 failed입니다. Committed Run은 자기 `runs.status`를 유지하며 projection failure는 별도로 보고됩니다. |
+| `APR skipped managed_block_drift reconcile_item=REC-019` | Projector가 변경된 managed block을 overwrite하지 않고 drift를 reconcile로 보냈습니다. |
+| optional `EXPORT` projection enabled: `EXPORT stale artifact ART-204 unavailable` | Optional `EXPORT` projection/report surface가 켜진 경우에만 해당합니다. `EXPORT`를 MVP-required refresh target으로 만들지 않으며, underlying Task state가 failed했다는 증거도 아닙니다. |
+
 ## reconcile
 
 Reconcile은 human-editable input 또는 generated/managed drift를 명시적인 decision으로 바꿉니다.
@@ -345,6 +399,8 @@ flowchart TD
 
 Reconcile은 edited Markdown 자체를 기준 상태로 취급하면 안 됩니다.
 
+Reconcile이 generated-file 또는 managed-block drift를 보고할 때는 어떤 source가 edit되었는지, 어떤 owner 또는 manifest가 기대값인지, 어떤 decision path가 열려 있는지 보여줘야 합니다. `merge` outcome은 Core를 통해 적용되고 state history를 append합니다. `reject` 또는 `convert_to_note` outcome은 기준 상태를 그대로 두며, owner record에서 projection 또는 generated file을 다시 refresh할 수 있습니다.
+
 ## recover
 
 Recover는 history를 rewrite하지 않고 interrupted 또는 inconsistent 운영 상태를 repair합니다.
@@ -384,6 +440,20 @@ flowchart TD
 
 Recovery는 compensating event를 추가할 수 있습니다. Evidence를 조용히 delete하거나, event history를 rewrite하거나, projection을 authoritative하게 만들면 안 됩니다.
 
+Recovery report 예시:
+
+```text
+before      task_events max event_seq=104; active run observed during write
+action      recovery classified interrupted write
+after       appended recovery/audit task_events after event_seq=104
+after       committed recovery Run with runs.status=interrupted
+artifacts   registered safe diff/log snapshots when available
+not done    no earlier task_events rewritten; no evidence silently deleted
+not done    no Markdown projection edited into canonical state
+```
+
+Captured recovery artifact는 interruption 중 관찰된 내용을 설명할 수 있습니다. 하지만 interrupted implementation이 성공적으로 완료되었다는 증거가 아니며, 그 자체로 evidence, verification, QA, acceptance, close를 충족할 수 없습니다.
+
 ## export
 
 Export는 Task에 대한 review 또는 archival bundle을 만듭니다.
@@ -416,6 +486,36 @@ Exported projection snapshot은 hash를 가질 수 있지만, 그렇다고 Markd
 Export는 policy가 적용될 때 `data_export` category side effect입니다. Export는 artifact boundary를 보존해야 합니다. 포함되는 raw file은 허용된 registered artifact로 제한하고, projection snapshot은 snapshot으로 남기며, bundle은 제거되었거나 blocked된 secret, sensitive log, screenshot, network trace, telemetry/logging content, PII에 대한 redaction, omission, block note를 포함해야 합니다.
 
 Export는 staged, omitted, blocked content에 대한 접근 범위를 넓히면 안 됩니다. `secret_omitted` artifact는 ref, 안전하게 저장된 bytes에 대한 hash, omission note 또는 handle로 표현합니다. `blocked` artifact는 커밋된 metadata-only notice로 표현하며 사용할 수 없는 원본 근거로 나열해야 합니다. 이 artifact의 hash, size, content type은 금지된 payload가 아니라 notice bytes를 가리킵니다. Export manifest는 secret 또는 PII value를 포함하지 않고 영향을 받는 artifact ref, redaction, omission, block category, evidence, QA, verification, projection, Release Handoff 표시를 이름 붙여야 합니다.
+
+Export manifest summary 예시:
+
+```yaml
+task_id: TASK-1234
+created_at: 2026-05-10T09:30:00Z
+included_projection_freshness:
+  TASK: current
+  EVAL: stale
+export_bundle_status: current
+decision_packets:
+  included: [DEC-010, DEC-011]
+residual_risks:
+  visible_refs: [RISK-004]
+  accepted_refs: [RISK-002]
+artifact_integrity:
+  checked: 18
+  passed: 17
+  unavailable: [ART-204]
+redaction_summary:
+  redacted: 2
+  secret_omitted: 1
+  blocked: 1
+omitted_artifacts:
+  - artifact_id: ART-204
+    reason: blocked
+    note: metadata-only notice included; raw payload unavailable
+```
+
+이 display shape는 예시입니다. 필요한 동작은 export가 included projection freshness, artifact integrity, Decision Packets, residual risks, omitted 또는 blocked artifacts, redaction/omission/block effect를 보고하면서 raw staged, omitted, blocked, secret, PII value를 bundle에 복사하지 않는 것입니다. `export_bundle_status`는 생성 중인 bundle에 대한 report status이며, canonical state record나 required `EXPORT` projection job이 아닙니다.
 
 ### Release Handoff Export Profile
 
@@ -492,6 +592,16 @@ Failure는 Core rule에 따라 related evidence, projection freshness, close rea
 Artifact check가 `secret_omitted` 또는 `blocked`를 관찰하면 이후 operation은 그 영향을 숨기지 않고 보고합니다. Evidence Manifest와 QA view는 omitted 또는 blocked ref를 표시하고, detached verification은 Eval path가 omission을 받아들이거나 다른 documented resolution이 적용되지 않는 한 사용할 수 없는 원본 bytes를 missing input으로 취급합니다. Projection 표시는 포함된 content 대신 redaction state를 보여주고, export/Release Handoff summary는 값을 노출하지 않고 omission 또는 block을 나열합니다. `secret_omitted`는 secret이 아닌 evidence가 보이는 주장만 뒷받침할 수 있습니다. `blocked`는 attempted capture를 audit 가능하게 보존하지만, replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 path를 해소하기 전까지 dependent evidence, QA, Eval, projection, export, Release Handoff input을 blocked, insufficient, unavailable, unresolved 중 적절한 상태로 남깁니다.
 
 Artifact check 진단은 staged input의 경계 위반도 보여야 합니다. `staged_uri`가 project `artifacts/tmp/` 밖으로 해석되거나, symlink를 통해 벗어나거나, parent traversal을 사용하거나, 임의 absolute path를 이름으로 지정하거나, approved capture adapter 밖의 repo-local file을 가리키면 approved staging/capture boundary 밖으로 보고합니다. 보고서는 안전한 경우 영향을 받는 locator와 owner relation을 이름 붙이고, 기존 artifact/check result를 통해 artifact input을 유효하지 않거나 사용할 수 없는 것으로 표시하며, 금지된 대상을 Harness 근거로 복사하거나 hash하거나 표시하거나 export하면 안 됩니다.
+
+Compact artifact check 예시:
+
+| Finding | Reported effect |
+|---|---|
+| `ART-101 OK hash and size match` | Artifact는 normal gate rule에 따라 owner ref에서 사용할 수 있습니다. |
+| `ART-204 FAIL hash mismatch` | Related evidence, projection freshness, close readiness가 Core rule에 따라 `stale`/blocked가 됩니다. |
+| `ART-301 WARN redaction_state=secret_omitted` | Safe ref와 omission note만 표시하며, 생략된 raw value는 표시하거나 export하지 않습니다. |
+| `ART-302 FAIL redaction_state=blocked` | Metadata-only notice가 committed됩니다. Dependent evidence, QA, Eval, projection, export, Release Handoff input은 해소될 때까지 unavailable로 남습니다. |
+| `staged_uri MANUAL outside approved staging boundary` | Caller-supplied path를 committed evidence로 copy, hash, display, export, accept하지 않습니다. |
 
 ## conformance run
 
