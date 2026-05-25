@@ -119,4 +119,4 @@ updated_at: 2026-05-06T09:50:00+09:00
 
 Evidence가 필요한 경우 close 판단은 보고서 문장만이 아니라 기준 `evidence_gate`를 따릅니다.
 
-`secret_omitted` artifact는 secret이 아닌 evidence가 visible한 주장만 뒷받침할 수 있으며, omitted value가 필요한 주장은 뒷받침하지 못합니다. `blocked` artifact는 committed safe notice이지 사용 가능한 원본 근거가 아닙니다. Dependent criteria는 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 evidence path를 해소할 때까지 unsupported, insufficient, blocked 중 적절한 상태로 남습니다. 이 template은 omitted secret/PII value 또는 blocked payload bytes를 포함하면 안 됩니다.
+`secret_omitted` artifact는 secret이 아닌 evidence가 visible한 주장만 뒷받침할 수 있으며, omitted value가 필요한 주장은 뒷받침하지 못합니다. `blocked` artifact는 committed metadata-only notice이지 사용 가능한 원본 근거가 아닙니다. Dependent criteria는 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 evidence path를 해소할 때까지 unsupported, insufficient, blocked 중 적절한 상태로 남습니다. 이 template은 omitted secret/PII value 또는 blocked payload bytes를 포함하면 안 됩니다.

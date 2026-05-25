@@ -367,4 +367,4 @@ Change Unit block sub-template:
 
 `TASK`의 Review Stages는 관리되는 표시 섹션입니다. Gates를 충족하거나, write를 허가하거나, 위험을 수용하거나, Task를 닫거나, `detached_verified` assurance를 만들 수 없습니다.
 
-`TASK`, Journey, evidence, report section에 표시되는 artifact ref는 redaction state를 보존해야 합니다. `secret_omitted` ref는 visible nonsecret evidence만 뒷받침할 수 있고, `blocked` ref는 raw content가 아니라 committed safe notice와 unavailable input을 보여줍니다.
+`TASK`, Journey, evidence, report section에 표시되는 artifact ref는 redaction state를 보존해야 합니다. `secret_omitted` ref는 visible nonsecret evidence만 뒷받침할 수 있고, `blocked` ref는 raw content가 아니라 committed metadata-only notice와 unavailable input을 보여줍니다.

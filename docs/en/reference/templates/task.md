@@ -367,4 +367,4 @@ Implementation Micro-Plan in `TASK` is a lightweight execution aid rendered from
 
 Review Stages in `TASK` are managed display sections. They do not satisfy gates, authorize writes, accept risk, close the task, or create `detached_verified` assurance.
 
-Artifact refs shown in `TASK`, Journey, evidence, and report sections must preserve redaction state. `secret_omitted` refs may support only visible nonsecret evidence; `blocked` refs show committed safe notices and unavailable input rather than raw content.
+Artifact refs shown in `TASK`, Journey, evidence, and report sections must preserve redaction state. `secret_omitted` refs may support only visible nonsecret evidence; `blocked` refs show committed metadata-only notices and unavailable input rather than raw content.

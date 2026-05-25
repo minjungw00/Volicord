@@ -453,7 +453,7 @@ Artifact integrity check는 artifact record와 stored file을 비교합니다.
 - bundle, manifest, export-component artifacts는 artifact row와 owner links를 통해 검증합니다. Check가 존재하지 않는 `verification_bundle` 또는 `export` state table을 찾으면 안 됩니다
 - secret/PII handling이 `redaction_state` 및 export 또는 capture note와 호환됩니다
 - `secret_omitted` artifact는 omission note 또는 handle을 포함하고 생략된 raw value를 포함하지 않습니다
-- `blocked` artifact는 committed metadata-only notice이며 금지된 capture payload를 포함하지 않습니다. Hash, size, content type은 safe notice bytes와 match해야 합니다.
+- `blocked` artifact는 committed metadata-only notice이며 금지된 capture payload를 포함하지 않습니다. Hash, size, content type은 metadata-only notice bytes와 match해야 합니다.
 - retention class가 valid입니다
 - projection 또는 evidence ref를 찾을 수 있습니다
 
@@ -617,7 +617,7 @@ Artifact redaction scenario 지침:
 | Scenario ID | Action | Required assertions |
 |---|---|---|
 | `ARTIFACT-secret-omitted-supports-visible-evidence-only` | `record_run`, `record_manual_qa`, 또는 `record_eval` | `expected_artifacts`가 `redaction_state: secret_omitted`인 committed artifact를 포함합니다. Evidence, QA, Eval assertion은 visible nonsecret evidence만 credit하고, omitted value가 필요한 claim은 unsupported, partial, blocked, insufficient 중 적절한 상태로 남깁니다. Projection과 report는 omitted secret 또는 PII value를 assert하지 않고 omission note 또는 handle만 보여줘야 합니다. |
-| `ARTIFACT-blocked-notice-is-committed-but-unavailable-input` | `record_run`, `record_manual_qa`, `launch_verify`, 또는 `artifacts_check` | `expected_artifacts`가 `redaction_state: blocked`인 committed artifact를 포함하고, optional hash/size/content-type assertion은 safe notice bytes와 match해야 합니다. Scenario에 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 포함되어 있지 않다면 downstream evidence, QA, Eval, projection, export, Release Handoff assertion은 blocked, insufficient, unavailable input, unresolved impact 중 적절한 상태를 보여야 합니다. |
+| `ARTIFACT-blocked-notice-is-committed-but-unavailable-input` | `record_run`, `record_manual_qa`, `launch_verify`, 또는 `artifacts_check` | `expected_artifacts`가 `redaction_state: blocked`인 committed artifact를 포함하고, optional hash/size/content-type assertion은 metadata-only notice bytes와 match해야 합니다. Scenario에 replacement, waiver, Decision Packet outcome, accepted risk, documented fallback이 포함되어 있지 않다면 downstream evidence, QA, Eval, projection, export, Release Handoff assertion은 blocked, insufficient, unavailable input, unresolved impact 중 적절한 상태를 보여야 합니다. |
 | `EXPORT-redaction-notes-do-not-leak-omitted-or-blocked-values` | `export` 또는 Release Handoff report read | Export 또는 Release Handoff assertion은 artifact ref, redaction state, omission/block note, affected display를 나열합니다. Raw omitted value와 forbidden blocked payload bytes는 exported snapshot, raw-file copy, report text, fixture assertion에 없어야 합니다. |
 
 모든 `expected_*` value 안에서 nested field가 없다는 것은 "not asserted"이지 "expected null"이 아닙니다. `expected_artifacts: []`, `expected_projection: {}` 같은 empty default-mode collection은 valid하며 required entry가 없음을 뜻합니다. `expected_events: []`는 required stable catalog event가 없음을 검증합니다. Committed transitions가 non-stable detail 또는 local-audit events를 추가할 수 있으므로 `task_events` rows가 전혀 추가되지 않았음을 검증하지 않습니다. Extra stable entry가 없음을 검증해야 하는 suite는 fixture body 밖의 compatible exact-mode metadata를 사용해야 합니다.

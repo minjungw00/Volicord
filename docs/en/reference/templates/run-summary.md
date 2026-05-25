@@ -161,4 +161,4 @@ npm test -- --runInBand
 
 Raw logs and diffs stay as artifacts; the report links to them. Same-session review content in a `RUN-SUMMARY` is self-check or stewardship signal only and cannot be rendered as detached verification.
 
-Evidence refs in this report must preserve `redaction_state`. `secret_omitted` refs may support only visible nonsecret evidence, and `blocked` refs are committed safe notices for unavailable input, not raw logs, diffs, screenshots, or bundles.
+Evidence refs in this report must preserve `redaction_state`. `secret_omitted` refs may support only visible nonsecret evidence, and `blocked` refs are committed metadata-only notices for unavailable input, not raw logs, diffs, screenshots, or bundles.
