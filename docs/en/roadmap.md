@@ -16,6 +16,8 @@ This document is not part of the MVP implementation contract.
 
 It does not own kernel invariants, public MCP schemas, MVP implementation requirements, or required MVP conformance. The MVP proves the local kernel: state, gates, artifacts, verification, projection, reconcile, and one reference surface. The items below are useful follow-ons after those basics are stable.
 
+This roadmap starts after the first proof and final proof have clear owner-doc coverage. It is not an alternate route around Kernel Smoke, Agency-Hardened MVP, or the Core state/`task_events`/artifact path. Dashboard, Browser QA Capture, Context Index, native hook expansion, connector marketplaces, and orchestration can collect, display, or extend Harness behavior later; they do not replace the first runnable authority loop.
+
 ```mermaid
 flowchart LR
   MVP["MVP local kernel stable basics"] --> Basics["state, gates, artifacts, verification, projection, reconcile, one reference surface"]
@@ -30,6 +32,7 @@ Kernel Smoke and Agency-Hardened MVP are both MVP delivery stages, not roadmap s
 
 A roadmap candidate can become v1 or later scoped work only after a future owner decision gives it:
 
+- an explicit future-version owner decision; usefulness during MVP implementation is not promotion
 - a clear capability profile requirement
 - a redaction and secret/PII handling policy
 - a test environment and artifact retention policy when it captures runtime surfaces
@@ -54,7 +57,7 @@ flowchart TD
 
 A dashboard can visualize active Tasks, gates, approvals, evidence coverage, projection freshness, artifact integrity, and reconcile items.
 
-Later because MVP should first stabilize the records, projections, and conformance fixtures that the dashboard would display. A future first version should be read-only over `state.sqlite`, artifact refs, and projection job status.
+Later because MVP should first stabilize the records, projections, and conformance fixtures that the dashboard would display. A future first version should be read-only over `state.sqlite`, artifact refs, and projection job status. A dashboard must not become the source of truth for Task state, evidence, acceptance, or close readiness.
 
 ### Browser QA Capture
 
@@ -76,7 +79,7 @@ Later because MVP only needs one reference surface plus detached verification bu
 
 Native hooks can provide stronger pre-tool guards, command interception, file write blocking, or richer artifact capture in surfaces that support them.
 
-Later because hook APIs vary by surface. MVP may use a concrete hook only when the reference surface actually supports it; otherwise native hooks are a capability-dependent enhancement.
+Later because hook APIs vary by surface. MVP may use a concrete hook only when the reference surface actually supports it; otherwise native hooks are a capability-dependent enhancement. A hook can support `prepare_write`, but it must not replace the Core authority path or make unsupported surfaces fail the MVP by default.
 
 ### Advanced Sidecar Watcher
 

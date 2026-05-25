@@ -18,7 +18,7 @@ Read [Implementation Overview](implementation-overview.md) first. For storage an
 
 ## Main idea
 
-Prove one Task can move through scoped write authority, Run recording, artifact-backed evidence, status, projection freshness, and close blockers before building the wider MVP.
+Prove one Task can move through the Core state, `task_events`, and artifact path for scoped write authority, Run recording, artifact-backed evidence, status, minimal projection freshness, and close blockers before building the wider MVP.
 
 ## Goal
 
@@ -27,6 +27,8 @@ Build the smallest Harness slice that can prove authority over one local Task. T
 This is a command-independent implementation guide. It describes capabilities and observable behavior, not CLI syntax.
 
 Do not include or duplicate full DDL here. Storage details and DDL are owned by [Storage And DDL](../reference/storage-and-ddl.md).
+
+The first slice is deliberately not a projection-template-polish milestone, dashboard milestone, broad connector ecosystem or marketplace milestone, multi-surface connector expansion, Context Index, Browser QA Capture system, hook expansion, or parallel automation path. It still includes the one reference surface and minimal MCP reachability needed for Kernel Smoke. The excluded items can only wrap or extend the authority loop after the Core records and transitions are real.
 
 ## Success story
 
@@ -45,6 +47,8 @@ An implementer can run a local Harness process against a temporary product repos
 11. Close is blocked when evidence or decision requirements are still missing.
 
 Passing this story means the kernel authority path works. It does not mean the MVP is agency-hardened.
+
+The observable result can be plain. A user or operator should be able to see the current Task, why a write is blocked or allowed, which Write Authorization was consumed, which artifact backs the Run, whether the Evidence Manifest is sufficient, whether the `TASK` projection is fresh or queued, and why close still blocks.
 
 ## Build order
 
@@ -146,7 +150,7 @@ Checklist:
 - Mark the Write Authorization consumed exactly once on successful commit.
 - Record actor, surface, kind, intended operation, observed changes, command results, artifact refs, summary, and Run status.
 - Detect observed changes outside the authorization and route them to a violation, blocker, stale evidence, or Decision Packet path.
-- Append task events in the same transaction as current record updates.
+- Append `task_events` in the same transaction as current record updates.
 
 Done when:
 
@@ -209,6 +213,8 @@ Done when:
 
 Implement the smallest projection behavior that proves state and readable output are separated.
 
+Do this after the Task, gate, Run, artifact, and evidence records exist. Do not let the projection template shape the state model, and do not add template polish or additional renderer-first work just to make the first slice look complete.
+
 Checklist:
 
 - Enqueue a `TASK` projection job when Task state changes, or render a minimal managed `TASK` projection after commit.
@@ -243,7 +249,7 @@ Done when:
 The first runnable slice proves:
 
 - Core can own state transitions.
-- The state store and task events are usable.
+- The state store and `task_events` are usable.
 - A scoped Change Unit is required for product writes.
 - `prepare_write` is the authority decision for a write attempt.
 - Write Authorization is durable and single-use.
@@ -265,7 +271,9 @@ This slice does not prove:
 - feedback-loop and TDD conformance
 - codebase stewardship and context-hygiene coverage
 - full projection and reconcile behavior
+- projection template completeness
 - recover, export, artifact integrity, and broad operator smoke
+- dashboard, Context Index, connector marketplace, or Browser QA Capture behavior
 - preventive guard behavior
 - parallel orchestration or team workflow
 

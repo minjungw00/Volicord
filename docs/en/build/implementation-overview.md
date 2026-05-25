@@ -28,6 +28,18 @@ You should already understand the basic Harness concepts from the Learn path. Fo
 
 Build the smallest local Core authority path first, then harden it through evidence, projections, conformance, and operator recovery.
 
+Start with canonical state, `task_events`, artifact refs, Core tool behavior, and the minimal reference surface and MCP reachability needed to exercise that path. Treat projection-template polish, dashboards, indexes, broad connector ecosystems or marketplaces, surface-specific connector automation, hook expansion, Browser QA automation, and broad automation as things that read from or wrap that authority loop after it exists.
+
+If a proposed implementation starts with projection template polish, a dashboard, a Context Index, a connector marketplace, hook expansion, or broad automation lanes, it is starting in the wrong place.
+
+## Proof boundaries
+
+| Boundary | What it proves | What the user or operator can observe |
+|---|---|---|
+| Kernel Smoke | One local Task can go through the Core authority loop: scoped write decision, Write Authorization, `record_run`, artifact-backed evidence, status, minimal projection freshness, and close blockers. | Status shows the active Task, gates, Change Unit, evidence, blockers, and projection freshness. Out-of-scope work is blocked, compatible scoped work is authorized and consumed once, and close refuses missing evidence or required decisions. |
+| Agency-Hardened MVP | The local reference MVP handles user judgment, approvals, detached verification, Manual QA, residual risk, reconcile, recovery, export, and conformance with honest boundaries. | Fixtures and operator entrypoints show why work can or cannot continue, verify, accept, export, recover, or close through the same Core records and errors. |
+| Post-MVP roadmap | Later surfaces or automation can be considered only after the local kernel and agency proof are stable. | Optional capabilities remain read-only, display-only, metadata-only, or attachment-only until an owner promotes them with exact contracts and fixtures. |
+
 ## What you are building
 
 Harness MVP is a local authority kernel for AI-assisted product work. The first implementation should be one local system with clear internal modules, not a distributed platform.
@@ -46,7 +58,7 @@ Core is the only path that mutates canonical operational state. It must:
 - acquire the relevant project or task lock
 - read current records
 - run Core checks and validators
-- update current records and append task events in one transaction
+- update current records and append `task_events` in one transaction
 - enqueue projection work after state changes
 - return blockers and refs that explain the result
 
@@ -54,7 +66,7 @@ Agents, operator commands, projectors, and recovery flows must either enter thro
 
 ### State Store
 
-The state store keeps canonical operational state: project state, Tasks, gates, Change Units, Decision Packets, approvals, Write Authorizations, Runs, evidence manifests, Eval records, Manual QA records, residual risks, projection jobs, reconcile items, and task events.
+The state store keeps canonical operational state: project state, Tasks, gates, Change Units, Decision Packets, approvals, Write Authorizations, Runs, evidence manifests, Eval records, Manual QA records, residual risks, projection jobs, reconcile items, and `task_events`.
 
 Do not design this from scratch in the Build layer. Storage details and DDL are owned by [Storage And DDL](../reference/storage-and-ddl.md).
 
@@ -85,6 +97,8 @@ The public request and response contracts belong to [MCP API And Schemas](../ref
 
 Projections are human-readable views derived from state records and artifact refs. They are not canonical state.
 
+Build projection output from the Core source records it depends on, such as Task, gate, Run, artifact, evidence, Eval, QA, and other owner records after those records exist. A minimal `TASK` projection freshness or enqueueing path can be part of Kernel Smoke, but projection templates cannot create authority, satisfy evidence, replace state, shape the state model, or become the first proof.
+
 The first runnable slice may enqueue a minimal `TASK` projection job or render a minimal `TASK` projection. The final MVP must support MVP-required `ProjectionKind` values when their source records exist: `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, and `DIRECT-RESULT`.
 
 Projection failure must not roll back committed Core state. It should mark projection freshness or job status and leave recovery or reconcile to a later action.
@@ -111,6 +125,9 @@ Keep the first implementation narrow. Do not build these as MVP prerequisites:
 
 - dashboard or rich hosted UI
 - broad connector ecosystem
+- Context Index or derived analytics
+- Browser QA Capture as required automation
+- native hook expansion beyond a concrete reference-surface capability
 - team workflow, shared workspaces, permissions, or profile import/export
 - parallel orchestration automation
 - preventive guard expansion unless the reference surface proves a concrete pre-tool blocking path
@@ -120,6 +137,8 @@ MVP may display cooperative or detective guard/freeze status and may hold or nar
 ## The first proof
 
 The first proof is Kernel Smoke: the smallest runnable path that proves Harness can make and enforce one authority decision.
+
+Kernel Smoke proves the authority loop, not the full MVP, not template completeness, and not broad automation.
 
 It should show:
 
