@@ -133,6 +133,8 @@ Guard/freeze conformance for MVP asserts honest display and behavior at cooperat
 
 Browser QA Capture conformance is a v1/post-MVP priority candidate, not an MVP smoke requirement. Until promoted through the [Roadmap promotion rule](../roadmap.md#promotion-rule), it is non-authoritative capture support only. Future fixtures should prove declared `T6 QA Capture` behavior only after capability profile fields, redaction and secret/PII handling, browser test environment, artifact retention, capture artifact mapping, unsupported-surface fallback behavior, and no projection-as-canonical dependency are defined. MVP fixtures still prove Manual QA records, artifact refs, QA waiver behavior, acceptance boundaries, and close blockers without requiring automated browser capture.
 
+Connector and reference-surface smoke coverage follows the same staged rule. Kernel Smoke needs only the narrow reference path needed to exercise Core: local-only MCP reachability, a declared capability profile for the actual host/profile, profile freshness, generated-file drift reporting with safe non-overwrite, cooperative `prepare_write`, manual artifact/verification/QA fallbacks when native capture is unavailable, projection freshness, and MCP-unavailable write holds. Agency-Hardened MVP later broadens this into the connector conformance scenarios owned by [Agent Integration Reference](agent-integration.md#connector-conformance-overview). Preventive `T4`, automated `T6`, remote/shared MCP exposure, and broad connector automation stay outside Kernel Smoke unless owner docs promote and prove a concrete reference path.
+
 ```mermaid
 flowchart LR
   Kernel["Kernel Smoke<br/>first runnable authority path"] --> Harden["Agency-Hardened MVP<br/>final reference conformance"]
@@ -187,7 +189,7 @@ Required behavior:
 - register or reuse the local project
 - create or validate static project configuration
 - initialize per-project state and artifact storage
-- register the reference surface and capability profile
+- register the reference surface and a capability profile declared and proven for the actual host/profile/configuration in use, not inferred from the surface name
 - record MCP exposure posture as local-only by default, with any documented access-control contract and material class, in the connector manifest without storing raw token, secret, or private configuration values
 - create or refresh connector-managed files through a manifest
 - record connector profile freshness, capability profile version, detected version, last verification time, and conformance or operator-check basis in the connector manifest
@@ -211,7 +213,7 @@ sequenceDiagram
   Op->>Core: run smoke or print command
 ```
 
-Connect must report generated/managed manifest drift instead of overwriting human edits silently. This includes generated files, managed blocks, MCP config snippets, and stale capability profile freshness. Surface-specific generated file names belong in the surface cookbook.
+Connect must report generated/managed manifest drift instead of overwriting human edits silently. This includes generated files, managed blocks, MCP config snippets, and stale capability profile freshness. The existing file or managed block stays unchanged until reconcile or an explicit reconnect decision chooses replacement; the edited generated file is not Task state. Surface-specific generated file names belong in the surface cookbook.
 
 Illustrative connect drift output:
 
@@ -234,7 +236,7 @@ Required categories:
 | project | registered project, repo root, static config validity |
 | state | current state readability, JSON field parse and shape validity, owner-bound status values, state-version and idempotency consistency, locks, active Task consistency |
 | MCP | server reachability, Core reachability, read resource availability, public tool availability |
-| surface | capability profile, profile freshness, stale capability profile detection, generated/managed manifest drift, MCP config freshness, required MCP tool-call ability |
+| surface | capability profile declared for the actual host/profile, profile freshness, stale capability profile detection after version/MCP config/hook/permission/workspace policy/generated-file/conformance-result/capture/QA-capture/redaction/retention changes, generated/managed manifest drift, MCP config freshness, required MCP tool-call ability |
 | artifacts | file existence, hash, size, redaction state, task/run or artifact-link relation |
 | projections | queued jobs, freshness, managed hash drift, failed renders |
 | reconcile | pending human edits, managed block drift, generated/managed manifest drift |

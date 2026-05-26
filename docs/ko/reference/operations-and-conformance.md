@@ -133,6 +133,8 @@ MVP의 guard/freeze conformance는 cooperative/detective level에서 honest disp
 
 Browser QA Capture conformance는 v1/post-MVP priority candidate이지 MVP smoke 요구사항이 아닙니다. [로드맵 승격 규칙](../roadmap.md#승격-규칙)을 통해 승격되기 전까지는 권한 없는 capture support일 뿐입니다. Future fixtures는 capability profile fields, redaction 및 secret/PII handling, browser test environment, artifact 보존, capture artifact mapping, unsupported 접점 fallback 동작, projection-as-canonical 의존성 없음이 정의된 뒤에만 declared `T6 QA Capture` 동작을 증명해야 합니다. MVP fixtures는 automated browser capture를 요구하지 않고 Manual QA records, artifact refs, QA 면제 동작, 결과 수락 경계, close blockers를 계속 증명합니다.
 
+Connector와 reference-surface smoke coverage도 같은 staged rule을 따릅니다. Kernel Smoke에는 Core를 실행하는 데 필요한 좁은 reference path만 필요합니다. 즉 local-only MCP reachability, 실제 host/profile에 대해 선언된 capability profile, profile freshness, generated-file drift reporting과 safe non-overwrite, cooperative `prepare_write`, native capture가 없을 때 manual artifact/verification/QA fallback, projection freshness, MCP-unavailable write hold를 증명합니다. Agency-Hardened MVP는 이후 [Agent 통합 참조](agent-integration.md#connector-conformance-개요)가 담당하는 connector conformance scenario로 넓어집니다. Preventive `T4`, automated `T6`, remote/shared MCP exposure, broad connector automation은 owner docs가 concrete reference path를 승격하고 증명하기 전까지 Kernel Smoke 밖에 둡니다.
+
 ```mermaid
 flowchart LR
   Kernel["Kernel Smoke<br/>첫 runnable 권한 경로"] --> Harden["Agency-Hardened MVP<br/>final reference conformance"]
@@ -187,7 +189,7 @@ flowchart LR
 - local project를 등록하거나 재사용합니다
 - static project configuration을 만들거나 검증합니다
 - project별 state와 artifact storage를 초기화합니다
-- 기준 접점과 capability profile을 등록합니다
+- 기준 접점과, surface name에서 추론하지 않고 실제 사용하는 host/profile/configuration에 대해 선언되고 입증된 capability profile을 등록합니다
 - MCP exposure posture를 기본 local-only로, 문서화된 access-control contract와 material class가 있으면 raw token, secret, private configuration value를 저장하지 않고 connector manifest에 기록합니다
 - manifest를 통해 connector-managed file을 만들거나 refresh합니다
 - Connector Manifest에 connector profile 최신성, capability profile version, detected version, last verification time, conformance 또는 operator-check 근거를 기록합니다
@@ -211,7 +213,7 @@ sequenceDiagram
   Op->>Core: smoke 실행 또는 command 출력
 ```
 
-Connect는 사람이 편집한 내용을 조용히 덮어쓰지 않고 generated/managed manifest drift를 보고해야 합니다. 여기에는 generated file, managed block, MCP config snippet, 오래된 capability profile 최신성이 포함됩니다. 접점별 generated file 이름은 surface cookbook에 속합니다.
+Connect는 사람이 편집한 내용을 조용히 덮어쓰지 않고 generated/managed manifest drift를 보고해야 합니다. 여기에는 generated file, managed block, MCP config snippet, 오래된 capability profile 최신성이 포함됩니다. Existing file 또는 managed block은 reconcile 또는 explicit reconnect decision이 replacement를 선택하기 전까지 그대로 두며, 편집된 generated file은 Task state가 아닙니다. 접점별 generated file 이름은 surface cookbook에 속합니다.
 
 Connect drift output 예시:
 
@@ -234,7 +236,7 @@ authority   edited generated file은 Task state가 아니며 조용히 overwrite
 | project | registered project, repo root, static config 유효성 |
 | state | current state 읽기 가능성, JSON field parse와 shape 유효성, owner-bound status value, state-version과 idempotency 일관성, locks, active Task 일관성 |
 | MCP | server 도달성, Core 도달성, read resource 사용 가능 여부, public tool 사용 가능 여부 |
-| 접점 | capability profile, profile 최신성, 오래된 capability profile 감지, generated/managed manifest drift, MCP config freshness, required MCP tool-call 가능 여부 |
+| 접점 | 실제 host/profile에 대해 선언된 capability profile, profile 최신성, version/MCP config/hook/permission/workspace policy/generated-file/conformance-result/capture/QA-capture/redaction/retention 변경 이후 오래된 capability profile 감지, generated/managed manifest drift, MCP config freshness, required MCP tool-call 가능 여부 |
 | artifacts | 파일 존재 여부, hash, size, redaction state, Task/Run 또는 artifact-link 관계 |
 | projections | 대기 중인 job, freshness, managed hash drift, 렌더링 실패 |
 | reconcile | 대기 중인 human edit, managed block drift, generated/managed manifest drift |

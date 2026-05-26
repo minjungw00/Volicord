@@ -62,6 +62,7 @@ First implementation planning means Kernel Smoke planning first, not Agency-Hard
 
 - The final docs-maintenance drift pass is complete, or remaining known gaps are recorded as `TODO_DECISION` or `TODO_IMPLEMENT` in the relevant owner docs. Docs-maintenance remains a read-only documentation check; see [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks) and [Operations And Conformance Reference](../reference/operations-and-conformance.md#docs-maintenance-profile).
 - The local-only MCP exposure baseline is accepted for MVP. Remote, shared, tunneled, or non-loopback exposure remains outside the MVP baseline unless owner docs promote and prove a connector profile; see [Runtime Architecture](../reference/runtime-architecture.md#local-access-expectations) and [MCP API And Schemas](../reference/mcp-api-and-schemas.md#mcp-boundary-and-caller-trust).
+- The reference surface capability profile is accepted as a concrete declaration for the actual host/profile/configuration in use, with refresh triggers for version, MCP config, hooks, permissions, workspace policy, generated files, conformance result, capture method, QA capture method, redaction policy, and artifact retention behavior. Exact connector profile and surface recipe details stay in [Agent Integration Reference](../reference/agent-integration.md#capability-profiles) and [Surface Cookbook](../reference/surface-cookbook.md).
 - The Core-only mutation model is accepted: Core alone changes canonical operational state, while resources, projections, reports, diagnostics, MCP callers, and operator entrypoints remain read-only or derived unless they enter a Core state-changing path. See [Core process model](../reference/runtime-architecture.md#core-process-model), [State transaction flow](../reference/runtime-architecture.md#state-transaction-flow), and the MCP [Idempotency](../reference/mcp-api-and-schemas.md#idempotency) and [State conflict behavior](../reference/mcp-api-and-schemas.md#state-conflict-behavior) sections.
 - The Kernel Smoke fixture queue is identified as the first runtime conformance authoring order. Exact fixture format, assertions, and catalog semantics stay in [Operations And Conformance Reference](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue).
 - The first runnable slice remains local, single-project, single-reference-surface, and fixture-proven. Use [First Runnable Slice](first-runnable-slice.md) for the planning checklist.
@@ -116,6 +117,8 @@ The artifact store is not a loose file dump. Every artifact that supports Harnes
 
 The MCP server exposes read resources and public tools. MCP resources are read-only. State-changing work goes through public tools and Core.
 
+If the MCP server cannot be reached, no authoritative Core response is available from that call path. The first implementation should report that as MCP unavailable, hold write-capable work by the reference surface's actual guarantee level, and avoid inventing state from cached projections, generated files, or chat text.
+
 For the first build path, prioritize:
 
 - status and active Task reads
@@ -151,7 +154,7 @@ Operator entrypoints are surfaces over Core behavior, not a second state model. 
 - report doctor/readiness status
 - serve or expose the MCP boundary
 - refresh projections
-- reconcile human edits or managed-block drift
+- reconcile human edits, generated-file drift, or managed-block drift without silently overwriting the existing file or treating it as state
 - recover interrupted or stale operational state
 - export state, projections, and artifact refs
 - check artifact integrity

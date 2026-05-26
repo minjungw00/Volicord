@@ -8,11 +8,11 @@ This document owns local setup notes, generated file names, MCP configuration hi
 
 This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the redesigned docs are accepted. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
 
-A surface name never implies a guarantee level. Every connector still declares a capability profile, and the profile's proven capabilities determine the guarantee level.
+A surface name never implies a guarantee level. Every connector still declares a capability profile for the actual host/profile/configuration in use, and the profile's proven capabilities determine the guarantee level.
 
 For generic capability profile examples, see [Agent Integration Reference](agent-integration.md#capability-profile-examples).
 
-Surface recipes do not define local-access error codes or OS-level security guarantees. They inherit the MVP local-only MCP default from Runtime, MCP API, and Agent Integration. A recipe may name the surface-specific local transport, config snippet, or access-control material class, but it must not expose raw token, secret, or private configuration values, and remote or shared MCP exposure is never implied by the surface name. If MCP access is unavailable, stale, unknown, weak, or outside the registered profile, route through the API and operations paths: `MCP_UNAVAILABLE` or `CAPABILITY_INSUFFICIENT` with diagnostic detail, normal state-conflict/scope/capability checks for mismatched claims, and honest guarantee display. Do not introduce a surface-specific MVP `UNAUTHORIZED` code.
+Surface recipes do not define local-access error codes or OS-level security guarantees. They inherit the MVP local-only MCP default from Runtime, MCP API, and Agent Integration. A recipe may name the surface-specific local transport, config snippet, or access-control material class, but it must not expose raw token, secret, or private configuration values, and remote or shared MCP exposure is never implied by the surface name. If MCP access is unavailable, stale, unknown, weak, or outside the registered profile, route through the API and operations paths: `MCP_UNAVAILABLE` or `CAPABILITY_INSUFFICIENT` with diagnostic detail, normal state-conflict/scope/capability checks for mismatched claims, and honest guarantee display. If the MCP server cannot be reached, no authoritative Core response is available from that call path; cooperative recipes hold writes by instruction, and stronger wording is allowed only when a fixture-proven guard or isolation boundary actually covers the operation. Do not introduce a surface-specific MVP `UNAUTHORIZED` code.
 
 ## Recipe shape
 
@@ -22,12 +22,15 @@ Each recipe should keep only surface-specific material:
 - generated files or instructions
 - MCP configuration hints
 - MCP exposure posture and local transport assumptions when they vary by surface
+- host/profile-specific capability differences, including version, hooks, permissions, workspace policy, generated files, capture methods, QA capture methods, redaction policy, artifact retention behavior, and conformance result differences that require a refreshed profile under the [Agent Integration Reference](agent-integration.md#capability-profiles)
 - capture, guard, and isolation options
 - guarantee boundary notes: what the named surface can block before execution, what it can only detect after action, what capture is native, and what falls back to manual artifacts or a manual verification bundle
 - common fallbacks
 - conformance risks
 
 Do not repeat generic kernel rules, public API schemas, or policy contracts here. The common contract determines what cooperative, detective, preventive, and isolated mean. A recipe only names the surface-specific path that can provide that behavior. Guard, freeze, and careful-mode labels may appear only as labels over the connected profile's actual capability. When a recipe uses one of those labels, it must say whether the behavior is a scope hold, a post-action detector, a fixture-proven pre-tool block, or isolation. Those labels do not authorize writes, satisfy gates, record verification, record acceptance, or create a new authority tier.
+
+Generated or managed recipe outputs must follow the connector manifest contract in [Agent Integration Reference](agent-integration.md#generated-manifest-expectations). Recipes may name the surface-specific files, config snippets, or managed blocks, but drift is reported before overwrite. The existing file or managed block stays in place until reconcile or an explicit reconnect decision chooses replacement, and the drifted generated file is not treated as canonical Task state.
 
 The `guarantee_boundary` blocks below are recipe documentation notes, not public schema, DDL shape, or canonical Capability Profile fields. A connector may record equivalent facts in its Capability Profile or Connector Manifest only according to the [Agent Integration Reference](agent-integration.md) contract. Surface Cookbook names surface-specific paths and examples; it does not redefine guarantee levels.
 

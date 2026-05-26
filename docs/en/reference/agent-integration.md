@@ -30,7 +30,7 @@ A connector should keep the agent's context small and current, route state-chang
 
 An agent surface is where the user talks to an agent. Harness is the local authority layer that keeps task state, write authority, evidence, verification, Manual QA, acceptance, projections, and reconcile behavior outside the chat transcript.
 
-A connector should give the agent small current context, route state changes through Harness MCP tools, capture what happened when the surface can do so, and name the actual guarantee level for the connected profile. A surface name is never enough to claim a capability.
+A connector should give the agent small current context, route state changes through Harness MCP tools, capture what happened when the surface can do so, and name the actual guarantee level for the connected profile. Capability is concrete: it must be declared and proven for the actual host, target profile, version/configuration, workspace policy, capture path, and guard or isolation path in use. A surface name is never enough to claim a capability.
 
 The common structure is:
 
@@ -75,7 +75,7 @@ Normal interactive Harness use is most natural at `T2` or higher. Reliable detac
 
 ## Capability Profiles
 
-Harness connectors must use a capability profile instead of assuming behavior from a product or surface name.
+Harness connectors must use a capability profile instead of assuming behavior from a product or surface name. A profile is scoped to the actual host/profile that will run the work, including the detected version, MCP configuration, hook/permission/workspace policy posture, capture method, QA capture method, redaction policy, artifact retention behavior, and conformance or operator-check basis that makes the declaration current. A different host, profile, version, configuration, permission model, capture path, or conformance result requires a refreshed profile before the connector can claim the same capability.
 
 ```yaml
 surface_id: SURF-0001
@@ -134,7 +134,7 @@ Every capability profile must state MCP exposure posture at a contract level. Th
 - whether remote or shared MCP exposure is disabled, unsupported, or explicitly enabled by the profile
 - for any beyond-local exposure, the owner-doc and conformance-promotion basis, secret/PII handling policy, redaction or omission behavior, guarantee display, and conformance coverage that prove the exposure does not silently upgrade authority
 
-Capability profiles must be refreshed when version, MCP config, hooks, permissions, workspace policy, generated files or managed blocks, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact retention behavior, access-control material class, local bind/reachability posture, or isolation/guard wrapper behavior changes. A beyond-local exposure remains outside MVP until promoted by owner docs and conformance; connector prose must not present it as the safe MVP default.
+Capability profiles must be refreshed when detected version, MCP config, hooks, permissions, workspace policy, generated files or managed blocks, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact retention behavior, access-control material class, local bind/reachability posture, or isolation/guard wrapper behavior changes. A beyond-local exposure remains outside MVP until promoted by owner docs and conformance; connector prose must not present it as the safe MVP default.
 
 ## Capability Profile Examples
 
@@ -276,9 +276,10 @@ The manifest must:
 - record configured capture, QA capture, guard, and isolation mechanisms without claiming more than the profile proves
 - record manual artifact capture and manual verification bundle fallbacks when native capture or isolation is unavailable
 - record creation and update times
-- mark the profile or generated block stale when the surface version, MCP config, hooks, permissions, wrapper, sidecar, managed file, capture method, redaction policy, or retention behavior changes
+- mark the profile or generated block stale when the surface version, MCP config, hooks, permissions, workspace policy, wrapper, sidecar, generated file, managed file, conformance result, capture method, QA capture method, redaction policy, or artifact retention behavior changes
 - detect drift before overwriting human edits
-- route drift to reconcile when needed
+- keep the existing file or managed block unchanged when drift is detected unless an explicit reconcile or reconnect decision authorizes replacement
+- route drift to reconcile when needed and report that the edited generated file is not canonical Task state
 
 The manifest concept is common. Surface-specific generated filenames belong in [Surface Cookbook](surface-cookbook.md).
 
@@ -330,14 +331,14 @@ Fallbacks are described by guarantee level and risk, not by surface name.
 
 | Fallback | Use when | Boundary |
 |---|---|---|
-| Cooperative | The surface can follow instructions but cannot enforce them. | Tell the agent to use `prepare_write`, hold on blocked decisions, and record runs. Product writes pause if authoritative MCP is unavailable or write scope cannot be checked. |
+| Cooperative | The surface can follow instructions but cannot enforce them. | Tell the agent to use `prepare_write`, hold on blocked decisions, and record runs. Product/runtime/code writes pause by instruction if authoritative MCP is unavailable or write scope cannot be checked. |
 | Detective | Harness can observe changed files, logs, projection drift, or artifact gaps after action. | Validators may mark state stale, partial, blocked, or failed and require repair, reconcile, or fresh verification. |
 | Preventive | A fixture-proven hook, permission layer, wrapper, policy engine, or sidecar can block before execution. | Claim only the operations that the fixture-proven blocking path actually covers. |
 | Isolated | Risk requires separation. | Launch work or verification in a separate worktree, sandbox, process, or manual evaluator bundle; do not treat separation as approval, acceptance, or verification unless the relevant owner path records that result. |
 
 If MCP is unavailable, the connector must not claim authoritative state updates. `MCP_SERVER_UNAVAILABLE` and `SURFACE_MCP_UNAVAILABLE` are diagnostic conditions, not additional public `ErrorCode` values. `MCP_UNAVAILABLE` remains the stable public availability code.
 
-`MCP_SERVER_UNAVAILABLE` means the tool call cannot reach Core, so no authoritative Core response is possible. `SURFACE_MCP_UNAVAILABLE` means Core or an operator can observe that the connected surface lacks usable MCP, has stale MCP configuration, or cannot call required tools. Product/runtime/code writes hold until MCP is reconnected or diagnosed, unless the work is an explicit pre-MVP documentation-authoring batch under `DOCS_AUTHORING_OVERRIDE` with an exact path allowlist. That override is a documentation-maintainer override only; it is not Core authorization, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, or a canonical state transition.
+`MCP_SERVER_UNAVAILABLE` means the tool call cannot reach Core, so no authoritative Core response is possible from that call path. A connector must not invent Core state, Write Authorization, gate status, evidence, acceptance, or close readiness from chat, generated files, cached projections, or operator prose while Core is unreachable. `SURFACE_MCP_UNAVAILABLE` means Core or an operator can observe that the connected surface lacks usable MCP, has stale MCP configuration, or cannot call required tools. Product/runtime/code writes hold until MCP is reconnected or diagnosed, unless the work is an explicit pre-MVP documentation-authoring batch under `DOCS_AUTHORING_OVERRIDE` with an exact path allowlist. Cooperative surfaces hold by instruction; detective surfaces may also report after-action mismatches; stronger profiles may block before execution only when a fixture-proven guard covers the operation or when an isolation boundary is actually in use. That override is a documentation-maintainer override only; it is not Core authorization, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, or a canonical state transition.
 
 If MCP works but pre-tool guard is weak, low-risk direct work may proceed with cooperative `prepare_write` and detective changed-path validation. Medium/high-risk work should require stricter validation, a fixture-proven sidecar guard, explicit approval, detached verification, or isolation.
 
@@ -405,7 +406,7 @@ Minimum reference expectations:
 - connector manifest for generated files, managed blocks, MCP config snippets, and profile freshness
 - manual artifact capture fallback when native capture is unavailable
 - actual block-vs-detect status when guard, freeze, or careful-mode labels are shown
-- conformance smoke covering common state and fallback paths
+- conformance smoke covering the common state, MCP availability, surface capability, generated-file drift, reconcile, artifact/capture fallback, projection freshness, and security/threat-model categories named in [Operations And Conformance Reference](operations-and-conformance.md#doctor)
 
 Reference surface behavior details and surface-specific setup belong in [Surface Cookbook](surface-cookbook.md) only when they name a concrete surface.
 
@@ -440,7 +441,9 @@ Overview scenarios:
 - risk-accepted close additionally requires accepted Residual Risk refs
 - stale projection and reconcile flow
 - generated file drift detection
+- safe non-overwrite behavior for generated files and managed blocks, with drift routed to reconcile
 - connector manifest profile freshness and stale capability profile detection
+- profile refresh after version, MCP config, hook, permission, workspace policy, generated-file, conformance-result, capture-method, QA-capture-method, redaction-policy, or artifact-retention changes
 - capability fallback when a required tier is missing
 - local-only MCP default, with off-profile remote or shared exposure held, failed, or reported as capability-insufficient
 - MCP unavailable product-write hold

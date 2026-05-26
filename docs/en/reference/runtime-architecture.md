@@ -234,7 +234,7 @@ The stable MVP ValidatorResult ID set is API-owned and listed in [MCP API And Sc
 Core preconditions and mechanical checks such as state/envelope validation, active Task, active Change Unit, changed paths, baseline freshness, approval scope, evidence sufficiency, artifact integrity, verification independence, same-session verification guard, and projection freshness may run before or beside these validators. They are not alternate validator IDs unless this section, the MCP API, or [Storage And DDL](storage-and-ddl.md) explicitly promotes them into the stable ValidatorResult-emitting set. Surface capability is intentionally modeled as the `surface_capability_check` capability validator when emitted as a `ValidatorResult`.
 
 
-Adapters and sidecars translate surface capability into observable facts. They do not create a kernel gate for capability. Capability appears through the `surface_capability_check` validator, `prepare_write` blocked reasons, and guarantee display.
+Adapters and sidecars translate surface capability into observable facts. They do not create a kernel gate for capability. Capability appears through the `surface_capability_check` validator, `prepare_write` blocked reasons, and guarantee display. The exact capability declaration and refresh triggers for a concrete host/profile are owned by [Agent Integration Reference](agent-integration.md#capability-profiles) and surface-specific paths are named in [Surface Cookbook](surface-cookbook.md).
 
 ## State transaction flow
 
@@ -298,7 +298,7 @@ state transition committed
 → human-editable area preserved
 ```
 
-Projector writes only managed areas and preserves human-editable areas. If a managed area was edited directly, projector records a reconcile candidate instead of silently treating the edit as state. If a human-editable area contains a proposal, reconcile creates a candidate record and asks for an explicit decision. Front matter such as `source_state_version` and freshness lines are display diagnostics for that rendered view, not a second state clock.
+Projector writes only managed areas and preserves human-editable areas. If a managed area was edited directly, projector records a reconcile candidate instead of silently treating the edit as state. Connector-generated files and managed instruction blocks follow the same safe non-overwrite boundary: manifests and hashes detect drift, the existing file or block is kept, and reconcile or an explicit reconnect decision chooses whether to refresh it from owner records. If a human-editable area contains a proposal, reconcile creates a candidate record and asks for an explicit decision. Front matter such as `source_state_version` and freshness lines are display diagnostics for that rendered view, not a second state clock.
 
 Reconcile authority path:
 
@@ -323,7 +323,7 @@ The harness reports guarantee levels to make enforcement strength honest:
 | `isolated` | risky work is separated by a worktree, sandbox, process boundary, evaluator boundary, or equivalent isolation; isolation limits blast radius but does not by itself approve or verify the work |
 
 
-Guarantee display should name both sides of the boundary: what the connected profile can actually block before execution, and what it can only detect after action. A surface name, product name, recipe name, or friendly mode label is never proof of capability. Guard, freeze, and careful-mode labels inherit the connected profile's proven capability; they do not upgrade a cooperative or detective profile into preventive blocking, and they do not create authority tiers.
+Guarantee display should name both sides of the boundary: what the connected profile can actually block before execution, and what it can only detect after action. A surface name, product name, recipe name, or friendly mode label is never proof of capability; the declaration must come from the actual host/profile capability profile and its current proof basis. Guard, freeze, and careful-mode labels inherit the connected profile's proven capability; they do not upgrade a cooperative or detective profile into preventive blocking, and they do not create authority tiers.
 
 MVP reference behavior is cooperative/detective unless the connected surface has a concrete, fixture-proven pre-tool guard for covered operations or an isolation layer. Native hook expansion, advanced sidecar watching, and broad isolated execution are later roadmap items unless explicitly implemented for the MVP reference surface. Until promoted through owner docs, they may improve observation or display only; they do not authorize writes, satisfy gates, grant approval, prove verification or QA, record acceptance, or replace Core authority.
 
