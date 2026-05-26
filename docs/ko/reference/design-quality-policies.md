@@ -22,7 +22,7 @@
 
 | 정책 영역 | 쉬운 질문 |
 |---|---|
-| `shared_design` | 목표, 범위, 비목표, 가정, 제품·구현·검증·QA·후속 위험, 사용자 판단이 첫 번째 안전한 Change Unit을 제안할 만큼 구체화됐는가? |
+| `shared_design` | 첫 번째 안전한 Change Unit을 제안할 만큼 목표, 범위, 비목표, 가정, 제품·구현·검증·QA·후속 위험, 사용자 판단에 대한 shared understanding이 기록됐는가? |
 | `decision_quality` | 제품, 설계, 기술, 아키텍처, waiver, risk 선택에 Decision Packet 또는 기존 waiver, Residual Risk, QA, acceptance 기록이 필요한가? |
 | `autonomy_boundary` | Agent가 혼자 할 수 있는 일과 사용자 판단을 위해 멈춰야 하는 지점은 무엇인가? |
 | `vertical_slice` | 작업이 얇은 end-to-end slice로 잡혔는가, 아니면 수평 예외가 기록됐는가? |
@@ -68,6 +68,8 @@
 Kernel은 lifecycle, gate transition, close semantics, blocker mechanics, state transition, `prepare_write`, `close_task`를 담당합니다.
 
 설계 품질 정책은 kernel 위에 놓이는 정책 계약입니다. 이 정책은 언제 `decision_gate`, `design_gate`, `qa_gate`, 근거 충분성, `prepare_write` blocker, close blocker에 영향을 줄 수 있는지 설명합니다. 하지만 새 kernel transition, 새 기준 정보, scope, approval, evidence, verification, acceptance, residual-risk rule의 대체물을 만들지는 않습니다.
+
+권한 경로는 구분해서 유지합니다. 제품 판단과 중요한 기술 판단이 진행, write, waiver, acceptance, close를 막으면 Decision Packet으로 라우팅합니다. Policy validator는 설계 품질 finding과 gate impact를 보고합니다. State change, product write, acceptance, residual-risk acceptance, close가 진행될 수 있는지는 여전히 kernel authority가 결정합니다.
 
 정책 waiver도 제한적입니다. 정책 계약이 허용하는 경우에만 설계 품질 요구사항을 충족한 것으로 볼 수 있습니다. product write 범위, 민감 변경 approval, 필요한 근거 범위, 필수 결과 수락, verification 독립성을 대신 면제하지 않습니다.
 
@@ -131,11 +133,13 @@ Policy validator는 MCP API document가 담당하는 validator 결과 형식에 
 
 예시: 사용자가 "onboarding을 더 좋게" 해 달라고 요청하면, 쓰기 전에 목표, 비목표, 수용 기준, 기각한 선택지, 첫 얇은 onboarding Change Unit을 기록합니다.
 
+Shared Design은 기록된 shared understanding이지 final approval, sensitive-action Approval, final acceptance, residual-risk acceptance, QA judgment, Write Authorization이 아닙니다. Shared Design은 Decision Packet이 필요한 결정을 드러낼 수 있고 `design_gate` 준비 상태를 뒷받침할 수 있지만, 그 자체로 사용자 소유 판단을 해결하지는 않습니다.
+
 | Field | Contract |
 |---|---|
 | `name` | `shared_design` |
 | `applies_when` | 작업 요청이 모호하거나, 범위와 범위 밖 항목이 분명하지 않거나, 사용자 가치 정렬이 필요하거나, 영향받는 제품 영역, 사용자 화면/흐름, 모듈, interface, 민감 카테고리(sensitive categories), 검증 또는 Manual QA 기대 수준, 사용자가 소유하는 제품 또는 중요한 기술 절충 판단, 알려진 제품·구현·검증·QA·후속 위험을 구체화해야 하거나, 공개 interface, schema, auth, UX, workflow가 영향을 받거나, `work` task를 구체화해야 할 때. |
-| `default_requirement` | 기록할 것: 목표, 범위, 비목표, 수용 기준, 영향받는 제품 영역, 사용자 화면/흐름, 모듈, interface, 민감 카테고리(sensitive categories), 사용자가 소유하는 제품 또는 중요한 기술 절충 판단, 검증 및 Manual QA 기대 수준, 알려진 제품·구현·검증·QA·후속 위험, 진행을 막는 결정, 가정, 기각한 선택지, domain-language 영향, module/interface 영향, 첫 Change Unit 모양. 사용자에게 묻기 전 확인할 것: agent가 안전하게 직접 확인할 수 있는 답을 사용 가능한 최신 저장소, 코드베이스, 문서, Harness state에서 먼저 살핀다. 소스가 없거나 오래됐으면 현재 사실의 근거로 삼지 말고 그 불확실성을 기록한다. 구체화 방식: 여러 차례 이어질 수 있으며, 가능하면 가장 막힘이 큰 질문을 한 번에 하나씩 묻는다. 각 막힘 질문에는 선택지, 추천안, 불확실성, 미뤄졌을 때 계속할 수 있는 일 또는 결정 전에는 진행하면 안 되는 이유를 포함해야 한다. Agent가 둔 가정은 사용자 판단이 필요한 선택, Approval, QA 판단, 결과 수락, 위험을 받아들이는 판단과 분리한다. 해소되지 않은 사용자 판단을 숨기지 않고 첫 번째 안전한 Change Unit을 제안할 수 있을 때 구체화를 멈춘다. |
+| `default_requirement` | Shared understanding으로 기록할 것: 목표, 범위, 비목표, 수용 기준, 영향받는 제품 영역, 사용자 화면/흐름, 모듈, interface, 민감 카테고리(sensitive categories), 사용자가 소유하는 제품 또는 중요한 기술 절충 판단, 검증 및 Manual QA 기대 수준, 알려진 제품·구현·검증·QA·후속 위험, 진행을 막는 결정, 가정, 기각한 선택지, domain-language 영향, module/interface 영향, 첫 Change Unit 모양. 사용자에게 묻기 전 확인할 것: agent가 안전하게 직접 확인할 수 있는 답을 사용 가능한 최신 저장소, 코드베이스, 문서, Harness state에서 먼저 살핀다. 소스가 없거나 오래됐으면 현재 사실의 근거로 삼지 말고 그 불확실성을 기록한다. 구체화 방식: 여러 차례 이어질 수 있으며, 가능하면 가장 막힘이 큰 질문을 한 번에 하나씩 묻는다. 각 막힘 질문에는 선택지, 추천안, 불확실성, 미뤄졌을 때 계속할 수 있는 일 또는 결정 전에는 진행하면 안 되는 이유를 포함해야 한다. Agent가 둔 가정은 사용자 판단이 필요한 선택, Approval, QA 판단, 결과 수락, 위험을 받아들이는 판단, 공개 약속과 분리한다. 해소되지 않은 사용자 판단을 숨기지 않고 첫 번째 안전한 Change Unit을 제안할 수 있을 때 구체화를 멈춘다. |
 | `allowed_waiver` | User/operator가 reason과, design risk가 남는 경우 follow-up을 기록하면 작고 명확한 `direct` work, docs-only edit, emergency fix에 허용된다. |
 | `required_record` | Shared Design record, Task shaping field, decision record, 선택적 `DESIGN` 또는 `DEC` projection. |
 | `validator` | `shared_design_alignment` |
@@ -147,6 +151,7 @@ Policy validator는 MCP API document가 담당하는 validator 결과 형식에 
 이럴 때 사용합니다:
 
 - 선택이 사용자가 소유하는 제품 방향, 비용·호환성·보안·유지보수·migration·interface·dependency·위험 영향이 큰 중요한 기술 방향, scope, 아키텍처, schema/data model, public API, module boundary, compatibility를 바꿀 때.
+- Domain-language conflict가 제품 의미, public documentation, caller expectation, 수용 기준, API naming, module responsibility를 바꿀 때.
 - Waiver가 QA 또는 verification 면제 risk를 포함한 알려진 위험을 수용할 때.
 - 수평 예외가 design, technical, 또는 architecture choice일 때.
 - Agent 추천안은 있지만 판단은 user가 소유할 때.
@@ -159,6 +164,7 @@ Policy validator는 MCP API document가 담당하는 validator 결과 형식에 
 - `decision_kind=product_tradeoff`: 비어 있는 화면이 바로 설정을 유도할지, 데이터가 생길 때까지 조용히 둘지처럼 경험의 product taste가 달라지는 선택입니다. 제품 의도, 사용자군, 명확성, 방해 정도, Manual QA 필요성, 추천안, 불확실성, 결정을 미뤘을 때 계속할 수 있는 일 또는 결정 전에는 진행하면 안 되는 이유를 기록합니다.
 - `decision_kind=architecture_choice`: session auth, token auth, social login 중에서 고릅니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 운영 복잡도, migration 경로, 추천안이 Task에 맞는 이유를 기록합니다.
 - `decision_kind=architecture_choice`: dependency addition, schema migration, public API/interface change, module boundary change입니다. 대안, 영향 범위, 호환성, rollback 또는 migration 비용, test boundary, 향후 유지보수 비용, 추천안, 결정을 미룰 때의 영향을 기록합니다.
+- `decision_kind=product_tradeoff` 또는 `decision_kind=architecture_choice`: product copy, API name, storage-facing code에서 "Account"와 "Profile"처럼 domain language가 충돌하는 경우입니다. User-facing meaning, code impact, compatibility 또는 migration 비용, documentation promise, 추천안, 결정을 미룰 때의 영향을 기록합니다.
 - `decision_kind=approval`: auth, permission, secret, data-export 작업입니다. Approval boundary는 민감한 단계를 허가할 수 있지만, 역할, exported fields, redaction, audit logging, retention, rollback, user notice가 아직 결정되지 않았다면 제품 또는 보안 판단에는 별도의 compatible Decision Packet이 필요합니다.
 - `decision_kind=qa_waiver` 또는 `decision_kind=verification_waiver`: QA 또는 verification을 생략합니다. 무엇을 확인하지 않는지, waiver가 비례적인 이유, 사용자·제품·기술 측면에서 받아들이는 위험, 가장 작은 신뢰 가능한 follow-up을 기록합니다.
 - `decision_kind=residual_risk_acceptance`: 알려진 남은 위험을 두고 close합니다. 사용자에게 보인 한계, 이미 있는 근거, close를 진행할 수 있는 이유, 사용자에게 보인 residual-risk ref, follow-up을 기록합니다.
@@ -168,7 +174,7 @@ Policy validator는 MCP API document가 담당하는 validator 결과 형식에 
 | Field | Contract |
 |---|---|
 | `name` | `decision_quality` |
-| `applies_when` | Design choice, 사용자 소유의 제품 장단점 판단, product taste 판단, 중요한 기술 선택, Manual QA 필요 여부가 사용자 소유의 제품·UX·접근성·릴리스 위험·product taste 판단에 달린 경우, Manual QA waiver 선택, 범위 확장, durable impact가 있는 dependency addition, schema/data-model migration, public API/interface change, module boundary change, architecture choice, 수평 예외, verification 면제, QA 면제, 알려진 위험이 있는 결과 수락이 있을 때. |
+| `applies_when` | Design choice, 사용자 소유의 제품 장단점 판단, product taste 판단, 중요한 기술 선택, 제품 의미, public documentation, caller expectation, 수용 기준, API naming, module responsibility에 영향을 주는 domain-language conflict, Manual QA 필요 여부가 사용자 소유의 제품·UX·접근성·릴리스 위험·product taste 판단에 달린 경우, Manual QA waiver 선택, 범위 확장, durable impact가 있는 dependency addition, schema/data-model migration, public API/interface change, module boundary change, architecture choice, 수평 예외, verification 면제, QA 면제, 알려진 위험이 있는 결과 수락이 있을 때. |
 | `default_requirement` | Decision이 실제 행동으로 이어지기 전에 Decision Packet을 기록한다. Packet에는 context, 검토한 선택지, 장단점, 추천안, uncertainty, reversibility, evidence ref, 결정을 미룰 때의 결과, residual risk가 포함되어야 한다. Agent 추천안과 사용자 판단 또는 위험을 받아들이는 판단을 분리해 둔다. `decision_kind=approval`에서는 sensitive-change scope와 boundary가 명확한지 평가하고, approval 형태의 맥락을 제품, 기술, 보안, QA, verification, 결과 수락, residual-risk 판단의 해결로 취급하지 않는다. |
 | `allowed_waiver` | 공개 interface, 제품, 중요한 기술, 아키텍처, 유지보수, verification, QA, 알려진 위험 impact가 없고 사소하며 되돌리기 쉬운 선택에만 허용된다. Waiver에는 Decision Packet이 judgment를 개선하지 않는 이유를 기록해야 한다. |
 | `required_record` | Decision Packet 기록과 렌더링될 때 선택적 `DEC` projection. |
@@ -310,6 +316,7 @@ TDD execution loop:
 - Product language와 code language가 diverge할 때.
 - 여러 이름이 하나의 concept를 가리킬 때.
 - Reviewer 또는 evaluator가 terminology drift를 발견할 때.
+- Term conflict가 product behavior, public docs, API 또는 interface naming, 수용 기준, module responsibility에 영향을 줄 때.
 
 예시: Product에서는 "Journey Card"라고 부르는데 code가 `sessionSummary`를 도입한다면, mismatch가 퍼지기 전에 용어 경계를 기록하거나 갱신합니다.
 
@@ -317,12 +324,12 @@ TDD execution loop:
 |---|---|
 | `name` | `domain_language` |
 | `applies_when` | New product term이 나타나거나, existing term이 new meaning으로 쓰이거나, code와 product language가 diverge하거나, 여러 이름이 하나의 concept를 가리키거나, reviewer/evaluator가 term mismatch를 발견할 때. |
-| `default_requirement` | 영향을 받는 term의 meaning, code representation, "not this" 경계, related term, source, status를 기록하거나 갱신한다. Implementation agent는 task-relevant term만 가져오고, reviewer/evaluator는 relevant term을 받는다. |
+| `default_requirement` | 영향을 받는 term의 meaning, code representation, "not this" 경계, related term, source, status를 기록하거나 갱신한다. Implementation agent는 task-relevant term만 가져오고, reviewer/evaluator는 relevant term과 active terminology uncertainty를 받는다. Term choice에 사용자 소유 제품 판단이나 중요한 기술 판단이 필요하면 그 판단을 `decision_quality`로 라우팅한다. Term record는 decision path가 허용한 뒤 선택된 language를 담는다. |
 | `allowed_waiver` | Work에 domain term impact가 없거나 term이 의도적으로 local/temporary일 때 허용된다. Waiver는 기준 term update가 필요 없는 이유를 기록해야 한다. |
 | `required_record` | `record_kind=domain_term`으로 참조되는 `domain_terms` record; `DOMAIN-LANGUAGE`는 projection/proposal 접점일 뿐이다. |
 | `validator` | `domain_language_consistency` |
 | `evidence` | Domain term ref, code ref, test naming ref, proposal용 reconcile item ref. |
-| `close_impact` | Required term이 missing 또는 conflicting이면 `design_gate=partial` 또는 `stale`로 표시한다. Mismatch가 수용 기준, public behavior, verification confidence에 영향을 주면 close를 차단한다. |
+| `close_impact` | Required term이 missing 또는 conflicting이면 `design_gate=partial` 또는 `stale`로 표시한다. Mismatch가 수용 기준, public behavior, public documentation 또는 caller expectation, module responsibility, verification confidence에 영향을 주면 close를 차단한다. Mismatch가 사용자 소유 판단에 달려 있으면 Decision Packet route가 compatible해질 때까지 관련 `decision_gate` impact를 유지하거나 설정한다. |
 
 ### Deep Module / Interface (`deep_module_interface`)
 
@@ -339,12 +346,23 @@ TDD execution loop:
 |---|---|
 | `name` | `deep_module_interface` |
 | `applies_when` | 공개 interface change, module 경계 change, schema/data model change, auth/security 경계, compatibility impact, deep module internal, shallow-module risk. |
-| `default_requirement` | 영향을 받는 module, current role, proposed 공개 interface, interface 뒤에 숨겨진 internal complexity, 모듈 단위 watchpoints, 영향을 받는 caller, compatibility impact, 테스트 경계를 식별한다. 충분한 internal capability를 뒤에 둔 작고 simple한 공개 interface를 선호한다. 공개 interface, compatibility, architecture choice에는 Decision Packet을 사용한다. |
+| `default_requirement` | 영향을 받는 module, current role, proposed 공개 interface, interface 뒤에 숨겨진 internal complexity, 모듈 단위 watchpoints, 영향을 받는 caller, compatibility impact, 테스트 경계를 식별한다. 충분한 internal capability를 뒤에 둔 작고 simple한 공개 interface를 선호한다. 사용자 소유 제품 판단이나 중요한 기술 판단이 필요한 공개 interface, compatibility, architecture, module responsibility 선택에는 Decision Packet을 사용한다. |
 | `allowed_waiver` | Public 경계 impact, dependency direction change, 호환성 위험이 없고 localized internal change일 때 허용된다. Module/interface review가 불필요한 이유를 기록해야 한다. |
 | `required_record` | `record_kind=module_map_item`과 `record_kind=interface_contract`로 참조되는 `module_map_items` 및 `interface_contracts` records, decision record, 선택적 `MODULE-MAP` / `INTERFACE-CONTRACT` projection. |
 | `validator` | `module_interface_review` |
 | `evidence` | Module map item ref, relevant한 경우 모듈 단위 watchpoints, interface contract ref, 호출자 영향 list, 경계 테스트, design decision, compatibility note. |
-| `close_impact` | Required review가 missing이면 `design_gate=pending` 또는 `partial`로 남는다. 공개 interface 또는 호환성 위험이 있는데 review가 없으면 close를 차단하거나 남은 위험을 받아들이는 사용자 판단이 필요할 수 있다. |
+| `close_impact` | Required review가 missing이면 `design_gate=pending` 또는 `partial`로 남는다. 공개 interface, module boundary, caller-impact, compatibility risk가 있는데 review가 없으면 close를 차단하거나 남은 위험을 받아들이는 사용자 판단이 필요할 수 있다. Boundary choice가 아직 사용자 소유라면 관련 `decision_gate` impact를 유지하거나 설정한다. |
+
+#### Domain 및 boundary 라우팅 예시
+
+이 예시들은 기존 policy, Decision Packet, gate, evidence, close path로 라우팅합니다. 새 schema, DDL, validator ID, gate, authority record를 만들지 않습니다.
+
+| Concern | Existing route | Gate 또는 close 영향 |
+|---|---|---|
+| Local code name이 stable product term과 어긋났지만 meaning은 명확하고 public contract는 바뀌지 않는다. | `domain_terms`를 갱신하거나 참조한다. `domain_language_consistency`는 reconcile될 때까지 warning 또는 `design_gate=partial`을 보고할 수 있다. | 보통 Decision Packet은 필요 없다. Mismatch가 수용 기준 또는 verification confidence에 영향을 줄 때만 close가 차단된다. |
+| "Account"와 "Profile"이 product copy, API name, docs에서 충돌하고, 선택이 사용자 또는 caller가 의존할 수 있는 내용을 바꾼다. | Term conflict에는 `domain_language_consistency`를 사용하고, 사용자 소유 제품 판단 또는 중요한 기술 판단에는 `decision_quality_check`를 사용한다. 선택된 meaning을 실행하기 전에 compatible Decision Packet을 기록한다. | Term conflict가 unresolved인 동안 `design_gate`는 partial 또는 stale로 남는다. 사용자 소유 선택이 unresolved인 동안 `decision_gate`는 required, pending, blocked로 남는다. Conflict가 public behavior, docs, acceptance, verification confidence에 영향을 주면 close가 차단될 수 있다. |
+| 호환되는 public interface extension에 caller impact와 boundary test가 명확하고 사용자 소유 trade-off가 없다. | `interface_contracts`와 관련 `module_map_items`를 기록하거나 갱신한다. `module_interface_review`가 설계 품질 impact를 carries한다. | Review와 evidence가 생길 때까지 `design_gate`가 pending 또는 partial일 수 있다. Compatibility, public commitment, 중요한 기술 판단이 사용자 소유가 되지 않는 한 Decision Packet은 필요 없다. |
+| Breaking interface cleanup 또는 module-responsibility move가 더 단순하지만 caller obligation 또는 future architecture direction을 바꾼다. | `module_interface_review`와 `decision_quality_check`를 사용한다. 영향받는 caller, compatibility, migration 또는 rollback cost, boundary tests, breaking 또는 architecture choice를 위한 Decision Packet을 기록한다. | Decision route, scope, applicable한 경우 approval, policy requirements가 compatible해질 때까지 영향받는 write가 차단된다. Unresolved interface review, missing evidence, 받아들여지지 않은 residual risk, unresolved Decision Packet state는 close를 차단할 수 있다. |
 
 ### Codebase Stewardship (`codebase_stewardship`)
 

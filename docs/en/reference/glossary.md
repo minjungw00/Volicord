@@ -150,7 +150,7 @@ The Task-level aggregate gate for blocking user-owned judgment before progress, 
 
 ### Decision Packet
 
-A recorded decision-support packet for blocking user-owned judgment. It names the decision needed, options, recommendation when available, trade-offs, affected scope, evidence, residual risk, owner, status, and next action. Decision Packet record IDs use `DEC-*`. Its record-level status is owned by [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute) and the public `DecisionPacket` schema; relevant statuses feed the Task-level `decision_gate`. Its canonical form is kernel state. MVP visibility is required through Task/status/next/judgment-context and decision-packet surfaces; standalone `DEC` Markdown renderings are optional projections or proposal surfaces unless enabled. Broad approval text does not satisfy a Decision Packet unless it answers the specific recorded route and option.
+A recorded decision-support packet for blocking user-owned judgment. It names the decision needed, options, recommendation when available, trade-offs, affected scope, evidence, residual risk, owner, status, and next action. Decision Packet record IDs use `DEC-*`. Its record-level status is owned by [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute) and the public `DecisionPacket` schema; relevant statuses feed the Task-level `decision_gate`. Its canonical form is kernel state. MVP visibility is required through Task/status/next/judgment-context and decision-packet surfaces; standalone `DEC` Markdown renderings are optional projections or proposal surfaces unless enabled. Public API/interface choices, architecture direction, domain-language conflicts, module boundary changes, waivers, acceptance, and residual-risk choices use this path when user-owned product judgment or material technical judgment blocks progress, writes, close, or a public commitment. Broad approval text does not satisfy a Decision Packet unless it answers the specific recorded route and option.
 
 ### Decision Request
 
@@ -182,7 +182,7 @@ A read-only documentation maintenance check profile that detects drift in biling
 
 ### Domain Language
 
-The product's canonical vocabulary and meanings. The canonical source is `domain_terms`; Markdown domain-language documents are projections and proposal surfaces.
+The product's canonical vocabulary and meanings. The canonical source is `domain_terms`; Markdown domain-language documents are projections and proposal surfaces. A term conflict can affect `design_gate` through policy validation, and it routes to a Decision Packet when choosing the meaning is user-owned product judgment or material technical judgment.
 
 ### Domain Term
 
@@ -296,7 +296,7 @@ A canonical support record for durable continuity annotations that cannot be ful
 
 ### Interface Contract
 
-The canonical record of a module or external boundary's public interface, inputs, outputs, errors, compatibility impact, callers, and boundary tests. The canonical source is `interface_contracts`. Public state refs use `record_kind=interface_contract`.
+The canonical record of a module or external boundary's public interface, inputs, outputs, errors, compatibility impact, callers, and boundary tests. The canonical source is `interface_contracts`. Public state refs use `record_kind=interface_contract`. The record documents the interface understanding; it is not Approval, acceptance, residual-risk acceptance, or Write Authorization. Public interface or compatibility choices route through the existing design-quality and Decision Packet paths when user-owned judgment is required.
 
 ### JSON `TEXT` Field
 
@@ -348,7 +348,7 @@ A human-readable document generated from state records and artifact references. 
 
 ### Module Map
 
-The product's map of modules, responsibilities, public interfaces, dependency direction, internal complexity, test boundaries, owner decisions, and watchpoints. The canonical source is `module_map_items`.
+The product's map of modules, responsibilities, public interfaces, dependency direction, internal complexity, test boundaries, owner decisions, and watchpoints. The canonical source is `module_map_items`. A module boundary update records the shared technical understanding; it does not approve writes or accept risk. Boundary changes that shift product commitments, caller obligations, or architecture direction route through design-quality policy and Decision Packet paths when user-owned judgment is required.
 
 ### Module Map Item
 
@@ -446,7 +446,7 @@ The policy-owned rule for merging multiple applicable task-shape defaults, polic
 
 ### Shared Design
 
-The minimum recorded shared understanding of a task before implementation hardens into a plan: goal, scope, non-goals, acceptance criteria, assumptions, decisions, rejected options, domain/module/interface impact, and first Change Unit shape. Markdown renderings of Shared Design are projections and proposal surfaces.
+The minimum recorded shared understanding of a task before implementation hardens into a plan: goal, scope, non-goals, acceptance criteria, assumptions, decisions, rejected options, domain/module/interface impact, and first Change Unit shape. Shared Design is not final approval, sensitive-action Approval, final acceptance, residual-risk acceptance, QA judgment, or Write Authorization. Markdown renderings of Shared Design are projections and proposal surfaces.
 
 ### Source-of-truth
 

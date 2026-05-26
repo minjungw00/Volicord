@@ -22,7 +22,7 @@ This document does not define MCP schemas, SQLite DDL, state transition tables, 
 
 | Policy area | Plain-language question |
 |---|---|
-| `shared_design` | Do we know enough about goal, scope, non-goals, assumptions, product, implementation, verification, QA, or follow-up risks, and user-owned judgments to propose the first safe Change Unit? |
+| `shared_design` | Is there a recorded shared understanding of goal, scope, non-goals, assumptions, product, implementation, verification, QA, follow-up risks, and user-owned judgments sufficient to propose the first safe Change Unit? |
 | `decision_quality` | Is this a product, design, technical, architecture, waiver, or risk choice that needs a Decision Packet or an existing waiver, Residual Risk, QA, or acceptance record? |
 | `autonomy_boundary` | What may the agent do alone, and where must it stop for user judgment? |
 | `vertical_slice` | Is the work shaped as a thin end-to-end slice, or is a horizontal exception recorded? |
@@ -68,6 +68,8 @@ This document does not own:
 The kernel owns lifecycle, gate transitions, close semantics, blocker mechanics, state transitions, `prepare_write`, and `close_task`.
 
 Design-quality policies are policy contracts layered on top of that kernel. A policy can say when `decision_gate`, `design_gate`, `qa_gate`, evidence sufficiency, `prepare_write` blockers, or close blockers may be affected. It does not create a new kernel transition, a new canonical source of truth, or a substitute for scope, approval, evidence, verification, acceptance, or residual-risk rules.
+
+Keep the authority paths distinct. Product judgment and material technical judgment route through Decision Packets when they block progress, writes, waivers, acceptance, or close. Policy validators report design-quality findings and gate impact. Kernel authority still decides whether state changes, product writes, acceptance, residual-risk acceptance, or close may proceed.
 
 Policy waivers are also limited. They can satisfy a design-quality requirement only where the policy contract allows it. They do not waive product-write scope, sensitive-change approval, required evidence coverage, required acceptance, or verification independence.
 
@@ -131,11 +133,13 @@ Use this when:
 
 Example: A user asks for "better onboarding." Before writing, record the goal, non-goals, acceptance criteria, rejected options, and the first thin onboarding Change Unit.
 
+Shared Design is a recorded shared understanding, not final approval, sensitive-action Approval, final acceptance, residual-risk acceptance, QA judgment, or Write Authorization. It can expose decisions that require a Decision Packet, and it can support `design_gate` readiness, but it does not settle user-owned judgment by itself.
+
 | Field | Contract |
 |---|---|
 | `name` | `shared_design` |
 | `applies_when` | Work request is ambiguous, scope/non-scope is unclear, user value needs alignment, affected product areas, user-facing screens or flows, modules, interfaces, sensitive categories, verification or Manual QA expectations, user-owned product or material technical trade-offs, or known product, implementation, verification, QA, or follow-up risks need shaping, public interface/schema/auth/UX/workflow is affected, or a `work` task needs shaping. |
-| `default_requirement` | Record: goal, scope, non-goals, acceptance criteria, affected product areas, user-facing screens or flows, modules, interfaces, sensitive categories, user-owned product or material technical trade-offs, verification and Manual QA expectations, known product, implementation, verification, QA, or follow-up risks, blocking decisions, assumptions, rejected options, domain-language impact, module/interface impact, and first Change Unit shape. Inspect before asking: use repo, codebase, docs, and Harness state that are available and current for answers the agent can discover safely; if a source is unavailable or stale, record that uncertainty rather than treating it as authority. Clarify: multiple rounds may be needed; ask the most blocking question one at a time when possible; each blocking question should include options, recommendation, uncertainty, and what can continue if deferred, or why nothing should continue until the decision is made. Separate agent assumptions from choices, approvals, QA judgment, acceptance, or risk acceptance that need user judgment. Stop shaping when the first safe Change Unit can be proposed without hiding unresolved user judgment. |
+| `default_requirement` | Record the shared understanding: goal, scope, non-goals, acceptance criteria, affected product areas, user-facing screens or flows, modules, interfaces, sensitive categories, user-owned product or material technical trade-offs, verification and Manual QA expectations, known product, implementation, verification, QA, or follow-up risks, blocking decisions, assumptions, rejected options, domain-language impact, module/interface impact, and first Change Unit shape. Inspect before asking: use repo, codebase, docs, and Harness state that are available and current for answers the agent can discover safely; if a source is unavailable or stale, record that uncertainty rather than treating it as authority. Clarify: multiple rounds may be needed; ask the most blocking question one at a time when possible; each blocking question should include options, recommendation, uncertainty, and what can continue if deferred, or why nothing should continue until the decision is made. Separate agent assumptions from choices, approvals, QA judgment, acceptance, risk acceptance, or public commitments that need user judgment. Stop shaping when the first safe Change Unit can be proposed without hiding unresolved user judgment. |
 | `allowed_waiver` | Allowed for small obvious `direct` work, docs-only edits, or emergency fixes when the user/operator records a reason and a follow-up if design risk remains. |
 | `required_record` | Shared Design record, Task shaping fields, decision records, and optionally `DESIGN` or `DEC` projections. |
 | `validator` | `shared_design_alignment` |
@@ -147,6 +151,7 @@ Example: A user asks for "better onboarding." Before writing, record the goal, n
 Use this when:
 
 - A choice changes user-owned product direction, material technical direction with cost, compatibility, security, maintenance, migration, interface, dependency, or risk impact, scope, architecture, schema/data model, public API, module boundary, or compatibility.
+- A domain-language conflict changes product meaning, public documentation, caller expectations, acceptance criteria, API naming, or module responsibility.
 - A waiver accepts known risk, including QA or verification waiver risk.
 - A horizontal exception is a design, technical, or architecture choice.
 - The agent has a recommendation but the user owns the judgment.
@@ -159,6 +164,7 @@ Reusable Decision Packet examples:
 - `decision_kind=product_tradeoff`: a product taste choice changes how opinionated the experience feels, such as an empty state that invites setup now versus a quieter page that waits for data. Record the product intent, user segment, clarity, interruption, Manual QA need, recommendation, uncertainty, and deferral effect, including what can continue if deferred or why nothing should continue until the decision is made.
 - `decision_kind=architecture_choice`: session auth, token auth, or social login. Record revocation, CSRF/XSS exposure, client compatibility, operational complexity, migration path, and why the recommendation fits the Task.
 - `decision_kind=architecture_choice`: dependency addition, schema migration, public API/interface change, or module boundary change. Record alternatives, blast radius, compatibility, rollback or migration cost, test boundary, future maintenance cost, recommendation, and deferral effect.
+- `decision_kind=product_tradeoff` or `decision_kind=architecture_choice`: domain-language conflict such as "Account" versus "Profile" in product copy, API names, and storage-facing code. Record the user-facing meaning, code impact, compatibility or migration cost, documentation promise, recommendation, and deferral effect.
 - `decision_kind=approval`: auth, permission, secret, or data-export action. The approval boundary may authorize the sensitive step, but product or security judgment still needs a separate compatible Decision Packet when roles, exported fields, redaction, audit logging, retention, rollback, or user notice remain undecided.
 - `decision_kind=qa_waiver` or `decision_kind=verification_waiver`: skipped QA or verification. Record what is not checked, why the waiver is proportionate, the accepted user/product/technical risk, and the smallest credible follow-up.
 - `decision_kind=residual_risk_acceptance`: close with known remaining risk. Record the visible limitation, evidence already present, why close can still proceed, visible residual-risk refs, and follow-up.
@@ -168,7 +174,7 @@ Sensitive category labels such as `secret_access`, `data_export`, or `policy_ove
 | Field | Contract |
 |---|---|
 | `name` | `decision_quality` |
-| `applies_when` | Design choices, user-owned product trade-offs, product taste calls, material technical choices, Manual QA need when it depends on user-owned product, UX, accessibility, release-risk, or product-taste judgment, Manual QA waiver choices, scope expansion, dependency additions with durable impact, schema/data-model migrations, public API/interface changes, module boundary changes, architecture choices, horizontal exceptions, verification waiver, QA waiver, or acceptance with known risk. |
+| `applies_when` | Design choices, user-owned product trade-offs, product taste calls, material technical choices, domain-language conflicts that affect product meaning, public documentation, caller expectations, acceptance criteria, API naming, or module responsibility, Manual QA need when it depends on user-owned product, UX, accessibility, release-risk, or product-taste judgment, Manual QA waiver choices, scope expansion, dependency additions with durable impact, schema/data-model migrations, public API/interface changes, module boundary changes, architecture choices, horizontal exceptions, verification waiver, QA waiver, or acceptance with known risk. |
 | `default_requirement` | Record a Decision Packet before the decision is acted on. The packet must capture context, options considered, trade-offs, recommendation, uncertainty, reversibility, evidence refs, deferral consequence, and residual risk. Keep agent recommendation distinct from user judgment or risk acceptance. For `decision_kind=approval`, evaluate the clarity of the sensitive-change scope and boundary; do not treat approval-shaped context as resolving product, technical, security, QA, verification, acceptance, or residual-risk judgment. |
 | `allowed_waiver` | Allowed only for trivial reversible choices with no public interface, product, material technical, architecture, maintenance, verification, QA, or known-risk impact. Waiver must record why a Decision Packet would not improve judgment. |
 | `required_record` | Decision Packet records and optionally `DEC` projection when rendered. |
@@ -310,6 +316,7 @@ Use this when:
 - Product language and code language diverge.
 - Multiple names refer to one concept.
 - A reviewer or evaluator finds terminology drift.
+- A term conflict affects product behavior, public docs, API or interface naming, acceptance criteria, or module responsibility.
 
 Example: If the product calls a concept "Journey Card" but code introduces `sessionSummary`, record or update the term boundary before the mismatch spreads.
 
@@ -317,12 +324,12 @@ Example: If the product calls a concept "Journey Card" but code introduces `sess
 |---|---|
 | `name` | `domain_language` |
 | `applies_when` | New product term appears, an existing term is used with a new meaning, code and product language diverge, multiple names refer to one concept, or reviewer/evaluator finds a term mismatch. |
-| `default_requirement` | Record or update affected terms with meaning, code representation, "not this" boundary, related terms, source, and status. Implementation agents pull only task-relevant terms; reviewers/evaluators receive relevant terms and any active terminology uncertainty. |
+| `default_requirement` | Record or update affected terms with meaning, code representation, "not this" boundary, related terms, source, and status. Implementation agents pull only task-relevant terms; reviewers/evaluators receive relevant terms and any active terminology uncertainty. If the term choice requires user-owned product judgment or material technical judgment, route that judgment through `decision_quality`; the term record captures the chosen language after the decision path allows it. |
 | `allowed_waiver` | Allowed when the work has no domain term impact or the term is intentionally local/temporary. Waiver must record why no canonical term update is needed. |
 | `required_record` | `domain_terms` records referenced with `record_kind=domain_term`; `DOMAIN-LANGUAGE` is only a projection/proposal surface. |
 | `validator` | `domain_language_consistency` |
 | `evidence` | Domain term refs, code refs, test naming refs, reconcile item refs for proposals. |
-| `close_impact` | If required terms are missing or conflicting, mark `design_gate=partial` or `stale`; block close when the mismatch affects acceptance criteria, public behavior, or verification confidence. |
+| `close_impact` | If required terms are missing or conflicting, mark `design_gate=partial` or `stale`; block close when the mismatch affects acceptance criteria, public behavior, public documentation or caller expectations, module responsibility, or verification confidence. If the mismatch depends on user-owned judgment, keep or set the relevant `decision_gate` impact until the Decision Packet route is compatible. |
 
 ### Deep Module / Interface (`deep_module_interface`)
 
@@ -339,12 +346,23 @@ Example: Before changing an evidence manifest schema, record the interface contr
 |---|---|
 | `name` | `deep_module_interface` |
 | `applies_when` | Public interface changes, module boundary changes, schema/data model changes, auth/security boundaries, compatibility impact, deep module internals, or shallow-module risk. |
-| `default_requirement` | Identify affected modules, current role, proposed public interface, internal complexity hidden behind the interface, module-local watchpoints, callers impacted, compatibility impact, and test boundary. Prefer small simple public interfaces with enough internal capability behind them. Use Decision Packets for public interface, compatibility, or architecture choices. |
+| `default_requirement` | Identify affected modules, current role, proposed public interface, internal complexity hidden behind the interface, module-local watchpoints, callers impacted, compatibility impact, and test boundary. Prefer small simple public interfaces with enough internal capability behind them. Use Decision Packets for public interface, compatibility, architecture, or module-responsibility choices that require user-owned product or material technical judgment. |
 | `allowed_waiver` | Allowed for localized internal changes with no public boundary impact, no dependency direction change, and low compatibility risk. Must record why module/interface review is unnecessary. |
 | `required_record` | `module_map_items` and `interface_contracts` records referenced with `record_kind=module_map_item` and `record_kind=interface_contract`, decision records, and optionally `MODULE-MAP` / `INTERFACE-CONTRACT` projections. |
 | `validator` | `module_interface_review` |
 | `evidence` | Module map item refs, including module-local watchpoints when relevant; interface contract refs, caller impact list, boundary tests, design decisions, compatibility notes. |
-| `close_impact` | Missing required review keeps `design_gate=pending` or `partial`; public interface or compatibility risk without review can block close or require user acceptance of residual risk. |
+| `close_impact` | Missing required review keeps `design_gate=pending` or `partial`; public interface, module boundary, caller-impact, or compatibility risk without review can block close or require user acceptance of residual risk. If the boundary choice is still user-owned, keep or set the relevant `decision_gate` impact. |
+
+#### Domain and boundary routing examples
+
+These examples route through existing policy, Decision Packet, gate, evidence, and close paths. They do not create new schemas, DDL, validator IDs, gates, or authority records.
+
+| Concern | Existing route | Gate or close effect |
+|---|---|---|
+| A local code name drifts from a stable product term, but the meaning is clear and no public contract changes. | Update or reference `domain_terms`; `domain_language_consistency` may report a warning or `design_gate=partial` until reconciled. | Usually no Decision Packet. Close blocks only if the mismatch affects acceptance criteria or verification confidence. |
+| "Account" and "Profile" conflict across product copy, API names, and docs, and the choice changes what users or callers can rely on. | Use `domain_language_consistency` for the term conflict and `decision_quality_check` for the user-owned product or material technical choice. Record the compatible Decision Packet before acting on the chosen meaning. | `design_gate` stays partial or stale while the term conflict is unresolved; `decision_gate` stays required, pending, or blocked while the user-owned choice is unresolved; close can block if the conflict affects public behavior, docs, acceptance, or verification confidence. |
+| A compatible public interface extension has clear caller impact, boundary tests, and no user-owned trade-off. | Record or update `interface_contracts` and related `module_map_items`; `module_interface_review` carries the design-quality impact. | `design_gate` may be pending or partial until review and evidence exist. No Decision Packet is needed unless compatibility, public commitment, or material technical judgment becomes user-owned. |
+| A breaking interface cleanup or module-responsibility move is simpler but shifts caller obligations or future architecture direction. | Use `module_interface_review` and `decision_quality_check`; record affected callers, compatibility, migration or rollback cost, boundary tests, and a Decision Packet for the breaking or architecture choice. | Affected writes are blocked until the decision route, scope, approval when applicable, and policy requirements are compatible. Close can block on unresolved interface review, missing evidence, unaccepted residual risk, or unresolved Decision Packet state. |
 
 ### Codebase Stewardship (`codebase_stewardship`)
 

@@ -11,6 +11,7 @@ This is template reference documentation. It does not authorize runtime/server i
 - `domain_terms`
 - reconcile items that propose domain term changes
 - Task refs that introduced or reconciled terms
+- related Decision Packets when a domain-language conflict requires user-owned judgment
 - design-quality validator results related to `domain_language`
 - routed stewardship findings that affect domain-language refs, when displayed
 - projection freshness inputs
@@ -67,3 +68,5 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Notes
 
 This template is a rendered shape, not canonical state. Canonical domain term refs use `StateRecordRef.record_kind=domain_term`. Pending term decisions, latest-review text, and human proposals are display or reconcile input; they do not satisfy gates, approve writes, create evidence, accept risk, or close work by themselves.
+
+When a term conflict changes product meaning, public behavior, API/interface naming, documentation promises, acceptance criteria, or module responsibility, route the judgment through the existing design-quality and Decision Packet paths. Rendering the conflict here does not resolve the `design_gate`, `decision_gate`, or close impact by itself.

@@ -25,6 +25,7 @@ Harness vocabulary names a small work journey: request, scope, judgment, support
 Harness is easiest to understand if you start with the work journey:
 
 - A user asks for a Task.
+- A Shared Design records the goal, scope, assumptions, and first safe shape when the work needs shaping.
 - Product writes happen inside a Change Unit.
 - Important claims need Evidence.
 - Sensitive actions need Approval, and product writes need Write Authorization.
@@ -42,6 +43,16 @@ A user says, "Add email login and show a helpful error when the password is wron
 A Task is the user value unit: the thing the user wants completed, answered, investigated, or decided. Harness uses the Task to keep status, next action, blockers, evidence, QA, acceptance, and close behavior connected.
 
 Reference: [Kernel Reference](../reference/kernel.md).
+
+## Shared Design
+
+A user asks for "better onboarding." Before implementation hardens into a plan, the agent and user need a shared understanding of the goal, non-goals, acceptance criteria, assumptions, affected screens, domain terms, module or interface impact, and first safe slice.
+
+Shared Design is that recorded understanding. It helps turn blurry work into a safe first Change Unit, but it is not approval, Write Authorization, final acceptance, QA judgment, or residual-risk acceptance.
+
+If shaping reveals a choice the user owns, such as public API direction, domain-language meaning, module boundary movement, architecture direction, or a known-risk waiver, that choice routes through a Decision Packet. Shared Design can point to the decision; it does not decide it by itself.
+
+References: [Shared Design](../reference/glossary.md#shared-design) and [Design Quality Policies](../reference/design-quality-policies.md#shared-design-shared_design).
 
 ## Change Unit
 

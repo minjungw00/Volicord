@@ -71,3 +71,5 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Notes
 
 This template is a rendered shape, not canonical state. Canonical module refs use `StateRecordRef.record_kind=module_map_item`. Review, watchpoint, and stewardship rollup text is display over owner records; it does not create Approval, evidence, QA, verification, acceptance, residual-risk acceptance, close, or Write Authorization.
+
+When a proposed module boundary change shifts product commitments, public interfaces, caller obligations, dependency direction, or architecture direction, route the judgment through the existing design-quality and Decision Packet paths. Rendering the proposal here does not resolve the `design_gate`, `decision_gate`, or close impact by itself.

@@ -71,3 +71,5 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## 메모
 
 이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. 기준 module 참조는 `StateRecordRef.record_kind=module_map_item`을 사용합니다. Review, watchpoint, stewardship rollup text는 owner record 위의 display이며 Approval, evidence, QA, verification, acceptance, residual-risk acceptance, close, Write Authorization을 만들지 않습니다.
+
+제안된 module boundary change가 product commitment, public interface, caller obligation, dependency direction, architecture direction을 바꾸면 해당 판단은 기존 design-quality 및 Decision Packet 경로로 라우팅합니다. Proposal을 여기에 렌더링하는 것만으로 `design_gate`, `decision_gate`, close impact가 해소되지는 않습니다.

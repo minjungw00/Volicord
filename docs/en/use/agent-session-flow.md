@@ -38,6 +38,7 @@ Track ordinary-language requests when their shape suggests scope, judgment, evid
 - product writes or state-changing project work
 - scope drift risk or ambiguous requirements
 - multi-file, structural, migration, or cross-boundary work
+- changes to public APIs, public interfaces, domain language, module boundaries, or shared design that other people, callers, docs, or future work may rely on
 - sensitive or policy-relevant areas such as auth, security, billing, destructive/data-loss risk, privacy, compliance, accessibility, or design quality
 - user-owned product judgment or material technical judgment with cost, compatibility, security, maintenance, migration, interface, dependency, or risk impact
 - evidence, verification, Manual QA, acceptance, or residual-risk needs
@@ -223,6 +224,8 @@ Examples:
 - Public API change decision: resolving the API direction decides the contract choice for the Task; it is not deployment authority, merge authority, or a reusable Write Authorization.
 - Final acceptance: accepting the result does not authorize more writes, approve new sensitive actions, or retroactively satisfy missing evidence, QA, verification, or Write Authorization.
 
+Use Shared Design to record the shared understanding of goal, scope, non-goals, assumptions, domain/module/interface impact, and first Change Unit shape. Do not present Shared Design as approval, final acceptance, residual-risk acceptance, or Write Authorization. If Shared Design exposes a public API/interface choice, domain-language conflict, module boundary move, architecture direction, or known-risk waiver that the user owns, route that choice to a Decision Packet.
+
 Inside the Autonomy Boundary, the agent may decide ordinary implementation details: whether to reuse an existing helper, how to split a private function, where to place focused tests, or which conservative internal approach best fits the agreed result. The agent must stop for user judgment before public API or module contract changes, security or privacy trade-offs, UX or product trade-offs, material technical direction such as dependency or migration choices, scope expansion, or residual-risk acceptance.
 
 ## Blocking user-owned judgment
@@ -262,6 +265,7 @@ Useful examples:
 - Product taste and Manual QA need: compare a polished interaction that needs human visual review with a simpler conservative behavior that can be checked by tests and browser smoke. Explain the taste trade-off, QA cost, user impact, and what can continue if Manual QA is deferred, or why nothing should continue until the decision is made.
 - Auth approach: compare session cookie, JWT, and social login; explain revocation, CSRF/XSS exposure, client compatibility, operational complexity, and migration cost. If deferred, form scaffolding may continue only if it does not commit to the session model.
 - Dependency choice: separate approval to install or update dependency files from the architecture decision to adopt the dependency. Compare adding the dependency, using existing utilities, or postponing the capability, and explain compatibility, rollback, cost, and maintenance impact.
+- Domain-language conflict: compare preserving the current product term, adding a narrow code alias, or migrating to a new term. Explain product meaning, public docs, API/interface naming, caller expectations, module responsibility, migration cost, and what can continue if the decision is deferred.
 - Schema/data-model migration: compare additive migration, compatibility shim, and breaking cleanup. Explain migration evidence, data-backfill risk, rollback path, test boundary, and maintenance cost.
 - Public API/interface or module boundary: compare preserving the current interface, adding a narrow extension, or moving responsibility across a module boundary. Explain caller impact, compatibility or breaking-change risk, boundary tests, documentation promises, migration path, and future-change cost.
 - Scope or Autonomy Boundary expansion: compare keeping the current small scope, adding the requested surface, or splitting a follow-up Change Unit. Explain affected paths, user-facing behavior, what remains out of bounds, write impact, and what the agent can still decide alone.
@@ -301,7 +305,7 @@ Feedback Loop is the canonical support-record path for selected loops and loop f
 
 When the user says to continue while they are away, treat that as permission to use already-recorded latitude, not as new authority. The agent may continue only inside the active Change Unit, the active Autonomy Boundary, granted sensitive approvals, and compatible `prepare_write` / Write Authorization for each product write.
 
-Stop and surface the smallest unblocker before scope expansion, new sensitive action without approval, Autonomy Boundary breach, residual-risk acceptance, final acceptance, QA or verification waiver, public API or module contract change, release/support promise, or other public commitment that users or other systems may rely on.
+Stop and surface the smallest unblocker before scope expansion, new sensitive action without approval, Autonomy Boundary breach, residual-risk acceptance, final acceptance, QA or verification waiver, public API or module contract change, domain-language change that affects public meaning, release/support promise, or other public commitment that users or other systems may rely on.
 
 Name the guarantee level when presenting AFK stops. On cooperative or detective surfaces, "stop" means hold by instruction or detect/report after action if the profile supports that validation. Use preventive wording only when the connected profile proves pre-tool blocking for the covered operation. Careful mode may narrow the posture, but it is not a new authority tier.
 

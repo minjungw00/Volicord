@@ -11,6 +11,7 @@
 - `domain_terms`
 - domain term 변경을 제안하는 reconcile item
 - term을 도입하거나 reconcile로 조정한 Task 참조
+- domain-language conflict에 사용자 소유 판단이 필요할 때 관련 Decision Packet
 - `domain_language` 관련 design-quality validator 결과
 - 표시되는 경우 domain-language ref에 영향을 주는 routed stewardship finding
 - 읽기용 보기 최신성(projection freshness) 입력
@@ -67,3 +68,5 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## 메모
 
 이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. 기준 domain term 참조는 `StateRecordRef.record_kind=domain_term`을 사용합니다. Pending term decision, latest-review text, human proposal은 display 또는 reconcile input입니다. 그 자체로 gate를 충족하거나, write를 승인하거나, evidence를 만들거나, risk를 받아들이거나, work를 close하지 않습니다.
+
+Term conflict가 제품 의미, public behavior, API/interface naming, documentation promise, 수용 기준, module responsibility를 바꾸면 해당 판단은 기존 design-quality 및 Decision Packet 경로로 라우팅합니다. Conflict를 여기에 렌더링하는 것만으로 `design_gate`, `decision_gate`, close impact가 해소되지는 않습니다.
