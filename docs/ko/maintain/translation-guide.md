@@ -62,29 +62,25 @@
 
 영어 기술어를 그대로 끼워 넣었지만 독자에게 더 선명해지지 않는 표현은 피합니다.
 
-```text
-상태 변경을 영어 동사와 섞어 쓴다
-authority boundary 유지라고 쓴다
-surface 표시라고 쓴다
-projection freshness를 report한다
-acceptance를 complete한다
-risk를 accept한다
-acceptance criteria를 수락 기준으로 쓴다
-```
+- `상태 변경을 영어 동사와 섞어 쓴다`
+- `authority boundary 유지라고 쓴다`
+- `surface 표시라고 쓴다`
+- `projection freshness를 report한다`
+- `acceptance를 complete한다`
+- `risk를 accept한다`
+- `acceptance criteria를 수락 기준으로 쓴다`
 
 ## 더 나은 표현
 
 의미는 보존하되 한국어 문장으로 자연스럽게 씁니다.
 
-```text
-상태를 변경한다
-권한 경계를 유지한다
-화면에 보여준다
-projection이 최신인지 표시한다
-결과를 수락한다
-남은 위험을 받아들인다
-수용 기준을 확인한다
-```
+- `상태를 변경한다`
+- `권한 경계를 유지한다`
+- `화면에 보여준다`
+- `projection이 최신인지 표시한다`
+- `결과를 수락한다`
+- `남은 위험을 받아들인다`
+- `수용 기준을 확인한다`
 
 ## Before / After 예시
 
