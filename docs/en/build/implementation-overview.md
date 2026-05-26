@@ -33,13 +33,13 @@ This is a maintainer-updated documentation handoff marker. It is not a Reference
 | Is documentation maintenance still active? | Yes. The redesigned docs are ready for human review, and implementation handoff has not been accepted yet. |
 | Are docs accepted for first runtime-batch planning? | No. First runtime-batch planning may not begin until maintainers change this row to Yes after the checkpoint below is satisfied. |
 | Has runtime/server implementation started? | No. This repository still contains documentation, not Harness runtime/server implementation. |
-| Are there open follow-up docs issues? | Yes. See the maintainer-updated follow-up list below before changing acceptance status. |
+| Are there open follow-up docs issues? | No. The known follow-up docs issues below are resolved; maintainers still must change the acceptance status deliberately. |
 
 ### Known follow-up docs issues
 
 Maintainers update this list. These entries route documentation maintenance only; they do not define Reference contracts, conformance results, generated operational records, or runtime/server authorization.
 
-- Open - repo-level `.agents` / `.codex` instruction audit: decide whether repo-level `.agents` and `.codex` placeholders are intended instruction surfaces, generated connector artifacts, or removable placeholders. Owner docs: [Authoring Guide entrypoint rule](../maintain/authoring-guide.md#entrypoint-rule) and [Surface Cookbook: Codex](../reference/surface-cookbook.md#codex). `TODO_DECISION`: choose the owner and expected handling before docs acceptance. `TODO_IMPLEMENT`: update or remove stale repo-level instruction placeholders after that decision.
+- Resolved in this batch - repo-level `.agents` / `.codex` instruction audit: inspected the actual repository surfaces. `.agents` is an empty directory and `.codex` is an empty file; neither contains active instructions, generated instructions, managed blocks, connector manifests, or stale Harness guidance. They are left untouched as inert placeholders, and `AGENTS.md` remains the only repo-level always-on instruction surface.
 - Resolved in this batch - User Guide opening convention alignment: verified that [User Guide](../use/user-guide.md) already follows the [Authoring Guide standard opening pattern](../maintain/authoring-guide.md#standard-opening-pattern) and keeps the no-startup-phrase convention aligned with [Agent Session Flow](../use/agent-session-flow.md).
 
 ## Implementation handoff checkpoint
