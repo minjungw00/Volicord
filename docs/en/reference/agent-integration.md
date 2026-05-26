@@ -115,6 +115,14 @@ Target profile values may include:
 - `custom_agent`
 - `manual_bundle`
 
+Every capability profile must state MCP exposure posture at a contract level. The exact field names are connector-owned, but the profile must make these facts visible:
+
+- whether the MVP default `local_only` posture is in effect
+- the assumed local transport, such as localhost TCP, local socket, in-process/stdio, process-scoped config, or equivalent local IPC
+- the access-control contract that keeps unrelated callers from using the endpoint
+- whether remote or shared MCP exposure is disabled, unsupported, or explicitly enabled by the profile
+- for any beyond-local exposure, the secret/PII handling policy, redaction or omission behavior, guarantee display, and conformance coverage that prove the exposure does not silently upgrade authority
+
 Capability profiles must be refreshed when version, MCP config, hooks, permissions, workspace policy, generated files or managed blocks, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact retention behavior, or isolation/guard wrapper behavior changes.
 
 ## Capability Profile Examples
@@ -253,6 +261,7 @@ The manifest must:
 - record managed block ids and hashes
 - record the capability profile used when generated, including `capability_profile_version`, `detected_version`, `last_verified_at`, and the conformance result or operator check that made it current
 - record the target surface profile and MCP tool/resource scope
+- record the MCP exposure posture and access-control material class without storing raw secrets
 - record configured capture, QA capture, guard, and isolation mechanisms without claiming more than the profile proves
 - record manual artifact capture and manual verification bundle fallbacks when native capture or isolation is unavailable
 - record creation and update times
@@ -413,6 +422,7 @@ Overview scenarios:
 - generated file drift detection
 - connector manifest profile freshness and stale capability profile detection
 - capability fallback when a required tier is missing
+- local-only MCP default, with off-profile remote or shared exposure held, failed, or reported as capability-insufficient
 - MCP unavailable product-write hold
 
 Exact fixture format and operational commands are owned by the operations and conformance docs.

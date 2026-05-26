@@ -94,9 +94,11 @@ Log, screenshot, artifact, projection, export, run summary에는 secret, PII, cr
 
 ### 로컬 접근 기대사항
 
-기본으로 지원하는 MCP 접근 전제는 등록된 project surface를 위한 로컬 프로세스 또는 localhost 연결입니다. 이것은 로컬 운영 전제이지, 같은 machine의 모든 프로세스를 신뢰한다는 뜻이 아닙니다. 구체적인 로컬 위험에는 다른 로컬 프로세스의 tool call, forwarded 또는 tunneled port, 오래된 connector configuration, 위조된 `project_id`, `task_id`, `surface_id`, `actor_kind` claim, Runtime Home data를 관련 없는 user나 프로세스가 읽거나 바꿀 수 있게 하는 IPC 또는 file permission이 포함됩니다.
+MVP의 기본 MCP 노출 자세는 등록된 project surface에 대한 local-only입니다. Local-only란 기본 connector와 `serve mcp` 자세가 로컬 프로세스, 로컬 socket, 또는 localhost loopback 접근을 사용한다는 뜻입니다. Non-loopback interface에 bind하거나, shared/remote endpoint를 publish하거나, network reachability 자체를 authorization으로 취급하지 않습니다. 이것은 로컬 운영 전제이지, 같은 machine의 모든 프로세스를 신뢰한다는 뜻이 아닙니다. 구체적인 로컬 위험에는 다른 로컬 프로세스의 tool call, forwarded 또는 tunneled port, 오래된 connector configuration, 위조된 `project_id`, `task_id`, `surface_id`, `actor_kind` claim, Runtime Home data를 관련 없는 user나 프로세스가 읽거나 바꿀 수 있게 하는 IPC 또는 file permission이 포함됩니다.
 
-MCP를 로컬 프로세스 또는 localhost 범위 밖으로 노출하려면 문서화된 connector capability profile, 접근 제어 계약, 보장 수준 표시가 필요합니다. 허용 가능한 접근 제어 계약 예시는 localhost-only binding, owner-only filesystem permission으로 제한된 Unix-domain socket, per-project token, process-scoped configuration material, 또는 이에 준하는 로컬 제어입니다. 이 참조 문서는 하나의 mechanism을 요구하지 않습니다. 다만 profile은 관련 없는 호출자가 엔드포인트를 사용하는 일을 무엇이 막는지, 그리고 Core가 여전히 무엇을 검증하는지 이름 붙여야 합니다.
+정확한 로컬 transport는 지정하지 않습니다. Contract 수준에서 허용되는 전제에는 localhost TCP, owner-only filesystem permission으로 제한된 Unix-domain socket 또는 다른 local socket, in-process 또는 stdio transport, process-scoped configuration material, 추가 local control로 쓰는 per-project token, 또는 이에 준하는 local IPC/control path가 포함됩니다.
+
+MCP를 local-only 범위 밖으로 노출하는 것은 MVP 기본값이 아닙니다. 그러려면 문서화된 connector capability profile, 접근 제어 계약, secret/PII 처리 정책, 보장 수준 표시, 노출된 권한을 검증하는 conformance coverage가 필요합니다. 이 참조 문서는 하나의 mechanism을 요구하지 않습니다. 다만 profile은 관련 없는 호출자가 endpoint를 사용하는 일을 무엇이 막는지, 그 노출로 어떤 data가 드러날 수 있는지, 어떤 guarantee level이 여전히 정직한지, Core가 여전히 무엇을 검증하는지 이름 붙여야 합니다.
 
 Access mode가 더 약하거나 unknown이거나 문서화된 profile 밖에 있으면 Harness는 이를 솔직하게 보고합니다. `doctor` 또는 `serve mcp`는 risk에 따라 warn 또는 fail할 수 있고, status와 write decision은 보장 수준 표시를 낮추거나 `surface_capability_check` finding을 emit해야 하며, cooperative 접점은 product/runtime/code write를 보류합니다. API에 보이는 failure는 MCP API owner가 허용하는 곳에서 기존 `MCP_UNAVAILABLE` 또는 `CAPABILITY_INSUFFICIENT` path를 사용합니다. 약한 access mode 자체가 existing state의 손상을 증명하지는 않지만, write-capable 또는 close-relevant 경로가 진단 전까지 capability 부족 상태가 될 수 있습니다.
 
@@ -162,7 +164,7 @@ Runtime Home에는 다음이 있습니다.
 
 Runtime Home은 대화 기록이 사라지거나 Product Repository projection이 최신이 아니어도 운영 상태를 복구할 수 있을 만큼 충분해야 합니다. Product Repository 문서는 상태 기록과 artifact refs에서 다시 생성될 수 있으며, 그 기록을 대체하지 않습니다.
 
-Runtime Home file은 user-private local control data로 취급해야 합니다. 관련 없는 user나 process가 secret/PII를 읽거나 `state.sqlite`, `registry.sqlite`, `project.yaml`, connector manifest, artifact file, staging file, generated operational file을 수정할 수 있게 하는 file permission 또는 storage location은 local tampering 또는 기밀성 위험입니다. Harness는 operating-system permission을 스스로 enforce한다고 주장하지 않습니다. 이러한 file은 Core, `doctor`, `recover`, artifact-integrity validation path를 통해서만 authoritative하게 취급합니다.
+Runtime Home file은 user-private local control data로 취급해야 합니다. 관련 없는 user나 process가 secret/PII를 읽거나 `state.sqlite`, `registry.sqlite`, `project.yaml`, connector config snippet, connector manifest, generated manifest, artifact file, staging file, generated operational file을 수정할 수 있게 하는 file permission 또는 storage location은 local tampering 또는 기밀성 위험입니다. Harness는 operating-system permission을 스스로 enforce한다고 주장하지 않습니다. 이러한 file은 Core, `doctor`, `recover`, artifact-integrity validation path를 통해서만 authoritative하게 취급합니다.
 
 ## Core process model
 

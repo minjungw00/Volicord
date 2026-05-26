@@ -10,7 +10,7 @@ A surface name never implies a guarantee level. Every connector still declares a
 
 For generic capability profile examples, see [Agent Integration Reference](agent-integration.md#capability-profile-examples).
 
-Surface recipes do not define local-access error codes or OS-level security guarantees. If MCP access is unavailable, stale, unknown, weak, or outside the registered profile, route through the API and operations paths: `MCP_UNAVAILABLE` or `CAPABILITY_INSUFFICIENT` with diagnostic detail, normal state-conflict/scope/capability checks for mismatched claims, and honest guarantee display. Do not introduce a surface-specific MVP `UNAUTHORIZED` code.
+Surface recipes do not define local-access error codes or OS-level security guarantees. They inherit the MVP local-only MCP default from Runtime, MCP API, and Agent Integration. A recipe may name the surface-specific local transport or config snippet, but remote or shared MCP exposure is never implied by the surface name. If MCP access is unavailable, stale, unknown, weak, or outside the registered profile, route through the API and operations paths: `MCP_UNAVAILABLE` or `CAPABILITY_INSUFFICIENT` with diagnostic detail, normal state-conflict/scope/capability checks for mismatched claims, and honest guarantee display. Do not introduce a surface-specific MVP `UNAUTHORIZED` code.
 
 ## Recipe shape
 
@@ -19,6 +19,7 @@ Each recipe should keep only surface-specific material:
 - target profiles that are plausible for the surface
 - generated files or instructions
 - MCP configuration hints
+- MCP exposure posture and local transport assumptions when they vary by surface
 - capture, guard, and isolation options
 - guarantee boundary notes: what the named surface can block before execution, what it can only detect after action, what capture is native, and what falls back to manual artifacts or a manual verification bundle
 - common fallbacks

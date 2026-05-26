@@ -115,6 +115,14 @@ Target profile 값에는 다음이 포함될 수 있습니다.
 - `custom_agent`
 - `manual_bundle`
 
+모든 capability profile은 MCP exposure posture를 contract 수준에서 밝혀야 합니다. 정확한 field name은 connector가 소유하지만, profile은 다음 사실을 보이게 해야 합니다.
+
+- MVP 기본값인 `local_only` 자세가 적용되는지 여부
+- localhost TCP, local socket, in-process/stdio, process-scoped config, 또는 이에 준하는 local IPC 같은 로컬 transport 전제
+- 관련 없는 호출자가 endpoint를 사용하지 못하게 하는 access-control contract
+- remote 또는 shared MCP 노출이 disabled, unsupported, 또는 profile에 의해 명시적으로 enabled 중 어디에 해당하는지
+- local 범위를 넘는 노출이 있다면, secret/PII 처리 정책, redaction 또는 omission 동작, guarantee display, 그 노출이 권한을 조용히 올려 주지 않음을 증명하는 conformance coverage
+
 Capability profile은 version, MCP config, hook, permission, workspace policy, generated file 또는 managed block, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact 보존 동작, isolation/guard wrapper 동작이 바뀌면 갱신해야 합니다.
 
 ## Capability Profile 예시
@@ -253,6 +261,7 @@ Manifest는 다음을 해야 합니다.
 - managed block id와 hash 기록
 - generated 당시 사용한 capability profile 기록. 여기에는 `capability_profile_version`, `detected_version`, `last_verified_at`, 그리고 그 profile을 최신으로 만든 conformance result 또는 operator check가 포함됩니다.
 - 대상 접점 프로필과 MCP tool/resource scope 기록
+- raw secret을 저장하지 않고 MCP exposure posture와 access-control material class 기록
 - profile이 입증한 범위를 넘지 않도록 configured capture, QA capture, guard, isolation mechanism 기록
 - native capture 또는 isolation이 없을 때 manual artifact capture와 manual verification bundle fallback 기록
 - creation/update time 기록
@@ -413,6 +422,7 @@ Overview scenario:
 - generated file drift detection
 - connector manifest profile freshness와 stale capability profile detection
 - required tier가 없을 때 capability fallback
+- local-only MCP 기본값과, profile 밖 remote/shared 노출이 held, failed, 또는 capability-insufficient로 보고되는 동작
 - MCP unavailable product-write 보류
 
 정확한 fixture 형식과 operator command 의미는 operations and conformance docs가 담당합니다.
