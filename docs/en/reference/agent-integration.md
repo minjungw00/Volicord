@@ -119,12 +119,12 @@ Every capability profile must state MCP exposure posture at a contract level. Th
 
 - whether the MVP default `local_only` posture is in effect
 - the assumed local transport, such as localhost TCP, local socket, in-process/stdio, process-scoped configuration material, or equivalent local IPC
-- the access-control material class, without raw token, secret, or private configuration values
+- the access-control material class, such as bind scope, socket path class, process pipe/stdio, per-project token handle, process-scoped config handle, or equivalent local control, without raw token, secret, or private configuration values
 - the access-control contract that keeps unrelated callers from using the endpoint
 - whether remote or shared MCP exposure is disabled, unsupported, or explicitly enabled by the profile
-- for any beyond-local exposure, the secret/PII handling policy, redaction or omission behavior, guarantee display, and conformance coverage that prove the exposure does not silently upgrade authority
+- for any beyond-local exposure, the owner-doc and conformance-promotion basis, secret/PII handling policy, redaction or omission behavior, guarantee display, and conformance coverage that prove the exposure does not silently upgrade authority
 
-Capability profiles must be refreshed when version, MCP config, hooks, permissions, workspace policy, generated files or managed blocks, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact retention behavior, or isolation/guard wrapper behavior changes.
+Capability profiles must be refreshed when version, MCP config, hooks, permissions, workspace policy, generated files or managed blocks, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact retention behavior, access-control material class, local bind/reachability posture, or isolation/guard wrapper behavior changes. A beyond-local exposure remains outside MVP until promoted by owner docs and conformance; connector prose must not present it as the safe MVP default.
 
 ## Capability Profile Examples
 
@@ -262,7 +262,7 @@ The manifest must:
 - record managed block ids and hashes
 - record the capability profile used when generated, including `capability_profile_version`, `detected_version`, `last_verified_at`, and the conformance result or operator check that made it current
 - record the target surface profile and MCP tool/resource scope
-- record the MCP exposure posture and access-control material class without storing raw token, secret, or private configuration values
+- record the MCP exposure posture, access-control material class, bind/reachability posture, profile freshness basis, and display-safe handle or fingerprint when needed, without storing raw token, secret, private configuration values, omitted secret values, or blocked payload bytes
 - record configured capture, QA capture, guard, and isolation mechanisms without claiming more than the profile proves
 - record manual artifact capture and manual verification bundle fallbacks when native capture or isolation is unavailable
 - record creation and update times

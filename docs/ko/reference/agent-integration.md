@@ -119,12 +119,12 @@ Target profile 값에는 다음이 포함될 수 있습니다.
 
 - MVP 기본값인 `local_only` 자세가 적용되는지 여부
 - localhost TCP, local socket, in-process/stdio, process-scoped configuration material, 또는 이에 준하는 local IPC 같은 로컬 transport 전제
-- raw token, secret, private configuration value를 포함하지 않는 access-control material class
+- bind scope, socket path class, process pipe/stdio, per-project token handle, process-scoped config handle, 또는 이에 준하는 local control 같은 access-control material class. raw token, secret, private configuration value는 포함하지 않습니다.
 - 관련 없는 호출자가 endpoint를 사용하지 못하게 하는 access-control contract
 - remote 또는 shared MCP 노출이 disabled, unsupported, 또는 profile에 의해 명시적으로 enabled 중 어디에 해당하는지
-- local 범위를 넘는 노출이 있다면, secret/PII 처리 정책, redaction 또는 omission 동작, guarantee display, 그 노출이 권한을 조용히 올려 주지 않음을 증명하는 conformance coverage
+- local 범위를 넘는 노출이 있다면, owner-doc 및 conformance-promotion basis, secret/PII 처리 정책, redaction 또는 omission 동작, guarantee display, 그 노출이 권한을 조용히 올려 주지 않음을 증명하는 conformance coverage
 
-Capability profile은 version, MCP config, hook, permission, workspace policy, generated file 또는 managed block, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact 보존 동작, isolation/guard wrapper 동작이 바뀌면 갱신해야 합니다.
+Capability profile은 version, MCP config, hook, permission, workspace policy, generated file 또는 managed block, conformance result, capture method, QA capture method, browser test environment, redaction policy, artifact 보존 동작, access-control material class, local bind/reachability posture, isolation/guard wrapper 동작이 바뀌면 갱신해야 합니다. Beyond-local exposure는 owner docs와 conformance가 승격하기 전까지 MVP 밖에 남으며, connector prose는 이를 안전한 MVP 기본값처럼 표시하면 안 됩니다.
 
 ## Capability Profile 예시
 
@@ -262,7 +262,7 @@ Manifest는 다음을 해야 합니다.
 - managed block id와 hash 기록
 - generated 당시 사용한 capability profile 기록. 여기에는 `capability_profile_version`, `detected_version`, `last_verified_at`, 그리고 그 profile을 최신으로 만든 conformance result 또는 operator check가 포함됩니다.
 - 대상 접점 프로필과 MCP tool/resource scope 기록
-- raw token, secret, private configuration value를 저장하지 않고 MCP exposure posture와 access-control material class 기록
+- raw token, secret, private configuration value, omitted secret value, blocked payload bytes를 저장하지 않고 MCP exposure posture, access-control material class, bind/reachability posture, profile freshness basis, 필요할 때 display-safe handle 또는 fingerprint 기록
 - profile이 입증한 범위를 넘지 않도록 configured capture, QA capture, guard, isolation mechanism 기록
 - native capture 또는 isolation이 없을 때 manual artifact capture와 manual verification bundle fallback 기록
 - creation/update time 기록
