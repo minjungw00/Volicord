@@ -411,8 +411,9 @@ Minimum reference expectations:
 - Manual QA note artifact support
 - generated file, managed block, MCP config snippet, profile freshness용 connector manifest
 - native capture가 없을 때 manual artifact capture fallback
+- captured 또는 manually supplied artifact의 artifact integrity status
 - guard, freeze, careful-mode label이 표시될 때 실제 차단 가능 범위와 사후 감지 범위 표시
-- [운영과 Conformance 참조](operations-and-conformance.md#doctor)가 이름 붙인 common state, MCP availability, surface capability, generated-file drift, reconcile, artifact/capture fallback, projection freshness, security/threat-model category를 다루는 conformance smoke
+- [운영과 Conformance 참조](operations-and-conformance.md#doctor)가 이름 붙인 common state, MCP availability, surface capability와 mismatch handling, generated-file drift, reconcile, artifact integrity, artifact/capture fallback, stale context, evaluator bundle freshness, projection freshness, security/threat-model category를 다루는 conformance smoke
 
 Reference surface 동작 세부사항과 접점별 설정은 concrete surface를 이름으로 부를 때만 [Surface Cookbook](surface-cookbook.md)에 둡니다.
 
@@ -440,20 +441,25 @@ Overview scenario:
 - direct result projection
 - verification launch 또는 manual verification bundle
 - same-session verification guard
+- detached verification 전 evaluator bundle freshness
 - Manual QA required, passed, failed, waived
 - product/user risk가 있는 QA 면제를 Decision Packet으로 route
 - acceptance required와 recorded
+- approval, QA, verification waiver, final acceptance, residual-risk acceptance가 서로 다른 판단으로 남음
 - acceptance 또는 successful close 전 close-relevant residual risk visible
 - risk-accepted close에는 accepted Residual Risk refs 추가 요구
 - 최신이 아닌 projection과 reconcile flow
+- stale projection write guard
 - generated file drift detection
 - generated file과 managed block의 safe non-overwrite 동작 및 reconcile로의 drift routing
 - connector manifest profile freshness와 stale capability profile detection
 - version, MCP config, hook, permission, workspace policy, generated-file, conformance-result, capture-method, QA-capture-method, redaction-policy, artifact-retention 변경 이후 profile refresh
 - required tier가 없을 때 capability fallback
+- surface capability mismatch가 unsafe write를 보류하고 낮아진 guarantee를 보고
 - local-only MCP 기본값과, profile 밖 remote/shared 노출이 held, failed, 또는 capability-insufficient로 보고되는 동작
 - MCP unavailable product-write 보류
-- stale chat memory와 pull-only context가 owner path로 reconcile되기 전에는 write를 허가하거나, gate를 충족하거나, 결과를 수락하거나, Task를 close하지 않는 동작
+- stale PRD, stale chat memory, 기타 pull-only context가 owner path로 reconcile되기 전에는 write를 허가하거나, gate를 충족하거나, 결과를 수락하거나, Task를 close하지 않는 동작
+- artifact integrity mismatch가 dependent evidence, verification, export, close-readiness claim을 stale, blocked, insufficient 상태로 유지
 - status/next recommendation과 Role Lens output이 추천된 action이 기존 Core mutation path를 따르기 전까지 read-only guidance로 남는 동작
 
 정확한 fixture 형식과 operator command 의미는 operations and conformance docs가 담당합니다.

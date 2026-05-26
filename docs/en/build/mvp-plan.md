@@ -179,9 +179,11 @@ Focus on:
 - `harness.close_task`
 - verification independence checks
 - same-session verification guard
+- evaluator bundle freshness
 - Manual QA aggregation and QA blockers
 - residual-risk visibility before acceptance and close
 - acceptance and risk-accepted close rules
+- distinct Approval, Manual QA, verification-waiver, acceptance, and residual-risk-acceptance judgments
 - Decision Packet close checks
 - close blocker reporting
 
@@ -198,8 +200,10 @@ Focus on:
 - reconcile
 - export
 - artifact integrity check
-- fixture-based conformance smoke over state, events, artifacts, projections, and errors
-- agency conformance for Journey visibility, user judgment, Autonomy Boundary respect, and residual-risk visibility
+- fixture-based conformance smoke over state, events, artifacts, projections, and errors, with suite catalog metadata kept outside the fixture body
+- coverage-map conformance for core, connector, connector guard/freeze, agency, stewardship, context-hygiene, and design-quality paths
+- agency conformance for Journey visibility, user judgment, Autonomy Boundary respect, distinct user judgments, and residual-risk visibility
+- connector and context conformance for MCP unavailable holds, surface capability mismatch, generated-file drift, stale projection write guards, stale PRD/chat-memory pull-only behavior, evaluator bundle freshness, and artifact integrity effects
 - later-boundary checks that keep Dashboard, hosted workflow UI, Browser QA Capture, Cross-Surface Verification, Context Index, parallel orchestration, team workflow, broad connector automation, native hook or sidecar expansion, derived metrics, and preventive guard expansion out of MVP unless separately proven and promoted
 
 Do not create a second state model for operator commands. Operators diagnose, repair, export, or run fixtures over the same Core state model.
@@ -253,20 +257,25 @@ Use these as implementation-readable checklists. They restate the stage exit cri
 ### MVP-4 exit checklist
 
 - Work cannot close as detached verified from same-session self-review.
+- Stale evaluator bundles cannot record detached verification as passed.
 - Verification waivers close only with accepted risk.
 - Manual QA and acceptance block independently when required.
 - Close-relevant residual risk is visible before successful close.
 - Risk-accepted close requires accepted Residual Risk refs.
 - Acceptance follows risk visibility.
+- Approval, Manual QA, verification waiver, acceptance, and residual-risk acceptance stay separate.
 - Blocking Decision Packets block close.
 - Direct work can close self-checked unless policy or the user requires detached verification.
 
 ### MVP-5 exit checklist
 
-- Conformance smoke covers core, connector, agency, stewardship, context-hygiene, and design-quality paths.
-- Agency checks prove Journey visibility, unresolved decisions, agent latitude, and residual-risk visibility.
+- Conformance smoke covers core, connector, connector guard/freeze, agency, stewardship, context-hygiene, and design-quality paths.
+- Catalog scenario coverage includes artifact integrity, MCP unavailable, surface capability mismatch, generated-file drift, stale projection write guards, stale PRD/chat-memory context, evaluator bundle freshness, residual-risk visibility, and distinct user judgments.
+- Suite catalog metadata groups exact-shape fixtures by suite, stage, and tags without being passed to Core.
+- Agency checks prove Journey visibility, unresolved decisions, agent latitude, distinct user judgments, and residual-risk visibility.
 - Dependency DAG support remains metadata-only.
 - Export includes state snapshots, report projections, artifact refs, and redaction status.
+- Browser QA Capture entries remain future candidates unless promoted through owner docs.
 
 ## Observable by stage
 

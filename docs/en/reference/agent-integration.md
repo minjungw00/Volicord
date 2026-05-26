@@ -411,8 +411,9 @@ Minimum reference expectations:
 - Manual QA note artifact support
 - connector manifest for generated files, managed blocks, MCP config snippets, and profile freshness
 - manual artifact capture fallback when native capture is unavailable
+- artifact integrity status for captured or manually supplied artifacts
 - actual block-vs-detect status when guard, freeze, or careful-mode labels are shown
-- conformance smoke covering the common state, MCP availability, surface capability, generated-file drift, reconcile, artifact/capture fallback, projection freshness, and security/threat-model categories named in [Operations And Conformance Reference](operations-and-conformance.md#doctor)
+- conformance smoke covering the common state, MCP availability, surface capability and mismatch handling, generated-file drift, reconcile, artifact integrity, artifact/capture fallback, stale context, evaluator bundle freshness, projection freshness, and security/threat-model categories named in [Operations And Conformance Reference](operations-and-conformance.md#doctor)
 
 Reference surface behavior details and surface-specific setup belong in [Surface Cookbook](surface-cookbook.md) only when they name a concrete surface.
 
@@ -440,20 +441,25 @@ Overview scenarios:
 - direct result projection
 - verification launch or manual verification bundle
 - same-session verification guard
+- evaluator bundle freshness before detached verification
 - Manual QA required, passed, failed, and waived
 - QA waiver with product/user risk routes through Decision Packet
 - acceptance required and recorded
+- approval, QA, verification waiver, final acceptance, and residual-risk acceptance remain distinct judgments
 - close-relevant residual risk visible before acceptance or successful close
 - risk-accepted close additionally requires accepted Residual Risk refs
 - stale projection and reconcile flow
+- stale projection write guard
 - generated file drift detection
 - safe non-overwrite behavior for generated files and managed blocks, with drift routed to reconcile
 - connector manifest profile freshness and stale capability profile detection
 - profile refresh after version, MCP config, hook, permission, workspace policy, generated-file, conformance-result, capture-method, QA-capture-method, redaction-policy, or artifact-retention changes
 - capability fallback when a required tier is missing
+- surface capability mismatch holds unsafe writes and reports the reduced guarantee
 - local-only MCP default, with off-profile remote or shared exposure held, failed, or reported as capability-insufficient
 - MCP unavailable product-write hold
-- stale chat memory and pull-only context do not authorize writes, satisfy gates, accept results, or close tasks until reconciled through owner paths
+- stale PRDs, stale chat memory, and other pull-only context do not authorize writes, satisfy gates, accept results, or close tasks until reconciled through owner paths
+- artifact integrity mismatch keeps dependent evidence, verification, export, or close-readiness claims stale, blocked, or insufficient
 - status/next recommendations and Role Lens output remain read-only guidance unless the recommended action follows the existing Core mutation path
 
 Exact fixture format and operational commands are owned by the operations and conformance docs.
