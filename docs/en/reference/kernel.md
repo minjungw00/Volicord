@@ -13,6 +13,20 @@ It is a lookup document for implementers, conformance authors, and maintainers. 
 - You are checking how Task, Change Unit, Decision Packet, Approval, Write Authorization, Run, evidence, Eval, Manual QA, Residual Risk, and Artifact records relate.
 - You are writing conformance fixtures or diagnosing a mismatch between state, artifacts, projections, and user-facing status.
 
+## Contract map
+
+| If you need... | Start here | Related owner |
+|---|---|---|
+| Entity and relationship semantics | [Entity model](#entity-model) | Physical tables stay in [Storage And DDL](storage-and-ddl.md). |
+| Non-substitution rules | [Boundaries and non-substitutions](#boundaries-and-non-substitutions) | Public display shapes stay in [MCP API And Schemas](mcp-api-and-schemas.md). |
+| Kernel gate rules | [Gate Rule Map](#gate-rule-map), then the matching gate section | Fixture assertions for gates stay in [Operations And Conformance Reference](operations-and-conformance.md#fixture-assertion-semantics). |
+| Mode, lifecycle, result, close reason, and assurance values | [Lifecycle and transitions](#lifecycle-and-transitions), [Compatibility matrix](#compatibility-matrix) | Storage hardening for persisted values stays in [Storage And DDL](storage-and-ddl.md#canonical-enum-hardening). |
+| Stable event names | [Stable Event Catalog](#stable-event-catalog) | Event rows remain `state.sqlite.task_events` in [Storage And DDL](storage-and-ddl.md#task_events). |
+| Write gate behavior | [`prepare_write`](#prepare_write) | Public request/response shape stays in [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write). |
+| Run recording consequences | [`record_run`](#record_run) | Public request/response shape stays in [`harness.record_run`](mcp-api-and-schemas.md#harnessrecord_run). |
+| Close eligibility and results | [`close_task`](#close_task), [Close result semantics](#close-result-semantics), [Close eligibility](#close-eligibility) | Primary error selection stays in [MCP API And Schemas](mcp-api-and-schemas.md#primary-error-code-precedence). |
+| Waivers, invariants, and invalid combinations | [Waiver semantics](#waiver-semantics), [Invariant enforcement mapping](#invariant-enforcement-mapping), [Edge cases](#edge-cases) | Design-quality policy details stay in [Design Quality Policies](design-quality-policies.md). |
+
 ## Kernel in 10 sentences
 
 1. The kernel is the canonical state machine for local AI-assisted product work.
@@ -388,6 +402,19 @@ Approval and Decision Packet authority are separate. Approval authorizes sensiti
 
 Gates are canonical kernel fields used by `prepare_write`, `close_task`, status display, and conformance fixtures.
 
+### Gate Rule Map
+
+| Gate or boundary | Go to | Decides... |
+|---|---|---|
+| Scope | [Scope Gate](#scope-gate) | whether the active Change Unit and intended operation are in scope |
+| User-owned judgment | [Decision Gate](#decision-gate), [Decision Gate Aggregate Recompute](#decision-gate-aggregate-recompute) | whether blocking product or technical judgment is unresolved |
+| Sensitive permission | [Approval Gate](#approval-gate) | whether sensitive-action approval is missing, pending, granted, denied, expired, or blocked |
+| Design policy | [Design Gate](#design-gate) | whether design-quality policy checks block, warn, or allow progress |
+| Evidence | [Evidence Gate](#evidence-gate), [Evidence Sufficiency Profiles](#evidence-sufficiency-profiles) | whether required evidence is absent, partial, sufficient, stale, waived, or blocked |
+| Verification | [Verification Gate](#verification-gate), [Verification Independence Profiles](#verification-independence-profiles) | whether detached verification is required, passed, failed, waived, or blocked |
+| Manual QA | [QA Gate](#qa-gate) | whether required Manual QA has passed, failed, been waived, or remains pending |
+| Acceptance | [Acceptance Gate](#acceptance-gate) | whether user acceptance and residual-risk visibility allow close |
+| Surface capability | [Capability Boundary](#capability-boundary) | how capability findings affect blockers and guarantee display without becoming a first-class kernel gate |
 
 ### Scope Gate
 

@@ -13,6 +13,18 @@ It does not own SQLite DDL, storage layout, the full kernel transition table, pr
 - You are checking which errors, validator results, artifact refs, or projection refs can appear in API responses.
 - You are writing conformance fixtures that assert public API behavior.
 
+## Contract map
+
+| If you need... | Start here | Related owner |
+|---|---|---|
+| Read-only resource contract | [Read-only resources](#read-only-resources) | Projection rendering rules stay in [Document Projection Reference](document-projection.md). |
+| Common request envelope and response shape | [Tool envelope](#tool-envelope), [Common response](#common-response) | State-version transition semantics stay in [Kernel Reference](kernel.md). |
+| Shared public schemas and refs | [Shared schemas](#shared-schemas), [ArtifactRef](#artifactref), [ValidatorResult](#validatorresult) | Storage-only JSON and DDL stay in [Storage And DDL](storage-and-ddl.md). |
+| Sensitive category labels | [Sensitive Categories](#sensitive-categories) | Approval and write-state behavior stay in [Kernel Reference](kernel.md#prepare_write). |
+| Error codes and primary-error selection | [Error taxonomy](#error-taxonomy), [Primary Error Code Precedence](#primary-error-code-precedence), [`harness.close_task` Close Blockers](#harnessclose_task-close-blockers) | Operator diagnostics stay in [Operations And Conformance Reference](operations-and-conformance.md). |
+| Public tool request and response schemas | [Public Tool Schema Map](#public-tool-schema-map), then the matching tool section | Fixture `action` and `input` rules stay in [Operations And Conformance Reference](operations-and-conformance.md#conformance-fixture-format). |
+| Idempotency and stale-state behavior | [Idempotency](#idempotency), [State conflict behavior](#state-conflict-behavior) | Durable replay rows and indexes stay in [Storage And DDL](storage-and-ddl.md). |
+
 ## API in plain language
 
 MCP resources are read-only views. They can report current state, projection freshness, and user-facing summaries, but they must not create or repair state.
@@ -807,6 +819,22 @@ In that new-attempt path, state conflict comparison is scope-specific. Core firs
 A stale `expected_state_version` is reported as concurrency drift, not as proof of caller identity. The diagnostic display should say which scope was stale, which current version Core observed, and that the caller must refresh before retrying; it must not accept an older Task or project view because the caller supplied it.
 
 ## Public tools
+
+### Public Tool Schema Map
+
+| Tool | Use this section for... |
+|---|---|
+| [`harness.status`](#harnessstatus) | status, gates, projection freshness, write authority, guarantees, residual risk, and recommended playbooks |
+| [`harness.intake`](#harnessintake) | starting or resuming tracked work and initial Task/Change Unit shaping |
+| [`harness.next`](#harnessnext) | next-action and smallest-unblocker display payloads |
+| [`harness.prepare_write`](#harnessprepare_write) | write precondition checks, blocked reasons, approval candidates, and Write Authorization summaries |
+| [`harness.record_run`](#harnessrecord_run) | run recording, artifact/evidence updates, feedback loops, TDD traces, and Write Authorization consumption |
+| [`harness.request_user_decision`](#harnessrequest_user_decision) | Decision Packet creation, approval-shaped decision requests, and user-judgment prompts |
+| [`harness.record_user_decision`](#harnessrecord_user_decision) | resolving Decision Packets, approvals, waivers, acceptance, and residual-risk decisions |
+| [`harness.launch_verify`](#harnesslaunch_verify) | verification launch request/response and bundle refs |
+| [`harness.record_eval`](#harnessrecord_eval) | Eval recording, verification verdicts, independence qualifiers, and artifact refs |
+| [`harness.record_manual_qa`](#harnessrecord_manual_qa) | Manual QA results, waiver links, residual-risk refs, and QA artifacts |
+| [`harness.close_task`](#harnessclose_task) | close request/response, blockers, close result, and close projection refs |
 
 ### `harness.status`
 

@@ -13,6 +13,19 @@
 - JSON `TEXT` field, enum-like `TEXT` field, lock, migration, artifact, baseline, projection job을 검증할 때.
 - API schema와 storage implementation detail을 분리해서 유지할 때.
 
+## 계약 위치 지도
+
+| 필요한 것 | 먼저 볼 곳 | 관련 owner |
+|---|---|---|
+| Runtime home과 local file posture | [Runtime home layout](#runtime-home-layout), [Runtime Home 권한과 변조 위험](#runtime-home-권한과-변조-위험) | Operator reporting은 [운영과 Conformance 참조](operations-and-conformance.md#doctor)에 남습니다. |
+| Storage DDL | [DDL draft](#ddl-draft), 그다음 [DDL Section Map](#ddl-section-map) | Public API shape는 [MCP API와 스키마](mcp-api-and-schemas.md)에 남습니다. |
+| Storage-owned JSON과 enum hardening | [권한 경계로서의 Storage hardening](#권한-경계로서의-storage-hardening), [JSON TEXT validation](#json-text-validation), [Canonical enum hardening](#canonical-enum-hardening) | Kernel value는 [커널 참조](kernel.md)에 남습니다. |
+| Migration과 lock | [Migrations](#migrations), [Lock policy](#lock-policy) | Operator recovery 의미는 [운영과 Conformance 참조](operations-and-conformance.md#recover)에 남습니다. |
+| Artifact storage와 registration | [Artifact directory layout](#artifact-directory-layout), [Artifact Kind Storage Notes](#artifact-kind-storage-notes), [Artifact Registration Contract](#artifact-registration-contract) | Artifact API ref는 [ArtifactRef](mcp-api-and-schemas.md#artifactref)에 남습니다. |
+| Baseline과 verification bundle | [Baseline capture format](#baseline-capture-format), [Verification Bundle Shape](#verification-bundle-shape) | Verification과 close gate behavior는 [커널 참조](kernel.md#verification-gate)에 남습니다. |
+| Projection job과 worker behavior | [Projection job table](#projection-job-table), [Projection Worker Execution](#projection-worker-execution) | Projection rule은 [문서 Projection 참조](document-projection.md)에 남습니다. |
+| Validator-run storage와 fixture seed-loader expectation | [Validator runner skeleton](#validator-runner-skeleton), [Evidence and Verification Profile Implementation Notes](#evidence-and-verification-profile-implementation-notes) | Stable `ValidatorResult` shape는 [MCP API와 스키마](mcp-api-and-schemas.md#validatorresult)에 남고, fixture assertion은 [운영과 Conformance 참조](operations-and-conformance.md#fixture-assertion-semantics)에 남습니다. |
+
 ## Storage model 요약
 
 Harness는 등록된 project 전체를 관리하는 전역 runtime registry 하나와 project별 local state database 하나를 둡니다. Registry는 어떤 project와 접점이 있는지 기록합니다. `project.yaml`은 정적 프로젝트 설정을 저장합니다. `state.sqlite`는 기준 current record 및 추가 전용 task event를 저장합니다. 또한 idempotency replay용 row, artifact registry row, projection job, validator run result를 저장합니다.
@@ -102,6 +115,16 @@ Reference storage는 registry와 project별 상태를 저장하기 위해 SQLite
 `task_spine_entries`는 MVP에서 public `journey_spine_entry` record를 저장하는 physical table입니다. Journey Spine Entry wording은 public MCP/API naming에서 유지됩니다. table name은 task-local implementation shape를 보존하기 위해 유지합니다.
 
 이 ER diagram은 아래 DDL 관계의 개요입니다. 관계 label은 storage link를 설명할 뿐, record를 부여하거나 변경할 권한을 뜻하지 않습니다. 정확한 구현 계약은 SQL DDL입니다.
+
+### DDL Section Map
+
+| Storage area | 볼 곳 | 여기서 찾는 것 |
+|---|---|---|
+| Storage hardening | [권한 경계로서의 Storage hardening](#권한-경계로서의-storage-hardening), [JSON TEXT validation](#json-text-validation), [Canonical enum hardening](#canonical-enum-hardening) | value validation과 owner-bound enum-like `TEXT` fields |
+| Project config | [`project.yaml`](#projectyaml) | static project defaults, policies, surface config |
+| Runtime registry | [`registry.sqlite`](#registrysqlite) | registered projects, project surfaces, connector manifests |
+| Project state database | [`state.sqlite`](#statesqlite) | Task, gate, Change Unit, Run, approval, decision, evidence, artifact, projection, reconcile, design support, feedback-loop, validator, lock tables |
+| Event rows | [`task_events`](#task_events) | append-only event storage와 stable-event owner boundary |
 
 ```mermaid
 erDiagram

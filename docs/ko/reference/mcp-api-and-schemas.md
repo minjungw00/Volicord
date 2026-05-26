@@ -13,6 +13,18 @@ SQLite DDL과 storage layout, 전체 kernel transition table, projection templat
 - API response에 어떤 error, validator result, artifact 참조, projection 참조가 나타날 수 있는지 확인할 때.
 - Public API behavior를 검증하는 conformance fixture를 작성할 때.
 
+## 계약 위치 지도
+
+| 필요한 것 | 먼저 볼 곳 | 관련 owner |
+|---|---|---|
+| Read-only resource contract | [Read-only resources](#read-only-resources) | Projection rendering rule은 [문서 Projection 참조](document-projection.md)에 남습니다. |
+| 공통 request envelope와 response shape | [Tool envelope](#tool-envelope), [Common response](#common-response) | State-version transition 의미는 [커널 참조](kernel.md)에 남습니다. |
+| Shared public schema와 ref | [Shared schemas](#shared-schemas), [ArtifactRef](#artifactref), [ValidatorResult](#validatorresult) | Storage-only JSON과 DDL은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
+| Sensitive category label | [Sensitive Categories](#sensitive-categories) | Approval과 write-state behavior는 [커널 참조](kernel.md#prepare_write)에 남습니다. |
+| Error code와 primary-error 선택 | [Error taxonomy](#error-taxonomy), [Primary Error Code Precedence](#primary-error-code-precedence), [`harness.close_task` Close Blockers](#harnessclose_task-close-blockers) | Operator diagnostic은 [운영과 Conformance 참조](operations-and-conformance.md)에 남습니다. |
+| Public tool request와 response schema | [Public Tool Schema Map](#public-tool-schema-map), 그리고 해당 tool section | Fixture `action`과 `input` rule은 [운영과 Conformance 참조](operations-and-conformance.md#conformance-fixture-format)에 남습니다. |
+| Idempotency와 stale-state behavior | [Idempotency](#idempotency), [State Conflict 동작](#state-conflict-동작) | Durable replay row와 index는 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
+
 ## API를 쉬운 말로
 
 MCP resource는 읽기 전용 보기로 동작합니다. 현재 상태, projection 최신성, 사용자에게 보이는 요약을 보고할 수 있지만, 상태를 만들거나 복구하면 안 됩니다.
@@ -809,6 +821,22 @@ Supplied idempotency scope에 committed replay row가 없는 state-changing tool
 최신이 아닌 `expected_state_version`은 호출자 identity의 증거가 아니라 concurrency drift로 보고합니다. 진단 표시는 어떤 scope가 stale이었는지, Core가 관찰한 current version이 무엇인지, retry 전에 호출자가 refresh해야 한다는 점을 말해야 합니다. 호출자가 제공했다는 이유로 오래된 Task 또는 project view를 받아들이면 안 됩니다.
 
 ## Public tools
+
+### Public Tool Schema Map
+
+| Tool | 이 section에서 찾는 것 |
+|---|---|
+| [`harness.status`](#harnessstatus) | status, gate, projection freshness, write authority, guarantee, residual risk, recommended playbook |
+| [`harness.intake`](#harnessintake) | tracked work 시작 또는 resume, 초기 Task/Change Unit shaping |
+| [`harness.next`](#harnessnext) | next-action과 smallest-unblocker display payload |
+| [`harness.prepare_write`](#harnessprepare_write) | write precondition check, blocked reason, approval candidate, Write Authorization summary |
+| [`harness.record_run`](#harnessrecord_run) | run recording, artifact/evidence update, feedback loop, TDD trace, Write Authorization consumption |
+| [`harness.request_user_decision`](#harnessrequest_user_decision) | Decision Packet creation, approval-shaped decision request, user-judgment prompt |
+| [`harness.record_user_decision`](#harnessrecord_user_decision) | Decision Packet, approval, waiver, acceptance, residual-risk decision 해결 |
+| [`harness.launch_verify`](#harnesslaunch_verify) | verification launch request/response와 bundle ref |
+| [`harness.record_eval`](#harnessrecord_eval) | Eval recording, verification verdict, independence qualifier, artifact ref |
+| [`harness.record_manual_qa`](#harnessrecord_manual_qa) | Manual QA result, waiver link, residual-risk ref, QA artifact |
+| [`harness.close_task`](#harnessclose_task) | close request/response, blocker, close result, close projection ref |
 
 ### `harness.status`
 

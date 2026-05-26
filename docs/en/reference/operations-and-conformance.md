@@ -13,6 +13,17 @@ It is a lookup document for operators, implementers, conformance authors, and ma
 - You need to tell runtime Core fixture conformance apart from docs-only maintenance checks.
 - You are diagnosing an operations mismatch across state, artifacts, projections, MCP availability, or generated files.
 
+## Contract map
+
+| If you need... | Start here | Related owner |
+|---|---|---|
+| Operator command semantics | [Operator entrypoints](#operator-entrypoints), then the command section: [connect](#connect), [doctor](#doctor), [serve mcp](#serve-mcp), [projection refresh](#projection-refresh), [reconcile](#reconcile), [recover](#recover), [export](#export), [artifacts check](#artifacts-check), or [conformance run](#conformance-run) | Core state authority remains in [Kernel Reference](kernel.md). |
+| Operator diagnostics and runtime-effect boundaries | [Operator diagnostics report facts, not new state](#operator-diagnostics-report-facts-not-new-state), [Docs-maintenance profile](#docs-maintenance-profile), [Release Handoff Export Profile](#release-handoff-export-profile) | Docs-maintenance rule bodies stay in [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks). |
+| Fixture body shape and runner behavior | [Conformance Fixture Format](#conformance-fixture-format), [Conformance Execution](#conformance-execution), [Fixture Assertion Semantics](#fixture-assertion-semantics) | Public request schemas stay in [MCP API And Schemas](mcp-api-and-schemas.md). Storage seeding details stay in [Storage And DDL](storage-and-ddl.md). |
+| Fixture authoring order and suite coverage | [Conformance staging](#conformance-staging), [Kernel Smoke Authoring Queue](#kernel-smoke-authoring-queue), [Hardened MVP Fixture Coverage](#hardened-mvp-fixture-coverage), [Fixture Suites](#fixture-suites) | Kernel gate and event names stay in [Kernel Reference](kernel.md). |
+| Fixture examples by concern | [Fixture Example Map](#fixture-example-map), then the matching example section | Example `input` still validates against the owning public tool schema. |
+| Artifact integrity, export, recover, and reconcile checks | [artifacts check](#artifacts-check), [export](#export), [recover](#recover), [reconcile](#reconcile) | Artifact layout and DDL stay in [Storage And DDL](storage-and-ddl.md). |
+
 ## Operations in plain language
 
 Operations are the operator-facing commands around Core. They can connect a repository, diagnose readiness, serve MCP, refresh projections, reconcile human edits, recover interrupted state, export bundles, and check artifacts.
@@ -73,6 +84,20 @@ flowchart TD
 ```
 
 Exact command flags may vary by implementation, but the semantics below are required for the reference MVP.
+
+Operator command map:
+
+| Entrypoint | Use this section when you need... |
+|---|---|
+| [`harness connect`](#connect) | repository/runtime registration semantics and first-connection expectations |
+| [`harness doctor`](#doctor) | readiness, diagnostics, repair suggestions, and no-new-state reporting boundaries |
+| [`harness serve mcp`](#serve-mcp) | MCP serving behavior, local availability, and Core authority boundaries |
+| [`harness projection refresh`](#projection-refresh) | projection job refresh behavior and managed-block drift handling |
+| [`harness reconcile`](#reconcile) | human edit, generated file, and managed-block drift routing |
+| [`harness recover`](#recover) | interrupted operation repair and compensating event expectations |
+| [`harness export`](#export) | bundle and Release Handoff export behavior |
+| [`harness artifacts check`](#artifacts-check) | artifact registry/file integrity and redaction boundary checks |
+| [`harness conformance run`](#conformance-run) | runtime fixture execution and docs-maintenance profile separation |
 
 ## Operator diagnostics report facts, not new state
 
@@ -613,6 +638,16 @@ Compact artifact check examples:
 ## conformance run
 
 `conformance run` executes selected fixture suites or explicitly selected docs-only maintenance profiles. Runtime suites use the same Core entrypoints as MCP tools and operator commands. Docs-maintenance remains separate, read-only, and excluded from runtime fixture pass/fail and implementation readiness.
+
+### Conformance Navigation Map
+
+| If you are looking for... | Go to |
+|---|---|
+| The exact fixture body fields | [Conformance Fixture Format](#conformance-fixture-format) |
+| How a runner loads, seeds, executes, captures, and compares | [Conformance Execution](#conformance-execution) |
+| Default comparison modes for `expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, and `expected_error` | [Fixture Assertion Semantics](#fixture-assertion-semantics) |
+| Suite intent and authoring order | [Conformance staging](#conformance-staging), [Kernel Smoke Authoring Queue](#kernel-smoke-authoring-queue), and [Fixture Suites](#fixture-suites) |
+| Executable examples by concern | [Fixture Example Map](#fixture-example-map) |
 
 ### Conformance Fixture Format
 
@@ -1417,6 +1452,18 @@ expected_error:
   details:
     mcp_unavailable_kind: surface_mcp_unavailable
 ```
+
+### Fixture Example Map
+
+| Example section | Use it for... |
+|---|---|
+| [Core Fixture Examples](#core-fixture-examples) | Task state, Change Unit scope, `prepare_write`, Write Authorization, `record_run`, projection basics, close blockers, and MCP/Core boundary cases |
+| [Agency Fixture Examples](#agency-fixture-examples) | Decision Packets, user-owned judgment, residual-risk visibility, acceptance, autonomy boundary, and sensitive approval separation |
+| [Connector Fixture Examples](#connector-fixture-examples) | connector capability, MCP availability, generated files, guard/freeze, and connector agency catalog entries |
+| [Design-Quality Fixture Examples](#design-quality-fixture-examples) | design policy validators, Manual QA, TDD, feedback loops, and shared design requirements |
+| [Stewardship Fixture Examples](#stewardship-fixture-examples) | codebase stewardship, domain language, module/interface review, and managed-block drift |
+| [Context Hygiene Fixture Examples](#context-hygiene-fixture-examples) | stale context, projection freshness, compact status, and context discipline |
+| [Fixture Suites](#fixture-suites) | final suite grouping and metric boundaries |
 
 ### Core Fixture Examples
 

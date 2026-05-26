@@ -13,6 +13,20 @@
 - Task, Change Unit, Decision Packet, Approval, Write Authorization, Run, 근거, Eval, Manual QA, Residual Risk, Artifact 기록의 관계를 확인할 때.
 - conformance fixture를 작성하거나 상태, artifact, projection, 사용자에게 보이는 상태 사이의 불일치를 진단할 때.
 
+## 계약 위치 지도
+
+| 필요한 것 | 먼저 볼 곳 | 관련 owner |
+|---|---|---|
+| Entity와 relationship 의미 | [Entity model](#entity-model) | Physical table은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
+| 대체 불가능한 경계 규칙 | [Boundaries and non-substitutions](#boundaries-and-non-substitutions) | Public display shape는 [MCP API와 스키마](mcp-api-and-schemas.md)에 남습니다. |
+| Kernel gate 규칙 | [Gate 규칙 지도](#gate-규칙-지도), 그다음 해당 gate section | Gate fixture assertion은 [운영과 Conformance 참조](operations-and-conformance.md#fixture-assertion-semantics)에 남습니다. |
+| Mode, lifecycle, result, close reason, assurance value | [Lifecycle and transitions](#lifecycle-and-transitions), [Compatibility matrix](#compatibility-matrix) | Persisted value의 storage hardening은 [Storage와 DDL](storage-and-ddl.md#canonical-enum-hardening)에 남습니다. |
+| Stable event name | [Stable Event Catalog](#stable-event-catalog) | Event row는 [Storage와 DDL](storage-and-ddl.md#task_events)의 `state.sqlite.task_events`에 남습니다. |
+| Write gate behavior | [`prepare_write`](#prepare_write) | Public request/response shape는 [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write)에 남습니다. |
+| Run recording consequence | [`record_run`](#record_run) | Public request/response shape는 [`harness.record_run`](mcp-api-and-schemas.md#harnessrecord_run)에 남습니다. |
+| Close eligibility와 result | [`close_task`](#close_task), [Close result semantics](#close-result-semantics), [Close eligibility](#close-eligibility) | Primary error selection은 [MCP API와 스키마](mcp-api-and-schemas.md#primary-error-code-precedence)에 남습니다. |
+| Waiver, invariant, invalid combination | [Waiver semantics](#waiver-semantics), [Invariant enforcement mapping](#invariant-enforcement-mapping), [Edge cases](#edge-cases) | Design-quality policy detail은 [설계 품질 정책](design-quality-policies.md)에 남습니다. |
+
 ## 커널을 10문장으로
 
 1. Kernel은 로컬 AI 지원 제품 작업을 위한 기준 상태 모델입니다.
@@ -389,6 +403,20 @@ Approval과 Decision Packet authority는 분리되어 있습니다. Approval은 
 ## Gates
 
 Gate는 `prepare_write`, `close_task`, status display, conformance fixtures가 사용하는 기준 kernel fields입니다.
+
+### Gate 규칙 지도
+
+| Gate 또는 boundary | 볼 곳 | 결정하는 것 |
+|---|---|---|
+| Scope | [Scope Gate](#scope-gate) | active Change Unit과 intended operation이 scope 안에 있는지 |
+| 사용자 소유 판단 | [Decision Gate](#decision-gate), [Decision Gate Aggregate Recompute](#decision-gate-aggregate-recompute) | blocking product 또는 technical judgment가 unresolved인지 |
+| 민감 행동 허가 | [Approval Gate](#approval-gate) | sensitive-action approval이 missing, pending, granted, denied, expired, blocked 중 어디인지 |
+| Design policy | [Design Gate](#design-gate) | design-quality policy check가 진행을 block, warn, allow하는지 |
+| Evidence | [Evidence Gate](#evidence-gate), [Evidence Sufficiency Profiles](#evidence-sufficiency-profiles) | required evidence가 absent, partial, sufficient, stale, waived, blocked 중 어디인지 |
+| Verification | [Verification Gate](#verification-gate), [Verification Independence Profiles](#verification-independence-profiles) | detached verification이 required, passed, failed, waived, blocked 중 어디인지 |
+| Manual QA | [QA Gate](#qa-gate) | required Manual QA가 passed, failed, waived, pending 중 어디인지 |
+| Acceptance | [Acceptance Gate](#acceptance-gate) | user acceptance와 residual-risk visibility가 close를 허용하는지 |
+| Surface capability | [Capability Boundary](#capability-boundary) | capability finding이 first-class kernel gate가 되지 않으면서 blocker와 guarantee display에 영향을 주는 방식 |
 
 ### Scope Gate
 

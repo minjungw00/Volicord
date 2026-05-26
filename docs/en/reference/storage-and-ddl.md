@@ -13,6 +13,19 @@ This is storage reference material. It does not define MVP stage sequencing; for
 - You are validating JSON `TEXT` fields, enum-like `TEXT` fields, locks, migrations, artifacts, baselines, or projection jobs.
 - You are keeping API schemas separate from storage implementation details.
 
+## Contract map
+
+| If you need... | Start here | Related owner |
+|---|---|---|
+| Runtime home and local file posture | [Runtime home layout](#runtime-home-layout), [Runtime home permissions and tampering](#runtime-home-permissions-and-tampering) | Operator reporting stays in [Operations And Conformance Reference](operations-and-conformance.md#doctor). |
+| Storage DDL | [DDL draft](#ddl-draft), then [DDL Section Map](#ddl-section-map) | Public API shapes stay in [MCP API And Schemas](mcp-api-and-schemas.md). |
+| Storage-owned JSON and enum hardening | [Storage hardening as an authority boundary](#storage-hardening-as-an-authority-boundary), [JSON TEXT validation](#json-text-validation), [Canonical enum hardening](#canonical-enum-hardening) | Kernel values stay in [Kernel Reference](kernel.md). |
+| Migrations and locks | [Migrations](#migrations), [Lock policy](#lock-policy) | Operator recovery semantics stay in [Operations And Conformance Reference](operations-and-conformance.md#recover). |
+| Artifact storage and registration | [Artifact directory layout](#artifact-directory-layout), [Artifact Kind Storage Notes](#artifact-kind-storage-notes), [Artifact Registration Contract](#artifact-registration-contract) | Artifact API refs stay in [ArtifactRef](mcp-api-and-schemas.md#artifactref). |
+| Baselines and verification bundles | [Baseline capture format](#baseline-capture-format), [Verification Bundle Shape](#verification-bundle-shape) | Verification and close gate behavior stay in [Kernel Reference](kernel.md#verification-gate). |
+| Projection jobs and worker behavior | [Projection job table](#projection-job-table), [Projection Worker Execution](#projection-worker-execution) | Projection rules stay in [Document Projection Reference](document-projection.md). |
+| Validator-run storage and fixture seed-loader expectations | [Validator runner skeleton](#validator-runner-skeleton), [Evidence and Verification Profile Implementation Notes](#evidence-and-verification-profile-implementation-notes) | Stable `ValidatorResult` shape stays in [MCP API And Schemas](mcp-api-and-schemas.md#validatorresult); fixture assertions stay in [Operations And Conformance Reference](operations-and-conformance.md#fixture-assertion-semantics). |
+
 ## Storage model in plain language
 
 Harness keeps one global runtime registry and one local state database per registered project. The registry says which projects and surfaces exist. `project.yaml` stores static project configuration. `state.sqlite` stores canonical current records, append-only task events, idempotency replay rows, artifact registry rows, projection jobs, and validator run results.
@@ -102,6 +115,16 @@ The reference storage uses SQLite for registry and per-project state. The DDL is
 `task_spine_entries` is the physical MVP table for public `journey_spine_entry` records and Journey Spine Entry wording. Public MCP/API naming remains `journey_spine_entry`; the table name preserves the task-local implementation shape.
 
 This ER diagram is an overview of the DDL relationships below. Relationship labels describe storage links, not authority to grant or mutate records. The SQL DDL remains the exact implementation contract.
+
+### DDL Section Map
+
+| Storage area | Go to | Look here for... |
+|---|---|---|
+| Storage hardening | [Storage hardening as an authority boundary](#storage-hardening-as-an-authority-boundary), [JSON TEXT validation](#json-text-validation), [Canonical enum hardening](#canonical-enum-hardening) | value validation and owner-bound enum-like `TEXT` fields |
+| Project config | [`project.yaml`](#projectyaml) | static project defaults, policies, and surface config |
+| Runtime registry | [`registry.sqlite`](#registrysqlite) | registered projects, project surfaces, and connector manifests |
+| Project state database | [`state.sqlite`](#statesqlite) | Task, gate, Change Unit, Run, approval, decision, evidence, artifact, projection, reconcile, design support, feedback-loop, validator, and lock tables |
+| Event rows | [`task_events`](#task_events) | append-only event storage and stable-event owner boundary |
 
 ```mermaid
 erDiagram

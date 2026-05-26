@@ -13,6 +13,17 @@ Harness 운영자 절차, Conformance staging, fixture assertion rule, docs-main
 - Runtime Core fixture conformance와 docs-only maintenance check를 구분해야 할 때.
 - State, artifact, projection, MCP availability, generated file 사이의 운영 불일치를 진단할 때.
 
+## 계약 위치 지도
+
+| 필요한 것 | 먼저 볼 곳 | 관련 owner |
+|---|---|---|
+| Operator command 의미 | [운영자 entrypoint](#운영자-entrypoint), 그리고 해당 command section: [connect](#connect), [doctor](#doctor), [serve mcp](#serve-mcp), [projection refresh](#projection-refresh), [reconcile](#reconcile), [recover](#recover), [export](#export), [artifacts check](#artifacts-check), [conformance run](#conformance-run) | Core 상태 권한은 [커널 참조](kernel.md)에 남습니다. |
+| Operator 진단과 runtime-effect 경계 | [운영 진단은 새 상태가 아니라 사실을 보고합니다](#운영-진단은-새-상태가-아니라-사실을-보고합니다), [docs-maintenance 프로필](#docs-maintenance-프로필), [Release Handoff Export Profile](#release-handoff-export-profile) | Docs-maintenance rule body는 [문서 작성 가이드](../maintain/authoring-guide.md#docs-maintenance-checks)에 남습니다. |
+| Fixture body shape와 runner behavior | [Conformance Fixture Format](#conformance-fixture-format), [Conformance Execution](#conformance-execution), [Fixture Assertion Semantics](#fixture-assertion-semantics) | Public request schema는 [MCP API와 스키마](mcp-api-and-schemas.md)에 남습니다. Storage seeding detail은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
+| Fixture 작성 순서와 suite coverage | [Conformance staging](#conformance-staging), [Kernel Smoke Authoring Queue](#kernel-smoke-authoring-queue), [Hardened MVP Fixture Coverage](#hardened-mvp-fixture-coverage), [Fixture Suites](#fixture-suites) | Kernel gate와 event name은 [커널 참조](kernel.md)에 남습니다. |
+| Concern별 fixture 예시 | [Fixture 예시 지도](#fixture-예시-지도), 그다음 해당 예시 section | 예시 `input`은 계속 담당 public tool schema를 통과해야 합니다. |
+| Artifact integrity, export, recover, reconcile check | [artifacts check](#artifacts-check), [export](#export), [recover](#recover), [reconcile](#reconcile) | Artifact layout과 DDL은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
+
 ## 운영을 쉽게 말하면
 
 Operations는 Core 주변의 operator-facing command입니다. Repository를 연결하고, readiness를 진단하고, MCP를 제공하고, projection을 refresh하고, human edit을 reconcile하고, interrupted 상태를 recover하고, bundle을 export하고, artifact를 check할 수 있습니다.
@@ -73,6 +84,20 @@ flowchart TD
 ```
 
 정확한 command flag는 구현마다 달라질 수 있지만, reference MVP에는 아래 semantics가 필요합니다.
+
+운영자 command map:
+
+| Entrypoint | 이런 때 이 section을 봅니다 |
+|---|---|
+| [`harness connect`](#connect) | repository/runtime registration 의미와 first-connection expectation이 필요할 때 |
+| [`harness doctor`](#doctor) | readiness, diagnostics, repair suggestion, no-new-state reporting boundary가 필요할 때 |
+| [`harness serve mcp`](#serve-mcp) | MCP serving behavior, local availability, Core 권한 경계가 필요할 때 |
+| [`harness projection refresh`](#projection-refresh) | projection job refresh behavior와 managed-block drift handling이 필요할 때 |
+| [`harness reconcile`](#reconcile) | human edit, generated file, managed-block drift routing이 필요할 때 |
+| [`harness recover`](#recover) | interrupted operation repair와 compensating event expectation이 필요할 때 |
+| [`harness export`](#export) | bundle과 Release Handoff export behavior가 필요할 때 |
+| [`harness artifacts check`](#artifacts-check) | artifact registry/file integrity와 redaction boundary check가 필요할 때 |
+| [`harness conformance run`](#conformance-run) | runtime fixture execution과 docs-maintenance profile 분리가 필요할 때 |
 
 ## 운영 진단은 새 상태가 아니라 사실을 보고합니다
 
@@ -615,6 +640,16 @@ Compact artifact check 예시:
 ## conformance run
 
 `conformance run`은 선택한 fixture suite 또는 명시적으로 선택한 docs-only maintenance profile을 실행합니다. Runtime suite는 MCP tool과 operator command가 쓰는 것과 같은 Core entrypoint를 사용합니다. Docs-maintenance는 별도의 read-only profile로 남으며 runtime fixture pass/fail과 구현 준비 상태에 포함하지 않습니다.
+
+### Conformance 탐색 지도
+
+| 찾는 것 | 볼 곳 |
+|---|---|
+| 정확한 fixture body field | [Conformance Fixture Format](#conformance-fixture-format) |
+| Runner가 load, seed, execute, capture, compare하는 방식 | [Conformance Execution](#conformance-execution) |
+| `expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, `expected_error`의 default comparison mode | [Fixture Assertion Semantics](#fixture-assertion-semantics) |
+| Suite intent와 작성 순서 | [Conformance staging](#conformance-staging), [Kernel Smoke Authoring Queue](#kernel-smoke-authoring-queue), [Fixture Suites](#fixture-suites) |
+| Concern별 executable 예시 | [Fixture 예시 지도](#fixture-예시-지도) |
 
 ### Conformance Fixture Format
 
@@ -1419,6 +1454,18 @@ expected_error:
   details:
     mcp_unavailable_kind: surface_mcp_unavailable
 ```
+
+### Fixture 예시 지도
+
+| 예시 section | 이런 때 사용합니다 |
+|---|---|
+| [Core Fixture 예시](#core-fixture-예시) | Task state, Change Unit scope, `prepare_write`, Write Authorization, `record_run`, projection basics, close blocker, MCP/Core boundary case |
+| [Agency Fixture 예시](#agency-fixture-예시) | Decision Packet, user-owned judgment, residual-risk visibility, acceptance, autonomy boundary, sensitive approval separation |
+| [Connector Fixture 예시](#connector-fixture-예시) | connector capability, MCP availability, generated file, guard/freeze, connector agency catalog entry |
+| [Design-Quality Fixture 예시](#design-quality-fixture-예시) | design policy validator, Manual QA, TDD, feedback loop, shared design requirement |
+| [Stewardship Fixture 예시](#stewardship-fixture-예시) | codebase stewardship, domain language, module/interface review, managed-block drift |
+| [Context Hygiene Fixture 예시](#context-hygiene-fixture-예시) | stale context, projection freshness, compact status, context discipline |
+| [Fixture Suites](#fixture-suites) | final suite grouping과 metric boundary |
 
 ### Core Fixture 예시
 
