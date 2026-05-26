@@ -1194,7 +1194,7 @@ BaselineCapture:
   captured_at: string
 ```
 
-Baseline is stale when relevant HEAD, dirty diff, allowed path contents, approval scope, or verification bundle inputs no longer match the captured baseline. Stale baseline can mark approval, evidence, or verification stale depending on the affected records.
+Baseline is stale when relevant HEAD, dirty diff, allowed path contents, approval scope, or verification bundle inputs no longer match the captured baseline. Stale baseline can mark approval, evidence, or verification stale depending on the affected records. For verification, baseline drift prevents a launched bundle or Eval from supporting detached assurance until the changed inputs are re-bundled or explicitly reverified by a new compatible Eval.
 
 ```mermaid
 flowchart LR
@@ -1279,6 +1279,8 @@ flowchart TD
 ```
 
 The manifest records task id, Change Unit id, baseline ref, source state version, included artifact ids, redaction summary, evaluator focus, and the expected independence context. The bundle may include copied raw artifacts when retention and redaction policy allow it; otherwise it includes artifact refs that the evaluator can resolve through the harness. Artifacts with `redaction_state=secret_omitted` or `redaction_state=blocked` remain represented by refs and redaction, omission, or block notes, not by hidden raw bytes.
+
+A verification bundle is stale when its baseline ref, source state version, included artifacts, artifact links, Evidence Manifest, approval/Decision Packet refs, or close-relevant Residual Risk refs no longer match the Task state being verified. Staleness does not create a separate bundle state record or a new verification gate value. It means the bundle can remain registered as audit/evidence material, but it cannot support `assurance_level=detached_verified` until `harness.launch_verify` creates a replacement bundle or `harness.record_eval` records a compatible re-verification of the changed inputs.
 
 Launching verification sets or keeps `verification_gate=pending`. Only `harness.record_eval` can record the verdict and update assurance.
 

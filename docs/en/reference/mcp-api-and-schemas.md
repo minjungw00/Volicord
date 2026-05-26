@@ -1467,6 +1467,8 @@ AcceptedRiskInput:
 
 The payload branch must match `decision_kind`; other branches must be absent. The selected branch, selected option, and compatible Decision Packet determine the recorded judgment; free-form note text such as "approved" or "go ahead" cannot broaden it into approval, acceptance, waiver, residual-risk acceptance, or write authority. `accepted_risks` is allowed only when the Decision Packet and current Judgment Context made the close-relevant residual risk visible before the user decision. For `decision_kind=acceptance`, Core may record acceptance only when close-relevant residual risk is visible or `ResidualRiskSummary.status=none` confirms no known close-relevant risk. Core records the answer against the canonical `DecisionPacket` identified by `decision_packet_id`; any `decision_requests` row is updated only as routing/replay metadata and cannot satisfy `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close without the linked compatible Decision Packet and owner-record updates. Core records accepted risk by updating Residual Risk records and returning residual-risk state refs; it does not treat risk acceptance as detached verification. `AcceptedRiskInput.residual_risk_ref=null` is allowed only when the current Decision Packet and Judgment Context already made that close-relevant risk visible to the user and include enough source and evidence context for Core to create or associate a Residual Risk record in the same committed transition. If visibility or context is absent, Core must reject or block instead of silently creating and accepting a hidden risk.
 
+For `decision_kind=verification_waiver`, `decision.verification_waiver.value=waived` records accepted verification risk only through the Decision Packet and Residual Risk path above. If that risk is close-relevant, `accepted_risks` must identify or create the visible Residual Risk refs needed for a later `completed_with_risk_accepted` close. A verification-waiver decision must not update assurance, must not create detached verification, and must not allow `completed_verified` close.
+
 Response schema:
 
 ```yaml
@@ -1519,6 +1521,8 @@ LaunchVerifyRequest:
 
 `include_artifacts` references already registered evidence to include in or link from the bundle. `bundle_artifact_input` is optional; when it is `null`, Core assembles and registers the verification bundle. When it is present, Core validates and registers the supplied staged bundle instead. `secret_omitted` entries are included as refs plus omission notes or handles; `blocked` entries are included only as unavailable-input notices and may cause `EVIDENCE_INSUFFICIENT` unless the verification path records a replacement, waiver, Decision Packet outcome, accepted risk, or other documented resolution.
 
+`verification_mode` lists only detached-candidate launch paths. Self-check and same-session review are recorded as Run/Eval context, not through `harness.launch_verify`. `subagent_context` is also not a launch mode because it is not detached by default; if a subagent actually satisfies a stricter boundary, the launch records that stricter mode and `harness.record_eval` records the final independence context.
+
 The returned `bundle_ref` is an `ArtifactRef`, usually with `kind=bundle` or `kind=manifest`. Its artifact link must point to an existing owner record such as the Task, launching Run, Evidence Manifest, Eval, or a rendered Task-scoped projection; it does not create a `verification_bundle` state record.
 
 Response schema:
@@ -1536,6 +1540,8 @@ LaunchVerifyResponse:
 ```
 
 State transition summary: records verification launch, sets or keeps `verification_gate=pending`, and creates evaluator run/bundle references.
+
+The launch creates a detached candidate, not detached assurance. If the source state version, baseline ref, included artifacts, Evidence Manifest, approval/Decision Packet refs, or close-relevant Residual Risk refs drift before the Eval is recorded, the bundle is stale for assurance purposes. A stale bundle may remain registered as an artifact, but it cannot support `assurance_level=detached_verified` without replacement or compatible re-verification during `harness.record_eval`.
 
 Non-stable EventRef values that may be returned for implementation-local detail/audit: `verification_launched`, `verification_bundle_created`, `evaluator_run_created`.
 
@@ -1586,6 +1592,19 @@ Core may derive `change_unit_id` from `target_run_id` or the evidence bundle whe
 
 Eval evidence review must preserve artifact redaction semantics. A `secret_omitted` artifact can support an Eval finding only for visible nonsecret facts. A `blocked` artifact is reviewed as an unavailable input notice, not as raw evidence; an Eval that depends on the blocked payload must be `blocked` or `inconclusive`, or return `EVIDENCE_INSUFFICIENT`, until a valid replacement or documented resolution exists.
 
+The `independence.context` values are distinct from assurance:
+
+| Context | Assurance effect |
+|---|---|
+| `same_session` | Self-check or same-session review only. It may record useful findings, but `verdict=passed` must not set `detached_verified`. |
+| `subagent_context` | Not detached by default. It can support detached assurance only when the recorded facts show the subagent met a stricter `fresh_session`, `fresh_worktree`, `sandbox`, or `manual_bundle` boundary. |
+| `fresh_session` | Detached candidate when the evaluator starts from a task/evidence bundle rather than continuing lead chat context. |
+| `fresh_worktree` | Detached candidate when the evaluator checks the work in a separate worktree or equivalent isolated repository state. |
+| `sandbox` | Detached or isolated candidate when the verification boundary and artifact capture are meaningful and write capability is disclosed. |
+| `manual_bundle` | Detached candidate when an evaluator reviews a complete bundle without relying on unreviewed lead-session context. |
+
+`verdict=passed` is necessary but never sufficient for an assurance upgrade. Core may set `assurance_updated=true` only when the Eval passed, independence is valid, the same-session guard passes, artifacts are available and intact, and the baseline/bundle inputs are current or explicitly reverified. `baseline_reverified=true` records the evaluator's baseline check; it does not override known drift, stale bundle inputs, missing artifacts, or invalid independence.
+
 Response schema:
 
 ```yaml
@@ -1599,7 +1618,7 @@ RecordEvalResponse:
   next_action: string
 ```
 
-State transition summary: records Eval; passed detached verification can set `verification_gate=passed` and `assurance_level=detached_verified`; failed or blocked Eval moves gate to failed/blocked; same-session or invalid independence cannot upgrade assurance.
+State transition summary: records Eval; passed detached verification with valid independence and current inputs can set `verification_gate=passed` and `assurance_level=detached_verified`; failed or blocked Eval moves gate to failed/blocked; same-session, invalid independence, stale evaluator bundle, baseline drift, or missing/failed-integrity artifacts cannot upgrade assurance.
 
 Stable EventRef values that may be returned: `eval_recorded`, `verification_passed`, `verify_not_detached_detected`.
 
@@ -1697,7 +1716,7 @@ CloseTaskRequest:
   superseded_by_task_id: string | null
 ```
 
-`CloseTaskRequest` does not carry accepted-risk refs. For `completed_with_risk_accepted`, Core reads already-recorded accepted state from close-relevant Residual Risk records and blocks if visible accepted residual-risk state is missing.
+`CloseTaskRequest` does not carry accepted-risk refs. For `completed_with_risk_accepted`, Core reads already-recorded accepted state from close-relevant Residual Risk records and blocks if visible accepted residual-risk state is missing. When `verification_gate=waived_by_user`, completion must request `completed_with_risk_accepted`; `completed_verified` remains blocked because a waiver is not detached verification.
 
 Response schema:
 
@@ -1716,6 +1735,8 @@ CloseTaskResponse:
 ```
 
 Close blockers include unresolved, missing, deferred-without-coverage, blocked, rejected, stale, or incompatible blocking Decision Packets, and known close-relevant residual risk that is not visible before any successful close. If no known close-relevant residual risk exists, `ResidualRiskSummary.status=none` satisfies residual-risk visibility and is not a close blocker. A risk-accepted close additionally requires visible and accepted Residual Risk refs. Acceptance, when required, can be recorded only after close-relevant residual risk is visible or confirmed as `ResidualRiskSummary.status=none`.
+
+For `requested_close_reason=completed_verified`, blockers include same-session review, invalid or insufficient independence, stale evaluator bundle, baseline drift, missing or failed-integrity reviewed artifacts, and verification waiver. For `requested_close_reason=completed_with_risk_accepted`, blockers include missing visible accepted Residual Risk refs for the waived or remaining verification risk.
 
 `CloseTaskResponse.blockers` is the structured close-blocker result. Reports, projection text, status text, and agent summaries may render or explain those blockers, but a prose-only report must not be treated as the close blocker record or as a successful close decision.
 

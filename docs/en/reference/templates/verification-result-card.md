@@ -4,10 +4,13 @@
 
 Use the verification result card when an Eval result needs a compact user-facing display of verdict, assurance impact, independence boundary, reviewed evidence, remaining work, and user follow-up.
 
+This is template reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the redesigned docs are accepted. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
+
 ## Source records
 
 - Eval record
 - assurance impact and verification independence state
+- detached-candidate, self-checked, detached-verified, and waived-with-accepted-risk display wording
 - Manual QA and acceptance impact
 - reviewed task, run, Evidence Manifest, TDD trace, diff, log, approval, and design refs
 - blockers or rework
@@ -39,6 +42,7 @@ Display only: Eval records and gate state remain canonical.
 {eval_id}
 Verdict: {verdict}
 Assurance: {assurance_impact}
+User-facing verification status: {self-checked|detached candidate|detached verified|waived with accepted risk}
 Verification independence: {verification_independence}
 Self-check vs detached boundary: {self_check_or_detached_boundary}
 Manual QA: {manual_qa_impact}
@@ -58,6 +62,7 @@ Evidence reviewed:
 Close context:
 - verification checked:
 - verification did not check:
+- bundle or baseline freshness: {current|stale|not_applicable}
 - Manual QA: {manual_qa_status_or_needed}
 - acceptance: {acceptance_status_or_needed}
 - residual risk: {residual_risk_summary|none}
@@ -77,5 +82,9 @@ User follow-up:
 This template is a rendered card shape, not verification authority. Eval records and gate state remain canonical.
 
 Verification checks correctness from the recorded review boundary. It does not record Manual QA, imply user acceptance, or accept residual risk. Same-session self-review may be shown as a self-check or review note, but it must not be rendered as detached verification. A verification waiver should show the Decision Packet that records the user-owned waiver when required, `verification_gate=waived_by_user`, skipped check, accepted risk, follow-up, relevant refs, and close impact; it does not create detached verification or upgrade assurance.
+
+Use user-facing wording carefully: "self-checked" means the implementing path checked its own work; "detached candidate" means the boundary may qualify but has not yet produced detached assurance; "detached verified" means a passed Eval has valid independence and current inputs; "waived with accepted risk" means close relies on accepted visible risk and must use the risk-accepted close path. These phrases are display wording and do not add `assurance_level` values.
+
+The card must show stale evaluator bundles or baseline drift as an assurance blocker. A stale bundle can remain a reviewed artifact, but it must not be presented as detached verified unless replacement or compatible re-verification has been recorded.
 
 The card must not imply omitted or blocked raw bytes were reviewed. `secret_omitted` can support only visible nonsecret claims; `blocked` is unavailable input unless a documented resolution exists.

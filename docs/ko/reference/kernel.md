@@ -353,7 +353,7 @@ Evidence Manifest는 acceptance criteria 또는 completion conditions를 근거 
 
 ### Eval
 
-Eval은 검증 result record입니다. verification target, verdict, checks performed, evidence reviewed, independence qualifier, baseline relationship, blockers, artifact references를 기록합니다. Eval verdict만으로 assurance가 올라가지 않습니다. `assurance_level=detached_verified`에는 passed verification result, valid independence qualifier, same-session self-review violation 없음이 필요합니다.
+Eval은 검증 result record입니다. verification target, verdict, checks performed, evidence reviewed, independence qualifier, baseline relationship, bundle freshness, blockers, artifact references를 기록합니다. Eval verdict만으로 assurance가 올라가지 않습니다. `assurance_level=detached_verified`에는 passed verification result, valid independence qualifier, current baseline and bundle inputs, same-session self-review violation 없음이 필요합니다.
 
 ### Manual QA
 
@@ -568,25 +568,27 @@ Mapping examples:
 not_required | required | pending | passed | failed | waived_by_user | blocked
 ```
 
-`verification_gate=waived_by_user`는 사용자가 remaining verification risk를 accepted했다는 기록입니다. Policy 또는 user-owned risk가 Decision Packet을 요구하면 waiver는 관련 verification-waiver Decision Packet을 참조해야 합니다. 이 값은 `assurance_level=detached_verified`가 되면 안 됩니다.
+`verification_gate=waived_by_user`는 사용자가 remaining verification risk를 accepted했다는 기록입니다. Policy 또는 user-owned risk가 Decision Packet을 요구하면 waiver는 관련 verification-waiver Decision Packet을 참조해야 합니다. 이 waiver에 의존하는 close는 visible and accepted Residual Risk refs가 있는 risk-accepted path를 사용해야 하며, `assurance_level=detached_verified` 또는 `close_reason=completed_verified`가 되면 안 됩니다.
 
 ### Verification Independence Profiles
 
-Verification independence profiles는 Eval이 detached assurance를 뒷받침하기 전에 필요한 minimum qualification을 설명합니다.
+Verification independence profiles는 Eval이 detached assurance를 뒷받침하기 전에 필요한 minimum qualification을 설명합니다. Self-check는 independence profile이 아닙니다. 구현 경로가 자기 결과를 확인하는 것이며 `self_checked`만 뒷받침할 수 있습니다. 아래 profile들은 Eval 또는 verifier context를 설명합니다. Candidate profile도 passed Eval, fresh inputs, Core acceptance가 있어야 detached assurance를 만들 수 있습니다.
 
 | Profile | Minimum qualification |
 |---|---|
-| `same_session` | Not detached. Self-check, Spec Compliance Review notes, Code Quality / Stewardship Review notes를 record할 수 있다. `detached_verified`를 만들면 안 된다. |
-| `subagent_context` | Not detached by default. May qualify only if the implementation context, Write Authorization context, and reviewed bundle satisfy a stricter profile; otherwise treat as not detached. |
-| `fresh_session` | Detached candidate if the evaluator receives a task/evidence bundle rather than continuing lead chat context, reviews the Evidence Manifest and changed files, and records an Eval. |
-| `fresh_worktree` | Detached candidate if the evaluator checks baseline, changed paths, artifacts, and Evidence Manifest in a separate worktree or equivalent isolated repository state. |
-| `sandbox` | Detached or isolated candidate if execution and verification happen across a meaningful process/filesystem boundary and artifacts are captured. |
-| `manual_bundle` | Detached candidate if the evaluator receives task summary, acceptance criteria, Change Unit scope, approval scope, diff/log/test artifacts, Evidence Manifest, known risks, and records a verdict. |
+| `same_session` | Detached가 아닙니다. 같은 chat, 같은 active context, Role Lens review, Spec Compliance Review, Code Quality / Stewardship Review, lead-agent self-review는 useful notes를 기록할 수 있지만 `detached_verified`를 만들면 안 됩니다. |
+| `subagent_context` | 기본적으로 detached가 아닙니다. Lead context, prompt state, working tree, write authority를 물려받은 subagent는 assurance 관점에서 여전히 same-context입니다. Implementation context, Write Authorization context, baseline, reviewed bundle이 `fresh_session`, `fresh_worktree`, `sandbox`, `manual_bundle` 중 더 엄격한 profile을 충족할 때만 qualify할 수 있으며, 그렇지 않으면 self-check 또는 same-session review로 다룹니다. |
+| `fresh_session` | Evaluator가 lead chat context를 이어받지 않고 task/evidence bundle에서 시작하며, Evidence Manifest와 changed files를 검토하고 Eval을 기록하고 current baseline relation을 기록하면 detached candidate입니다. |
+| `fresh_worktree` | Evaluator가 separate worktree 또는 equivalent isolated repository state에서 baseline, changed paths, artifacts, Evidence Manifest를 확인하고 drift 관찰 여부를 기록하면 detached candidate입니다. |
+| `sandbox` | Execution과 verification이 meaningful process/filesystem boundary를 사이에 두고 일어나며 artifact capture가 가능하고 write capability 또는 escape path가 공개되면 detached 또는 isolated candidate입니다. |
+| `manual_bundle` | Evaluator가 task summary, acceptance criteria, Change Unit scope, approval scope, diff/log/test artifacts, Evidence Manifest, known risks, baseline relation을 받고 unreviewed lead-session context에 의존하지 않은 verdict를 기록하면 detached candidate입니다. |
 
 Rules:
 
 - Eval verdict alone does not upgrade assurance.
-- Valid independence, passed verification, same-session self-review violation 없음이 함께 있어야 `assurance_level=detached_verified`가 됩니다.
+- Valid independence, passed verification, current baseline/bundle inputs, same-session self-review violation 없음이 함께 있어야 `assurance_level=detached_verified`가 됩니다.
+- Stale evaluator bundle, stale baseline, bundle 생성 이후 changed files, changed Evidence Manifest, approval/Decision Packet drift, missing artifact, failed artifact integrity는 replacement bundle/Eval이 기록되거나 evaluator가 changed inputs를 다시 검증하기 전까지 detached assurance를 차단합니다.
+- `baseline_reverified=true`는 evaluator가 baseline relation을 확인했다는 근거입니다. Observed drift, missing artifacts, invalid independence, stale source bundle을 override하지 않습니다.
 - User verification 면제는 `completed_verified`가 아니라 `completed_with_risk_accepted`로 close해야 합니다.
 - Product files에 write할 수 있는 verifier는 Eval independence context에서 그 사실을 disclose해야 합니다. Write capability는 confidence를 낮출 수 있고 additional guard 또는 bundle review를 요구할 수 있습니다.
 
@@ -672,6 +674,15 @@ none | self_checked | detached_verified
 
 Assurance는 Approval, QA, 결과 수락이 아닙니다. Runs, 근거, Eval records, verification independence가 뒷받침하는 technical checking level을 요약합니다.
 
+사용자에게 보이는 표시는 새로운 `assurance_level` 값을 만들면 안 됩니다. 일반 표현은 다음처럼 사용합니다.
+
+| 사용자 표시 문구 | 의미 |
+|---|---|
+| `self-checked` | 구현 경로가 recorded evidence, focused command, review note로 자기 결과를 확인했다는 뜻입니다. Detached verification은 아닙니다. |
+| `detached candidate` | Verification launch, bundle, Eval이 독립적일 가능성이 있는 경계를 사용했지만, passed Eval이 valid independence와 current inputs를 갖기 전에는 detached assurance가 생기지 않았다는 뜻입니다. |
+| `detached verified` | Valid independence, current baseline and bundle inputs, same-session self-review violation 없음이 있는 passed Eval이 `assurance_level=detached_verified`를 뒷받침한다는 뜻입니다. |
+| `waived with accepted risk` | Verification이 waived된 경우를 포함해, 사용자가 보이는 close-relevant risk를 accepted했다는 뜻입니다. 이는 risk-accepted close를 사용하며 detached verification을 만들지 않습니다. |
+
 이 state diagram은 주요 `lifecycle_phase` values를 orient하기 위한 것입니다. Gate effects와 detailed transition conditions는 아래 transition table이 기준입니다.
 
 ```mermaid
@@ -735,9 +746,9 @@ stateDiagram-v2
 |---|---|
 | Advisor completed | active Run 없음; product write pending 없음; 해소되지 않은 blocking Decision Packet 없음; `result=advice_only`; `close_reason=completed_self_checked` |
 | Direct self-checked | active Run 없음; active Change Unit이 completed 상태이거나 non-write direct에는 필요 없음; write scope passed; blocking Decision Packets가 close에 대해 해소되었거나 유효하게 deferred됨; required approval granted; required evidence sufficient; `assurance_level=self_checked`; `close_reason=completed_self_checked` |
-| Direct verified | direct self-checked 요구사항과 valid passed detached verification; `assurance_level=detached_verified`; `close_reason=completed_verified` |
-| Work verified | active Run 없음; Change Unit complete 또는 명시적으로 deferred; scope passed; blocking Decision Packets 해소됨; approval not required 또는 granted; design passed 또는 waived; evidence sufficient; verification passed with valid independence; 필요하면 QA passed 또는 waived; residual risk가 표시되었거나 `ResidualRiskSummary.status=none`이 acceptance 전에 confirmed; 필요하면 acceptance accepted; `close_reason=completed_verified` |
-| Work risk accepted | scope, approval, design, evidence, QA, acceptance에 대한 work close 요구사항이 satisfied; verification은 `waived_by_user`일 수 있음; blocking decisions가 해소되었거나 residual-risk 표시와 함께 유효하게 deferred됨; 표시되고 accepted된 Residual Risk refs가 기록됨; assurance는 `none` 또는 `self_checked`여야 함; `close_reason=completed_with_risk_accepted` |
+| Direct verified | direct self-checked 요구사항과 current baseline and bundle inputs가 있는 valid passed detached verification; `assurance_level=detached_verified`; `close_reason=completed_verified` |
+| Work verified | active Run 없음; Change Unit complete 또는 명시적으로 deferred; scope passed; blocking Decision Packets 해소됨; approval not required 또는 granted; design passed 또는 waived; evidence sufficient; verification passed with valid independence and current baseline/bundle inputs; 필요하면 QA passed 또는 waived; residual risk가 표시되었거나 `ResidualRiskSummary.status=none`이 acceptance 전에 confirmed; 필요하면 acceptance accepted; `close_reason=completed_verified` |
+| Work risk accepted | scope, approval, design, evidence, QA, acceptance에 대한 work close 요구사항이 satisfied; verification은 `waived_by_user`일 수 있음; blocking decisions가 해소되었거나 residual-risk 표시와 함께 유효하게 deferred됨; verification이 waived된 경우 verification risk를 포함해 표시되고 accepted된 Residual Risk refs가 기록됨; assurance는 `none` 또는 `self_checked`여야 함; `close_reason=completed_with_risk_accepted` |
 | Cancelled | no active write in progress; `result=cancelled`; `close_reason=cancelled` or `superseded` |
 
 ### Transition table
@@ -805,10 +816,10 @@ Stable event names는 MVP conformance fixtures가 `expected_events`에서 요구
 | Evidence required but absent | `executing` or `verifying` | `blocked` | `evidence_gate=none` or `partial` |
 | Evidence가 최신이 아니게 됨 | any non-terminal phase | `blocked` 또는 `stale` gate가 있는 current phase | `evidence_gate=stale` |
 | Verification launched | `verifying` | `verifying` | evaluator Run or bundle recorded |
-| Eval passed with valid independence | `verifying` | `qa`, `waiting_user`, or same phase with close eligibility | `verification_gate=passed`; assurance may become `detached_verified` |
-| Eval passed without valid independence | `verifying` | `verifying` or `blocked` | no detached assurance upgrade |
+| Eval passed with valid independence and current inputs | `verifying` | `qa`, `waiting_user`, or same phase with close eligibility | `verification_gate=passed`; assurance may become `detached_verified` |
+| Eval passed without valid independence or with stale inputs | `verifying` | `verifying` or `blocked` | no detached assurance upgrade |
 | Eval failed | `verifying` | `executing`, `shaping`, or `blocked` | `verification_gate=failed` |
-| User accepts verification risk | `waiting_user` or `verifying` | same phase with close eligibility | `verification_gate=waived_by_user`; no detached assurance |
+| User accepts verification risk | `waiting_user` or `verifying` | same phase with risk-accepted close eligibility | `verification_gate=waived_by_user`; close에는 accepted Residual Risk refs 필요; detached assurance 없음 |
 | Residual risk accepted | `waiting_user`, `verifying`, or `qa` | same phase with close eligibility or `waiting_user` | Residual Risk 수용 기록됨; related Decision Packet은 해소되거나 deferred될 수 있음; detached assurance upgrade 없음 |
 | Manual QA requested | any non-terminal phase | `qa` or `waiting_user` | `qa_gate=pending` |
 | Manual QA passed | `qa` or `waiting_user` | same phase with close eligibility or `waiting_user` | `qa_gate=passed` |
@@ -913,9 +924,9 @@ Decision algorithm은 다음과 같습니다.
 7. `approval_gate`를 확인합니다. Sensitive changes에는 drift나 expiry가 없는 granted approval이 필요합니다.
 8. `design_gate`를 확인합니다. Required design gates는 passed이거나 validly waived되어야 합니다. Stale, blocked, pending, partial required design gates는 policy가 recorded waiver로 convert하지 않는 한 close를 차단합니다.
 9. `evidence_gate`를 확인합니다. 근거가 required인 곳에서는 `sufficient`만 successful close를 허용합니다.
-10. `verification_gate`를 확인합니다. Work에는 passed detached verification 또는 explicit user verification 면제가 필요합니다. Direct work는 기본적으로 not required이지만 optional passed detached verification은 assurance를 높일 수 있습니다. Passed Spec Compliance Review와 Code Quality / Stewardship Review display를 포함한 same-session review는 detached assurance를 만들 수 없습니다. Verification 면제는 detached verification과 별개이며 `assurance_level=detached_verified`에 기여할 수 없습니다.
+10. `verification_gate`를 확인합니다. Work에는 passed detached verification 또는 explicit user verification 면제가 필요합니다. Direct work는 기본적으로 not required이지만 optional passed detached verification은 assurance를 높일 수 있습니다. Passed Spec Compliance Review와 Code Quality / Stewardship Review display를 포함한 same-session review는 detached assurance를 만들 수 없습니다. Stale bundle, stale baseline, changed reviewed inputs, invalid independence가 있는 detached candidate는 unsatisfied로 남습니다. Verification 면제는 detached verification과 별개이며 `assurance_level=detached_verified`에 기여할 수 없습니다.
 11. `qa_gate`를 확인합니다. Required QA는 passed이거나 validly waived되어야 합니다. Manual QA record result만으로는 kernel이 `qa_gate`에 aggregate하지 않는 한 gate를 close하지 않습니다.
-12. Close-relevant residual risk를 확인합니다. Known close-relevant Residual Risk가 없으면 `ResidualRiskSummary.status=none`이 residual-risk 표시 요구를 충족합니다. Known close-relevant Residual Risk가 있으면 successful close 전에 current judgment context에서 표시되어야 합니다. Risk-accepted close에는 acceptance 전에 user에게 표시했던 risk를 가리키는 accepted Residual Risk refs가 추가로 필요합니다. Verification risk acceptance는 추가로 `verification_gate=waived_by_user`를 set합니다.
+12. Close-relevant residual risk를 확인합니다. Known close-relevant Residual Risk가 없으면 `ResidualRiskSummary.status=none`이 residual-risk 표시 요구를 충족합니다. Known close-relevant Residual Risk가 있으면 successful close 전에 current judgment context에서 표시되어야 합니다. Risk-accepted close에는 acceptance 전에 user에게 표시했던 risk를 가리키는 accepted Residual Risk refs가 추가로 필요합니다. Verification waiver는 accepted close-relevant risk의 한 종류입니다. 이는 `verification_gate=waived_by_user`를 set하고 `completed_with_risk_accepted`로만 close할 수 있습니다.
 13. `acceptance_gate`를 확인합니다. Required acceptance는 닫기에 영향을 주는 남은 위험이 current judgment context에서 표시되거나 `ResidualRiskSummary.status=none`으로 확인된 뒤에만 record될 수 있습니다. Rejection은 Task를 shaping, execution, cancellation로 돌립니다.
 14. `assurance_level`, `result`, `close_reason`을 부여합니다.
     - advisor completion: `result=advice_only`, `assurance_level=none`, `close_reason=completed_self_checked`
@@ -935,11 +946,13 @@ Decision algorithm은 다음과 같습니다.
 
 `completed_with_risk_accepted`는 verification risk가 waived된 경우를 포함해 사용자가 닫기에 영향을 주는 남은 위험을 accepted했다는 뜻입니다. 이는 explicit risk가 있는 successful close이지 detached verification이 아닙니다.
 
+`detached candidate`는 모든 independence와 freshness check를 통과하면 detached assurance를 뒷받침할 수 있는 verification attempt 또는 Eval context를 표시하는 말입니다. Close reason도 아니고 `assurance_level`도 아닙니다.
+
 Residual-risk acceptance는 알려진 남은 위험이 requested close를 위해 표시되었고 accepted되었다는 뜻입니다. Assurance를 `detached_verified`로 높이지 않으며, 별도 gate가 함께 satisfied되지 않는 한 detached verification, Manual QA, sensitive approval, final acceptance를 뜻하지 않습니다.
 
 `ResidualRiskSummary.status=none`은 accept할 known close-relevant residual risk가 없다는 뜻입니다. Ordinary close와 acceptance의 visibility는 충족하지만 accepted risk가 아니며 `completed_with_risk_accepted`를 지원할 수 없습니다.
 
-사용자에게 보이는 close wording은 이 구분을 보존해야 합니다. `completed_verified`와 `completed_self_checked`는 일반 successful close reason이고, `completed_with_risk_accepted`는 명시적으로 accepted risk가 있는 successful close입니다. Status, report, Journey view, final summary는 risk-accepted close를 일반적인 "done" 또는 "verified" message로 뭉개면 안 됩니다.
+사용자에게 보이는 close wording은 이 구분을 보존해야 합니다. `completed_verified`와 `completed_self_checked`는 일반 successful close reason이고, `completed_with_risk_accepted`는 명시적으로 accepted risk가 있는 successful close입니다. Status, report, Journey view, final summary는 risk-accepted close를 일반적인 "done" 또는 "verified" message로 뭉개면 안 됩니다. 권장 표시 문구는 [Assurance Level](#assurance-level)에 정의한 "self-checked", "detached candidate", "detached verified", "waived with accepted risk"입니다.
 
 `cancelled`는 Task가 passed result 없이 중단되었다는 뜻입니다.
 
@@ -962,7 +975,7 @@ Waivers는 reason, actor, time, 영향받는 gate와 함께 기록해야 하는 
 - Completion에 근거가 required인 경우의 evidence waiver.
 - Acceptance가 required인 경우의 acceptance waiver.
 
-Verification waiver는 detached verification이 아닙니다. Verification waiver로 close한 Task는 `close_reason=completed_with_risk_accepted`와 `assurance_level=none` 또는 `self_checked`를 사용합니다.
+Verification waiver는 detached verification이 아닙니다. Verification waiver로 close한 Task는 `close_reason=completed_with_risk_accepted`와 `assurance_level=none` 또는 `self_checked`를 사용합니다. Accepted verification risk가 visible close-relevant Residual Risk refs에 기록되지 않았다면 close는 `completed_verified`나 `completed_self_checked`로 fallback하지 않고 blocked 상태로 남습니다.
 
 QA waiver는 Manual QA pass, verification, acceptance, assurance upgrade가 아닙니다. 이는 이름 붙은 QA requirement가 validly waived되었다는 것만 기록하며, evidence, verification, acceptance, residual-risk check는 각각의 gate에 남습니다.
 
@@ -977,7 +990,7 @@ Decision deferral은 waiver가 아닙니다. Deferred Decision Packet은 affecte
 | Sensitive change에는 explicit approval이 필요합니다. | `prepare_write`는 sensitive categories를 감지하고 approval gate와 approval scope를 확인하며, denied, expired, missing, drifted approval을 차단합니다. Approval은 sensitive scope 밖의 사용자 소유 판단을 충족할 수 없습니다. |
 | 차단하는 사용자 소유 판단에는 기록된 Decision Packet이 필요합니다. | `decision_gate`, `prepare_write`, `record_run`, `close_task`는 차단하는 사용자 소유 판단에 대해 기준 Decision Packet을 요구합니다. 해소되지 않았거나 incompatible한 blocking packets는 영향받는 write와 close를 막습니다. |
 | 근거가 required인 곳에서는 completion에 근거 coverage가 필요합니다. | 근거가 적용될 때 `close_task`는 `evidence_gate=sufficient`를 요구합니다. Required evidence는 passed completion을 위해 waive할 수 없습니다. |
-| Work는 detached verification을 자체 인증할 수 없습니다. | `detached_verified`에는 Eval과 valid independence가 필요합니다. Same-session review와 verification 면제는 assurance를 높일 수 없습니다. |
+| Work는 detached verification을 자체 인증할 수 없습니다. | `detached_verified`에는 Eval, valid independence, current baseline/bundle inputs가 필요합니다. Self-check, same-session review, stale bundle review, verification 면제는 assurance를 높일 수 없습니다. |
 | Required QA와 acceptance는 별도 gate입니다. | `qa_gate`와 `acceptance_gate`는 독립적으로 확인합니다. Manual QA records는 acceptance를 뜻하지 않고, acceptance는 QA를 뜻하지 않습니다. |
 | Projection은 기준 상태를 override할 수 없습니다. | Projection edits는 reconcile items를 만듭니다. Projection 최신성은 display와 delivery에 영향을 주지만 그 자체로 기준 result를 바꾸지 않습니다. |
 
@@ -1016,6 +1029,8 @@ Decision deferral은 waiver가 아닙니다. Deferred Decision Packet은 affecte
 | `verification_gate=waived_by_user` with `assurance_level=detached_verified` | 상태 전이 reject |
 | Same-session review producing `assurance_level=detached_verified` | reject assurance upgrade |
 | Eval verdict passed without valid independence producing `detached_verified` | reject assurance upgrade |
+| Stale evaluator bundle, stale baseline, missing artifact, drifted reviewed input에서 온 passed Eval verdict가 `detached_verified`를 만듦 | input이 repair되거나 새 compatible Eval로 reverified될 때까지 assurance upgrade reject |
+| Verification waiver가 `close_reason=completed_verified`로 close되거나 visible accepted Residual Risk refs 없이 close됨 | risk-accepted close 요구사항이 satisfied될 때까지 close reject 또는 block |
 | `qa_gate=waived` without waiver reason | reject waiver |
 | Completed passed result with required `qa_gate=pending` or `failed` | block close |
 | Completed passed result with required `acceptance_gate=pending` or `rejected` | block close |

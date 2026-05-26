@@ -4,6 +4,8 @@
 
 검증 결과와 독립성 맥락을 함께 읽기 쉽게 보여줘야 할 때 `EVAL`을 사용합니다.
 
+이 문서는 template 참조 문서입니다. 재설계 문서가 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 구현/증명 대상은 계속 Kernel Smoke입니다. Agency-Hardened MVP와 post-MVP automation은 owner 문서가 승격하고 증명하기 전까지 범위 밖입니다.
+
 ## 기준 기록
 
 - Eval 기록
@@ -11,7 +13,7 @@
 - verdict
 - independence qualifier
 - 자체 확인(self-check)과 detached verification 경계
-- baseline relationship
+- baseline relationship과 evaluator-bundle freshness
 - performed check
 - 검토한 근거(evidence)
 - blocker
@@ -59,6 +61,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - verdict: passed | failed | blocked | inconclusive
 - assurance impact:
 - verification gate impact:
+- detached candidate status:
 - self-check vs detached boundary:
 - Manual QA impact:
 - acceptance impact:
@@ -72,6 +75,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - write capable:
 - product file write allowed:
 - baseline verified:
+- bundle freshness:
 - repo drift observed:
 - source input: chat_history | task_summary | bundle | allowed_raw_artifacts | refs_with_redaction_notes
 - source bundle:
@@ -160,8 +164,10 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## 메모
 
-Eval verdict만으로는 assurance를 높일 수 없습니다. `detached_verified`에는 valid independence, passed verification, same-session self-review violation 부재가 필요합니다.
+Eval verdict만으로는 assurance를 높일 수 없습니다. `detached_verified`에는 valid independence, passed verification, current baseline and bundle inputs, same-session self-review violation 부재가 필요합니다.
 
-Independence가 유효하지 않거나 같은 세션 자체 확인(self-check)에 그치는 review라면 그 경계를 명시하고 detached assurance는 그대로 둡니다.
+Independence가 유효하지 않거나 같은 세션 자체 확인(self-check)에 그치는 review라면 그 경계를 명시하고 detached assurance는 그대로 둡니다. `subagent_context` review는 기본적으로 detached가 아닙니다. 기록된 context가 `fresh_session`, `fresh_worktree`, `sandbox`, `manual_bundle` 요구를 충족할 때만 detached candidate로 렌더링합니다.
+
+Evaluator bundle, baseline, included artifacts, Evidence Manifest, approval/Decision Packet refs, close-relevant Residual Risk refs가 stale이면 stale input을 렌더링하고 replacement 또는 compatible re-verification이 기록될 때까지 assurance를 그대로 둡니다.
 
 Eval projection은 생략되었거나 차단된 원본 bytes를 검토한 것처럼 암시하면 안 됩니다. `secret_omitted` evidence는 보이는 nonsecret claim만 뒷받침할 수 있습니다. Eval이 `blocked` payload에 의존한다면 replacement, waiver, Decision Packet outcome, 받아들인 위험, documented fallback이 verification 경로를 해소할 때까지 result는 `blocked` 또는 `inconclusive`로 남거나 `EVIDENCE_INSUFFICIENT`를 반환해야 합니다.

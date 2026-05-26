@@ -1194,7 +1194,7 @@ BaselineCapture:
   captured_at: string
 ```
 
-관련 HEAD, dirty diff, allowed path contents, Approval 범위, verification bundle inputs가 captured baseline과 더 이상 match하지 않으면 baseline은 `stale`입니다. 최신이 아닌 baseline은 affected records에 따라 Approval, evidence, verification을 `stale`로 표시할 수 있습니다.
+관련 HEAD, dirty diff, allowed path contents, Approval 범위, verification bundle inputs가 captured baseline과 더 이상 match하지 않으면 baseline은 `stale`입니다. 최신이 아닌 baseline은 affected records에 따라 Approval, evidence, verification을 `stale`로 표시할 수 있습니다. Verification에서는 baseline drift가 있으면 changed inputs를 다시 bundle로 만들거나 새 compatible Eval이 명시적으로 reverify하기 전까지 launched bundle 또는 Eval이 detached assurance를 뒷받침할 수 없습니다.
 
 ```mermaid
 flowchart LR
@@ -1279,6 +1279,8 @@ flowchart TD
 ```
 
 Manifest는 task id, Change Unit id, baseline ref, source state version, included artifact ids, redaction summary, evaluator focus, expected independence context를 기록합니다. Bundle은 retention과 redaction policy가 허용하면 copied 원본 artifact를 포함할 수 있고, 그렇지 않으면 evaluator가 Harness를 통해 찾을 수 있는 artifact refs를 포함합니다. `redaction_state=secret_omitted` 또는 `redaction_state=blocked`인 artifact는 숨겨진 원본 bytes가 아니라 ref와 redaction/omission/block note로만 표현됩니다.
+
+Verification bundle은 baseline ref, source state version, included artifacts, artifact links, Evidence Manifest, approval/Decision Packet refs, close-relevant Residual Risk refs가 검증 대상 Task state와 더 이상 match하지 않으면 stale입니다. Staleness는 별도 bundle state record나 새 verification gate value를 만들지 않습니다. Bundle은 audit/evidence material로 등록된 채 남을 수 있지만, `harness.launch_verify`가 replacement bundle을 만들거나 `harness.record_eval`이 changed inputs의 compatible re-verification을 기록하기 전에는 `assurance_level=detached_verified`를 뒷받침할 수 없습니다.
 
 Launching verification은 `verification_gate=pending`을 설정하거나 유지합니다. Verdict를 기록하고 assurance를 업데이트할 수 있는 것은 `harness.record_eval`뿐입니다.
 

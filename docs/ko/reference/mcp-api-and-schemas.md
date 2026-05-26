@@ -1471,6 +1471,8 @@ AcceptedRiskInput:
 
 Payload branch는 `decision_kind`와 일치해야 하며, 다른 branch는 absent여야 합니다. 선택된 branch, selected option, compatible Decision Packet이 기록되는 judgment를 결정합니다. "approved", "go ahead", "진행해" 같은 자유로운 note text는 이를 approval, acceptance, waiver, residual-risk acceptance, write authority로 넓힐 수 없습니다. `accepted_risks`는 Decision Packet과 current Judgment Context가 user decision 전에 close-relevant residual risk를 보이게 만든 경우에만 allowed입니다. `decision_kind=acceptance`에서 Core는 close-relevant residual risk가 보이거나 `ResidualRiskSummary.status=none`이 no known close-relevant risk를 confirm한 경우에만 acceptance를 record할 수 있습니다. Core는 `decision_packet_id`가 식별하는 기준 `DecisionPacket`에 answer를 record합니다. 모든 `decision_requests` row는 routing/replay metadata로만 update되며 linked compatible Decision Packet과 owner-record update 없이는 `decision_gate`, approval, acceptance, waiver, Residual Risk 수용, close를 충족할 수 없습니다. Core는 Residual Risk record를 update하고 residual-risk 상태 참조를 반환하여 accepted risk를 기록하며, risk acceptance를 detached verification으로 취급하지 않습니다. `AcceptedRiskInput.residual_risk_ref=null`은 current Decision Packet과 Judgment Context가 해당 close-relevant risk를 이미 사용자에게 보이게 만들고, Core가 같은 기록된 transition 안에서 Residual Risk record를 생성하거나 associate할 수 있을 만큼 충분한 source/evidence context를 포함할 때만 allowed입니다. Visibility 또는 context가 없으면 Core는 hidden risk를 조용히 create하고 accept하지 말고 reject 또는 block해야 합니다.
 
+`decision_kind=verification_waiver`에서 `decision.verification_waiver.value=waived`는 위 Decision Packet과 Residual Risk path를 통해서만 accepted verification risk를 기록합니다. 그 risk가 close-relevant라면 `accepted_risks`는 나중의 `completed_with_risk_accepted` close에 필요한 visible Residual Risk refs를 식별하거나 만들 수 있어야 합니다. Verification-waiver decision은 assurance를 update하면 안 되고, detached verification을 만들면 안 되며, `completed_verified` close를 허용하면 안 됩니다.
+
 Response schema:
 
 ```yaml
@@ -1525,6 +1527,8 @@ LaunchVerifyRequest:
 
 `include_artifacts`는 bundle에 포함하거나 link할 already registered evidence를 reference합니다. `bundle_artifact_input`은 optional입니다. `null`이면 Core가 verification bundle을 assemble하고 등록합니다. 값이 있으면 Core가 supplied staged bundle을 검증하고 등록합니다. `secret_omitted` entry는 ref와 omission note 또는 handle로 포함하고, `blocked` entry는 unavailable-input notice로만 포함합니다. Verification path가 replacement, waiver, Decision Packet outcome, accepted risk, 또는 다른 documented resolution을 기록하지 않는 한 이는 `EVIDENCE_INSUFFICIENT`로 이어질 수 있습니다.
 
+`verification_mode`는 detached-candidate launch path만 나열합니다. Self-check와 same-session review는 `harness.launch_verify`가 아니라 Run/Eval context로 기록합니다. `subagent_context`도 기본적으로 detached가 아니므로 launch mode가 아닙니다. Subagent가 실제로 더 엄격한 boundary를 충족한다면 launch는 그 stricter mode를 기록하고 `harness.record_eval`이 final independence context를 기록합니다.
+
 Returned `bundle_ref`는 보통 `kind=bundle` 또는 `kind=manifest`를 가진 `ArtifactRef`입니다. Artifact link는 Task, launching Run, Evidence Manifest, Eval, 렌더링된 Task-scoped projection 같은 existing owner 기록을 가리켜야 하며 `verification_bundle` state 기록을 만들지 않습니다.
 
 Response schema:
@@ -1542,6 +1546,8 @@ LaunchVerifyResponse:
 ```
 
 State transition summary: verification launch를 record하고, `verification_gate=pending`을 set 또는 keep하며, evaluator run/bundle reference를 생성합니다.
+
+Launch는 detached candidate를 만들 뿐 detached assurance를 만들지 않습니다. Eval이 기록되기 전에 source state version, baseline ref, included artifacts, Evidence Manifest, approval/Decision Packet refs, close-relevant Residual Risk refs가 drift하면 bundle은 assurance 관점에서 stale입니다. Stale bundle은 artifact로 등록된 채 남을 수 있지만, `harness.record_eval`에서 replacement 또는 compatible re-verification 없이는 `assurance_level=detached_verified`를 뒷받침할 수 없습니다.
 
 implementation-local detail/audit를 위해 반환될 수 있는 non-stable EventRef values: `verification_launched`, `verification_bundle_created`, `evaluator_run_created`.
 
@@ -1592,6 +1598,19 @@ RecordEvalRequest:
 
 Eval evidence review는 artifact redaction semantics를 보존해야 합니다. `secret_omitted` artifact는 보이는 nonsecret fact에 대해서만 Eval finding을 뒷받침할 수 있습니다. `blocked` artifact는 원본 evidence가 아니라 사용할 수 없는 입력 notice로 검토됩니다. Blocked payload에 의존하는 Eval은 valid replacement 또는 documented resolution이 생길 때까지 `blocked` 또는 `inconclusive`여야 하거나 `EVIDENCE_INSUFFICIENT`를 반환해야 합니다.
 
+`independence.context` 값은 assurance와 별개입니다.
+
+| Context | Assurance effect |
+|---|---|
+| `same_session` | Self-check 또는 same-session review입니다. Useful finding은 기록할 수 있지만 `verdict=passed`가 `detached_verified`를 set하면 안 됩니다. |
+| `subagent_context` | 기본적으로 detached가 아닙니다. Recorded facts가 subagent가 더 엄격한 `fresh_session`, `fresh_worktree`, `sandbox`, `manual_bundle` boundary를 충족했음을 보여 줄 때만 detached assurance를 뒷받침할 수 있습니다. |
+| `fresh_session` | Evaluator가 lead chat context를 이어받지 않고 task/evidence bundle에서 시작할 때 detached candidate입니다. |
+| `fresh_worktree` | Evaluator가 separate worktree 또는 equivalent isolated repository state에서 work를 확인할 때 detached candidate입니다. |
+| `sandbox` | Verification boundary와 artifact capture가 meaningful하고 write capability가 disclosed되면 detached 또는 isolated candidate입니다. |
+| `manual_bundle` | Evaluator가 unreviewed lead-session context에 의존하지 않고 complete bundle을 검토할 때 detached candidate입니다. |
+
+`verdict=passed`는 assurance upgrade에 필요하지만 충분하지 않습니다. Core는 Eval이 passed이고, independence가 valid이고, same-session guard가 통과하고, artifacts가 available and intact이고, baseline/bundle inputs가 current이거나 명시적으로 reverified된 경우에만 `assurance_updated=true`를 set할 수 있습니다. `baseline_reverified=true`는 evaluator의 baseline check를 기록하지만 known drift, stale bundle inputs, missing artifacts, invalid independence를 override하지 않습니다.
+
 Response schema:
 
 ```yaml
@@ -1605,7 +1624,7 @@ RecordEvalResponse:
   next_action: string
 ```
 
-State transition summary: Eval을 record합니다. Passed detached verification은 `verification_gate=passed`와 `assurance_level=detached_verified`를 set할 수 있습니다. Failed 또는 blocked Eval은 gate를 failed/blocked로 옮깁니다. Same-session 또는 invalid independence는 assurance를 높일 수 없습니다.
+State transition summary: Eval을 record합니다. Valid independence와 current inputs가 있는 passed detached verification은 `verification_gate=passed`와 `assurance_level=detached_verified`를 set할 수 있습니다. Failed 또는 blocked Eval은 gate를 failed/blocked로 옮깁니다. Same-session, invalid independence, stale evaluator bundle, baseline drift, missing/failed-integrity artifacts는 assurance를 높일 수 없습니다.
 
 반환될 수 있는 stable EventRef values: `eval_recorded`, `verification_passed`, `verify_not_detached_detected`.
 
@@ -1705,7 +1724,7 @@ CloseTaskRequest:
   superseded_by_task_id: string | null
 ```
 
-`CloseTaskRequest`는 accepted-risk refs를 전달하지 않습니다. `completed_with_risk_accepted`에서는 Core가 close-relevant Residual Risk records에 이미 기록된 수용 상태를 읽으며, visible accepted residual-risk 상태가 없으면 block합니다.
+`CloseTaskRequest`는 accepted-risk refs를 전달하지 않습니다. `completed_with_risk_accepted`에서는 Core가 close-relevant Residual Risk records에 이미 기록된 수용 상태를 읽으며, visible accepted residual-risk 상태가 없으면 block합니다. `verification_gate=waived_by_user`이면 completion은 `completed_with_risk_accepted`를 request해야 합니다. Waiver는 detached verification이 아니므로 `completed_verified`는 계속 blocked입니다.
 
 Response schema:
 
@@ -1724,6 +1743,8 @@ CloseTaskResponse:
 ```
 
 Close blockers에는 해소되지 않았거나 missing, deferred-without-coverage, blocked, rejected, `stale`, incompatible 상태인 blocking Decision Packets와, successful close 전에 표시되지 않은 known close-relevant residual risk가 포함됩니다. Known close-relevant residual risk가 없으면 `ResidualRiskSummary.status=none`이 residual-risk visibility를 충족하며 close blocker가 아닙니다. Risk-accepted close에는 표시되고 수용된 Residual Risk refs가 추가로 필요합니다. Acceptance가 required인 경우 close-relevant residual risk가 표시되거나 `ResidualRiskSummary.status=none`으로 confirmed된 뒤에만 acceptance를 record할 수 있습니다.
+
+`requested_close_reason=completed_verified`의 blockers에는 same-session review, invalid 또는 insufficient independence, stale evaluator bundle, baseline drift, missing 또는 failed-integrity reviewed artifacts, verification waiver가 포함됩니다. `requested_close_reason=completed_with_risk_accepted`의 blockers에는 waived 또는 remaining verification risk에 대한 visible accepted Residual Risk refs 누락이 포함됩니다.
 
 `CloseTaskResponse.blockers`가 structured close-blocker result입니다. Report, projection text, status text, agent summary는 이 blockers를 렌더링하거나 설명할 수 있지만, prose-only report를 close blocker record 또는 successful close decision으로 취급하면 안 됩니다.
 

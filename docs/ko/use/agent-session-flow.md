@@ -319,7 +319,16 @@ Evidence가 stale이 되면 이유를 쉬운 말로 말하고 가장 작은 repa
 | 수락 | 그런 판단이 요구되는 경우 사용자가 결과를 받아들이는가. |
 | 남은 위험 | 어떤 불확실성, 한계, 확인하지 못한 조건, 장단점이 남았는가. |
 
-검증은 기술적으로 무엇을 어떻게 확인했는지에 답합니다. 같은 세션에서 하는 자체 검토는 유용할 수 있지만, 분리된 검증은 아닙니다. 테스트 통과는 근거가 될 수 있고 검증을 뒷받침할 수 있지만, 테스트만으로 Manual QA가 수행됐다고 말하면 안 됩니다.
+검증은 기술적으로 무엇을 어떻게 확인했는지에 답합니다. 같은 세션에서 하는 자체 검토는 유용할 수 있지만, 분리된 검증은 아닙니다. 테스트 통과는 근거가 될 수 있고 검증을 뒷받침할 수 있지만, 테스트만으로 Manual QA가 수행됐다고 말하면 안 됩니다. Detached candidate는 valid independence와 current reviewed inputs가 있는 passing Eval이 기록된 뒤에만 detached verified가 됩니다.
+
+사용자 표시 label은 일관되게 사용합니다.
+
+| Label | 사용할 때 |
+|---|---|
+| Self-checked | 구현 경로가 자기 결과를 확인했을 때. |
+| Detached candidate | Fresh session, fresh worktree, sandbox, manual bundle, 또는 qualifying subagent path가 독립적일 수 있지만 아직 detached assurance를 만들지 않았을 때. |
+| Detached verified | Eval이 valid independence, same-session self-review 문제 없음, stale baseline 또는 bundle input 없음으로 pass했을 때. |
+| Waived with accepted risk | Verification 또는 다른 close-relevant check가 waived되었고 보이는 remaining risk가 risk-accepted close를 위해 accepted되었을 때. |
 
 Manual QA는 UX, 흐름, 시각 결과, 문구, 접근성 해석처럼 사람이 봐야 하는 품질을 확인했는지에 답합니다. Manual QA 결과가 실제로 기록되었거나 타당하게 면제된 것이 아니라면 browser smoke, screenshot capture, verifier note를 Manual QA처럼 보여주면 안 됩니다.
 
@@ -327,7 +336,7 @@ Manual QA는 UX, 흐름, 시각 결과, 문구, 접근성 해석처럼 사람이
 
 최종 수락은 Task 경로가 요구할 때 사용자가 결과를 받아들이는 판단입니다. 승인, 검증, QA, 남은 위험을 받아들이는 판단, 정확성 증명과 다릅니다.
 
-Verification waiver와 QA waiver는 assurance를 높이지 않습니다. Verification waiver는 detached verification을 충족하지 않은 상태로 두며, close가 otherwise 허용될 때 accepted verification risk 경로로 닫습니다. QA waiver는 이름 붙인 QA requirement만 닫고 evidence, verification, acceptance, residual-risk 처리는 각각의 gate에 그대로 남깁니다.
+Verification waiver와 QA waiver는 assurance를 높이지 않습니다. Verification waiver는 detached verification을 충족하지 않은 상태로 두며, close가 otherwise 허용될 때 accepted verification risk 경로로 닫습니다. 이를 `completed_verified`로 요약하면 안 됩니다. QA waiver는 이름 붙인 QA requirement만 닫고 evidence, verification, acceptance, residual-risk 처리는 각각의 gate에 그대로 남깁니다.
 
 닫기 적용 예시:
 
@@ -351,7 +360,7 @@ Verification waiver와 QA waiver는 assurance를 높이지 않습니다. Verific
 
 - 범위와 결과가 맞는지
 - 근거가 충분한지 또는 근거 요구가 없는지
-- 검증 상태, 또는 필요한 경우 관련 Decision Packet과 함께 `verification_gate=waived_by_user`
+- stale evaluator bundle 또는 baseline drift가 있으면 이를 포함한 검증 상태, 또는 필요한 경우 관련 Decision Packet과 accepted risk refs가 있는 `verification_gate=waived_by_user`
 - Manual QA 상태 또는 타당한 면제
 - 닫기에 영향을 주는 남은 위험 표시 또는 알려진 닫기 관련 남은 위험(close-relevant residual risk)이 없다는 보고
 - 필요한 경우 최종 수락 기록

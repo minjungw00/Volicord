@@ -4,6 +4,8 @@
 
 Use `EVAL` when Harness needs a readable verification result with independence context.
 
+This is template reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the redesigned docs are accepted. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
+
 ## Source records
 
 - Eval record
@@ -11,7 +13,7 @@ Use `EVAL` when Harness needs a readable verification result with independence c
 - verdict
 - independence qualifier
 - self-check versus detached verification boundary
-- baseline relationship
+- baseline relationship and evaluator-bundle freshness
 - checks performed
 - evidence reviewed
 - blockers
@@ -59,6 +61,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - verdict: passed | failed | blocked | inconclusive
 - assurance impact:
 - verification gate impact:
+- detached candidate status:
 - self-check vs detached boundary:
 - Manual QA impact:
 - acceptance impact:
@@ -72,6 +75,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - write capable:
 - product file write allowed:
 - baseline verified:
+- bundle freshness:
 - repo drift observed:
 - source input: chat_history | task_summary | bundle | allowed_raw_artifacts | refs_with_redaction_notes
 - source bundle:
@@ -160,8 +164,10 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## Notes
 
-An Eval verdict alone does not upgrade assurance. `detached_verified` requires a passed verification with valid independence and no same-session self-review violation.
+An Eval verdict alone does not upgrade assurance. `detached_verified` requires a passed verification with valid independence, current baseline and bundle inputs, and no same-session self-review violation.
 
-If independence is invalid or the review is same-session self-check only, render that boundary explicitly and leave detached assurance unchanged.
+If independence is invalid or the review is same-session self-check only, render that boundary explicitly and leave detached assurance unchanged. A `subagent_context` review is not detached by default; render it as a detached candidate only when the recorded context satisfies `fresh_session`, `fresh_worktree`, `sandbox`, or `manual_bundle` requirements.
+
+If the evaluator bundle, baseline, included artifacts, Evidence Manifest, approval/Decision Packet refs, or close-relevant Residual Risk refs are stale, render the stale input and keep assurance unchanged until replacement or compatible re-verification is recorded.
 
 Eval projections must not imply omitted or blocked raw bytes were reviewed. `secret_omitted` evidence can support only visible nonsecret claims. If the Eval depends on a `blocked` payload, the result must remain `blocked` or `inconclusive`, or surface `EVIDENCE_INSUFFICIENT`, until a replacement, waiver, Decision Packet outcome, accepted risk, or documented fallback resolves the verification path.

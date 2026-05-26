@@ -363,6 +363,15 @@ These words answer different questions. Keep them separate near close, even when
 
 Approval is not acceptance. Tests passing do not mean Manual QA happened. Same-session self-review can be a useful self-check, but it is not detached verification. Accepting a result does not prove it is correct. Accepting residual risk is not proof either; it means the known uncertainty was visible and accepted for this Task. Final acceptance, when required, should come after close-relevant residual risk has been shown or reported as no known close-relevant risk.
 
+Useful verification wording:
+
+| Phrase | What it means to you |
+|---|---|
+| Self-checked | The agent checked its own work and recorded what it checked. This is useful, but not independent. |
+| Detached candidate | A separate verifier, session, worktree, sandbox, or bundle may be independent enough, but Harness has not yet recorded a passing detached verification. |
+| Detached verified | A qualifying independent Eval passed, and its reviewed evidence and baseline were still current. |
+| Waived with accepted risk | You chose to close despite a missing or waived check after seeing the remaining risk. This is not verified close. |
+
 Examples that may need approval include dependency additions, auth or permission changes, data model changes, public API changes, destructive writes, secret access, and production configuration changes. Approval only answers whether a sensitive step may proceed; a separate Decision Packet may still be needed for the dependency, migration, interface, module-boundary, product, material technical, QA, or risk choice itself.
 
 When a sensitive category appears, the useful prompt should use ordinary language first: what side effect will happen, which path, system, service, secret, or data is involved, whether Harness can prevent it or only detect issues after action, what evidence will be recorded, and what will be redacted or omitted. The category label can follow in parentheses, such as `secret_access` or `data_export`. Exact category examples live in [MCP API And Schemas](../reference/mcp-api-and-schemas.md#sensitive-categories), and exact write authority behavior lives in [Kernel Reference](../reference/kernel.md#prepare_write).
@@ -375,7 +384,7 @@ Common "approved" mix-ups:
 - Deciding a public API change is not permission to deploy, merge, or make additional writes.
 - Final acceptance means you accept the result when that task path requires it; it is not Write Authorization for more edits.
 
-If the agent asks for a QA or verification waiver, it should name the existing recording it will use. A QA waiver is recorded through Manual QA state and `qa_gate=waived`; when product/user risk or policy-required judgment is involved, it should reference a QA waiver Decision Packet. A verification waiver is recorded as `verification_gate=waived_by_user`; when the waiver needs user-owned judgment, it should reference the relevant Decision Packet. That prompt should say what is not being checked, what risk you would accept, what follow-up remains, which refs matter, and how close is affected. A casual chat statement should not be treated as a close-relevant waiver when accepted risk is involved. If the agent asks to close with residual risk, it should show the remaining limitation first, then ask whether you accept that risk for this Task.
+If the agent asks for a QA or verification waiver, it should name the existing recording it will use. A QA waiver is recorded through Manual QA state and `qa_gate=waived`; when product/user risk or policy-required judgment is involved, it should reference a QA waiver Decision Packet. A verification waiver is recorded as `verification_gate=waived_by_user`; when the waiver needs user-owned judgment, it should reference the relevant Decision Packet and accepted residual-risk refs. That prompt should say what is not being checked, what risk you would accept, what follow-up remains, which refs matter, and how close is affected. A casual chat statement should not be treated as a close-relevant waiver when accepted risk is involved. If the agent asks to close with residual risk, it should show the remaining limitation first, then ask whether you accept that risk for this Task. Verification waiver can close only as risk accepted; it should not be presented as detached verified.
 
 Applied examples:
 

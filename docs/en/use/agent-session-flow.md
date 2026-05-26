@@ -319,7 +319,16 @@ Keep these separate in the agent response.
 | Acceptance | Whether the user accepts the result when that judgment is required. |
 | Residual risk | What uncertainty, limitation, unchecked condition, or trade-off remains. |
 
-Verification answers how the work was technically checked. Same-session self-review is useful, but it is not detached verification. Passing tests can be evidence and can support verification, but tests alone do not prove Manual QA happened.
+Verification answers how the work was technically checked. Same-session self-review is useful, but it is not detached verification. Passing tests can be evidence and can support verification, but tests alone do not prove Manual QA happened. A detached candidate becomes detached verified only after a passing Eval with valid independence and current reviewed inputs.
+
+Use these user-facing labels consistently:
+
+| Label | Use when |
+|---|---|
+| Self-checked | The implementing path checked its own result. |
+| Detached candidate | A fresh session, fresh worktree, sandbox, manual bundle, or qualifying subagent path may be independent but has not yet produced detached assurance. |
+| Detached verified | The Eval passed with valid independence, no same-session self-review issue, and no stale baseline or bundle input. |
+| Waived with accepted risk | Verification or another close-relevant check was waived and the visible remaining risk was accepted for risk-accepted close. |
 
 Manual QA answers whether a person inspected qualities that need human judgment, such as UX, workflow, visual result, copy, or accessibility interpretation. Do not present a browser smoke run, screenshot capture, or verifier note as Manual QA unless a Manual QA result was actually recorded or validly waived.
 
@@ -327,7 +336,7 @@ Residual risk is a known remaining limitation, uncertainty, unchecked condition,
 
 Final acceptance is the user's acceptance of the result when the task path requires it. It is not the same as approval, verification, QA, residual-risk acceptance, or proof of correctness.
 
-Verification waiver and QA waiver do not upgrade assurance. A verification waiver keeps detached verification unsatisfied and routes close through accepted verification risk when close is otherwise allowed. A QA waiver closes only the QA requirement it names and leaves evidence, verification, acceptance, and residual-risk handling unchanged.
+Verification waiver and QA waiver do not upgrade assurance. A verification waiver keeps detached verification unsatisfied and routes close through accepted verification risk when close is otherwise allowed. It must not be summarized as `completed_verified`. A QA waiver closes only the QA requirement it names and leaves evidence, verification, acceptance, and residual-risk handling unchanged.
 
 Applied close examples:
 
@@ -351,7 +360,7 @@ Before successful close, show or confirm:
 
 - scope match
 - evidence coverage or no evidence requirement
-- verification status, or `verification_gate=waived_by_user` with the relevant Decision Packet when required
+- verification status, including stale evaluator bundle or baseline drift when present, or `verification_gate=waived_by_user` with the relevant Decision Packet and accepted risk refs when required
 - Manual QA status or valid waiver
 - close-relevant residual risk shown or no known close-relevant residual risk reported
 - final acceptance recorded when required

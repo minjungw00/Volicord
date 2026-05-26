@@ -353,7 +353,7 @@ An Evidence Manifest maps acceptance criteria or completion conditions to eviden
 
 ### Eval
 
-An Eval is a verification result record. It records the verification target, verdict, checks performed, evidence reviewed, independence qualifier, baseline relationship, blockers, and artifact references. An Eval verdict alone does not upgrade assurance. `assurance_level=detached_verified` requires a passed verification result, a valid independence qualifier, and no same-session self-review violation.
+An Eval is a verification result record. It records the verification target, verdict, checks performed, evidence reviewed, independence qualifier, baseline relationship, bundle freshness, blockers, and artifact references. An Eval verdict alone does not upgrade assurance. `assurance_level=detached_verified` requires a passed verification result, a valid independence qualifier, current baseline and bundle inputs, and no same-session self-review violation.
 
 ### Manual QA
 
@@ -566,25 +566,27 @@ Mapping examples:
 not_required | required | pending | passed | failed | waived_by_user | blocked
 ```
 
-`verification_gate=waived_by_user` records that the user accepted remaining verification risk. When policy or user-owned risk requires a Decision Packet, the waiver must reference the relevant verification-waiver Decision Packet. It must not become `assurance_level=detached_verified`.
+`verification_gate=waived_by_user` records that the user accepted remaining verification risk. When policy or user-owned risk requires a Decision Packet, the waiver must reference the relevant verification-waiver Decision Packet. A close that relies on this waiver must use the risk-accepted path with visible and accepted Residual Risk refs; it must not become `assurance_level=detached_verified` or `close_reason=completed_verified`.
 
 ### Verification Independence Profiles
 
-Verification independence profiles describe the minimum qualification needed before an Eval can support detached assurance.
+Verification independence profiles describe the minimum qualification needed before an Eval can support detached assurance. A self-check is not an independence profile: it is the implementing path's own check and can support `self_checked` only. The profiles below describe Eval or verifier context; candidate profiles still need a passed Eval, fresh inputs, and Core acceptance before they can produce detached assurance.
 
 | Profile | Minimum qualification |
 |---|---|
-| `same_session` | Not detached. May record self-check, Spec Compliance Review notes, or Code Quality / Stewardship Review notes. Must not produce `detached_verified`. |
-| `subagent_context` | Not detached by default. May qualify only if the implementation context, Write Authorization context, and reviewed bundle satisfy a stricter profile; otherwise treat as not detached. |
-| `fresh_session` | Detached candidate if the evaluator receives a task/evidence bundle rather than continuing lead chat context, reviews the Evidence Manifest and changed files, and records an Eval. |
-| `fresh_worktree` | Detached candidate if the evaluator checks baseline, changed paths, artifacts, and Evidence Manifest in a separate worktree or equivalent isolated repository state. |
-| `sandbox` | Detached or isolated candidate if execution and verification happen across a meaningful process/filesystem boundary and artifacts are captured. |
-| `manual_bundle` | Detached candidate if the evaluator receives task summary, acceptance criteria, Change Unit scope, approval scope, diff/log/test artifacts, Evidence Manifest, known risks, and records a verdict. |
+| `same_session` | Not detached. Same chat, same active context, Role Lens review, Spec Compliance Review, Code Quality / Stewardship Review, or lead-agent self-review may record useful notes, but must not produce `detached_verified`. |
+| `subagent_context` | Not detached by default. A subagent that inherits lead context, prompt state, working tree, or write authority is still same-context for assurance. It may qualify only if the implementation context, Write Authorization context, baseline, and reviewed bundle satisfy `fresh_session`, `fresh_worktree`, `sandbox`, or `manual_bundle`; otherwise treat it as a self-check or same-session review. |
+| `fresh_session` | Detached candidate if the evaluator starts from a task/evidence bundle rather than continuing lead chat context, reviews the Evidence Manifest and changed files, records an Eval, and records the current baseline relation. |
+| `fresh_worktree` | Detached candidate if the evaluator checks baseline, changed paths, artifacts, and Evidence Manifest in a separate worktree or equivalent isolated repository state and records whether any drift was observed. |
+| `sandbox` | Detached or isolated candidate if execution and verification happen across a meaningful process/filesystem boundary, artifact capture is available, and any write capability or escape path is disclosed. |
+| `manual_bundle` | Detached candidate if the evaluator receives task summary, acceptance criteria, Change Unit scope, approval scope, diff/log/test artifacts, Evidence Manifest, known risks, baseline relation, and records a verdict without relying on unreviewed lead-session context. |
 
 Rules:
 
 - Eval verdict alone does not upgrade assurance.
-- Valid independence plus passed verification plus absence of a same-session self-review violation is required for `assurance_level=detached_verified`.
+- Valid independence plus passed verification plus current baseline/bundle inputs plus absence of a same-session self-review violation is required for `assurance_level=detached_verified`.
+- A stale evaluator bundle, stale baseline, changed files after bundle creation, changed Evidence Manifest, approval/Decision Packet drift, missing artifact, or failed artifact integrity blocks detached assurance until a replacement bundle/Eval is recorded or the evaluator re-verifies the changed inputs.
+- `baseline_reverified=true` is evidence that the evaluator checked the baseline relation; it does not override observed drift, missing artifacts, invalid independence, or a stale source bundle.
 - User verification waiver must close as `completed_with_risk_accepted`, not `completed_verified`.
 - A verifier that can write product files must disclose that in Eval independence context; write capability may reduce confidence and may require an additional guard or bundle review.
 
@@ -671,6 +673,15 @@ none | self_checked | detached_verified
 
 Assurance is not approval, QA, or acceptance. It summarizes the technical checking level supported by runs, evidence, Eval records, and verification independence.
 
+User-facing display must not introduce additional `assurance_level` values. Use these phrases for ordinary wording:
+
+| User-facing phrase | Meaning |
+|---|---|
+| `self-checked` | The implementing path checked its own result with recorded evidence, focused commands, or review notes. This is not detached verification. |
+| `detached candidate` | A verification launch, bundle, or Eval appears to use a potentially independent boundary, but detached assurance is not earned until a passed Eval has valid independence and current inputs. |
+| `detached verified` | A passed Eval with valid independence, current baseline and bundle inputs, and no same-session self-review violation supports `assurance_level=detached_verified`. |
+| `waived with accepted risk` | The user accepted visible close-relevant risk, including verification risk when verification is waived. This uses risk-accepted close and does not create detached verification. |
+
 This state diagram orients the major `lifecycle_phase` values. The transition table below remains the canonical source for gate effects and detailed transition conditions.
 
 ```mermaid
@@ -734,9 +745,9 @@ All successful close paths require residual-risk visibility before close. If no 
 |---|---|
 | Advisor completed | no active Run; no product write pending; no blocking unresolved Decision Packet; `result=advice_only`; `close_reason=completed_self_checked` |
 | Direct self-checked | no active Run; active Change Unit completed or not needed for non-write direct; scope passed for writes; blocking Decision Packets resolved or validly deferred for close; required approval granted; required evidence sufficient; `assurance_level=self_checked`; `close_reason=completed_self_checked` |
-| Direct verified | direct self-checked requirements plus valid passed detached verification; `assurance_level=detached_verified`; `close_reason=completed_verified` |
-| Work verified | no active Run; Change Unit complete or explicitly deferred; scope passed; blocking Decision Packets resolved; approval not required or granted; design passed or waived; evidence sufficient; verification passed with valid independence; QA passed or waived if required; residual risk visible or confirmed as `ResidualRiskSummary.status=none` before acceptance; acceptance accepted if required; `close_reason=completed_verified` |
-| Work risk accepted | work close requirements for scope, approval, design, evidence, QA, and acceptance are satisfied; verification may be `waived_by_user`; blocking decisions are resolved or validly deferred with residual risk visibility; visible and accepted Residual Risk refs are recorded; assurance must be `none` or `self_checked`; `close_reason=completed_with_risk_accepted` |
+| Direct verified | direct self-checked requirements plus valid passed detached verification with current baseline and bundle inputs; `assurance_level=detached_verified`; `close_reason=completed_verified` |
+| Work verified | no active Run; Change Unit complete or explicitly deferred; scope passed; blocking Decision Packets resolved; approval not required or granted; design passed or waived; evidence sufficient; verification passed with valid independence and current baseline/bundle inputs; QA passed or waived if required; residual risk visible or confirmed as `ResidualRiskSummary.status=none` before acceptance; acceptance accepted if required; `close_reason=completed_verified` |
+| Work risk accepted | work close requirements for scope, approval, design, evidence, QA, and acceptance are satisfied; verification may be `waived_by_user`; blocking decisions are resolved or validly deferred with residual risk visibility; visible and accepted Residual Risk refs are recorded, including verification risk when verification is waived; assurance must be `none` or `self_checked`; `close_reason=completed_with_risk_accepted` |
 | Cancelled | no active write in progress; `result=cancelled`; `close_reason=cancelled` or `superseded` |
 
 ### Transition table
@@ -804,10 +815,10 @@ Catalog-only fixture skeletons in [Operations And Conformance](operations-and-co
 | Evidence required but absent | `executing` or `verifying` | `blocked` | `evidence_gate=none` or `partial` |
 | Evidence becomes stale | any non-terminal phase | `blocked` or current phase with stale gate | `evidence_gate=stale` |
 | Verification launched | `verifying` | `verifying` | evaluator Run or bundle recorded |
-| Eval passed with valid independence | `verifying` | `qa`, `waiting_user`, or same phase with close eligibility | `verification_gate=passed`; assurance may become `detached_verified` |
-| Eval passed without valid independence | `verifying` | `verifying` or `blocked` | no detached assurance upgrade |
+| Eval passed with valid independence and current inputs | `verifying` | `qa`, `waiting_user`, or same phase with close eligibility | `verification_gate=passed`; assurance may become `detached_verified` |
+| Eval passed without valid independence or with stale inputs | `verifying` | `verifying` or `blocked` | no detached assurance upgrade |
 | Eval failed | `verifying` | `executing`, `shaping`, or `blocked` | `verification_gate=failed` |
-| User accepts verification risk | `waiting_user` or `verifying` | same phase with close eligibility | `verification_gate=waived_by_user`; no detached assurance |
+| User accepts verification risk | `waiting_user` or `verifying` | same phase with risk-accepted close eligibility | `verification_gate=waived_by_user`; accepted Residual Risk refs required for close; no detached assurance |
 | Residual risk accepted | `waiting_user`, `verifying`, or `qa` | same phase with close eligibility or `waiting_user` | residual-risk acceptance recorded; related Decision Packet may resolve or defer; no detached assurance upgrade |
 | Manual QA requested | any non-terminal phase | `qa` or `waiting_user` | `qa_gate=pending` |
 | Manual QA passed | `qa` or `waiting_user` | same phase with close eligibility or `waiting_user` | `qa_gate=passed` |
@@ -912,9 +923,9 @@ The decision algorithm is:
 7. Check `approval_gate`. Sensitive changes require granted approval with no drift or expiry.
 8. Check `design_gate`. Required design gates must be passed or validly waived; stale, blocked, pending, or partial required design gates block close unless policy converts them to a recorded waiver.
 9. Check `evidence_gate`. Where evidence is required, only `sufficient` can close successfully.
-10. Check `verification_gate`. Work requires passed detached verification or explicit user verification waiver. Direct work defaults to not required, but optional passed detached verification may upgrade assurance. Same-session review, including passed Spec Compliance Review and Code Quality / Stewardship Review displays, cannot produce detached assurance. Verification waiver is separate from detached verification and cannot contribute to `assurance_level=detached_verified`.
+10. Check `verification_gate`. Work requires passed detached verification or explicit user verification waiver. Direct work defaults to not required, but optional passed detached verification may upgrade assurance. Same-session review, including passed Spec Compliance Review and Code Quality / Stewardship Review displays, cannot produce detached assurance. A detached candidate with a stale bundle, stale baseline, changed reviewed inputs, or invalid independence remains unsatisfied. Verification waiver is separate from detached verification and cannot contribute to `assurance_level=detached_verified`.
 11. Check `qa_gate`. Required QA must be passed or validly waived. A Manual QA record result alone does not close the gate unless the kernel aggregates it into `qa_gate`.
-12. Check close-relevant residual risk. If no known close-relevant Residual Risk exists, `ResidualRiskSummary.status=none` satisfies residual-risk visibility. If known close-relevant Residual Risk exists, it must be visible in the current judgment context before any successful close. Risk-accepted close additionally requires visible and accepted Residual Risk refs. Verification risk acceptance additionally sets `verification_gate=waived_by_user`.
+12. Check close-relevant residual risk. If no known close-relevant Residual Risk exists, `ResidualRiskSummary.status=none` satisfies residual-risk visibility. If known close-relevant Residual Risk exists, it must be visible in the current judgment context before any successful close. Risk-accepted close additionally requires visible and accepted Residual Risk refs. Verification waiver is one kind of accepted close-relevant risk: it sets `verification_gate=waived_by_user` and can close only through `completed_with_risk_accepted`.
 13. Check `acceptance_gate`. Required acceptance can be recorded only after close-relevant residual risk is visible in the current judgment context or confirmed as `ResidualRiskSummary.status=none`. Rejection routes the Task back to shaping, execution, or cancellation.
 14. Assign `assurance_level`, `result`, and `close_reason`:
     - advisor completion: `result=advice_only`, `assurance_level=none`, `close_reason=completed_self_checked`
@@ -934,11 +945,13 @@ The decision algorithm is:
 
 `completed_with_risk_accepted` means the user accepted close-relevant residual risk, including verification risk when verification was waived. This is a successful close with explicit risk, not detached verification.
 
+`detached candidate` is display wording for a verification attempt or Eval context that might support detached assurance if it passes all independence and freshness checks. It is not a close reason and is not an `assurance_level`.
+
 Residual-risk acceptance means known remaining risk was made visible and accepted for the requested close. It never upgrades assurance to `detached_verified`, and it does not imply detached verification, Manual QA, sensitive approval, or final acceptance unless those separate gates are also satisfied.
 
 `ResidualRiskSummary.status=none` means there is no known close-relevant residual risk to accept. It satisfies visibility for ordinary close and acceptance, but it is not accepted risk and cannot support `completed_with_risk_accepted`.
 
-User-visible close wording must preserve this distinction: `completed_verified` and `completed_self_checked` are normal successful close reasons, while `completed_with_risk_accepted` is successful close with explicit accepted risk. A status, report, Journey view, or final summary must not collapse risk-accepted close into a generic "done" or "verified" message.
+User-visible close wording must preserve this distinction: `completed_verified` and `completed_self_checked` are normal successful close reasons, while `completed_with_risk_accepted` is successful close with explicit accepted risk. A status, report, Journey view, or final summary must not collapse risk-accepted close into a generic "done" or "verified" message. Recommended display phrases are "self-checked", "detached candidate", "detached verified", and "waived with accepted risk" with the meanings defined in [Assurance Level](#assurance-level).
 
 `cancelled` means the Task stopped without a passed result.
 
@@ -961,7 +974,7 @@ Not allowed:
 - Evidence waiver where evidence is required for completion.
 - Acceptance waiver where acceptance is required.
 
-Verification waiver is not detached verification. A task closed through verification waiver uses `close_reason=completed_with_risk_accepted` and `assurance_level=none` or `self_checked`.
+Verification waiver is not detached verification. A task closed through verification waiver uses `close_reason=completed_with_risk_accepted` and `assurance_level=none` or `self_checked`. If accepted verification risk has not been recorded on visible close-relevant Residual Risk refs, close remains blocked instead of falling back to `completed_verified` or `completed_self_checked`.
 
 QA waiver is not Manual QA pass, verification, acceptance, or assurance upgrade. It only records that the named QA requirement was validly waived and leaves evidence, verification, acceptance, and residual-risk checks to their own gates.
 
@@ -976,7 +989,7 @@ Decision deferral is not a waiver. A deferred Decision Packet must record the af
 | Sensitive change requires explicit approval. | `prepare_write` detects sensitive categories, checks approval gate and approval scope, and blocks denied, expired, missing, or drifted approval; approval cannot satisfy user-owned judgment outside its sensitive scope. |
 | Blocking user-owned judgment requires a recorded Decision Packet. | `decision_gate`, `prepare_write`, `record_run`, and `close_task` require a canonical Decision Packet for blocking user-owned judgment; unresolved or incompatible blocking packets prevent affected writes and close. |
 | Completion requires evidence coverage where evidence is required. | `close_task` requires `evidence_gate=sufficient` when evidence applies; required evidence cannot be waived for passed completion. |
-| Work cannot self-certify detached verification. | Eval plus valid independence is required for `detached_verified`; same-session review and verification waiver cannot upgrade assurance. |
+| Work cannot self-certify detached verification. | Eval plus valid independence and current baseline/bundle inputs are required for `detached_verified`; self-check, same-session review, stale bundle review, and verification waiver cannot upgrade assurance. |
 | Required QA and acceptance are separate gates. | `qa_gate` and `acceptance_gate` are checked independently; Manual QA records do not imply acceptance, and acceptance does not imply QA. |
 | Projection cannot override canonical state. | Projection edits create reconcile items; projection freshness affects display and delivery, not canonical result by itself. |
 
@@ -1015,6 +1028,8 @@ The following combinations are invalid and must be rejected or repaired by the k
 | `verification_gate=waived_by_user` with `assurance_level=detached_verified` | reject state transition |
 | Same-session review producing `assurance_level=detached_verified` | reject assurance upgrade |
 | Eval verdict passed without valid independence producing `detached_verified` | reject assurance upgrade |
+| Eval verdict passed from a stale evaluator bundle, stale baseline, missing artifact, or drifted reviewed input producing `detached_verified` | reject assurance upgrade until the input is repaired or reverified through a new compatible Eval |
+| Verification waiver closed with `close_reason=completed_verified` or without visible accepted Residual Risk refs | reject close or block until risk-accepted close requirements are satisfied |
 | `qa_gate=waived` without waiver reason | reject waiver |
 | Completed passed result with required `qa_gate=pending` or `failed` | block close |
 | Completed passed result with required `acceptance_gate=pending` or `rejected` | block close |
