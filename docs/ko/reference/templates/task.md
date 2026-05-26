@@ -280,7 +280,7 @@ Long-running `work` task를 위한 expanded TASK section:
 
 ## Implementation Micro-Plan Details
 - source alignment: current Task, active Change Unit, gates, related refs
-- boundary: 기준 상태 아님, 범위 권한 아님, Approval 아님, Write Authorization 아님; active Change Unit이 scope 기준 source로 남음
+- boundary: 기준 상태 아님, 범위 권한 아님, Approval 아님, Write Authorization 아님; active Change Unit이 범위의 기준 출처로 남음
 
 ### Step Queue
 | Step | State Alignment | Scope Alignment / Likely Paths | Feedback Loop / TDD Status | Evidence Target | Stop Condition |

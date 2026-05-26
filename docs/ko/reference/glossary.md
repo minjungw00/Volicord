@@ -272,7 +272,7 @@ Existing state events나 owner records만으로 완전히 재구성하기 어려
 
 ### Interface Contract
 
-Module 또는 external 경계의 public interface, inputs, outputs, errors, compatibility impact, callers, 경계 tests에 대한 기준 record입니다. 기준 source는 `interface_contracts`입니다. Public state refs는 `record_kind=interface_contract`를 사용합니다.
+Module 또는 external 경계의 public interface, inputs, outputs, errors, compatibility impact, callers, 경계 tests에 대한 기준 record입니다. 기준 기록은 `interface_contracts`입니다. Public state refs는 `record_kind=interface_contract`를 사용합니다.
 
 ### JSON `TEXT` Field
 

@@ -130,7 +130,7 @@ flowchart LR
   Metrics --> Boundary["non-authoritative diagnostics only"]
 ```
 
-Candidate derived metrics from the legacy operations guide:
+Candidate derived metrics:
 
 - `direct_to_work_escalation_rate`
 - `approval_turnaround_time`

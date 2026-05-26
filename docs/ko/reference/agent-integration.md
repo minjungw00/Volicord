@@ -45,7 +45,7 @@ Always-on rule은 짧게 둡니다. 언제 Harness를 쓰는지, status 또는 J
 | Codex, Claude Code, Gemini, GitHub Copilot, Cursor의 구체적인 접점별 recipe | [Surface Cookbook](surface-cookbook.md) |
 | Public MCP request/response schema | [MCP API와 스키마](mcp-api-and-schemas.md) |
 | Kernel state transition과 write/close rule | [커널 참조](kernel.md) |
-| Runtime guarantee level 정의 | [런타임 아키텍처 참조](runtime-architecture.md#guarantee-levels) |
+| Runtime guarantee level 정의 | [런타임 아키텍처 참조](runtime-architecture.md#보장-수준) |
 
 ## Capability Tiers
 
@@ -224,9 +224,9 @@ fallbacks:
 
 ## Guarantee Levels
 
-Integration은 [런타임 아키텍처 참조](runtime-architecture.md#guarantee-levels)의 guarantee level 정의를 사용하고, 이를 연결된 접점 프로필, 현재 적용 경로, fallback 선택지에 적용합니다.
+Integration은 [런타임 아키텍처 참조](runtime-architecture.md#보장-수준)의 guarantee level 정의를 사용하고, 이를 연결된 접점 프로필, 현재 적용 경로, fallback 선택지에 적용합니다.
 
-이 참조는 connector 프로필이 그 level을 어떻게 보고하고 표시하는지 담당합니다. 접점 이름에서 더 강한 level을 추론하면 안 되며, guarantee level을 approval, verification, QA, acceptance, kernel gate로 취급하면 안 됩니다.
+이 참조는 connector 프로필이 그 level을 어떻게 보고하고 표시하는지 담당합니다. 접점 이름에서 더 강한 level을 추론하면 안 되며, 보장 수준을 Approval, verification, QA, 결과 수락, kernel gate로 취급하면 안 됩니다.
 
 | Level | 표시 책임 |
 |---|---|

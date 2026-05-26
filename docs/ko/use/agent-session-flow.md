@@ -116,7 +116,7 @@ MCP 결과를 기준으로 삼되, 사용자에게는 이해하기 쉬운 말로
 
 다음 안전한 행동을 바꾸는 질문만 합니다. 긴 양식보다 추천이 딸린 막힘 질문 하나가 낫습니다.
 
-질문하기 전에는 에이전트가 안전하게 직접 확인할 수 있는 답을 사용 가능한 최신 저장소, 코드베이스, 문서, Harness state에서 먼저 찾아봅니다. 이미 보이는 파일 경로, 기존 동작, 용어, 제약을 사용자에게 다시 설명해 달라고 요구하지 않습니다. 소스가 없거나 오래됐으면 그것을 권위 있는 현재 사실처럼 쓰지 말고, 불확실성으로 표시합니다.
+질문하기 전에는 에이전트가 안전하게 직접 확인할 수 있는 답을 사용 가능한 최신 저장소, 코드베이스, 문서, Harness state에서 먼저 찾아봅니다. 이미 보이는 파일 경로, 기존 동작, 용어, 제약을 사용자에게 다시 설명해 달라고 요구하지 않습니다. 소스가 없거나 오래됐으면 그것을 현재 사실의 근거로 삼지 말고, 불확실성으로 표시합니다.
 
 한 번에 하나의 막힘 질문을 묻는다는 말이 구체화도 한 번이면 끝난다는 뜻은 아닙니다. 요청이 넓거나 설계 판단이 크면 목표, 범위, 비목표, 수용 기준, 영향받는 제품 영역, 사용자 화면이나 흐름, 모듈, interface, 민감 카테고리(sensitive categories), 사용자가 소유하는 제품 또는 중요한 기술 장단점 판단, 검증 또는 Manual QA 기대 수준, 알려진 제품·구현·검증·QA·후속 위험이 첫 번째 안전한 Change Unit을 제안할 수 있을 만큼 잡힐 때까지 짧은 확인을 여러 차례 이어갈 수 있습니다.
 
@@ -224,7 +224,7 @@ Review output에서는 두 질문을 분리합니다.
 한계: 협조형 접점이라서 범위를 벗어난 쓰기는 사후 changed-path validation으로만 감지합니다.
 ```
 
-외부 side effect가 있을 때는 실행 전의 주장과 실행 뒤의 기록을 분리합니다. 실행 전에는 의도한 영향, sensitive category, Approval 또는 Decision Packet 필요 여부, 보장 수준을 말합니다. 실행 뒤에는 실제로 일어난 일, 기록된 Run/artifact/evidence ref, redaction/omission/block/stale/violation 여부를 말합니다. 정확한 보장 수준 의미는 [커널 참조](../reference/kernel.md#prepare_write)가 담당합니다.
+외부 side effect가 있을 때는 실행 전의 주장과 실행 뒤의 기록을 분리합니다. 실행 전에는 의도한 영향, sensitive category, Approval 또는 Decision Packet 필요 여부, 보장 수준을 말합니다. 실행 뒤에는 실제로 일어난 일, 기록된 Run/artifact/evidence ref, redaction/omission/block/stale/violation 여부를 말합니다. 정확한 보장 수준 의미는 [런타임 아키텍처 참조](../reference/runtime-architecture.md#보장-수준)가 담당합니다.
 
 Cooperative 또는 detective hold를 실행 전에 막는 것처럼 설명하면 안 됩니다. 지시로 쓰기를 보류한다고 말하거나, connected profile이 해당 validation을 지원할 때 실행 뒤에 위반을 감지할 수 있다고 말합니다. Preventive 표현은 해당 operation에 대해 입증된 실행 전 차단이 있을 때만 씁니다.
 

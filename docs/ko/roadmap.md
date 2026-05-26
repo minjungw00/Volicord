@@ -59,7 +59,7 @@ flowchart TD
 
 Dashboard는 active Task, gate, approval, 근거 coverage, projection 최신성, artifact 무결성, reconcile item을 시각화할 수 있습니다.
 
-MVP는 dashboard가 보여 줄 record, projection, conformance fixture를 먼저 안정화해야 하므로 이 항목은 later입니다. Owner 문서가 명시적으로 승격하기 전까지 dashboard는 `state.sqlite`, artifact ref, projection job status 위의 읽기 전용 진단 표시입니다. Dashboard가 Task state, evidence, 결과 수락, close readiness, projection 최신성, metric 해석의 source of truth가 되어서는 안 됩니다.
+MVP는 dashboard가 보여 줄 record, projection, conformance fixture를 먼저 안정화해야 하므로 이 항목은 later입니다. Owner 문서가 명시적으로 승격하기 전까지 dashboard는 `state.sqlite`, artifact ref, projection job status 위의 읽기 전용 진단 표시입니다. Dashboard가 Task state, evidence, 결과 수락, close readiness, projection 최신성, metric 해석의 기준이 되어서는 안 됩니다.
 
 ### Browser QA Capture
 
@@ -130,7 +130,7 @@ flowchart LR
   Metrics --> Boundary["non-authoritative diagnostics only"]
 ```
 
-Legacy operations guide의 후보 파생 metric:
+후보 파생 metric:
 
 - `direct_to_work_escalation_rate`
 - `approval_turnaround_time`

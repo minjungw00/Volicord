@@ -603,9 +603,9 @@ completed_with_risk_accepted | cancelled | superseded
 none | self_checked | detached_verified
 ```
 
-Assurance는 approval, QA, 수용이 아닙니다. Runs, 근거, Eval records, verification independence가 뒷받침하는 technical checking level을 요약합니다.
+Assurance는 Approval, QA, 결과 수락이 아닙니다. Runs, 근거, Eval records, verification independence가 뒷받침하는 technical checking level을 요약합니다.
 
-이 state diagram은 주요 `lifecycle_phase` values를 orient하기 위한 것입니다. Gate effects와 detailed transition conditions의 기준 source는 아래 transition table입니다.
+이 state diagram은 주요 `lifecycle_phase` values를 orient하기 위한 것입니다. Gate effects와 detailed transition conditions는 아래 transition table이 기준입니다.
 
 ```mermaid
 stateDiagram-v2

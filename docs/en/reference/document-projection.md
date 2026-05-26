@@ -6,8 +6,6 @@ Use this reference to check how Harness renders human-readable Markdown projecti
 
 It defines projection authority boundaries, managed block behavior, human-editable sections, artifact reference rendering, template tiers, and projection freshness rules. It does not define canonical kernel state, MCP request/response schemas, SQLite DDL, design-quality policy requirements, or full template bodies. Full template bodies and display card shapes live in the [Template Reference](templates/README.md).
 
-Migration source material has been folded into this reference; this file is now the active projection contract.
-
 ## Read this when
 
 - You need to implement or review Markdown projection behavior.
