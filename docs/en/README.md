@@ -44,7 +44,7 @@ Use this path when you want to run an AI-assisted development session under Harn
 
 ## Build
 
-Use this path for implementation planning and review. These pages do not authorize starting Harness server or runtime implementation; actual implementation starts only after the redesigned documentation is accepted. Build docs explain order, module boundaries, runnable slices, and verification strategy without duplicating exact schemas or DDL.
+Use this path for implementation orientation and later planning review. These pages do not authorize starting Harness server or runtime implementation, and first runtime-batch planning may begin only after maintainers deliberately update the Documentation Acceptance Status. Build docs explain order, module boundaries, runnable slices, and verification strategy without duplicating exact schemas or DDL.
 
 Start with the [Documentation Acceptance Status](build/implementation-overview.md#documentation-acceptance-status) in Implementation Overview. It is the maintainer-updated place to tell whether work is still documentation maintenance, first runtime-batch planning may begin, runtime/server implementation has started, or open documentation follow-up issues are recorded.
 

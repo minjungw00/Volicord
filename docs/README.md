@@ -64,7 +64,11 @@ Reference docs own exact contracts. Learn, Use, and Build docs may summarize a c
 
 The implementation handoff checkpoint lives in [English Implementation Overview](en/build/implementation-overview.md#implementation-handoff-checkpoint) and [Korean Implementation Overview](ko/build/implementation-overview.md#구현-handoff-checkpoint). It separates documentation-maintenance work from first runtime-batch planning; it does not replace Reference contracts.
 
+Open follow-up entries in that checkpoint are maintainer-updated documentation-maintenance notes only. They do not create runtime authority or Reference contracts.
+
 구현 handoff checkpoint는 [영어 구현 개요](en/build/implementation-overview.md#implementation-handoff-checkpoint)와 [한국어 구현 개요](ko/build/implementation-overview.md#구현-handoff-checkpoint)에 있습니다. 이 checkpoint는 문서 유지보수와 첫 runtime batch 계획을 구분하며, Reference 계약을 대체하지 않습니다.
+
+그 checkpoint의 열린 follow-up 항목은 maintainer가 갱신하는 문서 유지보수 메모일 뿐입니다. Runtime authority나 Reference 계약을 만들지 않습니다.
 
 ## Roadmap / 로드맵
 
