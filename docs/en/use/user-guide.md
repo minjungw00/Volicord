@@ -107,6 +107,8 @@ Show the close checklist.
 
 The agent should keep Approval, Decision Packet outcomes, Write Authorization, evidence, verification, Manual QA, acceptance, and residual risk separate. One of them should not be used as a substitute for another.
 
+A casual "go ahead" is only usable when the agent has already named the exact thing you are deciding. It is not enough for product trade-offs, architecture choices, QA or verification waivers, final acceptance, or residual-risk acceptance unless the prompt shows the options, consequences, relevant refs, and the specific route being recorded.
+
 ## The three everyday questions
 
 ### scope
@@ -121,13 +123,16 @@ The agent should stop and ask when the choice changes what users or other code c
 
 A useful split is: Change Unit scope says what work surface may change; Autonomy Boundary says what judgment the agent may exercise inside that surface. Neither one authorizes a write by itself.
 
-Harness may use four related labels for this:
+Harness may use several related labels for this:
 
 | Label | Plain meaning |
 |---|---|
 | Change Unit scope | The work area that is in bounds. It does not authorize writes by itself. |
 | Autonomy Boundary | The judgment the agent may exercise alone inside that scope. It is not write authority and does not grant paths, tools, commands, network, secrets, or sensitive categories. |
 | Approval | Permission for a sensitive step. It is not acceptance, correctness, or user-owned judgment. |
+| Decision Packet | The recorded path for user-owned product, material technical, waiver, acceptance, residual-risk, or reconcile judgment. It is not sensitive-action permission unless it is approval-shaped and linked to Approval. |
+| Acceptance | Your final judgment that the result is acceptable when the task path requires it. It does not replace evidence, QA, verification, approval, or residual-risk acceptance. |
+| Residual-risk acceptance | Your judgment that known remaining risk is acceptable for this close. It is not a normal no-risk close and does not upgrade assurance. |
 | Write Authorization | A one-attempt write allowance from `prepare_write`. It does not expand the scope or Autonomy Boundary. |
 
 For a small direct task, the agent can usually generate the minimal Change Unit from the request instead of asking you to fill in fields. These examples are explanatory, not a schema:
@@ -192,6 +197,8 @@ Examples:
 - Technical/data: schema migrations should show whether the path is additive, compatibility-shimmed, or breaking. The packet should name migration evidence, rollback risk, data-backfill risk, test boundary, and future maintenance impact.
 - Technical/interface: public API or module-boundary changes can need a compatibility or breaking-change Decision Packet. Passing tests does not settle caller impact, documentation promises, migration path, or release risk.
 - Security-sensitive: approval to access a secret, change permissions, or export data only answers whether that sensitive step may proceed. It does not decide which data is exported, who may export it, what gets redacted, what is omitted from artifacts, or what audit trail is acceptable.
+- QA or verification waiver: "go ahead" is not enough. The prompt should name the skipped check or surface, the risk you would accept, the follow-up, relevant refs, and whether close would become risk accepted.
+- Final acceptance or residual-risk acceptance: final acceptance means the result is acceptable when required; residual-risk acceptance means the named remaining risk is acceptable for close. The agent should ask for these separately, after showing evidence, verification, QA, and residual-risk visibility.
 
 ## Phrase reference
 
@@ -392,6 +399,8 @@ I accept the residual risk shown here. Close with risk accepted.
 Accepted. Close this task.
 I do not accept it. Rework the UX before close.
 ```
+
+"Accepted. Close this task." is normal close wording only when no risk-accepted close is being requested. When known residual risk is part of the close basis, use risk-accepted wording and expect the close reason to remain visibly different from verified or self-checked close.
 
 ## Where to go next
 

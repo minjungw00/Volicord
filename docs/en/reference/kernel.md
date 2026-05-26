@@ -68,6 +68,19 @@ The kernel makes product writes and close decisions depend on explicit state: ac
 
    `close_task` decides close by checking active Run state, scope, decisions, approval, design, evidence, verification, QA, residual-risk visibility, acceptance, and the requested close reason.
 
+## Judgment route boundaries
+
+User judgment reaches kernel state through specific routes. Broad approval text is valid only when the active prompt and recorded payload name the route, affected scope, options or consequence, and close or write impact.
+
+| Route | Kernel meaning | Must not be treated as |
+|---|---|---|
+| Approval | Sensitive-action permission inside a defined scope and expiry. | Product direction, material technical direction, correctness proof, final acceptance, residual-risk acceptance, QA, verification, evidence, or Write Authorization. |
+| Decision Packet | Canonical route for user-owned product, material technical, waiver, acceptance, residual-risk, or reconcile judgment. | Sensitive-action Approval unless it is approval-shaped and linked to an Approval record; product-write authority; detached verification. |
+| Acceptance | User judgment that the result is acceptable when required, after close-relevant residual risk is visible or confirmed absent. | Evidence sufficiency, verification, Manual QA, sensitive approval, residual-risk acceptance, or permission for more writes. |
+| Residual-risk acceptance | User judgment that visible close-relevant remaining risk is acceptable for the requested close. | Normal no-risk close, detached verification, QA pass, sensitive approval, evidence, or final acceptance unless the acceptance gate is separately satisfied. |
+
+A generic user phrase such as "go ahead" does not decide product trade-offs, architecture choices, QA waivers, verification risk, final acceptance, or residual-risk acceptance unless it is recorded through the compatible route above.
+
 ## Reference scope
 
 This document owns:
@@ -585,6 +598,8 @@ MVP final acceptance is stored through the canonical Decision Packet user-decisi
 
 Residual-risk visibility is satisfied in either of two ways. If no known close-relevant Residual Risk exists, the current judgment context reports `ResidualRiskSummary.status=none`. If known close-relevant Residual Risk exists, that risk must be visible in the current judgment context before any successful close. Acceptance, when required, can be recorded only after close-relevant residual risk is visible or confirmed as `ResidualRiskSummary.status=none`. A risk-accepted close additionally requires visible and accepted Residual Risk refs, and residual-risk acceptance never upgrades assurance to `detached_verified`. `ResidualRiskSummary.status=none` must not hide or replace known close-relevant risk.
 
+Before the system requests or records final acceptance, the current judgment context must show evidence status, verification status, QA status, residual-risk visibility or `ResidualRiskSummary.status=none`, and what acceptance does not replace. A final acceptance prompt that omits this close basis is incomplete display and must not be used to satisfy `acceptance_gate`.
+
 The kernel interprets `ResidualRiskSummary.status` as follows:
 
 | Status | Meaning |
@@ -912,6 +927,8 @@ Residual-risk acceptance means known remaining risk was made visible and accepte
 
 `ResidualRiskSummary.status=none` means there is no known close-relevant residual risk to accept. It satisfies visibility for ordinary close and acceptance, but it is not accepted risk and cannot support `completed_with_risk_accepted`.
 
+User-visible close wording must preserve this distinction: `completed_verified` and `completed_self_checked` are normal successful close reasons, while `completed_with_risk_accepted` is successful close with explicit accepted risk. A status, report, Journey view, or final summary must not collapse risk-accepted close into a generic "done" or "verified" message.
+
 `cancelled` means the Task stopped without a passed result.
 
 `superseded` means another Task or Change Unit replaces this one. Supersession does not imply success.
@@ -934,6 +951,8 @@ Not allowed:
 - Acceptance waiver where acceptance is required.
 
 Verification waiver is not detached verification. A task closed through verification waiver uses `close_reason=completed_with_risk_accepted` and `assurance_level=none` or `self_checked`.
+
+QA waiver is not Manual QA pass, verification, acceptance, or assurance upgrade. It only records that the named QA requirement was validly waived and leaves evidence, verification, acceptance, and residual-risk checks to their own gates.
 
 Decision deferral is not a waiver. A deferred Decision Packet must record the affected operation, why the Task can proceed without the decision now, and any residual risk or follow-up needed before close.
 

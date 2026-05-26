@@ -77,6 +77,7 @@ Recommendation:
 {recommendation}
 
 Do you approve this sensitive action and scope only, without deciding product/material technical judgment or result acceptance?
+If you say "go ahead," Harness records only this sensitive-action Approval unless another Decision Packet is shown and resolved.
 ````
 
 ## Notes

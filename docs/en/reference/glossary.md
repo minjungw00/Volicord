@@ -1,10 +1,26 @@
 # Glossary Reference
 
-## How to use this glossary
+## What this document helps you do
 
 Use this glossary to confirm official Harness terms, capitalization, record names, and non-substitution boundaries while reading other docs.
 
-Keep it as a lookup aid. For a first explanation of Harness concepts, use the Learn path. For exact behavior, follow the owner links below or the links inside individual definitions instead of treating this glossary as a substitute for the owner reference.
+## Read this when
+
+Read this when you need to check a Harness term, avoid mixing authority paths, or find the reference owner for exact behavior.
+
+## Before you read
+
+For a first explanation of Harness concepts, use the Learn path. For exact behavior, follow the owner links below or the links inside individual definitions.
+
+## Main idea
+
+The glossary is a lookup aid and owner map. It keeps names and short non-substitution reminders consistent, but it is not a substitute for the owner reference documents.
+
+## Reference scope
+
+This glossary owns official term wording, capitalization reminders, record-name orientation, and owner routing. It does not own kernel behavior, public MCP schemas, storage DDL, projection rules, template bodies, connector capability profiles, or conformance fixture semantics.
+
+## Owner map
 
 | Term family | Reference owner |
 |---|---|
@@ -24,7 +40,7 @@ The degree to which harness behavior, projections, validators, and close decisio
 
 ### Acceptance
 
-The user's judgment that the result and remaining trade-offs are acceptable. Acceptance is separate from approval, assurance, verification, and Manual QA.
+The user's judgment that the result and remaining trade-offs are acceptable. Acceptance is separate from approval, assurance, verification, Manual QA, evidence sufficiency, and residual-risk acceptance. It does not authorize more writes or retroactively satisfy a missing check.
 
 ### Acceptance Gate
 
@@ -130,7 +146,7 @@ The Task-level aggregate gate for blocking user-owned judgment before progress, 
 
 ### Decision Packet
 
-A recorded decision-support packet for blocking user-owned judgment. It names the decision needed, options, recommendation when available, trade-offs, affected scope, evidence, residual risk, owner, status, and next action. Decision Packet record IDs use `DEC-*`. Its record-level status is owned by [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute) and the public `DecisionPacket` schema; relevant statuses feed the Task-level `decision_gate`. Its canonical form is kernel state. MVP visibility is required through Task/status/next/judgment-context and decision-packet surfaces; standalone `DEC` Markdown renderings are optional projections or proposal surfaces unless enabled.
+A recorded decision-support packet for blocking user-owned judgment. It names the decision needed, options, recommendation when available, trade-offs, affected scope, evidence, residual risk, owner, status, and next action. Decision Packet record IDs use `DEC-*`. Its record-level status is owned by [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute) and the public `DecisionPacket` schema; relevant statuses feed the Task-level `decision_gate`. Its canonical form is kernel state. MVP visibility is required through Task/status/next/judgment-context and decision-packet surfaces; standalone `DEC` Markdown renderings are optional projections or proposal surfaces unless enabled. Broad approval text does not satisfy a Decision Packet unless it answers the specific recorded route and option.
 
 ### Decision Request
 
@@ -402,11 +418,11 @@ The idempotency hash of a tool request, computed from canonical UTF-8 JSON cover
 
 ### Residual Risk
 
-A canonical close-relevant support record for known remaining uncertainty, trade-off, limitation, or unchecked condition after evidence, verification, QA, and acceptance work. It records source refs, affected scope, related Decision Packet when applicable, visibility status, accepted risk when applicable, follow-up requirement, and close impact. Residual risk must remain visible when it affects close, and user acceptance of risk does not create detached verification. Accepted risk is metadata/state on the Residual Risk record in MVP, not a separate `accepted_risk` state record.
+A canonical close-relevant support record for known remaining uncertainty, trade-off, limitation, or unchecked condition after evidence, verification, QA, and acceptance work. It records source refs, affected scope, related Decision Packet when applicable, visibility status, accepted risk when applicable, follow-up requirement, and close impact. Residual risk must remain visible when it affects close, and user acceptance of risk does not create detached verification, Manual QA pass, sensitive approval, or final acceptance. Accepted risk is metadata/state on the Residual Risk record in MVP, not a separate `accepted_risk` state record.
 
 ### Risk Accepted Close
 
-A successful close where the user accepts close-relevant residual risk, including verification risk when verification was waived. It uses `close_reason=completed_with_risk_accepted` and must not display `assurance_level=detached_verified`.
+A successful close where the user accepts close-relevant residual risk, including verification risk when verification was waived. It uses `close_reason=completed_with_risk_accepted` and must not display `assurance_level=detached_verified`. User-facing summaries must keep it distinct from normal `completed_verified` or `completed_self_checked` close.
 
 ### Run
 
@@ -498,7 +514,7 @@ A Change Unit shape that connects a thin path from trigger/input through domain 
 
 ### Waiver
 
-An explicit recorded exception to a gate requirement where policy allows it. Verification waiver, design waiver, and QA waiver are allowed under defined rules. Scope, sensitive approval, required evidence, and required acceptance are not waived for successful completion.
+An explicit recorded exception to a gate requirement where policy allows it. Verification waiver, design waiver, and QA waiver are allowed under defined rules. Scope, sensitive approval, required evidence, and required acceptance are not waived for successful completion. Verification waiver and QA waiver do not upgrade assurance or make skipped checks appear passed.
 
 ### Write Authorization
 

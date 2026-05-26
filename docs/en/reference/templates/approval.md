@@ -115,6 +115,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - decision note:
 - decided by:
 - decided at:
+- broad approval check: this decision records only the sensitive-action Approval above; any "go ahead" wording does not expand it.
 
 ## Boundary
 - approval does not resolve user-owned product or material technical judgment, prove correctness, replace verification, replace Manual QA, imply result acceptance, or accept residual risk.
@@ -128,3 +129,5 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Notes
 
 The Boundary section is the user-facing reminder. Decision request routing records are not decision authority and cannot affect `decision_gate` except through a linked compatible Decision Packet.
+
+The approval wording should not invite a broad answer. If the user says "go ahead," the rendered decision must still show that only the named sensitive action and scope were approved.

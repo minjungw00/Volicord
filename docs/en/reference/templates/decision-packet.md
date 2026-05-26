@@ -51,6 +51,7 @@ Use the same rendered sections for these common Decision Packet shapes. These cu
 - QA or verification waiver: put the skipped check or surface, accepted user/product/technical risk, relevant refs, close impact, and smallest credible follow-up under User Decision And Accepted Risk and Follow-Up.
 - Residual-risk acceptance before close: put the visible limitation, existing evidence, risk refs the user is being asked to accept, and remaining follow-up under Current State, Minimum Context To Judge, User Decision And Accepted Risk, and Follow-Up.
 - Final acceptance: put the final result, evidence status, Manual QA and verification status, and close-relevant residual-risk visibility under Current State and Minimum Context To Judge. Do not treat final acceptance as approval for new sensitive actions, additional writes, deployment, or merge.
+- Broad "go ahead" answers: show why the packet asks for this specific route and option. A generic approval phrase does not resolve product trade-off, architecture choice, QA waiver, verification risk, final acceptance, or residual-risk acceptance unless this packet records that exact judgment.
 
 ## Full template
 
@@ -102,6 +103,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - decision:
 - what this decision settles:
 - what this decision does not settle:
+- why broad approval is insufficient:
 
 ## What Agent May Decide Without User
 - implementation detail:
@@ -171,6 +173,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - selected option:
 - user decision:
 - decision note:
+- broad approval handling:
 - accepted residual-risk summary:
 - accepted residual-risk refs:
 - accepted consequence:

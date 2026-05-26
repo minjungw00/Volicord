@@ -173,6 +173,9 @@ Use this distinction when explaining stops and permissions:
 | Change Unit scope | What work area is in bounds? | Names the behavior, files, paths, tools, commands, network targets, and sensitive categories the work is scoped around. | Does not decide user-owned product or material technical judgment or create Write Authorization by itself. |
 | Autonomy Boundary | What may the agent decide alone inside that scope? | Lets the agent choose covered implementation details without another user decision. | Does not grant paths, tools, commands, network, secrets, sensitive categories, approval, or write authority. |
 | Approval | May this sensitive step proceed? | Allows a named sensitive action within its recorded scope and expiry. | Does not decide user-owned judgment, prove correctness, accept risk, or create Write Authorization. |
+| Decision Packet | What user-owned judgment is being recorded? | Resolves, defers, rejects, or blocks the named product, material technical, waiver, acceptance, residual-risk, or reconcile choice. | Does not grant sensitive-action Approval unless it is the approval-shaped packet linked to an Approval record. |
+| Acceptance | Is the result acceptable when final acceptance is required? | Records the user's final result judgment after close-relevant residual risk is visible or confirmed absent. | Does not replace evidence, verification, Manual QA, Approval, Write Authorization, or residual-risk acceptance. |
+| Residual-risk acceptance | Is this known remaining risk acceptable for close? | Records acceptance of visible close-relevant risk and supports risk-accepted close when other gates allow it. | Does not create detached verification, prove correctness, waive QA, or make the close a normal no-risk close. |
 | Write Authorization | May this exact write attempt happen now? | Records that Core allowed one compatible write attempt after the required checks. | Is not reusable and does not expand scope, Autonomy Boundary, or Approval. |
 
 For small direct tasks, the active Change Unit may be generated from the user's request and surrounding context. Keep examples explanatory, not schema-defining:
@@ -195,6 +198,8 @@ Inside the Autonomy Boundary, the agent may decide ordinary implementation detai
 ## Blocking user-owned judgment
 
 When user-owned product or material technical judgment blocks progress, show or request a Decision Packet. Do not replace it with broad approval or a vague "continue?" prompt.
+
+The word "approved" or a casual "go ahead" is not enough when the underlying choice is a product trade-off, architecture direction, QA waiver, verification risk, final acceptance, or residual-risk acceptance. The prompt must name the decision route, what the user is deciding, what is not being decided, the evidence or risk refs, and the close or write impact.
 
 A user-facing Decision Packet should include:
 
@@ -298,6 +303,8 @@ Residual risk is a known remaining limitation, uncertainty, unchecked condition,
 
 Final acceptance is the user's acceptance of the result when the task path requires it. It is not the same as approval, verification, QA, residual-risk acceptance, or proof of correctness.
 
+Verification waiver and QA waiver do not upgrade assurance. A verification waiver keeps detached verification unsatisfied and routes close through accepted verification risk when close is otherwise allowed. A QA waiver closes only the QA requirement it names and leaves evidence, verification, acceptance, and residual-risk handling unchanged.
+
 Applied close examples:
 
 - Direct work: show changed files, evidence refs, self-check, and whether anything escalated. Do not call it detached verified without a qualifying Eval.
@@ -324,6 +331,8 @@ Before successful close, show or confirm:
 - Manual QA status or valid waiver
 - close-relevant residual risk shown or no known close-relevant residual risk reported
 - final acceptance recorded when required
+
+Do not ask for final acceptance from a generic "all good?" prompt. The final acceptance prompt must show the close basis: evidence, verification, Manual QA, residual-risk visibility or `none`, what acceptance does not replace, and whether the requested close is normal close or risk-accepted close.
 
 If close is blocked, say exactly why and name the smallest next unblocker.
 

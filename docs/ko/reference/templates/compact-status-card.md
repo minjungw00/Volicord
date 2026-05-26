@@ -91,4 +91,6 @@ Design/stewardship은 닫기 상태(Close status)와 별개입니다. Shaping, w
 
 이것은 judgment-context가 아닙니다. 사용자 판단이 필요하면 선택지, 추천안, 불확실성, 결정을 미룰 때의 영향, 관련 refs가 있는 decision prompt를 별도로 렌더링합니다.
 
+Close status는 close reason 구분을 보존해야 합니다. `completed_with_risk_accepted`는 accepted residual risk가 있는 successful close로 렌더링하고, ordinary done, verified, self-checked close처럼 보여주면 안 됩니다. Final acceptance가 next action이면 별도 acceptance prompt가 evidence, verification, Manual QA, residual-risk visibility 또는 `none`, acceptance가 대체하지 않는 것을 보여줘야 합니다.
+
 큰 기록은 먼저 참조를 보여주는 방식(refs-first)으로 둡니다. Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, large trace는 기본적으로 본문에 포함하지 않습니다.

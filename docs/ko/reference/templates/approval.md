@@ -115,6 +115,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - decision note:
 - decided by:
 - decided at:
+- broad approval check: 이 decision은 위의 sensitive-action Approval만 기록하며, "go ahead" 또는 "진행해" wording이 이를 넓히지 않는다.
 
 ## Boundary
 - Approval은 사용자 소유의 제품 판단이나 중요한 기술 판단을 해소하지 않고, correctness를 증명하지 않고, verification이나 Manual QA를 대체하지 않고, 결과 수락을 암시하지 않으며, 남은 위험을 받아들이는 판단을 대신하지 않는다.
@@ -128,3 +129,5 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## 메모
 
 Boundary section은 사용자에게 보이는 안내입니다. Decision request 라우팅 기록만으로는 decision 권한이 생기지 않으며, 연결된 compatible Decision Packet을 통하지 않고는 `decision_gate`에 영향을 줄 수 없습니다.
+
+Approval wording은 broad answer를 유도하면 안 됩니다. 사용자가 "go ahead" 또는 "진행해"라고 말하더라도 rendered decision은 이름 붙은 sensitive action과 scope만 승인됐음을 계속 보여줘야 합니다.

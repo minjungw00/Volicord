@@ -51,6 +51,7 @@ Approval 형태 표시 항목인 "이 Approval이 포괄하는 것", "이 Approv
 - QA 또는 verification waiver: 생략하는 확인이나 대상 접점, 사용자·제품·기술 측면에서 받아들이는 위험, 관련 refs, 닫기 영향, 가장 작은 신뢰 가능한 follow-up은 User Decision And Accepted Risk와 Follow-Up에 둡니다.
 - 닫기 전 남은 위험을 받아들이는 판단: 사용자에게 보인 한계, 기존 근거, 사용자가 받아들일지 판단해야 하는 risk ref, 남은 follow-up은 Current State, Minimum Context To Judge, User Decision And Accepted Risk, Follow-Up에 둡니다.
 - 최종 수락: 최종 결과, evidence 상태, Manual QA와 verification 상태, close-relevant residual-risk visibility는 Current State와 Minimum Context To Judge에 둡니다. 최종 수락을 새 sensitive action, 추가 write, deployment, merge approval처럼 다루면 안 됩니다.
+- 넓은 "go ahead" 답변: packet이 왜 이 specific route와 option을 묻는지 보여줍니다. Generic approval phrase는 이 packet이 정확히 그 judgment를 기록하지 않는 한 product trade-off, architecture choice, QA waiver, verification risk, final acceptance, residual-risk acceptance를 해결하지 않습니다.
 
 ## 전체 템플릿
 
@@ -102,6 +103,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - decision:
 - 이 decision이 확정하는 것:
 - 이 decision이 확정하지 않는 것:
+- broad approval이 충분하지 않은 이유:
 
 ## What Agent May Decide Without User
 - implementation detail:
@@ -171,6 +173,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - selected option:
 - user decision:
 - decision note:
+- broad approval handling:
 - accepted residual-risk summary:
 - accepted residual-risk refs:
 - accepted consequence:

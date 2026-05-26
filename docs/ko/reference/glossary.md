@@ -1,10 +1,26 @@
 # 용어집 참조
 
-## 이 용어집 사용법
+## 이 문서로 할 수 있는 일
 
 다른 문서를 읽다가 Harness의 official term, capitalization, record name, 서로 대체할 수 없는 경계를 확인할 때 이 용어집을 사용합니다.
 
-이 문서는 lookup aid입니다. Harness 개념을 처음 이해하려면 Learn 경로를 사용합니다. 정확한 behavior가 필요하면 아래 owner link나 개별 정의 안의 link를 따라가며, glossary를 owner reference 대신 사용하지 않습니다.
+## 이런 때 읽기
+
+Harness 용어를 확인하거나, authority path를 섞지 않도록 점검하거나, 정확한 behavior를 담당하는 reference owner를 찾을 때 읽습니다.
+
+## 읽기 전에
+
+Harness 개념을 처음 이해하려면 Learn 경로를 사용합니다. 정확한 behavior가 필요하면 아래 owner link나 개별 정의 안의 link를 따라갑니다.
+
+## 핵심 생각
+
+용어집은 lookup aid이자 owner map입니다. 이름과 짧은 non-substitution reminder를 일관되게 유지하지만, owner reference 문서를 대체하지는 않습니다.
+
+## 참조 범위
+
+이 용어집은 official term wording, capitalization reminder, record-name orientation, owner routing을 담당합니다. Kernel behavior, public MCP schema, storage DDL, projection rule, template body, connector capability profile, conformance fixture semantics는 담당하지 않습니다.
+
+## 담당 문서 지도
 
 | 용어 묶음 | 담당 참조 문서 |
 |---|---|
@@ -24,7 +40,7 @@ Harness behavior, projections, validators, close decisions가 사용자의 Strat
 
 ### Acceptance
 
-결과와 남은 trade-offs가 받아들일 만하다는 사용자의 판단입니다. Acceptance는 approval, assurance, verification, Manual QA와 구분됩니다.
+결과와 남은 trade-offs가 받아들일 만하다는 사용자의 판단입니다. Acceptance는 approval, assurance, verification, Manual QA, evidence sufficiency, residual-risk acceptance와 구분됩니다. 추가 write를 허가하거나 빠진 check를 나중에 충족된 것으로 만들지 않습니다.
 
 ### Acceptance Gate
 
@@ -130,7 +146,7 @@ Relevant projection, artifact ref, repo file, doc, note를 보여줄 수 있는 
 
 ### Decision Packet
 
-차단하는 사용자 소유 판단을 지원하기 위해 기록하는 decision-support packet입니다. decision needed, options, 가능할 때 recommendation, trade-offs, affected scope, evidence, Residual Risk, owner, status, next action을 명시합니다. Decision Packet record ID는 `DEC-*`를 사용합니다. Record-level status는 [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute)와 public `DecisionPacket` schema가 담당하며, 관련 statuses가 Task-level `decision_gate`에 반영됩니다. 기준 형태는 kernel state입니다. MVP visibility는 Task/status/next/judgment-context 및 decision-packet 접점을 통해 required이며, standalone `DEC` Markdown 렌더링 결과는 기능이 켜져 있을 때만 optional projection 또는 proposal 접점입니다.
+차단하는 사용자 소유 판단을 지원하기 위해 기록하는 decision-support packet입니다. decision needed, options, 가능할 때 recommendation, trade-offs, affected scope, evidence, Residual Risk, owner, status, next action을 명시합니다. Decision Packet record ID는 `DEC-*`를 사용합니다. Record-level status는 [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute)와 public `DecisionPacket` schema가 담당하며, 관련 statuses가 Task-level `decision_gate`에 반영됩니다. 기준 형태는 kernel state입니다. MVP visibility는 Task/status/next/judgment-context 및 decision-packet 접점을 통해 required이며, standalone `DEC` Markdown 렌더링 결과는 기능이 켜져 있을 때만 optional projection 또는 proposal 접점입니다. 넓은 approval text는 특정 recorded route와 option에 답하지 않는 한 Decision Packet을 충족하지 않습니다.
 
 ### Decision Request
 
@@ -404,11 +420,11 @@ Spec Compliance Review와 Code Quality / Stewardship Review를 분리하는 mana
 
 ### Residual Risk
 
-Evidence, verification, QA, 결과 수락 work 이후에도 남는 known uncertainty, trade-off, limitation, unchecked condition을 위한 기준 close-relevant support record입니다. source refs, affected scope, applicable한 경우 related Decision Packet, visibility status, 받아들인 위험, follow-up requirement, close impact를 기록합니다. Close에 영향을 주는 Residual Risk는 계속 보여야 하며, 사용자가 위험을 받아들이는 판단은 detached verification을 만들지 않습니다. MVP에서 받아들인 위험은 Residual Risk record 위의 metadata/state이며 별도의 `accepted_risk` state record가 아닙니다.
+Evidence, verification, QA, 결과 수락 work 이후에도 남는 known uncertainty, trade-off, limitation, unchecked condition을 위한 기준 close-relevant support record입니다. source refs, affected scope, applicable한 경우 related Decision Packet, visibility status, 받아들인 위험, follow-up requirement, close impact를 기록합니다. Close에 영향을 주는 Residual Risk는 계속 보여야 하며, 사용자가 위험을 받아들이는 판단은 detached verification, Manual QA pass, sensitive approval, final acceptance를 만들지 않습니다. MVP에서 받아들인 위험은 Residual Risk record 위의 metadata/state이며 별도의 `accepted_risk` state record가 아닙니다.
 
 ### Risk Accepted Close
 
-사용자가 close-relevant Residual Risk를 받아들이는 successful close입니다. Verification risk가 waived된 경우도 포함합니다. `close_reason=completed_with_risk_accepted`를 사용하며 `assurance_level=detached_verified`로 표시하면 안 됩니다.
+사용자가 close-relevant Residual Risk를 받아들이는 successful close입니다. Verification risk가 waived된 경우도 포함합니다. `close_reason=completed_with_risk_accepted`를 사용하며 `assurance_level=detached_verified`로 표시하면 안 됩니다. User-facing summary는 이를 일반 `completed_verified` 또는 `completed_self_checked` close와 구분해야 합니다.
 
 ### Run
 
@@ -500,7 +516,7 @@ Trigger/input에서 domain logic, persistence 또는 state, caller/API 경계, o
 
 ### Waiver
 
-Policy가 허용하는 곳에서 gate requirement에 대한 explicit recorded exception입니다. Verification 면제, design waiver, QA 면제는 정의된 rules 아래 허용됩니다. Scope, sensitive approval, required evidence, 필수 결과 수락은 successful completion을 위해 waived되지 않습니다.
+Policy가 허용하는 곳에서 gate requirement에 대한 explicit recorded exception입니다. Verification 면제, design waiver, QA 면제는 정의된 rules 아래 허용됩니다. Scope, sensitive approval, required evidence, 필수 결과 수락은 successful completion을 위해 waived되지 않습니다. Verification waiver와 QA waiver는 assurance를 높이거나 생략된 check가 passed된 것처럼 만들지 않습니다.
 
 ### Write Authorization
 

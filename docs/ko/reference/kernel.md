@@ -68,6 +68,19 @@ Kernel은 제품 파일 쓰기와 닫기 판단이 명시적인 상태에 의존
 
    `close_task`는 active Run 상태, scope, decision, approval, design, 근거, 검증, QA, 남은 위험 표시, 수용, 요청된 닫기 사유를 확인해 닫기 가능 여부를 판단합니다.
 
+## 판단 경로 경계
+
+사용자 판단은 특정 경로를 통해 kernel state에 도달합니다. 넓은 승인 문구는 active prompt와 기록 payload가 경로, affected scope, 선택지 또는 결과, close 또는 write 영향을 이름 붙였을 때만 유효합니다.
+
+| 경로 | Kernel 의미 | 이렇게 취급하면 안 되는 것 |
+|---|---|---|
+| Approval | 정의된 scope와 expiry 안의 sensitive-action permission. | 제품 방향, 중요한 기술 방향, correctness proof, final acceptance, residual-risk acceptance, QA, verification, evidence, Write Authorization. |
+| Decision Packet | 사용자 소유 제품 판단, 중요한 기술 판단, waiver, acceptance, residual-risk, reconcile 판단을 위한 기준 경로. | Approval 형태이고 Approval record에 연결된 경우를 제외한 sensitive-action Approval, product-write authority, detached verification. |
+| Acceptance | Required일 때, close-relevant residual risk가 visible하거나 absent로 확인된 뒤 결과가 받아들일 만하다는 사용자 판단. | Evidence sufficiency, verification, Manual QA, sensitive approval, residual-risk acceptance, 추가 write permission. |
+| Residual-risk acceptance | Requested close에 대해 보이는 close-relevant remaining risk를 받아들일 수 있다는 사용자 판단. | 위험 없는 일반 close, detached verification, QA pass, sensitive approval, evidence, 또는 acceptance gate가 별도로 satisfied되지 않은 final acceptance. |
+
+"go ahead" 또는 "진행해" 같은 일반 문구는 위의 호환되는 경로로 기록되지 않는 한 제품 장단점, architecture 선택, QA waiver, verification risk, final acceptance, residual-risk acceptance를 결정하지 않습니다.
+
 ## 담당하는 참조 범위
 
 이 문서가 담당합니다.
@@ -586,6 +599,8 @@ MVP final acceptance는 기준 Decision Packet user-decision path, Task의 `acce
 
 Residual-risk visibility는 두 가지 방식으로 충족됩니다. Known close-relevant Residual Risk가 없으면 current judgment context가 `ResidualRiskSummary.status=none`을 보고합니다. Known close-relevant Residual Risk가 있으면 successful close 전에 그 risk가 current judgment context에서 표시되어야 합니다. Acceptance가 required라면 닫기에 영향을 주는 남은 위험이 표시되거나 `ResidualRiskSummary.status=none`으로 확인된 뒤에만 record될 수 있습니다. Risk-accepted close에는 acceptance 전에 user에게 표시되었던 risk를 가리키는 accepted Residual Risk refs가 추가로 필요하며, Residual Risk 수용은 assurance를 `detached_verified`로 높이지 않습니다. `ResidualRiskSummary.status=none`은 known close-relevant risk를 숨기거나 대체하면 안 됩니다.
 
+System이 final acceptance를 요청하거나 기록하기 전에는 current judgment context가 evidence status, verification status, QA status, residual-risk visibility 또는 `ResidualRiskSummary.status=none`, acceptance가 대체하지 않는 것을 보여줘야 합니다. 이 close basis가 빠진 final acceptance prompt는 incomplete display이며 `acceptance_gate`를 만족시키는 데 사용할 수 없습니다.
+
 Kernel은 `ResidualRiskSummary.status`를 다음과 같이 해석합니다.
 
 | Status | Meaning |
@@ -913,6 +928,8 @@ Residual-risk acceptance는 알려진 남은 위험이 requested close를 위해
 
 `ResidualRiskSummary.status=none`은 accept할 known close-relevant residual risk가 없다는 뜻입니다. Ordinary close와 acceptance의 visibility는 충족하지만 accepted risk가 아니며 `completed_with_risk_accepted`를 지원할 수 없습니다.
 
+사용자에게 보이는 close wording은 이 구분을 보존해야 합니다. `completed_verified`와 `completed_self_checked`는 일반 successful close reason이고, `completed_with_risk_accepted`는 명시적으로 accepted risk가 있는 successful close입니다. Status, report, Journey view, final summary는 risk-accepted close를 일반적인 "done" 또는 "verified" message로 뭉개면 안 됩니다.
+
 `cancelled`는 Task가 passed result 없이 중단되었다는 뜻입니다.
 
 `superseded`는 다른 Task 또는 Change Unit이 이 작업을 대체한다는 뜻입니다. Supersession은 success를 뜻하지 않습니다.
@@ -935,6 +952,8 @@ Waivers는 reason, actor, time, 영향받는 gate와 함께 기록해야 하는 
 - Acceptance가 required인 경우의 acceptance waiver.
 
 Verification waiver는 detached verification이 아닙니다. Verification waiver로 close한 Task는 `close_reason=completed_with_risk_accepted`와 `assurance_level=none` 또는 `self_checked`를 사용합니다.
+
+QA waiver는 Manual QA pass, verification, acceptance, assurance upgrade가 아닙니다. 이는 이름 붙은 QA requirement가 validly waived되었다는 것만 기록하며, evidence, verification, acceptance, residual-risk check는 각각의 gate에 남습니다.
 
 Decision deferral은 waiver가 아닙니다. Deferred Decision Packet은 affected operation, 지금 decision 없이 Task가 proceed할 수 있는 이유, close 전에 필요한 남은 위험 또는 follow-up을 기록해야 합니다.
 
