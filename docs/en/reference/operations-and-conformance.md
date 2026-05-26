@@ -117,7 +117,7 @@ Operator command map:
 
 Operator output should help a person decide what to do next without teaching a second state model. A useful diagnostic line names the category, level, observed fact, affected record or path when safe, operational effect, and next action. It also says when a finding is only diagnostic.
 
-For example, "projection `TASK` is stale" means the readable view is behind the owner records; it does not mean Task state failed. "generated-file drift detected" means a connector-managed file no longer matches the manifest; it is reported and routed to reconcile rather than overwritten. "recovery event appended" means history was extended with a compensating record; it does not mean older `task_events` were rewritten.
+For example, "projection `TASK` is stale" means the readable view is behind the owner records; it does not mean Task state failed. A close/readiness line that depends on report freshness must show the current Core state version separately from the projection `source_state_version` or failed job status. "generated-file drift detected" means a connector-managed file no longer matches the manifest; it is reported and routed to reconcile rather than overwritten. "recovery event appended" means history was extended with a compensating record; it does not mean older `task_events` were rewritten.
 
 These examples are display guidance. They do not add command flags, state tables, event names, public `ErrorCode` values, or fixture fields.
 
@@ -368,11 +368,13 @@ Projection refresh regenerates Product Repository Markdown from committed state 
 Required behavior:
 
 - render only the latest projection version for a target
+- render or enqueue MVP-required `ProjectionKind` views when their source records exist or change
 - preserve human-editable sections
 - compare managed block hashes before overwrite
 - create reconcile items for managed-block drift
 - mark projection jobs `completed`, `failed`, `pending`, or `skipped`
-- keep projection failure separate from Task result
+- display `source_state_version` or equivalent freshness facts without treating front matter as state
+- keep projection failure separate from Task result and committed Core state
 
 Supported targets:
 
@@ -400,6 +402,8 @@ flowchart TD
 
 For MVP, Decision Packet visibility is rendered through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources; Journey Card visibility is rendered through status, journey, next, and significant resume surfaces. Dedicated refresh targets in the Extension / optional tier for `DEC`, `DESIGN`, `EXPORT`, and persisted `JOURNEY-CARD` are optional when enabled, not required MVP smoke targets.
 
+MVP-required projection support is source-backed. `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, and `DIRECT-RESULT` must be enqueueable/renderable when their corresponding Task, committed approval-shaped Decision Packet or Approval, Run, Evidence Manifest, Eval, or direct-result source records exist or change. Projection refresh must report missing source records as unavailable or not applicable rather than creating state to satisfy a template.
+
 Illustrative projection refresh statuses:
 
 | Report line | Meaning |
@@ -413,6 +417,8 @@ Illustrative projection refresh statuses:
 ## reconcile
 
 Reconcile turns human-editable input or generated/managed drift into an explicit decision.
+
+The proposal path is: human-editable proposal -> reconcile item -> accepted Core state-changing action with an appended `state.sqlite.task_events` row, or rejection, defer, or conversion to a note. Managed-block direct edits use the same reconcile boundary as drift; they are not state changes.
 
 Targets:
 
@@ -841,6 +847,8 @@ Allowed `expected_projection` status assertions:
 | `stale_or_failed` | Either `stale` or `failed` is acceptable. Use this when a render failure may be surfaced as failed freshness or as stale freshness with a failed job. |
 
 Projection shorthand such as `TASK: stale_or_enqueued` is a scalar status assertion for the `TASK` projection kind. Object form may assert additional captured projection fields while still using `partial_by_kind`, for example `TASK: {status: current}`. These assertion operators are fixture-comparison semantics, not new projection DDL or API enum values unless the owning schema documents define them.
+
+Projection assertions compare projection freshness, enqueue status, source-state-version display, and related job facts. They do not compare rendered Markdown as canonical state, and they do not let a failed render roll back or rewrite the captured Core state and events.
 
 Suite catalogs may override assertion modes without changing fixtures:
 
@@ -3281,8 +3289,8 @@ These catalog entries are not fixture bodies. They make projection, reconcile, a
 
 | Scenario ID | Core or operator action | Required assertions |
 |---|---|---|
-| `CORE-projection-stale-state-current-distinction` | `status`, `next`, or `projection_refresh` | Current Task state remains readable and authoritative while a `TASK` projection is `stale` or latest refresh is `failed`; the fixture separately asserts current state version, projection freshness or job status, and any `PROJECTION_STALE` or projection-failure reporting. The projection problem does not mark the Task result failed, replace current state, satisfy gates, or authorize writes. |
-| `RECONCILE-managed-block-edit-routes-to-reconcile` | `projection_refresh` or `reconcile` | Human edits inside a managed block or generated/managed manifest drift produce a reconcile item and leave canonical state unchanged until an explicit reconcile decision is recorded; projection output is skipped, stale, failed, or refreshed according to the reconcile outcome, and fixture assertions compare the reconcile item, projection status, events, and error rather than edited Markdown text alone. |
+| `CORE-projection-stale-state-current-distinction` | `status`, `next`, `close_task`, or `projection_refresh` | Current Task state remains readable and authoritative while a `TASK` projection is `stale` or latest refresh is `failed`; the fixture separately asserts current state version, projection `source_state_version` or job status, and any `PROJECTION_STALE` or projection-failure reporting. Close/readiness output cannot infer readiness from stale Markdown. The projection problem does not roll back Core state, mark the Task result failed, replace current state, satisfy gates, or authorize writes. |
+| `RECONCILE-managed-block-edit-routes-to-reconcile` | `projection_refresh` or `reconcile` | Human edits inside a managed block or generated/managed manifest drift produce a reconcile item and leave canonical state unchanged until an explicit reconcile decision is recorded; accepted proposals apply only through a Core state-changing action and appended `state.sqlite.task_events` row, while rejected, deferred, or note outcomes leave owner records unchanged. Projection output is skipped, stale, failed, or refreshed according to the reconcile outcome, and fixture assertions compare the reconcile item, projection status, events, and error rather than edited Markdown text alone. |
 | `CORE-same-session-self-review-not-detached-verification` | `record_eval` or `close_task` | A same-session self-review, same chat transcript, or non-independent bundle can be useful context but cannot set detached verification passed or upgrade assurance. Fixtures assert the same-session violation or independence finding, keep `verification_gate` pending or blocked when detached verification is required, and keep close blocked unless another valid Eval path, waiver, or accepted risk resolves the requirement. |
 
 #### V1 Browser QA Capture Candidate Entries

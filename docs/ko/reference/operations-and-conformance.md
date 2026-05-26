@@ -117,7 +117,7 @@ flowchart TD
 
 Operator output은 사람이 다음 조치를 고를 수 있게 해야 하며, 두 번째 상태 모델을 가르치면 안 됩니다. 유용한 diagnostic line은 category, level, 관찰된 사실, 안전하게 표시할 수 있는 affected record 또는 path, operational effect, next action을 함께 이름 붙입니다. Finding이 diagnostic only인 경우도 분명히 말해야 합니다.
 
-예를 들어 "projection `TASK` is stale"은 사람이 읽는 view가 owner record보다 뒤처졌다는 뜻이지 Task state가 failed라는 뜻이 아닙니다. "generated-file drift detected"는 connector-managed file이 manifest와 더 이상 맞지 않는다는 뜻이며, 조용히 덮어쓰지 않고 보고한 뒤 reconcile로 보냅니다. "recovery event appended"는 compensating record로 history를 확장했다는 뜻이지 기존 `task_events`를 rewrite했다는 뜻이 아닙니다.
+예를 들어 "projection `TASK` is stale"은 사람이 읽는 view가 owner record보다 뒤처졌다는 뜻이지 Task state가 failed라는 뜻이 아닙니다. Report freshness에 의존하는 close/readiness line은 현재 Core state version을 projection `source_state_version` 또는 failed job status와 분리해 보여줘야 합니다. "generated-file drift detected"는 connector-managed file이 manifest와 더 이상 맞지 않는다는 뜻이며, 조용히 덮어쓰지 않고 보고한 뒤 reconcile로 보냅니다. "recovery event appended"는 compensating record로 history를 확장했다는 뜻이지 기존 `task_events`를 rewrite했다는 뜻이 아닙니다.
 
 이 예시는 display guidance입니다. Command flag, state table, event name, public `ErrorCode`, fixture field를 추가하지 않습니다.
 
@@ -368,11 +368,13 @@ Projection refresh는 커밋된 상태 기록과 artifact ref에서 Product Repo
 필수 동작:
 
 - target의 latest projection version만 렌더링합니다
+- MVP-required `ProjectionKind` view는 source record가 존재하거나 변경될 때 렌더링하거나 대기열에 넣습니다
 - human-editable section을 보존합니다
 - overwrite 전에 managed block hash를 비교합니다
 - managed-block drift에는 reconcile item을 생성합니다
 - projection job을 `completed`, `failed`, `pending`, `skipped`로 표시합니다
-- projection failure를 Task result와 분리합니다
+- `source_state_version` 또는 동등한 freshness fact를 표시하되 front matter를 state로 취급하지 않습니다
+- projection failure를 Task result와 committed Core state에서 분리합니다
 
 지원 target:
 
@@ -402,6 +404,8 @@ MVP에서 Decision Packet visibility는 `TASK` projections, status/next response
 
 `DEC`, `DESIGN`, `EXPORT`, persisted `JOURNEY-CARD`를 위한 Extension / optional tier의 전용 refresh target은 기능이 켜져 있을 때만 사용하며, MVP smoke 필수 대상이 아닙니다.
 
+MVP-required projection support는 source-backed입니다. `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`는 각각 대응하는 Task, committed approval-shaped Decision Packet 또는 Approval, Run, Evidence Manifest, Eval, direct-result source record가 존재하거나 변경될 때 enqueue/render할 수 있어야 합니다. Projection refresh는 template을 채우기 위해 state를 만들지 말고 source record가 없음을 unavailable 또는 not applicable로 보고해야 합니다.
+
 Projection refresh status 예시:
 
 | Report line | Meaning |
@@ -415,6 +419,8 @@ Projection refresh status 예시:
 ## reconcile
 
 Reconcile은 human-editable input 또는 generated/managed drift를 명시적인 decision으로 바꿉니다.
+
+Proposal path는 human-editable proposal -> reconcile item -> 추가된 `state.sqlite.task_events` row가 있는 accepted Core state-changing action, 또는 reject, defer, note 전환입니다. Managed-block direct edit도 같은 reconcile 경계에 있는 drift이며 state change가 아닙니다.
 
 Target:
 
@@ -843,6 +849,8 @@ Allowed `expected_projection` status assertions:
 | `stale_or_failed` | `stale` 또는 `failed` 중 하나면 허용됩니다. 렌더링 failure가 `failed` freshness로 드러나거나 failed job을 동반한 `stale` freshness로 드러날 수 있을 때 사용합니다. |
 
 `TASK: stale_or_enqueued` 같은 projection shorthand는 `TASK` projection kind에 대한 scalar status assertion입니다. Object form은 `partial_by_kind`를 유지하면서 additional captured projection field를 검증할 수 있습니다. 예: `TASK: {status: current}`. 이 assertion operator는 fixture comparison 의미이지, owning schema documents가 정의하지 않는 한 새로운 projection DDL 또는 API enum value가 아닙니다.
+
+Projection assertion은 projection freshness, enqueue status, source-state-version display, 관련 job fact를 비교합니다. Rendered Markdown을 기준 상태로 비교하지 않으며, failed render가 captured Core state와 event를 rollback하거나 rewrite하게 만들지도 않습니다.
 
 Suite catalog는 fixture를 바꾸지 않고 assertion mode를 override할 수 있습니다.
 
@@ -3283,8 +3291,8 @@ expected_error: null
 
 | Scenario ID | Core 또는 operator action | Required assertions |
 |---|---|---|
-| `CORE-projection-stale-state-current-distinction` | `status`, `next`, 또는 `projection_refresh` | `TASK` projection이 `stale`이거나 latest refresh가 `failed`여도 current Task state는 읽을 수 있고 authoritative하게 남습니다. Fixture는 current state version, projection freshness 또는 job status, `PROJECTION_STALE` 또는 projection-failure reporting을 분리해 검증합니다. Projection 문제는 Task result를 failed로 만들거나, current state를 대체하거나, gate를 충족하거나, write를 authorize하지 않습니다. |
-| `RECONCILE-managed-block-edit-routes-to-reconcile` | `projection_refresh` 또는 `reconcile` | Managed block 안의 human edit 또는 generated/managed manifest drift는 reconcile item을 만들고, explicit reconcile decision이 기록될 때까지 canonical state를 바꾸지 않습니다. Projection output은 reconcile outcome에 따라 skipped, stale, failed, refreshed 중 하나로 처리되며, fixture assertion은 edited Markdown text만 비교하지 않고 reconcile item, projection status, events, error를 비교합니다. |
+| `CORE-projection-stale-state-current-distinction` | `status`, `next`, `close_task`, 또는 `projection_refresh` | `TASK` projection이 `stale`이거나 latest refresh가 `failed`여도 current Task state는 읽을 수 있고 authoritative하게 남습니다. Fixture는 current state version, projection `source_state_version` 또는 job status, `PROJECTION_STALE` 또는 projection-failure reporting을 분리해 검증합니다. Close/readiness output은 stale Markdown에서 readiness를 추론할 수 없습니다. Projection 문제는 Core state를 rollback하거나, Task result를 failed로 만들거나, current state를 대체하거나, gate를 충족하거나, write를 authorize하지 않습니다. |
+| `RECONCILE-managed-block-edit-routes-to-reconcile` | `projection_refresh` 또는 `reconcile` | Managed block 안의 human edit 또는 generated/managed manifest drift는 reconcile item을 만들고, explicit reconcile decision이 기록될 때까지 canonical state를 바꾸지 않습니다. Accepted proposal은 Core state-changing action과 추가된 `state.sqlite.task_events` row를 통해서만 적용되며, rejected, deferred, note outcome은 owner record를 변경하지 않습니다. Projection output은 reconcile outcome에 따라 skipped, stale, failed, refreshed 중 하나로 처리되며, fixture assertion은 edited Markdown text만 비교하지 않고 reconcile item, projection status, events, error를 비교합니다. |
 | `CORE-same-session-self-review-not-detached-verification` | `record_eval` 또는 `close_task` | Same-session self-review, 같은 chat transcript, independence가 없는 bundle은 useful context가 될 수 있지만 detached verification을 passed로 설정하거나 assurance를 올릴 수 없습니다. Fixture는 same-session violation 또는 independence finding을 검증하고, detached verification이 required이면 `verification_gate`를 pending 또는 blocked로 유지하며, 다른 valid Eval path, waiver, accepted risk가 해결하지 않는 한 close가 blocked로 남는지 검증합니다. |
 
 #### V1 Browser QA Capture Candidate Entries

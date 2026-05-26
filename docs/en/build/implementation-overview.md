@@ -133,13 +133,15 @@ State conflict and idempotency replay behavior are part of that public tool cont
 
 ### Projections
 
-Projections are human-readable views derived from state records and artifact refs. They are not canonical state.
+Projections are human-readable views derived from state records and artifact refs. `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`, and other report projections are not canonical state.
 
 Build projection output from the Core source records it depends on, such as Task, gate, Run, artifact, evidence, Eval, QA, and other owner records after those records exist. A minimal `TASK` projection freshness or enqueueing path can be part of Kernel Smoke, but projection templates cannot create authority, satisfy evidence, replace state, shape the state model, or become the first proof.
 
-The first runnable slice may enqueue a minimal `TASK` projection job or render a minimal `TASK` projection. The final MVP must support MVP-required `ProjectionKind` values when their source records exist: `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, and `DIRECT-RESULT`.
+The first runnable slice may enqueue a minimal `TASK` projection job or render a minimal `TASK` projection. The final MVP must support enqueueing and rendering MVP-required `ProjectionKind` values when their source records exist or change: `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, and `DIRECT-RESULT`.
 
-Projection failure must not roll back committed Core state. It should mark projection freshness or job status and leave recovery or reconcile to a later action.
+Projection failure must not roll back committed Core state. It should mark projection freshness or job status and leave recovery or reconcile to a later action. `source_state_version` and freshness are display/readiness facts: close/readiness output should show when a readable view is stale or failed, but stale Markdown cannot authorize work, satisfy close, or replace current Core state.
+
+Human-editable projection sections are proposal surfaces. The implementation path should route proposal -> reconcile item -> accepted Core state-changing action and `task_events` row, or reject, defer, or note. Direct managed-block edits are drift, not state changes.
 
 ### Operator Commands
 

@@ -139,7 +139,7 @@ repo/
 ```
 
 
-Repository는 생성된 TASK, APR, RUN-SUMMARY, EVAL, DIRECT-RESULT, EVIDENCE-MANIFEST, TDD-TRACE, MANUAL-QA, DOMAIN-LANGUAGE, MODULE-MAP, INTERFACE-CONTRACT Markdown 보고서를 담을 수 있습니다. 이 파일들은 사람과 agent가 작업을 읽는 데 도움을 주지만 기준 상태가 아닙니다. 사람이 편집할 수 있는 영역은 입력 접점입니다. Accepted changes는 reconcile 또는 Core 상태 변경 action을 통해서만 상태 기록이 됩니다.
+Repository는 생성된 `TASK`, `APR`, `RUN-SUMMARY`, `EVAL`, `DIRECT-RESULT`, `EVIDENCE-MANIFEST`, `TDD-TRACE`, `MANUAL-QA`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, 그 밖의 report projection Markdown 보고서를 담을 수 있습니다. 이 파일들은 사람과 agent가 작업을 읽는 데 도움을 주지만 기준 상태가 아닙니다. 사람이 편집할 수 있는 영역은 입력 접점입니다. Accepted changes는 reconcile과 Core 상태 변경 action을 통해서만 상태 기록이 됩니다.
 
 ## Harness Server / Installation
 
@@ -255,7 +255,7 @@ Adapters와 sidecars는 접점 capability를 observable facts로 번역합니다
 
 이 transaction 안에서 Core는 current-record update의 일부로 affected scope clock을 증가시킵니다. Task-scoped changes는 `tasks.state_version`을 증가시키고, `task_id=null`인 project-scoped changes는 `project_state.state_version`을 증가시킵니다. Event rows는 각 affected scope의 resulting state version을 기록합니다. State conflict와 idempotency replay 동작은 [MCP API와 스키마의 Idempotency](mcp-api-and-schemas.md#idempotency)와 [State Conflict 동작](mcp-api-and-schemas.md#state-conflict-동작)에 드러나는 public API 계약입니다.
 
-Projection 렌더링은 transaction 이후에 일어납니다. Projection failure는 projection 최신성을 `stale` 또는 `failed`로 표시하고 커밋된 상태는 그대로 둡니다. Projection은 passed task를 failed task로 바꿀 수 없고, 나중의 reconcile decision 없이 기준 상태를 repair할 수도 없습니다.
+Projection 렌더링은 transaction 이후에 일어납니다. Projection failure는 state-isolated입니다. Projection 최신성 또는 job status를 `stale` 또는 `failed`로 표시하고 커밋된 상태는 그대로 둡니다. Projection은 transaction을 roll back하거나, `state.sqlite.task_events`를 rewrite하거나, passed task를 failed task로 바꾸거나, 나중의 reconcile decision 없이 기준 상태를 repair할 수 없습니다.
 
 ## Artifact store architecture
 
@@ -284,7 +284,7 @@ Large logs, diffs, screenshots, traces 같은 큰 근거는 registered artifact 
 | Markdown 보고서 | 기록과 artifact refs에서 만든 사람이 읽을 수 있는 projection | TASK, Journey Card/Spine views, Decision Packet views, APR, RUN-SUMMARY, EVAL, DIRECT-RESULT, EVIDENCE-MANIFEST |
 
 
-이 named 보고서 kind는 기본적으로 상태 기록과 artifact refs에서 생성되는 projections입니다. Artifact store의 evidence file을 참조할 수 있고 export가 snapshots를 포함할 수 있지만, 그렇다고 Markdown 보고서가 기준 근거 파일이 되지는 않습니다.
+이 named 보고서 kind는 기본적으로 상태 기록과 artifact refs에서 생성되는 projections입니다. Artifact store의 evidence file을 참조할 수 있고 export가 snapshots를 포함할 수 있지만, 그렇다고 Markdown 보고서가 기준 근거 파일이나 기준 상태가 되지는 않습니다.
 
 ## Projection and reconcile flow
 
@@ -298,14 +298,14 @@ Projection은 outbox-style flow입니다.
 → human-editable area 보존
 ```
 
-Projector는 managed area만 쓰고 사람이 편집할 수 있는 영역은 보존합니다. Managed area가 직접 edit되었다면 projector는 그 edit를 state로 조용히 받아들이지 않고 reconcile candidate를 기록합니다. Human-editable area에 proposal이 있으면 reconcile은 candidate record를 만들고 명시적 decision을 요청합니다.
+Projector는 managed area만 쓰고 사람이 편집할 수 있는 영역은 보존합니다. Managed area가 직접 edit되었다면 projector는 그 edit를 state로 조용히 받아들이지 않고 reconcile candidate를 기록합니다. Human-editable area에 proposal이 있으면 reconcile은 candidate record를 만들고 명시적 decision을 요청합니다. `source_state_version` 같은 front matter와 freshness line은 렌더링된 view에 대한 표시 진단 정보이지 두 번째 state clock이 아닙니다.
 
 Reconcile 권한 경로:
 
 ```text
 human-editable input
 → state.sqlite.reconcile_items
-→ accepted state event/record 또는 rejected/deferred note
+→ accepted Core state-changing action과 state.sqlite.task_events row, 또는 rejected/deferred/note outcome
 ```
 
 
@@ -339,7 +339,7 @@ Failures는 숨기지 않고 기록합니다.
 | approval 이후 baseline drift | approval 또는 evidence를 `stale`로 표시합니다. Scope가 영향을 받으면 reconfirmation을 요구합니다 |
 | evaluator가 repo drift 관찰 | verification을 차단하거나 `stale`로 표시합니다. Fresh baseline 또는 new bundle을 요구합니다 |
 | artifact file missing 또는 hash mismatch | artifact와 dependent evidence, projection, export, close-readiness view를 `stale` 또는 blocked로 표시합니다. Recovery를 통해 다시 scan하거나, 등록된 정확한 bytes를 restore하거나, replacement를 등록합니다 |
-| Projection job failed | state는 current로 유지하고 projection을 failed로 표시한 뒤 retry 또는 reconcile합니다 |
+| Projection job failed | state는 current로 유지하고 projection을 failed로 표시한 뒤 retry 또는 reconcile합니다. Core state를 roll back하지 않습니다 |
 | Managed Markdown edited directly | reconcile item을 만들고 기준 상태를 직접 바꾸지 않습니다 |
 | MCP unavailable | `MCP_SERVER_UNAVAILABLE`은 tool 호출이 Core에 닿을 수 없어 authoritative Core response가 불가능한 진단 조건이고, `SURFACE_MCP_UNAVAILABLE`은 Core 또는 operator가 연결된 접점에서 사용할 수 있는 MCP가 없거나 MCP configuration이 최신이 아니거나 required tools를 호출할 수 없음을 관찰할 수 있는 진단 조건입니다. `MCP_UNAVAILABLE`은 stable public availability code로 남습니다. Product/runtime/code writes는 cooperative 접점에서는 instruction으로 보류되고, 가능한 detective path에서는 실행 뒤에 감지되며, covered operation에 대해 입증된 preventive guard가 있을 때만 실행 전에 차단됩니다 |
 | Surface capability mismatch | validator result를 기록하고 보장 수준 표시를 조정하며, required checks를 충족할 수 없으면 Write Authorization을 거부하거나 unsafe writes를 보류합니다. 실행 전 차단은 여전히 입증된 connected profile에 달려 있습니다 |

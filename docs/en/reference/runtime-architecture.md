@@ -139,7 +139,7 @@ repo/
 ```
 
 
-The repository may hold generated TASK, APR, RUN-SUMMARY, EVAL, DIRECT-RESULT, EVIDENCE-MANIFEST, TDD-TRACE, MANUAL-QA, DOMAIN-LANGUAGE, MODULE-MAP, and INTERFACE-CONTRACT Markdown reports. These files help humans and agents read the work, but they are not canonical state. A human-editable section is an input surface; accepted changes become state only through reconcile or a Core state-changing action.
+The repository may hold generated `TASK`, `APR`, `RUN-SUMMARY`, `EVAL`, `DIRECT-RESULT`, `EVIDENCE-MANIFEST`, `TDD-TRACE`, `MANUAL-QA`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, and other report projections. These files help humans and agents read the work, but they are not canonical state. A human-editable section is an input surface; accepted changes become state only through reconcile and a Core state-changing action.
 
 ## Harness Server / Installation
 
@@ -255,7 +255,7 @@ Every state-changing operation uses one SQLite transaction for current records, 
 
 Within that transaction, Core increments the affected scope clock as part of the current-record update. Task-scoped changes increment `tasks.state_version`; project-scoped changes with `task_id=null` increment `project_state.state_version`. Event rows record the resulting state version for their affected scope. State conflict and idempotency replay behavior are exposed through the public API contract in [MCP API And Schemas](mcp-api-and-schemas.md#idempotency) and [State conflict behavior](mcp-api-and-schemas.md#state-conflict-behavior).
 
-Projection rendering happens after the transaction. A projection failure marks projection freshness as stale or failed and leaves the committed state intact. Projection cannot turn a passed task into a failed task, and it cannot repair canonical state without a later reconcile decision.
+Projection rendering happens after the transaction. A projection failure is state-isolated: it marks projection freshness or job status as stale or failed and leaves the committed state intact. Projection cannot roll back the transaction, rewrite `state.sqlite.task_events`, turn a passed task into a failed task, or repair canonical state without a later reconcile decision.
 
 ## Artifact store architecture
 
@@ -284,7 +284,7 @@ The boundary is:
 | Markdown report | Human-readable projection from records and artifact refs | TASK, Journey Card/Spine views, Decision Packet views, APR, RUN-SUMMARY, EVAL, DIRECT-RESULT, EVIDENCE-MANIFEST |
 
 
-These named report kinds are projections generated from state records and artifact refs by default. They may refer to evidence files in the artifact store, and an export may include snapshots of them, but that does not make the Markdown report the canonical evidence file.
+These named report kinds are projections generated from state records and artifact refs by default. They may refer to evidence files in the artifact store, and an export may include snapshots of them, but that does not make the Markdown report the canonical evidence file or canonical state.
 
 ## Projection and reconcile flow
 
@@ -298,14 +298,14 @@ state transition committed
 → human-editable area preserved
 ```
 
-Projector writes only managed areas and preserves human-editable areas. If a managed area was edited directly, projector records a reconcile candidate instead of silently treating the edit as state. If a human-editable area contains a proposal, reconcile creates a candidate record and asks for an explicit decision.
+Projector writes only managed areas and preserves human-editable areas. If a managed area was edited directly, projector records a reconcile candidate instead of silently treating the edit as state. If a human-editable area contains a proposal, reconcile creates a candidate record and asks for an explicit decision. Front matter such as `source_state_version` and freshness lines are display diagnostics for that rendered view, not a second state clock.
 
 Reconcile authority path:
 
 ```text
 human-editable input
 → state.sqlite.reconcile_items
-→ accepted state event/record or rejected/deferred note
+→ accepted Core state-changing action and state.sqlite.task_events row, or rejected/deferred/note outcome
 ```
 
 
@@ -339,7 +339,7 @@ Failures are recorded rather than hidden:
 | Baseline drift after approval | mark approval or evidence stale; require reconfirmation when scope is affected |
 | Evaluator observes repo drift | block or stale verification; require fresh baseline or new bundle |
 | Artifact file missing or hash mismatch | mark the artifact and dependent evidence, projection, export, or close-readiness view stale or blocked; rescan, restore the exact registered bytes, or register a replacement through recovery |
-| Projection job failed | keep state current; mark projection failed and retry or reconcile |
+| Projection job failed | keep state current; mark projection failed and retry or reconcile; do not roll back Core state |
 | Managed Markdown edited directly | create reconcile item; do not mutate state directly |
 | MCP unavailable | distinguish diagnostic condition `MCP_SERVER_UNAVAILABLE`, where the tool call cannot reach Core and no authoritative Core response is possible, from diagnostic condition `SURFACE_MCP_UNAVAILABLE`, where Core or an operator can observe that the connected surface lacks usable MCP, has stale MCP configuration, or cannot call required tools; `MCP_UNAVAILABLE` remains the stable public availability code; product/runtime/code writes are held by instruction on cooperative surfaces, detected after action on detective paths when available, or blocked before execution only by a proven preventive guard for the covered operation |
 | Surface capability mismatch | record validator result, adjust guarantee display, and decline Write Authorization or hold unsafe writes when required checks cannot be satisfied; pre-execution blocking still depends on the proven connected profile |
