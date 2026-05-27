@@ -8,6 +8,20 @@ Harness 문서를 새로 쓰거나, 나누거나, 이름을 바꾸거나, 리뷰
 
 이 가이드는 문서 유지보수만 다룹니다. 런타임 동작, 서버 구현, 제품 상태 변경, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data, 근거 기록, QA 결과, 수락 결정, Task 닫기를 승인하거나 대체하지 않습니다.
 
+## 이런 때 읽기
+
+- 문서를 추가, 분리, 이름 변경, review할 때.
+- 어떤 문서가 strict contract를 소유하는지 판단해야 할 때.
+- 영어/한국어 의미 일치, link, TODO hygiene, duplicate owner text를 확인할 때.
+
+## 먼저 읽기
+
+정확한 runtime contract는 아래에 연결된 Reference owner 문서를 사용합니다. 한국어 표현 규칙은 [번역 가이드](translation-guide.md)를 사용합니다.
+
+## 핵심 생각
+
+각 문서는 독자에게 유용해야 하며 exact contract는 owner Reference 문서에 머물러야 합니다. Docs-maintenance checks는 drift를 보이게 하지만 runtime state, evidence, QA, acceptance, close readiness, implementation readiness를 만들지 않습니다.
+
 ## 문서 작성 원칙
 
 문서는 독자의 다음 행동에서 출발합니다. 독자가 무엇을 이해하고, 결정하고, 사용하고, 구현하고, 검증하고, 유지해야 하는지 분명해야 합니다.
@@ -187,7 +201,26 @@ Diagram은 인지 부담을 줄일 때만 사용합니다.
 
 Docs-maintenance checks는 읽기 전용 문서 유지보수입니다. Documentation drift, owner mismatch, 영어/한국어 의미 일치 문제, owner 밖의 중복 규범 문구, 깨진 link나 anchor, TODO hygiene 문제를 보고할 수 있습니다. Core fixture conformance, runtime validator, 기준 상태 전이, projection 새로고침, 생성된 운영 보고서, QA result, 결과 수락 기록, evidence artifact, 남은 위험을 받아들이는 판단, close readiness, 구현 준비 상태가 아닙니다. Fixture action을 실행하거나, runtime state를 seed하거나, runtime state/events/artifacts/projections/errors를 비교하지 않으며, runtime fixture pass/fail에 포함되지 않습니다.
 
-Docs-maintenance review 또는 future checker는 category, file path, 가능한 경우 heading 또는 anchor, owner 문서, observed drift, expected source section, suggested fix, runtime effect가 none이라는 statement를 보고해야 합니다. 여기서 none은 기준 상태 전이가 수행되지 않았고 runtime fixture result가 기록되지 않았다는 뜻입니다. Drift는 먼저 owner 문서를 업데이트해서 해결하고, 그다음 owner가 아닌 중복 설명을 짧은 요약과 owner 링크로 바꿉니다.
+Maintain 문서는 documentation review rule, category label, reviewer expectation을 정의할 수 있습니다. Runtime conformance pass/fail, runtime fixture semantics, Core state effect, gate behavior, implementation readiness를 정의하면 안 됩니다. Docs-maintenance finding이 runtime contract를 건드리면 그 contract를 다시 적지 말고 owner Reference 문서를 가리켜야 합니다.
+
+Docs-maintenance review 또는 future checker는 다음 항목을 보고해야 합니다.
+
+- category
+- result: `PASS`, `WARN`, 또는 `FAIL`
+- file path
+- 가능한 경우 heading 또는 anchor
+- owner 문서와 expected source section
+- observed drift
+- suggested fix
+- runtime effect statement: none; 기준 상태 전이가 수행되지 않았고 runtime fixture result가 기록되지 않았음
+
+Drift는 다음 순서로 해결합니다.
+
+1. Exact contract의 owner 문서 또는 owner section을 식별합니다.
+2. Contract 자체가 틀렸거나 불완전하면 owner를 먼저 업데이트합니다.
+3. Owner가 아닌 중복 contract는 짧은 독자 중심 요약과 owner link로 바꿉니다.
+4. 영어/한국어 의미 변경은 같은 batch에서 paired file에 반영합니다.
+5. Owner boundary가 분명해진 뒤 link, anchor, TODO metadata, glossary phrasing을 고칩니다.
 
 Result 의미:
 
@@ -201,16 +234,16 @@ Result 의미:
 
 | 범주 | 필수 점검 |
 |---|---|
-| 영어/한국어 파일 구조 일치 | 명시적인 예외가 문서화되지 않는 한 `docs/en`과 `docs/ko`는 같은 활성 문서 경로를 유지합니다. |
-| 영어/한국어 의미 섹션 일치 | 대응 파일은 같은 활성 파일 맵과 의미상 같은 섹션 범위를 유지합니다. Owner 링크, stable identifier, schema name, enum value, DDL name, validator ID, code identifier, 검토 가능성이 분명하다면 heading text와 작은 묶음 방식은 자연스럽게 조정할 수 있습니다. |
+| 영어/한국어 파일 구조 일치 | 명시적인 예외가 문서화되지 않는 한 `docs/en`과 `docs/ko`는 같은 활성 문서 경로, README entry, paired route expectation을 유지합니다. |
+| 영어/한국어 의미 섹션 일치 | 대응 파일은 같은 활성 파일 맵, 독자 목적, 의미상 같은 섹션 범위, owner link, 계약 세부사항을 유지합니다. Stable identifier, schema name, enum value, DDL name, validator ID, code identifier, 검토 가능성이 분명하다면 heading text와 작은 묶음 방식은 자연스럽게 조정할 수 있습니다. |
 | 시작 방식 준수 | Template이 아닌 재설계 문서는 표준 시작 방식을 사용합니다. `docs/*/reference/templates/README.md`는 `사용 시점`과 `템플릿 계층`을 사용하고, `docs/*/reference/templates/` 아래의 `README.md`가 아닌 개별 template file은 `사용 시점`, `기준 기록`, `렌더링 섹션`, `전체 템플릿`과 명확한 권한 없음 경계를 사용합니다. |
-| 깨진 교차 참조 탐지 | Markdown links, heading anchors, template/reference links, paired-language entry links가 활성 문서로 연결됩니다. |
-| Owner 경계 불일치 | 정확한 계약은 활성 owner 문서에 머뭅니다. 여기에는 `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/operations-and-conformance.md`, `reference/glossary.md`가 포함됩니다. |
-| Fixture/action schema 불일치 | Operations fixture examples의 `action`과 실행 가능한 `input`은 `reference/mcp-api-and-schemas.md`의 public MCP request schemas 및 `reference/operations-and-conformance.md`의 `ToolEnvelope` expansion convention과 일치해야 합니다. Fixture 의미는 여기서 다시 설명하지 않고 링크합니다. |
-| Enum, event, validator, projection 불일치 | State/gate/result values와 Kernel Stable Event Catalog names는 `reference/kernel.md`, error와 stable `ValidatorResult` IDs는 `reference/mcp-api-and-schemas.md`, storage values는 `reference/storage-and-ddl.md`, `ProjectionKind` tiers는 `reference/document-projection.md` 및 `reference/templates/*.md`와 일치해야 합니다. |
-| Glossary와 기준 기록 표현 불일치 | Official terms, capitalization, record ID prefixes, 기준 기록 경계는 `reference/glossary.md`와 일치하고 추가 상태 권한을 암시하지 않아야 합니다. |
-| TODO 준수 | `TODO_DECISION`과 `TODO_IMPLEMENT`는 허용된 의미로 쓰고 gap을 명확히 이름 붙이며, 완료된 기준 섹션에 `TODO_REWRITE` marker를 남기지 않습니다. |
-| Owner가 아닌 문서의 중복 전체 계약 | Owner doc 밖의 전체 schema, DDL, transition table, fixture mini-language, template body, glossary definition은 짧은 요약과 owner link로 바꿉니다. |
+| 깨진 교차 참조 탐지 | Markdown links, heading anchors, template/reference links, same-language README routes, paired-language entry links, owner-section links가 활성 문서와 현재 anchor로 연결됩니다. |
+| Owner 경계 불일치 | 정확한 계약은 활성 owner 문서에 머뭅니다. 여기에는 `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/operations-and-conformance.md`, `reference/glossary.md`가 포함됩니다. Owner가 아닌 문서는 이 contract를 다시 정의하지 않고 요약하고 link합니다. |
+| Fixture/action schema 불일치 | Operations fixture examples의 `action`과 실행 가능한 `input`은 `reference/mcp-api-and-schemas.md`의 public MCP request schemas 및 `reference/operations-and-conformance.md`의 `ToolEnvelope` expansion convention과 일치해야 합니다. Docs-maintenance는 drift를 flag할 수 있지만 fixture action을 실행하거나 fixture 의미를 여기서 다시 설명하지 않습니다. |
+| Enum, event, validator, projection 불일치 | State/gate/result values와 Kernel Stable Event Catalog names는 `reference/kernel.md`, error와 stable `ValidatorResult` IDs는 `reference/mcp-api-and-schemas.md`, storage values는 `reference/storage-and-ddl.md`, `ProjectionKind` tiers와 template ownership은 `reference/document-projection.md` 및 `reference/templates/*.md`와 일치해야 합니다. |
+| Glossary와 기준 기록 표현 불일치 | Official terms, capitalization, record ID prefixes, source-of-truth wording, authority-boundary phrases는 `reference/glossary.md`와 relevant owner docs에 맞아야 하며 추가 상태 권한을 암시하지 않아야 합니다. |
+| TODO 준수 | `TODO_DECISION`과 `TODO_IMPLEMENT`는 허용된 의미로 쓰고 gap을 명확히 이름 붙이며, action에 필요한 owner/context를 충분히 포함하고, 완료된 기준 섹션에 `TODO_REWRITE` marker를 남기지 않습니다. |
+| Owner가 아닌 문서의 중복 전체 계약 | Owner doc 밖의 전체 schema, DDL, transition table, fixture mini-language, template body, enum table, validator table, projection table, glossary definition은 짧은 요약과 owner link로 바꿉니다. |
 
 ## 리뷰 체크리스트
 

@@ -155,7 +155,7 @@ flowchart LR
 
 ## docs-maintenance 프로필
 
-Docs-maintenance smoke profile은 operator가 실행하거나 사람이 수동 review해서 documentation set의 drift를 잡을 수 있습니다. Documentation drift, owner mismatch, 영어/한국어 의미 일치 문제, owner 밖의 중복 규범 문구, 깨진 link나 anchor, TODO hygiene 문제를 보고할 수 있습니다. 이런 finding은 문서 유지보수 finding일 뿐입니다. 이 profile은 Markdown docs에 대한 read-only maintenance check이지 Core fixture conformance, runtime validator, evidence, 남은 위험을 받아들이는 판단, close readiness, 기준 상태 전이가 아닙니다. `task_events`에 추가하거나, artifacts를 만들거나, projections를 refresh하거나, QA 또는 결과 수락 상태를 만들거나, close readiness에 영향을 주거나, runtime 구현 준비 상태를 주장하거나, runtime fixture pass/fail 산정에 포함하면 안 됩니다.
+Docs-maintenance smoke profile은 operator가 실행하거나 사람이 수동 review해서 documentation set의 drift를 잡을 수 있습니다. Documentation drift, owner mismatch, 영어/한국어 file-structure 또는 semantic-section parity gap, owner 밖의 중복 규범 문구, 깨진 link나 anchor, fixture/action schema drift, enum/event/validator/projection drift, glossary/source-of-truth phrasing drift, TODO hygiene 문제를 보고할 수 있습니다. 이런 finding은 문서 유지보수 finding일 뿐입니다. 이 profile은 Markdown docs에 대한 read-only maintenance check이지 Core fixture conformance, runtime validator, evidence, 남은 위험을 받아들이는 판단, close readiness, 기준 상태 전이가 아닙니다. `task_events`에 추가하거나, artifacts를 만들거나, projections를 refresh하거나, QA 또는 결과 수락 상태를 만들거나, close readiness에 영향을 주거나, runtime 구현 준비 상태를 주장하거나, runtime fixture pass/fail 산정에 포함하면 안 됩니다.
 
 [문서 작성 가이드](../maintain/authoring-guide.md#docs-maintenance-checks)가 rule bodies, pass/warn/fail interpretation, checklist를 담당합니다. 이 문서는 보고와 entrypoint 노출에 대한 operator-maintenance 기대사항만 담당합니다.
 
@@ -167,13 +167,13 @@ Minimum 보고서 fields:
 
 - profile name and documentation revision
 - category별 pass, warn, fail
-- observed documentation finding
 - 가능한 경우 affected file path와 heading 또는 anchor
 - 기준 owner doc과 expected source section
+- observed documentation finding 또는 drift
 - suggested fix class: update owner, replace duplicate with summary plus link, mirror translation, repair link, 또는 `TODO_DECISION` / `TODO_IMPLEMENT` 추가
 - runtime effect: none; 기준 상태 전이가 수행되지 않았고 runtime fixture result가 기록되지 않았다는 statement
 
-Smoke category는 [문서 작성 가이드의 docs-maintenance checks](../maintain/authoring-guide.md#docs-maintenance-checks)를 다시 정의하지 말고 참조해야 합니다. 필수 category와 pass/warn/fail 의미도 그 section을 따릅니다.
+Smoke category는 [문서 작성 가이드의 docs-maintenance checks](../maintain/authoring-guide.md#docs-maintenance-checks)를 다시 정의하지 말고 참조해야 합니다. 필수 category, review-output expectation, pass/warn/fail 의미, owner-first drift resolution flow도 그 section을 따릅니다. Operator output은 해당 category를 이름 붙일 수 있지만 Maintain guidance를 runtime fixture semantics로 바꾸면 안 됩니다.
 
 ```mermaid
 flowchart LR

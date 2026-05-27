@@ -26,6 +26,8 @@ Harness is not a chat script, prompt bundle, test harness, evaluation harness, d
 
 Reference docs own exact contracts: schemas, DDL, gates, state transitions, enum values, fixture semantics, template bodies, and official definitions. Learn, Use, and Build docs explain the idea for their reader and link to Reference instead of copying strict contract blocks.
 
+Documentation-maintenance checks are read-only review guidance, not runtime conformance or implementation readiness. Use the Authoring Guide for actionable drift categories and owner-first resolution; use Operations And Conformance only for the docs-maintenance profile reporting boundary.
+
 ## Learn
 
 Start here to understand Harness before using or building it. Learn docs explain the mental model with concrete examples; strict contracts stay in Reference. The recommended path is [Overview](learn/overview.md) first, then [Harness in One Task](learn/harness-in-one-task.md).
@@ -70,7 +72,7 @@ Use this path to look up detailed contracts, schemas, policies, and definitions.
 
 ## Maintain
 
-Use this path to keep the docs and future Harness system coherent over time. Maintain docs govern documentation maintenance, not runtime behavior.
+Use this path to keep the docs and future Harness system coherent over time. Maintain docs govern documentation maintenance, not runtime behavior. They define English/Korean parity expectations, owner-boundary review, TODO hygiene, broken-reference checks, and how to replace duplicate full contracts with short summaries plus owner links.
 
 - [Authoring Guide](maintain/authoring-guide.md)
 - [Translation Guide](maintain/translation-guide.md)

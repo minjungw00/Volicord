@@ -1,8 +1,22 @@
 # Translation Guide
 
-## Purpose
+## What this guide helps you do
 
 Use this guide when editing English and Korean Harness documentation together.
+
+This is maintenance guidance for bilingual documentation. It does not define runtime behavior, conformance pass/fail, generated outputs, evidence, QA, acceptance, close readiness, or implementation readiness.
+
+## Read this when
+
+- You are changing meaning in an English or Korean doc.
+- You are reviewing English/Korean semantic parity.
+- You need to decide whether Korean wording should preserve an English identifier or use natural Korean prose.
+
+## Before you read
+
+Read [Authoring Guide](authoring-guide.md) for owner boundaries, docs-maintenance checks, and the rule that strict contracts stay in Reference docs.
+
+## Main idea
 
 The goal is semantic parity, not sentence-by-sentence translation. Korean should read like natural technical Korean while preserving official identifiers, exact contracts, and product terms.
 
@@ -113,11 +127,15 @@ Heading order and document meaning should remain aligned with the English docume
 
 ```text
 [ ] Does the Korean page preserve the same meaning as the English page?
+[ ] Does the paired file preserve the same active file path, reader purpose, semantic section coverage, owner links, and contractual detail?
 [ ] Does the Korean prose read naturally to a Korean technical reader?
 [ ] Are API names, schema names, enum values, DDL names, identifiers, paths, error codes, and validator IDs exact?
 [ ] Are stable product terms preserved when they refer to Harness concepts?
+[ ] Are source-of-truth phrases and owner links aligned with the owner Reference docs?
+[ ] Are non-owner duplicate contracts summarized with owner links instead of translated as full contract copies?
 [ ] Are mixed-language phrases replaced with natural Korean where possible?
 [ ] In user-facing docs, do natural Korean phrases appear before Harness labels when both are needed?
 [ ] Are headings idiomatic while preserving the same document structure and scope?
 [ ] Were English and Korean link changes made in the same batch?
+[ ] Does the review avoid treating translation drift as runtime state, evidence, QA, acceptance, close readiness, or implementation readiness?
 ```

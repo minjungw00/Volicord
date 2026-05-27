@@ -155,7 +155,7 @@ flowchart LR
 
 ## Docs-maintenance profile
 
-A docs-maintenance smoke profile may be run by an operator or reviewed manually to catch drift in the documentation set. It may report documentation drift, owner mismatch, English/Korean semantic parity gaps, duplicate normative text outside the owner, broken links or anchors, and TODO hygiene problems. These are documentation findings only. The profile is a read-only maintenance check over Markdown docs, not Core fixture conformance, a runtime validator, evidence, residual-risk acceptance, close readiness, or a canonical state transition. It must not append `task_events`, create artifacts, refresh projections, create QA or acceptance state, affect close readiness, claim runtime implementation readiness, or count toward runtime fixture pass/fail.
+A docs-maintenance smoke profile may be run by an operator or reviewed manually to catch drift in the documentation set. It may report documentation drift, owner mismatch, English/Korean file-structure or semantic-section parity gaps, duplicate normative text outside the owner, broken links or anchors, fixture/action schema drift, enum/event/validator/projection drift, glossary/source-of-truth phrasing drift, and TODO hygiene problems. These are documentation findings only. The profile is a read-only maintenance check over Markdown docs, not Core fixture conformance, a runtime validator, evidence, residual-risk acceptance, close readiness, or a canonical state transition. It must not append `task_events`, create artifacts, refresh projections, create QA or acceptance state, affect close readiness, claim runtime implementation readiness, or count toward runtime fixture pass/fail.
 
 The [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks) owns the rule bodies, pass/warn/fail interpretation, and checklist. This document owns only the operator-maintenance expectation for reporting and entrypoint exposure.
 
@@ -167,13 +167,13 @@ Minimum report fields:
 
 - profile name and documentation revision
 - pass, warn, or fail per category
-- observed documentation finding
 - affected file path and heading or anchor when available
 - canonical owner doc and expected source section
+- observed documentation finding or drift
 - suggested fix class: update owner, replace duplicate with summary plus link, mirror translation, repair link, or add `TODO_DECISION` / `TODO_IMPLEMENT`
 - runtime effect: none; no canonical state transition was performed and no runtime fixture result was recorded
 
-Smoke categories should reference, not restate, the [Authoring Guide docs-maintenance checks](../maintain/authoring-guide.md#docs-maintenance-checks), including the required categories and pass/warn/fail meanings.
+Smoke categories should reference, not restate, the [Authoring Guide docs-maintenance checks](../maintain/authoring-guide.md#docs-maintenance-checks), including the required categories, review-output expectations, pass/warn/fail meanings, and owner-first drift resolution flow. Operator output may name those categories, but it must not turn Maintain guidance into runtime fixture semantics.
 
 ```mermaid
 flowchart LR

@@ -8,6 +8,20 @@ It helps you keep the redesigned documentation readable for the intended reader,
 
 This guide governs documentation maintenance only. It does not authorize runtime behavior, server implementation, product state changes, generated operational files, executable fixture files, runtime data, evidence records, QA results, acceptance decisions, or task closure.
 
+## Read this when
+
+- You are adding, splitting, renaming, or reviewing documentation.
+- You need to decide which document owns a strict contract.
+- You are checking English/Korean parity, links, TODO hygiene, or duplicate owner text.
+
+## Before you read
+
+For exact runtime contracts, use the Reference owner documents linked below. For Korean wording rules, use [Translation Guide](translation-guide.md).
+
+## Main idea
+
+Keep each document useful for its reader and keep exact contracts in their owner Reference docs. Documentation-maintenance checks make drift visible, but they do not create runtime state, evidence, QA, acceptance, close readiness, or implementation readiness.
+
 ## Documentation principles
 
 Write from the reader's next useful step. A document should make it easier for the reader to understand, decide, use, build, verify, or maintain something specific.
@@ -187,7 +201,26 @@ After a rename, search for old paths, old anchors, old headings, and old title t
 
 Docs-maintenance checks are read-only documentation maintenance. They may report documentation drift, owner mismatch, English/Korean parity issues, duplicate normative text outside the owner, broken links or anchors, and TODO hygiene problems. They are not Core fixture conformance, runtime validators, canonical state transitions, projection refresh, generated operational reports, QA results, acceptance records, evidence artifacts, residual-risk acceptance, close readiness, or implementation readiness. They do not execute fixture actions, seed runtime state, compare runtime state/events/artifacts/projections/errors, or count toward runtime fixture pass/fail.
 
-A docs-maintenance review or future checker should report the category, file path, heading or anchor when available, owner document, observed drift, expected source section, suggested fix, and a runtime effect of none: no canonical state transition was performed and no runtime fixture result was recorded. Resolve drift by updating the owner first, then replacing non-owner duplicates with a short summary plus owner link.
+Maintain docs may define documentation review rules, category labels, and reviewer expectations. They must not define runtime conformance pass/fail, runtime fixture semantics, Core state effects, gate behavior, or implementation readiness. When a docs-maintenance finding touches a runtime contract, the finding should point to the owner Reference document instead of restating that contract.
+
+A docs-maintenance review or future checker should report:
+
+- category
+- result: `PASS`, `WARN`, or `FAIL`
+- file path
+- heading or anchor when available
+- owner document and expected source section
+- observed drift
+- suggested fix
+- runtime effect statement: none; no canonical state transition was performed and no runtime fixture result was recorded
+
+Resolve drift in this order:
+
+1. Identify the owner document or owner section for the exact contract.
+2. Update the owner first when the contract itself is wrong or incomplete.
+3. Replace non-owner duplicate contracts with a short reader-focused summary plus owner link.
+4. Mirror any English/Korean semantic change in the paired file during the same batch.
+5. Repair links, anchors, TODO metadata, or glossary phrasing only after the owner boundary is clear.
 
 Use these result meanings:
 
@@ -201,16 +234,16 @@ Required check categories:
 
 | Category | Required check |
 |---|---|
-| English/Korean file structure parity | `docs/en` and `docs/ko` keep the same active document paths unless an exception is explicitly documented. |
-| English/Korean semantic section parity | Paired files keep the same active file map and semantic section coverage. Heading text and minor grouping may be idiomatic when owner links, stable identifiers, schema names, enum values, DDL names, validator IDs, code identifiers, and reviewability remain clear. |
+| English/Korean file structure parity | `docs/en` and `docs/ko` keep the same active document paths, README entries, and paired route expectations unless an exception is explicitly documented. |
+| English/Korean semantic section parity | Paired files keep the same active file map, reader purpose, semantic section coverage, owner links, and contractual detail. Heading text and minor grouping may be idiomatic when stable identifiers, schema names, enum values, DDL names, validator IDs, code identifiers, and reviewability remain clear. |
 | Opening convention compliance | Non-template redesigned docs use the standard opening pattern. `docs/*/reference/templates/README.md` uses `Used when` plus `Template tiering`; individual template files under `docs/*/reference/templates/` other than `README.md` use `Used when`, `Source records`, `Rendered sections`, and `Full template`, plus a visible non-authority boundary. |
-| Broken cross-reference detection | Markdown links, heading anchors, template/reference links, and paired-language entry links resolve to active docs. |
-| Owner-boundary drift | Exact contracts stay in their active owners, including `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/operations-and-conformance.md`, and `reference/glossary.md`. |
-| Fixture/action schema drift | Operations fixture examples keep `action` and executable `input` aligned with public MCP request schemas in `reference/mcp-api-and-schemas.md` and the `ToolEnvelope` expansion convention in `reference/operations-and-conformance.md`; fixture semantics are linked, not restated here. |
-| Enum, event, validator, and projection drift | State/gate/result values and Kernel Stable Event Catalog names match `reference/kernel.md`; error and stable `ValidatorResult` IDs match `reference/mcp-api-and-schemas.md`; storage values match `reference/storage-and-ddl.md`; `ProjectionKind` tiers match `reference/document-projection.md` and `reference/templates/*.md`. |
-| Glossary and source-of-truth phrasing drift | Official terms, capitalization, record ID prefixes, and source-of-truth boundaries match `reference/glossary.md` and do not imply extra state authorities. |
-| TODO compliance | `TODO_DECISION` and `TODO_IMPLEMENT` use the allowed meanings, name the gap clearly, and do not leave `TODO_REWRITE` markers in finished canonical sections. |
-| Non-owner duplicate full contracts | Full schemas, DDL, transition tables, fixture mini-languages, template bodies, or glossary definitions outside the owner doc are replaced with a short summary plus owner link. |
+| Broken cross-reference detection | Markdown links, heading anchors, template/reference links, same-language README routes, paired-language entry links, and owner-section links resolve to active docs and current anchors. |
+| Owner-boundary drift | Exact contracts stay in their active owners, including `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/operations-and-conformance.md`, and `reference/glossary.md`; non-owner docs summarize and link rather than redefining those contracts. |
+| Fixture/action schema drift | Operations fixture examples keep `action` and executable `input` aligned with public MCP request schemas in `reference/mcp-api-and-schemas.md` and the `ToolEnvelope` expansion convention in `reference/operations-and-conformance.md`; docs-maintenance may flag drift but does not execute fixture actions or restate fixture semantics here. |
+| Enum, event, validator, and projection drift | State/gate/result values and Kernel Stable Event Catalog names match `reference/kernel.md`; error and stable `ValidatorResult` IDs match `reference/mcp-api-and-schemas.md`; storage values match `reference/storage-and-ddl.md`; `ProjectionKind` tiers and template ownership match `reference/document-projection.md` and `reference/templates/*.md`. |
+| Glossary and source-of-truth phrasing drift | Official terms, capitalization, record ID prefixes, source-of-truth wording, and authority-boundary phrases match `reference/glossary.md` and the relevant owner docs without implying extra state authorities. |
+| TODO compliance | `TODO_DECISION` and `TODO_IMPLEMENT` use the allowed meanings, name the gap clearly, include enough owner/context to act on, and do not leave `TODO_REWRITE` markers in finished canonical sections. |
+| Non-owner duplicate full contracts | Full schemas, DDL, transition tables, fixture mini-languages, template bodies, enum tables, validator tables, projection tables, or glossary definitions outside the owner doc are replaced with a short summary plus owner link. |
 
 ## Review checklist
 
