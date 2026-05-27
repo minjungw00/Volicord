@@ -1,6 +1,6 @@
 # Translation Guide
 
-## What this guide helps you do
+## What this document helps you do
 
 Use this guide when editing English and Korean Harness documentation together.
 

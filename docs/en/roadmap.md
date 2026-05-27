@@ -6,11 +6,19 @@ This document collects post-MVP automation candidates and capability expansions 
 
 This is roadmap documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first implementation/proof target is Kernel Smoke. Agency-Hardened MVP belongs to later MVP hardening in Build docs, not to this roadmap, and the items below stay outside MVP unless owner docs promote and prove them.
 
-Use it to understand:
+## Read this when
 
-- which ideas are intentionally outside the MVP implementation contract
-- which future capabilities need policy, fixture, and fallback decisions before promotion
-- which roadmap items must remain non-authoritative until an owner explicitly scopes and promotes them
+- You want to know which ideas are intentionally outside the MVP implementation contract.
+- You are checking whether a future capability needs policy, fixture, and fallback decisions before promotion.
+- You need to keep roadmap items non-authoritative until an owner explicitly scopes and promotes them.
+
+## Before you read
+
+For current implementation planning, start with [Build: Implementation Overview](build/implementation-overview.md), [Build: First Runnable Slice](build/first-runnable-slice.md), and [Build: MVP Plan](build/mvp-plan.md). For exact contracts, use the Reference docs.
+
+## Main idea
+
+Roadmap items are useful future candidates, not current authority paths or MVP requirements. A roadmap item may become scoped work only after an owner decision promotes it with clear capability, policy, fixture, fallback, and projection-authority boundaries.
 
 ## This is not MVP scope
 

@@ -165,7 +165,7 @@ Focus on:
 
 Build MVP-required renderers from records that already exist. Do not make projection templates, template polish, or additional renderer-first work the driver for Task, Run, evidence, or verification design.
 
-At this stage, `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, and `DIRECT-RESULT` can be built when their source records exist. `EVAL` remains MVP-required, but its executable render path completes with MVP-4 when Eval source records exist.
+At this stage, build the MVP-required pre-verification renderers owned by [Document Projection Reference](../reference/document-projection.md#template-tiers) and [Template Reference](../reference/templates/README.md) when their source records exist. The Eval renderer remains MVP-required, but its executable render path completes with MVP-4 when Eval source records exist.
 
 Projection failure remains separate from Core state failure.
 

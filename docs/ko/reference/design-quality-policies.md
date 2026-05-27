@@ -18,6 +18,14 @@
 - 정책 waiver가 허용되는지 판단할 때.
 - close blocker, Decision Packet 필요성, Manual QA 요구사항, stewardship 발견 사항을 검토할 때.
 
+## 읽기 전에
+
+Lifecycle, gate, close semantics는 [커널 참조](kernel.md)를 사용합니다. Public request/response shape와 `ValidatorResult`는 [MCP API와 스키마](mcp-api-and-schemas.md)를 사용하고, fixture assertion semantics는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용합니다.
+
+## 핵심 생각
+
+설계 품질 정책은 stewardship, 제품 설계, context quality expectation을 기존 Harness owner path를 통해 보이게 합니다. Finding, gate impact, blocker, 근거 필요성, Decision Packet routing에 영향을 줄 수 있지만 새 kernel transition, schema, 대체 authority를 만들지는 않습니다.
+
 ## 정책을 쉬운 말로
 
 | 정책 영역 | 쉬운 질문 |

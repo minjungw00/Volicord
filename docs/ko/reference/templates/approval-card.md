@@ -81,7 +81,7 @@ Baseline:
 추천:
 {recommendation}
 
-사용자 소유의 제품 판단이나 중요한 기술 판단, 결과 수락은 별도로 두고, 이 sensitive action과 범위만 승인하시겠습니까?
+사용자 소유의 제품 판단이나 중요한 기술 판단, 결과 수락은 별도로 두고, 이 sensitive action과 범위에만 Approval을 부여하시겠습니까?
 "go ahead" 또는 "진행해"라고 답하더라도, 다른 Decision Packet이 표시되고 해소되지 않는 한 Harness는 이 sensitive-action Approval만 기록합니다.
 ````
 

@@ -44,7 +44,7 @@ Approval 형태 표시 항목인 "이 Approval이 포괄하는 것", "이 Approv
 
 사용자가 보는 질문은 decision을 직접 물어야 합니다. Option을 선택할지, stated consequence와 함께 defer할지, path를 reject할지, 이름 붙은 check를 waive할지, 이름 붙은 risk를 accept할지, result를 accept할지, 이름 붙은 drift를 reconcile할지 묻습니다. "approve" 또는 "승인"은 Approval에 연결된 Approval 형태 context에서만 사용합니다. 다른 packet kind에서는 어떤 choice를 기록할지와 그 choice 밖에 남는 것이 무엇인지 물어야 합니다.
 
-### 예시 내용 단서
+**예시 내용 단서:**
 
 다음과 같은 Decision Packet에도 같은 렌더링 섹션을 사용합니다. 이 단서는 추가 template section이 아닙니다.
 

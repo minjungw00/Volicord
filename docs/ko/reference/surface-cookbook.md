@@ -8,6 +8,18 @@
 
 이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 구현/증명 대상은 계속 Kernel Smoke입니다. Agency-Hardened MVP와 post-MVP automation은 owner 문서가 승격하고 증명하기 전까지 범위 밖입니다.
 
+## 이런 때 읽기
+
+- 특정 agent surface의 connector recipe를 작성하거나 리뷰할 때.
+- 접점별 설정을 공통 connector contract와 분리해서 유지해야 할 때.
+- Capture, guard, isolation, fallback, conformance risk를 guarantee level보다 강하게 말하지 않고 설명해야 할 때.
+
+## 읽기 전에
+
+공통 connector contract와 capability profile은 [Agent 통합 참조](agent-integration.md)를 읽습니다. Local access, API error, conformance boundary는 [런타임 아키텍처](runtime-architecture.md), [MCP API와 스키마](mcp-api-and-schemas.md), [운영과 Conformance 참조](operations-and-conformance.md)를 사용합니다.
+
+## 핵심 생각
+
 접점 이름만으로 guarantee level을 추론하면 안 됩니다. 모든 connector는 실제 사용하는 host/profile/configuration에 대한 capability profile을 선언해야 하며, profile이 입증한 capability가 guarantee level을 결정합니다.
 
 Generic capability profile 예시는 [Agent 통합 참조](agent-integration.md#capability-profile-예시)를 봅니다.

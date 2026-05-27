@@ -15,6 +15,14 @@
 - JSON `TEXT` field, enum-like `TEXT` field, lock, migration, artifact, baseline, projection job을 검증할 때.
 - API schema와 storage implementation detail을 분리해서 유지할 때.
 
+## 읽기 전에
+
+Public request/response contract는 [MCP API와 스키마](mcp-api-and-schemas.md)를 사용합니다. Lifecycle과 gate value는 [커널 참조](kernel.md)를 사용하고, fixture semantics와 operator behavior는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용합니다.
+
+## 핵심 생각
+
+Storage는 Harness에 오래 남는 local record를 제공하지만 두 번째 authority model이 되지 않습니다. Public API shape, kernel transition, projection rule, operator semantics는 각 owner 문서에 남고, 이 문서는 storage layout과 DDL draft를 담당합니다.
+
 ## 계약 위치 지도
 
 | 필요한 것 | 먼저 볼 곳 | 관련 owner |

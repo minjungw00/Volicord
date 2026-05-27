@@ -44,7 +44,7 @@ A sufficient rendered Decision Packet uses these sections to answer one user-own
 
 The user-facing question should ask for the decision directly: choose an option, defer it with the stated consequence, reject the path, waive the named check, accept the named risk, accept the result, or reconcile the named drift. Use "approve" only for the approval-shaped context linked to Approval. For other packet kinds, ask what choice should be recorded and what remains outside that choice.
 
-### Example content cues
+**Example content cues:**
 
 Use the same rendered sections for these common Decision Packet shapes. These cues are not extra template sections.
 

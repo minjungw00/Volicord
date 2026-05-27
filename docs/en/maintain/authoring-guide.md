@@ -1,6 +1,6 @@
 # Authoring Guide
 
-## What this guide helps you do
+## What this document helps you do
 
 Use this guide when you add, rewrite, split, rename, or review Harness documentation.
 

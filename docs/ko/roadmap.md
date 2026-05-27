@@ -6,11 +6,19 @@
 
 이 문서는 roadmap 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 구현/증명 대상은 Kernel Smoke입니다. Agency-Hardened MVP는 이 roadmap이 아니라 Build 문서의 later MVP hardening에 속하며, 아래 항목은 owner 문서가 승격하고 증명하기 전까지 MVP 밖에 둡니다.
 
-이 문서는 다음을 확인할 때 사용합니다.
+## 이런 때 읽기
 
-- 어떤 아이디어가 MVP 구현 계약 밖에 있는지
-- 어떤 향후 능력이 승격되기 전에 정책, fixture, fallback 결정을 필요로 하는지
-- 어떤 roadmap 항목이 owner가 명시적으로 scope를 부여하고 승격하기 전까지 권한 없는 후보로 남아야 하는지
+- 어떤 아이디어가 MVP 구현 계약 밖에 있는지 확인할 때.
+- 향후 capability가 승격되기 전에 policy, fixture, fallback 결정이 필요한지 확인할 때.
+- Roadmap 항목이 owner가 명시적으로 scope를 부여하고 승격하기 전까지 권한 없는 후보로 남아야 함을 확인할 때.
+
+## 읽기 전에
+
+현재 구현 계획은 [구현 개요](build/implementation-overview.md), [첫 실행 가능한 조각](build/first-runnable-slice.md), [MVP 계획](build/mvp-plan.md)에서 시작합니다. 정확한 계약은 Reference 문서를 사용합니다.
+
+## 핵심 생각
+
+Roadmap 항목은 유용한 미래 후보이지 현재 authority path나 MVP requirement가 아닙니다. Roadmap 항목은 owner decision이 capability, policy, fixture, fallback, projection authority boundary를 분명히 해 승격한 뒤에만 scoped work가 될 수 있습니다.
 
 ## 이 문서는 MVP 범위가 아닙니다
 
@@ -28,7 +36,7 @@ flowchart LR
   Later --> Promote["future version은 owner 결정 이후에만 가능"]
 ```
 
-Kernel Smoke와 Agency-Hardened MVP는 모두 MVP 전달 단계이지 roadmap 범위가 아닙니다. 이 roadmap은 MVP 담당 문서가 요구하는 kernel 권한, Decision Packet, 잔여 위험 표시, detached verification, Manual QA, recover/export, fixture conformance 동작을 흡수하면 안 됩니다. Roadmap 항목은 owner 문서가 제한적으로 허용할 때만 읽기, 표시, 추천, artifact 후보 제공, fixture 후보 역할을 할 수 있습니다. 지속 artifact 등록이나 연결은 여전히 기존 Core/MCP artifact owner path 또는 향후 승격된 owner contract를 거쳐야 합니다. 여기에 이름이 있다는 이유만으로 권한 경로가 되지는 않습니다.
+Kernel Smoke와 Agency-Hardened MVP는 모두 MVP 전달 단계이지 roadmap 범위가 아닙니다. 이 roadmap은 MVP 담당 문서가 요구하는 kernel 권한, Decision Packet, 남은 위험 표시, detached verification, Manual QA, recover/export, fixture conformance 동작을 흡수하면 안 됩니다. Roadmap 항목은 owner 문서가 제한적으로 허용할 때만 읽기, 표시, 추천, artifact 후보 제공, fixture 후보 역할을 할 수 있습니다. 지속 artifact 등록이나 연결은 여전히 기존 Core/MCP artifact owner path 또는 향후 승격된 owner contract를 거쳐야 합니다. 여기에 이름이 있다는 이유만으로 권한 경로가 되지는 않습니다.
 
 ## 승격 규칙
 

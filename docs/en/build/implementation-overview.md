@@ -44,10 +44,10 @@ This is a maintainer-updated documentation handoff marker. It is not a Reference
 
 | Question | Current status |
 |---|---|
-| Is documentation maintenance still active? | Yes. The current docs are ready for human review, and implementation handoff has not been accepted yet. |
+| Is documentation maintenance still active? | Yes. Final docs-maintenance drift fixes from this pass are applied, and implementation handoff still requires a deliberate maintainer update. |
 | Are docs accepted for first runtime-batch planning? | No. First runtime-batch planning may not begin until maintainers change this row to Yes after the checkpoint below is satisfied. |
 | Has runtime/server implementation started? | No. This repository still contains documentation, not Harness runtime/server implementation. |
-| Are there open follow-up docs issues? | Pending final maintainer docs-maintenance review. Maintainers must complete that documentation-only review before they can deliberately change the docs-accepted row to Yes; it is not runtime conformance or implementation readiness. |
+| Are there open follow-up docs issues? | No blocking docs-maintenance drift is known after this final pass. Maintainers still must deliberately change the docs-accepted row to Yes before first runtime-batch planning may begin; this is not runtime conformance or implementation readiness. |
 
 Build readers should treat this table as the entry gate. Until maintainers change the second row to Yes, even Kernel Smoke remains planning-only in this repository.
 
@@ -139,7 +139,7 @@ Projections are human-readable views derived from state records and artifact ref
 
 Build projection output from the Core source records it depends on, such as Task, gate, Run, artifact, evidence, Eval, QA, and other owner records after those records exist. A minimal `TASK` projection freshness or enqueueing path can be part of Kernel Smoke, but projection templates cannot create authority, satisfy evidence, replace state, shape the state model, or become the first proof.
 
-The first runnable slice may enqueue a minimal `TASK` projection job or render a minimal `TASK` projection. The final MVP must support enqueueing and rendering MVP-required `ProjectionKind` values when their source records exist or change: `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, and `DIRECT-RESULT`.
+The first runnable slice may enqueue a minimal `TASK` projection job or render a minimal `TASK` projection. The final MVP must support the MVP-required projection kinds owned by [Document Projection Reference](../reference/document-projection.md#template-tiers) and [Template Reference](../reference/templates/README.md) when their source records exist or change.
 
 Projection failure must not roll back committed Core state. It should mark projection freshness or job status and leave recovery or reconcile to a later action. `source_state_version` and freshness are display/readiness facts: close/readiness output should show when a readable view is stale or failed, but stale Markdown cannot authorize work, satisfy close, replace current Core state, replace source control, replace tests, or replace review.
 

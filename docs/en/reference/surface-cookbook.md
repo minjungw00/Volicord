@@ -8,6 +8,18 @@ This document owns local setup notes, generated file names, MCP configuration hi
 
 This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
 
+## Read this when
+
+- You are writing or reviewing a connector recipe for a specific agent surface.
+- You need to keep surface-specific setup separate from the common connector contract.
+- You need to describe capture, guard, isolation, fallback, or conformance risks without overstating guarantee level.
+
+## Before you read
+
+Read [Agent Integration Reference](agent-integration.md) for the common connector contract and capability profiles. Use [Runtime Architecture](runtime-architecture.md), [MCP API And Schemas](mcp-api-and-schemas.md), and [Operations And Conformance Reference](operations-and-conformance.md) for local access, API errors, and conformance boundaries.
+
+## Main idea
+
 A surface name never implies a guarantee level. Every connector still declares a capability profile for the actual host/profile/configuration in use, and the profile's proven capabilities determine the guarantee level.
 
 For generic capability profile examples, see [Agent Integration Reference](agent-integration.md#capability-profile-examples).

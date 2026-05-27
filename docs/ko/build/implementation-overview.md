@@ -44,10 +44,10 @@ Kernel Smoke를 먼저 만듭니다. 즉 가장 작은 로컬 Core 권한 경로
 
 | 질문 | 현재 상태 |
 |---|---|
-| 문서 유지보수가 아직 active인가? | 예. 현재 문서는 사람의 검토를 받을 준비가 되었고, 구현 handoff는 아직 accepted로 기록되지 않았습니다. |
+| 문서 유지보수가 아직 active인가? | 예. 이번 pass의 최종 docs-maintenance drift 수정은 반영되었고, 구현 handoff는 여전히 maintainer의 명시적 갱신이 필요합니다. |
 | 첫 runtime batch 계획을 위한 문서가 승인되었는가? | 아니오. 아래 checkpoint가 충족된 뒤 maintainer가 이 행을 예로 바꾸기 전까지 첫 runtime batch 계획은 시작할 수 없습니다. |
 | runtime/server 구현이 시작되었는가? | 아니오. 이 저장소는 아직 문서만 담고 있으며 Harness runtime/server 구현을 담고 있지 않습니다. |
-| 열려 있는 문서 follow-up issue가 있는가? | Maintainer의 최종 docs-maintenance review가 아직 남아 있습니다. Maintainer는 이 문서 전용 검토를 완료한 뒤에야 docs-accepted 행을 명시적으로 예로 바꿀 수 있으며, 이 검토는 runtime conformance나 구현 준비 상태를 뜻하지 않습니다. |
+| 열려 있는 문서 follow-up issue가 있는가? | 이번 final pass 이후 알려진 차단 docs-maintenance drift는 없습니다. 첫 runtime batch 계획이 시작되려면 maintainer가 docs-accepted 행을 여전히 명시적으로 예로 바꿔야 하며, 이 상태는 runtime conformance나 구현 준비 상태를 뜻하지 않습니다. |
 
 Build 독자는 이 표를 진입 gate로 보아야 합니다. Maintainer가 두 번째 행을 예로 바꾸기 전까지 Kernel Smoke도 이 저장소에서는 planning-only입니다.
 
@@ -139,7 +139,7 @@ Projection은 state record와 artifact ref에서 나온 사람이 읽기 쉬운 
 
 Projection output은 그것이 의존하는 Core 원천 기록에서 파생합니다. 예를 들어 Task, gate, Run, artifact, evidence, Eval, QA, 그 밖의 owner record가 존재한 뒤 그 기록에서 나와야 합니다. 최소 `TASK` projection 최신성 또는 대기열 추가 경로는 Kernel Smoke에 포함될 수 있지만, projection template은 권한을 만들거나, 근거를 충족하거나, state를 대체하거나, state model을 정하거나, 첫 증명이 될 수 없습니다.
 
-첫 실행 가능한 조각은 최소 `TASK` projection job을 대기열에 넣거나 최소 `TASK` projection을 렌더링할 수 있으면 됩니다. 최종 MVP는 원천 기록이 존재하거나 변경될 때 MVP-required `ProjectionKind`인 `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`를 enqueue하고 렌더링할 수 있어야 합니다.
+첫 실행 가능한 조각은 최소 `TASK` projection job을 대기열에 넣거나 최소 `TASK` projection을 렌더링할 수 있으면 됩니다. 최종 MVP는 원천 기록이 존재하거나 변경될 때 [문서 Projection 참조](../reference/document-projection.md#template-tiers)와 [Template 참조](../reference/templates/README.md)가 소유하는 MVP-required projection kind를 enqueue하고 렌더링할 수 있어야 합니다.
 
 Projection failure는 committed Core 상태를 롤백하면 안 됩니다. Projection이 최신인지 또는 job 상태가 어떤지 표시하고, repair나 reconcile은 이후 action에 맡깁니다. `source_state_version`과 freshness는 display/readiness fact입니다. Close/readiness output은 readable view가 오래되었거나 failed임을 보여줘야 하지만, stale Markdown이 work를 authorize하거나 close를 충족하거나 current Core state, 소스 관리, 테스트, 리뷰를 대체할 수는 없습니다.
 

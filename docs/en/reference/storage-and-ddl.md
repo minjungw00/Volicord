@@ -15,6 +15,14 @@ This is reference documentation. It does not authorize runtime/server implementa
 - You are validating JSON `TEXT` fields, enum-like `TEXT` fields, locks, migrations, artifacts, baselines, or projection jobs.
 - You are keeping API schemas separate from storage implementation details.
 
+## Before you read
+
+Use [MCP API And Schemas](mcp-api-and-schemas.md) for public request/response contracts, [Kernel Reference](kernel.md) for lifecycle and gate values, and [Operations And Conformance Reference](operations-and-conformance.md) for fixture semantics and operator behavior.
+
+## Main idea
+
+Storage gives Harness durable local records, but it does not become a second authority model. Public API shapes, kernel transitions, projection rules, and operator semantics stay with their owner documents while this page owns the storage layout and DDL draft.
+
 ## Contract map
 
 | If you need... | Start here | Related owner |

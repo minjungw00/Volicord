@@ -16,6 +16,14 @@ This is reference documentation. It does not authorize runtime/server implementa
 - You need the source records for `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, or `DIRECT-RESULT`.
 - You are diagnosing stale, failed, or drifted projections.
 
+## Before you read
+
+Use [Kernel Reference](kernel.md) for canonical state and gate authority, [MCP API And Schemas](mcp-api-and-schemas.md) for `ProjectionKind` and projection refs, [Storage And DDL](storage-and-ddl.md) for projection job storage, and [Template Reference](templates/README.md) for full rendered bodies and display cards.
+
+## Main idea
+
+Projections are readable views derived from owner records and artifact refs. They can display current state, refs, freshness, and proposed edits, but they do not create authority, mutate canonical state, satisfy gates, or replace the owner Core/MCP paths.
+
 ## Projection in plain language
 
 A Harness projection is a readable view of work that already exists in canonical state or artifact storage. The projector reads `state.sqlite` records, `state.sqlite.task_events`, and registered artifact references, then renders Markdown such as `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`, and other report projections.

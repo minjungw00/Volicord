@@ -18,6 +18,14 @@ This document does not define MCP schemas, SQLite DDL, state transition tables, 
 - You are deciding whether a policy waiver is allowed.
 - You are reviewing close blockers, Decision Packet needs, Manual QA requirements, or stewardship findings.
 
+## Before you read
+
+Use [Kernel Reference](kernel.md) for lifecycle, gates, and close semantics; [MCP API And Schemas](mcp-api-and-schemas.md) for public request/response shapes and `ValidatorResult`; and [Operations And Conformance Reference](operations-and-conformance.md) for fixture assertion semantics.
+
+## Main idea
+
+Design-quality policies make stewardship, product-design, and context-quality expectations visible through existing Harness owner paths. They can affect findings, gate impact, blockers, evidence needs, and Decision Packet routing, but they do not create new kernel transitions, schemas, or substitute authority.
+
 ## Policies in plain language
 
 | Policy area | Plain-language question |
