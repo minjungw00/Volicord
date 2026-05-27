@@ -97,6 +97,8 @@ At this point, the user or operator can observe not just that writes are control
 
 ## MVP-0 Through MVP-5
 
+The stage descriptions below use implementation verbs for future planning after documentation acceptance. They are not permission to begin runtime/server implementation, generated operational files, executable fixtures, or runtime data during the current documentation-acceptance phase.
+
 ### MVP-0: Runtime Bootstrap
 
 Build the local runtime home and register one project.
@@ -212,7 +214,20 @@ Docs-maintenance remains a separate read-only documentation profile. It may repo
 
 ## Exit criteria by stage
 
-Use these as implementation-readable checklists. They restate the stage exit criteria; they do not add schemas, fixtures, DDL, or new runtime requirements.
+Use these as implementation-readable checklists for future runtime planning after documentation acceptance. They restate the stage exit criteria; they do not add schemas, fixtures, DDL, or new runtime requirements, and they do not authorize implementation while the [Documentation Acceptance Status](implementation-overview.md#documentation-acceptance-status) still blocks first runtime-batch planning.
+
+Read the stage exits in two layers:
+
+| Stage | Kernel Smoke reading | Agency-Hardened MVP reading |
+|---|---|---|
+| MVP-0 | Required foundation for the first local project, runtime home, artifact store, reference surface, and idle readiness. | The same foundation remains in force and later supports broader doctor/readiness categories. |
+| MVP-1 | Required only for the Task state, state-version, `task_events`, minimal status/intake, and decision-blocker visibility needed by the first authority loop. | Completes the Journey/Decision skeleton and read-only guidance boundaries needed by the final local MVP. |
+| MVP-2 | Required for one active Change Unit, `prepare_write` allow/block, durable Write Authorization creation, and artifact registration basics. | Adds the broader approval, baseline, autonomy, sensitive-category, and drift handling needed for hardened conformance. |
+| MVP-3 | Required for one compatible `record_run`, Write Authorization consumption, artifact-backed Evidence Manifest basics, and minimal `TASK` projection freshness or enqueueing. | Completes feedback-loop, TDD, stewardship, projection, and reconcile coverage for the local reference MVP. |
+| MVP-4 | Not required to pass Kernel Smoke. Missing MVP-4 behavior is simply not yet proven by the first slice. | Required for verification, Manual QA, residual-risk visibility, acceptance, and close-readiness hardening. |
+| MVP-5 | Not required to pass Kernel Smoke. Missing MVP-5 behavior is simply not yet proven by the first slice. | Required for operator smoke, agency conformance, recover/export/artifact-integrity proof, and later-boundary checks. |
+
+Kernel Smoke may pass with only the selected MVP-0 through early MVP-3 subset above. Agency-Hardened MVP requires the remaining stage criteria and fixture coverage owned by [Operations And Conformance](../reference/operations-and-conformance.md#hardened-mvp-fixture-coverage).
 
 ### MVP-0 exit checklist
 

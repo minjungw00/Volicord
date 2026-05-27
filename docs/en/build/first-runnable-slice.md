@@ -52,6 +52,22 @@ Passing this story means the kernel authority path works. It does not mean the M
 
 The observable result can be plain. A user or operator should be able to see the current Task, why a write is blocked or allowed, which Write Authorization was consumed, which artifact backs the Run, whether the Evidence Manifest is sufficient, whether the `TASK` projection is fresh or queued, and why close still blocks.
 
+## Doc-level acceptance checks
+
+Use these checks to review the planned first runnable slice before executable fixtures exist, and again when mapping the slice to the [Kernel Smoke Authoring Queue](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue). They are planning checks, not fixture body fields, schema additions, DDL, or runtime authorization.
+
+A proposed first runnable slice is acceptable when:
+
+- It remains local, single-project, single-reference-surface, and focused on one Task authority loop.
+- It stays planning-only until the [Documentation Acceptance Status](implementation-overview.md#documentation-acceptance-status) explicitly allows first runtime-batch planning.
+- It proves exactly one scoped write path: active Task, active Change Unit, `prepare_write` allow/block, durable single-use Write Authorization, `record_run` consumption, artifact registration, minimal Evidence Manifest, status, minimal `TASK` projection freshness or enqueueing, and structured close blockers.
+- It blocks or refuses missing authority: no active Change Unit, out-of-scope intended path, missing Write Authorization for product-write Runs, reuse of a consumed Write Authorization, missing required evidence, and unresolved blocking Decision Packet.
+- It keeps status reads, projections, reports, and generated prose downstream from Core records; none of them authorize writes, satisfy evidence, close work, or repair state by being read.
+- It links strict fixture body shape, assertion modes, primary errors, artifact refs, projection assertions, and seed validation to [Operations And Conformance Reference](../reference/operations-and-conformance.md#conformance-fixture-format) instead of copying those contracts here.
+- It names excluded capabilities as not yet proven by Kernel Smoke, not as failed Kernel Smoke requirements.
+
+The build order below is a post-acceptance planning sequence. The headings use implementation verbs so the future runtime batch is easy to execute, but this document still does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before documentation acceptance.
+
 ## Build order
 
 ### 1. Runtime Home Bootstrap
@@ -266,7 +282,7 @@ The first runnable slice proves:
 
 ## What this does not prove yet
 
-This slice does not prove:
+This slice does not prove the items below yet. These are not failed Kernel Smoke requirements; they are not-yet-proven capabilities for the later Agency-Hardened MVP path or post-MVP roadmap:
 
 - full Decision Packet quality
 - full approval lifecycle and approval drift handling

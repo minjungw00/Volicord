@@ -97,6 +97,8 @@ Agency-Hardened MVP를 통과하면 로컬 reference MVP가 구현에 사용할 
 
 ## MVP-0부터 MVP-5까지
 
+아래 stage description은 문서 승인 이후를 계획하기 위해 구현 동사를 사용합니다. 현재 documentation-acceptance phase에서 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture, runtime data를 시작하라는 허가가 아닙니다.
+
 ### MVP-0: Runtime Bootstrap
 
 로컬 runtime home을 만들고 프로젝트 하나를 등록하는 단계입니다.
@@ -212,7 +214,20 @@ Docs-maintenance는 별도의 읽기 전용 문서 profile로 남습니다. Docu
 
 ## Stage별 완료 기준
 
-다음은 구현자가 읽기 쉬운 checklist입니다. Stage별 완료 기준을 다시 쓴 것이며, schema, fixture, DDL, runtime requirement를 새로 추가하지 않습니다.
+다음은 문서 승인 이후의 future runtime planning을 위해 구현자가 읽기 쉬운 checklist입니다. Stage별 완료 기준을 다시 쓴 것이며, schema, fixture, DDL, runtime requirement를 새로 추가하지 않고, [문서 승인 상태](implementation-overview.md#문서-승인-상태)가 첫 runtime batch 계획을 막고 있는 동안 implementation을 승인하지 않습니다.
+
+Stage exit는 두 층으로 읽습니다.
+
+| Stage | Kernel Smoke로 읽는 범위 | Agency-Hardened MVP로 읽는 범위 |
+|---|---|---|
+| MVP-0 | 첫 local project, runtime home, artifact store, reference surface, idle readiness를 위한 필수 기반입니다. | 같은 기반이 유지되고, 이후 더 넓은 doctor/readiness category를 뒷받침합니다. |
+| MVP-1 | 첫 권한 루프에 필요한 Task state, state-version, `task_events`, 최소 status/intake, decision blocker visibility만 필요합니다. | 최종 local MVP에 필요한 Journey/Decision skeleton과 read-only guidance boundary를 완성합니다. |
+| MVP-2 | active Change Unit 하나, `prepare_write` allow/block, durable Write Authorization 생성, artifact registration basics가 필요합니다. | Hardened conformance에 필요한 더 넓은 approval, baseline, autonomy, sensitive-category, drift handling을 추가합니다. |
+| MVP-3 | compatible `record_run` 하나, Write Authorization consumption, artifact-backed Evidence Manifest basics, minimal `TASK` projection freshness 또는 enqueue가 필요합니다. | Local reference MVP를 위한 feedback-loop, TDD, stewardship, projection, reconcile coverage를 완성합니다. |
+| MVP-4 | Kernel Smoke 통과에는 필요하지 않습니다. MVP-4 동작이 없다는 것은 첫 조각이 아직 증명하지 않았다는 뜻일 뿐입니다. | Verification, Manual QA, residual-risk visibility, acceptance, close-readiness hardening에 필요합니다. |
+| MVP-5 | Kernel Smoke 통과에는 필요하지 않습니다. MVP-5 동작이 없다는 것은 첫 조각이 아직 증명하지 않았다는 뜻일 뿐입니다. | Operator smoke, agency conformance, recover/export/artifact-integrity proof, later-boundary check에 필요합니다. |
+
+Kernel Smoke는 위의 선택된 MVP-0부터 early MVP-3 subset만으로 통과할 수 있습니다. Agency-Hardened MVP는 남은 stage criteria와 [운영과 Conformance](../reference/operations-and-conformance.md#hardened-mvp-fixture-coverage)가 담당하는 fixture coverage를 요구합니다.
 
 ### MVP-0 완료 checklist
 

@@ -28,6 +28,8 @@ You should already understand the basic Harness concepts from the Learn path. Fo
 
 Build Kernel Smoke first: the smallest local Core authority path. Core alone changes canonical operational state. Then harden that path through evidence, projections, conformance, and operator recovery.
 
+All implementation verbs in this Build path describe future runtime-batch planning after the documentation acceptance gate opens. While [Documentation Acceptance Status](#documentation-acceptance-status) says first runtime-batch planning is not accepted, use this document only to review scope and handoff readiness.
+
 The local kernel is a coordination and authority record, not a replacement for the product repository, source control, tests, code review, conversation, or user-owned product and material technical judgment. Build the first path so status and close output explain what changed, what was checked, what remains risky, and what decision is needed.
 
 The first authority loop is narrow: `prepare_write` is the only product-write authorization decision point, a returned Write Authorization is durable and single-use, `record_run` consumes it for one compatible implementation or direct Run while recording observed changes and artifacts, and `close_task` is the only completion decision point. Exact state logic lives in [Kernel Reference](../reference/kernel.md#prepare_write) and public request/response details live in [MCP API And Schemas](../reference/mcp-api-and-schemas.md#public-tools).
@@ -75,7 +77,9 @@ This handoff does not promote roadmap items, dashboards or hosted workflow UI, B
 
 ## What you are building
 
-Harness MVP is a local authority kernel for AI-assisted product work. It keeps durable local state, artifact refs, and readable projections around the work journey, while leaving product history, executable checking, review, and user judgment with the existing engineering process. The first implementation target is Kernel Smoke. The initial implementation assumption is one local system with clear internal modules, not a distributed platform.
+After documentation acceptance, Harness MVP is planned as a local authority kernel for AI-assisted product work. It keeps durable local state, artifact refs, and readable projections around the work journey, while leaving product history, executable checking, review, and user judgment with the existing engineering process. The first implementation target is Kernel Smoke. The initial implementation assumption is one local system with clear internal modules, not a distributed platform.
+
+The sections below describe future responsibilities for that runtime batch. They are not work orders for the current documentation-acceptance phase.
 
 ### Local Server / Process
 
@@ -197,7 +201,7 @@ It should show:
 - `close_task` blocks with structured blockers when evidence or decision requirements are missing
 - the same behavior is executable through basic Core fixtures
 
-Kernel Smoke is not the final MVP. It proves the write authority path is alive.
+Kernel Smoke is not the final MVP. It proves the write authority path is alive. Use [First Runnable Slice](first-runnable-slice.md#doc-level-acceptance-checks) for doc-level acceptance checks, and use [Operations And Conformance Reference](../reference/operations-and-conformance.md#conformance-fixture-format) for exact fixture semantics.
 
 ## The final MVP proof
 
