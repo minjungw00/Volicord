@@ -4,7 +4,7 @@
 
 This document gives you the first mental model for Harness. After reading it, you should understand why Harness exists, what the three Harness spaces are, what it records, and why those records matter before you read the reference specs.
 
-This is Learn documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
+This is Learn documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before maintainers explicitly accept the documentation set for first runtime-batch planning. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
 
 ## Read this when
 
@@ -20,11 +20,13 @@ Important work facts get trapped in chat.
 
 In an AI-assisted development session, the conversation can move quickly. The user asks for something, scope changes, the agent makes choices, tests run, screenshots appear, a risk is mentioned, and then everyone says the work is done. Later, it can be hard to answer basic questions: what did we agree to change, what actually changed, what was checked, what still needs a human decision, and what risk did we accept?
 
-Harness is an agency-preserving local authority kernel for AI-assisted product work. It keeps those work facts outside the chat in a local operating record: durable local state, artifact refs for supporting evidence, and readable projections derived from state. The chat can stay natural, but the durable facts of the task become followable, resumable, checkable, and closeable from current state.
+Harness is a local work ledger and judgment router for AI-assisted product work. It records what may change, who must decide, what evidence exists, what risk remains, and whether the work can close.
+
+Harness still follows the agency-preserving local authority kernel principle. It keeps those work facts outside the chat in durable local state, artifact refs for supporting evidence, and readable projections derived from state. The chat can stay natural, but the durable facts of the task become followable, resumable, checkable, and closeable from current state.
 
 ```mermaid
 flowchart LR
-  Chat["Chat<br/>requests, choices, claims"] --> Harness["Harness<br/>local work record"]
+  Chat["Chat<br/>requests, choices, claims"] --> Harness["Harness<br/>local work ledger"]
   Harness --> State["state"]
   Harness --> Evidence["evidence"]
   Harness --> Views["readable views"]
@@ -67,9 +69,16 @@ Harness records the parts of the work journey that must survive the conversation
 
 These records let a reader ask: where are we, what changed, what was checked, what is still risky, what is blocked, what decision is needed, and can this task close?
 
-## What Harness does not replace
+## What Harness is not
 
-Harness is not merely a chat workflow, prompt skill bundle, test harness, or evaluation harness.
+Harness is not:
+
+- a prompt pack
+- a replacement for source control, tests, code review, or user judgment
+- MCP itself
+- a broad hosted agent platform
+
+Harness is also not merely a chat workflow, test harness, or evaluation harness.
 
 Harness can integrate with MCP tools/connectors, hooks, guardrails, adapters, sidecars, and isolation layers. Those surfaces can help agents read current context, call Harness tools, capture evidence, or enforce/detect boundaries when the connected profile supports it, but they are not the source of Harness authority. If a connected surface can only cooperate or detect issues after action, Harness should describe that limit instead of claiming hard prevention.
 
@@ -80,6 +89,8 @@ Harness also does not replace the user's product repository, source control or v
 Harness also does not treat chat history as the source of truth. It does not treat generated Markdown as the operating record. It does not turn the agent into the owner of product or material technical direction. The user still owns goals, scope, design judgment, product and material technical judgment, sensitive-action Approvals, QA judgment, acceptance, and residual-risk acceptance.
 
 Harness keeps a local record and decision path around AI-assisted work. It helps the user and agent work faster without losing the shape of the work.
+
+For a side-by-side comparison with AGENTS.md / agent rules, MCP, spec-driven workflows, hooks / sidecars, and test runners / code review, use the [English documentation entrypoint](../README.md#comparison). For the values behind those differences, read [Purpose and Principles](purpose-and-principles.md).
 
 ## Where to go next
 

@@ -2,11 +2,32 @@
 
 This is the English routing page for the Harness documentation set.
 
-This repository is in documentation review. This page does not authorize Harness server/runtime implementation, generated operational files, executable fixtures, or runtime data. The first implementation/proof path remains Kernel Smoke first, Agency-Hardened MVP later, and post-MVP automation in the roadmap unless owner docs promote it.
+This repository is in documentation redesign / feedback incorporation and documentation review. This page does not authorize Harness server/runtime implementation, generated operational files, executable fixtures, or runtime data. First runtime-batch planning may not begin until maintainers deliberately accept the docs in the implementation handoff. The first implementation/proof path remains Kernel Smoke first, Agency-Hardened MVP later, and post-MVP automation in the roadmap unless owner docs promote it.
 
-Harness is an agency-preserving local authority kernel for AI-assisted product work. It keeps a local operating record of scope, user-owned judgment, write authority, evidence, verification, QA, acceptance, residual risk, and close.
+Harness is a local work ledger and judgment router for AI-assisted product work. It records what may change, who must decide, what evidence exists, what risk remains, and whether the work can close.
 
-Harness is not a chat script, prompt bundle, test harness, evaluation harness, dashboard, or replacement for the user's product repository, version control, tests, code review, or product and technical judgment.
+Harness still follows the agency-preserving local authority kernel principle: durable work facts stay in local state, artifact refs, and readable projections, while user-owned product and material technical judgment stays with the user.
+
+## What Harness Is Not
+
+Harness is not:
+
+- a prompt pack
+- a replacement for source control, tests, code review, or user judgment
+- MCP itself
+- a broad hosted agent platform
+
+Harness is also not a chat script, test harness, evaluation harness, or dashboard.
+
+## Comparison
+
+| Nearby piece | How Harness differs |
+|---|---|
+| AGENTS.md / agent rules | Agent rules tell agents how to behave in a repository or session. Harness keeps the local work ledger that records scope, evidence, judgment needs, risk, and close readiness. |
+| MCP | MCP is a protocol boundary for tools and resources. Harness may expose MCP tools, but Harness is not MCP itself; its authority comes from local Core-owned records. |
+| Spec-driven workflows | Specs describe intended behavior or design. Harness records the live work state around a task: allowed change boundary, user decisions, evidence, risk, and whether the task can close. |
+| Hooks / sidecars | Hooks and sidecars can observe, block, or report depending on their actual guarantee level. Harness records those limits and routes any effect through the relevant owner paths. |
+| Test runners / code review | Tests and review check product work. Harness links their results as evidence while keeping acceptance, residual risk, and user-owned judgment separate. |
 
 ## Reader Routes
 

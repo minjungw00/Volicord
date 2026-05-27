@@ -1,6 +1,6 @@
 # Codex Working Rules
 
-This repo is in pre-MVP Harness documentation review / documentation acceptance mode. This file is a short always-on compass for agents working here, not a Harness runtime procedure, schema reference, or project history.
+This repo is in pre-MVP Harness documentation redesign / feedback incorporation and documentation review / documentation acceptance mode. This file is a short always-on compass for agents working here, not a Harness runtime procedure, schema reference, or project history.
 
 ## Repo Phase
 

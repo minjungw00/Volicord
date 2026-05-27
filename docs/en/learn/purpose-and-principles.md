@@ -4,7 +4,7 @@
 
 This document explains why Harness exists, who it is for, what it values, how it thinks about common AI-assisted development failures, and what belongs inside the MVP boundary.
 
-This is Learn documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
+This is Learn documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before maintainers explicitly accept the documentation set for first runtime-batch planning. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
 
 ## Read this when
 
@@ -16,7 +16,9 @@ Read this when you want the values and boundaries behind Harness before reading 
 
 ## Main idea
 
-Harness is an agency-preserving local authority kernel for AI-assisted product work. It preserves user agency by making work followable from durable local state, artifact-backed evidence refs, and readable projections.
+Harness is a local work ledger and judgment router for AI-assisted product work. It records what may change, who must decide, what evidence exists, what risk remains, and whether the work can close.
+
+The reason it works as a ledger is the agency-preserving local authority kernel principle: durable work facts stay in local state, artifact-backed evidence refs, and readable projections, while user-owned product and material technical judgment stays with the user.
 
 ## Purpose
 
@@ -24,9 +26,22 @@ Harness exists to make AI-assisted development followable without taking strateg
 
 The user should be able to begin in ordinary language. The agent should be able to clarify, propose, implement, check, and report. But the important facts of the work should not live only in the chat transcript. Harness keeps those facts in local state, durable evidence, and readable projections so the task can be resumed, checked, reconciled, and closed from current state.
 
-Harness is not ceremony for its own sake. It maintains a local operating record for work that would otherwise become blurry.
+Harness is not ceremony for its own sake. It maintains a local work ledger for work that would otherwise become blurry, and it routes judgment when the work needs a user decision before it can continue or close.
 
 Harness keeps that operating record around task state, Change Unit scope, user judgment, Write Authorization, evidence, verification, QA, Acceptance, Residual Risk, and close. The point is not to replace the user's tools, source control, tests, code review, or conversation, but to make the work followable from current local state.
+
+## What Harness is not
+
+Harness is not:
+
+- a prompt pack
+- a replacement for source control, tests, code review, or user judgment
+- MCP itself
+- a broad hosted agent platform
+
+Harness may use agent instructions, MCP tools, hooks, sidecars, tests, reviews, and specs as useful inputs or surfaces. They do not become Harness authority just because they are nearby.
+
+Harness differs from nearby pieces because authority lives in the local work record and user-owned judgment stays with the user. AGENTS.md / agent rules can guide agent behavior, MCP can expose tools and resources, specs can describe intent, hooks / sidecars can observe or enforce within their guarantee level, and tests / code review can check product work. Harness uses those surfaces as inputs or evidence, but it does not treat them as the ledger or the decision owner. For the detailed comparison table, use the [English documentation entrypoint](../README.md#comparison).
 
 ## Who it is for
 
@@ -98,7 +113,7 @@ The MVP may be delivered in stages, but the final MVP still needs to prove the s
 
 ## Non-goals
 
-Harness is not merely a chat workflow, prompt skill bundle, test harness, or evaluation harness.
+Harness is not merely a chat workflow, prompt pack, test harness, or evaluation harness.
 
 Harness can integrate with MCP tools/connectors, hooks, guardrails, adapters, sidecars, and isolation layers, but those surfaces are not the source of Harness authority. They help agents read context, call Harness tools, capture evidence, or enforce/detect boundaries when the connected profile supports it.
 

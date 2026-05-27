@@ -4,7 +4,7 @@
 
 This document tells implementers what to build before they dive into the full reference specs. It is the bridge between the reader-centered docs and the detailed contracts in the kernel, runtime, MCP, storage, projection, and conformance references.
 
-This is planning documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first implementation/proof target is Kernel Smoke: one local process with modules proving one authority loop. Agency-Hardened MVP is a later hardening and conformance target after Kernel Smoke, and roadmap automation stays outside MVP unless owner docs promote and prove it.
+This is planning documentation for documentation redesign / feedback incorporation and handoff review. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before maintainers explicitly accept the documentation set for first runtime-batch planning. The first implementation/proof target is Kernel Smoke: one local process with modules proving one authority loop. Agency-Hardened MVP is a later hardening and conformance target after Kernel Smoke, and roadmap automation stays outside MVP unless owner docs promote and prove it.
 
 Use it to answer three questions:
 
@@ -16,7 +16,7 @@ This document does not define SQLite DDL, public MCP schemas, projection templat
 
 ## Read this when
 
-- You are planning the first implementation shape after the documentation set is accepted for implementation planning.
+- You are planning the first implementation shape after maintainer handoff explicitly accepts the docs for first runtime-batch planning.
 - You need to review whether a proposed MVP build keeps the right scope.
 - You want the short map before reading the strict reference specs.
 
@@ -26,9 +26,11 @@ You should already understand the basic Harness concepts from the Learn path. Fo
 
 ## Main idea
 
+Harness is a local work ledger and judgment router for AI-assisted product work. It records what may change, who must decide, what evidence exists, what risk remains, and whether the work can close. The first implementation path should prove that local ledger and judgment route through the smallest Core authority loop before adding hardening or automation.
+
 Build Kernel Smoke first: the smallest local Core authority path. Core alone changes canonical operational state. Then harden that path through evidence, projections, conformance, and operator recovery.
 
-All implementation verbs in this Build path describe future runtime-batch planning after the documentation acceptance gate opens. While [Documentation Acceptance Status](#documentation-acceptance-status) says first runtime-batch planning is not accepted, use this document only to review scope and handoff readiness.
+All implementation verbs in this Build path describe future runtime-batch planning after the maintainer handoff explicitly accepts the docs for that planning. While [Documentation Acceptance Status](#documentation-acceptance-status) says first runtime-batch planning is not accepted, use this document only to review scope and handoff readiness.
 
 The local kernel is a coordination and authority record, not a replacement for the product repository, source control, tests, code review, conversation, or user-owned product and material technical judgment. Build the first path so status and close output explain what changed, what was checked, what remains risky, and what decision is needed.
 
@@ -42,14 +44,16 @@ If a proposed implementation starts with Agency-Hardened MVP as one large first 
 
 This is a maintainer-updated documentation handoff marker. It is not a Reference contract, conformance result, generated operational record, or runtime implementation authorization. Do not infer acceptance from the checklist below; maintainers must change this table deliberately.
 
+Current revision status: documentation redesign / feedback incorporation is active. This status marker is not runtime/server implementation, runtime conformance, or implementation readiness.
+
 | Question | Current status |
 |---|---|
-| Is documentation maintenance still active? | Yes. Final docs-maintenance drift fixes from this pass are applied, and implementation handoff still requires a deliberate maintainer update. |
+| Is documentation redesign / feedback incorporation still active? | Yes. Documentation-only redesign work is in progress, and implementation handoff still requires a deliberate maintainer update. |
 | Are docs accepted for first runtime-batch planning? | No. First runtime-batch planning may not begin until maintainers change this row to Yes after the checkpoint below is satisfied. |
 | Has runtime/server implementation started? | No. This repository still contains documentation, not Harness runtime/server implementation. |
-| Are there open follow-up docs issues? | No blocking docs-maintenance drift is known after this final pass. Maintainers still must deliberately change the docs-accepted row to Yes before first runtime-batch planning may begin; this is not runtime conformance or implementation readiness. |
+| Are there open follow-up docs issues? | Planned redesign follow-up work remains. No blocking docs-maintenance drift is known from the completed documentation-only redesign changes so far. Maintainers still must deliberately change the docs-accepted row to Yes before first runtime-batch planning may begin; this is not runtime conformance or implementation readiness. |
 
-Build readers should treat this table as the entry gate. Until maintainers change the second row to Yes, even Kernel Smoke remains planning-only in this repository.
+Build readers should treat this table as the entry gate. Until maintainer handoff changes the second row to Yes, even Kernel Smoke remains planning-only in this repository and runtime/server implementation must not start.
 
 ## Implementation handoff checkpoint
 
@@ -77,7 +81,7 @@ This handoff does not promote roadmap items, dashboards or hosted workflow UI, B
 
 ## What you are building
 
-After documentation acceptance, Harness MVP is planned as a local authority kernel for AI-assisted product work. It keeps durable local state, artifact refs, and readable projections around the work journey, while leaving product history, executable checking, review, and user judgment with the existing engineering process. The first implementation target is Kernel Smoke. The initial implementation assumption is one local system with clear internal modules, not a distributed platform.
+After maintainer handoff explicitly accepts the docs for first runtime-batch planning, Harness MVP is planned as a local work ledger and judgment router for AI-assisted product work. It keeps durable local state, artifact refs, and readable projections around the work journey, while leaving product history, executable checking, review, and user judgment with the existing engineering process. The agency-preserving local authority kernel principle remains the implementation center: Core owns canonical local state, and user-owned judgment stays with the user. The first implementation target is Kernel Smoke. The initial implementation assumption is one local system with clear internal modules, not a distributed platform.
 
 The sections below describe future responsibilities for that runtime batch. They are not work orders for the current documentation-acceptance phase.
 
