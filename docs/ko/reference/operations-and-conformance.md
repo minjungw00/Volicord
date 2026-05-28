@@ -57,7 +57,7 @@ Conformance fixture body shape, fixture assertion semantics, suite catalog detai
 | Operator command 의미 | [운영자 entrypoint](#운영자-entrypoint), 그리고 해당 command section: [connect](#connect), [doctor](#doctor), [serve mcp](#serve-mcp), [projection refresh](#projection-refresh), [reconcile](#reconcile), [recover](#recover), [export](#export), [artifacts check](#artifacts-check), [conformance run](#conformance-run) | Core 상태 권한은 [커널 참조](kernel.md)에 남고, transaction order는 [Runtime Architecture](runtime-architecture.md#state-transaction-flow)에 남습니다. |
 | Operator 진단과 runtime-effect 경계 | [운영 진단은 새 상태가 아니라 사실을 보고합니다](#운영-진단은-새-상태가-아니라-사실을-보고합니다), [docs-maintenance 프로필](#docs-maintenance-프로필), [Release Handoff Export Profile](#release-handoff-export-profile) | Docs-maintenance rule body는 [문서 작성 가이드](../maintain/authoring-guide.md#docs-maintenance-checks)에 남습니다. |
 | Fixture body shape와 runner behavior | [Conformance Fixtures 참조: Conformance Fixture Format](conformance-fixtures.md#conformance-fixture-format), [Conformance Execution](conformance-fixtures.md#conformance-execution), [Fixture Assertion Semantics](conformance-fixtures.md#fixture-assertion-semantics) | Public request schema, idempotency, state conflict behavior는 [MCP API와 스키마](mcp-api-and-schemas.md)에 남습니다. Storage seeding detail은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
-| Fixture 작성 순서와 suite coverage | [Conformance staging](#conformance-staging), 그다음 [Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue), [Hardened MVP Fixture Coverage](conformance-fixtures.md#hardened-mvp-fixture-coverage), [Fixture Suites](conformance-fixtures.md#fixture-suites) | Kernel gate와 event name은 [커널 참조](kernel.md)에 남습니다. |
+| Fixture 작성 순서와 suite coverage | [Conformance staging](#conformance-staging), 그다음 [Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue), [Agency-Hardened Fixture Coverage](conformance-fixtures.md#agency-hardened-fixture-coverage), [Fixture Suites](conformance-fixtures.md#fixture-suites) | Kernel gate와 event name은 [커널 참조](kernel.md)에 남습니다. |
 | Concern별 fixture 예시 | [Conformance Fixtures 참조: Fixture 예시 지도](conformance-fixtures.md#fixture-예시-지도), 그다음 해당 예시 section | 예시 `input`은 계속 담당 public tool schema를 통과해야 합니다. |
 | Artifact integrity, export, recover, reconcile check | [artifacts check](#artifacts-check), [export](#export), [recover](#recover), [reconcile](#reconcile) | Artifact layout과 DDL은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
 | Security와 threat-model 진단 category | [doctor](#doctor), [serve mcp](#serve-mcp), [artifacts check](#artifacts-check) | Threat-model concept은 [보안 위협 모델 참조](security-threat-model.md)에 남습니다. API, storage, kernel detail은 각 owner에 남습니다. |
@@ -743,9 +743,9 @@ Operator boundary: 이 문서는 operator entrypoint, runtime/docs-maintenance p
 
 [Conformance Fixtures 참조: Intake와 Decision Catalog Entries](conformance-fixtures.md#intake와-decision-catalog-entries)로 이동했습니다. Catalog row는 exact-shape fixture로 구체화되기 전까지 guidance입니다.
 
-### Hardened MVP Fixture Coverage
+### Agency-Hardened Fixture Coverage
 
-[Conformance Fixtures 참조: Hardened MVP Fixture Coverage](conformance-fixtures.md#hardened-mvp-fixture-coverage)로 이동했습니다. Staged suite와 hardened suite coverage map은 그 문서가 담당합니다.
+[Conformance Fixtures 참조: Agency-Hardened Fixture Coverage](conformance-fixtures.md#agency-hardened-fixture-coverage)로 이동했습니다. Staged suite와 Agency-Hardened suite coverage map은 그 문서가 담당합니다.
 
 ### Fixture 예시 지도
 

@@ -16,7 +16,7 @@ Projection templates match the API `ProjectionKind` staged/reference support tie
 | Reference-optional | `MANUAL-QA`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT` | Render when policy applies, records exist, or the user/operator enables the projection. |
 | Extension / optional | `DEC`, `DESIGN`, `EXPORT`, `JOURNEY-CARD` | Render only when the corresponding optional projection is enabled. |
 
-`Reference-required` means required by the staged/reference MVP projection support after the relevant owner records exist; it does not mean every v0.1 Kernel MVP run must render every kind. v0.1 Kernel MVP requires only a minimal `TASK` projection or durable projection enqueue. v0.2+ expands evidence/projection support; the Agency-Hardened/reference MVP supports the full Reference-required projection set when source records exist or change.
+`Reference-required` means required by staged/reference projection support after the relevant owner records exist; it does not mean every v0.1 Kernel MVP run must render every kind. v0.1 Kernel MVP requires only a minimal `TASK` projection or durable projection enqueue. v0.2+ expands evidence/projection support; Agency-Hardened/reference projection support covers the full Reference-required projection set when source records exist or change.
 
 `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`, and other report projections are readable views from owner records and refs. They must not redefine kernel fields, MCP schemas, SQLite DDL, gate behavior, or artifact integrity rules.
 

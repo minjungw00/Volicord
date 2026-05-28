@@ -294,7 +294,7 @@ Decision Packets feed `decision_gate`. Blocking user-owned judgment cannot be sa
 
 A Decision Packet is sufficient for kernel use only when it records a decision, not a blank permission request. It must make the user-owned question explicit, compare realistic options, include the agent recommendation or explain why none is available, expose material trade-offs, name affected gates and acceptance criteria, point to source and evidence refs, state the consequence of deferral, and say what the agent may decide without the user. These are quality requirements for the existing Decision Packet record and public request shape owned by [MCP API And Schemas](mcp-api-and-schemas.md#harnessrequest_user_decision); they do not add fields, gates, or an alternate authority path.
 
-Minimal MVP implementations may omit `decision_requests`. If an implementation keeps them, they are routing, interaction, replay, or compatibility handoff metadata only. They are not authority for user-owned judgment, and a `decision_request` row alone never satisfies `decision_gate`, sensitive-action Approval, acceptance, waiver, residual-risk acceptance, or close.
+Minimal v0.1 Kernel MVP implementations may omit `decision_requests`. If an implementation keeps them, they are routing, interaction, replay, or compatibility handoff metadata only. They are not authority for user-owned judgment, and a `decision_request` row alone never satisfies `decision_gate`, sensitive-action Approval, acceptance, waiver, residual-risk acceptance, or close.
 
 Decision Packet status is record-level:
 
@@ -362,7 +362,7 @@ A Write Authorization is the durable, single-use state record created when `prep
 
 It records the Task, active Change Unit, `basis_state_version`, intended operation, intended paths, intended tools, intended commands, intended network targets, intended secret access, sensitive categories, baseline, approval refs, relevant Decision Packet refs, guarantee level, status, created time, and consumption by a Run.
 
-`basis_state_version` is the affected-scope state version Core used as the compatibility basis for the allowed write attempt after stale-state checks and before creating the authorization. For MVP Write Authorizations this is the Task State Version for the authorization's Task. It supports idempotent replay audit, stale detection, and explaining why older unconsumed authorizations became stale, expired, or revoked.
+`basis_state_version` is the affected-scope state version Core used as the compatibility basis for the allowed write attempt after stale-state checks and before creating the authorization. For Task-scoped Write Authorizations this is the Task State Version for the authorization's Task. It supports idempotent replay audit, stale detection, and explaining why older unconsumed authorizations became stale, expired, or revoked.
 
 A Write Authorization is not scope by itself. It is evidence that Core allowed a specific write attempt under the active scope and gates.
 
@@ -408,7 +408,7 @@ Residual Risk is a canonical close-relevant support record for known remaining u
 
 Residual Risk records make remaining risk visible before acceptance or risk-accepted close. They do not create detached verification, replace evidence, waive QA, grant sensitive-action Approval, or imply final acceptance.
 
-Accepted risk is not a separate canonical state record in MVP. Risk acceptance updates accepted-risk metadata/status on the relevant Residual Risk record and may append residual-risk acceptance events. Any public accepted-risk ref field that remains in an API or projection must point to a `StateRecordRef` with `record_kind=residual_risk`, not to an `accepted_risk` or `ARISK-*` record.
+Accepted risk is not a separate canonical state record in the current reference model. Risk acceptance updates accepted-risk metadata/status on the relevant Residual Risk record and may append residual-risk acceptance events. Any public accepted-risk ref field that remains in an API or projection must point to a `StateRecordRef` with `record_kind=residual_risk`, not to an `accepted_risk` or `ARISK-*` record.
 
 ### Artifact
 
@@ -654,7 +654,7 @@ not_required | required | pending | accepted | rejected
 
 `acceptance_gate` records the user's final acceptance judgment where acceptance is required. It does not replace QA or verification.
 
-MVP final acceptance is stored through the canonical Decision Packet user-decision path, the Task's `acceptance_gate`, and `state.sqlite.task_events`. The kernel does not define a separate Acceptance state record for MVP.
+Final acceptance in the current reference model is stored through the canonical Decision Packet user-decision path, the Task's `acceptance_gate`, and `state.sqlite.task_events`. The kernel does not define a separate Acceptance state record.
 
 Residual-risk visibility is satisfied in either of two ways. If no known close-relevant Residual Risk exists, the current judgment context reports `ResidualRiskSummary.status=none`. If known close-relevant Residual Risk exists, that risk must be visible in the current judgment context before any successful close. Acceptance, when required, can be recorded only after close-relevant residual risk is visible or confirmed as `ResidualRiskSummary.status=none`. A risk-accepted close additionally requires visible and accepted Residual Risk refs, and residual-risk acceptance never upgrades assurance to `detached_verified`. `ResidualRiskSummary.status=none` must not hide or replace known close-relevant risk.
 
@@ -823,7 +823,7 @@ write_authorization_violation_detected
 
 #### Stable Event Catalog
 
-Stable event names are the `event_type` values that MVP conformance fixtures may require in `expected_events`. Events remain rows in `state.sqlite.task_events`; this catalog does not introduce a separate event store, stream, or payload schema. A name outside this catalog may appear in prose, tool descriptions, fixture seed shorthand, validator/check names, or future extensions, but it is not a stable MVP conformance assertion unless this catalog promotes it. Fixtures should assert validator outcomes under `expected_state.validators` and projection freshness under `expected_projection` or `expected_state.checks`, not by inventing event names.
+Stable event names are the `event_type` values that staged/reference conformance fixtures may require in `expected_events`. Events remain rows in `state.sqlite.task_events`; this catalog does not introduce a separate event store, stream, or payload schema. A name outside this catalog may appear in prose, tool descriptions, fixture seed shorthand, validator/check names, or future extensions, but it is not a stable conformance assertion unless this catalog promotes it. Fixtures should assert validator outcomes under `expected_state.validators` and projection freshness under `expected_projection` or `expected_state.checks`, not by inventing event names.
 
 | Area | Stable event names |
 |---|---|
@@ -834,7 +834,7 @@ Stable event names are the `event_type` values that MVP conformance fixtures may
 | Close and risk-accepted close | `close_requested`, `close_blocked`, `risk_accepted_close_recorded`, `task_closed`, `task_cancelled`, `task_superseded` |
 | Projection, connector, and reconcile operations | `projection_refresh_failed`, `generated_file_drift_detected`, `reconcile_item_created` |
 
-The catalog is deliberately compact. Non-stable implementation-local detail or audit events, plus future extension events, may still be recorded in `task_events`, but MVP fixture authors must not require them in `expected_events` until they are added here.
+The catalog is deliberately compact. Non-stable implementation-local detail or audit events, plus future extension events, may still be recorded in `task_events`, but staged/reference fixture authors must not require them in `expected_events` until they are added here.
 
 Catalog-only fixture skeletons in [Conformance Fixtures Reference](conformance-fixtures.md#catalog-only-fixture-skeleton-guidance) may name expected event behavior at a family level. When a catalog entry becomes executable, `expected_events` still asserts only the stable names above; read-only status/next and docs-maintenance scenarios should normally require no stable events unless a documented Core action commits state.
 
@@ -984,7 +984,7 @@ An interrupted Run is a committed recovery Run for an execution attempt that sta
 
 The Task cannot rely on an interrupted, blocked, or violation Run for close until the state is repaired through compatible scope, sensitive-action Approval, Decision Packet resolution, evidence update, verification, or a new write authorization and Run.
 
-MVP `shaping_update` is not a product-write recording path. Shaping-only Runs may be recorded without consuming Write Authorization, but they must not include product file changes. If a `shaping_update` also reports observed product writes, Core rejects it and requires `kind=implementation` or `kind=direct` with a compatible Write Authorization.
+The current reference `shaping_update` path is not a product-write recording path. Shaping-only Runs may be recorded without consuming Write Authorization, but they must not include product file changes. If a `shaping_update` also reports observed product writes, Core rejects it and requires `kind=implementation` or `kind=direct` with a compatible Write Authorization.
 
 Read-only Runs may be recorded without consuming Write Authorization, but they must not include product file changes. If such a Run observes product changes, Core treats it as an implementation/direct compatibility failure.
 

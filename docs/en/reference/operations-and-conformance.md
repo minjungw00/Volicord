@@ -57,7 +57,7 @@ It also does not own conformance fixture body shape, fixture assertion semantics
 | Operator command semantics | [Operator entrypoints](#operator-entrypoints), then the command section: [connect](#connect), [doctor](#doctor), [serve mcp](#serve-mcp), [projection refresh](#projection-refresh), [reconcile](#reconcile), [recover](#recover), [export](#export), [artifacts check](#artifacts-check), or [conformance run](#conformance-run) | Core state authority remains in [Kernel Reference](kernel.md), with transaction ordering in [Runtime Architecture](runtime-architecture.md#state-transaction-flow). |
 | Operator diagnostics and runtime-effect boundaries | [Operator diagnostics report facts, not new state](#operator-diagnostics-report-facts-not-new-state), [Docs-maintenance profile](#docs-maintenance-profile), [Release Handoff Export Profile](#release-handoff-export-profile) | Docs-maintenance rule bodies stay in [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks). |
 | Fixture body shape and runner behavior | [Conformance Fixtures Reference: Conformance Fixture Format](conformance-fixtures.md#conformance-fixture-format), [Conformance Execution](conformance-fixtures.md#conformance-execution), [Fixture Assertion Semantics](conformance-fixtures.md#fixture-assertion-semantics) | Public request schemas, idempotency, and state conflict behavior stay in [MCP API And Schemas](mcp-api-and-schemas.md). Storage seeding details stay in [Storage And DDL](storage-and-ddl.md). |
-| Fixture authoring order and suite coverage | [Conformance staging](#conformance-staging), then [Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue), [Hardened MVP Fixture Coverage](conformance-fixtures.md#hardened-mvp-fixture-coverage), and [Fixture Suites](conformance-fixtures.md#fixture-suites) | Kernel gate and event names stay in [Kernel Reference](kernel.md). |
+| Fixture authoring order and suite coverage | [Conformance staging](#conformance-staging), then [Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue), [Agency-Hardened Fixture Coverage](conformance-fixtures.md#agency-hardened-fixture-coverage), and [Fixture Suites](conformance-fixtures.md#fixture-suites) | Kernel gate and event names stay in [Kernel Reference](kernel.md). |
 | Fixture examples by concern | [Conformance Fixtures Reference: Fixture Example Map](conformance-fixtures.md#fixture-example-map), then the matching example section | Example `input` still validates against the owning public tool schema. |
 | Artifact integrity, export, recover, and reconcile checks | [artifacts check](#artifacts-check), [export](#export), [recover](#recover), [reconcile](#reconcile) | Artifact layout and DDL stay in [Storage And DDL](storage-and-ddl.md). |
 | Security and threat-model diagnostic categories | [doctor](#doctor), [serve mcp](#serve-mcp), and [artifacts check](#artifacts-check) | Threat-model concepts stay in [Security Threat Model Reference](security-threat-model.md). API, storage, and kernel details stay with their owners. |
@@ -741,9 +741,9 @@ Moved to [Conformance Fixtures Reference: Kernel Smoke Authoring Queue](conforma
 
 Moved to [Conformance Fixtures Reference: Intake And Decision Catalog Entries](conformance-fixtures.md#intake-and-decision-catalog-entries). Catalog rows remain guidance until materialized as exact-shape fixtures.
 
-### Hardened MVP Fixture Coverage
+### Agency-Hardened Fixture Coverage
 
-Moved to [Conformance Fixtures Reference: Hardened MVP Fixture Coverage](conformance-fixtures.md#hardened-mvp-fixture-coverage). Staged and hardened suite coverage maps are owned there.
+Moved to [Conformance Fixtures Reference: Agency-Hardened Fixture Coverage](conformance-fixtures.md#agency-hardened-fixture-coverage). Staged and Agency-Hardened suite coverage maps are owned there.
 
 ### Fixture Example Map
 

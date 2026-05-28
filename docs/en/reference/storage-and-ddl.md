@@ -4,7 +4,7 @@
 
 Use this reference to implement or review the Harness runtime storage model. It owns the runtime home layout, `registry.sqlite`, `project.yaml`, `state.sqlite`, `task_events`, DDL draft, JSON `TEXT` validation, migrations, lock policy, artifact directory layout, baseline capture format, projection job table, and validator runner skeleton.
 
-This is storage reference material. It does not define MVP stage sequencing; for stage order and exit criteria, see [Build: MVP Plan](../build/mvp-plan.md).
+This is storage reference material. It does not define staged-pack sequencing; for stage order and exit criteria, see [Build: MVP Plan](../build/mvp-plan.md).
 
 This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
@@ -71,7 +71,7 @@ This document does not own:
 - full kernel lifecycle transition table; see [Kernel Reference](kernel.md)
 - design-quality policy contracts; see [Design Quality Policies](design-quality-policies.md)
 - projection template bodies; see [Template Reference](templates/README.md); projection rules live in [Document Projection Reference](document-projection.md)
-- MVP stage sequencing and exit criteria; see [Build: MVP Plan](../build/mvp-plan.md)
+- staged-pack sequencing and exit criteria; see [Build: MVP Plan](../build/mvp-plan.md)
 - operator command semantics; see [Operations And Conformance Reference](operations-and-conformance.md)
 - connector capability profiles; see [Agent Integration Reference](agent-integration.md)
 - surface recipes; see [Surface Cookbook](surface-cookbook.md)
@@ -106,7 +106,7 @@ Reference layout:
 
 ### Runtime home permissions and tampering
 
-Runtime Home should be treated as user-private local control data. At the documentation-contract level, the MVP baseline is owner-only access, or the closest platform equivalent, for the runtime root, project directories, `registry.sqlite`, `project.yaml`, `state.sqlite`, connector manifests, artifact directories, `artifacts/tmp/`, and generated operational files when the platform supports it. If a platform or deployment cannot express those permissions, `doctor` should report the weaker or unknown posture instead of implying an OS-level guarantee.
+Runtime Home should be treated as user-private local control data. At the documentation-contract level, the current reference baseline is owner-only access, or the closest platform equivalent, for the runtime root, project directories, `registry.sqlite`, `project.yaml`, `state.sqlite`, connector manifests, artifact directories, `artifacts/tmp/`, and generated operational files when the platform supports it. If a platform or deployment cannot express those permissions, `doctor` should report the weaker or unknown posture instead of implying an OS-level guarantee.
 
 File permissions are defense in depth, not a second state model. A database row, artifact file, connector manifest, or generated file is authoritative only through Core validation, storage shape checks, owner/link checks, artifact integrity checks, or the documented `doctor`, `recover`, and `artifacts check` paths. Broad write access to Runtime Home is a local tampering and artifact-poisoning risk; broad read access can expose secrets, PII, tokens, private logs, screenshots, verification bundles, and exported state. The storage layer supplies the observed owner/mode/path facts; Operations owns the `OK`, `WARN`, `FAIL`, and `MANUAL` severity mapping.
 
@@ -122,7 +122,7 @@ Permission diagnostics should be concrete enough for an operator to act on:
 
 The reference storage uses SQLite for registry and per-project state. The DDL is a draft implementation contract; field names may gain indexes or migration helpers, but table ownership and authority boundaries should remain stable.
 
-`task_spine_entries` is the physical MVP table for public `journey_spine_entry` records and Journey Spine Entry wording. Public MCP/API naming remains `journey_spine_entry`; the table name preserves the task-local implementation shape.
+`task_spine_entries` is the current reference table for public `journey_spine_entry` records and Journey Spine Entry wording. Public MCP/API naming remains `journey_spine_entry`; the table name preserves the task-local implementation shape.
 
 This ER diagram is an overview of the DDL relationships below. Relationship labels describe storage links, not authority to grant or mutate records. The SQL DDL remains the exact implementation contract.
 
@@ -179,7 +179,7 @@ Storage hardening is part of the Harness authority and security model. A row is 
 
 ### JSON TEXT validation
 
-JSON `TEXT` columns in the reference DDL are MVP storage flexibility, not permission to persist arbitrary or partially parsed JSON. Before any Core commit writes or updates a JSON `TEXT` field, Core must parse the value, reject malformed JSON, and validate the parsed value against the field's owning shape.
+JSON `TEXT` columns in the reference DDL are storage flexibility, not permission to persist arbitrary or partially parsed JSON. Before any Core commit writes or updates a JSON `TEXT` field, Core must parse the value, reject malformed JSON, and validate the parsed value against the field's owning shape.
 
 For public API payloads and API-shaped stored payloads, the owning shape is the schema in [MCP API And Schemas](mcp-api-and-schemas.md). For storage-only fields, the owning shape is the reference storage contract in this document or the specific owner document named by this document. This boundary keeps public schemas in [MCP API And Schemas](mcp-api-and-schemas.md) and SQLite DDL in this document.
 
@@ -189,7 +189,7 @@ Malformed JSON is invalid state. Schema-incompatible JSON is invalid state. Fiel
 
 `doctor` should report malformed or schema-incompatible JSON as a state failure, not projection staleness or report drift. `recover` may rewrite that field only when the expected value can be reconstructed from other canonical state or registered raw artifacts without inventing user-owned judgment. Conformance seed loaders should reject such rows unless the fixture explicitly exercises invalid-state recovery.
 
-Recommended hardening: where the deployed SQLite build supports JSON functions, migrations should add `CHECK (json_valid(column_name))` or equivalent generated checks for JSON `TEXT` columns. These checks are defense in depth and do not replace Core's shape validation before commit; the MVP DDL below does not need a full rewrite to show every check inline.
+Recommended hardening: where the deployed SQLite build supports JSON functions, migrations should add `CHECK (json_valid(column_name))` or equivalent generated checks for JSON `TEXT` columns. These checks are defense in depth and do not replace Core's shape validation before commit; the reference DDL below does not need a full rewrite to show every check inline.
 
 ### Canonical enum hardening
 
@@ -239,7 +239,7 @@ The table below is an owner map for additional status-like `TEXT` fields in the 
 | `feedback_loops.loop_kind`, `feedback_loops.status`, `tdd_traces.status` | `FeedbackLoopUpdate` and `TddTraceUpdate` in [`harness.record_run`](mcp-api-and-schemas.md#harnessrecord_run), plus the storage-specific Feedback Loop notes below. |
 | `tool_invocations.status` | Reference idempotency/replay storage semantics in this document; it describes committed replay state only, not surface diagnostics. Its storage value is promoted below. |
 
-The following MVP storage-owned value sets are promoted for fields whose existing owner docs and fixture examples already imply stable meaning, and for storage status fields whose owner-bound compatibility meanings are resolved here. These values are storage hardening values; they do not redefine API payload enums, kernel gate values, lifecycle phases, projection statuses, or optional-table requirements.
+The following current reference storage-owned value sets are promoted for fields whose existing owner docs and fixture examples already imply stable meaning, and for storage status fields whose owner-bound compatibility meanings are resolved here. These values are storage hardening values; they do not redefine API payload enums, kernel gate values, lifecycle phases, projection statuses, or optional-table requirements.
 
 | Field(s) | Durable values | Compatibility meaning |
 | --- | --- | --- |
@@ -255,7 +255,7 @@ The following MVP storage-owned value sets are promoted for fields whose existin
 | `shared_designs.status` | `proposed`, `active`, `stale`, `deferred`, `superseded` | Shared Design is a design-support record. `active` is the current design basis for the affected scope. `proposed` is draft or shaping input and is not enough by itself to satisfy design policy. `stale` requires refresh, reconcile, or a new compatible design basis before relying on it. `deferred` and `superseded` preserve visibility without implying final acceptance, approval, or residual-risk acceptance. |
 | `reconcile_items.status` | `pending`, `merged`, `rejected`, `converted_to_note`, `decision_created`, `deferred` | `pending` is an unresolved candidate created from human-editable input or generated/projection drift. The other values are the durable outcomes of the reconcile decision path: merge into accepted state, reject the proposal, preserve it as a note, create a Decision Packet, or defer with visible follow-up/close impact. |
 | `domain_terms.status` | `active`, `conflict` | `active` is a usable canonical term. `conflict` records competing meanings or unresolved terminology that must remain visible to stewardship/design checks and cannot by itself authorize product use of the term. |
-| `module_map_items.status` | `active` | `active` is the MVP usable state for a canonical Module Map Item. Missing, stale, or conflicting module knowledge is represented through reconcile items, projection freshness, validator findings, or gates rather than extra MVP row statuses. |
+| `module_map_items.status` | `active` | `active` is the current usable state for a canonical Module Map Item. Missing, stale, or conflicting module knowledge is represented through reconcile items, projection freshness, validator findings, or gates rather than additional reference row statuses. |
 | `interface_contracts.review_status` | `pending`, `reviewed` | `pending` means a contract row exists but required review/evidence has not yet satisfied the module/interface policy. `reviewed` means callers, compatibility impact, boundary tests, and related review evidence have been recorded; it does not by itself waive residual risk or override kernel gates. |
 
 ### `project.yaml`
@@ -489,7 +489,7 @@ CREATE TABLE approvals (
 );
 
 -- Optional compatibility/routing table for routing, interaction, replay, or compatibility handoff metadata only.
--- Minimal MVP implementations may omit this table.
+-- Minimal v0.1 Kernel MVP implementations may omit this table.
 -- decision_packet_id may remain null for routing/replay staging; unlinked rows are non-authoritative.
 -- Gate aggregation may consider a row only through a linked compatible decision_packet_id.
 CREATE TABLE decision_requests (
@@ -848,7 +848,7 @@ CREATE TABLE locks (
 );
 ```
 
-MVP TDD discipline uses the existing `feedback_loops` and `tdd_traces` tables. `feedback_loops` owns the selected feedback loop and any alternate loop for a waiver; `tdd_traces` owns RED, GREEN, refactor/check artifacts, and non-TDD justification. Evidence Manifest rows remain the coverage owner for acceptance criteria and changed files.
+Current reference TDD discipline uses the existing `feedback_loops` and `tdd_traces` tables. `feedback_loops` owns the selected feedback loop and any alternate loop for a waiver; `tdd_traces` owns RED, GREEN, refactor/check artifacts, and non-TDD justification. Evidence Manifest rows remain the coverage owner for acceptance criteria and changed files.
 
 `project_state.state_version` is the project-scoped state clock. Core initializes exactly one `project_state` row for the registered project during runtime bootstrap, before any project-scoped mutation can compare `expected_state_version` with `project_state.state_version`.
 
@@ -884,7 +884,7 @@ Replay lookup uses the committed row before current state-version freshness for 
 
 `tasks.projection_version` is the TASK projection/template/job version used to prevent older TASK renders from replacing newer ones. It is not a state clock. `tasks.projected_version`, if retained, is only the TASK projection summary cache of the last rendered source state version. It must not be treated as the storage location for every task-related `ProjectionKind`.
 
-`tasks.projection_status` is the TASK projection status summary. Per-kind projection freshness is tracked through `projection_jobs.source_state_version`, job status, managed hashes, and the relevant projection records or artifact refs for API-owned Reference-required kinds, Reference-optional kinds, and enabled projection kinds in the Extension / optional tier. These are staged/reference support labels, not v0.1 Kernel MVP scope: v0.1 requires only a minimal `TASK` projection or durable projection enqueue, while v0.2+ expands evidence/projection support and the Agency-Hardened/reference MVP supports the full Reference-required set when source records exist or change. `APR` freshness starts from committed Approval records and their approval-shaped Decision Packets, not from non-mutating `approval_request_candidate` payloads. Do not treat one Task field as owning all projection freshness.
+`tasks.projection_status` is the TASK projection status summary. Per-kind projection freshness is tracked through `projection_jobs.source_state_version`, job status, managed hashes, and the relevant projection records or artifact refs for API-owned Reference-required kinds, Reference-optional kinds, and enabled projection kinds in the Extension / optional tier. These are staged/reference support labels, not v0.1 Kernel MVP scope: v0.1 requires only a minimal `TASK` projection or durable projection enqueue, while v0.2+ expands evidence/projection support and Agency-Hardened/reference projection support covers the full Reference-required set when source records exist or change. `APR` freshness starts from committed Approval records and their approval-shaped Decision Packets, not from non-mutating `approval_request_candidate` payloads. Do not treat one Task field as owning all projection freshness.
 
 `write_authorizations` stores durable `prepare_write` allow decisions. The allow/block contract is owned by [Kernel `prepare_write` State Logic](kernel.md#prepare_write) and the public response shape by [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write). Storage-specific requirements are: each distinct committed non-dry-run allowed request inserts a distinct row; idempotent return is only replay of the same committed request under the same idempotency key, request hash, and compatible basis; `basis_state_version` stores the affected-scope state version used as the compatibility basis; `updated_at` changes whenever authorization status changes; and status history remains in `task_events`.
 
@@ -894,11 +894,11 @@ Stored `write_authorizations` rows require non-null `basis_state_version`, inclu
 
 `record_run` consumption is stored by setting the reciprocal links `write_authorizations.consumed_by_run_id` and `runs.write_authorization_id` in one Core transaction. The unique partial index on `runs.write_authorization_id` enforces storage single-use for committed Runs; idempotent replay returns the original Run and response metadata instead of inserting another Run row. Rejected pre-commit `record_run` calls, such as missing Write Authorization before any Run is committed, do not insert a `runs` row and therefore have no storage Run ID to return; the nullable API `run_id` represents that absence without inventing a placeholder. Runs that attempt an invalid, stale, missing, consumed, or scope-exceeded authorization leave `runs.write_authorization_id` empty; attempted refs may be kept in validator findings, run violation payload, or `task_events.payload_json` for audit. Kernel-owned close and evidence consequences remain in [Kernel `record_run` State Logic](kernel.md#record_run).
 
-`decision_packets` stores Decision Packet state records. `decision_requests` is an optional interaction/routing compatibility table for implementation handoff, replay, or compatibility request flow; a minimal MVP implementation may omit it, along with its optional indexes and nullable compatibility fields. If retained, unlinked `decision_requests` rows remain non-authoritative routing metadata, approval links use `approvals.decision_packet_id`, and gate aggregation must consider `decision_requests` only through a linked compatible `decision_packet_id`. The decision gate and approval/acceptance/risk authority rules stay in [Kernel Decision Gate](kernel.md#decision-gate) and the related public tools in [MCP API And Schemas](mcp-api-and-schemas.md#public-tools).
+`decision_packets` stores Decision Packet state records. `decision_requests` is an optional interaction/routing compatibility table for implementation handoff, replay, or compatibility request flow; a minimal v0.1 Kernel MVP implementation may omit it, along with its optional indexes and nullable compatibility fields. If retained, unlinked `decision_requests` rows remain non-authoritative routing metadata, approval links use `approvals.decision_packet_id`, and gate aggregation must consider `decision_requests` only through a linked compatible `decision_packet_id`. The decision gate and approval/acceptance/risk authority rules stay in [Kernel Decision Gate](kernel.md#decision-gate) and the related public tools in [MCP API And Schemas](mcp-api-and-schemas.md#public-tools).
 
-`residual_risks` stores residual-risk rows. MVP accepted-risk identity is `residual_risk_id`; there is no separate `accepted_risks` table or `ARISK-*` canonical record. Accepted-risk metadata/state stays on `residual_risks.accepted_risk_json`, `status`, and `accepted_at`, while Decision Packets may reference rows through `decision_packets.residual_risk_refs_json`. Visibility and close semantics stay in [Close Semantics](kernel.md#close-result-semantics).
+`residual_risks` stores residual-risk rows. Current reference accepted-risk identity is `residual_risk_id`; there is no separate `accepted_risks` table or `ARISK-*` canonical record. Accepted-risk metadata/state stays on `residual_risks.accepted_risk_json`, `status`, and `accepted_at`, while Decision Packets may reference rows through `decision_packets.residual_risk_refs_json`. Visibility and close semantics stay in [Close Semantics](kernel.md#close-result-semantics).
 
-MVP final acceptance has no `acceptance_records` table. Acceptance is stored through the Decision Packet path, `task_gates.acceptance_gate`, and `state.sqlite.task_events`; the transition and payload rules are owned by [Kernel `close_task` State Logic](kernel.md#close_task) and [`harness.record_user_decision`](mcp-api-and-schemas.md#harnessrecord_user_decision). Close does not look for a separate acceptance row.
+Final acceptance in the current reference model has no `acceptance_records` table. Acceptance is stored through the Decision Packet path, `task_gates.acceptance_gate`, and `state.sqlite.task_events`; the transition and payload rules are owned by [Kernel `close_task` State Logic](kernel.md#close_task) and [`harness.record_user_decision`](mcp-api-and-schemas.md#harnessrecord_user_decision). Close does not look for a separate acceptance row.
 
 `module_map_items` stores the canonical Module Map Item: module role/responsibility, public interface, dependencies, internal complexity, test boundary, owner decision, and module-local watchpoints. `watchpoints_json` is a Core-validated JSON array of non-empty module-local watchpoint strings under the JSON field validation boundary above. Interface-specific caller impact and compatibility details stay in `interface_contracts`.
 
@@ -906,15 +906,15 @@ MVP final acceptance has no `acceptance_records` table. Acceptance is stored thr
 
 Core must validate every JSON ref array before commit. `selected_loop_refs_json` and `execution_refs_json` store `StateRecordRef` arrays; `tdd_trace_refs_json`, `manual_qa_record_refs_json`, and `evidence_manifest_refs_json` are restricted to their matching record kinds. `artifact_refs_json` stores committed `ArtifactRef` values resolved from the public update payload or related tool request. `operation=create` requires a non-empty `loop_kind`, `loop_profile`, `planned_loop`, and valid `status`; `feedback_loop_id` may be Core-assigned or caller-supplied for deterministic fixture/import creation and must be unique. `operation=update` requires an existing row with the same `task_id` and compatible `change_unit_id`; nullable scalar payload fields leave stored values unchanged, while ref arrays and artifact refs are additive. `status=waived` requires `waiver_reason` or a referenced compatible waiver/decision record. `status=executed` requires at least one resulting execution, artifact, TDD trace, Manual QA, or evidence manifest ref. `tdd_traces` remains the canonical red/green/refactor evidence record when TDD is selected; it does not replace the `feedback_loops` row. `feedback_loop_check` reads these records as a validator and does not add a new kernel gate.
 
-`artifact_links` is the queryable many-to-many attachment table for artifacts. In MVP it is Task-scoped: each row has a non-null `task_id` matching the registered artifact and the owner record's Task. Use it to attach artifacts only to existing owner records that are Task-scoped for the same `task_id`, such as `task`, `change_unit`, `run`, `decision_packet`, `shared_design`, `residual_risk`, `evidence_manifest`, `feedback_loop`, `tdd_trace`, `manual_qa_record`, `eval`, `journey_spine_entry`, and `projection`. If an owner kind can also have project-scoped rows, those rows use their own state/projection metadata and are not artifact-link targets until a future extension adds project-scoped artifact storage/API. Exported files use artifact kinds or retention classes such as `export_component` and `retention_class=export`; they do not attach to an `export` state record unless a future extension deliberately adds a matching table, `StateRecordRef` value, and integrity semantics. Existing `artifact_refs_json` fields may preserve ordered or record-local context, but multi-record artifact reuse and artifact integrity checks should use `artifact_links`.
+`artifact_links` is the queryable many-to-many attachment table for artifacts. In the current Task-scoped artifact model, each row has a non-null `task_id` matching the registered artifact and the owner record's Task. Use it to attach artifacts only to existing owner records that are Task-scoped for the same `task_id`, such as `task`, `change_unit`, `run`, `decision_packet`, `shared_design`, `residual_risk`, `evidence_manifest`, `feedback_loop`, `tdd_trace`, `manual_qa_record`, `eval`, `journey_spine_entry`, and `projection`. If an owner kind can also have project-scoped rows, those rows use their own state/projection metadata and are not artifact-link targets until a future extension adds project-scoped artifact storage/API. Exported files use artifact kinds or retention classes such as `export_component` and `retention_class=export`; they do not attach to an `export` state record unless a future extension deliberately adds a matching table, `StateRecordRef` value, and integrity semantics. Existing `artifact_refs_json` fields may preserve ordered or record-local context, but multi-record artifact reuse and artifact integrity checks should use `artifact_links`.
 
 This Task-scoped link is an artifact-poisoning control. An `artifacts` registry row without the required compatible `artifact_links` row is not enough to satisfy evidence, QA, verification, projection, export, or close-related checks. A link that crosses Task scope, points at a missing owner, or uses an owner kind incompatible with the artifact kind must be rejected; ordered `artifact_refs_json` display context cannot override the registry plus owner-link checks.
 
-For `artifact_links.record_kind=projection`, `artifact_links.record_id` stores `projection_jobs.projection_job_id`. The link is valid only when Core can resolve that job to the rendered projection output it links: the job is Task-scoped to the same `task_id` as the artifact link, has matching `projection_kind` and `target_ref`, has `status=completed`, and has an `output_path` or documented projection ref for the rendered output. `projection_jobs.target_ref` and `output_path` are validation and locator metadata, not replacements for `artifact_links.record_id`. Project-level projection jobs may still be tracked in `projection_jobs` where projection owner docs allow them, but the current MVP artifact DDL does not create project-scoped artifact rows or artifact links for those jobs. This keeps MVP storage on `projection_jobs` and does not introduce a `projections` table.
+For `artifact_links.record_kind=projection`, `artifact_links.record_id` stores `projection_jobs.projection_job_id`. The link is valid only when Core can resolve that job to the rendered projection output it links: the job is Task-scoped to the same `task_id` as the artifact link, has matching `projection_kind` and `target_ref`, has `status=completed`, and has an `output_path` or documented projection ref for the rendered output. `projection_jobs.target_ref` and `output_path` are validation and locator metadata, not replacements for `artifact_links.record_id`. Project-level projection jobs may still be tracked in `projection_jobs` where projection owner docs allow them, but the current Task-scoped artifact DDL does not create project-scoped artifact rows or artifact links for those jobs. This keeps current reference storage on `projection_jobs` and does not introduce a `projections` table.
 
 `manual_qa_records.waiver_decision_packet_id` and `manual_qa_records.residual_risk_refs_json` are the storage hooks for QA waiver decisions and close-relevant risk refs. The waiver contract is owned by [Kernel Waiver Semantics](kernel.md#waiver-semantics) and the Manual QA policy in [Design Quality Policies](design-quality-policies.md#manual-qa-manual_qa).
 
-`change_unit_dependencies` is MVP DAG metadata for shaping, ordering, and close visibility. It is not a parallel orchestration scheduler and does not authorize multiple active implementation lanes.
+`change_unit_dependencies` is current reference DAG metadata for shaping, ordering, and close visibility. It is not a parallel orchestration scheduler and does not authorize multiple active implementation lanes.
 
 `baselines` stores BaselineCapture records in state with repo head, branch, dirty flag, tree hash, included/ignored paths, optional diff artifact, and status. `baseline_ref` fields in other tables refer to `baselines.baseline_ref`.
 
@@ -956,7 +956,7 @@ CREATE INDEX idx_reconcile_items_status ON reconcile_items(status);
 
 Deterministic event order is ascending `task_events.event_seq`. `state_version` is an affected-scope concurrency/result clock, and `created_at` is audit metadata; neither field is sufficient for conformance ordering when several events share a state version or timestamp.
 
-Reference event storage keeps stable events and non-stable detail or local-audit events as rows in `state.sqlite.task_events`; no separate event store is introduced. Fixture-assertable stable names, including Write Authorization lifecycle names and the relationship to `scope_violation_detected`, are owned by the [Kernel Stable Event Catalog](kernel.md#stable-event-catalog). Tool-specific event names outside that catalog are optional or illustrative extension events and must not be required by MVP fixtures.
+Reference event storage keeps stable events and non-stable detail or local-audit events as rows in `state.sqlite.task_events`; no separate event store is introduced. Fixture-assertable stable names, including Write Authorization lifecycle names and the relationship to `scope_violation_detected`, are owned by the [Kernel Stable Event Catalog](kernel.md#stable-event-catalog). Tool-specific event names outside that catalog are optional or illustrative extension events and must not be required by staged/reference fixtures.
 
 ## Migrations
 
@@ -972,7 +972,7 @@ CREATE TABLE schema_migrations (
 );
 ```
 
-Migrations must be forward-only for MVP. A failed migration leaves the project unavailable until doctor/recover reports whether the failure is repairable.
+Reference migrations must be forward-only. A failed migration leaves the project unavailable until doctor/recover reports whether the failure is repairable.
 
 Storage hardening migrations should use this checklist before tightening tables or accepting imported fixture data:
 
@@ -1118,7 +1118,7 @@ The `artifacts.kind` field names durable evidence files. It does not make the ar
 | `prototype` | Store prototype diffs, screenshots, logs, or throwaway proof artifacts under `artifacts/prototypes/`; product code remains in the Product Repository and committed harness meaning remains in state records. |
 | `architecture_scan` | Store module scans, dependency snapshots, boundary findings, or stewardship evidence under `artifacts/architecture/`; accepted module/interface facts remain in their owner records. |
 | `decision_context` | Store compact context bundles for user judgment under `artifacts/decisions/`; Decision Packet status and outcome remain in `state.sqlite`. |
-| `screenshot` / `qa_capture` / `log` | Store Manual QA screenshots, browser QA capture bundles, console logs, network traces, accessibility snapshots, or workflow recordings under the matching artifact area only after required redaction, omission, or blocking; the Manual QA record, Feedback Loop, Run, or Evidence Manifest remains the owner record. Automated browser capture is not required for MVP, and capture artifacts do not replace Manual QA judgment, acceptance, or detached verification. |
+| `screenshot` / `qa_capture` / `log` | Store Manual QA screenshots, browser QA capture bundles, console logs, network traces, accessibility snapshots, or workflow recordings under the matching artifact area only after required redaction, omission, or blocking; the Manual QA record, Feedback Loop, Run, or Evidence Manifest remains the owner record. Automated browser capture is not required by the current reference model, and capture artifacts do not replace Manual QA judgment, acceptance, or detached verification. |
 | `bundle` / `manifest` | Store verification bundles, evaluator instruction bundles, or artifact manifests under `artifacts/bundles/` or `artifacts/manifests/`; the owner remains an existing Task, Run, Evidence Manifest, Eval, or Task-scoped projection record. |
 | `export_component` | Store export manifest files, projection snapshots, state snapshots, or allowed raw-file copies under `artifacts/exports/`; link them back to the existing owner records they describe, not to an `export` state table. |
 
@@ -1130,7 +1130,7 @@ Artifact registration is the storage boundary for artifact poisoning. A staged p
 
 For example, a staged path such as `../../repo/.env`, an absolute path under a user's home directory, or a symlink that escapes `artifacts/tmp/` is reported as outside the approved staging/capture boundary. The response or `artifacts check` report should identify the affected staged locator and boundary class, reject registration or mark the artifact input invalid through existing artifact/check/error paths, and avoid copying or hashing the forbidden target as Harness evidence.
 
-MVP registration steps:
+Current reference registration steps:
 
 1. Accept a connector-captured or operator-supplied file only from a canonical staging path under the project artifact `tmp/` directory or from an approved capture adapter.
 2. Apply redaction, omission, or blocking before hashing. Raw secrets and disallowed PII must not be copied into durable artifact storage. Secret-related evidence is represented only as a redacted artifact, a safe secret handle or omission note, or an operator note that the relevant validator accepts.
@@ -1385,9 +1385,9 @@ Projection refresh retries `failed` jobs by creating or resetting a `pending` jo
 
 ## Validator runner skeleton
 
-MVP validators use one shared result shape from the API document. The runner is intentionally small.
+Reference validators use one shared result shape from the API document. The runner is intentionally small.
 
-Minimal validator rollout uses the [MVP Severity Defaults](design-quality-policies.md#mvp-severity-defaults) matrix and its [Severity Composition Rule](design-quality-policies.md#severity-composition-rule) as the default severity router. The runner may initially implement shallow checks for each stable ID, but it must keep all relevant findings visible, merge their policy impacts through the policy-owned rule, and expose the merged outcome through gate/blocker-compatible results rather than by rewriting API finding severity. Public primary `ToolError` selection still follows API-owned [Primary Error Code Precedence](mcp-api-and-schemas.md#primary-error-code-precedence).
+Reference validator rollout uses the [Reference Severity Defaults](design-quality-policies.md#reference-severity-defaults) matrix and its [Severity Composition Rule](design-quality-policies.md#severity-composition-rule) as the default severity router. The runner may initially implement shallow checks for each stable ID, but it must keep all relevant findings visible, merge their policy impacts through the policy-owned rule, and expose the merged outcome through gate/blocker-compatible results rather than by rewriting API finding severity. Public primary `ToolError` selection still follows API-owned [Primary Error Code Precedence](mcp-api-and-schemas.md#primary-error-code-precedence).
 
 Minimal runner shape:
 
@@ -1418,7 +1418,7 @@ flowchart TD
   Return -->|Core applies blocker, gate, or display consequence| CoreOutcome["Core transition outcome"]
 ```
 
-Stable MVP validator IDs:
+Agency-Hardened/reference ValidatorResult IDs:
 
 | Validator | Purpose |
 |---|---|
@@ -1437,7 +1437,7 @@ Stable MVP validator IDs:
 | `context_hygiene_check` | required context, projection freshness, managed hashes, and user-visible summaries are consistent enough for the requested operation |
 | `surface_capability_check` | connected surface capability is sufficient for the requested operation or reported honestly through capability findings |
 
-Core precondition checks such as active Task, active Change Unit, changed paths, approval scope, baseline freshness, artifact integrity, evidence sufficiency, verification independence, same-session verification guard, and projection freshness may still run before or beside these validators. They should not be emitted as alternate design/agency validator IDs in MVP conformance. Capability checks that emit `ValidatorResult` use the stable `surface_capability_check` ID; capability may also appear in blocked reasons and guarantee display without creating additional validator IDs.
+Core precondition checks such as active Task, active Change Unit, changed paths, approval scope, baseline freshness, artifact integrity, evidence sufficiency, verification independence, same-session verification guard, and projection freshness may still run before or beside these validators. They should not be emitted as alternate design/agency validator IDs in staged/reference conformance. Capability checks that emit `ValidatorResult` use the stable `surface_capability_check` ID; capability may also appear in blocked reasons and guarantee display without creating additional validator IDs.
 
 
 Compatibility aliases:
@@ -1449,7 +1449,7 @@ Compatibility aliases:
 | `docs_consistency` | `context_hygiene_check` |
 | `projection_freshness` | `context_hygiene_check` |
 
-These aliases are compatibility inputs for non-stable validator outputs or non-stable validator IDs only; MVP conformance must emit the stable IDs above. The `projection_freshness` alias maps alternate validator output to `context_hygiene_check`; MVP fixture assertions for mechanical projection freshness should use `expected_state.checks.projection_freshness`.
+These aliases are compatibility inputs for non-stable validator outputs or non-stable validator IDs only; staged/reference conformance must emit the stable IDs above. The `projection_freshness` alias maps alternate validator output to `context_hygiene_check`; staged/reference fixture assertions for mechanical projection freshness should use `expected_state.checks.projection_freshness`.
 
 ### Evidence and Verification Profile Implementation Notes
 
@@ -1457,7 +1457,7 @@ The evidence sufficiency precondition reads only committed records and registere
 
 The verification independence precondition reads `evals.independence_json`, `evaluator_run_id`, `target_run_id`, evaluator and target `surface_id`, `baseline_ref`, bundle artifact refs, and `actor_kind`. It confirms whether the Eval profile is `same_session`, `subagent_context`, `fresh_session`, `fresh_worktree`, `sandbox`, or `manual_bundle`, and whether that profile can support detached assurance for the target close path.
 
-No additional evidence/verification profile DDL is required beyond the MVP tables above. Existing JSON fields hold profile metadata: `change_units.autonomy_profile`, `change_units.agent_may_do_json`, `change_units.user_judgment_required_json`, `change_units.afk_stop_conditions_json`, `change_units.end_to_end_path_json`, `decision_packets.context_refs_json`, `decision_packets.context_artifact_refs_json`, `decision_packets.residual_risk_refs_json`, `residual_risks.accepted_risk_json`, `residual_risks.follow_up_requirement_json`, `evidence_manifests.criteria_json`, `evidence_manifests.supporting_refs_json`, `evidence_manifests.stale_if_json`, `evals.evidence_reviewed_json`, `evals.independence_json`, `evals.artifact_refs_json`, `runs.observed_changes_json`, `runs.command_results_json`, `runs.artifact_refs_json`, `approvals.*_json`, `manual_qa_records.findings_json`, `manual_qa_records.residual_risk_refs_json`, and `validator_runs.findings_json`.
+No additional evidence/verification profile DDL is required beyond the current reference tables above. Existing JSON fields hold profile metadata: `change_units.autonomy_profile`, `change_units.agent_may_do_json`, `change_units.user_judgment_required_json`, `change_units.afk_stop_conditions_json`, `change_units.end_to_end_path_json`, `decision_packets.context_refs_json`, `decision_packets.context_artifact_refs_json`, `decision_packets.residual_risk_refs_json`, `residual_risks.accepted_risk_json`, `residual_risks.follow_up_requirement_json`, `evidence_manifests.criteria_json`, `evidence_manifests.supporting_refs_json`, `evidence_manifests.stale_if_json`, `evals.evidence_reviewed_json`, `evals.independence_json`, `evals.artifact_refs_json`, `runs.observed_changes_json`, `runs.command_results_json`, `runs.artifact_refs_json`, `approvals.*_json`, `manual_qa_records.findings_json`, `manual_qa_records.residual_risk_refs_json`, and `validator_runs.findings_json`.
 
 If an implementation cannot derive an input above from existing fields, add `TODO_IMPLEMENT` naming the exact table and field before changing DDL.
 

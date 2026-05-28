@@ -340,7 +340,7 @@ These are catalog entries, not fixture bodies. They cover ordinary user-language
 | `AGENCY-residual-risk-visible-before-acceptance-or-close` | `record_user_decision` or `close_task` | Known close-relevant residual risks must be visible to the user before acceptance and before any successful close. Fixtures assert hidden, stale, or not-yet-visible risks block acceptance or close; `ResidualRiskSummary.status=none` is valid only when no known close-relevant risk exists; risk-accepted close cites accepted Residual Risk refs that were visible before acceptance. |
 | `AGENCY-approval-qa-acceptance-risk-judgments-distinct` | `record_user_decision`, `record_manual_qa`, `record_eval`, or `close_task` | Sensitive-action Approval, Manual QA judgment or waiver, final acceptance, verification waiver, and residual-risk acceptance remain distinct owner judgments. A fixture may seed one as satisfied and assert the others still block when their owner records are missing or incompatible; no broad approval or QA pass may imply final acceptance, risk acceptance, detached verification, or close. |
 
-## Hardened MVP Fixture Coverage
+## Agency-Hardened Fixture Coverage
 
 The hardened evidence, verification, and connector rules should be covered by fixtures with the required shape. Suite catalogs may map scenario IDs to the earliest delivery stage where the behavior must be implemented, but delivery-stage metadata is not part of the fixture body.
 

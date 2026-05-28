@@ -340,7 +340,7 @@ Expected assertions는 기존 fixture field 안에 머물러야 합니다.
 | `AGENCY-residual-risk-visible-before-acceptance-or-close` | `record_user_decision` 또는 `close_task` | Known close-relevant residual risk는 acceptance 전과 successful close 전에 사용자에게 보여야 합니다. Fixture는 hidden, stale, not-yet-visible risk가 acceptance 또는 close를 차단함을 검증합니다. `ResidualRiskSummary.status=none`은 known close-relevant risk가 없을 때만 유효하며, risk-accepted close는 결과 수락 전에 보였던 accepted Residual Risk refs를 가리켜야 합니다. |
 | `AGENCY-approval-qa-acceptance-risk-judgments-distinct` | `record_user_decision`, `record_manual_qa`, `record_eval`, 또는 `close_task` | Sensitive-action Approval, Manual QA judgment 또는 waiver, final acceptance, verification waiver, residual-risk acceptance는 서로 다른 owner judgment입니다. Fixture는 하나가 satisfied 상태로 seed되어도 다른 owner record가 없거나 incompatible하면 계속 blocked됨을 검증할 수 있습니다. Broad approval이나 QA pass가 final acceptance, risk acceptance, detached verification, close를 imply하면 안 됩니다. |
 
-## Hardened MVP Fixture Coverage
+## Agency-Hardened Fixture Coverage
 
 Hardened evidence, verification, connector rule은 required shape를 가진 fixture로 cover해야 합니다. Suite catalog는 scenario ID를 behavior가 구현되어야 하는 가장 이른 delivery stage에 매핑할 수 있지만, delivery-stage metadata는 fixture body의 일부가 아닙니다.
 

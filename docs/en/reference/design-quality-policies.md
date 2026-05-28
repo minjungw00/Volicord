@@ -520,9 +520,9 @@ flowchart TD
   Conditions --> Waived
 ```
 
-## MVP severity defaults
+## Reference severity defaults
 
-This matrix is the default MVP severity router for policy validators. It tells the reference runner which findings are advisory and which findings affect gates for common task shapes. It does not weaken `applies_when`, `default_requirement`, `allowed_waiver`, or `close_impact`; if a policy contract applies more strongly than this matrix, the policy contract wins.
+This matrix is the default reference severity router for policy validators. It tells the reference runner which findings are advisory and which findings affect gates for common task shapes. It does not weaken `applies_when`, `default_requirement`, `allowed_waiver`, or `close_impact`; if a policy contract applies more strongly than this matrix, the policy contract wins.
 
 Default impact vocabulary:
 
@@ -582,4 +582,4 @@ Review-stage displays compose these existing policy validators; they do not intr
 | Spec Compliance Review | Reads acceptance/evidence state plus `shared_design_alignment`, `decision_quality_check`, `autonomy_boundary_check`, `feedback_loop_check`, `tdd_trace_required`, `manual_qa_required`, `context_hygiene_check`, and close-related residual-risk checks where applicable. | Validator result refs, evidence gaps, Decision Packet candidates, Eval or verification needs, Manual QA needs, Approval needs, Change Unit update recommendations, residual-risk candidates, or close blockers. |
 | Code Quality / Stewardship Review | Reads `domain_language_consistency`, `vertical_slice_shape`, `module_interface_review`, `codebase_stewardship_check`, `feedback_loop_check`, `tdd_trace_required`, and `context_hygiene_check`. | Stewardship validator findings, reconcile items, owner-record update recommendations, Eval or verification needs, Manual QA needs where relevant, Approval needs where relevant, follow-up Change Unit recommendations, residual-risk candidates, or close blockers. |
 
-Staged delivery may implement minimal validators first, but it should use the MVP severity defaults as the task-shape router for warning versus blocker behavior and keep validator IDs stable so conformance fixtures can grow without changing policy names.
+Staged delivery may implement minimal validators first, but it should use the reference severity defaults as the task-shape router for warning versus blocker behavior and keep validator IDs stable so conformance fixtures can grow without changing policy names.

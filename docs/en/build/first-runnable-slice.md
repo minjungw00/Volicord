@@ -255,7 +255,7 @@ Done when:
 
 Implement the smallest projection behavior that proves state and readable output are separated.
 
-`APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, and `DIRECT-RESULT` rendering are not v0.1 Kernel MVP completion criteria. They enter v0.2+ evidence/projection work and Agency-Hardened/reference MVP support when their source records exist or change.
+`APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, and `DIRECT-RESULT` rendering are not v0.1 Kernel MVP completion criteria. They enter v0.2+ evidence/projection work and Agency-Hardened/reference support when their source records exist or change.
 
 Do this after the Task, gate, Run, artifact, and evidence records exist. Do not let the projection template shape the state model, and do not add template polish or additional renderer-first work just to make the first slice look complete.
 

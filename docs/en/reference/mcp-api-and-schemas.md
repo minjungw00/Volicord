@@ -251,7 +251,7 @@ Event stability for fixture assertions is owned by the [Kernel Stable Event Cata
 | Reference-optional | `MANUAL-QA`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT` | Implementations support or enqueue these when policy applies, a source record exists, or the user/operator enables the projection. |
 | Extension / optional | `DEC`, `DESIGN`, `EXPORT`, `JOURNEY-CARD` | Implementations may support these only when the corresponding optional projection is enabled. |
 
-Tier labels are not enum values. `Reference-required` means required by staged/reference projection support after the relevant owner records exist; it does not mean every v0.1 Kernel MVP run must render every kind. v0.1 Kernel MVP requires only a minimal `TASK` projection or durable projection enqueue. v0.2+ expands evidence/projection support; the Agency-Hardened/reference MVP supports the full Reference-required projection set when source records exist or change.
+Tier labels are not enum values. `Reference-required` means required by staged/reference projection support after the relevant owner records exist; it does not mean every v0.1 Kernel MVP run must render every kind. v0.1 Kernel MVP requires only a minimal `TASK` projection or durable projection enqueue. v0.2+ expands evidence/projection support; Agency-Hardened/reference projection support covers the full Reference-required projection set when source records exist or change.
 
 ProjectionKind extensibility does not make projections canonical state. Every projection job still renders a derived view from owner records and artifact refs. No projection tier creates state, evidence, QA, verification, acceptance, residual-risk acceptance, close authority, or Write Authorization. `DEC` is valid only for standalone Decision Packet Markdown when that feature is enabled, and it is not a Reference-required projection job. Absence of a standalone `DEC` job must not reduce required Decision Packet visibility, which is provided through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources. Persisted `JOURNEY-CARD` Markdown is optional; current-position Journey Card output in `harness.status`, `harness.next`, and significant resume flows remains required for agency conformance.
 
@@ -699,7 +699,7 @@ ValidatorResult:
 
 The `surface_capability_check` validator uses this schema with `validator_kind=capability`.
 
-Stable ValidatorResult IDs for the Agency-Hardened/reference MVP are:
+Agency-Hardened/reference ValidatorResult IDs are:
 
 - `decision_gate_check`
 - `decision_quality_check`

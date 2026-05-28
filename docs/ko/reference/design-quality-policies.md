@@ -520,9 +520,9 @@ flowchart TD
   Conditions --> Waived
 ```
 
-## MVP severity defaults
+## Reference severity defaults
 
-이 matrix는 policy validator를 위한 기본 MVP severity 라우터입니다. Reference runner가 common task shape에서 어떤 발견 사항을 advisory로 남기고 어떤 발견 사항을 gate에 반영해야 하는지 알려 줍니다. 이 matrix는 `applies_when`, `default_requirement`, `allowed_waiver`, `close_impact`를 약화하지 않습니다. 정책 계약이 이 matrix보다 더 강하게 적용되면 정책 계약이 우선합니다.
+이 matrix는 policy validator를 위한 기본 reference severity 라우터입니다. Reference runner가 common task shape에서 어떤 발견 사항을 advisory로 남기고 어떤 발견 사항을 gate에 반영해야 하는지 알려 줍니다. 이 matrix는 `applies_when`, `default_requirement`, `allowed_waiver`, `close_impact`를 약화하지 않습니다. 정책 계약이 이 matrix보다 더 강하게 적용되면 정책 계약이 우선합니다.
 
 Default impact vocabulary:
 
@@ -582,4 +582,4 @@ Review 단계 display는 기존 policy validator를 합성합니다. 새 validat
 | Spec Compliance Review | Acceptance/evidence state와, applicable한 경우 `shared_design_alignment`, `decision_quality_check`, `autonomy_boundary_check`, `feedback_loop_check`, `tdd_trace_required`, `manual_qa_required`, `context_hygiene_check`, close-related residual-risk checks를 읽는다. | Validator 결과 refs, 근거 공백, Decision Packet 후보, Eval 또는 verification 필요, Manual QA 필요, Approval 필요, Change Unit 업데이트 추천안, Residual Risk 후보, close blockers. |
 | Code Quality / Stewardship Review | `domain_language_consistency`, `vertical_slice_shape`, `module_interface_review`, `codebase_stewardship_check`, `feedback_loop_check`, `tdd_trace_required`, `context_hygiene_check`를 읽는다. | Stewardship validator 발견 사항, reconcile items, owner 기록 업데이트 추천안, Eval 또는 verification 필요, relevant한 경우 Manual QA 필요, relevant한 경우 Approval 필요, 후속 Change Unit 추천안, Residual Risk 후보, close blockers. |
 
-Staged delivery는 minimal validator를 먼저 구현할 수 있지만, warning과 blocker 동작을 나누는 Task 형태별 라우터로 MVP severity defaults를 사용하고, conformance fixture가 policy name을 바꾸지 않고 커질 수 있도록 validator ID는 안정적으로 유지해야 합니다.
+Staged delivery는 minimal validator를 먼저 구현할 수 있지만, warning과 blocker 동작을 나누는 Task 형태별 라우터로 reference severity defaults를 사용하고, conformance fixture가 policy name을 바꾸지 않고 커질 수 있도록 validator ID는 안정적으로 유지해야 합니다.

@@ -253,7 +253,7 @@ Fixture assertions를 위한 event stability는 [Kernel Stable Event Catalog](ke
 | Reference-optional | `MANUAL-QA`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT` | Policy가 적용되거나, source 기록이 있거나, user/operator가 projection을 켤 때 지원하거나 대기열에 넣습니다. |
 | Extension / optional | `DEC`, `DESIGN`, `EXPORT`, `JOURNEY-CARD` | 대응하는 선택 projection이 켜진 경우에만 지원할 수 있습니다. |
 
-Tier label은 enum value가 아닙니다. `Reference-required`는 관련 owner record가 존재한 뒤 staged/reference projection support에서 필요하다는 뜻입니다. 모든 v0.1 Kernel MVP run이 모든 kind를 렌더링해야 한다는 뜻이 아닙니다. v0.1 Kernel MVP는 최소 `TASK` projection 또는 durable projection enqueue만 요구합니다. v0.2+는 evidence/projection support를 확장하며, Agency-Hardened/reference MVP는 source record가 존재하거나 변경될 때 전체 Reference-required projection set을 지원합니다.
+Tier label은 enum value가 아닙니다. `Reference-required`는 관련 owner record가 존재한 뒤 staged/reference projection support에서 필요하다는 뜻입니다. 모든 v0.1 Kernel MVP run이 모든 kind를 렌더링해야 한다는 뜻이 아닙니다. v0.1 Kernel MVP는 최소 `TASK` projection 또는 durable projection enqueue만 요구합니다. v0.2+는 evidence/projection support를 확장하며, Agency-Hardened/reference projection support는 source record가 존재하거나 변경될 때 전체 Reference-required projection set을 지원합니다.
 
 ProjectionKind extensibility가 projection을 기준 상태로 만들지는 않습니다. 모든 projection job은 여전히 owner 기록 및 아티팩트 참조에서 파생된 보기를 렌더링합니다. 어떤 projection tier도 state, evidence, QA, verification, acceptance, residual-risk acceptance, close authority, Write Authorization을 만들지 않습니다. `DEC`는 해당 기능이 켜졌을 때 standalone Decision Packet Markdown에만 유효하며, Reference-required projection job이 아닙니다. Standalone `DEC` job이 없어도 required Decision Packet visibility가 줄어들면 안 되며, 이 visibility는 `TASK` projections, status/next responses, judgment-context resources, decision-packet resources를 통해 제공되어야 합니다. Persisted `JOURNEY-CARD` Markdown은 선택 사항입니다. `harness.status`, `harness.next`, significant resume flow의 현재 위치 Journey Card output은 agency conformance에 계속 필요합니다.
 
@@ -701,7 +701,7 @@ ValidatorResult:
 
 `surface_capability_check` validator는 이 schema를 `validator_kind=capability`로 사용합니다.
 
-Agency-Hardened/reference MVP의 stable ValidatorResult ID는 다음과 같습니다.
+Agency-Hardened/reference ValidatorResult ID는 다음과 같습니다.
 
 - `decision_gate_check`
 - `decision_quality_check`

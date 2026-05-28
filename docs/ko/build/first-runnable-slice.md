@@ -255,7 +255,7 @@ record와 아티팩트 참조에서 첫 근거 summary를 만듭니다.
 
 State와 readable output이 분리되어 있음을 증명하는 가장 작은 projection 동작을 계획합니다.
 
-`APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT` 렌더링은 v0.1 Kernel MVP 완료 기준이 아닙니다. 이들은 source record가 존재하거나 변경될 때 v0.2+ evidence/projection work와 Agency-Hardened/reference MVP support에 들어갑니다.
+`APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT` 렌더링은 v0.1 Kernel MVP 완료 기준이 아닙니다. 이들은 source record가 존재하거나 변경될 때 v0.2+ evidence/projection work와 Agency-Hardened/reference support에 들어갑니다.
 
 이 단계는 Task, gate, Run, artifact, evidence record가 존재한 뒤에 진행합니다. Projection template이 state model을 정하게 만들지 않고, 첫 조각을 완성된 것처럼 보이게 하려고 template polish나 추가 renderer-first 작업을 넣지 않습니다.
 
