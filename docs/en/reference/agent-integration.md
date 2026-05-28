@@ -292,7 +292,22 @@ Implementation agents should receive a compact always-on Harness context envelop
 
 Stale chat memory and pulled context may point the agent toward refs to inspect, but they cannot authorize writes, satisfy gates, close tasks, accept results, waive QA or verification, accept residual risk, replace current owner records, or repair stale projections. Any older context that matters to authority must first be reconciled through the owning Core path.
 
-Push every turn when available:
+Keep the always-on compact context rule set to these ten items or fewer:
+
+1. Read current status or the Journey Card before significant work or resume.
+2. Product/runtime/code writes require compatible `prepare_write` and Write Authorization.
+3. User-owned product or material technical judgment routes through Decision Packets.
+4. Approval is not product judgment, result acceptance, or residual-risk acceptance.
+5. Projection is readable output, not canonical state.
+6. Evidence uses artifact refs and state refs, not pasted logs or copied evidence bodies as authority.
+7. Same-session review is self-checking context, not detached verification.
+8. MCP unavailable means no authoritative state update, gate update, evidence, acceptance, residual-risk, projection-repair, or close claim.
+9. Show blockers and close-relevant residual risk before acceptance or close.
+10. Pull Reference docs, schemas, historical records, and large artifacts only when the next action needs them.
+
+These are candidate fields for a compact current-state envelope. They are not an instruction to send the whole table on each turn; the active phase bundle, next safe action, freshness, and relevance decide which fields appear.
+
+Phase-filtered envelope candidates:
 
 | Envelope item | Push shape |
 |---|---|
@@ -324,7 +339,20 @@ Keep these refs-first and pull the body only when needed:
 - older PRDs, old designs, closed issues, stale docs, old projections, and moved-path notes
 - module maps, interface contracts, domain language, coding standards, and TDD guidance
 
-Refs-first means the connector should push stable ids, paths, hashes, summaries, outcomes, and freshness, not paste large bodies into the default prompt. Embed excerpts only when the next safe action requires inspecting the content, and keep the excerpt tied to its source ref. Retrieved, indexed, or remembered context follows the same rule: it can tell the agent what to inspect next, but it remains pull-only context until an owner path records an actual state change.
+Refs-first means the connector should push stable ids, paths, hashes, summaries, outcomes, and freshness, not paste large bodies into the default prompt. Embed excerpts only when the next safe action requires inspecting the content, and keep the excerpt tied to its source ref. Retrieved, indexed, remembered, or summarized context follows the same rule: it can tell the agent what to inspect next, but it remains pull-only context until an owner path records an actual state change. It must not authorize writes or create Write Authorization, resolve Decision Packets, grant Approval, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept results, accept residual risk, update projection freshness, or close tasks.
+
+Use phase-based bundles so agents do not load the whole documentation set:
+
+| Phase | Push into context | Pull on demand |
+|---|---|---|
+| Intake | Active or likely Task id, mode, current status or Journey Card, four display groups, next safe action, primary blocker, known source refs, and guarantee/MCP availability. | Task history, user guide, session-flow details, or Reference docs only when classification, authority, or blocker display is unclear. |
+| Discovery | Discovery Brief summary or ref, blocking questions, parked assumptions, first safe Change Unit candidate, current repo/Harness refs, and visible user-owned judgment candidates. | Repo docs, module/interface/domain refs, older PRDs/designs, design-quality policy, or Decision Packet guidance only for facts needed to shape the first safe Change Unit. |
+| Write | Active Change Unit, Autonomy Boundary, intended paths/tools/commands/network/secrets summary, baseline, Approval status, active Decision Packets, Write Authority Summary, and capability guarantee. | Exact `prepare_write`, Kernel, security, approval, or policy references only when the intended write touches that boundary or the connector is implementing the check. |
+| Evidence | Changed-path summary, latest Run summary, Evidence Manifest ref, artifact refs with integrity/freshness, evidence gaps, and next evidence action. | Logs, diffs, screenshots, traces, raw artifacts, artifact-storage details, or evidence contract sections only when interpreting, repairing, or registering evidence. |
+| Verification | Acceptance criteria, changed files, evidence refs, artifact refs, approval scope, active or relevant Decision Packets, residual-risk summary, Manual QA requirement, independence/freshness profile, and forbidden patterns. | Full evaluator bundle material, source files, logs, exact Eval/Manual QA contracts, or verification guidance only when the evaluator needs to inspect them. |
+| Close | Close-readiness summary, close blockers, evidence/verification/QA/acceptance status, residual-risk summary or accepted refs, projection freshness, and smallest unblocker. | `close_task`, acceptance, residual-risk, Manual QA, verification, or artifact details only when a blocker or close attempt depends on the exact contract or source content. |
+
+Phase bundles are context discipline, not new schemas or gates. Moving from one phase to another changes what the connector pushes by default; it does not authorize writes, resolve decisions, create evidence, perform verification, accept risk, or close a Task.
 
 The compact status card renders the envelope for "where are we and what happens next?" Judgment-context is separate. Use judgment-context only when user judgment is needed, and include the decision question, options, recommendation, uncertainty, deferral effect, and relevant refs without turning the full evidence or artifact body into always-on context.
 

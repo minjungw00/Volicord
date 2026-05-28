@@ -292,7 +292,22 @@ Implementation agent에게는 매 turn마다 compact always-on Harness context e
 
 오래된 chat memory와 pull한 context는 agent가 살펴볼 ref를 찾는 데 도움을 줄 수 있지만, write를 허가하거나, gate를 충족하거나, Task를 close하거나, 결과를 수락하거나, QA 또는 verification을 면제하거나, 남은 위험을 받아들이거나, current owner record를 대체하거나, stale projection을 고칠 수 없습니다. 권한에 영향을 주는 오래된 context는 먼저 담당 Core path로 reconcile되어야 합니다.
 
-사용 가능하면 매 turn push하는 것:
+Always-on compact context 규칙 세트는 다음 10개 이하로 유지합니다.
+
+1. 중요한 작업 또는 resume 전에 current status 또는 Journey Card를 먼저 읽습니다.
+2. Product/runtime/code write에는 compatible `prepare_write`와 Write Authorization이 필요합니다.
+3. 사용자 소유 제품 판단 또는 중요한 기술 판단은 Decision Packet으로 라우팅합니다.
+4. Approval은 product judgment, result acceptance, residual-risk acceptance가 아닙니다.
+5. Projection은 읽기용 output이지 canonical state가 아닙니다.
+6. Evidence는 artifact ref와 state ref를 사용하며, 붙여 넣은 log나 복사한 evidence body를 권한으로 삼지 않습니다.
+7. Same-session review는 self-checking context이지 detached verification이 아닙니다.
+8. MCP unavailable이면 authoritative state update, gate update, evidence, acceptance, residual-risk, projection repair, close 주장을 하지 않습니다.
+9. Acceptance 또는 close 전에 blocker와 close-relevant residual risk를 보여줍니다.
+10. 다음 action에 필요할 때만 Reference docs, schema, historical record, large artifact를 pull합니다.
+
+다음은 compact current-state envelope에 들어갈 수 있는 후보 field입니다. 표 전체를 매번 보내라는 뜻이 아닙니다. Active phase bundle, next safe action, freshness, relevance가 어떤 field를 표시할지 결정합니다.
+
+현재 phase bundle으로 걸러서 push할 수 있는 envelope 후보:
 
 | Envelope item | Push shape |
 |---|---|
@@ -324,7 +339,20 @@ Relevant할 때 ref 또는 한 줄 summary로 push하는 것:
 - 오래된 PRD, 오래된 design, closed issue, stale doc, old projection, moved-path note
 - module map, interface contract, domain language, coding standard, TDD guidance
 
-Refs-first는 connector가 default prompt에 큰 본문을 붙여 넣지 않고 stable id, path, hash, summary, outcome, freshness를 push해야 한다는 뜻입니다. 다음 safe action이 content inspection을 요구할 때만 excerpt를 embed하고, 그 excerpt는 source ref와 연결해 둡니다. Retrieved, indexed, remembered context도 같은 규칙을 따릅니다. Agent가 다음에 무엇을 살펴볼지 알려 줄 수는 있지만, owner path가 실제 state change를 기록하기 전까지는 pull-only context로 남습니다.
+Refs-first는 connector가 default prompt에 큰 본문을 붙여 넣지 않고 stable id, path, hash, summary, outcome, freshness를 push해야 한다는 뜻입니다. 다음 safe action이 content inspection을 요구할 때만 excerpt를 embed하고, 그 excerpt는 source ref와 연결해 둡니다. Retrieved, indexed, remembered, summarized context도 같은 규칙을 따릅니다. Agent가 다음에 무엇을 살펴볼지 알려 줄 수는 있지만, owner path가 실제 state change를 기록하기 전까지는 pull-only context로 남습니다. Write를 허가하거나 Write Authorization을 만들거나, Decision Packet을 해소하거나, Approval을 부여하거나, gate를 충족하거나, evidence를 만들거나, verification을 수행 또는 기록하거나, QA를 기록하거나, QA 또는 verification을 면제하거나, 결과를 수락하거나, 남은 위험을 받아들이거나, projection freshness를 바꾸거나, Task를 close하면 안 됩니다.
+
+Agent가 전체 문서 세트를 읽지 않도록 phase-based bundle을 사용합니다.
+
+| Phase | Context에 push | 필요할 때 pull |
+|---|---|---|
+| Intake | Active 또는 likely Task id, mode, current status 또는 Journey Card, 네 가지 display group, next safe action, primary blocker, known source refs, guarantee/MCP availability. | Classification, authority, blocker 표시가 불명확할 때만 task history, user guide, session-flow detail, Reference docs. |
+| Discovery | Discovery Brief summary 또는 ref, blocking question, parked assumption, first safe Change Unit candidate, current repo/Harness refs, visible user-owned judgment candidate. | 첫 safe Change Unit을 shaping하는 데 필요한 fact에 한해 repo docs, module/interface/domain refs, older PRD/design, design-quality policy, Decision Packet guidance. |
+| Write | Active Change Unit, Autonomy Boundary, intended paths/tools/commands/network/secrets summary, baseline, Approval status, active Decision Packet, Write Authority Summary, capability guarantee. | Intended write가 해당 boundary를 건드리거나 connector가 check를 구현할 때만 정확한 `prepare_write`, Kernel, security, approval, policy reference. |
+| Evidence | Changed-path summary, latest Run summary, Evidence Manifest ref, integrity/freshness가 있는 artifact ref, evidence gap, next evidence action. | Evidence를 해석, 수리, 등록할 때만 log, diff, screenshot, trace, raw artifact, artifact-storage detail, evidence contract section. |
+| Verification | Acceptance criteria, changed file, evidence ref, artifact ref, approval scope, active 또는 relevant Decision Packet, residual-risk summary, Manual QA requirement, independence/freshness profile, forbidden pattern. | Evaluator가 확인해야 할 때만 full evaluator bundle material, source file, log, exact Eval/Manual QA contract, verification guidance. |
+| Close | Close-readiness summary, close blocker, evidence/verification/QA/acceptance status, residual-risk summary 또는 accepted refs, projection freshness, smallest unblocker. | Blocker 또는 close attempt가 exact contract나 source content에 의존할 때만 `close_task`, acceptance, residual-risk, Manual QA, verification, artifact detail. |
+
+Phase bundle은 context discipline이지 새 schema나 gate가 아닙니다. Phase가 바뀌면 connector가 기본으로 push하는 항목이 바뀔 뿐이며, write를 허가하거나, decision을 해소하거나, evidence를 만들거나, verification을 수행하거나, risk를 받아들이거나, Task를 close하지 않습니다.
 
 Compact status card는 "현재 어디이고 다음은 무엇인가?"를 위해 envelope를 렌더링합니다. Judgment-context는 별도입니다. Judgment-context는 사용자 판단이 필요할 때만 사용하며, decision question, options, recommendation, uncertainty, deferral effect, relevant refs를 포함하되 전체 evidence나 artifact body를 always-on context로 만들지 않습니다.
 

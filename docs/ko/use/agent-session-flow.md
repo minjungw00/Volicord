@@ -29,7 +29,20 @@
 
 Gate 상태는 Scope, Judgment, Evidence, Close Readiness라는 네 가지 사용자에게 보이는 표시 그룹으로 렌더링합니다. 이들은 표시 그룹일 뿐입니다. Kernel gate를 대체하거나, schema field를 추가하거나, recompute rule을 바꾸거나, write를 허가하거나, gate를 충족하거나, 잔여 위험을 수락하거나, Task를 닫지 않습니다. 정확한 gate 값, recompute 동작, close 의미는 [커널 참조](../reference/kernel.md#gates)와 [`close_task`](../reference/kernel.md#close_task)가 담당합니다.
 
-매 턴마다 계속 보여주는 맥락은 간결하고 최신인 Harness 맥락 묶음(envelope)이어야 합니다. 여기에는 활성 Task id와 모드, 네 가지 표시 그룹, 다음 안전한 행동, 가장 먼저 해소할 막힘, 가장 작은 해소 방법, active scoped Change Unit, Autonomy Boundary, active Decision Packet, Write Authority Summary, 수용 기준, approval status, source refs, 보장 수준(guarantee level), 필요할 때의 raw gate refs, 읽기용 보기 최신성(projection freshness)이 들어갑니다. 근거(Evidence), Run, Eval, Manual QA, artifact, log, screenshot, diff, old projection, 오래된 PRD나 design, module map, large trace는 기본적으로 ref와 짧은 결과만 보여주고, 다음 행동이 내용을 실제로 살펴봐야 할 때만 가져옵니다. 오래된 chat memory는 살펴볼 ref를 가리킬 수 있지만 write를 허가하거나, gate를 충족하거나, 결과를 수락하거나, Task를 닫거나, current state를 대체할 수 없습니다.
+Turn context는 compact하고 current하며 phase-filtered 상태로 유지합니다. [Agent 통합 참조](../reference/agent-integration.md#context-pushpull-principles)의 10개 이하 compact context rule set에서 시작한 뒤, 현재 phase의 relevant envelope field만 보여줍니다. 예를 들면 current status 또는 Journey Card, 네 가지 display group, next safe action, primary blocker, active Change Unit 또는 Decision Packet refs, Write Authority Summary, evidence 또는 residual-risk refs, guarantee/MCP availability, projection freshness를 next safe action에 relevant할 때만 보여줍니다. 이를 전체 field set을 매번 보내는 checklist로 다루면 안 됩니다. Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, old projection, 오래된 PRD나 design, module map, large trace는 기본적으로 ref와 짧은 결과만 보여주고, 다음 행동이 내용을 실제로 살펴봐야 할 때만 가져옵니다. 오래된 chat memory와 retrieved context는 살펴볼 ref를 가리킬 수 있지만 write를 허가하거나, gate를 충족하거나, 결과를 수락하거나, Task를 닫거나, current state를 대체할 수 없습니다.
+
+전체 문서 세트를 agent prompt에 넣지 말고 progressive context loading을 사용합니다. 자세한 context contract는 [Agent 통합 참조](../reference/agent-integration.md#context-pushpull-principles)가 담당하며, 이 사용자-facing flow에서는 phase bundle을 좁게 유지합니다.
+
+| Phase | 지금 push | 필요할 때만 pull |
+|---|---|---|
+| Intake | Current status 또는 Journey Card, likely mode, 네 가지 display group, next safe action, primary blocker. | Request를 classify하는 데 필요한 task history, user guide, Reference docs. |
+| Discovery | Discovery Brief summary, blocking question, assumption, first safe Change Unit candidate, current source refs. | Scope를 shaping하는 데 필요한 repo docs, module/interface/domain refs, older PRD/design, decision guidance. |
+| Write | Active Change Unit, Autonomy Boundary, intended paths/tools/commands summary, Approval status, active Decision Packet, Write Authority Summary. | Intended write에 필요한 정확한 `prepare_write`, Kernel, security, approval, policy reference. |
+| Evidence | Run summary, Evidence Manifest ref, artifact refs, evidence gaps, next evidence action. | Support를 해석하거나 수리하는 데 필요한 log, diff, screenshot, trace, artifact/evidence contract detail. |
+| Verification | Acceptance criteria, changed files, evidence refs, artifact refs, relevant decisions, residual-risk summary, Manual QA requirement, independence/freshness notes. | Full evaluator bundle material, source files, logs, Eval/Manual QA contract detail, verification guidance. |
+| Close | Close-readiness summary, blockers, evidence/verification/QA/acceptance status, residual-risk summary 또는 accepted refs, projection freshness. | Blocker 뒤에 있는 exact close, acceptance, residual-risk, QA, verification, artifact detail. |
+
+Retrieved, indexed, remembered, summarized context는 read-only로 남습니다. 무엇을 살펴볼지 제안할 수는 있지만 write를 허가하거나, gate를 충족하거나, evidence를 만들거나, verification을 수행하거나, risk를 받아들이거나, Task를 close하거나, 다른 authority claim을 만들 수 없습니다.
 
 ## 세션 시작
 

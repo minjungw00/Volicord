@@ -141,13 +141,13 @@ Connector가 생성하거나 관리하는 path, MCP config snippet, managed bloc
 
 ### Context Hygiene
 
-Always-on context를 짧고 최신으로 유지하는 policy입니다. Relevant할 때 Journey Card 또는 compact status card, active Decision Packet, Autonomy Boundary, Write Authority Summary, active scoped Change Unit, 수용 기준, approval status, evidence refs, residual-risk summary, gate summary, projection freshness를 push하고, 오래된 PRD, design, log, module map, old projection, closed issue, oversized raw artifact는 필요할 때만 pull합니다. Indexed, retrieved, remembered context는 ref나 source에 연결된 excerpt로 여기에 포함될 수 있습니다. 무엇을 살펴볼지 정하는 데 도움을 줄 뿐, 무엇이 허가되었는지, 검증되었는지, 결과가 수락되었는지, 요구사항이 면제되었는지, risk-accepted 되었는지, Task가 닫혔는지를 결정하지는 않습니다.
+Always-on context를 짧고 최신으로 유지하는 policy입니다. Compact rule set은 10개 이하로 유지하고, current status 또는 Journey Card를 먼저 읽으며, 현재 phase bundle을 push하고, 더 큰 record는 pull-on-demand로 둡니다. Phase-relevant할 때 Journey Card 또는 compact status card, active Decision Packet, Autonomy Boundary, Write Authority Summary, active scoped Change Unit, 수용 기준, approval status, evidence refs, residual-risk summary, gate summary, projection freshness를 push할 수 있습니다. 오래된 PRD, design, log, module map, old projection, closed issue, Reference contract, oversized raw artifact는 현재 Intake, Discovery, Write, Evidence, Verification, Close phase가 필요로 할 때만 pull합니다. Indexed, retrieved, remembered, summarized context는 ref나 source에 연결된 excerpt로 여기에 포함될 수 있습니다. 무엇을 살펴볼지 정하는 데 도움을 줄 뿐, 무엇이 허가되었는지, 검증되었는지, 결과가 수락되었는지, 요구사항이 면제되었는지, risk-accepted 되었는지, Task가 닫혔는지를 결정하지는 않습니다.
 
 오래된 chat memory는 pull-only context입니다. 담당 owner path가 관련 변화를 기록하지 않는 한 write를 허가하거나, gate를 충족하거나, Task를 close하거나, 결과를 수락하거나, QA 또는 verification을 면제하거나, 남은 위험을 받아들이거나, current state를 대체하거나, stale projection을 고칠 수 없습니다.
 
 ### Context Index
 
-Relevant projection, artifact ref, repo file, doc, note를 보여줄 수 있는 later read-only context provider입니다. Owner 문서로 승격되기 전까지는 권한 없는 retrieval only입니다. 승격 이후에도 해당 owner 문서가 명시적으로 바뀌지 않는 한 기존 권한 경로를 대체할 수 없습니다. 정확한 future-feature 경계는 [Roadmap: Context Index](../roadmap.md#context-index)가 담당하고, connector 처리는 [Agent Integration](agent-integration.md#context-pushpull-principles)이 담당합니다.
+Relevant projection, artifact ref, repo file, doc, note를 보여줄 수 있는 later read-only context provider입니다. Owner 문서로 승격되기 전까지는 v1/later candidate이자 권한 없는 retrieval only입니다. 승격 이후에도 해당 owner 문서가 명시적으로 바뀌지 않는 한 기존 권한 경로를 대체할 수 없습니다. Retrieved context는 살펴볼 source를 가리킬 수 있지만 write를 허가하거나, decision을 해소하거나, Approval을 부여하거나, evidence를 만들거나, verification을 수행하거나, risk를 받아들이거나, gate를 충족하거나, Task를 close하면 안 됩니다. 정확한 future-feature 경계는 [Roadmap: Context Index](../roadmap.md#context-index)가 담당하고, connector 처리는 [Agent Integration](agent-integration.md#context-pushpull-principles)이 담당합니다.
 
 ### Decision Gate
 
