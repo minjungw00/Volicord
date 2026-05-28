@@ -312,6 +312,32 @@ The harness reports guarantee levels to make enforcement strength honest:
 | `preventive` | a concrete connector or runtime path has fixture-proven pre-tool blocking for the covered operation before it executes |
 | `isolated` | risky work is separated by a worktree, sandbox, process boundary, evaluator boundary, or equivalent isolation; isolation limits blast radius but does not by itself approve or verify the work |
 
+### Guarantee level enforcement map
+
+This diagram shows where the guarantee label changes enforcement strength and where it does not. Notice that Core makes the authority decision first. Guarantee level does not create authority; it only describes whether a denied or held operation is handled by instruction, after-action detection, fixture-proven pre-execution blocking, or isolation for the covered operation.
+
+```mermaid
+flowchart TB
+  Operation["intended operation"] --> Core["Core prepare_write decision<br/>state, scope, approvals,<br/>decisions, baseline, capability"]
+  Core --> Decision{"allowed?"}
+  Decision -->|allowed| Authorization["Write Authorization<br/>for one compatible attempt"]
+  Authorization --> Attempt["covered execution or attempt<br/>under connected surface"]
+  Attempt --> Run["record_run records<br/>what happened"]
+  Decision -->|not allowed / hold| Hold["hold work or route blocker"]
+  Hold --> Profile{"connected profile<br/>enforcement or reporting strength"}
+  Profile --> Cooperative["cooperative<br/>instruction-only hold"]
+  Profile --> Detective["detective<br/>detect or report after action<br/>if violation occurs"]
+  Profile --> Preventive["preventive<br/>fixture-proven pre-execution block<br/>for covered operation"]
+  Profile --> Isolated["isolated<br/>bounded execution or promotion path"]
+  Cooperative -. "when an event is recorded" .-> OwnerPaths
+  Detective -. "when violation is observed" .-> OwnerPaths
+  Preventive -. "when blocked attempt is recorded" .-> OwnerPaths
+  Isolated -. "when promotion or escape is recorded" .-> OwnerPaths
+  Run --> OwnerPaths["Core owner paths update<br/>state, artifacts, evidence,<br/>and projection jobs when applicable"]
+```
+
+Preventive and isolated labels apply only where the connected profile has fixture-proven coverage for the operation being described. They do not approve work, create Write Authorization, satisfy gates, create evidence, perform verification, accept risk, or close Tasks. Strict `prepare_write` and `record_run` behavior is owned by [Kernel Reference](kernel.md#prepare_write) and [Kernel Reference](kernel.md#record_run). Public response shapes and error precedence are owned by [MCP API And Schemas](mcp-api-and-schemas.md). Concrete profile declarations are owned by [Agent Integration Reference](agent-integration.md#capability-profiles). This diagram is only an enforcement-orientation view.
+
 
 Guarantee display should name both sides of the boundary: what the connected profile can actually block before execution, and what it can only detect after action. A surface name, product name, recipe name, or friendly mode label is never proof of capability; the declaration must come from the actual host/profile capability profile and its current proof basis. Guard, freeze, and careful-mode labels inherit the connected profile's proven capability; they do not upgrade a cooperative or detective profile into preventive blocking, and they do not create authority tiers.
 

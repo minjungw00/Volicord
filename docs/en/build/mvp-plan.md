@@ -16,7 +16,7 @@ Use this when you need to plan what to build after the first runnable slice. Use
 
 ## Before you read
 
-Read [Implementation Overview](implementation-overview.md), including its [Documentation Acceptance Status](implementation-overview.md#documentation-acceptance-status), and [First Runnable Slice](first-runnable-slice.md). For exact API contracts, use [MCP API And Schemas](../reference/mcp-api-and-schemas.md). For storage details and DDL, use [Storage And DDL](../reference/storage-and-ddl.md). For design-quality gate and validator behavior, use [Design Quality Policies](../reference/design-quality-policies.md). For conformance fixture semantics, use [Operations And Conformance](../reference/operations-and-conformance.md). For post-MVP candidates and promotion criteria, use the [Roadmap](../roadmap.md).
+Read [Implementation Overview](implementation-overview.md), including its [Documentation Acceptance Status](implementation-overview.md#documentation-acceptance-status), [First Runnable Slice](first-runnable-slice.md), and [Runtime Walkthrough](runtime-walkthrough.md). For exact API contracts, use [MCP API And Schemas](../reference/mcp-api-and-schemas.md). For storage details and DDL, use [Storage And DDL](../reference/storage-and-ddl.md). For design-quality gate and validator behavior, use [Design Quality Policies](../reference/design-quality-policies.md). For conformance fixture semantics, use [Operations And Conformance](../reference/operations-and-conformance.md). For post-MVP candidates and promotion criteria, use the [Roadmap](../roadmap.md).
 
 ## Main idea
 
@@ -71,6 +71,30 @@ v0.1 must prove:
 v0.1 should not prove full detached verification independence, a Manual QA policy matrix, residual-risk accepted close semantics, stewardship validators, TDD trace, feedback loop policy, release handoff, full export/recover behavior, or a large fixture suite. Those are later-pack work.
 
 At this point, the user or operator can observe a small but complete loop: current Task status, mode basics, active Change Unit, basic Decision Packet state, scoped write block/allow, durable Write Authorization creation and consumption, artifact and Evidence Manifest links, projection freshness or enqueueing, next-action guidance, and structured close blockers.
+
+### Kernel MVP pack flow
+
+This diagram is an implementation-order sketch for the v0.1 pack. Notice that the first proof is a single local authority loop. Deeper evidence, full projection behavior, agency hardening, and operations coverage stay in later staged packs; broader automation stays in v1+ Expansion unless owner docs promote and prove it.
+
+```mermaid
+flowchart LR
+  Register["register project<br/>and reference surface"] --> Task["Task state<br/>and task_events"]
+  Task --> Mode["mode basics<br/>advisor / direct / work"]
+  Mode --> ChangeUnit["one scoped<br/>Change Unit"]
+  ChangeUnit --> Decision["basic Decision Packet<br/>blocker"]
+  Decision --> Prepare["prepare_write<br/>allow or block"]
+  Prepare -->|allowed| Authorization["single-use<br/>Write Authorization"]
+  Prepare -->|blocked| WriteBlocker["write blocker<br/>or decision path"]
+  Authorization --> Run["record_run consumes<br/>compatible authorization"]
+  Run --> Evidence["minimal ArtifactRef<br/>and Evidence Manifest"]
+  Evidence --> Projection["TASK projection<br/>or durable enqueue"]
+  Projection --> Close["close_task reports<br/>structured blockers"]
+  Smoke["Kernel Smoke<br/>narrow fixture profile"] -. "exercises" .-> Prepare
+  Smoke -. "observes" .-> WriteBlocker
+  Smoke -. "checks captured outputs" .-> Close
+```
+
+Exact state and close behavior is owned by [Kernel Reference](../reference/kernel.md), public tool shapes by [MCP API And Schemas](../reference/mcp-api-and-schemas.md), projection rules by [Document Projection Reference](../reference/document-projection.md), and fixture semantics by [Operations And Conformance](../reference/operations-and-conformance.md#conformance-fixture-format). This flow does not add pack gates or fixture body requirements.
 
 For practical fixture authoring order, use the [Kernel Smoke Authoring Queue](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue). It maps the v0.1 runtime fixture candidates to this stage without changing the exact fixture body shape.
 

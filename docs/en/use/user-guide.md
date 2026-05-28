@@ -267,6 +267,29 @@ This group pulls together the close-facing parts of the work: verification, Manu
 
 A useful Close Readiness line says whether the result is blocked, ready to request acceptance, ready to attempt close, or waiting on a specific check or judgment. It should name the smallest unblocker and keep residual-risk accepted close visibly different from a normal self-checked or detached-verified close.
 
+### Close Readiness blocker matrix
+
+This matrix is a scan aid for the user-facing blocker summary. Notice that every row points back to existing owner records and gates; Close Readiness itself is not a new gate, schema field, or authority path.
+
+```mermaid
+flowchart TB
+  subgraph Matrix["Close Readiness blocker matrix"]
+    direction LR
+    State["State and scope<br/>active Run clear<br/>Change Unit compatible when needed<br/>scope passed for writes"]
+    Judgment["Judgment<br/>Decision Packets resolved or<br/>compatibly deferred<br/>Approval granted when sensitive<br/>acceptance handled when required"]
+    Checks["Evidence and checks<br/>evidence sufficient when required<br/>verification passed, not required,<br/>or waived with risk<br/>Manual QA passed or waived when required"]
+    Risk["Risk and result<br/>residual risk visible or none<br/>accepted when risk-close<br/>close reason stays honest"]
+  end
+  State --> Outcome{"all required parts<br/>compatible?"}
+  Judgment --> Outcome
+  Checks --> Outcome
+  Risk --> Outcome
+  Outcome -->|yes| Attempt["attempt close_task"]
+  Outcome -->|no| Blocker["show close blocker<br/>and smallest unblocker"]
+```
+
+Exact close behavior is owned by [`close_task`](../reference/kernel.md#close_task), close-result wording by [Close result semantics](../reference/kernel.md#close-result-semantics), projection freshness by [Document Projection Reference](../reference/document-projection.md#freshness-and-failure-rules), and public error selection by [MCP API And Schemas](../reference/mcp-api-and-schemas.md#primary-error-code-precedence). The matrix only explains what the user should expect to see.
+
 Useful phrases:
 
 ```text
@@ -331,7 +354,7 @@ Power-user equivalents for the same requests include Change Unit, Decision Packe
 
 ## Basic flow
 
-The normal path should feel like a short conversation. Users should see the current position, the next safe action, and any decision that genuinely needs them.
+The normal path should feel like a short conversation. Users should see the current position, the next safe action, and any decision that genuinely needs them. Implementers who want the same path from the runtime side can read [Runtime Walkthrough](../build/runtime-walkthrough.md).
 
 ```mermaid
 flowchart LR

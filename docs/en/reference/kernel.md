@@ -6,7 +6,7 @@ Use this reference to check the exact kernel contract for Harness state, gates, 
 
 It is a lookup document for implementers, conformance authors, and maintainers. First-time readers should start with the Learn path and return here when they need precise state rules.
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
+This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
 ## Read this when
 
@@ -309,6 +309,28 @@ proposed | pending_user | resolved | deferred | rejected | blocked | superseded
 - `rejected` means the packet or proposed decision path was rejected.
 - `blocked` means the packet cannot currently be resolved or deferred under the present state.
 - `superseded` means another Decision Packet, Change Unit, or Task state replaces it.
+
+#### Decision Packet lifecycle map
+
+This diagram orients the record-level status lifecycle. Notice that resolving a Decision Packet records user-owned judgment; it does not grant sensitive-action Approval, create Write Authorization, satisfy evidence, or close a Task by itself.
+
+```mermaid
+stateDiagram-v2
+  [*] --> proposed
+  proposed --> pending_user: request shown
+  proposed --> superseded: replaced before request
+  pending_user --> resolved: decision recorded
+  pending_user --> deferred: deferral recorded
+  pending_user --> rejected: rejected
+  pending_user --> blocked: cannot resolve now
+  blocked --> pending_user: blocker repaired
+  deferred --> resolved: later decision
+  resolved --> superseded: replacement state
+  deferred --> superseded: replacement state
+  rejected --> superseded: replacement state
+```
+
+Strict Decision Packet semantics are owned by [Decision Packet](#decision-packet), and aggregate gate behavior is owned by [Decision Gate](#decision-gate) and [Decision Gate Aggregate Recompute](#decision-gate-aggregate-recompute). Public request and response fields are owned by [`harness.request_user_decision`](mcp-api-and-schemas.md#harnessrequest_user_decision).
 
 ### Journey Spine
 
@@ -858,6 +880,41 @@ Catalog-only fixture skeletons in [Operations And Conformance](operations-and-co
 | User cancels Task | any non-terminal phase | `cancelled` | `result=cancelled`; `close_reason=cancelled` |
 | Task is superseded | any non-terminal phase | `cancelled` | `result=cancelled`; `close_reason=superseded` |
 | Projection refresh fails | any phase | same lifecycle phase | projection status marked stale or failed; state result unchanged |
+
+### Intake to `prepare_write` sequence
+
+This sequence shows how a user request becomes scoped write-capable work. Notice that Discovery can shape the Task and Change Unit, but product-write authority appears only at `prepare_write`, and only for the specific compatible attempt that receives a Write Authorization.
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant Agent as Agent surface
+  participant Core
+  participant State as state.sqlite
+  participant Projector
+
+  User->>Agent: request
+  Agent->>Core: intake and classify task shape
+  Core->>State: create or update Task
+  Agent->>Core: Discovery results when needed
+  Core->>State: record shaping refs through owner paths
+  Agent->>Core: propose or select Change Unit
+  Core->>State: set active Change Unit and scope gate
+  Agent->>Core: prepare_write(intended operation)
+  Core->>State: check state, scope, autonomy, approvals, decisions, baseline, capability
+  alt allowed
+    Core->>State: create Write Authorization
+    Core-->>Agent: allowed with authorization ref
+  else not allowed
+    Core-->>Agent: blocker, approval_required, decision_required, or state_conflict
+  end
+  opt committed state/event changes affect readable projection
+    Core->>State: enqueue projection job after commit
+    State-->>Projector: projection job available
+  end
+```
+
+This sequence is a navigation aid, not a transition table. Blocked `prepare_write` responses do not by themselves imply a projection job unless an owner path commits a projection-affecting state or event change. Strict behavior for Task, Change Unit, gates, `prepare_write`, and Write Authorization is owned by this reference. Public MCP envelopes are owned by [MCP API And Schemas](mcp-api-and-schemas.md), storage layout and projection-job storage by [Storage And DDL](storage-and-ddl.md), and projection enqueueing, rendering, and freshness behavior by [Document Projection Reference](document-projection.md).
 
 ## prepare_write
 

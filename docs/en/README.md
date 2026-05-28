@@ -35,7 +35,7 @@ Harness is also not a chat script, test harness, evaluation harness, or dashboar
 |---|---|---|
 | New reader | [Overview](learn/overview.md) | [Harness in One Task](learn/harness-in-one-task.md), then [Concepts](learn/concepts.md) |
 | User | [User Guide](use/user-guide.md) | [Agent Session Flow](use/agent-session-flow.md) when you need the agent-facing flow |
-| Implementer | [Implementation Overview](build/implementation-overview.md) | [First Runnable Slice](build/first-runnable-slice.md), [MVP Plan](build/mvp-plan.md), then the relevant Reference owner |
+| Implementer | [Implementation Overview](build/implementation-overview.md) | [First Runnable Slice](build/first-runnable-slice.md), [Runtime Walkthrough](build/runtime-walkthrough.md), [MVP Plan](build/mvp-plan.md), then the relevant Reference owner |
 | Operator or conformance author | [Operations And Conformance Reference](reference/operations-and-conformance.md#contract-map) | [Runtime Architecture](reference/runtime-architecture.md), [Security Threat Model](reference/security-threat-model.md), [MCP API And Schemas](reference/mcp-api-and-schemas.md), [Storage And DDL](reference/storage-and-ddl.md) |
 | Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md) |
 
@@ -69,6 +69,7 @@ Start with the [Documentation Acceptance Status](build/implementation-overview.m
 
 - [Implementation Overview](build/implementation-overview.md)
 - [First Runnable Slice](build/first-runnable-slice.md)
+- [Runtime Walkthrough](build/runtime-walkthrough.md)
 - [MVP Plan](build/mvp-plan.md)
 
 ## Reference

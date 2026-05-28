@@ -16,7 +16,7 @@
 
 ## 먼저 읽을 것
 
-[구현 개요](implementation-overview.md)의 [문서 승인 상태](implementation-overview.md#문서-승인-상태)와 [첫 실행 가능한 조각](first-runnable-slice.md)을 먼저 읽습니다. 정확한 API contract는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)를 사용합니다. Storage detail과 DDL은 [Storage와 DDL](../reference/storage-and-ddl.md)을 사용합니다. Design-quality gate와 validator behavior는 [Design Quality Policies](../reference/design-quality-policies.md)를 사용합니다. Conformance fixture semantics는 [운영과 Conformance](../reference/operations-and-conformance.md)를 사용합니다. Post-MVP 후보와 승격 기준은 [로드맵](../roadmap.md)을 사용합니다.
+[구현 개요](implementation-overview.md)의 [문서 승인 상태](implementation-overview.md#문서-승인-상태), [첫 실행 가능한 조각](first-runnable-slice.md), [Runtime Walkthrough](runtime-walkthrough.md)를 먼저 읽습니다. 정확한 API contract는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)를 사용합니다. Storage detail과 DDL은 [Storage와 DDL](../reference/storage-and-ddl.md)을 사용합니다. Design-quality gate와 validator behavior는 [Design Quality Policies](../reference/design-quality-policies.md)를 사용합니다. Conformance fixture semantics는 [운영과 Conformance](../reference/operations-and-conformance.md)를 사용합니다. Post-MVP 후보와 승격 기준은 [로드맵](../roadmap.md)을 사용합니다.
 
 ## 핵심 생각
 
@@ -71,6 +71,30 @@ v0.1은 다음만 증명해야 합니다.
 v0.1은 full detached verification independence, Manual QA policy matrix, residual-risk accepted close semantics, stewardship validators, TDD trace, feedback loop policy, release handoff, full export/recover behavior, large fixture suite를 증명하면 안 됩니다. 이들은 later pack 작업입니다.
 
 이 시점에 사용자나 operator는 작은 완결 루프를 볼 수 있어야 합니다. Current Task status, mode basics, active Change Unit, basic Decision Packet state, scoped write block/allow, durable Write Authorization 생성과 consumption, artifact와 Evidence Manifest link, projection freshness 또는 enqueue, next-action guidance, structured close blocker가 그 루프입니다.
+
+### Kernel MVP pack flow
+
+이 diagram은 v0.1 pack의 implementation order sketch입니다. 눈여겨볼 점은 첫 proof가 single local authority loop라는 것입니다. Deeper evidence, full projection behavior, agency hardening, operations coverage는 later staged pack에 남고, broader automation은 owner 문서가 승격하고 증명하기 전까지 v1+ Expansion에 남습니다.
+
+```mermaid
+flowchart LR
+  Register["register project<br/>and reference surface"] --> Task["Task state<br/>and task_events"]
+  Task --> Mode["mode basics<br/>advisor / direct / work"]
+  Mode --> ChangeUnit["one scoped<br/>Change Unit"]
+  ChangeUnit --> Decision["basic Decision Packet<br/>blocker"]
+  Decision --> Prepare["prepare_write<br/>allow or block"]
+  Prepare -->|allowed| Authorization["single-use<br/>Write Authorization"]
+  Prepare -->|blocked| WriteBlocker["write blocker<br/>or decision path"]
+  Authorization --> Run["record_run consumes<br/>compatible authorization"]
+  Run --> Evidence["minimal ArtifactRef<br/>and Evidence Manifest"]
+  Evidence --> Projection["TASK projection<br/>or durable enqueue"]
+  Projection --> Close["close_task reports<br/>structured blockers"]
+  Smoke["Kernel Smoke<br/>narrow fixture profile"] -. "exercises" .-> Prepare
+  Smoke -. "observes" .-> WriteBlocker
+  Smoke -. "checks captured outputs" .-> Close
+```
+
+정확한 state와 close behavior는 [커널 참조](../reference/kernel.md)가, public tool shape는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)가, projection rule은 [문서 Projection 참조](../reference/document-projection.md)가, fixture semantics는 [운영과 Conformance](../reference/operations-and-conformance.md#conformance-fixture-format)가 담당합니다. 이 flow는 pack gate나 fixture body requirement를 추가하지 않습니다.
 
 실제 fixture 작성 순서는 [Kernel Smoke Authoring Queue](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue)를 사용합니다. 이 queue는 v0.1 runtime fixture candidate를 이 stage에 매핑하되 exact fixture body shape를 바꾸지 않습니다.
 

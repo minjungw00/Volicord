@@ -6,7 +6,7 @@
 
 처음 읽는 독자는 Learn 경로에서 전체 그림을 먼저 보고, 정확한 상태 규칙이 필요할 때 이 문서로 돌아오는 것을 권장합니다.
 
-이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 구현/증명 대상은 계속 Kernel Smoke입니다. Agency-Hardened MVP와 post-MVP automation은 owner 문서가 승격하고 증명하기 전까지 범위 밖입니다.
+이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke는 이를 좁게 실행하는 conformance profile입니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target으로 가는 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
 
 ## 이런 때 읽기
 
@@ -309,6 +309,28 @@ proposed | pending_user | resolved | deferred | rejected | blocked | superseded
 - `rejected`는 packet 또는 proposed decision path가 rejected되었다는 뜻입니다.
 - `blocked`는 현재 state에서 packet이 `resolved` 또는 `deferred` 상태가 될 수 없다는 뜻입니다.
 - `superseded`는 다른 Decision Packet, Change Unit, Task state가 이를 대체한다는 뜻입니다.
+
+#### Decision Packet lifecycle map
+
+이 diagram은 record-level status lifecycle을 보여줍니다. 눈여겨볼 점은 Decision Packet 해소가 사용자 소유 판단을 기록한다는 것입니다. 그 자체로 sensitive-action Approval을 grant하거나, Write Authorization을 만들거나, evidence를 충족하거나, Task를 close하지 않습니다.
+
+```mermaid
+stateDiagram-v2
+  [*] --> proposed
+  proposed --> pending_user: request shown
+  proposed --> superseded: replaced before request
+  pending_user --> resolved: decision recorded
+  pending_user --> deferred: deferral recorded
+  pending_user --> rejected: rejected
+  pending_user --> blocked: cannot resolve now
+  blocked --> pending_user: blocker repaired
+  deferred --> resolved: later decision
+  resolved --> superseded: replacement state
+  deferred --> superseded: replacement state
+  rejected --> superseded: replacement state
+```
+
+엄격한 Decision Packet 의미는 [Decision Packet](#decision-packet)이 담당하고, aggregate gate 동작은 [Decision Gate](#decision-gate)와 [Decision Gate Aggregate Recompute](#decision-gate-aggregate-recompute)가 담당합니다. Public request/response field는 [`harness.request_user_decision`](mcp-api-and-schemas.md#harnessrequest_user_decision)이 담당합니다.
 
 ### Journey Spine
 
@@ -857,6 +879,41 @@ Stable event names는 MVP conformance fixtures가 `expected_events`에서 요구
 | User cancels Task | any non-terminal phase | `cancelled` | `result=cancelled`; `close_reason=cancelled` |
 | Task is superseded | any non-terminal phase | `cancelled` | `result=cancelled`; `close_reason=superseded` |
 | Projection refresh 실패 | any phase | same lifecycle phase | projection status가 `stale` 또는 `failed`로 표시됨; state result unchanged |
+
+### Intake에서 `prepare_write`까지의 sequence
+
+이 sequence는 사용자 요청이 어떻게 scoped write-capable work가 되는지 보여줍니다. 눈여겨볼 점은 Discovery가 Task와 Change Unit을 shape할 수 있지만, 제품 파일 쓰기 권한은 `prepare_write`에서만 생기며 Write Authorization을 받은 specific compatible attempt에만 적용된다는 것입니다.
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant Agent as Agent surface
+  participant Core
+  participant State as state.sqlite
+  participant Projector
+
+  User->>Agent: request
+  Agent->>Core: intake and classify task shape
+  Core->>State: create or update Task
+  Agent->>Core: Discovery results when needed
+  Core->>State: record shaping refs through owner paths
+  Agent->>Core: propose or select Change Unit
+  Core->>State: set active Change Unit and scope gate
+  Agent->>Core: prepare_write(intended operation)
+  Core->>State: check state, scope, autonomy, approvals, decisions, baseline, capability
+  alt allowed
+    Core->>State: create Write Authorization
+    Core-->>Agent: allowed with authorization ref
+  else not allowed
+    Core-->>Agent: blocker, approval_required, decision_required, or state_conflict
+  end
+  opt committed state/event changes affect readable projection
+    Core->>State: enqueue projection job after commit
+    State-->>Projector: projection job available
+  end
+```
+
+이 sequence는 navigation aid일 뿐 transition table이 아닙니다. Blocked `prepare_write` response는 owner path가 projection-affecting state 또는 event change를 commit하지 않는 한 그 자체로 projection job을 의미하지 않습니다. Task, Change Unit, gates, `prepare_write`, Write Authorization의 엄격한 동작은 이 reference가 담당합니다. Public MCP envelope은 [MCP API와 스키마](mcp-api-and-schemas.md)가, storage layout과 projection-job storage는 [Storage와 DDL](storage-and-ddl.md)이, projection enqueueing, rendering, freshness behavior는 [문서 Projection 참조](document-projection.md)가 담당합니다.
 
 ## prepare_write
 

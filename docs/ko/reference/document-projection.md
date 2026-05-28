@@ -42,6 +42,36 @@ Projection은 secret/PII를 보호하는 표시 경계이기도 합니다. Proje
 
 Markdown 보고서는 evidence link를 제공하고 상태를 요약할 수 있지만 raw artifact나 상태 기록은 아닙니다.
 
+### Projection, 상태, artifact 권한 지도
+
+이 diagram은 생성된 Markdown이 지켜야 하는 authority boundary를 보여줍니다. 눈여겨볼 점은 state record와 artifact ref가 projection에 입력되지만, Markdown에 대한 사람의 edit은 Core가 state-changing action으로 받아들이기 전까지 reconcile input일 뿐이라는 것입니다.
+
+```mermaid
+flowchart LR
+  State["state.sqlite current records<br/>Task, Change Unit, gates, decisions, runs"]
+  Events["state.sqlite.task_events<br/>event history"]
+  Store["artifact store<br/>raw evidence bytes"]
+  ArtifactRefs["artifact records and refs<br/>hash, redaction, owner relation"]
+  Projector["projector<br/>managed blocks and cards"]
+  Markdown["Markdown projection<br/>readable view"]
+  Human["human-editable notes<br/>and proposals"]
+  Reconcile["reconcile item<br/>candidate only"]
+  Core["Core state-changing action"]
+
+  State --> Projector
+  Events --> Projector
+  ArtifactRefs --> Projector
+  Store -. "registered as" .-> ArtifactRefs
+  Projector --> Markdown
+  Markdown --> Human
+  Human -. "input only" .-> Reconcile
+  Reconcile -. "accepted path" .-> Core
+  Core --> State
+  Core --> Events
+```
+
+엄격한 projection behavior는 이 reference가 담당하며, 특히 [Document authority matrix](#document-authority-matrix), [Managed block rules](#managed-block-rules), [Freshness and failure rules](#freshness-and-failure-rules)를 봅니다. Canonical state와 gates는 [커널 참조](kernel.md)가, artifact relation storage는 [Storage와 DDL](storage-and-ddl.md)이, public projection refs는 [MCP API와 스키마](mcp-api-and-schemas.md)가 담당합니다. 이 diagram은 authority direction만 요약합니다.
+
 생성된 보고서는 독자가 이 참조 문서를 몰라도 그 경계를 볼 수 있어야 합니다. 예시와 template에서 `source_state_version`은 렌더링에 사용한 state clock을 가리키고, `projection_version` 또는 projection status는 렌더링된 view를 가리키며, `updated_at`은 그 view가 만들어진 시각을 가리킵니다. Freshness line은 이 view가 source record와 아직 맞는지 표시할 뿐입니다. 이 field들이 Markdown을 Task state, gate, approval, evidence, QA, verification, Decision Packet, acceptance의 owner로 만들지는 않습니다.
 
 최신성 표시는 진단 정보이며 운영상 중요할 수 있지만 여전히 표시입니다. 오래되었거나 failed인 projection은 current readable context가 필요한 close/readiness view를 막거나, 담당 API path를 통해 `PROJECTION_STALE`을 보고하게 만들 수 있습니다. 하지만 committed Core 상태를 롤백하거나, gate value를 바꾸거나, Task를 failed로 표시하거나, 오래된 report를 authoritative하게 만들면 안 됩니다.

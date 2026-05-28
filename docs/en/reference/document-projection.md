@@ -42,6 +42,36 @@ The strict boundary is:
 
 A Markdown report can link to evidence and summarize state, but it is neither the raw artifact nor the state record.
 
+### Projection, state, and artifact authority map
+
+This diagram shows the authority boundary that generated Markdown must preserve. Notice that state records and artifact refs feed projection, while human edits to Markdown return only as reconcile input until Core accepts a state-changing action.
+
+```mermaid
+flowchart LR
+  State["state.sqlite current records<br/>Task, Change Unit, gates, decisions, runs"]
+  Events["state.sqlite.task_events<br/>event history"]
+  Store["artifact store<br/>raw evidence bytes"]
+  ArtifactRefs["artifact records and refs<br/>hash, redaction, owner relation"]
+  Projector["projector<br/>managed blocks and cards"]
+  Markdown["Markdown projection<br/>readable view"]
+  Human["human-editable notes<br/>and proposals"]
+  Reconcile["reconcile item<br/>candidate only"]
+  Core["Core state-changing action"]
+
+  State --> Projector
+  Events --> Projector
+  ArtifactRefs --> Projector
+  Store -. "registered as" .-> ArtifactRefs
+  Projector --> Markdown
+  Markdown --> Human
+  Human -. "input only" .-> Reconcile
+  Reconcile -. "accepted path" .-> Core
+  Core --> State
+  Core --> Events
+```
+
+Strict projection behavior is owned by this reference, especially the [Document authority matrix](#document-authority-matrix), [Managed block rules](#managed-block-rules), and [Freshness and failure rules](#freshness-and-failure-rules). Canonical state and gates are owned by [Kernel Reference](kernel.md), artifact relation storage is owned by [Storage And DDL](storage-and-ddl.md), and public projection refs are owned by [MCP API And Schemas](mcp-api-and-schemas.md). The diagram summarizes authority direction only.
+
 Generated reports should make this visible without requiring the reader to know this reference first. In examples and templates, `source_state_version` names the state clock used for the render, `projection_version` or projection status names the rendered view, `updated_at` names when the view was produced, and freshness lines say whether the view still matches its source records. None of those fields make Markdown the owner of Task state, gates, approvals, evidence, QA, verification, Decision Packets, or acceptance.
 
 Freshness display is diagnostic and operationally relevant, but it is still display. A stale or failed projection can block close/readiness views that require current readable context or can cause an action to report `PROJECTION_STALE` through the owning API path, but it must not roll back committed Core state, change gate values, mark a Task failed, or make an old report authoritative.
