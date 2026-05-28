@@ -188,7 +188,7 @@ Harness가 observation 후 violations를 감지하고 상태를 `blocked`, `stal
 
 ### Direct
 
-Scope와 result가 명확한 작고 low-risk인 changes를 위한 work mode입니다. Direct product writes에도 active scoped Change Unit이 필요합니다.
+Scope와 result가 명확한 작고 low-risk인 changes를 위한 work mode입니다. Direct product writes에도 active scoped Change Unit이 필요합니다. Direct에는 trivial typo, single-sentence docs, obvious rename work를 위한 tiny direct profile이 포함됩니다. Tiny는 top-level mode가 아니며 사용자 소유 판단, sensitive-action Approval, security boundary, evidence, scope, Write Authorization, residual-risk visibility, close rule을 우회하지 않습니다.
 
 ### Docs-Maintenance Conformance
 
@@ -216,7 +216,7 @@ Acceptance criteria 또는 completion conditions를 이를 뒷받침하는 evide
 
 ### Evidence Profile
 
-Task shape에 충분한 evidence가 무엇인지 validators에 알려주는 named evidence sufficiency profile입니다. 예: `advisor`, `direct docs-only`, `direct code`, `work feature`, `UI/UX/copy work`, `sensitive work`, `verification-required work`.
+Task shape에 충분한 evidence가 무엇인지 validators에 알려주는 named evidence sufficiency profile입니다. 예: `advisor`, `direct docs-only`, `direct code`, `work feature`, `UI/UX/copy work`, `sensitive work`, `verification-required work`. Tiny direct docs-only work는 Direct evidence expectation 아래에서 가장 작은 changed-path, patch-summary 또는 diff-ref, self-check support로 처리되며, 별도 authorization path가 아닙니다.
 
 ### Evidence Sufficiency
 
@@ -520,9 +520,17 @@ Subagent 또는 helper가 일부 inherited implementation context를 가지고 w
 
 Kernel이 track하는 user value unit입니다. mode, lifecycle phase, gates, result, close reason, assurance, current summary, decisions, evidence, projection status를 가집니다.
 
+### Task Level
+
+Task shape를 표시하고 routing하기 위한 label입니다. Tiny, Direct, Work, High-risk Work가 있습니다. Tiny는 `direct` 아래 profile입니다. Direct는 작고 low-risk인 code 또는 docs work입니다. Work는 feature, UX workflow, auth-facing behavior, schema, public API/interface, multi-file 또는 multi-step delivery를 다룹니다. High-risk Work는 auth, security, privacy, secrets, infra, 비슷하게 민감한 category를 다룹니다. Task Level은 새 kernel `mode` enum, gate, schema field, approval, Write Authorization source가 아닙니다.
+
 ### TDD Trace
 
 Change Unit 또는 behavior slice에 대한 red, green, refactor evidence record 또는 policy가 허용하는 recorded non-TDD justification입니다. RED target 또는 plan은 intended failing check를 설명하고, RED evidence는 actual failing test artifact/log/result 또는 policy가 명시적으로 인정한 failing-check evidence를 뜻합니다. Required인 경우 normal path는 non-test implementation write 전에 RED evidence를 기록하고, implementation 후 GREEN evidence를 기록하며, relevant한 경우 refactor/check evidence를 기록한 뒤 trace를 Evidence Manifest coverage에 link합니다. TDD Trace는 Feedback Loop의 execution evidence가 될 수 있지만 기준 selected-loop record는 아닙니다. Waiver는 behavior를 증명할 alternate Feedback Loop로 돌아가는 ref를 가져야 합니다.
+
+### Tiny Direct Profile
+
+Typo, 문서 한 문장, obvious rename처럼 scope, result, 사용자 판단이 필요 없다는 경계가 즉시 분명한 Direct 하위 profile입니다. Interaction을 최소화하지만 scope가 넓어져도 여전히 low-risk이고 좁거나, Evidence Manifest coverage, artifact refs, link/render proof, 또는 tiny result note를 넘는 다른 evidence가 필요하면 일반 Direct로 상향해야 합니다. Product judgment, material technical judgment, architecture choice, public interface/API impact, UX workflow, schema, sensitive category, multi-step delivery가 나타나면 Work로 라우팅해야 합니다.
 
 ### Verification
 

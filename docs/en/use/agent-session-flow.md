@@ -45,7 +45,7 @@ Track ordinary-language requests when their shape suggests scope, judgment, evid
 - user-owned product judgment or material technical judgment with cost, compatibility, security, maintenance, migration, interface, dependency, or risk impact
 - evidence, verification, Manual QA, acceptance, or residual-risk needs
 
-Keep small direct tasks light. Do not add ceremony just to answer a question, inspect code, explain a result, or handle a tiny low-risk change with an already narrow shape.
+Keep small direct tasks light. Do not add ceremony just to answer a question, inspect code, explain a result, or handle a tiny low-risk change with an already narrow shape. A typo, one docs sentence, or an obvious rename can use the tiny direct profile under `direct` when no user-owned judgment, sensitive category, security boundary, or evidence beyond the tiny changed-path/self-check note is hiding inside it.
 
 Show:
 
@@ -200,6 +200,17 @@ Use `direct` for small, low-risk work with a narrow scope. Direct work still nee
 
 Use `work` for feature work, structural changes, risky fixes, multi-file changes, unclear requirements, or anything that needs meaningful evidence and independent verification.
 
+Use these task levels as routing labels, not new mode values:
+
+| Level | Use it for | Escalate when |
+|---|---|---|
+| Tiny | Typo, single docs sentence, or obvious rename. It is a profile under `direct`, not a new mode. | Scope broadens, evidence beyond a tiny changed-path/self-check note is needed, or any judgment, approval, sensitive, security, or risk boundary appears. |
+| Direct | Small low-risk code or docs change. | Product judgment, architecture choice, public interface or API impact, UX workflow, sensitive category, multi-file scope, or multi-step delivery appears. |
+| Work | Feature, UX workflow, auth-facing behavior, schema, public API/interface, or multi-file/multi-step work. | Auth, security, privacy, secrets, infra, or other sensitive areas make it high-risk work. |
+| High-risk Work | Auth, security, privacy, secrets, infra, or similarly sensitive work. | Keep in `work`; route approvals, Decision Packets, evidence, verification, QA, and residual risk through their owner paths. |
+
+The exact mode/profile contract is owned by [Kernel Reference](../reference/kernel.md#work-modes).
+
 If a direct task grows, move the same task to `work` and show why.
 
 ## Direct ceremony budget
@@ -211,6 +222,8 @@ Direct mode is a lightweight user experience, not a lower authority path. For di
 - create or select an active minimal Change Unit before product writes
 - show write authority before the exact write attempt
 - report changed paths, the self-check or other lightweight evidence, escalation status, and close-relevant risk
+
+For tiny direct, the visible budget may be even smaller: the trivial scope, changed path or no-file result, and self-check. That small display is not an authorization shortcut. Tiny direct still respects active scope, compatible `prepare_write` when product writes apply, user-owned judgment, sensitive-action Approval, security and privacy boundaries, residual-risk visibility, and close rules.
 
 Do not create a Decision Packet, require Manual QA, request detached verification, or show a full close checklist unless the task shape, policy, changed surface, detected risk, or user request makes that necessary.
 
@@ -393,7 +406,7 @@ When evidence is missing, name the criterion or claim that lacks support. Do not
 
 Use refs-first evidence display. Cite Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, or trace refs with a short outcome, and embed excerpts only when the user or evaluator needs to inspect the content to decide the next action.
 
-Task shape changes what "enough" looks like. Advisor work usually cites source refs or a review bundle only when recorded evidence is requested. Direct docs-only work can be supported by changed path, diff or patch summary, and self-check. Direct code adds a focused check or a recorded reason no automated check applies. Feature work maps each criterion to Run and artifact refs. UI/UX, workflow, copy, accessibility, product-taste, and visual-output work separates visual or Browser QA artifact evidence from Manual QA judgment. Sensitive work keeps Approval, redaction, and omission refs visible without treating Approval as correctness. Verification-required work needs an Eval that names the evidence reviewed.
+Task shape changes what "enough" looks like. Advisor work usually cites source refs or a review bundle only when recorded evidence is requested. Tiny docs-only work can be supported by the changed path, a one-line patch summary or diff ref, and a self-check that says no meaning changed; if Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed, escalate to ordinary Direct. Direct docs-only work can be supported by changed path, diff or patch summary, and self-check. Direct code adds a focused check or a recorded reason no automated check applies. Feature work maps each criterion to Run and artifact refs. UI/UX, workflow, copy, accessibility, product-taste, and visual-output work separates visual or Browser QA artifact evidence from Manual QA judgment. Sensitive work keeps Approval, redaction, and omission refs visible without treating Approval as correctness. Verification-required work needs an Eval that names the evidence reviewed.
 
 If evidence becomes stale, say why in ordinary language and name the smallest repair. Common causes are baseline drift, changed files after the supporting Run or Eval, approval drift or expiry, missing or failed-integrity artifacts, and relevant Shared Design, domain term, module map, or interface contract changes.
 

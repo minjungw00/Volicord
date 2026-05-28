@@ -60,7 +60,7 @@ Harness에는 정확한 내부 gate가 있지만, 사용자가 보는 상태는 
 - Evidence: 이미 있는 뒷받침이나 확인은 무엇이고, 아직 부족한 것은 무엇인가?
 - Close Readiness: 검증, Manual QA, 수락, 남은 위험 처리, close를 아직 막는 것은 무엇인가?
 
-작고 명확한 일은 `direct`로 가볍게 처리할 수 있습니다. 크거나 위험하거나 여러 파일에 걸치거나 요구가 흐린 일은 변경하기 전에 먼저 범위를 잡아야 합니다.
+작고 명확한 일은 `direct`로 가볍게 처리할 수 있습니다. Typo, 문서 한 문장, obvious rename 같은 tiny edit는 `direct` 아래의 tiny direct profile을 사용할 수 있습니다. 이때 agent는 trivial scope, changed path 또는 file 변경 없음 결과, self-check만 짧게 보여주면 됩니다. 크거나 위험하거나 여러 파일에 걸치거나 요구가 흐리거나, evidence가 많이 필요하거나, 사용자 소유 판단 또는 민감 경계에 닿는 일은 변경하기 전에 먼저 범위를 잡아야 합니다.
 
 구현 계획 전에 더 적극적인 구체화를 원하면 Discovery를 요청할 수 있습니다.
 
@@ -167,6 +167,7 @@ Harness는 이 구분을 설명할 때 여러 관련 라벨을 쓸 수 있습니
 
 작은 `direct` 작업에서는 에이전트가 사용자의 요청에서 최소 Change Unit을 만들어도 됩니다. 사용자가 field를 직접 채울 필요는 없습니다. 아래 예시는 설명용이며 새 schema가 아닙니다.
 
+- Tiny docs sentence: purpose "이 문장만 수정"; out of bounds "의미, 계약, link behavior 변경 없음"; paths "이름 붙은 doc만"; stop if "changed path와 self-check를 넘는 evidence가 필요함."
 - 문서 오탈자: purpose "한 문단의 맞춤법 수정"; out of bounds "의미 변경 없음"; paths "이름 붙은 문서만"; stop if "계약 의미가 바뀜."
 - UI 문구만 변경: purpose "이 label 이름 변경"; out of bounds "동작, layout, localization strategy"; paths "대상 component와 직접 관련된 copy test."
 - 좁은 test 변경: purpose "보고된 case에 대한 regression test 추가"; out of bounds "implementation 변경"; paths "이름 붙은 test file 또는 가까운 test."
@@ -242,7 +243,7 @@ Harness는 이런 경계를 활성 Change Unit 안에서 작업을 유지하는 
 
 근거는 에이전트가 "했습니다"라고 말하는 것이 아닙니다. 변경된 경로, 테스트 결과, 로그, 스크린샷, QA 기록, 검증 결과처럼 수용 기준을 뒷받침하는 자료입니다.
 
-충분한 근거란 파일이나 artifact가 많다는 뜻이 아니라 stated acceptance criteria 또는 completion conditions가 covered됐다는 뜻입니다. 아주 작은 docs-only fix는 changed path, diff 또는 patch summary, self-check만 있으면 될 수 있습니다. Code fix는 보통 diff와 함께 focused test, command, log, 또는 automated check가 적용되지 않는다는 recorded reason이 필요합니다. Feature는 각 수용 기준을 Run 및 artifact refs에 map해야 합니다. UI, UX, copy work는 human judgment가 중요하면 visual evidence와 Manual QA가 필요할 수 있습니다. Sensitive work는 sensitive-action Approval과 redaction refs를 보이게 유지하지만 Approval은 correctness proof가 아닙니다. Verification-required work에는 어떤 evidence를 review했는지 말하는 Eval이 필요합니다.
+충분한 근거란 파일이나 artifact가 많다는 뜻이 아니라 stated acceptance criteria 또는 completion conditions가 covered됐다는 뜻입니다. Tiny docs-only fix는 changed path, 한 줄 diff 또는 patch summary, 의미가 바뀌지 않았다는 self-check만 있으면 될 수 있습니다. Durable evidence coverage, link/render proof, trivial docs edit를 넘는 것이 필요하면 agent는 일반 Direct 또는 Work로 다뤄야 합니다. Code fix는 보통 diff와 함께 focused test, command, log, 또는 automated check가 적용되지 않는다는 recorded reason이 필요합니다. Feature는 각 수용 기준을 Run 및 artifact refs에 map해야 합니다. UI, UX, copy work는 human judgment가 중요하면 visual evidence와 Manual QA가 필요할 수 있습니다. Sensitive work는 sensitive-action Approval과 redaction refs를 보이게 유지하지만 Approval은 correctness proof가 아닙니다. Verification-required work에는 어떤 evidence를 review했는지 말하는 Eval이 필요합니다.
 
 큰 근거는 먼저 참조(ref)와 짧은 결과로 보여줘야 합니다. 로그, 스크린샷, diff, trace, Run 세부사항, Eval 세부사항, Manual QA note, artifact는 사용자나 다음 검토자가 내용을 살펴봐야 할 때가 아니면 기본 맥락에 붙여 넣지 않습니다. Artifact store는 loose file dump가 아닙니다. 유용한 근거는 registered artifact ref로 표시되어야 하며, 필요할 때 hash 또는 size, redaction state, retention 또는 availability, 어떤 owner record를 뒷받침하는지 함께 보여줘야 합니다.
 
@@ -361,6 +362,14 @@ flowchart LR
 8. 필요하면 Close Readiness에서 검증, Manual QA, 남은 위험, 최종 수락, close blocker를 처리합니다.
 
 작은 `direct` 작업은 뒤쪽 확인 중 일부를 건너뛸 수 있습니다. 더 큰 작업은 그런 확인을 숨기지 말고, 필요할 때만 보여줘야 합니다. 어떤 경우든 사용자에게 유용한 출력은 같은 쉬운 질문을 중심에 둡니다. 무엇이 바뀌었는지, 무엇을 확인했는지, 어떤 위험이 남았는지, 지금 어떤 결정이 필요한지입니다.
+
+Tiny direct 결과는 이 정도로 작을 수 있습니다.
+
+```text
+tiny direct로 완료했습니다.
+Scope: `docs/help.md`의 typo 하나를 고쳤고 의미나 계약 변경은 없습니다.
+Evidence: changed path와 self-check, escalation 없음.
+```
 
 `direct` 작업 결과는 작고 부담 없어야 합니다. 무엇을 요청했는지, 범위가 어디까지였는지, 무엇이 바뀌었는지, 무엇을 확인했는지, `work`로 전환됐는지, 닫기에 영향을 주는 위험이나 후속 작업이 있는지만 보여주면 됩니다. 결과에 영향을 주지 않은 모든 gate를 다시 나열할 필요는 없습니다.
 

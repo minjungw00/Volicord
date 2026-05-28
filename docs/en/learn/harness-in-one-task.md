@@ -33,6 +33,17 @@ Harness can sound heavier than it feels in use. The strict reference docs need e
 
 The examples below start there. They show how Harness keeps a small task light and gives a larger task enough structure to stay followable.
 
+## Tiny direct profile in practice
+
+Tiny direct is a profile under `direct`, not a new work mode. Use it for a typo, one docs sentence, or an obvious rename when scope and result are already clear.
+
+```text
+Request: Fix the typo in the install note.
+Tiny direct result: changed `docs/help.md`; self-check says spelling only, no meaning or contract change; no escalation.
+```
+
+Tiny does not bypass judgment or security. If the sentence changes meaning, a link or rendered output must be checked, a sensitive area appears, or the edit needs evidence beyond the tiny changed-path/self-check note, the same Task should move to ordinary `direct` or `work` according to the broader scope.
+
 ## Example A: Direct task
 
 ### User request: "Change the button label."
@@ -371,6 +382,7 @@ This tutorial only shows why those pieces exist.
 The two flows above are anchors, not the whole universe. Harness should stay practical across many kinds of work:
 
 - A leaf code fix can still be `direct`: "Fix the null crash in the date formatter" may stay inside one function and its focused test. The result can close with a changed-path summary, test output, and self-check. If the fix changes public behavior or shared contracts, the same Task should move toward `work`.
+- Tiny direct is the smallest Direct profile: typo, one docs sentence, or obvious rename; changed path plus self-check may be enough. It escalates to ordinary `direct` when scope broadens or Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed, and to `work` when judgment, sensitive category, public interface, UX workflow, or multi-step delivery appears.
 - Evidence shape should follow the task shape: advisor work usually needs only cited sources unless recorded evidence is requested; direct docs-only work can use a changed path, diff or patch summary, and self-check; direct code adds a focused test, command, log, or reason no automated check applies; work features map each criterion to Run and artifact refs; UI/UX/copy work may need visual evidence and Manual QA; sensitive work keeps Approval and redaction context separate from correctness; verification-required work needs an Eval that reviewed current evidence.
 - A UI/UX choice often needs a Decision Packet: a checkout error might be shown as an inline message, toast, or modal/layer. The packet should compare flow interruption, accessibility, copy risk, and product tone. Backend validation can continue if it does not commit to the final experience, but the UX should not be claimed complete.
 - Auth choices mix product and security judgment: choosing session cookie, JWT, or social login affects revocation, CSRF/XSS exposure, client support, and operational cost. Failed-login copy has a similar trade-off: generic, specific, or hybrid wording changes account-enumeration risk, clarity, support burden, and tone.

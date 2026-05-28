@@ -188,7 +188,7 @@ A guarantee level where the harness can detect violations and mark state blocked
 
 ### Direct
 
-A work mode for small, low-risk changes with obvious scope and result. Direct product writes still require an active scoped Change Unit.
+A work mode for small, low-risk changes with obvious scope and result. Direct product writes still require an active scoped Change Unit. Direct includes the tiny direct profile for trivial typo, single-sentence docs, or obvious rename work; Tiny is not a top-level mode and does not bypass user-owned judgment, sensitive-action Approval, security boundaries, evidence, scope, Write Authorization, residual-risk visibility, or close rules.
 
 ### Docs-Maintenance Conformance
 
@@ -216,7 +216,7 @@ A state record mapping acceptance criteria or completion conditions to supportin
 
 ### Evidence Profile
 
-A named evidence sufficiency profile, such as `advisor`, `direct docs-only`, `direct code`, `work feature`, `UI/UX/copy work`, `sensitive work`, or `verification-required work`, that tells validators what evidence is enough for the task shape.
+A named evidence sufficiency profile, such as `advisor`, `direct docs-only`, `direct code`, `work feature`, `UI/UX/copy work`, `sensitive work`, or `verification-required work`, that tells validators what evidence is enough for the task shape. Tiny direct docs-only work is handled under Direct evidence expectations with the smallest changed-path, patch-summary or diff-ref, and self-check support; it is not a separate authorization path.
 
 ### Evidence Sufficiency
 
@@ -518,9 +518,17 @@ A verification independence profile where a subagent or helper reviews work with
 
 The user value unit tracked by the kernel. It carries mode, lifecycle phase, gates, result, close reason, assurance, current summary, decisions, evidence, and projection status.
 
+### Task Level
+
+A display and routing label for task shape: Tiny, Direct, Work, or High-risk Work. Tiny is a profile under `direct`; Direct is small low-risk code or docs work; Work covers features, UX workflow, auth-facing behavior, schema, public API/interface, and multi-file or multi-step delivery; High-risk Work covers auth, security, privacy, secrets, infra, and similarly sensitive categories. Task Level is not a new kernel `mode` enum, gate, schema field, approval, or Write Authorization source.
+
 ### TDD Trace
 
 A record of red, green, and refactor evidence for a Change Unit or behavior slice, or a recorded non-TDD justification where policy allows it. A RED target or plan describes the intended failing check; RED evidence means an actual failing test artifact/log/result or another explicit policy-recognized failing-check evidence. When required, the normal path records RED evidence before non-test implementation writes, GREEN evidence after implementation, and refactor/check evidence when relevant, then links the trace to Evidence Manifest coverage. TDD Trace can be execution evidence for a Feedback Loop, but it is not the canonical selected-loop record; a waiver must point back to the alternate Feedback Loop that will prove behavior.
+
+### Tiny Direct Profile
+
+A Direct subprofile for a typo, single docs sentence, or obvious rename where scope, result, and no-user-judgment boundary are immediately clear. It keeps interaction minimal, but it must escalate to ordinary Direct when scope broadens while remaining low-risk and narrow, or when Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed. It must route to Work when product judgment, material technical judgment, architecture choice, public interface/API impact, UX workflow, schema, sensitive category, or multi-step delivery appears.
 
 ### Verification
 

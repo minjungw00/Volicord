@@ -45,7 +45,7 @@ Harness가 연결되어 있으면 사용자가 Harness 사용을 명시적으로
 - 사용자가 소유하는 제품 판단 또는 비용·호환성·보안·유지보수·migration·interface·dependency·위험 영향이 큰 중요한 기술 판단
 - 근거, 검증, Manual QA, 수락, 남은 위험이 필요한 작업
 
-작은 `direct` 작업은 가볍게 유지합니다. 질문에 답하거나, 코드를 살펴보거나, 결과를 설명하거나, 이미 좁은 모양이 분명한 작고 위험이 낮은 변경을 처리하는 데 불필요한 절차를 덧붙이지 않습니다.
+작은 `direct` 작업은 가볍게 유지합니다. 질문에 답하거나, 코드를 살펴보거나, 결과를 설명하거나, 이미 좁은 모양이 분명한 작고 위험이 낮은 변경을 처리하는 데 불필요한 절차를 덧붙이지 않습니다. typo, 문서 한 문장, obvious rename은 그 안에 사용자 소유 판단, 민감 category, security boundary, tiny changed-path/self-check note를 넘는 evidence need가 숨어 있지 않을 때 `direct` 아래의 tiny direct profile을 사용할 수 있습니다.
 
 보여줄 것:
 
@@ -200,6 +200,17 @@ Discovery 밖에서는 다음 안전한 행동을 바꾸는 질문만 합니다.
 
 `work`는 기능 추가, 구조 변경, 위험한 수정, 여러 파일 변경, 요구가 불명확한 일, 의미 있는 근거와 독립 검증이 필요한 일에 씁니다.
 
+다음 task level은 routing label이며 새 mode value가 아닙니다.
+
+| Level | 쓸 때 | 상향할 때 |
+|---|---|---|
+| Tiny | typo, 문서 한 문장, obvious rename. `direct` 아래 profile이지 새 mode가 아닙니다. | Scope가 넓어지거나, tiny changed-path/self-check note를 넘는 evidence가 필요하거나, 판단, approval, 민감, security, risk boundary가 나타날 때. |
+| Direct | 작고 low-risk인 code 또는 docs change. | Product judgment, architecture choice, public interface 또는 API impact, UX workflow, sensitive category, multi-file scope, multi-step delivery가 나타날 때. |
+| Work | Feature, UX workflow, auth-facing behavior, schema, public API/interface, multi-file/multi-step work. | Auth, security, privacy, secrets, infra, 또는 다른 민감 영역 때문에 high-risk work가 될 때. |
+| High-risk Work | Auth, security, privacy, secrets, infra 또는 비슷하게 민감한 work. | 계속 `work`에 두고 approval, Decision Packet, evidence, verification, QA, residual risk를 owner path로 라우팅합니다. |
+
+정확한 mode/profile 계약은 [커널 참조](../reference/kernel.md#작업-모드)가 담당합니다.
+
 `direct` 작업이 커지면 같은 Task를 `work`로 전환하고 이유를 보여줍니다.
 
 ## `direct` 절차 예산
@@ -211,6 +222,8 @@ Discovery 밖에서는 다음 안전한 행동을 바꾸는 질문만 합니다.
 - 제품 파일을 쓰기 전에 활성 최소 Change Unit을 만들거나 선택합니다.
 - 정확한 쓰기 시도 전에 write authority를 보여줍니다.
 - 변경 경로, 자체 확인 또는 다른 가벼운 근거, escalation 여부, 닫기에 영향을 주는 위험을 보고합니다.
+
+Tiny direct에서는 사용자에게 보이는 예산을 더 줄일 수 있습니다. Trivial scope, changed path 또는 file 변경 없음 결과, self-check 정도면 됩니다. 이 작은 표시가 권한 우회는 아닙니다. Tiny direct도 active scope, 제품 파일 쓰기에 적용되는 compatible `prepare_write`, 사용자 소유 판단, sensitive-action Approval, security와 privacy boundary, residual-risk visibility, close rule을 지켜야 합니다.
 
 Task 모양, policy, 변경된 표면, 감지된 위험, 사용자 요청 때문에 필요해진 경우가 아니라면 Decision Packet을 만들거나, Manual QA를 요구하거나, detached verification을 요청하거나, 전체 close checklist를 보여주지 않습니다.
 
@@ -393,7 +406,7 @@ Sufficiency는 양이 아니라 coverage로 표시합니다. 중요한 질문은
 
 근거 표시는 먼저 참조를 보여주는 방식(refs-first)으로 합니다. Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, trace ref와 짧은 결과를 보여주고, 사용자나 evaluator가 다음 행동을 결정하기 위해 내용을 살펴봐야 할 때만 excerpt를 본문에 넣습니다.
 
-Task shape에 따라 "충분함"의 모습은 달라집니다. Advisor work는 recorded evidence가 요청된 경우에만 보통 source refs 또는 review bundle을 cite합니다. Direct docs-only work는 changed path, diff 또는 patch summary, self-check로 뒷받침될 수 있습니다. Direct code는 focused check 또는 automated check가 적용되지 않는다는 recorded reason을 더합니다. Feature work는 각 criterion을 Run과 artifact refs에 map합니다. UI/UX, workflow, copy, accessibility, product-taste, visual-output work는 visual 또는 Browser QA artifact evidence와 Manual QA judgment를 분리합니다. Sensitive work는 Approval, redaction, omission refs를 visible하게 유지하지만 Approval을 correctness로 취급하지 않습니다. Verification-required work에는 reviewed evidence를 이름 붙이는 Eval이 필요합니다.
+Task shape에 따라 "충분함"의 모습은 달라집니다. Advisor work는 recorded evidence가 요청된 경우에만 보통 source refs 또는 review bundle을 cite합니다. Tiny docs-only work는 changed path, 한 줄 patch summary 또는 diff ref, 의미가 바뀌지 않았다는 self-check로 뒷받침될 수 있습니다. Evidence Manifest coverage, artifact refs, link/render proof, 또는 tiny result note를 넘는 다른 evidence가 필요하면 일반 Direct로 상향합니다. Direct docs-only work는 changed path, diff 또는 patch summary, self-check로 뒷받침될 수 있습니다. Direct code는 focused check 또는 automated check가 적용되지 않는다는 recorded reason을 더합니다. Feature work는 각 criterion을 Run과 artifact refs에 map합니다. UI/UX, workflow, copy, accessibility, product-taste, visual-output work는 visual 또는 Browser QA artifact evidence와 Manual QA judgment를 분리합니다. Sensitive work는 Approval, redaction, omission refs를 visible하게 유지하지만 Approval을 correctness로 취급하지 않습니다. Verification-required work에는 reviewed evidence를 이름 붙이는 Eval이 필요합니다.
 
 Evidence가 stale이 되면 이유를 쉬운 말로 말하고 가장 작은 repair를 이름 붙입니다. 흔한 원인은 baseline drift, supporting Run 또는 Eval 이후 changed files 변경, approval drift 또는 expiry, missing 또는 failed-integrity artifacts, relevant Shared Design, domain term, module map, interface contract changes입니다.
 

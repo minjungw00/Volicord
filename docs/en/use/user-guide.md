@@ -60,7 +60,7 @@ The agent should decide whether the request is read-only advice, small direct wo
 - Evidence: what support or checks already exist, and what is still missing?
 - Close Readiness: what would still block verification, Manual QA, acceptance, residual-risk handling, or close?
 
-If the task is small, the agent may handle it as direct work. If the task is larger, risky, multi-file, or unclear, it should shape the work before changing product files.
+If the task is small, the agent may handle it as direct work. Tiny edits such as a typo, one docs sentence, or an obvious rename can use the tiny direct profile under `direct`: the agent should keep the display to the trivial scope, changed path or no-file result, and self-check. If the task is larger, risky, multi-file, unclear, evidence-heavy, or touches user-owned judgment or sensitive boundaries, it should shape the work before changing product files.
 
 When you want stronger clarification before planning, ask for Discovery:
 
@@ -167,6 +167,7 @@ Harness may use several related labels for this:
 
 For a small direct task, the agent can usually generate the minimal Change Unit from the request instead of asking you to fill in fields. These examples are explanatory, not a schema:
 
+- Tiny docs sentence: purpose "fix this sentence only"; out of bounds "no meaning, contract, or link behavior change"; paths "the named doc only"; stop if "evidence beyond changed path and self-check is needed."
 - Docs typo: purpose "fix spelling in one paragraph"; out of bounds "no meaning change"; paths "the named doc only"; stop if "the edit changes the contract."
 - Copy-only UI change: purpose "rename this label"; out of bounds "behavior, layout, localization strategy"; paths "the target component and direct copy test."
 - Focused test change: purpose "add a regression test for the reported case"; out of bounds "implementation changes"; paths "the named test file or nearby test."
@@ -242,7 +243,7 @@ Evidence answers: "What supports the claim that this work is done?"
 
 Evidence is not just "the agent says it changed the thing." It can include changed paths, test output, logs, screenshots, QA notes, verification results, or other artifacts that support the acceptance criteria.
 
-Enough evidence means the stated acceptance criteria or completion conditions are covered, not that many files or artifacts exist. A tiny docs-only fix may need only a changed path, diff or patch summary, and self-check. A code fix usually needs the diff plus a focused test, command, log, or a recorded reason no automated check applies. A feature should map each acceptance criterion to Run and artifact refs. UI, UX, and copy work may need visual evidence and Manual QA when human judgment matters. Sensitive work keeps sensitive-action Approval and redaction refs visible, but Approval is not proof of correctness. Verification-required work needs an Eval that says which evidence it reviewed.
+Enough evidence means the stated acceptance criteria or completion conditions are covered, not that many files or artifacts exist. A tiny docs-only fix may need only a changed path, one-line diff or patch summary, and self-check that no meaning changed. If durable evidence coverage, link/render proof, or more than a trivial docs edit is needed, the agent should treat it as ordinary Direct or Work. A code fix usually needs the diff plus a focused test, command, log, or a recorded reason no automated check applies. A feature should map each acceptance criterion to Run and artifact refs. UI, UX, and copy work may need visual evidence and Manual QA when human judgment matters. Sensitive work keeps sensitive-action Approval and redaction refs visible, but Approval is not proof of correctness. Verification-required work needs an Eval that says which evidence it reviewed.
 
 For large evidence, the agent should show refs and short outcomes first. Logs, screenshots, diffs, traces, Run details, Eval details, Manual QA notes, and artifacts should not be pasted into the default context unless you or the next reviewer need to inspect them. The artifact store is not a loose file dump: useful evidence should appear as registered artifact refs with hash or size details when relevant, redaction state, retention or availability, and the owner record they support.
 
@@ -359,6 +360,14 @@ Typical flow:
 8. When needed, Close Readiness covers verification, Manual QA, residual risk, acceptance, and close blockers before close.
 
 Many small direct tasks skip some later checks. Bigger work should not hide those checks; it should show them only when they matter. In every case, useful user-facing output favors the same plain questions: what changed, what was checked, what remains risky, and what decision is needed now.
+
+A tiny direct result can be as small as:
+
+```text
+Done as tiny direct.
+Scope: fixed one typo in `docs/help.md`; no meaning or contract change.
+Evidence: changed path plus self-check; no escalation.
+```
 
 A direct task result should stay compact and low-ceremony: what was requested, what stayed in scope, what changed, what was checked, whether it escalated, and any close-relevant risk or follow-up. It should not restate every gate when those gates did not affect the result.
 

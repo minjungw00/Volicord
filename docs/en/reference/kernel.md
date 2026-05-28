@@ -115,13 +115,26 @@ This document does not own:
 
 `work` is for structured implementation, non-local change, riskier change, or work that needs independent verification. It is write-capable, requires an active scoped Change Unit before product writes, and cannot be marked `detached_verified` by same-session self-review.
 
+Task level labels are display and routing aids, not additional mode enum values:
+
+| Task level | Kernel mode | Meaning |
+|---|---|---|
+| Tiny | `direct` | A Direct subprofile for a typo, one docs sentence, or an obvious rename whose scope, result, and no-user-judgment boundary are immediately clear. |
+| Direct | `direct` | A small low-risk code or docs change with narrow scope and lightweight evidence. |
+| Work | `work` | A feature, UX workflow, auth-facing behavior change, schema change, public API or public interface change, or multi-file/multi-step delivery. |
+| High-risk Work | `work` | Work involving auth, security, privacy, secrets, infrastructure, or similarly sensitive categories. |
+
 ## Direct fast path
 
 Direct is a reduced interaction path, not a reduced authority path. Direct still needs an active scoped Change Unit before product writes and a compatible `prepare_write` decision before each exact write attempt. For small obvious requests, the Change Unit may be minimal and derived from the user's request, as long as it records the intended operation and scoped write surface clearly enough for `prepare_write` and `record_run` compatibility checks.
 
+The tiny direct profile is a Direct subprofile for trivial edits such as a typo, single docs sentence with no meaning change, or obvious rename. It is not a new top-level work mode and does not add a `mode` value. Tiny direct can keep the visible user interaction to scope, changed path or no-file result, and a self-check. It must not bypass user-owned judgment, sensitive-action Approval, security or privacy boundaries, scope compatibility, Write Authorization where product writes apply, evidence requirements when evidence is required, residual-risk visibility, or close rules.
+
 No Decision Packet is created unless blocking user-owned judgment is detected. Evidence can be lightweight according to the applicable evidence profile, such as a changed path list, patch summary or diff artifact, command result when relevant, and self-check summary. Examples of minimal direct Change Unit contents in Learn and Use docs are explanatory examples of existing Change Unit semantics; they do not define a new schema or field set.
 
 Manual QA, detached verification, and residual-risk acceptance are not required for direct work unless policy, changed surface, user request, or detected risk requires them. If scope, risk, affected interface, or evidence expectations grow beyond the direct assumptions, the same Task escalates to `work` rather than continuing as direct.
+
+Tiny direct escalates to ordinary `direct` when scope broadens beyond the trivial edit while remaining low-risk and narrow, or when Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed. Ordinary `direct` escalates to `work` when product judgment, material technical judgment, architecture choice, public interface or public API impact, UX workflow impact, schema impact, sensitive category, multi-file or multi-step delivery, or nontrivial evidence/verification appears.
 
 Direct must escalate to `work` when the target is no longer obvious, observed or intended changed paths fall outside the active Change Unit, multiple product areas are affected, a public API or module contract may change, sensitive or risky behavior appears, independent verification or Manual QA becomes close-relevant, or user-owned product or material technical judgment is required.
 
@@ -563,6 +576,7 @@ Mapping examples:
 
 | Task shape | Criterion or completion condition | Supporting refs that can make the row supported |
 |---|---|---|
+| `tiny direct` docs-only | "Completion condition: one typo or one sentence corrected with no meaning change" | Changed path plus a recorded patch summary or diff ref, and a self-check note. If the docs edit changes meaning, needs link/render evidence, or requires a durable Evidence Manifest for close, treat it as ordinary `direct docs-only` or `work` according to scope. |
 | `direct docs-only` | "AC-01 typo corrected without meaning change" | `RUN-DOCS-001` plus `ART-DIFF-001` or a recorded patch summary; self-check summary records the rendered or linked doc check. |
 | `direct code` | "AC-01 formatter returns fallback for null date" | `RUN-CODE-001`, `ART-DIFF-001`, and `ART-TEST-001`; if no automated check applies, the Run records the reason and self-check. |
 | `work feature` | "AC-01 login form submits email" and "AC-02 failed login message appears" | Each AC maps separately to Run refs, diff/test/log ArtifactRefs, and any Feedback Loop or TDD trace refs that support that criterion. |
@@ -655,6 +669,8 @@ The kernel uses lifecycle fields plus gates. Compact display states are derived 
 ```text
 advisor | direct | work
 ```
+
+Tiny is not a `mode` value. The tiny direct profile is represented as `mode=direct` with narrow Direct-profile display and evidence expectations.
 
 ### Lifecycle Phase
 
