@@ -33,8 +33,8 @@ Harness is also not a chat script, test harness, evaluation harness, or dashboar
 
 | Reader role | Start here | Then use |
 |---|---|---|
-| New reader | [Overview](learn/overview.md) | [Harness in One Task](learn/harness-in-one-task.md), then [Concepts](learn/concepts.md) |
-| User | [User Guide](use/user-guide.md) | [Agent Session Flow](use/agent-session-flow.md) when you need the agent-facing flow |
+| New reader | [Harness in 15 Minutes](learn/harness-in-15-minutes.md) | [Overview](learn/overview.md), [Harness in One Task](learn/harness-in-one-task.md), then [Concepts](learn/concepts.md) |
+| User | [User Guide](use/user-guide.md) | [Decision Packet Cookbook](use/decision-packet-cookbook.md), then [Agent Session Flow](use/agent-session-flow.md) when you need the agent-facing flow |
 | Implementer | [Implementation Overview](build/implementation-overview.md) | [First Runnable Slice](build/first-runnable-slice.md), [Runtime Walkthrough](build/runtime-walkthrough.md), [MVP Plan](build/mvp-plan.md), then the relevant Reference owner |
 | Operator or conformance author | [Operations And Conformance Reference](reference/operations-and-conformance.md#contract-map) | [Runtime Architecture](reference/runtime-architecture.md), [Security Threat Model](reference/security-threat-model.md), [MCP API And Schemas](reference/mcp-api-and-schemas.md), [Storage And DDL](reference/storage-and-ddl.md) |
 | Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md) |
@@ -50,6 +50,7 @@ Documentation-maintenance checks are read-only review guidance, not runtime conf
 Use Learn when you want the mental model before exact contracts.
 
 - [Overview](learn/overview.md)
+- [Harness in 15 Minutes](learn/harness-in-15-minutes.md)
 - [Harness in One Task](learn/harness-in-one-task.md)
 - [Concepts](learn/concepts.md)
 - [Purpose and Principles](learn/purpose-and-principles.md)
@@ -59,11 +60,12 @@ Use Learn when you want the mental model before exact contracts.
 Use this path when you want to run an AI-assisted development session under Harness. These pages prioritize user-facing flow, status interpretation, decisions, and recovery paths.
 
 - [User Guide](use/user-guide.md)
+- [Decision Packet Cookbook](use/decision-packet-cookbook.md)
 - [Agent Session Flow](use/agent-session-flow.md)
 
 ## Build
 
-Use this path for implementation orientation and planning review. These pages keep the first path narrow: v0.1 Kernel MVP first, Kernel Smoke as its narrow conformance profile, Agency-Hardened MVP later through staged packs, and roadmap automation outside the staged delivery unless owner docs promote it.
+Use this path for implementation orientation and planning review. These pages keep the first path narrow: v0.1 Kernel MVP first, Kernel Smoke as its narrow conformance profile, v0.2 through v0.4 as staged packs toward Agency-Hardened MVP, and v1+ Expansion outside staged delivery unless owner docs promote and prove it.
 
 Start with the [Documentation Acceptance Status](build/implementation-overview.md#documentation-acceptance-status). Until maintainers deliberately accept first runtime-batch planning there, Build pages remain planning guidance and do not authorize runtime/server implementation.
 

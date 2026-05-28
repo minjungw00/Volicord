@@ -27,6 +27,13 @@ Harness는 prompt 묶음이 아니며, source control, 테스트, 코드 리뷰,
 | English | [en/README.md](en/README.md) |
 | 한국어 | [ko/README.md](ko/README.md) |
 
+## Quick First Reads / 빠른 첫 읽기
+
+| Path / 경로 | English | 한국어 |
+|---|---|---|
+| Practical tour / 실전 둘러보기 | [Harness in 15 Minutes](en/learn/harness-in-15-minutes.md) | [15분 만에 보는 Harness](ko/learn/harness-in-15-minutes.md) |
+| Decision examples / 판단 예시 | [Decision Packet Cookbook](en/use/decision-packet-cookbook.md) | [Decision Packet Cookbook](ko/use/decision-packet-cookbook.md) |
+
 Use the language-specific entrypoints for reader routes, the detailed comparison table, Reference owner links, and maintenance guidance.
 
 독자별 경로, 상세 비교표, Reference owner 링크, 유지보수 지침은 언어별 진입점을 사용합니다.

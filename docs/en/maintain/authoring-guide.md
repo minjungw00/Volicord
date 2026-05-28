@@ -74,6 +74,8 @@ Keep entrypoints current and compact. Do not use them to preserve migration hist
 
 README pages may summarize path ownership, but they should not copy strict contracts. Link to Reference owners for exact schemas, DDL, gates, state transitions, fixture semantics, template bodies, and official definitions.
 
+First-time reader routes should include the fast practical tour before deeper Learn and Reference paths. Use routes should include practical Decision Packet examples near the User Guide so readers can understand judgment prompts before reading strict Reference contracts.
+
 ## Standard opening pattern
 
 Every active document should begin with a short, predictable opening. Keep it compact, but make the reader's path clear. Template reference files under `reference/templates` use the template-specific opening below instead of the general opening headings.
@@ -277,6 +279,7 @@ Use this map when deciding where exact detail belongs. It identifies the active 
 |---|---|
 | Repo and docs entrypoints, reader routes, language choice, document list, target tree summary | repo root `README.md`; docs root `docs/README.md`; language entrypoints `docs/en/README.md` and `docs/ko/README.md` |
 | Shared reader mental model and three-space overview | `learn/overview.md` |
+| Fast first-reader practical tour and short usage scenarios | `learn/harness-in-15-minutes.md` |
 | Small core concept introduction | `learn/concepts.md` |
 | Project purpose, target users, values, scope, non-goals, automation philosophy | `learn/purpose-and-principles.md` |
 | Strategic thesis, failure model, MVP boundary, principle groups | `learn/purpose-and-principles.md` for reader explanation; `reference/design-quality-policies.md` and `reference/kernel.md` for exact contract impact |
@@ -291,6 +294,7 @@ Use this map when deciding where exact detail belongs. It identifies the active 
 | All projection template bodies and display card shapes | `reference/templates/*.md` |
 | Design-quality policy contracts, validators, severity composition, waiver semantics, evidence expectations, close impact | `reference/design-quality-policies.md` |
 | User-facing conversation, status reading, user judgments, close checklist | `use/user-guide.md` |
+| Practical Decision Packet examples and user-facing judgment prompt patterns | `use/decision-packet-cookbook.md` for examples; `reference/kernel.md` and `reference/mcp-api-and-schemas.md` for exact Decision Packet behavior |
 | User/agent session procedure | `use/agent-session-flow.md` |
 | Agent surface capability profiles, common connector contract, fallback semantics, Role Lens, connector conformance overview | `reference/agent-integration.md` |
 | Surface-specific recipes | `reference/surface-cookbook.md` |
