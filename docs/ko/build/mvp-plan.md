@@ -16,7 +16,7 @@
 
 ## 먼저 읽을 것
 
-[구현 개요](implementation-overview.md)의 [문서 승인 상태](implementation-overview.md#문서-승인-상태), [첫 실행 가능한 조각](first-runnable-slice.md), [Runtime Walkthrough](runtime-walkthrough.md)를 먼저 읽습니다. 정확한 API contract는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)를 사용합니다. Storage detail과 DDL은 [Storage와 DDL](../reference/storage-and-ddl.md)을 사용합니다. Design-quality gate와 validator behavior는 [Design Quality Policies](../reference/design-quality-policies.md)를 사용합니다. Conformance fixture semantics는 [운영과 Conformance](../reference/operations-and-conformance.md)를 사용합니다. Post-MVP 후보와 승격 기준은 [로드맵](../roadmap.md)을 사용합니다.
+[구현 개요](implementation-overview.md)의 [문서 승인 상태](implementation-overview.md#문서-승인-상태), [첫 실행 가능한 조각](first-runnable-slice.md), [Runtime Walkthrough](runtime-walkthrough.md)를 먼저 읽습니다. 정확한 API contract는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)를 사용합니다. Storage detail과 DDL은 [Storage와 DDL](../reference/storage-and-ddl.md)을 사용합니다. Design-quality gate와 validator behavior는 [Design Quality Policies](../reference/design-quality-policies.md)를 사용합니다. Conformance fixture semantics는 [Conformance Fixtures 참조](../reference/conformance-fixtures.md)를 사용합니다. Operator procedure와 conformance run overview는 [운영과 Conformance](../reference/operations-and-conformance.md)를 사용합니다. Post-MVP 후보와 승격 기준은 [로드맵](../roadmap.md)을 사용합니다.
 
 ## 핵심 생각
 
@@ -94,11 +94,11 @@ flowchart LR
   Smoke -. "checks captured outputs" .-> Close
 ```
 
-정확한 state와 close behavior는 [커널 참조](../reference/kernel.md)가, public tool shape는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)가, projection rule은 [문서 Projection 참조](../reference/document-projection.md)가, fixture semantics는 [운영과 Conformance](../reference/operations-and-conformance.md#conformance-fixture-format)가 담당합니다. 이 flow는 pack gate나 fixture body requirement를 추가하지 않습니다.
+정확한 state와 close behavior는 [커널 참조](../reference/kernel.md)가, public tool shape는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)가, projection rule은 [문서 Projection 참조](../reference/document-projection.md)가, fixture semantics는 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)가 담당합니다. 이 flow는 pack gate나 fixture body requirement를 추가하지 않습니다.
 
-실제 fixture 작성 순서는 [Kernel Smoke Authoring Queue](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue)를 사용합니다. 이 queue는 v0.1 runtime fixture candidate를 이 stage에 매핑하되 exact fixture body shape를 바꾸지 않습니다.
+실제 fixture 작성 순서는 [Kernel Smoke Authoring Queue](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue)를 사용합니다. 이 queue는 v0.1 runtime fixture candidate를 이 stage에 매핑하되 exact fixture body shape를 바꾸지 않습니다.
 
-Kernel Smoke pass/fail은 runtime fixture가 Core 또는 operator action을 실행하고 captured state, `task_events`, artifacts, projections, primary errors를 비교해서 결정됩니다. Status prose, Journey Card text, close prose, scenario description은 관찰 가능한 context일 뿐입니다. Exact fixture body와 assertion rule은 [운영과 Conformance](../reference/operations-and-conformance.md#conformance-fixture-format)가 담당합니다.
+Kernel Smoke pass/fail은 runtime fixture가 Core 또는 operator action을 실행하고 captured state, `task_events`, artifacts, projections, primary errors를 비교해서 결정됩니다. Status prose, Journey Card text, close prose, scenario description은 관찰 가능한 context일 뿐입니다. Exact fixture body와 assertion rule은 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)가 담당합니다.
 
 ## v0.2 Evidence & Projection Pack
 

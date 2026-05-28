@@ -20,7 +20,7 @@ This document does not define MCP schemas, SQLite DDL, state transition tables, 
 
 ## Before you read
 
-Use [Kernel Reference](kernel.md) for lifecycle, gates, and close semantics; [MCP API And Schemas](mcp-api-and-schemas.md) for public request/response shapes and `ValidatorResult`; and [Operations And Conformance Reference](operations-and-conformance.md) for fixture assertion semantics.
+Use [Kernel Reference](kernel.md) for lifecycle, gates, and close semantics; [MCP API And Schemas](mcp-api-and-schemas.md) for public request/response shapes and `ValidatorResult`; and [Conformance Fixtures Reference](conformance-fixtures.md#fixture-assertion-semantics) for fixture assertion semantics.
 
 ## Main idea
 

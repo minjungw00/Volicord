@@ -18,7 +18,7 @@ This is reference documentation. It does not authorize runtime/server implementa
 
 ## Before you read
 
-Use [Runtime Architecture Reference](runtime-architecture.md) for the runtime spaces, Core process model, transaction ordering, and guarantee-level definitions. Use [Agent Integration Reference](agent-integration.md) for connector capability profiles, generated manifests, context push/pull, and fallback display. Use [Operations And Conformance Reference](operations-and-conformance.md) for `doctor`, `serve mcp`, artifact checks, recover, reconcile, and fixture semantics.
+Use [Runtime Architecture Reference](runtime-architecture.md) for the runtime spaces, Core process model, transaction ordering, and guarantee-level definitions. Use [Agent Integration Reference](agent-integration.md) for connector capability profiles, generated manifests, context push/pull, and fallback display. Use [Operations And Conformance Reference](operations-and-conformance.md) for `doctor`, `serve mcp`, artifact checks, recover, and reconcile. Use [Conformance Fixtures Reference](conformance-fixtures.md) for fixture semantics.
 
 Use [MCP API And Schemas](mcp-api-and-schemas.md) for public tool envelopes, errors, and replay behavior. Use [Storage And DDL](storage-and-ddl.md) for exact storage layout, artifact rows, and DDL. Use [Kernel Reference](kernel.md) for state transitions, gates, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, and close.
 
@@ -50,7 +50,8 @@ This document does not own:
 - public MCP request/response schemas, public error shapes, or idempotency/replay contracts; see [MCP API And Schemas](mcp-api-and-schemas.md)
 - SQLite DDL, storage layout, canonical enum hardening, artifact row shape, or exact file layout; see [Storage And DDL](storage-and-ddl.md)
 - kernel state transitions, gates, Approval lifecycle, `prepare_write`, Write Authorization, acceptance, residual-risk acceptance, or close; see [Kernel Reference](kernel.md)
-- operator command semantics, diagnostic severity baselines, recover/reconcile/export behavior, or fixture assertion semantics; see [Operations And Conformance Reference](operations-and-conformance.md)
+- operator command semantics, diagnostic severity baselines, or recover/reconcile/export behavior; see [Operations And Conformance Reference](operations-and-conformance.md)
+- fixture assertion semantics; see [Conformance Fixtures Reference](conformance-fixtures.md)
 - connector capability-profile field details, generated-manifest contracts, or surface recipes; see [Agent Integration Reference](agent-integration.md) and [Surface Cookbook](surface-cookbook.md)
 - projection template bodies or managed-block rendering rules; see [Document Projection Reference](document-projection.md)
 - runtime implementation, generated operational files, executable fixtures, runtime data, or production deployment
@@ -167,5 +168,6 @@ Guard, freeze, careful-mode, recipe names, product names, surface names, and fri
 | `state.sqlite`, `task_events`, artifact storage rows, DDL, enum hardening, hashes, storage layout | [Storage And DDL](storage-and-ddl.md) |
 | Runtime spaces, Core transaction ordering, artifact architecture, guarantee level definitions | [Runtime Architecture Reference](runtime-architecture.md) |
 | Connector capability profiles, generated manifests, context push/pull, fallback display | [Agent Integration Reference](agent-integration.md) |
-| Operator diagnostics, severity baselines, `doctor`, `serve mcp`, artifact check, recover, reconcile, conformance fixtures | [Operations And Conformance Reference](operations-and-conformance.md) |
+| Operator diagnostics, severity baselines, `doctor`, `serve mcp`, artifact check, recover, reconcile | [Operations And Conformance Reference](operations-and-conformance.md) |
+| Conformance fixture body shape, assertion semantics, suite catalogs, examples | [Conformance Fixtures Reference](conformance-fixtures.md) |
 | Projection freshness, managed blocks, reconcile behavior, template ownership | [Document Projection Reference](document-projection.md) and [Template Reference](templates/README.md) |

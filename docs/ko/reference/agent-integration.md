@@ -493,4 +493,4 @@ Overview scenario:
 - artifact integrity mismatch가 dependent evidence, verification, export, close-readiness claim을 stale, blocked, insufficient 상태로 유지
 - status/next recommendation과 Role Lens output이 추천된 action이 기존 Core mutation path를 따르기 전까지 read-only guidance로 남는 동작
 
-정확한 fixture 형식과 operator command 의미는 operations and conformance docs가 담당합니다.
+정확한 fixture 형식은 [Conformance Fixtures 참조](conformance-fixtures.md)가 담당하고, operator command 의미는 [운영과 Conformance 참조](operations-and-conformance.md)가 담당합니다.

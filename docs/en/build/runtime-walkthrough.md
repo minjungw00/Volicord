@@ -102,4 +102,4 @@ Strict behavior: completion checks are owned by [`close_task`](../reference/kern
 
 For v0.1 Kernel MVP, keep the path narrow: one local project, one reference surface, one Task, one scoped Change Unit, basic Decision Packet behavior, `prepare_write`, one Write Authorization consumed by `record_run`, minimal artifact and Evidence Manifest support, minimal `TASK` projection or durable enqueue, status/next reads, and structured close blockers.
 
-The staged order and Kernel Smoke boundary are summarized in [MVP Plan](mvp-plan.md). Exact fixture body shape and assertion rules stay in [Operations And Conformance](../reference/operations-and-conformance.md#conformance-fixture-format).
+The staged order and Kernel Smoke boundary are summarized in [MVP Plan](mvp-plan.md). Exact fixture body shape and assertion rules stay in [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format).

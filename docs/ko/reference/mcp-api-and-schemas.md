@@ -46,7 +46,7 @@ Idempotency와 state conflict 동작은 Core state 위에 놓인 API-owned surfa
 - `ValidatorResult`
 - public API shape로서의 artifact input과 artifact ref schema
 
-Conformance fixture에서는 이 public request schema가 정확한 기준입니다. [Operations And Conformance](operations-and-conformance.md#catalog-only-fixture-skeleton-guidance)의 catalog-only skeleton guidance는 scenario가 어떤 action을 실행해야 하는지 말할 수 있지만, request field, alternate payload branch, fixture-only API shortcut을 추가하지 않습니다. Executable fixture의 `input`은 documented `ToolEnvelope` expansion 이후 선택한 action의 public request schema를 통과해야 합니다.
+Conformance fixture에서는 이 public request schema가 정확한 기준입니다. [Conformance Fixtures 참조](conformance-fixtures.md#catalog-only-fixture-skeleton-guidance)의 catalog-only skeleton guidance는 scenario가 어떤 action을 실행해야 하는지 말할 수 있지만, request field, alternate payload branch, fixture-only API shortcut을 추가하지 않습니다. Executable fixture의 `input`은 documented `ToolEnvelope` expansion 이후 선택한 action의 public request schema를 통과해야 합니다.
 
 ## 여기서 다루지 않는 것
 
@@ -72,10 +72,10 @@ Conformance fixture에서는 이 public request schema가 정확한 기준입니
 | Read-only resource contract | [Read-only resources](#read-only-resources) | Projection rendering rule은 [문서 Projection 참조](document-projection.md)에 남습니다. |
 | 공통 request envelope와 response shape | [Tool envelope](#tool-envelope), [Common response](#common-response) | State-version transition 의미는 [커널 참조](kernel.md)에 남습니다. Core transaction order는 [Runtime Architecture](runtime-architecture.md#state-transaction-flow)에 남습니다. |
 | Shared public schema와 ref | [Shared schemas](#shared-schemas), [ArtifactRef](#artifactref), [ValidatorResult](#validatorresult) | Storage-only JSON과 DDL은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
-| Markdown schema 표기 | [Schema notation convention](#schema-notation-convention) | Fixture assertion mode는 [운영과 Conformance 참조](operations-and-conformance.md#fixture-assertion-semantics)에 남습니다. |
+| Markdown schema 표기 | [Schema notation convention](#schema-notation-convention) | Fixture assertion mode는 [Conformance Fixtures 참조](conformance-fixtures.md#fixture-assertion-semantics)에 남습니다. |
 | Sensitive category label | [Sensitive Categories](#sensitive-categories) | Approval과 write-state behavior는 [커널 참조](kernel.md#prepare_write)에 남습니다. |
 | Error code와 primary-error 선택 | [Error taxonomy](#error-taxonomy), [Primary Error Code Precedence](#primary-error-code-precedence), [`harness.close_task` Close Blockers](#harnessclose_task-close-blockers) | Operator diagnostic은 [운영과 Conformance 참조](operations-and-conformance.md)에 남습니다. |
-| Public tool request와 response schema | [Public Tool Schema Map](#public-tool-schema-map), 그리고 해당 tool section | Fixture `action`과 `input` rule은 [운영과 Conformance 참조](operations-and-conformance.md#conformance-fixture-format)에 남습니다. |
+| Public tool request와 response schema | [Public Tool Schema Map](#public-tool-schema-map), 그리고 해당 tool section | Fixture `action`과 `input` rule은 [Conformance Fixtures 참조](conformance-fixtures.md#conformance-fixture-format)에 남습니다. |
 | Idempotency와 stale-state behavior | [Idempotency](#idempotency), [State Conflict 동작](#state-conflict-동작) | Durable replay row와 index는 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
 
 ## Schema notation convention

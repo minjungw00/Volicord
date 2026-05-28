@@ -33,7 +33,8 @@ This glossary owns official term wording, capitalization reminders, record-name 
 | Discovery and Shared Design, design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contracts | [Design Quality Policies](design-quality-policies.md) |
 | Surface capability, guarantee display, connector behavior | [Agent Integration Reference](agent-integration.md) |
 | Security assets, trust boundaries, threat categories, high-risk control expectations | [Security Threat Model Reference](security-threat-model.md) |
-| Operator procedures, conformance fixtures, docs-maintenance reporting | [Operations And Conformance Reference](operations-and-conformance.md) |
+| Operator procedures, conformance run overview, docs-maintenance reporting | [Operations And Conformance Reference](operations-and-conformance.md) |
+| Conformance fixture body shape, assertion semantics, suite catalogs, and examples | [Conformance Fixtures Reference](conformance-fixtures.md) |
 
 ## Official Terms
 
@@ -241,7 +242,7 @@ The smallest proposed Change Unit shape that can safely start work without hidin
 
 ### Fixture Assertion Semantics
 
-The conformance comparison rules that say how `expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, and `expected_error` are matched against captured Core results. They are owned by operations and conformance, live outside the fixture body, and do not allow prose-only matching to pass a fixture.
+The conformance comparison rules that say how `expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, and `expected_error` are matched against captured Core results. They are owned by [Conformance Fixtures Reference](conformance-fixtures.md#fixture-assertion-semantics), live outside the fixture body, and do not allow prose-only matching to pass a fixture.
 
 ### Fresh Session
 

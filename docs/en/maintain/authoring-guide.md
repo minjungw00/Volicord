@@ -135,7 +135,7 @@ Strict schemas, gates, DDL, enum values, state transitions, invariants, API shap
 
 Learn, Use, Build, and Maintain docs may summarize a contract in one or two sentences when needed, then link to the owning Reference document. They should not duplicate full tables, schema bodies, transition matrices, DDL blocks, or fixture mini-languages.
 
-Runtime conformance fixture body shape, assertion modes, isolated execution behavior, JSON `TEXT` validation, and owner-bound enum/status validation are owned by [Operations And Conformance](../reference/operations-and-conformance.md#conformance-fixture-format). Other docs should summarize that conformance is executable-state-based and link to the owner instead of restating the full contract.
+Runtime conformance fixture body shape, assertion modes, isolated execution behavior, JSON `TEXT` validation, and owner-bound enum/status validation are owned by [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format). Other docs should summarize that conformance is executable-state-based and link to the owner instead of restating the full contract.
 
 ## Repetition rule
 
@@ -247,8 +247,8 @@ Required check categories:
 | English/Korean semantic section parity | Paired files keep the same active file map, reader purpose, semantic section coverage, owner links, and contractual detail. Heading text and minor grouping may be idiomatic when stable identifiers, schema names, enum values, DDL names, validator IDs, code identifiers, and reviewability remain clear. |
 | Opening convention compliance | Non-template active docs use the standard opening pattern. `docs/*/reference/templates/README.md` uses `Used when` plus `Template tiering`; individual template files under `docs/*/reference/templates/` other than `README.md` use `Used when`, `Source records`, `Rendered sections`, and `Full template`, plus a visible non-authority boundary. |
 | Broken cross-reference detection | Markdown links, heading anchors, template/reference links, same-language README routes, paired-language entry links, and owner-section links resolve to active docs and current anchors. |
-| Owner-boundary drift | Exact contracts and active owner concepts stay in their active owners, including `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/security-threat-model.md`, `reference/operations-and-conformance.md`, and `reference/glossary.md`; non-owner docs summarize and link rather than redefining those contracts. |
-| Fixture/action schema drift | Operations fixture examples keep `action` and executable `input` aligned with public MCP request schemas in `reference/mcp-api-and-schemas.md` and the `ToolEnvelope` expansion convention in `reference/operations-and-conformance.md`; docs-maintenance may flag drift but does not execute fixture actions or restate fixture semantics here. |
+| Owner-boundary drift | Exact contracts and active owner concepts stay in their active owners, including `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/security-threat-model.md`, `reference/operations-and-conformance.md`, `reference/conformance-fixtures.md`, and `reference/glossary.md`; non-owner docs summarize and link rather than redefining those contracts. |
+| Fixture/action schema drift | Conformance fixture examples keep `action` and executable `input` aligned with public MCP request schemas in `reference/mcp-api-and-schemas.md` and the `ToolEnvelope` expansion convention in `reference/conformance-fixtures.md`; docs-maintenance may flag drift but does not execute fixture actions or restate fixture semantics here. |
 | Enum, event, validator, and projection drift | State/gate/result values and Kernel Stable Event Catalog names match `reference/kernel.md`; error and stable `ValidatorResult` IDs match `reference/mcp-api-and-schemas.md`; storage values match `reference/storage-and-ddl.md`; `ProjectionKind` tiers and template ownership match `reference/document-projection.md` and `reference/templates/*.md`. |
 | Glossary and source-of-truth phrasing drift | Official terms, capitalization, record ID prefixes, source-of-truth wording, and authority-boundary phrases match `reference/glossary.md` and the relevant owner docs without implying extra state authorities. |
 | TODO compliance | `TODO_DECISION` and `TODO_IMPLEMENT` use the allowed meanings, name the gap clearly, include enough owner/context to act on, and do not leave `TODO_REWRITE` markers in finished canonical sections. |
@@ -299,7 +299,8 @@ Use this map when deciding where exact detail belongs. It identifies the active 
 | Agent surface capability profiles, common connector contract, fallback semantics, Role Lens, connector conformance overview | `reference/agent-integration.md` |
 | Surface-specific recipes | `reference/surface-cookbook.md` |
 | Generic capability profile examples | `reference/agent-integration.md` |
-| Operator procedures, conformance fixture bodies, fixture assertion semantics, doctor/recover/reconcile/export/artifact integrity, docs-maintenance reporting | `reference/operations-and-conformance.md` |
+| Operator procedures, conformance run overview, doctor/recover/reconcile/export/artifact integrity, docs-maintenance reporting | `reference/operations-and-conformance.md` |
+| Conformance fixture bodies, fixture assertion semantics, suite catalog metadata, fixture examples, catalog-only future candidates | `reference/conformance-fixtures.md` |
 | Official term definitions and capitalization | `reference/glossary.md` |
 | v1+ Expansion roadmap | `roadmap.md` |
 | Documentation authoring rules | `maintain/authoring-guide.md` |

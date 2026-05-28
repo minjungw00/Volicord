@@ -102,4 +102,4 @@ Projector는 state record, event, artifact ref에서 readable Markdown과 card�
 
 v0.1 Kernel MVP에서는 path를 좁게 유지합니다. 하나의 local project, 하나의 reference surface, 하나의 Task, 하나의 scoped Change Unit, basic Decision Packet behavior, `prepare_write`, `record_run`이 consume하는 Write Authorization 하나, minimal artifact와 Evidence Manifest support, minimal `TASK` projection 또는 durable enqueue, status/next read, structured close blocker가 범위입니다.
 
-Staged order와 Kernel Smoke boundary는 [MVP 계획](mvp-plan.md)에 요약되어 있습니다. Exact fixture body shape와 assertion rule은 [운영과 Conformance](../reference/operations-and-conformance.md#conformance-fixture-format)에 둡니다.
+Staged order와 Kernel Smoke boundary는 [MVP 계획](mvp-plan.md)에 요약되어 있습니다. Exact fixture body shape와 assertion rule은 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)에 둡니다.

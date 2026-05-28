@@ -47,7 +47,7 @@ This document does not own:
 - public MCP request/response schemas; see [MCP API And Schemas](mcp-api-and-schemas.md)
 - SQLite DDL; see [Storage And DDL](storage-and-ddl.md)
 - full CLI command semantics; see [Operations And Conformance Reference](operations-and-conformance.md)
-- conformance fixture format; see [Operations And Conformance Reference](operations-and-conformance.md)
+- conformance fixture format; see [Conformance Fixtures Reference](conformance-fixtures.md)
 - threat-model assets, trust boundaries, threat categories, and control categories; see [Security Threat Model Reference](security-threat-model.md)
 - surface-specific connector cookbooks; see [Surface Cookbook](surface-cookbook.md)
 - connector capability profiles; see [Agent Integration Reference](agent-integration.md)

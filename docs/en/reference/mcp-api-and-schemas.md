@@ -46,7 +46,7 @@ This document owns:
 - `ValidatorResult`
 - artifact input and artifact ref schema as public API shapes
 
-For conformance fixtures, these public request schemas are exact. Catalog-only skeleton guidance in [Operations And Conformance](operations-and-conformance.md#catalog-only-fixture-skeleton-guidance) may say which action a scenario should drive, but it does not add request fields, alternate payload branches, or fixture-only API shortcuts. Executable fixture `input` must validate against the public request schema for the selected action after any documented `ToolEnvelope` expansion.
+For conformance fixtures, these public request schemas are exact. Catalog-only skeleton guidance in [Conformance Fixtures Reference](conformance-fixtures.md#catalog-only-fixture-skeleton-guidance) may say which action a scenario should drive, but it does not add request fields, alternate payload branches, or fixture-only API shortcuts. Executable fixture `input` must validate against the public request schema for the selected action after any documented `ToolEnvelope` expansion.
 
 ## Not covered here
 
@@ -72,10 +72,10 @@ This document does not own:
 | Read-only resource contract | [Read-only resources](#read-only-resources) | Projection rendering rules stay in [Document Projection Reference](document-projection.md). |
 | Common request envelope and response shape | [Tool envelope](#tool-envelope), [Common response](#common-response) | State-version transition semantics stay in [Kernel Reference](kernel.md). Core transaction order stays in [Runtime Architecture](runtime-architecture.md#state-transaction-flow). |
 | Shared public schemas and refs | [Shared schemas](#shared-schemas), [ArtifactRef](#artifactref), [ValidatorResult](#validatorresult) | Storage-only JSON and DDL stay in [Storage And DDL](storage-and-ddl.md). |
-| Markdown schema notation | [Schema notation convention](#schema-notation-convention) | Fixture assertion modes stay in [Operations And Conformance Reference](operations-and-conformance.md#fixture-assertion-semantics). |
+| Markdown schema notation | [Schema notation convention](#schema-notation-convention) | Fixture assertion modes stay in [Conformance Fixtures Reference](conformance-fixtures.md#fixture-assertion-semantics). |
 | Sensitive category labels | [Sensitive Categories](#sensitive-categories) | Approval and write-state behavior stay in [Kernel Reference](kernel.md#prepare_write). |
 | Error codes and primary-error selection | [Error taxonomy](#error-taxonomy), [Primary Error Code Precedence](#primary-error-code-precedence), [`harness.close_task` Close Blockers](#harnessclose_task-close-blockers) | Operator diagnostics stay in [Operations And Conformance Reference](operations-and-conformance.md). |
-| Public tool request and response schemas | [Public Tool Schema Map](#public-tool-schema-map), then the matching tool section | Fixture `action` and `input` rules stay in [Operations And Conformance Reference](operations-and-conformance.md#conformance-fixture-format). |
+| Public tool request and response schemas | [Public Tool Schema Map](#public-tool-schema-map), then the matching tool section | Fixture `action` and `input` rules stay in [Conformance Fixtures Reference](conformance-fixtures.md#conformance-fixture-format). |
 | Idempotency and stale-state behavior | [Idempotency](#idempotency), [State conflict behavior](#state-conflict-behavior) | Durable replay rows and indexes stay in [Storage And DDL](storage-and-ddl.md). |
 
 ## Schema notation convention

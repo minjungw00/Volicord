@@ -17,7 +17,7 @@ This is reference documentation. It does not authorize runtime/server implementa
 
 ## Before you read
 
-Use [MCP API And Schemas](mcp-api-and-schemas.md) for public request/response contracts, [Kernel Reference](kernel.md) for lifecycle and gate values, and [Operations And Conformance Reference](operations-and-conformance.md) for fixture semantics and operator behavior.
+Use [MCP API And Schemas](mcp-api-and-schemas.md) for public request/response contracts, [Kernel Reference](kernel.md) for lifecycle and gate values, [Conformance Fixtures Reference](conformance-fixtures.md) for fixture semantics, and [Operations And Conformance Reference](operations-and-conformance.md) for operator behavior.
 
 ## Main idea
 
@@ -34,7 +34,7 @@ Storage gives Harness durable local records, but it does not become a second aut
 | Artifact storage and registration | [Artifact directory layout](#artifact-directory-layout), [Artifact Kind Storage Notes](#artifact-kind-storage-notes), [Artifact Registration Contract](#artifact-registration-contract) | Artifact API refs stay in [ArtifactRef](mcp-api-and-schemas.md#artifactref). |
 | Baselines and verification bundles | [Baseline capture format](#baseline-capture-format), [Verification Bundle Shape](#verification-bundle-shape) | Verification and close gate behavior stay in [Kernel Reference](kernel.md#verification-gate). |
 | Projection jobs and worker behavior | [Projection job table](#projection-job-table), [Projection Worker Execution](#projection-worker-execution) | Projection rules stay in [Document Projection Reference](document-projection.md). |
-| Validator-run storage and fixture seed-loader expectations | [Validator runner skeleton](#validator-runner-skeleton), [Evidence and Verification Profile Implementation Notes](#evidence-and-verification-profile-implementation-notes) | Stable `ValidatorResult` shape stays in [MCP API And Schemas](mcp-api-and-schemas.md#validatorresult); fixture assertions stay in [Operations And Conformance Reference](operations-and-conformance.md#fixture-assertion-semantics). |
+| Validator-run storage and fixture seed-loader expectations | [Validator runner skeleton](#validator-runner-skeleton), [Evidence and Verification Profile Implementation Notes](#evidence-and-verification-profile-implementation-notes) | Stable `ValidatorResult` shape stays in [MCP API And Schemas](mcp-api-and-schemas.md#validatorresult); fixture assertions stay in [Conformance Fixtures Reference](conformance-fixtures.md#fixture-assertion-semantics). |
 
 ## Storage model in plain language
 
@@ -1463,6 +1463,6 @@ If an implementation cannot derive an input above from existing fields, add `TOD
 
 Validator failure must be visible as state, blocked reasons, or close blockers. It must not be hidden in prose-only agent output.
 
-Catalog-only fixture skeletons in [Operations And Conformance](operations-and-conformance.md#catalog-only-fixture-skeleton-guidance) use "minimum seeded records" as authoring guidance, not as a new storage schema. Seed loaders must expand those records into the tables, JSON `TEXT` fields, artifact files, and projection job rows already owned here and by the API docs, then validate owner-bound value sets before execution. Docs-maintenance catalog rows are the exception: they seed only Markdown documentation input and must not create `state.sqlite` records, artifact rows, projection jobs, or runtime fixture results.
+Catalog-only fixture skeletons in [Conformance Fixtures Reference](conformance-fixtures.md#catalog-only-fixture-skeleton-guidance) use "minimum seeded records" as authoring guidance, not as a new storage schema. Seed loaders must expand those records into the tables, JSON `TEXT` fields, artifact files, and projection job rows already owned here and by the API docs, then validate owner-bound value sets before execution. Docs-maintenance catalog rows are the exception: they seed only Markdown documentation input and must not create `state.sqlite` records, artifact rows, projection jobs, or runtime fixture results.
 
-Conformance fixture assertion semantics are owned by [Operations And Conformance Reference](operations-and-conformance.md#fixture-assertion-semantics), and stable `expected_events` names are owned by the [Kernel Stable Event Catalog](kernel.md#stable-event-catalog). The reference runner must implement those assertion modes against captured Core state, `task_events`, validator results, artifact registry/file integrity, projection job or freshness state, and returned error codes; it must not pass fixtures by matching rendered Markdown or agent prose alone.
+Conformance fixture assertion semantics are owned by [Conformance Fixtures Reference](conformance-fixtures.md#fixture-assertion-semantics), and stable `expected_events` names are owned by the [Kernel Stable Event Catalog](kernel.md#stable-event-catalog). The reference runner must implement those assertion modes against captured Core state, `task_events`, validator results, artifact registry/file integrity, projection job or freshness state, and returned error codes; it must not pass fixtures by matching rendered Markdown or agent prose alone.

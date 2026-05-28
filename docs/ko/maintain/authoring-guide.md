@@ -135,7 +135,7 @@ Learn 문서를 조밀한 정의 목록으로 시작하지 않습니다. Glossar
 
 Learn, Use, Build, Maintain 문서는 필요할 때 계약을 한두 문장으로 요약하고 owner Reference 문서에 링크합니다. 전체 table, schema body, transition matrix, DDL block, fixture mini-language를 중복하지 않습니다.
 
-Runtime conformance fixture body shape, assertion mode, isolated execution behavior, JSON `TEXT` validation, owner-bound enum/status validation은 [운영과 Conformance](../reference/operations-and-conformance.md#conformance-fixture-format)가 담당합니다. 다른 문서는 conformance가 executable-state-based라는 점만 요약하고 owner로 링크해야 하며, 전체 계약을 다시 적지 않습니다.
+Runtime conformance fixture body shape, assertion mode, isolated execution behavior, JSON `TEXT` validation, owner-bound enum/status validation은 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)가 담당합니다. 다른 문서는 conformance가 executable-state-based라는 점만 요약하고 owner로 링크해야 하며, 전체 계약을 다시 적지 않습니다.
 
 ## 반복 규칙
 
@@ -247,8 +247,8 @@ Result 의미:
 | 영어/한국어 의미 섹션 일치 | 대응 파일은 같은 활성 파일 맵, 독자 목적, 의미상 같은 섹션 범위, owner link, 계약 세부사항을 유지합니다. Stable identifier, schema name, enum value, DDL name, validator ID, code identifier, 검토 가능성이 분명하다면 heading text와 작은 묶음 방식은 자연스럽게 조정할 수 있습니다. |
 | 시작 방식 준수 | Template이 아닌 활성 문서는 표준 시작 방식을 사용합니다. `docs/*/reference/templates/README.md`는 `사용 시점`과 `템플릿 계층`을 사용하고, `docs/*/reference/templates/` 아래의 `README.md`가 아닌 개별 template file은 `사용 시점`, `기준 기록`, `렌더링 섹션`, `전체 템플릿`과 명확한 권한 없음 경계를 사용합니다. |
 | 깨진 교차 참조 탐지 | Markdown links, heading anchors, template/reference links, same-language README routes, paired-language entry links, owner-section links가 활성 문서와 현재 anchor로 연결됩니다. |
-| Owner 경계 불일치 | 정확한 계약과 active owner concept은 활성 owner 문서에 머뭅니다. 여기에는 `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/security-threat-model.md`, `reference/operations-and-conformance.md`, `reference/glossary.md`가 포함됩니다. Owner가 아닌 문서는 이 contract를 다시 정의하지 않고 요약하고 link합니다. |
-| Fixture/action schema 불일치 | Operations fixture examples의 `action`과 실행 가능한 `input`은 `reference/mcp-api-and-schemas.md`의 public MCP request schemas 및 `reference/operations-and-conformance.md`의 `ToolEnvelope` expansion convention과 일치해야 합니다. Docs-maintenance는 drift를 flag할 수 있지만 fixture action을 실행하거나 fixture 의미를 여기서 다시 설명하지 않습니다. |
+| Owner 경계 불일치 | 정확한 계약과 active owner concept은 활성 owner 문서에 머뭅니다. 여기에는 `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/security-threat-model.md`, `reference/operations-and-conformance.md`, `reference/conformance-fixtures.md`, `reference/glossary.md`가 포함됩니다. Owner가 아닌 문서는 이 contract를 다시 정의하지 않고 요약하고 link합니다. |
+| Fixture/action schema 불일치 | Conformance fixture examples의 `action`과 실행 가능한 `input`은 `reference/mcp-api-and-schemas.md`의 public MCP request schemas 및 `reference/conformance-fixtures.md`의 `ToolEnvelope` expansion convention과 일치해야 합니다. Docs-maintenance는 drift를 flag할 수 있지만 fixture action을 실행하거나 fixture 의미를 여기서 다시 설명하지 않습니다. |
 | Enum, event, validator, projection 불일치 | State/gate/result values와 Kernel Stable Event Catalog names는 `reference/kernel.md`, error와 stable `ValidatorResult` IDs는 `reference/mcp-api-and-schemas.md`, storage values는 `reference/storage-and-ddl.md`, `ProjectionKind` tiers와 template ownership은 `reference/document-projection.md` 및 `reference/templates/*.md`와 일치해야 합니다. |
 | Glossary와 기준 기록 표현 불일치 | Official terms, capitalization, record ID prefixes, source-of-truth wording, authority-boundary phrases는 `reference/glossary.md`와 relevant owner docs에 맞아야 하며 추가 상태 권한을 암시하지 않아야 합니다. |
 | TODO 준수 | `TODO_DECISION`과 `TODO_IMPLEMENT`는 허용된 의미로 쓰고 gap을 명확히 이름 붙이며, action에 필요한 owner/context를 충분히 포함하고, 완료된 기준 섹션에 `TODO_REWRITE` marker를 남기지 않습니다. |
@@ -299,7 +299,8 @@ Result 의미:
 | Agent 접점 capability profiles, 공통 커넥터 계약, fallback 의미, Role Lens, connector conformance 개요 | `reference/agent-integration.md` |
 | 접점별 recipes | `reference/surface-cookbook.md` |
 | Generic capability profile examples | `reference/agent-integration.md` |
-| Operator procedures, conformance fixture bodies, fixture assertion 의미, doctor/recover/reconcile/export/artifact integrity, docs-maintenance 보고 | `reference/operations-and-conformance.md` |
+| Operator procedures, conformance run overview, doctor/recover/reconcile/export/artifact integrity, docs-maintenance 보고 | `reference/operations-and-conformance.md` |
+| Conformance fixture bodies, fixture assertion 의미, suite catalog metadata, fixture example, catalog-only future candidate | `reference/conformance-fixtures.md` |
 | Official term definitions and capitalization | `reference/glossary.md` |
 | v1+ Expansion roadmap | `roadmap.md` |
 | Documentation authoring rules | `maintain/authoring-guide.md` |

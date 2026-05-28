@@ -55,7 +55,7 @@ The observable result can be plain. A user or operator should be able to see the
 
 ## Doc-level acceptance checks
 
-Use these checks to review the planned v0.1 Kernel MVP slice before executable fixtures exist, and again when mapping the slice to the [Kernel Smoke Authoring Queue](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue). They are planning checks, not fixture body fields, schema additions, DDL, or runtime authorization.
+Use these checks to review the planned v0.1 Kernel MVP slice before executable fixtures exist, and again when mapping the slice to the [Kernel Smoke Authoring Queue](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue). They are planning checks, not fixture body fields, schema additions, DDL, or runtime authorization.
 
 A proposed first runnable slice is acceptable when:
 
@@ -64,7 +64,7 @@ A proposed first runnable slice is acceptable when:
 - It proves exactly one scoped write path: active Task, direct/work/advisor mode basics, active Change Unit, basic Decision Packet lifecycle, `prepare_write` allow/block, durable single-use Write Authorization, `record_run` consumption, artifact registration, minimal Evidence Manifest, status/next, minimal `TASK` projection freshness or enqueueing, and structured close blockers.
 - It blocks or refuses missing authority: no active Change Unit, out-of-scope intended path, missing Write Authorization for product-write Runs, reuse of a consumed Write Authorization, missing required evidence, and unresolved blocking Decision Packet.
 - It keeps status reads, projections, reports, and generated prose downstream from Core records; none of them authorize writes, satisfy evidence, close work, or repair state by being read.
-- It links strict fixture body shape, assertion modes, primary errors, artifact refs, projection assertions, and seed validation to [Operations And Conformance Reference](../reference/operations-and-conformance.md#conformance-fixture-format) instead of copying those contracts here.
+- It links strict fixture body shape, assertion modes, primary errors, artifact refs, projection assertions, and seed validation to [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format) instead of copying those contracts here.
 - It names excluded capabilities as not yet proven by v0.1 Kernel MVP, not as failed v0.1 requirements.
 
 The build order below is a post-acceptance planning sequence. The headings use implementation verbs so the future runtime batch is easy to execute, but this document still does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before documentation acceptance.
@@ -321,9 +321,9 @@ Those belong either to later packs in [MVP Plan](mvp-plan.md) or to the v1+ Expa
 
 Write fixtures that drive Core behavior and assert state, events, artifacts, projections, and errors. Do not assert success by matching rendered prose.
 
-Each runtime fixture should execute in an isolated runtime home and temporary Product Repository, seed its own starting records and files, run one Core or operator action, and compare the captured executable result. Fixture body fields, assertion modes such as `partial_deep` and `contains_ordered`, JSON `TEXT` validation, and owner-bound status value validation are owned by [Operations And Conformance Reference](../reference/operations-and-conformance.md#conformance-fixture-format).
+Each runtime fixture should execute in an isolated runtime home and temporary Product Repository, seed its own starting records and files, run one Core or operator action, and compare the captured executable result. Fixture body fields, assertion modes such as `partial_deep` and `contains_ordered`, JSON `TEXT` validation, and owner-bound status value validation are owned by [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format).
 
-The list below is the v0.1 behavior checklist. Use the [Kernel Smoke Authoring Queue](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue) for the practical order, seed guidance, stable event targets, artifact/projection assertions, and primary-error expectations.
+The list below is the v0.1 behavior checklist. Use the [Kernel Smoke Authoring Queue](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue) for the practical order, seed guidance, stable event targets, artifact/projection assertions, and primary-error expectations.
 
 Minimum first-slice fixtures:
 
@@ -348,7 +348,7 @@ Minimum first-slice fixtures:
 - `close_task` blocks evidence-insufficient close with a structured blocker
 - `close_task` blocks unresolved decision close with a structured blocker
 
-Use the fixture shape and comparison rules in [Operations And Conformance Reference](../reference/operations-and-conformance.md#conformance-fixture-format). Do not add fields to the fixture body to express suite stage, authoring order, or docs-maintenance results.
+Use the fixture shape and comparison rules in [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format). Do not add fields to the fixture body to express suite stage, authoring order, or docs-maintenance results.
 
 ## Reference docs to consult
 
@@ -356,4 +356,5 @@ Use the fixture shape and comparison rules in [Operations And Conformance Refere
 - [Runtime Architecture Reference](../reference/runtime-architecture.md): three spaces, Core process model, transaction flow, artifact store, projection/reconcile, guarantee levels, and failure handling.
 - [MCP API And Schemas](../reference/mcp-api-and-schemas.md): public resources, tool envelopes, request/response schemas, error taxonomy, artifact refs, and `ProjectionKind`.
 - [Storage And DDL](../reference/storage-and-ddl.md): runtime layout, DDL, migrations, locks, artifacts, baselines, projection jobs, and validator-run storage.
-- [Operations And Conformance Reference](../reference/operations-and-conformance.md): operator semantics, conformance staging, fixture format, execution, and assertion rules.
+- [Operations And Conformance Reference](../reference/operations-and-conformance.md): operator semantics and conformance staging.
+- [Conformance Fixtures Reference](../reference/conformance-fixtures.md): fixture format, execution, assertion rules, suite catalogs, and examples.

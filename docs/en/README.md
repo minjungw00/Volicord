@@ -36,7 +36,8 @@ Harness is also not a chat script, test harness, evaluation harness, or dashboar
 | New reader | [Harness in 15 Minutes](learn/harness-in-15-minutes.md) | [Overview](learn/overview.md), [Harness in One Task](learn/harness-in-one-task.md), then [Concepts](learn/concepts.md) |
 | User | [User Guide](use/user-guide.md) | [Decision Packet Cookbook](use/decision-packet-cookbook.md), then [Agent Session Flow](use/agent-session-flow.md) when you need the agent-facing flow |
 | Implementer | [Implementation Overview](build/implementation-overview.md) | [First Runnable Slice](build/first-runnable-slice.md), [Runtime Walkthrough](build/runtime-walkthrough.md), [MVP Plan](build/mvp-plan.md), then the relevant Reference owner |
-| Operator or conformance author | [Operations And Conformance Reference](reference/operations-and-conformance.md#contract-map) | [Runtime Architecture](reference/runtime-architecture.md), [Security Threat Model](reference/security-threat-model.md), [MCP API And Schemas](reference/mcp-api-and-schemas.md), [Storage And DDL](reference/storage-and-ddl.md) |
+| Operator | [Operations And Conformance Reference](reference/operations-and-conformance.md#contract-map) | [Runtime Architecture](reference/runtime-architecture.md), [Security Threat Model](reference/security-threat-model.md), [MCP API And Schemas](reference/mcp-api-and-schemas.md), [Storage And DDL](reference/storage-and-ddl.md) |
+| Conformance author | [Conformance Fixtures Reference](reference/conformance-fixtures.md#conformance-navigation-map) | [Operations And Conformance Reference](reference/operations-and-conformance.md#conformance-run), [MCP API And Schemas](reference/mcp-api-and-schemas.md), [Storage And DDL](reference/storage-and-ddl.md), [Kernel Reference](reference/kernel.md) |
 | Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md) |
 
 ## Ownership Rule
@@ -44,6 +45,8 @@ Harness is also not a chat script, test harness, evaluation harness, or dashboar
 Reference docs own exact contracts: schemas, DDL, gates, state transitions, enum values, fixture semantics, template bodies, and official definitions. Learn, Use, and Build docs explain the idea for their reader and link to Reference instead of copying strict contract blocks.
 
 Documentation-maintenance checks are read-only review guidance, not runtime conformance or implementation readiness. Use the [Authoring Guide](maintain/authoring-guide.md#docs-maintenance-checks) for drift categories and owner-first resolution; use [Operations And Conformance](reference/operations-and-conformance.md#docs-maintenance-profile) only for the docs-maintenance profile reporting boundary.
+
+Operators use [Operations And Conformance Reference](reference/operations-and-conformance.md) for procedures and the conformance run overview. Fixture authors use [Conformance Fixtures Reference](reference/conformance-fixtures.md) for fixture body shape, assertion semantics, suite catalogs, examples, and catalog-only future candidates.
 
 ## Learn
 
@@ -88,6 +91,7 @@ Use this path to look up strict contracts. If another path summarizes a strict r
 - [Agent Integration Reference](reference/agent-integration.md)
 - [Surface Cookbook](reference/surface-cookbook.md)
 - [Operations And Conformance Reference](reference/operations-and-conformance.md)
+- [Conformance Fixtures Reference](reference/conformance-fixtures.md)
 - [Glossary Reference](reference/glossary.md)
 - [Template Reference](reference/templates/README.md)
 

@@ -18,7 +18,7 @@ Runtime 구현 계획에 들어가기 전에 Harness security asset, trust bound
 
 ## 읽기 전에
 
-Runtime space, Core process model, transaction ordering, guarantee-level definition은 [런타임 아키텍처 참조](runtime-architecture.md)를 사용합니다. Connector capability profile, generated manifest, context push/pull, fallback display는 [Agent 통합 참조](agent-integration.md)를 사용합니다. `doctor`, `serve mcp`, artifact check, recover, reconcile, fixture semantics는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용합니다.
+Runtime space, Core process model, transaction ordering, guarantee-level definition은 [런타임 아키텍처 참조](runtime-architecture.md)를 사용합니다. Connector capability profile, generated manifest, context push/pull, fallback display는 [Agent 통합 참조](agent-integration.md)를 사용합니다. `doctor`, `serve mcp`, artifact check, recover, reconcile은 [운영과 Conformance 참조](operations-and-conformance.md)를 사용하고, fixture semantics는 [Conformance Fixtures 참조](conformance-fixtures.md)를 사용합니다.
 
 Public tool envelope, error, replay behavior는 [MCP API와 스키마](mcp-api-and-schemas.md)를 사용합니다. Exact storage layout, artifact row, DDL은 [Storage와 DDL](storage-and-ddl.md)을 사용합니다. State transition, gate, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close는 [커널 참조](kernel.md)를 사용합니다.
 
@@ -50,7 +50,8 @@ Security display는 실제 control과 일치해야 합니다. Cooperative와 det
 - public MCP request/response schema, public error shape, idempotency/replay contract. [MCP API와 스키마](mcp-api-and-schemas.md)를 참고합니다.
 - SQLite DDL, storage layout, canonical enum hardening, artifact row shape, exact file layout. [Storage와 DDL](storage-and-ddl.md)을 참고합니다.
 - kernel state transition, gate, Approval lifecycle, `prepare_write`, Write Authorization, acceptance, residual-risk acceptance, close. [커널 참조](kernel.md)를 참고합니다.
-- operator command semantics, diagnostic severity baseline, recover/reconcile/export behavior, fixture assertion semantics. [운영과 Conformance 참조](operations-and-conformance.md)를 참고합니다.
+- operator command semantics, diagnostic severity baseline, recover/reconcile/export behavior. [운영과 Conformance 참조](operations-and-conformance.md)를 참고합니다.
+- fixture assertion semantics. [Conformance Fixtures 참조](conformance-fixtures.md)를 참고합니다.
 - connector capability-profile field detail, generated-manifest contract, surface recipe. [Agent 통합 참조](agent-integration.md)와 [Surface Cookbook](surface-cookbook.md)을 참고합니다.
 - projection template body 또는 managed-block rendering rule. [문서 Projection 참조](document-projection.md)를 참고합니다.
 - runtime implementation, generated operational file, executable fixture, runtime data, production deployment
@@ -167,5 +168,6 @@ Guard, freeze, careful-mode, recipe name, product name, surface name, friendly m
 | `state.sqlite`, `task_events`, artifact storage row, DDL, enum hardening, hash, storage layout | [Storage와 DDL](storage-and-ddl.md) |
 | Runtime space, Core transaction ordering, artifact architecture, guarantee level definition | [런타임 아키텍처 참조](runtime-architecture.md) |
 | Connector capability profile, generated manifest, context push/pull, fallback display | [Agent 통합 참조](agent-integration.md) |
-| Operator diagnostic, severity baseline, `doctor`, `serve mcp`, artifact check, recover, reconcile, conformance fixture | [운영과 Conformance 참조](operations-and-conformance.md) |
+| Operator diagnostic, severity baseline, `doctor`, `serve mcp`, artifact check, recover, reconcile | [운영과 Conformance 참조](operations-and-conformance.md) |
+| Conformance fixture body shape, assertion semantics, suite catalog, example | [Conformance Fixtures 참조](conformance-fixtures.md) |
 | Projection freshness, managed block, reconcile behavior, template ownership | [문서 Projection 참조](document-projection.md)와 [Template 참조](templates/README.md) |

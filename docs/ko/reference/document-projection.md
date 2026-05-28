@@ -99,7 +99,7 @@ flowchart LR
 - SQLite DDL과 storage layout. [Storage And DDL](storage-and-ddl.md)를 봅니다.
 - 설계 품질 정책 계약. [설계 품질 정책](design-quality-policies.md)을 봅니다.
 - operator command 의미. [Operations And Conformance](operations-and-conformance.md)를 봅니다.
-- conformance fixture assertion 의미. [Operations And Conformance](operations-and-conformance.md)를 봅니다.
+- conformance fixture assertion 의미. [Conformance Fixtures 참조](conformance-fixtures.md#fixture-assertion-semantics)를 봅니다.
 - connector capability profile. [Agent 통합 참조](agent-integration.md)를 봅니다.
 - surface recipe. [Surface Cookbook](surface-cookbook.md)을 봅니다.
 - 전체 template 본문과 표시 카드 형태. [Template 참조](templates/README.md)를 봅니다.

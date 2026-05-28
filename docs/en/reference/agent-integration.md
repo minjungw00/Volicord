@@ -493,4 +493,4 @@ Overview scenarios:
 - artifact integrity mismatch keeps dependent evidence, verification, export, or close-readiness claims stale, blocked, or insufficient
 - status/next recommendations and Role Lens output remain read-only guidance unless the recommended action follows the existing Core mutation path
 
-Exact fixture format and operational commands are owned by the operations and conformance docs.
+Exact fixture format is owned by [Conformance Fixtures Reference](conformance-fixtures.md), and operational commands are owned by [Operations And Conformance Reference](operations-and-conformance.md).

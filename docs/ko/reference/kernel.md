@@ -29,7 +29,7 @@ Kernel은 제품 파일 쓰기와 닫기 판단이 명시적인 상태에 의존
 |---|---|---|
 | Entity와 relationship 의미 | [Entity model](#entity-model) | Physical table은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
 | 대체 불가능한 경계 규칙 | [Boundaries and non-substitutions](#boundaries-and-non-substitutions) | Public display shape는 [MCP API와 스키마](mcp-api-and-schemas.md)에 남습니다. |
-| Kernel gate 규칙 | [Gate 규칙 지도](#gate-규칙-지도), 그다음 해당 gate section | Gate fixture assertion은 [운영과 Conformance 참조](operations-and-conformance.md#fixture-assertion-semantics)에 남습니다. |
+| Kernel gate 규칙 | [Gate 규칙 지도](#gate-규칙-지도), 그다음 해당 gate section | Gate fixture assertion은 [Conformance Fixtures 참조](conformance-fixtures.md#fixture-assertion-semantics)에 남습니다. |
 | Mode, lifecycle, result, close reason, assurance value | [Lifecycle and transitions](#lifecycle-and-transitions), [Compatibility matrix](#compatibility-matrix) | Persisted value의 storage hardening은 [Storage와 DDL](storage-and-ddl.md#canonical-enum-hardening)에 남습니다. |
 | Stable event name | [Stable Event Catalog](#stable-event-catalog) | Event row는 [Storage와 DDL](storage-and-ddl.md#task_events)의 `state.sqlite.task_events`에 남습니다. |
 | Write gate behavior | [`prepare_write`](#prepare_write) | Public request/response shape는 [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write)에 남습니다. |
@@ -835,7 +835,7 @@ Stable event names는 MVP conformance fixtures가 `expected_events`에서 요구
 
 이 catalog는 의도적으로 compact합니다. Non-stable implementation-local detail 또는 audit events와 future extension events는 여전히 `task_events`에 기록될 수 있지만, MVP fixture authors는 이 이름들이 여기 추가되기 전까지 `expected_events`에서 요구하면 안 됩니다.
 
-[Operations And Conformance](operations-and-conformance.md#catalog-only-fixture-skeleton-guidance)의 catalog-only fixture skeleton은 family level에서 expected event behavior를 언급할 수 있습니다. Catalog entry가 executable fixture가 될 때에도 `expected_events`는 위 stable names만 assert합니다. Read-only status/next와 docs-maintenance scenario는 documented Core action이 state를 commit하지 않는 한 일반적으로 stable event를 요구하지 않아야 합니다.
+[Conformance Fixtures 참조](conformance-fixtures.md#catalog-only-fixture-skeleton-guidance)의 catalog-only fixture skeleton은 family level에서 expected event behavior를 언급할 수 있습니다. Catalog entry가 executable fixture가 될 때에도 `expected_events`는 위 stable names만 assert합니다. Read-only status/next와 docs-maintenance scenario는 documented Core action이 state를 commit하지 않는 한 일반적으로 stable event를 요구하지 않아야 합니다.
 
 
 | Trigger | From | To | Gate or record effect |

@@ -36,7 +36,8 @@
 | 처음 읽는 사람 | [15분 만에 보는 하네스](learn/harness-in-15-minutes.md) | [개요](learn/overview.md), [하나의 작업으로 보는 하네스](learn/harness-in-one-task.md), 그다음 [핵심 개념](learn/concepts.md) |
 | 사용자 | [사용자 가이드](use/user-guide.md) | [결정 패킷 Cookbook](use/decision-packet-cookbook.md), 그다음 Agent-facing 흐름이 필요하면 [Agent 세션 흐름](use/agent-session-flow.md) |
 | 구현자 | [구현 개요](build/implementation-overview.md) | [첫 실행 가능한 조각](build/first-runnable-slice.md), [Runtime Walkthrough](build/runtime-walkthrough.md), [MVP 계획](build/mvp-plan.md), 그다음 관련 Reference owner |
-| 운영자 또는 Conformance 작성자 | [운영과 Conformance 참조](reference/operations-and-conformance.md#계약-위치-지도) | [런타임 아키텍처](reference/runtime-architecture.md), [보안 위협 모델](reference/security-threat-model.md), [MCP API와 스키마](reference/mcp-api-and-schemas.md), [Storage와 DDL](reference/storage-and-ddl.md) |
+| 운영자 | [운영과 Conformance 참조](reference/operations-and-conformance.md#계약-위치-지도) | [런타임 아키텍처](reference/runtime-architecture.md), [보안 위협 모델](reference/security-threat-model.md), [MCP API와 스키마](reference/mcp-api-and-schemas.md), [Storage와 DDL](reference/storage-and-ddl.md) |
+| Conformance 작성자 | [Conformance Fixtures 참조](reference/conformance-fixtures.md#conformance-탐색-지도) | [운영과 Conformance 참조](reference/operations-and-conformance.md#conformance-run), [MCP API와 스키마](reference/mcp-api-and-schemas.md), [Storage와 DDL](reference/storage-and-ddl.md), [커널 참조](reference/kernel.md) |
 | 문서 유지보수 담당자 | [문서 작성 가이드](maintain/authoring-guide.md) | [번역 가이드](maintain/translation-guide.md) |
 
 ## 소유권 규칙
@@ -44,6 +45,8 @@
 정확한 계약은 Reference 문서가 담당합니다. Schema, DDL, 관문(gate), state transition, enum value, fixture 의미, template 본문, 공식 정의가 여기에 속합니다. Learn, Use, Build 문서는 독자에게 필요한 생각을 설명하고 Reference로 연결하며, 엄격한 계약 블록을 복사하지 않습니다.
 
 Docs-maintenance check는 읽기 전용 리뷰 지침이며 runtime conformance나 implementation readiness가 아닙니다. Drift category와 owner-first resolution은 [문서 작성 가이드](maintain/authoring-guide.md#docs-maintenance-checks)를 사용하고, docs-maintenance profile reporting boundary는 [운영과 Conformance](reference/operations-and-conformance.md#docs-maintenance-프로필)를 사용합니다.
+
+운영자는 procedure와 conformance run overview를 위해 [운영과 Conformance 참조](reference/operations-and-conformance.md)를 사용합니다. Fixture 작성자는 fixture body shape, assertion semantics, suite catalog, example, catalog-only future candidate를 위해 [Conformance Fixtures 참조](reference/conformance-fixtures.md)를 사용합니다.
 
 ## Learn
 
@@ -88,6 +91,7 @@ AI 지원 개발 세션을 하네스 기준으로 진행할 때 보는 경로입
 - [Agent 통합 참조](reference/agent-integration.md)
 - [Surface Cookbook](reference/surface-cookbook.md)
 - [운영과 Conformance 참조](reference/operations-and-conformance.md)
+- [Conformance Fixtures 참조](reference/conformance-fixtures.md)
 - [용어집 참조](reference/glossary.md)
 - [Template 참조](reference/templates/README.md)
 

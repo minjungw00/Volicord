@@ -17,7 +17,7 @@
 
 ## 읽기 전에
 
-Public request/response contract는 [MCP API와 스키마](mcp-api-and-schemas.md)를 사용합니다. Lifecycle과 gate value는 [커널 참조](kernel.md)를 사용하고, fixture semantics와 operator behavior는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용합니다.
+Public request/response contract는 [MCP API와 스키마](mcp-api-and-schemas.md)를 사용합니다. Lifecycle과 gate value는 [커널 참조](kernel.md)를 사용하고, fixture semantics는 [Conformance Fixtures 참조](conformance-fixtures.md)를, operator behavior는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용합니다.
 
 ## 핵심 생각
 
@@ -34,7 +34,7 @@ Storage는 Harness에 오래 남는 local record를 제공하지만 두 번째 a
 | Artifact storage와 registration | [Artifact directory layout](#artifact-directory-layout), [Artifact Kind Storage Notes](#artifact-kind-storage-notes), [Artifact Registration Contract](#artifact-registration-contract) | Artifact API ref는 [ArtifactRef](mcp-api-and-schemas.md#artifactref)에 남습니다. |
 | Baseline과 verification bundle | [Baseline capture format](#baseline-capture-format), [Verification Bundle Shape](#verification-bundle-shape) | Verification과 close gate behavior는 [커널 참조](kernel.md#verification-gate)에 남습니다. |
 | Projection job과 worker behavior | [Projection job table](#projection-job-table), [Projection Worker Execution](#projection-worker-execution) | Projection rule은 [문서 Projection 참조](document-projection.md)에 남습니다. |
-| Validator-run storage와 fixture seed-loader expectation | [Validator runner skeleton](#validator-runner-skeleton), [Evidence and Verification Profile Implementation Notes](#evidence-and-verification-profile-implementation-notes) | Stable `ValidatorResult` shape는 [MCP API와 스키마](mcp-api-and-schemas.md#validatorresult)에 남고, fixture assertion은 [운영과 Conformance 참조](operations-and-conformance.md#fixture-assertion-semantics)에 남습니다. |
+| Validator-run storage와 fixture seed-loader expectation | [Validator runner skeleton](#validator-runner-skeleton), [Evidence and Verification Profile Implementation Notes](#evidence-and-verification-profile-implementation-notes) | Stable `ValidatorResult` shape는 [MCP API와 스키마](mcp-api-and-schemas.md#validatorresult)에 남고, fixture assertion은 [Conformance Fixtures 참조](conformance-fixtures.md#fixture-assertion-semantics)에 남습니다. |
 
 ## Storage model 요약
 
@@ -1465,6 +1465,6 @@ Verification independence precondition은 `evals.independence_json`, `evaluator_
 
 Validator failure는 상태, blocked reason, close blocker 중 하나로 드러나야 합니다. prose-only agent output 안에만 숨기면 안 됩니다.
 
-[Operations And Conformance](operations-and-conformance.md#catalog-only-fixture-skeleton-guidance)의 catalog-only fixture skeleton에서 쓰는 "minimum seeded records"는 authoring guidance이지 새 storage schema가 아닙니다. Seed loader는 해당 records를 여기와 API 문서가 이미 담당하는 table, JSON `TEXT` field, artifact file, projection job row로 expansion한 뒤, 실행 전에 owner-bound value set을 validation해야 합니다. Docs-maintenance catalog row는 예외입니다. 이 row는 Markdown documentation input만 seed하며 `state.sqlite` record, artifact row, projection job, runtime fixture result를 만들면 안 됩니다.
+[Conformance Fixtures 참조](conformance-fixtures.md#catalog-only-fixture-skeleton-guidance)의 catalog-only fixture skeleton에서 쓰는 "minimum seeded records"는 authoring guidance이지 새 storage schema가 아닙니다. Seed loader는 해당 records를 여기와 API 문서가 이미 담당하는 table, JSON `TEXT` field, artifact file, projection job row로 expansion한 뒤, 실행 전에 owner-bound value set을 validation해야 합니다. Docs-maintenance catalog row는 예외입니다. 이 row는 Markdown documentation input만 seed하며 `state.sqlite` record, artifact row, projection job, runtime fixture result를 만들면 안 됩니다.
 
-fixture assertion semantics는 [Operations And Conformance](operations-and-conformance.md#fixture-assertion-semantics)가 담당합니다. stable `expected_events` name은 [Kernel Stable Event Catalog](kernel.md#stable-event-catalog)가 담당합니다. Reference runner는 captured Core state, `task_events`, validator 결과, artifact registry/file integrity, projection job 또는 freshness state, returned error code를 대상으로 해당 assertion mode를 구현해야 합니다. 렌더링된 Markdown이나 agent prose만 맞춰서는 fixture를 통과시킬 수 없습니다.
+fixture assertion semantics는 [Conformance Fixtures 참조](conformance-fixtures.md#fixture-assertion-semantics)가 담당합니다. stable `expected_events` name은 [Kernel Stable Event Catalog](kernel.md#stable-event-catalog)가 담당합니다. Reference runner는 captured Core state, `task_events`, validator 결과, artifact registry/file integrity, projection job 또는 freshness state, returned error code를 대상으로 해당 assertion mode를 구현해야 합니다. 렌더링된 Markdown이나 agent prose만 맞춰서는 fixture를 통과시킬 수 없습니다.

@@ -47,7 +47,7 @@ Harness는 사용자의 Product Repository 옆에서 실행되는 로컬 권한 
 - public MCP request/response schema. [MCP API와 스키마](mcp-api-and-schemas.md)를 봅니다.
 - SQLite DDL. [Storage와 DDL](storage-and-ddl.md)을 봅니다.
 - full CLI command 의미. 현재 담당 문서는 [운영과 Conformance](operations-and-conformance.md)입니다.
-- conformance fixture 형식. 현재 담당 문서는 [운영과 Conformance](operations-and-conformance.md)입니다.
+- conformance fixture 형식. 현재 담당 문서는 [Conformance Fixtures 참조](conformance-fixtures.md)입니다.
 - threat-model asset, trust boundary, threat category, control category. [보안 위협 모델 참조](security-threat-model.md)를 봅니다.
 - 접점별 connector cookbook. [Surface Cookbook](surface-cookbook.md)을 봅니다.
 - connector capability profile. [Agent 통합 참조](agent-integration.md)를 봅니다.

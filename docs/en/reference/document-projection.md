@@ -99,7 +99,7 @@ This document does not own:
 - SQLite DDL and storage layout; see [Storage And DDL](storage-and-ddl.md)
 - design-quality policy contracts; see [Design Quality Policies](design-quality-policies.md)
 - operator command semantics; see [Operations And Conformance Reference](operations-and-conformance.md)
-- conformance fixture assertion semantics; see [Operations And Conformance Reference](operations-and-conformance.md)
+- conformance fixture assertion semantics; see [Conformance Fixtures Reference](conformance-fixtures.md#fixture-assertion-semantics)
 - connector capability profiles; see [Agent Integration Reference](agent-integration.md)
 - surface recipes; see [Surface Cookbook](surface-cookbook.md)
 - full template bodies and display card shapes; see [Template Reference](templates/README.md)

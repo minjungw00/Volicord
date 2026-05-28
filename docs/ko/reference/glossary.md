@@ -33,7 +33,8 @@
 | Discovery와 Shared Design, design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contract | [설계 품질 정책](design-quality-policies.md) |
 | Surface capability, guarantee display, connector behavior | [Agent 통합 참조](agent-integration.md) |
 | Security asset, trust boundary, threat category, high-risk control expectation | [보안 위협 모델 참조](security-threat-model.md) |
-| Operator procedure, conformance fixture, docs-maintenance 보고 | [운영과 Conformance 참조](operations-and-conformance.md) |
+| Operator procedure, conformance run overview, docs-maintenance 보고 | [운영과 Conformance 참조](operations-and-conformance.md) |
+| Conformance fixture body shape, assertion semantics, suite catalog, example | [Conformance Fixtures 참조](conformance-fixtures.md) |
 
 ## 공식 용어
 
@@ -247,7 +248,7 @@ Run, Eval, 수동 QA record, validator, review display, operator diagnostic, con
 
 ### Fixture Assertion Semantics
 
-`expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, `expected_error`를 captured Core results와 어떻게 match하는지 정하는 conformance comparison rules입니다. Operations and conformance가 담당하며 fixture body 밖에 있고, prose-only matching으로 fixture를 pass시키는 것을 허용하지 않습니다.
+`expected_state`, `expected_events`, `expected_artifacts`, `expected_projection`, `expected_error`를 captured Core results와 어떻게 match하는지 정하는 conformance comparison rules입니다. [Conformance Fixtures 참조](conformance-fixtures.md#fixture-assertion-semantics)가 담당하며 fixture body 밖에 있고, prose-only matching으로 fixture를 pass시키는 것을 허용하지 않습니다.
 
 ### Fresh Session
 

@@ -20,7 +20,7 @@
 
 ## 읽기 전에
 
-Lifecycle, gate, close semantics는 [커널 참조](kernel.md)를 사용합니다. Public request/response shape와 `ValidatorResult`는 [MCP API와 스키마](mcp-api-and-schemas.md)를 사용하고, fixture assertion semantics는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용합니다.
+Lifecycle, gate, close semantics는 [커널 참조](kernel.md)를 사용합니다. Public request/response shape와 `ValidatorResult`는 [MCP API와 스키마](mcp-api-and-schemas.md)를 사용하고, fixture assertion semantics는 [Conformance Fixtures 참조](conformance-fixtures.md#fixture-assertion-semantics)를 사용합니다.
 
 ## 핵심 생각
 

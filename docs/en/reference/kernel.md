@@ -29,7 +29,7 @@ The kernel makes product writes and close decisions depend on explicit state: ac
 |---|---|---|
 | Entity and relationship semantics | [Entity model](#entity-model) | Physical tables stay in [Storage And DDL](storage-and-ddl.md). |
 | Non-substitution rules | [Boundaries and non-substitutions](#boundaries-and-non-substitutions) | Public display shapes stay in [MCP API And Schemas](mcp-api-and-schemas.md). |
-| Kernel gate rules | [Gate Rule Map](#gate-rule-map), then the matching gate section | Fixture assertions for gates stay in [Operations And Conformance Reference](operations-and-conformance.md#fixture-assertion-semantics). |
+| Kernel gate rules | [Gate Rule Map](#gate-rule-map), then the matching gate section | Fixture assertions for gates stay in [Conformance Fixtures Reference](conformance-fixtures.md#fixture-assertion-semantics). |
 | Mode, lifecycle, result, close reason, and assurance values | [Lifecycle and transitions](#lifecycle-and-transitions), [Compatibility matrix](#compatibility-matrix) | Storage hardening for persisted values stays in [Storage And DDL](storage-and-ddl.md#canonical-enum-hardening). |
 | Stable event names | [Stable Event Catalog](#stable-event-catalog) | Event rows remain `state.sqlite.task_events` in [Storage And DDL](storage-and-ddl.md#task_events). |
 | Write gate behavior | [`prepare_write`](#prepare_write) | Public request/response shape stays in [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write). |
@@ -836,7 +836,7 @@ Stable event names are the `event_type` values that MVP conformance fixtures may
 
 The catalog is deliberately compact. Non-stable implementation-local detail or audit events, plus future extension events, may still be recorded in `task_events`, but MVP fixture authors must not require them in `expected_events` until they are added here.
 
-Catalog-only fixture skeletons in [Operations And Conformance](operations-and-conformance.md#catalog-only-fixture-skeleton-guidance) may name expected event behavior at a family level. When a catalog entry becomes executable, `expected_events` still asserts only the stable names above; read-only status/next and docs-maintenance scenarios should normally require no stable events unless a documented Core action commits state.
+Catalog-only fixture skeletons in [Conformance Fixtures Reference](conformance-fixtures.md#catalog-only-fixture-skeleton-guidance) may name expected event behavior at a family level. When a catalog entry becomes executable, `expected_events` still asserts only the stable names above; read-only status/next and docs-maintenance scenarios should normally require no stable events unless a documented Core action commits state.
 
 
 | Trigger | From | To | Gate or record effect |

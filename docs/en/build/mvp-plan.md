@@ -16,7 +16,7 @@ Use this when you need to plan what to build after the first runnable slice. Use
 
 ## Before you read
 
-Read [Implementation Overview](implementation-overview.md), including its [Documentation Acceptance Status](implementation-overview.md#documentation-acceptance-status), [First Runnable Slice](first-runnable-slice.md), and [Runtime Walkthrough](runtime-walkthrough.md). For exact API contracts, use [MCP API And Schemas](../reference/mcp-api-and-schemas.md). For storage details and DDL, use [Storage And DDL](../reference/storage-and-ddl.md). For design-quality gate and validator behavior, use [Design Quality Policies](../reference/design-quality-policies.md). For conformance fixture semantics, use [Operations And Conformance](../reference/operations-and-conformance.md). For v1+ Expansion candidates and promotion criteria, use the [Roadmap](../roadmap.md).
+Read [Implementation Overview](implementation-overview.md), including its [Documentation Acceptance Status](implementation-overview.md#documentation-acceptance-status), [First Runnable Slice](first-runnable-slice.md), and [Runtime Walkthrough](runtime-walkthrough.md). For exact API contracts, use [MCP API And Schemas](../reference/mcp-api-and-schemas.md). For storage details and DDL, use [Storage And DDL](../reference/storage-and-ddl.md). For design-quality gate and validator behavior, use [Design Quality Policies](../reference/design-quality-policies.md). For conformance fixture semantics, use [Conformance Fixtures Reference](../reference/conformance-fixtures.md). For operator procedures and the conformance run overview, use [Operations And Conformance](../reference/operations-and-conformance.md). For v1+ Expansion candidates and promotion criteria, use the [Roadmap](../roadmap.md).
 
 ## Main idea
 
@@ -94,11 +94,11 @@ flowchart LR
   Smoke -. "checks captured outputs" .-> Close
 ```
 
-Exact state and close behavior is owned by [Kernel Reference](../reference/kernel.md), public tool shapes by [MCP API And Schemas](../reference/mcp-api-and-schemas.md), projection rules by [Document Projection Reference](../reference/document-projection.md), and fixture semantics by [Operations And Conformance](../reference/operations-and-conformance.md#conformance-fixture-format). This flow does not add pack gates or fixture body requirements.
+Exact state and close behavior is owned by [Kernel Reference](../reference/kernel.md), public tool shapes by [MCP API And Schemas](../reference/mcp-api-and-schemas.md), projection rules by [Document Projection Reference](../reference/document-projection.md), and fixture semantics by [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format). This flow does not add pack gates or fixture body requirements.
 
-For practical fixture authoring order, use the [Kernel Smoke Authoring Queue](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue). It maps the v0.1 runtime fixture candidates to this stage without changing the exact fixture body shape.
+For practical fixture authoring order, use the [Kernel Smoke Authoring Queue](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue). It maps the v0.1 runtime fixture candidates to this stage without changing the exact fixture body shape.
 
-Kernel Smoke pass/fail comes from runtime fixtures that drive Core or operator actions and compare captured state, `task_events`, artifacts, projections, and primary errors. Status prose, Journey Card text, close prose, and scenario descriptions are observable context only; exact fixture body and assertion rules stay in [Operations And Conformance](../reference/operations-and-conformance.md#conformance-fixture-format).
+Kernel Smoke pass/fail comes from runtime fixtures that drive Core or operator actions and compare captured state, `task_events`, artifacts, projections, and primary errors. Status prose, Journey Card text, close prose, and scenario descriptions are observable context only; exact fixture body and assertion rules stay in [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format).
 
 ## v0.2 Evidence & Projection Pack
 

@@ -65,7 +65,7 @@ Build 독자는 이 표를 진입 gate로 보아야 합니다. maintainer handof
 - v0.1 Kernel MVP의 local-only MCP 노출 baseline이 승인되어 있다. Remote, shared, tunneled, non-loopback 노출은 owner 문서가 connector profile을 승격하고 증명하기 전까지 v0.1 baseline 밖입니다. [런타임 아키텍처](../reference/runtime-architecture.md#로컬-접근-기대사항), [보안 위협 모델 참조](../reference/security-threat-model.md#mcp-local-access와-caller-boundary), [MCP API와 스키마](../reference/mcp-api-and-schemas.md#mcp-경계와-호출자-신뢰)를 봅니다.
 - Reference surface capability profile이 실제 사용하는 host/profile/configuration에 대한 구체적인 declaration으로 승인되어 있다. Version, MCP config, hook, permission, workspace policy, generated file, conformance result, capture method, QA capture method, redaction policy, artifact retention behavior가 바뀌면 refresh되어야 합니다. 정확한 connector profile과 surface recipe detail은 [Agent 통합 참조](../reference/agent-integration.md#capability-profiles)와 [Surface Cookbook](../reference/surface-cookbook.md)에 둡니다.
 - Core-only mutation model이 승인되어 있다. 기준 운영 상태를 변경하는 것은 Core뿐이며, resource, projection, report, diagnostic, MCP caller, operator entrypoint는 Core의 상태 변경 경로에 들어가지 않는 한 read-only 또는 derived로 남습니다. [Core process model](../reference/runtime-architecture.md#core-process-model), [State transaction flow](../reference/runtime-architecture.md#state-transaction-flow), MCP [Idempotency](../reference/mcp-api-and-schemas.md#idempotency)와 [State Conflict 동작](../reference/mcp-api-and-schemas.md#state-conflict-동작)을 봅니다.
-- Kernel Smoke fixture queue가 v0.1 Kernel MVP conformance 작성 순서로 확인되어 있다. 정확한 fixture format, assertion, catalog semantics는 [운영과 Conformance 참조](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue)에 둡니다.
+- Kernel Smoke fixture queue가 v0.1 Kernel MVP conformance 작성 순서로 확인되어 있다. 정확한 fixture format, assertion, catalog semantics는 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue)에 둡니다.
 - 첫 실행 가능한 조각은 local, single-project, single-reference-surface, fixture-proven 범위를 유지한다. 계획 점검 목록은 [첫 실행 가능한 조각](first-runnable-slice.md)을 사용합니다.
 - v1+ Expansion 기능은 [로드맵 승격 규칙](../roadmap.md#승격-규칙)에 따라 owner 문서가 승격하기 전까지 v0.1 Kernel MVP, v0.2부터 v0.4까지의 staged pack, Agency-Hardened MVP 밖에 남아 있다.
 
@@ -212,7 +212,7 @@ v0.1은 권한 루프를 증명하는 단계입니다. Agency-Hardened MVP, temp
 - 근거 또는 decision 요구사항이 없으면 `close_task`가 structured blocker와 함께 차단함
 - 같은 동작이 basic Core fixture로 실행 가능함
 
-v0.1 Kernel MVP는 Agency-Hardened MVP가 아닙니다. 쓰기 권한 경로가 살아 있음을 증명하는 단계입니다. 문서 수준 승인 점검은 [첫 실행 가능한 조각](first-runnable-slice.md#문서-수준-승인-점검)을 사용하고, 정확한 fixture 의미는 [운영과 Conformance 참조](../reference/operations-and-conformance.md#conformance-fixture-format)를 사용합니다.
+v0.1 Kernel MVP는 Agency-Hardened MVP가 아닙니다. 쓰기 권한 경로가 살아 있음을 증명하는 단계입니다. 문서 수준 승인 점검은 [첫 실행 가능한 조각](first-runnable-slice.md#문서-수준-승인-점검)을 사용하고, 정확한 fixture 의미는 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)를 사용합니다.
 
 ## Agency-hardened 증명
 
@@ -248,4 +248,5 @@ v1+ Expansion 후보와 승격 규칙은 [로드맵](../roadmap.md)을 사용합
 - [런타임 아키텍처 참조](../reference/runtime-architecture.md): runtime space, Core flow, artifact, projection/reconcile, guarantee level.
 - [MCP API와 스키마](../reference/mcp-api-and-schemas.md): public resource, tool, schema, error, 아티팩트 참조, idempotency, state conflict behavior.
 - [Storage와 DDL](../reference/storage-and-ddl.md): runtime layout과 DDL, migration, lock, artifact, baseline, projection job, validator-run storage를 다룹니다.
-- [운영과 Conformance 참조](../reference/operations-and-conformance.md): operator semantics와 fixture expectation.
+- [운영과 Conformance 참조](../reference/operations-and-conformance.md): operator semantics와 conformance run overview.
+- [Conformance Fixtures 참조](../reference/conformance-fixtures.md): fixture body shape, assertion semantics, suite catalog, example.

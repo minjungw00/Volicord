@@ -65,7 +65,7 @@ First implementation planning means v0.1 Kernel MVP planning first, not Agency-H
 - The local-only MCP exposure baseline is accepted for v0.1 Kernel MVP. Remote, shared, tunneled, or non-loopback exposure remains outside the v0.1 baseline unless owner docs promote and prove a connector profile; see [Runtime Architecture](../reference/runtime-architecture.md#local-access-expectations), [Security Threat Model Reference](../reference/security-threat-model.md#mcp-local-access-and-caller-boundaries), and [MCP API And Schemas](../reference/mcp-api-and-schemas.md#mcp-boundary-and-caller-trust).
 - The reference surface capability profile is accepted as a concrete declaration for the actual host/profile/configuration in use, with refresh triggers for version, MCP config, hooks, permissions, workspace policy, generated files, conformance result, capture method, QA capture method, redaction policy, and artifact retention behavior. Exact connector profile and surface recipe details stay in [Agent Integration Reference](../reference/agent-integration.md#capability-profiles) and [Surface Cookbook](../reference/surface-cookbook.md).
 - The Core-only mutation model is accepted: Core alone changes canonical operational state, while resources, projections, reports, diagnostics, MCP callers, and operator entrypoints remain read-only or derived unless they enter a Core state-changing path. See [Core process model](../reference/runtime-architecture.md#core-process-model), [State transaction flow](../reference/runtime-architecture.md#state-transaction-flow), and the MCP [Idempotency](../reference/mcp-api-and-schemas.md#idempotency) and [State conflict behavior](../reference/mcp-api-and-schemas.md#state-conflict-behavior) sections.
-- The Kernel Smoke fixture queue is identified as the v0.1 Kernel MVP conformance authoring order. Exact fixture format, assertions, and catalog semantics stay in [Operations And Conformance Reference](../reference/operations-and-conformance.md#kernel-smoke-authoring-queue).
+- The Kernel Smoke fixture queue is identified as the v0.1 Kernel MVP conformance authoring order. Exact fixture format, assertions, and catalog semantics stay in [Conformance Fixtures Reference](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue).
 - The first runnable slice remains local, single-project, single-reference-surface, and fixture-proven. Use [First Runnable Slice](first-runnable-slice.md) for the planning checklist.
 - v1+ Expansion features remain outside v0.1 Kernel MVP, the v0.2 through v0.4 staged packs, and Agency-Hardened MVP unless promoted by owner docs through the [Roadmap promotion rule](../roadmap.md#promotion-rule).
 
@@ -212,7 +212,7 @@ It should show:
 - `close_task` blocks with structured blockers when evidence or decision requirements are missing
 - the same behavior is executable through basic Core fixtures
 
-v0.1 Kernel MVP is not Agency-Hardened MVP. It proves the write authority path is alive. Use [First Runnable Slice](first-runnable-slice.md#doc-level-acceptance-checks) for doc-level acceptance checks, and use [Operations And Conformance Reference](../reference/operations-and-conformance.md#conformance-fixture-format) for exact fixture semantics.
+v0.1 Kernel MVP is not Agency-Hardened MVP. It proves the write authority path is alive. Use [First Runnable Slice](first-runnable-slice.md#doc-level-acceptance-checks) for doc-level acceptance checks, and use [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format) for exact fixture semantics.
 
 ## The agency-hardened proof
 
@@ -248,4 +248,5 @@ Then use the reference docs and current owners for exact behavior:
 - [Runtime Architecture Reference](../reference/runtime-architecture.md) for runtime spaces, Core flow, artifacts, projection/reconcile, and guarantee levels.
 - [MCP API And Schemas](../reference/mcp-api-and-schemas.md) for public resources, tools, schemas, errors, artifact refs, idempotency, and state conflict behavior.
 - [Storage And DDL](../reference/storage-and-ddl.md) for runtime layout, DDL, migrations, locks, artifacts, baselines, projection jobs, and validator-run storage.
-- [Operations And Conformance Reference](../reference/operations-and-conformance.md) for operator semantics and fixture expectations.
+- [Operations And Conformance Reference](../reference/operations-and-conformance.md) for operator semantics and conformance run overview.
+- [Conformance Fixtures Reference](../reference/conformance-fixtures.md) for fixture body shape, assertion semantics, suite catalogs, and examples.
