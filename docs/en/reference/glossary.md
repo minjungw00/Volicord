@@ -30,7 +30,7 @@ This glossary owns official term wording, capitalization reminders, record-name 
 | MCP resources, MCP tools, public schemas, errors, `ValidatorResult`, `ProjectionKind` | [MCP API And Schemas](mcp-api-and-schemas.md) |
 | SQLite records, artifact layout, enum hardening, `tree_hash`, `request_hash` storage use | [Storage And DDL](storage-and-ddl.md) |
 | Projections, managed blocks, projection freshness, Markdown reports, template bodies | [Document Projection Reference](document-projection.md); [Template Reference](templates/README.md) |
-| Design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contracts | [Design Quality Policies](design-quality-policies.md) |
+| Discovery and Shared Design, design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contracts | [Design Quality Policies](design-quality-policies.md) |
 | Surface capability, guarantee display, connector behavior | [Agent Integration Reference](agent-integration.md) |
 | Operator procedures, conformance fixtures, docs-maintenance reporting | [Operations And Conformance Reference](operations-and-conformance.md) |
 
@@ -57,6 +57,10 @@ A prior user decision allowing a sensitive action to proceed within a defined sc
 ### Approval Gate
 
 The kernel gate for sensitive-action Approval. It is required only when sensitive categories are present. Granted sensitive-action Approval does not prove correctness, imply acceptance, resolve user-owned judgment, or create Write Authorization.
+
+### Assumption Register
+
+A Discovery or Shared Design support/projection list of assumptions the agent is using before implementation planning. It should name source, confidence, owner, and what would change if the assumption fails. These are recommended display/support contents, not a standalone schema or canonical record field list. The register helps shape a Discovery Brief and First Safe Change Unit Candidate, but it is not user approval, sensitive-action Approval, acceptance, residual-risk acceptance, evidence, close readiness, scope authority, or Write Authorization.
 
 ### Artifact
 
@@ -168,6 +172,14 @@ The owner document for design-quality policy contracts and severity composition.
 
 Verification performed across a meaningful independence boundary, such as a fresh session, fresh worktree, sandbox, or manual evaluator bundle. Same-session self-review is not detached verification, and subagent context is not detached by default.
 
+### Discovery
+
+A workflow posture before implementation planning and before write authority that clarifies requirements until the first safe Change Unit can be proposed. It separates goal, user value, non-goals, acceptance criteria, assumptions, and product, technical, security, QA, operational, and scope judgments; asks the user only for decisions the codebase and current Harness context cannot answer; and may ask multiple targeted questions without continuing indefinitely. Discovery outputs route to Shared Design, Decision Packet candidates, and Change Unit shaping. Discovery is not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, scope authority, or a new authority path.
+
+### Discovery Brief
+
+A compact Discovery or Shared Design support/projection summary of the clarified goal, user value, non-goals, acceptance criteria, question queue, assumption register, separated user-owned judgments, and First Safe Change Unit Candidate. These are recommended display/support contents, not a standalone schema or canonical record field list. A Discovery Brief can inform Shared Design, Decision Packet candidates, and Change Unit shaping, but does not by itself create canonical scope, resolve decisions, authorize writes, prove evidence, record residual-risk acceptance, accept results, or close a task.
+
 ### Detective Guarantee
 
 A guarantee level where the harness can detect violations and mark state blocked, stale, partial, or failed after observation.
@@ -219,6 +231,10 @@ A canonical support record and recorded path from checks and findings back into 
 ### Finding
 
 An observed issue, gap, risk, blocker, or noteworthy result from a Run, Eval, Manual QA record, validator, review display, operator diagnostic, or conformance check. A finding is not a standalone authority path and does not affect gates or close by staying in chat or report prose. It becomes state-relevant only when routed through existing owner records or structured results, such as Evidence Manifest gaps, Decision Packet candidates or records, Change Unit updates, Feedback Loop or TDD Trace updates, Manual QA or Eval records, Residual Risk records, reconcile items, close blockers, or follow-up Task/Change Unit records. The routing contract is owned by [Design Quality Policies](design-quality-policies.md#finding-routing) and [Kernel Reference](kernel.md#finding-routing).
+
+### First Safe Change Unit Candidate
+
+The smallest proposed Change Unit shape that can safely start work without hiding unresolved user-owned judgment. It is produced during Discovery or Shared Design and should name included behavior, out-of-bounds behavior, completion conditions, known sensitive areas, and stop conditions. These are recommended display/support contents, not a standalone schema or canonical record field list. It is a candidate only: an active Change Unit, compatible scope gate state, and later `prepare_write` are still required before product writes.
 
 ### Fixture Assertion Semantics
 
@@ -378,6 +394,10 @@ The relationship between a projection and its source records, managed hash, arti
 
 A durable outbox record that asks the projector to render a Markdown projection from committed state records and artifact refs. `record_kind=projection` identity is `projection_jobs.projection_job_id`; project-level projection jobs do not by themselves create project-scoped artifact links in the MVP artifact DDL.
 
+### Question Queue
+
+A Discovery or Shared Design support/projection list of open questions classified as blocking, useful-but-not-blocking, or codebase-answerable. These are recommended display/support contents, not a standalone schema or canonical record field list. Blocking questions may route to a Decision Packet candidate when user-owned judgment is required. Useful-but-not-blocking questions can be parked, deferred, or turned into follow-up work. Codebase-answerable questions should be answered from current repo, docs, Harness state, or source refs rather than asked of the user. The queue is not a Decision Packet, gate, approval, evidence, acceptance, close, or Write Authorization.
+
 ### QA Gate
 
 The canonical kernel gate for required Manual QA. `manual_qa_record.result` is record-level; `qa_gate` is the close-relevant aggregate state. `qa_gate=pending` means required QA has not yet produced a satisfying Manual QA record, or the latest relevant Manual QA record does not satisfy policy.
@@ -446,7 +466,7 @@ The policy-owned rule for merging multiple applicable task-shape defaults, polic
 
 ### Shared Design
 
-The minimum recorded shared understanding of a task before implementation hardens into a plan: goal, scope, non-goals, acceptance criteria, assumptions, decisions, rejected options, domain/module/interface impact, and first Change Unit shape. Shared Design can support shaping and `design_gate` readiness, but it is not final approval, sensitive-action Approval, final acceptance, residual-risk acceptance, QA judgment, or Write Authorization. Markdown renderings of Shared Design are projections and proposal surfaces. Exact policy requirements are owned by [Design Quality Policies](design-quality-policies.md#shared-design-shared_design).
+The minimum recorded shared understanding of a task before implementation hardens into a plan: goal, user value, scope, non-goals, acceptance criteria, assumptions, decisions, rejected options, domain/module/interface impact, and first Change Unit shape. Discovery Briefs, Question Queues, Assumption Registers, and First Safe Change Unit Candidates can feed Shared Design. Shared Design can support shaping and `design_gate` readiness, but it is not final approval, sensitive-action Approval, final acceptance, residual-risk acceptance, QA judgment, evidence, close readiness, or Write Authorization. Markdown renderings of Shared Design are projections and proposal surfaces. Exact policy requirements are owned by [Design Quality Policies](design-quality-policies.md#shared-design-shared_design).
 
 ### Source-of-truth
 

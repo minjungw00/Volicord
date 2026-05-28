@@ -4,7 +4,7 @@
 
 This document teaches Harness through two concrete task flows before you read the stricter reference definitions.
 
-After reading it, you should be able to recognize why Harness records a Task, a Change Unit, a Decision Packet, Approval, Write Authorization, Evidence, Verification, Manual QA, Acceptance, Residual Risk, and Close. You do not need to know the internal record details to follow the story.
+After reading it, you should be able to recognize when Harness uses Discovery, and why it records a Task, a Change Unit, a Decision Packet, Approval, Write Authorization, Evidence, Verification, Manual QA, Acceptance, Residual Risk, and Close. You do not need to know the internal record details to follow the story.
 
 This is Learn documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first implementation/proof target remains Kernel Smoke; Agency-Hardened MVP and post-MVP automation stay out of scope unless their owner docs promote and prove them.
 
@@ -187,11 +187,29 @@ Task: Add remember-me behavior to the login flow.
 Likely mode: work.
 ```
 
-The agent also asks the first useful question in ordinary language:
+Because "remember me" is ambiguous, the agent uses Discovery before implementation planning. Discovery is requirement clarification, not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, scope authority, or a new authority path. It separates product, technical, security, QA, operational, and scope judgments; answers codebase-answerable questions from the repository and current Harness context; and asks the user only for decisions the codebase cannot answer.
+
+The agent may keep a short Discovery Brief:
+
+```text
+Goal: add remember-me behavior to login.
+User value: easier repeat sign-in.
+Non-goals: passwordless login, account recovery, global session redesign.
+Question Queue:
+- Blocking product/security question: what should "remember me" mean?
+- Codebase-answerable question: where current session lifetime is configured.
+Assumption Register:
+- Existing login flow has a single checkbox location; verify in code before write planning.
+First Safe Change Unit Candidate: login form checkbox plus selected remember-me behavior and focused tests.
+```
+
+Then the agent asks the first useful user-owned question in ordinary language:
 
 ```text
 Should "remember me" extend the login session on this device, prefill the email address, or both?
 ```
+
+Discovery may continue with a few targeted questions if the answer exposes more user-owned judgment, but it stops once the first safe Change Unit can be proposed.
 
 ### Scope shaping
 
@@ -247,7 +265,7 @@ Write Authorization: allowed for login form, session persistence code, and relat
 Not allowed: unrelated account recovery or global auth redesign.
 ```
 
-If the chosen behavior requires a sensitive-action Approval, Harness should stop before the write and ask for that Approval separately. Sensitive-action Approval answers "may this sensitive action proceed?" It does not replace the Decision Packet, tests, QA, risk acceptance, or final acceptance.
+If the chosen behavior requires a sensitive-action Approval, Harness should stop before the write and ask for that Approval separately. Sensitive-action Approval answers "may this sensitive action proceed?" It does not replace the Decision Packet, tests, QA, residual-risk acceptance, or final acceptance.
 
 ### Implementation
 
@@ -370,6 +388,7 @@ The two flows above are anchors, not the whole universe. Harness should stay pra
 | everyday phrase | Harness term | why it exists | where to read more |
 |---|---|---|---|
 | "What are we doing?" | Task | Keeps the user's desired outcome, status, blockers, evidence, and close decision connected. | [Use: User Guide](../use/user-guide.md); [Kernel Reference](../reference/kernel.md). |
+| "What needs clarifying before we plan writes?" | Discovery | Builds a Discovery Brief, Question Queue, Assumption Register, and First Safe Change Unit Candidate before write authority; routes user-owned choices to Decision Packet candidates and existing shaping paths. | [Use: User Guide](../use/user-guide.md); [Design Quality Policies](../reference/design-quality-policies.md#shared-design-shared_design). |
 | "What may change?" | Change Unit | Bounds product writes so the task does not silently expand. | [Use: User Guide](../use/user-guide.md); [Kernel Reference](../reference/kernel.md). |
 | "This needs your call." | Decision Packet | Separates user-owned product or material technical judgment from broad approval. | [Use: User Guide](../use/user-guide.md); [Kernel Reference](../reference/kernel.md). |
 | "May this sensitive step proceed?" | Approval | Allows a sensitive action inside a defined scope without replacing user-owned judgment or final acceptance. | [Kernel Reference](../reference/kernel.md). |

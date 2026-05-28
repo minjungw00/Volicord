@@ -48,6 +48,14 @@ The agent should decide whether the request is read-only advice, small direct wo
 
 If the task is small, the agent may handle it as direct work. If the task is larger, risky, multi-file, or unclear, it should shape the work before changing product files.
 
+When you want stronger clarification before planning, ask for Discovery:
+
+```text
+Start Discovery. Ask targeted questions until the first safe Change Unit is clear. Separate product decisions from technical decisions. Show options, recommendation, and uncertainty. Only ask me what the codebase cannot answer.
+```
+
+Discovery is for requirement clarification before write authority. A good Discovery pass separates goal, user value, non-goals, acceptance criteria, assumptions, product decisions, technical decisions, security choices, QA or verification expectations, operational concerns, and scope boundaries. It may ask multiple targeted questions, but it should stop once the first safe Change Unit candidate is clear enough to propose. Discovery output should feed Shared Design, Decision Packet candidates, and Change Unit shaping; it is not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, scope authority, or a new authority path.
+
 ### 2. Expect a compact start
 
 At the start, or before significant resume, the agent should show a short status or Journey Card. It should fit a quick scan and show only what affects the next decision or safe action:
@@ -232,6 +240,7 @@ Everyday work starts as a conversation, not as a command language. Use ordinary 
 | Continue this work. Check harness state first. | Resume from Harness state. |
 | Show me the Journey Card before resuming. | Resume status before more work. |
 | If this is small, just handle it; if it grows, use the tracked flow. | `direct` or `work` classification. |
+| Start Discovery. Ask targeted questions until the first safe Change Unit is clear. Separate product decisions from technical decisions. Show options, recommendation, and uncertainty. Only ask me what the codebase cannot answer. | Discovery feeding Shared Design, Decision Packet candidates, and Change Unit shaping. |
 | Start with the scope and questions. | Task scope; active Change Unit when product writes may happen. |
 | Do not expand beyond the scope we just agreed. | Change Unit boundary. |
 | If scope needs to grow, show me the options and impact first. | Decision Packet for scope or user-owned judgment. |
@@ -280,8 +289,13 @@ The normal path should feel like a short conversation. Users should see the curr
 
 ```mermaid
 flowchart LR
-  Request["request"] --> Status["status"]
-  Status --> Scope["scope"]
+  Request["request"] --> Classify["classify task shape"]
+  Classify --> Discovery["Discovery when clarification is needed"]
+  Classify --> Scope["scope"]
+  Discovery --> Brief["Discovery Brief"]
+  Brief --> Decisions["Decision Packet candidates when user-owned"]
+  Brief --> Scope["First Safe Change Unit Candidate"]
+  Decisions --> Scope
   Scope --> Work["do allowed work"]
   Work --> Checks["evidence / checks"]
   Checks --> Close["close or ask"]
@@ -291,11 +305,12 @@ Typical flow:
 
 1. The agent checks status or starts intake.
 2. The agent classifies the request as `advisor`, `direct`, or `work`.
-3. The agent confirms scope and the active Change Unit when product writes may happen.
-4. If user-owned product or material technical judgment blocks progress, you answer a Decision Packet.
-5. Before product writes, the agent checks write authority.
-6. After changes or advice, the agent records the relevant result and evidence when evidence applies.
-7. When needed, verification, Manual QA, residual risk, and acceptance are handled before close.
+3. If the request is ambiguous, feature-shaped, auth/security-sensitive, UX/workflow-heavy, public-interface-facing, or likely to become `work`, and clarification is needed, the agent can use Discovery and produce a Discovery Brief.
+4. The agent routes user-owned product, technical, security, QA, operational, or scope judgments to Decision Packet candidates or existing decision paths.
+5. The agent proposes the First Safe Change Unit Candidate, then confirms scope and the active Change Unit when product writes may happen.
+6. Before product writes, the agent checks write authority.
+7. After changes or advice, the agent records the relevant result and evidence when evidence applies.
+8. When needed, verification, Manual QA, residual risk, and acceptance are handled before close.
 
 Many small direct tasks skip some later checks. Bigger work should not hide those checks; it should show them only when they matter. In every case, useful user-facing output favors the same plain questions: what changed, what was checked, what remains risky, and what decision is needed now.
 
@@ -386,7 +401,7 @@ These words answer different questions. Keep them separate near close, even when
 | Acceptance | Records the user's judgment that the result is acceptable when the task requires it. | Correctness proof, QA, verification, or sensitive-action Approval. |
 | Residual Risk | Names known remaining uncertainty, limitation, unchecked condition, or trade-off. | Evidence, verification, QA, or acceptance. |
 | Decision | Records the user-owned product direction, material technical direction, waiver, or close-relevant choice. | Broad approval or chat agreement that does not answer the actual trade-off. |
-| Approval | Allows a named sensitive action to proceed. | Acceptance, correctness, evidence, verification, QA, or risk acceptance. |
+| Approval | Allows a named sensitive action to proceed. | Acceptance, correctness, evidence, verification, QA, or residual-risk acceptance. |
 
 Approval is not acceptance. Tests passing do not mean Manual QA happened. Same-session self-review can be a useful self-check, but it is not detached verification. Accepting a result does not prove it is correct. Accepting residual risk is not proof either; it means the known uncertainty was visible and accepted for this Task. Final acceptance, when required, should come after close-relevant residual risk has been shown or reported as no known close-relevant risk.
 
