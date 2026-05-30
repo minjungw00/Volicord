@@ -95,7 +95,7 @@ Use this path when you want to run an AI-assisted development session under Harn
 
 ## Build
 
-Use this path for implementation orientation and planning review. These pages keep the first path narrow: v0.1 Kernel MVP first, Kernel Smoke as its narrow conformance profile, v0.2 through v0.4 as staged packs toward Agency-Hardened MVP, and v1+ Expansion outside staged delivery unless owner docs promote and prove it.
+Use this path for implementation orientation and planning review. These pages keep the first path narrow: v0.1 Core Authority Slice first, Kernel Smoke as its narrow conformance authoring profile, v0.2 User-Facing Harness MVP as the first product MVP, v0.3 Assurance & Stewardship Pack and v0.4 Operations & Handoff Pack as hardening stages, and v1+ Expansion outside staged delivery unless owner docs promote and prove it.
 
 Start with the [Documentation Acceptance Status](build/implementation-overview.md#documentation-acceptance-status). Until maintainers deliberately accept implementation planning there, Build pages remain planning guidance and do not authorize runtime/server implementation.
 

@@ -6,7 +6,7 @@ Runtime 구현 계획에 들어가기 전에 Harness security asset, trust bound
 
 이 문서는 local authority boundary를 명확하게 유지해야 하는 implementer, operator, connector author, conformance author를 위한 lookup 문서입니다. Architecture, API, storage, kernel, connector, operations owner 문서를 대체하지 않습니다.
 
-이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke가 좁은 conformance profile로 이를 실행합니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target을 향한 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 둡니다.
+이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 이 조각을 위한 좁은 conformance authoring profile입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. v0.3과 v0.4는 강화된 로컬 기준 목표(hardened local reference target)를 향해 assurance, stewardship, operations, handoff behavior를 단단하게 만드는 단계이며, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 둡니다.
 
 ## 이런 때 읽기
 
@@ -58,7 +58,7 @@ Security display는 실제 control과 일치해야 합니다. Cooperative와 det
 
 ## 기준 전제
 
-v0.1 Kernel MVP와 staged-delivery default는 local-first입니다. 기준 배치는 사용자가 관리하는 제품 저장소, local 하네스 서버/설치, 하네스 런타임 홈, 등록된 local connector posture를 통해서만 노출되는 MCP server, 하나 이상의 연결된 agent surface입니다.
+코어 권한 조각(v0.1 Core Authority Slice)과 staged-delivery default는 local-first입니다. 기준 배치는 사용자가 관리하는 제품 저장소, local 하네스 서버/설치, 하네스 런타임 홈, 등록된 local connector posture를 통해서만 노출되는 MCP server, 하나 이상의 연결된 agent surface입니다.
 
 Local-first는 모든 local process를 신뢰한다는 뜻이 아닙니다. 다른 process, 오래된 connector configuration, 넓은 file permission, forwarded port, 사람이 편집한 generated file, stale chat context는 여전히 agent가 보고 하는 일에 영향을 줄 수 있습니다. 따라서 Harness는 가까운 surface를 별도 trust zone으로 다루고 owner path를 통해서만 operational meaning을 받아들입니다.
 

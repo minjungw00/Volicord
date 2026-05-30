@@ -95,7 +95,7 @@ AI 지원 개발 세션을 하네스 기준으로 진행할 때 보는 경로입
 
 ## Build
 
-구현 방향을 파악하고 계획을 리뷰하기 위한 경로입니다. 첫 경로는 좁게 유지합니다. v0.1 Kernel MVP를 먼저 두고, Kernel Smoke를 그 좁은 conformance profile로 사용하며, v0.2 Evidence & Projection Pack, v0.3 Agency Pack, v0.4 Operations Pack은 Agency-Hardened MVP reference conformance target으로 가는 staged pack으로 다룹니다. v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 staged delivery 밖에 둡니다.
+구현 방향을 파악하고 계획을 리뷰하기 위한 경로입니다. 첫 경로는 좁게 유지합니다. 코어 권한 조각(v0.1 Core Authority Slice)을 먼저 두고, 커널 스모크(Kernel Smoke)를 그 좁은 conformance authoring profile로 사용하며, 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)를 첫 제품 MVP로, 보증과 스튜어드십 팩(v0.3 Assurance & Stewardship Pack)과 운영과 인계 팩(v0.4 Operations & Handoff Pack)을 hardening stage로 다룹니다. v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 staged delivery 밖에 둡니다.
 
 먼저 [문서 승인 상태](build/implementation-overview.md#문서-승인-상태)를 확인합니다. maintainer가 그곳에서 구현 계획을 명시적으로 승인하기 전까지 Build 문서는 계획 지침이며 하네스 서버/런타임 구현을 승인하지 않습니다.
 

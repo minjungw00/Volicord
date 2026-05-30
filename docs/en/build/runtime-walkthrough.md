@@ -4,14 +4,14 @@
 
 Follow one Harness work item from user request to close outcome without reading every strict contract first.
 
-This is Build documentation. It summarizes the runtime path for implementers and reviewers, but it does not authorize runtime/server implementation, generated operational files, executable fixtures, runtime data, or new schemas before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is Build documentation. It summarizes the runtime path for implementers and reviewers, but it does not authorize runtime/server implementation, generated operational files, executable fixtures, runtime data, or new schemas before the documentation set is accepted for implementation planning. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as its narrow conformance authoring profile. The first product MVP target is v0.2 User-Facing Harness MVP. Later packs harden assurance, stewardship, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
 ## Read this when
 
 - You want a runtime-shaped mental model before reading the reference contracts.
 - You are checking how requirements become scoped work.
 - You need to explain the difference between state, artifacts, projections, and close blockers.
-- You are reviewing the first Kernel MVP path without expanding it.
+- You are reviewing the first Core Authority Slice path without expanding it into the user-facing MVP.
 
 ## Before you read
 
@@ -19,7 +19,9 @@ Read [Implementation Overview](implementation-overview.md) and [First Runnable S
 
 ## Main idea
 
-For write-capable tracked work, a request becomes safe product work only after Harness knows the Task, the needed Discovery or decisions, and the first scoped Change Unit. Product writes then pass through `prepare_write`, which can create a one-attempt Write Authorization. Runs consume that authority, evidence and artifacts support claims, projections make the state readable, and `close_task` either returns structured blockers or closes the Task.
+For write-capable tracked work, a request becomes safe product work only after Harness knows the Task, the needed Discovery or decisions, and the first scope. Product writes then pass through `prepare_write`, which can create a one-attempt Write Authorization. Runs consume that authority, evidence and artifacts support claims, projections make the state readable, and `close_task` either returns structured blockers or closes the Task.
+
+The walkthrough shows the full user-facing path. v0.1 Core Authority Slice implements only the smallest internal part of it: one project, one Task, one scope, one write authority path, one recorded Run, one evidence link, and one structured blocker/status response. v0.2 User-Facing Harness MVP adds the ordinary-language clarification, judgment separation, procedural budget, residual-risk display, and acceptance boundaries users experience.
 
 ## Walkthrough at a glance
 
@@ -102,6 +104,8 @@ Strict behavior: completion checks are owned by [`close_task`](../reference/kern
 
 ## First implementation boundary
 
-For v0.1 Kernel MVP, keep the path narrow: one local project, one reference surface, one Task, one scoped Change Unit, basic Decision Packet behavior, `prepare_write`, one Write Authorization consumed by `record_run`, minimal artifact and Evidence Manifest support, minimal `TASK` projection or durable enqueue, status/next reads, and structured close blockers.
+For v0.1 Core Authority Slice, keep the path narrow: one local project, one reference surface, one Task, one basic scope, `prepare_write`, one Write Authorization consumed by `record_run`, one artifact/evidence link, status/next reads, and structured blocker/status response.
+
+For v0.2 User-Facing Harness MVP, add the user-visible value path: ordinary request clarification, separate product/UX and architecture judgment presentation, small-change versus tracked-work budgets, close blocking for missing evidence or judgment, residual-risk display, and final acceptance distinct from Approval and residual-risk acceptance.
 
 The staged order and Kernel Smoke boundary are summarized in [MVP Plan](mvp-plan.md). Exact fixture body shape and assertion rules stay in [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format).

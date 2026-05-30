@@ -133,7 +133,7 @@ The repository may hold generated `TASK`, `APR`, `RUN-SUMMARY`, `EVAL`, `DIRECT-
 
 ## Harness Server / Installation
 
-The Harness Server / Installation is the control plane. v0.1 Kernel MVP can implement it as one local process with internal modules rather than a fleet of services.
+The Harness Server / Installation is the control plane. v0.1 Core Authority Slice can implement it as one local process with internal modules rather than a fleet of services.
 
 Core runtime responsibilities:
 
@@ -184,12 +184,12 @@ state.sqlite / artifact store / validators / projector / reconcile worker
 
 The conversation surface gathers user intent, decisions, approvals, QA judgments, and acceptance. The agent surface performs reading, editing, and checking. Harness rules and skills keep the agent oriented. The MCP server provides the tool boundary. Core owns the state machine. Validators, artifact capture, projection, and reconcile attach evidence and readable output to state transitions.
 
-Native hooks, sidecars, command wrappers, file watchers, and worktree isolation are capability-dependent enforcement layers. v0.1 Kernel MVP relies on cooperative/detective behavior for the reference surface unless a concrete capability profile has fixture-proven stronger enforcement.
+Native hooks, sidecars, command wrappers, file watchers, and worktree isolation are capability-dependent enforcement layers. v0.1 Core Authority Slice relies on cooperative/detective behavior for the reference surface unless a concrete capability profile has fixture-proven stronger enforcement.
 
 
 ### Core modules
 
-v0.1 Kernel MVP Core can run as a single process with these internal modules:
+v0.1 Core Authority Slice Core can run as a single process with these internal modules:
 
 | Module | Runtime responsibility |
 |---|---|
@@ -217,7 +217,7 @@ Decision, Journey, and Autonomy/Boundary modules do not create a new authority t
 
 Validators sit beside Core and return structured results to Core. Core decides whether the result blocks a transition, marks a gate stale/partial/blocked, requests a user decision, or only affects display.
 
-The Agency-Hardened/reference ValidatorResult ID set is API-owned and listed in [MCP API And Schemas](mcp-api-and-schemas.md#validatorresult). This runtime reference owns where those validators sit relative to Core and adapters, not a second copy of the ID registry.
+The hardened local reference ValidatorResult ID set is API-owned and listed in [MCP API And Schemas](mcp-api-and-schemas.md#validatorresult). This runtime reference owns where those validators sit relative to Core and adapters, not a second copy of the ID registry.
 
 `feedback_loop_check` reads Feedback Loop support records and related execution evidence; it does not introduce a separate kernel gate. Its consequences flow through `design_gate`, evidence sufficiency, blockers, or display in the same validator placement model as the other design-quality checks.
 

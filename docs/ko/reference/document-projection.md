@@ -6,7 +6,7 @@
 
 Projection의 권한 경계, managed block 동작, 사람이 편집할 수 있는 영역, 아티팩트 참조 표시 방식, template tier, projection 최신성 규칙을 정의합니다. 기준 kernel state, MCP request/response schema, SQLite DDL, 설계 품질 정책 요구사항, 전체 template 본문은 이 문서가 정의하지 않습니다. 전체 template 본문과 표시 카드 형태는 [Template 참조](templates/README.md)에 있습니다.
 
-이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke는 이를 좁게 실행하는 conformance profile입니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target으로 가는 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
+이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 이 조각을 위한 좁은 conformance authoring profile입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. v0.3과 v0.4는 강화된 로컬 기준 목표(hardened local reference target)를 향해 assurance, stewardship, operations, handoff behavior를 단단하게 만드는 단계이며, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
 
 ## 이런 때 읽기
 
@@ -322,7 +322,7 @@ Projection template은 API `ProjectionKind` staged/reference support tier와 일
 | Reference-optional | `MANUAL-QA`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT` | Policy가 적용되거나, 관련 기록이 있거나, user/operator가 projection을 켰을 때 렌더링합니다. | [MANUAL-QA](templates/manual-qa.md), [TDD-TRACE](templates/tdd-trace.md), [DOMAIN-LANGUAGE](templates/domain-language.md), [MODULE-MAP](templates/module-map.md), [INTERFACE-CONTRACT](templates/interface-contract.md) |
 | Extension / optional | `DEC`, `DESIGN`, `EXPORT`, `JOURNEY-CARD` | 해당 선택 projection이 켜져 있을 때만 렌더링합니다. | [DEC](templates/decision-packet.md), [DESIGN](templates/design.md), [EXPORT](templates/export.md), [JOURNEY-CARD](templates/journey-card.md) |
 
-`Reference-required`는 관련 owner record가 존재한 뒤 staged/reference projection support에서 필요하다는 뜻입니다. 모든 v0.1 Kernel MVP run이 모든 kind를 렌더링해야 한다는 뜻이 아닙니다. v0.1 Kernel MVP는 최소 `TASK` projection 또는 durable projection enqueue만 요구합니다. v0.2+는 evidence/projection support를 확장하며, Agency-Hardened/reference projection support는 source record가 존재하거나 변경될 때 전체 Reference-required projection set을 지원합니다.
+`Reference-required`는 관련 owner record가 존재한 뒤 staged/reference projection support에서 필요하다는 뜻입니다. 모든 코어 권한 조각(v0.1 Core Authority Slice) run이 모든 kind를 렌더링해야 한다는 뜻이 아닙니다. v0.1에는 owner path가 이미 만든 freshness/read fact를 보존하는 것 외의 projection rendering exit requirement가 없습니다. 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)는 사용자가 scope, judgment, evidence, close readiness, acceptance, residual risk를 이해할 만큼의 파생 projection 또는 card output을 제공합니다. 강화된 로컬 기준 지원은 source record가 존재하거나 변경될 때 전체 Reference-required projection set을 지원합니다.
 
 `ProjectionKind` tiering은 렌더러 지원 기대사항만 정합니다. 어떤 tier도 projection을 기준 상태로 만들거나 evidence, QA, verification, acceptance, residual-risk acceptance, close authority, Write Authorization을 만들지 않습니다. Reference-required kind에서 render/enqueue 조건은 source-backed입니다. `TASK`는 Task가 존재하거나 변경된 뒤, `APR`은 committed approval-shaped Decision Packet 또는 Approval record가 존재하거나 변경된 뒤, `RUN-SUMMARY`는 Run이 commit된 뒤, `EVIDENCE-MANIFEST`는 evidence coverage가 존재하거나 변경된 뒤, `EVAL`은 Eval record가 존재하거나 변경된 뒤, `DIRECT-RESULT`는 direct-result source record가 존재하거나 변경된 뒤 처리합니다. Source record가 없으면 projector는 template completeness를 맞추기 위해 placeholder state를 만들어내면 안 됩니다.
 

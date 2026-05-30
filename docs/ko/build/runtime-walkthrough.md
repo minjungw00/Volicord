@@ -4,14 +4,14 @@
 
 사용자 요청에서 close outcome까지 Harness work item 하나가 어떻게 지나가는지, 모든 엄격한 contract를 먼저 읽지 않고 따라갈 수 있게 합니다.
 
-이 문서는 Build 문서입니다. Implementer와 reviewer를 위해 runtime path를 요약하지만, 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data, 새 schema를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke는 이를 좁게 실행하는 conformance profile입니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target으로 가는 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
+이 문서는 Build 문서입니다. Implementer와 reviewer를 위해 runtime path를 요약하지만, 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data, 새 schema를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 이 조각을 위한 좁은 conformance authoring profile입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. v0.3과 v0.4는 assurance, stewardship, operations, handoff behavior를 단단하게 만들고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
 
 ## 읽는 경우
 
 - Reference contract에 들어가기 전에 runtime 관점의 mental model이 필요할 때.
 - 요구사항이 어떻게 scoped work가 되는지 확인할 때.
 - state, artifact, projection, close blocker의 차이를 설명해야 할 때.
-- 첫 Kernel MVP path를 키우지 않고 리뷰할 때.
+- 첫 코어 권한 조각(Core Authority Slice) path를 user-facing MVP로 키우지 않고 리뷰할 때.
 
 ## 먼저 읽을 것
 
@@ -19,7 +19,9 @@
 
 ## 핵심 생각
 
-Write-capable tracked work에서는 Harness가 Task, 필요한 Discovery 또는 decision, 첫 scoped Change Unit을 알게 된 뒤에야 요청이 안전한 product work가 됩니다. 제품 파일 쓰기는 그다음 `prepare_write`를 통과해야 하며, 이때 one-attempt Write Authorization이 만들어질 수 있습니다. Run은 그 권한을 consume하고, evidence와 artifact는 claim을 뒷받침하며, projection은 state를 사람이 읽을 수 있게 만들고, `close_task`는 structured blocker를 반환하거나 Task를 닫습니다.
+Write-capable tracked work에서는 Harness가 Task, 필요한 Discovery 또는 decision, 첫 scope를 알게 된 뒤에야 요청이 안전한 product work가 됩니다. 제품 파일 쓰기는 그다음 `prepare_write`를 통과해야 하며, 이때 one-attempt Write Authorization이 만들어질 수 있습니다. Run은 그 권한을 consume하고, evidence와 artifact는 claim을 뒷받침하며, projection은 state를 사람이 읽을 수 있게 만들고, `close_task`는 structured blocker를 반환하거나 Task를 닫습니다.
+
+이 walkthrough는 전체 user-facing path를 보여 줍니다. 코어 권한 조각(v0.1 Core Authority Slice)은 그중 가장 작은 내부 부분만 구현합니다. 즉 project 하나, Task 하나, scope 하나, write authority path 하나, recorded Run 하나, evidence link 하나, structured blocker/status response 하나입니다. 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)는 사용자가 경험하는 ordinary-language clarification, judgment separation, procedural budget, residual-risk display, acceptance boundary를 추가합니다.
 
 ## 한눈에 보는 walkthrough
 
@@ -102,6 +104,8 @@ Projector는 state record, event, 아티팩트 참조에서 readable Markdown과
 
 ## 첫 구현 경계
 
-v0.1 Kernel MVP에서는 path를 좁게 유지합니다. 하나의 local project, 하나의 reference surface, 하나의 Task, 하나의 scoped Change Unit, basic Decision Packet behavior, `prepare_write`, `record_run`이 consume하는 Write Authorization 하나, minimal artifact와 Evidence Manifest support, minimal `TASK` projection 또는 durable enqueue, status/next read, structured close blocker가 범위입니다.
+코어 권한 조각(v0.1 Core Authority Slice)에서는 path를 좁게 유지합니다. 하나의 local project, 하나의 reference surface, 하나의 Task, 하나의 basic scope, `prepare_write`, `record_run`이 consume하는 Write Authorization 하나, artifact/evidence link 하나, status/next read, structured blocker/status response가 범위입니다.
 
-Staged order와 Kernel Smoke boundary는 [MVP 계획](mvp-plan.md)에 요약되어 있습니다. Exact fixture body shape와 assertion rule은 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)에 둡니다.
+사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)에서는 user-visible value path를 추가합니다. 즉 ordinary request clarification, separate product/UX and architecture judgment presentation, small-change versus tracked-work budgets, missing evidence 또는 judgment에 대한 close blocking, residual-risk display, Approval 및 residual-risk acceptance와 구분되는 final acceptance입니다.
+
+Staged order와 커널 스모크(Kernel Smoke) boundary는 [MVP 계획](mvp-plan.md)에 요약되어 있습니다. Exact fixture body shape와 assertion rule은 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)에 둡니다.

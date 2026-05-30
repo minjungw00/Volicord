@@ -8,7 +8,7 @@
 
 사용자에게 보이는 agent 절차는 [에이전트 세션 흐름](../use/agent-session-flow.md)을 봅니다. 접점별 설정 메모는 [Surface Cookbook](surface-cookbook.md)을 봅니다.
 
-이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke가 좁은 conformance profile로 이를 실행합니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target을 향한 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 둡니다.
+이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 이 조각을 위한 좁은 conformance authoring profile입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. v0.3과 v0.4는 강화된 로컬 기준 목표(hardened local reference target)를 향해 assurance, stewardship, operations, handoff behavior를 단단하게 만드는 단계이며, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 둡니다.
 
 ## 이런 때 읽기
 
@@ -70,7 +70,7 @@ Always-on rule과 context는 짧고 최신이어야 하며, 그 자체가 권한
 | `T5 Isolation` | 접점이 verification 또는 risky work를 별도 경계에서 실행할 수 있습니다. | worktree, sandbox, fresh process, isolated runner |
 | `T6 QA Capture` | 접점이 browser, screenshot, walkthrough, workflow-recording, Manual QA artifact를 구조화할 수 있습니다. | browser runner, screenshot capture, console/network capture, accessibility snapshot, QA note capture |
 
-일반적인 interactive Harness 사용은 `T2` 이상에서 가장 자연스럽습니다. Reliable detached verification에는 보통 `T3` capture와 실제 independence boundary가 필요합니다. High-risk work에는 가능하면 fixture로 입증된 `T4` guard 또는 `T5` isolation을 사용해야 합니다. `T6`는 UI/UX evidence를 보강하지만 Manual QA judgment, final acceptance, detached verification을 대체하지 않으며, human Manual QA note와 수동으로 제공된 artifact를 기록할 수 있다면 v0.1/default reference posture나 Agency-Hardened Manual QA coverage의 필수 조건이 아닙니다.
+일반적인 interactive Harness 사용은 `T2` 이상에서 가장 자연스럽습니다. Reliable detached verification에는 보통 `T3` capture와 실제 independence boundary가 필요합니다. High-risk work에는 가능하면 fixture로 입증된 `T4` guard 또는 `T5` isolation을 사용해야 합니다. `T6`는 UI/UX evidence를 보강하지만 Manual QA judgment, final acceptance, detached verification을 대체하지 않으며, human Manual QA note와 수동으로 제공된 artifact를 기록할 수 있다면 v0.1/default reference posture나 강화된 로컬 기준 Manual QA 적용 범위의 필수 조건이 아닙니다.
 
 `T6 QA Capture` profile은 지원하는 capture type과 fallback 동작을 이름으로 밝혀야 합니다. Candidate capture type에는 screenshot, console log, network trace, accessibility snapshot, workflow recording이 있습니다. Captured file은 durable storage 전에 redaction과 secret/PII handling을 따라야 하며, Manual QA record 또는 feedback loop execution에 붙는 artifact ref로 등록되어야 합니다.
 
@@ -434,7 +434,7 @@ Surface는 scope expansion, Autonomy Boundary breach, Approval 없는 새 sensit
 
 ## 기준 접점 계약
 
-v0.1 Kernel MVP는 하나의 기준 접점을 목표로 합니다. 기준 접점은 넓은 ecosystem 지원이 아니라 kernel을 증명해야 합니다.
+코어 권한 조각(v0.1 Core Authority Slice)은 하나의 기준 접점을 목표로 합니다. 기준 접점은 넓은 ecosystem 지원이 아니라 kernel을 증명해야 합니다.
 
 Minimum reference expectations:
 

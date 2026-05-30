@@ -8,7 +8,7 @@ It owns the common connector contract: capability tiers, capability profiles, ge
 
 For the user-facing agent procedure, read [Agent Session Flow](../use/agent-session-flow.md). For surface-specific setup notes, read [Surface Cookbook](surface-cookbook.md).
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as its narrow conformance authoring profile. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 and v0.4 harden assurance, stewardship, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
 ## Read this when
 
@@ -70,7 +70,7 @@ Always-on rules and context should stay short, current, and non-authoritative. T
 | `T5 Isolation` | Surface can run verification or risky work in a separate boundary. | worktree, sandbox, fresh process, isolated runner |
 | `T6 QA Capture` | Surface can structure browser, screenshot, walkthrough, workflow-recording, or Manual QA artifacts. | browser runner, screenshot capture, console/network capture, accessibility snapshot, QA note capture |
 
-Normal interactive Harness use is most natural at `T2` or higher. Reliable detached verification usually needs `T3` capture plus a real independence boundary. High-risk work should use a fixture-proven `T4` guard or `T5` isolation when available. `T6` improves UI/UX evidence, but it does not replace Manual QA judgment, final acceptance, or detached verification, and it is not required by the v0.1/default reference posture or Agency-Hardened Manual QA coverage when human Manual QA notes and manually supplied artifacts can be recorded.
+Normal interactive Harness use is most natural at `T2` or higher. Reliable detached verification usually needs `T3` capture plus a real independence boundary. High-risk work should use a fixture-proven `T4` guard or `T5` isolation when available. `T6` improves UI/UX evidence, but it does not replace Manual QA judgment, final acceptance, or detached verification, and it is not required by the v0.1/default reference posture or hardened local reference Manual QA coverage when human Manual QA notes and manually supplied artifacts can be recorded.
 
 `T6 QA Capture` profiles must name supported capture types and fallback behavior. Candidate capture types include screenshot, console log, network trace, accessibility snapshot, and workflow recording. Captured files must follow redaction and secret/PII handling before durable storage and should be registered as artifact refs attached to the Manual QA record or feedback loop execution.
 
@@ -434,7 +434,7 @@ Display the stop according to the capability profile. On cooperative profiles, t
 
 ## Reference Surface Contract
 
-v0.1 Kernel MVP targets one reference surface. The reference surface should demonstrate the kernel rather than broad ecosystem support.
+v0.1 Core Authority Slice targets one reference surface. The reference surface should demonstrate the kernel rather than broad ecosystem support.
 
 Minimum reference expectations:
 

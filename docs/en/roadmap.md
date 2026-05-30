@@ -4,7 +4,7 @@
 
 This document collects v1+ Expansion automation candidates and capability expansions so readers can see what may come later without treating it as first-implementation work, current authority, or staged-delivery required behavior.
 
-This is roadmap documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by the Kernel Smoke conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target in Build docs, and the items below stay in v1+ Expansion unless owner docs promote and prove them.
+This is roadmap documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as its narrow conformance authoring profile. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 and v0.4 harden assurance, stewardship, operations, and handoff behavior in Build docs, and the items below stay in v1+ Expansion unless owner docs promote and prove them.
 
 ## Read this when
 
@@ -24,20 +24,20 @@ Roadmap items are useful future candidates, not current authority paths or stage
 
 This document is not part of the Build-owned staged delivery.
 
-It does not own kernel invariants, public MCP schemas, staged-delivery implementation requirements, or required staged-delivery conformance. The Build layer owns staged delivery: v0.1 Kernel MVP first, then v0.2 Evidence & Projection Pack, v0.3 Agency Pack, and v0.4 Operations Pack. The items below are useful follow-ons after those basics are stable. For staged delivery order, use [Build: MVP Plan](build/mvp-plan.md); for strict API, storage, projection, and fixture contracts, use the Reference docs.
+It does not own kernel invariants, public MCP schemas, staged-delivery implementation requirements, or required staged-delivery conformance. The Build layer owns staged delivery: v0.1 Core Authority Slice first, then v0.2 User-Facing Harness MVP, v0.3 Assurance & Stewardship Pack, and v0.4 Operations & Handoff Pack. The items below are useful follow-ons after those basics are stable. For staged delivery order, use [Build: MVP Plan](build/mvp-plan.md); for strict API, storage, projection, and fixture contracts, use the Reference docs.
 
-The first product MVP target is v0.1 Kernel MVP. Agency-Hardened MVP is reached later through the v0.2 through v0.4 packs. This roadmap starts at v1+ Expansion, after those Build-owned proof targets have clear owner-doc coverage. It is not an alternate route around v0.1 Kernel MVP, Agency-Hardened MVP, or the Core state/`task_events`/artifact path. Dashboard, hosted workflow UI, Browser QA Capture, Cross-Surface Verification, Context Index, Native Hook Expansion, Advanced Sidecar Watcher, Local Derived Metrics, connector marketplaces, team workflow, and orchestration can collect, display, or extend Harness behavior later; they do not replace the first runnable authority loop.
+The first runnable target is v0.1 Core Authority Slice. The first product MVP target is v0.2 User-Facing Harness MVP. The hardened local reference target is reached later through the v0.3 and v0.4 packs. This roadmap starts at v1+ Expansion, after those Build-owned proof targets have clear owner-doc coverage. It is not an alternate route around v0.1 Core Authority Slice, v0.2 User-Facing Harness MVP, the hardened local reference target, or the Core state/`task_events`/artifact path. Dashboard, hosted workflow UI, Browser QA Capture, Cross-Surface Verification, Context Index, Native Hook Expansion, Advanced Sidecar Watcher, Local Derived Metrics, connector marketplaces, team workflow, and orchestration can collect, display, or extend Harness behavior later; they do not replace the first runnable authority loop.
 
 ```mermaid
 flowchart LR
-  Kernel["v0.1 Kernel MVP"] --> Evidence["v0.2 Evidence & Projection Pack"]
-  Evidence --> Agency["v0.3 Agency Pack"]
-  Agency --> Ops["v0.4 Operations Pack<br/>Agency-Hardened MVP"]
+  Kernel["v0.1 Core Authority Slice"] --> MVP["v0.2 User-Facing Harness MVP"]
+  MVP --> Agency["v0.3 Assurance & Stewardship Pack"]
+  Agency --> Ops["v0.4 Operations & Handoff Pack<br/>hardened local reference target"]
   Ops -. "roadmap boundary" .-> Later["v1+ roadmap candidates"]
   Later --> Promote["future version only after owner decision"]
 ```
 
-v0.1 Kernel MVP and the v0.2 through v0.4 packs are Build-owned staged delivery, not roadmap scope. This roadmap must not absorb kernel authority, Decision Packet, residual-risk visibility, detached verification, Manual QA, recover/export, release handoff, or fixture-conformance behavior that staged-delivery owner documents require. A roadmap item may read, display, recommend, provide artifact candidates, or act as a fixture candidate only when an owner doc allows that limited use. Any durable artifact registration or attachment must still go through an existing Core/MCP artifact owner path or a future promoted owner contract. Being listed here is never an authority path.
+v0.1 Core Authority Slice, v0.2 User-Facing Harness MVP, and the v0.3 through v0.4 packs are Build-owned staged delivery, not roadmap scope. This roadmap must not absorb kernel authority, Decision Packet, residual-risk visibility, detached verification, Manual QA, recover/export, release handoff, or fixture-conformance behavior that staged-delivery owner documents require. A roadmap item may read, display, recommend, provide artifact candidates, or act as a fixture candidate only when an owner doc allows that limited use. Any durable artifact registration or attachment must still go through an existing Core/MCP artifact owner path or a future promoted owner contract. Being listed here is never an authority path.
 
 ## Promotion rule
 
@@ -76,7 +76,7 @@ Later because staged delivery should first stabilize the records, projections, a
 
 A broad connector ecosystem or marketplace can add more agent surfaces, evaluator environments, or workflow integrations after the reference surface is stable.
 
-Later because v0.1 Kernel MVP assumes one local project, one reference surface, local MCP reachability, and one Core authority path. Until explicitly promoted through owner docs, connector ecosystem work is documentation, prototype, or fixture-candidate material only. It must not widen MCP exposure, create authority, bypass Core, replace the reference surface proof, or make unsupported surfaces fail v0.1 by default.
+Later because v0.1 Core Authority Slice assumes one local project, one reference surface, local MCP reachability, and one Core authority path. Until explicitly promoted through owner docs, connector ecosystem work is documentation, prototype, or fixture-candidate material only. It must not widen MCP exposure, create authority, bypass Core, replace the reference surface proof, or make unsupported surfaces fail v0.1 by default.
 
 ### Browser QA Capture
 
@@ -92,7 +92,7 @@ Unsupported surfaces should fall back to human Manual QA notes and manually supp
 
 Cross-surface verification can send a verification bundle to a different agent surface or evaluator environment.
 
-Later because Agency-Hardened MVP can prove detached verification with bundles and manual evaluator instructions on the local reference path. Until explicitly promoted through owner docs, Cross-Surface Verification is non-authoritative: sending a bundle to another surface must not record an Eval, satisfy verification, raise assurance, accept a result, or close a Task by itself. Promotion must satisfy the rule above and define how any resulting Eval or finding returns through Core without depending on projections as canonical state.
+Later because the staged hardened local reference target can prove detached verification with bundles and manual evaluator instructions on the local reference path. Until explicitly promoted through owner docs, Cross-Surface Verification is non-authoritative: sending a bundle to another surface must not record an Eval, satisfy verification, raise assurance, accept a result, or close a Task by itself. Promotion must satisfy the rule above and define how any resulting Eval or finding returns through Core without depending on projections as canonical state.
 
 ### Native Hook Expansion
 
@@ -180,7 +180,7 @@ In addition to the promotion rule, these metrics should become v1+ Expansion wor
 
 Team profile export/import can share policy defaults, connector profiles, surface capability assumptions, validator profiles, and project setup templates across a team.
 
-Later because v0.1 Kernel MVP is a local kernel. Team workflow, shared workspaces, permissions, and profile sharing need versioning, privacy review, secret handling, and conflict behavior before they should affect runtime state. Until explicitly promoted through owner docs, team workflow is not a staged-delivery requirement and must not become an authority or acceptance path.
+Later because v0.1 Core Authority Slice is a local kernel. Team workflow, shared workspaces, permissions, and profile sharing need versioning, privacy review, secret handling, and conflict behavior before they should affect runtime state. Until explicitly promoted through owner docs, team workflow is not a staged-delivery requirement and must not become an authority or acceptance path.
 
 ## Additional Later Candidates
 

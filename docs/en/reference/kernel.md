@@ -6,7 +6,7 @@ Use this reference to check the exact kernel contract for Harness state, gates, 
 
 It is a lookup document for implementers, conformance authors, and maintainers. First-time readers should start with the Learn path and return here when they need precise state rules.
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as its narrow conformance authoring profile. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 and v0.4 harden assurance, stewardship, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
 ## Read this when
 
@@ -300,7 +300,7 @@ A Decision Packet is sufficient for kernel use only when it records a decision, 
 
 `decision_kind` controls lifecycle, payload branch, gate meaning, and state-transition semantics. `judgment_domain` controls how the decision is explained and grouped for users, using the schema-owned values `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, or `mixed`. `judgment_domain` must not directly override close-gate aggregation or other gate recompute behavior unless a separate kernel or API rule explicitly says so. A Decision Packet can affect one or more gates independently from its display domain.
 
-Minimal v0.1 Kernel MVP implementations may omit `decision_requests`. If an implementation keeps them, they are routing, interaction, replay, or compatibility handoff metadata only. They are not authority for user-owned judgment, and a `decision_request` row alone never satisfies `decision_gate`, sensitive-action Approval, acceptance, waiver, residual-risk acceptance, or close.
+Minimal v0.1 Core Authority Slice implementations may omit `decision_requests`. If an implementation keeps them, they are routing, interaction, replay, or compatibility handoff metadata only. They are not authority for user-owned judgment, and a `decision_request` row alone never satisfies `decision_gate`, sensitive-action Approval, acceptance, waiver, residual-risk acceptance, or close.
 
 Decision Packet status is record-level:
 

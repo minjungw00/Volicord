@@ -4,7 +4,7 @@
 
 다른 문서를 읽다가 하네스의 official term, capitalization, record name, 서로 대체할 수 없는 경계를 확인할 때 이 용어집을 사용합니다.
 
-이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke는 이를 좁게 실행하는 conformance profile입니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target으로 가는 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
+이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 이 조각을 위한 좁은 conformance authoring profile입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. v0.3과 v0.4는 강화된 로컬 기준 목표(hardened local reference target)를 향해 assurance, stewardship, operations, handoff behavior를 단단하게 만드는 단계이며, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
 
 ## 이런 때 읽기
 
@@ -199,7 +199,7 @@ Relevant projection, 아티팩트 참조, repo file, doc, note를 보여줄 수 
 
 ### Decision Request
 
-기준 결정 패킷을 가리킬 수 있는 optional routing, interaction, idempotency replay, compatibility handoff metadata입니다. Minimal v0.1 Kernel MVP 구현은 이를 생략할 수 있습니다. Decision Request는 decision authority가 아니며 그 자체로 `decision_gate`, approval, 작업 수락, 면제 판단, 잔여 위험 수용, close를 절대 충족하지 않습니다. Gate aggregation에는 linked compatible `decision_packet_id`를 통해서만 relevant합니다.
+기준 결정 패킷을 가리킬 수 있는 optional routing, interaction, idempotency replay, compatibility handoff metadata입니다. Minimal 코어 권한 조각(v0.1 Core Authority Slice) 구현은 이를 생략할 수 있습니다. Decision Request는 decision authority가 아니며 그 자체로 `decision_gate`, approval, 작업 수락, 면제 판단, 잔여 위험 수용, close를 절대 충족하지 않습니다. Gate aggregation에는 linked compatible `decision_packet_id`를 통해서만 relevant합니다.
 
 ### Design Gate
 
@@ -441,7 +441,7 @@ Design-quality policies가 사용하는 standard form입니다. `name`, `applies
 
 ### ProjectionKind
 
-Projection job과 template kind를 나타내는 API enum입니다. Tier, values, extension rules는 [Shared schemas](mcp-api-and-schemas.md#shared-schemas)가 담당합니다. `Reference-required` 같은 tier label은 support expectation이지 v0.1 Kernel MVP run obligation이 아닙니다. v0.1은 최소 `TASK` projection 또는 durable projection enqueue만 요구합니다. 어떤 ProjectionKind도 projection을 기준 상태로 만들지 않습니다.
+Projection job과 template kind를 나타내는 API enum입니다. Tier, values, extension rules는 [Shared schemas](mcp-api-and-schemas.md#shared-schemas)가 담당합니다. `Reference-required` 같은 tier label은 support expectation이지 코어 권한 조각(v0.1 Core Authority Slice) run obligation이 아닙니다. v0.1에는 owner path가 이미 만든 freshness/read fact를 보존하는 것 외의 projection rendering exit requirement가 없습니다. 어떤 ProjectionKind도 projection을 기준 상태로 만들지 않습니다.
 
 ### Projection Freshness
 
@@ -475,7 +475,7 @@ Reconcile decision이 accept, reject, convert, defer하기 전에 human-editable
 
 ### Reference Surface
 
-v0.1 Kernel MVP가 target하는 단일 agent 접점입니다. Kernel과 커넥터 계약을 demonstrate하기 위한 범위이며 broad connector-surface support를 뜻하지 않습니다.
+코어 권한 조각(v0.1 Core Authority Slice)이 target하는 단일 agent 접점입니다. Kernel과 커넥터 계약을 demonstrate하기 위한 범위이며 broad connector-surface support를 뜻하지 않습니다.
 
 ### Recommended Playbook
 

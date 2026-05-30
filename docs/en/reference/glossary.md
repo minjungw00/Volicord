@@ -4,7 +4,7 @@
 
 Use this glossary to confirm official Harness terms, capitalization, record names, and non-substitution boundaries while reading other docs.
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as its narrow conformance authoring profile. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 and v0.4 harden assurance, stewardship, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
 ## Read this when
 
@@ -191,7 +191,7 @@ A canonical kernel state record for blocking user-owned judgment. It names the d
 
 ### Decision Request
 
-Optional routing, interaction, idempotency replay, or compatibility handoff metadata that may point to a canonical Decision Packet. A minimal v0.1 Kernel MVP implementation may omit it. A Decision Request is not decision authority, never satisfies `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close by itself, and is only relevant to gate aggregation through a linked compatible `decision_packet_id`.
+Optional routing, interaction, idempotency replay, or compatibility handoff metadata that may point to a canonical Decision Packet. A minimal v0.1 Core Authority Slice implementation may omit it. A Decision Request is not decision authority, never satisfies `decision_gate`, approval, acceptance, waiver, residual-risk acceptance, or close by itself, and is only relevant to gate aggregation through a linked compatible `decision_packet_id`.
 
 ### Design Gate
 
@@ -421,7 +421,7 @@ A human-readable rendering of canonical state records and artifact references. P
 
 ### ProjectionKind
 
-The API enum for projection job and template kinds. Tiers, values, and extension rules are owned by [Shared schemas](mcp-api-and-schemas.md#shared-schemas). Tier labels such as `Reference-required` are support expectations, not v0.1 Kernel MVP run obligations; v0.1 requires only a minimal `TASK` projection or durable projection enqueue. No ProjectionKind makes a projection canonical state.
+The API enum for projection job and template kinds. Tiers, values, and extension rules are owned by [Shared schemas](mcp-api-and-schemas.md#shared-schemas). Tier labels such as `Reference-required` are support expectations, not v0.1 Core Authority Slice run obligations; v0.1 has no projection-rendering exit requirement beyond preserving any owner-produced freshness/read facts. No ProjectionKind makes a projection canonical state.
 
 ### Projection Freshness
 
@@ -453,7 +453,7 @@ The canonical candidate record created from human-editable input or projection d
 
 ### Reference Surface
 
-The single agent surface targeted by v0.1 Kernel MVP. It demonstrates the kernel and connector contract without implying broad connector-surface support.
+The single agent surface targeted by v0.1 Core Authority Slice. It demonstrates the kernel and connector contract without implying broad connector-surface support.
 
 ### Recommended Playbook
 

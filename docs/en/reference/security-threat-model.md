@@ -6,7 +6,7 @@ Use this reference to identify Harness security assets, trust boundaries, threat
 
 It is a lookup document for implementers, operators, connector authors, and conformance authors who need to keep local authority boundaries explicit. It does not replace the architecture, API, storage, kernel, connector, or operations owner documents.
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as its narrow conformance authoring profile. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 and v0.4 harden assurance, stewardship, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
 ## Read this when
 
@@ -58,7 +58,7 @@ This document does not own:
 
 ## Baseline assumptions
 
-The v0.1 Kernel MVP and staged-delivery default are local-first. The expected baseline is a user-controlled Product Repository, a local Harness Server / Installation, a Harness Runtime Home, an MCP server exposed only through the registered local connector posture, and one or more connected agent surfaces.
+The v0.1 Core Authority Slice and staged-delivery default are local-first. The expected baseline is a user-controlled Product Repository, a local Harness Server / Installation, a Harness Runtime Home, an MCP server exposed only through the registered local connector posture, and one or more connected agent surfaces.
 
 Local-first does not mean every local process is trusted. Another process, stale connector configuration, broad file permissions, a forwarded port, a hand-edited generated file, or stale chat context may still affect what an agent sees or does. Harness therefore treats nearby surfaces as separate trust zones and accepts operational meaning only through owner paths.
 

@@ -92,11 +92,11 @@ Chat or Markdown output is mistaken for operational truth. A stale report, edite
 
 ## MVP boundary in plain language
 
-The staged MVP model proves the local kernel and agency model, not a broad platform.
+The staged MVP model separates the first runnable kernel slice from the first user-facing MVP. It proves the local authority record and agency model, not a broad platform.
 
-v0.1 Kernel MVP should prove one local project, one reference agent surface, local runtime state, public MCP tools, write gating, minimal evidence, a minimal `TASK` projection or enqueue, and fixture-based Kernel Smoke conformance.
+v0.1 Core Authority Slice should prove one local project, one reference agent surface, local runtime state, public MCP tools, write gating, one recorded Run, one evidence link, one structured blocker/status response, and fixture-based Kernel Smoke conformance.
 
-v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, which adds detached verification support, Manual QA, acceptance, projection/reconcile depth, recovery, export, and the remaining agency requirements. Early slices can be small as long as they do not redefine the boundary by hiding critical decisions, evidence, or close behavior.
+v0.2 User-Facing Harness MVP is the first product MVP: it makes ordinary requests visible as scope, user-owned judgment, evidence, close readiness, final acceptance, and residual-risk boundaries. v0.3 and v0.4 then add detached verification support, Manual QA, stewardship, projection/reconcile depth, recovery, export, release handoff, and the remaining hardening requirements. Early slices can be small as long as they do not redefine the boundary by hiding critical decisions, evidence, or close behavior.
 
 ## Non-goals
 

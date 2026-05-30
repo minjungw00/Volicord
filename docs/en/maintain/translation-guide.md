@@ -4,7 +4,7 @@
 
 Use this guide when editing English and Korean Harness documentation together.
 
-This is maintenance documentation for bilingual documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, runtime data, or product state changes before the documentation set is accepted for implementation planning, and it does not define conformance pass/fail, evidence, QA, acceptance, close readiness, or implementation readiness. The first product MVP target is v0.1 Kernel MVP, and Kernel Smoke is the narrow conformance profile for exercising it. v0.2 Evidence & Projection Pack, v0.3 Agency Pack, and v0.4 Operations Pack move toward the Agency-Hardened MVP reference conformance target. v1+ Expansion remains roadmap scope unless owner docs promote and prove an item.
+This is maintenance documentation for bilingual documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, runtime data, or product state changes before the documentation set is accepted for implementation planning, and it does not define conformance pass/fail, evidence, QA, acceptance, close readiness, or implementation readiness. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as its narrow conformance authoring profile. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 Assurance & Stewardship Pack and v0.4 Operations & Handoff Pack harden the local reference target. v1+ Expansion remains roadmap scope unless owner docs promote and prove an item.
 
 ## Read this when
 
@@ -58,7 +58,7 @@ Keep these exact when they refer to literal identifiers, schema/API values, file
 
 Do not translate markers such as `HARNESS:BEGIN`, schema names such as `ArtifactRef`, `ProjectionKind`, `decision_kind=approval`, `approval_gate`, `ResidualRiskSummary.status=none`, validator IDs, error codes, file paths, API/tool/schema names, or other exact strings.
 
-Keep exact stage labels exact: `v0.1 Kernel MVP`, `Kernel Smoke`, `v0.2 Evidence & Projection Pack`, `v0.3 Agency Pack`, `v0.4 Operations Pack`, `Agency-Hardened MVP`, `Agency-Hardened MVP reference conformance target`, and `v1+ Expansion`. For the three-space model in Korean prose, use `제품 저장소`, `하네스 서버 소스 저장소` when referring to this repository's future source role, and `하네스 런타임 홈`; add the English labels in parentheses only when they help disambiguate the architecture term.
+Keep exact stage labels exact: `v0.1 Core Authority Slice`, `Kernel Smoke`, `v0.2 User-Facing Harness MVP`, `v0.3 Assurance & Stewardship Pack`, `v0.4 Operations & Handoff Pack`, `hardened local reference target`, and `v1+ Expansion`. For the three-space model in Korean prose, use `제품 저장소`, `하네스 서버 소스 저장소` when referring to this repository's future source role, and `하네스 런타임 홈`; add the English labels in parentheses only when they help disambiguate the architecture term.
 
 Reference headings that serve as lookup anchors should remain stable unless a dedicated link/anchor migration updates all links. User-facing prose should prefer natural Korean. A Korean alias line may provide the natural term under a stable reference heading.
 
