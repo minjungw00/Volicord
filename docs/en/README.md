@@ -4,9 +4,18 @@ This is the English routing page for the Harness documentation set.
 
 This repository is currently a documentation-only redesign/review repository. After documentation acceptance, it is intended to become the Harness Server source repository. No Harness Server/runtime implementation exists here yet.
 
-Harness is a local work ledger and judgment router for AI-assisted product work. It records what may change, who must decide, what evidence exists, what risk remains, and whether the work can close.
+## Product Thesis
 
-Harness still follows the agency-preserving local authority kernel principle: durable work facts are recorded in local state and artifact refs, readable projections are non-authoritative views, and user-owned product and material technical judgment stays with the user.
+One sentence: Harness is a local authority record and judgment-routing layer for AI-assisted product work, keeping scope, user-owned judgments, evidence, verification, QA expectations, final acceptance, and residual-risk status outside fragile chat context.
+
+One paragraph: In practice, Harness gives the user and agent a local record of what work is in scope, which judgments belong to the user, what supports completion claims, what still needs verification or QA, whether final acceptance has been given, and what risk remains. Chat stays conversation. Markdown projections are readable views. Core-owned local state and artifact references are the source of operational truth. Harness may use agent instructions, MCP, reusable workflows, tests, reviews, and specs, but it is not identical to any of them.
+
+Harness focuses on four recurring problems:
+
+- Scope drifts or becomes implicit.
+- User-owned judgment is silently replaced by agent judgment.
+- Evidence, verification, QA, and completion claims get mixed.
+- Chat or Markdown output is mistaken for operational truth.
 
 ## Where Am I?
 
@@ -15,7 +24,7 @@ Harness keeps three spaces separate:
 | Space | What belongs there |
 |---|---|
 | Product Repository | The user's product workspace: product code, tests, product docs, and human-readable Harness projections. |
-| Harness Server source repository | The codebase for the local Harness Server / Installation: API surface, request validation, Core state transitions, validators, projection, reconcile, and operator tools. |
+| Harness Server source repository | The future codebase for the local Harness Server / Installation: API surface, request validation, Core state transitions, validators, projection, reconcile, and operator tools. |
 | Harness Runtime Home | Per-user/per-installation operational data: state database, artifact store, projection output, logs, and local registration/configuration. |
 
 This repository's current role is documentation review/redesign. Its intended future role is the Harness Server source repository. It is not the Product Repository or the Harness Runtime Home. After documentation acceptance, the Harness Server / Installation implementation is expected to be built here.
@@ -30,24 +39,20 @@ The [Authoring Guide](maintain/authoring-guide.md#current-redesign-scope) owns t
 
 ## What Harness Is Not
 
-Harness is not:
+Harness is not the same kind of thing as agent instructions, MCP, reusable workflows, tests, review, or specs. Those pieces can be useful around Harness, but they do not become the local operational record or the owner of user judgment.
 
-- a prompt pack
-- a replacement for source control, tests, code review, or user judgment
-- MCP itself
-- a broad hosted agent platform
-
-Harness is also not a chat script, test harness, evaluation harness, or dashboard.
+Harness is also not a prompt pack, chat script, evaluation harness, dashboard, or broad hosted agent platform.
 
 ## Comparison
 
-| Nearby piece | How Harness differs |
-|---|---|
-| AGENTS.md / agent rules | Agent rules tell agents how to behave in a repository or session. Harness keeps the local work ledger that records scope, evidence, judgment needs, risk, and close readiness. |
-| MCP | MCP is a protocol boundary for tools and resources. Harness may expose MCP tools, but Harness is not MCP itself; its authority comes from local Core-owned records. |
-| Spec-driven workflows | Specs describe intended behavior or design. Harness records the live work state around a task: allowed change boundary, user decisions, evidence, risk, and whether the task can close. |
-| Hooks / sidecars | Hooks and sidecars can observe, block, or report depending on their actual guarantee level. Harness records those limits and routes any effect through the relevant owner paths. |
-| Test runners / code review | Tests and review check product work. Harness links their results as evidence while keeping acceptance, residual risk, and user-owned judgment separate. |
+| Nearby piece | Role it plays | Harness role |
+|---|---|---|
+| AGENTS.md / agent instruction files | Tell agents how to behave in a repository or session. | Harness may rely on those instructions, but it keeps the local record of scope, judgment, evidence, close readiness, and risk. |
+| MCP | Defines a protocol boundary for tools and resources. | Harness may expose MCP tools or resources, but its authority comes from Core-owned local state and artifact references. |
+| Skills / reusable workflows | Package repeated instructions or procedures for an agent to follow. | Harness can be used by those workflows, but it records the current work state and routes judgments for this task. |
+| Test runners | Execute checks and produce results. | Harness links relevant results as evidence and keeps verification strength separate from final acceptance. |
+| Code review | Provides human or team review of changes. | Harness can reference review outcomes, but it does not replace review or turn review into final acceptance or residual-risk acceptance. |
+| Specs | Describe intended behavior, design, or constraints. | Harness can use specs as input, but it records operational state for live work: scope, decisions, evidence, QA expectations, final acceptance, and remaining risk. |
 
 ## Reader Routes
 

@@ -14,9 +14,9 @@ Read this when you want the values and boundaries behind Harness before reading 
 
 ## Main idea
 
-Harness is a local work ledger and judgment router for AI-assisted product work. It records what may change, who must decide, what evidence exists, what risk remains, and whether the work can close.
+One sentence version: Harness is a local authority record and judgment-routing layer for AI-assisted product work, keeping scope, user-owned judgments, evidence, verification, QA expectations, final acceptance, and residual-risk status outside fragile chat context.
 
-The reason it works as a ledger is the agency-preserving local authority kernel principle: durable work facts stay in local state, artifact-backed evidence refs, and readable projections, while user-owned product and material technical judgment stays with the user.
+One paragraph version: In practice, Harness gives the user and agent a local record of what work is in scope, which judgments belong to the user, what supports completion claims, what still needs verification or QA, whether final acceptance has been given, and what risk remains. Chat stays conversation. Markdown projections are readable views. Core-owned local state and artifact references are the source of operational truth. Harness may use agent instructions, MCP, reusable workflows, tests, reviews, and specs, but it is not identical to any of them.
 
 ## Purpose
 
@@ -24,26 +24,21 @@ Harness exists to make AI-assisted development followable without taking strateg
 
 The user should be able to begin in ordinary language. The agent should be able to clarify, propose, implement, check, and report. But the important facts of the work should not live only in the chat transcript. Harness keeps those facts in local state, durable evidence, and readable projections so the task can be resumed, checked, reconciled, and closed from current state.
 
-Harness is not ceremony for its own sake. It maintains a local work ledger for work that would otherwise become blurry, and it routes judgment when the work needs a user decision before it can continue or close.
+Harness is not ceremony for its own sake. It maintains a local record for work that would otherwise become blurry, and it routes judgment when the work needs a user decision before it can continue or close.
 
-Harness keeps that operating record around task state, Change Unit scope, user judgment, Write Authorization, evidence, verification, QA, Acceptance, Residual Risk, and close. The point is not to replace the user's tools, source control, tests, code review, or conversation, but to make the work followable from current local state.
+Harness keeps the operating record around work, scope, user judgment, evidence, verification, QA, final acceptance, remaining risk, and close readiness. The point is not to replace the user's tools, source control, tests, code review, or conversation, but to make the work followable from current local state.
 
 ## What Harness is not
 
-Harness is not:
+Harness is not the same kind of thing as AGENTS.md or other agent instruction files, MCP, skills or reusable workflows, test runners, code review, or specs.
 
-- a prompt pack
-- a replacement for source control, tests, code review, or user judgment
-- MCP itself
-- a broad hosted agent platform
+Agent instructions guide agent behavior. MCP provides a tool and resource integration boundary. Skills and reusable workflows package repeated behavior. Test runners execute checks. Code review examines changes. Specs describe planned intent. Harness may use any of these as inputs, surfaces, or evidence sources, but it does not treat them as the local operating record or the owner of user judgment.
 
-Harness may use agent instructions, MCP tools, hooks, sidecars, tests, reviews, and specs as useful inputs or surfaces. They do not become Harness authority just because they are nearby.
-
-Harness differs from nearby pieces because authority lives in the local work record and user-owned judgment stays with the user. AGENTS.md / agent rules can guide agent behavior, MCP can expose tools and resources, specs can describe intent, hooks / sidecars can observe or enforce within their guarantee level, and tests / code review can check product work. Harness uses those surfaces as inputs or evidence, but it does not treat them as the ledger or the decision owner. For the detailed comparison table, use the [English documentation entrypoint](../README.md#comparison).
+For the detailed role comparison table, use the [English documentation entrypoint](../README.md#comparison).
 
 ## Who it is for
 
-Harness is for developers using AI agents to modify, verify, or explain product code. It is also for solo maintainers who need reliable resume behavior, technical leads who want local records of sensitive-action Approval and acceptance, connector authors integrating an agent surface with Harness, and documentation authors maintaining the current Harness model.
+Harness is for developers using AI agents to modify, verify, or explain product code. It is also for solo maintainers who need reliable resume behavior, technical leads who want local records of sensitive-action permission and final acceptance, connector authors integrating an agent surface with Harness, and documentation authors maintaining the current Harness model.
 
 The shared need is simple: people want the speed of agent-assisted work without losing the ability to understand what happened, what is allowed, what was checked, and what still needs judgment.
 
@@ -51,11 +46,11 @@ The shared need is simple: people want the speed of agent-assisted work without 
 
 Harness keeps operational state and evidence local. The durable work record should not depend on a remote chat transcript.
 
-Harness makes boundaries explicit. Scope, sensitive-action Approval, decisions, evidence, verification, Manual QA, acceptance, and residual risk are different questions, so the system records them separately.
+Harness makes boundaries explicit. Scope, permission for sensitive actions (Approval in the Reference docs), decisions, evidence, verification, human QA, final acceptance (Acceptance), and remaining risk (Residual Risk) are different questions, so the system records them separately.
 
 Harness is honest about assurance. It should say what changed, what was checked, how independent that check was, what remains risky, and what decision is needed, instead of treating every review as equally strong.
 
-Harness preserves strategic agency. The user keeps judgment over goals, scope, design direction, product trade-offs, material technical trade-offs, codebase stewardship, QA, acceptance, and residual-risk acceptance.
+Harness preserves strategic agency. The user keeps judgment over goals, scope, design direction, product trade-offs, material technical trade-offs, codebase stewardship, QA, final acceptance, and residual-risk acceptance.
 
 Harness keeps the work journey followable. A reader should be able to reconstruct current state, next action, decisions, evidence, and blockers without relying on chat memory.
 
@@ -79,27 +74,21 @@ This thesis has three practical consequences.
 
 First, chat is an operating surface, not durable state. It is where people and agents coordinate, but it is not the record that decides whether work can write or close.
 
-Second, Harness state is the operating record. It stores the task, scope, decisions, sensitive-action Approvals, evidence refs, verification, QA, acceptance, and residual risk needed to reason about the work.
+Second, Harness state is the operating record. It stores the work, scope, user-owned decisions, sensitive-action permission, evidence refs, verification, QA, final acceptance, and residual risk needed to reason about the work.
 
-Third, readable documents are projections and proposal areas. They help humans inspect and edit the story of the work, but accepted changes enter the operating record only through reconcile or another state-changing action. Projection freshness is a display fact, not a substitute for current state, evidence, tests, review, or acceptance.
+Third, readable documents are projections and proposal areas. They help humans inspect and edit the story of the work, but accepted changes enter the operating record only through an explicit state-changing path. Projection freshness is a display fact, not a substitute for current state, evidence, tests, review, or final acceptance.
 
 ## Failure model, rewritten as reader-facing problems
 
-Without Harness, the work journey can disappear into chat. A later reader cannot tell what the current state is, what the next action should be, which decisions are open, or what evidence supports the result. Harness responds by recording task state, change scope, decisions, evidence, QA, acceptance, residual risk, and close status, then generating readable views from those records.
+Harness focuses on four reader-facing failures.
 
-Without Harness, scope and Approval can drift. A small request can become a broad rewrite, or a sensitive action can happen without explicit sensitive-action Approval. Harness responds by requiring product writes to stay inside scoped Change Units and by requiring sensitive-action Approval for sensitive categories.
+Scope drifts or becomes implicit. A small request can become a broad rewrite, or the reason a path is in scope can disappear into conversation. Harness responds by recording the current work boundary and making scope changes visible before they are treated as part of the task.
 
-Without Harness, evidence can be too weak or too temporary. Tests, logs, screenshots, and run summaries can vanish with the session or remain as unstructured claims. Harness responds by tying evidence to the task and storing durable artifacts where evidence is required.
+User-owned judgment is silently replaced by agent judgment. Product direction, important technical trade-offs, QA expectations, final acceptance, and residual-risk acceptance can be hidden inside implementation. Harness responds by routing those judgments back to the user when they block progress, write, close, waiver, or final acceptance.
 
-Without Harness, verification can overstate independence. The same agent that made a change can review its own work, and the system may treat that as independent assurance. Harness responds by separating self-checks from detached verification.
+Evidence, verification, QA, and completion claims get mixed. A test result can be treated like proof of UX quality, a self-check can be treated like independent verification, or a waiver can be treated like the skipped check happened. Harness responds by recording evidence, verification, QA, final acceptance, and remaining risk as separate questions.
 
-Without Harness, user-owned product judgment or material technical judgment can move from the user to the agent without anyone noticing. Design direction, trade-offs, codebase stewardship, QA judgment, acceptance, and risk acceptance can be hidden inside implementation. Harness responds with Decision Packets when user-owned judgment blocks progress.
-
-Without Harness, local completion can hide long-term product damage. A task may pass tests while blurring domain language, crossing module boundaries, weakening interfaces, or leaving follow-up risk unnamed. Harness responds by keeping codebase stewardship, design trade-offs, QA findings, and residual risk visible in the work journey.
-
-Without Harness, different judgments can collapse into one vague "done." Approval, verification, Manual QA, acceptance, and residual-risk acceptance answer different questions. Harness responds by recording them separately.
-
-Without Harness, generated documents can be mistaken for operational truth. A stale report or edited note can look authoritative. Harness responds by treating Markdown as projection and by requiring reconcile before human edits become state.
+Chat or Markdown output is mistaken for operational truth. A stale report, edited note, or confident chat summary can look authoritative. Harness responds by treating chat as conversation, Markdown as projection, and Core-owned local state plus artifact references as the source of operational truth.
 
 ## MVP boundary in plain language
 
@@ -111,11 +100,11 @@ v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conf
 
 ## Non-goals
 
-Harness is not merely a chat workflow, prompt pack, test harness, or evaluation harness.
+Harness is not merely a chat workflow, prompt pack, test harness, evaluation harness, dashboard, or hosted agent platform.
 
-Harness can integrate with MCP tools/connectors, hooks, guardrails, adapters, sidecars, and isolation layers, but those surfaces are not the source of Harness authority. They help agents read context, call Harness tools, capture evidence, or enforce/detect boundaries when the connected profile supports it.
+Harness can integrate with agent instructions, MCP tools/connectors, skills, reusable workflows, hooks, guardrails, adapters, sidecars, tests, reviews, specs, and isolation layers, but those surfaces are not the source of Harness authority. They help agents read context, call Harness tools, capture evidence, run checks, or enforce/detect boundaries when the connected profile supports it.
 
-Harness authority comes from Core and canonical local state around Task and Change Unit scope, Decision Packets, Approval, Write Authorization, evidence, verification, QA, acceptance, residual risk, and close.
+Harness authority comes from Core-owned local state and artifact references around work, scope, user-owned judgment, evidence, verification, QA, final acceptance, remaining risk, and close readiness. The exact implementation names for those records live in the Reference docs.
 
 Harness also does not replace the product repository, source control or version control system, test runner, code review process, or user judgment.
 
@@ -127,4 +116,4 @@ Harness does not promise preventive enforcement where a connected agent surface 
 
 Harness does not make a dashboard, team workflow platform, long-term analytics layer, broad connector ecosystem, or automatic parallel execution system part of the MVP.
 
-Harness does not hide sensitive-action Approval, QA, verification, acceptance, or remaining risk behind a single "done" label.
+Harness does not hide sensitive-action permission, QA, verification, final acceptance, or remaining risk behind a single "done" label.

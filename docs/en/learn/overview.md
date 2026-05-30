@@ -18,13 +18,13 @@ Important work facts get trapped in chat.
 
 In an AI-assisted development session, the conversation can move quickly. The user asks for something, scope changes, the agent makes choices, tests run, screenshots appear, a risk is mentioned, and then everyone says the work is done. Later, it can be hard to answer basic questions: what did we agree to change, what actually changed, what was checked, what still needs a human decision, and what risk did we accept?
 
-Harness is a local work ledger and judgment router for AI-assisted product work. It records what may change, who must decide, what evidence exists, what risk remains, and whether the work can close.
+One sentence version: Harness is a local authority record and judgment-routing layer for AI-assisted product work, keeping scope, user-owned judgments, evidence, verification, QA expectations, final acceptance, and residual-risk status outside fragile chat context.
 
-Harness still follows the agency-preserving local authority kernel principle. It keeps those work facts outside the chat in durable local state, artifact refs for supporting evidence, and readable projections derived from state. The chat can stay natural, but the durable facts of the task become followable, resumable, checkable, and closeable from current state.
+One paragraph version: In practice, Harness gives the user and agent a local record of what work is in scope, which judgments belong to the user, what supports completion claims, what still needs verification or QA, whether final acceptance has been given, and what risk remains. Chat stays conversation. Markdown projections are readable views. Core-owned local state and artifact references are the source of operational truth. The point is not to replace engineering tools or instructions, but to make AI-assisted work resumable, inspectable, and closeable without pretending the agent owns decisions the user owns.
 
 ```mermaid
 flowchart LR
-  Chat["Chat<br/>requests, choices, claims"] --> Harness["Harness<br/>local work ledger"]
+  Chat["Chat<br/>requests, choices, claims"] --> Harness["Harness<br/>local authority record"]
   Harness --> State["state"]
   Harness --> Evidence["evidence"]
   Harness --> Views["readable views"]
@@ -34,9 +34,14 @@ flowchart LR
 
 AI agents can help with development, but the work journey often becomes blurry. A small request may turn into a larger change. A design choice may happen inside implementation without being named. A test may be mentioned in chat but not tied to the task. A user may accept the result without seeing which risks remain.
 
-Harness solves this by making the work journey explicit. It records the task, the bounded change being attempted, decisions that need user judgment, sensitive-action Approvals, evidence, verification, Manual QA, acceptance, and residual risk. It does not make every task heavy. It makes the important facts visible when they matter.
+Harness focuses on four recurring problems:
 
-The goal is not to replace conversation, source control, tests, code review, or user judgment. The goal is to stop relying on conversation as the only memory of the work, and to make the rest of the work record easier to inspect.
+- Scope drifts or becomes implicit.
+- User-owned judgment is silently replaced by agent judgment.
+- Evidence, verification, QA, and completion claims get mixed.
+- Chat or Markdown output is mistaken for operational truth.
+
+Harness does not make every task heavy. It makes the important facts visible when they matter, and it keeps those facts separate enough that one kind of support is not mistaken for another.
 
 ## The three spaces, explained in plain language
 
@@ -54,41 +59,34 @@ The separation matters because a Markdown report should not silently become oper
 
 Harness records the parts of the work journey that must survive the conversation:
 
-- the Task the user wants done or answered
-- the Change Unit that bounds product writes
-- decisions and Decision Packets when user judgment blocks progress
-- sensitive-action Approvals
-- evidence such as diffs, logs, checks, screenshots, run summaries, evaluation records, or Manual QA records
-- verification status, including whether a check was self-checking or detached from the implementation session
-- Manual QA when human inspection is needed
-- acceptance or rejection of the result
-- residual risk that remains after the work
-- projections such as readable Markdown reports, Journey Cards, or Journey Spine views derived from recorded state
+- the work the user wants completed, answered, investigated, or decided
+- the scope of product files and behavior that belong to this work; the scoped product-write boundary is called a Change Unit in the Reference docs
+- the choices that must stay with the user, including product direction, important technical trade-offs, QA expectations, final acceptance, and residual-risk acceptance
+- sensitive-action permission, called Approval in the Reference docs
+- evidence such as diffs, logs, checks, screenshots, run summaries, evaluation records, or human inspection records
+- verification status, including whether a check was a self-check or a more detached check
+- QA expectations and results when human inspection matters
+- final acceptance or rejection of the result, called Acceptance in the Reference docs
+- remaining risk after the work, called Residual Risk in the Reference docs
+- readable reports and status views derived from recorded state, called Projections in the Reference docs
 
 These records let a reader ask: where are we, what changed, what was checked, what is still risky, what is blocked, what decision is needed, and can this task close?
 
+The Reference docs later give exact names to these records and paths, such as Task, Change Unit, Decision Packet, Approval, Write Authorization, Evidence Manifest, Verification, Manual QA, Acceptance, Residual Risk, Projection, and Reconcile. You do not need those names to understand the product value first.
+
 ## What Harness is not
 
-Harness is not:
+Harness is not the same kind of thing as AGENTS.md or other agent instruction files, MCP, skills or reusable workflows, test runners, code review, or specs.
 
-- a prompt pack
-- a replacement for source control, tests, code review, or user judgment
-- MCP itself
-- a broad hosted agent platform
+Agent instructions tell agents how to behave. MCP connects tools and resources. Skills and workflows package repeated behavior. Test runners execute checks. Code review examines changes. Specs describe intended behavior or design. Harness may use all of these, but its role is different: it keeps the local operational record for the current work and routes user-owned judgment when the work needs it.
 
-Harness is also not merely a chat workflow, test harness, or evaluation harness.
+Harness is also not a prompt pack, chat script, evaluation harness, dashboard, or broad hosted agent platform.
 
-Harness can integrate with MCP tools/connectors, hooks, guardrails, adapters, sidecars, and isolation layers. Those surfaces can help agents read current context, call Harness tools, capture evidence, or enforce/detect boundaries when the connected profile supports it, but they are not the source of Harness authority. If a connected surface can only cooperate or detect issues after action, Harness should describe that limit instead of claiming hard prevention.
-
-Harness authority comes from Core and canonical local state around Task state, Change Unit scope, Decision Packets, Approval, Write Authorization, evidence, verification, QA, Acceptance, Residual Risk, and close.
-
-Harness also does not replace the user's product repository, source control or version control system, test runner, code review process, user-owned product judgment, or material technical judgment.
-
-Harness also does not treat chat history as the source of truth. It does not treat generated Markdown as the operating record. It does not turn the agent into the owner of product or material technical direction. The user still owns goals, scope, design judgment, product and material technical judgment, sensitive-action Approvals, QA judgment, acceptance, and residual-risk acceptance.
+Harness also does not treat chat history as the source of truth, and it does not treat generated Markdown as the operating record. Chat is conversation. Markdown projections are readable views. Core-owned local state and artifact references are the source of operational truth. The user still owns goals, scope, design judgment, product and material technical judgment, QA judgment, final acceptance, and residual-risk acceptance.
 
 Harness keeps a local record and decision path around AI-assisted work. It helps the user and agent work faster without losing the shape of the work.
 
-For a side-by-side comparison with AGENTS.md / agent rules, MCP, spec-driven workflows, hooks / sidecars, and test runners / code review, use the [English documentation entrypoint](../README.md#comparison). For the values behind those differences, read [Purpose and Principles](purpose-and-principles.md).
+For a side-by-side comparison with AGENTS.md / agent rules, MCP, skills / reusable workflows, test runners, code review, and specs, use the [English documentation entrypoint](../README.md#comparison). For the values behind those differences, read [Purpose and Principles](purpose-and-principles.md).
 
 ## Where to go next
 
@@ -96,4 +94,4 @@ For a side-by-side comparison with AGENTS.md / agent rules, MCP, spec-driven wor
 - Read [Purpose and Principles](purpose-and-principles.md) for the values and boundaries behind the system.
 - For strict kernel behavior, read [Kernel Reference](../reference/kernel.md).
 - For runtime architecture, read [Runtime Architecture Reference](../reference/runtime-architecture.md).
-- For document projection, read [Document Projection Reference](../reference/document-projection.md).
+- For readable document rendering, read [Document Projection Reference](../reference/document-projection.md).

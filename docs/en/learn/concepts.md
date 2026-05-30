@@ -2,9 +2,9 @@
 
 ## What this document helps you do
 
-This document introduces the smallest concept set you need before reading Harness reference specs. Each concept starts with a plain example, then gives a tighter definition.
+This document introduces the smallest vocabulary you need after you understand the plain product idea: Harness keeps work, scope, judgment, evidence, close readiness, and risk outside fragile chat context. Each concept starts with a plain example, then gives a tighter definition.
 
-The kernel, runtime, MCP API, and document projection references now live in the reference path.
+The exact kernel, runtime, MCP API, and document-rendering contracts live in the reference path.
 
 ## Read this when
 
@@ -16,40 +16,42 @@ Read this when Harness terms are starting to appear in examples, status summarie
 
 ## Main idea
 
-Harness vocabulary names a small work journey: request, scope, judgment, support, checks, acceptance, remaining risk, and close.
+Start with ordinary questions: what are we trying to do, what may change, who must decide, what supports the completion claim, what still needs checking or QA, what risk remains, and can the work close?
 
-## Gate display groups
+Harness vocabulary gives those questions exact implementation names. The names matter for references and APIs, but the plain questions come first.
 
-When Harness status is shown to users, the many internal gate details should usually appear as four readable display groups:
+## User-facing display groups
+
+When Harness status is shown to users, the many internal details should usually appear as four readable display groups:
 
 - Scope: what may change.
 - Judgment: what the user must decide.
 - Evidence: what supports completion claims.
-- Close Readiness: verification, Manual QA, acceptance, residual risk, and close blockers.
+- Close Readiness: verification, Manual QA, final acceptance (Acceptance), residual risk, and close blockers.
 
-These groups are a reading aid, not a replacement for the kernel gate taxonomy. They do not create schema fields, gate values, recompute inputs, authority paths, or close rules. Strict gate behavior stays in [Kernel Reference](../reference/kernel.md#gates), public API behavior stays in [MCP API and Schemas](../reference/mcp-api-and-schemas.md), and projection rendering rules stay in [Document Projection Reference](../reference/document-projection.md).
+These groups are a reading aid, not a replacement for the kernel gate taxonomy. They do not create schema fields, gate values, recompute inputs, authority paths, or close rules. Strict gate behavior stays in [Kernel Reference](../reference/kernel.md#gates), public API behavior stays in [MCP API and Schemas](../reference/mcp-api-and-schemas.md), and readable document rendering rules stay in [Document Projection Reference](../reference/document-projection.md).
 
-## The smallest concept set
+## From Plain Questions To Implementation Terms
 
 Harness is easiest to understand if you start with the work journey:
 
-- A user asks for a Task.
-- A Shared Design records the goal, scope, assumptions, and first safe shape when the work needs shaping.
-- Product writes happen inside a Change Unit.
-- Important claims need Evidence.
-- Sensitive actions need Approval, and product writes need Write Authorization.
-- Checks create Verification, and human inspection may create Manual QA.
-- The user gives Acceptance when the task path requires it.
-- Remaining uncertainty is Residual Risk.
-- Readable documents are Projections, and human edits become state through Reconcile.
+- A user asks for work to be completed, answered, investigated, or decided. The implementation term is Task.
+- If the work is blurry, a shared shaping record can capture the goal, scope, assumptions, and first safe shape. The implementation term is Shared Design.
+- Product writes need an active work boundary. That scoped write boundary is called a Change Unit in the Reference docs.
+- Important claims need support. The implementation term is Evidence.
+- Sensitive actions need permission, called Approval in the Reference docs, and product writes need a current allow/deny decision, called Write Authorization.
+- Checks and human inspection need to stay distinguishable. The implementation terms are Verification and Manual QA.
+- The user may need to give final acceptance for the result. The implementation term is Acceptance.
+- Known uncertainty after the work needs to stay visible. That remaining risk is called Residual Risk in the Reference docs.
+- Readable reports are views, not state. A readable report rendered from state is called a Projection in the Reference docs, and Reconcile is the path for handling accepted human edits or drift.
 
-These concepts are intentionally small here. Strict kernel definitions live in [Kernel Reference](../reference/kernel.md), public API definitions live in [MCP API and Schemas](../reference/mcp-api-and-schemas.md), and projection rules live in [Document Projection Reference](../reference/document-projection.md). Some concepts span several references; the notes below name the split without copying the owner maps.
+These concepts are intentionally small here. Strict kernel definitions live in [Kernel Reference](../reference/kernel.md), public API definitions live in [MCP API and Schemas](../reference/mcp-api-and-schemas.md), and readable document rules live in [Document Projection Reference](../reference/document-projection.md). Some concepts span several references; the notes below name the split without copying the owner maps.
 
 ## Task
 
 A user says, "Add email login and show a helpful error when the password is wrong." The chat may include many turns, but the work still needs one durable unit that says what the user wants done and what state the work is in.
 
-A Task is the user value unit: the thing the user wants completed, answered, investigated, or decided. Harness uses the Task to keep status, next action, blockers, evidence, QA, acceptance, and close behavior connected.
+A Task is the user value unit: the thing the user wants completed, answered, investigated, or decided. Harness uses the Task to keep status, next action, blockers, evidence, QA, final acceptance, and close behavior connected.
 
 Reference: [Kernel Reference](../reference/kernel.md).
 
@@ -85,7 +87,7 @@ Reference: [Kernel Reference](../reference/kernel.md).
 
 The agent finds several reasonable failed-login choices: inline message, toast, or modal/layer for the interaction; generic, specific, or hybrid wording for the copy. Another task might need a choice between session cookie, JWT, and social login, or between a compatible public API extension and a breaking cleanup. The agent should not quietly choose the product, security, compatibility, or maintenance trade-off if that choice blocks progress.
 
-A Decision Packet records a specific user-owned decision when that judgment blocks progress, write, close, waiver, acceptance, residual-risk acceptance, product direction, material technical direction, scope, design trade-off, stewardship judgment, or public commitment. It should ask the user to decide the named issue, not to give broad approval. Exact record quality and public fields live in the references below.
+A Decision Packet records a specific user-owned decision when that judgment blocks progress, write, close, waiver, final acceptance, residual-risk acceptance, product direction, material technical direction, scope, design trade-off, stewardship judgment, or public commitment. It should ask the user to decide the named issue, not to give broad approval. Exact record quality and public fields live in the references below.
 
 References: [Decision Packet](../reference/kernel.md#decision-packet), [Decision Gate](../reference/kernel.md#decision-gate), and [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision).
 

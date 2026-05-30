@@ -1,12 +1,12 @@
 # Harness Project / 하네스 프로젝트
 
-Harness is a local work ledger and judgment router for AI-assisted product work. It records what may change, who must decide, what evidence exists, what risk remains, and whether the work can close.
+Harness is a local authority record and judgment-routing layer for AI-assisted product work, keeping scope, user-owned judgments, evidence, verification, QA expectations, final acceptance, and residual-risk status outside fragile chat context.
 
-Harness still follows the agency-preserving local authority kernel principle: durable work facts are recorded in local state and artifact refs, readable projections are non-authoritative views, and user-owned product and material technical judgment stays with the user.
+In practice, Harness gives the user and agent a local record of what work is in scope, which judgments belong to the user, what supports completion claims, what still needs verification or QA, whether final acceptance has been given, and what risk remains. Chat stays conversation. Markdown projections are readable views. Core-owned local state and artifact references are the source of operational truth.
 
-Harness는 AI 지원 제품 작업을 위한 로컬 작업 장부이자 판단 라우터입니다. 무엇을 바꿀 수 있는지, 누가 판단해야 하는지, 어떤 근거가 있는지, 어떤 위험이 남았는지, 작업을 닫아도 되는지를 기록합니다.
+Harness는 AI 지원 제품 작업에서 작업 범위, 사용자 판단, 근거, 검증, QA 기대, 최종 작업 수락, 남은 위험 상태를 깨지기 쉬운 대화 맥락 밖에 두는 로컬 기준 기록이자 판단 경로입니다.
 
-Harness는 사용자 판단권을 보존하는 로컬 권한 커널이라는 원칙을 계속 따릅니다. 오래 남아야 하는 작업 사실은 지속 로컬 상태와 아티팩트 참조에 기록하고, 읽기용 투영 문서는 기준 상태가 아닌 보기로 둡니다. 사용자가 소유한 제품 판단과 중요한 기술 판단은 사용자에게 남겨 둡니다.
+실제로 Harness는 어떤 작업이 범위 안에 있는지, 어떤 판단이 사용자에게 남아 있는지, 완료 주장을 무엇이 뒷받침하는지, 어떤 검증이나 QA가 아직 필요한지, 작업 수락이 이루어졌는지, 어떤 위험이 남았는지를 로컬 기록으로 남깁니다. 대화는 대화로 남습니다. Markdown 투영 문서는 사람이 읽는 보기입니다. Core가 소유한 로컬 상태와 아티팩트 참조가 운영상 기준입니다.
 
 ## Repository Identity / 저장소 정체성
 
@@ -30,9 +30,16 @@ The redesign may change terminology, MVP staging, schema structure, projection s
 
 ## Preserved Principles / 보존하는 원칙
 
-Preserve the core thesis: Harness is not a prompt pack; it is a local authority record for scope, user-owned judgment, evidence, and close readiness. Product decisions, important technical decisions, QA expectations, final acceptance, and residual-risk acceptance remain user-owned judgments. Evidence, verification, manual QA, final acceptance, and residual risk stay separate. Chat, Markdown-rendered projections, connector output, and generated documents are not operational truth; Core-owned local state and artifact references are authoritative.
+Preserve the core thesis: Harness is not a prompt pack; it is a local authority record and judgment-routing layer for scope, user-owned judgment, evidence, verification, QA expectations, final acceptance, and residual-risk status. Product decisions, important technical decisions, QA expectations, final acceptance, and residual-risk acceptance remain user-owned judgments. Evidence, verification, manual QA, final acceptance, and residual risk stay separate. Chat, Markdown-rendered projections, connector output, and generated documents are not operational truth; Core-owned local state and artifact references are authoritative.
 
-핵심 명제는 유지합니다. Harness는 prompt 묶음이 아니라 범위, 사용자 소유 판단, 근거, 닫기 준비 상태를 다루는 로컬 권한 기록입니다. 제품 결정, 중요한 기술 결정, QA 기대치, 작업 수락, 잔여 위험 수용은 사용자 소유 판단입니다. 근거, 검증, 수동 QA, 작업 수락, 잔여 위험은 서로 대체할 수 없습니다. 대화, Markdown으로 렌더링된 투영 문서, connector 출력, 생성 문서는 운영 기준이 아니며, Core가 소유한 로컬 상태와 아티팩트 참조가 운영 기준입니다.
+핵심 명제는 유지합니다. Harness는 prompt 묶음이 아니라 작업 범위, 사용자 판단, 근거, 검증, QA 기대, 최종 작업 수락, 남은 위험 상태를 다루는 로컬 기준 기록이자 판단 경로입니다. 제품 결정, 중요한 기술 결정, QA 기대치, 작업 수락, 잔여 위험 수용은 사용자 판단입니다. 근거, 검증, 수동 QA, 작업 수락, 잔여 위험은 서로 대체할 수 없습니다. 대화, Markdown으로 렌더링된 투영 문서, connector 출력, 생성 문서는 운영 기준이 아니며, Core가 소유한 로컬 상태와 아티팩트 참조가 운영 기준입니다.
+
+## Problems Harness Solves / Harness가 해결하는 문제
+
+- Scope drifts or becomes implicit. / 작업 범위가 흐르거나 암묵적으로 바뀝니다.
+- User-owned judgment is silently replaced by agent judgment. / 사용자 판단이 조용히 에이전트 판단으로 바뀝니다.
+- Evidence, verification, QA, and completion claims get mixed. / 근거, 검증, QA, 완료 주장이 뒤섞입니다.
+- Chat or Markdown output is mistaken for operational truth. / 대화나 Markdown 출력이 운영상 기준으로 오해됩니다.
 
 ## Known Redesign Issues / 알려진 재설계 쟁점
 
@@ -42,14 +49,17 @@ The authoritative maintainer tracker is in the [Authoring Guide](docs/en/maintai
 
 ## What Harness Is Not / Harness가 아닌 것
 
-- Harness is not a prompt pack. / Harness는 prompt 묶음이 아닙니다.
-- Harness is not a replacement for source control, tests, code review, or user judgment. / Harness는 소스 관리, 테스트, 코드 리뷰, 사용자 판단을 대체하지 않습니다.
-- Harness is not MCP itself. / Harness는 MCP 자체가 아닙니다.
-- Harness is not a broad hosted agent platform. / Harness는 넓은 hosted agent platform이 아닙니다.
+Harness is not the same kind of thing as agent instructions, MCP, reusable workflows, tests, review, or specs. It may use those things, but its role is to keep the local operational record and route user-owned judgment.
 
-For comparison with AGENTS.md / agent rules, MCP, spec-driven workflows, hooks / sidecars, and test runners / code review, use the language-specific entrypoints below.
+Harness는 agent instruction, MCP, reusable workflow, 테스트, 리뷰, spec과 같은 역할을 하지 않습니다. 그런 것을 사용할 수는 있지만, Harness의 역할은 로컬 운영 기록을 유지하고 사용자 판단을 올바른 경로로 보내는 것입니다.
 
-AGENTS.md / agent rule, MCP, spec-driven workflow, hook / sidecar, test runner / code review와의 비교는 아래 언어별 진입점을 봅니다.
+Harness is also not a prompt pack, chat script, evaluation harness, dashboard, or broad hosted agent platform.
+
+Harness는 prompt 묶음, 대화 스크립트, evaluation harness, dashboard, 넓은 hosted agent platform도 아닙니다.
+
+For role-by-role comparison with AGENTS.md / agent rules, MCP, skills / reusable workflows, test runners, code review, and specs, use the language-specific entrypoints below.
+
+AGENTS.md / agent rule, MCP, skill / reusable workflow, test runner, code review, spec과의 역할별 비교는 아래 언어별 진입점을 봅니다.
 
 ## Current Phase / 현재 단계
 
