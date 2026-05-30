@@ -6,7 +6,7 @@ Use Harness through an ordinary conversation: start a task, understand what the 
 
 ## Read this when
 
-Read this when Harness is connected and you are starting, resuming, unblocking, or closing an AI-assisted task. It is especially useful when product files may change, scope may drift, user judgment is needed, evidence, verification, QA, acceptance, or residual risk must be tracked, or sensitive categories may apply.
+Read this when Harness is connected and you are starting, resuming, unblocking, or closing an AI-assisted task. It is especially useful when product files may change, scope may drift, a human decision is needed, completion claims need support, or sensitive actions may be involved.
 
 ## Before you read
 

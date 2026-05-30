@@ -1,6 +1,6 @@
 # Codex Working Rules
 
-This repo is in pre-MVP Harness documentation redesign / feedback incorporation and documentation review / documentation acceptance mode. It is currently documentation-only and is intended to become the Harness Server source repository after documentation acceptance. This file is a short always-on compass for agents working here, not a Harness runtime procedure, schema reference, or project history.
+This repo is in pre-MVP Harness documentation redesign / feedback incorporation and documentation review / documentation acceptance mode. It is documentation-only now and is intended to become the Harness Server source repository after documentation acceptance. This file is a short always-on compass for agents working here, not a Harness runtime procedure, schema reference, or project history.
 
 ## Repo Phase
 
@@ -8,11 +8,11 @@ This repo is in pre-MVP Harness documentation redesign / feedback incorporation 
 - This repo is not the user's Product Repository and not a Harness Runtime Home.
 - No Harness Server/runtime implementation exists here yet.
 - Documentation edits are allowed in this phase.
+- Do not run or simulate Harness runtime procedures for documentation edits: no `prepare_write`, MCP state transitions, `close_task`, runtime state, `task_events`, Write Authorizations, Evidence Manifests, Manual QA records, Acceptance records, Residual Risk records, Journey Cards, generated projections, or other generated operational/projection documents for docs work. These terms may be documented only as future Harness behavior.
 - When changing meaning, work in `docs/en` first and mirror semantic changes in `docs/ko` in the same batch.
 - Maintain semantic parity between English and Korean docs, while allowing natural Korean headings and prose.
 - Use the current documentation tree: `docs/*/learn/*`, `docs/*/use/*`, `docs/*/build/*`, `docs/*/reference/*`, `docs/*/maintain/*`, and `docs/*/roadmap.md`.
 - Use small batches and report changed files.
-- Documentation edits do not require Journey Card, `prepare_write`, Write Authorization, `task_events`, MCP state transitions, evidence, QA, acceptance, residual-risk acceptance, or close.
 - Do not create commits unless the user explicitly asks for commits.
 
 ## Documentation Redesign Compass

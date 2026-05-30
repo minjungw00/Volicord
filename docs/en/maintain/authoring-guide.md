@@ -6,7 +6,7 @@ Use this guide when you add, rewrite, split, rename, or review Harness documenta
 
 It helps you keep the current documentation readable for the intended reader, clear about where each kind of detail belongs, and aligned between English and Korean.
 
-This is maintenance documentation. It governs documentation maintenance only and does not authorize runtime/server implementation, product state changes, generated operational files, executable fixtures, runtime data, evidence records, QA results, acceptance decisions, or task closure before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is maintenance documentation. It governs documentation maintenance only. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
 ## Read this when
 
@@ -20,15 +20,17 @@ For exact runtime contracts, use the Reference owner documents linked below. For
 
 ## Main idea
 
-Keep each document useful for its reader and keep exact contracts in their owner Reference docs. Documentation-maintenance checks make drift visible, but they do not create runtime state, evidence, QA, acceptance, close readiness, or implementation readiness.
+Keep each document useful for its reader and keep exact contracts in their owner Reference docs. The docs are source material for understanding and implementing Harness; they are not runtime objects governed by Harness.
 
 ## Current Redesign Scope
 
-This repository is in documentation review/redesign only. Documentation edits do not start Harness server/runtime implementation, create generated runtime artifacts, produce executable fixtures, or authorize implementation planning.
+This repository is in documentation review/redesign only. Documentation edits may change source docs, but they do not start Harness server/runtime implementation or authorize implementation planning.
 
 The redesign may change terminology, MVP staging, schema structure, projection structure, security wording, and document organization. Do not preserve existing prose merely for continuity when it conflicts with the clarified product thesis or implementation feasibility.
 
-Documentation must remain separate from future harness runtime artifacts and runtime rules. A document may describe future Harness behavior, but the act of editing documentation is documentation maintenance only.
+Documentation editing in this repository does not require Harness runtime procedures. Do not create runtime state, `task_events`, Write Authorizations, Evidence Manifests, Manual QA records, Acceptance records, Residual Risk records, generated projections, generated operational files, executable fixtures, or product-repository examples for documentation edits. These terms may be documented as future Harness behavior only.
+
+Documentation files are source material for understanding and implementing Harness. They are not Harness projections unless a future Harness Server explicitly generates them as projections. Do not make documentation pages obey the runtime lifecycle they describe; explain the lifecycle, link to owner contracts, and keep editorial checks editorial.
 
 ## Preserved Principles
 
@@ -56,7 +58,7 @@ Use this tracker during the documentation rewrite. These are maintainer-facing r
 | Projection/template scope may be too broad for early implementation. | Flag broad early scope and route staging decisions to the projection/template owners. |
 | Security guarantee wording must match actual enforcement level. | Use cooperative, detective, preventive, or isolated wording only when the documented surface can provide that level. |
 | Agent context strategy must prevent excessive prompt/context load. | Keep always-on agent context short and route details to owner docs or retrieval paths. |
-| Documentation must remain separate from harness runtime artifacts and rules. | Do not create generated operational files, runtime state, fixtures, or product-repository examples during docs maintenance. |
+| Documentation can drift into runtime-object language. | Use the separation rule in Current Redesign Scope: maintain docs as source material, not runtime state or generated projections. |
 
 ## Documentation principles
 
@@ -250,7 +252,7 @@ After a rename, search for old paths, old anchors, old headings, and old title t
 
 ## Docs-maintenance checks
 
-Docs-maintenance checks are read-only documentation maintenance. They may report documentation drift, owner mismatch, English/Korean parity issues, duplicate normative text outside the owner, broken links or anchors, and TODO hygiene problems. They are not Core fixture conformance, runtime validators, canonical state transitions, projection refresh, generated operational reports, QA results, acceptance records, evidence artifacts, residual-risk acceptance, close readiness, or implementation readiness. They do not execute fixture actions, seed runtime state, compare runtime state/events/artifacts/projections/errors, or count toward runtime fixture pass/fail.
+Docs-maintenance checks are editorial quality checks. They may report documentation drift, owner mismatch, English/Korean parity issues, duplicate normative text outside the owner, broken links or anchors, and TODO hygiene problems. They are not runtime conformance or implementation readiness, and they do not execute fixture actions, seed runtime state, compare runtime state/events/artifacts/projections/errors, or count toward runtime fixture pass/fail. They do not create or update canonical state, runtime state, `task_events`, evidence artifacts or Evidence Manifests, QA results or Manual QA records, Acceptance records, residual-risk acceptance or Residual Risk records, close readiness, projection refreshes or generated operational reports, or implementation readiness.
 
 Maintain docs may define documentation review rules, category labels, and reviewer expectations. They must not define runtime conformance pass/fail, runtime fixture semantics, Core state effects, gate behavior, or implementation readiness. When a docs-maintenance finding touches a runtime contract, the finding should point to the owner Reference document instead of restating that contract.
 
@@ -258,7 +260,7 @@ Maintain docs may define documentation review rules, category labels, and review
 
 Before maintainers accept the documentation set for implementation planning, do one final docs-maintenance pass. Check English/Korean active file map parity, semantic section parity in paired files, broken links and anchors, owner-boundary drift, non-owner duplicate contracts, terminology drift for Approval, Decision Packet, Evidence, Verification, Manual QA, Acceptance, Residual Risk, Projection, and Guarantee Level, and TODO hygiene.
 
-This final review is documentation maintenance only. It does not create runtime conformance, evidence, QA, acceptance, residual-risk acceptance, close readiness, implementation readiness, or canonical state. Use the existing docs-maintenance reporting expectations when recording findings; do not create a new required report format for this final pass.
+This final review is still editorial review. It summarizes whether the docs are coherent enough for maintainer handoff; it does not create runtime conformance, canonical state, evidence, QA, Acceptance, residual-risk acceptance, close readiness, or implementation readiness. Use the existing docs-maintenance reporting expectations when recording findings; do not create a new required report format for this final pass.
 
 A docs-maintenance review or future checker should report:
 
@@ -269,7 +271,8 @@ A docs-maintenance review or future checker should report:
 - owner document and expected source section
 - observed drift
 - suggested fix
-- runtime effect statement: none; no canonical state transition was performed and no runtime fixture result was recorded
+- runtime effect note: none; no canonical state transition or runtime fixture result was recorded
+- maintenance note when a finding needs extra context
 
 Resolve drift in this order:
 

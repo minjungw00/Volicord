@@ -14,9 +14,13 @@ This repository is currently a documentation-only redesign/review repository. Af
 
 It is not the user's Product Repository. It is not the Harness Runtime Home. No Harness Server or runtime implementation exists here yet.
 
+The docs are source material for understanding and implementing Harness. They are not runtime objects governed by Harness.
+
 이 저장소는 현재 문서 전용 재설계/검토 저장소입니다. 문서 승인 이후에는 하네스 서버 소스 저장소가 되는 것을 목표로 합니다.
 
 이 저장소는 사용자의 제품 저장소가 아닙니다. 하네스 런타임 홈도 아닙니다. 아직 이곳에는 하네스 서버 또는 런타임 구현이 없습니다.
+
+이 문서들은 하네스를 이해하고 구현하기 위한 원천 자료입니다. 하네스가 관리하는 런타임 객체가 아닙니다.
 
 ## Documentation Redesign Scope / 문서 재설계 범위
 
@@ -68,7 +72,7 @@ AGENTS.md / agent rule, MCP, skill / reusable workflow, test runner, code review
 | Documentation redesign / feedback incorporation / 문서 재설계와 피드백 반영 | Active; acceptance still requires a deliberate maintainer update. / 진행 중입니다. Acceptance는 여전히 maintainer의 명시적 갱신이 필요합니다. |
 | Docs accepted for implementation planning / 구현 계획을 위한 문서 승인 | Not yet; maintainers must update the handoff status deliberately. / 아직 아닙니다. maintainer가 handoff 상태를 명시적으로 갱신해야 합니다. |
 | Runtime/server implementation / runtime/server 구현 | Not started. / 시작하지 않았습니다. |
-| Open follow-up docs issues / 열려 있는 문서 후속 이슈 | Known redesign issues are tracked in the [Authoring Guide](docs/en/maintain/authoring-guide.md#known-redesign-issues-tracker). They are documentation redesign inputs, not runtime conformance, implementation readiness, or authorization to start server/runtime implementation. Docs accepted for implementation planning remains No unless maintainers deliberately change the handoff status. / 알려진 재설계 쟁점은 [문서 작성 가이드](docs/ko/maintain/authoring-guide.md#알려진-재설계-쟁점-트래커)에서 관리합니다. 이 쟁점은 문서 재설계 입력이며 runtime conformance, 구현 준비 상태, server/runtime 구현 시작 승인이 아닙니다. 구현 계획을 위한 docs accepted는 maintainer가 handoff 상태를 명시적으로 바꾸기 전까지 여전히 아니오입니다. |
+| Open follow-up docs issues / 열려 있는 문서 후속 이슈 | Known redesign issues are tracked in the [Authoring Guide](docs/en/maintain/authoring-guide.md#known-redesign-issues-tracker). They are documentation redesign inputs only: not runtime conformance, not implementation readiness, and not authorization to start server/runtime implementation. Docs accepted for implementation planning remains No unless maintainers deliberately change the handoff status. / 알려진 재설계 쟁점은 [문서 작성 가이드](docs/ko/maintain/authoring-guide.md#알려진-재설계-쟁점-트래커)에서 관리합니다. 이 쟁점은 문서 재설계 입력일 뿐이며, runtime conformance도, 구현 준비 상태도, server/runtime 구현 시작 승인도 아닙니다. 구현 계획을 위한 docs accepted는 maintainer가 handoff 상태를 명시적으로 바꾸기 전까지 여전히 아니오입니다. |
 
 Until the docs-accepted row is deliberately set to Yes in the maintainer handoff status, work remains documentation maintenance and runtime/server implementation must not start.
 

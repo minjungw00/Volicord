@@ -38,9 +38,13 @@ The Product Repository is the user's product workspace: product code, tests, pro
 
 This repository is currently a documentation-only redesign/review repository. After documentation acceptance, it is intended to become the Harness Server source repository. It is not a Product Repository or a Harness Runtime Home, and no Harness Server/runtime implementation exists here yet.
 
+The docs are source material for understanding and implementing Harness. They are not runtime objects governed by Harness.
+
 제품 저장소는 사용자의 제품 작업 공간입니다. 제품 코드, 테스트, 제품 문서, 사람이 읽는 하네스 투영 문서가 여기에 속합니다. 하네스 서버 소스 저장소는 하네스 API를 노출하고, 요청을 검증하고, 상태 전이를 소유하고, 투영 문서를 쓸 로컬 서버/설치 프로그램의 미래 코드베이스입니다. 하네스 런타임 홈은 사용자별/설치별 운영 데이터 공간으로, 상태, 아티팩트, 투영 출력, 로그를 둡니다.
 
 이 저장소는 현재 문서 전용 재설계/검토 저장소입니다. 문서 승인 이후에는 하네스 서버 소스 저장소가 되는 것을 목표로 합니다. 제품 저장소나 하네스 런타임 홈이 아니며, 아직 이곳에는 하네스 서버/런타임 구현이 없습니다.
+
+이 문서들은 하네스를 이해하고 구현하기 위한 원천 자료입니다. 하네스가 관리하는 런타임 객체가 아닙니다.
 
 ## Choose A Language / 언어 선택
 

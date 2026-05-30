@@ -4,6 +4,8 @@ This is the English routing page for the Harness documentation set.
 
 This repository is currently a documentation-only redesign/review repository. After documentation acceptance, it is intended to become the Harness Server source repository. No Harness Server/runtime implementation exists here yet.
 
+These docs are source material for understanding and implementing Harness. They are not Harness runtime objects governed by the lifecycle they describe.
+
 ## Product Thesis
 
 One sentence: Harness is a local authority record and judgment-routing layer for AI-assisted product work, keeping scope, user-owned judgments, evidence, verification, QA expectations, final acceptance, and residual-risk status outside fragile chat context.
@@ -69,7 +71,7 @@ Harness is also not a prompt pack, chat script, evaluation harness, dashboard, o
 
 Reference docs own exact contracts: schemas, DDL, gates, state transitions, enum values, fixture semantics, template bodies, and official definitions. Learn, Use, and Build docs explain the idea for their reader and link to Reference instead of copying strict contract blocks.
 
-Documentation-maintenance checks are read-only review guidance, not runtime conformance or implementation readiness. Use the [Authoring Guide](maintain/authoring-guide.md#docs-maintenance-checks) for drift categories and owner-first resolution; use [Operations And Conformance](reference/operations-and-conformance.md#docs-maintenance-profile) only for the docs-maintenance profile reporting boundary.
+Documentation-maintenance checks are editorial quality checks for drift, owner boundaries, links, and language parity. They are not runtime conformance or implementation readiness. Use the [Authoring Guide](maintain/authoring-guide.md#docs-maintenance-checks) for drift categories and owner-first resolution; use [Operations And Conformance](reference/operations-and-conformance.md#docs-maintenance-profile) only for the docs-maintenance profile reporting boundary.
 
 Operators use [Operations And Conformance Reference](reference/operations-and-conformance.md) for procedures and the conformance run overview. Fixture authors use [Conformance Fixtures Reference](reference/conformance-fixtures.md) for fixture body shape, assertion semantics, suite catalogs, examples, and catalog-only future candidates.
 

@@ -4,6 +4,8 @@
 
 이 저장소는 현재 문서 전용 재설계/검토 저장소입니다. 문서 승인 이후에는 하네스 서버 소스 저장소가 되는 것을 목표로 합니다. 아직 이곳에는 하네스 서버/런타임 구현이 없습니다.
 
+이 문서들은 하네스를 이해하고 구현하기 위한 원천 자료입니다. 문서가 설명하는 생명주기를 따라 관리되는 하네스 런타임 객체가 아닙니다.
+
 ## 제품 명제
 
 한 문장으로 말하면, 하네스는 AI 지원 제품 작업에서 작업 범위, 사용자 판단, 근거, 검증, QA 기대, 최종 작업 수락, 남은 위험 상태를 깨지기 쉬운 대화 맥락 밖에 두는 로컬 기준 기록이자 판단 경로입니다.
@@ -69,7 +71,7 @@
 
 정확한 계약은 Reference 문서가 담당합니다. Schema, DDL, 관문(gate), state transition, enum value, fixture 의미, template 본문, 공식 정의가 여기에 속합니다. Learn, Use, Build 문서는 독자에게 필요한 생각을 설명하고 Reference로 연결하며, 엄격한 계약 블록을 복사하지 않습니다.
 
-Docs-maintenance check는 읽기 전용 리뷰 지침이며 runtime conformance나 implementation readiness가 아닙니다. Drift category와 owner-first resolution은 [문서 작성 가이드](maintain/authoring-guide.md#docs-maintenance-checks)를 사용하고, docs-maintenance profile reporting boundary는 [운영과 Conformance](reference/operations-and-conformance.md#docs-maintenance-프로필)를 사용합니다.
+Docs-maintenance check는 drift, owner boundary, link, 언어 의미 일치를 살피는 편집 품질 점검입니다. Runtime conformance나 implementation readiness가 아닙니다. Drift category와 owner-first resolution은 [문서 작성 가이드](maintain/authoring-guide.md#docs-maintenance-checks)를 사용하고, docs-maintenance profile reporting boundary는 [운영과 Conformance](reference/operations-and-conformance.md#docs-maintenance-프로필)를 사용합니다.
 
 운영자는 procedure와 conformance run overview를 위해 [운영과 Conformance 참조](reference/operations-and-conformance.md)를 사용합니다. Fixture 작성자는 fixture body shape, assertion semantics, suite catalog, example, catalog-only future candidate를 위해 [Conformance Fixtures 참조](reference/conformance-fixtures.md)를 사용합니다.
 
