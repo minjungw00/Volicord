@@ -13,7 +13,7 @@ Boundary: projection template only; it does not authorize runtime/server impleme
 - current-state display inputs for mode, lifecycle, next action, primary blocker, smallest unblocker, guarantee level, and projection freshness
 - display inputs for Scope, Judgment, Evidence, and Close Readiness groups derived from existing owner records, gates, blockers, and refs
 - Write Authorization records and Write Authority Summary display inputs
-- Decision Packets and Residual Risks, including reader-facing Decision Packet display metadata when rendered
+- Decision Packets and Residual Risks, including schema-owned Decision Packet `judgment_domain` when rendered
 - latest Run, Evidence Manifest, Eval, Manual QA record, and approval records
 - compact authority source refs for Write Authorization, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Acceptance context, Residual Risk, Artifact refs, redaction state, and projection freshness when those claims are displayed
 - primary blocker, secondary blocker, and smallest unblocker display summaries
@@ -26,7 +26,7 @@ Boundary: projection template only; it does not authorize runtime/server impleme
 - Review Stage display inputs from existing owner records and refs
 - artifact refs and projection freshness
 
-Generated gate group summaries, judgment, Decision Packet display metadata, close, waiver, review-stage, stewardship, and projection-freshness entries in `TASK` are display bindings. They should resolve to the owner records, gates, artifacts, and refs named above, or render an explicit absence/blocking state when no such source exists. They do not create canonical records, gates, `ProjectionKind` values, evidence, QA, verification, acceptance, residual-risk acceptance, close, or Write Authorization.
+Generated gate group summaries, judgment display text, close, waiver, review-stage, stewardship, and projection-freshness entries in `TASK` are display bindings. They should resolve to the owner records, gates, artifacts, and refs named above, or render an explicit absence/blocking state when no such source exists. Rendering schema-owned `judgment_domain` does not create canonical records, gates, `ProjectionKind` values, evidence, QA, verification, acceptance, residual-risk acceptance, close, or Write Authorization.
 
 ## Rendered sections
 
@@ -139,7 +139,9 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Judgment Context
 - pending decision packets:
 - decision title:
-- display judgment type:
+- judgment_domain:
+- display label:
+- decision_kind:
 - why needed now:
 - what user is deciding:
 - options:
@@ -466,7 +468,7 @@ Generated summaries should use ordinary user-facing language first and exact Har
 
 Gate Group Summary is the first managed section so readers see the practical blocker story before raw gate detail. Scope, Judgment, Evidence, and Close Readiness are display groups derived from existing owner records, gates, blockers, and refs. They are not canonical fields, aliases for exact gate values, new gates, recompute inputs, close semantics, or authority paths. Exact gate values and recompute rules remain in [Kernel Reference](../kernel.md#gates), and close behavior remains in [`close_task`](../kernel.md#close_task).
 
-Decision Packet display in `TASK` may show a reader-facing display judgment type so users can scan whether they are making a Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, or Scope / autonomy judgment. Use it as the primary display category. If a decision is cross-cutting, render secondary considerations in trade-offs, affected gates, risk, evidence, or follow-up instead of treating the category as exclusive. The category is display metadata derived from the owner Decision Packet context and refs. It is not a canonical schema field, gate, status, owner contract, or validator input, and it must not blur the owner contracts for `decision_kind`, Approval, acceptance, QA, residual-risk acceptance, close, or Write Authorization.
+Decision Packet display in `TASK` should show the schema-owned `judgment_domain` so users can scan whether they are making a Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed judgment. Use it as the primary display grouping. If a decision is cross-cutting, render secondary considerations in trade-offs, affected gates, risk, evidence, or follow-up instead of treating the domain as exclusive. `judgment_domain` is not a gate, status, validator input, close aggregation rule, or authority path, and it must not blur the owner contracts for `decision_kind`, Approval, acceptance, QA, residual-risk acceptance, close, or Write Authorization.
 
 Authority claims in `TASK` must resolve to source refs or explicit absence. Write authority claims point to Write Authorization refs, sensitive-action permission to Approval refs, evidence sufficiency to Evidence Manifest refs, detached verification to Eval refs, Manual QA to Manual QA records or valid waiver refs, final acceptance to Acceptance Decision Packet refs, and residual-risk visibility or acceptance to Residual Risk refs or `ResidualRiskSummary.status=none`. Missing refs should render as missing support, not as completed authority.
 

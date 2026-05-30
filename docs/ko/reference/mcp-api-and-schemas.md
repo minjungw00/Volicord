@@ -518,9 +518,17 @@ Decision Packet, Write Authorization, Write Authority Summary, Journey Card, Jud
 
 Role Lens behavior는 이 기존 표시 및 routing schema를 사용합니다. Role lens는 `RecommendedPlaybook`으로 나타날 수 있고, existing Decision Packet으로 route할 수 있으며, `DecisionPacketCandidate`를 propose할 수 있습니다. 별도의 public payload schema, 권한 기록, 상태 전이를 도입하지 않습니다.
 
-Decision Packet 품질은 아래 existing public fields와 [Decision Packet](kernel.md#decision-packet), [Decision Gate](kernel.md#decision-gate)의 kernel authority rule로 판단하며, 추가 payload member로 판단하지 않습니다. 충분한 packet은 `what_user_is_deciding`에 사용자가 무엇을 결정하는지 이름 붙이고, trade-off가 있는 현실적인 `options`를 포함하며, 가능할 때 `recommendation`과 uncertainty를 제공하고, `affected_gates`와 `affected_acceptance_criteria`를 식별하고, `context.source_refs`와 `context.evidence_refs`를 담고, `deferral_consequence`를 말하며, `what_agent_may_decide_without_user`를 나열합니다. 이 existing fields로 선택, source, evidence, deferral impact, agent latitude를 솔직히 보여줄 수 없다면 broad approval처럼 제시하지 말고 prompt를 blocked 또는 narrowed로 다루거나 충분한 context가 생길 때까지 decision을 pending으로 둬야 합니다.
+Decision Packet 품질은 아래 public field와 [Decision Packet](kernel.md#decision-packet), [Decision Gate](kernel.md#decision-gate)의 kernel authority rule로 판단하며, private 표시 label이나 추가 권한 hint로 판단하지 않습니다. 충분한 packet은 `what_user_is_deciding`에 사용자가 무엇을 결정하는지 이름 붙이고, schema가 소유하는 `judgment_domain`을 포함하며, trade-off가 있는 현실적인 `options`를 포함하고, 가능할 때 `recommendation`과 uncertainty를 제공하고, `affected_gates`와 `affected_acceptance_criteria`를 식별하고, `context.source_refs`와 `context.evidence_refs`를 담고, `deferral_consequence`를 말하며, `what_agent_may_decide_without_user`를 나열합니다. 이 field들로 선택, source, evidence, deferral impact, agent latitude를 솔직히 보여줄 수 없다면 broad approval처럼 제시하지 말고 prompt를 blocked 또는 narrowed로 다루거나 충분한 context가 생길 때까지 decision을 pending으로 둬야 합니다.
 
-`DecisionPacketCandidate`, `RecommendedPlaybook.route`, `decision_packet_route`, optional implementation `decision_requests`는 request, display, routing metadata입니다. Caller가 [`harness.request_user_decision`](#harnessrequest_user_decision)으로 가도록 도울 수는 있지만, owner path가 compatible `DecisionPacket`과 연결된 owner records를 commit 또는 update하기 전에는 기준 권한이 되지 않습니다.
+`decision_kind`와 `judgment_domain`은 서로 다른 schema-owned field입니다. `decision_kind`는 lifecycle, payload branch, gate 의미, state transition semantics를 제어합니다. `judgment_domain`은 사용자에게 결정을 어떻게 설명하고 묶어 보여줄지 정하는 판단 영역입니다. 별도 owner rule이 명시하지 않는 한 `judgment_domain`은 close gate aggregation, Approval behavior, waiver behavior, risk acceptance를 직접 override하면 안 됩니다. 하나의 결정은 표시되는 판단 영역과 별개로 하나 이상의 gate에 영향을 줄 수 있으며, 여러 영역에 걸친 결정은 `mixed`를 쓰거나 options, affected gates, risk, evidence, follow-up에 부차적인 고려사항을 보여줘야 합니다.
+
+`JudgmentDomain` 값:
+
+```text
+product_ux | technical_architecture | security_privacy | qa_acceptance | residual_risk | scope_autonomy | mixed
+```
+
+`DecisionPacketCandidate`, `RecommendedPlaybook.route`, `decision_packet_route`, optional implementation `decision_requests`는 request, display, routing metadata입니다. Caller가 [`harness.request_user_decision`](#harnessrequest_user_decision)으로 가도록 도울 수는 있지만, owner path가 compatible `DecisionPacket`과 연결된 owner records를 commit 또는 update하기 전에는 기준 권한이 되지 않습니다. 사용자에게 보이는 `DecisionPacketCandidate`는 `judgment_domain`을 포함해야 합니다. Candidate의 `judgment_domain`은 Core가 기준 Decision Packet을 commit 또는 update하기 전까지 request/display/routing metadata로 남습니다. 저장된 Decision Packet이 committed `judgment_domain`을 소유합니다.
 
 ```yaml
 DecisionPacket:
@@ -529,6 +537,7 @@ DecisionPacket:
   change_unit_id: string | null
   status: proposed | pending_user | resolved | deferred | rejected | blocked | superseded
   decision_kind: approval | scope_confirmation | design_choice | architecture_choice | product_tradeoff | autonomy_boundary | verification_waiver | qa_waiver | acceptance | residual_risk_acceptance | reconcile
+  judgment_domain: product_ux | technical_architecture | security_privacy | qa_acceptance | residual_risk | scope_autonomy | mixed
   context:
     why_now: string
     source_refs: StateRecordRef[]
@@ -575,6 +584,7 @@ DecisionPacketCandidate:
   task_id: string
   change_unit_id: string | null
   decision_kind: approval | scope_confirmation | design_choice | architecture_choice | product_tradeoff | autonomy_boundary | verification_waiver | qa_waiver | acceptance | residual_risk_acceptance | reconcile
+  judgment_domain: product_ux | technical_architecture | security_privacy | qa_acceptance | residual_risk | scope_autonomy | mixed
   context:
     why_now: string
     source_refs: StateRecordRef[]
@@ -1153,7 +1163,7 @@ Write Authorization은 intended operation과 현재 state, baseline, active Chan
 
 `active_decision_packet_refs`는 intended write와 relevant한 모든 Decision Packets를 포함합니다. Pending, deferred, blocked, recently resolved packets가 포함됩니다.
 
-`decision_packet_candidate`는 `decision=decision_required`이고 compatible Decision Packet이 아직 없을 때 present합니다. Field는 envelope 이후의 `RequestUserDecisionRequest`와 일치합니다. 이는 나중에 `harness.request_user_decision`을 호출하기 위한 non-mutating candidate payload입니다. `prepare_write`가 이를 반환해도 Decision Packet이 생성되거나 update되지는 않습니다.
+`decision_packet_candidate`는 `decision=decision_required`이고 compatible Decision Packet이 아직 없을 때 present합니다. Field는 `judgment_domain`을 포함해 envelope 이후의 `RequestUserDecisionRequest`와 일치합니다. 이는 나중에 `harness.request_user_decision`을 호출하기 위한 non-mutating candidate payload입니다. `prepare_write`가 이를 반환해도 Decision Packet이 생성되거나 update되지는 않습니다.
 
 상태 전이 요약: Task를 `executing`, `waiting_user`, `blocked`로 옮길 수 있습니다. Allowed일 때 Write Authorization을 생성하거나 idempotent replay에 대해 already committed response를 반환할 수 있습니다. `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=required/expired`, `stale` evidence/Approval marker를 set할 수 있습니다. `approval_gate=pending`은 `harness.request_user_decision(decision_kind=approval)`이 Approval 형태 Decision Packet과 연결된 pending Approval 기록을 생성할 때 시작됩니다.
 
@@ -1380,6 +1390,7 @@ RequestUserDecisionRequest:
   task_id: string
   change_unit_id: string | null
   decision_kind: approval | scope_confirmation | design_choice | architecture_choice | product_tradeoff | autonomy_boundary | verification_waiver | qa_waiver | acceptance | residual_risk_acceptance | reconcile
+  judgment_domain: product_ux | technical_architecture | security_privacy | qa_acceptance | residual_risk | scope_autonomy | mixed
   context:
     why_now: string
     source_refs: StateRecordRef[]
@@ -1401,11 +1412,9 @@ RequestUserDecisionRequest:
   reconcile_item_id: string | null
 ```
 
-Core는 기준 `DecisionPacket`을 저장합니다. Minimal v0.1 Kernel MVP 구현은 `decision_requests`를 생략할 수 있으며, public request와 response schema는 Decision Request가 아니라 Decision Packet을 중심으로 유지됩니다. 구현이 `decision_requests`도 만들거나 업데이트한다면 해당 row는 routing, interaction, idempotency replay, compatibility handoff metadata일 뿐이며 gate aggregation이 그 metadata를 고려하려면 먼저 기준 `decision_packet_id`로 다시 연결되어야 합니다. `decision_request` row만으로는 `decision_gate`, Approval, acceptance, waiver, Residual Risk 수용, close를 절대 만족하지 않습니다. `state_summary_at_request`가 `null`이면 Core가 같은 transaction 안에서 current state로부터 파생합니다. Stored `state_summary_at_request`는 request-time snapshot이며 이후 Task transition으로 업데이트되지 않습니다. `approval_scope`는 `decision_kind=approval`일 때 required이며, 다른 `decision_kind` value에서는 `null` 또는 omitted여야 합니다. `decision_kind=approval`은 sensitive-action Approval을 위한 Approval 형태 context일 뿐이며, 별도의 compatible Decision Packet과 gate update 없이 제품 장단점, 설계 방향, 아키텍처 판단이나 중요한 기술 판단, 해결되지 않은 security 또는 product-security 판단, QA 면제, verification risk, final acceptance, Residual Risk 수용 같은 사용자 소유 판단을 해소할 수 없습니다. `decision_kind=approval`에서 Core는 Approval 범위를 사용해 연결된 pending Approval 기록도 생성합니다. Approval은 `harness.record_user_decision`이 Decision Packet을 해소하기 전에는 granted가 아닙니다. `residual_risk_acceptance` packet은 `user_context.minimum_context`에 risk visibility context를 포함하고 `context.source_refs`에 relevant risk ref를 포함해야 합니다. "go ahead" 또는 "진행해" 같은 넓은 자연어 답변은 schema branch가 아닙니다. Request는 여전히 Core가 무엇을 묻는지 결정하는 `decision_kind`, option, affected gates, user context를 이름 붙여야 합니다.
+Core는 기준 `DecisionPacket`을 저장합니다. Minimal v0.1 Kernel MVP 구현은 `decision_requests`를 생략할 수 있으며, public request와 response schema는 Decision Request가 아니라 Decision Packet을 중심으로 유지됩니다. 구현이 `decision_requests`도 만들거나 업데이트한다면 해당 row는 routing, interaction, idempotency replay, compatibility handoff metadata일 뿐이며 gate aggregation이 그 metadata를 고려하려면 먼저 기준 `decision_packet_id`로 다시 연결되어야 합니다. `decision_request` row만으로는 `decision_gate`, Approval, acceptance, waiver, Residual Risk 수용, close를 절대 만족하지 않습니다. `state_summary_at_request`가 `null`이면 Core가 같은 transaction 안에서 current state로부터 파생합니다. Stored `state_summary_at_request`는 request-time snapshot이며 이후 Task transition으로 업데이트되지 않습니다. `approval_scope`는 `decision_kind=approval`일 때 required이며, 다른 `decision_kind` value에서는 `null` 또는 omitted여야 합니다. `decision_kind=approval`은 sensitive-action Approval을 위한 Approval 형태 context일 뿐이며, 별도의 compatible Decision Packet과 gate update 없이 제품 장단점, 설계 방향, 아키텍처 판단이나 중요한 기술 판단, 해결되지 않은 security 또는 product-security 판단, QA 면제, verification risk, final acceptance, Residual Risk 수용 같은 사용자 소유 판단을 해소할 수 없습니다. `decision_kind=approval`에서 Core는 Approval 범위를 사용해 연결된 pending Approval 기록도 생성합니다. Approval은 `harness.record_user_decision`이 Decision Packet을 해소하기 전에는 granted가 아닙니다. 사용자에게 보이는 모든 decision request와 저장된 Decision Packet에는 `judgment_domain`이 필요합니다. 이는 사용자가 보는 판단 영역이지 lifecycle route가 아닙니다. `residual_risk_acceptance` packet은 `user_context.minimum_context`에 risk visibility context를 포함하고 `context.source_refs`에 relevant risk ref를 포함해야 합니다. "go ahead" 또는 "진행해" 같은 넓은 자연어 답변은 schema branch가 아닙니다. Request는 여전히 Core가 무엇을 묻는지 결정하는 `decision_kind`, `judgment_domain`, option, affected gates, user context를 이름 붙여야 합니다.
 
-이 request에서 파생되는 사용자 표시 prompt는 결정 중심이어야 합니다. 사용자가 이름 붙은 option을 선택, defer, reject, waive, accept, reconcile할지 묻고, 그 답이 무엇을 확정하고 무엇을 확정하지 않는지 말해야 합니다. `decision_kind=approval`이고 `approval_scope`가 승인할 민감 동작을 설명하는 경우가 아니라면 generic approval을 요청하면 안 됩니다. 정확한 public fields는 위 schema 그대로이며, 이 문단은 그 field를 사용하는 최소 품질을 설명할 뿐입니다.
-
-사용자 표시 접점은 Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy 같은 표시용 판단 유형 category를 렌더링할 수 있습니다. 이 주 표시 category는 `decision_kind`, context, source refs, 주변 owner record에서 파생되는 표시 metadata입니다. 결정이 여러 영역에 걸쳐 있으면 category를 배타적으로 다루지 말고 부차적인 고려사항을 trade-offs, affected gates, risk, evidence, follow-up에 보여줘야 합니다. 현재 reference model에서는 request 또는 response field가 아니며, gate aggregation에 사용하면 안 되고, 위 기준 owner contract를 흐리면 안 됩니다. TODO_DECISION(schema-owner): future schema-owned display category가 필요한지 결정합니다. Schema owner가 명시적으로 승격하기 전까지 judgment type은 projection/display guidance일 뿐입니다.
+이 request에서 파생되는 사용자 표시 prompt는 결정 중심이어야 합니다. 사용자가 이름 붙은 option을 선택, defer, reject, waive, accept, reconcile할지 묻고, 그 답이 무엇을 확정하고 무엇을 확정하지 않는지 말해야 합니다. `decision_kind=approval`이고 `approval_scope`가 승인할 민감 동작을 설명하는 경우가 아니라면 generic approval을 요청하면 안 됩니다. 사용자에게 보이는 모든 decision request는 사용자가 정확히 결정하는 것, `judgment_domain`, `decision_kind`, options, 장단점 또는 benefits/costs/risks, agent가 정당화할 수 있을 때 recommendation, uncertainty, 미룰 때의 결과, 영향을 받는 gate 또는 blocked action, 관련 state 또는 artifact refs를 포함해야 합니다. 표시 접점은 enum 값을 Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed 같은 자연스러운 label로 렌더링할 수 있지만 저장되는 schema 값은 위 snake-case enum입니다.
 
 Response schema:
 
@@ -1492,7 +1501,7 @@ AcceptedRiskInput:
   evidence_refs: EvidenceRefs
 ```
 
-Payload branch는 `decision_kind`와 일치해야 하며, 다른 branch는 absent여야 합니다. 선택된 branch, selected option, compatible Decision Packet이 기록되는 judgment를 결정합니다. "approved", "go ahead", "진행해" 같은 자유로운 note text는 이를 sensitive-action Approval, acceptance, waiver, residual-risk acceptance, write authority로 넓힐 수 없습니다. `accepted_risks`는 Decision Packet과 current Judgment Context가 user decision 전에 close-relevant residual risk를 보이게 만든 경우에만 allowed입니다. `decision_kind=acceptance`에서 Core는 close-relevant residual risk가 보이거나 `ResidualRiskSummary.status=none`이 no known close-relevant risk를 confirm한 경우에만 acceptance를 record할 수 있습니다. Core는 `decision_packet_id`가 식별하는 기준 `DecisionPacket`에 answer를 record합니다. 모든 `decision_requests` row는 routing/replay metadata로만 update되며 linked compatible Decision Packet과 owner-record update 없이는 `decision_gate`, sensitive-action Approval, acceptance, waiver, Residual Risk 수용, close를 충족할 수 없습니다. Core는 Residual Risk record를 update하고 residual-risk 상태 참조를 반환하여 accepted risk를 기록하며, risk acceptance를 detached verification으로 취급하지 않습니다. `AcceptedRiskInput.residual_risk_ref=null`은 current Decision Packet과 Judgment Context가 해당 close-relevant risk를 이미 사용자에게 보이게 만들고, Core가 같은 기록된 transition 안에서 Residual Risk record를 생성하거나 associate할 수 있을 만큼 충분한 source/evidence context를 포함할 때만 allowed입니다. Visibility 또는 context가 없으면 Core는 hidden risk를 조용히 create하고 accept하지 말고 reject 또는 block해야 합니다.
+Payload branch는 `decision_kind`와 일치해야 하며, 다른 branch는 absent여야 합니다. `judgment_domain`은 저장된 Decision Packet에서 읽어 표시와 grouping에 쓰며, payload branch로 사용하지 않습니다. 선택된 branch, selected option, compatible Decision Packet이 기록되는 judgment를 결정합니다. "approved", "go ahead", "진행해" 같은 자유로운 note text는 이를 sensitive-action Approval, acceptance, waiver, residual-risk acceptance, write authority로 넓힐 수 없습니다. `accepted_risks`는 Decision Packet과 current Judgment Context가 user decision 전에 close-relevant residual risk를 보이게 만든 경우에만 allowed입니다. `decision_kind=acceptance`에서 Core는 close-relevant residual risk가 보이거나 `ResidualRiskSummary.status=none`이 no known close-relevant risk를 confirm한 경우에만 acceptance를 record할 수 있습니다. Core는 `decision_packet_id`가 식별하는 기준 `DecisionPacket`에 answer를 record합니다. 모든 `decision_requests` row는 routing/replay metadata로만 update되며 linked compatible Decision Packet과 owner-record update 없이는 `decision_gate`, sensitive-action Approval, acceptance, waiver, Residual Risk 수용, close를 충족할 수 없습니다. Core는 Residual Risk record를 update하고 residual-risk 상태 참조를 반환하여 accepted risk를 기록하며, risk acceptance를 detached verification으로 취급하지 않습니다. `AcceptedRiskInput.residual_risk_ref=null`은 current Decision Packet과 Judgment Context가 해당 close-relevant risk를 이미 사용자에게 보이게 만들고, Core가 같은 기록된 transition 안에서 Residual Risk record를 생성하거나 associate할 수 있을 만큼 충분한 source/evidence context를 포함할 때만 allowed입니다. Visibility 또는 context가 없으면 Core는 hidden risk를 조용히 create하고 accept하지 말고 reject 또는 block해야 합니다.
 
 `decision_kind=verification_waiver`에서 `decision.verification_waiver.value=waived`는 위 Decision Packet과 Residual Risk path를 통해서만 accepted verification risk를 기록합니다. 그 risk가 close-relevant라면 `accepted_risks`는 나중의 `completed_with_risk_accepted` close에 필요한 visible Residual Risk refs를 식별하거나 만들 수 있어야 합니다. Verification-waiver decision은 assurance를 update하면 안 되고, detached verification을 만들면 안 되며, `completed_verified` close를 허용하면 안 됩니다.
 

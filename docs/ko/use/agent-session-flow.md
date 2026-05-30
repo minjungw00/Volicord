@@ -215,16 +215,18 @@ Status, next, result, acceptance, close display의 모든 authority claim은 sou
 예시:
 
 ```text
-제품 / UX decision area: 로그인 실패 동작.
-선택지: form 근처 inline message, toast, modal.
-추천: 기존 form pattern을 확인한다는 전제에서 form 근처 inline message.
+판단 영역: Product / UX (`product_ux`)
+결정 영역: 로그인 실패 동작.
+선택지: form 근처 inline layer, toast, modal.
+추천: 기존 form pattern을 확인한다는 전제에서 form 근처 inline layer.
 불확실성: 기존 접근성 pattern 때문에 다른 선택이 더 저렴할 수 있습니다.
 먼저 확인할 수 있는 것: 현재 로그인 UI와 validation component.
 ```
 
 ```text
-기술 아키텍처 decision area: 인증 구조.
-선택지: local email/password session, magic-link email, OAuth/OIDC.
+판단 영역: Technical architecture (`technical_architecture`)
+결정 영역: 인증 구조.
+선택지: session cookie, bearer/JWT, OAuth/OIDC, social-login provider integration.
 추천: 선택 전에 현재 user/session model을 먼저 확인합니다.
 불확실성: storage와 session 지원 상태에 따라 어떤 선택이 훨씬 더 안전할 수 있습니다.
 미뤄도 계속할 수 있는 일: 읽기 전용 조사와 범위가 제한된 제안. 구현은 아닙니다.
@@ -320,7 +322,9 @@ Autonomy Boundary 안에서는 에이전트가 기존 helper를 재사용할지,
 사용자가 보는 결정 패킷에는 다음이 있어야 합니다.
 
 - 결정 제목
-- 표시용 판단 유형: Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy
+- judgment_domain: `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, `mixed`
+- 사용자에게 보이는 판단 영역 label: Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed
+- decision_kind
 - 왜 지금 이 결정이 필요한지
 - 사용자가 정확히 결정하는 것
 - 선택지
@@ -334,37 +338,37 @@ Autonomy Boundary 안에서는 에이전트가 기존 helper를 재사용할지,
 - 에이전트가 사용자 없이 결정해도 되는 일
 - 해당하는 경우 후속 작업
 
-표시용 판단 유형은 사용자가 어떤 종류의 판단을 하는지 이해하도록 돕는 주 표시 category입니다. 결정이 여러 영역에 걸쳐 있으면 category가 배타적인 것처럼 다루지 말고, 부차적인 고려사항을 장단점, 영향받는 gate, risk, evidence, follow-up에 보여줘야 합니다. 이는 기존 decision context에서 파생되는 표시 metadata일 뿐이며 새 schema field, 기준 owner contract, gate, validator input, authority path가 아닙니다. 정확한 public field는 [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision)이 소유하고, 기준 authority는 [결정 패킷](../reference/kernel.md#decision-packet)과 [Decision Gate](../reference/kernel.md#decision-gate)가 소유합니다. 사용자 prompt에 schema body를 복사하지 말고, 쉬운 말로 결정을 렌더링한 뒤 필요한 refs를 drill-down할 수 있게 둡니다.
+판단 영역은 사용자가 어떤 종류의 판단을 하는지 이해하도록 돕는 schema-owned 분류입니다. 이를 주 표시 grouping으로 사용합니다. 결정이 여러 영역에 걸쳐 있으면 `mixed`를 쓰거나, domain이 배타적인 것처럼 다루지 말고 부차적인 고려사항을 장단점, 영향받는 gate, risk, evidence, follow-up에 보여줘야 합니다. `decision_kind`는 lifecycle, payload branch, gate 의미, state transition semantics를 제어하고, `judgment_domain`은 설명과 grouping을 제어합니다. `judgment_domain`은 gate, validator input, close aggregation rule, authority path가 아닙니다. 정확한 public field는 [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision)이 소유하고, 기준 authority는 [결정 패킷](../reference/kernel.md#decision-packet)과 [Decision Gate](../reference/kernel.md#decision-gate)가 소유합니다. 사용자 prompt에 schema body를 복사하지 말고, 쉬운 말로 결정을 렌더링한 뒤 필요한 refs를 drill-down할 수 있게 둡니다.
 
 Decision-centered prompt는 경로와 맞는 동사를 씁니다. 선택, defer, reject, waive, accept, reconcile입니다. "approve" 또는 "승인"은 sensitive-action Approval일 때만 사용합니다. 좋은 prompt 형태는 다음과 같습니다.
 
 ```text
 결정: 로그인 실패 피드백 패턴
-판단 유형: Product / UX
+판단 영역: Product / UX (`product_ux`)
 이 Change Unit에 어떤 로그인 실패 UX를 기록할까요: inline layer, toast, modal? 추천은 흐름과 접근성을 유지하는 inline layer입니다. 결정을 미루면 backend auth wiring은 계속할 수 있지만 최종 로그인 실패 UX가 완료됐다고 말할 수는 없습니다.
 ```
 
 ```text
 결정: mobile Safari QA waiver
-판단 유형: QA / acceptance
+판단 영역: QA / acceptance (`qa_acceptance`)
 이번 close에서 mobile Safari wrapping 잔여 위험을 받아들이겠다고 기록할까요, 아니면 수동 QA를 실행할 때까지 close를 막아 둘까요? 추천은 release timing 때문에 waiver가 필요한 경우가 아니라면 막아 두는 것입니다. 영향받는 그룹: 닫기 준비 상태; owner path/gate ref: 수동 QA / qa_gate; 영향받는 기준: AC-03 onboarding copy layout.
 ```
 
 유용한 예시:
 
-- Product / UX: 로그인 실패 UX는 inline layer, toast, modal을 비교하고, 흐름, 접근성, 방해 정도, 문구 위험을 기준으로 하나를 추천합니다. 결정을 미루면 backend auth 작업은 계속할 수 있지만 최종 로그인 실패 경험이 완료됐다고 말하면 안 됩니다.
-- Product / UX: 로그인 실패 문구는 일반적인 문구, 더 구체적인 문구, hybrid 문구를 비교합니다. 계정 열거(account enumeration) 위험, 명확성, 복구 도움 정도, 지원 부담, 제품 톤을 기준으로 추천합니다. 결정을 미루면 validation wiring은 계속할 수 있지만 release-ready copy와 수동 QA는 열어 둬야 합니다.
-- QA / acceptance: 제품 감각과 수동 QA 필요성은 사람이 시각적으로 확인해야 하는 완성도 높은 상호작용과 test 및 browser smoke로 확인 가능한 더 보수적인 동작을 비교합니다. 감각상의 장단점, QA 비용, 사용자 영향, 수동 QA를 미뤘을 때 계속할 수 있는 일 또는 결정 전에는 진행하면 안 되는 이유를 설명합니다.
-- Technical architecture: Auth 방식은 local session cookie, bearer token/JWT, OAuth/OIDC sign-in, social-login provider integration을 비교할 수 있습니다. 다만 OAuth/OIDC도 결과적으로 local session이나 token 전략을 만들 수 있으므로, 둘 다 중요하면 identity-provider 선택과 session/storage model을 분리해야 합니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 운영 복잡도, migration 비용을 설명합니다. 결정을 미루면 session model에 약속을 만들지 않는 범위에서만 form scaffold를 계속할 수 있습니다.
-- Technical architecture: Dependency 선택은 install 또는 dependency 파일 갱신을 허용하는 sensitive-action Approval과, 그 dependency를 채택하는 architecture decision을 분리합니다. Dependency를 추가할지, 기존 utility를 쓸지, capability를 미룰지 비교하고 호환성, rollback, 비용, 유지보수 영향을 설명합니다.
-- Technical architecture: Domain-language conflict는 현재 product term을 유지할지, 좁은 code alias를 추가할지, 새 term으로 migration할지 비교합니다. Product meaning, public docs, API/interface naming, caller expectation, module responsibility, migration cost, 결정을 미뤘을 때 계속할 수 있는 일을 설명합니다.
-- Technical architecture: Schema/data-model migration은 additive migration, compatibility shim, breaking cleanup을 비교합니다. Migration evidence, data-backfill risk, rollback path, test boundary, 유지보수 비용을 설명합니다.
-- Technical architecture: Public API/interface 또는 module boundary는 현재 interface를 유지할지, 좁은 extension을 추가할지, 책임을 module boundary 너머로 옮길지 비교합니다. Caller 영향, compatibility 또는 breaking-change risk, boundary test, documentation promise, migration path, future-change cost를 설명합니다.
-- Scope / autonomy: Scope 또는 Autonomy Boundary 확장은 current small scope를 유지할지, requested surface를 추가할지, follow-up Change Unit으로 분리할지 비교합니다. 영향을 받는 paths, user-facing behavior, 계속 범위 밖에 남는 것, write 영향, agent가 혼자 판단해도 되는 일을 설명합니다.
-- Security / privacy: secret 접근, 권한 변경, 데이터 export에 대한 sensitive-action Approval은 Approval 경계일 뿐입니다. 역할, 필드, redaction, audit logging, retention, rollback, user notice에는 별도의 제품 또는 보안 판단이 여전히 필요할 수 있습니다.
-- Security / privacy: PII logging policy는 PII를 log하지 않는 방식, redacted 또는 tokenized identifier, 제한된 diagnostic field를 비교해야 합니다. Privacy exposure, debugging value, retention, redaction, audit trail, policy 준수를 증명할 evidence를 설명합니다.
-- QA / acceptance: QA 또는 verification waiver는 해당 Task에서 요구하는 기존 기록 경로를 사용하고 owner refs를 cite합니다. QA waiver 효과는 수동 QA / QA policy path가 담당하며, product/user risk 또는 policy-required judgment가 있으면 QA waiver 결정 패킷을 사용합니다. Verification waiver 효과는 kernel verification-waiver path가 담당하며, 사용자 소유 판단이 필요하면 관련 결정 패킷을 사용합니다. 생략하는 확인이나 대상, 사용자가 수용한 잔여 위험, 잔여 위험 후속 작업, 관련 refs, 닫기 영향을 이름 붙입니다. 예를 들어 copy-only 변경에서 mobile Safari 수동 QA를 면제하려면 viewport wrapping 잔여 위험을 수용할지 사용자에게 묻고, release 전 browser pass를 후속 작업으로 남깁니다.
-- 잔여 위험: 닫기 전 잔여 위험 수용은 남은 한계, 이미 있는 근거, 그래도 닫을 수 있다고 볼 수 있는 이유, 잔여 위험 후속 작업을 보여줍니다. 잔여 위험을 받아들이고 닫는 흐름은 detached-verified close가 아닙니다.
+- Product / UX(`product_ux`): 로그인 실패 UX는 inline layer, toast, modal을 비교하고, 흐름, 접근성, 방해 정도, 문구 위험을 기준으로 하나를 추천합니다. 결정을 미루면 backend auth 작업은 계속할 수 있지만 최종 로그인 실패 경험이 완료됐다고 말하면 안 됩니다.
+- Product / UX(`product_ux`): 로그인 실패 문구는 일반적인 문구, 더 구체적인 문구, hybrid 문구를 비교합니다. 계정 열거(account enumeration) 위험, 명확성, 복구 도움 정도, 지원 부담, 제품 톤을 기준으로 추천합니다. 결정을 미루면 validation wiring은 계속할 수 있지만 release-ready copy와 수동 QA는 열어 둬야 합니다.
+- QA / acceptance(`qa_acceptance`): 제품 감각과 수동 QA 필요성은 사람이 시각적으로 확인해야 하는 완성도 높은 상호작용과 test 및 browser smoke로 확인 가능한 더 보수적인 동작을 비교합니다. 감각상의 장단점, QA 비용, 사용자 영향, 수동 QA를 미뤘을 때 계속할 수 있는 일 또는 결정 전에는 진행하면 안 되는 이유를 설명합니다.
+- Technical architecture(`technical_architecture`): Auth 방식은 session cookie, bearer token/JWT, OAuth/OIDC, social-login provider integration을 비교할 수 있습니다. 다만 OAuth/OIDC도 결과적으로 local session이나 token 전략을 만들 수 있으므로, 둘 다 중요하면 identity-provider 선택과 session/storage model을 분리해야 합니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 운영 복잡도, migration 비용을 설명합니다. 결정을 미루면 session model에 약속을 만들지 않는 범위에서만 form scaffold를 계속할 수 있습니다.
+- Technical architecture(`technical_architecture`): Dependency 선택은 install 또는 dependency 파일 갱신을 허용하는 sensitive-action Approval과, 그 dependency를 채택하는 architecture decision을 분리합니다. Dependency를 추가할지, 기존 utility를 쓸지, capability를 미룰지 비교하고 호환성, rollback, 비용, 유지보수 영향을 설명합니다.
+- Technical architecture(`technical_architecture`): Domain-language conflict는 현재 product term을 유지할지, 좁은 code alias를 추가할지, 새 term으로 migration할지 비교합니다. Product meaning, public docs, API/interface naming, caller expectation, module responsibility, migration cost, 결정을 미뤘을 때 계속할 수 있는 일을 설명합니다.
+- Technical architecture(`technical_architecture`): Schema/data-model migration은 additive migration, compatibility shim, breaking cleanup을 비교합니다. Migration evidence, data-backfill risk, rollback path, test boundary, 유지보수 비용을 설명합니다.
+- Technical architecture(`technical_architecture`): Public API/interface 또는 module boundary는 현재 interface를 유지할지, 좁은 extension을 추가할지, 책임을 module boundary 너머로 옮길지 비교합니다. Caller 영향, compatibility 또는 breaking-change risk, boundary test, documentation promise, migration path, future-change cost를 설명합니다.
+- Scope / autonomy(`scope_autonomy`): Scope 또는 Autonomy Boundary 확장은 current small scope를 유지할지, requested surface를 추가할지, follow-up Change Unit으로 분리할지 비교합니다. 영향을 받는 paths, user-facing behavior, 계속 범위 밖에 남는 것, write 영향, agent가 혼자 판단해도 되는 일을 설명합니다.
+- Security / privacy(`security_privacy`): secret 접근, 권한 변경, 데이터 export에 대한 sensitive-action Approval은 Approval 경계일 뿐입니다. 역할, 필드, redaction, audit logging, retention, rollback, user notice에는 별도의 제품 또는 보안 판단이 여전히 필요할 수 있습니다.
+- Security / privacy(`security_privacy`): PII logging policy는 PII를 log하지 않는 방식, redacted 또는 tokenized identifier, 제한된 diagnostic field를 비교해야 합니다. Privacy exposure, debugging value, retention, redaction, audit trail, policy 준수를 증명할 evidence를 설명합니다.
+- QA / acceptance(`qa_acceptance`): QA 또는 verification waiver는 해당 Task에서 요구하는 기존 기록 경로를 사용하고 owner refs를 cite합니다. QA waiver 효과는 수동 QA / QA policy path가 담당하며, product/user risk 또는 policy-required judgment가 있으면 QA waiver 결정 패킷을 사용합니다. Verification waiver 효과는 kernel verification-waiver path가 담당하며, 사용자 소유 판단이 필요하면 관련 결정 패킷을 사용합니다. 생략하는 확인이나 대상, 사용자가 수용한 잔여 위험, 잔여 위험 후속 작업, 관련 refs, 닫기 영향을 이름 붙입니다. 예를 들어 copy-only 변경에서 mobile Safari 수동 QA를 면제하려면 viewport wrapping 잔여 위험을 수용할지 사용자에게 묻고, release 전 browser pass를 후속 작업으로 남깁니다.
+- Residual risk(`residual_risk`): close 전에 residual-risk acceptance를 물을 때는 남은 한계, 이미 있는 근거, close가 여전히 받아들일 만한 이유, 남은 follow-up을 보여줘야 합니다. Residual-risk accepted close는 detached-verified close가 아닙니다.
 
 가능하면 한 번에 하나의 막힘 질문만 묻습니다.
 

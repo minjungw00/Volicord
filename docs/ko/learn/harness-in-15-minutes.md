@@ -108,16 +108,17 @@ Reference 문서는 이런 구체화 자세를 Discovery라고 부릅니다. 제
 Login 작업 중 에이전트가 사용자 소유 UX 선택에 도달합니다.
 
 ```text
-Failed-login feedback은 inline, toast, modal 중 하나가 될 수 있습니다.
+Failed-login feedback은 inline layer, toast, modal 중 하나가 될 수 있습니다.
 ```
 
 이것은 막연한 "승인할까요?" prompt가 되면 안 됩니다. 에이전트는 실제 선택, option, recommendation, uncertainty, deferral consequence를 보여줘야 합니다.
 
 ```text
-Judgment type: Product / UX
+판단 영역: Product / UX (`product_ux`)
+결정 경로: product trade-off (`decision_kind=product_tradeoff`)
 Why now: 최종 UI 동작과 test에는 failure-feedback pattern 하나가 필요합니다.
-Options: inline message, toast, modal.
-Recommendation: form 근처 inline message. 지속적으로 보이고 접근성이 좋습니다.
+Options: inline layer, toast, modal.
+Recommendation: form 근처 inline layer. 지속적으로 보이고 접근성이 좋습니다.
 Uncertainty: 기존 design-system error-message support 확인 필요.
 Deferral consequence: API와 state wiring은 계속할 수 있지만 final UI behavior와 수동 QA는 기다려야 합니다.
 ```
@@ -186,7 +187,7 @@ Evidence: sufficient
 | Task, Change Unit, 결정 패킷, gate, evidence, verification, QA, Acceptance, 잔여 위험(Residual Risk), close | [Kernel Reference](../reference/kernel.md) |
 | Public tool request와 response shape | [MCP API와 스키마](../reference/mcp-api-and-schemas.md) |
 | Markdown projection authority와 freshness | [문서 Projection 참조](../reference/document-projection.md) |
-| 사용자-facing session flow와 status 읽기 | [사용자 가이드](../use/user-guide.md), [Agent 세션 흐름](../use/agent-session-flow.md) |
+| 사용자에게 보이는 session flow와 status 읽기 | [사용자 가이드](../use/user-guide.md), [Agent 세션 흐름](../use/agent-session-flow.md) |
 | 실용 결정 패킷 예시 | [결정 패킷 Cookbook](../use/decision-packet-cookbook.md) |
 
 ## 다음에 읽을 문서

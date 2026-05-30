@@ -13,7 +13,7 @@
 - mode, lifecycle, next action, 가장 먼저 해소할 막힘, 가장 작은 해소 방법, guarantee level, 읽기용 보기 최신성(projection freshness)을 위한 현재 상태 표시 input
 - 기존 owner 기록, gate, blocker, ref에서 파생되는 Scope, Judgment, Evidence, Close Readiness 표시 그룹 input
 - Write Authorization 기록과 Write Authority Summary 표시 input
-- Decision Packet과 Residual Risk, 렌더링할 때의 읽기용 Decision Packet 표시 metadata
+- Decision Packet과 Residual Risk, 렌더링할 때의 schema-owned Decision Packet `judgment_domain`
 - 최신 Run, Evidence Manifest, Eval, Manual QA 기록, approval 기록
 - Write Authorization, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, acceptance context, Residual Risk, Artifact refs, redaction state, projection freshness 권한 claim을 표시할 때 필요한 compact source refs
 - 가장 먼저 해소할 막힘, 추가 막힘, 가장 작은 해소 방법 표시 summary
@@ -26,7 +26,7 @@
 - 기존 owner 기록과 ref에서 온 Review Stage 표시 input
 - artifact ref 및 읽기용 보기 최신성(projection freshness)
 
-`TASK`의 생성된 gate group summary, judgment, Decision Packet 표시 metadata, close, waiver, review-stage, stewardship, projection-freshness 항목은 표시 binding입니다. 위에 나열한 owner record, gate, artifact, ref로 해소되어야 하며, 그런 source가 없으면 명시적인 absence/blocking 상태로 렌더링해야 합니다. 기준 기록, gate, `ProjectionKind` value, evidence, QA, verification, acceptance, residual-risk acceptance, close, Write Authorization을 만들지 않습니다.
+`TASK`의 생성된 gate group summary, judgment display text, close, waiver, review-stage, stewardship, projection-freshness 항목은 표시 binding입니다. 위에 나열한 owner record, gate, artifact, ref로 해소되어야 하며, 그런 source가 없으면 명시적인 absence/blocking 상태로 렌더링해야 합니다. Schema-owned `judgment_domain`을 렌더링해도 기준 기록, gate, `ProjectionKind` value, evidence, QA, verification, acceptance, residual-risk acceptance, close, Write Authorization을 만들지 않습니다.
 
 ## 렌더링 섹션
 
@@ -139,7 +139,9 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Judgment Context
 - pending decision packets:
 - decision title:
-- 표시용 판단 유형:
+- judgment_domain:
+- display label:
+- decision_kind:
 - why needed now:
 - what user is deciding:
 - options:
@@ -466,7 +468,7 @@ Change Unit block sub-template:
 
 Gate Group Summary는 읽는 사람이 raw gate detail보다 실제 막힘 이야기를 먼저 보도록 첫 managed section으로 둡니다. Scope, Judgment, Evidence, Close Readiness는 기존 owner 기록, gate, blocker, ref에서 파생되는 표시 그룹입니다. 기준 field, 정확한 gate value의 alias, 새 gate, recompute input, close semantics, authority path가 아닙니다. 정확한 gate 값과 recompute rule은 [커널 참조](../kernel.md#gates)가 담당하고, close 동작은 [`close_task`](../kernel.md#close_task)가 담당합니다.
 
-`TASK`의 Decision Packet 표시는 사용자가 Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy 중 어떤 판단을 하는지 빠르게 볼 수 있도록 읽기용 표시용 판단 유형을 보여줄 수 있습니다. 이를 주 표시 category로 사용합니다. 결정이 여러 영역에 걸쳐 있으면 category를 배타적으로 다루지 말고 부차적인 고려사항을 장단점, 영향받는 gate, risk, evidence, follow-up에 렌더링해야 합니다. 이 category는 owner Decision Packet context와 ref에서 파생되는 표시 metadata입니다. 기준 schema field, gate, status, owner contract, validator input이 아니며 `decision_kind`, Approval, acceptance, QA, residual-risk acceptance, close, Write Authorization의 owner contract를 흐리면 안 됩니다.
+`TASK`의 Decision Packet 표시는 schema-owned `judgment_domain`을 보여줘야 합니다. 사용자는 이를 통해 Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed 중 어떤 판단 영역인지 빠르게 볼 수 있습니다. 이를 주 표시 grouping으로 사용합니다. 결정이 여러 영역에 걸쳐 있으면 domain을 배타적으로 다루지 말고 부차적인 고려사항을 장단점, 영향받는 gate, risk, evidence, follow-up에 렌더링해야 합니다. `judgment_domain`은 gate, status, validator input, close aggregation rule, authority path가 아니며 `decision_kind`, Approval, acceptance, QA, residual-risk acceptance, close, Write Authorization의 owner contract를 흐리면 안 됩니다.
 
 `TASK`의 authority claim은 source ref 또는 명시적 absence로 해소되어야 합니다. Write authority claim은 Write Authorization ref를, sensitive-action permission은 Approval ref를, evidence sufficiency는 Evidence Manifest ref를, detached verification은 Eval ref를, Manual QA는 Manual QA record 또는 valid waiver ref를, final acceptance는 Acceptance Decision Packet ref를, residual-risk visibility 또는 acceptance는 Residual Risk refs 또는 `ResidualRiskSummary.status=none`을 가리켜야 합니다. Ref가 없으면 completed authority가 아니라 missing support로 렌더링해야 합니다.
 

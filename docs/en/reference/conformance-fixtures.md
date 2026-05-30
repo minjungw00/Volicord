@@ -335,7 +335,7 @@ These are catalog entries, not fixture bodies. They cover ordinary user-language
 | `INTAKE-user-plain-language-maps-to-harness-records` | `intake`, `prepare_write`, or `request_user_decision` | The user may use ordinary phrases such as "change the checkout flow" or "which option should we pick?" without naming `Change Unit` or `Decision Packet`; Core routes the request to the compatible Task, proposed or active Change Unit, Decision Packet ref or candidate, and current blockers. The fixture must not require exact Harness vocabulary in user text and must still assert the owner records, refs, gates, projections, and errors that result. |
 | `INTAKE-tiny-direct-profile-no-authority-bypass` | `intake`, `status`, `next`, `prepare_write`, or `close_task` | A typo, single docs sentence, or obvious rename may be classified with the tiny direct profile only as `mode=direct`. Fixtures assert there is no `tiny` mode value, no Write Authorization from classification alone, no bypass of active scope or compatible `prepare_write` where product writes apply, no bypass of user-owned judgment or sensitive-action Approval, and no ability to use Tiny for auth, security, privacy, secrets, infra, public interface/API, UX workflow, schema, or multi-step work. If scope broadens or evidence beyond the tiny changed-path/self-check note is needed, the displayed next action escalates to ordinary Direct; if product judgment, architecture choice, public interface/API impact, UX workflow, sensitive category, schema, or multi-step delivery appears, it escalates to Work and uses Discovery or Shared Design when shaping is needed. |
 | `INTAKE-codebase-answerable-before-user-question` | `intake` or `next` | Before asking the user, facts already present in seeded current context, explicit repo/codebase refs, Harness state refs, or connector/session-provided facts are used when they are current and safe to rely on. The fixture asserts those provided refs or facts are used instead of asking the user to repeat them; it does not require Core to perform unbounded repository, docs, or codebase search. Any remaining unresolved user-owned product or material technical judgment routes to a focused question or Decision Packet. |
-| `AGENCY-decision-packet-quality-complete-context` | `request_user_decision`, `prepare_write`, or `next` | A Decision Packet or `DecisionPacketCandidate` for user-owned product or material technical judgment includes realistic options, trade-offs through benefits/costs/risks, recommendation, uncertainty, deferral consequence, minimum current context, source/evidence refs, affected gates or acceptance criteria, and residual-risk impact when relevant. A vague "continue?" prompt or broad approval request does not satisfy `decision_gate`. A packet may make one strong recommendation when it still shows rejected alternatives, no-op/defer/reduce-scope paths, or why other paths are unsafe or out of scope, so the user can make a real judgment. |
+| `AGENCY-decision-packet-quality-complete-context` | `request_user_decision`, `prepare_write`, or `next` | A Decision Packet or `DecisionPacketCandidate` for user-owned product or material technical judgment includes `judgment_domain`, realistic options, trade-offs through benefits/costs/risks, recommendation, uncertainty, deferral consequence, minimum current context, source/evidence refs, affected gates or acceptance criteria, and residual-risk impact when relevant. A vague "continue?" prompt or broad approval request does not satisfy `decision_gate`. A packet may make one strong recommendation when it still shows rejected alternatives, no-op/defer/reduce-scope paths, or why other paths are unsafe or out of scope, so the user can make a real judgment. |
 | `AGENCY-approval-does-not-substitute-for-judgment-or-close` | `prepare_write`, `record_user_decision`, or `close_task` | A granted sensitive-action Approval remains separate from product judgment, Decision Packet resolution, Write Authorization, evidence, verification, Manual QA, final acceptance, and residual-risk acceptance. Fixtures seed approval as granted and assert that missing compatible owner records still block affected writes or close, and that approval alone does not create Write Authorization, satisfy acceptance, produce detached verification, waive QA, accept risk, or close a Task. |
 | `AGENCY-residual-risk-visible-before-acceptance-or-close` | `record_user_decision` or `close_task` | Known close-relevant residual risks must be visible to the user before acceptance and before any successful close. Fixtures assert hidden, stale, or not-yet-visible risks block acceptance or close; `ResidualRiskSummary.status=none` is valid only when no known close-relevant risk exists; risk-accepted close cites accepted Residual Risk refs that were visible before acceptance. |
 | `AGENCY-approval-qa-acceptance-risk-judgments-distinct` | `record_user_decision`, `record_manual_qa`, `record_eval`, or `close_task` | Sensitive-action Approval, Manual QA judgment or waiver, final acceptance, verification waiver, and residual-risk acceptance remain distinct owner judgments. A fixture may seed one as satisfied and assert the others still block when their owner records are missing or incompatible; no broad approval or QA pass may imply final acceptance, risk acceptance, detached verification, or close. |
@@ -716,9 +716,11 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-VERIFY-WAIVER-001
       decision_kind: verification_waiver
+      judgment_domain: qa_acceptance
       status: resolved
     - decision_packet_id: DEC-RISK-ACCEPT-001
       decision_kind: residual_risk_acceptance
+      judgment_domain: residual_risk
       status: resolved
       residual_risk_refs: [RISK-VERIFY-001]
 input:
@@ -768,6 +770,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-VERIFY-WAIVER-002
       decision_kind: verification_waiver
+      judgment_domain: qa_acceptance
       status: resolved
 input:
   task_id: TASK-VERIFY-RISK-HIDDEN-001
@@ -1312,6 +1315,7 @@ initial_state:
       what_requires_user_judgment: ["Choose the revenue versus conversion trade-off."]
     blocking_decision_requirements:
       - decision_kind: product_tradeoff
+        judgment_domain: product_ux
         status: absent
         affected_paths: ["src/pricing/checkout.ts"]
         topic: revenue_vs_conversion
@@ -1335,6 +1339,7 @@ expected_state:
   write_decision: decision_required
   decision_packet_candidate:
     decision_kind: product_tradeoff
+    judgment_domain: product_ux
     affected_gates: [decision_gate]
 expected_events:
   - prepare_write_blocked
@@ -1365,6 +1370,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-ACCEPT-001
       decision_kind: acceptance
+      judgment_domain: qa_acceptance
       status: pending_user
       user_context:
         minimum_context: ["acceptance criteria", "evidence summary"]
@@ -1410,6 +1416,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-ACCEPT-NONE-001
       decision_kind: acceptance
+      judgment_domain: qa_acceptance
       status: pending_user
       user_context:
         minimum_context: ["acceptance criteria", "evidence summary", "ResidualRiskSummary.status=none"]
@@ -1609,6 +1616,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-RESUME-001
       decision_kind: product_tradeoff
+      judgment_domain: product_ux
       status: pending_user
   residual_risks:
     - risk_id: RISK-RESUME-001
@@ -1708,6 +1716,7 @@ initial_state:
       what_requires_user_judgment: ["Choose a margin versus conversion trade-off."]
     blocking_decision_requirements:
       - decision_kind: product_tradeoff
+        judgment_domain: product_ux
         broad_approval_requested: false
 input:
   task_id: TASK-CONN-DEC-001
@@ -1731,6 +1740,7 @@ expected_state:
   write_authorization_ref: null
   decision_packet_candidate:
     decision_kind: product_tradeoff
+    judgment_domain: product_ux
     affected_gates: [decision_gate]
   validators:
     decision_quality_check:
@@ -1790,6 +1800,7 @@ expected_state:
   write_held: true
   decision_packet_candidate:
     decision_kind: autonomy_boundary
+    judgment_domain: scope_autonomy
     affected_gates: [decision_gate]
   validators:
     autonomy_boundary_check:
@@ -2195,6 +2206,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-PUBLIC-API-001
       decision_kind: architecture_choice
+      judgment_domain: technical_architecture
       topic: public_interface_commitment
       status: resolved
   owner_records:
@@ -2429,6 +2441,7 @@ expected_state:
           record_id: IFACE-PUBLIC-EXPORT-001
   decision_packet_candidate:
     decision_kind: residual_risk_acceptance
+    judgment_domain: residual_risk
     topic: public_interface_future_change_risk
     affected_gates: [decision_gate, design_gate]
     residual_risk_refs: [RISK-PUBLIC-FUTURE-001]
@@ -2575,6 +2588,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-CONTEXT-001
       decision_kind: verification_waiver
+      judgment_domain: qa_acceptance
       status: pending_user
   projection_freshness:
     status: stale

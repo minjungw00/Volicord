@@ -335,7 +335,7 @@ Expected assertions는 기존 fixture field 안에 머물러야 합니다.
 | `INTAKE-user-plain-language-maps-to-harness-records` | `intake`, `prepare_write`, 또는 `request_user_decision` | 사용자는 `Change Unit`이나 `Decision Packet`을 이름 붙이지 않고 "checkout flow를 바꿔 줘" 또는 "어느 option을 고르는 게 좋을까?" 같은 평범한 표현을 쓸 수 있습니다. Core는 이 요청을 compatible Task, proposed 또는 active Change Unit, Decision Packet ref 또는 candidate, current blocker로 라우팅합니다. Fixture는 사용자 text에 정확한 Harness vocabulary를 요구하지 않으면서도 결과 owner record, ref, gate, projection, error를 검증해야 합니다. |
 | `INTAKE-tiny-direct-profile-no-authority-bypass` | `intake`, `status`, `next`, `prepare_write`, 또는 `close_task` | Typo, 문서 한 문장, obvious rename은 tiny direct profile로 분류될 수 있지만 오직 `mode=direct`로만 표현됩니다. Fixture는 `tiny` mode value가 없고, classification만으로 Write Authorization이 생기지 않으며, 제품 파일 쓰기에 적용되는 active scope 또는 compatible `prepare_write`, 사용자 소유 판단, sensitive-action Approval을 우회하지 않고, Tiny를 auth, security, privacy, secrets, infra, public interface/API, UX workflow, schema, multi-step work에 사용할 수 없음을 검증합니다. Scope가 넓어지거나 tiny changed-path/self-check note를 넘는 evidence가 필요하면 displayed next action은 일반 Direct로 상향됩니다. Product judgment, architecture choice, public interface/API impact, UX workflow, sensitive category, schema, multi-step delivery가 나타나면 Work로 상향되고, shaping이 필요하면 Discovery 또는 Shared Design을 사용합니다. |
 | `INTAKE-codebase-answerable-before-user-question` | `intake` 또는 `next` | 사용자에게 묻기 전에, seeded current context, explicit repo/codebase refs, Harness state refs, connector/session-provided facts에 이미 있고 현재적이며 안전하게 의존할 수 있는 사실을 사용합니다. Fixture는 제공된 ref 또는 fact를 사용해 사용자가 같은 사실을 반복 설명하지 않아도 되는지 검증합니다. Core가 repository, docs, codebase를 제한 없이 search해야 한다는 요구는 아닙니다. 남은 unresolved user-owned product judgment 또는 중요한 technical judgment는 focused question 또는 Decision Packet으로 라우팅합니다. |
-| `AGENCY-decision-packet-quality-complete-context` | `request_user_decision`, `prepare_write`, 또는 `next` | 사용자 소유 product judgment 또는 중요한 technical judgment를 위한 Decision Packet 또는 `DecisionPacketCandidate`는 현실적인 options, benefits/costs/risks를 통한 trade-offs, recommendation, uncertainty, deferral consequence, minimum current context, source/evidence refs, affected gates 또는 수용 기준, 관련되는 경우 residual-risk impact를 포함합니다. 모호한 "계속할까요?" prompt나 broad approval request는 `decision_gate`를 충족하지 못합니다. Packet은 rejected alternatives, no-op/defer/reduce-scope paths, 또는 다른 path가 unsafe하거나 out of scope인 이유를 함께 보여 준다면 하나의 강한 recommendation을 제시할 수 있으며, 사용자가 실제 판단을 할 수 있어야 합니다. |
+| `AGENCY-decision-packet-quality-complete-context` | `request_user_decision`, `prepare_write`, 또는 `next` | 사용자 소유 product judgment 또는 중요한 technical judgment를 위한 Decision Packet 또는 `DecisionPacketCandidate`는 `judgment_domain`, 현실적인 options, benefits/costs/risks를 통한 trade-offs, recommendation, uncertainty, deferral consequence, minimum current context, source/evidence refs, affected gates 또는 수용 기준, 관련되는 경우 residual-risk impact를 포함합니다. 모호한 "계속할까요?" prompt나 broad approval request는 `decision_gate`를 충족하지 못합니다. Packet은 rejected alternatives, no-op/defer/reduce-scope paths, 또는 다른 path가 unsafe하거나 out of scope인 이유를 함께 보여 준다면 하나의 강한 recommendation을 제시할 수 있으며, 사용자가 실제 판단을 할 수 있어야 합니다. |
 | `AGENCY-approval-does-not-substitute-for-judgment-or-close` | `prepare_write`, `record_user_decision`, 또는 `close_task` | Sensitive-action Approval이 granted여도 product judgment, Decision Packet resolution, Write Authorization, evidence, verification, Manual QA, 최종 수락, 잔여 위험을 받아들이는 판단과는 별개로 남습니다. Fixture는 approval을 granted로 seed하고, compatible owner record가 없으면 affected write 또는 close가 계속 blocked되며, approval만으로 Write Authorization 생성, 결과 수락 충족, detached verification 생성, QA waiver, 잔여 위험을 받아들이는 판단, Task close가 일어나지 않음을 검증합니다. |
 | `AGENCY-residual-risk-visible-before-acceptance-or-close` | `record_user_decision` 또는 `close_task` | Known close-relevant residual risk는 acceptance 전과 successful close 전에 사용자에게 보여야 합니다. Fixture는 hidden, stale, not-yet-visible risk가 acceptance 또는 close를 차단함을 검증합니다. `ResidualRiskSummary.status=none`은 known close-relevant risk가 없을 때만 유효하며, risk-accepted close는 결과 수락 전에 보였던 accepted Residual Risk refs를 가리켜야 합니다. |
 | `AGENCY-approval-qa-acceptance-risk-judgments-distinct` | `record_user_decision`, `record_manual_qa`, `record_eval`, 또는 `close_task` | Sensitive-action Approval, Manual QA judgment 또는 waiver, final acceptance, verification waiver, residual-risk acceptance는 서로 다른 owner judgment입니다. Fixture는 하나가 satisfied 상태로 seed되어도 다른 owner record가 없거나 incompatible하면 계속 blocked됨을 검증할 수 있습니다. Broad approval이나 QA pass가 final acceptance, risk acceptance, detached verification, close를 imply하면 안 됩니다. |
@@ -716,9 +716,11 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-VERIFY-WAIVER-001
       decision_kind: verification_waiver
+      judgment_domain: qa_acceptance
       status: resolved
     - decision_packet_id: DEC-RISK-ACCEPT-001
       decision_kind: residual_risk_acceptance
+      judgment_domain: residual_risk
       status: resolved
       residual_risk_refs: [RISK-VERIFY-001]
 input:
@@ -768,6 +770,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-VERIFY-WAIVER-002
       decision_kind: verification_waiver
+      judgment_domain: qa_acceptance
       status: resolved
 input:
   task_id: TASK-VERIFY-RISK-HIDDEN-001
@@ -1312,6 +1315,7 @@ initial_state:
       what_requires_user_judgment: ["Choose the revenue versus conversion trade-off."]
     blocking_decision_requirements:
       - decision_kind: product_tradeoff
+        judgment_domain: product_ux
         status: absent
         affected_paths: ["src/pricing/checkout.ts"]
         topic: revenue_vs_conversion
@@ -1335,6 +1339,7 @@ expected_state:
   write_decision: decision_required
   decision_packet_candidate:
     decision_kind: product_tradeoff
+    judgment_domain: product_ux
     affected_gates: [decision_gate]
 expected_events:
   - prepare_write_blocked
@@ -1365,6 +1370,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-ACCEPT-001
       decision_kind: acceptance
+      judgment_domain: qa_acceptance
       status: pending_user
       user_context:
         minimum_context: ["acceptance criteria", "evidence summary"]
@@ -1410,6 +1416,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-ACCEPT-NONE-001
       decision_kind: acceptance
+      judgment_domain: qa_acceptance
       status: pending_user
       user_context:
         minimum_context: ["acceptance criteria", "evidence summary", "ResidualRiskSummary.status=none"]
@@ -1609,6 +1616,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-RESUME-001
       decision_kind: product_tradeoff
+      judgment_domain: product_ux
       status: pending_user
   residual_risks:
     - risk_id: RISK-RESUME-001
@@ -1708,6 +1716,7 @@ initial_state:
       what_requires_user_judgment: ["Choose a margin versus conversion trade-off."]
     blocking_decision_requirements:
       - decision_kind: product_tradeoff
+        judgment_domain: product_ux
         broad_approval_requested: false
 input:
   task_id: TASK-CONN-DEC-001
@@ -1731,6 +1740,7 @@ expected_state:
   write_authorization_ref: null
   decision_packet_candidate:
     decision_kind: product_tradeoff
+    judgment_domain: product_ux
     affected_gates: [decision_gate]
   validators:
     decision_quality_check:
@@ -1790,6 +1800,7 @@ expected_state:
   write_held: true
   decision_packet_candidate:
     decision_kind: autonomy_boundary
+    judgment_domain: scope_autonomy
     affected_gates: [decision_gate]
   validators:
     autonomy_boundary_check:
@@ -2195,6 +2206,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-PUBLIC-API-001
       decision_kind: architecture_choice
+      judgment_domain: technical_architecture
       topic: public_interface_commitment
       status: resolved
   owner_records:
@@ -2429,6 +2441,7 @@ expected_state:
           record_id: IFACE-PUBLIC-EXPORT-001
   decision_packet_candidate:
     decision_kind: residual_risk_acceptance
+    judgment_domain: residual_risk
     topic: public_interface_future_change_risk
     affected_gates: [decision_gate, design_gate]
     residual_risk_refs: [RISK-PUBLIC-FUTURE-001]
@@ -2575,6 +2588,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-CONTEXT-001
       decision_kind: verification_waiver
+      judgment_domain: qa_acceptance
       status: pending_user
   projection_freshness:
     status: stale

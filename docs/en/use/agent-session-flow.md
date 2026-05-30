@@ -215,16 +215,18 @@ Each user-owned question should name the exact choice, offer realistic options, 
 Examples:
 
 ```text
-Product / UX decision area: failed-login behavior.
-Options: inline message, toast, or modal.
-Recommendation: inline message near the form, pending inspection of existing form patterns.
+Judgment domain: Product / UX (`product_ux`)
+Decision area: failed-login behavior.
+Options: inline layer, toast, or modal.
+Recommendation: inline layer near the form, pending inspection of existing form patterns.
 Uncertainty: existing accessibility patterns may make another option cheaper.
 Can inspect first: current login UI and validation components.
 ```
 
 ```text
-Technical architecture decision area: authentication architecture.
-Options: local email/password sessions, magic-link email, or OAuth/OIDC.
+Judgment domain: Technical architecture (`technical_architecture`)
+Decision area: authentication architecture.
+Options: session cookie, bearer/JWT, OAuth/OIDC, or social-login provider integration.
 Recommendation: inspect the current user/session model before choosing.
 Uncertainty: storage and session support may make one option much safer than the others.
 Can continue if deferred: read-only inspection and a scoped proposal; not implementation.
@@ -320,7 +322,9 @@ The word "approved" or a casual "go ahead" is not enough when the underlying cho
 A user-facing Decision Packet should include:
 
 - decision title
-- display judgment type: Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, or Scope / autonomy
+- judgment_domain: `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, or `mixed`
+- friendly judgment label: Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed
+- decision_kind
 - why the decision is needed now
 - what the user is deciding / exact choice
 - options
@@ -334,37 +338,37 @@ A user-facing Decision Packet should include:
 - what the agent may decide without the user
 - follow-up when relevant
 
-The display judgment type is a reader-facing classification that helps users understand what kind of judgment they are making. Use it as the primary display category. If a decision is cross-cutting, show secondary considerations in trade-offs, affected gates, risk, evidence, or follow-up instead of pretending the category is exclusive. It is display metadata derived from existing decision context; it is not a new schema field, canonical owner contract, gate, validator input, or authority path. The exact public fields are owned by [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision), and canonical authority is owned by [Decision Packet](../reference/kernel.md#decision-packet) and [Decision Gate](../reference/kernel.md#decision-gate). Do not copy the schema body into user prompts; render the decision in ordinary language and keep refs available for drill-down.
+The judgment domain is a schema-owned reader-facing classification that helps users understand what kind of judgment they are making. Use it as the primary display grouping. If a decision is cross-cutting, use `mixed` or show secondary considerations in trade-offs, affected gates, risk, evidence, or follow-up instead of pretending the domain is exclusive. `decision_kind` controls lifecycle, payload branch, gate meaning, and state-transition semantics; `judgment_domain` controls explanation and grouping. It is not a gate, validator input, close aggregation rule, or authority path. The exact public fields are owned by [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision), and canonical authority is owned by [Decision Packet](../reference/kernel.md#decision-packet) and [Decision Gate](../reference/kernel.md#decision-gate). Do not copy the schema body into user prompts; render the decision in ordinary language and keep refs available for drill-down.
 
 Decision-centered prompts use verbs that match the route: choose, defer, reject, waive, accept, or reconcile. Use "approve" only when the route is a sensitive-action Approval. Good prompt shapes:
 
 ```text
 Decision: Failed-login feedback pattern
-Judgment type: Product / UX
+Judgment domain: Product / UX (`product_ux`)
 Which failed-login UX should I record for this Change Unit: inline layer, toast, or modal? Recommendation: inline layer because it preserves flow and accessibility. If deferred, I can continue backend auth wiring but not claim the final failed-login UX is done.
 ```
 
 ```text
 Decision: Mobile Safari QA waiver
-Judgment type: QA / acceptance
+Judgment domain: QA / acceptance (`qa_acceptance`)
 Should I record acceptance of the remaining mobile Safari wrapping risk for this close, or keep close blocked until Manual QA runs? Recommendation: keep it blocked unless release timing requires the waiver. Affected group: Close Readiness; owner path/gate ref: Manual QA / qa_gate; affected criterion: AC-03 onboarding copy layout.
 ```
 
 Useful examples:
 
-- Product / UX: failed-login feedback should compare inline layer, toast, and modal; recommend one based on flow, accessibility, interruption, and copy risk. If deferred, backend auth work may continue, but the final failed-login experience should not be claimed done.
-- Product / UX: failed-login copy should compare generic, specific, and hybrid wording; recommend one based on account enumeration risk, clarity, recovery usefulness, support burden, and product tone. If deferred, validation wiring may continue, but release-ready copy and Manual QA should stay open.
-- QA / acceptance: product taste and Manual QA need should compare a polished interaction that needs human visual review with a simpler conservative behavior that can be checked by tests and browser smoke. Explain the taste trade-off, QA cost, user impact, and what can continue if Manual QA is deferred, or why nothing should continue until the decision is made.
-- Technical architecture: auth approach should compare local session cookie, bearer token/JWT, OAuth/OIDC sign-in, or social-login provider integration. OAuth/OIDC may still produce a local session or token strategy, so separate identity-provider choice from session/storage model when both matter. Explain revocation, CSRF/XSS exposure, client compatibility, operational complexity, and migration cost. If deferred, form scaffolding may continue only if it does not commit to the session model.
-- Technical architecture: dependency choice should separate sensitive-action Approval to install or update dependency files from the architecture decision to adopt the dependency. Compare adding the dependency, using existing utilities, or postponing the capability, and explain compatibility, rollback, cost, and maintenance impact.
-- Technical architecture: domain-language conflict should compare preserving the current product term, adding a narrow code alias, or migrating to a new term. Explain product meaning, public docs, API/interface naming, caller expectations, module responsibility, migration cost, and what can continue if the decision is deferred.
-- Technical architecture: schema/data-model migration should compare additive migration, compatibility shim, and breaking cleanup. Explain migration evidence, data-backfill risk, rollback path, test boundary, and maintenance cost.
-- Technical architecture: public API/interface or module boundary should compare preserving the current interface, adding a narrow extension, or moving responsibility across a module boundary. Explain caller impact, compatibility or breaking-change risk, boundary tests, documentation promises, migration path, and future-change cost.
-- Scope / autonomy: scope or Autonomy Boundary expansion should compare keeping the current small scope, adding the requested surface, or splitting a follow-up Change Unit. Explain affected paths, user-facing behavior, what remains out of bounds, write impact, and what the agent can still decide alone.
-- Security / privacy: sensitive-action Approval to access a secret, change permissions, or export data is only an Approval boundary. Separate product or security judgment may still be needed for roles, fields, redaction, audit logging, retention, rollback, and user notice.
-- Security / privacy: PII logging policy should compare options such as no PII in logs, redacted or tokenized identifiers, or limited diagnostic fields. Explain privacy exposure, debugging value, retention, redaction, audit trail, and evidence needed to prove the policy is followed.
-- QA / acceptance: QA or verification waiver should use the existing recording required for the Task and cite the owner refs. QA waiver effects are owned by the Manual QA / QA policy path; product/user risk or policy-required judgment uses a QA waiver Decision Packet. Verification waiver effects are owned by the kernel verification-waiver path; when user-owned judgment is needed, use the relevant Decision Packet. Name the skipped check or surface, user-accepted residual risk, residual-risk follow-up, relevant refs, and close impact. Example: ask the user whether to waive mobile Safari Manual QA for a copy-only change, accept the viewport-wrapping residual risk, and keep a browser pass as release follow-up.
-- Residual risk: residual-risk acceptance before close should show the remaining limitation, the evidence that does exist, why close can still be acceptable, and the follow-up that remains. A residual-risk accepted close is not a detached-verified close.
+- Product / UX (`product_ux`): failed-login feedback should compare inline layer, toast, and modal; recommend one based on flow, accessibility, interruption, and copy risk. If deferred, backend auth work may continue, but the final failed-login experience should not be claimed done.
+- Product / UX (`product_ux`): failed-login copy should compare generic, specific, and hybrid wording; recommend one based on account enumeration risk, clarity, recovery usefulness, support burden, and product tone. If deferred, validation wiring may continue, but release-ready copy and Manual QA should stay open.
+- QA / acceptance (`qa_acceptance`): product taste and Manual QA need should compare a polished interaction that needs human visual review with a simpler conservative behavior that can be checked by tests and browser smoke. Explain the taste trade-off, QA cost, user impact, and what can continue if Manual QA is deferred, or why nothing should continue until the decision is made.
+- Technical architecture (`technical_architecture`): auth approach should compare session cookie, bearer token/JWT, OAuth/OIDC, or social-login provider integration. OAuth/OIDC may still produce a local session or token strategy, so separate identity-provider choice from session/storage model when both matter. Explain revocation, CSRF/XSS exposure, client compatibility, operational complexity, and migration cost. If deferred, form scaffolding may continue only if it does not commit to the session model.
+- Technical architecture (`technical_architecture`): dependency choice should separate sensitive-action Approval to install or update dependency files from the architecture decision to adopt the dependency. Compare adding the dependency, using existing utilities, or postponing the capability, and explain compatibility, rollback, cost, and maintenance impact.
+- Technical architecture (`technical_architecture`): domain-language conflict should compare preserving the current product term, adding a narrow code alias, or migrating to a new term. Explain product meaning, public docs, API/interface naming, caller expectations, module responsibility, migration cost, and what can continue if the decision is deferred.
+- Technical architecture (`technical_architecture`): schema/data-model migration should compare additive migration, compatibility shim, and breaking cleanup. Explain migration evidence, data-backfill risk, rollback path, test boundary, and maintenance cost.
+- Technical architecture (`technical_architecture`): public API/interface or module boundary should compare preserving the current interface, adding a narrow extension, or moving responsibility across a module boundary. Explain caller impact, compatibility or breaking-change risk, boundary tests, documentation promises, migration path, and future-change cost.
+- Scope / autonomy (`scope_autonomy`): scope or Autonomy Boundary expansion should compare keeping the current small scope, adding the requested surface, or splitting a follow-up Change Unit. Explain affected paths, user-facing behavior, what remains out of bounds, write impact, and what the agent can still decide alone.
+- Security / privacy (`security_privacy`): sensitive-action Approval to access a secret, change permissions, or export data is only an Approval boundary. Separate product or security judgment may still be needed for roles, fields, redaction, audit logging, retention, rollback, and user notice.
+- Security / privacy (`security_privacy`): PII logging policy should compare options such as no PII in logs, redacted or tokenized identifiers, or limited diagnostic fields. Explain privacy exposure, debugging value, retention, redaction, audit trail, and evidence needed to prove the policy is followed.
+- QA / acceptance (`qa_acceptance`): QA or verification waiver should use the existing recording required for the Task and cite the owner refs. QA waiver effects are owned by the Manual QA / QA policy path; product/user risk or policy-required judgment uses a QA waiver Decision Packet. Verification waiver effects are owned by the kernel verification-waiver path; when user-owned judgment is needed, use the relevant Decision Packet. Name the skipped check or surface, user-accepted residual risk, residual-risk follow-up, relevant refs, and close impact. Example: ask the user whether to waive mobile Safari Manual QA for a copy-only change, accept the viewport-wrapping residual risk, and keep a browser pass as release follow-up.
+- Residual risk (`residual_risk`): residual-risk acceptance before close should show the remaining limitation, the evidence that does exist, why close can still be acceptable, and the follow-up that remains. A residual-risk accepted close is not a detached-verified close.
 
 Ask one blocking question at a time when possible.
 

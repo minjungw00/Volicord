@@ -52,7 +52,7 @@ Harness 문서를 새로 쓰거나, 나누거나, 이름을 바꾸거나, 리뷰
 | 사용자용 문서에 내부 용어가 너무 많습니다. | 사용자가 보는 상황을 먼저 설명하고, 내부 용어는 행동에 도움이 될 때만 소개합니다. |
 | 이 저장소가 앞으로 하네스 서버 소스 저장소가 된다는 설명이 흐려질 수 있습니다. | 현재는 문서 전용이며, 문서 승인 이후 하네스 서버 소스 저장소가 될 의도임을 진입점 문서에서 분명히 유지합니다. |
 | 요구사항 탐색(discovery)과 확인이 구현 단위(Change Unit)로 너무 빨리 수렴할 수 있습니다. | 범위가 정해진 구현 단위를 요구하기 전에 초기 discovery 여지를 남깁니다. |
-| 제품/UX 판단과 기술 판단의 표시 범주가 스키마 소유권(schema ownership)과 완전히 맞지 않습니다. | 사용자에게 보이는 판단 범주를 owner schema/reference contract와 맞춥니다. Owner가 아닌 문서에서 future taxonomy를 결정하지 않습니다. |
+| `judgment_domain` 문서가 schema-owned enum과 어긋날 수 있습니다. | 사용자에게 보이는 label, 예시, template, fixture, storage owner map, Decision Packet 문서를 schema-owned `judgment_domain` enum과 맞춥니다. 임시 display-only category 표현을 다시 도입하지 않습니다. |
 | Approval, acceptance, residual-risk acceptance를 혼동하기 쉽습니다. | 진행 허가, 작업 수락, 잔여 위험 수용을 예시와 routing text에서 분리합니다. |
 | 현재 MVP 단계가 너무 크고, 핵심 사용자 가치를 뒤로 미룰 수 있습니다. | MVP 크기와 초기 사용자 가치 사이의 긴장을 드러냅니다. Staging 결정은 owning Build/Reference 문서에 남깁니다. |
 | Projection/template 범위가 초기 구현에 비해 넓을 수 있습니다. | 초기 범위가 넓다는 점을 표시하고, staging 결정은 projection/template owner로 보냅니다. |

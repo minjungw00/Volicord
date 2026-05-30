@@ -195,7 +195,7 @@ Projection과 report surface는 current record, ref, advisory next action을 표
 |---|---|---|---|
 | Current Task state | `state.sqlite.tasks`, `task_gates`, `state.sqlite.task_events` | `TASK` Current Summary와 status card | Core transition, then projector |
 | Task continuity | `state.sqlite` Task, Change Unit, Run, Evidence Manifest, Eval, Manual QA, Decision Packet, Approval, Residual Risk, `task_gates.acceptance_gate`, acceptance Decision Packet user-decision state, close events, artifact ref, 필요할 때 `task_spine_entries` / public `journey_spine_entry` records, `state.sqlite.task_events` | `TASK` Journey Spine | Core transition 또는 reconcile, Journey reconstruction, then projector |
-| Decision Packet | `state.sqlite.decision_packets`, 관련 `decision_gate` state, decision event, 관련 approval 또는 reconcile record, artifact ref, 필요할 때 연결된 `state.sqlite.residual_risks` | `TASK` Pending Decisions, Journey Card decision line, status/next responses, judgment-context resources, decision-packet resources; standalone projection이 켜져 있을 때 optional `DEC` | `request_user_decision` / `record_user_decision`, then projector |
+| Decision Packet | `decision_kind`와 `judgment_domain`을 포함한 `state.sqlite.decision_packets`, 관련 `decision_gate` state, decision event, 관련 approval 또는 reconcile record, artifact ref, 필요할 때 연결된 `state.sqlite.residual_risks` | `TASK` Pending Decisions, Journey Card decision line, status/next responses, judgment-context resources, decision-packet resources; standalone projection이 켜져 있을 때 optional `DEC` | `request_user_decision` / `record_user_decision`, then projector |
 | Journey Spine | `state.sqlite` Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, `task_gates.acceptance_gate`, acceptance Decision Packet user-decision state, close events, artifact ref, 필요할 때 `task_spine_entries` / public `journey_spine_entry` records, `state.sqlite.task_events` | `TASK` Journey Spine section, resume view, Journey Spine-oriented card | Core transition 또는 reconcile, Journey reconstruction, then projector |
 | Journey Card | 현재 `state.sqlite` Task state, gate, active Change Unit, Autonomy Boundary summary, active Decision Packet ref, residual-risk summary, latest evidence/eval/QA/보고서 ref, projection 최신성 | `JOURNEY-CARD`, status card, `harness.status` card text, `harness.next` 현재 위치 text, significant resume output | 현재 상태에서 read 또는 projection 새로고침; card를 직접 편집하지 않음 |
 | Autonomy Boundary | active `state.sqlite.change_units` Autonomy Boundary field와 관련 Decision Packet 해소/event | `TASK` Autonomy Boundary, Change Unit block, Journey Card autonomy line, standalone projection이 켜져 있을 때 optional related `DEC` | shaping update 또는 user Decision Packet 해소, then projector |
@@ -221,6 +221,8 @@ Projection과 report surface는 current record, ref, advisory next action을 표
 | Raw evidence | artifact store plus `artifacts` records | 보고서 안의 artifact 참조 | artifact registry |
 | Projection freshness | `projection_jobs.source_state_version`, `projection_jobs.projection_version`, job status, managed hashes, artifact records | front matter mirror, status card, operations output | projector and recovery tools |
 
+Decision Packet projection과 card는 schema-owned `judgment_domain`을 사용자에게 보이는 판단 영역으로 렌더링합니다. Template은 enum 값을 자연스러운 label로 바꿔 보여줄 수 있지만, `decision_kind`는 lifecycle/gate route로, `judgment_domain`은 표시 grouping으로 유지해야 합니다. `judgment_domain`은 `ProjectionKind`, gate, close aggregation input, Approval 대체물, waiver 대체물, Residual Risk 수용 rule이 아닙니다.
+
 필수 권한 설명:
 
 - User Notes: human-editable input -> `reconcile_items` -> accepted Core state-changing action과 `state.sqlite.task_events`, 또는 rejected/deferred/note outcome
@@ -228,7 +230,7 @@ Projection과 report surface는 current record, ref, advisory next action을 표
 - Module Map: `module_map_items` table -> `MODULE-MAP` projection; 기준 module row에 대한 public ref는 `StateRecordRef.record_kind=module_map_item`을 사용합니다.
 - Interface Contract: `interface_contracts` table -> `INTERFACE-CONTRACT` projection; 기준 contract row에 대한 public ref는 `StateRecordRef.record_kind=interface_contract`를 사용합니다.
 - Feedback Loop: `feedback_loops` table -> `TASK`와 Evidence Manifest display; 기준 feedback-loop row에 대한 public ref는 `StateRecordRef.record_kind=feedback_loop`를 사용합니다. TDD Trace refs는 separate execution evidence refs로 남습니다.
-- Decision Packet: `state.sqlite.decision_packets`와 관련 ref -> `TASK` Pending Decisions, status/next responses, judgment-context resources, decision-packet resources; standalone projection이 켜져 있을 때 optional `DEC` projection
+- Decision Packet: `judgment_domain`을 포함한 `state.sqlite.decision_packets`와 관련 ref -> `TASK` Pending Decisions, status/next responses, judgment-context resources, decision-packet resources; standalone projection이 켜져 있을 때 optional `DEC` projection
 - Journey Spine: owner 기록, artifact ref, 필요할 때 `task_spine_entries` / public `journey_spine_entry` records, `state.sqlite.task_events`에서 재구성합니다. 자체 권한 기록은 아닙니다.
 - Journey Card: 현재 상태와 ref에서 만든 파생 표시입니다. 절대 기준 상태가 아닙니다.
 - Autonomy Boundary: active `state.sqlite.change_units` boundary field -> projection 접점. 판단 재량이지 범위 권한이 아닙니다.

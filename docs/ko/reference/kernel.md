@@ -109,7 +109,7 @@ Kernel은 제품 파일 쓰기와 닫기 판단이 명시적인 상태에 의존
 
 ## 작업 모드
 
-Schema가 소유하는 Task `mode` enum은 계속 정확히 `advisor | direct | work`입니다. 사용자-facing 표시는 파생된 표시 text로 `advisor`를 `읽기/조언`, `direct`를 `작은 변경`, `work`를 `추적되는 작업`으로 설명할 수 있습니다. 이 표시는 schema 값 추가, 저장된 identifier rename, schema field나 record type 생성, gate recomputation 변경, write authorization 부여, write authority 약화를 뜻하지 않습니다.
+Schema가 소유하는 Task `mode` enum은 계속 정확히 `advisor | direct | work`입니다. 사용자에게 보이는 표시는 파생된 표시 text로 `advisor`를 `읽기/조언`, `direct`를 `작은 변경`, `work`를 `추적되는 작업`으로 설명할 수 있습니다. 이 표시는 schema 값 추가, 저장된 identifier rename, schema field나 record type 생성, gate recomputation 변경, write authorization 부여, write authority 약화를 뜻하지 않습니다.
 
 `advisor`는 읽기 전용 설명, 비교, review와 결정 지원을 위한 모드입니다. 제품 파일 쓰기를 허용하지 않습니다. Advisor Task는 보통 `result=advice_only`로 close되며, policy나 사용자가 명시적으로 요구하지 않는 한 근거, 검증, QA, 수용 gate는 일반적으로 required가 아닙니다.
 
@@ -164,6 +164,7 @@ classDiagram
   class DecisionPacket {
     +status
     +decision_kind
+    +judgment_domain
     +affected_gates
   }
   class Run {
@@ -290,11 +291,13 @@ Autonomy Boundary는 Change Unit scope, sensitive-action Approval, policy checks
 
 ### Decision Packet
 
-Decision Packet은 차단하는 사용자 소유 판단을 위한 기준 상태 entity입니다. decision needed, options, 가능할 때 recommendation, trade-offs, affected scope, supporting evidence, 잔여 위험, owner, status, next action을 기록합니다.
+Decision Packet은 차단하는 사용자 소유 판단을 위한 기준 상태 entity입니다. decision needed, `decision_kind`, `judgment_domain`, options, 가능할 때 recommendation, trade-offs, affected scope, supporting evidence, 잔여 위험, owner, status, next action을 기록합니다.
 
 Decision Packet은 `decision_gate`에 반영됩니다. 차단하는 사용자 소유 판단은 대화 텍스트, broad approval, projection prose만으로 충족될 수 없습니다. 기록된 Decision Packet과 그 resolution, deferral, blocked status가 해당 judgment에 대한 기준 state source입니다.
 
-Decision Packet은 blank permission request가 아니라 decision을 기록할 때만 kernel에서 충분합니다. 사용자가 판단해야 하는 질문을 명시하고, 현실적인 선택지를 비교하고, agent recommendation을 포함하거나 왜 recommendation이 없는지 설명하고, 중요한 trade-off를 보이게 하며, affected gates와 acceptance criteria를 이름 붙이고, source/evidence refs를 가리키고, deferral consequence를 말하며, agent가 사용자 없이 결정해도 되는 일을 밝혀야 합니다. 이는 [MCP API와 스키마](mcp-api-and-schemas.md#harnessrequest_user_decision)가 소유하는 기존 Decision Packet record와 public request shape에 대한 품질 요구사항이며, field, gate, alternate authority path를 추가하지 않습니다.
+Decision Packet은 blank permission request가 아니라 decision을 기록할 때만 kernel에서 충분합니다. 사용자가 판단해야 하는 질문을 명시하고, schema-owned `judgment_domain`을 이름 붙이고, 현실적인 선택지를 비교하고, agent recommendation을 포함하거나 왜 recommendation이 없는지 설명하고, 중요한 trade-off를 보이게 하며, affected gates와 acceptance criteria를 이름 붙이고, source/evidence refs를 가리키고, deferral consequence를 말하며, agent가 사용자 없이 결정해도 되는 일을 밝혀야 합니다. 이는 [MCP API와 스키마](mcp-api-and-schemas.md#harnessrequest_user_decision)가 소유하는 Decision Packet record와 public request shape에 대한 품질 요구사항이며, gate나 alternate authority path를 추가하지 않습니다.
+
+`decision_kind`는 lifecycle, payload branch, gate 의미, state transition semantics를 제어합니다. `judgment_domain`은 사용자를 위해 결정을 어떻게 설명하고 묶어 보여줄지 정하는 판단 영역이며, schema-owned 값은 `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, `mixed`입니다. 별도 kernel 또는 API rule이 명시하지 않는 한 `judgment_domain`은 close gate aggregation이나 다른 gate recompute behavior를 직접 override하면 안 됩니다. 하나의 Decision Packet은 표시되는 판단 영역과 별개로 하나 이상의 gate에 영향을 줄 수 있습니다.
 
 Minimal v0.1 Kernel MVP 구현은 `decision_requests`를 생략할 수 있습니다. 구현이 이를 유지한다면 이 rows는 routing, interaction, replay, compatibility handoff metadata일 뿐입니다. 사용자 소유 판단의 권한이 아니며, `decision_request` row만으로는 `decision_gate`, sensitive-action Approval, 수용, waiver, 잔여 위험 수용, close를 절대 만족하지 않습니다.
 

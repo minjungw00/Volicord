@@ -231,6 +231,7 @@ The table below is an owner map for additional status-like `TEXT` fields in the 
 | `runs.kind` | `RecordRunRequest.kind` in [`harness.record_run`](mcp-api-and-schemas.md#harnessrecord_run). |
 | `approvals.status` | Approval lifecycle semantics in [Approval Gate](kernel.md#approval-gate), plus the approval decision payload in [`harness.record_user_decision`](mcp-api-and-schemas.md#harnessrecord_user_decision). |
 | `decision_requests.decision_kind`, `decision_packets.decision_kind` | Decision Packet public schemas and decision payload branches in [MCP API And Schemas](mcp-api-and-schemas.md). |
+| `decision_requests.judgment_domain`, `decision_packets.judgment_domain` | Schema-owned user-visible judgment domain values in [MCP API And Schemas](mcp-api-and-schemas.md#harnessrequest_user_decision). These values group and explain decisions for users; they do not drive gate aggregation by themselves. |
 | `evidence_manifests.status` | Evidence sufficiency semantics in [Evidence Gate](kernel.md#evidence-gate) and [Evidence Sufficiency Profiles](kernel.md#evidence-sufficiency-profiles). |
 | `residual_risks.visibility_status` | Residual-risk visibility semantics in [Acceptance Gate](kernel.md#acceptance-gate) and public `ResidualRiskSummary` in [MCP API And Schemas](mcp-api-and-schemas.md). A summary-only `none` state must not be persisted on an existing residual-risk row unless the kernel owner explicitly allows it. |
 | `validator_runs.status` | `ValidatorResult.status` in [ValidatorResult](mcp-api-and-schemas.md#validatorresult). |
@@ -498,6 +499,7 @@ CREATE TABLE decision_requests (
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   change_unit_id TEXT,
   decision_kind TEXT NOT NULL,
+  judgment_domain TEXT NOT NULL,
   status TEXT NOT NULL,
   prompt TEXT NOT NULL,
   options_json TEXT NOT NULL DEFAULT '[]',
@@ -520,6 +522,7 @@ CREATE TABLE decision_packets (
   -- Optional compatibility ref; leave null when decision_requests is omitted.
   decision_request_id TEXT,
   decision_kind TEXT NOT NULL,
+  judgment_domain TEXT NOT NULL,
   status TEXT NOT NULL,
   question TEXT NOT NULL,
   options_json TEXT NOT NULL DEFAULT '[]',
@@ -894,7 +897,7 @@ Stored `write_authorizations` rows require non-null `basis_state_version`, inclu
 
 `record_run` consumption is stored by setting the reciprocal links `write_authorizations.consumed_by_run_id` and `runs.write_authorization_id` in one Core transaction. The unique partial index on `runs.write_authorization_id` enforces storage single-use for committed Runs; idempotent replay returns the original Run and response metadata instead of inserting another Run row. Rejected pre-commit `record_run` calls, such as missing Write Authorization before any Run is committed, do not insert a `runs` row and therefore have no storage Run ID to return; the nullable API `run_id` represents that absence without inventing a placeholder. Runs that attempt an invalid, stale, missing, consumed, or scope-exceeded authorization leave `runs.write_authorization_id` empty; attempted refs may be kept in validator findings, run violation payload, or `task_events.payload_json` for audit. Kernel-owned close and evidence consequences remain in [Kernel `record_run` State Logic](kernel.md#record_run).
 
-`decision_packets` stores Decision Packet state records. `decision_requests` is an optional interaction/routing compatibility table for implementation handoff, replay, or compatibility request flow; a minimal v0.1 Kernel MVP implementation may omit it, along with its optional indexes and nullable compatibility fields. If retained, unlinked `decision_requests` rows remain non-authoritative routing metadata, approval links use `approvals.decision_packet_id`, and gate aggregation must consider `decision_requests` only through a linked compatible `decision_packet_id`. The decision gate and approval/acceptance/risk authority rules stay in [Kernel Decision Gate](kernel.md#decision-gate) and the related public tools in [MCP API And Schemas](mcp-api-and-schemas.md#public-tools).
+`decision_packets` stores Decision Packet state records. `decision_packets.judgment_domain` is part of the current reference schema and DDL, not future-profile display prose. It stores the schema-owned user-visible judgment domain used by projections and decision displays. `decision_kind` remains the lifecycle, payload-branch, gate-meaning, and state-transition field; `judgment_domain` must not directly change gate aggregation, approval behavior, waiver behavior, residual-risk acceptance, or close readiness unless a separate owner rule explicitly defines that effect. `decision_requests` is an optional interaction/routing compatibility table for implementation handoff, replay, or compatibility request flow; a minimal v0.1 Kernel MVP implementation may omit it, along with its optional indexes and nullable compatibility fields. If retained, unlinked `decision_requests` rows remain non-authoritative routing metadata, approval links use `approvals.decision_packet_id`, and gate aggregation must consider `decision_requests` only through a linked compatible `decision_packet_id`. The decision gate and approval/acceptance/risk authority rules stay in [Kernel Decision Gate](kernel.md#decision-gate) and the related public tools in [MCP API And Schemas](mcp-api-and-schemas.md#public-tools).
 
 `residual_risks` stores residual-risk rows. Current reference accepted-risk identity is `residual_risk_id`; there is no separate `accepted_risks` table or `ARISK-*` canonical record. Accepted-risk metadata/state stays on `residual_risks.accepted_risk_json`, `status`, and `accepted_at`, while Decision Packets may reference rows through `decision_packets.residual_risk_refs_json`. Visibility and close semantics stay in [Close Semantics](kernel.md#close-result-semantics).
 

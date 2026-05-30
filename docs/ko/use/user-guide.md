@@ -107,8 +107,8 @@
 
 ```text
 필요한 판단: 로그인 실패 경험.
-선택지: form 근처 inline message, toast, modal.
-추천: form 근처 inline message. 계속 보이고 접근성 대응이 비교적 쉽습니다.
+선택지: form 근처 inline layer, toast, modal.
+추천: form 근처 inline layer. 계속 보이고 접근성 대응이 비교적 쉽습니다.
 미뤄도 계속할 수 있는 일: 최종 UI 동작을 확정하지 않는 API wiring과 test.
 아직 닫을 수 없는 것: 최종 UX, 문구, 수동 QA.
 ```
@@ -117,8 +117,8 @@
 
 ```text
 필요한 판단: 로그인 구조.
-선택지: 로컬 email/password session, magic-link email flow, OAuth/OIDC sign-in.
-추천: 먼저 기존 session과 user model을 확인합니다. 코드베이스가 이미 지원하는 것을 알기 전에는 고르지 않습니다.
+선택지: session cookie, bearer/JWT, OAuth/OIDC, social-login provider integration.
+추천: 먼저 기존 session과 user model을 확인합니다. 코드베이스가 이미 지원하는 것과 identity-provider 요구사항을 알기 전에는 고르지 않습니다.
 미뤄도 계속할 수 있는 일: 읽기 전용 조사와 범위가 제한된 구현 제안.
 아직 닫을 수 없는 것: 구현, 보안 근거, 선택한 인증 경로의 수용 기준.
 ```
@@ -246,6 +246,8 @@
 | 근거 | 끝났다는 주장을 무엇이 뒷받침하는가? | 변경 경로, test, log, screenshot, QA note, 검증 결과, 빠진 근거, 오래된 근거. |
 | 닫기 준비 상태 | 무엇이 아직 닫기를 막는가? | 검증, 수동 QA, 작업 수락, 잔여 위험 표시 또는 수용, 닫기 막힘, 가장 작은 해소 방법. |
 
+판단 그룹에 formal Decision Packet이 필요하면 Harness는 decision route와 사용자에게 보이는 판단 영역을 함께 기록합니다. `decision_kind`는 어떤 lifecycle 또는 gate path를 쓰는지 말하고, `judgment_domain`은 결정을 Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed 중 어디에 묶어 설명할지 정합니다. 판단 영역은 결정을 설명하기 위한 값이며, 그 자체로 닫기 준비 상태나 gate aggregation을 바꾸지는 않습니다.
+
 유용한 상태 표시는 이런 모양입니다.
 
 ```text
@@ -338,6 +340,7 @@
 | Change Unit | 이번 작업에서 바뀔 수 있는 제한된 작업 영역입니다. |
 | Autonomy Boundary | 그 범위 안에서 에이전트가 혼자 판단해도 되는 것들입니다. |
 | Decision Packet | 사용자 소유의 제품, 기술, 면제, 작업 수락, 위험, 범위 판단을 기록하는 경로입니다. |
+| Judgment domain | Decision Packet의 사용자에게 보이는 판단 영역입니다. Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed 같은 label로 보일 수 있습니다. |
 | Approval | 이름 붙은 민감한 행동에 대한 허가입니다. |
 | Write Authorization | 의도한 제품 파일 쓰기가 현재 작업, 범위, 판단, 허가와 맞는지 한 번 확인한 기록입니다. |
 | Evidence Manifest | 완료 주장을 뒷받침하는 근거를 연결한 기록입니다. |

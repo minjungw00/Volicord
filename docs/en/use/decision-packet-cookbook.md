@@ -18,13 +18,14 @@ Read [User Guide](user-guide.md#judgment) for the everyday flow. Use [Kernel Ref
 
 A Decision Packet should feel like decision support, not a blank permission slip. It names the real user-owned choice, shows options and trade-offs, recommends a path, states uncertainty, explains deferral, and links evidence or residual risk where relevant.
 
-The examples below are prompt examples, not schemas. "Judgment type" is a user-facing display category, not a canonical field, gate, owner record, validator input, or new authority path.
+The examples below are prompt examples, not full schemas. They show the schema-owned `judgment_domain` as a user-facing grouping. `decision_kind` still controls lifecycle and gate meaning, while `judgment_domain` controls how the decision is explained and grouped for users.
 
 ## What every example shows
 
 Each cookbook example includes:
 
-- judgment type
+- judgment_domain
+- decision_kind
 - why now
 - options
 - recommendation
@@ -34,19 +35,20 @@ Each cookbook example includes:
 
 Exact state transitions, gate effects, waiver semantics, accepted-risk handling, and public API fields stay with the Reference owners.
 
-## UX decision: toast vs modal vs inline
+## UX decision: inline layer vs toast vs modal
 
 Use this when a user-visible behavior must be chosen before implementation or QA can finish.
 
 ```text
 Decision title: Failed-login feedback pattern
-Judgment type: Product / UX
+Judgment domain: Product / UX (`product_ux`)
+Decision route: product trade-off (`decision_kind=product_tradeoff`)
 Why now: the login flow needs one failure-feedback pattern before final UI wiring, copy tests, and Manual QA.
 Options:
-- Inline message near the form fields.
+- Inline layer near the form fields.
 - Toast after failed submit.
 - Modal that interrupts the flow.
-Recommendation: choose inline message.
+Recommendation: choose inline layer.
 Uncertainty: confirm existing design-system support for inline errors and screen-reader announcement behavior.
 Deferral consequence: API error mapping and state plumbing can continue, but final UI behavior, copy, screenshots, and Manual QA should wait.
 Related risk or evidence: account-enumeration copy risk, accessibility evidence, screenshot or browser-smoke refs, and Manual QA refs after implementation.
@@ -56,19 +58,21 @@ Why this works: it asks for the UX choice instead of asking the user to "approve
 
 Exact Decision Packet behavior is owned by [Decision Packet](../reference/kernel.md#decision-packet) and [Decision Gate](../reference/kernel.md#decision-gate). Manual QA behavior is owned by [QA Gate](../reference/kernel.md#qa-gate).
 
-## Auth decision: session cookie vs JWT vs OAuth
+## Auth decision: session cookie vs bearer/JWT vs OAuth/OIDC vs social login
 
 Use this when an authentication direction affects storage, revocation, client behavior, or security posture.
 
 ```text
 Decision title: Login session architecture
-Judgment type: Technical architecture
+Judgment domain: Technical architecture (`technical_architecture`)
+Decision route: architecture choice (`decision_kind=architecture_choice`)
 Why now: the implementation must choose the session model before storage, middleware, tests, and threat review can be scoped.
 Options:
 - Server-side session cookie for first-party web login.
 - JWT or bearer token handled by the client.
-- OAuth/OIDC identity provider, with a separate local session or token strategy.
-Recommendation: choose server-side session cookie for a first-party web app unless the product requires third-party identity provider sign-in or non-browser clients now.
+- OAuth/OIDC identity provider, with a separate local session or token strategy when needed.
+- Social-login provider integration, with provider-specific account linking and support implications.
+Recommendation: choose server-side session cookie for a first-party web app unless the product requires third-party identity provider sign-in, social-login conversion, or non-browser clients now.
 Uncertainty: current client mix, existing auth middleware, revocation requirements, SSO requirements, and deployment constraints.
 Deferral consequence: Discovery can inspect current auth code and draft a narrow Change Unit, but implementation should not commit to storage, token lifetime, or middleware behavior.
 Related risk or evidence: CSRF/XSS exposure, revocation evidence, session-lifetime tests, migration notes, and security review refs.
@@ -84,7 +88,8 @@ Use this when a feature, debug path, run, export, or artifact might expose perso
 
 ```text
 Decision title: PII logging policy for login diagnostics
-Judgment type: Security / privacy
+Judgment domain: Security / privacy (`security_privacy`)
+Decision route: design choice (`decision_kind=design_choice`)
 Why now: the agent needs to know what may be written to logs and evidence artifacts before adding diagnostics or tests.
 Options:
 - Do not log PII; use request IDs and nonidentifying error codes.
@@ -106,7 +111,8 @@ Use this when required human QA cannot be completed, and the user must decide ho
 
 ```text
 Decision title: Waive Manual QA for responsive login layout
-Judgment type: QA / acceptance
+Judgment domain: QA / acceptance (`qa_acceptance`)
+Decision route: QA waiver (`decision_kind=qa_waiver`)
 Why now: close is blocked because required Manual QA has not passed for the responsive login flow.
 Options:
 - Perform Manual QA now.
@@ -128,7 +134,8 @@ Use this when detached verification is required or expected, but the user wants 
 
 ```text
 Decision title: Waive detached verification for invoice export fix
-Judgment type: QA / acceptance
+Judgment domain: QA / acceptance (`qa_acceptance`)
+Decision route: verification waiver (`decision_kind=verification_waiver`)
 Why now: close as verified is blocked because no compatible detached Eval exists, and the user is asking to close today.
 Options:
 - Run detached verification from a fresh bundle or fresh worktree.
@@ -150,7 +157,8 @@ Use this when known close-relevant risk remains after implementation and evidenc
 
 ```text
 Decision title: Accept legacy CSV encoding limitation
-Judgment type: Residual risk
+Judgment domain: Residual risk (`residual_risk`)
+Decision route: residual-risk acceptance (`decision_kind=residual_risk_acceptance`)
 Why now: the export fix works for current UTF-8 files, but legacy encodings remain unsupported and close needs a risk decision.
 Options:
 - Fix legacy encoding support before close.

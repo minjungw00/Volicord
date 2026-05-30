@@ -107,8 +107,8 @@ Product or UX judgment:
 
 ```text
 Decision needed: failed-login experience.
-Options: inline message, toast, or modal.
-Recommendation: inline message near the form because it is persistent and easier to make accessible.
+Options: inline layer, toast, or modal.
+Recommendation: inline layer near the form because it is persistent and easier to make accessible.
 What can continue if you defer: API wiring and tests that do not commit to final UI behavior.
 What cannot close yet: final UX, copy, and Manual QA.
 ```
@@ -117,8 +117,8 @@ Technical architecture judgment:
 
 ```text
 Decision needed: login architecture.
-Options: local email/password session, magic-link email flow, or OAuth/OIDC sign-in.
-Recommendation: inspect existing session and user model first; do not choose until we know what the codebase already supports.
+Options: session cookie, bearer/JWT, OAuth/OIDC, or social-login provider integration.
+Recommendation: inspect existing session and user model first; do not choose until we know what the codebase already supports or what identity-provider requirement exists.
 What can continue if you defer: read-only inspection and a scoped implementation proposal.
 What cannot close yet: implementation, security evidence, and acceptance criteria for the chosen auth path.
 ```
@@ -246,6 +246,8 @@ Most status should fit into four everyday groups. The agent may use exact Harnes
 | Evidence | What supports the claim that this is done? | Changed paths, tests, logs, screenshots, QA notes, verification results, missing support, or stale support. |
 | Close readiness | What still prevents closing? | Verification, Manual QA, result acceptance, residual-risk visibility or acceptance, close blockers, and the smallest unblocker. |
 
+When the Judgment group needs a formal Decision Packet, Harness records both the decision route and the user-facing domain. `decision_kind` says what lifecycle or gate path the decision uses; `judgment_domain` groups the decision for users as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed. The domain explains the decision; it does not by itself change close readiness or gate aggregation.
+
 Useful status:
 
 ```text
@@ -338,6 +340,7 @@ You can skip this section until an agent shows one of these labels. They are use
 | Change Unit | The bounded work area that may change for this task. |
 | Autonomy Boundary | The decisions the agent may make alone inside that scope. |
 | Decision Packet | The recorded path for a user-owned product, technical, waiver, acceptance, risk, or scope decision. |
+| Judgment domain | The user-facing grouping on a Decision Packet, such as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed. |
 | Approval | Permission for a named sensitive action. |
 | Write Authorization | A one-attempt check that the intended product write fits the current task, scope, decisions, and approvals. |
 | Evidence Manifest | The record that maps completion claims to supporting evidence. |

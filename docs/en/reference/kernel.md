@@ -164,6 +164,7 @@ classDiagram
   class DecisionPacket {
     +status
     +decision_kind
+    +judgment_domain
     +affected_gates
   }
   class Run {
@@ -290,11 +291,13 @@ The Autonomy Boundary does not replace Change Unit scope, sensitive-action Appro
 
 ### Decision Packet
 
-A Decision Packet is the canonical state entity for blocking user-owned judgment. It records the decision needed, options, recommendation when available, trade-offs, affected scope, supporting evidence, residual risk, owner, status, and next action.
+A Decision Packet is the canonical state entity for blocking user-owned judgment. It records the decision needed, `decision_kind`, `judgment_domain`, options, recommendation when available, trade-offs, affected scope, supporting evidence, residual risk, owner, status, and next action.
 
 Decision Packets feed `decision_gate`. Blocking user-owned judgment cannot be satisfied by chat text, broad approval, or projection prose alone. The recorded Decision Packet and its resolution, deferral, or blocked status are the canonical state source for that judgment.
 
-A Decision Packet is sufficient for kernel use only when it records a decision, not a blank permission request. It must make the user-owned question explicit, compare realistic options, include the agent recommendation or explain why none is available, expose material trade-offs, name affected gates and acceptance criteria, point to source and evidence refs, state the consequence of deferral, and say what the agent may decide without the user. These are quality requirements for the existing Decision Packet record and public request shape owned by [MCP API And Schemas](mcp-api-and-schemas.md#harnessrequest_user_decision); they do not add fields, gates, or an alternate authority path.
+A Decision Packet is sufficient for kernel use only when it records a decision, not a blank permission request. It must make the user-owned question explicit, name the schema-owned `judgment_domain`, compare realistic options, include the agent recommendation or explain why none is available, expose material trade-offs, name affected gates and acceptance criteria, point to source and evidence refs, state the consequence of deferral, and say what the agent may decide without the user. These are quality requirements for the Decision Packet record and public request shape owned by [MCP API And Schemas](mcp-api-and-schemas.md#harnessrequest_user_decision); they do not add gates or an alternate authority path.
+
+`decision_kind` controls lifecycle, payload branch, gate meaning, and state-transition semantics. `judgment_domain` controls how the decision is explained and grouped for users, using the schema-owned values `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, or `mixed`. `judgment_domain` must not directly override close-gate aggregation or other gate recompute behavior unless a separate kernel or API rule explicitly says so. A Decision Packet can affect one or more gates independently from its display domain.
 
 Minimal v0.1 Kernel MVP implementations may omit `decision_requests`. If an implementation keeps them, they are routing, interaction, replay, or compatibility handoff metadata only. They are not authority for user-owned judgment, and a `decision_request` row alone never satisfies `decision_gate`, sensitive-action Approval, acceptance, waiver, residual-risk acceptance, or close.
 

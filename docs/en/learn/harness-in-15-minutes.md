@@ -108,16 +108,17 @@ For the user-facing flow, use [User Guide](../use/user-guide.md#start-with-ordin
 During the login work, the agent reaches a user-owned UX choice:
 
 ```text
-Failed-login feedback can be inline, a toast, or a modal.
+Failed-login feedback can be an inline layer, a toast, or a modal.
 ```
 
 This should not become a vague "approve?" prompt. The agent should show the real choice, options, recommendation, uncertainty, and deferral consequence:
 
 ```text
-Judgment type: Product / UX
+Judgment domain: Product / UX (`product_ux`)
+Decision route: product trade-off (`decision_kind=product_tradeoff`)
 Why now: final UI behavior and tests need one failure-feedback pattern.
-Options: inline message, toast, modal.
-Recommendation: inline message near the form; it is persistent and accessible.
+Options: inline layer, toast, modal.
+Recommendation: inline layer near the form; it is persistent and accessible.
 Uncertainty: confirm existing design-system error-message support.
 Deferral consequence: API and state wiring can continue, but final UI behavior and Manual QA should wait.
 ```
