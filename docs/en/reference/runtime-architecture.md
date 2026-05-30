@@ -6,7 +6,7 @@ Use this reference to understand where Harness runs, where canonical state lives
 
 It is a lookup document for implementers and operators. It does not repeat the Learn overview or teach the whole Harness model from first principles.
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 
 ## Read this when
 
@@ -21,7 +21,7 @@ Use the [Kernel Reference](kernel.md) for exact state transitions, [MCP API And 
 
 ## Main idea
 
-Harness runs as a local authority layer beside the user's product repository. The product repository stays the place where product work happens; Runtime Home stores operational authority; the Harness Server / Installation connects the two through Core, validators, projection, reconcile, and public MCP tools.
+Harness runs as a local authority layer beside the user's product repository. The product repository stays the place where product work happens; Harness Runtime Home stores operational authority; the Harness Server / Installation connects the two through Core, validators, projection, reconcile, and public MCP tools.
 
 The important rule is separation. Core alone changes canonical operational state. Product source files, chat text, generated Markdown, connector files, operator output, and MCP caller claims can inform the system, but canonical operational state lives in `state.sqlite` current records plus `state.sqlite.task_events`, and raw evidence lives in the artifact store.
 
@@ -80,6 +80,8 @@ flowchart LR
 ```
 
 This split prevents chat, Markdown reports, generated connector files, operator output, MCP caller claims, and product source files from becoming accidental operational state. Only a Core state-changing path can commit canonical operational state.
+
+This documentation repository maps to the future Harness Server / Installation source space, not to a Product Repository or a Harness Runtime Home.
 
 ## Local threat model
 

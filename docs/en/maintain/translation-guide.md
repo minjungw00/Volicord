@@ -52,9 +52,9 @@ Keep these exact when they refer to literal identifiers, schema/API values, file
 
 Do not translate markers such as `HARNESS:BEGIN`, schema names such as `ArtifactRef`, `ProjectionKind`, `decision_kind=approval`, `approval_gate`, `ResidualRiskSummary.status=none`, validator IDs, error codes, file paths, API/tool/schema names, or other exact strings.
 
-Keep exact stage labels and component labels exact too. Korean prose should still use the Korean canonical terms for ordinary explanation, but do not partially translate labels such as `v0.1 Kernel MVP`, `Kernel Smoke`, `v0.2 Evidence & Projection Pack`, `v0.3 Agency Pack`, `v0.4 Operations Pack`, `Agency-Hardened MVP`, `Agency-Hardened MVP reference conformance target`, `v1+ Expansion`, `Product Repository`, `Harness Server / Installation`, `Harness Runtime Home`, or a `Harness Runtime Home` path used as a component label. Korean explanation may follow the label, for example `v0.1 Kernel MVP, 즉 첫 커널 MVP`, but the label itself stays exact.
+Keep exact stage labels exact: `v0.1 Kernel MVP`, `Kernel Smoke`, `v0.2 Evidence & Projection Pack`, `v0.3 Agency Pack`, `v0.4 Operations Pack`, `Agency-Hardened MVP`, `Agency-Hardened MVP reference conformance target`, and `v1+ Expansion`. For the three-space model in Korean prose, use `제품 저장소`, `하네스 서버 소스 저장소` when referring to this repository's future source role, and `하네스 런타임 홈`; add the English labels in parentheses only when they help disambiguate the architecture term.
 
-Official Glossary term headings are lookup anchors; keep the exact Harness term as the heading and put Korean canonical wording in the definition or an alias line.
+Reference headings that serve as lookup anchors should remain stable unless a dedicated link/anchor migration updates all links. User-facing prose should prefer natural Korean. A Korean alias line may provide the natural term under a stable reference heading.
 
 ## Korean Canonical Terms
 
@@ -63,6 +63,9 @@ Use these as the preferred terms in Korean prose. Keep exact English strings whe
 | English term | Korean canonical term | Usage note |
 |---|---|---|
 | Harness | 하네스 | Use for the product name in ordinary Korean prose. Keep literal strings such as `HARNESS:BEGIN`. |
+| Product Repository | 제품 저장소 | Use for the user's product workspace. Add the English label only when disambiguating the three-space model. |
+| Harness Server source repository | 하네스 서버 소스 저장소 | Use for this repository's intended future source-code role after documentation acceptance. |
+| Harness Runtime Home | 하네스 런타임 홈 | Use for the per-user/per-installation operational data home. Add the English label only when helpful. |
 | durable local state | 지속 로컬 상태 | First use may include `지속 로컬 상태(durable local state)`. |
 | artifact ref | 아티팩트 참조 | In evidence contexts, `증거 아티팩트 참조` is also acceptable. Keep the `ArtifactRef` schema name exact. |
 | projection | 읽기용 투영 문서 | Keep `projection` for `projection freshness`, `ProjectionKind`, API fields, and template kinds when useful. `읽기용 보기` is natural in general explanation. |

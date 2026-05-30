@@ -6,8 +6,6 @@
 
 읽고 나면 하네스가 언제 Discovery를 사용하는지, 그리고 Task, Change Unit, 결정 패킷, Approval, 쓰기 허가 기록, 근거, 검증, 수동 QA, 수락, 잔여 위험, 닫기를 왜 기록하는지 감을 잡을 수 있습니다. 내부 기록 세부사항을 몰라도 흐름을 따라갈 수 있어야 합니다.
 
-이 문서는 Learn 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke는 이를 좁게 실행하는 conformance profile입니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target으로 가는 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
-
 ## 이런 때 읽기
 
 엄격한 용어를 배우기 전에, 구체적인 작업 흐름으로 하네스를 이해하고 싶을 때 읽습니다.

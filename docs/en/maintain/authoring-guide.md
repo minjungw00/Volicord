@@ -48,7 +48,7 @@ Use this tracker during the documentation rewrite. These are maintainer-facing r
 | Issue | Editing rule |
 |---|---|
 | User-facing docs overuse internal terms. | Explain the user-visible situation first; introduce internal terms only when they help the reader act. |
-| Repository identity as the future Harness Server source repository is unclear. | State that the repo is currently documentation-only while preserving that it is intended to become the Harness Server source repository. |
+| Repository identity as the future Harness Server source repository can drift. | Keep entry points clear that the repo is currently documentation-only and is intended to become the Harness Server source repository after documentation acceptance. |
 | Discovery / requirements clarification may converge too early on a Change Unit. | Leave room for early discovery before requiring a scoped implementation unit. |
 | Product/UX and technical judgment display categories are not fully aligned with schema ownership. | Align user-visible judgment categories with the owning schema/reference contract; do not decide the future taxonomy in non-owner text. |
 | Approval, acceptance, and residual-risk acceptance are too easy to confuse. | Keep permission to proceed, final acceptance, and residual-risk acceptance separate in examples and routing text. |

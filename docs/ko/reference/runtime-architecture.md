@@ -2,15 +2,15 @@
 
 ## 이 문서가 도와주는 일
 
-이 문서는 Harness가 어디에서 실행되는지, 기준 상태가 어디에 있는지, Core가 상태 전이를 어떻게 기록하는지, artifact와 projection이 어떻게 연결되고 갱신되는지, runtime이 어떤 집행 강도를 정직하게 말할 수 있는지 확인하기 위한 참조 문서입니다.
+이 문서는 하네스가 어디에서 실행되는지, 기준 상태가 어디에 있는지, Core가 상태 전이를 어떻게 기록하는지, artifact와 projection이 어떻게 연결되고 갱신되는지, runtime이 어떤 집행 강도를 정직하게 말할 수 있는지 확인하기 위한 참조 문서입니다.
 
 구현자와 운영자가 찾아보는 참조 문서이며, Learn overview 전체를 다시 설명하지 않습니다.
 
-이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke가 좁은 conformance profile로 이를 실행합니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target을 향한 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 둡니다.
+이 문서는 향후 하네스 동작을 설명하는 참조 문서입니다. 현재 저장소 단계와 구현 handoff 상태는 [구현 개요](../build/implementation-overview.md#문서-승인-상태)에서 확인합니다.
 
 ## 이런 때 읽기
 
-- 제품 저장소 파일과 Harness runtime의 상태 관계를 매핑할 때.
+- 제품 저장소 파일과 하네스 런타임의 상태 관계를 매핑할 때.
 - Core, artifact 수집, projection, reconcile, 검증, 복구, export가 어떻게 동작하는지 구현할 때.
 - 실패가 기준 상태, artifact, projection, 표시 영역 중 어디에 영향을 주는지 판단해야 할 때.
 - 연결된 접점이 cooperative, detective, preventive, isolated 중 어디에 해당하는지 설명해야 할 때.
@@ -21,7 +21,7 @@
 
 ## 핵심 생각
 
-Harness는 사용자의 Product Repository 옆에서 실행되는 로컬 권한 계층입니다. Product Repository는 실제 제품 작업이 일어나는 곳이고, Runtime Home은 운영 권한을 저장하며, Harness Server / Installation은 Core, validators, projection, reconcile, 공개 MCP tool을 통해 둘을 연결합니다.
+하네스는 사용자의 제품 저장소 옆에서 실행되는 로컬 권한 계층입니다. 제품 저장소는 실제 제품 작업이 일어나는 곳이고, 하네스 런타임 홈은 운영 권한을 저장하며, 하네스 서버/설치(Harness Server / Installation)는 Core, validators, projection, reconcile, 공개 MCP tool을 통해 둘을 연결합니다.
 
 중요한 규칙은 분리입니다. 기준 운영 상태를 변경하는 것은 Core뿐입니다. 제품 소스 파일, 대화 텍스트, 생성된 Markdown, connector 파일, operator output, MCP caller claim은 system에 정보를 줄 수 있지만 기준 운영 상태는 `state.sqlite` 현재 기록과 `state.sqlite.task_events`에 있고, 원본 근거는 artifact store에 있습니다.
 
@@ -30,7 +30,7 @@ Harness는 사용자의 Product Repository 옆에서 실행되는 로컬 권한 
 이 문서가 담당합니다.
 
 - 구현 세부 관점의 세 공간
-- Product Repository / Harness Server 또는 Installation / Harness Runtime Home 분리
+- 제품 저장소 / 하네스 서버 또는 설치 / 하네스 런타임 홈 분리
 - Core process model
 - Core-only canonical mutation authority
 - state transaction flow
@@ -57,21 +57,21 @@ Harness는 사용자의 Product Repository 옆에서 실행되는 로컬 권한 
 ## 세 공간, 짧은 요약
 
 ```text
-Product Repository:
-  product code, tests, human-readable projections, and human-editable proposal areas
+제품 저장소:
+  제품 코드, 테스트, 사람이 읽는 투영 문서, 사람이 편집할 수 있는 제안 영역
 
-Harness Server / Installation:
-  MCP server, Core, validators, connectors, projector, reconcile worker, and operator tools
+하네스 서버/설치:
+  MCP server, Core, validators, connectors, projector, reconcile worker, operator tools
 
-Harness Runtime Home:
-  registry.sqlite, project.yaml, state.sqlite, and the artifact store
+하네스 런타임 홈:
+  registry.sqlite, project.yaml, state.sqlite, artifact store
 ```
 
 ```mermaid
 flowchart LR
-  Repo["Product Repository<br/>product code, tests, projections, proposal areas"]
-  Server["Harness Server / Installation<br/>MCP server, Core, validators, connectors, projector, reconcile worker"]
-  Home["Harness Runtime Home<br/>registry.sqlite, project.yaml, state.sqlite, artifact store"]
+  Repo["제품 저장소<br/>제품 코드, 테스트, 투영, 제안 영역"]
+  Server["하네스 서버/설치<br/>MCP server, Core, validators, connectors, projector, reconcile worker"]
+  Home["하네스 런타임 홈<br/>registry.sqlite, project.yaml, state.sqlite, artifact store"]
 
   Repo -->|user intent, repo facts, human edits| Server
   Server -->|managed projections and reconcile candidates| Repo
@@ -81,19 +81,21 @@ flowchart LR
 
 이 분리는 대화, Markdown 보고서, 생성된 connector 파일, operator output, MCP caller claim, 제품 소스 파일이 우연히 운영 상태가 되는 일을 막습니다. Core 상태 변경 경로만 기준 운영 상태를 commit할 수 있습니다.
 
+이 문서 저장소는 세 공간 중 향후 하네스 서버/설치 공간의 소스 저장소에 해당하며, 제품 저장소나 하네스 런타임 홈이 아닙니다.
+
 ## 로컬 위협 모델
 
-Harness는 로컬 권한 계층으로 설계되며, 일반적인 operating-system security boundary를 대신하지 않습니다. 전체 asset map, trust-boundary map, threat category, control category는 [보안 위협 모델 참조](security-threat-model.md)가 담당합니다.
+하네스는 로컬 권한 계층으로 설계되며, 일반적인 operating-system security boundary를 대신하지 않습니다. 전체 asset map, trust-boundary map, threat category, control category는 [보안 위협 모델 참조](security-threat-model.md)가 담당합니다.
 
-Architecture implication은 단순합니다. 가까이 있는 file과 caller도 별도의 trust zone입니다. Product file, chat text, generated connector file, operator output, projection Markdown, artifact bytes, external command output, MCP caller claim은 Harness에 정보를 줄 수 있지만, canonical operational state를 commit하는 것은 Core뿐입니다.
+Architecture implication은 단순합니다. 가까이 있는 file과 caller도 별도의 trust zone입니다. Product file, chat text, generated connector file, operator output, projection Markdown, artifact bytes, external command output, MCP caller claim은 하네스에 정보를 줄 수 있지만, canonical operational state를 commit하는 것은 Core뿐입니다.
 
 Architecture는 다음 security boundary를 보이게 유지합니다.
 
 | Boundary | Architecture handling |
 |---|---|
-| Product Repository와 projections | Input과 readable view입니다. Operational meaning은 Core 또는 reconcile을 통해 흐릅니다. |
+| 제품 저장소와 projections | Input과 readable view입니다. Operational meaning은 Core 또는 reconcile을 통해 흐릅니다. |
 | MCP server와 connected surfaces | Public tool은 Core를 통해 들어오며, capability는 실제 profile에 맞게 표시합니다. |
-| Runtime Home | `state.sqlite`, `state.sqlite.task_events`, registry/config file, artifact는 local control data로 취급합니다. Direct file edit는 authority가 아닙니다. |
+| 하네스 런타임 홈 | `state.sqlite`, `state.sqlite.task_events`, registry/config file, artifact는 local control data로 취급합니다. Direct file edit는 authority가 아닙니다. |
 | Artifact store | Evidence bytes는 artifact registration, integrity, redaction/omission, owner-record check가 성공하기 전까지 untrusted입니다. |
 | External tools와 network | Side effect가 있는 command는 기존 scope, Approval, write-authority, connector, operator control 안에 머물러야 합니다. |
 
@@ -109,7 +111,9 @@ MCP reachability는 authorization이 아닙니다. Public tool call은 계속 Co
 
 ## Product Repository
 
-Product Repository는 사용자의 실제 제품 작업 공간입니다. 제품 소스 코드, tests, repository-level agent rules, 사람이 읽는 Harness projection이 여기에 있습니다.
+한국어 표현: 제품 저장소.
+
+제품 저장소는 사용자의 실제 제품 작업 공간입니다. 제품 소스 코드, tests, repository-level agent rules, 사람이 읽는 하네스 projection이 여기에 있습니다.
 
 대표적인 repository-owned paths는 다음과 같습니다.
 
@@ -127,11 +131,13 @@ repo/
 ```
 
 
-Repository는 생성된 `TASK`, `APR`, `RUN-SUMMARY`, `EVAL`, `DIRECT-RESULT`, `EVIDENCE-MANIFEST`, `TDD-TRACE`, `MANUAL-QA`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, 그 밖의 report projection Markdown 보고서를 담을 수 있습니다. 이 파일들은 사람과 agent가 작업을 읽는 데 도움을 주지만 기준 상태가 아닙니다. 사람이 편집할 수 있는 영역은 입력 접점입니다. 사람이 남긴 edit은 reconcile이 Core 상태 변경 action으로 라우팅할 때만 상태 기록이 됩니다.
+제품 저장소는 생성된 `TASK`, `APR`, `RUN-SUMMARY`, `EVAL`, `DIRECT-RESULT`, `EVIDENCE-MANIFEST`, `TDD-TRACE`, `MANUAL-QA`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, 그 밖의 report projection Markdown 보고서를 담을 수 있습니다. 이 파일들은 사람과 agent가 작업을 읽는 데 도움을 주지만 기준 상태가 아닙니다. 사람이 편집할 수 있는 영역은 입력 접점입니다. 사람이 남긴 edit은 reconcile이 Core 상태 변경 action으로 라우팅할 때만 상태 기록이 됩니다.
 
 ## Harness Server / Installation
 
-Harness Server / Installation은 제어 계층입니다. v0.1 Kernel MVP는 여러 service의 fleet 대신 내부 모듈을 가진 하나의 로컬 프로세스로 구현할 수 있습니다.
+한국어 표현: 하네스 서버/설치.
+
+하네스 서버/설치는 제어 계층입니다. v0.1 Kernel MVP는 여러 service의 fleet 대신 내부 모듈을 가진 하나의 로컬 프로세스로 구현할 수 있습니다.
 
 Core runtime의 책임:
 
@@ -147,9 +153,11 @@ MCP server는 shell command를 감싼 얇은 wrapper가 아닙니다. MCP server
 
 ## Harness Runtime Home
 
-Harness Runtime Home은 로컬 운영 권한을 저장합니다. Reference location은 `~/.harness`이지만 정확한 layout은 [Storage와 DDL](storage-and-ddl.md)이 담당합니다.
+한국어 표현: 하네스 런타임 홈.
 
-Runtime Home에는 다음이 있습니다.
+하네스 런타임 홈은 로컬 운영 권한을 저장합니다. Reference location은 `~/.harness`이지만 정확한 layout은 [Storage와 DDL](storage-and-ddl.md)이 담당합니다.
+
+하네스 런타임 홈에는 다음이 있습니다.
 
 - project registration, 연결된 접점, connector manifest를 위한 `registry.sqlite`
 - 정적 프로젝트 설정을 위한 registered project별 `project.yaml`
@@ -157,9 +165,9 @@ Runtime Home에는 다음이 있습니다.
 - 지속 보관되는 근거 파일을 위한 artifact directories
 
 
-Runtime Home은 대화 기록이 사라지거나 Product Repository projection이 최신이 아니어도 운영 상태를 복구할 수 있을 만큼 충분해야 합니다. Product Repository 문서는 상태 기록과 artifact refs에서 다시 생성될 수 있으며, 그 기록을 대체하지 않습니다.
+하네스 런타임 홈은 대화 기록이 사라지거나 제품 저장소 projection이 최신이 아니어도 운영 상태를 복구할 수 있을 만큼 충분해야 합니다. 제품 저장소 문서는 상태 기록과 artifact refs에서 다시 생성될 수 있으며, 그 기록을 대체하지 않습니다.
 
-Runtime Home file은 user-private local control data로 취급해야 합니다. 관련 없는 user나 process가 secret/PII를 읽거나 `state.sqlite`, `registry.sqlite`, `project.yaml`, connector config snippet, connector manifest, generated manifest, artifact file, staging file, generated operational file을 수정할 수 있게 하는 file permission 또는 storage location은 local tampering 또는 기밀성 위험입니다. Harness는 operating-system permission을 스스로 enforce한다고 주장하지 않습니다. 이러한 file은 Core, `doctor`, `recover`, artifact-integrity validation path를 통해서만 authoritative하게 취급합니다.
+하네스 런타임 홈 file은 user-private local control data로 취급해야 합니다. 관련 없는 user나 process가 secret/PII를 읽거나 `state.sqlite`, `registry.sqlite`, `project.yaml`, connector config snippet, connector manifest, generated manifest, artifact file, staging file, generated operational file을 수정할 수 있게 하는 file permission 또는 storage location은 local tampering 또는 기밀성 위험입니다. 하네스는 operating-system permission을 스스로 enforce한다고 주장하지 않습니다. 이러한 file은 Core, `doctor`, `recover`, artifact-integrity validation path를 통해서만 authoritative하게 취급합니다.
 
 ## Core process model
 
@@ -170,17 +178,17 @@ Runtime Home file은 user-private local control data로 취급해야 합니다. 
   ↓
 Agent 접점
   ↓
-Harness 규칙 / skill / local instructions
+하네스 규칙 / skill / local instructions
   ↓
-Harness MCP server
+하네스 MCP server
   ↓
-Harness Core
+하네스 Core
   ↓
 state.sqlite / artifact store / validators / projector / reconcile worker
 ```
 
 
-대화 접점은 사용자 의도, decision, approval, QA 판단, acceptance를 모읍니다. Agent 접점은 읽기, 편집, 확인을 수행합니다. Harness rules와 skills는 agent가 현재 상태를 놓치지 않게 합니다. MCP server는 tool 경계를 제공합니다. Core는 상태 모델을 담당합니다. Validator, artifact 수집, projection, reconcile은 근거와 읽기용 출력을 상태 전이에 붙입니다.
+대화 접점은 사용자 의도, decision, approval, QA 판단, acceptance를 모읍니다. Agent 접점은 읽기, 편집, 확인을 수행합니다. 하네스 rules와 skills는 agent가 현재 상태를 놓치지 않게 합니다. MCP server는 tool 경계를 제공합니다. Core는 상태 모델을 담당합니다. Validator, artifact 수집, projection, reconcile은 근거와 읽기용 출력을 상태 전이에 붙입니다.
 
 Native hooks, sidecars, command wrappers, file watchers, worktree isolation은 capability에 따라 달라지는 집행 계층입니다. 구체적인 capability profile이 fixture로 더 강한 enforcement를 증명하지 않는 한 v0.1 Kernel MVP는 reference 접점에서 cooperative/detective behavior에 의존합니다.
 
@@ -303,12 +311,12 @@ Reconcile은 merge, reject, note로 convert, decision 생성, design support rec
 
 ## 보장 수준
 
-Harness는 집행 강도를 솔직하게 보여주기 위해 보장 수준을 보고합니다.
+하네스는 집행 강도를 솔직하게 보여주기 위해 보장 수준을 보고합니다.
 
 | 수준 | 의미 |
 |---|---|
-| `cooperative` | agent 접점이 Harness 지시와 MCP 결정을 따를 것으로 기대됩니다. 보류는 지시에 따른 것이며 Harness가 실행 전 차단을 주장하지는 않습니다 |
-| `detective` | Harness가 실행 뒤에 위반을 관찰하고 상태를 `blocked`, `stale`, `partial`, `failed`로 표시할 수 있습니다. 이는 detection이지 prevention이 아닙니다 |
+| `cooperative` | agent 접점이 하네스 지시와 MCP 결정을 따를 것으로 기대됩니다. 보류는 지시에 따른 것이며 하네스가 실행 전 차단을 주장하지는 않습니다 |
+| `detective` | 하네스가 실행 뒤에 위반을 관찰하고 상태를 `blocked`, `stale`, `partial`, `failed`로 표시할 수 있습니다. 이는 detection이지 prevention이 아닙니다 |
 | `preventive` | 구체적인 connector 또는 runtime path가 covered operation에 대해 fixture로 입증된 pre-tool blocking을 갖고 있어 실행 전에 차단할 수 있습니다 |
 | `isolated` | risky work가 worktree, sandbox, process 경계, evaluator 경계 또는 동등한 isolation으로 분리됩니다. Isolation은 blast radius를 줄이지만 그 자체로 work를 승인하거나 검증하지 않습니다 |
 

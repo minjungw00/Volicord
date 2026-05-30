@@ -73,15 +73,15 @@ Executable fixture가 생기기 전에는 이 점검으로 계획된 v0.1 Kernel
 
 ### 1. Runtime Home Bootstrap
 
-대화 기록이나 생성된 Markdown 밖에 로컬 Harness 권한을 만들 수 있을 만큼의 runtime home 지원을 계획합니다.
+대화 기록이나 생성된 Markdown 밖에 로컬 하네스 권한을 만들 수 있을 만큼의 하네스 런타임 홈 지원을 계획합니다.
 
 점검 목록:
 
-- 구성 가능한 runtime home을 만들거나 선택한다.
+- 구성 가능한 하네스 런타임 홈을 만들거나 선택한다.
 - Registry store, project runtime area 하나, project state store 하나, artifact store를 초기화한다.
 - 프로젝트 범위 상태 변경이 의존할 project-level state version을 먼저 기록한다.
 - honest cooperative 또는 detective guarantee level을 가진 기준 agent 접점 하나를 등록한다.
-- Runtime home, project state, artifact store가 있는지 알려 주는 readiness read를 제공한다.
+- 하네스 런타임 홈, project state, artifact store가 있는지 알려 주는 readiness read를 제공한다.
 
 완료 기준:
 
@@ -321,7 +321,7 @@ Required authority 또는 근거가 없을 때 close가 work를 끝내지 못하
 
 Core 동작을 실행하고 state, events, artifacts, projections, errors를 검증하는 fixture를 작성합니다. Rendered prose matching만으로 success를 검증하지 않습니다.
 
-각 runtime fixture는 isolated runtime home과 temporary Product Repository에서 실행되어야 하며, 자기 시작 record와 file을 seed하고, Core 또는 operator action 하나를 실행한 뒤 captured executable result를 비교해야 합니다. Fixture body field, `partial_deep`과 `contains_ordered` 같은 assertion mode, JSON `TEXT` validation, owner-bound status value validation은 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)가 담당합니다.
+각 runtime fixture는 격리된 하네스 런타임 홈과 임시 제품 저장소에서 실행되어야 하며, 자기 시작 record와 file을 seed하고, Core 또는 operator action 하나를 실행한 뒤 captured executable result를 비교해야 합니다. Fixture body field, `partial_deep`과 `contains_ordered` 같은 assertion mode, JSON `TEXT` validation, owner-bound status value validation은 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)가 담당합니다.
 
 아래 목록은 v0.1 behavior checklist입니다. 실제 순서, seed guidance, stable event target, artifact/projection assertion, primary-error expectation은 [Kernel Smoke Authoring Queue](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue)를 사용합니다.
 

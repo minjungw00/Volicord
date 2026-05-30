@@ -6,8 +6,6 @@ Use practical examples to recognize and write good Decision Packet prompts witho
 
 After reading it, you should be able to ask for a focused user judgment, compare realistic options, recommend a path, name uncertainty, explain what happens if the user defers, and link relevant risk or evidence when it matters.
 
-This is Use documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before maintainers explicitly accept the documentation set for first runtime-batch planning. The first product MVP target is v0.1 Kernel MVP, exercised by Kernel Smoke as its narrow conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
-
 ## Read this when
 
 Read this when a task is blocked by product, UX, architecture, security, QA, verification, acceptance, residual-risk, or scope/autonomy judgment that the agent should not decide alone.

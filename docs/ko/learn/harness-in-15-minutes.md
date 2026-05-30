@@ -6,8 +6,6 @@
 
 읽고 나면 어떤 작업이 아주 작게 유지될 수 있는지, 언제 Discovery가 필요한지, 결정 패킷이 왜 작업을 막을 수 있는지, 근거가 어떤 역할을 하는지, 왜 close가 아직 막힐 수 있는지, Markdown projection이 왜 state가 아닌지 구분할 수 있어야 합니다.
 
-이 문서는 Learn 문서입니다. Maintainer가 첫 runtime batch 계획을 위해 문서 세트를 명시적으로 승인하기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 승인하지 않습니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke는 이를 좁게 실행하는 conformance profile입니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target으로 가는 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
-
 ## 이런 때 읽기
 
 하네스를 처음 접하고, 정확한 gate, schema, DDL, projection rule, conformance fixture를 배우기 전에 실용적인 예시를 먼저 보고 싶을 때 읽습니다.

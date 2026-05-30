@@ -1,10 +1,12 @@
 # Codex Working Rules
 
-This repo is in pre-MVP Harness documentation redesign / feedback incorporation and documentation review / documentation acceptance mode. This file is a short always-on compass for agents working here, not a Harness runtime procedure, schema reference, or project history.
+This repo is in pre-MVP Harness documentation redesign / feedback incorporation and documentation review / documentation acceptance mode. It is currently documentation-only and is intended to become the Harness Server source repository after documentation acceptance. This file is a short always-on compass for agents working here, not a Harness runtime procedure, schema reference, or project history.
 
 ## Repo Phase
 
 - Do not implement the Harness server, runtime code, product implementation code, generated operational files, or state/projection/artifact outputs.
+- This repo is not the user's Product Repository and not a Harness Runtime Home.
+- No Harness Server/runtime implementation exists here yet.
 - Documentation edits are allowed in this phase.
 - When changing meaning, work in `docs/en` first and mirror semantic changes in `docs/ko` in the same batch.
 - Maintain semantic parity between English and Korean docs, while allowing natural Korean headings and prose.

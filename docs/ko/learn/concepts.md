@@ -6,8 +6,6 @@
 
 커널, 런타임, MCP API, 문서 Projection 참조는 이제 reference 경로에 있습니다.
 
-이 문서는 Learn 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke는 이를 좁게 실행하는 conformance profile입니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target으로 가는 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
-
 ## 이런 때 읽기
 
 예시, 상태 요약, 참고 사양에서 하네스 용어가 보이기 시작했고 가장 작은 어휘부터 잡고 싶을 때 읽습니다.

@@ -6,8 +6,6 @@
 
 읽고 나면 초점을 좁힌 사용자 판단을 요청하고, 현실적인 선택지를 비교하고, 경로를 추천하고, 불확실성을 이름 붙이고, 사용자가 미룰 때 어떤 일이 생기는지 설명하고, 필요할 때 관련 위험이나 근거를 연결할 수 있어야 합니다.
 
-이 문서는 Use 문서입니다. Maintainer가 문서 세트를 첫 runtime batch 계획에 사용할 수 있다고 명시적으로 승인하기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 승인하지 않습니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke는 이를 좁게 실행하는 conformance profile입니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target으로 가는 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
-
 ## 이런 때 읽기
 
 Agent가 혼자 결정하면 안 되는 product, UX, architecture, security, QA, verification, acceptance, 잔여 위험, scope/autonomy 판단 때문에 작업이 막혔을 때 읽습니다.

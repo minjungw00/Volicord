@@ -4,21 +4,27 @@ Harness is a local work ledger and judgment router for AI-assisted product work.
 
 Harness still follows the agency-preserving local authority kernel principle: durable work facts are recorded in local state and artifact refs, readable projections are non-authoritative views, and user-owned product and material technical judgment stays with the user.
 
-This repository is currently in documentation redesign / feedback incorporation and documentation review/acceptance. Harness is not implemented here yet as a server or runtime.
-
 Harness는 AI 지원 제품 작업을 위한 로컬 작업 장부이자 판단 라우터입니다. 무엇을 바꿀 수 있는지, 누가 판단해야 하는지, 어떤 근거가 있는지, 어떤 위험이 남았는지, 작업을 닫아도 되는지를 기록합니다.
 
 Harness는 사용자 판단권을 보존하는 로컬 권한 커널이라는 원칙을 계속 따릅니다. 오래 남아야 하는 작업 사실은 지속 로컬 상태와 아티팩트 참조에 기록하고, 읽기용 투영 문서는 기준 상태가 아닌 보기로 둡니다. 사용자가 소유한 제품 판단과 중요한 기술 판단은 사용자에게 남겨 둡니다.
 
-이 저장소는 현재 문서 재설계 / 피드백 반영 및 문서 검토/승인 단계에 있습니다. 이 저장소에는 아직 Harness server 또는 runtime이 구현되어 있지 않습니다.
+## Repository Identity / 저장소 정체성
+
+This repository is currently a documentation-only redesign/review repository. After documentation acceptance, it is intended to become the Harness Server source repository.
+
+It is not the user's Product Repository. It is not the Harness Runtime Home. No Harness Server or runtime implementation exists here yet.
+
+이 저장소는 현재 문서 전용 재설계/검토 저장소입니다. 문서 승인 이후에는 하네스 서버 소스 저장소가 되는 것을 목표로 합니다.
+
+이 저장소는 사용자의 제품 저장소가 아닙니다. 하네스 런타임 홈도 아닙니다. 아직 이곳에는 하네스 서버 또는 런타임 구현이 없습니다.
 
 ## Documentation Redesign Scope / 문서 재설계 범위
 
-This repository is currently for documentation review and redesign only. Documentation edits do not start Harness server/runtime implementation, create runtime artifacts, or authorize implementation planning.
+This repository is currently for documentation review and redesign only. Documentation edits do not create server/runtime code or runtime artifacts, and they do not authorize implementation planning or server/runtime implementation.
 
 The redesign may change terminology, MVP staging, schema structure, projection structure, security wording, and document organization. Existing prose should not be preserved merely for continuity when it conflicts with the clarified product thesis or implementation feasibility.
 
-이 저장소의 현재 작업은 문서 검토와 재설계에 한정됩니다. 문서 편집은 Harness server/runtime 구현을 시작하지 않으며, runtime artifact를 만들거나 구현 계획을 승인하지 않습니다.
+이 저장소의 현재 작업은 문서 검토와 재설계에 한정됩니다. 문서 편집은 하네스 서버/런타임 코드나 런타임 아티팩트를 만들지 않으며, 구현 계획이나 서버/런타임 구현 시작을 승인하지 않습니다.
 
 이번 재설계에서는 용어, MVP 단계, 스키마(schema) 구조, 투영(projection) 구조, 보안 표현, 문서 구성이 바뀔 수 있습니다. 기존 문구가 정리된 제품 명제나 구현 가능성과 충돌한다면, 연속성만을 이유로 보존하지 않습니다.
 

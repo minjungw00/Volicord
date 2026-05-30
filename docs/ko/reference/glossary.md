@@ -128,7 +128,7 @@ completed_with_risk_accepted | cancelled | superseded
 
 ### Codebase Stewardship
 
-Product codebase를 durable asset으로 지키는 책임입니다. Domain language, module 경계, interface contracts, dependency direction, testability, maintainability, future-change risk를 살피는 일을 포함합니다.
+제품 코드베이스를 durable asset으로 지키는 책임입니다. Domain language, module 경계, interface contracts, dependency direction, testability, maintainability, future-change risk를 살피는 일을 포함합니다.
 
 ### Common Tool Envelope
 
@@ -295,6 +295,8 @@ Connected profile의 actual enforcement 또는 detection layer를 적용하는 u
 State transitions, gate updates, validator interpretation, artifact registration, projection job 대기열 추가, close decisions를 담당하는 runtime component입니다.
 
 ### Harness Runtime Home
+
+한국어 표현: 하네스 런타임 홈.
 
 `registry.sqlite`, per-project `project.yaml`, per-project `state.sqlite`, artifact directories를 포함하는 local runtime storage area입니다.
 
@@ -558,7 +560,7 @@ Typo, 문서 한 문장, obvious rename처럼 scope, result, 사용자 판단이
 
 ### Trust Boundary
 
-하네스 surface, file, caller, runtime space 사이의 분리입니다. 한쪽의 input은 owner path 없이 다른 쪽의 authority로 취급하면 안 됩니다. 예를 들어 chat text, Product Repository document, projection, generated connector file, artifact bytes, MCP caller claim은 하네스에 정보를 줄 수 있지만, Core 또는 문서화된 다른 owner path가 그 의미를 받아들이기 전까지 canonical operational state가 되지 않습니다. Trust-boundary map은 [보안 위협 모델 참조](security-threat-model.md)가 담당합니다.
+하네스 surface, file, caller, runtime space 사이의 분리입니다. 한쪽의 input은 owner path 없이 다른 쪽의 authority로 취급하면 안 됩니다. 예를 들어 chat text, 제품 저장소 문서, projection, generated connector file, artifact bytes, MCP caller claim은 하네스에 정보를 줄 수 있지만, Core 또는 문서화된 다른 owner path가 그 의미를 받아들이기 전까지 canonical operational state가 되지 않습니다. Trust-boundary map은 [보안 위협 모델 참조](security-threat-model.md)가 담당합니다.
 
 ### Verification
 

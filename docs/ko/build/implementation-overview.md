@@ -4,7 +4,7 @@
 
 이 문서는 구현자가 전체 reference 명세에 들어가기 전에 무엇을 먼저 계획해야 하는지 알려 줍니다. 독자 중심 문서가 kernel, runtime, MCP, storage, projection, conformance reference와 어떻게 이어지는지 보여 주는 Build 계층입니다.
 
-이 문서는 문서 재설계 / 피드백 반영과 handoff review를 위한 구현 계획 문서입니다. maintainer가 문서 세트를 첫 runtime batch 계획에 사용할 수 있다고 명시적으로 승인하기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke conformance profile이 이를 실행 가능한 방식으로 증명합니다. 즉 모듈을 가진 로컬 프로세스 하나로 권한 루프 하나를 증명합니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target을 향한 staged pack입니다. v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 둡니다.
+이 문서는 문서 재설계 / 피드백 반영과 handoff review를 위한 구현 계획 문서입니다. 이 저장소는 현재 문서 전용이며, 문서 승인 이후에는 하네스 서버 소스 저장소가 되는 것을 목표로 합니다. 아직 이곳에는 하네스 서버/런타임 구현이 없습니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke conformance profile이 이를 실행 가능한 방식으로 증명합니다. 즉 모듈을 가진 로컬 프로세스 하나로 권한 루프 하나를 증명합니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target을 향한 staged pack입니다. v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 둡니다.
 
 이 문서로 다음을 확인합니다.
 
@@ -32,6 +32,8 @@ v0.1 Kernel MVP를 먼저 만듭니다. 즉 가장 작은 로컬 Core 권한 경
 
 이 Build 경로의 모든 구현 동사는 maintainer handoff가 문서를 첫 runtime batch planning에 사용할 수 있다고 명시적으로 승인한 뒤의 future runtime-batch planning을 설명합니다. [문서 승인 상태](#문서-승인-상태)가 첫 runtime batch 계획을 승인하지 않는 동안에는 이 문서를 scope와 handoff readiness를 리뷰하는 용도로만 사용합니다.
 
+그 handoff가 바뀌면 구현은 이 저장소에서 하네스 서버/설치 프로그램의 소스 코드로 진행될 예정입니다. 그래도 이 저장소는 사용자의 제품 저장소나 하네스 런타임 홈이 아닙니다. 런타임 상태, 아티팩트, 투영 출력, 로그는 하네스 런타임 홈에 속합니다.
+
 로컬 커널은 조율과 권한의 기록이지 제품 저장소, 소스 관리, 테스트, 코드 리뷰, 대화, 사용자 소유 제품 판단과 중요한 기술 판단을 대체하지 않습니다. 첫 경로는 상태와 닫기 출력이 무엇이 바뀌었는지, 무엇을 확인했는지, 어떤 위험이 남았는지, 어떤 결정이 필요한지 설명하도록 계획합니다.
 
 첫 권한 루프는 좁게 유지합니다. `prepare_write`는 제품 파일 쓰기에 대한 유일한 권한 판단 지점이고, 반환된 쓰기 허가 기록은 durable하고 single-use이며, `record_run`은 관찰된 변경과 artifact를 기록하면서 하나의 compatible direct Run 또는 implementation Run에 대해 이를 consume하고, `close_task`는 유일한 완료 판단 지점입니다. 정확한 상태 로직은 [커널 참조](../reference/kernel.md#prepare_write)에, public request/response detail은 [MCP API와 스키마](../reference/mcp-api-and-schemas.md#public-tools)에 둡니다.
@@ -44,16 +46,16 @@ v0.1 Kernel MVP를 먼저 만듭니다. 즉 가장 작은 로컬 Core 권한 경
 
 이 항목은 maintainer가 직접 갱신하는 문서 handoff 표시입니다. Reference 계약, conformance 결과, 생성된 운영 record, runtime 구현 승인으로 쓰지 않습니다. 아래 checkpoint에서 acceptance를 자동 추론하지 않습니다. maintainer가 이 표를 명시적으로 바꿔야 합니다.
 
-현재 revision status: 후속 cleanup pass 결과가 이 handoff marker에 반영되었지만, maintainer가 명시적으로 바꾸기 전까지 문서 승인은 여전히 아니오입니다. 이 status marker는 runtime/server 구현, runtime conformance, 구현 준비 상태가 아닙니다.
+현재 revision status: maintainer가 명시적으로 바꾸기 전까지 문서 승인은 여전히 아니오입니다. 이 status marker는 runtime/server 구현, runtime conformance, 구현 준비 상태가 아닙니다.
 
 | 질문 | 현재 상태 |
 |---|---|
-| 문서 재설계 / 피드백 반영이 아직 active인가? | 예. 후속 cleanup status가 반영되었지만, 구현 handoff는 여전히 maintainer의 명시적 갱신이 필요합니다. |
+| 문서 재설계 / 피드백 반영이 아직 active인가? | 예. 문서 재설계 / 피드백 반영은 계속 진행 중이며, 구현 handoff는 여전히 maintainer의 명시적 갱신이 필요합니다. |
 | 첫 runtime batch 계획을 위한 문서가 승인되었는가? | 아니오. 아래 checkpoint가 충족된 뒤 maintainer가 이 행을 예로 바꾸기 전까지 첫 runtime batch 계획은 시작할 수 없습니다. |
-| runtime/server 구현이 시작되었는가? | 아니오. 이 저장소는 아직 문서만 담고 있으며 하네스 runtime/server 구현을 담고 있지 않습니다. |
-| 열려 있는 문서 follow-up issue가 있는가? | 알려진 비차단 owner-recorded follow-up은 남아 있습니다. [MCP API와 스키마](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision)의 `TODO_DECISION(schema-owner)`가 future schema-owned display judgment type category 필요 여부를 결정해야 합니다. Projection-tier, conformance-split, 한국어 용어, 잔여 MVP wording cleanup 뒤 알려진 차단 docs-maintenance drift는 없습니다. 첫 runtime batch 계획을 위한 docs accepted는 maintainer가 명시적으로 바꾸기 전까지 여전히 아니오이며, runtime/server 구현은 시작하지 않았습니다. Docs-maintenance status는 runtime conformance나 구현 준비 상태가 아닙니다. |
+| 하네스 서버/런타임 구현이 시작되었는가? | 아니오. 이 저장소는 아직 문서만 담고 있으며 하네스 서버/런타임 구현을 담고 있지 않습니다. |
+| 열려 있는 문서 follow-up issue가 있는가? | 알려진 재설계 쟁점은 [문서 작성 가이드](../maintain/authoring-guide.md#알려진-재설계-쟁점-트래커)에서 관리합니다. 이 쟁점은 문서 재설계 입력이며 runtime conformance, 구현 준비 상태, 서버/런타임 구현 시작 승인이 아닙니다. 구현 계획을 위한 docs accepted는 maintainer가 handoff 상태를 명시적으로 바꾸기 전까지 여전히 아니오입니다. 하네스 서버/런타임 구현은 시작하지 않았습니다. |
 
-Build 독자는 이 표를 진입 gate로 보아야 합니다. maintainer handoff가 두 번째 행을 예로 바꾸기 전까지 v0.1 Kernel MVP도 이 저장소에서는 planning-only이며 runtime/server 구현을 시작하면 안 됩니다.
+Build 독자는 이 표를 진입 gate로 보아야 합니다. maintainer handoff가 두 번째 행을 예로 바꾸기 전까지 v0.1 Kernel MVP도 이 저장소에서는 planning-only이며 하네스 서버/런타임 구현을 시작하면 안 됩니다.
 
 ## 구현 handoff checkpoint
 
@@ -83,13 +85,13 @@ Build 독자는 이 표를 진입 gate로 보아야 합니다. maintainer handof
 
 ## 무엇을 만드는가
 
-maintainer handoff가 문서를 첫 runtime batch 계획에 사용할 수 있다고 명시적으로 승인한 뒤, 하네스 구현은 v0.1 Kernel MVP에서 시작합니다. 이는 AI 지원 제품 작업을 위한 로컬 작업 장부이자 판단 라우터입니다. 작업 흐름 주변에 지속 로컬 상태(durable local state), 아티팩트 참조, 읽기용 투영 문서(projection)를 유지하되, 제품 이력, 실행 가능한 확인, 리뷰, 사용자 판단은 기존 엔지니어링 절차에 남겨 둡니다. 사용자 판단권을 보존하는 로컬 권한 커널 원칙은 구현의 중심에 남습니다. Core가 기준 로컬 상태를 소유하고, 사용자 소유 판단은 사용자에게 남습니다. 초기 구현 가정은 명확한 내부 모듈을 가진 하나의 로컬 시스템이며, 분산 플랫폼으로 시작하지 않습니다.
+maintainer handoff가 문서를 첫 runtime batch 계획에 사용할 수 있다고 명시적으로 승인한 뒤, 하네스 구현은 이 저장소에서 v0.1 Kernel MVP로 시작합니다. 이는 AI 지원 제품 작업을 위한 로컬 작업 장부이자 판단 라우터입니다. 작업 흐름 주변에 지속 로컬 상태(durable local state), 아티팩트 참조, 읽기용 투영 문서(projection)를 유지하되, 제품 이력, 실행 가능한 확인, 리뷰, 사용자 판단은 기존 엔지니어링 절차에 남겨 둡니다. 사용자 판단권을 보존하는 로컬 권한 커널 원칙은 구현의 중심에 남습니다. Core가 기준 로컬 상태를 소유하고, 사용자 소유 판단은 사용자에게 남습니다. 초기 구현 가정은 명확한 내부 모듈을 가진 하나의 로컬 시스템이며, 분산 플랫폼으로 시작하지 않습니다.
 
 아래 section은 그 runtime batch의 future responsibility를 설명합니다. 현재 documentation-acceptance phase의 work order가 아닙니다.
 
 ### Local Server / Process
 
-MCP 경계를 제공하고, Core 전이를 소유하며, Harness Runtime Home을 읽고 쓰는 로컬 Harness Server / Installation 프로세스 하나를 계획합니다. 검증기 실행, projection 대기열 추가, reconcile, 복구, export, conformance 진입점은 모두 같은 Core 규칙 위에서 실행되어야 합니다.
+MCP 경계를 제공하고, Core 전이를 소유하며, 하네스 런타임 홈을 읽고 쓰는 로컬 하네스 서버/설치 프로세스 하나를 계획합니다. 검증기 실행, projection 대기열 추가, reconcile, 복구, export, conformance 진입점은 모두 같은 Core 규칙 위에서 실행되어야 합니다.
 
 v0.1 Kernel MVP는 모듈을 가진 단일 프로세스로 충분합니다. Core, projection, validation, 운영자 도구를 별도 서비스로 나눌 필요는 없습니다.
 
@@ -158,7 +160,7 @@ Projection failure는 committed Core 상태를 롤백하면 안 됩니다. Proje
 Operator 진입점은 Core 동작 위에 놓이는 경로이지 두 번째 상태 모델이 아닙니다. 먼저 command-independent 기능으로 계획합니다.
 
 - project connect 또는 등록
-- Harness Runtime Home, project state, artifact store, reference surface, MCP availability, projections, reconcile, validators/checks, agency/stewardship/context에 대한 doctor/readiness 상태 표시
+- runtime home, project state, artifact store, reference surface, MCP availability, projections, reconcile, validators/checks, agency/stewardship/context에 대한 doctor/readiness 상태 표시
 - MCP 경계 제공
 - projection 새로고침
 - human edit, generated-file drift, managed-block drift를 조용히 덮어쓰거나 state로 취급하지 않고 reconcile

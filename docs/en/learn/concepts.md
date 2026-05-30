@@ -6,8 +6,6 @@ This document introduces the smallest concept set you need before reading Harnes
 
 The kernel, runtime, MCP API, and document projection references now live in the reference path.
 
-This is Learn documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before the documentation set is accepted for implementation planning. The first product MVP target is v0.1 Kernel MVP, exercised by the Kernel Smoke conformance profile. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
-
 ## Read this when
 
 Read this when Harness terms are starting to appear in examples, status summaries, or reference specs and you want the smallest useful vocabulary.

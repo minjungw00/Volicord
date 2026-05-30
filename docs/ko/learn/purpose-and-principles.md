@@ -4,8 +4,6 @@
 
 이 문서는 하네스가 왜 존재하는지, 누구를 위한 것인지, 어떤 가치를 지키는지, AI 지원 개발에서 반복되는 실패를 어떻게 바라보는지, MVP 범위에 무엇이 들어가는지 설명합니다.
 
-이 문서는 Learn 문서입니다. maintainer가 문서 세트를 첫 runtime batch 계획에 사용할 수 있다고 명시적으로 승인하기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 제품 MVP 목표는 v0.1 Kernel MVP이며, Kernel Smoke는 이를 좁게 실행하는 conformance profile입니다. v0.2부터 v0.4까지는 Agency-Hardened MVP reference conformance target으로 가는 staged pack이고, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
-
 ## 이런 때 읽기
 
 엄격한 계약이나 구현 계획을 보기 전에 하네스의 가치와 경계를 이해하고 싶을 때 읽습니다.

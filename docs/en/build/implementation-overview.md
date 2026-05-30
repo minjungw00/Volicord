@@ -4,7 +4,7 @@
 
 This document tells implementers what to build before they dive into the full reference specs. It is the bridge between the reader-centered docs and the detailed contracts in the kernel, runtime, MCP, storage, projection, and conformance references.
 
-This is planning documentation for documentation redesign / feedback incorporation and handoff review. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before maintainers explicitly accept the documentation set for first runtime-batch planning. The first product MVP target is v0.1 Kernel MVP, exercised by the Kernel Smoke conformance profile: one local process with modules proving one authority loop. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target. v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is planning documentation for documentation redesign / feedback incorporation and handoff review. The repository is documentation-only today and is intended to become the Harness Server source repository after documentation acceptance; no Harness Server/runtime implementation exists here yet. The first product MVP target is v0.1 Kernel MVP, exercised by the Kernel Smoke conformance profile: one local process with modules proving one authority loop. v0.2 through v0.4 are staged packs toward the Agency-Hardened MVP reference conformance target. v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
 Use it to answer three questions:
 
@@ -32,6 +32,8 @@ Build v0.1 Kernel MVP first: the smallest local Core authority path, with Kernel
 
 All implementation verbs in this Build path describe future runtime-batch planning after the maintainer handoff explicitly accepts the docs for that planning. While [Documentation Acceptance Status](#documentation-acceptance-status) says first runtime-batch planning is not accepted, use this document only to review scope and handoff readiness.
 
+When that handoff changes, implementation is expected to happen in this repository as the Harness Server / Installation source code. This repository is still not the user's Product Repository and not the Harness Runtime Home; runtime state, artifacts, projection output, and logs belong in a Harness Runtime Home.
+
 The local kernel is a coordination and authority record, not a replacement for the product repository, source control, tests, code review, conversation, or user-owned product and material technical judgment. Build the first path so status and close output explain what changed, what was checked, what remains risky, and what decision is needed.
 
 The first authority loop is narrow: `prepare_write` is the only product-write authorization decision point, a returned Write Authorization is durable and single-use, `record_run` consumes it for one compatible direct Run or implementation Run while recording observed changes and artifacts, and `close_task` is the only completion decision point. Exact state logic lives in [Kernel Reference](../reference/kernel.md#prepare_write) and public request/response details live in [MCP API And Schemas](../reference/mcp-api-and-schemas.md#public-tools).
@@ -44,14 +46,14 @@ If a proposed implementation starts with Agency-Hardened MVP as one large first 
 
 This is a maintainer-updated documentation handoff marker. It is not a Reference contract, conformance result, generated operational record, or runtime implementation authorization. Do not infer acceptance from the checklist below; maintainers must change this table deliberately.
 
-Current revision status: the follow-up cleanup pass has been reflected in this handoff marker, but documentation acceptance remains No unless maintainers deliberately change it. This status marker is not runtime/server implementation, runtime conformance, or implementation readiness.
+Current revision status: documentation acceptance remains No unless maintainers deliberately change it. This status marker is not runtime/server implementation, runtime conformance, or implementation readiness.
 
 | Question | Current status |
 |---|---|
-| Is documentation redesign / feedback incorporation still active? | Yes. The follow-up cleanup status is reflected, but implementation handoff still requires a deliberate maintainer update. |
+| Is documentation redesign / feedback incorporation still active? | Yes. Documentation redesign / feedback incorporation remains active, and implementation handoff still requires a deliberate maintainer update. |
 | Are docs accepted for first runtime-batch planning? | No. First runtime-batch planning may not begin until maintainers change this row to Yes after the checkpoint below is satisfied. |
 | Has runtime/server implementation started? | No. This repository still contains documentation, not Harness runtime/server implementation. |
-| Are there open follow-up docs issues? | Known non-blocking owner-recorded follow-up remains: `TODO_DECISION(schema-owner)` in [MCP API And Schemas](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision) on whether a future schema-owned display judgment type category is needed. No known blocking docs-maintenance drift remains after the projection-tier, conformance-split, Korean terminology, and residual MVP wording cleanup. Docs accepted for first runtime-batch planning is still No unless maintainers deliberately change it; runtime/server implementation remains Not started. Docs-maintenance status is not runtime conformance or implementation readiness. |
+| Are there open follow-up docs issues? | Known redesign issues are tracked in the [Authoring Guide](../maintain/authoring-guide.md#known-redesign-issues-tracker). They are documentation redesign inputs, not runtime conformance, implementation readiness, or authorization to start server/runtime implementation. Docs accepted for implementation planning remains No unless maintainers deliberately change the handoff status. Harness Server/runtime implementation remains not started. |
 
 Build readers should treat this table as the entry gate. Until maintainer handoff changes the second row to Yes, even v0.1 Kernel MVP remains planning-only in this repository and runtime/server implementation must not start.
 
@@ -83,7 +85,7 @@ This handoff does not promote roadmap items, dashboards or hosted workflow UI, B
 
 ## What you are building
 
-After maintainer handoff explicitly accepts the docs for first runtime-batch planning, Harness implementation starts with v0.1 Kernel MVP as a local work ledger and judgment router for AI-assisted product work. It keeps durable local state, artifact refs, and readable projections around the work journey, while leaving product history, executable checking, review, and user judgment with the existing engineering process. The agency-preserving local authority kernel principle remains the implementation center: Core owns canonical local state, and user-owned judgment stays with the user. The initial implementation assumption is one local system with clear internal modules, not a distributed platform.
+After maintainer handoff explicitly accepts the docs for first runtime-batch planning, Harness implementation starts in this repository with v0.1 Kernel MVP as a local work ledger and judgment router for AI-assisted product work. It keeps durable local state, artifact refs, and readable projections around the work journey, while leaving product history, executable checking, review, and user judgment with the existing engineering process. The agency-preserving local authority kernel principle remains the implementation center: Core owns canonical local state, and user-owned judgment stays with the user. The initial implementation assumption is one local system with clear internal modules, not a distributed platform.
 
 The sections below describe future responsibilities for that runtime batch. They are not work orders for the current documentation-acceptance phase.
 
