@@ -40,9 +40,9 @@ Request: Fix the typo in the install note.
 Result: changed `docs/help.md`; self-check says spelling only, no meaning or contract change; no escalation.
 ```
 
-Tiny does not bypass judgment or security. If the sentence changes meaning, a link or rendered output must be checked, a sensitive area appears, or the edit needs evidence beyond the tiny changed-path/self-check note, the same Task should move to ordinary `direct` or `work` according to the broader scope.
+Tiny does not bypass judgment or security. If the sentence changes meaning, a link or rendered output must be checked, a sensitive area appears, or the edit needs evidence beyond the tiny changed-path/self-check note, the same Task should move to ordinary small-change handling (`direct`) or tracked work (`work`) according to the broader scope.
 
-## Example A: Direct task
+## Example A: Small change
 
 ### User request: "Change the button label."
 
@@ -60,7 +60,7 @@ The agent starts by turning the request into a Task in plain language:
 
 ```text
 Task: Change the profile page button label from "Save" to "Update profile."
-Likely mode: direct.
+Likely shape: small change (direct).
 ```
 
 The Task exists so the work has one durable unit. Without it, the change, the check, and the close decision would live only in chat.
@@ -78,11 +78,11 @@ This matters even for a small task. If the agent discovers that the button text 
 
 ### Keeping it lightweight
 
-Harness treats this as `direct` because the change is small, low risk, and easy to self-check. Direct does not mean "no record." It means the record should stay lightweight.
+Harness treats this as a small change (`direct`) because the change is small, low risk, and easy to self-check. Small change does not mean "no record." It means the record should stay lightweight.
 
 The user-facing budget is small: name the scope, keep the write boundary narrow, check that the intended write fits, make the change, self-check it, and report the result. The user should not have to fill in a form for a one-string change.
 
-If the agent finds the label is shared across checkout, billing, and profile screens, it should stop and move the same Task toward `work` because the impact is wider than expected.
+If the agent finds the label is shared across checkout, billing, and profile screens, it should stop and move the same Task toward tracked work (`work`) because the impact is wider than expected.
 
 ### Small write boundary
 
@@ -113,7 +113,7 @@ Write check: allowed for the profile view file and matching copy test.
 
 Reference docs call the allow/deny result Write Authorization. If the intended file is outside the bounded scope, the write should pause. The user should see a scope question instead of a surprise edit.
 
-If an out-of-scope changed path is discovered after action, it should not be folded into the direct result. The agent should show the mismatch and either remove or isolate the extra change, ask for a scope decision, or move the same Task toward `work`.
+If an out-of-scope changed path is discovered after action, it should not be folded into the small-change result. The agent should show the mismatch and either remove or isolate the extra change, ask for a scope decision, or move the same Task toward tracked work (`work`).
 
 ### Recording the change
 
@@ -128,7 +128,7 @@ Recording the change connects the implementation to the Task and Change Unit. It
 
 ### Lightweight evidence
 
-For direct work, evidence can be simple:
+For a small change, evidence can be simple:
 
 ```text
 Evidence: diff shows the label changed; copy test passed or component render was self-checked.
@@ -144,7 +144,7 @@ The agent checks the narrow result:
 Self-check: the profile button now renders "Update profile."
 ```
 
-A self-check is useful, but it is not independent verification. Direct tasks usually close with self-checked assurance unless the user asks for more.
+A self-check is useful, but it is not independent verification. Small changes under `direct` usually close with self-checked assurance unless the user asks for more.
 
 ### Close
 
@@ -153,7 +153,7 @@ Harness can close the Task when the scope stayed narrow, the write was authorize
 The close summary should be plain:
 
 ```text
-Closed as direct, self-checked. Residual risk: none for this close.
+Closed as a small change, self-checked. Residual risk: none for this close.
 ```
 
 "No close-relevant risk is known" is an explicit state claim, not a hidden-risk shortcut. If Harness knows about close-relevant risk that has not been shown to the user, the display should say the risk is not visible yet and keep close or acceptance blocked until the risk and refs are shown.
@@ -165,16 +165,16 @@ The user should see a compact result, not internal machinery:
 ```text
 Changed the profile button label to "Update profile."
 Checked the rendered copy with the focused copy test and diff review.
-Closed as a small direct task. Residual risk: none for this close.
+Closed as a small change. Residual risk: none for this close.
 ```
 
 ### What the reference docs define more strictly
 
-The reference docs define the exact rules behind this simple flow: how direct mode differs from work mode, what counts as an active Change Unit, how `prepare_write` creates Write Authorization, how changed paths are recorded, and when a direct task may close as self-checked.
+The reference docs define the exact rules behind this simple flow: how small-change (`direct`) handling differs from tracked-work (`work`) handling, what counts as an active Change Unit, how `prepare_write` creates Write Authorization, how changed paths are recorded, and when a small-change task may close as self-checked.
 
 This tutorial leaves those details out on purpose.
 
-## Example B: Larger work task
+## Example B: Tracked work task
 
 ### User request: "Add remember-me behavior to the login flow."
 
@@ -192,7 +192,7 @@ The agent starts a Task:
 
 ```text
 Task: Add remember-me behavior to the login flow.
-Likely mode: work.
+Likely shape: tracked work (work).
 ```
 
 Because "remember me" is ambiguous, the agent clarifies before implementation planning. Reference docs call that clarification posture Discovery. It is not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, scope authority, or a new authority path. It separates product, technical, security, QA, operational, and scope judgments; answers codebase-answerable questions from the repository and current Harness context; and asks the user only for decisions the codebase cannot answer.
@@ -298,7 +298,7 @@ Strict details behind that simple idea span Evidence Gate and Evidence Manifest 
 
 ### Verification
 
-For work mode, Harness expects stronger checking than a direct self-check unless the user explicitly accepts the verification risk.
+For tracked work (`work`), Harness expects stronger checking than a small-change self-check unless the user explicitly accepts the verification risk.
 
 Useful verification might be:
 
@@ -349,7 +349,7 @@ Harness closes only after the relevant blockers are clear: scope is compatible, 
 The close summary should be short:
 
 ```text
-Closed as work. Evidence recorded. Verification and Manual QA handled. User accepted the shown residual risk where applicable.
+Closed as tracked work. Evidence recorded. Verification and Manual QA handled. User accepted the shown residual risk where applicable.
 ```
 
 ### What the user sees
@@ -363,7 +363,7 @@ Evidence covers the success and non-remembered-session criteria with the focused
 Independent verification checked remembered and non-remembered sessions.
 Manual QA passed for the login screen flow.
 User accepted the shown residual risk: not checked across every supported browser policy.
-Final acceptance was recorded and the task closed as larger work.
+Final acceptance was recorded and the task closed as tracked work.
 ```
 
 Power-user displays may include the owner refs behind each line, but the first result should still read like a work summary rather than a reference manual.
@@ -379,7 +379,7 @@ This tutorial only shows why those pieces exist.
 The two flows above are anchors, not the whole universe. Harness should stay practical across many kinds of work:
 
 - A leaf code fix can still be `direct`: "Fix the null crash in the date formatter" may stay inside one function and its focused test. The result can close with a changed-path summary, test output, and self-check. If the fix changes public behavior or shared contracts, the same Task should move toward `work`.
-- Tiny direct is the smallest Direct profile: typo, one docs sentence, or obvious rename; changed path plus self-check may be enough. It escalates to ordinary `direct` when scope broadens or Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed, and to `work` when judgment, sensitive category, public interface, UX workflow, or multi-step delivery appears.
+- Tiny direct is the smallest Direct profile: typo, one docs sentence, or obvious rename; changed path plus self-check may be enough. It escalates to ordinary small-change handling under `direct` when scope broadens or Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed, and to tracked work (`work`) when judgment, sensitive category, public interface, UX workflow, or multi-step delivery appears.
 - Evidence shape should follow the task shape: advisor work usually needs only cited sources unless recorded evidence is requested; direct docs-only work can use a changed path, diff or patch summary, and self-check; direct code adds a focused test, command, log, or reason no automated check applies; work features map each criterion to Run and artifact refs; UI/UX/copy work may need visual evidence and Manual QA; sensitive work keeps Approval and redaction context separate from correctness; verification-required work needs an Eval that reviewed current evidence.
 - A UI/UX choice often needs a Decision Packet: a checkout error might be shown as an inline message, toast, or modal/layer. The packet should compare flow interruption, accessibility, copy risk, and product tone. Backend validation can continue if it does not commit to the final experience, but the UX should not be claimed complete.
 - Auth choices mix product and security judgment: choosing session cookie, JWT, or social login affects revocation, CSRF/XSS exposure, client support, and operational cost. Failed-login copy has a similar trade-off: generic, specific, or hybrid wording changes account-enumeration risk, clarity, support burden, and tone.

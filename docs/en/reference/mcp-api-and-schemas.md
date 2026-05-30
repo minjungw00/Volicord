@@ -257,6 +257,8 @@ ProjectionKind extensibility does not make projections canonical state. Every pr
 
 `EXPORT` may include report profiles such as Release Handoff when the export feature is enabled. Such profiles are projection/report surfaces only; they do not create deployment authority, merge authority, production-monitoring authority, final acceptance, residual-risk acceptance, assurance upgrades, or Task close authority.
 
+`StateSummary.mode`, `IntakeRequest.requested_mode`, and other schema-owned mode fields keep the enum values `advisor`, `direct`, and `work`. User-facing surfaces may render those values as read/advice work, small change, and tracked work. Those labels are derived display text, not schema fields, enum values, canonical record types, projection kinds, gate values, or authority paths. That display translation is not a schema rename, does not add public enum values, and must not hide write authority, sensitive-action Approval, user-owned judgment, evidence, QA, verification, residual-risk, acceptance, or close requirements.
+
 ```yaml
 ToolError:
   code: ErrorCode
@@ -943,7 +945,7 @@ Idempotency behavior: read-only; repeated requests do not mutate state.
 
 ### `harness.intake`
 
-Purpose: create or resume a Task from user intent and classify it as advisor, direct, or work.
+Purpose: create or resume a Task from user intent and classify it as schema mode `advisor`, `direct`, or `work`, while user-facing displays may describe the result as read/advice work, small change, or tracked work.
 
 Allowed actor: `user`, `lead_agent`, `operator`.
 

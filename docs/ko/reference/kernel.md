@@ -109,6 +109,8 @@ Kernel은 제품 파일 쓰기와 닫기 판단이 명시적인 상태에 의존
 
 ## 작업 모드
 
+Schema가 소유하는 Task `mode` enum은 계속 정확히 `advisor | direct | work`입니다. 사용자-facing 표시는 파생된 표시 text로 `advisor`를 `읽기/조언`, `direct`를 `작은 변경`, `work`를 `추적되는 작업`으로 설명할 수 있습니다. 이 표시는 schema 값 추가, 저장된 identifier rename, schema field나 record type 생성, gate recomputation 변경, write authorization 부여, write authority 약화를 뜻하지 않습니다.
+
 `advisor`는 읽기 전용 설명, 비교, review와 결정 지원을 위한 모드입니다. 제품 파일 쓰기를 허용하지 않습니다. Advisor Task는 보통 `result=advice_only`로 close되며, policy나 사용자가 명시적으로 요구하지 않는 한 근거, 검증, QA, 수용 gate는 일반적으로 required가 아닙니다.
 
 `direct`는 scope와 result가 명확한 작은 low-risk 제품 변경을 위한 모드입니다. 쓰기 가능한 모드이므로 제품 파일 쓰기에는 여전히 active scoped Change Unit이 필요합니다. Direct work는 기본적으로 `self_checked`로 close될 수 있습니다. 선택적 detached verification을 수행했고 valid independence qualifier로 pass했다면 direct work를 `detached_verified`로 표시할 수 있습니다.
@@ -134,9 +136,9 @@ Tiny direct profile은 typo, 의미 변경 없는 문서 한 문장, obvious ren
 
 Manual QA, detached verification, 잔여 위험 수용은 policy, changed 접점, user request, 감지된 risk가 요구하지 않는 한 direct work에 required가 아닙니다. Scope, risk, affected interface, evidence expectations가 direct 가정을 넘어서 커지면 같은 Task가 `work`로 상향됩니다.
 
-Tiny direct는 scope가 trivial edit를 넘어 넓어지지만 여전히 low-risk이고 좁거나, Evidence Manifest coverage, artifact refs, link/render proof, 또는 tiny result note를 넘는 다른 evidence가 필요해지면 일반 `direct`로 상향됩니다. 일반 `direct`는 product judgment, material technical judgment, architecture choice, public interface 또는 public API impact, UX workflow impact, schema impact, sensitive category, multi-file 또는 multi-step delivery, nontrivial evidence/verification이 나타나면 `work`로 상향됩니다.
+Tiny direct는 scope가 trivial edit를 넘어 넓어지지만 여전히 low-risk이고 좁거나, Evidence Manifest coverage, artifact refs, link/render proof, 또는 tiny result note를 넘는 다른 evidence가 필요해지면 일반 `direct`로 상향됩니다. 일반 `direct`는 범위가 불분명하거나, 여러 파일 또는 subsystem이 관련되거나, product/UX judgment가 필요하거나, 중요한 technical architecture judgment가 필요하거나, public interface 또는 public API impact가 나타나거나, UX workflow impact가 나타나거나, schema impact가 나타나거나, security/privacy impact가 있거나, sensitive category 또는 sensitive action이 나타나거나, QA 또는 verification 요구가 커지거나, evidence가 insufficient하거나, residual risk가 non-trivial하거나, multi-step delivery가 필요하면 `work`로 상향됩니다.
 
-대상이 더 이상 분명하지 않거나, 관찰되거나 의도된 changed paths가 active Change Unit 밖이거나, 여러 제품 영역이 영향을 받거나, public API 또는 module contract가 바뀔 수 있거나, 민감하거나 위험한 동작이 나타나거나, independent verification 또는 Manual QA가 close-relevant해지거나, 사용자 소유 제품 판단 또는 중요한 기술 판단이 필요하면 direct는 `work`로 상향되어야 합니다.
+대상이 더 이상 분명하지 않거나, 관찰되거나 의도된 changed paths가 active Change Unit 밖이거나, 여러 제품 영역 또는 subsystem이 영향을 받거나, multi-step delivery가 필요하거나, public API 또는 module contract가 바뀔 수 있거나, 민감하거나 위험한 동작이 나타나거나, independent verification 또는 Manual QA가 close-relevant해지거나, direct profile에서 close claim을 뒷받침할 evidence가 부족하거나, residual risk가 non-trivial해지거나, 사용자 소유 product/UX 판단 또는 중요한 technical architecture 판단이 필요하면 direct는 `work`로 상향되어야 합니다.
 
 ## Entity model
 
@@ -572,7 +574,7 @@ not_required | none | partial | sufficient | stale | blocked
 
 근거 sufficiency는 criteria-based입니다. Active Task와 Change Unit의 닫기에 영향을 주는 수용 기준, completion conditions, claims가 Evidence Manifest에서 관련 state records와 registered artifact refs로 덮였는지로 판단합니다. Artifact 개수를 세어 판단하지 않습니다.
 
-Artifact ref는 manifest가 그 ref 또는 그 ref가 뒷받침하는 owner record를 해당 criterion, condition, claim에 매핑할 때만 sufficiency에 기여합니다. Artifact가 많아도 required criterion에 supporting ref가 없으면 Task는 여전히 `partial`일 수 있습니다. 반대로 작은 direct Task는 모든 required criterion 또는 completion condition이 current 상태로 covered되어 있으면 적은 ref만으로도 `sufficient`일 수 있습니다.
+Artifact ref는 manifest가 그 ref 또는 그 ref가 뒷받침하는 owner record를 해당 criterion, condition, claim에 매핑할 때만 sufficiency에 기여합니다. Artifact가 많아도 required criterion에 supporting ref가 없으면 Task는 여전히 `partial`일 수 있습니다. 반대로 작은 변경(`direct`) Task는 모든 required criterion 또는 completion condition이 current 상태로 covered되어 있으면 적은 ref만으로도 `sufficient`일 수 있습니다.
 
 Chat text와 Markdown report prose는 evidence authority가 아닙니다. Status card나 Markdown 보고서는 evidence가 present, missing, stale, blocked인 이유를 요약할 수 있지만 close는 manifest, Task, gates, Change Units, Runs, approvals, Evals, Manual QA records, baseline relation, registered artifacts를 사용합니다.
 

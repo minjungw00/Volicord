@@ -311,7 +311,7 @@ Phase-filtered envelope candidates:
 
 | Envelope item | Push shape |
 |---|---|
-| Active Task | Task id, title, mode, and lifecycle phase. |
+| Active Task | Task id, title, schema mode, derived work-shape display label, and lifecycle phase. |
 | Current display | Journey Card or compact status card ref, or a one-line current status when a rendered card is not available. |
 | Next safe action | The next action and smallest unblocker if blocked. |
 | Active scoped Change Unit | One-line summary of in-scope work and out-of-bounds areas. |
@@ -345,7 +345,7 @@ Use phase-based bundles so agents do not load the whole documentation set:
 
 | Phase | Push into context | Pull on demand |
 |---|---|---|
-| Intake | Active or likely Task id, mode, current status or Journey Card, four display groups, next safe action, primary blocker, known source refs, and guarantee/MCP availability. | Task history, user guide, session-flow details, or Reference docs only when classification, authority, or blocker display is unclear. |
+| Intake | Active or likely Task id, schema mode when useful, derived work-shape display label, current status or Journey Card, four display groups, next safe action, primary blocker, known source refs, and guarantee/MCP availability. | Task history, user guide, session-flow details, or Reference docs only when classification, authority, or blocker display is unclear. |
 | Discovery | Clarification summary or Discovery Brief ref, blocking questions grouped by decision area, parked assumptions, inspectable repo/Harness facts, visible user-owned judgment candidates, QA/verification expectations, and first implementation candidate or work split. | Repo docs, module/interface/domain refs, older PRDs/designs, design-quality policy, or Decision Packet guidance only for facts needed to separate inspectable facts from user decisions and scope safe next work. |
 | Write | Active Change Unit, Autonomy Boundary, intended paths/tools/commands/network/secrets summary, baseline, Approval status, active Decision Packets, Write Authority Summary, and capability guarantee. | Exact `prepare_write`, Kernel, security, approval, or policy references only when the intended write touches that boundary or the connector is implementing the check. |
 | Evidence | Changed-path summary, latest Run summary, Evidence Manifest ref, artifact refs with integrity/freshness, evidence gaps, and next evidence action. | Logs, diffs, screenshots, traces, raw artifacts, artifact-storage details, or evidence contract sections only when interpreting, repairing, or registering evidence. |
@@ -353,6 +353,8 @@ Use phase-based bundles so agents do not load the whole documentation set:
 | Close | Close-readiness summary, close blockers, evidence/verification/QA/acceptance status, residual-risk summary or accepted refs, projection freshness, and smallest unblocker. | `close_task`, acceptance, residual-risk, Manual QA, verification, or artifact details only when a blocker or close attempt depends on the exact contract or source content. |
 
 Discovery phase phrases such as "first implementation candidate" and "work split" are context proposal/support phrases, not standalone schemas, canonical record types, gate values, projection kinds, or authority paths.
+
+For user-facing mode display, connectors should lead with read/advice work, small change, or tracked work. These labels are derived display text, not schema fields, enum values, canonical record types, projection kinds, gate values, or authority paths. If an envelope or context bundle mentions a work-shape display label, it means the derived display label for the current schema mode, not a new API field unless a future schema owner explicitly defines one. The schema-owned values remain `advisor`, `direct`, and `work` for state, conformance, and API payloads. Display translation must not reduce product-write authority checks, user-owned judgment routing, sensitive-action Approval, evidence, QA, verification, acceptance, residual-risk visibility, or close rules.
 
 Phase bundles are context discipline, not new schemas or gates. Moving from one phase to another changes what the connector pushes by default; it does not authorize writes, resolve decisions, create evidence, perform verification, accept risk, or close a Task.
 
@@ -458,7 +460,7 @@ Overview scenarios:
 
 - status with and without an active Task
 - current Journey Card shown before significant work resumes when required by the Use procedure
-- intake classification into `advisor`, `direct`, or `work`
+- intake classification into `advisor`, `direct`, or `work`, with user-facing display rendered as read/advice work, small change, or tracked work when shown to users
 - work shaping with shared design and decisions
 - Change Unit scope and vertical/horizontal exception handling
 - one blocking question with recommendation and uncertainty when available
@@ -471,7 +473,7 @@ Overview scenarios:
 - write-capable `record_run` consumes a compatible Write Authorization
 - sensitive-action Approval request, granted, denied, and expired paths
 - `record_run` with artifacts and evidence update
-- direct result projection
+- `DIRECT-RESULT` projection
 - verification launch or manual verification bundle
 - same-session verification guard
 - evaluator bundle freshness before detached verification

@@ -43,14 +43,14 @@
 ```text
 `docs/install.md`의 오탈자를 고쳤습니다.
 Self-check: spelling-only, 의미나 contract 변경 없음.
-Tiny direct로 닫았습니다. 남은 위험: 이번 close에는 알려진 것 없음.
+작은 변경으로 닫았습니다. 남은 위험: 이번 close에는 알려진 것 없음.
 ```
 
-Tiny direct는 여전히 `direct` 아래에 있습니다. 별도 mode가 아니며 사용자 판단, security boundary, evidence, scope, 쓰기 허가, 남은 위험 표시, close rule을 우회하지 않습니다. 문서 수정이 의미를 바꾸거나, link/render proof가 필요하거나, 엄격한 Reference contract에 닿거나, changed path와 self-check support를 넘어서면 같은 작업을 일반 `direct` 또는 `work`로 옮겨야 합니다.
+Tiny direct는 여전히 `direct` 아래에 있습니다. 별도 mode가 아니며 사용자 판단, security boundary, evidence, scope, 쓰기 허가, 남은 위험 표시, close rule을 우회하지 않습니다. 문서 수정이 의미를 바꾸거나, link/render proof가 필요하거나, 엄격한 Reference contract에 닿거나, changed path와 self-check support를 넘어서면 같은 작업을 일반 작은 변경(`direct`) 또는 추적되는 작업(`work`)으로 옮겨야 합니다.
 
 정확한 mode, evidence, close behavior는 [Kernel Reference](../reference/kernel.md#mode), [Evidence Sufficiency Profiles](../reference/kernel.md#evidence-sufficiency-profiles), [`close_task`](../reference/kernel.md#close_task)를 사용합니다.
 
-## 시나리오 2: 직접적인 코드 수정
+## 시나리오 2: 작은 코드 수정
 
 사용자가 말합니다.
 
@@ -75,7 +75,7 @@ Null invoice date가 "Not set"으로 표시되도록 바꿨습니다.
 Self-checked로 닫았습니다. 알려진 닫기 관련 남은 위험은 없습니다.
 ```
 
-에이전트가 formatter가 export, report, billing email, API response에 공유된다는 사실을 발견하면 이 작업은 더 이상 직접적인 코드 수정이 아닙니다. 하네스는 멈추고 제품 파일을 더 바꾸기 전에 더 넓은 영향을 먼저 정리해야 합니다.
+에이전트가 formatter가 export, report, billing email, API response에 공유된다는 사실을 발견하면 이 작업은 더 이상 작은 코드 수정이 아닙니다. 하네스는 멈추고 제품 파일을 더 바꾸기 전에 더 넓은 영향을 먼저 정리해야 합니다.
 
 Reference 문서는 scoped write boundary를 Change Unit, write allow/deny decision을 Write Authorization이라고 부릅니다. 정확한 write와 evidence 권한은 [Change Unit](../reference/kernel.md#change-unit), [쓰기 허가 기록](../reference/kernel.md#write-authorization), [`prepare_write`](../reference/kernel.md#prepare_write), [Evidence Gate](../reference/kernel.md#evidence-gate)를 사용합니다.
 
@@ -191,7 +191,7 @@ Evidence: sufficient
 
 ## 다음에 읽을 문서
 
-- 더 긴 direct와 work task 이야기는 [하나의 작업으로 보는 하네스](harness-in-one-task.md)를 읽습니다.
+- 더 긴 작은 변경과 추적되는 작업 이야기는 [하나의 작업으로 보는 하네스](harness-in-one-task.md)를 읽습니다.
 - 사용자 소유 판단이 진행을 막을 때는 [결정 패킷 Cookbook](../use/decision-packet-cookbook.md)을 읽습니다.
 - 실제 세션을 진행할 때는 [사용자 가이드](../use/user-guide.md)를 읽습니다.
 - 정확한 계약이 필요할 때만 Reference 문서를 사용합니다.

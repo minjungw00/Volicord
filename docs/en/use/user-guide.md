@@ -59,6 +59,18 @@ Run this work under the harness.
 
 But the agent should infer Harness use from the task shape. You should not have to start with internal labels.
 
+## Three everyday work shapes
+
+Most requests should be explained with plain work shapes:
+
+| Work shape | Use it when | What you should see |
+|---|---|---|
+| Read/advice work | The agent is reading, explaining, comparing, reviewing, or helping decide without changing product files. | The answer, sources or caveats when useful, and any decision or follow-up that matters. |
+| Small change | The requested change is narrow, low risk, and has an obvious result, such as a typo, copy-only edit, or focused fix. | A short scope, changed path or no-file result, what was checked, and whether anything forced escalation. |
+| Tracked work | The request has unclear scope, multiple parts, product or technical judgment, security/privacy impact, meaningful evidence needs, QA, verification, acceptance, or close-relevant risk. | Scope, judgment, evidence, close readiness, next safe action, and the smallest blocker. |
+
+The agent may record more internal detail than it displays. User-facing messages should show the detail that helps you decide, trust, or unblock the work, not a lifecycle checklist for every tiny edit.
+
 ## What the agent should answer first
 
 For non-trivial work, the first useful response is not a full plan or a pile of internal state. It should be a short translation of the request into plain working facts.
@@ -151,29 +163,35 @@ After you inspect, show the first implementation candidate or work split.
 Harness should not make a tiny change feel heavy. If the user says:
 
 ```text
-Change the settings button label from "Save" to "Update profile."
+Fix the typo in the settings toast: "Succesful" -> "Successful."
 ```
 
 The agent should keep the visible flow compact:
 
 ```text
-Scope: settings button label only.
+Scope: settings toast typo only.
 Out of scope: account behavior, layout, localization strategy, and broader copy cleanup.
-I will edit the target component and any directly related copy test.
+I will edit the target component and any directly related copy test if one exists.
 ```
 
 After the change, the result can be just as small:
 
 ```text
 Done.
-Changed: settings button label to "Update profile."
-Checked: direct copy test and diff review.
+Changed: settings toast typo to "Successful."
+Checked: related copy test and diff review.
 No broader product decision appeared, and no close-relevant residual risk is known for this small change.
 ```
 
-The light display does not mean the agent bypasses Harness internally. If product files may change, the agent still keeps scope narrow, checks that the intended write fits that scope, records what changed, and reports if the work grows beyond the original request.
+The light display does not mean the agent bypasses Harness internally. If product files may change, the agent still keeps scope narrow, uses the appropriate internal write-authority path, records what changed, and reports if the work grows beyond the original request. You should not need to see "Change Unit" language for every tiny edit unless it helps explain a boundary or blocker.
 
-Small work should escalate when it stops being small. For example, a label change becomes broader work if the label is shared across billing, onboarding, and profile flows; if the copy changes account behavior; if localization strategy changes; or if the result needs visual QA beyond a simple copy check.
+Small work should escalate when it stops being small. Escalate to tracked work when scope is unclear; multiple files, product areas, or subsystems are involved; a product or UX judgment is needed; an important technical architecture judgment is needed; a public interface or API may be affected; security or privacy may be affected; a sensitive action is needed; QA or verification requirements increase; evidence is insufficient; residual risk is non-trivial; or multi-step delivery is needed.
+
+Examples:
+
+- A typo or copy-only change can stay lightweight when it touches one obvious surface and does not change meaning, behavior, localization strategy, security posture, or required QA.
+- "Make Enter submit this modal instead of closing it" should escalate if it changes UI behavior, accessibility expectations, or product workflow. That is a product/UX decision, not just a small edit.
+- "Change login to magic links" should escalate because it changes authentication architecture and security/privacy behavior. The agent can inspect first, but implementation needs tracked scope, user-owned technical/security judgment, evidence, and likely QA/verification.
 
 ## Larger work gets more structure
 

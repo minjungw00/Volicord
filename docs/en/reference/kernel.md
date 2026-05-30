@@ -109,6 +109,8 @@ This document does not own:
 
 ## Work modes
 
+The schema-owned Task `mode` enum remains `advisor | direct | work`. User-facing surfaces should lead with derived display text: read/advice work for `advisor`, small change for `direct`, and tracked work for `work`. Those display labels do not add enum values, rename stored identifiers, create schema fields or record types, alter gate recomputation, authorize writes, or weaken write authority.
+
 `advisor` is for read-only explanation, comparison, review, and decision support. It does not authorize product writes. Advisor tasks usually close with `result=advice_only`; evidence, verification, QA, and acceptance gates are normally not required unless policy or the user explicitly requires them.
 
 `direct` is for small, low-risk product changes whose scope and result are obvious. It is write-capable, so product writes still require an active scoped Change Unit. Direct work may close as `self_checked` by default. If optional detached verification is performed and passes with a valid independence qualifier, direct work may be marked `detached_verified`.
@@ -134,9 +136,9 @@ No Decision Packet is created unless blocking user-owned judgment is detected. E
 
 Manual QA, detached verification, and residual-risk acceptance are not required for direct work unless policy, changed surface, user request, or detected risk requires them. If scope, risk, affected interface, or evidence expectations grow beyond the direct assumptions, the same Task escalates to `work` rather than continuing as direct.
 
-Tiny direct escalates to ordinary `direct` when scope broadens beyond the trivial edit while remaining low-risk and narrow, or when Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed. Ordinary `direct` escalates to `work` when product judgment, material technical judgment, architecture choice, public interface or public API impact, UX workflow impact, schema impact, sensitive category, multi-file or multi-step delivery, or nontrivial evidence/verification appears.
+Tiny direct escalates to ordinary `direct` when scope broadens beyond the trivial edit while remaining low-risk and narrow, or when Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed. Ordinary `direct` escalates to `work` when scope is unclear, multiple files or subsystems are involved, product/UX judgment is needed, important technical architecture judgment is needed, public interface or public API impact appears, UX workflow impact appears, schema impact appears, security/privacy impact appears, a sensitive category or sensitive action appears, QA or verification requirements increase, evidence is insufficient, residual risk is non-trivial, or multi-step delivery is needed.
 
-Direct must escalate to `work` when the target is no longer obvious, observed or intended changed paths fall outside the active Change Unit, multiple product areas are affected, a public API or module contract may change, sensitive or risky behavior appears, independent verification or Manual QA becomes close-relevant, or user-owned product or material technical judgment is required.
+Direct must escalate to `work` when the target is no longer obvious, observed or intended changed paths fall outside the active Change Unit, multiple product areas or subsystems are affected, multi-step delivery is needed, a public API or module contract may change, sensitive or risky behavior appears, independent verification or Manual QA becomes close-relevant, evidence cannot support the close claim at the direct profile, residual risk becomes non-trivial, or user-owned product/UX or material technical architecture judgment is required.
 
 ## Entity model
 
@@ -572,7 +574,7 @@ Where evidence is required, a successful completion requires `evidence_gate=suff
 
 Evidence sufficiency is criteria-based. It is judged from whether the Evidence Manifest covers the close-relevant acceptance criteria, completion conditions, and claims for the active Task and Change Unit, using related state records and registered artifact refs. It is not judged by counting artifacts.
 
-An artifact ref contributes to sufficiency only when the manifest maps it, or the related owner record it supports, to the criterion, condition, or claim it proves. A Task with many artifacts can still be `partial` when a required criterion has no supporting refs. A small direct Task can be `sufficient` with few refs when every required criterion or completion condition is covered and current.
+An artifact ref contributes to sufficiency only when the manifest maps it, or the related owner record it supports, to the criterion, condition, or claim it proves. A Task with many artifacts can still be `partial` when a required criterion has no supporting refs. A small-change (`direct`) Task can be `sufficient` with few refs when every required criterion or completion condition is covered and current.
 
 Chat text and Markdown report prose are not evidence authority. A status card or Markdown report may summarize why evidence is present, missing, stale, or blocked, but close uses the manifest, Task, gates, Change Units, Runs, approvals, Evals, Manual QA records, baseline relation, and registered artifacts.
 

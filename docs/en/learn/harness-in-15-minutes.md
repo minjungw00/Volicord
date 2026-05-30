@@ -43,14 +43,14 @@ What the user should see is compact:
 ```text
 Fixed the typo in `docs/install.md`.
 Self-check: spelling-only, no meaning or contract change.
-Closed as tiny direct. Residual risk: none known for this close.
+Closed as a small change. Residual risk: none known for this close.
 ```
 
-Tiny direct is still under `direct`; it is not a separate mode and does not bypass user-owned judgment, security boundaries, evidence, scope, write permission, residual-risk visibility, or close rules. If the edit changes meaning, needs link/render proof, touches a strict Reference contract, or grows beyond changed-path plus self-check support, the same work should move to ordinary `direct` or `work`.
+Tiny direct is still under `direct`; it is not a separate mode and does not bypass user-owned judgment, security boundaries, evidence, scope, write permission, residual-risk visibility, or close rules. If the edit changes meaning, needs link/render proof, touches a strict Reference contract, or grows beyond changed-path plus self-check support, the same work should move to ordinary small-change handling (`direct`) or tracked work (`work`).
 
 For exact mode, evidence, and close behavior, use [Kernel Reference](../reference/kernel.md#mode), [Evidence Sufficiency Profiles](../reference/kernel.md#evidence-sufficiency-profiles), and [`close_task`](../reference/kernel.md#close_task).
 
-## Scenario 2: Direct code change
+## Scenario 2: Small code change
 
 The user says:
 
@@ -75,7 +75,7 @@ The write was allowed for the implementation run.
 Closed self-checked; no close-relevant residual risk is known.
 ```
 
-If the agent discovers the formatter is shared across exports, reporting, billing emails, and API responses, the task is no longer just a direct code fix. Harness should stop and shape the wider impact before product files change further.
+If the agent discovers the formatter is shared across exports, reporting, billing emails, and API responses, the task is no longer just a small code change. Harness should stop and shape the wider impact before product files change further.
 
 The Reference docs name the scoped write boundary a Change Unit, and the write allow/deny decision Write Authorization. For exact write and evidence authority, use [Change Unit](../reference/kernel.md#change-unit), [Write Authorization](../reference/kernel.md#write-authorization), [`prepare_write`](../reference/kernel.md#prepare_write), and [Evidence Gate](../reference/kernel.md#evidence-gate).
 
@@ -191,7 +191,7 @@ For the exact projection boundary, use [Document Projection Reference](../refere
 
 ## Where to go next
 
-- Read [Harness in One Task](harness-in-one-task.md) for a fuller direct and work task story.
+- Read [Harness in One Task](harness-in-one-task.md) for a fuller small-change and tracked-work task story.
 - Read [Decision Packet Cookbook](../use/decision-packet-cookbook.md) when a user-owned judgment blocks progress.
 - Read [User Guide](../use/user-guide.md) when you are running a real session.
 - Use Reference docs only when you need exact contracts.

@@ -46,7 +46,7 @@ Use progressive context loading instead of reading the whole documentation set i
 
 | Phase | Push now | Pull only if needed |
 |---|---|---|
-| Intake | Current status or Journey Card, likely mode, four display groups, next safe action, primary blocker. | Task history, user guide, or Reference docs needed to classify the request. |
+| Intake | Current status or Journey Card, likely work shape, four display groups, next safe action, primary blocker. | Task history, user guide, or Reference docs needed to classify the request. |
 | Discovery | Clarification summary, blocking questions grouped by decision area, inspectable facts, assumptions, user-owned judgment candidates, QA/verification expectations, current source refs, and first implementation candidate or work split. | Repo docs, module/interface/domain refs, older PRDs/designs, or decision guidance needed to separate inspectable facts from user decisions and scope safe next work. |
 | Write | Active Change Unit, Autonomy Boundary, intended paths/tools/commands summary, Approval status, active Decision Packets, Write Authority Summary. | Exact `prepare_write`, Kernel, security, approval, or policy references needed for the intended write. |
 | Evidence | Run summary, Evidence Manifest ref, artifact refs, evidence gaps, next evidence action. | Logs, diffs, screenshots, traces, or artifact/evidence contract details needed to interpret or repair support. |
@@ -69,11 +69,11 @@ Track ordinary-language requests when their shape suggests scope, judgment, evid
 - user-owned product judgment or material technical judgment with cost, compatibility, security, maintenance, migration, interface, dependency, or risk impact
 - evidence, verification, Manual QA, acceptance, or residual-risk needs
 
-Keep small direct tasks light. Do not add ceremony just to answer a question, inspect code, explain a result, or handle a tiny low-risk change with an already narrow shape. A typo, one docs sentence, or an obvious rename can use the tiny direct profile under `direct` when no user-owned judgment, sensitive category, security boundary, or evidence beyond the tiny changed-path/self-check note is hiding inside it.
+Keep small changes light. Do not add ceremony just to answer a question, inspect code, explain a result, or handle a tiny low-risk change with an already narrow shape. A typo, one docs sentence, or an obvious rename can use the internal tiny profile under `direct` when no user-owned judgment, sensitive category, security boundary, or evidence beyond the tiny changed-path/self-check note is hiding inside it. User-facing display should say the plain scope, result, and check, not expose the internal profile unless it clarifies a boundary.
 
 Show:
 
-- the active or likely Task id and mode: `advisor`, `direct`, or `work`
+- the active or likely Task id when useful, plus the plain work shape: read/advice work, small change, or tracked work; include `advisor`, `direct`, or `work` only as diagnostic or power-user detail
 - Scope: the current or proposed scope, what is out of bounds, and any active Change Unit or write-authority boundary that affects the next action
 - Judgment: any user-owned question, Decision Packet, or sensitive-action Approval that blocks progress
 - Evidence: supporting refs, missing support, stale support, or checks already run
@@ -179,11 +179,11 @@ Prefer the plain phrase first and the exact Harness term in parentheses only whe
 
 ## Intake
 
-Intake turns an everyday request into a usable task shape without forcing the user to speak Harness. The user may say "add email login and keep reset out of scope"; the agent should translate that into mode, scope, possible decisions, evidence needs, write checks, and close-readiness handling.
+Intake turns an everyday request into a usable task shape without forcing the user to speak Harness. The user may say "add email login and keep reset out of scope"; the agent should translate that into a plain work shape, scope, possible decisions, evidence needs, write checks, and close-readiness handling.
 
-Discovery is the agent's conditional requirements-clarification behavior before implementation planning and before write authority. It is not primarily a user command. Users can trigger the same behavior with plain language such as "clarify the plan before implementation" or "ask what you need before changing code." Use it when clarification is needed because the request is ambiguous, feature-shaped, auth/security-sensitive, UX/copy/workflow-heavy, public-interface or module-boundary-facing, likely to touch policy, or likely to become `work`; do not add it as ceremony for obvious direct work. It is not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, scope authority, or a new authority path.
+Discovery is the agent's conditional requirements-clarification behavior before implementation planning and before write authority. It is not primarily a user command. Users can trigger the same behavior with plain language such as "clarify the plan before implementation" or "ask what you need before changing code." Use it when clarification is needed because the request is ambiguous, feature-shaped, auth/security-sensitive, UX/copy/workflow-heavy, public-interface or module-boundary-facing, likely to touch policy, or likely to become tracked work; do not add it as ceremony for an obvious small change. It is not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, acceptance, residual-risk acceptance, close, scope authority, or a new authority path.
 
-Listen for the same task-shape triggers used at session start: product writes, scope drift risk, ambiguous requirements, multi-file or structural work, sensitive or policy-relevant areas, user-owned judgment, and evidence, verification, Manual QA, acceptance, or residual-risk needs. When one appears, translate the ordinary request into a proposed mode, scope, out-of-bounds area, and next safe action.
+Listen for the same task-shape triggers used at session start: product writes, scope drift risk, ambiguous requirements, multi-file or structural work, sensitive or policy-relevant areas, user-owned judgment, and evidence, verification, Manual QA, acceptance, or residual-risk needs. When one appears, translate the ordinary request into a proposed work shape, scope, out-of-bounds area, and next safe action.
 
 The intake route is:
 
@@ -233,45 +233,38 @@ Can continue if deferred: read-only inspection and a scoped proposal; not implem
 Good intake:
 
 ```text
-I can treat this as direct if the change stays inside the settings copy. If it also changes account behavior, it becomes work. Recommendation: start direct with settings copy only. Is that the intended scope?
+I can keep this as a small change if it stays inside the settings copy. If it also changes account behavior, it becomes tracked work. Recommendation: start with settings copy only. Is that the intended scope?
 ```
 
-## Classify as advisor/direct/work
+## Classify the work shape
 
-Use `advisor` for reading, explaining, comparing, and reviewing without product writes.
+Lead with the plain work shape. Keep `advisor`, `direct`, and `work` as internal routing labels owned by the kernel contract, not labels the user must learn.
 
-Use `direct` for small, low-risk work with a narrow scope. Direct work still needs active scope and write authority before product writes, but it should stay light.
+| Plain work shape | Internal mode | Use it for | Escalate when |
+|---|---|---|---|
+| Read/advice work | `advisor` | Reading, explaining, comparing, reviewing, and decision support without product writes. | Product files may change, a sensitive action is needed, or the user asks to turn advice into implementation. |
+| Small change | `direct` | Small, low-risk code or docs changes with narrow scope and lightweight evidence. Tiny typo, one-sentence docs, and obvious rename edits are a subprofile, not a new mode. | Scope is unclear, multiple files or subsystems are involved, product/UX judgment is needed, important architecture judgment is needed, public interface/API impact appears, security/privacy impact appears, a sensitive action appears, QA or verification requirements increase, evidence is insufficient, residual risk is non-trivial, or multi-step delivery is needed. |
+| Tracked work | `work` | Feature work, UX workflow, auth-facing behavior, schema, public API/interface, structural change, risky fix, multi-file/multi-step delivery, or work needing meaningful evidence and independent verification. | Keep it tracked; when auth, security, privacy, secrets, infrastructure, or similarly sensitive areas appear, route approvals, Decision Packets, evidence, verification, QA, and residual risk through their owner paths. |
 
-Use `work` for feature work, structural changes, risky fixes, multi-file changes, unclear requirements, or anything that needs meaningful evidence and independent verification.
+The exact mode/profile contract is owned by [Kernel Reference](../reference/kernel.md#work-modes). These plain work shapes are display guidance; they do not add schema values or change authority rules.
 
-Use these task levels as routing labels, not new mode values:
+If a small change grows, move the same Task to tracked work and show why in ordinary language.
 
-| Level | Use it for | Escalate when |
-|---|---|---|
-| Tiny | Typo, single docs sentence, or obvious rename. It is a profile under `direct`, not a new mode. | Scope broadens, evidence beyond a tiny changed-path/self-check note is needed, or any judgment, approval, sensitive, security, or risk boundary appears. |
-| Direct | Small low-risk code or docs change. | Product judgment, architecture choice, public interface or API impact, UX workflow, sensitive category, multi-file scope, or multi-step delivery appears. |
-| Work | Feature, UX workflow, auth-facing behavior, schema, public API/interface, or multi-file/multi-step work. | Auth, security, privacy, secrets, infra, or other sensitive areas make it high-risk work. |
-| High-risk Work | Auth, security, privacy, secrets, infra, or similarly sensitive work. | Keep in `work`; route approvals, Decision Packets, evidence, verification, QA, and residual risk through their owner paths. |
+## Small-change ceremony budget
 
-The exact mode/profile contract is owned by [Kernel Reference](../reference/kernel.md#work-modes).
+Small change is a lightweight user experience, not a lower authority path. Keep the visible budget to the smallest useful set:
 
-If a direct task grows, move the same task to `work` and show why.
-
-## Direct ceremony budget
-
-Direct mode is a lightweight user experience, not a lower authority path. For direct work, keep the visible budget to the smallest useful set:
-
-- classify the request as direct and state the narrow scope
+- state the narrow scope in ordinary language
 - name out-of-bounds behavior, files, or decisions when they are relevant
-- create or select an active minimal Change Unit before product writes
-- show write authority before the exact write attempt
+- record or select the internal minimal Change Unit before product writes, but show "narrow scope" or "write authority" to the user only when useful for decision-making and trust
+- use compatible `prepare_write` before the exact product-file write attempt when product writes apply
 - report changed paths, the self-check or other lightweight evidence, escalation status, and close-relevant risk
 
-For tiny direct, the visible budget may be even smaller: the trivial scope, changed path or no-file result, and self-check. That small display is not an authorization shortcut. Tiny direct still respects active scope, compatible `prepare_write` when product writes apply, user-owned judgment, sensitive-action Approval, security and privacy boundaries, residual-risk visibility, and close rules.
+For a tiny change, the visible budget may be even smaller: the trivial scope, changed path or no-file result, and self-check. That small display is not an authorization shortcut. The internal tiny profile under `direct` still respects active scope, compatible `prepare_write` when product writes apply, user-owned judgment, sensitive-action Approval, security and privacy boundaries, residual-risk visibility, and close rules.
 
 Do not create a Decision Packet, require Manual QA, request detached verification, or show a full close checklist unless the task shape, policy, changed surface, detected risk, or user request makes that necessary.
 
-Escalate the same Task to `work` when the target stops being obvious, the changed paths cross the active Change Unit, the edit affects multiple product areas, the change may alter a public API or module contract, sensitive or risky behavior appears, Manual QA or detached verification becomes important, or user-owned product or material technical judgment is needed.
+Escalate the same Task to tracked work when the target stops being obvious, scope is unclear, the changed paths cross the active Change Unit, the edit affects multiple files, product areas, or subsystems, the change may alter a public API or module contract, product/UX judgment is needed, important technical architecture judgment is needed, security/privacy impact appears, a sensitive action appears, QA or verification requirements increase, evidence is insufficient, residual risk is non-trivial, or multi-step delivery is needed.
 
 ## Scope and Change Unit
 
@@ -299,9 +292,9 @@ Use this distinction when explaining stops and permissions:
 | Residual-risk acceptance | Is this known remaining risk acceptable for close? | Records acceptance of visible close-relevant risk and supports residual-risk accepted close when other gates allow it. | Does not create detached verification, prove correctness, waive QA, or make the close a normal no-risk close. |
 | Write Authorization | May this exact write attempt happen now? | Records that Core allowed one compatible write attempt after the required checks. | Is not reusable and does not expand scope, Autonomy Boundary, or Approval. |
 
-For small direct tasks, the active Change Unit may be generated from the user's request and surrounding context. Keep examples explanatory, not schema-defining:
+For small changes, the internal active Change Unit may be generated from the user's request and surrounding context. Do not require the user to see "Change Unit" language for every tiny edit; show it only when it explains scope, write authority, or a blocker. Keep examples explanatory, not schema-defining:
 
-- Docs or copy edit: purpose "change this phrase"; non-goals "no behavior or contract change"; scoped paths "the named doc/component and direct test if present"; stop if "meaning, localization strategy, or public promise changes."
+- Docs or copy edit: purpose "change this phrase"; non-goals "no behavior or contract change"; scoped paths "the named doc/component and related test if present"; stop if "meaning, localization strategy, or public promise changes."
 - Focused test edit: purpose "cover the reported case"; non-goals "no implementation refactor"; scoped paths "the relevant test"; stop if "the fix requires product code."
 
 When a prompt or status uses the word "approved," name the exact authority or recorded decision: sensitive-action Approval, scope confirmation, Decision Packet resolution, residual-risk acceptance, result acceptance (Acceptance), or Write Authorization status. Do not use "approved" as a catch-all label.
@@ -427,7 +420,7 @@ Do not describe a cooperative or detective hold as if it blocks execution. Say t
 
 If write authority is blocked, unavailable, stale, or incompatible with the intended change, hold product writes and explain the smallest unblocker.
 
-If observed changed paths fall outside the consumed Write Authorization or active Change Unit, do not summarize them as authorized work. Show the mismatch, hold further product writes, and route to repair: revert or isolate the extra change, request a scope decision, or escalate to `work` when the wider change is now intentional.
+If observed changed paths fall outside the consumed Write Authorization or active Change Unit, do not summarize them as authorized work. Show the mismatch, hold further product writes, and route to repair: revert or isolate the extra change, request a scope decision, or escalate to tracked work (`work`) when the wider change is now intentional.
 
 Documentation-maintenance edits are a separate docs-only workflow. They are governed by
 [Authoring Guide](../maintain/authoring-guide.md), not by the product-write flow described here.
@@ -450,7 +443,7 @@ When evidence is missing, name the criterion or claim that lacks support. Do not
 
 Use refs-first evidence display. Cite Evidence, Run, Eval, Manual QA, artifact, log, screenshot, diff, or trace refs with a short outcome, and embed excerpts only when the user or evaluator needs to inspect the content to decide the next action.
 
-Task shape changes what "enough" looks like. Advisor work usually cites source refs or a review bundle only when recorded evidence is requested. Tiny docs-only work can be supported by the changed path, a one-line patch summary or diff ref, and a self-check that says no meaning changed; if Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed, escalate to ordinary Direct. Direct docs-only work can be supported by changed path, diff or patch summary, and self-check. Direct code adds a focused check or a recorded reason no automated check applies. Feature work maps each criterion to Run and artifact refs. UI/UX, workflow, copy, accessibility, product-taste, and visual-output work separates visual or Browser QA artifact evidence from Manual QA judgment. Sensitive work keeps Approval, redaction, and omission refs visible without treating Approval as correctness. Verification-required work needs an Eval that names the evidence reviewed.
+Task shape changes what "enough" looks like. Read/advice work usually cites source refs or a review bundle only when recorded evidence is requested. A tiny docs-only small change can be supported by the changed path, a one-line patch summary or diff ref, and a self-check that says no meaning changed; if Evidence Manifest coverage, artifact refs, link/render proof, or other evidence beyond the tiny result note is needed, escalate to an ordinary small change or tracked work according to scope. Small docs-only changes can be supported by changed path, diff or patch summary, and self-check. Small code changes add a focused check or a recorded reason no automated check applies. Tracked feature work maps each criterion to Run and artifact refs. UI/UX, workflow, copy, accessibility, product-taste, and visual-output work separates visual or Browser QA artifact evidence from Manual QA judgment. Sensitive work keeps Approval, redaction, and omission refs visible without treating Approval as correctness. Verification-required work needs an Eval that names the evidence reviewed.
 
 If evidence becomes stale, say why in ordinary language and name the smallest repair. Common causes are baseline drift, changed files after the supporting Run or Eval, approval drift or expiry, missing or failed-integrity artifacts, and relevant Shared Design, domain term, module map, or interface contract changes.
 
@@ -489,7 +482,7 @@ Verification waiver and QA waiver do not upgrade assurance. A verification waive
 
 Applied close examples:
 
-- Direct work: show changed files, evidence refs, self-check, and whether anything escalated. Do not call it detached verified without a qualifying Eval.
+- Small change: show changed files, evidence refs, self-check, and whether anything escalated. Do not call it detached verified without a qualifying Eval.
 - UI/UX, workflow, copy, accessibility, product-taste, or visual-output work: keep tests, browser smoke, Browser QA artifacts, Manual QA, and acceptance on separate lines. If Manual QA is waived, show the skipped surface, user-accepted residual risk, and residual-risk follow-up.
 - Auth or security work: show sensitive-action Approval separately from the security or product decision, then show evidence and verification. Approval to touch a secret or permission does not settle redaction, audit, role, retention, or user-notice choices.
 - Public API work: show caller compatibility, migration or documentation impact, evidence, and verification separately. Passing tests does not by itself settle the API contract decision.
@@ -499,11 +492,11 @@ Applied close examples:
 
 Close only when blockers are clear for the active task path.
 
-For small `direct` work, keep the result low-ceremony: request, scope, changed files or no-file outcome, checks, escalation status, and any close-relevant risk or follow-up.
+For small changes, keep the result low-ceremony: request, scope, changed files or no-file outcome, checks, escalation status, and any close-relevant risk or follow-up.
 
-For `work` tasks, the close summary must make the close basis visible. Show changed scope, evidence coverage, verification, Manual QA, residual risk, acceptance, and close reason when applicable. If a gate is waived, `not_required`, failed, pending, or blocked, the close display should say so instead of folding it into a generic success line.
+For tracked work, the close summary must make the close basis visible. Show changed scope, evidence coverage, verification, Manual QA, residual risk, acceptance, and close reason when applicable. If a gate is waived, `not_required`, failed, pending, or blocked, the close display should say so instead of folding it into a generic success line.
 
-Use the close display that matches the task shape: `DIRECT-RESULT` is the compact result display for direct work, `TASK` Close Summary is continuity display for active or recently closed `work` tasks, and Journey Card close context is compact status/resume display. None of these displays creates state, gates, acceptance, QA, verification, residual-risk acceptance, close, or write authority.
+Use the close display that matches the task shape: `DIRECT-RESULT` is the compact result display for small changes, `TASK` Close Summary is continuity display for active or recently closed tracked work, and Journey Card close context is compact status/resume display. None of these displays creates state, gates, acceptance, QA, verification, residual-risk acceptance, close, or write authority.
 
 Close displays should lead with the same four groups: Scope for changed scope, Judgment for acceptance or residual-risk decisions, Evidence for support refs, and Close Readiness for verification, Manual QA, residual risk, close blockers, and close reason. Raw gate names can follow when they explain a blocker, but exact gate values and close semantics remain kernel-owned.
 
@@ -525,7 +518,7 @@ If close is blocked, say exactly why and name the smallest next unblocker.
 Good start:
 
 ```text
-This looks like a small task Harness should track lightly. Current mode looks like direct because the requested change is one copy string. Scope: settings page label only. Out of bounds: account behavior and API changes. Next safe action: check write authority for that file, then make the edit and self-check.
+This looks like a small change that can stay light because the requested change is one copy string. Scope: settings page label only. Out of bounds: account behavior and API changes. Next safe action: check write authority for that file, then make the edit and self-check.
 ```
 
 Bad start:
@@ -580,17 +573,19 @@ Bad close claim:
 Tests passed, so Manual QA and acceptance are complete.
 ```
 
-Good direct result:
+Good small-change result:
 
 ```text
-Done as direct.
-Scope: one settings label; account behavior stayed out of bounds; Write Authorization WA-031 was consumed; no escalation.
+Done as a small change.
+Scope: one settings label; account behavior stayed out of bounds; no escalation.
 Judgment: no user-owned decision was needed.
-Evidence: changed `src/settings/Profile.tsx`; checked copy test RUN-031 and diff ART-DIFF-031; Evidence Manifest EM-031 supports the claim.
-Close Readiness: no close-relevant blocker remains; residual risk is none for this close (`ResidualRiskSummary.status=none`).
+Evidence: changed `src/settings/Profile.tsx`; checked the related copy test and diff.
+Close Readiness: no close-relevant blocker or known residual risk remains for this small change.
 ```
 
-Good work close summary:
+Power-user or diagnostic displays may include owner refs such as Write Authorization, Evidence Manifest, Run, artifact, or Residual Risk refs when they help explain authority or support.
+
+Good tracked-work close result:
 
 ```text
 Close summary:
