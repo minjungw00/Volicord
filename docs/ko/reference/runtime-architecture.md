@@ -79,13 +79,13 @@ flowchart LR
   Home -->|현재 기록, events, 원본 근거 refs| Server
 ```
 
-이 분리는 대화, Markdown 보고서, 생성된 connector 파일, operator output, MCP caller claim, 제품 소스 파일이 우연히 운영 상태가 되는 일을 막습니다. Core 상태 변경 경로만 기준 운영 상태를 commit할 수 있습니다.
+이 분리는 대화, Markdown 보고서, 생성된 connector 파일, operator output, MCP caller claim, 제품 소스 파일을 기준 운영 상태 밖에 둡니다. Core 상태 변경 경로만 기준 운영 상태를 commit할 수 있습니다.
 
 이 문서 저장소는 세 공간 중 향후 하네스 서버/설치 공간의 소스 저장소에 해당하며, 제품 저장소나 하네스 런타임 홈이 아닙니다.
 
 ## 로컬 위협 모델
 
-하네스는 로컬 권한 계층으로 설계되며, 일반적인 operating-system security boundary를 대신하지 않습니다. 전체 asset map, trust-boundary map, threat category, control category는 [보안 위협 모델 참조](security-threat-model.md)가 담당합니다.
+하네스는 로컬 권한 계층으로 설계되며, 일반적인 운영체제 보안 경계를 대신하지 않습니다. 초기 로컬 하네스는 OS 권한을 자동으로 제공하거나, 임의 도구를 sandbox 격리하거나, 로컬 파일을 변조 불가능하게 만들거나, 지시 기반 agent behavior를 사전 차단 보안으로 바꾸지 않습니다. 전체 asset map, trust-boundary map, threat category, control category는 [보안 위협 모델 참조](security-threat-model.md)가 담당합니다.
 
 Architecture implication은 단순합니다. 가까이 있는 file과 caller도 별도의 trust zone입니다. Product file, chat text, generated connector file, operator output, projection Markdown, artifact bytes, external command output, MCP caller claim은 하네스에 정보를 줄 수 있지만, canonical operational state를 commit하는 것은 Core뿐입니다.
 
@@ -190,7 +190,7 @@ state.sqlite / artifact store / validators / projector / reconcile worker
 
 대화 접점은 사용자 의도, decision, approval, QA 판단, acceptance를 모읍니다. Agent 접점은 읽기, 편집, 확인을 수행합니다. 하네스 rules와 skills는 agent가 현재 상태를 놓치지 않게 합니다. MCP server는 tool 경계를 제공합니다. Core는 상태 모델을 담당합니다. Validator, artifact 수집, projection, reconcile은 근거와 읽기용 출력을 상태 전이에 붙입니다.
 
-Native hooks, sidecars, command wrappers, file watchers, worktree isolation은 capability에 따라 달라지는 집행 계층입니다. 구체적인 capability profile이 fixture로 더 강한 enforcement를 증명하지 않는 한 코어 권한 조각(v0.1 Core Authority Slice)은 reference 접점에서 cooperative/detective behavior에 의존합니다.
+Native hooks, sidecars, command wrappers, file watchers, worktree isolation은 capability에 따라 달라지는 집행 계층입니다. 구체적인 capability profile이 covered operation에 대해 fixture로 더 강한 enforcement를 증명하지 않는 한 코어 권한 조각(v0.1 Core Authority Slice)과 초기 사용자 대상 MVP는 reference 접점에서 cooperative/detective behavior에 의존합니다.
 
 
 ### Core modules
@@ -317,14 +317,25 @@ Reconcile은 merge, reject, note로 convert, decision 생성, design support rec
 
 | 수준 | 의미 |
 |---|---|
-| `cooperative` | agent 접점이 하네스 지시와 MCP 결정을 따를 것으로 기대됩니다. 보류는 지시에 따른 것이며 하네스가 실행 전 차단을 주장하지는 않습니다 |
-| `detective` | 하네스가 실행 뒤에 위반을 관찰하고 상태를 `blocked`, `stale`, `partial`, `failed`로 표시할 수 있습니다. 이는 detection이지 prevention이 아닙니다 |
-| `preventive` | 구체적인 connector 또는 runtime path가 covered operation에 대해 fixture로 입증된 pre-tool blocking을 갖고 있어 실행 전에 차단할 수 있습니다 |
-| `isolated` | risky work가 worktree, sandbox, process 경계, evaluator 경계 또는 동등한 isolation으로 분리됩니다. Isolation은 blast radius를 줄이지만 그 자체로 work를 승인하거나 검증하지 않습니다 |
+| `cooperative` | agent 접점에 하네스 규칙과 MCP 결정을 따르라고 지시하는 수준입니다. 보류는 지시 기반이며 강한 보안 경계가 아닙니다 |
+| `detective` | 하네스가 실행 뒤에 위반을 탐지하거나 기록하고 상태를 `blocked`, `stale`, `partial`, `failed`로 표시할 수 있습니다. 이는 탐지 가능 수준이지 prevention이 아닙니다 |
+| `preventive` | 구체적인 connector 또는 runtime path가 해당 covered operation을 실행 전에 사전 차단하며, 그 exact path에 대한 fixture 증명이 있습니다 |
+| `isolated` | work 또는 verification이 문서화된 separation boundary 뒤에서 실행되는 수준입니다. worktree 또는 fresh evaluator bundle은 scope, freshness, blast-radius 분리를 제공할 수 있지만, profile이 exact isolation mechanism을 증명하지 않는 한 자동으로 OS sandbox 격리, 권한 경계, 변조 불가능한 보안 경계가 되지는 않습니다. 격리만으로 work를 승인하거나 검증하지 않습니다 |
+
+### 단계별 보장 자세
+
+보장 수준은 staged delivery에 다음처럼 적용됩니다.
+
+| 단계 | 정직한 보장 자세 |
+|---|---|
+| v0.1 Core Authority Slice / Kernel Smoke | Core 권한, state-version check, 범위가 정해진 write-authority decision, artifact registration, 기본 탐지 가능 validation을 증명합니다. Covered operation에 대해 fixture로 입증된 도구 실행 전 guard 또는 문서화되고 입증된 separation boundary를 명시적으로 구현하지 않는 한 reference 접점은 cooperative/detective로 표시해야 합니다. OS 권한, 임의 도구 sandbox 격리, 변조 불가능한 로컬 파일, 자동 도구 실행 전 차단은 암시되지 않습니다. |
+| v0.2 User-Facing Harness MVP | 같은 local-only 자세 위에 사용자용 status, judgment, evidence, close-readiness 이해를 추가합니다. 연결된 profile이 exact stronger control을 증명하지 않는 한 OS 수준 격리, sandbox 격리, 변조 불가능한 저장소, 도구 실행 전 차단을 주장하면 안 됩니다. |
+| v0.3-v0.4 hardened local profiles | Owner 문서, connector profile, conformance가 exact covered operation 또는 separation boundary를 증명한 경우에만 covered operation에 대한 preventive control 또는 isolated work/verification profile을 승격할 수 있습니다. 그 전까지 더 강한 control은 향후 또는 profile별 범위 note로 남습니다. |
+| v1+ Expansion | Remote, shared, cloud 또는 더 넓은 isolated profile은 owner 문서와 conformance가 승격하기 전까지 roadmap 범위에 남습니다. 승격되더라도 같은 Core authority, trust-boundary, 정직한 guarantee display 규칙을 유지해야 합니다. |
 
 ### 보장 수준 강제 지도
 
-이 diagram은 guarantee label이 어디에서 enforcement strength를 바꾸고, 어디에서는 바꾸지 않는지 보여줍니다. 눈여겨볼 점은 Core가 먼저 authority decision을 내린다는 것입니다. Guarantee level은 authority를 만들지 않습니다. Denied 또는 held operation이 covered operation에 대해 instruction, after-action detection, fixture-proven pre-execution blocking, isolation 중 무엇으로 처리되는지 설명할 뿐입니다.
+이 diagram은 guarantee label이 어디에서 enforcement strength를 바꾸고, 어디에서는 바꾸지 않는지 보여줍니다. 눈여겨볼 점은 Core가 먼저 authority decision을 내린다는 것입니다. Guarantee level은 authority를 만들지 않습니다. Denied 또는 held operation이 covered operation에 대해 instruction, after-action detection, fixture-proven 실행 전 차단, isolation 중 무엇으로 처리되는지 설명할 뿐입니다.
 
 ```mermaid
 flowchart TB
@@ -337,21 +348,21 @@ flowchart TB
   Hold --> Profile{"connected profile<br/>enforcement or reporting strength"}
   Profile --> Cooperative["cooperative<br/>instruction-only hold"]
   Profile --> Detective["detective<br/>detect or report after action<br/>if violation occurs"]
-  Profile --> Preventive["preventive<br/>fixture-proven pre-execution block<br/>for covered operation"]
-  Profile --> Isolated["isolated<br/>bounded execution 또는 promotion path"]
+  Profile --> Preventive["preventive<br/>fixture-proven 실행 전 차단<br/>for covered operation"]
+  Profile --> Isolated["isolated<br/>documented separation boundary"]
   Cooperative -. "when an event is recorded" .-> OwnerPaths
   Detective -. "when violation is observed" .-> OwnerPaths
   Preventive -. "when blocked attempt is recorded" .-> OwnerPaths
-  Isolated -. "when promotion or escape is recorded" .-> OwnerPaths
+  Isolated -. "when boundary result is recorded" .-> OwnerPaths
   Run --> OwnerPaths["Core owner paths update<br/>state, artifacts, evidence,<br/>and projection jobs when applicable"]
 ```
 
-Preventive와 isolated label은 연결된 profile이 해당 operation에 대한 fixture-proven coverage를 가질 때만 적용됩니다. 이 label은 work를 approve하거나, Write Authorization을 만들거나, gate를 충족하거나, evidence를 만들거나, verification을 수행하거나, risk를 accept하거나, Task를 close하지 않습니다. 엄격한 `prepare_write`와 `record_run` 동작은 [커널 참조](kernel.md#prepare_write)와 [커널 참조](kernel.md#record_run)가 담당합니다. Public response shape와 error precedence는 [MCP API와 스키마](mcp-api-and-schemas.md)가 담당합니다. 구체적인 profile declaration은 [Agent 통합 참조](agent-integration.md#capability-profiles)가 담당합니다. 이 diagram은 enforcement orientation일 뿐입니다.
+Preventive label은 connected profile이 설명 중인 operation에 대한 fixture-proven coverage를 가질 때만 적용됩니다. Isolated label은 connected profile이 주장하는 separation boundary를 문서화하고 증명한 경우에만 적용됩니다. Fresh evaluator bundle, fresh session, separate worktree는 verification independence와 stale-context control을 뒷받침할 수 있습니다. Sandbox 격리, 권한 계층, locked-down runner, process boundary, container boundary 표현은 profile이 exact mechanism을 이름 붙이고 증명한 경우에만 보안 격리 표현으로 씁니다. 이 label은 work를 approve하거나, Write Authorization을 만들거나, gate를 충족하거나, evidence를 만들거나, verification을 수행하거나, risk를 accept하거나, Task를 close하지 않습니다. 엄격한 `prepare_write`와 `record_run` 동작은 [커널 참조](kernel.md#prepare_write)와 [커널 참조](kernel.md#record_run)가 담당합니다. Public response shape와 error precedence는 [MCP API와 스키마](mcp-api-and-schemas.md)가 담당합니다. 구체적인 profile declaration은 [Agent 통합 참조](agent-integration.md#capability-profiles)가 담당합니다. 이 diagram은 enforcement orientation일 뿐입니다.
 
 
 보장 수준 표시는 경계의 양쪽을 모두 이름 붙여야 합니다. 연결된 profile이 실행 전에 실제로 막을 수 있는 것과, 실행 뒤에만 감지할 수 있는 것을 나눠 보여줘야 합니다. Surface name, product name, recipe name, friendly mode label만으로는 capability가 증명되지 않습니다. 선언은 실제 host/profile capability profile과 현재 proof basis에서 나와야 합니다. Guard, freeze, careful-mode label은 connected profile이 입증한 capability를 그대로 따르며, cooperative 또는 detective profile을 preventive blocking으로 올려 주지 않고 새 authority tier도 만들지 않습니다.
 
-Current reference behavior는 연결된 접점이 covered operation에 대해 구체적으로 fixture로 입증된 pre-tool guard나 isolation layer를 갖는 경우가 아니라면 cooperative/detective입니다. Native hook expansion, advanced sidecar watching, broad isolated execution은 reference 접점을 위해 명시적으로 구현되지 않는 한 later roadmap items입니다. Owner 문서를 통해 승격되기 전까지 이 항목들은 관찰이나 표시를 개선할 수 있을 뿐이며, write를 authorize하거나, gate를 충족하거나, Approval을 부여하거나, verification 또는 QA를 증명하거나, acceptance를 기록하거나, Core 권한을 대체하지 않습니다.
+Current reference behavior는 연결된 접점이 covered operation에 대해 구체적으로 fixture로 입증된 도구 실행 전 guard나 문서화되고 입증된 separation boundary를 갖는 경우가 아니라면 cooperative/detective입니다. Native hook expansion, advanced sidecar watching, broad isolated execution은 reference 접점을 위해 명시적으로 구현되지 않는 한 later roadmap items입니다. Owner 문서를 통해 승격되기 전까지 이 항목들은 관찰, freshness, 표시를 개선할 수 있을 뿐이며, write를 authorize하거나, gate를 충족하거나, Approval을 부여하거나, verification 또는 QA를 증명하거나, acceptance를 기록하거나, Core 권한을 대체하지 않습니다.
 
 보장 수준은 표시와 risk context입니다. Approval, Write Authorization, verification, QA, 작업 수락, 잔여 위험 수용, close readiness, kernel gate가 아닙니다.
 

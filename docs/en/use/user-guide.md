@@ -31,6 +31,12 @@ Harness should make AI-assisted work easier to follow, not turn every task into 
 
 Harness also does not replace the surrounding engineering process. Source control still records product-file history, tests still check executable behavior, review still reviews changes, and user-owned product or material technical judgment still belongs to the user.
 
+## Security guarantee level, briefly
+
+Harness makes security-sensitive AI work easier to see and route, but early local Harness is not a sandbox. It does not automatically change OS permissions, sandbox arbitrary tools, make local files tamper-proof, or turn an instructed agent into preventive security.
+
+You may see four guarantee levels. `cooperative` means the agent is instructed to follow the rules. `detective` means a mismatch can be detected or recorded after action. `preventive` means a proven control blocks the operation before it happens. `isolated` means work or verification runs behind a documented separation boundary; a worktree or fresh evaluator bundle is not automatically an OS sandbox, permission boundary, or tamper-proof security. For early local use, expect cooperative/detective wording unless the agent can name the exact blocking control or exact proven separation boundary in use.
+
 ## Start with ordinary requests
 
 Good Harness requests sound like normal work requests:

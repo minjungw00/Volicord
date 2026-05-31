@@ -31,6 +31,12 @@
 
 하네스는 주변 엔지니어링 과정을 대체하지도 않습니다. 제품 파일 이력은 여전히 소스 관리가 기록하고, 실행 동작은 테스트가 확인하고, 변경은 리뷰가 살피며, 사용자 소유의 제품 판단이나 중요한 기술 판단은 여전히 사용자에게 있습니다.
 
+## 보장 수준, 짧게 말하면
+
+하네스는 보안에 민감한 AI 작업을 더 잘 보이고 올바른 경로로 보내게 해 주지만, 초기 로컬 하네스 자체가 sandbox는 아닙니다. OS 권한을 자동으로 바꾸거나, 임의 도구를 sandbox 격리하거나, 로컬 파일을 변조 불가능하게 만들거나, 지시받은 agent를 사전 차단 보안 경계로 바꾸지 않습니다.
+
+네 가지 보장 수준을 볼 수 있습니다. `cooperative`는 agent에게 규칙을 따르라고 지시하는 협력적/지시 기반 수준입니다. `detective`는 mismatch를 실행 뒤에 탐지하거나 기록할 수 있는 탐지 가능 수준입니다. `preventive`는 입증된 control이 operation을 실행 전에 사전 차단한다는 뜻입니다. `isolated`는 work 또는 verification이 문서화된 separation boundary 뒤에서 실행된다는 뜻입니다. Worktree나 fresh evaluator bundle은 자동으로 OS sandbox 격리, 권한 경계, 변조 불가능한 보안 경계가 아닙니다. 초기 로컬 사용에서는 agent가 실제 차단 control 또는 정확히 입증된 separation boundary를 이름 붙일 수 있을 때가 아니라면 cooperative/detective 수준의 표현을 기대해야 합니다.
+
 ## 평소 말로 시작하기
 
 좋은 하네스 요청은 평범한 작업 요청처럼 들립니다.

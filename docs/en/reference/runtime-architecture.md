@@ -79,13 +79,13 @@ flowchart LR
   Home -->|current records, events, raw evidence refs| Server
 ```
 
-This split prevents chat, Markdown reports, generated connector files, operator output, MCP caller claims, and product source files from becoming accidental operational state. Only a Core state-changing path can commit canonical operational state.
+This split keeps chat, Markdown reports, generated connector files, operator output, MCP caller claims, and product source files outside canonical operational state. Only a Core state-changing path can commit canonical operational state.
 
 This documentation repository maps to the future Harness Server / Installation source space, not to a Product Repository or a Harness Runtime Home.
 
 ## Local threat model
 
-Harness is designed as a local authority layer, not as a general operating-system security boundary. The full asset map, trust-boundary map, threat categories, and control categories are owned by [Security Threat Model Reference](security-threat-model.md).
+Harness is designed as a local authority layer, not as a general operating-system security boundary. Early local Harness does not automatically provide OS permissions, sandbox arbitrary tools, make local files tamper-proof, or turn cooperative agent behavior into preventive security. The full asset map, trust-boundary map, threat categories, and control categories are owned by [Security Threat Model Reference](security-threat-model.md).
 
 The architecture implication is simple: nearby files and callers are separate trust zones. Product files, chat text, generated connector files, operator output, projection Markdown, artifact bytes, external command output, and MCP caller claims can inform Harness, but Core alone commits canonical operational state.
 
@@ -184,7 +184,7 @@ state.sqlite / artifact store / validators / projector / reconcile worker
 
 The conversation surface gathers user intent, decisions, approvals, QA judgments, and acceptance. The agent surface performs reading, editing, and checking. Harness rules and skills keep the agent oriented. The MCP server provides the tool boundary. Core owns the state machine. Validators, artifact capture, projection, and reconcile attach evidence and readable output to state transitions.
 
-Native hooks, sidecars, command wrappers, file watchers, and worktree isolation are capability-dependent enforcement layers. v0.1 Core Authority Slice relies on cooperative/detective behavior for the reference surface unless a concrete capability profile has fixture-proven stronger enforcement.
+Native hooks, sidecars, command wrappers, file watchers, and worktree isolation are capability-dependent enforcement layers. v0.1 Core Authority Slice and the early user-facing MVP rely on cooperative/detective behavior for the reference surface unless a concrete capability profile has fixture-proven stronger enforcement for the covered operation.
 
 
 ### Core modules
@@ -311,10 +311,21 @@ The harness reports guarantee levels to make enforcement strength honest:
 
 | Level | Meaning |
 |---|---|
-| `cooperative` | the agent surface is expected to follow Harness instructions and MCP decisions; any hold is by instruction, and Harness does not claim pre-execution blocking |
-| `detective` | Harness can observe violations after action and mark state blocked, stale, partial, or failed; this is detection, not prevention |
-| `preventive` | a concrete connector or runtime path has fixture-proven pre-tool blocking for the covered operation before it executes |
-| `isolated` | risky work is separated by a worktree, sandbox, process boundary, evaluator boundary, or equivalent isolation; isolation limits blast radius but does not by itself approve or verify the work |
+| `cooperative` | the agent surface is instructed to follow Harness rules and MCP decisions; any hold is by instruction, not a hard security boundary |
+| `detective` | Harness can detect or record violations after action and mark state blocked, stale, partial, or failed; this is detection, not prevention |
+| `preventive` | a concrete connector or runtime path blocks the covered operation before it happens, with fixture proof for that exact path |
+| `isolated` | work or verification runs behind a documented separation boundary. A worktree or fresh evaluator bundle can provide scope, freshness, or blast-radius separation, but it is not automatically an OS sandbox, permission boundary, or tamper-proof security boundary unless the profile proves that exact isolation mechanism. Isolation alone does not approve or verify the work |
+
+### Stage guarantee posture
+
+Guarantee levels apply to staged delivery as follows:
+
+| Stage | Honest guarantee posture |
+|---|---|
+| v0.1 Core Authority Slice / Kernel Smoke | Demonstrates Core authority, state-version checks, scoped write-authority decisions, artifact registration, and basic detective validation. The reference surface should be displayed as cooperative/detective unless a fixture-proven pre-tool guard or documented and proven separation boundary is explicitly implemented for the covered operation. No OS-level permissions, arbitrary-tool sandboxing, tamper-proof local files, or automatic pre-tool blocking are implied. |
+| v0.2 User-Facing Harness MVP | Adds user-facing status, judgment, evidence, and close-readiness comprehension over the same local-only posture. It must not claim OS-level isolation, sandboxing, tamper-proof storage, or pre-tool blocking unless the connected profile proves that exact stronger control. |
+| v0.3-v0.4 hardened local profiles | May promote preventive controls for covered operations or isolated work/verification profiles only when owner docs, connector profiles, and conformance prove the exact covered operation or separation boundary. Until then, stronger controls remain future or profile-specific notes. |
+| v1+ Expansion | Remote, shared, cloud, or broader isolated profiles remain roadmap scope unless promoted by owner docs and conformance. They must keep the same Core authority, trust-boundary, and honest guarantee display rules. |
 
 ### Guarantee level enforcement map
 
@@ -332,20 +343,20 @@ flowchart TB
   Profile --> Cooperative["cooperative<br/>instruction-only hold"]
   Profile --> Detective["detective<br/>detect or report after action<br/>if violation occurs"]
   Profile --> Preventive["preventive<br/>fixture-proven pre-execution block<br/>for covered operation"]
-  Profile --> Isolated["isolated<br/>bounded execution or promotion path"]
+  Profile --> Isolated["isolated<br/>documented separation boundary"]
   Cooperative -. "when an event is recorded" .-> OwnerPaths
   Detective -. "when violation is observed" .-> OwnerPaths
   Preventive -. "when blocked attempt is recorded" .-> OwnerPaths
-  Isolated -. "when promotion or escape is recorded" .-> OwnerPaths
+  Isolated -. "when boundary result is recorded" .-> OwnerPaths
   Run --> OwnerPaths["Core owner paths update<br/>state, artifacts, evidence,<br/>and projection jobs when applicable"]
 ```
 
-Preventive and isolated labels apply only where the connected profile has fixture-proven coverage for the operation being described. They do not approve work, create Write Authorization, satisfy gates, create evidence, perform verification, accept risk, or close Tasks. Strict `prepare_write` and `record_run` behavior is owned by [Kernel Reference](kernel.md#prepare_write) and [Kernel Reference](kernel.md#record_run). Public response shapes and error precedence are owned by [MCP API And Schemas](mcp-api-and-schemas.md). Concrete profile declarations are owned by [Agent Integration Reference](agent-integration.md#capability-profiles). This diagram is only an enforcement-orientation view.
+Preventive labels apply only where the connected profile has fixture-proven coverage for the operation being described. Isolated labels apply only where the connected profile documents and proves the separation boundary being claimed. A fresh evaluator bundle, fresh session, or separate worktree can support verification independence and stale-context control; sandbox, permission layer, locked-down runner, process boundary, or container boundary wording is security-isolation wording only when the profile names and proves that exact mechanism. These labels do not approve work, create Write Authorization, satisfy gates, create evidence, perform verification, accept risk, or close Tasks. Strict `prepare_write` and `record_run` behavior is owned by [Kernel Reference](kernel.md#prepare_write) and [Kernel Reference](kernel.md#record_run). Public response shapes and error precedence are owned by [MCP API And Schemas](mcp-api-and-schemas.md). Concrete profile declarations are owned by [Agent Integration Reference](agent-integration.md#capability-profiles). This diagram is only an enforcement-orientation view.
 
 
 Guarantee display should name both sides of the boundary: what the connected profile can actually block before execution, and what it can only detect after action. A surface name, product name, recipe name, or friendly mode label is never proof of capability; the declaration must come from the actual host/profile capability profile and its current proof basis. Guard, freeze, and careful-mode labels inherit the connected profile's proven capability; they do not upgrade a cooperative or detective profile into preventive blocking, and they do not create authority tiers.
 
-Current reference behavior is cooperative/detective unless the connected surface has a concrete, fixture-proven pre-tool guard for covered operations or an isolation layer. Native hook expansion, advanced sidecar watching, and broad isolated execution are later roadmap items unless explicitly implemented for the reference surface. Until promoted through owner docs, they may improve observation or display only; they do not authorize writes, satisfy gates, grant Approval, prove verification or QA, record acceptance, or replace Core authority.
+Current reference behavior is cooperative/detective unless the connected surface has a concrete, fixture-proven pre-tool guard for covered operations or a documented and proven separation boundary. Native hook expansion, advanced sidecar watching, and broad isolated execution are later roadmap items unless explicitly implemented for the reference surface. Until promoted through owner docs, they may improve observation, freshness, or display only; they do not authorize writes, satisfy gates, grant Approval, prove verification or QA, record acceptance, or replace Core authority.
 
 Guarantee level is display and risk context. It is not Approval, Write Authorization, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a kernel gate.
 

@@ -30,7 +30,11 @@ Harness is a local authority layer, not a general operating-system security boun
 
 Canonical operational meaning flows through Core-owned state-changing paths. Product repository documents, chat text, generated connector files, projections, artifacts, external command output, MCP caller claims, and remembered context are inputs until the relevant owner path accepts them.
 
-Security display must match the real control. Cooperative and detective surfaces can hold by instruction or detect after action. Preventive wording requires fixture-proven pre-tool blocking for the covered operation, and isolated wording requires an actual separation boundary. High-risk work must not rely on cooperative-only claims when the work requires preventive or isolated controls.
+Security display must match the real control. Cooperative and detective surfaces can hold by instruction or detect after action. Preventive wording requires fixture-proven pre-tool blocking for the covered operation, and isolated wording requires a documented and proven separation boundary. High-risk work must not rely on cooperative-only claims when the work requires preventive or isolated controls.
+
+Early local Harness stages do not automatically provide operating-system permissions, sandbox arbitrary tools, make local files tamper-proof, or convert cooperative agent behavior into preventive security. v0.1 and v0.2 may refuse state-changing actions that lack authority, record state, validate artifacts, report stale or mismatched facts, and display reduced guarantee levels. Preventive controls are future/profile-specific until owner docs and conformance prove the exact covered operation; isolated controls are future/profile-specific until they prove the exact separation boundary.
+
+Isolation claims must name what kind of separation is being claimed. A fresh evaluator bundle, fresh session, or separate worktree can support verification independence, stale-context control, or blast-radius reduction. A sandbox, permission layer, locked-down runner, process boundary, or container boundary can support stronger security isolation only when the connector profile names and proves that exact mechanism.
 
 ## Reference scope
 
@@ -84,11 +88,14 @@ Remote or shared MCP exposure remains outside the v0.1 baseline and staged deliv
 |---|---|---|
 | User conversation surface | Chat may contain intent, approval-like words, stale memory, or malicious pasted content. | Treat conversation as input. User-owned judgment must be recorded through the relevant Decision Packet, Approval, acceptance, or residual-risk path when it affects authority. |
 | Agent surface | The surface may skip MCP, overclaim capability, continue from stale context, or perform actions outside scope. | Capability must be declared for the actual host/profile and displayed honestly. Product/runtime/code writes hold when required authority cannot be checked. |
-| MCP server | Local endpoints can be reached by the wrong caller, stale configuration, forwarded ports, or weak socket/config permissions. | Use local process, local socket, localhost-loopback, or a promoted connector posture with documented access control. Validate public envelopes through Core. |
+| Harness Server / Installation | The local control-plane process, connector adapter, projector, reconciler, or operator entrypoint may be stale, misconfigured, or asked to trust inputs that bypass Core. | Treat the installation as the control plane, not as a general OS sandbox. State-changing effects go through Core owner paths; adapters and tools report capability, diagnostics, or proposals rather than creating authority. |
+| Local process | A shell, editor, test runner, package manager, sidecar, or other local process may mutate files, read secrets, or call local endpoints outside the intended profile. | Local execution is not trust by itself. Bound process behavior through scope, Approval, connector capability, least-privilege tool choice, and stronger controls when cooperative/detective posture is insufficient. |
+| Local socket or API surface | Local endpoints can be reached by the wrong caller, stale configuration, forwarded ports, weak socket/config permissions, or off-profile access material. | Use local process, local socket, localhost-loopback, in-process/stdio, or a promoted connector posture with documented access control. Validate public envelopes through Core, and do not treat reachability as authorization. |
 | Core | Core is the authority boundary for canonical mutation. | Core alone commits operational state changes and owner-record effects. No report, projection, generated file, or caller claim bypasses Core. |
-| Runtime Home | Local files may be read or written by unrelated users, shared containers, or off-profile automation. | Treat broad read/write access as tampering or confidentiality risk. Direct edits are invalid until Core, recovery, or artifact-integrity paths validate the effect. |
+| Harness Runtime Home | Local files may be read or written by unrelated users, shared containers, or off-profile automation. | Treat broad read/write access as tampering or confidentiality risk. Direct edits are invalid until Core, recovery, or artifact-integrity paths validate the effect. Do not claim these files are tamper-proof merely because they are local. |
 | Product Repository | Human-editable docs, generated Markdown, product files, and repo rules can influence agent behavior. | Repo files are inputs, product work, or projections. They do not become canonical operational state by being present in the repo. |
 | Artifact store | Staged or committed evidence may contain secrets, be swapped, or fail integrity checks. | Validate paths, task/run ownership, hashes, sizes, content types, redaction/omission/block state, and retention before relying on the bytes. |
+| Generated projections | Managed Markdown, compact status cards, reports, and generated connector views may be stale, edited, prompt-injected, or confused with authority. | Treat projections as readable views or proposal surfaces. Freshness, managed-block hashes, and reconcile route changes through owner paths before they affect state. |
 | External tools/network | Commands and network calls can affect systems outside Harness and may have irreversible side effects. | Use least-privilege tools and explicit command/path/network/secret bounds for high-risk work. Require stronger controls when cooperative holds are not enough. |
 
 ## Threat and control map
@@ -120,7 +127,7 @@ MCP reachability is not authorization. Public tool calls still rely on Core enve
 
 High-risk work should use the smallest tool, command, path, network target, and secret scope that can satisfy the active Change Unit. Sensitive categories such as destructive writes, network writes, external service writes, data export, infrastructure or deployment changes, production configuration changes, CI/CD changes, billing or cost changes, telemetry or logging changes, auth changes, permission model changes, secret access, privacy/PII changes, license/compliance changes, model or prompt policy changes, and policy overrides are not made safe by local execution.
 
-Command/path/network allowlists are a control concept here, not a new schema in this document. The exact authority comes from existing owner paths: Change Unit scope, sensitive-action Approval, `prepare_write`, Write Authorization, connector capability profiles, and operator diagnostics. When the risk requires preventive blocking or isolation, a cooperative-only instruction is insufficient; the work must narrow, wait, use a fixture-proven preventive path, or use an actual isolation boundary.
+Command/path/network allowlists are a control concept here, not a new schema in this document. The exact authority comes from existing owner paths: Change Unit scope, sensitive-action Approval, `prepare_write`, Write Authorization, connector capability profiles, and operator diagnostics. When the risk requires preventive blocking or isolation, a cooperative-only instruction is insufficient; the work must narrow, wait, use a fixture-proven preventive path, or use the documented and proven separation boundary claimed by the connector profile.
 
 ### Redaction before storage
 
@@ -130,13 +137,13 @@ Raw secrets should not be stored as artifacts, connector manifest fields, projec
 
 ### Artifact path and integrity validation
 
-Artifact inputs are untrusted until registration validates the path boundary, task/run ownership, artifact kind, size, hash, content type, redaction or omission state, and retention/availability facts. Path validation must prevent a staged path, traversal, symlink surprise, or off-profile location from becoming trusted evidence by accident.
+Artifact inputs are untrusted until registration validates the path boundary, task/run ownership, artifact kind, size, hash, content type, redaction or omission state, and retention/availability facts. Path validation must keep a staged path, traversal, symlink surprise, or off-profile location from becoming trusted evidence by accident.
 
 An artifact hash mismatch is a security and evidence-integrity finding. It does not repair by editing Markdown or copying bytes directly into place. Recovery or replacement must go through the documented artifact registration and recovery paths.
 
 ### Freshness, replay, and stale context
 
-Baseline and state-version checks protect against replay and stale context. Old approvals, old status text, old projections, old evaluator bundles, and chat memory cannot authorize current writes or close current work. If authority depends on them, they must be refreshed, reconciled, superseded, or replaced through an owner path.
+Baseline and state-version checks help catch replay and stale context before authority depends on them. Old approvals, old status text, old projections, old evaluator bundles, and chat memory cannot authorize current writes or close current work. If authority depends on them, they must be refreshed, reconciled, superseded, or replaced through an owner path.
 
 Expected state version, idempotency, baseline compatibility, approval expiry, projection freshness, and connector profile freshness are separate controls. This document names the threat-model reason for them; their exact fields and behavior stay with the API, kernel, storage, projection, connector, and operations owners.
 
@@ -152,10 +159,10 @@ Security wording must match the proven control:
 
 | Guarantee | Honest security meaning |
 |---|---|
-| `cooperative` | The surface is instructed to hold or follow Core decisions. It is not a pre-execution block. |
-| `detective` | Harness can observe and report violations after action. It is detection, not prevention. |
-| `preventive` | A concrete hook, wrapper, permission layer, policy engine, sidecar, or equivalent has fixture-proven pre-tool blocking for the covered operation. |
-| `isolated` | Work or verification runs across a separate worktree, sandbox, process, evaluator bundle, or equivalent boundary. Isolation limits blast radius but does not itself approve, verify, accept, or close work. |
+| `cooperative` | The surface is instructed to hold or follow Core decisions. It is not a hard security boundary or a pre-execution block. |
+| `detective` | Harness can detect or record violations after action. It is after-the-fact detection, not prevention. |
+| `preventive` | A concrete hook, wrapper, permission layer, policy engine, sidecar, or equivalent blocks the covered operation before it happens, with fixture proof for that exact path. |
+| `isolated` | Work or verification runs behind a documented separation boundary. A worktree or fresh evaluator bundle can provide scope, freshness, or blast-radius separation, but it is not automatically an OS sandbox, permission boundary, or tamper-proof security boundary unless the profile proves that exact isolation mechanism. Isolation alone does not approve, verify, accept, accept risk, close, or upgrade assurance. |
 
 Guard, freeze, careful-mode, recipe names, product names, surface names, and friendly mode labels do not upgrade a guarantee. High-risk work must show the control it actually uses, and it must not depend on cooperative-only claims when preventive or isolated controls are required.
 

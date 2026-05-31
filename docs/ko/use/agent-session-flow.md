@@ -105,7 +105,7 @@ Retrieved, indexed, remembered, summarized context는 read-only로 남습니다.
 
 표시 문제는 구분해서 말합니다. 오래된 projection(stale projection)은 읽기용 카드나 보고서가 뒤처졌을 수 있으므로 신뢰할 수 있는 맥락으로 쓰기 전에 refresh 또는 reconcile이 필요하다는 뜻입니다. 오래된 state, baseline, evidence는 실제 입력이 이동했거나 부족해져 쓰기나 닫기를 막을 수 있다는 뜻입니다. MCP에 닿지 못하는 상태(MCP unavailable)는 에이전트가 필요한 하네스/Core 기능에 닿지 못한다는 뜻입니다. 그 기능이 다시 사용 가능해지기 전에는 기준 상태 변경, Approval, 작업 수락, 잔여 위험 수용, gate 갱신, projection 복구, 닫기가 처리됐다고 주장하면 안 됩니다.
 
-Core 자체에 닿을 수 없으면 표시 문제는 `MCP_SERVER_UNAVAILABLE`입니다. Core에 닿지 않는다고 말하고, 상태가 바뀌었다고 주장하기 전에 다시 연결하거나 진단합니다. Core 또는 operator가 현재 접점에서 MCP를 사용할 수 없다고 알 수 있으면 표시 문제는 `SURFACE_MCP_UNAVAILABLE`입니다. 이 접점이 필요한 하네스 도구를 사용할 수 없다고 말한 뒤, 제품 파일 쓰기는 지시로 보류하거나 필요한 기능을 가진 접점으로 전환합니다. Surface name만으로는 capability가 증명되지 않습니다. Preventive guard가 해당 covered operation에 대해 pre-tool blocking을 입증한 경우에만 실행 전에 차단됐다고 말합니다.
+Core 자체에 닿을 수 없으면 표시 문제는 `MCP_SERVER_UNAVAILABLE`입니다. Core에 닿지 않는다고 말하고, 상태가 바뀌었다고 주장하기 전에 다시 연결하거나 진단합니다. Core 또는 operator가 현재 접점에서 MCP를 사용할 수 없다고 알 수 있으면 표시 문제는 `SURFACE_MCP_UNAVAILABLE`입니다. 이 접점이 필요한 하네스 도구를 사용할 수 없다고 말한 뒤, 제품 파일 쓰기는 지시로 보류하거나 필요한 기능을 가진 접점으로 전환합니다. Surface name만으로는 capability가 증명되지 않습니다. Preventive guard가 해당 covered operation에 대해 도구 실행 전 차단을 입증한 경우에만 실행 전에 차단됐다고 말합니다.
 
 ## 상태와 막힘 읽기
 
@@ -167,7 +167,7 @@ Status, next, result, 작업 수락, close display의 모든 authority claim은 
 |---|---|---|
 | `STATE_CONFLICT` | 이 보기 이후 상태가 바뀌었습니다. | 상태를 새로 읽고 현재 state version으로 다시 시도합니다. |
 | `MCP_UNAVAILABLE`(`details.mcp_unavailable_kind=server_unavailable`) 또는 진단상 `MCP_SERVER_UNAVAILABLE` | Core에 닿을 수 없습니다. | 기준 상태 변경을 주장하기 전에 Core 연결을 복구하거나 진단합니다. |
-| `MCP_UNAVAILABLE` 또는 `CAPABILITY_INSUFFICIENT`(`details.mcp_unavailable_kind=surface_mcp_unavailable`) 또는 진단상 `SURFACE_MCP_UNAVAILABLE` | 이 접점은 필요한 하네스 도구를 사용할 수 없습니다. | 접점을 복구하거나 사용할 수 있는 접점으로 전환합니다. 해당 covered operation에 대해 profile이 pre-tool blocking을 입증한 경우가 아니면 제품 파일 쓰기는 지시로 보류합니다. |
+| `MCP_UNAVAILABLE` 또는 `CAPABILITY_INSUFFICIENT`(`details.mcp_unavailable_kind=surface_mcp_unavailable`) 또는 진단상 `SURFACE_MCP_UNAVAILABLE` | 이 접점은 필요한 하네스 도구를 사용할 수 없습니다. | 접점을 복구하거나 사용할 수 있는 접점으로 전환합니다. 해당 covered operation에 대해 profile이 도구 실행 전 차단을 입증한 경우가 아니면 제품 파일 쓰기는 지시로 보류합니다. |
 | 유용한 detail이 없는 `MCP_UNAVAILABLE` | 하네스/Core 기능을 사용할 수 없습니다. | 기준 상태 변경을 주장하기 전에 다시 연결하거나 접점을 복구하거나 사용할 수 있는 접점으로 전환합니다. |
 | `CAPABILITY_INSUFFICIENT` | 이 접점은 필요한 보장 수준을 제공할 수 없습니다. | 필요한 profile을 쓰거나, 작업을 줄이거나, 그 기능이 필요 없는 경로를 선택합니다. |
 | `NO_ACTIVE_TASK` | 선택된 active Task가 없습니다. | 계속하기 전에 Task를 선택하거나 만듭니다. |
@@ -406,7 +406,7 @@ Feedback Loop는 selected loop와 loop finding을 위한 기준 support-record p
 
 Scope expansion, 민감 동작 승인 없는 새 sensitive action, Autonomy Boundary breach, 잔여 위험 수용, 작업 수락, QA 또는 검증 면제 판단, public API 또는 module contract 변경, public meaning에 영향을 주는 domain-language change, release/support promise, 사용자나 다른 시스템이 의존할 수 있는 다른 public commitment 전에는 멈추고 가장 작은 unblocker를 보여줘야 합니다.
 
-AFK stop을 보여줄 때는 guarantee level을 이름 붙입니다. Cooperative 또는 detective surface에서 "멈춤"은 지시에 따른 보류이거나, profile이 지원할 때 실행 뒤 감지 및 보고가 가능하다는 뜻입니다. 해당 operation에 대해 연결된 profile이 pre-tool blocking을 입증한 경우에만 preventive wording을 씁니다. Careful mode는 진행 자세를 좁힐 수 있지만 새 authority tier가 아닙니다.
+AFK stop을 보여줄 때는 guarantee level을 이름 붙입니다. Cooperative 또는 detective surface에서 "멈춤"은 지시에 따른 보류이거나, profile이 지원할 때 실행 뒤 감지 및 보고가 가능하다는 뜻입니다. 해당 operation에 대해 연결된 profile이 도구 실행 전 차단을 입증한 경우에만 preventive wording을 씁니다. Careful mode는 진행 자세를 좁힐 수 있지만 새 authority tier가 아닙니다.
 
 ## 제품 파일 쓰기
 
@@ -422,7 +422,7 @@ AFK stop을 보여줄 때는 guarantee level을 이름 붙입니다. Cooperative
 
 외부 영향(side effect)이 있을 때는 실행 전의 주장과 실행 뒤의 기록을 분리합니다. 실행 전에는 의도한 영향, 민감 범주(sensitive category), Approval 또는 결정 패킷 필요 여부, 보장 수준을 말합니다. 실행 뒤에는 실제로 일어난 일, 기록된 Run/artifact/evidence ref, redaction/omission/block/stale/violation 여부를 말합니다. 보장 수준은 표시와 risk context입니다. Approval을 부여하거나, 결과를 검증하거나, QA를 기록하거나, 잔여 위험을 받아들이거나, 작업 수락을 하거나, Task를 닫지 않습니다. 정확한 보장 수준 의미는 [런타임 아키텍처 참조](../reference/runtime-architecture.md#보장-수준)가 담당합니다.
 
-Cooperative 또는 detective hold를 실행 전에 막는 것처럼 설명하면 안 됩니다. 지시로 쓰기를 보류한다고 말하거나, 연결된 profile이 해당 validation을 지원할 때 실행 뒤에 위반을 감지할 수 있다고 말합니다. 실행 전 차단(preventive) 표현은 해당 operation에 대해 입증된 pre-tool blocking이 있을 때만 씁니다.
+Cooperative 또는 detective hold를 실행 전에 막는 것처럼 설명하면 안 됩니다. 지시로 쓰기를 보류한다고 말하거나, 연결된 profile이 해당 validation을 지원할 때 실행 뒤에 위반을 감지할 수 있다고 말합니다. 실행 전 차단(preventive) 표현은 해당 operation에 대해 입증된 도구 실행 전 차단이 있을 때만 씁니다.
 
 쓰기 권한이 막혔거나, 확인할 수 없거나, 최신이 아니거나, 의도한 변경과 맞지 않으면 제품 파일 쓰기를 멈추고 가장 작은 해소 방법을 설명합니다.
 

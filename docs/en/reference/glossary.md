@@ -203,7 +203,7 @@ The owner document for design-quality policy contracts and severity composition.
 
 ### Detached Verification
 
-Verification performed across a meaningful independence boundary, such as a fresh session, fresh worktree, sandbox, or manual evaluator bundle. Same-session self-review is not detached verification, and subagent context is not detached by default.
+Verification performed across a meaningful independence boundary, such as a fresh session, fresh worktree, sandbox, or manual evaluator bundle. This supports verification independence and stale-context control; it is not automatically OS-level security isolation. Same-session self-review is not detached verification, and subagent context is not detached by default.
 
 ### Discovery
 
@@ -279,7 +279,7 @@ A verification independence profile where the evaluator starts from a task/evide
 
 ### Fresh Worktree
 
-A verification independence profile where the evaluator checks baseline, changed paths, artifacts, and Evidence Manifest in a separate worktree or equivalent isolated repository state.
+A verification independence profile where the evaluator checks baseline, changed paths, artifacts, and Evidence Manifest in a separate worktree or equivalent independent repository state. A fresh worktree can support scope, freshness, and drift detection, but it is not automatically an OS sandbox, permission boundary, or tamper-proof security boundary.
 
 ### Freeze
 
@@ -329,7 +329,7 @@ A managed `TASK` projection section that shows small execution steps or slices, 
 
 ### Isolated Guarantee
 
-A guarantee level where risky work is separated by a worktree, sandbox, process boundary, or equivalent isolation mechanism.
+A guarantee level where work or verification runs behind a documented separation boundary. A worktree or fresh evaluator bundle can provide scope, freshness, or blast-radius separation, but it is not automatically an OS sandbox, permission boundary, or tamper-proof security boundary unless the profile proves that exact isolation mechanism. Isolation alone does not approve, verify, accept, accept risk, close, or upgrade assurance.
 
 ### Journey Card
 
@@ -587,7 +587,7 @@ The kernel gate for required verification. A user waiver sets `verification_gate
 
 ### Verification Independence Profile
 
-A named minimum qualification for an Eval independence context, such as `same_session`, `subagent_context`, `fresh_session`, `fresh_worktree`, `sandbox`, or `manual_bundle`. A passed Eval must satisfy a valid profile before it can support `detached_verified`.
+A named minimum qualification for an Eval independence context, such as `same_session`, `subagent_context`, `fresh_session`, `fresh_worktree`, `sandbox`, or `manual_bundle`. A passed Eval must satisfy a valid profile before it can support `detached_verified`; the profile must separately name and prove any security-isolation claim.
 
 ### Validator Result
 
