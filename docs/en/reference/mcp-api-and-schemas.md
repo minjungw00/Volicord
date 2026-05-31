@@ -1372,7 +1372,7 @@ RecordRunResponse:
 
 Violation or audit Runs may have a non-null `run_id` only when Core deliberately records such a Run, for example after an observed product write already happened. Rejected pre-commit cases must not fabricate a Run ID.
 
-State transition summary: shaping updates can keep `shaping`, move to `ready`, or move to `waiting_user`; implementation moves toward `verifying`; direct can become close-eligible or escalate to work; verification input records evaluator bundle context without proving detached verification.
+State transition summary: shaping updates can keep `shaping`, move to `ready`, or move to `waiting_user`; implementation moves toward `verifying`; direct can become close-eligible or escalate to work; verification input records verification bundle material without proving detached verification.
 
 Stable EventRef values that may be returned: `run_recorded`, `write_authorization_consumed`, `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, `scope_violation_detected`, `evidence_manifest_updated`.
 

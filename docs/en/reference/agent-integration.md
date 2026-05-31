@@ -43,7 +43,7 @@ user conversation surface
   -> adapter, hook, sidecar, validator, or isolation layer
 ```
 
-Always-on rules and context should stay short, current, and non-authoritative. They should say when to use Harness, where to read current status or the Journey Card, that product writes require `prepare_write`, that user-owned judgment routes through Decision Packets, that status must show what can actually be blocked and what can only be detected later, and that product writes hold when authoritative MCP is unavailable. They should not expand into schema dumps, old task history, copied evidence bodies, or reference-contract replicas. The session procedure itself belongs in [Agent Session Flow](../use/agent-session-flow.md).
+Always-on rules and context should stay short, current, and non-authoritative. The operational context budget is role, current phase/context profile, current Task summary, active blockers, pending user-owned judgments, and next allowed action. Static rules should say when to use Harness, where to read current status or current-position context, that Journey Card is used only when that projection/profile is enabled and fresh, that product writes require `prepare_write`, that user-owned judgment routes through Decision Packets, that status must show what can actually be blocked and what can only be detected later, and that product writes hold when authoritative MCP is unavailable. They should not expand into schema dumps, old task history, copied evidence bodies, full projection bodies, or reference-contract replicas. The session procedure itself belongs in [Agent Session Flow](../use/agent-session-flow.md).
 
 ## What belongs in Use docs vs this Reference doc
 
@@ -292,13 +292,24 @@ The manifest concept is common. Surface-specific generated filenames belong in [
 
 ## Context Push/Pull Principles
 
-Implementation agents should receive a compact always-on Harness context envelope every turn and pull larger references only when needed. The envelope is current operational state, not chat history, old projection text, or a complete reference dump. It should use ids, one-line summaries, and freshness markers; keeping it around a screenful is useful guidance, not a schema limit.
+Implementation agents should receive a compact always-on Harness context envelope every turn and pull larger references only when needed. The envelope is current operational state, not agent memory, chat history, old projection text, or a complete reference dump. It should use ids, one-line summaries, and freshness markers.
 
-Stale chat memory and pulled context may point the agent toward refs to inspect, but they cannot authorize writes, satisfy gates, close tasks, accept results, waive QA or verification, accept residual risk, replace current owner records, or repair stale projections. Any older context that matters to authority must first be reconciled through the owning Core path.
+The always-on operational budget should fit on one screen or less. It includes only:
 
-Keep the always-on compact context rule set to these ten items or fewer:
+- role or connected surface posture
+- current phase/context profile
+- current Task summary, or explicit `none` / `unknown`
+- active blockers
+- pending user-owned judgments
+- next allowed action
 
-1. Read current status or the Journey Card before significant work or resume.
+A field may carry a source ref and freshness marker, but the budget must not expand into whole reference documents, public schemas, old task history, copied evidence bodies, unrelated templates, historical event logs, or full projection bodies. Those stay pull-on-demand.
+
+Stale agent memory, stale chat history, remembered recommendations, and pulled context may point the agent toward refs to inspect, but they cannot authorize writes, satisfy gates, close tasks, accept results, waive QA or verification, accept residual risk, replace current owner records, or repair stale projections. Projections can summarize state and refs, but they are not authority. When state matters, the connector should retrieve current Core state or a compact context derived from current Core state; any older context that matters to authority must first be refreshed or reconciled through the owning Core path.
+
+Keep the static always-on rule compass to these ten items or fewer:
+
+1. Read current status or current-position context before significant work or resume; use Journey Card only when that projection/profile is enabled and fresh.
 2. Product/runtime/code writes require compatible `prepare_write` and Write Authorization.
 3. User-owned product or material technical judgment routes through Decision Packets.
 4. Approval is not product judgment, final acceptance, or residual-risk acceptance.
@@ -309,14 +320,16 @@ Keep the always-on compact context rule set to these ten items or fewer:
 9. Show blockers and close-relevant residual risk before acceptance or close.
 10. Pull Reference docs, schemas, historical records, and large artifacts only when the next action needs them.
 
-These are candidate fields for a compact current-state envelope. They are not an instruction to send the whole table on each turn; the active phase bundle, next safe action, freshness, and relevance decide which fields appear.
+Token savings must not starve the agent of user-owned judgments, blockers, scope limits, safety boundaries, or close-relevant residual-risk information needed for correct behavior. Decision requests in particular must include enough context for informed user judgment: the exact question, options, recommendation, uncertainty, affected scope or gates, consequences of deferral, and relevant refs.
 
-Phase-filtered envelope candidates:
+These are candidate fields for a compact current-state envelope. They are not an instruction to send the whole table on each turn; the current context profile, next safe action, freshness, and relevance decide which fields appear.
+
+Context-profile-filtered envelope candidates:
 
 | Envelope item | Push shape |
 |---|---|
 | Active Task | Task id, title, schema mode, derived work-shape display label, and lifecycle phase. |
-| Current display | Journey Card or compact status card ref, or a one-line current status when a rendered card is not available. |
+| Current display | Current status, current-position context, compact status card ref, or fresh Journey Card ref only when that projection/profile is enabled. |
 | Next safe action | The next action and smallest unblocker if blocked. |
 | Active scoped Change Unit | One-line summary of in-scope work and out-of-bounds areas. |
 | Autonomy Boundary | What the agent may decide alone and what still needs user judgment. |
@@ -345,22 +358,23 @@ Keep these refs-first and pull the body only when needed:
 
 Refs-first means the connector should push stable ids, paths, hashes, summaries, outcomes, and freshness, not paste large bodies into the default prompt. Embed excerpts only when the next safe action requires inspecting the content, and keep the excerpt tied to its source ref. Retrieved, indexed, remembered, or summarized context follows the same rule: it can tell the agent what to inspect next, but it remains pull-only context until an owner path records an actual state change. It must not authorize writes or create Write Authorization, resolve Decision Packets, grant Approval, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept results, accept residual risk, update projection freshness, or close tasks.
 
-Use phase-based bundles so agents do not load the whole documentation set:
+Use context profiles so agents do not load the whole documentation set:
 
-| Phase | Push into context | Pull on demand |
-|---|---|---|
-| Intake | Active or likely Task id, schema mode when useful, derived work-shape display label, current status or Journey Card, four display groups, next safe action, primary blocker, known source refs, and guarantee/MCP availability. | Task history, user guide, session-flow details, or Reference docs only when classification, authority, or blocker display is unclear. |
-| Discovery | Clarification summary or Discovery Brief ref, blocking questions grouped by decision area, parked assumptions, inspectable repo/Harness facts, visible user-owned judgment candidates, QA/verification expectations, and first implementation candidate or work split. | Repo docs, module/interface/domain refs, older PRDs/designs, design-quality policy, or Decision Packet guidance only for facts needed to separate inspectable facts from user decisions and scope safe next work. |
-| Write | Active Change Unit, Autonomy Boundary, intended paths/tools/commands/network/secrets summary, baseline, Approval status, active Decision Packets, Write Authority Summary, and capability guarantee. | Exact `prepare_write`, Kernel, security, approval, or policy references only when the intended write touches that boundary or the connector is implementing the check. |
-| Evidence | Changed-path summary, latest Run summary, Evidence Manifest ref, artifact refs with integrity/freshness, evidence gaps, and next evidence action. | Logs, diffs, screenshots, traces, raw artifacts, artifact-storage details, or evidence contract sections only when interpreting, repairing, or registering evidence. |
-| Verification | Acceptance criteria, changed files, evidence refs, artifact refs, approval scope, active or relevant Decision Packets, residual-risk summary, Manual QA requirement, independence/freshness profile, and forbidden patterns. | Full evaluator bundle material, source files, logs, exact Eval/Manual QA contracts, or verification guidance only when the evaluator needs to inspect them. |
-| Close | Close-readiness summary, close blockers, evidence/verification/QA/final acceptance status, residual-risk summary or accepted refs, projection freshness, and smallest unblocker. | `close_task`, final acceptance, residual-risk visibility, residual-risk acceptance, Manual QA, verification, or artifact details only when a blocker or close attempt depends on the exact contract or source content. |
+| Profile | Required information | Optional information | Exclude by default | Freshness and source requirements | User-facing vs internal |
+|---|---|---|---|---|---|
+| Session start context | Role or connected surface posture, current phase/context profile, active or likely Task summary, active blockers, pending user-owned judgments, next allowed action, and guarantee/MCP availability. | Compact status card, fresh Journey Card ref only when that projection/profile is enabled, projection freshness, likely work shape. | Full task history, full reference docs, full schemas, old projections, unrelated templates. | Read current Core status or state-derived current-position context when state matters; use Journey Card only when that projection/profile is enabled and fresh; if Core/MCP is unavailable, say so instead of using memory as state. | Show the plain current position, blocker, and next action. Keep profile ids, state versions, and capability diagnostics internal unless they explain a boundary. |
+| Requirements clarification / discovery context | Goal, user value when known, scope and non-goals, acceptance cues, inspectable facts, assumptions, user-owned judgment candidates, active blockers, and next allowed discovery action. | Current source refs, QA/verification expectations, first implementation candidate, work split, parked useful-but-not-blocking questions. | Whole module maps, old PRDs/designs, design-policy catalogs, or unrelated templates unless needed to answer the current question. | Inspect current repo, docs, and Core/state refs before asking; mark unavailable or stale sources and do not turn stale design prose into authority. | Show focused questions with recommendation, uncertainty, and deferral effect. Keep candidate Change Unit or Decision Packet routing detail internal until it helps the user decide. |
+| Decision request context | Exact user-owned decision, judgment domain, options, trade-offs, recommendation, uncertainty, affected scope/gates/acceptance criteria, consequence of deferral, relevant refs or explicit absence, and next action after the answer. | Short evidence, risk, design, or artifact excerpts needed to decide; related decisions that constrain the choice. | Broad approval language, unrelated decisions, full evidence bodies, full logs, full schema references. | Source from a current Decision Packet or current state-derived decision candidate. If a ref is stale or missing, label it before asking. | Show enough context for informed judgment. Keep replay ids, routing metadata, and internal enum detail secondary unless they clarify the boundary. |
+| Prepare-write context | Active Task and Change Unit, intended paths/tools/commands/network/secrets summary, scope and out-of-bounds areas, Autonomy Boundary, pending decisions or Approval needs, baseline/state freshness, Write Authority Summary, and guarantee/MCP availability. | Policy/security refs, expected evidence needs, compatible prior authorization refs. | Full Kernel/reference docs, unrelated schemas, historical event logs, large diffs or logs. | Use current Core state and exact `prepare_write` inputs; refresh or reconcile on stale baseline, stale projection, state conflict, or changed intended path. | Show what would change, what is blocked, and the smallest unblocker. Keep exact payloads, long path lists, and diagnostics internal unless the user must judge them. |
+| Run/evidence context | Consumed Write Authorization or no-write basis, changed-path summary, command/tool summary, run outcome, Evidence Manifest ref, artifact refs with integrity/freshness, evidence gaps, redaction/omission/block notes, and next evidence action. | Short log, diff, screenshot, trace, or artifact excerpt needed to interpret a result. | Full logs, raw diffs, screenshots, traces, bundles, and artifact inventories unless repair, audit, or user review needs them. | Record from current run/artifact refs and current state; mark evidence stale when baseline, paths, approval, or artifact integrity changed. | Show coverage and gaps tied to criteria or claims. Keep raw artifact bodies and large diagnostics pull-only. |
+| Close-readiness context | Scope match, acceptance criteria, evidence coverage, verification status, Manual QA status, final acceptance need/status, residual-risk visibility and accepted refs when relevant, close blockers, projection freshness, and smallest unblocker. | Stewardship/follow-up refs, short close-relevant evidence excerpts, release or handoff refs. | Generic all-done rollups, full report bodies, full historical logs, unrelated templates. | Read current Core gates, owner records, evidence/artifact refs, and projection freshness; a stale projection can summarize a blocker but cannot become authority. | Show the close basis before acceptance or close. Keep exact `close_task` payload and gate matrix internal unless a blocker needs exact detail. |
+| Error/recovery context | Primary error or blocker, owner, last safe/current state known, stale or unavailable source, affected authority claims, next recovery action, and whether writes/close must hold. | Diagnostic refs, recent event/log excerpt, connector profile freshness, retry or reconcile candidate. | Historical event logs, stack traces, full artifacts, and unrelated status unless needed for recovery or audit. | Re-read Core when possible; if Core is unreachable, do not invent state from agent memory, chat history, cached projection, or operator prose. | Show the user the plain blocker, ownership, and smallest recovery. Keep detailed diagnostics internal until needed. |
 
 Discovery phase phrases such as "first implementation candidate" and "work split" are context proposal/support phrases, not standalone schemas, canonical record types, gate values, projection kinds, or authority paths.
 
 For user-facing mode display, connectors should lead with read/advice work, small change, or tracked work. These labels are derived display text, not schema fields, enum values, canonical record types, projection kinds, gate values, or authority paths. If an envelope or context bundle mentions a work-shape display label, it means the derived display label for the current schema mode, not a new API field unless a future schema owner explicitly defines one. The schema-owned values remain `advisor`, `direct`, and `work` for state, conformance, and API payloads. Display translation must not reduce product-write authority checks, user-owned judgment routing, sensitive-action Approval, evidence, QA, verification, final acceptance, residual-risk visibility, residual-risk acceptance, or close rules.
 
-Phase bundles are context discipline, not new schemas or gates. Moving from one phase to another changes what the connector pushes by default; it does not authorize writes, resolve decisions, create evidence, perform verification, accept risk, or close a Task.
+Context profiles are context discipline, not new schemas or gates. Moving from one phase to another changes what the connector pushes by default; it does not authorize writes, resolve decisions, create evidence, perform verification, accept risk, or close a Task.
 
 The compact status card renders the envelope for "where are we and what happens next?" Judgment-context is separate. Use judgment-context only when user judgment is needed, and include the decision question, options, recommendation, uncertainty, deferral effect, and relevant refs without turning the full evidence or artifact body into always-on context.
 

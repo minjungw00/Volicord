@@ -619,7 +619,7 @@ Release Handoff는 release readiness visibility를 위한 optional 보고서/exp
 
 이 profile은 다음을 요약합니다.
 
-- close readiness, active blocker, 다음 close-relevant action
+- close readiness, 활성 blocker, 다음 close-relevant action
 - evidence ref, verification ref, 수동 QA ref, residual-risk ref
 - changed file과 affected Change Unit scope
 - projection freshness와 `stale`, failed, omitted projection snapshot

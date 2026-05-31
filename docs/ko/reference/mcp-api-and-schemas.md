@@ -1374,7 +1374,7 @@ RecordRunResponse:
 
 Violation 또는 audit Run은 Core가 그런 Run을 의도적으로 record할 때, 예를 들어 observed product write가 이미 발생한 뒤에만 non-null `run_id`를 가질 수 있습니다. Rejected pre-commit cases는 Run ID를 만들어내면 안 됩니다.
 
-State transition summary: shaping updates는 `shaping`을 유지하거나 `ready` 또는 `waiting_user`로 이동할 수 있습니다. Implementation은 `verifying` 쪽으로 이동합니다. Direct는 close-eligible이 되거나 work로 escalate할 수 있습니다. Verification input은 분리 검증을 증명하지 않고 evaluator bundle context를 기록합니다.
+State transition summary: shaping updates는 `shaping`을 유지하거나 `ready` 또는 `waiting_user`로 이동할 수 있습니다. Implementation은 `verifying` 쪽으로 이동합니다. Direct는 close-eligible이 되거나 work로 escalate할 수 있습니다. Verification input은 분리 검증을 증명하지 않고 verification bundle material을 기록합니다.
 
 반환될 수 있는 stable EventRef values: `run_recorded`, `write_authorization_consumed`, `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, `scope_violation_detected`, `evidence_manifest_updated`.
 

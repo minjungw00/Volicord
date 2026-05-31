@@ -39,8 +39,10 @@ Harness keeps three derived-output tiers separate:
 | Tier | Purpose | Early implementation rule |
 |---|---|---|
 | User-readable outputs | Short summaries that let the user understand the current work: status, judgment request, evidence summary, and close readiness or blocker summary. | Required for the user-facing MVP, but may be rendered as status/next text, compact cards, or minimal `TASK` sections rather than many separate Markdown files. |
-| Agent compact context | The smallest current state needed for the next safe step: active Task, scope, active Change Unit when relevant, pending user judgment, evidence/close blockers, next action, and freshness. | Keep it compact and current; do not embed long history, logs, traces, screenshots, or full projection bodies. |
+| Agent compact context | The smallest current state needed for the next safe step: role or surface posture, current phase, current Task summary, active blockers, pending user-owned judgments, next allowed action, and freshness. | Keep it compact and current; do not embed long history, logs, traces, screenshots, full projection bodies, full schemas, or reference docs. |
 | Reference/diagnostic outputs | Detailed manifests, run summaries, Journey Card or Journey Spine views, TDD traces, Module Map and Interface Contract projections, detailed Eval reports, export bundles, maps, traces, and operator reports. | Pull-on-demand or later-profile scope. These outputs remain derived views and must not become mandatory for the first runnable slice or the minimum user-facing MVP unless an owner profile explicitly promotes them. |
+
+Agent compact context may use projections as a readable summary only when their `source_state_version` and freshness are suitable for the next action. If state matters and the projection is stale, failed, unknown, or too broad, retrieve current Core state or a state-derived compact context instead. Do not turn Markdown projections, Journey Cards, status cards, old reports, or generated summaries into always-on prompt payloads or authority. They can point to current refs to inspect; they cannot authorize writes, satisfy gates, create evidence, perform verification, record Manual QA, accept results, accept residual risk, or close a Task.
 
 ### Minimum user-facing MVP output set
 

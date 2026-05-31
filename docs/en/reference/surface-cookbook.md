@@ -36,11 +36,12 @@ Each recipe should keep only surface-specific material:
 - MCP exposure posture and local transport assumptions when they vary by surface
 - host/profile-specific capability differences, including version, hooks, permissions, workspace policy, generated files, capture methods, QA capture methods, redaction policy, artifact retention behavior, and conformance result differences that require a refreshed profile under the [Agent Integration Reference](agent-integration.md#capability-profiles)
 - capture, guard, and isolation options
+- surface-specific context strategy: how the recipe keeps always-on context to role, current phase, current task summary, active blockers, pending user-owned judgments, and next allowed action; how it switches among session start, discovery, decision request, prepare-write, run/evidence, close-readiness, and error/recovery profiles
 - guarantee boundary notes: what the named surface can block before execution, what it can only detect after action, what capture is native, and what falls back to manual artifacts or a manual verification bundle
 - common fallbacks
 - conformance risks
 
-Do not repeat generic kernel rules, public API schemas, or policy contracts here. The common contract determines what cooperative, detective, preventive, and isolated mean. A recipe only names the surface-specific path that can provide that behavior. Guard, freeze, and careful-mode labels may appear only as labels over the connected profile's actual capability. When a recipe uses one of those labels, it must say whether the behavior is a scope hold, a post-action detector, a fixture-proven pre-tool block, or a documented separation boundary. Those labels do not authorize writes, satisfy gates, record verification, record acceptance, or create a new authority tier.
+Do not repeat generic kernel rules, public API schemas, policy contracts, full reference docs, unrelated templates, or historical logs here. The common contract determines what cooperative, detective, preventive, and isolated mean. A recipe only names the surface-specific path that can provide that behavior. Guard, freeze, and careful-mode labels may appear only as labels over the connected profile's actual capability. When a recipe uses one of those labels, it must say whether the behavior is a scope hold, a post-action detector, a fixture-proven pre-tool block, or a documented separation boundary. Those labels do not authorize writes, satisfy gates, record verification, record acceptance, or create a new authority tier.
 
 Generated or managed recipe outputs must follow the connector manifest contract in [Agent Integration Reference](agent-integration.md#generated-manifest-expectations). Recipes may name the surface-specific files, config snippets, or managed blocks, but drift is reported before overwrite. The existing file or managed block stays in place until reconcile or an explicit reconnect decision chooses replacement, and the drifted generated file is not treated as canonical Task state.
 
@@ -90,7 +91,7 @@ conformance_risks:
   - document rewrite sessions can sprawl without batch boundaries
 ```
 
-Codex connector work should keep `AGENTS.md` short enough to scan every turn. Treat it as an always-on compass, not a procedure manual, schema reference, or project history. Put procedural depth in a skill, command, or MCP resource.
+Codex connector work should keep `AGENTS.md` short enough to scan every turn. Treat it as an always-on compass, not a procedure manual, schema reference, project history, or full context bundle. The injected current-state context should fit the [Agent Integration](agent-integration.md#context-pushpull-principles) budget: role, current phase, current task summary, active blockers, pending user-owned judgments, and next allowed action. Put procedural depth in a skill, command, or MCP resource, and pull longer references only when the current profile needs them.
 
 Codex-facing wording may expose phrases such as "freeze this task to these paths" or "show what can actually be blocked and what can only be detected later." For profiles without fixture-proven pre-tool blocking, describe freeze as a cooperative scope hold or stricter next-action posture plus detective changed-path validation when available, not as preventive guard.
 
@@ -185,7 +186,7 @@ conformance_risks:
   - extension wording alone must not be reported as a guard
 ```
 
-Gemini connectors should push only current Harness status, active Decision Packet summary, Autonomy Boundary summary, Change Unit scope, and residual-risk summary near close. Longer standards, domain language, module maps, and interface contracts should be pulled through MCP resources.
+Gemini connectors should push only the profile-relevant compact context: current Harness status, active Decision Packet summary, Autonomy Boundary summary, Change Unit scope, and residual-risk summary near close. Longer standards, domain language, module maps, interface contracts, schemas, and templates should be pulled through MCP resources only when the current profile needs them.
 
 ## GitHub Copilot
 
@@ -276,4 +277,4 @@ conformance_risks:
   - generated project rules must become reconcile candidates when locally edited
 ```
 
-Cursor connectors should keep project rules short and use the skill/playbook plus MCP for procedural depth. Project-rule wording alone is cooperative; IDE permission or sidecar fixture proof is required before claiming preventive guard behavior.
+Cursor connectors should keep project rules short and use the skill/playbook plus MCP for procedural depth and profile-based context retrieval. Project-rule wording alone is cooperative; IDE permission or sidecar fixture proof is required before claiming preventive guard behavior.

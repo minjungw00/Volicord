@@ -40,20 +40,21 @@
 
 Gate 상태는 범위, 판단, 근거, 닫기 준비 상태라는 네 가지 사용자에게 보이는 표시 그룹으로 렌더링합니다. 쉬운 개념을 먼저 설명하고, 정확한 내부 용어나 ref는 경계, 막힘, source ref, runtime rule을 분명히 할 때만 덧붙입니다. 이들은 표시 그룹일 뿐입니다. Kernel gate를 대체하거나, schema field를 추가하거나, recompute rule을 바꾸거나, write를 허가하거나, gate를 충족하거나, 잔여 위험을 받아들이거나, Task를 닫지 않습니다. 정확한 gate 값, recompute 동작, close 의미는 [커널 참조](../reference/kernel.md#gates)와 [`close_task`](../reference/kernel.md#close_task)가 담당합니다.
 
-Turn context는 compact하고 current하며 phase-filtered 상태로 유지합니다. [Agent 통합 참조](../reference/agent-integration.md#context-pushpull-principles)의 10개 이하 compact context rule set에서 시작한 뒤, 현재 phase의 relevant envelope field만 보여줍니다. 예를 들면 current status 또는 compact 현재 위치 요약, 네 가지 display group, next safe action, primary blocker, active Change Unit 또는 결정 패킷 refs, Write Authority Summary, 근거 또는 잔여 위험 refs, guarantee/MCP availability, projection freshness를 next safe action에 relevant할 때만 보여줍니다. 이를 전체 field set을 매번 보내는 checklist로 다루면 안 됩니다. Evidence, Run, Eval, 수동 QA, artifact, log, screenshot, diff, old projection, 오래된 PRD나 design, module map, large trace는 기본적으로 ref와 짧은 결과만 보여주고, 다음 행동이 내용을 실제로 살펴봐야 할 때만 가져옵니다. 오래된 chat memory와 retrieved context는 살펴볼 ref를 가리킬 수 있지만 write를 허가하거나, gate를 충족하거나, 작업 수락을 기록하거나, Task를 닫거나, current state를 대체할 수 없습니다.
+Turn context는 작고 최신이며 단계별 맥락으로 걸러져야 합니다. 항상 주입되는 운영 맥락은 한 화면 안팎으로 제한하고, 역할 또는 접점 자세, 현재 단계/context profile, 현재 상태 요약, 활성 blocker, 대기 중인 사용자 소유 판단, 다음 허용 행동만 포함합니다. 여기에 source ref나 최신성 표시를 붙일 수는 있지만, 전체 reference 문서, schema, 오래된 task history, historical event log, 관련 없는 template, projection 전체 본문, evidence body 복사본을 넣으면 안 됩니다.
 
-전체 문서 세트를 agent prompt에 넣지 말고 progressive context loading을 사용합니다. 자세한 context contract는 [Agent 통합 참조](../reference/agent-integration.md#context-pushpull-principles)가 담당하며, 이 사용자용 flow에서는 phase bundle을 좁게 유지합니다.
+전체 문서 세트를 agent prompt에 넣지 말고 progressive context loading을 사용합니다. 자세한 context contract는 [Agent 통합 참조](../reference/agent-integration.md#context-pushpull-principles)가 담당하며, 이 사용자용 flow에서는 단계별 맥락을 좁게 유지합니다.
 
-| Phase | 지금 push | 필요할 때만 pull |
+| 맥락 profile | 지금 보여줄 것 | 필요할 때만 가져올 것 |
 |---|---|---|
-| Intake | Current status 또는 compact 현재 위치 요약, 예상 작업 모양, 네 가지 display group, next safe action, primary blocker. | Request를 classify하는 데 필요한 task history, user guide, Reference docs. |
-| Discovery | 요구사항 구체화 요약, decision area별 blocking question, 확인 가능한 사실, assumption, 사용자 소유 판단 후보, QA/검증 기대 수준, current source refs, 첫 구현 후보 또는 작업 분할 제안. | 에이전트가 확인할 수 있는 사실과 사용자 결정이 필요한 항목을 나누고 안전한 다음 작업을 좁히는 데 필요한 repo docs, module/interface/domain refs, older PRD/design, decision guidance. |
-| Write | Active Change Unit, Autonomy Boundary, intended paths/tools/commands summary, Approval status, active 결정 패킷, Write Authority Summary. | Intended write에 필요한 정확한 `prepare_write`, Kernel, security, approval, policy reference. |
-| Evidence | Run summary, Evidence Manifest ref, 아티팩트 참조, evidence gaps, next evidence action. | Support를 해석하거나 수리하는 데 필요한 log, diff, screenshot, trace, artifact/evidence contract detail. |
-| Verification | Acceptance criteria, changed files, evidence refs, 아티팩트 참조, relevant decisions, 잔여 위험 요약, 수동 QA requirement, independence/freshness notes. | Full evaluator bundle material, source files, logs, Eval/수동 QA contract detail, verification guidance. |
-| Close | Close-readiness summary, blockers, evidence/verification/QA/작업 수락 상태, 잔여 위험 요약 또는 accepted refs, projection freshness. | Blocker 뒤에 있는 exact close, 작업 수락, 잔여 위험, QA, verification, artifact detail. |
+| 세션 시작 | Current status 또는 간결한 현재 상태 요약, 예상 작업 모양, 활성 blocker, 대기 중인 사용자 판단, 다음 허용 행동, guarantee/MCP availability. | Request를 classify하거나 blocker를 설명하는 데 필요한 task history, user guide, Reference docs. |
+| 요구사항 구체화 / Discovery | 목표, 범위와 비목표, 확인 가능한 사실, assumption, decision area별 blocking question, 사용자 소유 판단 후보, QA/검증 기대 수준, 첫 구현 후보 또는 작업 분할 제안. | 에이전트가 확인할 수 있는 사실과 사용자 결정이 필요한 항목을 나누고 안전한 다음 작업을 좁히는 데 필요한 repo docs, module/interface/domain refs, 오래된 PRD/design, decision guidance. |
+| 판단 요청 | 정확한 결정, 선택지, 추천, 불확실성, 영향을 받는 범위/gate/수용 기준, 결정을 미룰 때의 영향, 관련 refs, 답변 뒤의 다음 행동. | 사용자가 충분히 판단하는 데 필요한 짧은 evidence, risk, design, artifact excerpt. |
+| 쓰기 준비 | Active Change Unit, Autonomy Boundary, intended paths/tools/commands summary, Approval 상태, active 결정 패킷, Write Authority Summary, baseline/freshness. | Intended write에 필요한 정확한 `prepare_write`, Kernel, security, approval, policy reference. |
+| 실행 / 근거 | Run summary, changed-path summary, Evidence Manifest ref, artifact refs, evidence gaps, redaction/integrity notes, next evidence action. | Support를 해석하거나 수리하는 데 필요한 log, diff, screenshot, trace, artifact/evidence contract detail. |
+| 닫기 준비 상태 | Close-readiness summary, blockers, evidence/verification/QA/작업 수락 상태, 잔여 위험 요약 또는 accepted refs, projection freshness, 가장 작은 unblocker. | Blocker 뒤에 있는 exact close, 작업 수락, 잔여 위험 표시/수용, 수동 QA, verification, artifact detail. |
+| 오류 / 복구 | Primary error 또는 blocker, owner, 마지막으로 안전하게 아는 현재 상태, stale 또는 unavailable source, 영향을 받는 authority claim, 다음 recovery action, write나 close를 보류해야 하는지. | 복구에 필요한 diagnostic refs, 짧은 recent event/log excerpt, connector freshness, recovery contract detail. |
 
-Retrieved, indexed, remembered, summarized context는 read-only로 남습니다. 무엇을 살펴볼지 제안할 수는 있지만 write를 허가하거나, gate를 충족하거나, 근거를 만들거나, 검증을 수행하거나, risk를 받아들이거나, Task를 close하거나, 다른 authority claim을 만들 수 없습니다.
+Agent memory, chat history, retrieved context, indexed context, projection은 read-only로 남습니다. 무엇을 살펴볼지 제안할 수는 있지만 write를 허가하거나, gate를 충족하거나, 근거를 만들거나, 검증을 수행하거나, risk를 받아들이거나, Task를 close하거나, 다른 authority claim을 만들 수 없습니다. 상태가 중요하면 행동하기 전에 current Core state 또는 state-derived compact context를 가져옵니다. 토큰을 아낀다는 이유로 사용자 소유 판단, blocker, scope limit, safety boundary, close-relevant residual risk를 숨기면 안 되며, 판단 요청은 사용자가 충분히 판단할 만큼의 맥락을 포함해야 합니다.
 
 ## 세션 시작
 

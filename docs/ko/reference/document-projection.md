@@ -39,8 +39,10 @@ Projection은 secret/PII를 보호하는 표시 경계이기도 합니다. Proje
 | 계층 | 목적 | 초기 구현 규칙 |
 |---|---|---|
 | 사용자 읽기용 산출물 | 사용자가 현재 작업을 이해하기 위한 짧은 요약입니다. 상태, 판단 요청, 근거 요약, 닫기 준비 상태 또는 blocker 요약을 포함합니다. | 사용자 대상 MVP에는 필요하지만, 여러 Markdown 파일이 아니라 status/next text, compact card, 최소 `TASK` section으로 렌더링할 수 있습니다. |
-| 에이전트용 간결한 현재 맥락 | 다음 안전한 행동에 필요한 최소 current state입니다. Active Task, scope, 필요한 경우 active Change Unit, 대기 중인 사용자 판단, 근거/닫기 blocker, next action, freshness를 담습니다. | 짧고 최신 상태로 유지합니다. 긴 history, log, trace, screenshot, 전체 projection body를 embed하지 않습니다. |
+| 에이전트용 간결한 현재 맥락 | 다음 안전한 행동에 필요한 최소 current state입니다. 역할 또는 접점 자세, 현재 단계/context profile, 현재 상태 요약, 활성 blocker, 대기 중인 사용자 소유 판단, 다음 허용 행동, freshness를 담습니다. | 짧고 최신 상태로 유지합니다. 긴 history, log, trace, screenshot, projection 전체 본문, full schema, reference docs를 embed하지 않습니다. |
 | 참조/진단용 산출물 | 자세한 manifest, Run Summary, Journey Card 또는 Journey Spine view, TDD trace, Module Map과 Interface Contract projection, detailed Eval report, export bundle, map, trace, operator report입니다. | 필요할 때만 가져오거나 later profile 범위에 둡니다. Owner profile이 명시적으로 승격하지 않는 한 첫 runnable slice나 최소 사용자 대상 MVP의 필수 항목이 아닙니다. |
+
+에이전트용 간결한 현재 맥락은 `source_state_version`과 최신성이 다음 행동에 맞을 때만 projection을 읽기용 요약으로 사용할 수 있습니다. 상태가 중요하고 projection이 stale, failed, unknown이거나 너무 넓다면 current Core state 또는 state-derived compact context를 가져와야 합니다. Markdown projection, Journey Card, status card, old report, generated summary를 항상 주입되는 prompt payload나 authority로 만들면 안 됩니다. 이들은 살펴볼 current ref를 가리킬 수는 있지만 write를 허가하거나, gate를 충족하거나, 근거를 만들거나, 검증을 수행하거나, 수동 QA를 기록하거나, 결과를 수락하거나, 잔여 위험을 받아들이거나, Task를 close할 수 없습니다.
 
 ### 최소 사용자 대상 MVP 산출물 set
 
