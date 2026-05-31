@@ -976,6 +976,8 @@ CREATE INDEX idx_manual_qa_records_task_change_unit ON manual_qa_records(task_id
 CREATE INDEX idx_reconcile_items_status ON reconcile_items(status);
 ```
 
+<a id="task_events"></a>
+
 ### `task_events`
 
 `task_events`는 application policy상 추가 전용입니다. `event_seq`는 monotonically allocated되며 절대 reused되지 않습니다. Recovery는 새 `event_seq` value를 가진 compensating event를 추가하며 historical row나 historical order를 rewrite하면 안 됩니다.

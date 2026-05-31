@@ -143,6 +143,8 @@ The table above is the source of truth for field names. The field order helps re
 
 ## Policy contracts
 
+<a id="shared-design-shared_design"></a>
+
 ### Shared Design (`shared_design`)
 
 Discovery is the agent's conditional Shared Design intake posture for clarifying requirements before implementation planning and write authority. It is used when clarification is needed, not as mandatory ceremony for every task and not primarily as a user command. It may be triggered by ordinary prompts such as "clarify the plan before implementation" or "ask what you need before changing code." It may ask multiple targeted questions and keep a Question Queue, but the stop condition is not merely identifying a First Safe Change Unit Candidate. Shaping can pause when the agent has separated facts it can inspect from decisions the user must make, made uncertainty explicit, and has enough scoped information to propose safe next work, a smaller scope, a first implementation candidate, or a work split without hiding unresolved user-owned judgment. It routes outputs into Shared Design, Decision Packet candidates, and Change Unit shaping; it is not a standalone schema, canonical record field list, approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, final acceptance, residual-risk acceptance, close, scope authority, or a new authority path.
@@ -211,6 +213,8 @@ Sensitive category labels such as `secret_access`, `data_export`, or `policy_ove
 | `validator` | `decision_quality_check` |
 | `evidence` | Decision Packet refs, option refs, evidence manifest refs, risk/waiver refs, residual-risk state refs when residual-risk acceptance is involved, and final acceptance refs when user judgment is required. |
 | `close_impact` | Missing required decision quality for blocking user-owned judgment sets or keeps `decision_gate=required`, `pending`, or `blocked`. Keep `design_gate` impact only when the decision affects design quality. Unresolved user judgment, invalid deferral, or unaccepted residual risk blocks affected writes or close. Valid recorded acceptance may allow close with residual risk preserved in state refs. |
+
+<a id="autonomy-boundary-autonomy_boundary"></a>
 
 ### Autonomy Boundary (`autonomy_boundary`)
 
@@ -434,6 +438,8 @@ Read the display shape in two parts: owner records, validator results, and Task/
 | `close_impact` | `none` \| `blocks_close` \| `requires_decision` \| `residual_risk` |
 
 `feedback_loop_status` is derived from referenced `feedback_loops` rows and validator results. A referenced `tdd_traces` row can satisfy execution evidence when TDD is selected, but it is not the canonical owner of the selected loop.
+
+<a id="manual-qa-manual_qa"></a>
 
 ### Manual QA (`manual_qa`)
 

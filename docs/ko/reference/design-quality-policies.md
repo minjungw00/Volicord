@@ -143,6 +143,8 @@ Policy validator는 MCP API document가 담당하는 validator 결과 형식에 
 
 ## 정책 계약
 
+<a id="shared-design-shared_design"></a>
+
 ### Shared Design (`shared_design`)
 
 요구사항 구체화(Discovery)는 구현 계획과 쓰기 권한 전에 에이전트가 수행하는 조건부 Shared Design 요청 정리 자세입니다. 구체화가 필요할 때 사용하는 것이며 모든 작업에 필요한 의식이 아니고, 주로 사용자가 외워야 하는 명령어도 아닙니다. "구현 전에 계획을 먼저 구체화해줘" 또는 "코드를 바꾸기 전에 필요한 걸 물어봐" 같은 평범한 요청으로도 같은 행동이 시작될 수 있습니다. 여러 targeted question을 물을 수 있고 Question Queue를 유지할 수 있지만, 중지 조건은 단순히 First Safe Change Unit Candidate를 찾는 것이 아닙니다. 에이전트가 직접 확인할 수 있는 사실과 사용자가 결정해야 하는 항목을 분리하고, 불확실성을 명시하고, 해소되지 않은 사용자 소유 판단을 숨기지 않은 채 안전한 다음 작업, 더 작은 범위, 첫 구현 후보, 또는 작업 분할을 제안할 만큼 충분한 scoped information이 생기면 shaping을 잠시 멈출 수 있습니다. 출력은 Shared Design, Decision Packet candidate, Change Unit shaping으로 라우팅합니다. Standalone schema, canonical record field list, approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, 작업 수락, 잔여 위험 수용, close, scope authority, 새 authority path가 아닙니다.
@@ -211,6 +213,8 @@ Shared Design은 기록된 shared understanding이지 final approval, sensitive-
 | `validator` | `decision_quality_check` |
 | `evidence` | Decision Packet ref, option ref, evidence manifest ref, risk/waiver ref, 잔여 위험 수용이 포함될 때 residual-risk state ref, 사용자 판단이 필요할 때 작업 수락 ref. |
 | `close_impact` | 차단하는 사용자 소유 판단에 필요한 decision quality가 없으면 `decision_gate=required`, `pending`, 또는 `blocked`로 설정하거나 유지한다. Design quality에 영향을 주는 decision일 때만 `design_gate`에 반영한다. 해소되지 않은 사용자 판단, invalid deferral, 받아들여지지 않은 residual risk는 영향받는 write 또는 close를 차단한다. 유효하게 기록된 작업 수락은 잔여 위험을 state ref에 보존한 채 close를 허용할 수 있다. |
+
+<a id="autonomy-boundary-autonomy_boundary"></a>
 
 ### Autonomy Boundary (`autonomy_boundary`)
 
@@ -434,6 +438,9 @@ Domain term, module map item, interface contract, Feedback Loop records, TDD가 
 | `close_impact` | `none` \| `blocks_close` \| `requires_decision` \| `residual_risk` |
 
 `feedback_loop_status`는 참조된 `feedback_loops` row와 validator 결과에서 파생됩니다. TDD가 선택된 경우 참조된 `tdd_traces` row는 execution 근거를 충족할 수 있지만 selected loop의 기준 owner는 아닙니다.
+
+<a id="manual-qa-manual_qa"></a>
+<a id="수동-qa-manual_qa"></a>
 
 ### 수동 QA (`manual_qa`)
 

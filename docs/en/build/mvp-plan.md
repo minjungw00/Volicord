@@ -49,7 +49,7 @@ flowchart LR
   Core["v0.1<br/>Core Authority Slice<br/>first runnable kernel slice"] --> MVP["v0.2<br/>User-Facing Harness MVP<br/>first user value"]
   MVP --> Assurance["v0.3<br/>Assurance and Stewardship Pack<br/>agency security policy hardening"]
   Assurance --> Ops["v0.4<br/>Operations and Handoff Pack<br/>operator readiness"]
-  Ops -. "roadmap boundary" .-> Expansion["v1+<br/>Expansion candidates"]
+  Ops -. roadmap boundary .-> Expansion["v1+<br/>Expansion candidates"]
 ```
 
 Kernel Smoke remains the narrow conformance authoring profile for v0.1 Core Authority Slice. The profile name does not make v0.1 a product MVP; it means the fixture queue proves the internal kernel path.

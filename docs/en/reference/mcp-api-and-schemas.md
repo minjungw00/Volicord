@@ -852,6 +852,8 @@ If an MCP server or caller cannot reach Core at all, the surface or operator may
 | 24 | `ARTIFACT_MISSING` | a referenced artifact file is missing or failed integrity checks |
 | 25 | `VALIDATOR_FAILED` | generic validator fallback selected only when no more specific typed blocker above applies |
 
+<a id="harnessclose_task-close-blockers"></a>
+
 #### `harness.close_task` Close Blockers
 
 `harness.close_task` may return multiple close blockers. The primary `ToolError` in `CloseTaskResponse.base.errors` uses the precedence above; when present, `CloseTaskResponse.base.errors[0].code` is the primary close error code. `CloseTaskResponse.blockers` must include the observed close blockers as structured results in the same relative order. Prose in status, reports, Journey views, or agent summaries may explain these blockers, but prose-only text is not a close-blocker result. Residual-risk visibility remains before `ACCEPTANCE_REQUIRED` for close and final acceptance flows because required final acceptance can be recorded or relied on only after close-relevant residual risk is visible.
@@ -1094,6 +1096,8 @@ Possible errors: `NO_ACTIVE_TASK`, `MCP_UNAVAILABLE`, `PROJECTION_STALE`, `DECIS
 
 Idempotency behavior: read-only; repeated requests do not mutate state.
 
+<a id="harnessprepare_write"></a>
+
 ### `harness.prepare_write`
 
 Purpose: decide whether an intended product write is allowed before the agent writes. This is the only public product-write authorization decision point.
@@ -1207,6 +1211,8 @@ Sensitive-action Approval follows this recipe:
 8. Only that retry may create a Write Authorization. It succeeds only if the granted sensitive-action Approval's scope, baseline, sensitive categories, paths, tools, commands, network targets, secret scope, Decision Packet refs, Approval refs, and capability checks remain compatible with the current intended write.
 
 Approval authorizes sensitive categories inside the defined scope. Approval does not resolve user-owned judgment such as product trade-offs, design direction, architecture or material technical direction, unresolved security or product-security judgment, verification risk, QA waiver, verification waiver, final acceptance, or residual-risk acceptance. If the sensitive action also includes user-owned product, material technical, or architecture judgment, or unresolved security or product-security judgment, Core must require a separate compatible Decision Packet before `prepare_write` can return `allowed`. Approval is not Write Authorization; actual product writes still require an allowed `prepare_write` result and compatible `harness.record_run` consumption of the returned Write Authorization. Approval prompts and records should therefore describe the sensitive action, scope, expiry, and what remains undecided instead of asking for broad agreement.
+
+<a id="harnessrecord_run"></a>
 
 ### `harness.record_run`
 
@@ -1388,6 +1394,8 @@ Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `W
 
 Idempotency behavior: repeated request returns the same run, artifact records, evidence updates, events, and projection jobs; artifact inputs and resolved artifact refs must match the original payload.
 
+<a id="harnessrequest_user_decision"></a>
+
 ### `harness.request_user_decision`
 
 Purpose: create a structured Decision Packet for a user judgment that blocks progress, write, close, residual-risk acceptance, waiver, or reconcile.
@@ -1457,6 +1465,8 @@ Core checks/preconditions: `state_envelope`, `decision_packet_validity`, `approv
 Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `DECISION_REQUIRED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `APPROVAL_REQUIRED`, `RECONCILE_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `PROJECTION_STALE`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
 
 Idempotency behavior: repeated request returns the same Decision Packet, related records, events, and projection jobs; a different packet payload with the same key returns `STATE_CONFLICT`.
+
+<a id="harnessrecord_user_decision"></a>
 
 ### `harness.record_user_decision`
 
@@ -1544,6 +1554,8 @@ Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `DECISION_UNRESOLVED`, `AUT
 
 Idempotency behavior: repeated decision returns the same Decision Packet resolution, accepted-risk refs, updated records, and events; attempting to change an already-recorded decision with the same key returns `STATE_CONFLICT`.
 
+<a id="harnesslaunch_verify"></a>
+
 ### `harness.launch_verify`
 
 Purpose: create a detached verification run or manual evaluator bundle.
@@ -1600,6 +1612,8 @@ Core checks/preconditions: `state_envelope`, `evidence_sufficiency`, `baseline_f
 Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `EVIDENCE_INSUFFICIENT`, `BASELINE_STALE`, `ARTIFACT_MISSING`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `VALIDATOR_FAILED`.
 
 Idempotency behavior: repeated request returns the same evaluator run and bundle ref; included artifact refs and bundle artifact input must match the original payload, and staged bundle contents must be byte-identical for the same key.
+
+<a id="harnessrecord_eval"></a>
 
 ### `harness.record_eval`
 
@@ -1680,6 +1694,8 @@ Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `VERIFY_NOT_DETACHED`, `EVI
 
 Idempotency behavior: repeated request returns the same Eval and assurance decision; a changed verdict, independence payload, or artifact input with the same key returns `STATE_CONFLICT`.
 
+<a id="harnessrecord_manual_qa"></a>
+
 ### `harness.record_manual_qa`
 
 Purpose: record an individual human QA outcome and update `qa_gate` when required QA is satisfied, failed, or waived.
@@ -1743,6 +1759,8 @@ Core checks/preconditions: `state_envelope`, `qa_waiver_reason`, `artifact_integ
 Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `QA_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `ARTIFACT_MISSING`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
 
 Idempotency behavior: repeated request returns the same Manual QA record and gate update; waiver reason and artifact inputs must match.
+
+<a id="harnessclose_task"></a>
 
 ### `harness.close_task`
 

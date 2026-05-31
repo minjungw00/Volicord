@@ -81,8 +81,8 @@ flowchart LR
   Core --> Projector
   ArtifactRefs --> Projector
   Projector --> Markdown
-  Markdown -. "편집 가능한 note만" .-> Human
-  Human -. "후보 입력" .-> Reconcile
+  Markdown -. 편집 가능한 note만 .-> Human
+  Human -. 후보 입력 .-> Reconcile
   Reconcile -->|Core 경로가 수용| Core
 ```
 

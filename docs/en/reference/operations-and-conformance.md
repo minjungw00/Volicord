@@ -150,7 +150,7 @@ flowchart LR
   Kernel["v0.1 Core Authority Slice<br/>Kernel Smoke profile"] --> Evidence["v0.2 User-Facing Harness MVP"]
   Evidence --> Agency["v0.3 Assurance & Stewardship Pack"]
   Agency --> Ops["v0.4 Operations & Handoff Pack<br/>operations/future conformance"]
-  Ops -. "roadmap boundary" .-> Expansion["v1+ Expansion<br/>roadmap candidates"]
+  Ops -. roadmap boundary .-> Expansion["v1+ Expansion<br/>roadmap candidates"]
   Kernel --> K1["project, Task, one basic scope"]
   Kernel --> K2["prepare_write and Write Authorization"]
   Kernel --> K3["record_run and evidence link"]
@@ -355,12 +355,12 @@ Required behavior:
 ```mermaid
 flowchart TD
   Start["harness serve mcp"] --> Server["server can reach runtime state and artifact storage?"]
-  Server -- "no" --> ServerFail["diagnostic<br/>MCP_SERVER_UNAVAILABLE<br/>no authoritative Core response"]
-  Server -- "yes" --> Core["Core reachable for public tools"]
+  Server -- no --> ServerFail["diagnostic<br/>MCP_SERVER_UNAVAILABLE<br/>no authoritative Core response"]
+  Server -- yes --> Core["Core reachable for public tools"]
   Core --> Resources["read resources exposed without mutation"]
   Resources --> Surface["connected surface can use required MCP tools?"]
-  Surface -- "yes" --> Ready["MCP server ready for this surface"]
-  Surface -- "no" --> SurfaceFail["diagnostic<br/>SURFACE_MCP_UNAVAILABLE<br/>surface cannot use required MCP tools"]
+  Surface -- yes --> Ready["MCP server ready for this surface"]
+  Surface -- no --> SurfaceFail["diagnostic<br/>SURFACE_MCP_UNAVAILABLE<br/>surface cannot use required MCP tools"]
 ```
 
 If MCP is unavailable, operations must distinguish diagnostic condition `MCP_SERVER_UNAVAILABLE` from diagnostic condition `SURFACE_MCP_UNAVAILABLE`. These labels are not additional public `ErrorCode` values. When either condition is surfaced through `ToolError`, operations must use the API-owned error selection and details shape: `MCP_UNAVAILABLE` remains the stable public availability code, while surface-side availability or capability cases may use `MCP_UNAVAILABLE` or `CAPABILITY_INSUFFICIENT` with `details.mcp_unavailable_kind` according to context. With `MCP_SERVER_UNAVAILABLE`, a tool call cannot reach Core and no authoritative Core response is possible; the next action is server diagnosis or reconnect before any state-change claim. With `SURFACE_MCP_UNAVAILABLE`, Core or an operator can observe that the connected surface lacks usable MCP, has stale MCP configuration, or cannot call required MCP tools. Cooperative surfaces must hold product/runtime/code writes by instruction; stronger profiles may enforce the hold preventively only when fixture-proven blocking covers the operation, or through a proven isolation boundary. Operations must still report the actual guarantee level.
@@ -402,11 +402,11 @@ flowchart TD
   Target["select refresh target"] --> Latest["render latest projection version"]
   Latest --> Preserve["preserve human-editable sections"]
   Preserve --> Hash["compare managed block hash"]
-  Hash -- "hash drift" --> Reconcile["create reconcile item"]
-  Hash -- "matches" --> Write["write derived Markdown view"]
+  Hash -- hash drift --> Reconcile["create reconcile item"]
+  Hash -- matches --> Write["write derived Markdown view"]
   Reconcile --> Skipped["mark job skipped or pending"]
   Write --> Completed["mark job completed"]
-  Latest -- "render error" --> Failed["mark job failed"]
+  Latest -- render error --> Failed["mark job failed"]
   Completed --> Separate["keep projection status separate from Task result"]
   Failed --> Separate
   Skipped --> Separate

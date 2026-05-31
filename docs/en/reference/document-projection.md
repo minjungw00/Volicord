@@ -81,8 +81,8 @@ flowchart LR
   Core --> Projector
   ArtifactRefs --> Projector
   Projector --> Markdown
-  Markdown -. "editable notes only" .-> Human
-  Human -. "candidate input" .-> Reconcile
+  Markdown -. editable notes only .-> Human
+  Human -. candidate input .-> Reconcile
   Reconcile -->|accepted through Core path| Core
 ```
 

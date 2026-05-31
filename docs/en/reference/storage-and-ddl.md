@@ -972,6 +972,8 @@ CREATE INDEX idx_manual_qa_records_task_change_unit ON manual_qa_records(task_id
 CREATE INDEX idx_reconcile_items_status ON reconcile_items(status);
 ```
 
+<a id="task_events"></a>
+
 ### `task_events`
 
 `task_events` is append-only by application policy. `event_seq` is monotonically allocated and never reused. Recovery appends compensating events with new `event_seq` values; it should not rewrite historical rows or historical order.

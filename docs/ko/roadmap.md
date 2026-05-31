@@ -33,7 +33,7 @@ flowchart LR
   Kernel["코어 권한 조각(v0.1 Core Authority Slice)"] --> MVP["사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)"]
   MVP --> Agency["보증과 스튜어드십 팩(v0.3 Assurance & Stewardship Pack)"]
   Agency --> Ops["운영과 인계 팩(v0.4 Operations & Handoff Pack)<br/>강화된 로컬 기준 목표(hardened local reference target)"]
-  Ops -. "roadmap boundary" .-> Later["v1+ roadmap 후보"]
+  Ops -. roadmap boundary .-> Later["v1+ roadmap 후보"]
   Later --> Promote["future version은 owner 결정 이후에만 가능"]
 ```
 
@@ -61,7 +61,7 @@ flowchart TD
   Fixture --> Fallback["unsupported surface fallback behavior"]
   Fallback --> Projection["projection-as-canonical dependency 없음"]
   Projection --> Promote["명시적 re-scope decision에만 eligible"]
-  Candidate -- "criterion 누락" --> Later["v1+ Expansion roadmap item으로 유지"]
+  Candidate -- criterion 누락 --> Later["v1+ Expansion roadmap item으로 유지"]
 ```
 
 ## 로드맵 항목

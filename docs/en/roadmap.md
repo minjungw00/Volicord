@@ -33,7 +33,7 @@ flowchart LR
   Kernel["v0.1 Core Authority Slice"] --> MVP["v0.2 User-Facing Harness MVP"]
   MVP --> Agency["v0.3 Assurance & Stewardship Pack"]
   Agency --> Ops["v0.4 Operations & Handoff Pack<br/>hardened local reference target"]
-  Ops -. "roadmap boundary" .-> Later["v1+ roadmap candidates"]
+  Ops -. roadmap boundary .-> Later["v1+ roadmap candidates"]
   Later --> Promote["future version only after owner decision"]
 ```
 
@@ -61,7 +61,7 @@ flowchart TD
   Fixture --> Fallback["fallback behavior for unsupported surfaces"]
   Fallback --> Projection["no projection-as-canonical dependency"]
   Projection --> Promote["eligible for explicit re-scope decision only"]
-  Candidate -- "missing any criterion" --> Later["remains v1+ Expansion roadmap item"]
+  Candidate -- missing any criterion --> Later["remains v1+ Expansion roadmap item"]
 ```
 
 ## Roadmap Items

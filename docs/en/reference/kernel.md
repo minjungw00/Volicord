@@ -963,6 +963,8 @@ sequenceDiagram
 
 This sequence is a navigation aid, not a transition table. Blocked `prepare_write` responses do not by themselves imply a projection job unless an owner path commits a projection-affecting state or event change. Strict behavior for Task, Change Unit, gates, `prepare_write`, and Write Authorization is owned by this reference. Public MCP envelopes are owned by [MCP API And Schemas](mcp-api-and-schemas.md), storage layout and projection-job storage by [Storage And DDL](storage-and-ddl.md), and projection enqueueing, rendering, and freshness behavior by [Document Projection Reference](document-projection.md).
 
+<a id="prepare_write"></a>
+
 ## prepare_write
 
 `prepare_write` is the unique product-write authorization decision point. Approval, Decision Packet resolution, `record_run`, `close_task`, reports, projections, and agent prose can provide inputs or context, but none of them authorize a product write or create a consumable Write Authorization.
@@ -1017,6 +1019,8 @@ External side effects must be described before execution and recorded after exec
 
 The user-facing explanation should name the concrete side effect first, then the Harness labels. For example, "send a write request to the staging billing API" is the ordinary side effect; `network_write`, `external_service_write`, Approval, Decision Packet, and Write Authorization are the authority and state labels around it.
 
+<a id="record_run"></a>
+
 ## record_run
 
 `record_run` is the Run, artifact, and evidence recording point for shaping updates, implementation, direct work, and verification input. It consumes write authority for implementation and direct product-write Runs, but it is not an authorization decision point and cannot retroactively authorize product writes.
@@ -1038,6 +1042,8 @@ The Task cannot rely on an interrupted, blocked, or violation Run for close unti
 The current reference `shaping_update` path is not a product-write recording path. Shaping-only Runs may be recorded without consuming Write Authorization, but they must not include product file changes. If a `shaping_update` also reports observed product writes, Core rejects it and requires `kind=implementation` or `kind=direct` with a compatible Write Authorization.
 
 Read-only Runs may be recorded without consuming Write Authorization, but they must not include product file changes. If such a Run observes product changes, Core treats it as an implementation/direct compatibility failure.
+
+<a id="close_task"></a>
 
 ## close_task
 

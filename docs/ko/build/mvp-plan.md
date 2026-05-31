@@ -49,7 +49,7 @@ flowchart LR
   Core["v0.1<br/>코어 권한 조각<br/>첫 커널 실행"] --> MVP["v0.2<br/>사용자 대상 MVP<br/>첫 사용자 가치"]
   MVP --> Assurance["v0.3<br/>보증과 스튜어드십<br/>자율성 보존과 보안 정책 강화"]
   Assurance --> Ops["v0.4<br/>운영과 인계<br/>운영 준비"]
-  Ops -. "roadmap boundary" .-> Expansion["v1+<br/>확장 후보"]
+  Ops -. roadmap boundary .-> Expansion["v1+<br/>확장 후보"]
 ```
 
 커널 스모크(Kernel Smoke)는 코어 권한 조각(v0.1 Core Authority Slice)을 위한 좁은 conformance authoring profile로 남습니다. 이 profile 이름은 v0.1이 제품 MVP라는 뜻이 아니라 내부 kernel path를 증명한다는 뜻입니다.

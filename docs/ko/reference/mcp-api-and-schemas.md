@@ -854,6 +854,8 @@ MCP server나 호출자가 Core에 전혀 닿을 수 없으면 접점 또는 ope
 | 24 | `ARTIFACT_MISSING` | referenced artifact file이 missing이거나 integrity check에 failed함 |
 | 25 | `VALIDATOR_FAILED` | 위의 더 specific한 typed blocker가 적용되지 않을 때만 선택되는 generic validator fallback |
 
+<a id="harnessclose_task-close-blockers"></a>
+
 #### `harness.close_task` Close Blockers
 
 `harness.close_task`는 여러 close blocker를 반환할 수 있습니다. `CloseTaskResponse.base.errors`의 primary `ToolError`는 위 precedence를 사용합니다. Present하면 `CloseTaskResponse.base.errors[0].code`가 primary close error code입니다. `CloseTaskResponse.blockers`는 관찰된 close blocker를 같은 relative order의 structured result로 포함해야 합니다. Status, report, Journey view, agent summary의 prose는 blocker를 설명할 수 있지만, prose-only text는 close-blocker result가 아닙니다. Required 작업 수락은 close-relevant 잔여 위험이 visible한 뒤에만 record하거나 rely할 수 있으므로 close 및 작업 수락 flow에서 잔여 위험 표시는 `ACCEPTANCE_REQUIRED`보다 앞에 둡니다.
@@ -1096,6 +1098,8 @@ Possible errors: `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `NO_ACTIVE_TASK`, `
 
 Idempotency behavior: read-only입니다. Repeated request는 상태를 변경하지 않습니다.
 
+<a id="harnessprepare_write"></a>
+
 ### `harness.prepare_write`
 
 Purpose: agent가 write하기 전에 intended product write가 allowed인지 결정합니다. 이는 public 제품 파일 쓰기 권한에 대한 유일한 decision point입니다.
@@ -1209,6 +1213,8 @@ Sensitive-action Approval은 다음 절차를 따릅니다.
 8. 그 retry만 Write Authorization을 만들 수 있습니다. Granted 민감 동작 승인의 scope, baseline, sensitive categories, paths, tools, commands, network targets, secret scope, Decision Packet refs, Approval refs, capability checks가 current intended write와 compatible할 때만 성공합니다.
 
 Approval은 정해진 scope 안의 sensitive categories를 허가하는 민감 동작 승인입니다. Approval은 제품 장단점, 설계 방향, 아키텍처 판단이나 중요한 기술 판단, 해결되지 않은 security 또는 product-security 판단, 검증 위험, QA 면제 판단, 검증 면제 판단, 작업 수락, 잔여 위험 수용 같은 사용자 소유 판단을 해소하지 않습니다. Sensitive action이 사용자 소유의 제품 판단, 중요한 기술 판단이나 아키텍처 판단, 또는 해결되지 않은 security/product-security 판단도 포함하면 Core는 `prepare_write`가 `allowed`를 반환하기 전에 별도의 compatible Decision Packet을 요구해야 합니다. Approval은 Write Authorization이 아닙니다. 실제 제품 쓰기에는 여전히 allowed `prepare_write` result와 반환된 Write Authorization을 compatible하게 consume하는 `harness.record_run`이 필요합니다. Approval prompt와 record는 broad agreement를 묻지 말고 민감 동작, scope, expiry, 아직 결정되지 않은 것을 보여줘야 합니다.
+
+<a id="harnessrecord_run"></a>
 
 ### `harness.record_run`
 
@@ -1390,6 +1396,8 @@ Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `W
 
 Idempotency behavior: repeated request는 같은 run, artifact record, evidence update, event, projection job을 반환합니다. Artifact input과 resolved artifact ref는 original payload와 일치해야 합니다.
 
+<a id="harnessrequest_user_decision"></a>
+
 ### `harness.request_user_decision`
 
 Purpose: progress, write, close, 잔여 위험 수용, 면제 판단, reconcile을 block하는 user judgment를 위한 structured Decision Packet을 create합니다.
@@ -1461,6 +1469,8 @@ Core checks/preconditions: `state_envelope`, `decision_packet_validity`, Approva
 Possible errors: `STATE_CONFLICT`, `DECISION_REQUIRED`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `APPROVAL_REQUIRED`, `RECONCILE_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `PROJECTION_STALE`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
 
 Idempotency behavior: repeated request는 같은 Decision Packet, related record, event, projection job을 반환합니다. 같은 key에 다른 packet payload를 사용하면 `STATE_CONFLICT`입니다.
+
+<a id="harnessrecord_user_decision"></a>
 
 ### `harness.record_user_decision`
 
@@ -1550,6 +1560,8 @@ Possible errors: `STATE_CONFLICT`, `DECISION_UNRESOLVED`, `NO_ACTIVE_TASK`, `AUT
 
 Idempotency behavior: repeated decision은 같은 Decision Packet 해소, accepted-risk refs, updated records, events를 반환합니다. 같은 key로 이미 recorded decision을 바꾸려 하면 `STATE_CONFLICT`를 반환합니다.
 
+<a id="harnesslaunch_verify"></a>
+
 ### `harness.launch_verify`
 
 Purpose: 분리 검증 run 또는 manual evaluator bundle을 create합니다.
@@ -1606,6 +1618,8 @@ Core checks/preconditions: `state_envelope`, `evidence_sufficiency`, `baseline_f
 Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `EVIDENCE_INSUFFICIENT`, `BASELINE_STALE`, `ARTIFACT_MISSING`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `VALIDATOR_FAILED`.
 
 Idempotency behavior: repeated request는 같은 evaluator run과 bundle ref를 반환합니다. Included artifact 참조와 bundle artifact input은 original payload와 일치해야 하며, 같은 key에서 staged bundle content는 byte-identical이어야 합니다.
+
+<a id="harnessrecord_eval"></a>
 
 ### `harness.record_eval`
 
@@ -1686,6 +1700,8 @@ Possible errors: `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `VERIFY_NOT_DETACHED`, `EVI
 
 Idempotency behavior: repeated request는 같은 Eval과 assurance decision을 반환합니다. 같은 key에서 changed verdict, independence payload, artifact input이 들어오면 `STATE_CONFLICT`입니다.
 
+<a id="harnessrecord_manual_qa"></a>
+
 ### `harness.record_manual_qa`
 
 Purpose: individual human QA outcome을 record하고 required QA가 satisfied, failed, waived될 때 `qa_gate`를 update합니다.
@@ -1751,6 +1767,8 @@ Core checks/preconditions: `state_envelope`, `qa_waiver_reason`, `artifact_integ
 Possible errors: `STATE_CONFLICT`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `NO_ACTIVE_TASK`, `QA_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `ARTIFACT_MISSING`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`, `MCP_UNAVAILABLE`.
 
 Idempotency behavior: repeated request는 같은 수동 QA 기록과 gate update를 반환합니다. Waiver reason과 artifact input은 일치해야 합니다.
+
+<a id="harnessclose_task"></a>
 
 ### `harness.close_task`
 
