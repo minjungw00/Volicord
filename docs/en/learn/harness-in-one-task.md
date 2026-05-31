@@ -1,14 +1,16 @@
 # Harness in One Task
 
-## What this document helps you do
+## Start with one normal task
 
-This document teaches Harness through two concrete task flows before you read the stricter reference definitions. It is the tutorial walkthrough; [Harness in 15 Minutes](harness-in-15-minutes.md) is the shorter scenario sampler.
+You can ask for a small edit, a feature, a review, or help clarifying an idea. The useful first response is not a wall of Harness terms; it is the agent showing what it heard, what may change, what it can inspect, what only you can decide, and what would count as enough evidence.
 
-After reading it, you should be able to recognize when a request can stay tiny, when the agent should clarify before implementation, why user judgment can block work, what evidence is doing, and why close can still be blocked. The table at the end connects those everyday ideas to stricter Harness labels.
+Harness preserves the task story outside fragile chat context: scope, user-owned judgment, evidence, verification, QA expectations, final acceptance, residual risk, and close readiness. You should expect small work to stay small and larger work to show its decisions and blockers without making you learn the internal labels first.
+
+This page teaches that flow through one small change and one tracked task. [Harness in 15 Minutes](harness-in-15-minutes.md) is the shorter scenario sampler.
 
 ## Read this when
 
-Read this when you want to understand Harness through concrete task flow before learning the stricter terms.
+Read this when you want to see how a normal request turns into scope, clarification, user judgment, evidence, and close readiness.
 
 ## Before you read
 
@@ -20,7 +22,7 @@ Harness is easiest to understand as a task story. The user speaks normally; the 
 
 ## Why examples come first
 
-Harness can sound heavier than it feels in use. The strict reference docs need exact rules because they define how a local system records state and checks gates. A user, though, usually experiences Harness as a few practical questions:
+Harness can sound heavier than it feels in use. Reference pages need exact rules later, but a user usually experiences Harness as a few practical questions:
 
 1. What are we trying to do?
 2. What is allowed to change?
@@ -33,14 +35,14 @@ The examples below start there. They show how Harness keeps a small task light a
 
 ## Tiny work in practice
 
-The smallest work should feel small. Reference docs call this a tiny direct profile under `direct`, not a new work mode. Use it for a typo, one docs sentence, or an obvious rename when scope and result are already clear.
+The smallest work should feel small. Use the lightweight path for a typo, one docs sentence, or an obvious rename when scope and result are already clear.
 
 ```text
 Request: Fix the typo in the install note.
 Result: changed `docs/help.md`; self-check says spelling only, no meaning or contract change; no escalation.
 ```
 
-Tiny does not bypass judgment or security. If the sentence changes meaning, a link or rendered output must be checked, a sensitive area appears, or the edit needs evidence beyond the tiny changed-path/self-check note, the same Task should move to ordinary small-change handling (`direct`) or tracked work (`work`) according to the broader scope.
+Tiny does not bypass judgment or security. If the sentence changes meaning, a link or rendered output must be checked, a sensitive area appears, or the edit needs evidence beyond the tiny changed-path/self-check note, the same Task should get the extra structure that the broader scope needs.
 
 ## Example A: Small change
 
@@ -294,7 +296,7 @@ Evidence: diff for login form and session code; test output for remember-me beha
 
 Evidence is why the user can later ask, "What supports the claim that remember-me works?" and get a concrete answer instead of a chat memory. The answer should map the acceptance criteria and completion conditions to Run refs, artifact refs, and other supporting refs. It is not enough to have a pile of artifacts somewhere, and it is not enough for a Markdown report to say "covered."
 
-Strict details behind that simple idea span Evidence Gate and Evidence Manifest semantics, artifact registration and storage integrity, and conformance proof.
+Exact evidence contracts live in the Reference docs; this tutorial stays with what the user should see.
 
 ### Verification
 
@@ -308,7 +310,7 @@ Detached verification: a separate check confirms that a remembered session survi
 
 If detached verification cannot run, the agent should say so plainly and show the remaining verification risk. Closing without it is a risk-accepted close, not detached verification.
 
-Strict details span Verification Gate semantics, assurance level, Eval and tool schemas, detached-verification independence, and conformance fixtures.
+Exact verification contracts live in the Reference docs; this tutorial stays with what the user should see.
 
 ### Manual QA
 
@@ -320,7 +322,7 @@ Manual QA: login screen shows the checkbox clearly, copy is understandable, keyb
 
 Manual QA exists because tests can pass while the experience is still confusing, clipped, inaccessible, or surprising.
 
-Strict details span Manual QA policy, QA Gate semantics, Manual QA record and tool shape, and conformance proof.
+Exact Manual QA contracts live in the Reference docs; this tutorial stays with what the user should see.
 
 ### Residual risk
 

@@ -1,14 +1,14 @@
 # Harness in 15 Minutes
 
-## What this document helps you do
+## Start with familiar requests
 
-Use six short scenarios to understand how Harness feels in ordinary AI-assisted work before you read the heavier Reference docs. This is the quick scenario sampler, not the primary first read or the full task tutorial.
+You can ask for a typo fix, a focused code change, help clarifying a feature, a user-owned decision prompt, missing evidence, or the current close blockers. The agent should translate that ordinary request into a small visible shape: scope, what it can inspect, what it needs from you, what evidence matters, and what you can expect to see next.
 
-After reading it, you should be able to tell when a task can stay tiny, when it needs clarification, why user judgment can block work, what evidence is doing, why close can still be blocked, and why a readable Markdown report is not state.
+Harness preserves the facts that tend to get lost in chat: scope, user-owned judgment, evidence, verification, QA expectations, final acceptance, residual risk, and close readiness. These six short scenarios show how those facts should feel in ordinary AI-assisted work.
 
 ## Read this when
 
-Read this when you are new to Harness and want practical examples before learning exact gates, schemas, DDL, projection rules, or conformance fixtures.
+Read this when you are new to Harness and want practical examples before exact Reference details.
 
 ## Before you read
 
@@ -20,7 +20,7 @@ Harness keeps AI-assisted work followable by making a few things explicit: what 
 
 Users should still speak normally. Requests such as "review this feature idea and ask the questions needed before implementation," "make a small copy change, but tell me if it becomes a broader product decision," or "before changing code, separate the product decisions from the technical decisions" are enough for the agent to choose the right Harness shape.
 
-The examples below are onboarding examples, not schemas or new authority paths. Exact behavior stays with the Reference owners linked at the end.
+The examples below are onboarding examples, not exact contracts. Exact behavior stays with the Reference owners linked at the end.
 
 ## Scenario 1: Tiny docs change
 
@@ -46,7 +46,7 @@ Self-check: spelling-only, no meaning or contract change.
 Closed as a small change. Residual risk: none known for this close.
 ```
 
-Tiny direct is still under `direct`; it is not a separate mode and does not bypass user-owned judgment, security boundaries, evidence, scope, write permission, residual-risk visibility, or close rules. If the edit changes meaning, needs link/render proof, touches a strict Reference contract, or grows beyond changed-path plus self-check support, the same work should move to ordinary small-change handling (`direct`) or tracked work (`work`).
+A tiny fix still has boundaries. If the edit changes meaning, needs link or render proof, touches a strict contract, or grows beyond changed-path plus self-check support, the same work should get the extra structure that the broader scope needs.
 
 For exact mode, evidence, and close behavior, use [Kernel Reference](../reference/kernel.md#mode), [Evidence Sufficiency Profiles](../reference/kernel.md#evidence-sufficiency-profiles), and [`close_task`](../reference/kernel.md#close_task).
 

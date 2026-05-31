@@ -4,6 +4,8 @@ This is the English routing page for the Harness documentation set.
 
 This repository is currently a documentation-only redesign/review repository. Its intended future role is the Harness Server source repository. No Harness Server/runtime implementation exists here yet, and server/runtime implementation may start only after documentation acceptance and a separate implementation-planning readiness decision. These docs are source material for understanding and implementing Harness; they are not Harness runtime objects governed by the lifecycle they describe.
 
+This page carries detailed repository status for English readers. Learn and Use pages should keep status brief and start with the user workflow: what to ask, what the agent clarifies, what Harness preserves, and what the user should see.
+
 Harness is a local authority record and judgment-routing layer for AI-assisted product work. It keeps scope, user-owned judgments, evidence, verification, QA expectations, final acceptance, and residual-risk status outside fragile chat context.
 
 Harness solves four recurring problems:

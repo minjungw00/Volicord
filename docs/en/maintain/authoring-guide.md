@@ -52,6 +52,8 @@ Do not describe the current docs as fully accepted, implementation-complete, imp
 
 Documentation edits may change source docs, but they do not start Harness server/runtime implementation or authorize implementation planning.
 
+Detailed phase/status warnings belong in the root README, language READMEs, Build handoff docs, and this Maintain guidance. Learn and Use pages may link to those owners, but their openings should lead with what users can ask, what the agent should clarify, what Harness preserves, and what users can expect to see.
+
 The redesign may change terminology, MVP staging, schema structure, projection structure, security wording, and document organization. Do not preserve existing prose merely for continuity when it conflicts with the clarified product thesis or implementation feasibility.
 
 Documentation editing in this repository does not require Harness runtime procedures. Do not create runtime state, `task_events`, Write Authorizations, Evidence Manifests, Manual QA records, Acceptance records, Residual Risk records, generated projections, generated operational files, executable fixtures, fixture files, runtime records, or product-repository examples for documentation edits. These terms may be documented as future Harness behavior only.
@@ -130,7 +132,7 @@ Potential item category after verification:
 |---|---|---|
 | Repository identity as the future Harness Server source repository can drift. | Baseline status check. | Keep entrypoints clear that the repo is currently documentation-only, is in post-redesign review, its intended future role is the Harness Server source repository, and server/runtime implementation has not started and may start only after documentation acceptance and a separate implementation-planning readiness decision. |
 | Stage names can still imply v0.1, Kernel Smoke, or a legacy kernel-stage label is the product MVP. | Candidate to verify in the current docs. | Say v0.1 Core Authority Slice is an internal authority-loop milestone, Kernel Smoke is its narrow conformance authoring profile, and v0.2 User-Facing Harness MVP is the first product MVP. |
-| User-facing docs may open with heavy implementation disclaimers. | Candidate to verify in the current docs. | For user-facing docs, lead with the user-visible problem and route status caveats to entrypoints or Build docs. Keep required implementation disclaimers compact and away from the first user mental model when possible. |
+| User-facing docs may open with heavy implementation disclaimers. | Candidate to verify in the current docs. | For user-facing Learn and Use docs, prefer a workflow-first opening that starts with what users can ask, what the agent should clarify, what Harness preserves, and what users should expect to see. Route detailed phase/status warnings to the root README, language READMEs, Build handoff docs, and Maintain guidance. Keep any local status note brief. |
 | User-facing docs overuse internal terms. | Candidate to verify in the current docs. | Explain the user-visible situation first; introduce internal terms only when they help the reader act. |
 | Discovery / requirements clarification may converge too early on a Change Unit or the first safe implementation unit. | Candidate to verify in the current docs. | Leave room for early discovery, shared understanding, and user-owned decisions before requiring a scoped implementation unit. |
 | `judgment_domain` ownership/status can drift. | Regression-prevention check. | Active owner docs define `judgment_domain` as schema-owned. Keep non-owner docs aligned with those owners, and do not describe it as display-only in one place and schema-owned in another. If the intended ownership changes, owner docs must make that explicit before non-owner docs follow. |
@@ -156,7 +158,7 @@ Prefer a small number of strong ideas over a complete inventory of internal mach
 
 Introduce unfamiliar concepts with a concrete situation first. Readers should understand why a concept exists before they are asked to memorize its exact definition.
 
-Keep the opening of every document predictable. A reader should quickly know what the document helps them do, when to read it, what they need first, and what idea will organize the rest of the page.
+Every document should make the reader's next useful step clear near the top. The opening may use predictable headings, ordinary requests, practical examples, or a workflow-first setup, as long as the reader can quickly tell why the page matters, what to do next, and where exact owner details live.
 
 Write current documentation as current truth. Migration history, removed structures, and old names must stay out of the main explanation. If a dedicated migration note exists during a migration, keep that history there; otherwise rely on Git history or a clearly labeled non-active migration record.
 
@@ -204,25 +206,33 @@ README pages may summarize path ownership, but they should not copy strict contr
 
 First-time reader routes should include the fast practical tour before deeper Learn and Reference paths. Use routes should include practical Decision Packet examples near the User Guide so readers can understand judgment prompts before reading strict Reference contracts.
 
-## Standard opening pattern
+## Opening patterns
 
-Every active document should begin with a short, predictable opening. Keep it compact, but make the reader's path clear. Template reference files under `reference/templates` use the template-specific opening below instead of the general opening headings.
+Every active document should begin with a compact opening that makes the reader's path clear. The required information may appear through exact headings, natural headings, prose, examples, or a workflow-first setup. Do not treat the four headings below as mandatory for every page.
 
-### What this document helps you do
+Reference, Build, and Maintain docs may use this predictable structured opening when it helps the reader:
 
-State the useful outcome in plain language. Avoid saying only what the document "covers."
+- `What this document helps you do`: state the useful outcome in plain language. Avoid saying only what the document "covers."
+- `Read this when`: name the situation that makes the document relevant. This can be a short list.
+- `Before you read`: name the assumed context, prior document, or prerequisite. If there is no prerequisite, say so briefly.
+- `Main idea`: give the reader the central model or claim that will make the rest of the page easier to follow.
 
-### Read this when
+These names are a pattern, not a global heading contract. A page may satisfy the opening rule without using these exact headings when the reader situation is clearer another way.
 
-Name the situation that makes the document relevant. This can be a short list.
+### Workflow-first opening for Learn and Use
 
-### Before you read
+User-facing Learn and Use pages may start with ordinary requests, practical examples, or user workflow when that serves the reader better than the structured opening. This is especially appropriate for primary user-facing pages.
 
-Name the assumed context, prior document, or prerequisite. If there is no prerequisite, say so briefly.
+A workflow-first opening should:
 
-### Main idea
+- start with what users can ask
+- show what the agent should clarify
+- state what Harness preserves
+- say what users should expect to see
+- keep phase/status notes brief and route detailed status to the root README, language READMEs, Build handoff docs, and Maintain guidance
+- introduce internal Harness terms only after the user-visible situation is clear
 
-Give the reader the central model or claim that will make the rest of the page easier to follow.
+Heading text differences are not drift when the document serves the reader situation, the necessary context is present, owner links remain valid, exact contract details stay in Reference owners, and English/Korean versions are semantically aligned. Do not reintroduce internal labels such as `direct`, `work`, `Decision Packet`, or `judgment_domain` into an opening only to satisfy the structured pattern.
 
 ### Reference scope, only for reference docs
 
@@ -230,7 +240,7 @@ Reference docs should state the exact contract they own and what they deliberate
 
 ### Template reference opening, only for `reference/templates`
 
-Template reference files are the explicit exception to the general opening headings above. Docs-maintenance should identify them by path: `docs/*/reference/templates/README.md` for the directory index and non-README Markdown files under `docs/*/reference/templates/` for individual templates.
+Template reference files use a specialized opening pattern. Docs-maintenance should identify them by path: `docs/*/reference/templates/README.md` for the directory index and non-README Markdown files under `docs/*/reference/templates/` for individual templates.
 
 The directory README should begin with `Used when`, then output tiers and template implementation classes. It should explain that the directory owns rendered template bodies and display card shapes while projection rules, freshness behavior, and authority boundaries stay with their reference owners.
 
@@ -386,7 +396,7 @@ Use these result meanings:
 
 | Result | Meaning |
 |---|---|
-| `FAIL` | Drift can make active docs contradictory or non-actionable, such as broken owner links, schema/DDL/enum/stable event/`ValidatorResult`/`ProjectionKind` mismatch, missing paired active files, missing semantic section coverage, or non-owner text redefining an owner contract. Idiomatic heading text or minor grouping differences are not failures when owner links, stable identifiers, and reviewability remain clear. |
+| `FAIL` | Drift can make active docs contradictory or non-actionable, such as broken owner links, schema/DDL/enum/stable event/`ValidatorResult`/`ProjectionKind` mismatch, missing paired active files, missing semantic section coverage, or non-owner text redefining an owner contract. Idiomatic heading text, workflow-first Learn/Use openings, or minor grouping differences are not failures when the reader situation is served, necessary context is present, owner links and stable identifiers remain valid, exact contracts stay in owner docs, and reviewability remains clear. |
 | `WARN` | Drift should be cleaned up but does not yet contradict an owner contract, such as minor glossary phrasing drift, duplicate explanatory prose that is not normative, stale cross-reference wording whose affected stage is explicit, or incomplete TODO metadata that is still understandable. |
 | `PASS` | No relevant drift is found for the category. |
 
@@ -396,7 +406,7 @@ Required check categories:
 |---|---|
 | English/Korean file structure parity | `docs/en` and `docs/ko` keep the same active document paths, README entries, and paired route expectations unless an exception is explicitly documented. |
 | English/Korean semantic section parity | Paired files keep the same active file map, reader purpose, semantic section coverage, owner links, and contractual detail. Heading text and minor grouping may be idiomatic when stable identifiers, schema names, enum values, DDL names, validator IDs, code identifiers, and reviewability remain clear. |
-| Opening convention compliance | Non-template active docs use the standard opening pattern. `docs/*/reference/templates/README.md` uses `Used when`, output tiers, and template implementation classes; individual template files under `docs/*/reference/templates/` other than `README.md` use `Used when`, implementation tier, `Source records`, `Rendered sections`, and `Full template`, plus a visible non-authority boundary. |
+| Opening convention compliance | Active docs make the reader's next useful step clear near the top. Reference, Build, and Maintain docs may use the structured opening pattern; Learn and Use docs may use a workflow-first opening. Do not fail a Learn or Use page solely because it omits the old four exact headings. `docs/*/reference/templates/README.md` uses `Used when`, output tiers, and template implementation classes; individual template files under `docs/*/reference/templates/` other than `README.md` use `Used when`, implementation tier, `Source records`, `Rendered sections`, and `Full template`, plus a visible non-authority boundary. |
 | Broken cross-reference detection | Markdown links, heading anchors, template/reference links, same-language README routes, paired-language entry links, and owner-section links resolve to active docs and current anchors. |
 | Owner-boundary drift | Exact contracts and active owner concepts stay in their active owners, including `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/security-threat-model.md`, `reference/operations-and-conformance.md`, `reference/conformance-fixtures.md`, and `reference/glossary.md`; non-owner docs summarize and link rather than redefining those contracts. |
 | Fixture/action schema drift | Conformance fixture examples keep `action` and executable `input` aligned with public MCP request schemas in `reference/mcp-api-and-schemas.md` and the `ToolEnvelope` expansion convention in `reference/conformance-fixtures.md`; docs-maintenance may flag drift but does not execute fixture actions or restate fixture semantics here. |
@@ -410,7 +420,7 @@ Required check categories:
 ```text
 [ ] Does the document serve a clear reader situation?
 [ ] Do README entrypoints route first-time readers, users, implementers, reference readers, and maintainers quickly?
-[ ] Does the opening follow the standard pattern, or the template-specific pattern for `reference/templates` files?
+[ ] Does the opening make the reader's next useful step clear using an allowed structured, workflow-first, or template-specific pattern?
 [ ] Are concepts introduced through examples before strict definitions?
 [ ] Are strict schemas, gates, DDL, enums, and invariants kept in Reference docs?
 [ ] Are long source-of-truth paragraphs and duplicated normative contract blocks summarized and linked instead of repeated?

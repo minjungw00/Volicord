@@ -1,43 +1,23 @@
 # User Guide
 
-## What this document helps you do
+## Start with ordinary requests
 
-Use Harness through normal conversation. This is the primary user-facing entry after [Overview](../learn/overview.md). You should be able to start work, understand what the agent is doing, see when your judgment is needed, and know why the work can or cannot be closed without learning Harness's internal vocabulary first.
-
-## Read this when
-
-Read this when Harness is connected and you are starting, resuming, unblocking, or closing an AI-assisted task. It is especially useful when product files may change, scope may drift, a human decision is needed, completion claims need evidence, or sensitive actions may be involved.
-
-## Before you read
-
-No startup phrase or Harness label is required. You do not need to know internal record names, gate names, or tool names to use Harness well.
-
-[Overview](../learn/overview.md) is the recommended first read. [Harness in One Task](../learn/harness-in-one-task.md) is useful background, but it is not required.
-
-## Main idea
-
-Speak normally. Describe the work you want, the boundary you already know, and how cautious you want the agent to be. The agent should translate that ordinary request into the right Harness procedure.
+Speak normally. Describe the work you want, the boundary you already know, and how cautious you want the agent to be. You can ask the agent to clarify the plan before implementation, keep a change small unless it turns into a product or technical decision, separate product judgment from architecture judgment, show what evidence is missing, or explain what still blocks close.
 
 The agent should:
 
 - clarify scope before important writes
-- inspect the repository, docs, and current Harness context for answers it can find itself
-- identify decisions that only the user can own
+- inspect the repository, docs, and current Harness context before asking questions it can answer itself
+- identify decisions that only you can own
 - separate product or UX judgment from technical architecture judgment
 - gather or explain the evidence needed to support completion
-- show what still blocks closing the work
+- show the next safe action and what still blocks closing the work
 
-Harness should make AI-assisted work easier to follow, not turn every task into a management ritual. Small work should stay small. Larger or riskier work should gain structure only when scope, judgment, evidence, QA, verification, final acceptance, or residual risk actually matter.
+Harness helps preserve scope, user-owned judgment, evidence, verification, QA expectations, final acceptance, and residual-risk status outside fragile chat context. It should make AI-assisted work easier to follow, not turn every task into a management ritual. Small work should stay small. Larger or riskier work should gain structure only when scope, judgment, evidence, QA, verification, final acceptance, or residual risk actually matter.
+
+You should expect to see plain work facts: what is in scope, what is out of scope, what the agent can inspect, what only you can decide, what changed, what was checked, what evidence exists, what risk remains, and whether close is blocked. You should not need to learn internal record names, gate names, or tool names before starting.
 
 Harness also does not replace the surrounding engineering process. Source control still records product-file history, tests still check executable behavior, review still reviews changes, and user-owned product or material technical judgment still belongs to the user.
-
-## Security guarantee level, briefly
-
-Harness makes security-sensitive AI work easier to see and route, but early local Harness is not a sandbox. It does not automatically change OS permissions, sandbox arbitrary tools, make local files tamper-proof, or turn an instructed agent into preventive security.
-
-You may see four guarantee levels. `cooperative` means the agent is instructed to follow the rules. `detective` means a mismatch can be detected or recorded after action. `preventive` means a proven control blocks the operation before it happens. `isolated` means work or verification runs behind a documented separation boundary; a worktree or fresh evaluator bundle is not automatically an OS sandbox, permission boundary, or tamper-proof security. For early local use, expect cooperative/detective wording unless the agent can name the exact blocking control or exact proven separation boundary in use.
-
-## Start with ordinary requests
 
 Good Harness requests sound like normal work requests:
 
@@ -304,6 +284,12 @@ Separate product decisions from technical decisions.
 Tell me what evidence would be enough before you claim this is done.
 Show what still blocks closing.
 ```
+
+## Security guarantee level, briefly
+
+Harness makes security-sensitive AI work easier to see and route, but early local Harness is not a sandbox. It does not automatically change OS permissions, sandbox arbitrary tools, make local files tamper-proof, or turn an instructed agent into preventive security.
+
+You may see four guarantee levels. `cooperative` means the agent is instructed to follow the rules. `detective` means a mismatch can be detected or recorded after action. `preventive` means a proven control blocks the operation before it happens. `isolated` means work or verification runs behind a documented separation boundary; a worktree or fresh evaluator bundle is not automatically an OS sandbox, permission boundary, or tamper-proof security. For early local use, expect cooperative/detective wording unless the agent can name the exact blocking control or exact proven separation boundary in use.
 
 ## When blocked
 

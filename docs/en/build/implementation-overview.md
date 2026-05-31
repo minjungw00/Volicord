@@ -6,6 +6,8 @@ This document tells implementers what to build before they dive into the full re
 
 This is planning documentation for documentation redesign / review and maintainer handoff. The repository is documentation-only today, and its intended future role is the Harness Server source repository. Server/runtime implementation in this repository may start only after documentation acceptance and a separate implementation-planning readiness decision; no Harness Server/runtime implementation, executable fixture files, generated runtime records, generated projections, or runnable Harness Server conformance tests exist here yet. This revision is in post-redesign review and is a documentation acceptance candidate for maintainer review, not an accepted implementation start. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as its narrow conformance authoring profile: one local process with modules proving the smallest authority loop. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack harden agency assurance, operations, and handoff behavior. v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
+This Build page intentionally carries detailed phase and implementation-status warnings so Learn and Use pages can stay focused on the user experience. The current review baseline and acceptance status below are the detailed handoff sections to update when maintainers change status.
+
 Use it to answer three questions:
 
 - What are the runtime pieces that must exist first?

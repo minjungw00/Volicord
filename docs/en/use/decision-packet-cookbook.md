@@ -1,39 +1,39 @@
 # Decision Packet Cookbook
 
-## What this document helps you do
+## Ask for one focused decision
 
-Use practical examples to recognize and write good Decision Packet prompts without copying the strict schema. This is advanced usage and reference-adjacent example material, not the primary user-facing entry.
+Use this after [User Guide](user-guide.md) when work is blocked by a choice the agent should not make alone. You can ask the agent to show the options, recommend one path, name uncertainty, explain what can continue if you defer, and say what still blocks close.
 
-After reading it, you should be able to ask for a focused user judgment, compare realistic options, recommend a path, name uncertainty, explain what happens if the user defers, and link relevant risk or evidence when it matters.
+The agent should clarify why the decision is needed now, what the realistic options are, which trade-offs belong to you, what the codebase or current evidence can answer, and what evidence, QA, verification, acceptance, or residual-risk handling may be affected.
 
-## Read this when
+Harness helps preserve the user-owned decision separately from broad approval, implementation evidence, final acceptance, and residual-risk acceptance. You should expect a compact decision prompt, not a field list.
 
-Read this after [User Guide](user-guide.md) when a task is blocked by product, UX, architecture, security, QA, verification, final acceptance, residual-risk acceptance, or scope/autonomy judgment that the agent should not decide alone.
+This is advanced usage and example material, not the primary user entrypoint and not the exact contract for Decision Packet behavior.
 
-## Before you read
+## When to use it
 
-Read [User Guide](user-guide.md#judgment) for the everyday flow. Use [Kernel Reference](../reference/kernel.md#decision-packet) and [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision) for exact behavior.
+Use these examples when a task is blocked by product, UX, architecture, security, QA, verification, final acceptance, residual-risk acceptance, or scope/autonomy judgment that the agent should not decide alone.
 
 ## Main idea
 
 A Decision Packet should feel like decision support, not a blank permission slip. It names the real user-owned choice, shows options and trade-offs, recommends a path, states uncertainty, explains deferral, and links evidence or residual risk where relevant.
 
-The examples below are prompt examples, not full schemas. They show the schema-owned `judgment_domain` as a user-facing grouping. `decision_kind` still controls lifecycle and gate meaning, while `judgment_domain` controls how the decision is explained and grouped for users.
+The examples below are prompt examples, not contract definitions. Exact behavior stays with the Reference owners.
 
 ## What every example shows
 
 Each cookbook example includes:
 
-- judgment_domain
-- decision_kind
-- why now
-- options
-- recommendation
+- the decision area
+- the decision route, when useful
+- why the decision is needed now
+- realistic options
+- a recommendation
 - uncertainty
-- deferral consequence
+- what happens if the user defers
 - related risk or evidence where applicable
 
-Exact state transitions, gate effects, waiver semantics, accepted-risk handling, and public API fields stay with the Reference owners.
+Some examples include exact labels because agents and integrators may need to recognize them. You can ignore those labels when making the decision.
 
 ## UX decision: inline layer vs toast vs modal
 

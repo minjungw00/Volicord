@@ -22,6 +22,10 @@ The docs are source material for understanding and implementing Harness. They ar
 
 이 문서들은 하네스를 이해하고 구현하기 위한 원천 자료입니다. 하네스가 관리하는 런타임 객체가 아닙니다. 문서 수락은 런타임 conformance가 아니며 그 자체로 서버/런타임 구현을 승인하지 않습니다.
 
+Detailed phase and status warnings intentionally live in this README, the language READMEs, the Build handoff docs, and the Maintain guidance. User-facing Learn and Use pages should keep status notes brief and start with what users can ask, what the agent should clarify, what Harness preserves, and what users can expect to see.
+
+상세 단계와 상태 경고는 이 README, 언어별 README, Build 인계 문서, Maintain 지침에 둡니다. 사용자 대상 Learn/Use 문서는 상태 메모를 짧게 유지하고, 사용자가 무엇을 요청할 수 있는지, 에이전트가 무엇을 구체화해야 하는지, 하네스가 무엇을 보존하는지, 사용자가 무엇을 보게 되는지부터 시작해야 합니다.
+
 ## Documentation Redesign Scope / 문서 재설계 범위
 
 This repository is currently for documentation review and redesign only. Documentation edits do not create server/runtime code or runtime artifacts, and they do not authorize implementation planning or server/runtime implementation.
