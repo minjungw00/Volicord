@@ -69,14 +69,14 @@
 
 ```mermaid
 flowchart LR
-  Repo["제품 저장소<br/>제품 코드, 테스트, 투영, 제안 영역"]
-  Server["하네스 서버/설치<br/>MCP server, Core, validators, connectors, projector, reconcile worker"]
-  Home["하네스 런타임 홈<br/>registry.sqlite, project.yaml, state.sqlite, artifact store"]
+  Repo["제품 저장소<br/>제품 파일"]
+  Server["하네스 서버/설치<br/>문서 승인 뒤 이 저장소에서 구현"]
+  Home["하네스 런타임 홈<br/>상태와 근거"]
 
-  Repo -->|user intent, repo facts, human edits| Server
-  Server -->|managed projections and reconcile candidates| Repo
-  Server -->|Core 상태 전이와 artifact 등록| Home
-  Home -->|현재 기록, events, 원본 근거 refs| Server
+  Repo -->|요청과 저장소 사실| Server
+  Server -->|쓰기 확인과 읽기용 보기| Repo
+  Server -->|상태 변경과 아티팩트 참조| Home
+  Home -->|현재 기록| Server
 ```
 
 이 분리는 대화, Markdown 보고서, 생성된 connector 파일, operator output, MCP caller claim, 제품 소스 파일을 기준 운영 상태 밖에 둡니다. Core 상태 변경 경로만 기준 운영 상태를 commit할 수 있습니다.
@@ -339,22 +339,18 @@ Reconcile은 merge, reject, note로 convert, decision 생성, design support rec
 
 ```mermaid
 flowchart TB
-  Operation["intended operation"] --> Core["Core prepare_write decision<br/>state, scope, approvals,<br/>decisions, baseline, capability"]
-  Core --> Decision{"allowed?"}
-  Decision -->|allowed| Authorization["Write Authorization<br/>for one compatible attempt"]
-  Authorization --> Attempt["covered execution or attempt<br/>under connected surface"]
-  Attempt --> Run["record_run records<br/>what happened"]
-  Decision -->|not allowed / hold| Hold["hold work or route blocker"]
-  Hold --> Profile{"connected profile<br/>enforcement or reporting strength"}
-  Profile --> Cooperative["cooperative<br/>instruction-only hold"]
-  Profile --> Detective["detective<br/>detect or report after action<br/>if violation occurs"]
-  Profile --> Preventive["preventive<br/>fixture-proven 실행 전 차단<br/>for covered operation"]
-  Profile --> Isolated["isolated<br/>documented separation boundary"]
-  Cooperative -. "when an event is recorded" .-> OwnerPaths
-  Detective -. "when violation is observed" .-> OwnerPaths
-  Preventive -. "when blocked attempt is recorded" .-> OwnerPaths
-  Isolated -. "when boundary result is recorded" .-> OwnerPaths
-  Run --> OwnerPaths["Core owner paths update<br/>state, artifacts, evidence,<br/>and projection jobs when applicable"]
+  Operation["의도한 작업"] --> Profile["연결된 profile<br/>보장 수준 표시"]
+  Profile --> Cooperative["cooperative"]
+  Profile --> Detective["detective"]
+  Profile --> Preventive["preventive"]
+  Profile --> Isolated["isolated"]
+  Operation --> Core["Core 권한 확인"]
+  Core --> Decision{"허용"}
+  Decision -->|예| Authorization["쓰기 허가"]
+  Authorization --> Run["record_run"]
+  Run --> Owner["상태와 근거 갱신"]
+  Decision -->|아니오| Blocker["보류 또는 막힘"]
+  Blocker --> Owner
 ```
 
 Preventive label은 connected profile이 설명 중인 operation에 대한 fixture-proven coverage를 가질 때만 적용됩니다. Isolated label은 connected profile이 주장하는 separation boundary를 문서화하고 증명한 경우에만 적용됩니다. Fresh evaluator bundle, fresh session, separate worktree는 verification independence와 stale-context control을 뒷받침할 수 있습니다. Sandbox 격리, 권한 계층, locked-down runner, process boundary, container boundary 표현은 profile이 exact mechanism을 이름 붙이고 증명한 경우에만 보안 격리 표현으로 씁니다. 이 label은 work를 approve하거나, Write Authorization을 만들거나, gate를 충족하거나, evidence를 만들거나, verification을 수행하거나, risk를 accept하거나, Task를 close하지 않습니다. 엄격한 `prepare_write`와 `record_run` 동작은 [커널 참조](kernel.md#prepare_write)와 [커널 참조](kernel.md#record_run)가 담당합니다. Public response shape와 error precedence는 [MCP API와 스키마](mcp-api-and-schemas.md)가 담당합니다. 구체적인 profile declaration은 [Agent 통합 참조](agent-integration.md#capability-profiles)가 담당합니다. 이 diagram은 enforcement orientation일 뿐입니다.

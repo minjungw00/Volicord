@@ -33,6 +33,22 @@ Before changing code, separate the product decisions from the technical decision
 
 The agent response should translate the request into understood scope, what the agent can inspect itself, what only the user can decide, what evidence would be needed, and what blocks close. Exact Harness labels can follow only when they clarify a boundary or source ref.
 
+```mermaid
+flowchart LR
+  Request["ordinary user request"] --> Clarify["requirements clarification"]
+  Clarify --> Judgment["user judgment request"]
+  Clarify --> ReadOnly["read or advice path"]
+  Clarify --> WriteNeed{"product write needed?"}
+  Judgment --> WriteNeed
+  ReadOnly --> Status["status or next action"]
+  WriteNeed -->|yes| Authority["scoped write authority"]
+  WriteNeed -->|no| Status
+  Authority --> Run["run and evidence record"]
+  Run --> Status
+  Status -->|blocked| Blockers["show blockers"]
+  Status -->|ready| Close["close when close path applies"]
+```
+
 A useful status or next-action response answers four questions in ordinary language:
 
 - Scope: what may change, and what is out of bounds?

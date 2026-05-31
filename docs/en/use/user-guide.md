@@ -256,6 +256,17 @@ These are readable summaries, not authoritative documents. The agent may cite re
 
 When the Judgment group needs a formal Decision Packet, Harness records both the decision route and the user-facing domain. `decision_kind` says what lifecycle or gate path the decision uses; `judgment_domain` groups the decision for users as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed. The domain explains the decision; it does not by itself change close readiness or gate aggregation.
 
+```mermaid
+flowchart LR
+  Need["user owned judgment"] --> Kind["decision_kind"]
+  Need --> Domain["judgment_domain"]
+  Kind --> Prompt["options and recommendation"]
+  Domain --> Prompt
+  Prompt --> Impact["affected gates or blocked actions"]
+  Impact --> Response["user response"]
+  Response --> Update["state update"]
+```
+
 Useful status:
 
 ```text
@@ -324,6 +335,19 @@ Show close-relevant residual risk before I accept.
 ```
 
 The agent should keep these separate:
+
+```mermaid
+flowchart LR
+  Evidence["Evidence"] --> Readiness["Close readiness"]
+  Verification["Verification"] --> Readiness
+  QA["Manual QA"] --> Readiness
+  Acceptance["Final acceptance"] --> Readiness
+  RiskVisible["Residual-risk visibility"] --> Readiness
+  RiskAccept["Residual-risk acceptance"] --> Readiness
+  Readiness --> Result{"ready?"}
+  Result -->|yes| Close["close"]
+  Result -->|no| Blockers["show blockers"]
+```
 
 | Item | Plain job | Not a substitute for |
 |---|---|---|

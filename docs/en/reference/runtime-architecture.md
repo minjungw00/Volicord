@@ -69,14 +69,14 @@ Harness Runtime Home:
 
 ```mermaid
 flowchart LR
-  Repo["Product Repository<br/>product code, tests, projections, proposal areas"]
-  Server["Harness Server / Installation<br/>MCP server, Core, validators, connectors, projector, reconcile worker"]
-  Home["Harness Runtime Home<br/>registry.sqlite, project.yaml, state.sqlite, artifact store"]
+  Repo["Product Repository<br/>product files"]
+  Server["Harness Server / Installation<br/>implemented from this repository after acceptance"]
+  Home["Harness Runtime Home<br/>state and artifacts"]
 
-  Repo -->|user intent, repo facts, human edits| Server
-  Server -->|managed projections and reconcile candidates| Repo
-  Server -->|Core state transitions and artifact registration| Home
-  Home -->|current records, events, raw evidence refs| Server
+  Repo -->|requests and repo facts| Server
+  Server -->|write checks and projections| Repo
+  Server -->|state changes and artifact refs| Home
+  Home -->|current records| Server
 ```
 
 This split keeps chat, Markdown reports, generated connector files, operator output, MCP caller claims, and product source files outside canonical operational state. Only a Core state-changing path can commit canonical operational state.
@@ -333,22 +333,18 @@ This diagram shows where the guarantee label changes enforcement strength and wh
 
 ```mermaid
 flowchart TB
-  Operation["intended operation"] --> Core["Core prepare_write decision<br/>state, scope, approvals,<br/>decisions, baseline, capability"]
-  Core --> Decision{"allowed?"}
-  Decision -->|allowed| Authorization["Write Authorization<br/>for one compatible attempt"]
-  Authorization --> Attempt["covered execution or attempt<br/>under connected surface"]
-  Attempt --> Run["record_run records<br/>what happened"]
-  Decision -->|not allowed / hold| Hold["hold work or route blocker"]
-  Hold --> Profile{"connected profile<br/>enforcement or reporting strength"}
-  Profile --> Cooperative["cooperative<br/>instruction-only hold"]
-  Profile --> Detective["detective<br/>detect or report after action<br/>if violation occurs"]
-  Profile --> Preventive["preventive<br/>fixture-proven pre-execution block<br/>for covered operation"]
-  Profile --> Isolated["isolated<br/>documented separation boundary"]
-  Cooperative -. "when an event is recorded" .-> OwnerPaths
-  Detective -. "when violation is observed" .-> OwnerPaths
-  Preventive -. "when blocked attempt is recorded" .-> OwnerPaths
-  Isolated -. "when boundary result is recorded" .-> OwnerPaths
-  Run --> OwnerPaths["Core owner paths update<br/>state, artifacts, evidence,<br/>and projection jobs when applicable"]
+  Operation["intended operation"] --> Profile["connected profile<br/>guarantee display"]
+  Profile --> Cooperative["cooperative"]
+  Profile --> Detective["detective"]
+  Profile --> Preventive["preventive"]
+  Profile --> Isolated["isolated"]
+  Operation --> Core["Core authority check"]
+  Core --> Decision{"allowed"}
+  Decision -->|yes| Authorization["Write Authorization"]
+  Authorization --> Run["record_run"]
+  Run --> Owner["owner records"]
+  Decision -->|no| Blocker["hold or blocker"]
+  Blocker --> Owner
 ```
 
 Preventive labels apply only where the connected profile has fixture-proven coverage for the operation being described. Isolated labels apply only where the connected profile documents and proves the separation boundary being claimed. A fresh evaluator bundle, fresh session, or separate worktree can support verification independence and stale-context control; sandbox, permission layer, locked-down runner, process boundary, or container boundary wording is security-isolation wording only when the profile names and proves that exact mechanism. These labels do not approve work, create Write Authorization, satisfy gates, create evidence, perform verification, accept risk, or close Tasks. Strict `prepare_write` and `record_run` behavior is owned by [Kernel Reference](kernel.md#prepare_write) and [Kernel Reference](kernel.md#record_run). Public response shapes and error precedence are owned by [MCP API And Schemas](mcp-api-and-schemas.md). Concrete profile declarations are owned by [Agent Integration Reference](agent-integration.md#capability-profiles). This diagram is only an enforcement-orientation view.

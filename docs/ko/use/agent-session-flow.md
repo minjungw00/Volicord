@@ -33,6 +33,22 @@
 
 에이전트는 요청을 이해한 범위, 직접 확인할 수 있는 것, 사용자만 결정할 수 있는 것, 필요한 근거, 무엇이 닫기를 막는지를 정리해야 합니다. 정확한 하네스 라벨은 경계나 출처 참조를 분명히 할 때 뒤에 붙이면 됩니다.
 
+```mermaid
+flowchart LR
+  Request["일상 요청"] --> Clarify["요구 구체화"]
+  Clarify --> Judgment["사용자 판단 요청"]
+  Clarify --> ReadOnly["읽기 또는 조언"]
+  Clarify --> WriteNeed{"제품 쓰기 필요?"}
+  Judgment --> WriteNeed
+  ReadOnly --> Status["상태 또는 다음 행동"]
+  WriteNeed -->|예| Authority["범위 내 쓰기 권한"]
+  WriteNeed -->|아니오| Status
+  Authority --> Run["실행 기록과 근거"]
+  Run --> Status
+  Status -->|막힘| Blockers["막힘 표시"]
+  Status -->|준비됨| Close["필요할 때 닫기"]
+```
+
 유용한 상태 또는 다음 행동 응답은 쉬운 말로 네 가지 질문에 답해야 합니다.
 
 - 범위: 무엇이 바뀔 수 있고, 무엇이 범위 밖인가?

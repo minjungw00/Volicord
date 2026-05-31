@@ -26,10 +26,18 @@ One paragraph version: In practice, Harness gives the user and agent a local rec
 
 ```mermaid
 flowchart LR
-  Chat["Chat<br/>requests, choices, claims"] --> Harness["Harness<br/>local authority record"]
-  Harness --> State["state"]
-  Harness --> Evidence["evidence"]
-  Harness --> Views["readable views"]
+  Chat["Chat<br/>conversation"]
+  Harness["Harness<br/>local authority record"]
+  Scope["scope"]
+  Judgment["user judgment"]
+  Evidence["evidence"]
+  Close["close readiness"]
+
+  Chat --> Harness
+  Harness --> Scope
+  Harness --> Judgment
+  Harness --> Evidence
+  Harness --> Close
 ```
 
 ## The problem Harness solves
@@ -54,6 +62,20 @@ Harness keeps three spaces separate so product files, operational records, and h
 | Product Repository | Your real project workspace. This is where your source code, tests, product docs, and generated readable reports live. Harness may coordinate work there, but that workspace remains your product workspace. |
 | Harness Server / Installation | The local Harness program and tools. This is the installed system that receives agent requests, checks whether writes are allowed, records work facts, runs validators, and produces readable projections. |
 | Harness Runtime Home | The local Harness data home. This is where Harness keeps project registration, operational state, and durable evidence artifacts for the registered project. |
+
+```mermaid
+flowchart LR
+  Product["Product Repository<br/>real project files"]
+  Server["Harness Server source repo<br/>this repo after acceptance"]
+  Home["Harness Runtime Home<br/>local state and artifacts"]
+
+  Product -->|requests and repo facts| Server
+  Server -->|write checks and projections| Product
+  Server -->|state changes and artifact refs| Home
+  Home -->|current records| Server
+```
+
+This documentation repository is being prepared to become the future Harness Server source repository / installation space after documentation acceptance. It is not a Product Repository or a Harness Runtime Home.
 
 The separation matters because a Markdown report should not silently become operational truth, a chat transcript should not be treated as durable state, and product files should not be mixed with Harness's internal operating record.
 

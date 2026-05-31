@@ -256,6 +256,17 @@
 
 판단 그룹에 formal Decision Packet이 필요하면 Harness는 decision route와 사용자에게 보이는 판단 영역을 함께 기록합니다. `decision_kind`는 어떤 lifecycle 또는 gate path를 쓰는지 말하고, `judgment_domain`은 결정을 Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed 중 어디에 묶어 설명할지 정합니다. 판단 영역은 결정을 설명하기 위한 값이며, 그 자체로 닫기 준비 상태나 gate aggregation을 바꾸지는 않습니다.
 
+```mermaid
+flowchart LR
+  Need["사용자 판단"] --> Kind["decision_kind"]
+  Need --> Domain["judgment_domain"]
+  Kind --> Prompt["선택지와 추천"]
+  Domain --> Prompt
+  Prompt --> Impact["영향받는 gate와 막힌 행동"]
+  Impact --> Response["사용자 응답"]
+  Response --> Update["상태 갱신"]
+```
+
 유용한 상태 표시는 이런 모양입니다.
 
 ```text
@@ -324,6 +335,19 @@
 ```
 
 에이전트는 다음 항목을 섞지 말아야 합니다.
+
+```mermaid
+flowchart LR
+  Evidence["근거"] --> Readiness["닫기 준비"]
+  Verification["검증"] --> Readiness
+  QA["수동 QA"] --> Readiness
+  Acceptance["작업 수락"] --> Readiness
+  RiskVisible["잔여 위험 표시"] --> Readiness
+  RiskAccept["잔여 위험 수용"] --> Readiness
+  Readiness --> Result{"준비됨?"}
+  Result -->|예| Close["닫기"]
+  Result -->|아니오| Blockers["막힘 표시"]
+```
 
 | 항목 | 쉬운 역할 | 대신 쓸 수 없는 것 |
 |---|---|---|

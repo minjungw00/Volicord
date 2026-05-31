@@ -46,10 +46,10 @@ The early output model is intentionally small:
 
 ```mermaid
 flowchart LR
-  Core["v0.1 Core Authority Slice<br/>internal kernel proof"] --> MVP["v0.2 User-Facing Harness MVP<br/>first user value"]
-  MVP --> Assurance["v0.3 Assurance & Stewardship Pack"]
-  Assurance --> Ops["v0.4 Operations & Handoff Pack<br/>hardened local reference target"]
-  Ops -. "roadmap boundary" .-> Expansion["v1+ Expansion<br/>roadmap candidates"]
+  Core["v0.1<br/>Core Authority Slice<br/>first runnable kernel slice"] --> MVP["v0.2<br/>User-Facing Harness MVP<br/>first user value"]
+  MVP --> Assurance["v0.3<br/>Assurance and Stewardship Pack<br/>agency security policy hardening"]
+  Assurance --> Ops["v0.4<br/>Operations and Handoff Pack<br/>operator readiness"]
+  Ops -. "roadmap boundary" .-> Expansion["v1+<br/>Expansion candidates"]
 ```
 
 Kernel Smoke remains the narrow conformance authoring profile for v0.1 Core Authority Slice. The profile name does not make v0.1 a product MVP; it means the fixture queue proves the internal kernel path.
@@ -99,17 +99,16 @@ No open schema-ownership or stage-boundary decision is intentionally left as a s
 
 ```mermaid
 flowchart LR
-  Register["register project<br/>and reference surface"] --> Task["one Task<br/>and task_events"]
-  Task --> Scope["one basic scope"]
-  Scope --> Prepare["prepare_write<br/>allow or block"]
-  Prepare -->|allowed| Authorization["single-use<br/>Write Authorization"]
-  Prepare -->|blocked| Blocker["structured<br/>blocker/status"]
-  Authorization --> Run["record_run consumes<br/>authorization"]
-  Run --> Evidence["ArtifactRef<br/>and evidence link"]
-  Evidence --> Status["status / next<br/>read-only"]
-  Status --> Close["close/status blocker<br/>if evidence or required judgment is missing"]
-  Smoke["Kernel Smoke<br/>narrow profile"] -. "authors fixtures for" .-> Prepare
-  Smoke -. "observes" .-> Close
+  Register["project registered"] --> Task["Task created"]
+  Task --> Scope["scope set"]
+  Scope --> Check["write check"]
+  Check -->|allowed| Authorization["Write Authorization"]
+  Authorization --> Run["Run recorded"]
+  Run --> Evidence["evidence linked"]
+  Check -->|blocked| Blocker["structured blocker"]
+  Evidence --> Status["status and next"]
+  Blocker --> Status
+  Status --> Close["close/status blocker"]
 ```
 
 Exact state and close behavior is owned by [Kernel Reference](../reference/kernel.md), public tool shapes by [MCP API And Schemas](../reference/mcp-api-and-schemas.md), projection rules by [Document Projection Reference](../reference/document-projection.md), and fixture semantics by [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format). This flow does not add pack gates or fixture body requirements.

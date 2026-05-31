@@ -71,26 +71,19 @@ Markdown 보고서는 evidence link를 제공하고 상태를 요약할 수 있�
 
 ```mermaid
 flowchart LR
-  State["state.sqlite current records<br/>Task, Change Unit, gates, decisions, runs"]
-  Events["state.sqlite.task_events<br/>event history"]
-  Store["artifact store<br/>raw evidence bytes"]
-  ArtifactRefs["artifact records and refs<br/>hash, redaction, owner relation"]
-  Projector["projector<br/>managed blocks and cards"]
-  Markdown["Markdown projection<br/>readable view"]
-  Human["human-editable notes<br/>and proposals"]
-  Reconcile["reconcile item<br/>candidate only"]
-  Core["Core state-changing action"]
+  Core["Core 상태"]
+  ArtifactRefs["아티팩트 참조"]
+  Projector["projector"]
+  Markdown["Markdown 보기<br/>읽기용"]
+  Human["사람 편집<br/>입력만"]
+  Reconcile["reconcile 요청<br/>후보만"]
 
-  State --> Projector
-  Events --> Projector
+  Core --> Projector
   ArtifactRefs --> Projector
-  Store -. "registered as" .-> ArtifactRefs
   Projector --> Markdown
-  Markdown --> Human
-  Human -. "input only" .-> Reconcile
-  Reconcile -. "accepted path" .-> Core
-  Core --> State
-  Core --> Events
+  Markdown -. "편집 가능한 note만" .-> Human
+  Human -. "후보 입력" .-> Reconcile
+  Reconcile -->|Core 경로가 수용| Core
 ```
 
 엄격한 projection behavior는 이 reference가 담당하며, 특히 [Document authority matrix](#document-authority-matrix), [Managed block rules](#managed-block-rules), [Freshness and failure rules](#freshness-and-failure-rules)를 봅니다. Canonical state와 gates는 [커널 참조](kernel.md)가, artifact relation storage는 [Storage와 DDL](storage-and-ddl.md)이, public projection refs는 [MCP API와 스키마](mcp-api-and-schemas.md)가 담당합니다. 이 diagram은 authority direction만 요약합니다.

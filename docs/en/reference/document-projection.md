@@ -71,26 +71,19 @@ This diagram shows the authority boundary that generated Markdown must preserve.
 
 ```mermaid
 flowchart LR
-  State["state.sqlite current records<br/>Task, Change Unit, gates, decisions, runs"]
-  Events["state.sqlite.task_events<br/>event history"]
-  Store["artifact store<br/>raw evidence bytes"]
-  ArtifactRefs["artifact records and refs<br/>hash, redaction, owner relation"]
-  Projector["projector<br/>managed blocks and cards"]
+  Core["Core state"]
+  ArtifactRefs["ArtifactRefs"]
+  Projector["projector"]
   Markdown["Markdown projection<br/>readable view"]
-  Human["human-editable notes<br/>and proposals"]
-  Reconcile["reconcile item<br/>candidate only"]
-  Core["Core state-changing action"]
+  Human["human edits<br/>input only"]
+  Reconcile["reconcile request<br/>candidate only"]
 
-  State --> Projector
-  Events --> Projector
+  Core --> Projector
   ArtifactRefs --> Projector
-  Store -. "registered as" .-> ArtifactRefs
   Projector --> Markdown
-  Markdown --> Human
-  Human -. "input only" .-> Reconcile
-  Reconcile -. "accepted path" .-> Core
-  Core --> State
-  Core --> Events
+  Markdown -. "editable notes only" .-> Human
+  Human -. "candidate input" .-> Reconcile
+  Reconcile -->|accepted through Core path| Core
 ```
 
 Strict projection behavior is owned by this reference, especially the [Document authority matrix](#document-authority-matrix), [Managed block rules](#managed-block-rules), and [Freshness and failure rules](#freshness-and-failure-rules). Canonical state and gates are owned by [Kernel Reference](kernel.md), artifact relation storage is owned by [Storage And DDL](storage-and-ddl.md), and public projection refs are owned by [MCP API And Schemas](mcp-api-and-schemas.md). The diagram summarizes authority direction only.
