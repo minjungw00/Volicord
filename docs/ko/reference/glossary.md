@@ -95,7 +95,7 @@ Current reference model에서 required 작업 수락은 결정 패킷 user decis
 
 ### Assumption Register
 
-구현 계획 전에 agent가 사용하는 assumptions를 정리한 Discovery 또는 Shared Design support/projection 목록입니다. Source, confidence, owner, assumption이 틀릴 때 바뀌는 일을 이름 붙여야 합니다. 이는 권장 display/support 내용이지 standalone schema나 canonical record field list가 아닙니다. Assumption Register는 Discovery Brief, 첫 구현 후보, 작업 분할 제안, 또는 First Safe Change Unit Candidate를 구체화하는 데 도움을 주지만 사용자 승인, 민감 동작 승인, 작업 수락, 잔여 위험 수용, evidence, 닫기 준비 상태, scope authority, 쓰기 허가 기록은 아닙니다.
+구현 계획 전에 agent가 사용하는 assumptions를 정리한 Discovery 또는 Shared Design support/projection 목록입니다. Source, confidence, owner, assumption이 틀릴 때 바뀌는 일을 이름 붙여야 합니다. 이는 권장 display/support 내용이지 standalone schema나 canonical record field list가 아닙니다. Assumption Register는 Discovery Brief, 안전한 다음 작업 후보, 작업 분할 제안, 또는 First Safe Change Unit Candidate를 구체화하는 데 도움을 주지만 사용자 승인, 민감 동작 승인, 작업 수락, 잔여 위험 수용, evidence, 닫기 준비 상태, scope authority, 쓰기 허가 기록은 아닙니다.
 
 ### Artifact
 
@@ -235,11 +235,11 @@ Fresh session, fresh worktree, sandbox, manual evaluator bundle처럼 의미 있
 
 ### Discovery
 
-구현 계획과 쓰기 권한 전에 에이전트가 요구사항을 구체화하는 workflow posture입니다. Goal, user value, non-goals, 수용 기준, repo/docs/Harness state에서 에이전트가 확인할 수 있는 사실, assumptions, 사용자만 결정할 수 있는 판단, 제품/UX 판단 후보, 기술 아키텍처 판단 후보, security/privacy 판단 후보, QA와 verification 기대 수준, 첫 구현 후보 또는 작업 분할 제안을 분리합니다. Codebase와 현재 하네스 context가 답할 수 없는 결정만 사용자에게 묻고, decision area별로 여러 targeted question을 물을 수 있으며, 확인 가능한 사실과 사용자 소유 결정이 안전한 다음 작업을 제안할 만큼 분리되면 해소되지 않은 판단을 숨기지 않고 잠시 멈출 수 있습니다. 구체화 출력(Discovery outputs)은 Shared Design, 결정 패킷 candidate, Change Unit shaping으로 라우팅합니다. `첫 구현 후보`와 `작업 분할 제안` 같은 표현은 proposal/support phrase이며 standalone schema field, canonical record type, gate value, projection kind, authority path가 아닙니다. 이 posture는 일반 승인, 민감 동작 승인, 쓰기 허가 기록, evidence, verification, QA, 작업 수락, 잔여 위험 수용, close, scope authority, 새 authority path가 아닙니다.
+구현 계획과 쓰기 권한 전에 에이전트가 요구사항을 구체화하는 workflow posture의 내부 이름입니다. Goal, user value, non-goals, 수용 기준, repo/docs/Harness state에서 에이전트가 확인할 수 있는 사실, assumptions, 사용자만 결정할 수 있는 판단, 제품/UX 판단 후보, 기술 아키텍처 판단 후보, security/privacy 판단 후보, QA와 verification 기대 수준, 남은 불확실성, 안전한 다음 작업 후보 또는 작업 분할 제안을 분리합니다. Codebase와 현재 하네스 context가 답할 수 없는 결정만 사용자에게 묻고, decision area별로 여러 targeted question을 물을 수 있으며, 확인 가능한 사실과 사용자 소유 결정이 분리되고, 목표/비목표/수용 기준과 중요한 판단 후보가 충분히 분명하며, 해소되지 않은 판단을 숨기지 않고 안전한 다음 작업 또는 작업 분할을 제안할 수 있고, 남은 불확실성이 명시되면 잠시 멈추거나 진행할 수 있습니다. 요구사항 구체화 출력은 Shared Design, 결정 패킷 candidate, Change Unit shaping으로 라우팅합니다. `안전한 다음 작업 후보`와 `작업 분할 제안` 같은 표현은 proposal/support phrase이며 standalone schema field, canonical record type, gate value, projection kind, authority path가 아닙니다. 이 posture는 일반 승인, 민감 동작 승인, 쓰기 허가 기록, evidence, verification, QA, 작업 수락, 잔여 위험 수용, close, scope authority, 새 authority path가 아닙니다.
 
 ### Discovery Brief
 
-구체화된 goal, user value, non-goals, 수용 기준, 확인 가능한 사실, Question Queue, Assumption Register, 분리된 사용자 소유 판단, 제품/UX, 기술 아키텍처, security/privacy, QA와 verification 기대 수준, 첫 구현 후보 또는 작업 분할 제안을 담은 compact Discovery 또는 Shared Design support/projection summary입니다. 제품 쓰기가 가까워졌다면 First Safe Change Unit Candidate를 포함할 수 있습니다. 이는 권장 display/support 내용이지 standalone schema나 canonical record field list가 아닙니다. Discovery Brief는 Shared Design, 결정 패킷 candidate, Change Unit shaping에 정보를 줄 수 있지만, 그 자체로 canonical scope를 만들거나, 결정을 해소하거나, write를 authorize하거나, evidence를 증명하거나, 잔여 위험 수용을 기록하거나, result를 작업 수락하거나, task를 close하지 않습니다.
+구체화된 goal, user value, non-goals, 수용 기준, 확인 가능한 사실, Question Queue, Assumption Register, 분리된 사용자 소유 판단, 제품/UX, 기술 아키텍처, security/privacy, QA와 verification 기대 수준, 남은 불확실성, 안전한 다음 작업 후보 또는 작업 분할 제안을 담은 compact Discovery 또는 Shared Design support/projection summary입니다. 제품 쓰기가 가까워졌다면 First Safe Change Unit Candidate를 포함할 수 있습니다. 이는 권장 display/support 내용이지 standalone schema나 canonical record field list가 아닙니다. Discovery Brief는 Shared Design, 결정 패킷 candidate, Change Unit shaping에 정보를 줄 수 있지만, 그 자체로 canonical scope를 만들거나, 결정을 해소하거나, write를 authorize하거나, evidence를 증명하거나, 잔여 위험 수용을 기록하거나, result를 작업 수락하거나, task를 close하지 않습니다.
 
 ### Detective Guarantee
 
@@ -295,7 +295,7 @@ Run, Eval, 수동 QA record, validator, review display, operator diagnostic, con
 
 ### First Safe Change Unit Candidate
 
-제품 쓰기가 가까워졌을 때 첫 구현 후보를 내부 Change Unit 모양으로 표현한 것입니다. 해소되지 않은 사용자 소유 판단을 숨기지 않고 포함되는 동작, 범위 밖 동작, 완료 조건, 알려진 sensitive area, stop condition을 이름 붙여야 합니다. Discovery 또는 Shared Design은 에이전트가 확인할 수 있는 사실과 사용자 소유 결정을 분리한 뒤 이것을 만들 수 있지만, Discovery가 오직 이 candidate를 찾기 위해 존재하는 것은 아닙니다. 이는 권장 display/support 내용이지 standalone schema나 canonical record field list가 아닙니다. 이것은 candidate일 뿐입니다. 제품 쓰기 전에는 여전히 active Change Unit, compatible scope gate state, 이후 `prepare_write`가 필요합니다.
+제품 쓰기가 가까워졌을 때 안전한 다음 작업 후보를 내부 Change Unit 모양으로 표현한 것입니다. 해소되지 않은 사용자 소유 판단을 숨기지 않고 포함되는 동작, 범위 밖 동작, 완료 조건, 알려진 sensitive area, stop condition을 이름 붙여야 합니다. Discovery 또는 Shared Design은 에이전트가 확인할 수 있는 사실과 사용자 소유 결정을 분리하고 안전한 다음 작업이 충분히 분명해진 뒤 이것을 만들 수 있지만, Discovery가 오직 이 candidate를 찾기 위해 존재하는 것은 아닙니다. 이는 권장 display/support 내용이지 standalone schema나 canonical record field list가 아닙니다. 이것은 candidate일 뿐입니다. 제품 쓰기 전에는 여전히 active Change Unit, compatible scope gate state, 이후 `prepare_write`가 필요합니다.
 
 ### Fixture Assertion Semantics
 
@@ -573,7 +573,7 @@ Product writes가 active scoped Change Unit으로 covered되어야 함을 요구
 
 ### Shared Design
 
-Implementation이 plan으로 굳어지기 전에 Task에 대해 최소한으로 기록한 shared understanding입니다. goal, user value, scope, non-goals, 수용 기준, 확인 가능한 사실, assumptions, decisions, rejected options, domain/module/interface impact, QA와 verification 기대 수준, 안전한 다음 작업을 포함합니다. Discovery Brief, Question Queue, Assumption Register, 첫 구현 후보 또는 작업 분할 제안, First Safe Change Unit Candidate가 Shared Design에 입력될 수 있습니다. Shared Design은 shaping과 `design_gate` readiness를 도울 수 있지만 최종 승인, 민감 동작 승인, 작업 수락, 잔여 위험 수용, QA judgment, evidence, 닫기 준비 상태, 쓰기 허가 기록은 아닙니다. Shared Design의 Markdown 렌더링 결과는 projections이자 제안용 접점입니다. 정확한 policy requirements는 [설계 품질 정책](design-quality-policies.md#shared-design-shared_design)이 담당합니다.
+Implementation이 plan으로 굳어지기 전에 Task에 대해 최소한으로 기록한 shared understanding입니다. goal, user value, scope, non-goals, 수용 기준, 확인 가능한 사실, assumptions, decisions, rejected options, 남은 불확실성, domain/module/interface impact, QA와 verification 기대 수준, 안전한 다음 작업을 포함합니다. Discovery Brief, Question Queue, Assumption Register, 안전한 다음 작업 후보 또는 작업 분할 제안, First Safe Change Unit Candidate가 Shared Design에 입력될 수 있습니다. Shared Design은 shaping과 `design_gate` readiness를 도울 수 있지만 최종 승인, 민감 동작 승인, 작업 수락, 잔여 위험 수용, QA judgment, evidence, 닫기 준비 상태, 쓰기 허가 기록은 아닙니다. Shared Design의 Markdown 렌더링 결과는 projections이자 제안용 접점입니다. 정확한 policy requirements는 [설계 품질 정책](design-quality-policies.md#shared-design-shared_design)이 담당합니다.
 
 ### Source-of-truth
 

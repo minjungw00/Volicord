@@ -19,7 +19,7 @@ Read [Implementation Overview](implementation-overview.md) and [First Runnable S
 
 ## Main idea
 
-For write-capable tracked work, a request becomes safe product work only after Harness knows the Task, the needed Discovery or decisions, and the first scope. Product writes then pass through `prepare_write`, which can create a one-attempt Write Authorization. Runs consume that authority, evidence and artifacts support claims, projections make the state readable, and `close_task` either returns structured blockers or closes the Task.
+For write-capable tracked work, a request becomes safe product work only after Harness knows the Task, the needed requirements clarification or decisions, and the initial scope. Product writes then pass through `prepare_write`, which can create a one-attempt Write Authorization. Runs consume that authority, evidence and artifacts support claims, projections make the state readable, and `close_task` either returns structured blockers or closes the Task.
 
 The walkthrough shows the full user-facing path. v0.1 Core Authority Slice implements only the smallest internal part of it: one project, one Task, one basic scope represented by the Change Unit owner shape where the reference contract requires it, one write authority path, one recorded Run, one evidence link, and one structured blocker/status response. v0.2 User-Facing Harness MVP adds the ordinary-language clarification, judgment separation, procedural budget, residual-risk display, and acceptance boundaries users experience.
 
@@ -28,7 +28,7 @@ The walkthrough shows the full user-facing path. v0.1 Core Authority Slice imple
 ```mermaid
 flowchart LR
   Request["request"] --> Task["Task"]
-  Task --> Discovery["Discovery<br/>when needed"]
+  Task --> Discovery["Requirements clarification<br/>(Discovery when needed)"]
   Discovery --> ChangeUnit["Change Unit<br/>scoped work"]
   Task --> ChangeUnit
   ChangeUnit --> Prepare["prepare_write"]
@@ -42,7 +42,7 @@ flowchart LR
   CloseCheck -->|compatible| Close["Task closed"]
 ```
 
-What to notice: the diagram is a reader path, not a second source of truth. Discovery and projections help shape or read work, but write authority is `prepare_write`, execution is recorded by `record_run`, and completion is decided by `close_task`. Exact state and gate behavior lives in [Kernel Reference](../reference/kernel.md); public calls live in [MCP API And Schemas](../reference/mcp-api-and-schemas.md).
+What to notice: the diagram is a reader path, not a second source of truth. Requirements clarification and projections help shape or read work, but write authority is `prepare_write`, execution is recorded by `record_run`, and completion is decided by `close_task`. Exact state and gate behavior lives in [Kernel Reference](../reference/kernel.md); public calls live in [MCP API And Schemas](../reference/mcp-api-and-schemas.md).
 
 ## Step-by-step runtime path
 
@@ -52,15 +52,15 @@ The user describes work in ordinary language. Harness intake classifies the task
 
 Strict behavior: Task lifecycle, modes, and state transitions are owned by [Kernel Reference](../reference/kernel.md#lifecycle-and-transitions). Storage layout is owned by [Storage And DDL](../reference/storage-and-ddl.md).
 
-### 2. Task -> Discovery
+### 2. Task -> requirements clarification
 
-Discovery is used when the request is ambiguous, risky, multi-step, product-facing, or likely to need user-owned judgment. It clarifies goal, non-goals, acceptance criteria, assumptions, technical and product choices, security or privacy concerns, QA expectations, and scope boundaries.
+Requirements clarification, internally named Discovery, is used when the request is ambiguous, risky, multi-step, product-facing, or likely to need user-owned judgment. It clarifies goal, user value, non-goals, acceptance criteria, inspectable facts, assumptions, technical and product choices, security or privacy concerns, QA expectations, remaining uncertainty, and scope boundaries.
 
-Strict behavior: Discovery is shaping input. It is not Approval, Write Authorization, evidence, verification, QA, final acceptance, residual-risk acceptance, close, scope authority, or a new authority path. Decision routing is owned by [Decision Packet](../reference/kernel.md#decision-packet) and the public decision call in [MCP API And Schemas](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision).
+Strict behavior: requirements clarification / Discovery is shaping input. It is not Approval, Write Authorization, evidence, verification, QA, final acceptance, residual-risk acceptance, close, scope authority, or a new authority path. Decision routing is owned by [Decision Packet](../reference/kernel.md#decision-packet) and the public decision call in [MCP API And Schemas](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision).
 
-### 3. Discovery -> scoped next work -> Change Unit
+### 3. Requirements clarification -> scoped next work -> Change Unit
 
-Discovery separates inspectable facts from user-owned decisions, then proposes scoped next work, a first implementation candidate, or a work split. When product writes are near, that proposal can become a Change Unit candidate. The active Change Unit names what work surface may change, what remains out of bounds, and what judgment the agent may exercise inside that scope.
+Requirements clarification separates inspectable facts from user-owned decisions, then tracks remaining uncertainty and proposes scoped next work, a smaller scope, or a work split once goals, non-goals, acceptance criteria, and major judgment candidates are clear enough. When product writes are near, that proposal can become a Change Unit candidate. The active Change Unit names what work surface may change, what remains out of bounds, and what judgment the agent may exercise inside that scope.
 
 These proposal phrases are not standalone schema fields, canonical record types, gate values, projection kinds, or authority paths.
 

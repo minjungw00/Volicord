@@ -19,7 +19,7 @@
 
 ## 핵심 생각
 
-쓰기 가능한 tracked work에서는 Harness가 Task, 필요한 Discovery 또는 decision, 첫 scope를 알게 된 뒤에야 요청이 안전한 제품 작업이 됩니다. 제품 파일 쓰기는 그다음 `prepare_write`를 통과해야 하며, 이때 한 번만 쓸 수 있는 Write Authorization이 만들어질 수 있습니다. Run은 그 권한을 소비하고, evidence와 artifact는 주장을 뒷받침하며, 읽기용 요약(Projection)은 상태를 사람이 읽을 수 있게 만들고, `close_task`는 구조화된 막힘을 반환하거나 Task를 닫습니다.
+쓰기 가능한 tracked work에서는 Harness가 Task, 필요한 요구사항 구체화 또는 decision, 초기 scope를 알게 된 뒤에야 요청이 안전한 제품 작업이 됩니다. 제품 파일 쓰기는 그다음 `prepare_write`를 통과해야 하며, 이때 한 번만 쓸 수 있는 Write Authorization이 만들어질 수 있습니다. Run은 그 권한을 소비하고, evidence와 artifact는 주장을 뒷받침하며, 읽기용 요약(Projection)은 상태를 사람이 읽을 수 있게 만들고, `close_task`는 구조화된 막힘을 반환하거나 Task를 닫습니다.
 
 이 walkthrough는 전체 사용자에게 보이는 경로를 보여 줍니다. 코어 권한 조각(v0.1 Core Authority Slice)은 그중 가장 작은 내부 부분만 구현합니다. 즉 project 하나, Task 하나, Reference 계약상 필요한 경우 Change Unit 소유자 형태로 표현되는 기본 scope 하나, 쓰기 권한 경로 하나, 기록된 Run 하나, 근거 링크 하나, 구조화된 막힘/상태 응답 하나입니다. 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)는 사용자가 경험하는 평범한 말의 요구사항 정리, 판단 분리, 절차 예산, 잔여 위험 표시, 작업 수락 경계를 추가합니다.
 
@@ -28,7 +28,7 @@
 ```mermaid
 flowchart LR
   Request["request"] --> Task["Task"]
-  Task --> Discovery["Discovery<br/>when needed"]
+  Task --> Discovery["요구사항 구체화<br/>(Discovery when needed)"]
   Discovery --> ChangeUnit["Change Unit<br/>scoped work"]
   Task --> ChangeUnit
   ChangeUnit --> Prepare["prepare_write"]
@@ -42,7 +42,7 @@ flowchart LR
   CloseCheck -->|compatible| Close["Task closed"]
 ```
 
-눈여겨볼 점은 이 diagram이 reader path이며 두 번째 source of truth가 아니라는 것입니다. Discovery와 Projection은 work를 구체화하거나 읽는 데 도움을 주지만, 쓰기 권한은 `prepare_write`, 실행 기록은 `record_run`, 완료 판단은 `close_task`가 담당합니다. 정확한 state와 gate behavior는 [커널 참조](../reference/kernel.md)에 있고, public call은 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)에 있습니다.
+눈여겨볼 점은 이 diagram이 reader path이며 두 번째 source of truth가 아니라는 것입니다. 요구사항 구체화와 Projection은 work를 구체화하거나 읽는 데 도움을 주지만, 쓰기 권한은 `prepare_write`, 실행 기록은 `record_run`, 완료 판단은 `close_task`가 담당합니다. 정확한 state와 gate behavior는 [커널 참조](../reference/kernel.md)에 있고, public call은 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)에 있습니다.
 
 ## 단계별 runtime path
 
@@ -52,15 +52,15 @@ flowchart LR
 
 엄격한 동작: Task lifecycle, mode, state transition은 [커널 참조](../reference/kernel.md#lifecycle-and-transitions)가 담당합니다. Storage layout은 [Storage와 DDL](../reference/storage-and-ddl.md)이 담당합니다.
 
-### 2. Task -> Discovery
+### 2. Task -> 요구사항 구체화
 
-요청이 모호하거나, 위험하거나, 여러 단계이거나, 제품 표면에 닿거나, 사용자 소유 판단이 필요할 가능성이 있을 때 요구사항 구체화(Discovery)를 사용합니다. 이 구체화는 goal, non-goal, acceptance criteria, assumption, technical/product choice, security/privacy concern, QA expectation, scope boundary를 정리합니다.
+요청이 모호하거나, 위험하거나, 여러 단계이거나, 제품 표면에 닿거나, 사용자 소유 판단이 필요할 가능성이 있을 때 요구사항 구체화(내부 이름 Discovery)를 사용합니다. 이 구체화는 goal, user value, non-goal, acceptance criteria, 확인 가능한 사실, assumption, technical/product choice, security/privacy concern, QA expectation, 남은 불확실성, scope boundary를 정리합니다.
 
-엄격한 동작: 요구사항 구체화(Discovery)는 shaping input입니다. Approval, Write Authorization, evidence, verification, QA, 작업 수락, 잔여 위험을 받아들이는 판단, close, scope authority, 새 authority path가 아닙니다. Decision routing은 [Decision Packet](../reference/kernel.md#decision-packet)과 [MCP API와 스키마](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision)의 public decision call이 담당합니다.
+엄격한 동작: 요구사항 구체화/Discovery는 shaping input입니다. Approval, Write Authorization, evidence, verification, QA, 작업 수락, 잔여 위험을 받아들이는 판단, close, scope authority, 새 authority path가 아닙니다. Decision routing은 [Decision Packet](../reference/kernel.md#decision-packet)과 [MCP API와 스키마](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision)의 public decision call이 담당합니다.
 
-### 3. 요구사항 구체화(Discovery) -> 안전한 다음 작업 -> Change Unit
+### 3. 요구사항 구체화 -> 안전한 다음 작업 -> Change Unit
 
-요구사항 구체화(Discovery)는 에이전트가 확인할 수 있는 사실과 사용자 소유 결정을 분리한 뒤 안전한 다음 작업, 첫 구현 후보, 또는 작업 분할을 제안합니다. 제품 쓰기가 가까워지면 그 제안이 Change Unit candidate가 될 수 있습니다. Active Change Unit은 무엇이 바뀔 수 있는지, 무엇이 범위 밖인지, agent가 그 scope 안에서 어떤 판단을 직접 할 수 있는지를 이름 붙입니다.
+요구사항 구체화는 에이전트가 확인할 수 있는 사실과 사용자 소유 결정을 분리하고 남은 불확실성을 추적한 뒤, 목표, 비목표, 수용 기준, 중요한 판단 후보가 충분히 분명해졌을 때 안전한 다음 작업, 더 작은 범위, 또는 작업 분할을 제안합니다. 제품 쓰기가 가까워지면 그 제안이 Change Unit candidate가 될 수 있습니다. Active Change Unit은 무엇이 바뀔 수 있는지, 무엇이 범위 밖인지, agent가 그 scope 안에서 어떤 판단을 직접 할 수 있는지를 이름 붙입니다.
 
 이런 제안 표현은 standalone schema field, canonical record type, gate value, projection kind, authority path가 아닙니다.
 

@@ -85,7 +85,8 @@ A good clarification response should separate:
 - technical architecture judgment candidates
 - security or privacy judgment candidates
 - QA and verification expectations
-- first implementation candidate or work-splitting candidate
+- remaining uncertainty
+- safe next-work candidate or work-splitting candidate
 
 When the request needs judgment, the agent should name the kind of judgment instead of asking for broad approval. Sensitive-action approval, final acceptance, residual-risk acceptance, and QA or verification waiver are separate decisions.
 
@@ -141,8 +142,26 @@ Show close readiness in plain language.
 Show close-relevant residual risk before I accept.
 What evidence is still missing?
 Keep this small unless it turns into a product or technical decision.
-After you inspect, show the first implementation candidate or work split.
+After you inspect, show the safe next work or work split.
 ```
+
+## Planning examples
+
+For product planning, you can say:
+
+```text
+We need to improve onboarding for new workspace owners. First, inspect what exists, separate product choices from facts, and ask only the questions you cannot answer from the repo.
+```
+
+A useful response should identify the user value, non-goals, inspectable facts, product/UX judgment candidates such as checklist versus setup prompt, QA expectations for the flow, remaining uncertainty, and a safe next-work or work-splitting proposal.
+
+For technical planning, you can say:
+
+```text
+I want to replace our login approach, but I do not know whether sessions, magic links, or OAuth/OIDC fit best. Inspect the current auth shape first and show the decisions before implementation.
+```
+
+A useful response should inspect existing auth, session, user model, tests, and docs before asking; separate technical architecture choices from security/privacy choices; name verification and Manual QA expectations; and propose either a safe investigation slice or a work split. It should not treat the first plausible implementation path as enough to stop clarifying if acceptance criteria, major judgment candidates, or remaining uncertainty are still unclear.
 
 ## Small work should stay light
 
@@ -357,7 +376,7 @@ You can skip this section until an agent shows one of these labels. They are use
 
 | Harness label | Plain meaning |
 |---|---|
-| Discovery | The agent's requirements-clarification behavior before implementation planning. |
+| Discovery | The internal name for the agent's requirements-clarification behavior before implementation planning. Users can ask for this as "clarify the plan before implementation." |
 | Change Unit | The bounded work area that may change for this task. |
 | Autonomy Boundary | The decisions the agent may make alone inside that scope. |
 | Decision Packet | The recorded path for a user-owned product, technical, waiver, acceptance, risk, or scope decision. |

@@ -67,6 +67,8 @@ Users do not need a command language. These are enough:
 Add email login. Keep password reset and account creation out of scope.
 Clarify the plan before implementation.
 Ask what you need before changing code.
+Help plan better onboarding; inspect what exists and separate product choices from facts.
+Inspect our auth shape before recommending sessions, magic links, or OAuth/OIDC.
 Show what is blocking this work.
 What evidence supports the completion claim?
 Show close readiness before I accept.
@@ -82,7 +84,7 @@ These terms are exact implementation names used by references, APIs, schemas, re
 | Internal term | Plain-language explanation |
 |---|---|
 | Task | The durable unit for the work the user wants completed, answered, investigated, or decided. |
-| Discovery | The agent's requirements-clarification posture before implementation planning when goals, value, scope, decisions, QA expectations, or first work candidates need shaping. |
+| Discovery | The internal name for the agent's requirements-clarification posture before implementation planning when goals, value, non-goals, acceptance criteria, user-owned judgments, QA expectations, uncertainty, or safe next work need shaping. Users can ask for this in ordinary language. |
 | Shared Design | A recorded shared understanding of goal, value, scope, non-goals, assumptions, decisions, and safe next-work shape for blurry work. |
 | Change Unit | The bounded work scope for product writes. It names what may change, but does not authorize a write by itself. |
 | Autonomy Boundary | The choices the agent may make inside the active scope without asking the user again. |
