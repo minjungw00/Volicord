@@ -253,7 +253,7 @@ Most status should fit into four everyday groups. The agent may use exact Harnes
 
 These are readable summaries, not authoritative documents. The agent may cite refs behind them, but state changes, evidence records, acceptance, risk acceptance, and close still come from Harness/Core records and actions.
 
-When the Judgment group needs a formal Decision Packet, Harness records both the decision route and the user-facing domain. `decision_kind` says what lifecycle or gate path the decision uses; `judgment_domain` groups the decision for users as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed. The domain explains the decision; it does not by itself change close readiness or gate aggregation.
+When the Judgment group needs a formal Decision Packet, Harness records both the decision route and the user-facing judgment domain. The route says what lifecycle or gate path the decision uses. The domain groups the decision for users as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed. The domain explains the decision; affected gates or blocked actions are recorded separately and determine what the decision influences.
 
 ```mermaid
 flowchart LR

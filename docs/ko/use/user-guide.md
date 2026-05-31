@@ -253,7 +253,7 @@
 
 이 네 가지는 읽기용 요약이지 권한 문서가 아닙니다. 에이전트가 뒤에 있는 ref를 보여줄 수는 있지만, 상태 변경, 근거 기록, 작업 수락, 잔여 위험 수용, 닫기는 여전히 Harness/Core 기록과 action에서만 옵니다.
 
-판단 그룹에 정식 결정 패킷(Decision Packet)이 필요하면 하네스는 결정 경로와 사용자에게 보이는 판단 영역을 함께 기록합니다. `decision_kind`는 어떤 lifecycle 또는 gate path를 쓰는지 말하고, `judgment_domain`은 결정을 Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed 중 어디에 묶어 설명할지 정합니다. 판단 영역은 결정을 설명하기 위한 값이며, 그 자체로 닫기 준비 상태나 gate aggregation을 바꾸지는 않습니다.
+판단 그룹에 정식 결정 패킷(Decision Packet)이 필요하면 하네스는 결정 경로와 사용자에게 보이는 판단 영역을 함께 기록합니다. 결정 경로는 어떤 lifecycle 또는 gate path를 쓰는지 말합니다. 판단 영역은 결정을 Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed 같은 label로 묶어 설명합니다. 영향을 받는 gate나 막힌 행동은 별도로 기록되며, 그 별도 기록이 결정의 영향을 정합니다.
 
 ```mermaid
 flowchart LR
@@ -380,7 +380,7 @@ flowchart LR
 | Change Unit | 이번 작업에서 바뀔 수 있는 제한된 작업 영역입니다. |
 | Autonomy Boundary | 그 범위 안에서 에이전트가 혼자 판단해도 되는 것들입니다. |
 | Decision Packet | 사용자 소유의 제품, 기술, 면제, 작업 수락, 위험, 범위 판단을 기록하는 경로입니다. |
-| Judgment domain | Decision Packet의 사용자에게 보이는 판단 영역입니다. Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed 같은 label로 보일 수 있습니다. |
+| 판단 영역 | Decision Packet의 사용자에게 보이는 판단 영역입니다. Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, Mixed 같은 label로 보일 수 있습니다. |
 | Approval | 이름 붙은 민감한 행동에 대한 민감 동작 승인입니다. 막연한 동의나 작업 수락이 아닙니다. |
 | Write Authorization | 의도한 제품 파일 쓰기가 현재 작업, 범위, 판단, 허가와 맞는지 한 번 확인한 기록입니다. |
 | Evidence Manifest | 완료 주장을 뒷받침하는 근거를 연결한 기록입니다. |

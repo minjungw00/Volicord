@@ -529,7 +529,9 @@ Role Lens behavior uses these existing display and routing schemas. A role lens 
 
 Decision Packet quality is judged from the public fields below and the kernel authority rules in [Decision Packet](kernel.md#decision-packet) and [Decision Gate](kernel.md#decision-gate), not from private display labels or extra authority hints. A sufficient packet names what the user is deciding in `what_user_is_deciding`, includes schema-owned `judgment_domain`, includes realistic `options` with trade-offs, gives `recommendation` and uncertainty when available, identifies `affected_gates` and `affected_acceptance_criteria`, carries `context.source_refs` and `context.evidence_refs`, states `deferral_consequence`, and lists `what_agent_may_decide_without_user`. If those fields cannot honestly show the choice, sources, evidence, deferral impact, and agent latitude, the prompt should be blocked or narrowed, or the decision should remain pending until enough context exists, instead of being presented as broad approval.
 
-`decision_kind` and `judgment_domain` are separate schema-owned fields. `decision_kind` controls lifecycle, payload branch, gate meaning, and state-transition semantics. `judgment_domain` controls how the decision is explained, grouped, and projected for users. It must not directly override close-gate aggregation, approval behavior, waiver behavior, or residual-risk acceptance unless another owner rule explicitly says so. A decision can affect one or more gates independently from its display domain, and cross-cutting decisions should use `mixed` or show secondary considerations in options, affected gates, risks, evidence, and follow-up instead of treating the domain as exclusive.
+`decision_kind` and `judgment_domain` are separate schema-owned fields. `decision_kind` controls lifecycle, payload branch, gate meaning, and state-transition semantics. `judgment_domain` controls how the decision is explained, grouped, and projected for users. `affected_gates` is the separate field that records which gates or blocked actions the decision can influence. `judgment_domain` must not directly override close-gate aggregation, approval behavior, waiver behavior, or residual-risk acceptance unless another owner rule explicitly says so. A decision can affect one or more gates independently from its display domain, and cross-cutting decisions should use `mixed` or show secondary considerations in options, affected gates, risks, evidence, and follow-up instead of treating the domain as exclusive.
+
+Stage/profile requiredness: whenever a stage or profile creates a `DecisionPacket` or user-facing `DecisionPacketCandidate`, `judgment_domain` is required and must be one of the values below. Minimal v0.1 implementations may omit the optional `decision_requests` table, but they may not omit `judgment_domain` from committed Decision Packet state. User-facing v0.2 displays render friendly labels from that stored value.
 
 `JudgmentDomain` values:
 
@@ -1532,11 +1534,14 @@ RecordUserDecisionResponse:
   base: ToolResponseBase
   decision_packet_id: string
   decision_packet_ref: StateRecordRef
+  decision_packet: DecisionPacket
   state: StateSummary
   updated_records: StateRecordRef[]
   accepted_risk_refs: StateRecordRef[]
   next_action: string
 ```
+
+`RecordUserDecisionResponse.decision_packet` is the post-transition canonical Decision Packet and preserves the stored `decision_kind`, `judgment_domain`, `affected_gates`, options, context refs, expiry, and resolution status. `harness.record_user_decision` must not accept a caller-supplied replacement `judgment_domain`; if a surface needs to display the domain after recording, it reads it from this packet or the linked Decision Packet resource.
 
 `RecordUserDecisionResponse.accepted_risk_refs` contains only `StateRecordRef` entries with `record_kind=residual_risk`; there is no standalone accepted-risk record kind.
 

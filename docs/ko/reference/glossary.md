@@ -213,7 +213,7 @@ Decision Packet의 schema field인 `decision_kind`입니다. Lifecycle, payload 
 
 차단하는 사용자 소유 판단을 위한 기준 kernel state record입니다. 필요한 결정, `decision_kind`, `judgment_domain`, options, 가능할 때 recommendation, trade-offs, 영향받는 scope, evidence, 잔여 위험, owner, status, next action을 명시합니다. 결정 패킷 record ID는 `DEC-*`를 사용합니다. Record-level status는 [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute)와 public `DecisionPacket` schema가 담당하며, 관련 statuses가 Task-level `decision_gate`에 반영됩니다. Required Decision Packet visibility는 Task/status/next/judgment-context 및 decision-packet 접점을 통해 제공되며, standalone `DEC` Markdown 렌더링 결과는 기능이 켜져 있을 때만 optional projection 또는 제안용 접점입니다. Public API/interface 선택, architecture direction, domain-language conflict, module boundary change, 면제 판단, 작업 수락, 잔여 위험 선택은 사용자 소유 제품 판단 또는 중요한 기술 판단이 진행, write, close를 막거나 public commitment를 만들 때 이 경로를 사용합니다. 넓은 approval text는 특정 recorded route와 option에 답하지 않는 한 결정 패킷을 충족하지 않습니다.
 
-`judgment_domain`은 결정 패킷의 schema-owned 판단 영역입니다. 값은 `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, `mixed`이며, 표시는 Product / UX 또는 Security / privacy 같은 자연스러운 label로 바꿔 보여줄 수 있습니다. `decision_kind`는 lifecycle, payload branch, gate 의미, state transition semantics를 제어합니다. `judgment_domain`은 사용자가 어떤 종류의 판단을 요구받는지 이해하도록 돕지만 status, gate, owner record, validator input, close aggregation rule, authority path가 아닙니다. 여러 영역에 걸친 결정은 domain을 배타적으로 다루지 말고 부차적인 고려사항을 trade-offs, 영향받는 gates, risk, evidence, follow-up에 보여줘야 합니다. 표시는 결정 제목, 사용자가 정확히 결정하는 것, 왜 지금 필요한지, options, trade-offs, recommendation, uncertainty, deferral consequence, 해당하는 경우 잔여 위험을 보이게 하되 `decision_kind`, 민감 동작 승인, 작업 수락, QA, 잔여 위험 수용, close, 쓰기 허가 기록의 owner contract를 바꾸면 안 됩니다.
+`judgment_domain`은 결정 패킷에서 schema가 소유하는 판단 영역입니다. 값은 `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, `mixed`이며, 표시는 Product / UX 또는 Security / privacy 같은 자연스러운 label로 바꿔 보여줄 수 있습니다. `decision_kind`는 lifecycle, payload branch, gate 의미, state transition semantics를 제어합니다. 영향을 받는 gate나 막힌 행동은 `affected_gates`와 관련 owner record로 별도 기록합니다. `judgment_domain`은 사용자가 어떤 종류의 판단을 요구받는지 이해하도록 돕지만 status, gate, owner record, validator input, close aggregation rule, authority path가 아닙니다. 여러 영역에 걸친 결정은 domain을 배타적으로 다루지 말고 부차적인 고려사항을 trade-offs, 영향받는 gates, risk, evidence, follow-up에 보여줘야 합니다. 표시는 결정 제목, 사용자가 정확히 결정하는 것, 왜 지금 필요한지, options, trade-offs, recommendation, uncertainty, deferral consequence, 해당하는 경우 잔여 위험을 보이게 하되 `decision_kind`, 민감 동작 승인, 작업 수락, QA, 잔여 위험 수용, close, 쓰기 허가 기록의 owner contract를 바꾸면 안 됩니다.
 
 ### Decision Request
 
@@ -385,7 +385,7 @@ Work 또는 verification이 문서화된 separation boundary 뒤에서 실행되
 
 한국어 기준 표현: 판단 영역.
 
-Decision Packet의 schema field인 `judgment_domain`입니다. `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, `mixed`처럼 사용자에게 보이는 판단 영역을 묶습니다. 사용자가 어떤 판단을 요청받는지 이해하도록 돕지만 gate, status, authority path, validator input, close aggregation rule, `decision_kind`의 대체물이 아닙니다.
+Decision Packet의 schema field인 `judgment_domain`입니다. `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, `mixed`처럼 사용자에게 보이는 판단 영역을 묶습니다. 사용자가 어떤 판단을 요청받는지 이해하도록 돕지만 gate, status, authority path, validator input, close aggregation rule, affected-gate relation, `decision_kind`의 대체물이 아닙니다.
 
 ### Journey Spine
 

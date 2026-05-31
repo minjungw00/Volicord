@@ -531,7 +531,9 @@ Role Lens behavior는 이 기존 표시 및 routing schema를 사용합니다. R
 
 Decision Packet 품질은 아래 public field와 [Decision Packet](kernel.md#decision-packet), [Decision Gate](kernel.md#decision-gate)의 kernel authority rule로 판단하며, private 표시 label이나 추가 권한 hint로 판단하지 않습니다. 충분한 packet은 `what_user_is_deciding`에 사용자가 무엇을 결정하는지 이름 붙이고, schema가 소유하는 `judgment_domain`을 포함하며, trade-off가 있는 현실적인 `options`를 포함하고, 가능할 때 `recommendation`과 uncertainty를 제공하고, `affected_gates`와 `affected_acceptance_criteria`를 식별하고, `context.source_refs`와 `context.evidence_refs`를 담고, `deferral_consequence`를 말하며, `what_agent_may_decide_without_user`를 나열합니다. 이 field들로 선택, source, evidence, deferral impact, agent latitude를 솔직히 보여줄 수 없다면 broad approval처럼 제시하지 말고 prompt를 blocked 또는 narrowed로 다루거나 충분한 context가 생길 때까지 decision을 pending으로 둬야 합니다.
 
-`decision_kind`와 `judgment_domain`은 서로 다른 schema-owned field입니다. `decision_kind`는 lifecycle, payload branch, gate 의미, state transition semantics를 제어합니다. `judgment_domain`은 사용자에게 결정을 어떻게 설명하고 묶어 보여줄지 정하는 판단 영역입니다. 별도 owner rule이 명시하지 않는 한 `judgment_domain`은 close gate aggregation, Approval behavior, waiver behavior, 잔여 위험 수용을 직접 override하면 안 됩니다. 하나의 결정은 표시되는 판단 영역과 별개로 하나 이상의 gate에 영향을 줄 수 있으며, 여러 영역에 걸친 결정은 `mixed`를 쓰거나 options, affected gates, risk, evidence, follow-up에 부차적인 고려사항을 보여줘야 합니다.
+`decision_kind`와 `judgment_domain`은 서로 다른 schema가 소유하는 field입니다. `decision_kind`는 lifecycle, payload branch, gate 의미, state transition semantics를 제어합니다. `judgment_domain`은 사용자에게 결정을 어떻게 설명하고 묶어 보여줄지 정하는 판단 영역입니다. `affected_gates`는 그 결정이 어떤 gate나 막힌 행동에 영향을 줄 수 있는지 기록하는 별도 field입니다. 별도 owner rule이 명시하지 않는 한 `judgment_domain`은 close gate aggregation, Approval behavior, waiver behavior, 잔여 위험 수용을 직접 override하면 안 됩니다. 하나의 결정은 표시되는 판단 영역과 별개로 하나 이상의 gate에 영향을 줄 수 있으며, 여러 영역에 걸친 결정은 `mixed`를 쓰거나 options, affected gates, risk, evidence, follow-up에 부차적인 고려사항을 보여줘야 합니다.
+
+Stage/profile requiredness: 어떤 stage 또는 profile이 `DecisionPacket`이나 사용자 표시 `DecisionPacketCandidate`를 만들면 `judgment_domain`은 required이며 아래 값 중 하나여야 합니다. Minimal 코어 권한 조각(v0.1) 구현은 optional `decision_requests` table을 생략할 수 있지만, committed Decision Packet state에서 `judgment_domain`을 생략하면 안 됩니다. 사용자 대상 하네스 MVP(v0.2) display는 저장된 값에서 자연스러운 label을 렌더링합니다.
 
 `JudgmentDomain` 값:
 
@@ -1536,11 +1538,14 @@ RecordUserDecisionResponse:
   base: ToolResponseBase
   decision_packet_id: string
   decision_packet_ref: StateRecordRef
+  decision_packet: DecisionPacket
   state: StateSummary
   updated_records: StateRecordRef[]
   accepted_risk_refs: StateRecordRef[]
   next_action: string
 ```
+
+`RecordUserDecisionResponse.decision_packet`은 transition 이후의 기준 Decision Packet이며 저장된 `decision_kind`, `judgment_domain`, `affected_gates`, options, context refs, expiry, resolution status를 보존합니다. `harness.record_user_decision`은 caller가 보낸 대체 `judgment_domain`을 받으면 안 됩니다. Surface가 기록 이후 판단 영역을 표시해야 하면 이 packet 또는 linked Decision Packet resource에서 읽습니다.
 
 `RecordUserDecisionResponse.accepted_risk_refs`는 `record_kind=residual_risk`인 `StateRecordRef` entries만 포함합니다. Standalone accepted-risk record kind는 없습니다.
 

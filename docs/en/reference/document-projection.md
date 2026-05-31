@@ -239,7 +239,7 @@ Close/readiness displays must keep evidence, verification, Manual QA, final acce
 | Raw evidence | artifact store plus `artifacts` records | artifact references in reports | artifact registry |
 | Projection freshness | `projection_jobs.source_state_version`, `projection_jobs.projection_version`, job status, managed hashes, artifact records | front matter mirror, status card, operations output | projector and recovery tools |
 
-Decision Packet projections and cards render the schema-owned `judgment_domain` as the user-facing judgment grouping. Templates may translate enum values into friendly labels, but they must keep `decision_kind` as the lifecycle/gate route and `judgment_domain` as display grouping. `judgment_domain` is not a `ProjectionKind`, gate, close aggregation input, approval substitute, waiver substitute, or residual-risk acceptance rule.
+Decision Packet projections and cards render the schema-owned `judgment_domain` as the user-facing judgment grouping. Templates may translate enum values into friendly labels, but they must keep `decision_kind` as the lifecycle/gate route and `judgment_domain` as display grouping. Affected gates or blocked actions come from the packet's `affected_gates` and related owner records, not from the domain label. `judgment_domain` is not a `ProjectionKind`, gate, close aggregation input, approval substitute, waiver substitute, or residual-risk acceptance rule.
 
 Required authority statements:
 

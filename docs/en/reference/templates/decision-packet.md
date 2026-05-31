@@ -26,7 +26,7 @@ Approval-shaped display bullets such as "what this approval covers," "what this 
 
 A resolved Decision Packet is not sensitive-action Approval unless it is the approval-shaped Decision Packet linked to an Approval record. Other Decision Packet resolutions may settle user-owned judgment, waivers, residual-risk acceptance, final acceptance, or reconcile choices, but they do not grant sensitive-action Approval.
 
-`judgment_domain` is the schema-owned user-visible judgment grouping. Render it with a friendly label, but keep `decision_kind` as the lifecycle and gate route. `judgment_domain` does not directly change close gate aggregation, sensitive-action Approval, waiver behavior, or residual-risk acceptance unless a separate owner rule says so.
+`judgment_domain` is the schema-owned user-visible judgment grouping. Render it with a friendly label, but keep `decision_kind` as the lifecycle and gate route. Render affected gates from `affected_gates` and related owner refs, not from the domain label. `judgment_domain` does not directly change close gate aggregation, sensitive-action Approval, waiver behavior, or residual-risk acceptance unless a separate owner rule says so.
 
 ## Rendered sections
 
