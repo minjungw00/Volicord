@@ -12,8 +12,8 @@ Implementation tier: required for user-facing MVP as the Decision Packet display
 
 - `state.sqlite.decision_packets`
 - related Task and Change Unit refs
-- `decision_kind` and schema-owned `judgment_domain`
-- display decision type derived from `decision_kind`, `judgment_domain`, and related owner records
+- `decision_kind`, schema-owned `decision_profile`, and schema-owned `judgment_domain`
+- display decision type derived from `decision_kind`, `decision_profile`, `judgment_domain`, and related owner records
 - related `decision_gate` state and decision events
 - approval records for approval-shaped decisions
 - related reconcile records, if applicable
@@ -29,11 +29,13 @@ A resolved Decision Packet is not sensitive-action Approval unless it is the app
 
 `judgment_domain` is the schema-owned user-visible judgment grouping. Render it with a friendly label, but keep `decision_kind` as the lifecycle and gate route and render a concrete decision type. Render affected gates from `affected_gates` and related owner refs, not from the domain label. `judgment_domain` does not directly change close gate aggregation, sensitive-action Approval, waiver behavior, or residual-risk acceptance unless a separate owner rule says so.
 
+`decision_profile` is the schema-owned prompt-depth and validation profile. Render `minimal_decision` as a concise explicit judgment, not as an incomplete full trade-off packet. Render full profiles such as `product_ux_tradeoff`, `architecture_tradeoff`, `approval_shaped`, `waiver`, `acceptance`, `residual_risk_acceptance`, `reconcile`, and `mixed` with the additional context that profile requires. The profile does not change authority by itself and must not merge separate approval, acceptance, waiver, residual-risk acceptance, and product/technical decisions into one answer.
+
 ## Rendered sections
 
 - Why Now
 - Current State
-- Decision Type And Route
+- Decision Profile, Type, And Route
 - Approval-Shaped Context, If Applicable
 - What User Is Deciding
 - What Agent May Decide Without User
@@ -50,15 +52,18 @@ A resolved Decision Packet is not sensitive-action Approval unless it is the app
 
 A sufficient rendered Decision Packet uses these sections to answer one user-owned decision, not to ask for broad permission. The exact public request and response fields are owned by [`harness.request_user_decision`](../mcp-api-and-schemas.md#harnessrequest_user_decision), and the canonical authority rules are owned by [Decision Packet](../kernel.md#decision-packet) and [Decision Gate](../kernel.md#decision-gate). This template may summarize the existing fields, including `judgment_domain`, but it must not add additional schema fields, gates, or alternate authority.
 
+Profile-specific rendering may omit sections that are not required for the selected profile. A `minimal_decision` card should still show the question, route, domain, scope, concise options or selected outcome, related refs, and what the answer does not settle, but it does not need full pros/cons, recommendation, uncertainty, and deferral analysis unless those are material. Full profiles should render the detailed sections needed for the user to judge risk, trade-offs, approval scope, waiver impact, acceptance basis, residual-risk consequence, or reconcile target.
+
 The user-facing question should ask for the decision directly: choose an option, defer it with the stated consequence, reject the path, waive the named check, accept the named risk, accept the result, or reconcile the named drift. Use "approve" only for the approval-shaped context linked to Approval. For other packet kinds, ask what choice should be recorded and what remains outside that choice. If several decisions are pending, render separate prompts or separate lines; do not combine approval, acceptance, and risk acceptance into one answer.
 
 **Example content cues:**
 
 Use the same rendered sections for these common Decision Packet shapes. These cues are not extra template sections.
 
+- Tiny unblocker (`decision_profile=minimal_decision`): e.g., choose whether a button label should say "Save" or "Update" inside an already scoped settings copy change. Put the concise choice, scope, refs, and non-effects under What User Is Deciding and References. Do not force a full architecture-tradeoff layout.
 - Product/UX trade-off (`judgment_domain=product_ux`): failed-login feedback as inline layer, toast, or modal. Put flow, interruption, accessibility, copy, and product-risk differences under Options and Recommendation.
 - Product/copy trade-off: failed-login wording as generic, specific, or hybrid. Put account-enumeration risk, recovery usefulness, support burden, clarity, and product tone under Options and Minimum Context To Judge.
-- Technical architecture choice (`judgment_domain=technical_architecture`): session cookie, bearer/JWT token, OAuth/OIDC provider, or social-login provider integration. Put revocation, CSRF/XSS exposure, client compatibility, implementation cost, identity-provider boundaries, and migration impact under Options and Minimum Context To Judge.
+- Technical architecture choice (`decision_profile=architecture_tradeoff`, `judgment_domain=technical_architecture`): session cookie, bearer/JWT token, OAuth/OIDC provider, or social-login provider integration. Put revocation, CSRF/XSS exposure, client compatibility, implementation cost, identity-provider boundaries, and migration impact under Options and Minimum Context To Judge.
 - Dependency approval versus dependency decision: if the user is approving an install command or dependency-file edit, put that sensitive-action boundary under Approval-Shaped Context. If the user is choosing whether the dependency is the right architecture direction, put the technical choice under What User Is Deciding and Options.
 - Schema/data-model decision: put additive migration, compatibility shim, breaking cleanup, data backfill, migration evidence, rollback risk, and test boundary under Options and Minimum Context To Judge.
 - Scope or Autonomy Boundary expansion: put the proposed additional surface, why current scope or latitude is insufficient, what remains out of bounds, and whether a smaller Change Unit can continue under Consequence Of Deferring.
@@ -68,6 +73,32 @@ Use the same rendered sections for these common Decision Packet shapes. These cu
 - Residual-risk acceptance before close (`judgment_domain=residual_risk`): put the visible limitation, existing evidence, risk refs the user is being asked to accept, and remaining follow-up under Current State, Minimum Context To Judge, Residual-Risk Acceptance, and Follow-Up.
 - Final acceptance: put the final result, evidence status, Manual QA and verification status, and close-relevant residual-risk visibility under Current State and Minimum Context To Judge. Do not treat final acceptance as approval for new sensitive actions, additional writes, deployment, or merge.
 - Broad "go ahead" answers: show why the packet asks for this specific route and option. A generic approval phrase does not resolve product trade-off, architecture choice, QA waiver, verification risk, final acceptance, or residual-risk acceptance unless this packet records that exact judgment.
+
+**Rendered example: minimal decision**
+
+```text
+Decision: Settings label wording
+Profile: concise decision (`minimal_decision`)
+Route/domain: product trade-off (`decision_kind=product_tradeoff`), Product / UX (`product_ux`)
+Question: Should this scoped settings label say "Save" or "Update"?
+Scope/refs: settings form copy in CU-04; source ref TASK-012/CU-04; no sensitive action or close-risk ref.
+Choice to record: Save | Update
+Does not settle: broader settings flow behavior, localization strategy, final acceptance, or write authority.
+```
+
+**Rendered example: full architecture trade-off**
+
+```text
+Decision: Login session architecture
+Profile: detailed architecture trade-off (`architecture_tradeoff`)
+Route/domain: architecture choice (`decision_kind=architecture_choice`), Technical architecture (`technical_architecture`)
+Question: Which session model should this login work use?
+Options: server-side session cookie; client-held bearer/JWT; OAuth/OIDC provider plus local session strategy; social-login provider integration.
+Recommendation: server-side session cookie for a first-party web app unless current requirements need third-party identity, non-browser clients, or social sign-in now.
+Uncertainty: existing session middleware, revocation requirements, SSO requirement, CSRF posture, and migration constraints.
+Deferral consequence: read-only inspection and UI scaffolding can continue only if they do not commit to storage, token lifetime, provider, or middleware behavior.
+Refs: auth model refs, affected acceptance criteria, security evidence refs when available, and any residual-risk or migration refs.
+```
 
 ## Full template
 
@@ -80,6 +111,7 @@ decision_packet_id: DEC-0001
 task_id: TASK-0001
 change_unit_id: CU-01
 decision_kind: product_tradeoff
+decision_profile: product_ux_tradeoff
 judgment_domain: product_ux
 status: pending_user
 source_state_version: 42
@@ -104,7 +136,10 @@ updated_at: 2026-05-06T09:30:15+09:00
 - residual risk:
 - source refs: decision={decision_packet_id}; write={write_authorization_ref|none}; approval={approval_refs|none}; evidence={evidence_manifest_ref|none}; eval={eval_ref|none}; manual_qa={manual_qa_ref|none}; acceptance={acceptance_context_ref|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}; redaction={redaction_availability_summary|none}; freshness={projection_freshness}
 
-## Decision Type And Route
+## Decision Profile, Type, And Route
+- decision_profile: minimal_decision | product_ux_tradeoff | architecture_tradeoff | approval_shaped | waiver | acceptance | residual_risk_acceptance | reconcile | mixed
+- profile display: concise decision | detailed trade-off | sensitive-action approval | waiver | final acceptance | residual-risk acceptance | reconcile | mixed
+- profile-required detail:
 - decision type: Product/UX judgment | technical architecture judgment | security/privacy judgment | scope/autonomy judgment | sensitive-action approval | QA waiver | verification waiver | final acceptance | residual-risk acceptance | reconcile
 - decision_kind:
 - judgment_domain:
@@ -132,6 +167,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - judgment_domain:
 - display label:
 - decision_kind:
+- decision_profile:
 - user-facing question:
 - decision:
 - what this decision settles:

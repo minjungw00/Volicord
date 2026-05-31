@@ -136,7 +136,7 @@ Tracker 상태 의미:
 | 사용자용 문서에 내부 용어가 너무 많습니다. | 확인 대상 후보. | 사용자가 보는 상황을 먼저 설명하고, 내부 용어는 행동에 도움이 될 때만 소개합니다. |
 | 요구사항 탐색(discovery)과 확인이 Change Unit 또는 첫 안전한 구현 단위로 너무 빨리 수렴할 수 있습니다. | 확인 대상 후보. | 범위가 정해진 구현 단위를 요구하기 전에 초기 discovery, 공유 이해, 사용자 소유 판단의 여지를 남깁니다. |
 | `judgment_domain` 소유권과 상태가 drift될 수 있습니다. | 설계 해소됨; 회귀 방지 점검. | 활성 담당 문서는 `judgment_domain`을 schema가 소유하는 field로 정의합니다. 담당 문서 밖의 설명은 그 기준과 맞추고, 한곳에서는 display-only라고 하면서 다른 곳에서는 schema-owned라고 말하지 않습니다. `decision_kind`는 lifecycle/gate 의미를 담당하고, 영향을 받는 gate는 별도로 기록합니다. 의도한 소유권이 바뀐다면 먼저 담당 문서가 명시해야 합니다. |
-| 작은 결정을 다루기에 Decision Packet schema와 예시가 너무 무거워 보일 수 있습니다. | 확인 대상 후보. | Schema owner는 유지하되 작은 결정 예시와 stage profile은 가볍게 보여줍니다. Field requiredness나 payload shape에 실제 구현 변경이 필요하면 단계 영향을 적어 MVP 계획에 기록합니다. |
+| 작은 결정을 다루기에 Decision Packet schema와 예시가 너무 무거워 보일 수 있습니다. | 설계 해소됨; 회귀 방지 점검. | 작은 결정은 `minimal_decision`을 사용할 수 있습니다. Full trade-off, approval, waiver, acceptance, residual-risk, reconcile, mixed profile은 여전히 필요한 context를 포함해야 합니다. 이후 편집에서 모든 Decision Packet이 full trade-off field를 요구하도록 만들면 안 됩니다. |
 | Approval, 작업 수락, 잔여 위험 수용을 혼동하기 쉽습니다. | 회귀 방지 점검. | 진행 허가, 작업 수락, 잔여 위험 수용을 예시와 routing text에서 분리합니다. |
 | Storage/DDL이 future-profile table, field, gate를 너무 이른 필수 범위처럼 보이게 할 수 있습니다. | 확인 대상 후보. | Reference schema에 존재한다는 사실과 단계별 구현 요구를 구분합니다. Required field는 담당 tool, record, profile이 구현되거나 사용될 때 적용되며, 그 자체로 가장 작은 runnable slice를 키우지 않습니다. |
 | Conformance fixture 문서가 현재 구현 단계에 비해 너무 자세할 수 있습니다. | 확인 대상 후보. | Fixture 문서는 단계화된 향후 계획으로 유지합니다. 현재 executable fixture file이나 runnable Harness Server conformance test가 있다는 인상을 주지 않습니다. |

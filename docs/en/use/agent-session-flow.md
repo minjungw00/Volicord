@@ -66,7 +66,7 @@ Use progressive context loading instead of reading the whole documentation set i
 |---|---|---|
 | Session start | Current status or compact current-position summary, likely work shape, active blockers, pending user decisions, next allowed action, guarantee/MCP availability. | Task history, user guide, or Reference docs needed to classify the request or explain a blocker. |
 | Requirements clarification / discovery | Goal, user value, scope and non-goals, acceptance criteria, inspectable facts, tracked uncertainty, blocking questions grouped by decision area, user-owned decision candidates, QA/verification expectations, and safe next-work candidate or work split. | Repo docs, module/interface/domain refs, older PRDs/designs, or decision guidance needed to separate inspectable facts from user decisions and scope safe next work. |
-| Decision request | Exact decision, options, recommendation, uncertainty, affected scope/gates/acceptance criteria, consequence of deferral, relevant refs, and next action after the answer. | Short evidence, risk, design, or artifact excerpts needed for informed judgment. |
+| Decision request | Exact decision, decision profile, profile-appropriate options or chosen outcome, affected scope, relevant refs, what the answer does not settle, and next action after the answer. Full profiles also show recommendation, uncertainty, affected gates/acceptance criteria, and consequence of deferral. | Short evidence, risk, design, or artifact excerpts needed for informed judgment. |
 | Prepare-write | Active Change Unit, Autonomy Boundary, intended paths/tools/commands summary, Approval status, active Decision Packets, Write Authority Summary, baseline/freshness. | Exact `prepare_write`, Kernel, security, approval, or policy references needed for the intended write. |
 | Run/evidence | Run summary, changed-path summary, Evidence Manifest ref, artifact refs, evidence gaps, redaction/integrity notes, next evidence action. | Logs, diffs, screenshots, traces, or artifact/evidence contract details needed to interpret or repair support. |
 | Close-readiness | Close-readiness summary, blockers, evidence/verification/QA/final acceptance status, residual-risk summary or accepted refs, projection freshness, smallest unblocker. | Exact close, final acceptance, residual-risk visibility, residual-risk acceptance, Manual QA, verification, or artifact details behind a blocker. |
@@ -326,7 +326,7 @@ Use this distinction when explaining stops and permissions:
 | Change Unit scope | What work area is in bounds? | Names the behavior, files, paths, tools, commands, network targets, and sensitive categories the work is scoped around. | Does not decide user-owned product or material technical judgment or create Write Authorization by itself. |
 | Autonomy Boundary | What may the agent decide alone inside that scope? | Lets the agent choose covered implementation details without another user decision. | Does not grant paths, tools, commands, network, secrets, sensitive categories, sensitive-action Approval, or write authority. |
 | Approval | May this sensitive step proceed? | Allows a named sensitive action within its recorded scope and expiry. | Does not decide user-owned product, technical, security/privacy, scope/autonomy, waiver, acceptance, or residual-risk questions; prove correctness; waive QA or verification; accept the result; accept residual risk; or create Write Authorization. |
-| Decision Packet | What user-owned decision is being recorded? | Resolves, defers, rejects, or blocks the named Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, QA waiver, verification waiver, final acceptance, residual-risk acceptance, or reconcile choice. | Does not grant sensitive-action approval unless it is the approval-shaped packet linked to an Approval record. |
+| Decision Packet | What user-owned decision is being recorded? | Resolves, defers, rejects, or blocks the named Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, QA waiver, verification waiver, final acceptance, residual-risk acceptance, or reconcile choice. It may be concise or detailed depending on the profile. | Does not grant sensitive-action approval unless it is the approval-shaped packet linked to an Approval record. |
 | Acceptance | Is the result acceptable when Final acceptance is required? | Records the user's final result judgment after close-relevant residual risk is visible or confirmed absent. | Does not replace evidence, verification, Manual QA, Approval, Write Authorization, waiver, or residual-risk acceptance. |
 | Residual-risk acceptance | Is this known remaining risk acceptable for close? | Records acceptance of visible close-relevant risk and supports residual-risk accepted close when other gates allow it. | Does not create detached verification, prove correctness, waive QA, or make the close a normal no-risk close. |
 | Write Authorization | May this exact write attempt happen now? | Records that Core allowed one compatible write attempt after the required checks. | Is not reusable and does not expand scope, Autonomy Boundary, or Approval. |
@@ -354,36 +354,42 @@ Inside the Autonomy Boundary, the agent may decide ordinary implementation detai
 
 When user-owned Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, QA waiver, verification waiver, final acceptance, or residual-risk acceptance blocks progress, show or request a Decision Packet. When a named sensitive action blocks progress, use the sensitive-action approval route. Do not replace any of these with broad approval or a vague "continue?" prompt.
 
-The word "approved" or a casual "go ahead," "proceed," or "looks good" is not enough when the underlying choice is a product trade-off, architecture direction, security/privacy trade-off, scope/autonomy change, QA waiver, verification waiver, final acceptance (Acceptance), or residual-risk acceptance. The prompt must name the decision type and route, what the user is deciding, what is not being decided, the evidence or risk refs, what the agent may decide without the user, and the close or write impact.
+The word "approved" or a casual "go ahead," "proceed," or "looks good" is not enough when the underlying choice is a product trade-off, architecture direction, security/privacy trade-off, scope/autonomy change, QA waiver, verification waiver, final acceptance (Acceptance), or residual-risk acceptance. The prompt must name the decision type, profile, and route, what the user is deciding, what is not being decided, the relevant scope and refs, what the agent may decide without the user, and the close or write impact.
 
 A user-facing Decision Packet should include:
 
 - decision title
 - decision type: Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, final acceptance, or residual-risk acceptance
+- decision profile: concise decision, detailed product/UX trade-off, detailed architecture trade-off, sensitive-action approval, waiver, final acceptance, residual-risk acceptance, reconcile, or mixed
 - judgment_domain: `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, or `mixed`
 - friendly judgment label: Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed
 - decision_kind
 - why the decision is needed now
 - what the user is deciding / exact choice
-- options
-- trade-offs
-- recommendation
-- uncertainty
-- deferral consequence
+- options or selected outcome
+- trade-offs, recommendation, uncertainty, and deferral consequence when the selected profile needs them
 - residual risk when relevant
 - affected gates and affected acceptance criteria
 - source refs and evidence, risk, or design refs when available or relevant
 - what the agent may decide without the user
 - follow-up when relevant
 
-If more than one user-owned decision is pending, render separate prompts or separate lines in one prompt. Do not merge "approve install," "accept the result," and "accept the named risk" into one approval request.
+If more than one user-owned decision is pending, render separate prompts or separate lines in one prompt. Do not merge "approve install," "accept the result," and "accept the named risk" into one approval request. Use the concise profile for simple unblockers and full profiles when the choice is complex, high-risk, or close-relevant.
 
-The judgment domain is a schema-owned reader-facing classification that helps users understand what kind of judgment they are making. Use it as the primary display grouping. If a decision is cross-cutting, use `mixed` or show secondary considerations in trade-offs, affected gates, risk, evidence, or follow-up instead of pretending the domain is exclusive. `decision_kind` controls lifecycle, payload branch, gate meaning, and state-transition semantics; `judgment_domain` controls explanation and grouping. Affected gates or blocked actions are owned by separate fields and owner records. `judgment_domain` is not a gate, validator input, close aggregation rule, or authority path. The exact public fields are owned by [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision), and canonical authority is owned by [Decision Packet](../reference/kernel.md#decision-packet) and [Decision Gate](../reference/kernel.md#decision-gate). Do not copy the schema body into user prompts; render the decision in ordinary language and keep refs available for drill-down.
+The decision profile is a schema-owned prompt-depth and validation classification. Use `minimal_decision` for a small explicit unblocker, `product_ux_tradeoff` or `architecture_tradeoff` for detailed trade-offs, `approval_shaped` for sensitive-action Approval, `waiver` for QA or verification waiver, `acceptance` for final result acceptance, `residual_risk_acceptance` for accepting named close-relevant risk, `reconcile` for managed drift or proposal/state mismatch, and `mixed` only for one genuinely cross-cutting decision. The judgment domain is a schema-owned reader-facing classification that helps users understand what kind of judgment they are making. Use it as the primary display grouping. If a decision is cross-cutting, use `mixed` or show secondary considerations in trade-offs, affected gates, risk, evidence, or follow-up instead of pretending the domain is exclusive. `decision_kind` controls lifecycle, payload branch, gate meaning, and state-transition semantics; `decision_profile` controls prompt depth and profile-specific requiredness; `judgment_domain` controls explanation and grouping. Affected gates or blocked actions are owned by separate fields and owner records. `decision_profile` and `judgment_domain` are not gates, validator inputs, close aggregation rules, or authority paths. The exact public fields are owned by [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision), and canonical authority is owned by [Decision Packet](../reference/kernel.md#decision-packet) and [Decision Gate](../reference/kernel.md#decision-gate). Do not copy the schema body into user prompts; render the decision in ordinary language and keep refs available for drill-down.
 
 Decision-centered prompts use verbs that match the route: choose, defer, reject, waive, accept, or reconcile. Use "approve" only when the route is a sensitive-action Approval. Good prompt shapes:
 
 ```text
+Decision: Settings button label
+Profile: concise decision (`minimal_decision`)
+Judgment domain: Product / UX (`product_ux`)
+Should I record "Save" or "Update" for this scoped settings copy change? This only settles the label wording for CU-04; it does not settle broader settings behavior, localization strategy, final acceptance, residual-risk acceptance, or write authority.
+```
+
+```text
 Decision: Failed-login feedback pattern
+Profile: detailed Product/UX trade-off (`product_ux_tradeoff`)
 Judgment domain: Product / UX (`product_ux`)
 Which failed-login UX should I record for this Change Unit: inline layer, toast, or modal? Recommendation: inline layer because it preserves flow and accessibility. If deferred, I can continue backend auth wiring but not claim the final failed-login UX is done.
 ```

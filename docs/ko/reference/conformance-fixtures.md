@@ -358,7 +358,7 @@ Expected assertions는 기존 fixture field 안에 머물러야 합니다.
 | `INTAKE-user-plain-language-maps-to-harness-records` | `intake`, `prepare_write`, 또는 `request_user_decision` | 사용자는 `Change Unit`이나 `Decision Packet`을 이름 붙이지 않고 "checkout flow를 바꿔 줘" 또는 "어느 option을 고르는 게 좋을까?" 같은 평범한 표현을 쓸 수 있습니다. Core는 이 요청을 compatible Task, proposed 또는 active Change Unit, Decision Packet ref 또는 candidate, current blocker로 라우팅합니다. Fixture는 사용자 text에 정확한 Harness vocabulary를 요구하지 않으면서도 결과 owner record, ref, gate, projection, error를 검증해야 합니다. |
 | `INTAKE-tiny-direct-profile-no-authority-bypass` | `intake`, `status`, `next`, `prepare_write`, 또는 `close_task` | Typo, 문서 한 문장, obvious rename은 tiny direct profile로 분류될 수 있지만 오직 `mode=direct`로만 표현됩니다. Fixture는 `tiny` mode value가 없고, classification만으로 Write Authorization이 생기지 않으며, 제품 파일 쓰기에 적용되는 active scope 또는 compatible `prepare_write`, 사용자 소유 판단, sensitive-action Approval을 우회하지 않고, Tiny를 auth, security, privacy, secrets, infra, public interface/API, UX workflow, schema, multi-step work에 사용할 수 없음을 검증합니다. Scope가 넓어지거나 tiny changed-path/self-check note를 넘는 evidence가 필요하면 displayed next action은 일반 Direct로 상향됩니다. Product judgment, architecture choice, public interface/API impact, UX workflow, sensitive category, schema, multi-step delivery가 나타나면 Work로 상향되고, shaping이 필요하면 Discovery 또는 Shared Design을 사용합니다. |
 | `INTAKE-codebase-answerable-before-user-question` | `intake` 또는 `next` | 사용자에게 묻기 전에, seeded current context, explicit repo/codebase refs, Harness state refs, connector/session-provided facts에 이미 있고 현재적이며 안전하게 의존할 수 있는 사실을 사용합니다. Fixture는 제공된 ref 또는 fact를 사용해 사용자가 같은 사실을 반복 설명하지 않아도 되는지 검증합니다. Core가 repository, docs, codebase를 제한 없이 search해야 한다는 요구는 아닙니다. 남은 unresolved user-owned product judgment 또는 기술 구조 판단는 focused question 또는 Decision Packet으로 라우팅합니다. |
-| `AGENCY-decision-packet-quality-complete-context` | `request_user_decision`, `prepare_write`, 또는 `next` | 사용자 소유 product judgment 또는 기술 구조 판단를 위한 Decision Packet 또는 `DecisionPacketCandidate`는 `judgment_domain`, 현실적인 options, benefits/costs/risks를 통한 trade-offs, recommendation, uncertainty, deferral consequence, minimum current context, source/evidence refs, affected gates 또는 수용 기준, 관련되는 경우 residual-risk impact를 포함합니다. 모호한 "계속할까요?" prompt나 broad approval request는 `decision_gate`를 충족하지 못합니다. Packet은 rejected alternatives, no-op/defer/reduce-scope paths, 또는 다른 path가 unsafe하거나 out of scope인 이유를 함께 보여 준다면 하나의 강한 recommendation을 제시할 수 있으며, 사용자가 실제 판단을 할 수 있어야 합니다. |
+| `AGENCY-decision-packet-quality-complete-context` | `request_user_decision`, `prepare_write`, 또는 `next` | 사용자 소유 product judgment 또는 기술 구조 판단를 위한 Decision Packet 또는 `DecisionPacketCandidate`는 `judgment_domain`, `decision_profile`, 정확한 question, relevant scope, pending option label 또는 selected outcome, minimum current context, source/evidence refs, affected refs를 포함합니다. Product/UX 또는 architecture trade-off 같은 full profile은 현실적인 options, benefits/costs/risks를 통한 trade-offs, recommendation, uncertainty, deferral consequence, affected gates 또는 수용 기준, 관련되는 경우 residual-risk impact도 포함합니다. 모호한 "계속할까요?" prompt나 broad approval request는 `decision_gate`를 충족하지 못합니다. Packet은 rejected alternatives, no-op/defer/reduce-scope paths, 또는 다른 path가 unsafe하거나 out of scope인 이유를 함께 보여 준다면 하나의 강한 recommendation을 제시할 수 있으며, 사용자가 실제 판단을 할 수 있어야 합니다. |
 | `AGENCY-approval-does-not-substitute-for-judgment-or-close` | `prepare_write`, `record_user_decision`, 또는 `close_task` | Sensitive-action Approval이 granted여도 product judgment, Decision Packet resolution, Write Authorization, evidence, verification, 수동 QA, 작업 수락, 잔여 위험을 받아들이는 판단과는 별개로 남습니다. Fixture는 approval을 granted로 seed하고, compatible owner record가 없으면 affected write 또는 close가 계속 blocked되며, approval만으로 Write Authorization 생성, 작업 수락 충족, 분리 검증 생성, QA waiver, 잔여 위험을 받아들이는 판단, Task close가 일어나지 않음을 검증합니다. |
 | `AGENCY-residual-risk-visible-before-acceptance-or-close` | `record_user_decision` 또는 `close_task` | Known close-relevant residual risk는 acceptance 전과 successful close 전에 사용자에게 보여야 합니다. Fixture는 hidden, stale, not-yet-visible risk가 acceptance 또는 close를 차단함을 검증합니다. `ResidualRiskSummary.status=none`은 known close-relevant risk가 없을 때만 유효하며, risk-accepted close는 작업 수락 전에 보였던 accepted Residual Risk refs를 가리켜야 합니다. |
 | `AGENCY-approval-qa-acceptance-risk-judgments-distinct` | `record_user_decision`, `record_manual_qa`, `record_eval`, 또는 `close_task` | Sensitive-action Approval, 수동 QA judgment 또는 waiver, 작업 수락, verification waiver, 잔여 위험 수용은 서로 다른 owner judgment입니다. Fixture는 하나가 satisfied 상태로 seed되어도 다른 owner record가 없거나 incompatible하면 계속 blocked됨을 검증할 수 있습니다. Broad approval이나 QA pass가 작업 수락, 잔여 위험 수용, 분리 검증, close를 imply하면 안 됩니다. |
@@ -741,10 +741,12 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-VERIFY-WAIVER-001
       decision_kind: verification_waiver
+      decision_profile: waiver
       judgment_domain: qa_acceptance
       status: resolved
     - decision_packet_id: DEC-RISK-ACCEPT-001
       decision_kind: residual_risk_acceptance
+      decision_profile: residual_risk_acceptance
       judgment_domain: residual_risk
       status: resolved
       residual_risk_refs: [RISK-VERIFY-001]
@@ -795,6 +797,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-VERIFY-WAIVER-002
       decision_kind: verification_waiver
+      decision_profile: waiver
       judgment_domain: qa_acceptance
       status: resolved
 input:
@@ -1340,6 +1343,7 @@ initial_state:
       what_requires_user_judgment: ["Choose the revenue versus conversion trade-off."]
     blocking_decision_requirements:
       - decision_kind: product_tradeoff
+        decision_profile: product_ux_tradeoff
         judgment_domain: product_ux
         status: absent
         affected_paths: ["src/pricing/checkout.ts"]
@@ -1364,6 +1368,7 @@ expected_state:
   write_decision: decision_required
   decision_packet_candidate:
     decision_kind: product_tradeoff
+    decision_profile: product_ux_tradeoff
     judgment_domain: product_ux
     affected_gates: [decision_gate]
 expected_events:
@@ -1395,6 +1400,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-ACCEPT-001
       decision_kind: acceptance
+      decision_profile: acceptance
       judgment_domain: qa_acceptance
       status: pending_user
       user_context:
@@ -1441,6 +1447,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-ACCEPT-NONE-001
       decision_kind: acceptance
+      decision_profile: acceptance
       judgment_domain: qa_acceptance
       status: pending_user
       user_context:
@@ -1641,6 +1648,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-RESUME-001
       decision_kind: product_tradeoff
+      decision_profile: product_ux_tradeoff
       judgment_domain: product_ux
       status: pending_user
   residual_risks:
@@ -1741,6 +1749,7 @@ initial_state:
       what_requires_user_judgment: ["Choose a margin versus conversion trade-off."]
     blocking_decision_requirements:
       - decision_kind: product_tradeoff
+        decision_profile: product_ux_tradeoff
         judgment_domain: product_ux
         broad_approval_requested: false
 input:
@@ -1765,6 +1774,7 @@ expected_state:
   write_authorization_ref: null
   decision_packet_candidate:
     decision_kind: product_tradeoff
+    decision_profile: product_ux_tradeoff
     judgment_domain: product_ux
     affected_gates: [decision_gate]
   validators:
@@ -1825,6 +1835,7 @@ expected_state:
   write_held: true
   decision_packet_candidate:
     decision_kind: autonomy_boundary
+    decision_profile: mixed
     judgment_domain: scope_autonomy
     affected_gates: [decision_gate]
   validators:
@@ -2231,6 +2242,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-PUBLIC-API-001
       decision_kind: architecture_choice
+      decision_profile: architecture_tradeoff
       judgment_domain: technical_architecture
       topic: public_interface_commitment
       status: resolved
@@ -2466,6 +2478,7 @@ expected_state:
           record_id: IFACE-PUBLIC-EXPORT-001
   decision_packet_candidate:
     decision_kind: residual_risk_acceptance
+    decision_profile: residual_risk_acceptance
     judgment_domain: residual_risk
     topic: public_interface_future_change_risk
     affected_gates: [decision_gate, design_gate]
@@ -2613,6 +2626,7 @@ initial_state:
   decision_packets:
     - decision_packet_id: DEC-CONTEXT-001
       decision_kind: verification_waiver
+      decision_profile: waiver
       judgment_domain: qa_acceptance
       status: pending_user
   projection_freshness:
@@ -2738,7 +2752,7 @@ expected_error: null
 - connector: startup phrase 없는 자연어 intake, plain-language 요청을 Harness record로 라우팅, capability profile, connector profile 최신성, 오래된 capability profile 감지, surface capability mismatch, doctor/connect/serve-mcp/artifact check의 local security posture severity, MCP unavailable 보류, generated/managed manifest drift 감지, 변경 경로 감지, artifact 수집, native capture가 없을 때 수동 artifact capture fallback, cooperative/detective/manual fallback 동작을 preventive 또는 isolated로 상향 표시하지 않는 fallback 보장 수준 표시, 중요한 재개 전 간결한 현재 위치 맥락 표시, Decision Packet을 포괄 승인처럼 다루지 않음, Autonomy Boundary 초과를 Decision Packet 또는 blocker로 라우팅, stale chat 또는 PRD context의 pull-only 동작
 - artifact-redaction: registered artifact 경계 확인, 신뢰할 수 없는 `staged_uri` 처리, Task-scoped artifact relation validation, `secret_omitted`의 evidence sufficiency 한계 확인, 커밋된 `blocked` metadata-only notice 확인, 이후 표시/근거 영향, artifact 무결성 확인, secret/PII omission reporting, export/Release Handoff 비노출
 - connector guard/freeze: cooperative/detective freeze와 guard 표시, careful-mode가 권한을 만들지 않는 동작, capability mismatch honesty, MCP-unavailable hold wording, changed-path/log/artifact detective coverage. Preventive `T4` pre-tool blocking은 접점별 fixture가 hook, wrapper, sidecar, permission layer로 covered operation을 실행 전에 차단할 수 있음을 증명할 때만 포함합니다.
-- agency: 차단하는 사용자 소유 판단에는 Decision Packet 필요, options/trade-offs/recommendation/uncertainty/deferral/residual-risk impact를 갖춘 Decision Packet 품질 확인, 사용자 소유 제품 또는 기술 구조 trade-off write guard, AFK Autonomy Boundary stop conditions, successful acceptance 또는 close 전에 known close-relevant Residual Risk를 보이게 함, known close-relevant risk가 없을 때 `ResidualRiskSummary.status=none`, 잔여 위험을 받아들이고 닫는 경로에는 작업 수락 전에 사용자에게 보였던 risk를 가리키는 accepted Residual Risk refs 필요, Approval, 수동 QA, verification waiver, 작업 수락, 잔여 위험을 받아들이는 판단 구분
+- agency: 차단하는 사용자 소유 판단에는 Decision Packet 필요, profile에 맞는 options 또는 chosen outcome과 required일 때 full-profile trade-offs/recommendation/uncertainty/deferral/residual-risk impact를 갖춘 Decision Packet 품질 확인, 사용자 소유 제품 또는 기술 구조 trade-off write guard, AFK Autonomy Boundary stop conditions, successful acceptance 또는 close 전에 known close-relevant Residual Risk를 보이게 함, known close-relevant risk가 없을 때 `ResidualRiskSummary.status=none`, 잔여 위험을 받아들이고 닫는 경로에는 작업 수락 전에 사용자에게 보였던 risk를 가리키는 accepted Residual Risk refs 필요, Approval, 수동 QA, verification waiver, 작업 수락, 잔여 위험을 받아들이는 판단 구분
 - stewardship: shared design 필요 조건 처리, key unknowns가 남은 동안 shared design 계속 진행, 사용자 질문 전 codebase-answerable investigation, codebase stewardship close blocker 처리, domain language conflict 처리, vertical slice 또는 exception, feedback loop와 TDD trace required/waived/advisory 처리, 기존 owner path를 통한 finding routing, public interface module/interface review, public interface stewardship close blocker 처리, generated-file 또는 managed-block drift를 reconcile로 라우팅, two-stage review 표시와 close-blocker routing, 수동 QA policy와 waiver check 확인
 - context-hygiene: 현재 상태 bundle, compact profile 기반 맥락 로딩, 최신이 아닌 projection과 오래된 PRD 처리, `stale` `TASK` projection write guard, stale chat memory와 retrieved/indexed context를 pull-only로만 사용하는 동작, evaluator bundle 최신성, chat memory가 아니라 현재 상태에서 재개
 - design-quality: kernel 권한을 다시 정의하지 않고, validator ID를 duplicate하지 않고, lower-severity finding을 숨기지 않고, 새 gate를 추가하지 않으면서 agency, stewardship, context-hygiene, 닫기 영향 validator를 조합하는 policy-pack smoke coverage 확인

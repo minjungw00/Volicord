@@ -8,6 +8,8 @@ The agent should clarify why the decision is needed now, what the realistic opti
 
 Harness helps preserve the user-owned decision separately from broad approval, implementation evidence, final acceptance, and residual-risk acceptance. You should expect a compact decision prompt, not a field list.
 
+Decision Packets can be concise or detailed. A tiny unblocker can use a `minimal_decision` profile with the question, scope, options, and refs. Complex or high-risk choices can use a full profile, such as `architecture_tradeoff`, with detailed options, trade-offs, recommendation, uncertainty, deferral consequence, and affected refs.
+
 This is advanced usage and example material, not the primary user entrypoint and not the exact contract for Decision Packet behavior.
 
 ## When to use it
@@ -25,15 +27,33 @@ The examples below are prompt examples, not contract definitions. Exact behavior
 Each cookbook example includes:
 
 - the decision area
+- the decision profile, when useful
 - the decision route, when useful
 - why the decision is needed now
-- realistic options
-- a recommendation
-- uncertainty
-- what happens if the user defers
+- realistic options or a chosen outcome
+- a recommendation, uncertainty, and deferral consequence when the profile needs them
 - related risk or evidence where applicable
 
 Some examples include exact labels because agents and integrators may need to recognize them. You can ignore those labels when making the decision.
+
+## Tiny decision: label wording
+
+Use this when a simple product or technical unblocker needs the user's choice, but a full trade-off packet would be ceremony without extra safety.
+
+```text
+Decision title: Settings form button label
+Decision profile: concise decision (`minimal_decision`)
+Judgment domain: Product / UX (`product_ux`)
+Decision route: product trade-off (`decision_kind=product_tradeoff`)
+Why now: the scoped settings copy change needs one label before the agent updates the text and related snapshot.
+Options:
+- Save.
+- Update.
+Related refs: settings form copy scope and related snapshot/test ref if present.
+Does not settle: broader settings workflow, localization strategy, final acceptance, residual-risk acceptance, or write authority.
+```
+
+Why this works: it records the user-owned choice explicitly without forcing pros/cons, uncertainty, or architecture-style detail where the decision is small and bounded.
 
 ## UX decision: inline layer vs toast vs modal
 
@@ -41,6 +61,7 @@ Use this when a user-visible behavior must be chosen before implementation or QA
 
 ```text
 Decision title: Failed-login feedback pattern
+Decision profile: Product/UX trade-off (`product_ux_tradeoff`)
 Judgment domain: Product / UX (`product_ux`)
 Decision route: product trade-off (`decision_kind=product_tradeoff`)
 Why now: the login flow needs one failure-feedback pattern before final UI wiring, copy tests, and Manual QA.
@@ -64,6 +85,7 @@ Use this when an authentication direction affects storage, revocation, client be
 
 ```text
 Decision title: Login session architecture
+Decision profile: detailed architecture trade-off (`architecture_tradeoff`)
 Judgment domain: Technical architecture (`technical_architecture`)
 Decision route: architecture choice (`decision_kind=architecture_choice`)
 Why now: the implementation must choose the session model before storage, middleware, tests, and threat review can be scoped.
@@ -78,7 +100,7 @@ Deferral consequence: Discovery can inspect current auth code and draft a narrow
 Related risk or evidence: CSRF/XSS exposure, revocation evidence, session-lifetime tests, migration notes, and security review refs.
 ```
 
-Why this works: it separates identity-provider choice from session/storage choice. OAuth/OIDC may still need a local session or token strategy, so the packet does not pretend those are interchangeable.
+Why this works: it uses the full architecture profile because this choice affects storage, revocation, client behavior, security posture, migration, tests, and review. It also separates identity-provider choice from session/storage choice. OAuth/OIDC may still need a local session or token strategy, so the packet does not pretend those are interchangeable.
 
 Exact sensitive-action Approval and user-owned architecture judgment boundaries are owned by [Approval](../reference/kernel.md#approval), [Decision Packet](../reference/kernel.md#decision-packet), and [Sensitive Categories](../reference/mcp-api-and-schemas.md#sensitive-categories).
 

@@ -8,6 +8,8 @@
 
 하네스는 사용자 소유 결정을 넓은 승인, 구현 근거, 작업 수락, 잔여 위험 수용과 분리해 보존하도록 돕습니다. 사용자는 필드 목록이 아니라, 짧고 집중된 사용자 결정 요청을 볼 수 있어야 합니다.
 
+결정 패킷은 간단할 수도 있고 상세할 수도 있습니다. 작은 unblocker는 `minimal_decision` profile로 질문, 범위, 선택지, refs만 간결하게 기록할 수 있습니다. 복잡하거나 위험한 선택은 `architecture_tradeoff` 같은 full profile로 detailed options, trade-offs, recommendation, uncertainty, deferral consequence, affected refs를 포함할 수 있습니다.
+
 이 문서는 고급 사용 예시입니다. 기본 사용자 진입점도 아니고, 결정 패킷 동작의 정확한 계약도 아닙니다.
 
 ## 이런 때 사용하기
@@ -25,15 +27,33 @@
 각 cookbook 예시는 다음을 포함합니다.
 
 - 판단 영역
+- 필요할 때 결정 profile
 - 필요할 때 결정 경로
 - 왜 지금 필요한지
-- 현실적인 선택지
-- 추천
-- 불확실성
-- 사용자가 미루면 생기는 일
+- 현실적인 선택지 또는 chosen outcome
+- profile에 필요할 때 추천, 불확실성, 미루면 생기는 일
 - 해당하는 관련 위험 또는 근거
 
 일부 예시는 에이전트와 통합자가 알아볼 수 있도록 정확한 라벨을 포함합니다. 판단할 때는 그 라벨을 몰라도 됩니다.
+
+## Tiny decision: label wording
+
+간단한 제품 또는 기술 unblocker에 사용자 선택은 필요하지만 full trade-off packet은 안전을 더하지 않고 절차만 무겁게 만들 때 사용합니다.
+
+```text
+결정 제목: Settings form button label
+결정 profile: 간단한 판단 기록 (`minimal_decision`)
+판단 영역: Product / UX (`product_ux`)
+결정 경로: product trade-off (`decision_kind=product_tradeoff`)
+지금 필요한 이유: scoped settings copy change에서 text와 관련 snapshot을 업데이트하기 전에 label 하나를 정해야 합니다.
+선택지:
+- Save.
+- Update.
+관련 refs: settings form copy scope와 관련 snapshot/test ref가 있으면 해당 ref.
+확정하지 않는 것: broader settings workflow, localization strategy, final acceptance, residual-risk acceptance, write authority.
+```
+
+이 예시가 좋은 이유는 작은 범위의 사용자 소유 선택을 명시적으로 기록하면서, 중요하지 않은 pros/cons, uncertainty, architecture-style detail을 강제하지 않기 때문입니다.
 
 ## UX 결정: 인라인 메시지 vs 토스트 vs 모달
 
@@ -41,6 +61,7 @@
 
 ```text
 결정 제목: 로그인 실패 안내 방식
+결정 profile: Product/UX trade-off (`product_ux_tradeoff`)
 판단 영역: Product / UX (`product_ux`)
 결정 경로: product trade-off (`decision_kind=product_tradeoff`)
 지금 필요한 이유: 로그인 흐름의 최종 UI 연결, 문구 확인, 수동 QA 전에 실패 안내 방식을 하나 정해야 합니다.
@@ -64,6 +85,7 @@
 
 ```text
 결정 제목: 로그인 세션 구조
+결정 profile: 상세 기술 구조 판단 (`architecture_tradeoff`)
 판단 영역: Technical architecture (`technical_architecture`)
 결정 경로: architecture choice (`decision_kind=architecture_choice`)
 지금 필요한 이유: 저장 방식, 미들웨어, 테스트, 위협 검토의 범위를 잡기 전에 세션 모델을 정해야 합니다.
@@ -78,7 +100,7 @@
 관련 위험 또는 근거: CSRF/XSS 노출, 폐기 가능성 근거, 세션 수명 테스트, 마이그레이션 메모, 보안 검토 참조.
 ```
 
-이 예시가 좋은 이유는 ID 제공자 선택과 세션/저장 방식 선택을 분리하기 때문입니다. OAuth/OIDC도 로컬 세션이나 토큰 전략이 필요할 수 있으므로, 이 packet은 세 선택지가 서로 완전히 같은 층위라고 가정하지 않습니다.
+이 예시가 좋은 이유는 저장 방식, 폐기 가능성, client behavior, security posture, migration, tests, review에 영향을 주는 선택이므로 full architecture profile을 쓰기 때문입니다. 또한 ID 제공자 선택과 세션/저장 방식 선택을 분리합니다. OAuth/OIDC도 로컬 세션이나 토큰 전략이 필요할 수 있으므로, 이 packet은 세 선택지가 서로 완전히 같은 층위라고 가정하지 않습니다.
 
 정확한 민감 동작 승인(Approval)과 사용자 소유 architecture judgment 경계는 [Approval](../reference/kernel.md#approval), [결정 패킷](../reference/kernel.md#decision-packet), [Sensitive Categories](../reference/mcp-api-and-schemas.md#sensitive-categories)가 담당합니다.
 

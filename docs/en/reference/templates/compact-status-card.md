@@ -110,7 +110,7 @@ The primary blocker should come from the primary `ToolError` when an API respons
 
 Design/stewardship is separate from Close status. It may affect shaping, write blockers, close blockers, or Decision Packet needs, but it is not merely a close-status field.
 
-This is not user decision context. If a user decision is needed, render a separate decision prompt with the decision type, options, recommendation, uncertainty, deferral effect, and relevant refs.
+This is not user decision context. If a user decision is needed, render a separate decision prompt with the decision type, decision profile, profile-appropriate options or chosen outcome, relevant refs, and full-profile recommendation, uncertainty, or deferral effect when required.
 
 Close status should preserve the close-reason distinction. Render `completed_with_risk_accepted` as successful close with accepted residual risk, not as ordinary done, verified, or self-checked close. Keep self-checked, `detached_verified`, verification-waived, QA-waived, and risk-accepted-close labels on separate display slots with refs or explicit absence. If final acceptance is the next action, the separate acceptance prompt must show evidence, verification, Manual QA, residual-risk visibility or `none`, and what acceptance does not replace.
 

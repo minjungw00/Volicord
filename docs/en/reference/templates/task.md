@@ -166,6 +166,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - judgment_domain:
 - display label:
 - decision_kind:
+- decision_profile:
 - why needed now:
 - what user is deciding:
 - options:

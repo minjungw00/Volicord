@@ -88,7 +88,7 @@ A good clarification response should separate:
 - remaining uncertainty
 - safe next-work candidate or work-splitting candidate
 
-When the request needs a user-owned decision, the agent should name the decision type instead of asking for broad approval. Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, final acceptance, and residual-risk acceptance are separate decisions.
+When the request needs a user-owned decision, the agent should name the decision type instead of asking for broad approval. Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, final acceptance, and residual-risk acceptance are separate decisions. Small decisions can be asked as short, explicit prompts; complex or risky decisions should include fuller trade-offs and evidence.
 
 Product or UX judgment:
 
@@ -253,14 +253,16 @@ Most status should fit into four everyday groups. The agent may use exact Harnes
 
 These are readable summaries, not authoritative documents. The agent may cite refs behind them, but state changes, evidence records, acceptance, risk acceptance, and close still come from Harness/Core records and actions. The User decisions display group should not appear as a flat checklist of approvals: approval permits a named sensitive step, acceptance records the result judgment, and residual-risk acceptance records that a named remaining risk is acceptable.
 
-When the User Decisions display group needs a formal Decision Packet, Harness records both the decision route and the user-facing judgment domain. The route says what lifecycle or gate path the decision uses. The domain groups the decision for users as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed. The display should still name the concrete decision type, such as sensitive-action approval, final acceptance, QA waiver, verification waiver, or residual-risk acceptance. The domain explains the decision; affected gates or blocked actions are recorded separately and determine what the decision influences.
+When the User Decisions display group needs a formal Decision Packet, Harness records the decision route, a decision profile, and the user-facing judgment domain. The route says what lifecycle or gate path the decision uses. The profile says whether the prompt is a concise judgment record or a fuller trade-off, approval, waiver, acceptance, residual-risk, or reconcile record. The domain groups the decision for users as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed. The display should still name the concrete decision type, such as sensitive-action approval, final acceptance, QA waiver, verification waiver, or residual-risk acceptance. The profile controls prompt detail; the domain explains the decision; affected gates or blocked actions are recorded separately and determine what the decision influences.
 
 ```mermaid
 flowchart LR
   Need["user decision"] --> Kind["decision_kind"]
   Need --> Domain["judgment_domain"]
-  Kind --> Prompt["options and recommendation"]
+  Need --> Profile["decision_profile"]
+  Kind --> Prompt["profile-appropriate prompt"]
   Domain --> Prompt
+  Profile --> Prompt
   Prompt --> Impact["affected gates or blocked actions"]
   Impact --> Response["user response"]
   Response --> Update["state update"]
@@ -388,7 +390,7 @@ You can skip this section until an agent shows one of these labels. They are use
 | Discovery | The internal name for the agent's requirements-clarification behavior before implementation planning. Users can ask for this as "clarify the plan before implementation." |
 | Change Unit | The bounded work area that may change for this task. |
 | Autonomy Boundary | The decisions the agent may make alone inside that scope. |
-| Decision Packet | The recorded path for a user-owned product/UX, technical architecture, security/privacy, scope/autonomy, waiver, final acceptance, residual-risk acceptance, or reconcile decision. |
+| Decision Packet | The recorded path for a user-owned product/UX, technical architecture, security/privacy, scope/autonomy, waiver, final acceptance, residual-risk acceptance, or reconcile decision. It can be concise for a small unblocker or detailed for complex/risky choices. |
 | Judgment domain | The user-facing grouping on a Decision Packet, such as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed. |
 | Approval | Permission for a named sensitive action; not generic agreement or final acceptance. |
 | Write Authorization | A one-attempt check that the intended product write fits the current task, scope, decisions, and approvals. |

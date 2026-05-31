@@ -111,11 +111,12 @@ During the login work, the agent reaches a user-owned UX choice:
 Failed-login feedback can be an inline layer, a toast, or a modal.
 ```
 
-This should not become a vague "approve?" prompt. The agent should show the real choice, options, recommendation, uncertainty, and deferral consequence:
+This should not become a vague "approve?" prompt. Because this is a meaningful UX trade-off, the agent should show it as a detailed trade-off with real options, recommendation, uncertainty, and deferral consequence:
 
 ```text
-Judgment domain: Product / UX (`product_ux`)
-Decision route: product trade-off (`decision_kind=product_tradeoff`)
+Judgment area: Product / UX
+Decision depth: detailed Product/UX trade-off
+Decision route: product trade-off
 Why now: final UI behavior and tests need one failure-feedback pattern.
 Options: inline layer, toast, modal.
 Recommendation: inline layer near the form; it is persistent and accessible.

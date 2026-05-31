@@ -588,7 +588,7 @@ included_projection_freshness:
   TASK: current
   EVAL: stale
 export_bundle_status: current
-decision_packets:
+decision_packet_refs:
   included: [DEC-010, DEC-011]
 residual_risks:
   visible_refs: [RISK-004]
