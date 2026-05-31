@@ -63,22 +63,22 @@ Learn과 Use 문서는 삭제하지 않고 역할을 좁혀 둡니다.
 
 ## 문서 재설계 범위
 
-문서 승인과 구현 계획 상태는 [구현 개요](build/implementation-overview.md#문서-승인-상태)에서 확인합니다. 현재 revision은 maintainer review를 위한 문서 수락 후보이지 구현 시작 승인이 아닙니다.
+문서 승인과 구현 계획 상태는 [구현 개요](build/implementation-overview.md#문서-승인-상태)에서 확인합니다. 현재 리비전은 유지보수자 검토를 위한 문서 수락 후보이지 구현 시작 승인이 아닙니다.
 
 이번 재설계에서는 용어, MVP 단계, 스키마 구조, 읽기용 요약(Projection) 구조, 보안 표현, 문서 구성이 바뀔 수 있습니다. 정리된 제품 명제와 구현 가능한 경로를 우선하며, 기존 문구는 연속성만으로 보존하지 않습니다.
 
-전체 재설계 범위, 보존 원칙, 문서군별 역할, maintainer review checklist는 [문서 작성 가이드](maintain/authoring-guide.md#현재-재설계-범위)가 담당합니다.
+전체 재설계 범위, 보존 원칙, 문서군별 역할, 유지보수자 검토 점검 목록은 [문서 작성 가이드](maintain/authoring-guide.md#현재-재설계-범위)가 담당합니다.
 
 ## 문서 수락 후보
 
 하네스 서버 코드를 시작하기 전 구현자는 다음을 읽어야 합니다.
 
 1. [문서 수락 후보 요약](build/implementation-overview.md#문서-수락-후보-요약): 현재 단계, 보존 원칙, 단계 모델, 정리된 경계, 남은 질문 상태를 확인합니다.
-2. [문서 승인 상태](build/implementation-overview.md#문서-승인-상태): maintainer가 첫 runtime batch planning을 수락했는지 확인합니다.
+2. [문서 승인 상태](build/implementation-overview.md#문서-승인-상태): 유지보수자가 첫 런타임 배치 계획을 수락했는지 확인합니다.
 3. [하네스 서버 구현 준비 조건](build/implementation-overview.md#하네스-서버-구현-준비-조건): 상태를 바꾸기 전에 참이어야 하는 점검 항목을 확인합니다.
 4. [서버 코딩 전 필요한 구현 결정](build/mvp-plan.md#서버-코딩-전-필요한-구현-결정): 남은 결정을 확인합니다. 이 인계 기준으로는 의도적으로 남긴 결정이 없습니다.
 
-이 인계는 문서가 maintainer 수락 검토를 받을 준비가 된 후보라는 뜻입니다. 문서가 이미 수락되었다거나 server/runtime 구현이 시작되었다는 뜻이 아닙니다.
+이 인계는 문서가 유지보수자 수락 검토를 받을 준비가 된 후보라는 뜻입니다. 문서가 이미 수락되었다거나 server/runtime 구현이 시작되었다는 뜻이 아닙니다.
 
 ## 하네스가 아닌 것
 
@@ -123,7 +123,7 @@ AI 지원 개발 세션을 하네스 기준으로 진행할 때 보는 경로입
 
 ## 구현 문서
 
-구현 방향을 파악하고 계획을 리뷰하기 위한 경로입니다. 먼저 [문서 승인 상태](build/implementation-overview.md#문서-승인-상태)를 확인합니다. maintainer가 그곳에서 구현 계획을 명시적으로 승인하기 전까지 Build 문서는 계획 지침이며 하네스 서버/런타임 구현을 승인하지 않습니다.
+구현 방향을 파악하고 계획을 리뷰하기 위한 경로입니다. 먼저 [문서 승인 상태](build/implementation-overview.md#문서-승인-상태)를 확인합니다. 유지보수자가 그곳에서 구현 계획을 명시적으로 승인하기 전까지 Build 문서는 계획 지침이며 하네스 서버/런타임 구현을 승인하지 않습니다.
 
 - [구현 개요](build/implementation-overview.md)
 - [문서 수락 후보 요약](build/implementation-overview.md#문서-수락-후보-요약)

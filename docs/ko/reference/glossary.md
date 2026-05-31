@@ -2,13 +2,13 @@
 
 ## 이 문서로 할 수 있는 일
 
-다른 문서를 읽다가 하네스의 official term, capitalization, record name, 서로 대체할 수 없는 경계를 확인할 때 이 용어집을 사용합니다.
+다른 문서를 읽다가 하네스의 공식 용어, 대소문자, record name, 서로 대체할 수 없는 경계를 확인할 때 이 용어집을 사용합니다.
 
-이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 이 조각을 위한 좁은 conformance authoring profile입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. v0.3과 v0.4는 강화된 로컬 기준 목표(hardened local reference target)를 향해 assurance, stewardship, operations, handoff behavior를 단단하게 만드는 단계이며, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
+이 문서는 참조 문서입니다. 문서 세트가 구현 계획에 사용할 수 있다고 승인되기 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 이 조각을 위한 좁은 conformance authoring profile입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. v0.3과 v0.4는 강화된 로컬 기준 목표(hardened local reference target)를 향해 assurance, stewardship, operations, handoff behavior를 단단하게 만드는 단계이며, v1+ Expansion은 담당 문서가 승격하고 증명하기 전까지 로드맵 범위에 남습니다.
 
 ## 이런 때 읽기
 
-하네스 용어를 확인하거나, authority path를 섞지 않도록 점검하거나, 정확한 behavior를 담당하는 reference owner를 찾을 때 읽습니다.
+하네스 용어를 확인하거나, 권한 경로를 섞지 않도록 점검하거나, 정확한 동작을 담당하는 Reference 문서를 찾을 때 읽습니다.
 
 ## 읽기 전에
 
@@ -16,11 +16,11 @@
 
 ## 핵심 생각
 
-용어집은 lookup aid이자 owner map입니다. 공개 용어, 내부 구현 용어, capitalization, record name, 짧은 non-substitution reminder를 일관되게 유지하지만, owner reference 문서를 대체하지는 않습니다.
+용어집은 찾아보기 도구이자 담당 문서 지도입니다. 공개 용어, 내부 구현 용어, 대소문자, record name, 짧은 non-substitution reminder를 일관되게 유지하지만, 담당 Reference 문서를 대체하지는 않습니다.
 
 ## 참조 범위
 
-이 용어집은 official term wording, capitalization reminder, record-name orientation, owner routing을 담당합니다. Kernel behavior, public MCP schema, storage DDL, projection rule, template body, connector capability profile, conformance fixture semantics는 담당하지 않습니다.
+이 용어집은 공식 용어 표현, 대소문자 안내, record-name 방향 잡기, 담당 문서 연결을 담당합니다. Kernel behavior, public MCP schema, storage DDL, projection rule, template body, connector capability profile, conformance fixture semantics는 담당하지 않습니다.
 
 ## 공개 용어
 
@@ -35,7 +35,7 @@
 | 닫기 준비 상태 | 작업을 끝내거나 닫기 전에 아직 확인하거나 처리해야 하는 것. |
 | 위험 | 계속 보여야 하는 알려진 불확실성, 한계, 생략된 확인, 절충, 가능한 영향. |
 
-사용자용 문서는 쉬운 개념을 먼저 설명해야 합니다. 정확한 하네스 라벨은 경계, 막힘, source ref, reference link를 설명하는 데 도움이 될 때만 괄호로 덧붙입니다.
+사용자용 문서는 쉬운 개념을 먼저 설명해야 합니다. 정확한 하네스 라벨은 경계, 막힘, 출처 참조, Reference 링크를 설명하는 데 도움이 될 때만 괄호로 덧붙입니다.
 
 ## 내부 구현 용어
 
@@ -195,7 +195,7 @@ Connector가 생성하거나 관리하는 path, MCP config snippet, managed bloc
 
 ### Context Index
 
-Relevant projection, 아티팩트 참조, repo file, doc, note를 보여줄 수 있는 later read-only context provider입니다. Owner 문서로 승격되기 전까지는 v1+ Expansion 후보이자 권한 없는 retrieval only입니다. 승격 이후에도 해당 owner 문서가 명시적으로 바뀌지 않는 한 기존 권한 경로를 대체할 수 없습니다. Retrieved context는 살펴볼 source를 가리킬 수 있지만 write를 허가하거나, decision을 해소하거나, Approval을 부여하거나, evidence를 만들거나, verification을 수행하거나, risk를 받아들이거나, gate를 충족하거나, Task를 close하면 안 됩니다. 정확한 future-feature 경계는 [Roadmap: Context Index](../roadmap.md#context-index)가 담당하고, connector 처리는 [Agent Integration](agent-integration.md#context-pushpull-principles)이 담당합니다.
+Relevant projection, 아티팩트 참조, repo file, doc, note를 보여줄 수 있는 later read-only context provider입니다. 담당 문서로 승격되기 전까지는 v1+ Expansion 후보이자 권한 없는 retrieval only입니다. 승격 이후에도 해당 담당 문서가 명시적으로 바뀌지 않는 한 기존 권한 경로를 대체할 수 없습니다. Retrieved context는 살펴볼 source를 가리킬 수 있지만 write를 허가하거나, decision을 해소하거나, Approval을 부여하거나, evidence를 만들거나, verification을 수행하거나, 위험을 받아들이거나, gate를 충족하거나, Task를 close하면 안 됩니다. 정확한 future-feature 경계는 [Roadmap: Context Index](../roadmap.md#context-index)가 담당하고, connector 처리는 [Agent Integration](agent-integration.md#context-pushpull-principles)이 담당합니다.
 
 ### Decision Gate
 
@@ -225,7 +225,7 @@ Shared design, domain language, TDD trace, module/interface review 또는 기타
 
 ### Design-Quality Policy Pack
 
-Design-quality policy contracts와 severity composition의 owner document입니다. Shared design, decision quality, autonomy 경계, domain language, vertical slice, feedback loop, TDD trace, module/interface review, Codebase Stewardship, 수동 QA, context hygiene를 다룹니다. Gates, validators, evidence, write blockers, close blockers에 영향을 주지만 kernel state machine을 재정의하지 않습니다.
+Design-quality policy contracts와 severity composition의 담당 문서입니다. Shared design, decision quality, autonomy 경계, domain language, vertical slice, feedback loop, TDD trace, module/interface review, Codebase Stewardship, 수동 QA, context hygiene를 다룹니다. Gates, validators, evidence, write blockers, close blockers에 영향을 주지만 kernel state machine을 재정의하지 않습니다.
 
 ### Detached Verification
 
@@ -417,7 +417,7 @@ Record-level 수동 QA result입니다. performer, profile, result, artifact, fi
 
 ### `managed_hash`
 
-`HARNESS:BEGIN`과 `HARNESS:END` marker lines를 제외한 projector-owned managed block body의 drift-detection hash입니다. 기준 상태가 아니며 Markdown projection을 authoritative하게 만들지 않습니다.
+`HARNESS:BEGIN`과 `HARNESS:END` marker lines를 제외한 projector-owned managed block body의 drift-detection hash입니다. 기준 상태가 아니며 Markdown 읽기용 요약을 authoritative하게 만들지 않습니다.
 
 ### Managed Block
 
@@ -475,7 +475,7 @@ Design-quality policies가 사용하는 standard form입니다. `name`, `applies
 
 한국어 기준 표현: 읽기용 요약.
 
-Projection은 Core 상태 record와 아티팩트 참조에서 생성된 읽기용 파생 보기입니다. 읽고 판단하는 데 유용하지만 기준 상태를 덮어쓰거나 대체할 수 없습니다.
+Projection은 Core 상태 record와 아티팩트 참조에서 생성된 읽기용 요약입니다. 읽고 판단하는 데 유용하지만 기준 상태를 덮어쓰거나 대체할 수 없습니다.
 
 ### ProjectionKind
 
@@ -487,7 +487,7 @@ Projection과 source record, managed hash, 아티팩트 참조, projection job s
 
 ### Projection Job
 
-Committed state records와 아티팩트 참조에서 Markdown projection을 렌더링하도록 projector에 요청하는 지속 outbox record입니다. `record_kind=projection` identity는 `projection_jobs.projection_job_id`입니다. Project-level projection jobs는 현재 Task-scoped artifact DDL에서 그 자체로 project-scoped artifact links를 만들지 않습니다.
+Committed state records와 아티팩트 참조에서 Markdown 읽기용 요약을 렌더링하도록 projector에 요청하는 지속 outbox record입니다. `record_kind=projection` identity는 `projection_jobs.projection_job_id`입니다. Project-level projection jobs는 현재 Task-scoped artifact DDL에서 그 자체로 project-scoped artifact links를 만들지 않습니다.
 
 ### Question Queue
 

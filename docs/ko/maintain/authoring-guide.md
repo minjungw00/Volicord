@@ -40,7 +40,7 @@ Harness 문서를 새로 쓰거나, 나누거나, 이름을 바꾸거나, 리뷰
 
 ## 현재 재설계 범위
 
-이 저장소는 문서 검토와 재설계 단계입니다. 현재 문서 세트는 maintainer review를 위한 문서 수락 후보이지만, 첫 runtime batch planning 전에 maintainer가 명시적으로 수락해야 합니다. 문서 편집은 문서 원본을 바꿀 수 있지만, 하네스 서버/런타임 구현을 시작하거나 구현 계획을 승인하지 않습니다.
+이 저장소는 문서 검토와 재설계 단계입니다. 현재 문서 세트는 유지보수자 검토를 위한 문서 수락 후보이지만, 첫 런타임 배치 계획 전에 유지보수자가 명시적으로 수락해야 합니다. 문서 편집은 문서 원본을 바꿀 수 있지만, 하네스 서버/런타임 구현을 시작하거나 구현 계획을 승인하지 않습니다.
 
 이번 재설계에서는 용어, MVP 단계, 스키마(schema) 구조, 투영(projection) 구조, 보안 표현, 문서 구성이 바뀔 수 있습니다. 정리된 제품 명제나 구현 가능성과 충돌하는 기존 문구는 연속성만으로 보존하지 않습니다.
 
@@ -63,7 +63,7 @@ Harness 문서를 새로 쓰거나, 나누거나, 이름을 바꾸거나, 리뷰
 
 [구현 개요: 문서 수락 후보 요약](../build/implementation-overview.md#문서-수락-후보-요약)이 짧은 인계 요약을 담당합니다. 여기에 현재 단계, 향후 저장소 역할, 보존 원칙, 현재 단계 모델, 하네스 서버 구현 준비 조건, 남은 질문 상태를 둡니다.
 
-[MVP 계획: 서버 코딩 전 필요한 구현 결정](../build/mvp-plan.md#서버-코딩-전-필요한-구현-결정)은 maintainer 검토나 첫 runtime batch planning에서 발견된 큰 구현 결정을 기록하는 단일 위치입니다. 큰 결정을 active docs 곳곳의 `TODO_DECISION`으로 남기지 않습니다. 열린 결정이 없다면 문서가 maintainer 수락 검토를 받을 준비가 된 후보라고 말하되, maintainer가 상태 표를 바꾸기 전까지 수락은 아직 pending이라는 사실을 유지합니다.
+[MVP 계획: 서버 코딩 전 필요한 구현 결정](../build/mvp-plan.md#서버-코딩-전-필요한-구현-결정)은 유지보수자 검토나 첫 런타임 배치 계획에서 발견된 큰 구현 결정을 기록하는 단일 위치입니다. 큰 결정을 active docs 곳곳의 `TODO_DECISION`으로 남기지 않습니다. 열린 결정이 없다면 문서가 유지보수자 수락 검토를 받을 준비가 된 후보라고 말하되, 유지보수자가 상태 표를 바꾸기 전까지 수락은 아직 pending이라는 사실을 유지합니다.
 
 ## 알려진 재설계 쟁점 트래커
 
@@ -333,7 +333,7 @@ Result 의미:
 | Owner 경계 불일치 | 정확한 계약과 active owner concept은 활성 owner 문서에 머뭅니다. 여기에는 `reference/kernel.md`, `reference/mcp-api-and-schemas.md`, `reference/storage-and-ddl.md`, `reference/document-projection.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/security-threat-model.md`, `reference/operations-and-conformance.md`, `reference/conformance-fixtures.md`, `reference/glossary.md`가 포함됩니다. Owner가 아닌 문서는 이 contract를 다시 정의하지 않고 요약하고 link합니다. |
 | Fixture/action schema 불일치 | Conformance fixture examples의 `action`과 실행 가능한 `input`은 `reference/mcp-api-and-schemas.md`의 public MCP request schemas 및 `reference/conformance-fixtures.md`의 `ToolEnvelope` expansion convention과 일치해야 합니다. Docs-maintenance는 drift를 flag할 수 있지만 fixture action을 실행하거나 fixture 의미를 여기서 다시 설명하지 않습니다. |
 | Enum, event, validator, projection 불일치 | State/gate/result values와 Kernel Stable Event Catalog names는 `reference/kernel.md`, error, stable `ValidatorResult` IDs, `ProjectionKind` 값, API 소유 ProjectionKind 지원 계층은 `reference/mcp-api-and-schemas.md`, storage values는 `reference/storage-and-ddl.md`, 템플릿 구현 계층과 projection 최신성 동작은 `reference/document-projection.md`, 렌더링된 template ownership은 `reference/templates/*.md`와 일치해야 합니다. |
-| Glossary와 기준 기록 표현 불일치 | Official terms, capitalization, record ID prefixes, source-of-truth wording, authority-boundary phrases는 `reference/glossary.md`와 relevant owner docs에 맞아야 하며 추가 상태 권한을 암시하지 않아야 합니다. |
+| Glossary와 기준 기록 표현 불일치 | 공식 용어, 대소문자, record ID prefixes, source-of-truth wording, authority-boundary phrases는 `reference/glossary.md`와 관련 담당 문서에 맞아야 하며 추가 상태 권한을 암시하지 않아야 합니다. |
 | TODO 준수 | `TODO_DECISION`과 `TODO_IMPLEMENT`는 허용된 의미로 쓰고 gap을 명확히 이름 붙이며, action에 필요한 owner/context를 충분히 포함하고, 완료된 기준 섹션에 `TODO_REWRITE` marker를 남기지 않습니다. |
 | Owner가 아닌 문서의 중복 전체 계약 | Owner doc 밖의 전체 schema, DDL, transition table, fixture mini-language, template body, enum table, validator table, projection table, glossary definition은 짧은 요약과 owner link로 바꿉니다. |
 

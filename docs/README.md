@@ -6,7 +6,7 @@ This is the compact bilingual routing page for the Harness documentation set.
 
 Harness is a local authority record and judgment-routing layer for AI-assisted product work. It keeps scope, user-owned judgments, evidence, verification, QA expectations, final acceptance, and residual-risk status outside fragile chat context.
 
-Harness는 AI 지원 제품 작업에서 작업 범위, 사용자 판단, 근거, 검증, QA 기대, 최종 작업 수락, 남은 위험 상태를 깨지기 쉬운 대화 맥락 밖에 두는 로컬 기준 기록이자 판단 경로입니다.
+Harness는 AI 지원 제품 작업에서 작업 범위, 사용자 판단, 근거, 검증, QA 기대, 작업 수락, 잔여 위험 상태를 깨지기 쉬운 대화 맥락 밖에 두는 로컬 기준 기록이자 판단 경로입니다.
 
 This repository is currently a documentation-only redesign/review repository. After documentation acceptance, it is intended to become the Harness Server source repository. It is not a Product Repository or a Harness Runtime Home, and no Harness Server/runtime implementation exists here yet.
 
@@ -14,7 +14,7 @@ This repository is currently a documentation-only redesign/review repository. Af
 
 The [Authoring Guide](en/maintain/authoring-guide.md#current-redesign-scope) owns the full redesign scope and preserved principles. The maintainer handoff summary and implementation-readiness criteria are in [Implementation Overview](en/build/implementation-overview.md#maintainer-handoff-summary).
 
-전체 재설계 범위와 보존 원칙은 [문서 작성 가이드](ko/maintain/authoring-guide.md#현재-재설계-범위)가 담당합니다. Maintainer용 문서 수락 후보 요약과 하네스 서버 구현 준비 조건은 [구현 개요](ko/build/implementation-overview.md#문서-수락-후보-요약)에 있습니다.
+전체 재설계 범위와 보존 원칙은 [문서 작성 가이드](ko/maintain/authoring-guide.md#현재-재설계-범위)가 담당합니다. 유지보수자용 문서 수락 후보 요약과 하네스 서버 구현 준비 조건은 [구현 개요](ko/build/implementation-overview.md#문서-수락-후보-요약)에 있습니다.
 
 ## Choose A Language / 언어 선택
 
@@ -44,7 +44,7 @@ The [Authoring Guide](en/maintain/authoring-guide.md#current-redesign-scope) own
 
 Before starting Harness Server code, implementers should read the handoff summary, confirm the status table, check the readiness criteria and decisions section, then use the First Runnable Slice for v0.1 planning.
 
-하네스 서버 코드를 시작하기 전 구현자는 문서 수락 후보 요약, 승인 상태 표, 구현 준비 조건과 구현 시작 전 결정 section을 확인한 뒤 첫 실행 가능한 조각으로 v0.1 계획을 봅니다.
+하네스 서버 코드를 시작하기 전 구현자는 문서 수락 후보 요약, 승인 상태 표, 구현 준비 조건과 구현 시작 전 결정 섹션을 확인한 뒤 첫 실행 가능한 조각으로 v0.1 계획을 봅니다.
 
 ## Reader Paths / 독자별 경로
 
@@ -52,7 +52,7 @@ Before starting Harness Server code, implementers should read the handoff summar
 |---|---|---|
 | User / 사용자 | [Overview](en/learn/overview.md) -> [User Guide](en/use/user-guide.md) -> [Concepts](en/learn/concepts.md) | [개요](ko/learn/overview.md) -> [사용자 가이드](ko/use/user-guide.md) -> [핵심 개념](ko/learn/concepts.md) |
 | Agent integrator / 에이전트 통합자 | [Agent Session Flow](en/use/agent-session-flow.md) -> [Agent Integration Reference](en/reference/agent-integration.md) -> [Surface Cookbook](en/reference/surface-cookbook.md) | [에이전트 세션 흐름](ko/use/agent-session-flow.md) -> [에이전트 통합 참조](ko/reference/agent-integration.md) -> [Surface Cookbook](ko/reference/surface-cookbook.md) |
-| Implementer / 구현자 | [Implementation Overview](en/build/implementation-overview.md#maintainer-handoff-summary) -> [MVP Plan decisions](en/build/mvp-plan.md#implementation-decisions-needed-before-server-coding) -> [First Runnable Slice](en/build/first-runnable-slice.md) -> [MVP Plan](en/build/mvp-plan.md) | [구현 개요](ko/build/implementation-overview.md#문서-수락-후보-요약) -> [MVP 계획의 결정 section](ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정) -> [첫 실행 가능한 조각](ko/build/first-runnable-slice.md) -> [MVP 계획](ko/build/mvp-plan.md) |
+| Implementer / 구현자 | [Implementation Overview](en/build/implementation-overview.md#maintainer-handoff-summary) -> [MVP Plan decisions](en/build/mvp-plan.md#implementation-decisions-needed-before-server-coding) -> [First Runnable Slice](en/build/first-runnable-slice.md) -> [MVP Plan](en/build/mvp-plan.md) | [구현 개요](ko/build/implementation-overview.md#문서-수락-후보-요약) -> [MVP 계획의 결정 섹션](ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정) -> [첫 실행 가능한 조각](ko/build/first-runnable-slice.md) -> [MVP 계획](ko/build/mvp-plan.md) |
 | Reviewer / maintainer / 검토자 / 문서 유지보수자 | [Authoring Guide](en/maintain/authoring-guide.md) -> [Translation Guide](en/maintain/translation-guide.md) | [문서 작성 가이드](ko/maintain/authoring-guide.md) -> [번역 가이드](ko/maintain/translation-guide.md) |
 
 Use the language-specific entrypoints for detailed document roles, Reference owner links, and maintenance guidance.
@@ -69,4 +69,4 @@ Use the language-specific entrypoints for detailed document roles, Reference own
 
 Maintainer review risks are tracked in the [English Authoring Guide](en/maintain/authoring-guide.md#known-redesign-issues-tracker) and [Korean Authoring Guide](ko/maintain/authoring-guide.md#알려진-재설계-쟁점-트래커). They are not open implementation decisions.
 
-Maintainer 검토 risk는 [영어 문서 작성 가이드](en/maintain/authoring-guide.md#known-redesign-issues-tracker)와 [한국어 문서 작성 가이드](ko/maintain/authoring-guide.md#알려진-재설계-쟁점-트래커)에서 관리합니다. 열린 구현 결정이 아닙니다.
+유지보수자 검토 위험은 [영어 문서 작성 가이드](en/maintain/authoring-guide.md#known-redesign-issues-tracker)와 [한국어 문서 작성 가이드](ko/maintain/authoring-guide.md#알려진-재설계-쟁점-트래커)에서 관리합니다. 열린 구현 결정이 아닙니다.
