@@ -38,7 +38,7 @@ Harness keeps three derived-output tiers separate:
 
 | Tier | Purpose | Early implementation rule |
 |---|---|---|
-| User-readable outputs | Short summaries that let the user understand the current work: status, user decision request, evidence summary, and close readiness or blocker summary. | Required for the user-facing MVP, but may be rendered as status/next text, compact cards, or minimal `TASK` sections rather than many separate Markdown files. |
+| User-readable outputs | Short summaries that let the user understand the current work: status, user decision request, evidence summary, close readiness or blocker summary, final-acceptance need/status, and residual-risk visibility when relevant. | Required to support the user-facing MVP, but may be rendered as status/next text, compact cards, or minimal `TASK` sections rather than many separate Markdown files. |
 | Agent compact context | The smallest current state needed for the next safe step: role or surface posture, current phase, current Task summary, active blockers, pending user-owned decisions, next allowed action, and freshness. | Keep it compact and current; do not embed long history, logs, traces, screenshots, full projection bodies, full schemas, or reference docs. |
 | Reference/diagnostic outputs | Detailed manifests, run summaries, Journey Card or Journey Spine views, TDD traces, Module Map and Interface Contract projections, detailed Eval reports, export bundles, maps, traces, and operator reports. | Pull-on-demand or later-profile scope. These outputs remain derived views and must not become mandatory for the first runnable slice or the minimum user-facing MVP unless an owner profile explicitly promotes them. |
 
@@ -46,12 +46,14 @@ Agent compact context may use projections as a readable summary only when their 
 
 ### Minimum user-facing MVP output set
 
-The minimum user-facing MVP output set is:
+The minimum user-facing MVP output set supports v0.2; it is not the product value by itself. The set is:
 
 - current work status
 - user decision request
 - evidence summary
 - close readiness / blocker summary
+- final-acceptance need/status
+- residual-risk visibility when relevant
 
 Those outputs may reuse template shapes, but template variety must not inflate implementation scope. A single compact status/next surface plus a clear user decision request display can satisfy the MVP display path when it is derived from Core state and refs.
 
@@ -345,7 +347,7 @@ The template catalog is intentionally broader than the early implementation set.
 | Class | Templates or output shapes | Rule |
 |---|---|---|
 | Allowed for v0.1 Core Authority Slice | Minimal [Compact Status Card](templates/compact-status-card.md) or equivalent status/blocker response shape | Optional rendering for the structured status/blocker output from current Core state. A plain structured response is enough; no persisted Markdown projection job or full renderer is required. |
-| Required for user-facing MVP | Minimal [TASK](templates/task.md) continuity summary and [Decision Packet](templates/decision-packet.md) display/card shape for user decision requests, not the standalone `DEC` `ProjectionKind` | Required only to the extent needed to show current status, user decision request, evidence summary, and close readiness/blockers. Standalone persisted `DEC` Markdown remains optional unless the standalone Decision Packet projection feature is enabled. |
+| Required for user-facing MVP | Minimal [TASK](templates/task.md) continuity summary and [Decision Packet](templates/decision-packet.md) display/card shape for user decision requests, not the standalone `DEC` `ProjectionKind` | Required only as supporting display needed to show current status, user decision request, evidence summary, close readiness/blockers, final-acceptance need/status, and residual-risk visibility. Standalone persisted `DEC` Markdown remains optional unless the standalone Decision Packet projection feature is enabled. |
 | Optional early | [APR](templates/approval.md), [Approval Card](templates/approval-card.md), [DIRECT-RESULT](templates/direct-result.md), [MANUAL-QA](templates/manual-qa.md), [Manual QA Card](templates/manual-qa-card.md), [Verification Result Card](templates/verification-result-card.md) | Useful when the corresponding approval, direct-work, Manual QA, or verification profile is active; not first-slice requirements. |
 | Future / diagnostic | [RUN-SUMMARY](templates/run-summary.md), [EVIDENCE-MANIFEST](templates/evidence-manifest.md), [EVAL](templates/eval.md), [TDD-TRACE](templates/tdd-trace.md), [DOMAIN-LANGUAGE](templates/domain-language.md), [MODULE-MAP](templates/module-map.md), [INTERFACE-CONTRACT](templates/interface-contract.md), [DESIGN](templates/design.md), [EXPORT](templates/export.md), [JOURNEY-CARD](templates/journey-card.md) | Detailed reference, diagnostic, handoff, stewardship, map, trace, or export views. Keep them available for v0.3 Agency Assurance Pack, v0.4 Operations & Handoff Pack, or other owner-promoted later profiles without making them mandatory early scope. |
 

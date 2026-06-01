@@ -147,8 +147,8 @@ Connector and reference-surface smoke coverage follows the same staged rule. v0.
 
 ```mermaid
 flowchart LR
-  Kernel["v0.1 Core Authority Slice<br/>Kernel Smoke smoke-check label"] --> Evidence["v0.2 User-Facing Harness MVP"]
-  Evidence --> Agency["v0.3 Agency Assurance Pack"]
+  Kernel["v0.1 Core Authority Slice<br/>Kernel Smoke smoke-check label"] --> MVP["v0.2 User-Facing Harness MVP"]
+  MVP --> Agency["v0.3 Agency Assurance Pack"]
   Agency --> Ops["v0.4 Operations & Handoff Pack<br/>operations/future conformance"]
   Ops -. roadmap boundary .-> Expansion["v1+ Expansion<br/>roadmap candidates"]
   Kernel --> K1["project, Task, one basic scope"]

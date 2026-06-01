@@ -23,7 +23,7 @@ Read [Implementation Overview](implementation-overview.md), including its [Docum
 Harness value is not merely that a write authority loop exists. Harness should preserve scope, user-owned judgment, evidence, close readiness, and residual risk in a local authority record. Delivery therefore has two early targets:
 
 - v0.1 Core Authority Slice proves the smallest coherent internal Core authority loop.
-- v0.2 User-Facing Harness MVP proves that ordinary users can feel the Harness value in how work is clarified, budgeted, blocked, accepted, and risk-explained.
+- v0.2 User-Facing Harness MVP proves that ordinary users can feel the core Harness value in how work is clarified, budgeted, blocked, accepted, and risk-explained.
 
 The first slice stays intentionally narrow. It proves one local project registration, one Task, one scoped work boundary, one `prepare_write` authority path, one single-use Write Authorization, one recorded Run, one artifact/evidence reference, and one structured blocker/status response. It is not the MVP. The MVP comes when the user-facing path can translate normal work into scope, user-owned judgment, evidence, close-readiness, and residual-risk language without confusing sensitive-action approval, final acceptance, and residual-risk acceptance.
 
@@ -32,7 +32,7 @@ Projection-template polish, detailed reports, dashboards or hosted workflow UI, 
 The early output model is intentionally small:
 
 - v0.1 needs only minimal status/blocker output from Core state; it does not need a projection renderer.
-- v0.2 needs user-readable current work status, user decision request, evidence summary, and close readiness / blocker summary.
+- v0.2 needs user-readable current work status, user decision request, evidence summary, close readiness / blocker summary, final-acceptance need/status, and residual-risk visibility when relevant.
 - Journey Card, Journey Spine, Run Summary, TDD Trace, Module Map, Interface Contract, Export, detailed Evidence Manifest, and detailed Eval outputs remain optional, diagnostic, or later-profile scope unless an owner profile explicitly promotes them.
 
 ## Staged delivery
@@ -123,19 +123,21 @@ For future smoke authoring order, use the [Kernel Smoke Authoring Queue](../refe
 
 ## v0.2 User-Facing Harness MVP
 
-v0.2 is the first product MVP. It is defined by experienced user value, not by a longer component checklist.
+v0.2 is the first product MVP and the first stage where users experience core Harness behavior. It is defined by experienced user value, not by a longer component checklist.
 
 The MVP must demonstrate:
 
 - an ordinary user request is clarified into scope, user-owned judgment, evidence, and close-readiness language
-- product/UX judgments and material technical architecture judgments can be presented separately from sensitive-action approval, final acceptance, and residual-risk acceptance
+- product/UX judgments and material technical architecture judgments can be presented separately from each other and from sensitive-action approval, final acceptance, and residual-risk acceptance
 - small changes and tracked work have different procedural budgets without letting small-change labeling bypass authority
 - status and next-action output explain current scope, missing decisions, evidence state, close blockers, and safe next action
 - close is blocked when required evidence or a required user-owned decision is missing
 - residual risk can be displayed before acceptance and close
 - final acceptance is distinct from sensitive-action Approval and residual-risk acceptance
-- readable summaries or cards show current work status, user decision request, evidence summary, and close readiness/blockers without template polish becoming the source of truth
+- readable summaries or cards show current work status, user decision request, evidence summary, close readiness/blockers, final-acceptance need/status, and residual-risk visibility without template polish becoming the source of truth
 - conformance can prove the path through Core state, events, artifacts, projection/freshness facts, and structured errors rather than prose or renderer output alone
+
+Evidence records, readable summaries, and projection freshness support this experience. They are not the identity of the stage, and projection polish beyond this user-readable path stays out of scope.
 
 v0.2 should keep detached verification, the full Manual QA policy matrix, stewardship validators, feedback-loop policy, export/recover, release handoff, Journey Card/Spine polish, Run Summary, TDD Trace, Module Map, Interface Contract, detailed Evidence Manifest, detailed Eval, and Export projections as staged profiles unless a specific user-facing MVP scenario needs a minimal display or blocker hook. Browser QA Capture, Cross-Surface Verification automation, dashboards, broad connectors, Context Index, metrics, team workflow, and orchestration remain outside the MVP.
 
@@ -218,13 +220,14 @@ Use these as implementation-readable checklists for future runtime planning afte
 
 - Ordinary user language can start or resume tracked work without requiring Harness vocabulary.
 - The user-facing path clarifies scope, non-goals, acceptance criteria, evidence expectations, close readiness, and judgment boundaries.
-- Product/UX judgment and material technical architecture judgment can be presented separately.
+- Product/UX judgment and material technical architecture judgment can be presented separately from each other and from approval, final acceptance, and residual-risk acceptance.
 - Small direct changes and tracked work use different procedural budgets without bypassing write authority, evidence, or a required user decision.
 - Status/next output explains current scope, missing decisions, evidence state, residual-risk display, close blockers, and next safe action.
 - Close blocks when required evidence is missing.
 - Close blocks when a required user decision is missing or unresolved.
 - Residual risk is visible before successful acceptance or close when known close-relevant risk exists.
 - Final acceptance is recorded or represented separately from sensitive-action Approval and residual-risk acceptance.
+- Residual-risk acceptance, when supported, is visibly distinct from final acceptance.
 - User-facing readable summaries or cards are derived from Core records and are sufficient for the MVP path without making template polish authoritative.
 
 ### v0.3 Agency Assurance Pack exit checklist

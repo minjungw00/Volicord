@@ -32,7 +32,7 @@ Documentation acceptance, when it happens, is a maintainer review milestone. It 
 | Stage | Meaning |
 |---|---|
 | v0.1 Core Authority Slice | First internal Core authority loop. It proves the smallest authority path and is not the product MVP. |
-| v0.2 User-Facing Harness MVP | First product MVP where users experience scope preservation, judgment routing, evidence, close readiness, final acceptance, and residual-risk value. |
+| v0.2 User-Facing Harness MVP | First product MVP where ordinary requests show core Harness value: scope preservation, judgment routing, evidence, close readiness, final acceptance, and residual-risk boundaries. |
 | v0.3 Agency Assurance Pack | Hardens verification, QA, residual risk, final acceptance, and stewardship behavior. |
 | v0.4 Operations & Handoff Pack | Adds recover/export, release handoff, artifact integrity, broader conformance coverage, and operator behavior. |
 | v1+ Expansion | Dashboard, hosted UI, browser capture automation, team workflows, and other candidates remain outside staged delivery until promoted. |

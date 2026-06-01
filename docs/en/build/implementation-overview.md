@@ -30,7 +30,7 @@ You should already understand the basic Harness concepts from the Learn path. Fo
 
 Harness is a local work ledger and judgment router for AI-assisted product work. It records what may change, who must decide, what evidence exists, what risk remains, and whether the work can close. The first implementation path should prove that the local ledger works through the smallest Core authority loop, then prove the first user-facing MVP value.
 
-Build v0.1 Core Authority Slice first: the smallest local Core authority path, with Kernel Smoke as a narrow future smoke-check authoring label. This is an internal runnable milestone, not the product MVP. Then build v0.2 User-Facing Harness MVP so users can experience scope preservation, judgment routing, evidence, close readiness, final acceptance separation, and residual-risk visibility. v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack harden that path.
+Build v0.1 Core Authority Slice first: the smallest local Core authority path, with Kernel Smoke as a narrow future smoke-check authoring label. This is an internal runnable milestone, not the product MVP. Then build v0.2 User-Facing Harness MVP so ordinary users can experience core Harness value: scope preservation, judgment routing, evidence, close readiness, final acceptance separation, and residual-risk visibility. Evidence and projection support that experience; they are not the stage's primary identity. v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack harden that path.
 
 All implementation verbs in this Build path describe future runtime-batch planning after the maintainer handoff explicitly accepts implementation-planning readiness for that batch. While [Documentation Acceptance Status](#documentation-acceptance-status) says implementation planning readiness is not accepted, use this document only to review scope and handoff readiness. Documentation acceptance alone does not start implementation or prove runtime conformance.
 
@@ -155,7 +155,7 @@ This handoff does not promote roadmap items, dashboards or hosted workflow UI, B
 
 ## What you are building
 
-After maintainer handoff explicitly accepts implementation-planning readiness for the first runtime batch, Harness implementation starts in this repository with v0.1 Core Authority Slice as the internal kernel for a local work ledger and judgment router. v0.2 User-Facing Harness MVP is the first milestone where that ledger becomes visible as user value. v0.1 keeps only the durable local state, write authority record, Run record, artifact/evidence ref, and structured status/blocker output needed to prove the authority loop. Readable projections around the full work journey begin as later derived output, while product history, executable checking, review, and user judgment remain with the existing engineering process. The agency-preserving local authority kernel principle remains the implementation center: Core owns canonical local state, and user-owned judgment stays with the user. The initial implementation assumption is one local system with clear internal modules, not a distributed platform.
+After maintainer handoff explicitly accepts implementation-planning readiness for the first runtime batch, Harness implementation starts in this repository with v0.1 Core Authority Slice as the internal kernel for a local work ledger and judgment router. v0.2 User-Facing Harness MVP is the first milestone where that ledger becomes visible as user value. v0.1 keeps only the durable local state, write authority record, Run record, artifact/evidence ref, and structured status/blocker output needed to prove the authority loop. v0.2 adds enough readable status or cards for the user-facing path; full journey projections and polished reports remain later derived output. Product history, executable checking, review, and user judgment remain with the existing engineering process. The agency-preserving local authority kernel principle remains the implementation center: Core owns canonical local state, and user-owned judgment stays with the user. The initial implementation assumption is one local system with clear internal modules, not a distributed platform.
 
 The sections below describe future responsibilities for that runtime batch. They are not work orders for the current documentation-acceptance phase.
 
@@ -214,7 +214,7 @@ State conflict and idempotency replay behavior are part of that public tool cont
 
 Projections are readable derived views from Core state records and artifact refs. `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`, and other report projections are not canonical state.
 
-Build projection output from the Core source records it depends on, such as Task, gate, Run, artifact, evidence, Eval, QA, and other owner records after those records exist. v0.1 Core Authority Slice does not require a full projection renderer or multiple projection kinds; minimal status/blocker output is enough. It may report freshness/read facts only if an owner path already produces them, but projection rendering is not the proof. v0.2 User-Facing Harness MVP should provide enough readable summary or card output for current work status, user decision request, evidence summary, close readiness, final acceptance, and residual risk. Projection templates cannot create authority, satisfy evidence, replace state, shape the state model, or become the first proof.
+Build projection output from the Core source records it depends on, such as Task, gate, Run, artifact, evidence, Eval, QA, and other owner records after those records exist. v0.1 Core Authority Slice does not require a full projection renderer or multiple projection kinds; minimal status/blocker output is enough. It may report freshness/read facts only if an owner path already produces them, but projection rendering is not the proof. v0.2 User-Facing Harness MVP should provide enough readable summary or card output for current work status, user decision request, evidence summary, close readiness, final acceptance, and residual risk. Those outputs support the user experience; they do not turn v0.2 into a projection or evidence component pack. Projection templates cannot create authority, satisfy evidence, replace state, shape the state model, or become the first proof.
 
 Later packs may enable optional, future, and diagnostic `ProjectionKind` values when their source records exist or change and an owner profile promotes them. `ProjectionKind` values and API-owned support classes belong to [MCP API And Schemas](../reference/mcp-api-and-schemas.md#shared-schemas).
 [Document Projection Reference](../reference/document-projection.md#template-implementation-classes) owns projection authority boundaries, source-record rules, freshness rules, and template implementation classes; [Template Reference](../reference/templates/README.md) owns rendered template bodies and display cards.
@@ -279,7 +279,7 @@ v0.1 Core Authority Slice is not the User-Facing Harness MVP. It proves the writ
 
 ## The user-facing MVP proof
 
-The first product MVP target is v0.2 User-Facing Harness MVP. It is reached after v0.1 Core Authority Slice, not by expanding the first runnable batch. It proves that Harness helps users preserve scope, user-owned judgment, evidence, close readiness, final acceptance, and residual risk in a local authority record.
+The first product MVP target is v0.2 User-Facing Harness MVP. It is reached after v0.1 Core Authority Slice, not by expanding the first runnable batch. It proves that ordinary requests can become visible Harness work: scope, user-owned judgment, evidence, close readiness, final acceptance, and residual risk preserved in a local authority record. Evidence and projection are supporting mechanisms, not the product value by themselves.
 
 It should show:
 
@@ -290,6 +290,7 @@ It should show:
 - close blocks when required evidence or user judgment is missing
 - residual risk is visible before successful acceptance or close when close-relevant risk exists
 - final acceptance is distinct from sensitive-action Approval and residual-risk acceptance
+- residual-risk acceptance, when supported, is visibly distinct from final acceptance
 - user-facing projections or cards are derived from Core records and are sufficient without template polish becoming authoritative
 
 ## The hardened local reference proof

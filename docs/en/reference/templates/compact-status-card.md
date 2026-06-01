@@ -8,6 +8,8 @@ Boundary: projection template only; it does not authorize runtime/server impleme
 
 Implementation tier: optional rendering for the v0.1 Core Authority Slice status/blocker response. The minimal Core Authority Slice may return a plain structured response instead of this card; this template is not a persisted state record and is not evidence of full projection support.
 
+For v0.2 User-Facing Harness MVP display, this card can support the user-readable path only when final-acceptance need/status and residual-risk visibility remain explicit display facts rather than disappearing inside close blockers.
+
 ## Source records
 
 - current Task state and lifecycle phase

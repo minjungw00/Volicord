@@ -8,6 +8,8 @@
 
 구현 계층: 코어 권한 조각(v0.1 Core Authority Slice)의 상태/막힘 응답을 렌더링할 때 선택할 수 있는 shape입니다. 최소 Core 권한 조각은 이 card 대신 plain structured response를 반환해도 됩니다. 이 template은 persisted state record가 아니며 full projection support의 증거도 아닙니다.
 
+사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP) 표시에서 이 card를 사용할 때는 작업 수락 필요 여부/상태와 잔여 위험 표시가 close blocker 안에 묻히지 않고 별도의 표시 정보로 남아야 합니다.
+
 ## 기준 기록
 
 - 현재 Task 상태와 lifecycle phase

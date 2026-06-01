@@ -95,7 +95,7 @@ Maintainer handoff: [English summary](docs/en/build/implementation-overview.md#m
 ## Stage Taxonomy / 단계 분류
 
 - v0.1 Core Authority Slice: first internal Core authority loop; not the product MVP. / 첫 내부 Core 권한 루프이며 제품 MVP가 아닙니다.
-- v0.2 User-Facing Harness MVP: first product MVP where users experience scope, judgment, evidence, close readiness, final acceptance, and residual-risk value. / 사용자가 범위, 판단, 근거, 닫기 준비 상태, 작업 수락, 잔여 위험 가치를 경험하는 첫 제품 MVP입니다.
+- v0.2 User-Facing Harness MVP: first product MVP where ordinary requests show core Harness value: scope, judgment, evidence, close readiness, final acceptance, and residual-risk boundaries. / 평범한 요청에서 범위, 판단, 근거, 닫기 준비 상태, 작업 수락, 잔여 위험 경계를 통해 사용자가 하네스의 핵심 가치를 처음 체감하는 제품 MVP입니다.
 - v0.3 Agency Assurance Pack: verification, QA, residual risk, acceptance, and stewardship hardening. / 검증, QA, 잔여 위험, 작업 수락, stewardship를 단단하게 만드는 단계입니다.
 - v0.4 Operations & Handoff Pack: recover, export, release handoff, artifact integrity, and operator behavior. / 복구, 내보내기, 릴리스 인계, 아티팩트 무결성, 운영자 동작을 다루는 단계입니다.
 - v1+ Expansion: dashboard, hosted UI, browser capture automation, team workflows, and other promoted expansion candidates. / 대시보드, hosted UI, browser capture 자동화, 팀 workflow 등 승격된 확장 후보입니다.

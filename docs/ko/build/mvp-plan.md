@@ -23,7 +23,7 @@
 하네스의 가치는 단지 write authority loop가 있다는 데 있지 않습니다. 하네스는 범위, 사용자 소유 판단, 근거, 닫기 준비 상태, 잔여 위험을 로컬 권한 기록에 보존해야 합니다. 그래서 초기 전달에는 두 단계가 있습니다.
 
 - 코어 권한 조각(v0.1 Core Authority Slice)은 가장 작은 내부 Core 권한 루프를 증명합니다.
-- 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)는 사용자가 하네스가 작업을 구체화하고, 적절한 절차 규모로 다루고, 필요한 경우 막고, 수락하고, 위험을 설명하는 방식을 경험하는 첫 MVP입니다.
+- 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)는 평범한 요청에서 사용자가 하네스가 작업을 구체화하고, 적절한 절차 규모로 다루고, 필요한 경우 막고, 수락하고, 위험을 설명하는 핵심 가치를 처음 체감하는 제품 MVP입니다.
 
 첫 조각은 의도적으로 좁게 유지합니다. 로컬 프로젝트 등록 하나, Task 하나, 범위가 정해진 작업 경계 하나, `prepare_write` 권한 경로 하나, 한 번만 쓰는 Write Authorization 하나, 기록된 Run 하나, artifact/evidence 참조 하나, 구조화된 막힘/상태 응답 하나를 증명합니다. 이것은 MVP가 아닙니다. 일반적인 작업을 범위, 사용자 소유 판단, 근거, 닫기 준비 상태, 잔여 위험 언어로 바꾸고 민감 동작 승인(Approval), 작업 수락, 잔여 위험 수용을 혼동하지 않게 만드는 단계가 MVP입니다.
 
@@ -32,7 +32,7 @@
 초기 output model은 의도적으로 작게 둡니다.
 
 - v0.1은 Core state에서 오는 최소 상태/막힘 출력만 필요합니다. 전체 읽기용 요약 renderer는 필요하지 않습니다.
-- v0.2는 사용자 읽기용 현재 작업 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태 / blocker 요약이 필요합니다.
+- v0.2의 읽기용 출력은 현재 작업 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태 / blocker 요약을 보여주어야 하며, 필요한 경우 작업 수락 필요 여부/상태와 잔여 위험 표시도 분명히 포함해야 합니다.
 - Journey Card, Journey Spine, Run Summary, TDD Trace, Module Map, Interface Contract, Export, detailed Evidence Manifest, detailed Eval output은 담당 profile이 명시적으로 승격하지 않는 한 optional, diagnostic, later-profile scope로 남습니다.
 
 ## 단계별 전달 계획
@@ -123,19 +123,21 @@ flowchart LR
 
 ## 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)
 
-v0.2는 첫 제품 MVP입니다. 더 긴 구성 요소 점검 목록이 아니라 사용자가 경험하는 가치로 정의합니다.
+v0.2는 사용자가 하네스의 핵심 가치를 처음 체감하는 제품 MVP입니다. 더 긴 구성 요소 점검 목록이 아니라 사용자가 경험하는 가치로 정의합니다.
 
 MVP는 다음을 보여야 합니다.
 
 - 평범한 사용자 요청이 범위, 사용자 소유 판단, 근거, 닫기 준비 상태 언어로 정리된다
-- product/UX judgment와 기술 구조 판단가 민감 동작 승인, 작업 수락, 잔여 위험 수용과 분리되어 제시될 수 있다
+- product/UX judgment와 기술 구조 판단이 서로 분리되고, 민감 동작 승인, 작업 수락, 잔여 위험 수용과도 분리되어 제시될 수 있다
 - 작은 변경과 tracked work가 서로 다른 procedural budget을 가지되, small-change label이 authority를 우회하지 않는다
 - status와 next-action output이 현재 scope, 누락된 decisions, 근거 상태, close blockers, 안전한 다음 행동을 설명한다
 - 필요한 근거가 없거나 필요한 사용자 결정이 missing이면 close가 block된다
 - 작업 수락과 close 전에 잔여 위험을 표시할 수 있다
 - 사용자의 작업 수락이 sensitive-action Approval, 잔여 위험 수용과 구분된다
-- readable summary 또는 card가 현재 작업 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태/blocker를 보여 주지만, template polish가 source of truth가 되지는 않는다
+- readable summary 또는 card가 현재 작업 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태/blocker, 작업 수락 필요 여부/상태, 잔여 위험 표시를 보여 주지만, template polish가 source of truth가 되지는 않는다
 - prose나 renderer output만이 아니라 Core state, events, artifacts, projection/freshness facts, structured errors로 conformance를 증명할 수 있다
+
+근거 기록, 읽기 쉬운 요약, projection 최신성은 이 경험을 지원합니다. 이것들이 단계의 정체성은 아니며, 이 사용자 읽기 경로를 넘어서는 projection polish는 범위 밖에 둡니다.
 
 v0.2는 특정 사용자 대상 MVP scenario가 최소 표시 또는 blocker hook을 요구하지 않는 한 분리 검증, full 수동 QA 정책 매트릭스, stewardship validators, feedback-loop policy, export/recover, release handoff, Journey Card/Spine polish, Run Summary, TDD Trace, Module Map, Interface Contract, detailed Evidence Manifest, detailed Eval, Export projection을 staged profile로 남겨 둡니다. Browser QA Capture, Cross-Surface Verification automation, dashboard, broad connectors, Context Index, metrics, team workflow, orchestration은 MVP 밖에 둡니다.
 
@@ -218,13 +220,14 @@ Docs-maintenance는 별도의 읽기 전용 문서 profile로 남습니다. Docu
 
 - 평범한 사용자 언어가 Harness vocabulary를 요구하지 않고 tracked work를 시작하거나 resume할 수 있다.
 - User-facing path가 scope, non-goals, acceptance criteria, evidence expectations, close readiness, judgment boundaries를 clarify한다.
-- Product/UX judgment와 기술 구조 판단를 분리해 제시할 수 있다.
+- Product/UX judgment와 기술 구조 판단을 서로 분리하고, 민감 동작 승인, 작업 수락, 잔여 위험 수용과도 분리해 제시할 수 있다.
 - Small direct changes와 tracked work가 write authority, evidence, 필요한 사용자 결정을 우회하지 않으면서 서로 다른 procedural budget을 사용한다.
 - Status/next output이 현재 scope, missing decisions, 근거 상태, 잔여 위험 표시, close blockers, 안전한 다음 행동을 설명한다.
 - Required 근거가 없으면 close가 block된다.
 - 필요한 사용자 결정이 missing 또는 unresolved이면 close가 block된다.
 - 알려진 닫기 관련 위험이 있으면 작업 수락 또는 close 전에 잔여 위험이 보인다.
 - 사용자의 작업 수락이 sensitive-action Approval과 잔여 위험 수용과 별도로 기록되거나 표현된다.
+- 잔여 위험 수용을 지원하는 경우, 이것이 작업 수락과 뚜렷하게 구분되어 보인다.
 - 사용자에게 보이는 readable summary 또는 card는 Core record에서 파생되며, template polish를 기준 권한으로 만들지 않고 MVP path에 충분하다.
 
 ### 에이전시 보증 팩(v0.3 Agency Assurance Pack) 종료 점검 목록

@@ -38,7 +38,7 @@ Projection은 secret/PII를 보호하는 표시 경계이기도 합니다. Proje
 
 | 계층 | 목적 | 초기 구현 규칙 |
 |---|---|---|
-| 사용자 읽기용 산출물 | 사용자가 현재 작업을 이해하기 위한 짧은 요약입니다. 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태 또는 blocker 요약을 포함합니다. | 사용자 대상 MVP에는 필요하지만, 여러 Markdown 파일이 아니라 status/next text, compact card, 최소 `TASK` section으로 렌더링할 수 있습니다. |
+| 사용자 읽기용 산출물 | 사용자가 현재 작업을 이해하기 위한 짧은 요약입니다. 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태 또는 blocker 요약을 포함하며, 필요한 경우 작업 수락 필요 여부/상태와 잔여 위험 표시도 분명히 담습니다. | 사용자 대상 MVP를 지원하는 데 필요하지만, 여러 Markdown 파일이 아니라 status/next text, compact card, 최소 `TASK` section으로 렌더링할 수 있습니다. |
 | 에이전트용 간결한 현재 맥락 | 다음 안전한 행동에 필요한 최소 current state입니다. 역할 또는 접점 자세, 현재 단계/context profile, 현재 상태 요약, 활성 blocker, 대기 중인 사용자 소유 결정, 다음 허용 행동, freshness를 담습니다. | 짧고 최신 상태로 유지합니다. 긴 history, log, trace, screenshot, projection 전체 본문, full schema, reference docs를 embed하지 않습니다. |
 | 참조/진단용 산출물 | 자세한 manifest, Run Summary, Journey Card 또는 Journey Spine view, TDD trace, Module Map과 Interface Contract projection, detailed Eval report, export bundle, map, trace, operator report입니다. | 필요할 때만 가져오거나 later profile 범위에 둡니다. Owner profile이 명시적으로 승격하지 않는 한 첫 runnable slice나 최소 사용자 대상 MVP의 필수 항목이 아닙니다. |
 
@@ -46,12 +46,14 @@ Projection은 secret/PII를 보호하는 표시 경계이기도 합니다. Proje
 
 ### 최소 사용자 대상 MVP 산출물 set
 
-최소 사용자 대상 MVP 산출물 set은 다음입니다.
+최소 사용자 대상 MVP 산출물 set은 v0.2를 지원하지만, 그 자체가 제품 가치는 아닙니다. 필요한 set은 다음입니다.
 
 - 현재 작업 상태
 - 사용자 결정 요청
 - 근거 요약
 - 닫기 준비 상태 / blocker 요약
+- 작업 수락 필요 여부/상태
+- 필요한 경우 잔여 위험 표시
 
 이 산출물은 template shape를 재사용할 수 있지만, template 종류가 구현 범위를 키우면 안 됩니다. Core state와 ref에서 파생된 하나의 간결한 status/next surface와 명확한 사용자 결정 요청 display만으로도 MVP 표시 경로를 충족할 수 있습니다.
 
@@ -345,7 +347,7 @@ Template catalog는 초기 구현 set보다 의도적으로 넓습니다. 템플
 | 계층 | Template 또는 산출물 shape | Rule |
 |---|---|---|
 | 코어 권한 조각(v0.1 Core Authority Slice)에서 허용 | 최소 [Compact Status Card](templates/compact-status-card.md) 또는 동등한 status/blocker response shape | Current Core state에서 오는 structured status/blocker output을 렌더링할 때 선택할 수 있습니다. Plain structured response만으로 충분하며 persisted Markdown projection job이나 full renderer는 필요하지 않습니다. |
-| 사용자 대상 MVP에 필요 | 최소 [TASK](templates/task.md) continuity summary와 standalone `DEC` `ProjectionKind`가 아닌 [Decision Packet](templates/decision-packet.md) 사용자 결정 요청 display/card shape | 현재 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태/blocker를 보여주는 데 필요한 만큼만 필요합니다. Standalone persisted `DEC` Markdown은 standalone Decision Packet projection 기능이 켜진 경우에만 사용합니다. |
+| 사용자 대상 MVP에 필요 | 최소 [TASK](templates/task.md) continuity summary와 standalone `DEC` `ProjectionKind`가 아닌 [Decision Packet](templates/decision-packet.md) 사용자 결정 요청 display/card shape | 현재 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태/blocker, 작업 수락 필요 여부/상태, 잔여 위험 표시를 보여주는 지원 표시 범위에서만 필요합니다. Standalone persisted `DEC` Markdown은 standalone Decision Packet projection 기능이 켜진 경우에만 사용합니다. |
 | 초기 선택 사항 | [APR](templates/approval.md), [Approval Card](templates/approval-card.md), [DIRECT-RESULT](templates/direct-result.md), [MANUAL-QA](templates/manual-qa.md), [Manual QA Card](templates/manual-qa-card.md), [Verification Result Card](templates/verification-result-card.md) | 해당 approval, direct-work, 수동 QA, verification profile이 active일 때 유용합니다. 첫 slice requirement가 아닙니다. |
 | 미래 / 진단 | [RUN-SUMMARY](templates/run-summary.md), [EVIDENCE-MANIFEST](templates/evidence-manifest.md), [EVAL](templates/eval.md), [TDD-TRACE](templates/tdd-trace.md), [DOMAIN-LANGUAGE](templates/domain-language.md), [MODULE-MAP](templates/module-map.md), [INTERFACE-CONTRACT](templates/interface-contract.md), [DESIGN](templates/design.md), [EXPORT](templates/export.md), [JOURNEY-CARD](templates/journey-card.md) | Detailed reference, diagnostic, handoff, stewardship, map, trace, export view입니다. 에이전시 보증 팩(v0.3 Agency Assurance Pack), 운영과 인계 팩(v0.4 Operations & Handoff Pack) 또는 owner가 승격한 다른 later profile에서 사용할 수 있게 유지하되 초기 필수 범위로 만들지 않습니다. |
 

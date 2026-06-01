@@ -147,8 +147,8 @@ Connector와 reference-surface smoke coverage도 같은 staged rule을 따릅니
 
 ```mermaid
 flowchart LR
-  Kernel["코어 권한 조각(v0.1 Core Authority Slice)<br/>커널 스모크(Kernel Smoke) smoke-check label"] --> Evidence["사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)"]
-  Evidence --> Agency["에이전시 보증 팩(v0.3 Agency Assurance Pack)"]
+  Kernel["코어 권한 조각(v0.1 Core Authority Slice)<br/>커널 스모크(Kernel Smoke) smoke-check label"] --> MVP["사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)"]
+  MVP --> Agency["에이전시 보증 팩(v0.3 Agency Assurance Pack)"]
   Agency --> Ops["운영과 인계 팩(v0.4 Operations & Handoff Pack)<br/>operations/future conformance"]
   Ops -. roadmap boundary .-> Expansion["v1+ Expansion<br/>roadmap 후보"]
   Kernel --> K1["project, Task, 기본 scope 하나"]
