@@ -114,8 +114,8 @@ AGENTS.md / agent rules, MCP, skills / reusable workflows, test runners, code re
 
 ## 다음에 읽을 문서
 
-- [사용자 가이드](../use/user-guide.md)에서 작업을 시작하고, 이어가고, 막힘을 풀고, 닫는 법을 봅니다.
-- [핵심 개념](concepts.md)에서 참조 사양을 읽기 전에 필요한 가장 작은 용어 묶음을 봅니다.
-- [목적과 원칙](purpose-and-principles.md)에서 시스템 뒤의 가치, 비목표, 실패 모델, MVP 경계를 봅니다.
+- 첫 읽기 경로는 [사용자 가이드](../use/user-guide.md)로 이어갑니다.
+- 용어가 예시, 상태, 참조 사양에 나오기 시작할 때만 [핵심 개념](concepts.md)을 봅니다.
+- 제품 명제, 가치, 비목표, 실패 모델, MVP 경계를 검토할 때 [목적과 원칙](purpose-and-principles.md)을 봅니다.
 - 짧은 시나리오는 [15분 만에 보는 하네스](harness-in-15-minutes.md), 더 긴 튜토리얼은 [하나의 작업으로 보는 하네스](harness-in-one-task.md)를 봅니다.
-- 엄격한 계약은 관련 기준 문서 소유자를 봅니다. 예: [커널 참조](../reference/kernel.md), [런타임 아키텍처 참조](../reference/runtime-architecture.md), [문서 Projection 참조](../reference/document-projection.md).
+- 정확한 owner 계약이 필요할 때만 [Reference 색인](../reference/README.md)을 봅니다.

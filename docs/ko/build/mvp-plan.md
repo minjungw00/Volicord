@@ -16,7 +16,9 @@
 
 ## 먼저 읽을 것
 
-[구현 개요](implementation-overview.md)의 [문서 수락 상태](implementation-overview.md#문서-수락-상태), [첫 실행 가능한 조각](first-runnable-slice.md), [Runtime Walkthrough](runtime-walkthrough.md)를 먼저 읽습니다. 정확한 API contract는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)를 사용합니다. Storage detail과 DDL은 [Storage와 DDL](../reference/storage-and-ddl.md)을 사용합니다. Design-quality gate와 validator behavior는 [Design Quality Policies](../reference/design-quality-policies.md)를 사용합니다. 핵심 적합성 모델과 fixture semantics는 [Conformance Fixtures 참조](../reference/conformance-fixtures.md)를 사용합니다. Detailed future scenario candidate는 [향후 Fixture Catalog](../reference/future-fixture-catalog.md)를 사용합니다. Operator procedure와 conformance run overview는 [운영과 Conformance](../reference/operations-and-conformance.md)를 사용합니다. v1+ Expansion 후보와 승격 기준은 [로드맵](../roadmap.md)을 사용합니다.
+[구현 개요](implementation-overview.md)와 그 [문서 수락 상태](implementation-overview.md#문서-수락-상태)를 먼저 읽은 뒤 이 단계 계획을 사용합니다. v0.1 구현 순서는 [첫 실행 가능한 조각](first-runnable-slice.md)을, request-to-close runtime path는 [Runtime Walkthrough](runtime-walkthrough.md)를 사용합니다.
+
+정확한 계약은 [Reference 색인](../reference/README.md)에서 지금 필요한 질문의 owner를 골라 확인합니다. v1+ Expansion 후보와 승격 기준은 [로드맵](../roadmap.md)을 사용합니다.
 
 ## 핵심 생각
 

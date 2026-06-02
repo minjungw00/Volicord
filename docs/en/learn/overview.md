@@ -114,8 +114,8 @@ For a side-by-side comparison with AGENTS.md / agent rules, MCP, skills / reusab
 
 ## Where to go next
 
-- Read [User Guide](../use/user-guide.md) for how to start, resume, unblock, and close work.
-- Read [Concepts](concepts.md) for the smallest vocabulary you need before reference specs.
-- Read [Purpose and Principles](purpose-and-principles.md) for the values, non-goals, failure model, and MVP boundary behind the system.
-- Read [Harness in 15 Minutes](harness-in-15-minutes.md) for short scenarios, or [Harness in One Task](harness-in-one-task.md) for the tutorial walkthrough.
-- For strict contracts, use the relevant Reference owner: [Kernel Reference](../reference/kernel.md), [Runtime Architecture Reference](../reference/runtime-architecture.md), or [Document Projection Reference](../reference/document-projection.md).
+- Continue the first-read path with [User Guide](../use/user-guide.md).
+- Use [Concepts](concepts.md) only when terms start appearing in examples, status, or reference specs.
+- Use [Purpose and Principles](purpose-and-principles.md) when reviewing the thesis, values, non-goals, failure model, or MVP boundary.
+- Use [Harness in 15 Minutes](harness-in-15-minutes.md) for short scenarios, or [Harness in One Task](harness-in-one-task.md) for the tutorial walkthrough.
+- Use the [Reference Index](../reference/README.md) only when you need the exact owner contract.

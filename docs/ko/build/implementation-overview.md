@@ -315,13 +315,14 @@ v0.1은 내부 authority loop를 증명하는 단계입니다. Product MVP, temp
 
 Build 계층은 다음 순서로 읽습니다.
 
-1. [구현 개요](implementation-overview.md): 무엇을 만드는지 확인합니다.
-2. [첫 실행 가능한 조각](first-runnable-slice.md): 가장 먼저 계획할 최소 증명을 확인합니다.
-3. [MVP 계획](mvp-plan.md): v0.1부터 v0.4까지의 단계별 전달과 v1+ Expansion 경계를 확인합니다.
+1. [구현 개요](implementation-overview.md): 현재 상태, 유지보수자 인계, 향후 시스템 모양을 확인합니다.
+2. [MVP 계획](mvp-plan.md): v0.1부터 v0.4까지의 단계별 전달, 단계 경계, 서버 코딩 전 결정 기록을 확인합니다.
+3. [첫 실행 가능한 조각](first-runnable-slice.md): v0.1 구현 순서를 확인합니다.
+4. [Runtime Walkthrough](runtime-walkthrough.md): request-to-close runtime path를 확인합니다.
 
 v1+ Expansion 후보와 승격 규칙은 [로드맵](../roadmap.md)을 사용합니다.
 
-그다음 정확한 동작은 reference 문서와 현재 담당 문서를 봅니다.
+그다음 정확한 동작은 [Reference 색인](../reference/README.md)에서 현재 owner를 골라 확인합니다.
 
 - [커널 참조](../reference/kernel.md): entity, gate, state logic, `prepare_write`, `close_task`.
 - [런타임 아키텍처 참조](../reference/runtime-architecture.md): runtime space, Core flow, artifact, projection/reconcile, guarantee level.

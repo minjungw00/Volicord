@@ -315,13 +315,14 @@ The hardened local reference target is complete only when future conformance pro
 
 Read the Build layer in this order:
 
-1. [Implementation Overview](implementation-overview.md) for the system you are building.
-2. [First Runnable Slice](first-runnable-slice.md) for the smallest proof to implement first.
-3. [MVP Plan](mvp-plan.md) for v0.1 through v0.4 staged delivery and the boundary to v1+ Expansion.
+1. [Implementation Overview](implementation-overview.md) for current status, maintainer handoff, and the future system shape.
+2. [MVP Plan](mvp-plan.md) for v0.1 through v0.4 staged delivery, stage boundaries, and the server-coding decision log.
+3. [First Runnable Slice](first-runnable-slice.md) for the v0.1 implementation sequence.
+4. [Runtime Walkthrough](runtime-walkthrough.md) for the request-to-close runtime path.
 
 Use [Roadmap](../roadmap.md) for v1+ Expansion candidates and promotion rules.
 
-Then use the reference docs and current owners for exact behavior:
+Then use the [Reference Index](../reference/README.md) to pick the current owner for exact behavior:
 
 - [Kernel Reference](../reference/kernel.md) for entities, gates, state logic, `prepare_write`, and `close_task`.
 - [Runtime Architecture Reference](../reference/runtime-architecture.md) for runtime spaces, Core flow, artifacts, projection/reconcile, and guarantee levels.

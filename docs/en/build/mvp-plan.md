@@ -16,7 +16,9 @@ Use this when you need to plan what to build after documentation acceptance and 
 
 ## Before you read
 
-Read [Implementation Overview](implementation-overview.md), including its [Documentation Acceptance Status](implementation-overview.md#documentation-acceptance-status), [First Runnable Slice](first-runnable-slice.md), and [Runtime Walkthrough](runtime-walkthrough.md). For exact API contracts, use [MCP API And Schemas](../reference/mcp-api-and-schemas.md). For storage details and DDL, use [Storage And DDL](../reference/storage-and-ddl.md). For design-quality gate and validator behavior, use [Design Quality Policies](../reference/design-quality-policies.md). For the core conformance model and fixture semantics, use [Conformance Fixtures Reference](../reference/conformance-fixtures.md). For detailed future scenario candidates, use [Future Fixture Catalog](../reference/future-fixture-catalog.md). For operator procedures and the conformance run overview, use [Operations And Conformance](../reference/operations-and-conformance.md). For v1+ Expansion candidates and promotion criteria, use the [Roadmap](../roadmap.md).
+Read [Implementation Overview](implementation-overview.md), including its [Documentation Acceptance Status](implementation-overview.md#documentation-acceptance-status), before using this stage plan. Use [First Runnable Slice](first-runnable-slice.md) for the v0.1 implementation sequence and [Runtime Walkthrough](runtime-walkthrough.md) for the request-to-close runtime path.
+
+For exact contracts, use the [Reference Index](../reference/README.md) and pick the owner for the question in front of you. For v1+ Expansion candidates and promotion criteria, use the [Roadmap](../roadmap.md).
 
 ## Main idea
 

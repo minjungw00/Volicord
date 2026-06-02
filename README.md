@@ -88,7 +88,7 @@ The current baseline separates three statuses that must not collapse into each o
 
 Until the maintainer handoff explicitly accepts implementation planning, work remains documentation maintenance and runtime/server implementation must not start.
 
-Maintainer handoff: [English summary](docs/en/build/implementation-overview.md#maintainer-handoff-summary) / [문서 수락 후보 요약](docs/ko/build/implementation-overview.md#문서-수락-후보-요약). Status: [English](docs/en/build/implementation-overview.md#documentation-acceptance-status) / [한국어](docs/ko/build/implementation-overview.md#문서-승인-상태).
+Maintainer handoff: [English summary](docs/en/build/implementation-overview.md#maintainer-handoff-summary) / [문서 수락 후보 요약](docs/ko/build/implementation-overview.md#문서-수락-후보-요약). Status: [English](docs/en/build/implementation-overview.md#documentation-acceptance-status) / [한국어](docs/ko/build/implementation-overview.md#문서-수락-상태).
 
 유지보수자 인계 상태에서 구현 계획 준비 상태가 명시적으로 수락되기 전까지 작업은 문서 유지보수이며 런타임/서버 구현을 시작하면 안 됩니다.
 
@@ -106,16 +106,18 @@ Before starting Harness Server code, implementers should read the maintainer han
 
 ## Start Here / 시작하기
 
-Start at [docs/README.md](docs/README.md) for compact bilingual routing and language choice.
+Start at [docs/README.md](docs/README.md) for compact bilingual routing, the minimal first-read path, and role-based reader paths.
 
 | Need / 필요 | Start / 시작 |
 |---|---|
-| Bilingual routing and language choice / 이중 언어 경로와 언어 선택 | [docs/README.md](docs/README.md) |
+| Minimal first-read path / 최소 첫 읽기 경로 | [docs/README.md](docs/README.md#minimal-first-read-path--최소-첫-읽기-경로) |
+| Reader paths by role / 독자별 경로 | [docs/README.md](docs/README.md#reader-paths--독자별-경로) |
 | English reader paths / 영어 독자 경로 | [docs/en/README.md](docs/en/README.md) |
 | Korean reader paths / 한국어 독자 경로 | [docs/ko/README.md](docs/ko/README.md) |
+| Reference owner lookup / Reference owner 찾기 | [English Reference Index](docs/en/reference/README.md) / [한국어 Reference 색인](docs/ko/reference/README.md) |
 
-Strict contracts live in the Reference docs linked from the language entrypoints. Learn, Use, and Build pages should explain and route rather than duplicate those contracts.
+Strict contracts live in the Reference owner docs linked from the Reference indexes. Learn, Use, and Build pages should explain and route rather than duplicate those contracts.
 
-이중 언어 경로와 언어 선택은 [docs/README.md](docs/README.md)에서 시작하세요.
+이중 언어 경로, 최소 첫 읽기 경로, 독자별 경로는 [docs/README.md](docs/README.md)에서 시작하세요.
 
-엄격한 계약은 각 언어 진입점에서 연결하는 Reference 문서가 담당합니다. Learn, Use, Build 문서는 그 계약을 중복하기보다 필요한 설명과 경로를 제공합니다.
+엄격한 계약은 Reference 색인에서 연결하는 owner 문서가 담당합니다. Learn, Use, Build 문서는 그 계약을 중복하기보다 필요한 설명과 경로를 제공합니다.
