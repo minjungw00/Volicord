@@ -51,7 +51,7 @@
 
 | 독자 | 먼저 읽기 | 이어서 보기 |
 |---|---|---|
-| 사용자 | [개요](learn/overview.md) | [사용자 가이드](use/user-guide.md), [핵심 개념](learn/concepts.md), 결정이 복잡해질 때 [결정 패킷 Cookbook](use/decision-packet-cookbook.md). |
+| 사용자 | [개요](learn/overview.md) | [사용자 가이드](use/user-guide.md), [핵심 개념](learn/concepts.md), 결정이 복잡해질 때 [결정 패킷 예시 모음](use/decision-packet-cookbook.md). |
 | 에이전트 통합자 | [개요](learn/overview.md) | [사용자 가이드](use/user-guide.md), [에이전트 세션 흐름](use/agent-session-flow.md), [에이전트 통합 참조](reference/agent-integration.md), [Surface Cookbook](reference/surface-cookbook.md), [MCP API와 스키마](reference/mcp-api-and-schemas.md). |
 | 구현자 | [개요](learn/overview.md) | [핵심 개념](learn/concepts.md), [구현 개요의 문서 수락 후보 요약](build/implementation-overview.md#문서-수락-후보-요약), [MVP 계획의 구현 시작 전 결정](build/mvp-plan.md#서버-코딩-전-필요한-구현-결정), [첫 실행 가능한 조각](build/first-runnable-slice.md), [MVP 계획](build/mvp-plan.md), [Runtime Walkthrough](build/runtime-walkthrough.md), 관련 기준 문서 소유자. |
 | 검토자 / 문서 유지보수자 | [개요](learn/overview.md) | [문서 작성 가이드](maintain/authoring-guide.md), [번역 가이드](maintain/translation-guide.md), [로드맵](roadmap.md), 엄격한 의미를 확인할 때 관련 기준 문서 소유자. |
@@ -70,7 +70,7 @@ Learn과 Use 문서는 삭제하지 않고 역할을 좁혀 둡니다.
 | [15분 만에 보는 하네스](learn/harness-in-15-minutes.md) | 짧은 시나리오 모음입니다. 엄격한 사양 전에 흔히 만나는 하네스 순간을 빠르게 보여 줍니다. |
 | [하나의 작업으로 보는 하네스](learn/harness-in-one-task.md) | 튜토리얼입니다. 작은 변경 하나와 추적되는 작업 하나로 전체 작업 흐름을 보여 줍니다. |
 | [사용자 가이드](use/user-guide.md) | 작업을 시작하고, 이어가고, 막힘을 풀고, 닫는 기본 사용자 문서입니다. |
-| [결정 패킷 Cookbook](use/decision-packet-cookbook.md) | 초점 있는 사용자 결정 요청을 만들기 위한 고급 사용 예시이자 Reference 인접 예시입니다. |
+| [결정 패킷 예시 모음](use/decision-packet-cookbook.md) | 초점 있는 사용자 결정 요청을 만들기 위한 고급 사용 예시이자 Reference 인접 예시입니다. |
 | [에이전트 세션 흐름](use/agent-session-flow.md) | 상태 표시, 맥락, blocker, 쓰기, 닫기를 다루는 에이전트/통합 지침입니다. 일반 사용자가 반드시 읽어야 하는 문서는 아닙니다. |
 
 ## 지금 보는 저장소
@@ -106,7 +106,7 @@ Learn과 Use 문서는 삭제하지 않고 역할을 좁혀 둡니다.
 
 ## 하네스가 아닌 것
 
-하네스는 agent instruction, MCP, reusable workflow, 테스트, 리뷰, spec과 같은 역할을 하지 않습니다. 이런 요소들은 하네스 주변에서 유용할 수 있지만, 로컬 운영 기록이나 사용자 판단의 주인이 되지는 않습니다.
+하네스는 에이전트 지침, MCP, 재사용 workflow, 테스트, 리뷰, spec과 같은 역할을 하지 않습니다. 이런 요소들은 하네스 주변에서 유용할 수 있지만, 로컬 운영 기록이나 사용자 판단의 주인이 되지는 않습니다.
 
 하네스는 prompt 묶음, 대화 스크립트, evaluation harness, dashboard, 넓은 hosted agent platform도 아닙니다.
 
@@ -123,9 +123,9 @@ Learn과 Use 문서는 삭제하지 않고 역할을 좁혀 둡니다.
 
 ## 소유권 규칙
 
-정확한 계약은 Reference 문서가 담당합니다. 스키마, DDL, 관문(gate), 상태 전이, enum value, fixture 의미, template 본문, 공식 정의가 여기에 속합니다. Learn, Use, Build 문서는 독자에게 필요한 생각을 설명하고 Reference로 연결하며, 엄격한 계약 블록을 복사하지 않습니다.
+정확한 계약은 참조 문서가 담당합니다. 스키마, DDL, 관문(gate), 상태 전이, enum value, fixture 의미, template 본문, 공식 정의가 여기에 속합니다. Learn, Use, Build 문서는 독자에게 필요한 생각을 설명하고 참조 문서로 연결하며, 엄격한 계약 블록을 복사하지 않습니다.
 
-Docs-maintenance check는 drift, 소유자 경계, link, 언어 의미 일치를 살피는 편집 품질 점검입니다. Runtime conformance나 implementation readiness가 아닙니다. Drift category와 owner-first resolution은 [문서 작성 가이드](maintain/authoring-guide.md#docs-maintenance-checks)를 사용하고, docs-maintenance profile reporting boundary는 [운영과 Conformance](reference/operations-and-conformance.md#docs-maintenance-프로필)를 사용합니다.
+문서 유지보수 점검은 drift, 소유자 경계, 링크, 언어 의미 일치를 살피는 편집 품질 점검입니다. Runtime conformance나 구현 준비 상태가 아닙니다. Drift category와 owner-first resolution은 [문서 작성 가이드](maintain/authoring-guide.md#docs-maintenance-checks)를 사용하고, docs-maintenance profile reporting boundary는 [운영과 Conformance](reference/operations-and-conformance.md#docs-maintenance-프로필)를 사용합니다.
 
 ## 학습 문서
 
@@ -139,10 +139,10 @@ Docs-maintenance check는 drift, 소유자 경계, link, 언어 의미 일치를
 
 ## 사용 문서
 
-AI 지원 개발 세션을 하네스 기준으로 진행할 때 보는 경로입니다. 기본 사용자 문서는 [사용자 가이드](use/user-guide.md)입니다. [결정 패킷 Cookbook](use/decision-packet-cookbook.md)은 고급 결정 예시이며, [에이전트 세션 흐름](use/agent-session-flow.md)은 일반 사용자의 필수 읽기가 아니라 에이전트/통합 지침입니다.
+AI 지원 개발 세션을 하네스 기준으로 진행할 때 보는 경로입니다. 기본 사용자 문서는 [사용자 가이드](use/user-guide.md)입니다. [결정 패킷 예시 모음](use/decision-packet-cookbook.md)은 고급 결정 예시이며, [에이전트 세션 흐름](use/agent-session-flow.md)은 일반 사용자의 필수 읽기가 아니라 에이전트/통합 지침입니다.
 
 - [사용자 가이드](use/user-guide.md)
-- [결정 패킷 Cookbook](use/decision-packet-cookbook.md)
+- [결정 패킷 예시 모음](use/decision-packet-cookbook.md)
 - [에이전트 세션 흐름](use/agent-session-flow.md)
 
 ## 구현 문서

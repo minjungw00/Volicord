@@ -48,7 +48,7 @@
 
 아주 작은 수정에도 경계는 있습니다. 문서 수정이 의미를 바꾸거나, 링크 또는 렌더링 확인이 필요하거나, 엄격한 계약에 닿거나, 변경 경로와 자체 확인을 넘는 근거가 필요해지면 같은 작업에 넓어진 범위만큼의 구조를 더해야 합니다.
 
-정확한 mode, 근거, close 동작은 [Kernel Reference](../reference/kernel.md#mode), [Evidence Sufficiency Profiles](../reference/kernel.md#evidence-sufficiency-profiles), [`close_task`](../reference/kernel.md#close_task)를 사용합니다.
+정확한 mode, 근거, close 동작은 [커널 참조](../reference/kernel.md#mode), [Evidence Sufficiency Profiles](../reference/kernel.md#evidence-sufficiency-profiles), [`close_task`](../reference/kernel.md#close_task)를 사용합니다.
 
 ## 시나리오 2: 작은 코드 수정
 
@@ -72,7 +72,7 @@
 청구서 날짜가 없을 때 "Not set"으로 표시되도록 바꿨습니다.
 `invoiceSummary.test`로 확인했습니다.
 쓰기 확인: 이 좁은 변경에 대해 허용됨.
-Self-checked로 닫았습니다. 알려진 닫기 관련 잔여 위험은 없습니다.
+자체 확인으로 닫았습니다. 알려진 닫기 관련 잔여 위험은 없습니다.
 ```
 
 에이전트가 formatter가 export, report, billing email, API response에 공유된다는 사실을 발견하면 이 작업은 더 이상 작은 코드 수정이 아닙니다. 하네스는 멈추고 제품 파일을 더 바꾸기 전에 더 넓은 영향을 먼저 정리해야 합니다.
@@ -119,12 +119,12 @@ Self-checked로 닫았습니다. 알려진 닫기 관련 잔여 위험은 없습
 선택지: 인라인 메시지, 토스트, 모달.
 추천: 폼 근처 인라인 메시지. 계속 보이고 접근성 대응이 쉽습니다.
 불확실성: 기존 디자인 시스템이 인라인 오류 메시지를 지원하는지 확인해야 합니다.
-미루면 생기는 일: API와 상태 연결은 계속할 수 있지만 최종 UI 동작과 사람의 QA는 기다려야 합니다.
+미루면 생기는 일: API와 상태 연결은 계속할 수 있지만 최종 UI 동작과 수동 QA는 기다려야 합니다.
 ```
 
-결정이 막힘이면 하네스는 사용자 판단을 문서화된 결정 경로로 기록합니다. 대화 문장, 넓은 "go ahead", 읽기용 보고서 문구만으로는 특정 기록된 선택에 답하지 않는 한 결정을 충족하면 안 됩니다. 민감한 단계 허용은 이 제품/UX 선택과 별개입니다.
+결정이 막힘이면 하네스는 사용자 판단을 문서화된 결정 경로로 기록합니다. 대화 문장, 넓은 "go ahead", 읽기용 보고서 문구만으로는 특정 기록된 선택에 답하지 않는 한 결정을 충족하면 안 됩니다. 민감 동작 승인은 이 제품/UX 선택과 별개입니다.
 
-실용 예시는 [결정 패킷 Cookbook](../use/decision-packet-cookbook.md)을 읽습니다. 정확한 동작은 [결정 패킷](../reference/kernel.md#decision-packet), [Decision Gate](../reference/kernel.md#decision-gate), [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision), [`harness.record_user_decision`](../reference/mcp-api-and-schemas.md#harnessrecord_user_decision)을 사용합니다.
+실용 예시는 [결정 패킷 예시 모음](../use/decision-packet-cookbook.md)을 읽습니다. 정확한 동작은 [결정 패킷](../reference/kernel.md#decision-packet), [Decision Gate](../reference/kernel.md#decision-gate), [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision), [`harness.record_user_decision`](../reference/mcp-api-and-schemas.md#harnessrecord_user_decision)을 사용합니다.
 
 ## 시나리오 5: 근거와 닫기 막힘
 
@@ -140,14 +140,14 @@ Self-checked로 닫았습니다. 알려진 닫기 관련 잔여 위험은 없습
 
 - 수용 기준을 뒷받침하는 근거 링크가 없어 근거가 부분적입니다.
 - 검증이 필요한데 호환되는 독립 확인이 없습니다.
-- UI 동작에 사람의 QA가 필요한데 아직 통과했거나 유효하게 면제되지 않았습니다.
+- UI 동작에 수동 QA가 필요한데 아직 통과했거나 유효하게 면제되지 않았습니다.
 - 작업 수락이 필요한데 근거, QA, 검증, 잔여 위험 표시와 함께 요청되지 않았습니다.
 - 알려진 닫기 관련 잔여 위험이 있지만 아직 보이거나 받아들여지지 않았습니다.
 
 유용한 닫기 막힘은 가장 작은 해소 방법을 이름 붙입니다.
 
 ```text
-닫기 막힘: 로그인 오류 흐름의 사람 QA가 아직 대기 중입니다.
+닫기 막힘: 로그인 오류 흐름의 수동 QA가 아직 대기 중입니다.
 가장 작은 해소 방법: QA 결과를 기록하거나, 생략한 확인을 이름 붙이고 닫기 관련 위험이 남아 있다면 잔여 위험 수용을 별도로 처리하는 QA 면제 판단을 요청합니다.
 ```
 
@@ -161,7 +161,7 @@ Markdown 상태 보고서에 이렇게 보입니다.
 
 ```text
 Evidence: partial
-Next action: 사람의 QA 기록
+Next action: 수동 QA 기록
 source_state_version: 42
 ```
 
@@ -173,7 +173,7 @@ source_state_version: 42
 Evidence: sufficient
 ```
 
-그 편집은 저장된 근거, 게이트 상태, 사람의 QA 상태, 작업 수락 상태, 잔여 위험, 닫기 가능 여부를 바꾸지 않습니다. 사람이 편집할 수 있는 영역은 메모나 조정 입력이 될 수 있지만, 받아들여진 상태 변경에는 여전히 Core/MCP 소유자 경로가 필요합니다.
+그 편집은 저장된 근거, 게이트 상태, 수동 QA 상태, 작업 수락 상태, 잔여 위험, 닫기 가능 여부를 바꾸지 않습니다. 사람이 편집할 수 있는 영역은 메모나 조정 입력이 될 수 있지만, 받아들여진 상태 변경에는 여전히 Core/MCP 소유자 경로가 필요합니다.
 
 실용 규칙은 간단합니다. 읽기용 요약(Projection)은 방향, 근거 링크, 관련 아티팩트, 최신성을 읽는 데 사용하고, 권한은 소유자 기록과 소유자 동작에서 확인합니다. 읽기용 요약이 오래됐거나 틀렸다면 Markdown을 상태처럼 취급하지 말고 새로 고치거나 조정합니다.
 
@@ -184,14 +184,14 @@ Evidence: sufficient
 | 주제 | 정확한 동작 소유자 |
 |---|---|
 | Task, Change Unit, 결정 패킷, gate, 근거, 검증, QA, 작업 수락(Acceptance), 잔여 위험(Residual Risk), 닫기 | [Kernel Reference](../reference/kernel.md) |
-| Public tool request와 response shape | [MCP API와 스키마](../reference/mcp-api-and-schemas.md) |
+| 공개 도구 요청과 응답 형태 | [MCP API와 스키마](../reference/mcp-api-and-schemas.md) |
 | Markdown 읽기용 요약의 권한 경계와 최신성 | [문서 Projection 참조](../reference/document-projection.md) |
 | 사용자에게 보이는 세션 흐름과 상태 읽기 | [사용자 가이드](../use/user-guide.md), [에이전트 세션 흐름](../use/agent-session-flow.md) |
-| 실용 결정 패킷 예시 | [결정 패킷 Cookbook](../use/decision-packet-cookbook.md) |
+| 실용 결정 패킷 예시 | [결정 패킷 예시 모음](../use/decision-packet-cookbook.md) |
 
 ## 다음에 읽을 문서
 
 - 더 긴 작은 변경과 추적되는 작업 이야기는 [하나의 작업으로 보는 하네스](harness-in-one-task.md)를 읽습니다.
-- 사용자 소유 판단이 진행을 막을 때는 [결정 패킷 Cookbook](../use/decision-packet-cookbook.md)을 읽습니다.
+- 사용자 소유 판단이 진행을 막을 때는 [결정 패킷 예시 모음](../use/decision-packet-cookbook.md)을 읽습니다.
 - 실제 세션을 진행할 때는 [사용자 가이드](../use/user-guide.md)를 읽습니다.
-- 정확한 계약이 필요할 때만 Reference 문서를 사용합니다.
+- 정확한 계약이 필요할 때만 참조 문서를 사용합니다.
