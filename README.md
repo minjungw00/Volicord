@@ -42,9 +42,9 @@ Preserve the core thesis: Harness is not a prompt pack; it is a local authority 
 
 핵심 명제는 유지합니다. Harness는 prompt 묶음이 아니라 작업 범위, 사용자 판단, 근거, 검증, QA 기대, 작업 수락, 잔여 위험 상태를 다루는 로컬 기준 기록이자 판단 경로입니다. 제품 결정, 중요한 기술 결정, QA 기대치, 작업 수락, 잔여 위험 수용은 사용자 판단입니다. 근거, 검증, 수동 QA, 작업 수락, 잔여 위험은 서로 대체할 수 없습니다. 대화, Markdown으로 렌더링된 읽기용 요약, connector 출력, 생성 문서는 운영 기준이 아니며, Core가 소유한 로컬 상태와 아티팩트 참조가 운영 기준입니다.
 
-Decision records keep three meanings separate: `decision_kind` owns lifecycle, gate, payload, and state-transition semantics; `judgment_domain` is the schema-owned user-visible judgment grouping; affected gates or blocked actions are recorded separately and define what the decision blocks or influences.
+Decision records keep the current decision dimensions separate: `decision_kind` owns lifecycle, gate, payload, and state-transition semantics; `decision_profile` owns prompt depth and profile-specific requiredness; `judgment_domain` is the schema-owned user-visible judgment grouping; affected gates or blocked actions are recorded separately and define what the decision blocks or influences.
 
-결정 기록은 세 의미를 분리합니다. `decision_kind`는 lifecycle, gate, payload, state transition 의미를 담당하고, `judgment_domain`은 schema가 소유하는 사용자 표시 판단 영역이며, 영향을 받는 gate나 막힌 행동은 별도로 기록해 그 결정이 무엇을 막거나 바꾸는지 나타냅니다.
+결정 기록은 현재 결정 모델의 각 차원을 분리합니다. `decision_kind`는 lifecycle, gate, payload, state transition 의미를 담당하고, `decision_profile`은 질문 깊이와 profile별 필수 정보를 담당합니다. `judgment_domain`은 schema가 소유하는 사용자 표시 판단 묶음이며, 영향을 받는 gate나 막힌 행동은 별도로 기록해 그 결정이 무엇을 막거나 바꾸는지 나타냅니다.
 
 ## Problems Harness Solves / Harness가 해결하는 문제
 

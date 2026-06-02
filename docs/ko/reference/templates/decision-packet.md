@@ -29,7 +29,7 @@ Approval 형태 표시 항목인 "이 Approval이 포괄하는 것", "이 Approv
 
 `judgment_domain`은 schema가 소유하는 판단 영역입니다. 사용자에게는 자연스러운 label로 렌더링하되, `decision_kind`는 lifecycle과 gate route로 유지하고 구체적인 decision type도 렌더링합니다. 영향을 받는 gate는 domain label이 아니라 `affected_gates`와 관련 owner ref에서 렌더링합니다. 별도 owner rule이 명시하지 않는 한 `judgment_domain`은 close gate aggregation, sensitive-action Approval, waiver behavior, 잔여 위험 수용을 직접 바꾸지 않습니다.
 
-`decision_profile`은 schema가 소유하는 prompt 깊이와 validation profile입니다. `minimal_decision`은 불완전한 full trade-off packet이 아니라 간단한 판단 기록으로 렌더링합니다. `product_ux_tradeoff`, `architecture_tradeoff`, `approval_shaped`, `waiver`, `acceptance`, `residual_risk_acceptance`, `reconcile`, `mixed` 같은 full profile은 그 profile이 요구하는 추가 context와 함께 렌더링합니다. Profile은 그 자체로 권한을 바꾸지 않으며, 별도의 approval, acceptance, waiver, residual-risk acceptance, product/technical decision을 하나의 답변으로 합치면 안 됩니다.
+`decision_profile`은 schema가 소유하는 field이며, 질문 깊이와 profile별 필수 정보를 정합니다. `minimal_decision`은 불완전한 full trade-off packet이 아니라 간단한 판단 기록으로 렌더링합니다. `product_ux_tradeoff`, `architecture_tradeoff`, `approval_shaped`, `waiver`, `acceptance`, `residual_risk_acceptance`, `reconcile`, `mixed` 같은 full profile은 그 profile이 요구하는 추가 context와 함께 렌더링합니다. Profile은 그 자체로 권한을 바꾸지 않으며, 별도의 approval, acceptance, waiver, residual-risk acceptance, product/technical decision을 하나의 답변으로 합치면 안 됩니다.
 
 ## 렌더링 섹션
 
@@ -50,7 +50,7 @@ Approval 형태 표시 항목인 "이 Approval이 포괄하는 것", "이 Approv
 - Follow-Up
 - References
 
-충분한 rendered Decision Packet은 이 section들로 하나의 사용자 소유 결정을 답하며, 넓은 permission을 요청하지 않습니다. 정확한 public request/response field는 [`harness.request_user_decision`](../mcp-api-and-schemas.md#harnessrequest_user_decision)이 소유하고, 기준 authority rule은 [Decision Packet](../kernel.md#decision-packet)과 [Decision Gate](../kernel.md#decision-gate)가 소유합니다. 이 template은 `judgment_domain`을 포함한 existing field를 요약해 보여줄 수 있지만 additional schema field, gate, alternate authority를 추가하면 안 됩니다.
+충분한 rendered Decision Packet은 이 section들로 하나의 사용자 소유 결정을 답하며, 넓은 permission을 요청하지 않습니다. 정확한 public request/response field는 [`harness.request_user_decision`](../mcp-api-and-schemas.md#harnessrequest_user_decision)이 소유하고, 기준 authority rule은 [Decision Packet](../kernel.md#decision-packet)과 [Decision Gate](../kernel.md#decision-gate)가 소유합니다. 이 template은 `decision_kind`, `decision_profile`, `judgment_domain` 같은 existing field를 요약해 보여줄 수 있지만 additional schema field, gate, alternate authority를 추가하면 안 됩니다.
 
 Profile별 rendering은 선택된 MCP `profile_payload` branch를 따릅니다. 공통 field는 계속 보여주고, 선택한 profile이 요구하지 않는 branch별 section은 생략할 수 있습니다. `minimal_decision` card는 question, route, domain, scope, 간결한 options 또는 selected outcome, related refs, 답변이 확정하지 않는 것을 보여줘야 하지만, 중요하지 않다면 full pros/cons, recommendation, uncertainty, deferral analysis를 요구하지 않습니다. Full profile은 사용자가 risk, trade-off, approval scope, waiver impact, acceptance basis, residual-risk consequence, reconcile target을 판단하는 데 필요한 detailed section을 렌더링해야 합니다.
 

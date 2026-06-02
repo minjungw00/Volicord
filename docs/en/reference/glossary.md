@@ -198,7 +198,7 @@ The schema field `decision_kind` on a Decision Packet. It controls lifecycle, pa
 
 ### Decision Profile
 
-The schema field `decision_profile` on a Decision Packet. It controls the required depth of the decision record, such as `minimal_decision`, `product_ux_tradeoff`, `architecture_tradeoff`, `approval_shaped`, `waiver`, `acceptance`, `residual_risk_acceptance`, `reconcile`, or `mixed`. It is distinct from `decision_kind` and `judgment_domain`: the route controls lifecycle semantics, the profile controls how much detail is required, and the domain groups the judgment for readers.
+The schema field `decision_profile` on a Decision Packet. It controls prompt depth and profile-specific requiredness for the decision record, such as `minimal_decision`, `product_ux_tradeoff`, `architecture_tradeoff`, `approval_shaped`, `waiver`, `acceptance`, `residual_risk_acceptance`, `reconcile`, or `mixed`. It is distinct from `decision_kind` and `judgment_domain`: the route controls lifecycle semantics, the profile controls how much detail is required, and the domain groups the judgment for readers.
 
 ### Decision Type Display
 
