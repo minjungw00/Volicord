@@ -116,7 +116,7 @@ Before starting Harness Server code, implementers should read:
 3. [Implementation-readiness criteria](build/implementation-overview.md#implementation-readiness-criteria).
 4. [Implementation decisions needed before server coding](build/mvp-plan.md#implementation-decisions-needed-before-server-coding).
 
-This handoff says the documentation is available for maintainer acceptance review as a candidate. It does not claim the docs have been accepted, it does not make the docs implementation-ready, and it does not start server/runtime implementation.
+This handoff says the documentation is available for maintainer acceptance review as a candidate. It also centralizes remaining decision and drift status. It does not claim the docs have been accepted, it does not make the docs implementation-ready, and it does not start server/runtime implementation.
 
 ## Where Am I?
 

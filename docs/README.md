@@ -43,7 +43,7 @@ Detailed status belongs in the language READMEs and Build handoff docs:
 - [English documentation acceptance status](en/build/implementation-overview.md#documentation-acceptance-status)
 - [한국어 문서 수락 상태](ko/build/implementation-overview.md#문서-수락-상태)
 - [English maintainer handoff summary](en/build/implementation-overview.md#maintainer-handoff-summary)
-- [한국어 문서 수락 후보 요약](ko/build/implementation-overview.md#문서-수락-후보-요약)
+- [한국어 문서 인계 요약](ko/build/implementation-overview.md#문서-인계-요약)
 - [English implementation decisions before server coding](en/build/mvp-plan.md#implementation-decisions-needed-before-server-coding)
 - [한국어 서버 코딩 전 필요한 구현 결정](ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정)
 

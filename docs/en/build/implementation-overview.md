@@ -75,7 +75,17 @@ Build readers should treat this table as the entry gate. Until maintainer handof
 
 ## Maintainer handoff summary
 
-This section is the short maintainer handoff for the documentation set. It explains what Harness now is, what has been clarified, what remains open, and what must be true before Harness Server implementation planning can begin in this repository. It is a documentation handoff only; it does not create runtime state, acceptance records, generated projections, conformance results, runtime records, or server code.
+This section is the final documentation handoff for this revision. It explains what the documentation set defines, what remains open or unverified, and what must be true before Harness Server implementation planning can begin in this repository. It is a documentation handoff only; it does not create runtime state, acceptance records, generated projections, conformance results, runtime records, implementation authority, or server code.
+
+What this documentation set defines:
+
+- The Harness product thesis: a local authority record and judgment-routing layer for scope, user-owned judgment, evidence, verification, QA expectations, final acceptance, residual-risk status, and close readiness.
+- The reader-facing Learn, Use, Build, Reference, Maintain, and Roadmap documentation structure.
+- A future staged implementation plan for the Harness Server / Installation, starting with v0.1 Core Authority Slice and then v0.2 User-Facing Harness MVP.
+- Owner locations for exact contracts: Kernel, MCP/API schemas, storage/DDL, projection/templates, conformance fixtures, operations, security, agent integration, design quality, glossary, and runtime architecture.
+- Documentation-maintenance rules for owner boundaries, English/Korean parity, status wording, TODO hygiene, and drift routing.
+
+It does not define runnable server code, executable fixture files, generated runtime artifacts, generated projections, runtime conformance results, implementation acceptance records, or a Harness Runtime Home.
 
 Current phase and future repository role:
 
@@ -110,11 +120,32 @@ What has been clarified:
 - Agent context is bounded: always-on context stays short and current, with detailed contracts loaded from owner docs or retrieval paths only when needed.
 - Conformance fixture documentation is a staged, future-oriented verification plan. It does not mean executable fixture files or runnable conformance tests exist today.
 
-Remaining decision-log status and review risks:
+Current readiness status:
 
-- Decision-log baseline: the server-coding decision log is empty at this baseline. This is not proof that no decisions remain. The documentation is available for maintainer acceptance review as a candidate, but it is not accepted until maintainers deliberately update [Documentation acceptance status](#documentation-acceptance-status).
-- This wording is not an implementation-readiness claim. The [Authoring Guide tracker](../maintain/authoring-guide.md#known-redesign-issues-tracker) gives default routing for confirmed findings as documentation drift, schema/design decisions, stage boundary decisions, implementation-readiness criteria, or future roadmap items. Review-risk examples include stage-name drift, heavy user-facing disclaimers, early Discovery/Change Unit convergence, `judgment_domain` ownership drift, small-decision Decision Packet weight, early Storage/DDL scope, conformance-fixture detail, early operations entrypoints, Korean technical-noun load, roadmap-boundary drift, and optimistic decision-log wording.
-- If maintainer review finds an implementation decision needed before server coding, record it in [MVP Plan: Implementation decisions needed before server coding](mvp-plan.md#implementation-decisions-needed-before-server-coding). Do not leave scattered major-decision TODOs or vague follow-ups.
+- Documentation acceptance: pending. This revision is a candidate for maintainer acceptance review, not accepted documentation.
+- Implementation planning readiness: not accepted. First runtime-batch planning must not begin until maintainers explicitly accept the readiness criteria below or reclassify remaining blockers.
+- Runtime implementation: not started. Server coding, fixture materialization, runtime conformance, and generated operational output remain out of scope for this repository phase.
+
+Server-coding decision-log status:
+
+- Confirmed server-coding decision-log entries: none are recorded at this baseline in [MVP Plan: Implementation decisions needed before server coding](mvp-plan.md#implementation-decisions-needed-before-server-coding).
+- This is not a "no open decisions" claim. The implementation-readiness review may still uncover schema/design decisions, stage boundary decisions, or other server-coding decisions.
+- If a decision is found, record it only in the MVP Plan with owner doc, affected behavior or field, affected stage, options, and the decision condition before changing server code or DDL.
+
+Documentation drift and review-risk status:
+
+- No major implementation-decision TODOs are intentionally left scattered through active docs at this baseline.
+- The [Authoring Guide tracker](../maintain/authoring-guide.md#known-redesign-issues-tracker) remains the review checklist for candidate drift and regression risks. It gives default routing for confirmed findings as documentation drift, schema/design decisions, stage boundary decisions, implementation-readiness criteria, or future roadmap items.
+- Candidate review areas still requiring maintainer verification include stage-name drift, heavy user-facing disclaimers, early Discovery/Change Unit convergence, `judgment_domain` and `decision_kind` alignment, small-decision Decision Packet weight, early Storage/API/DDL scope, projection/template scope, conformance-fixture detail, early operations entrypoints, security guarantee wording, agent context load, Korean technical-noun load, roadmap-boundary drift, and optimistic decision-log wording.
+
+Maintainer acceptance conditions:
+
+- Maintainers deliberately update [Documentation acceptance status](#documentation-acceptance-status); acceptance must not be inferred from this checklist.
+- Any confirmed documentation drift is fixed or classified with owner, affected stage, and blocking meaning.
+- Any confirmed schema/design decision, stage boundary decision, or other server-coding decision is recorded in the MVP Plan before server code or DDL changes begin.
+- The [Implementation-readiness criteria](#implementation-readiness-criteria) are satisfied or explicitly reclassified by maintainers.
+- The final docs-maintenance pass in the [Authoring Guide](../maintain/authoring-guide.md#final-pre-acceptance-review) is complete, including English/Korean parity, link/anchor checks, owner-boundary checks, TODO hygiene, and current status wording.
+- Only after documentation acceptance and a separate implementation-planning readiness decision may first runtime-batch planning begin. Server/runtime implementation still remains blocked until that readiness decision is explicitly accepted.
 
 ## Implementation-readiness criteria
 
@@ -124,14 +155,19 @@ First implementation planning means v0.1 Core Authority Slice planning first, no
 
 - Repository identity is clear in the root README, docs README, language READMEs, Build docs, and relevant Reference docs: documentation-only now; intended future role is the Harness Server source repository; server/runtime implementation may start only after documentation acceptance and a separate implementation-planning readiness decision; not a Product Repository; not a Harness Runtime Home.
 - The user-facing flow is understandable without requiring users to know internal terms before they can start, resume, unblock, accept, or close work.
-- The judgment model is schema-aligned across Kernel, MCP/API schemas, storage, templates, fixtures, Learn/Use explanations, and glossary terms.
+- Discovery and requirements clarification preserve shared understanding and user-owned judgment before convergence on a Change Unit or first safe implementation unit. A Change Unit may express scoped work when the owner path requires it, but Discovery is not premature Change Unit selection.
+- The judgment model is schema-aligned across Kernel, MCP/API schemas, storage, templates, fixtures, Learn/Use explanations, and glossary terms. `decision_kind` owns lifecycle, gate, payload, and state-transition semantics; `decision_profile` owns prompt-depth and profile-specific requiredness; `judgment_domain` owns schema-defined user-visible grouping; affected gates or blocked actions stay in separate owner fields.
+- Decision Packet profiles are proportional to the decision. Small explicit unblockers can use `minimal_decision`; full trade-off, approval-shaped, waiver, final acceptance, residual-risk acceptance, reconcile, and mixed profiles carry the extra context their owner contracts require without making every small decision heavyweight.
 - Approval, final acceptance, and residual-risk acceptance are distinct in examples, templates, API/schema wording, close behavior, and user-facing routing.
 - MVP stages are coherent: v0.1 Core Authority Slice is not the product MVP; v0.2 is the first user-facing MVP; v0.3 Agency Assurance Pack hardens verification, QA, residual risk, final acceptance, and stewardship; v0.4 Operations & Handoff Pack adds operational handoff capabilities; v1+ Expansion stays roadmap scope until promoted.
 - Kernel, API, storage, reference, and Build contracts agree on Core ownership, state transitions, write authority, evidence, judgment records, close semantics, idempotency, state conflict behavior, artifacts, projection jobs, and fixture semantics.
+- Storage and API are staged. Reference schemas and DDL may define future-profile fields or tables, but stage-required implementation follows the active method, record, or profile; future-profile presence does not expand v0.1 by itself.
 - Projection scope is staged and non-authoritative: readable projections and cards derive from Core records and artifact refs, do not create authority, and do not become the first proof.
 - Security guarantees match actual enforcement levels. Cooperative, detective, preventive, and isolated claims are used only where the documented surface and fixture-proven path support that guarantee for the covered operation.
 - Agent context strategy is defined: always-on context stays one screen or less, current-state based, and profile-scoped; full reference docs, schemas, old logs, and projection bodies are loaded only through appropriate owner/retrieval paths.
 - The conformance fixture plan is staged and future-oriented: Kernel Smoke is only the narrow v0.1 authoring label for small smoke checks; later suite profiles align with v0.2 User-Facing Harness MVP, v0.3 Agency Assurance Pack, v0.4 Operations & Handoff Pack, and promoted v1+ items; no text implies fixture files, a future fixture catalog, a full v0.1 conformance suite, or runnable conformance tests already exist.
+- The operations surface is staged. Minimal local status/diagnostic behavior may support early stages, but doctor/readiness, reconcile, recover, export, artifact checks, release handoff, and conformance run entrypoints do not become v0.1 requirements unless the owning stage includes them.
+- Korean user-facing docs are readable and consistent. Natural Korean comes first, while stable schema identifiers, API names, enum values, DDL names, file names, validator IDs, and official product/stage names remain exact where precision needs them.
 - Links, TODOs, terminology, and English/Korean semantic parity are clean. There are no unresolved major-decision TODOs scattered through active docs; any implementation decision needed before server coding is classified and recorded in [MVP Plan](mvp-plan.md#implementation-decisions-needed-before-server-coding).
 - The final docs-maintenance drift pass is complete. Any remaining item is explicitly classified as documentation drift, schema/design decision, stage boundary decision, implementation-readiness criterion, or future roadmap item. If it is non-blocking for documentation review but blocking before implementation planning or server coding, that later block is named. Docs-maintenance remains a read-only documentation check; see [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks) and [Operations And Conformance Reference](../reference/operations-and-conformance.md#docs-maintenance-profile).
 - The local-only MCP exposure baseline is accepted for v0.1 Core Authority Slice. Remote, shared, tunneled, or non-loopback exposure remains outside the v0.1 baseline unless owner docs promote and prove a connector profile; see [Runtime Architecture](../reference/runtime-architecture.md#local-access-expectations), [Security Threat Model Reference](../reference/security-threat-model.md#mcp-local-access-and-caller-boundaries), and [MCP API And Schemas](../reference/mcp-api-and-schemas.md#mcp-boundary-and-caller-trust).

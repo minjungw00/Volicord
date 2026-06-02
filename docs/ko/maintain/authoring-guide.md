@@ -89,11 +89,11 @@ Harness 문서를 새로 쓰거나, 나누거나, 이름을 바꾸거나, 리뷰
 
 문서를 다시 쓰면서 용어, 단계, 스키마 구조, 투영 구조, 보안 표현, 문서 경계를 바꿀 때는 문장을 다듬기 전에 이 원칙이 유지되는지 먼저 확인합니다.
 
-## 문서 수락 후보 규칙
+## 문서 인계 규칙
 
-[구현 개요: 문서 수락 후보 요약](../build/implementation-overview.md#문서-수락-후보-요약)이 짧은 인계 요약을 담당합니다. 여기에 문서 검토 상태, 구현 계획 준비 상태, 런타임 구현 상태, 향후 저장소 역할, 보존 원칙, 현재 단계 모델, 하네스 서버 구현 준비 조건, 남은 질문 상태를 둡니다.
+[구현 개요: 문서 인계 요약](../build/implementation-overview.md#문서-인계-요약)이 짧은 인계 요약을 담당합니다. 여기에 문서 세트가 정의하는 것, 문서 검토 상태, 구현 계획 준비 상태, 런타임 구현 상태, 향후 저장소 역할, 보존 원칙, 현재 단계 모델, 하네스 서버 구현 준비 조건, 남은 질문 상태, 남은 문서 drift 상태, maintainer 수락 조건을 둡니다.
 
-[MVP 계획: 서버 코딩 전 필요한 구현 결정](../build/mvp-plan.md#서버-코딩-전-필요한-구현-결정)은 유지보수자 검토나 첫 런타임 배치 계획에서 발견된 큰 구현 결정을 기록하는 단일 위치입니다. 큰 결정을 active docs 곳곳의 `TODO_DECISION`으로 남기지 않습니다. 현재 기준에서 결정 기록이 비어 있다면 정확히 그렇게 말합니다. 구현 준비 조건에 아직 유지보수자 판단이 필요한 동안에는 이것을 "열린 결정 없음" 주장으로 바꾸지 않습니다.
+[MVP 계획: 서버 코딩 전 필요한 구현 결정](../build/mvp-plan.md#서버-코딩-전-필요한-구현-결정)은 maintainer review나 첫 runtime batch planning에서 발견된 큰 구현 시작 전 결정을 기록하는 단일 위치입니다. 큰 결정을 active docs 곳곳의 `TODO_DECISION`으로 남기지 않습니다. 현재 기준에서 결정 기록이 비어 있다면 정확히 그렇게 말합니다. 구현 준비 조건에 아직 maintainer 판단이 필요한 동안에는 이것을 "열린 결정 없음" 주장으로 바꾸지 않습니다. 편집 정리만 남았다면 어떤 docs-maintenance category가 담당하는지, 왜 현재 stage를 막지 않는지 함께 말합니다.
 
 ## 알려진 재설계 쟁점 트래커
 
@@ -386,7 +386,7 @@ Maintain 문서는 documentation review rule, category label, reviewer expectati
 
 Maintainer가 문서 세트를 구현 계획에 사용할 수 있다고 받아들이기 전, 마지막 docs-maintenance pass를 수행합니다. 영어/한국어 활성 파일 맵 일치, 대응 파일의 의미 섹션 일치, 깨진 link와 anchor, owner-boundary drift, owner가 아닌 문서의 중복 contract, Approval, Decision Packet, Evidence, Verification, 수동 QA, Acceptance, Residual Risk, Projection, Guarantee Level 용어 drift, TODO hygiene를 확인합니다.
 
-[구현 개요](../build/implementation-overview.md#하네스-서버-구현-준비-조건)의 하네스 서버 구현 준비 조건도 확인합니다. 저장소 정체성, user-facing flow, schema-aligned judgment model, Approval/작업 수락/잔여 위험 수용 분리, coherent MVP stages, Kernel/API/storage/reference agreement, 단계화된 projection scope, 실제 보장 수준에 맞는 security wording, agent context strategy, 단계화되고 future-oriented인 conformance fixture plan, link/TODO/terminology 정리가 포함됩니다.
+[구현 개요](../build/implementation-overview.md#하네스-서버-구현-준비-조건)의 하네스 서버 구현 준비 조건도 확인합니다. 저장소 정체성, 내부 용어 부담 없는 user-facing flow, Change Unit 조기 수렴이 아닌 요구사항 확인으로서의 Discovery, schema-aligned `decision_kind`/`decision_profile`/`judgment_domain`, 결정 크기에 맞는 Decision Packet profile, Approval/작업 수락/잔여 위험 수용 분리, coherent MVP stages, Kernel/API/storage/reference agreement, 단계화된 Storage/API scope, 단계화된 projection/template scope, 실제 보장 수준에 맞는 security wording, agent context strategy, 단계화되고 future-oriented인 conformance fixture plan, 단계화된 operations surface, 한국어 user-facing readability, link/TODO/terminology 정리가 포함됩니다.
 
 이 최종 리뷰도 편집 리뷰입니다. Maintainer handoff에 사용할 만큼 문서가 일관적인지 요약합니다. Runtime conformance, 기준 상태, evidence, QA, Acceptance, 잔여 위험 수용, close readiness, implementation readiness를 만들지 않습니다. Finding을 기록할 때는 기존 docs-maintenance reporting expectation을 사용하며, 이 최종 pass를 위한 새 필수 report format을 만들지 않습니다.
 

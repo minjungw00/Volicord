@@ -84,11 +84,11 @@ The current baseline separates three statuses that must not collapse into each o
 | Documentation review status / 문서 검토 상태 | Post-redesign review; documentation acceptance candidate only. Maintainers have not accepted the docs yet. / 재설계 이후 검토 상태이며 문서 수락 후보입니다. 유지보수자가 아직 문서를 수락하지 않았습니다. |
 | Implementation planning readiness / 구현 계획 준비 상태 | Not accepted. Maintainers must confirm the implementation-readiness criteria; editorial cleanup alone is not enough if schema/design or stage-boundary decisions remain. / 수락되지 않았습니다. 유지보수자가 구현 준비 조건을 확인해야 하며, 스키마/설계 결정이나 단계 경계 결정이 남아 있다면 편집 정리만으로 충분하지 않습니다. |
 | Runtime implementation status / 런타임 구현 상태 | Not started. No runtime artifacts or conformance results exist here yet; see Implementation Overview for full status detail. / 시작하지 않았습니다. 아직 런타임 아티팩트나 conformance 결과가 없으며, 전체 상태는 구현 개요에서 확인합니다. |
-| Server-coding decision log / 서버 코딩 전 결정 기록 | Empty at this baseline, but that is not a claim that no decisions remain. Current review and readiness review may still uncover decisions; record them in one place: [MVP Plan](docs/en/build/mvp-plan.md#implementation-decisions-needed-before-server-coding) / [MVP 계획](docs/ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정). / 현재 기준에서는 비어 있지만, 남은 결정이 없다는 뜻은 아닙니다. 현재 검토와 구현 준비 검토에서 결정이 드러날 수 있으며, 새 결정은 한 곳에 기록합니다. |
+| Server-coding decision log / 서버 코딩 전 결정 기록 | No confirmed server-coding decision-log entries are recorded at this baseline, but that is not a claim that no decisions remain. Current review and readiness review may still uncover decisions; record them in one place: [MVP Plan](docs/en/build/mvp-plan.md#implementation-decisions-needed-before-server-coding) / [MVP 계획](docs/ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정). / 현재 기준에서 기록된 확인된 서버 코딩 전 결정 항목은 없지만, 남은 결정이 없다는 뜻은 아닙니다. 현재 검토와 구현 준비 검토에서 결정이 드러날 수 있으며, 새 결정은 한 곳에 기록합니다. |
 
 Until the maintainer handoff explicitly accepts implementation planning, work remains documentation maintenance and runtime/server implementation must not start.
 
-Maintainer handoff: [English summary](docs/en/build/implementation-overview.md#maintainer-handoff-summary) / [문서 수락 후보 요약](docs/ko/build/implementation-overview.md#문서-수락-후보-요약). Status: [English](docs/en/build/implementation-overview.md#documentation-acceptance-status) / [한국어](docs/ko/build/implementation-overview.md#문서-수락-상태).
+Maintainer handoff: [English summary](docs/en/build/implementation-overview.md#maintainer-handoff-summary) / [문서 인계 요약](docs/ko/build/implementation-overview.md#문서-인계-요약). Status: [English](docs/en/build/implementation-overview.md#documentation-acceptance-status) / [한국어](docs/ko/build/implementation-overview.md#문서-수락-상태).
 
 유지보수자 인계 상태에서 구현 계획 준비 상태가 명시적으로 수락되기 전까지 작업은 문서 유지보수이며 런타임/서버 구현을 시작하면 안 됩니다.
 
@@ -102,7 +102,7 @@ Maintainer handoff: [English summary](docs/en/build/implementation-overview.md#m
 
 Before starting Harness Server code, implementers should read the maintainer handoff summary, the [implementation-readiness criteria](docs/en/build/implementation-overview.md#implementation-readiness-criteria) / [하네스 서버 구현 준비 조건](docs/ko/build/implementation-overview.md#하네스-서버-구현-준비-조건), the [server-coding decisions section](docs/en/build/mvp-plan.md#implementation-decisions-needed-before-server-coding) in the MVP Plan, and then the [First Runnable Slice](docs/en/build/first-runnable-slice.md).
 
-하네스 서버 코드를 시작하기 전 구현자는 유지보수자용 [문서 수락 후보 요약](docs/ko/build/implementation-overview.md#문서-수락-후보-요약), [하네스 서버 구현 준비 조건](docs/ko/build/implementation-overview.md#하네스-서버-구현-준비-조건), MVP 계획의 [서버 코딩 전 결정 섹션](docs/ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정), 그리고 [첫 실행 가능한 조각](docs/ko/build/first-runnable-slice.md)을 차례로 확인해야 합니다.
+하네스 서버 코드를 시작하기 전 구현자는 유지보수자용 [문서 인계 요약](docs/ko/build/implementation-overview.md#문서-인계-요약), [하네스 서버 구현 준비 조건](docs/ko/build/implementation-overview.md#하네스-서버-구현-준비-조건), MVP 계획의 [서버 코딩 전 결정 섹션](docs/ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정), 그리고 [첫 실행 가능한 조각](docs/ko/build/first-runnable-slice.md)을 차례로 확인해야 합니다.
 
 ## Start Here / 시작하기
 

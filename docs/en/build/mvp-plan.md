@@ -136,9 +136,22 @@ Required in an API schema therefore means required when that tool call, record, 
 
 ### Implementation decisions needed before server coding
 
-Decision-log baseline: the server-coding decision log is empty here at this baseline. This is not proof that no decisions remain. Implementation-readiness criteria still require maintainer judgment, and the documentation is available for maintainer acceptance review only as a candidate until maintainers deliberately update [Implementation Overview: Documentation acceptance status](implementation-overview.md#documentation-acceptance-status).
+This section is the central server-coding decision log for decisions found during maintainer review or first runtime-batch planning. Do not create scattered `TODO_DECISION` markers or vague follow-ups for major implementation choices.
 
-Do not leave major implementation decisions as scattered TODOs or vague follow-ups. If current review or first runtime-batch planning finds one, record it here with the owner doc, affected behavior or field, affected stage, options considered, and the decision needed before changing server code or DDL.
+| Decision-log item | Current status | Decision condition |
+|---|---|---|
+| Confirmed server-coding decision-log entries | None recorded at this baseline. This is not proof that no decisions remain. | If maintainer review or first runtime-batch planning finds a schema/design decision, stage boundary decision, or other server-coding decision, add it here before changing server code or DDL. |
+| Implementation-readiness judgment | Not accepted. | Maintainers must deliberately update [Implementation Overview: Documentation acceptance status](implementation-overview.md#documentation-acceptance-status) after the readiness criteria are satisfied or remaining blockers are reclassified. |
+| Documentation drift | Not a server-coding decision by default. | If a docs-maintenance finding exposes a real owner-contract decision or stage blocker, promote it into this log with stage impact; otherwise route it through the Authoring Guide tracker. |
+
+When a confirmed decision is added, record:
+
+- owner document or owner section
+- affected behavior, field, table, fixture semantics, guarantee level, or stage boundary
+- affected stage
+- options considered
+- decision needed before server code or DDL changes
+- whether the item blocks documentation acceptance, implementation planning, server coding, or only a later stage
 
 ### Core Authority Slice flow
 

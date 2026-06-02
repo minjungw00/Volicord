@@ -136,9 +136,22 @@ Reference schema에는 관련 capability가 범위에 들어올 때만 필요한
 
 ### 서버 코딩 전 필요한 구현 결정
 
-결정 기록 기준: 서버 코딩 전 결정 기록은 현재 기준에서 이곳에 비어 있습니다. 이것은 남은 결정이 없다는 증명이 아닙니다. 구현 준비 조건에는 아직 유지보수자 판단이 필요하며, [구현 개요: 문서 수락 상태](implementation-overview.md#문서-수락-상태)를 유지보수자가 명시적으로 바꾸기 전까지 이 문서는 유지보수자 수락 검토 대상 후보일 뿐입니다.
+이 섹션은 maintainer review나 첫 runtime batch planning에서 발견되는 구현 시작 전 결정 기록의 단일 위치입니다. 큰 구현 선택을 흩어진 `TODO_DECISION`이나 막연한 follow-up으로 남기지 않습니다.
 
-큰 구현 결정을 흩어진 TODO나 막연한 follow-up으로 남기지 않습니다. 현재 검토 또는 첫 런타임 배치 계획에서 새 결정이 발견되면, server code나 DDL을 바꾸기 전에 담당 문서, 영향받는 동작 또는 field, 영향을 받는 단계, 검토한 option, 필요한 결정을 이곳에 기록합니다.
+| 결정 기록 항목 | 현재 상태 | 결정 조건 |
+|---|---|---|
+| 확인된 server-coding decision-log 항목 | 현재 기준에서는 기록된 항목이 없습니다. 이것은 남은 결정이 없다는 증명이 아닙니다. | Maintainer review나 첫 runtime batch planning에서 schema/design decision, stage boundary decision, 그 밖의 server-coding decision이 발견되면 server code나 DDL을 바꾸기 전에 이곳에 추가합니다. |
+| 구현 준비 판단 | 수락되지 않았습니다. | Maintainer가 구현 준비 조건이 충족되었거나 남은 blocker가 재분류되었다고 판단한 뒤 [구현 개요: 문서 수락 상태](implementation-overview.md#문서-수락-상태)를 의도적으로 갱신해야 합니다. |
+| 문서 drift | 기본적으로 server-coding decision이 아닙니다. | Docs-maintenance finding이 실제 owner-contract decision이나 stage blocker를 드러내면 stage impact와 함께 이 기록으로 승격합니다. 그렇지 않으면 문서 작성 가이드 tracker로 routing합니다. |
+
+확인된 결정이 추가되면 다음을 기록합니다.
+
+- 담당 문서 또는 담당 section
+- 영향을 받는 behavior, field, table, fixture semantics, guarantee level, stage boundary
+- 영향을 받는 stage
+- 검토한 option
+- server code나 DDL 변경 전에 필요한 결정
+- 이 항목이 문서 수락, 구현 계획, 서버 코딩, 또는 이후 stage만 막는지
 
 ### 코어 권한 조각 흐름
 
