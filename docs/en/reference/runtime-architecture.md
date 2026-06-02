@@ -13,7 +13,7 @@ This is reference documentation for future Harness behavior. Current repository 
 - You are mapping product repository files to Harness runtime state.
 - You are implementing Core, artifact capture, projection, reconcile, validation, recovery, or export behavior.
 - You need to decide whether a failure affects canonical state, artifacts, projections, or only display.
-- You are explaining why a connected surface is cooperative, detective, preventive, or isolated.
+- You are explaining where a connected surface's reported guarantee level fits in the runtime flow.
 
 ## Before you read
 
@@ -37,7 +37,7 @@ This document owns:
 - artifact store architecture
 - architecture placement for security boundaries
 - projection and reconcile architecture
-- guarantee levels
+- architecture placement for guarantee-level display
 - failure and recovery overview
 
 ## Not covered here
@@ -48,7 +48,7 @@ This document does not own:
 - SQLite DDL; see [Storage And DDL](storage-and-ddl.md)
 - full CLI command semantics; see [Operations And Conformance Reference](operations-and-conformance.md)
 - conformance fixture format; see [Conformance Fixtures Reference](conformance-fixtures.md)
-- threat-model assets, trust boundaries, threat categories, and control categories; see [Security Threat Model Reference](security-threat-model.md)
+- threat-model assets, trust boundaries, threat categories, control categories, and guarantee-level meanings; see [Security Threat Model Reference](security-threat-model.md)
 - surface-specific connector cookbooks; see [Surface Cookbook](surface-cookbook.md)
 - connector capability profiles; see [Agent Integration Reference](agent-integration.md)
 - kernel transition table; see [Kernel Reference](kernel.md)
@@ -89,15 +89,7 @@ Harness is designed as a local authority layer, not as a general operating-syste
 
 The architecture implication is simple: nearby files and callers are separate trust zones. Product files, chat text, generated connector files, operator output, projection Markdown, artifact bytes, external command output, and MCP caller claims can inform Harness, but Core alone commits canonical operational state.
 
-Architecture keeps these security boundaries visible:
-
-| Boundary | Architecture handling |
-|---|---|
-| Product Repository and projections | Input and readable views; operational meaning flows through Core or reconcile. |
-| MCP server and connected surfaces | Public tools enter through Core and capability is displayed according to the actual profile. |
-| Runtime Home | `state.sqlite`, `state.sqlite.task_events`, registry/config files, and artifacts are treated as local control data; direct file edits are not authority. |
-| Artifact store | Evidence bytes are untrusted until artifact registration, integrity, redaction/omission, and owner-record checks succeed. |
-| External tools and network | Side-effecting commands stay bounded by existing scope, Approval, write-authority, connector, and operator controls. |
+Architecture keeps those boundaries visible by placing Product Repository files and projections as inputs or readable views, MCP and connected surfaces as caller paths into Core, Runtime Home as local control data, the artifact store as untrusted bytes until registration and integrity checks pass, and external tools/network as side-effecting paths bounded by the existing scope, Approval, connector, and operator controls. The full boundary matrix is owned by [Security Threat Model Reference](security-threat-model.md#trust-boundaries).
 
 Local-only MCP exposure, secret/PII handling, command/path/network allowlists for high-risk work, artifact path validation, stale approval replay, projection tampering, capability overclaiming, and stale context poisoning are threat-model concepts. Their exact API, storage, kernel, connector, and operations contracts remain with the owner documents linked from the threat model.
 
@@ -307,25 +299,7 @@ Reconcile can merge, reject, convert to note, create a decision, create or updat
 
 ## Guarantee levels
 
-The harness reports guarantee levels to make enforcement strength honest:
-
-| Level | Meaning |
-|---|---|
-| `cooperative` | the agent surface is instructed to follow Harness rules and MCP decisions; any hold is by instruction, not a hard security boundary |
-| `detective` | Harness can detect or record violations after action and mark state blocked, stale, partial, or failed; this is detection, not prevention |
-| `preventive` | a concrete connector or runtime path blocks the covered operation before it happens, with fixture proof for that exact path |
-| `isolated` | work or verification runs behind a documented separation boundary. A worktree or fresh evaluator bundle can provide scope, freshness, or blast-radius separation, but it is not automatically an OS sandbox, permission boundary, or tamper-proof security boundary unless the profile proves that exact isolation mechanism. Isolation alone does not approve or verify the work |
-
-### Stage guarantee posture
-
-Guarantee levels apply to staged delivery as follows:
-
-| Stage | Honest guarantee posture |
-|---|---|
-| v0.1 Core Authority Slice / Kernel Smoke | Demonstrates Core authority over one minimal scoped work loop: local registration, Task, scoped boundary, `prepare_write`, single-use Write Authorization, `record_run`, artifact/evidence ref, and structured status/blocker response. The reference surface should be displayed as cooperative/detective unless a fixture-proven pre-tool guard or documented and proven separation boundary is explicitly implemented for the covered operation. No OS-level permissions, arbitrary-tool sandboxing, tamper-proof local files, or automatic pre-tool blocking are implied. |
-| v0.2 User-Facing Harness MVP | Adds user-facing status, judgment, evidence, and close-readiness comprehension over the same local-only posture. It must not claim OS-level isolation, sandboxing, tamper-proof storage, or pre-tool blocking unless the connected profile proves that exact stronger control. |
-| v0.3-v0.4 hardened local profiles | May promote preventive controls for covered operations or isolated work/verification profiles only when owner docs, connector profiles, and conformance prove the exact covered operation or separation boundary. Until then, stronger controls remain future or profile-specific notes. |
-| v1+ Expansion | Remote, shared, cloud, or broader isolated profiles remain roadmap scope unless promoted by owner docs and conformance. They must keep the same Core authority, trust-boundary, and honest guarantee display rules. |
+The exact meanings of `cooperative`, `detective`, `preventive`, and `isolated`, plus the staged honest-display rules for those labels, are owned by [Security Threat Model Reference: Honest guarantee display](security-threat-model.md#honest-guarantee-display). This architecture section owns only where the reported label appears in the runtime flow: connector profiles and adapters report it, Core still performs the authority decision, and operator or recovery surfaces use it as display and risk context.
 
 ### Guarantee level enforcement map
 

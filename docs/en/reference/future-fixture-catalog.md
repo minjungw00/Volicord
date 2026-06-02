@@ -4,7 +4,7 @@
 
 Use this appendix to review the future fixture catalog separately from the small core conformance model. It collects detailed candidate scenarios for browser QA, cross-surface behavior, export non-leakage, context hygiene, reconcile, stewardship, operations, advanced projection rendering, and future guarantee-level checks.
 
-This is future design documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, fixture files, generated projections, or runtime data before documentation acceptance and a separate implementation-planning readiness decision. The current repository is documentation-only and does not contain runnable Harness Server conformance tests.
+This is future design documentation only. The current repository is documentation-only and contains no runnable Harness Server conformance tests; current phase and handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 
 ## Catalog Boundary
 

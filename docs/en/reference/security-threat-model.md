@@ -6,7 +6,7 @@ Use this reference to identify Harness security assets, trust boundaries, threat
 
 It is a lookup document for implementers, operators, connector authors, and conformance authors who need to keep local authority boundaries explicit. It does not replace the architecture, API, storage, kernel, connector, or operations owner documents.
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before documentation acceptance and a separate implementation-planning readiness decision. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as a narrow future smoke-check authoring label. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack harden agency assurance, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 
 ## Read this when
 
@@ -18,7 +18,7 @@ This is reference documentation. It does not authorize runtime/server implementa
 
 ## Before you read
 
-Use [Runtime Architecture Reference](runtime-architecture.md) for the runtime spaces, Core process model, transaction ordering, and guarantee-level definitions. Use [Agent Integration Reference](agent-integration.md) for connector capability profiles, generated manifests, context push/pull, and fallback display. Use [Operations And Conformance Reference](operations-and-conformance.md) for stage-specific `doctor`, `serve mcp`, artifact checks, recover, and reconcile behavior. Use [Conformance Fixtures Reference](conformance-fixtures.md) for fixture semantics.
+Use [Runtime Architecture Reference](runtime-architecture.md) for the runtime spaces, Core process model, transaction ordering, and architecture placement. Use [Agent Integration Reference](agent-integration.md) for connector capability profiles, generated manifests, context push/pull, and fallback display. Use [Operations And Conformance Reference](operations-and-conformance.md) for stage-specific `doctor`, `serve mcp`, artifact checks, recover, and reconcile behavior. Use [Conformance Fixtures Reference](conformance-fixtures.md) for fixture semantics.
 
 Use [MCP API And Schemas](mcp-api-and-schemas.md) for public tool envelopes, errors, and replay behavior. Use [Storage And DDL](storage-and-ddl.md) for exact storage layout, artifact rows, and DDL. Use [Kernel Reference](kernel.md) for state transitions, gates, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, and close.
 
@@ -46,6 +46,7 @@ This document owns:
 - the security asset map
 - the trust-boundary map
 - the required threat and control categories
+- guarantee-level meanings and honest-display rules
 - the rule that high-risk work cannot depend on cooperative-only claims when preventive or isolated controls are required
 - the non-substitution boundary between threat-model concepts and exact DDL, API schemas, and kernel transitions
 
@@ -175,8 +176,10 @@ Guard, freeze, careful-mode, recipe names, product names, surface names, and fri
 | MCP tool envelope, `ToolError`, public errors, idempotency, replay, expected state version | [MCP API And Schemas](mcp-api-and-schemas.md) |
 | Kernel state transitions, gates, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close | [Kernel Reference](kernel.md) |
 | `state.sqlite`, `task_events`, artifact storage rows, DDL, enum hardening, hashes, storage layout | [Storage And DDL](storage-and-ddl.md) |
-| Runtime spaces, Core transaction ordering, artifact architecture, guarantee level definitions | [Runtime Architecture Reference](runtime-architecture.md) |
+| Guarantee-level meanings and honest display rules | This document: [Honest guarantee display](#honest-guarantee-display) |
+| Runtime spaces, Core transaction ordering, and artifact/projection architecture placement | [Runtime Architecture Reference](runtime-architecture.md) |
 | Connector capability profiles, generated manifests, context push/pull, fallback display | [Agent Integration Reference](agent-integration.md) |
 | Stage-specific operator diagnostics, severity baselines, `doctor`, `serve mcp`, artifact check, recover, reconcile | [Operations And Conformance Reference](operations-and-conformance.md) |
-| Conformance fixture body shape, assertion semantics, suite catalogs, examples | [Conformance Fixtures Reference](conformance-fixtures.md) |
+| Core fixture mechanics: fixture body shape, runner behavior, assertion semantics, fixture profiles, suite metadata boundaries, reduced Kernel Smoke queue | [Conformance Fixtures Reference](conformance-fixtures.md) |
+| Detailed future scenario candidates, future fixture examples, staged fixture coverage maps, fixture suite family summaries, catalog-only future candidates | [Future Fixture Catalog](future-fixture-catalog.md) |
 | Projection freshness, managed blocks, reconcile behavior, template ownership | [Document Projection Reference](document-projection.md) and [Template Reference](templates/README.md) |

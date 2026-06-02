@@ -6,7 +6,7 @@ Use this reference to decide when a design-quality policy applies, what record o
 
 These policies help AI-assisted work stay aligned with product design, domain language, module boundaries, testing discipline, human QA, and context hygiene without turning every quality preference into a kernel rule.
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before documentation acceptance and a separate implementation-planning readiness decision. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as a narrow future smoke-check authoring label. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack harden agency assurance, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 
 This document does not define MCP schemas, SQLite DDL, state transition tables, runtime behavior, server behavior, or full projection templates.
 
@@ -83,17 +83,9 @@ Policy waivers are also limited. They can satisfy a design-quality requirement o
 
 ### Close-support boundaries
 
-Design-quality policies may create findings, evidence needs, QA requirements, verification needs, residual-risk candidates, Decision Packet needs, or close blockers, but each category stays on its owner path:
+Design-quality policies may create findings, evidence needs, QA requirements, verification needs, residual-risk candidates, Decision Packet needs, or close blockers, but each category stays on its owner path. The exact non-substitution contract for evidence, verification, Manual QA, final acceptance, and residual risk is owned by [Kernel Reference: Evidence, verification, QA, final acceptance, and risk](kernel.md#evidence-verification-qa-final-acceptance-and-risk).
 
-| Category | Policy-facing meaning | Does not substitute for |
-|---|---|---|
-| Evidence | Records or refs supporting a claim, criterion, run, finding, or observation. | Manual QA, verification, final acceptance, or residual-risk acceptance. |
-| Verification | A scoped check of correctness, with detached assurance only through a valid Eval path. | Manual QA, final acceptance, or residual-risk acceptance. |
-| Manual QA | Human inspection of UX, workflow, copy, accessibility, visual output, product taste, or environment-dependent behavior. | Automated verification, detached verification, final acceptance, or residual-risk acceptance. |
-| Final acceptance | User result judgment when required after the close basis is visible. | Evidence, verification, Manual QA, sensitive-action Approval, waiver, or residual-risk acceptance. |
-| Residual-risk acceptance | Explicit user acceptance of named, visible close-relevant residual risk. | Implementation verification, evidence sufficiency, Manual QA pass, final acceptance, or no-risk close. |
-
-Passing tests can be evidence and can support verification, but it does not automatically satisfy Manual QA or final acceptance. A QA waiver only affects the named QA requirement; it does not create verification evidence or a passed Manual QA result. User final acceptance does not erase residual risk, and residual-risk acceptance does not verify implementation.
+For policy authors, the local rule is simple: route the finding to the existing owner record or blocker, then link the kernel rule when the reader needs the precise close-support boundary. Passing tests, a QA waiver, final acceptance, and residual-risk acceptance may affect policy outcomes only through their owner paths; policy prose must not treat one as a substitute for another.
 
 ## Two-stage review model
 

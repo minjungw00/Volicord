@@ -4,7 +4,7 @@
 
 작은 핵심 적합성 모델과 분리해서 향후 fixture catalog를 검토할 때 이 appendix를 사용합니다. Browser QA, cross-surface behavior, export non-leakage, context hygiene, reconcile, stewardship, operations, advanced projection rendering, future guarantee-level check를 위한 detailed candidate scenario를 모아 둡니다.
 
-이 문서는 향후 설계 문서입니다. 문서 수락과 별도의 구현 계획 준비 결정 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture, fixture 파일, 생성된 projection, runtime data를 만들라는 뜻이 아닙니다. 현재 저장소는 문서 전용이며 runnable Harness Server conformance test를 담고 있지 않습니다.
+이 문서는 향후 설계 문서입니다. 현재 저장소는 문서 전용이며 runnable Harness Server conformance test를 담고 있지 않습니다. 현재 단계와 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-승인-상태)에 있습니다.
 
 ## Catalog 경계
 

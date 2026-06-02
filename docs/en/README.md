@@ -157,22 +157,21 @@ Use this path for implementation orientation and planning review. Start with the
 
 ## Reference
 
-Use this path to look up strict contracts. If another path summarizes a strict rule, update the Reference owner first.
+Use this path to look up strict contracts. If another path summarizes a strict rule, update the Reference owner first. The canonical maintenance map is in [Authoring Guide: Reference contract owner map](maintain/authoring-guide.md#reference-contract-owner-map).
 
-- [Kernel Reference](reference/kernel.md)
-- [Runtime Architecture Reference](reference/runtime-architecture.md)
-- [Security Threat Model Reference](reference/security-threat-model.md)
-- [MCP API And Schemas](reference/mcp-api-and-schemas.md)
-- [Storage And DDL](reference/storage-and-ddl.md)
-- [Document Projection Reference](reference/document-projection.md)
-- [Design Quality Policies](reference/design-quality-policies.md)
-- [Agent Integration Reference](reference/agent-integration.md)
-- [Surface Cookbook](reference/surface-cookbook.md)
-- [Operations And Conformance Reference](reference/operations-and-conformance.md)
-- [Conformance Fixtures Reference](reference/conformance-fixtures.md)
-- [Future Fixture Catalog](reference/future-fixture-catalog.md)
-- [Glossary Reference](reference/glossary.md)
-- [Template Reference](reference/templates/README.md)
+| Need | Owner |
+|---|---|
+| Invariants, state transitions, gates, write authority, and close semantics | [Kernel Reference](reference/kernel.md) |
+| Public MCP methods, envelopes, request/response schemas, errors, idempotency, and shared refs | [MCP API And Schemas](reference/mcp-api-and-schemas.md) |
+| Persisted state, runtime layout, DDL profiles, storage JSON, locks, artifacts, and projection job storage | [Storage And DDL](reference/storage-and-ddl.md) |
+| Derived view rules, output tiers, freshness, managed blocks, and rendered template bodies | [Document Projection Reference](reference/document-projection.md) and [Template Reference](reference/templates/README.md) |
+| Threat model, trust boundaries, high-risk controls, and guarantee-level meanings | [Security Threat Model Reference](reference/security-threat-model.md) |
+| Core conformance mechanics and future scenario inventory | [Conformance Fixtures Reference](reference/conformance-fixtures.md) owns the core model, fixture body, runner, assertions, fixture profiles, and Kernel Smoke queue; [Future Fixture Catalog](reference/future-fixture-catalog.md) owns detailed future scenarios, examples, coverage maps, suite summaries, and catalog-only candidates. |
+| Operator behavior, staged operator surface, diagnostics, recover/reconcile/export/artifact checks, and conformance run entrypoint | [Operations And Conformance Reference](reference/operations-and-conformance.md) |
+| Connector profiles, context push/pull, generated manifests, fallback behavior, and surface recipes | [Agent Integration Reference](reference/agent-integration.md) and [Surface Cookbook](reference/surface-cookbook.md) |
+| Public/internal terminology definitions and owner routing | [Glossary Reference](reference/glossary.md) |
+| Runtime spaces, Core transaction placement, architecture flow, and failure/recovery overview | [Runtime Architecture Reference](reference/runtime-architecture.md) |
+| Design-quality policies, validator IDs, severity composition, waiver semantics, and policy close impact | [Design Quality Policies](reference/design-quality-policies.md) |
 
 ## Maintain
 

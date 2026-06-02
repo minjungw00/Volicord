@@ -4,7 +4,7 @@
 
 Use this glossary to confirm official Harness terms, capitalization, record names, and non-substitution boundaries while reading other docs.
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before documentation acceptance and a separate implementation-planning readiness decision. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as a narrow future smoke-check authoring label. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack harden agency assurance, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 
 ## Read this when
 
@@ -61,9 +61,10 @@ These are implementation labels used by references, APIs, schemas, records, and 
 | Projections, managed blocks, projection freshness, Markdown reports, template bodies | [Document Projection Reference](document-projection.md); [Template Reference](templates/README.md) |
 | Discovery and Shared Design, design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contracts | [Design Quality Policies](design-quality-policies.md) |
 | Surface capability, guarantee display, connector behavior | [Agent Integration Reference](agent-integration.md) |
-| Security assets, trust boundaries, threat categories, high-risk control expectations | [Security Threat Model Reference](security-threat-model.md) |
+| Security assets, trust boundaries, threat categories, high-risk control expectations, guarantee-level meanings | [Security Threat Model Reference](security-threat-model.md) |
 | Operator procedures, conformance run overview, docs-maintenance reporting | [Operations And Conformance Reference](operations-and-conformance.md) |
-| Conformance fixture body shape, assertion semantics, suite catalogs, and examples | [Conformance Fixtures Reference](conformance-fixtures.md) |
+| Core conformance model, fixture body shape, runner behavior, assertion semantics, fixture profiles, and reduced Kernel Smoke queue | [Conformance Fixtures Reference](conformance-fixtures.md) |
+| Detailed future scenario candidates, future fixture examples, staged fixture coverage maps, fixture suite family summaries, and catalog-only future candidates | [Future Fixture Catalog](future-fixture-catalog.md) |
 
 ## Official Terms
 
@@ -339,7 +340,7 @@ The honest enforcement strength available for a connected surface or runtime pat
 cooperative | detective | preventive | isolated
 ```
 
-Capability affects validator results, blocked reasons, and display; it is not Approval, Write Authorization, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a kernel gate. Exact level meanings are owned by [Runtime Architecture](runtime-architecture.md#guarantee-levels).
+Capability affects validator results, blocked reasons, and display; it is not Approval, Write Authorization, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a kernel gate. Exact level meanings are owned by [Security Threat Model](security-threat-model.md#honest-guarantee-display).
 
 ### Guard
 

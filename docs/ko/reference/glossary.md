@@ -4,7 +4,7 @@
 
 다른 문서를 읽다가 하네스의 공식 용어, 대소문자, record name, 서로 대체할 수 없는 경계를 확인할 때 이 용어집을 사용합니다.
 
-이 문서는 참조 문서입니다. 문서 수락과 별도의 구현 계획 준비 결정 전에는 런타임/서버 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, 런타임 데이터를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 좁은 미래 스모크 확인 작성 라벨입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. 에이전시 보증 팩(v0.3 Agency Assurance Pack)과 운영과 인계 팩(v0.4 Operations & Handoff Pack)은 에이전시 보증, 운영, 인계 동작을 단단하게 만드는 단계이며, v1+ Expansion은 담당 문서가 승격하고 증명하기 전까지 로드맵 범위에 남습니다.
+이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-승인-상태)에 있습니다.
 
 ## 이런 때 읽기
 
@@ -61,9 +61,10 @@
 | 읽기용 요약 / Projection, managed block, projection freshness, Markdown 보고서, template body | [문서 Projection 참조](document-projection.md); [Template 참조](templates/README.md) |
 | Discovery와 Shared Design, design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contract | [설계 품질 정책](design-quality-policies.md) |
 | Surface capability, guarantee display, connector behavior | [Agent 통합 참조](agent-integration.md) |
-| Security asset, trust boundary, threat category, high-risk control expectation | [보안 위협 모델 참조](security-threat-model.md) |
+| Security asset, trust boundary, threat category, high-risk control expectation, guarantee-level 의미 | [보안 위협 모델 참조](security-threat-model.md) |
 | Operator procedure, conformance run overview, docs-maintenance 보고 | [운영과 Conformance 참조](operations-and-conformance.md) |
-| Conformance fixture body shape, assertion semantics, suite catalog, example | [Conformance Fixtures 참조](conformance-fixtures.md) |
+| 핵심 적합성 모델, 정확한 fixture body, runner 동작, assertion semantics, fixture profile, 축소된 Kernel Smoke 작성 순서 | [Conformance Fixtures 참조](conformance-fixtures.md) |
+| 향후 상세 scenario 후보, 향후 fixture example, 단계별 fixture coverage map, fixture suite family summary, catalog-only future candidate | [향후 Fixture Catalog](future-fixture-catalog.md) |
 
 ## 공식 용어
 
@@ -359,7 +360,7 @@ Status 또는 write decision에 대한 actual guarantee level을 user-facing 및
 cooperative | detective | preventive | isolated
 ```
 
-Capability는 validator results, blocked reasons, display에 영향을 주지만 Approval, 쓰기 허가 기록, verification, QA, 작업 수락, 잔여 위험 수용, 닫기 준비 상태, kernel gate는 아닙니다. 정확한 level meanings는 [런타임 아키텍처](runtime-architecture.md#보장-수준)가 담당합니다.
+Capability는 validator results, blocked reasons, display에 영향을 주지만 Approval, 쓰기 허가 기록, verification, QA, 작업 수락, 잔여 위험 수용, 닫기 준비 상태, kernel gate는 아닙니다. 정확한 level meanings는 [보안 위협 모델](security-threat-model.md#정직한-guarantee-display)이 담당합니다.
 
 ### Guard
 

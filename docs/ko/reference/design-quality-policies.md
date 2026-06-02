@@ -6,7 +6,7 @@
 
 이 정책들은 AI 지원 작업이 제품 설계, 도메인 언어, 모듈 경계, 테스트 규율, 사람의 QA, 맥락 관리와 어긋나지 않도록 돕습니다. 동시에 모든 품질 선호를 커널 불변 규칙으로 승격하지는 않습니다.
 
-이 문서는 참조 문서입니다. 문서 수락과 별도의 구현 계획 준비 결정 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 좁은 future smoke-check 작성 label입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. 에이전시 보증 팩(v0.3 Agency Assurance Pack)과 운영과 인계 팩(v0.4 Operations & Handoff Pack)은 agency assurance, operations, handoff behavior를 단단하게 만드는 단계이며, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 남습니다.
+이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-승인-상태)에 있습니다.
 
 이 문서는 MCP schema, SQLite DDL, 상태 전이 표, runtime/server 동작, 전체 projection template을 정의하지 않습니다.
 
@@ -83,17 +83,9 @@ Kernel은 lifecycle, gate transition, close semantics, blocker mechanics, state 
 
 ### 닫기 지원 범주 경계
 
-설계 품질 정책은 finding, 근거 필요성, 수동 QA 요구, 검증 필요성, 잔여 위험 후보, Decision Packet 필요성, close blocker를 만들 수 있지만 각 범주는 자기 owner path에 남습니다.
+설계 품질 정책은 finding, 근거 필요성, 수동 QA 요구, 검증 필요성, 잔여 위험 후보, Decision Packet 필요성, close blocker를 만들 수 있지만 각 범주는 자기 owner path에 남습니다. 근거, 검증, 수동 QA, 작업 수락, 잔여 위험의 정확한 대체 불가능성 계약은 [커널 참조: 근거, 검증, 수동 QA, 작업 수락, 위험](kernel.md#근거-검증-수동-qa-작업-수락-위험)이 담당합니다.
 
-| 범주 | 정책에서의 의미 | 대신할 수 없는 것 |
-|---|---|---|
-| 근거 | claim, criterion, Run, finding, observation을 뒷받침하는 기록 또는 ref. | 수동 QA, 검증, 작업 수락, 잔여 위험 수용. |
-| 검증 | 정확성에 대한 범위가 정해진 check이며, 분리 보증은 valid Eval path를 통해서만 생김. | 수동 QA, 작업 수락, 잔여 위험 수용. |
-| 수동 QA | UX, workflow, copy, accessibility, visual output, product taste, environment-dependent behavior에 대한 사람의 확인. | 자동 검증, 분리 검증, 작업 수락, 잔여 위험 수용. |
-| 작업 수락 | Close basis가 보인 뒤 required일 때 사용자가 결과를 받아들이는 판단. | 근거, 검증, 수동 QA, 민감 동작 승인, 면제 판단, 잔여 위험 수용. |
-| 잔여 위험 수용 | 표시된 close-relevant 잔여 위험을 사용자가 명시적으로 수용하는 판단. | 구현 검증, 근거 충분성, 수동 QA 통과, 작업 수락, 위험 없는 close. |
-
-테스트 통과는 근거가 될 수 있고 검증을 뒷받침할 수 있지만, 자동으로 수동 QA나 작업 수락을 충족하지 않습니다. QA 면제 판단은 이름 붙은 QA requirement에만 영향을 주며 검증 근거 또는 수동 QA 통과 결과를 만들지 않습니다. 사용자가 작업을 수락해도 잔여 위험이 지워지지 않고, 잔여 위험 수용은 구현을 검증하지 않습니다.
+정책 작성자의 local rule은 간단합니다. Finding을 기존 owner record나 blocker로 라우팅하고, 정확한 닫기 지원 경계가 필요하면 kernel rule로 연결합니다. 테스트 통과, QA waiver, 작업 수락, 잔여 위험 수용은 각 owner path를 통해서만 정책 결과에 영향을 줄 수 있으며, 정책 prose가 하나를 다른 하나의 대체물로 취급하면 안 됩니다.
 
 ## Two-stage review model
 

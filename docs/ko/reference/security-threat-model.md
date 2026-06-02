@@ -6,7 +6,7 @@ Runtime 구현 계획에 들어가기 전에 Harness security asset, trust bound
 
 이 문서는 local authority boundary를 명확하게 유지해야 하는 implementer, operator, connector author, conformance author를 위한 lookup 문서입니다. Architecture, API, storage, kernel, connector, operations owner 문서를 대체하지 않습니다.
 
-이 문서는 참조 문서입니다. 문서 수락과 별도의 구현 계획 준비 결정 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 좁은 future smoke-check 작성 label입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. 에이전시 보증 팩(v0.3 Agency Assurance Pack)과 운영과 인계 팩(v0.4 Operations & Handoff Pack)은 agency assurance, operations, handoff behavior를 단단하게 만드는 단계이며, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 둡니다.
+이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-승인-상태)에 있습니다.
 
 ## 이런 때 읽기
 
@@ -18,7 +18,7 @@ Runtime 구현 계획에 들어가기 전에 Harness security asset, trust bound
 
 ## 읽기 전에
 
-Runtime space, Core process model, transaction ordering, guarantee-level definition은 [런타임 아키텍처 참조](runtime-architecture.md)를 사용합니다. Connector capability profile, generated manifest, context push/pull, fallback display는 [Agent 통합 참조](agent-integration.md)를 사용합니다. 단계별 `doctor`, `serve mcp`, artifact check, recover, reconcile behavior는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용하고, fixture semantics는 [Conformance Fixtures 참조](conformance-fixtures.md)를 사용합니다.
+Runtime space, Core process model, transaction ordering, architecture placement는 [런타임 아키텍처 참조](runtime-architecture.md)를 사용합니다. Connector capability profile, generated manifest, context push/pull, fallback display는 [Agent 통합 참조](agent-integration.md)를 사용합니다. 단계별 `doctor`, `serve mcp`, artifact check, recover, reconcile behavior는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용하고, fixture semantics는 [Conformance Fixtures 참조](conformance-fixtures.md)를 사용합니다.
 
 Public tool envelope, error, replay behavior는 [MCP API와 스키마](mcp-api-and-schemas.md)를 사용합니다. Exact storage layout, artifact row, DDL은 [Storage와 DDL](storage-and-ddl.md)을 사용합니다. State transition, gate, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close는 [커널 참조](kernel.md)를 사용합니다.
 
@@ -46,6 +46,7 @@ Security display는 실제 control과 일치해야 합니다. Cooperative와 det
 - security asset map
 - trust-boundary map
 - 필수 threat와 control category
+- guarantee-level 의미와 honest-display rule
 - preventive 또는 isolated control이 필요한 high-risk work가 cooperative-only claim에 의존하면 안 된다는 규칙
 - threat-model concept과 exact DDL, API schema, kernel transition 사이의 non-substitution boundary
 
@@ -175,8 +176,10 @@ Guard, freeze, careful-mode, recipe name, product name, surface name, friendly m
 | MCP tool envelope, `ToolError`, public error, idempotency, replay, expected state version | [MCP API와 스키마](mcp-api-and-schemas.md) |
 | Kernel state transition, gate, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close | [커널 참조](kernel.md) |
 | `state.sqlite`, `task_events`, artifact storage row, DDL, enum hardening, hash, storage layout | [Storage와 DDL](storage-and-ddl.md) |
-| Runtime space, Core transaction ordering, artifact architecture, guarantee level definition | [런타임 아키텍처 참조](runtime-architecture.md) |
+| Guarantee-level 의미와 honest display rule | 이 문서의 [정직한 guarantee display](#정직한-guarantee-display) |
+| Runtime space, Core transaction ordering, artifact/projection architecture placement | [런타임 아키텍처 참조](runtime-architecture.md) |
 | Connector capability profile, generated manifest, context push/pull, fallback display | [Agent 통합 참조](agent-integration.md) |
 | 단계별 operator diagnostic, severity baseline, `doctor`, `serve mcp`, artifact check, recover, reconcile | [운영과 Conformance 참조](operations-and-conformance.md) |
-| Conformance fixture body shape, assertion semantics, suite catalog, example | [Conformance Fixtures 참조](conformance-fixtures.md) |
+| Core fixture mechanics: 정확한 fixture body, runner 동작, assertion semantics, fixture profile, suite metadata boundary, 축소된 Kernel Smoke 작성 순서 | [Conformance Fixtures 참조](conformance-fixtures.md) |
+| 향후 상세 scenario 후보, 향후 fixture example, 단계별 fixture coverage map, fixture suite family summary, catalog-only future candidate | [향후 Fixture Catalog](future-fixture-catalog.md) |
 | Projection freshness, managed block, reconcile behavior, template ownership | [문서 Projection 참조](document-projection.md)와 [Template 참조](templates/README.md) |

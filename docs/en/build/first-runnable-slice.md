@@ -98,7 +98,7 @@ Done when:
 - Core can resolve the current project for all later Task-scoped actions.
 - Status can distinguish an unregistered or idle project from an active Task.
 
-Owner contracts: runtime home layout and the v0.1 Core Authority Slice schema are owned by [Storage And DDL](../reference/storage-and-ddl.md#core-authority-slice-schema); local spaces and surface guarantees are owned by [Runtime Architecture Reference](../reference/runtime-architecture.md) and [Agent Integration Reference](../reference/agent-integration.md).
+Owner contracts: runtime home layout and the v0.1 Core Authority Slice schema are owned by [Storage And DDL](../reference/storage-and-ddl.md#core-authority-slice-schema); local spaces and guarantee-level placement are owned by [Runtime Architecture Reference](../reference/runtime-architecture.md), guarantee-level meanings by [Security Threat Model Reference](../reference/security-threat-model.md#honest-guarantee-display), and connector reporting by [Agent Integration Reference](../reference/agent-integration.md).
 
 ### 2. One Task Record
 

@@ -13,7 +13,7 @@
 - 제품 저장소 파일과 하네스 런타임의 상태 관계를 매핑할 때.
 - Core, artifact 수집, projection, reconcile, 검증, 복구, export가 어떻게 동작하는지 구현할 때.
 - 실패가 기준 상태, artifact, projection, 표시 영역 중 어디에 영향을 주는지 판단해야 할 때.
-- 연결된 접점이 cooperative, detective, preventive, isolated 중 어디에 해당하는지 설명해야 할 때.
+- 연결된 접점의 reported guarantee level이 runtime flow에서 어디에 쓰이는지 설명해야 할 때.
 
 ## 읽기 전에
 
@@ -37,7 +37,7 @@
 - artifact store architecture
 - security boundary의 architecture placement
 - projection과 reconcile architecture
-- 보장 수준
+- guarantee-level display의 architecture placement
 - failure와 recovery overview
 
 ## 여기서 다루지 않는 것
@@ -48,7 +48,7 @@
 - SQLite DDL. [Storage와 DDL](storage-and-ddl.md)을 봅니다.
 - full CLI command 의미. 현재 담당 문서는 [운영과 Conformance](operations-and-conformance.md)입니다.
 - conformance fixture 형식. 현재 담당 문서는 [Conformance Fixtures 참조](conformance-fixtures.md)입니다.
-- threat-model asset, trust boundary, threat category, control category. [보안 위협 모델 참조](security-threat-model.md)를 봅니다.
+- threat-model asset, trust boundary, threat category, control category, guarantee-level 의미. [보안 위협 모델 참조](security-threat-model.md)를 봅니다.
 - 접점별 connector cookbook. [Surface Cookbook](surface-cookbook.md)을 봅니다.
 - connector capability profile. [Agent 통합 참조](agent-integration.md)를 봅니다.
 - kernel transition table. 자세한 내용은 [커널 참조](kernel.md)를 봅니다.
@@ -89,15 +89,7 @@ flowchart LR
 
 Architecture implication은 단순합니다. 가까이 있는 file과 caller도 별도의 trust zone입니다. Product file, chat text, generated connector file, operator output, projection Markdown, artifact bytes, external command output, MCP caller claim은 하네스에 정보를 줄 수 있지만, canonical operational state를 commit하는 것은 Core뿐입니다.
 
-Architecture는 다음 security boundary를 보이게 유지합니다.
-
-| Boundary | Architecture handling |
-|---|---|
-| 제품 저장소와 projections | Input과 readable view입니다. Operational meaning은 Core 또는 reconcile을 통해 흐릅니다. |
-| MCP server와 connected surfaces | Public tool은 Core를 통해 들어오며, capability는 실제 profile에 맞게 표시합니다. |
-| 하네스 런타임 홈 | `state.sqlite`, `state.sqlite.task_events`, registry/config file, artifact는 local control data로 취급합니다. Direct file edit는 authority가 아닙니다. |
-| Artifact store | Evidence bytes는 artifact registration, integrity, redaction/omission, owner-record check가 성공하기 전까지 untrusted입니다. |
-| External tools와 network | Side effect가 있는 command는 기존 scope, Approval, write-authority, connector, operator control 안에 머물러야 합니다. |
+Architecture는 이 경계를 계속 보이게 합니다. 제품 저장소 파일과 projection은 input 또는 readable view이고, MCP와 connected surface는 Core로 들어오는 caller path이며, 런타임 홈은 local control data이고, artifact store의 bytes는 registration과 integrity check 전까지 untrusted입니다. External tool/network는 기존 scope, Approval, connector, operator control로 제한되는 side-effecting path입니다. 전체 boundary matrix는 [보안 위협 모델 참조](security-threat-model.md#신뢰-경계)가 담당합니다.
 
 Local-only MCP exposure, secret/PII handling, high-risk work용 command/path/network allowlist, artifact path validation, stale approval replay, projection tampering, capability overclaiming, stale context poisoning은 threat-model concept입니다. Exact API, storage, kernel, connector, operations contract는 threat model에서 연결한 owner 문서에 남습니다.
 
@@ -313,25 +305,7 @@ Reconcile은 merge, reject, note로 convert, decision 생성, design support rec
 
 ## 보장 수준
 
-하네스는 집행 강도를 솔직하게 보여주기 위해 보장 수준을 보고합니다.
-
-| 수준 | 의미 |
-|---|---|
-| `cooperative` | agent 접점에 하네스 규칙과 MCP 결정을 따르라고 지시하는 수준입니다. 보류는 지시 기반이며 강한 보안 경계가 아닙니다 |
-| `detective` | 하네스가 실행 뒤에 위반을 탐지하거나 기록하고 상태를 `blocked`, `stale`, `partial`, `failed`로 표시할 수 있습니다. 이는 탐지 가능 수준이지 prevention이 아닙니다 |
-| `preventive` | 구체적인 connector 또는 runtime path가 해당 covered operation을 실행 전에 사전 차단하며, 그 exact path에 대한 fixture 증명이 있습니다 |
-| `isolated` | work 또는 verification이 문서화된 separation boundary 뒤에서 실행되는 수준입니다. worktree 또는 fresh evaluator bundle은 scope, freshness, blast-radius 분리를 제공할 수 있지만, profile이 exact isolation mechanism을 증명하지 않는 한 자동으로 OS sandbox 격리, 권한 경계, 변조 불가능한 보안 경계가 되지는 않습니다. 격리만으로 work를 승인하거나 검증하지 않습니다 |
-
-### 단계별 보장 자세
-
-보장 수준은 staged delivery에 다음처럼 적용됩니다.
-
-| 단계 | 정직한 보장 자세 |
-|---|---|
-| v0.1 Core Authority Slice / Kernel Smoke | Local registration, Task, 범위가 정해진 boundary, `prepare_write`, single-use Write Authorization, `record_run`, artifact/evidence ref, structured status/blocker response로 구성된 최소 scoped work loop에 대한 Core 권한을 증명합니다. Covered operation에 대해 fixture로 입증된 도구 실행 전 guard 또는 문서화되고 입증된 separation boundary를 명시적으로 구현하지 않는 한 reference 접점은 cooperative/detective로 표시해야 합니다. OS 권한, 임의 도구 sandbox 격리, 변조 불가능한 로컬 파일, 자동 도구 실행 전 차단은 암시되지 않습니다. |
-| v0.2 User-Facing Harness MVP | 같은 local-only 자세 위에 사용자용 status, judgment, evidence, close-readiness 이해를 추가합니다. 연결된 profile이 exact stronger control을 증명하지 않는 한 OS 수준 격리, sandbox 격리, 변조 불가능한 저장소, 도구 실행 전 차단을 주장하면 안 됩니다. |
-| v0.3-v0.4 hardened local profiles | Owner 문서, connector profile, conformance가 exact covered operation 또는 separation boundary를 증명한 경우에만 covered operation에 대한 preventive control 또는 isolated work/verification profile을 승격할 수 있습니다. 그 전까지 더 강한 control은 향후 또는 profile별 범위 note로 남습니다. |
-| v1+ Expansion | Remote, shared, cloud 또는 더 넓은 isolated profile은 owner 문서와 conformance가 승격하기 전까지 roadmap 범위에 남습니다. 승격되더라도 같은 Core authority, trust-boundary, 정직한 guarantee display 규칙을 유지해야 합니다. |
+`cooperative`, `detective`, `preventive`, `isolated`의 정확한 의미와 이 label의 staged honest-display rule은 [보안 위협 모델 참조: 정직한 guarantee display](security-threat-model.md#정직한-guarantee-display)가 담당합니다. 이 architecture section은 reported label이 runtime flow의 어디에 나타나는지만 담당합니다. Connector profile과 adapter가 이를 보고하고, Core는 여전히 authority decision을 수행하며, operator 또는 recovery surface는 이를 display와 risk context로 사용합니다.
 
 ### 보장 수준 강제 지도
 

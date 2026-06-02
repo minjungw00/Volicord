@@ -157,22 +157,21 @@ AI 지원 개발 세션을 하네스 기준으로 진행할 때 보는 경로입
 
 ## 참조 문서
 
-엄격한 계약을 찾아보는 경로입니다. 다른 경로에서 엄격한 규칙을 요약했다면 먼저 고쳐야 할 기준 문서는 해당 기준 문서 소유자입니다.
+엄격한 계약을 찾아보는 경로입니다. 다른 경로에서 엄격한 규칙을 요약했다면 먼저 고쳐야 할 기준 문서는 해당 기준 문서 소유자입니다. 기준 유지보수 지도는 [문서 작성 가이드의 Reference 계약 owner 지도](maintain/authoring-guide.md#reference-계약-owner-지도)에 있습니다.
 
-- [커널 참조](reference/kernel.md)
-- [런타임 아키텍처 참조](reference/runtime-architecture.md)
-- [보안 위협 모델 참조](reference/security-threat-model.md)
-- [MCP API와 스키마](reference/mcp-api-and-schemas.md)
-- [Storage와 DDL](reference/storage-and-ddl.md)
-- [문서 Projection 참조](reference/document-projection.md)
-- [설계 품질 정책](reference/design-quality-policies.md)
-- [에이전트 통합 참조](reference/agent-integration.md)
-- [Surface Cookbook](reference/surface-cookbook.md)
-- [운영과 Conformance 참조](reference/operations-and-conformance.md)
-- [Conformance Fixtures 참조](reference/conformance-fixtures.md)
-- [향후 Fixture Catalog](reference/future-fixture-catalog.md)
-- [용어집 참조](reference/glossary.md)
-- [Template 참조](reference/templates/README.md)
+| 필요한 것 | Owner |
+|---|---|
+| Invariant, 상태 전이, gate, 쓰기 권한, close semantics | [커널 참조](reference/kernel.md) |
+| Public MCP method, envelope, request/response schema, error, idempotency, shared ref | [MCP API와 스키마](reference/mcp-api-and-schemas.md) |
+| Persisted state, runtime layout, DDL profile, storage JSON, lock, artifact, projection job storage | [Storage와 DDL](reference/storage-and-ddl.md) |
+| Derived view rule, output tier, freshness, managed block, rendered template body | [문서 Projection 참조](reference/document-projection.md)와 [Template 참조](reference/templates/README.md) |
+| Threat model, trust boundary, high-risk control, guarantee-level 의미 | [보안 위협 모델 참조](reference/security-threat-model.md) |
+| 핵심 conformance mechanics와 향후 scenario inventory | [Conformance Fixtures 참조](reference/conformance-fixtures.md)는 핵심 모델, fixture body, runner, assertion, fixture profile, Kernel Smoke queue를 담당하고, [향후 Fixture Catalog](reference/future-fixture-catalog.md)는 향후 상세 scenario, example, coverage map, suite summary, catalog-only candidate를 담당합니다. |
+| Operator behavior, staged operator surface, diagnostic, recover/reconcile/export/artifact check, conformance run entrypoint | [운영과 Conformance 참조](reference/operations-and-conformance.md) |
+| Connector profile, context push/pull, generated manifest, fallback behavior, surface recipe | [Agent 통합 참조](reference/agent-integration.md)와 [Surface Cookbook](reference/surface-cookbook.md) |
+| Public/internal terminology definition과 owner routing | [용어집 참조](reference/glossary.md) |
+| Runtime space, Core transaction placement, architecture flow, failure/recovery overview | [런타임 아키텍처 참조](reference/runtime-architecture.md) |
+| Design-quality policy, validator ID, severity composition, waiver semantics, policy close impact | [설계 품질 정책](reference/design-quality-policies.md) |
 
 ## 유지보수 문서
 

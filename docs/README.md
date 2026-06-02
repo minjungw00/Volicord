@@ -79,9 +79,9 @@ Before starting Harness Server code, implementers should read the handoff summar
 | Implementer / 구현자 | [Implementation Overview](en/build/implementation-overview.md#maintainer-handoff-summary) -> [MVP Plan decisions](en/build/mvp-plan.md#implementation-decisions-needed-before-server-coding) -> [First Runnable Slice](en/build/first-runnable-slice.md) -> [MVP Plan](en/build/mvp-plan.md) | [구현 개요](ko/build/implementation-overview.md#문서-수락-후보-요약) -> [MVP 계획의 결정 섹션](ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정) -> [첫 실행 가능한 조각](ko/build/first-runnable-slice.md) -> [MVP 계획](ko/build/mvp-plan.md) |
 | Reviewer / maintainer / 검토자 / 문서 유지보수자 | [Authoring Guide](en/maintain/authoring-guide.md) -> [Translation Guide](en/maintain/translation-guide.md) | [문서 작성 가이드](ko/maintain/authoring-guide.md) -> [번역 가이드](ko/maintain/translation-guide.md) |
 
-Use the language-specific entrypoints for detailed document roles, Reference owner links, and maintenance guidance.
+Use the language-specific entrypoints for detailed document roles, Reference owner links, and maintenance guidance. The canonical owner-contract maps are in the [English Authoring Guide](en/maintain/authoring-guide.md#reference-contract-owner-map) and [Korean Authoring Guide](ko/maintain/authoring-guide.md#reference-계약-owner-지도).
 
-상세 문서 역할, Reference owner 링크, 유지보수 지침은 언어별 진입점을 사용합니다.
+상세 문서 역할, Reference owner 링크, 유지보수 지침은 언어별 진입점을 사용합니다. 기준 owner-contract 지도는 [영어 문서 작성 가이드](en/maintain/authoring-guide.md#reference-contract-owner-map)와 [한국어 문서 작성 가이드](ko/maintain/authoring-guide.md#reference-계약-owner-지도)에 있습니다.
 
 ## Optional First Examples / 선택해서 보는 첫 예시
 

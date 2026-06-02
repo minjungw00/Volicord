@@ -8,7 +8,7 @@
 
 사용자에게 보이는 agent 절차는 [에이전트 세션 흐름](../use/agent-session-flow.md)을 봅니다. 접점별 설정 메모는 [Surface Cookbook](surface-cookbook.md)을 봅니다.
 
-이 문서는 참조 문서입니다. 문서 수락과 별도의 구현 계획 준비 결정 전에는 runtime/server 구현, 생성된 운영 파일, 실행 가능한 fixture 파일, runtime data를 만들라는 뜻이 아닙니다. 첫 실행 목표는 코어 권한 조각(v0.1 Core Authority Slice)이며, 커널 스모크(Kernel Smoke)는 좁은 future smoke-check 작성 label입니다. 첫 제품 MVP 목표는 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)입니다. 에이전시 보증 팩(v0.3 Agency Assurance Pack)과 운영과 인계 팩(v0.4 Operations & Handoff Pack)은 agency assurance, operations, handoff behavior를 단단하게 만드는 단계이며, v1+ Expansion은 owner 문서가 승격하고 증명하기 전까지 roadmap 범위에 둡니다.
+이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-승인-상태)에 있습니다.
 
 ## 이런 때 읽기
 
@@ -55,7 +55,8 @@ user conversation surface
 | Codex, Claude Code, Gemini, GitHub Copilot, Cursor의 구체적인 접점별 recipe | [Surface Cookbook](surface-cookbook.md) |
 | Public MCP request/response schema | [MCP API와 스키마](mcp-api-and-schemas.md) |
 | Kernel state transition과 write/close rule | [커널 참조](kernel.md) |
-| Runtime guarantee level 정의 | [런타임 아키텍처 참조](runtime-architecture.md#보장-수준) |
+| Guarantee level 의미와 security control expectation | [보안 위협 모델 참조](security-threat-model.md#정직한-guarantee-display) |
+| Guarantee display의 runtime placement | [런타임 아키텍처 참조](runtime-architecture.md#보장-수준) |
 | Security asset, trust boundary, threat category, control category | [보안 위협 모델 참조](security-threat-model.md) |
 
 ## Capability Tiers
@@ -248,7 +249,7 @@ fallbacks:
 
 ## Guarantee Levels
 
-Integration은 [런타임 아키텍처 참조](runtime-architecture.md#보장-수준)의 guarantee level 정의를 사용하고, 이를 연결된 접점 프로필, 현재 적용 경로, fallback 선택지에 적용합니다.
+Integration은 [보안 위협 모델 참조](security-threat-model.md#정직한-guarantee-display)의 guarantee level 정의를 사용하고, 이를 연결된 접점 프로필, 현재 적용 경로, fallback 선택지에 적용합니다.
 
 이 참조는 connector 프로필이 그 level을 어떻게 보고하고 표시하는지 담당합니다. Surface name, product name, recipe name, mode label에서 더 강한 level을 추론하면 안 되며, 보장 수준을 Approval, Write Authorization, verification, QA, 작업 수락, 잔여 위험 수용, close readiness, kernel gate로 취급하면 안 됩니다.
 

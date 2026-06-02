@@ -38,6 +38,24 @@ Family boundaries:
 | Reference | Exact contracts, schemas, algorithms, security model, and storage model. | Include enough context to understand the contract, but do not turn Reference docs into tutorials or reader journeys. |
 | Maintain | Documentation authoring and review rules. | Govern docs work only; do not define runtime behavior or conformance pass/fail. |
 
+## Reference contract owner map
+
+Use this map before adding a strict rule. If another document needs the same rule, summarize the reader-facing consequence and link to the owner instead of copying the contract.
+
+| Contract area | Owner document | Owner boundary |
+|---|---|---|
+| Kernel | [Kernel Reference](../reference/kernel.md) | Invariants, entity relationship semantics where they affect state, lifecycle and state transitions, gates, `prepare_write`, Write Authorization, `record_run`, close semantics, waivers, and non-substitution rules. |
+| MCP API | [MCP API And Schemas](../reference/mcp-api-and-schemas.md) | Public MCP resources and tools, common envelopes, request/response schemas, shared refs, public errors, idempotency/replay, state conflict behavior, `ValidatorResult`, and API `ArtifactRef`. |
+| Storage | [Storage And DDL](../reference/storage-and-ddl.md) | Runtime home layout, persisted state, SQLite DDL profiles, storage-owned JSON `TEXT`, enum hardening, migrations, locks, artifact storage, baseline capture, projection job table, and validator-run storage. |
+| Projection | [Document Projection Reference](../reference/document-projection.md) and [Template Reference](../reference/templates/README.md) | Derived view rules, output tiers, managed blocks, human-editable sections, artifact-ref rendering, projection freshness/failure behavior, and full rendered template bodies. |
+| Security | [Security Threat Model Reference](../reference/security-threat-model.md) | Threat model, assets, trust boundaries, threat/control categories, high-risk control expectations, local access security posture, and guarantee-level meanings and honest-display rules. |
+| Conformance | [Conformance Fixtures Reference](../reference/conformance-fixtures.md) and [Future Fixture Catalog](../reference/future-fixture-catalog.md) | Conformance Fixtures owns the core model, fixture body shape, runner behavior, assertion semantics, fixture profiles, suite metadata boundaries, current-phase status, and reduced Kernel Smoke queue. Future Fixture Catalog owns detailed future scenario candidates, future fixture examples, staged coverage maps, suite family summaries, and catalog-only future candidates. |
+| Operations | [Operations And Conformance Reference](../reference/operations-and-conformance.md) | Operator behavior, staged operator surface, diagnostics, `connect`, `doctor`, `serve mcp`, projection refresh, reconcile, recover, export, artifact checks, conformance run entrypoint, and docs-maintenance profile reporting boundary. |
+| Agent Integration | [Agent Integration Reference](../reference/agent-integration.md) and [Surface Cookbook](../reference/surface-cookbook.md) | Connector capability profiles, generated manifests, context push/pull profiles, fallback semantics, Role Lens, reference-surface behavior, connector conformance overview, and surface-specific recipes. |
+| Glossary | [Glossary Reference](../reference/glossary.md) | Public and internal terminology definitions, capitalization, official term wording, record-name orientation, and owner routing. |
+| Runtime Architecture | [Runtime Architecture Reference](../reference/runtime-architecture.md) | The three spaces, Core process placement, Core-only canonical mutation authority, transaction ordering, artifact/projection/reconcile placement, and architecture-level failure and recovery overview. |
+| Design Quality | [Design Quality Policies](../reference/design-quality-policies.md) | Policy contracts, policy-to-validator mapping, stable validator IDs, severity composition, policy waiver semantics, evidence expectations, and design-quality gate/close impact. |
+
 ## Current Redesign Scope
 
 ### Current Review Baseline
@@ -304,7 +322,7 @@ For the non-authority boundaries that are easy to repeat, use these owners:
 | Release Handoff and export | [Operations And Conformance: Release Handoff Export Profile](../reference/operations-and-conformance.md#release-handoff-export-profile); rendered shape in [EXPORT Template](../reference/templates/export.md) |
 | Docs-maintenance | [Authoring Guide: Docs-maintenance checks](#docs-maintenance-checks) for rule bodies; [Operations And Conformance: Docs-maintenance profile](../reference/operations-and-conformance.md#docs-maintenance-profile) for operator reporting |
 | Projection and report surfaces | [Document Projection Reference](../reference/document-projection.md); rendered shapes in [Template Reference](../reference/templates/README.md) |
-| Security assets, trust boundaries, threat categories, control categories, and high-risk cooperative/detective/preventive/isolated security expectations | [Security Threat Model Reference](../reference/security-threat-model.md) for threat concepts; exact API, storage, kernel, connector, operations, and conformance behavior stays with those owners |
+| Security assets, trust boundaries, threat categories, control categories, guarantee-level meanings, and high-risk cooperative/detective/preventive/isolated security expectations | [Security Threat Model Reference](../reference/security-threat-model.md) for threat concepts and honest guarantee display; exact API, storage, kernel, connector, operations, and conformance behavior stays with those owners |
 
 ## Owner-link summary pattern
 
@@ -436,7 +454,7 @@ Required check categories:
 
 ## Reference ownership map
 
-Use this map when deciding where exact detail belongs. It identifies the active owner in the current documentation structure, so inactive paths do not remain part of the authoring workflow.
+Use this map for broad document routing. For strict Reference contracts, use [Reference contract owner map](#reference-contract-owner-map) above; this table identifies the active owner in the current documentation structure, so inactive paths do not remain part of the authoring workflow.
 
 | Subject | Active owner |
 |---|---|
@@ -447,8 +465,8 @@ Use this map when deciding where exact detail belongs. It identifies the active 
 | Project purpose, target users, values, scope, non-goals, automation philosophy | `learn/purpose-and-principles.md` |
 | Strategic thesis, failure model, MVP boundary, principle groups | `learn/purpose-and-principles.md` for reader explanation; `reference/design-quality-policies.md` and `reference/kernel.md` for exact contract impact |
 | Kernel entities, lifecycle, gates, state transitions, close semantics, `prepare_write`, `close_task` | `reference/kernel.md` |
-| Runtime architecture, three spaces in implementation detail, Core process model, artifact architecture, projection/reconcile architecture, guarantee levels | `reference/runtime-architecture.md` |
-| Security assets, trust boundaries, threat categories, control categories, and high-risk cooperative/detective/preventive/isolated security expectations | `reference/security-threat-model.md` for threat concepts; exact enforcement, API, storage, kernel, connector, operations, and conformance behavior stays with those owners |
+| Runtime architecture, three spaces in implementation detail, Core process model, artifact architecture, projection/reconcile architecture, guarantee-level display placement | `reference/runtime-architecture.md` |
+| Security assets, trust boundaries, threat categories, control categories, guarantee-level meanings, and high-risk cooperative/detective/preventive/isolated security expectations | `reference/security-threat-model.md` for threat concepts and honest guarantee display; exact enforcement, API, storage, kernel, connector, operations, and conformance behavior stays with those owners |
 | MCP resources/tools, request/response schemas, error taxonomy, validator result schema, artifact ref shape | `reference/mcp-api-and-schemas.md` |
 | SQLite DDL, migrations, storage layout, lock policy, artifact directory layout, baseline capture format, projection job table | `reference/storage-and-ddl.md` |
 | MVP implementation order and stage exit criteria | `build/mvp-plan.md` |

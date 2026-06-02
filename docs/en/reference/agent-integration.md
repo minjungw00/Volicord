@@ -8,7 +8,7 @@ It owns the common connector contract: capability tiers, capability profiles, ge
 
 For the user-facing agent procedure, read [Agent Session Flow](../use/agent-session-flow.md). For surface-specific setup notes, read [Surface Cookbook](surface-cookbook.md).
 
-This is reference documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, or runtime data before documentation acceptance and a separate implementation-planning readiness decision. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as a narrow future smoke-check authoring label. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack harden agency assurance, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 
 ## Read this when
 
@@ -55,7 +55,8 @@ Always-on rules and context should stay short, current, and non-authoritative. T
 | Concrete surface recipes for Codex, Claude Code, Gemini, GitHub Copilot, and Cursor | [Surface Cookbook](surface-cookbook.md) |
 | Public MCP request/response schemas | [MCP API And Schemas](mcp-api-and-schemas.md) |
 | Kernel state transitions and write/close rules | [Kernel Reference](kernel.md) |
-| Runtime guarantee level definitions | [Runtime Architecture Reference](runtime-architecture.md#guarantee-levels) |
+| Guarantee level meanings and security control expectations | [Security Threat Model Reference](security-threat-model.md#honest-guarantee-display) |
+| Runtime placement for guarantee display | [Runtime Architecture Reference](runtime-architecture.md#guarantee-levels) |
 | Security assets, trust boundaries, threat categories, and control categories | [Security Threat Model Reference](security-threat-model.md) |
 
 ## Capability Tiers
@@ -248,7 +249,7 @@ fallbacks:
 
 ## Guarantee Levels
 
-Integration uses the guarantee levels defined in [Runtime Architecture Reference](runtime-architecture.md#guarantee-levels) and applies them to connected surface profiles, current enforcement paths, and fallback choices.
+Integration uses the guarantee levels defined in [Security Threat Model Reference](security-threat-model.md#honest-guarantee-display) and applies them to connected surface profiles, current enforcement paths, and fallback choices.
 
 This reference owns how connector profiles report and display those levels. It must not infer a stronger level from a surface name, product name, recipe name, or mode label, and it must not treat guarantee level as Approval, Write Authorization, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a kernel gate.
 
