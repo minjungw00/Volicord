@@ -139,7 +139,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Decision Profile, Type, And Route
 - decision_profile: minimal_decision | product_ux_tradeoff | architecture_tradeoff | approval_shaped | waiver | acceptance | residual_risk_acceptance | reconcile | mixed
 - profile display: concise decision | detailed trade-off | sensitive-action approval | waiver | final acceptance | residual-risk acceptance | reconcile | mixed
-- profile-required detail: common fields plus selected profile_payload branch; minimal decisions may omit non-material detailed fields
+- profile-required detail: common fields plus selected profile_payload branch; minimal decisions may omit non-material detailed fields or render them as null where the schema allows null
 - decision type: Product/UX judgment | technical architecture judgment | security/privacy judgment | scope/autonomy judgment | sensitive-action approval | QA waiver | verification waiver | final acceptance | residual-risk acceptance | reconcile
 - decision_kind:
 - judgment_domain:

@@ -530,7 +530,7 @@ CREATE TABLE decision_packets (
   state_summary_at_request_json TEXT NOT NULL DEFAULT '{}',
   question TEXT NOT NULL,
   what_agent_may_decide_without_user_json TEXT NOT NULL DEFAULT '[]',
-  -- Profile payload container입니다. Default는 선택된 profile이 empty/null detail을 허용할 때만 valid입니다.
+  -- Profile payload container입니다. Default는 선택된 profile이 empty, null, 또는 branch에서 생략된 detail을 허용할 때만 valid입니다.
   options_json TEXT NOT NULL DEFAULT '[]',
   recommendation_json TEXT NOT NULL DEFAULT '{}',
   affected_gates_json TEXT NOT NULL DEFAULT '[]',

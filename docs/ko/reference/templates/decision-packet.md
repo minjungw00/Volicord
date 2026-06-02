@@ -139,7 +139,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Decision Profile, Type, And Route
 - decision_profile: minimal_decision | product_ux_tradeoff | architecture_tradeoff | approval_shaped | waiver | acceptance | residual_risk_acceptance | reconcile | mixed
 - profile display: 간단한 판단 기록 | 상세 trade-off | 민감 동작 승인 | waiver | 작업 수락 | 잔여 위험 수용 | reconcile | mixed
-- profile-required detail: 공통 field와 선택된 profile_payload branch; minimal decision은 중요하지 않은 detailed field를 생략할 수 있음
+- profile-required detail: 공통 field와 선택된 profile_payload branch; minimal decision은 중요하지 않은 detailed field를 생략하거나 schema가 null을 허용하는 곳에서 null로 렌더링할 수 있음
 - decision type: 제품/UX 판단 | 기술 구조 판단 | 보안/개인정보 판단 | 범위/자율성 판단 | 민감 동작 승인 | QA 면제 판단 | 검증 면제 판단 | 작업 수락 | 잔여 위험 수용 | reconcile
 - decision_kind:
 - judgment_domain:

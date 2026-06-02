@@ -526,7 +526,7 @@ CREATE TABLE decision_packets (
   state_summary_at_request_json TEXT NOT NULL DEFAULT '{}',
   question TEXT NOT NULL,
   what_agent_may_decide_without_user_json TEXT NOT NULL DEFAULT '[]',
-  -- Profile payload containers; defaults are valid only when the selected profile allows empty/null detail.
+  -- Profile payload containers; defaults are valid only when the selected profile allows empty, null, or branch-omitted detail.
   options_json TEXT NOT NULL DEFAULT '[]',
   recommendation_json TEXT NOT NULL DEFAULT '{}',
   affected_gates_json TEXT NOT NULL DEFAULT '[]',

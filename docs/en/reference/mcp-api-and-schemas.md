@@ -85,6 +85,7 @@ The Markdown YAML-like blocks in this document are normative schema notation, no
 - `field: Type` means the field is required and its value must be non-null.
 - `field: Type | null` means the field is still required, but its value may be JSON `null`. Omission is different from expected `null`.
 - A field is optional only when the field's prose, a branch rule, or an explicit extension rule says it may be omitted. Nullable does not mean optional.
+- This convention does not define TypeScript-style question-mark optional-field notation. Optionality must be stated in prose, branch rules, or explicit extension rules.
 - `Type[]` means a JSON array whose items match `Type`. An explicit empty array `[]` is a present empty collection; it is different from omission. Empty arrays are valid unless the field prose requires one or more items.
 - `object` means a JSON object. When nested fields are shown, those child fields follow the same required, nullable, array, and enum rules. Object maps are written or described as keyed objects, such as `field: { [key_name]: ValueType }` or "keyed by validator ID"; keys are strings and values must match the stated value type. An explicit `{}` for an object-map field is a present empty map.
 - `a | b | c` means an enum of literal values. It is closed unless the section labels the enum extensible or describes the field as a display/routing string. Extensible enums define the known supported values and any enabled extension tiers; public request validators accept only supported or enabled values. Unknown values do not become canonical authority by appearing in a payload.
@@ -638,6 +639,8 @@ Common fields for every profile are `decision_packet_id` on committed packets, `
 
 `DecisionPacketCandidate`, `RecommendedPlaybook.route`, `decision_packet_route`, and optional implementation `decision_requests` are request, display, or routing metadata. They can help a caller reach [`harness.request_user_decision`](#harnessrequest_user_decision), but they do not become canonical authority until the owner path commits or updates a compatible `DecisionPacket` and any linked owner records. A user-facing `DecisionPacketCandidate` should include `judgment_domain`, `decision_profile`, and the matching `profile_payload` branch; candidate values remain request/display/routing metadata until Core commits or updates the canonical Decision Packet. The stored Decision Packet owns the committed `judgment_domain`, `decision_profile`, and profile payload.
 
+The schema block below intentionally uses only the YAML-like notation defined in this document. Profile branch rules provide the optionality: in `MinimalDecisionPayload`, `recommendation`, `uncertainty`, `deferral_consequence`, and `user_context` may be omitted when they are not material; if present, they may be `null` or a value of the stated type. `DecisionPacketOption.details` may be omitted or `null` for `minimal_decision` options when detailed trade-off data is not material. `ReconcilePayload.options` may also omit or null option details when the required `reconcile_item_id`, `target_refs`, common context, and option labels are sufficient for the reconcile choice; if option-specific consequences are material, include details. `ProductUxTradeoffPayload` and `ArchitectureTradeoffPayload` use `DetailedDecisionPacketOption`, so option `details` are required and non-null. Full profile branches still require the profile-specific context shown in their payload: `approval_shaped` requires `approval_scope`, `waiver` requires skipped-check and waiver-impact context, `acceptance` requires result and assurance/risk visibility context, `residual_risk_acceptance` requires visible risk refs and acceptance consequence, and `reconcile` requires its reconcile target and options.
+
 ```yaml
 DecisionPacket:
   # Common required fields for every profile.
@@ -668,7 +671,7 @@ DecisionPacket:
 DecisionPacketOption:
   option_id: string
   label: string
-  details?: DecisionPacketOptionDetails | null
+  details: DecisionPacketOptionDetails | null
 
 DecisionPacketOptionDetails:
   benefits: string[]
@@ -729,10 +732,10 @@ DecisionPacketProfilePayload:
 
 MinimalDecisionPayload:
   options: DecisionPacketOption[] | []
-  recommendation?: DecisionPacketRecommendation | null
-  uncertainty?: string | null
-  deferral_consequence?: string | null
-  user_context?: DecisionPacketUserContext | null
+  recommendation: DecisionPacketRecommendation | null
+  uncertainty: string | null
+  deferral_consequence: string | null
+  user_context: DecisionPacketUserContext | null
 
 ProductUxTradeoffPayload:
   options: DetailedDecisionPacketOption[]

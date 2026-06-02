@@ -85,6 +85,7 @@ Conformance fixture에서는 이 public request schema가 정확한 기준입니
 - `field: Type`은 field가 required이고 value가 non-null이어야 함을 뜻합니다.
 - `field: Type | null`은 field가 여전히 required이지만 value가 JSON `null`일 수 있음을 뜻합니다. Omission은 expected `null`과 다릅니다.
 - Field의 prose, branch rule, 또는 explicit extension rule이 omitted 가능하다고 말할 때만 optional입니다. Nullable은 optional을 뜻하지 않습니다.
+- 이 표기 convention은 TypeScript 스타일의 question-mark optional-field 표기를 정의하지 않습니다. Optional 여부는 prose, branch rule, 또는 explicit extension rule로 말해야 합니다.
 - `Type[]`은 item이 `Type`과 일치하는 JSON array입니다. 명시적 empty array `[]`는 present empty collection이며 omission과 다릅니다. Field prose가 one or more items를 요구하지 않는 한 empty array는 valid합니다.
 - `object`는 JSON object입니다. Nested field가 표시되면 child field에도 같은 required, nullable, array, enum rule이 적용됩니다. Object map은 `field: { [key_name]: ValueType }` 또는 "keyed by validator ID"처럼 keyed object로 쓰거나 설명합니다. Key는 string이고 value는 stated value type과 일치해야 합니다. Object-map field의 명시적 `{}`는 present empty map입니다.
 - `a | b | c`는 literal value enum입니다. 해당 section이 enum을 extensible이라고 label하거나 field를 display/routing string이라고 설명하지 않는 한 closed enum입니다. Extensible enum은 알려진 supported value와 enabled extension tier를 정의하며, public request validator는 supported 또는 enabled value만 accept합니다. Payload에 unknown value가 나타난다고 canonical authority가 생기지 않습니다.
@@ -638,6 +639,8 @@ Profile validation은 의도적으로 두 단계입니다.
 
 `DecisionPacketCandidate`, `RecommendedPlaybook.route`, `decision_packet_route`, optional implementation `decision_requests`는 request, display, routing metadata입니다. Caller가 [`harness.request_user_decision`](#harnessrequest_user_decision)으로 가도록 도울 수는 있지만, owner path가 compatible `DecisionPacket`과 연결된 owner records를 commit 또는 update하기 전에는 기준 권한이 되지 않습니다. 사용자에게 보이는 `DecisionPacketCandidate`는 `judgment_domain`, `decision_profile`, 일치하는 `profile_payload` branch를 포함해야 합니다. Candidate 값은 Core가 기준 Decision Packet을 commit 또는 update하기 전까지 request/display/routing metadata로 남습니다. 저장된 Decision Packet이 committed `judgment_domain`, `decision_profile`, profile payload를 소유합니다.
 
+아래 schema block은 이 문서에서 정의한 YAML-like notation만 사용합니다. Optional 여부는 profile branch rule이 제공합니다. `MinimalDecisionPayload`에서 `recommendation`, `uncertainty`, `deferral_consequence`, `user_context`는 중요하지 않을 때 omitted될 수 있으며, present이면 `null`이거나 stated type의 value일 수 있습니다. `DecisionPacketOption.details`는 `minimal_decision` option에서 detailed trade-off data가 중요하지 않을 때 omitted되거나 `null`일 수 있습니다. `ReconcilePayload.options`에서도 required인 `reconcile_item_id`, `target_refs`, 공통 context, option label만으로 reconcile choice를 판단하기 충분하면 option details를 omitted하거나 `null`로 둘 수 있습니다. Option별 consequence가 중요하면 details를 포함해야 합니다. `ProductUxTradeoffPayload`와 `ArchitectureTradeoffPayload`는 `DetailedDecisionPacketOption`을 사용하므로 option `details`가 required이고 non-null입니다. Full profile branch는 여전히 payload에 표시된 profile별 context를 요구합니다. `approval_shaped`는 `approval_scope`, `waiver`는 skipped-check와 waiver-impact context, `acceptance`는 result와 assurance/risk visibility context, `residual_risk_acceptance`는 visible risk refs와 acceptance consequence, `reconcile`은 reconcile target과 options가 필요합니다.
+
 ```yaml
 DecisionPacket:
   # 모든 profile에 공통으로 필요한 field.
@@ -668,7 +671,7 @@ DecisionPacket:
 DecisionPacketOption:
   option_id: string
   label: string
-  details?: DecisionPacketOptionDetails | null
+  details: DecisionPacketOptionDetails | null
 
 DecisionPacketOptionDetails:
   benefits: string[]
@@ -729,10 +732,10 @@ DecisionPacketProfilePayload:
 
 MinimalDecisionPayload:
   options: DecisionPacketOption[] | []
-  recommendation?: DecisionPacketRecommendation | null
-  uncertainty?: string | null
-  deferral_consequence?: string | null
-  user_context?: DecisionPacketUserContext | null
+  recommendation: DecisionPacketRecommendation | null
+  uncertainty: string | null
+  deferral_consequence: string | null
+  user_context: DecisionPacketUserContext | null
 
 ProductUxTradeoffPayload:
   options: DetailedDecisionPacketOption[]
