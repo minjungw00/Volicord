@@ -301,7 +301,7 @@ status, next, 결과, 작업 수락, 닫기 표시에서 권한을 주장할 때
 |---|---|---|---|
 | 읽기/조언 | `advisor` | 제품 파일을 바꾸지 않는 읽기, 설명, 비교, 검토, 판단 지원. | 제품 파일이 바뀔 수 있거나, 민감한 행동이 필요하거나, 사용자가 조언을 구현으로 바꾸라고 요청할 때. |
 | 작은 변경 | `direct` | 좁은 범위와 가벼운 근거로 처리할 수 있는 작고 위험이 낮은 코드 또는 문서 변경. 오탈자, 문서 한 문장, 분명한 이름 변경은 하위 프로필이지 새 mode가 아닙니다. | 범위가 불분명하거나, 여러 파일 또는 하위 시스템이 관련되거나, 제품/UX 판단이 필요하거나, 중요한 아키텍처 판단이 필요하거나, 공개 인터페이스/API 영향이 나타나거나, 보안/개인정보 영향이 있거나, 민감한 행동이 나타나거나, QA/검증 요구가 커지거나, 근거가 부족하거나, 잔여 위험이 작지 않거나, 여러 단계 전달이 필요할 때. |
-| 추적되는 작업 | `work` | 기능 작업, UX 흐름, 인증에 닿는 동작, 스키마, 공개 API/인터페이스, 구조 변경, 위험한 수정, 여러 파일이나 여러 단계의 전달, 의미 있는 근거와 독립 검증이 필요한 작업. | 계속 추적되는 작업으로 두고, 인증, 보안, 개인정보, 비밀값, 인프라 또는 비슷한 민감 영역이 나타나면 민감 동작 승인, 판단 요청, 근거, 검증, 수동 QA, 잔여 위험을 소유자 경로로 라우팅합니다. |
+| 추적되는 작업 | `work` | 기능 작업, UX 흐름, 인증에 닿는 동작, 스키마, 공개 API/인터페이스, 구조 변경, 위험한 수정, 여러 파일이나 여러 단계의 전달, 또는 active profile에 따라 의미 있는 근거, QA, 검증, 작업 수락, 위험 처리가 필요할 수 있는 작업. | 계속 추적되는 작업으로 두고, 인증, 보안, 개인정보, 비밀값, 인프라 또는 비슷한 민감 영역이 나타나면 민감 동작 승인, 판단 요청, 근거, 검증, 수동 QA, 잔여 위험을 소유자 경로로 라우팅합니다. |
 
 정확한 mode/profile 계약은 [커널 참조](../reference/kernel.md#작업-모드)가 담당합니다. 이 쉬운 작업 모양은 표시 지침이며 schema 값을 추가하거나 권한 규칙을 바꾸지 않습니다.
 
@@ -393,7 +393,9 @@ Autonomy Boundary 안에서는 에이전트가 기존 helper를 재사용할지,
 
 사용자 소유 판단이 둘 이상 대기 중이면 한 질문 안에서도 별도 줄이나 별도 질문으로 나눠 보여줍니다. "설치 승인", "결과 수락", "이름 붙은 위험 수용"을 하나의 동의 요청으로 합치면 안 됩니다. 간단한 막힘 해소에는 간결하게 묻고, 선택이 복잡하거나 위험하거나 닫기에 영향을 주면 더 자세히 묻습니다.
 
-결정 프로필(`decision_profile`)은 스키마가 소유하는 질문 깊이와 검증 분류입니다. 작은 명시적 막힘 해소에는 `minimal_decision`, 상세 절충에는 `product_ux_tradeoff` 또는 `architecture_tradeoff`, 민감 동작 승인에는 `approval_shaped`, QA 또는 검증 면제에는 `waiver`, 최종 결과 수락에는 `acceptance`, 이름 붙은 닫기 관련 위험 수용에는 `residual_risk_acceptance`, 관리 중인 상태 변화나 제안/상태 불일치에는 `reconcile`, 실제로 여러 영역에 걸친 하나의 결정에는 `mixed`를 사용합니다. 판단 영역은 사용자가 어떤 종류의 판단을 하는지 이해하도록 돕는, 스키마가 소유하는 enum 분류입니다. 이를 주 표시 묶음으로 사용합니다. 결정이 여러 영역에 걸쳐 있으면 `mixed`를 쓰거나, 영역이 배타적인 것처럼 다루지 말고 부차적인 고려사항을 장단점, 영향을 받는 `gate`, 위험, 근거, 후속 작업에 보여줘야 합니다. `decision_profile`은 `minimal_decision`, `architecture_tradeoff`, `residual_risk_acceptance` 같은 Decision Packet 질문/profile `profile_payload` branch를 고르며, Decision Packet `profile_payload` branch와 profile별 필수 정보를 검증할 때 사용하는 스키마 필드입니다. `decision_kind`는 `approval`, `acceptance`, `reconcile` 같은 사용자가 기록하는 답변 route와 resolution branch를 고릅니다. `judgment_domain`은 enum 값으로 검증되며 설명과 표시 묶음을 제어합니다. 영향을 받는 `gate`나 막힌 행동은 별도 필드와 소유자 기록이 담당합니다. 다만 `decision_profile`은 gate, 닫기 집계 규칙, 권한 경로, 승인/면제/수락/잔여 위험 수용의 대체물이 아닙니다. `judgment_domain`은 payload branch를 고르거나 gate를 다시 계산하거나 닫기 집계 규칙, 권한 경로, `decision_kind`를 대체하지 않습니다. 표시용 label은 검증 입력이 아닙니다. 정확한 공개 필드는 [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision)이 소유하고, 기준 권한은 [결정 패킷](../reference/kernel.md#decision-packet)과 [Decision Gate](../reference/kernel.md#decision-gate)가 소유합니다. 사용자에게 보이는 질문에 스키마 본문을 복사하지 말고, 쉬운 말로 결정을 보여준 뒤 필요한 참조를 더 살펴볼 수 있게 둡니다.
+사용자에게 보이는 질문에는 Kernel의 단순한 판단 모델을 씁니다. 먼저 category, route 동사, 표시 깊이를 보여줍니다. Category는 제품/UX, 기술 구조, 보안/개인정보, 범위/자율성, QA/검증, 작업 수락, 잔여 위험, 복합입니다. Route는 choose, defer, approve-sensitive-action, waive, accept-result, accept-risk, reconcile입니다. 표시 깊이는 simple, tradeoff, high-risk, close-affecting입니다.
+
+`judgment_domain`, `decision_kind`, `decision_profile`은 계속 schema field입니다. 하지만 사용자가 세 개의 독립 축을 이해해야 하는 것처럼 보여주면 안 됩니다. `judgment_domain`은 category에, `decision_kind`는 route에, `decision_profile`은 선택한 route의 prompt depth와 validation에 mapping됩니다. 영향을 받는 `gate`나 막힌 행동은 별도 field와 owner record가 담당합니다. 정확한 public field는 [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision)이 소유하고, 기준 권한은 [Decision Packet](../reference/kernel.md#decision-packet)과 [Decision Gate](../reference/kernel.md#decision-gate)가 소유합니다. 사용자에게는 쉬운 말로 판단을 보여주고, 필요한 참조는 drill-down할 수 있게 둡니다.
 
 판단 중심 질문은 경로와 맞는 동사를 씁니다. 선택, 미루기(defer), 거절(reject), 면제(waive), 수락(accept), 조정(reconcile)입니다. "approve" 또는 "승인"은 민감 동작 승인일 때만 사용합니다. 좋은 질문 형태는 다음과 같습니다.
 
