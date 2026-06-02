@@ -141,39 +141,72 @@ Core preconditions and mechanical checks may run before or beside validators. On
 
 ## Read-only resources
 
-Resources expose current state and projection-oriented summaries without mutating state:
+Resources expose current state and projection-oriented summaries without mutating state. They are staged by the active delivery profile, just like public tools. The reference contract can name later resource URIs before those resources are stage-required; a connector must not default-load the whole `harness://` resource surface.
 
-```text
-harness://project/current
-harness://project/surfaces
-harness://task/active
-harness://task/{task_id}
-harness://task/{task_id}/summary
-harness://task/{task_id}/spine
-harness://task/{task_id}/journey
-harness://task/{task_id}/decision-packets
-harness://task/{task_id}/change-unit-dag
-harness://task/{task_id}/judgment-context
-harness://task/{task_id}/reports/latest
-harness://task/{task_id}/evidence-manifest
-harness://task/{task_id}/bundle/current
-harness://design/domain-language
-harness://design/module-map
-harness://design/interface-contracts
-harness://policy/sensitive-categories
-harness://status/card
-```
-
-Resource reads must not create Task records, decisions, projection jobs, or reconcile items. If a resource detects stale projection, it reports freshness; it does not repair it.
+Resource reads must not create Task records, decisions, projection jobs, reconcile items, or state changes. If a resource detects stale projection, it reports freshness; it does not repair it.
 
 Read-only resources may render a primary blocker, secondary blockers, and smallest unblocker when the source records already support those summaries. That rendering is still a read-only view; it must not create authority, clear gates, enqueue projection repair, or mutate canonical state.
 
-The journey-oriented resources are projection-oriented reads over canonical state and are not required for the first runnable slice:
+Earlier stages may reuse earlier resources. Later resources are available only when the owning profile is enabled.
 
-- `harness://task/{task_id}/journey` returns current-position summary and Journey Card or Journey Spine-oriented refs when those views are enabled.
-- `harness://task/{task_id}/decision-packets` returns active, resolved, deferred, and blocked Decision Packet summaries for the Task.
-- `harness://task/{task_id}/change-unit-dag` returns Change Unit dependency refs and ordering summaries.
-- `harness://task/{task_id}/judgment-context` returns the minimum current context needed for a user judgment, with optional pull refs separated from required context.
+### v0.1 Core Authority Slice resources
+
+The v0.1 resource subset is intentionally small. It supports the first authority loop: current project, active/current Task, current state and blockers, write-authority status, and the Run/artifact/evidence ref needed to prove that Core is more authoritative than chat memory or generated Markdown.
+
+| Resource | Profile meaning |
+|---|---|
+| `harness://project/current` | Current registered project identity, current project state version when relevant, and local MCP availability facts needed to address Core reads and writes. |
+| `harness://task/active` | Active Task pointer, or explicit `none` / `unknown`, without creating a Task. |
+| `harness://task/{task_id}` | Current Task state for the narrow authority loop: lifecycle, scoped work boundary refs, blockers, write-authority status, latest Run ref, and minimal artifact/evidence refs when present. |
+| `harness://task/{task_id}/summary` | Optional compact Task status/blocker summary when a connector uses a resource instead of only `harness.status` / `harness.next` output. |
+| `harness://status/card` | Optional compact current-position/status card derived from current Core state. It may show primary blocker, secondary blockers, and smallest unblocker, but it is still read-only. |
+
+v0.1 does not require Journey, Journey Spine, Decision Packet storage, Evidence Manifest, bundle, design maps, module maps, interface contracts, reports, projection jobs, or a projection renderer.
+
+### v0.2 User-Facing Harness MVP resources
+
+v0.2 keeps the v0.1 current-status resources and may enrich their summaries so ordinary users can understand current work status, pending user decisions, evidence summary, close readiness, close blockers, final-acceptance need/status, and residual-risk visibility when relevant. Detailed report resources are not needed for the minimum v0.2 path.
+
+| Resource | Profile meaning |
+|---|---|
+| `harness://task/{task_id}/decision-packets` | Active, resolved, deferred, and blocked Decision Packet summaries for the Task, used for user decision visibility. |
+| `harness://task/{task_id}/judgment-context` | Minimum current context needed for a user judgment, with optional pull refs separated from required context. Use only when user judgment is needed. |
+
+The v0.2 evidence and close-readiness resource path can be satisfied by `harness://task/{task_id}/summary`, `harness://status/card`, `harness.status`, or `harness.next` when those outputs are derived from current Core state and refs. It does not require `harness://task/{task_id}/evidence-manifest`.
+
+### v0.3 Agency Assurance resources
+
+These resources are profile-gated assurance reads. They are not first-slice or minimum user-facing MVP requirements.
+
+| Resource | Profile meaning |
+|---|---|
+| `harness://policy/sensitive-categories` | Read-only sensitive-action category policy for Approval, waiver, risk, or assurance profiles. It does not grant Approval or classify an action as approved. |
+| `harness://task/{task_id}/evidence-manifest` | Evidence coverage and manifest-oriented read when the assurance/evidence profile is enabled. It is not required for the v0.2 evidence summary; detailed manifest projection bodies remain pull-on-demand or diagnostic. |
+
+### v0.4 Operations & Handoff resources
+
+These resources support operator visibility, connector freshness, report/export, and handoff workflows when operations profiles are enabled.
+
+| Resource | Profile meaning |
+|---|---|
+| `harness://project/surfaces` | Registered surface/profile inventory, MCP exposure posture, capability freshness, and connector-operational status. A narrow implementation may expose only current-surface facts earlier, but broad surface inventory is operations scope. |
+| `harness://task/{task_id}/reports/latest` | Latest readable report refs and freshness for operations/readiness. Reports are derived views and do not replace Core state. |
+| `harness://task/{task_id}/bundle/current` | Current bundle/export-oriented refs for handoff or recovery profiles. Bundles are derived/export artifacts, not authority. |
+
+### Future/diagnostic resources
+
+These resources are projection-oriented, design/reference, or diagnostic reads. Enable them only through an owner-promoted profile or pull them on demand for diagnostics; do not treat them as v0.1 or minimum v0.2 requirements.
+
+| Resource | Profile meaning |
+|---|---|
+| `harness://task/{task_id}/spine` | Journey Spine-style reconstruction from owner records and events when that diagnostic view is enabled. |
+| `harness://task/{task_id}/journey` | Current-position, Journey Card, or Journey Spine-oriented read when Journey views are enabled. |
+| `harness://task/{task_id}/change-unit-dag` | Change Unit dependency refs and ordering summaries when a broad dependency view is enabled. It is not a scheduler or authorization surface. |
+| `harness://design/domain-language` | Domain-language read from design owner records when the design/domain profile is enabled. |
+| `harness://design/module-map` | Module-map read from design owner records when the module-map profile is enabled. |
+| `harness://design/interface-contracts` | Interface-contract read from design owner records when the interface-contract profile is enabled. |
+
+Projections exposed through resources are readable derived views, not authority. Reading a projection-backed resource must not refresh a projection, enqueue a projection job, create a missing owner record, accept evidence, perform verification, record Manual QA, accept results, accept residual risk, authorize writes, or close a Task.
 
 ## Tool envelope
 

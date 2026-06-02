@@ -83,6 +83,18 @@ The MCP API reference defines exact schemas for every method it documents, but s
 | v0.3 Agency Assurance Pack | `harness.launch_verify`, `harness.record_eval`, `harness.record_manual_qa`, assurance/waiver/approval/risk profiles of Decision Packet methods, evidence/feedback/TDD profiles of `harness.record_run`, and ValidatorResult-emitting assurance paths. | Operator recover/export completeness, broad projection/reconcile operations, release handoff. |
 | v0.4 Operations & Handoff Pack | Projection freshness in API responses, reconcile decision profile, operator readiness/recover/export/artifact-integrity/conformance surfaces owned by Operations. | Dashboard, hosted workflow UI, broad connectors, automation, team workflow, orchestration unless promoted later. |
 
+### Read-only MCP resources by stage
+
+MCP resources are read-only and follow the same staged delivery boundary as public tools. Reading a resource must not create Task records, decisions, projection jobs, reconcile items, or state changes.
+
+| Stage | Resource scope in stage | Keep out of the stage exit |
+|---|---|---|
+| v0.1 Core Authority Slice | `harness://project/current`, `harness://task/active`, `harness://task/{task_id}`, and optional `harness://task/{task_id}/summary` / `harness://status/card` for current state, blockers, write authority, and minimal Run/artifact/evidence refs. | Journey, Spine, Decision Packet storage, Evidence Manifest, bundle, reports, design/domain maps, module maps, interface contracts, projection jobs, and full projection rendering. |
+| v0.2 User-Facing Harness MVP | v0.1 resources plus `harness://task/{task_id}/decision-packets` and `harness://task/{task_id}/judgment-context` for user decision visibility. Evidence summary, close readiness, final-acceptance status, and residual-risk visibility can appear through status/card or task summary output. | Detailed Evidence Manifest resource, detached verification/QA resources, reports, bundles, Journey/Spine polish, design maps, module maps, interface contracts, export/recover. |
+| v0.3 Agency Assurance Pack | Profile-gated assurance reads such as `harness://policy/sensitive-categories` and `harness://task/{task_id}/evidence-manifest` when evidence/assurance support is enabled. | Operator report/export completeness and broad operations resources. |
+| v0.4 Operations & Handoff Pack | Operations reads such as broad `harness://project/surfaces`, `harness://task/{task_id}/reports/latest`, and `harness://task/{task_id}/bundle/current` when connector freshness, report, export, recover, or handoff profiles are in scope. | Dashboard, hosted workflow UI, broad connector automation, and roadmap resources unless promoted later. |
+| Future/diagnostic | Owner-promoted reads such as `harness://task/{task_id}/spine`, `harness://task/{task_id}/journey`, `harness://task/{task_id}/change-unit-dag`, `harness://design/domain-language`, `harness://design/module-map`, and `harness://design/interface-contracts`. | Treating diagnostic resources as required for v0.1 or minimum v0.2. |
+
 ### Operator surface by stage
 
 Operator commands are illustrative implementation choices. The stage requirement is the behavior, not the final command spelling.

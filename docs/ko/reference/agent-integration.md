@@ -329,7 +329,7 @@ Implementation agent에게는 매 turn마다 compact한, 항상 주입되는 Har
 7. Same-session review는 self-checking context이지 분리 검증이 아닙니다.
 8. MCP unavailable이면 authoritative state update, gate update, evidence, 작업 수락과 잔여 위험, projection repair, close 주장을 하지 않습니다.
 9. Acceptance 또는 close 전에 blocker와 close-relevant residual risk를 보여줍니다.
-10. 다음 action에 필요할 때만 Reference docs, schema, historical record, large artifact를 pull합니다.
+10. 다음 action에 필요할 때만 Reference docs, schema, historical record, later-profile resource body, large artifact를 pull합니다.
 
 토큰을 아끼더라도 올바른 동작에 필요한 사용자 소유 결정, blocker, scope limit, safety boundary, close-relevant residual-risk 정보를 빼면 안 됩니다. 특히 사용자 결정 요청은 사용자가 충분히 결정할 수 있도록 정확한 질문, decision profile, 간결한 options 또는 chosen outcome, 영향을 받는 범위, 관련 refs, 답변이 확정하지 않는 것을 포함해야 합니다. 상세 프로필은 추가로 recommendation, uncertainty, affected gates 또는 acceptance criteria, deferral consequence, profile-specific context를 포함합니다.
 
@@ -348,7 +348,7 @@ Implementation agent에게는 매 turn마다 compact한, 항상 주입되는 Har
 | Write Authority Summary | Not requested, allowed, blocked, stale, unavailable 같은 display status와, relevant한 경우 scoped path/tool summary. |
 | 수용 기준 | 다음 행동이나 close가 의존하는 경우 current 수용 기준 snapshot 또는 ref. |
 | Approval status | Relevant할 때 active sensitive-action Approval status 또는 `not_required`. |
-| Evidence refs | Evidence가 다음 행동이나 close에 영향을 주는 경우 latest Evidence Manifest ref와 짧은 coverage summary. |
+| Evidence refs | Evidence가 다음 행동이나 close에 영향을 주는 경우 latest evidence summary 또는 ref. Evidence Manifest ref는 active profile이 그 resource를 켰을 때만 사용합니다. |
 | Residual-risk summary | Known close-relevant residual risk summary와 refs, 또는 close나 acceptance가 의존하는 경우 명시적인 absence. |
 | Guarantee level | 실제 연결 profile level과 입증 가능한 guard 또는 detection behavior. 접점 이름에서 추론하지 않습니다. |
 | Connector profile freshness | Connector manifest ref, `capability_profile_version`, `last_verified_at`, 그리고 generated file, MCP config, hook, wrapper, sidecar, capture, isolation 동작이 바뀐 경우 stale reason. |
@@ -358,7 +358,7 @@ Implementation agent에게는 매 turn마다 compact한, 항상 주입되는 Har
 Relevant할 때 ref 또는 한 줄 summary로 push하는 것:
 
 - latest Run, Eval, 수동 QA, report, residual-risk ref
-- relevant policy, TDD trace, stewardship, module/interface, domain ref
+- active profile 또는 현재 질문이 필요로 할 때만 relevant policy, TDD trace, stewardship, module/interface, domain ref
 
 다음 항목은 refs-first로 두고 body는 필요할 때만 pull합니다.
 
@@ -369,7 +369,7 @@ Relevant할 때 ref 또는 한 줄 summary로 push하는 것:
 
 Refs-first는 connector가 default prompt에 큰 본문을 붙여 넣지 않고 stable id, path, hash, summary, outcome, freshness를 push해야 한다는 뜻입니다. 다음 safe action이 content inspection을 요구할 때만 excerpt를 embed하고, 그 excerpt는 source ref와 연결해 둡니다. Retrieved, indexed, remembered, summarized context도 같은 규칙을 따릅니다. Agent가 다음에 무엇을 살펴볼지 알려 줄 수는 있지만, owner path가 실제 state change를 기록하기 전까지는 pull-only context로 남습니다. Write를 허가하거나 Write Authorization을 만들거나, Decision Packet을 해소하거나, Approval을 부여하거나, gate를 충족하거나, evidence를 만들거나, verification을 수행 또는 기록하거나, QA를 기록하거나, QA 또는 verification을 면제하거나, 결과를 수락하거나, 잔여 위험을 받아들이거나, projection freshness를 바꾸거나, Task를 close하면 안 됩니다.
 
-Agent가 전체 문서 세트를 읽지 않도록 단계별 맥락을 사용합니다. 각 프로필은 항상 주입되는 현재 상태 envelope와 필요할 때 불러오는 소유자 섹션을 함께 좁힙니다. 다음 항목은 해당 단계와 다음 행동이 특정 섹션을 요구할 때가 아니면 기본으로 불러오지 않습니다. 전체 [Storage와 DDL](storage-and-ddl.md) DDL, 전체 [Conformance Fixtures 참조](conformance-fixtures.md) 또는 [향후 Fixture Catalog](future-fixture-catalog.md), 전체 [Template 참조](templates/README.md) 세트, 관련 없는 [Roadmap](../roadmap.md) 항목, 오래된 작업 이력, historical event log, 읽기용 요약 전체 본문, 오래된 projection, 전체 MCP schema, 전체 참조 문서가 여기에 속합니다.
+Agent가 전체 문서 세트를 읽지 않도록 단계별 맥락을 사용합니다. 각 프로필은 항상 주입되는 현재 상태 envelope와 필요할 때 불러오는 소유자 섹션을 함께 좁힙니다. MCP resource pull은 staged [Read-only resources](mcp-api-and-schemas.md#read-only-resources) map을 따릅니다. v0.1은 current project/current task/status subset만 사용하고, v0.2는 사용자 결정 맥락이 필요할 때만 decision-packet과 judgment-context read를 더하며, v0.3/v0.4/future resource는 profile-gated 또는 pull-on-demand로 남깁니다. Connector는 enabled resource에서 ref, 한 줄 summary, freshness marker를 push할 수 있지만 full resource output을 기본으로 주입하면 안 됩니다. 다음 항목은 해당 단계와 다음 행동이 특정 섹션을 요구할 때가 아니면 기본으로 불러오지 않습니다. 전체 [Storage와 DDL](storage-and-ddl.md) DDL, 전체 [Conformance Fixtures 참조](conformance-fixtures.md) 또는 [향후 Fixture Catalog](future-fixture-catalog.md), 전체 [Template 참조](templates/README.md) 세트, 관련 없는 [Roadmap](../roadmap.md) 항목, 오래된 작업 이력, historical event log, 읽기용 요약 전체 본문, 오래된 projection, 전체 MCP schema, 전체 참조 문서가 여기에 속합니다.
 
 | Profile | 최소 현재 상태 | 필요할 때 불러오는 문서 또는 소유자 참조 | 기본으로 불러오지 않는 것 | 사용자에게 보이는 요약 | 권한과 최신성 |
 |---|---|---|---|---|---|
@@ -467,7 +467,7 @@ Surface는 scope expansion, Autonomy Boundary breach, Approval 없는 새 sensit
 
 v0.1 minimum reference expectations:
 
-- v0.1 Core Authority Slice에 필요한 public tool/resource 하위 집합에 `T2 MCP` 사용 가능. 전체 later-profile MCP surface가 v0.1 필수라는 뜻이 아닙니다.
+- v0.1 Core Authority Slice에 필요한 public tool/resource 하위 집합에 `T2 MCP` 사용 가능. 여기에는 첫 authority loop에 필요한 current project/current task/status resource만 포함되며, 전체 later-profile MCP surface가 v0.1 필수라는 뜻이 아닙니다.
 - registered project surface에 대한 local-only 또는 owner-approved access posture
 - product write 전 cooperative `prepare_write`, 그리고 product-write Run 전 compatible Write Authorization
 - run 이후 detective changed-path와 artifact validation

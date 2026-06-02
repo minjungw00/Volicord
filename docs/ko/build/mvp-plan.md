@@ -83,6 +83,18 @@ MCP API reference는 문서화한 모든 method의 정확한 schema를 정의하
 | v0.3 Agency Assurance Pack | `harness.launch_verify`, `harness.record_eval`, `harness.record_manual_qa`, Decision Packet method의 assurance/waiver/approval/risk profiles, `harness.record_run`의 evidence/feedback/TDD profiles, ValidatorResult-emitting assurance paths. | Operator recover/export completeness, broad projection/reconcile operations, release handoff. |
 | v0.4 Operations & Handoff Pack | API response의 projection freshness, reconcile decision profile, Operations가 담당하는 operator readiness/recover/export/artifact-integrity/conformance surfaces. | Dashboard, hosted workflow UI, broad connectors, automation, team workflow, orchestration은 later promotion 전까지 제외합니다. |
 
+### Stage별 read-only MCP resources
+
+MCP resource는 읽기 전용이며 public tool과 같은 staged delivery boundary를 따릅니다. Resource를 읽는 행위는 Task record, decision, projection job, reconcile item을 만들거나 상태 변경을 일으키면 안 됩니다.
+
+| Stage | Stage 범위의 resource | Stage exit에 넣지 않을 것 |
+|---|---|---|
+| v0.1 Core Authority Slice | Current state, blocker, write authority, 최소 Run/artifact/evidence ref를 위한 `harness://project/current`, `harness://task/active`, `harness://task/{task_id}`, optional `harness://task/{task_id}/summary` / `harness://status/card`. | Journey, Spine, Decision Packet storage, Evidence Manifest, bundle, report, design/domain map, module map, interface contract, projection job, full projection rendering. |
+| v0.2 User-Facing Harness MVP | v0.1 resource에 더해 사용자 결정 표시를 위한 `harness://task/{task_id}/decision-packets`와 `harness://task/{task_id}/judgment-context`. Evidence summary, close readiness, 작업 수락 상태, 잔여 위험 표시는 status/card 또는 task summary output 안에 나타날 수 있습니다. | Detailed Evidence Manifest resource, detached verification/QA resource, report, bundle, Journey/Spine polish, design map, module map, interface contract, export/recover. |
+| v0.3 Agency Assurance Pack | Evidence/assurance support가 켜졌을 때 `harness://policy/sensitive-categories`, `harness://task/{task_id}/evidence-manifest` 같은 profile-gated assurance read. | Operator report/export completeness와 넓은 operations resource. |
+| v0.4 Operations & Handoff Pack | Connector freshness, report, export, recover, handoff profile이 범위에 있을 때 broad `harness://project/surfaces`, `harness://task/{task_id}/reports/latest`, `harness://task/{task_id}/bundle/current` 같은 operations read. | Dashboard, hosted workflow UI, broad connector automation, later promotion 전 roadmap resource. |
+| Future/diagnostic | Owner가 승격한 `harness://task/{task_id}/spine`, `harness://task/{task_id}/journey`, `harness://task/{task_id}/change-unit-dag`, `harness://design/domain-language`, `harness://design/module-map`, `harness://design/interface-contracts` 같은 read. | Diagnostic resource를 v0.1 또는 minimum v0.2 요구사항처럼 취급하는 것. |
+
 ### 단계별 운영자 surface
 
 Operator command는 예시적인 구현 선택지입니다. Stage requirement는 최종 command spelling이 아니라 동작입니다.

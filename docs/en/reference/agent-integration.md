@@ -329,7 +329,7 @@ Keep the static always-on rule compass to these ten items or fewer:
 7. Same-session review is self-checking context, not detached verification.
 8. MCP unavailable means no authoritative state update, gate update, evidence, final acceptance, residual-risk visibility, residual-risk acceptance, projection-repair, or close claim.
 9. Show blockers and close-relevant residual risk before acceptance or close.
-10. Pull Reference docs, schemas, historical records, and large artifacts only when the next action needs them.
+10. Pull Reference docs, schemas, historical records, later-profile resource bodies, and large artifacts only when the next action needs them.
 
 Token savings must not starve the agent of user-owned judgments, blockers, scope limits, safety boundaries, or close-relevant residual-risk information needed for correct behavior. Decision requests in particular must include enough context for informed user judgment: the exact question, decision profile, concise options or chosen outcome, affected scope, relevant refs, and what the answer does not settle. Full profiles additionally include recommendation, uncertainty, affected gates or acceptance criteria, consequences of deferral, and other profile-specific context.
 
@@ -348,7 +348,7 @@ Context-profile-filtered envelope candidates:
 | Write Authority Summary | Display status such as not requested, allowed, blocked, stale, or unavailable, with scoped path/tool summary when relevant. |
 | Acceptance criteria | Current acceptance criteria snapshot or ref when the next action or close depends on it. |
 | Approval status | Active sensitive-action Approval status or `not_required` when relevant. |
-| Evidence refs | Latest Evidence Manifest ref and short coverage summary when evidence affects the next action or close. |
+| Evidence refs | Latest evidence summary or ref when evidence affects the next action or close. Use an Evidence Manifest ref only when the active profile enables that resource. |
 | Residual-risk summary | Known close-relevant residual risk summary and refs, or explicit absence when close or acceptance depends on it. |
 | Guarantee level | Actual connected profile level and the guard or detection behavior it can prove. Do not infer this from a surface name. |
 | Connector profile freshness | Connector manifest ref, `capability_profile_version`, `last_verified_at`, and stale reason when generated files, MCP config, hooks, wrappers, sidecars, capture, or isolation behavior changed. |
@@ -358,7 +358,7 @@ Context-profile-filtered envelope candidates:
 Push refs or one-line summaries when relevant:
 
 - latest Run, Eval, Manual QA, report, and residual-risk refs
-- relevant policy, TDD trace, stewardship, module/interface, and domain refs
+- relevant policy, TDD trace, stewardship, module/interface, and domain refs only when the active profile or current question needs them
 
 Keep these refs-first and pull the body only when needed:
 
@@ -369,7 +369,7 @@ Keep these refs-first and pull the body only when needed:
 
 Refs-first means the connector should push stable ids, paths, hashes, summaries, outcomes, and freshness, not paste large bodies into the default prompt. Embed excerpts only when the next safe action requires inspecting the content, and keep the excerpt tied to its source ref. Retrieved, indexed, remembered, or summarized context follows the same rule: it can tell the agent what to inspect next, but it remains pull-only context until an owner path records an actual state change. It must not authorize writes or create Write Authorization, resolve Decision Packets, grant Approval, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept results, accept residual risk, update projection freshness, or close tasks.
 
-Use context profiles so agents do not load the whole documentation set. Each profile narrows both the current state envelope and the owner sections the connector may pull. The default exclusions apply to every profile unless that exact phase and next action require a specific section: full [Storage And DDL](storage-and-ddl.md) DDL, the full [Conformance Fixtures Reference](conformance-fixtures.md) or [Future Fixture Catalog](future-fixture-catalog.md), the full [Template Reference](templates/README.md) set, unrelated [Roadmap](../roadmap.md) items, old task history, historical event logs, full projection bodies, old projections, full MCP schemas, and full Reference documents.
+Use context profiles so agents do not load the whole documentation set. Each profile narrows both the current state envelope and the owner sections the connector may pull. MCP resource pulls follow the staged [Read-only resources](mcp-api-and-schemas.md#read-only-resources) map: v0.1 uses only the current project/current task/status subset, v0.2 adds decision-packet and judgment-context reads only when user decision context is needed, and v0.3/v0.4/future resources stay profile-gated or pull-on-demand. A connector may push refs, one-line summaries, and freshness markers from enabled resources, but it should not inject full resource outputs by default. The default exclusions apply to every profile unless that exact phase and next action require a specific section: full [Storage And DDL](storage-and-ddl.md) DDL, the full [Conformance Fixtures Reference](conformance-fixtures.md) or [Future Fixture Catalog](future-fixture-catalog.md), the full [Template Reference](templates/README.md) set, unrelated [Roadmap](../roadmap.md) items, old task history, historical event logs, full projection bodies, old projections, full MCP schemas, and full Reference documents.
 
 | Profile | Minimal current state | Minimal docs or owner references | Do not load by default | User-visible summary | Authority and freshness |
 |---|---|---|---|---|---|
@@ -467,7 +467,7 @@ v0.1 Core Authority Slice uses only the reference-surface support needed to exer
 
 v0.1 minimum reference expectations:
 
-- `T2 MCP` available for the v0.1 public tool/resource subset needed by the Core Authority Slice, not the full later-profile MCP surface documented in MCP API And Schemas
+- `T2 MCP` available for the v0.1 public tool/resource subset needed by the Core Authority Slice, including only the current project/current task/status resources needed for the first authority loop, not the full later-profile MCP surface documented in MCP API And Schemas
 - local-only or otherwise owner-approved access posture for the registered project surface
 - cooperative `prepare_write` before product writes and compatible Write Authorization before any product-write Run
 - detective changed-path and artifact validation after runs

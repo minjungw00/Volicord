@@ -141,41 +141,72 @@ Core precondition과 mechanical check는 validator보다 앞서 또는 validator
 
 ## Read-only resources
 
-Resource 조회는 상태를 변경하지 않고 현재 상태와 projection 중심 요약을 보여줍니다.
+Resource 조회는 상태를 변경하지 않고 현재 상태와 projection 중심 요약을 보여줍니다. Public tool처럼 resource도 active delivery profile에 따라 단계가 나뉩니다. Reference contract가 later resource URI를 미리 이름 붙일 수는 있지만, 그렇다고 모든 `harness://` resource surface를 기본으로 읽어야 한다는 뜻은 아닙니다.
 
-```text
-harness://project/current
-harness://project/surfaces
-harness://task/active
-harness://task/{task_id}
-harness://task/{task_id}/summary
-harness://task/{task_id}/spine
-harness://task/{task_id}/journey
-harness://task/{task_id}/decision-packets
-harness://task/{task_id}/change-unit-dag
-harness://task/{task_id}/judgment-context
-harness://task/{task_id}/reports/latest
-harness://task/{task_id}/evidence-manifest
-harness://task/{task_id}/bundle/current
-harness://design/domain-language
-harness://design/module-map
-harness://design/interface-contracts
-harness://policy/sensitive-categories
-harness://status/card
-```
-
-이 목록은 read-only resource 접점을 묶어 보여줍니다. 조회는 현재 상태와 projection 최신성을 보고할 수 있지만 상태를 변경하지 않습니다.
-
-Resource 조회는 Task record, decision, projection job, reconcile item을 만들면 안 됩니다. Resource 조회 중 최신이 아닌 projection을 감지하면 freshness만 보고하고 복구하지 않습니다.
+Resource 조회는 Task record, decision, projection job, reconcile item을 만들거나 상태 변경을 일으키면 안 됩니다. Resource 조회 중 최신이 아닌 projection을 감지하면 freshness만 보고하고 복구하지 않습니다.
 
 Read-only resource는 source record가 이미 그 summary를 뒷받침할 때 가장 먼저 해소할 막힘, 추가 막힘, 가장 작은 해소 방법을 렌더링할 수 있습니다. 그래도 이 렌더링은 읽기 전용 보기입니다. 권한을 만들거나, gate를 clear하거나, projection repair를 enqueue하거나, 기준 상태를 변경하면 안 됩니다.
 
-Journey-oriented resource는 기준 상태를 바탕으로 한 projection 중심 조회이며 첫 runnable slice에는 필요하지 않습니다.
+앞 단계의 resource는 뒤 단계에서도 재사용할 수 있습니다. 뒤 단계 resource는 담당 profile이 켜졌을 때만 사용할 수 있습니다.
 
-- `harness://task/{task_id}/journey`는 해당 view가 켜져 있을 때 현재 위치 요약과 Journey Card 또는 Journey Spine-oriented refs를 반환합니다.
-- `harness://task/{task_id}/decision-packets`는 해당 Task의 active/resolved/deferred/blocked Decision Packet summary를 반환합니다.
-- `harness://task/{task_id}/change-unit-dag`는 Change Unit dependency refs와 ordering summaries를 반환합니다.
-- `harness://task/{task_id}/judgment-context`는 사용자 판단에 필요한 최소 current context를 반환하며, optional pull refs를 required context와 분리합니다.
+### 코어 권한 조각(v0.1 Core Authority Slice) resources
+
+v0.1 resource subset은 의도적으로 작습니다. 첫 authority loop에 필요한 current project, active/current Task, current state와 blocker, write-authority status, Core가 chat memory나 generated Markdown보다 권한 있는 기록임을 보여 주는 Run/artifact/evidence ref만 지원합니다.
+
+| Resource | Profile 의미 |
+|---|---|
+| `harness://project/current` | 현재 등록된 project identity, 관련될 때의 current project state version, Core read/write 주소 지정에 필요한 local MCP availability fact. |
+| `harness://task/active` | active Task pointer, 또는 명시적인 `none` / `unknown`. Task를 만들지 않습니다. |
+| `harness://task/{task_id}` | 좁은 authority loop를 위한 현재 Task state입니다. Lifecycle, scoped work boundary ref, blocker, write-authority status, latest Run ref, 존재할 때 최소 artifact/evidence ref를 포함할 수 있습니다. |
+| `harness://task/{task_id}/summary` | Connector가 `harness.status` / `harness.next` output만 쓰지 않고 resource를 사용할 때의 optional compact Task status/blocker summary입니다. |
+| `harness://status/card` | Current Core state에서 파생된 optional compact current-position/status card입니다. Primary blocker, secondary blocker, smallest unblocker를 보여줄 수 있지만 여전히 읽기 전용입니다. |
+
+v0.1은 Journey, Journey Spine, Decision Packet storage, Evidence Manifest, bundle, design map, module map, interface contract, report, projection job, projection renderer를 요구하지 않습니다.
+
+### 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP) resources
+
+v0.2는 v0.1 current-status resource를 유지하고, 일반 사용자가 현재 작업 상태, 대기 중인 사용자 결정, 근거 요약, 닫기 준비 상태, close blocker, 관련될 때의 작업 수락 필요/상태와 잔여 위험 표시를 이해할 수 있게 그 summary를 확장할 수 있습니다. Minimum v0.2 path에는 detailed report resource가 필요하지 않습니다.
+
+| Resource | Profile 의미 |
+|---|---|
+| `harness://task/{task_id}/decision-packets` | 해당 Task의 active, resolved, deferred, blocked Decision Packet summary입니다. 사용자 결정 표시를 위해 사용합니다. |
+| `harness://task/{task_id}/judgment-context` | 사용자 판단에 필요한 최소 current context입니다. Optional pull ref는 required context와 분리합니다. 사용자 판단이 필요할 때만 사용합니다. |
+
+v0.2의 근거와 닫기 준비 상태 resource path는 current Core state와 ref에서 파생된 `harness://task/{task_id}/summary`, `harness://status/card`, `harness.status`, 또는 `harness.next`로 충족할 수 있습니다. `harness://task/{task_id}/evidence-manifest`를 요구하지 않습니다.
+
+### 에이전시 보증 팩(v0.3 Agency Assurance Pack) resources
+
+이 resource들은 profile-gated assurance read입니다. 첫 조각이나 minimum user-facing MVP 요구사항이 아닙니다.
+
+| Resource | Profile 의미 |
+|---|---|
+| `harness://policy/sensitive-categories` | Approval, waiver, risk, assurance profile을 위한 read-only sensitive-action category policy입니다. Approval을 부여하거나 action을 승인된 것으로 분류하지 않습니다. |
+| `harness://task/{task_id}/evidence-manifest` | Assurance/evidence profile이 켜졌을 때 evidence coverage와 manifest-oriented read입니다. v0.2 evidence summary에는 필요하지 않으며, detailed manifest projection body는 pull-on-demand 또는 diagnostic 범위에 남습니다. |
+
+### 운영과 인계 팩(v0.4 Operations & Handoff Pack) resources
+
+이 resource들은 operations profile이 켜졌을 때 operator visibility, connector freshness, report/export, handoff workflow를 지원합니다.
+
+| Resource | Profile 의미 |
+|---|---|
+| `harness://project/surfaces` | Registered surface/profile inventory, MCP exposure posture, capability freshness, connector-operational status입니다. 좁은 구현은 current-surface fact만 더 이른 단계에 노출할 수 있지만, 넓은 surface inventory는 operations 범위입니다. |
+| `harness://task/{task_id}/reports/latest` | Operations/readiness를 위한 latest readable report ref와 freshness입니다. Report는 derived view이며 Core state를 대체하지 않습니다. |
+| `harness://task/{task_id}/bundle/current` | Handoff 또는 recovery profile을 위한 current bundle/export-oriented ref입니다. Bundle은 derived/export artifact이지 authority가 아닙니다. |
+
+### Future/diagnostic resources
+
+이 resource들은 projection-oriented, design/reference, 또는 diagnostic read입니다. Owner가 승격한 profile을 통해서만 켜거나 진단을 위해 필요할 때만 가져옵니다. v0.1 또는 minimum v0.2 요구사항으로 취급하면 안 됩니다.
+
+| Resource | Profile 의미 |
+|---|---|
+| `harness://task/{task_id}/spine` | 해당 diagnostic view가 켜졌을 때 owner record와 event에서 재구성하는 Journey Spine-style read입니다. |
+| `harness://task/{task_id}/journey` | Journey view가 켜졌을 때 current-position, Journey Card, 또는 Journey Spine-oriented read입니다. |
+| `harness://task/{task_id}/change-unit-dag` | Broad dependency view가 켜졌을 때 Change Unit dependency ref와 ordering summary입니다. Scheduler나 authorization surface가 아닙니다. |
+| `harness://design/domain-language` | Design/domain profile이 켜졌을 때 design owner record에서 읽는 domain-language read입니다. |
+| `harness://design/module-map` | Module-map profile이 켜졌을 때 design owner record에서 읽는 module-map read입니다. |
+| `harness://design/interface-contracts` | Interface-contract profile이 켜졌을 때 design owner record에서 읽는 interface-contract read입니다. |
+
+Resource로 노출되는 projection은 읽기용 파생 보기이지 authority가 아닙니다. Projection-backed resource를 읽는 행위는 projection을 refresh하거나, projection job을 enqueue하거나, missing owner record를 만들거나, 근거를 accept하거나, verification을 수행하거나, 수동 QA를 기록하거나, 결과를 수락하거나, 잔여 위험을 받아들이거나, write를 authorize하거나, Task를 close하면 안 됩니다.
 
 ## Tool envelope
 
