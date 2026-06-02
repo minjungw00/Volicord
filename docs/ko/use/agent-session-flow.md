@@ -529,7 +529,7 @@ AFK stop을 보여줄 때는 보장 수준을 이름 붙입니다. 협력형 또
 | Label | 사용할 때 |
 |---|---|
 | Self-checked | 구현 경로가 자기 결과를 확인했을 때. |
-| Detached candidate | 새 세션, 새 worktree, sandbox, 수동 평가 묶음, 또는 조건을 충족하는 subagent 경로가 독립적일 수 있지만 아직 분리 보증을 만들지 않았을 때. |
+| Detached candidate | 새 세션, 새 작업 트리, 샌드박스, 수동 평가 묶음, 또는 조건을 충족하는 하위 에이전트 경로가 독립적일 수 있지만 아직 분리 보증을 만들지 않았을 때. |
 | Detached verified | Eval이 유효한 독립성, same-session self-review 문제 없음, stale baseline 또는 bundle input 없음으로 pass했을 때. |
 | Waived with user-accepted residual risk | Verification 또는 다른 닫기 관련 확인이 waived되었고 사용자가 보이는 잔여 위험을 수용한 뒤 닫기로 선택했을 때. |
 

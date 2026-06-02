@@ -22,10 +22,10 @@
 |---|---|---|
 | 처음 읽는 사용자 | [개요](learn/overview.md) | [사용자 가이드](use/user-guide.md); 용어 이름이 필요할 때만 [핵심 개념](learn/concepts.md); 빠른 예시는 [15분 만에 보는 하네스](learn/harness-in-15-minutes.md). |
 | 에이전트와 작업하는 사용자 | [사용자 가이드](use/user-guide.md) | 전체 작업 흐름은 [하나의 작업으로 보는 하네스](learn/harness-in-one-task.md); 복잡한 사용자 소유 판단은 [결정 패킷 예시 모음](use/decision-packet-cookbook.md). |
-| 에이전트 통합자 | [에이전트 세션 흐름](use/agent-session-flow.md) | [에이전트 통합 참조](reference/agent-integration.md), [Surface Cookbook](reference/surface-cookbook.md), 정확한 field가 필요할 때 특정 API owner. |
-| 하네스 서버 구현자 | [구현 개요](build/implementation-overview.md) | 단계 계획은 [MVP 계획](build/mvp-plan.md), v0.1 구현 순서는 [첫 실행 가능한 조각](build/first-runnable-slice.md), request-to-close 경로는 [Runtime Walkthrough](build/runtime-walkthrough.md), 그다음 관련 Reference owner. |
-| reference 확인자 | [Reference 색인](reference/README.md) | kernel, API/schema, storage, projection/template, security, operations/conformance, agent integration, design policy, glossary, runtime architecture 중 필요한 계약 owner만 엽니다. |
-| 문서 유지보수자 | [문서 작성 가이드](maintain/authoring-guide.md) | [번역 가이드](maintain/translation-guide.md), [로드맵](roadmap.md), 엄격한 의미를 확인할 때만 Reference owner. |
+| 에이전트 통합자 | [에이전트 세션 흐름](use/agent-session-flow.md) | [에이전트 통합 참조](reference/agent-integration.md), [Surface Cookbook](reference/surface-cookbook.md), 정확한 필드가 필요할 때 특정 API 담당 문서. |
+| 하네스 서버 구현자 | [구현 개요](build/implementation-overview.md) | 단계 계획은 [MVP 계획](build/mvp-plan.md), v0.1 구현 순서는 [첫 실행 가능한 조각](build/first-runnable-slice.md), request-to-close 경로는 [Runtime Walkthrough](build/runtime-walkthrough.md), 그다음 관련 Reference 담당 문서. |
+| 참조 문서 확인자 | [Reference 색인](reference/README.md) | kernel, API/schema, storage, projection/template, security, operations/conformance, agent integration, design policy, glossary, runtime architecture 중 필요한 계약 담당 문서만 엽니다. |
+| 문서 유지보수자 | [문서 작성 가이드](maintain/authoring-guide.md) | [번역 가이드](maintain/translation-guide.md), [로드맵](roadmap.md), 엄격한 의미를 확인할 때만 Reference 담당 문서. |
 
 ## 문서별 역할
 
@@ -72,9 +72,9 @@ Build 문서는 이 순서로 읽습니다.
 
 ## 참조 문서
 
-정확한 계약을 찾아볼 때 사용합니다. Reference 전체를 기본으로 읽지 말고, 지금 필요한 질문의 owner 문서만 고릅니다. [Reference 색인](reference/README.md)이 간결한 owner-contract 지도입니다.
+정확한 계약을 찾아볼 때 사용합니다. Reference 전체를 기본으로 읽지 말고, 지금 필요한 질문의 담당 문서만 고릅니다. [Reference 색인](reference/README.md)이 간결한 담당 계약 지도입니다.
 
-| 필요한 것 | Owner |
+| 필요한 것 | 담당 문서 |
 |---|---|
 | Core authority, entity, gate, 상태 전이, 쓰기 권한, close semantics | [커널 참조](reference/kernel.md) |
 | Public MCP tool, envelope, schema, error, idempotency, state conflict behavior, shared ref, validator result schema | [MCP API와 스키마](reference/mcp-api-and-schemas.md) |
@@ -132,28 +132,28 @@ Build 문서는 이 순서로 읽습니다.
 
 ## 비교
 
-하네스는 에이전트 지침, MCP, 재사용 workflow, 테스트, 리뷰, spec과 같은 역할을 하지 않습니다.
+하네스는 에이전트 지침, MCP, 재사용 워크플로, 테스트, 리뷰, 사양서와 같은 역할을 하지 않습니다.
 
 | 인접 개념 | 그 역할 | 하네스의 역할 |
 |---|---|---|
 | AGENTS.md / 에이전트 지침 파일 | 저장소나 세션에서 에이전트가 어떻게 행동해야 하는지 알려 줍니다. | 하네스는 그런 지침을 사용할 수 있지만, 범위, 사용자 소유 판단, 근거, 닫기 준비 상태, 잔여 위험을 로컬 기록으로 유지합니다. |
 | MCP | 도구와 리소스를 연결하는 프로토콜 경계입니다. | 하네스는 MCP 도구나 리소스를 노출할 수 있지만, 기준은 Core가 소유한 로컬 상태와 아티팩트 참조에서 나옵니다. |
-| Skill / reusable workflow | 에이전트가 반복해서 따를 수 있는 지침이나 절차를 묶습니다. | 하네스는 그런 workflow 안에서 사용될 수 있지만, 지금 진행 중인 작업 상태를 기록하고 이 작업의 판단을 정해진 경로로 보냅니다. |
-| Test runner | 검사를 실행하고 결과를 냅니다. | 하네스는 관련 결과를 근거로 연결하고, 검증의 강도와 작업 수락을 따로 둡니다. |
-| Code review | 변경을 사람이 또는 팀이 검토합니다. | 하네스는 리뷰 결과를 참조할 수 있지만, 리뷰를 작업 수락, 잔여 위험 수용, close로 바꾸지 않습니다. |
-| Spec | 의도한 동작, 설계, 제약을 설명합니다. | 하네스는 spec을 입력으로 사용할 수 있지만, 실제 작업의 운영 상태인 범위, 결정, 근거, QA 기대, 작업 수락, 잔여 위험을 기록합니다. |
+| 스킬 / 재사용 워크플로 | 에이전트가 반복해서 따를 수 있는 지침이나 절차를 묶습니다. | 하네스는 그런 워크플로 안에서 사용될 수 있지만, 지금 진행 중인 작업 상태를 기록하고 이 작업의 판단을 정해진 경로로 보냅니다. |
+| 테스트 실행기 | 검사를 실행하고 결과를 냅니다. | 하네스는 관련 결과를 근거로 연결하고, 검증의 강도와 작업 수락을 따로 둡니다. |
+| 코드 리뷰 | 변경을 사람이 또는 팀이 검토합니다. | 하네스는 리뷰 결과를 참조할 수 있지만, 리뷰를 작업 수락, 잔여 위험 수용, 닫기로 바꾸지 않습니다. |
+| 사양서 | 의도한 동작, 설계, 제약을 설명합니다. | 하네스는 사양서를 입력으로 사용할 수 있지만, 실제 작업의 운영 상태인 범위, 결정, 근거, QA 기대, 작업 수락, 잔여 위험을 기록합니다. |
 
 ## 에이전트 맥락 불러오기
 
 독자별 읽기 경로 전체를 에이전트에 항상 주입하면 안 됩니다. 연결된 에이전트에 항상 주입되는 맥락은 한 화면 이하로 유지합니다. 역할 또는 surface posture, 현재 단계와 맥락 프로필, 현재 Task 요약, 활성 막힘, 대기 중인 사용자 소유 판단, 다음 허용 행동만 기본으로 둡니다.
 
-단계별 owner section만 필요할 때 불러옵니다. 자세한 단계별 맥락 지도는 [Agent 통합 참조: Context Push/Pull Principles](reference/agent-integration.md#context-pushpull-principles)가 담당하고, 사용자에게 보이는 동작은 [에이전트 세션 흐름](use/agent-session-flow.md)이 요약합니다.
+단계별 담당 섹션만 필요할 때 불러옵니다. 자세한 단계별 맥락 지도는 [Agent 통합 참조: Context Push/Pull Principles](reference/agent-integration.md#context-pushpull-principles)가 담당하고, 사용자에게 보이는 동작은 [에이전트 세션 흐름](use/agent-session-flow.md)이 요약합니다.
 
 ## 로드맵
 
 - [로드맵](roadmap.md)
 
-향후 후보 항목은 로드맵에 둡니다. 향후 담당자가 로드맵 기준을 통해 항목을 명시적으로 승격하기 전까지 로드맵 항목은 Build-owned staged delivery에 포함되지 않습니다.
+향후 후보 항목은 로드맵에 둡니다. 향후 담당자가 로드맵 기준을 통해 항목을 명시적으로 승격하기 전까지 로드맵 항목은 Build 문서가 담당하는 단계별 전달에 포함되지 않습니다.
 
 ## 언어 의미 일치
 
