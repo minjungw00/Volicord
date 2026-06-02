@@ -52,7 +52,7 @@ Approval 형태 표시 항목인 "이 Approval이 포괄하는 것", "이 Approv
 
 충분한 rendered Decision Packet은 이 section들로 하나의 사용자 소유 결정을 답하며, 넓은 permission을 요청하지 않습니다. 정확한 public request/response field는 [`harness.request_user_decision`](../mcp-api-and-schemas.md#harnessrequest_user_decision)이 소유하고, 기준 authority rule은 [Decision Packet](../kernel.md#decision-packet)과 [Decision Gate](../kernel.md#decision-gate)가 소유합니다. 이 template은 `judgment_domain`을 포함한 existing field를 요약해 보여줄 수 있지만 additional schema field, gate, alternate authority를 추가하면 안 됩니다.
 
-Profile-specific rendering은 선택한 profile에 필요하지 않은 section을 생략할 수 있습니다. `minimal_decision` card는 question, route, domain, scope, 간결한 options 또는 selected outcome, related refs, 답변이 확정하지 않는 것을 보여줘야 하지만, 중요하지 않다면 full pros/cons, recommendation, uncertainty, deferral analysis를 요구하지 않습니다. Full profile은 사용자가 risk, trade-off, approval scope, waiver impact, acceptance basis, residual-risk consequence, reconcile target을 판단하는 데 필요한 detailed section을 렌더링해야 합니다.
+Profile별 rendering은 선택된 MCP `profile_payload` branch를 따릅니다. 공통 field는 계속 보여주고, 선택한 profile이 요구하지 않는 branch별 section은 생략할 수 있습니다. `minimal_decision` card는 question, route, domain, scope, 간결한 options 또는 selected outcome, related refs, 답변이 확정하지 않는 것을 보여줘야 하지만, 중요하지 않다면 full pros/cons, recommendation, uncertainty, deferral analysis를 요구하지 않습니다. Full profile은 사용자가 risk, trade-off, approval scope, waiver impact, acceptance basis, residual-risk consequence, reconcile target을 판단하는 데 필요한 detailed section을 렌더링해야 합니다.
 
 사용자가 보는 질문은 decision을 직접 물어야 합니다. Option을 선택할지, stated consequence와 함께 defer할지, path를 reject할지, 이름 붙은 check를 waive할지, 이름 붙은 risk를 accept할지, result를 accept할지, 이름 붙은 drift를 reconcile할지 묻습니다. "approve" 또는 "승인"은 Approval에 연결된 Approval 형태 context에서만 사용합니다. 다른 packet kind에서는 어떤 choice를 기록할지와 그 choice 밖에 남는 것이 무엇인지 물어야 합니다. 여러 decision이 대기 중이면 별도 prompt 또는 별도 줄로 렌더링하며 승인, 작업 수락, 잔여 위험 수용을 하나의 답변으로 합치면 안 됩니다.
 
@@ -139,7 +139,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Decision Profile, Type, And Route
 - decision_profile: minimal_decision | product_ux_tradeoff | architecture_tradeoff | approval_shaped | waiver | acceptance | residual_risk_acceptance | reconcile | mixed
 - profile display: 간단한 판단 기록 | 상세 trade-off | 민감 동작 승인 | waiver | 작업 수락 | 잔여 위험 수용 | reconcile | mixed
-- profile-required detail:
+- profile-required detail: 공통 field와 선택된 profile_payload branch; minimal decision은 중요하지 않은 detailed field를 생략할 수 있음
 - decision type: 제품/UX 판단 | 기술 구조 판단 | 보안/개인정보 판단 | 범위/자율성 판단 | 민감 동작 승인 | QA 면제 판단 | 검증 면제 판단 | 작업 수락 | 잔여 위험 수용 | reconcile
 - decision_kind:
 - judgment_domain:

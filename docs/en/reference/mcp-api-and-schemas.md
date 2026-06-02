@@ -575,7 +575,7 @@ Profile validation is intentionally tiered:
 | --- | --- | --- |
 | `minimal_decision` | Simple product, scope, or technical unblocker where a full trade-off object would be heavier than the decision. | Common fields, concise pending option labels or chosen outcome, relevant scope, and related state/artifact refs. Detailed pros/cons, recommendation, uncertainty, and deferral consequence may be empty, or `null` where the schema allows `null`, when not material. |
 | `product_ux_tradeoff` | Product, UX, copy, accessibility, or workflow choice with meaningful user impact. | Detailed options with benefits/costs/risks, recommendation or explicit no-recommendation reason, uncertainty, deferral consequence, affected acceptance criteria when applicable, and relevant evidence or design refs. |
-| `architecture_tradeoff` | Architecture, dependency, API/interface, migration, storage, or security-sensitive technical direction. | Detailed options with trade-offs, compatibility and rollback/risk notes, recommendation, uncertainty, deferral consequence, affected gates/criteria, and source/evidence refs. |
+| `architecture_tradeoff` | Architecture, dependency, API/interface, migration, storage, or security-sensitive technical direction. | Detailed options with trade-offs, compatibility and rollback/risk notes, recommendation or explicit no-recommendation reason, uncertainty, deferral consequence, affected gates/criteria, and source/evidence refs. |
 | `approval_shaped` | Sensitive-action Approval request. | `decision_kind=approval`, valid `approval_scope`, affected sensitive categories or scope refs, expiry when the approval is time-bound, and clear "covers / does not cover" boundaries. It does not resolve product, architecture, waiver, acceptance, or risk decisions. |
 | `waiver` | QA waiver or verification waiver. | `decision_kind=qa_waiver` or `verification_waiver`, skipped check or surface, affected gate, waiver reason path, close impact, and residual-risk refs when the waiver leaves close-relevant risk. |
 | `acceptance` | Final result acceptance. | `decision_kind=acceptance`, result being accepted or rejected, evidence/verification/QA status refs, residual-risk visibility or `none`, and what acceptance does not replace. |
@@ -601,12 +601,13 @@ Profile validation is intentionally tiered:
 
 Invalid combinations must be rejected or narrowed before the prompt is shown or stored as a valid `DecisionPacket` or `DecisionPacketCandidate`. `decision_profile` controls prompt depth and profile-specific requiredness only; it does not create authority, satisfy a gate, grant Approval, waive QA or verification, accept final result, accept residual risk, or close a Task by itself.
 
-Common fields for every profile are `decision_kind`, `decision_profile`, `judgment_domain`, `context.why_now`, related `context.source_refs` and `context.evidence_refs` when available, `state_summary_at_request`, `what_user_is_deciding`, `what_agent_may_decide_without_user`, relevant scope through `task_id`, `change_unit_id`, affected gate/criterion refs when applicable, `expires_at` when the decision has an expiry, and timestamp/version fields on the committed `DecisionPacket`. Pending packets use `options` to show concise pending choices; resolved packets use `selected_option_id` and `decision` in [`harness.record_user_decision`](#harnessrecord_user_decision) to record the chosen outcome. Minimal profiles may use short option labels with empty detailed arrays; full profiles must populate the detailed fields needed for informed judgment.
+Common fields for every profile are `decision_packet_id` on committed packets, `task_id`, `change_unit_id` when a Change Unit scope applies, `status`, `decision_kind`, `decision_profile`, `judgment_domain`, `context.why_now`, related `context.source_refs` and `context.evidence_refs`, `state_summary_at_request`, `what_user_is_deciding`, `what_agent_may_decide_without_user`, `affected_scope`, affected gate/criterion refs when applicable, `expires_at` when the decision has an expiry, and created/updated/resolved timestamp fields on the committed `DecisionPacket`. If there are no separate source, evidence, artifact, gate, criterion, or scope refs, the field is still represented as an explicit empty array or explicit `null` where the schema allows `null`; absence must not hide unknown context. Pending packets use the selected `profile_payload` branch to show concise pending choices or detailed options, and resolved packets use `resolution.selected_option_id` and `resolution.decision` to preserve the chosen outcome from [`harness.record_user_decision`](#harnessrecord_user_decision). Minimal profiles may use short option labels with `details=null`, omitted optional payload fields, empty arrays, or `null` recommendation/deferral/user-context values when those details are not material; full profiles must populate the detailed fields needed for informed judgment.
 
-`DecisionPacketCandidate`, `RecommendedPlaybook.route`, `decision_packet_route`, and optional implementation `decision_requests` are request, display, or routing metadata. They can help a caller reach [`harness.request_user_decision`](#harnessrequest_user_decision), but they do not become canonical authority until the owner path commits or updates a compatible `DecisionPacket` and any linked owner records. A user-facing `DecisionPacketCandidate` should include `judgment_domain` and `decision_profile`; candidate values remain request/display/routing metadata until Core commits or updates the canonical Decision Packet. The stored Decision Packet owns the committed `judgment_domain` and `decision_profile`.
+`DecisionPacketCandidate`, `RecommendedPlaybook.route`, `decision_packet_route`, and optional implementation `decision_requests` are request, display, or routing metadata. They can help a caller reach [`harness.request_user_decision`](#harnessrequest_user_decision), but they do not become canonical authority until the owner path commits or updates a compatible `DecisionPacket` and any linked owner records. A user-facing `DecisionPacketCandidate` should include `judgment_domain`, `decision_profile`, and the matching `profile_payload` branch; candidate values remain request/display/routing metadata until Core commits or updates the canonical Decision Packet. The stored Decision Packet owns the committed `judgment_domain`, `decision_profile`, and profile payload.
 
 ```yaml
 DecisionPacket:
+  # Common required fields for every profile.
   decision_packet_id: string
   task_id: string
   change_unit_id: string | null
@@ -621,24 +622,22 @@ DecisionPacket:
   state_summary_at_request: StateSummary
   what_user_is_deciding: string
   what_agent_may_decide_without_user: string[]
-  affected_gates:
-    - scope_gate | decision_gate | approval_gate | design_gate | evidence_gate | verification_gate | qa_gate | acceptance_gate
-  affected_acceptance_criteria:
-    - criteria_id: string
-      statement: string
-  options: DecisionPacketOption[]
-  recommendation: DecisionPacketRecommendation | null
-  deferral_consequence: string
-  user_context: DecisionPacketUserContext
-  approval_scope: ApprovalScope | null
-  reconcile_item_id: string | null
+  affected_scope: DecisionPacketScope
+  affected_gates: DecisionPacketGateRef[]
+  affected_acceptance_criteria: DecisionPacketCriterionRef[]
+  profile_payload: DecisionPacketProfilePayload
+  resolution: DecisionPacketResolution | null
   expires_at: string | null
   created_at: string
+  updated_at: string
   resolved_at: string | null
 
 DecisionPacketOption:
   option_id: string
   label: string
+  details?: DecisionPacketOptionDetails | null
+
+DecisionPacketOptionDetails:
   benefits: string[]
   costs: string[]
   risks: string[]
@@ -647,8 +646,13 @@ DecisionPacketOption:
   suitable_when: string[]
   evidence_refs: EvidenceRefs
 
+DetailedDecisionPacketOption:
+  option_id: string
+  label: string
+  details: DecisionPacketOptionDetails
+
 DecisionPacketRecommendation:
-  option_id: string | null
+  option_id: string | null  # null means no recommended option; reason must explain why.
   reason: string
   uncertainty: string | null
   when_to_revisit: string | null
@@ -657,7 +661,104 @@ DecisionPacketUserContext:
   minimum_context: string[]
   optional_pull_refs: StateRecordRef[]
 
+DecisionPacketScope:
+  scope_refs: StateRecordRef[]
+  product_areas: string[]
+  files_or_paths: string[]
+  acceptance_criteria_refs: StateRecordRef[]
+  note: string | null
+
+DecisionPacketGateRef:
+  gate: scope_gate | decision_gate | approval_gate | design_gate | evidence_gate | verification_gate | qa_gate | acceptance_gate
+  blocked_action: string | null
+
+DecisionPacketCriterionRef:
+  criteria_id: string
+  statement: string
+
+DecisionPacketResolution:
+  selected_option_id: string | null
+  decision: RecordUserDecisionPayload | null
+  note: string | null
+
+DecisionPacketProfilePayload:
+  # Exactly one branch is present, and the branch must match decision_profile.
+  one_of:
+    minimal_decision: MinimalDecisionPayload
+    product_ux_tradeoff: ProductUxTradeoffPayload
+    architecture_tradeoff: ArchitectureTradeoffPayload
+    approval_shaped: ApprovalShapedPayload
+    waiver: WaiverPayload
+    acceptance: AcceptancePayload
+    residual_risk_acceptance: ResidualRiskAcceptancePayload
+    reconcile: ReconcilePayload
+    mixed: MixedDecisionPayload
+
+MinimalDecisionPayload:
+  options: DecisionPacketOption[] | []
+  recommendation?: DecisionPacketRecommendation | null
+  uncertainty?: string | null
+  deferral_consequence?: string | null
+  user_context?: DecisionPacketUserContext | null
+
+ProductUxTradeoffPayload:
+  options: DetailedDecisionPacketOption[]
+  recommendation: DecisionPacketRecommendation
+  uncertainty: string
+  deferral_consequence: string
+  user_context: DecisionPacketUserContext
+  evidence_refs: EvidenceRefs
+
+ArchitectureTradeoffPayload:
+  options: DetailedDecisionPacketOption[]
+  recommendation: DecisionPacketRecommendation
+  uncertainty: string
+  deferral_consequence: string
+  user_context: DecisionPacketUserContext
+  evidence_refs: EvidenceRefs
+
+ApprovalShapedPayload:
+  approval_scope: ApprovalScope
+  covers: string[]
+  does_not_cover: string[]
+
+WaiverPayload:
+  skipped_check: string
+  waiver_reason: string
+  gate_or_close_impact: string
+  residual_risk_refs: StateRecordRef[]
+  follow_up: string | null
+
+AcceptancePayload:
+  result_ref: StateRecordRef | null
+  result_summary: string
+  evidence_status_refs: StateRecordRef[]
+  verification_status_refs: StateRecordRef[]
+  qa_status_refs: StateRecordRef[]
+  residual_risk_visibility: ResidualRiskSummary
+  does_not_replace: string[]
+
+ResidualRiskAcceptancePayload:
+  residual_risk_refs: StateRecordRef[]
+  accepted_scope: string[]
+  acceptance_consequence: string
+  follow_up_required: boolean
+  follow_up: string | null
+  evidence_refs: EvidenceRefs
+
+ReconcilePayload:
+  reconcile_item_id: string
+  target_refs: StateRecordRef[]
+  options: DecisionPacketOption[]
+
+MixedDecisionPayload:
+  primary_profile: minimal_decision | product_ux_tradeoff | architecture_tradeoff | approval_shaped | waiver | acceptance | residual_risk_acceptance | reconcile
+  included_profiles: string[]
+  included_payloads: object[]
+  separate_decisions_required: string[]
+
 DecisionPacketCandidate:
+  # Candidate common fields mirror DecisionPacket common fields, without canonical id/status/timestamps.
   task_id: string
   change_unit_id: string | null
   decision_kind: approval | scope_confirmation | design_choice | architecture_choice | product_tradeoff | autonomy_boundary | verification_waiver | qa_waiver | acceptance | residual_risk_acceptance | reconcile
@@ -670,18 +771,11 @@ DecisionPacketCandidate:
   state_summary_at_request: StateSummary
   what_user_is_deciding: string
   what_agent_may_decide_without_user: string[]
-  affected_gates:
-    - scope_gate | decision_gate | approval_gate | design_gate | evidence_gate | verification_gate | qa_gate | acceptance_gate
-  affected_acceptance_criteria:
-    - criteria_id: string
-      statement: string
-  options: DecisionPacketOption[]
-  recommendation: DecisionPacketRecommendation | null
-  deferral_consequence: string
-  user_context: DecisionPacketUserContext
+  affected_scope: DecisionPacketScope
+  affected_gates: DecisionPacketGateRef[]
+  affected_acceptance_criteria: DecisionPacketCriterionRef[]
+  profile_payload: DecisionPacketProfilePayload
   expires_at: string | null
-  approval_scope: ApprovalScope | null
-  reconcile_item_id: string | null
 
 RecommendedPlaybook:
   playbook_id: string
@@ -1325,7 +1419,7 @@ A Write Authorization is specific to the intended operation and the current stat
 
 `active_decision_packet_refs` contains all Decision Packets relevant to the intended write, including pending, deferred, blocked, or recently resolved packets.
 
-`decision_packet_candidate` is present when `decision=decision_required` and no compatible Decision Packet already exists. Its fields match `RequestUserDecisionRequest` after the envelope, including `judgment_domain` and `decision_profile`. It is a non-mutating candidate payload for a later `harness.request_user_decision` call; returning it from `prepare_write` does not create or update a Decision Packet.
+`decision_packet_candidate` is present when `decision=decision_required` and no compatible Decision Packet already exists. Its fields match `RequestUserDecisionRequest` after the envelope, including `judgment_domain`, `decision_profile`, and the selected `profile_payload` branch. It is a non-mutating candidate payload for a later `harness.request_user_decision` call; returning it from `prepare_write` does not create or update a Decision Packet.
 
 State transition summary: may move Task to `executing`, `waiting_user`, or `blocked`; may create a Write Authorization when allowed or return the already committed response for idempotent replay; may set `scope_gate=pending/blocked`, `decision_gate=required/pending/blocked`, `approval_gate=required/expired`, or stale evidence/approval markers. `approval_gate=pending` starts when an approval-shaped Decision Packet and linked pending Approval record are created by `harness.request_user_decision(decision_kind=approval)`.
 
@@ -1557,6 +1651,7 @@ Request schema:
 ```yaml
 RequestUserDecisionRequest:
   envelope: ToolEnvelope
+  # Common request fields; Core commits these into DecisionPacket common fields.
   task_id: string
   change_unit_id: string | null
   decision_kind: approval | scope_confirmation | design_choice | architecture_choice | product_tradeoff | autonomy_boundary | verification_waiver | qa_waiver | acceptance | residual_risk_acceptance | reconcile
@@ -1569,23 +1664,16 @@ RequestUserDecisionRequest:
   state_summary_at_request: StateSummary | null
   what_user_is_deciding: string
   what_agent_may_decide_without_user: string[]
-  affected_gates:
-    - scope_gate | decision_gate | approval_gate | design_gate | evidence_gate | verification_gate | qa_gate | acceptance_gate
-  affected_acceptance_criteria:
-    - criteria_id: string
-      statement: string
-  options: DecisionPacketOption[]
-  recommendation: DecisionPacketRecommendation | null
-  deferral_consequence: string
-  user_context: DecisionPacketUserContext
+  affected_scope: DecisionPacketScope
+  affected_gates: DecisionPacketGateRef[]
+  affected_acceptance_criteria: DecisionPacketCriterionRef[]
+  profile_payload: DecisionPacketProfilePayload
   expires_at: string | null
-  approval_scope: ApprovalScope | null
-  reconcile_item_id: string | null
 ```
 
-When this tool/profile is implemented, Core stores a canonical `DecisionPacket`; v0.1 Core Authority Slice does not require this storage path. Public request and response schemas remain centered on Decision Packet, not Decision Request. If the implementation also creates or updates `decision_requests`, those rows are routing, interaction, idempotency replay, or compatibility handoff metadata only, and they must link back to the canonical `decision_packet_id` before gate aggregation can consider their metadata. A `decision_request` row alone never satisfies `decision_gate`, sensitive-action Approval, final acceptance, waiver, residual-risk acceptance, or close. `expires_at` is copied into canonical Decision Packet state when present; optional `decision_requests.expires_at` is routing metadata only and must not replace the packet's expiry. If `state_summary_at_request` is `null`, Core derives it from current state during the same transaction. The stored `state_summary_at_request` is a request-time snapshot and is not updated by later Task transitions. `decision_profile` is required for every user-facing decision request and stored Decision Packet; it selects the validation profile for prompt depth and does not replace `decision_kind` or `judgment_domain`. `approval_scope` is required when `decision_kind=approval` and the profile must be `approval_shaped`; for all other `decision_kind` values it must be `null` or omitted. `decision_kind=approval` is only the approval-shaped context for sensitive-action Approval and cannot resolve user-owned judgment such as product trade-offs, design direction, architecture or material technical direction, unresolved security or product-security judgment, QA waiver, verification waiver, verification risk, final acceptance, or residual-risk acceptance without separate compatible Decision Packets and gate updates. For `decision_kind=approval`, Core also creates a linked pending Approval record using the approval scope; the Approval is not granted until `harness.record_user_decision` resolves the Decision Packet. `judgment_domain` is required for every user-facing decision request and stored Decision Packet; it is the user-visible judgment grouping, not the lifecycle route. A `residual_risk_acceptance` packet must include the risk visibility context in `user_context.minimum_context` and relevant risk refs in `context.source_refs`. A broad natural-language answer such as "go ahead," "proceed," or "looks good" is not a schema branch; the request must still name the `decision_kind`, `decision_profile`, `judgment_domain`, option or selected outcome, affected scope, and user context that determine what Core is asking the user to decide.
+When this tool/profile is implemented, Core stores a canonical `DecisionPacket`; v0.1 Core Authority Slice does not require this storage path. Public request and response schemas remain centered on Decision Packet, not Decision Request. If the implementation also creates or updates `decision_requests`, those rows are routing, interaction, idempotency replay, or compatibility handoff metadata only, and they must link back to the canonical `decision_packet_id` before gate aggregation can consider their metadata. A `decision_request` row alone never satisfies `decision_gate`, sensitive-action Approval, final acceptance, waiver, residual-risk acceptance, or close. `expires_at` is copied into canonical Decision Packet state when present; optional `decision_requests.expires_at` is routing metadata only and must not replace the packet's expiry. If `state_summary_at_request` is `null`, Core derives it from current state during the same transaction. The stored `state_summary_at_request` is a request-time snapshot and is not updated by later Task transitions. `decision_profile` is required for every user-facing decision request and stored Decision Packet; it selects the validation profile for prompt depth and does not replace `decision_kind` or `judgment_domain`. `profile_payload` must contain exactly the branch that matches `decision_profile`; other branches are absent. For `minimal_decision`, optional branch fields such as detailed option data, `recommendation`, `uncertainty`, `deferral_consequence`, and deep `user_context` may be omitted or `null` when they are not material. For `approval_shaped`, `profile_payload.approval_shaped.approval_scope` is required and `decision_kind` must be `approval`; no other profile branch may carry an Approval scope. `decision_kind=approval` is only the approval-shaped context for sensitive-action Approval and cannot resolve user-owned judgment such as product trade-offs, design direction, architecture or material technical direction, unresolved security or product-security judgment, QA waiver, verification waiver, verification risk, final acceptance, or residual-risk acceptance without separate compatible Decision Packets and gate updates. For `decision_kind=approval`, Core also creates a linked pending Approval record using the approval scope; the Approval is not granted until `harness.record_user_decision` resolves the Decision Packet. `judgment_domain` is required for every user-facing decision request and stored Decision Packet; it is the user-visible judgment grouping, not the lifecycle route. A `residual_risk_acceptance` packet must include visible residual-risk refs, accepted scope/consequence, follow-up requirement, and evidence refs in `profile_payload.residual_risk_acceptance`, plus relevant risk refs in `context.source_refs` when available. A broad natural-language answer such as "go ahead," "proceed," or "looks good" is not a schema branch; the request must still name the `decision_kind`, `decision_profile`, `judgment_domain`, profile payload branch, affected scope, and user context that determine what Core is asking the user to decide.
 
-The user-visible prompt derived from this request should be decision-centered and profile-appropriate: ask the user to choose, defer, reject, waive, accept, or reconcile the named option, and say what that answer will and will not settle. It should not ask for Approval unless `decision_kind=approval`, `decision_profile=approval_shaped`, and `approval_scope` describe the sensitive action being approved. Every user-facing decision request must include the exact thing the user is deciding, `judgment_domain`, `decision_kind`, `decision_profile`, the relevant scope, the pending option labels or chosen outcome, and related state or artifact refs. Full profiles additionally include detailed options, pros/cons or benefits/costs/risks, recommendation when the agent can justify one, uncertainty, what happens if the decision is deferred, affected gates or blocked actions, affected acceptance criteria, and the profile-specific context for sensitive-action approval, waivers, final acceptance, residual-risk acceptance, or reconcile. If an ordinary answer could map to multiple pending decisions, the surface must clarify instead of recording it against all of them. Surfaces may render friendly labels such as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed from the enum value, and may render profile labels such as concise decision, detailed trade-off, sensitive-action approval, waiver, final acceptance, residual-risk acceptance, or reconcile, but the stored schema values are the snake-case enums above. Domain labels such as `qa_acceptance` are grouping labels only; user-facing displays must still render the concrete `decision_kind` separately and must not collapse sensitive-action Approval, QA waiver, verification waiver, final acceptance, and residual-risk acceptance into one judgment-complete line.
+The user-visible prompt derived from this request should be decision-centered and profile-appropriate: ask the user to choose, defer, reject, waive, accept, or reconcile the named option, and say what that answer will and will not settle. It should not ask for Approval unless `decision_kind=approval`, `decision_profile=approval_shaped`, and `profile_payload.approval_shaped.approval_scope` describe the sensitive action being approved. Every user-facing decision request must include the exact thing the user is deciding, `judgment_domain`, `decision_kind`, `decision_profile`, the relevant scope, the pending option labels or chosen outcome from the selected profile payload, and related state or artifact refs. Full profiles additionally include detailed options, pros/cons or benefits/costs/risks, recommendation when the agent can justify one or an explicit no-recommendation reason, uncertainty, what happens if the decision is deferred, affected gates or blocked actions, affected acceptance criteria, and the profile-specific context for sensitive-action approval, waivers, final acceptance, residual-risk acceptance, or reconcile. If an ordinary answer could map to multiple pending decisions, the surface must clarify instead of recording it against all of them. Surfaces may render friendly labels such as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed from the enum value, and may render profile labels such as concise decision, detailed trade-off, sensitive-action approval, waiver, final acceptance, residual-risk acceptance, or reconcile, but the stored schema values are the snake-case enums above. Domain labels such as `qa_acceptance` are grouping labels only; user-facing displays must still render the concrete `decision_kind` separately and must not collapse sensitive-action Approval, QA waiver, verification waiver, final acceptance, and residual-risk acceptance into one judgment-complete line.
 
 Response schema:
 
@@ -1694,7 +1782,7 @@ RecordUserDecisionResponse:
   next_action: string
 ```
 
-`RecordUserDecisionResponse.decision_packet` is the post-transition canonical Decision Packet and preserves the stored `decision_kind`, `decision_profile`, `judgment_domain`, `affected_gates`, options, context refs, expiry, and resolution status. `harness.record_user_decision` must not accept a caller-supplied replacement `judgment_domain` or `decision_profile`; if a surface needs to display the domain or profile after recording, it reads it from this packet or the linked Decision Packet resource.
+`RecordUserDecisionResponse.decision_packet` is the post-transition canonical Decision Packet and preserves the stored `decision_kind`, `decision_profile`, `judgment_domain`, `affected_gates`, selected profile payload, context refs, expiry, and resolution status. `harness.record_user_decision` must not accept a caller-supplied replacement `judgment_domain` or `decision_profile`; if a surface needs to display the domain or profile after recording, it reads it from this packet or the linked Decision Packet resource.
 
 `RecordUserDecisionResponse.accepted_risk_refs` contains only `StateRecordRef` entries with `record_kind=residual_risk`; there is no standalone accepted-risk record kind.
 

@@ -8,7 +8,7 @@ The agent should clarify why the decision is needed now, what the realistic opti
 
 Harness helps preserve the user-owned decision separately from broad approval, implementation evidence, final acceptance, and residual-risk acceptance. You should expect a compact decision prompt, not a field list.
 
-Decision prompts can be concise or detailed. A tiny unblocker can show only the question, scope, options, and related evidence links. Complex or high-risk choices should include detailed options, trade-offs, recommendation, uncertainty, deferral consequence, and affected evidence or risk links.
+Decision prompts can be concise or detailed. A tiny unblocker can show only the question, scope, concise options, and related evidence links; omitted pros/cons, recommendation, uncertainty, or deferral analysis are valid when the selected profile is `minimal_decision` and those details are not material. Complex or high-risk choices should include detailed options, trade-offs, recommendation or explicit no-recommendation reason, uncertainty, deferral consequence, and affected evidence or risk links.
 
 This is advanced usage and example material, not the primary user entrypoint and not the exact contract for Decision Packet behavior.
 

@@ -52,7 +52,7 @@ A resolved Decision Packet is not sensitive-action Approval unless it is the app
 
 A sufficient rendered Decision Packet uses these sections to answer one user-owned decision, not to ask for broad permission. The exact public request and response fields are owned by [`harness.request_user_decision`](../mcp-api-and-schemas.md#harnessrequest_user_decision), and the canonical authority rules are owned by [Decision Packet](../kernel.md#decision-packet) and [Decision Gate](../kernel.md#decision-gate). This template may summarize the existing fields, including `judgment_domain`, but it must not add additional schema fields, gates, or alternate authority.
 
-Profile-specific rendering may omit sections that are not required for the selected profile. A `minimal_decision` card should still show the question, route, domain, scope, concise options or selected outcome, related refs, and what the answer does not settle, but it does not need full pros/cons, recommendation, uncertainty, and deferral analysis unless those are material. Full profiles should render the detailed sections needed for the user to judge risk, trade-offs, approval scope, waiver impact, acceptance basis, residual-risk consequence, or reconcile target.
+Profile-specific rendering follows the selected MCP `profile_payload` branch: common fields remain visible, while branch-specific sections may be omitted when the selected profile does not require them. A `minimal_decision` card should still show the question, route, domain, scope, concise options or selected outcome, related refs, and what the answer does not settle, but it does not need full pros/cons, recommendation, uncertainty, and deferral analysis unless those are material. Full profiles should render the detailed sections needed for the user to judge risk, trade-offs, approval scope, waiver impact, acceptance basis, residual-risk consequence, or reconcile target.
 
 The user-facing question should ask for the decision directly: choose an option, defer it with the stated consequence, reject the path, waive the named check, accept the named risk, accept the result, or reconcile the named drift. Use "approve" only for the approval-shaped context linked to Approval. For other packet kinds, ask what choice should be recorded and what remains outside that choice. If several decisions are pending, render separate prompts or separate lines; do not combine approval, acceptance, and risk acceptance into one answer.
 
@@ -139,7 +139,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Decision Profile, Type, And Route
 - decision_profile: minimal_decision | product_ux_tradeoff | architecture_tradeoff | approval_shaped | waiver | acceptance | residual_risk_acceptance | reconcile | mixed
 - profile display: concise decision | detailed trade-off | sensitive-action approval | waiver | final acceptance | residual-risk acceptance | reconcile | mixed
-- profile-required detail:
+- profile-required detail: common fields plus selected profile_payload branch; minimal decisions may omit non-material detailed fields
 - decision type: Product/UX judgment | technical architecture judgment | security/privacy judgment | scope/autonomy judgment | sensitive-action approval | QA waiver | verification waiver | final acceptance | residual-risk acceptance | reconcile
 - decision_kind:
 - judgment_domain:
