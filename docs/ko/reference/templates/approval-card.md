@@ -6,7 +6,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Agency assurance reports입니다. Sensitive-action approval이 active profile에 있을 때만 사용하며, 일반 사용자 결정 요청에는 approval card가 필요하지 않습니다.
+구현 계층: Agency assurance reports입니다. Sensitive-action approval이 active profile에 있을 때만 사용하며, 일반 사용자 판단 요청에는 approval card가 필요하지 않습니다.
 
 ## 기준 기록
 

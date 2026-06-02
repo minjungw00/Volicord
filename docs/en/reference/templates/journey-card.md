@@ -2,7 +2,7 @@
 
 ## Used when
 
-Use `JOURNEY-CARD` when a current-position card needs to show where the work is, what is in and out of scope, what is blocking the next move, what user decision is pending, the Autonomy Boundary, Write Authority Summary, acceptance criteria, evidence and checks, residual risk, close context, gates, and projection freshness.
+Use `JOURNEY-CARD` when a current-position card needs to show where the work is, what is in and out of scope, what is blocking the next move, what user judgment is pending, the Autonomy Boundary, Write Authority Summary, acceptance criteria, evidence and checks, residual risk, close context, gates, and projection freshness.
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
@@ -22,12 +22,12 @@ Implementation tier: Future/diagnostic projections. Persisted Journey Card Markd
 - blocker owner display summary
 - evidence coverage, verification, and Manual QA summaries
 - residual-risk summary and refs
-- final acceptance, residual-risk acceptance, and close-reason summaries
+- work acceptance, residual-risk acceptance, and close-reason summaries
 - latest evidence, Eval, Manual QA, and report refs
 - projection freshness inputs
 - state, baseline, evidence, MCP, and capability freshness/blocker display summaries
 
-Decision, write-authority, close-impact, residual-risk, and freshness placeholders are display bindings derived from the records above. If a user decision is actually needed, render a Decision Packet or decision prompt rather than treating this card as the decision context source.
+Decision, write-authority, close-impact, residual-risk, and freshness placeholders are display bindings derived from the records above. If a user judgment is actually needed, render a Decision Packet or judgment prompt rather than treating this card as the judgment context source.
 
 ## Rendered sections
 
@@ -63,14 +63,14 @@ Blocking now:
 - also blocking: {secondary_blockers_summary|none}
 
 Judgment context:
-- pending decision: {decision_packet_ref|none}
-- user deciding: {what_user_is_deciding|none}
+- pending judgment: {decision_packet_ref|none}
+- user judging: {user_judgment_question|none}
 - agent may decide: {what_agent_may_decide_without_user}
 
 Autonomy boundary:
 - profile: {autonomy_profile}
 - agent may do: {agent_may_do}
-- user decision required: {user_decision_required}
+- user judgment required: {user_judgment_required}
 - AFK stop conditions: {afk_stop_conditions}
 
 Write Authority Summary:
@@ -103,7 +103,7 @@ Residual risk:
 
 Close context:
 - blockers: {close_blockers|none}
-- final acceptance: {acceptance_summary|not_required}
+- work acceptance: {acceptance_summary|not_required}
 - residual-risk acceptance: {accepted_residual_risk_record_refs|none}
 - close reason: {close_reason|none}
 

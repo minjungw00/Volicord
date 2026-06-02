@@ -121,7 +121,7 @@ repo/
 ```
 
 
-The repository may hold generated readable summaries and, when an active profile enables them, generated `TASK`, `APR`, `RUN-SUMMARY`, `EVAL`, `DIRECT-RESULT`, `EVIDENCE-MANIFEST`, `TDD-TRACE`, `MANUAL-QA`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `JOURNEY-CARD`, `EXPORT`, and other report projections. v0.1 should start with structured status/blocker output rather than the full catalog; user decision request display, evidence summaries, and close-readiness output grow in v0.2 and later profiles. These files help humans and agents read the work, but they are not canonical state. A human-editable section is an input surface; human edits become state only when reconcile routes them into a Core state-changing action.
+The repository may hold generated readable summaries and, when an active profile enables them, generated `TASK`, `APR`, `RUN-SUMMARY`, `EVAL`, `DIRECT-RESULT`, `EVIDENCE-MANIFEST`, `TDD-TRACE`, `MANUAL-QA`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `JOURNEY-CARD`, `EXPORT`, and other report projections. v0.1 should start with structured status/blocker output rather than the full catalog; user judgment request display, evidence summaries, and close-readiness output grow in v0.2 and later profiles. These files help humans and agents read the work, but they are not canonical state. A human-editable section is an input surface; human edits become state only when reconcile routes them into a Core state-changing action.
 
 ## Harness Server / Installation
 
@@ -207,7 +207,7 @@ Decision, Journey, and Autonomy/Boundary modules do not create a new authority t
 
 ### Validators and adapter placement
 
-Validators sit beside Core and return structured results to Core. Core decides whether to decline the transition, mark a gate stale/partial/blocked, request a user decision, or only affect display.
+Validators sit beside Core and return structured results to Core. Core decides whether to decline the transition, mark a gate stale/partial/blocked, request a user judgment, or only affect display.
 
 The Agency Assurance Pack and Operations & Handoff Pack ValidatorResult ID set is API-owned and listed in [MCP API And Schemas](mcp-api-and-schemas.md#validatorresult). This runtime reference owns where those validators sit relative to Core and adapters, not a second copy of the ID registry.
 
@@ -239,7 +239,7 @@ Within that transaction, Core increments the affected scope clock as part of the
 
 Projection rendering happens after the transaction. A projection failure is state-isolated: it marks projection freshness or job status as stale or failed and leaves the committed state intact. Projection cannot roll back the transaction, rewrite `state.sqlite.task_events`, turn a passed task into a failed task, or repair canonical state without a later reconcile decision.
 
-Projection freshness is a derived-read fact. A status, next-action, export, or operator command may check it and report that a readable view is stale, failed, or unknown, but Core state, structured blockers, evidence records, final acceptance, residual-risk acceptance, and Write Authorization remain authoritative in their owner records. v0.1 Core Authority Slice may expose freshness or read facts without proving the full projection worker; v0.2 needs enough derived output for current work status, user decision request, evidence summary, and close readiness/blocker comprehension; hardened or operational profiles own the complete projection/reconcile and diagnostic report path.
+Projection freshness is a derived-read fact. A status, next-action, export, or operator command may check it and report that a readable view is stale, failed, or unknown, but Core state, structured blockers, evidence records, work acceptance, residual-risk acceptance, and Write Authorization remain authoritative in their owner records. v0.1 Core Authority Slice may expose freshness or read facts without proving the full projection worker; v0.2 needs enough derived output for current work status, user judgment request, evidence summary, and close readiness/blocker comprehension; hardened or operational profiles own the complete projection/reconcile and diagnostic report path.
 
 ## Artifact store architecture
 
@@ -332,7 +332,7 @@ Guarantee display should name both sides of the boundary: what the connected pro
 
 Current reference behavior is cooperative/detective unless the connected surface has a concrete, fixture-proven pre-tool guard for covered operations or a documented and proven separation boundary. Native hook expansion, advanced sidecar watching, and broad isolated execution are later roadmap items unless explicitly implemented for the reference surface. Until promoted through owner docs, they may improve observation, freshness, or display only; they do not authorize writes, satisfy gates, grant Approval, prove verification or QA, record acceptance, or replace Core authority.
 
-Guarantee level is display and risk context. It is not Approval, Write Authorization, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a kernel gate.
+Guarantee level is display and risk context. It is not Approval, Write Authorization, verification, QA, work acceptance, residual-risk acceptance, close readiness, or a kernel gate.
 
 ## Failure and recovery overview
 

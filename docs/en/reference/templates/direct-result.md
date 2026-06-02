@@ -20,7 +20,7 @@ Implementation tier: User-facing MVP summaries. Use as an optional compact direc
 - projection freshness inputs
 - escalation flag
 - close assurance
-- evidence, verification, Manual QA, final acceptance, residual-risk visibility, and residual-risk acceptance close summaries when applicable
+- evidence, verification, Manual QA, work acceptance, residual-risk visibility, and residual-risk acceptance close summaries when applicable
 
 Close Summary lines are derived display summaries from existing gate and owner-record refs. Direct work does not create additional close fields beyond the records it summarizes.
 
@@ -110,7 +110,7 @@ updated_at: 2026-05-06T09:40:00+09:00
 - evidence:
 - verification:
 - Manual QA:
-- final acceptance:
+- work acceptance:
 - residual-risk visibility:
 - residual-risk acceptance:
 - verification waiver ref:
@@ -139,9 +139,9 @@ Direct work may close self-checked by default unless policy or the user requires
 
 Direct Result should display self-checked, `detached_verified`, verification-waived, QA-waived, and risk-accepted-close states as separate lines. A waiver line points to the waiver ref or says it is not recorded; it does not become verification or QA. A risk-accepted close points to accepted Residual Risk refs and any required Decision Packet instead of being rendered as detached verified.
 
-Checks and tests in a Direct Result are evidence or self-check context. They do not become detached verification without a qualifying Eval, do not become Manual QA without a Manual QA result or valid waiver, and do not imply final acceptance. If direct work closes with accepted risk, the Close Summary should point to accepted Residual Risk refs, the Decision Packet that recorded the risk acceptance when one was required, and follow-up instead of presenting the result as detached verified. If no close-relevant risk is known, say that directly rather than adding gate inventory.
+Checks and tests in a Direct Result are evidence or self-check context. They do not become detached verification without a qualifying Eval, do not become Manual QA without a Manual QA result or valid waiver, and do not imply work acceptance. If direct work closes with accepted risk, the Close Summary should point to accepted Residual Risk refs, the Decision Packet that recorded the risk acceptance when one was required, and follow-up instead of presenting the result as detached verified. If no close-relevant risk is known, say that directly rather than adding gate inventory.
 
-Authority claims in a Direct Result should cite source refs or explicit absence: Write Authorization for write permission, Approval for sensitive-action permission, Evidence Manifest for evidence sufficiency, Eval for detached verification, Manual QA record or waiver path for QA, Acceptance Decision Packet for final acceptance, Residual Risk refs or `ResidualRiskSummary.status=none` for residual-risk visibility, and accepted Residual Risk refs for residual-risk acceptance. Do not render `not_visible` residual risk as "none."
+Authority claims in a Direct Result should cite source refs or explicit absence: Write Authorization for write permission, Approval for sensitive-action permission, Evidence Manifest for evidence sufficiency, Eval for detached verification, Manual QA record or waiver path for QA, Acceptance Decision Packet for work acceptance, Residual Risk refs or `ResidualRiskSummary.status=none` for residual-risk visibility, and accepted Residual Risk refs for residual-risk acceptance. Do not render `not_visible` residual risk as "none."
 
 `DIRECT-RESULT` is the low-ceremony close impact display for direct work. `TASK` owns continuity Close Summary display for active or recently closed `work` tasks, and Journey Card close context is compact status/resume display. These displays follow the [projection/report boundary](../document-projection.md#projection-principles); close and gate effects still come from owner records.
 

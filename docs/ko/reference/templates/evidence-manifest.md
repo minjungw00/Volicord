@@ -163,7 +163,7 @@ Example coverage mappings:
 | AC-01 docs typo corrected without meaning change | RUN-DOCS-001 | ART-DIFF-001 | | Changed doc path와 self-check가 stated docs-only condition을 cover할 때만 sufficient입니다. |
 | AC-02 login form submits email | RUN-FEATURE-001 | ART-DIFF-002, ART-TEST-002 | FBL-001 | Run, diff, test/log refs가 Task 전체가 아니라 이 AC에 map될 때 supported입니다. |
 | AC-03 final button copy is readable in target viewport | RUN-UI-001 | ART-SCREENSHOT-001, ART-DIFF-003 | QA-0001 | 수동 QA가 required이면 screenshot이나 browser smoke만으로 QA path를 충족하지 않습니다. |
-| AC-04 export contains only approved redacted fields | RUN-EXPORT-001 | ART-EXPORT-MANIFEST-001, ART-LOG-001 | APR-0001, DEC-0001 | Approval과 Decision refs는 scope 또는 사용자 결정 맥락을 보여줍니다. Redacted artifact refs는 여전히 nonsecret claim을 증명해야 합니다. |
+| AC-04 export contains only approved redacted fields | RUN-EXPORT-001 | ART-EXPORT-MANIFEST-001, ART-LOG-001 | APR-0001, DEC-0001 | Approval과 Decision refs는 scope 또는 사용자 판단 맥락을 보여줍니다. Redacted artifact refs는 여전히 nonsecret claim을 증명해야 합니다. |
 | Completion condition: independent verifier reviewed the changed scope | RUN-VERIFY-001 | ART-BUNDLE-001 | EVAL-0001 | Eval이 current refs를 review했고 requested close에 필요한 independence가 있을 때만 valid합니다. |
 
 Evidence Manifest는 주장을 뒷받침하지만 그 자체로 correctness를 증명하거나 분리 검증을 만들거나 수동 QA를 기록하거나 작업 수락을 암시하거나 잔여 위험을 보이게 하거나 잔여 위험을 수용하지 않습니다. 이 template에서 닫기 영향 요약을 렌더링할 때는 테스트 통과, 자체 확인(self-check), QA 면제 판단, 사용자의 작업 수락이 서로 다른 닫기 조건으로 오해되지 않도록 각 줄을 분리해 보여줘야 합니다.

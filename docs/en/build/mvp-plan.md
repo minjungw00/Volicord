@@ -27,23 +27,23 @@ Harness value is not merely that a write authority loop exists. Harness should p
 - v0.1 Core Authority Slice proves the smallest coherent internal Core authority loop.
 - v0.2 User-Facing Harness MVP proves that ordinary users can feel the core Harness value in how work is clarified, budgeted, held with visible blockers when needed, accepted, and risk-explained.
 
-The first slice stays intentionally narrow. It proves one local project registration, one Task, one scoped work boundary, one `prepare_write` authority path, one single-use Write Authorization, one recorded Run, one artifact/evidence reference, and one structured blocker/status response. It is not the MVP. The MVP comes when the user-facing path can translate normal work into scope, user-owned judgment, evidence, close readiness, and residual-risk language without confusing sensitive-action approval, final acceptance, and residual-risk acceptance.
+The first slice stays intentionally narrow. It proves one local project registration, one Task, one scoped work boundary, one `prepare_write` authority path, one single-use Write Authorization, one recorded Run, one artifact/evidence reference, and one structured blocker/status response. It is not the MVP. The MVP comes when the user-facing path can translate normal work into scope, user-owned judgment, evidence, close readiness, and residual-risk language without confusing sensitive-action approval, work acceptance, and residual-risk acceptance.
 
 Projection-template polish, detailed reports, dashboards or hosted workflow UI, indexes, broad connector ecosystems or marketplaces, team workflow, surface-specific connector automation, metrics, parallel orchestration, and broad automation become useful after the authority record and user-facing value path exist. They are not first-slice requirements.
 
 The early output model is intentionally small:
 
 - v0.1 needs only minimal status/blocker output from Core state; it does not need a projection renderer.
-- v0.2 needs only the minimum user-readable summaries for current work status, user decision request, evidence summary, and close readiness / blocker summary. Final-acceptance and residual-risk facts remain distinct when relevant, but they appear inside those summaries instead of becoming extra required projection kinds.
+- v0.2 needs only the minimum user-readable summaries for current work status, user judgment request, evidence summary, and close readiness / blocker summary. Work-acceptance and residual-risk facts remain distinct when relevant, but they appear inside those summaries instead of becoming extra required projection kinds.
 - Journey Card, Journey Spine, Run Summary, TDD Trace, Module Map, Interface Contract, Export, detailed Evidence Manifest, and detailed Eval outputs remain Future/diagnostic projections or other later-profile scope unless an owner profile explicitly promotes them.
 
 ## Staged delivery
 
 | Stage | Delivery target | What it proves | What it does not prove |
 |---|---|---|---|
-| v0.1 | Core Authority Slice | A first runnable internal Core authority loop over one local project registration, one Task, one scoped work boundary, one `prepare_write` authority path, one single-use Write Authorization, one recorded Run, one artifact/evidence ref, and one structured blocker/status response. | User-facing MVP value, full intake/discovery, profile-specific Decision Packet quality, full Evidence Manifest, Manual QA, detached verification, residual-risk acceptance semantics, final acceptance semantics, multiple projection kinds, recover/export, broad operator entrypoints, full conformance suite, future fixture catalog, dashboard/UI behavior. |
-| v0.2 | User-Facing Harness MVP | Users can experience Harness preserving scope, user-owned judgment, evidence, close readiness, final acceptance, and residual-risk visibility in a local authority record. | Full agency assurance hardening, detached verification independence, Manual QA matrix, stewardship policy suite, feedback-loop policy, export/recover, release handoff. |
-| v0.3 | Agency Assurance Pack | The MVP path is hardened with verification, QA, residual-risk, final-acceptance, and stewardship profiles. | Operator recovery/export completeness, release handoff, broad operations coverage, roadmap automation. |
+| v0.1 | Core Authority Slice | A first runnable internal Core authority loop over one local project registration, one Task, one scoped work boundary, one `prepare_write` authority path, one single-use Write Authorization, one recorded Run, one artifact/evidence ref, and one structured blocker/status response. | User-facing MVP value, full intake/discovery, profile-specific Decision Packet quality, full Evidence Manifest, Manual QA, detached verification, residual-risk acceptance semantics, work-acceptance semantics, multiple projection kinds, recover/export, broad operator entrypoints, full conformance suite, future fixture catalog, dashboard/UI behavior. |
+| v0.2 | User-Facing Harness MVP | Users can experience Harness preserving scope, user-owned judgment, evidence, close readiness, work acceptance, and residual-risk visibility in a local authority record. | Full agency assurance hardening, detached verification independence, Manual QA matrix, stewardship policy suite, feedback-loop policy, export/recover, release handoff. |
+| v0.3 | Agency Assurance Pack | The MVP path is hardened with verification, QA, residual-risk, work-acceptance, and stewardship profiles. | Operator recovery/export completeness, release handoff, broad operations coverage, roadmap automation. |
 | v0.4 | Operations & Handoff Pack | The same Core model supports doctor/readiness, recover/export, artifact integrity, release handoff, and broader conformance coverage. | Dashboard, hosted workflow UI, broad connectors, Browser QA Capture automation, Cross-Surface Verification automation, Context Index, team workflow, orchestration. |
 
 ```mermaid
@@ -68,20 +68,20 @@ Build staging does not upgrade security guarantees by itself. Security wording f
 |---|---|
 | v0.1 Core Authority Slice | Cooperative plus limited detective behavior. Core can refuse invalid state changes and return structured blockers, but the reference path does not stop arbitrary local processes or isolate tools by default. |
 | v0.2 User-Facing Harness MVP | Cooperative/detective behavior with honest user-visible blockers, MCP availability, evidence gaps, close readiness, and honest guarantee display. |
-| v0.3 Agency Assurance Pack | Stronger separation and detective assurance around verification, Manual QA, residual risk, final acceptance, Approval, and stewardship. |
+| v0.3 Agency Assurance Pack | Stronger separation and detective assurance around verification, Manual QA, residual risk, work acceptance, Approval, and stewardship. |
 | v0.4 Operations & Handoff Pack | Detective operations around doctor/readiness, recover/export, artifact integrity, projection freshness, and release handoff. |
 | v1+ Expansion | Preventive or isolated candidates only after owner docs implement and prove exact covered operations or real isolation boundaries. |
 
 ### API surface by stage
 
-The MCP API reference defines exact schemas for every method it documents, but staged delivery decides when a method/profile must be implemented. A schema-required field is required when that method/profile is active; it is not automatically stage-required for v0.1.
+The MCP API reference defines exact schemas for every method it documents. Staged delivery decides when a method/profile is active. Later-profile fields stay exact for their profile, but they are not part of an earlier stage exit.
 
-| Stage | Stage-required API surface | Later-profile fields to keep out of the stage exit |
+| Stage | Active API surface | Later-profile fields to keep out of the stage exit |
 |---|---|---|
-| v0.1 Core Authority Slice | Minimal `harness.status` status/blocker read, `harness.prepare_write`, `harness.record_run`, one owner-valid Task/scope setup path, and optionally minimal `harness.next` or a narrow `harness.close_task` blocker smoke. | Full natural-language intake, Decision Packet storage, Evidence Manifest, Manual QA, Eval, final acceptance semantics, residual-risk acceptance, projection rendering, reconcile, export/recover, broad operations. |
-| v0.2 User-Facing Harness MVP | Fuller `harness.status`/`harness.next`, user-facing `harness.intake`, `harness.request_user_decision`, `harness.record_user_decision`, evidence summaries through `harness.record_run`, and close readiness/blockers through `harness.close_task`. | Detached verification independence, full Manual QA matrix, Approval hardening, full residual-risk accepted close, stewardship validators, export/recover, broad operations. |
-| v0.3 Agency Assurance Pack | `harness.launch_verify`, `harness.record_eval`, `harness.record_manual_qa`, assurance/waiver/approval/risk profiles of Decision Packet methods, evidence/feedback/TDD profiles of `harness.record_run`, and ValidatorResult-emitting assurance paths. | Operator recover/export completeness, broad projection/reconcile operations, release handoff. |
-| v0.4 Operations & Handoff Pack | Projection freshness in API responses, reconcile decision profile, operator readiness/recover/export/artifact-integrity/conformance surfaces owned by Operations. | Dashboard, hosted workflow UI, broad connectors, automation, team workflow, orchestration unless promoted later. |
+| v0.1 Core Authority Slice | Minimal `harness.status` status/blocker read, `harness.prepare_write`, `harness.record_run`, one owner-valid Task/scope setup path, and optionally minimal `harness.next` or a narrow `harness.close_task` blocker smoke. | Full natural-language intake, Decision Packet storage, Evidence Manifest, Manual QA, Eval, work-acceptance semantics, residual-risk acceptance, projection rendering, reconcile, export/recover, broad operations. |
+| v0.2 User-Facing Harness MVP | `harness.status.next_actions` with optional `harness.next`, user-facing `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, evidence summaries through `harness.record_run`, and close readiness/blockers through `harness.close_task`. | Detached verification independence, full Manual QA matrix, Approval hardening, full residual-risk accepted close, stewardship validators, export/recover, broad operations. |
+| v0.3 Agency Assurance Pack | `harness.launch_verify`, `harness.record_eval`, `harness.record_manual_qa`, assurance/waiver/approval/risk profiles of judgment methods, evidence/feedback/TDD profiles of `harness.record_run`, and ValidatorResult-emitting assurance paths. | Operator recover/export completeness, broad projection/reconcile operations, release handoff. |
+| v0.4 Operations & Handoff Pack | Projection freshness in API responses, reconcile judgment profile, operator readiness/recover/export/artifact-integrity/conformance surfaces owned by Operations. | Dashboard, hosted workflow UI, broad connectors, automation, team workflow, orchestration unless promoted later. |
 
 ### Read-only MCP resources by stage
 
@@ -90,7 +90,7 @@ MCP resources are read-only and follow the same staged delivery boundary as publ
 | Stage | Resource scope in stage | Keep out of the stage exit |
 |---|---|---|
 | v0.1 Core Authority Slice | `harness://project/current`, `harness://task/active`, `harness://task/{task_id}`, and optional `harness://task/{task_id}/summary` / `harness://status/card` for current state, blockers, write authority, and minimal Run/artifact/evidence refs. | Journey, Spine, Decision Packet storage, Evidence Manifest, bundle, reports, design/domain maps, module maps, interface contracts, projection jobs, and full projection rendering. |
-| v0.2 User-Facing Harness MVP | v0.1 resources plus `harness://task/{task_id}/decision-packets` and `harness://task/{task_id}/judgment-context` for user decision visibility. Evidence summary, close readiness, final-acceptance status, and residual-risk visibility can appear through status/card or task summary output. | Detailed Evidence Manifest resource, detached verification/QA resources, reports, bundles, Journey/Spine polish, design maps, module maps, interface contracts, export/recover. |
+| v0.2 User-Facing Harness MVP | v0.1 resources plus `harness://task/{task_id}/decision-packets` and `harness://task/{task_id}/judgment-context` for user judgment visibility. Evidence summary, close readiness, work-acceptance status, and residual-risk visibility can appear through status/card or task summary output. | Detailed Evidence Manifest resource, detached verification/QA resources, reports, bundles, Journey/Spine polish, design maps, module maps, interface contracts, export/recover. |
 | v0.3 Agency Assurance Pack | Profile-gated assurance reads such as `harness://policy/sensitive-categories` and `harness://task/{task_id}/evidence-manifest` when evidence/assurance support is enabled. | Operator report/export completeness and broad operations resources. |
 | v0.4 Operations & Handoff Pack | Operations reads such as broad `harness://project/surfaces`, `harness://task/{task_id}/reports/latest`, and `harness://task/{task_id}/bundle/current` when connector freshness, report, export, recover, or handoff profiles are in scope. | Dashboard, hosted workflow UI, broad connector automation, and roadmap resources unless promoted later. |
 | Future/diagnostic | Owner-promoted reads such as `harness://task/{task_id}/spine`, `harness://task/{task_id}/journey`, `harness://task/{task_id}/change-unit-dag`, `harness://design/domain-language`, `harness://design/module-map`, and `harness://design/interface-contracts`. | Treating diagnostic resources as required for v0.1 or minimum v0.2. |
@@ -102,8 +102,8 @@ Operator commands are illustrative implementation choices. The stage requirement
 | Stage | Operator behavior in scope | Operator behavior outside the stage |
 |---|---|---|
 | v0.1 Core Authority Slice | Minimal local connect/register, basic status or diagnostic read, and local API/MCP exposure only if the first slice requires that boundary. | Projection refresh, reconcile, recover, export, artifacts check, full conformance run, release handoff, and broad doctor/readiness. |
-| v0.2 User-Facing Harness MVP | The same minimal surface plus user-facing status/next diagnostics for current work, user decisions, evidence state, and close blockers. Final-acceptance and residual-risk facts appear there when relevant. | Assurance operations, recover/export, release handoff, broad projection/reconcile operations, full conformance run, and broad operations coverage. |
-| v0.3 Agency Assurance Pack | Assurance-profile support for verification, Manual QA, residual-risk, final-acceptance, stewardship, and context-hygiene behavior through owner paths. | Operator recover/export completeness, release handoff, broad projection/reconcile operations, and full operations conformance. |
+| v0.2 User-Facing Harness MVP | The same minimal surface plus user-facing status/next diagnostics for current work, user judgments, evidence state, and close blockers. Work-acceptance and residual-risk facts appear there when relevant. | Assurance operations, recover/export, release handoff, broad projection/reconcile operations, full conformance run, and broad operations coverage. |
+| v0.3 Agency Assurance Pack | Assurance-profile support for verification, Manual QA, residual-risk, work-acceptance, stewardship, and context-hygiene behavior through owner paths. | Operator recover/export completeness, release handoff, broad projection/reconcile operations, and full operations conformance. |
 | v0.4 Operations & Handoff Pack | Full local operations support: doctor/readiness, projection refresh, reconcile, recover, export, artifacts check, release handoff where defined, and conformance run after runtime suites are materialized. | Remote/shared operations, dashboards, hosted workflow UI, broad connector automation, team workflow, and orchestration unless later promoted. |
 | v1+ Expansion | Promoted roadmap operations only after owner docs define exact contracts, guarantee level, fixtures, and fallback behavior. | Unpromoted roadmap candidates remain outside staged delivery. |
 
@@ -128,7 +128,7 @@ v0.1 must prove:
 
 The matching storage profile is [Storage And DDL: Core Authority Slice schema](../reference/storage-and-ddl.md#core-authority-slice-schema). That profile is the v0.1 minimum. User-facing Decision Packet tables, Approval records, Evidence Manifest, Manual QA, Eval, residual-risk acceptance records, projection jobs, reconcile items, validator runs, Journey records, and diagnostic/stewardship tables remain later-profile storage unless a profile owner explicitly promotes them.
 
-v0.1 explicitly excludes full natural-language intake, full Discovery, profile-specific Decision Packet quality, full Evidence Manifest, Manual QA, detached verification, residual-risk acceptance semantics, final acceptance semantics, product/UX versus architecture judgment presentation, stewardship, feedback-loop policy, multiple projection kinds, full projection rendering, export/recover, broad operator entrypoints, full conformance suite, future fixture catalog, full dashboard/UI behavior, and release handoff. Those are later stages or roadmap scope.
+v0.1 explicitly excludes full natural-language intake, full Discovery, profile-specific Decision Packet quality, full Evidence Manifest, Manual QA, detached verification, residual-risk acceptance semantics, work-acceptance semantics, product/UX versus architecture judgment presentation, stewardship, feedback-loop policy, multiple projection kinds, full projection rendering, export/recover, broad operator entrypoints, full conformance suite, future fixture catalog, full dashboard/UI behavior, and release handoff. Those are later stages or roadmap scope.
 
 Kernel Smoke candidates for v0.1 should assert only the minimal authority loop through Core state, the required owner records for that loop, artifact/evidence refs, and structured blockers. Projection polish, detailed templates, renderer output, and broad fixture catalogs are not first-slice conformance truth.
 
@@ -141,8 +141,8 @@ Reference schemas may list fields that become necessary only when the related ca
 | Stage | Build reading rule | Owner contracts to apply |
 |---|---|---|
 | v0.1 Core Authority Slice | Use only the owner-defined fields needed to prove the narrow authority loop and the [Core Authority Slice schema](../reference/storage-and-ddl.md#core-authority-slice-schema). Avoid creating future-profile records just to satisfy a broad checklist; if a minimal seeded blocker uses an owner ref, apply only the valid shape for that owner path, not profile-specific user-facing Decision Packet quality. | [Kernel Reference](../reference/kernel.md), [MCP API And Schemas](../reference/mcp-api-and-schemas.md), [Storage And DDL](../reference/storage-and-ddl.md), [Conformance Fixtures Reference](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue). |
-| v0.2 User-Facing Harness MVP | Add the fields and display summaries needed for users to understand the pending user decision context, evidence, and close blockers. Final acceptance and residual-risk facts stay distinct when relevant, but they fit inside the minimal summaries. | [MCP API And Schemas](../reference/mcp-api-and-schemas.md), [Kernel Reference](../reference/kernel.md), [Document Projection Reference](../reference/document-projection.md), [Template Reference](../reference/templates/README.md). |
-| v0.3 Agency Assurance Pack / v0.4 Operations & Handoff Pack | Add verification, QA, residual-risk, final-acceptance, stewardship, projection/reconcile, operations, export/recover, artifact-integrity, and release-handoff profiles only where owner docs define them. | [Design Quality Policies](../reference/design-quality-policies.md), [Operations And Conformance](../reference/operations-and-conformance.md), [Conformance Fixtures Reference](../reference/conformance-fixtures.md), [Future Fixture Catalog](../reference/future-fixture-catalog.md), [Storage And DDL](../reference/storage-and-ddl.md). |
+| v0.2 User-Facing Harness MVP | Add the fields and display summaries needed for users to understand the pending user judgment context, evidence, and close blockers. Work-acceptance and residual-risk facts stay distinct when relevant, but they fit inside the minimal summaries. | [MCP API And Schemas](../reference/mcp-api-and-schemas.md), [Kernel Reference](../reference/kernel.md), [Document Projection Reference](../reference/document-projection.md), [Template Reference](../reference/templates/README.md). |
+| v0.3 Agency Assurance Pack / v0.4 Operations & Handoff Pack | Add verification, QA, residual-risk, work-acceptance, stewardship, projection/reconcile, operations, export/recover, artifact-integrity, and release-handoff profiles only where owner docs define them. | [Design Quality Policies](../reference/design-quality-policies.md), [Operations And Conformance](../reference/operations-and-conformance.md), [Conformance Fixtures Reference](../reference/conformance-fixtures.md), [Future Fixture Catalog](../reference/future-fixture-catalog.md), [Storage And DDL](../reference/storage-and-ddl.md). |
 
 Required in an API schema therefore means required when that tool call, record, or profile is implemented or used. It does not make a future-profile field part of the smallest runnable slice by itself.
 
@@ -191,29 +191,29 @@ v0.2 is the first product MVP and the first stage where users experience core Ha
 The MVP must demonstrate:
 
 - an ordinary user request is clarified into scope, user-owned judgment, evidence, and close readiness language
-- product/UX judgments and material technical architecture judgments can be presented separately from each other and from sensitive-action approval, final acceptance, and residual-risk acceptance
+- product/UX judgments and material technical architecture judgments can be presented separately from each other and from sensitive-action approval, work acceptance, and residual-risk acceptance
 - small changes and tracked work have different procedural budgets without letting small-change labeling bypass authority
-- status and next-action output explain current scope, missing decisions, evidence state, close blockers, and safe next action
-- close reports a blocker when required evidence or a required user-owned decision is missing
+- status and next-action output explain current scope, missing judgments, evidence state, close blockers, and safe next action
+- close reports a blocker when required evidence or a required user-owned judgment is missing
 - residual risk can be displayed before acceptance and close
-- final acceptance is distinct from sensitive-action Approval and residual-risk acceptance
-- readable summaries or cards show current work status, user decision request, evidence summary, and close readiness/blockers without template polish becoming the source of truth; final-acceptance and residual-risk facts remain distinct inside those summaries when relevant
+- work acceptance is distinct from sensitive-action Approval and residual-risk acceptance
+- readable summaries or cards show current work status, user judgment request, evidence summary, and close readiness/blockers without template polish becoming the source of truth; work-acceptance and residual-risk facts remain distinct inside those summaries when relevant
 - conformance can prove the path through Core state, events, artifacts, projection/freshness facts, and structured errors rather than prose or renderer output alone
 
 Evidence records, readable summaries, and projection freshness support this experience. They are not the identity of the stage, and projection polish beyond this user-readable path stays out of scope.
 
 v0.2 should keep detached verification, the full Manual QA policy matrix, stewardship validators, feedback-loop policy, export/recover, release handoff, Journey Card/Spine polish, Run Summary, TDD Trace, Module Map, Interface Contract, detailed Evidence Manifest, detailed Eval, and Export projections as staged profiles unless a specific user-facing MVP scenario needs a minimal display or blocker hook. Browser QA Capture, Cross-Surface Verification automation, dashboards, broad connectors, Context Index, metrics, team workflow, and orchestration remain outside the MVP.
 
-Passing v0.2 means a user can see why Harness is more than an authorization wrapper: it keeps the work's scope, decisions, evidence, acceptance, and risk boundaries locally inspectable.
+Passing v0.2 means a user can see why Harness is more than an authorization wrapper: it keeps the work's scope, judgments, evidence, acceptance, and risk boundaries locally inspectable.
 
 ## v0.3 Agency Assurance Pack
 
-v0.3 hardens the MVP path so the local reference path can route verification, QA, residual risk, final acceptance, and stewardship with honest boundaries.
+v0.3 hardens the MVP path so the local reference path can route verification, QA, residual risk, work acceptance, and stewardship with honest boundaries.
 
 Focus on:
 
 - profile-specific Decision Packet quality and user-judgment routing
-- sensitive-action Approval, Decision Packet, Write Authorization, final acceptance, and residual-risk acceptance separation
+- sensitive-action Approval, Decision Packet, Write Authorization, work acceptance, and residual-risk acceptance separation
 - detached verification independence, including same-session verification guard behavior
 - Manual QA policy matrix, Manual QA blockers, and valid QA waivers
 - residual-risk accepted close full semantics
@@ -246,13 +246,13 @@ Docs-maintenance remains a separate read-only documentation profile. It may repo
 
 ## Roadmap-scoped v1+ Expansion candidates
 
-Keep these outside staged delivery unless a future plan promotes them through owner docs under the [Roadmap promotion criteria](../roadmap.md#promotion-criteria). Promotion must preserve user-owned judgment, avoid bypassing Core authority, use stage-appropriate security guarantee wording, state evidence/verification/QA/final-acceptance/residual-risk implications, avoid inflating v0.1 through v0.4, and define the needed capability profile, exact contracts, redaction/secret/PII policy, artifact retention and test-environment rules when runtime surfaces are captured, fixtures or conformance target, fallback behavior, and no projection-as-canonical dependency.
+Keep these outside staged delivery unless a future plan promotes them through owner docs under the [Roadmap promotion criteria](../roadmap.md#promotion-criteria). Promotion must preserve user-owned judgment, avoid bypassing Core authority, use stage-appropriate security guarantee wording, state evidence/verification/QA/work-acceptance/residual-risk implications, avoid inflating v0.1 through v0.4, and define the needed capability profile, exact contracts, redaction/secret/PII policy, artifact retention and test-environment rules when runtime surfaces are captured, fixtures or conformance target, fallback behavior, and no projection-as-canonical dependency.
 
 | Candidate | Stage boundary |
 |---|---|
 | Dashboard, hosted workflow UI, artifact dashboard, rich card expansion | May display state; must not become authority, implementation readiness, close readiness, acceptance, or risk acceptance. |
 | Broad connector marketplace or surface ecosystem | May extend surfaces later; must not replace the first Core authority-loop proof or widen MCP exposure by default. |
-| Browser QA Capture automation | May assist Manual QA after promotion; must not replace human QA judgment, final acceptance, or detached verification. |
+| Browser QA Capture automation | May assist Manual QA after promotion; must not replace human QA judgment, work acceptance, or detached verification. |
 | Cross-Surface Verification automation | May automate evaluator routing after promotion; must not satisfy Eval or assurance without Core-owned return records. |
 | Preventive guard expansion, native hooks, Advanced Sidecar Watcher | May strengthen surfaces after a proven pre-tool blocking or observation path; must not be claimed by label alone. |
 | Context Index, Local Derived Metrics, long-term metrics | May provide read-only retrieval or diagnostics; must not authorize writes, satisfy gates, refresh projections, or close Tasks. |
@@ -283,25 +283,25 @@ Use these as implementation-readable checklists for future runtime planning afte
 
 - Ordinary user language can start or resume tracked work without requiring Harness vocabulary.
 - The user-facing path clarifies scope, non-goals, acceptance criteria, evidence expectations, close readiness, and judgment boundaries.
-- Product/UX judgment and material technical architecture judgment can be presented separately from each other and from sensitive-action approval, final acceptance, and residual-risk acceptance.
-- Small direct changes and tracked work use different procedural budgets without bypassing write authority, evidence, or a required user decision.
-- Status/next output explains current scope, missing decisions, evidence state, residual-risk display, close blockers, and next safe action.
+- Product/UX judgment and material technical architecture judgment can be presented separately from each other and from sensitive-action approval, work acceptance, and residual-risk acceptance.
+- Small direct changes and tracked work use different procedural budgets without bypassing write authority, evidence, or a required user judgment.
+- Status/next output explains current scope, missing judgments, evidence state, residual-risk display, close blockers, and next safe action.
 - Close reports a blocker when required evidence is missing.
-- Close reports a blocker when a required user decision is missing or unresolved.
+- Close reports a blocker when a required user judgment is missing or unresolved.
 - Residual risk is visible before successful acceptance or close when known close-relevant risk exists.
-- Final acceptance is recorded or represented separately from sensitive-action Approval and residual-risk acceptance.
-- Residual-risk acceptance, when supported, is visibly distinct from final acceptance.
+- Work acceptance is recorded or represented separately from sensitive-action Approval and residual-risk acceptance.
+- Residual-risk acceptance, when supported, is visibly distinct from work acceptance.
 - User-facing readable summaries or cards are derived from Core records and are sufficient for the MVP path without making template polish authoritative.
 
 ### v0.3 Agency Assurance Pack exit checklist
 
 - Decision Packet quality and user-judgment routing are fixture-proven.
-- Sensitive-action Approval does not substitute for Decision Packets, Write Authorization, Manual QA, verification, final acceptance, or residual-risk acceptance.
+- Sensitive-action Approval does not substitute for Decision Packets, Write Authorization, Manual QA, verification, work acceptance, or residual-risk acceptance.
 - Detached verification independence and same-session verification guard behavior are fixture-proven.
 - Manual QA policy matrix and QA blockers are fixture-proven where policy requires them.
 - Risk-accepted close cites accepted Residual Risk refs under the owner semantics.
 - Stewardship validators, feedback-loop policy, TDD trace behavior, and context-hygiene behavior are covered where policy requires them.
-- Agency conformance proves Journey visibility, user-owned decision routing, Autonomy Boundary respect, distinct decision types, and residual-risk handling.
+- Agency conformance proves Journey visibility, user-judgment routing, Autonomy Boundary respect, distinct judgment categories/routes, and residual-risk handling.
 
 ### v0.4 Operations & Handoff Pack exit checklist
 
@@ -318,8 +318,8 @@ Use these as implementation-readable checklists for future runtime planning afte
 | Stage | What the user or operator can observe |
 |---|---|
 | v0.1 Core Authority Slice | An implementer can see one local Task move through a scoped work boundary, `prepare_write`, Write Authorization, `record_run`, artifact/evidence ref, and structured status/blocker output. |
-| v0.2 User-Facing Harness MVP | A user can see ordinary work clarified into scope, user-owned judgment, evidence, close readiness, final-acceptance, and residual-risk language, with close reporting a blocker when evidence or a required user decision is missing. |
-| v0.3 Agency Assurance Pack | The local path explains verification, Manual QA, residual-risk acceptance, final acceptance, stewardship, TDD, feedback, context hygiene, and close behavior through Core records and fixtures. |
+| v0.2 User-Facing Harness MVP | A user can see ordinary work clarified into scope, user-owned judgment, evidence, close readiness, work acceptance, and residual-risk language, with close reporting a blocker when evidence or a required user judgment is missing. |
+| v0.3 Agency Assurance Pack | The local path explains verification, Manual QA, residual-risk acceptance, work acceptance, stewardship, TDD, feedback, context hygiene, and close behavior through Core records and fixtures. |
 | v0.4 Operations & Handoff Pack | Operators can diagnose, recover, reconcile, export, check artifacts, run conformance, and prepare release handoff over the same Core state. |
 
 After staged delivery, promoted roadmap items can read, display, wrap, or extend the authority loop only after owner docs define exact contracts and fixture coverage.

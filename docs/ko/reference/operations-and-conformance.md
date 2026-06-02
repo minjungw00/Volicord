@@ -73,7 +73,7 @@ Conformance fixture body shape, fixture assertion semantics, detailed future sce
 | 단계 | 이 단계가 도입하는 운영자 동작 | 나중 단계로 남기는 동작 |
 |---|---|---|
 | v0.1 Core Authority Slice | 최소 local project registration 또는 reconnect, active Core state에 대한 기본 상태/진단 읽기, 첫 조각이 그 경계를 사용할 때만 local API/MCP 노출, runtime tooling이 생긴 뒤 좁은 Kernel Smoke check로 가는 optional 안내. | Projection refresh, reconcile, recover, export, artifacts check, full conformance run, release handoff, remote/shared MCP exposure, broad connector automation. |
-| v0.2 User-Facing Harness MVP | 같은 최소 운영자 surface 위에서 현재 작업, 누락된 사용자 결정, 근거 상태, close blocker, 작업 수락 필요 여부/상태, 잔여 위험 표시를 위한 status/next diagnostic을 지원합니다. | Detached assurance operations, full doctor/readiness category, 운영자 surface로서의 projection refresh, reconcile, recover, export, artifacts check, full conformance run, release handoff. |
+| v0.2 User-Facing Harness MVP | 같은 최소 운영자 surface 위에서 현재 작업, 누락된 사용자 판단, 근거 상태, close blocker, 작업 수락 필요 여부/상태, 잔여 위험 표시를 위한 status/next diagnostic을 지원합니다. | Detached assurance operations, full doctor/readiness category, 운영자 surface로서의 projection refresh, reconcile, recover, export, artifacts check, full conformance run, release handoff. |
 | v0.3 Agency Assurance Pack | 이 단계에서 active인 owner path를 통해 verification, Manual QA, residual-risk, 작업 수락, stewardship, context-hygiene profile을 위한 assurance-oriented support를 제공합니다. | Operator recovery/export completeness, broad projection/reconcile operations, release handoff, full operations conformance profile. |
 | v0.4 Operations & Handoff Pack | Full local operations profile입니다. Doctor/readiness category, projection refresh, reconcile, recover, export, artifact integrity check, 담당 문서가 정의한 release handoff report/export profile, materialized runtime suite에 대한 conformance run을 포함합니다. | Dashboard, hosted workflow UI, broad connector ecosystem, remote/shared operations, Browser QA Capture automation, Cross-Surface Verification automation, team workflow, orchestration은 별도로 승격하기 전까지 제외합니다. |
 | v1+ Expansion | Owner docs가 exact contract를 정의하고 증명한 뒤 승격한 broader connector automation, remote/shared access profile, richer UI/operator dashboard, higher automation 같은 roadmap operations입니다. | 승격되지 않은 것은 staged delivery 밖에 남습니다. |
@@ -466,7 +466,7 @@ Decision outcome:
 | merge | Core를 통해 proposal을 적용하고 state history에 추가합니다 |
 | reject | 기준 상태를 그대로 두고 필요하면 projection을 refresh합니다 |
 | convert_to_note | content를 state가 아닌 human note로 보존합니다 |
-| create_decision | proposal을 pending user decision으로 전환합니다 |
+| create_decision | proposal을 pending user judgment으로 전환합니다 |
 | defer | reconcile item을 open 상태로 유지합니다 |
 
 ```mermaid
@@ -481,7 +481,7 @@ flowchart TD
   Merge --> Core["Core 경로로 적용"]
   Reject --> Refresh["기준 상태 유지"]
   Note --> Human["사람 note 보존"]
-  Decision --> Pending["사용자 결정 대기"]
+  Decision --> Pending["사용자 판단 대기"]
   Defer --> Open["open 유지"]
 ```
 
@@ -564,7 +564,7 @@ Export는 Task에 대한 review 또는 archival bundle을 만듭니다.
 
 - created time, Task id 또는 ids, included state/event version range, projection freshness, export profile, redaction status summary가 있는 export manifest
 - Task와 related Core record의 state snapshot. Snapshot을 이해하는 데 필요한 안전한 state/event version fact를 포함하되 새 DDL 또는 두 번째 state store를 만들지 않습니다
-- Decision Packets, user decisions, accepted-risk metadata/refs가 포함된 residual risks, Journey Spine entries 또는 continuity refs, 관련 Change Unit Autonomy Boundary summary
+- Decision Packets, user judgments, accepted-risk metadata/refs가 포함된 residual risks, Journey Spine entries 또는 continuity refs, 관련 Change Unit Autonomy Boundary summary
 - relevant report projection snapshot. current/stale/failed/omitted freshness status를 포함합니다
 - artifact reference, owner relation, integrity metadata, redaction status, retention/availability, 그리고 허용되는 경우에만 포함되는 raw artifact file
 - artifact integrity manifest

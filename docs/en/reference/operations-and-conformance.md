@@ -73,8 +73,8 @@ Stage-specific operator behavior:
 | Stage | Operator behavior introduced by the stage | Later behavior kept out |
 |---|---|---|
 | v0.1 Core Authority Slice | Minimal local project registration or reconnect; basic status/diagnostic read over the active Core state; local API/MCP exposure only if the first slice uses that boundary; optional pointer to the narrow Kernel Smoke check after runtime tooling exists. | Projection refresh, reconcile, recover, export, artifacts check, full conformance run, release handoff, remote/shared MCP exposure, and broad connector automation. |
-| v0.2 User-Facing Harness MVP | User-facing support around the same minimal operator surface: status/next diagnostics for current work, missing user decisions, evidence state, close blockers, final-acceptance need/status, and residual-risk visibility. | Detached assurance operations, full doctor/readiness categories, projection refresh as an operator surface, reconcile, recover, export, artifacts check, full conformance run, and release handoff. |
-| v0.3 Agency Assurance Pack | Assurance-oriented support for verification, Manual QA, residual-risk, final-acceptance, stewardship, and context-hygiene profiles through the owner paths that are active in this stage. | Operator recovery/export completeness, broad projection/reconcile operations, release handoff, and the full operations conformance profile. |
+| v0.2 User-Facing Harness MVP | User-facing support around the same minimal operator surface: status/next diagnostics for current work, missing user judgments, evidence state, close blockers, work-acceptance need/status, and residual-risk visibility. | Detached assurance operations, full doctor/readiness categories, projection refresh as an operator surface, reconcile, recover, export, artifacts check, full conformance run, and release handoff. |
+| v0.3 Agency Assurance Pack | Assurance-oriented support for verification, Manual QA, residual-risk, work-acceptance, stewardship, and context-hygiene profiles through the owner paths that are active in this stage. | Operator recovery/export completeness, broad projection/reconcile operations, release handoff, and the full operations conformance profile. |
 | v0.4 Operations & Handoff Pack | Full local operations profile: doctor/readiness categories, projection refresh, reconcile, recover, export, artifact integrity check, release handoff report/export profile where defined, and conformance run over materialized runtime suites. | Dashboard, hosted workflow UI, broad connector ecosystems, remote/shared operations, Browser QA Capture automation, Cross-Surface Verification automation, team workflow, and orchestration unless separately promoted. |
 | v1+ Expansion | Promoted roadmap operations such as broader connector automation, remote/shared access profiles, richer UI/operator dashboards, and higher automation only after owner docs define and prove exact contracts. | Anything not promoted remains outside staged delivery. |
 
@@ -84,7 +84,7 @@ Operator guarantee posture follows the [Security Threat Model stage map](securit
 |---|---|
 | v0.1 Core Authority Slice | Cooperative/local diagnostic wording plus limited detective reporting for the active Core path. Structured blockers are Core/API results, not proof of pre-action tool blocking. |
 | v0.2 User-Facing Harness MVP | User-visible status and blocker wording may explain what cannot proceed under Harness authority and what only the user can decide. It must still say when the surface can only hold by instruction or detect later. |
-| v0.3 Agency Assurance Pack | Assurance diagnostics may report missing verification independence, Manual QA, residual-risk acceptance, final acceptance, or stewardship evidence without implying isolation or prevention. |
+| v0.3 Agency Assurance Pack | Assurance diagnostics may report missing verification independence, Manual QA, residual-risk acceptance, work acceptance, or stewardship evidence without implying isolation or prevention. |
 | v0.4 Operations & Handoff Pack | Doctor, recover, export, artifact check, projection refresh, and reconcile are primarily detective/repair/report surfaces unless an exact profile proves stronger coverage. |
 | v1+ Expansion | Preventive or isolated operator claims require promoted owner docs, exact covered operations, fixture proof, and fallback behavior. |
 
@@ -191,7 +191,7 @@ flowchart LR
   Start["docs-maintenance smoke"] --> Check["check Markdown docs"]
   Check --> Report["category result"]
   Report --> Output["ephemeral output"]
-  Output --> Hold["no task_events, artifacts, projections, QA, final acceptance, or close state"]
+  Output --> Hold["no task_events, artifacts, projections, QA, work acceptance, or close state"]
 ```
 
 ## connect
@@ -390,7 +390,7 @@ When the access mode is unknown or weaker than the registered profile, operation
 
 ## projection refresh
 
-Projection refresh regenerates Product Repository Markdown from committed state records and artifact refs. It is a derived-view operation: it may report freshness, failed jobs, and reconcile needs, but it must not replace Core state, structured blockers, evidence authority, final acceptance, residual-risk acceptance, or Write Authorization.
+Projection refresh regenerates Product Repository Markdown from committed state records and artifact refs. It is a derived-view operation: it may report freshness, failed jobs, and reconcile needs, but it must not replace Core state, structured blockers, evidence authority, work acceptance, residual-risk acceptance, or Write Authorization.
 
 Behavior required when projection refresh is in scope, normally v0.4 unless an owner profile explicitly promotes a narrower earlier path:
 
@@ -464,7 +464,7 @@ Decision outcomes:
 | merge | apply the proposal through Core and append state history |
 | reject | leave canonical state unchanged and refresh projection if needed |
 | convert_to_note | keep the content as a human note, not state |
-| create_decision | turn the proposal into a pending user decision |
+| create_decision | turn the proposal into a pending user judgment |
 | defer | keep the reconcile item open |
 
 ```mermaid
@@ -479,7 +479,7 @@ flowchart TD
   Merge --> Core["apply through Core and append state history"]
   Reject --> Refresh["canonical state unchanged; refresh if needed"]
   Note --> Human["preserve as human note"]
-  Decision --> Pending["pending user decision"]
+  Decision --> Pending["pending user judgment"]
   Defer --> Open["reconcile item remains open"]
 ```
 
@@ -552,7 +552,7 @@ not done    no earlier task_events rewritten; no evidence silently deleted
 not done    no Markdown projection edited into canonical state
 ```
 
-Captured recovery artifacts can explain what was observed during interruption or repair. They do not prove the interrupted implementation completed successfully and cannot satisfy evidence, verification, QA, final acceptance, residual-risk acceptance, or close by themselves.
+Captured recovery artifacts can explain what was observed during interruption or repair. They do not prove the interrupted implementation completed successfully and cannot satisfy evidence, verification, QA, work acceptance, residual-risk acceptance, or close by themselves.
 
 ## export
 
@@ -562,7 +562,7 @@ Required contents:
 
 - export manifest with created time, Task id or ids, included state/event version range, projection freshness, export profile, and redaction status summary
 - state snapshots for the Task and related Core records, plus safe state/event version facts needed to understand the snapshot without creating new DDL or a second state store
-- Decision Packets, user decisions, residual risks with accepted-risk metadata/refs, Journey Spine entries or continuity refs, and relevant Change Unit Autonomy Boundary summaries
+- Decision Packets, user judgments, residual risks with accepted-risk metadata/refs, Journey Spine entries or continuity refs, and relevant Change Unit Autonomy Boundary summaries
 - report projection snapshots for relevant reports, including current/stale/failed/omitted freshness status
 - artifact references, owner relations, integrity metadata, redaction status, retention/availability, and included raw artifact files only when allowed
 - artifact integrity manifest
@@ -573,7 +573,7 @@ Required contents:
 flowchart TD
   Export["Task export bundle"] --> Manifest["export manifest"]
   Export --> State["state snapshots"]
-  Export --> Decisions["Decision Packets and user decisions"]
+  Export --> Decisions["Decision Packets and user judgments"]
   Export --> Risks["residual risks and accepted-risk refs"]
   Export --> Journey["Journey Spine or continuity refs"]
   Export --> Projections["report projection snapshots"]

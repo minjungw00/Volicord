@@ -19,16 +19,16 @@ Read [Implementation Overview](implementation-overview.md) and [First Runnable S
 
 ## Main idea
 
-For write-capable tracked work, a request becomes safe product work only after Harness knows the Task, the needed requirements clarification or decisions, and the initial scope. Product writes then pass through `prepare_write`, which can create a one-attempt Write Authorization. Runs consume that authority, evidence and artifacts support claims, status/blocker output makes the current state readable, and later projection or close paths can explain blockers or close the Task when their stage is in scope.
+For write-capable tracked work, a request becomes safe product work only after Harness knows the Task, the needed requirements clarification or user-owned judgments, and the initial scope. Product writes then pass through `prepare_write`, which can create a one-attempt Write Authorization. Runs consume that authority, evidence and artifacts support claims, status/blocker output makes the current state readable, and later projection or close paths can explain blockers or close the Task when their stage is in scope.
 
-The walkthrough shows the full user-facing path. v0.1 Core Authority Slice implements only the smallest internal part of it: one local project registration, one Task, one scoped work boundary represented by the Change Unit owner shape only where the reference contract requires it, one `prepare_write` authority path, one single-use Write Authorization, one recorded Run, one artifact/evidence ref, and one structured blocker/status response. v0.1 does not require a full projection renderer, final acceptance, residual-risk acceptance semantics, Manual QA, detached verification, recover/export, or broad operator entrypoints. v0.2 User-Facing Harness MVP adds the ordinary-language clarification, judgment separation, procedural budget, residual-risk display, and acceptance boundaries users experience.
+The walkthrough shows the full user-facing path. v0.1 Core Authority Slice implements only the smallest internal part of it: one local project registration, one Task, one scoped work boundary represented by the Change Unit owner shape only where the reference contract requires it, one `prepare_write` authority path, one single-use Write Authorization, one recorded Run, one artifact/evidence ref, and one structured blocker/status response. v0.1 does not require a full projection renderer, work acceptance, residual-risk acceptance semantics, Manual QA, detached verification, recover/export, or broad operator entrypoints. v0.2 User-Facing Harness MVP adds the ordinary-language clarification, judgment separation, procedural budget, residual-risk display, and acceptance boundaries users experience.
 
 ## Walkthrough at a glance
 
 ```mermaid
 flowchart LR
   Request["ordinary request"] --> Clarify["requirements clarification"]
-  Clarify --> Decision["user-owned decision"]
+  Clarify --> Decision["user-owned judgment"]
   Clarify --> Scope["scoped work"]
   Decision --> Scope
   Scope --> Prepare["prepare_write"]
@@ -57,11 +57,11 @@ Strict behavior: Task lifecycle, modes, and state transitions are owned by [Kern
 
 Requirements clarification, internally named Discovery, is used when the request is ambiguous, risky, multi-step, product-facing, or likely to need user-owned judgment. It clarifies goal, user value, non-goals, acceptance criteria, inspectable facts, assumptions, technical and product choices, security or privacy concerns, QA expectations, remaining uncertainty, and scope boundaries.
 
-Strict behavior: requirements clarification / Discovery is shaping input. It is not Approval, Write Authorization, evidence, verification, QA, final acceptance, residual-risk acceptance, close, scope authority, or a new authority path. Decision routing is owned by [Decision Packet](../reference/kernel.md#decision-packet) and the public decision call in [MCP API And Schemas](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision).
+Strict behavior: requirements clarification / Discovery is shaping input. It is not Approval, Write Authorization, evidence, verification, QA, work acceptance, residual-risk acceptance, close, scope authority, or a new authority path. Judgment routing is owned by [Decision Packet](../reference/kernel.md#decision-packet) and the public judgment call in [MCP API And Schemas](../reference/mcp-api-and-schemas.md#harnessrequest_user_judgment).
 
 ### 3. Requirements clarification -> scoped next work -> Change Unit
 
-Requirements clarification separates inspectable facts from user-owned decisions, then tracks remaining uncertainty and proposes scoped next work, a smaller scope, or a work split once goals, non-goals, acceptance criteria, and major judgment candidates are clear enough. When product writes are near, that proposal can become a Change Unit candidate. The active Change Unit names what work surface may change, what remains out of bounds, and what judgment the agent may exercise inside that scope.
+Requirements clarification separates inspectable facts from user-owned judgments, then tracks remaining uncertainty and proposes scoped next work, a smaller scope, or a work split once goals, non-goals, acceptance criteria, and major judgment candidates are clear enough. When product writes are near, that proposal can become a Change Unit candidate. The active Change Unit names what work surface may change, what remains out of bounds, and what judgment the agent may exercise inside that scope.
 
 These proposal phrases are not standalone schema fields, canonical record types, gate values, projection kinds, or authority paths.
 
@@ -107,6 +107,6 @@ Strict behavior: completion checks are owned by [`close_task`](../reference/kern
 
 For v0.1 Core Authority Slice, keep the path narrow: one local project registration, one Task, one scoped work boundary, `prepare_write`, one single-use Write Authorization consumed by `record_run`, one artifact/evidence ref, and structured status/blocker output. Treat any projection-like output as status/blocker output; do not require full projection support.
 
-For v0.2 User-Facing Harness MVP, add the user-visible value path: ordinary request clarification, separate product/UX and architecture judgment presentation, small-change versus tracked-work budgets, close blocking for missing evidence or judgment, residual-risk display, and final acceptance distinct from Approval and residual-risk acceptance.
+For v0.2 User-Facing Harness MVP, add the user-visible value path: ordinary request clarification, separate product/UX and architecture judgment presentation, small-change versus tracked-work budgets, close blocking for missing evidence or judgment, residual-risk display, and work acceptance distinct from Approval and residual-risk acceptance.
 
 The staged order and Kernel Smoke boundary are summarized in [MVP Plan](mvp-plan.md). Exact fixture body shape and assertion rules stay in [Conformance Fixtures Reference](../reference/conformance-fixtures.md#conformance-fixture-format).

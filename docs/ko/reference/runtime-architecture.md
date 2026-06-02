@@ -123,7 +123,7 @@ repo/
 ```
 
 
-제품 저장소는 생성된 읽기용 요약과, active profile이 켠 경우 생성된 `TASK`, `APR`, `RUN-SUMMARY`, `EVAL`, `DIRECT-RESULT`, `EVIDENCE-MANIFEST`, `TDD-TRACE`, `MANUAL-QA`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `JOURNEY-CARD`, `EXPORT`, 그 밖의 report projection Markdown 보고서를 담을 수 있습니다. v0.1은 전체 catalog가 아니라 structured status/blocker output부터 시작해야 합니다. 사용자 결정 요청 표시, 근거 요약, 닫기 준비 상태 output은 v0.2와 이후 profile에서 자랍니다. 이 파일들은 사람과 agent가 작업을 읽는 데 도움을 주지만 기준 상태가 아닙니다. 사람이 편집할 수 있는 영역은 입력 접점입니다. 사람이 남긴 edit은 reconcile이 Core 상태 변경 action으로 라우팅할 때만 상태 기록이 됩니다.
+제품 저장소는 생성된 읽기용 요약과, active profile이 켠 경우 생성된 `TASK`, `APR`, `RUN-SUMMARY`, `EVAL`, `DIRECT-RESULT`, `EVIDENCE-MANIFEST`, `TDD-TRACE`, `MANUAL-QA`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `JOURNEY-CARD`, `EXPORT`, 그 밖의 report projection Markdown 보고서를 담을 수 있습니다. v0.1은 전체 catalog가 아니라 structured status/blocker output부터 시작해야 합니다. 사용자 판단 요청 표시, 근거 요약, 닫기 준비 상태 output은 v0.2와 이후 profile에서 자랍니다. 이 파일들은 사람과 agent가 작업을 읽는 데 도움을 주지만 기준 상태가 아닙니다. 사람이 편집할 수 있는 영역은 입력 접점입니다. 사람이 남긴 edit은 reconcile이 Core 상태 변경 action으로 라우팅할 때만 상태 기록이 됩니다.
 
 ## Harness Server / Installation
 
@@ -245,7 +245,7 @@ Adapters와 sidecars는 접점 capability를 observable facts로 번역합니다
 
 Projection 렌더링은 transaction 이후에 일어납니다. Projection failure는 state-isolated입니다. Projection 최신성 또는 job status를 `stale` 또는 `failed`로 표시하고 커밋된 상태는 그대로 둡니다. Projection은 transaction을 roll back하거나, `state.sqlite.task_events`를 rewrite하거나, passed task를 failed task로 바꾸거나, 나중의 reconcile decision 없이 기준 상태를 repair할 수 없습니다.
 
-Projection freshness는 파생 read fact입니다. Status, next-action, export, operator command가 이를 확인해 readable view가 stale, failed, unknown이라고 보고할 수는 있지만, Core state, structured blockers, evidence records, 작업 수락, 잔여 위험 수용, Write Authorization의 authority는 각 owner record에 남습니다. v0.1 Core Authority Slice는 full projection worker를 증명하지 않고 freshness 또는 read fact를 노출할 수 있습니다. v0.2는 현재 작업 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태/blocker를 사용자가 이해할 만큼의 derived output이 필요하고, hardened 또는 operational profile은 complete projection/reconcile 및 diagnostic report path를 담당합니다.
+Projection freshness는 파생 read fact입니다. Status, next-action, export, operator command가 이를 확인해 readable view가 stale, failed, unknown이라고 보고할 수는 있지만, Core state, structured blockers, evidence records, 작업 수락, 잔여 위험 수용, Write Authorization의 authority는 각 owner record에 남습니다. v0.1 Core Authority Slice는 full projection worker를 증명하지 않고 freshness 또는 read fact를 노출할 수 있습니다. v0.2는 현재 작업 상태, 사용자 판단 요청, 근거 요약, 닫기 준비 상태/blocker를 사용자가 이해할 만큼의 derived output이 필요하고, hardened 또는 operational profile은 complete projection/reconcile 및 diagnostic report path를 담당합니다.
 
 ## Artifact store architecture
 

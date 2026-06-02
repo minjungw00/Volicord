@@ -2,7 +2,7 @@
 
 ## Used when
 
-Use `APR` after an approval request has been committed and Harness needs a readable approval request and decision record for a sensitive action. `APR` shows sensitive-action permission scope; it does not decide user-owned product or material technical judgment, correctness, final acceptance, residual-risk acceptance, QA waiver, verification waiver, deployment, merge, or Write Authorization.
+Use `APR` after an approval request has been committed and Harness needs a readable approval request and decision record for a sensitive action. `APR` shows sensitive-action permission scope; it does not decide user-owned product or material technical judgment, correctness, work acceptance, residual-risk acceptance, QA waiver, verification waiver, deployment, merge, or Write Authorization.
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
@@ -73,7 +73,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - this request covers:
 - this request does not decide:
 - if granted, still requires later:
-- final acceptance boundary:
+- work acceptance boundary:
 - residual-risk acceptance boundary:
 - waiver boundary:
 - secret exposure boundary:
@@ -142,13 +142,13 @@ updated_at: 2026-05-06T09:30:15+09:00
 - broad approval check: this decision records only the sensitive-action Approval above; any "go ahead", "proceed", or "looks good" wording does not expand it.
 
 ## Boundary
-- approval does not resolve user-owned product or material technical judgment, prove correctness, replace verification, replace Manual QA, imply final acceptance, or accept residual risk.
+- approval does not resolve user-owned product or material technical judgment, prove correctness, replace verification, replace Manual QA, imply work acceptance, or accept residual risk.
 - approval does not waive QA or verification; waivers need their own scoped waiver path when policy allows them.
 - approval is not Write Authorization; a later compatible `prepare_write` retry must allow the write before implementation or direct `record_run` can consume authorization.
 - dependency install approval does not decide the architecture direction for using that dependency.
 - secret access approval does not permit exposing secret values in artifacts, projections, exports, logs, screenshots, or summaries.
 - auth, permission, or system-change approval does not decide session auth, JWT, social login, role model, lockout behavior, or user notice.
-- public API direction, deployment, merge, final acceptance, residual-risk acceptance, waivers, and additional write attempts each need their own applicable recorded decision or authority when required.
+- public API direction, deployment, merge, work acceptance, residual-risk acceptance, waivers, and additional write attempts each need their own applicable recorded decision or authority when required.
 ````
 
 ## Notes
@@ -157,4 +157,4 @@ This template is a rendered projection, not approval authority. The Approval rec
 
 The Boundary section is the user-facing reminder. Decision request routing records are not decision authority and cannot affect `decision_gate` except through a linked compatible Decision Packet.
 
-The approval wording should not invite a broad answer. If the user says "go ahead," "proceed," or "looks good," the rendered decision must still show that only the named sensitive action and scope were approved. If that answer could also refer to final acceptance, residual-risk acceptance, QA waiver, verification waiver, or another pending Decision Packet, clarify before recording it.
+The approval wording should not invite a broad answer. If the user says "go ahead," "proceed," or "looks good," the rendered decision must still show that only the named sensitive action and scope were approved. If that answer could also refer to work acceptance, residual-risk acceptance, QA waiver, verification waiver, or another pending Decision Packet, clarify before recording it.

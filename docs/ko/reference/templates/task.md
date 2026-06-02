@@ -2,20 +2,20 @@
 
 ## 사용 시점
 
-진행 중인 작업을 이어서 파악할 수 있는 Projection이 필요할 때 `TASK`를 사용합니다. 이 template은 범위, 사용자 결정, 근거, 닫기 준비 상태라는 네 가지 사용자에게 보이는 관문 표시 그룹을 먼저 요약합니다. 또한 작업의 현재 위치, 사용자 결정 맥락, 막힘 소유자, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, Stewardship Impact, 다음 근거, Residual Risk, Close Summary, 필요할 때의 kernel gate detail, active Change Unit, 대기 중인 decision을 보여줍니다. 관련 보고서 참조와 읽기용 보기 최신성도 함께 보여줍니다.
+진행 중인 작업을 이어서 파악할 수 있는 Projection이 필요할 때 `TASK`를 사용합니다. 이 template은 범위, 사용자 판단, 근거, 닫기 준비 상태라는 네 가지 사용자에게 보이는 관문 표시 그룹을 먼저 요약합니다. 또한 작업의 현재 위치, 사용자 판단 맥락, 막힘 소유자, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, Stewardship Impact, 다음 근거, Residual Risk, Close Summary, 필요할 때의 kernel gate detail, active Change Unit, 대기 중인 judgment를 보여줍니다. 관련 보고서 참조와 읽기용 보기 최신성도 함께 보여줍니다.
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: User-facing MVP summaries입니다. 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태/blocker 부분만 v0.2-required이며 전체 TASK body는 later profile polish입니다.
+구현 계층: User-facing MVP summaries입니다. 상태, 사용자 판단 요청, 근거 요약, 닫기 준비 상태/blocker 부분만 v0.2-required이며 전체 TASK body는 later profile polish입니다.
 
 ## 기준 기록
 
 - `state.sqlite` Task와 task gate
 - active Change Unit과 Change Unit dependency
 - mode, lifecycle, next action, 가장 먼저 해소할 막힘, 가장 작은 해소 방법, guarantee level, 읽기용 보기 최신성(projection freshness)을 위한 현재 상태 표시 input
-- 기존 owner 기록, gate, blocker, ref에서 파생되는 범위, 사용자 결정, 근거, 닫기 준비 상태 표시 그룹 input
+- 기존 owner 기록, gate, blocker, ref에서 파생되는 범위, 사용자 판단, 근거, 닫기 준비 상태 표시 그룹 input
 - Write Authorization 기록과 Write Authority Summary 표시 input
-- Decision Packet과 Residual Risk, 렌더링할 때의 schema가 소유하는 Decision Packet `judgment_domain`
+- Decision Packet과 Residual Risk, 렌더링할 때의 schema가 소유하는 Decision Packet `judgment_category`
 - 최신 Run, Evidence Manifest, Eval, 수동 QA 기록, 민감 동작 승인 기록
 - Write Authorization, Decision Packet, Approval, Evidence Manifest, Eval, 수동 QA, 작업 수락 context, Residual Risk, Artifact refs, redaction state, projection freshness 권한 claim을 표시할 때 필요한 compact source refs
 - 가장 먼저 해소할 막힘, 추가 막힘, 가장 작은 해소 방법 표시 summary
@@ -28,14 +28,14 @@
 - 기존 owner 기록과 ref에서 온 Review Stage 표시 input
 - artifact ref 및 읽기용 보기 최신성(projection freshness)
 
-`TASK`의 생성된 gate group summary, 사용자 결정 표시 text, close, waiver, review-stage, stewardship, projection-freshness 항목은 표시 binding입니다. 위에 나열한 owner record, gate, artifact, ref로 해소되어야 하며, 그런 source가 없으면 명시적인 absence/blocking 상태로 렌더링해야 합니다. Schema-owned `judgment_domain`을 렌더링해도 기준 기록, gate, `ProjectionKind` value, 근거, 수동 QA, 검증, 작업 수락, 잔여 위험 수용, close, Write Authorization을 만들지 않습니다.
+`TASK`의 생성된 gate group summary, 사용자 판단 표시 text, close, waiver, review-stage, stewardship, projection-freshness 항목은 표시 binding입니다. 위에 나열한 owner record, gate, artifact, ref로 해소되어야 하며, 그런 source가 없으면 명시적인 absence/blocking 상태로 렌더링해야 합니다. Schema-owned `judgment_category`를 렌더링해도 기준 기록, gate, `ProjectionKind` value, 근거, 수동 QA, 검증, 작업 수락, 잔여 위험 수용, close, Write Authorization을 만들지 않습니다.
 
 ## 렌더링 섹션
 
 - Gate Group Summary
 - Current Summary
 - Where We Are
-- User Decision Context
+- User Judgment Context
 - Authority Source Refs
 - Autonomy Boundary
 - Write Authority Summary
@@ -79,7 +79,7 @@ updated_at: 2026-05-06T09:30:15+09:00
   - write authority:
   - blocker / smallest unblocker:
   - source refs:
-- 사용자 결정:
+- 사용자 판단:
   - pending items (one line per decision; merge하지 않음):
   - direction judgments:
     - 제품/UX 판단:
@@ -133,11 +133,11 @@ updated_at: 2026-05-06T09:30:15+09:00
 - blocker owner:
 - smallest unblocker:
 - secondary blockers:
-- 대기 중인 decision:
-- 대기 중인 decision type:
-- user is deciding:
+- 대기 중인 judgment:
+- 대기 중인 judgment type:
+- user is judging:
 - risk:
-- gate display groups: 범위=; 사용자 결정=; 근거=; 닫기 준비 상태=
+- gate display groups: 범위=; 사용자 판단=; 근거=; 닫기 준비 상태=
 - guarantee level:
 - kernel gate detail: scope=; decision=; approval=; design=; evidence=; verification=; 수동 QA=; acceptance=
 - active change unit:
@@ -159,17 +159,17 @@ updated_at: 2026-05-06T09:30:15+09:00
 - latest meaningful evidence:
 - next state transition:
 
-## User Decision Context
-- 대기 중인 Decision Packet:
-- 대기 중인 decision items:
-- decision type:
-- decision title:
-- judgment_domain:
+## User Judgment Context
+- 대기 중인 judgment packet:
+- 대기 중인 judgment items:
+- judgment type:
+- judgment title:
+- judgment_category:
 - display label:
-- decision_kind:
-- decision_profile:
+- judgment_route:
+- display_depth:
 - why needed now:
-- what user is deciding:
+- what user is judging:
 - options:
 - trade-offs:
 - recommendation:
@@ -202,7 +202,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Autonomy Boundary
 - profile:
 - agent may do:
-- user decision required:
+- user judgment required:
 - AFK stop conditions:
 - boundary status:
 
@@ -432,7 +432,7 @@ Change Unit block sub-template:
   - implementation detail:
   - local refactor inside scope:
   - evidence collection:
-- user decision required:
+- user judgment required:
   - 제품/UX 판단:
   - 기술 구조 판단:
   - 보안/개인정보 판단:
@@ -509,9 +509,9 @@ Change Unit block sub-template:
 
 생성된 summary는 사용자가 읽기 쉬운 평범한 말을 먼저 쓰고, 정확한 Harness term은 유용한 label이나 ref로 붙입니다. Projection이 명령어처럼 보이거나 표시 문구만으로 상태가 만들어진 것처럼 암시하면 안 됩니다.
 
-Gate Group Summary는 읽는 사람이 raw gate detail보다 실제 막힘 이야기를 먼저 보도록 첫 managed section으로 둡니다. 범위, 사용자 결정, 근거, 닫기 준비 상태는 기존 owner 기록, gate, blocker, ref에서 파생되는 표시 그룹입니다. 기준 field, 정확한 gate value의 alias, 새 gate, recompute input, close semantics, authority path가 아닙니다. 사용자 결정은 구조화되어 있으며 하나의 넓은 판단 또는 승인 bucket처럼 렌더링하면 안 됩니다. 정확한 gate 값과 recompute rule은 [커널 참조](../kernel.md#gates)가 담당하고, close 동작은 [`close_task`](../kernel.md#close_task)가 담당합니다.
+Gate Group Summary는 읽는 사람이 raw gate detail보다 실제 막힘 이야기를 먼저 보도록 첫 managed section으로 둡니다. 범위, 사용자 판단, 근거, 닫기 준비 상태는 기존 owner 기록, gate, blocker, ref에서 파생되는 표시 그룹입니다. 기준 field, 정확한 gate value의 alias, 새 gate, recompute input, close semantics, authority path가 아닙니다. 사용자 판단은 구조화되어 있으며 하나의 넓은 판단 또는 승인 bucket처럼 렌더링하면 안 됩니다. 정확한 gate 값과 recompute rule은 [커널 참조](../kernel.md#gates)가 담당하고, close 동작은 [`close_task`](../kernel.md#close_task)가 담당합니다.
 
-`TASK`의 Decision Packet 표시는 기준 schema field와 렌더링 label을 분리해야 합니다. `decision_kind`는 lifecycle/gate route를, `decision_profile`은 prompt/profile branch와 profile별 필수 정보를, `judgment_domain`은 표시 묶음을 위한 schema-owned enum을 가리킵니다. Template은 `judgment_domain`을 제품/UX 판단, 기술 구조 판단, 보안/개인정보 판단, QA/작업 수락, 잔여 위험, 범위/자율성 판단, 복합 같은 label로 렌더링해 사용자가 판단 영역을 빠르게 보게 할 수 있습니다. 동시에 route와 owner refs에서 파생되는 구체적인 결정 유형도 보여줘야 합니다. 제품/UX 판단, 기술 구조 판단, 보안/개인정보 판단, 범위/자율성 판단, 민감 동작 승인, QA 면제 판단, 검증 면제 판단, 작업 수락, 잔여 위험 수용을 구분합니다. 결정이 여러 영역에 걸쳐 있으면 domain을 배타적으로 다루지 말고 부차적인 고려사항을 장단점, 영향받는 gate, risk, evidence, follow-up에 렌더링해야 합니다. `judgment_domain`은 enum 값으로 검증되지만 payload branch를 고르거나 gate를 다시 계산하지 않으며, gate, status, close aggregation rule, authority path, `decision_kind`의 대체물이 아닙니다. `decision_profile` 또는 `judgment_domain`에서 파생한 표시용 label은 검증 입력이 아니며 `decision_kind`, 민감 동작 승인, 작업 수락, QA, 잔여 위험 수용, close, Write Authorization의 owner contract를 흐리면 안 됩니다.
+`TASK`의 Decision Packet 표시는 기준 schema field와 렌더링 label을 분리해야 합니다. `judgment_category`는 사용자-facing grouping입니다. `judgment_route`는 owner path와 recorded-answer route입니다. `display_depth`는 prompt depth입니다. Template은 `judgment_category`를 제품/UX 판단, 기술 구조 판단, 보안/개인정보 판단, QA/verification, 작업 수락, 잔여 위험, 범위/자율성 판단, 복합 같은 label로 렌더링해 사용자가 판단 영역을 빠르게 보게 할 수 있습니다. 동시에 route와 owner refs에서 파생되는 구체적인 판단 유형도 보여줘야 합니다. 제품/UX 판단, 기술 구조 판단, 보안/개인정보 판단, 범위/자율성 판단, 민감 동작 승인, QA/verification waiver, 작업 수락, 잔여 위험 수용을 구분합니다. Judgment가 여러 영역에 걸쳐 있으면 category를 배타적으로 다루지 말고 부차적인 고려사항을 장단점, 영향받는 gate, risk, evidence, follow-up에 렌더링해야 합니다. `judgment_category`는 enum 값으로 validate되지만 payload branch를 고르거나 gate를 다시 계산하지 않으며, gate, status, close aggregation rule, authority path, `judgment_route`의 대체물이 아닙니다. `display_depth` 또는 `judgment_category`에서 파생한 표시용 label은 validator input이 아니며 `judgment_route`, 민감 동작 승인, 작업 수락, QA, 잔여 위험 수용, close, Write Authorization의 owner contract를 흐리면 안 됩니다.
 
 대기 중인 결정은 한 줄로 합치면 안 됩니다. 민감 동작 승인, 작업 수락, 잔여 위험 수용이 모두 대기 중이면 세 가지 label로 세 항목을 렌더링합니다. Approval card는 작업 수락처럼 보이면 안 되고, 잔여 위험 수용은 수용하는 위험을 이름 붙여야 합니다.
 

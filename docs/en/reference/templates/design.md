@@ -6,7 +6,7 @@ Use `DESIGN` when shared design, domain language impact, module/interface planni
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: Future/diagnostic projections. Standalone design projection is later-profile scope; early user decision context can appear in the user decision request display.
+Implementation tier: Future/diagnostic projections. Standalone design projection is later-profile scope; early user judgment context can appear in the user judgment request display.
 
 ## Source records
 

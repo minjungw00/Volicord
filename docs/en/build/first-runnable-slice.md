@@ -20,11 +20,11 @@ Read [Implementation Overview](implementation-overview.md) first, including its 
 
 Prove one Task can move through the smallest Core authority record: local project registration, one scoped work boundary represented by the Change Unit owner shape only where the reference contract requires it, one write authorization decision, one authorized Run, one artifact/evidence reference, and one structured blocker/status response.
 
-The first slice should show that Harness state is local, durable, and authoritative without trying to prove the whole user-facing product. It keeps `prepare_write` as the product-write authorization decision point, Write Authorization as durable and single-use, `record_run` as the place where one compatible Run consumes authority, and status/blocker output as the place where missing scope, missing write authority, or missing artifact/evidence support can be reported as structured blockers. A `close_task` smoke may be used if the owner path already makes that the simplest blocker response, but v0.1 does not prove final acceptance or close semantics.
+The first slice should show that Harness state is local, durable, and authoritative without trying to prove the whole user-facing product. It keeps `prepare_write` as the product-write authorization decision point, Write Authorization as durable and single-use, `record_run` as the place where one compatible Run consumes authority, and status/blocker output as the place where missing scope, missing write authority, or missing artifact/evidence support can be reported as structured blockers. A `close_task` smoke may be used if the owner path already makes that the simplest blocker response, but v0.1 does not prove work acceptance, residual-risk acceptance, or full close semantics.
 
 Use [Kernel Reference](../reference/kernel.md#prepare_write) and [MCP API And Schemas](../reference/mcp-api-and-schemas.md#public-tools) for the exact contracts.
 
-For API staging, read the MCP reference through its v0.1 surface: minimal `harness.status` status/blocker read, `harness.prepare_write`, `harness.record_run`, one owner-valid Task/scope setup path, and optional minimal `harness.next` or narrow `harness.close_task` blocker smoke. Schema-required fields in later profiles remain exact when those profiles are implemented, but they are not first-slice exit criteria.
+For API staging, read the MCP reference through its v0.1 surface: minimal `harness.status` status/blocker read, `harness.prepare_write`, `harness.record_run`, one owner-valid Task/scope setup path, and optional minimal `harness.next` or narrow `harness.close_task` blocker smoke. Later-profile fields remain exact when their profiles are active, but they are not first-slice exit criteria.
 
 ## Goal
 
@@ -45,7 +45,7 @@ This is a command-independent implementation guide. It describes capabilities an
 
 For storage planning, use only the [Core Authority Slice schema](../reference/storage-and-ddl.md#core-authority-slice-schema) for v0.1. Later storage profiles such as Decision Packets, Approvals, Evidence Manifests, Manual QA, Eval, projection jobs, reconcile items, validator runs, Journey records, and diagnostics are not first-slice requirements.
 
-The first slice is deliberately not the User-Facing Harness MVP, the hardened local reference target as a whole, profile-specific Decision Packet quality, full Evidence Manifest, Manual QA, detached verification, residual-risk acceptance semantics, final acceptance semantics, a projection-template-polish milestone, multiple projection kinds, dashboard or hosted-workflow-UI milestone, broad connector ecosystem or marketplace milestone, multi-surface connector expansion, Context Index, Browser QA Capture system, Cross-Surface Verification path, hook expansion, preventive guard expansion, Advanced Sidecar Watcher, Local Derived Metrics surface, team workflow, export/recover path, release handoff path, broad operator-entrypoint path, full conformance suite, future fixture catalog, or parallel automation path.
+The first slice is deliberately not the User-Facing Harness MVP, the hardened local reference target as a whole, profile-specific Decision Packet quality, full Evidence Manifest, Manual QA, detached verification, residual-risk acceptance semantics, work-acceptance semantics, a projection-template-polish milestone, multiple projection kinds, dashboard or hosted-workflow-UI milestone, broad connector ecosystem or marketplace milestone, multi-surface connector expansion, Context Index, Browser QA Capture system, Cross-Surface Verification path, hook expansion, preventive guard expansion, Advanced Sidecar Watcher, Local Derived Metrics surface, team workflow, export/recover path, release handoff path, broad operator-entrypoint path, full conformance suite, future fixture catalog, or parallel automation path.
 
 ## Success story
 
@@ -61,7 +61,7 @@ An implementer can run a local Harness process against a temporary product repos
 8. Status/blocker output shows current Task, scope, write authority, artifact/evidence support, and blockers without mutating state.
 9. Status or a close-task smoke returns a structured blocker when scope, write authority, or artifact/evidence support is missing.
 
-Passing this story means v0.1 Core Authority Slice works. It does not mean users have experienced the Harness MVP yet. The user-facing MVP begins when ordinary requests are clarified into scope, user-owned judgment, evidence, close readiness, final-acceptance, and residual-risk language.
+Passing this story means v0.1 Core Authority Slice works. It does not mean users have experienced the Harness MVP yet. The user-facing MVP begins when ordinary requests are clarified into scope, user-owned judgment, evidence, close readiness, work acceptance, and residual-risk language.
 
 ## Doc-level acceptance checks
 
@@ -227,8 +227,8 @@ This slice does not prove the items below. They are stage boundaries, not failed
 
 | Later stage | Not yet proven by v0.1 Core Authority Slice |
 |---|---|
-| v0.2 User-Facing Harness MVP | Natural-language intake quality, Discovery, product/UX versus architecture judgment presentation, small-change versus tracked-work budgets, residual-risk display, final acceptance separation, minimal user-facing status/card sufficiency. |
-| v0.3 Agency Assurance Pack | Profile-specific Decision Packet quality, full Approval lifecycle and drift handling, detached verification independence, Manual QA policy matrix, residual-risk accepted close, final acceptance separation, feedback-loop policy, TDD trace, codebase stewardship, stewardship validators, context hygiene. |
+| v0.2 User-Facing Harness MVP | Natural-language intake quality, Discovery, product/UX versus architecture judgment presentation, small-change versus tracked-work budgets, residual-risk display, work-acceptance separation, minimal user-facing status/card sufficiency. |
+| v0.3 Agency Assurance Pack | Profile-specific Decision Packet quality, full Approval lifecycle and drift handling, detached verification independence, Manual QA policy matrix, residual-risk accepted close, work-acceptance separation, feedback-loop policy, TDD trace, codebase stewardship, stewardship validators, context hygiene. |
 | v0.4 Operations & Handoff Pack | Release handoff, recover, export, artifact integrity operations, broad operator smoke, broader fixture suite coverage, full projection/reconcile operations. |
 | v1+ Expansion | Dashboard, hosted workflow UI, Context Index, connector marketplace, Browser QA Capture, Cross-Surface Verification automation, native hook expansion, Advanced Sidecar Watcher, Local Derived Metrics, preventive guard expansion, parallel orchestration, team workflow. |
 

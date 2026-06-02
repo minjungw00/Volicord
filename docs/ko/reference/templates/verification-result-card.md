@@ -50,7 +50,7 @@ Assurance 영향: {assurance_impact}
 검증 독립성: {verification_independence}
 자체 확인과 분리된 경계(Self-check vs detached boundary): {self_check_or_detached_boundary}
 수동 QA: {manual_qa_impact}
-작업 수락: {acceptance_impact; 별도 사용자 결정이며 이 card가 기록하지 않음}
+작업 수락: {acceptance_impact; 별도 사용자 판단이며 이 card가 기록하지 않음}
 
 검토한 근거:
 - task summary: {task_summary_ref}

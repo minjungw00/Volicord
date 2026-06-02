@@ -87,6 +87,6 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Notes
 
-This template is a rendered shape, not canonical state. Canonical interface refs use `StateRecordRef.record_kind=interface_contract`. The `Review` section is projection display over interface, validator, and decision refs; it is not Approval, evidence, QA, verification, final acceptance, residual-risk acceptance, close, or Write Authorization.
+This template is a rendered shape, not canonical state. Canonical interface refs use `StateRecordRef.record_kind=interface_contract`. The `Review` section is projection display over interface, validator, and decision refs; it is not Approval, evidence, QA, verification, work acceptance, residual-risk acceptance, close, or Write Authorization.
 
 When a public interface change, compatibility risk, breaking change, or caller-impact choice requires user-owned product judgment or material technical judgment, route it through the existing design-quality and Decision Packet paths. Rendering the contract here does not resolve the `design_gate`, `decision_gate`, or close impact by itself.

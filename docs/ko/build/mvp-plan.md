@@ -34,7 +34,7 @@
 초기 output model은 의도적으로 작게 둡니다.
 
 - v0.1은 Core state에서 오는 최소 상태/막힘 출력만 필요합니다. 전체 읽기용 요약 renderer는 필요하지 않습니다.
-- v0.2의 필수 읽기용 요약은 현재 작업 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태 / blocker 요약으로 최소화합니다. 작업 수락과 잔여 위험 사실은 관련 있을 때 distinct하게 남지만, 별도 필수 projection kind가 아니라 그 요약 안에 나타납니다.
+- v0.2의 필수 읽기용 요약은 현재 작업 상태, 사용자 판단 요청, 근거 요약, 닫기 준비 상태 / blocker 요약으로 최소화합니다. 작업 수락과 잔여 위험 사실은 관련 있을 때 distinct하게 남지만, 별도 필수 projection kind가 아니라 그 요약 안에 나타납니다.
 - Journey Card, Journey Spine, Run Summary, TDD Trace, Module Map, Interface Contract, Export, detailed Evidence Manifest, detailed Eval output은 담당 profile이 명시적으로 승격하지 않는 한 Future/diagnostic projections 또는 다른 later-profile scope로 남습니다.
 
 ## 단계별 전달 계획
@@ -74,14 +74,14 @@ Build staging 자체가 security guarantee를 올려 주지는 않습니다. Sec
 
 ### Stage별 API surface
 
-MCP API reference는 문서화한 모든 method의 정확한 schema를 정의하지만, staged delivery는 method/profile을 언제 구현해야 하는지 결정합니다. Schema-required field는 해당 method/profile이 active일 때 required이며, 자동으로 v0.1 stage-required가 되지 않습니다.
+MCP API reference는 문서화한 모든 method의 정확한 schema를 정의합니다. Staged delivery는 method/profile이 언제 active인지 결정합니다. Later-profile field는 해당 profile에서 exact하게 남지만 더 이른 stage exit에 들어가지 않습니다.
 
-| Stage | Stage-required API surface | Stage exit에 넣지 않을 later-profile fields |
+| Stage | Active API surface | Stage exit에 넣지 않을 later-profile fields |
 |---|---|---|
 | v0.1 Core Authority Slice | Minimal `harness.status` status/blocker read, `harness.prepare_write`, `harness.record_run`, owner-valid Task/scope setup path 하나, optional minimal `harness.next` 또는 narrow `harness.close_task` blocker smoke. | Full natural-language intake, Decision Packet storage, Evidence Manifest, Manual QA, Eval, 작업 수락 의미, 잔여 위험 수용, projection rendering, reconcile, export/recover, broad operations. |
-| v0.2 User-Facing Harness MVP | Fuller `harness.status`/`harness.next`, user-facing `harness.intake`, `harness.request_user_decision`, `harness.record_user_decision`, `harness.record_run`을 통한 evidence summaries, `harness.close_task`를 통한 close readiness/blockers. | Detached verification independence, full Manual QA matrix, Approval hardening, full residual-risk accepted close, stewardship validators, export/recover, broad operations. |
-| v0.3 Agency Assurance Pack | `harness.launch_verify`, `harness.record_eval`, `harness.record_manual_qa`, Decision Packet method의 assurance/waiver/approval/risk profiles, `harness.record_run`의 evidence/feedback/TDD profiles, ValidatorResult-emitting assurance paths. | Operator recover/export completeness, broad projection/reconcile operations, release handoff. |
-| v0.4 Operations & Handoff Pack | API response의 projection freshness, reconcile decision profile, Operations가 담당하는 operator readiness/recover/export/artifact-integrity/conformance surfaces. | Dashboard, hosted workflow UI, broad connectors, automation, team workflow, orchestration은 later promotion 전까지 제외합니다. |
+| v0.2 User-Facing Harness MVP | `harness.status.next_actions`와 optional `harness.next`, user-facing `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.record_run`을 통한 evidence summaries, `harness.close_task`를 통한 close readiness/blockers. | Detached verification independence, full Manual QA matrix, Approval hardening, full residual-risk accepted close, stewardship validators, export/recover, broad operations. |
+| v0.3 Agency Assurance Pack | `harness.launch_verify`, `harness.record_eval`, `harness.record_manual_qa`, judgment method의 assurance/waiver/approval/risk profiles, `harness.record_run`의 evidence/feedback/TDD profiles, ValidatorResult-emitting assurance paths. | Operator recover/export completeness, broad projection/reconcile operations, release handoff. |
+| v0.4 Operations & Handoff Pack | API response의 projection freshness, reconcile judgment profile, Operations가 담당하는 operator readiness/recover/export/artifact-integrity/conformance surfaces. | Dashboard, hosted workflow UI, broad connectors, automation, team workflow, orchestration은 later promotion 전까지 제외합니다. |
 
 ### Stage별 read-only MCP resources
 
@@ -90,19 +90,19 @@ MCP resource는 읽기 전용이며 public tool과 같은 staged delivery bounda
 | Stage | Stage 범위의 resource | Stage exit에 넣지 않을 것 |
 |---|---|---|
 | v0.1 Core Authority Slice | Current state, blocker, write authority, 최소 Run/artifact/evidence ref를 위한 `harness://project/current`, `harness://task/active`, `harness://task/{task_id}`, optional `harness://task/{task_id}/summary` / `harness://status/card`. | Journey, Spine, Decision Packet storage, Evidence Manifest, bundle, report, design/domain map, module map, interface contract, projection job, full projection rendering. |
-| v0.2 User-Facing Harness MVP | v0.1 resource에 더해 사용자 결정 표시를 위한 `harness://task/{task_id}/decision-packets`와 `harness://task/{task_id}/judgment-context`. Evidence summary, close readiness, 작업 수락 상태, 잔여 위험 표시는 status/card 또는 task summary output 안에 나타날 수 있습니다. | Detailed Evidence Manifest resource, detached verification/QA resource, report, bundle, Journey/Spine polish, design map, module map, interface contract, export/recover. |
+| v0.2 User-Facing Harness MVP | v0.1 resource에 더해 사용자 판단 표시를 위한 `harness://task/{task_id}/decision-packets`와 `harness://task/{task_id}/judgment-context`. Evidence summary, close readiness, 작업 수락 상태, 잔여 위험 표시는 status/card 또는 task summary output 안에 나타날 수 있습니다. | Detailed Evidence Manifest resource, detached verification/QA resource, report, bundle, Journey/Spine polish, design map, module map, interface contract, export/recover. |
 | v0.3 Agency Assurance Pack | Evidence/assurance support가 켜졌을 때 `harness://policy/sensitive-categories`, `harness://task/{task_id}/evidence-manifest` 같은 profile-gated assurance read. | Operator report/export completeness와 넓은 operations resource. |
 | v0.4 Operations & Handoff Pack | Connector freshness, report, export, recover, handoff profile이 범위에 있을 때 broad `harness://project/surfaces`, `harness://task/{task_id}/reports/latest`, `harness://task/{task_id}/bundle/current` 같은 operations read. | Dashboard, hosted workflow UI, broad connector automation, later promotion 전 roadmap resource. |
 | Future/diagnostic | Owner가 승격한 `harness://task/{task_id}/spine`, `harness://task/{task_id}/journey`, `harness://task/{task_id}/change-unit-dag`, `harness://design/domain-language`, `harness://design/module-map`, `harness://design/interface-contracts` 같은 read. | Diagnostic resource를 v0.1 또는 minimum v0.2 요구사항처럼 취급하는 것. |
 
 ### 단계별 운영자 surface
 
-Operator command는 예시적인 구현 선택지입니다. Stage requirement는 최종 command spelling이 아니라 동작입니다.
+Operator command는 예시적인 구현 선택지입니다. Stage boundary는 최종 command spelling이 아니라 동작입니다.
 
 | Stage | 범위에 들어오는 운영자 동작 | Stage 밖에 남기는 운영자 동작 |
 |---|---|---|
 | v0.1 Core Authority Slice | 최소 local connect/register, 기본 상태 또는 진단 읽기, 첫 조각이 그 boundary를 요구할 때만 local API/MCP exposure. | Projection refresh, reconcile, recover, export, artifacts check, full conformance run, release handoff, broad doctor/readiness. |
-| v0.2 User-Facing Harness MVP | 같은 최소 surface에 더해 현재 작업, 사용자 결정, 근거 상태, close blocker를 위한 user-facing status/next diagnostic입니다. 작업 수락과 잔여 위험 사실은 관련 있을 때 그 안에 나타납니다. | Assurance operations, recover/export, release handoff, broad projection/reconcile operations, full conformance run, broad operations coverage. |
+| v0.2 User-Facing Harness MVP | 같은 최소 surface에 더해 현재 작업, 사용자 판단, 근거 상태, close blocker를 위한 user-facing status/next diagnostic입니다. 작업 수락과 잔여 위험 사실은 관련 있을 때 그 안에 나타납니다. | Assurance operations, recover/export, release handoff, broad projection/reconcile operations, full conformance run, broad operations coverage. |
 | v0.3 Agency Assurance Pack | Owner path를 통한 verification, Manual QA, residual-risk, 작업 수락, stewardship, context-hygiene behavior의 assurance-profile support. | Operator recover/export completeness, release handoff, broad projection/reconcile operations, full operations conformance. |
 | v0.4 Operations & Handoff Pack | Full local operations support입니다. Doctor/readiness, projection refresh, reconcile, recover, export, artifacts check, 담당 문서가 정의한 release handoff, runtime suite가 materialized된 뒤 conformance run을 포함합니다. | Remote/shared operations, dashboard, hosted workflow UI, broad connector automation, team workflow, orchestration은 later promotion 전까지 제외합니다. |
 | v1+ Expansion | Owner docs가 exact contract, guarantee level, fixture, fallback behavior를 정의한 뒤 승격한 roadmap operations만 포함합니다. | 승격되지 않은 roadmap candidate는 staged delivery 밖에 남습니다. |
@@ -141,7 +141,7 @@ Reference schema에는 관련 capability가 범위에 들어올 때만 필요한
 | Stage | Build 읽기 규칙 | 적용할 owner contract |
 |---|---|---|
 | v0.1 Core Authority Slice | 좁은 authority loop와 [Core Authority Slice schema](../reference/storage-and-ddl.md#core-authority-slice-schema)를 증명하는 데 필요한 owner-defined field만 사용합니다. 넓은 checklist를 만족하려고 future-profile record를 만들지 않습니다. Minimal seeded blocker가 owner ref를 사용한다면, profile별 user-facing Decision Packet 품질이 아니라 그 owner path의 valid shape만 적용합니다. | [커널 참조](../reference/kernel.md), [MCP API와 스키마](../reference/mcp-api-and-schemas.md), [Storage와 DDL](../reference/storage-and-ddl.md), [Conformance Fixtures 참조](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue). |
-| v0.2 User-Facing Harness MVP | 사용자가 대기 중인 사용자 결정 맥락, 근거, 닫기 막힘을 이해하는 데 필요한 field와 display summary를 추가합니다. 작업 수락과 잔여 위험 사실은 관련 있을 때 distinct하게 남지만 최소 요약 안에 들어갑니다. | [MCP API와 스키마](../reference/mcp-api-and-schemas.md), [커널 참조](../reference/kernel.md), [읽기용 요약(Projection) 참조](../reference/document-projection.md), [Template 참조](../reference/templates/README.md). |
+| v0.2 User-Facing Harness MVP | 사용자가 대기 중인 사용자 판단 맥락, 근거, 닫기 막힘을 이해하는 데 필요한 field와 display summary를 추가합니다. 작업 수락과 잔여 위험 사실은 관련 있을 때 distinct하게 남지만 최소 요약 안에 들어갑니다. | [MCP API와 스키마](../reference/mcp-api-and-schemas.md), [커널 참조](../reference/kernel.md), [읽기용 요약(Projection) 참조](../reference/document-projection.md), [Template 참조](../reference/templates/README.md). |
 | 에이전시 보증 팩(v0.3 Agency Assurance Pack) / 운영과 인계 팩(v0.4 Operations & Handoff Pack) | Verification, QA, 잔여 위험, 작업 수락, stewardship, projection/reconcile, operations, export/recover, artifact-integrity, release-handoff profile은 담당 문서가 정의한 곳에서만 추가합니다. | [설계 품질 정책](../reference/design-quality-policies.md), [운영과 Conformance](../reference/operations-and-conformance.md), [Conformance Fixtures 참조](../reference/conformance-fixtures.md), [향후 Fixture Catalog](../reference/future-fixture-catalog.md), [Storage와 DDL](../reference/storage-and-ddl.md). |
 
 따라서 API schema에서 required라는 말은 해당 tool call, record, profile이 구현되거나 사용될 때 required라는 뜻입니다. 그 자체로 future-profile field가 가장 작은 runnable slice의 일부가 되지는 않습니다.
@@ -193,11 +193,11 @@ MVP는 다음을 보여야 합니다.
 - 평범한 사용자 요청이 범위, 사용자 소유 판단, 근거, 닫기 준비 상태 언어로 정리된다
 - product/UX judgment와 기술 구조 판단이 서로 분리되고, 민감 동작 승인, 작업 수락, 잔여 위험 수용과도 분리되어 제시될 수 있다
 - 작은 변경과 tracked work가 서로 다른 procedural budget을 가지되, small-change label이 authority를 우회하지 않는다
-- status와 next-action output이 현재 scope, 누락된 decisions, 근거 상태, close blockers, 안전한 다음 행동을 설명한다
-- 필요한 근거가 없거나 필요한 사용자 결정이 missing이면 close가 막힘을 보고한다
+- status와 next-action output이 현재 scope, 누락된 judgments, 근거 상태, close blockers, 안전한 다음 행동을 설명한다
+- 필요한 근거가 없거나 필요한 사용자 판단이 missing이면 close가 막힘을 보고한다
 - 작업 수락과 close 전에 잔여 위험을 표시할 수 있다
 - 사용자의 작업 수락이 sensitive-action Approval, 잔여 위험 수용과 구분된다
-- readable summary 또는 card가 현재 작업 상태, 사용자 결정 요청, 근거 요약, 닫기 준비 상태/blocker를 보여 주지만, template polish가 source of truth가 되지는 않는다. 작업 수락과 잔여 위험 사실은 관련 있을 때 이 요약 안에서 distinct하게 남는다
+- readable summary 또는 card가 현재 작업 상태, 사용자 판단 요청, 근거 요약, 닫기 준비 상태/blocker를 보여 주지만, template polish가 source of truth가 되지는 않는다. 작업 수락과 잔여 위험 사실은 관련 있을 때 이 요약 안에서 distinct하게 남는다
 - prose나 renderer output만이 아니라 Core state, events, artifacts, projection/freshness facts, structured errors로 conformance를 증명할 수 있다
 
 근거 기록, 읽기 쉬운 요약, projection 최신성은 이 경험을 지원합니다. 이것들이 단계의 정체성은 아니며, 이 사용자 읽기 경로를 넘어서는 projection polish는 범위 밖에 둡니다.
@@ -284,10 +284,10 @@ Docs-maintenance는 별도의 읽기 전용 문서 profile로 남습니다. Docu
 - 평범한 사용자 언어가 Harness vocabulary를 요구하지 않고 tracked work를 시작하거나 resume할 수 있다.
 - User-facing path가 scope, non-goals, acceptance criteria, evidence expectations, close readiness, judgment boundaries를 clarify한다.
 - Product/UX judgment와 기술 구조 판단을 서로 분리하고, 민감 동작 승인, 작업 수락, 잔여 위험 수용과도 분리해 제시할 수 있다.
-- Small direct changes와 tracked work가 write authority, evidence, 필요한 사용자 결정을 우회하지 않으면서 서로 다른 procedural budget을 사용한다.
+- Small direct changes와 tracked work가 write authority, evidence, 필요한 사용자 판단을 우회하지 않으면서 서로 다른 procedural budget을 사용한다.
 - Status/next output이 현재 scope, missing decisions, 근거 상태, 잔여 위험 표시, close blockers, 안전한 다음 행동을 설명한다.
 - Required 근거가 없으면 close가 막힘을 보고한다.
-- 필요한 사용자 결정이 missing 또는 unresolved이면 close가 막힘을 보고한다.
+- 필요한 사용자 판단이 missing 또는 unresolved이면 close가 막힘을 보고한다.
 - 알려진 닫기 관련 위험이 있으면 작업 수락 또는 close 전에 잔여 위험이 보인다.
 - 사용자의 작업 수락이 sensitive-action Approval과 잔여 위험 수용과 별도로 기록되거나 표현된다.
 - 잔여 위험 수용을 지원하는 경우, 이것이 작업 수락과 뚜렷하게 구분되어 보인다.
@@ -301,7 +301,7 @@ Docs-maintenance는 별도의 읽기 전용 문서 profile로 남습니다. Docu
 - Policy가 요구하는 곳에서 수동 QA 정책 매트릭스와 QA blocker가 fixture로 증명된다.
 - 위험 수용 close는 담당 semantics에 따라 accepted Residual Risk refs를 인용한다.
 - Policy가 요구하는 곳에서 stewardship validators, feedback-loop policy, TDD trace behavior, context-hygiene behavior가 cover된다.
-- Agency conformance가 Journey visibility, 사용자 소유 결정 routing, Autonomy Boundary respect, distinct decision types, 잔여 위험 처리를 증명한다.
+- Agency conformance가 Journey visibility, user-judgment routing, Autonomy Boundary respect, distinct judgment categories/routes, 잔여 위험 처리를 증명한다.
 
 ### 운영과 인계 팩(v0.4 Operations & Handoff Pack) 종료 점검 목록
 
@@ -318,7 +318,7 @@ Docs-maintenance는 별도의 읽기 전용 문서 profile로 남습니다. Docu
 | 단계 | 사용자 또는 operator가 볼 수 있는 것 |
 |---|---|
 | 코어 권한 조각(v0.1 Core Authority Slice) | Implementer는 로컬 Task 하나가 scoped work boundary, `prepare_write`, Write Authorization, `record_run`, artifact/evidence ref, 구조화된 상태/막힘 출력을 통과하는 것을 볼 수 있습니다. |
-| 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP) | 사용자는 평범한 작업이 범위, 사용자 소유 판단, 근거, 닫기 준비 상태, 작업 수락, 잔여 위험 언어로 정리되고 근거 또는 필요한 사용자 결정이 없으면 close가 막힘을 보고하는 것을 볼 수 있습니다. |
+| 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP) | 사용자는 평범한 작업이 범위, 사용자 소유 판단, 근거, 닫기 준비 상태, 작업 수락, 잔여 위험 언어로 정리되고 근거 또는 필요한 사용자 판단이 없으면 close가 막힘을 보고하는 것을 볼 수 있습니다. |
 | 에이전시 보증 팩(v0.3 Agency Assurance Pack) | Local path가 verification, 수동 QA, 잔여 위험 수용, 작업 수락, stewardship, TDD, feedback, context hygiene, close behavior를 Core record와 fixture로 설명합니다. |
 | 운영과 인계 팩(v0.4 Operations & Handoff Pack) | Operator는 같은 Core state 위에서 diagnose, recover, reconcile, export, artifact check, conformance run, release handoff 준비를 수행할 수 있습니다. |
 

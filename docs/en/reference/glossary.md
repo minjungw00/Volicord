@@ -30,7 +30,7 @@ Use these words first in user-facing docs, prompts, and status summaries. They a
 |---|---|
 | work | The thing the user wants completed, answered, investigated, or decided. |
 | scope | What may change, what is out of bounds, and where the agent should stop before continuing. |
-| judgment / user decision | A user-owned choice. User-facing displays should name the specific type: Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, final acceptance, or residual-risk acceptance. |
+| judgment / user judgment | A user-owned choice. User-facing displays should name the specific type: Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, work acceptance, or residual-risk acceptance. |
 | evidence | Durable support for a claim about the work. |
 | close readiness | What still has to be true before the work can finish or close. |
 | risk | Known uncertainty, limitation, skipped check, trade-off, or possible consequence that should remain visible. |
@@ -44,7 +44,7 @@ These are implementation labels used by references, APIs, schemas, records, and 
 | Internal term | Plain-language explanation |
 |---|---|
 | Change Unit | The bounded work scope for product writes. It says what may change but does not authorize a write by itself. |
-| Decision Packet | The recorded path for a specific user-owned decision that blocks progress, write, waiver, final acceptance, risk handling, or close. |
+| Decision Packet | The recorded path for a specific user-owned judgment that blocks progress, write, waiver, work acceptance, risk handling, or close. |
 | Write Authorization | The Harness result that one specific product-write attempt may proceed now after scope and other checks. |
 | Evidence Manifest | A record mapping completion conditions or acceptance criteria to supporting evidence refs. |
 | Projection | A readable view rendered from Harness state, such as a report or Journey Card. It displays state but does not replace it. |
@@ -55,7 +55,7 @@ These are implementation labels used by references, APIs, schemas, records, and 
 
 | Term family | Reference owner |
 |---|---|
-| Task, Change Unit, gates, close, sensitive-action approval, final acceptance, verification, QA, residual risk, write authority | [Kernel Reference](kernel.md) |
+| Task, Change Unit, gates, close, sensitive-action approval, work acceptance, verification, QA, residual risk, write authority | [Kernel Reference](kernel.md) |
 | MCP resources, MCP tools, public schemas, errors, `ValidatorResult`, `ProjectionKind` | [MCP API And Schemas](mcp-api-and-schemas.md) |
 | SQLite records, artifact layout, enum hardening, `tree_hash`, `request_hash` storage use | [Storage And DDL](storage-and-ddl.md) |
 | Projections, managed blocks, projection freshness, Markdown reports, template bodies | [Document Projection Reference](document-projection.md); [Template Reference](templates/README.md) |
@@ -70,29 +70,29 @@ These are implementation labels used by references, APIs, schemas, records, and 
 
 ### Agency Conformance
 
-The degree to which harness behavior, projections, validators, and close decisions preserve the user's Strategic Agency. Agency conformance checks whether the work journey is followable, user-owned judgment is explicit, autonomy boundaries are respected, Decision Packets exist for blocking user-owned judgment, and residual risk is visible before final acceptance.
+The degree to which harness behavior, projections, validators, and close decisions preserve the user's Strategic Agency. Agency conformance checks whether the work journey is followable, user-owned judgment is explicit, autonomy boundaries are respected, Decision Packets exist for blocking user-owned judgment, and residual risk is visible before work acceptance.
 
 ### Acceptance
 
-The user's final judgment that the result of the work is acceptable after evidence, verification, Manual QA status, and close-relevant residual risk are shown or confirmed absent. Required Acceptance is recorded through the kernel acceptance path, including a Decision Packet user decision, `task_gates.acceptance_gate`, and `state.sqlite.task_events`. Acceptance is separate from sensitive-action approval, assurance, verification, Manual QA, evidence sufficiency, waiver, and residual-risk acceptance. It does not authorize more writes, accept known risk by itself, erase residual risk, or retroactively satisfy a missing check.
+The user's final judgment that the result of the work is acceptable after evidence, verification, Manual QA status, and close-relevant residual risk are shown or confirmed absent. Required Acceptance is recorded through the kernel acceptance path, including a Decision Packet user judgment, `task_gates.acceptance_gate`, and `state.sqlite.task_events`. Acceptance is separate from sensitive-action approval, assurance, verification, Manual QA, evidence sufficiency, waiver, and residual-risk acceptance. It does not authorize more writes, accept known risk by itself, erase residual risk, or retroactively satisfy a missing check.
 
 ### Acceptance Gate
 
-The kernel gate for required final acceptance. Its value set and compatibility meaning are owned by [Acceptance Gate](kernel.md#acceptance-gate). Acceptance cannot substitute for QA or verification.
+The kernel gate for required work acceptance. Its value set and compatibility meaning are owned by [Acceptance Gate](kernel.md#acceptance-gate). Acceptance cannot substitute for QA or verification.
 
-Required Acceptance in the current reference model is recorded through a Decision Packet user decision, `task_gates.acceptance_gate`, and `state.sqlite.task_events`; there is no separate acceptance record or table.
+Required Acceptance in the current reference model is recorded through a Decision Packet user judgment, `task_gates.acceptance_gate`, and `state.sqlite.task_events`; there is no separate acceptance record or table.
 
 ### Approval
 
-A limited prior user authorization allowing a specific sensitive action or bounded sensitive operation to proceed within a defined scope. Approval is bound to paths, tools, commands or command classes, network targets, secret scope, baseline, sensitive categories, and expiry conditions. When Approval is requested, Core captures the user judgment through an approval-shaped Decision Packet and linked Approval record; granted sensitive-action Approval still requires a later compatible `prepare_write` result before any Write Authorization exists. Approval is sensitive-action permission only: it is not generic agreement, final acceptance, residual-risk acceptance, QA waiver, verification waiver, correctness proof, or a substitute for user-owned product or material technical judgment.
+A limited prior user authorization allowing a specific sensitive action or bounded sensitive operation to proceed within a defined scope. Approval is bound to paths, tools, commands or command classes, network targets, secret scope, baseline, sensitive categories, and expiry conditions. When Approval is requested, Core captures the user judgment through an approval-shaped Decision Packet and linked Approval record; granted sensitive-action Approval still requires a later compatible `prepare_write` result before any Write Authorization exists. Approval is sensitive-action permission only: it is not generic agreement, work acceptance, residual-risk acceptance, QA waiver, verification waiver, correctness proof, or a substitute for user-owned product or material technical judgment.
 
 ### Approval Gate
 
-The kernel gate for sensitive-action Approval. It is required only when sensitive categories are present. Granted sensitive-action Approval does not prove correctness, imply final acceptance, accept residual risk, waive QA or verification, resolve user-owned judgment, or create Write Authorization.
+The kernel gate for sensitive-action Approval. It is required only when sensitive categories are present. Granted sensitive-action Approval does not prove correctness, imply work acceptance, accept residual risk, waive QA or verification, resolve user-owned judgment, or create Write Authorization.
 
 ### Assumption Register
 
-A Discovery or Shared Design support/projection list of assumptions the agent is using before implementation planning. It should name source, confidence, owner, and what would change if the assumption fails. These are recommended display/support contents, not a standalone schema or canonical record field list. The register helps shape a Discovery Brief, safe next-work candidate, work split, or First Safe Change Unit Candidate, but it is not generic user consent, sensitive-action Approval, final acceptance, residual-risk acceptance, evidence, close readiness, scope authority, or Write Authorization.
+A Discovery or Shared Design support/projection list of assumptions the agent is using before implementation planning. It should name source, confidence, owner, and what would change if the assumption fails. These are recommended display/support contents, not a standalone schema or canonical record field list. The register helps shape a Discovery Brief, safe next-work candidate, work split, or First Safe Change Unit Candidate, but it is not generic user consent, sensitive-action Approval, work acceptance, residual-risk acceptance, evidence, close readiness, scope authority, or Write Authorization.
 
 ### Artifact
 
@@ -124,7 +124,7 @@ A captured repository state used to judge scope, approval drift, evidence freshn
 
 ### Blocker
 
-A specific condition that prevents progress, write, close, or another requested step until it is resolved or validly deferred. A useful blocker names what is blocked, who owns the next move, the smallest unblocker, and any relevant owner refs. A blocker is not a generic note, evidence by itself, final acceptance, residual-risk acceptance, or sensitive-action Approval.
+A specific condition that prevents progress, write, close, or another requested step until it is resolved or validly deferred. A useful blocker names what is blocked, who owns the next move, the smallest unblocker, and any relevant owner refs. A blocker is not a generic note, evidence by itself, work acceptance, residual-risk acceptance, or sensitive-action Approval.
 
 ### `tree_hash`
 
@@ -168,7 +168,7 @@ The shared fields carried by public MCP tool calls: `request_id`, `idempotency_k
 
 ### Core-owned State
 
-Operational state owned by Harness Core through committed owner records and `state.sqlite.task_events`. Core-owned state is the authority for gates, decisions, write authorization, evidence state, QA, verification, final acceptance, residual risk, and close. Chat, generated Markdown projections, connector files, and product repository docs can inform Core through owner paths, but they do not replace Core-owned state.
+Operational state owned by Harness Core through committed owner records and `state.sqlite.task_events`. Core-owned state is the authority for gates, decisions, write authorization, evidence state, QA, verification, work acceptance, residual risk, and close. Chat, generated Markdown projections, connector files, and product repository docs can inform Core through owner paths, but they do not replace Core-owned state.
 
 ### Cooperative Guarantee
 
@@ -190,19 +190,19 @@ A later read-only context provider that may surface relevant projections, artifa
 
 ### Decision Gate
 
-The Task-level aggregate gate for blocking user-owned judgment before progress, write, or close can continue. The canonical field is `decision_gate`; its value set and recompute rule are owned by [Decision Gate](kernel.md#decision-gate). It is recomputed from relevant blocking Decision Packets and detected blockers, and it does not substitute for sensitive-action approval, verification, Manual QA, final acceptance, or residual-risk acceptance.
+The Task-level aggregate gate for blocking user-owned judgment before progress, write, or close can continue. The canonical field is `decision_gate`; its value set and recompute rule are owned by [Decision Gate](kernel.md#decision-gate). It is recomputed from relevant blocking Decision Packets and detected blockers, and it does not substitute for sensitive-action approval, verification, Manual QA, work acceptance, or residual-risk acceptance.
 
-### Decision Kind
+### Judgment Route
 
-The schema field `decision_kind` on a Decision Packet. It controls lifecycle, recorded user-decision route, resolution payload branch, gate meaning, and state-transition semantics. It is distinct from `decision_profile`, which selects the prompt/profile `profile_payload` branch, and from `judgment_domain`, which is the user-facing grouping. Displays may describe the decision route in plain language, but schema/API contexts keep the exact field name and enum values.
+The schema field `judgment_route` on a Decision Packet. It selects the internal owner path and recorded-answer rules. Values are `choose`, `defer`, `approve-sensitive-action`, `waive`, `accept-result`, `accept-risk`, and `reconcile`. It is distinct from `judgment_category`, which groups the judgment for readers, and from `display_depth`, which controls prompt depth. Displays may describe the route in plain language, but schema/API contexts keep the exact field name and enum values.
 
-### Decision Profile
+### Display Depth
 
-The schema field `decision_profile` on a Decision Packet. It controls prompt depth, the selected prompt/profile `profile_payload` branch, and profile-specific requiredness for the decision record, such as `minimal_decision`, `product_ux_tradeoff`, `architecture_tradeoff`, `approval_shaped`, `waiver`, `acceptance`, `residual_risk_acceptance`, `reconcile`, or `mixed`. It is distinct from `decision_kind` and `judgment_domain`: the route controls lifecycle and the recorded resolution branch, the profile controls how much detail is required, and the domain groups the judgment for readers.
+The schema field `display_depth` on a Decision Packet. It controls prompt depth and proportional display requirements. Values are `simple`, `tradeoff`, `high-risk`, and `close-affecting`. It is distinct from `judgment_route` and `judgment_category`: the route controls owner path and recorded answer rules, display depth controls how much context is required, and the category groups the judgment for readers.
 
-### Decision Type Display
+### Judgment Type Display
 
-A user-facing label for the specific kind of pending user-owned decision. It is derived from the Decision Packet route, `decision_profile`, `judgment_domain`, and related owner records; it is not a separate schema field, gate, or authority path.
+A user-facing label for the specific kind of pending user-owned judgment. It is derived from `judgment_category`, `judgment_route`, `display_depth`, and related owner records; it is not a separate schema field, gate, or authority path.
 
 Use distinct labels rather than a flat approval checklist:
 
@@ -213,20 +213,20 @@ Use distinct labels rather than a flat approval checklist:
 - Sensitive-action approval
 - QA waiver
 - Verification waiver
-- Final acceptance
+- Work acceptance
 - Residual-risk acceptance
 
-Sensitive-action approval permits only the named sensitive step. Final acceptance records the user's result judgment and does not accept known residual risk by itself. Residual-risk acceptance must name the risk being accepted and does not make verification or QA pass.
+Sensitive-action approval permits only the named sensitive step. Work acceptance records the user's result judgment and does not accept known residual risk by itself. Residual-risk acceptance must name the risk being accepted and does not make verification or QA pass.
 
 ### Decision Packet
 
-A canonical kernel state record for a blocking user-owned decision. It names the decision needed, `decision_kind`, `decision_profile`, `judgment_domain`, pending options or chosen outcome, affected scope, supporting refs, owner, status, and next action. Full profiles also show recommendation, uncertainty, detailed trade-offs, evidence, residual risk, approval scope, waiver context, acceptance context, or reconcile target when needed. Decision Packet record IDs use `DEC-*`; record-level status is owned by [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute) and the public `DecisionPacket` schema, and relevant statuses feed the Task-level `decision_gate`. Decision Packet visibility required by the active stage/profile is provided through Task/status/next/judgment-context and decision-packet surfaces; standalone `DEC` Markdown renderings are optional projections or proposal surfaces unless enabled. Public API/interface choices, architecture direction, domain-language conflicts, module boundary changes, waivers, final acceptance, and residual-risk choices use this path when Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, QA waiver, verification waiver, final acceptance, or residual-risk acceptance blocks progress, writes, close, or a public commitment. Broad approval text does not satisfy a Decision Packet unless it answers the specific recorded route and option.
+A canonical kernel state record for a blocking user-owned judgment. It names the judgment needed, `judgment_category`, `judgment_route`, `display_depth`, pending options or chosen outcome, affected scope, supporting refs, owner, status, and next action. Higher-depth prompts also show recommendation, uncertainty, detailed trade-offs, evidence, residual risk, approval scope, waiver context, acceptance context, or reconcile target when needed. Decision Packet record IDs use `DEC-*`; record-level status is owned by [Decision Gate Aggregate Recompute](kernel.md#decision-gate-aggregate-recompute) and the public `DecisionPacket` schema, and relevant statuses feed the Task-level `decision_gate`. Decision Packet visibility required by the active stage/profile is provided through Task/status/next/judgment-context and decision-packet surfaces; standalone `DEC` Markdown renderings are optional projections or proposal surfaces unless enabled. Public API/interface choices, architecture direction, domain-language conflicts, module boundary changes, waivers, work acceptance, and residual-risk choices use this path when Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, QA/verification waiver, work acceptance, or residual-risk acceptance blocks progress, writes, close, or a public commitment. Broad approval text does not satisfy a Decision Packet unless it answers the specific recorded route and option.
 
-`judgment_domain` is the schema-owned user-visible grouping for a Decision Packet. Values are `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, and `mixed`; displays may translate them to friendly labels such as Product / UX or Security / privacy. `decision_kind` controls lifecycle, recorded user-decision route, resolution payload branch, gate meaning, and state-transition semantics. `decision_profile` controls prompt depth, the Decision Packet `profile_payload` branch, and profile-specific requiredness, and validators use it to select and validate the matching profile payload. Affected gates or blocked actions are recorded separately through `affected_gates` and related owner records. `judgment_domain` is schema-validated as an enum, but it is not a payload branch selector, gate recompute input, close aggregation rule, authority path, affected-gate relation, or replacement for `decision_kind`. `decision_profile` is not a status, gate, owner record, close aggregation rule, authority path, Approval substitute, waiver substitute, final-acceptance substitute, or residual-risk-acceptance rule. Cross-cutting decisions should show secondary considerations in trade-offs, affected gates, risk, evidence, or follow-up rather than treating the domain as exclusive. Displays should make the decision type, decision title, profile-appropriate choice context, what the user is deciding, why it is needed now, and residual risk when relevant visible without changing the owner contracts for `decision_kind`, Approval, final acceptance, QA, residual-risk acceptance, close, or Write Authorization. Friendly labels derived from `decision_profile` or `judgment_domain` are not schema fields or validator inputs.
+`judgment_category` is the schema-owned user-visible grouping for a Decision Packet. Values are `product_ux`, `technical_architecture`, `security_privacy`, `scope_autonomy`, `qa_verification`, `work_acceptance`, `residual_risk`, and `mixed`. Displays may translate them to friendly labels such as Product / UX or Security / privacy. `judgment_route` controls the internal owner path and recorded-answer branch. `display_depth` controls prompt depth and proportional required context. Affected gates or blocked actions are recorded separately through `affected_gates` and related owner records. `judgment_category` is schema-validated as an enum, but it is not a payload branch selector, gate recompute input, close aggregation rule, authority path, affected-gate relation, or replacement for `judgment_route`. `display_depth` is not a status, gate, owner record, close aggregation rule, authority path, Approval substitute, waiver substitute, work-acceptance substitute, or residual-risk-acceptance rule. Cross-cutting judgments should show secondary considerations in trade-offs, affected gates, risk, evidence, or follow-up rather than treating the category as exclusive. Displays should make the judgment type, title, display-depth-appropriate choice context, what the user is judging, why it is needed now, and residual risk when relevant visible without changing the owner contracts for `judgment_route`, Approval, work acceptance, QA, residual-risk acceptance, close, or Write Authorization. Friendly labels derived from `display_depth` or `judgment_category` are not schema fields or validator inputs.
 
 ### Decision Request
 
-Optional routing, interaction, idempotency replay, or compatibility handoff metadata that may point to a canonical Decision Packet. A minimal v0.1 Core Authority Slice implementation may omit it. A Decision Request is not decision authority, never satisfies `decision_gate`, sensitive-action Approval, final acceptance, waiver, residual-risk acceptance, or close by itself, and is only relevant to gate aggregation through a linked compatible `decision_packet_id`.
+Optional routing, interaction, idempotency replay, or compatibility handoff metadata that may point to a canonical Decision Packet. A minimal v0.1 Core Authority Slice implementation may omit it. A Decision Request is not decision authority, never satisfies `decision_gate`, sensitive-action Approval, work acceptance, waiver, residual-risk acceptance, or close by itself, and is only relevant to gate aggregation through a linked compatible `decision_packet_id`.
 
 ### Design Gate
 
@@ -242,7 +242,7 @@ Verification performed across a meaningful independence boundary, such as a fres
 
 ### Discovery
 
-The internal name for the requirements-clarification posture before implementation planning and before write authority. It separates goal, user value, non-goals, acceptance criteria, facts the agent can inspect from repo/docs/Harness state, assumptions, judgments only the user can make, product/UX judgment candidates, technical architecture judgment candidates, security/privacy judgment candidates, QA and verification expectations, remaining uncertainty, and safe next-work candidates or work split proposals. It asks the user only for decisions the codebase and current Harness context cannot answer, may ask multiple targeted questions grouped by decision area, and can pause or proceed when inspectable facts and user-owned decisions are separated, goals/non-goals/acceptance criteria and major judgment candidates are clear enough, safe next work or a work split can be proposed without hiding unresolved judgment, and remaining uncertainty is explicit. Requirements-clarification outputs route to Shared Design, Decision Packet candidates, and Change Unit shaping. Phrases such as safe next-work candidate and work split proposal are proposal/support phrases, not standalone schema fields, canonical record types, gate values, projection kinds, or authority paths. Discovery is not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, final acceptance, residual-risk acceptance, close, scope authority, or a new authority path.
+The internal name for the requirements-clarification posture before implementation planning and before write authority. It separates goal, user value, non-goals, acceptance criteria, facts the agent can inspect from repo/docs/Harness state, assumptions, judgments only the user can make, product/UX judgment candidates, technical architecture judgment candidates, security/privacy judgment candidates, QA and verification expectations, remaining uncertainty, and safe next-work candidates or work split proposals. It asks the user only for decisions the codebase and current Harness context cannot answer, may ask multiple targeted questions grouped by decision area, and can pause or proceed when inspectable facts and user-owned judgments are separated, goals/non-goals/acceptance criteria and major judgment candidates are clear enough, safe next work or a work split can be proposed without hiding unresolved judgment, and remaining uncertainty is explicit. Requirements-clarification outputs route to Shared Design, Decision Packet candidates, and Change Unit shaping. Phrases such as safe next-work candidate and work split proposal are proposal/support phrases, not standalone schema fields, canonical record types, gate values, projection kinds, or authority paths. Discovery is not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, work acceptance, residual-risk acceptance, close, scope authority, or a new authority path.
 
 ### Discovery Brief
 
@@ -294,7 +294,7 @@ A verification result record with verdict, checks performed, evidence reviewed, 
 
 ### Feedback Loop
 
-A canonical support record and recorded path from checks and findings back into state, scope, design, evidence, follow-up work, or close status. Inputs can include tests, typecheck, lint, build, browser smoke, TDD red/green/refactor traces, Manual QA, Eval findings, user decisions, operational findings, and residual-risk decisions. Public refs use `StateRecordRef.record_kind=feedback_loop`; public mutation uses `FeedbackLoopUpdate` on `record_run` or a Manual QA execution link. Feedback loops keep findings from vanishing into chat by routing them to existing owner paths such as Evidence Manifest coverage, Decision Packets, Change Unit updates, Residual Risk records, Manual QA or Eval records, close blockers, or follow-up Task/Change Unit records where applicable.
+A canonical support record and recorded path from checks and findings back into state, scope, design, evidence, follow-up work, or close status. Inputs can include tests, typecheck, lint, build, browser smoke, TDD red/green/refactor traces, Manual QA, Eval findings, user judgments, operational findings, and residual-risk decisions. Public refs use `StateRecordRef.record_kind=feedback_loop`; public mutation uses `FeedbackLoopUpdate` on `record_run` or a Manual QA execution link. Feedback loops keep findings from vanishing into chat by routing them to existing owner paths such as Evidence Manifest coverage, Decision Packets, Change Unit updates, Residual Risk records, Manual QA or Eval records, close blockers, or follow-up Task/Change Unit records where applicable.
 
 ### Finding
 
@@ -302,7 +302,7 @@ An observed issue, gap, risk, blocker, or noteworthy result from a Run, Eval, Ma
 
 ### First Safe Change Unit Candidate
 
-The internal Change Unit-shaped expression of a safe next-work candidate when product writes are near. It should name included behavior, out-of-bounds behavior, completion conditions, known sensitive areas, and stop conditions without hiding unresolved user-owned judgment. Discovery or Shared Design may produce it after inspectable facts and user-owned decisions are separated and the safe next work is clear enough, but Discovery does not exist only to find this candidate. These are recommended display/support contents, not a standalone schema or canonical record field list. It is a candidate only: an active Change Unit, compatible scope gate state, and later `prepare_write` are still required before product writes.
+The internal Change Unit-shaped expression of a safe next-work candidate when product writes are near. It should name included behavior, out-of-bounds behavior, completion conditions, known sensitive areas, and stop conditions without hiding unresolved user-owned judgment. Discovery or Shared Design may produce it after inspectable facts and user-owned judgments are separated and the safe next work is clear enough, but Discovery does not exist only to find this candidate. These are recommended display/support contents, not a standalone schema or canonical record field list. It is a candidate only: an active Change Unit, compatible scope gate state, and later `prepare_write` are still required before product writes.
 
 ### Fixture Assertion Semantics
 
@@ -318,7 +318,7 @@ A verification independence profile where the evaluator checks baseline, changed
 
 ### Freeze
 
-A user-facing safety control that requests a hold or narrower posture around current work. Freeze can hold product writes, make the next action stricter, or cause `prepare_write` to block or hold when existing scope is incompatible. It does not directly mutate Change Unit scope, allowed paths, Autonomy Boundary, AFK stop conditions, or related owner records; persistent owner-record changes still use the existing Core state-changing path, Decision Packet route, or owner-record update path. Freeze does not create Write Authorization, approval, evidence, verification, QA, final acceptance, residual-risk acceptance, close, or a new authority tier.
+A user-facing safety control that requests a hold or narrower posture around current work. Freeze can hold product writes, make the next action stricter, or cause `prepare_write` to block or hold when existing scope is incompatible. It does not directly mutate Change Unit scope, allowed paths, Autonomy Boundary, AFK stop conditions, or related owner records; persistent owner-record changes still use the existing Core state-changing path, Decision Packet route, or owner-record update path. Freeze does not create Write Authorization, approval, evidence, verification, QA, work acceptance, residual-risk acceptance, close, or a new authority tier.
 
 ### Gate
 
@@ -340,7 +340,7 @@ The honest enforcement strength available for a connected surface or runtime pat
 cooperative | detective | preventive | isolated
 ```
 
-Capability affects validator results, blocked reasons, and display; it is not Approval, Write Authorization, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a kernel gate. Exact level meanings are owned by [Security Threat Model](security-threat-model.md#honest-guarantee-display).
+Capability affects validator results, blocked reasons, and display; it is not Approval, Write Authorization, verification, QA, work acceptance, residual-risk acceptance, close readiness, or a kernel gate. Exact level meanings are owned by [Security Threat Model](security-threat-model.md#honest-guarantee-display).
 
 ### Guard
 
@@ -378,23 +378,23 @@ A guarantee level where work or verification runs behind a documented separation
 
 ### Journey Card
 
-A compact human-readable projection of the current Task position: state, next action, scope, active scoped Change Unit, Autonomy Boundary, blockers, active Decision Packet, Write Authority Summary, acceptance criteria, approval status, evidence, verification, QA, final acceptance, residual risk, and projection freshness. A Journey Card is display, not canonical state, and it is rendered from current owner records rather than stale chat memory.
+A compact human-readable projection of the current Task position: state, next action, scope, active scoped Change Unit, Autonomy Boundary, blockers, active Decision Packet, Write Authority Summary, acceptance criteria, approval status, evidence, verification, QA, work acceptance, residual risk, and projection freshness. A Journey Card is display, not canonical state, and it is rendered from current owner records rather than stale chat memory.
 
-### Judgment Domain
+### Judgment Category
 
-The schema field `judgment_domain` on a Decision Packet. It groups the user-facing decision area, such as `product_ux`, `technical_architecture`, `security_privacy`, `qa_acceptance`, `residual_risk`, `scope_autonomy`, or `mixed`. It is schema-validated as an enum and helps readers understand the judgment being requested, but it is not the full decision type and is not a payload branch selector, gate, status, gate recompute input, authority path, close aggregation rule, affected-gate relation, or replacement for `decision_kind`. Displays still distinguish sensitive-action approval, QA waiver, verification waiver, final acceptance, and residual-risk acceptance when those are the pending route. Friendly labels derived from `judgment_domain` are not validator inputs.
+The schema field `judgment_category` on a Decision Packet. It groups the user-facing judgment area, such as `product_ux`, `technical_architecture`, `security_privacy`, `scope_autonomy`, `qa_verification`, `work_acceptance`, `residual_risk`, or `mixed`. It is schema-validated as an enum and helps readers understand the judgment being requested, but it is not the full route and is not a payload branch selector, gate, status, gate recompute input, authority path, close aggregation rule, affected-gate relation, or replacement for `judgment_route`. Displays still distinguish sensitive-action approval, QA/verification waiver, work acceptance, and residual-risk acceptance when those are the pending route. Friendly labels derived from `judgment_category` are not validator inputs.
 
 ### Journey Spine
 
-The state-derived continuity model for a Task's ordered work journey. It is reconstructed from Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, `task_gates.acceptance_gate`, final-acceptance Decision Packet state, close events, artifact references, and `state.sqlite.task_events`, not from chat memory. Journey Card and Journey Spine Markdown views are projections.
+The state-derived continuity model for a Task's ordered work journey. It is reconstructed from Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, `task_gates.acceptance_gate`, work-acceptance Decision Packet state, close events, artifact references, and `state.sqlite.task_events`, not from chat memory. Journey Card and Journey Spine Markdown views are projections.
 
 ### Journey Spine Entry
 
-A canonical support record for durable continuity annotations that cannot be fully reconstructed from existing state events or owner records. Journey Spine Entry records supplement the Journey Spine; they do not replace Task, Change Unit, Run, Decision Packet, Residual Risk, evidence, verification, QA, final-acceptance gate/decision state, close state/events, artifact, or event authority.
+A canonical support record for durable continuity annotations that cannot be fully reconstructed from existing state events or owner records. Journey Spine Entry records supplement the Journey Spine; they do not replace Task, Change Unit, Run, Decision Packet, Residual Risk, evidence, verification, QA, work-acceptance gate/decision state, close state/events, artifact, or event authority.
 
 ### Interface Contract
 
-The canonical record of a module or external boundary's public interface, inputs, outputs, errors, compatibility impact, callers, and boundary tests. The canonical source is `interface_contracts`. Public state refs use `record_kind=interface_contract`. The record documents the interface understanding; it is not Approval, final acceptance, residual-risk acceptance, or Write Authorization. Public interface or compatibility choices route through the existing design-quality and Decision Packet paths when user-owned judgment is required.
+The canonical record of a module or external boundary's public interface, inputs, outputs, errors, compatibility impact, callers, and boundary tests. The canonical source is `interface_contracts`. Public state refs use `record_kind=interface_contract`. The record documents the interface understanding; it is not Approval, work acceptance, residual-risk acceptance, or Write Authorization. Public interface or compatibility choices route through the existing design-quality and Decision Packet paths when user-owned judgment is required.
 
 ### JSON `TEXT` Field
 
@@ -446,7 +446,7 @@ A human-readable document generated from state records and artifact references. 
 
 ### Natural-Language Consent
 
-A user utterance such as "go ahead," "proceed," or "looks good" that may answer a pending question only when the active prompt makes the exact decision route, option, scope, affected gates, consequences, and remaining non-approved items unambiguous. Natural-language consent is not its own authority path. Ambiguous consent must be clarified rather than broadened into sensitive-action Approval, final acceptance, residual-risk acceptance, QA waiver, verification waiver, or Write Authorization.
+A user utterance such as "go ahead," "proceed," or "looks good" that may answer a pending question only when the active prompt makes the exact decision route, option, scope, affected gates, consequences, and remaining non-approved items unambiguous. Natural-language consent is not its own authority path. Ambiguous consent must be clarified rather than broadened into sensitive-action Approval, work acceptance, residual-risk acceptance, QA waiver, verification waiver, or Write Authorization.
 
 ### Module Map
 
@@ -486,7 +486,7 @@ A durable outbox record that asks the projector to render a Markdown projection 
 
 ### Question Queue
 
-A Discovery or Shared Design support/projection list of open questions classified as blocking, useful-but-not-blocking, or codebase-answerable. These are recommended display/support contents, not a standalone schema or canonical record field list. Blocking questions may route to a Decision Packet candidate when user-owned judgment is required. Useful-but-not-blocking questions can be parked, deferred, or turned into follow-up work. Codebase-answerable questions should be answered from current repo, docs, Harness state, or source refs rather than asked of the user. The queue is not a Decision Packet, gate, approval, evidence, final acceptance, close, or Write Authorization.
+A Discovery or Shared Design support/projection list of open questions classified as blocking, useful-but-not-blocking, or codebase-answerable. These are recommended display/support contents, not a standalone schema or canonical record field list. Blocking questions may route to a Decision Packet candidate when user-owned judgment is required. Useful-but-not-blocking questions can be parked, deferred, or turned into follow-up work. Codebase-answerable questions should be answered from current repo, docs, Harness state, or source refs rather than asked of the user. The queue is not a Decision Packet, gate, approval, evidence, work acceptance, close, or Write Authorization.
 
 ### QA Gate
 
@@ -528,7 +528,7 @@ The named report projection kinds are projections generated from state records a
 
 ### Review Stages
 
-A managed display/procedure split that separates Spec Compliance Review from Code Quality / Stewardship Review. Spec Compliance Review asks whether the requested work is complete under current Harness authority. Code Quality / Stewardship Review asks whether the implementation is maintainable inside the codebase. Review Stages can route findings to validator results, evidence gaps, Decision Packet candidates, Eval or verification needs, Manual QA needs, Approval needs, residual-risk candidates, Change Unit update recommendations, or close blockers. They are not canonical records, `ProjectionKind` values, approval, evidence, verification, QA, final acceptance, residual-risk acceptance, close, or Write Authorization. Their exact display-only boundary is owned by [Design Quality Policies](design-quality-policies.md#two-stage-review-display); same-session Review Stages do not create `assurance_level=detached_verified`.
+A managed display/procedure split that separates Spec Compliance Review from Code Quality / Stewardship Review. Spec Compliance Review asks whether the requested work is complete under current Harness authority. Code Quality / Stewardship Review asks whether the implementation is maintainable inside the codebase. Review Stages can route findings to validator results, evidence gaps, Decision Packet candidates, Eval or verification needs, Manual QA needs, Approval needs, residual-risk candidates, Change Unit update recommendations, or close blockers. They are not canonical records, `ProjectionKind` values, approval, evidence, verification, QA, work acceptance, residual-risk acceptance, close, or Write Authorization. Their exact display-only boundary is owned by [Design Quality Policies](design-quality-policies.md#two-stage-review-display); same-session Review Stages do not create `assurance_level=detached_verified`.
 
 ### `request_hash`
 
@@ -536,7 +536,7 @@ The idempotency hash of a tool request, computed from canonical UTF-8 JSON cover
 
 ### Residual Risk
 
-A canonical close-relevant support record for known remaining uncertainty, trade-off, limitation, or unchecked condition after evidence, verification, QA, and final-acceptance work. It records source refs, affected scope, related Decision Packet when applicable, visibility status, accepted risk when applicable, follow-up requirement, and close impact. Known close-relevant Residual Risk must be visible before any successful final acceptance or close, or `ResidualRiskSummary.status=none` must confirm no known close-relevant risk. Residual-risk acceptance means the user explicitly accepts a named known remaining risk; it does not mean the result has otherwise completed verification, final acceptance, sensitive-action approval, or waiver. Accepted risk is metadata/state on the Residual Risk record in the current reference model, not a separate `accepted_risk` state record.
+A canonical close-relevant support record for known remaining uncertainty, trade-off, limitation, or unchecked condition after evidence, verification, QA, and work-acceptance work. It records source refs, affected scope, related Decision Packet when applicable, visibility status, accepted risk when applicable, follow-up requirement, and close impact. Known close-relevant Residual Risk must be visible before any successful work acceptance or close, or `ResidualRiskSummary.status=none` must confirm no known close-relevant risk. Residual-risk acceptance means the user explicitly accepts a named known remaining risk; it does not mean the result has otherwise completed verification, work acceptance, sensitive-action approval, or waiver. Accepted risk is metadata/state on the Residual Risk record in the current reference model, not a separate `accepted_risk` state record.
 
 ### Risk Accepted Close
 
@@ -556,7 +556,7 @@ The policy-owned rule for merging multiple applicable task-shape defaults, polic
 
 ### Shared Design
 
-The minimum recorded shared understanding of a task before implementation hardens into a plan: goal, user value, scope, non-goals, acceptance criteria, inspectable facts, assumptions, decisions, rejected options, remaining uncertainty, domain/module/interface impact, QA and verification expectations, and safe next work. Discovery Briefs, Question Queues, Assumption Registers, safe next-work candidates or work splits, and First Safe Change Unit Candidates can feed Shared Design. Shared Design can support shaping and `design_gate` readiness, but it is not sensitive-action Approval, final acceptance, residual-risk acceptance, QA judgment, evidence, close readiness, or Write Authorization. Markdown renderings of Shared Design are projections and proposal surfaces. Exact policy requirements are owned by [Design Quality Policies](design-quality-policies.md#shared-design-shared_design).
+The minimum recorded shared understanding of a task before implementation hardens into a plan: goal, user value, scope, non-goals, acceptance criteria, inspectable facts, assumptions, decisions, rejected options, remaining uncertainty, domain/module/interface impact, QA and verification expectations, and safe next work. Discovery Briefs, Question Queues, Assumption Registers, safe next-work candidates or work splits, and First Safe Change Unit Candidates can feed Shared Design. Shared Design can support shaping and `design_gate` readiness, but it is not sensitive-action Approval, work acceptance, residual-risk acceptance, QA judgment, evidence, close readiness, or Write Authorization. Markdown renderings of Shared Design are projections and proposal surfaces. Exact policy requirements are owned by [Design Quality Policies](design-quality-policies.md#shared-design-shared_design).
 
 ### Source-of-truth
 
@@ -588,7 +588,7 @@ The task-scoped state clock stored in `tasks.state_version`. Task-scoped mutatio
 
 ### Strategic Agency
 
-The user's durable authority to understand the work journey and make or withhold judgment over goals, scope, design, trade-offs, codebase stewardship, QA, final acceptance, and residual risk. The harness preserves Strategic Agency by making state, decisions, evidence, blockers, and remaining risk explicit outside chat.
+The user's durable authority to understand the work journey and make or withhold judgment over goals, scope, design, trade-offs, codebase stewardship, QA, work acceptance, and residual risk. The harness preserves Strategic Agency by making state, decisions, evidence, blockers, and remaining risk explicit outside chat.
 
 ### Secret Handle
 
@@ -632,7 +632,7 @@ A separation between Harness surfaces, files, callers, or runtime spaces where i
 
 ### Verification
 
-The process of checking whether the result satisfies the relevant criteria. Verification may support assurance when recorded through a valid Eval path and independence profile, but same-session self-check is not detached verification. Verification is separate from approval, Manual QA, final acceptance, and residual-risk acceptance. Exact gate and independence behavior is owned by [Verification Gate](kernel.md#verification-gate) and [`harness.record_eval`](mcp-api-and-schemas.md#harnessrecord_eval).
+The process of checking whether the result satisfies the relevant criteria. Verification may support assurance when recorded through a valid Eval path and independence profile, but same-session self-check is not detached verification. Verification is separate from approval, Manual QA, work acceptance, and residual-risk acceptance. Exact gate and independence behavior is owned by [Verification Gate](kernel.md#verification-gate) and [`harness.record_eval`](mcp-api-and-schemas.md#harnessrecord_eval).
 
 ### Verification Gate
 
@@ -652,11 +652,11 @@ A Change Unit shape that connects a thin path from trigger/input through domain 
 
 ### Waiver
 
-An explicit recorded exception to a gate or policy requirement where policy allows it. A waiver names the policy or gate, Task and Change Unit, skipped check or surface, reason, actor, expiry or follow-up when needed, affected gate or close impact, and any close-relevant residual risk that must be visible or accepted through the residual-risk path when required. Verification waiver, design waiver, and QA waiver are allowed under defined rules only when explicit and scoped. Product-write scope, sensitive-action Approval, required evidence coverage, and required final acceptance are not waived for successful completion. Verification waiver and QA waiver do not upgrade assurance, imply final acceptance, accept unrelated residual risk, or make skipped checks appear passed.
+An explicit recorded exception to a gate or policy requirement where policy allows it. A waiver names the policy or gate, Task and Change Unit, skipped check or surface, reason, actor, expiry or follow-up when needed, affected gate or close impact, and any close-relevant residual risk that must be visible or accepted through the residual-risk path when required. Verification waiver, design waiver, and QA waiver are allowed under defined rules only when explicit and scoped. Product-write scope, sensitive-action Approval, required evidence coverage, and required work acceptance are not waived for successful completion. Verification waiver and QA waiver do not upgrade assurance, imply work acceptance, accept unrelated residual risk, or make skipped checks appear passed.
 
 ### Write Authorization
 
-A durable state record created by `prepare_write` for a specific allowed write attempt. It records `basis_state_version`, the affected-scope state version used as the compatibility basis for replay, stale detection, and audit. Distinct compatible `prepare_write` requests create distinct authorizations; idempotent replay may return the committed response. It is single-use for a committed implementation or direct Run, and it does not replace Change Unit scope, sensitive-action Approval, Decision Packet compatibility, evidence, verification, Manual QA, final acceptance, or residual-risk visibility.
+A durable state record created by `prepare_write` for a specific allowed write attempt. It records `basis_state_version`, the affected-scope state version used as the compatibility basis for replay, stale detection, and audit. Distinct compatible `prepare_write` requests create distinct authorizations; idempotent replay may return the committed response. It is single-use for a committed implementation or direct Run, and it does not replace Change Unit scope, sensitive-action Approval, Decision Packet compatibility, evidence, verification, Manual QA, work acceptance, or residual-risk visibility.
 
 ### Write Authorization Lifecycle Events
 

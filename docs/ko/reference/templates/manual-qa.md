@@ -91,7 +91,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - QA waiver display: `qa_gate=waived`와 수동 QA record 또는 waiver reason, 필요한 경우 QA waiver Decision Packet
 - 자동 check 상태: {supporting refs only; 수동 QA 결과 아님}
 - 검증 상태: {별도 Eval/gate status; 이 template이 만들지 않음}
-- 작업 수락 상태: {별도 사용자 결정; 이 template이 만들지 않음}
+- 작업 수락 상태: {별도 사용자 판단; 이 template이 만들지 않음}
 - 사람의 확인 요약:
 - summary:
 - 면제 사유:
