@@ -1,339 +1,272 @@
 # Harness in One Task
 
-## Start with one normal task
+## Start With One Normal Request
 
-You can ask for a small edit, a feature, a review, or help clarifying an idea. The useful first response is not a wall of Harness terms; it is the agent showing what it heard, what may change, what it can inspect, what only you can decide, and what would count as enough evidence.
+This tutorial follows one feature request through the three user-visible work shapes:
 
-Harness preserves the task story outside fragile chat context: scope, user-owned judgment, evidence, verification, QA expectations, final acceptance, residual risk, and close readiness. You should expect small work to stay small and larger work to show its decisions and blockers without making you learn the internal labels first.
+- advice/read-only work;
+- small direct change;
+- tracked work.
 
-This page teaches that flow through one small change and one tracked task. [Harness in 15 Minutes](harness-in-15-minutes.md) is the shorter scenario sampler.
+Users can ask in ordinary language. The agent's job is to show the authority boundary: what is being attempted, what may change, what only the user can decide, what supports the claim, what still blocks close, and what risk remains.
 
-## Read this when
+This repository is documentation-only. The examples describe the intended future Harness behavior; they are not runtime transcripts from an implementation in this repo.
 
-Read this when you want to see how a normal request turns into scope, clarification, user judgment, evidence, and close readiness.
+## Main Idea
 
-## Before you read
+Harness keeps AI-assisted product work grounded in local Core-owned state by tracking scope, user-owned judgments, evidence references, close readiness, acceptance, and residual risk outside the chat.
 
-[Overview](overview.md) is recommended first. This page assumes only that you know Harness keeps durable work facts outside the chat.
+The task story below keeps returning to the same non-substitution rules:
 
-## Main idea
+- Chat is not state.
+- Markdown projection is not state.
+- Tool output is not user judgment.
+- Sensitive-action approval is not work acceptance.
+- Test pass is not manual QA.
+- Self-check is not detached verification.
+- "Proceed" or "looks good" does not automatically resolve every pending judgment.
 
-Harness is easiest to understand as a task story. The user speaks normally; the agent names what is being attempted, bounds what may change, asks for user judgment at the right time, records support, and closes only when visible blockers are handled.
+## Step 1: Advice/Read-Only Planning
 
-## Why examples come first
-
-Harness can sound heavier than it feels in use. Reference pages need exact rules later, but a user usually experiences Harness as a few practical questions:
-
-1. What are we trying to do?
-2. What is allowed to change?
-3. What judgment is needed from the user?
-4. What changed, and what proves it?
-5. What is still uncertain?
-6. Can this task close?
-
-The examples below start there. They show how Harness keeps a small task light and gives a larger task enough structure to stay followable.
-
-## Tiny work in practice
-
-The smallest work should feel small. Use the lightweight path for a typo, one docs sentence, or an obvious rename when scope and result are already clear.
+The user starts with:
 
 ```text
-Request: Fix the typo in the install note.
-Result: changed `docs/help.md`; self-check says spelling only, no meaning or contract change; no escalation.
+Before implementing, help me make the plan concrete.
 ```
 
-Tiny does not bypass judgment or security. If the sentence changes meaning, a link or rendered output must be checked, a sensitive area appears, or the edit needs evidence beyond the tiny changed-path/self-check note, the same Task should get the extra structure that the broader scope needs.
-
-## Example A: Small change
-
-### User request: "Change the button label."
-
-A user points at a small UI copy issue and says:
+The agent should not start by changing product files. It should inspect, separate facts from choices, and show a safe next step.
 
 ```text
-Change the button label.
+What I can inspect:
+- current login form structure;
+- current session lifetime configuration;
+- existing tests around login state.
+
+What you likely need to decide:
+- Product: should "remember me" keep the user signed in, remember the email, or both?
+- Security: if it keeps the user signed in, what session lifetime is acceptable?
+
+Safe next step:
+Inspect auth shape and return a narrow plan. No product writes yet.
 ```
 
-Assume the surrounding context makes the target obvious: a profile page button currently says "Save" and should say "Update profile."
+The authority boundary is important: the plan is useful, but it is not permission to implement and not acceptance of any risk.
 
-### What the agent shows first
+## Step 2: Scope Becomes Concrete
 
-The agent keeps the visible shape small:
+After inspection, the agent reports:
 
 ```text
-What are we doing?
-Change the profile page button label from "Save" to "Update profile."
+Current facts:
+- Login form can add a checkbox without a layout rewrite.
+- Session lifetime is controlled server-side.
+- Tests already cover sign-in and sign-out.
 
-What must you decide?
-Nothing yet; the target and wording are already clear.
-
-What do we know?
-The likely edit is the profile page copy and any directly related copy test.
-
-Why can we close this quickly if it stays small?
-The request is narrow, low risk, and self-checkable.
+Open choices:
+- Product meaning of "remember me."
+- Session lifetime and storage approach if the meaning is longer session.
 ```
 
-This matters even for a small task. If the agent discovers that the button text is generated by a shared design token used across checkout, billing, and profile screens, the task is no longer a tiny copy edit.
-
-### Lightweight boundary
-
-The boundary should stay practical:
+The user replies:
 
 ```text
-In scope: profile page button copy and a directly related copy test, if one exists.
-Out of scope: profile redesign, save behavior, localization strategy, and broader copy cleanup.
+Separate the product decisions from the technical decisions.
 ```
 
-### What the user sees
-
-The user should see a compact result, not internal machinery:
+The agent should show the split:
 
 ```text
-Changed the profile button label to "Update profile."
-Checked the rendered copy with the focused copy test and diff review.
-Write check: allowed for this focused change.
-Closed as a small change. No known close-relevant risk for this change.
+Product decision:
+Should "remember me" mean email memory, longer session, or both?
+
+Technical decision:
+If longer session is selected, should the implementation use the existing server-side session mechanism or introduce a separate persistent token?
+
+Recommendation:
+Choose product meaning first. Then decide whether the existing session mechanism is enough.
 ```
 
-### What the reference docs define more strictly
+Tool output helped find facts. It did not make the user-owned decisions.
 
-The reference docs define the exact rules behind this simple flow: how small-change handling differs from tracked-work handling, what counts as the bounded work area, how write checks are recorded, how changed paths are saved, and when a small-change task may close as self-checked.
+## Step 3: A Small Direct Change Stays Small
 
-This tutorial leaves those details out on purpose.
-
-## Example B: Tracked work task
-
-### User request: "Add remember-me behavior to the login flow."
-
-A user asks:
+During planning, the user notices a separate typo:
 
 ```text
-Add remember-me behavior to the login flow.
+Keep this as a small change and tell me if the scope grows: rename the login button from "Sign in" to "Log in."
 ```
 
-This sounds simple, but it touches authentication behavior, session lifetime, UI copy, storage, tests, and possibly security policy. Harness should make the shape of the work visible before implementation.
-
-### What the agent shows first
-
-Because "remember me" is ambiguous, the agent clarifies before implementation planning. The first useful display is still plain:
+This is a small direct change if the label is local and the meaning stays the same.
 
 ```text
-What are we doing?
-Explore remember-me behavior for login. Passwordless login, account recovery, and global session redesign are out of scope for now.
+Scope:
+Login button label and directly related copy test, if one exists.
 
-What must you decide?
-Product/UX: should "remember me" keep the user signed in, remember the email address, or both?
-Technical architecture: if it keeps the user signed in, what session lifetime and storage approach are acceptable?
-
-What do we know?
-I can inspect where session lifetime is configured and where the login form can safely place a checkbox.
-
-Why can't we close this?
-Close is blocked until the product meaning, technical approach, evidence, and human QA expectations are clear.
+Out of scope:
+Authentication behavior, session lifetime, remember-me UI, localization strategy, and broader copy cleanup.
 ```
 
-Then the agent asks the first useful user-owned question in ordinary language:
+A compact result is enough:
 
 ```text
-Should "remember me" extend the login session on this device, prefill the email address, or both?
+Changed the login button label to "Log in."
+Checked the directly related copy path.
+Small-change boundary held: no behavior or shared-contract change found.
+No known close-relevant residual risk for this small change.
 ```
 
-Clarification may continue with a few targeted questions if the answer exposes more user-owned judgment. It can pause once the agent has separated what it can inspect from what the user must decide and can propose a safe next step or smaller scope.
+If the agent discovers that the label comes from a shared phrase used across account creation, password reset, and marketing pages, it should stop and explain that the scope grew. Small direct change is a work shape, not a license to ignore wider impact.
 
-### Scope shaping
+## Step 4: The Feature Becomes Tracked Work
 
-The agent proposes a first scope:
+The user returns to the feature:
 
 ```text
-In scope: login form checkbox, session persistence behavior, tests for selected behavior, user-facing copy.
-Out of scope: passwordless login, account recovery, global session-management redesign.
+Add remember-me behavior to login.
 ```
 
-This becomes the starting point for the bounded work area. It is not just a list of files; it is the bounded product slice the agent may change to satisfy the task.
+Because this affects product behavior, security expectations, tests, and user experience, it should be tracked work.
 
-### Trade-off appears
-
-The agent discovers two reasonable interpretations:
-
-1. Remember the user's email only. This is lower risk and improves convenience, but does not keep the user signed in.
-2. Extend the session on the current device. This matches many users' expectation of "remember me," but needs a security decision about session lifetime and storage.
-
-The agent should not quietly pick one if that choice changes product behavior or risk.
-
-### User decision
-
-When user judgment blocks progress, the prompt should be readable:
+The first useful boundary is:
 
 ```text
-Decision needed: What should "remember me" mean for this product?
-Option A: remember email only.
-Option B: extend the session on this device.
-Recommendation: choose Option B only if the product accepts the session-lifetime risk and records that choice.
+In scope:
+Login form checkbox, chosen remember-me behavior, focused tests, and directly related copy.
+
+Out of scope:
+Passwordless login, account recovery, global session redesign, unrelated auth cleanup.
+
+Still user-owned:
+Meaning of "remember me"; acceptable session lifetime and storage risk if sessions are extended.
 ```
 
-The saved decision exists because this is not mere approval to edit. It is a product and security trade-off. The user owns that choice.
-
-### Updated scope
-
-After the user chooses, the agent updates the bounded scope to match the decision:
+The agent then asks the named product question:
 
 ```text
-Updated scope: login form checkbox, selected remember-me behavior, tests, and directly related copy.
+Should "remember me" extend the login session on this device, remember the email address, or both?
 ```
 
-If the user chooses extended sessions, the bounded scope may include session persistence code and security-sensitive tests. If the user chooses email-only memory, it stays narrower.
-
-### Before product writes
-
-Before product writes, the user-facing summary should say what is allowed and what is not:
+If the user answers:
 
 ```text
-Write check: allowed for login form, session persistence code, and related tests.
-Not allowed: unrelated account recovery or global auth redesign.
+Extend the login session on this device.
 ```
 
-If the chosen behavior requires permission for a sensitive step, Harness should stop before that step and ask separately. Permission answers "may this sensitive action proceed?" It does not replace the user decision, tests, QA, remaining-risk acceptance, or final acceptance.
+that answers the product meaning. It does not automatically answer the technical storage decision, manual QA expectation, residual risk, or final acceptance.
 
-### Implementation
+## Step 5: A Sensitive Step Is Not Acceptance
 
-The agent implements inside the authorized boundary:
+Suppose the chosen implementation needs to read a local secret or update a dependency lockfile. The agent may need permission for that sensitive step.
 
-1. Add the checkbox and copy.
-2. Add the selected persistence behavior.
-3. Add or update tests for the chosen behavior.
-4. Avoid unrelated auth cleanup unless a new scope decision allows it.
-
-If the agent finds that the current session system cannot support the chosen behavior without a larger redesign, it should stop and propose a smaller scope or a new user decision.
-
-### Evidence
-
-Evidence ties claims to records:
+The prompt should be specific:
 
 ```text
-Evidence: diff for login form and session code; test output for remember-me behavior; notes from the implementation run.
+Sensitive step permission needed:
+May I update the dependency lockfile to add the session helper required by the chosen approach?
+
+This permission only covers that step. It does not accept the final result, waive QA, or accept residual risk.
 ```
 
-Evidence is why the user can later ask, "What supports the claim that remember-me works?" and get a concrete answer instead of a chat memory. The answer should connect acceptance criteria and completion conditions to evidence links, recorded runs, saved decisions, and related files or artifacts. It is not enough to have a pile of artifacts somewhere, and it is not enough for a Markdown report to say "covered."
+If the user says "proceed," that permission applies to the named sensitive step. It should not be stretched into acceptance of the completed feature.
 
-Exact evidence contracts live in the Reference docs; this tutorial stays with what the user should see.
+## Step 6: Evidence Supports Claims
 
-### Verification
-
-For tracked work (`work`), Harness expects stronger checking than a small-change self-check unless the user explicitly accepts the verification risk.
-
-Useful verification might be:
+After implementation, the agent should connect claims to support:
 
 ```text
-Detached verification: a separate check confirms that a remembered session survives browser restart and a non-remembered session does not.
+Claim:
+Remembered sessions survive browser restart.
+
+Evidence references:
+- diff for login form and session behavior;
+- focused test output for remembered and non-remembered sessions;
+- implementation run notes.
 ```
 
-If detached verification cannot run, the agent should say so plainly and show the remaining verification risk. Closing without it is a risk-accepted close, not detached verification.
+Evidence is not the agent saying "done." It is the durable support that lets a future reader ask what backs the claim.
 
-Exact verification contracts live in the Reference docs; this tutorial stays with what the user should see.
+A Markdown summary can display the evidence references, but the Markdown text is not the evidence record.
 
-### Human QA
+## Step 7: Verification And Manual QA Stay Separate
 
-Human QA asks whether a person inspected the experience:
+A useful tracked-work status distinguishes checks:
 
 ```text
-Human QA: login screen shows the checkbox clearly, copy is understandable, keyboard and screen-reader flow remain acceptable, and the remembered-session behavior matches the chosen option.
+Automated check:
+Focused session tests passed.
+
+Verification:
+Separate review confirmed remembered and non-remembered session behavior from current evidence.
+
+Manual QA:
+A person still needs to inspect the login screen flow, checkbox copy, keyboard behavior, and error-state layout.
 ```
 
-Human QA exists because tests can pass while the experience is still confusing, clipped, inaccessible, or surprising.
+The boundary matters:
 
-Reference docs use the stricter label Manual QA; this tutorial stays with what the user should see.
+- test pass is not manual QA;
+- self-check is not detached verification;
+- a QA waiver is not the same thing as QA passing.
 
-### Residual risk
+If manual QA is waived, the skipped surface and close impact should be named. If verification is waived, the remaining verification risk should stay visible.
 
-Before acceptance or risk-accepted close, the agent shows known remaining uncertainty:
+## Step 8: Residual Risk Before Acceptance
+
+Before asking the user to accept the result, the agent should show known remaining uncertainty:
 
 ```text
-Residual risk: session behavior was verified in the local browser path, but not across every supported browser or enterprise policy setting.
+Residual risk:
+Remembered-session behavior was checked in the local browser path, but not across every supported browser policy combination.
 ```
 
-If there is no known close-relevant residual risk, the agent should say that plainly. Hiding risk and having no known risk are different.
-
-### Acceptance
-
-When final acceptance is required, the user accepts the result after seeing evidence, verification or accepted verification risk, human QA status, and residual risk.
+If the user says:
 
 ```text
-Accepted. The remember-me behavior matches the selected option and the shown residual risk is acceptable.
+Looks good.
 ```
 
-Acceptance is not the same as permission for a sensitive action. Permission may let a sensitive step proceed; acceptance says the completed result is good enough.
-
-### Close
-
-Harness closes only after the relevant blockers are clear: scope is compatible, decisions are resolved or validly deferred, writes were authorized, evidence is sufficient for the Task, verification and QA are passed or explicitly handled, residual risk is visible, and required acceptance is recorded.
-
-The close summary should be short:
+that phrase should not automatically accept every unresolved risk or judgment. The agent should connect it to the specific acceptance request:
 
 ```text
-Closed as tracked work. Evidence recorded. Verification and human QA handled. User accepted the shown residual risk where applicable.
+To close this tracked work, please confirm:
+Do you accept the remember-me result with the shown residual risk?
 ```
 
-### What the user sees
+Acceptance is the user's result judgment. It is separate from sensitive-action permission, test output, manual QA, and verification.
 
-The user should see the work journey, not a reference manual:
+## Step 9: Close Readiness
+
+A close-ready summary should be short and grounded:
 
 ```text
-Implemented remember-me as extended session on this device.
-Changed login form, session persistence, and tests.
-Evidence covers the success and non-remembered-session criteria with the focused test run.
-Independent verification checked remembered and non-remembered sessions.
-Human QA passed for the login screen flow.
-User accepted the shown residual risk: not checked across every supported browser policy.
-Final acceptance was recorded and the task closed as tracked work.
+Close readiness:
+- Scope stayed within login form, selected session behavior, focused tests, and related copy.
+- Product meaning was decided: extend login session on this device.
+- Evidence references cover remembered and non-remembered session behavior.
+- Verification and manual QA are handled, or their waivers and risks are visible.
+- Residual risk was shown.
+- Final acceptance was requested for the named result and risk.
 ```
 
-Power-user displays may include evidence links or saved-record IDs behind each line, but the first result should still read like a work summary rather than a reference manual.
+If anything is missing, the summary should name the smallest unblocker:
 
-### What the reference docs define more strictly
+```text
+Close blocked:
+Manual QA for the login screen has not passed or been explicitly waived.
+```
 
-The reference docs define the exact mode rules, decision-record compatibility, sensitive-action permission handling, write-check behavior, evidence sufficiency, verification independence, QA gates, residual-risk visibility, acceptance timing, and close semantics. Evidence, verification, and Manual QA each cross more than one reference owner; the table below keeps those splits compact.
+## What The User Should Learn
 
-This tutorial only shows why those pieces exist.
+The learning path is not a feature list. It is an authority-boundary model:
 
-## Other task shapes you will recognize
+- advice can guide work without authorizing writes;
+- a small direct change can stay light while the boundary holds;
+- tracked work makes decisions, evidence, QA, verification, acceptance, risk, and close readiness visible;
+- chat, Markdown, tool output, tests, approvals, and self-checks are useful, but none of them silently substitutes for another authority.
 
-The two flows above are anchors, not the whole universe. Harness should stay practical across many kinds of work:
+## Where To Go Next
 
-- A leaf code fix can still be `direct`: "Fix the null crash in the date formatter" may stay inside one function and its focused test. The result can close with a changed-path summary, test output, and self-check. If the fix changes public behavior or shared contracts, the same Task should move toward `work`.
-- Tiny direct is the smallest small-change path: typo, one docs sentence, or obvious rename; changed path plus self-check may be enough. It grows when scope broadens or when link/render proof, evidence links, related artifacts, or other support beyond the tiny result note is needed. It becomes tracked work when judgment, sensitive category, public interface, UX workflow, or multi-step delivery appears.
-- Evidence shape should follow the task shape: advisor work usually needs only cited sources unless recorded evidence is requested; docs-only work can use a changed path, diff or patch summary, and self-check; code changes add a focused test, command, log, or reason no automated check applies; tracked features connect each criterion to evidence links, recorded runs, and related files or artifacts; UI/UX/copy work may need visual evidence and human QA; sensitive work keeps permission and redaction context separate from correctness; verification-required work needs an independent enough review of current evidence.
-- A UI/UX choice often needs a saved decision: a checkout error might be shown as an inline message, toast, or modal/layer. The prompt should compare flow interruption, accessibility, copy risk, and product tone. Backend validation can continue if it does not commit to the final experience, but the UX should not be claimed complete.
-- Auth choices mix product and security judgment: choosing session cookie, JWT, or social login affects revocation, CSRF/XSS exposure, client support, and operational cost. Failed-login copy has a similar trade-off: generic, specific, or hybrid wording changes account-enumeration risk, clarity, support burden, and tone.
-- A dependency addition may need two separate user answers: permission to install or update dependency files, and a saved architecture decision if adopting that dependency affects compatibility, rollback, cost, or maintenance.
-- A public API change needs more than passing tests. Adding a required request field, changing or removing a response field, changing an error code, or removing a caller path can require a compatibility or breaking-change decision, migration notes, caller-impact evidence, and verification from the relevant boundary.
-- A schema change should show migration evidence and rollback risk. An additive column may be low risk with a tested migration. A destructive cleanup or data backfill may need explicit user judgment, backup or rollback notes, and evidence that the old and new shapes were handled.
-- Secret access is not secret exposure. Permission may allow the agent to read or use a secret inside the task, but evidence, artifacts, readable summaries, exports, logs, screenshots, and summaries should use redacted handles, omission notes, or nonsecret facts rather than raw values.
-- Human QA is for human judgment: UX, copy, accessibility interpretation, visual polish, and product taste may need a person to inspect the result. If QA is waived, the waiver should name the skipped surface, accepted risk, follow-up, and close impact. It is not the same as tests passing.
-- Recovery should be visible and routine. If MCP is unavailable, the agent should hold authoritative state changes, product writes, and gate updates; it should not claim sensitive-action permission, final acceptance, residual-risk acceptance, or close until Harness/Core is reachable or a capable surface is used. If a readable summary is stale but Core state is current, refresh or reconcile the readable view without treating the stale summary as the source of truth. If a managed block was edited by hand, route it through Reconcile instead of pretending the display edit changed state.
-- Evidence can become stale for practical reasons: the baseline moved, files changed after the supporting run or verification, permission drifted or expired, an artifact is missing, or a relevant design record changed. The repair is to refresh or replace the supporting evidence links, not to patch report prose.
-- Same-session review is useful, but it is not detached verification. The agent can use it as a self-check or stewardship signal. Detached verification needs an independent enough verifier, session, or review boundary.
-
-## The same concepts in one table
-
-| everyday phrase | Harness term | why it exists | where to read more |
-|---|---|---|---|
-| "What are we doing?" | Task | Keeps the user's desired outcome, status, blockers, evidence, and close decision connected. | [Use: User Guide](../use/user-guide.md); [Kernel Reference](../reference/kernel.md). |
-| "What needs clarifying before we plan writes?" | Discovery | Separates inspectable facts from user-owned decisions, builds a Discovery Brief, Question Queue, and Assumption Register, and proposes safe next work or a work split before write authority; routes user-owned choices to Decision Packet candidates and existing shaping paths. | [Use: User Guide](../use/user-guide.md); [Design Quality Policies](../reference/design-quality-policies.md#shared-design-shared_design). |
-| "What may change?" | Change Unit | Bounds product writes so the task does not silently expand. | [Use: User Guide](../use/user-guide.md); [Kernel Reference](../reference/kernel.md). |
-| "This needs your call." | Decision Packet | Separates user-owned product or material technical judgment from broad approval. | [Use: User Guide](../use/user-guide.md); [Kernel Reference](../reference/kernel.md). |
-| "May this sensitive step proceed?" | Approval | Allows a sensitive action inside a defined scope without replacing user-owned judgment or final acceptance. | [Kernel Reference](../reference/kernel.md). |
-| "May I edit these files now?" | Write Authorization | Checks that the intended write fits the current Task, Change Unit, decisions, and sensitive-action Approvals. | Strict behavior: [Kernel Reference](../reference/kernel.md), [MCP API and Schemas](../reference/mcp-api-and-schemas.md); agent-surface behavior: [Agent Integration Reference](../reference/agent-integration.md). |
-| "Here is what supports the claim." | Evidence | Makes "done" inspectable through diffs, logs, checks, screenshots, or other records. | [Use: User Guide](../use/user-guide.md); strict behavior: [Kernel Reference](../reference/kernel.md), [MCP API and Schemas](../reference/mcp-api-and-schemas.md), [Storage And DDL](../reference/storage-and-ddl.md), [Operations and Conformance Reference](../reference/operations-and-conformance.md). |
-| "Was it checked independently?" | Verification | Distinguishes self-checks from detached checks. | [Use: User Guide](../use/user-guide.md); strict behavior: [Kernel Reference](../reference/kernel.md), [MCP API and Schemas](../reference/mcp-api-and-schemas.md), [Operations and Conformance Reference](../reference/operations-and-conformance.md). |
-| "Did a person inspect the experience?" | Manual QA | Covers UX, copy, accessibility, visual quality, and workflow judgment that tests may miss. | [Use: User Guide](../use/user-guide.md); strict behavior: [Design Quality Policies](../reference/design-quality-policies.md), [Kernel Reference](../reference/kernel.md), [MCP API and Schemas](../reference/mcp-api-and-schemas.md), [Operations and Conformance Reference](../reference/operations-and-conformance.md). |
-| "Is the result good enough?" | Acceptance | Records the user's final judgment when the task path requires it. | [Use: User Guide](../use/user-guide.md); [Kernel Reference](../reference/kernel.md). |
-| "What uncertainty remains?" | Residual Risk | Makes known limitations visible before close or acceptance. | [Use: User Guide](../use/user-guide.md); [Kernel Reference](../reference/kernel.md). |
-| "Can we call this done?" | Close | Finishes the Task only when the relevant blockers have been handled. | [Kernel Reference](../reference/kernel.md); agent-surface owner: [Agent Integration Reference](../reference/agent-integration.md). |
-
-## Where to go next
-
-- Read [Concepts](concepts.md) for a tighter vocabulary after the examples.
-- Read [User Guide](../use/user-guide.md) to learn the phrases users can say during a Harness session.
-- For strict behavior for Task, Change Unit, Decision Packet, Approval, Write Authorization, Acceptance, Residual Risk, and Close, read [Kernel Reference](../reference/kernel.md).
-- Read [Agent Session Flow](../use/agent-session-flow.md) to understand how an agent should present these flows without exposing unnecessary internals.
+- Read [Harness in 15 Minutes](harness-in-15-minutes.md) for shorter examples.
+- Read [Concepts](concepts.md) when internal labels start appearing.
+- Read [User Guide](../use/user-guide.md) for the user-facing session flow.
+- Use [Kernel Reference](../reference/kernel.md) only when you need exact future contracts.

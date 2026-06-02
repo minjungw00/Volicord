@@ -2,7 +2,7 @@
 
 This is the English routing page for the Harness documentation set.
 
-Harness is a local authority record and judgment-routing layer for AI-assisted product work. It keeps scope, user-owned judgments, evidence, verification, QA expectations, final acceptance, and residual-risk status outside fragile chat context.
+Harness keeps AI-assisted product work grounded in local Core-owned state by tracking scope, user-owned judgments, evidence references, close readiness, acceptance, and residual risk outside the chat.
 
 This repository is currently a documentation review/redesign repository. Its intended future role is the Harness Server source repository. It is not a Product Repository or a Harness Runtime Home. No Harness Server, runtime, generated projection system, conformance runner, runtime data, or implementation exists here yet. Documentation acceptance does not authorize implementation by itself; server/runtime implementation may start only after documentation acceptance and a separate implementation-planning readiness decision.
 
@@ -20,8 +20,8 @@ Use this path when you do not know where to start:
 
 | Reader | Start here | Then use |
 |---|---|---|
-| New user trying to understand Harness | [Overview](learn/overview.md) | [User Guide](use/user-guide.md); [Concepts](learn/concepts.md) only when terms need names; [Harness in 15 Minutes](learn/harness-in-15-minutes.md) for quick scenarios. |
-| User or product lead working with an agent | [User Guide](use/user-guide.md) | [Harness in One Task](learn/harness-in-one-task.md) for a full work story; [Decision Packet Cookbook](use/decision-packet-cookbook.md) for complex user-owned choices. |
+| New user trying to understand Harness | [Overview](learn/overview.md) | [User Guide](use/user-guide.md); [Harness in 15 Minutes](learn/harness-in-15-minutes.md) for quick authority-boundary scenarios; [Concepts](learn/concepts.md) only when terms need names. |
+| User or product lead working with an agent | [User Guide](use/user-guide.md) | [Harness in One Task](learn/harness-in-one-task.md) for a full work story; [user-owned judgment examples](use/decision-packet-cookbook.md) for complex choices. |
 | Agent behavior/integration author | [Agent Session Flow](use/agent-session-flow.md) | [Agent Integration Reference](reference/agent-integration.md), [Surface Cookbook](reference/surface-cookbook.md), and the specific API owner when exact fields are needed. |
 | Harness Server implementer | [Implementation Overview](build/implementation-overview.md) | [MVP Plan](build/mvp-plan.md) for the stage plan, [First Runnable Slice](build/first-runnable-slice.md) for v0.1 sequence, [Runtime Walkthrough](build/runtime-walkthrough.md) for the request-to-close path, then the relevant Reference owner. |
 | Schema/reference reader | [Reference Index](reference/README.md) | Open only the owner doc for the contract you need: kernel, API/schema, storage, projection/template, security, operations/conformance, agent integration, design policy, glossary, or runtime architecture. |
@@ -33,7 +33,7 @@ Learn, Use, Build, Reference, and Maintain do different jobs:
 
 | Family | Role |
 |---|---|
-| Learn | Why Harness exists and the concepts readers need before strict contracts. |
+| Learn | Why Harness exists, where authority lives, and the concepts readers need before strict contracts. |
 | Use | How users and agents should interact during Harness-assisted work. |
 | Build | Future implementation sequence, stage boundaries, and maintainer handoff. |
 | Reference | Exact owner contracts: schemas, DDL, gates, state transitions, projection rules, security meanings, conformance semantics, templates, and terminology. |
@@ -41,15 +41,15 @@ Learn, Use, Build, Reference, and Maintain do different jobs:
 
 ## Learn
 
-Use Learn when you want the mental model before exact contracts.
+Use Learn when you want the authority-boundary mental model before exact contracts.
 
 | Page | Distinct role |
 |---|---|
-| [Overview](learn/overview.md) | Primary first read: product thesis, three spaces, what Harness records, and what Harness is not. |
-| [Purpose and Principles](learn/purpose-and-principles.md) | Values, non-goals, failure model, and MVP boundary. Use it to check whether wording or scope still matches the thesis. |
-| [Concepts](learn/concepts.md) | Vocabulary bridge from ordinary user language to implementation terms. Not another overview or tutorial. |
-| [Harness in 15 Minutes](learn/harness-in-15-minutes.md) | Short scenario sampler for common Harness moments. |
-| [Harness in One Task](learn/harness-in-one-task.md) | Fuller tutorial walkthrough through one small change and one tracked task. |
+| [Overview](learn/overview.md) | Primary first read: authority boundaries, three spaces, what Harness tracks, and what Harness is not. |
+| [Purpose and Principles](learn/purpose-and-principles.md) | Values, non-goals, failure model, work shapes, and MVP boundary. Use it to check whether wording or scope still matches the thesis. |
+| [Concepts](learn/concepts.md) | Vocabulary bridge from ordinary user language to optional/internal implementation labels. |
+| [Harness in 15 Minutes](learn/harness-in-15-minutes.md) | Short scenario sampler for advice/read-only work, small direct change, tracked work, and non-substitution rules. |
+| [Harness in One Task](learn/harness-in-one-task.md) | Fuller tutorial walkthrough showing the three work shapes inside one task story. |
 
 ## Use
 
@@ -57,7 +57,7 @@ Use this path when you want to run or describe an AI-assisted development sessio
 
 - [User Guide](use/user-guide.md) is the primary user entry.
 - [Agent Session Flow](use/agent-session-flow.md) is agent/integration behavior guidance.
-- [Decision Packet Cookbook](use/decision-packet-cookbook.md) is advanced usage and reference-adjacent decision example material.
+- [User-owned judgment examples](use/decision-packet-cookbook.md) are advanced usage and reference-adjacent decision example material.
 
 ## Build
 
