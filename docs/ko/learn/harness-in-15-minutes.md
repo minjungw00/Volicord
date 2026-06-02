@@ -43,7 +43,7 @@
 ```text
 `docs/install.md`의 오탈자를 고쳤습니다.
 자체 확인: 오탈자만 수정했고, 의미나 계약 변경은 없습니다.
-작은 변경으로 닫았습니다. 잔여 위험: 이번 닫기에는 알려진 것 없음.
+작은 변경으로 닫았습니다. 이번 변경에 대해 알려진 닫기 관련 위험은 없습니다.
 ```
 
 아주 작은 수정에도 경계는 있습니다. 문서 수정이 의미를 바꾸거나, 링크 또는 렌더링 확인이 필요하거나, 엄격한 계약에 닿거나, 변경 경로와 자체 확인을 넘는 근거가 필요해지면 같은 작업에 넓어진 범위만큼의 구조를 더해야 합니다.
@@ -62,7 +62,7 @@
 
 - 범위: 날짜 표시 helper 또는 호출부와 집중 테스트.
 - 범위 밖: 청구서 데이터 모델 변경, localization 전략, 결제 동작, public API 변경.
-- 쓰기 전: 활성 범위가 의도한 경로를 포함해야 하고, 하네스가 특정 쓰기 시도를 허용해야 합니다.
+- 쓰기 전: 의도한 경로가 현재 범위에 맞아야 하고, 에이전트는 이 좁은 변경이 하네스 기준으로 허용되는지 확인해야 합니다.
 - 근거: diff 또는 patch summary와 집중 테스트, 또는 자동 확인이 적용되지 않는다는 기록된 이유.
 - 닫기: 작업이 좁게 유지되고 required QA, 분리 검증, 작업 수락, 잔여 위험 경로가 적용되지 않으면 보통 self-checked로 닫습니다.
 
@@ -71,13 +71,13 @@
 ```text
 청구서 날짜가 없을 때 "Not set"으로 표시되도록 바꿨습니다.
 `invoiceSummary.test`로 확인했습니다.
-해당 implementation run에서 쓰기가 허용됐습니다.
+쓰기 확인: 이 좁은 변경에 대해 허용됨.
 Self-checked로 닫았습니다. 알려진 닫기 관련 잔여 위험은 없습니다.
 ```
 
 에이전트가 formatter가 export, report, billing email, API response에 공유된다는 사실을 발견하면 이 작업은 더 이상 작은 코드 수정이 아닙니다. 하네스는 멈추고 제품 파일을 더 바꾸기 전에 더 넓은 영향을 먼저 정리해야 합니다.
 
-Reference 문서는 제한된 쓰기 경계를 Change Unit, 쓰기 허용/거부 결정을 Write Authorization이라고 부릅니다. 정확한 쓰기와 근거 권한은 [Change Unit](../reference/kernel.md#change-unit), [쓰기 허가 기록](../reference/kernel.md#write-authorization), [`prepare_write`](../reference/kernel.md#prepare_write), [Evidence Gate](../reference/kernel.md#evidence-gate)를 사용합니다.
+참고 문서는 제한된 쓰기 경계와 쓰기 확인 기록을 더 엄격하게 정의합니다. 정확한 쓰기와 근거 권한은 [Change Unit](../reference/kernel.md#change-unit), [쓰기 허가 기록](../reference/kernel.md#write-authorization), [`prepare_write`](../reference/kernel.md#prepare_write), [Evidence Gate](../reference/kernel.md#evidence-gate)를 사용합니다.
 
 ## 시나리오 3: 요구사항 구체화가 필요한 기능 작업
 
@@ -97,9 +97,9 @@ Reference 문서는 제한된 쓰기 경계를 Change Unit, 쓰기 허용/거부
 사용자 질문: 로그인 유지가 이 기기에서 세션을 더 오래 유지한다는 뜻인가요, 이메일 주소를 미리 채운다는 뜻인가요, 아니면 둘 다인가요?
 ```
 
-Reference 문서는 이런 구체화 자세를 Discovery라고 부릅니다. 제품, 기술, 보안, QA, 운영, 범위 질문을 분리하고, 코드베이스가 답할 수 있는 질문은 저장소와 현재 하네스 맥락에서 답하며, 코드베이스가 답할 수 없는 결정만 사용자에게 묻습니다.
+이 구체화는 제품, 기술, 보안, QA, 운영, 범위 질문을 분리합니다. 코드베이스가 답할 수 있는 질문은 저장소와 현재 하네스 맥락에서 답하고, 코드베이스가 답할 수 없는 결정만 사용자에게 묻습니다.
 
-요구사항 구체화(Discovery)는 민감 동작 승인(Approval)도 아니고, 제품 파일 쓰기 허가도 아니며, 근거, 검증, QA, 작업 수락, 잔여 위험 수용, 닫기, 새 권한 경로도 아닙니다. 에이전트가 확인할 수 있는 사실과 사용자 소유 결정을 분리하고 안전한 다음 작업을 보이게 하는 구체화 작업입니다.
+참고 문서는 이런 자세를 Discovery라고 부릅니다. 이것은 제품 파일 쓰기 허가도 아니고, 근거, 검증, QA, 작업 수락, 잔여 위험 수용, 닫기, 새 권한 경로도 아닙니다.
 
 사용자에게 보이는 흐름은 [사용자 가이드](../use/user-guide.md#평소-말로-시작하기)와 [에이전트 세션 흐름](../use/agent-session-flow.md)를 사용합니다. 용어 뒤의 정확한 소유자 동작은 [Kernel Reference](../reference/kernel.md)와 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)를 사용합니다.
 
@@ -111,20 +111,18 @@ Reference 문서는 이런 구체화 자세를 Discovery라고 부릅니다. 제
 로그인 실패 안내는 인라인 메시지, 토스트, 모달 중 하나가 될 수 있습니다.
 ```
 
-이것은 막연한 "승인할까요?" 질문이 되면 안 됩니다. 의미 있는 UX trade-off이므로 에이전트는 실제 선택지, 추천, 불확실성, 미뤘을 때의 영향을 갖춘 상세 trade-off로 보여줘야 합니다.
+이것은 막연한 "승인할까요?" 질문이 되면 안 됩니다. 의미 있는 UX 절충이므로 에이전트는 실제 선택지, 추천, 불확실성, 미뤘을 때의 영향을 보여줘야 합니다.
 
 ```text
-판단 영역: Product / UX
-결정 깊이: 상세 Product/UX trade-off
-결정 경로: product trade-off
+필요한 결정: 로그인 실패 안내 방식.
 지금 필요한 이유: 최종 UI 동작과 테스트에는 로그인 실패 안내 방식 하나가 필요합니다.
 선택지: 인라인 메시지, 토스트, 모달.
 추천: 폼 근처 인라인 메시지. 계속 보이고 접근성 대응이 쉽습니다.
-불확실성: 기존 design system이 인라인 오류 메시지를 지원하는지 확인해야 합니다.
-미루면 생기는 일: API와 상태 연결은 계속할 수 있지만 최종 UI 동작과 수동 QA는 기다려야 합니다.
+불확실성: 기존 디자인 시스템이 인라인 오류 메시지를 지원하는지 확인해야 합니다.
+미루면 생기는 일: API와 상태 연결은 계속할 수 있지만 최종 UI 동작과 사람의 QA는 기다려야 합니다.
 ```
 
-결정이 막힘이면 하네스는 사용자 판단을 문서화된 결정 경로로 기록합니다. Reference 문서는 그 기록을 결정 패킷이라고 부릅니다. 대화 문장, 넓은 "go ahead", 읽기용 보고서 문구만으로는 특정 기록된 선택에 답하지 않는 한 결정을 충족하면 안 됩니다. 결정 패킷은 approval-shaped이고 Approval path에 연결된 경우가 아니라면 민감 동작 승인도 아닙니다.
+결정이 막힘이면 하네스는 사용자 판단을 문서화된 결정 경로로 기록합니다. 대화 문장, 넓은 "go ahead", 읽기용 보고서 문구만으로는 특정 기록된 선택에 답하지 않는 한 결정을 충족하면 안 됩니다. 민감한 단계 허용은 이 제품/UX 선택과 별개입니다.
 
 실용 예시는 [결정 패킷 Cookbook](../use/decision-packet-cookbook.md)을 읽습니다. 정확한 동작은 [결정 패킷](../reference/kernel.md#decision-packet), [Decision Gate](../reference/kernel.md#decision-gate), [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision), [`harness.record_user_decision`](../reference/mcp-api-and-schemas.md#harnessrecord_user_decision)을 사용합니다.
 
@@ -140,44 +138,44 @@ Reference 문서는 이런 구체화 자세를 Discovery라고 부릅니다. 제
 
 흔한 예시는 다음과 같습니다.
 
-- 수용 기준을 뒷받침하는 ref가 없어 근거가 partial입니다.
-- Verification이 required인데 compatible Eval이 없습니다.
-- UI 동작에 수동 QA가 required인데 아직 passed 또는 valid waiver가 없습니다.
-- 작업 수락이 required인데 근거, QA, 검증, 잔여 위험 표시와 함께 요청되지 않았습니다.
+- 수용 기준을 뒷받침하는 근거 링크가 없어 근거가 부분적입니다.
+- 검증이 필요한데 호환되는 독립 확인이 없습니다.
+- UI 동작에 사람의 QA가 필요한데 아직 통과했거나 유효하게 면제되지 않았습니다.
+- 작업 수락이 필요한데 근거, QA, 검증, 잔여 위험 표시와 함께 요청되지 않았습니다.
 - 알려진 닫기 관련 잔여 위험이 있지만 아직 보이거나 받아들여지지 않았습니다.
 
 유용한 닫기 막힘은 가장 작은 해소 방법을 이름 붙입니다.
 
 ```text
-닫기 막힘: 로그인 오류 흐름의 수동 QA가 아직 pending입니다.
-가장 작은 해소 방법: 수동 QA를 기록하거나, 생략한 확인을 이름 붙이고 닫기 관련 위험이 남아 있다면 잔여 위험 수용을 별도로 라우팅하는 QA waiver 결정 패킷을 요청합니다.
+닫기 막힘: 로그인 오류 흐름의 사람 QA가 아직 대기 중입니다.
+가장 작은 해소 방법: QA 결과를 기록하거나, 생략한 확인을 이름 붙이고 닫기 관련 위험이 남아 있다면 잔여 위험 수용을 별도로 처리하는 QA 면제 판단을 요청합니다.
 ```
 
-Waiver와 잔여 위험을 수용한 닫기 경로는 명시적으로 남아야 합니다. Verification waiver는 분리 검증을 만들지 않습니다. QA waiver는 UI를 검사했다는 근거가 아닙니다. 잔여 위험 수용은 위험을 사라지게 만들지 않습니다.
+면제와 잔여 위험을 수용한 닫기 경로는 명시적으로 남아야 합니다. 검증 면제는 분리 검증을 만들지 않습니다. QA 면제는 UI를 검사했다는 근거가 아닙니다. 잔여 위험 수용은 위험을 사라지게 만들지 않습니다.
 
 정확한 close와 gate 동작은 [`close_task`](../reference/kernel.md#close_task), [Evidence Gate](../reference/kernel.md#evidence-gate), [Verification Gate](../reference/kernel.md#verification-gate), [QA Gate](../reference/kernel.md#qa-gate), [Acceptance Gate](../reference/kernel.md#acceptance-gate), [잔여 위험(Residual Risk)](../reference/kernel.md#residual-risk)를 사용합니다.
 
 ## 시나리오 6: 읽기용 보고서는 상태가 아니다
 
-`TASK` Markdown report에 이렇게 보입니다.
+Markdown 상태 보고서에 이렇게 보입니다.
 
 ```text
 Evidence: partial
-Next action: 수동 QA 기록
+Next action: 사람의 QA 기록
 source_state_version: 42
 ```
 
-이 report는 유용하지만 운영 기록은 아닙니다. 구현 용어로는 읽기용 요약(Projection), 즉 현재 상태 record와 아티팩트 참조에서 렌더링된 보기입니다.
+이 보고서는 유용하지만 운영 기록은 아닙니다. 구현 용어로는 읽기용 요약(Projection), 즉 현재 상태 기록과 관련 아티팩트에서 렌더링된 보기입니다.
 
-사람이 report를 이렇게 수정해도:
+사람이 보고서를 이렇게 수정해도:
 
 ```text
 Evidence: sufficient
 ```
 
-그 편집은 Evidence Manifest, gate 상태, 수동 QA 상태, 작업 수락(Acceptance) 상태, 잔여 위험(Residual Risk), 닫기 가능 여부를 바꾸지 않습니다. 사람이 편집할 수 있는 영역은 note나 reconcile input이 될 수 있지만, 받아들여진 상태 변경에는 여전히 Core/MCP 소유자 경로가 필요합니다.
+그 편집은 저장된 근거, 게이트 상태, 사람의 QA 상태, 작업 수락 상태, 잔여 위험, 닫기 가능 여부를 바꾸지 않습니다. 사람이 편집할 수 있는 영역은 메모나 조정 입력이 될 수 있지만, 받아들여진 상태 변경에는 여전히 Core/MCP 소유자 경로가 필요합니다.
 
-실용 규칙은 간단합니다. 읽기용 요약(Projection)은 방향, ref, 최신성을 읽는 데 사용하고, 권한은 소유자 기록과 소유자 동작에서 확인합니다. 읽기용 요약이 오래됐거나(stale) 틀렸다면 Markdown을 상태처럼 취급하지 말고 refresh 또는 reconcile합니다.
+실용 규칙은 간단합니다. 읽기용 요약(Projection)은 방향, 근거 링크, 관련 아티팩트, 최신성을 읽는 데 사용하고, 권한은 소유자 기록과 소유자 동작에서 확인합니다. 읽기용 요약이 오래됐거나 틀렸다면 Markdown을 상태처럼 취급하지 말고 새로 고치거나 조정합니다.
 
 정확한 읽기용 요약(Projection) 경계는 [문서 Projection 참조](../reference/document-projection.md), 특히 [Projection을 쉽게 말하면](../reference/document-projection.md#projection을-쉽게-말하면)을 사용합니다.
 

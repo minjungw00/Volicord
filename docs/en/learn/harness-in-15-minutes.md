@@ -43,7 +43,7 @@ What the user should see is compact:
 ```text
 Fixed the typo in `docs/install.md`.
 Self-check: spelling-only, no meaning or contract change.
-Closed as a small change. Residual risk: none known for this close.
+Closed as a small change. No known close-relevant risk for this change.
 ```
 
 A tiny fix still has boundaries. If the edit changes meaning, needs link or render proof, touches a strict contract, or grows beyond changed-path plus self-check support, the same work should get the extra structure that the broader scope needs.
@@ -62,7 +62,7 @@ This is still small, but product code may change. Harness should keep the work n
 
 - Scope: the date formatting helper or caller and a focused test.
 - Out of scope: invoice data model changes, localization strategy, billing behavior, or public API changes.
-- Before write: the active scope must cover the intended paths, and Harness must allow the specific write attempt.
+- Before writing: the intended paths should fit the active scope, and the write check should allow this focused change.
 - Evidence: diff or patch summary plus the focused test, or a recorded reason no automated check applies.
 - Close: usually self-checked if the task stays narrow and no required QA, detached verification, final acceptance, or residual-risk path applies.
 
@@ -71,13 +71,13 @@ The user-facing result can still be simple:
 ```text
 Changed null invoice dates to render as "Not set."
 Checked with `invoiceSummary.test`.
-The write was allowed for the implementation run.
+Write check: allowed for this focused change.
 Closed self-checked; no close-relevant residual risk is known.
 ```
 
 If the agent discovers the formatter is shared across exports, reporting, billing emails, and API responses, the task is no longer just a small code change. Harness should stop and shape the wider impact before product files change further.
 
-The Reference docs name the scoped write boundary a Change Unit, and the write allow/deny decision Write Authorization. For exact write and evidence authority, use [Change Unit](../reference/kernel.md#change-unit), [Write Authorization](../reference/kernel.md#write-authorization), [`prepare_write`](../reference/kernel.md#prepare_write), and [Evidence Gate](../reference/kernel.md#evidence-gate).
+Reference docs define the scoped write boundary and write-check record more strictly. For exact write and evidence authority, use [Change Unit](../reference/kernel.md#change-unit), [Write Authorization](../reference/kernel.md#write-authorization), [`prepare_write`](../reference/kernel.md#prepare_write), and [Evidence Gate](../reference/kernel.md#evidence-gate).
 
 ## Scenario 3: Feature that needs clarification
 
@@ -97,9 +97,9 @@ Possible scoped next work: inspect session handling, then split into login check
 User question: Should remember-me extend the session on this device, prefill the email address, or both?
 ```
 
-Reference docs call this clarification posture Discovery. It separates product, technical, security, QA, operational, and scope questions. It answers codebase-answerable questions from the repository and current Harness context, then asks the user only for decisions the codebase cannot answer.
+This clarification separates product, technical, security, QA, operational, and scope questions. It answers codebase-answerable questions from the repository and current Harness context, then asks the user only for decisions the codebase cannot answer.
 
-Discovery is not sensitive-action permission (Approval), not permission to write product files, not evidence, not verification, not QA, not final acceptance (Acceptance), not residual-risk acceptance, not close, and not a new authority path. It is the clarification work that separates inspectable facts from user-owned decisions and makes safe next work visible.
+Reference docs call this posture Discovery. It is clarification, not permission to write product files, not evidence, not verification, not QA, not final acceptance, not residual-risk acceptance, not close, and not a new authority path.
 
 For the user-facing flow, use [User Guide](../use/user-guide.md#start-with-ordinary-requests) and [Agent Session Flow](../use/agent-session-flow.md). For exact owner behavior behind the terms, use [Kernel Reference](../reference/kernel.md) and [MCP API And Schemas](../reference/mcp-api-and-schemas.md).
 
@@ -111,20 +111,18 @@ During the login work, the agent reaches a user-owned UX choice:
 Failed-login feedback can be an inline layer, a toast, or a modal.
 ```
 
-This should not become a vague "approve?" prompt. Because this is a meaningful UX trade-off, the agent should show it as a detailed trade-off with real options, recommendation, uncertainty, and deferral consequence:
+This should not become a vague "approve?" prompt. Because this is a meaningful UX trade-off, the agent should show real options, recommendation, uncertainty, and deferral consequence:
 
 ```text
-Judgment area: Product / UX
-Decision depth: detailed Product/UX trade-off
-Decision route: product trade-off
+Decision needed: failed-login feedback pattern.
 Why now: final UI behavior and tests need one failure-feedback pattern.
-Options: inline layer, toast, modal.
+Options: inline message near the form, toast, or modal.
 Recommendation: inline layer near the form; it is persistent and accessible.
 Uncertainty: confirm existing design-system error-message support.
-Deferral consequence: API and state wiring can continue, but final UI behavior and Manual QA should wait.
+Deferral consequence: API and state wiring can continue, but final UI behavior and human QA should wait.
 ```
 
-If the decision is blocking, Harness records that user-owned judgment through the documented decision path. Reference docs call that record a Decision Packet. Chat text, a broad "go ahead," or readable report prose alone should not satisfy the decision unless it answers the specific recorded choice. A Decision Packet is also not sensitive-action Approval unless it is approval-shaped and linked to the Approval path.
+If the decision is blocking, Harness records that user-owned judgment through the documented decision path. Chat text, a broad "go ahead," or readable report prose alone should not satisfy the decision unless it answers the specific recorded choice. Permission for a sensitive step is separate from this product/UX choice.
 
 For practical examples, read [Decision Packet Cookbook](../use/decision-packet-cookbook.md). For exact behavior, use [Decision Packet](../reference/kernel.md#decision-packet), [Decision Gate](../reference/kernel.md#decision-gate), [`harness.request_user_decision`](../reference/mcp-api-and-schemas.md#harnessrequest_user_decision), and [`harness.record_user_decision`](../reference/mcp-api-and-schemas.md#harnessrecord_user_decision).
 
@@ -140,17 +138,17 @@ Harness may still block close if the close-relevant support is incomplete. That 
 
 Common examples:
 
-- Evidence is partial because an acceptance criterion has no supporting ref.
-- Verification is required but no compatible Eval exists.
-- Manual QA is required for UI behavior and has not passed or been validly waived.
+- Evidence is partial because an acceptance criterion has no evidence link.
+- Verification is required but no compatible independent check exists.
+- Human QA is required for UI behavior and has not passed or been validly waived.
 - Final acceptance is required but has not been requested with evidence, QA, verification, and residual-risk visibility.
 - Known close-relevant residual risk exists but has not been made visible or accepted.
 
 A useful close blocker names the smallest unblocker:
 
 ```text
-Close blocked: Manual QA is still pending for the login error workflow.
-Smallest unblocker: record Manual QA, or ask for a QA waiver Decision Packet that names the skipped check and, if close-relevant risk remains, routes residual-risk acceptance separately.
+Close blocked: human QA is still pending for the login error workflow.
+Smallest unblocker: record the QA result, or ask for a QA waiver that names the skipped check and, if close-relevant risk remains, routes residual-risk acceptance separately.
 ```
 
 Waivers and residual-risk-accepted close paths should stay explicit. A verification waiver does not create detached verification. A QA waiver does not prove the UI was inspected. Residual-risk acceptance does not make the risk disappear.
@@ -159,15 +157,15 @@ For exact close and gate behavior, use [`close_task`](../reference/kernel.md#clo
 
 ## Scenario 6: A readable report is not state
 
-A `TASK` Markdown report says:
+A Markdown status report says:
 
 ```text
 Evidence: partial
-Next action: record Manual QA
+Next action: record human QA
 source_state_version: 42
 ```
 
-That report is useful, but it is not the operating record. The implementation term is projection: a readable view rendered from current state records and artifact refs.
+That report is useful, but it is not the operating record. The implementation term is projection: a readable view rendered from current state records and related artifacts.
 
 If a human edits the report to say:
 
@@ -175,9 +173,9 @@ If a human edits the report to say:
 Evidence: sufficient
 ```
 
-that edit does not change the Evidence Manifest, gate state, Manual QA status, Acceptance state, Residual Risk, or close eligibility. Human-editable sections can become notes or reconcile input, but accepted state changes still need the owner Core/MCP path.
+that edit does not change the saved evidence, gate state, human QA status, acceptance state, residual risk, or close eligibility. Human-editable sections can become notes or reconcile input, but accepted state changes still need the owner Core/MCP path.
 
-The practical rule is simple: read projections for orientation, refs, and freshness; use owner records and owner actions for authority. If a projection is stale or wrong, refresh or reconcile it instead of treating the Markdown as state.
+The practical rule is simple: read projections for orientation, evidence links, related artifacts, and freshness; use owner records and owner actions for authority. If a projection is stale or wrong, refresh or reconcile it instead of treating the Markdown as state.
 
 For the exact projection boundary, use [Document Projection Reference](../reference/document-projection.md), especially [Projection in plain language](../reference/document-projection.md#projection-in-plain-language).
 

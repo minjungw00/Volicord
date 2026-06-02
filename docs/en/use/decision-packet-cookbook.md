@@ -8,7 +8,7 @@ The agent should clarify why the decision is needed now, what the realistic opti
 
 Harness helps preserve the user-owned decision separately from broad approval, implementation evidence, final acceptance, and residual-risk acceptance. You should expect a compact decision prompt, not a field list.
 
-Decision Packets can be concise or detailed. A tiny unblocker can use a `minimal_decision` profile with the question, scope, options, and refs. Complex or high-risk choices can use a full profile, such as `architecture_tradeoff`, with detailed options, trade-offs, recommendation, uncertainty, deferral consequence, and affected refs.
+Decision prompts can be concise or detailed. A tiny unblocker can show only the question, scope, options, and related evidence links. Complex or high-risk choices should include detailed options, trade-offs, recommendation, uncertainty, deferral consequence, and affected evidence or risk links.
 
 This is advanced usage and example material, not the primary user entrypoint and not the exact contract for Decision Packet behavior.
 
@@ -27,14 +27,14 @@ The examples below are prompt examples, not contract definitions. Exact behavior
 Each cookbook example includes:
 
 - the decision area
-- the decision profile, when useful
+- the prompt depth, when useful
 - the decision route, when useful
 - why the decision is needed now
 - realistic options or a chosen outcome
 - a recommendation, uncertainty, and deferral consequence when the profile needs them
-- related risk or evidence where applicable
+- related risk, evidence links, recorded runs, saved decisions, or files where applicable
 
-Some examples include exact labels because agents and integrators may need to recognize them. You can ignore those labels when making the decision.
+Implementation labels live in the Reference docs. These examples use plain decision prompts first.
 
 ## Tiny decision: label wording
 
@@ -42,14 +42,14 @@ Use this when a simple product or technical unblocker needs the user's choice, b
 
 ```text
 Decision title: Settings form button label
-Decision profile: concise decision (`minimal_decision`)
-Judgment domain: Product / UX (`product_ux`)
-Decision route: product trade-off (`decision_kind=product_tradeoff`)
+Decision area: Product / UX
+Prompt depth: concise
+Decision route: product trade-off
 Why now: the scoped settings copy change needs one label before the agent updates the text and related snapshot.
 Options:
 - Save.
 - Update.
-Related refs: settings form copy scope and related snapshot/test ref if present.
+Related support: settings form copy scope and related snapshot or test evidence link if present.
 Does not settle: broader settings workflow, localization strategy, final acceptance, residual-risk acceptance, or write authority.
 ```
 
@@ -61,18 +61,18 @@ Use this when a user-visible behavior must be chosen before implementation or QA
 
 ```text
 Decision title: Failed-login feedback pattern
-Decision profile: Product/UX trade-off (`product_ux_tradeoff`)
-Judgment domain: Product / UX (`product_ux`)
-Decision route: product trade-off (`decision_kind=product_tradeoff`)
-Why now: the login flow needs one failure-feedback pattern before final UI wiring, copy tests, and Manual QA.
+Decision area: Product / UX
+Prompt depth: detailed trade-off
+Decision route: product trade-off
+Why now: the login flow needs one failure-feedback pattern before final UI wiring, copy tests, and human QA.
 Options:
 - Inline layer near the form fields.
 - Toast after failed submit.
 - Modal that interrupts the flow.
 Recommendation: choose inline layer.
 Uncertainty: confirm existing design-system support for inline errors and screen-reader announcement behavior.
-Deferral consequence: API error mapping and state plumbing can continue, but final UI behavior, copy, screenshots, and Manual QA should wait.
-Related risk or evidence: account-enumeration copy risk, accessibility evidence, screenshot or browser-smoke refs, and Manual QA refs after implementation.
+Deferral consequence: API error mapping and state plumbing can continue, but final UI behavior, copy, screenshots, and human QA should wait.
+Related risk or evidence: account-enumeration copy risk, accessibility evidence, screenshots or browser-smoke evidence links, and QA notes after implementation.
 ```
 
 Why this works: it asks for the UX choice instead of asking the user to "approve the login change." It also says what can continue while the user decides.
@@ -85,9 +85,9 @@ Use this when an authentication direction affects storage, revocation, client be
 
 ```text
 Decision title: Login session architecture
-Decision profile: detailed architecture trade-off (`architecture_tradeoff`)
-Judgment domain: Technical architecture (`technical_architecture`)
-Decision route: architecture choice (`decision_kind=architecture_choice`)
+Decision area: Technical architecture
+Prompt depth: detailed architecture trade-off
+Decision route: architecture choice
 Why now: the implementation must choose the session model before storage, middleware, tests, and threat review can be scoped.
 Options:
 - Server-side session cookie for first-party web login.
@@ -96,13 +96,13 @@ Options:
 - Social-login provider integration, with provider-specific account linking and support implications.
 Recommendation: choose server-side session cookie for a first-party web app unless the product requires third-party identity provider sign-in, social-login conversion, or non-browser clients now.
 Uncertainty: current client mix, existing auth middleware, revocation requirements, SSO requirements, and deployment constraints.
-Deferral consequence: Discovery can inspect current auth code and draft a narrow Change Unit, but implementation should not commit to storage, token lifetime, or middleware behavior.
-Related risk or evidence: CSRF/XSS exposure, revocation evidence, session-lifetime tests, migration notes, and security review refs.
+Deferral consequence: the agent can inspect current auth code and draft a narrow work slice, but implementation should not commit to storage, token lifetime, or middleware behavior.
+Related risk or evidence: CSRF/XSS exposure, revocation evidence, session-lifetime tests, migration notes, and security review evidence links.
 ```
 
 Why this works: it uses the full architecture profile because this choice affects storage, revocation, client behavior, security posture, migration, tests, and review. It also separates identity-provider choice from session/storage choice. OAuth/OIDC may still need a local session or token strategy, so the packet does not pretend those are interchangeable.
 
-Exact sensitive-action Approval and user-owned architecture judgment boundaries are owned by [Approval](../reference/kernel.md#approval), [Decision Packet](../reference/kernel.md#decision-packet), and [Sensitive Categories](../reference/mcp-api-and-schemas.md#sensitive-categories).
+Exact sensitive-action approval and user-owned architecture judgment boundaries are owned by [Approval](../reference/kernel.md#approval), [Decision Packet](../reference/kernel.md#decision-packet), and [Sensitive Categories](../reference/mcp-api-and-schemas.md#sensitive-categories).
 
 ## Security decision: PII logging
 
@@ -110,8 +110,8 @@ Use this when a feature, debug path, run, export, or artifact might expose perso
 
 ```text
 Decision title: PII logging policy for login diagnostics
-Judgment domain: Security / privacy (`security_privacy`)
-Decision route: design choice (`decision_kind=design_choice`)
+Decision area: Security / privacy
+Decision route: design choice
 Why now: the agent needs to know what may be written to logs and evidence artifacts before adding diagnostics or tests.
 Options:
 - Do not log PII; use request IDs and nonidentifying error codes.
@@ -120,12 +120,12 @@ Options:
 Recommendation: do not log raw PII; use request IDs plus redacted or tokenized identifiers only if debugging needs them.
 Uncertainty: support/debugging requirements, retention policy, compliance obligations, and whether existing log redaction is proven.
 Deferral consequence: implementation can continue without PII logging, but diagnostics that require user identifiers should wait.
-Related risk or evidence: privacy exposure, artifact redaction notes, log sample evidence, retention/audit refs, and any residual risk if debugging value is reduced.
+Related risk or evidence: privacy exposure, artifact redaction notes, log sample evidence, retention/audit evidence links, and any residual risk if debugging value is reduced.
 ```
 
-Why this works: it treats privacy as a product/security judgment, not as a hidden implementation detail. If a sensitive action is also required, that Approval is separate from the policy decision.
+Why this works: it treats privacy as a product/security judgment, not as a hidden implementation detail. If a sensitive action is also required, that approval is separate from the policy decision.
 
-Exact security concepts live in [Security Threat Model Reference](../reference/security-threat-model.md). Exact Approval and evidence authority live in [Approval](../reference/kernel.md#approval) and [Evidence Gate](../reference/kernel.md#evidence-gate).
+Exact security concepts live in [Security Threat Model Reference](../reference/security-threat-model.md). Exact approval and evidence authority live in [Approval](../reference/kernel.md#approval) and [Evidence Gate](../reference/kernel.md#evidence-gate).
 
 ## QA waiver
 
@@ -133,8 +133,8 @@ Use this when required human QA cannot be completed, and the user must decide ho
 
 ```text
 Decision title: Waive Manual QA for responsive login layout
-Judgment domain: QA / acceptance (`qa_acceptance`)
-Decision route: QA waiver (`decision_kind=qa_waiver`)
+Decision area: QA / acceptance
+Decision route: QA waiver
 Why now: close is blocked because required Manual QA has not passed for the responsive login flow.
 Options:
 - Perform Manual QA now.
@@ -156,9 +156,9 @@ Use this when detached verification is required or expected, but the user wants 
 
 ```text
 Decision title: Waive detached verification for invoice export fix
-Judgment domain: QA / acceptance (`qa_acceptance`)
-Decision route: verification waiver (`decision_kind=verification_waiver`)
-Why now: close as verified is blocked because no compatible detached Eval exists, and the user is asking to close today.
+Decision area: QA / acceptance
+Decision route: verification waiver
+Why now: close as verified is blocked because no compatible independent verification exists, and the user is asking to close today.
 Options:
 - Run detached verification from a fresh bundle or fresh worktree.
 - Keep the task open until independent verification is available.
@@ -166,7 +166,7 @@ Options:
 Recommendation: run detached verification for billing/export behavior; waive only if the change is low blast-radius and existing self-check evidence is strong.
 Uncertainty: same-session bias, unreviewed export edge cases, stale bundle risk, and whether the self-check covered the affected formats.
 Deferral consequence: the task cannot close as detached verified; close either waits or uses the documented risk-accepted path when allowed.
-Related risk or evidence: self-check run refs, missing Eval ref, affected export formats, residual-risk refs, and follow-up verification plan.
+Related risk or evidence: self-check recorded run, missing independent-verification link, affected export formats, residual-risk link, and follow-up verification plan.
 ```
 
 Why this works: it keeps assurance language honest. A verification waiver may unblock a risk-accepted close path, but it does not create detached verification.
@@ -179,8 +179,8 @@ Use this when known close-relevant risk remains after implementation and evidenc
 
 ```text
 Decision title: Accept legacy CSV encoding limitation
-Judgment domain: Residual risk (`residual_risk`)
-Decision route: residual-risk acceptance (`decision_kind=residual_risk_acceptance`)
+Decision area: Residual risk
+Decision route: residual-risk acceptance
 Why now: the export fix works for current UTF-8 files, but legacy encodings remain unsupported and close needs a risk decision.
 Options:
 - Fix legacy encoding support before close.
@@ -189,7 +189,7 @@ Options:
 Recommendation: accept only if legacy encoding is rare, documented, and has an owner-visible follow-up; otherwise fix before close.
 Uncertainty: real customer frequency, support impact, and whether existing imports include legacy files.
 Deferral consequence: final acceptance or close may remain blocked until the risk is resolved, made non-close-relevant, or accepted through the owner path.
-Related risk or evidence: passing UTF-8 export tests, missing legacy-encoding test coverage, known limitation note, follow-up ref, and visible Residual Risk refs.
+Related risk or evidence: passing UTF-8 export tests, missing legacy-encoding test coverage, known limitation note, follow-up link, and visible residual-risk link.
 ```
 
 Why this works: it makes the remaining limitation visible before acceptance. The user is not just accepting the result; they are also deciding whether a named remaining risk is acceptable for this close.

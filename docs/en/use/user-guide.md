@@ -84,7 +84,7 @@ A good clarification response should separate:
 - product or UX judgment candidates
 - technical architecture judgment candidates
 - security or privacy judgment candidates
-- QA and verification expectations
+- human review and verification expectations
 - remaining uncertainty
 - safe next-work candidate or work-splitting candidate
 
@@ -97,7 +97,7 @@ Decision needed: failed-login experience.
 Options: inline layer, toast, or modal.
 Recommendation: inline layer near the form because it is persistent and easier to make accessible.
 What can continue if you defer: API wiring and tests that do not commit to final UI behavior.
-What cannot close yet: final UX, copy, and Manual QA.
+What cannot close yet: final UX, copy, and the human check of the login screen.
 ```
 
 Technical architecture judgment:
@@ -113,13 +113,13 @@ What cannot close yet: implementation, security evidence, and acceptance criteri
 Evidence needed:
 
 ```text
-Evidence needed before "done": changed paths, focused auth tests, failure-path tests, any security-sensitive redaction notes, and Manual QA for the login form copy and error states if the UI changes.
+Evidence needed before "done": changed paths, focused auth tests, failure-path tests, any security-sensitive redaction notes, and a human QA note for the login form copy and error states if the UI changes.
 ```
 
 Why work cannot close yet:
 
 ```text
-Cannot close yet: the failed-login UX is not chosen, no implementation evidence exists, and Manual QA expectations for the login screen are not settled.
+Cannot close yet: the failed-login UX is not chosen, no implementation evidence exists, and the expected human check for the login screen is not settled.
 Smallest unblocker: choose the failed-login pattern, or ask me to propose a smaller slice that avoids final UI behavior for now.
 ```
 
@@ -161,7 +161,7 @@ For technical planning, you can say:
 I want to replace our login approach, but I do not know whether sessions, magic links, or OAuth/OIDC fit best. Inspect the current auth shape first and show the decisions before implementation.
 ```
 
-A useful response should inspect existing auth, session, user model, tests, and docs before asking; separate technical architecture choices from security/privacy choices; name verification and Manual QA expectations; and propose either a safe investigation slice or a work split. It should not treat the first plausible implementation path as enough to stop clarifying if acceptance criteria, major judgment candidates, or remaining uncertainty are still unclear.
+A useful response should inspect existing auth, session, user model, tests, and docs before asking; separate technical architecture choices from security/privacy choices; name verification and human QA expectations; and propose either a safe investigation slice or a work split. It should not treat the first plausible implementation path as enough to stop clarifying if acceptance criteria, major judgment candidates, or remaining uncertainty are still unclear.
 
 ## Small work should stay light
 
@@ -185,10 +185,11 @@ After the change, the result can be just as small:
 Done.
 Changed: settings toast typo to "Successful."
 Checked: related copy test and diff review.
+Write check: allowed for this focused change.
 No broader product decision appeared, and no close-relevant residual risk is known for this small change.
 ```
 
-The light display does not mean the agent bypasses Harness internally. If product files may change, the agent still keeps scope narrow, uses the appropriate internal write-authority path, records what changed, and reports if the work grows beyond the original request. You should not need to see "Change Unit" language for every tiny edit unless it helps explain a boundary or blocker.
+The light display does not mean the agent bypasses Harness internally. If product files may change, the agent still keeps scope narrow, uses the appropriate internal write checks, records what changed, and reports if the work grows beyond the original request. You should not need to see internal boundary labels for every tiny edit unless a label helps explain a boundary or blocker.
 
 Small work should escalate when it stops being small. Escalate to tracked work when scope is unclear; multiple files, product areas, or subsystems are involved; a product or UX judgment is needed; an important technical architecture judgment is needed; a public interface or API may be affected; security or privacy may be affected; a sensitive action is needed; QA or verification requirements increase; evidence is insufficient; residual risk is non-trivial; or multi-step delivery is needed.
 
@@ -220,9 +221,9 @@ Likely user-owned decisions:
 - Technical architecture: session model, token/cookie strategy, password storage or identity-provider path, migration impact, and dependency choices.
 - Security / privacy: account-enumeration risk, audit logging, rate limiting or lockout behavior, redaction, and secret handling.
 
-Evidence likely needed: focused tests for success and failure paths, changed-path summary, security-sensitive notes, and UI/Manual QA if the login screen changes.
+Evidence likely needed: focused tests for success and failure paths, changed-path summary, security-sensitive notes, and a human QA note if the login screen changes.
 
-Close cannot happen yet because scope, required user-owned decisions, evidence, QA expectations, and residual risk are not settled.
+Close cannot happen yet because scope, required user-owned decisions, evidence, human-review expectations, and residual risk are not settled.
 ```
 
 As the work progresses, the agent should keep the same shape visible:
@@ -232,7 +233,7 @@ As the work progresses, the agent should keep the same shape visible:
 - what only the user can decide
 - what was changed and checked
 - what evidence supports each completion claim
-- whether verification or Manual QA is needed
+- whether verification or a human QA check is needed
 - what residual risk remains
 - what still blocks acceptance or close
 
@@ -240,52 +241,57 @@ The larger the blast radius, the more important this separation becomes. A secur
 
 <a id="the-four-display-groups"></a>
 
-## Four everyday groups
+## Four everyday display groups
 
-Most status should fit into four everyday groups. The agent may use exact Harness refs behind the scenes, but the display should lead with these plain questions.
+Most status should fit into four plain groups. The agent may save precise records behind the scenes, but the first display should answer these questions in ordinary language.
 
-| Group | Plain question | What the agent should show |
+| Display group | What it answers | What the agent should show |
 |---|---|---|
-| Scope | What work are we doing, and what are we not doing? | Included behavior, out-of-scope items, affected areas, and whether the next action fits. |
-| User decisions | What must the user decide? | Each pending item separately, labeled by type: Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, final acceptance, or residual-risk acceptance. |
-| Evidence | What supports the claim that this is done? | Changed paths, tests, logs, screenshots, QA notes, verification results, missing support, or stale support. |
-| Close readiness | What still prevents closing? | Verification, Manual QA, final acceptance, residual-risk visibility, and residual-risk acceptance, close blockers, and the smallest unblocker. |
+| What are we doing? | What is in scope, what is out of scope, and what happens next? | Included behavior, excluded items, affected areas, and whether the next action still fits the agreed scope. |
+| What must you decide? | Which choices belong to the user? | Each pending choice separately, such as a product/UX choice, technical architecture choice, security/privacy choice, permission for a sensitive step, final result acceptance, or acceptance of a named remaining risk. |
+| What do we know? | What supports the current claim? | Changed paths, focused tests, command output, logs, screenshots, human QA notes, evidence links, recorded runs, saved decisions, related files or artifacts, and anything missing or stale. |
+| Why can or can't we close this? | Is the work ready to call done? | The remaining blocker, the smallest unblocker, whether verification or human QA is still needed, whether the user has accepted the result when required, and any known remaining risk. |
 
-These are readable summaries, not authoritative documents. The agent may cite refs behind them, but state changes, evidence records, acceptance, risk acceptance, and close still come from Harness/Core records and actions. The User decisions display group should not appear as a flat checklist of approvals: approval permits a named sensitive step, acceptance records the result judgment, and residual-risk acceptance records that a named remaining risk is acceptable.
-
-When the User Decisions display group needs a formal Decision Packet, Harness records the decision route, a decision profile, and the user-facing judgment domain. The route says what lifecycle or gate path the decision uses. The profile says whether the prompt is a concise judgment record or a fuller trade-off, approval, waiver, acceptance, residual-risk, or reconcile record. The domain groups the decision for users as Product / UX, Technical architecture, Security / privacy, QA / acceptance, Residual risk, Scope / autonomy, or Mixed. The display should still name the concrete decision type, such as sensitive-action approval, final acceptance, QA waiver, verification waiver, or residual-risk acceptance. The profile controls prompt detail; the domain explains the decision; affected gates or blocked actions are recorded separately and determine what the decision influences.
-
-```mermaid
-flowchart LR
-  Need["user decision"] --> Kind["decision_kind"]
-  Need --> Domain["judgment_domain"]
-  Need --> Profile["decision_profile"]
-  Kind --> Prompt["profile-appropriate prompt"]
-  Domain --> Prompt
-  Profile --> Prompt
-  Prompt --> Impact["affected gates or blocked actions"]
-  Impact --> Response["user response"]
-  Response --> Update["state update"]
-```
+These groups are readable summaries, not a new checklist. The agent should show what helps you decide, trust, or unblock the work. It should not make you read internal record names before you understand the status.
 
 Useful status:
 
 ```text
-Scope: login form and login API call; password reset and account creation remain out of scope.
-User decisions: Product/UX judgment needed for failed-login UX.
-Evidence: repository inspection is done; implementation evidence does not exist yet.
-Close readiness: close is blocked until UX choice, implementation evidence, QA expectations, and residual risk are handled.
-Next safe action: choose failed-login UX, or ask me to propose a smaller slice.
+What are we doing?
+Login form and login API call. Password reset and account creation remain out of scope.
+
+What must you decide?
+Choose the failed-login feedback pattern.
+
+What do we know?
+Repository inspection is done. No implementation evidence exists yet.
+
+Why can't we close this?
+Close is blocked until the UX choice, implementation evidence, human QA expectation, and remaining-risk review are handled.
+
+Next safe action:
+Choose the failed-login pattern, or ask me to propose a smaller slice.
 ```
 
-When several decisions are pending, the agent should split them:
+When several decisions are pending, the agent should split them instead of asking for broad approval:
 
 ```text
-User decisions:
-- Product/UX judgment: choose failed-login feedback pattern.
-- Sensitive-action approval: approve or deny installing the auth helper package.
-- Residual-risk acceptance: accept or reject the named mobile Safari wrapping risk.
+What must you decide?
+- Product/UX: choose the failed-login feedback pattern.
+- Sensitive step: allow or deny installing the auth helper package.
+- Remaining risk: accept or reject the named mobile Safari wrapping risk.
 ```
+
+## Plain links to saved work
+
+You may see links or IDs in a status summary. They should be described by what they help you inspect:
+
+- evidence link: support for a claim, such as a diff, command output, test result, screenshot, or QA note
+- recorded run: the saved result of a command, test, check, or verifier
+- saved decision: the specific user-owned choice that was recorded
+- related file or artifact: a changed file, generated support file, screenshot, report, or other object relevant to the work
+
+The exact record type matters to implementers, but ordinary status should start with the plain meaning. "Evidence link from the focused auth test" is more useful than making a raw record ID the center of the sentence.
 
 <a id="judgment"></a>
 
@@ -327,10 +333,10 @@ A blocker should be concrete. It should say who owns the next move and what the 
 
 ```text
 Blocked.
-Scope: the requested copy edit appears to affect account behavior outside the original label.
-User decisions: Product/UX judgment is needed before expanding the change.
-Evidence: the agent can inspect call sites and show the affected screens.
-Close readiness: close is blocked until scope is either narrowed back to the label or expanded deliberately.
+What are we doing? The requested copy edit appears to affect account behavior outside the original label.
+What must you decide? Whether to keep this label-only or expand the product behavior.
+What do we know? I can inspect call sites and show the affected screens.
+Why can't we close this? Close is blocked until scope is either narrowed back to the label or expanded deliberately.
 Smallest unblocker: choose whether to keep this as a label-only change or include account behavior.
 ```
 
@@ -352,34 +358,36 @@ Show close-relevant residual risk before I accept.
 
 The agent should keep these separate:
 
-```mermaid
-flowchart LR
-  Evidence["Evidence"] --> Readiness["Close readiness"]
-  Verification["Verification"] --> Readiness
-  QA["Manual QA"] --> Readiness
-  Acceptance["Final acceptance"] --> Readiness
-  RiskVisible["Residual-risk visibility"] --> Readiness
-  RiskAccept["Residual-risk acceptance"] --> Readiness
-  Readiness --> Result{"ready?"}
-  Result -->|yes| Close["close"]
-  Result -->|no| Blockers["show blockers"]
-```
-
-| Item | Plain job | Not a substitute for |
+| Plain item | Job | Not a substitute for |
 |---|---|---|
 | Evidence | Supports the claim that a result or criterion was met. | The agent saying "done" or the user accepting the result. |
-| Verification | Checks correctness from the appropriate review boundary. | Manual QA or broad confidence. |
-| Manual QA | Records human inspection where human judgment matters. | Automated tests or screenshots alone. |
-| Final acceptance | Records the user's result judgment when required. | Evidence, verification, QA, sensitive-action permission, waiver, or residual-risk acceptance. |
-| Residual risk | Names known remaining uncertainty, limitation, unchecked condition, or trade-off. | Evidence, verification, QA, final acceptance, or sensitive-action approval. |
-| Residual-risk acceptance | Records that the user accepts an identified known remaining risk. | Final acceptance, verification, QA, sensitive-action approval, or a generic task approval. |
-| Sensitive-action approval | Allows a named sensitive step to proceed. | Product judgment, correctness, final acceptance, residual-risk acceptance, or waiver. |
+| Verification | Checks correctness from the appropriate review boundary. | Human QA or broad confidence. |
+| Human QA | Captures a person's inspection where judgment matters. | Automated tests or screenshots alone. |
+| Final acceptance | Captures the user's result judgment when required. | Evidence, verification, QA, permission for a sensitive step, waiver, or risk acceptance. |
+| Remaining risk | Names known uncertainty, limitation, unchecked condition, or trade-off. | Evidence, verification, QA, final acceptance, or sensitive-step permission. |
+| Accepting remaining risk | Captures that the user accepts an identified known remaining risk. | Final acceptance, verification, QA, sensitive-step permission, or generic approval. |
+| Permission for a sensitive step | Allows a named sensitive step to proceed. | Product judgment, correctness, final acceptance, risk acceptance, or waiver. |
 
 That separation is why work can still be blocked after tests pass. Tests can support evidence or verification, but close may still need human QA for the real experience, your final acceptance of the result, or your explicit acceptance of a known remaining risk.
 
 Residual-risk wording should be precise. "No known close-relevant residual risk" means the system has no known close-relevant risk for this requested action. "Risk not visible yet" means known risk exists but has not been shown clearly enough for acceptance or close.
 
-A casual "go ahead," "proceed," or "looks good" is only usable when the agent has already named the exact thing you are deciding. It is not enough for product trade-offs, architecture choices, QA or verification waivers, accepting the result, or accepting residual risk unless the prompt shows the choice, consequences, relevant refs, and what remains outside that decision. If the phrase could apply to more than one pending decision, the agent should ask which one you mean.
+A casual "go ahead," "proceed," or "looks good" is only usable when the agent has already named the exact thing you are deciding. It is not enough for product trade-offs, architecture choices, QA or verification waivers, accepting the result, or accepting residual risk unless the prompt shows the choice, consequences, relevant evidence links or saved decisions, and what remains outside that decision. If the phrase could apply to more than one pending decision, the agent should ask which one you mean.
+
+## Advanced: exact close labels
+
+You may see stricter labels when a tool, report, or reference page needs precision.
+
+| Reference label | Plain meaning |
+|---|---|
+| Evidence record or Evidence Manifest | The saved support for completion claims. |
+| Verification or Eval | A check from the required review boundary; an Eval is one implementation form of that check. |
+| Manual QA record | The saved human QA result or waiver context. |
+| Acceptance | The saved user judgment that the completed result is good enough, when required. |
+| Residual Risk or ResidualRiskSummary | The saved statement of known remaining risk. |
+| Approval | Permission for a named sensitive step; not broad agreement. |
+
+For exact contracts, use the Reference docs: [Kernel Reference](../reference/kernel.md), [MCP API And Schemas](../reference/mcp-api-and-schemas.md), and [Operations and Conformance Reference](../reference/operations-and-conformance.md).
 
 ## Advanced: Harness labels you may see
 
@@ -395,7 +403,9 @@ You can skip this section until an agent shows one of these labels. They are use
 | Approval | Permission for a named sensitive action; not generic agreement or final acceptance. |
 | Write Authorization | A one-attempt check that the intended product write fits the current task, scope, decisions, and approvals. |
 | Evidence Manifest | The record that maps completion claims to supporting evidence. |
-| Projection | A readable summary derived from owner records and artifact refs. Early use may be compact status text or a card, not a full Markdown report; it helps orientation and is not authority by itself. |
+| Projection | A readable summary derived from owner records and related files or artifacts. Early use may be compact status text or a card, not a full Markdown report; it helps orientation and is not authority by itself. |
+| ProjectionJob | The internal job that creates or refreshes a readable projection. |
+| task_events | Low-level event history for implementers and diagnostics. |
 
 These labels do not collapse into each other. Approval is not acceptance. Final acceptance does not erase residual risk. A decision is not write authority. A readable summary is not state. Passing tests does not mean Manual QA happened. Accepting residual risk does not make the risk disappear.
 
