@@ -1,12 +1,21 @@
 # TASK Template
 
+## 권한 규칙
+
+- Projection은 Core가 소유한 상태 기록과 아티팩트 참조에서 파생됩니다.
+- Projection은 Core 상태가 아닙니다.
+- 사용자가 Projection을 편집해도 그 내용이 자동으로 받아들여진 상태가 되지는 않습니다.
+- Chat과 Markdown은 Core 상태를 덮어쓸 수 없습니다.
+
 ## 사용 시점
 
-진행 중인 작업을 이어서 파악할 수 있는 Projection이 필요할 때 `TASK`를 사용합니다. 이 template은 범위, 사용자 판단, 근거, 닫기 준비 상태라는 네 가지 사용자에게 보이는 관문 표시 그룹을 먼저 요약합니다. 또한 작업의 현재 위치, 사용자 판단 맥락, 막힘 소유자, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, Stewardship Impact, 다음 근거, Residual Risk, Close Summary, 필요할 때의 kernel gate detail, active Change Unit, 대기 중인 judgment를 보여줍니다. 관련 보고서 참조와 읽기용 보기 최신성도 함께 보여줍니다.
+전체 보고서가 명시적으로 유용한 later/profile 단계에서, 진행 중인 작업을 이어서 파악할 수 있는 continuity 또는 reference projection이 필요할 때 `TASK`를 사용합니다. 이 template은 Scope, User Judgments, Evidence, Close Readiness, 작업의 현재 위치, 사용자 판단 맥락, 막힘 소유자, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, Stewardship Impact, 다음 근거, Residual Risk, Close Summary, 필요할 때의 kernel gate detail, active Change Unit, 대기 중인 judgment, 관련 보고서 ref, 읽기용 보기 최신성을 보여줄 수 있습니다.
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: User-facing MVP summaries입니다. 상태, 사용자 판단 요청, 근거 요약, 닫기 준비 상태/blocker 부분만 v0.2-required이며 전체 TASK body는 later profile polish입니다.
+구현 계층: Future/diagnostic projections입니다. `TASK`는 v0.2 MVP projection이 아닙니다. v0.2의 사용자 대상 status는 [Compact Status Card](compact-status-card.md)가 담당하고, 사용자 판단이 필요하면 Decision Packet prompt 또는 resource가 담당합니다. 전체 `TASK` body는 later profile polish입니다.
+
+이 repository에 `TASK` template이 있다는 사실은 현재 단계에서 full `TASK` Markdown이 필요하다는 뜻이 아닙니다.
 
 ## 기준 기록
 
@@ -32,6 +41,8 @@
 
 ## 렌더링 섹션
 
+Later profile이 full report를 켜면 `TASK`는 다음과 같은 section을 렌더링할 수 있습니다.
+
 - Gate Group Summary
 - Current Summary
 - Where We Are
@@ -56,6 +67,8 @@
 장기 `work` Task는 shared design, domain term ref, module/interface ref, Change Unit dependency, implementation detail, Journey Spine을 위한 expanded managed section을 표시할 수 있습니다.
 
 ## 전체 템플릿
+
+이것은 future/profile report shape입니다. MVP compact card가 아니며 source of truth도 아닙니다.
 
 ````md
 ---

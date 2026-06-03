@@ -1,105 +1,96 @@
 # Compact Status Card Template
 
+## Authority rule
+
+- Projection is derived from Core-owned state records and artifact references.
+- Projection is not Core state.
+- User edits to a projection are input only; they are not automatically accepted state.
+- Chat and Markdown cannot override Core state.
+
 ## Used when
 
-Use the compact status card when a short current-state display needs to show the always-on Harness context envelope: Task, mode, scope, out of bounds, next safe action, blocker status, pending user judgment, write authority, acceptance criteria, evidence, verification, Manual QA, residual risk, guarantee level, projection freshness, and latest refs. Keep it small enough for status, next-action, and resume turns: ordinary-language state first, exact Harness labels only when they clarify the boundary.
+Use the compact status card when a short current-state display needs to make Core state readable for a user or compact for an agent. It is the v0.2 MVP projection shape: one small card derived from Core state and refs.
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: Core status output. This is optional rendering for the v0.1 Core Authority Slice status/blocker response. The minimal Core Authority Slice may return a plain structured response instead of this card; this template is not a persisted state record and is not evidence of full projection support.
+Implementation tier: v0.2 User-Facing Harness MVP projection. v0.1 Core status output may still return plain structured status/blocker output instead of this card. This template is not a persisted state record and is not evidence of full projection renderer support.
 
-For v0.2 User-Facing Harness MVP display, this card can support the user-readable path when sensitive-action approval, work-acceptance need/status, residual-risk visibility, and residual-risk acceptance remain explicit within the relevant status, decision, or close-blocker lines instead of becoming extra required projection kinds.
+The card should use ordinary language first and exact Harness labels only where they clarify the authority boundary. It should be small enough for status, next-action, and resume turns.
 
-## Source records
+## Required contents
+
+- what we are doing
+- current scope and non-goals
+- pending user judgments
+- known evidence or evidence gaps
+- close blockers
+- visible residual risk
+- next safe action
+- source/freshness references
+
+## Source records and refs
 
 - current Task state and lifecycle phase
-- scope and out-of-bounds summaries
-- active Change Unit summary
-- current acceptance criteria snapshot
-- pending Decision Packet summary
-- Write Authority summary
-- authority source refs for Write Authorization, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Acceptance Decision Packet, Residual Risk, artifacts, redaction state, and projection freshness when those claims are displayed
-- connected profile guarantee level
-- risk summary
-- design-quality or stewardship summary
-- evidence coverage summary
-- verification summary
-- Manual QA summary
-- work acceptance summary
-- scope, sensitive-action approval, decision, design, evidence, verification, QA, and work acceptance gates
-- close blocker, close reason, and Manual QA summary
-- primary blocker, secondary blocker, and smallest unblocker display summaries derived from API errors, close blockers, gates, and refs
+- current scope, non-goals, and active Change Unit summary when relevant
+- pending Decision Packet refs and compact judgment summaries
+- known evidence refs and evidence-gap summaries
+- close blocker refs and close reason when present
+- residual-risk refs or explicit absence / not-yet-visible status
+- next safe action from current Core state
 - projection freshness and `source_state_version`
-- state, baseline, evidence, MCP, and capability freshness/blocker display summaries
-- latest report, Evidence Manifest, Run, Eval, Manual QA, and ArtifactRef refs
+- artifact refs and redaction state when needed to support a displayed claim
+- optional authority refs for Write Authorization, Approval, Evidence Manifest, Eval, Manual QA, Acceptance Decision Packet, and Residual Risk only when the card displays the related claim
 
-Summary placeholders in this card are display bindings derived from the records above. Decision, close-blocker, residual-risk, and freshness summaries should show refs or explicit absence; they do not create user judgment context or authority.
+Summary placeholders in this card are display bindings derived from the records above. Decision, evidence, close-blocker, residual-risk, and freshness summaries should show refs or explicit absence; they do not create user judgment context or authority.
 
-## Rendered sections
+Do not include schema dumps, DDL, event logs, full artifacts, full reference docs, full Evidence Manifests, full Eval bodies, full Manual QA records, or report bodies in the card.
 
-- task identity
-- mode and lifecycle phase
-- scope and out of bounds
-- acceptance criteria
-- next safe action
-- checked summary
-- remaining work or checks
-- primary blocker, owner, and smallest unblocker
-- secondary blockers
-- active Change Unit
-- user judgment
-- authority source refs
-- write authority
-- guarantee level
-- design and stewardship
-- evidence and verification
-- Manual QA
-- residual risk
-- work acceptance, residual-risk acceptance, and close status
-- projection freshness
-- state/input freshness and capability availability
-- latest refs
+## User-facing framing
 
-## Full template
+Use this shape when the reader is the user. Keep each line short and readable.
 
 ````text
 TASK-{id} {title}
-Display only: current-state view, not canonical state or write authority.
-Mode: {mode} / {lifecycle_phase}
-Scope: {scope_summary|none}
-Out of bounds: {out_of_bounds_summary|none}
-Acceptance criteria: {acceptance_criteria_summary|none}
+Display only: derived from Core state and refs; not Core state and not write authority.
+Doing: {doing_summary}
+Scope now: {scope_summary|none}
+Non-goals: {non_goals_summary|none}
+Pending user judgments: {pending_user_judgments_summary|none}
+Evidence: {known_evidence_summary|none}
+Evidence gaps: {evidence_gaps_summary|none}
+Close blockers: {close_blockers_summary|none}
+Visible residual risk: {residual_risk_summary|none}
 Next safe action: {next_safe_action}
-Checked: {checked_summary|none}
-Remaining: {remaining_summary|none}
-Primary blocker: {primary_blocker_label|none}
-Blocker owner: {primary_blocker_owner_label|none}
-Smallest unblocker: {smallest_unblocker|none}
-Secondary blockers: {secondary_blockers_summary|none}
-Change Unit: {active_change_unit_summary|none}
-Decision needed: {blocking_decision_summary|none}
-Write authority: {write_authority_status}
-Authority refs: write={write_authorization_ref|none}; decision={decision_packet_refs|none}; approval={approval_refs|none}; evidence={evidence_manifest_ref|none}; eval={eval_ref|none}; manual_qa={manual_qa_ref|none}; acceptance={acceptance_decision_ref|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}; redaction={redaction_availability_summary|none}; freshness={projection_freshness}
-Guarantee: {guarantee_level}; {guard_or_detection_summary}
-Authority gates: scope={scope_gate}; approval={approval_gate}; decision={decision_gate}
-Design/stewardship: {design_summary|none}; gate={design_gate}
-Evidence: {evidence_summary|none}; gate={evidence_gate}
-Verification: {verification_summary|none}; gate={verification_gate}
-Manual QA: {manual_qa_summary|not_required}; gate={qa_gate}
-Residual risk: status={residual_risk_status|none}; {residual_risk_summary|none}; refs={residual_risk_refs|none}
-Work acceptance: {acceptance_summary|not_required}; gate={acceptance_gate}
-Residual-risk acceptance: {accepted_residual_risk_refs|none}
-Close status: blockers={close_blockers|none}; reason={close_reason|none}
-Close/assurance display: self_checked={self_check_refs|none}; detached_verified={eval_ref|none}; verification_waived={verification_waiver_ref|none}; qa_waived={manual_qa_waiver_ref|none}; risk_accepted_close={accepted_residual_risk_refs|none}
-Projection freshness (view only): {current|stale|failed|unknown}; source_state_version={source_state_version|unknown}; {refresh_or_reconcile_needed|none}
-State/input freshness: {state_baseline_evidence_freshness_summary|current or none}
-MCP/capability: {mcp_or_capability_summary|available}
-Latest refs: report={latest_report_ref|none}; evidence={evidence_manifest_ref|none}; run/eval/QA={latest_check_refs|none}
+Sources/freshness: state={source_state_version|unknown}; refs={source_refs_summary|none}; rendered={updated_at|unknown}; freshness={projection_freshness}
+````
+
+## Agent compact framing
+
+Use this shape when the consumer is an agent context/reference payload. This is not a public schema; it is an example of the compactness target.
+
+````yaml
+task: {task_id}
+title: {title}
+mode: {mode}
+phase: {lifecycle_phase}
+doing: {doing_summary}
+scope_ref: {scope_ref|none}
+non_goals_ref: {non_goals_ref|none}
+pending_judgment_refs: {decision_packet_refs|none}
+evidence_refs: {evidence_refs|none}
+evidence_gaps: {evidence_gaps_summary|none}
+close_blocker_refs: {close_blocker_refs|none}
+residual_risk_refs: {residual_risk_refs|none}
+next_safe_action: {next_safe_action}
+freshness:
+  source_state_version: {source_state_version|unknown}
+  rendered_at: {updated_at|unknown}
+  state: {current|stale|failed|unknown}
 ````
 
 ## Notes
 
-This template is a rendered card shape, not canonical state. It is rendered from current source records and refs, not stale chat memory. Gate values remain owned by canonical state, guarantee level is display and risk context, and projection freshness is readable-view freshness only. Use the [projection/report boundary](../document-projection.md#projection-principles) for the exact non-authority rule.
+This template is a rendered card shape, not canonical state. It is rendered from current source records and refs, not stale chat memory. Gate values remain owned by canonical state, and projection freshness is readable-view freshness only. Use the [projection/report boundary](../document-projection.md#projection-principles) for the exact non-authority rule.
 
 Status/next recommendations in this card are read-only guidance. They may point to a Decision Packet, `prepare_write`, evidence collection, verification, QA, reconcile, or close attempt, but they do not mutate state, authorize writes, satisfy gates, accept results, accept residual risk, or close the Task.
 
@@ -110,8 +101,6 @@ Residual-risk display must distinguish `status=none` from `not_visible`. `status
 Do not collapse display problems into one line. A stale projection means the readable card may lag. Stale state, baseline, or evidence means the underlying inputs moved or became insufficient. MCP or capability unavailable means the surface cannot reach or provide the required Harness/Core capability.
 
 The primary blocker should come from the primary `ToolError` when an API response supplies one, or from the first close blocker when rendering a failed `harness.close_task` response. The owner label should say whether the next move is user-owned, agent-resolvable, or surface/system-owned, and should render as `none` or be omitted when there is no primary blocker. Secondary blockers should be grouped compactly and shown only when they change the next action, close readiness, or pending user judgment. These labels are display text, not new schema values or error codes.
-
-Design/stewardship is separate from Close status. It may affect shaping, write blockers, close blockers, or Decision Packet needs, but it is not merely a close-status field.
 
 This is not user judgment context. If a user judgment is needed, render a separate judgment prompt with `judgment_route`, `display_depth`, display-depth-appropriate options or chosen outcome, relevant refs, and higher-depth recommendation, uncertainty, or deferral effect when required.
 

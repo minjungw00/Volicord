@@ -1,5 +1,12 @@
 # Document Projection Reference
 
+## Authority rule
+
+- Projection is derived from Core-owned state records and artifact references.
+- Projection is not Core state.
+- User edits to a projection are input only; they are not automatically accepted state.
+- Chat and Markdown cannot override Core state.
+
 ## What this document helps you do
 
 Use this reference to check how Harness renders readable derived views from Core-owned state records and artifact references.
@@ -26,7 +33,7 @@ Projections are readable derived views. They are generated from Core-owned state
 
 ## Projection in plain language
 
-A Harness projection is a readable view of work that already exists in canonical state or artifact storage. The projector reads `state.sqlite` records, `state.sqlite.task_events`, and registered artifact references, then renders Markdown such as `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`, and other report projections.
+A Harness projection is a readable view of work that already exists in canonical state or artifact storage. The future projector reads `state.sqlite` records, `state.sqlite.task_events`, and registered artifact references, then renders a compact status card or, in later profiles, Markdown such as `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`, and other report projections.
 
 Markdown helps humans understand the work, resume context, inspect evidence, and propose corrections. Markdown does not own the work. A report can summarize a gate, link evidence, display a Write Authorization ref, or show a Decision Packet, but the report text is not the gate, evidence, authorization, or decision.
 
@@ -39,25 +46,38 @@ Harness keeps derived-output tiers aligned with staged delivery:
 | Tier | Stage boundary | Purpose and rule |
 |---|---|---|
 | Core status output | v0.1 Core Authority Slice | Minimal structured status/blocker output from current Core state. It may be plain API text or a compact card; it does not require persisted Markdown, a projection job, multiple `ProjectionKind` values, or a full renderer. |
-| User-facing MVP summaries | v0.2 User-Facing Harness MVP | Minimal readable summaries for current work status, user judgment request, evidence summary, and close readiness / blocker summary. If work acceptance or residual risk matters, show that fact inside the relevant status, judgment, or close-blocker summary instead of adding required projection kinds. These may be status/next text, compact cards, or minimal `TASK` sections rather than separate Markdown files. |
+| User-facing MVP projection | v0.2 User-Facing Harness MVP | One compact status card derived from Core state and refs. It shows what is happening, scope, pending user judgments, evidence or gaps, close blockers, visible residual risk, next safe action, and source/freshness refs. It does not require `TASK`, Journey, Run Summary, Evidence Manifest, Eval, Manual QA, Export, or report polish. |
+| Agent compact context/reference payload | v0.2 support surface and later | A compact machine-readable or prompt-sized payload derived from the same Core state and refs. It may carry ids, refs, blocker labels, and freshness for the next action, but it is not user-facing authority and should not include full projection bodies by default. |
 | Agency assurance reports | v0.3 Agency Assurance Pack profiles | Compact approval, Manual QA, verification, waiver, and assurance displays when those profiles are enabled. They are report/card views over owner records and refs, not first-slice or minimum MVP requirements. |
 | Operations/export reports | v0.4 Operations & Handoff Pack profiles | Projection freshness, reconcile/readiness, export, release-handoff, artifact-integrity, and operator report views when operations support is enabled. They do not replace Core state or artifact authority. |
 | Future/diagnostic projections | Owner-promoted later profiles or diagnostics | Detailed Journey Card or Journey Spine views, Run Summary, TDD Trace, Module Map, Interface Contract, standalone Decision Packet Markdown, detailed Evidence Manifest, detailed Eval, design/domain-language maps, and other diagnostic views. Pull on demand or enable only through a promoted profile. |
 
-MCP read-only resource staging follows the same tiers. v0.1 resources expose current project/current task/status output for the first authority loop. v0.2 resources add user-decision context and minimal evidence/close summaries through status/card or task summary output. Evidence Manifest, reports, bundles, Journey/Spine, and design/domain resources remain later-profile or diagnostic reads unless an owner profile explicitly promotes them. Resource reads over projections are still reads; they must not create projection jobs or make projections authoritative.
+MCP read-only resource staging follows the same tiers. v0.1 resources expose current project/current task/status output for the first authority loop. v0.2 resources may expose the compact status card, user-judgment prompt context, and agent compact context/reference payloads. Evidence Manifest, reports, bundles, Journey/Spine, and design/domain resources remain later-profile or diagnostic reads unless an owner profile explicitly promotes them. Resource reads over projections are still reads; they must not create projection jobs or make projections authoritative.
 
-Agent compact context is a consumer of current Core status output or user-facing summaries, not a separate authority tier. It may use projections as a readable summary only when their `source_state_version` and freshness are suitable for the next action. If state matters and the projection is stale, failed, unknown, or too broad, retrieve current Core state or a state-derived compact context instead. Do not turn Markdown projections, Journey Cards, status cards, old reports, generated summaries, or full projection bodies into always-on prompt payloads or authority. Full projection bodies are pull-on-demand for a phase that needs their specific content; by default, push only refs, one-line summaries, and freshness. They can point to current refs to inspect; they cannot authorize writes, satisfy gates, create evidence, perform verification, record Manual QA, accept results, accept residual risk, or close a Task.
+Agent compact context is a consumer of current Core status output or the v0.2 compact card, not a separate authority tier. It may use projections as a readable summary only when their `source_state_version` and freshness are suitable for the next action. If state matters and the projection is stale, failed, unknown, or too broad, retrieve current Core state or a state-derived compact context instead. Do not turn Markdown projections, Journey Cards, status cards, old reports, generated summaries, or full projection bodies into always-on prompt payloads or authority. Full projection bodies are pull-on-demand for a phase that needs their specific content; by default, push only refs, one-line summaries, and freshness. They can point to current refs to inspect; they cannot authorize writes, satisfy gates, create evidence, perform verification, record Manual QA, accept results, accept residual risk, or close a Task.
 
-### Minimum user-facing MVP output set
+### v0.2 compact status card
 
-The minimum user-facing MVP output set supports v0.2; it is not the product value by itself. The set is:
+The v0.2 MVP projection is one compact status card. The card is not the product value by itself; it is the small readable surface that makes Core authority understandable. It must show:
 
-- current work status
-- user judgment request
-- evidence summary
-- close readiness / blocker summary
+- what we are doing
+- current scope and non-goals
+- pending user judgments
+- known evidence and evidence gaps
+- close blockers
+- visible residual risk, or an explicit `none`/not-yet-visible status
+- next safe action
+- source and freshness references, including source state version, relevant owner refs, artifact refs when needed, render time, and freshness state
 
-Those outputs may reuse template shapes, but template variety must not inflate implementation scope. Work-acceptance need/status and residual-risk visibility remain distinct Core meanings when relevant, but they appear inside the minimal status, judgment, or close-blocker summaries rather than as extra required projection kinds. A single compact status/next surface plus a clear user judgment request display can satisfy the MVP display path when it is derived from Core state and refs.
+The card must stay readable for users and compact for agents. It must not dump schema fields, DDL, event logs, full artifacts, full reference docs, full Evidence Manifests, or full report bodies. Work-acceptance need/status and residual-risk visibility remain distinct Core meanings when relevant, but they appear inside the compact status card or the separate user judgment prompt rather than becoming extra required projection kinds.
+
+Projection audiences stay separate:
+
+| Audience | Shape | Rule |
+|---|---|---|
+| User-facing compact card | Short status card with ordinary language and refs | v0.2 MVP projection. Display-only; derived from Core state and refs. |
+| Agent compact context/reference payload | Prompt-sized or structured refs, blockers, source clocks, and next-action hints | Derived support payload. It may help the next agent action, but it is not authority and should not carry full Markdown bodies by default. |
+| Future/diagnostic reports | `TASK`, Journey Card/Spine, Run Summary, detailed Evidence Manifest, detailed Eval, full Manual QA, TDD Trace, Domain Language, Module Map, Interface Contract, Design, Export, full Approval Card, and other polished reports | Later/profile output or diagnostics. A template existing in the repository does not make it required for the current stage. |
 
 The strict boundary is:
 
@@ -124,43 +144,23 @@ This document does not own:
 - surface recipes; see [Surface Cookbook](surface-cookbook.md)
 - full template bodies and display card shapes; see [Template Reference](templates/README.md)
 
-## One generated TASK example
+## One compact status card example
 
-This is intentionally tiny. The full rendered shape lives in the [TASK template](templates/task.md).
+This is intentionally small. It shows the v0.2 shape without implying that a full template renderer, generated reports, or `TASK` Markdown exists.
 
-```md
----
-doc_type: task
-task_id: TASK-0001
-display_state: executing
-projection_version: 7
-source_state_version: 42
-updated_at: 2026-05-06T09:30:15+09:00
----
-
-# TASK-0001 Add Import Preview
-
-> Projection view: rendered from `state.sqlite` `source_state_version` 42 at `updated_at`. `projection_version` describes the view, not Task state. Managed edits become drift/reconcile candidates; user proposals become state only through Core and `state.sqlite.task_events`.
-
-<!-- HARNESS:BEGIN managed -->
-## Current Summary
-- mode: work
-- lifecycle phase: executing
-- next action: record evidence for CU-01
-- evidence gate: partial
-- verification gate: pending
-- Manual QA: pending
-- active change unit: CU-01
-- projection freshness: current
-
-## Evidence And Reports
-- Run Summary: RUN-20260506-093015-LEAD-01
-- Diff: DIFF-0001 (`artifact_id=ART-0001`, sha256:abc123..., redaction:none)
-<!-- HARNESS:END managed -->
-
-## User Notes and Proposals
-<!-- Human-editable: notes and proposals here are input for reconcile, not state changes by themselves. -->
--
+```text
+TASK-0001 Add Import Preview
+Display only: derived from Core state and refs; not Core state and not write authority.
+Doing: preparing the import preview slice for evidence review.
+Scope now: preview CSV rows before import; no data write.
+Non-goals: bulk import execution; account migration; production deploy.
+Pending user judgments: none.
+Evidence: diff ref DIFF-0001; smoke check not yet recorded.
+Evidence gaps: no run/evidence record for the preview path yet.
+Close blockers: evidence gap; work acceptance not requested.
+Visible residual risk: none recorded for this slice.
+Next safe action: run the preview check and record evidence.
+Sources/freshness: state=42; refs=TASK-0001, CU-01, DIFF-0001; rendered=2026-05-06T09:30:15+09:00; freshness=current.
 ```
 
 ## What humans may edit
@@ -219,7 +219,7 @@ Close/readiness displays must keep evidence, verification, Manual QA, work accep
 |---|---|---|---|
 | Current Task state | `state.sqlite.tasks`, `task_gates`, and `state.sqlite.task_events` | `TASK` Current Summary and status card | Core transition, then projector |
 | Task continuity | `state.sqlite` Task, Change Unit, Run, Evidence Manifest, Eval, Manual QA, Decision Packet, Approval, Residual Risk, `task_gates.acceptance_gate`, acceptance Decision Packet state, close events, artifact refs, `task_spine_entries` / public `journey_spine_entry` records when needed, and `state.sqlite.task_events` | `TASK` Journey Spine | Core transition or reconcile, Journey reconstruction, then projector |
-| Decision Packet | `state.sqlite.decision_packets` including `judgment_category`, `judgment_route`, `display_depth`, related `decision_gate` state, judgment events, related approval or reconcile records, artifact refs, and linked `state.sqlite.residual_risks` when applicable | `TASK` Pending Judgments, Journey Card judgment line, status/next responses, judgment-context resources, and decision-packet resources; optional `DEC` when standalone projection is enabled | `request_user_judgment` / `record_user_judgment`, then projector |
+| Decision Packet | `state.sqlite.decision_packets` including `judgment_category`, `judgment_route`, `display_depth`, related `decision_gate` state, judgment events, related approval or reconcile records, artifact refs, and linked `state.sqlite.residual_risks` when applicable | Compact status card judgment line, status/next responses, judgment-context resources, decision-packet resources, or a dedicated prompt; optional `TASK`, Journey Card, or `DEC` display when a later/standalone projection is enabled | `request_user_judgment` / `record_user_judgment`, then projector |
 | Journey Spine | `state.sqlite` Task, Change Unit, Run, Decision Packet, Approval, Evidence Manifest, Eval, Manual QA, Residual Risk, `task_gates.acceptance_gate`, acceptance Decision Packet state, close events, artifact refs, `task_spine_entries` / public `journey_spine_entry` records when needed, and `state.sqlite.task_events` | `TASK` Journey Spine section, resume views, Journey Spine-oriented cards | Core transition or reconcile, Journey reconstruction, then projector |
 | Journey Card | current `state.sqlite` Task state, gates, active Change Unit, Autonomy Boundary summary, active Decision Packet refs, residual-risk summary, latest evidence/eval/QA/report refs, and projection freshness | `JOURNEY-CARD`, status card, `harness.status` card text, `harness.next` current-position text, significant resume output | Read or projection refresh from current state; never direct card edit |
 | Autonomy Boundary | active `state.sqlite.change_units` Autonomy Boundary fields plus related Decision Packet resolutions and events | `TASK` Autonomy Boundary, Change Unit block, Journey Card autonomy line, optional related `DEC` when standalone projection is enabled | shaping update or user Decision Packet resolution, then projector |
@@ -254,7 +254,7 @@ Required authority statements:
 - Module Map: `module_map_items` table -> `MODULE-MAP` projection; public refs to canonical module rows use `StateRecordRef.record_kind=module_map_item`
 - Interface Contract: `interface_contracts` table -> `INTERFACE-CONTRACT` projection; public refs to canonical contract rows use `StateRecordRef.record_kind=interface_contract`
 - Feedback Loop: `feedback_loops` table -> `TASK` and Evidence Manifest display; public refs to canonical feedback-loop rows use `StateRecordRef.record_kind=feedback_loop`; TDD Trace refs remain separate execution evidence refs
-- Decision Packet: `state.sqlite.decision_packets` including `judgment_category`, `judgment_route`, `display_depth`, and related refs -> `TASK` Pending Judgments, status/next responses, judgment-context resources, and decision-packet resources; optional `DEC` projection when standalone projection is enabled
+- Decision Packet: `state.sqlite.decision_packets` including `judgment_category`, `judgment_route`, `display_depth`, and related refs -> compact status card judgment line, status/next responses, judgment-context resources, decision-packet resources, or a dedicated prompt; optional `TASK`, Journey Card, or `DEC` projection when a later/standalone projection is enabled
 - Journey Spine: reconstructed from owner records, artifact refs, `task_spine_entries` / public `journey_spine_entry` records when needed, and `state.sqlite.task_events`; it is not its own authority record
 - Journey Card: derived display from current state and refs; it is never canonical state
 - Autonomy Boundary: active `state.sqlite.change_units` boundary fields -> projection surfaces; it is judgment latitude, not scope authority
@@ -349,10 +349,12 @@ The template catalog is intentionally broader than the early implementation set.
 | Class | Templates or output shapes | Rule |
 |---|---|---|
 | Core status output | Minimal [Compact Status Card](templates/compact-status-card.md) or equivalent status/blocker response shape | Optional rendering for the structured status/blocker output from current Core state in v0.1. A plain structured response is enough; no persisted Markdown projection job or full renderer is required. |
-| User-facing MVP summaries | Minimal [TASK](templates/task.md) continuity summary, [Decision Packet](templates/decision-packet.md) display/card shape for user judgment requests, and optional [DIRECT-RESULT](templates/direct-result.md) compact result display for active direct-work profiles | Required only as supporting display needed to show current status, user judgment request, evidence summary, and close readiness/blockers. Work-acceptance and residual-risk facts remain distinct when relevant, but they do not add required projection kinds. Standalone persisted `DEC` Markdown remains optional unless the standalone Decision Packet projection feature is enabled. |
-| Agency assurance reports | [APR](templates/approval.md), [Approval Card](templates/approval-card.md), [MANUAL-QA](templates/manual-qa.md), [Manual QA Card](templates/manual-qa-card.md), and [Verification Result Card](templates/verification-result-card.md) | Use only when the corresponding approval, Manual QA, waiver, verification, or assurance profile is active. These are not v0.1 or minimum v0.2 requirements. |
+| User-facing MVP projection | [Compact Status Card](templates/compact-status-card.md) | The v0.2 projection shape is one compact card showing what is happening, scope/non-goals, pending user judgments, evidence/gaps, close blockers, visible residual risk, next safe action, and source/freshness refs. Work-acceptance and residual-risk facts remain distinct when relevant, but they do not add required projection kinds. |
+| Agent compact context/reference payload | Compact structured refs or prompt-sized state summary | Derived support payload for agents. Keep ids, refs, blocker labels, and freshness compact; do not push full Markdown bodies by default. |
+| User judgment prompt shape | [Decision Packet](templates/decision-packet.md) display/card shape for user judgment requests | A prompt/display shape when a user-owned judgment is pending, not the MVP projection and not the standalone `DEC` `ProjectionKind`. Standalone persisted `DEC` Markdown remains optional unless the standalone Decision Packet projection feature is enabled. |
+| Agency assurance reports | [APR](templates/approval.md), [Approval Card](templates/approval-card.md), [MANUAL-QA](templates/manual-qa.md), [Manual QA Card](templates/manual-qa-card.md), and [Verification Result Card](templates/verification-result-card.md) | Use only when the corresponding approval, Manual QA, waiver, verification, or assurance profile is active. These are not v0.1 or v0.2 MVP requirements. |
 | Operations/export reports | [EXPORT](templates/export.md) and release-handoff/export report shapes when that operations profile is enabled | Later operations output. Export reports list refs, hashes, redaction state, omission/block notes, and included projection snapshots without replacing Core state or artifact authority. |
-| Future/diagnostic projections | [RUN-SUMMARY](templates/run-summary.md), [EVIDENCE-MANIFEST](templates/evidence-manifest.md), [EVAL](templates/eval.md), [TDD-TRACE](templates/tdd-trace.md), [DOMAIN-LANGUAGE](templates/domain-language.md), [MODULE-MAP](templates/module-map.md), [INTERFACE-CONTRACT](templates/interface-contract.md), [DESIGN](templates/design.md), [JOURNEY-CARD](templates/journey-card.md), and standalone `DEC` Markdown when enabled | Detailed reference, diagnostic, stewardship, map, trace, persisted Journey Card, Journey Spine-style, standalone Decision Packet, and detailed Evaluation views. Keep them pull-on-demand or owner-promoted without making them mandatory early scope. |
+| Future/diagnostic projections | [TASK](templates/task.md), [DIRECT-RESULT](templates/direct-result.md), [RUN-SUMMARY](templates/run-summary.md), [EVIDENCE-MANIFEST](templates/evidence-manifest.md), [EVAL](templates/eval.md), [TDD-TRACE](templates/tdd-trace.md), [DOMAIN-LANGUAGE](templates/domain-language.md), [MODULE-MAP](templates/module-map.md), [INTERFACE-CONTRACT](templates/interface-contract.md), [DESIGN](templates/design.md), [JOURNEY-CARD](templates/journey-card.md), full [Approval Card](templates/approval-card.md), and standalone `DEC` Markdown when enabled | Detailed continuity, direct-result, reference, diagnostic, stewardship, map, trace, persisted Journey Card, Journey Spine-style, standalone Decision Packet, and detailed Evaluation views. Keep them pull-on-demand or owner-promoted without making them mandatory early scope. |
 
 `Future/diagnostic projections` means later-profile or diagnostic scope, not automatically v1+ only.
 
@@ -360,9 +362,9 @@ No template class makes a projection canonical state or creates evidence, QA, ve
 
 The `EXPORT` template is an optional projection output. It does not introduce an `export` state record for artifact links. Export projections list artifact refs, hashes, redaction states, and redaction/omission/block notes; they do not embed large or sensitive artifact bodies by default.
 
-Persisted `JOURNEY-CARD` Markdown, Journey Spine output, Run Summary, TDD Trace, Module Map, Interface Contract, export bundles, and detailed Evaluation views are not mandatory early scope. Current-position context for status, next, and resume can be satisfied by core status output, compact user-facing summaries, or agent compact context outputs.
+Persisted `JOURNEY-CARD` Markdown, Journey Spine output, `TASK` continuity reports, Direct Result reports, Run Summary, detailed Evidence Manifest, detailed Eval, full Manual QA card, TDD Trace, Domain Language, Module Map, Interface Contract, Design, Export bundles, full Approval Card, and other polished reports are not mandatory early scope. Current-position context for status, next, and resume is satisfied by core status output, the v0.2 compact status card, or agent compact context/reference payloads.
 
-Decision Packet visibility required by the active stage/profile is provided through status/next responses, judgment-context resources, decision-packet resources, and minimal `TASK` or card displays. That requirement is for the Decision Packet user judgment request display shape, not the standalone `DEC` `ProjectionKind`. Standalone `DEC` Markdown is optional unless the standalone Decision Packet projection feature is enabled.
+Decision Packet visibility required by the active stage/profile is provided through status/next responses, judgment-context resources, decision-packet resources, the compact status card, or a dedicated user judgment prompt. That requirement is for the Decision Packet user judgment request display shape, not the standalone `DEC` `ProjectionKind`. Standalone `DEC` Markdown is optional unless the standalone Decision Packet projection feature is enabled.
 
 Decision Packet record IDs use `DEC-*`. `DEC` as a `projection_kind` is only the projection kind label; when a standalone projection needs its own identity, use a separate `projection_id` such as `DEC-PROJ-0001`.
 
@@ -373,6 +375,8 @@ Display card shapes live in the [Template Reference](templates/README.md): [Comp
 Projection freshness is computed from the current owner or affected-scope state clock, canonical `projection_jobs.source_state_version`, projection job state, managed hashes, artifact availability, and known stale triggers. Front matter `source_state_version` mirrors the canonical value from the last successful render so operators can diagnose stale projections without treating the Markdown as canonical.
 
 Close/readiness displays must distinguish three facts: the current Core state version, the projection source version or failed job status, and whether the readable view is current enough for the requested operation. They must not infer readiness from stale Markdown, and they must not treat a failed projection as a rollback or mutation of the current Task, Run, evidence, Eval, QA, Approval, Decision Packet, or residual-risk state.
+
+The table below describes freshness rules only for projections whose stage or owner profile has enabled them. Listing a projection here does not make it part of v0.2 MVP scope.
 
 | Projection | Generated when | Stale when |
 |---|---|---|

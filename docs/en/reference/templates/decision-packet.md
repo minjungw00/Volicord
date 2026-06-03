@@ -6,7 +6,7 @@ Use `DEC` when standalone Decision Packet projection is enabled for a specific u
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: User-facing MVP summaries for the Decision Packet display/card shape for user judgment requests, not as the standalone `DEC` `ProjectionKind`. A standalone persisted `DEC` Markdown projection remains optional unless the standalone Decision Packet projection feature is enabled; the required prompt can appear through status/next, `TASK`, or decision resources.
+Implementation tier: User judgment prompt shape. Use it for the Decision Packet display/card shape when a user-owned judgment is pending, not as the v0.2 MVP projection and not as the standalone `DEC` `ProjectionKind`. A standalone persisted `DEC` Markdown projection remains optional unless the standalone Decision Packet projection feature is enabled; the required prompt can appear through the compact status card, status/next, or decision resources.
 
 ## Source records
 
@@ -289,7 +289,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Notes
 
-This template is a rendered shape, not canonical state. Decision Packet visibility required by the active stage/profile still comes through `TASK` projections, status/next responses, judgment-context resources, and decision-packet resources unless standalone `DEC` projection is enabled.
+This template is a rendered shape, not canonical state. Decision Packet visibility required by the active stage/profile can come through the compact status card, status/next responses, judgment-context resources, decision-packet resources, or a dedicated prompt. `TASK` may also show it when a later continuity profile is active. Standalone `DEC` projection remains optional.
 
 Decision Packet projections should keep authority context refs compact and explicit. Displaying a Write Authorization, Approval, Evidence Manifest, Eval, Manual QA, work acceptance, residual-risk visibility, residual-risk acceptance, artifact, redaction, or freshness ref in this template does not make the packet prose the authority for that record.
 

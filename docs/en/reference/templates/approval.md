@@ -6,7 +6,7 @@ Use `APR` after an approval request has been committed and Harness needs a reada
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: Agency assurance reports. `APR` is used only after committed sensitive-action Approval support is active; it is not part of v0.1 or the minimum v0.2 summary set.
+Implementation tier: Agency assurance reports. `APR` is used only after committed sensitive-action Approval support is active; it is not part of v0.1 or the v0.2 compact-card MVP.
 
 ## Source records
 

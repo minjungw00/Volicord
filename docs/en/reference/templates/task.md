@@ -1,12 +1,21 @@
 # TASK Template
 
+## Authority rule
+
+- Projection is derived from Core-owned state records and artifact references.
+- Projection is not Core state.
+- User edits to a projection are input only; they are not automatically accepted state.
+- Chat and Markdown cannot override Core state.
+
 ## Used when
 
-Use `TASK` as the continuity projection for active work. It summarizes the four user-facing gate display groups first: Scope, User Judgments, Evidence, and Close Readiness. It also shows where the work is, current judgment context, blocker ownership, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, Stewardship Impact, next evidence, residual risk, close summary, kernel gate detail when useful, active Change Unit, pending judgments, evidence, report refs, and projection freshness.
+Use `TASK` as a later/profile continuity or reference projection for active work when a full report is explicitly useful. It can summarize Scope, User Judgments, Evidence, Close Readiness, where the work is, current judgment context, blocker ownership, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, Stewardship Impact, next evidence, residual risk, close summary, kernel gate detail when useful, active Change Unit, pending judgments, evidence, report refs, and projection freshness.
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: User-facing MVP summaries. Only the status, user judgment request, evidence summary, and close readiness/blocker portions are v0.2-required; the fuller TASK body is later profile polish.
+Implementation tier: Future/diagnostic projections. `TASK` is not the v0.2 MVP projection. v0.2 uses the [Compact Status Card](compact-status-card.md) for user-facing status; a Decision Packet prompt or resource handles user judgments when needed. The fuller `TASK` body is later profile polish.
+
+A `TASK` template existing in this repository does not mean full `TASK` Markdown is required for the current stage.
 
 ## Source records
 
@@ -32,6 +41,8 @@ Generated gate group summaries, user judgment display text, close, waiver, revie
 
 ## Rendered sections
 
+When a later profile enables the full report, `TASK` may render sections such as:
+
 - Gate Group Summary
 - Current Summary
 - Where We Are
@@ -56,6 +67,8 @@ Generated gate group summaries, user judgment display text, close, waiver, revie
 Long-running `work` tasks may also render expanded managed sections for shared design, domain term refs, module/interface refs, Change Unit dependencies, implementation details, and Journey Spine.
 
 ## Full template
+
+This is a future/profile report shape, not the MVP compact card and not source of truth.
 
 ````md
 ---

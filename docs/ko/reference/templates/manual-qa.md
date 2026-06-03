@@ -6,7 +6,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Agency assurance reports입니다. Manual QA record 또는 active QA profile이 있을 때만 렌더링하며 최소 사용자 대상 MVP output set의 일부가 아닙니다.
+구현 계층: Agency assurance reports입니다. Manual QA record 또는 active QA profile이 있을 때만 렌더링하며 v0.2 compact-card MVP의 일부가 아닙니다.
 
 ## 기준 기록
 
