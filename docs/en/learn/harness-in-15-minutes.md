@@ -5,13 +5,13 @@
 Harness should not require users to speak in internal labels. These requests are enough:
 
 ```text
-Before implementing, help me make the plan concrete.
-Separate the product decisions from the technical decisions.
-Keep this as a small change and tell me if the scope grows.
+Help me clarify the plan before implementation.
+Show what I need to decide and what you can check yourself.
+Tell me if the scope is getting bigger.
 Show me what still prevents closing this work.
 ```
 
-Harness keeps AI-assisted product work grounded in local Core-owned state by tracking scope, user-owned judgments, evidence references, close readiness, work acceptance, and residual risk outside the chat.
+Harness keeps AI-assisted product work grounded in local Core-owned state by tracking six plain things outside the chat: work, scope, user-owned judgments, evidence, checks or verification, and close.
 
 This page shows the product feel in short scenarios. It is not an API guide and not a claim that this documentation repository already contains a running Harness Server.
 
@@ -19,14 +19,14 @@ This page shows the product feel in short scenarios. It is not an API guide and 
 
 Every scenario below is about one question: which surface is allowed to carry authority?
 
-Chat can coordinate. Tool output can support claims. Markdown can summarize. Product files can contain the work result. Core-owned state is where Harness keeps scope, user-owned judgments, evidence references, close readiness, work acceptance, and residual risk.
+Chat can coordinate. Tool output can support claims. Markdown can summarize. Product files can contain the work result. Core-owned state is where Harness keeps work, scope, user-owned judgments, evidence, checks or verification, and close status.
 
 ## Scenario 1: Advice/Read-Only Work
 
 The user says:
 
 ```text
-Before implementing, help me make the plan concrete.
+Help me clarify the plan before implementation.
 ```
 
 The useful shape is read-only:
@@ -54,7 +54,7 @@ Safe next step:
 Choose the product meaning first, then keep implementation scoped to login form, selected session behavior, and focused tests.
 ```
 
-The boundary: advice is not work acceptance, cited output is not user judgment, and a plan is not write authority.
+The boundary: advice is not work acceptance, cited output is not user judgment, and a plan is not permission to change product files.
 
 ## Scenario 2: Small Direct Change
 
@@ -126,7 +126,7 @@ Failed-login feedback can be inline, a toast, or a modal.
 A good prompt does not ask for broad approval:
 
 ```text
-Decision needed: failed-login feedback pattern.
+Thing to decide: failed-login feedback pattern.
 Why now: final UI behavior and human QA depend on this choice.
 Options: inline message near the form, toast, or modal.
 Recommendation: inline message near the form because it stays visible and is easier to make accessible.
@@ -177,7 +177,7 @@ Evidence: sufficient
 
 the edit does not change saved evidence references, QA status, work acceptance, residual risk, or close readiness. The future Harness system should treat that edit as a note or reconciliation input, not as authority by itself.
 
-The boundary: Markdown projection is not state.
+The boundary: readable Markdown is not state. The exact internal label for that kind of view belongs in Reference docs.
 
 ## Reference Owners
 

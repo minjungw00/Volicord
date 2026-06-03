@@ -5,9 +5,9 @@
 Speak normally. Start with the work, not Harness vocabulary:
 
 ```text
-Before implementing, help me make the plan concrete.
-Separate product decisions from technical decisions.
-Treat this as a small change unless the scope grows.
+Help me clarify the plan before implementation.
+Show what I need to decide and what you can check yourself.
+Tell me if the scope is getting bigger.
 Show what still blocks closing this work.
 ```
 
@@ -27,22 +27,23 @@ Make a small copy change, but tell me if it turns into a broader product decisio
 
 Status note: this guide describes the intended Harness-assisted user flow for a future local Harness Server. This repository is documentation-only today; it is not the user's Product Repository or a Harness Runtime Home.
 
-You can describe the work you want, the boundary you already know, and how cautious you want the agent to be. The agent should translate that into scope, facts it can inspect, choices only you can make, evidence needs, close readiness, and the next safe action. You should not need to learn internal record names, gate names, or tool names before starting.
+You can describe the work you want, the boundary you already know, and how cautious you want the agent to be. The agent should translate that into work, scope, facts it can inspect, judgments only you can make, evidence, checks or verification, and close status. You should not need to learn internal record names, readiness labels, or tool names before starting.
 
-Using Harness terms is optional and advanced. You may say "Discovery," "Change Unit," "Decision Packet," "Write Authorization," "Evidence Manifest," or "Projection" if you already know those labels, but normal use should not require them. The agent can show exact labels later when they clarify a boundary, source record, or reference contract.
+The primary user-facing model has six plain concepts: work, scope, judgment or thing to decide, evidence, check or verification, and close. Internal Harness labels are optional and advanced. The agent can show exact labels later when they clarify a boundary, source record, or reference contract.
 
 The agent should:
 
-- clarify scope before important writes
+- clarify the work and scope before important writes
 - inspect the repository, existing docs, tests, current Harness state, accepted decisions, and current task artifacts before asking questions it can answer itself
 - identify decisions that only you can own
-- separate product or UX judgment from technical architecture judgment
-- gather or explain the evidence needed to support completion
-- show the next safe action and what still blocks closing the work
+- separate product or UX judgment from technical architecture judgment when that distinction matters
+- gather or explain the evidence needed to support completion claims
+- run or explain the checks and verification that matter for the work
+- show what still blocks close and the next safe action
 
 Harness helps preserve scope, user-owned judgment, evidence, verification, QA expectations, work acceptance, and residual-risk status outside fragile chat context. It should make AI-assisted work easier to follow, not turn every task into a management ritual. Small work should stay small. Larger or riskier work should gain structure only when scope, user-owned judgment, evidence, QA, verification, work acceptance, or residual risk actually matter.
 
-You should expect to see plain work facts: what is in scope, what is out of scope, what the agent can inspect, what only you can decide, what changed, what was checked, what evidence exists, what risk remains, and whether close is blocked.
+You should expect to see plain work facts: what the work is, what is in scope, what only you can decide, what evidence exists, what was checked or verified, and whether close is blocked. QA, work acceptance, and remaining risk still matter, but they should be shown as part of the judgment, check, evidence, or close story instead of as extra vocabulary a new user must memorize.
 
 Harness also does not replace the surrounding engineering process. Source control still records product-file history, tests still check executable behavior, review still reviews changes, and user-owned product or material technical judgment still belongs to the user.
 
@@ -110,7 +111,7 @@ Clarification is enough to proceed only when:
 
 If those conditions are not met, the agent should either inspect the available sources, ask the smallest blocking question, park useful-but-not-blocking questions, or propose a smaller safe slice that avoids the unresolved area.
 
-When the request needs a user-owned judgment, the agent should show a user judgment request instead of asking for broad approval. Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, work acceptance, and residual-risk acceptance are separate judgments. Small judgments can be asked as short, explicit prompts; complex or risky judgments should include fuller trade-offs and evidence. The internal label for the saved record/template may be "Decision Packet," but that label should not be the main way the agent asks ordinary users to decide.
+When the request needs a user-owned judgment, the agent should show a user judgment request instead of asking for broad approval. Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, work acceptance, and residual-risk acceptance are separate judgments. Small judgments can be asked as short, explicit prompts; complex or risky judgments should include fuller trade-offs and evidence. Any internal saved-record label should stay behind the plain question unless it helps explain a real boundary or source link.
 
 Product or UX judgment:
 
@@ -153,8 +154,8 @@ Smallest unblocker: choose the failed-login pattern, or ask me to propose a smal
 Use these as ordinary requests. They are not commands you must memorize.
 
 ```text
-Before implementing, help me make the plan concrete.
-Clarify the plan before implementation.
+Help me clarify the plan before implementation.
+Show what I need to decide and what you can check yourself.
 Ask what you need before changing code.
 Start with goals, non-goals, and acceptance criteria.
 Show the current status and next safe action.
@@ -165,7 +166,7 @@ Show close readiness in plain language.
 Show close-relevant residual risk before I accept.
 What evidence is still missing?
 Separate product decisions from technical decisions.
-Treat this as a small change unless the scope grows.
+Tell me if the scope is getting bigger.
 Keep this small unless it turns into a product or technical decision.
 After you inspect, show the safe next work or work split.
 ```
@@ -266,33 +267,41 @@ The larger the blast radius, the more important this separation becomes. A secur
 
 <a id="the-four-display-groups"></a>
 
-## Four everyday display groups
+## Six everyday status concepts
 
-Most status should fit into four plain groups. The agent may save precise records behind the scenes, but the first display should answer these questions in ordinary language.
+Most status should fit into six plain concepts. The agent may save precise records behind the scenes, but the first display should answer these questions in ordinary language.
 
-| Display group | What it answers | What the agent should show |
+| Concept | What it answers | What the agent should show |
 |---|---|---|
-| What are we doing? | What is in scope, what is out of scope, and what happens next? | Included behavior, excluded items, affected areas, and whether the next action still fits the agreed scope. |
-| What must you decide? | Which choices belong to the user? | Each pending choice separately, such as a product/UX choice, technical architecture choice, security/privacy choice, permission for a sensitive step, work acceptance, or acceptance of a named remaining risk. |
-| What do we know? | What supports the current claim? | Changed paths, focused tests, command output, logs, screenshots, human QA notes, evidence links, recorded runs, saved decisions, related files or artifacts, and anything missing or stale. |
-| Why can or can't we close this? | Is the work ready to call done? | The remaining blocker, the smallest unblocker, whether sensitive-action approval, verification, or human QA is still needed, whether the user has accepted the result when required, and any known remaining risk or residual-risk acceptance need. |
+| Work | What are we trying to do? | The requested result, current work shape, affected area, and next safe action. |
+| Scope | What may change, and what stays out? | Included behavior, excluded items, affected paths or areas, and whether the next action still fits the agreed scope. |
+| Judgment | What must you decide? | Each pending choice separately, such as a product/UX choice, technical architecture choice, security/privacy choice, permission for a sensitive step, work acceptance, or acceptance of a named remaining risk. |
+| Evidence | What supports the current claim? | Changed paths, command output, logs, screenshots, human QA notes, evidence links, recorded runs, related files or artifacts, and anything missing or stale. |
+| Check or verification | What was checked, and from what review boundary? | Focused tests, diff review, inspection, source lookup, verification result, or required human QA expectation. |
+| Close | Can this honestly finish? | The remaining blocker, the smallest unblocker, whether work acceptance is required, and any known remaining risk or residual-risk acceptance need. |
 
-These groups are readable summaries, not a new checklist. The agent should show what helps you decide, trust, or unblock the work. It should not make you read internal record names before you understand the status.
+These concepts are readable summaries, not a new checklist. The agent should show what helps you decide, trust, or unblock the work. It should not make you read internal record names before you understand the status.
 
 Useful status:
 
 ```text
-What are we doing?
+Work:
+Add email login support.
+
+Scope:
 Login form and login API call. Password reset and account creation remain out of scope.
 
-What must you decide?
+Judgment:
 Choose the failed-login feedback pattern.
 
-What do we know?
-Repository inspection is done. No implementation evidence exists yet.
+Evidence:
+Repository inspection notes are saved. No implementation evidence exists yet.
 
-Why can't we close this?
-Close is blocked until the UX choice, implementation evidence, human QA expectation, and remaining-risk review are handled.
+Check or verification:
+No implementation check has run yet. Human QA expectations for the login screen are still unsettled.
+
+Close:
+Blocked until the UX choice, implementation evidence, human QA expectation, and remaining-risk review are handled.
 
 Next safe action:
 Choose the failed-login pattern, or ask me to propose a smaller slice.
@@ -338,12 +347,13 @@ The agent should stop and ask when a choice changes what users, callers, or futu
 Useful phrases:
 
 ```text
-Start with the scope and questions.
-Only ask me what the codebase cannot answer.
+Help me clarify the plan before implementation.
+Show what I need to decide and what you can check yourself.
 If scope needs to grow, show me the options and impact first.
 Separate product decisions from technical decisions.
 Tell me what evidence would be enough before you claim this is done.
-Show what still blocks closing.
+Tell me if the scope is getting bigger.
+Show what still blocks closing this work.
 ```
 
 ## Security guarantee level, briefly
@@ -369,7 +379,7 @@ Smallest unblocker: choose whether to keep this as a label-only change or includ
 
 Do not let the agent turn an agent-resolvable issue into a user burden. If the agent can inspect code, refresh status, rerun a test, collect missing evidence, or narrow the work without changing your judgment, it should say what it will do next.
 
-Close blockers should be readable without knowing gate names. A close blocker display should show:
+Close blockers should be readable without knowing internal readiness labels. A close blocker display should show:
 
 - what user judgment remains, if any
 - what evidence is missing, stale, or insufficient
@@ -431,7 +441,7 @@ You can skip this section until an agent shows one of these labels. They are use
 
 | Harness label | Plain meaning |
 |---|---|
-| Discovery | The internal name for the agent's requirements-clarification behavior before implementation planning. Users can ask for this as "clarify the plan before implementation." |
+| Discovery | The internal name for the agent's requirements-clarification behavior before implementation planning. Users can ask for this as "help me clarify the plan before implementation." |
 | Change Unit | The bounded work area that may change for this task. |
 | Autonomy Boundary | The decisions the agent may make alone inside that scope. |
 | Decision Packet | The internal record/template label behind a user judgment request. It records a user-owned product/UX, technical architecture, security/privacy, scope/autonomy, waiver, work acceptance, residual-risk acceptance, or reconcile judgment. It can be concise for a small unblocker or detailed for complex/risky choices. |
@@ -441,7 +451,9 @@ You can skip this section until an agent shows one of these labels. They are use
 | Approval | Permission for a named sensitive action; not generic agreement or work acceptance. |
 | Write Authorization | A one-attempt check that the intended product write fits the current task, scope, user judgments, and sensitive-action permissions. |
 | Evidence Manifest | The later/profile record that maps completion claims to supporting evidence. Minimum MVP-1 can use evidence summaries, Run refs, ArtifactRefs, and visible gaps without a full Evidence Manifest. |
+| Gate | An internal readiness or compatibility condition. User-facing status should show the blocker or check first. |
 | Projection | A readable summary derived from owner records and related files or artifacts. Early use may be compact status text or a card, not a full Markdown report; it helps orientation and is not authority by itself. |
+| Journey Card / Journey Spine | Later continuity display. It can help orientation when enabled and fresh, but it is not authority by itself. |
 | ProjectionJob | The internal job that creates or refreshes a readable projection. |
 | `task_events` | Low-level event history for implementers and diagnostics. |
 

@@ -20,16 +20,16 @@ Read [User Guide](user-guide.md) first if you want the user-facing version.
 
 ## Main idea
 
-Show only the state, blocker, pending user judgment, and next action that affect the user's next decision.
+Show only the work, scope, judgment, evidence, check or verification, and close details that affect the user's next decision.
 
 Agents translate ordinary user requests into Harness procedures. Do not require users to say Discovery, Change Unit, Decision Packet, Write Authorization, Evidence Manifest, Projection, Autonomy Boundary, or `task_events` before the work can proceed. Use those internal terms where agent/runtime behavior needs precision, and place them after the plain-language explanation when showing user-facing status.
 
 Treat requests like these as complete user input, not as invitations to demand Harness terminology:
 
 ```text
-Before implementing, help me make the plan concrete.
-Separate product decisions from technical decisions.
-Treat this as a small change unless the scope grows.
+Help me clarify the plan before implementation.
+Show what I need to decide and what you can check yourself.
+Tell me if the scope is getting bigger.
 Show what still blocks closing this work.
 I want to add an email login flow. Keep password reset out of scope for now and help me clarify the decisions first.
 Review this feature idea and ask the questions needed before implementation.
@@ -144,16 +144,18 @@ Use MCP results as the source, then speak in user terms.
 
 The exact error taxonomy, complete mapping, and precedence stay in [MCP API And Schemas](../reference/mcp-api-and-schemas.md). This section gives short display examples for common session responses; it is intentionally not exhaustive.
 
-Status and blocker displays should put the four groups before raw gate detail:
+Status and blocker displays should put the six user-facing concepts before raw gate detail:
 
-| Display group | Show first | Typical owner refs |
+| Concept | Show first | Typical owner refs |
 |---|---|---|
+| Work | What the user is trying to finish, answer, inspect, or decide. | Task, current work summary, current status refs. |
 | Scope | What may change, what is out of bounds, and whether the intended write fits. | Task, Change Unit, Autonomy Boundary, Write Authorization. |
-| User Judgments | What the user must decide before progress can continue, with each pending item split by type. Include sensitive-action permission only when that is the pending route. | Judgment request, Decision Packet, approval-shaped Decision Packet for minimum MVP-1 sensitive-action permission, Approval ref only when the later Approval profile is active, work-acceptance Decision Packet, Residual Risk. |
-| Evidence | What supports the claim, what is missing, and whether support is stale. | Evidence summary refs, Run refs, ArtifactRefs; Evidence Manifest only when the full evidence profile is active; Eval input refs when verification is active. |
-| Close Readiness | What remains before close can be attempted or accepted. | Approval-shaped Decision Packet or Approval when active, Eval, Manual QA, work-acceptance judgment / Decision Packet, Residual Risk, close blockers. |
+| Judgment | What the user must decide before progress can continue, with each pending item split by type. Include sensitive-action permission only when that is the pending route. | Judgment request, Decision Packet, approval-shaped Decision Packet for minimum MVP-1 sensitive-action permission, Approval ref only when the later Approval profile is active, work-acceptance Decision Packet, Residual Risk. |
+| Evidence | What supports the claim, what is missing, and whether support is stale. | Evidence summary refs, Run refs, ArtifactRefs; Evidence Manifest only when the full evidence profile is active. |
+| Check or verification | What was checked, what still needs checking, and whether a stronger review boundary or human QA is needed. | Eval input refs when verification is active, Manual QA refs or waiver refs when active, Run refs for checks. |
+| Close | What remains before close can be attempted or accepted. | Approval-shaped Decision Packet or Approval when active, work-acceptance judgment / Decision Packet, Residual Risk, close blockers. |
 
-These groups are not gate aliases and do not define exact enum values. When exact gate names are useful, show them after the plain group summary and link or cite the owner record.
+These concepts are not gate aliases and do not define exact enum values. When exact gate names are useful, show them after the plain summary and link or cite the owner record.
 
 - `harness.status` means "where are we now?"
 - `harness.next` means "what is the next safe action or smallest unblocker?"
@@ -621,7 +623,7 @@ For tracked work, the close summary must make the close basis visible. Show chan
 
 Use the close display that matches the task shape: `DIRECT-RESULT` is the compact result display for small changes, `TASK` Close Summary is continuity display for active or recently closed tracked work, and Journey Card close context, when enabled by a later profile, is compact status/resume display. None of these displays creates state, gates, work acceptance, QA, verification, residual-risk acceptance, close, or write authority.
 
-Close displays should lead with the same four groups: Scope for changed scope, User Judgments for work acceptance, residual-risk acceptance, QA waiver, verification waiver, or sensitive-action permission when relevant, Evidence for support refs, and Close Readiness for sensitive-action permission, verification, Manual QA, residual-risk visibility, residual-risk acceptance, work acceptance, close blockers, and close reason. Raw gate names can follow when they explain a blocker, but exact gate values and close semantics remain kernel-owned.
+Close displays should lead with the same six user-facing concepts: Work for the result being closed, Scope for changed scope, Judgment for work acceptance, residual-risk acceptance, QA waiver, verification waiver, or sensitive-action permission when relevant, Evidence for support refs, Check or verification for tests, verification, Manual QA, and waiver state, and Close for close blockers, close reason, remaining risk, and next safe action. Raw gate names can follow when they explain a blocker, but exact gate values and close semantics remain kernel-owned.
 
 Before successful close, show or confirm:
 

@@ -8,18 +8,18 @@ This tutorial follows one feature request through the three user-visible work sh
 - small direct change;
 - tracked work.
 
-Users can ask in ordinary language. The agent's job is to show the authority boundary: what is being attempted, what may change, what only the user can decide, what supports the claim, what still blocks close, and what risk remains.
+Users can ask in ordinary language. The agent's job is to show the authority boundary through six plain concepts: work, scope, judgment or thing to decide, evidence, check or verification, and close.
 
 This repository is documentation-only. The examples describe the intended future Harness behavior; they are not runtime transcripts from an implementation in this repo.
 
 ## Main Idea
 
-Harness keeps AI-assisted product work grounded in local Core-owned state by tracking scope, user-owned judgments, evidence references, close readiness, work acceptance, and residual risk outside the chat.
+Harness keeps AI-assisted product work grounded in local Core-owned state by tracking work, scope, user-owned judgments, evidence, checks or verification, and close outside the chat.
 
 The task story below keeps returning to the same non-substitution rules:
 
 - Chat is not state.
-- Markdown projection is not state.
+- Readable Markdown is not state.
 - Tool output is not user judgment.
 - Sensitive-action approval is not work acceptance.
 - Test pass is not manual QA.
@@ -31,7 +31,7 @@ The task story below keeps returning to the same non-substitution rules:
 The user starts with:
 
 ```text
-Before implementing, help me make the plan concrete.
+Help me clarify the plan before implementation.
 ```
 
 The agent should not start by changing product files. It should inspect, separate facts from choices, and show a safe next step.
@@ -70,7 +70,7 @@ Open choices:
 The user replies:
 
 ```text
-Separate the product decisions from the technical decisions.
+Show what I need to decide and what you can check yourself.
 ```
 
 The agent should show the split:
@@ -93,7 +93,7 @@ Tool output helped find facts. It did not make the user-owned decisions.
 During planning, the user notices a separate typo:
 
 ```text
-Keep this as a small change and tell me if the scope grows: rename the login button from "Sign in" to "Log in."
+Tell me if the scope is getting bigger: keep this as a small change and rename the login button from "Sign in" to "Log in."
 ```
 
 This is a small direct change if the label is local and the meaning stays the same.
@@ -185,7 +185,7 @@ Evidence references:
 
 Evidence is not the agent saying "done." It is the durable support that lets a future reader ask what backs the claim.
 
-A Markdown summary can display the evidence references, but the Markdown text is not the evidence record.
+A readable Markdown summary can display the evidence references, but the Markdown text is not the evidence record.
 
 ## Step 7: Verification And Manual QA Stay Separate
 
@@ -261,7 +261,7 @@ The learning path is not a feature list. It is an authority-boundary model:
 
 - advice can guide work without authorizing writes;
 - a small direct change can stay light while the boundary holds;
-- tracked work makes decisions, evidence, QA, verification, work acceptance, risk, and close readiness visible;
+- tracked work makes judgment, evidence, checks or verification, work acceptance, remaining risk, and close visible;
 - chat, Markdown, tool output, tests, sensitive-action permission, and self-checks are useful, but none of them silently substitutes for another authority.
 
 ## Where To Go Next

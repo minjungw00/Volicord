@@ -27,8 +27,8 @@ Harness separates the surfaces people use from the records that carry authority.
 | Chat | Coordination, questions, explanation, summaries, proposed next steps. | Durable state, work acceptance, residual-risk acceptance, or resolving every pending judgment by implication. |
 | Product files | Source code, tests, product docs, project assets, generated readable files. | Harness operational state. |
 | Tool output | Checks, logs, diffs, screenshots, connector responses, search results. | User judgment or work acceptance by itself. |
-| Readable reports (`Projection` internally) | Human-readable status and reports derived from recorded facts. | Core state, evidence records, work acceptance, or close eligibility. |
-| Core-owned local state | Scope, user-owned judgments, evidence references, close readiness, work acceptance, and residual risk. | A replacement for source control, tests, code review, or product specifications. |
+| Readable reports | Human-readable status and reports derived from recorded facts. | Core state, evidence records, work acceptance, or close eligibility. |
+| Core-owned local state | Work, scope, user-owned judgments, evidence, checks or verification, and close. | A replacement for source control, tests, code review, or product specifications. |
 
 The practical rule is simple: read surfaces for context, but treat Core-owned state and artifact references as the operating record.
 
@@ -114,9 +114,9 @@ Users should not need to request internal modes. In ordinary work, Harness shoul
 The user can speak normally:
 
 ```text
-Before implementing, help me make the plan concrete.
-Separate the product decisions from the technical decisions.
-Keep this as a small change and tell me if the scope grows.
+Help me clarify the plan before implementation.
+Show what I need to decide and what you can check yourself.
+Tell me if the scope is getting bigger.
 Show me what still prevents closing this work.
 ```
 

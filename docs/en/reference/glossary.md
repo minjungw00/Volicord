@@ -24,30 +24,22 @@ This glossary owns official term wording, capitalization reminders, record-name 
 
 ## Public Terms
 
-Use these words first in user-facing docs, prompts, and status summaries. They are intentionally plain so users can work with Harness without learning record names.
+Use these six concepts first in user-facing docs, prompts, and status summaries. They are intentionally plain so users can work with Harness without learning record names.
 
 | Public term | Plain meaning |
 |---|---|
 | work / task | The thing the user wants completed, answered, investigated, or decided. Use `Task` only when naming the internal record. |
-| scope | What may change and where the agent should stop before continuing. |
-| out of scope | What must not change, be decided, or be claimed as done for this work. |
-| judgment / user judgment | A user-owned choice. User-facing displays should name the specific type: Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, work acceptance, or residual-risk acceptance. |
-| judgment request | A focused request for one user-owned choice. The internal saved record may be a Decision Packet, but ordinary prompts should start with the choice, options, consequence, and next action. |
-| evidence | Durable support for a claim about the work. |
-| check | An ordinary confirmation such as a test, diff review, inspection, or source lookup. Use `Verification` only for the formal recorded correctness-check path. |
-| verification | A recorded correctness check, especially one that may need an independent enough review boundary. |
-| Manual QA | Human inspection for UI, copy, workflow, accessibility, visual quality, product taste, or another human-judgment surface. |
-| work acceptance | The user's judgment that the completed result is acceptable when that judgment is required. |
-| residual risk | Known remaining uncertainty, limitation, skipped check, trade-off, or possible consequence that should remain visible. |
-| close blocker | A concrete condition that prevents finish or close until it is resolved, deferred, waived, or accepted through the right path. |
-| close readiness | What still has to be true before the work can finish or close. |
-| next safe action | The next action that can proceed without hiding unresolved scope, judgment, evidence, QA, verification, acceptance, or risk. |
+| scope | What may change, what is out of scope, and where the agent should stop before continuing. |
+| judgment / thing to decide | A user-owned choice. User-facing displays should name the specific thing to decide, such as a product/UX choice, technical architecture choice, security/privacy choice, scope/autonomy choice, sensitive-step permission, QA or verification waiver, work acceptance, or acceptance of a named remaining risk. |
+| evidence | Durable support for a claim about the work, such as changed paths, diffs, logs, test output, screenshots, inspection notes, or artifact refs. |
+| check / verification | An ordinary confirmation such as a test, diff review, inspection, or source lookup; use `Verification` only for the formal recorded correctness-check path. Manual QA is a human check when the surface needs human judgment. |
+| close | What still has to be true before the work can finish or close, including blockers, required work acceptance, next safe action, and remaining risk when they matter. |
 
-User-facing docs should explain the plain concept first. Add exact Harness labels in parentheses only when they help explain a boundary, blocker, source ref, or reference link.
+User-facing docs should explain the plain concept first. More specific phrases such as judgment request, evidence reference, Manual QA, work acceptance, residual risk, close blocker, close readiness, and next safe action may appear when useful, but they should support one of the six concepts rather than becoming a required concept model. Add exact Harness labels in parentheses only when they help explain a boundary, blocker, source ref, or reference link.
 
 ## User-Facing Term Rules
 
-- Do not start user examples with internal terms. Start with the work, scope, judgment, evidence, blocker, or next safe action.
+- Do not start user examples with internal terms. Start with work, scope, judgment or thing to decide, evidence, check or verification, or close.
 - Do not require the user to say "Discovery," "Change Unit," "Decision Packet," "Write Authorization," "Evidence Manifest," "Projection," "Gate," or `task_events`.
 - Use "judgment request" in English user-facing docs for the ordinary interaction. In Korean user-facing docs, use natural Korean such as `판단 요청`, `무엇을 결정해야 하나요?`, or another sentence that fits the page.
 - Introduce internal labels only as optional or internal explanations, and only after the plain meaning is clear.
@@ -60,7 +52,7 @@ These are implementation labels used by references, APIs, schemas, records, and 
 | Internal term | Plain-language explanation |
 |---|---|
 | Task | The durable internal unit for the work the user wants completed, answered, investigated, or decided. Use plain "work" for first-read user prose. |
-| Discovery | The internal name for requirements clarification before implementation planning or write authority. Users can ask for this as "clarify the plan before implementation." |
+| Discovery | The internal name for requirements clarification before implementation planning or write authority. Users can ask for this as "help me clarify the plan before implementation." |
 | Change Unit | The bounded work scope for product writes. It says what may change but does not authorize a write by itself. |
 | Decision Packet | The recorded path for a specific user-owned judgment that blocks progress, write, waiver, work acceptance, risk handling, or close. |
 | Write Authorization | The Harness result that one specific product-write attempt may proceed now after scope and other checks. |

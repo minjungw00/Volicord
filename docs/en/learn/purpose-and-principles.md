@@ -81,9 +81,9 @@ Tracked work is for meaningful product changes, multi-step delivery, user-owned 
 Users can ask for these shapes in ordinary language:
 
 ```text
-Before implementing, help me make the plan concrete.
-Separate the product decisions from the technical decisions.
-Keep this as a small change and tell me if the scope grows.
+Help me clarify the plan before implementation.
+Show what I need to decide and what you can check yourself.
+Tell me if the scope is getting bigger.
 Show me what still prevents closing this work.
 ```
 
