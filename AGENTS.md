@@ -4,11 +4,16 @@ This repo is in pre-MVP Harness documentation redesign / feedback incorporation 
 
 ## Repo Phase
 
+- Always read this `AGENTS.md` first before working in this repository.
+- Before any documentation edit, read `docs/en/maintain/authoring-guide.md`.
+- Before bilingual edits or terminology-affecting edits, read `docs/en/maintain/translation-guide.md`.
+- Before touching Korean docs, read `docs/ko/maintain/authoring-guide.md` and `docs/ko/maintain/translation-guide.md`. Korean docs must follow the Korean translation guidance: natural Korean technical prose, short sentences where possible, exact identifiers preserved.
 - Do not implement the Harness server, runtime code, product implementation code, generated operational files, or state/projection/artifact outputs.
 - This repo is not the user's Product Repository and not a Harness Runtime Home.
 - No Harness Server/runtime implementation exists here yet.
 - Treat the current documentation as a post-redesign review baseline, not a final accepted implementation-ready state.
 - Documentation edits are allowed in this phase.
+- Do not treat documentation files as Harness runtime objects, runtime state, generated artifacts, projections, evidence, QA, Acceptance, residual-risk records, or close records.
 - Do not run or simulate Harness runtime procedures for documentation edits: no `prepare_write`, MCP state transitions, `close_task`, runtime state, `task_events`, Write Authorizations, Evidence Manifests, Manual QA records, Acceptance records, Residual Risk records, Journey Cards, generated projections, or other generated operational/projection documents for docs work. These terms may be documented only as future Harness behavior.
 - Path allowlists and batch boundaries for docs edits are maintainer editing controls, not Harness runtime override capabilities.
 - Final documentation handoff status lives in `docs/en/build/implementation-overview.md` and `docs/ko/build/implementation-overview.md`. Major implementation decisions found during review belong only in the MVP Plan decision-log sections, not scattered TODOs.
@@ -23,8 +28,10 @@ This repo is in pre-MVP Harness documentation redesign / feedback incorporation 
 - The repository is in documentation review/redesign only; runtime/server implementation is not being started by these documentation edits.
 - The redesign may change terminology, MVP staging, schema structure, projection structure, security wording, and document organization.
 - Do not preserve existing prose merely for continuity if it conflicts with the clarified product thesis or implementation feasibility.
+- Feel free to rewrite, move, merge, shrink, or delete old prose when it conflicts with the clarified product thesis, owner boundaries, Korean quality rules, or implementation feasibility.
 - Preserve the product thesis: Harness is not a prompt pack; it is a local authority record for scope, user-owned judgment, evidence, and close readiness. User-owned judgments, evidence/verification/QA/acceptance/risk boundaries, and Core-owned state/artifact authority must stay distinct.
 - The detailed redesign scope, preserved principles, document-family ownership guidance, Korean quality rules, and [known issue tracker](docs/en/maintain/authoring-guide.md#known-redesign-issues-tracker) live in [Authoring Guide](docs/en/maintain/authoring-guide.md#current-redesign-scope).
+- Future rewrite triage categories live in [Rewrite Plan](docs/en/maintain/rewrite-plan.md) and [Korean Rewrite Plan](docs/ko/maintain/rewrite-plan.md).
 
 ## Harness Compass
 

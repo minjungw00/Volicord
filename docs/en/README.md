@@ -26,7 +26,7 @@ This path is intentionally small. First-time readers do not need to read large R
 | User | [User Guide](use/user-guide.md) | [Harness in One Task](learn/harness-in-one-task.md) for a full work story; [user-owned judgment examples](use/decision-packet-cookbook.md) for complex choices. |
 | Agent behavior/integration author | [Agent Session Flow](use/agent-session-flow.md) | [Agent Integration Reference](reference/agent-integration.md), [Surface Cookbook](reference/surface-cookbook.md), and the specific API owner when exact fields are needed. |
 | Implementer | [Implementation Overview](build/implementation-overview.md) | [MVP Plan](build/mvp-plan.md), [First Runnable Slice](build/first-runnable-slice.md), [Runtime Walkthrough](build/runtime-walkthrough.md), then the strict first owner docs: [Kernel](reference/kernel.md), [MCP/API schemas](reference/mcp-api-and-schemas.md), and [Storage/DDL](reference/storage-and-ddl.md). |
-| Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md), [Roadmap](roadmap.md), and Reference owners only when checking strict meaning. |
+| Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md), [Rewrite Plan](maintain/rewrite-plan.md), [Roadmap](roadmap.md), and Reference owners only when checking strict meaning. |
 | Future/reference reader | [Reference Index](reference/README.md) | Open only the owner doc for the contract you need. Use [Roadmap](roadmap.md), [Future Fixture Catalog](reference/future-fixture-catalog.md), and future/diagnostic projection docs as separated advanced material, not MVP implementation input unless an owner promotes them. |
 
 ## Document Roles
@@ -101,6 +101,7 @@ Use Maintain to keep the docs and future Harness system coherent over time. Main
 
 - [Authoring Guide](maintain/authoring-guide.md)
 - [Translation Guide](maintain/translation-guide.md)
+- [Rewrite Plan](maintain/rewrite-plan.md)
 
 ## Current Status Model
 

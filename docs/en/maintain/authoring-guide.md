@@ -18,6 +18,8 @@ This is maintenance documentation. It governs documentation maintenance only. Th
 
 For exact runtime contracts, use the Reference owner documents linked below. For Korean wording rules, use [Translation Guide](translation-guide.md).
 
+For redesign triage categories and the rule that old structure and old prose do not need to be preserved, use [Rewrite Plan](rewrite-plan.md).
+
 ## Main idea
 
 Keep each document useful for its reader and keep exact contracts in their owner Reference docs. The docs are source material for understanding and implementing Harness; they are not runtime objects governed by Harness.
@@ -87,6 +89,7 @@ Path allowlists, language-pair batches, and review batch boundaries for document
 During redesign, optimize for clarity, implementability, and the product thesis, not for preserving existing wording.
 
 - Do not keep prose only because it already exists. Rewrite, move, compress, or delete text that makes Harness look like a broad workflow engine, ALM system, evaluation harness, QA automation platform, report generator, or generic MCP wrapper.
+- Use [Rewrite Plan](rewrite-plan.md) to classify future edits as `preserve`, `shrink`, `move`, `delete`, or `decision-needed`.
 - Preserve the core Harness principles and value proposition: local Core-owned authority for scope, user-owned judgment, evidence references, close readiness, work acceptance, and residual risk outside chat.
 - Future, profile-specific, diagnostic, or roadmap material must read as staged or candidate material. It must not look like a current MVP requirement or proof that implementation exists.
 - User-facing docs must not require readers to know internal Harness vocabulary before they can understand what to ask, what the agent will clarify, what is blocked, what needs user judgment, or what close means.
@@ -514,3 +517,4 @@ Use this map for broad document routing. For strict Reference contracts, use [Re
 | v1+ Expansion roadmap | `roadmap.md` |
 | Documentation authoring rules | `maintain/authoring-guide.md` |
 | Translation and bilingual prose rules | `maintain/translation-guide.md` |
+| Rewrite planning categories and redesign triage | `maintain/rewrite-plan.md` |

@@ -16,6 +16,8 @@ This is maintenance documentation for bilingual documentation. It does not autho
 
 Read [Authoring Guide](authoring-guide.md) for owner boundaries, docs-maintenance checks, and the rule that strict contracts stay in Reference docs.
 
+For rewrite triage during redesign, use [Rewrite Plan](rewrite-plan.md).
+
 ## Main idea
 
 English docs define the reference meaning for the bilingual documentation set. Korean docs preserve that meaning, but they should not sound like line-by-line English copies.

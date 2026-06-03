@@ -18,6 +18,8 @@ Harness 문서를 새로 쓰거나, 나누거나, 이름을 바꾸거나, 리뷰
 
 정확한 runtime contract는 아래에 연결된 Reference owner 문서를 사용합니다. 한국어 표현 규칙은 [번역 가이드](translation-guide.md)를 사용합니다.
 
+재설계 분류 기준과 오래된 구조나 문구를 반드시 보존할 필요가 없다는 규칙은 [재작성 계획](rewrite-plan.md)을 사용합니다.
+
 ## 핵심 생각
 
 각 문서는 독자에게 유용해야 하며 exact contract는 owner Reference 문서에 머물러야 합니다. 문서는 하네스를 이해하고 구현하기 위한 원천 자료이지, 하네스가 관리하는 런타임 객체가 아닙니다.
@@ -87,6 +89,7 @@ Harness 문서를 새로 쓰거나, 나누거나, 이름을 바꾸거나, 리뷰
 재설계 중에는 기존 문구 보존보다 명확성, 구현 가능성, 제품 명제를 우선합니다.
 
 - 이미 있다는 이유만으로 문장을 보존하지 않습니다. Harness가 넓은 workflow engine, ALM system, evaluation harness, QA automation platform, report generator, generic MCP wrapper처럼 보이게 하는 내용은 다시 쓰거나, 옮기거나, 줄이거나, 삭제합니다.
+- 향후 편집은 [재작성 계획](rewrite-plan.md)에 따라 `preserve`, `shrink`, `move`, `delete`, `decision-needed` 값으로 분류합니다.
 - 보존할 것은 핵심 Harness 원칙과 가치입니다. Scope, 사용자 소유 판단, 근거 참조, 닫기 준비 상태, 작업 수락, 잔여 위험을 대화 밖의 Core-owned 로컬 권한 기록에 둔다는 점을 지킵니다.
 - Future, profile-specific, diagnostic, roadmap 내용은 단계화된 후보로 읽혀야 합니다. 현재 MVP requirement처럼 보이거나 구현이 이미 있다는 증거처럼 보이면 안 됩니다.
 - 사용자 대상 문서는 독자가 internal Harness vocabulary를 알아야만 무엇을 요청할지, 에이전트가 무엇을 확인할지, 무엇이 막혔는지, 어떤 사용자 판단이 필요한지, close가 무슨 뜻인지 이해하는 형태가 아니어야 합니다.
@@ -514,3 +517,4 @@ Result 의미:
 | v1+ Expansion roadmap | `roadmap.md` |
 | Documentation authoring rules | `maintain/authoring-guide.md` |
 | Translation and bilingual prose rules | `maintain/translation-guide.md` |
+| 재작성 계획 분류와 재설계 분류 기준 | `maintain/rewrite-plan.md` |
