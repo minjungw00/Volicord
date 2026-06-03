@@ -109,6 +109,8 @@ v0.1 and v0.2 storage are cooperative/detective unless a later profile proves st
 
 This matrix is the main table list. It separates small v0.1/v0.2 storage from later profile candidates.
 
+Public API refs are owned by [MCP API And Schemas](mcp-api-and-schemas.md#artifactref). For the minimum v0.2 storage slice, `evidence_summaries.evidence_summary_id` is addressable as `StateRecordRef.record_kind=evidence_summary`, and `close_readiness.close_readiness_id` is addressable as `StateRecordRef.record_kind=close_readiness`. `change_unit_dependencies` remains future/diagnostic storage, so `record_kind=change_unit_dependency` is not a v0.2 active public ref.
+
 | Table | Purpose | First active stage | Authority or auxiliary | User-facing or internal | Later status |
 |---|---|---|---|---|---|
 | `registry_meta` | Runtime Home id and registry schema version | v0.1 | auxiliary identity | internal | active early |
@@ -441,6 +443,8 @@ CREATE TABLE close_readiness (
 ```
 
 Optional v0.2 prompt routing table:
+
+Public refs for these v0.2 additions are intentionally small. `evidence_summaries` and `close_readiness` may be surfaced through `StateRecordRef` as `evidence_summary` and `close_readiness`; they summarize or check authority refs and do not imply the full `evidence_manifests`, verification, Manual QA, projection, or report/export profiles are active.
 
 ```sql
 CREATE TABLE decision_requests (

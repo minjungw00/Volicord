@@ -82,7 +82,7 @@ Conformance fixture에서는 이 public request schema가 정확한 기준입니
 
 ## Schema notation convention
 
-이 문서의 Markdown YAML-like block은 surrounding text가 example이라고 명시하지 않는 한 normative schema notation입니다. 구현자는 다음 rule에 따라 validation code로 옮겨야 합니다.
+이 문서의 Markdown YAML-like block은 surrounding text가 example이라고 명시하지 않는 한 normative schema notation입니다. Block이 minimum v0.1/v0.2라고 표시되면 해당 stage의 active validator contract입니다. Block이 profile-gated라고 표시되면 full future shape를 보존하지만, public request validator는 enum value나 extension branch를 accept하기 전에 stage/profile value set을 반드시 적용해야 합니다. 구현자는 다음 rule에 따라 validation code로 옮겨야 합니다.
 
 - `field: Type`은 field가 required이고 value가 non-null이어야 함을 뜻합니다.
 - `field: Type | null`은 field가 여전히 required이지만 value가 JSON `null`일 수 있음을 뜻합니다. Omission은 expected `null`과 다릅니다.
@@ -469,9 +469,11 @@ Reference implementation에서 artifact 등록은 Task-scoped입니다. `Artifac
 | Field | v0.1 active owner record kinds | v0.2 active owner record kinds | v0.3/v0.4 later-profile record kinds | v1+ / future candidate record kinds |
 |---|---|---|---|---|
 | `ArtifactInput.relation.record_kind` | `task`, `change_unit`, `run` | `task`, `change_unit`, `run`, `decision_packet`, `residual_risk` | `shared_design`, `evidence_manifest`, `eval`, `manual_qa_record`, `feedback_loop`, `tdd_trace`, `projection` | `journey_spine_entry` |
-| `StateRecordRef.record_kind` | `task`, `change_unit`, `run`, `write_authorization` | `task`, `change_unit`, `change_unit_dependency`, `run`, `write_authorization`, `decision_packet`, `residual_risk` | `approval`, `shared_design`, `feedback_loop`, `evidence_manifest`, `eval`, `manual_qa_record`, `tdd_trace`, `reconcile_item`, `projection` | `journey_spine_entry`, `domain_term`, `module_map_item`, `interface_contract` |
+| `StateRecordRef.record_kind` | `task`, `change_unit`, `run`, `write_authorization` | `task`, `change_unit`, `run`, `write_authorization`, `decision_packet`, `residual_risk`, `evidence_summary`, `close_readiness` | `approval`, `shared_design`, `feedback_loop`, `evidence_manifest`, `eval`, `manual_qa_record`, `tdd_trace`, `reconcile_item`, `projection` | `change_unit_dependency`, `journey_spine_entry`, `domain_term`, `module_map_item`, `interface_contract` |
 
 v0.2 sensitive-action approval은 user-facing route에서 Decision Packet ref로 표현할 수 있습니다. Committed `approval` ref는 Approval owner profile이 켜지기 전까지 later-profile입니다. `projection` ref는 해당 owner profile의 projection support가 있을 때만 valid합니다. Projection은 계속 derived view이며 authority가 아닙니다.
+
+`evidence_summary`와 `close_readiness`는 이름이 같은 v0.2 storage row를 가리키는 public `StateRecordRef` kind입니다. 둘은 authority ref 위의 Core-owned summary/check record에 대한 public ref일 뿐이며 full Evidence Manifest, projection, verification, close-report profile을 active로 만들지 않습니다. Minimum summary는 artifact/run ref를 저장할 뿐 artifact link를 소유하지 않으므로 둘은 v0.2 `ArtifactInput.relation.record_kind` 값이 아닙니다. `change_unit_dependency`는 `change_unit_dependencies`가 v0.2 storage가 아니므로 future/diagnostic으로 남습니다.
 
 향후 Browser QA Capture는 새 reference schema가 아니라 이 artifact 경계를 사용합니다. 화면 capture는 보통 `screenshot`을 사용하고, 묶음 QA output은 `qa_capture`를 사용할 수 있습니다. Console log와 network trace는 `log` 또는 `qa_capture`를 사용할 수 있고, accessibility snapshot과 workflow recording은 명확한 description과 함께 `qa_capture` 또는 `other`를 사용할 수 있습니다. 이러한 artifact는 모두 redaction, secret/PII handling, Task-scoped ownership, 수동 QA record 또는 Feedback Loop attachment rules를 따라야 합니다. Capture artifact는 근거를 보강할 수 있지만 작업 수락을 만들거나, 수동 QA judgment를 대체하거나, 분리 검증을 충족하거나, 코어 권한 스모크(v0.1 Core Authority Smoke)에 필요한 capture schema를 추가하지 않습니다.
 
@@ -555,7 +557,7 @@ Record 또는 projection references는 `ArtifactRef`가 아니라 `StateRecordRe
 
 ```yaml
 StateRecordRef:
-  record_kind: task | change_unit | change_unit_dependency | run | approval | write_authorization | decision_packet | journey_spine_entry | shared_design | domain_term | module_map_item | interface_contract | feedback_loop | residual_risk | evidence_manifest | eval | manual_qa_record | tdd_trace | reconcile_item | projection
+  record_kind: task | change_unit | run | approval | write_authorization | decision_packet | journey_spine_entry | shared_design | domain_term | module_map_item | interface_contract | feedback_loop | residual_risk | evidence_summary | close_readiness | evidence_manifest | eval | manual_qa_record | tdd_trace | change_unit_dependency | reconcile_item | projection
   record_id: string
   projection_path: string | null
 ```
@@ -563,6 +565,8 @@ StateRecordRef:
 `record_kind=projection`에서 `record_id`는 projection job identity인 `projection_jobs.projection_job_id`입니다. `projection_path`는 선택적 표시 및 복구 metadata입니다. 값이 있으면 job의 `output_path`를 mirror하거나 좁혀야 하며 같은 job 아래에서 찾을 수 있어야 합니다. Alternate key가 아니며 별도의 `projections` table을 뜻하지 않습니다.
 
 Current reference API에는 `accepted_risk` `StateRecordRef.record_kind`가 없습니다. `accepted_risk_refs`, `accepted_refs`, 또는 accepted-risk equivalent로 이름 붙은 public fields는 `record_kind=residual_risk`인 `StateRecordRef` entries를 사용해야 합니다. Accepted risk는 그 Residual Risk records의 metadata/state입니다.
+
+Minimum v0.2 profile에서 evidence summary와 close-readiness record의 public ref는 각각 `record_kind=evidence_summary`와 `evidence_summaries.evidence_summary_id`, `record_kind=close_readiness`와 `close_readiness.close_readiness_id`를 사용합니다. Future/diagnostic profile이 storage/API pair를 명시적으로 enabled하기 전까지 v0.1/v0.2 validator는 `change_unit_dependency`를 accept하지 않습니다.
 
 Future/diagnostic profile이 enabled되면 기준 design-support records에 대한 public refs는 해당 storage record id와 함께 `record_kind=domain_term`, `record_kind=module_map_item`, 또는 `record_kind=interface_contract`를 사용합니다. Active projection profile이 `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT` 같은 렌더링된 Markdown projection 자체를 가리키고 `record_id=projection_jobs.projection_job_id`를 사용할 때만 `record_kind=projection`을 사용합니다.
 
@@ -822,6 +826,8 @@ NextActionSummary.action_kind의 stage별 active values:
 | v0.2 First User-Value Slice | `ask_user`, `prepare_write`, `implement`, `request_acceptance`, `close_task`, `idle` |
 | v0.3/v0.4 later profiles | matching owner profile이 enabled될 때만 `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile` |
 
+아래 schema block은 profile-gated superset입니다. Public validator와 caller는 active stage/profile이 enabled한 `action_kind` 값만 사용해야 합니다.
+
 ```yaml
 NextActionSummary:
   action_kind: ask_user | prepare_write | implement | launch_verify | record_eval | record_manual_qa | request_acceptance | close_task | reconcile | idle
@@ -904,6 +910,8 @@ AcceptanceVisibilityContext:
 `ResidualRiskSummary.status=none`은 현재 Task와 requested action에 대해 Core가 알고 있는 close-relevant Residual Risk가 없다는 뜻입니다. 이는 작업 수락과 ordinary successful close에서 잔여 위험 표시를 충족하며, 이때 `close_relevant_count=0`이고 risk-ref array는 비어 있습니다. Core가 hidden, blocked, 또는 표시되지 않은 close-relevant risk를 알고 있다면 이 status를 반환하면 안 되며, 그런 경우 `not_visible` 또는 `blocked`를 사용합니다.
 
 `ResidualRiskSummary.visible_refs`, `not_visible_refs`, `unaccepted_refs`, `accepted_refs`, related acceptance visibility risk-ref array는 `record_kind=residual_risk`인 `StateRecordRef` entry를 포함합니다. `visible_refs`는 현재 judgment context에서 visible한 close-relevant Residual Risk record를 나열하며, 잔여 위험 수용이 아직 필요하면 `unaccepted_refs`가 visible risk와 overlap될 수 있습니다. Accepted risk는 Residual Risk record의 metadata/state로 남습니다.
+
+`AcceptanceVisibilityContext.evidence_summary_refs`는 `record_kind=evidence_summary`인 `StateRecordRef` entry를 포함합니다. Public ref가 필요한 close-readiness display는 `record_kind=close_readiness`를 사용합니다. 둘은 v0.2 summary/check ref입니다. Full `evidence_manifest`, verification, 수동 QA, projection ref는 owner profile이 enabled될 때만 later-profile value로 active입니다.
 
 표시에서는 "none"과 "not visible"을 반드시 구분해야 합니다. `status=none`은 requested action에 대해 알려진 close-relevant Residual Risk가 없다는 current-state claim입니다. `status=not_visible`은 알려진 close-relevant risk가 있지만 작업 수락 또는 close에 필요한 맥락으로 아직 보이지 않았다는 blocker 또는 작업 수락 전 경고입니다. 사용자에게 보이는 summary는 status와 관련 risk refs, 또는 명시적인 empty ref set을 함께 렌더링해야 합니다.
 
@@ -1204,7 +1212,7 @@ StatusRequest:
     recommended_playbooks: boolean
 ```
 
-Response schema:
+Profile-gated response schema:
 
 ```yaml
 StatusResponse:
@@ -1538,12 +1546,12 @@ Stage별 active request subset:
 
 Allowed actor: `lead_agent`, `evaluator`, `operator`.
 
-Request schema:
+Minimum v0.1/v0.2 request schema:
 
 ```yaml
 RecordRunRequest:
   envelope: ToolEnvelope
-  kind: shaping_update | implementation | direct | verification_input
+  kind: shaping_update | implementation | direct
   task_id: string
   change_unit_id: string | null
   run_id: string | null
@@ -1557,7 +1565,6 @@ RecordRunPayload:
   shaping_update: ShapingUpdatePayload | null
   implementation: ImplementationPayload | null
   direct: DirectPayload | null
-  verification_input: VerificationInputPayload | null
 
 ShapingUpdatePayload:
   task_summary_update: string | null
@@ -1590,13 +1597,11 @@ ShapingUpdatePayload:
       evaluator_focus: string[]
   design_record_refs: StateRecordRef[]
   pending_decision_refs: StateRecordRef[]
-  feedback_loop_updates: FeedbackLoopUpdate[]
 
 ImplementationPayload:
   observed_changes: ObservedChanges
   command_results: CommandResult[]
   evidence_updates: EvidenceUpdates
-  tdd_trace_update: TddTraceUpdate | null
 
 DirectPayload:
   observed_changes: ObservedChanges
@@ -1606,12 +1611,6 @@ DirectPayload:
   escalation:
     value: none | escalate_to_work
     reason: string | null
-
-VerificationInputPayload:
-  evaluator_bundle_input: ArtifactInput | null
-  evaluator_focus: string[]
-  observed_changes: ObservedChanges
-  command_results: CommandResult[]
 
 ObservedChanges:
   changed_paths: string[]
@@ -1630,7 +1629,31 @@ EvidenceUpdates:
       status: supported | unsupported | not_applicable
       supporting_refs: StateRecordRef[]
       artifact_inputs: ArtifactInput[]
+```
+
+Later-profile `harness.record_run` request extension, profile-gated:
+
+```yaml
+RecordRunRequest later-profile extension:
+  kind: verification_input
+
+RecordRunPayload later-profile extensions:
+  verification_input: VerificationInputPayload | null
+
+ShapingUpdatePayload later-profile extensions:
   feedback_loop_updates: FeedbackLoopUpdate[]
+
+ImplementationPayload later-profile extensions:
+  tdd_trace_update: TddTraceUpdate | null
+
+EvidenceUpdates later-profile extensions:
+  feedback_loop_updates: FeedbackLoopUpdate[]
+
+VerificationInputPayload:
+  evaluator_bundle_input: ArtifactInput | null
+  evaluator_focus: string[]
+  observed_changes: ObservedChanges
+  command_results: CommandResult[]
 
 FeedbackLoopUpdate:
   feedback_loop_id: string | null
@@ -1658,9 +1681,9 @@ TddTraceUpdate:
   non_tdd_justification: string | null
 ```
 
-`payload` branch는 `kind`와 일치해야 하며, 다른 branch는 `null`이거나 absent여야 합니다. `ArtifactInput` 값은 같은 Core transaction에서 찾고, response field에는 committed `ArtifactRef` 값이 들어갑니다. Current reference API에서 Change Unit creation과 update는 `kind=shaping_update`와 `change_unit_updates`를 통해 이뤄집니다. `operation=create`는 `change_units` record를 만들고, `operation=select_active`는 Task의 `active_change_unit_id`를 update합니다. `allowed_paths`, `allowed_tools`, `allowed_commands`, `allowed_network_targets`, `secret_scope`, `sensitive_categories`는 scope field입니다. `autonomy_profile`, `agent_may_do`, `user_judgment_required`, `afk_stop_conditions`는 Autonomy Boundary judgment latitude만 설명합니다.
+`payload` branch는 `kind`와 일치해야 하며, 다른 branch는 `null`이거나 absent여야 합니다. v0.1/v0.2 minimum validator는 matching later owner profile이 명시적으로 enabled되지 않는 한 `kind=verification_input`, `verification_input`, `feedback_loop_updates`, `tdd_trace_update`를 request field로 accept하지 않습니다. `ArtifactInput` 값은 같은 Core transaction에서 찾고, response field에는 committed `ArtifactRef` 값이 들어갑니다. Current reference API에서 Change Unit creation과 update는 `kind=shaping_update`와 `change_unit_updates`를 통해 이뤄집니다. `operation=create`는 `change_units` record를 만들고, `operation=select_active`는 Task의 `active_change_unit_id`를 update합니다. `allowed_paths`, `allowed_tools`, `allowed_commands`, `allowed_network_targets`, `secret_scope`, `sensitive_categories`는 scope field입니다. `autonomy_profile`, `agent_may_do`, `user_judgment_required`, `afk_stop_conditions`는 Autonomy Boundary judgment latitude만 설명합니다.
 
-`secret_omitted` artifact를 연결하는 Evidence update는 남아 있는 보이는 nonsecret evidence로 증명되는 acceptance criteria 또는 completion condition만 지원할 수 있습니다. `blocked` artifact를 연결하는 Evidence update는 시도된 capture를 커밋된 metadata-only notice로 보존하지만, 금지된 원본 payload가 필요한 근거를 충족하지 않습니다. 관련 Evidence Manifest 또는 gate는 documented resolution이 유효한 path를 제공할 때까지 unsupported, partial, blocked, insufficient 중 적절한 상태로 남습니다.
+`secret_omitted` artifact를 연결하는 Evidence update는 남아 있는 보이는 nonsecret evidence로 증명되는 acceptance criteria 또는 completion condition만 지원할 수 있습니다. `blocked` artifact를 연결하는 Evidence update는 시도된 capture를 커밋된 metadata-only notice로 보존하지만, 금지된 원본 payload가 필요한 근거를 충족하지 않습니다. 관련 evidence summary, 해당 profile이 active일 때의 Evidence Manifest, 또는 gate는 documented resolution이 유효한 path를 제공할 때까지 unsupported, partial, blocked, insufficient 중 적절한 상태로 남습니다.
 
 다음 Feedback Loop와 TDD detail은 later-profile schema branch입니다. 해당 owner profile이 enabled될 때 exact payload를 안정적으로 쓰기 위해 여기에 보존하지만, v0.1 또는 minimum v0.2 requirement는 아닙니다.
 
@@ -1672,7 +1695,7 @@ Core는 consumed authorization을 observed changed paths, created/deleted paths,
 
 `runs.write_authorization_id`는 Run이 compatible Write Authorization을 성공적으로 consume할 때만 채워집니다. Invalid, `stale`, missing, consumed, scope-exceeded authorization을 사용하려 한 violation 또는 audit Run은 `runs.write_authorization_id`를 consumed authorization으로 채우면 안 됩니다. Audit에 유용한 attempted authorization 참조는 validator finding, run violation payload, 또는 `task_events.payload_json`에 기록해야 합니다. Observed product write가 이미 발생했다면 audit 또는 recovery를 위해 이런 violation Run을 record할 수 있지만, evidence sufficiency, 분리 검증, QA, 작업 수락, close readiness를 충족하면 안 됩니다. Corresponding Write Authorization은 unconsumed로 남아야 하며 violation과 compatibility basis에 따라 `stale`, revoked, expired로 표시될 수 있습니다.
 
-Response schema:
+Minimum v0.1/v0.2 response schema:
 
 ```yaml
 RecordRunResponse:
@@ -1680,25 +1703,34 @@ RecordRunResponse:
   run_id: string | null
   state: StateSummary
   write_authorization_ref: StateRecordRef | null
-  evidence_manifest_ref: StateRecordRef | null
-  updated_feedback_loop_refs: StateRecordRef[]
+  evidence_summary_ref: StateRecordRef | null
   run_summary_ref: StateRecordRef | null
   direct_result_ref: StateRecordRef | null
   registered_artifacts: ArtifactRef[]
   next_action: string
 ```
 
-`run_id`는 Core가 Run을 record했을 때 committed Run ID입니다. Core가 어떤 Run도 commit하기 전에 request를 거부하면, 예를 들어 write-capable implementation 또는 direct Run에 Write Authorization이 없으면 `run_id`는 `null`입니다. 이런 pre-commit rejection response에서는 `write_authorization_ref`, `evidence_manifest_ref`, `run_summary_ref`, `direct_result_ref`가 `null`로 남고, `registered_artifacts`와 `updated_feedback_loop_refs`는 비어 있습니다.
+Later-profile response extension, profile-gated:
+
+```yaml
+RecordRunResponse later-profile extensions:
+  evidence_manifest_ref: StateRecordRef | null
+  updated_feedback_loop_refs: StateRecordRef[]
+```
+
+`run_id`는 Core가 Run을 record했을 때 committed Run ID입니다. Core가 어떤 Run도 commit하기 전에 request를 거부하면, 예를 들어 write-capable implementation 또는 direct Run에 Write Authorization이 없으면 `run_id`는 `null`입니다. 이런 pre-commit rejection response에서는 `write_authorization_ref`, `evidence_summary_ref`, `run_summary_ref`, `direct_result_ref`가 `null`로 남고, `registered_artifacts`는 비어 있습니다. Later-profile response extension field가 present이면 `evidence_manifest_ref`는 `null`, `updated_feedback_loop_refs`는 empty로 남습니다.
 
 `write_authorization_ref`는 committed Run이 compatible Write Authorization을 성공적으로 consume할 때만 non-null입니다.
+
+`evidence_summary_ref`는 v0.2 active evidence response ref입니다. Non-null이면 `StateRecordRef.record_kind=evidence_summary`를 사용하고 `evidence_summaries.evidence_summary_id`를 가리킵니다. Minimum v0.1 response에서는 보통 `null`입니다. `evidence_manifest_ref`는 full Evidence Manifest owner profile이 enabled될 때만 `record_kind=evidence_manifest`를 쓰는 later-profile extension입니다. v0.1/v0.2 minimum implementation은 이를 validate, store, return할 필요가 없습니다. v0.1/v0.2에서 `run_summary_ref`와 `direct_result_ref`가 non-null이면 별도 public record kind를 만들지 않고 committed Run을 `record_kind=run`으로 가리킵니다.
 
 Violation 또는 audit Run은 Core가 그런 Run을 의도적으로 record할 때, 예를 들어 observed product write가 이미 발생한 뒤에만 non-null `run_id`를 가질 수 있습니다. Rejected pre-commit cases는 Run ID를 만들어내면 안 됩니다.
 
 State transition summary: shaping updates는 `shaping`을 유지하거나 `ready` 또는 `waiting_user`로 이동할 수 있습니다. Implementation은 `verifying` 쪽으로 이동합니다. Direct는 close-eligible이 되거나 work로 escalate할 수 있습니다. Verification input은 분리 검증을 증명하지 않고 verification bundle material을 기록합니다.
 
-반환될 수 있는 stable EventRef values: `run_recorded`, `write_authorization_consumed`, `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, `scope_violation_detected`, `evidence_manifest_updated`.
+반환될 수 있는 stable EventRef values: `run_recorded`, `write_authorization_consumed`, `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, `scope_violation_detected`, `evidence_summary_updated`; full Evidence Manifest profile이 enabled될 때만 `evidence_manifest_updated`.
 
-implementation-local detail/audit를 위해 반환될 수 있는 non-stable EventRef values: `shaping_updated`, `implementation_recorded`, `direct_result_recorded`, `verification_input_recorded`, `artifact_registered`, `feedback_loop_updated`, `tdd_trace_updated`.
+implementation-local detail/audit를 위해 반환될 수 있는 non-stable EventRef values: `shaping_updated`, `implementation_recorded`, `direct_result_recorded`, `artifact_registered`; matching profile이 enabled될 때만 later-profile value인 `verification_input_recorded`, `feedback_loop_updated`, `tdd_trace_updated`를 포함합니다.
 
 Violation 또는 audit Run은 audit 및 recovery를 위해 `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, `scope_violation_detected`를 내보낼 수 있습니다. 그런 Run은 evidence sufficiency, 분리 검증, QA, 작업 수락, close readiness를 충족할 수 없습니다. Pre-commit rejection response는 `record_run`에서 stable EventRef value를 반환하지 않습니다.
 
@@ -1894,7 +1926,7 @@ CloseTaskRequest:
 
 `CloseTaskRequest`는 accepted-risk refs를 전달하지 않습니다. `completed_with_risk_accepted`에서는 Core가 close-relevant Residual Risk records에 이미 기록된 accepted state를 읽습니다. Visible accepted residual-risk state가 없으면 block합니다. `verification_gate=waived_by_user`이면 completion은 `completed_with_risk_accepted`를 request해야 합니다. Waiver는 detached verification이 아니므로 `completed_verified`는 계속 blocked입니다.
 
-Response schema:
+Profile-gated response schema:
 
 ```yaml
 CloseState: open | blocked | closed | cancelled | superseded
@@ -1941,6 +1973,8 @@ CloseTaskResponse:
   final_report_refs: StateRecordRef[]
   artifact_refs: ArtifactRef[]
 ```
+
+Close response block은 profile-gated superset입니다. Minimum v0.2 close는 core close state, blocker, residual-risk, acceptance, 그리고 기존 ref array에 반환되는 관련 `evidence_summary` 또는 `close_readiness` `StateRecordRef` entry를 사용합니다. Verification, 수동 QA, projection/report, operations ref는 matching profile이 enabled될 때만 active입니다.
 
 `profile_required_verification.active=false`는 current stage/profile이 이 close path에 profile-specific verification을 요구하지 않는다는 뜻입니다. Verification passed를 뜻하지 않습니다. Active일 때 status와 refs는 required verification profile과 blocker를 설명합니다.
 

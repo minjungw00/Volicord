@@ -109,6 +109,8 @@ v0.1과 v0.2 storage는 다른 profile이 더 강한 control을 증명하기 전
 
 이 matrix가 main table list입니다. 작은 v0.1/v0.2 storage와 later profile candidate를 분리합니다.
 
+Public API ref는 [MCP API와 스키마](mcp-api-and-schemas.md#artifactref)가 담당합니다. Minimum v0.2 storage slice에서는 `evidence_summaries.evidence_summary_id`를 `StateRecordRef.record_kind=evidence_summary`로, `close_readiness.close_readiness_id`를 `StateRecordRef.record_kind=close_readiness`로 가리킬 수 있습니다. `change_unit_dependencies`는 future/diagnostic storage로 남으므로 `record_kind=change_unit_dependency`는 v0.2 active public ref가 아닙니다.
+
 | Table | Purpose | First active stage | Authority or auxiliary | User-facing or internal | Later status |
 |---|---|---|---|---|---|
 | `registry_meta` | Runtime Home id와 registry schema version | v0.1 | auxiliary identity | internal | active early |
@@ -441,6 +443,8 @@ CREATE TABLE close_readiness (
 ```
 
 Optional v0.2 prompt routing table:
+
+이 v0.2 addition의 public ref는 의도적으로 작게 유지합니다. `evidence_summaries`와 `close_readiness`는 `StateRecordRef`의 `evidence_summary`, `close_readiness`로 surface될 수 있습니다. 둘은 authority ref를 요약하거나 close check를 보조할 뿐이며, full `evidence_manifests`, verification, 수동 QA, projection, report/export profile이 active라는 뜻이 아닙니다.
 
 ```sql
 CREATE TABLE decision_requests (

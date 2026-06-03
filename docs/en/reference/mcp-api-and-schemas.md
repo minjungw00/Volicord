@@ -82,7 +82,7 @@ This document does not own:
 
 ## Schema notation convention
 
-The Markdown YAML-like blocks in this document are normative schema notation, not example payloads unless the surrounding text says they are examples. Implementations should translate them into validation code with these rules:
+The Markdown YAML-like blocks in this document are normative schema notation, not example payloads unless the surrounding text says they are examples. When a block is labeled minimum v0.1/v0.2, it is the active validator contract for that stage. When a block is labeled profile-gated, it preserves the full future shape, but public request validators must still apply the stage/profile value sets before accepting enum values or extension branches. Implementations should translate them into validation code with these rules:
 
 - `field: Type` means the field is required and its value must be non-null.
 - `field: Type | null` means the field is still required, but its value may be JSON `null`. Omission is different from expected `null`.
@@ -469,9 +469,11 @@ The tables below are the active validation sets for staged implementations. The 
 | Field | v0.1 active owner record kinds | v0.2 active owner record kinds | v0.3/v0.4 later-profile record kinds | v1+ / future candidate record kinds |
 |---|---|---|---|---|
 | `ArtifactInput.relation.record_kind` | `task`, `change_unit`, `run` | `task`, `change_unit`, `run`, `decision_packet`, `residual_risk` | `shared_design`, `evidence_manifest`, `eval`, `manual_qa_record`, `feedback_loop`, `tdd_trace`, `projection` | `journey_spine_entry` |
-| `StateRecordRef.record_kind` | `task`, `change_unit`, `run`, `write_authorization` | `task`, `change_unit`, `change_unit_dependency`, `run`, `write_authorization`, `decision_packet`, `residual_risk` | `approval`, `shared_design`, `feedback_loop`, `evidence_manifest`, `eval`, `manual_qa_record`, `tdd_trace`, `reconcile_item`, `projection` | `journey_spine_entry`, `domain_term`, `module_map_item`, `interface_contract` |
+| `StateRecordRef.record_kind` | `task`, `change_unit`, `run`, `write_authorization` | `task`, `change_unit`, `run`, `write_authorization`, `decision_packet`, `residual_risk`, `evidence_summary`, `close_readiness` | `approval`, `shared_design`, `feedback_loop`, `evidence_manifest`, `eval`, `manual_qa_record`, `tdd_trace`, `reconcile_item`, `projection` | `change_unit_dependency`, `journey_spine_entry`, `domain_term`, `module_map_item`, `interface_contract` |
 
 v0.2 sensitive-action approval can be represented through Decision Packet refs in the user-facing route. Committed `approval` refs are later-profile unless the Approval owner profile is enabled. `projection` refs are valid only when projection support for that owner profile exists; projections remain derived views, not authority.
+
+`evidence_summary` and `close_readiness` are v0.2 public `StateRecordRef` kinds for the v0.2 storage rows of the same names. They are public refs to Core-owned summary/check records over authority refs; they do not make full Evidence Manifest, projection, verification, or close-report profiles active. They are not v0.2 `ArtifactInput.relation.record_kind` values because the minimum summaries store artifact/run refs instead of owning artifact links. `change_unit_dependency` remains future/diagnostic because `change_unit_dependencies` is not v0.2 storage.
 
 Later Browser QA Capture uses this artifact boundary instead of a new reference schema. Screen captures normally use `screenshot`; grouped QA outputs can use `qa_capture`; console logs and network traces can use `log` or `qa_capture`; accessibility snapshots and workflow recordings can use `qa_capture` or `other` with a clear description. All such artifacts remain subject to redaction, secret/PII handling, Task-scoped ownership, and Manual QA record or Feedback Loop attachment rules. Capture artifacts can support evidence, but they do not create acceptance, replace Manual QA judgment, satisfy detached verification, or add a capture schema required for v0.1 Core Authority Smoke.
 
@@ -555,7 +557,7 @@ Record or projection references use `StateRecordRef`, not `ArtifactRef`:
 
 ```yaml
 StateRecordRef:
-  record_kind: task | change_unit | change_unit_dependency | run | approval | write_authorization | decision_packet | journey_spine_entry | shared_design | domain_term | module_map_item | interface_contract | feedback_loop | residual_risk | evidence_manifest | eval | manual_qa_record | tdd_trace | reconcile_item | projection
+  record_kind: task | change_unit | run | approval | write_authorization | decision_packet | journey_spine_entry | shared_design | domain_term | module_map_item | interface_contract | feedback_loop | residual_risk | evidence_summary | close_readiness | evidence_manifest | eval | manual_qa_record | tdd_trace | change_unit_dependency | reconcile_item | projection
   record_id: string
   projection_path: string | null
 ```
@@ -563,6 +565,8 @@ StateRecordRef:
 For `record_kind=projection`, `record_id` is the projection job identity: `projection_jobs.projection_job_id`. `projection_path` is optional display and recovery metadata; when present, it mirrors or narrows the job's `output_path` and must resolve under the same job. It is not an alternate key and does not imply a separate `projections` table.
 
 The current reference API has no `accepted_risk` `StateRecordRef.record_kind`. Public fields named `accepted_risk_refs`, `accepted_refs`, or accepted-risk equivalents must use `StateRecordRef` entries with `record_kind=residual_risk`; accepted risk is metadata/state on those Residual Risk records.
+
+In the minimum v0.2 profile, public refs to evidence summary and close-readiness records use `record_kind=evidence_summary` with `evidence_summaries.evidence_summary_id` and `record_kind=close_readiness` with `close_readiness.close_readiness_id`. `change_unit_dependency` is not accepted by v0.1/v0.2 validators unless a future/diagnostic profile explicitly enables the storage/API pair.
 
 Public refs to canonical design-support records, when that future/diagnostic profile is enabled, use `record_kind=domain_term`, `record_kind=module_map_item`, or `record_kind=interface_contract` with the corresponding storage record id. Use `record_kind=projection` only when the active projection profile targets a rendered Markdown projection such as `DOMAIN-LANGUAGE`, `MODULE-MAP`, or `INTERFACE-CONTRACT`, with `record_id=projection_jobs.projection_job_id`.
 
@@ -822,6 +826,8 @@ NextActionSummary.action_kind active values by stage:
 | v0.2 First User-Value Slice | `ask_user`, `prepare_write`, `implement`, `request_acceptance`, `close_task`, `idle` |
 | v0.3/v0.4 later profiles | `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile` only when the matching owner profile is enabled |
 
+The schema block below is a profile-gated superset. Public validators and callers must use only the `action_kind` values enabled by the active stage/profile.
+
 ```yaml
 NextActionSummary:
   action_kind: ask_user | prepare_write | implement | launch_verify | record_eval | record_manual_qa | request_acceptance | close_task | reconcile | idle
@@ -904,6 +910,8 @@ AcceptanceVisibilityContext:
 `ResidualRiskSummary.status=none` means Core has no known close-relevant Residual Risk for the current Task and requested action. It satisfies residual-risk visibility for work acceptance and ordinary successful close, with `close_relevant_count=0` and empty risk-ref arrays. It must not be returned when Core knows of hidden, blocked, or otherwise undisplayed close-relevant risk; those cases use `not_visible` or `blocked`.
 
 `ResidualRiskSummary.visible_refs`, `not_visible_refs`, `unaccepted_refs`, `accepted_refs`, and related acceptance visibility risk-ref arrays contain `StateRecordRef` entries with `record_kind=residual_risk`. `visible_refs` lists close-relevant Residual Risk records visible in the current judgment context; `unaccepted_refs` may overlap with visible risk when residual-risk acceptance is still needed. Accepted risk remains metadata/state on Residual Risk records.
+
+`AcceptanceVisibilityContext.evidence_summary_refs` contains `StateRecordRef` entries with `record_kind=evidence_summary`. Close-readiness displays that need a public ref use `record_kind=close_readiness`. These are v0.2 summary/check refs; full `evidence_manifest`, verification, Manual QA, and projection refs remain later-profile values unless their owner profiles are enabled.
 
 Displays must preserve the difference between "none" and "not visible." `status=none` is an affirmative current-state claim that no known close-relevant Residual Risk exists for the requested action. `status=not_visible` is a blocker or pre-acceptance warning that known close-relevant risk exists but has not yet been shown with enough context for acceptance or close. User-facing summaries should render both the status and the relevant risk refs or explicit empty ref set.
 
@@ -1204,7 +1212,7 @@ StatusRequest:
     recommended_playbooks: boolean
 ```
 
-Response schema:
+Profile-gated response schema:
 
 ```yaml
 StatusResponse:
@@ -1538,12 +1546,12 @@ User-facing meaning: say what happened and what changed in evidence, artifacts, 
 
 Allowed actor: `lead_agent`, `evaluator`, `operator`.
 
-Request schema:
+Minimum v0.1/v0.2 request schema:
 
 ```yaml
 RecordRunRequest:
   envelope: ToolEnvelope
-  kind: shaping_update | implementation | direct | verification_input
+  kind: shaping_update | implementation | direct
   task_id: string
   change_unit_id: string | null
   run_id: string | null
@@ -1557,7 +1565,6 @@ RecordRunPayload:
   shaping_update: ShapingUpdatePayload | null
   implementation: ImplementationPayload | null
   direct: DirectPayload | null
-  verification_input: VerificationInputPayload | null
 
 ShapingUpdatePayload:
   task_summary_update: string | null
@@ -1590,13 +1597,11 @@ ShapingUpdatePayload:
       evaluator_focus: string[]
   design_record_refs: StateRecordRef[]
   pending_decision_refs: StateRecordRef[]
-  feedback_loop_updates: FeedbackLoopUpdate[]
 
 ImplementationPayload:
   observed_changes: ObservedChanges
   command_results: CommandResult[]
   evidence_updates: EvidenceUpdates
-  tdd_trace_update: TddTraceUpdate | null
 
 DirectPayload:
   observed_changes: ObservedChanges
@@ -1606,12 +1611,6 @@ DirectPayload:
   escalation:
     value: none | escalate_to_work
     reason: string | null
-
-VerificationInputPayload:
-  evaluator_bundle_input: ArtifactInput | null
-  evaluator_focus: string[]
-  observed_changes: ObservedChanges
-  command_results: CommandResult[]
 
 ObservedChanges:
   changed_paths: string[]
@@ -1630,7 +1629,31 @@ EvidenceUpdates:
       status: supported | unsupported | not_applicable
       supporting_refs: StateRecordRef[]
       artifact_inputs: ArtifactInput[]
+```
+
+Later-profile `harness.record_run` request extensions, profile-gated:
+
+```yaml
+RecordRunRequest later-profile extension:
+  kind: verification_input
+
+RecordRunPayload later-profile extensions:
+  verification_input: VerificationInputPayload | null
+
+ShapingUpdatePayload later-profile extensions:
   feedback_loop_updates: FeedbackLoopUpdate[]
+
+ImplementationPayload later-profile extensions:
+  tdd_trace_update: TddTraceUpdate | null
+
+EvidenceUpdates later-profile extensions:
+  feedback_loop_updates: FeedbackLoopUpdate[]
+
+VerificationInputPayload:
+  evaluator_bundle_input: ArtifactInput | null
+  evaluator_focus: string[]
+  observed_changes: ObservedChanges
+  command_results: CommandResult[]
 
 FeedbackLoopUpdate:
   feedback_loop_id: string | null
@@ -1658,9 +1681,9 @@ TddTraceUpdate:
   non_tdd_justification: string | null
 ```
 
-The `payload` branch must match `kind`; all other branches must be `null` or absent. `ArtifactInput` values are resolved during the same Core transaction; response fields contain the committed `ArtifactRef` values. In the current reference API, Change Unit creation and update happen through `kind=shaping_update` with `change_unit_updates`; `operation=create` creates a `change_units` record, and `operation=select_active` updates the Task's `active_change_unit_id`. `allowed_paths`, `allowed_tools`, `allowed_commands`, `allowed_network_targets`, `secret_scope`, and `sensitive_categories` are scope fields. `autonomy_profile`, `agent_may_do`, `user_judgment_required`, and `afk_stop_conditions` describe Autonomy Boundary judgment latitude only.
+The `payload` branch must match `kind`; all other branches must be `null` or absent. In v0.1/v0.2 minimum validators, `kind=verification_input`, `verification_input`, `feedback_loop_updates`, and `tdd_trace_update` are not accepted request fields unless the matching later owner profile is explicitly enabled. `ArtifactInput` values are resolved during the same Core transaction; response fields contain the committed `ArtifactRef` values. In the current reference API, Change Unit creation and update happen through `kind=shaping_update` with `change_unit_updates`; `operation=create` creates a `change_units` record, and `operation=select_active` updates the Task's `active_change_unit_id`. `allowed_paths`, `allowed_tools`, `allowed_commands`, `allowed_network_targets`, `secret_scope`, and `sensitive_categories` are scope fields. `autonomy_profile`, `agent_may_do`, `user_judgment_required`, and `afk_stop_conditions` describe Autonomy Boundary judgment latitude only.
 
-Evidence updates that attach `secret_omitted` artifacts may support only the acceptance criteria or completion conditions proven by the remaining visible nonsecret evidence. Evidence updates that attach `blocked` artifacts preserve the attempted capture as a committed metadata-only notice, but the blocked ref does not satisfy evidence that requires the forbidden raw payload; the related Evidence Manifest or gate remains unsupported, partial, blocked, or insufficient until a documented resolution supplies a valid path.
+Evidence updates that attach `secret_omitted` artifacts may support only the acceptance criteria or completion conditions proven by the remaining visible nonsecret evidence. Evidence updates that attach `blocked` artifacts preserve the attempted capture as a committed metadata-only notice, but the blocked ref does not satisfy evidence that requires the forbidden raw payload; the related evidence summary, Evidence Manifest when that profile is active, or gate remains unsupported, partial, blocked, or insufficient until a documented resolution supplies a valid path.
 
 The following Feedback Loop and TDD details are later-profile schema branches. They are retained here so the exact payload is stable when those owner profiles are enabled; they are not v0.1 or minimum v0.2 requirements.
 
@@ -1672,7 +1695,7 @@ Core validates the consumed authorization against observed changed paths, create
 
 `runs.write_authorization_id` is populated only when a Run successfully consumes a compatible Write Authorization. A violation or audit Run that attempted to use an invalid, stale, missing, consumed, or scope-exceeded authorization must not populate `runs.write_authorization_id` as a consumed authorization. The attempted authorization ref, when useful for audit, should be recorded in validator findings, run violation payload, or `task_events.payload_json`. Such a violation Run may be recorded for audit or recovery if an observed product write already happened, but it must not satisfy evidence sufficiency, detached verification, QA, work acceptance, or close readiness. The corresponding Write Authorization should remain unconsumed and may be marked stale, revoked, or expired according to the violation and compatibility basis.
 
-Response schema:
+Minimum v0.1/v0.2 response schema:
 
 ```yaml
 RecordRunResponse:
@@ -1680,25 +1703,34 @@ RecordRunResponse:
   run_id: string | null
   state: StateSummary
   write_authorization_ref: StateRecordRef | null
-  evidence_manifest_ref: StateRecordRef | null
-  updated_feedback_loop_refs: StateRecordRef[]
+  evidence_summary_ref: StateRecordRef | null
   run_summary_ref: StateRecordRef | null
   direct_result_ref: StateRecordRef | null
   registered_artifacts: ArtifactRef[]
   next_action: string
 ```
 
-`run_id` is the committed Run ID when Core records a Run. It is `null` when Core rejects the request before any Run is committed, such as a missing Write Authorization for a write-capable implementation or direct Run. In those pre-commit rejection responses, `write_authorization_ref`, `evidence_manifest_ref`, `run_summary_ref`, and `direct_result_ref` remain `null`, while `registered_artifacts` and `updated_feedback_loop_refs` remain empty.
+Later-profile response extensions, profile-gated:
+
+```yaml
+RecordRunResponse later-profile extensions:
+  evidence_manifest_ref: StateRecordRef | null
+  updated_feedback_loop_refs: StateRecordRef[]
+```
+
+`run_id` is the committed Run ID when Core records a Run. It is `null` when Core rejects the request before any Run is committed, such as a missing Write Authorization for a write-capable implementation or direct Run. In those pre-commit rejection responses, `write_authorization_ref`, `evidence_summary_ref`, `run_summary_ref`, and `direct_result_ref` remain `null`, while `registered_artifacts` remains empty. If later-profile response extension fields are present in such a response, `evidence_manifest_ref` remains `null` and `updated_feedback_loop_refs` remains empty.
 
 `write_authorization_ref` is non-null only when the committed Run successfully consumes a compatible Write Authorization.
+
+`evidence_summary_ref` is the v0.2 active evidence response ref. When non-null, it uses `StateRecordRef.record_kind=evidence_summary` and points to `evidence_summaries.evidence_summary_id`. Minimum v0.1 responses normally leave it `null`. `evidence_manifest_ref` is a later-profile extension that uses `record_kind=evidence_manifest` only when the full Evidence Manifest owner profile is enabled; v0.1/v0.2 minimum implementations do not need to validate, store, or return it. In v0.1/v0.2, `run_summary_ref` and `direct_result_ref`, when non-null, point to the committed Run with `record_kind=run` rather than creating separate public record kinds.
 
 Violation or audit Runs may have a non-null `run_id` only when Core deliberately records such a Run, for example after an observed product write already happened. Rejected pre-commit cases must not fabricate a Run ID.
 
 State transition summary: shaping updates can keep `shaping`, move to `ready`, or move to `waiting_user`; implementation moves toward `verifying`; direct can become close-eligible or escalate to work; verification input records verification bundle material without proving detached verification.
 
-Stable EventRef values that may be returned: `run_recorded`, `write_authorization_consumed`, `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, `scope_violation_detected`, `evidence_manifest_updated`.
+Stable EventRef values that may be returned: `run_recorded`, `write_authorization_consumed`, `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, `scope_violation_detected`, `evidence_summary_updated`; `evidence_manifest_updated` only when the full Evidence Manifest profile is enabled.
 
-Non-stable EventRef values that may be returned for implementation-local detail/audit: `shaping_updated`, `implementation_recorded`, `direct_result_recorded`, `verification_input_recorded`, `artifact_registered`, `feedback_loop_updated`, `tdd_trace_updated`.
+Non-stable EventRef values that may be returned for implementation-local detail/audit: `shaping_updated`, `implementation_recorded`, `direct_result_recorded`, `artifact_registered`; later-profile values include `verification_input_recorded`, `feedback_loop_updated`, and `tdd_trace_updated` only when matching profiles are enabled.
 
 Violation or audit Runs may emit `write_authorization_violation_detected`, `write_authorization_staled`, `write_authorization_revoked`, `write_authorization_expired`, or `scope_violation_detected` for audit and recovery. Those Runs cannot satisfy evidence sufficiency, detached verification, QA, work acceptance, or close readiness. Pre-commit rejection responses return no stable EventRef values from `record_run`.
 
@@ -1894,7 +1926,7 @@ CloseTaskRequest:
 
 `CloseTaskRequest` does not carry accepted-risk refs. For `completed_with_risk_accepted`, Core reads already-recorded accepted state from close-relevant Residual Risk records and blocks if visible accepted residual-risk state is missing. When `verification_gate=waived_by_user`, completion must request `completed_with_risk_accepted`; `completed_verified` remains blocked because a waiver is not detached verification.
 
-Response schema:
+Profile-gated response schema:
 
 ```yaml
 CloseState: open | blocked | closed | cancelled | superseded
@@ -1941,6 +1973,8 @@ CloseTaskResponse:
   final_report_refs: StateRecordRef[]
   artifact_refs: ArtifactRef[]
 ```
+
+The close response block is a profile-gated superset. Minimum v0.2 close uses the core close state, blockers, residual-risk, acceptance, and any related `evidence_summary` or `close_readiness` `StateRecordRef` entries returned in existing ref arrays; verification, Manual QA, projection/report, and operations refs are active only when the matching profile is enabled.
 
 `profile_required_verification.active=false` means the current stage/profile does not require profile-specific verification for this close path. It must not be used to imply verification passed. When active, the status and refs explain the required verification profile and blockers.
 
