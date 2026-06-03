@@ -4,6 +4,8 @@
 
 Use this after [User Guide](user-guide.md) when work is blocked by a choice the agent should not make alone. A good judgment request shows the choice, realistic options, consequence, what can still continue, and what remains blocked. It should feel like decision support, not a schema form or a blank permission slip.
 
+Status note: these are documentation examples for planned Harness behavior. They are not Decision Packet records, acceptance records, evidence manifests, or other runtime outputs from this repository.
+
 The everyday label is "judgment request." The internal record or template label may be "Decision Packet" when a reference page, tool result, or saved record needs precision. Users should not need that label to answer the prompt.
 
 Before asking, the agent should check what the repository, docs, tests, current Harness state, accepted decisions, current task artifacts, or available evidence already answer. Do not ask the user to re-answer facts the project can answer. Ask only for judgments the user owns, and keep blocking questions separate from useful-but-not-blocking questions.

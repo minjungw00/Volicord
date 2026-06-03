@@ -25,6 +25,8 @@ Review this feature idea and ask the questions needed before implementation.
 Make a small copy change, but tell me if it turns into a broader product decision.
 ```
 
+Status note: this guide describes the intended Harness-assisted user flow for a future local Harness Server. This repository is documentation-only today; it is not the user's Product Repository or a Harness Runtime Home.
+
 You can describe the work you want, the boundary you already know, and how cautious you want the agent to be. The agent should translate that into scope, facts it can inspect, choices only you can make, evidence needs, close readiness, and the next safe action. You should not need to learn internal record names, gate names, or tool names before starting.
 
 Using Harness terms is optional and advanced. You may say "Discovery," "Change Unit," "Decision Packet," "Write Authorization," "Evidence Manifest," or "Projection" if you already know those labels, but normal use should not require them. The agent can show exact labels later when they clarify a boundary, source record, or reference contract.

@@ -48,7 +48,7 @@ If a proposed implementation starts with the full user-facing system, v0.3 Agenc
 
 The current documentation set is still documentation-only and in post-redesign review. This repository's intended future role is the Harness Server source repository. Runtime/server implementation has not started and may start only after documentation acceptance and a separate implementation-planning readiness decision. The current state is not fully accepted, implementation-complete, implementation-ready, or approved for server coding unless the maintainer-updated status table below explicitly says so.
 
-No server/runtime implementation decisions have been formally accepted for coding in this repository phase. The open decision ledger in [Staged Delivery Plan: Implementation decisions needed before server coding](mvp-plan.md#implementation-decisions-needed-before-server-coding) now records unresolved pre-coding choices that must be accepted or explicitly deferred before the affected stage is implemented.
+No server/runtime implementation decisions have been formally accepted for coding in this repository phase. The open decision ledger in [Staged Delivery Plan: Implementation decisions needed before server coding](mvp-plan.md#implementation-decisions-needed-before-server-coding) now records unresolved pre-coding choices that must be accepted or explicitly deferred before coding the affected stage.
 
 Remaining drift and review risks are tracked in the [Authoring Guide](../maintain/authoring-guide.md#known-redesign-issues-tracker). That tracker separates observed drift, candidates to verify, regression-prevention checks, and baseline status checks, and routes confirmed findings into the categories below. Review risks are not open implementation decisions by default, but if verification exposes a server-coding decision or stage blocker, record it in [Staged Delivery Plan: Implementation decisions needed before server coding](mvp-plan.md#implementation-decisions-needed-before-server-coding) with owner doc, affected behavior or field, affected stage, options, and decision needed.
 
@@ -216,7 +216,7 @@ v0.1 Core Authority Smoke can be one process with modules. It does not need sepa
 
 ### Core
 
-Core is the only path that mutates canonical operational state. Implement the transaction order owned by [Runtime Architecture](../reference/runtime-architecture.md#state-transaction-flow): envelope and state-version validation, lock acquisition, current-state read, owner checks or validators that are in scope, record update, owner-required event append, optional projection job enqueue when projection support is in scope, and commit. At this Build level, that means Core must:
+Core is the only path that mutates canonical operational state. The future Core implementation must follow the transaction order owned by [Runtime Architecture](../reference/runtime-architecture.md#state-transaction-flow): envelope and state-version validation, lock acquisition, current-state read, owner checks or validators that are in scope, record update, owner-required event append, optional projection job enqueue when projection support is in scope, and commit. At this Build level, that means Core must:
 
 - validate tool envelopes, idempotency keys, and expected state versions before a new mutation
 - acquire the relevant project or task lock

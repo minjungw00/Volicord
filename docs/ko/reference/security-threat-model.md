@@ -48,7 +48,7 @@ Security display는 실제 control과 일치해야 합니다. Cooperative와 det
 | v0.2 First User-Value Slice | 지시 기반/협력적(cooperative) + 사용자에게 보이는 blocker/status와 제한된 탐지 가능(detective) behavior. | 사용자는 missing scope, missing decision, missing evidence, close blocker, MCP availability, 정직한 보장 상태를 볼 수 있습니다. Authority를 확인할 수 없으면 product/runtime/code write는 지시로 보류됩니다. 이것은 여전히 기본 도구 실행 전 차단이나 격리가 아닙니다. |
 | v0.3 Agency Assurance Pack | Verification, QA, residual risk, 작업 수락, sensitive-action Approval 분리를 더 강하게 보여 주는 cooperative/detective assurance. | Harness는 assurance gap, stale evidence, missing independence, QA blocker, waiver/risk/acceptance boundary, context-hygiene finding을 기록하고 보고할 수 있습니다. 특정 profile이 capability를 증명하지 않는 한 preventive 또는 isolated가 되지 않습니다. |
 | v0.4 Operations & Handoff Pack | Recover, export, readiness, artifact integrity, projection freshness, handoff reporting 주변의 탐지 가능(detective) operational behavior. | Operator surface는 진단, 보고, owner path를 통한 repair, safe bundle export, artifact integrity check를 수행할 수 있습니다. 기본적으로 Runtime Home을 변조 불가능하게 만들거나, projection을 authoritative하게 만들거나, 임의 도구를 격리하지 않습니다. |
-| v1+ Expansion | 구현되고 증명된 경우에만 사전 차단(preventive) 또는 격리(isolated) 후보. | 더 강한 주장은 exact contract, covered operation, fixture proof, fallback behavior가 필요하며, 격리의 경우 proven sandbox, permission boundary, locked-down runner, process boundary, container boundary 같은 실제 separation boundary를 이름 붙여야 합니다. |
+| v1+ Expansion | owner 문서가 승격하고 해당 operation 또는 boundary가 증명된 경우에만 사전 차단(preventive) 또는 격리(isolated) 후보. | 더 강한 주장은 exact contract, covered operation, fixture proof, fallback behavior가 필요하며, 격리의 경우 proven sandbox, permission boundary, locked-down runner, process boundary, container boundary 같은 실제 separation boundary를 이름 붙여야 합니다. |
 
 이 단계 지도는 Core 권한을 낮추지 않습니다. Core는 active owner contract에 따라 invalid state transition을 거부하거나, Write Authorization을 내주지 않거나, gate 또는 파생 view를 `stale`/`blocked`로 표시하거나, 구조화된 막힘을 보고할 수 있습니다. 이 지도는 Harness가 action을 실행 전에 물리적으로 멈출 수 있는지, 또는 security boundary 뒤에 격리할 수 있는지에 대한 보안 표현만 제한합니다.
 
@@ -70,7 +70,7 @@ v0.1과 v0.2 reference path는 사전 차단형(preventive) 또는 격리형(iso
 
 ## 향후 또는 profile 승격 통제
 
-다음 통제는 owner 문서가 mechanism을 구현하고, covered operation 또는 separation boundary를 이름 붙이며, conformance가 이를 증명하기 전까지 향후 또는 profile별 범위입니다.
+다음 통제는 owner 문서가 mechanism과 covered operation 또는 separation boundary를 정의하고, conformance가 이를 증명하기 전까지 향후 또는 profile별 범위입니다.
 
 - 운영체제 sandboxing
 - 임의 도구 격리

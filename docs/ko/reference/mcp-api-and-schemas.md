@@ -335,7 +335,7 @@ Fixture assertions를 위한 event stability는 [Kernel Stable Event Catalog](ke
 |---|---|---|
 | Core status output | required 없음 | v0.1 status/blocker output은 persisted Markdown projection job 없이 read/freshness fact를 노출할 수 있습니다. |
 | First User-Value Slice summaries | persisted projection support를 사용할 때 `TASK` minimal task-scoped readable summary; active direct-work compact-result display에만 `DIRECT-RESULT` | 읽기용 status/judgment/evidence/close summary path를 제공합니다. 동등한 status/next card로도 full `TASK` template rendering이나 persisted projection job 없이 MVP output을 충족할 수 있습니다. |
-| Agency assurance reports | `APR`, `MANUAL-QA` | 해당 approval, 수동 QA, waiver, verification, assurance profile이 active일 때만 구현합니다. Compact verification은 card output을 사용할 수 있으며 detailed `EVAL` Markdown은 later diagnostic scope로 남습니다. |
+| Agency assurance reports | `APR`, `MANUAL-QA` | 해당 approval, 수동 QA, waiver, verification, assurance profile이 active일 때만 사용합니다. Compact verification은 card output을 사용할 수 있으며 detailed `EVAL` Markdown은 later diagnostic scope로 남습니다. |
 | Operations/export reports | `EXPORT` | Export, release-handoff, operations report profile이 범위에 있을 때만 켭니다. Export report projection은 읽기용 snapshot이지 authority가 아닙니다. |
 | Future/diagnostic projections | `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `DEC`, `DESIGN`, `JOURNEY-CARD` | Detailed report, trace, map, standalone Decision Packet, persisted Journey Card, Journey Spine-style, detailed Evaluation, diagnostic view입니다. Owner가 승격한 later profile이 범위에 있을 때만 켭니다. |
 

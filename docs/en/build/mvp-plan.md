@@ -72,7 +72,7 @@ Build staging does not upgrade security guarantees by itself. Security wording f
 | v0.2 First User-Value Slice | Cooperative/detective behavior with honest user-visible blockers, MCP availability, evidence gaps, close readiness, and honest guarantee display. |
 | v0.3 Agency Assurance Pack | Stronger separation and detective assurance around verification, Manual QA, residual risk, work acceptance, Approval, and stewardship. |
 | v0.4 Operations & Handoff Pack | Detective operations around doctor/readiness, recover/export, artifact integrity, projection freshness, and release handoff. |
-| v1+ Expansion | Preventive or isolated candidates only after owner docs implement and prove exact covered operations or real isolation boundaries. |
+| v1+ Expansion | Preventive or isolated candidates only after owner docs define and promote exact covered operations or real isolation boundaries, with conformance proof. |
 
 ### API surface by stage
 
@@ -146,7 +146,7 @@ Reference schemas may list fields that become necessary only when the related ca
 | v0.2 First User-Value Slice | Add the fields and display summaries needed for users to understand current work shape, scope/non-goals/success criteria, pending user judgment, evidence summary, close blockers, residual-risk visibility, and separated approval/acceptance/risk-acceptance displays. Work-acceptance and residual-risk facts stay distinct when relevant, but they fit inside the minimal summaries. | [MCP API And Schemas](../reference/mcp-api-and-schemas.md), [Kernel Reference](../reference/kernel.md), [Document Projection Reference](../reference/document-projection.md), [Template Reference](../reference/templates/README.md). |
 | v0.3 Agency Assurance Pack / v0.4 Operations & Handoff Pack | Add verification, QA, residual-risk, work-acceptance, stewardship, projection/reconcile, operations, export/recover, artifact-integrity, and release-handoff profiles only where owner docs define them. | [Design Quality Policies](../reference/design-quality-policies.md), [Operations And Conformance](../reference/operations-and-conformance.md), [Conformance Fixtures Reference](../reference/conformance-fixtures.md), [Future Fixture Catalog](../reference/future-fixture-catalog.md), [Storage And DDL](../reference/storage-and-ddl.md). |
 
-Required in an API schema therefore means required when that tool call, record, or profile is implemented or used. It does not make a future-profile field part of the smallest runnable slice by itself.
+Required in an API schema therefore means required when that tool call, record, or profile is active or used. It does not make a future-profile field part of the smallest runnable slice by itself.
 
 ### Implementation decisions needed before server coding
 

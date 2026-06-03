@@ -72,7 +72,7 @@ Build staging 자체가 security guarantee를 올려 주지는 않습니다. Sec
 | v0.2 First User-Value Slice | 사용자에게 보이는 막힘, MCP availability, evidence gap, close readiness, 정직한 보장 표시를 갖춘 cooperative/detective behavior입니다. |
 | v0.3 Agency Assurance Pack | Verification, 수동 QA, residual risk, 작업 수락, Approval, stewardship 주변의 더 강한 분리와 탐지 가능 assurance입니다. |
 | v0.4 Operations & Handoff Pack | Doctor/readiness, recover/export, artifact integrity, projection freshness, release handoff 주변의 탐지 가능 operations입니다. |
-| v1+ Expansion | Owner docs가 exact covered operation 또는 real isolation boundary를 구현하고 증명한 뒤의 preventive 또는 isolated candidate만 포함합니다. |
+| v1+ Expansion | Owner docs가 exact covered operation 또는 real isolation boundary를 정의하고 승격하며 conformance가 증명한 뒤의 preventive 또는 isolated candidate만 포함합니다. |
 
 ### Stage별 API surface
 
@@ -146,7 +146,7 @@ Reference schema에는 관련 capability가 범위에 들어올 때만 필요한
 | v0.2 First User-Value Slice | 사용자가 현재 work shape, scope/non-goals/success criteria, 대기 중인 사용자 판단, evidence summary, 닫기 막힘, residual-risk visibility, 민감 동작 승인 / 작업 수락 / 잔여 위험 수용 분리 표시를 이해하는 데 필요한 field와 display summary를 추가합니다. 작업 수락과 잔여 위험 사실은 관련 있을 때 distinct하게 남지만 최소 요약 안에 들어갑니다. | [MCP API와 스키마](../reference/mcp-api-and-schemas.md), [커널 참조](../reference/kernel.md), [읽기용 요약(Projection) 참조](../reference/document-projection.md), [Template 참조](../reference/templates/README.md). |
 | 에이전시 보증 팩(v0.3 Agency Assurance Pack) / 운영과 인계 팩(v0.4 Operations & Handoff Pack) | Verification, QA, 잔여 위험, 작업 수락, stewardship, projection/reconcile, operations, export/recover, artifact-integrity, release-handoff profile은 담당 문서가 정의한 곳에서만 추가합니다. | [설계 품질 정책](../reference/design-quality-policies.md), [운영과 Conformance](../reference/operations-and-conformance.md), [Conformance Fixtures 참조](../reference/conformance-fixtures.md), [향후 Fixture Catalog](../reference/future-fixture-catalog.md), [Storage와 DDL](../reference/storage-and-ddl.md). |
 
-따라서 API schema에서 required라는 말은 해당 tool call, record, profile이 구현되거나 사용될 때 required라는 뜻입니다. 그 자체로 future-profile field가 가장 작은 runnable slice의 일부가 되지는 않습니다.
+따라서 API schema에서 required라는 말은 해당 tool call, record, profile이 활성 상태이거나 사용될 때 required라는 뜻입니다. 그 자체로 future-profile field가 가장 작은 runnable slice의 일부가 되지는 않습니다.
 
 ### 서버 코딩 전 필요한 구현 결정
 

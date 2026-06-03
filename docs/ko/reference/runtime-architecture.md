@@ -21,7 +21,7 @@
 
 ## 핵심 생각
 
-구현된 뒤 하네스는 사용자의 제품 저장소 옆에서 실행되는 로컬 권한 계층입니다. 제품 저장소는 실제 제품 작업이 일어나는 곳이고, 하네스 런타임 홈은 운영 권한을 저장하며, 하네스 서버/설치(Harness Server / Installation)는 Core, validators, projection, reconcile, 공개 MCP tool을 통해 둘을 연결합니다.
+향후 목표 설계에서 하네스는 사용자의 제품 저장소 옆에서 실행되는 로컬 권한 계층입니다. 제품 저장소는 실제 제품 작업이 일어나는 곳이고, 하네스 런타임 홈은 운영 권한을 저장하며, 하네스 서버/설치(Harness Server / Installation)는 Core, validators, projection, reconcile, 공개 MCP tool을 통해 둘을 연결합니다.
 
 중요한 규칙은 분리입니다. 기준 운영 상태를 변경하는 것은 Core뿐입니다. 제품 소스 파일, 대화 텍스트, 생성된 Markdown, connector 파일, operator output, MCP caller claim은 system에 정보를 줄 수 있지만 기준 운영 상태는 `state.sqlite` 현재 기록과 `state.sqlite.task_events`에 있고, 원본 근거는 artifact store에 있습니다.
 
@@ -311,7 +311,7 @@ Reconcile은 merge, reject, note로 convert, decision 생성, design support rec
 
 `cooperative`, `detective`, `preventive`, `isolated`의 정확한 의미와 이 label의 staged honest-display rule은 [보안 위협 모델 참조: 정직한 guarantee display](security-threat-model.md#정직한-guarantee-display)가 담당합니다. 이 architecture section은 reported label이 runtime flow의 어디에 나타나는지만 담당합니다. Connector profile과 adapter가 이를 보고하고, Core는 여전히 authority decision을 수행하며, operator 또는 recovery surface는 이를 display와 risk context로 사용합니다.
 
-Architecture 관점의 stage default는 다음과 같습니다. v0.1은 cooperative에 제한된 detective Core status behavior를 더한 수준, v0.2는 사용자에게 보이는 blocker와 status를 포함한 cooperative/detective 수준, v0.3은 verification, QA, risk, 작업 수락 분리를 위한 cooperative/detective assurance 수준, v0.4는 operations, recovery, export, integrity check를 위한 detective 수준, v1+는 concrete operation 또는 boundary가 구현되고 증명된 곳에서만 preventive 또는 isolated profile입니다. 전체 표는 [보안 위협 모델의 단계별 guarantee level](security-threat-model.md#단계별-guarantee-level)이 담당합니다.
+Architecture 관점의 stage default는 다음과 같습니다. v0.1은 cooperative에 제한된 detective Core status behavior를 더한 수준, v0.2는 사용자에게 보이는 blocker와 status를 포함한 cooperative/detective 수준, v0.3은 verification, QA, risk, 작업 수락 분리를 위한 cooperative/detective assurance 수준, v0.4는 operations, recovery, export, integrity check를 위한 detective 수준, v1+는 concrete operation 또는 boundary가 승격되고 증명된 곳에서만 preventive 또는 isolated profile입니다. 전체 표는 [보안 위협 모델의 단계별 guarantee level](security-threat-model.md#단계별-guarantee-level)이 담당합니다.
 
 ### 보장 수준 동작 지도
 

@@ -36,7 +36,7 @@ Authority boundary:
 - Artifact file은 Core가 등록하고 compatible owner record에 link하기 전까지 evidence authority가 아닙니다.
 - Chat, Markdown projection, generated report, connector manifest, tool output, operator output은 Core mutation이 owner-valid state row 또는 artifact link를 기록하기 전까지 authority가 아닙니다.
 - Projection과 status card는 readable derived view입니다. Stale, failed, absent 상태일 수 있고 canonical state를 바꾸지 않습니다.
-- Future/profile table은 owning profile 또는 tool path가 구현되거나 사용될 때만 required가 됩니다.
+- Future/profile table은 owning profile 또는 tool path가 활성 상태이거나 사용될 때만 required가 됩니다.
 
 첫 server batch는 좁은 local authority loop를 증명하면 됩니다. Project identity, Task 하나, scoped boundary 하나, `prepare_write`, single-use Write Authorization 하나, Run 하나, artifact/evidence reference 하나, task event, structured blocker가 핵심입니다. Later profile contract가 문서화되어 있다는 이유로 수십 개 table을 만들 필요는 없습니다.
 
@@ -530,7 +530,7 @@ Baseline capture는 future assurance/profile feature입니다. 승격되면 appr
 
 ### Verification Bundle Shape
 
-Verification bundle은 future assurance/profile artifact입니다. Verification profile이 구현된 뒤 baseline ref, run ref, artifact ref, evaluator input, validation output을 묶을 수 있습니다. v0.1 Run 또는 v0.2 evidence summary를 기록하기 위한 requirement가 아닙니다.
+Verification bundle은 future assurance/profile artifact입니다. Verification profile이 활성 상태일 때 baseline ref, run ref, artifact ref, evaluator input, validation output을 묶을 수 있습니다. v0.1 Run 또는 v0.2 evidence summary를 기록하기 위한 requirement가 아닙니다.
 
 ### Projection job table
 
@@ -559,7 +559,7 @@ Full evidence sufficiency, detached verification, Manual QA, validator-backed as
 Current state table이 authoritative합니다.
 
 - `tasks`, `change_units`, `write_authorizations`, `runs`, `artifacts`, `artifact_links`, `task_blockers`는 v0.1 authority record입니다.
-- `decision_packets`, `residual_risks`와 그 밖의 v0.2 row는 구현되었을 때 자신의 record family에 대해서만 authority가 됩니다.
+- `decision_packets`, `residual_risks`와 그 밖의 v0.2 row는 해당 profile이 활성 상태일 때 자신의 record family에 대해서만 authority가 됩니다.
 - Event는 audit, debugging, idempotency explanation, projection freshness, recovery history를 support합니다.
 
 Deterministic event order는 `state.sqlite` 안에서 ascending `event_seq`입니다. Task-scoped reader는 `task_id`로 filter합니다. `created_at`은 audit metadata이며 여러 event가 같은 timestamp를 가질 때 ordering에 충분하지 않습니다.
@@ -638,7 +638,7 @@ Early hardening 대상:
 | Future `approvals.status` | Approval profile이 active일 때 Approval lifecycle owner |
 | Future `evidence_manifests.status` | Full Evidence Manifest profile이 active일 때 Evidence profile owner |
 | Future `feedback_loops.loop_kind`, `feedback_loops.status`, `tdd_traces.status` | Feedback/TDD profile이 active일 때 design-quality/API owners |
-| Future `connector_manifests.status`, `baselines.status`, `decision_requests.status`, `task_spine_entries.status`, `change_unit_dependencies.status`, `shared_designs.status`, `reconcile_items.status`, `domain_terms.status`, `module_map_items.status`, `interface_contracts.review_status` | 아래 storage compatibility values. Optional/future table이 retained, seeded, implemented된 경우에만 적용합니다. |
+| Future `connector_manifests.status`, `baselines.status`, `decision_requests.status`, `task_spine_entries.status`, `change_unit_dependencies.status`, `shared_designs.status`, `reconcile_items.status`, `domain_terms.status`, `module_map_items.status`, `interface_contracts.review_status` | 아래 storage compatibility values. Optional/future table이 retained되거나 seeded되거나 활성 상태인 경우에만 적용합니다. |
 
 Unknown owner-bound value는 fixture가 invalid-state recovery를 명시적으로 다루지 않는 한 invalid state입니다. Migration은 unknown value가 있을 때 tightening 전에 멈춰야 합니다. Owner가 정의하지 않은 fallback meaning으로 조용히 mapping하면 안 됩니다.
 

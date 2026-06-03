@@ -253,7 +253,7 @@ Integration uses the guarantee levels defined in [Security Threat Model Referenc
 
 This reference owns how connector profiles report and display those levels. It must not infer a stronger level from a surface name, product name, recipe name, or mode label, and it must not treat guarantee level as Approval, Write Authorization, verification, QA, work acceptance, residual-risk acceptance, close readiness, or a kernel gate.
 
-The v0.1 Core Authority Smoke and v0.2 First User-Value Slice should display the reference surface as cooperative/detective unless a fixture-proven guard or documented separation boundary is implemented and proven for the operation being described. Future preventive or isolated profiles may be documented, but they must stay labeled as future/profile-specific until owner docs and conformance promote them.
+The v0.1 Core Authority Smoke and v0.2 First User-Value Slice should display the reference surface as cooperative/detective unless a fixture-proven guard or documented separation boundary is promoted and proven for the operation being described. Future preventive or isolated profiles may be documented, but they must stay labeled as future/profile-specific until owner docs and conformance promote them.
 
 Stage display defaults mirror the [Security Threat Model stage map](security-threat-model.md#guarantee-levels-by-stage):
 
@@ -505,7 +505,7 @@ Core Authority Smoke connector checks:
 - `record_run` with a minimal artifact/evidence ref
 - local-only MCP default, with off-profile remote or shared exposure held, failed, or reported as capability-insufficient
 - MCP unavailable product-write hold
-- status recommendations, and `next` recommendations when `harness.next` is implemented, remain read-only guidance unless the recommended action follows the existing Core mutation path
+- status recommendations, and `next` recommendations when `harness.next` is included in the active profile, remain read-only guidance unless the recommended action follows the existing Core mutation path
 - if a connected v0.1 surface also exposes Role Lens or recommended-playbook output, that output is read-only guidance and does not become a v0.1 requirement
 
 Later profile scenarios:

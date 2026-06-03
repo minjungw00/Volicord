@@ -253,7 +253,7 @@ Integration은 [보안 위협 모델 참조](security-threat-model.md#정직한-
 
 이 참조는 connector 프로필이 그 level을 어떻게 보고하고 표시하는지 담당합니다. Surface name, product name, recipe name, mode label에서 더 강한 level을 추론하면 안 되며, 보장 수준을 Approval, Write Authorization, verification, QA, 작업 수락, 잔여 위험 수용, close readiness, kernel gate로 취급하면 안 됩니다.
 
-코어 권한 스모크(v0.1 Core Authority Smoke)과 첫 사용자 가치 조각(v0.2 First User-Value Slice)는 설명 중인 operation에 대해 fixture로 입증된 guard 또는 문서화된 separation boundary가 구현되고 증명되지 않는 한 reference surface를 cooperative/detective로 표시해야 합니다. Future preventive 또는 isolated profile을 문서화할 수는 있지만, owner 문서와 conformance가 승격하기 전까지는 향후 또는 profile별 범위로 label해야 합니다.
+코어 권한 스모크(v0.1 Core Authority Smoke)과 첫 사용자 가치 조각(v0.2 First User-Value Slice)는 설명 중인 operation에 대해 fixture로 입증된 guard 또는 문서화된 separation boundary가 승격되고 증명되지 않는 한 reference surface를 cooperative/detective로 표시해야 합니다. Future preventive 또는 isolated profile을 문서화할 수는 있지만, owner 문서와 conformance가 승격하기 전까지는 향후 또는 profile별 범위로 label해야 합니다.
 
 Stage display default는 [보안 위협 모델의 단계별 guarantee level](security-threat-model.md#단계별-guarantee-level)을 따릅니다.
 

@@ -6,6 +6,8 @@ Read this after [Overview](overview.md) when Harness terms start appearing in ex
 
 This page gives the smallest vocabulary for the learning path. It starts with ordinary user-facing words, then marks a few implementation labels as optional/internal. Users should not need those labels to ask for useful Harness behavior.
 
+This page describes vocabulary for the design/review documentation and future Harness behavior. It does not mean these runtime records exist in this repository today.
+
 ## Main Idea
 
 Harness vocabulary is built around authority boundaries.

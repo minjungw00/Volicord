@@ -8,6 +8,8 @@ It does not define connector contracts, full capability profiles, MCP schemas, o
 
 This is agent/integration guidance. It is not a required read for ordinary users; [User Guide](user-guide.md) is the user-facing entry.
 
+Status note: this page describes planned agent behavior for future Harness-connected work. This repository is documentation-only today and contains no Harness Server/runtime implementation or runtime records.
+
 ## Read this when
 
 Read this when checking how the agent should present status, blockers, writes, checks, and close, or when integrating an agent surface with the user-facing Harness flow.

@@ -36,7 +36,7 @@ Authority boundaries:
 - Artifact files are not evidence authority until Core registers them and links them to a compatible owner record.
 - Chat, Markdown projections, generated reports, connector manifests, tool output, and operator output are not authority unless a Core mutation records an owner-valid state row or artifact link.
 - Projections and status cards are readable derived views. They can be stale, failed, or absent without changing canonical state.
-- Future/profile tables become required only when the owning profile or tool path is implemented or used.
+- Future/profile tables become required only when the owning profile or tool path is active or used.
 
 The first server batch should prove a narrow local authority loop: project identity, one Task, one scoped boundary, `prepare_write`, one single-use Write Authorization, one Run, one artifact/evidence reference, task events, and structured blockers. It should not build dozens of tables just because later profile contracts are documented.
 
@@ -530,7 +530,7 @@ Baseline capture is a future assurance/profile feature. When promoted, baseline 
 
 ### Verification Bundle Shape
 
-Verification bundles are future assurance/profile artifacts. They may combine baseline refs, run refs, artifact refs, evaluator inputs, and validation output after the verification profile is implemented. They are not required to record a v0.1 Run or a v0.2 evidence summary.
+Verification bundles are future assurance/profile artifacts. They may combine baseline refs, run refs, artifact refs, evaluator inputs, and validation output after the verification profile is active. They are not required to record a v0.1 Run or a v0.2 evidence summary.
 
 ### Projection job table
 
@@ -559,7 +559,7 @@ Full evidence sufficiency, detached verification, Manual QA, and validator-backe
 Current state tables are authoritative:
 
 - `tasks`, `change_units`, `write_authorizations`, `runs`, `artifacts`, `artifact_links`, and `task_blockers` are v0.1 authority records.
-- `decision_packets`, `residual_risks`, and other v0.2 rows become authority only for their own record family when implemented.
+- `decision_packets`, `residual_risks`, and other v0.2 rows become authority only for their own record family when their profile is active.
 - Events support audit, debugging, idempotency explanation, projection freshness, and recovery history.
 
 Deterministic event order is ascending `event_seq` in `state.sqlite`. Task-scoped readers filter by `task_id`. `created_at` is audit metadata; it is not enough for ordering when events share a timestamp.
@@ -638,7 +638,7 @@ Early hardening should cover:
 | Future `approvals.status` | Approval lifecycle owner when approval profile is active |
 | Future `evidence_manifests.status` | Evidence profile owner when full Evidence Manifest profile is active |
 | Future `feedback_loops.loop_kind`, `feedback_loops.status`, `tdd_traces.status` | Design-quality/API owners when feedback/TDD profiles are active |
-| Future `connector_manifests.status`, `baselines.status`, `decision_requests.status`, `task_spine_entries.status`, `change_unit_dependencies.status`, `shared_designs.status`, `reconcile_items.status`, `domain_terms.status`, `module_map_items.status`, `interface_contracts.review_status` | Storage compatibility values below, only when the optional/future table is retained, seeded, or implemented |
+| Future `connector_manifests.status`, `baselines.status`, `decision_requests.status`, `task_spine_entries.status`, `change_unit_dependencies.status`, `shared_designs.status`, `reconcile_items.status`, `domain_terms.status`, `module_map_items.status`, `interface_contracts.review_status` | Storage compatibility values below, only when the optional/future table is retained, seeded, or active |
 
 Unknown owner-bound values are invalid state unless a fixture explicitly exercises invalid-state recovery. Migrations must stop before tightening if unknown values are present; they must not silently map unknown values to fallback values that no owner defines.
 
