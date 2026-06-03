@@ -15,8 +15,6 @@ This repository is a documentation review/redesign repository today. Its intende
 | English | [en/README.md](en/README.md) |
 | 한국어 | [ko/README.md](ko/README.md) |
 
-<a id="minimal-first-read-path"></a>
-
 ## Minimal First-Read Path / 최소 첫 읽기 경로
 
 | Step / 순서 | English | 한국어 |
@@ -30,8 +28,6 @@ This repository is a documentation review/redesign repository today. Its intende
 This first-read path intentionally stops before large Reference docs. Use Reference only when you need an exact owner contract.
 
 이 첫 읽기 경로는 큰 Reference 문서를 먼저 읽지 않도록 설계되어 있습니다. 정확한 owner 계약이 필요할 때만 Reference를 엽니다.
-
-<a id="reader-paths"></a>
 
 ## Reader Paths / 독자별 경로
 

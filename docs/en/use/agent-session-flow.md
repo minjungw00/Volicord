@@ -328,8 +328,6 @@ Do not create a user judgment request, internal Decision Packet record, require 
 
 Escalate the same Task to tracked work when the target stops being obvious, scope is unclear, the changed paths cross the active Change Unit, the edit affects multiple files, product areas, or subsystems, the change may alter a public API or module contract, product/UX judgment is needed, important technical architecture judgment is needed, security/privacy impact appears, a sensitive action appears, QA or verification requirements increase, evidence is insufficient, residual risk is non-trivial, or multi-step delivery is needed.
 
-<a id="scope-and-change-unit"></a>
-
 ## Scope and Write Boundary
 
 Before product writes, shape the active scope into a write boundary. The internal record is a Change Unit; the user-facing explanation should answer:

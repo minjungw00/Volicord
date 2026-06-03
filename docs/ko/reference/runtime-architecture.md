@@ -313,8 +313,6 @@ Reconcile은 merge, reject, note로 convert, decision 생성, design support rec
 
 Architecture 관점의 stage default는 다음과 같습니다. v0.1은 cooperative에 제한된 detective Core status behavior를 더한 수준, v0.2는 사용자에게 보이는 blocker와 status를 포함한 cooperative/detective 수준, v0.3은 verification, QA, risk, 작업 수락 분리를 위한 cooperative/detective assurance 수준, v0.4는 operations, recovery, export, integrity check를 위한 detective 수준, v1+는 concrete operation 또는 boundary가 구현되고 증명된 곳에서만 preventive 또는 isolated profile입니다. 전체 표는 [보안 위협 모델의 단계별 guarantee level](security-threat-model.md#단계별-guarantee-level)이 담당합니다.
 
-<a id="보장-수준-강제-지도"></a>
-
 ### 보장 수준 동작 지도
 
 이 도식은 guarantee label이 어디에서 통제 behavior를 바꾸고, 어디에서는 바꾸지 않는지 보여줍니다. 눈여겨볼 점은 Core가 먼저 authority decision을 내린다는 것입니다. Guarantee level은 authority를 만들지 않습니다. Denied 또는 held operation이 covered operation에 대해 instruction, after-action detection, fixture-proven 실행 전 차단, isolation 중 무엇으로 처리되는지 설명할 뿐입니다.

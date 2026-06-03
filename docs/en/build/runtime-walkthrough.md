@@ -85,7 +85,7 @@ Strict behavior: Write Authorization semantics are owned by [Write Authorization
 
 The implementation or direct write happens, then `record_run` records what happened. A product-write Run consumes one compatible, unexpired, unconsumed Write Authorization. Out-of-scope observations are not normalized by prose; they route to repair, recovery, or blocker handling.
 
-Strict behavior: Run recording and authorization consumption are owned by [record_run](../reference/kernel.md#record_run). Guarantee level enforcement is summarized in [Runtime Architecture Reference](../reference/runtime-architecture.md#guarantee-level-enforcement-map).
+Strict behavior: Run recording and authorization consumption are owned by [record_run](../reference/kernel.md#record_run). Guarantee level behavior is summarized in [Runtime Architecture Reference](../reference/runtime-architecture.md#guarantee-level-behavior-map).
 
 ### 7. Run -> Evidence and artifacts
 

@@ -52,7 +52,7 @@ Keep these unchanged across English and Korean docs:
 
 Do not translate code, API method names, enum values, field names, file paths, stable identifiers, or other exact strings inside code blocks.
 
-Keep these exact when they refer to literal identifiers, schema/API values, file/template names, heading anchors, or code-like references. In ordinary Korean prose, prefer the stable Korean terms in the [Bilingual Terminology Table](#korean-canonical-terms).
+Keep these exact when they refer to literal identifiers, schema/API values, file/template names, heading anchors, or code-like references. In ordinary Korean prose, prefer the stable Korean terms in the [Bilingual Terminology Table](#bilingual-terminology-table).
 
 - Task
 - Change Unit
@@ -81,8 +81,6 @@ Do not translate markers such as `HARNESS:BEGIN`, schema names such as `Artifact
 Keep exact stage labels exact: `v0.1 Core Authority Smoke`, `Kernel Smoke`, `v0.2 First User-Value Slice`, `v0.3 Agency Assurance Pack`, `v0.4 Operations & Handoff Pack`, and `v1+ Expansion`. In Korean prose, prefer the natural Korean label first with the exact English label in parentheses, such as `코어 권한 스모크(v0.1 Core Authority Smoke)`, `첫 사용자 가치 조각(v0.2 First User-Value Slice)`, `에이전시 보증 팩(v0.3 Agency Assurance Pack)`, and `운영과 인계 팩(v0.4 Operations & Handoff Pack)`. `hardened local reference target` is not a stage label; use it only as the glossary-defined umbrella target reached after v0.2 by completing the owner-defined profiles for the named v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack stages/packs, and never as an additional stage, fixture profile, or suite name. For the three-space model in Korean prose, use `제품 저장소`, `하네스 서버 소스 저장소` when referring to this repository's future source role, and `하네스 런타임 홈`; add the English labels in parentheses only when they help disambiguate the architecture term.
 
 Reference headings that serve as lookup anchors should remain stable unless a dedicated link/anchor migration updates all links. User-facing prose should prefer natural Korean. A Korean alias line may provide the natural term under a stable reference heading.
-
-<a id="korean-canonical-terms"></a>
 
 ## Bilingual Terminology Table
 

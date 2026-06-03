@@ -118,10 +118,10 @@ Start at [docs/README.md](docs/README.md) for compact bilingual routing, the min
 
 | Need / 필요 | Start / 시작 |
 |---|---|
-| Minimal first-read path / 최소 첫 읽기 경로 | [docs/README.md](docs/README.md#minimal-first-read-path) |
+| Minimal first-read path / 최소 첫 읽기 경로 | [docs/README.md](docs/README.md) |
 | First-time reader / 처음 읽는 독자 | [Overview](docs/en/learn/overview.md) / [개요](docs/ko/learn/overview.md), then the user guide. |
 | User working with an agent / 에이전트와 작업하는 사용자 | [User Guide](docs/en/use/user-guide.md) / [사용자 가이드](docs/ko/use/user-guide.md) |
-| Implementer / 구현자 | [docs/README.md](docs/README.md#reader-paths), then Build and the Kernel/API/Storage owner docs. |
+| Implementer / 구현자 | [docs/README.md](docs/README.md), then Build and the Kernel/API/Storage owner docs. |
 | Documentation maintainer / 문서 유지보수자 | [Authoring Guide](docs/en/maintain/authoring-guide.md) / [문서 작성 가이드](docs/ko/maintain/authoring-guide.md) |
 | Future/reference reader / 향후/참조 독자 | [English Reference Index](docs/en/reference/README.md) / [한국어 Reference 색인](docs/ko/reference/README.md), then only the needed owner doc. |
 

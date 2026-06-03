@@ -125,7 +125,7 @@ Build 독자는 이 표를 진입 기준으로 보아야 합니다. 유지보수
 현재 준비 상태:
 
 - 문서 수락: 아직 대기 중입니다. 이 리비전은 maintainer 수락 검토 후보이지 수락된 문서가 아닙니다.
-- 구현 계획 준비 상태: 아직 수락되지 않았습니다. Maintainer가 아래 구현 준비 조건을 명시적으로 수락하거나 남은 blocker를 재분류하기 전까지 첫 runtime batch 계획은 시작하면 안 됩니다.
+- 구현 계획 준비 상태: 아직 수락되지 않았습니다. 유지보수자가 아래 구현 준비 조건을 명시적으로 수락하거나 남은 blocker를 재분류하기 전까지 첫 runtime batch 계획은 시작하면 안 됩니다.
 - 런타임 구현: 시작하지 않았습니다. 서버 코딩, fixture materialization, runtime conformance, 생성된 운영 산출물은 이 저장소 단계의 범위 밖입니다.
 - 서버/런타임 구현 결정: open decision-ledger 항목은 있지만 코드 작성용으로 공식 수락된 결정은 없습니다. Maintainer review나 구현 준비 검토에서 추가 설계 쟁점이 발견될 수 있습니다.
 
@@ -140,15 +140,15 @@ Build 독자는 이 표를 진입 기준으로 보아야 합니다. 유지보수
 - 현재 기준에서 active docs 곳곳에 흩어진 major implementation-decision TODO를 의도적으로 남기지 않습니다.
 - [문서 작성 가이드 tracker](../maintain/authoring-guide.md#알려진-재설계-쟁점-트래커)는 candidate drift와 regression risk를 확인하는 checklist로 남아 있습니다. 확인된 finding은 문서 drift, 스키마/설계 결정, 단계 경계 결정, 구현 준비 조건, 향후 로드맵 항목 중 하나로 routing합니다.
 - 사용자에게 보이는 판단 묶음, 내부 기록 경로, 표시 깊이, 작은 Decision Packet의 무게와 관련해 추적하던 판단 모델 drift는 이 문서 기준에서 해소되었습니다. Review에서 남은 owner-contract decision이 드러나면 흩어진 TODO가 아니라 단계별 전달 계획 decision log로 routing합니다.
-- Maintainer가 확인해야 할 candidate review 영역에는 stage 이름 drift, 사용자용 문서의 무거운 disclaimer, Discovery/Change Unit 조기 수렴, Storage/API/DDL의 이른 범위 암시, projection/template 범위, conformance fixture detail, 너무 이른 operations entrypoint, security guarantee wording, agent context load, 한국어 기술 명사 과다, roadmap 경계 drift, 낙관적인 decision-log wording이 포함됩니다.
+- 유지보수자가 확인해야 할 candidate review 영역에는 stage 이름 drift, 사용자용 문서의 무거운 disclaimer, Discovery/Change Unit 조기 수렴, Storage/API/DDL의 이른 범위 암시, projection/template 범위, conformance fixture detail, 너무 이른 operations entrypoint, security guarantee wording, agent context load, 한국어 기술 명사 과다, roadmap 경계 drift, 낙관적인 decision-log wording이 포함됩니다.
 
 maintainer 수락 조건:
 
-- Maintainer가 [문서 수락 상태](#문서-수락-상태)를 의도적으로 갱신합니다. 이 checklist만 보고 수락을 추론하면 안 됩니다.
+- 유지보수자가 [문서 수락 상태](#문서-수락-상태)를 의도적으로 갱신합니다. 이 checklist만 보고 수락을 추론하면 안 됩니다.
 - 확인된 문서 drift는 고치거나, owner, 영향을 받는 단계, blocking meaning과 함께 분류합니다.
 - 확인된 schema/design decision, stage boundary decision, 기타 server-coding decision은 server code나 DDL 변경 전에 단계별 전달 계획에 기록하고, 현재 open ledger item은 stage impact와 함께 해결하거나 명시적으로 미룹니다.
 - [하네스 서버 구현 준비 조건](#하네스-서버-구현-준비-조건)이 충족되었거나 maintainer가 명시적으로 재분류합니다.
-- [문서 작성 가이드](../maintain/authoring-guide.md#최종-사전-수락-리뷰)의 최종 docs-maintenance pass가 완료되어 있습니다. 영어/한국어 의미 일치, link/anchor, owner boundary, TODO hygiene, 현재 상태 표현을 확인합니다.
+- 유지보수자가 수락 검토 중 [문서 작성 가이드](../maintain/authoring-guide.md#최종-사전-수락-리뷰)의 최종 docs-maintenance pass를 완료합니다. 영어/한국어 의미 일치, link/anchor, owner boundary, TODO hygiene, 현재 상태 표현을 확인합니다.
 - 문서 수락과 별도의 구현 계획 준비 결정이 모두 있어야 첫 runtime batch 계획을 시작할 수 있습니다. 그 준비 결정이 명시적으로 수락되기 전까지 server/runtime 구현은 계속 막혀 있습니다.
 
 ## 하네스 서버 구현 준비 조건
@@ -182,7 +182,7 @@ maintainer 수락 조건:
 - Operations surface가 단계화되어 있다. Minimal local status/diagnostic behavior는 초기 stage를 도울 수 있지만, doctor/readiness, reconcile, recover, export, artifact check, release handoff, conformance run entrypoint는 owner stage가 포함하기 전까지 v0.1 requirement가 아니다.
 - 한국어 사용자 대상 문서는 읽기 쉽고 일관적이다. 자연스러운 한국어를 먼저 쓰고, stable schema identifier, API name, enum value, DDL name, file name, validator ID, official product/stage name은 정밀도가 필요할 때 정확히 유지한다.
 - Link, TODO, terminology, 영어/한국어 의미 일치가 정리되어 있다. Active docs에 흩어진 unresolved major-decision TODO가 없고, 서버 코딩 전 필요한 구현 결정은 [단계별 전달 계획](mvp-plan.md#서버-코딩-전-필요한-구현-결정)의 open ledger에 기록되어 있다.
-- 마지막 docs-maintenance drift pass가 완료되어 있다. 남은 항목은 문서 drift, 스키마/설계 결정, 단계 경계 결정, 구현 준비 조건, 향후 로드맵 항목 중 하나로 명시되어 있다. 문서 검토에는 막힘이 아니지만 구현 계획이나 서버 코딩 전에는 막힘이라면 그 이후 막힘을 이름 붙인다. Docs-maintenance는 읽기 전용 문서 점검으로 남습니다. [문서 작성 가이드](../maintain/authoring-guide.md#docs-maintenance-checks)와 [운영과 Conformance 참조](../reference/operations-and-conformance.md#docs-maintenance-프로필)를 봅니다.
+- 유지보수자가 구현 계획 준비 상태를 수락하기 전에 마지막 docs-maintenance drift pass를 완료한다. 남은 항목은 문서 drift, 스키마/설계 결정, 단계 경계 결정, 구현 준비 조건, 향후 로드맵 항목 중 하나로 명시되어 있다. 문서 검토에는 막힘이 아니지만 구현 계획이나 서버 코딩 전에는 막힘이라면 그 이후 막힘을 이름 붙인다. Docs-maintenance는 읽기 전용 문서 점검으로 남습니다. [문서 작성 가이드](../maintain/authoring-guide.md#docs-maintenance-checks)와 [운영과 Conformance 참조](../reference/operations-and-conformance.md#docs-maintenance-프로필)를 봅니다.
 - v0.1 Core Authority Smoke의 local-only MCP 노출 baseline이 수락되어 있다. Remote, shared, tunneled, non-loopback 노출은 담당 문서가 connector profile을 승격하고 증명하기 전까지 v0.1 baseline 밖입니다. [런타임 아키텍처](../reference/runtime-architecture.md#로컬-접근-기대사항), [보안 위협 모델 참조](../reference/security-threat-model.md#mcp-local-access와-caller-boundary), [MCP API와 스키마](../reference/mcp-api-and-schemas.md#mcp-경계와-호출자-신뢰)를 봅니다.
 - 첫 authority path를 실행하는 데 사용하는 reference-surface capability가 실제 host/profile/configuration에 대한 구체적인 declaration으로 수락되어 있다. 넓은 connector profile과 surface recipe detail은 [Agent 통합 참조](../reference/agent-integration.md#capability-profiles)와 [Surface Cookbook](../reference/surface-cookbook.md)에 둡니다.
 - Core-only mutation model이 수락되어 있다. 기준 운영 상태를 변경하는 것은 Core뿐이며, resource, projection, report, diagnostic, MCP caller, operator entrypoint는 Core의 상태 변경 경로에 들어가지 않는 한 read-only 또는 derived로 남습니다. [Core process model](../reference/runtime-architecture.md#core-process-model), [State transaction flow](../reference/runtime-architecture.md#state-transaction-flow), MCP [Idempotency](../reference/mcp-api-and-schemas.md#idempotency)와 [State Conflict 동작](../reference/mcp-api-and-schemas.md#state-conflict-동작)을 봅니다.

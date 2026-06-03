@@ -56,7 +56,7 @@ Owner boundary, 문서 유지보수 점검, 엄격한 계약이 참조 문서에
 
 Code block 안의 code, API method name, enum value, field name, file path, stable identifier, 그 밖의 정확한 문자열은 번역하지 않습니다.
 
-다음 이름은 literal identifier, schema/API value, file/template name, heading anchor, code-like reference처럼 정확한 문자열을 가리킬 때 그대로 씁니다. 일반 한국어 prose에서 개념을 설명할 때는 아래 [이중 언어 용어표](#한국어-기준-용어)를 우선합니다.
+다음 이름은 literal identifier, schema/API value, file/template name, heading anchor, code-like reference처럼 정확한 문자열을 가리킬 때 그대로 씁니다. 일반 한국어 prose에서 개념을 설명할 때는 아래 [이중 언어 용어표](#이중-언어-용어표)를 우선합니다.
 
 - Task
 - Change Unit
@@ -85,8 +85,6 @@ Code block 안의 code, API method name, enum value, field name, file path, stab
 단계 라벨을 한국어 prose에서 쓸 때는 한국어 설명을 먼저 두고 표준 영어 라벨을 괄호에 둡니다. 예를 들어 `코어 권한 스모크(v0.1 Core Authority Smoke)`, `커널 스모크(Kernel Smoke)`, `첫 사용자 가치 조각(v0.2 First User-Value Slice)`, `에이전시 보증 팩(v0.3 Agency Assurance Pack)`, `운영과 인계 팩(v0.4 Operations & Handoff Pack)`, `v1+ Expansion`을 사용합니다. `강화된 로컬 기준 목표(hardened local reference target)`는 단계 라벨이 아닙니다. v0.2 이후 정식 단계/팩인 에이전시 보증 팩(v0.3 Agency Assurance Pack)과 운영과 인계 팩(v0.4 Operations & Handoff Pack)의 담당 문서 정의 profile을 완료해 도달하는 용어집 정의 상위 목표를 가리킬 때만 쓰고, 추가 단계나 fixture profile, suite name으로 쓰지 않습니다. 세 공간 모델을 한국어 prose로 설명할 때는 `제품 저장소`, 이 저장소의 향후 source 역할을 가리킬 때는 `하네스 서버 소스 저장소`, 운영 데이터 공간은 `하네스 런타임 홈`을 사용합니다. Architecture term을 구분해야 할 때만 영어 라벨을 괄호로 덧붙입니다.
 
 Lookup anchor로 쓰이는 Reference heading은 전용 link/anchor migration으로 모든 link를 함께 고치지 않는 한 안정적으로 유지합니다. 사용자용 prose에서는 자연스러운 한국어를 우선합니다. 안정적인 Reference heading 아래에는 한국어 alias line으로 자연스러운 표현을 제공할 수 있습니다.
-
-<a id="한국어-기준-용어"></a>
 
 ## 이중 언어 용어표
 

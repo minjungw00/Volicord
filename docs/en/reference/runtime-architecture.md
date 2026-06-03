@@ -307,8 +307,6 @@ The exact meanings of `cooperative`, `detective`, `preventive`, and `isolated`, 
 
 Architecturally, the stage defaults are: v0.1 cooperative plus limited detective Core status behavior; v0.2 cooperative/detective user-visible blockers and status; v0.3 cooperative/detective assurance separation for verification, QA, risk, and acceptance; v0.4 detective operations, recovery, export, and integrity checks; v1+ preventive or isolated profiles only where a concrete operation or boundary is implemented and proven. The [Security Threat Model stage map](security-threat-model.md#guarantee-levels-by-stage) owns the full table.
 
-<a id="guarantee-level-enforcement-map"></a>
-
 ### Guarantee level behavior map
 
 This diagram shows where the guarantee label changes control behavior and where it does not. Notice that Core makes the authority decision first. Guarantee level does not create authority; it only describes whether a denied or held operation is handled by instruction, after-action detection, fixture-proven pre-execution blocking, or isolation for the covered operation.

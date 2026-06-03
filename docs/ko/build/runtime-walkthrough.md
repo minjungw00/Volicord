@@ -85,7 +85,7 @@ flowchart LR
 
 Implementation 또는 direct write가 일어난 뒤 `record_run`이 실제로 일어난 일을 기록합니다. Product-write Run은 compatible, unexpired, unconsumed Write Authorization 하나를 consume합니다. 범위 밖 observation은 prose로 정상화되지 않으며 repair, recovery, blocker handling으로 라우팅됩니다.
 
-엄격한 동작: Run recording과 authorization consumption은 [record_run](../reference/kernel.md#record_run)이 담당합니다. Guarantee level enforcement는 [런타임 아키텍처 참조](../reference/runtime-architecture.md#보장-수준-강제-지도)에 요약되어 있습니다.
+엄격한 동작: Run recording과 authorization consumption은 [record_run](../reference/kernel.md#record_run)이 담당합니다. Guarantee level behavior는 [런타임 아키텍처 참조](../reference/runtime-architecture.md#보장-수준-동작-지도)에 요약되어 있습니다.
 
 ### 7. Run -> Evidence와 artifact
 
