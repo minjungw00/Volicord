@@ -1,12 +1,18 @@
 # Harness Documentation / 하네스 문서
 
-Harness is a local authority record and judgment-routing layer for AI-assisted product work. It keeps scope, user-owned judgments, evidence, verification, QA expectations, work acceptance, and residual-risk status outside fragile chat context.
+Harness is a local work-authority server for AI-assisted product work. Its job is to keep fragile conversation context from becoming the source of truth. It preserves the local basis for scope, user-owned judgment, evidence, verification expectations, work acceptance, close readiness, and residual risk, and routes decisions back to the user when the agent should not decide.
 
-Harness는 AI 지원 제품 작업에서 작업 범위, 사용자 판단, 근거, 검증, QA 기대, 작업 수락, 잔여 위험 상태를 깨지기 쉬운 대화 맥락 밖에 두는 로컬 기준 기록이자 판단 경로입니다.
+하네스는 AI 지원 제품 작업을 위한 로컬 작업 권한 서버입니다. 대화의 깨지기 쉬운 맥락이 기준 기록처럼 굳어지지 않게 하는 것이 하네스의 역할입니다. 하네스는 범위, 사용자 소유 판단, 근거, 확인과 검증 기대, 작업 수락, 닫기 가능 여부, 잔여 위험의 로컬 근거를 보존합니다. 에이전트가 판단하면 안 되는 일은 사용자에게 다시 돌려보냅니다.
 
-This repository is a documentation review/redesign repository today. Its intended future role is the Harness Server source repository. It is not a Product Repository or a Harness Runtime Home. No Harness Server, runtime, generated projection system, conformance runner, runtime data, or implementation exists here yet. Documentation acceptance does not authorize implementation by itself; server/runtime implementation may start only after documentation acceptance and a separate implementation-planning readiness decision.
+| Harness is not / 하네스가 아닌 것 | Harness does / 하네스가 하는 일 |
+|---|---|
+| A prompt pack, MCP itself, or an API wrapper. / 프롬프트 묶음, MCP 자체, API 래퍼. | May use MCP/API surfaces while keeping authority in local records. / MCP/API 접점을 사용할 수 있지만 권한은 로컬 기록에 둡니다. |
+| A workflow engine, report generator, dashboard, or hosted agent platform. / 워크플로 엔진, 보고서 생성기, 대시보드, 호스팅 에이전트 플랫폼. | Preserves the basis for work and can derive readable views from it. / 작업의 근거를 보존하고 그 기록에서 읽기용 보기를 만들 수 있습니다. |
+| A sandbox or OS permission system. / 샌드박스나 OS 권한 시스템. | Preserves authority boundaries without claiming OS-level isolation. / OS 수준 격리를 주장하지 않고 권한 경계를 보존합니다. |
 
-이 저장소는 현재 문서 검토/재설계 저장소입니다. 향후 역할은 하네스 서버 소스 저장소입니다. 제품 저장소나 하네스 런타임 홈이 아닙니다. 아직 하네스 서버, 런타임, 생성된 읽기용 요약 시스템, conformance runner, 런타임 데이터, 구현은 없습니다. 문서 수락만으로 구현은 허가되지 않으며, 서버/런타임 구현은 문서 수락과 별도의 구현 계획 준비 결정 이후에만 시작할 수 있습니다.
+This repository is documentation-only today and its intended future role is the Harness Server source repository. It is not the user's Product Repository and not a Harness Runtime Home. No Harness Server, runtime, generated projection system, conformance runner, runtime data, product implementation code, or generated operational artifact exists here yet. Documentation acceptance does not authorize implementation by itself; server/runtime implementation may start only after documentation acceptance and a separate implementation-planning readiness decision.
+
+이 저장소는 현재 문서 전용이며 향후 역할은 하네스 서버 소스 저장소입니다. 사용자의 제품 저장소가 아니고 하네스 런타임 홈도 아닙니다. 아직 하네스 서버, 런타임, 생성된 읽기용 요약 시스템, conformance runner, 런타임 데이터, 제품 구현 코드, 생성된 운영 아티팩트는 없습니다. 문서 수락만으로 구현은 허가되지 않으며, 서버/런타임 구현은 문서 수락과 별도의 구현 계획 준비 결정 이후에만 시작할 수 있습니다.
 
 ## Choose A Language / 언어 선택
 

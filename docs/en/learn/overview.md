@@ -4,9 +4,9 @@
 
 Read this first if Harness is new to you.
 
-Harness is easiest to understand as an authority-boundary tool for AI-assisted product work. It keeps the important facts of the work somewhere sturdier than chat, tool output, generated Markdown, or a confident summary.
+Harness is easiest to understand as a local work-authority server for AI-assisted product work. Its job is to keep fragile conversation context from becoming the source of truth.
 
-Harness keeps AI-assisted product work grounded in local Core-owned state by tracking scope, user-owned judgments, evidence references, close readiness, work acceptance, and residual risk outside the chat.
+Harness preserves the local basis for scope, user-owned judgment, evidence, verification expectations, work acceptance, close readiness, and residual risk. When the agent should not decide, Harness routes that decision back to the user instead of letting a confident summary, tool result, or generated report stand in for judgment.
 
 This repository is documentation-only today. It is being prepared for a possible future role as the Harness Server source repository, but no Harness Server or runtime implementation exists here yet. It is not a Product Repository and not a Harness Runtime Home.
 
@@ -68,25 +68,24 @@ Harness tracks the parts of AI-assisted work that need to survive the conversati
 - what is in scope and out of scope;
 - which choices belong to the user;
 - which evidence references support completion or correctness claims;
-- whether close is blocked and why;
+- what checking or verification is expected;
 - whether required work acceptance has been given;
+- whether close is possible and what still blocks it;
 - which residual risks are known, visible, or accepted.
 
 Reference docs give these records exact implementation names. You do not need those names for the first mental model.
 
 ## Harness Is Not
 
-Harness is not:
+| Harness is not | Harness does |
+|---|---|
+| A prompt pack or chat script. | Keeps work authority outside prompts and conversation. |
+| MCP itself or an API wrapper. | May use MCP/API surfaces as implementation mechanisms. |
+| A workflow engine, report generator, or dashboard. | Records the basis for work and can derive readable views from that record. |
+| A hosted agent platform. | Is designed around a local Harness Server / Installation. |
+| A sandbox or OS permission system. | Preserves authority boundaries without claiming OS-level isolation or arbitrary-tool permission control. |
 
-- a prompt pack;
-- an MCP replacement;
-- a workflow engine;
-- a test framework;
-- a review checklist;
-- a report generator;
-- a product specification system.
-
-Harness may integrate with prompts, MCP tools, workflows, tests, reviews, reports, and specs. It does not let any of them replace the local authority record or the user's judgment.
+Harness may integrate with prompts, MCP/API surfaces, workflows, tests, reviews, reports, dashboards, and specs. It does not let any of them replace the local work-authority record or the user's judgment.
 
 ## Non-Substitution Rules
 

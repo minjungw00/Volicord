@@ -4,7 +4,7 @@
 
 Read this when you want the thesis, values, and non-goals behind Harness before reading strict contracts or future implementation plans.
 
-Harness keeps AI-assisted product work grounded in local Core-owned state by tracking scope, user-owned judgments, evidence references, close readiness, work acceptance, and residual risk outside the chat.
+Harness is a local work-authority server for AI-assisted product work. Its job is to keep fragile conversation context from becoming the source of truth. It preserves the local basis for scope, user-owned judgment, evidence, verification expectations, work acceptance, close readiness, and residual risk, and routes decisions back to the user when the agent should not decide.
 
 This page is a principles document. It is not an implementation status report and not a claim that the Harness Server already exists. This repository currently contains documentation only.
 
@@ -14,7 +14,7 @@ Harness exists to make AI-assisted product work followable while preserving user
 
 The user should be able to begin in ordinary language. The agent should be able to clarify, inspect, recommend, implement when appropriate, check, and report. But authority over the work should not leak into chat phrasing, generated Markdown, connector output, test logs, or agent confidence.
 
-Harness keeps the local authority record small and explicit. It tracks the work boundary, the choices the user owns, the evidence references behind claims, the remaining close blockers, the user's work acceptance when required, and any residual risk that still matters.
+Harness keeps the local work-authority record small and explicit. It tracks the work boundary, the choices the user owns, the evidence references behind claims, the checking and verification expectations, the remaining close blockers, the user's work acceptance when required, and any residual risk that still matters.
 
 ## Core Principles
 
@@ -34,17 +34,15 @@ Harness complements ordinary engineering practice. Source control remains the hi
 
 ## What Harness Is Not
 
-Harness is not:
+| Harness is not | Harness does |
+|---|---|
+| A prompt pack or chat script. | Keeps work authority outside prompts and conversation. |
+| MCP itself or an API wrapper. | May use MCP/API surfaces as implementation mechanisms, but they are not the product thesis. |
+| A workflow engine, report generator, or dashboard. | Records the basis for work and can derive readable views from that record. |
+| A hosted agent platform. | Is designed around a local Harness Server / Installation. |
+| A sandbox or OS permission system. | Preserves authority boundaries without claiming OS-level isolation or arbitrary-tool permission control. |
 
-- a prompt pack;
-- an MCP replacement;
-- a workflow engine;
-- a test framework;
-- a review checklist;
-- a report generator;
-- a product specification system.
-
-Harness can use instructions, MCP tools, reusable workflows, test output, review notes, reports, and specs as surfaces or evidence sources. They do not become Harness authority by being useful.
+Harness can use instructions, MCP/API surfaces, reusable workflows, test output, review notes, reports, dashboards, and specs as surfaces or evidence sources. They do not become Harness authority by being useful.
 
 ## Strategic Thesis
 
@@ -91,15 +89,17 @@ Show me what still prevents closing this work.
 
 ## MVP Boundary
 
-The MVP boundary is about proving the local authority model, not building a broad platform.
+The MVP boundary is about proving the local work-authority model, not building a broad platform.
 
 The first future slices should prove that ordinary AI-assisted work can be represented as local scope, user-owned judgment, evidence references, close readiness, work acceptance, and residual risk without confusing those records with chat, Markdown, tool output, or product files.
 
-Broader automation, richer projections, connector ecosystems, hosted workflows, analytics, and large conformance suites are outside the first user-value slice thesis. They may become useful later only if they preserve the authority boundary instead of hiding it.
+Broader automation, richer projections, connector ecosystems, hosted workflows, dashboards, analytics, and large conformance suites are outside the first user-value slice thesis. They may become useful later only if they preserve the authority boundary instead of hiding it.
 
 ## Non-Goals
 
 Harness does not replace the product repository, version control, tests, review, product specifications, user judgment, or team process.
+
+Harness does not replace MCP, become a workflow engine, generate reports as the source of truth, provide a dashboard as the product center, host agents, or provide sandbox/OS permission control.
 
 Harness does not treat chat history as state.
 
