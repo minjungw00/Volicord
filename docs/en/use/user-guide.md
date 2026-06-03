@@ -35,7 +35,9 @@ The agent should:
 
 - clarify the work and scope before important writes
 - inspect the repository, existing docs, tests, current Harness state, accepted decisions, and current task artifacts before asking questions it can answer itself
+- separate answerable facts from missing information before asking you
 - identify decisions that only you can own
+- separate blocking questions from useful non-blocking questions
 - separate product or UX judgment from technical architecture judgment when that distinction matters
 - gather or explain the evidence needed to support completion claims
 - run or explain the checks and verification that matter for the work
@@ -69,7 +71,7 @@ The agent may record more internal detail than it displays. User-facing messages
 
 ## What the agent should answer first
 
-For non-trivial work, the first useful response is not a full plan or a pile of internal state. It should be a short translation of the request into plain working facts.
+For non-trivial work, the first useful response is not a full plan, a pile of internal state, or a long intake form. It should be a short translation of the request into plain working facts, followed by inspection or the smallest blocking question.
 
 Example:
 
@@ -89,8 +91,11 @@ A good clarification response should separate:
 - user value
 - non-goals
 - acceptance criteria
-- facts the agent can inspect from the repo, docs, or current Harness state
+- answerable facts the agent can inspect from the repo, docs, or current Harness state
+- missing information
 - judgments only the user can make
+- blocking questions
+- useful non-blocking questions
 - product or UX judgment candidates
 - technical architecture judgment candidates
 - security or privacy judgment candidates
@@ -103,13 +108,13 @@ Clarification is enough to proceed only when:
 - the goal can be summarized in one sentence
 - at least one non-goal or boundary is known when a boundary matters
 - success criteria, acceptance criteria, or the desired end state are known
-- questions answerable from the repository, existing docs, tests, current Harness state, accepted decisions, or current task artifacts have been checked before asking you
+- answerable facts from the repository, existing docs, tests, current Harness state, accepted decisions, or current task artifacts have been checked before asking you
 - user-only judgments are separated from facts the agent can check
-- blocking questions are separated from useful-but-not-blocking questions
+- blocking questions are separated from useful non-blocking questions
 - the next safe action is classified as advice/read-only work, a small direct change, or tracked work
 - remaining uncertainty is visible instead of hidden inside a confident plan
 
-If those conditions are not met, the agent should either inspect the available sources, ask the smallest blocking question, park useful-but-not-blocking questions, or propose a smaller safe slice that avoids the unresolved area.
+If those conditions are not met, the agent should either inspect the available sources, ask the smallest blocking question, park useful non-blocking questions, or propose a smaller safe slice that avoids the unresolved area. Larger requests may take several short clarification turns; that is fine as long as each turn checks available context first and moves toward the next safe action instead of becoming a questionnaire.
 
 When the request needs a user-owned judgment, the agent should show a user judgment request instead of asking for broad approval. Product/UX judgment, technical architecture judgment, security/privacy judgment, scope/autonomy judgment, sensitive-action approval, QA waiver, verification waiver, work acceptance, and residual-risk acceptance are separate judgments. Small judgments can be asked as short, explicit prompts; complex or risky judgments should include fuller trade-offs and evidence. Any internal saved-record label should stay behind the plain question unless it helps explain a real boundary or source link.
 
@@ -156,6 +161,7 @@ Use these as ordinary requests. They are not commands you must memorize.
 ```text
 Help me clarify the plan before implementation.
 Show what I need to decide and what you can check yourself.
+Separate answerable facts, blocking questions, and useful non-blocking questions.
 Ask what you need before changing code.
 Start with goals, non-goals, and acceptance criteria.
 Show the current status and next safe action.
@@ -179,7 +185,7 @@ For product planning, you can say:
 We need to improve onboarding for new workspace owners. First, inspect what exists, separate product choices from facts, and ask only the questions you cannot answer from the repo.
 ```
 
-A useful response should identify the user value, non-goals, inspectable facts, product/UX judgment candidates such as checklist versus setup prompt, QA expectations for the flow, remaining uncertainty, and a safe next-work or work-splitting proposal.
+A useful response should identify the user value, non-goals, answerable facts inspected from the repo or docs, product/UX judgment candidates such as checklist versus setup prompt, QA expectations for the flow, remaining uncertainty, and a safe next-work or work-splitting proposal.
 
 For technical planning, you can say:
 

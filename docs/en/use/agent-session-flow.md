@@ -38,18 +38,23 @@ Make a small copy change, but tell me if it turns into a broader product decisio
 
 The agent response should translate the request into understood scope, what the agent can inspect itself, what only the user can judge, what evidence would be needed, and what blocks close. Exact Harness labels can follow only when they clarify a boundary or source ref.
 
-This intended-runtime diagram summarizes the ordinary request flow: clarify the request, route user-owned judgment, use write authority only when needed, record runs/evidence, then report status or close blockers. It is design guidance for future Harness behavior, not evidence that this repository contains an implementation.
+This intended-runtime diagram summarizes the ordinary request flow: start from the user's request, inspect available context before asking, classify the work shape, identify what is still missing, separate blocking questions from useful non-blocking questions, route user-owned judgment with options and consequences, then propose the next safe action. Write authority, runs, evidence, and close readiness come later only when the work shape needs them. It is design guidance for future Harness behavior, not evidence that this repository contains an implementation.
 
 ```mermaid
 flowchart LR
-  Request["ordinary user request"] --> Clarify["requirements clarification"]
-  Clarify --> Decision["judgment request"]
-  Clarify --> ReadOnly["read or advice path"]
-  Clarify --> WriteNeed{"product write?"}
-  Decision --> WriteNeed
-  ReadOnly --> Status["status / next action"]
+  Request["user request"] --> Check["check repo, docs, and current Harness state"]
+  Check --> Shape["classify work shape"]
+  Shape --> Missing["identify missing information"]
+  Missing --> Split["separate blocking questions from useful non-blocking questions"]
+  Split --> Judgment{"user-owned judgment required?"}
+  Judgment -->|yes| Options["show options, consequences, uncertainty, and recommendation"]
+  Judgment -->|no| Next["propose next safe action"]
+  Options --> Next
+  Next --> ReadOnly["read or advice path"]
+  Next --> WriteNeed{"product write?"}
   WriteNeed -->|yes| Authority["scoped write authority"]
-  WriteNeed -->|no| Status
+  WriteNeed -->|no| Status["status / next action"]
+  ReadOnly --> Status
   Authority --> Run["run and evidence record"]
   Run --> Status
   Status -->|blocked| Blocker["show blocker"]
@@ -76,7 +81,7 @@ Use progressive context loading instead of reading the whole documentation set i
 | Context profile | Show now | Minimal owner docs or refs to pull | Do not load by default |
 |---|---|---|---|
 | Session start | Current status or compact current-position summary, likely work shape, scope/non-goals when known, active blockers, pending user judgments, next safe action, evidence gaps, close blockers, residual-risk summary, guarantee level, source/freshness refs. | [Session start](#session-start), [Resume](#resume), current `harness.status` / `harness.next`, and projection freshness rules only if the readable view is stale or used for the next action. | Full task history, full Reference docs, full schemas, old projections, unrelated templates, unrelated Roadmap, future catalog. |
-| Planning/clarification (`Discovery` internally) | Goal, user value, scope and non-goals, acceptance criteria, inspectable facts, tracked uncertainty, blocking questions grouped by judgment area, user-owned judgment candidates, QA/verification expectations, and safe next-work candidate or work split. | [User Guide: What the agent should answer first](user-guide.md#what-the-agent-should-answer-first), [Intake](#intake), [Scope and write boundary](#scope-and-write-boundary), and relevant current Task/Change Unit/Shared Design refs. | Whole module maps, old PRDs/designs, design-policy catalogs, full Storage DDL, full Conformance catalog, unrelated templates, future catalog. |
+| Planning/clarification (`Discovery` internally) | Goal, user value, scope and non-goals, acceptance criteria, answerable facts inspected from repo/docs/current state, missing information, blocking questions, useful non-blocking questions, tracked uncertainty, user-owned judgment candidates, QA/verification expectations, and safe next-work candidate or work split. | [User Guide: What the agent should answer first](user-guide.md#what-the-agent-should-answer-first), [Intake](#intake), [Scope and write boundary](#scope-and-write-boundary), and relevant current Task/Change Unit/Shared Design refs. | Whole module maps, old PRDs/designs, design-policy catalogs, full Storage DDL, full Conformance catalog, unrelated templates, future catalog. |
 | Write preparation | Active scope or Change Unit, Autonomy Boundary, intended paths/tools/commands summary, sensitive-action permission status, later Approval status only when that profile is active, active judgment requests or Decision Packets, Write Authority Summary, baseline/freshness. | [Product writes](#product-writes), [Kernel: prepare_write](../reference/kernel.md#prepare_write), and [`harness.prepare_write`](../reference/mcp-api-and-schemas.md#harnessprepare_write) for the intended write. | Full Kernel/reference docs, unrelated schemas, historical event logs, large diffs/logs, full Storage DDL, future catalog. |
 | Execution/run recording | Run summary, changed-path summary, consumed Write Authorization or no-write basis, artifact refs, redaction/integrity notes, and immediate next action. | [Evidence and checks](#evidence-and-checks), [Kernel: record_run](../reference/kernel.md#record_run), [`harness.record_run`](../reference/mcp-api-and-schemas.md#harnessrecord_run), and artifact-ref display rules only when display or repair needs them. | Full logs, raw diffs, screenshots, traces, bundles, artifact inventories, full projection bodies, full Template set, future catalog. |
 | Evidence review | Known evidence summary, `evidence_summary_ref` when present, Run refs, ArtifactRefs, visible evidence gaps, stale or insufficient support, affected acceptance criteria or claims, redaction/integrity notes, and next evidence action. Include an Evidence Manifest ref only when the full Evidence Manifest profile is active. | [Evidence and checks](#evidence-and-checks), [`harness.record_run`](../reference/mcp-api-and-schemas.md#harnessrecord_run), artifact-ref display rules, and [Kernel: Evidence Manifest](../reference/kernel.md#evidence-manifest) only when that profile is active. | Full evidence bodies, full logs, raw diffs, screenshots, traces, bundles, artifact inventories, full projection bodies, full Template set, future catalog. |
@@ -223,13 +228,13 @@ Listen for the same task-shape triggers used at session start: product writes, s
 The intake route is:
 
 ```text
-Request -> classify task shape -> clarify requirements when needed -> produce requirements brief or equivalent support -> route user-owned judgment requests -> propose safe next work or a work split -> prepare_write path when product writes are intended
+User request -> check what the repository, docs, and current Harness state can answer -> classify the work shape -> identify missing information -> separate blocking questions from useful non-blocking questions -> identify user-owned judgments -> present options, consequences, uncertainty, and a recommendation when user judgment is required -> propose the next safe action -> prepare_write path when product writes are intended
 ```
 
 Treat requirements-clarification outputs, including Discovery support, as support or projection concepts that feed existing owner paths unless an owner reference already records the underlying fact:
 
-- Requirements brief (`Discovery Brief` internally): compact summary of goal, user value, scope, non-goals, acceptance criteria, facts the agent can inspect from repo/docs/tests/current Harness state/accepted decisions/current task artifacts, judgments only the user can make, product/UX judgment candidates, technical architecture judgment candidates, security/privacy judgment candidates, QA and verification expectations, open assumptions, remaining uncertainty, and a safe next-work candidate or work split.
-- Question Queue: ordered questions classified as blocking, useful-but-not-blocking, or codebase-answerable.
+- Requirements brief (`Discovery Brief` internally): compact summary of goal, user value, scope, non-goals, acceptance criteria, answerable facts already inspected from repo/docs/tests/current Harness state/accepted decisions/current task artifacts, missing information, judgments only the user can make, product/UX judgment candidates, technical architecture judgment candidates, security/privacy judgment candidates, QA and verification expectations, open assumptions, remaining uncertainty, and a safe next-work candidate or work split.
+- Question Queue: ordered open items classified as answerable facts to inspect, blocking questions, or useful non-blocking questions.
 - Assumption Register: assumptions the agent is using, with source, confidence, owner, and what would change if the assumption fails.
 - Safe next-work scope candidate (`First Safe Change Unit Candidate` internally): the internal Change Unit-shaped version of a safe next-work candidate when product writes are near. It is an advanced/support concept, not the only Discovery output or primary stop condition.
 
@@ -237,9 +242,9 @@ Plain phrases such as "safe next-work candidate" and "work split" are proposal/s
 
 Route requirements-clarification results into Shared Design, judgment request candidates, internal Decision Packet candidates, and Change Unit shaping. Do not treat a requirements brief, Question Queue, Assumption Register, or safe next-work scope candidate as scope authority, sensitive-action Approval, Acceptance, residual-risk acceptance, evidence, close readiness, or Write Authorization.
 
-Outside requirements clarification, ask only questions that change the next safe action. During requirements clarification, ask targeted questions when they clarify goals, user value, scope, non-goals, acceptance criteria, product/UX behavior, technical architecture, security/privacy posture, QA or verification expectations, safe next-work candidates, work splits, user-owned decisions, or hidden assumptions. Group questions by decision area instead of dumping a long questionnaire, and make uncertainty explicit. Park useful-but-not-blocking questions instead of interrupting the user. Prefer the most blocking decision area with a recommendation over a long form.
+Outside requirements clarification, ask only questions that change the next safe action. During requirements clarification, ask targeted questions when they clarify goals, user value, scope, non-goals, acceptance criteria, product/UX behavior, technical architecture, security/privacy posture, QA or verification expectations, safe next-work candidates, work splits, user-owned judgments, or hidden assumptions. Group questions by decision area instead of dumping a long questionnaire, and make uncertainty explicit. Park useful non-blocking questions instead of interrupting the user. Prefer the most blocking decision area with a recommendation over a long form.
 
-Before asking, inspect the repository, codebase, existing docs, tests, current Harness state, accepted decisions, and current task artifacts that are available and current for answers the agent can discover safely. Do not ask the user to restate existing file paths, behavior, terminology, constraints, accepted choices, test expectations, or artifact facts that are already visible from current context. If a source is unavailable or stale, say so rather than relying on it as authority.
+Before asking, inspect the repository, codebase, existing docs, tests, current Harness state, accepted decisions, and current task artifacts that are available and current for answerable facts the agent can discover safely. Do not ask the user to restate existing file paths, behavior, terminology, constraints, accepted choices, test expectations, or artifact facts that are already visible from current context. If a source is unavailable or stale, say so rather than relying on it as authority.
 
 One blocking question at a time does not mean one clarification round total. Broad or design-heavy requests may need several short turns until the goal, user value, scope, non-goals, acceptance criteria, affected product areas, user-facing screens or flows, modules, interfaces, sensitive categories, user-owned product or material technical trade-offs, security/privacy choices, verification or Manual QA expectations, and known product, implementation, verification, QA, or follow-up risks are shaped enough to propose safe next work. Requirements clarification may ask multiple targeted questions. It can pause or proceed once the agent has separated what it can inspect from what the user must decide; goals, non-goals, acceptance criteria, and major judgment candidates are clear enough; a safe next-work candidate, smaller scope, or work split can be proposed; and remaining uncertainty is explicitly tracked.
 
@@ -248,15 +253,15 @@ Clarification is enough to proceed only when:
 - the goal can be summarized in one sentence
 - at least one non-goal or boundary is known when a boundary matters
 - success criteria, acceptance criteria, or the desired end state are known
-- codebase-answerable and state-answerable questions have been checked against the repository, existing docs, tests, current Harness state, accepted decisions, and current task artifacts before asking the user
+- answerable facts have been checked against the repository, existing docs, tests, current Harness state, accepted decisions, and current task artifacts before asking the user
 - user-only judgments are separated from agent-checkable facts
-- blocking questions are separated from useful-but-not-blocking questions
+- blocking questions are separated from useful non-blocking questions
 - the next safe action is classified as advice/read-only work, a small direct change, or tracked work
 - remaining uncertainty is visible rather than hidden
 
-If the agent cannot satisfy those conditions, it must inspect available sources, ask the next smallest blocking question, park useful-but-not-blocking questions, or propose a narrower safe slice that avoids the unresolved judgment.
+If the agent cannot satisfy those conditions, it must inspect available sources, ask the next smallest blocking question, park useful non-blocking questions, or propose a narrower safe slice that avoids the unresolved judgment.
 
-Classify each open question before asking it. Blocking questions need a user judgment before the next safe action. Useful-but-not-blocking questions can be parked in the requirements brief, Assumption Register, follow-up work, or later judgment request candidate. Codebase-answerable questions should be answered by inspecting current repo, docs, tests, current Harness state, accepted decisions, current task artifacts, or source refs instead of asking the user.
+Classify each open item before asking it. Answerable facts should be checked in current repo, docs, tests, current Harness state, accepted decisions, current task artifacts, or source refs instead of becoming user questions. Blocking questions need a user answer before the next safe action. Useful non-blocking questions can be parked in the requirements brief, Assumption Register, follow-up work, or later judgment request candidate.
 
 Each user-owned question should name the exact choice, offer realistic options, include the agent's recommendation, state uncertainty, identify affected gates or acceptance criteria when they matter, point to source refs and evidence, risk, or design refs when available or relevant, and say what can continue if the decision is deferred, or why nothing should continue until the decision is made. Record assumptions the agent makes separately from product, technical, security, QA, operational, scope, approval, acceptance, or residual-risk acceptance that belongs to the user.
 
@@ -342,7 +347,7 @@ Before product writes, shape the active scope into a write boundary. The interna
 - known sensitive areas
 - when the agent must stop and ask
 
-Enough is known to propose safe next work when the agent can state those items without hiding unresolved user judgments, separate inspectable facts from user-owned judgments, show that goals, non-goals, acceptance criteria, and major judgment candidates are clear enough, classify the next safe action as advice/read-only, small direct change, or tracked work, and explicitly track remaining uncertainty. If that cannot be done yet, continue requirements clarification with the next grouped blocking question, park useful-but-not-blocking questions, answer repository/docs/tests/state/artifact-answerable questions from current sources, or propose a smaller safe next-work candidate or work split that avoids the unresolved area. A safe next-work scope candidate may be the internal expression of that proposal when product writes are near, but it is not the only or primary requirements-clarification stop condition.
+Enough is known to propose safe next work when the agent can state those items without hiding unresolved user judgments, separate answerable facts from user-owned judgments, show that goals, non-goals, acceptance criteria, and major judgment candidates are clear enough, classify the next safe action as advice/read-only, small direct change, or tracked work, and explicitly track remaining uncertainty. If that cannot be done yet, continue requirements clarification by inspecting current sources for answerable facts, asking the next grouped blocking question, parking useful non-blocking questions, or proposing a smaller safe next-work candidate or work split that avoids the unresolved area. A safe next-work scope candidate may be the internal expression of that proposal when product writes are near, but it is not the only or primary requirements-clarification stop condition.
 
 Autonomy Boundary is not write authority. It only describes what judgment the agent may exercise without asking again. Change Unit scope answers where and what the work may change; Autonomy Boundary answers which choices the agent may make inside that scope. Actual product writes still require a compatible write check.
 
@@ -480,7 +485,7 @@ Useful examples:
 - QA / verification (`qa_verification`): QA or verification waiver should use the existing recording required for the Task and cite the owner refs. QA waiver effects are owned by the Manual QA / QA policy path; product/user risk or policy-required judgment uses a QA waiver judgment request, recorded internally as needed. Verification waiver effects are owned by the kernel verification-waiver path; when a user-owned judgment is needed, use the relevant judgment request or Decision Packet record. Name the skipped check or surface, any separately accepted residual risk, residual-risk follow-up, relevant refs, and close impact. If waiver and residual-risk acceptance are both needed, render them as separate judgment lines or requests. Example: ask the user whether to waive mobile Safari Manual QA for a copy-only change, separately accept the viewport-wrapping residual risk, and keep a browser pass as release follow-up.
 - Residual risk (`residual_risk`): residual-risk acceptance before close should show the remaining limitation, the evidence that does exist, why close can still be acceptable, and the follow-up that remains. A residual-risk accepted close is not a detached-verified close.
 
-Ask one blocking question at a time when possible.
+Ask one blocking question at a time when possible, but do not mistake that for a one-question limit. Requirements clarification may be active and multi-step; it should advance by inspecting answerable facts, asking the next blocking question, parking useful non-blocking questions, and recommending a safe next action rather than dumping a full intake form.
 
 ## Review lenses and displays
 

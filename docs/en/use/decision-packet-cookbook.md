@@ -8,7 +8,7 @@ Status note: these are documentation examples for planned Harness behavior. They
 
 The everyday label is "judgment request." The internal record or template label may be "Decision Packet" when a reference page, tool result, or saved record needs precision. Users should not need that label to answer the prompt.
 
-Before asking, the agent should check what the repository, docs, tests, current Harness state, accepted decisions, current task artifacts, or available evidence already answer. Do not ask the user to re-answer facts the project can answer. Ask only for judgments the user owns, and keep blocking questions separate from useful-but-not-blocking questions.
+Before asking, the agent should check what the repository, docs, tests, current Harness state, accepted decisions, current task artifacts, or available evidence already answer. Do not ask the user to re-answer facts the project can answer. Ask only for judgments the user owns, and keep answerable facts, blocking questions, and useful non-blocking questions separate.
 
 ## Use It For
 
@@ -30,6 +30,7 @@ Do not merge these into one "approve?" prompt. Permission to install a dependenc
 
 A good judgment request normally answers:
 
+- what the agent already checked, when that context affects the choice
 - what judgment is needed now
 - why it blocks the next safe action or close
 - which options are realistic
@@ -40,6 +41,8 @@ A good judgment request normally answers:
 - what evidence, QA, verification, acceptance, or residual risk may be affected
 
 Small unblockers can stay short. Complex, security-sensitive, close-relevant, or architecture-shaping choices need fuller trade-offs.
+
+A judgment request is not a general requirements questionnaire. If the decision depends on repository or documentation facts, inspect those first or say which source is unavailable, then ask the user for the judgment that remains.
 
 ## Tiny Product Judgment
 
