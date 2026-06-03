@@ -9,11 +9,11 @@
 
 ## 사용 시점
 
-현재 Core 상태를 사용자가 읽기 쉽게, 또는 에이전트가 간결하게 참고할 수 있게 보여줄 때 Compact Status Card를 사용합니다. 이 card는 v0.2 MVP projection shape입니다. Core 상태와 ref에서 파생한 하나의 작은 card입니다.
+현재 Core 상태를 사용자가 읽기 쉽게, 또는 에이전트가 간결하게 참고할 수 있게 보여줄 때 Compact Status Card를 사용합니다. 이 card는 v0.2 First User-Value Slice projection shape입니다. Core 상태와 ref에서 파생한 하나의 작은 card입니다.
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: v0.2 User-Facing Harness MVP projection입니다. v0.1 Core status output은 이 card 대신 plain structured status/blocker output을 반환해도 됩니다. 이 template은 persisted state record가 아니며 full projection renderer support의 증거도 아닙니다.
+구현 계층: v0.2 First User-Value Slice projection입니다. v0.1 Core status output은 이 card 대신 plain structured status/blocker output을 반환해도 됩니다. 이 template은 persisted state record가 아니며 full projection renderer support의 증거도 아닙니다.
 
 Card는 평범한 말을 먼저 쓰고, 정확한 Harness label은 권한 경계를 분명히 할 때만 붙입니다. Status, 다음 행동, 이어가기 턴에서 부담 없이 읽을 만큼 작아야 합니다.
 

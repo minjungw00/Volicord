@@ -155,7 +155,7 @@ This matrix is the main table list. It separates small v0.1/v0.2 storage from la
 
 ## v0.1 Physical Schema
 
-v0.1 is the Core Authority Slice. It is intentionally small. It should be enough to register a project, create or load one Task, define one scoped work boundary, authorize one write, record one Run, register one artifact/evidence ref, append events, and return structured blockers.
+v0.1 is the Core Authority Smoke. It is intentionally small. It should be enough to register a project, create or load one Task, define one scoped work boundary, authorize one write, record one Run, register one artifact/evidence ref, append events, and return structured blockers.
 
 The DDL below is a reference fragment for planning. It is not proof that a migration runner exists.
 
@@ -163,13 +163,13 @@ The DDL below is a reference fragment for planning. It is not proof that a migra
 
 | Profile | Stage | Required for | Explicitly not required for this profile |
 |---|---|---|---|
-| Core Authority Slice schema | v0.1 | narrow local authority loop | Decision Packets, Evidence Manifests, Manual QA, Eval, residual-risk acceptance, projection jobs, reconcile, validators, Journey, stewardship maps |
-| User-Facing Harness MVP schema | v0.2 | first user-value records and readable status | detached verification, full Manual QA, full projection job system, export/recover, broad operations |
+| Core Authority Smoke schema | v0.1 | narrow local authority loop | Decision Packets, Evidence Manifests, Manual QA, Eval, residual-risk acceptance, projection jobs, reconcile, validators, Journey, stewardship maps |
+| First User-Value Slice schema | v0.2 | first user-value records and readable status | detached verification, full Manual QA, full projection job system, export/recover, broad operations |
 | Agency Assurance schema | v0.3 or promoted profile | verification, QA, approval, feedback/TDD, validator support | v0.1/v0.2 exit unless promoted |
 | Operations schema | v0.4 or promoted profile | projection jobs, reconcile, connector manifests, recover/export | v0.1/v0.2 exit unless promoted |
 | Future / diagnostic schema | future/diagnostic | journey/spine, domain/module/interface diagnostics | all current stage exits unless promoted |
 
-### Core Authority Slice schema
+### Core Authority Smoke schema
 
 Main v0.1 table count: 12 tables total, with 2 in `registry.sqlite` and 10 in project `state.sqlite`. This count is intentionally small enough for a first implementation slice.
 
@@ -363,9 +363,9 @@ An `artifacts` row without a compatible owner link is not enough to satisfy evid
 
 ## v0.2 Additions
 
-v0.2 is the first user-facing Harness MVP. It should add records that help a person understand the work: intake state, simplified user judgments, visible residual risk, evidence summaries, close blockers/readiness, and optional status-card freshness. It should still avoid full assurance, projection job, reconciliation, and operations systems.
+v0.2 is the First User-Value Slice. It should add records that help a person understand the work: intake state, simplified user judgments, visible residual risk, evidence summaries, close blockers/readiness, and optional status-card freshness. It should still avoid full assurance, projection job, reconciliation, and operations systems.
 
-### User-Facing Harness MVP schema
+### First User-Value Slice schema
 
 Main v0.2 addition count: 5 tables, plus optional `decision_requests` and `projection_status_cards` tables. These tables build on the v0.1 schema.
 
@@ -515,7 +515,7 @@ Future or diagnostic schema candidates are non-stage-required until an owner pro
 - Rich design support: `shared_designs`, `change_unit_dependencies`
 - Diagnostics and polish: metrics, dashboards, context indexes, connector analytics, export/recover detail tables, richer projection caches
 
-These records may be useful, but they must not become prerequisites for v0.1 Core Authority Slice or v0.2 User-Facing Harness MVP.
+These records may be useful, but they must not become prerequisites for v0.1 Core Authority Smoke or v0.2 First User-Value Slice.
 
 ### Baseline capture format
 

@@ -201,8 +201,8 @@ Stage/profile support:
 
 | Stage/profile | What it can represent |
 |---|---|
-| v0.1 Core Authority Slice / Kernel Smoke | The narrow internal authority loop: local project registration, active Task, scoped work boundary, `prepare_write`, one single-use Write Authorization, one compatible Run, one artifact/evidence ref, and one structured status/blocker response. Verification, Manual QA, work acceptance, residual-risk acceptance, full Evidence Manifest, and profile-specific Decision Packet quality are not v0.1 requirements unless the named smoke path explicitly includes them. |
-| v0.2 User-Facing Harness MVP | User-facing status for scope, pending user judgments, evidence summary, close readiness, work acceptance when required, and residual-risk visibility when close-relevant risk exists. v0.2 must not imply detached verification is always required. |
+| v0.1 Core Authority Smoke / Kernel Smoke | The narrow internal authority loop: local project registration, active Task, scoped work boundary, `prepare_write`, one single-use Write Authorization, one compatible Run, one artifact/evidence ref, and one structured status/blocker response. Verification, Manual QA, work acceptance, residual-risk acceptance, full Evidence Manifest, and profile-specific Decision Packet quality are not v0.1 requirements unless the named smoke path explicitly includes them. |
+| v0.2 First User-Value Slice | User-facing status for scope, pending user judgments, evidence summary, close readiness, work acceptance when required, and residual-risk visibility when close-relevant risk exists. v0.2 must not imply detached verification is always required. |
 | Later assurance and operations profiles | Detached verification independence, richer Manual QA, stewardship, feedback-loop/TDD policy, projection/reconcile operations, export/recover, and handoff behavior. These are blockers only when the active profile or owner doc enables them. |
 
 ## Reference scope

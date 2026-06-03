@@ -73,7 +73,7 @@ user conversation surface
 
 일반적인 interactive Harness 사용은 `T2` 이상에서 가장 자연스럽습니다. Reliable 분리 검증에는 보통 `T3` capture와 실제 independence boundary가 필요합니다. High-risk work에는 가능하면 fixture로 입증된 `T4` guard 또는 `T5` isolation을 사용해야 합니다. `T6`는 UI/UX evidence를 보강하지만 수동 QA judgment, 작업 수락, 분리 검증을 대체하지 않으며, human 수동 QA note와 수동으로 제공된 artifact를 기록할 수 있다면 v0.1/default reference posture나 에이전시 보증 팩 / 운영과 인계 팩의 staged 수동 QA 적용 범위의 필수 조건이 아닙니다.
 
-v0.1과 v0.2에서 connector는 구체적인 profile이 다르게 증명하지 않는 한 cooperative/detective behavior를 전제로 삼아야 합니다. `T4`와 `T5` 행은 더 강한 향후 또는 profile별 capability를 설명할 뿐이며, 사용자 대상 MVP가 기본으로 OS 수준 격리, 임의 도구 sandbox 격리, 변조 불가능한 로컬 파일, 도구 실행 전 차단을 제공한다는 뜻이 아닙니다.
+v0.1과 v0.2에서 connector는 구체적인 profile이 다르게 증명하지 않는 한 cooperative/detective behavior를 전제로 삼아야 합니다. `T4`와 `T5` 행은 더 강한 향후 또는 profile별 capability를 설명할 뿐이며, 첫 사용자 가치 조각가 기본으로 OS 수준 격리, 임의 도구 sandbox 격리, 변조 불가능한 로컬 파일, 도구 실행 전 차단을 제공한다는 뜻이 아닙니다.
 
 `T6 QA Capture` profile은 지원하는 capture type과 fallback 동작을 이름으로 밝혀야 합니다. Candidate capture type에는 screenshot, console log, network trace, accessibility snapshot, workflow recording이 있습니다. Captured file은 durable storage 전에 redaction과 secret/PII handling을 따라야 하며, 수동 QA record 또는 feedback loop execution에 붙는 artifact ref로 등록되어야 합니다.
 
@@ -253,14 +253,14 @@ Integration은 [보안 위협 모델 참조](security-threat-model.md#정직한-
 
 이 참조는 connector 프로필이 그 level을 어떻게 보고하고 표시하는지 담당합니다. Surface name, product name, recipe name, mode label에서 더 강한 level을 추론하면 안 되며, 보장 수준을 Approval, Write Authorization, verification, QA, 작업 수락, 잔여 위험 수용, close readiness, kernel gate로 취급하면 안 됩니다.
 
-코어 권한 조각(v0.1 Core Authority Slice)과 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)는 설명 중인 operation에 대해 fixture로 입증된 guard 또는 문서화된 separation boundary가 구현되고 증명되지 않는 한 reference surface를 cooperative/detective로 표시해야 합니다. Future preventive 또는 isolated profile을 문서화할 수는 있지만, owner 문서와 conformance가 승격하기 전까지는 향후 또는 profile별 범위로 label해야 합니다.
+코어 권한 스모크(v0.1 Core Authority Smoke)과 첫 사용자 가치 조각(v0.2 First User-Value Slice)는 설명 중인 operation에 대해 fixture로 입증된 guard 또는 문서화된 separation boundary가 구현되고 증명되지 않는 한 reference surface를 cooperative/detective로 표시해야 합니다. Future preventive 또는 isolated profile을 문서화할 수는 있지만, owner 문서와 conformance가 승격하기 전까지는 향후 또는 profile별 범위로 label해야 합니다.
 
 Stage display default는 [보안 위협 모델의 단계별 guarantee level](security-threat-model.md#단계별-guarantee-level)을 따릅니다.
 
 | 단계 | Connector display 기본값 |
 |---|---|
-| v0.1 Core Authority Slice | `prepare_write`, Write Authorization, `record_run`, changed path, 최소 artifact/evidence ref 주변의 지시 기반/협력적 discipline과 제한된 탐지 가능 check를 표시합니다. 기본 도구 실행 전 사전 차단이나 격리를 암시하지 않습니다. |
-| v0.2 User-Facing Harness MVP | 사용자에게 보이는 막힘, MCP availability, close readiness, decision/evidence gap, 그리고 surface가 지시로만 보류할 수 있는지 실행 뒤에만 탐지할 수 있는지 표시합니다. |
+| v0.1 Core Authority Smoke | `prepare_write`, Write Authorization, `record_run`, changed path, 최소 artifact/evidence ref 주변의 지시 기반/협력적 discipline과 제한된 탐지 가능 check를 표시합니다. 기본 도구 실행 전 사전 차단이나 격리를 암시하지 않습니다. |
+| v0.2 First User-Value Slice | 사용자에게 보이는 막힘, MCP availability, close readiness, decision/evidence gap, 그리고 surface가 지시로만 보류할 수 있는지 실행 뒤에만 탐지할 수 있는지 표시합니다. |
 | v0.3 Agency Assurance Pack | Verification, 수동 QA, waiver, residual risk, 작업 수락, stewardship finding의 더 강한 분리를 보여 주되, 더 강한 profile이 증명되지 않는 한 여전히 cooperative/detective로 표시합니다. |
 | v0.4 Operations & Handoff Pack | Operator diagnostic, generated-file drift, projection freshness, artifact integrity, recover/export posture를 표시하고, exact coverage가 증명되지 않은 항목은 보장 한계를 정직하게 표시하며 탐지/보고 동작으로 설명합니다. |
 | v1+ Expansion | Owner-doc promotion과 conformance proof가 있는 named covered operation 또는 separation boundary에 대해서만 preventive 또는 isolated로 표시합니다. |
@@ -467,11 +467,11 @@ Surface는 scope expansion, Autonomy Boundary breach, Approval 없는 새 sensit
 
 ## 기준 접점 계약
 
-코어 권한 조각(v0.1 Core Authority Slice)은 local project registration 하나와 Core 권한 경로를 실행하는 데 필요한 reference-surface support만 사용합니다. 이 경로는 넓은 ecosystem 지원이 아니라 kernel을 증명해야 합니다. 이 section의 later bullet은 profile target이지 v0.1 requirement가 아닙니다.
+코어 권한 스모크(v0.1 Core Authority Smoke)은 local project registration 하나와 Core 권한 경로를 실행하는 데 필요한 reference-surface support만 사용합니다. 이 경로는 넓은 ecosystem 지원이 아니라 kernel을 증명해야 합니다. 이 section의 later bullet은 profile target이지 v0.1 requirement가 아닙니다.
 
 v0.1 minimum reference expectations:
 
-- v0.1 Core Authority Slice에 필요한 public tool/resource 하위 집합에 `T2 MCP` 사용 가능. 여기에는 첫 authority loop에 필요한 current project/current task/status resource만 포함되며, 전체 later-profile MCP surface가 v0.1 필수라는 뜻이 아닙니다.
+- v0.1 Core Authority Smoke에 필요한 public tool/resource 하위 집합에 `T2 MCP` 사용 가능. 여기에는 첫 authority loop에 필요한 current project/current task/status resource만 포함되며, 전체 later-profile MCP surface가 v0.1 필수라는 뜻이 아닙니다.
 - registered project surface에 대한 local-only 또는 owner-approved access posture
 - product write 전 cooperative `prepare_write`, 그리고 product-write Run 전 compatible Write Authorization
 - run 이후 detective changed-path와 artifact validation
@@ -483,7 +483,7 @@ Later profile expectations:
 
 | Profile | Connector support target |
 |---|---|
-| v0.2 User-Facing Harness MVP | User-readable status/next card, Decision Packet display, pending user judgment routing, 근거와 닫기 준비 상태 요약, work-acceptance separation, relevant한 residual-risk visibility. |
+| v0.2 First User-Value Slice | User-readable status/next card, Decision Packet display, pending user judgment routing, 근거와 닫기 준비 상태 요약, work-acceptance separation, relevant한 residual-risk visibility. |
 | v0.3 Agency Assurance Pack | Evidence Manifest support, manual verification bundle 또는 fresh evaluator instruction, 수동 QA note/artifact support, captured 또는 manually supplied artifact의 artifact integrity status, assurance/QA/waiver display. |
 | v0.4 Operations & Handoff Pack | Generated file, managed block, MCP config snippet, profile freshness용 connector manifest; projection freshness와 reconcile flow; [운영과 Conformance 참조](operations-and-conformance.md#doctor)가 이름 붙인 MCP availability, surface capability mismatch, generated-file drift, artifact integrity, artifact/capture fallback, stale context, evaluator bundle freshness, projection freshness, security/threat-model category에 대한 operator smoke. |
 
@@ -493,7 +493,7 @@ Reference surface 동작 세부사항과 접점별 설정은 concrete surface를
 
 Connector conformance는 profile이 선언한 capability tier에서 공통 contract를 지킬 수 있음을 입증해야 합니다. 아래 scenarios는 aggregate profile map이지 단일 v0.1 checklist가 아닙니다.
 
-Core Authority Slice connector checks:
+Core Authority Smoke connector checks:
 
 - active Task가 있을 때와 없을 때의 status
 - Use procedure가 요구할 때 significant work 재개 전 간결한 현재 위치 상태 표시. Persisted Journey Card output은 later/diagnostic profile입니다.

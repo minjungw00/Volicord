@@ -73,7 +73,7 @@ Always-on rules and context should stay short, current, and non-authoritative. T
 
 Normal interactive Harness use is most natural at `T2` or higher. Reliable detached verification usually needs `T3` capture plus a real independence boundary. High-risk work should use a fixture-proven `T4` guard or `T5` isolation when available. `T6` improves UI/UX evidence, but it does not replace Manual QA judgment, work acceptance, or detached verification, and it is not required by the v0.1/default reference posture or Agency Assurance Pack / Operations & Handoff Pack staged Manual QA coverage when human Manual QA notes and manually supplied artifacts can be recorded.
 
-For v0.1 and v0.2, connectors should assume cooperative/detective behavior unless the concrete profile proves otherwise. `T4` and `T5` rows describe stronger future or profile-specific capabilities; they do not imply OS-level isolation, arbitrary-tool sandboxing, tamper-proof local files, or pre-tool blocking for the user-facing MVP by default.
+For v0.1 and v0.2, connectors should assume cooperative/detective behavior unless the concrete profile proves otherwise. `T4` and `T5` rows describe stronger future or profile-specific capabilities; they do not imply OS-level isolation, arbitrary-tool sandboxing, tamper-proof local files, or pre-tool blocking for the First User-Value Slice by default.
 
 `T6 QA Capture` profiles must name supported capture types and fallback behavior. Candidate capture types include screenshot, console log, network trace, accessibility snapshot, and workflow recording. Captured files must follow redaction and secret/PII handling before durable storage and should be registered as artifact refs attached to the Manual QA record or feedback loop execution.
 
@@ -253,14 +253,14 @@ Integration uses the guarantee levels defined in [Security Threat Model Referenc
 
 This reference owns how connector profiles report and display those levels. It must not infer a stronger level from a surface name, product name, recipe name, or mode label, and it must not treat guarantee level as Approval, Write Authorization, verification, QA, work acceptance, residual-risk acceptance, close readiness, or a kernel gate.
 
-The v0.1 Core Authority Slice and v0.2 User-Facing Harness MVP should display the reference surface as cooperative/detective unless a fixture-proven guard or documented separation boundary is implemented and proven for the operation being described. Future preventive or isolated profiles may be documented, but they must stay labeled as future/profile-specific until owner docs and conformance promote them.
+The v0.1 Core Authority Smoke and v0.2 First User-Value Slice should display the reference surface as cooperative/detective unless a fixture-proven guard or documented separation boundary is implemented and proven for the operation being described. Future preventive or isolated profiles may be documented, but they must stay labeled as future/profile-specific until owner docs and conformance promote them.
 
 Stage display defaults mirror the [Security Threat Model stage map](security-threat-model.md#guarantee-levels-by-stage):
 
 | Stage | Connector display default |
 |---|---|
-| v0.1 Core Authority Slice | Show cooperative discipline and limited detective checks around `prepare_write`, Write Authorization, `record_run`, changed paths, and the minimal artifact/evidence ref. Do not imply default pre-tool blocking or isolation. |
-| v0.2 User-Facing Harness MVP | Show user-visible blockers, MCP availability, close readiness, decision/evidence gaps, and whether the surface can only hold by instruction or detect later. |
+| v0.1 Core Authority Smoke | Show cooperative discipline and limited detective checks around `prepare_write`, Write Authorization, `record_run`, changed paths, and the minimal artifact/evidence ref. Do not imply default pre-tool blocking or isolation. |
+| v0.2 First User-Value Slice | Show user-visible blockers, MCP availability, close readiness, decision/evidence gaps, and whether the surface can only hold by instruction or detect later. |
 | v0.3 Agency Assurance Pack | Show stronger separation of verification, Manual QA, waivers, residual risk, work acceptance, and stewardship findings, still as cooperative/detective unless a stronger profile is proven. |
 | v0.4 Operations & Handoff Pack | Show operator diagnostics, generated-file drift, projection freshness, artifact integrity, recover/export posture, and honest guarantee limits as detective/reporting behavior unless exact coverage is proven. |
 | v1+ Expansion | Show preventive or isolated only for the named covered operation or separation boundary with owner-doc promotion and conformance proof. |
@@ -467,11 +467,11 @@ Display the stop according to the capability profile. On cooperative profiles, t
 
 ## Reference Surface Contract
 
-v0.1 Core Authority Slice uses only the reference-surface support needed to exercise one local project registration and the Core authority path. That path should demonstrate the kernel rather than broad ecosystem support. Later bullets in this section are profile targets, not v0.1 requirements.
+v0.1 Core Authority Smoke uses only the reference-surface support needed to exercise one local project registration and the Core authority path. That path should demonstrate the kernel rather than broad ecosystem support. Later bullets in this section are profile targets, not v0.1 requirements.
 
 v0.1 minimum reference expectations:
 
-- `T2 MCP` available for the v0.1 public tool/resource subset needed by the Core Authority Slice, including only the current project/current task/status resources needed for the first authority loop, not the full later-profile MCP surface documented in MCP API And Schemas
+- `T2 MCP` available for the v0.1 public tool/resource subset needed by the Core Authority Smoke, including only the current project/current task/status resources needed for the first authority loop, not the full later-profile MCP surface documented in MCP API And Schemas
 - local-only or otherwise owner-approved access posture for the registered project surface
 - cooperative `prepare_write` before product writes and compatible Write Authorization before any product-write Run
 - detective changed-path and artifact validation after runs
@@ -483,7 +483,7 @@ Later profile expectations:
 
 | Profile | Connector support target |
 |---|---|
-| v0.2 User-Facing Harness MVP | User-readable status/next cards, Decision Packet display, pending user judgment routing, evidence and close readiness summaries, work-acceptance separation, and residual-risk visibility when relevant. |
+| v0.2 First User-Value Slice | User-readable status/next cards, Decision Packet display, pending user judgment routing, evidence and close readiness summaries, work-acceptance separation, and residual-risk visibility when relevant. |
 | v0.3 Agency Assurance Pack | Evidence Manifest support, manual verification bundle or fresh evaluator instructions, Manual QA note/artifact support, artifact integrity status for captured or manually supplied artifacts, and assurance/QA/waiver displays. |
 | v0.4 Operations & Handoff Pack | Connector manifest for generated files, managed blocks, MCP config snippets, and profile freshness; projection freshness and reconcile flow; operator smoke for MCP availability, surface capability mismatch, generated-file drift, artifact integrity, artifact/capture fallback, stale context, evaluator bundle freshness, projection freshness, and security/threat-model categories named in [Operations And Conformance Reference](operations-and-conformance.md#doctor). |
 
@@ -493,7 +493,7 @@ Reference surface behavior details and surface-specific setup belong in [Surface
 
 Connector conformance should prove that a profile can uphold the common contract at its declared capability tier. The scenarios below are an aggregate profile map, not a single v0.1 checklist.
 
-Core Authority Slice connector checks:
+Core Authority Smoke connector checks:
 
 - status with and without an active Task
 - compact current-position status shown before significant work resumes when required by the Use procedure; persisted Journey Card output is a later/diagnostic profile

@@ -13,7 +13,7 @@ Use `TASK` as a later/profile continuity or reference projection for active work
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: Future/diagnostic projections. `TASK` is not the v0.2 MVP projection. v0.2 uses the [Compact Status Card](compact-status-card.md) for user-facing status; a Decision Packet prompt or resource handles user judgments when needed. The fuller `TASK` body is later profile polish.
+Implementation tier: Future/diagnostic projections. `TASK` is not the v0.2 First User-Value Slice projection. v0.2 uses the [Compact Status Card](compact-status-card.md) for user-facing status; a Decision Packet prompt or resource handles user judgments when needed. The fuller `TASK` body is later profile polish.
 
 A `TASK` template existing in this repository does not mean full `TASK` Markdown is required for the current stage.
 

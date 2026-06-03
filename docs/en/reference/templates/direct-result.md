@@ -6,7 +6,7 @@ Use `DIRECT-RESULT` for a compact, low-ceremony result report after small direct
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: Future/diagnostic projections. Use as an optional compact direct-work result display when that profile is active; it is not required for v0.2 MVP projection or the first kernel proof.
+Implementation tier: Future/diagnostic projections. Use as an optional compact direct-work result display when that profile is active; it is not required for v0.2 First User-Value Slice projection or the first kernel proof.
 
 ## Source records
 

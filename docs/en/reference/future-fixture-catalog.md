@@ -14,7 +14,7 @@ Future catalog scenarios become executable only after an owner promotes the beha
 
 ## Catalog-Only Future Families
 
-The families below are intentionally parked in this catalog. They are not required for v0.1 Core Authority Slice or v0.2 User-Facing Harness MVP, and the catalog listing alone does not make them stage-required later. A future owner must promote the exact behavior, stage, fallback, security wording, and exact-shape fixtures before any row becomes executable conformance.
+The families below are intentionally parked in this catalog. They are not required for v0.1 Core Authority Smoke or v0.2 First User-Value Slice, and the catalog listing alone does not make them stage-required later. A future owner must promote the exact behavior, stage, fallback, security wording, and exact-shape fixtures before any row becomes executable conformance.
 
 | Future family | Catalog boundary |
 |---|---|
@@ -652,7 +652,7 @@ expected_error:
 
 ## Core Fixture Examples
 
-The examples below are future exact-shape examples for Core behavior broadly. They may exceed the minimal v0.1 Kernel Smoke subset; use the [Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue) and Build scope when deciding what the first Core Authority Slice must prove.
+The examples below are future exact-shape examples for Core behavior broadly. They may exceed the minimal v0.1 Kernel Smoke subset; use the [Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue) and Build scope when deciding what the first Core Authority Smoke must prove.
 
 `prepare_write` allowed examples expect the Task to move from `ready` to `executing` because the kernel transition table owns and defines that transition.
 
@@ -2468,7 +2468,7 @@ These catalog entries are not fixture bodies. They make projection, reconcile, a
 
 ### v1+ Expansion Browser QA Capture Candidate Entries
 
-These catalog entries are future candidates, not v0.1 Core Authority Slice, v0.2 User-Facing Harness MVP, v0.3 Agency Assurance Pack, v0.4 Operations & Handoff Pack, or Kernel Smoke requirements. They become executable only after the Browser QA Capture capability profile, redaction and secret/PII policy, test environment, artifact retention, fixture or conformance target, fallback semantics, and no projection-as-canonical dependency are defined.
+These catalog entries are future candidates, not v0.1 Core Authority Smoke, v0.2 First User-Value Slice, v0.3 Agency Assurance Pack, v0.4 Operations & Handoff Pack, or Kernel Smoke requirements. They become executable only after the Browser QA Capture capability profile, redaction and secret/PII policy, test environment, artifact retention, fixture or conformance target, fallback semantics, and no projection-as-canonical dependency are defined.
 
 Agency Assurance Pack / Operations & Handoff Pack staged Manual QA coverage remains the existing Manual QA record or valid QA waiver, `qa_gate` behavior, and registered artifact refs supplied through Core owner paths. Automated Browser QA Capture is useful capture assistance after promotion, but it is not required to satisfy staged Manual QA or artifact coverage.
 
@@ -2476,11 +2476,11 @@ Agency Assurance Pack / Operations & Handoff Pack staged Manual QA coverage rema
 |---|---|---|
 | `BROWSER-QA-capture-artifacts-attach-to-manual-qa` | `record_manual_qa` | A capable `T6 QA Capture` profile registers supported screenshot, `qa_capture`, log or console log, network trace, accessibility snapshot, or workflow recording artifacts; links them to the Manual QA record or Feedback Loop execution; applies redaction and retention policy; and updates `qa_gate` only through normal Manual QA result semantics. These artifacts support the human QA record; they are not the human judgment. |
 | `BROWSER-QA-capture-not-work-acceptance-or-detached-verification` | `record_manual_qa` or `record_eval` | Browser QA artifacts can support evidence, but they do not record work acceptance, do not replace human Manual QA judgment where required, and do not set `assurance_level=detached_verified` unless a separate Eval path satisfies independence requirements. |
-| `BROWSER-QA-unsupported-surface-falls-back-to-human-notes` | `record_manual_qa` or `next` | A surface without browser capture capability reports the missing `T6` capability, recommends human Manual QA notes and manually supplied artifacts, and does not fail Kernel Smoke, User-Facing Harness MVP, Agency Assurance Pack, or operations conformance solely because automated browser capture is unavailable. |
+| `BROWSER-QA-unsupported-surface-falls-back-to-human-notes` | `record_manual_qa` or `next` | A surface without browser capture capability reports the missing `T6` capability, recommends human Manual QA notes and manually supplied artifacts, and does not fail Kernel Smoke, First User-Value Slice, Agency Assurance Pack, or operations conformance solely because automated browser capture is unavailable. |
 
 ## Fixture Suites
 
-Future suite families group under the fixture profiles in [Conformance Fixtures Reference](conformance-fixtures.md#fixture-profiles-by-proven-behavior). The `core` family below is broader than the v0.1 Core Authority Slice smoke subset; v0.1 uses only the minimal authority-loop checks called out in Build and the Kernel Smoke queue.
+Future suite families group under the fixture profiles in [Conformance Fixtures Reference](conformance-fixtures.md#fixture-profiles-by-proven-behavior). The `core` family below is broader than the v0.1 Core Authority Smoke smoke subset; v0.1 uses only the minimal authority-loop checks called out in Build and the Kernel Smoke queue.
 
 - core: active status, advisor close, direct close including tiny direct as a Direct profile, write gate, Write Authorization creation/required/invalid coverage, Approval required and Approval lifecycle retry, evidence insufficient, artifact integrity effects on evidence/close readiness, same-session verification guard, QA required, acceptance required, residual-risk visibility before acceptance or close, projection failure separation, current-state versus stale-projection distinction, stale projection write guard
 - connector: natural-language intake without a startup phrase, plain-language routing to Harness records, capability profile, connector profile freshness, stale capability profile detection, surface capability mismatch, local security posture severity for doctor/connect/serve-mcp/artifact checks, MCP unavailable hold, generated/managed manifest drift, changed-path detection, artifact capture, manual artifact capture fallback when native capture is unavailable, fallback guarantee display that does not upgrade cooperative, detective, or manual fallback behavior to preventive or isolated, compact current-position context before significant resume, Decision Packet not broad approval, Autonomy Boundary breach routing, stale chat or PRD context pull-only behavior

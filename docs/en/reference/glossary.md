@@ -273,7 +273,7 @@ A canonical kernel state record for a blocking user-owned judgment. It names the
 
 ### Decision Request
 
-Optional routing, interaction, idempotency replay, or compatibility handoff metadata that may point to a canonical Decision Packet. A minimal v0.1 Core Authority Slice implementation may omit it. A Decision Request is not decision authority, never satisfies `decision_gate`, sensitive-action Approval, work acceptance, waiver, residual-risk acceptance, or close by itself, and is only relevant to gate aggregation through a linked compatible `decision_packet_id`.
+Optional routing, interaction, idempotency replay, or compatibility handoff metadata that may point to a canonical Decision Packet. A minimal v0.1 Core Authority Smoke implementation may omit it. A Decision Request is not decision authority, never satisfies `decision_gate`, sensitive-action Approval, work acceptance, waiver, residual-risk acceptance, or close by itself, and is only relevant to gate aggregation through a linked compatible `decision_packet_id`.
 
 ### Design Gate
 
@@ -395,9 +395,9 @@ A user-facing safety control that applies the connected profile's actual enforce
 
 ### Hardened Local Reference Target
 
-The aggregate local reference behavior reached after v0.2 User-Facing Harness MVP by completing the owner-defined v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack profiles. It is an umbrella target, not a separate delivery stage, not the first implementation batch, and not a fixture profile or suite name.
+The aggregate local reference behavior reached after v0.2 First User-Value Slice by completing the owner-defined v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack profiles. It is an umbrella target, not a separate delivery stage, not the first implementation batch, and not a fixture profile or suite name.
 
-The hardened local reference target does not replace the boundaries for v0.1 Core Authority Slice, v0.2 User-Facing Harness MVP, or v1+ Expansion. Conformance is still proven through the named fixture profiles: Core Authority Slice fixtures, User-Facing Harness MVP fixtures, Agency Assurance Pack fixtures, and Operations & Handoff Pack or promoted-expansion fixtures.
+The hardened local reference target does not replace the boundaries for v0.1 Core Authority Smoke, v0.2 First User-Value Slice, or v1+ Expansion. Conformance is still proven through the named fixture profiles: Core Authority Smoke fixtures, First User-Value Slice fixtures, Agency Assurance Pack fixtures, and Operations & Handoff Pack or promoted-expansion fixtures.
 
 ### Harness Core
 
@@ -521,7 +521,7 @@ A readable derived view generated from Core state records and artifact reference
 
 ### ProjectionKind
 
-The API enum for projection job and template kinds. Support classes, values, and extension rules are owned by [Shared schemas](mcp-api-and-schemas.md#shared-schemas). Support class labels are not v0.1 Core Authority Slice run obligations; v0.1 has no projection-rendering exit requirement beyond preserving any owner-produced freshness/read facts. No ProjectionKind makes a projection canonical state.
+The API enum for projection job and template kinds. Support classes, values, and extension rules are owned by [Shared schemas](mcp-api-and-schemas.md#shared-schemas). Support class labels are not v0.1 Core Authority Smoke run obligations; v0.1 has no projection-rendering exit requirement beyond preserving any owner-produced freshness/read facts. No ProjectionKind makes a projection canonical state.
 
 ### Projection Freshness
 
@@ -553,7 +553,7 @@ The canonical candidate record created from human-editable input or projection d
 
 ### Reference Surface
 
-The single agent surface targeted by v0.1 Core Authority Slice. It demonstrates the kernel and connector contract without implying broad connector-surface support.
+The single agent surface targeted by v0.1 Core Authority Smoke. It demonstrates the kernel and connector contract without implying broad connector-surface support.
 
 ### Recommended Playbook
 

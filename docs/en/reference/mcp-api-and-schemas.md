@@ -105,8 +105,8 @@ Harness is a local authority-record and user-judgment-routing layer. Core-owned 
 
 | Stage/profile | Active API slice | Not active in that slice |
 |---|---|---|
-| v0.1 Core authority smoke | Read current status/state, one owner-valid setup path, `harness.prepare_write`, one compatible `harness.record_run`, one artifact/evidence ref, and a structured status/blocker response. Optional smoke reads may use `harness.next` or a narrow `harness.close_task` blocker response. | Full natural-language intake, stored user-judgment packets, full Evidence Manifest, detached verification, Manual QA, work acceptance, residual-risk acceptance, rich projections, export/recover, advanced connectors, and operations surfaces. |
-| v0.2 First user-value slice | Ordinary-language intake, status with next-safe-action output, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, and `harness.close_task` with blocker summary. | Detached verification launch/eval, full Manual QA matrix, approval hardening beyond the user-facing approval route, export/recover, advanced connector APIs, broad operations, and detailed diagnostic projections. |
+| v0.1 Core Authority Smoke | Read current status/state, one owner-valid setup path, `harness.prepare_write`, one compatible `harness.record_run`, one artifact/evidence ref, and a structured status/blocker response. Optional smoke reads may use `harness.next` or a narrow `harness.close_task` blocker response. | Full natural-language intake, stored user-judgment packets, full Evidence Manifest, detached verification, Manual QA, work acceptance, residual-risk acceptance, rich projections, export/recover, advanced connectors, and operations surfaces. |
+| v0.2 First User-Value Slice | Ordinary-language intake, status with next-safe-action output, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, and `harness.close_task` with blocker summary. | Detached verification launch/eval, full Manual QA matrix, approval hardening beyond the user-facing approval route, export/recover, advanced connector APIs, broad operations, and detailed diagnostic projections. |
 | v0.3+ Later profiles/future | Assurance, verification, Manual QA, waiver, full residual-risk acceptance, reconcile, validator emission, projection/report/export/recover, operations, and advanced connector profiles when their owner docs promote them. | Not part of the v0.1 smoke or minimum v0.2 user-value slice. |
 
 ### First Implementable Calls
@@ -180,7 +180,7 @@ Read-only resources may render a primary blocker, secondary blockers, and smalle
 
 Earlier stages may reuse earlier resources. Later resources are available only when the owning profile is enabled.
 
-### v0.1 Core Authority Slice resources
+### v0.1 Core Authority Smoke resources
 
 The v0.1 resource subset is intentionally small. It supports the first authority loop: current project, active/current Task, current state and blockers, write-authority status, and the Run/artifact/evidence ref needed to prove that Core is more authoritative than chat memory or generated Markdown.
 
@@ -194,7 +194,7 @@ The v0.1 resource subset is intentionally small. It supports the first authority
 
 v0.1 does not require Journey, Journey Spine, Decision Packet storage, Evidence Manifest, bundle, design maps, module maps, interface contracts, reports, projection jobs, or a projection renderer.
 
-### v0.2 User-Facing Harness MVP resources
+### v0.2 First User-Value Slice resources
 
 v0.2 keeps the v0.1 current-status resources and may enrich their summaries so ordinary users can understand current work status, pending user judgments, evidence summary, close readiness, close blockers, work-acceptance need/status, and residual-risk visibility when relevant. Detailed report resources are not needed for the minimum v0.2 path.
 
@@ -207,7 +207,7 @@ The v0.2 evidence and close-readiness resource path can be satisfied by `harness
 
 ### v0.3 Agency Assurance resources
 
-These resources are profile-gated assurance reads. They are not first-slice or minimum user-facing MVP requirements.
+These resources are profile-gated assurance reads. They are not first-slice or minimum First User-Value Slice requirements.
 
 | Resource | Profile meaning |
 |---|---|
@@ -332,14 +332,14 @@ Event stability for fixture assertions is owned by the [Kernel Stable Event Cata
 | Support class | Values | Requirement |
 |---|---|---|
 | Core status output | none required | v0.1 status/blocker output can expose read/freshness facts without any persisted Markdown projection job. |
-| User-facing MVP summaries | `TASK` minimal task-scoped readable summary when persisted projection support is used; `DIRECT-RESULT` only for active direct-work compact-result display | Provides the readable status/judgment/evidence/close summary path. Equivalent status/next cards may satisfy MVP output without full `TASK` template rendering or persisted projection jobs. |
+| First User-Value Slice summaries | `TASK` minimal task-scoped readable summary when persisted projection support is used; `DIRECT-RESULT` only for active direct-work compact-result display | Provides the readable status/judgment/evidence/close summary path. Equivalent status/next cards may satisfy MVP output without full `TASK` template rendering or persisted projection jobs. |
 | Agency assurance reports | `APR`, `MANUAL-QA` | Implement only when the corresponding approval, Manual QA, waiver, verification, or assurance profile is active. Compact verification can use card output; detailed `EVAL` Markdown remains later diagnostic scope. |
 | Operations/export reports | `EXPORT` | Enable only when the export, release-handoff, or operations report profile is in scope. Export report projections are readable snapshots, not authority. |
 | Future/diagnostic projections | `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `DEC`, `DESIGN`, `JOURNEY-CARD` | Detailed report, trace, map, standalone Decision Packet, persisted Journey Card, Journey Spine-style, detailed Evaluation, or diagnostic views. Enable only when an owner-promoted later profile is in scope. |
 
-Support class labels are not enum values. v0.1 has no projection-rendering exit requirement beyond preserving any owner-produced freshness/read facts. v0.2 User-Facing Harness MVP provides enough derived output for users to understand current work, user judgments, evidence, and close blockers without requiring broad template polish. Work-acceptance and residual-risk facts stay distinct when relevant, but they do not add required projection kinds. Agency assurance and operations/export support are later profile classes. Future/diagnostic projections are not automatically v1+ only; owner-promoted profiles may enable them, but they are not v0.1 or minimum v0.2 requirements.
+Support class labels are not enum values. v0.1 has no projection-rendering exit requirement beyond preserving any owner-produced freshness/read facts. v0.2 First User-Value Slice provides enough derived output for users to understand current work, user judgments, evidence, and close blockers without requiring broad template polish. Work-acceptance and residual-risk facts stay distinct when relevant, but they do not add required projection kinds. Agency assurance and operations/export support are later profile classes. Future/diagnostic projections are not automatically v1+ only; owner-promoted profiles may enable them, but they are not v0.1 or minimum v0.2 requirements.
 
-ProjectionKind extensibility does not make projections canonical state. Every projection job still renders a derived view from owner records and artifact refs. No projection support class creates state, evidence, QA, verification, work acceptance, residual-risk acceptance, close authority, or Write Authorization. `DEC` is valid only for standalone Decision Packet Markdown when that feature is enabled. Absence of a standalone `DEC` job must not reduce Decision Packet visibility required by the active stage/profile, which is provided through status/next responses, judgment-context resources, decision-packet resources, and minimal `TASK` or card displays. The user-facing MVP requires the Decision Packet user judgment request display shape, not the standalone `DEC` `ProjectionKind`. Persisted `JOURNEY-CARD` Markdown and Journey Spine-style output are future/diagnostic; current-position context in `harness.status`, `harness.next`, and significant resume flows can be compact status output.
+ProjectionKind extensibility does not make projections canonical state. Every projection job still renders a derived view from owner records and artifact refs. No projection support class creates state, evidence, QA, verification, work acceptance, residual-risk acceptance, close authority, or Write Authorization. `DEC` is valid only for standalone Decision Packet Markdown when that feature is enabled. Absence of a standalone `DEC` job must not reduce Decision Packet visibility required by the active stage/profile, which is provided through status/next responses, judgment-context resources, decision-packet resources, and minimal `TASK` or card displays. The First User-Value Slice requires the Decision Packet user judgment request display shape, not the standalone `DEC` `ProjectionKind`. Persisted `JOURNEY-CARD` Markdown and Journey Spine-style output are future/diagnostic; current-position context in `harness.status`, `harness.next`, and significant resume flows can be compact status output.
 
 `EXPORT` may include report profiles such as Release Handoff when the export feature is enabled. Such profiles are projection/report surfaces only; they do not create deployment authority, merge authority, production-monitoring authority, work acceptance, residual-risk acceptance, assurance upgrades, or Task close authority.
 
@@ -387,10 +387,10 @@ Major schema objects carry stage/profile meaning through their owner sections an
 
 | Schema object or family | active_from/profile | Activation meaning |
 |---|---|---|
-| `ToolEnvelope`, `ToolResponseBase`, `ToolError`, `StateSummary`, `EventRef` | v0.1 Core Authority Slice | Common contract shapes for active payloads. |
+| `ToolEnvelope`, `ToolResponseBase`, `ToolError`, `StateSummary`, `EventRef` | v0.1 Core Authority Smoke | Common contract shapes for active payloads. |
 | `WriteAuthorizationSummary`, `WriteAuthoritySummary`, `ApprovalScope` | v0.1 core write authority; Approval records in v0.3 Agency Assurance | Write Authorization summary is v0.1 when an allowed write is produced. Approval-specific refs and lifecycle are later-profile unless the Approval profile is enabled. |
 | `ArtifactRef`, `ArtifactInput`, `EvidenceRefs`, `StateRecordRef` | v0.1 minimal artifact/evidence ref; richer owner relations in later profiles | v0.1 needs one registered artifact/evidence ref and compatible owner link. Later owner record kinds are valid only when their storage/API profile exists. |
-| `DecisionPacket`, `DecisionPacketCandidate`, `JudgmentContext`, `AcceptanceVisibilityContext` | v0.2 User-Facing Harness MVP, with full approval/waiver/risk/reconcile profiles in v0.3/v0.4 | Active when a Decision Packet or candidate is created. v0.1 does not require Decision Packet storage. |
+| `DecisionPacket`, `DecisionPacketCandidate`, `JudgmentContext`, `AcceptanceVisibilityContext` | v0.2 First User-Value Slice, with full approval/waiver/risk/reconcile profiles in v0.3/v0.4 | Active when a Decision Packet or candidate is created. v0.1 does not require Decision Packet storage. |
 | `ResidualRiskSummary` and residual-risk refs | v0.2 visibility; v0.3 full residual-risk acceptance semantics | `status=none` may be a summary claim. Accepted risk is state on `residual_risk` refs, not a standalone record kind. |
 | `ValidatorResult` | v0.3 Agency Assurance and v0.4 Operations, except owner-promoted capability/status checks | Active when a validator result is emitted. Core checks may block without becoming validator IDs. |
 | `ProjectionJobRef`, `ProjectionKind`, projection freshness objects | No active `ProjectionKind` in v0.1; minimal `TASK`/card output may support v0.2; assurance, operations/export, and future/diagnostic classes are profile-gated | Projection refs and jobs are derived-view metadata, not authority. A kind is a valid reference target only for the stage/profile that enables that projection support. |
@@ -454,7 +454,7 @@ Artifact registration is not a loose file dump. A staged file becomes a public `
 
 In the reference implementation, artifact registration is Task-scoped. `ArtifactRef.task_id` and `ArtifactInput.relation.task_id` are required and map to `artifacts.task_id` and `artifact_links.task_id`; `retention_class=project` affects retention policy, not artifact ownership scope.
 
-Later Browser QA Capture uses this artifact boundary instead of a new reference schema. Screen captures normally use `screenshot`; grouped QA outputs can use `qa_capture`; console logs and network traces can use `log` or `qa_capture`; accessibility snapshots and workflow recordings can use `qa_capture` or `other` with a clear description. All such artifacts remain subject to redaction, secret/PII handling, Task-scoped ownership, and Manual QA record or Feedback Loop attachment rules. Capture artifacts can support evidence, but they do not create acceptance, replace Manual QA judgment, satisfy detached verification, or add a capture schema required for v0.1 Core Authority Slice.
+Later Browser QA Capture uses this artifact boundary instead of a new reference schema. Screen captures normally use `screenshot`; grouped QA outputs can use `qa_capture`; console logs and network traces can use `log` or `qa_capture`; accessibility snapshots and workflow recordings can use `qa_capture` or `other` with a clear description. All such artifacts remain subject to redaction, secret/PII handling, Task-scoped ownership, and Manual QA record or Feedback Loop attachment rules. Capture artifacts can support evidence, but they do not create acceptance, replace Manual QA judgment, satisfy detached verification, or add a capture schema required for v0.1 Core Authority Smoke.
 
 ```yaml
 ArtifactRef:
@@ -1073,7 +1073,7 @@ A stale `expected_state_version` is reported as concurrency drift, not as proof 
 
 Public methods are grouped by staged surface. The same method may appear in more than one stage when a later profile expands its payload meaning; that does not activate the later profile earlier. The tool sections below remain the exact request/response contract once a method/profile is in scope.
 
-#### v0.1 Core Authority Slice surface
+#### v0.1 Core Authority Smoke surface
 
 | Method or capability | Activation | Scope boundary |
 |---|---|---|
@@ -1084,16 +1084,16 @@ Public methods are grouped by staged surface. The same method may appear in more
 | `harness.next` | Optional v0.1 read. | If implemented for the smoke path, returns only the next minimal authority-loop action or smallest unblocker. Verification, QA, acceptance, and reconcile action kinds are later-profile. |
 | `harness.close_task` | Optional narrow blocker/status smoke only. | May be used when it is the simplest way to show a structured blocker, but v0.1 does not prove work acceptance, residual-risk acceptance, or full close semantics. |
 
-#### v0.2 User-Facing Harness MVP surface
+#### v0.2 First User-Value Slice surface
 
 | Method or capability | Activation | Scope boundary |
 |---|---|---|
 | `harness.status.next_actions`; optional `harness.next` | Active fuller user-facing status/next display. | Shows ordinary-language current position, pending user judgments, evidence summary, close readiness/blockers, and smallest unblocker. Work-acceptance and residual-risk facts remain distinct when relevant without adding required projection kinds. |
 | `harness.intake` | Active user-facing intake/resume path. | Classifies ordinary user work into schema mode while keeping scope, non-goals, acceptance criteria, and user-owned judgment boundaries visible. |
 | `harness.request_user_judgment` and `harness.record_user_judgment` | Active for user-owned judgments and work acceptance when they block progress or close. | Decision Packet fields are active when packets/candidates are created. `harness.request_user_decision` and `harness.record_user_decision` are compatibility aliases only. Approval hardening, waiver, full residual-risk acceptance, and reconcile profiles enter when their owner profiles are enabled. |
-| `harness.record_run` | Active evidence/artifact summary path. | Evidence is visible enough for the MVP path; full Evidence Manifest projection and assurance records remain later-profile unless explicitly enabled. |
+| `harness.record_run` | Active evidence/artifact summary path. | Evidence is visible enough for the First User-Value Slice path; full Evidence Manifest projection and assurance records remain later-profile unless explicitly enabled. |
 | `harness.close_task` | Active close-readiness and blocker response. | Close remains Core-owned. Structured blockers distinguish evidence, user judgment, work acceptance, and residual-risk visibility. |
-| Minimal `TASK` projection or compact status/card output | Active display capability, not necessarily a persisted projection job. | Persisted Markdown rendering is optional when status/next/card output already satisfies the minimal user-readable MVP summaries. |
+| Minimal `TASK` projection or compact status/card output | Active display capability, not necessarily a persisted projection job. | Persisted Markdown rendering is optional when status/next/card output already satisfies the minimal v0.2 user-readable summaries. |
 
 #### v0.3 Agency Assurance surface
 
@@ -1225,7 +1225,7 @@ Idempotency behavior: read-only; repeated requests do not mutate state.
 
 Purpose: create or resume a Task from user intent and classify it as schema mode `advisor`, `direct`, or `work`, while user-facing displays may describe the result as read/advice work, small change, or tracked work.
 
-Stage/profile: v0.1 may use this method only as a minimal owner-valid Task/scope setup path if the implementation chooses public API setup. Full natural-language intake, discovery quality, procedural budget display, and ordinary-user resume behavior are v0.2 User-Facing Harness MVP scope.
+Stage/profile: v0.1 may use this method only as a minimal owner-valid Task/scope setup path if the implementation chooses public API setup. Full natural-language intake, discovery quality, procedural budget display, and ordinary-user resume behavior are v0.2 First User-Value Slice scope.
 
 Allowed actor: `user`, `lead_agent`, `operator`.
 

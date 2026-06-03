@@ -309,7 +309,7 @@ Useful later capabilities can appear only as read-only displays, metadata, artif
 
 The first runnable target is v0.1 Core Authority Smoke: the smallest runnable path that proves Harness can make and enforce one authority decision. Kernel Smoke is the narrow future authoring label for this target's smoke checks, not a full conformance suite.
 
-v0.1 proves the internal authority loop, not the product MVP, not template completeness, and not broad automation.
+v0.1 proves the internal authority loop, not the first user-value slice, not template completeness, and not broad automation.
 
 It should show:
 

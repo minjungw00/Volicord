@@ -203,8 +203,8 @@ Stage/profile support:
 
 | Stage/profile | 표현할 수 있는 것 |
 |---|---|
-| v0.1 Core Authority Slice / Kernel Smoke | 좁은 internal authority loop입니다. Local project registration, active Task, scoped work boundary, `prepare_write`, single-use Write Authorization 하나, compatible Run 하나, artifact/evidence ref 하나, structured status/blocker response 하나가 범위입니다. Verification, 수동 QA, 작업 수락, residual-risk acceptance, full Evidence Manifest, profile별 Decision Packet quality는 named smoke path가 명시적으로 포함하지 않는 한 v0.1 requirement가 아닙니다. |
-| v0.2 User-Facing Harness MVP | Scope, pending user judgment, evidence summary, close readiness, required work acceptance, close-relevant risk가 있을 때 residual-risk visibility를 사용자에게 보여줍니다. v0.2가 detached verification이 항상 required라고 암시하면 안 됩니다. |
+| v0.1 Core Authority Smoke / Kernel Smoke | 좁은 internal authority loop입니다. Local project registration, active Task, scoped work boundary, `prepare_write`, single-use Write Authorization 하나, compatible Run 하나, artifact/evidence ref 하나, structured status/blocker response 하나가 범위입니다. Verification, 수동 QA, 작업 수락, residual-risk acceptance, full Evidence Manifest, profile별 Decision Packet quality는 named smoke path가 명시적으로 포함하지 않는 한 v0.1 requirement가 아닙니다. |
+| v0.2 First User-Value Slice | Scope, pending user judgment, evidence summary, close readiness, required work acceptance, close-relevant risk가 있을 때 residual-risk visibility를 사용자에게 보여줍니다. v0.2가 detached verification이 항상 required라고 암시하면 안 됩니다. |
 | Later assurance and operations profiles | Detached verification independence, richer Manual QA, stewardship, feedback-loop/TDD policy, projection/reconcile operations, export/recover, handoff behavior입니다. Active profile이나 owner doc이 켰을 때만 blocker가 됩니다. |
 
 ## 담당하는 참조 범위

@@ -27,7 +27,7 @@
 - v0.1 Core Authority Smoke은 가장 작은 내부 Core 권한 루프를 증명합니다.
 - v0.2 First User-Value Slice는 사용자가 평범한 말로 tracked work를 시작하거나 이어 가고, 범위와 판단 경계, 근거 요약, 막힘, 다음 행동, 잔여 위험 표시를 볼 수 있음을 증명합니다.
 
-첫 조각은 의도적으로 좁게 유지합니다. 로컬 프로젝트 등록 하나, active Task 하나, scoped boundary 하나, `prepare_write` 권한 경로 하나, 한 번만 쓰는 Write Authorization 하나, 기록된 Run 하나, artifact/evidence 참조 하나, 구조화된 상태/막힘 응답 하나를 증명합니다. 이것은 product MVP가 아닙니다. v0.2는 일반적인 작업을 scope, non-goals, success criteria, 사용자 소유 판단, evidence summary, close blocker, residual-risk visibility로 바꾸고 sensitive-action Approval, work acceptance, risk acceptance를 혼동하지 않게 만드는 첫 사용자 가치 단계입니다.
+첫 조각은 의도적으로 좁게 유지합니다. 로컬 프로젝트 등록 하나, active Task 하나, scoped boundary 하나, `prepare_write` 권한 경로 하나, 한 번만 쓰는 Write Authorization 하나, 기록된 Run 하나, artifact/evidence 참조 하나, 구조화된 상태/막힘 응답 하나를 증명합니다. 이것은 제품 MVP가 아닙니다. v0.2는 일반적인 작업을 scope, non-goals, success criteria, 사용자 소유 판단, evidence summary, close blocker, residual-risk visibility로 바꾸고 sensitive-action Approval, work acceptance, risk acceptance를 혼동하지 않게 만드는 첫 사용자 가치 단계입니다.
 
 읽기용 요약(Projection) 템플릿 다듬기, 상세 보고서, dashboard 또는 hosted workflow UI, index, broad connector ecosystem 또는 marketplace, team workflow, surface-specific connector automation, metric, parallel orchestration, broad automation은 authority record와 user-facing value path가 존재한 뒤 유용해질 수 있습니다. 첫 조각의 요구사항은 아닙니다.
 
@@ -56,7 +56,7 @@ flowchart LR
   Ops -. roadmap .-> Expansion["v1+ Expansion"]
 ```
 
-커널 스모크(Kernel Smoke)는 v0.1 Core Authority Smoke을 위한 좁은 향후 작성 label로 남습니다. 이 label은 v0.1이 product MVP라는 뜻이 아니며, full conformance suite, conformance runner, future fixture catalog가 있어야 내부 Core 권한 경로를 확인할 수 있다는 뜻도 아닙니다.
+커널 스모크(Kernel Smoke)는 v0.1 Core Authority Smoke을 위한 좁은 향후 작성 label로 남습니다. 이 label은 v0.1이 제품 MVP라는 뜻이 아니며, 전체 conformance suite, conformance runner, 향후 fixture catalog가 있어야 내부 Core 권한 경로를 확인할 수 있다는 뜻도 아닙니다.
 
 Conformance fixture 검증 프로파일은 같은 stage boundary를 따릅니다. Core Authority Smoke fixture 프로파일은 v0.1 Core Authority Smoke에, First User-Value Slice fixture 프로파일은 v0.2 First User-Value Slice에, Agency Assurance Pack fixture 프로파일은 에이전시 보증 팩(v0.3 Agency Assurance Pack)에 대응합니다. Operations & Handoff Pack fixture 프로파일 또는 승격된 v1+ Expansion 후보 fixture 프로파일은 운영과 인계 팩(v0.4 Operations & Handoff Pack)과 승격된 v1+ Expansion 후보에 대응합니다.
 
@@ -115,7 +115,7 @@ v1+ Expansion은 로드맵 범위이며 Build가 소유하는 staged delivery ph
 
 ## v0.1 Core Authority Smoke
 
-v0.1은 구현자 확신을 위한 내부 Core authority smoke slice입니다. 하네스가 chat memory나 generated Markdown이 아니라 로컬 권한 기록임을 보여 주는 가장 작은 coherent loop만 증명해야 합니다. 사용자 가치 검증 단계가 아니며 product MVP라고 부르면 안 됩니다.
+v0.1은 구현자 확신을 위한 내부 Core authority smoke slice입니다. 하네스가 chat memory나 generated Markdown이 아니라 로컬 권한 기록임을 보여 주는 가장 작은 coherent loop만 증명해야 합니다. 사용자 가치 검증 단계가 아니며 제품 MVP라고 부르면 안 됩니다.
 
 v0.1은 다음을 증명해야 합니다.
 
@@ -128,9 +128,9 @@ v0.1은 다음을 증명해야 합니다.
 - Core/API contract가 소유하는 registered `ArtifactRef` 또는 equivalent evidence reference 하나
 - missing scope, missing write authority, 또는 missing artifact/evidence support를 위한 구조화된 상태/막힘 응답 하나
 
-이에 맞는 storage profile은 [Storage와 DDL: Core Authority Slice schema](../reference/storage-and-ddl.md#core-authority-slice-schema)입니다. 이 profile이 v0.1 minimum입니다. User-facing Decision Packet table, Approval record, Evidence Manifest, Manual QA, Eval, residual-risk acceptance record, projection job, reconcile item, validator run, Journey record, diagnostic/stewardship table은 profile owner가 명시적으로 승격하기 전까지 later-profile storage로 남습니다.
+이에 맞는 storage profile은 [Storage와 DDL: Core Authority Smoke schema](../reference/storage-and-ddl.md#core-authority-smoke-schema)입니다. 이 profile이 v0.1 minimum입니다. User-facing Decision Packet table, Approval record, Evidence Manifest, Manual QA, Eval, residual-risk acceptance record, projection job, reconcile item, validator run, Journey record, diagnostic/stewardship table은 profile owner가 명시적으로 승격하기 전까지 later-profile storage로 남습니다.
 
-v0.1은 natural-language intake, full Discovery, full Decision Packet, full Evidence Manifest, Eval, Manual QA, Acceptance, residual-risk acceptance, full close semantics, detached verification, product/UX judgment와 architecture judgment의 presentation, stewardship, feedback-loop policy, projection rendering, conformance runner, operations/export/recover, dashboards, connectors, 넓은 operator entrypoint, future fixture catalog, release handoff를 증명하면 안 됩니다. 이것들은 이후 단계 또는 roadmap 범위입니다.
+v0.1은 natural-language intake, full Discovery, full Decision Packet, full Evidence Manifest, Eval, Manual QA, Acceptance, residual-risk acceptance, full close semantics, detached verification, product/UX judgment와 architecture judgment의 presentation, stewardship, feedback-loop policy, projection rendering, conformance runner, operations/export/recover, dashboards, connectors, 넓은 operator entrypoint, 향후 fixture catalog, release handoff를 증명하면 안 됩니다. 이것들은 이후 단계 또는 roadmap 범위입니다.
 
 v0.1 Kernel Smoke candidate는 Core state, 그 루프에 필요한 owner record, artifact/evidence refs, structured blocker를 통해 minimal authority loop만 확인해야 합니다. 읽기용 요약 다듬기, detailed template, renderer output, 넓은 fixture catalog는 first-slice conformance truth가 아닙니다.
 
@@ -142,7 +142,7 @@ Reference schema에는 관련 capability가 범위에 들어올 때만 필요한
 
 | Stage | Build 읽기 규칙 | 적용할 owner contract |
 |---|---|---|
-| v0.1 Core Authority Smoke | 좁은 authority loop와 [Core Authority Slice schema](../reference/storage-and-ddl.md#core-authority-slice-schema)를 증명하는 데 필요한 owner-defined field만 사용합니다. 넓은 checklist를 만족하려고 future-profile record를 만들지 않습니다. Minimal seeded blocker가 owner ref를 사용한다면, profile별 user-facing Decision Packet 품질이 아니라 그 owner path의 valid shape만 적용합니다. | [커널 참조](../reference/kernel.md), [MCP API와 스키마](../reference/mcp-api-and-schemas.md), [Storage와 DDL](../reference/storage-and-ddl.md), [Conformance Fixtures 참조](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue). |
+| v0.1 Core Authority Smoke | 좁은 authority loop와 [Core Authority Smoke schema](../reference/storage-and-ddl.md#core-authority-smoke-schema)를 증명하는 데 필요한 owner-defined field만 사용합니다. 넓은 checklist를 만족하려고 future-profile record를 만들지 않습니다. Minimal seeded blocker가 owner ref를 사용한다면, profile별 user-facing Decision Packet 품질이 아니라 그 owner path의 valid shape만 적용합니다. | [커널 참조](../reference/kernel.md), [MCP API와 스키마](../reference/mcp-api-and-schemas.md), [Storage와 DDL](../reference/storage-and-ddl.md), [Conformance Fixtures 참조](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue). |
 | v0.2 First User-Value Slice | 사용자가 현재 work shape, scope/non-goals/success criteria, 대기 중인 사용자 판단, evidence summary, close blockers, residual-risk visibility, approval/acceptance/risk-acceptance 분리 표시를 이해하는 데 필요한 field와 display summary를 추가합니다. 작업 수락과 잔여 위험 사실은 관련 있을 때 distinct하게 남지만 최소 요약 안에 들어갑니다. | [MCP API와 스키마](../reference/mcp-api-and-schemas.md), [커널 참조](../reference/kernel.md), [읽기용 요약(Projection) 참조](../reference/document-projection.md), [Template 참조](../reference/templates/README.md). |
 | 에이전시 보증 팩(v0.3 Agency Assurance Pack) / 운영과 인계 팩(v0.4 Operations & Handoff Pack) | Verification, QA, 잔여 위험, 작업 수락, stewardship, projection/reconcile, operations, export/recover, artifact-integrity, release-handoff profile은 담당 문서가 정의한 곳에서만 추가합니다. | [설계 품질 정책](../reference/design-quality-policies.md), [운영과 Conformance](../reference/operations-and-conformance.md), [Conformance Fixtures 참조](../reference/conformance-fixtures.md), [향후 Fixture Catalog](../reference/future-fixture-catalog.md), [Storage와 DDL](../reference/storage-and-ddl.md). |
 
@@ -206,11 +206,11 @@ flowchart LR
 
 정확한 state와 blocker behavior는 [커널 참조](../reference/kernel.md)가, public tool shape는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md)가, future fixture semantics는 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)가 담당합니다. 이 흐름은 pack gate, projection renderer requirement, fixture body requirement를 추가하지 않습니다.
 
-향후 smoke 작성 순서는 [커널 스모크(Kernel Smoke) Authoring Queue](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue)를 사용합니다. 이 queue는 candidate check를 이 내부 조각에 매핑하지만 executable fixture file이 이미 존재하거나 v0.1에 full conformance suite가 필요하다고 암시하지 않습니다.
+향후 smoke 작성 순서는 [커널 스모크(Kernel Smoke) Authoring Queue](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue)를 사용합니다. 이 queue는 candidate check를 이 내부 조각에 매핑하지만 executable fixture file이 이미 존재하거나 v0.1에 전체 conformance suite가 필요하다고 암시하지 않습니다.
 
 ## v0.2 First User-Value Slice
 
-v0.2는 첫 사용자 가치 조각입니다. Full product MVP, assurance system, QA matrix, Eval harness, reporting suite, operations suite, dashboard가 아닙니다. 사용자가 평범한 말로 작업을 시작하거나 이어 가고, Harness가 scope, user-owned judgment, evidence summary, close blockers, residual-risk visibility를 Core-owned local state에 보존한다는 것을 볼 수 있는 가장 작은 경험으로 정의합니다.
+v0.2는 첫 사용자 가치 조각입니다. 전체 제품 MVP, assurance system, QA matrix, Eval harness, reporting suite, operations suite, dashboard가 아닙니다. 사용자가 평범한 말로 작업을 시작하거나 이어 가고, Harness가 scope, user-owned judgment, evidence summary, close blockers, residual-risk visibility를 Core-owned local state에 보존한다는 것을 볼 수 있는 가장 작은 경험으로 정의합니다.
 
 이 조각은 다음을 보여야 합니다.
 

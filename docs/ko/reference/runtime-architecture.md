@@ -133,7 +133,7 @@ repo/
 
 한국어 표현: 하네스 서버/설치.
 
-하네스 서버/설치는 제어 계층입니다. 코어 권한 조각(v0.1 Core Authority Slice)은 여러 service의 fleet 대신 내부 모듈을 가진 하나의 로컬 프로세스로 구현할 수 있습니다.
+하네스 서버/설치는 제어 계층입니다. 코어 권한 스모크(v0.1 Core Authority Smoke)은 여러 service의 fleet 대신 내부 모듈을 가진 하나의 로컬 프로세스로 구현할 수 있습니다.
 
 Core runtime의 책임:
 
@@ -186,12 +186,12 @@ state.sqlite / artifact store / validators / projector / reconcile worker
 
 대화 접점은 사용자 의도, decision, approval, QA 판단, acceptance를 모읍니다. Agent 접점은 읽기, 편집, 확인을 수행합니다. 하네스 rules와 skills는 agent가 현재 상태를 놓치지 않게 합니다. MCP server는 tool 경계를 제공합니다. Core는 상태 모델을 담당합니다. Validator, artifact 수집, projection, reconcile은 근거와 읽기용 출력을 상태 전이에 붙입니다.
 
-Native hooks, sidecars, command wrappers, file watchers, worktree isolation은 capability에 따라 달라지는 통제 계층입니다. 구체적인 capability profile이 covered operation에 대해 fixture로 더 강한 통제를 증명하지 않는 한 코어 권한 조각(v0.1 Core Authority Slice)과 초기 사용자 대상 MVP는 reference 접점에서 cooperative/detective behavior에 의존합니다.
+Native hooks, sidecars, command wrappers, file watchers, worktree isolation은 capability에 따라 달라지는 통제 계층입니다. 구체적인 capability profile이 covered operation에 대해 fixture로 더 강한 통제를 증명하지 않는 한 코어 권한 스모크(v0.1 Core Authority Smoke)과 초기 첫 사용자 가치 조각는 reference 접점에서 cooperative/detective behavior에 의존합니다.
 
 
 ### Core modules
 
-Core는 첫 조각에서 단일 로컬 프로세스로 실행할 수 있습니다. 전체 server는 아래 내부 책임으로 자랄 수 있지만, 코어 권한 조각(v0.1 Core Authority Slice)이 이들을 별도 모듈로 모두 구현해야 하는 것은 아닙니다. v0.1 구현은 local registration, Task 하나, 범위가 정해진 작업 경계 하나, `prepare_write`, 한 번만 쓰는 Write Authorization 하나, `record_run` 하나, artifact/evidence ref 하나, structured status/blocker response 하나 밖의 기능을 stub, absent path 또는 later-profile scope로 둘 수 있습니다.
+Core는 첫 조각에서 단일 로컬 프로세스로 실행할 수 있습니다. 전체 server는 아래 내부 책임으로 자랄 수 있지만, 코어 권한 스모크(v0.1 Core Authority Smoke)이 이들을 별도 모듈로 모두 구현해야 하는 것은 아닙니다. v0.1 구현은 local registration, Task 하나, 범위가 정해진 작업 경계 하나, `prepare_write`, 한 번만 쓰는 Write Authorization 하나, `record_run` 하나, artifact/evidence ref 하나, structured status/blocker response 하나 밖의 기능을 stub, absent path 또는 later-profile scope로 둘 수 있습니다.
 
 | Module | Runtime responsibility |
 |---|---|
@@ -249,7 +249,7 @@ Adapters와 sidecars는 접점 capability를 observable facts로 번역합니다
 
 Projection 렌더링은 transaction 이후에 일어납니다. Projection failure는 state-isolated입니다. Projection 최신성 또는 job status를 `stale` 또는 `failed`로 표시하고 커밋된 상태는 그대로 둡니다. Projection은 transaction을 roll back하거나, `state.sqlite.task_events`를 rewrite하거나, passed task를 failed task로 바꾸거나, 나중의 reconcile decision 없이 기준 상태를 repair할 수 없습니다.
 
-Projection freshness는 파생 read fact입니다. Status, next-action, export, operator command가 이를 확인해 readable view가 stale, failed, unknown이라고 보고할 수는 있지만, Core state, structured blockers, evidence records, 작업 수락, 잔여 위험 수용, Write Authorization의 authority는 각 owner record에 남습니다. v0.1 Core Authority Slice는 full projection worker를 증명하지 않고 freshness 또는 read fact를 노출할 수 있습니다. v0.2는 현재 작업 상태, 사용자 판단 요청, 근거 요약, 닫기 준비 상태/blocker를 사용자가 이해할 만큼의 derived output이 필요하고, hardened 또는 operational profile은 complete projection/reconcile 및 diagnostic report path를 담당합니다.
+Projection freshness는 파생 read fact입니다. Status, next-action, export, operator command가 이를 확인해 readable view가 stale, failed, unknown이라고 보고할 수는 있지만, Core state, structured blockers, evidence records, 작업 수락, 잔여 위험 수용, Write Authorization의 authority는 각 owner record에 남습니다. v0.1 Core Authority Smoke는 full projection worker를 증명하지 않고 freshness 또는 read fact를 노출할 수 있습니다. v0.2는 현재 작업 상태, 사용자 판단 요청, 근거 요약, 닫기 준비 상태/blocker를 사용자가 이해할 만큼의 derived output이 필요하고, hardened 또는 operational profile은 complete projection/reconcile 및 diagnostic report path를 담당합니다.
 
 ## Artifact store architecture
 

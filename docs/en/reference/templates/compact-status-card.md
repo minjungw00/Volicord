@@ -9,11 +9,11 @@
 
 ## Used when
 
-Use the compact status card when a short current-state display needs to make Core state readable for a user or compact for an agent. It is the v0.2 MVP projection shape: one small card derived from Core state and refs.
+Use the compact status card when a short current-state display needs to make Core state readable for a user or compact for an agent. It is the v0.2 First User-Value Slice projection shape: one small card derived from Core state and refs.
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: v0.2 User-Facing Harness MVP projection. v0.1 Core status output may still return plain structured status/blocker output instead of this card. This template is not a persisted state record and is not evidence of full projection renderer support.
+Implementation tier: v0.2 First User-Value Slice projection. v0.1 Core status output may still return plain structured status/blocker output instead of this card. This template is not a persisted state record and is not evidence of full projection renderer support.
 
 The card should use ordinary language first and exact Harness labels only where they clarify the authority boundary. It should be small enough for status, next-action, and resume turns.
 

@@ -43,7 +43,7 @@ The slice should create or seed:
 
 This is a command-independent implementation guide. It describes capabilities and observable behavior, not CLI syntax. Do not include or duplicate full DDL here. Storage details and DDL are owned by [Storage And DDL](../reference/storage-and-ddl.md).
 
-For storage planning, use only the [Core Authority Slice schema](../reference/storage-and-ddl.md#core-authority-slice-schema) for v0.1. Later storage profiles such as Decision Packets, Approvals, Evidence Manifests, Manual QA, Eval, projection jobs, reconcile items, validator runs, Journey records, and diagnostics are not first-slice requirements.
+For storage planning, use only the [Core Authority Smoke schema](../reference/storage-and-ddl.md#core-authority-smoke-schema) for v0.1. Later storage profiles such as Decision Packets, Approvals, Evidence Manifests, Manual QA, Eval, projection jobs, reconcile items, validator runs, Journey records, and diagnostics are not first-slice requirements.
 
 The first slice is deliberately not the First User-Value Slice, a product MVP, the hardened local reference target as a whole, natural-language intake, full Discovery, full Decision Packet, full Evidence Manifest, Eval, Manual QA, Acceptance, residual-risk acceptance, full close semantics, detached verification, work-acceptance semantics, projection rendering, a projection-template-polish milestone, multiple projection kinds, dashboard or hosted-workflow-UI milestone, broad connector ecosystem or marketplace milestone, multi-surface connector expansion, Context Index, Browser QA Capture system, Cross-Surface Verification path, hook expansion, preventive guard expansion, Advanced Sidecar Watcher, Local Derived Metrics surface, team workflow, operations/export/recover path, release handoff path, conformance runner, broad operator-entrypoint path, future fixture catalog, or parallel automation path.
 
@@ -98,7 +98,7 @@ Done when:
 - Core can resolve the current project for all later Task-scoped actions.
 - Status can distinguish an unregistered or idle project from an active Task.
 
-Owner contracts: runtime home layout and the v0.1 Core Authority Slice schema are owned by [Storage And DDL](../reference/storage-and-ddl.md#core-authority-slice-schema); local spaces and guarantee-level placement are owned by [Runtime Architecture Reference](../reference/runtime-architecture.md), guarantee-level meanings by [Security Threat Model Reference](../reference/security-threat-model.md#honest-guarantee-display), and connector reporting by [Agent Integration Reference](../reference/agent-integration.md).
+Owner contracts: runtime home layout and the v0.1 Core Authority Smoke schema are owned by [Storage And DDL](../reference/storage-and-ddl.md#core-authority-smoke-schema); local spaces and guarantee-level placement are owned by [Runtime Architecture Reference](../reference/runtime-architecture.md), guarantee-level meanings by [Security Threat Model Reference](../reference/security-threat-model.md#honest-guarantee-display), and connector reporting by [Agent Integration Reference](../reference/agent-integration.md).
 
 ### 2. One Task Record
 

@@ -6,7 +6,7 @@ Use `DEC` when standalone Decision Packet projection is enabled for a specific u
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: User judgment prompt shape. Use it for the Decision Packet display/card shape when a user-owned judgment is pending, not as the v0.2 MVP projection and not as the standalone `DEC` `ProjectionKind`. A standalone persisted `DEC` Markdown projection remains optional unless the standalone Decision Packet projection feature is enabled; the required prompt can appear through the compact status card, status/next, or decision resources.
+Implementation tier: User judgment prompt shape. Use it for the Decision Packet display/card shape when a user-owned judgment is pending, not as the v0.2 First User-Value Slice projection and not as the standalone `DEC` `ProjectionKind`. A standalone persisted `DEC` Markdown projection remains optional unless the standalone Decision Packet projection feature is enabled; the required prompt can appear through the compact status card, status/next, or decision resources.
 
 ## Source records
 

@@ -30,7 +30,7 @@ Learn 경로에서 하네스의 기본 개념을 먼저 이해해 두는 것이 
 
 하네스는 AI 지원 제품 작업을 위한 로컬 작업 장부이자 판단 라우터입니다. 무엇을 바꿀 수 있는지, 누가 판단해야 하는지, 어떤 근거가 있는지, 어떤 위험이 남았는지, 작업을 닫아도 되는지를 기록합니다. 첫 구현 경로는 가장 작은 Core 권한 루프로 그 로컬 장부를 증명한 뒤, 좁은 첫 사용자 가치 조각을 증명해야 합니다.
 
-v0.1 Core Authority Smoke을 먼저 만듭니다. 가장 작은 로컬 Core 권한 경로를 증명하며, 커널 스모크(Kernel Smoke)는 좁은 future smoke-check 작성 label입니다. 이것은 내부 smoke 단계이지 product MVP가 아닙니다. 그다음 v0.2 First User-Value Slice를 만들어 ordinary-language start/resume, work-shape classification, scope/non-goals/success criteria, minimal user judgment, evidence summary, close blockers, residual-risk visibility, sensitive approval / work acceptance / risk acceptance 분리 표시를 사용자가 볼 수 있게 합니다. 근거와 compact status output은 이 경험을 지원하지만 full assurance, QA, Eval, reporting, operations, dashboard 시스템이 아닙니다. 에이전시 보증 팩(v0.3 Agency Assurance Pack)과 운영과 인계 팩(v0.4 Operations & Handoff Pack)이 그 경로를 단단하게 만듭니다.
+v0.1 Core Authority Smoke을 먼저 만듭니다. 가장 작은 로컬 Core 권한 경로를 증명하며, 커널 스모크(Kernel Smoke)는 좁은 future smoke-check 작성 label입니다. 이것은 내부 smoke 단계이지 제품 MVP가 아닙니다. 그다음 v0.2 First User-Value Slice를 만들어 ordinary-language start/resume, work-shape classification, scope/non-goals/success criteria, minimal user judgment, evidence summary, close blockers, residual-risk visibility, sensitive approval / work acceptance / risk acceptance 분리 표시를 사용자가 볼 수 있게 합니다. 근거와 compact status output은 이 경험을 지원하지만 full assurance, QA, Eval, reporting, operations, dashboard 시스템이 아닙니다. 에이전시 보증 팩(v0.3 Agency Assurance Pack)과 운영과 인계 팩(v0.4 Operations & Handoff Pack)이 그 경로를 단단하게 만듭니다.
 
 이 Build 경로의 모든 구현 동사는 유지보수자 인계가 그 배치를 위한 구현 계획 준비 상태를 명시적으로 수락한 뒤의 향후 런타임 배치 계획을 설명합니다. [문서 수락 상태](#문서-수락-상태)가 구현 계획 준비 상태를 수락하지 않는 동안에는 이 문서를 범위와 인계 준비 상태를 검토하는 용도로만 사용합니다. 문서 수락만으로 구현이 시작되거나 런타임 conformance가 증명되지는 않습니다.
 
@@ -172,13 +172,13 @@ maintainer 수락 조건:
 - 판단 모델이 Kernel, MCP/API schema, storage, template, fixture, Learn/Use 설명, glossary term과 schema-aligned 상태다. `judgment_category`는 사용자에게 보이는 판단 묶음을 담당하고, `judgment_route`는 internal owner path와 recorded-answer route를 담당하며, `display_depth`는 prompt depth를 담당한다. Affected gate와 blocked action은 별도의 owner field에 남는다.
 - Decision Packet prompt는 판단의 크기에 맞다. 작은 명시적 unblocker는 `display_depth=simple`을 사용할 수 있고, trade-off, high-risk, close-affecting, approval-shaped, waiver, 작업 수락, residual-risk acceptance, reconcile, mixed prompt는 owner contract가 요구하는 추가 context를 담되 모든 작은 판단을 무겁게 만들지 않는다.
 - Approval, 작업 수락, 잔여 위험 수용이 예시, template, API/schema 문구, close behavior, user-facing routing에서 분리되어 있다.
-- Stage가 일관적이다. v0.1 Core Authority Smoke는 product MVP가 아니고, v0.2 First User-Value Slice는 첫 narrow user-value slice이지 full assurance/Eval/QA/reporting system이 아니며, v0.3 Agency Assurance Pack은 verification, QA, residual risk, work acceptance, stewardship를 단단하게 만들고, v0.4 Operations & Handoff Pack은 operational handoff capability를 추가하며, v1+ Expansion은 승격 전까지 roadmap 범위다.
+- Stage가 일관적이다. v0.1 Core Authority Smoke는 제품 MVP가 아니고, v0.2 First User-Value Slice는 첫 narrow user-value slice이지 full assurance/Eval/QA/reporting system이 아니며, v0.3 Agency Assurance Pack은 verification, QA, residual risk, work acceptance, stewardship를 단단하게 만들고, v0.4 Operations & Handoff Pack은 operational handoff capability를 추가하며, v1+ Expansion은 승격 전까지 roadmap 범위다.
 - Kernel, API, storage, reference, Build contract가 Core ownership, state transition, write authority, evidence, judgment record, close semantics, idempotency, state conflict behavior, artifact, projection job, fixture semantics에서 서로 맞는다.
 - Storage와 API는 단계화되어 있다. Reference schema와 DDL은 future-profile field나 table을 정의할 수 있지만, implementation은 active method, record, profile을 따른다. Future-profile 존재 자체가 v0.1 범위를 넓히지는 않는다.
 - 읽기용 요약(Projection) 범위가 단계화되어 있고 권한이 없다. 읽기용 요약과 card는 Core record와 artifact ref에서 파생되며, 권한을 만들거나 첫 증명이 되지 않는다.
 - 보안 보장이 실제 enforcement level과 맞다. Cooperative, detective, preventive, isolated 표현은 해당 동작에 대해 문서화된 surface와 fixture-proven path가 있을 때만 사용한다.
 - Agent context 전략이 정의되어 있다. 항상 주입되는 맥락은 한 화면 안팎으로 유지하고 현재 Task 요약, 작업 모양, 범위/하지 않을 일, 대기 중인 사용자 판단, 활성 blocker, 다음 안전한 행동, 근거 gap, close blocker, 잔여 위험 요약, guarantee level, source refs/freshness만 담는다. 전체 Reference 문서, schema, DDL, historical log, 읽기용 요약 본문, artifact contents, 관련 없는 template, future catalog material은 알맞은 담당 문서/조회 경로로만 가져온다.
-- Conformance fixture plan이 단계화되고 향후 검증 계획으로 유지된다. Kernel Smoke는 작은 smoke check를 위한 좁은 v0.1 작성 label일 뿐이고, 이후 suite profile은 v0.2 First User-Value Slice, 에이전시 보증 팩(v0.3 Agency Assurance Pack), 운영과 인계 팩(v0.4 Operations & Handoff Pack), 승격된 v1+ item에 맞으며, fixture file, future fixture catalog, full v0.1 conformance suite, runnable conformance test가 이미 존재한다고 암시하지 않는다.
+- Conformance fixture plan이 단계화되고 향후 검증 계획으로 유지된다. Kernel Smoke는 작은 smoke check를 위한 좁은 v0.1 작성 label일 뿐이고, 이후 suite profile은 v0.2 First User-Value Slice, 에이전시 보증 팩(v0.3 Agency Assurance Pack), 운영과 인계 팩(v0.4 Operations & Handoff Pack), 승격된 v1+ item에 맞으며, fixture file, 향후 fixture catalog, full v0.1 conformance suite, runnable conformance test가 이미 존재한다고 암시하지 않는다.
 - Operations surface가 단계화되어 있다. Minimal local status/diagnostic behavior는 초기 stage를 도울 수 있지만, doctor/readiness, reconcile, recover, export, artifact check, release handoff, conformance run entrypoint는 owner stage가 포함하기 전까지 v0.1 requirement가 아니다.
 - 한국어 사용자 대상 문서는 읽기 쉽고 일관적이다. 자연스러운 한국어를 먼저 쓰고, stable schema identifier, API name, enum value, DDL name, file name, validator ID, official product/stage name은 정밀도가 필요할 때 정확히 유지한다.
 - Link, TODO, terminology, 영어/한국어 의미 일치가 정리되어 있다. Active docs에 흩어진 unresolved major-decision TODO가 없고, 서버 코딩 전 필요한 구현 결정은 [단계별 전달 계획](mvp-plan.md#서버-코딩-전-필요한-구현-결정)의 open ledger에 기록되어 있다.
@@ -307,7 +307,7 @@ v0.1 Core Authority Smoke은 협력형(cooperative) 또는 탐지형(detective) 
 
 ## 첫 증명
 
-첫 실행 목표는 v0.1 Core Authority Smoke입니다. 하네스가 하나의 권한 결정을 만들고 적용할 수 있음을 보여 주는 가장 작은 실행 가능한 경로입니다. 커널 스모크(Kernel Smoke)는 이 목표의 smoke check를 위한 좁은 향후 작성 label이지 full conformance suite가 아닙니다.
+첫 실행 목표는 v0.1 Core Authority Smoke입니다. 하네스가 하나의 권한 결정을 만들고 적용할 수 있음을 보여 주는 가장 작은 실행 가능한 경로입니다. 커널 스모크(Kernel Smoke)는 이 목표의 smoke check를 위한 좁은 향후 작성 label이지 전체 conformance suite가 아닙니다.
 
 v0.1은 내부 authority loop를 증명하는 단계입니다. Product MVP, template 완성도, broad automation을 증명하는 단계가 아닙니다.
 

@@ -14,7 +14,7 @@
 
 ## Catalog 전용 Future Families
 
-아래 family는 의도적으로 이 catalog에 둡니다. 코어 권한 조각(v0.1 Core Authority Slice)이나 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP)의 요구사항이 아니며, catalog에 나열되어 있다는 사실만으로 이후 단계의 필수 항목이 되지도 않습니다. 어떤 row가 executable conformance가 되려면 향후 담당 owner가 exact behavior, stage, fallback, security wording, exact-shape fixture를 먼저 승격해야 합니다.
+아래 family는 의도적으로 이 catalog에 둡니다. 코어 권한 스모크(v0.1 Core Authority Smoke)이나 첫 사용자 가치 조각(v0.2 First User-Value Slice)의 요구사항이 아니며, catalog에 나열되어 있다는 사실만으로 이후 단계의 필수 항목이 되지도 않습니다. 어떤 row가 executable conformance가 되려면 향후 담당 owner가 exact behavior, stage, fallback, security wording, exact-shape fixture를 먼저 승격해야 합니다.
 
 | Future family | Catalog boundary |
 |---|---|
@@ -652,7 +652,7 @@ expected_error:
 
 ## Core Fixture 예시
 
-아래 예시는 Core behavior 전반을 위한 향후 exact-shape 예시입니다. Minimal v0.1 Kernel Smoke subset을 넘을 수 있으므로, 첫 Core Authority Slice가 무엇을 증명해야 하는지는 [Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue)와 Build scope를 기준으로 판단합니다.
+아래 예시는 Core behavior 전반을 위한 향후 exact-shape 예시입니다. Minimal v0.1 Kernel Smoke subset을 넘을 수 있으므로, 첫 Core Authority Smoke가 무엇을 증명해야 하는지는 [Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue)와 Build scope를 기준으로 판단합니다.
 
 `prepare_write` allowed 예시는 Task가 `ready`에서 `executing`으로 이동한다고 기대합니다. 이 transition은 kernel transition table이 소유하고 정의합니다.
 
@@ -2468,7 +2468,7 @@ expected_error: null
 
 ### v1+ Expansion Browser QA Capture Candidate Entries
 
-이 catalog entries는 future candidates이지 코어 권한 조각(v0.1 Core Authority Slice), 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP), 에이전시 보증 팩(v0.3 Agency Assurance Pack), 운영과 인계 팩(v0.4 Operations & Handoff Pack), 커널 스모크(Kernel Smoke) 요구사항이 아닙니다. Browser QA Capture capability profile, redaction 및 secret/PII policy, test environment, artifact retention, fixture 또는 conformance target, fallback 의미, projection-as-canonical 의존성 없음이 정의된 뒤에만 executable이 됩니다.
+이 catalog entries는 future candidates이지 코어 권한 스모크(v0.1 Core Authority Smoke), 첫 사용자 가치 조각(v0.2 First User-Value Slice), 에이전시 보증 팩(v0.3 Agency Assurance Pack), 운영과 인계 팩(v0.4 Operations & Handoff Pack), 커널 스모크(Kernel Smoke) 요구사항이 아닙니다. Browser QA Capture capability profile, redaction 및 secret/PII policy, test environment, artifact retention, fixture 또는 conformance target, fallback 의미, projection-as-canonical 의존성 없음이 정의된 뒤에만 executable이 됩니다.
 
 에이전시 보증 팩 / 운영과 인계 팩의 staged 수동 QA 적용 범위는 기존 수동 QA record 또는 valid QA waiver, `qa_gate` behavior, Core owner path를 통해 제공된 registered artifact refs입니다. Automated Browser QA Capture는 승격 이후에 유용한 capture 보조 수단이지만, staged 수동 QA 또는 artifact coverage를 충족하기 위해 요구되지 않습니다.
 
@@ -2476,11 +2476,11 @@ expected_error: null
 |---|---|---|
 | `BROWSER-QA-capture-artifacts-attach-to-manual-qa` | `record_manual_qa` | Capable `T6 QA Capture` profile이 supported screenshot, `qa_capture`, log 또는 console log, network trace, accessibility snapshot, workflow recording artifacts를 등록하고, 이를 수동 QA record 또는 Feedback Loop execution에 link하며, redaction과 retention policy를 적용하고, normal 수동 QA result semantics를 통해서만 `qa_gate`를 업데이트합니다. 이 artifacts는 human QA record를 뒷받침하지만 human judgment 자체는 아닙니다. |
 | `BROWSER-QA-capture-not-work-acceptance-or-detached-verification` | `record_manual_qa` 또는 `record_eval` | Browser QA artifacts는 evidence를 보강할 수 있지만 작업 수락을 기록하지 않고, required human 수동 QA judgment를 대체하지 않으며, separate Eval path가 independence 요구사항을 충족하지 않는 한 `assurance_level=detached_verified`를 설정하지 않습니다. |
-| `BROWSER-QA-unsupported-surface-falls-back-to-human-notes` | `record_manual_qa` 또는 `next` | Browser capture capability가 없는 접점은 missing `T6` capability를 보고하고, 사람이 작성한 수동 QA notes와 수동 제공 artifacts를 추천하며, 자동 브라우저 캡처를 사용할 수 없다는 이유만으로 커널 스모크(Kernel Smoke), 사용자 대상 하네스 MVP(v0.2 User-Facing Harness MVP), 에이전시 보증 팩(v0.3 Agency Assurance Pack), 운영과 인계 팩(v0.4 Operations & Handoff Pack)의 conformance 실패로 처리하지 않습니다. |
+| `BROWSER-QA-unsupported-surface-falls-back-to-human-notes` | `record_manual_qa` 또는 `next` | Browser capture capability가 없는 접점은 missing `T6` capability를 보고하고, 사람이 작성한 수동 QA notes와 수동 제공 artifacts를 추천하며, 자동 브라우저 캡처를 사용할 수 없다는 이유만으로 커널 스모크(Kernel Smoke), 첫 사용자 가치 조각(v0.2 First User-Value Slice), 에이전시 보증 팩(v0.3 Agency Assurance Pack), 운영과 인계 팩(v0.4 Operations & Handoff Pack)의 conformance 실패로 처리하지 않습니다. |
 
 ## Fixture Suites
 
-향후 suite family는 [Conformance Fixtures 참조](conformance-fixtures.md#검증-프로파일별-증명-동작)의 검증 프로파일 아래에 묶습니다. 아래 `core` family는 v0.1 Core Authority Slice smoke subset보다 넓습니다. v0.1은 Build와 Kernel Smoke queue가 지정한 minimal authority-loop check만 사용합니다.
+향후 suite family는 [Conformance Fixtures 참조](conformance-fixtures.md#검증-프로파일별-증명-동작)의 검증 프로파일 아래에 묶습니다. 아래 `core` family는 v0.1 Core Authority Smoke smoke subset보다 넓습니다. v0.1은 Build와 Kernel Smoke queue가 지정한 minimal authority-loop check만 사용합니다.
 
 - core: 활성 상태 확인, advisor close 처리, tiny direct를 Direct profile로 포함하는 direct close 처리, 쓰기 gate, Write Authorization 생성, 필수 조건, invalid case coverage, Approval 필요 조건과 Approval lifecycle retry, 근거 부족 처리, evidence/close readiness에 대한 artifact integrity 영향, same-session verification guard 확인, QA 필요 조건 처리, 작업 수락 필요 조건 처리, acceptance 또는 close 전 잔여 위험 표시, projection failure 분리 확인, current-state와 stale-projection 구분, stale projection write guard
 - connector: startup phrase 없는 자연어 intake, plain-language 요청을 Harness record로 라우팅, capability profile, connector profile 최신성, 오래된 capability profile 감지, surface capability mismatch, doctor/connect/serve-mcp/artifact check의 local security posture severity, MCP unavailable 보류, generated/managed manifest drift 감지, 변경 경로 감지, artifact 수집, native capture가 없을 때 수동 artifact capture fallback, cooperative/detective/manual fallback 동작을 preventive 또는 isolated로 상향 표시하지 않는 fallback 보장 수준 표시, 중요한 재개 전 간결한 현재 위치 맥락 표시, Decision Packet을 포괄 동의처럼 다루지 않음, Autonomy Boundary 초과를 Decision Packet 또는 blocker로 라우팅, stale chat 또는 PRD context의 pull-only 동작

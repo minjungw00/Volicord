@@ -155,7 +155,7 @@ v0.1과 v0.2 storage는 다른 profile이 더 강한 control을 증명하기 전
 
 ## v0.1 Physical Schema
 
-v0.1은 Core Authority Slice입니다. 의도적으로 작습니다. Project 등록, Task 하나 생성 또는 load, scoped work boundary 하나 정의, write 하나 authorize, Run 하나 기록, artifact/evidence ref 하나 등록, event append, structured blocker return에 충분해야 합니다.
+v0.1은 Core Authority Smoke입니다. 의도적으로 작습니다. Project 등록, Task 하나 생성 또는 load, scoped work boundary 하나 정의, write 하나 authorize, Run 하나 기록, artifact/evidence ref 하나 등록, event append, structured blocker return에 충분해야 합니다.
 
 아래 DDL은 planning을 위한 reference fragment입니다. Migration runner가 이미 존재한다는 증거가 아닙니다.
 
@@ -163,13 +163,13 @@ v0.1은 Core Authority Slice입니다. 의도적으로 작습니다. Project 등
 
 | Profile | Stage | Required for | 이 profile에 required가 아닌 것 |
 |---|---|---|---|
-| Core Authority Slice schema | v0.1 | 좁은 local authority loop | Decision Packet, Evidence Manifest, Manual QA, Eval, residual-risk acceptance, projection job, reconcile, validator, Journey, stewardship map |
-| User-Facing Harness MVP schema | v0.2 | 첫 user-value record와 readable status | detached verification, full Manual QA, full projection job system, export/recover, broad operations |
+| Core Authority Smoke schema | v0.1 | 좁은 local authority loop | Decision Packet, Evidence Manifest, Manual QA, Eval, residual-risk acceptance, projection job, reconcile, validator, Journey, stewardship map |
+| First User-Value Slice schema | v0.2 | 첫 user-value record와 readable status | detached verification, full Manual QA, full projection job system, export/recover, broad operations |
 | Agency Assurance schema | v0.3 또는 promoted profile | verification, QA, approval, feedback/TDD, validator support | promoted되지 않은 v0.1/v0.2 exit |
 | Operations schema | v0.4 또는 promoted profile | projection job, reconcile, connector manifest, recover/export | promoted되지 않은 v0.1/v0.2 exit |
 | Future / diagnostic schema | future/diagnostic | journey/spine, domain/module/interface diagnostic | promoted되지 않은 모든 current stage exit |
 
-### Core Authority Slice schema
+### Core Authority Smoke schema
 
 Main v0.1 table count: total 12 tables입니다. `registry.sqlite`에 2개, project `state.sqlite`에 10개입니다. 첫 구현 조각에 맞게 작게 유지한 수입니다.
 
@@ -363,9 +363,9 @@ Compatible owner link가 없는 `artifacts` row만으로는 evidence, QA, verifi
 
 ## v0.2 Additions
 
-v0.2는 첫 user-facing Harness MVP입니다. 사람이 작업을 이해하는 데 필요한 record를 추가합니다. Intake state, simplified user judgment, visible residual risk, evidence summary, close blocker/readiness, optional status-card freshness가 핵심입니다. 그래도 full assurance, projection job, reconciliation, operations system은 피합니다.
+v0.2는 첫 사용자 가치 조각(First User-Value Slice)입니다. 사람이 작업을 이해하는 데 필요한 record를 추가합니다. Intake state, simplified user judgment, visible residual risk, evidence summary, close blocker/readiness, optional status-card freshness가 핵심입니다. 그래도 full assurance, projection job, reconciliation, operations system은 피합니다.
 
-### User-Facing Harness MVP schema
+### First User-Value Slice schema
 
 Main v0.2 addition count: 5 tables입니다. Optional `decision_requests`와 `projection_status_cards` table을 추가할 수 있습니다. 이 table들은 v0.1 schema 위에 놓입니다.
 
@@ -515,7 +515,7 @@ Future 또는 diagnostic schema candidate는 owner가 승격하기 전까지 non
 - Rich design support: `shared_designs`, `change_unit_dependencies`
 - Diagnostics and polish: metrics, dashboard, context index, connector analytics, export/recover detail table, richer projection cache
 
-이 record들은 유용할 수 있지만 v0.1 Core Authority Slice나 v0.2 User-Facing Harness MVP의 전제 조건이 되어서는 안 됩니다.
+이 record들은 유용할 수 있지만 v0.1 Core Authority Smoke나 v0.2 First User-Value Slice의 전제 조건이 되어서는 안 됩니다.
 
 ### Baseline capture format
 

@@ -44,8 +44,8 @@ Security display는 실제 control과 일치해야 합니다. Cooperative와 det
 
 | 단계 | 기본 guarantee posture | 정직한 주장 경계 |
 |---|---|---|
-| v0.1 Core Authority Slice | 지시 기반/협력적(cooperative) + 제한된 탐지 가능(detective) behavior. | Core는 authority가 없는 state-changing call을 거부하고, 구조화된 상태/막힘 출력을 만들고, compatible Write Authorization 하나를 consume하고, Run 하나를 기록하며, active path에 필요한 최소 artifact/evidence ref를 검증할 수 있습니다. 별도의 preventive profile이 증명되지 않는 한 local process나 agent가 Harness 밖에서 file을 edit하는 것을 멈추지 않습니다. |
-| v0.2 User-Facing Harness MVP | 지시 기반/협력적(cooperative) + 사용자에게 보이는 blocker/status와 제한된 탐지 가능(detective) behavior. | 사용자는 missing scope, missing decision, missing evidence, close blocker, MCP availability, 정직한 보장 상태를 볼 수 있습니다. Authority를 확인할 수 없으면 product/runtime/code write는 지시로 보류됩니다. 이것은 여전히 기본 도구 실행 전 차단이나 격리가 아닙니다. |
+| v0.1 Core Authority Smoke | 지시 기반/협력적(cooperative) + 제한된 탐지 가능(detective) behavior. | Core는 authority가 없는 state-changing call을 거부하고, 구조화된 상태/막힘 출력을 만들고, compatible Write Authorization 하나를 consume하고, Run 하나를 기록하며, active path에 필요한 최소 artifact/evidence ref를 검증할 수 있습니다. 별도의 preventive profile이 증명되지 않는 한 local process나 agent가 Harness 밖에서 file을 edit하는 것을 멈추지 않습니다. |
+| v0.2 First User-Value Slice | 지시 기반/협력적(cooperative) + 사용자에게 보이는 blocker/status와 제한된 탐지 가능(detective) behavior. | 사용자는 missing scope, missing decision, missing evidence, close blocker, MCP availability, 정직한 보장 상태를 볼 수 있습니다. Authority를 확인할 수 없으면 product/runtime/code write는 지시로 보류됩니다. 이것은 여전히 기본 도구 실행 전 차단이나 격리가 아닙니다. |
 | v0.3 Agency Assurance Pack | Verification, QA, residual risk, 작업 수락, sensitive-action Approval 분리를 더 강하게 보여 주는 cooperative/detective assurance. | Harness는 assurance gap, stale evidence, missing independence, QA blocker, waiver/risk/acceptance boundary, context-hygiene finding을 기록하고 보고할 수 있습니다. 특정 profile이 capability를 증명하지 않는 한 preventive 또는 isolated가 되지 않습니다. |
 | v0.4 Operations & Handoff Pack | Recover, export, readiness, artifact integrity, projection freshness, handoff reporting 주변의 탐지 가능(detective) operational behavior. | Operator surface는 진단, 보고, owner path를 통한 repair, safe bundle export, artifact integrity check를 수행할 수 있습니다. 기본적으로 Runtime Home을 변조 불가능하게 만들거나, projection을 authoritative하게 만들거나, 임의 도구를 격리하지 않습니다. |
 | v1+ Expansion | 구현되고 증명된 경우에만 사전 차단(preventive) 또는 격리(isolated) 후보. | 더 강한 주장은 exact contract, covered operation, fixture proof, fallback behavior가 필요하며, 격리의 경우 proven sandbox, permission boundary, locked-down runner, process boundary, container boundary 같은 실제 separation boundary를 이름 붙여야 합니다. |
@@ -84,7 +84,7 @@ v0.1과 v0.2 reference path는 사전 차단형(preventive) 또는 격리형(iso
 
 ## 단계별 scenario posture
 
-| Scenario | v0.1 Core Authority Slice | v0.2 User-Facing Harness MVP | v0.3 Agency Assurance Pack | v0.4 Operations & Handoff Pack | v1+ Expansion |
+| Scenario | v0.1 Core Authority Smoke | v0.2 First User-Value Slice | v0.3 Agency Assurance Pack | v0.4 Operations & Handoff Pack | v1+ Expansion |
 |---|---|---|---|---|---|
 | MCP unavailable | Authority가 필요한 call은 fail 또는 hold됩니다. Chat이나 cached text에서 Core state, Write Authorization, evidence, 작업 수락, 잔여 위험 수용, close claim을 만들어 내지 않습니다. | 사용자는 availability 막힘/status와 다음 reconnect 또는 diagnosis action을 봅니다. 입증된 더 강한 profile이 해당 operation을 cover하지 않는 한 product/runtime/code write는 지시로 보류됩니다. | Assurance path는 unavailable path를 통해 verification, QA, waiver, risk, acceptance state를 신뢰할 수 없다고 보고합니다. | `serve mcp`, `doctor`, `recover`는 `MCP_SERVER_UNAVAILABLE`과 `SURFACE_MCP_UNAVAILABLE`을 구분하고 public `MCP_UNAVAILABLE`/capability error boundary를 보존합니다. | 승격된 guard는 증명된 path에서만 covered write를 실행 전에 멈출 수 있고, 승격된 isolation profile은 실제 boundary를 통해 work를 route할 수 있습니다. |
 | Out-of-scope write | `prepare_write`는 Write Authorization을 거부하고 구조화된 막힘을 반환할 수 있습니다. External edit는 active path가 관찰할 때만 탐지됩니다. | 사용자는 무엇이 scope 밖인지 보고, 올바른 decision path를 통해 scope를 줄이거나 의도적으로 넓힐 수 있습니다. | Autonomy, approval, evidence, changed-path check가 run, evidence, verification, close readiness를 stale/blocked/insufficient로 표시할 수 있습니다. | Doctor, recover, reconcile이 changed-path 또는 generated-file drift를 보고하고 repair를 owner path로 route할 수 있습니다. | Preventive profile은 fixture proof가 해당 operation을 cover할 때만 covered path/command/network/secret을 실행 전에 멈출 수 있습니다. |
@@ -121,7 +121,7 @@ v0.1과 v0.2 reference path는 사전 차단형(preventive) 또는 격리형(iso
 
 ## 기준 전제
 
-코어 권한 조각(v0.1 Core Authority Slice)과 staged-delivery default는 local-first입니다. 기준 배치는 사용자가 관리하는 제품 저장소, local 하네스 서버/설치, 하네스 런타임 홈, 등록된 local connector posture를 통해서만 노출되는 MCP server, 하나 이상의 연결된 agent surface입니다.
+코어 권한 스모크(v0.1 Core Authority Smoke)과 staged-delivery default는 local-first입니다. 기준 배치는 사용자가 관리하는 제품 저장소, local 하네스 서버/설치, 하네스 런타임 홈, 등록된 local connector posture를 통해서만 노출되는 MCP server, 하나 이상의 연결된 agent surface입니다.
 
 Local-first는 모든 local process를 신뢰한다는 뜻이 아닙니다. 다른 process, 오래된 connector configuration, 넓은 file permission, forwarded port, 사람이 편집한 generated file, stale chat context는 여전히 agent가 보고 하는 일에 영향을 줄 수 있습니다. 따라서 Harness는 가까운 surface를 별도 trust zone으로 다루고 owner path를 통해서만 operational meaning을 받아들입니다.
 

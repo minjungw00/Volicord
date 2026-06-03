@@ -13,7 +13,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Future/diagnostic projections입니다. `TASK`는 v0.2 MVP projection이 아닙니다. v0.2의 사용자 대상 status는 [Compact Status Card](compact-status-card.md)가 담당하고, 사용자 판단이 필요하면 Decision Packet prompt 또는 resource가 담당합니다. 전체 `TASK` body는 later profile polish입니다.
+구현 계층: Future/diagnostic projections입니다. `TASK`는 v0.2 First User-Value Slice projection이 아닙니다. v0.2의 사용자 대상 status는 [Compact Status Card](compact-status-card.md)가 담당하고, 사용자 판단이 필요하면 Decision Packet prompt 또는 resource가 담당합니다. 전체 `TASK` body는 later profile polish입니다.
 
 이 repository에 `TASK` template이 있다는 사실은 현재 단계에서 full `TASK` Markdown이 필요하다는 뜻이 아닙니다.
 

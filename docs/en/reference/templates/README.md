@@ -21,13 +21,13 @@ Keep these audiences separate:
 
 | Audience | Shape | Rule |
 |---|---|---|
-| User-facing compact card | [Compact Status Card](compact-status-card.md) | The v0.2 MVP projection: one small current-state card. |
+| User-facing compact card | [Compact Status Card](compact-status-card.md) | The v0.2 First User-Value Slice projection: one small current-state card. |
 | Agent compact context/reference payload | Structured refs, blocker labels, source clocks, freshness, and next-action hints | Derived support payload. Compact by default; no full report bodies unless pulled for a phase-specific reason. |
 | Future/diagnostic reports | `TASK`, Journey Card/Spine, Run Summary, detailed Evidence Manifest, detailed Eval, full Manual QA, TDD Trace, Domain Language, Module Map, Interface Contract, Design, Export, full Approval Card, and other polished reports | Later/profile or diagnostic output. Display-only, never authority. |
 
-## v0.2 MVP projection
+## v0.2 First User-Value Slice projection
 
-The v0.2 MVP projection is one compact status card. It must show:
+The v0.2 First User-Value Slice projection is one compact status card. It must show:
 
 - current Task summary
 - work shape
@@ -47,12 +47,12 @@ The card must be readable for users and compact for agents. It should not dump s
 
 | Template | Audience | First active stage | Authority status | Notes |
 |---|---|---|---|---|
-| [Compact Status Card](compact-status-card.md) | User-facing compact card; agent compact context source | v0.2 MVP projection; optional as v0.1 status rendering | Derived display only | The only v0.2 MVP projection shape. Plain structured output is still enough for v0.1. |
+| [Compact Status Card](compact-status-card.md) | User-facing compact card; agent compact context source | v0.2 First User-Value Slice projection; optional as v0.1 status rendering | Derived display only | The only v0.2 First User-Value Slice projection shape. Plain structured output is still enough for v0.1. |
 | [Decision Packet display](decision-packet.md) | User judgment prompt/display | v0.2 when user judgment flow is active | Derived display over `state.sqlite.decision_packets`; not standalone authority | Required judgments can appear through status/next or resources. Standalone `DEC` Markdown is optional later. |
-| [TASK](task.md) | Continuity/reference report | Later/profile or diagnostic | Derived display only | Not the v0.2 MVP projection. Expanded continuity sections are later polish. |
+| [TASK](task.md) | Continuity/reference report | Later/profile or diagnostic | Derived display only | Not the v0.2 First User-Value Slice projection. Expanded continuity sections are later polish. |
 | [DIRECT-RESULT](direct-result.md) | Compact direct-work result | Later/profile when direct-work display is active | Derived display only | Optional convenience shape; not needed for the compact status card MVP. |
 | [APR](approval.md) | Sensitive-action approval report | v0.3 agency assurance profile | Displays Approval and Decision Packet refs; does not grant approval | Use only after approval support/profile is active. |
-| [Approval Card](approval-card.md) | Sensitive-action approval prompt/card | v0.3 agency assurance profile | Displays approval boundary; does not authorize writes | Full approval card is not v0.2 MVP. |
+| [Approval Card](approval-card.md) | Sensitive-action approval prompt/card | v0.3 agency assurance profile | Displays approval boundary; does not authorize writes | Full approval card is not v0.2 First User-Value Slice. |
 | [MANUAL-QA](manual-qa.md) | Manual QA report | v0.3 agency assurance profile | Displays `manual_qa_records`/`qa_gate`; does not perform QA | Full Manual QA projection is later/profile scope. |
 | [Manual QA Card](manual-qa-card.md) | Manual QA prompt/card | v0.3 agency assurance profile | Displays QA requirement/waiver refs; does not record QA | Full Manual QA card is later/profile scope. |
 | [Verification Result Card](verification-result-card.md) | Verification/Eval display | v0.3 agency assurance profile | Displays Eval/gate refs; does not verify by itself | Compact assurance display when verification profile is active. |

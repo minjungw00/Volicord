@@ -95,7 +95,7 @@ The MVP boundary is about proving the local authority model, not building a broa
 
 The first future slices should prove that ordinary AI-assisted work can be represented as local scope, user-owned judgment, evidence references, close readiness, acceptance, and residual risk without confusing those records with chat, Markdown, tool output, or product files.
 
-Broader automation, richer projections, connector ecosystems, hosted workflows, analytics, and large conformance suites are outside the first product thesis. They may become useful later only if they preserve the authority boundary instead of hiding it.
+Broader automation, richer projections, connector ecosystems, hosted workflows, analytics, and large conformance suites are outside the first user-value slice thesis. They may become useful later only if they preserve the authority boundary instead of hiding it.
 
 ## Non-Goals
 

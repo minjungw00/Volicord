@@ -129,7 +129,7 @@ The repository may hold generated readable summaries and, when an active profile
 
 ## Harness Server / Installation
 
-The Harness Server / Installation is the control plane. v0.1 Core Authority Slice can implement it as one local process with internal modules rather than a fleet of services.
+The Harness Server / Installation is the control plane. v0.1 Core Authority Smoke can implement it as one local process with internal modules rather than a fleet of services.
 
 Core runtime responsibilities:
 
@@ -180,12 +180,12 @@ state.sqlite / artifact store / validators / projector / reconcile worker
 
 The conversation surface gathers user intent, decisions, approvals, QA judgments, and acceptance. The agent surface performs reading, editing, and checking. Harness rules and skills keep the agent oriented. The MCP server provides the tool boundary. Core owns the state machine. Validators, artifact capture, projection, and reconcile attach evidence and readable output to state transitions.
 
-Native hooks, sidecars, command wrappers, file watchers, and worktree isolation are capability-dependent control layers. v0.1 Core Authority Slice and the early user-facing MVP rely on cooperative/detective behavior for the reference surface unless a concrete capability profile has fixture-proven stronger control for the covered operation.
+Native hooks, sidecars, command wrappers, file watchers, and worktree isolation are capability-dependent control layers. v0.1 Core Authority Smoke and the early First User-Value Slice rely on cooperative/detective behavior for the reference surface unless a concrete capability profile has fixture-proven stronger control for the covered operation.
 
 
 ### Core modules
 
-Core can run as a single local process in the first slices. The full server may grow into the internal responsibilities below, but v0.1 Core Authority Slice is not required to implement them as separate modules. Its implementation can collapse everything outside local registration, one Task, one scoped work boundary, `prepare_write`, one single-use Write Authorization, one `record_run`, one artifact/evidence ref, and one structured status/blocker response into stubs, absent paths, or later-profile scope.
+Core can run as a single local process in the first slices. The full server may grow into the internal responsibilities below, but v0.1 Core Authority Smoke is not required to implement them as separate modules. Its implementation can collapse everything outside local registration, one Task, one scoped work boundary, `prepare_write`, one single-use Write Authorization, one `record_run`, one artifact/evidence ref, and one structured status/blocker response into stubs, absent paths, or later-profile scope.
 
 | Module | Runtime responsibility |
 |---|---|
@@ -243,7 +243,7 @@ Within that transaction, Core increments the affected scope clock as part of the
 
 Projection rendering happens after the transaction. A projection failure is state-isolated: it marks projection freshness or job status as stale or failed and leaves the committed state intact. Projection cannot roll back the transaction, rewrite `state.sqlite.task_events`, turn a passed task into a failed task, or repair canonical state without a later reconcile decision.
 
-Projection freshness is a derived-read fact. A status, next-action, export, or operator command may check it and report that a readable view is stale, failed, or unknown, but Core state, structured blockers, evidence records, work acceptance, residual-risk acceptance, and Write Authorization remain authoritative in their owner records. v0.1 Core Authority Slice may expose freshness or read facts without proving the full projection worker; v0.2 needs enough derived output for current work status, user judgment request, evidence summary, and close readiness/blocker comprehension; hardened or operational profiles own the complete projection/reconcile and diagnostic report path.
+Projection freshness is a derived-read fact. A status, next-action, export, or operator command may check it and report that a readable view is stale, failed, or unknown, but Core state, structured blockers, evidence records, work acceptance, residual-risk acceptance, and Write Authorization remain authoritative in their owner records. v0.1 Core Authority Smoke may expose freshness or read facts without proving the full projection worker; v0.2 needs enough derived output for current work status, user judgment request, evidence summary, and close readiness/blocker comprehension; hardened or operational profiles own the complete projection/reconcile and diagnostic report path.
 
 ## Artifact store architecture
 

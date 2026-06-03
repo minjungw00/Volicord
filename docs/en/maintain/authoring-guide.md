@@ -6,7 +6,7 @@ Use this guide when you add, rewrite, split, rename, or review Harness documenta
 
 It helps you keep the current documentation readable for the intended reader, clear about where each kind of detail belongs, and aligned between English and Korean.
 
-This is maintenance documentation. It governs documentation maintenance only. The first runnable target is v0.1 Core Authority Slice, with Kernel Smoke as a narrow future smoke-check authoring label. The first product MVP target is v0.2 User-Facing Harness MVP. v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack harden agency assurance, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
+This is maintenance documentation. It governs documentation maintenance only. The first runnable target is v0.1 Core Authority Smoke, with Kernel Smoke as a narrow future smoke-check authoring label. The first user-value target is v0.2 First User-Value Slice. v0.3 Agency Assurance Pack and v0.4 Operations & Handoff Pack harden agency assurance, operations, and handoff behavior, and v1+ Expansion remains roadmap scope unless owner docs promote and prove it.
 
 ## Read this when
 
@@ -96,7 +96,7 @@ During redesign, optimize for clarity, implementability, and the product thesis,
 Use this short backlog frame to keep redesign findings small and routable:
 
 - Product definition drift: keep Harness defined as a local authority record and judgment-routing layer, not a prompt pack, workflow engine, report generator, dashboard, or broad hosted agent platform.
-- MVP/stage boundary drift: keep v0.1 as the internal Core Authority Slice, v0.2 as the first User-Facing Harness MVP, and future/profile/diagnostic material outside current-stage requirements unless an owner promotes it.
+- MVP/stage boundary drift: keep v0.1 as the internal Core Authority Smoke, v0.2 as the first First User-Value Slice, and future/profile/diagnostic material outside current-stage requirements unless an owner promotes it.
 - Judgment model complexity: keep user-owned judgment visible, proportional, and separated from agent judgment, sensitive-action Approval, final acceptance, and residual-risk acceptance.
 - Close/verification ambiguity: keep evidence, verification, Manual QA, final acceptance, close readiness, and residual risk distinct. None of them substitutes for another.
 - Security guarantee overstatement risk: match cooperative, detective, preventive, and isolated wording to the exact documented mechanism and proof level.
@@ -143,7 +143,7 @@ Use these item categories when routing confirmed tracker findings or docs-mainte
 |---|---|
 | Documentation drift | The fix is wording, owner-boundary cleanup, link repair, TODO hygiene, terminology, or English/Korean parity. |
 | Schema/design decision | The fix requires a real choice in schema, state, API, DDL, security guarantee, fixture semantics, or another owner contract. |
-| Stage boundary decision | The fix requires deciding whether a capability belongs in v0.1 Core Authority Slice, v0.2 User-Facing Harness MVP, v0.3 Agency Assurance Pack, v0.4 Operations & Handoff Pack, or v1+ Expansion. |
+| Stage boundary decision | The fix requires deciding whether a capability belongs in v0.1 Core Authority Smoke, v0.2 First User-Value Slice, v0.3 Agency Assurance Pack, v0.4 Operations & Handoff Pack, or v1+ Expansion. |
 | Implementation-readiness criterion | The item must be true before maintainers accept first runtime-batch planning. |
 | Future roadmap item | The item is useful later and remains outside v0.1 through v0.4 unless promoted. |
 
@@ -152,11 +152,11 @@ Potential item category after verification:
 | Review risk | Default routing if confirmed |
 |---|---|
 | Repository identity as the future Harness Server source repository can drift. | Implementation-readiness criterion |
-| Stage names can still imply v0.1, Kernel Smoke, or a legacy kernel-stage label is the product MVP. | Stage boundary decision |
+| Stage names can still imply v0.1, Kernel Smoke, or a legacy kernel-stage label is the first user-value slice. | Stage boundary decision |
 | User-facing docs may open with heavy implementation disclaimers. | Documentation drift |
 | User-facing docs overuse internal terms. | Documentation drift |
 | Discovery / requirements clarification may converge too early on a Change Unit or the first safe implementation unit. | Stage boundary decision |
-| `judgment_domain` ownership/status can drift. | Schema/design decision |
+| Legacy judgment alias mapping can drift. | Schema/design decision |
 | Decision Packet schema and examples may feel too heavy for small decisions. | Schema/design decision |
 | Approval, final acceptance, and residual-risk acceptance are too easy to confuse. | Schema/design decision |
 | Storage/DDL can present future-profile tables, fields, or gates as required too early. | Stage boundary decision |
@@ -174,11 +174,11 @@ Potential item category after verification:
 | Review risk | Tracker status | Editing rule |
 |---|---|---|
 | Repository identity as the future Harness Server source repository can drift. | Baseline status check. | Keep entrypoints clear that the repo is currently documentation-only, is in post-redesign review, its intended future role is the Harness Server source repository, and server/runtime implementation has not started and may start only after documentation acceptance and a separate implementation-planning readiness decision. |
-| Stage names can still imply v0.1, Kernel Smoke, or a legacy kernel-stage label is the product MVP. | Candidate to verify in the current docs. | Say v0.1 Core Authority Slice is an internal authority-loop milestone, Kernel Smoke is its narrow future smoke-check authoring label, and v0.2 User-Facing Harness MVP is the first product MVP. |
+| Stage names can still imply v0.1, Kernel Smoke, or a legacy kernel-stage label is the first user-value slice. | Candidate to verify in the current docs. | Say v0.1 Core Authority Smoke is an internal authority-loop milestone, Kernel Smoke is its narrow future smoke-check authoring label, and v0.2 First User-Value Slice is the first narrow user-value slice. |
 | User-facing docs may open with heavy implementation disclaimers. | Candidate to verify in the current docs. | For user-facing Learn and Use docs, prefer a workflow-first opening that starts with what users can ask, what the agent should clarify, what Harness preserves, and what users should expect to see. Route detailed phase/status warnings to the root README, language READMEs, Build handoff docs, and Maintain guidance. Keep any local status note brief. |
 | User-facing docs overuse internal terms. | Candidate to verify in the current docs. | Explain the user-visible situation first; introduce internal terms only when they help the reader act. |
 | Discovery / requirements clarification may converge too early on a Change Unit or the first safe implementation unit. | Candidate to verify in the current docs. | Leave room for early discovery, shared understanding, and user-owned judgment before requiring a scoped implementation unit. |
-| `judgment_domain` ownership/status can drift. | Resolved design; regression-prevention check. | Active owner docs define `judgment_domain` as schema-owned. Keep non-owner docs aligned with those owners, and do not describe it as display-only in one place and schema-owned in another. `decision_kind` owns lifecycle/gate semantics, while affected gates are recorded separately. If the intended ownership changes, owner docs must make that explicit before non-owner docs follow. |
+| Legacy judgment alias mapping can drift. | Resolved design; regression-prevention check. | Active owner docs use `judgment_category`, `judgment_route`, and `display_depth`. `judgment_domain`, `decision_kind`, and `decision_profile` are compatibility aliases for older request shapes, not independent user-facing axes. New examples should prefer the active judgment names, and affected gates or blocked actions stay in separate owner fields. |
 | Decision Packet schema and examples may feel too heavy for small decisions. | Resolved design; regression-prevention check. | Small decisions may use `minimal_decision`. Full trade-off, approval, waiver, acceptance, residual-risk, reconcile, and mixed profiles must still include their required context. Future edits must not make every Decision Packet require full trade-off fields. |
 | Approval, final acceptance, and residual-risk acceptance are too easy to confuse. | Regression-prevention check. | Keep sensitive-action permission, final acceptance, and residual-risk acceptance separate in examples and routing text. |
 | Storage/DDL can present future-profile tables, fields, or gates as required too early. | Candidate to verify in the current docs. | Distinguish reference-schema presence from staged implementation requirement. Required fields apply when the owning tool, record, or profile is implemented or used; they do not by themselves expand the smallest runnable slice. |
@@ -411,7 +411,7 @@ Maintain docs may define documentation review rules, category labels, and review
 
 Before maintainers accept the documentation set for implementation planning, do one final docs-maintenance pass. Check English/Korean active file map parity, semantic section parity in paired files, broken links and anchors, owner-boundary drift, non-owner duplicate contracts, terminology drift for Approval, Decision Packet, Evidence, Verification, Manual QA, Acceptance, Residual Risk, Projection, and Guarantee Level, and TODO hygiene.
 
-Also check the implementation-readiness criteria in [Implementation Overview](../build/implementation-overview.md#implementation-readiness-criteria): repository identity, user-facing flow without internal-term burden, Discovery as requirements clarification rather than premature Change Unit convergence, schema-aligned `decision_kind`/`decision_profile`/`judgment_domain`, proportional Decision Packet profiles, Approval/final acceptance/residual-risk acceptance separation, coherent MVP stages, Kernel/API/storage/reference agreement, staged Storage/API scope, staged projection/template scope, honest security guarantee wording, agent context strategy, staged future-oriented conformance fixture plan, staged operations surface, Korean user-facing readability, and clean links/TODOs/terminology.
+Also check the implementation-readiness criteria in [Implementation Overview](../build/implementation-overview.md#implementation-readiness-criteria): repository identity, user-facing flow without internal-term burden, Discovery as requirements clarification rather than premature Change Unit convergence, active judgment fields with mapped legacy aliases, proportional Decision Packet profiles, Approval/final acceptance/residual-risk acceptance separation, coherent stages, Kernel/API/storage/reference agreement, staged Storage/API scope, staged projection/template scope, honest security guarantee wording, agent context strategy, staged future-oriented conformance fixture plan, staged operations surface, Korean user-facing readability, and clean links/TODOs/terminology.
 
 This final review is still editorial review. It summarizes whether the docs are coherent enough for maintainer handoff; it does not create runtime conformance, canonical state, evidence, QA, Acceptance, residual-risk acceptance, close readiness, or implementation readiness. Use the existing docs-maintenance reporting expectations when recording findings; do not create a new required report format for this final pass.
 
