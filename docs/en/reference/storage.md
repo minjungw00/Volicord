@@ -542,7 +542,7 @@ Storage-owned compatibility values promoted here:
 | `runs.status` | `completed`, `interrupted`, `blocked`, `violation` | A committed Run row. Only `completed` can support evidence through normal owner refs. Other values are audit/recovery records and do not satisfy evidence, QA, verification, acceptance, or close readiness by themselves. |
 | `change_units.status` | `planned`, `active`, `completed`, `deferred`, `superseded` | Scope lifecycle. Only the active compatible scope row scopes new writes. |
 | `user_judgments.status` | `proposed`, `pending_user`, `resolved`, `deferred`, `rejected`, `blocked`, `superseded` | User judgment lifecycle. A resolved judgment affects only the judgment type and payload it records. |
-| `write_authorizations.status` | `active`, `consumed`, `expired`, `revoked`, `blocked` | Durable authorization lifecycle. Only `active` and compatible rows can be consumed by `record_run`. |
+| `write_authorizations.status` | `allowed`, `consumed`, `expired`, `stale`, `revoked` | Durable authorization lifecycle, matching the Core/API owner value set. Only `allowed` and compatible rows can be consumed by `record_run`. |
 | `write_authorizations.decision` | `allowed`, `blocked`, `approval_required`, `decision_required`, `state_conflict` | Cooperative `prepare_write` decision. It does not imply OS-level authority. |
 | `evidence_refs.status` | `available`, `missing`, `stale`, `blocked` | Evidence pointer availability. It is a pointer/status fact, not full evidence sufficiency. |
 | `blockers.status` | `open`, `resolved`, `superseded` | Stored blocker lifecycle. Open blockers remain visible until Core resolves or supersedes them. |

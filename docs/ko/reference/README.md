@@ -6,26 +6,27 @@ Reference는 schema, gate, 상태 전이, DDL profile, 읽기용 요약(Projecti
 
 Reference 전체를 기본으로 읽지 않습니다. 지금 앞에 있는 질문의 owner를 고른 뒤, 그 owner가 더 엄격한 세부사항을 위임할 때만 링크를 따라갑니다.
 
-## Owner-Contract 지도
+## 기준 계약 소유권 지도
 
-| 계약 영역 | Owner |
+하나의 계약이 여러 문서에 어울려 보일 때는 이 지도를 사용합니다. Exact field, enum value, lifecycle state, DDL, request/response shape, security guarantee, projection/template body, fixture assertion, validator ID, official terminology는 owner 문서에서만 정의합니다. 다른 문서는 독자에게 보이는 결과를 짧게 요약하고 이 지도나 owner로 연결합니다.
+
+| 계약 영역 | 기준 owner |
 |---|---|
-| Task, scope/Change Unit, `user_judgment`, `evidence_ref`, blocker와 닫기 준비 상태의 의미, gate, 상태 전이, `prepare_write`, `record_run`, `close_task`, 상태 불변 조건, 대체 불가능한 경계 | [Core Model 참조](core-model.md) |
-| Active MVP-1 public method와 method별 request/response 동작 | [MVP API](api/mvp-api.md) |
-| MVP-1 shared schema, envelope, read-only resource, ref, `ArtifactRef`, `ValidatorResult`, 단계별 active value set, API가 소유한 enum | [API Schema Core](api/schema-core.md) |
-| Error taxonomy, 사용자에게 보이는 error label, primary error precedence, close-blocker error mapping, idempotency, state conflict behavior | [API Errors](api/errors.md) |
-| Later/profile-gated API method, schema branch, enum extension, future validator ID | [API Schema Later](api/schema-later.md). 이후 독자 경로는 [보증 프로필](../later/assurance-profile.md)을 사용합니다. |
-| Runtime home layout, persisted state model, DDL profile, storage-owned JSON `TEXT`, artifact storage, migration, lock, baseline capture, projection-job storage, validator-run storage | [Storage](storage.md) |
-| 파생 보기, 상태 카드, 에이전트 맥락 패킷, managed block, 사람이 편집할 수 있는 projection section, template implementation class, artifact-ref rendering, freshness/failure behavior | [Projection과 Template 참조](projection-and-templates.md) |
-| 전체 rendered template body와 display card shape | [Template 참조](templates/README.md) |
-| Guarantee level, threat model, asset, trust boundary, threat/control category, 정직한 보안 표현 | [보안 참조](security.md) |
-| Agent가 context를 과하게 싣지 않고 Core/API와 상호작용하는 방법: connector profile, generated manifest, context push/pull, fallback behavior, Role Lens, reference-surface behavior | [Agent 통합 참조](agent-integration.md). [Surface Cookbook](surface-cookbook.md)은 surface recipe를 담당합니다. |
-| Operator behavior, diagnostic, conformance run entrypoint, recovery/export/reconcile operation, docs-maintenance reporting | [운영과 Conformance 참조](operations-and-conformance.md). 이후 독자 경로는 [운영 프로필](../later/operations-profile.md)을 사용합니다. |
-| Fixture body shape, runner behavior, assertion semantics, fixture profile, suite metadata boundary, current-phase fixture status, 축소된 Kernel Smoke queue | [Conformance Fixtures 참조](conformance-fixtures.md) |
-| 간결한 향후 scenario family 목록, 승격 조건, suite-family label, catalog-only candidate | [향후 Fixtures](../later/future-fixtures.md) |
-| Design-quality policy, validator ID, severity composition, waiver semantics, evidence expectation, close impact | [설계 품질 정책](design-quality-policies.md) |
-| Public/internal terminology definition, capitalization, record-name orientation, owner routing | [용어집 참조](glossary.md) |
-| Runtime space, Core process placement, Core-only mutation authority, transaction ordering, artifact, projection/reconcile placement, recovery overview | [런타임 아키텍처 참조](runtime-architecture.md) |
+| Core 상태, gate, lifecycle, authority invariant, `prepare_write`, Write Authorization lifecycle, `record_run`, `close_task`, blocker, waiver, 대체 불가능한 경계 | [Core Model 참조](core-model.md) |
+| Public MCP/API method와 method별 request/response 동작 | Active MVP-1은 [MVP API](api/mvp-api.md), later/profile-gated method는 [API Schema Later](api/schema-later.md). |
+| Shared API envelope, common response shape, read-only resource schema, shared ref, `ArtifactRef`, `ValidatorResult`, API-owned staged value set, API error surface | [API Schema Core](api/schema-core.md)와 [API Errors](api/errors.md). |
+| Persisted table, column, index, check constraint, storage-owned JSON `TEXT`, runtime home layout, lock, migration, artifact storage, projection-job storage, validator-run storage | [Storage](storage.md). Storage hardening은 각 field의 lifecycle/value-set owner가 정한 값을 재사용해야 합니다. |
+| Local access posture, threat boundary, asset, guarantee-level 의미, 정직한 cooperative/detective/preventive/isolated 표현 | [보안 참조](security.md) |
+| Surface behavior, connector fallback, agent-facing context contract, connector capability profile, generated manifest, Role Lens behavior, surface-specific recipe | [Agent 통합 참조](agent-integration.md)와 [Surface Cookbook](surface-cookbook.md) |
+| Projection, compact view, projection freshness/failure behavior, managed block, 사람이 편집할 수 있는 section, template class, artifact-ref rendering | [Projection과 Template 참조](projection-and-templates.md) |
+| 전체 rendered template body, card body, template display shape | [Template 참조](templates/README.md) |
+| Fixture body, fixture assertion, conformance scope, runner behavior, fixture profile, suite metadata boundary, current-phase fixture status, 축소된 Kernel Smoke queue | [Conformance Fixtures 참조](conformance-fixtures.md) |
+| Operator behavior, diagnostic, staged operator surface, conformance run entrypoint, recovery/export/reconcile operation, docs-maintenance reporting entrypoint | [운영과 Conformance 참조](operations-and-conformance.md). 이후 독자 경로는 [운영 프로필](../later/operations-profile.md)을 사용합니다. |
+| 향후 scenario family 목록, 승격 조건, suite-family label, catalog-only future candidate | [향후 Fixtures](../later/future-fixtures.md) |
+| 용어, capitalization, official term wording, record-name orientation, owner routing | [용어집 참조](glossary.md) |
+| Runtime space, Core process placement, Core-only canonical mutation authority, transaction ordering, artifact/projection/reconcile placement, architecture-level recovery overview | [런타임 아키텍처 참조](runtime-architecture.md) |
+| Design-quality policy, policy-to-validator mapping, stable validator ID, severity composition, waiver semantics, evidence expectation, design-quality close impact | [설계 품질 정책](design-quality-policies.md) |
+| Documentation drift rule, bilingual parity, strict-contract ownership rule, link hygiene, translation guidance | [문서 작성 가이드](../maintain/authoring-guide.md), [번역 가이드](../maintain/translation-guide.md), [English Authoring Guide](../../en/maintain/authoring-guide.md), [English Translation Guide](../../en/maintain/translation-guide.md). |
 
 이 지도는 strict contract owner를 찾기 위한 것입니다. 여러 owner 문서군을 가로지르는 사전 구현 문서 정비 축은 [문서 작성 가이드의 정비 대상 owner 지도](../maintain/authoring-guide.md#사전-구현-문서-정비-대상-owner-지도)를 사용합니다. 그 지도는 docs-maintenance 지침일 뿐이며 문서 수락이나 implementation readiness를 결정하지 않습니다.
 

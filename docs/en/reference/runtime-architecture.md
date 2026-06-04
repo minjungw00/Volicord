@@ -271,7 +271,7 @@ The boundary is:
 |---|---|---|
 | Raw artifact | Durable evidence file in artifact store | diff, log, screenshot, checkpoint, bundle, manifest file |
 | State record | Canonical structured record in `state.sqlite` | Task, Change Unit, User Judgment, Journey Spine Entry, Residual Risk, Run, Approval, Eval, Manual QA record, Evidence Manifest, Shared Design, Artifact record |
-| Markdown report | Human-readable projection from records and artifact refs | MVP-1 compact views such as status-card, agent-context-packet, judgment-request, run-evidence-summary, and close-result; later/full-profile reports such as TASK, APR, DIRECT-RESULT, Journey Card/Spine, RUN-SUMMARY, EVAL, and EVIDENCE-MANIFEST |
+| Markdown report | Human-readable projection from records and artifact refs | MVP-1 compact views and later/full-profile reports owned by [Projection And Templates Reference](projection-and-templates.md) and [Template Reference](templates/README.md). |
 
 
 These named report kinds are projections generated from state records and artifact refs by default. They may refer to evidence files in the artifact store, and an export may include snapshots of them, but that does not make the Markdown report the canonical evidence file or canonical state.

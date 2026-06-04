@@ -39,7 +39,7 @@ MVP-1에는 아래가 포함됩니다.
 - 근거 요약과 근거 gap 표시
 - 필요한 근거나 사용자 판단이 없을 때 close blocker summary
 - 닫기와 관련된 위험이 있을 때 작업 수락이나 close 전에 잔여 위험 표시
-- MVP-1 path를 위한 compact Core-derived view: `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, `close-result`
+- MVP-1 path를 위한 compact Core-derived view. 정확한 view set은 [Projection과 Template 참조](../reference/projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../reference/templates/README.md#mvp-1-템플릿-세트)가 담당합니다.
 - MCP/Core를 사용할 수 없을 때 정직하게 동작하기. Core에 닿을 수 없으면 권한 상태를 만들어 내지 않습니다.
 
 ## MVP-1에서 제외되는 것
@@ -62,7 +62,7 @@ Build 문서는 exact schema, DDL, API definition을 중복하지 않습니다. 
 | 필요한 것 | 담당 문서 |
 |---|---|
 | MVP-1 public tool과 resource | [MVP API](../reference/api/mvp-api.md). |
-| Shared envelope, ref, compact view, staged value, resource | [API Schema Core](../reference/api/schema-core.md). |
+| Shared envelope, ref, staged API value, resource | [API Schema Core](../reference/api/schema-core.md). |
 | Error, idempotency, replay, stale-state, state conflict behavior | [API Errors](../reference/api/errors.md). |
 | Task, scope, user judgment, `prepare_write`, Write Authorization, `record_run`, evidence gate, blocker, close semantics | [Core Model 참조](../reference/core-model.md). |
 | Runtime home layout, minimal storage profile, lock, migration, artifact, later-profile storage boundary | [Storage](../reference/storage.md). |
@@ -76,7 +76,7 @@ Build 문서는 exact schema, DDL, API definition을 중복하지 않습니다. 
 구현자는 아래 순서로 읽는 것이 좋습니다.
 
 1. [MVP API](../reference/api/mvp-api.md): 활성 MVP-1 public tool과 resource.
-2. [API Schema Core](../reference/api/schema-core.md): envelope, `ArtifactRef`, shared ref, compact view name, staged value set, read-only resource.
+2. [API Schema Core](../reference/api/schema-core.md): envelope, `ArtifactRef`, shared ref, staged value set, read-only resource.
 3. [API Errors](../reference/api/errors.md): public error, idempotency, replay, unavailable Core/MCP behavior, state conflict.
 4. [API Schema Later](../reference/api/schema-later.md): 어떤 method나 field가 later/profile-gated라서 MVP-1 밖에 남아야 하는지 확인할 때만 사용합니다.
 
@@ -122,7 +122,7 @@ Guarantee level은 [보안 참조](../reference/security.md#단계별-guarantee-
 |---|---|---|
 | Judgment naming | `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_type`, `presentation`, `display_label`을 사용합니다. | Compatibility alias가 추가 authority path를 만들면 안 됩니다. |
 | Next action | MVP-1 next-safe-action output은 `harness.status.next_actions`를 사용합니다. | 별도 `harness.next` method는 승격 전까지 later/compatibility입니다. |
-| MVP-1 compact views | `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, `close-result`를 compact Core-derived view로 사용합니다. | 이 view는 쓰기를 허가하거나 근거를 충족하거나 수락을 기록하거나 위험을 수용하거나 task를 close하거나 canonical state가 되지 않습니다. |
+| MVP-1 compact views | [Projection과 Template 참조](../reference/projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../reference/templates/README.md#mvp-1-템플릿-세트)가 소유한 compact Core-derived view set을 사용합니다. | 이 view는 쓰기를 허가하거나 근거를 충족하거나 수락을 기록하거나 위험을 수용하거나 task를 close하거나 canonical state가 되지 않습니다. |
 | Minimal storage boundary | MVP-1 storage는 user work loop에 필요한 최소 active owner record로 제한합니다. | Later-profile table/record는 owner docs가 승격하기 전까지 제외합니다. |
 | Acceptance boundaries | Sensitive action approval, work acceptance, residual-risk acceptance를 분리합니다. | Work acceptance는 Approval이 아니며, residual-risk acceptance는 work acceptance가 아닙니다. |
 | Small direct changes | Small change도 explicit scope, compatible `prepare_write`, `record_run`, required evidence support가 필요합니다. | Small-change label이 authority, user judgment, evidence, risk visibility를 우회하면 안 됩니다. |

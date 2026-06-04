@@ -529,7 +529,7 @@ Storage-owned compatibility value:
 | `runs.status` | `completed`, `interrupted`, `blocked`, `violation` | Committed Run row입니다. `completed`만 normal owner ref를 통해 evidence를 support할 수 있습니다. 다른 값은 audit/recovery record이며 그 자체로 evidence, QA, verification, acceptance, close readiness를 satisfy하지 않습니다. |
 | `change_units.status` | `planned`, `active`, `completed`, `deferred`, `superseded` | Scope lifecycle입니다. Active compatible scope row만 new write를 scope합니다. |
 | `user_judgments.status` | `proposed`, `pending_user`, `resolved`, `deferred`, `rejected`, `blocked`, `superseded` | User judgment lifecycle입니다. Resolved judgment는 기록한 judgment type과 payload에만 영향을 줍니다. |
-| `write_authorizations.status` | `active`, `consumed`, `expired`, `revoked`, `blocked` | Durable authorization lifecycle입니다. `active`이고 compatible한 row만 `record_run`이 consume할 수 있습니다. |
+| `write_authorizations.status` | `allowed`, `consumed`, `expired`, `stale`, `revoked` | Core/API owner value set과 일치하는 durable authorization lifecycle입니다. `allowed`이고 compatible한 row만 `record_run`이 consume할 수 있습니다. |
 | `write_authorizations.decision` | `allowed`, `blocked`, `approval_required`, `decision_required`, `state_conflict` | Cooperative `prepare_write` decision입니다. OS-level authority를 뜻하지 않습니다. |
 | `evidence_refs.status` | `available`, `missing`, `stale`, `blocked` | Evidence pointer availability입니다. Full evidence sufficiency가 아닙니다. |
 | `blockers.status` | `open`, `resolved`, `superseded` | Stored blocker lifecycle입니다. Open blocker는 Core가 resolve 또는 supersede할 때까지 visible 상태로 남습니다. |

@@ -369,11 +369,11 @@ flowchart TD
   Skipped --> Separate
 ```
 
-MVP-1 사용자 작업 루프 계획에서 user judgment visibility는 status/next responses, judgment-context resources, user-judgment resources, enabled compatibility decision-packet resources, MVP-1 판단 요청 보기로 렌더링합니다. 현재 위치 맥락은 먼저 다섯 가지 작은 MVP 보기로 렌더링합니다.
+MVP-1 사용자 작업 루프 계획에서 user judgment visibility는 status/next responses, judgment-context resources, user-judgment resources, enabled compatibility decision-packet resources, owner가 정의한 MVP-1 판단 보기로 렌더링합니다. 현재 위치 맥락은 먼저 owner가 정의한 compact MVP view로 렌더링합니다.
 
-Standalone `DEC`, `DESIGN`, `EXPORT`, persisted `JOURNEY-CARD`, Run Summary, Evidence Manifest, detailed Eval, TDD Trace, Module Map, Interface Contract projection을 위한 dedicated refresh target은 기능이 켜져 있을 때만 사용하는 profile-gated Future/diagnostic projections 또는 Operations/export reports이며, 커널 스모크(Kernel Smoke) 필수 대상이 아닙니다.
+Standalone full-format judgment, design, export, journey, detailed run, detailed evidence, Eval, TDD trace, module map, interface-contract projection을 위한 dedicated refresh target은 기능이 켜져 있을 때만 사용하는 profile-gated Future/diagnostic projections 또는 Operations/export reports이며, 커널 스모크(Kernel Smoke) 필수 대상이 아닙니다.
 
-Projection support는 source-backed입니다. MVP-1은 persisted projection support 없이도 상태 카드, 에이전트 맥락 패킷, 판단 요청, 실행/근거 요약, 닫기 결과로 사용자 읽기용 output을 충족할 수 있습니다. `TASK`와 `DIRECT-RESULT`는 later/full-profile 또는 compatibility report이지 MVP-1 기본값이 아닙니다. `APR`과 `MANUAL-QA`는 해당 profile이 active일 때 Agency assurance reports에 속합니다. `EXPORT`는 export 또는 handoff support가 enabled될 때 Operations/export reports에 속합니다. `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `TDD-TRACE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `DESIGN`, persisted `JOURNEY-CARD` 같은 detailed report는 owner profile이 승격하지 않는 한 Future/diagnostic projections입니다. Projection refresh는 template을 채우기 위해 state를 만들지 말고 source record가 없음을 unavailable 또는 not applicable로 보고해야 합니다.
+Projection support는 source-backed입니다. MVP-1은 [Projection과 Template 참조](projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](templates/README.md#mvp-1-템플릿-세트)가 소유한 compact view set으로 persisted projection support 없이 사용자 읽기용 output을 충족할 수 있습니다. Later/full-profile, assurance, operations/export, diagnostic report kind는 owner profile이 승격하지 않는 한 projection/template owner에 남습니다. Projection refresh는 template을 채우기 위해 state를 만들지 말고 source record가 없음을 unavailable 또는 not applicable로 보고해야 합니다.
 
 Projection refresh status 예시:
 

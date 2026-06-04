@@ -39,7 +39,7 @@ MVP-1 includes:
 - evidence summary and evidence-gap display
 - close blocker summary when required evidence or required user judgment is missing
 - residual-risk visibility before acceptance or close when close-relevant risk exists
-- compact Core-derived views for the MVP-1 path: `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`
+- compact Core-derived views for the MVP-1 path, using the set owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set)
 - honest MCP/Core unavailable behavior: no fabricated authority state when Core cannot be reached
 
 ## MVP-1 excluded
@@ -62,7 +62,7 @@ Build docs do not duplicate exact schemas, DDL, or API definitions. Use these ow
 | Need | Owner docs |
 |---|---|
 | MVP-1 public tools and resources | [MVP API](../reference/api/mvp-api.md). |
-| Shared envelopes, refs, compact views, staged values, and resources | [API Schema Core](../reference/api/schema-core.md). |
+| Shared envelopes, refs, staged API values, and resources | [API Schema Core](../reference/api/schema-core.md). |
 | Errors, idempotency, replay, stale-state, and state conflict behavior | [API Errors](../reference/api/errors.md). |
 | Task, scope, user judgment, `prepare_write`, Write Authorization, `record_run`, evidence gates, blockers, and close semantics | [Core Model Reference](../reference/core-model.md). |
 | Runtime home layout, minimal storage profile, locks, migrations, artifacts, and later-profile storage boundaries | [Storage](../reference/storage.md). |
@@ -76,7 +76,7 @@ Build docs do not duplicate exact schemas, DDL, or API definitions. Use these ow
 An implementer should read these in order:
 
 1. [MVP API](../reference/api/mvp-api.md) for the active MVP-1 public tools and resources.
-2. [API Schema Core](../reference/api/schema-core.md) for envelopes, `ArtifactRef`, shared refs, compact view names, staged value sets, and read-only resources.
+2. [API Schema Core](../reference/api/schema-core.md) for envelopes, `ArtifactRef`, shared refs, staged value sets, and read-only resources.
 3. [API Errors](../reference/api/errors.md) for public errors, idempotency, replay, unavailable Core/MCP behavior, and state conflicts.
 4. [API Schema Later](../reference/api/schema-later.md) only when confirming that a method or field is later/profile-gated and should stay out of MVP-1.
 
@@ -122,7 +122,7 @@ These decisions are resolved in the documentation baseline but still require mai
 |---|---|---|
 | Judgment naming | Use `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_type`, `presentation`, and `display_label`. | Compatibility aliases must not create extra authority paths. |
 | Next action | Use `harness.status.next_actions` for MVP-1 next-safe-action output. | A separate `harness.next` method stays later/compatibility unless promoted. |
-| MVP-1 compact views | Use `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result` as compact Core-derived views. | These views do not authorize writes, satisfy evidence, record acceptance, accept risk, close tasks, or become canonical state. |
+| MVP-1 compact views | Use the compact Core-derived view set owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set). | These views do not authorize writes, satisfy evidence, record acceptance, accept risk, close tasks, or become canonical state. |
 | Minimal storage boundary | Keep MVP-1 storage to the minimal active owner records needed for the user work loop. | Later-profile tables/records stay out unless owner docs promote them. |
 | Acceptance boundaries | Sensitive action approval, work acceptance, and residual-risk acceptance stay separate. | Work acceptance is not Approval, and residual-risk acceptance is not work acceptance. |
 | Small direct changes | Small changes still need explicit scope, compatible `prepare_write`, `record_run`, and required evidence support. | Small-change labeling must not bypass authority, user judgment, evidence, or risk visibility. |

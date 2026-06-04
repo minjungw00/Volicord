@@ -2,7 +2,7 @@
 
 ## What this document helps you do
 
-Use this reference for the shared API shapes that support the MVP-1 methods in [MVP API](mvp-api.md): request envelopes, common responses, read-only resources, shared refs, artifact inputs, user-judgment payloads, next-action summaries, and core staged value sets.
+Use this reference for the shared API shapes that support the MVP-1 methods in [MVP API](mvp-api.md): request envelopes, common responses, read-only resource schemas, shared refs, artifact inputs, user-judgment payloads, next-action summaries, and API staged value sets.
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server.
 
@@ -15,6 +15,7 @@ This document describes future Harness Server behavior for planning and review. 
 | Later/profile-gated schemas and methods | [Schema Later](schema-later.md) |
 | Core Model state semantics | [Core Model Reference](../core-model.md) |
 | Storage and DDL | [Storage](../storage.md) |
+| Compact view behavior and template bodies | [Projection And Templates Reference](../projection-and-templates.md) and [Template Reference](../templates/README.md) |
 
 ## Schema notation convention
 
@@ -38,7 +39,7 @@ This manifest filters the API schemas by stage/profile. A field or enum existing
 | Stage/profile | Active API slice | Not active in that slice |
 |---|---|---|
 | Engineering Checkpoint | Minimal status/blocker read, one owner-valid setup path, `harness.prepare_write`, one compatible `harness.record_run`, one artifact/evidence ref, and structured status/blocker output. | Full natural-language intake, stored user judgment path, full Evidence Manifest, detached verification, Manual QA, work acceptance, residual-risk acceptance, rich projections, export/recover, broad operations. |
-| MVP-1 User Work Loop | `harness.intake`, `harness.status` with `next_actions`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, and `harness.close_task`. | Separate `harness.next`, detached verification launch/Eval, full Manual QA matrix, committed Approval hardening, export/recover, advanced connector APIs, broad operations, and detailed diagnostic projections. |
+| MVP-1 User Work Loop | Active method set owned by [MVP API](mvp-api.md#mvp-1-method-set), with next-safe-action output carried by `harness.status.next_actions`. | Separate `harness.next`, detached verification launch/Eval, full Manual QA matrix, committed Approval hardening, export/recover, advanced connector APIs, broad operations, and detailed diagnostic projections. |
 | Assurance Profile, Operations Profile, or later | Verification, Eval, Manual QA, waiver, full residual-risk acceptance, reconcile, validators, projection/report/export/recover, operations, and advanced connectors when owner docs promote them. | Not Engineering Checkpoint or minimum MVP-1 requirements. |
 
 ## Read-only resources
@@ -64,7 +65,7 @@ Read-only resources use the three-part context model. `harness://status/card` is
 | `harness://task/{task_id}/user-judgments` | Active, resolved, deferred, and blocked `user_judgment` summaries. |
 | `harness://task/{task_id}/judgment-context` | Minimum current context needed for a user judgment. |
 
-The MVP-1 evidence and close-readiness path can also be satisfied by `run-evidence-summary`, `close-result`, `harness.status`, `harness://task/{task_id}/summary`, or `harness://status/card` when the output is derived from current Core state and refs.
+The MVP-1 evidence and close-readiness path can also be displayed through owner-defined compact views, `harness.status`, `harness://task/{task_id}/summary`, or `harness://status/card` when the output is derived from current Core state and refs. Exact compact-view behavior and template bodies stay with [Projection And Templates Reference](../projection-and-templates.md) and [Template Reference](../templates/README.md).
 
 ### Later resources
 
@@ -169,7 +170,7 @@ StateSummary:
 | Support class | Values | Requirement |
 |---|---|---|
 | Core status output | none required | Engineering Checkpoint can expose status/blocker output without persisted Markdown projection jobs. |
-| MVP-1 compact views | No persisted `ProjectionKind` is required; view names are `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`. | These views may satisfy MVP-1 without full template rendering. `TASK` and `DIRECT-RESULT` are later/full-profile or compatibility projections. |
+| MVP-1 compact views | No persisted `ProjectionKind` is required. Exact compact-view names and behavior are owned by [Projection And Templates Reference](../projection-and-templates.md#mvp-1-view-set) and [Template Reference](../templates/README.md#mvp-1-template-set). | These views may satisfy MVP-1 without full template rendering. `TASK` and `DIRECT-RESULT` are later/full-profile or compatibility projections. |
 | Assurance reports | `APR`, `MANUAL-QA` | Only when the matching approval, Manual QA, waiver, verification, or assurance profile is active. |
 | Operations/export reports | `EXPORT` | Only when export, release-handoff, or operations report profile is active. |
 | Future/diagnostic projections | `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `DEC`, `DESIGN`, `JOURNEY-CARD` | Enable only when an owner-promoted later profile is in scope. |
