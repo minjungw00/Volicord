@@ -2,7 +2,7 @@
 
 ## 사용 시점
 
-Shared design, domain language 영향, module/interface 계획, 대안, 추천안, verification consideration을 독립적으로 읽을 수 있는 projection으로 볼 때 `DESIGN`을 사용합니다.
+Shared design, domain language 영향, module/interface 계획, 대안, 추천안, 검증 고려사항을 독립적으로 읽을 수 있는 projection으로 볼 때 `DESIGN`을 사용합니다.
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
@@ -49,10 +49,10 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 # DESIGN-0001 Design 제목
 
-> Projection 보기: `source_state_version`와 `updated_at` 기준으로 렌더링되며 owner record와 proposal을 요약합니다. 이 문서를 편집해도 Domain Language, Module Map, Interface Contract, User Judgment, Task state를 대체하지 않습니다.
+> Projection 보기: `source_state_version`와 `updated_at` 기준으로 렌더링되며 owner record와 proposal을 요약합니다. 이 문서를 편집해도 Domain Language, Module Map, Interface Contract, 사용자 판단(User Judgment), Task state를 대체하지 않습니다.
 
 ## 문제
-- design problem:
+- design 문제:
 
 ## 목표
 - 목표:
@@ -68,22 +68,22 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## Shared Design 요약
 - 해소된 질문:
-- 남은 assumptions:
-- 거절한 options:
+- 남은 가정:
+- 거절한 선택지:
 
 ## Domain Language 영향
-| Term | Impact | Action |
+| 용어 | 영향 | 조치 |
 |---|---|---|
 
 ## Module과 Interface 계획
-| Module | Current Role | Proposed Change | Public Interface | Test Boundary | Risk |
+| Module | 현재 역할 | 제안 변경 | 공개 interface | 테스트 경계 | 위험 |
 |---|---|---|---|---|---|
 
 ## 제안 형태
 - components:
 - 경계와 책임:
-- data flow:
-- dependency direction:
+- 데이터 흐름:
+- 의존성 방향:
 
 ## 대안
 ### 대안 A
@@ -96,15 +96,15 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## 추천
 - 추천:
-- 남은 trade-off:
+- 남은 장단점 비교:
 
 ## 검증 고려사항
-- success criteria:
-- regression watchpoint:
-- selected feedback loop:
-- required TDD trace:
-- required 수동 QA:
-- required evidence:
+- 성공 기준:
+- regression 주의 지점:
+- 선택된 feedback loop:
+- 필요한 TDD trace:
+- 필요한 수동 QA:
+- 필요한 근거:
 
 ## 참조
 - TASK:
@@ -114,7 +114,7 @@ updated_at: 2026-05-06T09:30:15+09:00
   - domain term refs:
   - module map item refs:
   - interface contract refs:
-- rendered projection refs, if shown:
+- 표시되는 경우 렌더링 projection refs:
   - DOMAIN-LANGUAGE:
   - MODULE-MAP:
   - INTERFACE-CONTRACT:

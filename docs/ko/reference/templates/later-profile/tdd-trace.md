@@ -16,7 +16,7 @@ Change Unit에서 TDD가 필요하거나 선택 또는 기록된 상태이고 RE
 - RED, GREEN, refactor/check artifact 참조
 - Evidence Manifest coverage 참조
 - waiver 또는 non-TDD justification 참조
-- applicable한 경우 Evidence Manifest, User Judgment, Change Unit, Residual Risk, 수동 QA, Eval, close blocker, follow-up ref를 통한 finding route
+- 해당되는 경우 Evidence Manifest, 사용자 판단(User Judgment), Change Unit, Residual Risk, 수동 QA, Eval, close blocker, follow-up ref를 통한 finding route
 - `tdd_trace` 관련 design-quality validator 결과
 - 읽기용 보기 최신성(projection freshness) 입력
 
@@ -91,9 +91,9 @@ updated_at: 2026-05-06T09:40:00+09:00
 
 ## Finding 라우팅
 - evidence gaps or support:
-- User judgment candidates or refs:
-- Change Unit update or follow-up:
-- residual-risk candidates or refs:
+- User judgment 후보 또는 refs:
+- Change Unit update 또는 follow-up:
+- residual-risk 후보 또는 refs:
 - 수동 QA 또는 Eval refs:
 - close blockers:
 ````

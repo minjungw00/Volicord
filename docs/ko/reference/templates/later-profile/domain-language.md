@@ -2,7 +2,7 @@
 
 ## 사용 시점
 
-현재 domain term의 의미, code representation, 대기 중인 term decision, deprecated term, 사람이 제안한 변경 사항을 읽기 쉬운 projection으로 볼 때 `DOMAIN-LANGUAGE`를 사용합니다.
+현재 domain term의 의미, code representation, 대기 중인 용어 판단, 폐기된 용어, 사람이 제안한 변경 사항을 읽기 쉬운 projection으로 볼 때 `DOMAIN-LANGUAGE`를 사용합니다.
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
@@ -49,16 +49,16 @@ updated_at: 2026-05-06T09:30:15+09:00
 - stale conditions:
 
 ## 용어
-| Term | Meaning | Code Representation | Not This | Related Terms | Source | Status |
+| 용어 | 의미 | 코드 표현 | 이것이 아님 | 관련 용어 | 출처 | 상태 |
 |---|---|---|---|---|---|---|
-| Account | login-capable user identity | `src/auth/account.ts` | Profile | User, Session | TASK-0001 | active |
+| Account | login할 수 있는 사용자 identity | `src/auth/account.ts` | Profile | User, Session | TASK-0001 | active |
 
 ## 대기 중인 용어 판단
-| Term | Question | Options | Recommendation | Owner |
+| 용어 | 질문 | 선택지 | 추천 | 소유자 |
 |---|---|---|---|---|
 
 ## 폐기된 용어
-| Term | Replaced By | Reason | Since |
+| 용어 | 대체 용어 | 이유 | 이후 적용 |
 |---|---|---|---|
 <!-- HARNESS:END managed -->
 

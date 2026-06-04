@@ -26,9 +26,9 @@
 - later profile이 active일 때 관련 reconcile records
 - residual risk refs
 - minimum MVP-1의 evidence summaries, Run refs, ArtifactRefs, visible evidence gaps; full Evidence Manifest profile이 active일 때만 Evidence Manifest refs
-- 관련 권한 맥락으로 표시될 때 Write Authorization, 민감 동작 permission, Eval, Manual QA, work-acceptance context, residual-risk refs, ArtifactRefs, redaction state, projection freshness
+- 관련 권한 맥락으로 표시될 때 쓰기 허가 기록(Write Authorization), 민감 동작 permission, Eval, Manual QA, 작업 수락 context, residual-risk refs, ArtifactRefs, redaction state, 읽기용 보기 최신성(projection freshness)
 - 영향받는 범위 표시 input: product areas, screens/flows, modules, interfaces, paths, acceptance criteria, gates, sensitive categories
-- projection freshness inputs
+- 읽기용 보기 최신성(projection freshness) inputs
 
 `decision_packet_id`, `judgment_category`, `judgment_route`, `display_depth` 같은 legacy 이름은 migration note 또는 compatibility drill-down에서만 나타날 수 있습니다. 새 template, example, fixture는 `user_judgment_id`, `judgment_type`, `presentation`, `display_label`, `record_kind=user_judgment`를 사용해야 합니다.
 
@@ -57,7 +57,7 @@ Resolved user judgment가 민감 동작 permission을 부여하는 경우는 `ju
 - 후속 조치
 - 참조
 
-충분한 렌더링 Decision Packet은 하나의 사용자 소유 판단에 답합니다. 넓은 permission을 묻지 않습니다. 정확한 public request/response field는 [`harness.request_user_judgment`](../../api/mvp-api.md#harnessrequest_user_judgment)가 소유하고, canonical authority rule은 [User Judgment](../../core-model.md#user-judgment)와 [Decision Gate](../../core-model.md#decision-gate)가 소유합니다. 이 template은 existing user judgment fields를 요약할 수 있지만 schema field, gate, alternate authority를 추가하면 안 됩니다.
+충분한 렌더링 Decision Packet은 하나의 사용자 소유 판단에 답합니다. 넓은 permission을 묻지 않습니다. 정확한 public request/response field는 [`harness.request_user_judgment`](../../api/mvp-api.md#harnessrequest_user_judgment)가 소유하고, canonical authority rule은 [사용자 판단(User Judgment)](../../core-model.md#user-judgment)와 [Decision Gate](../../core-model.md#decision-gate)가 소유합니다. 이 template은 existing user judgment fields를 요약할 수 있지만 schema field, gate, alternate authority를 추가하면 안 됩니다.
 
 사용자에게 보이는 질문은 판단을 직접 물어야 합니다. 선택지를 고를지, 명시된 결과를 감수하고 defer할지, 해당 path를 reject할지, 민감 동작 승인을 grant/deny할지, 결과를 accept/reject할지, 이름 붙은 잔여 위험을 accept/reject할지, later-profile waiver/reconcile outcome을 기록할지처럼 기록될 값을 분명히 말합니다. "approve"나 "승인"은 민감 동작 승인 또는 later Approval record에만 씁니다. 여러 판단이 pending이면 별도 prompt 또는 별도 줄로 렌더링합니다. 민감 동작 승인, 작업 수락, 잔여 위험 수용을 하나의 답변으로 합치면 안 됩니다.
 
@@ -74,10 +74,10 @@ Resolved user judgment가 민감 동작 permission을 부여하는 경우는 `ju
 - 잔여 위험 수용(`judgment_type=residual_risk_acceptance`): visible limitation, existing evidence, 사용자에게 수용 여부를 묻는 risk refs, remaining follow-up을 `현재 상태`, `판단에 필요한 최소 맥락`, `잔여 위험 수용`, `후속 조치`에 둡니다.
 - Broad "go ahead" answers: prompt가 이 특정 judgment type과 option을 묻는 이유를 보여줍니다. Generic consent phrase는 이 prompt가 그 정확한 judgment를 기록하는 경우가 아니면 제품/UX 판단, 기술 판단, 민감 동작 승인, 작업 수락, 잔여 위험 수용을 해소하지 않습니다.
 
-**Rendered example: minimal judgment**
+**렌더링 예시: 최소 판단**
 
 ```text
-판단 요청: Settings label wording
+판단 요청: Settings 라벨 문구
 기록: user_judgment_id=UJ-0001
 판단 유형: product_choice
 표시 형식: short
@@ -85,26 +85,26 @@ Resolved user judgment가 민감 동작 permission을 부여하는 경우는 `ju
 질문: 이 scoped settings label을 "Save"로 할까요, "Update"로 할까요?
 범위/참조: settings form copy in CU-04; source ref TASK-012/CU-04; 민감 동작 또는 close-risk ref 없음.
 기록할 선택: Save | Update
-결정하지 않는 것: broader settings flow behavior, localization strategy, 작업 수락, 잔여 위험 수용, 쓰기 전 범위 확인 / Write Authorization.
+결정하지 않는 것: 더 넓은 settings 흐름 동작, localization 전략, 작업 수락, 잔여 위험 수용, 쓰기 전 범위 확인 / Write Authorization.
 ```
 
-**Rendered example: sensitive action approval**
+**렌더링 예시: 민감 동작 승인**
 
 ```text
-판단 요청: Dependency install approval
+판단 요청: dependency install 승인
 기록: user_judgment_id=UJ-0002
 판단 유형: sensitive_action_approval
 표시 형식: short
 표시 라벨: 민감 동작 승인
 질문: 이 Task에 대해 이름 붙은 dependency install/update 동작을 허가하시겠습니까?
-Approval 범위: named install command 또는 dependency-file update; named manifest/lockfile paths; current task and approval window only.
+Approval 범위: 이름 붙은 install command 또는 dependency-file update, 이름 붙은 manifest/lockfile path, 현재 Task와 approval window만 포함.
 포괄하는 것: scoped sensitive action.
-포괄하지 않는 것: dependency가 올바른 architecture direction인지, future installs, unrelated product writes, QA/verification waiver, 작업 수락, 잔여 위험 수용.
+포괄하지 않는 것: dependency가 올바른 architecture 방향인지, 향후 install, 관련 없는 제품 파일 쓰기, QA/verification waiver, 작업 수락, 잔여 위험 수용.
 별도 판단 필요: dependency choice 자체가 사용자 소유 기술 판단이면 `judgment_type=technical_choice`를 사용합니다.
-참조: approval scope refs, prepare-write candidate refs, dependency comparison refs, affected file refs when available.
+참조: approval scope refs, prepare-write candidate refs, dependency 비교 refs, 사용 가능한 경우 영향받는 file refs.
 ```
 
-**Rendered example: full technical trade-off**
+**렌더링 예시: 전체 기술 장단점 비교**
 
 ```text
 판단 요청: Login session architecture
@@ -113,11 +113,11 @@ Approval 범위: named install command 또는 dependency-file update; named mani
 표시 형식: full
 표시 라벨: 기술 판단
 질문: 이 login 작업은 어떤 session model을 써야 합니까?
-선택지: server-side session cookie; client-held bearer/JWT; OAuth/OIDC provider plus local session strategy; social-login provider integration.
-추천: first-party web app이면 current requirements가 third-party identity, non-browser clients, social sign-in을 요구하지 않는 한 server-side session cookie.
-불확실성: existing session middleware, revocation requirements, SSO requirement, CSRF posture, migration constraints.
+선택지: server-side session cookie, client-held bearer/JWT, OAuth/OIDC provider와 local session strategy, social-login provider integration.
+추천: first-party web app이면 현재 요구사항이 third-party identity, non-browser client, social sign-in을 요구하지 않는 한 server-side session cookie.
+불확실성: existing session middleware, revocation 요구사항, SSO 요구사항, CSRF posture, migration 제약.
 미룰 때의 영향: storage, token lifetime, provider, middleware behavior를 확정하지 않는 read-only inspection과 UI scaffolding만 계속할 수 있습니다.
-참조: auth model refs, affected acceptance criteria, security evidence refs when available, and any residual-risk or migration refs.
+참조: auth model refs, 영향받는 수용 기준, 사용 가능한 경우 security evidence refs, residual-risk 또는 migration refs.
 ```
 
 ## 전체 템플릿
@@ -149,12 +149,12 @@ updated_at: 2026-05-06T09:30:15+09:00
 - 현재 상태에서 진행할 수 없는 이유:
 
 ## 현재 상태
-- task state:
-- active change unit:
-- current gates:
-- latest evidence:
+- Task 상태:
+- active Change Unit:
+- 현재 gate:
+- 최신 근거:
 - residual risk:
-- source refs: judgment={user_judgment_id}; write={write_authorization_ref|none}; sensitive_action_permission={user_judgment_ref|approval_ref_when_profile_active|none}; evidence={evidence_ref|evidence_manifest_ref_when_profile_active|none}; eval={eval_ref|none}; manual_qa={manual_qa_ref|none}; acceptance={work_acceptance_user_judgment_ref|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}; redaction={redaction_availability_summary|none}; freshness={projection_freshness}
+- 출처 참조: judgment={user_judgment_id}; write={write_authorization_ref|none}; sensitive_action_permission={user_judgment_ref|approval_ref_when_profile_active|none}; evidence={evidence_ref|evidence_manifest_ref_when_profile_active|none}; eval={eval_ref|none}; manual_qa={manual_qa_ref|none}; acceptance={work_acceptance_user_judgment_ref|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}; redaction={redaction_availability_summary|none}; freshness={projection_freshness}
 
 ## 판단 유형과 표시 형식
 - judgment_type: product_choice | technical_choice | sensitive_action_approval | work_acceptance | residual_risk_acceptance
@@ -188,10 +188,10 @@ updated_at: 2026-05-06T09:30:15+09:00
 - 넓은 approval이 부족한 이유:
 
 ## 에이전트가 사용자 없이 결정해도 되는 것
-- implementation detail:
+- 구현 세부사항:
 - 허용된 범위 안의 code organization:
-- evidence collection:
-- follow-up proposal:
+- 근거 수집:
+- 후속 제안:
 
 ## 해당되는 경우 자율성 경계 영향
 - 현재 boundary 영향:
@@ -201,11 +201,11 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## 영향받는 범위와 경계
 - 범위 안:
 - 범위 밖:
-- 영향받는 product areas:
-- 영향받는 screens or flows:
-- 영향받는 modules/interfaces/paths:
-- 영향받는 acceptance criteria:
-- 영향받는 gates:
+- 영향받는 product area:
+- 영향받는 screen 또는 flow:
+- 영향받는 module/interface/path:
+- 영향받는 수용 기준:
+- 영향받는 gate:
 - 민감 category:
 
 ## 선택지
@@ -240,9 +240,9 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## 판단에 필요한 최소 맥락
 - 보이는 evidence:
-- unknowns:
+- 모르는 것:
 - QA/verification 상태:
-- residual risk visibility:
+- 잔여 위험 표시 상태:
 - close 또는 write 영향:
 
 ## 사용자 판단
@@ -256,7 +256,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## 해당되는 경우 잔여 위험 수용
 - 이름 붙은 risk:
 - 보이는 risk refs:
-- acceptance 범위:
+- 수용 범위:
 - 받아들일 때의 영향:
 - follow-up:
 
@@ -275,7 +275,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - Manual QA:
 - residual risk:
 - artifacts:
-- projection freshness:
+- 보기 최신성:
 ````
 
 ## 메모

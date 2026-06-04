@@ -17,7 +17,7 @@
 - human inspector 또는 role과 확인한 품질이나 workflow
 - screenshot, browser log, `qa_capture`, video, workflow recording, 수동 제공 note artifact 참조와 `redaction_state`
 - QA waiver 또는 failure와 관련된 waiver reason, 필요한 경우 QA waiver user judgment refs, Residual Risk refs
-- 표시되는 claim이 있을 때 Evidence Manifest, Eval, acceptance context, Approval, Artifact refs, redaction state, projection freshness
+- 표시되는 claim이 있을 때 Evidence Manifest, Eval, 작업 수락 context, Approval, 아티팩트 참조, redaction state, 읽기용 보기 최신성(projection freshness)
 - `manual_qa` 관련 design-quality validator 결과
 - 읽기용 보기 최신성(projection freshness) 입력
 
@@ -65,16 +65,16 @@ updated_at: 2026-05-06T10:05:00+09:00
 - Evidence Manifest:
 - Eval:
 - Approval:
-- Acceptance context:
+- 작업 수락 맥락:
 - Residual Risk:
-- Artifact refs:
+- 아티팩트 참조:
 - redaction state:
-- projection freshness:
+- 보기 최신성:
 
 ## 준비 사항
 - build/run command:
 - test account/data:
-- route or screen:
+- route 또는 screen:
 - browser capture support: supported | unsupported | not applicable
 
 ## 확인 목록
@@ -88,12 +88,12 @@ updated_at: 2026-05-06T10:05:00+09:00
 - 기록 결과: passed | failed | waived | null when no record exists
 - qa_gate: not_required | required | pending | passed | failed | waived
 - qa_gate note: 기준 close-relevant gate; 이 projection은 표시 전용
-- QA waiver display: `qa_gate=waived`와 수동 QA record 또는 waiver reason, 필요한 경우 QA waiver user judgment
+- QA waiver 표시: `qa_gate=waived`와 수동 QA record 또는 waiver reason, 필요한 경우 QA waiver user judgment
 - 자동 check 상태: {supporting refs only; 수동 QA 결과 아님}
 - 검증 상태: {별도 Eval/gate status; 이 template이 만들지 않음}
 - 작업 수락 상태: {별도 사용자 판단; 이 template이 만들지 않음}
 - 사람의 확인 요약:
-- summary:
+- 요약:
 - 면제 사유:
 
 ## 면제와 위험
@@ -108,7 +108,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - 닫기 영향:
 
 ## 발견 사항
-| Severity | Finding | Suggested Action | Follow-up CU |
+| 심각도 | 발견 사항 | 제안 조치 | 후속 CU |
 |---|---|---|---|
 | minor | | | |
 
@@ -122,7 +122,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - unsupported-surface fallback note:
 
 ## Redaction과 사용 가능성
-| Artifact Ref | Redaction State | QA Effect | Note |
+| 아티팩트 참조 | 가림 상태 | QA 영향 | 메모 |
 |---|---|---|---|
 | ART-QA-0001 | secret_omitted | observable finding만 지원 | |
 | ART-QA-0002 | blocked | capture 사용 불가; 대체되거나 유효하게 면제되기 전까지 QA 경로는 미해결이며 `qa_gate`는 상황에 따라 pending/failed 또는 `waived` | |

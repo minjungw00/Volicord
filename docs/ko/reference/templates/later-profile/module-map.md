@@ -2,7 +2,7 @@
 
 ## 사용 시점
 
-모듈 역할, 공개 interface, 내부 복잡도, 의존성, 테스트 경계, 소유자 결정, watchpoint를 읽기 쉬운 projection으로 확인해야 할 때 `MODULE-MAP`을 사용합니다.
+모듈 역할, 공개 interface, 내부 복잡도, 의존성, 테스트 경계, 소유자 판단, watchpoint를 읽기 쉬운 projection으로 확인해야 할 때 `MODULE-MAP`을 사용합니다.
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
@@ -49,12 +49,12 @@ updated_at: 2026-05-06T09:30:15+09:00
 - stale conditions:
 
 ## 모듈
-| Module | Role | Public Interface | Internal Complexity | Dependencies | Test Boundary | Owner Decision | Watchpoints |
+| 모듈 | 역할 | 공개 interface | 내부 복잡도 | 의존성 | 테스트 경계 | 소유자 판단 | 주의 지점 |
 |---|---|---|---|---|---|---|---|
-| AuthService | verifies auth and issues sessions | `login`, `logout` | credential validation, session issue | UserRepo, SessionStore | service interface tests | human_reviewed | session expiry drift |
+| AuthService | auth를 확인하고 session을 발급함 | `login`, `logout` | credential validation, session issue | UserRepo, SessionStore | service interface tests | human_reviewed | session expiry drift |
 
 ## Deep Module 후보
-| Candidate | Current Pain | Proposed Boundary | Expected Test Boundary | Priority |
+| 후보 | 현재 문제 | 제안 경계 | 예상 테스트 경계 | 우선순위 |
 |---|---|---|---|---|
 
 ## Module watchpoint 모음

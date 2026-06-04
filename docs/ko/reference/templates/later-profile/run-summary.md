@@ -18,7 +18,7 @@
 - changed path
 - command result
 - validator 결과
-- 기록된 경우 기존 owner ref로 연결된 Review Stage 표시 finding
+- 기록된 경우 기존 owner ref로 연결된 검토 단계 표시 finding
 - artifact 참조
 - evidence update와 follow-up
 
@@ -66,7 +66,7 @@ updated_at: 2026-05-06T09:45:10+09:00
 ## 범위
 - task_id:
 - change_unit_id:
-- slice type:
+- 조각 유형:
 - write authorization:
 - 허용 path:
 - 허용 tool:
@@ -107,16 +107,16 @@ npm test -- --runInBand
 - manual_qa_required:
 
 ## 검토 단계
-- note: run-local review display only. Record, `ProjectionKind` value, Approval, evidence, verification, QA, 작업 수락, 잔여 위험 수용, close, Write Authorization을 만들지 않습니다. Review-stage 경계는 [Design Quality Policies](../../design-quality-policies.md#two-stage-review-display)가 담당합니다. 발견 사항은 기존 ref, gate, blocker로 연결합니다.
+- note: run-local 검토 표시 전용입니다. Record, `ProjectionKind` value, Approval, evidence, verification, QA, 작업 수락, 잔여 위험 수용, close, Write Authorization을 만들지 않습니다. Review-stage 경계는 [Design Quality Policies](../../design-quality-policies.md#two-stage-review-display)가 담당합니다. 발견 사항은 기존 ref, gate, blocker로 연결합니다.
 
 ### 명세 준수 검토
-- acceptance criteria coverage:
-- Change Unit completion conditions:
+- 수용 기준 coverage:
+- Change Unit 완료 조건:
 - 범위 / Write Authority compatibility:
 - User judgment compatibility:
-- evidence coverage:
+- 근거 coverage:
 - 잔여 위험 표시:
-- outcome refs(existing path/ref only):
+- 결과 refs(existing path/ref only):
 
 ### 코드 품질 / Stewardship 검토
 - domain language:
@@ -125,8 +125,8 @@ npm test -- --runInBand
 - feedback loop / TDD:
 - codebase stewardship:
 - context hygiene:
-- follow-up risk:
-- outcome refs(existing path/ref only):
+- 후속 위험:
+- 결과 refs(existing path/ref only):
 
 ## TDD trace 요약
 - required:
@@ -146,7 +146,7 @@ npm test -- --runInBand
 
 ## Journey Spine 업데이트
 - 새 facts:
-- 거절된 options:
+- 거절된 선택지:
 - domain language 업데이트:
 - module/interface 업데이트:
 - watchpoint 변경:

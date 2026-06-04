@@ -2,7 +2,7 @@
 
 ## 사용 시점
 
-수용 기준, completion condition, 닫기에 영향을 주는 claim이 어떤 supporting evidence와 artifact ref로 뒷받침되는지 보여줘야 할 때 `EVIDENCE-MANIFEST`를 사용합니다.
+수용 기준, completion condition, 닫기에 영향을 주는 claim이 어떤 뒷받침 근거와 artifact ref로 뒷받침되는지 보여줘야 할 때 `EVIDENCE-MANIFEST`를 사용합니다.
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
@@ -19,7 +19,7 @@
 - hash, size, redaction state, retention/availability, owner relation, 후속 evidence 영향을 포함한 artifact 참조
 - 관련 Run, Eval, Feedback Loop, 수동 QA, TDD trace 참조
 - 닫기 맥락으로 렌더링할 때 닫기에 영향을 주는 검증, 수동 QA, 작업 수락, 잔여 위험 요약
-- 닫기 맥락으로 렌더링할 때 Write Authorization, User Judgment, Approval, Evidence Manifest, Eval, 수동 QA, acceptance context, Residual Risk, Artifact refs, redaction state, projection freshness를 보여주는 compact authority refs
+- 닫기 맥락으로 렌더링할 때 쓰기 허가 기록(Write Authorization), 사용자 판단(User Judgment), Approval, Evidence Manifest, Eval, 수동 QA, 작업 수락 context, Residual Risk, 아티팩트 참조, redaction state, 읽기용 보기 최신성(projection freshness)을 보여주는 간결한 authority refs
 
 ## 렌더링 섹션
 
@@ -61,11 +61,11 @@ updated_at: 2026-05-06T09:50:00+09:00
 - latest_eval:
 
 ## 요약
-- evidence 상태:
-- unsupported criteria:
-- 생략/차단 evidence 영향:
+- 근거 상태:
+- 뒷받침되지 않는 기준:
+- 생략/차단 근거 영향:
 - stale conditions:
-- 다음 evidence action:
+- 다음 근거 행동:
 
 ## 닫기 영향 요약
 - 근거가 뒷받침하는 것:
@@ -82,27 +82,27 @@ updated_at: 2026-05-06T09:50:00+09:00
 - 간결한 refs: write={write_authorization_ref|none}; judgment={user_judgment_refs|none}; approval={approval_refs|none}; evidence={evidence_manifest_id}; eval={eval_ref|none}; manual_qa={manual_qa_ref|none}; acceptance={acceptance_context_ref|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}
 - approval refs는 minimum MVP-1에서 `none`입니다. 민감 동작 coverage는 later Approval owner profile이 active가 아닌 한 `judgment_type=sensitive_action_approval`인 `user_judgment_refs`로 나타납니다.
 - redaction state:
-- projection freshness:
+- 보기 최신성:
 
 ## 수용 기준 coverage
-| AC ID | Statement | Coverage 상태 | Run Refs | ArtifactRef Refs | Supporting State Refs | Notes |
+| AC ID | 진술 | Coverage 상태 | Run refs | ArtifactRef refs | 뒷받침 state refs | 메모 |
 |---|---|---|---|---|---|---|
 | AC-01 | | supported | RUN-0001 | ART-TEST-0001, ART-DIFF-0001 | FBL-0001 | |
 | AC-02 | | unsupported | | | | |
 
 ## 완료 조건 coverage
-| Condition | Coverage 상태 | Run Refs | ArtifactRef Refs | Supporting State Refs | Notes |
+| 조건 | Coverage 상태 | Run refs | ArtifactRef refs | 뒷받침 state refs | 메모 |
 |---|---|---|---|---|---|
 | | supported | RUN-0001 | ART-0001 | | |
 | | unsupported | | | | |
 
 ## 변경 파일 coverage
-| Path | Covered Criteria | 근거 참조 |
+| Path | 뒷받침하는 기준 | 근거 참조 |
 |---|---|---|
 | `src/...` | AC-01 | DIFF-0001, LOG-0001 |
 
 ## 설계 품질 coverage
-| Item | Coverage / 관문 표시 상태 | 근거 참조 | Notes |
+| 항목 | Coverage / 관문 표시 상태 | 근거 참조 | 메모 |
 |---|---|---|---|
 | vertical_slice_shape | passed | CU-01 | |
 | decision_quality_check | passed | UJ-0001 | |
@@ -137,7 +137,7 @@ updated_at: 2026-05-06T09:50:00+09:00
 - build:
 
 ## Redaction과 사용 가능성
-| Artifact Ref | Hash / Size | Redaction State | Retention / Availability | Evidence Effect | Note |
+| 아티팩트 참조 | Hash / 크기 | 가림 상태 | 보존 / 사용 가능성 | 근거 영향 | 메모 |
 |---|---|---|---|---|---|
 | ART-0001 | sha256:abc123... / 12 KB | secret_omitted | retained ref; raw secret omitted | 보이는 nonsecret fact만 지원 | |
 | ART-0002 | sha256:def456... / 1 KB | blocked | metadata-only notice | 사용할 수 없는 입력; claim은 해소 전까지 insufficient | |
@@ -160,13 +160,13 @@ Evidence sufficiency는 artifact 개수가 아니라 수용 기준, completion c
 
 Coverage mapping 예시:
 
-| Criterion / Condition | Run Refs | ArtifactRef Refs | Supporting State Refs | Sufficiency Note |
+| 기준 / 조건 | Run refs | ArtifactRef refs | 뒷받침 state refs | 충분성 메모 |
 |---|---|---|---|---|
-| AC-01 docs typo corrected without meaning change | RUN-DOCS-001 | ART-DIFF-001 | | Changed doc path와 self-check가 stated docs-only condition을 cover할 때만 sufficient입니다. |
-| AC-02 login form submits email | RUN-FEATURE-001 | ART-DIFF-002, ART-TEST-002 | FBL-001 | Run, diff, test/log refs가 Task 전체가 아니라 이 AC에 map될 때 supported입니다. |
-| AC-03 final button copy is readable in target viewport | RUN-UI-001 | ART-SCREENSHOT-001, ART-DIFF-003 | QA-0001 | 수동 QA가 required이면 screenshot이나 browser smoke만으로 QA path를 충족하지 않습니다. |
-| AC-04 export contains only approved redacted fields | RUN-EXPORT-001 | ART-EXPORT-MANIFEST-001, ART-LOG-001 | APR-0001, DEC-0001 | `APR-0001`은 later Approval profile이 active일 때만 있습니다. Approval과 Decision refs는 scope 또는 사용자 판단 맥락을 보여줍니다. Redacted artifact refs는 여전히 nonsecret claim을 증명해야 합니다. |
-| Completion condition: independent verifier reviewed the changed scope | RUN-VERIFY-001 | ART-BUNDLE-001 | EVAL-0001 | Eval이 current refs를 review했고 requested close에 필요한 independence가 있을 때만 valid합니다. |
+| AC-01 의미 변경 없이 docs typo 수정 | RUN-DOCS-001 | ART-DIFF-001 | | Changed doc path와 self-check가 stated docs-only condition을 cover할 때만 sufficient입니다. |
+| AC-02 login form이 email을 제출함 | RUN-FEATURE-001 | ART-DIFF-002, ART-TEST-002 | FBL-001 | Run, diff, test/log refs가 Task 전체가 아니라 이 AC에 map될 때 supported입니다. |
+| AC-03 final button copy가 target viewport에서 읽을 수 있음 | RUN-UI-001 | ART-SCREENSHOT-001, ART-DIFF-003 | QA-0001 | 수동 QA가 required이면 screenshot이나 browser smoke만으로 QA path를 충족하지 않습니다. |
+| AC-04 export가 approved redacted field만 포함함 | RUN-EXPORT-001 | ART-EXPORT-MANIFEST-001, ART-LOG-001 | APR-0001, DEC-0001 | `APR-0001`은 later Approval profile이 active일 때만 있습니다. Approval과 Decision refs는 scope 또는 사용자 판단 맥락을 보여줍니다. Redacted artifact refs는 여전히 nonsecret claim을 증명해야 합니다. |
+| Completion condition: 변경 범위를 독립 verifier가 검토함 | RUN-VERIFY-001 | ART-BUNDLE-001 | EVAL-0001 | Eval이 current refs를 review했고 requested close에 필요한 independence가 있을 때만 valid합니다. |
 
 Evidence Manifest는 주장을 뒷받침하지만 그 자체로 correctness를 증명하거나 분리 검증을 만들거나 수동 QA를 기록하거나 작업 수락을 암시하거나 잔여 위험을 보이게 하거나 잔여 위험을 수용하지 않습니다. 이 template에서 닫기 영향 요약을 렌더링할 때는 테스트 통과, 자체 확인(self-check), QA 면제 판단, 사용자의 작업 수락이 서로 다른 닫기 조건으로 오해되지 않도록 각 줄을 분리해 보여줘야 합니다.
 

@@ -17,7 +17,7 @@
 - 민감 category
 - 허용된 path, tool, command, network target, secret
 - baseline, 만료 조건, 대안, decision note
-- 경계 맥락으로 표시될 때 관련 Write Authorization, artifact refs, redaction state, projection freshness
+- 경계 맥락으로 표시될 때 관련 쓰기 허가 기록(Write Authorization), 아티팩트 참조, redaction state, 읽기용 보기 최신성(projection freshness)
 
 `prepare_write`가 반환한 상태를 변경하지 않는 `approval_request_candidate`는 `APR` source가 아닙니다. 표시가 필요하면 candidate 표시로만 보여줍니다.
 
@@ -65,9 +65,9 @@ updated_at: 2026-05-06T09:30:15+09:00
 - Approval 기록:
 - 관련 user judgment:
 - 관련 Write Authorization:
-- artifact refs:
+- 아티팩트 참조:
 - redaction state:
-- projection freshness:
+- 보기 최신성:
 
 ## 경계 요약
 - 이 request가 포괄하는 것:

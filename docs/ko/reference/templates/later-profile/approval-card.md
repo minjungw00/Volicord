@@ -16,7 +16,7 @@
 - 허용된 path, tool, command, network target, secret
 - baseline 참조
 - 위험, 대안, 추천안
-- 표시될 때 관련 Write Authorization 경계, artifact refs, redaction state, projection freshness
+- 표시될 때 관련 쓰기 허가 기록(Write Authorization) 경계, 아티팩트 참조, redaction state, 읽기용 보기 최신성(projection freshness)
 
 `{approval_covers}`, `{approval_does_not_cover}` 같은 coverage placeholder는 Approval 범위, 관련 user judgment ref, 해당 profile이 active일 때의 연결된 Approval 기록, 현재 쓰기 또는 닫기 context에서 파생한 표시 전용 요약입니다. Approval 경계만 보여주며, active owner path가 계속 기준 출처입니다.
 

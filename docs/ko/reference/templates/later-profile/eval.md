@@ -11,16 +11,16 @@
 ## 기준 기록
 
 - Eval 기록
-- verification target
+- 검증 대상
 - verdict
 - independence qualifier
 - 자체 확인(self-check)과 분리 검증 경계
 - baseline relationship과 evaluator-bundle freshness
-- performed check
+- 수행한 확인
 - 검토한 근거(evidence)
-- blocker
+- 막힘
 - artifact ref와 redaction state, input availability
-- 표시되는 claim이 있을 때 관련 User Judgment, Approval, Evidence Manifest, 수동 QA, acceptance context, Residual Risk, Artifact refs, redaction state, projection freshness
+- 표시되는 claim이 있을 때 관련 사용자 판단(User Judgment), Approval, Evidence Manifest, 수동 QA, 작업 수락 context, Residual Risk, 아티팩트 참조, redaction state, 읽기용 보기 최신성(projection freshness)
 
 ## 렌더링 섹션
 
@@ -57,14 +57,14 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## 출처 참조
 - Evidence Manifest:
-- User Judgments:
+- 사용자 판단:
 - Approval:
 - 수동 QA:
-- Acceptance context:
+- 작업 수락 맥락:
 - Residual Risk:
-- Artifact refs:
+- 아티팩트 참조:
 - redaction state:
-- projection freshness:
+- 보기 최신성:
 
 ## 대상
 - task_id:
@@ -77,10 +77,10 @@ updated_at: 2026-05-06T10:05:00+09:00
 - assurance 영향:
 - verification gate 영향:
 - detached candidate 상태:
-- self-check vs detached boundary:
+- 자체 확인과 분리 검증 경계:
 - 수동 QA 영향:
-- acceptance 영향:
-- 다음 action:
+- 작업 수락 영향:
+- 다음 행동:
 
 ## 환경과 독립성
 - fresh run:
@@ -125,10 +125,10 @@ updated_at: 2026-05-06T10:05:00+09:00
 - [ ] surface_capability_check
 
 ## 검토한 근거
-- task summary:
+- Task 요약:
 - Journey Spine:
-- User Judgments:
-- Residual Risks:
+- 사용자 판단:
+- Residual Risk:
 - Autonomy Boundary:
 - domain term refs:
 - module map item refs:
@@ -141,25 +141,25 @@ updated_at: 2026-05-06T10:05:00+09:00
 - diff:
 - bundle:
 - logs:
-- artifact refs only; 큰 evidence 본문은 포함하지 않음:
+- 아티팩트 참조만 포함하며 큰 evidence 본문은 포함하지 않음:
 - approvals(later Approval profile only; 그 외에는 none):
 - decisions:
 
 ## Redaction과 사용 가능성
-| Artifact Ref | Redaction State | Verification Effect | Note |
+| 아티팩트 참조 | 가림 상태 | 검증 영향 | 메모 |
 |---|---|---|---|
 | ART-EVAL-0001 | secret_omitted | 보이는 nonsecret fact 검토; 생략된 값은 증명 안 됨 | |
 | ART-EVAL-0002 | blocked | 사용할 수 없는 입력; verdict가 원본 payload에 의존하면 안 됨 | |
 
 ## 수용 기준 검토
-| AC ID | Statement | Evidence Reviewed | Result | Notes |
+| AC ID | 진술 | 검토한 근거 | 결과 | 메모 |
 |---|---|---|---|---|
 
 ## 설계 품질 검토
 - vertical slice:
-- User Judgments:
+- 사용자 판단:
 - Autonomy Boundary:
-- Residual Risks:
+- Residual Risk:
 - feedback loop:
 - TDD trace:
 - module/interface:
@@ -174,7 +174,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## 사용자 후속 조치
 - 확인이 필요한 trade-off:
-- remaining options:
+- 남은 선택지:
 - 수동 QA 필요성:
 ````
 

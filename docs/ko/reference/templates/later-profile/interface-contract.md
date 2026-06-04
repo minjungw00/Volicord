@@ -50,14 +50,14 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## 식별 정보
 - module:
 - interface:
-- change type: new | changed | deprecated | removed
+- 변경 유형: new | changed | deprecated | removed
 
 ## 계약
-- inputs:
-- outputs:
-- errors:
-- side effects:
-- compatibility impact: none | minor | breaking
+- 입력:
+- 출력:
+- 오류:
+- 부수 효과:
+- 호환성 영향: none | minor | breaking
 
 ## 영향받는 호출자
 - caller:
@@ -69,7 +69,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## 검토
 - review_status: pending | reviewed
-- reviewed by:
+- 검토한 사람:
 - decision:
 - waiver reason:
 

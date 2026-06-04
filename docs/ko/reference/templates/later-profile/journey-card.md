@@ -2,7 +2,7 @@
 
 ## 사용 시점
 
-작업의 현재 위치, 범위와 범위 밖, 다음 움직임을 막는 것, 대기 중인 사용자 판단, Autonomy Boundary, Write Authority Summary, 수용 기준, 근거와 확인, 잔여 위험, 닫기 맥락(close context), gate, 읽기용 보기 최신성을 현재 위치 카드로 보여줄 때 `JOURNEY-CARD`를 사용합니다.
+작업의 현재 위치, 범위와 범위 밖, 다음 움직임을 막는 것, 대기 중인 사용자 판단, 자율성 경계(Autonomy Boundary), 쓰기 권한 요약(Write Authority Summary), 수용 기준, 근거와 확인, 잔여 위험, 닫기 맥락(close context), gate, 읽기용 보기 최신성을 현재 위치 카드로 보여줄 때 `JOURNEY-CARD`를 사용합니다.
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
@@ -32,7 +32,7 @@ Judgment, write-authority, close-impact, residual-risk, freshness placeholder는
 ## 렌더링 섹션
 
 - 현재 위치와 다음 행동
-- scope와 out of bounds
+- 범위와 범위 밖
 - 수용 기준
 - 현재 막는 것
 - 판단 맥락
@@ -63,7 +63,7 @@ TASK-{id} {title}
 - 추가로 막는 것: {secondary_blockers_summary|none}
 
 판단 맥락:
-- 대기 중인 judgment: {user_judgment_ref|none}
+- 대기 중인 판단: {user_judgment_ref|none}
 - 사용자가 판단할 것: {user_judgment_question|none}
 - 에이전트가 판단해도 되는 것: {what_agent_may_decide_without_user}
 
@@ -71,7 +71,7 @@ Autonomy Boundary(자율성 경계):
 - profile: {autonomy_profile}
 - agent가 할 수 있는 일: {agent_may_do}
 - 필요한 사용자 판단: {user_judgment_required}
-- AFK stop conditions: {afk_stop_conditions}
+- AFK 중단 조건: {afk_stop_conditions}
 
 Write Authority Summary(쓰기 권한 요약):
 - active Change Unit: {active_change_unit_ref|none}
@@ -82,7 +82,7 @@ Write Authority Summary(쓰기 권한 요약):
 - 허용 network target: {allowed_network_targets}
 - secret scope: {secret_scope}
 - 민감 category: {sensitive_categories}
-- approval status: {approval_status}
+- 민감 동작 승인 상태: {approval_status}
 - baseline: {baseline_ref|none}
 - 보장 수준: {guarantee_display}
 - note: Autonomy Boundary는 판단 재량이지 쓰기 전 범위 확인이나 쓰기 허가 기록이 아니다.
@@ -90,7 +90,7 @@ Write Authority Summary(쓰기 권한 요약):
 근거와 확인:
 - 행동: {next_evidence_action}
 - 필요한 이유: {evidence_needed_for}
-- 최신 evidence: {latest_evidence_ref|none}
+- 최신 근거: {latest_evidence_ref|none}
 - 검증: {verification_summary|none}
 - self-check vs detached boundary: {self_check_or_detached_boundary|none}
 - 수동 QA: {manual_qa_summary|not_required}
@@ -102,7 +102,7 @@ Write Authority Summary(쓰기 권한 요약):
 - 받아들인 residual-risk record refs: {accepted_residual_risk_record_refs|none}
 
 닫기 맥락:
-- blockers: {close_blockers|none}
+- 닫기 막힘: {close_blockers|none}
 - 작업 수락: {acceptance_summary|not_required}
 - 잔여 위험 수용: {accepted_residual_risk_record_refs|none}
 - close reason: {close_reason|none}
@@ -124,9 +124,9 @@ Gates(관문):
 
 이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. Current source record와 ref에서 렌더링되며, 오래된 chat memory에서 렌더링하지 않습니다. 저장된 `JOURNEY-CARD` Markdown은 Future/diagnostic projections 범위입니다. `status`, `next`, 중요한 이어가기(resume) 흐름의 초기 현재 위치 맥락은 간결한 상태 출력을 사용할 수 있습니다.
 
-이 card 안이나 주변에 표시되는 status/next recommendation은 read-only guidance입니다. 사용자 판단 요청, 선택적 full-format Decision Packet presentation, `prepare_write`, evidence collection, verification, QA, reconcile, close attempt를 가리킬 수는 있지만, state를 mutate하거나, write를 허가하거나, gate를 충족하거나, 작업 수락을 기록하거나, 잔여 위험을 받아들이거나, Task를 close하지 않습니다.
+이 card 안이나 주변에 표시되는 status/next recommendation은 읽기 전용 안내입니다. 사용자 판단 요청, 선택적 full-format Decision Packet presentation, `prepare_write`, evidence collection, verification, QA, reconcile, close attempt를 가리킬 수는 있지만, state를 mutate하거나, write를 허가하거나, gate를 충족하거나, 작업 수락을 기록하거나, 잔여 위험을 받아들이거나, Task를 close하지 않습니다.
 
-Journey Card의 닫기 맥락(Close context)은 간결한 status/resume 표시입니다. `TASK`는 진행 중이거나 최근 닫힌 `work` Task의 이어가기용 Close Summary를 담당하고, `DIRECT-RESULT`는 direct 작업의 가벼운 close impact summary를 담당합니다. 이 표시들은 [projection/report 경계](../../projection-and-templates.md#projection-principles)를 따르며, close와 gate effect는 여전히 owner record에서 옵니다.
+Journey Card의 닫기 맥락(Close context)은 간결한 status/resume 표시입니다. `TASK`는 진행 중이거나 최근 닫힌 `work` Task의 이어가기용 닫기 요약(Close Summary)을 담당하고, `DIRECT-RESULT`는 direct 작업의 가벼운 close impact summary를 담당합니다. 이 표시들은 [projection/report 경계](../../projection-and-templates.md#projection-principles)를 따르며, close와 gate effect는 여전히 owner record에서 옵니다.
 
 Blocker 줄은 API와 state record를 사용자에게 보이는 상태로 바꿔 보여줍니다. 가장 먼저 해소할 막힘은 다음 행동이 먼저 해소해야 하는 blocker여야 하며, 소유자 라벨은 다음 움직임이 사용자 소유인지, 에이전트가 해소 가능한지, 접점/시스템 소유인지 분명히 해야 합니다. 가장 먼저 해소할 막힘이 없으면 소유자는 `none`으로 렌더링하거나 생략할 수 있습니다. 추가 막힘은 후속 경로에 영향을 줄 때만 계속 보여줍니다. Raw `ErrorCode` 값만으로 설명을 끝내면 안 됩니다.
 

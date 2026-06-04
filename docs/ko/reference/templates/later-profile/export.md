@@ -22,7 +22,7 @@
 - artifact 참조, owner relation, redaction status, retention/availability, integrity metadata
 - redaction, omission, blocked-artifact summary
 - omitted-secret note와 retained/expired artifact summary
-- review 또는 Release Handoff display에 포함될 때 Write Authorization, User Judgment, Approval, Evidence Manifest, Eval, 수동 QA, acceptance context, Residual Risk, Artifact refs, redaction state, projection freshness를 보여주는 compact authority refs
+- review 또는 Release Handoff display에 포함될 때 쓰기 허가 기록(Write Authorization), 사용자 판단(User Judgment), Approval, Evidence Manifest, Eval, 수동 QA, 작업 수락 context, Residual Risk, 아티팩트 참조, redaction state, 읽기용 보기 최신성(projection freshness)을 보여주는 간결한 authority refs
 - export profile boundary와 non-deployment/non-merge reminder 표시
 
 ## 렌더링 섹션
@@ -30,7 +30,7 @@
 - 범위
 - 상태 snapshot
 - 보고서 projection snapshot
-- Artifact 참조
+- 아티팩트 참조
 - Redaction status 요약
 - 생략되거나 차단된 content
 - 무결성
@@ -83,8 +83,8 @@ updated_at: 2026-05-06T10:30:00+09:00
 - DIRECT-RESULT:
 - optional design projections:
 
-## Artifact 참조
-| Artifact ID | Kind | Owner Record | URI | SHA256 | Size | Redaction Status | Retention / Availability | Export Treatment | Omission/Block Note |
+## 아티팩트 참조
+| 아티팩트 ID | 종류 | 소유 기록 | URI | SHA256 | 크기 | 가림 상태 | 보존 / 사용 가능성 | Export 처리 | 생략/차단 메모 |
 |---|---|---|---|---|---|---|---|---|---|
 
 ## Redaction status 요약
@@ -99,7 +99,7 @@ updated_at: 2026-05-06T10:30:00+09:00
 - policy, expiry, unavailability, omission, block 때문에 제외된 raw files:
 
 ## 생략되거나 차단된 content
-| Artifact ID | Affected Owner Or Display | Redaction Status | 이후 영향 | Note |
+| 아티팩트 ID | 영향받는 owner 또는 표시 | 가림 상태 | 이후 영향 | 메모 |
 |---|---|---|---|---|
 
 ## 무결성
@@ -108,22 +108,22 @@ updated_at: 2026-05-06T10:30:00+09:00
 - 생성 시각:
 
 ## Release Handoff(릴리스 인계)
-- close readiness:
-- close blockers:
-- authority refs: write={write_authorization_refs|none}; judgment={user_judgment_refs|none}; approval={approval_refs|none}; evidence={evidence_manifest_refs|none}; eval={eval_refs|none}; manual_qa={manual_qa_refs|none}; acceptance={acceptance_context_refs|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}; redaction={redaction_status_summary}; freshness={projection_freshness}
+- 닫기 준비 상태:
+- 닫기 막힘:
+- 권한 refs: write={write_authorization_refs|none}; judgment={user_judgment_refs|none}; approval={approval_refs|none}; evidence={evidence_manifest_refs|none}; eval={eval_refs|none}; manual_qa={manual_qa_refs|none}; acceptance={acceptance_context_refs|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}; redaction={redaction_status_summary}; freshness={projection_freshness}
 - approval refs는 minimum MVP-1에서 `none`입니다. 민감 동작 coverage는 later Approval owner profile이 active가 아닌 한 `judgment_type=sensitive_action_approval`인 `user_judgment_refs`로 나타납니다.
 - evidence refs:
 - verification refs:
 - 수동 QA refs:
 - residual-risk refs:
-- close/assurance display distinctions: self_checked={self_check_refs|none}; detached_verified={eval_refs|none}; verification_waived={verification_waiver_refs|none}; qa_waived={qa_waiver_refs|none}; risk_accepted_close={accepted_residual_risk_refs|none}
-- changed files:
-- projection freshness:
-- artifact retention/availability:
+- close/assurance 표시 구분: self_checked={self_check_refs|none}; detached_verified={eval_refs|none}; verification_waived={verification_waiver_refs|none}; qa_waived={qa_waiver_refs|none}; risk_accepted_close={accepted_residual_risk_refs|none}
+- 변경된 파일:
+- 보기 최신성:
+- artifact 보존/사용 가능성:
 - redaction/omission/block notes:
-- suggested PR checklist:
-- suggested deploy checklist:
-- suggested rollback 또는 monitoring notes:
+- 제안 PR checklist:
+- 제안 deploy checklist:
+- 제안 rollback 또는 monitoring notes:
 - 외부 권한 reminder: Deployment, merge, Approval, production monitoring, QA 또는 검증 면제, gate satisfaction, 작업 수락, 잔여 위험 수용, assurance upgrade, Task 닫기는 이 보고서 밖에 남는다.
 ````
 
