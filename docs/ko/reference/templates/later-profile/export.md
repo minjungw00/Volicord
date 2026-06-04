@@ -1,4 +1,4 @@
-# EXPORT Template
+# EXPORT 템플릿
 
 ## 사용 시점
 
@@ -6,7 +6,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Operations/export reports입니다. Export와 handoff bundle은 later operational/profile output이며 Core state 또는 artifact를 대체하지 않습니다.
+구현 계층: 운영/export 보고서입니다. Export와 handoff bundle은 later operational/profile output이며 Core state 또는 artifact를 대체하지 않습니다.
 
 ## 기준 기록
 
@@ -27,14 +27,14 @@
 
 ## 렌더링 섹션
 
-- Scope
-- State Snapshots
-- Report Projection Snapshots
-- Artifact Refs
-- Redaction Status Summary
-- Omitted Or Blocked Content
-- Integrity
-- Release Handoff
+- 범위
+- 상태 snapshot
+- 보고서 projection snapshot
+- Artifact 참조
+- Redaction status 요약
+- 생략되거나 차단된 content
+- 무결성
+- Release Handoff(릴리스 인계)
 
 ## 전체 템플릿
 
@@ -49,20 +49,20 @@ source_state_version: 50
 updated_at: 2026-05-06T10:30:00+09:00
 ---
 
-# EXPORT-0001 Harness Export
+# EXPORT-0001 Harness export
 
 > Projection 보기: `source_state_version`와 `updated_at` 기준으로 렌더링된 report snapshot입니다. Release Handoff/export 권한 경계는 [Operations And Conformance](../../operations-and-conformance.md#release-handoff-export-profile)가 담당합니다.
 
-## Scope
+## 범위
 - project_id:
 - task_ids:
-- included state version range:
-- included event version range:
+- 포함된 state version range:
+- 포함된 event version range:
 - policy 또는 profile 때문에 생략된 것:
-- created by:
-- created at:
+- 만든 사람:
+- 만든 시각:
 
-## State Snapshots
+## 상태 snapshot
 - tasks:
 - task gates:
 - change units:
@@ -74,7 +74,7 @@ updated_at: 2026-05-06T10:30:00+09:00
 - reconcile items:
 - state/event snapshot notes:
 
-## Report Projection Snapshots
+## 보고서 projection snapshot
 - TASK:
 - APR (later Approval profile only):
 - RUN-SUMMARY:
@@ -83,14 +83,14 @@ updated_at: 2026-05-06T10:30:00+09:00
 - DIRECT-RESULT:
 - optional design projections:
 
-## Artifact Refs
+## Artifact 참조
 | Artifact ID | Kind | Owner Record | URI | SHA256 | Size | Redaction Status | Retention / Availability | Export Treatment | Omission/Block Note |
 |---|---|---|---|---|---|---|---|---|---|
 
-## Redaction Status Summary
-- secrets omitted:
-- PII omitted:
-- redaction status by artifact ref:
+## Redaction status 요약
+- 생략된 secrets:
+- 생략된 PII:
+- artifact ref별 redaction status:
 - redacted artifacts:
 - blocked artifacts:
 - 보존된 omission notes:
@@ -98,16 +98,16 @@ updated_at: 2026-05-06T10:30:00+09:00
 - expired 또는 unavailable artifact refs:
 - policy, expiry, unavailability, omission, block 때문에 제외된 raw files:
 
-## Omitted Or Blocked Content
+## 생략되거나 차단된 content
 | Artifact ID | Affected Owner Or Display | Redaction Status | 이후 영향 | Note |
 |---|---|---|---|---|
 
-## Integrity
+## 무결성
 - export hash:
 - manifest hash:
-- generated at:
+- 생성 시각:
 
-## Release Handoff
+## Release Handoff(릴리스 인계)
 - close readiness:
 - close blockers:
 - authority refs: write={write_authorization_refs|none}; judgment={user_judgment_refs|none}; approval={approval_refs|none}; evidence={evidence_manifest_refs|none}; eval={eval_refs|none}; manual_qa={manual_qa_refs|none}; acceptance={acceptance_context_refs|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}; redaction={redaction_status_summary}; freshness={projection_freshness}

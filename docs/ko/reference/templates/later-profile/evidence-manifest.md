@@ -1,4 +1,4 @@
-# EVIDENCE-MANIFEST Template
+# EVIDENCE-MANIFEST 템플릿
 
 ## 사용 시점
 
@@ -6,7 +6,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Future/diagnostic projections입니다. MVP-1은 상태 카드 또는 실행/근거 요약으로 근거 summary/gap을 보여주며, full detailed Evidence Manifest projection은 later/profile scope입니다.
+구현 계층: 향후/진단용 projections입니다. MVP-1은 상태 카드 또는 실행/근거 요약으로 근거 요약과 공백을 보여주며, full detailed Evidence Manifest projection은 later/profile scope입니다.
 
 ## 기준 기록
 
@@ -15,7 +15,7 @@
 - completion condition
 - changed file coverage
 - design-quality coverage
-- approval refs (later Approval profile only; 그 외에는 none)
+- approval refs(later Approval profile only; 그 외에는 none)
 - hash, size, redaction state, retention/availability, owner relation, 후속 evidence 영향을 포함한 artifact 참조
 - 관련 Run, Eval, Feedback Loop, 수동 QA, TDD trace 참조
 - 닫기 맥락으로 렌더링할 때 닫기에 영향을 주는 검증, 수동 QA, 작업 수락, 잔여 위험 요약
@@ -23,18 +23,18 @@
 
 ## 렌더링 섹션
 
-- Identity
-- Summary
+- 식별 정보
+- 요약
 - 닫기 영향 요약
-- Authority And Close Refs
-- Acceptance Criteria Coverage
-- Completion Conditions Coverage
-- Changed File Coverage
-- Design Quality Coverage
-- Approval Refs
-- Evidence Refs
-- Redaction And Availability
-- Stale If
+- 권한과 닫기 참조
+- 수용 기준 coverage
+- 완료 조건 coverage
+- 변경 파일 coverage
+- 설계 품질 coverage
+- Approval 참조
+- 근거 참조
+- Redaction과 사용 가능성
+- 오래된 것으로 보는 조건
 
 ## 전체 템플릿
 
@@ -49,23 +49,23 @@ source_state_version: 44
 updated_at: 2026-05-06T09:50:00+09:00
 ---
 
-# EM-0001 Evidence Manifest
+# EM-0001 근거 목록(Evidence Manifest)
 
 > Projection 보기: `source_state_version`와 `updated_at` 기준으로 렌더링되며 owner record와 artifact ref의 대응을 표시합니다. Close는 Markdown edit가 아니라 기준 `evidence_gate`와 관련 state를 따릅니다.
 
-## Identity
+## 식별 정보
 - task_id:
 - change_unit_id:
 - baseline_ref:
 - run_summary:
 - latest_eval:
 
-## Summary
-- evidence state:
+## 요약
+- evidence 상태:
 - unsupported criteria:
 - 생략/차단 evidence 영향:
 - stale conditions:
-- next evidence action:
+- 다음 evidence action:
 
 ## 닫기 영향 요약
 - 근거가 뒷받침하는 것:
@@ -78,31 +78,31 @@ updated_at: 2026-05-06T09:50:00+09:00
 - close/assurance 표시 구분:
 - 다음 close 조치:
 
-## Authority And Close Refs
-- compact refs: write={write_authorization_ref|none}; judgment={user_judgment_refs|none}; approval={approval_refs|none}; evidence={evidence_manifest_id}; eval={eval_ref|none}; manual_qa={manual_qa_ref|none}; acceptance={acceptance_context_ref|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}
+## 권한과 닫기 참조
+- 간결한 refs: write={write_authorization_ref|none}; judgment={user_judgment_refs|none}; approval={approval_refs|none}; evidence={evidence_manifest_id}; eval={eval_ref|none}; manual_qa={manual_qa_ref|none}; acceptance={acceptance_context_ref|none}; residual_risk={residual_risk_refs|none}; artifacts={artifact_refs|none}
 - approval refs는 minimum MVP-1에서 `none`입니다. 민감 동작 coverage는 later Approval owner profile이 active가 아닌 한 `judgment_type=sensitive_action_approval`인 `user_judgment_refs`로 나타납니다.
 - redaction state:
 - projection freshness:
 
-## Acceptance Criteria Coverage
+## 수용 기준 coverage
 | AC ID | Statement | Coverage 상태 | Run Refs | ArtifactRef Refs | Supporting State Refs | Notes |
 |---|---|---|---|---|---|---|
 | AC-01 | | supported | RUN-0001 | ART-TEST-0001, ART-DIFF-0001 | FBL-0001 | |
 | AC-02 | | unsupported | | | | |
 
-## Completion Conditions Coverage
+## 완료 조건 coverage
 | Condition | Coverage 상태 | Run Refs | ArtifactRef Refs | Supporting State Refs | Notes |
 |---|---|---|---|---|---|
 | | supported | RUN-0001 | ART-0001 | | |
 | | unsupported | | | | |
 
-## Changed File Coverage
-| Path | Covered Criteria | Evidence Refs |
+## 변경 파일 coverage
+| Path | Covered Criteria | 근거 참조 |
 |---|---|---|
 | `src/...` | AC-01 | DIFF-0001, LOG-0001 |
 
-## Design Quality Coverage
-| Item | Coverage / 관문 표시 상태 | Evidence Refs | Notes |
+## 설계 품질 coverage
+| Item | Coverage / 관문 표시 상태 | 근거 참조 | Notes |
 |---|---|---|---|
 | vertical_slice_shape | passed | CU-01 | |
 | decision_quality_check | passed | UJ-0001 | |
@@ -116,11 +116,11 @@ updated_at: 2026-05-06T09:50:00+09:00
 
 `Coverage / 관문 표시 상태`는 이 manifest의 evidence coverage 또는 close와 관련된 관문 표시 상태입니다. 이 column의 `pending` 같은 값은 `ValidatorResult.status` 값이 아닙니다.
 
-## Approval Refs
+## Approval 참조
 - Later Approval owner profile이 active일 때만 채웁니다. Minimum MVP-1의 민감 동작 coverage는 `judgment_type=sensitive_action_approval`인 `user_judgment_refs`에 둡니다.
 - APR-0001:
 
-## Evidence Refs
+## 근거 참조
 - run summary:
 - feedback loop:
 - TDD trace:
@@ -136,13 +136,13 @@ updated_at: 2026-05-06T09:50:00+09:00
 - tests:
 - build:
 
-## Redaction And Availability
+## Redaction과 사용 가능성
 | Artifact Ref | Hash / Size | Redaction State | Retention / Availability | Evidence Effect | Note |
 |---|---|---|---|---|---|
 | ART-0001 | sha256:abc123... / 12 KB | secret_omitted | retained ref; raw secret omitted | 보이는 nonsecret fact만 지원 | |
 | ART-0002 | sha256:def456... / 1 KB | blocked | metadata-only notice | 사용할 수 없는 입력; claim은 해소 전까지 insufficient | |
 
-## Stale If
+## 오래된 것으로 보는 조건
 - recorded baseline에서 baseline drift가 발생함
 - supporting Run 또는 Eval 이후 changed files가 수정됨
 - Approval 범위가 만료되거나 drift됨
@@ -158,7 +158,7 @@ updated_at: 2026-05-06T09:50:00+09:00
 
 Evidence sufficiency는 artifact 개수가 아니라 수용 기준, completion conditions, close-relevant claims의 coverage에 달려 있습니다. Required row에 current supporting refs가 없으면 artifact가 많아도 manifest는 partial로 남습니다. 작은 direct docs-only Task는 모든 required condition을 cover한다면 Run ref 하나와 diff artifact 하나만으로도 sufficient일 수 있습니다.
 
-Example coverage mappings:
+Coverage mapping 예시:
 
 | Criterion / Condition | Run Refs | ArtifactRef Refs | Supporting State Refs | Sufficiency Note |
 |---|---|---|---|---|

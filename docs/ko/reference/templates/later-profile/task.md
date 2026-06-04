@@ -1,4 +1,4 @@
-# TASK Template
+# TASK 템플릿
 
 ## 권한 규칙
 
@@ -9,11 +9,11 @@
 
 ## 사용 시점
 
-전체 보고서가 명시적으로 유용한 later/profile 단계에서, 진행 중인 작업을 이어서 파악할 수 있는 continuity 또는 reference projection이 필요할 때 `TASK`를 사용합니다. 이 template은 Scope, User Judgments, Evidence, Close Readiness, 작업의 현재 위치, 사용자 판단 맥락, 막힘 소유자, Autonomy Boundary, Write Authority Summary, Implementation Micro-Plan, Review Stages, Stewardship Impact, 다음 근거, Residual Risk, Close Summary, 필요할 때의 kernel gate detail, active Change Unit, 대기 중인 judgment, 관련 보고서 ref, 읽기용 보기 최신성을 보여줄 수 있습니다.
+전체 보고서가 명시적으로 유용한 later/profile 단계에서, 진행 중인 작업을 이어서 파악할 수 있는 continuity 또는 reference projection이 필요할 때 `TASK`를 사용합니다. 이 template은 범위, 사용자 판단, 근거, 닫기 준비 상태, 작업의 현재 위치, 사용자 판단 맥락, 막힘 소유자, Autonomy Boundary(자율성 경계), Write Authority Summary(쓰기 권한 요약), 구현 마이크로 계획, 검토 단계, Stewardship 영향, 다음 근거, 잔여 위험, 닫기 요약, 필요할 때의 kernel gate detail, active Change Unit, 대기 중인 judgment, 관련 보고서 ref, 읽기용 보기 최신성을 보여줄 수 있습니다.
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Future/diagnostic projections입니다. `TASK`는 MVP-1 사용자 작업 루프 projection이 아닙니다. MVP-1의 사용자 대상 status는 [상태 카드](../status-card.md)가 담당하고, 사용자 판단이 필요하면 [판단 요청](../judgment-request.md) 또는 user-judgment resource가 담당합니다. Standalone Decision Packet은 복잡한 판단을 위한 선택적 full-format presentation입니다. 전체 `TASK` body는 later profile polish입니다.
+구현 계층: 향후/진단용 projections입니다. `TASK`는 MVP-1 사용자 작업 루프 projection이 아닙니다. MVP-1의 사용자 대상 status는 [상태 카드](../status-card.md)가 담당하고, 사용자 판단이 필요하면 [판단 요청](../judgment-request.md) 또는 user-judgment resource가 담당합니다. Standalone Decision Packet은 복잡한 판단을 위한 선택적 full-format presentation입니다. 전체 `TASK` body는 later profile polish입니다.
 
 이 repository에 `TASK` template이 있다는 사실은 현재 단계에서 full `TASK` Markdown이 필요하다는 뜻이 아닙니다.
 
@@ -43,26 +43,26 @@
 
 Later profile이 full report를 켜면 `TASK`는 다음과 같은 section을 렌더링할 수 있습니다.
 
-- Gate Group Summary
-- Current Summary
-- Where We Are
-- User Judgment Context
-- Authority Source Refs
-- Autonomy Boundary
-- Write Authority Summary
-- Implementation Micro-Plan
-- Review Stages
-- Next Evidence
-- Residual Risk
-- Close Summary
-- Stewardship Impact
-- Goal
-- Scope
+- Gate 그룹 요약
+- 현재 요약
+- 현재 위치
+- 사용자 판단 맥락
+- 권한 출처 참조
+- Autonomy Boundary(자율성 경계)
+- Write Authority Summary(쓰기 권한 요약)
+- 구현 마이크로 계획
+- 검토 단계
+- 다음 근거
+- 잔여 위험
+- 닫기 요약
+- Stewardship 영향
+- 목표
+- 범위
 - 수용 기준
-- Active Change Unit
-- Pending Decisions
-- Evidence And Reports
-- User Notes and Proposals
+- Active Change Unit(활성 Change Unit)
+- 대기 중인 판단
+- 근거와 보고서
+- 사용자 메모와 제안
 
 장기 `work` Task는 shared design, domain term ref, module/interface ref, Change Unit dependency, implementation detail, Journey Spine을 위한 expanded managed section을 표시할 수 있습니다.
 
@@ -80,20 +80,20 @@ source_state_version: 42
 updated_at: 2026-05-06T09:30:15+09:00
 ---
 
-# TASK-0001 Task Title
+# TASK-0001 Task 제목
 
 > Projection 보기: `source_state_version`와 `updated_at` 기준으로 렌더링된 보기입니다. Managed section은 생성된 표시 영역이며, 그 안의 edit는 상태 변경이 아니라 drift 또는 reconcile candidate입니다.
 
 <!-- HARNESS:BEGIN managed -->
-## Gate Group Summary
-- Scope:
-  - what may change:
-  - out of bounds:
-  - pre-write scope check / Write Authorization:
-  - blocker / smallest unblocker:
+## Gate 그룹 요약
+- 범위:
+  - 바뀔 수 있는 것:
+  - 범위 밖:
+  - 쓰기 전 범위 확인 / Write Authorization:
+  - 막힘 / 가장 작은 해소 방법:
   - source refs:
 - 사용자 판단:
-  - pending items (one line per judgment; merge하지 않음):
+  - 대기 중인 항목(판단마다 한 줄, merge하지 않음):
   - 판단 요청:
     - 제품/UX 판단:
     - 기술 판단:
@@ -108,16 +108,16 @@ updated_at: 2026-05-06T09:30:15+09:00
     - 잔여 위험 수용:
     - 수용하는 named risk:
   - decision / approval / waiver / acceptance / risk refs:
-  - blocker / smallest unblocker:
-  - what agent may continue:
-- Evidence:
+  - 막힘 / 가장 작은 해소 방법:
+  - 에이전트가 계속할 수 있는 것:
+- 근거:
   - evidence status:
   - supporting refs:
   - missing or stale support:
   - artifact redaction or omission state:
   - 대체하지 않는 것: 검증, 수동 QA, 작업 수락, 잔여 위험 수용
-  - next evidence action:
-- Close Readiness:
+  - 다음 evidence action:
+- 닫기 준비 상태:
   - verification:
   - 수동 QA:
   - 민감 동작 승인:
@@ -126,27 +126,27 @@ updated_at: 2026-05-06T09:30:15+09:00
   - 잔여 위험 수용:
   - waiver status:
   - 닫기 막힘 / close reason:
-  - smallest unblocker:
-- note: These are display groups only. Exact gate values, recompute rules, and close semantics are owned by Core Model Reference.
+  - 가장 작은 해소 방법:
+- note: 이 항목들은 표시 그룹일 뿐입니다. 정확한 gate 값, recompute rule, close semantics는 Core Model Reference가 담당합니다.
 
-## Current Summary
+## 현재 요약
 - mode:
 - lifecycle phase:
 - result:
 - close reason:
 - assurance:
-- scope summary:
-- out of bounds:
-- next action:
-- checked:
-- remaining:
-- primary blocker:
-- blocker owner:
-- smallest unblocker:
-- secondary blockers:
+- 범위 요약:
+- 범위 밖:
+- 다음 action:
+- 확인한 것:
+- 남은 것:
+- 가장 먼저 해소할 막힘:
+- 막힘 소유자:
+- 가장 작은 해소 방법:
+- 추가 막힘:
 - 대기 중인 judgment:
 - 대기 중인 judgment type:
-- user is judging:
+- 사용자가 판단하는 것:
 - risk:
 - gate display groups: 범위=; 사용자 판단=; 근거=; 닫기 준비 상태=
 - 보장 수준:
@@ -158,19 +158,19 @@ updated_at: 2026-05-06T09:30:15+09:00
 - latest report:
 - projection freshness:
 
-## Where We Are
-- current position:
+## 현재 위치
+- 현재 위치:
 - active path:
-- checked:
-- remaining:
-- primary blocker:
-- blocker owner:
-- smallest unblocker:
-- secondary blockers:
-- latest meaningful evidence:
-- next state transition:
+- 확인한 것:
+- 남은 것:
+- 가장 먼저 해소할 막힘:
+- 막힘 소유자:
+- 가장 작은 해소 방법:
+- 추가 막힘:
+- 최신 meaningful evidence:
+- 다음 state transition:
 
-## User Judgment Context
+## 사용자 판단 맥락
 - 대기 중인 user judgment:
 - 대기 중인 judgment items:
 - user_judgment_ref:
@@ -179,25 +179,25 @@ updated_at: 2026-05-06T09:30:15+09:00
 - judgment_type:
 - presentation:
 - display label:
-- why needed now:
-- what user is judging:
+- 지금 필요한 이유:
+- 사용자가 판단하는 것:
 - options:
 - trade-offs:
 - recommendation:
 - uncertainty:
-- deferral consequence:
-- residual risk when relevant:
+- 미룰 때의 영향:
+- 해당되는 경우 residual risk:
 - 수용하는 named risk:
-- what agent may decide without user:
+- 에이전트가 사용자 없이 결정해도 되는 것:
 - 이 판단이 확정하지 않는 것:
 - generic consent handling:
 - reversibility:
-- affected scope:
-- minimum context to judge:
-- affected display group:
-- affected gate refs:
+- 영향받는 범위:
+- 판단에 필요한 최소 맥락:
+- 영향받는 표시 group:
+- 영향받는 gate refs:
 
-## Authority Source Refs
+## 권한 출처 참조
 - Write Authorization:
 - User Judgment:
 - 민감 동작 승인 user judgment / Approval:
@@ -210,48 +210,48 @@ updated_at: 2026-05-06T09:30:15+09:00
 - Artifact refs and redaction state:
 - Projection freshness:
 
-## Autonomy Boundary
+## Autonomy Boundary(자율성 경계)
 - profile:
 - agent may do:
 - user judgment required:
 - AFK stop conditions:
 - boundary status:
 
-## Write Authority Summary
+## Write Authority Summary(쓰기 권한 요약)
 - active Change Unit:
 - write authorization:
-- allowed paths:
-- allowed tools:
-- allowed commands:
-- allowed network targets:
+- 허용 path:
+- 허용 tool:
+- 허용 command:
+- 허용 network target:
 - secret scope:
-- sensitive categories:
+- 민감 category:
 - approval status:
 - baseline:
 - guarantee:
 - note: Autonomy Boundary는 판단 재량이지 쓰기 전 범위 확인이나 쓰기 허가 기록이 아니다.
 
-## Implementation Micro-Plan
-- note: execution aid only; active Change Unit scope bounds writes and `prepare_write` creates Write Authorization.
+## 구현 마이크로 계획
+- note: 실행 보조 정보일 뿐입니다. active Change Unit 범위가 write를 제한하고 `prepare_write`가 Write Authorization을 만듭니다.
 - TDD note: required이면 selected feedback loop, RED target, GREEN target, non-test implementation이 actual RED evidence 또는 waiver를 기다리는지 표시한다.
 
 | Step / Slice | Purpose | Active Change Unit Scope / Likely Paths | Feedback Loop / TDD | Expected Evidence | Stop / Ask User When |
 |---|---|---|---|---|---|
 | 1 | | | | | |
 
-## Review Stages
+## 검토 단계
 - note: managed display only; Role Lens/playbook 라벨은 gate, record, `ProjectionKind` value, 민감 동작 승인, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험 수용, close, Write Authorization을 만들지 않는다. Same-session review는 분리 검증이 아니다. 발견 사항은 기존 owner record, ref, gate, blocker로 연결한다.
 
-### Spec Compliance Review
+### 명세 준수 검토
 - 수용 기준 coverage:
 - Change Unit completion conditions:
 - scope / Write Authority compatibility:
 - User judgment compatibility:
 - evidence coverage:
 - 잔여 위험 표시:
-- routed outcome (existing path/ref only):
+- routed outcome(existing path/ref only):
 
-### Code Quality / Stewardship Review
+### 코드 품질 / Stewardship 검토
 - domain language:
 - module / interface boundary:
 - vertical slice shape:
@@ -259,31 +259,31 @@ updated_at: 2026-05-06T09:30:15+09:00
 - codebase stewardship:
 - context hygiene:
 - 후속 위험:
-- routed outcome (existing path/ref only):
+- routed outcome(existing path/ref only):
 
-## Next Evidence
-- next evidence action:
-- evidence needed for:
+## 다음 근거
+- 다음 evidence action:
+- evidence가 필요한 이유:
 - TDD RED target / plan:
 - TDD RED evidence:
 - TDD GREEN evidence:
 - TDD refactor/check evidence:
-- expected artifact refs:
+- 예상 artifact refs:
 - 생략/차단 artifact 영향:
-- stale or missing evidence:
+- stale 또는 missing evidence:
 
-## Residual Risk
+## 잔여 위험
 - close-relevant risk:
 - visibility status:
 - status value:
-- named risk being accepted:
+- 수용하는 named risk:
 - 잔여 위험 수용 status:
 - accepted residual-risk refs:
 - 후속 작업 필요:
 - 닫기 영향:
 
-## Close Summary
-- changed scope:
+## 닫기 요약
+- 변경된 범위:
 - evidence:
 - verification:
 - 수동 QA:
@@ -294,16 +294,16 @@ updated_at: 2026-05-06T09:30:15+09:00
 - 작업 수락이 대체하지 않는 것:
 - waiver status:
 - authority source refs:
-- display state label (plain text, schema value 아님):
+- 표시 상태 라벨(plain text, schema value 아님):
 - self-check refs:
 - 분리 검증 Eval ref:
 - 검증 면제 판단 ref:
 - QA 면제 판단 ref:
 - accepted residual-risk refs:
 - close reason:
-- remaining follow-up:
+- 남은 follow-up:
 
-## Stewardship Impact
+## Stewardship 영향
 - summary shape: StewardshipImpactSummary
 - domain_language_impact: none | updated | conflict | unresolved
 - module_boundary_impact: none | local | public_boundary | unresolved
@@ -320,31 +320,31 @@ updated_at: 2026-05-06T09:30:15+09:00
   - residual risk:
   - User Judgments:
 
-## Goal
+## 목표
 -
 
-## Scope
-### In
+## 범위
+### 포함
 -
 
-### Out
+### 제외
 -
 
 ## 수용 기준
 - [ ] AC-01:
 - [ ] AC-02:
 
-## Active Change Unit
+## Active Change Unit(활성 Change Unit)
 | ID | Purpose | Status | Slice Type | TDD | 수동 QA | Core Verification |
 |---|---|---|---|---|---|---|
 | CU-01 | | | vertical | trace 상태: required \| recorded \| waived \| not_required; RED/GREEN ref 표시 | pending | |
 
-## Pending User Judgments
+## 대기 중인 사용자 판단
 | Display label | Question | `judgment_type` / refs | Status | Next action |
 |---|---|---|---|---|
 | 제품/UX 판단 \| 기술 판단 \| 민감 동작 승인 \| 작업 수락 \| 잔여 위험 수용 | | | | |
 
-## Evidence And Reports
+## 근거와 보고서
 - Evidence summary / Evidence Manifest when active:
 - Run Summary:
 - Eval:
@@ -359,84 +359,84 @@ updated_at: 2026-05-06T09:30:15+09:00
 - Projection freshness:
 <!-- HARNESS:END managed -->
 
-## User Notes and Proposals
+## 사용자 메모와 제안
 <!-- Human-editable: 여기의 note와 proposal은 reconcile input이며, Core를 통해 accepted되기 전에는 상태를 바꾸지 않습니다. -->
 -
 ````
 
-Long-running `work` task를 위한 expanded TASK section:
+장기 `work` task를 위한 expanded TASK section:
 
 ````md
 <!-- HARNESS:BEGIN managed -->
-## Shared Design Concept
-### Questions Resolved
+## Shared Design 개념
+### 해소된 질문
 | ID | Question | User Answer | Decision / Assumption |
 |---|---|---|---|
 
-### Remaining Ambiguity
+### 남은 모호함
 - item / owner / stop condition:
 
-## Domain Term Refs
-- Terms in force:
+## Domain Term 참조
+- 적용 중인 Terms:
   - Term:
 
-## Module and Interface Refs
+## Module과 Interface 참조
 - module map item refs:
 - interface contract refs:
 - rendered projection refs, if shown: MODULE-MAP, INTERFACE-CONTRACT
 - DESIGN:
 
-## Change Unit Dependencies
+## Change Unit 의존성
 | ID | blocked_by | unblocks | parallelizable_with | merge risk |
 |---|---|---|---|---|
 
-## Implementation Micro-Plan Details
+## 구현 마이크로 계획 상세
 - source alignment: current Task, active Change Unit, gates, related refs
 - boundary: 기준 상태 아님, 범위 권한 아님, Approval 아님, Write Authorization 아님; active Change Unit이 범위의 기준 출처로 남음
 
-### Step Queue
+### Step Queue(단계 대기열)
 | Step | State Alignment | Scope Alignment / Likely Paths | Feedback Loop / TDD Status | Evidence Target | Stop Condition |
 |---|---|---|---|---|---|
 
-## Journey Spine
-### Facts in Force
+## Journey Spine(이어가기 spine)
+### 적용 중인 사실
 - fact / evidence ref:
 
-### Assumptions in Force
+### 적용 중인 assumptions
 - assumption / expiry condition:
 
-### Decisions in Force
+### 적용 중인 decisions
 - DEC-0001:
 
-### Domain Terms in Force
+### 적용 중인 domain terms
 - term / meaning / code representation:
 
-### Module / Interface Impacts
+### Module / Interface 영향
 - module / impact / interface / test boundary:
 
-### Rejected Options
+### 거절한 options
 - option / reason / DEC:
 
-### Watchpoints
+### Watchpoints(주의 지점)
 - regression:
 - security/performance/operations:
 - architecture drift:
 
-### Resume Notes
-- next session should know:
-- primary blocker:
-- smallest unblocker:
+### 이어가기 메모
+- 다음 session이 알아야 할 것:
+- 가장 먼저 해소할 막힘:
+- 가장 작은 해소 방법:
 <!-- HARNESS:END managed -->
 ````
 
-Change Unit block sub-template:
+Change Unit block 하위 템플릿:
 
 ````md
-### CU-01 Title
-- purpose:
-- non-goals:
+### CU-01 제목
+- 목적:
+- 목표가 아닌 것:
 - slice type: vertical | enabling | cleanup | horizontal-exception
-- horizontal exception reason:
+- horizontal exception 이유:
 - 후속 vertical CU:
 - autonomy profile:
 - agent may do:
@@ -461,14 +461,14 @@ Change Unit block sub-template:
   - persistence:
   - API / 호출자 경계:
   - UI / observable output:
-- allowed paths:
+- 허용 path:
   - `src/...`
   - `tests/...`
-- allowed tools:
+- 허용 tool:
   - read
   - edit
   - shell: `npm test -- ...`
-- check profile:
+- 확인 profile:
   - changed_paths
   - approval_scope
   - evidence_sufficiency
@@ -484,7 +484,7 @@ Change Unit block sub-template:
   - codebase_stewardship_check
   - residual_risk_visibility_check
   - manual_qa_required
-- sensitive categories:
+- 민감 category:
   - none
 - TDD:
   - trace 상태: required | recorded | waived | not_required
@@ -496,7 +496,7 @@ Change Unit block sub-template:
 - 수동 QA:
   - required: yes | no
   - profile: ui_quality | workflow | copy | accessibility | browser_smoke | none
-- dependencies:
+- 의존성:
   - blocked_by:
   - unblocks:
   - parallelizable_with:
@@ -513,7 +513,7 @@ Change Unit block sub-template:
 
 `TASK`의 Implementation Micro-Plan은 현재 Task와 Change Unit 상태에서 생성되거나 그 상태와 정렬된 가벼운 실행 보조 정보입니다. [Projection And Templates Reference](../../projection-and-templates.md#projection-principles)의 projection/report 경계 안에 머물며, `prepare_write`나 owner state change를 대체하지 않습니다.
 
-`TASK`의 Review Stages는 Role Lens, playbook, two-stage review guidance를 위한 관리되는 표시 섹션입니다. 정확한 권한 없음 규칙은 [Design Quality Policies](../../design-quality-policies.md#two-stage-review-display)와 [Agent Integration](../../agent-integration.md#role-lens-동작)이 담당합니다. 기준 기록, `ProjectionKind` value, 민감 동작 승인, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험 수용, close, Write Authorization을 만들지 않으며, 발견 사항은 기존 owner path로 연결해야 합니다.
+`TASK`의 검토 단계(Review Stages)는 Role Lens, playbook, two-stage review guidance를 위한 관리되는 표시 섹션입니다. 정확한 권한 없음 규칙은 [Design Quality Policies](../../design-quality-policies.md#two-stage-review-display)와 [Agent Integration](../../agent-integration.md#role-lens-동작)이 담당합니다. 기준 기록, `ProjectionKind` value, 민감 동작 승인, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험 수용, close, Write Authorization을 만들지 않으며, 발견 사항은 기존 owner path로 연결해야 합니다.
 
 생성된 summary는 사용자가 읽기 쉬운 평범한 말을 먼저 쓰고, 정확한 Harness term은 유용한 label이나 ref로 붙입니다. Projection이 명령어처럼 보이거나 표시 문구만으로 상태가 만들어진 것처럼 암시하면 안 됩니다.
 

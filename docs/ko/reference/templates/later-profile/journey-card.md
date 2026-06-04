@@ -1,4 +1,4 @@
-# JOURNEY-CARD Template
+# JOURNEY-CARD 템플릿
 
 ## 사용 시점
 
@@ -6,15 +6,15 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Future/diagnostic projections입니다. Persisted Journey Card Markdown과 Journey Spine-style output은 초기 필수 범위가 아니며, 다섯 가지 작은 MVP 보기가 초기 현재 위치 맥락을 담당합니다.
+구현 계층: 향후/진단용 projections입니다. Persisted Journey Card Markdown과 Journey Spine-style output은 초기 필수 범위가 아니며, 다섯 가지 작은 MVP 보기가 초기 현재 위치 맥락을 담당합니다.
 
 ## 기준 기록
 
 - 현재 Task 상태와 gate
-- scope와 out-of-bounds summary
+- 범위와 범위 밖 summary
 - active Change Unit
-- Autonomy Boundary summary
-- current 수용 기준 snapshot
+- Autonomy Boundary summary(자율성 경계 요약)
+- 현재 수용 기준 snapshot
 - Write Authorization, 민감 동작 승인, baseline, 보장 수준 참조
 - 민감 동작 승인 status
 - active user judgment refs
@@ -36,12 +36,12 @@ Judgment, write-authority, close-impact, residual-risk, freshness placeholder는
 - 수용 기준
 - 현재 막는 것
 - 판단 맥락
-- Autonomy boundary
-- Write Authority Summary
+- Autonomy Boundary(자율성 경계)
+- Write Authority Summary(쓰기 권한 요약)
 - 근거와 확인
 - 잔여 위험
 - 닫기 맥락
-- Gates
+- Gates(관문)
 - 읽기용 보기 최신성
 - state/input 최신성과 capability 사용 가능 여부
 
@@ -67,21 +67,21 @@ TASK-{id} {title}
 - 사용자가 판단할 것: {user_judgment_question|none}
 - 에이전트가 판단해도 되는 것: {what_agent_may_decide_without_user}
 
-Autonomy Boundary:
+Autonomy Boundary(자율성 경계):
 - profile: {autonomy_profile}
 - agent가 할 수 있는 일: {agent_may_do}
 - 필요한 사용자 판단: {user_judgment_required}
 - AFK stop conditions: {afk_stop_conditions}
 
-Write Authority Summary:
+Write Authority Summary(쓰기 권한 요약):
 - active Change Unit: {active_change_unit_ref|none}
 - Write Authorization: {write_authorization_ref|none}
-- allowed paths: {allowed_paths}
-- allowed tools: {allowed_tools}
-- allowed commands: {allowed_commands}
-- allowed network targets: {allowed_network_targets}
+- 허용 path: {allowed_paths}
+- 허용 tool: {allowed_tools}
+- 허용 command: {allowed_commands}
+- 허용 network target: {allowed_network_targets}
 - secret scope: {secret_scope}
-- sensitive categories: {sensitive_categories}
+- 민감 category: {sensitive_categories}
 - approval status: {approval_status}
 - baseline: {baseline_ref|none}
 - 보장 수준: {guarantee_display}
@@ -107,7 +107,7 @@ Write Authority Summary:
 - 잔여 위험 수용: {accepted_residual_risk_record_refs|none}
 - close reason: {close_reason|none}
 
-Gates:
+Gates(관문):
 - scope: {scope_gate}
 - decision: {decision_gate}
 - approval: {approval_gate}

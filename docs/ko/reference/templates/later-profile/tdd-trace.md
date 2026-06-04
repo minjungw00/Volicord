@@ -1,4 +1,4 @@
-# TDD-TRACE Template
+# TDD-TRACE 템플릿
 
 ## 사용 시점
 
@@ -6,7 +6,7 @@ Change Unit에서 TDD가 필요하거나 선택 또는 기록된 상태이고 RE
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Future/diagnostic projections입니다. TDD Trace output은 later policy 또는 diagnostic profile용이며 첫 구현 범위를 키우면 안 됩니다.
+구현 계층: 향후/진단용 projections입니다. TDD Trace output은 later policy 또는 diagnostic profile용이며 첫 구현 범위를 키우면 안 됩니다.
 
 ## 기준 기록
 
@@ -22,13 +22,13 @@ Change Unit에서 TDD가 필요하거나 선택 또는 기록된 상태이고 RE
 
 ## 렌더링 섹션
 
-- Identity
-- Red
-- Green
-- Refactor
-- Non-TDD Justification
-- Evidence Refs
-- Finding Routing
+- 식별 정보
+- Red(실패 단계)
+- Green(통과 단계)
+- Refactor(정리 단계)
+- Non-TDD 근거
+- 근거 참조
+- Finding 라우팅
 
 ## 전체 템플릿
 
@@ -43,11 +43,11 @@ source_state_version: 43
 updated_at: 2026-05-06T09:40:00+09:00
 ---
 
-# TDD-0001 Trace Title
+# TDD-0001 Trace 제목
 
 > Projection 보기: `source_state_version`와 `updated_at` 기준으로 렌더링되며 TDD record와 ref를 표시합니다. Plan text는 기록된 artifact 또는 result ref가 뒷받침하기 전까지 RED evidence가 아닙니다.
 
-## Identity
+## 식별 정보
 - task_id:
 - change_unit_id:
 - trace 상태: required | recorded | waived | not_required
@@ -55,7 +55,7 @@ updated_at: 2026-05-06T09:40:00+09:00
 - feedback loop ref:
 - evidence manifest coverage ref:
 
-## Red
+## Red(실패 단계)
 - target / plan:
 - failing test ref:
 - command:
@@ -64,24 +64,24 @@ updated_at: 2026-05-06T09:40:00+09:00
 - recorded before non-test implementation: yes | no | waived
 - target / plan counts as Evidence Manifest coverage: no
 
-## Green
+## Green(통과 단계)
 - command:
 - result: passed | failed | missing
 - log ref:
 
-## Refactor
+## Refactor(정리 단계)
 - performed: yes | no
 - notes:
 - verification command:
 - log ref:
 
-## Non-TDD Justification
-- reason:
+## Non-TDD 근거
+- 이유:
 - feedback loop ref:
 - alternate feedback loop:
 - waiver recorded before non-test implementation: yes | no
 
-## Evidence Refs
+## 근거 참조
 - test:
 - red log:
 - green log:
@@ -89,12 +89,12 @@ updated_at: 2026-05-06T09:40:00+09:00
 - Evidence Manifest:
 - diff:
 
-## Finding Routing
+## Finding 라우팅
 - evidence gaps or support:
 - User judgment candidates or refs:
 - Change Unit update or follow-up:
 - residual-risk candidates or refs:
-- 수동 QA or Eval refs:
+- 수동 QA 또는 Eval refs:
 - close blockers:
 ````
 

@@ -1,4 +1,4 @@
-# EVAL Template
+# EVAL 템플릿
 
 ## 사용 시점
 
@@ -6,7 +6,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Future/diagnostic projections입니다. Later verification profile의 detailed Evaluation record에 사용하며 compact verification display는 card shape를 사용할 수 있습니다.
+구현 계층: 향후/진단용 projections입니다. Later verification profile의 상세 Evaluation record에 사용하며 compact verification display는 card shape를 사용할 수 있습니다.
 
 ## 기준 기록
 
@@ -24,18 +24,18 @@
 
 ## 렌더링 섹션
 
-- Source Refs
-- Target
-- Verdict
-- Environment And Independence
-- Checks And Validator Outcomes
-- Evidence Reviewed
-- Acceptance Criteria Review
-- Design Quality Review
-- Rationale
-- Blockers Or Rework
-- Redaction And Availability
-- User Follow-Up
+- 출처 참조
+- 대상
+- 판정
+- 환경과 독립성
+- 확인과 Validator 결과
+- 검토한 근거
+- 수용 기준 검토
+- 설계 품질 검토
+- 근거 설명
+- 막힘 또는 재작업
+- Redaction과 사용 가능성
+- 사용자 후속 조치
 
 ## 전체 템플릿
 
@@ -51,11 +51,11 @@ source_state_version: 45
 updated_at: 2026-05-06T10:05:00+09:00
 ---
 
-# EVAL-0001 Verification Result
+# EVAL-0001 검증 결과
 
 > Projection 보기: `source_state_version`와 `updated_at` 기준으로 렌더링되며 Eval state와 검토한 ref를 표시합니다. Verdict, assurance, gate effect는 Eval과 Core gate record를 통해서만 바뀝니다.
 
-## Source Refs
+## 출처 참조
 - Evidence Manifest:
 - User Judgments:
 - Approval:
@@ -66,23 +66,23 @@ updated_at: 2026-05-06T10:05:00+09:00
 - redaction state:
 - projection freshness:
 
-## Target
+## 대상
 - task_id:
 - change_unit_id: CU-01 | null
 - target_run_id:
 - evaluator_run_id:
 
-## Verdict
+## 판정
 - verdict: passed | failed | blocked | inconclusive
-- assurance impact:
-- verification gate impact:
-- detached candidate status:
+- assurance 영향:
+- verification gate 영향:
+- detached candidate 상태:
 - self-check vs detached boundary:
-- 수동 QA impact:
-- acceptance impact:
-- next action:
+- 수동 QA 영향:
+- acceptance 영향:
+- 다음 action:
 
-## Environment And Independence
+## 환경과 독립성
 - fresh run:
 - evaluator surface:
 - context independence: same_session | subagent_context | fresh_session | fresh_worktree | sandbox | manual_bundle
@@ -96,8 +96,8 @@ updated_at: 2026-05-06T10:05:00+09:00
 - source bundle:
 - parent run:
 
-## Checks And Validator Outcomes
-### Core Checks And Preconditions
+## 확인과 Validator 결과
+### Core 확인과 전제 조건
 - [ ] changed_paths
 - [ ] approval_scope
 - [ ] same_session_verify_guard
@@ -124,7 +124,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - [ ] manual_qa_required
 - [ ] surface_capability_check
 
-## Evidence Reviewed
+## 검토한 근거
 - task summary:
 - Journey Spine:
 - User Judgments:
@@ -142,20 +142,20 @@ updated_at: 2026-05-06T10:05:00+09:00
 - bundle:
 - logs:
 - artifact refs only; 큰 evidence 본문은 포함하지 않음:
-- approvals (later Approval profile only; 그 외에는 none):
+- approvals(later Approval profile only; 그 외에는 none):
 - decisions:
 
-## Redaction And Availability
+## Redaction과 사용 가능성
 | Artifact Ref | Redaction State | Verification Effect | Note |
 |---|---|---|---|
 | ART-EVAL-0001 | secret_omitted | 보이는 nonsecret fact 검토; 생략된 값은 증명 안 됨 | |
 | ART-EVAL-0002 | blocked | 사용할 수 없는 입력; verdict가 원본 payload에 의존하면 안 됨 | |
 
-## Acceptance Criteria Review
+## 수용 기준 검토
 | AC ID | Statement | Evidence Reviewed | Result | Notes |
 |---|---|---|---|---|
 
-## Design Quality Review
+## 설계 품질 검토
 - vertical slice:
 - User Judgments:
 - Autonomy Boundary:
@@ -166,14 +166,14 @@ updated_at: 2026-05-06T10:05:00+09:00
 - architecture drift:
 - domain language consistency:
 
-## Rationale
+## 근거 설명
 -
 
-## Blockers Or Rework
+## 막힘 또는 재작업
 -
 
-## User Follow-Up
-- trade-off needing confirmation:
+## 사용자 후속 조치
+- 확인이 필요한 trade-off:
 - remaining options:
 - 수동 QA 필요성:
 ````

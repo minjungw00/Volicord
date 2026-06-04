@@ -1,4 +1,4 @@
-# DIRECT-RESULT Template
+# DIRECT-RESULT 템플릿
 
 ## 사용 시점
 
@@ -6,7 +6,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Future/diagnostic projections입니다. 해당 profile이 active일 때 optional compact direct-work result display로 사용하며 MVP-1 사용자 작업 루프 projection이나 first kernel proof에는 필요하지 않습니다.
+구현 계층: 향후/진단용 projections입니다. 해당 profile이 active일 때 선택적 compact direct-work result display로 사용하며 MVP-1 사용자 작업 루프 projection이나 first kernel proof에는 필요하지 않습니다.
 
 ## 기준 기록
 
@@ -14,7 +14,7 @@
 - direct 작업에 제품 파일 쓰기가 있었다면 consumed Write Authorization 참조
 - 변경 경로
 - 범위 밖 또는 유지된 범위 summary
-- 실행한 check
+- 실행한 확인
 - 표시되는 claim이 있을 때 User Judgment refs, 민감 동작 승인 user judgment refs, later Approval refs, `evidence_ref` ref와 파생 evidence summary, full evidence profile이 active일 때 Evidence Manifest, Eval, 수동 QA, 작업 수락 user judgment refs, Residual Risk, Artifact refs
 - redaction state와 availability를 포함한 artifact 참조
 - 읽기용 보기 최신성(projection freshness) 입력
@@ -26,17 +26,17 @@
 
 ## 렌더링 섹션
 
-- Request
-- Scope
-- Outcome
-- Changed Scope
-- Checks
-- Assurance
-- Authority Refs
+- 요청
+- 범위
+- 결과
+- 변경된 범위
+- 확인
+- Assurance(보장 수준)
+- 권한 참조
 - 닫기 영향 요약
-- Escalation
-- Evidence Refs
-- Projection Freshness
+- 전환
+- 근거 참조
+- Projection 최신성
 
 ## 전체 템플릿
 
@@ -56,34 +56,34 @@ updated_at: 2026-05-06T09:40:00+09:00
 
 > Projection 보기: `source_state_version`와 `updated_at` 기준으로 렌더링되며 direct Run result를 표시합니다. 이 문서를 편집해도 result, assurance, escalation, close state는 바뀌지 않습니다.
 
-## Request
-- user request:
+## 요청
+- 사용자 요청:
 
-## Scope
-- direct run scope:
-- limits:
+## 범위
+- direct run 범위:
+- 제한:
 - write authorization ref:
-- allowed paths:
-- sensitive-action approval user judgment refs (minimum MVP-1, when applicable):
-- approval refs (later Approval profile only; 그 외에는 none):
+- 허용 path:
+- 민감 동작 승인 user judgment refs(minimum MVP-1, when applicable):
+- approval refs(later Approval profile only; 그 외에는 none):
 
-## Outcome
-- result summary:
+## 결과
+- result 요약:
 - close reason:
 
-## Changed Scope
-- changed files: `path/to/file`
-- no-file result:
+## 변경된 범위
+- 변경된 파일: `path/to/file`
+- 파일 변경 없는 결과:
 - 범위 밖 유지:
 
-## Checks
+## 확인
 - self-check:
 - tests/build:
-- validator outcomes:
+- validator 결과:
 - artifact refs and redaction state:
 - artifact availability:
 
-## Assurance
+## Assurance(보장 수준)
 - assurance_level:
 - meaning:
 - detached verify needed:
@@ -93,7 +93,7 @@ updated_at: 2026-05-06T09:40:00+09:00
 - QA waiver ref:
 - risk-accepted close refs:
 
-## Authority Refs
+## 권한 참조
 - write authorization:
 - User Judgment:
 - 민감 동작 승인 user judgment / Approval:
@@ -119,18 +119,18 @@ updated_at: 2026-05-06T09:40:00+09:00
 - QA waiver ref:
 - 후속 작업:
 
-## Escalation
+## 전환
 - escalated_to_work: yes | no
-- reason:
+- 이유:
 
-## Evidence Refs
+## 근거 참조
 - logs:
 - diff:
 - 후속 보고서:
 - 생략/차단 artifact 영향:
 
-## Projection Freshness
-- freshness:
+## Projection 최신성
+- 최신성:
 - source_state_version:
 - stale 또는 reconcile 영향:
 ````

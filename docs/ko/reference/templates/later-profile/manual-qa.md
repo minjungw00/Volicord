@@ -1,4 +1,4 @@
-# MANUAL-QA Template
+# MANUAL-QA 템플릿
 
 ## 사용 시점
 
@@ -6,7 +6,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Agency assurance reports입니다. Manual QA record 또는 active QA profile이 있을 때만 렌더링하며 MVP-1 다섯 가지 보기 세트의 일부가 아닙니다.
+구현 계층: 보증 프로필 보고서입니다. Manual QA record 또는 active QA profile이 있을 때만 렌더링하며 MVP-1 다섯 가지 보기 세트의 일부가 아닙니다.
 
 ## 기준 기록
 
@@ -23,15 +23,15 @@
 
 ## 렌더링 섹션
 
-- Identity
-- Authority And Close Refs
-- Setup
-- Checklist
-- Result
-- Waiver And Risk
-- Findings
-- Evidence Refs
-- Redaction And Availability
+- 식별 정보
+- 권한과 닫기 참조
+- 준비 사항
+- 확인 목록
+- 결과
+- 면제와 위험
+- 발견 사항
+- 근거 참조
+- Redaction과 사용 가능성
 
 ## 전체 템플릿
 
@@ -51,15 +51,15 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 > Projection 보기: `source_state_version`와 `updated_at` 기준으로 렌더링되며 수동 QA record와 `qa_gate`를 표시합니다. QA result와 QA waiver는 `manual_qa_records`와 `qa_gate`에 기록됩니다. Product/user risk가 있는 QA waiver는 연결된 QA waiver user judgment를 사용하고, 잔여 위험 수용은 Residual Risk refs에 기록됩니다. Browser QA artifact는 supporting ref일 뿐이며 human 수동 QA judgment, 작업 수락, 분리 검증을 대체하지 않습니다.
 
-## Identity
+## 식별 정보
 - manual_qa_record_id: QA-0001 | null
 - task_id:
 - change_unit_id: CU-01 | null
 - qa_profile: ui_quality | workflow | copy | accessibility | browser_smoke | performance_smoke | other
 - required: yes | no
-- performed by:
+- 수행한 사람:
 
-## Authority And Close Refs
+## 권한과 닫기 참조
 - 수동 QA record:
 - QA waiver user judgment:
 - Evidence Manifest:
@@ -71,21 +71,21 @@ updated_at: 2026-05-06T10:05:00+09:00
 - redaction state:
 - projection freshness:
 
-## Setup
+## 준비 사항
 - build/run command:
 - test account/data:
 - route or screen:
 - browser capture support: supported | unsupported | not applicable
 
-## Checklist
+## 확인 목록
 - [ ] primary workflow works
 - [ ] errors are understandable
 - [ ] visual layout acceptable
 - [ ] accessibility smoke check
 - [ ] no obvious regression
 
-## Result
-- record result: passed | failed | waived | null when no record exists
+## 결과
+- 기록 결과: passed | failed | waived | null when no record exists
 - qa_gate: not_required | required | pending | passed | failed | waived
 - qa_gate note: 기준 close-relevant gate; 이 projection은 표시 전용
 - QA waiver display: `qa_gate=waived`와 수동 QA record 또는 waiver reason, 필요한 경우 QA waiver user judgment
@@ -96,7 +96,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - summary:
 - 면제 사유:
 
-## Waiver And Risk
+## 면제와 위험
 - 면제 기록:
 - QA waiver user judgment:
 - 생략한 확인 또는 대상:
@@ -107,12 +107,12 @@ updated_at: 2026-05-06T10:05:00+09:00
 - 받아들인 Residual Risk 요약:
 - 닫기 영향:
 
-## Findings
+## 발견 사항
 | Severity | Finding | Suggested Action | Follow-up CU |
 |---|---|---|---|
 | minor | | | |
 
-## Evidence Refs
+## 근거 참조
 - screenshot:
 - qa_capture:
 - browser log:
@@ -121,7 +121,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 - manually supplied artifact:
 - unsupported-surface fallback note:
 
-## Redaction And Availability
+## Redaction과 사용 가능성
 | Artifact Ref | Redaction State | QA Effect | Note |
 |---|---|---|---|
 | ART-QA-0001 | secret_omitted | observable finding만 지원 | |

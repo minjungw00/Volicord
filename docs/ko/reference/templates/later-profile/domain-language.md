@@ -1,4 +1,4 @@
-# DOMAIN-LANGUAGE Template
+# DOMAIN-LANGUAGE 템플릿
 
 ## 사용 시점
 
@@ -6,7 +6,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Future/diagnostic projections입니다. Domain-language map은 stewardship profile용으로 유지하며 초기 필수 projection이 아닙니다.
+구현 계층: 향후/진단용 projections입니다. Domain-language map은 stewardship profile용으로 유지하며 초기 필수 projection이 아닙니다.
 
 ## 기준 기록
 
@@ -20,11 +20,11 @@
 
 ## 렌더링 섹션
 
-- Summary
-- Terms
-- Pending Term Decisions
-- Deprecated Terms
-- User Notes and Proposals
+- 요약
+- 용어
+- 대기 중인 용어 판단
+- 폐기된 용어
+- 사용자 메모와 제안
 
 ## 전체 템플릿
 
@@ -38,31 +38,31 @@ source_state_version: 12
 updated_at: 2026-05-06T09:30:15+09:00
 ---
 
-# Domain Language
+# Domain Language(도메인 언어)
 
-> Projection 보기: `domain_terms`와 관련 ref를 `source_state_version` / `updated_at` 기준으로 렌더링한 보기입니다. Managed section은 생성된 표시 영역이며, reconcile 입력은 `User Notes and Proposals`에 적습니다.
+> Projection 보기: `domain_terms`와 관련 ref를 `source_state_version` / `updated_at` 기준으로 렌더링한 보기입니다. Managed section은 생성된 표시 영역이며, reconcile 입력은 `사용자 메모와 제안`에 적습니다.
 
 <!-- HARNESS:BEGIN managed -->
-## Summary
-- current status:
-- latest reconciled task:
+## 요약
+- 현재 status:
+- 최근 reconcile된 task:
 - stale conditions:
 
-## Terms
+## 용어
 | Term | Meaning | Code Representation | Not This | Related Terms | Source | Status |
 |---|---|---|---|---|---|---|
 | Account | login-capable user identity | `src/auth/account.ts` | Profile | User, Session | TASK-0001 | active |
 
-## Pending Term Decisions
+## 대기 중인 용어 판단
 | Term | Question | Options | Recommendation | Owner |
 |---|---|---|---|---|
 
-## Deprecated Terms
+## 폐기된 용어
 | Term | Replaced By | Reason | Since |
 |---|---|---|---|
 <!-- HARNESS:END managed -->
 
-## User Notes and Proposals
+## 사용자 메모와 제안
 <!-- Human-editable: 여기의 term proposal은 reconcile/Core를 통해 accepted되기 전에는 기준 domain term이 아닙니다. -->
 -
 ````

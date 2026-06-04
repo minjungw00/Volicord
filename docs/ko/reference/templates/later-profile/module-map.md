@@ -1,4 +1,4 @@
-# MODULE-MAP Template
+# MODULE-MAP 템플릿
 
 ## 사용 시점
 
@@ -6,7 +6,7 @@
 
 경계: projection template일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: Future/diagnostic projections입니다. Module Map output은 later stewardship/reference view이며 첫 implementation slice나 MVP-1 다섯 가지 보기 세트에 필요하지 않습니다.
+구현 계층: 향후/진단용 projections입니다. Module Map output은 later stewardship/reference view이며 첫 implementation slice나 MVP-1 다섯 가지 보기 세트에 필요하지 않습니다.
 
 ## 기준 기록
 
@@ -20,11 +20,11 @@
 
 ## 렌더링 섹션
 
-- Summary
-- Modules
-- Deep Module Candidates
-- Module Watchpoint Rollup
-- User Notes and Proposals
+- 요약
+- 모듈
+- Deep Module 후보
+- Module watchpoint 모음
+- 사용자 메모와 제안
 
 ## 전체 템플릿
 
@@ -38,26 +38,26 @@ source_state_version: 12
 updated_at: 2026-05-06T09:30:15+09:00
 ---
 
-# Module Map
+# Module Map(모듈 맵)
 
-> Projection 보기: `module_map_items`와 관련 ref를 `source_state_version` / `updated_at` 기준으로 렌더링한 보기입니다. Managed section은 생성된 표시 영역이며, reconcile 입력은 `User Notes and Proposals`에 적습니다.
+> Projection 보기: `module_map_items`와 관련 ref를 `source_state_version` / `updated_at` 기준으로 렌더링한 보기입니다. Managed section은 생성된 표시 영역이며, reconcile 입력은 `사용자 메모와 제안`에 적습니다.
 
 <!-- HARNESS:BEGIN managed -->
-## Summary
-- architecture state:
-- latest review:
+## 요약
+- architecture 상태:
+- 최근 review:
 - stale conditions:
 
-## Modules
+## 모듈
 | Module | Role | Public Interface | Internal Complexity | Dependencies | Test Boundary | Owner Decision | Watchpoints |
 |---|---|---|---|---|---|---|---|
 | AuthService | verifies auth and issues sessions | `login`, `logout` | credential validation, session issue | UserRepo, SessionStore | service interface tests | human_reviewed | session expiry drift |
 
-## Deep Module Candidates
+## Deep Module 후보
 | Candidate | Current Pain | Proposed Boundary | Expected Test Boundary | Priority |
 |---|---|---|---|---|
 
-## Module Watchpoint Rollup
+## Module watchpoint 모음
 - source: `module_map_items.watchpoints_json`
 - canonical owner: Module Map Item; 전용 architecture watchpoint ref는 later DDL batch가 정의한 경우에만 사용한다
 - shallow module growth:
@@ -65,7 +65,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - public interface drift:
 <!-- HARNESS:END managed -->
 
-## User Notes and Proposals
+## 사용자 메모와 제안
 <!-- Human-editable: 여기의 module proposal은 reconcile/Core를 통해 accepted되기 전에는 기준 Module Map Item이 아닙니다. -->
 -
 ````
