@@ -56,7 +56,7 @@ Resolved user judgment가 민감 동작 permission을 부여하는 경우는 `ju
 - Follow-Up
 - References
 
-충분한 rendered Decision Packet은 하나의 사용자 소유 판단에 답합니다. 넓은 permission을 묻지 않습니다. 정확한 public request/response field는 [`harness.request_user_judgment`](../mcp-api-and-schemas.md#harnessrequest_user_judgment)가 소유하고, canonical authority rule은 [User Judgment](../kernel.md#user-judgment)와 [Decision Gate](../kernel.md#decision-gate)가 소유합니다. 이 template은 existing user judgment fields를 요약할 수 있지만 schema field, gate, alternate authority를 추가하면 안 됩니다.
+충분한 rendered Decision Packet은 하나의 사용자 소유 판단에 답합니다. 넓은 permission을 묻지 않습니다. 정확한 public request/response field는 [`harness.request_user_judgment`](../api/mvp-api.md#harnessrequest_user_judgment)가 소유하고, canonical authority rule은 [User Judgment](../kernel.md#user-judgment)와 [Decision Gate](../kernel.md#decision-gate)가 소유합니다. 이 template은 existing user judgment fields를 요약할 수 있지만 schema field, gate, alternate authority를 추가하면 안 됩니다.
 
 사용자에게 보이는 질문은 판단을 직접 물어야 합니다. Option 선택, 정해진 결과가 있는 defer, path reject, 민감 동작 승인 grant/deny, 결과 accept/reject, 이름 붙은 잔여 위험 accept/reject, later-profile waiver/reconcile outcome처럼 기록될 값을 분명히 말합니다. "approve"나 "승인"은 민감 동작 승인 또는 later Approval record에만 씁니다. 여러 판단이 pending이면 별도 prompt 또는 별도 줄로 렌더링합니다. 민감 동작 승인, 작업 수락, 잔여 위험 수용을 하나의 답변으로 합치면 안 됩니다.
 

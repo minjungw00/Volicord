@@ -1,0 +1,379 @@
+# MVP-1 API
+
+## What this document helps you do
+
+Use this short reference when you need the active MVP-1 public API surface without the later schema appendix.
+
+This document describes future Harness Server behavior for planning and review. No Harness runtime or server implementation exists in this repository today. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../../build/implementation-overview.md#documentation-acceptance-status).
+
+## Main idea
+
+MVP-1 exposes a small local MCP surface for the user work loop: intake ordinary work, show current status and next safe actions, check proposed writes cooperatively against current scope, record runs and evidence refs, route user-owned judgment, record the user's answer, and close only when the minimal contract allows it.
+
+`harness.next` is not a separate MVP-1 method. MVP-1 callers read next safe actions from `harness.status.next_actions`. A separate `harness.next` method is later/compatibility material in [Schema Later](schema-later.md#harnessnext).
+
+This API does not claim OS-level blocking, arbitrary-tool sandboxing, tamper-proof files, or pre-tool prevention. `harness.prepare_write` is a cooperative Core scope and authority check. Stronger preventive or isolated claims require an owner-promoted profile and proof in the relevant security and connector docs.
+
+## MVP-1 method set
+
+| Method | MVP-1 role |
+|---|---|
+| [`harness.intake`](#harnessintake) | Start or resume plain-language work and classify it as advice/read-only, small direct work, or tracked work. |
+| [`harness.status`](#harnessstatus) | Return current scope, blockers, pending judgments, evidence summary, next actions, and close readiness. |
+| [`harness.prepare_write`](#harnessprepare_write) | Check proposed product writes against current Task, scope, baseline, sensitive-action permission, and user judgment coverage. |
+| [`harness.record_run`](#harnessrecord_run) | Record a shaping, implementation, or direct run and minimal artifact/evidence refs. |
+| [`harness.request_user_judgment`](#harnessrequest_user_judgment) | Create a focused user judgment request. |
+| [`harness.record_user_judgment`](#harnessrecord_user_judgment) | Record the user's answer to a pending user judgment. |
+| [`harness.close_task`](#harnessclose_task) | Check close readiness and close, cancel, or supersede only when blockers allow it. |
+
+## Not MVP-1
+
+These surfaces remain later/profile-gated unless an owner document promotes them:
+
+- separate `harness.next`
+- `harness.launch_verify`
+- `harness.record_eval`
+- `harness.record_manual_qa`
+- committed Approval record lifecycle beyond sensitive-action approval as a `user_judgment`
+- full Evidence Manifest, detached verification, full Manual QA matrix, reconcile, export/recover, broad operations, and detailed diagnostic projections
+
+## Shared request rules
+
+All methods use [`ToolEnvelope`](schema-core.md#tool-envelope) and [`ToolResponseBase`](schema-core.md#common-response). State-changing tools require a non-null `idempotency_key` and a current `expected_state_version`. Read-only tools may set `expected_state_version` to `null`.
+
+MVP-1 request validators use the active value sets in [Schema Core](schema-core.md#stage-specific-active-value-sets). Later enum values and extension branches are not valid merely because they exist in [Schema Later](schema-later.md).
+
+Error codes, primary error precedence, idempotency replay, and stale-state behavior are owned by [Errors](errors.md).
+
+<a id="harnessintake"></a>
+
+## `harness.intake`
+
+Use this to start, classify, or resume ordinary user work.
+
+Stage meaning: optional as a minimal setup path for the internal Engineering Checkpoint; active in MVP-1 for plain-language start/resume behavior. Full discovery, design-support routing, and broad planning workflows are later material unless explicitly promoted.
+
+Allowed actors: `user`, `lead_agent`, `operator`.
+
+```yaml
+IntakeRequest:
+  envelope: ToolEnvelope
+  user_request: string
+  requested_mode: advisor | direct | work | auto
+  resume_policy: resume_active | create_new | supersede_active | reject_if_active
+  acceptance_criteria: string[]
+  constraints:
+    allowed_paths: string[]
+    non_goals: string[]
+    sensitive_categories: string[]
+  initial_context_refs: StateRecordRef[]
+
+IntakeResponse:
+  base: ToolResponseBase
+  task_id: string
+  created: boolean
+  resumed: boolean
+  state: StateSummary
+  next_action: string
+  change_unit_id: string | null
+```
+
+Core may create or resume a Task, set the work mode, and create an initial scoped boundary for write-capable direct or tracked work. Idempotent replay returns the same Task/resume decision; changed payload replay returns `STATE_CONFLICT`.
+
+<a id="harnessstatus"></a>
+
+## `harness.status`
+
+Use this to answer "where are we now, what blocks progress, and what is the next safe action?"
+
+Stage meaning: active for Engineering Checkpoint minimal status/blocker output; active for MVP-1 user-facing current position, pending user judgments, evidence summary, close readiness, and `next_actions`.
+
+Allowed actors: `user`, `lead_agent`, `evaluator`, `operator`.
+
+```yaml
+StatusRequest:
+  envelope: ToolEnvelope
+  include:
+    task: boolean
+    gates: boolean
+    projections: boolean
+    pending_user_judgments: boolean
+    guarantees: boolean
+    user_judgments: boolean
+    autonomy_boundary: boolean
+    write_authority: boolean
+    residual_risk: boolean
+
+StatusResponse:
+  base: ToolResponseBase
+  active_task: StateSummary | null
+  status_card: string
+  next_actions: NextActionSummary[]
+  pending_user_judgments: StateRecordRef[]
+  active_user_judgment_refs: StateRecordRef[]
+  autonomy_boundary_summary: AutonomyBoundarySummary | null
+  write_authority_summary: WriteAuthoritySummary | null
+  residual_risk_summary: ResidualRiskSummary | null
+  evidence_summary_refs: StateRecordRef[]
+  close_readiness_refs: StateRecordRef[]
+  projection_freshness:
+    status: current | stale | failed | unknown
+    stale_refs: StateRecordRef[]
+  guarantee_display:
+    level: cooperative | detective | preventive | isolated
+    notes: string[]
+```
+
+`next_actions` is the MVP-1 next-safe-action surface. It should name the smallest useful next action or unblocker in ordinary language, with exact enum values as secondary detail.
+
+MVP-1 active `NextActionSummary.action_kind` values:
+
+```text
+ask_user | prepare_write | implement | request_acceptance | close_task | idle
+```
+
+Verification, Eval, Manual QA, reconcile, export/recover, and operations next-action kinds are later/profile-gated.
+
+Status is read-only. It must not create state, authorize writes, satisfy gates, accept work, accept residual risk, enqueue projection repair, or close a Task.
+
+<a id="harnessprepare_write"></a>
+
+## `harness.prepare_write`
+
+Use this before an agent writes product files. It checks the exact proposed write against current Core state and returns either a compatible single-use Write Authorization or structured blockers.
+
+Stage meaning: active for Engineering Checkpoint and MVP-1. In MVP-1, sensitive-action permission is represented through a compatible `user_judgment` with `judgment_type=sensitive_action_approval`; committed Approval records are later-profile material.
+
+Allowed actors: `lead_agent`, `operator`.
+
+```yaml
+PrepareWriteRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  change_unit_id: string | null
+  intended_operation: string
+  intended_paths: string[]
+  intended_tools: string[]
+  intended_commands:
+    - command: string
+      command_class: string
+      writes_product_files: boolean
+  intended_network:
+    - target: string
+      direction: read | write
+  intended_secrets:
+    - secret_handle: string
+      access_kind: read | write
+  sensitive_categories: string[]
+  baseline_ref: string | null
+
+PrepareWriteResponse:
+  base: ToolResponseBase
+  decision: allowed | blocked | approval_required | decision_required | state_conflict
+  state: StateSummary | null
+  change_unit_id: string | null
+  baseline_ref: string | null
+  write_authorization_ref: StateRecordRef | null
+  write_authorization: WriteAuthorizationSummary | null
+  authorization_effect: none | would_create | created | returned
+  active_user_judgment_refs: StateRecordRef[]
+  blocked_reasons:
+    - code: string
+      message: string
+      related_error: ErrorCode
+  approval_request_candidate: ApprovalRequestCandidate | null
+  user_judgment_candidate: UserJudgmentCandidate | null
+  guarantee_display:
+    level: cooperative | detective | preventive | isolated
+    notes: string[]
+```
+
+`decision=allowed` with `dry_run=false` must include `write_authorization_ref`; `dry_run=true` may return `authorization_effect=would_create` but creates no authorization. Blocked or judgment-required responses must not include a Write Authorization.
+
+`approval_request_candidate` and `user_judgment_candidate` are non-mutating candidate payloads. They do not create user judgments, Approval records, Write Authorizations, or projections.
+
+<a id="harnessrecord_run"></a>
+
+## `harness.record_run`
+
+Use this after a shaping update, direct result, or implementation run. Implementation and direct product-write runs consume a compatible Write Authorization returned by `harness.prepare_write`.
+
+Stage meaning: active for Engineering Checkpoint with one compatible run and one artifact/evidence ref; active in MVP-1 for evidence summaries. Verification input, Feedback Loop updates, TDD Trace updates, and full Evidence Manifest behavior are later/profile-gated.
+
+Allowed actors: `lead_agent`, `evaluator`, `operator`.
+
+```yaml
+RecordRunRequest:
+  envelope: ToolEnvelope
+  kind: shaping_update | implementation | direct
+  task_id: string
+  change_unit_id: string | null
+  run_id: string | null
+  baseline_ref: string | null
+  write_authorization_id: string | null
+  summary: string
+  artifact_inputs: ArtifactInput[]
+  payload: RecordRunPayload
+
+RecordRunPayload:
+  shaping_update: ShapingUpdatePayload | null
+  implementation: ImplementationPayload | null
+  direct: DirectPayload | null
+
+RecordRunResponse:
+  base: ToolResponseBase
+  run_id: string | null
+  state: StateSummary
+  write_authorization_ref: StateRecordRef | null
+  evidence_summary_ref: StateRecordRef | null
+  run_summary_ref: StateRecordRef | null
+  direct_result_ref: StateRecordRef | null
+  registered_artifacts: ArtifactRef[]
+  next_action: string
+```
+
+The payload branch must match `kind`. MVP-1 accepts `shaping_update`, `implementation`, and `direct`; `verification_input` is later-profile only.
+
+If Core rejects a write-capable run before commit, `run_id` is `null`, no artifacts are registered, and the response must not imply a Run exists. A violation/audit Run may be recorded only when Core deliberately records observed behavior after a product write; it does not satisfy evidence, QA, verification, work acceptance, or close readiness.
+
+<a id="harnessrequest_user_judgment"></a>
+<a id="harnessrequest_user_decision"></a>
+
+## `harness.request_user_judgment`
+
+Compatibility alias: `harness.request_user_decision`.
+
+Use this to create a focused user judgment request when user-owned judgment, sensitive-action permission, work acceptance, or residual-risk acceptance blocks progress or close.
+
+Stage meaning: not active in Engineering Checkpoint; active in MVP-1. Full-format Decision Packet presentation, committed Approval record lifecycle, waiver, reconcile, and full residual-risk profiles are later/profile-gated unless explicitly active.
+
+Allowed actors: `lead_agent`, `evaluator`, `operator`.
+
+```yaml
+RequestUserJudgmentRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  change_unit_id: string | null
+  judgment_type: product_choice | technical_choice | sensitive_action_approval | work_acceptance | residual_risk_acceptance
+  presentation: short | full
+  display_label: Product/UX judgment | Technical judgment | Sensitive action approval | Work acceptance | Residual risk acceptance
+  context:
+    why_now: string
+    source_refs: StateRecordRef[]
+    evidence_refs: EvidenceRefs
+  state_summary_at_request: StateSummary | null
+  what_user_is_judging: string
+  what_agent_may_decide_without_user: string[]
+  affected_scope: UserJudgmentScope
+  affected_gates: UserJudgmentGateRef[]
+  affected_acceptance_criteria: UserJudgmentCriterionRef[]
+  judgment_payload: UserJudgmentPayload
+  expires_at: string | null
+
+RequestUserJudgmentResponse:
+  base: ToolResponseBase
+  user_judgment_id: string
+  user_judgment_ref: StateRecordRef
+  user_judgment: UserJudgment
+  approval_id: string | null
+  reconcile_item_id: string | null
+  state: StateSummary
+  user_visible_summary: string
+```
+
+`approval_id` is `null` in minimum MVP-1. A sensitive-action approval judgment records scoped permission only after `harness.record_user_judgment` resolves it; it is not Write Authorization and does not settle product, technical, work-acceptance, or residual-risk judgment.
+
+<a id="harnessrecord_user_judgment"></a>
+<a id="harnessrecord_user_decision"></a>
+
+## `harness.record_user_judgment`
+
+Compatibility alias: `harness.record_user_decision`.
+
+Use this to record the user's answer to an existing canonical `UserJudgment`.
+
+Stage meaning: not active in Engineering Checkpoint; active in MVP-1 for user-owned judgments, sensitive-action approval judgment resolutions, and work acceptance when required. Committed Approval updates, waivers, reconcile outcomes, and richer residual-risk metadata are later/profile-gated unless explicitly active.
+
+Allowed actors: `user`, `operator`.
+
+```yaml
+RecordUserJudgmentRequest:
+  envelope: ToolEnvelope
+  user_judgment_id: string
+  judgment_type: product_choice | technical_choice | sensitive_action_approval | work_acceptance | residual_risk_acceptance
+  selected_option_id: string | null
+  judgment: RecordUserJudgmentPayload
+  note: string
+  waiver_reason: string | null
+  accepted_risks: AcceptedRiskInput[]
+
+RecordUserJudgmentPayload:
+  value: selected | rejected | deferred | granted | denied | expired | accepted
+  value_note: string | null
+
+RecordUserJudgmentResponse:
+  base: ToolResponseBase
+  user_judgment_id: string
+  user_judgment_ref: StateRecordRef
+  user_judgment: UserJudgment
+  state: StateSummary
+  updated_records: StateRecordRef[]
+  accepted_risk_refs: StateRecordRef[]
+  next_action: string
+```
+
+`judgment_type` must match the stored `UserJudgment`. Free-form notes such as "go ahead" or "looks good" cannot broaden the answer into approval, acceptance, risk acceptance, waiver, or write authority unless the pending judgment explicitly asks for that judgment type and the answer matches its allowed value.
+
+`accepted_risk_refs` contain `StateRecordRef` entries with `record_kind=residual_risk`; there is no standalone accepted-risk record kind.
+
+<a id="harnessclose_task"></a>
+
+## `harness.close_task`
+
+Use this to ask Core whether a Task can complete, cancel, or be superseded.
+
+Stage meaning: optional narrow blocker/status smoke for Engineering Checkpoint; active close-readiness and blocker response for MVP-1. Full assurance, QA, waiver, report freshness, export, and operations blockers are later/profile-gated.
+
+Allowed actors: `user`, `lead_agent`, `operator`.
+
+```yaml
+CloseTaskRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  intent: complete | cancel | supersede
+  requested_close_reason: completed_verified | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
+  user_note: string | null
+  superseded_by_task_id: string | null
+
+CloseTaskResponse:
+  base: ToolResponseBase
+  close_state: open | blocked | closed | cancelled | superseded
+  closed: boolean
+  close_reason: none | completed_verified | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
+  assurance_level: none | self_checked | detached_verified
+  residual_risk_state: ResidualRiskSummary
+  acceptance_state:
+    status: not_required | required | pending | accepted | rejected
+    accepted_by_ref: StateRecordRef | null
+    required_before_close: boolean
+  profile_required_verification:
+    active: boolean
+    status: not_required | required | pending | passed | failed | waived_by_user | blocked
+    required_profile: string | null
+    related_refs: StateRecordRef[]
+  state: StateSummary
+  blockers:
+    - code: ErrorCode
+      category: open_run | scope | user_judgment | sensitive_action_approval | design_policy | evidence | verification | manual_qa | residual_risk_visibility | residual_risk_acceptance | work_acceptance | projection_freshness | artifact_availability
+      message: string
+      required_next_action: string
+      related_refs: StateRecordRef[]
+  final_report_refs: StateRecordRef[]
+  artifact_refs: ArtifactRef[]
+```
+
+MVP-1 close uses the core close state, blockers, residual-risk visibility, work-acceptance state when required, and evidence/close-readiness refs. Verification, Manual QA, projection/report, and operations refs are active only when their profiles are enabled.
+
+`CloseTaskRequest` does not carry accepted-risk refs. For `completed_with_risk_accepted`, Core reads already-recorded accepted state from visible close-relevant Residual Risk records and blocks when that accepted state is missing.
+
+Successful close moves the Task to a terminal state. Failed close leaves it open and returns structured blockers. Repeated successful close with the same idempotency key returns the same terminal response; a conflicting close intent returns `STATE_CONFLICT`.

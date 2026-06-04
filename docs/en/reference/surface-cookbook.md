@@ -16,7 +16,7 @@ This is reference documentation for future Harness behavior. Current repository 
 
 ## Before you read
 
-Read [Agent Integration Reference](agent-integration.md) for the common connector contract, capability profiles, and phase context profiles. Use only the specific [Runtime Architecture](runtime-architecture.md), [MCP API And Schemas](mcp-api-and-schemas.md), or [Operations And Conformance Reference](operations-and-conformance.md) owner section needed for the current local-access, API-error, or conformance question. This cookbook is not a prompt-loading bundle and does not ask a connector to load all Reference docs.
+Read [Agent Integration Reference](agent-integration.md) for the common connector contract, capability profiles, and phase context profiles. Use only the specific [Runtime Architecture](runtime-architecture.md), [MVP API](api/mvp-api.md), [API Errors](api/errors.md), or [Operations And Conformance Reference](operations-and-conformance.md) owner section needed for the current local-access, API-error, or conformance question. This cookbook is not a prompt-loading bundle and does not ask a connector to load all Reference docs.
 
 ## Main idea
 

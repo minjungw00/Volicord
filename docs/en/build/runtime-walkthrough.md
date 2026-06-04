@@ -15,7 +15,7 @@ This is Build documentation. It summarizes the runtime path for implementers and
 
 ## Before you read
 
-Read [Implementation Overview](implementation-overview.md) and [First Runnable Slice](first-runnable-slice.md) for implementation context. Use [Kernel Reference](../reference/kernel.md), [Runtime Architecture Reference](../reference/runtime-architecture.md), [Document Projection Reference](../reference/document-projection.md), [MCP API And Schemas](../reference/mcp-api-and-schemas.md), [Storage And DDL](../reference/storage-and-ddl.md), and [Operations And Conformance](../reference/operations-and-conformance.md) for exact behavior.
+Read [Implementation Overview](implementation-overview.md) and [First Runnable Slice](first-runnable-slice.md) for implementation context. Use [Kernel Reference](../reference/kernel.md), [Runtime Architecture Reference](../reference/runtime-architecture.md), [Document Projection Reference](../reference/document-projection.md), [MVP API](../reference/api/mvp-api.md), [API Schema Core](../reference/api/schema-core.md), [API Errors](../reference/api/errors.md), [Storage And DDL](../reference/storage-and-ddl.md), and [Operations And Conformance](../reference/operations-and-conformance.md) for exact behavior.
 
 ## Main idea
 
@@ -45,7 +45,7 @@ flowchart LR
   CloseCheck -->|ready| Close["Task closed"]
 ```
 
-What to notice: the diagram is a reader path, not a second source of truth or a Engineering Checkpoint requirement list. Requirements clarification and projection-like output help shape or read work when their stage is in scope, but write authority is `prepare_write`, execution is recorded by `record_run`, and completion blockers are reported by the close/status owner paths. For Engineering Checkpoint, the readable output can be only status/blocker output. For MVP-1, the close-facing output is a blocker summary and compact status card, not the full later assurance close model. Exact state and gate behavior lives in [Kernel Reference](../reference/kernel.md); public calls live in [MCP API And Schemas](../reference/mcp-api-and-schemas.md).
+What to notice: the diagram is a reader path, not a second source of truth or a Engineering Checkpoint requirement list. Requirements clarification and projection-like output help shape or read work when their stage is in scope, but write authority is `prepare_write`, execution is recorded by `record_run`, and completion blockers are reported by the close/status owner paths. For Engineering Checkpoint, the readable output can be only status/blocker output. For MVP-1, the close-facing output is a blocker summary and compact status card, not the full later assurance close model. Exact state and gate behavior lives in [Kernel Reference](../reference/kernel.md); active MVP-1 public calls live in [MVP API](../reference/api/mvp-api.md).
 
 ## Step-by-step runtime path
 
@@ -59,7 +59,7 @@ Strict behavior: Task lifecycle, modes, and state transitions are owned by [Kern
 
 Requirements clarification, internally named Discovery, is MVP-1-and-later behavior, not a Engineering Checkpoint requirement. It is used when the request is ambiguous, risky, multi-step, product-facing, or likely to need user-owned judgment. It clarifies goal, user value, non-goals, success criteria, inspectable facts, assumptions, technical and product choices, security or privacy concerns, QA expectations, remaining uncertainty, and scope boundaries.
 
-Strict behavior: requirements clarification / Discovery is shaping input. It is not Approval, Write Authorization, evidence, verification, QA, work acceptance, residual-risk acceptance, close, scope authority, or a new authority path. Judgment routing is owned by [User Judgment](../reference/kernel.md#user-judgment) and the public judgment call in [MCP API And Schemas](../reference/mcp-api-and-schemas.md#harnessrequest_user_judgment).
+Strict behavior: requirements clarification / Discovery is shaping input. It is not Approval, Write Authorization, evidence, verification, QA, work acceptance, residual-risk acceptance, close, scope authority, or a new authority path. Judgment routing is owned by [User Judgment](../reference/kernel.md#user-judgment) and the public judgment call in [MVP API](../reference/api/mvp-api.md#harnessrequest_user_judgment).
 
 ### 3. Requirements clarification -> scoped next work -> Change Unit
 
@@ -73,7 +73,7 @@ Strict behavior: Change Unit and Autonomy Boundary semantics are owned by [Kerne
 
 Before a product write, the agent asks Core for write authority for the intended operation. Core checks current state, Change Unit scope, Autonomy Boundary where in scope, and any active-stage requirements such as baseline freshness, sensitive-action Approval, user judgments, applicable design policy, and surface capability. Engineering Checkpoint needs only the scope/write-authority checks required for Engineering Checkpoint. MVP-1 makes this a cooperative pre-write scope check: Core can refuse authority and the connected agent or surface should hold by instruction, but this is not OS-level blocking, arbitrary-tool isolation, or permission isolation.
 
-Strict behavior: `prepare_write` is owned by [Kernel Reference](../reference/kernel.md#prepare_write). Public request and response shapes are owned by [`harness.prepare_write`](../reference/mcp-api-and-schemas.md#harnessprepare_write).
+Strict behavior: `prepare_write` is owned by [Kernel Reference](../reference/kernel.md#prepare_write). Public request and response shapes are owned by [`harness.prepare_write`](../reference/api/mvp-api.md#harnessprepare_write).
 
 ### 5. `prepare_write` -> Write Authorization or blocker
 
@@ -103,7 +103,7 @@ Strict behavior: projection authority, managed blocks, human-editable sections, 
 
 Near completion, `close_task` checks close-relevant state when its stage is in scope and either closes the Task or returns structured blockers. Engineering Checkpoint may use only a narrow close/status blocker smoke and does not prove full close semantics. MVP-1 needs a close blocker summary, not detached verification by default. Verification is required only when the active profile, user request, task type, or risk profile requires it; a verification waiver is needed only when required verification is intentionally skipped. Close Readiness is a user-facing summary of blockers, not a new gate.
 
-Strict behavior: completion checks are owned by [`close_task`](../reference/kernel.md#close_task), close result wording by [Close result semantics](../reference/kernel.md#close-result-semantics), and public error precedence by [MCP API And Schemas](../reference/mcp-api-and-schemas.md#primary-error-code-precedence).
+Strict behavior: completion checks are owned by [`close_task`](../reference/kernel.md#close_task), close result wording by [Close result semantics](../reference/kernel.md#close-result-semantics), and public error precedence by [API Errors](../reference/api/errors.md#primary-error-code-precedence).
 
 ## First implementation boundary
 

@@ -57,7 +57,7 @@ A resolved user judgment grants sensitive-action permission only when it uses `j
 - Follow-Up
 - References
 
-A sufficient rendered Decision Packet answers one user-owned judgment, not broad permission. The exact public request and response fields are owned by [`harness.request_user_judgment`](../mcp-api-and-schemas.md#harnessrequest_user_judgment), and the canonical authority rules are owned by [User Judgment](../kernel.md#user-judgment) and [Decision Gate](../kernel.md#decision-gate). This template may summarize existing user judgment fields, but it must not add schema fields, gates, or alternate authority.
+A sufficient rendered Decision Packet answers one user-owned judgment, not broad permission. The exact public request and response fields are owned by [`harness.request_user_judgment`](../api/mvp-api.md#harnessrequest_user_judgment), and the canonical authority rules are owned by [User Judgment](../kernel.md#user-judgment) and [Decision Gate](../kernel.md#decision-gate). This template may summarize existing user judgment fields, but it must not add schema fields, gates, or alternate authority.
 
 The user-facing question should ask for the judgment directly: choose an option, defer it with the stated consequence, reject the path, grant or deny sensitive action approval, accept or reject the result, accept or reject a named residual risk, or record a later-profile waiver/reconcile outcome when enabled. Use "approve" only for Sensitive action approval or a later Approval record. If several judgments are pending, render separate prompts or separate lines; do not combine approval, work acceptance, and residual risk acceptance into one answer.
 

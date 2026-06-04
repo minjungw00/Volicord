@@ -17,7 +17,8 @@ Use this page to review storage authority, Runtime Home identity, staged SQLite 
 
 | Concern | Owner |
 |---|---|
-| Public MCP request/response shapes, `ArtifactRef`, `ValidatorResult`, idempotency and state conflict behavior | [MCP API And Schemas](mcp-api-and-schemas.md) |
+| Public MCP request/response shapes | [MVP API](api/mvp-api.md) and [API Schema Core](api/schema-core.md) |
+| `ArtifactRef`, `ValidatorResult`, idempotency and state conflict behavior | [API Schema Core](api/schema-core.md#artifactref), [API Schema Later](api/schema-later.md#validatorresult-stable-ids), and [API Errors](api/errors.md) |
 | Task lifecycle, gates, `prepare_write`, `record_run`, `close_task`, stable events | [Kernel Reference](kernel.md) |
 | Core process model, transaction order, locks, projection/reconcile placement | [Runtime Architecture Reference](runtime-architecture.md) |
 | Projection authority, freshness, managed blocks, rendered templates | [Document Projection Reference](document-projection.md) and [Template Reference](templates/README.md) |
@@ -109,7 +110,7 @@ Engineering Checkpoint and MVP-1 storage are cooperative/detective unless a late
 
 This matrix is the main table list. It separates small Engineering Checkpoint / MVP-1 storage from later profile candidates.
 
-Public API refs are owned by [MCP API And Schemas](mcp-api-and-schemas.md#artifactref). For the minimum MVP-1 storage slice, `evidence_summaries.evidence_summary_id` is addressable as `StateRecordRef.record_kind=evidence_summary`, and `close_readiness.close_readiness_id` is addressable as `StateRecordRef.record_kind=close_readiness`. Sensitive-action permission is addressable through the canonical user judgment family as `StateRecordRef.record_kind=user_judgment`; `StateRecordRef.record_kind=decision_packet` is a legacy compatibility alias or full-format projection label only. `StateRecordRef.record_kind=approval` remains later-profile unless the `approvals` table is explicitly promoted. `change_unit_dependencies` remains future/diagnostic storage, so `record_kind=change_unit_dependency` is not a MVP-1 active public ref.
+Public API refs are owned by [API Schema Core](api/schema-core.md#artifactref). For the minimum MVP-1 storage slice, `evidence_summaries.evidence_summary_id` is addressable as `StateRecordRef.record_kind=evidence_summary`, and `close_readiness.close_readiness_id` is addressable as `StateRecordRef.record_kind=close_readiness`. Sensitive-action permission is addressable through the canonical user judgment family as `StateRecordRef.record_kind=user_judgment`; `StateRecordRef.record_kind=decision_packet` is a legacy compatibility alias or full-format projection label only. `StateRecordRef.record_kind=approval` remains later-profile unless the `approvals` table is explicitly promoted. `change_unit_dependencies` remains future/diagnostic storage, so `record_kind=change_unit_dependency` is not a MVP-1 active public ref.
 
 | Table | Purpose | First active stage | Authority or auxiliary | User-facing or internal | Later status |
 |---|---|---|---|---|---|
@@ -358,7 +359,7 @@ Artifact registration is the storage boundary for artifact poisoning. A staged p
 
 A committed artifact that supports state needs:
 
-- a registered `ArtifactRef` shape, using the active stage value sets, owned by [MCP API And Schemas](mcp-api-and-schemas.md#artifactref)
+- a registered `ArtifactRef` shape, using the active stage value sets, owned by [API Schema Core](api/schema-core.md#artifactref)
 - an `artifacts` row with `sha256`, `size_bytes`, `redaction_state`, and `retention_class`
 - at least one compatible `artifact_links` row for the Task-scoped owner record
 - a `task_events` row for the committed artifact registration or the state mutation that registered it
@@ -613,7 +614,7 @@ SQLite can store malformed rows unless Core and migrations prevent them. A row i
 
 JSON `TEXT` columns are storage flexibility, not permission to store arbitrary JSON. Before Core commits a JSON `TEXT` value, it must parse the value and validate the parsed shape against the owner:
 
-- API-shaped payloads validate against [MCP API And Schemas](mcp-api-and-schemas.md).
+- API-shaped payloads validate against [MVP API](api/mvp-api.md) and [API Schema Core](api/schema-core.md).
 - Storage-only JSON validates against this page or the owner document named by this page.
 - SQLite defaults such as `'{}'` and `'[]'` are storage representation rules; they do not make public API fields optional.
 
@@ -629,8 +630,8 @@ Early hardening should cover:
 |---|---|
 | `tasks.mode`, `tasks.lifecycle_phase`, `tasks.result` | [Kernel Reference](kernel.md) |
 | `change_units.status` | Kernel/Change Unit owner rules |
-| `write_authorizations.status` | [Kernel `prepare_write`](kernel.md#prepare_write) and [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write) |
-| `runs.kind`, `runs.status` | [`harness.record_run`](mcp-api-and-schemas.md#harnessrecord_run) and storage compatibility notes |
+| `write_authorizations.status` | [Kernel `prepare_write`](kernel.md#prepare_write) and [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write) |
+| `runs.kind`, `runs.status` | [`harness.record_run`](api/mvp-api.md#harnessrecord_run) and storage compatibility notes |
 | `task_blockers.status`, `blocked_action`, `blocker_kind` | Kernel/API blocker owners |
 | `tool_invocations.status` | storage idempotency replay semantics |
 | `user_judgments.status`, `judgment_type`, `presentation` | user-judgment API/kernel owners |

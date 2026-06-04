@@ -98,7 +98,7 @@ These labels may appear in roadmap, reference, template, or diagnostic material.
 | Term family | Reference owner |
 |---|---|
 | Task, Change Unit, gates, close, sensitive-action approval, work acceptance, verification, QA, residual risk, write authority | [Kernel Reference](kernel.md) |
-| MCP resources, MCP tools, public schemas, errors, `ValidatorResult`, `ProjectionKind` | [MCP API And Schemas](mcp-api-and-schemas.md) |
+| MCP resources, MCP tools, public schemas, errors, `ValidatorResult`, `ProjectionKind` | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), and [API Schema Later](api/schema-later.md) |
 | SQLite records, artifact layout, enum hardening, `tree_hash`, `request_hash` storage use | [Storage And DDL](storage-and-ddl.md) |
 | Projections, managed blocks, projection freshness, Markdown reports, template bodies | [Document Projection Reference](document-projection.md); [Template Reference](templates/README.md) |
 | Discovery and Shared Design, design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contracts | [Design Quality Policies](design-quality-policies.md) |
@@ -470,7 +470,7 @@ A verification handoff package for a human or separate evaluator. It includes ta
 
 ### Manual QA Record
 
-A record-level Manual QA result, including performer, profile, result, artifacts, findings, waiver reason when applicable, and next action. Its result value set is owned by [QA Gate](kernel.md#qa-gate) and [`harness.record_manual_qa`](mcp-api-and-schemas.md#harnessrecord_manual_qa). Pending required QA is represented by `qa_gate=pending`; it is not a Manual QA record result.
+A record-level Manual QA result, including performer, profile, result, artifacts, findings, waiver reason when applicable, and next action. Its result value set is owned by [QA Gate](kernel.md#qa-gate) and later/profile-gated [`harness.record_manual_qa`](api/schema-later.md#harnessrecord_manual_qa). Pending required QA is represented by `qa_gate=pending`; it is not a Manual QA record result.
 
 ### `managed_hash`
 
@@ -530,11 +530,11 @@ A readable derived view generated from Core state records and artifact reference
 
 ### ProjectionKind
 
-The API enum for projection job and template kinds. Support classes, values, and extension rules are owned by [Shared schemas](mcp-api-and-schemas.md#shared-schemas). Support class labels are not Engineering Checkpoint run obligations; Engineering Checkpoint has no projection-rendering exit requirement beyond preserving any owner-produced freshness/read facts. No ProjectionKind makes a projection canonical state.
+The API enum for projection job and template kinds. Support classes, active values, and extension rules are owned by [API Schema Core](api/schema-core.md#projectionkind-support); later/profile-gated values stay in [API Schema Later](api/schema-later.md#full-profile-gated-ref-values). Support class labels are not Engineering Checkpoint run obligations; Engineering Checkpoint has no projection-rendering exit requirement beyond preserving any owner-produced freshness/read facts. No ProjectionKind makes a projection canonical state.
 
 ### Projection Freshness
 
-The relationship between a projection and its source records, managed hash, artifact refs, and projection job state. Its value set is owned by [MCP API And Schemas](mcp-api-and-schemas.md) and [Document Projection Reference](document-projection.md).
+The relationship between a projection and its source records, managed hash, artifact refs, and projection job state. Its value set is owned by [API Schema Core](api/schema-core.md#projectionkind-support) and [Document Projection Reference](document-projection.md).
 
 ### Projection Job
 
@@ -688,7 +688,7 @@ A separation between Harness surfaces, files, callers, or runtime spaces where i
 
 ### Verification
 
-The process of checking whether the result satisfies the relevant criteria. Verification may support assurance when recorded through a valid Eval path and independence profile, but same-session self-check is not detached verification. Verification is separate from approval, Manual QA, work acceptance, and residual-risk acceptance. Exact gate and independence behavior is owned by [Verification Gate](kernel.md#verification-gate) and [`harness.record_eval`](mcp-api-and-schemas.md#harnessrecord_eval).
+The process of checking whether the result satisfies the relevant criteria. Verification may support assurance when recorded through a valid Eval path and independence profile, but same-session self-check is not detached verification. Verification is separate from approval, Manual QA, work acceptance, and residual-risk acceptance. Exact gate and independence behavior is owned by [Verification Gate](kernel.md#verification-gate) and later/profile-gated [`harness.record_eval`](api/schema-later.md#harnessrecord_eval).
 
 ### Verification Gate
 

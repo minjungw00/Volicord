@@ -20,7 +20,7 @@ This document does not define MCP schemas, SQLite DDL, state transition tables, 
 
 ## Before you read
 
-Use [Kernel Reference](kernel.md) for lifecycle, gates, and close semantics; [MCP API And Schemas](mcp-api-and-schemas.md) for public request/response shapes and `ValidatorResult`; and [Conformance Fixtures Reference](conformance-fixtures.md#fixture-assertion-semantics) for fixture assertion semantics.
+Use [Kernel Reference](kernel.md) for lifecycle, gates, and close semantics; [MVP API](api/mvp-api.md) and [API Schema Core](api/schema-core.md) for public request/response shapes and `ValidatorResult`; and [Conformance Fixtures Reference](conformance-fixtures.md#fixture-assertion-semantics) for fixture assertion semantics.
 
 ## Main idea
 
@@ -62,8 +62,8 @@ This document owns:
 This document does not own:
 
 - kernel lifecycle transitions; see [Kernel Reference](kernel.md)
-- gate enum definitions; see [Kernel Reference](kernel.md) and [MCP API And Schemas](mcp-api-and-schemas.md)
-- public MCP request/response schemas; see [MCP API And Schemas](mcp-api-and-schemas.md)
+- gate enum definitions; see [Kernel Reference](kernel.md) and [API Schema Core](api/schema-core.md)
+- public MCP request/response schemas; see [MVP API](api/mvp-api.md) and [API Schema Core](api/schema-core.md)
 - SQLite DDL or storage layout; see [Storage And DDL](storage-and-ddl.md)
 - projection template bodies; see [Document Projection Reference](document-projection.md) and [Template Reference](templates/README.md)
 - operator command semantics; see [Operations And Conformance Reference](operations-and-conformance.md)
@@ -193,7 +193,7 @@ Reusable user judgment examples:
 - `judgment_type=technical_choice`, `presentation=full`, `display_label=Technical judgment`: skipped QA or verification waiver. Record what is not checked, why the waiver is proportionate, the accepted user/product/technical risk, and the smallest credible follow-up. If a named remaining risk is accepted for close, use Residual risk acceptance instead.
 - `judgment_type=residual_risk_acceptance`, `presentation=full`, `display_label=Residual risk acceptance`: close with known remaining risk. Record the visible limitation, evidence already present, why close can still proceed, visible residual-risk refs, and follow-up.
 
-Sensitive category labels such as `secret_access`, `data_export`, or `policy_override` identify approval risk; they do not choose the user judgment type or settle the user-owned judgment by themselves. Category examples are owned by [MCP API And Schemas](mcp-api-and-schemas.md#sensitive-categories).
+Sensitive category labels such as `secret_access`, `data_export`, or `policy_override` identify approval risk; they do not choose the user judgment type or settle the user-owned judgment by themselves. Category examples are owned by [API Schema Core](api/schema-core.md#sensitive-categories).
 
 | Field | Contract |
 |---|---|
@@ -565,7 +565,7 @@ Read this order from weakest to strongest. It is the complete ordering for compe
 
 This order decides whether a weaker default can be ignored for the same concern. It does not collapse different affected gates. If one finding affects `design_gate` and another affects `qa_gate`, `decision_gate`, evidence sufficiency, or residual-risk visibility, the merged result keeps all affected gates, blockers, and refs. `user judgment required` is a judgment-routing impact, not a replacement for write blockers, close blockers, evidence sufficiency, required QA, required sensitive-action Approval, or residual-risk visibility. A user judgment may resolve the user-judgment part of a finding, while any independent write blocker or close blocker remains until its own policy or kernel condition is satisfied.
 
-Validators should report all relevant findings. The composition rule decides the merged gate, write-blocker, close-blocker, waiver, and user judgment impact; it must not hide weaker findings from validator results, evidence, status, or conformance output. Primary public `ToolError` selection remains owned by API [Primary Error Code Precedence](mcp-api-and-schemas.md#primary-error-code-precedence); this policy rule does not redefine error-code precedence or suppress secondary errors.
+Validators should report all relevant findings. The composition rule decides the merged gate, write-blocker, close-blocker, waiver, and user judgment impact; it must not hide weaker findings from validator results, evidence, status, or conformance output. Primary public `ToolError` selection remains owned by API [Primary Error Code Precedence](api/errors.md#primary-error-code-precedence); this policy rule does not redefine error-code precedence or suppress secondary errors.
 
 Severity can be raised above the matrix default by explicit user request, sensitive category, public commitment, public API/interface or schema impact, acceptance with known risk, residual-risk visibility, stale critical context, or a conformance fixture that asserts the case as blocking. Severity can be lowered only through an allowed waiver recorded under the relevant policy contract, and only for policy-owned impacts that the contract permits waiving. Policy waivers do not lower Kernel Authority blockers such as missing scope, missing sensitive-action Approval, required evidence insufficiency, required acceptance, or Write Authorization requirements. They also do not change API primary error precedence. This rule affects policy-contract interpretation, validators, gates, write blockers, close blockers, and user judgment needs; it does not make Design Stewardship Defaults into Kernel Authority Invariants.
 

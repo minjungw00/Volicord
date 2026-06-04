@@ -264,7 +264,7 @@ Use these Reference owners when exact behavior is needed:
 | Need | Owner |
 |---|---|
 | Internal user judgment behavior and gate aggregation | [User Judgment](../reference/kernel.md#user-judgment), [Decision Gate](../reference/kernel.md#decision-gate) |
-| Public request and answer shapes | [`harness.request_user_judgment`](../reference/mcp-api-and-schemas.md#harnessrequest_user_judgment), [`harness.record_user_judgment`](../reference/mcp-api-and-schemas.md#harnessrecord_user_judgment) |
+| Public request and answer shapes | [`harness.request_user_judgment`](../reference/api/mvp-api.md#harnessrequest_user_judgment), [`harness.record_user_judgment`](../reference/api/mvp-api.md#harnessrecord_user_judgment) |
 | Sensitive-action Approval | [Approval](../reference/kernel.md#approval) |
 | Evidence sufficiency | [Evidence Gate](../reference/kernel.md#evidence-gate) |
 | Verification and verification waiver impact | [Verification Gate](../reference/kernel.md#verification-gate) |

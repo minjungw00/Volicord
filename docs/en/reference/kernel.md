@@ -15,7 +15,7 @@ This is reference documentation for a future local Harness Server. No Harness ru
 
 ## Before you read
 
-Read [Concepts](../learn/concepts.md) or [Harness in One Task](../learn/harness-in-one-task.md) first if you want examples before exact rules. Public MCP shapes are owned by [MCP API And Schemas](mcp-api-and-schemas.md). Storage tables are owned by [Storage And DDL](storage-and-ddl.md). Connector capability wording is owned by [Agent Integration Reference](agent-integration.md).
+Read [Concepts](../learn/concepts.md) or [Harness in One Task](../learn/harness-in-one-task.md) first if you want examples before exact rules. Active MVP-1 public methods are owned by [MVP API](api/mvp-api.md), shared API shapes by [API Schema Core](api/schema-core.md), and API errors by [API Errors](api/errors.md). Storage tables are owned by [Storage And DDL](storage-and-ddl.md). Connector capability wording is owned by [Agent Integration Reference](agent-integration.md).
 
 ## Main idea
 
@@ -28,12 +28,12 @@ The active stage and profile decide which gates are required for a specific oper
 | If you need... | Start here | Related owner |
 |---|---|---|
 | Core invariants | [Kernel invariants](#kernel-invariants) | This document. |
-| Work shape and mode meaning | [Work modes](#work-modes) | API enum values stay in [MCP API And Schemas](mcp-api-and-schemas.md). |
-| User judgment types and routes | [Judgment route boundaries](#judgment-route-boundaries), [User Judgment](#user-judgment), [Decision Gate](#decision-gate) | Public request fields stay in [`harness.request_user_judgment`](mcp-api-and-schemas.md#harnessrequest_user_judgment). |
+| Work shape and mode meaning | [Work modes](#work-modes) | API enum values stay in [API Schema Core](api/schema-core.md#shared-schemas). |
+| User judgment types and routes | [Judgment route boundaries](#judgment-route-boundaries), [User Judgment](#user-judgment), [Decision Gate](#decision-gate) | Public request fields stay in [`harness.request_user_judgment`](api/mvp-api.md#harnessrequest_user_judgment). |
 | Entity relationship semantics | [Entity model](#entity-model) | Physical tables stay in [Storage And DDL](storage-and-ddl.md). |
-| Gate meaning | [Gates](#gates), [Gate Rule Map](#gate-rule-map) | Public blockers and errors stay in [MCP API And Schemas](mcp-api-and-schemas.md#primary-error-code-precedence). |
-| Write authority | [`prepare_write`](#prepare_write), [Write Authorization](#write-authorization), [`record_run`](#record_run) | Public request/response shape stays in [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write) and [`harness.record_run`](mcp-api-and-schemas.md#harnessrecord_run). |
-| Close semantics | [`close_task`](#close_task), [Close matrix by work shape and active profile](#close-matrix-by-work-shape-and-active-profile), [Close result semantics](#close-result-semantics) | Public close response shape stays in [`harness.close_task`](mcp-api-and-schemas.md#harnessclose_task). |
+| Gate meaning | [Gates](#gates), [Gate Rule Map](#gate-rule-map) | Public blockers and errors stay in [API Errors](api/errors.md#primary-error-code-precedence). |
+| Write authority | [`prepare_write`](#prepare_write), [Write Authorization](#write-authorization), [`record_run`](#record_run) | Public request/response shape stays in [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write) and [`harness.record_run`](api/mvp-api.md#harnessrecord_run). |
+| Close semantics | [`close_task`](#close_task), [Close matrix by work shape and active profile](#close-matrix-by-work-shape-and-active-profile), [Close result semantics](#close-result-semantics) | Public close response shape stays in [`harness.close_task`](api/mvp-api.md#harnessclose_task). |
 | Waivers and invalid combinations | [Waiver semantics](#waiver-semantics), [Invalid state combinations](#invalid-state-combinations) | Design-policy details stay in [Design Quality Policies](design-quality-policies.md). |
 
 ## Kernel invariants
@@ -218,7 +218,7 @@ This document owns:
 
 This document does not own:
 
-- full public MCP request/response schemas; see [MCP API And Schemas](mcp-api-and-schemas.md)
+- full public MCP request/response schemas; see [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), and [API Schema Later](api/schema-later.md)
 - SQLite DDL and storage layout; see [Storage And DDL](storage-and-ddl.md)
 - full projection template bodies
 - document projection rules; see [Document Projection Reference](document-projection.md)
@@ -265,7 +265,7 @@ Resolving a user judgment records user-owned judgment. It creates sensitive-acti
 
 #### User judgment lifecycle map
 
-The lifecycle is intentionally small: draft or detect a needed judgment, ask the user when needed, record the compatible response, and preserve deferral, rejection, blocked, or superseded outcomes. Exact public fields are owned by [`harness.request_user_judgment`](mcp-api-and-schemas.md#harnessrequest_user_judgment) and [`harness.record_user_judgment`](mcp-api-and-schemas.md#harnessrecord_user_judgment). "Decision Packet" is the legacy or full-format presentation label for a complex user judgment prompt; it is not the canonical record family.
+The lifecycle is intentionally small: draft or detect a needed judgment, ask the user when needed, record the compatible response, and preserve deferral, rejection, blocked, or superseded outcomes. Exact public fields are owned by [`harness.request_user_judgment`](api/mvp-api.md#harnessrequest_user_judgment) and [`harness.record_user_judgment`](api/mvp-api.md#harnessrecord_user_judgment). "Decision Packet" is the legacy or full-format presentation label for a complex user judgment prompt; it is not the canonical record family.
 
 ### Journey Spine
 

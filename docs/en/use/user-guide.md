@@ -437,7 +437,7 @@ You may see stricter labels when a tool, report, or reference page needs precisi
 | Residual Risk or ResidualRiskSummary | The saved statement of known remaining risk. |
 | Approval | Permission for a named sensitive step; not broad agreement. |
 
-For exact contracts, use the Reference docs: [Kernel Reference](../reference/kernel.md), [MCP API And Schemas](../reference/mcp-api-and-schemas.md), and [Operations and Conformance Reference](../reference/operations-and-conformance.md).
+For exact contracts, use the Reference docs: [Kernel Reference](../reference/kernel.md), [MVP API](../reference/api/mvp-api.md), and [Operations and Conformance Reference](../reference/operations-and-conformance.md).
 
 ## Advanced: Harness labels you may see
 
@@ -464,7 +464,7 @@ You can skip this section until an agent shows one of these labels. They are use
 
 These labels do not collapse into each other. Approval is not work acceptance. Work acceptance does not erase residual risk. A decision is not write authority. A readable summary is not state. Passing tests does not mean Manual QA happened. Accepting residual risk does not make the risk disappear.
 
-For exact contracts, use the Reference docs only when needed: [Kernel Reference](../reference/kernel.md), [MCP API And Schemas](../reference/mcp-api-and-schemas.md), and [Agent Integration Reference](../reference/agent-integration.md).
+For exact contracts, use the Reference docs only when needed: [Kernel Reference](../reference/kernel.md), [MVP API](../reference/api/mvp-api.md), and [Agent Integration Reference](../reference/agent-integration.md).
 
 ## Where to go next
 

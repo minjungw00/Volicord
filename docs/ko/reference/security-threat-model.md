@@ -20,7 +20,7 @@ Runtime 구현 계획에 들어가기 전에 Harness 보안 asset, trust boundar
 
 Runtime space, Core process model, transaction ordering, architecture placement는 [런타임 아키텍처 참조](runtime-architecture.md)를 사용합니다. Connector capability profile, generated manifest, context push/pull, fallback display는 [Agent 통합 참조](agent-integration.md)를 사용합니다. 단계별 `doctor`, `serve mcp`, artifact check, recover, reconcile behavior는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용하고, fixture semantics는 [Conformance Fixtures 참조](conformance-fixtures.md)를 사용합니다.
 
-Public tool envelope, error, replay behavior는 [MCP API와 스키마](mcp-api-and-schemas.md)를 사용합니다. Exact storage layout, artifact row, DDL은 [Storage와 DDL](storage-and-ddl.md)을 사용합니다. State transition, gate, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close는 [커널 참조](kernel.md)를 사용합니다.
+Public tool envelope와 shared shape는 [API Schema Core](api/schema-core.md)를 사용하고, public error와 replay behavior는 [API Errors](api/errors.md)를 사용합니다. Exact storage layout, artifact row, DDL은 [Storage와 DDL](storage-and-ddl.md)을 사용합니다. State transition, gate, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close는 [커널 참조](kernel.md)를 사용합니다.
 
 이 문서는 그 exact contract를 복사하지 않고 link합니다.
 
@@ -110,7 +110,8 @@ Security display는 실제 control과 일치해야 합니다. Cooperative와 det
 
 이 문서는 다음 항목을 담당하지 않습니다.
 
-- public MCP request/response schema, public error shape, idempotency/replay contract. [MCP API와 스키마](mcp-api-and-schemas.md)를 참고합니다.
+- public MCP request/response schema. [MVP API](api/mvp-api.md)와 [API Schema Core](api/schema-core.md)를 참고합니다.
+- public error shape, idempotency/replay contract. [API Errors](api/errors.md)를 참고합니다.
 - SQLite DDL, storage layout, canonical enum hardening, artifact row shape, exact file layout. [Storage와 DDL](storage-and-ddl.md)을 참고합니다.
 - kernel state transition, gate, Approval lifecycle, `prepare_write`, Write Authorization, acceptance, 잔여 위험 수용, close. [커널 참조](kernel.md)를 참고합니다.
 - 단계별 operator command semantics, diagnostic severity baseline, recover/reconcile/export behavior. [운영과 Conformance 참조](operations-and-conformance.md)를 참고합니다.
@@ -231,7 +232,8 @@ Guard, freeze, careful-mode, recipe name, product name, surface name, friendly m
 
 | Threat-model concept | Exact contract owner |
 |---|---|
-| MCP tool envelope, `ToolError`, public error, idempotency, replay, expected state version | [MCP API와 스키마](mcp-api-and-schemas.md) |
+| MCP tool envelope와 `ToolError` shape | [API Schema Core](api/schema-core.md#common-response) |
+| Public error, idempotency, replay, expected state version | [API Errors](api/errors.md) |
 | Kernel state transition, gate, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close | [커널 참조](kernel.md) |
 | `state.sqlite`, `task_events`, artifact storage row, DDL, enum hardening, hash, storage layout | [Storage와 DDL](storage-and-ddl.md) |
 | Guarantee-level 의미와 honest display rule | 이 문서의 [정직한 guarantee display](#정직한-guarantee-display) |

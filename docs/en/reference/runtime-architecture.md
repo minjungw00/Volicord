@@ -17,7 +17,7 @@ This is reference documentation for future Harness behavior. Current repository 
 
 ## Before you read
 
-Use the [Kernel Reference](kernel.md) for exact state transitions, [MCP API And Schemas](mcp-api-and-schemas.md) for public tool envelopes and replay behavior, [Storage And DDL](storage-and-ddl.md) for storage layout and locks, [Security Threat Model Reference](security-threat-model.md) for security assets, trust boundaries, threats, and controls, and [Operations And Conformance Reference](operations-and-conformance.md) for operator entrypoint semantics.
+Use the [Kernel Reference](kernel.md) for exact state transitions, [API Schema Core](api/schema-core.md) for public tool envelopes, [API Errors](api/errors.md) for replay behavior, [Storage And DDL](storage-and-ddl.md) for storage layout and locks, [Security Threat Model Reference](security-threat-model.md) for security assets, trust boundaries, threats, and controls, and [Operations And Conformance Reference](operations-and-conformance.md) for operator entrypoint semantics.
 
 ## Main idea
 
@@ -44,7 +44,7 @@ This document owns:
 
 This document does not own:
 
-- public MCP request/response schemas; see [MCP API And Schemas](mcp-api-and-schemas.md)
+- public MCP request/response schemas; see [MVP API](api/mvp-api.md) and [API Schema Core](api/schema-core.md)
 - SQLite DDL; see [Storage And DDL](storage-and-ddl.md)
 - full CLI command semantics; see [Operations And Conformance Reference](operations-and-conformance.md)
 - conformance fixture format; see [Conformance Fixtures Reference](conformance-fixtures.md)
@@ -99,7 +99,7 @@ Local-only MCP exposure, secret/PII handling, command/path/network allowlists fo
 
 At the architecture level, the Engineering Checkpoint baseline and staged-delivery default MCP posture is local-only for a registered project surface. Local-only means the runtime is expected to use a local process, local socket, localhost-loopback, in-process/stdio, process-scoped configuration material, a per-project token or handle, or an equivalent local IPC/control path for the expected local user/profile.
 
-Remote, shared, tunneled, forwarded, non-loopback, cross-user, or cloud/CI relay exposure remains outside the Engineering Checkpoint baseline and staged delivery unless owner docs promote and prove a connector posture. The full asset, trust-boundary, threat, and control model is owned by [Security Threat Model Reference](security-threat-model.md#mcp-local-access-and-caller-boundaries); connector profile reporting stays in [Agent Integration Reference](agent-integration.md#capability-profiles), API validation stays in [MCP API And Schemas](mcp-api-and-schemas.md#mcp-boundary-and-caller-trust), and operator diagnostics stay in [Operations And Conformance Reference](operations-and-conformance.md#serve-mcp).
+Remote, shared, tunneled, forwarded, non-loopback, cross-user, or cloud/CI relay exposure remains outside the Engineering Checkpoint baseline and staged delivery unless owner docs promote and prove a connector posture. The full asset, trust-boundary, threat, and control model is owned by [Security Threat Model Reference](security-threat-model.md#mcp-local-access-and-caller-boundaries); connector profile reporting stays in [Agent Integration Reference](agent-integration.md#capability-profiles), API validation stays in [API Schema Core](api/schema-core.md#mcp-boundary-and-caller-trust), and operator diagnostics stay in [Operations And Conformance Reference](operations-and-conformance.md#serve-mcp).
 
 MCP reachability is not authorization. Public tool calls still rely on Core envelope validation, state-version checks, idempotency, registered project/task/surface compatibility, and the actual connected surface guarantee level.
 
@@ -213,7 +213,7 @@ Decision, Journey, and Autonomy/Boundary modules do not create a new authority t
 
 Validators sit beside Core and return structured results to Core. Core decides whether to decline the transition, mark a gate stale/partial/blocked, request a user judgment, or only affect display.
 
-The Assurance Profile and Operations Profile ValidatorResult ID set is API-owned and listed in [MCP API And Schemas](mcp-api-and-schemas.md#validatorresult). This runtime reference owns where those validators sit relative to Core and adapters, not a second copy of the ID registry.
+The Assurance Profile and Operations Profile ValidatorResult ID set is API-owned and listed in [API Schema Later](api/schema-later.md#validatorresult-stable-ids). This runtime reference owns where those validators sit relative to Core and adapters, not a second copy of the ID registry.
 
 `feedback_loop_check` reads Feedback Loop support records and related execution evidence; it does not introduce a separate kernel gate. Its consequences flow through `design_gate`, evidence sufficiency, blockers, or display in the same validator placement model as the other design-quality checks.
 
@@ -239,7 +239,7 @@ Every state-changing operation uses one SQLite transaction for current records, 
 ```
 
 
-Within that transaction, Core increments the affected scope clock as part of the current-record update. Task-scoped changes increment `tasks.state_version`; project-scoped changes with `task_id=null` increment `project_state.state_version`. Event rows record the resulting state version for their affected scope. State conflict and idempotency replay behavior are exposed through the public API contract in [MCP API And Schemas](mcp-api-and-schemas.md#idempotency) and [State conflict behavior](mcp-api-and-schemas.md#state-conflict-behavior).
+Within that transaction, Core increments the affected scope clock as part of the current-record update. Task-scoped changes increment `tasks.state_version`; project-scoped changes with `task_id=null` increment `project_state.state_version`. Event rows record the resulting state version for their affected scope. State conflict and idempotency replay behavior are exposed through the public API contract in [API Errors: Idempotency](api/errors.md#idempotency) and [State conflict behavior](api/errors.md#state-conflict-behavior).
 
 Projection rendering happens after the transaction. A projection failure is state-isolated: it marks projection freshness or job status as stale or failed and leaves the committed state intact. Projection cannot roll back the transaction, rewrite `state.sqlite.task_events`, turn a passed task into a failed task, or repair canonical state without a later reconcile decision.
 
@@ -327,7 +327,7 @@ flowchart TB
   Blocker --> Records
 ```
 
-Preventive labels apply only where the connected profile has fixture-proven coverage for the operation being described. Isolated labels apply only where the connected profile documents and proves the separation boundary being claimed. A fresh evaluator bundle, fresh session, or separate worktree can support verification independence and stale-context control; sandbox, permission layer, locked-down runner, process boundary, or container boundary wording is security-isolation wording only when the profile names and proves that exact mechanism. These labels do not approve work, create Write Authorization, satisfy gates, create evidence, perform verification, accept risk, or close Tasks. Strict `prepare_write` and `record_run` behavior is owned by [Kernel Reference](kernel.md#prepare_write) and [Kernel Reference](kernel.md#record_run). Public response shapes and error precedence are owned by [MCP API And Schemas](mcp-api-and-schemas.md). Concrete profile declarations are owned by [Agent Integration Reference](agent-integration.md#capability-profiles). This diagram is only a control-orientation view.
+Preventive labels apply only where the connected profile has fixture-proven coverage for the operation being described. Isolated labels apply only where the connected profile documents and proves the separation boundary being claimed. A fresh evaluator bundle, fresh session, or separate worktree can support verification independence and stale-context control; sandbox, permission layer, locked-down runner, process boundary, or container boundary wording is security-isolation wording only when the profile names and proves that exact mechanism. These labels do not approve work, create Write Authorization, satisfy gates, create evidence, perform verification, accept risk, or close Tasks. Strict `prepare_write` and `record_run` behavior is owned by [Kernel Reference](kernel.md#prepare_write) and [Kernel Reference](kernel.md#record_run). Public response shapes are owned by [MVP API](api/mvp-api.md) and [API Schema Core](api/schema-core.md); error precedence is owned by [API Errors](api/errors.md#primary-error-code-precedence). Concrete profile declarations are owned by [Agent Integration Reference](agent-integration.md#capability-profiles). This diagram is only a control-orientation view.
 
 
 Guarantee display should name both sides of the boundary: what the connected profile can actually block before execution, and what it can only detect after action. A surface name, product name, recipe name, or friendly mode label is never proof of capability; the declaration must come from the actual host/profile capability profile and its current proof basis. Guard, freeze, and careful-mode labels inherit the connected profile's proven capability; they do not upgrade a cooperative or detective profile into preventive blocking, and they do not create authority tiers.

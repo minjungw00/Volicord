@@ -668,7 +668,7 @@ The examples below are future exact-shape examples for Core behavior broadly. Th
 
 `prepare_write` allowed examples expect the Task to move from `ready` to `executing` because the kernel transition table owns and defines that transition.
 
-Sensitive-action approval coverage should be materialized as separate exact-shape fixtures or as suite catalog sequencing, not by adding fixture body fields. Minimum MVP-1 fixtures assert the sensitive-action approval user judgment route from [Kernel `prepare_write` State Logic](kernel.md#prepare_write) and [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write). Later Approval-profile fixtures may additionally assert [APR Template source records](templates/approval.md#source-records). Do not redefine the lifecycle inside fixture bodies.
+Sensitive-action approval coverage should be materialized as separate exact-shape fixtures or as suite catalog sequencing, not by adding fixture body fields. Minimum MVP-1 fixtures assert the sensitive-action approval user judgment route from [Kernel `prepare_write` State Logic](kernel.md#prepare_write) and [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write). Later Approval-profile fixtures may additionally assert [APR Template source records](templates/approval.md#source-records). Do not redefine the lifecycle inside fixture bodies.
 
 Fixture authors should keep these observable assertions:
 

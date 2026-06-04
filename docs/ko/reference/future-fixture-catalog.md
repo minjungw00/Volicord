@@ -668,7 +668,7 @@ expected_error:
 
 `prepare_write` allowed 예시는 Task가 `ready`에서 `executing`으로 이동한다고 기대합니다. 이 transition은 kernel transition table이 소유하고 정의합니다.
 
-민감 동작 approval coverage는 fixture body field를 추가하지 말고 별도의 exact-shape fixture 또는 suite catalog sequencing으로 구체화해야 합니다. Minimum MVP-1 fixture는 [Kernel `prepare_write` State Logic](kernel.md#prepare_write)과 [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write)의 민감 동작 승인 user judgment route를 검증합니다. Later Approval-profile fixture는 [APR Template 기준 기록](templates/approval.md#기준-기록)도 추가로 검증할 수 있습니다. Lifecycle을 fixture body 안에서 다시 정의하지 않습니다.
+민감 동작 approval coverage는 fixture body field를 추가하지 말고 별도의 exact-shape fixture 또는 suite catalog sequencing으로 구체화해야 합니다. Minimum MVP-1 fixture는 [Kernel `prepare_write` State Logic](kernel.md#prepare_write)과 [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write)의 민감 동작 승인 user judgment route를 검증합니다. Later Approval-profile fixture는 [APR Template 기준 기록](templates/approval.md#기준-기록)도 추가로 검증할 수 있습니다. Lifecycle을 fixture body 안에서 다시 정의하지 않습니다.
 
 Fixture authors는 다음 observable assertions를 유지해야 합니다.
 

@@ -141,4 +141,4 @@ These anchors keep links stable. They do not make the terms required user vocabu
 
 ## Where Exact Rules Live
 
-Strict kernel definitions live in [Kernel Reference](../reference/kernel.md), public API definitions live in [MCP API and Schemas](../reference/mcp-api-and-schemas.md), and readable document rules live in [Document Projection Reference](../reference/document-projection.md).
+Strict kernel definitions live in [Kernel Reference](../reference/kernel.md), public MVP API definitions live in [MVP API](../reference/api/mvp-api.md), and readable document rules live in [Document Projection Reference](../reference/document-projection.md).

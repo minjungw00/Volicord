@@ -20,7 +20,7 @@ This is reference documentation for future Harness behavior. Current repository 
 
 Use [Runtime Architecture Reference](runtime-architecture.md) for the runtime spaces, Core process model, transaction ordering, and architecture placement. Use [Agent Integration Reference](agent-integration.md) for connector capability profiles, generated manifests, context push/pull, and fallback display. Use [Operations And Conformance Reference](operations-and-conformance.md) for stage-specific `doctor`, `serve mcp`, artifact checks, recover, and reconcile behavior. Use [Conformance Fixtures Reference](conformance-fixtures.md) for fixture semantics.
 
-Use [MCP API And Schemas](mcp-api-and-schemas.md) for public tool envelopes, errors, and replay behavior. Use [Storage And DDL](storage-and-ddl.md) for exact storage layout, artifact rows, and DDL. Use [Kernel Reference](kernel.md) for state transitions, gates, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, and close.
+Use [API Schema Core](api/schema-core.md) for public tool envelopes and shared shapes, and [API Errors](api/errors.md) for public errors and replay behavior. Use [Storage And DDL](storage-and-ddl.md) for exact storage layout, artifact rows, and DDL. Use [Kernel Reference](kernel.md) for state transitions, gates, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, and close.
 
 This document links to those exact contracts instead of duplicating them.
 
@@ -110,7 +110,8 @@ This document owns:
 
 This document does not own:
 
-- public MCP request/response schemas, public error shapes, or idempotency/replay contracts; see [MCP API And Schemas](mcp-api-and-schemas.md)
+- public MCP request/response schemas; see [MVP API](api/mvp-api.md) and [API Schema Core](api/schema-core.md)
+- public error shapes or idempotency/replay contracts; see [API Errors](api/errors.md)
 - SQLite DDL, storage layout, canonical enum hardening, artifact row shape, or exact file layout; see [Storage And DDL](storage-and-ddl.md)
 - kernel state transitions, gates, Approval lifecycle, `prepare_write`, Write Authorization, work acceptance, residual-risk acceptance, or close; see [Kernel Reference](kernel.md)
 - stage-specific operator command semantics, diagnostic severity baselines, or recover/reconcile/export behavior; see [Operations And Conformance Reference](operations-and-conformance.md)
@@ -231,7 +232,8 @@ Guard, freeze, careful-mode, recipe names, product names, surface names, and fri
 
 | Threat-model concept | Exact contract owner |
 |---|---|
-| MCP tool envelope, `ToolError`, public errors, idempotency, replay, expected state version | [MCP API And Schemas](mcp-api-and-schemas.md) |
+| MCP tool envelope and `ToolError` shape | [API Schema Core](api/schema-core.md#common-response) |
+| Public errors, idempotency, replay, expected state version | [API Errors](api/errors.md) |
 | Kernel state transitions, gates, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close | [Kernel Reference](kernel.md) |
 | `state.sqlite`, `task_events`, artifact storage rows, DDL, enum hardening, hashes, storage layout | [Storage And DDL](storage-and-ddl.md) |
 | Guarantee-level meanings and honest display rules | This document: [Honest guarantee display](#honest-guarantee-display) |

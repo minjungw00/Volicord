@@ -141,4 +141,4 @@ Reference 문서는 향후 구현이 정확히 말할 수 있도록 기록과 AP
 
 ## 정확한 규칙이 있는 곳
 
-엄격한 kernel 정의는 [커널 참조](../reference/kernel.md), 공개 API 정의는 [MCP API와 스키마](../reference/mcp-api-and-schemas.md), 읽기용 문서 규칙은 [문서 Projection 참조](../reference/document-projection.md)에 있습니다.
+엄격한 kernel 정의는 [커널 참조](../reference/kernel.md), 공개 MVP API 정의는 [MVP API](../reference/api/mvp-api.md), 읽기용 문서 규칙은 [문서 Projection 참조](../reference/document-projection.md)에 있습니다.

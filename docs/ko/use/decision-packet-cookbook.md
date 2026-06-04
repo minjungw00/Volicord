@@ -269,7 +269,7 @@
 | 필요 | 소유자 |
 |---|---|
 | 내부 사용자 판단 동작과 gate 집계 | [User Judgment](../reference/kernel.md#user-judgment), [Decision Gate](../reference/kernel.md#decision-gate) |
-| 공개 요청과 응답 형태 | [`harness.request_user_judgment`](../reference/mcp-api-and-schemas.md#harnessrequest_user_judgment), [`harness.record_user_judgment`](../reference/mcp-api-and-schemas.md#harnessrecord_user_judgment) |
+| 공개 요청과 응답 형태 | [`harness.request_user_judgment`](../reference/api/mvp-api.md#harnessrequest_user_judgment), [`harness.record_user_judgment`](../reference/api/mvp-api.md#harnessrecord_user_judgment) |
 | 민감 동작 승인(Approval) | [Approval](../reference/kernel.md#approval) |
 | 근거 충분성 | [Evidence Gate](../reference/kernel.md#evidence-gate) |
 | 검증과 검증 면제 영향 | [Verification Gate](../reference/kernel.md#verification-gate) |

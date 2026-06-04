@@ -16,7 +16,7 @@
 
 ## 읽기 전에
 
-공통 connector contract, capability profile, 단계별 맥락 profile은 [Agent 통합 참조](agent-integration.md)를 읽습니다. Local access, API error, conformance boundary는 현재 질문에 필요한 특정 소유자 섹션만 [런타임 아키텍처](runtime-architecture.md), [MCP API와 스키마](mcp-api-and-schemas.md), [운영과 Conformance 참조](operations-and-conformance.md)에서 사용합니다. 이 cookbook은 프롬프트 묶음이 아니며 connector에게 전체 참조 문서를 불러오라고 요구하지 않습니다.
+공통 connector contract, capability profile, 단계별 맥락 profile은 [Agent 통합 참조](agent-integration.md)를 읽습니다. Local access, API error, conformance boundary는 현재 질문에 필요한 특정 소유자 섹션만 [런타임 아키텍처](runtime-architecture.md), [MVP API](api/mvp-api.md), [API Errors](api/errors.md), [운영과 Conformance 참조](operations-and-conformance.md)에서 사용합니다. 이 cookbook은 프롬프트 묶음이 아니며 connector에게 전체 참조 문서를 불러오라고 요구하지 않습니다.
 
 ## 핵심 생각
 

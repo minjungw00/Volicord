@@ -33,7 +33,7 @@ This path is intentionally small. First-time readers do not need to read large R
 | First-time reader | [Overview](learn/overview.md) | [User Guide](use/user-guide.md); [Harness in 15 Minutes](learn/harness-in-15-minutes.md) for quick authority-boundary scenarios; [Concepts](learn/concepts.md) only when terms need names. |
 | User | [User Guide](use/user-guide.md) | [Harness in One Task](learn/harness-in-one-task.md) for a full work story; [user-owned judgment examples](use/decision-packet-cookbook.md) for complex choices. |
 | Agent behavior/integration author | [Agent Session Flow](use/agent-session-flow.md) | [Agent Integration Reference](reference/agent-integration.md), [Surface Cookbook](reference/surface-cookbook.md), and the specific API owner when exact fields are needed. |
-| Implementer | [Implementation Overview](build/implementation-overview.md) | [MVP Plan](build/mvp-plan.md), [First Runnable Slice](build/first-runnable-slice.md), [Runtime Walkthrough](build/runtime-walkthrough.md), then the strict first owner docs: [Kernel](reference/kernel.md), [MCP/API schemas](reference/mcp-api-and-schemas.md), and [Storage/DDL](reference/storage-and-ddl.md). |
+| Implementer | [Implementation Overview](build/implementation-overview.md) | [MVP Plan](build/mvp-plan.md), [First Runnable Slice](build/first-runnable-slice.md), [Runtime Walkthrough](build/runtime-walkthrough.md), then the strict first owner docs: [Kernel](reference/kernel.md), [MVP API](reference/api/mvp-api.md), [API Schema Core](reference/api/schema-core.md), and [Storage/DDL](reference/storage-and-ddl.md). |
 | Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md), [Rewrite Plan](maintain/rewrite-plan.md), [Roadmap](roadmap.md), and Reference owners only when checking strict meaning. |
 | Future/reference reader | [Reference Index](reference/README.md) | Open only the owner doc for the contract you need. Use [Roadmap](roadmap.md), [Future Fixture Catalog](reference/future-fixture-catalog.md), and future/diagnostic projection docs as separated advanced material, not MVP implementation input unless an owner promotes them. |
 
@@ -80,7 +80,7 @@ Read Build in this order:
 3. [First Runnable Slice](build/first-runnable-slice.md) for the Engineering Checkpoint implementation sequence.
 4. [Runtime Walkthrough](build/runtime-walkthrough.md) for the request-to-close runtime path.
 5. [Kernel Reference](reference/kernel.md) for Core authority, gates, write authority, and close semantics.
-6. [MCP API And Schemas](reference/mcp-api-and-schemas.md) for public tools/resources, envelopes, schemas, and errors.
+6. [MVP API](reference/api/mvp-api.md) for active MVP-1 public tools, [API Schema Core](reference/api/schema-core.md) for shared resources/envelopes/schemas, and [API Errors](reference/api/errors.md) for errors.
 7. [Storage And DDL](reference/storage-and-ddl.md) for persisted runtime layout, state tables, locks, artifacts, and migrations.
 
 Keep future/diagnostic material outside the MVP implementation path unless a Build or Reference owner explicitly promotes it for the stage being planned.
@@ -92,7 +92,7 @@ Use Reference to look up exact contracts. Do not read the whole Reference set by
 | Need | Owner |
 |---|---|
 | Core authority, entities, gates, state transitions, write authority, and close semantics | [Kernel Reference](reference/kernel.md) |
-| Public MCP tools, envelopes, schemas, errors, idempotency, state conflict behavior, shared refs, and validator result schema | [MCP API And Schemas](reference/mcp-api-and-schemas.md) |
+| Public MCP tools, envelopes, schemas, errors, idempotency, state conflict behavior, shared refs, and validator result schema | [MVP API](reference/api/mvp-api.md), [API Schema Core](reference/api/schema-core.md), [API Errors](reference/api/errors.md), [API Schema Later](reference/api/schema-later.md) |
 | Runtime layout, DDL profiles, storage JSON, locks, artifacts, migrations, baselines, projection job storage, and validator storage | [Storage And DDL](reference/storage-and-ddl.md) |
 | Readable views, projection freshness, managed blocks, and template bodies | [Document Projection Reference](reference/document-projection.md) and [Template Reference](reference/templates/README.md) |
 | Trust boundaries, assets, threat categories, controls, and guarantee-level wording | [Security Threat Model Reference](reference/security-threat-model.md) |

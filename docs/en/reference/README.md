@@ -11,7 +11,7 @@ Do not read the whole Reference set by default. Choose the owner for the questio
 | Question | Contract owner |
 |---|---|
 | What is the authoritative Core state behavior? | [Kernel Reference](kernel.md) owns entities, gates, state transitions, write authority, `prepare_write`, `record_run`, `close_task`, and close semantics. |
-| What is the public API or schema shape? | [MCP API And Schemas](mcp-api-and-schemas.md) owns staged public tools/resources, request and response envelopes, shared refs, errors, idempotency, state conflict behavior, and validator result schema. |
+| What is the public API or schema shape? | [MVP API](api/mvp-api.md) owns the active MVP-1 methods, [API Schema Core](api/schema-core.md) owns shared envelopes/refs/resources, [API Errors](api/errors.md) owns errors/idempotency/state conflict behavior, and [API Schema Later](api/schema-later.md) owns later-profile methods and future schema material. |
 | Where is runtime state stored? | [Storage And DDL](storage-and-ddl.md) owns runtime layout, DDL profiles, storage JSON, locks, artifacts, migrations, baselines, projection jobs, and validator storage. |
 | How do readable documents work? | [Document Projection Reference](document-projection.md) owns projection rules, freshness, managed blocks, and authority boundaries; [Template Reference](templates/README.md) owns rendered Markdown shapes. |
 | What security guarantee can Harness claim? | [Security Threat Model Reference](security-threat-model.md) owns assets, trust boundaries, threats, controls, guarantee levels, and honest security wording. |
@@ -26,6 +26,7 @@ Do not read the whole Reference set by default. Choose the owner for the questio
 
 - If you are implementing the future server, start in [Build](../build/implementation-overview.md), then come here for the specific owner contract.
 - If you are integrating an agent, start with [Agent Session Flow](../use/agent-session-flow.md), then use [Agent Integration Reference](agent-integration.md) and [Surface Cookbook](surface-cookbook.md).
-- If you are checking a schema, start with [MCP API And Schemas](mcp-api-and-schemas.md) or [Storage And DDL](storage-and-ddl.md), depending on whether the contract is API-facing or persisted.
-- If you are checking a `harness://` resource, start with the staged [Read-only resources](mcp-api-and-schemas.md#read-only-resources) table before treating a URI as required for a delivery stage.
+- If you are checking an MVP-1 method, start with [MVP API](api/mvp-api.md). If you are checking shared refs or envelopes, use [API Schema Core](api/schema-core.md). For later methods, use [API Schema Later](api/schema-later.md).
+- If you are checking a persisted shape, start with [Storage And DDL](storage-and-ddl.md).
+- If you are checking a `harness://` resource, start with the staged [Read-only resources](api/schema-core.md#read-only-resources) table before treating a URI as required for a delivery stage.
 - If you are checking a user-facing wording claim, start with the owner of the underlying fact. Projection and template docs control display, but they do not create authority.

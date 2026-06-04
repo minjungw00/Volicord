@@ -15,7 +15,7 @@
 
 ## 읽기 전에
 
-정확한 규칙보다 예시를 먼저 보고 싶다면 [핵심 개념](../learn/concepts.md)이나 [하나의 작업으로 보는 Harness](../learn/harness-in-one-task.md)를 먼저 읽습니다. Public MCP shape는 [MCP API와 스키마](mcp-api-and-schemas.md)가 담당합니다. Storage table은 [Storage와 DDL](storage-and-ddl.md)이 담당합니다. Connector capability wording은 [Agent 통합 참조](agent-integration.md)가 담당합니다.
+정확한 규칙보다 예시를 먼저 보고 싶다면 [핵심 개념](../learn/concepts.md)이나 [하나의 작업으로 보는 Harness](../learn/harness-in-one-task.md)를 먼저 읽습니다. Active MVP-1 public method는 [MVP API](api/mvp-api.md)가 담당하고, shared API shape는 [API Schema Core](api/schema-core.md), API error는 [API Errors](api/errors.md)가 담당합니다. Storage table은 [Storage와 DDL](storage-and-ddl.md)이 담당합니다. Connector capability wording은 [Agent 통합 참조](agent-integration.md)가 담당합니다.
 
 ## 핵심 생각
 
@@ -30,12 +30,12 @@ Kernel은 범위, 쓰기 권한, 사용자 소유 판단, 근거, 검증, 수동
 | 필요한 것 | 먼저 볼 곳 | 관련 owner |
 |---|---|---|
 | Core invariant | [Kernel invariants](#kernel-invariants) | 이 문서. |
-| 작업 모양과 mode 의미 | [작업 모드](#작업-모드) | API enum 값은 [MCP API와 스키마](mcp-api-and-schemas.md)에 남습니다. |
-| 사용자 판단 type과 route | [판단 경로 경계](#판단-경로-경계), [User Judgment](#user-judgment), [Decision Gate](#decision-gate) | Public request field는 [`harness.request_user_judgment`](mcp-api-and-schemas.md#harnessrequest_user_judgment)이 담당합니다. |
+| 작업 모양과 mode 의미 | [작업 모드](#작업-모드) | API enum 값은 [API Schema Core](api/schema-core.md#shared-schemas)에 남습니다. |
+| 사용자 판단 type과 route | [판단 경로 경계](#판단-경로-경계), [User Judgment](#user-judgment), [Decision Gate](#decision-gate) | Public request field는 [`harness.request_user_judgment`](api/mvp-api.md#harnessrequest_user_judgment)이 담당합니다. |
 | Entity 관계 의미 | [Entity model](#entity-model) | Physical table은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
-| Gate 의미 | [Gates](#gates), [Gate 규칙 지도](#gate-규칙-지도) | Public blocker와 error는 [MCP API와 스키마](mcp-api-and-schemas.md#primary-error-code-precedence)가 담당합니다. |
-| 쓰기 권한 | [`prepare_write`](#prepare_write), [Write Authorization](#write-authorization), [`record_run`](#record_run) | Public shape는 [`harness.prepare_write`](mcp-api-and-schemas.md#harnessprepare_write)와 [`harness.record_run`](mcp-api-and-schemas.md#harnessrecord_run)이 담당합니다. |
-| 닫기 의미 | [`close_task`](#close_task), [작업 모양과 active profile별 닫기 matrix](#작업-모양과-active-profile별-닫기-matrix), [Close result semantics](#close-result-semantics) | Public close response는 [`harness.close_task`](mcp-api-and-schemas.md#harnessclose_task)이 담당합니다. |
+| Gate 의미 | [Gates](#gates), [Gate 규칙 지도](#gate-규칙-지도) | Public blocker와 error는 [API Errors](api/errors.md#primary-error-code-precedence)가 담당합니다. |
+| 쓰기 권한 | [`prepare_write`](#prepare_write), [Write Authorization](#write-authorization), [`record_run`](#record_run) | Public shape는 [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write)와 [`harness.record_run`](api/mvp-api.md#harnessrecord_run)이 담당합니다. |
+| 닫기 의미 | [`close_task`](#close_task), [작업 모양과 active profile별 닫기 matrix](#작업-모양과-active-profile별-닫기-matrix), [Close result semantics](#close-result-semantics) | Public close response는 [`harness.close_task`](api/mvp-api.md#harnessclose_task)이 담당합니다. |
 | Waiver와 invalid combination | [Waiver semantics](#waiver-semantics), [Invalid state combinations](#invalid-state-combinations) | Design policy detail은 [설계 품질 정책](design-quality-policies.md)에 남습니다. |
 
 ## Kernel invariants
@@ -197,7 +197,7 @@ Stage/profile support:
 
 이 문서는 다음을 담당하지 않습니다.
 
-- full public MCP request/response schema. [MCP API와 스키마](mcp-api-and-schemas.md)를 봅니다.
+- full public MCP request/response schema. [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [API Schema Later](api/schema-later.md)를 봅니다.
 - SQLite DDL과 storage layout. [Storage와 DDL](storage-and-ddl.md)을 봅니다.
 - full projection template body
 - document projection rule. [문서 Projection 참조](document-projection.md)를 봅니다.
@@ -246,7 +246,7 @@ Decision Packet은 복잡한 judgment를 위한 full-format 또는 legacy presen
 
 #### User Judgment lifecycle map
 
-Lifecycle은 작습니다. 필요한 judgment를 draft 또는 detect하고, 필요할 때 사용자에게 묻고, 호환되는 답변을 기록하고, deferral, rejection, blocked, superseded outcome을 보존합니다. 정확한 public field는 [`harness.request_user_judgment`](mcp-api-and-schemas.md#harnessrequest_user_judgment)와 [`harness.record_user_judgment`](mcp-api-and-schemas.md#harnessrecord_user_judgment)이 담당합니다.
+Lifecycle은 작습니다. 필요한 judgment를 draft 또는 detect하고, 필요할 때 사용자에게 묻고, 호환되는 답변을 기록하고, deferral, rejection, blocked, superseded outcome을 보존합니다. 정확한 public field는 [`harness.request_user_judgment`](api/mvp-api.md#harnessrequest_user_judgment)와 [`harness.record_user_judgment`](api/mvp-api.md#harnessrecord_user_judgment)가 담당합니다.
 
 ### Journey Spine
 

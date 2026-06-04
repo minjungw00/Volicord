@@ -22,9 +22,9 @@ Prove one Task can move through the smallest Core authority record: local projec
 
 The first slice should show that Harness state is local, durable, and authoritative without trying to prove the whole user-facing product. It keeps `prepare_write` as the product-write authorization decision point, Write Authorization as durable and single-use, `record_run` as the place where one compatible Run consumes authority, and status/blocker output as the place where missing scope, missing write authority, or missing artifact/evidence support can be reported as structured blockers. A `close_task` smoke may be used if the owner path already makes that the simplest blocker response, but Engineering Checkpoint does not prove work acceptance, residual-risk acceptance, or full close semantics.
 
-Use [Kernel Reference](../reference/kernel.md#prepare_write) and [MCP API And Schemas](../reference/mcp-api-and-schemas.md#public-tools) for the exact contracts.
+Use [Kernel Reference](../reference/kernel.md#prepare_write), [MVP API](../reference/api/mvp-api.md), [API Schema Core](../reference/api/schema-core.md), and [API Errors](../reference/api/errors.md) for the exact contracts.
 
-For API staging, start from the MCP API [Stage Profile Manifest](../reference/mcp-api-and-schemas.md#stage-profile-manifest) and use only its Engineering Checkpoint surface: minimal `harness.status` status/blocker read, `harness.prepare_write`, `harness.record_run`, one owner-valid Task/scope setup path, and optional minimal `harness.next` or narrow `harness.close_task` blocker smoke. Later-profile fields remain exact when their profiles are active, but they are not first-slice exit criteria.
+For API staging, start from the API [Stage Profile Manifest](../reference/api/schema-core.md#stage-profile-manifest) and use only its Engineering Checkpoint surface: minimal `harness.status` status/blocker read, `harness.prepare_write`, `harness.record_run`, one owner-valid Task/scope setup path, and optional narrow `harness.close_task` blocker smoke. A separate `harness.next` method is later/compatibility material, not a first-slice exit criterion. Later-profile fields remain exact when their profiles are active, but they are not first-slice exit criteria.
 
 ## Goal
 
@@ -115,7 +115,7 @@ Done when:
 - The system can show one active Task and its state version.
 - A state-changing request with a stale expected state version is rejected or returns a state conflict where the owner contract requires it.
 
-Owner contracts: Task lifecycle and state conflict behavior are owned by [Kernel Reference](../reference/kernel.md#task), [Lifecycle and transitions](../reference/kernel.md#lifecycle-and-transitions), and [MCP API And Schemas](../reference/mcp-api-and-schemas.md#state-conflict-behavior).
+Owner contracts: Task lifecycle and state conflict behavior are owned by [Kernel Reference](../reference/kernel.md#task), [Lifecycle and transitions](../reference/kernel.md#lifecycle-and-transitions), and [API Errors](../reference/api/errors.md#state-conflict-behavior).
 
 ### 3. One Basic Scope
 
@@ -152,7 +152,7 @@ Done when:
 - A compatible scoped write returns a Write Authorization ref.
 - No product write can be recorded by a product-write Run without that ref.
 
-Owner contracts: write-gate semantics are owned by [Kernel Reference: prepare_write](../reference/kernel.md#prepare_write); public request/response shape and error precedence are owned by [`harness.prepare_write`](../reference/mcp-api-and-schemas.md#harnessprepare_write) and [Primary Error Code Precedence](../reference/mcp-api-and-schemas.md#primary-error-code-precedence).
+Owner contracts: write-gate semantics are owned by [Kernel Reference: prepare_write](../reference/kernel.md#prepare_write); public request/response shape and error precedence are owned by [`harness.prepare_write`](../reference/api/mvp-api.md#harnessprepare_write) and [Primary Error Code Precedence](../reference/api/errors.md#primary-error-code-precedence).
 
 ### 5. `record_run`
 
@@ -170,7 +170,7 @@ Done when:
 - `record_run` with compatible authority succeeds once.
 - A second distinct Run cannot reuse the consumed authorization.
 
-Owner contracts: Run semantics are owned by [Kernel Reference: record_run](../reference/kernel.md#record_run); public schema is owned by [`harness.record_run`](../reference/mcp-api-and-schemas.md#harnessrecord_run); transaction ordering is owned by [State transaction flow](../reference/runtime-architecture.md#state-transaction-flow).
+Owner contracts: Run semantics are owned by [Kernel Reference: record_run](../reference/kernel.md#record_run); public schema is owned by [`harness.record_run`](../reference/api/mvp-api.md#harnessrecord_run); transaction ordering is owned by [State transaction flow](../reference/runtime-architecture.md#state-transaction-flow).
 
 ### 6. Artifact Or Evidence Link
 
@@ -187,7 +187,7 @@ Done when:
 - A Run can cite a registered artifact or evidence ref.
 - Raw secrets are omitted or blocked rather than stored as evidence.
 
-Owner contracts: artifact refs are owned by [ArtifactRef](../reference/mcp-api-and-schemas.md#artifactref); storage layout and registration details are owned by [Artifact directory layout](../reference/storage-and-ddl.md#artifact-directory-layout) and [Artifact Registration Contract](../reference/storage-and-ddl.md#artifact-registration-contract).
+Owner contracts: artifact refs are owned by [ArtifactRef](../reference/api/schema-core.md#artifactref); storage layout and registration details are owned by [Artifact directory layout](../reference/storage-and-ddl.md#artifact-directory-layout) and [Artifact Registration Contract](../reference/storage-and-ddl.md#artifact-registration-contract).
 
 ### 7. Status And Structured Blockers
 
@@ -205,7 +205,7 @@ Done when:
 - The structured blocker can be compared without matching prose.
 - Close/status results are based on canonical records, not rendered reports.
 
-Owner contracts: status/next schemas are owned by [`harness.status`](../reference/mcp-api-and-schemas.md#harnessstatus) and [`harness.next`](../reference/mcp-api-and-schemas.md#harnessnext); close behavior is owned by [Kernel Reference: close_task](../reference/kernel.md#close_task).
+Owner contracts: status and `status.next_actions` schemas are owned by [`harness.status`](../reference/api/mvp-api.md#harnessstatus); separate [`harness.next`](../reference/api/schema-later.md#harnessnext) is later/compatibility material. Close behavior is owned by [Kernel Reference: close_task](../reference/kernel.md#close_task).
 
 ## What this proves
 
@@ -244,7 +244,7 @@ Do not add fields to the fixture body to express suite stage, authoring order, o
 
 - [Kernel Reference](../reference/kernel.md): Task, Change Unit, User Judgment, gates, `prepare_write`, Write Authorization, `record_run` semantics, and `close_task`.
 - [Runtime Architecture Reference](../reference/runtime-architecture.md): three spaces, Core process model, transaction flow, artifact store, projection/reconcile, guarantee levels, and failure handling.
-- [MCP API And Schemas](../reference/mcp-api-and-schemas.md): public resources, tool envelopes, request/response schemas, error taxonomy, artifact refs, and `ProjectionKind`.
+- [MVP API](../reference/api/mvp-api.md), [API Schema Core](../reference/api/schema-core.md), and [API Errors](../reference/api/errors.md): public resources, tool envelopes, request/response schemas, error taxonomy, artifact refs, and `ProjectionKind`.
 - [Storage And DDL](../reference/storage-and-ddl.md): runtime layout, staged schema profiles, migrations, locks, artifacts, and later-profile baseline, projection-job, and validator-run candidates.
 - [Operations And Conformance Reference](../reference/operations-and-conformance.md): operator semantics and conformance staging.
 - [Conformance Fixtures Reference](../reference/conformance-fixtures.md): core conformance model, fixture format, execution, assertion rules, and the reduced Kernel Smoke queue.
