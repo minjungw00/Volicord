@@ -490,7 +490,7 @@ updated_at: 2026-05-06T09:30:15+09:00
   - RED 대상 / 계획:
   - RED 근거(실제):
   - GREEN 근거:
-- 비 TDD(Non-TDD) 근거:
+  - 비 TDD(Non-TDD) 근거:
 - 수동 QA:
   - required: yes | no
   - profile: ui_quality | workflow | copy | accessibility | browser_smoke | none
