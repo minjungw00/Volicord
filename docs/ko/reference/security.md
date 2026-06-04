@@ -20,7 +20,7 @@ Runtime 구현 계획에 들어가기 전에 Harness 보안 asset, trust boundar
 
 Runtime space, Core process model, transaction ordering, architecture placement는 [런타임 아키텍처 참조](runtime-architecture.md)를 사용합니다. Connector capability profile, generated manifest, context push/pull, fallback display는 [Agent 통합 참조](agent-integration.md)를 사용합니다. 단계별 `doctor`, `serve mcp`, artifact check, recover, reconcile behavior는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용하고, fixture semantics는 [Conformance Fixtures 참조](conformance-fixtures.md)를 사용합니다.
 
-Public tool envelope와 shared shape는 [API Schema Core](api/schema-core.md)를 사용하고, public error와 replay behavior는 [API Errors](api/errors.md)를 사용합니다. Exact storage layout, artifact row, DDL은 [Storage](storage.md)를 사용합니다. State transition, gate, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close는 [Core Model 참조](core-model.md)를 사용합니다.
+Public tool envelope와 shared shape는 [API Schema Core](api/schema-core.md)를 사용하고, public error, MVP-1 status/error condition 동작, replay behavior는 [API Errors](api/errors.md)를 사용합니다. Exact storage layout, artifact row, DDL은 [Storage](storage.md)를 사용합니다. State transition, gate, Approval, `prepare_write`, Write Authorization, acceptance, residual risk, close는 [Core Model 참조](core-model.md)를 사용합니다.
 
 이 문서는 그 exact contract를 복사하지 않고 link합니다.
 
@@ -41,6 +41,8 @@ Security display는 실제 control과 일치해야 합니다. `cooperative`는 a
 ## 단계별 guarantee level
 
 아래는 로컬 reference path의 기본 단계별 guarantee입니다. 구체적인 connector, operator path, later profile은 exact covered operation 또는 separation boundary를 이름 붙이고 owner documentation과 conformance proof를 제시할 때만 더 강한 level을 주장할 수 있습니다.
+
+Core unavailable, local access denied, stale state, unsupported surface, 범위 밖 작업, 필요한 사용자 판단, 부족한 근거, 닫기 막힘, 잔여 위험 있음의 public API condition name과 표시 문구 동작은 [API Errors: MVP-1 guarantee와 상태/error taxonomy](api/errors.md#mvp-1-guarantee-and-status-taxonomy)가 담당합니다. 이 섹션은 `cooperative`, `detective`, `preventive`, `isolated`의 보안 의미를 담당합니다.
 
 | 단계 | 기본 guarantee posture | 정직한 주장 경계 |
 |---|---|---|
@@ -87,7 +89,7 @@ Security display는 실제 control과 일치해야 합니다. `cooperative`는 a
 | Scenario | 내부 엔지니어링 점검 | MVP-1 사용자 작업 루프 | 보증 프로필 | 운영 프로필 | 로드맵 |
 |---|---|---|---|---|---|
 | MCP unavailable | Harness record/check가 필요한 call은 fail 또는 hold됩니다. Chat이나 cached text에서 Core state, Write Authorization record, evidence, 작업 수락, 잔여 위험 수용, close claim을 만들어 내지 않습니다. | 사용자는 availability 막힘/status와 다음 reconnect 또는 diagnosis action을 봅니다. 입증된 더 강한 profile이 해당 operation을 cover하지 않는 한 product/runtime/code write는 지시로 보류됩니다. | Assurance path는 unavailable path를 통해 verification, QA, waiver, risk, acceptance state를 신뢰할 수 없다고 보고합니다. | `serve mcp`, `doctor`, `recover`는 `MCP_SERVER_UNAVAILABLE`과 `SURFACE_MCP_UNAVAILABLE`을 구분하고 public `MCP_UNAVAILABLE`/capability error boundary를 보존합니다. | 승격된 guard는 증명된 path에서만 covered write를 실행 전에 멈출 수 있고, 승격된 isolation profile은 실제 boundary를 통해 work를 route할 수 있습니다. |
-| Out-of-scope write | `prepare_write`는 Write Authorization record를 만들지 않고 구조화된 막힘을 반환할 수 있습니다. External edit는 active path가 관찰할 때만 탐지됩니다. | 사용자는 무엇이 scope 밖인지 보고, 올바른 decision path를 통해 scope를 줄이거나 의도적으로 넓힐 수 있습니다. | Autonomy, approval, evidence, changed-path check가 run, evidence, verification, close readiness를 stale/blocked/insufficient로 표시할 수 있습니다. | Doctor, recover, reconcile이 changed-path 또는 generated-file drift를 보고하고 repair를 owner path로 route할 수 있습니다. | Preventive profile은 fixture proof가 해당 operation을 cover할 때만 covered path/command/network/secret을 실행 전에 멈출 수 있습니다. |
+| Out-of-scope write | `prepare_write`는 Write Authorization record를 만들지 않고 구조화된 막힘을 반환할 수 있습니다. External edit는 active path가 관찰할 때만 탐지됩니다. | 사용자는 무엇이 scope 밖인지 보고, 올바른 decision path를 통해 scope를 줄이거나 의도적으로 넓힐 수 있습니다. | Autonomy, 민감 동작 승인, evidence, changed-path check가 run, evidence, verification, close readiness를 stale/blocked/insufficient로 표시할 수 있습니다. | Doctor, recover, reconcile이 changed-path 또는 generated-file drift를 보고하고 repair를 owner path로 route할 수 있습니다. | Preventive profile은 fixture proof가 해당 operation을 cover할 때만 covered path/command/network/secret을 실행 전에 멈출 수 있습니다. |
 | Sensitive-action approval | Full Approval semantics는 owner profile이 좁은 case를 승격하지 않는 한 최소 조각 밖입니다. Active scope 밖의 sensitive action은 보류되거나 unsupported로 취급됩니다. | 사용자는 이름 붙은 sensitive step, permission 필요/기록 여부, 그리고 permission이 작업 수락이나 잔여 위험 수용이 아니라는 점을 봅니다. | Approval은 Decision Packet, Write Authorization, QA/verification waiver, 작업 수락, 잔여 위험 수용과 분리됩니다. | Operator diagnostic과 export/handoff report는 외부 approval 또는 deployment authority를 만들지 않고 Approval status를 보여줄 수 있습니다. | Policy wrapper 또는 permission system은 exact covered action에 대한 proof가 있을 때만 preventive가 될 수 있습니다. |
 | Stale projection | Persisted projection은 필수가 아닙니다. 오래된 readable text는 Core state가 아닙니다. | Readable summary/card는 freshness warning을 표시할 수 있으며 stale이면 authority로 쓰면 안 됩니다. | Assurance와 context-hygiene check는 verification/QA/close가 view에 의존하기 전에 fresh state, fresh evaluator bundle, reconcile을 요구할 수 있습니다. | Projection refresh, reconcile, doctor, export, recover가 committed state를 유지하면서 freshness를 owner path로 보고하거나 repair할 수 있습니다. | Richer projection/UI system은 owner docs가 mutation path를 정의하고 증명하기 전까지 read-only로 남습니다. |
 | Artifact tampering | Active path에서 registered artifact ref와 최소 integrity fact를 확인합니다. Direct file edit는 evidence authority가 아닙니다. | Evidence와 close summary는 missing, stale, mismatched artifact support를 보여줍니다. | Evidence, Eval, Manual QA, waiver, risk, close path는 replacement 또는 owner decision이 gap을 해소할 때까지 stale, insufficient, blocked, unresolved가 될 수 있습니다. | Artifact check, recover, export는 hash, retention, redaction, omitted-secret, blocked-payload metadata를 검증하되 staged file이나 Markdown을 신뢰하지 않습니다. | Storage hardening 또는 locked artifact handling은 실제 boundary와 conformance proof가 있을 때만 더 강해질 수 있습니다. |
@@ -213,7 +215,7 @@ Expected state version, idempotency, baseline compatibility, approval expiry, pr
 
 State-changing, write-capable, sensitive, verification, QA, 작업 수락과 잔여 위험, close-relevant action에 필요한 Harness record/check path를 사용할 수 없으면 chat, stale projection text, generated file, cached context, operator prose에서 계속하지 말고 fail, hold, capability insufficiency report로 처리해야 합니다.
 
-MCP unavailability에 대해서 operations와 connector는 기존 diagnostic distinction인 `MCP_SERVER_UNAVAILABLE`과 `SURFACE_MCP_UNAVAILABLE`을 사용하고, API-visible failure는 해당하는 경우 API-owned `MCP_UNAVAILABLE` 또는 `CAPABILITY_INSUFFICIENT` path를 사용합니다.
+MCP unavailability에 대해서 operations와 connector는 기존 diagnostic distinction인 `MCP_SERVER_UNAVAILABLE`과 `SURFACE_MCP_UNAVAILABLE`을 사용하고, API-visible failure는 해당하는 경우 API-owned `MCP_UNAVAILABLE` 또는 `CAPABILITY_INSUFFICIENT` path를 사용합니다. Core-unavailable agent rule은 [API Errors](api/errors.md#mvp-1-guarantee-and-status-taxonomy)가 담당합니다. Harness/Core authority에 닿을 수 없으면 Task 상태, 민감 동작 승인, 사용자 판단, 근거, 작업 수락, 잔여 위험 수용, 닫기 준비 상태를 만들어 내지 않습니다.
 
 ### 정직한 guarantee display
 

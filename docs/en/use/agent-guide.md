@@ -16,9 +16,9 @@ Keep user-owned judgment with the user. Do not decide product behavior, importan
 
 Use ceremony in proportion to the work. Tiny edits and read-only answers should stay light. Ambiguous, large, sensitive, cross-boundary, or close-relevant work needs clarification, visible scope, and the relevant Harness path before writes or close claims.
 
-Template output is not state. Status cards, generated reports, rendered templates, recommendations, chat memory, and retrieved context can summarize or point to owner refs, but they do not create approvals, evidence, acceptance, residual-risk acceptance, write authority, or close readiness.
+Template output is not state. Status cards, generated reports, rendered templates, recommendations, chat memory, and retrieved context can summarize or point to owner refs, but they do not create sensitive-action approval, evidence, work acceptance, residual-risk acceptance, write authority, or close readiness.
 
-If Core or Harness authority is unavailable, do not invent task state, approvals, evidence, acceptance, residual-risk status, gate updates, readable-view freshness, or close readiness. Hold product writes by instruction and reconnect, diagnose, or move to a capable surface.
+If Core or Harness authority is unavailable, do not invent task state, sensitive-action approval, user judgments, evidence, work acceptance, residual-risk acceptance, gate updates, readable-view freshness, or close readiness. Hold product writes by instruction and reconnect, diagnose, or move to a capable surface. Proceed outside Harness only if the user explicitly chooses that mode.
 
 ## 2. Translate Normal User Language Into Harness Behavior
 
@@ -48,7 +48,7 @@ Escalate from small change to tracked work when you discover scope drift, new fi
 
 ## 4. Clarify Requirements
 
-Clarification is the agent behavior before implementation planning when the next safe action is not clear. It is not approval, evidence, write authority, acceptance, residual-risk acceptance, or close.
+Clarification is the agent behavior before implementation planning when the next safe action is not clear. It is not sensitive-action approval, evidence, write authority, work acceptance, residual-risk acceptance, or close.
 
 Before asking, inspect what is available: repository files, docs, tests, current state, active scope, accepted decisions, and current artifacts. Then ask only the questions that change the next safe action.
 
@@ -160,6 +160,20 @@ Lead with the primary blocker and the smallest unblocker. Name whether the block
 
 If Core/Harness authority is unavailable, say what is unavailable and which claims are now held. Do not use old chat, cached status, generated templates, or stale projections as state.
 
+The exact MVP-1 status/error condition taxonomy is owned by [API Errors: MVP-1 guarantee and status taxonomy](../reference/api/errors.md#mvp-1-guarantee-and-status-taxonomy). In session flow, handle these visible conditions plainly:
+
+| Condition | Agent behavior |
+|---|---|
+| Core unavailable | Say Harness/Core authority is unavailable; reconnect or diagnose; do not claim state, sensitive-action approval, user judgment, evidence, work acceptance, residual-risk acceptance, or close readiness. |
+| Local access denied | Say local access is unavailable or denied; do not guess file contents or command results; move to a capable surface or narrow to accessible paths. |
+| Stale state | Refresh current state, baseline, projection, or pre-write scope check before relying on it. |
+| Unsupported surface | Say the behavior is outside the current stage or surface; offer a supported fallback instead of emulating later-profile authority. |
+| Out of scope | Hold the affected action; narrow the action or ask the user for the specific scope judgment. |
+| Missing judgment | Ask the focused user-owned judgment; keep sensitive-action approval, work acceptance, and residual-risk acceptance separate. |
+| Missing evidence | Run or record the missing check when possible; otherwise show the evidence gap and affected claim. |
+| Close blocked | Show blockers and smallest unblockers; do not close from prose, tests alone, or broad acceptance-like language. |
+| Residual risk present | Show the risk explicitly and ask for separate residual-risk acceptance only when the active path requires it. |
+
 ## 11. Close Work
 
 Close only when the active path can honestly support the close claim.
@@ -188,7 +202,7 @@ Do not ask for work acceptance with a generic "all good?" prompt. Do not claim c
 - Do not start ambiguous large implementation without clarification.
 - Do not treat "looks good" or "go ahead" as blanket approval, work acceptance, and residual-risk acceptance.
 - Do not present template output, status cards, projections, generated reports, recommendations, or chat memory as state.
-- Do not invent task state, approvals, evidence, acceptance, residual-risk status, or close readiness when Core/Harness authority is unavailable.
+- Do not invent task state, sensitive-action approval, user judgment, evidence, work acceptance, residual-risk acceptance, or close readiness when Core/Harness authority is unavailable.
 - Do not imply cooperative or detective surfaces can prevent execution unless a fixture-proven preventive path covers that operation.
 - Do not bury the user's next decision under schemas, logs, full templates, full DDL, complete history, or unrelated reference material.
 

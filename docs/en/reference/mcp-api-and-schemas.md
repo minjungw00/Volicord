@@ -9,7 +9,7 @@ Use the split documents instead of loading one large schema file:
 | MVP-1 active public API | [MVP API](api/mvp-api.md) |
 | Shared core schemas, read-only resources, artifact refs, staged value sets | [API Schema Core](api/schema-core.md) |
 | Later/profile-gated methods and future schema material | [API Schema Later](api/schema-later.md) |
-| Error taxonomy, primary precedence, idempotency, state conflict behavior | [API Errors](api/errors.md) |
+| Error taxonomy, MVP-1 status/error conditions, primary precedence, idempotency, state conflict behavior | [API Errors](api/errors.md) |
 
 API readers should keep the same authority split used elsewhere: public API calls expose or change Core-owned state only through the active method contracts, while status cards, read-only resources, rendered templates, and projections remain derived views. Exact state authority is owned by [Core Model Reference](core-model.md); exact view behavior is owned by [Projection And Templates Reference](projection-and-templates.md).
 
@@ -18,6 +18,8 @@ API readers should keep the same authority split used elsewhere: public API call
 The active MVP-1 method set is owned by [MVP API](api/mvp-api.md#mvp-1-method-set). MVP-1 next-safe-action output is part of `harness.status`; the separate `harness.next` compatibility path is owned by [Schema Later](api/schema-later.md#harnessnext).
 
 The pre-write scope-check behavior behind `harness.prepare_write` is a cooperative Harness check. Exact method fields are owned by [MVP API: `harness.prepare_write`](api/mvp-api.md#harnessprepare_write), Core state behavior by [Core Model Reference: `prepare_write`](core-model.md#prepare_write), and guarantee wording by [Security Reference](security.md#honest-guarantee-display).
+
+Core unavailable, local access denied, stale state, unsupported surface, out-of-scope work, missing judgment, missing evidence, close blocked, and residual-risk-present behavior is owned by [API Errors: MVP-1 guarantee and status taxonomy](api/errors.md#mvp-1-guarantee-and-status-taxonomy).
 
 ## Legacy anchor map
 
@@ -87,6 +89,9 @@ ValidatorResult: [Schema Core: ValidatorResult](api/schema-core.md#validatorresu
 
 <a id="error-taxonomy"></a>
 Error taxonomy: [API Errors: Error taxonomy](api/errors.md#error-taxonomy).
+
+<a id="mvp-1-guarantee-and-status-taxonomy"></a>
+MVP-1 guarantee and status taxonomy: [API Errors: MVP-1 guarantee and status taxonomy](api/errors.md#mvp-1-guarantee-and-status-taxonomy).
 
 <a id="primary-error-code-precedence"></a>
 Primary Error Code Precedence: [API Errors: Primary Error Code Precedence](api/errors.md#primary-error-code-precedence).

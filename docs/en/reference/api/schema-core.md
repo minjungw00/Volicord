@@ -11,7 +11,7 @@ This document describes future Harness Server behavior for planning and review. 
 | Need | Section |
 |---|---|
 | Active MVP-1 tools | [MVP API](mvp-api.md) |
-| Error codes, precedence, idempotency, stale-state behavior | [Errors](errors.md) |
+| Error codes, MVP-1 status/error conditions, precedence, idempotency, stale-state behavior | [Errors](errors.md) |
 | Later/profile-gated schemas and methods | [Schema Later](schema-later.md) |
 | Core Model state semantics | [Core Model Reference](../core-model.md) |
 | Storage and DDL | [Storage](../storage.md) |
@@ -95,7 +95,7 @@ The Engineering Checkpoint/default posture is local-only exposure for a register
 
 Public schemas may carry display-safe access material class, bind/reachability posture, freshness, profile refs, conformance/operator-check refs, or safe handles/fingerprints. They must not carry raw tokens, secrets, private configuration values, omitted secret values, or blocked payload bytes.
 
-If Core cannot be reached, no authoritative Core response exists; report `MCP_UNAVAILABLE` or diagnostic `MCP_SERVER_UNAVAILABLE`. If Core or an operator can classify a reachable local caller/access path as outside the registered profile, use `LOCAL_ACCESS_MISMATCH` with display-safe details.
+If Core cannot be reached, no authoritative Core response exists; report `MCP_UNAVAILABLE` or diagnostic `MCP_SERVER_UNAVAILABLE`. If Core or an operator can classify a reachable local caller/access path as outside the registered profile, use `LOCAL_ACCESS_MISMATCH` with display-safe details. User-facing behavior for Core unavailable, local access denied, unsupported surface, and stale state is owned by [Errors: MVP-1 guarantee and status taxonomy](errors.md#mvp-1-guarantee-and-status-taxonomy).
 
 ## Common response
 
@@ -118,6 +118,8 @@ ToolError:
   retryable: boolean
   details: object
 ```
+
+`ToolError.message` should follow the honest user-facing message patterns in [Errors](errors.md#mvp-1-guarantee-and-status-taxonomy) when one of the MVP-1 status/error conditions applies.
 
 In Engineering Checkpoint and MVP-1, `projection_jobs` is present for envelope compatibility and is normally `[]`. It does not require a `projection_jobs` storage table. Durable projection jobs are Operations Profile or profile-promoted storage.
 

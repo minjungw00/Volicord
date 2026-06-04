@@ -45,7 +45,7 @@ All methods use [`ToolEnvelope`](schema-core.md#tool-envelope) and [`ToolRespons
 
 MVP-1 request validators use the active value sets in [Schema Core](schema-core.md#stage-specific-active-value-sets). Later enum values and extension branches are not valid merely because they exist in [Schema Later](schema-later.md).
 
-Error codes, primary error precedence, idempotency replay, and stale-state behavior are owned by [Errors](errors.md).
+Error codes, MVP-1 status/error condition names, user-facing message patterns, primary error precedence, idempotency replay, and stale-state behavior are owned by [Errors](errors.md). Security meanings for guarantee levels are owned by [Security Reference: Honest guarantee display](../security.md#honest-guarantee-display).
 
 <a id="harnessintake"></a>
 
@@ -129,6 +129,8 @@ StatusResponse:
 `status_card` is a short readable view over current Core state and refs. It should stay compact, show source/freshness information, and avoid full schemas, DDL, history, templates, projection bodies, artifact bodies, logs, and future catalogs. It is not Core state and cannot create approval, acceptance, residual-risk acceptance, evidence, close readiness, Write Authorization, or close.
 
 `next_actions` is the MVP-1 next-safe-action surface. It should name the smallest useful next action or unblocker in ordinary language, with exact enum values as secondary detail.
+
+When status cannot reach Core, reports stale state, names an unsupported surface, or shows blockers such as out-of-scope work, missing judgment, missing evidence, close blocked, or residual risk present, it uses the canonical condition behavior in [Errors: MVP-1 guarantee and status taxonomy](errors.md#mvp-1-guarantee-and-status-taxonomy).
 
 MVP-1 active `NextActionSummary.action_kind` values:
 

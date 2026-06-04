@@ -11,7 +11,7 @@
 | 필요한 것 | 섹션 |
 |---|---|
 | Active MVP-1 tools | [MVP API](mvp-api.md) |
-| Error code, precedence, idempotency, stale-state behavior | [Errors](errors.md) |
+| Error code, MVP-1 status/error condition, precedence, idempotency, stale-state behavior | [Errors](errors.md) |
 | Later/profile-gated schemas and methods | [Schema Later](schema-later.md) |
 | Core Model state semantics | [Core Model 참조](../core-model.md) |
 | Storage and DDL | [Storage](../storage.md) |
@@ -95,7 +95,7 @@ Envelope field는 routing과 audit claim입니다. Surface가 Core 밖에서 sta
 
 Public schema는 display-safe access material class, bind/reachability posture, freshness, profile refs, conformance/operator-check refs, safe handle/fingerprint를 담을 수 있습니다. Raw token, secret, private configuration value, omitted secret value, blocked payload bytes를 담으면 안 됩니다.
 
-Core에 닿지 못하면 authoritative Core response가 없습니다. `MCP_UNAVAILABLE` 또는 diagnostic `MCP_SERVER_UNAVAILABLE`을 보고합니다. Core나 operator가 reachable local caller/access path를 registered profile 밖으로 분류할 수 있으면 display-safe detail과 함께 `LOCAL_ACCESS_MISMATCH`를 사용합니다.
+Core에 닿지 못하면 authoritative Core response가 없습니다. `MCP_UNAVAILABLE` 또는 diagnostic `MCP_SERVER_UNAVAILABLE`을 보고합니다. Core나 operator가 reachable local caller/access path를 registered profile 밖으로 분류할 수 있으면 display-safe detail과 함께 `LOCAL_ACCESS_MISMATCH`를 사용합니다. Core unavailable, local access denied, unsupported surface, stale state에 대해 사용자에게 보이는 동작은 [Errors: MVP-1 guarantee와 상태/error taxonomy](errors.md#mvp-1-guarantee-and-status-taxonomy)가 담당합니다.
 
 ## Common response
 
@@ -118,6 +118,8 @@ ToolError:
   retryable: boolean
   details: object
 ```
+
+MVP-1 status/error condition이 적용될 때 `ToolError.message`는 [Errors](errors.md#mvp-1-guarantee-and-status-taxonomy)의 정직한 사용자 표시 문구 pattern을 따라야 합니다.
 
 내부 엔지니어링 점검과 MVP-1에서 `projection_jobs`는 envelope compatibility를 위해 present하며 보통 `[]`입니다. 이 field가 `projection_jobs` storage table을 요구하지 않습니다. Durable projection job은 운영 프로필 또는 profile-promoted storage입니다.
 
@@ -158,7 +160,7 @@ StateSummary:
     acceptance_gate: not_required | required | pending | accepted | rejected
 ```
 
-`StateSummary.mode` values는 `advisor`, `direct`, `work`로 유지합니다. 사용자-facing surface는 이를 advice/read-only work, small direct work, tracked work로 표시할 수 있습니다. 그 label은 display text이지 enum value가 아닙니다.
+`StateSummary.mode` values는 `advisor`, `direct`, `work`로 유지합니다. 사용자 접점은 이를 advice/read-only work, small direct work, tracked work로 표시할 수 있습니다. 그 label은 display text이지 enum value가 아닙니다.
 
 ### ProjectionKind support
 
@@ -350,7 +352,7 @@ WriteAuthoritySummary:
 
 Minimum MVP-1에서 `WriteAuthorizationSummary.approval_refs`는 empty입니다. Resolved sensitive-action approval user judgment는 `user_judgment_refs`에 나타납니다. Committed Approval ref는 Approval owner profile이 active일 때만 나타납니다.
 
-`WriteAuthorizationSummary`와 `WriteAuthoritySummary`는 API/internal 이름입니다. MVP-1 사용자-facing display는 먼저 쓰기 전 범위 확인이라고 설명해야 합니다. `allowed_paths`, `allowed_tools`, `status=allowed` 같은 field는 협력형 기록/확인에 대한 하네스 호환성만 뜻합니다. OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단, 권한 격리를 뜻하지 않습니다.
+`WriteAuthorizationSummary`와 `WriteAuthoritySummary`는 API/internal 이름입니다. MVP-1 사용자 표시에서는 먼저 쓰기 전 범위 확인이라고 설명해야 합니다. `allowed_paths`, `allowed_tools`, `status=allowed` 같은 field는 협력형 기록/확인에 대한 하네스 호환성만 뜻합니다. OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단, 권한 격리를 뜻하지 않습니다.
 
 ## UserJudgment
 

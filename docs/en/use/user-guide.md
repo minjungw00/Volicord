@@ -233,6 +233,20 @@ The agent should show:
 
 Tests can pass while close is still blocked. A UI change may still need human QA. A security-sensitive change may still need a risk decision. A broad "looks good" should only count when the agent has clearly named the thing you are accepting.
 
+Common status messages should be direct and non-alarming. Exact condition behavior is owned by [API Errors: MVP-1 guarantee and status taxonomy](../reference/api/errors.md#mvp-1-guarantee-and-status-taxonomy), but as a user you can read them this way:
+
+| Message | What it means for you |
+|---|---|
+| Harness/Core authority is unavailable. | The agent cannot confirm current Harness state, evidence, work acceptance, residual-risk acceptance, or close readiness. It can reconnect, diagnose, or continue outside Harness only if you explicitly choose that mode. |
+| Local access is unavailable or denied. | The current surface cannot inspect or change the requested local files or system path. |
+| Current state or view may be stale. | The agent should refresh before relying on the status, baseline, projection, or pre-write scope check. |
+| This is outside the current Harness stage or surface. | The requested behavior is not available in the current stage/profile; the agent should offer a supported fallback. |
+| This is outside the current scope. | The agent should narrow the action or ask whether you want to change the scope. |
+| User judgment is needed. | A decision belongs to you before the affected action can continue. |
+| Evidence is insufficient. | The claim needs more support before the agent can honestly rely on it. |
+| Close is blocked. | The work cannot be closed yet; the agent should show the smallest unblocker. |
+| Residual risk remains. | A known remaining risk must be visible, and some close paths require you to accept that risk separately. |
+
 ## 11. What Harness does not guarantee
 
 Harness makes AI-assisted work easier to inspect and route. It does not replace the surrounding engineering process.
