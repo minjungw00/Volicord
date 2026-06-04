@@ -30,7 +30,7 @@ This repo is in pre-MVP Harness documentation redesign / feedback incorporation 
 - Do not preserve existing prose merely for continuity if it conflicts with the clarified product thesis or implementation feasibility.
 - Feel free to rewrite, move, merge, shrink, or delete old prose when it conflicts with the clarified product thesis, owner boundaries, Korean quality rules, or implementation feasibility.
 - Preserve the product thesis: Harness is not a prompt pack; it is a local authority record for scope, user-owned judgment, evidence, and close readiness. User-owned judgments, evidence/verification/QA/acceptance/risk boundaries, and Core-owned state/artifact authority must stay distinct.
-- The detailed redesign scope, preserved principles, document-family ownership guidance, Korean quality rules, and [known issue tracker](docs/en/maintain/authoring-guide.md#known-redesign-issues-tracker) live in [Authoring Guide](docs/en/maintain/authoring-guide.md#current-redesign-scope).
+- Mandatory documentation workflow, preserved principles, document-family ownership guidance, stage boundaries, Korean quality rules, and [redesign risk/regression checks](docs/en/maintain/authoring-guide.md#known-redesign-issues-and-regression-checks) live in [Authoring Guide](docs/en/maintain/authoring-guide.md).
 - Future rewrite triage categories live in [Rewrite Plan](docs/en/maintain/rewrite-plan.md) and [Korean Rewrite Plan](docs/ko/maintain/rewrite-plan.md).
 
 ## Harness Compass

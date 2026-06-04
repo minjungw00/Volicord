@@ -1,48 +1,87 @@
 # 문서 작성 가이드
 
-## 이 문서로 할 수 있는 일
+하네스 문서를 고치기 전에 이 가이드를 사용합니다. 이 문서는 문서 유지보수만 다룹니다. 하네스 서버/런타임 구현, 제품 저장소 쓰기, 생성된 운영 산출물, conformance runner, 런타임 상태, projection, evidence record, QA record, Acceptance record, close record, Residual Risk record를 허가하지 않습니다.
 
-Harness 문서를 새로 쓰거나, 나누거나, 이름을 바꾸거나, 리뷰할 때 이 가이드를 사용합니다.
+이 저장소는 아직 문서 검토와 재설계 단계입니다. 현재 문서는 재설계 이후 검토 기준입니다. 구현 준비가 수락된 서버 계획이 아닙니다. 정리된 제품 명제, owner 경계, 한국어 품질 규칙, 구현 가능성과 충돌하는 오래된 문장은 과감하게 다시 쓰거나 옮기거나 줄이거나 삭제할 수 있습니다.
 
-목표는 현재 문서가 독자에게 읽기 쉽고, 세부 계약의 위치가 분명하며, 영어와 한국어 문서가 같은 의미를 유지하도록 돕는 것입니다.
+## 필수 사전 편집 체크리스트
 
-이 문서는 Maintain 문서입니다. 문서 유지보수만 다룹니다. 첫 향후 구현 목표는 내부 엔지니어링 점검입니다. 이는 제품 MVP가 아니라 내부 authority-loop smoke입니다. 커널 스모크(Kernel Smoke)는 이 점검 아래의 좁은 future smoke-check 작성 label일 뿐입니다. 첫 사용자 가치 목표는 MVP-1 사용자 작업 루프입니다. 보증 프로필과 운영 프로필은 agency assurance, operations, handoff behavior를 나중에 단단하게 만들고, 로드맵은 owner 문서가 승격하고 증명하기 전까지 향후 범위에 둡니다.
+- [ ] 먼저 root `AGENTS.md`를 읽습니다.
+- [ ] 문서를 편집하기 전에 이 가이드를 읽습니다.
+- [ ] 이중 언어 편집이나 용어에 영향을 주는 편집이면 `docs/en/maintain/translation-guide.md`를 읽습니다.
+- [ ] 한국어 문서를 건드리기 전에는 `docs/ko/maintain/authoring-guide.md`와 `docs/ko/maintain/translation-guide.md`를 읽습니다.
+- [ ] 작업이 문서 전용인지 확인합니다. Server/runtime code, product code, generated operational file, runtime state, executable fixture, conformance runner, projection, artifact output을 만들지 않습니다.
+- [ ] 편집할 문서군을 확인합니다. Learn, Use, Build, Reference, Maintain, Later, Roadmap 중 어디인지 먼저 정합니다.
+- [ ] 엄격한 계약을 건드릴 수 있다면 owner 문서를 찾습니다. 하나의 strict contract에는 하나의 owner 문서만 있습니다.
+- [ ] 이번 편집이 의미 변경인지, 문장 정리인지, 링크 수정인지, 이름 변경/이동인지, 삭제인지 구분합니다.
+- [ ] 의미가 바뀌면 `docs/en`을 먼저 고치고 같은 batch에서 `docs/ko`에 같은 의미를 반영합니다.
+- [ ] 한국어를 고칠 때는 exact identifier를 보존하고 자연스러운 한국어 기술 문장으로 씁니다. 영어 문장을 줄 단위로 따라 하지 않습니다.
+- [ ] 사용자 대상 문서는 사용자가 보는 상황에서 시작합니다. `Discovery`, `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Projection`, `Gate`, `task_events` 같은 내부 라벨로 시작하지 않습니다.
+- [ ] Stage나 MVP 표현을 고치면 관련 Build owner에서 active stage boundary를 확인합니다. Later-profile이나 Roadmap 내용을 MVP 요구사항처럼 쓰지 않습니다.
+- [ ] 보안 표현을 고치면 실제 guarantee level을 먼저 확인합니다.
+- [ ] 문서를 옮기거나, 이름을 바꾸거나, 나누거나, 합치거나, 삭제한다면 양쪽 언어의 link와 anchor 수정까지 계획합니다.
 
-## 이런 때 읽기
+## 필수 사후 편집 체크리스트
 
-- 문서를 추가, 분리, 이름 변경, review할 때.
-- 어떤 문서가 strict contract를 소유하는지 판단해야 할 때.
-- 영어/한국어 의미 일치, link, TODO hygiene, duplicate owner text를 확인할 때.
+- [ ] Server/runtime implementation, product code, generated operational artifact, runtime state, executable fixture, conformance runner, projection, artifact output을 만들지 않았는지 확인합니다.
+- [ ] 문서 파일을 source material로 설명했는지 확인합니다. Runtime state, generated projection, evidence, QA, Acceptance, residual-risk record, close record, operational truth처럼 쓰지 않습니다.
+- [ ] Strict schema, DDL, enum value, state transition, gate rule, algorithm, fixture body shape, template body, storage rule, security guarantee, official definition이 owner 문서에 남아 있는지 확인합니다.
+- [ ] Owner가 아닌 문서의 중복 contract는 짧은 독자용 요약과 owner link로 바꿉니다.
+- [ ] 사용자 대상 문서가 평소 사용자 상황, 에이전트가 구체화해야 할 것, 보이는 막힘, 필요한 판단, close 결과를 먼저 설명하는지 확인합니다.
+- [ ] Stage 표현이 구현 상태를 과장하지 않는지, later-profile이나 Roadmap 내용을 MVP 요구사항으로 만들지 않는지 확인합니다.
+- [ ] 보안 표현이 문서화된 guarantee level과 맞는지 확인합니다. OS permission, arbitrary-tool sandboxing, tamper-proof file, pre-tool blocking, isolation을 정확한 증명 없이 암시하지 않습니다.
+- [ ] 영어/한국어 대응 문서가 같은 의미, owner link, stable identifier, active file coverage를 유지하는지 확인합니다.
+- [ ] 한국어 문장이 자연스러운지 확인합니다. Exact identifier, file path, schema/API name, enum value, error code, validator ID, code-like string은 정확히 보존합니다.
+- [ ] 이동, 이름 변경, 분리, 병합, 삭제가 있었다면 link, anchor, README route, paired-language link, 예전 title/path reference를 같은 batch에서 고쳤는지 확인합니다.
+- [ ] 로컬에서 할 수 있는 docs-maintenance check를 실행합니다. 실행하지 못한 check는 handoff에 적습니다.
+- [ ] 남은 문제는 문서 drift, schema/design decision, stage boundary decision, implementation-readiness criterion, future Roadmap item 중 하나로 라우팅합니다. Active docs 곳곳에 막연한 TODO를 남기지 않습니다.
+- [ ] 변경한 파일과 남은 위험 또는 확인하지 못한 check를 handoff에 보고합니다.
 
-## 먼저 읽기
+## 재설계 중 보존할 핵심 원칙
 
-정확한 runtime contract는 아래에 연결된 Reference owner 문서를 사용합니다. 한국어 표현 규칙은 [번역 가이드](translation-guide.md)를 사용합니다.
+용어, schema, 문서 구조, stage boundary는 바뀔 수 있습니다. 그래도 아래 원칙은 유지합니다.
 
-재설계 분류 기준과 오래된 구조나 문구를 반드시 보존할 필요가 없다는 규칙은 [재작성 계획](rewrite-plan.md)을 사용합니다.
+- 하네스는 prompt 묶음이 아닙니다. Scope, 사용자 소유 판단, 근거, 검증, QA 기대치, 작업 수락, 잔여 위험 상태, 닫기 준비 상태를 다루는 local authority record입니다.
+- 사용자 소유 판단은 사용자에게 남습니다. Product decision, material technical decision, QA expectation, waiver, work acceptance, residual-risk acceptance를 agent에게 조용히 넘기지 않습니다.
+- Evidence, Verification, Manual QA, work acceptance, close readiness, residual risk는 서로 다른 기록과 판단입니다. 서로를 대신하지 않습니다.
+- Chat, connector output, Markdown-rendered projection, generated document는 operational truth가 아닙니다. 향후 운영 기준은 Core-owned local state와 artifact reference입니다.
+- 문서 파일은 하네스를 이해하고 구현하기 위한 source material입니다. Runtime object, runtime state, generated artifact, projection, evidence, QA, Acceptance, close, residual-risk record가 아닙니다.
+- 현재 문서는 review baseline입니다. Maintainer handoff owner가 명시하지 않는 한 fully accepted, implementation-complete, implementation-ready, server-coding-ready라고 쓰지 않습니다.
 
-## 핵심 생각
+재설계 중에는 기존 문구 보존보다 명확성, 구현 가능성, 제품 명제를 우선합니다. Harness가 broad workflow engine, ALM system, evaluation harness, QA automation platform, report generator, generic MCP wrapper, prompt pack처럼 보이게 하는 문장은 다시 쓰거나 옮기거나 줄이거나 삭제합니다.
 
-각 문서는 독자에게 유용해야 하며 exact contract는 owner Reference 문서에 머물러야 합니다. 문서는 하네스를 이해하고 구현하기 위한 원천 자료이지, 하네스가 관리하는 런타임 객체가 아닙니다.
+## 문서군 소유권 규칙
 
-## 하나의 계약에는 하나의 owner
-
-규범 계약마다 owner 문서가 하나만 있어야 합니다. Exact field, enum value, DDL, schema, algorithm, state transition, gate rule, fixture body shape, template body, storage rule, security guarantee, error precedence, official definition은 그 owner 문서에서만 정의합니다.
-
-다른 문서군은 독자에게 필요한 결과를 짧게 설명하고 owner로 연결할 수 있습니다. 하지만 두 번째 정의를 만들면 안 됩니다. Local 설명에 full table, schema block, DDL block, transition matrix, fixture mini-language, gate matrix, validator table, algorithm이 필요하다면 그 내용은 owner Reference 문서에 둡니다.
-
-문서군 경계:
+문서 tree는 소유권을 나누기 위한 구조입니다.
 
 | 문서군 | 역할 | 경계 |
 |---|---|---|
-| Learn | Harness가 왜 필요한지, 개념이 무슨 뜻인지 설명합니다. | Strict schema, gate, 구현 순서를 정의하지 않습니다. |
-| Use | 사용자와 agent가 어떻게 상호작용하는지 설명합니다. | 사용자가 신뢰하거나 blocker를 이해하는 데 필요할 때만 낮은 수준의 계약 detail을 씁니다. |
-| Build | 구현 순서와 MVP-1 사용자 작업 루프 계획을 설명합니다. | Stage goal, 순서, exit criteria를 유지하고, exact schema, gate, DDL, API, storage, fixture detail은 Reference로 연결합니다. |
-| Reference | Exact contract, schema, algorithm, security model, storage model을 정의합니다. | Contract를 이해할 만큼의 설명은 두되, tutorial이나 reader journey로 만들지 않습니다. |
-| Maintain | 문서 작성과 review 규칙을 정의합니다. | Docs work만 다룹니다. Runtime behavior나 conformance pass/fail을 정의하지 않습니다. |
+| Learn | 하네스가 왜 필요한지, 개념이 무슨 뜻인지 설명합니다. | Strict schema, gate, DDL, 구현 순서, fixture mechanics를 정의하지 않습니다. |
+| Use | 사용자와 agent가 하네스와 어떻게 상호작용하는지 설명합니다. | 사용자 신뢰, 보이는 막힘, 판단 요청, 근거 gap, 복구 경로, close 결과를 이해하는 데 필요할 때만 low-level contract를 이름 붙입니다. |
+| Build | 문서 수락과 별도의 구현 계획 준비 결정 이후의 구현 순서를 설명합니다. | Stage goal, 순서, runnable-slice planning, exit criteria를 둡니다. Exact schema, gate, DDL, API, storage, fixture, security contract는 Reference로 연결합니다. |
+| Reference | Exact contract, schema, algorithm, storage, API, security model, projection behavior, official definition을 소유합니다. | Contract를 이해하는 데 필요한 맥락은 둡니다. Tutorial, reader journey, staged implementation plan으로 만들지 않습니다. |
+| Maintain | 문서 유지보수를 관리합니다. | Authoring, translation, review, link, ownership, docs-maintenance rule만 정의합니다. Runtime behavior, runtime conformance pass/fail, implementation readiness를 정의하지 않습니다. |
+| Later와 Roadmap | Active MVP path 밖의 future/candidate material을 둡니다. | Owner 문서가 scope, fallback behavior, proof expectation과 함께 승격하기 전까지 active stage requirement처럼 쓰지 않습니다. |
 
-## Reference 계약 owner 지도
+README 문서는 긴 설명서이기 전에 길잡이입니다. 하네스가 무엇이고 무엇이 아닌지 짧게 말한 뒤 처음 읽는 사람, 사용자, 구현자, Reference 독자, 유지보수 담당자를 알맞은 owner 문서로 보냅니다.
 
-엄격한 규칙을 추가하기 전에 이 지도를 사용합니다. 다른 문서에 같은 규칙이 필요하면 독자에게 필요한 결과만 짧게 요약하고, 계약을 복사하지 말고 owner로 연결합니다.
+## 계약 하나에는 owner 하나 규칙
+
+모든 strict contract에는 owner 문서가 하나만 있습니다. Exact field, enum value, DDL, schema, algorithm, state transition, gate rule, fixture body shape, template body, storage rule, security guarantee, error precedence, official definition은 그 owner 문서에서만 정의합니다.
+
+다른 문서군은 독자에게 보이는 결과를 설명하고 owner로 연결할 수 있습니다. 두 번째 정의를 만들면 안 됩니다. Local 설명에 full table, schema block, DDL block, transition matrix, fixture mini-language, gate matrix, validator table, template body, algorithm이 필요하다면 그 내용은 owner Reference 문서에 둡니다.
+
+Owner가 아닌 문서에서 규범 문구가 반복되면 아래 순서로 고칩니다.
+
+1. Owner 문서 또는 owner section을 찾습니다.
+2. Contract 자체가 틀렸거나 빠졌다면 owner를 먼저 고칩니다.
+3. 중복 문구는 평범한 한 문장 요약, owner link, 현재 독자에게 필요한 local consequence로 바꿉니다.
+4. 의미가 바뀌면 paired language file에도 반영합니다.
+5. Owner boundary가 분명해진 뒤 link와 anchor를 고칩니다.
+
+### Reference 계약 owner 지도
+
+엄격한 규칙을 추가하기 전에 이 지도를 봅니다.
 
 | 계약 영역 | Owner 문서 | Owner 경계 |
 |---|---|---|
@@ -51,480 +90,293 @@ Harness 문서를 새로 쓰거나, 나누거나, 이름을 바꾸거나, 리뷰
 | Storage | [Storage](../reference/storage.md) | Runtime home layout, persisted state, SQLite DDL profile, storage-owned JSON `TEXT`, enum hardening, migration, lock, artifact storage, baseline capture, projection job table, validator-run storage. |
 | Projection | [Projection과 Template 참조](../reference/projection-and-templates.md)와 [Template 참조](../reference/templates/README.md) | Derived view rule, output tier, managed block, human-editable section, artifact-ref rendering, projection freshness/failure behavior, 전체 rendered template body. |
 | Security | [보안 참조](../reference/security.md) | Threat model, asset, trust boundary, threat/control category, high-risk control expectation, local access security posture, guarantee-level 의미와 honest-display rule. |
-| Conformance | [Conformance Fixtures 참조](../reference/conformance-fixtures.md)와 [향후 Fixtures](../later/future-fixtures.md) | Conformance Fixtures는 세 층 경계, 핵심 적합성 모델, MVP 동작 예시, exact future fixture body, future runner 동작, assertion semantics, future fixture profile, suite metadata boundary, 현재 단계 상태, 축소된 Kernel Smoke 작성 순서를 담당합니다. 향후 Fixtures는 active MVP path 밖의 향후 상세 scenario 후보, 향후 fixture example, 단계별 fixture coverage map, fixture suite family summary, catalog-only future candidate를 담당합니다. |
-| Operations | [운영과 Conformance 참조](../reference/operations-and-conformance.md) | Operator behavior, staged operator surface, diagnostic, `connect`, `doctor`, `serve mcp`, projection refresh, reconcile, recover, export, artifact check, future conformance run entrypoint, 문서 점검/docs-maintenance reporting boundary. |
+| Conformance | [Conformance Fixtures 참조](../reference/conformance-fixtures.md)와 [향후 Fixtures](../later/future-fixtures.md) | Conformance Fixtures는 세 층 경계, core conformance model, MVP behavior example, future fixture body shape, future runner behavior, assertion semantics, future fixture profile, suite metadata boundary, current-phase status, reduced Kernel Smoke queue를 담당합니다. Future Fixtures는 active MVP path 밖의 future scenario candidate, future fixture example, staged coverage map, suite family summary, catalog-only future candidate를 담당합니다. |
+| Operations | [운영과 Conformance 참조](../reference/operations-and-conformance.md) | Operator behavior, staged operator surface, diagnostic, `connect`, `doctor`, `serve mcp`, projection refresh, reconcile, recover, export, artifact check, future conformance run entrypoint, documentation-check/docs-maintenance reporting boundary. |
 | Agent Integration | [Agent 통합 참조](../reference/agent-integration.md)와 [Surface Cookbook](../reference/surface-cookbook.md) | Connector capability profile, generated manifest, context push/pull profile, fallback semantics, Role Lens, reference-surface behavior, connector conformance overview, surface-specific recipe. |
 | Glossary | [용어집 참조](../reference/glossary.md) | Public/internal terminology definition, capitalization, official term wording, record-name orientation, owner routing. |
 | Runtime Architecture | [런타임 아키텍처 참조](../reference/runtime-architecture.md) | 세 공간, Core process placement, Core-only canonical mutation authority, transaction ordering, artifact/projection/reconcile placement, architecture-level failure and recovery overview. |
 | Design Quality | [설계 품질 정책](../reference/design-quality-policies.md) | Policy contract, policy-to-validator mapping, stable validator ID, severity composition, policy waiver semantics, evidence expectation, design-quality gate/close impact. |
 
-## 현재 재설계 범위
+## Stage와 MVP 경계 규칙
 
-### 현재 검토 기준
+문서 검토 상태, 구현 계획 준비 상태, 런타임 구현 상태를 분리합니다.
 
-이 저장소는 문서 검토와 재설계 단계입니다. 세 상태를 분리해서 유지합니다.
+- 문서 검토 상태: 현재 문서 세트는 재설계 이후 검토 상태입니다. Maintainer review를 위한 문서 수락 후보입니다.
+- 구현 계획 준비 상태: 아직 수락되지 않았습니다. 첫 runtime-batch planning 전에 maintainer가 implementation-readiness criteria를 명시적으로 확인해야 합니다.
+- 런타임 구현 상태: 시작하지 않았습니다. 이 저장소는 지금 문서 전용입니다. 향후 역할은 하네스 서버 소스 저장소이지만, server/runtime implementation은 문서 수락과 별도의 구현 계획 준비 결정 이후에만 시작할 수 있습니다.
 
-- 문서 검토 상태: 현재 문서 세트는 재설계 이후 검토 상태이며 유지보수자 검토를 위한 문서 수락 후보입니다.
-- 구현 계획 준비 상태: 아직 수락되지 않았습니다. 첫 런타임 배치 계획 전에 유지보수자가 구현 준비 조건을 명시적으로 확인해야 합니다.
-- 런타임 구현 상태: 시작하지 않았습니다. 이 저장소는 아직 문서 전용입니다. 향후 역할은 하네스 서버 소스 저장소이지만, 서버/런타임 구현은 문서 수락과 별도의 구현 계획 준비 결정 이후에만 시작할 수 있습니다.
+Active delivery label은 일관되게 씁니다.
 
-이 저장소 단계에서는 서버/런타임 구현 결정을 코드 작성용으로 공식 수락하지 않았습니다. 서버 코딩 전 열린 결정은 MVP-1 사용자 작업 루프 계획에 기록되어 있으며, 영향을 받는 동작을 코딩하기 전 관련 결정이 수락되거나 단계 영향과 함께 명시적으로 미뤄져야 합니다.
-
-유지보수자 인계 상태가 명시적으로 정의하기 전까지 현재 문서를 완전히 수락되었거나, 구현 완료되었거나, 구현 준비가 끝났거나, 서버 코딩을 시작해도 되는 상태로 설명하지 않습니다.
-
-문서 편집은 문서 원본을 바꿀 수 있지만, 하네스 서버/런타임 구현을 시작하거나 구현 계획을 허가하지 않습니다.
-
-상세 단계와 상태 경고는 root README, 언어별 README, Build 인계 문서, 이 Maintain 지침에 둡니다. Learn/Use 문서는 그 담당 문서로 연결할 수 있지만, 첫 부분은 사용자가 무엇을 요청할 수 있는지, 에이전트가 무엇을 구체화해야 하는지, 하네스가 무엇을 보존하는지, 사용자가 무엇을 보게 되는지부터 시작해야 합니다.
-
-이번 재설계에서는 용어, MVP 단계, 스키마(schema) 구조, 투영(projection) 구조, 보안 표현, 문서 구성이 바뀔 수 있습니다. 정리된 제품 명제나 구현 가능성과 충돌하는 기존 문구는 연속성만으로 보존하지 않습니다.
-
-이 저장소에서 문서를 편집할 때는 하네스 런타임 절차가 필요하지 않습니다. 문서 편집을 위해 runtime state, `task_events`, Write Authorization, Evidence Manifest, 수동 QA record, Acceptance record, Residual Risk record, generated projection, 운영 파일, 실행 가능한 fixture, fixture 파일, 런타임 기록, 제품 저장소 예시를 만들지 않습니다. 이런 용어는 향후 Harness 동작을 설명할 때만 문서화할 수 있습니다.
-
-문서 파일은 Harness를 이해하고 구현하기 위한 원천 자료입니다. 향후 Harness Server가 명시적으로 projection으로 생성하지 않는 한 Harness projection이 아닙니다. 문서 페이지가 자신이 설명하는 런타임 생명주기를 따르게 만들지 않습니다. 생명주기는 설명하고, owner contract로 연결하며, 편집 점검은 편집 점검으로 유지합니다.
-
-문서 편집을 위한 path allowlist, 언어 쌍 batch, review batch boundary는 일반적인 maintainer editing control입니다. Harness runtime override capability, Core authorization, Write Authorization, evidence, QA, Acceptance, 잔여 위험 수용, close, projection, `task_events`, runtime state transition이 아닙니다.
-
-### 재설계 편집 계약
-
-재설계 중에는 기존 문구 보존보다 명확성, 구현 가능성, 제품 명제를 우선합니다.
-
-- 이미 있다는 이유만으로 문장을 보존하지 않습니다. Harness가 넓은 workflow engine, ALM system, evaluation harness, QA automation platform, report generator, generic MCP wrapper처럼 보이게 하는 내용은 다시 쓰거나, 옮기거나, 줄이거나, 삭제합니다.
-- 향후 편집은 [재작성 계획](rewrite-plan.md)에 따라 `preserve`, `shrink`, `move`, `delete`, `decision-needed` 값으로 분류합니다.
-- 보존할 것은 핵심 Harness 원칙과 가치입니다. Scope, 사용자 소유 판단, 근거 참조, 닫기 준비 상태, 작업 수락, 잔여 위험을 대화 밖의 Core-owned 로컬 권한 기록에 둔다는 점을 지킵니다.
-- Future, profile-specific, diagnostic, roadmap 내용은 단계화된 후보로 읽혀야 합니다. 현재 MVP requirement처럼 보이거나 구현이 이미 있다는 증거처럼 보이면 안 됩니다.
-- 사용자 대상 문서는 독자가 internal Harness vocabulary를 알아야만 무엇을 요청할지, 에이전트가 무엇을 확인할지, 무엇이 막혔는지, 어떤 사용자 판단이 필요한지, close가 무슨 뜻인지 이해하는 형태가 아니어야 합니다.
-- Exact contract는 owner Reference 문서에 둡니다. 다른 문서는 독자에게 보이는 결과를 요약하고 owner로 연결합니다. Schema, DDL, gate, fixture body, projection template, state-transition rule을 중복하지 않습니다.
-- Documentation file은 Harness runtime object가 아닙니다. 향후 runtime Write Authorization, Evidence Manifest, `task_events`, Acceptance, residual-risk, projection, conformance, generated operational-output rule의 지배를 받지 않습니다.
-
-### 재설계 백로그 틀
-
-재설계 finding은 아래 틀로 작게 나누어 라우팅합니다.
-
-- 제품 정의 drift: Harness를 local authority record와 judgment-routing layer로 유지합니다. Prompt 묶음, workflow engine, report generator, dashboard, broad hosted agent platform으로 만들지 않습니다.
-- 단계/프로필 경계 drift: 내부 엔지니어링 점검은 내부 authority-loop smoke로, MVP-1 사용자 작업 루프는 첫 사용자 가치 이정표로 유지합니다. 보증, 운영, diagnostic, 로드맵 내용은 owner가 승격하기 전까지 더 이른 요구사항 밖에 둡니다.
-- 판단 모델 복잡도: 사용자 소유 판단을 보이게 유지하고, 결정의 크기에 맞춥니다. Agent 판단, sensitive-action Approval, 작업 수락, 잔여 위험 수용과 섞지 않습니다.
-- Close/verification 모호성: 근거, 검증, 수동 QA, 작업 수락, close readiness, 잔여 위험을 분리합니다. 어느 것도 다른 것을 대신하지 않습니다.
-- 보안 보장 과장 위험: Cooperative, detective, preventive, isolated 표현은 문서화된 mechanism과 증명 수준에 맞게 씁니다.
-- Context/token 과부하 위험: 항상 주입되는 agent context는 짧고 최신으로 유지합니다. 자세한 contract는 owner 문서나 조회 경로로 보냅니다.
-- 사용자 대상 용어 부담: 사용자가 보는 상황을 먼저 씁니다. 사용자가 Discovery, Change Unit, Decision Packet, Write Authorization, Evidence Manifest, Projection, Gate, `task_events` 같은 내부 라벨을 말해야만 진행되는 것처럼 쓰지 않습니다. 내부 용어는 독자가 행동하거나, 보이는 막힘을 해석하거나, Reference 계약을 자세히 확인하는 데 도움이 될 때만 소개합니다.
-
-## 보존하는 원칙
-
-구현 세부사항은 바뀔 수 있습니다. 다만 다음 원칙은 유지해야 합니다.
-
-- Harness는 prompt 묶음이 아닙니다. Scope, 사용자 소유 판단, 근거, 검증, QA 기대, 작업 수락, 잔여 위험 상태, 닫기 준비 상태를 다루는 로컬 권한 기록입니다.
-- 사용자 소유 판단은 보존되어야 합니다. 제품 결정, 중요한 기술 결정, QA 기대치, 작업 수락, waiver, 잔여 위험 수용은 소유자 계약이 달리 정하지 않는 한 사용자 판단으로 남습니다.
-- 근거, 검증, 수동 QA, 작업 수락, 잔여 위험은 서로 다른 기록과 판단이며 서로를 대체할 수 없습니다.
-- 대화, Markdown으로 렌더링된 읽기용 요약(Projection), connector 출력, 생성 문서는 운영 기준이 아닙니다. Core가 소유한 로컬 상태와 아티팩트 참조가 운영 기준입니다.
-
-문서를 다시 쓰면서 용어, 단계, 스키마 구조, 투영 구조, 보안 표현, 문서 경계를 바꿀 때는 문장을 다듬기 전에 이 원칙이 유지되는지 먼저 확인합니다.
-
-## 문서 인계 규칙
-
-[구현 개요: 문서 인계 요약](../build/implementation-overview.md#문서-인계-요약)이 짧은 인계 요약을 담당합니다. 여기에 문서 세트가 정의하는 것, 문서 검토 상태, 구현 계획 준비 상태, 런타임 구현 상태, 향후 저장소 역할, 보존 원칙, 현재 단계 모델, 하네스 서버 구현 준비 조건, 남은 질문 상태, 남은 문서 drift 상태, maintainer 수락 조건을 둡니다.
-
-[MVP-1 사용자 작업 루프 계획: 서버 코딩 전 필요한 구현 결정](../build/mvp-user-work-loop.md#서버-코딩-전-필요한-구현-결정)은 maintainer review나 첫 runtime batch planning에서 발견된 큰 구현 시작 전 결정을 기록하는 단일 위치입니다. 큰 결정을 active docs 곳곳의 `TODO_DECISION`으로 남기지 않습니다. 현재 기준에는 서버 코딩 전 열린 결정이 있습니다. 진입점과 인계 상태는 이 사실을 말해야 하며, 문서 수락을 구현 계획 준비나 서버 코딩 허가로 취급하면 안 됩니다. 이후 기준에서 결정 기록이 비어 있다면 정확히 그렇게 말합니다. 구현 준비 조건에 아직 maintainer 판단이 필요한 동안에는 이것을 "열린 결정 없음" 주장으로 바꾸지 않습니다. 편집 정리만 남았다면 어떤 docs-maintenance category가 담당하는지, 왜 현재 stage를 막지 않는지 함께 말합니다.
-
-## 알려진 재설계 쟁점 트래커
-
-이 tracker는 drift가 자주 생기는 영역을 확인하는 maintainer 검토 checklist로 사용합니다. 아래 항목은 maintainer용 review risk이지 열린 구현 결정, runtime 구현 작업, runtime conformance, acceptance record가 아닙니다. 이 tracker는 구현 준비 상태를 증명하지 않으며 server/runtime 구현을 허가하지 않습니다.
-
-Tracker 상태 의미:
-
-- 현재 문서에서 확인된 drift: 이번 pass 또는 유지보수자 검토에서 활성 문서 안의 drift를 확인한 상태입니다. 고칠 위치를 잡을 수 있을 만큼의 맥락을 함께 남깁니다.
-- 확인 대상 후보: 그럴 가능성이 있는 risk이지만, 이번 pass에서 실제 존재를 증명하지 않았습니다. 확인 전에는 관찰된 drift나 서버 코딩 blocker로 취급하지 않습니다.
-- 회귀 방지 점검: 현재 기준에서는 문구가 괜찮다고 보지만, 이후 편집에서 같은 drift를 다시 들여오면 안 됩니다.
-- 기준 상태 점검: 진입점과 인계 섹션이 현재 저장소 상태를 계속 정확히 말해야 합니다.
-
-문제를 "non-blocking"이라고 부르려면 어떤 단계에는 막지 않는지, 어떤 이후 단계에는 막을 수 있는지 함께 적어야 합니다. 구현 준비 우려를 막연한 "follow-up"으로 숨기지 말고 담당 문서, 영향을 받는 단계, 필요한 결정 또는 편집을 이름 붙입니다.
-
-상태가 "확인 대상 후보"인 행은 현재 drift가 실제로 존재한다는 주장으로 읽지 않습니다. 확인 결과 서버 코딩 전 결정이 필요하면 [MVP-1 사용자 작업 루프 계획: 서버 코딩 전 필요한 구현 결정](../build/mvp-user-work-loop.md#서버-코딩-전-필요한-구현-결정)에 담당 문서, 영향을 받는 동작 또는 field, 영향을 받는 단계, 선택지, 필요한 결정을 기록합니다.
-
-아래 routing table은 항목이 이미 막힘이라는 증거가 아닙니다. 검토 risk는 확인 결과 그런 종류의 문제가 드러난 뒤에만 문서 drift, 스키마/설계 결정, 단계 경계 결정, 구현 준비 막힘, 향후 로드맵 항목이 됩니다.
-
-확인된 tracker finding이나 docs-maintenance finding을 라우팅할 때는 다음 항목 범주를 사용합니다.
-
-| 항목 범주 | 사용하는 경우 |
+| 라벨 | 경계 |
 |---|---|
-| 문서 drift | 필요한 조치가 문구 정리, 소유자 경계 정리, link 수정, TODO 정리, 용어 정리, 영어/한국어 의미 일치일 때. |
-| 스키마/설계 결정 | schema, state, API, DDL, security guarantee, fixture 의미, 그 밖의 owner contract에서 실제 선택이 필요할 때. |
-| 단계 경계 결정 | capability가 내부 엔지니어링 점검, MVP-1 사용자 작업 루프, 보증 프로필, 운영 프로필, 로드맵 중 어디에 속하는지 결정해야 할 때. |
-| 구현 준비 조건 | 첫 런타임 배치 계획을 수락하기 전에 유지보수자가 확인해야 하는 조건일 때. |
-| 향후 로드맵 항목 | 유용하지만 승격되기 전까지 내부 엔지니어링 점검부터 운영 프로필 밖에 남아야 하는 항목일 때. |
+| 내부 엔지니어링 점검(Engineering Checkpoint) | 내부 authority-loop smoke입니다. Product MVP도 아니고 첫 사용자 가치 slice도 아닙니다. |
+| Kernel Smoke | 내부 엔지니어링 점검 아래의 좁은 future smoke-check 작성 label입니다. Stage name이 아닙니다. |
+| MVP-1 사용자 작업 루프(MVP-1 User Work Loop) | 첫 좁은 사용자 가치 milestone입니다. |
+| 보증 프로필(Assurance Profile) | Agency assurance behavior를 나중에 단단하게 만드는 범위입니다. |
+| 운영 프로필(Operations Profile) | Operations와 handoff behavior를 나중에 단단하게 만드는 범위입니다. |
+| 로드맵(Roadmap) | Owner 문서가 승격하고 증명하기 전까지 future scope입니다. |
 
-확인 뒤 예상 항목 범주:
+Later-profile, diagnostic, operations, conformance-runner, Roadmap material을 MVP requirement처럼 쓰지 않습니다. Reference schema에 존재한다는 사실만으로 smallest runnable slice가 커지지 않습니다. Required field는 owning tool, record, profile이 active이거나 사용될 때 적용됩니다.
 
-| 검토 risk | 확인되었을 때 기본 routing |
+Review 중 발견한 큰 구현 결정은 [MVP-1 사용자 작업 루프 계획: 서버 코딩 전 필요한 구현 결정](../build/mvp-user-work-loop.md#서버-코딩-전-필요한-구현-결정)에 둡니다. Active docs 곳곳에 큰 결정을 `TODO_DECISION`으로 흩어 놓지 않습니다. 짧은 maintainer handoff status는 [구현 개요: 문서 인계 요약](../build/implementation-overview.md#문서-인계-요약)이 담당합니다.
+
+이 저장소의 문서 편집에는 하네스 runtime procedure가 필요하지 않습니다. Docs work를 위해 `prepare_write`, MCP state transition, `close_task`, runtime state, `task_events`, Write Authorization, Evidence Manifest, Manual QA record, Acceptance record, Residual Risk record, Journey Card, generated projection, generated operational/projection document를 실행하거나 흉내 내지 않습니다.
+
+## 사용자 대상 용어 규칙
+
+사용자 대상 문서는 내부 라벨이 아니라 사용자가 보는 상황에서 시작합니다.
+
+사용자가 무엇을 요청할 수 있는지, agent가 무엇을 구체화해야 하는지, 하네스가 무엇을 보존하는지, 무엇이 막혔는지, 어떤 판단이 필요한지, 어떤 근거가 있는지, close가 무엇을 뜻하는지 먼저 씁니다. 내부 용어는 쉬운 상황이 분명해진 뒤에만 소개합니다. 독자가 행동하거나, 보이는 막힘을 해석하거나, Reference link를 따라가는 데 도움이 될 때만 씁니다.
+
+사용자가 `Discovery`, `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Projection`, `Gate`, `task_events` 같은 라벨을 알아야 하거나 말해야 진행되는 것처럼 쓰지 않습니다. 아래처럼 평소 말을 예시로 둡니다.
+
+```text
+구현 전에 계획을 구체화해줘.
+내가 결정해야 할 것과 네가 확인할 수 있는 것을 나눠서 보여줘.
+작업 범위가 커지면 먼저 알려줘.
+```
+
+개념은 엄격한 정의보다 예시로 먼저 소개합니다. Learn이나 Use 문서를 조밀한 정의 목록으로 시작하지 않습니다. Glossary나 reference table이면 예외입니다.
+
+Use 문서는 user trust boundary에 머뭅니다. 사용자가 보는 hold, blocker, decision prompt, evidence gap, close result, recovery path를 설명해야 할 때 contract를 이름 붙일 수 있습니다. 하지만 판단에 필요하지 않은 field list, storage row, gate matrix, validator internal detail은 드러내지 않습니다.
+
+## 보안 표현 규칙
+
+보안 표현은 실제 문서화된 guarantee level과 맞아야 합니다.
+
+- Cooperative 표현은 하네스가 행동을 안내하거나 기록할 수 있지만 기술적으로 막을 수는 없을 때 씁니다.
+- Detective 표현은 하네스가 행동 이후 감지하거나 보고할 수 있을 때 씁니다.
+- Preventive 표현은 해당 surface가 covered action 전에 막을 수 있고 그 blocking path가 해당 operation에 대해 증명되어 있을 때만 씁니다.
+- Isolated 표현은 문서화된 separation boundary가 있을 때만 씁니다. 그 boundary를 이름 붙이고 더 넓은 OS sandboxing이나 permission isolation을 암시하지 않습니다.
+
+초기 하네스가 OS-level permission, arbitrary-tool sandboxing, tamper-proof local file, pre-tool blocking, security isolation을 제공한다고 암시하지 않습니다. 해당 operation에 대한 정확한 mechanism이 문서화되고 증명되어 있을 때만 말합니다. Write Authorization은 cooperative Harness record/check입니다. OS permission, sandboxing, tamper-proof enforcement, preventive blocking, isolation이 아닙니다.
+
+[보안 참조](../reference/security.md)는 threat concept과 honest guarantee display를 담당합니다. Exact API, storage, Core, connector, operations, conformance behavior는 각 owner에 남습니다.
+
+## 이중 언어 의미 일치 규칙
+
+영어 문서는 이중 언어 문서 세트의 기준 의미를 정의합니다. 한국어 문서는 그 의미를 보존하되 자연스러운 한국어 기술 문서처럼 읽혀야 합니다.
+
+- 영어/한국어 대응 문서는 같은 active file map, reader purpose, semantic section coverage, owner link, contractual detail을 유지합니다.
+- `docs/en`의 의미가 바뀌면 같은 batch에서 `docs/ko`에 반영합니다. 반대 방향도 같습니다.
+- 한국어가 더 명확하다면 heading text와 paragraph grouping은 달라도 됩니다. Reviewability는 유지해야 합니다.
+- API name, schema name, enum value, DDL name, code identifier, field name, file name, path name, stable identifier, error code, validator ID, code-like string은 정확히 보존합니다.
+- 한국어 사용자용 prose에서는 자연스러운 한국어를 먼저 씁니다. Stable English identifier는 인식, 검색, exact contract alignment에 필요할 때만 괄호에 둡니다.
+- 한국어 문장은 필요한 곳에서 짧게 끊습니다. 영어 명사 여러 개에 조사만 붙인 문장으로 만들지 않습니다.
+
+자세한 용어 규칙은 [영어 번역 가이드](../../en/maintain/translation-guide.md)와 [한국어 번역 가이드](translation-guide.md)를 봅니다.
+
+## 링크, 이름 변경, 삭제 위생
+
+문서를 옮기거나, 이름을 바꾸거나, 나누거나, 합치거나, 삭제하면 양쪽 언어의 링크를 같은 batch에서 고칩니다.
+
+편집 전에 old path, old anchor, old heading, old title text, README route, owner link, template/reference link, paired-language link를 확인합니다. 편집 뒤에는 다시 검색해서 active reference를 모두 고칩니다.
+
+2차 요약보다 owner document나 owner section으로 링크합니다. Active owner link가 removed migration context, inactive path, old structure를 가리키면 안 됩니다.
+
+예전 이름, 예전 구조, migration decision을 리뷰 목적으로 남겨야 한다면 명확히 non-active migration record라고 표시한 곳에 둡니다. Active docs는 현재 구조를 설명하고 current owner로 연결합니다.
+
+삭제할 때는 해당 내용이 obsolete인지, owner 밖 중복인지, 다른 owner로 옮겨졌는지, future Roadmap material인지 먼저 정합니다. Active reference는 새 owner link로 바꾸거나 같은 batch에서 제거합니다. Dangling anchor나 stale route text를 남기지 않습니다.
+
+## 알려진 재설계 위험과 회귀 점검
+
+이 section은 재설계 중 자주 돌아오는 drift를 확인하는 실행 가능한 checklist입니다. 예전 known-issue tracker를 대체합니다. 아래 항목은 documentation-maintenance risk입니다. Runtime implementation task, runtime conformance, acceptance record, implementation readiness proof가 아닙니다.
+
+Risk가 확인되면 아래 category 중 하나로 라우팅합니다. Affected owner, stage, 필요한 action을 함께 이름 붙입니다.
+
+| Category | 사용하는 경우 |
 |---|---|
-| 이 저장소가 앞으로 하네스 서버 소스 저장소가 된다는 설명이 흐려질 수 있습니다. | 구현 준비 조건 |
-| Stage 이름이 내부 엔지니어링 점검, Kernel Smoke, 또는 예전 kernel-stage label을 제품 MVP나 첫 사용자 가치 조각처럼 보이게 할 수 있습니다. | 단계 경계 결정 |
-| 사용자용 문서가 무거운 구현 disclaimer로 시작할 수 있습니다. | 문서 drift |
-| 사용자용 문서에 내부 용어가 너무 많습니다. | 문서 drift |
-| 요구사항 탐색(discovery)과 확인이 Change Unit 또는 첫 안전한 구현 단위로 너무 빨리 수렴할 수 있습니다. | 단계 경계 결정 |
-| 예전 판단 field alias mapping이 drift될 수 있습니다. | 스키마/설계 결정 |
-| 작은 결정을 다루기에 Decision Packet schema와 예시가 너무 무거워 보일 수 있습니다. | 스키마/설계 결정 |
-| Approval, 작업 수락, 잔여 위험 수용을 혼동하기 쉽습니다. | 스키마/설계 결정 |
-| Storage/DDL이 future-profile table, field, gate를 너무 이른 필수 범위처럼 보이게 할 수 있습니다. | 단계 경계 결정 |
-| Conformance fixture 문서가 현재 구현 단계에 비해 너무 자세할 수 있습니다. | 구현 준비 조건 |
-| Operations entrypoint가 너무 이른 단계의 필수 요소처럼 보일 수 있습니다. | 단계 경계 결정 |
-| 한국어 사용자용 문서에 영어 기술 명사가 과도하게 남을 수 있습니다. | 문서 drift |
-| 결정 기록 상태 표현이 drift될 수 있습니다. | 구현 준비 조건 |
-| 현재 MVP 단계가 너무 크고, 핵심 사용자 가치를 뒤로 미룰 수 있습니다. | 단계 경계 결정 |
-| Projection/template 범위가 초기 구현에 비해 넓을 수 있습니다. | 단계 경계 결정 |
-| 보안 보장 표현은 실제 강제 수준과 맞아야 합니다. | 스키마/설계 결정 |
-| Agent context 전략은 prompt/context 부담이 과도해지지 않게 해야 합니다. | 구현 준비 조건 |
-| 문서가 런타임 객체처럼 읽힐 수 있습니다. | 문서 drift |
-| 로드맵 후보가 승격 없이 단계별 전달 범위로 들어올 수 있습니다. | 향후 로드맵 항목 |
+| Documentation drift | 필요한 조치가 wording, owner-boundary cleanup, link repair, open-marker hygiene, terminology, 영어/한국어 의미 일치일 때. |
+| Schema/design decision | Schema, state, API, DDL, security guarantee, fixture semantics, 그 밖의 owner contract에서 실제 선택이 필요할 때. |
+| Stage boundary decision | Capability가 Engineering Checkpoint, MVP-1 User Work Loop, Assurance Profile, Operations Profile, Roadmap 중 어디에 속하는지 결정해야 할 때. |
+| Implementation-readiness criterion | 첫 runtime-batch planning을 수락하기 전에 maintainer가 확인해야 하는 조건일 때. |
+| Future Roadmap item | 유용하지만 승격되기 전까지 Engineering Checkpoint부터 Operations Profile 밖에 남아야 하는 항목일 때. |
 
-| 검토 risk | Tracker 상태 | 편집 규칙 |
+Finding을 non-blocking이라고 부르려면 어떤 stage에는 막힘이 아닌지, 어떤 later stage에는 막힘이 될 수 있는지 함께 씁니다. Implementation-readiness concern을 막연한 follow-up 표현으로 숨기지 않습니다.
+
+| 재설계 위험 | 회귀 점검 | 확인되었을 때 기본 route |
 |---|---|---|
-| 이 저장소가 앞으로 하네스 서버 소스 저장소가 된다는 설명이 흐려질 수 있습니다. | 기준 상태 점검. | 현재는 문서 전용이고, 재설계 이후 검토 상태이며, 향후 역할은 하네스 서버 소스 저장소이고, 런타임/서버 구현은 아직 시작하지 않았으며 문서 수락과 별도의 구현 계획 준비 결정 이후에만 시작할 수 있다는 점을 진입점 문서에서 분명히 유지합니다. |
-| Stage 이름이 내부 엔지니어링 점검, Kernel Smoke, 또는 예전 kernel-stage label을 제품 MVP나 첫 사용자 가치 조각처럼 보이게 할 수 있습니다. | 확인 대상 후보. | 내부 엔지니어링 점검은 내부 authority loop milestone이고, Kernel Smoke는 그 좁은 future smoke-check 작성 label이며, MVP-1 사용자 작업 루프가 첫 좁은 사용자 가치 조각이라고 말합니다. |
-| 사용자용 문서가 무거운 구현 disclaimer로 시작할 수 있습니다. | 확인 대상 후보. | 사용자 대상 Learn/Use 문서는 사용자가 무엇을 요청할 수 있는지, 에이전트가 무엇을 구체화해야 하는지, 하네스가 무엇을 보존하는지, 사용자가 무엇을 보게 되는지를 먼저 보여주는 사용자 흐름 우선 도입부를 선호합니다. 상세 단계와 상태 경고는 root README, 언어별 README, Build 인계 문서, Maintain 지침으로 보냅니다. 문서 안의 상태 메모는 짧게 유지합니다. |
-| 사용자용 문서에 내부 용어가 너무 많습니다. | 확인 대상 후보. | 사용자가 보는 상황을 먼저 설명하고, 내부 용어는 행동에 도움이 될 때만 소개합니다. |
-| 요구사항 탐색(discovery)과 확인이 Change Unit 또는 첫 안전한 구현 단위로 너무 빨리 수렴할 수 있습니다. | 확인 대상 후보. | 범위가 정해진 구현 단위를 요구하기 전에 초기 discovery, 공유 이해, 사용자 소유 판단의 여지를 남깁니다. |
-| 예전 판단 field alias mapping이 drift될 수 있습니다. | 설계 해소됨; 회귀 방지 점검. | 활성 담당 문서는 기준 이름인 `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `judgment_type`, `presentation`, `display_label`을 사용합니다. `request_user_decision`, `judgment_domain`, `decision_kind`, `decision_profile`, `judgment_category`, `judgment_route`, `display_depth`는 compatibility 또는 legacy 용어이지 사용자가 이해해야 하는 독립 축이 아닙니다. 새 예시는 기준 judgment 이름을 우선하고, 영향을 받는 gate나 막힌 행동은 별도의 owner field에 남깁니다. |
-| 작은 판단을 다루기에 Decision Packet schema와 예시가 너무 무거워 보일 수 있습니다. | 설계 해소됨; 회귀 방지 점검. | 작은 판단은 `presentation=short`를 사용하고 한 화면에 들어가야 합니다. Full-format Decision Packet presentation은 optional/later-profile이거나 복잡한 판단을 위한 형식입니다. 모든 사용자 소유 판단의 기본 prompt 구조가 되면 안 됩니다. |
-| Approval, 작업 수락, 잔여 위험 수용을 혼동하기 쉽습니다. | 회귀 방지 점검. | 민감 동작 승인, 작업 수락, 잔여 위험 수용을 예시와 routing text에서 분리합니다. |
-| Storage/DDL이 future-profile table, field, gate를 너무 이른 필수 범위처럼 보이게 할 수 있습니다. | 확인 대상 후보. | Reference schema에 존재한다는 사실과 단계별 구현 요구를 구분합니다. Required field는 담당 tool, record, profile이 활성 상태이거나 사용될 때 적용되며, 그 자체로 가장 작은 구현 slice를 키우지 않습니다. |
-| Conformance fixture 문서가 현재 구현 단계에 비해 너무 자세할 수 있습니다. | 확인 대상 후보. | Fixture 문서는 단계화된 향후 계획으로 유지합니다. 현재 실행 가능한 fixture file이나 실행 가능한 Harness Server 적합성 테스트가 있다는 인상을 주지 않습니다. |
-| Operations entrypoint가 너무 이른 단계의 필수 요소처럼 보일 수 있습니다. | 확인 대상 후보. | 관련 Build 단계가 명시적으로 포함하기 전까지 operator entrypoint는 단계화된 향후 범위로 둡니다. 문구 drift 때문에 내부 엔지니어링 점검 전제 조건이 되면 안 됩니다. |
-| 한국어 사용자용 문서에 영어 기술 명사가 과도하게 남을 수 있습니다. | 확인 대상 후보. | 자연스러운 한국어를 먼저 씁니다. 정확한 English identifier는 stable label, schema name, file name, enum value, API field, 또는 정밀도가 필요한 곳에서만 유지합니다. |
-| 결정 기록 상태 표현이 drift될 수 있습니다. | 회귀 방지 점검. | 진입점, 인계, Authoring Guide 상태가 MVP-1 사용자 작업 루프 계획의 ledger와 맞아야 합니다. 열린 항목이 있으면 그 사실과 아직 코드 작성용으로 수락된 서버/런타임 구현 결정이 없다는 점을 함께 말합니다. 이후 ledger가 비면 그것은 내용 상태로만 말하고, 완전 수락, 구현 완료, 구현 준비 상태, 서버 코딩 준비 상태를 암시하지 않습니다. |
-| 현재 MVP 단계가 너무 크고, 핵심 사용자 가치를 뒤로 미룰 수 있습니다. | 확인 대상 후보. | MVP 크기와 초기 사용자 가치 사이의 긴장을 드러냅니다. Staging 결정은 owning Build/Reference 문서에 남깁니다. |
-| Projection/template 범위가 초기 구현에 비해 넓을 수 있습니다. | 확인 대상 후보. | 초기 범위가 넓다는 점을 표시하고, staging 결정은 projection/template owner로 보냅니다. |
-| 보안 보장 표현은 실제 강제 수준과 맞아야 합니다. | 회귀 방지 점검. | Cooperative, detective, preventive, isolated 표현은 해당 surface가 그 수준을 제공할 때만 사용합니다. |
-| Agent context 전략은 prompt/context 부담이 과도해지지 않게 해야 합니다. | 회귀 방지 점검. | 항상 주입되는 agent context는 짧게 유지하고, 세부사항은 담당 문서나 조회 경로로 보냅니다. |
-| 문서가 런타임 객체처럼 읽힐 수 있습니다. | 회귀 방지 점검. | 현재 재설계 범위의 분리 규칙을 따릅니다. 문서는 원천 자료이며 runtime state나 generated projection이 아닙니다. |
-| 로드맵 후보가 승격 없이 단계별 전달 범위로 들어올 수 있습니다. | 회귀 방지 점검. | 로드맵 항목은 담당자가 scope, fixture, fallback 동작, 읽기용 요약을 기준으로 삼는 의존성 없음으로 승격하기 전까지 로드맵에 둡니다. 향후 로드맵 항목을 문서 검토, 내부 엔지니어링 점검, MVP-1의 선행 조건처럼 다루지 않습니다. |
+| 저장소 정체성이 "이미 구현이 있다"는 식으로 흐려집니다. | Entrypoint와 handoff section은 현재 repo가 documentation-only이고, post-redesign review 상태이며, future Harness Server source repository이고, documentation acceptance와 별도 implementation-planning readiness decision 없이는 server/runtime implementation을 시작할 수 없다고 말합니다. | Implementation-readiness criterion |
+| Stage 이름이 Engineering Checkpoint나 Kernel Smoke를 product MVP처럼 보이게 합니다. | Engineering Checkpoint는 internal authority-loop smoke, Kernel Smoke는 좁은 future smoke-check authoring label, MVP-1 User Work Loop는 첫 user-value slice로 설명합니다. | Stage boundary decision |
+| 사용자 대상 문서가 무거운 구현 disclaimer로 시작합니다. | Learn/Use opening은 사용자가 요청할 수 있는 것, agent가 구체화하는 것, 하네스가 보존하는 것, 사용자가 보게 되는 것을 먼저 보여줍니다. 상세 상태 경고는 README, Build handoff, Maintain docs로 보냅니다. | Documentation drift |
+| 사용자 대상 문서가 내부 용어를 과도하게 씁니다. | User-visible situation을 `Discovery`, `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Projection`, `Gate`, `task_events`보다 먼저 씁니다. | Documentation drift |
+| Discovery가 너무 빨리 Change Unit으로 수렴합니다. | Requirements clarification은 scoped implementation unit을 요구하기 전에 shared understanding과 user-owned judgment의 여지를 둡니다. | Stage boundary decision |
+| Judgment terminology가 legacy alias를 current axis처럼 되살립니다. | Active owner docs는 `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `judgment_type`, `presentation`, `display_label`을 우선합니다. Legacy alias는 compatibility-only로 남깁니다. | Schema/design decision |
+| Decision Packet 예시가 작은 판단에 비해 너무 무겁습니다. | 작은 판단은 `presentation=short`를 쓰고 한 화면에 들어갑니다. Full-format Decision Packet presentation은 optional, later-profile, complex judgment용입니다. | Schema/design decision |
+| Sensitive-action Approval, work acceptance, residual-risk acceptance가 섞입니다. | 이름 붙은 민감 동작 permission, 작업 결과 수락, 보이는 남은 위험 수용을 예시와 routing에서 분리합니다. | Schema/design decision |
+| Storage, API, DDL reference material이 wording drift 때문에 early-stage requirement가 됩니다. | Reference schema 존재와 staged implementation requirement를 분리합니다. Required field는 owning tool, record, profile이 active이거나 사용될 때만 적용됩니다. | Stage boundary decision |
+| Conformance fixture 문서가 지금 executable suite가 있는 것처럼 보입니다. | Fixture 문서는 future-oriented와 staged 상태를 유지합니다. MVP behavior example을 runnable fixture file이나 current pass/fail criteria라고 부르지 않습니다. | Implementation-readiness criterion |
+| Operations entrypoint가 너무 이른 필수 요소처럼 보입니다. | 관련 Build stage가 명시적으로 포함하기 전까지 operator entrypoint는 staged/future-oriented로 둡니다. | Stage boundary decision |
+| 한국어 사용자용 문서에 영어 기술 명사가 쌓입니다. | Natural public concept을 먼저 쓰고, exact English identifier는 precision, searchability, contract alignment가 필요할 때만 유지합니다. | Documentation drift |
+| Decision-ledger status가 readiness를 과장합니다. | Entrypoint, handoff, 이 가이드는 MVP-1 decision ledger와 맞아야 하며, documentation acceptance를 implementation-planning readiness나 server-coding authorization으로 바꾸지 않습니다. | Implementation-readiness criterion |
+| MVP scope가 커지고 핵심 사용자 가치가 뒤로 밀립니다. | Build docs는 그 tension을 이름 붙이고 staging decision을 Build/Reference owner에 남깁니다. | Stage boundary decision |
+| Projection/template scope가 early implementation에 비해 너무 넓어집니다. | Projection/template docs는 active early scope와 later display/export/reporting candidate를 분리합니다. | Stage boundary decision |
+| Security wording이 enforcement를 과장합니다. | Cooperative, detective, preventive, isolated claim은 documented mechanism과 proof level에 맞습니다. | Schema/design decision |
+| Agent context strategy가 prompt를 과도하게 채웁니다. | Always-on context는 최신 상태로 한 화면 이하에 둡니다. Detailed contract는 owner docs나 retrieval path로 보냅니다. | Implementation-readiness criterion |
+| 문서가 runtime state처럼 읽힙니다. | Docs는 source material입니다. Runtime object, generated projection, operational record, conformance artifact가 아닙니다. | Documentation drift |
+| Roadmap candidate가 active delivery로 흘러들어옵니다. | Roadmap item은 owner가 scope, fallback behavior, proof expectation, no projection-as-canonical dependency와 함께 승격하기 전까지 Roadmap에 둡니다. | Future Roadmap item |
 
-## 문서 작성 원칙
+### Docs-maintenance checks
 
-문서는 독자의 다음 행동에서 출발합니다. 독자가 무엇을 이해하고, 결정하고, 사용하고, 구현하고, 검증하고, 유지해야 하는지 분명해야 합니다.
+Docs-maintenance checks는 편집 품질 점검입니다. Documentation drift, owner mismatch, link integrity 문제, terminology consistency 문제, stage-boundary drift, security wording drift, user-language issue, 영어/한국어 의미 일치 문제, owner 밖 중복 규범 문구, 깨진 link나 anchor, open-marker hygiene 문제를 보고할 수 있습니다.
 
-내부 구조를 빠짐없이 나열하기보다 핵심 아이디어를 적게, 선명하게 설명합니다. 엄격한 계약은 Reference 문서로 보내고, 다른 문서에서는 필요한 만큼만 요약한 뒤 링크합니다.
+Docs-maintenance는 runtime conformance나 implementation readiness가 아닙니다. Fixture action을 실행하지 않습니다. Runtime state를 seed하지 않습니다. Runtime state/events/artifacts/projections/errors를 비교하지 않습니다. Runtime fixture pass/fail에 포함되지 않습니다. Canonical state, runtime state, `task_events`, evidence artifact, Evidence Manifest, QA result, Manual QA record, Acceptance record, residual-risk acceptance, Residual Risk record, close readiness, projection refresh, generated conformance artifact, generated operational report, implementation readiness를 만들거나 갱신하지 않습니다.
 
-낯선 개념은 정의부터 던지지 않습니다. 먼저 실제 상황이나 짧은 예시로 왜 필요한지 보여주고, 그다음 이름과 정의를 붙입니다.
+Docs-maintenance review 또는 future checker는 다음을 보고합니다.
 
-각 문서는 시작 부분에서 독자의 다음 행동을 분명히 보여줘야 합니다. 도입부는 예측 가능한 heading, 평소 요청, 실용 예시, 사용자 흐름 우선 도입부 중 문서에 맞는 방식을 쓸 수 있습니다. 독자가 왜 이 문서가 필요한지, 다음에 무엇을 하면 되는지, 정확한 owner 세부사항이 어디에 있는지 빨리 알 수 있으면 됩니다.
+- item category: documentation drift, schema/design decision, stage boundary decision, implementation-readiness criterion, future Roadmap item
+- result: `PASS`, `WARN`, `FAIL`
+- file path
+- 가능한 경우 heading 또는 anchor
+- owner document와 expected source section
+- observed drift
+- suggested fix
+- runtime effect note: 없음. Canonical state transition이나 runtime fixture result는 기록되지 않았음
+- finding에 추가 맥락이 필요한 경우 maintenance note
 
-현재 문서는 현재의 사실처럼 씁니다. 마이그레이션 과정, 제거된 구조, 예전 이름은 본문 설명에 넣지 않습니다. 마이그레이션 중 별도 migration note가 있는 경우에만 그곳에 두고, 그렇지 않으면 Git history나 명확히 표시된 비활성 마이그레이션 기록에 남깁니다.
+Result 의미는 다음과 같습니다.
 
-## 문서 유형
+| Result | Meaning |
+|---|---|
+| `FAIL` | Broken owner link, schema/DDL/enum/stable event/`ValidatorResult`/`ProjectionKind` mismatch, paired active file 누락, semantic section coverage 누락, owner contract를 다시 정의하는 non-owner text처럼 active docs를 모순되거나 실행하기 어렵게 만드는 drift입니다. |
+| `WARN` | 정리해야 하지만 아직 owner contract와 모순되지는 않는 drift입니다. Minor glossary phrasing drift, normative하지 않은 duplicate explanatory prose, affected stage가 명확한 stale cross-reference wording, 이해 가능한 incomplete open-marker metadata가 여기에 속합니다. |
+| `PASS` | 해당 category에서 relevant drift가 발견되지 않았습니다. |
 
-문서 tree는 소유권을 나누기 위한 구조입니다. Learn 문서는 이유를 설명합니다. Use 문서는 사용자와 agent가 어떻게 상호작용하는지 설명합니다. Build 문서는 구현 순서를 설명합니다. Reference 문서는 정확한 계약을 정의합니다. Maintain 문서는 문서 유지보수 규칙을 정의합니다. Normative contract를 여러 경로에 중복하지 말고, 필요한 곳에서는 짧게 요약한 뒤 owner로 연결합니다.
+필수 check category:
 
-### Learn
+| Category | Required check |
+|---|---|
+| English/Korean file structure parity | 명시적인 예외가 문서화되지 않는 한 `docs/en`과 `docs/ko`는 같은 active document path, README entry, paired route expectation을 유지합니다. |
+| English/Korean semantic section parity | Paired file은 같은 reader purpose, semantic section coverage, owner link, stable identifier, contractual detail을 유지합니다. |
+| Opening convention compliance | Active docs는 시작 부분에서 reader의 next useful step을 분명히 보여줍니다. Learn/Use는 workflow-first opening을 쓸 수 있고, Reference/Build/Maintain은 structured opening을 쓸 수 있으며, template reference는 template-specific opening을 씁니다. |
+| Broken cross-reference detection | Markdown link, heading anchor, template/reference link, same-language README route, paired-language entry link, owner-section link가 active docs와 current anchor로 연결됩니다. |
+| Owner-boundary drift | Exact contract와 active owner concept은 active owner 문서에 남습니다. Non-owner docs는 다시 정의하지 않고 요약과 link로 처리합니다. |
+| Fixture/action schema drift | Future runtime fixture example의 `action`과 future executable `input`은 public MCP request schema, shared API schema, `ToolEnvelope` expansion convention과 일치합니다. MVP behavior example은 아직 executable fixture가 아닙니다. |
+| Enum, event, validator, projection drift | State/gate/result value, event name, error value, stable validator ID, `ProjectionKind` value, storage value, template implementation class, projection freshness behavior가 owner와 일치합니다. |
+| Glossary and source-of-truth phrasing drift | Official term, capitalization, record ID prefix, source-of-truth wording, authority-boundary phrase가 `reference/glossary.md`와 관련 owner docs에 맞습니다. |
+| Open-marker hygiene | `TODO_DECISION`과 `TODO_IMPLEMENT`는 허용된 의미로 쓰고 gap을 분명히 이름 붙이며, action에 필요한 owner/context를 포함하고, finished canonical section에 `TODO_REWRITE` marker를 남기지 않습니다. |
+| Non-owner duplicate full contracts | Owner 밖의 full schema, DDL, transition table, fixture mini-language, template body, enum table, validator table, projection table, glossary definition은 짧은 summary와 owner link로 바꿉니다. |
 
-Learn 문서는 독자의 이해 모델을 만듭니다.
+### 최종 사전 수락 리뷰
 
-Harness가 왜 필요한지, 개념이 왜 중요한지, 어떤 절충점이 있는지를 구현 세부사항보다 먼저 설명합니다. 독자에게 명령, 스키마, 체크리스트보다 방향 감각이 필요할 때 사용합니다.
+Maintainer가 문서 세트를 implementation planning에 사용할 수 있다고 받아들이기 전, 마지막 docs-maintenance pass를 수행합니다. English/Korean active file map parity, paired file의 semantic section parity, broken link와 anchor, owner-boundary drift, non-owner duplicate contract, Approval, Decision Packet, Evidence, Verification, Manual QA, Acceptance, Residual Risk, Projection, Guarantee Level terminology drift, open-marker hygiene를 확인합니다.
 
-### Use
+[구현 개요](../build/implementation-overview.md#하네스-서버-구현-준비-조건)의 implementation-readiness criteria도 확인합니다. Repository identity, 내부 용어 부담 없는 user-facing flow, premature Change Unit convergence가 아닌 requirements clarification으로서의 Discovery, canonical `user_judgment` naming과 mapped legacy alias, proportional judgment prompt, Approval/work acceptance/residual-risk acceptance separation, coherent stage, Core Model/API/storage/reference agreement, staged Storage/API scope, staged projection/template scope, honest security guarantee wording, agent context strategy, staged future-oriented conformance fixture plan, staged operations surface, Korean user-facing readability, clean links/terminology/open markers를 봅니다.
 
-Use 문서는 사용자가 AI 지원 개발 세션에서 Harness를 따라가도록 돕습니다.
+이 최종 리뷰도 editorial review입니다. Maintainer handoff에 사용할 만큼 문서가 일관적인지 요약할 뿐입니다. Runtime conformance, canonical state, evidence, QA, Acceptance, residual-risk acceptance, close readiness, implementation readiness를 만들지 않습니다.
 
-사용자와 agent가 Harness와 어떻게 상호작용하는지 설명합니다. 사용자에게 보이는 흐름, 상태 해석, 결정 지점, handoff, 복구 경로를 중심에 둡니다. 내부 gate는 사용자가 보는 막힘이나 next action을 설명할 때만 이름 붙입니다.
+## 상세 참고 자료
 
-### Build
+Checklist 항목에 더 자세한 기준이 필요할 때 이 section을 봅니다. 두 번째 필수 workflow로 취급하지 않습니다.
 
-Build 문서는 문서 수락과 별도의 구현 계획 준비 결정 이후 reference system을 구현하는 사람을 돕습니다.
+### 문서 시작 방식
 
-문서 수락과 별도의 구현 계획 준비 결정 이후의 구현 순서를 설명합니다. 구현 순서, module 경계, 실행 가능한 조각, staging, 검증 전략을 다룹니다. 정확한 스키마, DDL, 불변 조건은 Reference 문서로 연결합니다.
+모든 active document는 시작 부분에서 reader path를 짧고 분명하게 보여줘야 합니다.
 
-### Reference
+Reference, Build, Maintain 문서는 독자에게 도움이 될 때 아래 구조를 쓸 수 있습니다.
 
-Reference 문서는 정확한 계약을 담당합니다.
+- `이 문서로 할 수 있는 일`: 독자에게 주는 결과를 평범한 말로 씁니다.
+- `이런 때 읽기`: 이 문서를 읽어야 하는 상황을 적습니다.
+- `읽기 전에`: 필요한 맥락, 먼저 읽을 문서, 전제 조건을 적습니다.
+- `핵심 생각`: 나머지를 이해하는 중심 모델이나 주장을 먼저 알려줍니다.
 
-엄격한 스키마, gate, DDL, enum value, state transition, 불변 조건, API shape, storage rule, projection rule, fixture 의미, 공식 정의를 정의합니다.
+Learn/Use 문서는 평소 요청, 실용 예시, 사용자 흐름으로 시작할 수 있습니다. Workflow-first opening은 사용자가 무엇을 요청할 수 있는지, agent가 무엇을 구체화하는지, 하네스가 무엇을 보존하는지, 사용자가 무엇을 보게 되는지, exact owner detail이 어디에 있는지 보여줘야 합니다.
 
-### Maintain
-
-Maintain 문서는 문서 시스템 자체를 관리합니다.
-
-문서 유지보수 규칙을 정의합니다. 작성 규칙, 번역 정책, 리뷰 체크리스트, link hygiene, ownership map, documentation-maintenance expectation이 여기에 속합니다. Maintain 문서가 런타임 conformance spec이나 product implementation plan이 되면 안 됩니다.
-
-## 진입점 규칙
-
-README 문서는 긴 설명서이기 전에 길잡이입니다. Harness가 무엇이고 무엇이 아닌지 짧게 말한 뒤, 처음 읽는 사람, 사용자, 구현자, Reference 독자, 유지보수 담당자를 알맞은 owner 문서로 빠르게 안내해야 합니다.
-
-진입점은 현재 구조를 작고 명확하게 보여줘야 합니다. 명확히 비활성 migration record라고 표시한 섹션이 아니라면 migration history, 제거된 이름, 비활성 path, 예전 구조를 보존하는 장소로 쓰지 않습니다.
-
-README 문서는 경로별 소유권을 요약할 수 있지만 엄격한 계약을 복사하면 안 됩니다. 정확한 schema, DDL, gate, state transition, fixture 의미, template 본문, 공식 정의는 Reference owner로 연결합니다.
-
-처음 읽는 사람을 위한 경로에는 더 깊은 Learn과 Reference 경로 전에 빠른 실전 둘러보기가 포함되어야 합니다. Use 경로에는 사용자가 엄격한 Reference contract를 읽기 전에 판단 요청을 이해할 수 있도록 사용자 가이드 근처에 사용자 소유 판단 예시를 포함해야 합니다.
-
-## 문서 시작 방식
-
-활성 문서는 짧은 시작부에서 독자의 경로를 보여줘야 합니다. 필요한 정보는 정확한 heading 이름, 자연스러운 heading, 본문 설명, 예시, 사용자 흐름 우선 도입부 중 문서에 맞는 방식으로 담을 수 있습니다. 아래 네 heading을 모든 문서에 강제하지 않습니다.
-
-Reference, Build, Maintain 문서는 독자에게 도움이 될 때 다음과 같은 예측 가능한 구조를 쓸 수 있습니다.
-
-- `이 문서로 할 수 있는 일`: 문서가 독자에게 주는 결과를 평범한 말로 씁니다. 무엇을 "다룬다"는 설명만으로 끝내지 않습니다.
-- `이런 때 읽기`: 이 문서를 읽어야 하는 상황을 적습니다. 짧은 목록이어도 됩니다.
-- `읽기 전에`: 필요한 사전 맥락, 먼저 읽을 문서, 전제 조건을 적습니다. 전제 조건이 없다면 간단히 없다고 말합니다.
-- `핵심 생각`: 나머지 내용을 이해하기 쉽게 만드는 중심 모델이나 주장을 먼저 알려줍니다.
-
-이 이름들은 하나의 패턴이지 모든 문서의 heading 계약이 아닙니다. 독자 상황이 다른 방식으로 더 선명해진다면 정확한 heading 이름을 쓰지 않아도 시작 규칙을 만족할 수 있습니다.
-
-### Learn/Use 문서의 사용자 흐름 우선 도입부
-
-사용자 대상 Learn/Use 문서는 평소 요청, 실용 예시, 사용자 흐름으로 시작하는 편이 독자에게 더 분명할 수 있습니다. 특히 기본 사용자 문서에서는 이 방식이 더 알맞을 수 있습니다.
-
-사용자 흐름 우선 도입부는 다음을 보여줘야 합니다.
-
-- 사용자가 무엇을 요청할 수 있는지
-- 에이전트가 무엇을 구체화해야 하는지
-- 하네스가 무엇을 보존하는지
-- 사용자가 무엇을 보게 되는지
-- 상태 메모는 짧게 유지하고 상세 상태 경고는 root README, 언어별 README, Build 인계 문서, Maintain 지침으로 보낸다는 점
-- 내부 하네스 용어는 사용자에게 보이는 상황이 먼저 분명해진 뒤 소개한다는 점
-
-문서가 독자 상황을 잘 돕고, 필요한 맥락이 있으며, owner link가 유지되고, 정확한 계약 세부사항이 Reference owner에 남아 있고, 영어/한국어 문서가 의미상 일치한다면 heading text 차이는 drift가 아닙니다. 구조 패턴을 맞추기 위해 `direct`, `work`, `Decision Packet`, `judgment_domain` 같은 내부 라벨을 도입부에 다시 넣지 않습니다.
-
-### Reference 범위
-
-Reference 문서에만 둡니다. 이 문서가 어떤 정확한 계약을 담당하고, 무엇을 담당하지 않는지 밝힙니다. 이렇게 해야 Learn, Use, Build 문서로 엄격한 세부사항이 퍼지지 않습니다.
+문서가 독자 상황을 돕고, 필요한 맥락이 있으며, owner link가 유지되고, exact contract detail이 Reference owner에 남아 있고, 영어/한국어가 의미상 일치한다면 heading text 차이는 drift가 아닙니다.
 
 ### 템플릿 참조 시작 방식
 
-템플릿 참조 파일은 별도의 시작 방식을 씁니다. Docs-maintenance는 directory index인 `docs/*/reference/templates/README.md`와 개별 template인 `docs/*/reference/templates/` 아래의 README가 아닌 Markdown file을 경로로 구분해야 합니다.
+Template reference file은 별도 시작 방식을 씁니다. Docs-maintenance는 directory index인 `docs/*/reference/templates/README.md`와 `docs/*/reference/templates/` 아래 README가 아닌 individual template file을 경로로 구분합니다.
 
-디렉터리 README는 `사용 시점`으로 시작한 뒤 산출물 계층과 템플릿 구현 계층을 둡니다. 이 README는 디렉터리가 렌더링된 template body와 display card shape를 담당하며, projection rule, freshness behavior, authority boundary는 각 Reference owner에 남는다는 점을 설명해야 합니다.
+Directory README는 `사용 시점`으로 시작한 뒤 output tier와 template implementation class를 둡니다. 이 directory가 rendered template body와 display card shape를 담당하고, projection rule, freshness behavior, authority boundary는 각 Reference owner에 남는다는 점을 설명합니다.
 
-개별 template file은 다음 section을 이 순서로 시작해야 합니다.
+Individual template file은 아래 section으로 시작합니다. 순서를 지킵니다.
 
-- `사용 시점`: 독자 목적과 projection 또는 display 상황.
-- `기준 기록`: renderer가 읽을 수 있는 owner record, ref, gate, artifact, summary.
-- `렌더링 섹션`: 독자가 기대해야 하는 display shape.
-- `전체 템플릿`: 완전한 rendered body 또는 card body.
+- `사용 시점`
+- `기준 기록`
+- `렌더링 섹션`
+- `전체 템플릿`
 
-Template file은 시작 설명이나 `메모` 근처에서 권한 없음 경계를 보여줘야 합니다. Template은 렌더링 표시일 뿐이며 기준 상태, gate authority, 민감 동작 승인, 작업 수락, evidence, schema, DDL, runtime behavior가 아닙니다.
-
-## 개념 소개 규칙
-
-개념은 엄격한 정의보다 예시로 먼저 소개합니다.
-
-구체적인 상황에서 시작해 어떤 문제를 해결하는지 보여준 뒤 개념 이름을 붙입니다. 독자가 왜 중요한지 본 다음에 엄격한 정의를 둡니다.
-
-좋은 흐름:
-
-```text
-에이전트가 제품 상태를 변경하려면 하네스는 먼저 작업 범위를 알아야 합니다. 무엇이 바뀔 수 있고, 무엇은 범위 밖이며, 어디에서 멈춰야 하는지입니다. 이 내부 scoped-write record가 Change Unit입니다. 사용자가 끝내거나 답을 얻고 싶은 더 큰 가치 단위가 Task입니다.
-```
-
-Learn 문서를 조밀한 정의 목록으로 시작하지 않습니다. Glossary나 reference table이라면 예외입니다.
-
-## Reference 계약 규칙
-
-엄격한 스키마, gate, DDL, enum value, state transition, 불변 조건, API shape, storage rule, projection contract detail, fixture 의미는 Reference 문서에 둡니다.
-
-Learn, Use, Build, Maintain 문서는 필요할 때 계약을 한두 문장으로 요약하고 owner Reference 문서에 링크합니다. 전체 table, schema body, transition matrix, DDL block, gate matrix, algorithm step, fixture mini-language를 중복하지 않습니다.
-
-Build 문서는 무엇을 먼저 만들지, 무엇을 미룰지, 무엇이 stage 완료를 증명하는지 설명합니다. Public request/response schema, DDL, storage validation rule, close-blocker taxonomy, gate compatibility matrix, fixture assertion field를 복사하지 않습니다. Build checklist에 정확한 detail이 필요하면 owner Reference section으로 연결하고, 현재 순서에서 의미하는 점만 짧게 씁니다.
-
-Use 문서는 user trust boundary에 머뭅니다. 사용자가 보는 hold, blocker, decision prompt, evidence gap, close result를 이해해야 할 때는 관련 contract를 이름 붙일 수 있습니다. 하지만 사용자가 판단하는 데 필요하지 않다면 field list, storage row, validator 내부 detail을 드러내지 않습니다.
-
-Reference 문서는 contract 중심이어야 합니다. 짧은 쉬운 설명은 도움이 되지만 긴 tutorial, staged delivery plan, reader walkthrough는 Learn, Use, Build로 보내고, Reference는 정확한 규칙을 이해하는 데 필요한 계약만 유지합니다.
-
-향후 런타임 적합성 fixture body shape, assertion mode, isolated execution behavior, JSON `TEXT` validation, owner-bound enum/status validation은 [Conformance Fixtures 참조](../reference/conformance-fixtures.md#conformance-fixture-format)가 담당합니다. 다른 문서는 구현이 존재한 뒤의 future runtime conformance가 실행 상태 기반이라는 점만 요약하고 owner로 링크해야 하며, 전체 계약을 다시 적지 않습니다.
-
-향후 상세 scenario 후보, concern별 향후 fixture example, staged fixture coverage map, fixture suite family summary, catalog-only future candidate는 [향후 Fixtures](../later/future-fixtures.md)가 담당합니다. Future catalog row는 설계 inventory일 뿐이며, 정확한 fixture body, public MCP schema, DDL, stage exit, runtime readiness, generated artifact, fixture가 이미 실행된다는 증거를 다시 정의하면 안 됩니다.
+Template file은 non-authority boundary를 분명히 보여줘야 합니다. Template은 rendered display일 뿐입니다. Canonical state, gate authority, approval, acceptance, evidence, schema, DDL, runtime behavior가 아닙니다.
 
 ### Conformance와 fixture layering
 
 세 층을 일관되게 사용합니다.
 
-- 문서 점검: Markdown docs에 대한 편집 점검입니다. Link integrity, terminology consistency, stage boundary, security wording, user-language check, 영어/한국어 의미 일치, owner-boundary drift, TODO hygiene를 봅니다. Runtime conformance가 아니며 generated operational artifact나 conformance artifact를 만들지 않습니다.
-- MVP 동작 예시: 내부 엔지니어링 점검과 MVP-1의 작은 설계 예시입니다. 기대 동작을 설명하지만 아직 실행 가능한 fixture가 아님. Generated runtime artifact도 아니며 현재 pass/fail 기준도 아닙니다.
-- 향후 런타임 적합성: exact-shape fixture를 구체화하고 Core 또는 operator action을 실행해 captured state, events, artifacts, projection/freshness facts, errors를 비교하는 future server implementation test와 runner입니다.
+- Documentation checks: Markdown docs에 대한 editorial checks입니다. Runtime conformance가 아니며 generated operational artifact나 conformance artifact를 만들지 않습니다.
+- MVP behavior examples: Engineering Checkpoint와 MVP-1의 작은 design example입니다. Expected behavior를 설명하지만 아직 executable fixture가 아니며 generated runtime artifact도 아니고 current pass/fail criteria도 아닙니다.
+- Runtime conformance: 향후 server implementation test와 runner입니다. Exact-shape fixture를 materialize하고 Core 또는 operator action을 실행한 뒤 captured state, event, artifact, projection/freshness fact, error를 비교합니다.
 
-MVP 동작 예시를 실행 가능한 suite라고 부르지 않습니다. 문서 점검이 runtime conformance를 pass/fail한다고 말하지 않습니다. 문서 작업 중 fixture file, conformance report, runtime state, projection, operational artifact를 생성하지 않습니다.
+MVP behavior example을 runnable suite라고 부르지 않습니다. Documentation check가 runtime conformance를 pass/fail한다고 말하지 않습니다. Documentation work 중 fixture file, conformance report, runtime state, projection, operational artifact를 만들지 않습니다.
 
-## 반복 규칙
+### 반복 규칙
 
-긴 기준 기록 문단을 여러 문서에 반복하지 않습니다.
+긴 source-of-truth 문단을 여러 문서에 반복하지 않습니다. 같은 생각이 다른 문서에 필요하면 짧게 요약하고 owner로 link합니다. Source text가 바뀌면 owner를 먼저 고친 뒤 summary drift를 확인합니다.
 
-다른 문서에 같은 생각이 필요하면 짧게 요약하고 owner 문서로 링크합니다. 원문이 바뀌면 owner 문서를 먼저 고친 뒤 요약문이 어긋나지 않았는지 확인합니다.
+독자가 다른 예시를 필요로 하면 explanatory example은 반복할 수 있습니다. Normative contract wording 반복은 drift risk입니다.
 
-독자가 다른 예시를 필요로 한다면 설명용 예시는 반복할 수 있습니다. 하지만 규범적인 계약 문구를 반복하면 불일치 위험이 큽니다.
-
-Build 또는 Reference에 긴 계약 문단을 추가하거나 받아들이기 전에는 같은 field, gate, API, storage, fixture, security wording이 다른 문서군에 있는지 검색합니다. Build가 Reference를 반복한다면 Build는 순서와 owner link만 남깁니다. Reference가 구현 여정을 설명하는 데 치우쳤다면 그 설명은 Build로 보내거나 Build에 연결하고, 해당 section을 이해하는 데 필요한 contract만 남깁니다.
-
-반복되기 쉬운 권한 없음 경계는 다음 owner를 사용합니다.
+반복되기 쉬운 경계는 아래 owner를 사용합니다.
 
 | 경계 | 정확한 문구의 owner |
 |---|---|
-| Context Index와 retrieved/indexed context | Future feature 경계는 [로드맵: 후보 항목 목록](../roadmap.md#후보-항목-목록), connector context 처리는 [Agent Integration: Context Push/Pull Principles](../reference/agent-integration.md#context-pushpull-principles) |
+| Context Index와 retrieved/indexed context | Future feature boundary는 [로드맵: 후보 항목 목록](../roadmap.md#후보-항목-목록), connector context handling은 [Agent Integration: Context Push/Pull Principles](../reference/agent-integration.md#context-pushpull-principles) |
 | Local Derived Metrics | [로드맵: 후보 항목 목록](../roadmap.md#후보-항목-목록) |
 | Role Lens | [Agent Integration: Role Lens 동작](../reference/agent-integration.md#role-lens-동작) |
 | Review Stages | [Design Quality Policies: Two-stage Review Display](../reference/design-quality-policies.md#two-stage-review-display) |
-| Release Handoff와 export | [Operations And Conformance: Release Handoff Export Profile](../reference/operations-and-conformance.md#release-handoff-export-profile); 렌더링 형태는 later-profile [EXPORT Template](../reference/templates/later-profile/export.md) |
-| Docs-maintenance | Rule body는 [Authoring Guide: Docs-maintenance checks](#docs-maintenance-checks), operator 보고는 [Operations And Conformance: docs-maintenance profile](../reference/operations-and-conformance.md#docs-maintenance-프로필) |
-| Projection과 report surfaces | [Projection And Templates Reference](../reference/projection-and-templates.md), 렌더링 형태는 [Template Reference](../reference/templates/README.md) |
-| Security asset, trust boundary, threat category, control category, guarantee-level 의미, high-risk cooperative/detective/preventive/isolated security expectation | Threat concept과 honest guarantee display는 [보안 참조](../reference/security.md)가 담당하고, exact API, storage, kernel, connector, operations, conformance behavior는 각 owner에 남습니다. |
+| Release Handoff와 export | [Operations And Conformance: Release Handoff Export Profile](../reference/operations-and-conformance.md#release-handoff-export-profile); rendered shape은 later-profile [EXPORT Template](../reference/templates/later-profile/export.md) |
+| Docs-maintenance | Rule body는 [Authoring Guide: Docs-maintenance checks](#docs-maintenance-checks), operator reporting은 [Operations And Conformance: docs-maintenance profile](../reference/operations-and-conformance.md#docs-maintenance-프로필) |
+| Projection과 report surface | [Projection And Templates Reference](../reference/projection-and-templates.md), rendered shape은 [Template Reference](../reference/templates/README.md) |
+| Security asset, trust boundary, threat category, control category, guarantee-level meaning, high-risk cooperative/detective/preventive/isolated security expectation | Threat concept과 honest guarantee display는 [보안 참조](../reference/security.md)가 담당합니다. Exact API, storage, Core, connector, operations, conformance behavior는 각 owner에 남습니다. |
 
-## Owner 링크 요약 패턴
+### Owner 링크 요약 패턴
 
-Owner 밖에서 중복된 규범 문구를 찾으면 그 중복 문구를 그대로 다듬지 않습니다. 먼저 어떤 문서가 정확한 계약을 소유하는지 정합니다. 계약 자체를 바꿔야 한다면 owner 문서를 먼저 고친 뒤, owner가 아닌 복사본은 다음 형태로 바꿉니다.
-
-- 독자가 지금 알아야 하는 내용을 평범한 말로 한 문장
-- 정확한 규칙을 담은 owner 문서나 owner section 링크
-- 현재 독자 경로에서 달라지는 점
-
-예:
+Owner 밖에서 중복된 normative language를 찾으면 그 문장을 그대로 다듬지 않습니다. 아래 형태를 씁니다.
 
 ```text
-제품 파일 쓰기에는 현재 Change Unit 범위와 Write Authorization이 필요합니다. 정확한 write-gate 동작은 [Core Model 참조](../reference/core-model.md)가 담당하고, 공개 request shape은 [MVP API](../reference/api/mvp-api.md)가 담당합니다.
+제품 파일 쓰기에는 현재 Change Unit 범위와 Write Authorization이 필요합니다. 정확한 write-gate 동작은 [Core Model 참조](../reference/core-model.md)가 담당하고, public request shape은 [MVP API](../reference/api/mvp-api.md)가 담당합니다.
 ```
 
-Gate matrix, request schema, DDL block, fixture body, template body, enum table, glossary definition을 Learn, Use, Build, Maintain 문서에 붙여 넣지 않습니다.
+Gate matrix, request schema, DDL block, fixture body, template body, enum table, validator table, projection table, glossary definition을 Learn, Use, Build, Maintain 문서에 붙여 넣지 않습니다.
 
-## 다이어그램 규칙
+### 다이어그램 규칙
 
-Diagram은 인지 부담을 줄일 때만 사용합니다.
+Diagram은 인지 부담을 줄일 때만 사용합니다. 관계, 순서, 경계, lifecycle이 prose보다 그림으로 더 분명할 때 유용합니다.
 
-관계, 순서, 경계, lifecycle이 본문보다 그림으로 더 분명할 때 diagram이 유용합니다. 장식으로 넣거나, 이미 명확한 목록을 한 번 더 보여주거나, 아직 정리되지 않은 구조를 감추기 위해 쓰지 않습니다.
+모든 diagram 근처에는 무엇을 봐야 하는지 알려주는 prose가 있어야 합니다. Diagram과 prose가 다르면 owner prose나 Reference contract를 먼저 고칩니다.
 
-모든 diagram 근처에는 무엇을 봐야 하는지 알려주는 본문이 있어야 합니다. Diagram과 본문이 다르면 owner 본문이나 reference contract를 먼저 고칩니다.
+### Reference ownership map
 
-## 영어/한국어 의미 일치 규칙
-
-영어와 한국어 문서는 같은 활성 파일 맵, 의미상 같은 섹션 범위, 같은 계약 세부사항을 유지해야 합니다.
-
-영어/한국어 대응 문서는 같은 활성 파일 맵과 의미상 같은 섹션 범위를 유지합니다. 다만 owner 링크, stable identifier, 검토 가능성이 분명하다면 한국어 heading과 소단락 구성은 자연스러운 한국어가 되도록 조정할 수 있습니다. 의미상 같은 한국어 heading 차이는 docs-maintenance에서 자동 `FAIL`로 보지 않습니다. Official identifier, API name, schema name, enum value, DDL name, file name, error code, validator ID, code identifier, translation guide에 있는 product term은 정확히 유지합니다.
-
-`docs/en`의 의미가 바뀌면 같은 batch에서 `docs/ko`도 반영합니다. 반대 방향도 같습니다.
-
-## 한국어 문서 품질 규칙
-
-한국어 문서는 직역하지 않고 의미를 맞춰 갱신합니다. 같은 의미, owner link, stable identifier는 유지하되, 더 읽기 쉬우면 문장 순서, heading, 문단 묶음은 달라도 됩니다.
-
-한국어 사용자용 문서는 자연스러운 한국어를 먼저 씁니다. Stable English identifier는 독자가 알아보거나 검색하거나 정확한 계약과 맞춰야 할 때만 괄호로 붙입니다. 사용자용 section에서 어색한 bilingual prose를 만들지 않습니다.
-
-가능하면 한국어 문장은 영어 원문보다 짧게 둡니다. 긴 영어 문장 구조를 그대로 옮기지 말고 짧은 한국어 문장으로 나눕니다.
-
-Exact schema identifier, API name, enum value, DDL name, file name, error code, validator ID, code identifier, official product term은 Reference나 maintainer-facing context에서 정확히 보존합니다. Learn과 Use 문서에서는 독자의 next action에 필요한 경우가 아니라면 평범한 한국어 개념을 먼저 소개합니다.
-
-## 링크와 이름 변경 규칙
-
-문서 이름을 바꾸거나, 옮기거나, 나누거나, 합칠 때는 양쪽 언어의 링크를 같은 batch에서 고칩니다.
-
-2차 요약보다 owner 문서나 owner section으로 링크합니다. Active owner link가 제거된 migration context를 가리키면 안 됩니다.
-
-예전 이름, 예전 구조, migration 결정을 리뷰 목적으로 남겨야 한다면 명확히 비활성 migration record라고 표시한 곳에 둡니다. Active docs는 현재 구조를 설명하고 현재 owner로 연결해야 합니다.
-
-이름 변경 뒤에는 이전 path, 이전 anchor, 이전 heading, 이전 title text를 검색합니다. README path, 주변 cross-reference, template/reference link, paired-language link를 함께 업데이트합니다.
-
-## Docs-maintenance checks
-
-Docs-maintenance checks는 편집 품질 점검입니다. Documentation drift, owner mismatch, link integrity 문제, terminology consistency 문제, stage-boundary drift, security wording drift, user-language issue, 영어/한국어 의미 일치 문제, owner 밖의 중복 규범 문구, 깨진 link나 anchor, TODO hygiene 문제를 보고할 수 있습니다. Runtime conformance나 implementation readiness가 아니며, fixture action을 실행하거나, runtime state를 seed하거나, runtime state/events/artifacts/projections/errors를 비교하거나, runtime fixture pass/fail에 포함되지 않습니다. 기준 상태, runtime state, `task_events`, evidence artifact나 Evidence Manifest, QA result나 수동 QA record, Acceptance record, 잔여 위험 수용이나 Residual Risk record, close readiness, projection refresh, generated conformance artifact, 운영 보고서, implementation readiness를 만들거나 갱신하지 않습니다.
-
-Maintain 문서는 documentation review rule, category label, reviewer expectation을 정의할 수 있습니다. Runtime conformance pass/fail, runtime fixture semantics, Core state effect, gate behavior, implementation readiness를 정의하면 안 됩니다. Docs-maintenance finding이 runtime contract를 건드리면 그 contract를 다시 적지 말고 owner Reference 문서를 가리켜야 합니다.
-
-### 최종 사전 수락 리뷰
-
-Maintainer가 문서 세트를 구현 계획에 사용할 수 있다고 받아들이기 전, 마지막 docs-maintenance pass를 수행합니다. 영어/한국어 활성 파일 맵 일치, 대응 파일의 의미 섹션 일치, 깨진 link와 anchor, owner-boundary drift, owner가 아닌 문서의 중복 contract, Approval, Decision Packet, Evidence, Verification, 수동 QA, Acceptance, Residual Risk, Projection, Guarantee Level 용어 drift, TODO hygiene를 확인합니다.
-
-[구현 개요](../build/implementation-overview.md#하네스-서버-구현-준비-조건)의 하네스 서버 구현 준비 조건도 확인합니다. 저장소 정체성, 내부 용어 부담 없는 사용자 대상 흐름, Change Unit 조기 수렴이 아닌 요구사항 확인으로서의 Discovery, canonical `user_judgment` naming과 mapped legacy alias, 판단 크기에 맞는 prompt, Approval/작업 수락/잔여 위험 수용 분리, coherent stage, Core Model/API/storage/reference agreement, 단계화된 Storage/API scope, 단계화된 projection/template scope, 실제 보장 수준에 맞는 security wording, agent context strategy, 단계화되고 future-oriented인 conformance fixture plan, 단계화된 operations surface, 한국어 사용자 대상 문서 가독성, link/TODO/terminology 정리가 포함됩니다.
-
-이 최종 리뷰도 편집 리뷰입니다. Maintainer handoff에 사용할 만큼 문서가 일관적인지 요약합니다. Runtime conformance, 기준 상태, evidence, QA, Acceptance, 잔여 위험 수용, close readiness, implementation readiness를 만들지 않습니다. Finding을 기록할 때는 기존 docs-maintenance reporting expectation을 사용하며, 이 최종 pass를 위한 새 필수 report format을 만들지 않습니다.
-
-Docs-maintenance review 또는 future checker는 다음 항목을 보고해야 합니다.
-
-- 항목 범주: 문서 drift, 스키마/설계 결정, 단계 경계 결정, 구현 준비 조건, 향후 로드맵 항목
-- result: `PASS`, `WARN`, 또는 `FAIL`
-- file path
-- 가능한 경우 heading 또는 anchor
-- owner 문서와 expected source section
-- observed drift
-- suggested fix
-- runtime effect note: 없음; 기준 상태 전이나 runtime fixture result가 기록되지 않았음
-- finding에 추가 맥락이 필요할 때의 maintenance note
-
-Finding이 문서 검토에는 막힘이 아니지만 구현 계획이나 서버 코딩 전에는 막힘이라면, maintenance note에 두 부분을 모두 명시합니다.
-
-Drift는 다음 순서로 해결합니다.
-
-1. Exact contract의 owner 문서 또는 owner section을 식별합니다.
-2. Contract 자체가 틀렸거나 불완전하면 owner를 먼저 업데이트합니다.
-3. Owner가 아닌 중복 contract는 짧은 독자 중심 요약과 owner link로 바꿉니다.
-4. 영어/한국어 의미 변경은 같은 batch에서 paired file에 반영합니다.
-5. Owner boundary가 분명해진 뒤 link, anchor, TODO metadata, glossary phrasing을 고칩니다.
-
-Result 의미:
-
-| Result | Meaning |
-|---|---|
-| `FAIL` | 깨진 owner 링크, schema/DDL/enum/stable event/`ValidatorResult`/`ProjectionKind` 불일치, 대응되는 활성 파일 누락, 의미상 같은 섹션 범위 누락, owner 계약을 다시 정의하는 owner가 아닌 문서의 본문처럼 활성 문서를 모순되거나 실행하기 어렵게 만들 수 있는 drift입니다. 문서가 독자 상황을 돕고, 필요한 맥락이 있으며, owner link와 stable identifier가 유지되고, 정확한 계약이 owner 문서에 남아 있고, 검토 가능성이 분명하다면 자연스러운 heading text, Learn/Use 문서의 사용자 흐름 우선 도입부, 작은 묶음 차이는 실패가 아닙니다. |
-| `WARN` | 작은 용어집 표현 차이, 규범적이지 않은 중복 설명문, 영향을 받는 단계가 명확한 오래된 교차 참조 문구, incomplete하지만 이해 가능한 TODO metadata처럼 정리해야 하지만 아직 owner 계약과 모순되지는 않는 drift입니다. |
-| `PASS` | 해당 category에서 relevant drift가 발견되지 않았습니다. |
-
-필수 점검 범주:
-
-| 범주 | 필수 점검 |
-|---|---|
-| 영어/한국어 파일 구조 일치 | 명시적인 예외가 문서화되지 않는 한 `docs/en`과 `docs/ko`는 같은 활성 문서 경로, README entry, paired route expectation을 유지합니다. |
-| 영어/한국어 의미 섹션 일치 | 대응 파일은 같은 활성 파일 맵, 독자 목적, 의미상 같은 섹션 범위, owner link, 계약 세부사항을 유지합니다. Stable identifier, schema name, enum value, DDL name, validator ID, code identifier, 검토 가능성이 분명하다면 heading text와 작은 묶음 방식은 자연스럽게 조정할 수 있습니다. |
-| 시작 방식 준수 | 활성 문서는 시작 부분에서 독자의 다음 행동을 분명히 보여줍니다. Reference, Build, Maintain 문서는 구조화된 시작 방식을 쓸 수 있고, Learn/Use 문서는 사용자 흐름 우선 도입부를 쓸 수 있습니다. 예전 네 heading 이름이 없다는 이유만으로 Learn/Use 문서를 실패로 보지 않습니다. `docs/*/reference/templates/README.md`는 `사용 시점`, 산출물 계층, 템플릿 구현 계층을 사용하고, `docs/*/reference/templates/` 아래의 `README.md`가 아닌 개별 template file은 `사용 시점`, 구현 계층, `기준 기록`, `렌더링 섹션`, `전체 템플릿`과 명확한 권한 없음 경계를 사용합니다. |
-| 깨진 교차 참조 탐지 | Markdown links, heading anchors, template/reference links, same-language README routes, paired-language entry links, owner-section links가 활성 문서와 현재 anchor로 연결됩니다. |
-| Owner 경계 불일치 | 정확한 계약과 active owner concept은 활성 owner 문서에 머뭅니다. 여기에는 `reference/core-model.md`, `reference/api/mvp-api.md`, `reference/api/schema-core.md`, `reference/api/errors.md`, `reference/api/schema-later.md`, `reference/storage.md`, `reference/projection-and-templates.md`, `reference/templates/*.md`, `reference/design-quality-policies.md`, `reference/security.md`, `reference/operations-and-conformance.md`, `reference/conformance-fixtures.md`, `later/future-fixtures.md`, `reference/glossary.md`가 포함됩니다. Owner가 아닌 문서는 이 contract를 다시 정의하지 않고 요약하고 link합니다. |
-| Fixture/action schema 불일치 | `later/future-fixtures.md`의 exact-shape 또는 example-shaped example을 포함한 future runtime fixture example의 `action`과 향후 실행 가능한 `input`은 `reference/api/mvp-api.md`의 public MCP request schemas, `reference/api/schema-core.md`의 shared API schemas, `reference/conformance-fixtures.md`의 `ToolEnvelope` expansion convention과 일치해야 합니다. MVP 동작 예시는 아직 실행 가능한 fixture가 아님. Future catalog entry는 정확한 fixture body, public MCP schema, DDL, stage exit, runtime readiness, generated artifact를 다시 정의하면 안 됩니다. Docs-maintenance는 drift를 flag할 수 있지만 fixture action을 실행하거나 fixture 의미를 여기서 다시 설명하지 않습니다. |
-| Enum, event, validator, projection 불일치 | State/gate/result values와 Core Model Stable Event Catalog names는 `reference/core-model.md`, error values는 `reference/api/errors.md`, stable `ValidatorResult` IDs, `ProjectionKind` 값, API 소유 ProjectionKind 지원 계층은 `reference/api/schema-core.md`와 `reference/api/schema-later.md`, storage values는 `reference/storage.md`, 템플릿 구현 계층과 projection 최신성 동작은 `reference/projection-and-templates.md`, 렌더링된 template ownership은 `reference/templates/*.md`와 일치해야 합니다. |
-| Glossary와 기준 기록 표현 불일치 | 공식 용어, 대소문자, record ID prefixes, source-of-truth wording, authority-boundary phrases는 `reference/glossary.md`와 관련 담당 문서에 맞아야 하며 추가 상태 권한을 암시하지 않아야 합니다. |
-| TODO 준수 | `TODO_DECISION`과 `TODO_IMPLEMENT`는 허용된 의미로 쓰고 gap을 명확히 이름 붙이며, action에 필요한 owner/context를 충분히 포함하고, 완료된 기준 섹션에 `TODO_REWRITE` marker를 남기지 않습니다. |
-| Owner가 아닌 문서의 중복 전체 계약 | Owner doc 밖의 전체 schema, DDL, transition table, fixture mini-language, template body, enum table, validator table, projection table, glossary definition은 짧은 요약과 owner link로 바꿉니다. Fixture 관련 내용은 정확한 mechanics는 `reference/conformance-fixtures.md`로, 향후 상세 catalog content는 `later/future-fixtures.md`로 연결합니다. |
-
-## 리뷰 체크리스트
-
-```text
-[ ] 이 문서는 분명한 독자 상황을 돕는가?
-[ ] README 진입점이 처음 읽는 사람, 사용자, 구현자, Reference 독자, 유지보수 담당자를 빠르게 안내하는가?
-[ ] 시작부가 구조화된 방식, 사용자 흐름 우선 방식, 템플릿 전용 방식 중 알맞은 방식으로 독자의 다음 행동을 분명히 보여주는가?
-[ ] 개념을 엄격한 정의보다 예시로 먼저 소개하는가?
-[ ] strict schema, gate, DDL, enum, invariant가 Reference 문서에 머무는가?
-[ ] 긴 기준 기록 문단과 중복된 규범 계약 블록을 반복하지 않고 요약과 링크로 처리했는가?
-[ ] diagram이 인지 부담을 줄이는가?
-[ ] 영어와 한국어 파일이 의미상 일치하는가?
-[ ] official identifier가 정확히 보존되었는가?
-[ ] renamed path, anchor, README link가 양쪽 언어에서 업데이트되었는가?
-[ ] 현재 사실과 migration history가 분리되어 있는가?
-[ ] Maintain 문서가 runtime behavior가 아니라 documentation governance에 머무는가?
-```
-
-## Reference ownership map
-
-넓은 문서 routing을 판단할 때 이 map을 사용합니다. Strict Reference contract는 위의 [Reference 계약 owner 지도](#reference-계약-owner-지도)를 사용합니다. 이 table은 현재 문서 구조의 active owner를 식별하며, 비활성 path가 authoring workflow에 남지 않게 합니다.
+넓은 문서 routing에는 이 map을 사용합니다. Strict Reference contract는 [Reference 계약 owner 지도](#reference-계약-owner-지도)를 사용합니다.
 
 | Subject | Active owner |
 |---|---|
-| Repo와 docs 진입점, reader routes, language choice, document list, target tree summary | repo root `README.md`; docs root `docs/README.md`; language entrypoints `docs/en/README.md`와 `docs/ko/README.md` |
-| Shared reader mental model and three-space overview | `learn/overview.md` |
-| Fast first-reader practical tour and short usage scenarios | `learn/harness-in-15-minutes.md` |
+| Repo와 docs entrypoint, reader route, language choice, document list, target tree summary | repo root `README.md`; docs root `docs/README.md`; language entrypoint `docs/en/README.md`와 `docs/ko/README.md` |
+| Shared reader mental model과 three-space overview | `learn/overview.md` |
+| Fast first-reader practical tour와 short usage scenario | `learn/harness-in-15-minutes.md` |
 | Small core concept introduction | `learn/concepts.md` |
 | Project purpose, target users, values, scope, non-goals, automation philosophy | `learn/purpose-and-principles.md` |
-| Strategic thesis, failure model, MVP boundary, principle groups | 독자 설명은 `learn/purpose-and-principles.md`; exact contract impact는 `reference/design-quality-policies.md`와 `reference/core-model.md` |
-| Kernel entities, lifecycle, gates, state transitions, close semantics, `prepare_write`, `close_task` | `reference/core-model.md` |
-| Runtime architecture, three spaces in implementation detail, Core process model, artifact architecture, projection/reconcile architecture, guarantee-level display placement | `reference/runtime-architecture.md` |
-| Security asset, trust boundary, threat category, control category, guarantee-level 의미, high-risk cooperative/detective/preventive/isolated security expectation | Threat concept과 honest guarantee display는 `reference/security.md`가 담당하고, exact enforcement, API, storage, kernel, connector, operations, conformance behavior는 각 owner에 남습니다. |
-| MCP resources/tools, request/response schemas, error taxonomy, validator result schema, artifact ref shape | `reference/api/mvp-api.md`, `reference/api/schema-core.md`, `reference/api/errors.md`, `reference/api/schema-later.md` |
-| SQLite DDL, migrations, storage layout, lock policy, artifact directory layout, baseline capture format, projection job table | `reference/storage.md` |
-| MVP implementation order and stage exit criteria | `build/mvp-user-work-loop.md` |
-| First implementation slice | `build/engineering-checkpoint.md` |
-| Markdown으로 렌더링되는 projection 원칙, authority matrix, managed blocks, human-editable sections, artifact 참조 표시, 산출물 계층, 템플릿 구현 계층, projection freshness/failure rules | `reference/projection-and-templates.md` |
-| 모든 projection template 본문과 표시 카드 형태 | `reference/templates/*.md` |
-| 설계 품질 정책 계약, validator ID, severity composition 규칙, 정책 waiver 의미, 근거 기대사항, close 영향 | `reference/design-quality-policies.md` |
-| User-facing conversation, status reading, user judgments, close checklist | `use/user-guide.md` |
-| 실용적인 사용자 소유 판단 예시와 사용자 대상 판단 요청 패턴 | 예시는 `use/decision-packet-cookbook.md`; 정확한 사용자 판단 동작은 `reference/core-model.md`와 `reference/api/mvp-api.md` |
+| Strategic thesis, failure model, MVP boundary, principle groups | Reader explanation은 `learn/purpose-and-principles.md`; exact contract impact는 `reference/design-quality-policies.md`와 `reference/core-model.md` |
+| Core entity, lifecycle, gate, state transition, close semantics, `prepare_write`, `close_task` | `reference/core-model.md` |
+| Runtime architecture, implementation detail의 세 공간, Core process model, artifact architecture, projection/reconcile architecture, guarantee-level display placement | `reference/runtime-architecture.md` |
+| Security asset, trust boundary, threat category, control category, guarantee-level meaning, high-risk cooperative/detective/preventive/isolated security expectation | Threat concept과 honest guarantee display는 `reference/security.md`; exact enforcement, API, storage, Core, connector, operations, conformance behavior는 각 owner |
+| MCP resource/tool, request/response schema, error taxonomy, validator result schema, artifact ref shape | `reference/api/mvp-api.md`, `reference/api/schema-core.md`, `reference/api/errors.md`, `reference/api/schema-later.md` |
+| SQLite DDL, migration, storage layout, lock policy, artifact directory layout, baseline capture format, projection job table | `reference/storage.md` |
+| MVP implementation order와 stage exit criteria | `build/mvp-user-work-loop.md` |
+| First runnable implementation slice | `build/engineering-checkpoint.md` |
+| Markdown-rendered projection principle, authority matrix, managed block, human-editable section, artifact reference rendering, output tier, template implementation class, projection freshness/failure rule | `reference/projection-and-templates.md` |
+| 모든 projection template body와 display card shape | `reference/templates/*.md` |
+| Design-quality policy contract, validator, severity composition, waiver semantics, evidence expectation, close impact | `reference/design-quality-policies.md` |
+| User-facing conversation, status reading, user judgment, close checklist | `use/user-guide.md` |
+| Practical user-owned judgment example과 user-facing judgment request pattern | Example은 `use/decision-packet-cookbook.md`; exact user judgment behavior는 `reference/core-model.md`와 `reference/api/mvp-api.md` |
 | User/agent session procedure | `use/agent-guide.md` |
-| Agent 접점 capability profiles, 공통 커넥터 계약, fallback 의미, Role Lens, connector conformance 개요 | `reference/agent-integration.md` |
-| 접점별 recipes | `reference/surface-cookbook.md` |
-| Generic capability profile examples | `reference/agent-integration.md` |
-| Operator procedures, future conformance run overview, doctor/recover/reconcile/export/artifact integrity, 문서 점검/docs-maintenance 보고 | `reference/operations-and-conformance.md` |
-| 핵심 적합성 모델, MVP 동작 예시, exact future fixture body, future runner execution, assertion semantics, 현재 단계 상태, future 검증 프로파일별 증명 동작, suite metadata boundary, 축소된 Kernel Smoke 작성 순서 | `reference/conformance-fixtures.md` |
-| Active MVP path 밖의 향후 상세 scenario 후보, concern별 향후 fixture example, staged fixture coverage map, fixture suite family summary, catalog-only future candidate | `later/future-fixtures.md` |
-| Official term definitions and capitalization | `reference/glossary.md` |
-| 로드맵 roadmap | `roadmap.md` |
-| Documentation authoring rules | `maintain/authoring-guide.md` |
-| Translation and bilingual prose rules | `maintain/translation-guide.md` |
-| 재작성 계획 분류와 재설계 분류 기준 | `maintain/rewrite-plan.md` |
+| Agent surface capability profile, common connector contract, fallback semantics, Role Lens, connector conformance overview | `reference/agent-integration.md` |
+| Surface-specific recipe | `reference/surface-cookbook.md` |
+| Generic capability profile example | `reference/agent-integration.md` |
+| Operator procedure, future conformance run overview, doctor/recover/reconcile/export/artifact integrity, documentation-check/docs-maintenance reporting | `reference/operations-and-conformance.md` |
+| Core conformance model, MVP behavior example, exact future fixture body shape, future runner execution, assertion semantics, current-phase status, future fixture profile by proven behavior, suite metadata boundary, reduced Kernel Smoke authoring queue | `reference/conformance-fixtures.md` |
+| Active MVP path 밖의 detailed future scenario candidate, concern별 future fixture example, staged fixture coverage map, fixture suite family summary, catalog-only future candidate | `later/future-fixtures.md` |
+| Official term definition과 capitalization | `reference/glossary.md` |
+| Roadmap candidate | `roadmap.md` |
+| Documentation authoring rule | `maintain/authoring-guide.md` |
+| Translation과 bilingual prose rule | `maintain/translation-guide.md` |
+| Rewrite planning category와 redesign triage | `maintain/rewrite-plan.md` |

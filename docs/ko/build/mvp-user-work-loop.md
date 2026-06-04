@@ -223,7 +223,7 @@ Reference schema에는 관련 capability가 범위에 들어올 때만 필요한
 | 구현 준비 판단 | 수락되지 않았습니다. | Maintainer가 구현 준비 조건이 충족되었거나 남은 blocker가 재분류되었다고 판단한 뒤 [구현 개요: 문서 수락 상태](implementation-overview.md#문서-수락-상태)를 의도적으로 갱신해야 합니다. |
 | Public API/DDL 코딩 수락 | 코드 작성용으로 수락되지 않았습니다. 문서 기준은 내부 엔지니어링 점검과 MVP-1 계약을 기록하지만, server code, DDL, migration, fixture, runtime data를 만들기 전 maintainer acceptance가 필요합니다. | Behavior를 코딩하기 전에 maintainer가 관련 owner 문서를 수락하거나 stage impact와 함께 behavior를 명시적으로 미뤄야 합니다. |
 | 새로 발견되는 owner-contract conflict | 현재 Build 결정 기록에는 없습니다. | Maintainer review나 runtime-batch planning에서 schema/design, stage boundary, guarantee level, fixture semantics, storage/API conflict가 드러나면 영향을 받는 behavior를 코딩하기 전에 stage impact와 함께 여기에 추가합니다. |
-| 문서 drift | 기본적으로 server-coding decision이 아닙니다. | Docs-maintenance finding이 실제 owner-contract decision이나 stage blocker를 드러내면 stage impact와 함께 이 기록으로 승격합니다. 그렇지 않으면 문서 작성 가이드 tracker로 routing합니다. |
+| 문서 drift | 기본적으로 server-coding decision이 아닙니다. | Docs-maintenance finding이 실제 owner-contract decision이나 stage blocker를 드러내면 stage impact와 함께 이 기록으로 승격합니다. 그렇지 않으면 문서 작성 가이드 risk/regression checks로 routing합니다. |
 
 확인된 결정이 추가되면 다음을 기록합니다.
 

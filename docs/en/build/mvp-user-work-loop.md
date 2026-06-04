@@ -223,7 +223,7 @@ No old MVP-1 scope item from the ledger above remains open as a Build-contract q
 | Implementation-readiness judgment | Not accepted. | Maintainers must deliberately update [Implementation Overview: Documentation acceptance status](implementation-overview.md#documentation-acceptance-status) after the readiness criteria are satisfied or remaining blockers are reclassified. |
 | Public API/DDL coding acceptance | Not accepted for coding. The documentation baseline records the intended Engineering Checkpoint and MVP-1 contracts, but maintainer acceptance is still required before server code, DDL, migrations, fixtures, or runtime data are created. | Before coding a behavior, maintainers must accept the relevant owner docs or explicitly defer a behavior with stage impact. |
 | Newly discovered owner-contract conflict | None currently recorded in this Build ledger. | If maintainer review or runtime-batch planning discovers a real schema/design, stage-boundary, guarantee-level, fixture-semantics, or storage/API conflict, add it here with stage impact before coding the affected behavior. |
-| Documentation drift | Not a server-coding decision by default. | If a docs-maintenance finding exposes a real owner-contract decision or stage blocker, promote it into this log with stage impact; otherwise route it through the Authoring Guide tracker. |
+| Documentation drift | Not a server-coding decision by default. | If a docs-maintenance finding exposes a real owner-contract decision or stage blocker, promote it into this log with stage impact; otherwise route it through the Authoring Guide risk/regression checks. |
 
 When a confirmed decision is added, record:
 
