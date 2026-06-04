@@ -216,11 +216,11 @@ After the change, the result can be just as small:
 Done.
 Changed: settings toast typo to "Successful."
 Checked: related copy test and diff review.
-Write check: allowed for this focused change.
+Pre-write scope check: compatible for this focused change.
 No broader product decision appeared, and no close-relevant residual risk is known for this small change.
 ```
 
-The light display does not mean the agent bypasses Harness internally. If product files may change, the scope, write, evidence, and close boundary still matters. The agent still keeps scope narrow, uses the appropriate internal write checks, records what changed, preserves the evidence needed for the claim, and reports if the work grows beyond the original request. You should not need to see internal boundary labels for every tiny edit unless a label helps explain a boundary or blocker.
+The light display does not mean the agent bypasses Harness internally. If product files may change, the scope, pre-write scope check, evidence, and close boundary still matters. The agent still keeps scope narrow, uses the appropriate internal write checks, records what changed, preserves the evidence needed for the claim, and reports if the work grows beyond the original request. You should not need to see internal boundary labels for every tiny edit unless a label helps explain a boundary or blocker.
 
 Small work should escalate when it stops being small. Escalate to tracked work when scope is unclear; multiple files, product areas, or subsystems are involved; a Product/UX judgment is needed; an important Technical judgment is needed; a public interface or API may be affected; security or privacy may be affected; a sensitive action is needed; QA or verification requirements increase; evidence is insufficient; residual risk is non-trivial; or multi-step delivery is needed.
 
@@ -364,7 +364,7 @@ Show what still blocks closing this work.
 
 Harness makes security-sensitive AI work easier to see and route, but early local Harness is not a sandbox. It does not automatically change OS permissions, sandbox arbitrary tools, make local files tamper-proof, or turn an instructed agent into preventive security.
 
-You may see four guarantee levels. `cooperative` means the agent is instructed to follow the rules. `detective` means a mismatch can be detected or recorded after action. `preventive` means a proven control blocks the operation before it happens. `isolated` means work or verification runs behind a documented separation boundary; a worktree or fresh evaluator bundle is not automatically an OS sandbox, permission boundary, or tamper-proof security. For early local use, expect cooperative/detective wording unless the agent can name the exact blocking control or exact proven separation boundary in use.
+You may see four guarantee levels. `cooperative` means the agent or tool follows the documented procedure. `detective` means a mismatch or record inconsistency can be detected or recorded after the fact. `preventive` means a proven control blocks the operation before it happens. `isolated` means work or verification runs behind a documented separation boundary; a worktree or fresh evaluator bundle is not automatically an OS sandbox, permission boundary, or tamper-proof security. For MVP-1 and other early local use, expect cooperative plus limited detective wording unless the agent can name the exact blocking control or exact proven separation boundary in use.
 
 When a status says something is blocked, read it as "Harness cannot honestly proceed or close under the current record" unless the agent also names a proven preventive control. Early local Harness may reveal, record, or hold by instruction; it should say plainly when it can stop something before it happens and when it can only report it.
 
@@ -454,7 +454,7 @@ You can skip this section until an agent shows one of these labels. They are use
 | `display_label` | User-facing label: Product/UX judgment, Technical judgment, Sensitive action approval, Work acceptance, or Residual risk acceptance. |
 | Decision Packet | Optional full-format or legacy presentation label for a `user_judgment`; not the default mechanism for every small judgment. |
 | Approval | Permission for a named sensitive action; not generic agreement or work acceptance. |
-| Write Authorization | A one-attempt check that the intended product write fits the current task, scope, user judgments, and sensitive-action permissions. |
+| Pre-write scope check / Write Authorization | The user-facing check before a product write. The internal `Write Authorization` record is a one-attempt cooperative Harness record/check that the intended product write fits the current task, scope, user judgments, and sensitive-action permissions. It is not OS permission, sandboxing, tamper-proof enforcement, or a preventive block. |
 | Evidence Manifest | The later/profile record that maps completion claims to supporting evidence. Minimum MVP-1 can use `evidence_ref` refs, derived evidence summaries, Run refs, ArtifactRefs, and visible gaps without a full Evidence Manifest. |
 | Gate | An internal readiness or compatibility condition. User-facing status should show the blocker or check first. |
 | Projection | A readable summary derived from owner records and related files or artifacts. Early use may be compact status text or a card, not a full Markdown report; it helps orientation and is not authority by itself. |
@@ -462,7 +462,7 @@ You can skip this section until an agent shows one of these labels. They are use
 | ProjectionJob | The internal job that creates or refreshes a readable projection. |
 | `task_events` | Low-level event history for implementers and diagnostics. |
 
-These labels do not collapse into each other. Approval is not work acceptance. Work acceptance does not erase residual risk. A decision is not write authority. A readable summary is not state. Passing tests does not mean Manual QA happened. Accepting residual risk does not make the risk disappear.
+These labels do not collapse into each other. Approval is not work acceptance. Work acceptance does not erase residual risk. A decision is not a pre-write scope check. A readable summary is not state. Passing tests does not mean Manual QA happened. Accepting residual risk does not make the risk disappear.
 
 For exact contracts, use the Reference docs only when needed: [Kernel Reference](../reference/kernel.md), [MVP API](../reference/api/mvp-api.md), and [Agent Integration Reference](../reference/agent-integration.md).
 

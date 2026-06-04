@@ -38,7 +38,7 @@
 
 에이전트는 요청을 이해한 범위, 직접 확인할 수 있는 것, 사용자만 판단할 수 있는 것, 필요한 근거, 무엇이 닫기를 막는지를 정리해야 합니다. 정확한 하네스 라벨은 경계나 출처 참조를 분명히 할 때 뒤에 붙이면 됩니다.
 
-이 의도된 런타임 흐름도는 일상 요청 흐름을 요약합니다. 사용자 요청에서 시작해, 묻기 전에 저장소·문서·현재 하네스 상태에서 확인 가능한 사실을 살피고, 작업 모양을 분류하고, 빠진 정보를 찾고, 막히는 질문과 참고 질문을 나누고, 사용자 소유 판단이 필요하면 선택지·결과·불확실성·추천을 보여준 뒤 다음 안전한 행동을 제안합니다. 쓰기 권한, Run, 근거, 닫기 준비 상태는 작업 모양이 필요로 할 때 그다음에 옵니다. 향후 하네스 동작을 위한 설계 지침이지, 이 저장소에 구현이 있다는 뜻은 아닙니다.
+이 의도된 런타임 흐름도는 일상 요청 흐름을 요약합니다. 사용자 요청에서 시작해, 묻기 전에 저장소·문서·현재 하네스 상태에서 확인 가능한 사실을 살피고, 작업 모양을 분류하고, 빠진 정보를 찾고, 막히는 질문과 참고 질문을 나누고, 사용자 소유 판단이 필요하면 선택지·결과·불확실성·추천을 보여준 뒤 다음 안전한 행동을 제안합니다. 쓰기 전 범위 확인, Run, 근거, 닫기 준비 상태는 작업 모양이 필요로 할 때 그다음에 옵니다. 향후 하네스 동작을 위한 설계 지침이지, 이 저장소에 구현이 있다는 뜻은 아닙니다.
 
 ```mermaid
 flowchart LR
@@ -52,10 +52,10 @@ flowchart LR
   Options --> Next
   Next --> ReadOnly["읽기 또는 조언"]
   Next --> WriteNeed{"제품 쓰기?"}
-  WriteNeed -->|예| Authority["범위 내 쓰기 권한"]
+  WriteNeed -->|예| ScopeCheck["쓰기 전 범위 확인"]
   WriteNeed -->|아니오| Status["상태 / 다음 행동"]
   ReadOnly --> Status
-  Authority --> Run["Run과 근거 기록"]
+  ScopeCheck --> Run["Run과 근거 기록"]
   Run --> Status
   Status -->|막힘| Blocker["막힘 표시"]
   Status -->|닫기 경로 적용| CloseCheck["닫기 준비 확인"]
@@ -82,8 +82,8 @@ flowchart LR
 |---|---|---|---|
 | 세션 시작 | 현재 상태 또는 간결한 요약, 예상 작업 모양, 알려진 범위/하지 않을 일, 활성 막힘, 대기 중인 사용자 판단, 다음 안전한 행동, 근거 공백, 닫기 막힘, 잔여 위험 요약, 보장 수준, 출처/최신성 참조. | [세션 시작](#세션-시작), [이어가기](#이어가기), 현재 `harness.status` / `status.next_actions`, 읽기용 보기가 오래됐거나 다음 행동에 쓰일 때만 읽기용 요약 최신성 규칙. 별도 `harness.next` output은 later/compatibility profile이 포함할 때만 나타납니다. | 전체 작업 이력, 전체 참조 문서, 전체 schema, 오래된 읽기용 요약, 관련 없는 template, 관련 없는 Roadmap, future catalog. |
 | 계획/구체화(`Discovery` 내부 라벨) | 목표, 사용자 가치, 범위와 비목표, 수용 기준, 저장소/문서/현재 상태에서 확인한 확인 가능한 사실, 빠진 정보, 막히는 질문, 참고 질문, 추적되는 불확실성, 사용자 소유 판단 후보, QA/검증 기대 수준, 안전한 다음 작업 후보 또는 작업 분할 제안. | [사용자 가이드: 에이전트가 처음 답해야 할 것](user-guide.md#에이전트가-처음-답해야-할-것), [요청 정리](#요청-정리), [범위와 쓰기 경계](#범위와-쓰기-경계), 관련 현재 Task/Change Unit/Shared Design 참조. | 전체 module map, 오래된 PRD/design, design-policy catalog, 전체 Storage DDL, 전체 Conformance 카탈로그, 관련 없는 template, future catalog. |
-| 쓰기 준비 | 활성 범위 또는 Change Unit, Autonomy Boundary, 의도한 경로/도구/명령 요약, 민감 동작 permission 상태, later Approval profile이 active일 때만 Approval 상태, 활성 사용자 판단, Write Authority Summary, 기준선/최신성. | [제품 파일 쓰기](#제품-파일-쓰기), [커널: prepare_write](../reference/kernel.md#prepare_write), intended write에 필요한 [`harness.prepare_write`](../reference/api/mvp-api.md#harnessprepare_write). | 전체 Kernel/reference 문서, 관련 없는 schema, historical event log, 큰 diff/log, 전체 Storage DDL, future catalog. |
-| 실행 / Run 기록 | 실행 요약, 변경 경로 요약, consumed Write Authorization 또는 no-write basis, 아티팩트 참조, 가림/무결성 메모, 즉시 필요한 다음 행동. | [근거와 확인](#근거와-확인), [커널: record_run](../reference/kernel.md#record_run), [`harness.record_run`](../reference/api/mvp-api.md#harnessrecord_run), 표시나 복구에 필요할 때만 artifact-ref 표시 규칙. | 전체 log, raw diff, 화면 캡처, trace, bundle, artifact inventory, 읽기용 요약 전체 본문, 전체 Template 세트, future catalog. |
+| 쓰기 준비 | 활성 범위 또는 Change Unit, Autonomy Boundary, 의도한 경로/도구/명령 요약, 민감 동작 permission 상태, later Approval profile이 active일 때만 Approval 상태, 활성 사용자 판단, 쓰기 전 범위 확인 요약 / WriteAuthoritySummary, 기준선/최신성. | [제품 파일 쓰기](#제품-파일-쓰기), [커널: prepare_write](../reference/kernel.md#prepare_write), intended write에 필요한 [`harness.prepare_write`](../reference/api/mvp-api.md#harnessprepare_write). | 전체 Kernel/reference 문서, 관련 없는 schema, historical event log, 큰 diff/log, 전체 Storage DDL, future catalog. |
+| 실행 / Run 기록 | 실행 요약, 변경 경로 요약, 소비된 내부 Write Authorization record 또는 no-write basis, 아티팩트 참조, 가림/무결성 메모, 즉시 필요한 다음 행동. | [근거와 확인](#근거와-확인), [커널: record_run](../reference/kernel.md#record_run), [`harness.record_run`](../reference/api/mvp-api.md#harnessrecord_run), 표시나 복구에 필요할 때만 artifact-ref 표시 규칙. | 전체 log, raw diff, 화면 캡처, trace, bundle, artifact inventory, 읽기용 요약 전체 본문, 전체 Template 세트, future catalog. |
 | 근거 검토 | 알려진 근거 요약, 있을 때 `evidence_ref`, Run refs, ArtifactRefs, 보이는 근거 공백, 오래됐거나 부족한 뒷받침, 영향을 받는 수용 기준 또는 주장, 가림/무결성 메모, 다음 근거 행동. Full Evidence Manifest profile이 active일 때만 Evidence Manifest 참조를 포함합니다. | [근거와 확인](#근거와-확인), [`harness.record_run`](../reference/api/mvp-api.md#harnessrecord_run), artifact-ref 표시 규칙, 해당 profile이 active일 때만 [커널: Evidence Manifest](../reference/kernel.md#evidence-manifest). | 전체 evidence body, 전체 log, raw diff, 화면 캡처, trace, bundle, artifact inventory, 읽기용 요약 전체 본문, 전체 Template 세트, future catalog. |
 | 닫기 준비 상태 | 닫기 준비 요약, 막힘, 민감 동작 permission 상태, 근거/검증/수동 QA/작업 수락 상태, 잔여 위험 표시 또는 수용된 참조, 읽기용 요약 최신성, 가장 작은 해소 방법. | [닫기](#닫기), [검증, 수동 QA, 잔여 위험, 작업 수락](#검증-수동-qa-잔여-위험-작업-수락), [커널: close_task](../reference/kernel.md#close_task), [`harness.close_task`](../reference/api/mvp-api.md#harnessclose_task). | 일반적인 all-done rollup, 전체 report 본문, 전체 historical log, 관련 없는 template, 전체 Conformance 카탈로그, 읽기용 요약 전체 본문, future catalog. |
 | 사용자 판단 요청 | 사용자 소유 판단, 선택지 또는 선택된 결과, 결과 영향, 불확실성, 영향을 받는 범위, 관련 참조, 에이전트가 사용자 대신 판단하지 않는 것, 답변이 확정하지 않는 것, 답변 뒤의 다음 행동. 상세 요청은 추천, 영향을 받는 관문/수용 기준, 미루면 생기는 일도 보여줍니다. 복잡한 판단이 필요할 때만 full-format Decision Packet presentation을 사용합니다. | [사용자 소유 판단으로 막힐 때](#사용자-소유-판단으로-막힐-때), [User Judgment](../reference/kernel.md#user-judgment), 정확한 field가 필요할 때만 특정 MCP 메서드. | 포괄적 approval 표현, 관련 없는 판단, 전체 근거 본문, 전체 log, 전체 schema reference, 전체 Template 세트, future catalog. |
@@ -110,20 +110,20 @@ flowchart LR
 보여줄 것:
 
 - 도움이 될 때 활성 또는 예상 Task id와 쉬운 작업 모양: 읽기/조언, 작은 변경, 추적되는 작업. `advisor`, `direct`, `work`는 진단이나 고급 세부사항으로 유용할 때만 붙입니다.
-- 범위: 현재 또는 제안 범위, 범위 밖, 다음 행동에 영향을 주는 활성 Change Unit 또는 쓰기 권한 경계
+- 범위: 현재 또는 제안 범위, 범위 밖, 다음 행동에 영향을 주는 활성 Change Unit 또는 쓰기 전 범위 확인 경계
 - 사용자 판단: 진행을 막는 사용자 소유 질문, 판단 요청, full-format Decision Packet presentation, 민감 동작 permission. 판단 유형을 표시하고 다른 대기 항목과 합치지 않습니다.
 - 근거: 현재 근거 참조, 빠진 근거, 오래된 근거, 이미 실행한 확인
 - 닫기 준비 상태: 다음 결정이나 닫기에 영향을 주는 민감 동작 permission, 검증, 수동 QA, 잔여 위험 표시, 잔여 위험 수용, 작업 수락, 닫기 막힘 상태
 - 다음 안전한 행동
 - 가장 먼저 해소할 막힘, 다음 움직임의 소유자, 가장 작은 해소 방법
 - 후속 경로에 계속 영향을 줄 때만 추가 막힘
-- 쓰기가 가능하거나 가까울 때 쓰기 권한 상태
+- 쓰기가 가능하거나 가까울 때 쓰기 전 범위 확인 상태
 - 보장 수준과 접점이 실제로 막을 수 있는 것 또는 감지만 할 수 있는 것. 이는 민감 동작 승인, 검증, 작업 수락, `gate`가 아니라 표시와 위험 맥락입니다.
 - 경계를 설명할 때 필요한 경우에만 내부 `gate` 이름이나 참조. 사용자가 다음 행동을 이해하기 위해 전체 `gate` 분류를 읽게 만들지 않습니다.
 - 읽기용 요약 최신성 상태
 - guard, freeze, careful mode가 관련될 때 실행 전에 실제로 막을 수 있는 것과 실행 뒤에만 감지할 수 있는 것
 
-넓은 자연어 요청만으로 바로 제품 파일을 쓰기 시작하면 안 됩니다. 먼저 범위와 의도한 변경에 맞는 쓰기 권한을 확정해야 합니다.
+넓은 자연어 요청만으로 바로 제품 파일을 쓰기 시작하면 안 됩니다. 먼저 범위와 의도한 변경에 맞는 쓰기 전 범위 확인을 통과해야 합니다.
 
 "go ahead", "proceed", "looks good", "좋아", "진행해" 같은 자연어 동의는 하나의 활성 질문이 판단 유형, 선택지, 범위, 영향을 받는 `gate`, 결과, 그리고 답변 밖에 남는 것을 이미 모호하지 않게 보여준 경우에만 대기 중인 판단에 연결할 수 있습니다. 이 표현은 민감 동작 승인, 작업 수락, 잔여 위험 수용으로 자동 해석되면 안 됩니다. 한 질문에 여러 대기 항목이 있으면 그 표현은 모호하지 않은 항목 하나에만 적용됩니다. 그렇지 않으면 기록하기 전에 다시 확인합니다. 같은 발화가 민감 동작 승인, 작업 수락, 잔여 위험 수용, QA 면제 판단, 검증 면제 판단, 범위 확인, 단순 계속 진행 중 둘 이상을 뜻할 수 있으면 기록하기 전에 다시 확인합니다.
 
@@ -134,7 +134,7 @@ flowchart LR
 좋은 이어가기 답변:
 
 ```text
-활성 작업을 찾았습니다. 현재 범위는 X입니다. 다음 안전한 행동은 Y입니다. 제품 파일 쓰기는 아직 허용되지 않았습니다. 대기 중인 판단은 Z 하나입니다.
+활성 작업을 찾았습니다. 현재 범위는 X입니다. 다음 안전한 행동은 Y입니다. 제품 파일 쓰기는 아직 쓰기 전 범위 확인을 통과하지 않았습니다. 대기 중인 판단은 Z 하나입니다.
 ```
 
 읽기용 요약(Projection), `source_state_version`, 읽기용 상태가 stale이거나 unknown이면 그 사실을 말하고, 거기에 의존하기 전에 새로 고치거나 조정(reconcile)합니다. 기준 상태를 직접 읽을 수 있으면 그 상태에서 계속할 수 있지만, 읽기용 요약은 운영 권한의 출처가 아니라고 알려야 합니다.
@@ -154,7 +154,7 @@ MCP 결과를 기준으로 삼되, 사용자에게는 이해하기 쉬운 말로
 | 개념 | 먼저 보여줄 것 | 대표 소유자 참조 |
 |---|---|---|
 | 작업 | 사용자가 끝내거나, 답을 얻거나, 살피거나, 결정하려는 것. | Task, current work summary, current status refs. |
-| 범위 | 무엇이 바뀔 수 있는지, 무엇이 범위 밖인지, 의도한 쓰기가 맞는지. | Task, Change Unit, Autonomy Boundary, 쓰기 허가 기록. |
+| 범위 | 무엇이 바뀔 수 있는지, 무엇이 범위 밖인지, 의도한 쓰기가 맞는지. | Task, Change Unit, Autonomy Boundary, 쓰기 전 범위 확인 / Write Authorization. |
 | 판단 | 계속하기 전에 사용자가 판단해야 하는 것. 각 대기 항목을 유형별로 나눕니다. 민감 동작 승인은 그 판단 유형이 pending일 때만 여기에 포함합니다. | 판단 요청, `user_judgment` ref, 켜져 있을 때 full-format Decision Packet presentation, later Approval profile이 active일 때만 Approval ref, 잔여 위험 refs. |
 | 근거 | 주장을 무엇이 뒷받침하는지, 무엇이 빠졌는지, 뒷받침이 오래됐는지. | `evidence_ref` ref, Run refs, ArtifactRefs, 파생 gap summary. Full evidence profile이 active일 때만 Evidence Manifest. |
 | 확인 또는 검증 | 무엇을 확인했고, 무엇이 아직 필요하며, 더 강한 검토 경계나 수동 QA가 필요한지. | verification이 active일 때 Eval input refs, active일 때 수동 QA refs 또는 waiver refs, 확인용 Run refs. |
@@ -164,7 +164,7 @@ MCP 결과를 기준으로 삼되, 사용자에게는 이해하기 쉬운 말로
 
 - `harness.status`는 "지금 어디에 있는가?"라는 뜻입니다.
 - `status.next_actions`는 "다음 안전한 행동 또는 가장 작은 해소 방법은 무엇인가?"라는 뜻입니다. 별도 `harness.next` method는 later/compatibility material입니다.
-- `harness.prepare_write`는 "지금 이 정확한 제품 파일 쓰기를 해도 되는가?"라는 뜻입니다.
+- `harness.prepare_write`는 "지금 이 정확한 제품 파일 쓰기가 현재 범위와 상태에 맞는가?"라는 뜻입니다.
 - `harness.record_run`은 "무슨 일이 일어났고, 어떤 근거가 바뀌었으며, 다음은 무엇인가?"라는 뜻입니다.
 - `harness.close_task`는 "이 Task를 지금 끝내거나 취소할 수 있는가?"라는 뜻입니다.
 
@@ -175,8 +175,8 @@ MCP 결과를 기준으로 삼되, 사용자에게는 이해하기 쉬운 말로
 | `action_kind` | Stage/profile | 사용자에게 말할 내용 |
 |---|---|---|
 | `ask_user` | Minimum MVP-1 | 사용자 소유 답변이 필요합니다. 간결한 질문, 추천, 영향, 참조를 보여줍니다. |
-| `prepare_write` | Minimum MVP-1 | 정확히 의도한 쓰기에 대한 쓰기 권한을 확인합니다. |
-| `implement` | Minimum MVP-1 | 범위 안 구현 경로를 계속합니다. 제품 파일 쓰기에는 현재 호환되는 쓰기 허가 기록만 사용합니다. |
+| `prepare_write` | Minimum MVP-1 | 정확히 의도한 쓰기에 대해 쓰기 전 범위 확인을 실행합니다. |
+| `implement` | Minimum MVP-1 | 범위 안 구현 경로를 계속합니다. 제품 파일 쓰기에는 현재 호환되는 내부 쓰기 허가 기록만 사용합니다. |
 | `launch_verify` | Later verification owner profile only | 현재 근거 참조에서 독립 검증 경로를 시작하거나 준비합니다. |
 | `record_eval` | Later Eval / detached verification owner profile only | Evaluator 결과를 기록합니다. Eval이 조건을 충족하기 전에는 분리 검증을 주장하지 않습니다. |
 | `record_manual_qa` | Later Manual QA owner profile only | 수동 QA 결과 또는 유효한 면제를 기록합니다. 브라우저 아티팩트만으로 수동 QA처럼 다루지 않습니다. |
@@ -187,7 +187,7 @@ MCP 결과를 기준으로 삼되, 사용자에게는 이해하기 쉬운 말로
 
 MVP-1 next-action 계약은 [`harness.status`](../reference/api/mvp-api.md#harnessstatus)가 담당합니다. 별도 [`harness.next`](../reference/api/schema-later.md#harnessnext) method는 later/compatibility material입니다. 이 표는 표시 안내일 뿐 새 경로나 gate가 아닙니다.
 
-status, next, 결과, 작업 수락, 닫기 표시에서 권한을 주장할 때는 출처 참조가 있거나 없음을 분명히 말해야 합니다. "Write allowed"에는 쓰기 허가 기록 참조를 사용합니다. 민감 동작 permission은 minimum MVP-1에서는 resolved 민감 동작 승인 user judgment ref를 cite하고, later Approval profile이 active일 때만 Approval ref를 cite합니다. Minimum MVP-1 근거 표시는 있을 때 `evidence_ref`, Run refs, ArtifactRefs, 보이는 gap summary를 cite합니다. Active owner path가 충분성을 세울 수 없으면 근거가 충분하다고 말하지 않습니다. Full Evidence Manifest profile이 active일 때만 full criteria-to-evidence sufficiency에 Evidence Manifest ref를 cite합니다. 분리 검증은 해당 profile이 active일 때 Eval ref를, 수동 QA는 해당 profile이 active일 때 수동 QA record 또는 valid waiver path를, 작업 수락은 작업 수락 user judgment path를 사용합니다. 잔여 위험 표시는 blocker/user-judgment ref 또는 `ResidualRiskSummary.status=none`을 사용합니다. MVP-1 잔여 위험 수용은 residual-risk acceptance user judgment와 관련 blocker/evidence ref를 사용하고, rich Residual Risk ref는 해당 later profile이 active일 때만 사용합니다. 로그/변경 차이/스크린샷/추적 기록/번들은 artifact refs를 사용합니다. 참조가 없으면 아직 뒷받침되지 않은 주장이라고 말합니다.
+status, next, 결과, 작업 수락, 닫기 표시에서 권한을 주장할 때는 출처 참조가 있거나 없음을 분명히 말해야 합니다. "쓰기 전 범위 확인과 맞음"에는 Write Authorization ref를 사용하되, 이를 OS 권한, sandboxing, 변조 방지 enforcement, 도구 실행 전 차단처럼 말하면 안 됩니다. 민감 동작 permission은 minimum MVP-1에서는 resolved 민감 동작 승인 user judgment ref를 cite하고, later Approval profile이 active일 때만 Approval ref를 cite합니다. Minimum MVP-1 근거 표시는 있을 때 `evidence_ref`, Run refs, ArtifactRefs, 보이는 gap summary를 cite합니다. Active owner path가 충분성을 세울 수 없으면 근거가 충분하다고 말하지 않습니다. Full Evidence Manifest profile이 active일 때만 full criteria-to-evidence sufficiency에 Evidence Manifest ref를 cite합니다. 분리 검증은 해당 profile이 active일 때 Eval ref를, 수동 QA는 해당 profile이 active일 때 수동 QA record 또는 valid waiver path를, 작업 수락은 작업 수락 user judgment path를 사용합니다. 잔여 위험 표시는 blocker/user-judgment ref 또는 `ResidualRiskSummary.status=none`을 사용합니다. MVP-1 잔여 위험 수용은 residual-risk acceptance user judgment와 관련 blocker/evidence ref를 사용하고, rich Residual Risk ref는 해당 later profile이 active일 때만 사용합니다. 로그/변경 차이/스크린샷/추적 기록/번들은 artifact refs를 사용합니다. 참조가 없으면 아직 뒷받침되지 않은 주장이라고 말합니다.
 
 응답에 오류나 막힘이 있으면 가장 먼저 해소할 막힘 하나를 먼저 말합니다. 사용자에게 보이는 prose에서는 `막힘`을 우선하고, API나 Reference 문맥에서는 `blocker` 또는 `차단 조건(blocker)`을 사용합니다. API precedence로 선택된 첫 `ToolError`를 쓰거나, `harness.close_task`가 blockers를 반환했다면 첫 닫기 막힘을 사용합니다. 그다음 가장 작은 해소 방법을 평범한 말로 보여줍니다. 추가 막힘은 가장 먼저 해소할 막힘이 해소된 뒤에도 의미가 있을 때만 계속 보여줍니다.
 
@@ -209,19 +209,19 @@ status, next, 결과, 작업 수락, 닫기 표시에서 권한을 주장할 때
 | 유용한 세부정보가 없는 `MCP_UNAVAILABLE` | 하네스/Core 기능을 사용할 수 없습니다. | 기준 상태 변경을 주장하기 전에 다시 연결하거나 접점을 복구하거나 사용할 수 있는 접점으로 전환합니다. |
 | `CAPABILITY_INSUFFICIENT` | 이 접점은 필요한 보장 수준을 제공할 수 없습니다. | 필요한 profile을 쓰거나, 작업을 줄이거나, 그 기능이 필요 없는 경로를 선택합니다. |
 | `NO_ACTIVE_TASK` | 선택된 active Task가 없습니다. | 계속하기 전에 Task를 선택하거나 만듭니다. |
-| `WRITE_AUTHORIZATION_REQUIRED` 또는 `WRITE_AUTHORIZATION_INVALID` | 쓰기 권한이 없거나 최신이 아닙니다. | 정확한 의도한 쓰기에 대해 `harness.prepare_write`를 다시 시도합니다. |
+| `WRITE_AUTHORIZATION_REQUIRED` 또는 `WRITE_AUTHORIZATION_INVALID` | 쓰기 전 범위 확인이 없거나 최신이 아닙니다. | 정확한 의도한 쓰기에 대해 `harness.prepare_write`를 다시 시도합니다. |
 | `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED` | 사용자 소유 판단이 필요합니다. | 초점 있는 판단 요청을 보여줍니다. 참조나 정확한 계약이 도움이 될 때만 full-format Decision Packet을 함께 보여줍니다. |
-| `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, 또는 `APPROVAL_EXPIRED` | 민감 동작 permission이 필요하거나 사용할 수 없습니다. | Minimum MVP-1에서는 민감 동작 승인 judgment를 요청하거나 해소합니다. Later Approval profile이 active일 때만 Approval을 갱신하거나 복구한 뒤 쓰기 확인을 다시 시도합니다. |
+| `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, 또는 `APPROVAL_EXPIRED` | 민감 동작 permission이 필요하거나 사용할 수 없습니다. | Minimum MVP-1에서는 민감 동작 승인 judgment를 요청하거나 해소합니다. Later Approval profile이 active일 때만 Approval을 갱신하거나 복구한 뒤 쓰기 전 범위 확인을 다시 시도합니다. |
 | `PROJECTION_STALE` | 읽기용 상태 요약이 오래됐습니다. | 그 요약에 의존하기 전에 읽기용 요약(Projection)을 새로 고치거나 조정합니다. |
 | `ARTIFACT_MISSING` | Artifact가 없거나 무결성 확인에 실패했습니다. | Artifact를 근거로 쓰기 전에 다시 첨부하거나, 생성하거나, 교체합니다. |
 
-정확한 하네스 용어는 도움이 될 때만 괄호 안에 붙이고, 평범한 문장을 먼저 둡니다. 예: "쓰기 권한이 최신이 아닙니다(`WRITE_AUTHORIZATION_INVALID`). 가장 작은 해소 방법: 현재 파일 목록으로 `harness.prepare_write`를 다시 실행합니다."
+정확한 하네스 용어는 도움이 될 때만 괄호 안에 붙이고, 평범한 문장을 먼저 둡니다. 예: "쓰기 전 범위 확인이 최신이 아닙니다(`WRITE_AUTHORIZATION_INVALID`). 가장 작은 해소 방법: 현재 파일 목록으로 `harness.prepare_write`를 다시 실행합니다."
 
 ## 요청 정리
 
 요청 정리는 사용자가 하네스 용어로 말하지 않아도 평범한 요청을 실제로 진행 가능한 작업 모양으로 바꾸는 단계입니다. 예를 들어 사용자가 "이메일 로그인을 추가하고 reset은 범위 밖으로 둬"라고 말하면, 에이전트가 쉬운 작업 모양, 범위, 가능한 판단, 근거 필요성, 쓰기 확인, 닫기 준비 상태 처리로 번역해야 합니다.
 
-요구사항 구체화는 구현 계획과 쓰기 권한 전에 에이전트가 수행하는 조건부 행동입니다. `Discovery`는 이 행동의 안정적인 내부 이름이지, 사용자가 외워야 하는 명령어가 아닙니다. 사용자는 "구현 전에 계획을 구체화해줘" 또는 "코드를 바꾸기 전에 필요한 걸 물어봐"처럼 평범하게 말해도 됩니다. 요청이 모호하거나, 기능 성격이 있거나, 인증/보안에 민감하거나, UX/문구/작업 흐름 판단이 크거나, 공개 인터페이스 또는 모듈 경계에 닿거나, policy에 영향을 줄 수 있거나, 추적되는 작업이 될 가능성이 높아서 구체화가 필요할 때 사용합니다. 명확한 작은 변경에 의식처럼 추가하지 않습니다. 이것은 일반 동의, 민감 동작 승인, 쓰기 허가 기록, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험 수용, 닫기, 범위 권한, 새 권한 경로가 아닙니다.
+요구사항 구체화는 구현 계획과 쓰기 전 범위 확인 전에 에이전트가 수행하는 조건부 행동입니다. `Discovery`는 이 행동의 안정적인 내부 이름이지, 사용자가 외워야 하는 명령어가 아닙니다. 사용자는 "구현 전에 계획을 구체화해줘" 또는 "코드를 바꾸기 전에 필요한 걸 물어봐"처럼 평범하게 말해도 됩니다. 요청이 모호하거나, 기능 성격이 있거나, 인증/보안에 민감하거나, UX/문구/작업 흐름 판단이 크거나, 공개 인터페이스 또는 모듈 경계에 닿거나, policy에 영향을 줄 수 있거나, 추적되는 작업이 될 가능성이 높아서 구체화가 필요할 때 사용합니다. 명확한 작은 변경에 의식처럼 추가하지 않습니다. 이것은 일반 동의, 민감 동작 승인, 쓰기 허가 기록, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험 수용, 닫기, 범위 기록, 새 기록/확인 경로가 아닙니다.
 
 세션 시작에서 보는 것과 같은 작업 모양 신호를 살핍니다. 제품 파일 쓰기, 범위가 흐트러질 위험, 모호한 요구사항, 여러 파일이나 구조 변경, 민감하거나 정책·품질 판단이 필요한 영역, 사용자가 판단해야 하는 일, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험이 필요한 작업이 여기에 해당합니다. 이런 신호가 있으면 평범한 요청을 예상 작업 모양, 범위, 범위 밖, 다음 안전한 행동으로 바꿔 제안합니다.
 
@@ -238,7 +238,7 @@ status, next, 결과, 작업 수락, 닫기 표시에서 권한을 주장할 때
 - Assumption Register: agent가 사용하는 가정, source, confidence, owner, 가정이 틀릴 때 바뀌는 일을 기록한 목록.
 - 안전한 다음 작업 범위 후보(`First Safe Change Unit Candidate` 내부 라벨): 제품 쓰기가 가까워졌을 때 안전한 다음 작업 후보를 내부 Change Unit 모양으로 표현한 것입니다. 고급 근거 개념이며, 요구사항 구체화의 유일한 출력이나 주된 중지 조건이 아닙니다.
 
-`안전한 다음 작업 후보`와 `작업 분할 제안` 같은 쉬운 표현은 제안이나 근거를 설명하는 말이며, 독립 schema 필드, 기준 record type, `gate` 값, 읽기용 요약 종류, 권한 경로가 아닙니다.
+`안전한 다음 작업 후보`와 `작업 분할 제안` 같은 쉬운 표현은 제안이나 근거를 설명하는 말이며, 독립 schema 필드, 기준 record type, `gate` 값, 읽기용 요약 종류, 기록/확인 경로가 아닙니다.
 
 요구사항 구체화 결과는 Shared Design, 판단 요청 후보, optional full-format Decision Packet presentation, Change Unit 모양 잡기로 보냅니다. 요구사항 요약, Question Queue, Assumption Register, 안전한 다음 작업 범위 후보를 범위 권한, 민감 동작 승인, 작업 수락, 잔여 위험 수용, 근거, 닫기 준비 상태, 쓰기 허가 기록으로 취급하지 않습니다.
 
@@ -323,15 +323,15 @@ status, next, 결과, 작업 수락, 닫기 표시에서 권한을 주장할 때
 
 ## 작은 변경 절차 예산
 
-작은 변경은 가벼운 사용자 경험이지 더 낮은 권한 경로가 아닙니다. 사용자에게 보이는 내용은 가볍게 유지하지만, 내부적으로는 범위, 쓰기, 근거, 닫기 경계가 여전히 중요합니다. 사용자에게 보이는 내용을 가장 작은 유용한 묶음으로 유지합니다.
+작은 변경은 가벼운 사용자 경험이지 더 낮은 기록/확인 경로가 아닙니다. 사용자에게 보이는 내용은 가볍게 유지하지만, 내부적으로는 범위, 쓰기 전 범위 확인, 근거, 닫기 경계가 여전히 중요합니다. 사용자에게 보이는 내용을 가장 작은 유용한 묶음으로 유지합니다.
 
 - 좁은 범위를 쉬운 말로 말합니다.
 - 관련 있을 때 범위 밖 동작, 파일, 결정을 이름 붙입니다.
-- 제품 파일을 쓰기 전에 내부 최소 Change Unit을 만들거나 선택하되, 사용자에게는 판단과 신뢰에 도움이 될 때만 "좁은 범위"나 "쓰기 권한"으로 보여줍니다.
+- 제품 파일을 쓰기 전에 내부 최소 Change Unit을 만들거나 선택하되, 사용자에게는 판단과 신뢰에 도움이 될 때만 "좁은 범위"나 "쓰기 전 범위 확인"으로 보여줍니다.
 - 제품 파일 쓰기에 적용되는 경우 정확한 write attempt 전에 compatible `prepare_write`를 사용합니다.
 - 변경 경로, 자체 확인 또는 다른 가벼운 근거, 상향 여부, 닫기에 영향을 주는 위험을 보고합니다.
 
-아주 작은 변경에서는 사용자에게 보이는 예산을 더 줄일 수 있습니다. 아주 좁은 범위, 변경 경로 또는 파일 변경 없음 결과, 자체 확인 정도면 됩니다. 이 작은 표시가 권한 우회는 아닙니다. 내부적으로는 `direct` 아래의 tiny 하위 프로필도 활성 범위, 제품 파일 쓰기에 적용되는 compatible `prepare_write`, 사용자 소유 판단, 민감 동작 승인, 보안/개인정보 경계, 잔여 위험 표시, 닫기 규칙을 지켜야 합니다.
+아주 작은 변경에서는 사용자에게 보이는 예산을 더 줄일 수 있습니다. 아주 좁은 범위, 변경 경로 또는 파일 변경 없음 결과, 자체 확인 정도면 됩니다. 이 작은 표시가 쓰기 전 범위 확인 우회는 아닙니다. 내부적으로는 `direct` 아래의 tiny 하위 프로필도 활성 범위, 제품 파일 쓰기에 적용되는 compatible `prepare_write`, 사용자 소유 판단, 민감 동작 승인, 보안/개인정보 경계, 잔여 위험 표시, 닫기 규칙을 지켜야 합니다.
 
 Task 모양, policy, 변경된 표면, 감지된 위험, 사용자 요청 때문에 필요해진 경우가 아니라면 사용자 판단 요청이나 full-format Decision Packet presentation을 만들거나, 수동 QA를 요구하거나, 분리 검증을 요청하거나, 전체 닫기 점검 목록을 보여주지 않습니다.
 
@@ -349,36 +349,36 @@ Task 모양, policy, 변경된 표면, 감지된 위험, 사용자 요청 때문
 
 안전한 다음 작업을 제안할 만큼 충분히 안다는 것은 위 항목들을 해소되지 않은 사용자 판단을 숨기지 않고 말할 수 있고, 확인 가능한 사실과 사용자 소유 판단을 분리할 수 있으며, 목표, 비목표, 수용 기준, 중요한 판단 후보가 충분히 분명하고, 다음 안전한 행동이 읽기/조언, 작은 직접 변경, 추적되는 작업 중 무엇인지 분류됐으며, 남은 불확실성이 명시적으로 추적된다는 뜻입니다. 아직 그러지 못하면 요구사항 구체화를 이어가며 현재 출처에서 확인 가능한 사실을 살피고, 다음 판단 영역의 막히는 질문을 묻고, 참고 질문은 남겨 두거나, 해소되지 않은 영역을 피하는 더 작은 안전한 다음 작업 후보 또는 작업 분할을 제안합니다. 안전한 다음 작업 범위 후보는 제품 쓰기가 가까워졌을 때 그 제안을 내부적으로 표현하는 방식일 수 있지만, 요구사항 구체화의 유일하거나 주된 중지 조건은 아닙니다.
 
-Autonomy Boundary는 쓰기 권한이 아닙니다. 사용자가 다시 판단하지 않아도 에이전트가 어디까지 판단할 수 있는지만 설명합니다. Change Unit의 범위는 어디에서 무엇이 바뀔 수 있는지 답하고, Autonomy Boundary는 그 범위 안에서 에이전트가 어떤 선택을 혼자 할 수 있는지 답합니다. 실제 제품 쓰기에는 여전히 의도한 변경과 맞는 쓰기 확인이 필요합니다.
+Autonomy Boundary는 쓰기 전 범위 확인이나 쓰기 허가 기록이 아닙니다. 사용자가 다시 판단하지 않아도 에이전트가 어디까지 판단할 수 있는지만 설명합니다. Change Unit의 범위는 어디에서 무엇이 바뀔 수 있는지 답하고, Autonomy Boundary는 그 범위 안에서 에이전트가 어떤 선택을 혼자 할 수 있는지 답합니다. 실제 제품 쓰기에는 여전히 의도한 변경과 맞는 쓰기 전 범위 확인이 필요합니다.
 
 멈춤과 허가를 설명할 때는 다음처럼 구분합니다.
 
-| 개념 | 쉬운 질문 | 허용하는 것 | 허용하지 않는 것 |
+| 개념 | 쉬운 질문 | 기록하거나 허용하는 것 | 허용하지 않는 것 |
 |---|---|---|---|
 | Change Unit 범위 | 어떤 작업 영역이 범위 안인가? | 작업이 둘러싼 동작, 파일, 경로, 도구, 명령, 네트워크 대상, 민감 범주를 이름 붙입니다. | 사용자 소유의 제품/UX 판단이나 기술 판단을 결정하거나 그 자체로 쓰기 허가 기록을 만들지 않습니다. |
-| Autonomy Boundary | 그 범위 안에서 에이전트가 무엇을 혼자 판단해도 되는가? | 포괄된 구현 세부사항은 추가 사용자 판단 없이 에이전트가 선택할 수 있게 합니다. | 경로, 도구, 명령, 네트워크, 비밀값, 민감 범주, 민감 동작 permission / Approval, 쓰기 권한을 부여하지 않습니다. |
+| Autonomy Boundary | 그 범위 안에서 에이전트가 무엇을 혼자 판단해도 되는가? | 포괄된 구현 세부사항은 추가 사용자 판단 없이 에이전트가 선택할 수 있게 합니다. | 경로, 도구, 명령, 네트워크, 비밀값, 민감 범주, 민감 동작 permission / Approval, 쓰기 전 범위 확인 기록을 부여하지 않습니다. |
 | 민감 동작 permission / Approval | 이 민감한 단계를 진행해도 되는가? | 기록된 범위와 만료 조건 안에서 이름 붙인 민감 동작을 허용합니다. Minimum MVP-1은 민감 동작 승인 user judgment로 표현할 수 있고, later Approval profile은 Approval record를 사용할 수 있습니다. | 사용자 소유 제품/UX 판단, 기술 판단, 면제 판단, 작업 수락, 잔여 위험 수용, 정확성(correctness), 쓰기 허가 기록을 대신하지 않습니다. |
 | 사용자 판단 요청 | 어떤 사용자 소유 판단을 기록하는가? | 이름 붙은 제품/UX 판단, 기술 판단, 민감 동작 승인, 작업 수락, 잔여 위험 수용을 resolved, deferred, rejected, blocked 상태로 기록합니다. 간단한 판단 기록부터 full-format presentation까지 프로필에 따라 깊이가 달라질 수 있습니다. | `judgment_type=sensitive_action_approval`와 compatible `approval_scope`일 때만 민감 동작 permission을 부여합니다. Write Authorization이 아니며 별도의 제품/기술/수락/면제/위험 판단을 대체하지 않습니다. |
 | 작업 수락 | 작업 수락이 required일 때 결과를 받아들일 수 있는가? | 닫기에 영향을 주는 잔여 위험이 보였거나 없다고 확인된 뒤 사용자의 최종 결과 판단을 기록합니다. | Evidence, 검증, 수동 QA, 민감 동작 permission / Approval, 쓰기 허가 기록, 면제 판단, 잔여 위험 수용을 대체하지 않습니다. |
 | 잔여 위험 수용 | 이번 close에서 알려진 잔여 위험을 받아들일 수 있는가? | 보이는 닫기 관련 위험의 수용을 기록하며 다른 gate가 허용할 때 잔여 위험을 받아들이고 닫는 흐름을 뒷받침합니다. | 분리 검증, correctness proof, QA pass를 만들지 않고, close를 위험 없는 일반 close로 만들지 않습니다. |
-| 쓰기 허가 기록 | 지금 이 정확한 쓰기 시도(write attempt)를 해도 되는가? | 필요한 확인 뒤 Core가 호환되는 쓰기 시도 하나를 허용했다는 기록입니다. | 재사용할 수 없고 범위, Autonomy Boundary, 민감 동작 permission / Approval을 넓히지 않습니다. |
+| 쓰기 전 범위 확인 / Write Authorization | 지금 이 정확한 쓰기 시도가 현재 범위와 상태에 맞는가? | 필요한 확인 뒤 Core가 호환되는 쓰기 시도 하나를 찾았다는 내부 기록입니다. 이 Write Authorization record는 하네스 수준의 협력형 상태이며 OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단이 아닙니다. | 재사용할 수 없고 범위, Autonomy Boundary, 민감 동작 permission / Approval을 넓히지 않습니다. |
 
-작은 변경에서는 내부 active Change Unit을 사용자의 요청과 주변 맥락에서 만들 수 있습니다. 모든 작은 수정마다 사용자가 "Change Unit"이라는 말을 볼 필요는 없습니다. 범위, 쓰기 권한, 막힘을 설명할 때 도움이 될 때만 보여줍니다. 예시는 설명용이며 schema를 새로 정의하지 않습니다.
+작은 변경에서는 내부 active Change Unit을 사용자의 요청과 주변 맥락에서 만들 수 있습니다. 모든 작은 수정마다 사용자가 "Change Unit"이라는 말을 볼 필요는 없습니다. 범위, 쓰기 전 범위 확인, 막힘을 설명할 때 도움이 될 때만 보여줍니다. 예시는 설명용이며 schema를 새로 정의하지 않습니다.
 
 - 문서 또는 문구 수정: 목적 "이 문구 변경"; 비목표 "동작 또는 계약 변경 없음"; 범위 경로 "이름 붙은 문서/component와 직접 관련된 test가 있으면 그 test"; 중지 조건 "의미, 현지화 전략, 공개 약속이 바뀜."
 - 좁은 test 수정: 목적 "보고된 case를 cover"; 비목표 "구현 리팩터링 없음"; 범위 경로 "관련 test"; 중지 조건 "수정에 제품 코드가 필요함."
 
-프롬프트나 상태에서 "approved" 또는 "승인"이라는 말을 쓸 때는 실제 권한이나 기록되는 판단을 이름 붙입니다. 민감 동작 승인, later Approval record, 범위 확인(scope confirmation), 판단 요청 해소, 범위가 지정된 면제 판단, 잔여 위험 수용, 작업 수락, 쓰기 허가 기록 상태를 구분해서 말하고, "승인"을 모든 허가와 판단을 뭉뚱그리는 포괄 라벨로 쓰면 안 됩니다.
+프롬프트나 상태에서 "approved" 또는 "승인"이라는 말을 쓸 때는 실제 하네스 기록/확인이나 기록되는 판단을 이름 붙입니다. 민감 동작 승인, later Approval record, 범위 확인(scope confirmation), 판단 요청 해소, 범위가 지정된 면제 판단, 잔여 위험 수용, 작업 수락, 쓰기 전 범위 확인 / Write Authorization 상태를 구분해서 말하고, "승인"을 모든 허가와 판단을 뭉뚱그리는 포괄 라벨로 쓰면 안 됩니다.
 
 예시:
 
 - 의존성 설치 민감 동작 승인: 설치를 실행하거나 의존성 파일을 갱신해도 된다는 Approval은 그 의존성이 올바른 아키텍처 선택이라는 판단이 아닙니다. 그 선택이 호환성, 되돌리기, 비용, 유지보수에 영향을 주면 판단 요청을 사용합니다.
 - 비밀값 접근 민감 동작 승인: 요청된 범위 안에서 비밀값을 읽거나 사용해도 된다는 Approval은 비밀값을 아티팩트, 읽기용 요약(projections), 내보내기, 로그, 스크린샷, 요약에 노출해도 된다는 뜻이 아닙니다.
 - 인증/시스템 변경 민감 동작 승인: 인증 파일, 권한, 시스템 설정을 만져도 된다는 Approval은 로컬 세션 쿠키, Bearer token/JWT, OAuth/OIDC 로그인, 소셜 로그인 제공자 연동 같은 ID 제공자 또는 세션/저장 모델을 선택하는 결정이 아니며, 역할 모델, 잠금 동작, 사용자 고지도 결정하지 않습니다.
-- 공개 API 변경 결정: API 방향이 해소됐다는 것은 이 Task의 계약 선택을 결정했다는 뜻입니다. Deployment 권한, merge 권한, 재사용 가능한 쓰기 허가 기록이 아닙니다.
-- 작업 수락: 작업 수락은 추가 쓰기를 허가하거나, 새 민감 동작에 Approval을 부여하거나, 알려진 잔여 위험을 수용하거나, 빠진 근거, QA, 검증, 면제 판단, 쓰기 허가 기록을 나중에 충족시켜 주지 않습니다.
+- 공개 API 변경 결정: API 방향이 해소됐다는 것은 이 Task의 계약 선택을 결정했다는 뜻입니다. Deployment 권한, merge 권한, 재사용 가능한 쓰기 전 범위 확인 기록이 아닙니다.
+- 작업 수락: 작업 수락은 추가 쓰기를 가능하게 하거나, 새 민감 동작에 Approval을 부여하거나, 알려진 잔여 위험을 수용하거나, 빠진 근거, QA, 검증, 면제 판단, 쓰기 허가 기록을 나중에 충족시켜 주지 않습니다.
 
-Shared Design은 요구사항 구체화에서 나온 목표, 사용자 가치, 범위, 비목표, 가정, 남은 불확실성, 도메인/모듈/인터페이스 영향, 분리된 사용자 소유 판단, QA/검증 기대 수준, 안전한 다음 작업 모양에 대한 공유된 이해를 기록할 때 사용합니다. Shared Design을 민감 동작 승인, 작업 수락, 잔여 위험 수용, 면제 판단, 근거, 닫기 준비 상태, 쓰기 허가 기록으로 보여주면 안 됩니다. Shared Design에서 사용자가 소유하는 공개 API/인터페이스 선택, 도메인 언어 충돌, 모듈 경계 이동, 아키텍처 방향, 보안/개인정보 절충, QA/검증 면제 판단, 범위 확장, 알려진 위험 수용이 드러나면 그 선택은 제품/UX 판단, 기술 판단, 잔여 위험 수용 중 알맞은 판단 요청으로 라우팅합니다.
+Shared Design은 요구사항 구체화에서 나온 목표, 사용자 가치, 범위, 비목표, 가정, 남은 불확실성, 도메인/모듈/인터페이스 영향, 분리된 사용자 소유 판단, QA/검증 기대 수준, 안전한 다음 작업 모양에 대한 공유된 이해를 기록할 때 사용합니다. Shared Design을 민감 동작 승인, 작업 수락, 잔여 위험 수용, 면제 판단, 근거, 닫기 준비 상태, 쓰기 전 범위 확인 기록으로 보여주면 안 됩니다. Shared Design에서 사용자가 소유하는 공개 API/인터페이스 선택, 도메인 언어 충돌, 모듈 경계 이동, 아키텍처 방향, 보안/개인정보 절충, QA/검증 면제 판단, 범위 확장, 알려진 위험 수용이 드러나면 그 선택은 제품/UX 판단, 기술 판단, 잔여 위험 수용 중 알맞은 판단 요청으로 라우팅합니다.
 
 Autonomy Boundary 안에서는 에이전트가 기존 helper를 재사용할지, private function을 어떻게 나눌지, 좁은 테스트를 어디에 둘지, 합의된 결과에 맞는 보수적인 내부 접근을 고를지 같은 일상적인 구현 세부사항을 판단할 수 있습니다. 공개 API 또는 모듈 계약 변경, 보안 또는 개인정보 절충, UX 또는 제품 절충, 의존성이나 마이그레이션 같은 기술 판단, 범위 확장, 잔여 위험 수용 전에는 해당 사용자 판단을 위해 멈춰야 합니다.
 
@@ -425,7 +425,7 @@ Autonomy Boundary 안에서는 에이전트가 기존 helper를 재사용할지,
 선택지: "Save" 또는 "Update".
 결과 영향: 선택한 label이 이번 Change Unit의 copy target이 됩니다.
 불확실성: 일반적인 문구 선호를 넘는 불확실성은 없습니다.
-에이전트가 사용자 대신 판단하지 않는 것: 더 넓은 설정 동작, 현지화 전략, 작업 수락, 잔여 위험 수용, 쓰기 권한.
+에이전트가 사용자 대신 판단하지 않는 것: 더 넓은 설정 동작, 현지화 전략, 작업 수락, 잔여 위험 수용, 쓰기 전 범위 확인.
 ```
 
 절충 판단:
@@ -438,7 +438,7 @@ Autonomy Boundary 안에서는 에이전트가 기존 helper를 재사용할지,
 추천: 흐름과 접근성을 유지하는 인라인 메시지입니다.
 결과 영향: 선택한 방향이 이 흐름의 UX target과 수동 QA 기대 수준을 정합니다.
 불확실성: 기존 접근성 패턴 때문에 다른 선택지가 더 저렴할 수 있습니다.
-에이전트가 사용자 대신 판단하지 않는 것: 계정 존재 여부 노출 정책, 작업 수락, 잔여 위험 수용, 쓰기 권한.
+에이전트가 사용자 대신 판단하지 않는 것: 계정 존재 여부 노출 정책, 작업 수락, 잔여 위험 수용, 쓰기 전 범위 확인.
 미룬다면: 최종 로그인 실패 UX가 완료됐다고 주장하지 않는 범위에서만 백엔드 인증 연결을 계속할 수 있습니다.
 ```
 
@@ -465,7 +465,7 @@ Autonomy Boundary 안에서는 에이전트가 기존 helper를 재사용할지,
 추천: 릴리스 일정 때문에 면제가 꼭 필요한 경우가 아니라면 막아 두는 것입니다.
 결과 영향: 면제는 이름 붙은 check에 대한 닫기 준비 상태만 바꿉니다.
 불확실성: 사람이 확인하거나 위험을 따로 수용하기 전까지 시각적 줄바꿈 위험은 남습니다.
-에이전트가 사용자 대신 판단하지 않는 것: 남은 줄바꿈 위험 수용, 작업 수락, 분리 검증, 쓰기 권한.
+에이전트가 사용자 대신 판단하지 않는 것: 남은 줄바꿈 위험 수용, 작업 수락, 분리 검증, 쓰기 전 범위 확인.
 영향받는 그룹: 닫기 준비 상태; 소유자 경로/gate 참조: 수동 QA / qa_gate; 영향받는 기준: AC-03 온보딩 문구 레이아웃.
 ```
 
@@ -515,7 +515,7 @@ Feedback Loop는 선택된 루프와 루프 발견사항을 위한 기준 근거
 
 ## AFK 작업과 공개 약속
 
-사용자가 자리를 비운 동안 계속하라고 했더라도, 그것은 이미 기록된 latitude를 쓰라는 뜻이지 새 권한을 만든다는 뜻이 아닙니다. 에이전트는 active Change Unit, active Autonomy Boundary, 허가된 민감 동작 permission, 각 제품 파일 쓰기에 맞는 `prepare_write` / 쓰기 허가 기록 안에서만 계속할 수 있습니다. Minimum MVP-1에서는 이 permission을 민감 동작 승인 user judgment로 표현하고, later Approval profile은 Approval record를 사용할 수 있습니다.
+사용자가 자리를 비운 동안 계속하라고 했더라도, 그것은 이미 기록된 latitude를 쓰라는 뜻이지 새 권한을 만든다는 뜻이 아닙니다. 에이전트는 active Change Unit, active Autonomy Boundary, 기록된 민감 동작 permission, 각 제품 파일 쓰기에 맞는 `prepare_write` / 내부 쓰기 허가 기록 안에서만 계속할 수 있습니다. Minimum MVP-1에서는 이 permission을 민감 동작 승인 user judgment로 표현하고, later Approval profile은 Approval record를 사용할 수 있습니다.
 
 범위 확장, compatible 민감 동작 permission 없는 새 민감 동작, Autonomy Boundary 위반, 잔여 위험 수용, 작업 수락, QA 또는 검증 면제 판단, 공개 API 또는 모듈 계약 변경, 공개 의미에 영향을 주는 도메인 언어 변경, 릴리스/지원 약속, 사용자나 다른 시스템이 의존할 수 있는 다른 공개 약속 전에는 멈추고 가장 작은 해소 방법을 보여줘야 합니다.
 
@@ -523,12 +523,12 @@ AFK stop을 보여줄 때는 보장 수준을 이름 붙입니다. 협력형 또
 
 ## 제품 파일 쓰기
 
-제품 파일을 쓰기 전에는 에이전트가 의도한 작업에 대한 쓰기 권한을 확인해야 합니다.
+제품 파일을 쓰기 전에는 에이전트가 의도한 작업에 대한 쓰기 전 범위 확인을 실행해야 합니다.
 
-짧은 쓰기 권한 요약을 보여줍니다.
+짧은 쓰기 전 범위 확인 요약을 보여줍니다.
 
 ```text
-쓰기 권한: src/auth/login.ts와 tests/auth/login.test.ts에 허용됨
+쓰기 전 범위 확인: src/auth/login.ts와 tests/auth/login.test.ts에 맞음
 범위 근거: email login 작업 범위(필요하면 Change Unit 참조를 함께 표시)
 한계: 협력형 접점이라서 범위를 벗어난 쓰기는 사후 변경 경로 검증으로만 감지합니다.
 ```
@@ -537,9 +537,9 @@ AFK stop을 보여줄 때는 보장 수준을 이름 붙입니다. 협력형 또
 
 협력형 또는 탐지형 hold를 실행 전에 막는 것처럼 설명하면 안 됩니다. 지시로 쓰기를 보류한다고 말하거나, 연결된 프로필이 해당 검증을 지원할 때 실행 뒤에 위반을 감지할 수 있다고 말합니다. 실행 전 차단(preventive) 표현은 해당 동작에 대해 입증된 도구 실행 전 차단이 있을 때만 씁니다.
 
-쓰기 권한이 막혔거나, 확인할 수 없거나, 최신이 아니거나, 의도한 변경과 맞지 않으면 제품 파일 쓰기를 멈추고 가장 작은 해소 방법을 설명합니다.
+쓰기 전 범위 확인이 막혔거나, 확인할 수 없거나, 최신이 아니거나, 의도한 변경과 맞지 않으면 제품 파일 쓰기를 멈추고 가장 작은 해소 방법을 설명합니다.
 
-관찰된 변경 경로가 사용된 쓰기 허가 기록 또는 active Change Unit 밖이면, 승인된 작업처럼 요약하지 않습니다. 불일치를 보여주고 추가 제품 파일 쓰기를 멈춘 뒤 복구로 연결합니다. 추가 변경을 되돌리거나 분리할지, 범위 결정을 요청할지, 더 넓은 변경이 의도된 것이라면 추적되는 작업(`work`)으로 전환할지 선택해야 합니다.
+관찰된 변경 경로가 소비된 내부 쓰기 허가 기록 또는 active Change Unit 밖이면, 범위에 맞는 작업처럼 요약하지 않습니다. 불일치를 보여주고 추가 제품 파일 쓰기를 멈춘 뒤 복구로 연결합니다. 추가 변경을 되돌리거나 분리할지, 범위 결정을 요청할지, 더 넓은 변경이 의도된 것이라면 추적되는 작업(`work`)으로 전환할지 선택해야 합니다.
 
 문서 유지보수 편집은 별도의 문서 전용 흐름입니다. 이 문서의 제품 파일 쓰기 흐름이 아니라 [문서 작성 가이드](../maintain/authoring-guide.md)가 다룹니다.
 
@@ -625,7 +625,7 @@ AFK stop을 보여줄 때는 보장 수준을 이름 붙입니다. 협력형 또
 
 추적되는 작업의 닫기 요약은 닫을 수 있는 근거를 보여줘야 합니다. 적용된 변경 범위, 민감 동작 permission, 근거 범위, 검증, 수동 QA, 잔여 위험 표시, 잔여 위험 수용, 작업 수락, 닫기 이유를 해당되는 만큼 표시합니다. Gate가 `waived`, `not_required`, `failed`, `pending`, `blocked` 중 하나라면 일반적인 성공 문장에 묻지 말고 그대로 말해야 합니다.
 
-작업 모양에 맞는 닫기 표시를 사용합니다. `DIRECT-RESULT`는 작은 변경의 간결한 결과 표시이고, `TASK` Close Summary는 진행 중이거나 최근 닫힌 추적되는 작업의 이어가기 표시이며, Journey Card close context는 later profile에서 켜졌을 때 compact status/resume 표시입니다. 이 표시들은 state, gate, 작업 수락, QA, 검증, 잔여 위험 수용, 닫기, 쓰기 권한을 만들지 않습니다.
+작업 모양에 맞는 닫기 표시를 사용합니다. `DIRECT-RESULT`는 작은 변경의 간결한 결과 표시이고, `TASK` Close Summary는 진행 중이거나 최근 닫힌 추적되는 작업의 이어가기 표시이며, Journey Card close context는 later profile에서 켜졌을 때 compact status/resume 표시입니다. 이 표시들은 state, gate, 작업 수락, QA, 검증, 잔여 위험 수용, 닫기, 쓰기 전 범위 확인 기록을 만들지 않습니다.
 
 닫기 표시는 같은 여섯 가지 사용자용 개념을 먼저 사용해야 합니다. 작업은 닫으려는 결과, 범위는 변경 범위, 판단은 작업 수락, 잔여 위험 수용, QA 면제 판단, 검증 면제 판단, 관련 있을 때 민감 동작 permission을 보여줍니다. 근거는 뒷받침하는 참조, 확인 또는 검증은 테스트, 검증, 수동 QA, 면제 상태를 보여줍니다. 마무리 또는 닫기는 닫기 막힘, 닫기 이유, 남은 위험, 다음 안전한 행동을 보여줍니다. 내부 `gate` 이름은 막힘을 설명할 때 뒤에 붙일 수 있지만, 정확한 `gate` 값과 닫기 의미는 커널이 담당합니다.
 
@@ -650,7 +650,7 @@ AFK stop을 보여줄 때는 보장 수준을 이름 붙입니다. 협력형 또
 좋은 시작:
 
 ```text
-요청은 문구 하나만 바꾸는 일이라 가볍게 처리할 수 있는 작은 변경으로 보입니다. 범위는 설정 화면 문구 하나입니다. 범위 밖은 계정 동작과 API 변경입니다. 다음 안전한 행동은 해당 파일의 쓰기 권한을 확인한 뒤 수정하고 자체 확인하는 것입니다.
+요청은 문구 하나만 바꾸는 일이라 가볍게 처리할 수 있는 작은 변경으로 보입니다. 범위는 설정 화면 문구 하나입니다. 범위 밖은 계정 동작과 API 변경입니다. 다음 안전한 행동은 해당 파일의 쓰기 전 범위 확인을 거친 뒤 수정하고 자체 확인하는 것입니다.
 ```
 
 나쁜 시작:
@@ -715,7 +715,7 @@ AFK stop을 보여줄 때는 보장 수준을 이름 붙입니다. 협력형 또
 닫기 준비 상태: 이 작은 변경에 남은 닫기 관련 막힘이나 알려진 잔여 위험은 없습니다.
 ```
 
-고급 사용자 또는 진단용 표시는 권한이나 근거를 설명하는 데 도움이 될 때 쓰기 허가 기록, evidence summary, Run, 아티팩트, Residual Risk, 해당 profile이 active일 때 Evidence Manifest 참조 같은 소유자 참조를 함께 보여줄 수 있습니다.
+고급 사용자 또는 진단용 표시는 권한이나 근거를 설명하는 데 도움이 될 때 쓰기 전 범위 확인 / Write Authorization, evidence summary, Run, 아티팩트, Residual Risk, 해당 profile이 active일 때 Evidence Manifest 참조 같은 소유자 참조를 함께 보여줄 수 있습니다.
 
 좋은 추적되는 작업 닫기 결과:
 
@@ -730,7 +730,7 @@ AFK stop을 보여줄 때는 보장 수준을 이름 붙입니다. 협력형 또
 좋은 쓰기 멈춤:
 
 ```text
-새 auth 파일에 대한 쓰기 권한이 없어 제품 파일 쓰기를 멈춥니다. 가장 작은 해소 방법은 범위에 해당 파일을 포함하도록 업데이트하거나 변경을 기존 login module 안으로 줄이는 것입니다.
+새 auth 파일에 대한 쓰기 전 범위 확인이 맞지 않거나 사용할 수 없어 제품 파일 쓰기를 멈춥니다. 가장 작은 해소 방법은 범위에 해당 파일을 포함하도록 업데이트하거나 변경을 기존 login module 안으로 줄이는 것입니다.
 ```
 
 나쁜 쓰기 멈춤:

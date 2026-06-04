@@ -292,7 +292,7 @@ StateRecordRef:
 
 For `record_kind=projection`, `record_id` is the projection job identity when the Operations/projection profile is active. `projection_path` is optional display/recovery metadata, not an alternate key.
 
-## Evidence and write authority schemas
+## Evidence and pre-write scope schemas
 
 ```yaml
 EvidenceRefs:
@@ -341,10 +341,12 @@ WriteAuthoritySummary:
   guarantee_display:
     level: cooperative | detective | preventive | isolated
     notes: string[]
-  note: "Autonomy Boundary is judgment latitude, not write authority."
+  note: "Autonomy Boundary is judgment latitude, not a pre-write scope check."
 ```
 
 `WriteAuthorizationSummary.approval_refs` is empty in minimum MVP-1. Resolved sensitive-action approval user judgments appear in `user_judgment_refs`; committed Approval refs appear only when the Approval owner profile is active.
+
+`WriteAuthorizationSummary` and `WriteAuthoritySummary` are API/internal names. MVP-1 user-facing displays should call this a pre-write scope check first. Fields such as `allowed_paths`, `allowed_tools`, and `status=allowed` describe Harness compatibility for the cooperative record/check only; they do not mean OS permission, sandboxing, tamper-proof enforcement, preventive blocking, or isolation.
 
 ## UserJudgment
 
@@ -524,7 +526,7 @@ AcceptanceVisibilityContext:
 
 In MVP-1, residual-risk summary refs usually point to `blocker` and `user_judgment` records. Rich `residual_risk` records are later/profile-promoted storage.
 
-Autonomy Boundary summaries describe judgment latitude, not write authority. They do not authorize paths, tools, commands, network targets, secret access, or sensitive categories outside active scope and required sensitive-action permission.
+Autonomy Boundary summaries describe judgment latitude, not pre-write scope-check compatibility. They do not create Write Authorization records, make paths/tools/commands/network targets/secret access/sensitive categories compatible, or expand active scope and required sensitive-action permission.
 
 ## ValidatorResult
 

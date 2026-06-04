@@ -22,12 +22,12 @@ For exact contracts, use the [Reference Index](../reference/README.md) and pick 
 
 ## Main idea
 
-Harness value is not merely that a write authority loop exists. Harness should preserve scope, user-owned judgment, evidence references, close readiness, acceptance boundaries, and residual risk in a local authority record. Delivery therefore has two early targets:
+Harness value is not merely that a pre-write scope-check loop exists. Harness should preserve scope, user-owned judgment, evidence references, close readiness, acceptance boundaries, and residual risk in a local authority record. Delivery therefore has two early targets:
 
 - Engineering Checkpoint proves the smallest coherent internal Core authority loop.
 - MVP-1 User Work Loop proves that ordinary users can start or resume tracked work, see the scope and judgment boundaries, and understand evidence, blockers, next action, and residual-risk visibility without a full assurance system.
 
-The first slice stays intentionally narrow. It proves one local project registration, one active Task, one scoped boundary, one `prepare_write` authority path, one single-use Write Authorization, one recorded Run, one artifact/evidence reference, and one structured status/blocker response. It is not a product MVP. MVP-1 begins user value when the user-facing path can translate normal work into scope, non-goals, success criteria, user-owned judgment, evidence summary, close blockers, and residual-risk visibility without confusing sensitive-action approval, work acceptance, and risk acceptance.
+The first slice stays intentionally narrow. It proves one local project registration, one active Task, one scoped boundary, one `prepare_write` pre-write scope-check path, one single-use internal Write Authorization record, one recorded Run, one artifact/evidence reference, and one structured status/blocker response. It is not a product MVP. MVP-1 begins user value when the user-facing path can translate normal work into scope, non-goals, success criteria, user-owned judgment, evidence summary, close blockers, and residual-risk visibility without confusing sensitive-action approval, work acceptance, and risk acceptance.
 
 Projection-template polish, detailed reports, dashboards or hosted workflow UI, indexes, broad connector ecosystems or marketplaces, team workflow, surface-specific connector automation, metrics, parallel orchestration, and broad automation become useful after the authority record and user-facing value path exist. They are not first-slice requirements.
 
@@ -71,7 +71,7 @@ This contract is deliberately user-visible but small. It does not require detach
 
 | Concept | What it proves | What it does not prove |
 |---|---|---|
-| Engineering Checkpoint | A first runnable internal Core authority loop over one local project registration, one active Task, one scoped boundary, one `prepare_write` authority path, one single-use Write Authorization, one recorded Run, one artifact/evidence ref, and one structured status/blocker response. | User-facing product value, natural-language intake, full Discovery, full-format user judgment presentation, full Evidence Manifest, Eval, Manual QA, Acceptance, residual-risk acceptance, full close semantics, projection rendering, conformance runner, operations/export/recover, dashboards, and connectors. |
+| Engineering Checkpoint | A first runnable internal Core authority loop over one local project registration, one active Task, one scoped boundary, one `prepare_write` pre-write scope-check path, one single-use internal Write Authorization record, one recorded Run, one artifact/evidence ref, and one structured status/blocker response. | User-facing product value, natural-language intake, full Discovery, full-format user judgment presentation, full Evidence Manifest, Eval, Manual QA, Acceptance, residual-risk acceptance, full close semantics, projection rendering, conformance runner, operations/export/recover, dashboards, and connectors. |
 | MVP-1 User Work Loop | Users can start or resume tracked work in ordinary language and see Core-derived scope, non-goals, success criteria, judgment requests/records, status/next output, evidence summary, close blockers, residual-risk visibility, and separated sensitive approval / work acceptance / risk acceptance display. | Dashboard, hosted UI, full Decision Packet output for every judgment, OS-level sandbox or permission isolation, detailed Evidence Manifest, full report/export, runtime conformance suite, operations/recovery/handoff pack, full detached verification unless an active profile requires it, full Manual QA matrix, full waiver machinery, polished Journey/Spine/reporting, detailed Eval, TDD Trace, Module Map, Interface Contract, broad connectors, and operations suite. |
 | Assurance Profile | The MVP-1 user-value path is hardened with verification, QA, residual-risk, work-acceptance, and stewardship profiles. | Operator recovery/export completeness, release handoff, broad operations coverage, roadmap automation. |
 | Operations Profile | The same Core model supports doctor/readiness, recover/export, artifact integrity, release handoff, and broader conformance coverage. | Dashboard, hosted workflow UI, broad connectors, Browser QA Capture automation, Cross-Surface Verification automation, Context Index, team workflow, orchestration. |
@@ -110,7 +110,7 @@ Build staging does not upgrade security guarantees by itself. Security wording f
 | Stage | Guarantee posture to plan for |
 |---|---|
 | Engineering Checkpoint | Cooperative plus limited detective behavior. Core can refuse invalid state changes and return structured blockers, but the reference path does not stop arbitrary local processes or isolate tools by default. |
-| MVP-1 User Work Loop | Cooperative/detective behavior with honest user-visible blockers, MCP availability, evidence gaps, close readiness, and honest guarantee display. |
+| MVP-1 User Work Loop | Cooperative plus limited detective behavior with honest user-visible blockers, MCP availability, evidence gaps, close readiness, and honest guarantee display. No preventive or isolated behavior is claimed. |
 | Assurance Profile | Stronger separation and detective assurance around verification, Manual QA, residual risk, work acceptance, Approval, and stewardship. |
 | Operations Profile | Detective operations around doctor/readiness, recover/export, artifact integrity, projection freshness, and release handoff. |
 | Roadmap | Preventive or isolated candidates only after owner docs define and promote exact covered operations or real isolation boundaries, with conformance proof. |
@@ -132,7 +132,7 @@ MCP resources are read-only and follow the same staged delivery boundary as publ
 
 | Stage | Resource scope in stage | Keep out of the stage exit |
 |---|---|---|
-| Engineering Checkpoint | `harness://project/current`, `harness://task/active`, `harness://task/{task_id}`, and optional `harness://task/{task_id}/summary` / `harness://status/card` for current state, blockers, write authority, and minimal Run/artifact/evidence refs. | Journey, Spine, full user judgment storage/presentation, Evidence Manifest, bundle, reports, design/domain maps, module maps, interface contracts, projection jobs, and full projection rendering. |
+| Engineering Checkpoint | `harness://project/current`, `harness://task/active`, `harness://task/{task_id}`, and optional `harness://task/{task_id}/summary` / `harness://status/card` for current state, blockers, pre-write scope-check status, and minimal Run/artifact/evidence refs. | Journey, Spine, full user judgment storage/presentation, Evidence Manifest, bundle, reports, design/domain maps, module maps, interface contracts, projection jobs, and full projection rendering. |
 | MVP-1 User Work Loop | Engineering Checkpoint resources plus minimal user-judgment context for current work. Evidence summary, close blocker summary, work-acceptance display, sensitive-approval display, and residual-risk visibility can appear through status/card or task summary output. | Detailed Evidence Manifest resource, detached verification/QA resources unless profile-required, reports, bundles, Journey/Spine polish, design maps, module maps, interface contracts, export/recover. |
 | Assurance Profile | Profile-gated assurance reads such as `harness://policy/sensitive-categories` and `harness://task/{task_id}/evidence-manifest` when evidence/assurance support is enabled. | Operator report/export completeness and broad operations resources. |
 | Operations Profile | Operations reads such as broad `harness://project/surfaces`, `harness://task/{task_id}/reports/latest`, and `harness://task/{task_id}/bundle/current` when connector freshness, report, export, recover, or handoff profiles are in scope. | Dashboard, hosted workflow UI, broad connector automation, and roadmap resources unless promoted later. |
@@ -163,11 +163,11 @@ Engineering Checkpoint must prove:
 - one local project registration
 - one active Task in Core-owned state
 - one scoped boundary for the intended change, represented by the Change Unit owner shape only where the reference contract requires it
-- one `prepare_write` allow/structured-blocker path
-- one durable single-use Write Authorization
-- one `record_run` that consumes that authorization
+- one `prepare_write` compatible/structured-blocker path
+- one durable single-use internal Write Authorization record
+- one `record_run` that consumes that internal Write Authorization record
 - one registered `ArtifactRef` or equivalent evidence reference owned by Core/API contracts
-- one structured status/blocker response for missing scope, missing write authority, or missing artifact/evidence support
+- one structured status/blocker response for missing scope, missing pre-write scope check, or missing artifact/evidence support
 
 The matching storage path is the minimal authority subset of [Storage And DDL: MVP-1 minimal storage schema](../reference/storage-and-ddl.md#mvp-1-minimal-storage-schema): project identity, one Task, one task-scope/Change Unit row, one cooperative write-check / Write Authorization path, one Run, one evidence ref, and structured blockers. User-facing judgment records are added for MVP-1 user value, but Approval records, detailed Evidence Manifest, Manual QA, Eval, residual-risk lifecycle tables, projection jobs, reconcile items, validator runs, Journey records, and diagnostic/stewardship tables remain later-profile storage unless a profile owner explicitly promotes them.
 
@@ -175,7 +175,7 @@ Engineering Checkpoint explicitly excludes natural-language intake, full Discove
 
 Kernel Smoke candidates for Engineering Checkpoint should assert only the minimal authority loop through Core state, the required owner records for that loop, artifact/evidence refs, and structured blockers. Projection polish, detailed templates, renderer output, and broad fixture catalogs are not first-slice conformance truth.
 
-At this point, an implementer can observe that Core owns the minimal state, a scoped write is allowed or rejected with a structured blocker, one authorization is consumed once, an artifact/evidence ref is linked to the recorded Run, and status/blocker output can return structured blockers. This is implementer confidence, not proof that users experience Harness value.
+At this point, an implementer can observe that Core owns the minimal state, a scoped write is compatible or rejected with a structured blocker, one internal Write Authorization record is consumed once, an artifact/evidence ref is linked to the recorded Run, and status/blocker output can return structured blockers. This is implementer confidence, not proof that users experience Harness value.
 
 ### Contract field staging
 
@@ -204,7 +204,7 @@ The items below are resolved in the documentation baseline. They still require m
 | `harness.next` separate method vs `status.next_actions` | `harness.status.next_actions` is the MVP-1 next-safe-action output. `harness.next` has moved to later/compatibility material derived from the same Core state. | MVP-1 satisfies the minimum next-action requirement through status when it clearly returns the next safe action and smallest unblocker. |
 | MVP-1 storage minimum | MVP-1 uses a small persistence model: `projects` / `project_state`, `tasks`, task-scope fields or `change_units`, `user_judgments`, cooperative `write_authorizations`, `runs`, `evidence_refs`, and `blockers`, with `tool_invocations` / `task_events` only as replay/audit support. | Do not add later-profile `task_intake`, `residual_risks`, `evidence_summaries`, `close_readiness`, `projection_status_cards`, `approvals`, `evidence_manifests`, Manual QA, Eval, projection job, reconcile, export/recover, validator-run, Journey, or operations tables to the MVP-1 exit unless an owner profile promotes them. |
 | Local access error taxonomy | API-visible early failures use the MCP/API owner taxonomy: `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `STATE_CONFLICT` for stale expected state or replay conflict, `CAPABILITY_INSUFFICIENT` for recognized surfaces lacking required capability, and `PROJECTION_STALE` only for stale readable views. Operations may distinguish `MCP_SERVER_UNAVAILABLE` from `SURFACE_MCP_UNAVAILABLE`. | Build docs do not define new error codes. Use the MCP/API and Security owner contracts for precedence and display-safe details. |
-| Compact status card scope | MVP-1 status/card output is a Core-derived display of current work shape, scope/non-goals/success criteria, pending judgments, evidence summary or gaps, close blockers, residual-risk summary, next safe action, guarantee level, and source/freshness refs. Optional card persistence is not required. | A compact card must not authorize writes, satisfy evidence, record acceptance, accept residual risk, close a Task, or become canonical state. Stale, failed, or unknown freshness must be visible. |
+| Compact status card scope | MVP-1 status/card output is a Core-derived display of current work shape, scope/non-goals/success criteria, pending judgments, evidence summary or gaps, close blockers, residual-risk summary, next safe action, guarantee level, and source/freshness refs. Optional card persistence is not required. | A compact card must not create Write Authorization records, make writes compatible, satisfy evidence, record acceptance, accept residual risk, close a Task, or become canonical state. Stale, failed, or unknown freshness must be visible. |
 | Small direct change evidence requirement | Small direct changes still use explicit scope, compatible `prepare_write`, and `record_run`. Evidence may be lightweight, but the completion claim must be backed by the Run/artifact/evidence refs or evidence summary required by the active path. | Missing required evidence blocks close; small-change labeling must not bypass authority, user judgment, evidence, or risk visibility. Detailed Evidence Manifest remains later-profile scope. |
 | Acceptance and residual risk minimal records | MVP-1 separates sensitive-action approval, work acceptance, and residual-risk acceptance through `user_judgment` records when those routes are required. Visible residual risk can be represented by `blockers` and the related judgment/evidence refs; rich `residual_risks` rows are later-profile. | Work acceptance is not sensitive-action approval, and residual-risk acceptance is not work acceptance. Committed Approval lifecycle, full residual-risk lifecycle metadata, and assurance hardening remain later-profile unless promoted. |
 
@@ -235,7 +235,7 @@ This checklist is not accepted yet. Maintainers must accept each item, or explic
 - Engineering Checkpoint API subset accepted.
 - Engineering Checkpoint DDL accepted.
 - State transitions accepted.
-- Write Authorization lifecycle accepted.
+- Internal Write Authorization lifecycle accepted.
 - Artifact/evidence ref shape accepted.
 - Structured blocker shape accepted.
 - Local access posture accepted.
@@ -243,17 +243,17 @@ This checklist is not accepted yet. Maintainers must accept each item, or explic
 
 ### Engineering Checkpoint flow
 
-Engineering Checkpoint summary: this planning flow proves one authority loop around project/Task setup, scope, `prepare_write`, Write Authorization, `record_run`, artifact/evidence refs, and structured status/blocker output. It is not an implemented runtime flow in this repository today.
+Engineering Checkpoint summary: this planning flow proves one authority loop around project/Task setup, scope, `prepare_write`, internal Write Authorization record, `record_run`, artifact/evidence refs, and structured status/blocker output. It is not an implemented runtime flow in this repository today.
 
 ```mermaid
 flowchart LR
   Register["project registered"] --> Task["Task"]
   Task --> Scope["scope"]
   Scope --> Check["prepare_write"]
-  Check -->|allowed| Authorization["Write Authorization"]
+  Check -->|compatible| Authorization["Write Authorization"]
   Authorization --> Run["record_run"]
   Run --> Evidence["ArtifactRef"]
-  Check -->|not allowed| Blocker["structured blocker"]
+  Check -->|not compatible| Blocker["structured blocker"]
   Evidence --> Status["status / next action<br/>or blocker"]
   Blocker --> Status
 ```
@@ -278,14 +278,14 @@ The slice must demonstrate:
 - small changes and tracked work have different procedural budgets without letting small-change labeling bypass authority
 - ambiguous feature requests enter clarification instead of premature implementation
 - status and next-output explain current scope, missing judgments, evidence state, close blockers, residual-risk visibility, and safe next action
-- pre-write scope checking is cooperative Core authority behavior through `prepare_write`, not OS-level blocking, arbitrary-tool isolation, or tamper-proof local storage
+- pre-write scope checking is cooperative Core record/check behavior through `prepare_write`, not OS-level blocking, arbitrary-tool isolation, permission isolation, or tamper-proof local storage
 - run and evidence references are recorded through `record_run`, registered artifacts, or the minimum evidence summary path
 - evidence summary
 - close blocker summary when required evidence or a required user-owned judgment is missing
 - residual risk visibility before acceptance and close when known close-relevant risk exists
 - sensitive-action Approval, work acceptance, and risk acceptance are displayed separately
 - a compact status card derived from Core state, not from chat or rendered Markdown
-- ambiguous consent such as "go ahead" or "looks good" does not resolve ambiguous judgment routes, waive evidence, accept residual risk, or authorize out-of-scope work
+- ambiguous consent such as "go ahead" or "looks good" does not resolve ambiguous judgment routes, waive evidence, accept residual risk, or make out-of-scope work compatible
 - MCP/Core unavailable status does not fabricate authority state
 - projection/template output remains derived and cannot become state
 - verification is required only when the active profile, user request, task type, or risk profile requires it
@@ -296,7 +296,7 @@ Evidence records, readable summaries, and projection freshness support this expe
 
 MVP-1 explicitly excludes dashboard, hosted UI, full Decision Packet output for every judgment, OS-level sandbox or permission isolation, detailed Evidence Manifest, full report/export, runtime conformance suite, operations/recovery/handoff pack, full detached verification independence unless an active profile requires it, the full Manual QA matrix, full waiver machinery, polished Journey/Spine/reporting, detailed Eval, TDD Trace, Module Map, Interface Contract, broad connectors, operations suite, stewardship validators, feedback-loop policy, release handoff, Browser QA Capture, Cross-Surface Verification automation, Context Index, metrics, team workflow, and orchestration.
 
-Passing MVP-1 means a user can see why Harness is more than an authorization wrapper: it keeps the work's scope, judgments, evidence summary, close blockers, acceptance boundaries, and risk visibility locally inspectable.
+Passing MVP-1 means a user can see why Harness is more than a write-check wrapper: it keeps the work's scope, judgments, evidence summary, close blockers, acceptance boundaries, and risk visibility locally inspectable.
 
 ## Assurance Profile
 
@@ -347,7 +347,7 @@ Keep these outside staged delivery unless a future plan promotes them through ow
 | Browser QA Capture automation | May assist Manual QA after promotion; must not replace human QA judgment, work acceptance, or profile-required detached verification. |
 | Cross-Surface Verification automation | May automate evaluator routing after promotion; must not satisfy Eval or assurance without Core-owned return records and any independence semantics required by the active profile. |
 | Preventive guard expansion, native hooks, Advanced Sidecar Watcher | May strengthen surfaces after a proven pre-tool blocking or observation path; must not be claimed by label alone. |
-| Context Index, Local Derived Metrics, long-term metrics | May provide read-only retrieval or diagnostics; must not authorize writes, satisfy gates, refresh projections, or close Tasks. |
+| Context Index, Local Derived Metrics, long-term metrics | May provide read-only retrieval or diagnostics; must not make writes compatible, satisfy gates, refresh projections, or close Tasks. |
 | Team workflow, permissions, orchestration, parallel lanes | May coordinate future work; must not become required for staged delivery or single-project local authority. |
 | Deployment, canary, rollback, merge, production monitoring | May be future integration work; release handoff remains a report/export boundary unless owner docs promote more. |
 
@@ -364,12 +364,12 @@ Use these as implementation-readable checklists for future runtime planning afte
 - One scoped work boundary names the intended change boundary.
 - Product writes without compatible scope are refused by Core with a structured blocker; this is not a default pre-tool security block.
 - Out-of-scope intended writes are refused by Core with a structured blocker; this is not a default pre-tool security block.
-- Allowed `prepare_write` creates a durable single-use Write Authorization.
-- A compatible `record_run` consumes the authorization once.
-- A second distinct product-write Run cannot reuse the consumed authorization.
+- Compatible `prepare_write` creates a durable single-use internal Write Authorization record.
+- A compatible `record_run` consumes the internal Write Authorization record once.
+- A second distinct product-write Run cannot reuse the consumed internal Write Authorization record.
 - One artifact/evidence ref is registered and linked to the Run or minimal owner relation.
 - Status/blocker output reports current state or a blocker without mutating state.
-- A structured blocker/status response reports missing scope, missing write authority, or missing artifact/evidence support.
+- A structured blocker/status response reports missing scope, missing pre-write scope check, or missing artifact/evidence support.
 
 ### MVP-1 User Work Loop exit checklist
 
@@ -380,15 +380,15 @@ Use these as implementation-readable checklists for future runtime planning afte
 - Clarification quality is sufficient for the next safe action: it does not stop at one superficial question, does not dump a long questionnaire, separates blocking from useful-but-not-blocking questions, and gives choices and consequences for user-owned judgments.
 - Product/UX judgment and Technical judgment can be presented separately from each other and from Sensitive action approval, Work acceptance, and Residual risk acceptance.
 - Minimal user judgment requests and records exist for MVP-1 decisions without requiring full-format judgment presentation machinery.
-- Small direct changes and tracked work use different procedural budgets without bypassing write authority, evidence, or a required user judgment.
-- Pre-write scope checking is cooperative Harness authority behavior through Core and `prepare_write`; MVP-1 does not claim OS-level blocking, permission isolation, or arbitrary-tool sandboxing.
+- Small direct changes and tracked work use different procedural budgets without bypassing pre-write scope checks, evidence, or a required user judgment.
+- Pre-write scope checking is cooperative Harness record/check behavior through Core and `prepare_write`, with limited detective behavior where changed paths or record mismatches are observed. MVP-1 does not claim OS-level blocking, permission isolation, arbitrary-tool sandboxing, tamper-proof enforcement, preventive blocking, or isolated behavior.
 - Run/evidence references are recorded through `record_run`, registered artifacts, or the minimum evidence summary path.
 - Ambiguous feature requests enter clarification instead of premature implementation.
 - Status/next output explains current scope, missing judgments, evidence summary, residual-risk visibility, close blockers, next output, and next safe action.
 - Close blocker summary reports when required evidence is missing.
 - Close reports a blocker when a required user judgment is missing or unresolved.
 - Residual risk is visible before successful acceptance or close when known close-relevant risk exists.
-- Ambiguous consent phrases such as "go ahead," "looks good," "좋아," or "진행해" do not resolve ambiguous routes, waive evidence, accept residual risk, or authorize out-of-scope work.
+- Ambiguous consent phrases such as "go ahead," "looks good," "좋아," or "진행해" do not resolve ambiguous routes, waive evidence, accept residual risk, or make out-of-scope work compatible.
 - MCP/Core unavailable status reports the lack of authority access and does not fabricate Task state, Write Authorization, evidence, approval, acceptance, or close readiness.
 - Work acceptance is recorded or represented separately from sensitive-action Approval and residual-risk acceptance.
 - Residual-risk acceptance, when supported, is visibly distinct from work acceptance.
@@ -423,7 +423,7 @@ Use these as implementation-readable checklists for future runtime planning afte
 
 | Stage | What the user or operator can observe |
 |---|---|
-| Engineering Checkpoint | An implementer can see one local Task move through a scoped boundary, `prepare_write`, Write Authorization, `record_run`, artifact/evidence ref, and structured status/blocker output. |
+| Engineering Checkpoint | An implementer can see one local Task move through a scoped boundary, `prepare_write`, internal Write Authorization record, `record_run`, artifact/evidence ref, and structured status/blocker output. |
 | MVP-1 User Work Loop | A user can see ordinary work clarified into scope, non-goals, success criteria, user-owned judgment, evidence summary, close blockers, next safe action, work acceptance display, and residual-risk visibility, with close reporting a blocker when required evidence or a required user judgment is missing and work acceptance kept separate from residual-risk acceptance. |
 | Assurance Profile | The local path explains verification, Manual QA, residual-risk acceptance, work acceptance, stewardship, TDD, feedback, context hygiene, and close behavior through Core records and fixtures. |
 | Operations Profile | Operators can diagnose, recover, reconcile, export, check artifacts, run conformance, and prepare release handoff over the same Core state. |

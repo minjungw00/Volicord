@@ -25,6 +25,8 @@ The MVP-1 public tool surface is intentionally small:
 
 `harness.next` is not a separate MVP-1 method. It remains later/compatibility material in [Schema Later](api/schema-later.md#harnessnext).
 
+`harness.prepare_write` is the MVP-1 pre-write scope check. It may produce internal Write Authorization records, but those records are cooperative Harness records/checks. They do not claim OS permission, sandboxing, tamper-proof storage, or preventive blocking.
+
 ## Legacy anchor map
 
 Older links to this page should be updated to the split owners above. The anchors below remain only to route readers during the documentation split.

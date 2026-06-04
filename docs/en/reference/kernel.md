@@ -2,7 +2,7 @@
 
 ## What this document helps you do
 
-Use this reference to check the future Harness Kernel contract for Core authority, work shape, write authority, user judgment routing, evidence, verification, QA, acceptance, residual risk, and close behavior.
+Use this reference to check the future Harness Kernel contract for Core authority, work shape, pre-write scope checks and internal Write Authorization records, user judgment routing, evidence, verification, QA, acceptance, residual risk, and close behavior.
 
 This is reference documentation for a future local Harness Server. No Harness runtime or server implementation exists in this repository today. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 
@@ -10,7 +10,7 @@ This is reference documentation for a future local Harness Server. No Harness ru
 
 - You need the invariants that all future Kernel behavior must preserve.
 - You are deciding whether a Task can read, write, wait for the user, or close.
-- You need to separate scope, write authority, user judgment, evidence, verification, QA, acceptance, and risk.
+- You need to separate scope, pre-write scope checks, user judgment, evidence, verification, QA, acceptance, and risk.
 - You are reviewing API, storage, projection, or conformance docs for consistency with Kernel authority.
 
 ## Before you read
@@ -19,7 +19,7 @@ Read [Concepts](../learn/concepts.md) or [Harness in One Task](../learn/harness-
 
 ## Main idea
 
-Harness is a local authority-record and user-judgment-routing layer. The Kernel makes Core-owned local state, not chat or Markdown, the operational authority for product work. It keeps scope, write authority, user-owned judgments, evidence, verification, QA, acceptance, residual risk, and close readiness in separate routes so one kind of support cannot silently replace another.
+Harness is a local authority-record and user-judgment-routing layer. The Kernel makes Core-owned local state, not chat or Markdown, the operational authority for product work. It keeps scope, pre-write scope checks and internal Write Authorization records, user-owned judgments, evidence, verification, QA, acceptance, residual risk, and close readiness in separate routes so one kind of support cannot silently replace another.
 
 The active stage and profile decide which gates are required for a specific operation. A field or gate appearing in this reference does not make the full future behavior required for Engineering Checkpoint, MVP-1, or a small direct change.
 
@@ -32,7 +32,7 @@ The active stage and profile decide which gates are required for a specific oper
 | User judgment types and routes | [Judgment route boundaries](#judgment-route-boundaries), [User Judgment](#user-judgment), [Decision Gate](#decision-gate) | Public request fields stay in [`harness.request_user_judgment`](api/mvp-api.md#harnessrequest_user_judgment). |
 | Entity relationship semantics | [Entity model](#entity-model) | Physical tables stay in [Storage And DDL](storage-and-ddl.md). |
 | Gate meaning | [Gates](#gates), [Gate Rule Map](#gate-rule-map) | Public blockers and errors stay in [API Errors](api/errors.md#primary-error-code-precedence). |
-| Write authority | [`prepare_write`](#prepare_write), [Write Authorization](#write-authorization), [`record_run`](#record_run) | Public request/response shape stays in [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write) and [`harness.record_run`](api/mvp-api.md#harnessrecord_run). |
+| Pre-write scope checks / Write Authorization | [`prepare_write`](#prepare_write), [Write Authorization](#write-authorization), [`record_run`](#record_run) | Public request/response shape stays in [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write) and [`harness.record_run`](api/mvp-api.md#harnessrecord_run). |
 | Close semantics | [`close_task`](#close_task), [Close matrix by work shape and active profile](#close-matrix-by-work-shape-and-active-profile), [Close result semantics](#close-result-semantics) | Public close response shape stays in [`harness.close_task`](api/mvp-api.md#harnessclose_task). |
 | Waivers and invalid combinations | [Waiver semantics](#waiver-semantics), [Invalid state combinations](#invalid-state-combinations) | Design-policy details stay in [Design Quality Policies](design-quality-policies.md). |
 
@@ -42,8 +42,8 @@ These are the small Core invariants the rest of the Kernel contract serves:
 
 1. Core-owned local state is the authority for operations.
 2. Chat, Markdown projections, generated documents, reports, and cards are not authority.
-3. Scope boundaries must be explicit before write authority is granted.
-4. Product-file writes require compatible write authority for the exact write attempt.
+3. Scope boundaries must be explicit before a product write can pass the pre-write scope check.
+4. Product-file writes require a compatible internal Write Authorization record for the exact write attempt.
 5. User-owned judgments cannot be silently replaced by agent judgment.
 6. Sensitive-action approval, work acceptance, verification waiver, and residual-risk acceptance are separate routes.
 7. Evidence, verification, Manual QA, acceptance, and residual risk do not substitute for one another.
@@ -53,12 +53,12 @@ These are the small Core invariants the rest of the Kernel contract serves:
 ## Kernel in 10 sentences
 
 1. The Kernel is the future Core state contract for local AI-assisted product work.
-2. It keeps the active Task, scope, write authority, judgment records, evidence refs, close blockers, and residual risk outside the chat transcript.
+2. It keeps the active Task, scope, pre-write scope-check status, judgment records, evidence refs, close blockers, and residual risk outside the chat transcript.
 3. Advice/read-only work can answer without product writes.
-4. Small direct changes may stay lightweight, but product-file writes still require compatible scope and write authority.
+4. Small direct changes may stay lightweight, but product-file writes still require compatible scope and a compatible pre-write scope check.
 5. Tracked work keeps scope, blockers, evidence, user judgment, and close readiness visible until the Task can close.
-6. `prepare_write` is the product-write authorization decision point.
-7. `record_run` records what happened and consumes compatible write authority for product-write Runs.
+6. `prepare_write` is the product-write pre-write scope-check and compatibility decision point.
+7. `record_run` records what happened and consumes the compatible internal Write Authorization record for product-write Runs.
 8. `user_judgment` records preserve user-owned judgment. In minimum MVP-1, a sensitive-action approval judgment can record scoped sensitive-action permission; later Approval records add a hardened committed lifecycle.
 9. `close_task` is the completion decision point and checks only the gates required by the active profile and close intent.
 10. Projections help humans read state, but Core state, events, and registered artifact refs remain the authority.
@@ -69,9 +69,9 @@ These are the small Core invariants the rest of the Kernel contract serves:
 
    The active Task is the current unit of user value. It carries mode, lifecycle phase, active scope, current blockers, evidence and artifact refs, user-judgment state, close readiness, acceptance state, residual-risk state, and projection freshness when projection support is enabled.
 
-2. What work is allowed now?
+2. What work is compatible with current scope now?
 
-   Allowed work is computed from the active Task, work shape, active Change Unit, scope, Autonomy Boundary, baseline freshness, sensitive-action permission, user-owned judgments, applicable policy, surface capability, and the requested operation.
+   Compatible work is computed from the active Task, work shape, active Change Unit, scope, Autonomy Boundary, baseline freshness, sensitive-action permission, user-owned judgments, applicable policy, surface capability, and the requested operation.
 
 3. What user judgment is still blocking progress?
 
@@ -93,13 +93,13 @@ User-facing surfaces should lead with the plain work shapes below. These labels 
 
 | Plain work shape | Internal mode | Kernel implication |
 |---|---|---|
-| Advice/read-only | `advisor` | No product-file write is allowed. Scope can be informal unless the advice is converted into product work. Evidence, verification, QA, acceptance, and residual risk are normally not required unless the user request, policy, or active profile requires them. |
-| Small direct change | `direct` | Product-file writes are allowed only through explicit scope and compatible `prepare_write` / Write Authorization. The Change Unit may be minimal when the request is obvious. Evidence may be lightweight. User judgment records, Manual QA, detached verification, work acceptance, and residual-risk acceptance are not created as ceremony; they apply only when triggered by the active profile, task type, user request, sensitive/security/criticality profile, detected risk, or explicit requirement. |
+| Advice/read-only | `advisor` | Product-file write is not a valid outcome. Scope can be informal unless the advice is converted into product work. Evidence, verification, QA, acceptance, and residual risk are normally not required unless the user request, policy, or active profile requires them. |
+| Small direct change | `direct` | Product-file writes can proceed only through explicit scope and compatible `prepare_write` / internal Write Authorization record. The Change Unit may be minimal when the request is obvious. Evidence may be lightweight. User judgment records, Manual QA, detached verification, work acceptance, and residual-risk acceptance are not created as ceremony; they apply only when triggered by the active profile, task type, user request, sensitive/security/criticality profile, detected risk, or explicit requirement. |
 | Tracked work | `work` | Used for structured, multi-step, risky, user-facing, public-interface, security/privacy, architecture, or otherwise non-trivial work. It keeps scope, user judgment, evidence, close blockers, acceptance, and residual risk visible. It does not automatically require every future gate; the active profile decides which gates are required. |
 
 Small direct changes must stay small. Escalate the same Task to tracked work when scope becomes unclear, changed paths exceed the active scope, multiple product areas or subsystems are involved, Product/UX judgment or Technical judgment appears, public API or module contract impact appears, security/privacy impact appears, a sensitive action appears, evidence expectations grow, QA or verification becomes required, residual risk becomes non-trivial, or multi-step delivery is needed.
 
-The tiny direct profile is only a display/profile choice inside `mode=direct`. It is appropriate for a typo, one docs sentence with no meaning change, or an obvious rename. It must not bypass scope, write authority, sensitive-action permission, user-owned judgment, evidence requirements that actually apply, residual-risk visibility, or close rules.
+The tiny direct profile is only a display/profile choice inside `mode=direct`. It is appropriate for a typo, one docs sentence with no meaning change, or an obvious rename. It must not bypass scope, pre-write scope checking, sensitive-action permission, user-owned judgment, evidence requirements that actually apply, residual-risk visibility, or close rules.
 
 ## Judgment route boundaries
 
@@ -119,11 +119,11 @@ Harness separates what the user is judging from the internal owner path that rec
 
 | Route | Kernel meaning | Must not be treated as |
 |---|---|---|
-| `choose` | The user chooses among product, technical, security/privacy, or scope/autonomy options. | Sensitive-action permission, write authority, acceptance, waiver, or risk acceptance. |
+| `choose` | The user chooses among product, technical, security/privacy, or scope/autonomy options. | Sensitive-action permission, pre-write scope-check compatibility, acceptance, waiver, or risk acceptance. |
 | `defer` | The user intentionally defers a user-owned judgment, with recorded effect on progress, close, risk, and follow-up. | Resolution, waiver, acceptance, or permission to hide the blocker. |
 | `approve-sensitive-action` | The user grants scoped sensitive-action permission through a sensitive-action approval user judgment; later Approval profiles may also commit an Approval record. | Product direction, technical direction, correctness proof, work acceptance, risk acceptance, QA, verification, evidence, or Write Authorization. |
 | `waive` | The user or policy waives a named requirement when waiver is allowed. | The skipped QA/check/verification itself, assurance upgrade, or generic consent. |
-| `accept-result` | The user accepts the result when work acceptance is required, after the close basis is visible. | Evidence, QA, verification, sensitive-action permission, waiver, residual-risk acceptance, or new write authority. |
+| `accept-result` | The user accepts the result when work acceptance is required, after the close basis is visible. | Evidence, QA, verification, sensitive-action permission, waiver, residual-risk acceptance, or a new pre-write scope check. |
 | `accept-risk` | The user accepts a named visible close-relevant Residual Risk for the requested close. | No-risk close, detached verification, QA pass, evidence sufficiency, work acceptance, or sensitive-action permission. |
 | `reconcile` | The user or operator resolves human-editable or generated/projection drift into accepted state, note, rejection, decision request, or deferral. | Direct state mutation from Markdown, report prose, or chat. |
 
@@ -186,11 +186,11 @@ Does-not-substitute table:
 
 | This | Does not substitute for |
 |---|---|
-| Chat text, generated Markdown, or report prose | Core state, evidence, decisions, Approval, close blockers, or write authority. |
+| Chat text, generated Markdown, or report prose | Core state, evidence, decisions, Approval, close blockers, or pre-write scope-check records. |
 | Evidence, logs, screenshots, or artifact refs | Manual QA, verification, work acceptance, or residual-risk acceptance. |
 | Test pass, build pass, browser smoke, or self-check | Work acceptance, required Manual QA, or detached verification without a qualifying Eval. |
 | Sensitive-action Approval | Product/UX judgment, Technical judgment, correctness, evidence, QA, verification, work acceptance, residual-risk acceptance, or Write Authorization. |
-| Work acceptance | Evidence sufficiency, QA, verification, Approval, waiver, residual-risk acceptance, or more write authority. |
+| Work acceptance | Evidence sufficiency, QA, verification, Approval, waiver, residual-risk acceptance, or more pre-write scope-check compatibility. |
 | Residual-risk acceptance | Verification, Manual QA, evidence sufficiency, no-risk close, work acceptance, or Approval. |
 | QA waiver | QA pass, verification, evidence sufficiency, work acceptance, or acceptance of unrelated risk. |
 | Verification waiver | Detached verification, `completed_verified`, Manual QA, work acceptance, or assurance upgrade. |
@@ -237,15 +237,15 @@ A Task is the user value unit. It carries current mode, lifecycle phase, result,
 
 ### Change Unit
 
-A Change Unit is the scoped work boundary for product-file writes. It answers what work surface may change, which paths/tools/commands/network/secret access are allowed, what is out of scope, what sensitive categories apply, what evidence and QA expectations apply, and what completion conditions matter.
+A Change Unit is the scoped work boundary for product-file writes. It answers what work surface may change, which paths/tools/commands/network/secret access are in scope, what is out of scope, what sensitive categories apply, what evidence and QA expectations apply, and what completion conditions matter.
 
-Every product-file write requires an active Change Unit whose scope covers the intended write. Core authorizes a specific product-write attempt only through `prepare_write`.
+Every product-file write requires an active Change Unit whose scope covers the intended write. Core creates a compatible record for a specific product-write attempt only through `prepare_write`.
 
 ### Autonomy Boundary
 
 An Autonomy Boundary is the judgment latitude inside a Change Unit. Scope says where and what may change; Autonomy Boundary says which choices the agent may make without another user judgment.
 
-The Autonomy Boundary is not scope, Approval, write authority, evidence, verification, QA, acceptance, or risk acceptance. It must not be read as permission to change the goal, expand scope, choose user-owned product direction, choose material technical direction, or accept residual risk for the user.
+The Autonomy Boundary is not scope, Approval, a pre-write scope check, evidence, verification, QA, acceptance, or risk acceptance. It must not be read as permission to change the goal, expand scope, choose user-owned product direction, choose material technical direction, or accept residual risk for the user.
 
 <a id="decision-packet"></a>
 
@@ -277,7 +277,7 @@ A Journey Spine Entry is a later/diagnostic durable continuity annotation only w
 
 ### Run
 
-A Run is an execution or observation attempt. It records actor, surface, mode, Change Unit, baseline, intended operation, observed changes, command results, artifact refs, and summary. Implementation and direct product-write Runs must consume compatible write authority. Read-only or shaping-only Runs do not authorize product-file writes.
+A Run is an execution or observation attempt. It records actor, surface, mode, Change Unit, baseline, intended operation, observed changes, command results, artifact refs, and summary. Implementation and direct product-write Runs must consume a compatible internal Write Authorization record. Read-only or shaping-only Runs do not make product-file writes compatible.
 
 ### Approval
 
@@ -287,7 +287,7 @@ Approval does not prove correctness, choose product direction, choose technical 
 
 ### Write Authorization
 
-A Write Authorization is the durable single-use state record created when `prepare_write` allows a product-file write. It records the Task, Change Unit, compatibility basis, intended operation, intended write surface, relevant sensitive-action coverage and decisions, guarantee level, status, and consumption by a compatible Run.
+A Write Authorization is the durable single-use state record created when `prepare_write` finds an exact product-file write compatible with current Core records. It records the Task, Change Unit, compatibility basis, intended operation, intended write surface, relevant sensitive-action coverage and decisions, guarantee level, status, and consumption by a compatible Run. It is a Harness-level cooperative record/check, not OS permission, sandboxing, tamper-proof storage, preventive blocking, or isolation.
 
 Write Authorization status is record-level:
 
@@ -295,7 +295,7 @@ Write Authorization status is record-level:
 allowed | consumed | expired | stale | revoked
 ```
 
-A Write Authorization is not reusable scope. It allows one exact write attempt under the current compatibility basis and is consumed by one compatible implementation or direct `record_run`, except for idempotent replay of the same committed request.
+A Write Authorization is not reusable scope. It records compatibility for one exact write attempt under the current compatibility basis and is consumed by one compatible implementation or direct `record_run`, except for idempotent replay of the same committed request.
 
 ### Evidence Manifest
 
@@ -338,9 +338,9 @@ Shared Design, Domain Term, Module Map Item, Interface Contract, Feedback Loop, 
 - Human-edited projections are input until reconciled.
 - Raw artifacts are evidence files; Markdown that links to them is a readable projection.
 - Review displays and future Review Stages are procedure or display unless routed through owner records.
-- Autonomy Boundary records judgment latitude only; it is not scope or write authority.
+- Autonomy Boundary records judgment latitude only; it is not scope or a pre-write scope check.
 - Sensitive-action approval and other user judgments are separate.
-- Write Authorization is single-use write authority for one compatible attempt, not reusable scope.
+- Write Authorization is a single-use cooperative record for one compatible attempt, not reusable scope or OS permission.
 - Evidence sufficiency is not inferred from prose alone.
 - Eval verdict alone does not create `detached_verified`.
 - Evidence does not substitute for Manual QA, and QA waiver does not create verification evidence.
@@ -530,8 +530,8 @@ Compatibility is profile-driven. A mode or close reason is compatible only when 
 | Mode | Product writes | Default close posture |
 |---|---|---|
 | `advisor` | No. | Advice/read-only result, usually no assurance. |
-| `direct` | Yes, with scope and Write Authorization. | Self-checked unless a required profile adds QA, verification, acceptance, or risk handling. |
-| `work` | Yes, with scope and Write Authorization. | Profile-driven close. Evidence and blockers are visible; detached verification is required only when the active profile or explicit requirement requires it. |
+| `direct` | Yes, after compatible scope and internal Write Authorization record. | Self-checked unless a required profile adds QA, verification, acceptance, or risk handling. |
+| `work` | Yes, after compatible scope and internal Write Authorization record. | Profile-driven close. Evidence and blockers are visible; detached verification is required only when the active profile or explicit requirement requires it. |
 
 ### Decision Gate Compatibility
 
@@ -557,18 +557,18 @@ The minimal write sequence is:
 2. Establish a scoped active Change Unit for write-capable work.
 3. Separate user-owned judgments and sensitive-action needs.
 4. Call `prepare_write` for the exact intended operation.
-5. If allowed, use the returned Write Authorization for one compatible product-write Run.
+5. If compatible, use the returned Write Authorization record for one compatible product-write Run.
 6. Record the Run, artifacts, evidence refs, and any blockers through `record_run`.
 
-This write-authority sequence is the Kernel design contract. Scope, required user judgment, and sensitive-action permission are inputs to `prepare_write`; only an allowed `prepare_write` creates a single-use Write Authorization, and `record_run` records what happened rather than authorizing it retroactively.
+This pre-write scope-check sequence is the Kernel design contract. Scope, required user judgment, and sensitive-action permission are inputs to `prepare_write`; only a compatible `prepare_write` creates a single-use Write Authorization record, and `record_run` records what happened rather than making it compatible retroactively.
 
 ```mermaid
 flowchart LR
   Scope["scoped Task / Change Unit"] --> Prepare["prepare_write"]
   Judgment["required user judgment<br/>record if needed"] --> Prepare
   Approval["sensitive-action permission<br/>if needed"] --> Prepare
-  Prepare -->|allowed| Auth["single-use Write Authorization"]
-  Prepare -->|not allowed| Blocker["structured blocker"]
+  Prepare -->|compatible| Auth["single-use Write Authorization"]
+  Prepare -->|not compatible| Blocker["structured blocker"]
   Auth --> Run["product-write Run"]
   Run --> Record["record_run"]
   Record --> Artifacts["artifacts and evidence refs"]
@@ -578,7 +578,7 @@ flowchart LR
 
 ## prepare_write
 
-`prepare_write` is the unique product-write authorization decision point. Approval, user judgment resolution, `record_run`, `close_task`, reports, projections, and agent prose can provide inputs or context, but none of them authorize a product-file write or create a consumable Write Authorization.
+`prepare_write` is the unique product-write pre-write scope-check and compatibility decision point. Approval, user judgment resolution, `record_run`, `close_task`, reports, projections, and agent prose can provide inputs or context, but none of them create a consumable Write Authorization record or make a product-file write compatible by themselves.
 
 It returns one of these state-level decisions:
 
@@ -598,21 +598,21 @@ The decision checks only the gates and preconditions that apply to the Task, int
 8. Check sensitive-action permission when sensitive categories apply.
 9. Check required user judgments.
 10. Check enabled design/policy and capability preconditions.
-11. If all required checks pass, create or return the compatible single-use Write Authorization and record the decision.
+11. If all required checks pass, create or return the compatible single-use Write Authorization record and record the decision.
 
 Blocked, approval-required, decision-required, or state-conflict results must not create a consumable Write Authorization. Approval-required means sensitive-action permission is missing or unusable; it must not be converted into broad approval or product judgment. Decision-required means user-owned judgment is needed; it must not be converted into sensitive-action permission.
 
 If MCP is unavailable on a cooperative-only surface, product writes are held by instruction. Preventive or isolated claims require a proven guard or documented separation boundary for the covered operation.
 
-External side effects keep the same authority meaning. Before execution, `prepare_write` evaluates the intended side effect. After execution, `record_run` records what happened. `record_run` cannot retroactively authorize an effect that lacked compatible scope, Approval, user judgment coverage, or Write Authorization.
+External side effects keep the same authority meaning. Before execution, `prepare_write` evaluates the intended side effect. After execution, `record_run` records what happened. `record_run` cannot retroactively make an effect compatible when it lacked compatible scope, Approval, user judgment coverage, or Write Authorization.
 
 ## record_run
 
-`record_run` is the Run, artifact, and evidence recording point. It is not an authorization decision point and cannot retroactively authorize product-file writes.
+`record_run` is the Run, artifact, and evidence recording point. It is not a pre-write scope-check decision point and cannot retroactively make product-file writes compatible.
 
 Implementation and direct Runs that report product-file writes must consume a compatible, unexpired, unconsumed Write Authorization. Core verifies observed changed paths and other observed side effects against both the consumed Write Authorization and the active Change Unit when those observations are available.
 
-Out-of-scope changes, missing authorization, stale authorization, consumed authorization, or incompatible authorization become rejection, violation, recovery, or stale/blocker state according to the case. Such Runs do not satisfy evidence sufficiency, verification, QA, work acceptance, residual-risk acceptance, or close readiness for the affected scope until repaired through the relevant owner records.
+Out-of-scope changes, missing Write Authorization, stale Write Authorization, consumed Write Authorization, or incompatible Write Authorization become rejection, violation, recovery, or stale/blocker state according to the case. Such Runs do not satisfy evidence sufficiency, verification, QA, work acceptance, residual-risk acceptance, or close readiness for the affected scope until repaired through the relevant owner records.
 
 Read-only and shaping-only Runs may be recorded without Write Authorization only when they do not report product-file changes.
 
@@ -706,7 +706,7 @@ Verification waiver is not detached verification. If the waived verification gap
 | Kernel invariant | Enforcement points |
 |---|---|
 | Core state is authority. | State-changing actions create Core records and events; projections and chat cannot mutate state without an owner path. |
-| Product writes require explicit scope and write authority. | `prepare_write` blocks missing scope and creates a single-use Write Authorization only when required checks pass; `record_run` consumes it. |
+| Product writes require explicit scope and a compatible pre-write scope check. | `prepare_write` blocks missing scope and creates a single-use Write Authorization record only when required checks pass; `record_run` consumes it. |
 | User-owned judgment cannot be replaced by agent judgment. | User judgment records and `decision_gate` block affected writes or close until compatible resolution, deferral, or risk handling is recorded. |
 | Sensitive-action approval is separate. | Sensitive-action approval user judgments, later Approval records, and `approval_gate` cover sensitive permission only. |
 | Evidence, verification, QA, acceptance, and residual risk stay separate. | Separate gates, refs, and close blockers prevent substitution. |

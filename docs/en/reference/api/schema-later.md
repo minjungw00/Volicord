@@ -25,7 +25,7 @@ The schema blocks below are exact only when their owner profile is active. Publi
 
 ## Later read-only resources
 
-These resources are profile-gated reads. Reading them must not repair projections, create owner records, accept evidence, perform verification, record Manual QA, accept results, accept residual risk, authorize writes, or close a Task.
+These resources are profile-gated reads. Reading them must not repair projections, create owner records, accept evidence, perform verification, record Manual QA, accept results, accept residual risk, create Write Authorization records, make product writes compatible, or close a Task.
 
 | Resource | Profile meaning |
 |---|---|
@@ -71,7 +71,7 @@ NextResponse:
   autonomy_boundary: AutonomyBoundarySummary | null
 ```
 
-`harness.next` is read-only. It does not mutate state, authorize writes, record user judgment, satisfy gates, accept work, accept residual risk, or close a Task.
+`harness.next` is read-only. It does not mutate state, create Write Authorization records, make product writes compatible, record user judgment, satisfy gates, accept work, accept residual risk, or close a Task.
 
 Later/profile-gated `NextActionSummary.action_kind` values include `launch_verify`, `record_eval`, `record_manual_qa`, and `reconcile` only when the matching owner profile is active.
 
@@ -247,6 +247,8 @@ Core checks may still block transitions, update gates, populate blocked reasons,
 Purpose: create a detached verification run or manual evaluator bundle.
 
 Stage/profile: Assurance Profile only. It creates a detached candidate or bundle; it does not by itself create detached assurance.
+
+`verification_mode=sandbox` is a later-profile value. A profile must name and prove the actual isolation boundary before any `isolated` guarantee is shown. This value is not active for MVP-1, and a fresh session, fresh worktree, or manual bundle does not imply OS sandboxing, permission isolation, or tamper-proof storage.
 
 Allowed actors: `lead_agent`, `operator`.
 

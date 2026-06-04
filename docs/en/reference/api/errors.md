@@ -38,7 +38,7 @@ This document describes future Harness Server behavior for planning and review. 
 | `BASELINE_STALE` | Baseline no longer matches the repository state required by the operation. |
 | `VALIDATOR_FAILED` | Fallback when required validators or close/blocker checks failed and no more specific typed code applies. |
 
-`WRITE_AUTHORIZATION_REQUIRED` and `WRITE_AUTHORIZATION_INVALID` are only for missing or invalid Write Authorization. Scope problems still use `SCOPE_VIOLATION` when observed paths, tools, commands, network targets, secrets, or sensitive categories exceed authorized or active scope.
+`WRITE_AUTHORIZATION_REQUIRED` and `WRITE_AUTHORIZATION_INVALID` are only for missing or invalid Write Authorization records. Scope problems still use `SCOPE_VIOLATION` when observed paths, tools, commands, network targets, secrets, or sensitive categories exceed the Write Authorization record or active scope.
 
 MCP availability, local access/profile mismatch, and capability insufficiency are distinct:
 
@@ -54,11 +54,11 @@ These labels are display guidance, not new public error codes.
 |---|---|---|
 | `VALIDATION_FAILED` | invalid request | Fix the payload, enum value, activation rule, or profile-specific field set before retrying. |
 | `STATE_CONFLICT` | state conflict | Refresh current status, then retry with the current state version or replay the original idempotent request. |
-| `MCP_UNAVAILABLE` | MCP unavailable | Reconnect or diagnose Core access before claiming state changes, gate updates, projection repair, write authority, or close. |
+| `MCP_UNAVAILABLE` | MCP unavailable | Reconnect or diagnose Core access before claiming state changes, gate updates, projection repair, pre-write scope-check compatibility, or close. |
 | `LOCAL_ACCESS_MISMATCH` | local access profile mismatch | Reconnect through the registered local surface/profile or repair the local binding/profile. |
 | `CAPABILITY_INSUFFICIENT` | capability insufficient | Use a capable surface/profile, reduce the operation, or choose a path that does not need the missing capability. |
 | `NO_ACTIVE_TASK` | no active Task | Select or create a Task before using a Task-scoped action. |
-| `WRITE_AUTHORIZATION_REQUIRED`, `WRITE_AUTHORIZATION_INVALID` | missing or stale write authority | Call or retry `harness.prepare_write` for the exact intended operation, current scope, and current state. |
+| `WRITE_AUTHORIZATION_REQUIRED`, `WRITE_AUTHORIZATION_INVALID` | missing or stale pre-write scope check | Call or retry `harness.prepare_write` for the exact intended operation, current scope, and current state. |
 | `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | scope, boundary, or baseline issue | Confirm or narrow scope, update the Change Unit or baseline, or request the needed user judgment. |
 | `DECISION_REQUIRED`, `DECISION_UNRESOLVED` | judgment needed | Show the relevant user judgment prompt or pending outcome with refs and consequences. |
 | `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED` | sensitive-action permission needed or not usable | Request, resolve, or renew a sensitive-action approval user judgment in minimum MVP-1. Committed Approval records are later-profile. |

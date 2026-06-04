@@ -292,7 +292,7 @@ StateRecordRef:
 
 `record_kind=projection`에서 `record_id`는 운영/projection profile이 active일 때 projection job identity입니다. `projection_path`는 optional display/recovery metadata이지 alternate key가 아닙니다.
 
-## Evidence and write authority schemas
+## Evidence and pre-write scope schemas
 
 ```yaml
 EvidenceRefs:
@@ -341,10 +341,12 @@ WriteAuthoritySummary:
   guarantee_display:
     level: cooperative | detective | preventive | isolated
     notes: string[]
-  note: "Autonomy Boundary is judgment latitude, not write authority."
+  note: "Autonomy Boundary is judgment latitude, not a pre-write scope check."
 ```
 
 Minimum MVP-1에서 `WriteAuthorizationSummary.approval_refs`는 empty입니다. Resolved sensitive-action approval user judgment는 `user_judgment_refs`에 나타납니다. Committed Approval ref는 Approval owner profile이 active일 때만 나타납니다.
+
+`WriteAuthorizationSummary`와 `WriteAuthoritySummary`는 API/internal 이름입니다. MVP-1 사용자-facing display는 먼저 쓰기 전 범위 확인이라고 설명해야 합니다. `allowed_paths`, `allowed_tools`, `status=allowed` 같은 field는 협력형 기록/확인에 대한 하네스 호환성만 뜻합니다. OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단, 권한 격리를 뜻하지 않습니다.
 
 ## UserJudgment
 
@@ -524,7 +526,7 @@ AcceptanceVisibilityContext:
 
 MVP-1에서 residual-risk summary ref는 보통 `blocker`와 `user_judgment` record를 가리킵니다. Rich `residual_risk` record는 later/profile-promoted storage입니다.
 
-Autonomy Boundary summary는 judgment latitude를 설명합니다. Write authority가 아닙니다. Active scope와 required sensitive-action permission 밖의 path, tool, command, network target, secret access, sensitive category를 허가하지 않습니다.
+Autonomy Boundary summary는 judgment latitude를 설명합니다. 쓰기 전 범위 확인 호환성이 아닙니다. Write Authorization record를 만들거나 path, tool, command, network target, secret access, sensitive category를 compatible하게 만들거나 active scope와 required sensitive-action permission을 넓히지 않습니다.
 
 ## ValidatorResult
 

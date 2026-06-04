@@ -25,6 +25,8 @@ MVP-1 public tool surface는 의도적으로 작습니다.
 
 `harness.next`는 별도 MVP-1 method가 아닙니다. [Schema Later](api/schema-later.md#harnessnext)의 later/compatibility material로 남습니다.
 
+`harness.prepare_write`는 MVP-1의 쓰기 전 범위 확인입니다. 내부 Write Authorization record를 만들 수 있지만, 이 record는 하네스 수준의 협력형 기록/확인입니다. OS 권한, sandboxing, 변조 방지 storage, 사전 차단을 주장하지 않습니다.
+
 ## Legacy anchor map
 
 이 페이지로 향하는 오래된 link는 위 split owner로 update해야 합니다. 아래 anchor는 문서 분리 중 reader를 안내하기 위해서만 남깁니다.

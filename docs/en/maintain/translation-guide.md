@@ -24,7 +24,7 @@ English docs define the reference meaning for the bilingual documentation set. K
 
 The goal is semantic parity, not sentence-by-sentence translation. Korean should read like natural technical Korean while preserving official identifiers, exact contracts, code-like names, and stable product terms.
 
-In user-facing Korean, prefer the six natural public concepts first: `작업`, `범위`, `판단` or `결정할 것`, `근거`, `확인` or `검증`, and `마무리` or `닫기`. More specific phrases such as `범위 밖`, `판단 요청`, `수동 QA`, `작업 수락`, `잔여 위험`, `닫기 막힘`, and `다음 안전한 행동` may appear when they support those concepts. Add labels such as `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Residual Risk`, `Manual QA`, `detached verification`, or `Acceptance` in parentheses only when both the reader-friendly phrase and the Harness label matter. Reference Korean may preserve exact schema identifiers, enum values, field names, and API terms whenever precision matters.
+In user-facing Korean, prefer the six natural public concepts first: `작업`, `범위`, `판단` or `결정할 것`, `근거`, `확인` or `검증`, and `마무리` or `닫기`. More specific phrases such as `범위 밖`, `쓰기 전 범위 확인`, `판단 요청`, `수동 QA`, `작업 수락`, `잔여 위험`, `닫기 막힘`, and `다음 안전한 행동` may appear when they support those concepts. Add labels such as `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Residual Risk`, `Manual QA`, `detached verification`, or `Acceptance` in parentheses only when both the reader-friendly phrase and the Harness label matter. Reference Korean may preserve exact schema identifiers, enum values, field names, and API terms whenever precision matters.
 
 ## User-Facing Vocabulary Rule
 
@@ -129,7 +129,8 @@ Use these as the preferred terms in Korean prose. Keep exact English strings whe
 | `judgment_category`, `judgment_route`, `display_depth` | legacy 판단 field | Legacy or implementation routing terms from older Decision Packet drafts. Preserve exact only in old schema/API/reference compatibility contexts. New examples should prefer `judgment_type`, `presentation`, and `display_label`. |
 | `judgment_domain`, `decision_kind`, `decision_profile` | legacy 판단 alias | Compatibility aliases for older request shapes. Preserve exact only in old payloads or migration notes. |
 | Decision Packet | Decision Packet / full-format 판단 요청 | Keep `Decision Packet` when naming optional full-format presentation, legacy refs, template files, anchors, or migration notes. In user-facing prose, use `판단 요청` first or omit the label when it does not help. |
-| Write Authorization | 쓰기 허가 기록 | Use in prose for the record or result of `prepare_write`. Keep exact API/tool names and fields. |
+| pre-write scope check | 쓰기 전 범위 확인 | Preferred user-facing phrase for the check before a product write. Use this before internal labels such as `Write Authorization`. |
+| Write Authorization | 쓰기 허가 기록 | Use only when naming the internal Harness record or result of `prepare_write`. Keep exact API/tool names and fields. Explain that it is a cooperative Harness record/check, not OS permission, sandboxing, tamper-proof enforcement, preventive blocking, or isolation. |
 | evidence | 근거 | Use in user-facing prose for support behind a claim. Keep `Evidence`, `Evidence Manifest`, and schema fields exact when naming records or APIs. |
 | Evidence Manifest | 근거 매니페스트 | Use the Korean phrase only when helpful in prose. Keep `Evidence Manifest` exact in record/template/schema contexts. |
 | check | 확인 | Use for ordinary tests, diff review, inspection, or source lookup. Use `검증` only when the formal Verification path is intended. |
@@ -150,10 +151,10 @@ Use these as the preferred terms in Korean prose. Keep exact English strings whe
 | kernel | 커널 | Use `커널` outside exact headings and owner links. |
 | gate | 관문 | Prefer `관문` in Learn/Use docs. Reference docs may retain `gate` when referring to kernel fields or values. |
 | detached verification | 분리 검증 | May retain `detached verification` in assurance explanations. |
-| cooperative | 협력형 | Retain the English label in guarantee-level tables. |
-| detective | 탐지형 | Retain the English label in guarantee-level tables. |
-| preventive | 예방형 | Retain the English label in guarantee-level tables. |
-| isolated | 격리형 | Retain the English label in guarantee-level tables. |
+| cooperative | 협력형 / 협력형 확인 | Retain the English label in guarantee-level tables. In explanatory prose, `협력형 확인` is preferred. |
+| detective | 탐지형 / 사후 확인 | Retain the English label in guarantee-level tables. In explanatory prose, `사후 확인` is preferred. |
+| preventive | 사전 차단 | Retain the English label in guarantee-level tables. MVP-1 wording should say `사전 차단 아님` when clarifying non-claims. |
+| isolated | 격리형 / 격리 경계 | Retain the English label in guarantee-level tables. MVP-1 wording should say `권한 격리 아님` when clarifying non-claims. |
 
 ## Translate naturally
 
@@ -174,7 +175,9 @@ Use the term that fits the sentence and reader context.
 | Acceptance Gate / acceptance_gate | Keep exact identifiers such as `Acceptance Gate` or `acceptance_gate` where needed. Explain the meaning in Korean prose instead of inventing a new unstable term. |
 | residual risk | Use `잔여 위험` as the canonical term. Plain explanatory wording may describe the uncertainty, but keep terminology consistent. |
 | approval / Approval | Use `민감 동작 승인` in user-facing prose for the sensitive-action permission concept. Use `Approval` when naming the canonical Harness status, gate, record, schema, or exact reference term. Generic `승인` must not mean work acceptance, product judgment, QA waiver, residual-risk acceptance, or Write Authorization. |
-| write authority | Use `쓰기 권한` in ordinary prose. Use `쓰기 허가 기록(Write Authorization)` when naming the Harness record produced by `prepare_write`. |
+| write authority | In user-facing prose, prefer `쓰기 전 범위 확인`. Use `쓰기 허가 기록(Write Authorization)` only when naming the Harness record produced by `prepare_write`. Do not imply OS-level permission, sandboxing, or tamper-proof enforcement. |
+| sandbox | Use `샌드박스` or `격리 환경` only when an exact mechanism is being named. MVP-1 should say it is not a sandbox or permission-isolated boundary. |
+| preventive control | Use `사전 차단 통제` or `사전 차단 장치`; for MVP-1 non-claims, prefer `사전 차단 아님`. |
 | gate | In user-facing flow, prefer `관문`, `확인`, `닫기 확인`, or `막힘` by context. Reference docs may retain `gate` for kernel fields or strict contracts. |
 
 Capitalization rule: `Approval` is the canonical Harness permission concept for sensitive actions. Lowercase `approval` may remain only in stable identifiers, enum values, schema names, intentionally fixed phrases, or quoted legacy/user wording, such as `approval_gate`, `decision_kind=approval`, `approval_request_candidate`, `approval_scope`, `approval-shaped`, and approval drift.

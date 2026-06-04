@@ -2,7 +2,7 @@
 
 ## 이 문서로 할 수 있는 일
 
-이 문서는 향후 Harness Kernel 계약을 확인하기 위한 참조 문서입니다. Core 권한, 작업 모양, 쓰기 권한, 사용자 판단 라우팅, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험, 닫기 동작을 다룹니다.
+이 문서는 향후 Harness Kernel 계약을 확인하기 위한 참조 문서입니다. Core 권한, 작업 모양, 쓰기 전 범위 확인과 쓰기 허가 기록, 사용자 판단 라우팅, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험, 닫기 동작을 다룹니다.
 
 이 문서는 미래의 로컬 Harness Server 동작을 설명합니다. 이 저장소에는 현재 Harness runtime이나 server 구현이 없습니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
 
@@ -10,7 +10,7 @@
 
 - 모든 향후 Kernel 동작이 지켜야 할 invariant가 필요할 때.
 - Task가 읽기, 쓰기, 사용자 판단 대기, 닫기 중 어디로 갈 수 있는지 판단할 때.
-- 범위, 쓰기 권한, 사용자 판단, 근거, 검증, 수동 QA, 작업 수락, 위험을 분리해야 할 때.
+- 범위, 쓰기 전 범위 확인, 사용자 판단, 근거, 검증, 수동 QA, 작업 수락, 위험을 분리해야 할 때.
 - API, storage, projection, conformance 문서가 Kernel 권한과 맞는지 검토할 때.
 
 ## 읽기 전에
@@ -21,7 +21,7 @@
 
 Harness는 AI 지원 제품 작업을 위한 로컬 권한 기록이자 사용자 판단 라우팅 계층입니다. Kernel은 Core가 소유한 로컬 상태를 운영 권한의 기준으로 둡니다. Chat이나 Markdown은 기준이 아닙니다.
 
-Kernel은 범위, 쓰기 권한, 사용자 소유 판단, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험, 닫기 준비 상태를 분리합니다. 그래서 하나의 지원 범주가 다른 범주를 조용히 대신하지 못합니다.
+Kernel은 범위, 쓰기 전 범위 확인과 내부 쓰기 허가 기록, 사용자 소유 판단, 근거, 검증, 수동 QA, 작업 수락, 잔여 위험, 닫기 준비 상태를 분리합니다. 그래서 하나의 지원 범주가 다른 범주를 조용히 대신하지 못합니다.
 
 필요한 gate는 active stage와 profile이 정합니다. 이 문서에 field나 gate가 있다는 사실만으로 내부 엔지니어링 점검, MVP-1, 또는 작은 직접 변경에 full future behavior가 required가 되지는 않습니다.
 
@@ -34,7 +34,7 @@ Kernel은 범위, 쓰기 권한, 사용자 소유 판단, 근거, 검증, 수동
 | 사용자 판단 type과 route | [판단 경로 경계](#판단-경로-경계), [User Judgment](#user-judgment), [Decision Gate](#decision-gate) | Public request field는 [`harness.request_user_judgment`](api/mvp-api.md#harnessrequest_user_judgment)이 담당합니다. |
 | Entity 관계 의미 | [Entity model](#entity-model) | Physical table은 [Storage와 DDL](storage-and-ddl.md)에 남습니다. |
 | Gate 의미 | [Gates](#gates), [Gate 규칙 지도](#gate-규칙-지도) | Public blocker와 error는 [API Errors](api/errors.md#primary-error-code-precedence)가 담당합니다. |
-| 쓰기 권한 | [`prepare_write`](#prepare_write), [Write Authorization](#write-authorization), [`record_run`](#record_run) | Public shape는 [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write)와 [`harness.record_run`](api/mvp-api.md#harnessrecord_run)이 담당합니다. |
+| 쓰기 전 범위 확인 / Write Authorization | [`prepare_write`](#prepare_write), [Write Authorization](#write-authorization), [`record_run`](#record_run) | Public shape는 [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write)와 [`harness.record_run`](api/mvp-api.md#harnessrecord_run)이 담당합니다. |
 | 닫기 의미 | [`close_task`](#close_task), [작업 모양과 active profile별 닫기 matrix](#작업-모양과-active-profile별-닫기-matrix), [Close result semantics](#close-result-semantics) | Public close response는 [`harness.close_task`](api/mvp-api.md#harnessclose_task)이 담당합니다. |
 | Waiver와 invalid combination | [Waiver semantics](#waiver-semantics), [Invalid state combinations](#invalid-state-combinations) | Design policy detail은 [설계 품질 정책](design-quality-policies.md)에 남습니다. |
 
@@ -44,8 +44,8 @@ Kernel은 범위, 쓰기 권한, 사용자 소유 판단, 근거, 검증, 수동
 
 1. Core가 소유한 로컬 상태가 운영 권한의 기준입니다.
 2. Chat, Markdown projection, 생성된 문서, report, card는 기준 권한이 아닙니다.
-3. 쓰기 권한 전에 범위 경계가 명시되어야 합니다.
-4. 제품 파일 쓰기에는 해당 write attempt와 호환되는 쓰기 권한이 필요합니다.
+3. 제품 파일 쓰기가 쓰기 전 범위 확인을 통과하기 전에 범위 경계가 명시되어야 합니다.
+4. 제품 파일 쓰기에는 해당 write attempt와 호환되는 내부 쓰기 허가 기록이 필요합니다.
 5. 사용자 소유 판단은 agent 판단으로 조용히 대체될 수 없습니다.
 6. 민감 동작 승인, 작업 수락, 검증 면제 판단, 잔여 위험 수용은 서로 다른 route입니다.
 7. 근거, 검증, 수동 QA, 작업 수락, 잔여 위험은 서로를 대신하지 않습니다.
@@ -55,12 +55,12 @@ Kernel은 범위, 쓰기 권한, 사용자 소유 판단, 근거, 검증, 수동
 ## 커널을 10문장으로
 
 1. Kernel은 로컬 AI 지원 제품 작업을 위한 미래 Core 상태 계약입니다.
-2. Active Task, 범위, 쓰기 권한, 판단 기록, 근거 참조, 닫기 blocker, 잔여 위험을 chat transcript 밖에 둡니다.
+2. Active Task, 범위, 쓰기 전 범위 확인 상태, 판단 기록, 근거 참조, 닫기 blocker, 잔여 위험을 chat transcript 밖에 둡니다.
 3. 읽기/조언 작업은 제품 파일 쓰기 없이 답할 수 있습니다.
-4. 작은 직접 변경은 가볍게 유지할 수 있지만, 제품 파일 쓰기에는 여전히 호환되는 범위와 쓰기 권한이 필요합니다.
+4. 작은 직접 변경은 가볍게 유지할 수 있지만, 제품 파일 쓰기에는 여전히 호환되는 범위와 쓰기 전 범위 확인이 필요합니다.
 5. 추적되는 작업은 닫을 수 있을 때까지 범위, blocker, 근거, 사용자 판단, 닫기 준비 상태를 보이게 둡니다.
-6. `prepare_write`는 제품 파일 쓰기 권한 판단 지점입니다.
-7. `record_run`은 실제로 일어난 일을 기록하고, 제품 파일 쓰기 Run에는 호환되는 쓰기 권한을 소비합니다.
+6. `prepare_write`는 제품 파일 쓰기 전 범위 확인과 호환성 판단 지점입니다.
+7. `record_run`은 실제로 일어난 일을 기록하고, 제품 파일 쓰기 Run에는 호환되는 내부 쓰기 허가 기록을 소비합니다.
 8. `user_judgment` 기록은 사용자 소유 판단을 기록합니다. Minimum MVP-1에서는 민감 동작 승인 judgment가 민감 동작 permission을 기록할 수 있고, later Approval record는 더 hardened된 committed lifecycle을 추가합니다.
 9. `close_task`는 완료 판단 지점이며, active profile과 close intent가 요구하는 gate만 확인합니다.
 10. Projection은 사람이 상태를 읽도록 돕지만, Core state, event, 등록된 artifact ref가 기준입니다.
@@ -71,9 +71,9 @@ Kernel은 범위, 쓰기 권한, 사용자 소유 판단, 근거, 검증, 수동
 
    Active Task는 현재 사용자 가치 단위입니다. mode, lifecycle phase, active scope, blocker, evidence/artifact ref, 사용자 판단 상태, 닫기 준비 상태, 작업 수락 상태, 잔여 위험 상태, projection이 켜진 경우 projection 최신성을 가집니다.
 
-2. 지금 허용된 작업은 무엇인가?
+2. 지금 현재 범위와 호환되는 작업은 무엇인가?
 
-   허용된 작업은 active Task, 작업 모양, active Change Unit, scope, Autonomy Boundary, baseline freshness, 민감 동작 permission, 사용자 소유 판단, 적용 policy, surface capability, requested operation으로 계산합니다.
+   호환되는 작업은 active Task, 작업 모양, active Change Unit, scope, Autonomy Boundary, baseline freshness, 민감 동작 permission, 사용자 소유 판단, 적용 policy, surface capability, requested operation으로 계산합니다.
 
 3. 어떤 사용자 판단이 아직 진행을 막는가?
 
@@ -91,17 +91,17 @@ Kernel은 범위, 쓰기 권한, 사용자 소유 판단, 근거, 검증, 수동
 advisor | direct | work
 ```
 
-사용자에게는 아래 쉬운 작업 모양을 먼저 보여줍니다. 이 label은 enum value, schema field, record type, projection kind, gate, authority path를 추가하지 않습니다.
+사용자에게는 아래 쉬운 작업 모양을 먼저 보여줍니다. 이 label은 enum value, schema field, record type, projection kind, gate, record/check path를 추가하지 않습니다.
 
 | 쉬운 작업 모양 | 내부 mode | Kernel 의미 |
 |---|---|---|
-| 읽기/조언 | `advisor` | 제품 파일 쓰기를 허용하지 않습니다. 조언을 제품 작업으로 바꾸지 않는 한 범위는 가볍게 둘 수 있습니다. 사용자 요청, policy, active profile이 요구하지 않으면 근거, 검증, 수동 QA, 작업 수락, 잔여 위험은 보통 required가 아닙니다. |
-| 작은 직접 변경 | `direct` | 제품 파일 쓰기는 명시된 범위와 호환되는 `prepare_write` / Write Authorization을 통해서만 가능합니다. 요청이 명확하면 Change Unit은 작을 수 있습니다. 근거도 가벼울 수 있습니다. 사용자 판단 요청, 수동 QA, 분리 검증, 작업 수락, 잔여 위험 수용은 의식처럼 만들지 않습니다. Active profile, task type, user request, security/criticality profile, 감지된 위험, 명시 requirement가 요구할 때만 적용합니다. |
+| 읽기/조언 | `advisor` | 제품 파일 쓰기는 valid outcome이 아닙니다. 조언을 제품 작업으로 바꾸지 않는 한 범위는 가볍게 둘 수 있습니다. 사용자 요청, policy, active profile이 요구하지 않으면 근거, 검증, 수동 QA, 작업 수락, 잔여 위험은 보통 required가 아닙니다. |
+| 작은 직접 변경 | `direct` | 제품 파일 쓰기는 명시된 범위와 호환되는 `prepare_write` / 내부 Write Authorization record를 통해서만 가능합니다. 요청이 명확하면 Change Unit은 작을 수 있습니다. 근거도 가벼울 수 있습니다. 사용자 판단 요청, 수동 QA, 분리 검증, 작업 수락, 잔여 위험 수용은 의식처럼 만들지 않습니다. Active profile, task type, user request, security/criticality profile, 감지된 위험, 명시 requirement가 요구할 때만 적용합니다. |
 | 추적되는 작업 | `work` | 구조화된 작업, 여러 단계, 위험한 변경, 사용자에게 보이는 변경, public interface, 보안/개인정보, architecture, 기타 non-trivial work에 사용합니다. 범위, 사용자 판단, 근거, close blocker, 작업 수락, 잔여 위험을 보이게 둡니다. 모든 future gate가 자동으로 required가 되는 것은 아닙니다. |
 
 작은 직접 변경은 작게 유지해야 합니다. 범위가 불분명해지거나, changed path가 active scope를 넘거나, 여러 제품 영역이나 subsystem이 관련되거나, 제품/UX 판단 또는 중요한 기술 판단이 나타나거나, public API나 module contract 영향이 나타나거나, 보안/개인정보 영향이 있거나, 민감 동작이 나타나거나, 근거 기대가 커지거나, QA 또는 verification이 required가 되거나, 잔여 위험이 작지 않거나, 여러 단계 delivery가 필요하면 같은 Task를 추적되는 작업으로 상향합니다.
 
-Tiny direct profile은 `mode=direct` 안의 표시/profile 선택일 뿐입니다. 오탈자, 의미 변경 없는 문서 한 문장, obvious rename에 적합합니다. Scope, write authority, 민감 동작 permission, 사용자 소유 판단, 실제로 적용되는 evidence requirement, residual-risk visibility, close rule을 우회할 수 없습니다.
+Tiny direct profile은 `mode=direct` 안의 표시/profile 선택일 뿐입니다. 오탈자, 의미 변경 없는 문서 한 문장, obvious rename에 적합합니다. Scope, 쓰기 전 범위 확인, 민감 동작 permission, 사용자 소유 판단, 실제로 적용되는 evidence requirement, residual-risk visibility, close rule을 우회할 수 없습니다.
 
 ## 판단 경로 경계
 
@@ -165,11 +165,11 @@ flowchart LR
 
 | 이것 | 대신할 수 없는 것 |
 |---|---|
-| Chat text, generated Markdown, report prose | Core state, evidence, decision, Approval, close blocker, write authority. |
+| Chat text, generated Markdown, report prose | Core state, evidence, decision, Approval, close blocker, pre-write scope-check record. |
 | 근거, log, screenshot, artifact ref | 수동 QA, verification, 작업 수락, residual-risk acceptance. |
 | 테스트 통과, build 통과, browser smoke, self-check | 작업 수락, required Manual QA, qualifying Eval 없는 detached verification. |
 | Sensitive-action Approval | 제품/UX 판단, 기술 판단, correctness, evidence, QA, verification, 작업 수락, residual-risk acceptance, Write Authorization. |
-| 작업 수락 | Evidence sufficiency, QA, verification, Approval, waiver, residual-risk acceptance, additional write authority. |
+| 작업 수락 | Evidence sufficiency, QA, verification, Approval, waiver, residual-risk acceptance, additional pre-write scope-check compatibility. |
 | 잔여 위험 수용 | Verification, Manual QA, evidence sufficiency, no-risk close, work acceptance, Approval. |
 | QA waiver | QA pass, verification, evidence sufficiency, 작업 수락, unrelated risk acceptance. |
 | Verification waiver | Detached verification, `completed_verified`, Manual QA, 작업 수락, assurance upgrade. |
@@ -216,15 +216,15 @@ Task는 사용자 가치 단위입니다. Current mode, lifecycle phase, result,
 
 ### Change Unit
 
-Change Unit은 제품 파일 쓰기를 위한 scoped work boundary입니다. 어떤 work surface가 바뀔 수 있는지, 어떤 paths/tools/commands/network/secret access가 허용되는지, 무엇이 scope 밖인지, 어떤 sensitive categories가 있는지, 어떤 evidence와 QA expectation이 적용되는지, 어떤 completion condition이 중요한지 답합니다.
+Change Unit은 제품 파일 쓰기를 위한 scoped work boundary입니다. 어떤 work surface가 바뀔 수 있는지, 어떤 paths/tools/commands/network/secret access가 scope 안인지, 무엇이 scope 밖인지, 어떤 sensitive categories가 있는지, 어떤 evidence와 QA expectation이 적용되는지, 어떤 completion condition이 중요한지 답합니다.
 
-모든 제품 파일 쓰기에는 intended write를 포함하는 active Change Unit이 필요합니다. Core는 `prepare_write`를 통해서만 특정 product-write attempt를 authorize합니다.
+모든 제품 파일 쓰기에는 intended write를 포함하는 active Change Unit이 필요합니다. Core는 `prepare_write`를 통해서만 특정 product-write attempt에 대한 compatible record를 만듭니다.
 
 ### Autonomy Boundary
 
 Autonomy Boundary는 Change Unit 안의 판단 latitude입니다. Scope는 어디에서 무엇이 바뀔 수 있는지 말합니다. Autonomy Boundary는 사용자의 추가 판단 없이 agent가 어떤 선택을 할 수 있는지 말합니다.
 
-Autonomy Boundary는 scope, Approval, write authority, evidence, verification, QA, 작업 수락, risk acceptance가 아닙니다. 목표 변경, scope expansion, 사용자 소유 제품 방향 선택, 중요한 기술 방향 선택, 사용자 대신 잔여 위험 수용으로 읽으면 안 됩니다.
+Autonomy Boundary는 scope, Approval, 쓰기 전 범위 확인, evidence, verification, QA, 작업 수락, risk acceptance가 아닙니다. 목표 변경, scope expansion, 사용자 소유 제품 방향 선택, 중요한 기술 방향 선택, 사용자 대신 잔여 위험 수용으로 읽으면 안 됩니다.
 
 <a id="decision-packet"></a>
 
@@ -258,17 +258,17 @@ Journey Spine Entry는 기존 state와 event에서 재구성할 수 없는 conti
 
 ### Run
 
-Run은 실행 또는 관찰 attempt입니다. Actor, surface, mode, Change Unit, baseline, intended operation, observed changes, command results, artifact refs, summary를 기록합니다. Implementation과 direct product-write Run은 호환되는 write authority를 소비해야 합니다. Read-only 또는 shaping-only Run은 제품 파일 쓰기를 authorize하지 않습니다.
+Run은 실행 또는 관찰 attempt입니다. Actor, surface, mode, Change Unit, baseline, intended operation, observed changes, command results, artifact refs, summary를 기록합니다. Implementation과 direct product-write Run은 호환되는 내부 쓰기 허가 기록을 소비해야 합니다. Read-only 또는 shaping-only Run은 제품 파일 쓰기를 compatible하게 만들지 않습니다.
 
 ### Approval
 
 Approval은 범위가 정해진 민감 동작 permission입니다. Minimum MVP-1에서는 `judgment_type=sensitive_action_approval`와 `judgment_payload.approval_scope`를 가진 resolved user judgment로 표현할 수 있습니다. Later Approval/보증 프로필에서는 committed Approval record로도 표현할 수 있습니다. Paths, tools, commands, network targets, secret scope, sensitive categories, baseline, expiry, 해당 민감 동작에 대한 user judgment을 cover할 수 있습니다.
 
-Approval은 correctness를 증명하지 않습니다. 제품 방향, 기술 판단, evidence, QA, verification, 작업 수락, residual-risk acceptance를 대신하지 않습니다. 그 자체로 product write도 authorize하지 않습니다.
+Approval은 correctness를 증명하지 않습니다. 제품 방향, 기술 판단, evidence, QA, verification, 작업 수락, residual-risk acceptance를 대신하지 않습니다. 그 자체로 product write도 compatible하게 만들지 않습니다.
 
 ### Write Authorization
 
-Write Authorization은 `prepare_write`가 제품 파일 쓰기를 허용할 때 만드는 durable single-use state record입니다. Task, Change Unit, compatibility basis, intended operation, intended write surface, related sensitive-action coverage와 decisions, guarantee level, status, compatible Run에 의한 consumption을 기록합니다.
+Write Authorization은 `prepare_write`가 정확한 제품 파일 쓰기가 현재 Core record와 호환된다고 판단할 때 만드는 durable single-use state record입니다. Task, Change Unit, compatibility basis, intended operation, intended write surface, related sensitive-action coverage와 decisions, guarantee level, status, compatible Run에 의한 consumption을 기록합니다. 이는 하네스 수준의 협력형 기록/확인이지 OS 권한, sandboxing, 변조 방지 storage, 사전 차단, 권한 격리가 아닙니다.
 
 Write Authorization status는 record-level입니다.
 
@@ -276,7 +276,7 @@ Write Authorization status는 record-level입니다.
 allowed | consumed | expired | stale | revoked
 ```
 
-Write Authorization은 재사용 가능한 scope가 아닙니다. Current compatibility basis 아래에서 정확한 write attempt 하나를 허용합니다. 같은 committed request의 idempotent replay를 제외하면 compatible implementation 또는 direct `record_run` 하나가 소비합니다.
+Write Authorization은 재사용 가능한 scope가 아닙니다. Current compatibility basis 아래에서 정확한 write attempt 하나의 호환성을 기록합니다. 같은 committed request의 idempotent replay를 제외하면 compatible implementation 또는 direct `record_run` 하나가 소비합니다.
 
 ### Evidence Manifest
 
@@ -292,7 +292,7 @@ Eval은 verification result record입니다. Target, verdict, checks performed, 
 
 ### Finding 라우팅
 
-Command, Run, Eval, QA, review, validator, diagnostic에서 나온 finding은 별도 authority path가 아닙니다. Existing owner record를 통해 라우팅될 때만 state에 영향을 줍니다. 예를 들면 Evidence Manifest, User Judgment, Change Unit, Approval, Eval, Manual QA, Residual Risk, Reconcile Item, structured close blocker, enabled owner path입니다.
+Command, Run, Eval, QA, review, validator, diagnostic에서 나온 finding은 별도 record/check path가 아닙니다. Existing owner record를 통해 라우팅될 때만 state에 영향을 줍니다. 예를 들면 Evidence Manifest, User Judgment, Change Unit, Approval, Eval, Manual QA, Residual Risk, Reconcile Item, structured close blocker, enabled owner path입니다.
 
 ### Residual Risk
 
@@ -319,9 +319,9 @@ Shared Design, Domain Term, Module Map Item, Interface Contract, Feedback Loop, 
 - 사람이 고친 projection은 reconcile 전까지 input입니다.
 - Raw artifact는 evidence file입니다. 그것을 link하는 Markdown은 readable projection입니다.
 - Review display와 future Review Stages는 owner record로 라우팅되기 전까지 procedure 또는 display입니다.
-- Autonomy Boundary는 judgment latitude만 기록합니다. Scope나 write authority가 아닙니다.
+- Autonomy Boundary는 judgment latitude만 기록합니다. Scope나 쓰기 전 범위 확인이 아닙니다.
 - Approval과 User Judgment authority는 분리됩니다.
-- Write Authorization은 compatible attempt 하나를 위한 single-use write authority입니다. 재사용 가능한 scope가 아닙니다.
+- Write Authorization은 compatible attempt 하나를 위한 single-use cooperative record입니다. 재사용 가능한 scope나 OS 권한이 아닙니다.
 - Evidence sufficiency는 prose만으로 추론하지 않습니다.
 - Eval verdict만으로 `detached_verified`가 되지 않습니다.
 - Evidence는 Manual QA를 대신하지 않습니다. QA waiver는 verification evidence를 만들지 않습니다.
@@ -511,8 +511,8 @@ Compatibility는 profile-driven입니다. Mode 또는 close reason은 active pro
 | Mode | Product writes | 기본 close posture |
 |---|---|---|
 | `advisor` | 아니요. | Advice/read-only result. 보통 assurance는 없습니다. |
-| `direct` | 예. Scope와 Write Authorization이 필요합니다. | Required profile이 QA, verification, acceptance, risk handling을 추가하지 않으면 self-checked. |
-| `work` | 예. Scope와 Write Authorization이 필요합니다. | Profile-driven close. Evidence와 blocker를 보여줍니다. Detached verification은 active profile이나 explicit requirement가 요구할 때만 required입니다. |
+| `direct` | 예. 호환되는 scope와 내부 Write Authorization record 뒤에 가능합니다. | Required profile이 QA, verification, acceptance, risk handling을 추가하지 않으면 self-checked. |
+| `work` | 예. 호환되는 scope와 내부 Write Authorization record 뒤에 가능합니다. | Profile-driven close. Evidence와 blocker를 보여줍니다. Detached verification은 active profile이나 explicit requirement가 요구할 때만 required입니다. |
 
 ### Decision Gate Compatibility
 
@@ -538,18 +538,18 @@ Minimal write sequence는 다음과 같습니다.
 2. Write-capable work에는 scoped active Change Unit을 세웁니다.
 3. User-owned judgment와 sensitive-action need를 분리합니다.
 4. 정확한 intended operation으로 `prepare_write`를 호출합니다.
-5. Allowed이면 returned Write Authorization을 compatible product-write Run 하나에 사용합니다.
+5. 호환되면 returned Write Authorization record를 compatible product-write Run 하나에 사용합니다.
 6. `record_run`으로 Run, artifact, evidence refs, blocker를 기록합니다.
 
-이 write-authority 순서는 Kernel 설계 계약입니다. Scope, required user judgment, sensitive-action permission은 `prepare_write`의 입력이고, 허용된 `prepare_write`만 한 번 쓰는 Write Authorization을 만듭니다. `record_run`은 실제로 일어난 일을 기록할 뿐, 사후에 권한을 부여하지 않습니다.
+이 쓰기 전 범위 확인 순서는 Kernel 설계 계약입니다. Scope, required user judgment, sensitive-action permission은 `prepare_write`의 입력이고, 호환되는 `prepare_write`만 한 번 쓰는 Write Authorization record를 만듭니다. `record_run`은 실제로 일어난 일을 기록할 뿐, 사후에 호환성을 만들지 않습니다.
 
 ```mermaid
 flowchart LR
   Scope["범위가 정해진 Task / Change Unit"] --> Prepare["prepare_write"]
   Judgment["필요한 사용자 판단<br/>user_judgment"] --> Prepare
   Approval["sensitive-action permission<br/>필요할 때"] --> Prepare
-  Prepare -->|허용| Auth["한 번 쓰는 Write Authorization"]
-  Prepare -->|허용 안 됨| Blocker["구조화된 막힘"]
+  Prepare -->|호환됨| Auth["한 번 쓰는 Write Authorization"]
+  Prepare -->|호환 안 됨| Blocker["구조화된 막힘"]
   Auth --> Run["제품 파일 쓰기 Run"]
   Run --> Record["record_run"]
   Record --> Artifacts["artifact와 evidence refs"]
@@ -559,7 +559,7 @@ flowchart LR
 
 ## prepare_write
 
-`prepare_write`는 제품 파일 쓰기에 대한 유일한 권한 판단 지점입니다. Approval, user judgment resolution, `record_run`, `close_task`, report, projection, agent prose는 input 또는 context가 될 수 있습니다. 하지만 product-file write를 authorize하거나 consumable Write Authorization을 만들지는 않습니다.
+`prepare_write`는 제품 파일 쓰기에 대한 유일한 쓰기 전 범위 확인과 호환성 판단 지점입니다. Approval, user judgment resolution, `record_run`, `close_task`, report, projection, agent prose는 input 또는 context가 될 수 있습니다. 하지만 consumable Write Authorization record를 만들거나 product-file write를 스스로 compatible하게 만들지는 않습니다.
 
 State-level decision은 다음 중 하나입니다.
 
@@ -579,21 +579,21 @@ Decision은 Task, intended operation, active stage/profile, connected surface에
 8. Sensitive categories가 적용되면 sensitive-action permission을 확인합니다.
 9. User-owned judgment를 위한 required user judgment를 확인합니다.
 10. Enabled design/policy와 capability precondition을 확인합니다.
-11. 모든 required check가 pass하면 compatible single-use Write Authorization을 만들거나 반환하고 decision을 기록합니다.
+11. 모든 required check가 pass하면 compatible single-use Write Authorization record를 만들거나 반환하고 decision을 기록합니다.
 
 `blocked`, `approval_required`, `decision_required`, `state_conflict` result는 consumable Write Authorization을 만들면 안 됩니다. `approval_required`는 sensitive-action permission이 없거나 쓸 수 없다는 뜻입니다. Broad approval이나 product judgment로 바꾸면 안 됩니다. `decision_required`는 user-owned judgment가 필요하다는 뜻입니다. 민감 동작 permission으로 바꾸면 안 됩니다.
 
 Cooperative-only surface에서 MCP가 unavailable이면 product write는 instruction으로 hold합니다. Preventive 또는 isolated claim에는 covered operation에 대한 proven guard나 documented separation boundary가 필요합니다.
 
-External side effect도 authority 의미가 같습니다. 실행 전에는 `prepare_write`가 intended side effect를 평가합니다. 실행 뒤에는 `record_run`이 실제로 일어난 일을 기록합니다. `record_run`은 compatible scope, Approval, user judgment coverage, Write Authorization 없이 일어난 effect를 사후 authorize할 수 없습니다.
+External side effect도 authority 의미가 같습니다. 실행 전에는 `prepare_write`가 intended side effect를 평가합니다. 실행 뒤에는 `record_run`이 실제로 일어난 일을 기록합니다. `record_run`은 compatible scope, Approval, user judgment coverage, Write Authorization 없이 일어난 effect를 사후 compatible하게 만들 수 없습니다.
 
 ## record_run
 
-`record_run`은 Run, artifact, evidence recording point입니다. Authorization decision point가 아니며 product-file write를 사후 authorize할 수 없습니다.
+`record_run`은 Run, artifact, evidence recording point입니다. 쓰기 전 범위 확인 판단 지점이 아니며 product-file write를 사후 compatible하게 만들 수 없습니다.
 
 Product-file write를 보고하는 implementation/direct Run은 compatible, unexpired, unconsumed Write Authorization을 소비해야 합니다. Core는 가능한 관찰 정보를 사용해 observed changed paths와 다른 observed side effect를 consumed Write Authorization 및 active Change Unit과 비교합니다.
 
-Out-of-scope change, missing authorization, stale authorization, consumed authorization, incompatible authorization은 case에 따라 rejection, violation, recovery, stale/blocker state가 됩니다. 이런 Run은 relevant owner record를 통해 repair되기 전까지 affected scope의 evidence sufficiency, verification, QA, work acceptance, residual-risk acceptance, close readiness를 만족하지 않습니다.
+Out-of-scope change, missing Write Authorization, stale Write Authorization, consumed Write Authorization, incompatible Write Authorization은 case에 따라 rejection, violation, recovery, stale/blocker state가 됩니다. 이런 Run은 relevant owner record를 통해 repair되기 전까지 affected scope의 evidence sufficiency, verification, QA, work acceptance, residual-risk acceptance, close readiness를 만족하지 않습니다.
 
 Read-only와 shaping-only Run은 product-file change를 보고하지 않을 때만 Write Authorization 없이 기록할 수 있습니다.
 
@@ -646,7 +646,7 @@ Structured close blocker는 open Run, scope, user-owned judgment, sensitive-acti
 | Work shape/profile | 일반 successful close 전에 필요한 것 | Verification 처리 | Close result |
 |---|---|---|---|
 | 읽기/조언 | 요청한 조언, 설명, review, 비교가 완료됨. User나 profile이 source ref를 요구했다면 보여줌. | 보통 `not_required`. Verification이 required가 아니면 waiver도 필요 없습니다. | `result=advice_only`, `assurance_level=none`, 보통 `close_reason=completed_self_checked`. |
-| 작은 직접 변경 | Open Run 없음. Product write가 있었다면 active scope가 cover했고 compatible Write Authorization이 소비됨. 좁은 completion claim을 lightweight evidence 또는 self-check가 support함. Trigger된 user judgment, Approval, QA, acceptance, risk handling이 satisfied됨. | 보통 `not_required`. Optional qualifying Eval은 `detached_verified`를 support할 수 있습니다. Required verification이면 required-verification row를 따릅니다. | 보통 `result=passed`, `assurance_level=self_checked`, `close_reason=completed_self_checked`. |
+| 작은 직접 변경 | Open Run 없음. Product write가 있었다면 active scope가 cover했고 compatible Write Authorization record가 소비됨. 좁은 completion claim을 lightweight evidence 또는 self-check가 support함. Trigger된 user judgment, Approval, QA, acceptance, risk handling이 satisfied됨. | 보통 `not_required`. Optional qualifying Eval은 `detached_verified`를 support할 수 있습니다. Required verification이면 required-verification row를 따릅니다. | 보통 `result=passed`, `assurance_level=self_checked`, `close_reason=completed_self_checked`. |
 | Required detached verification이 없는 tracked work | Open Run 없음. Change Unit이 complete, explicitly deferred, superseded 중 하나. Scope, required user judgments, Approval, evidence, required QA, residual-risk visibility, required acceptance가 satisfied됨. | `verification_gate=not_required` 또는 non-detached self-check evidence를 applicable하게 보여줌. Verification waiver는 필요 없습니다. | `result=passed`, implementing path가 check했다면 `assurance_level=self_checked`, `close_reason=completed_self_checked`. |
 | Required detached verification이 있는 tracked work | 위 tracked-work requirement에 더해 valid independence와 current input이 있는 qualifying Eval로 `verification_gate=passed`. | Required verification을 intentionally skip하면 verification waiver를 기록하고 risk-accepted path를 사용합니다. Verified라고 부르면 안 됩니다. | Passed verification이면 `result=passed`, `assurance_level=detached_verified`, `close_reason=completed_verified`. |
 | Residual risk acceptance가 required인 tracked work | Active profile의 다른 required gate가 satisfied됨. Close-relevant residual risk가 visible하고, compatible residual-risk acceptance `user_judgment`가 관련 blocker/evidence ref와 함께 accepted risk를 기록함. | Verification은 not required, passed, 또는 required-verification waiver/risk path가 satisfied된 waived일 수 있습니다. | `result=passed`, `close_reason=completed_with_risk_accepted`, `assurance_level=none` 또는 `self_checked`. `detached_verified`처럼 표시하지 않습니다. |
@@ -687,7 +687,7 @@ Verification waiver는 detached verification이 아닙니다. Waived verificatio
 | Kernel invariant | Enforcement points |
 |---|---|
 | Core state가 authority입니다. | State-changing action은 Core record와 event를 만듭니다. Projection과 chat은 owner path 없이 state를 mutate할 수 없습니다. |
-| Product write에는 explicit scope와 write authority가 필요합니다. | `prepare_write`는 missing scope를 block하고 required check가 pass할 때만 single-use Write Authorization을 만듭니다. `record_run`이 이를 소비합니다. |
+| Product write에는 explicit scope와 compatible 쓰기 전 범위 확인이 필요합니다. | `prepare_write`는 missing scope를 block하고 required check가 pass할 때만 single-use Write Authorization record를 만듭니다. `record_run`이 이를 소비합니다. |
 | User-owned judgment는 agent judgment로 대체될 수 없습니다. | User judgment와 `decision_gate`는 compatible resolution, deferral, risk handling이 기록될 때까지 affected write 또는 close를 막습니다. |
 | Sensitive-action approval은 별도입니다. | 민감 동작 승인 user judgment, later Approval record, `approval_gate`는 sensitive permission만 cover합니다. |
 | Evidence, verification, QA, acceptance, residual risk는 분리됩니다. | Separate gates, refs, close blockers가 substitution을 막습니다. |
@@ -725,7 +725,7 @@ Verification waiver는 detached verification이 아닙니다. Waived verificatio
 | `advisor` mode에서 product write attempt | `prepare_write`를 block합니다. |
 | Required sensitive-action permission 없이 product write attempt | approval-required를 반환합니다. Write Authorization을 만들지 않습니다. |
 | Unresolved user-owned judgment가 있는데 product write attempt | decision-required 또는 decision-unresolved를 반환합니다. |
-| Compatible unconsumed Write Authorization 없이 implementation/direct Run 기록 | Reject하거나 authority consumed로 취급하지 않는 violation/recovery state를 기록합니다. |
+| Compatible unconsumed Write Authorization 없이 implementation/direct Run 기록 | Reject하거나 compatible authority consumed로 취급하지 않는 violation/recovery state를 기록합니다. |
 | 민감 동작 승인을 product/UX 또는 technical judgment로 사용 | Reject하거나 user judgment로 repair합니다. |
 | Generic "go ahead"로 incompatible routes를 만족 처리 | State를 기록하기 전에 clarify하거나 route를 분리합니다. |
 | Required evidence가 missing인데 `evidence_gate=not_required` | Recompute하고 repair합니다. |

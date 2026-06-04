@@ -38,7 +38,7 @@ Make a small copy change, but tell me if it turns into a broader product decisio
 
 The agent response should translate the request into understood scope, what the agent can inspect itself, what only the user can judge, what evidence would be needed, and what blocks close. Exact Harness labels can follow only when they clarify a boundary or source ref.
 
-This intended-runtime diagram summarizes the ordinary request flow: start from the user's request, inspect available context before asking, classify the work shape, identify what is still missing, separate blocking questions from useful non-blocking questions, route user-owned judgment with options and consequences, then propose the next safe action. Write authority, runs, evidence, and close readiness come later only when the work shape needs them. It is design guidance for future Harness behavior, not evidence that this repository contains an implementation.
+This intended-runtime diagram summarizes the ordinary request flow: start from the user's request, inspect available context before asking, classify the work shape, identify what is still missing, separate blocking questions from useful non-blocking questions, route user-owned judgment with options and consequences, then propose the next safe action. Pre-write scope checks, runs, evidence, and close readiness come later only when the work shape needs them. It is design guidance for future Harness behavior, not evidence that this repository contains an implementation.
 
 ```mermaid
 flowchart LR
@@ -52,10 +52,10 @@ flowchart LR
   Options --> Next
   Next --> ReadOnly["read or advice path"]
   Next --> WriteNeed{"product write?"}
-  WriteNeed -->|yes| Authority["scoped write authority"]
+  WriteNeed -->|yes| ScopeCheck["pre-write scope check"]
   WriteNeed -->|no| Status["status / next action"]
   ReadOnly --> Status
-  Authority --> Run["run and evidence record"]
+  ScopeCheck --> Run["run and evidence record"]
   Run --> Status
   Status -->|blocked| Blocker["show blocker"]
   Status -->|close path applies| CloseCheck["close readiness check"]
@@ -70,7 +70,7 @@ A useful status or next-action response answers four questions in ordinary langu
 - Evidence: what has already been checked, and by which refs?
 - Close Readiness: what remains before sensitive-action permission, verification, Manual QA, work acceptance, residual-risk visibility, residual-risk acceptance, or close?
 
-Render gate state through four user-facing display groups: Scope, User Judgments, Evidence, and Close Readiness. Explain the easy concept first, then add exact internal terms or refs only when they clarify a boundary, blocker, source ref, or runtime rule. User Judgments is structured, not one broad judgment bucket: label each item as Product/UX judgment, Technical judgment, Sensitive action approval, Work acceptance, or Residual risk acceptance. These are display groups only; they do not replace kernel gates, add schema fields, change recompute rules, authorize writes, satisfy gates, accept residual risk, or close the Task. Exact gate values, recompute behavior, and close semantics are owned by [Kernel Reference](../reference/kernel.md#gates) and [`close_task`](../reference/kernel.md#close_task).
+Render gate state through four user-facing display groups: Scope, User Judgments, Evidence, and Close Readiness. Explain the easy concept first, then add exact internal terms or refs only when they clarify a boundary, blocker, source ref, or runtime rule. User Judgments is structured, not one broad judgment bucket: label each item as Product/UX judgment, Technical judgment, Sensitive action approval, Work acceptance, or Residual risk acceptance. These are display groups only; they do not replace kernel gates, add schema fields, change recompute rules, create Write Authorization records, make writes compatible, satisfy gates, accept residual risk, or close the Task. Exact gate values, recompute behavior, and close semantics are owned by [Kernel Reference](../reference/kernel.md#gates) and [`close_task`](../reference/kernel.md#close_task).
 
 The turn context should stay compact, current, and profile-filtered. The always-on context budget should fit on one screen or less and include only current Task summary, work shape, scope and non-goals, pending user judgments, active blockers, next safe actions, evidence gaps, close blockers, residual-risk summary, guarantee level, and source refs/freshness. A field may be `none` or `unknown`, but token savings must not hide a close-relevant blocker, judgment, evidence gap, or residual risk.
 
@@ -82,14 +82,14 @@ Use progressive context loading instead of reading the whole documentation set i
 |---|---|---|---|
 | Session start | Current status or compact current-position summary, likely work shape, scope/non-goals when known, active blockers, pending user judgments, next safe action, evidence gaps, close blockers, residual-risk summary, guarantee level, source/freshness refs. | [Session start](#session-start), [Resume](#resume), current `harness.status` / `status.next_actions`, and projection freshness rules only if the readable view is stale or used for the next action. A separate `harness.next` output appears only when the later/compatibility profile includes it. | Full task history, full Reference docs, full schemas, old projections, unrelated templates, unrelated Roadmap, future catalog. |
 | Planning/clarification (`Discovery` internally) | Goal, user value, scope and non-goals, acceptance criteria, answerable facts inspected from repo/docs/current state, missing information, blocking questions, useful non-blocking questions, tracked uncertainty, user-owned judgment candidates, QA/verification expectations, and safe next-work candidate or work split. | [User Guide: What the agent should answer first](user-guide.md#what-the-agent-should-answer-first), [Intake](#intake), [Scope and write boundary](#scope-and-write-boundary), and relevant current Task/Change Unit/Shared Design refs. | Whole module maps, old PRDs/designs, design-policy catalogs, full Storage DDL, full Conformance catalog, unrelated templates, future catalog. |
-| Write preparation | Active scope or Change Unit, Autonomy Boundary, intended paths/tools/commands summary, sensitive-action permission status, later Approval status only when that profile is active, active user judgments, Write Authority Summary, baseline/freshness. | [Product writes](#product-writes), [Kernel: prepare_write](../reference/kernel.md#prepare_write), and [`harness.prepare_write`](../reference/api/mvp-api.md#harnessprepare_write) for the intended write. | Full Kernel/reference docs, unrelated schemas, historical event logs, large diffs/logs, full Storage DDL, future catalog. |
-| Execution/run recording | Run summary, changed-path summary, consumed Write Authorization or no-write basis, artifact refs, redaction/integrity notes, and immediate next action. | [Evidence and checks](#evidence-and-checks), [Kernel: record_run](../reference/kernel.md#record_run), [`harness.record_run`](../reference/api/mvp-api.md#harnessrecord_run), and artifact-ref display rules only when display or repair needs them. | Full logs, raw diffs, screenshots, traces, bundles, artifact inventories, full projection bodies, full Template set, future catalog. |
+| Write preparation | Active scope or Change Unit, Autonomy Boundary, intended paths/tools/commands summary, sensitive-action permission status, later Approval status only when that profile is active, active user judgments, pre-write scope-check summary / WriteAuthoritySummary, baseline/freshness. | [Product writes](#product-writes), [Kernel: prepare_write](../reference/kernel.md#prepare_write), and [`harness.prepare_write`](../reference/api/mvp-api.md#harnessprepare_write) for the intended write. | Full Kernel/reference docs, unrelated schemas, historical event logs, large diffs/logs, full Storage DDL, future catalog. |
+| Execution/run recording | Run summary, changed-path summary, consumed internal Write Authorization record or no-write basis, artifact refs, redaction/integrity notes, and immediate next action. | [Evidence and checks](#evidence-and-checks), [Kernel: record_run](../reference/kernel.md#record_run), [`harness.record_run`](../reference/api/mvp-api.md#harnessrecord_run), and artifact-ref display rules only when display or repair needs them. | Full logs, raw diffs, screenshots, traces, bundles, artifact inventories, full projection bodies, full Template set, future catalog. |
 | Evidence review | Known evidence summary, `evidence_ref` when present, Run refs, ArtifactRefs, visible evidence gaps, stale or insufficient support, affected acceptance criteria or claims, redaction/integrity notes, and next evidence action. Include an Evidence Manifest ref only when the full Evidence Manifest profile is active. | [Evidence and checks](#evidence-and-checks), [`harness.record_run`](../reference/api/mvp-api.md#harnessrecord_run), artifact-ref display rules, and [Kernel: Evidence Manifest](../reference/kernel.md#evidence-manifest) only when that profile is active. | Full evidence bodies, full logs, raw diffs, screenshots, traces, bundles, artifact inventories, full projection bodies, full Template set, future catalog. |
 | Close readiness | Close readiness summary, blockers, sensitive-action permission status, evidence/verification/QA/work acceptance status, residual-risk visibility or accepted refs, projection freshness, smallest unblocker. | [Close](#close), [Verification, Manual QA, residual risk, work acceptance](#verification-manual-qa-residual-risk-work-acceptance), [Kernel: close_task](../reference/kernel.md#close_task), and [`harness.close_task`](../reference/api/mvp-api.md#harnessclose_task). | Generic all-done rollups, full report bodies, full historical logs, unrelated templates, full Conformance catalog, full projection bodies, future catalog. |
 | User judgment request | Exact user-owned judgment, options or selected outcome, consequences, uncertainty, affected scope, relevant refs, what the agent is not deciding for the user, what the answer does not settle, and next action after the answer. Full profiles also show recommendation, affected gates/acceptance criteria, and consequence of deferral. Use full-format Decision Packet presentation only when a complex judgment needs it. | [Blocking User-Owned Judgments](#blocking-user-owned-judgments), [User Judgment](../reference/kernel.md#user-judgment), and the specific MCP method only if exact fields are needed. | Broad approval language, unrelated judgments, full evidence bodies, full logs, full schema references, full Template set, future catalog. |
 | Recovery/error | Primary error or blocker, owner, last safe/current state known, stale or unavailable source, affected authority claims, next recovery action, and whether writes or close must hold. | [Resume](#resume), [Reading status and blockers](#reading-status-and-blockers), [Agent Integration: Fallback Semantics](../reference/agent-integration.md#fallback-semantics), and the specific recovery or error owner section. | Historical event logs, stack traces, full artifacts, unrelated status, full Storage DDL, full Conformance catalog, unrelated Roadmap. |
 
-Agent memory, chat history, retrieved context, indexed context, and projections stay read-only. They can suggest what to inspect, but they cannot authorize writes, satisfy gates, create evidence, perform verification, accept risk, close a Task, or make any other authority claim. When state matters, retrieve current Core state or state-derived compact context before acting. Token savings must not hide user-owned decisions, blockers, scope limits, safety boundaries, evidence gaps, close blockers, or close-relevant residual risk. A judgment request must include the decision, options, consequences, uncertainty, and what the agent is not deciding for the user.
+Agent memory, chat history, retrieved context, indexed context, and projections stay read-only. They can suggest what to inspect, but they cannot create Write Authorization records, make writes compatible, satisfy gates, create evidence, perform verification, accept risk, close a Task, or make any other authority claim. When state matters, retrieve current Core state or state-derived compact context before acting. Token savings must not hide user-owned decisions, blockers, scope limits, safety boundaries, evidence gaps, close blockers, or close-relevant residual risk. A judgment request must include the decision, options, consequences, uncertainty, and what the agent is not deciding for the user.
 
 ## Session start
 
@@ -110,31 +110,31 @@ Keep small changes light. Do not add ceremony just to answer a question, inspect
 Show:
 
 - the active or likely Task id when useful, plus the plain work shape: read/advice work, small change, or tracked work; include `advisor`, `direct`, or `work` only as diagnostic or power-user detail
-- Scope: the current or proposed scope, what is out of bounds, and any active Change Unit or write-authority boundary that affects the next action
+- Scope: the current or proposed scope, what is out of bounds, and any active Change Unit or pre-write scope-check boundary that affects the next action
 - User Judgments: any user-owned question, judgment request, full-format Decision Packet presentation, or sensitive-action permission that blocks progress, labeled by judgment type and not merged with other pending items
 - Evidence: supporting refs, missing support, stale support, or checks already run
 - Close Readiness: sensitive-action permission, verification, Manual QA, residual-risk visibility, residual-risk acceptance, work acceptance, and close-blocker status when those affect the next decision or close
 - the next safe action
 - the primary blocker, who owns the next move, and the smallest unblocker
 - secondary blockers only when they still affect the follow-on path
-- write authority status when writes are possible or near
+- pre-write scope-check status when writes are possible or near
 - guarantee level and what the surface can actually block or only detect, as display and risk context rather than sensitive-action Approval, verification, work acceptance, or a gate
 - optional raw gate names or refs only when they clarify a boundary; do not make the user read the full gate taxonomy to understand the next action
 - projection freshness status
 - when guard, freeze, or careful mode is relevant, what can actually be blocked before execution and what can only be detected after action
 
-Do not begin product writes from a broad natural-language request alone. First establish scope and compatible write authority for the intended change.
+Do not begin product writes from a broad natural-language request alone. First establish scope and a compatible pre-write scope check for the intended change.
 
 Natural-language consent such as "go ahead," "proceed," "looks good," "진행해," or "좋아" can be mapped to a pending judgment only when one active prompt has already made the judgment type, option, scope, affected gates, consequences, and what remains outside the answer unambiguous. Those phrases must not automatically become sensitive-action approval, work acceptance, or residual-risk acceptance. If one prompt has multiple pending items, the phrase applies only to the unambiguous item; otherwise clarify before recording it. If the same utterance could mean sensitive-action approval, work acceptance, residual-risk acceptance, QA waiver, verification waiver, scope confirmation, or simple continuation, clarify before recording it.
 
 ## Resume
 
-Before significant work resumes, read Harness state and show the current position. Resume from current Core state and owner records, not old chat, stale status text, or remembered prior recommendations. Stale chat memory may identify refs to inspect, but it cannot authorize writes, close tasks, accept results, waive checks, accept residual risk, or replace current state.
+Before significant work resumes, read Harness state and show the current position. Resume from current Core state and owner records, not old chat, stale status text, or remembered prior recommendations. Stale chat memory may identify refs to inspect, but it cannot create Write Authorization records, make writes compatible, close tasks, accept results, waive checks, accept residual risk, or replace current state.
 
 A good resume response says:
 
 ```text
-I found the active task. Current scope is X. The next safe action is Y. Product writes are not authorized yet. One decision is pending: Z.
+I found the active task. Current scope is X. The next safe action is Y. Product writes have not passed the pre-write scope check yet. One decision is pending: Z.
 ```
 
 If projection, `source_state_version`, or readable status is stale or unknown, say that and refresh or reconcile before depending on it. If canonical state is available directly, the agent may continue from that state while warning that the readable projection is not the source of authority.
@@ -154,7 +154,7 @@ Status and blocker displays should put the six user-facing concepts before raw g
 | Concept | Show first | Typical owner refs |
 |---|---|---|
 | Work | What the user is trying to finish, answer, inspect, or decide. | Task, current work summary, current status refs. |
-| Scope | What may change, what is out of bounds, and whether the intended write fits. | Task, Change Unit, Autonomy Boundary, Write Authorization. |
+| Scope | What may change, what is out of bounds, and whether the intended write fits. | Task, Change Unit, Autonomy Boundary, pre-write scope check / Write Authorization. |
 | Judgment | What the user must decide before progress can continue, with each pending item split by type. Include sensitive-action approval only when that is the pending judgment type. | Judgment request, `user_judgment` ref, full-format Decision Packet presentation when enabled, Approval ref only when the later Approval profile is active, Residual Risk refs. |
 | Evidence | What supports the claim, what is missing, and whether support is stale. | `evidence_ref` refs, Run refs, ArtifactRefs, and derived gap summaries; Evidence Manifest only when the full evidence profile is active. |
 | Check or verification | What was checked, what still needs checking, and whether a stronger review boundary or human QA is needed. | Eval input refs when verification is active, Manual QA refs or waiver refs when active, Run refs for checks. |
@@ -164,19 +164,19 @@ These concepts are not gate aliases and do not define exact enum values. When ex
 
 - `harness.status` means "where are we now?"
 - `status.next_actions` means "what is the next safe action or smallest unblocker?" A separate `harness.next` method is later/compatibility material.
-- `harness.prepare_write` means "may this exact product write happen now?"
+- `harness.prepare_write` means "does this exact intended product write match current scope and state now?"
 - `harness.record_run` means "what happened, what evidence changed, and what is next?"
 - `harness.close_task` means "can this Task finish or cancel now?"
 
-`harness.status`, `status.next_actions`, later/compatibility `harness.next`, compact status cards, and recommendation lines are read-only displays. They can recommend a judgment request, full-format Decision Packet view, `prepare_write`, evidence collection, work-acceptance request, verification, QA, reconcile, or close attempt, but the recommendation itself does not mutate state, authorize writes, satisfy gates, accept results, accept residual risk, or close the Task.
+`harness.status`, `status.next_actions`, later/compatibility `harness.next`, compact status cards, and recommendation lines are read-only displays. They can recommend a judgment request, full-format Decision Packet view, `prepare_write`, evidence collection, work-acceptance request, verification, QA, reconcile, or close attempt, but the recommendation itself does not mutate state, create Write Authorization records, make writes compatible, satisfy gates, accept results, accept residual risk, or close the Task.
 
 When `status.next_actions` or later/compatibility `harness.next` returns an `action_kind`, render the plain action before the enum. Use the exact enum only when it helps a power user or explains a boundary. The table is a display superset: minimum MVP-1 can use the baseline rows, including `request_acceptance` when work acceptance is required, while `launch_verify`, `record_eval`, `record_manual_qa`, and `reconcile` appear only when the matching owner profile is enabled.
 
 | `action_kind` | Stage/profile | Say to the user |
 |---|---|---|
 | `ask_user` | Minimum MVP-1 | A user-owned answer is needed; show the focused question, recommendation, impact, and refs. |
-| `prepare_write` | Minimum MVP-1 | Check write authority for the exact intended write. |
-| `implement` | Minimum MVP-1 | Continue the scoped implementation path; for product writes, use only current compatible Write Authorization. |
+| `prepare_write` | Minimum MVP-1 | Run the pre-write scope check for the exact intended write. |
+| `implement` | Minimum MVP-1 | Continue the scoped implementation path; for product writes, use only the current compatible internal Write Authorization record. |
 | `launch_verify` | Later verification owner profile only | Start or prepare an independent verification path from current evidence refs. |
 | `record_eval` | Later Eval / detached verification owner profile only | Record the evaluator result; do not claim detached verification until the Eval qualifies. |
 | `record_manual_qa` | Later Manual QA owner profile only | Record a human QA outcome or valid waiver; do not treat browser artifacts alone as Manual QA. |
@@ -187,7 +187,7 @@ When `status.next_actions` or later/compatibility `harness.next` returns an `act
 
 The MVP-1 next-action contract is owned by [`harness.status`](../reference/api/mvp-api.md#harnessstatus). A separate [`harness.next`](../reference/api/schema-later.md#harnessnext) method is later/compatibility material. This table is display guidance, not a new route or gate.
 
-Every authority claim in status, next, result, acceptance, or close display must be traceable to its source ref or explicit absence. Use a Write Authorization ref for "write allowed." For sensitive-action permission, cite the resolved sensitive-action approval user judgment ref in minimum MVP-1; cite an Approval ref only when the later Approval profile is active. For minimum MVP-1 evidence display, cite `evidence_ref` when present, Run refs, ArtifactRefs, and visible gap summaries; do not call evidence sufficient unless the active owner path can establish sufficiency. When the full Evidence Manifest profile is active, cite the Evidence Manifest ref for full criteria-to-evidence sufficiency. Cite an Eval ref for detached verification only when that profile is active, a Manual QA record or valid waiver path for Manual QA when that profile is active, the work acceptance user judgment path for work acceptance, blocker/user-judgment refs or `ResidualRiskSummary.status=none` for residual-risk visibility, a residual-risk acceptance user judgment plus relevant blocker/evidence refs for MVP-1 residual-risk acceptance, rich Residual Risk refs only when that later profile is active, and artifact refs for logs, diffs, screenshots, traces, or bundles. If the ref is missing, say the claim is not yet supported.
+Every authority claim in status, next, result, acceptance, or close display must be traceable to its source ref or explicit absence. Use a Write Authorization ref for "pre-write scope check compatible," and do not present it as OS permission, sandboxing, tamper-proof enforcement, or pre-execution blocking. For sensitive-action permission, cite the resolved sensitive-action approval user judgment ref in minimum MVP-1; cite an Approval ref only when the later Approval profile is active. For minimum MVP-1 evidence display, cite `evidence_ref` when present, Run refs, ArtifactRefs, and visible gap summaries; do not call evidence sufficient unless the active owner path can establish sufficiency. When the full Evidence Manifest profile is active, cite the Evidence Manifest ref for full criteria-to-evidence sufficiency. Cite an Eval ref for detached verification only when that profile is active, a Manual QA record or valid waiver path for Manual QA when that profile is active, the work acceptance user judgment path for work acceptance, blocker/user-judgment refs or `ResidualRiskSummary.status=none` for residual-risk visibility, a residual-risk acceptance user judgment plus relevant blocker/evidence refs for MVP-1 residual-risk acceptance, rich Residual Risk refs only when that later profile is active, and artifact refs for logs, diffs, screenshots, traces, or bundles. If the ref is missing, say the claim is not yet supported.
 
 When a response contains errors or blockers, lead with one primary blocker. Use the first `ToolError` chosen by API precedence, or the first `close_task` blocker when close returned blockers. Then show the smallest unblocker in ordinary language. Keep secondary blockers visible only when they will still matter after the primary blocker is resolved.
 
@@ -209,19 +209,19 @@ Common display examples:
 | `MCP_UNAVAILABLE` with no useful detail | Harness/Core capability is unavailable. | Reconnect, repair the surface, or switch to a capable surface before claiming state changes. |
 | `CAPABILITY_INSUFFICIENT` | This surface cannot provide the needed guarantee. | Use a capable profile, reduce the operation, or choose a path that does not need that capability. |
 | `NO_ACTIVE_TASK` | No active Task is selected. | Select or create the Task before continuing. |
-| `WRITE_AUTHORIZATION_REQUIRED` or `WRITE_AUTHORIZATION_INVALID` | Write authority is missing or stale. | Retry `harness.prepare_write` for the exact intended write. |
+| `WRITE_AUTHORIZATION_REQUIRED` or `WRITE_AUTHORIZATION_INVALID` | Pre-write scope check is missing or stale. | Retry `harness.prepare_write` for the exact intended write. |
 | `DECISION_REQUIRED` or `DECISION_UNRESOLVED` | A user-owned judgment is needed. | Show a focused judgment request; include a full-format Decision Packet only when a ref or exact contract helps. |
 | `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, or `APPROVAL_EXPIRED` | Sensitive-action permission is needed or unusable. | Request or resolve a Sensitive action approval judgment in minimum MVP-1; renew or repair an Approval only when the later Approval profile is active, then retry the write check. |
 | `PROJECTION_STALE` | The readable status view is stale. | Refresh or reconcile the projection before relying on that view. |
 | `ARTIFACT_MISSING` | An artifact is missing or failed integrity. | Reattach, regenerate, or replace the artifact before using it as evidence. |
 
-Prefer the plain phrase first and the exact Harness term in parentheses only when it helps: "Write authority is stale (`WRITE_AUTHORIZATION_INVALID`). Smallest unblocker: rerun `harness.prepare_write` for the current file list."
+Prefer the plain phrase first and the exact Harness term in parentheses only when it helps: "Pre-write scope check is stale (`WRITE_AUTHORIZATION_INVALID`). Smallest unblocker: rerun `harness.prepare_write` for the current file list."
 
 ## Intake
 
 Intake turns an everyday request into a usable task shape without forcing the user to speak Harness. The user may say "add email login and keep reset out of scope"; the agent should translate that into a plain work shape, scope, possible decisions, evidence needs, write checks, and close readiness handling.
 
-Requirements clarification is the agent's conditional behavior before implementation planning and before write authority. `Discovery` is the stable internal name for that behavior, not a user command to memorize. Users can trigger the same behavior with plain language such as "clarify the plan before implementation" or "ask what you need before changing code." Use it when clarification is needed because the request is ambiguous, feature-shaped, auth/security-sensitive, UX/copy/workflow-heavy, public-interface or module-boundary-facing, likely to touch policy, or likely to become tracked work; do not add it as ceremony for an obvious small change. It is not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, work acceptance, residual-risk acceptance, close, scope authority, or a new authority path.
+Requirements clarification is the agent's conditional behavior before implementation planning and before pre-write scope checking. `Discovery` is the stable internal name for that behavior, not a user command to memorize. Users can trigger the same behavior with plain language such as "clarify the plan before implementation" or "ask what you need before changing code." Use it when clarification is needed because the request is ambiguous, feature-shaped, auth/security-sensitive, UX/copy/workflow-heavy, public-interface or module-boundary-facing, likely to touch policy, or likely to become tracked work; do not add it as ceremony for an obvious small change. It is not approval, sensitive-action Approval, Write Authorization, evidence, verification, QA, work acceptance, residual-risk acceptance, close, scope authority, or a new record/check path.
 
 Listen for the same task-shape triggers used at session start: product writes, scope drift risk, ambiguous requirements, multi-file or structural work, sensitive or policy-relevant areas, user-owned decisions, and evidence, verification, Manual QA, work acceptance, or residual-risk needs. When one appears, translate the ordinary request into a proposed work shape, scope, out-of-bounds area, and next safe action.
 
@@ -238,7 +238,7 @@ Treat requirements-clarification outputs, including Discovery support, as suppor
 - Assumption Register: assumptions the agent is using, with source, confidence, owner, and what would change if the assumption fails.
 - Safe next-work scope candidate (`First Safe Change Unit Candidate` internally): the internal Change Unit-shaped version of a safe next-work candidate when product writes are near. It is an advanced/support concept, not the only Discovery output or primary stop condition.
 
-Plain phrases such as "safe next-work candidate" and "work split" are proposal/support phrases, not standalone schema fields, canonical record types, gate values, projection kinds, or authority paths.
+Plain phrases such as "safe next-work candidate" and "work split" are proposal/support phrases, not standalone schema fields, canonical record types, gate values, projection kinds, or record/check paths.
 
 Route requirements-clarification results into Shared Design, judgment request candidates, optional full-format Decision Packet presentations, and Change Unit shaping. Do not treat a requirements brief, Question Queue, Assumption Register, or safe next-work scope candidate as scope authority, sensitive-action approval, Acceptance, residual-risk acceptance, evidence, close readiness, or Write Authorization.
 
@@ -323,15 +323,15 @@ If a small change grows, move the same Task to tracked work and show why in ordi
 
 ## Small-change ceremony budget
 
-Small change is a lightweight user experience, not a lower authority path. The user display should stay light, while the internal scope, write, evidence, and close boundary still matters. Keep the visible budget to the smallest useful set:
+Small change is a lightweight user experience, not a lower record/check path. The user display should stay light, while the internal scope, pre-write scope check, evidence, and close boundary still matters. Keep the visible budget to the smallest useful set:
 
 - state the narrow scope in ordinary language
 - name out-of-bounds behavior, files, or decisions when they are relevant
-- record or select the internal minimal Change Unit before product writes, but show "narrow scope" or "write authority" to the user only when useful for decision-making and trust
+- record or select the internal minimal Change Unit before product writes, but show "narrow scope" or "pre-write scope check" to the user only when useful for decision-making and trust
 - use compatible `prepare_write` before the exact product-file write attempt when product writes apply
 - report changed paths, the self-check or other lightweight evidence, escalation status, and close-relevant risk
 
-For a tiny change, the visible budget may be even smaller: the trivial scope, changed path or no-file result, and self-check. That small display is not an authorization shortcut. The internal tiny profile under `direct` still respects active scope, compatible `prepare_write` when product writes apply, user-owned decisions, sensitive-action Approval, security and privacy boundaries, residual-risk visibility, and close rules.
+For a tiny change, the visible budget may be even smaller: the trivial scope, changed path or no-file result, and self-check. That small display is not a scope-check shortcut. The internal tiny profile under `direct` still respects active scope, compatible `prepare_write` when product writes apply, user-owned decisions, sensitive-action Approval, security and privacy boundaries, residual-risk visibility, and close rules.
 
 Do not create a user judgment request, full-format Decision Packet presentation, require Manual QA, request detached verification, or show a full close checklist unless the task shape, policy, changed surface, detected risk, or user request makes that necessary.
 
@@ -349,26 +349,26 @@ Before product writes, shape the active scope into a write boundary. The interna
 
 Enough is known to propose safe next work when the agent can state those items without hiding unresolved user judgments, separate answerable facts from user-owned judgments, show that goals, non-goals, acceptance criteria, and major judgment candidates are clear enough, classify the next safe action as advice/read-only, small direct change, or tracked work, and explicitly track remaining uncertainty. If that cannot be done yet, continue requirements clarification by inspecting current sources for answerable facts, asking the next grouped blocking question, parking useful non-blocking questions, or proposing a smaller safe next-work candidate or work split that avoids the unresolved area. A safe next-work scope candidate may be the internal expression of that proposal when product writes are near, but it is not the only or primary requirements-clarification stop condition.
 
-Autonomy Boundary is not write authority. It only describes what judgment the agent may exercise without asking again. Change Unit scope answers where and what the work may change; Autonomy Boundary answers which choices the agent may make inside that scope. Actual product writes still require a compatible write check.
+Autonomy Boundary is not a pre-write scope check or internal Write Authorization record. It only describes what judgment the agent may exercise without asking again. Change Unit scope answers where and what the work may change; Autonomy Boundary answers which choices the agent may make inside that scope. Actual product writes still require a compatible pre-write scope check.
 
 Use this distinction when explaining stops and permissions:
 
-| Concept | Plain question | Allows | Does not allow |
+| Concept | Plain question | Records or allows | Does not allow |
 |---|---|---|---|
 | Change Unit scope | What work area is in bounds? | Names the behavior, files, paths, tools, commands, network targets, and sensitive categories the work is scoped around. | Does not decide user-owned product or material technical judgment or create Write Authorization by itself. |
-| Autonomy Boundary | What may the agent decide alone inside that scope? | Lets the agent choose covered implementation details without another user judgment. | Does not grant paths, tools, commands, network, secrets, sensitive categories, sensitive-action permission / Approval, or write authority. |
+| Autonomy Boundary | What may the agent decide alone inside that scope? | Lets the agent choose covered implementation details without another user judgment. | Does not grant paths, tools, commands, network, secrets, sensitive categories, sensitive-action permission / Approval, or a pre-write scope-check record. |
 | Sensitive-action permission / Approval | May this sensitive step proceed? | Allows a named sensitive action within its recorded scope and expiry; minimum MVP-1 can represent this through a Sensitive action approval user judgment, while the later Approval profile can use an Approval record. | Does not decide user-owned product, technical, waiver, acceptance, or residual-risk questions; prove correctness; waive QA or verification; accept the result; accept residual risk; or create Write Authorization. |
 | User judgment request | What user-owned judgment is being recorded? | Resolves, defers, rejects, or blocks the named Product/UX judgment, Technical judgment, Sensitive action approval, Work acceptance, or Residual risk acceptance. It may be concise or full-format depending on the profile. | Grants sensitive-action permission only when `judgment_type=sensitive_action_approval` with compatible `approval_scope`; it is not Write Authorization and does not replace any separate product, technical, acceptance, waiver, or risk judgment. |
 | Acceptance | Is the result acceptable when work acceptance is required? | Records the user's work acceptance judgment after close-relevant residual risk is visible or confirmed absent. | Does not replace evidence, verification, Manual QA, sensitive-action permission / Approval, Write Authorization, waiver, or residual-risk acceptance. |
 | Residual-risk acceptance | Is this known remaining risk acceptable for close? | Records acceptance of visible close-relevant risk and supports residual-risk accepted close when other gates allow it. | Does not create detached verification, prove correctness, waive QA, or make the close a normal no-risk close. |
-| Write Authorization | May this exact write attempt happen now? | Records that Core allowed one compatible write attempt after the required checks. | Is not reusable and does not expand scope, Autonomy Boundary, or sensitive-action permission / Approval. |
+| Pre-write scope check / Write Authorization | Does this exact write attempt match current scope and state now? | Records that Core found one compatible write attempt after the required checks. The internal Write Authorization record is cooperative Harness state, not OS permission, sandboxing, tamper-proof enforcement, or preventive blocking. | Is not reusable and does not expand scope, Autonomy Boundary, or sensitive-action permission / Approval. |
 
-For small changes, the internal active Change Unit may be generated from the user's request and surrounding context. Do not require the user to see "Change Unit" language for every tiny edit; show it only when it explains scope, write authority, or a blocker. Keep examples explanatory, not schema-defining:
+For small changes, the internal active Change Unit may be generated from the user's request and surrounding context. Do not require the user to see "Change Unit" language for every tiny edit; show it only when it explains scope, pre-write scope checking, or a blocker. Keep examples explanatory, not schema-defining:
 
 - Docs or copy edit: purpose "change this phrase"; non-goals "no behavior or contract change"; scoped paths "the named doc/component and related test if present"; stop if "meaning, localization strategy, or public promise changes."
 - Focused test edit: purpose "cover the reported case"; non-goals "no implementation refactor"; scoped paths "the relevant test"; stop if "the fix requires product code."
 
-When a prompt or status uses the word "approved," name the exact authority or recorded judgment: sensitive-action approval, later Approval record, scope confirmation, judgment request resolution, scoped waiver, residual-risk acceptance, work acceptance (Acceptance), or Write Authorization status. Do not use "approved" as a catch-all label.
+When a prompt or status uses the word "approved," name the exact Harness record/check or recorded judgment: sensitive-action approval, later Approval record, scope confirmation, judgment request resolution, scoped waiver, residual-risk acceptance, work acceptance (Acceptance), or pre-write scope-check / Write Authorization status. Do not use "approved" as a catch-all label.
 
 Examples:
 
@@ -376,7 +376,7 @@ Examples:
 - Secret access sensitive-action permission: permission to read or use a secret inside the requested scope does not permit exposing secret values in artifacts, projections, exports, logs, screenshots, or summaries.
 - Auth/system change sensitive-action permission: permission to touch auth files, permissions, or system configuration does not choose the identity-provider or session/storage model, such as local session cookie, bearer token/JWT, OAuth/OIDC sign-in, or social-login provider integration; it also does not decide role model, lockout behavior, or user notice.
 - Public API change decision: resolving the API direction decides the contract choice for the Task; it is not deployment authority, merge authority, or a reusable Write Authorization.
-- Work acceptance (Acceptance): accepting the result does not authorize more writes, approve new sensitive actions, accept known residual risk, or retroactively satisfy missing evidence, QA, verification, waiver, or Write Authorization.
+- Work acceptance (Acceptance): accepting the result does not make more writes compatible, approve new sensitive actions, accept known residual risk, or retroactively satisfy missing evidence, QA, verification, waiver, or Write Authorization.
 
 Use Shared Design to record the shared understanding from requirements clarification: goal, user value, scope, non-goals, assumptions, remaining uncertainty, domain/module/interface impact, separated user-owned judgments, QA/verification expectations, and safe next work. Do not present Shared Design as sensitive-action approval, Acceptance, residual-risk acceptance, waiver, evidence, close readiness, or Write Authorization. If Shared Design exposes a public API/interface choice, domain-language conflict, module boundary move, architecture direction, privacy/security trade-off, QA/verification waiver, scope expansion, or known-risk acceptance that the user owns, route that choice to a Product/UX judgment, Technical judgment, or Residual risk acceptance as appropriate.
 
@@ -425,7 +425,7 @@ Decision: should this scoped settings copy change use "Save" or "Update"?
 Options: "Save" or "Update".
 Consequence: the chosen label becomes the copy target for this Change Unit.
 Uncertainty: none beyond normal copy preference.
-Agent is not deciding: broader settings behavior, localization strategy, work acceptance, residual-risk acceptance, or write authority.
+Agent is not deciding: broader settings behavior, localization strategy, work acceptance, residual-risk acceptance, or pre-write scope checking.
 ```
 
 Tradeoff judgment:
@@ -438,7 +438,7 @@ Options: inline message, toast, or modal.
 Recommendation: inline message because it preserves flow and accessibility.
 Consequence: the choice sets the UX target and Manual QA expectation for this flow.
 Uncertainty: existing accessibility patterns may make another option cheaper.
-Agent is not deciding: account-enumeration policy, work acceptance, residual-risk acceptance, or write authority.
+Agent is not deciding: account-enumeration policy, work acceptance, residual-risk acceptance, or pre-write scope checking.
 If deferred: backend auth wiring may continue only if it does not claim the final failed-login UX is done.
 ```
 
@@ -465,7 +465,7 @@ Options: waive the named Manual QA check, keep close blocked, or defer close.
 Recommendation: keep close blocked unless release timing requires the waiver.
 Consequence: a waiver changes close readiness for the named check only.
 Uncertainty: visual wrapping risk remains until a human check or accepted risk resolves it.
-Agent is not deciding: any remaining wrapping-risk acceptance, work acceptance, detached verification, or write authority.
+Agent is not deciding: any remaining wrapping-risk acceptance, work acceptance, detached verification, or pre-write scope checking.
 Affected group: Close Readiness; owner path/gate ref: Manual QA / qa_gate; affected criterion: AC-03 onboarding copy layout.
 ```
 
@@ -515,7 +515,7 @@ Feedback Loop is the canonical support-record path for selected loops and loop f
 
 ## AFK work and public commitments
 
-When the user says to continue while they are away, treat that as permission to use already-recorded latitude, not as new authority. The agent may continue only inside the active Change Unit, the active Autonomy Boundary, granted sensitive-action permission, and compatible `prepare_write` / Write Authorization for each product write. Minimum MVP-1 uses a Sensitive action approval user judgment for that permission; later Approval profiles may use Approval records.
+When the user says to continue while they are away, treat that as permission to use already-recorded latitude, not as new authority. The agent may continue only inside the active Change Unit, the active Autonomy Boundary, granted sensitive-action permission, and a compatible `prepare_write` / internal Write Authorization record for each product write. Minimum MVP-1 uses a Sensitive action approval user judgment for that permission; later Approval profiles may use Approval records.
 
 Stop and surface the smallest unblocker before scope expansion, new sensitive action without compatible sensitive-action permission, Autonomy Boundary breach, residual-risk acceptance, accepting the result, QA or verification waiver, public API or module contract change, domain-language change that affects public meaning, release/support promise, or other public commitment that users or other systems may rely on.
 
@@ -523,12 +523,12 @@ Name the guarantee level when presenting AFK stops. On cooperative or detective 
 
 ## Product writes
 
-Before writing product files, the agent must check write authority for the intended operation.
+Before writing product files, the agent must run the pre-write scope check for the intended operation.
 
-Show a short Write Authority Summary:
+Show a short pre-write scope-check summary:
 
 ```text
-Write authority: allowed for src/auth/login.ts and tests/auth/login.test.ts
+Pre-write scope check: compatible for src/auth/login.ts and tests/auth/login.test.ts
 Scope basis: email login work scope (Change Unit ref available for drill-down)
 Limitation: cooperative surface; changed-path validation detects violations after the fact
 ```
@@ -537,9 +537,9 @@ For external side effects, separate the before-action claim from the after-actio
 
 Do not describe a cooperative or detective hold as if it blocks execution. Say that writes are held by instruction, or that violations can be detected after action when the connected profile supports that validation. Use preventive wording only for proven pre-tool blocking on the covered operation.
 
-If write authority is blocked, unavailable, stale, or incompatible with the intended change, hold product writes and explain the smallest unblocker.
+If the pre-write scope check is blocked, unavailable, stale, or incompatible with the intended change, hold product writes and explain the smallest unblocker.
 
-If observed changed paths fall outside the consumed Write Authorization or active Change Unit, do not summarize them as authorized work. Show the mismatch, hold further product writes, and route to repair: revert or isolate the extra change, request a scope decision, or escalate to tracked work (`work`) when the wider change is now intentional.
+If observed changed paths fall outside the consumed internal Write Authorization record or active Change Unit, do not summarize them as scope-compatible work. Show the mismatch, hold further product writes, and route to repair: revert or isolate the extra change, request a scope decision, or escalate to tracked work (`work`) when the wider change is now intentional.
 
 Documentation-maintenance edits are a separate docs-only workflow. They are governed by
 [Authoring Guide](../maintain/authoring-guide.md), not by the product-write flow described here.
@@ -626,7 +626,7 @@ For small changes, keep the result low-ceremony: request, scope, changed files o
 
 For tracked work, the close summary must make the close basis visible. Show changed scope, sensitive-action permission, evidence coverage, verification, Manual QA, residual-risk visibility, residual-risk acceptance, work acceptance, and close reason when applicable. If a gate is waived, `not_required`, failed, pending, or blocked, the close display should say so instead of folding it into a generic success line.
 
-Use the close display that matches the task shape: `DIRECT-RESULT` is the compact result display for small changes, `TASK` Close Summary is continuity display for active or recently closed tracked work, and Journey Card close context, when enabled by a later profile, is compact status/resume display. None of these displays creates state, gates, work acceptance, QA, verification, residual-risk acceptance, close, or write authority.
+Use the close display that matches the task shape: `DIRECT-RESULT` is the compact result display for small changes, `TASK` Close Summary is continuity display for active or recently closed tracked work, and Journey Card close context, when enabled by a later profile, is compact status/resume display. None of these displays creates state, gates, work acceptance, QA, verification, residual-risk acceptance, close, or a pre-write scope-check record.
 
 Close displays should lead with the same six user-facing concepts: Work for the result being closed, Scope for changed scope, Judgment for work acceptance, residual-risk acceptance, QA waiver, verification waiver, or sensitive-action permission when relevant, Evidence for support refs, Check or verification for tests, verification, Manual QA, and waiver state, and Close for close blockers, close reason, remaining risk, and next safe action. Raw gate names can follow when they explain a blocker, but exact gate values and close semantics remain kernel-owned.
 
@@ -651,7 +651,7 @@ When more than one category blocks close, lead with the primary blocker but keep
 Good start:
 
 ```text
-This looks like a small change that can stay light because the requested change is one copy string. Scope: settings page label only. Out of bounds: account behavior and API changes. Next safe action: check write authority for that file, then make the edit and self-check.
+This looks like a small change that can stay light because the requested change is one copy string. Scope: settings page label only. Out of bounds: account behavior and API changes. Next safe action: run the pre-write scope check for that file, then make the edit and self-check.
 ```
 
 Bad start:
@@ -716,7 +716,7 @@ Evidence: changed `src/settings/Profile.tsx`; checked the related copy test and 
 Close Readiness: no close-relevant blocker or known residual risk remains for this small change.
 ```
 
-Power-user or diagnostic displays may include owner refs such as Write Authorization, evidence summary, Run, artifact, Residual Risk, or Evidence Manifest refs when that profile is active and the refs help explain authority or support.
+Power-user or diagnostic displays may include owner refs such as pre-write scope-check / Write Authorization, evidence summary, Run, artifact, Residual Risk, or Evidence Manifest refs when that profile is active and the refs help explain authority or support.
 
 Good tracked-work close result:
 
@@ -731,7 +731,7 @@ Close Readiness: verification is self-checked in RUN-018; no detached Eval was r
 Good write hold:
 
 ```text
-I am holding product writes because write authority is not available for the new auth files. Smallest unblocker: update scope to include those files or reduce the change to the existing login module.
+I am holding product writes because the pre-write scope check is not compatible or available for the new auth files. Smallest unblocker: update scope to include those files or reduce the change to the existing login module.
 ```
 
 Bad write hold:

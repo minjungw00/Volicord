@@ -25,7 +25,7 @@ MVP-1 path 밖에 두어야 하는 later/profile-gated API material을 확인할
 
 ## Later read-only resources
 
-이 resources는 profile-gated read입니다. 읽는 것만으로 projection을 repair하거나 owner record를 만들거나 evidence, verification, Manual QA, result, residual risk를 accept하거나 write를 authorize하거나 Task를 close하면 안 됩니다.
+이 resources는 profile-gated read입니다. 읽는 것만으로 projection을 repair하거나 owner record를 만들거나 evidence, verification, Manual QA, result, residual risk를 accept하거나 Write Authorization record를 만들거나 product write를 compatible하게 하거나 Task를 close하면 안 됩니다.
 
 | Resource | Profile meaning |
 |---|---|
@@ -71,7 +71,7 @@ NextResponse:
   autonomy_boundary: AutonomyBoundarySummary | null
 ```
 
-`harness.next`는 read-only입니다. State를 변경하거나, write를 authorize하거나, user judgment를 기록하거나, gate를 충족하거나, work를 accept하거나, residual risk를 accept하거나, Task를 close하지 않습니다.
+`harness.next`는 read-only입니다. State를 변경하거나, Write Authorization record를 만들거나, product write를 compatible하게 하거나, user judgment를 기록하거나, gate를 충족하거나, work를 accept하거나, residual risk를 accept하거나, Task를 close하지 않습니다.
 
 Later/profile-gated `NextActionSummary.action_kind` values에는 matching owner profile이 active일 때만 `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile`이 포함됩니다.
 
@@ -247,6 +247,8 @@ Core check는 transition을 block하거나, gate를 update하거나, blocked rea
 Detached verification run 또는 manual evaluator bundle을 만들 때 이 method를 사용합니다.
 
 Stage/profile: Assurance Profile only입니다. Detached candidate 또는 bundle을 만들 뿐, detached assurance를 만들지는 않습니다.
+
+`verification_mode=sandbox`는 later-profile value입니다. 어떤 profile이 `isolated` guarantee를 표시하려면 실제 격리 경계를 이름 붙이고 증명해야 합니다. 이 value는 MVP-1에서 active가 아니며, fresh session, fresh worktree, manual bundle이 OS sandboxing, 권한 격리, 변조 방지 storage를 뜻하지 않습니다.
 
 Allowed actors: `lead_agent`, `operator`.
 

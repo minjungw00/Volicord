@@ -38,7 +38,7 @@ Public API error code, primary error precedence, idempotency replay, stale-state
 | `BASELINE_STALE` | Operation이 요구하는 repository state와 baseline이 더 이상 맞지 않습니다. |
 | `VALIDATOR_FAILED` | Required validator 또는 close/blocker check가 failed되었고 더 구체적인 typed code가 없을 때 쓰는 fallback입니다. |
 
-`WRITE_AUTHORIZATION_REQUIRED`와 `WRITE_AUTHORIZATION_INVALID`는 missing 또는 invalid Write Authorization에만 사용합니다. Observed paths, tools, commands, network targets, secrets, sensitive categories가 authorized 또는 active scope를 넘으면 scope problem은 여전히 `SCOPE_VIOLATION`을 사용합니다.
+`WRITE_AUTHORIZATION_REQUIRED`와 `WRITE_AUTHORIZATION_INVALID`는 missing 또는 invalid Write Authorization record에만 사용합니다. Observed paths, tools, commands, network targets, secrets, sensitive categories가 Write Authorization record 또는 active scope를 넘으면 scope problem은 여전히 `SCOPE_VIOLATION`을 사용합니다.
 
 MCP availability, local access/profile mismatch, capability insufficiency는 서로 다릅니다.
 
@@ -54,11 +54,11 @@ MCP availability, local access/profile mismatch, capability insufficiency는 서
 |---|---|---|
 | `VALIDATION_FAILED` | invalid request | Retry 전에 payload, enum value, activation rule, profile-specific field set을 고칩니다. |
 | `STATE_CONFLICT` | state conflict | Current status를 refresh한 뒤 current state version으로 retry하거나 original idempotent request를 replay합니다. |
-| `MCP_UNAVAILABLE` | MCP unavailable | State change, gate update, projection repair, write authority, close를 주장하기 전에 Core access를 reconnect 또는 diagnose합니다. |
+| `MCP_UNAVAILABLE` | MCP unavailable | State change, gate update, projection repair, 쓰기 전 범위 확인 호환성, close를 주장하기 전에 Core access를 reconnect 또는 diagnose합니다. |
 | `LOCAL_ACCESS_MISMATCH` | local access profile mismatch | Registered local surface/profile로 reconnect하거나 local binding/profile을 repair합니다. |
 | `CAPABILITY_INSUFFICIENT` | capability insufficient | Capable surface/profile을 사용하거나, operation을 줄이거나, missing capability가 필요 없는 path를 선택합니다. |
 | `NO_ACTIVE_TASK` | no active Task | Task-scoped action을 사용하기 전에 Task를 select 또는 create합니다. |
-| `WRITE_AUTHORIZATION_REQUIRED`, `WRITE_AUTHORIZATION_INVALID` | missing or stale write authority | Exact intended operation, current scope, current state로 `harness.prepare_write`를 call 또는 retry합니다. |
+| `WRITE_AUTHORIZATION_REQUIRED`, `WRITE_AUTHORIZATION_INVALID` | 쓰기 전 범위 확인 없음 또는 오래됨 | Exact intended operation, current scope, current state로 `harness.prepare_write`를 call 또는 retry합니다. |
 | `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | scope, boundary, or baseline issue | Scope를 confirm/narrow하고, Change Unit이나 baseline을 update하거나, 필요한 user judgment를 request합니다. |
 | `DECISION_REQUIRED`, `DECISION_UNRESOLVED` | judgment needed | Relevant user judgment prompt 또는 pending outcome을 refs와 consequences와 함께 보여 줍니다. |
 | `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED` | sensitive-action permission needed or not usable | Minimum MVP-1에서는 sensitive-action approval user judgment를 request, resolve, renew합니다. Committed Approval record는 later-profile입니다. |

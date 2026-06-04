@@ -12,7 +12,7 @@ MVP-1 exposes a small local MCP surface for the user work loop: intake ordinary 
 
 `harness.next` is not a separate MVP-1 method. MVP-1 callers read next safe actions from `harness.status.next_actions`. A separate `harness.next` method is later/compatibility material in [Schema Later](schema-later.md#harnessnext).
 
-This API does not claim OS-level blocking, arbitrary-tool sandboxing, tamper-proof files, or pre-tool prevention. `harness.prepare_write` is a cooperative Core scope and authority check. Stronger preventive or isolated claims require an owner-promoted profile and proof in the relevant security and connector docs.
+This API does not claim OS-level blocking, arbitrary-tool sandboxing, tamper-proof files, or pre-tool prevention. `harness.prepare_write` is a cooperative pre-write scope check against Core state. Any Write Authorization it returns is a Harness-level record/check, not OS permission, sandboxing, tamper-proof enforcement, or preventive blocking. Stronger preventive or isolated claims require an owner-promoted profile and proof in the relevant security and connector docs.
 
 ## MVP-1 method set
 
@@ -20,7 +20,7 @@ This API does not claim OS-level blocking, arbitrary-tool sandboxing, tamper-pro
 |---|---|
 | [`harness.intake`](#harnessintake) | Start or resume plain-language work and classify it as advice/read-only, small direct work, or tracked work. |
 | [`harness.status`](#harnessstatus) | Return current scope, blockers, pending judgments, evidence summary, next actions, and close readiness. |
-| [`harness.prepare_write`](#harnessprepare_write) | Check proposed product writes against current Task, scope, baseline, sensitive-action permission, and user judgment coverage. |
+| [`harness.prepare_write`](#harnessprepare_write) | Run a pre-write scope check for proposed product writes against current Task, scope, baseline, sensitive-action permission, and user judgment coverage. |
 | [`harness.record_run`](#harnessrecord_run) | Record a shaping, implementation, or direct run and minimal artifact/evidence refs. |
 | [`harness.request_user_judgment`](#harnessrequest_user_judgment) | Create a focused user judgment request. |
 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) | Record the user's answer to a pending user judgment. |
@@ -134,13 +134,13 @@ ask_user | prepare_write | implement | request_acceptance | close_task | idle
 
 Verification, Eval, Manual QA, reconcile, export/recover, and operations next-action kinds are later/profile-gated.
 
-Status is read-only. It must not create state, authorize writes, satisfy gates, accept work, accept residual risk, enqueue projection repair, or close a Task.
+Status is read-only. It must not create state, make product writes compatible, create a Write Authorization, satisfy gates, accept work, accept residual risk, enqueue projection repair, or close a Task.
 
 <a id="harnessprepare_write"></a>
 
 ## `harness.prepare_write`
 
-Use this before an agent writes product files. It checks the exact proposed write against current Core state and returns either a compatible single-use Write Authorization or structured blockers.
+Use this before an agent writes product files. It checks the exact proposed write against current Core state and returns either a compatible internal single-use Write Authorization record or structured blockers. This is a cooperative Harness check, not OS permission, sandboxing, or preventive blocking.
 
 Stage meaning: active for Engineering Checkpoint and MVP-1. In MVP-1, sensitive-action permission is represented through a compatible `user_judgment` with `judgment_type=sensitive_action_approval`; committed Approval records are later-profile material.
 
@@ -188,7 +188,7 @@ PrepareWriteResponse:
     notes: string[]
 ```
 
-`decision=allowed` with `dry_run=false` must include `write_authorization_ref`; `dry_run=true` may return `authorization_effect=would_create` but creates no authorization. Blocked or judgment-required responses must not include a Write Authorization.
+`decision=allowed` with `dry_run=false` must include `write_authorization_ref`; `dry_run=true` may return `authorization_effect=would_create` but creates no authorization. Here `allowed` means compatible with current Harness records for this API path; it does not mean OS permission or pre-execution blocking. Blocked or judgment-required responses must not include a Write Authorization.
 
 `approval_request_candidate` and `user_judgment_candidate` are non-mutating candidate payloads. They do not create user judgments, Approval records, Write Authorizations, or projections.
 
@@ -196,7 +196,7 @@ PrepareWriteResponse:
 
 ## `harness.record_run`
 
-Use this after a shaping update, direct result, or implementation run. Implementation and direct product-write runs consume a compatible Write Authorization returned by `harness.prepare_write`.
+Use this after a shaping update, direct result, or implementation run. Implementation and direct product-write runs consume a compatible internal Write Authorization record returned by `harness.prepare_write`.
 
 Stage meaning: active for Engineering Checkpoint with one compatible run and one artifact/evidence ref; active in MVP-1 for evidence summaries. Verification input, Feedback Loop updates, TDD Trace updates, and full Evidence Manifest behavior are later/profile-gated.
 
@@ -322,7 +322,7 @@ RecordUserJudgmentResponse:
   next_action: string
 ```
 
-`judgment_type` must match the stored `UserJudgment`. Free-form notes such as "go ahead" or "looks good" cannot broaden the answer into approval, acceptance, risk acceptance, waiver, or write authority unless the pending judgment explicitly asks for that judgment type and the answer matches its allowed value.
+`judgment_type` must match the stored `UserJudgment`. Free-form notes such as "go ahead" or "looks good" cannot broaden the answer into approval, acceptance, risk acceptance, waiver, or pre-write scope-check compatibility unless the pending judgment explicitly asks for that judgment type and the answer matches its allowed value.
 
 In MVP-1, `accepted_risk_refs` contain the `user_judgment` and `blocker` refs that show the risk was visible and accepted for this close path. Rich `residual_risk` refs are later/profile-promoted; there is no standalone accepted-risk record kind.
 
