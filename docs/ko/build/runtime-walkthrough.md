@@ -16,9 +16,11 @@
 
 하네스 런타임 동작은 Core가 소유한 상태와 artifact ref를 통해 로컬 권한을 보존해야 합니다. Chat text, generated Markdown, connector output, projection view는 작업을 읽는 데 도움을 줄 수 있지만 권한 근거가 되지 않습니다.
 
-내부 엔지니어링 점검은 이 경로의 내부 가운데만 구현합니다. Project, Task, scope, `prepare_write`, single-use Write Authorization, `record_run`, artifact/evidence ref 하나, status/blocker output입니다.
+내부 엔지니어링 점검은 이 경로의 내부 권한 루프만 구현합니다. Project state, 활성 Task, 활성 Change Unit/scope boundary, `prepare_write`, single-use Write Authorization, `record_run`, artifact/evidence ref 하나, status/blocker output, 좁은 close-blocker check입니다.
 
-MVP-1은 그 loop 주변의 사용자 표시 동작을 더합니다. 평소 말로 시작/이어가기, work-shape classification, scope/non-goals/success criteria, minimal user judgment, evidence summary, close blocker, next safe action, 잔여 위험 표시, 민감 동작 승인/작업 수락/위험 수용 분리 표시입니다.
+MVP-1은 그 loop 주변의 사용자 표시 동작을 더합니다. 평소 말로 시작/이어가기, work-shape classification, scope/non-goals/success criteria, minimal user judgment, evidence summary, close result/blocker, `harness.status.next_actions`를 통한 다음 안전한 행동, 잔여 위험 표시, 민감 동작 승인/작업 수락/위험 수용 분리 표시입니다.
+
+후속/profile 범위는 owner 문서가 해당 profile을 승격한 뒤에만 full Manual QA matrix, detached Eval, export/recover, dashboard 또는 hosted UI, broad connector, automated Browser QA Capture, preventive guard expansion, parallel orchestration, detailed report를 더합니다.
 
 ## 한눈에 보는 의도한 경로
 
@@ -103,10 +105,10 @@ Close가 stage 범위에 있으면 Core는 close-relevant state를 확인하고 
 
 | 단계 | Walkthrough에서 범위에 들어오는 부분 |
 |---|---|
-| 내부 엔지니어링 점검 | Project, Task, scope, `prepare_write`, Write Authorization, `record_run`, artifact/evidence ref 하나, status/blocker output. |
-| MVP-1 사용자 작업 루프 | 내부 엔지니어링 점검에 평소 말로 시작/이어가기, work-shape classification, minimal user judgment, evidence summary, close blocker summary, next safe action, 잔여 위험 표시, compact view를 더합니다. |
+| 내부 엔지니어링 점검 | Project state, 활성 Task, 활성 Change Unit/scope boundary, `prepare_write`, Write Authorization, `record_run`, artifact/evidence ref 하나, status/blocker output, 좁은 close-blocker check. |
+| MVP-1 사용자 작업 루프 | 내부 엔지니어링 점검에 평소 말로 시작/이어가기, work-shape classification, minimal user judgment, evidence summary, close result/blocker display, `harness.status.next_actions`를 통한 다음 안전한 행동, 잔여 위험 표시, 다섯 compact view를 더합니다. |
 | 보증 프로필 | Verification, Manual QA, richer work acceptance/residual-risk behavior, stewardship, TDD, feedback-loop, context-hygiene hardening. |
 | 운영 프로필 | Doctor/readiness, recover/export, artifact integrity, release handoff, projection/reconcile operations, suite가 존재한 뒤 conformance runner. |
-| 로드맵 | Dashboard, hosted UI, broad connector, automation, metrics, team workflow, promoted future candidate. |
+| 로드맵 | Dashboard, hosted UI, broad connector, automation, metrics, team workflow, parallel orchestration, promoted future candidate. |
 
 첫 내부 smoke는 [내부 엔지니어링 점검](engineering-checkpoint.md)을 사용하고, 첫 사용자 가치 계획은 [MVP-1 사용자 작업 루프](mvp-user-work-loop.md)를 사용합니다.

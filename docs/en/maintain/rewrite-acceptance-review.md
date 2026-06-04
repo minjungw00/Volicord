@@ -91,12 +91,12 @@ Engineering Checkpoint proves the smallest local Core authority loop:
 
 - one local project
 - one active Task
-- one scope boundary
+- one active Change Unit or equivalent scope boundary
 - `prepare_write` allow/block behavior
 - one durable single-use Write Authorization
 - one compatible `record_run`
 - one artifact/evidence ref
-- status/blocker output that reads Core state without mutating it
+- status output plus a narrow close-blocker check through `harness.close_task` that reads Core state without mutating product files
 
 It does not include ordinary-language intake, full judgment presentation, detailed Evidence Manifest behavior, detached verification, Eval, Manual QA, work acceptance, residual-risk acceptance, full close semantics, full projection rendering, dashboards, reports, export, recover, conformance runner, broad connectors, team workflow, orchestration, metrics, hooks, preventive guard expansion, or Roadmap automation.
 
@@ -167,7 +167,7 @@ Projection and template docs are framed as derived display. Compact MVP-1 views 
 
 Status: acceptable for handoff.
 
-The active baseline keeps full template bodies with Template Reference owners and keeps future export/report templates out of MVP-1 unless promoted. Engineering Checkpoint needs only status/blocker output and one artifact/evidence ref. MVP-1 may use compact Core-derived views, while later export/report/handoff templates stay later-profile material.
+The active baseline keeps full template bodies with Template Reference owners and keeps future export/report templates out of MVP-1 unless promoted. Engineering Checkpoint needs only status/blocker output, one artifact/evidence ref, and a narrow close-blocker check. MVP-1 may use compact Core-derived views, while later export/report/handoff templates stay later-profile material.
 
 Artifacts are treated as references registered through owner paths, not as free-form documentation outputs that become authority.
 

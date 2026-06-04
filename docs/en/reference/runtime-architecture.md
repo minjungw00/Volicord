@@ -185,12 +185,12 @@ Native hooks, sidecars, command wrappers, file watchers, and worktree isolation 
 
 ### Core modules
 
-Core can run as a single local process in the first slices. The full server may grow into the internal responsibilities below, but Engineering Checkpoint is not required to implement them as separate modules. Its implementation can collapse everything outside local registration, one Task, one scoped work boundary, `prepare_write`, one single-use Write Authorization, one `record_run`, one artifact/evidence ref, and one structured status/blocker response into stubs, absent paths, or later-profile scope.
+Core can run as a single local process in the first slices. The full server may grow into the internal responsibilities below, but Engineering Checkpoint is not required to implement them as separate modules. Its implementation can collapse everything outside local registration, one Task, one active Change Unit or scoped work boundary, `prepare_write`, one single-use Write Authorization, one `record_run`, one artifact/evidence ref, one structured status/blocker response, and a narrow close-blocker check into stubs, absent paths, or later-profile scope.
 
 | Module | Runtime responsibility |
 |---|---|
 | State store | current records, state versions, locks, and `state.sqlite.task_events` |
-| Task workflow | Task state, scoped work boundary, minimal status/blocker response, and later intake, mode selection, next action, gate updates, close decisions |
+| Task workflow | Task state, active Change Unit or scoped work boundary, minimal status/blocker response, narrow close-blocker checks, and later intake, mode selection, next action, gate updates, full close decisions |
 | Journey module | Journey Spine reconstruction, Journey Spine Entry support records, Journey Card inputs, and continuity refs when the relevant profile is active |
 | User Judgment module | User Judgment lifecycle, `decision_gate` aggregation, user judgment routing, optional full-format Decision Packet presentation, and residual-risk visibility inputs when the relevant profile is active |
 | Approval module | scope-bound approval request, decision, expiry, and drift handling when sensitive-action approval is in scope |

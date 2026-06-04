@@ -38,8 +38,8 @@ This manifest filters the API schemas by stage/profile. A field or enum existing
 
 | Stage/profile | Active API slice | Not active in that slice |
 |---|---|---|
-| Engineering Checkpoint | Minimal status/blocker read, one owner-valid setup path, `harness.prepare_write`, one compatible `harness.record_run`, one artifact/evidence ref, and structured status/blocker output. | Full natural-language intake, stored user judgment path, full Evidence Manifest, detached verification, Manual QA, work acceptance, residual-risk acceptance, rich projections, export/recover, broad operations. |
-| MVP-1 User Work Loop | Active method set owned by [MVP API](mvp-api.md#mvp-1-method-set), with next-safe-action output carried by `harness.status.next_actions`. | Separate `harness.next`, detached verification launch/Eval, full Manual QA matrix, committed Approval hardening, export/recover, advanced connector APIs, broad operations, and detailed diagnostic projections. |
+| Engineering Checkpoint | Minimal status/blocker read, one owner-valid setup path, active Task, active Change Unit/scope boundary, `harness.prepare_write`, one compatible `harness.record_run`, one artifact/evidence ref, structured status/blocker output, and narrow close-blocker check. | Full natural-language intake, stored user judgment path, full Evidence Manifest, detached verification, Manual QA, work acceptance, residual-risk acceptance, rich projections, export/recover, broad operations. |
+| MVP-1 User Work Loop | Active method set owned by [MVP API](mvp-api.md#mvp-1-method-set), with next-safe-action output carried by `harness.status.next_actions`. The method set is exactly `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, and `harness.close_task`. | Separate `harness.next`, detached verification launch/Eval, full Manual QA matrix, committed Approval hardening, export/recover, advanced connector APIs, broad operations, and detailed diagnostic projections. |
 | Assurance Profile, Operations Profile, or later | Verification, Eval, Manual QA, waiver, full residual-risk acceptance, reconcile, validators, projection/report/export/recover, operations, and advanced connectors when owner docs promote them. | Not Engineering Checkpoint or minimum MVP-1 requirements. |
 
 ## Read-only resources
@@ -65,7 +65,7 @@ Read-only resources use the three-part context model. `harness://status/card` is
 | `harness://task/{task_id}/user-judgments` | Active, resolved, deferred, and blocked `user_judgment` summaries. |
 | `harness://task/{task_id}/judgment-context` | Minimum current context needed for a user judgment. |
 
-The MVP-1 evidence and close-readiness path can also be displayed through owner-defined compact views, `harness.status`, `harness://task/{task_id}/summary`, or `harness://status/card` when the output is derived from current Core state and refs. Exact compact-view behavior and template bodies stay with [Projection And Templates Reference](../projection-and-templates.md) and [Template Reference](../templates/README.md).
+The MVP-1 evidence and close-readiness path can also be displayed through the exact compact view set `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`, or through `harness.status`, `harness://task/{task_id}/summary`, or `harness://status/card` when the output is derived from current Core state and refs. Exact compact-view behavior and template bodies stay with [Projection And Templates Reference](../projection-and-templates.md) and [Template Reference](../templates/README.md).
 
 ### Later resources
 

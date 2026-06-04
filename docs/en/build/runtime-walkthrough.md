@@ -16,9 +16,11 @@ This page is not evidence that runtime exists. It does not authorize server/runt
 
 Harness runtime behavior should preserve local authority through Core-owned state and artifact refs. Chat text, generated Markdown, connector output, and projection views can help people read the work, but they do not become authority.
 
-Engineering Checkpoint implements only the internal middle of this path: project, Task, scope, `prepare_write`, single-use Write Authorization, `record_run`, one artifact/evidence ref, and status/blocker output.
+Engineering Checkpoint implements only the internal authority loop in this path: project state, active Task, active Change Unit/scope boundary, `prepare_write`, single-use Write Authorization, `record_run`, one artifact/evidence ref, status/blocker output, and a narrow close-blocker check.
 
-MVP-1 adds user-visible behavior around that loop: ordinary-language start/resume, work-shape classification, scope/non-goals/success criteria, minimal user judgment, evidence summary, close blockers, next safe action, residual-risk visibility, and separate approval/acceptance/risk displays.
+MVP-1 adds user-visible behavior around that loop: ordinary-language start/resume, work-shape classification, scope/non-goals/success criteria, minimal user judgment, evidence summary, close result/blockers, next safe action through `harness.status.next_actions`, residual-risk visibility, and separate sensitive-action approval/work-acceptance/risk displays.
+
+Later/profile scope adds full Manual QA matrix, detached Eval, export/recover, dashboard or hosted UI, broad connectors, automated Browser QA Capture, preventive guard expansion, parallel orchestration, and detailed reports only after owner docs promote the relevant profile.
 
 ## Intended path at a glance
 
@@ -103,10 +105,10 @@ Owner docs: [Core Model Reference: `close_task`](../reference/core-model.md#clos
 
 | Stage | Walkthrough portion in scope |
 |---|---|
-| Engineering Checkpoint | Project, Task, scope, `prepare_write`, Write Authorization, `record_run`, one artifact/evidence ref, status/blocker output. |
-| MVP-1 User Work Loop | Engineering Checkpoint plus ordinary-language start/resume, work-shape classification, minimal user judgment, evidence summary, close blocker summary, next safe action, residual-risk visibility, and compact views. |
+| Engineering Checkpoint | Project state, active Task, active Change Unit/scope boundary, `prepare_write`, Write Authorization, `record_run`, one artifact/evidence ref, status/blocker output, and narrow close-blocker check. |
+| MVP-1 User Work Loop | Engineering Checkpoint plus ordinary-language start/resume, work-shape classification, minimal user judgment, evidence summary, close result/blocker display, next safe action through `harness.status.next_actions`, residual-risk visibility, and the five compact views. |
 | Assurance Profile | Verification, Manual QA, richer work acceptance and residual-risk behavior, stewardship, TDD, feedback-loop, and context-hygiene hardening. |
 | Operations Profile | Doctor/readiness, recover/export, artifact integrity, release handoff, projection/reconcile operations, and conformance runner after suites exist. |
-| Roadmap | Dashboards, hosted UI, broad connectors, automation, metrics, team workflow, and other promoted future candidates. |
+| Roadmap | Dashboards, hosted UI, broad connectors, automation, metrics, team workflow, parallel orchestration, and other promoted future candidates. |
 
 Use [Engineering Checkpoint](engineering-checkpoint.md) for the first internal smoke and [MVP-1 User Work Loop](mvp-user-work-loop.md) for the first user-value plan.

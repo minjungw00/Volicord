@@ -14,18 +14,18 @@ MVP-1 exposes a small local MCP surface for the user work loop: intake ordinary 
 
 This API does not claim OS-level blocking, arbitrary-tool sandboxing, tamper-proof files, or pre-tool prevention. `harness.prepare_write` is a cooperative pre-write scope check against Core state. Any Write Authorization it returns is a Harness-level record/check, not OS permission, sandboxing, tamper-proof enforcement, or preventive blocking. Stronger preventive or isolated claims require an owner-promoted profile and proof in the relevant security and connector docs.
 
-Status output follows the three-part model: `harness.status.status_card` is the user status card, agent surfaces may derive an agent context packet from current status and refs, and Core state is the only operational source of truth. Status cards, next-action text, rendered templates, and projections are read-only views; stale views are not authority.
+Status output follows the three-part model: `harness.status.status_card` is the user status card, agent surfaces may derive an agent context packet from current status and refs, and Core state is the only operational source of truth. Status cards, next-action text, rendered templates, and projections are read-only views; stale views are not authority. The active compact view set is exactly `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`; detailed report surfaces stay later/profile.
 
 ## MVP-1 method set
 
 | Method | MVP-1 role |
 |---|---|
-| [`harness.intake`](#harnessintake) | Start or resume plain-language work and classify it as advice/read-only, small direct work, or tracked work. |
 | [`harness.status`](#harnessstatus) | Return current scope, blockers, pending judgments, evidence summary, next actions, and close readiness. |
-| [`harness.prepare_write`](#harnessprepare_write) | Run a pre-write scope check for proposed product writes against current Task, scope, baseline, sensitive-action permission, and user judgment coverage. |
-| [`harness.record_run`](#harnessrecord_run) | Record a shaping, implementation, or direct run and minimal artifact/evidence refs. |
+| [`harness.intake`](#harnessintake) | Start or resume plain-language work and classify it as advice/read-only, small direct work, or tracked work. |
 | [`harness.request_user_judgment`](#harnessrequest_user_judgment) | Create a focused user judgment request. |
 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) | Record the user's answer to a pending user judgment. |
+| [`harness.prepare_write`](#harnessprepare_write) | Run a pre-write scope check for proposed product writes against current Task, scope, baseline, sensitive-action permission, and user judgment coverage. |
+| [`harness.record_run`](#harnessrecord_run) | Record a shaping, implementation, or direct run and minimal artifact/evidence refs. |
 | [`harness.close_task`](#harnessclose_task) | Check close readiness and close, cancel, or supersede only when blockers allow it. |
 
 ## Not MVP-1
@@ -37,7 +37,7 @@ These surfaces remain later/profile-gated unless an owner document promotes them
 - `harness.record_eval`
 - `harness.record_manual_qa`
 - committed Approval record lifecycle beyond sensitive-action approval as a `user_judgment`
-- full Evidence Manifest, detached verification, full Manual QA matrix, reconcile, export/recover, broad operations, and detailed diagnostic projections
+- full Evidence Manifest, detached verification or detached Eval system, full Manual QA matrix, reconcile, export/recover suite, broad operations, and detailed diagnostic projections
 
 ## Shared request rules
 
@@ -53,7 +53,7 @@ Error codes, MVP-1 status/error condition names, user-facing message patterns, p
 
 Use this to start, classify, or resume ordinary user work.
 
-Stage meaning: optional as a minimal setup path for the internal Engineering Checkpoint; active in MVP-1 for plain-language start/resume behavior. Full discovery, design-support routing, and broad planning workflows are later material unless explicitly promoted.
+Stage meaning: not required for the internal Engineering Checkpoint, which may use an owner-valid setup path instead; active in MVP-1 for plain-language start/resume behavior. Full discovery, design-support routing, and broad planning workflows are later material unless explicitly promoted.
 
 Allowed actors: `user`, `lead_agent`, `operator`.
 

@@ -23,6 +23,28 @@ MVP-1 User Work Loop target:
 
 MVP-1 is intentionally narrow. It is enough to show why Harness is more than a prompt pack or a pre-write wrapper, but it is not a full assurance system, QA matrix, evaluation harness, reporting suite, operations suite, dashboard, hosted UI, or connector platform.
 
+The active MVP-1 method set is exactly:
+
+- `harness.status`
+- `harness.intake`
+- `harness.request_user_judgment`
+- `harness.record_user_judgment`
+- `harness.prepare_write`
+- `harness.record_run`
+- `harness.close_task`
+
+There is no active MVP-1 `harness.next` method. Next safe actions are returned through `harness.status.next_actions`.
+
+The active compact view set is exactly:
+
+- `status-card`
+- `agent-context-packet`
+- `judgment-request`
+- `run-evidence-summary`
+- `close-result`
+
+Detailed reports such as persisted Journey Card, full Evidence Manifest, Eval report, Manual QA report, TDD Trace, Module Map, Interface Contract, and Export report are later/profile material unless an owner explicitly promotes a narrow non-required display.
+
 ## MVP-1 included
 
 MVP-1 includes:
@@ -35,11 +57,11 @@ MVP-1 includes:
 - separate display of Product/UX judgment, Technical judgment, Sensitive action approval, Work acceptance, and Residual risk acceptance when those routes are relevant
 - cooperative pre-write scope checking through Core and `prepare_write`
 - `record_run` plus registered artifact/evidence refs or the minimum evidence summary path
-- status and next-safe-action output
+- status and next-safe-action output through `harness.status.next_actions`
 - evidence summary and evidence-gap display
 - close blocker summary when required evidence or required user judgment is missing
 - residual-risk visibility before acceptance or close when close-relevant risk exists
-- compact Core-derived views for the MVP-1 path, using the set owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set)
+- compact Core-derived views for the MVP-1 path, using exactly the set owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set)
 - honest MCP/Core unavailable behavior: no fabricated authority state when Core cannot be reached
 
 ## MVP-1 excluded
@@ -48,9 +70,9 @@ MVP-1 excludes these future buckets:
 
 | Bucket | Keep out of MVP-1 |
 |---|---|
-| Assurance Profile | Verification strengthening beyond the active minimal path, full detached verification, full Manual QA matrix, detailed Evidence Manifest, detailed Eval output, full waiver machinery, full Approval lifecycle hardening, rich residual-risk lifecycle, risk-review hardening, stewardship validators, TDD trace, feedback-loop policy, and broad context-hygiene validators. |
-| Operations Profile | Full report/export, recover/export, release handoff, artifact integrity operations, projection refresh/reconcile suite, doctor/readiness suite, broad operator surface, runtime conformance suite, conformance runner, generated conformance artifacts, and executable fixture catalog. |
-| Roadmap | Dashboard, hosted workflow UI, artifact dashboard, rich card expansion, broad connectors, connector marketplace, team workflow, orchestration, metrics, Browser QA Capture, Cross-Surface Verification automation, hosted/remote workflows, preventive guard expansion, hooks, deployment, canary, rollback, production monitoring, and other expansion candidates. |
+| Assurance Profile | Verification strengthening beyond the active minimal path, full detached verification, detached Eval system, full Manual QA matrix, detailed Evidence Manifest, detailed Eval output, full waiver machinery, full Approval lifecycle hardening, rich residual-risk lifecycle, risk-review hardening, stewardship validators, TDD trace, feedback-loop policy, and broad context-hygiene validators. |
+| Operations Profile | Full report/export, recover/export suite, release handoff, artifact integrity operations, projection refresh/reconcile suite, doctor/readiness suite, broad operator surface, runtime conformance suite, conformance runner, generated conformance artifacts, executable fixture catalog, and Export report. |
+| Roadmap | Dashboard, hosted workflow UI, artifact dashboard, rich card expansion, broad connectors, connector marketplace, team workflow, parallel orchestration, metrics, automated Browser QA Capture, Cross-Surface Verification automation, hosted/remote workflows, preventive guard expansion, hooks, deployment, canary, rollback, production monitoring, and other expansion candidates. |
 | Security non-claims | OS-level sandboxing, arbitrary-tool isolation, permission isolation, tamper-proof local storage, or default preventive pre-tool blocking. |
 
 If a feature is useful but appears in the excluded buckets, keep it in [Assurance Profile](../later/assurance-profile.md), [Operations Profile](../later/operations-profile.md), [Future Fixtures](../later/future-fixtures.md), or [Roadmap](../roadmap.md) unless an owner explicitly promotes a narrower behavior with stage impact.
@@ -81,6 +103,8 @@ An implementer should read these in order:
 4. [API Schema Later](../reference/api/schema-later.md) only when confirming that a method or field is later/profile-gated and should stay out of MVP-1.
 
 MVP-1 should satisfy next-safe-action output through `harness.status.next_actions`; a separate `harness.next` method is later/compatibility material unless an owner promotes it.
+
+The active method list for MVP-1 remains exactly `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, and `harness.close_task`.
 
 ## Storage docs needed for MVP-1
 
@@ -122,7 +146,7 @@ These decisions are resolved in the documentation baseline but still require mai
 |---|---|---|
 | Judgment naming | Use `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_type`, `presentation`, and `display_label`. | Compatibility aliases must not create extra authority paths. |
 | Next action | Use `harness.status.next_actions` for MVP-1 next-safe-action output. | A separate `harness.next` method stays later/compatibility unless promoted. |
-| MVP-1 compact views | Use the compact Core-derived view set owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set). | These views do not authorize writes, satisfy evidence, record acceptance, accept risk, close tasks, or become canonical state. |
+| MVP-1 compact views | Use exactly `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`, as owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set). | These views do not authorize writes, satisfy evidence, record acceptance, accept risk, close tasks, or become canonical state. |
 | Minimal storage boundary | Keep MVP-1 storage to the minimal active owner records needed for the user work loop. | Later-profile tables/records stay out unless owner docs promote them. |
 | Acceptance boundaries | Sensitive action approval, work acceptance, and residual-risk acceptance stay separate. | Work acceptance is not Approval, and residual-risk acceptance is not work acceptance. |
 | Small direct changes | Small changes still need explicit scope, compatible `prepare_write`, `record_run`, and required evidence support. | Small-change labeling must not bypass authority, user judgment, evidence, or risk visibility. |
@@ -149,7 +173,7 @@ Do not build these as MVP-1 prerequisites:
 |---|---|
 | [Assurance Profile](../later/assurance-profile.md) | Verification strengthening, Manual QA, detailed evidence, risk review, detailed evaluation output, full Approval lifecycle, stewardship validators, TDD trace, feedback-loop policy, and context-hygiene validators. |
 | [Operations Profile](../later/operations-profile.md) | Export, recovery, handoff, operator readiness, doctor/readiness surfaces, artifact integrity operations, projection refresh/reconcile operations, conformance runner, and broad operator surface. |
-| [Roadmap](../roadmap.md) | Dashboard, hosted workflows, team workflows, broader connectors, Browser QA Capture, Cross-Surface Verification, Context Index, metrics, preventive guard expansion, hooks, permissions, orchestration, deployment, canary, rollback, production monitoring, and other expansion candidates. |
+| [Roadmap](../roadmap.md) | Dashboard, hosted workflows, team workflows, broader connectors, automated Browser QA Capture, Cross-Surface Verification, Context Index, metrics, preventive guard expansion, hooks, permissions, parallel orchestration, deployment, canary, rollback, production monitoring, and other expansion candidates. |
 
 ## Exit checklist
 

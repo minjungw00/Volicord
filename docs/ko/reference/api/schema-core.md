@@ -38,8 +38,8 @@ Storage validation은 별도 소유권 경계입니다. API payload와 API-shape
 
 | Stage/profile | Active API slice | 해당 slice에서 active가 아닌 것 |
 |---|---|---|
-| 내부 엔지니어링 점검 | Minimal status/blocker read, owner-valid setup path 하나, `harness.prepare_write`, compatible `harness.record_run` 하나, artifact/evidence ref 하나, structured status/blocker output. | Full natural-language intake, stored user judgment path, full Evidence Manifest, detached verification, Manual QA, work acceptance, residual-risk acceptance, rich projections, export/recover, broad operations. |
-| MVP-1 사용자 작업 루프 | Active method set은 [MVP API](mvp-api.md#mvp-1-method-set)가 담당하며, 다음 안전한 행동 output은 `harness.status.next_actions`에 담깁니다. | 별도 `harness.next`, detached verification launch/Eval, full Manual QA matrix, committed Approval hardening, export/recover, advanced connector APIs, broad operations, detailed diagnostic projections. |
+| 내부 엔지니어링 점검 | Minimal status/blocker read, owner-valid setup path 하나, active Task, active Change Unit/scope boundary, `harness.prepare_write`, compatible `harness.record_run` 하나, artifact/evidence ref 하나, structured status/blocker output, 좁은 close-blocker check. | Full natural-language intake, stored user judgment path, full Evidence Manifest, detached verification, Manual QA, work acceptance, residual-risk acceptance, rich projections, export/recover, broad operations. |
+| MVP-1 사용자 작업 루프 | Active method set은 [MVP API](mvp-api.md#mvp-1-method-set)가 담당하며, 다음 안전한 행동 output은 `harness.status.next_actions`에 담깁니다. Method set은 정확히 `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, `harness.close_task`입니다. | 별도 `harness.next`, detached verification launch/Eval, full Manual QA matrix, committed Approval hardening, export/recover, advanced connector APIs, broad operations, detailed diagnostic projections. |
 | 보증 프로필, 운영 프로필, later | Owner docs가 승격할 때 verification, Eval, Manual QA, waiver, full residual-risk acceptance, reconcile, validators, projection/report/export/recover, operations, advanced connectors. | 내부 엔지니어링 점검이나 minimum MVP-1 requirement가 아닙니다. |
 
 ## Read-only resources
@@ -65,7 +65,7 @@ Read-only resource도 세 부분 맥락 모델을 따릅니다. `harness://statu
 | `harness://task/{task_id}/user-judgments` | Active, resolved, deferred, blocked `user_judgment` summary. |
 | `harness://task/{task_id}/judgment-context` | 사용자 판단에 필요한 minimum current context. |
 
-MVP-1 evidence와 close-readiness path는 output이 current Core state와 refs에서 파생된다면 owner 문서가 정의한 compact view, `harness.status`, `harness://task/{task_id}/summary`, `harness://status/card`로도 표시할 수 있습니다. 정확한 compact view 동작과 template body는 [Projection과 Template 참조](../projection-and-templates.md)와 [Template 참조](../templates/README.md)에 남습니다.
+MVP-1 evidence와 close-readiness path는 output이 current Core state와 refs에서 파생된다면 정확한 compact view set인 `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, `close-result` 또는 `harness.status`, `harness://task/{task_id}/summary`, `harness://status/card`로 표시할 수 있습니다. 정확한 compact view 동작과 template body는 [Projection과 Template 참조](../projection-and-templates.md)와 [Template 참조](../templates/README.md)에 남습니다.
 
 ### Later resources
 

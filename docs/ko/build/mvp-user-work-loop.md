@@ -23,6 +23,28 @@ MVP-1 사용자 작업 루프의 목표는 다음과 같습니다.
 
 MVP-1은 일부러 좁습니다. 하네스가 prompt pack이나 pre-write wrapper보다 크다는 점을 보여 주기에는 충분해야 합니다. 하지만 full assurance system, QA matrix, evaluation harness, reporting suite, operations suite, dashboard, hosted UI, connector platform은 아닙니다.
 
+활성 MVP-1 method set은 정확히 다음 일곱 개입니다.
+
+- `harness.status`
+- `harness.intake`
+- `harness.request_user_judgment`
+- `harness.record_user_judgment`
+- `harness.prepare_write`
+- `harness.record_run`
+- `harness.close_task`
+
+활성 MVP-1에는 `harness.next` method가 없습니다. 다음 안전한 행동은 `harness.status.next_actions`로 반환합니다.
+
+활성 compact view set은 정확히 다음 다섯 개입니다.
+
+- `status-card`
+- `agent-context-packet`
+- `judgment-request`
+- `run-evidence-summary`
+- `close-result`
+
+Persisted Journey Card, full Evidence Manifest, Eval report, Manual QA report, TDD Trace, Module Map, Interface Contract, Export report 같은 상세 report는 owner가 좁은 non-required display로 명시적으로 승격하기 전까지 후속/profile 범위입니다.
+
 ## MVP-1에 포함되는 것
 
 MVP-1에는 아래가 포함됩니다.
@@ -35,11 +57,11 @@ MVP-1에는 아래가 포함됩니다.
 - 관련 경로가 있을 때 제품/UX 판단, 기술 판단, 민감 동작 승인, 작업 수락, 잔여 위험 수용을 분리해서 표시
 - Core와 `prepare_write`를 통한 협력형 쓰기 전 범위 확인
 - `record_run`과 registered artifact/evidence ref 또는 minimum evidence summary path
-- `status`와 next-safe-action output
+- `harness.status.next_actions`를 통한 status와 next-safe-action output
 - 근거 요약과 근거 gap 표시
 - 필요한 근거나 사용자 판단이 없을 때 close blocker summary
 - 닫기와 관련된 위험이 있을 때 작업 수락이나 close 전에 잔여 위험 표시
-- MVP-1 path를 위한 compact Core-derived view. 정확한 view set은 [Projection과 Template 참조](../reference/projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../reference/templates/README.md#mvp-1-템플릿-세트)가 담당합니다.
+- MVP-1 path를 위한 compact Core-derived view. 정확한 view set은 [Projection과 Template 참조](../reference/projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../reference/templates/README.md#mvp-1-템플릿-세트)가 담당하는 set으로 제한됩니다.
 - MCP/Core를 사용할 수 없을 때 정직하게 동작하기. Core에 닿을 수 없으면 권한 상태를 만들어 내지 않습니다.
 
 ## MVP-1에서 제외되는 것
@@ -48,9 +70,9 @@ MVP-1에는 아래 향후 버킷이 포함되지 않습니다.
 
 | 버킷 | MVP-1 밖에 둘 것 |
 |---|---|
-| 보증 프로필 | 활성 최소 경로를 넘는 검증 강화, full detached verification, full Manual QA matrix, detailed Evidence Manifest, detailed Eval output, full waiver machinery, full Approval lifecycle hardening, 풍부한 잔여 위험 lifecycle, 위험 검토 hardening, stewardship validator, TDD trace, feedback-loop policy, broad context-hygiene validator. |
-| 운영 프로필 | Full report/export, recover/export, release handoff, artifact integrity operations, projection refresh/reconcile suite, doctor/readiness suite, broad operator surface, runtime conformance suite, conformance runner, generated conformance artifact, executable fixture catalog. |
-| 로드맵 | Dashboard, hosted workflow UI, artifact dashboard, rich card expansion, broader connector, connector marketplace, team workflow, orchestration, metrics, Browser QA Capture, Cross-Surface Verification automation, hosted/remote workflow, preventive guard expansion, hook, deployment, canary, rollback, production monitoring, 그 밖의 향후 확장 후보. |
+| 보증 프로필 | 활성 최소 경로를 넘는 검증 강화, full detached verification, detached Eval system, full Manual QA matrix, detailed Evidence Manifest, detailed Eval output, full waiver machinery, full Approval lifecycle hardening, 풍부한 잔여 위험 lifecycle, 위험 검토 hardening, stewardship validator, TDD trace, feedback-loop policy, broad context-hygiene validator. |
+| 운영 프로필 | Full report/export, recover/export suite, release handoff, artifact integrity operations, projection refresh/reconcile suite, doctor/readiness suite, broad operator surface, runtime conformance suite, conformance runner, generated conformance artifact, executable fixture catalog, Export report. |
+| 로드맵 | Dashboard, hosted workflow UI, artifact dashboard, rich card expansion, broader connector, connector marketplace, team workflow, parallel orchestration, metrics, automated Browser QA Capture, Cross-Surface Verification automation, hosted/remote workflow, preventive guard expansion, hook, deployment, canary, rollback, production monitoring, 그 밖의 향후 확장 후보. |
 | 보안 non-claim | OS-level sandboxing, arbitrary-tool isolation, permission isolation, tamper-proof local storage, default preventive pre-tool blocking. |
 
 유용하지만 제외 버킷에 있는 기능은 담당 문서가 더 좁은 동작을 stage impact와 함께 명시적으로 승격하기 전까지 [보증 프로필](../later/assurance-profile.md), [운영 프로필](../later/operations-profile.md), [향후 Fixtures](../later/future-fixtures.md), [로드맵](../roadmap.md)에 둡니다.
@@ -81,6 +103,8 @@ Build 문서는 exact schema, DDL, API definition을 중복하지 않습니다. 
 4. [API Schema Later](../reference/api/schema-later.md): 어떤 method나 field가 later/profile-gated라서 MVP-1 밖에 남아야 하는지 확인할 때만 사용합니다.
 
 MVP-1의 next-safe-action output은 `harness.status.next_actions`로 만족해야 합니다. 별도 `harness.next` method는 담당 문서가 승격하기 전까지 later/compatibility material입니다.
+
+MVP-1의 활성 method list는 계속 정확히 `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, `harness.close_task`입니다.
 
 ## MVP-1에 필요한 Storage 문서
 
@@ -122,7 +146,7 @@ Guarantee level은 [보안 참조](../reference/security.md#단계별-guarantee-
 |---|---|---|
 | Judgment naming | `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_type`, `presentation`, `display_label`을 사용합니다. | Compatibility alias가 추가 authority path를 만들면 안 됩니다. |
 | Next action | MVP-1 next-safe-action output은 `harness.status.next_actions`를 사용합니다. | 별도 `harness.next` method는 승격 전까지 later/compatibility입니다. |
-| MVP-1 compact views | [Projection과 Template 참조](../reference/projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../reference/templates/README.md#mvp-1-템플릿-세트)가 소유한 compact Core-derived view set을 사용합니다. | 이 view는 쓰기를 허가하거나 근거를 충족하거나 수락을 기록하거나 위험을 수용하거나 task를 close하거나 canonical state가 되지 않습니다. |
+| MVP-1 compact views | [Projection과 Template 참조](../reference/projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../reference/templates/README.md#mvp-1-템플릿-세트)가 소유한 `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, `close-result`만 사용합니다. | 이 view는 쓰기를 허가하거나 근거를 충족하거나 수락을 기록하거나 위험을 수용하거나 task를 close하거나 canonical state가 되지 않습니다. |
 | Minimal storage boundary | MVP-1 storage는 user work loop에 필요한 최소 active owner record로 제한합니다. | Later-profile table/record는 owner docs가 승격하기 전까지 제외합니다. |
 | Acceptance boundaries | Sensitive action approval, work acceptance, residual-risk acceptance를 분리합니다. | Work acceptance는 Approval이 아니며, residual-risk acceptance는 work acceptance가 아닙니다. |
 | Small direct changes | Small change도 explicit scope, compatible `prepare_write`, `record_run`, required evidence support가 필요합니다. | Small-change label이 authority, user judgment, evidence, risk visibility를 우회하면 안 됩니다. |
@@ -149,7 +173,7 @@ Guarantee level은 [보안 참조](../reference/security.md#단계별-guarantee-
 |---|---|
 | [보증 프로필](../later/assurance-profile.md) | 검증 강화, 수동 QA, 상세 근거, 위험 검토, 상세 평가 출력, full Approval lifecycle, stewardship validator, TDD trace, feedback-loop policy, context-hygiene validator. |
 | [운영 프로필](../later/operations-profile.md) | Export, recovery, handoff, operator readiness, doctor/readiness surface, artifact integrity operations, projection refresh/reconcile operations, conformance runner, broad operator surface. |
-| [로드맵](../roadmap.md) | Dashboard, hosted workflow, team workflow, broader connector, Browser QA Capture, Cross-Surface Verification, Context Index, metrics, preventive guard expansion, hook, permission, orchestration, deployment, canary, rollback, production monitoring, 그 밖의 확장 향후 후보. |
+| [로드맵](../roadmap.md) | Dashboard, hosted workflow, team workflow, broader connector, automated Browser QA Capture, Cross-Surface Verification, Context Index, metrics, preventive guard expansion, hook, permission, parallel orchestration, deployment, canary, rollback, production monitoring, 그 밖의 확장 향후 후보. |
 
 ## 종료 점검
 

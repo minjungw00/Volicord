@@ -207,7 +207,7 @@ Stage/profile support:
 
 | Stage/profile | What it can represent |
 |---|---|
-| Engineering Checkpoint / Kernel Smoke | The narrow internal authority loop: local project registration, active Task, scoped work boundary, `prepare_write`, one single-use Write Authorization, one compatible Run, one artifact/evidence ref, and one structured status/blocker response. Verification, Manual QA, work acceptance, residual-risk acceptance, full Evidence Manifest, and profile-specific full-format user judgment presentation are not Engineering Checkpoint requirements unless the named smoke path explicitly includes them. |
+| Engineering Checkpoint / Kernel Smoke | The narrow internal authority loop: local project registration, active Task, active Change Unit or scoped work boundary, `prepare_write`, one single-use Write Authorization, one compatible Run, one artifact/evidence ref, one structured status/blocker response, and a narrow close-blocker check. Verification, Manual QA, work acceptance, residual-risk acceptance, full Evidence Manifest, and profile-specific full-format user judgment presentation are not Engineering Checkpoint requirements unless the named smoke path explicitly includes them. |
 | MVP-1 User Work Loop | User-facing status for scope, pending user judgments, evidence summary, close readiness, work acceptance when required, and residual-risk visibility when close-relevant risk exists. MVP-1 must not imply detached verification is always required. |
 | Later assurance and operations profiles | Detached verification independence, richer Manual QA, stewardship, feedback-loop/TDD policy, projection/reconcile operations, export/recover, and handoff behavior. These are blockers only when the active profile or owner doc enables them. |
 

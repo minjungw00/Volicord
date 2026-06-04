@@ -91,12 +91,12 @@ MVP-1은 full assurance, full operations, broad report, dashboard, hosted UI, br
 
 - local project 하나
 - active Task 하나
-- scope boundary 하나
+- active Change Unit 또는 그에 준하는 scope boundary 하나
 - `prepare_write` allow/block behavior
 - durable single-use Write Authorization 하나
 - compatible `record_run` 하나
 - artifact/evidence ref 하나
-- Core state를 변경하지 않고 읽는 status/blocker output
+- product file을 변경하지 않고 Core state를 읽는 status output과 `harness.close_task`의 좁은 close-blocker check
 
 여기에는 ordinary-language intake, full judgment presentation, detailed Evidence Manifest behavior, detached verification, Eval, Manual QA, work acceptance, residual-risk acceptance, full close semantics, full projection rendering, dashboard, report, export, recover, conformance runner, broad connector, team workflow, orchestration, metrics, hook, preventive guard expansion, Roadmap automation이 포함되지 않습니다.
 
@@ -167,7 +167,7 @@ Projection과 template은 derived display로 설명됩니다. Compact MVP-1 view
 
 상태: 인계 가능.
 
-현재 기준선은 full template body를 Template Reference owner에 둡니다. Future export/report template은 owner가 승격하기 전까지 MVP-1 밖에 둡니다. 내부 엔지니어링 점검에는 status/blocker output과 artifact/evidence ref 하나만 필요합니다. MVP-1은 compact Core-derived view를 사용할 수 있고, later export/report/handoff template은 later-profile material로 남습니다.
+현재 기준선은 full template body를 Template Reference owner에 둡니다. Future export/report template은 owner가 승격하기 전까지 MVP-1 밖에 둡니다. 내부 엔지니어링 점검에는 status/blocker output, artifact/evidence ref 하나, 좁은 close-blocker check만 필요합니다. MVP-1은 compact Core-derived view를 사용할 수 있고, later export/report/handoff template은 later-profile material로 남습니다.
 
 Artifact는 owner path로 등록된 reference로 다룹니다. 자유로운 문서 출력물이 authority가 되는 것이 아닙니다.
 

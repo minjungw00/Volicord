@@ -138,7 +138,7 @@ Browser QA Capture conformance is a Roadmap candidate, not a requirement of Engi
 
 Connector and reference-surface smoke coverage follows the same staged rule. Engineering Checkpoint needs only enough reference-surface coverage to exercise the Kernel Smoke path named by the fixture owner. Later profiles broaden this into connector honesty, generated-file drift reporting, manual artifact/verification/QA fallbacks, projection/card display, and the connector conformance scenarios owned by [Agent Integration Reference](agent-integration.md#connector-conformance-overview). Preventive `T4`, automated `T6`, remote/shared MCP exposure, and broad connector automation stay outside Engineering Checkpoint unless owner docs promote and prove a concrete reference path.
 
-Summary: Engineering Checkpoint conformance scope is the narrow Core authority loop: project/Task setup, one scoped boundary, `prepare_write` plus Write Authorization, `record_run` plus evidence link, and status/blocker output. Later profiles add user-facing, assurance, and operations coverage without making the broad future catalog an early-stage requirement.
+Summary: Engineering Checkpoint conformance scope is the narrow Core authority loop: project/Task setup, one active Change Unit or scoped boundary, `prepare_write` plus Write Authorization, `record_run` plus evidence link, status/blocker output, and narrow close-blocker check. Later profiles add user-facing, assurance, and operations coverage without making the broad future catalog an early-stage requirement.
 
 ## Docs-maintenance profile
 

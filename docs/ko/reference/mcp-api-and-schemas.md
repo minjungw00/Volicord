@@ -15,7 +15,7 @@ API를 읽을 때도 같은 권한 분리를 유지합니다. Public API call은
 
 ## MVP-1 shortcut
 
-Active MVP-1 method set은 [MVP API](api/mvp-api.md#mvp-1-method-set)가 담당합니다. MVP-1의 다음 안전한 행동 출력은 `harness.status` 안에 있습니다. 별도 `harness.next` compatibility path는 [Schema Later](api/schema-later.md#harnessnext)가 담당합니다.
+Active MVP-1 method set은 [MVP API](api/mvp-api.md#mvp-1-method-set)가 담당합니다. 정확한 set은 `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, `harness.close_task`입니다. MVP-1의 다음 안전한 행동 출력은 `harness.status.next_actions`에 담깁니다. 별도 `harness.next` compatibility path는 [Schema Later](api/schema-later.md#harnessnext)가 담당하며 활성 MVP-1이 아닙니다.
 
 `harness.prepare_write` 뒤의 쓰기 전 범위 확인은 하네스 수준의 협력형 확인입니다. 정확한 method field는 [MVP API: `harness.prepare_write`](api/mvp-api.md#harnessprepare_write)가, Core 상태 동작은 [Core Model 참조: `prepare_write`](core-model.md#prepare_write)가, 보장 표현은 [보안 참조](security.md#정직한-guarantee-display)가 담당합니다.
 
@@ -35,7 +35,7 @@ Public tools: [MVP API](api/mvp-api.md).
 `harness.intake`: [MVP API: `harness.intake`](api/mvp-api.md#harnessintake).
 
 <a id="harnessnext"></a>
-`harness.next`: [Schema Later: `harness.next`](api/schema-later.md#harnessnext).
+Later/compatibility only, 활성 MVP-1 아님: `harness.next`: [Schema Later: `harness.next`](api/schema-later.md#harnessnext).
 
 <a id="harnessprepare_write"></a>
 `harness.prepare_write`: [MVP API: `harness.prepare_write`](api/mvp-api.md#harnessprepare_write).

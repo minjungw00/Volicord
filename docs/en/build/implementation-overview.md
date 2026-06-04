@@ -34,6 +34,20 @@ The implementation path is deliberately staged:
 
 All implementation verbs in Build docs describe future work after the readiness gates are accepted. While [Documentation acceptance status](#documentation-acceptance-status) says implementation planning readiness is not accepted, Build is planning guidance only.
 
+## Three implementation layers
+
+Implementers should separate these layers before reading later-profile or Roadmap material:
+
+| Layer | Active scope | Not in this layer |
+|---|---|---|
+| First executable authority loop | Engineering Checkpoint. One local project state, one active Task, one active Change Unit/scope boundary, `harness.prepare_write`, one active single-use Write Authorization, `harness.record_run` consumption, minimal artifact/evidence recording, and a narrow status/close-blocker check. | Natural-language intake, stored user judgment flow, full close semantics, full projection renderer, rich reports, operations, conformance runner, or later-profile storage. |
+| First user work loop | MVP-1 User Work Loop. Adds ordinary-language intake, status with `harness.status.next_actions`, focused user judgment request/record, run/evidence summary, close result/blockers, work-acceptance and residual-risk visibility, and compact Core-derived views. | Assurance hardening, operations/export/recover, dashboards, hosted UI, broad connectors, automation, or detailed reports. |
+| Later/profile scope | Assurance Profile, Operations Profile, and Roadmap. Includes full Manual QA matrix, detached Eval system, export/recover suite, dashboard/hosted UI, broad connector ecosystem, automated Browser QA Capture, preventive guard expansion, parallel orchestration, and detailed report projections. | Engineering Checkpoint and minimum MVP-1 exit criteria unless an owner explicitly promotes a narrow behavior with stage impact. |
+
+The active MVP-1 method set is exactly `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, and `harness.close_task`. `harness.next` is not active MVP-1; next safe actions are represented through `harness.status.next_actions`.
+
+The active MVP-1 compact view set is exactly `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`. Persisted Journey Card, full Evidence Manifest, Eval report, Manual QA report, TDD Trace, Module Map, Interface Contract, Export report, and other detailed reports stay later/profile unless an owner explicitly marks a narrowed use as non-required or promotes it with stage impact.
+
 ## Current review baseline
 
 The documentation set is a post-redesign review baseline and documentation acceptance candidate. It is not final accepted implementation material unless maintainers deliberately update the status table below.
@@ -112,10 +126,10 @@ After readiness is accepted, build the smallest local system that can prove Core
 |---|---|---|---|
 | Process | One local Harness process or server with clear modules is enough. | Same local path, with user-facing intake/status behavior. | [Runtime Architecture Reference](../reference/runtime-architecture.md). |
 | Core | Mutates canonical state through one authority loop. | Adds user-facing work-loop state and close/status paths without a second authority model. | [Core Model Reference](../reference/core-model.md). |
-| API | Minimal status/blocker read, setup path, `prepare_write`, `record_run`, artifact/evidence ref path. | Adds MVP-1 public tools/resources for intake, status/next actions, user judgment, run/evidence, and close. | [MVP API](../reference/api/mvp-api.md), [API Schema Core](../reference/api/schema-core.md), [API Errors](../reference/api/errors.md). |
+| API | Minimal status/blocker read, owner-valid setup path, `prepare_write`, `record_run`, one artifact/evidence ref path, and narrow close-blocker check. Natural-language intake is not required. | Adds the exact MVP-1 public method set for status/next actions, intake, user judgment, write checks, run/evidence, and close. | [MVP API](../reference/api/mvp-api.md), [API Schema Core](../reference/api/schema-core.md), [API Errors](../reference/api/errors.md). |
 | Storage | Use only the minimal owner-approved persistence needed for the authority loop. | Add only storage needed for MVP-1 user judgment, evidence summary, blockers, and compact outputs. | [Storage](../reference/storage.md). |
 | Security | Cooperative plus limited detective. | Same baseline with clearer user-visible blockers and honest guarantee display. | [Security Reference](../reference/security.md). |
-| Projections/views | Status/blocker output only; no full renderer required. | Five compact Core-derived views may satisfy the user loop. | [Projection And Templates Reference](../reference/projection-and-templates.md), [Template Reference](../reference/templates/README.md). |
+| Projections/views | Status/blocker output only; no full renderer required. | The five active compact Core-derived views may satisfy the user loop. | [Projection And Templates Reference](../reference/projection-and-templates.md), [Template Reference](../reference/templates/README.md). |
 | Operations/conformance | Future smoke authoring plan only. | Behavior examples until runtime fixtures are materialized. | [Operations And Conformance Reference](../reference/operations-and-conformance.md), [Conformance Fixtures Reference](../reference/conformance-fixtures.md). |
 
 ## What not to build yet
@@ -124,7 +138,8 @@ These should not be built as Engineering Checkpoint or minimum MVP-1 prerequisit
 
 - Full Assurance Profile: detached verification hardening, Manual QA matrix, full Approval lifecycle, full residual-risk lifecycle, stewardship validators, TDD trace policy, feedback-loop policy, and broad context-hygiene validators.
 - Full Operations Profile: doctor/readiness suite, recover/export, artifact integrity operations, release handoff, projection refresh/reconcile operations, conformance runner, and broad operator coverage.
-- Roadmap candidates: dashboard, hosted workflow UI, Context Index, broad connector marketplace, Browser QA Capture automation, Cross-Surface Verification automation, preventive guard expansion, native hook expansion, Advanced Sidecar Watcher, Local Derived Metrics, team workflow, permissions, orchestration, deployment, canary, rollback, or production monitoring.
+- Detailed report projections: persisted Journey Card, full Evidence Manifest, Eval report, Manual QA report, TDD Trace, Module Map, Interface Contract, Export report, and other polished reports unless explicitly promoted as non-required display.
+- Roadmap candidates: dashboard, hosted workflow UI, Context Index, broad connector marketplace, automated Browser QA Capture, Cross-Surface Verification automation, preventive guard expansion, native hook expansion, Advanced Sidecar Watcher, Local Derived Metrics, team workflow, permissions, parallel orchestration, deployment, canary, rollback, or production monitoring.
 
 Later capabilities may read, display, or wrap the authority loop only after owner docs define exact contracts, fallback behavior, fixture/conformance expectations, redaction/secret handling where needed, and no projection-as-canonical dependency.
 

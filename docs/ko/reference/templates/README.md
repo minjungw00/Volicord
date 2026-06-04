@@ -20,7 +20,7 @@ Owner 경계: 이 디렉터리는 렌더링된 템플릿 본문과 표시 카드
 | 계층 | 템플릿 범위 | 규칙 |
 |---|---|---|
 | 내부 엔지니어링 점검 상태 | Plain structured status/blocker output. 선택적으로 [상태 카드](status-card.md)를 렌더링할 수 있습니다. | Projection job이나 full renderer가 필요하지 않습니다. |
-| MVP-1 사용자 작업 루프 보기 | [상태 카드](status-card.md), [에이전트 맥락 패킷](agent-context-packet.md), [판단 요청](judgment-request.md), [실행/근거 요약](run-evidence-summary.md), [닫기 결과](close-result.md) | 이것이 전체 MVP-1 템플릿/보기 세트입니다. 각 보기는 Core 상태와 참조에서 파생됩니다. |
+| MVP-1 사용자 작업 루프 보기 | [상태 카드](status-card.md), [에이전트 맥락 패킷](agent-context-packet.md), [판단 요청](judgment-request.md), [실행/근거 요약](run-evidence-summary.md), [닫기 결과](close-result.md) | 이것이 정확한 전체 MVP-1 템플릿/보기 세트입니다. 각 보기는 Core 상태와 참조에서 파생됩니다. |
 | Later/full-profile 템플릿 | [later-profile/](later-profile/README.md) | 상세 보증, 진단, 운영, export, stewardship, 전체 보고서 템플릿은 owner profile이 명시적으로 승격하기 전까지 later-profile로 남습니다. |
 
 ## 템플릿 구현 계층
@@ -35,7 +35,7 @@ Owner 경계: 이 디렉터리는 렌더링된 템플릿 본문과 표시 카드
 
 ## MVP-1 템플릿 세트
 
-MVP-1 템플릿/보기는 다음 다섯 개로 제한됩니다.
+MVP-1 템플릿/보기는 정확히 다음 다섯 개로 제한됩니다.
 
 - [상태 카드](status-card.md): 사용자가 보는 짧은 현재 상태.
 - [에이전트 맥락 패킷](agent-context-packet.md): 다음 안전한 행동을 위한 작은 맥락.
@@ -53,7 +53,7 @@ MVP-1 템플릿/보기는 다음 다섯 개로 제한됩니다.
 |---|---|---|
 | 보증 프로필 | [DEC / Decision Packet](later-profile/decision-packet.md), [APR](later-profile/approval.md), [Approval Card](later-profile/approval-card.md), [EVIDENCE-MANIFEST](later-profile/evidence-manifest.md), [EVAL](later-profile/eval.md), [MANUAL-QA](later-profile/manual-qa.md), [수동 QA Card](later-profile/manual-qa-card.md), [Verification Result Card](later-profile/verification-result-card.md) | Owner profile이 active일 때의 검증 강화, 수동 QA, 상세 근거, 위험 검토, 상세 평가 출력에만 사용합니다. |
 | 운영 프로필 | [EXPORT](later-profile/export.md) | Operations/export path가 active일 때의 export, handoff, artifact availability, redaction/omission, release-handoff display에만 사용합니다. |
-| Future/diagnostic profile material | [TASK](later-profile/task.md), [DIRECT-RESULT](later-profile/direct-result.md), [JOURNEY-CARD](later-profile/journey-card.md), [DESIGN](later-profile/design.md), [DOMAIN-LANGUAGE](later-profile/domain-language.md), [MODULE-MAP](later-profile/module-map.md), [INTERFACE-CONTRACT](later-profile/interface-contract.md), [RUN-SUMMARY](later-profile/run-summary.md), [TDD-TRACE](later-profile/tdd-trace.md) | Detailed continuity, stewardship, TDD, diagnostic, reporting view는 owner가 승격하기 전까지 later-profile에 남습니다. |
+| Future/diagnostic profile material | [TASK](later-profile/task.md), [DIRECT-RESULT](later-profile/direct-result.md), [JOURNEY-CARD](later-profile/journey-card.md), [DESIGN](later-profile/design.md), [DOMAIN-LANGUAGE](later-profile/domain-language.md), [MODULE-MAP](later-profile/module-map.md), [INTERFACE-CONTRACT](later-profile/interface-contract.md), [RUN-SUMMARY](later-profile/run-summary.md), [TDD-TRACE](later-profile/tdd-trace.md) | Detailed continuity, stewardship, TDD, diagnostic, reporting view는 owner가 non-required display 또는 later-stage scope로 승격하기 전까지 later-profile에 남습니다. |
 
 Dashboard, hosted workflow, team workflow, broader connector, automation, analytics view는 template requirement가 아니라 [로드맵](../../roadmap.md) 향후 후보입니다.
 

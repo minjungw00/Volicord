@@ -15,7 +15,7 @@ API readers should keep the same authority split used elsewhere: public API call
 
 ## MVP-1 shortcut
 
-The active MVP-1 method set is owned by [MVP API](api/mvp-api.md#mvp-1-method-set). MVP-1 next-safe-action output is part of `harness.status`; the separate `harness.next` compatibility path is owned by [Schema Later](api/schema-later.md#harnessnext).
+The active MVP-1 method set is owned by [MVP API](api/mvp-api.md#mvp-1-method-set). It is exactly `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, and `harness.close_task`. MVP-1 next-safe-action output is part of `harness.status.next_actions`; the separate `harness.next` compatibility path is owned by [Schema Later](api/schema-later.md#harnessnext) and is not active MVP-1.
 
 The pre-write scope-check behavior behind `harness.prepare_write` is a cooperative Harness check. Exact method fields are owned by [MVP API: `harness.prepare_write`](api/mvp-api.md#harnessprepare_write), Core state behavior by [Core Model Reference: `prepare_write`](core-model.md#prepare_write), and guarantee wording by [Security Reference](security.md#honest-guarantee-display).
 
@@ -35,7 +35,7 @@ Public tools: [MVP API](api/mvp-api.md).
 `harness.intake`: [MVP API: `harness.intake`](api/mvp-api.md#harnessintake).
 
 <a id="harnessnext"></a>
-`harness.next`: [Schema Later: `harness.next`](api/schema-later.md#harnessnext).
+Later/compatibility only, not active MVP-1: `harness.next`: [Schema Later: `harness.next`](api/schema-later.md#harnessnext).
 
 <a id="harnessprepare_write"></a>
 `harness.prepare_write`: [MVP API: `harness.prepare_write`](api/mvp-api.md#harnessprepare_write).

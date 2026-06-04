@@ -211,7 +211,7 @@ Stage/profile support:
 
 | Stage/profile | 표현할 수 있는 것 |
 |---|---|
-| 내부 엔지니어링 점검 / Kernel Smoke | 좁은 internal 권한 루프입니다. Local project registration, active Task, scoped work boundary, `prepare_write`, single-use Write Authorization 하나, compatible Run 하나, artifact/evidence ref 하나, structured status/blocker response 하나가 범위입니다. Verification, 수동 QA, 작업 수락, residual-risk acceptance, full Evidence Manifest, profile별 full-format user judgment presentation은 named smoke path가 명시적으로 포함하지 않는 한 내부 엔지니어링 점검 requirement가 아닙니다. |
+| 내부 엔지니어링 점검 / Kernel Smoke | 좁은 internal 권한 루프입니다. Local project registration, 활성 Task, 활성 Change Unit 또는 scoped work boundary, `prepare_write`, single-use Write Authorization 하나, compatible Run 하나, artifact/evidence ref 하나, structured status/blocker response 하나, 좁은 close-blocker check가 범위입니다. Verification, 수동 QA, 작업 수락, residual-risk acceptance, full Evidence Manifest, profile별 full-format user judgment presentation은 named smoke path가 명시적으로 포함하지 않는 한 내부 엔지니어링 점검 requirement가 아닙니다. |
 | MVP-1 사용자 작업 루프 | Scope, pending user judgment, evidence summary, close readiness, required work acceptance, close-relevant risk가 있을 때 잔여 위험 표시를 사용자에게 보여줍니다. MVP-1이 detached verification이 항상 required라고 암시하면 안 됩니다. |
 | Later assurance and operations profiles | Detached verification independence, richer Manual QA, stewardship, feedback-loop/TDD policy, projection/reconcile operations, export/recover, handoff behavior입니다. Active profile이나 owner doc이 켰을 때만 blocker가 됩니다. |
 

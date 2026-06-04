@@ -191,12 +191,12 @@ Native hooks, sidecars, command wrappers, file watchers, worktree isolation은 c
 
 ### Core modules
 
-Core는 첫 조각에서 단일 로컬 프로세스로 실행할 수 있습니다. 전체 server는 아래 내부 책임으로 자랄 수 있지만, 내부 엔지니어링 점검이 이들을 별도 모듈로 모두 구현해야 하는 것은 아닙니다. 내부 엔지니어링 점검 구현은 local registration, Task 하나, 범위가 정해진 작업 경계 하나, `prepare_write`, 한 번만 쓰는 Write Authorization 하나, `record_run` 하나, artifact/evidence ref 하나, structured status/blocker response 하나 밖의 기능을 stub, absent path 또는 later-profile scope로 둘 수 있습니다.
+Core는 첫 조각에서 단일 로컬 프로세스로 실행할 수 있습니다. 전체 server는 아래 내부 책임으로 자랄 수 있지만, 내부 엔지니어링 점검이 이들을 별도 모듈로 모두 구현해야 하는 것은 아닙니다. 내부 엔지니어링 점검 구현은 local registration, Task 하나, 활성 Change Unit 또는 범위가 정해진 작업 경계 하나, `prepare_write`, 한 번만 쓰는 Write Authorization 하나, `record_run` 하나, artifact/evidence ref 하나, structured status/blocker response 하나, 좁은 close-blocker check 밖의 기능을 stub, absent path 또는 later-profile scope로 둘 수 있습니다.
 
 | Module | Runtime responsibility |
 |---|---|
 | State store | 현재 기록, state version, locks, `state.sqlite.task_events` |
-| Task workflow | Task state, 범위가 정해진 작업 경계, 최소 status/blocker response, 이후 profile의 intake, mode selection, next action, gate 갱신, 닫기 판단 |
+| Task workflow | Task state, 활성 Change Unit 또는 범위가 정해진 작업 경계, 최소 status/blocker response, 좁은 close-blocker check, 이후 profile의 intake, mode selection, next action, gate 갱신, full close decision |
 | Journey module | 관련 profile이 active일 때 Journey Spine reconstruction, Journey Spine Entry support records, Journey Card inputs, continuity refs |
 | User Judgment module | 관련 profile이 active일 때 User Judgment lifecycle, `decision_gate` aggregation, 사용자 판단 연결, optional full-format Decision Packet presentation, 잔여 위험 표시 inputs |
 | Approval module | sensitive-action approval이 범위에 있을 때 scope-bound Approval 요청, decision, expiry, drift handling |
