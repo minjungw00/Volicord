@@ -2,26 +2,26 @@
 
 ## 사용 시점
 
-나중의 민감 동작 승인(Approval) 프로필이 민감 동작 승인 요청 record를 commit한 뒤, 민감한 행동 요청과 결정을 읽기 쉽게 보여줘야 할 때 `APR`을 사용합니다. `APR`은 민감 동작 승인 범위를 보여줄 뿐이며 사용자 소유의 제품/UX 판단이나 기술 판단, 정확성, 작업 수락, 잔여 위험 수용, QA 면제 판단, 검증 면제 판단, 배포, merge, 쓰기 허가 기록(Write Authorization)을 결정하지 않습니다.
+나중의 민감 동작 승인(Approval) 프로필이 민감 동작 승인 요청 기록을 커밋한 뒤, 민감한 행동 요청과 결정을 읽기 쉽게 보여줘야 할 때 `APR`을 사용합니다. `APR`은 민감 동작 승인 범위를 보여줄 뿐이며 사용자 소유의 제품/UX 판단이나 기술 판단, 정확성, 작업 수락, 잔여 위험 수용, QA 면제 판단, 검증 면제 판단, 배포, merge, 쓰기 허가 기록(Write Authorization)을 결정하지 않습니다.
 
-경계: 상태 보기 템플릿(projection template)일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
+경계: 상태 보기 템플릿(projection template)일 뿐이며 하네스 서버/런타임 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 단계와 상태 보기 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: 보증 프로필 보고서입니다. `APR`은 commit된 민감 동작 승인(Approval) 지원이 활성화된 경우에만 사용하며 내부 엔지니어링 점검이나 MVP-1 다섯 가지 보기 세트의 일부가 아닙니다.
+구현 계층: 보증 프로필 보고서입니다. `APR`은 커밋된 민감 동작 승인(Approval) 지원이 활성화된 경우에만 사용하며 내부 엔지니어링 점검이나 MVP-1 다섯 가지 보기 세트의 일부가 아닙니다.
 
 ## 기준 기록
 
-- committed 민감 동작 승인(Approval) 기록
+- 커밋된 민감 동작 승인(Approval) 기록
 - 관련 민감 동작 승인 `user_judgment`
-- 구현이 유지하는 경우 선택적 user-judgment request 라우팅/replay 기록
+- 구현이 유지하는 경우 선택적 사용자 판단 요청 라우팅/재생 기록
 - Change Unit 범위
-- 민감 category
-- 허용된 path, tool, command, network target, secret
-- baseline, 만료 조건, 대안, decision note
+- 민감 범주
+- 허용 경로, 도구, 명령, 네트워크 대상, 필요한 비밀 정보
+- 기준선, 만료 조건, 대안, 결정 메모
 - 경계 맥락으로 표시될 때 관련 쓰기 허가 기록(Write Authorization), 아티팩트 참조, 가림 상태, 읽기용 보기 최신성(projection freshness)
 
-`prepare_write`가 반환한 상태를 변경하지 않는 `approval_request_candidate`는 `APR` source가 아닙니다. 표시가 필요하면 candidate 표시로만 보여줍니다.
+`prepare_write`가 반환한 상태를 변경하지 않는 `approval_request_candidate`는 `APR` 출처가 아닙니다. 표시가 필요하면 후보 표시로만 보여줍니다.
 
-경계 요약은 민감 동작 승인(Approval) 범위, 연결된 Approval 기록, 관련 user judgment ref, 현재 쓰기 또는 닫기 맥락에서 파생한 표시 block입니다. 나중의 Approval 프로필에서 사용자에게 경계를 다시 알려주는 표시이며, 독립된 권한 출처나 gate가 아닙니다.
+경계 요약은 민감 동작 승인(Approval) 범위, 연결된 Approval 기록, 관련 사용자 판단 참조, 현재 쓰기 또는 닫기 맥락에서 파생한 표시 블록입니다. 나중의 Approval 프로필에서 사용자에게 경계를 다시 알려주는 표시이며, 독립된 권한 출처나 관문이 아닙니다.
 
 ## 렌더링 섹션
 
@@ -54,44 +54,44 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 # APR-0001 민감 동작 승인 요청
 
-> 상태 보기(Projection): `source_state_version`와 `updated_at` 기준으로 렌더링되며 민감 동작 승인(Approval) 요청과 경계를 표시합니다. Approval은 sensitive-action permission일 뿐입니다. Approval은 여전히 기준 Approval 결정 경로를 거쳐야 하며, write에는 호환되는 `prepare_write`가 필요합니다.
+> 상태 보기(Projection): `source_state_version`와 `updated_at` 기준으로 렌더링되며 민감 동작 승인(Approval) 요청과 경계를 표시합니다. Approval은 민감 동작 허가일 뿐입니다. Approval은 여전히 기준 Approval 결정 경로를 거쳐야 하며, 쓰기에는 호환되는 `prepare_write`가 필요합니다.
 
 ## 요청 요약
 - 제안된 동작:
 - 승인하려는 민감 동작:
-- 여기서 'approved'가 의미하는 것:
+- 여기서 '승인됨'이 의미하는 것:
 
 ## 출처 참조
 - 민감 동작 승인(Approval) 기록:
-- 관련 user judgment:
+- 관련 사용자 판단:
 - 관련 쓰기 허가 기록(Write Authorization):
 - 아티팩트 참조:
 - 가림 상태:
 - 보기 최신성:
 
 ## 경계 요약
-- 이 request가 포괄하는 것:
-- 이 request가 결정하지 않는 것:
+- 이 요청이 포괄하는 것:
+- 이 요청이 결정하지 않는 것:
 - 승인되더라도 이후 여전히 필요한 것:
 - 작업 수락 경계:
 - 잔여 위험 수용 경계:
 - 면제 판단 경계:
-- secret 노출 경계:
+- 비밀 정보 노출 경계:
 
 ## 관련 사용자 판단
-- 민감 동작 승인 user judgment:
-- 필요한 경우 사용자 소유의 제품/UX 판단 또는 기술 판단을 위한 별도 user judgment:
+- 민감 동작 승인 사용자 판단:
+- 필요한 경우 사용자 소유의 제품/UX 판단 또는 기술 판단을 위한 별도 사용자 판단:
 - decision_gate 영향:
 - approval_gate 영향:
 
 ## 요청된 범위
-- 민감 category:
-- 허용 path:
-- 허용 tool:
-- 허용 command:
-- 허용 network target:
-- 필요한 secret:
-- baseline ref:
+- 민감 범주:
+- 허용 경로:
+- 허용 도구:
+- 허용 명령:
+- 허용 네트워크 대상:
+- 필요한 비밀 정보:
+- 기준선 참조:
 - 예상 diff envelope:
 - 범위가 drift되면 만료:
 
@@ -107,12 +107,12 @@ updated_at: 2026-05-06T09:30:15+09:00
 - 현재 Task와의 관계:
 
 ## 영향
-- code/docs:
-- user/operations:
-- security/privacy:
+- 코드/문서:
+- 사용자/운영:
+- 보안/개인정보:
 - cost/deployment:
 - 도메인 언어:
-- module/interface:
+- 모듈/인터페이스:
 
 ## 위험
 - 주요 위험:
@@ -144,17 +144,17 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## 경계
 - 민감 동작 승인(Approval)은 사용자 소유의 제품/UX 판단이나 기술 판단을 해소하지 않고, 정확성을 증명하지 않고, 검증이나 수동 QA를 대체하지 않고, 작업 수락을 암시하지 않으며, 잔여 위험 수용을 대신하지 않는다.
 - 민감 동작 승인(Approval)은 QA 또는 검증을 면제하지 않는다. 면제 판단은 정책이 허용할 때 별도의 범위 지정 waiver path가 필요하다.
-- 민감 동작 승인(Approval)은 쓰기 허가 기록(Write Authorization)이 아니다. 이후 호환되는 `prepare_write` 재시도가 쓰기를 허용해야 implementation 또는 direct `record_run`이 authorization을 consume할 수 있다.
+- 민감 동작 승인(Approval)은 쓰기 허가 기록(Write Authorization)이 아니다. 이후 호환되는 `prepare_write` 재시도가 쓰기를 허용해야 구현 또는 직접 `record_run`이 허가 기록을 소비할 수 있다.
 - 의존성 설치 승인(Approval)은 그 의존성을 사용하는 architecture 방향을 결정하지 않는다.
-- secret 접근 승인(Approval)은 secret 값을 artifacts, projections, exports, logs, screenshots, summaries에 노출해도 된다는 뜻이 아니다.
+- 비밀 정보 접근 승인(Approval)은 비밀 정보 값을 artifacts, projections, exports, logs, screenshots, summaries에 노출해도 된다는 뜻이 아니다.
 - auth, permission, system-change 승인(Approval)은 session auth, JWT, social login, role model, lockout behavior, user notice를 결정하지 않는다.
-- public API 방향, deployment, merge, 작업 수락, 잔여 위험 수용, 면제 판단, 추가 write attempt에는 필요한 경우 각각 적용되는 기록된 decision 또는 authority가 필요하다.
+- public API 방향, deployment, merge, 작업 수락, 잔여 위험 수용, 면제 판단, 추가 write attempt에는 필요한 경우 각각 적용되는 기록된 판단 또는 권한이 필요하다.
 ````
 
 ## 메모
 
-이 template은 렌더링 projection일 뿐 민감 동작 승인(Approval) 권한이 아닙니다. 민감 동작 승인(Approval) 기록과 승인 결정 경로(Approval decision path)가 계속 기준이며, 이 Markdown은 request, decision, boundary를 표시만 합니다.
+이 template은 렌더링된 상태 보기일 뿐 민감 동작 승인(Approval) 권한이 아닙니다. 민감 동작 승인(Approval) 기록과 승인 결정 경로(Approval decision path)가 계속 기준이며, 이 Markdown은 요청, 결정, 경계를 표시만 합니다.
 
-경계 section은 사용자에게 보이는 안내입니다. User-judgment request 라우팅 기록만으로는 판단 권한이 생기지 않으며, 연결된 compatible `user_judgment`를 통하지 않고는 `decision_gate`에 영향을 줄 수 없습니다.
+경계 섹션은 사용자에게 보이는 안내입니다. 사용자 판단 요청 라우팅 기록만으로는 판단 권한이 생기지 않으며, 연결된 호환 `user_judgment`를 통하지 않고는 `decision_gate`에 영향을 줄 수 없습니다.
 
-민감 동작 승인(Approval) wording은 broad answer를 유도하면 안 됩니다. 사용자가 "go ahead", "proceed", "looks good", "좋아", "진행해"라고 말하더라도 rendered decision은 이름 붙은 sensitive action과 scope만 승인됐음을 계속 보여줘야 합니다. 그 답변이 작업 수락, 잔여 위험 수용, QA 면제 판단, 검증 면제 판단, 다른 pending user judgment도 가리킬 수 있으면 기록하기 전에 다시 확인합니다.
+민감 동작 승인(Approval) 문구는 넓은 동의를 유도하면 안 됩니다. 사용자가 "go ahead", "proceed", "looks good", "좋아", "진행해"라고 말하더라도 렌더링된 결정은 이름 붙은 민감 동작과 범위만 승인됐음을 계속 보여줘야 합니다. 그 답변이 작업 수락, 잔여 위험 수용, QA 면제 판단, 검증 면제 판단, 다른 대기 중인 사용자 판단도 가리킬 수 있으면 기록하기 전에 다시 확인합니다.

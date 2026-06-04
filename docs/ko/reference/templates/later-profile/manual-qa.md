@@ -2,22 +2,22 @@
 
 ## 사용 시점
 
-수동 QA가 required, performed, waived, pending 상태이거나 `qa_gate`에 반영되어 있고 해당 기록을 읽기 쉬운 projection으로 볼 때 `MANUAL-QA`를 사용합니다.
+수동 QA가 required, performed, waived, pending 상태이거나 `qa_gate`에 반영되어 있고 해당 기록을 읽기 쉬운 상태 보기로 볼 때 `MANUAL-QA`를 사용합니다.
 
-경계: 상태 보기 템플릿(projection template)일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
+경계: 상태 보기 템플릿(projection template)일 뿐이며 하네스 서버/런타임 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 단계와 상태 보기 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: 보증 프로필 보고서입니다. Manual QA record 또는 활성 QA profile이 있을 때만 렌더링하며 MVP-1 다섯 가지 보기 세트의 일부가 아닙니다.
+구현 계층: 보증 프로필 보고서입니다. Manual QA 기록 또는 활성 QA 프로필이 있을 때만 렌더링하며 MVP-1 다섯 가지 보기 세트의 일부가 아닙니다.
 
 ## 기준 기록
 
 - `manual_qa_records`
 - Task와 Change Unit 참조
 - `qa_gate`
-- 수동 QA profile, setup, checklist, result, waiver, finding
-- human inspector 또는 role과 확인한 품질이나 workflow
+- 수동 QA 프로필, 준비 사항, 확인 목록, 결과, 면제, 발견 사항
+- 사람 inspector 또는 역할과 확인한 품질이나 workflow
 - screenshot, browser log, `qa_capture`, video, workflow recording, 수동 제공 note artifact 참조와 `redaction_state`
-- QA waiver 또는 failure와 관련된 waiver reason, 필요한 경우 QA waiver user judgment refs, Residual Risk refs
-- 표시되는 claim이 있을 때 근거 목록(Evidence Manifest), Eval(분리 검증 결과), 작업 수락 맥락, 민감 동작 승인(Approval), 아티팩트 참조, 가림 상태, 읽기용 보기 최신성(projection freshness)
+- QA waiver 또는 failure와 관련된 waiver reason, 필요한 경우 QA waiver 사용자 판단 참조, Residual Risk 참조
+- 표시되는 주장이 있을 때 근거 목록(Evidence Manifest), Eval(분리 검증 결과), 작업 수락 맥락, 민감 동작 승인(Approval), 아티팩트 참조, 가림 상태, 읽기용 보기 최신성(projection freshness)
 - `manual_qa` 관련 design-quality validator 결과
 - 읽기용 보기 최신성(projection freshness) 입력
 
@@ -49,7 +49,7 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 # 수동 QA
 
-> 상태 보기(Projection): `source_state_version`와 `updated_at` 기준으로 렌더링되며 수동 QA record와 `qa_gate`를 표시합니다. QA result와 QA waiver는 `manual_qa_records`와 `qa_gate`에 기록됩니다. Product/user risk가 있는 QA waiver는 연결된 QA waiver user judgment를 사용하고, 잔여 위험 수용은 Residual Risk refs에 기록됩니다. Browser QA artifact는 supporting ref일 뿐이며 human 수동 QA judgment, 작업 수락, 분리 검증을 대체하지 않습니다.
+> 상태 보기(Projection): `source_state_version`와 `updated_at` 기준으로 렌더링되며 수동 QA 기록과 `qa_gate`를 표시합니다. QA result와 QA waiver는 `manual_qa_records`와 `qa_gate`에 기록됩니다. 제품/사용자 위험이 있는 QA waiver는 연결된 QA waiver 사용자 판단을 사용하고, 잔여 위험 수용은 Residual Risk 참조에 기록됩니다. Browser QA artifact는 뒷받침 참조일 뿐이며 사람이 하는 수동 QA 판단, 작업 수락, 분리 검증을 대체하지 않습니다.
 
 ## 식별 정보
 - manual_qa_record_id: QA-0001 | null
@@ -60,8 +60,8 @@ updated_at: 2026-05-06T10:05:00+09:00
 - 수행한 사람:
 
 ## 권한과 닫기 참조
-- 수동 QA record:
-- QA waiver user judgment:
+- 수동 QA 기록:
+- QA waiver 사용자 판단:
 - 근거 목록(Evidence Manifest):
 - Eval(분리 검증 결과):
 - 민감 동작 승인(Approval):
@@ -87,9 +87,9 @@ updated_at: 2026-05-06T10:05:00+09:00
 ## 결과
 - 기록 결과: passed | failed | waived | 기록이 없으면 null
 - qa_gate: not_required | required | pending | passed | failed | waived
-- qa_gate note: 기준 close-relevant gate; 이 projection은 표시 전용
-- QA waiver 표시: `qa_gate=waived`와 수동 QA record 또는 waiver reason, 필요한 경우 QA waiver user judgment
-- 자동 check 상태: {뒷받침 참조만; 수동 QA 결과 아님}
+- qa_gate note: 기준 close-relevant gate; 이 상태 보기는 표시 전용
+- QA waiver 표시: `qa_gate=waived`와 수동 QA 기록 또는 waiver reason, 필요한 경우 QA waiver 사용자 판단
+- 자동 확인 상태: {뒷받침 참조만; 수동 QA 결과 아님}
 - 검증 상태: {별도 Eval(분리 검증 결과)/gate status; 이 template이 만들지 않음}
 - 작업 수락 상태: {별도 사용자 판단; 이 template이 만들지 않음}
 - 사람의 확인 요약:
@@ -98,12 +98,12 @@ updated_at: 2026-05-06T10:05:00+09:00
 
 ## 면제와 위험
 - 면제 기록:
-- QA waiver user judgment:
+- QA waiver 사용자 판단:
 - 생략한 확인 또는 대상:
 - waiver 전에 표시된 위험:
 - 받아들이는 위험:
 - 후속 작업:
-- Residual Risk refs:
+- Residual Risk 참조:
 - 받아들인 Residual Risk 요약:
 - 닫기 영향:
 
@@ -124,18 +124,18 @@ updated_at: 2026-05-06T10:05:00+09:00
 ## Redaction과 사용 가능성
 | 아티팩트 참조 | 가림 상태 | QA 영향 | 메모 |
 |---|---|---|---|
-| ART-QA-0001 | secret_omitted | observable finding만 지원 | |
+| ART-QA-0001 | secret_omitted | 관찰 가능한 발견 사항만 지원 | |
 | ART-QA-0002 | blocked | capture 사용 불가; 대체되거나 유효하게 면제되기 전까지 QA 경로는 미해결이며 `qa_gate`는 상황에 따라 pending/failed 또는 `waived` | |
 ````
 
 ## 메모
 
-이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. `qa_gate`가 기준 close-relevant gate이며, 이 projection은 그 값을 표시만 합니다.
+이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. `qa_gate`가 기준 close-relevant gate이며, 이 상태 보기는 그 값을 표시만 합니다.
 
-수동 QA 표시는 passed 수동 QA record, failed 수동 QA record, pending required QA, QA waiver를 눈에 띄게 구분해야 합니다. `qa_gate=waived`는 필요한 경우 ref와 accepted risk/follow-up을 동반하는 waiver display입니다. Passed 수동 QA result, 작업 수락, 분리 검증이 아닙니다.
+수동 QA 표시는 passed 수동 QA 기록, failed 수동 QA 기록, pending required QA, QA waiver를 눈에 띄게 구분해야 합니다. `qa_gate=waived`는 필요한 경우 참조와 accepted risk/follow-up을 동반하는 waiver display입니다. Passed 수동 QA result, 작업 수락, 분리 검증이 아닙니다.
 
-수동 QA는 자동 검증이 아닙니다. 테스트 결과, 브라우저 스모크, 스크린샷, Browser QA 아티팩트는 사람의 확인 맥락을 뒷받침할 수 있지만, 수동 QA owner path가 result 또는 valid waiver를 기록하지 않았다면 이 template은 이를 수동 QA pass처럼 렌더링하면 안 됩니다.
+수동 QA는 자동 검증이 아닙니다. 테스트 결과, 브라우저 스모크, 스크린샷, Browser QA 아티팩트는 사람의 확인 맥락을 뒷받침할 수 있지만, 수동 QA 담당 경로가 result 또는 valid waiver를 기록하지 않았다면 이 template은 이를 수동 QA pass처럼 렌더링하면 안 됩니다.
 
-수동 QA projection은 안전한 omission note, handle, blocked artifact notice를 보여줄 수 있지만 생략된 secret/PII 값이나 차단된 capture payload를 포함하면 안 됩니다. `secret_omitted` artifact는 보이는 workflow, UI, copy, accessibility, smoke-test observation을 뒷받침할 수 있습니다. `blocked` capture는 replacement, waiver, user judgment outcome, 받아들인 위험, documented fallback이 QA 경로를 해소하지 않는 한 사용할 수 없는 QA 입력입니다.
+수동 QA 상태 보기는 안전한 omission note, handle, blocked artifact notice를 보여줄 수 있지만 생략된 secret/PII 값이나 차단된 capture payload를 포함하면 안 됩니다. `secret_omitted` artifact는 보이는 workflow, UI, copy, accessibility, smoke-test observation을 뒷받침할 수 있습니다. `blocked` capture는 replacement, waiver, user judgment outcome, 받아들인 위험, documented fallback이 QA 경로를 해소하지 않는 한 사용할 수 없는 QA 입력입니다.
 
-스크린샷, 브라우저 로그, 비디오, `qa_capture` output, workflow recording, note는 QA evidence ref입니다. Browser QA Capture는 owner 문서가 명시적으로 승격하고 증명하기 전까지 로드맵 후보입니다. 수동 QA result는 기록된 사람의 확인 또는 유효한 waiver이지, 이런 capture가 존재한다는 사실만으로 만들어지지 않습니다. Browser QA 아티팩트는 별도의 Eval(분리 검증 결과) 경로가 verification independence를 충족하지 않는 한 작업 수락 또는 분리 검증도 기록하지 않습니다. 어떤 접점이 browser capture를 지원하지 않으면 사람이 작성한 수동 QA notes와 수동 제공 artifacts를 fallback으로 사용합니다.
+스크린샷, 브라우저 로그, 비디오, `qa_capture` output, workflow recording, note는 QA 근거 참조입니다. Browser QA Capture는 owner 문서가 명시적으로 승격하고 증명하기 전까지 로드맵 후보입니다. 수동 QA result는 기록된 사람의 확인 또는 유효한 waiver이지, 이런 capture가 존재한다는 사실만으로 만들어지지 않습니다. Browser QA 아티팩트는 별도의 Eval(분리 검증 결과) 경로가 verification independence를 충족하지 않는 한 작업 수락 또는 분리 검증도 기록하지 않습니다. 어떤 접점이 browser capture를 지원하지 않으면 사람이 작성한 수동 QA notes와 수동 제공 artifacts를 fallback으로 사용합니다.

@@ -4,19 +4,19 @@
 
 모듈 인터페이스, 호출자 영향, 호환성 위험, 테스트 경계를 읽기 쉬운 상태 보기(projection)로 볼 때 `INTERFACE-CONTRACT`를 사용합니다.
 
-경계: 상태 보기 템플릿(projection template)일 뿐이며 runtime/server 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 phase와 projection 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
+경계: 상태 보기 템플릿(projection template)일 뿐이며 하네스 서버/런타임 구현이나 생성된 운영 산출물에 권한을 주지 않습니다. 공통 단계와 상태 보기 규칙은 [템플릿 참조](README.md#사용-시점)를 따릅니다.
 
-구현 계층: 향후/진단용 상태 보기(projection)입니다. Interface Contract output은 owner profile이 명시적으로 승격하지 않는 한 later reference view입니다.
+구현 계층: 향후/진단용 상태 보기(projection)입니다. Interface Contract output은 owner profile이 명시적으로 승격하지 않는 한 later 참조 보기입니다.
 
 ## 기준 기록
 
 - `interface_contracts`
 - impacted caller 참조
 - 관련 module map item
-- 관련 user judgment 또는 design 참조
-- boundary, integration, contract test 참조
+- 관련 사용자 판단 또는 design 참조
+- 경계, 통합, contract test 참조
 - `deep_module_interface` 관련 design-quality validator 결과
-- 표시되는 경우 interface 또는 compatibility ref에 영향을 주는 routed stewardship finding
+- 표시되는 경우 interface 또는 compatibility ref에 영향을 주는 라우팅된 stewardship finding
 - 읽기용 보기 최신성(projection freshness) 입력
 
 ## 렌더링 섹션
@@ -81,12 +81,12 @@ updated_at: 2026-05-06T09:30:15+09:00
 <!-- HARNESS:END managed -->
 
 ## 사용자 메모와 제안
-<!-- Human-editable: 여기의 interface proposal은 reconcile/Core를 통해 accepted되기 전에는 기준 Interface Contract record가 아닙니다. -->
+<!-- Human-editable: 여기의 interface 제안은 reconcile/Core를 통해 accepted되기 전에는 기준 Interface Contract 기록이 아닙니다. -->
 -
 ````
 
 ## 메모
 
-이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. 기준 interface 참조는 `StateRecordRef.record_kind=interface_contract`를 사용합니다. `검토` section은 interface, validator, decision ref 위의 projection display이며 민감 동작 승인(Approval), evidence, QA, verification, 작업 수락, 잔여 위험 수용, close, 쓰기 허가 기록(Write Authorization)이 아닙니다.
+이 template은 렌더링 결과일 뿐 기준 상태가 아닙니다. 기준 interface 참조는 `StateRecordRef.record_kind=interface_contract`를 사용합니다. `검토` section은 interface, validator, decision ref 위의 projection display이며 민감 동작 승인(Approval), evidence, QA, verification, 작업 수락, 잔여 위험 수용, 닫기, 쓰기 허가 기록(Write Authorization)이 아닙니다.
 
-Public interface change, compatibility risk, breaking change, caller-impact choice에 사용자 소유 제품 판단이나 기술 판단이 필요하면 기존 design-quality 및 user judgment 경로로 라우팅합니다. Contract를 여기에 렌더링하는 것만으로 `design_gate`, `decision_gate`, close impact가 해소되지는 않습니다.
+공개 interface 변경, 호환성 위험, breaking change, 호출자 영향 선택에 사용자 소유 제품 판단이나 기술 판단이 필요하면 기존 design-quality 및 사용자 판단 경로로 라우팅합니다. Contract를 여기에 렌더링하는 것만으로 `design_gate`, `decision_gate`, close impact가 해소되지는 않습니다.
