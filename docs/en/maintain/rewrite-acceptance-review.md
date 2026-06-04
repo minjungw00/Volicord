@@ -216,14 +216,32 @@ Checks not run:
 
 No newly discovered owner conflict is recorded in the current MVP-1 decision log.
 
-Known blockers before implementation planning or coding:
+### True Blockers Before Implementation Planning Or Coding
+
+These items block implementation-planning readiness acceptance or server coding until maintainers explicitly accept them, reclassify them, or defer them with named stage impact:
 
 - Maintainer documentation acceptance is still pending.
 - Implementation-planning readiness is not accepted.
 - API, Storage/DDL, Core transition, and Security/local-access coding acceptances are not accepted.
-- Mermaid syntax rendering, full paired-file semantic review, full manual user-language audit, full owner-boundary duplicate-contract audit, and full line-by-line Korean prose polish beyond the targeted later-profile localization audit were not completed in this review batch.
+- Server coding remains unauthorized until maintainers explicitly accept the relevant readiness and coding decisions.
 
-These blockers should be handled by maintainer acceptance review, not by creating runtime artifacts or conformance reports.
+These are documentation-acceptance, implementation-planning, and coding gates. They do not create runtime state and should not be resolved by creating generated runtime artifacts or conformance reports.
+
+### Review Limitations Or Acceptance Risks
+
+These limitations should be considered during maintainer documentation acceptance. They are not runtime conformance results and do not create or block runtime state by themselves.
+
+- Mermaid parser/renderer validation was not performed; only inventory and basic source audit were performed and passed at the source-audit level. This review found 24 actual Mermaid fences, all starting with `flowchart LR`, `flowchart TD`, or `flowchart TB`, but actual syntax rendering was not validated.
+- Full paired-file semantic review of every English/Korean file was not performed.
+- Full manual user-language audit of every Learn/Use sentence was not performed.
+- Full owner-boundary duplicate-contract audit across all docs was not performed.
+- Full line-by-line Korean prose polish beyond the targeted later-profile localization audit was not performed.
+
+### Optional Maintainer Hard Gates
+
+- If maintainers require actual Mermaid rendering as a hard documentation-acceptance gate, run it later in an environment with a Mermaid renderer/parser.
+- If maintainers accept source-audit-only Mermaid validation for this documentation phase, record that decision explicitly in the documentation acceptance process.
+- Do not install dependencies, modify package metadata, or commit generated SVG/PNG/PDF render artifacts just to satisfy this review unless maintainers explicitly ask for that workflow.
 
 ## Final Handoff Statement
 
