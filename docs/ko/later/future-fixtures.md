@@ -4,13 +4,25 @@
 
 작은 핵심 적합성 모델, active MVP 동작 예시, MVP 구현 경로에서 분리해서 향후 fixture 후보를 검토할 때 이 문서를 사용합니다. Browser QA, cross-surface behavior, export non-leakage, context hygiene, reconcile, stewardship, operations, advanced projection rendering, future guarantee-level check를 위한 detailed candidate scenario를 모아 둡니다.
 
-이 문서는 향후 설계 문서입니다. 현재 저장소는 문서 전용이며 실행 가능한 Harness Server 적합성 테스트, generated conformance artifact, 실행 가능한 fixture catalog file을 담고 있지 않습니다. 현재 단계와 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
+이 문서는 향후 설계 문서입니다. 상태: MVP-1 요구사항 아님, 구현된 런타임 아님. 현재 저장소는 문서 전용이며 실행 가능한 Harness Server 적합성 테스트, generated conformance artifact, 실행 가능한 fixture catalog file을 담고 있지 않습니다. 현재 단계와 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
 
 ## Catalog 경계
 
 핵심 적합성 모델, MVP 동작 예시, exact future fixture body, execution rule, assertion semantics, 좁은 내부 엔지니어링 점검 Kernel Smoke 작성 순서는 [Conformance Fixtures 참조](../reference/conformance-fixtures.md)에 남습니다. 이 catalog는 의도적으로 그 모델의 downstream이며 active MVP path 밖에 있습니다. Catalog row는 fixture body, public API schema, DDL, stage exit, generated runtime artifact, 이미 실행되는 fixture의 증거가 아닙니다.
 
 향후 catalog scenario는 담당 문서가 동작을 승격하고, delivery stage 또는 local suite를 식별하고, Core-owned state와 artifact assertion을 증명하는 exact-shape fixture로 구체화한 뒤에만 실행 가능해집니다. 그 전까지는 MVP 동작 예시나 runtime conformance result가 아니라 design inventory입니다. Projection output은 freshness, readability, availability를 확인할 수 있지만 Core state를 대체하거나 conformance truth가 되면 안 됩니다.
+
+## 버킷 지도
+
+Scenario row를 읽기 전에 이 지도를 사용합니다.
+
+| 버킷 | 여기에 보관하는 scenario material | 승격 경로 |
+|---|---|---|
+| 보증 프로필 | 검증 강화, 수동 QA, 상세 근거, 위험 검토, 상세 Eval 출력, 그리고 보증 behavior를 지원하는 design-quality, stewardship, TDD trace, feedback-loop, context-hygiene 예시. | [보증 프로필](assurance-profile.md), 그다음 관련 Reference owner. |
+| 운영 프로필 | Export, recovery, handoff, artifact integrity, projection refresh, reconcile, operator readiness, `doctor`/readiness, conformance run 예시. | [운영 프로필](operations-profile.md), 그다음 [운영과 Conformance 참조](../reference/operations-and-conformance.md). |
+| 로드맵 | Dashboard, hosted workflow, team workflow, broader connector, Browser QA Capture automation, Cross-Surface Verification automation, remote/shared MCP, preventive guard expansion, hook, orchestration, metrics, 그 밖의 확장 향후 후보. | [로드맵](../roadmap.md) 승격 조건. |
+
+Catalog entry는 가장 가까운 technical concern 아래에 있을 수 있습니다. 하지만 독자가 stage scope를 해석할 때는 위 버킷이 기준입니다. 여기에 row가 있다고 해서 승격 전 staged requirement가 되지는 않습니다.
 
 ## Catalog 전용 Future Families
 
@@ -40,6 +52,16 @@
 | `ARTIFACT-integrity-mismatch-blocks-dependent-claims` | `artifacts_check`, `recover`, `export`, 또는 `close_task` | Artifact file missing, hash mismatch, size mismatch, owner-link mismatch는 artifact integrity result로 보고되며, dependent evidence, QA, Eval, projection, export, close-readiness assertion은 owner path에 따라 stale, blocked, insufficient가 됩니다. 이 check는 artifact record를 조용히 rewrite하거나, 검증되지 않은 bytes를 인정하거나, blocked content를 leak하거나, existing recovery, replacement, reconcile path 없이 close readiness를 repair하지 않습니다. |
 | `EXPORT-redaction-notes-do-not-leak-omitted-or-blocked-values` | `export` 또는 Release Handoff report read | Export 또는 Release Handoff assertion은 artifact ref, redaction state, omission/block note, 영향을 받는 display를 나열합니다. 생략된 원본 값과 금지되어 차단된 payload는 exported snapshot, raw-file copy, report text, fixture assertion에 없어야 합니다. |
 | `EXPORT-secret-pii-omission-reported-not-silent` | `export` 또는 Release Handoff report read | Secret 또는 PII 제거는 affected artifact ref와 evidence, QA, verification, projection, Release Handoff display에 연결된 안전한 omission, redaction, block metadata로 보여야 합니다. Export는 sensitive value를 포함하지 않고, staged 또는 blocked content 접근 범위를 넓히지 않으며, material이 omitted 또는 blocked되었다는 사실을 숨기지 않습니다. |
+
+<a id="operations-profile-catalog-entries"></a>
+
+## 운영 프로필 Catalog Entries
+
+이 catalog row는 향후 운영 프로필 guidance입니다. 상태: MVP-1 요구사항 아님, 현재 runtime conformance 아님, 구현된 operator behavior 아님.
+
+| Scenario ID | Operator action | Required assertions |
+|---|---|---|
+| `EXPORT-release-handoff-does-not-close-or-deploy` | `export` 또는 보고서 read | Release Handoff 보고서/export를 생성하거나 반환할 때 close readiness, blocker, evidence ref, verification ref, 수동 QA ref, residual-risk ref, changed file, projection freshness, artifact retention/availability, redaction/omission/block note, advisory PR/deploy/rollback/monitoring checklist item을 포함할 수 있습니다. 보고서/export만으로는 Task lifecycle을 변경하거나, gate를 충족하거나, evidence를 만들거나, verification을 수행 또는 기록하거나, QA를 기록하거나, QA 또는 verification을 면제하거나, 잔여 위험을 받아들이거나, 결과를 수락하거나, Task를 닫거나, merge, deploy, production monitoring, assurance level 상승, deployment/merge 권한 생성을 하면 안 됩니다. Checklist finding이 차단하는 사용자 소유 판단, 잔여 위험 수용, 수동 QA, evidence, verification, 민감 동작 permission 필요성, 또는 해당 profile이 active일 때 later Approval 필요성을 드러내면 기존 User Judgment, evidence, 수동 QA, Eval, residual-risk, 민감 동작 permission / Approval, close path로 라우팅합니다. |
 
 ## Agency, Stewardship, Context, Design-Quality Suite
 
@@ -660,6 +682,7 @@ expected_error:
 | [Design-Quality Fixture 예시](#design-quality-fixture-예시) | design policy validator, 수동 QA, TDD, feedback loop, shared design requirement |
 | [Stewardship Fixture 예시](#stewardship-fixture-예시) | codebase stewardship, domain language, module/interface review, managed-block drift |
 | [Context Hygiene Fixture 예시](#context-hygiene-fixture-예시) | stale context, projection freshness, compact status, context discipline |
+| [운영 프로필 Catalog Entries](#operations-profile-catalog-entries) | active MVP 동작 예시가 아닌 export, handoff, recovery, readiness, operator-catalog row |
 | [Fixture Suites](#fixture-suites) | final suite grouping과 metric boundary |
 
 ## Core Fixture 예시

@@ -4,13 +4,25 @@
 
 Use this page to review future fixture candidates separately from the small core conformance model, the active MVP behavior examples, and the MVP implementation path. It collects detailed candidate scenarios for browser QA, cross-surface behavior, export non-leakage, context hygiene, reconcile, stewardship, operations, advanced projection rendering, and future guarantee-level checks.
 
-This is future design documentation only. The current repository is documentation-only and contains no runnable Harness Server conformance tests, generated conformance artifacts, or executable fixture catalog files; current phase and handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+This is future design documentation only. It is not an MVP-1 requirement and it is not implemented runtime behavior. The current repository is documentation-only and contains no runnable Harness Server conformance tests, generated conformance artifacts, or executable fixture catalog files; current phase and handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 
 ## Catalog Boundary
 
 The core conformance model, MVP behavior examples, exact future fixture body, execution rules, assertion semantics, and narrow Engineering Checkpoint Kernel Smoke authoring order stay in [Conformance Fixtures Reference](../reference/conformance-fixtures.md). This catalog is deliberately downstream of that model and outside the active MVP path. Catalog rows are not fixture bodies, not public API schemas, not DDL, not stage exits, not generated runtime artifacts, and not proof that fixtures already run.
 
 Future catalog scenarios become executable only after an owner promotes the behavior, identifies the delivery stage or local suite, and materializes exact-shape fixtures that prove Core-owned state and artifact assertions. Until then, they are design inventory rather than MVP behavior examples or runtime conformance results. Projection output may be checked for freshness, readability, and availability, but it must not replace Core state or become conformance truth.
+
+## Bucket Map
+
+Use this map before reading scenario rows:
+
+| Bucket | Scenario material parked here | Promotion route |
+|---|---|---|
+| Assurance Profile | Verification strengthening, Manual QA, detailed evidence, risk review, detailed Eval output, design-quality, stewardship, TDD trace, feedback-loop, and context-hygiene examples when they support assurance behavior. | [Assurance Profile](assurance-profile.md), then the relevant Reference owner. |
+| Operations Profile | Export, recovery, handoff, artifact integrity, projection refresh, reconcile, operator readiness, `doctor`/readiness, and conformance run examples. | [Operations Profile](operations-profile.md), then [Operations And Conformance Reference](../reference/operations-and-conformance.md). |
+| Roadmap | Dashboard, hosted workflows, team workflows, broader connectors, Browser QA Capture automation, Cross-Surface Verification automation, remote/shared MCP, preventive guard expansion, hooks, orchestration, metrics, and other expansion candidates. | [Roadmap](../roadmap.md) promotion criteria. |
+
+Catalog entries can appear under the closest technical concern, but the bucket above controls how readers interpret stage scope. A row listed here is not a staged requirement until promoted.
 
 ## Catalog-Only Future Families
 
@@ -40,6 +52,16 @@ These catalog rows are future scenario guidance. They become executable only whe
 | `ARTIFACT-integrity-mismatch-blocks-dependent-claims` | `artifacts_check`, `recover`, `export`, or `close_task` | A missing artifact file, hash mismatch, size mismatch, or owner-link mismatch is reported through artifact integrity results and dependent evidence, QA, Eval, projection, export, or close-readiness assertions become stale, blocked, or insufficient according to the owner path. The check does not silently rewrite artifact records, credit unverified bytes, leak blocked content, or repair close readiness without an existing recovery, replacement, or reconcile path. |
 | `EXPORT-redaction-notes-do-not-leak-omitted-or-blocked-values` | `export` or Release Handoff report read | Export or Release Handoff assertions list artifact refs, redaction states, omission/block notes, and affected displays; raw omitted values and forbidden blocked payload bytes are not present in exported snapshots, raw-file copies, report text, or fixture assertions. |
 | `EXPORT-secret-pii-omission-reported-not-silent` | `export` or Release Handoff report read | Secret or PII removal is visible as safe omission, redaction, or block metadata tied to affected artifact refs and evidence, QA, verification, projection, or Release Handoff displays; the export omits the sensitive values, does not widen access to staged or blocked content, and does not hide the fact that material was omitted or blocked. |
+
+<a id="operations-profile-catalog-entries"></a>
+
+## Operations Profile Catalog Entries
+
+These catalog rows are future Operations Profile guidance. They are not MVP-1 requirements, not current runtime conformance, and not implemented operator behavior.
+
+| Scenario ID | Operator action | Required assertions |
+|---|---|---|
+| `EXPORT-release-handoff-does-not-close-or-deploy` | `export` or report read | Generating or returning a Release Handoff report/export may include close readiness, blockers, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, artifact retention/availability, redaction/omission/block notes, and advisory PR/deploy/rollback/monitoring checklist items. The report/export alone must not mutate Task lifecycle, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept residual risk, accept the result, close a Task, merge, deploy, monitor production, upgrade assurance, or create deployment/merge authority. Checklist findings that reveal blocking user-owned judgment, risk acceptance, Manual QA, evidence, verification, sensitive-action permission needs, or later Approval needs when that profile is active route to existing User Judgment, evidence, Manual QA, Eval, residual-risk, sensitive-action permission / Approval, or close paths. |
 
 ## Agency, Stewardship, Context, And Design-Quality Suites
 
@@ -660,6 +682,7 @@ expected_error:
 | [Design-Quality Fixture Examples](#design-quality-fixture-examples) | design policy validators, Manual QA, TDD, feedback loops, and shared design requirements |
 | [Stewardship Fixture Examples](#stewardship-fixture-examples) | codebase stewardship, domain language, module/interface review, and managed-block drift |
 | [Context Hygiene Fixture Examples](#context-hygiene-fixture-examples) | stale context, projection freshness, compact status, and context discipline |
+| [Operations Profile Catalog Entries](#operations-profile-catalog-entries) | export, handoff, recovery, readiness, and operator-catalog rows that are not active MVP behavior examples |
 | [Fixture Suites](#fixture-suites) | final suite grouping and metric boundaries |
 
 ## Core Fixture Examples

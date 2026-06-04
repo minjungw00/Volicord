@@ -644,11 +644,7 @@ Boundary:
 
 진단 및 보고 경계: future Local Derived Metrics는 owner 문서가 승격하기 전까지 보고서 또는 operator diagnostic에서 읽기 전용 파생 표시로만 나타날 수 있습니다. Operational authority를 만들지 않으며, 후보 경계는 [로드맵: 후보 항목 목록](../roadmap.md#후보-항목-목록)을 봅니다.
 
-Release Handoff catalog entry:
-
-| Scenario ID | Operator action | Required assertions |
-|---|---|---|
-| `EXPORT-release-handoff-does-not-close-or-deploy` | `export` 또는 보고서 read | Release Handoff 보고서/export를 생성하거나 반환할 때 close readiness, blocker, evidence ref, verification ref, 수동 QA ref, residual-risk ref, changed file, projection freshness, artifact retention/availability, redaction/omission/block note, advisory PR/deploy/rollback/monitoring checklist item을 포함할 수 있습니다. 보고서/export만으로는 Task lifecycle을 변경하거나, gate를 충족하거나, evidence를 만들거나, verification을 수행 또는 기록하거나, QA를 기록하거나, QA 또는 verification을 면제하거나, 잔여 위험을 받아들이거나, 결과를 수락하거나, Task를 닫거나, merge, deploy, production monitoring, assurance level 상승, deployment/merge 권한 생성을 하면 안 됩니다. Checklist finding이 차단하는 사용자 소유 판단, 잔여 위험을 받아들이는 판단, 수동 QA, evidence, verification, 민감 동작 permission 필요성, 또는 해당 profile이 active일 때 later Approval 필요성을 드러내면 기존 User Judgment, evidence, 수동 QA, Eval, residual-risk, 민감 동작 permission / Approval, close path로 라우팅합니다. |
+이 경계의 향후 fixture catalog row는 [향후 Fixtures: 운영 프로필 Catalog Entries](../later/future-fixtures.md#operations-profile-catalog-entries)에 둡니다. 이 참조 문서는 operator behavior를 소유합니다. Catalog row는 승격 전까지 MVP-1 요구사항 아님이고, 실행 가능한 항목도 아닙니다.
 
 ## artifacts check
 

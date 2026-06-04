@@ -642,11 +642,7 @@ Boundary:
 
 Diagnostic and reporting boundary: future Local Derived Metrics may appear in reports or operator diagnostics only as read-only derived displays until owner docs promote them. They do not create operational authority; see [Roadmap: Candidate Inventory](../roadmap.md#candidate-inventory) for the candidate boundary.
 
-Release Handoff catalog entry:
-
-| Scenario ID | Operator action | Required assertions |
-|---|---|---|
-| `EXPORT-release-handoff-does-not-close-or-deploy` | `export` or report read | Generating or returning a Release Handoff report/export may include close readiness, blockers, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, artifact retention/availability, redaction/omission/block notes, and advisory PR/deploy/rollback/monitoring checklist items. The report/export alone must not mutate Task lifecycle, satisfy gates, create evidence, perform or record verification, record QA, waive QA or verification, accept residual risk, accept the result, close a Task, merge, deploy, monitor production, upgrade assurance, or create deployment/merge authority. Checklist findings that reveal blocking user-owned judgment, risk acceptance, Manual QA, evidence, verification, sensitive-action permission needs, or later Approval needs when that profile is active route to existing User Judgment, evidence, Manual QA, Eval, residual-risk, sensitive-action permission / Approval, or close paths. |
+The future fixture catalog row for this boundary is parked in [Future Fixtures: Operations Profile Catalog Entries](../later/future-fixtures.md#operations-profile-catalog-entries). This reference owns the operator behavior; the catalog row remains non-MVP and non-executable until promoted.
 
 ## artifacts check
 

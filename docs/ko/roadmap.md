@@ -4,7 +4,7 @@
 
 이 문서는 아직 staged delivery에 들어오지 않은 하네스의 향후 후보 항목을 모아 둡니다. 독자가 나중에 다룰 수 있는 방향을 볼 수 있게 하되, 그것을 현재 요구사항, 권한 경로, 작업 수락 경로, QA 경로, 검증 경로, 실행 보장으로 오해하지 않게 하는 것이 목적입니다.
 
-이 문서는 로드맵 문서입니다. 문서 수락과 별도의 구현 계획 준비 결정 전에는 런타임/서버 구현, 생성된 운영 파일, 실행 가능한 fixture, fixture 파일, 읽기용 요약, 데이터베이스, 런타임 데이터를 만들라는 뜻이 아닙니다.
+이 문서는 로드맵 문서입니다. 상태: MVP-1 요구사항 아님, 구현된 런타임 아님. 문서 수락과 별도의 구현 계획 준비 결정 전에는 런타임/서버 구현, 생성된 운영 파일, 실행 가능한 fixture, fixture 파일, 읽기용 요약, 데이터베이스, 런타임 데이터를 만들라는 뜻이 아닙니다.
 
 ## 이런 때 읽기
 
@@ -29,6 +29,8 @@
 로드맵 항목은 후보 항목이지 staged delivery 약속이 아닙니다. 이곳에 이름이 있다고 해서 권한, 적합성, 구현 준비 상태, 사용자 작업 수락, QA 완료, 검증 충족, 잔여 위험 수용, 보안 보장, 런타임 동작이 생기지 않습니다.
 
 후보 항목은 향후 담당 문서가 명시적으로 승격하기 전까지 내부 엔지니어링 점검부터 운영 프로필까지의 단계 밖에 남습니다. 승격되더라도 사용자 소유 판단을 보존하고, 지속 상태와 아티팩트는 Core 소유 권한 경로로 보내며, 근거/검증/QA/작업 수락/잔여 위험을 분리하고, 실제로 증명된 능력에 맞는 정직한 보안 표현을 사용해야 합니다.
+
+보증 프로필과 운영 프로필에는 각각의 later 버킷이 있습니다. 로드맵은 dashboard, hosted workflow, team workflow, broader connector, automation, metrics, orchestration, remote/shared profile, 아직 승격되지 않은 더 강한 guarantee claim 같은 확장 향후 후보를 둡니다.
 
 ## 로드맵 경계
 
@@ -62,13 +64,13 @@
 
 | 후보 영역 | 승격 전 경계 |
 |---|---|
-| 대시보드, 호스팅된 작업 UI, 아티팩트 대시보드, 더 풍부한 카드, 더 풍부한 시각화 | Core에서 파생된 상태나 읽기용 요약을 표시할 수 있습니다. 권한, 구현 준비 상태, 닫기 준비 상태, 작업 수락, 잔여 위험 수용, QA 완료, 검증 충족, 읽기용 요약 최신성, 작업 흐름 라우팅, 지표 해석이 되면 안 됩니다. |
+| Dashboard, hosted workflow, 아티팩트 대시보드, 더 풍부한 카드, 더 풍부한 시각화 | Core에서 파생된 상태나 읽기용 요약을 표시할 수 있습니다. 권한, 구현 준비 상태, 닫기 준비 상태, 작업 수락, 잔여 위험 수용, QA 완료, 검증 충족, 읽기용 요약 최신성, 작업 흐름 라우팅, 지표 해석이 되면 안 됩니다. |
 | 브라우저 캡처 자동화 | Screenshot, console log, network trace, accessibility snapshot, workflow recording을 아티팩트 후보로 모을 수 있습니다. 사람의 수동 QA 판단, 작업 수락, profile-required detached verification, redaction policy, 기존 수동 QA/아티팩트 경로를 대체하면 안 됩니다. |
 | 여러 접점 검증 | 승격 뒤 verification bundle을 다른 agent 접점이나 evaluator environment로 보낼 수 있습니다. Core 소유 반환 기록과 active profile이 요구하는 독립성 의미 없이 Eval을 기록하거나, 검증을 충족하거나, assurance를 올리거나, 결과를 수락하거나, Task를 닫으면 안 됩니다. |
-| 넓은 커넥터 생태계, 커넥터 시장, 호스팅 UI, 호스팅/원격 런타임 | 나중에 접점을 확장할 수 있습니다. MCP 노출을 넓히거나, 권한을 만들거나, Core를 우회하거나, 로컬 기준 증명을 대체하거나, 원격/런타임 보장을 암시하거나, 지원하지 않는 접점을 초기 단계 실패로 만들면 안 됩니다. |
+| Broader connector, 커넥터 시장, 호스팅 UI, 호스팅/원격 런타임 | 나중에 접점을 확장할 수 있습니다. MCP 노출을 넓히거나, 권한을 만들거나, Core를 우회하거나, 로컬 기준 증명을 대체하거나, 원격/런타임 보장을 암시하거나, 지원하지 않는 접점을 초기 단계 실패로 만들면 안 됩니다. |
 | 네이티브 후크, 예방적 가드 확장, 고급 사이드카 워처 | 접점이 메커니즘을 증명한 곳에서 guard 표시, 아티팩트 캡처, command 관찰, file write 관찰을 강화할 수 있습니다. Label만으로 pre-execution blocking, OS 격리, tamper-proof storage, arbitrary-tool control을 주장하면 안 됩니다. 관찰 결과가 상태에 영향을 주려면 Core 기록, validator, 아티팩트 등록, reconcile 중 맞는 경로를 거쳐야 합니다. |
 | 맥락 색인, 로컬 파생 지표, 장기 지표 | 읽기 전용 검색이나 진단을 제공할 수 있습니다. Write Authorization 생성, 쓰기 허가, user judgment 해소, Approval 부여, gate 충족, 근거 생성, 검증 또는 QA 기록, 읽기용 요약 refresh, readiness 선언, 위험 수용, 결과 수락, assurance 상승, Task close를 하면 안 됩니다. |
-| 팀 작업 흐름, 권한, 공유 프로필, 내보내기/가져오기, 오케스트레이션, 병렬 lane | 향후 작업 조율을 도울 수 있습니다. Staged delivery, single-project local authority, 작업 수락, QA, 검증, 잔여 위험 수용, close의 필수 요소가 되면 안 됩니다. |
+| Team workflow, 권한, 공유 프로필, 내보내기/가져오기, 오케스트레이션, 병렬 lane | 향후 작업 조율을 도울 수 있습니다. Staged delivery, single-project local authority, 작업 수락, QA, 검증, 잔여 위험 수용, close의 필수 요소가 되면 안 됩니다. |
 | 고급 export, release/deployment/canary/rollback/merge/production-monitoring automation | 향후 통합 작업이 될 수 있습니다. 담당 문서가 더 많은 권한을 승격하기 전까지 release handoff는 report/export 경계로 남고, deployment, merge, rollback, production authority는 외부에 둡니다. |
 | 고급 validator, language 또는 interface check | 향후 stewardship 또는 진단 범위가 될 수 있습니다. 담당 문서가 정확한 policy, severity, waiver, fixture 동작을 정의하기 전까지 초기 단계 fixture failure, 작업 수락, QA, close 기준이 되면 안 됩니다. |
 

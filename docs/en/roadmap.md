@@ -4,7 +4,7 @@
 
 This document collects future Harness candidates that are not yet part of Build-owned staged delivery. It lets readers see possible later directions without treating them as current requirements, authority paths, acceptance paths, QA paths, verification paths, or runtime guarantees.
 
-This is roadmap documentation. It does not authorize runtime/server implementation, generated operational files, executable fixtures, fixture files, projections, databases, or runtime data before documentation acceptance and a separate implementation-planning readiness decision.
+This is roadmap documentation. It is not an MVP-1 requirement and it is not implemented runtime behavior. It does not authorize runtime/server implementation, generated operational files, executable fixtures, fixture files, projections, databases, or runtime data before documentation acceptance and a separate implementation-planning readiness decision.
 
 ## Read this when
 
@@ -29,6 +29,8 @@ Current stage names are:
 Roadmap items are candidates, not staged-delivery commitments. Listing an item here does not create authority, conformance, implementation readiness, user acceptance, QA completion, verification satisfaction, residual-risk acceptance, security guarantees, or runtime behavior.
 
 A roadmap candidate stays outside Engineering Checkpoint through Operations Profile unless a future owner document explicitly promotes it. When promoted, it must still preserve user-owned judgment, route durable state and artifacts through Core-owned authority paths, keep evidence/verification/QA/work acceptance/residual risk separate, and use honest security wording for the capability actually proven.
+
+Assurance Profile and Operations Profile have their own later buckets. Roadmap is for expansion candidates such as dashboard, hosted workflows, team workflows, broader connectors, automation, metrics, orchestration, remote/shared profiles, and higher guarantee claims that have not been promoted.
 
 ## Roadmap Boundary
 
@@ -62,10 +64,10 @@ These examples describe candidate areas only. They do not add stage requirements
 
 | Candidate area | Boundary before promotion |
 |---|---|
-| Dashboard, hosted workflow UI, artifact dashboard, richer cards, richer visualizations | May display Core-derived state or projections. Must not become authority, implementation readiness, close readiness, work acceptance, residual-risk acceptance, QA completion, verification satisfaction, projection freshness, workflow routing, or metric interpretation. |
+| Dashboard, hosted workflows, artifact dashboard, richer cards, richer visualizations | May display Core-derived state or projections. Must not become authority, implementation readiness, close readiness, work acceptance, residual-risk acceptance, QA completion, verification satisfaction, projection freshness, workflow routing, or metric interpretation. |
 | Browser capture automation | May collect screenshots, console logs, network traces, accessibility snapshots, and workflow recordings as artifact candidates. Must not replace human Manual QA judgment, work acceptance, profile-required detached verification, redaction policy, or the existing Manual QA/artifact path. |
 | Cross-surface verification | May route verification bundles to another agent surface or evaluator environment after promotion. Must not record an Eval, satisfy verification, raise assurance, accept a result, or close a Task without Core-owned return records and any independence semantics required by the active profile. |
-| Broad connector ecosystem, connector marketplace, hosted UI, hosted/remote runtime | May extend surfaces later. Must not widen MCP exposure, create authority, bypass Core, replace the local reference proof, imply remote/runtime guarantees, or make unsupported surfaces fail earlier stages by default. |
+| Broader connectors, connector marketplace, hosted UI, hosted/remote runtime | May extend surfaces later. Must not widen MCP exposure, create authority, bypass Core, replace the local reference proof, imply remote/runtime guarantees, or make unsupported surfaces fail earlier stages by default. |
 | Native hooks, preventive guard expansion, advanced sidecar watcher | May strengthen guard display, artifact capture, command observation, or file-write observation where a surface proves the mechanism. Must not claim pre-execution blocking, OS isolation, tamper-proof storage, or arbitrary-tool control by label alone. Observations route through Core records, validators, artifact registration, or reconcile before affecting state. |
 | Context Index, local derived metrics, long-term metrics | May provide read-only retrieval or diagnostics. Must not authorize writes, create Write Authorization, resolve user judgments, grant Approval, satisfy gates, create evidence, record verification or QA, refresh projections, declare readiness, accept risk, accept results, upgrade assurance, or close Tasks. |
 | Team workflows, permissions, shared profiles, export/import, orchestration, parallel lanes | May coordinate future work. Must not become required for staged delivery, single-project local authority, user acceptance, QA, verification, residual-risk acceptance, or close. |

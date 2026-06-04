@@ -44,19 +44,16 @@ MVP-1 includes:
 
 ## MVP-1 excluded
 
-MVP-1 excludes:
+MVP-1 excludes these future buckets:
 
-- dashboard, hosted UI, artifact dashboard, or rich card expansion
-- full Decision Packet output for every judgment
-- OS-level sandboxing, arbitrary-tool isolation, permission isolation, tamper-proof local storage, or default preventive pre-tool blocking
-- detailed Evidence Manifest and full report/export
-- runtime conformance suite, conformance runner, generated conformance artifacts, and executable fixture catalog
-- broad operations, recover/export, release handoff, projection refresh/reconcile suite, and doctor/readiness suite
-- full detached verification unless an active profile, user request, task type, or risk profile requires it
-- full Manual QA matrix, full waiver machinery, full Approval lifecycle hardening, rich residual-risk lifecycle, stewardship validators, TDD trace, feedback-loop policy, and broad context-hygiene validators
-- Journey/Spine/reporting polish, detailed Eval, Module Map, Interface Contract, broad connectors, marketplace, team workflow, orchestration, metrics, Browser QA Capture, Cross-Surface Verification automation, and other Roadmap candidates
+| Bucket | Keep out of MVP-1 |
+|---|---|
+| Assurance Profile | Verification strengthening beyond the active minimal path, full detached verification, full Manual QA matrix, detailed Evidence Manifest, detailed Eval output, full waiver machinery, full Approval lifecycle hardening, rich residual-risk lifecycle, risk-review hardening, stewardship validators, TDD trace, feedback-loop policy, and broad context-hygiene validators. |
+| Operations Profile | Full report/export, recover/export, release handoff, artifact integrity operations, projection refresh/reconcile suite, doctor/readiness suite, broad operator surface, runtime conformance suite, conformance runner, generated conformance artifacts, and executable fixture catalog. |
+| Roadmap | Dashboard, hosted workflow UI, artifact dashboard, rich card expansion, broad connectors, connector marketplace, team workflow, orchestration, metrics, Browser QA Capture, Cross-Surface Verification automation, hosted/remote workflows, preventive guard expansion, hooks, deployment, canary, rollback, production monitoring, and other expansion candidates. |
+| Security non-claims | OS-level sandboxing, arbitrary-tool isolation, permission isolation, tamper-proof local storage, or default preventive pre-tool blocking. |
 
-If a feature is useful but appears in the excluded list, keep it as a later/profile item unless an owner explicitly promotes a narrower behavior with stage impact.
+If a feature is useful but appears in the excluded buckets, keep it in [Assurance Profile](../later/assurance-profile.md), [Operations Profile](../later/operations-profile.md), [Future Fixtures](../later/future-fixtures.md), or [Roadmap](../roadmap.md) unless an owner explicitly promotes a narrower behavior with stage impact.
 
 ## MVP-1 owner docs
 
@@ -150,9 +147,9 @@ Do not build these as MVP-1 prerequisites:
 
 | Later area | Keep out of MVP-1 |
 |---|---|
-| Assurance Profile | Detached verification hardening, Manual QA matrix, full Approval lifecycle, rich residual risk, work-acceptance hardening, stewardship validators, TDD trace, feedback-loop policy, and context-hygiene validators. |
-| Operations Profile | Doctor/readiness suite, recover/export, artifact integrity operations, release handoff, projection refresh/reconcile operations, conformance runner, and broad operator surface. |
-| Roadmap | Dashboard, hosted UI, connector marketplace, Browser QA Capture, Cross-Surface Verification, Context Index, metrics, preventive guard expansion, hooks, team workflow, permissions, orchestration, deployment, canary, rollback, and production monitoring. |
+| [Assurance Profile](../later/assurance-profile.md) | Verification strengthening, Manual QA, detailed evidence, risk review, detailed evaluation output, full Approval lifecycle, stewardship validators, TDD trace, feedback-loop policy, and context-hygiene validators. |
+| [Operations Profile](../later/operations-profile.md) | Export, recovery, handoff, operator readiness, doctor/readiness surfaces, artifact integrity operations, projection refresh/reconcile operations, conformance runner, and broad operator surface. |
+| [Roadmap](../roadmap.md) | Dashboard, hosted workflows, team workflows, broader connectors, Browser QA Capture, Cross-Surface Verification, Context Index, metrics, preventive guard expansion, hooks, permissions, orchestration, deployment, canary, rollback, production monitoring, and other expansion candidates. |
 
 ## Exit checklist
 

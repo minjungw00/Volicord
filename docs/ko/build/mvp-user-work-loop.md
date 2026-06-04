@@ -44,19 +44,16 @@ MVP-1에는 아래가 포함됩니다.
 
 ## MVP-1에서 제외되는 것
 
-MVP-1에는 아래가 포함되지 않습니다.
+MVP-1에는 아래 향후 버킷이 포함되지 않습니다.
 
-- Dashboard, hosted UI, artifact dashboard, rich card expansion
-- 모든 판단에 대한 full Decision Packet output
-- OS-level sandboxing, arbitrary-tool isolation, permission isolation, tamper-proof local storage, default preventive pre-tool blocking
-- Detailed Evidence Manifest와 full report/export
-- Runtime conformance suite, conformance runner, generated conformance artifact, executable fixture catalog
-- 넓은 operations, recover/export, release handoff, projection refresh/reconcile suite, doctor/readiness suite
-- Active profile, user request, task type, risk profile이 요구하지 않는 full detached verification
-- Full Manual QA matrix, full waiver machinery, full Approval lifecycle hardening, rich residual-risk lifecycle, stewardship validator, TDD trace, feedback-loop policy, broad context-hygiene validator
-- Journey/Spine/reporting polish, detailed Eval, Module Map, Interface Contract, broad connector, marketplace, team workflow, orchestration, metrics, Browser QA Capture, Cross-Surface Verification automation, 그 밖의 Roadmap 후보
+| 버킷 | MVP-1 밖에 둘 것 |
+|---|---|
+| 보증 프로필 | Active minimal path를 넘는 검증 강화, full detached verification, full Manual QA matrix, detailed Evidence Manifest, detailed Eval output, full waiver machinery, full Approval lifecycle hardening, rich residual-risk lifecycle, risk-review hardening, stewardship validator, TDD trace, feedback-loop policy, broad context-hygiene validator. |
+| 운영 프로필 | Full report/export, recover/export, release handoff, artifact integrity operations, projection refresh/reconcile suite, doctor/readiness suite, broad operator surface, runtime conformance suite, conformance runner, generated conformance artifact, executable fixture catalog. |
+| 로드맵 | Dashboard, hosted workflow UI, artifact dashboard, rich card expansion, broader connector, connector marketplace, team workflow, orchestration, metrics, Browser QA Capture, Cross-Surface Verification automation, hosted/remote workflow, preventive guard expansion, hook, deployment, canary, rollback, production monitoring, 그 밖의 확장 향후 후보. |
+| 보안 non-claim | OS-level sandboxing, arbitrary-tool isolation, permission isolation, tamper-proof local storage, default preventive pre-tool blocking. |
 
-유용하지만 제외 목록에 있는 기능은 담당 문서가 더 좁은 동작을 stage impact와 함께 명시적으로 승격하기 전까지 later/profile item으로 둡니다.
+유용하지만 제외 버킷에 있는 기능은 담당 문서가 더 좁은 동작을 stage impact와 함께 명시적으로 승격하기 전까지 [보증 프로필](../later/assurance-profile.md), [운영 프로필](../later/operations-profile.md), [향후 Fixtures](../later/future-fixtures.md), [로드맵](../roadmap.md)에 둡니다.
 
 ## MVP-1 담당 문서
 
@@ -150,9 +147,9 @@ Guarantee level은 [보안 참조](../reference/security.md#단계별-guarantee-
 
 | 이후 영역 | MVP-1 밖에 둘 것 |
 |---|---|
-| 보증 프로필 | Detached verification hardening, Manual QA matrix, full Approval lifecycle, rich residual risk, work-acceptance hardening, stewardship validator, TDD trace, feedback-loop policy, context-hygiene validator. |
-| 운영 프로필 | Doctor/readiness suite, recover/export, artifact integrity operations, release handoff, projection refresh/reconcile operations, conformance runner, broad operator surface. |
-| 로드맵 | Dashboard, hosted UI, connector marketplace, Browser QA Capture, Cross-Surface Verification, Context Index, metrics, preventive guard expansion, hook, team workflow, permission, orchestration, deployment, canary, rollback, production monitoring. |
+| [보증 프로필](../later/assurance-profile.md) | 검증 강화, 수동 QA, 상세 근거, 위험 검토, 상세 평가 출력, full Approval lifecycle, stewardship validator, TDD trace, feedback-loop policy, context-hygiene validator. |
+| [운영 프로필](../later/operations-profile.md) | Export, recovery, handoff, operator readiness, doctor/readiness surface, artifact integrity operations, projection refresh/reconcile operations, conformance runner, broad operator surface. |
+| [로드맵](../roadmap.md) | Dashboard, hosted workflow, team workflow, broader connector, Browser QA Capture, Cross-Surface Verification, Context Index, metrics, preventive guard expansion, hook, permission, orchestration, deployment, canary, rollback, production monitoring, 그 밖의 확장 향후 후보. |
 
 ## 종료 점검
 

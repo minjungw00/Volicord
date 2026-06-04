@@ -47,26 +47,15 @@ MVP-1 템플릿/보기는 다음 다섯 개로 제한됩니다.
 
 ## Later/Full-Profile 템플릿
 
-상세 템플릿은 [later-profile/](later-profile/README.md)에 둡니다. 보증 프로필, 운영 프로필, 진단, export, release handoff, stewardship, 또는 owner가 승격한 later profile에서는 유용할 수 있지만 MVP-1 요구사항은 아닙니다.
+상세 템플릿은 [later-profile/](later-profile/README.md)에 둡니다. 상태: MVP-1 요구사항 아님, 구현된 런타임 아님. Later profile에서 유용할 수 있지만, 존재한다고 해서 런타임이 구현했다는 뜻도 아닙니다.
 
-- [APR](later-profile/approval.md)
-- [Approval Card](later-profile/approval-card.md)
-- [DEC / Decision Packet](later-profile/decision-packet.md)
-- [DESIGN](later-profile/design.md)
-- [DIRECT-RESULT](later-profile/direct-result.md)
-- [DOMAIN-LANGUAGE](later-profile/domain-language.md)
-- [EVIDENCE-MANIFEST](later-profile/evidence-manifest.md)
-- [EVAL](later-profile/eval.md)
-- [EXPORT](later-profile/export.md)
-- [INTERFACE-CONTRACT](later-profile/interface-contract.md)
-- [JOURNEY-CARD](later-profile/journey-card.md)
-- [MANUAL-QA](later-profile/manual-qa.md)
-- [수동 QA Card](later-profile/manual-qa-card.md)
-- [MODULE-MAP](later-profile/module-map.md)
-- [RUN-SUMMARY](later-profile/run-summary.md)
-- [TASK](later-profile/task.md)
-- [TDD-TRACE](later-profile/tdd-trace.md)
-- [Verification Result Card](later-profile/verification-result-card.md)
+| 버킷 | 템플릿 | 경계 |
+|---|---|---|
+| 보증 프로필 | [DEC / Decision Packet](later-profile/decision-packet.md), [APR](later-profile/approval.md), [Approval Card](later-profile/approval-card.md), [EVIDENCE-MANIFEST](later-profile/evidence-manifest.md), [EVAL](later-profile/eval.md), [MANUAL-QA](later-profile/manual-qa.md), [수동 QA Card](later-profile/manual-qa-card.md), [Verification Result Card](later-profile/verification-result-card.md) | Owner profile이 active일 때의 검증 강화, 수동 QA, 상세 근거, 위험 검토, 상세 평가 출력에만 사용합니다. |
+| 운영 프로필 | [EXPORT](later-profile/export.md) | Operations/export path가 active일 때의 export, handoff, artifact availability, redaction/omission, release-handoff display에만 사용합니다. |
+| Future/diagnostic profile material | [TASK](later-profile/task.md), [DIRECT-RESULT](later-profile/direct-result.md), [JOURNEY-CARD](later-profile/journey-card.md), [DESIGN](later-profile/design.md), [DOMAIN-LANGUAGE](later-profile/domain-language.md), [MODULE-MAP](later-profile/module-map.md), [INTERFACE-CONTRACT](later-profile/interface-contract.md), [RUN-SUMMARY](later-profile/run-summary.md), [TDD-TRACE](later-profile/tdd-trace.md) | Detailed continuity, stewardship, TDD, diagnostic, reporting view는 owner가 승격하기 전까지 later-profile에 남습니다. |
+
+Dashboard, hosted workflow, team workflow, broader connector, automation, analytics view는 template requirement가 아니라 [로드맵](../../roadmap.md) 향후 후보입니다.
 
 ## 메모
 

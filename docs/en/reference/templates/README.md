@@ -47,26 +47,15 @@ These five views can be returned as structured payloads, compact text, cards, or
 
 ## Later/Full-Profile Templates
 
-Detailed templates are kept in [later-profile/](later-profile/README.md). They are useful for Assurance Profile, Operations Profile, diagnostics, export, release handoff, stewardship, or owner-promoted later profiles, but they are not MVP-1 requirements:
+Detailed templates are kept in [later-profile/](later-profile/README.md). They are useful for later profiles, but they are not MVP-1 requirements and their presence does not mean the runtime implements them.
 
-- [APR](later-profile/approval.md)
-- [Approval Card](later-profile/approval-card.md)
-- [DEC / Decision Packet](later-profile/decision-packet.md)
-- [DESIGN](later-profile/design.md)
-- [DIRECT-RESULT](later-profile/direct-result.md)
-- [DOMAIN-LANGUAGE](later-profile/domain-language.md)
-- [EVIDENCE-MANIFEST](later-profile/evidence-manifest.md)
-- [EVAL](later-profile/eval.md)
-- [EXPORT](later-profile/export.md)
-- [INTERFACE-CONTRACT](later-profile/interface-contract.md)
-- [JOURNEY-CARD](later-profile/journey-card.md)
-- [MANUAL-QA](later-profile/manual-qa.md)
-- [Manual QA Card](later-profile/manual-qa-card.md)
-- [MODULE-MAP](later-profile/module-map.md)
-- [RUN-SUMMARY](later-profile/run-summary.md)
-- [TASK](later-profile/task.md)
-- [TDD-TRACE](later-profile/tdd-trace.md)
-- [Verification Result Card](later-profile/verification-result-card.md)
+| Bucket | Templates | Boundary |
+|---|---|---|
+| Assurance Profile | [DEC / Decision Packet](later-profile/decision-packet.md), [APR](later-profile/approval.md), [Approval Card](later-profile/approval-card.md), [EVIDENCE-MANIFEST](later-profile/evidence-manifest.md), [EVAL](later-profile/eval.md), [MANUAL-QA](later-profile/manual-qa.md), [Manual QA Card](later-profile/manual-qa-card.md), [Verification Result Card](later-profile/verification-result-card.md) | Verification strengthening, Manual QA, detailed evidence, risk review, and detailed evaluation output only when the owner profile is active. |
+| Operations Profile | [EXPORT](later-profile/export.md) | Export, handoff, artifact availability, redaction/omission, and release-handoff displays only when the operations/export path is active. |
+| Future/diagnostic profile material | [TASK](later-profile/task.md), [DIRECT-RESULT](later-profile/direct-result.md), [JOURNEY-CARD](later-profile/journey-card.md), [DESIGN](later-profile/design.md), [DOMAIN-LANGUAGE](later-profile/domain-language.md), [MODULE-MAP](later-profile/module-map.md), [INTERFACE-CONTRACT](later-profile/interface-contract.md), [RUN-SUMMARY](later-profile/run-summary.md), [TDD-TRACE](later-profile/tdd-trace.md) | Detailed continuity, stewardship, TDD, diagnostic, and reporting views stay later-profile unless an owner promotes them. |
+
+Dashboard, hosted workflow, team workflow, broader connector, automation, and analytics views are [Roadmap](../../roadmap.md) candidates, not template requirements.
 
 ## Notes
 
