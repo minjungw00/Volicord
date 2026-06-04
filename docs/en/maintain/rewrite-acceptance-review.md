@@ -2,7 +2,7 @@
 
 ## What this review is
 
-This is a final documentation-redesign acceptance review for the current Harness documentation baseline. It is a Maintain document for maintainer handoff only.
+This is a maintainer-facing documentation-redesign acceptance review for the current Harness documentation baseline. It is a Maintain document for maintainer handoff only.
 
 This review does not accept implementation planning by itself. It does not authorize Harness Server/runtime implementation, product code, generated operational artifacts, generated projections, executable fixtures, conformance runners, runtime state, evidence records, QA records, Acceptance records, Residual Risk records, close records, or Harness Runtime Home contents. It does not claim runtime conformance has passed.
 
@@ -171,20 +171,33 @@ The active baseline keeps full template bodies with Template Reference owners an
 
 Artifacts are treated as references registered through owner paths, not as free-form documentation outputs that become authority.
 
+## Targeted Cleanup Review
+
+Status: targeted checks updated for the latest cleanup; not a full validation pass.
+
+| Area | Current review finding |
+|---|---|
+| Later-profile Decision Packet template parity | Manually checked `docs/en/reference/templates/later-profile/decision-packet.md` and `docs/ko/reference/templates/later-profile/decision-packet.md`. The pair is semantically aligned: `DEC` is an optional full-format presentation for a specific `user_judgment`, the ordinary MVP-1 path remains a compact judgment request, the five display labels match, legacy names such as `decision_packet_id`, `judgment_category`, `judgment_route`, and `display_depth` are limited to migration or compatibility context, and `presentation=short` / `presentation=full` changes rendered context rather than authority. |
+| Core Model judgment routes and display-depth semantics | Manually checked `docs/en/reference/core-model.md` and `docs/ko/reference/core-model.md`. The route boundary is aligned: route verbs are internal owner-path metadata, broad approval is absent from the user-facing model, display depth is presentation metadata, and users see the same five display types. Minor follow-up: the Korean canonical-schema bullet list is more explicit about `user_judgment`, `harness.request_user_judgment`, `presentation`, and `display_label` than the English bullet list. This is not a known contradiction, but maintainers may want to normalize the wording for easier parity review. |
+| v01/v02 and legacy fixture identifiers | Checked with `rg` for `v0.1`, `v0.2`, `v01`, `v02`, and old scenario-prefix patterns. No active v01/v02 fixture identifiers were found. Historical `v0.x` stage labels remain only as legacy-label guidance in translation/glossary docs. Current behavior-example IDs use `ENG-CHECK-*`, `MVP1-*`, and `CLARIFY-*`; the illustrative `CORE-active-status-no-task` appears only in a suite metadata example, not as a current executable fixture. |
+| Implementation-readiness wording | Checked in README, Build handoff, MVP-1 decision log, Maintain guidance, and this review. The docs distinguish documentation redesign review, pending documentation acceptance, not-yet-accepted implementation-planning readiness, not-yet-accepted server-coding decisions, and not-started runtime implementation. |
+| Future fixture catalog scope pressure | Checked in [Conformance Fixtures Reference](../reference/conformance-fixtures.md) and [Future Fixtures](../later/future-fixtures.md). The future catalog is now a compact scenario-family inventory. Old long pseudo-fixture payloads and fixture skeletons are removed from the catalog, and catalog rows are not Engineering Checkpoint, MVP-1, current conformance, or implementation tasks. |
+
 ## Link, Diagram, And Bilingual Review Status
 
-Status: partial checks only. Do not treat this as a full validation pass.
+Status: scriptable link/anchor check plus targeted spot checks. Do not treat this as runtime validation or a full manual documentation acceptance pass.
 
 Checks actually run during this review:
 
+- Full local relative link and anchor checker over `AGENTS.md` and Markdown under `docs`: checked 130 Markdown files; no unresolved relative links or anchors were reported.
 - English/Korean active file-map spot check using `rg --files` and `comm`: no differences reported.
 - Mermaid inventory using `rg -n '```mermaid' docs/en docs/ko`: Mermaid blocks were found in paired Reference and Build docs, but syntax rendering was not run.
 - Open-marker spot check using `rg` for `TODO_DECISION`, `TODO_IMPLEMENT`, and `TODO_REWRITE`: no scattered implementation-decision TODOs were found outside Maintain guidance references.
+- User-language/internal-term scan using `rg` over Learn and Use docs: expected glossary, cookbook, and agent-guide uses were found; no full manual user-language audit was run.
 
 Checks not run:
 
-- Full relative link and anchor checker.
-- Mermaid parser or renderer.
+- Mermaid parser or renderer. `mmdc` was not available in `PATH` during this review.
 - Full bilingual semantic review of every paired file.
 - Full user-language audit across all Learn and Use docs.
 - Full owner-boundary duplicate-contract audit across all docs.
@@ -198,7 +211,8 @@ Known blockers before implementation planning or coding:
 - Maintainer documentation acceptance is still pending.
 - Implementation-planning readiness is not accepted.
 - API, Storage/DDL, Core transition, and Security/local-access coding acceptances are not accepted.
-- Full link/anchor, Mermaid syntax, and full bilingual semantic checks were not run in this review batch.
+- Mermaid syntax rendering, full paired-file semantic review, full manual user-language audit, and full owner-boundary duplicate-contract audit were not run in this review batch.
+- Minor documentation follow-up: normalize the English/Korean Core Model canonical-schema bullets around `presentation` and `display_label` if maintainers want easier line-by-line parity review.
 
 These blockers should be handled by maintainer acceptance review, not by creating runtime artifacts or conformance reports.
 
