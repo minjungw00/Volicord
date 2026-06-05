@@ -45,7 +45,7 @@ All methods use [`ToolEnvelope`](schema-core.md#tool-envelope) and [`ToolRespons
 
 MVP-1 request validators use the active value sets in [Schema Core](schema-core.md#stage-specific-active-value-sets). Later enum values and extension branches are not valid merely because they exist in [Schema Later](schema-later.md).
 
-Error codes, MVP-1 status/error condition names, user-facing message patterns, primary error precedence, idempotency replay, and stale-state behavior are owned by [Errors](errors.md). Security meanings for guarantee levels are owned by [Security Reference: Honest guarantee display](../security.md#honest-guarantee-display).
+Error codes, MVP-1 status/error condition names, user-facing message patterns, primary error precedence, idempotency replay, and stale-state behavior are owned by [Errors](errors.md). Security meanings for guarantee levels are owned by [Security Reference: Honest guarantee display](../security.md#honest-guarantee-display). `dry_run=true` is non-authoritative for every state-changing tool: it may return validation diagnostics or a would-change summary, but it creates no current record, `task_events` row, artifact, consumable Write Authorization, projection job, or idempotency replay row.
 
 <a id="harnessintake"></a>
 
@@ -198,6 +198,8 @@ PrepareWriteResponse:
 
 `approval_request_candidate` and `user_judgment_candidate` are non-mutating candidate payloads. They do not create user judgments, Approval records, Write Authorizations, or projections.
 
+Public transition summary: `harness.prepare_write` validates the envelope, validates idempotency, checks `expected_state_version`, resolves the active Task and active Change Unit, checks intended operation/path/tool/command/network/secret/sensitive-category compatibility, checks baseline freshness, sensitive-action permission, user judgment and decision-gate coverage, Autonomy Boundary, surface capability, and active design-policy preconditions, then calculates `decision`. Only `dry_run=false` with `decision=allowed` creates `write_authorizations.status=active`; committed non-dry-run results append task events before returning.
+
 <a id="harnessrecord_run"></a>
 
 ## `harness.record_run`
@@ -240,7 +242,9 @@ RecordRunResponse:
 
 The payload branch must match `kind`. MVP-1 accepts `shaping_update`, `implementation`, and `direct`; `verification_input` is later-profile only.
 
-If Core rejects a write-capable run before commit, `run_id` is `null`, no artifacts are registered, and the response must not imply a Run exists. A violation/audit Run may be recorded only when Core deliberately records observed behavior after a product write; it does not satisfy evidence, QA, verification, work acceptance, or close readiness.
+Public transition summary: `harness.record_run` validates the envelope, checks idempotency replay, checks `expected_state_version`, checks `kind`, detects product writes, requires a compatible active Write Authorization for product writes, validates observed changed paths, commands, tools, and secret access, consumes the authorization when compatible, creates the Run record, registers or links `ArtifactRef` records, updates evidence summary and blockers/gates, appends a task event, and returns the response.
+
+If Core rejects a write-capable run before commit, `run_id` is `null`, no artifacts are registered, and the response must not imply a Run exists. Core must not mark an invalid authorization as consumed. A violation/audit Run may be recorded only when Core deliberately records observed behavior after a product write; attempted authorization refs may appear in validator findings, violation payloads, or event payloads, but they do not satisfy evidence, QA, verification, work acceptance, or close readiness.
 
 <a id="harnessrequest_user_judgment"></a>
 <a id="harnessrequest_user_decision"></a>

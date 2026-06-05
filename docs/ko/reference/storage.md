@@ -139,13 +139,15 @@ layout을 선택할 수 있습니다. 그래도 later-profile record를 MVP-1 re
 | `task` | Tracked work item입니다. User request, current summary, lifecycle, result, active scope, state clock을 저장합니다. | Task는 user-value unit입니다. Report, Journey, projection이 아닙니다. |
 | `task_scope` / `change_unit` | Current scope, non-goals, success criteria, allowed paths, denied paths, scoped-write status. | 기존 Core/API 이름은 `Change Unit`과 `record_kind=change_unit`을 씁니다. MVP-1 storage에는 active task-scope row 하나 또는 같은 의미의 Task scope field면 충분합니다. DAG는 필요하지 않습니다. |
 | `user_judgment` | 사용자 소유 제품/UX 판단, 기술 판단, 민감 동작 승인, 작업 수락, 잔여 위험 수용. | Full-format Decision Packet은 presentation이지 별도 authority table이 아닙니다. Committed `approvals`는 later-profile입니다. |
-| `write_check` / `write_authorization` | 정확한 proposed write에 대한 cooperative `prepare_write` decision과, `decision=allowed`일 때만 생기는 durable Write Authorization row입니다. Blocked, approval-required, decision-required, state-conflict result는 blocker, validator finding, error, replayable response를 만들 수 있지만 authorization row를 만들지 않습니다. | Core path에 대한 Harness 기록/확인입니다. OS-level permission이나 arbitrary-tool prevention이 아닙니다. |
+| `write_check` / `write_authorization` | 정확한 proposed write에 대한 cooperative `prepare_write` decision과, `dry_run=false`이며 `decision=allowed`일 때만 생기는 durable Write Authorization row입니다. Dry-run result는 diagnostic 또는 candidate effect만 반환합니다. `dry_run=false`인 `blocked`, `approval_required`, `decision_required` result는 경우에 따라 blocker, validator finding, error, committed replayable response를 만들 수 있지만 authorization row를 만들지 않습니다. `state_conflict` result는 conflict를 보고하되 새 authorization row를 만들거나 새 replay row를 merge하지 않습니다. Exact idempotent replay는 original committed response를 반환합니다. | Core path에 대한 Harness 기록/확인입니다. OS-level permission이나 arbitrary-tool prevention이 아닙니다. |
 | `run` | Task, scope, optional Write Authorization, evidence refs에 연결되는 agent work run 또는 observed execution result. | Run은 registered ref를 통해서만 evidence를 support할 수 있습니다. 그 자체로 verification, QA, acceptance, close를 증명하지 않습니다. |
 | `evidence_ref` | Diff, log, screenshot, checkpoint, existing artifact ref 같은 evidence의 pointer와 short summary. | MVP-1에는 detailed Evidence Manifest가 필요하지 않습니다. 큰 byte는 state에 embed하지 않고 참조합니다. |
 | `blocker` | Owner refs와 smallest required next action을 가진 close blocker 또는 next-action blocker. | Close readiness는 open blocker와 owner record에서 파생됩니다. MVP-1에 별도 `close_readiness` table이 필요하지 않습니다. |
 
 `tool_invocations`, `task_events` 같은 support row는 replay, idempotency, audit, ordering을
 돕습니다. User-facing domain record가 아니며 MVP-1 product surface를 넓히지 않습니다.
+`tool_invocations` row는 committed replayable `dry_run=false` response에 대해서만 존재합니다.
+Dry run과 pre-commit conflict는 storage에서 `idempotency_key`를 예약하지 않습니다.
 
 ## Persisted State와 파생된 상태 보기
 
@@ -462,6 +464,8 @@ Required event emission은 committed state mutation에만 적용됩니다. Malfo
 dry run, pre-commit state conflict, state를 mutate하지 않는 invalid request에는
 `task_events` row가 필요하지 않습니다. Blocked request가 stored blocker를 create/update한다면
 그 blocker mutation이 event-worthy state change입니다.
+`dry_run=true`는 current record, `task_events` row, artifact, consumable Write Authorization,
+projection job, `tool_invocations` replay row를 만들지 않습니다.
 
 ## Migration과 Validation Notes
 
@@ -531,11 +535,11 @@ Storage-owned compatibility value:
 | `write_authorizations.status` | `active`, `consumed`, `expired`, `stale`, `revoked` | Core/API owner value set과 일치하는 durable authorization lifecycle입니다. `active`이고 compatible한 row만 `record_run`이 consume할 수 있습니다. |
 | `evidence_refs.status` | `available`, `missing`, `stale`, `blocked` | Evidence pointer availability입니다. Full evidence sufficiency가 아닙니다. |
 | `blockers.status` | `open`, `resolved`, `superseded` | Stored blocker lifecycle입니다. Open blocker는 Core가 resolve 또는 supersede할 때까지 visible 상태로 남습니다. |
-| `tool_invocations.status` | `committed` | Committed replayable response에 대해서만 row가 존재합니다. |
+| `tool_invocations.status` | `committed` | Committed replayable `dry_run=false` response에 대해서만 row가 존재합니다. |
 
-`prepare_write.decision`은 durable authorization lifecycle column과 별도입니다. Canonical `prepare_write.decision` 값은 `allowed`, `blocked`, `approval_required`, `decision_required`, `state_conflict`입니다. `decision=allowed`일 때만 durable authorization row를 만들거나 반환할 수 있습니다.
+`prepare_write.decision`은 durable authorization lifecycle column과 별도입니다. Canonical `prepare_write.decision` 값은 `allowed`, `blocked`, `approval_required`, `decision_required`, `state_conflict`입니다. `dry_run=false`인 `decision=allowed`만 durable authorization row를 만듭니다. Exact idempotent replay는 original committed response를 반환합니다.
 
-새 row는 `write_authorizations.status=active`로 시작합니다. 다른 decision은 response decision, blocker, validator finding, error, 필요한 경우 idempotency replay state로 표현합니다.
+새 row는 `write_authorizations.status=active`로 시작합니다. `dry_run=false`인 `blocked`, `approval_required`, `decision_required` decision은 response decision, blocker, validator finding, error, 필요한 경우 committed idempotency replay state로 표현합니다. `state_conflict`는 새 replay row를 merge하지 않고 conflict state를 반환합니다. `dry_run=true`의 `decision=allowed` response는 `authorization_effect=would_create`를 설명할 수 있지만 `write_authorizations` row를 insert하지 않고 `record_run`이 소비할 수도 없습니다.
 
 Future table value set은 해당 table의 owner profile이 active이거나, fixture가 optional
 table을 명시적으로 seed하거나, owner document가 값을 명시적으로 승격할 때만 사용해야

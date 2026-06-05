@@ -11,7 +11,7 @@
 ## 기준 기록
 
 - 직접 실행 기록
-- 직접 작업에 제품 파일 쓰기가 있었다면 소비된 쓰기 허가 기록(Write Authorization) 참조
+- 직접 제품 파일 쓰기 Run이 compatible하게 소비한 경우의 쓰기 허가 기록(Write Authorization) 참조. Attempted invalid authorization ref는 violation/audit context에만 둡니다.
 - 변경 경로
 - 범위 밖 또는 유지된 범위 요약
 - 실행한 확인
@@ -137,7 +137,7 @@ updated_at: 2026-05-06T09:40:00+09:00
 
 ## 메모
 
-정책 또는 사용자가 분리 검증 또는 다른 관문을 요구하지 않으면 직접 작업은 기본적으로 자체 확인(self-checked) 상태로 닫힐 수 있습니다. 소비된 쓰기 허가 기록(Write Authorization) 참조를 표시할 수 있지만, 상태 보기가 기준 허가 기록이 되는 것은 아닙니다.
+정책 또는 사용자가 분리 검증 또는 다른 관문을 요구하지 않으면 직접 작업은 기본적으로 자체 확인(self-checked) 상태로 닫힐 수 있습니다. 소비된 쓰기 허가 기록(Write Authorization) 참조를 표시할 수 있지만, 상태 보기가 기준 허가 기록이 되는 것은 아닙니다. Attempted invalid authorization ref는 violation/audit 또는 validator-finding context로만 보여야 하며, consumed authority나 completion evidence처럼 보여주면 안 됩니다.
 
 직접 작업 결과(Direct Result)는 자체 확인(self-checked), `detached_verified`, 검증 면제, QA 면제, 잔여 위험 수용 닫기 상태를 별도 줄로 표시해야 합니다. 면제 줄은 면제 참조를 가리키거나 아직 기록되지 않았다고 말하며, 검증 또는 QA가 되지 않습니다. 잔여 위험 수용 닫기는 분리 검증됨(detached verified)처럼 보이지 않게, MVP-1에서는 잔여 위험 수용 사용자 판단과 관련 막힘/근거 참조를 가리키고, 수락된 Residual Risk 참조는 해당 나중 프로필이 활성화된 경우에만 가리킵니다.
 

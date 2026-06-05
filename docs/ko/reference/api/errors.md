@@ -157,6 +157,8 @@ Idempotency key는 `(project_id, tool_name, idempotency_key)` scope를 가집니
 
 State-changing tool에서 Core는 call을 new mutation attempt로 다루기 전에 existing committed replay row를 확인합니다. Matching hash는 current freshness check를 다시 실행하거나, event를 append하거나, artifact를 register하거나, projection을 enqueue하거나, replay row를 update하지 않고 original committed response를 반환합니다. Different hash는 `STATE_CONFLICT`를 반환하고 original replay row를 보존합니다.
 
+`dry_run=true`는 committed replay row를 만들거나 업데이트하지 않습니다. 따라서 dry-run request를 반복하면 예전 dry-run response를 authority처럼 반환하지 않고 current state를 기준으로 다시 검증합니다. 나중에 같은 `idempotency_key`로 non-dry-run call을 보내더라도 기존 committed replay row만 replay에 참여합니다. 이전 dry-run response는 committed response가 아니며 key를 예약할 수 없습니다.
+
 Key가 different canonical request payload로 재사용되면 `ToolError.details`는 idempotency scope, stored/received request hash 또는 equivalent opaque comparison, caller가 original request를 replay하거나 fresh key로 retry해야 한다는 사실을 포함할 수 있습니다. Details는 sensitive request body를 노출하면 안 됩니다.
 
 ## State conflict behavior

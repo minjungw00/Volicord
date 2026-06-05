@@ -45,7 +45,7 @@ Status output은 세 부분 모델을 따릅니다. `harness.status.status_card`
 
 MVP-1 request validator는 [Schema Core](schema-core.md#stage-specific-active-value-sets)의 active value set을 사용합니다. [Schema Later](schema-later.md)에 존재하는 later enum value나 extension branch는 그 자체로 MVP-1에서 유효해지지 않습니다.
 
-Error code, MVP-1 status/error condition name, 사용자 표시 문구 pattern, primary error precedence, idempotency replay, stale-state behavior는 [Errors](errors.md)가 담당합니다. Guarantee level의 보안 의미는 [보안 참조: 정직한 guarantee display](../security.md#정직한-guarantee-display)가 담당합니다.
+Error code, MVP-1 status/error condition name, 사용자 표시 문구 pattern, primary error precedence, idempotency replay, stale-state behavior는 [Errors](errors.md)가 담당합니다. Guarantee level의 보안 의미는 [보안 참조: 정직한 guarantee display](../security.md#정직한-guarantee-display)가 담당합니다. 모든 state-changing tool에서 `dry_run=true`는 authoritative하지 않습니다. Validation diagnostic 또는 would-change summary를 반환할 수 있지만 current record, `task_events` row, artifact, consumable Write Authorization, projection job, idempotency replay row를 만들지 않습니다.
 
 <a id="harnessintake"></a>
 
@@ -198,6 +198,8 @@ PrepareWriteResponse:
 
 `approval_request_candidate`와 `user_judgment_candidate`는 non-mutating candidate payload입니다. 이것만으로 user judgment, Approval record, Write Authorization, projection을 만들지 않습니다.
 
+Public transition summary: `harness.prepare_write`는 envelope를 검증하고, idempotency를 검증하고, `expected_state_version`을 확인하고, active Task와 active Change Unit을 resolve합니다. 그다음 intended operation/path/tool/command/network/secret/sensitive-category compatibility, baseline freshness, sensitive-action permission, user judgment와 decision-gate coverage, Autonomy Boundary, surface capability, active design-policy precondition을 확인한 뒤 `decision`을 계산합니다. `dry_run=false`이고 `decision=allowed`일 때만 `write_authorizations.status=active`를 만들며, committed `dry_run=false` result는 반환 전에 task event를 append합니다.
+
 <a id="harnessrecord_run"></a>
 
 ## `harness.record_run`
@@ -240,7 +242,9 @@ RecordRunResponse:
 
 `payload` branch는 `kind`와 일치해야 합니다. MVP-1은 `shaping_update`, `implementation`, `direct`를 허용합니다. `verification_input`은 later-profile only입니다.
 
-Core가 write-capable run을 commit 전에 거절하면 `run_id`는 `null`이고 artifact는 등록되지 않으며 response는 Run이 존재한다고 암시하면 안 됩니다. Violation/audit Run은 제품 쓰기가 이미 관찰된 뒤 Core가 의도적으로 기록할 때만 생길 수 있습니다. 그런 Run은 evidence, QA, verification, work acceptance, close readiness를 충족하지 않습니다.
+Public transition summary: `harness.record_run`은 envelope를 검증하고, idempotency replay를 확인하고, `expected_state_version`을 확인하고, `kind`를 확인하고, product write를 감지합니다. Product write에는 compatible active Write Authorization을 요구하고, observed changed paths, commands, tools, secret access를 검증합니다. Compatible하면 authorization을 소비하고, Run record를 만들고, `ArtifactRef`를 등록하거나 연결하고, evidence summary와 blockers/gates를 업데이트하고, task event를 append한 뒤 response를 반환합니다.
+
+Core가 write-capable run을 commit 전에 거절하면 `run_id`는 `null`이고 artifact는 등록되지 않으며 response는 Run이 존재한다고 암시하면 안 됩니다. Core는 invalid authorization을 consumed로 표시하면 안 됩니다. Violation/audit Run은 제품 쓰기가 이미 관찰된 뒤 Core가 의도적으로 기록할 때만 생길 수 있습니다. Attempted authorization ref는 validator finding, violation payload, event payload에만 나타날 수 있으며 evidence, QA, verification, work acceptance, close readiness를 충족하지 않습니다.
 
 <a id="harnessrequest_user_judgment"></a>
 <a id="harnessrequest_user_decision"></a>

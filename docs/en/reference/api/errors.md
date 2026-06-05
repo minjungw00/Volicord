@@ -157,6 +157,8 @@ Idempotency keys are scoped to `(project_id, tool_name, idempotency_key)`. Repea
 
 For state-changing tools, Core checks an existing committed replay row before treating the call as a new mutation attempt. A matching hash returns the original committed response without re-running current freshness checks, appending events, registering artifacts, enqueueing projections, or updating the replay row. A different hash returns `STATE_CONFLICT` and preserves the original replay row.
 
+`dry_run=true` never creates or updates the committed replay row. Repeating a dry-run request therefore revalidates against current state instead of returning an earlier dry-run response as authority. If a later non-dry-run call uses the same `idempotency_key`, only an existing committed replay row participates in replay; a previous dry-run response is not a committed response and cannot reserve the key.
+
 When a key is reused with a different canonical request payload, `ToolError.details` may include the idempotency scope, stored/received request hashes or equivalent opaque comparison, and the fact that the caller must replay the original request or retry with a fresh key. Details must not expose sensitive request bodies.
 
 ## State conflict behavior

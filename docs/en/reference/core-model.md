@@ -295,7 +295,7 @@ Approval does not prove correctness, choose product direction, choose technical 
 
 ### Write Authorization
 
-A Write Authorization is the durable single-use state record created only when `prepare_write.decision=allowed` for an exact product-file write compatible with current Core records. It records the Task, Change Unit, compatibility basis, intended operation, intended write surface, relevant sensitive-action coverage and decisions, guarantee level, lifecycle status, and consumption by a compatible Run. It is a Harness-level cooperative record/check, not OS permission, sandboxing, tamper-proof storage, preventive blocking, or isolation.
+A Write Authorization is the durable single-use state record created only by a non-dry-run `prepare_write.decision=allowed` for an exact product-file write compatible with current Core records. It records the Task, Change Unit, compatibility basis, intended operation, intended write surface, relevant sensitive-action coverage and decisions, guarantee level, lifecycle status, and consumption by a compatible Run. It is a Harness-level cooperative record/check, not OS permission, sandboxing, tamper-proof storage, preventive blocking, or isolation.
 
 Write Authorization status is record-level:
 
@@ -303,7 +303,7 @@ Write Authorization status is record-level:
 active | consumed | expired | stale | revoked
 ```
 
-`allowed` is a `prepare_write` decision, not a durable lifecycle status. `blocked` is not a Write Authorization lifecycle status. A blocked, approval-required, decision-required, or state-conflict write creates no consumable authorization row; Core represents it through `prepare_write.decision`, blockers, validator findings, or errors.
+`allowed` is a `prepare_write` decision, not a durable lifecycle status. `blocked` is not a Write Authorization lifecycle status. A dry-run allowed result is a candidate decision only. A `blocked`, `approval_required`, `decision_required`, or `state_conflict` result creates no consumable authorization row; Core represents it through `prepare_write.decision`, blockers, validator findings, or errors.
 
 `active` means a consumable authorization row exists and has not been consumed, expired, revoked, or marked stale. `consumed` means exactly one committed compatible implementation or direct `record_run` consumed it. `stale` means the compatibility basis changed before consumption. `expired` means expiry conditions elapsed before consumption. `revoked` means Core, policy, or explicit user decision revoked it before consumption.
 
@@ -563,7 +563,7 @@ Stable event names are append-only state history labels, not authority by themse
 
 ### Intake to `prepare_write` sequence
 
-The minimal write sequence is:
+The user-facing write path is:
 
 1. Resolve or create an active Task.
 2. Establish a scoped active Change Unit for write-capable work.
@@ -572,7 +572,7 @@ The minimal write sequence is:
 5. If compatible, use the returned Write Authorization record for one compatible product-write Run.
 6. Record the Run, artifacts, evidence refs, and any blockers through `record_run`.
 
-This pre-write scope-check sequence is the Kernel design contract. Scope, required user judgment, and sensitive-action permission are inputs to `prepare_write`; only a compatible `prepare_write` creates a single-use Write Authorization record, and `record_run` records what happened rather than making it compatible retroactively.
+This intake-to-run sequence is the reader-facing summary. The Core transition order inside `prepare_write` and `record_run` is stricter and is owned by the sections below. Scope, required user judgment, and sensitive-action permission are inputs to `prepare_write`; only a compatible non-dry-run `prepare_write` creates a single-use Write Authorization record, and `record_run` records what happened rather than making it compatible retroactively.
 
 ```mermaid
 flowchart LR
@@ -598,19 +598,26 @@ It returns one of these state-level decisions:
 allowed | blocked | approval_required | decision_required | state_conflict
 ```
 
-The decision checks only the gates and preconditions that apply to the Task, intended operation, active stage/profile, and connected surface:
+The Core transition order is:
 
-1. Check state-version freshness.
-2. Resolve the active Task.
-3. Confirm the mode is write-capable; `advisor` blocks product writes.
-4. Resolve the active Change Unit.
-5. Check intended paths, tools, commands, network targets, secret access, sensitive categories, and other write surfaces against scope.
-6. Check the Autonomy Boundary. If the operation exceeds agent latitude, request user judgment when judgment can resolve it.
+1. Validate the request envelope.
+2. Validate the idempotency key and replay state.
+3. Check `expected_state_version`.
+4. Resolve the active Task.
+5. Resolve the active Change Unit.
+6. Check intended operation, path, tool, command, network, secret, and sensitive category compatibility against scope.
 7. Check baseline freshness.
-8. Check sensitive-action permission when sensitive categories apply.
-9. Check required user judgments.
-10. Check enabled design/policy and capability preconditions.
-11. If all required checks pass, return `decision=allowed`, create or return the compatible active single-use Write Authorization record, and record the decision through the response/idempotency path.
+8. Check sensitive-action approval or permission when sensitive categories apply.
+9. Check blocking user judgment and decision-gate requirements.
+10. Check the Autonomy Boundary. If the operation exceeds agent latitude, request user judgment when judgment can resolve it.
+11. Check connected surface capability.
+12. Check active design-policy preconditions.
+13. Calculate `prepare_write.decision`.
+14. If `dry_run=false` and `decision=allowed`, create `write_authorizations.status=active` for this exact attempt.
+15. If `dry_run=false`, append the task event for the committed decision and any committed blocker or authorization state.
+16. Return the response.
+
+`dry_run=true` validates and returns the decision or candidates, but creates no authoritative row: no current record, `task_events` row, artifact, consumable Write Authorization, projection job, or idempotency replay row.
 
 `blocked`, `approval_required`, `decision_required`, and `state_conflict` results must not create a consumable Write Authorization row. `approval_required` means sensitive-action permission is missing or unusable; it must not be converted into broad approval or product judgment. `decision_required` means user-owned judgment is needed; it must not be converted into sensitive-action permission.
 
@@ -624,11 +631,30 @@ External side effects keep the same authority meaning. Before execution, `prepar
 
 `record_run` is the Run, artifact, and evidence recording point. It is not a pre-write scope-check decision point and cannot retroactively make product-file writes compatible.
 
+The Core transition order is:
+
+1. Validate the request envelope.
+2. Check idempotency replay state.
+3. Check `expected_state_version`.
+4. Check the Run kind.
+5. Detect whether the Run reports a product write.
+6. If a product write exists, require a compatible active Write Authorization.
+7. Validate observed changed paths, commands, tools, and secret access against the authorization and active scope.
+8. If compatible, consume the authorization.
+9. Create the Run record.
+10. Register or link `ArtifactRef` records.
+11. Update the evidence summary or evidence refs required by the active path.
+12. Update blockers and gates affected by the recorded Run.
+13. Append the task event.
+14. Return the response.
+
 Implementation and direct Runs that report product-file writes must consume a compatible Write Authorization whose lifecycle status is `active`. Core verifies observed changed paths and other observed side effects against both the consumed Write Authorization and the active Change Unit when those observations are available.
 
-Out-of-scope changes, missing Write Authorization, expired Write Authorization, stale Write Authorization, revoked Write Authorization, consumed Write Authorization, or incompatible Write Authorization become rejection, violation, recovery, or stale/blocker state according to the case. Such Runs do not satisfy evidence sufficiency, verification, QA, work acceptance, residual-risk acceptance, or close readiness for the affected scope until repaired through the relevant owner records.
+Out-of-scope changes, missing Write Authorization, expired Write Authorization, stale Write Authorization, revoked Write Authorization, consumed Write Authorization, or incompatible Write Authorization become rejection, violation, recovery, or stale/blocker state according to the case. Core must not record an invalid authorization as successfully consumed. A violation or audit Run may be recorded when the active contract supports recording observed behavior, but it does not count as completion evidence and does not satisfy evidence sufficiency, verification, QA, work acceptance, residual-risk acceptance, or close readiness for the affected scope until repaired through the relevant owner records. Attempted authorization refs may appear only in validator findings, violation payloads, or event payloads.
 
 Read-only and shaping-only Runs may be recorded without Write Authorization only when they do not report product-file changes.
+
+For `dry_run=true`, `record_run` validates the request and reports the planned or blocked effects without consuming authorization, creating a Run, registering artifacts, updating evidence or blockers/gates, appending `task_events`, enqueueing projection jobs, or creating an idempotency replay row.
 
 <a id="close_task"></a>
 
@@ -719,7 +745,7 @@ Verification waiver is not detached verification. If the waived verification gap
 | Kernel invariant | Enforcement points |
 |---|---|
 | Core state is authority. | State-changing actions create Core records and events; projections and chat cannot mutate state without an owner path. |
-| Product writes require explicit scope and a compatible pre-write scope check. | `prepare_write` blocks missing scope and creates an active single-use Write Authorization record only when `decision=allowed`; `record_run` consumes the active row. |
+| Product writes require explicit scope and a compatible pre-write scope check. | `prepare_write` blocks missing scope and creates an active single-use Write Authorization record only when `dry_run=false` and `decision=allowed`; `record_run` consumes the active row. |
 | User-owned judgment cannot be replaced by agent judgment. | User judgment records and `decision_gate` block affected writes or close until compatible resolution, deferral, or risk handling is recorded. |
 | Sensitive-action approval is separate. | Sensitive-action approval user judgments, later Approval records, and `approval_gate` cover sensitive permission only. |
 | Evidence, verification, QA, acceptance, and residual risk stay separate. | Separate gates, refs, and close blockers prevent substitution. |

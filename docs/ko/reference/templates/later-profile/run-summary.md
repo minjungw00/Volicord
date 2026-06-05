@@ -14,7 +14,7 @@
 - 행위자/접점 식별 정보
 - 기준선
 - 작업 조각(Change Unit)
-- 있는 경우 소비된 쓰기 허가 기록(Write Authorization) 참조
+- compatible product-write Run이 소비한 경우의 쓰기 허가 기록(Write Authorization) 참조. Attempted invalid authorization ref는 violation/audit context에만 둡니다.
 - 변경된 경로
 - 명령 결과
 - 검증기 결과
@@ -108,6 +108,7 @@ npm test -- --runInBand
 
 ## 검토 단계
 - 메모: 실행 로컬(run-local) 검토 표시 전용입니다. 기록(Record), `ProjectionKind` value, 민감 동작 승인(Approval), 근거, 검증, QA, 작업 수락, 잔여 위험 수용, 닫기, 쓰기 허가 기록(Write Authorization)을 만들지 않습니다. 검토 단계(review-stage) 경계는 [설계 품질 정책(Design Quality Policies)](../../design-quality-policies.md#two-stage-review-display)이 담당합니다. 발견 사항은 기존 참조, 관문, 막힘으로 연결합니다.
+- 쓰기 권한 메모: attempted invalid authorization ref는 validator finding, violation payload, event payload에만 나타날 수 있습니다. Consumed Write Authorization이 아니며 completion evidence로 쓰면 안 됩니다.
 
 ### 명세 준수 검토
 - 수용 기준 뒷받침 범위:

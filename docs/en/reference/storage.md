@@ -143,14 +143,16 @@ records into MVP-1 requirements.
 | `task` | Tracked work item: user request, current summary, lifecycle, result, active scope, and state clock. | A Task is the user-value unit. It is not a report, Journey, or projection. |
 | `task_scope` / `change_unit` | Current scope, non-goals, success criteria, allowed paths, denied paths, and scoped-write status. | Existing Core/API names use `Change Unit` and `record_kind=change_unit`; MVP-1 storage only needs a single active task-scope row or equivalent Task scope fields, not a DAG. |
 | `user_judgment` | User-owned product/UX choice, technical choice, sensitive-action approval, work acceptance, and residual-risk acceptance. | Full-format Decision Packet is presentation, not a separate authority table. Committed `approvals` are later-profile. |
-| `write_check` / `write_authorization` | Cooperative `prepare_write` decision for the exact proposed write, plus a durable Write Authorization row only when `decision=allowed`. Blocked, approval-required, decision-required, or state-conflict results create blockers, validator findings, errors, or replayable responses, not authorization rows. | This is Harness authority for a Core path, not OS-level permission or arbitrary-tool prevention. |
+| `write_check` / `write_authorization` | Cooperative `prepare_write` decision for the exact proposed write, plus a durable Write Authorization row only when `dry_run=false` and `decision=allowed`. Dry-run results return diagnostics or candidate effects only. Non-dry-run `blocked`, `approval_required`, or `decision_required` results may create blockers, validator findings, errors, or committed replayable responses as applicable, not authorization rows. `state_conflict` results report the conflict without creating a new authorization row or merging a new replay row; exact idempotent replay returns the original committed response. | This is Harness authority for a Core path, not OS-level permission or arbitrary-tool prevention. |
 | `run` | Agent work run or observed execution result, linked to Task, scope, optional Write Authorization, and evidence refs. | A Run can support evidence only through registered refs. It does not prove verification, QA, acceptance, or close by itself. |
 | `evidence_ref` | Pointer and short summary for evidence such as a diff, log, screenshot, checkpoint, or existing artifact ref. | MVP-1 does not need a detailed Evidence Manifest. Large bytes remain referenced, not embedded in state. |
 | `blocker` | Close blocker or next-action blocker with owner refs and the smallest required next action. | Close readiness is derived from open blockers and owner records; it does not require a separate `close_readiness` table in MVP-1. |
 
 Support rows such as `tool_invocations` and `task_events` help replay,
 idempotency, audit, and ordering. They are not user-facing domain records and do
-not expand the MVP-1 product surface.
+not expand the MVP-1 product surface. A `tool_invocations` row exists only for a
+committed replayable non-dry-run response; dry runs and pre-commit conflicts do
+not reserve idempotency keys in storage.
 
 ## Persisted State Vs Derived Status/View
 
@@ -472,6 +474,8 @@ Required event emission applies only to committed state mutations. Malformed
 requests, dry runs, pre-commit state conflicts, and invalid requests that do not
 mutate state do not need `task_events` rows. If a blocked request creates or
 updates a stored blocker, that blocker mutation is the event-worthy state change.
+`dry_run=true` creates no current record, `task_events` row, artifact,
+consumable Write Authorization, projection job, or `tool_invocations` replay row.
 
 ## Migration And Validation Notes
 
@@ -544,11 +548,11 @@ Storage-owned compatibility values promoted here:
 | `write_authorizations.status` | `active`, `consumed`, `expired`, `stale`, `revoked` | Durable authorization lifecycle, matching the Core/API owner value set. Only `active` and compatible rows can be consumed by `record_run`. |
 | `evidence_refs.status` | `available`, `missing`, `stale`, `blocked` | Evidence pointer availability. It is a pointer/status fact, not full evidence sufficiency. |
 | `blockers.status` | `open`, `resolved`, `superseded` | Stored blocker lifecycle. Open blockers remain visible until Core resolves or supersedes them. |
-| `tool_invocations.status` | `committed` | A row exists only for a committed replayable response. |
+| `tool_invocations.status` | `committed` | A row exists only for a committed replayable non-dry-run response. |
 
-`prepare_write.decision` is separate from the durable authorization lifecycle column. The canonical `prepare_write.decision` values are `allowed`, `blocked`, `approval_required`, `decision_required`, and `state_conflict`. Only `decision=allowed` may create or return a durable authorization row.
+`prepare_write.decision` is separate from the durable authorization lifecycle column. The canonical `prepare_write.decision` values are `allowed`, `blocked`, `approval_required`, `decision_required`, and `state_conflict`. Only non-dry-run `decision=allowed` creates a durable authorization row; exact idempotent replay returns the original committed response.
 
-The new row starts with `write_authorizations.status=active`. Other decisions are represented by the response decision, blockers, validator findings, errors, and idempotency replay state as applicable.
+The new row starts with `write_authorizations.status=active`. Non-dry-run `blocked`, `approval_required`, and `decision_required` decisions are represented by the response decision, blockers, validator findings, errors, and committed idempotency replay state as applicable. `state_conflict` returns conflict state without merging a new replay row. A `dry_run=true` `decision=allowed` response may describe `authorization_effect=would_create`, but it does not insert a `write_authorizations` row and cannot be consumed by `record_run`.
 
 Future table value sets should be used only when the table's owner profile is
 active, a fixture explicitly seeds that optional table, or the owner document

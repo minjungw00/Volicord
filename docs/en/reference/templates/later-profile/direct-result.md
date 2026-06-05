@@ -11,7 +11,7 @@ Implementation tier: Future/diagnostic projections. Use as an optional compact d
 ## Source records
 
 - direct run record
-- consumed Write Authorization ref, when present for direct product writes
+- consumed Write Authorization ref when a compatible direct product-write Run consumed it; attempted invalid authorization refs only as violation/audit context
 - changed paths
 - out-of-bounds or unchanged scope summary
 - checks performed
@@ -137,7 +137,7 @@ updated_at: 2026-05-06T09:40:00+09:00
 
 ## Notes
 
-Direct work may close self-checked by default unless policy or the user requires detached verification or other gates. A consumed Write Authorization ref may be displayed, but the projection does not become the canonical authorization record.
+Direct work may close self-checked by default unless policy or the user requires detached verification or other gates. A consumed Write Authorization ref may be displayed, but the projection does not become the canonical authorization record. An attempted invalid authorization ref must be displayed only as violation/audit or validator-finding context, not as consumed authority or completion evidence.
 
 Direct Result should display self-checked, `detached_verified`, verification-waived, QA-waived, and risk-accepted-close states as separate lines. A waiver line points to the waiver ref or says it is not recorded; it does not become verification or QA. A risk-accepted close points to the residual-risk acceptance user judgment plus related blocker/evidence refs in MVP-1, and accepted Residual Risk refs only when that later profile is active, instead of being rendered as detached verified.
 

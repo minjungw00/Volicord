@@ -59,7 +59,7 @@
 | Change Unit | 제품 파일 쓰기를 위한 내부 scoped work unit입니다. 무엇이 바뀔 수 있는지 말하지만 그 자체로 쓰기를 허가하지는 않습니다. 사용자용 문서는 record 이름보다 `범위`나 `작업 조각`을 먼저 설명합니다. |
 | User Judgment | 진행, 쓰기, 작업 수락, 위험 처리, 닫기를 막는 특정 사용자 소유 판단을 기록하는 canonical 경로입니다. Public refs는 `record_kind=user_judgment`를 사용합니다. |
 | Decision Packet | 복잡한 `user_judgment`를 위한 full judgment presentation이며, 오래된 reference에서는 legacy label로도 남아 있습니다. 기본 사용자 표시 메커니즘도, 별도 authority family도 아닙니다. |
-| Write Authorization | Scope 및 기타 확인을 거친 뒤 특정 product-write attempt 하나에 대해 `prepare_write.decision=allowed`일 때만 생성하는 내부 협력형 하네스 기록입니다. Lifecycle status는 `active`, `consumed`, `expired`, `stale`, `revoked`입니다. `allowed`와 `blocked`는 prepare-write decision이지 durable lifecycle status가 아닙니다. OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단, 격리가 아닙니다. |
+| Write Authorization | Scope 및 기타 확인을 거친 뒤 특정 product-write attempt 하나에 대해 `dry_run=false`인 `prepare_write.decision=allowed`일 때만 생성하는 내부 협력형 하네스 기록입니다. Lifecycle status는 `active`, `consumed`, `expired`, `stale`, `revoked`입니다. `allowed`와 `blocked`는 prepare-write decision이지 durable lifecycle status가 아닙니다. OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단, 격리가 아닙니다. |
 | Evidence Manifest | 완료 조건이나 수용 기준을 근거 참조와 연결하는 자세한 근거 목록 기록입니다. |
 | Eval | 검증 결과 기록입니다. 대상, verdict, 수행한 확인, 검토한 근거, 독립성, 최신성, 막힘, artifact ref를 남깁니다. |
 | Projection | 하네스 상태에서 만든 파생 보기입니다. 상태 보기, 요약, 상태 카드, 보고서처럼 상태를 보여 주지만 상태를 대체하지 않습니다. |
@@ -791,7 +791,7 @@ Policy가 허용하는 gate 또는 policy requirement에 대한 명시적으로 
 
 한국어 사용자 표현: 쓰기 전 범위 확인. 내부 기록 표현: 쓰기 허가 기록.
 
-쓰기 허가 기록은 특정 write attempt에 대해 `prepare_write.decision=allowed`일 때만 만드는 내부 협력형 durable state record입니다. Replay, 최신성 감지, audit를 위한 compatibility basis로 사용된 affected-scope state version인 `basis_state_version`을 기록합니다. 서로 다른 compatible `prepare_write` request는 서로 다른 active authorization을 만들며, idempotent replay는 committed response를 반환할 수 있습니다. Committed implementation 또는 direct Run에 single-use이며, Change Unit scope, 민감 동작 승인, user judgment compatibility, evidence, verification, 수동 QA, 작업 수락, 잔여 위험 표시를 대체하지 않습니다. OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단, 격리가 아닙니다.
+쓰기 허가 기록은 특정 write attempt에 대해 `dry_run=false`인 `prepare_write.decision=allowed`일 때만 만드는 내부 협력형 durable state record입니다. Replay, 최신성 감지, audit를 위한 compatibility basis로 사용된 affected-scope state version인 `basis_state_version`을 기록합니다. 서로 다른 compatible `dry_run=false` `prepare_write` request는 서로 다른 active authorization을 만듭니다. Dry-run allowed response는 candidate일 뿐이고, idempotent replay는 original committed response를 반환합니다. Committed implementation 또는 direct Run에 single-use이며, Change Unit scope, 민감 동작 승인, user judgment compatibility, evidence, verification, 수동 QA, 작업 수락, 잔여 위험 표시를 대체하지 않습니다. OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단, 격리가 아닙니다.
 
 ### Write Authorization Lifecycle Events
 

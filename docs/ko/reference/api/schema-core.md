@@ -124,7 +124,7 @@ MVP-1 status/error condition이 적용될 때 `ToolError.message`는 [Errors](er
 
 내부 엔지니어링 점검과 MVP-1에서 `projection_jobs`는 envelope compatibility를 위해 present하며 보통 `[]`입니다. 이 field가 `projection_jobs` storage table을 요구하지 않습니다. Durable projection job은 운영 프로필 또는 profile-promoted storage입니다.
 
-`dry_run=true`는 validate하고 diagnostics 또는 transition plan을 반환하지만 record 변경, event append, artifact 등록, consumable Write Authorization 생성, later-profile projection job enqueue, idempotency replay row create/update를 하지 않습니다.
+`dry_run=true`는 validate하고 diagnostics 또는 transition plan을 반환하지만 current record 변경, event append, artifact 등록, consumable Write Authorization 생성, projection job enqueue, idempotency replay row create/update를 하지 않습니다.
 
 State-changing operation에서 `state_version`은 Core가 primary Task를 resolve하면 resulting Task State Version이고, 그렇지 않으면 Project State Version입니다. Read-only와 dry-run response는 primary read/affected scope의 current version을 반환합니다.
 

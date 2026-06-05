@@ -124,7 +124,7 @@ ToolError:
 
 In Engineering Checkpoint and MVP-1, `projection_jobs` is present for envelope compatibility and is normally `[]`. It does not require a `projection_jobs` storage table. Durable projection jobs are Operations Profile or profile-promoted storage.
 
-`dry_run=true` validates and returns diagnostics or a transition plan but does not mutate records, append events, register artifacts, create consumable Write Authorizations, enqueue later-profile projection jobs, or create/update idempotency replay rows.
+`dry_run=true` validates and returns diagnostics or a transition plan but does not mutate current records, append events, register artifacts, create consumable Write Authorizations, enqueue projection jobs, or create/update idempotency replay rows.
 
 For state-changing operations, `state_version` is the resulting Task State Version when Core resolves a primary Task; otherwise it is the Project State Version. Read-only and dry-run responses return the current version for the primary read/affected scope.
 
