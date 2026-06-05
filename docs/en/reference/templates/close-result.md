@@ -2,7 +2,7 @@
 
 ## Used when
 
-Use `close-result` when the user or agent needs a compact close-readiness, close-blocker, or close-outcome display. It keeps acceptance, residual risk, evidence, checks, and blockers separate.
+Use `close-result` when the user needs a compact close-readiness, close-blocker, or close-outcome display. It keeps acceptance, residual risk, evidence, checks, and blockers separate.
 
 Implementation tier: MVP-1 User Work Loop view. Detailed continuity, Journey, direct-result, release-handoff, or export reports are later/full-profile templates.
 
@@ -17,7 +17,7 @@ Boundary: this template displays close status. It does not close a Task, record 
 - final-acceptance user judgment refs when required
 - residual-risk visibility and residual-risk acceptance refs when relevant
 - design-quality routed actions when they affect close, limited to the active MVP blocking set unless a later profile is active
-- close blockers and smallest unblockers
+- close availability, close blockers, and smallest unblockers
 - source state version, freshness, and capability status
 
 ## Rendered sections
@@ -35,7 +35,7 @@ Boundary: this template displays close status. It does not close a Task, record 
 ## Full template
 
 ````text
-Close result: {ready|blocked|closed|not_requested}
+Close availability: {ready|blocked|closed|not_requested}
 Display only: Core close state and owner refs remain authoritative.
 
 Scope: {scope_summary}
@@ -45,10 +45,10 @@ Judgment and acceptance: final_acceptance={final_acceptance_status}; sensitive_a
 Design quality: {design_quality_close_action|none}
 Residual risk visibility: {residual_risk_visibility}
 Residual risk acceptance: {residual_risk_acceptance_status|not_applicable}
-Blockers: {close_blockers|none}
+Why close is unavailable: {close_blockers|none}
 Smallest unblocker: {smallest_unblocker|none}
 Close basis or reason: {close_reason|not_applicable}
-Next safe action: {next_safe_action|none}
+Agent can safely do next: {next_safe_action|none}
 Sources/freshness: state={source_state_version}; refs={source_refs}; rendered={updated_at}; freshness={freshness_state}
 ````
 

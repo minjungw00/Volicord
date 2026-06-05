@@ -6,7 +6,7 @@ Use `APR` after a later Approval profile has committed an Approval request recor
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: Assurance Profile reports. `APR` is used only after committed sensitive-action Approval support is active; it is not part of Engineering Checkpoint or the MVP-1 five-view set.
+Implementation tier: Assurance Profile reports. `APR` is used only after committed sensitive-action Approval support is active; it is not part of Engineering Checkpoint or the active MVP-1 compact output set.
 
 ## Source records
 

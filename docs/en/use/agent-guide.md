@@ -115,7 +115,7 @@ Use this budget:
 8. Report status in compact display groups.
 9. Attempt close only after evidence, verification/QA expectations, final acceptance, residual-risk visibility, and close blockers are visible.
 
-Keep always-on agent context short: current task summary, work shape, scope/non-goals, pending user judgments, active blockers, next safe actions, evidence gaps, close blockers, residual-risk summary, guarantee level or unavailable/capability condition, and source refs/freshness. Pull schemas, reference sections, templates, logs, artifacts, and history only when the next action needs them.
+Keep always-on agent context short: task id, state version, current task summary, work shape, active Change Unit, scope/non-goals, allowed paths/tools/commands, pending or active user judgments, active blockers, write authority summary, evidence summary and gaps, close blockers, residual-risk status, guarantee level or unavailable/capability condition, source refs/freshness, and one compact next safe action. Pull schemas, reference sections, templates, logs, artifacts, and history only when the next action needs them.
 
 ## 8. Pre-Write Scope Check
 
@@ -153,7 +153,9 @@ Do not call evidence sufficient unless the active owner path can establish suffi
 
 Status should answer the user's next question, not dump all Harness machinery.
 
-Use five compact display groups:
+Use the four user-facing compact outputs when a rendered shape is useful: `status-card`, `judgment-request`, `run-evidence-summary`, and `close-result`. Use `agent-context-packet` only as agent support context; do not present it as the user's status card or as authority.
+
+Within those user-facing outputs, keep these five status display groups compact:
 
 | Group | Show |
 |---|---|

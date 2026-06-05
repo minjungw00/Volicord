@@ -6,7 +6,7 @@ Use `JOURNEY-CARD` when a current-position card needs to show where the work is,
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: Future/diagnostic projections. Persisted Journey Card Markdown and Journey Spine-style output are not mandatory early scope; the five compact MVP views carry the early current-position context.
+Implementation tier: Future/diagnostic projections. Persisted Journey Card Markdown and Journey Spine-style output are not mandatory early scope; the active MVP-1 compact outputs carry the early current-position context.
 
 ## Source records
 

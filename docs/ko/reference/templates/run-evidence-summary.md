@@ -6,7 +6,7 @@
 
 구현 계층: MVP-1 사용자 작업 루프 보기입니다. 상세 [RUN-SUMMARY](later-profile/run-summary.md)와 [EVIDENCE-MANIFEST](later-profile/evidence-manifest.md) 보고서는 later/full-profile 템플릿입니다.
 
-경계: 이 템플릿은 Run과 근거 참조를 표시할 뿐입니다. 근거 자체, 전체 Evidence Manifest, 검증, 수동 QA, 최종 수락, 닫기 준비 상태 권한이 아닙니다.
+경계: 이 템플릿은 Run과 근거 참조를 표시할 뿐입니다. 근거 자체, 전체 Evidence Manifest, 검증, 수동 QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태 권한이 아닙니다.
 
 ## 기준 기록
 
@@ -16,7 +16,7 @@
 - ArtifactRefs, `evidence_ref` 참조, `redaction_state`, 무결성 또는 availability 메모
 - 근거가 뒷받침하는 수용 기준, 완료 주장, 닫기 관련 주장
 - 근거 공백, 오래된 입력, 아직 해소되지 않은 뒷받침 부족
-- 다음 근거 행동
+- 다음 안전한 근거 행동
 
 ## 렌더링 섹션
 
@@ -27,7 +27,7 @@
 - 뒷받침하는 주장
 - 공백 또는 오래된 근거
 - 가림 처리와 availability
-- 다음 근거 행동
+- 다음 안전한 근거 행동
 
 ## 전체 템플릿
 
@@ -44,7 +44,7 @@
 아티팩트 참조: {artifact_refs|none}; integrity={sha256_size_content_type_summary|none}; redaction={redaction_summary|none}
 뒷받침하는 것: {supported_claims_or_criteria|none}
 아직 빠졌거나 오래된 것: {evidence_gaps_or_stale_inputs|none}
-다음 근거 행동: {next_evidence_action|none}
+에이전트가 안전하게 할 수 있는 다음 행동: {next_evidence_action|none}
 출처/최신성: state={source_state_version}; refs={source_refs}; rendered={updated_at}; freshness={freshness_state}
 ````
 

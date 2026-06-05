@@ -6,7 +6,7 @@ Use `MANUAL-QA` when Manual QA is required, performed, waived, pending, or repre
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: Assurance Profile reports. Render only when a Manual QA record or active QA profile exists; it is not part of the MVP-1 five-view set.
+Implementation tier: Assurance Profile reports. Render only when a Manual QA record or active QA profile exists; it is not part of the active MVP-1 compact output set.
 
 ## Source records
 

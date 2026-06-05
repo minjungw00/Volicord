@@ -6,7 +6,7 @@ Use `MODULE-MAP` when module roles, public interfaces, internal complexity, depe
 
 Boundary: projection template only; it does not authorize runtime/server implementation or generated operational outputs. Shared phase and projection rules live in [Template Reference](README.md#used-when).
 
-Implementation tier: Future/diagnostic projections. Module Map output is a later stewardship/reference view, not required for the first implementation slice or MVP-1 five-view set.
+Implementation tier: Future/diagnostic projections. Module Map output is a later stewardship/reference view, not required for the first implementation slice or active MVP-1 compact output set.
 
 ## Source records
 

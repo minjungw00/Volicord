@@ -216,6 +216,17 @@ If a required artifact is missing, has `hash_mismatch`, or is missing integrity/
 
 If the agent says "done," it should also be able to say what changed, what supports that claim, what was checked, and what was not checked.
 
+For MVP-1, the compact outputs meant for you are:
+
+| Output | What it answers |
+|---|---|
+| `status-card` | Where are we now, what is blocked, what must I decide, and what can the agent safely do next? |
+| `judgment-request` | What exact decision belongs to me, what are the choices, and what happens if I defer? |
+| `run-evidence-summary` | What ran or changed, what evidence supports the claim, and what is still missing or stale? |
+| `close-result` | Is close available, why is it blocked or available, what risk remains, and what is the smallest unblocker? |
+
+`agent-context-packet` is for the agent, not for user-facing status. It should carry compact refs and allowed-action context for the next safe action, not replace the four user-readable outputs.
+
 ## 10. What to confirm before closing work
 
 Before closing larger work, ask:

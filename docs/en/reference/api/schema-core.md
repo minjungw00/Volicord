@@ -65,7 +65,7 @@ Read-only resources use the three-part context model. `harness://status/card` is
 | `harness://task/{task_id}/user-judgments` | Active, resolved, deferred, and blocked `user_judgment` summaries. |
 | `harness://task/{task_id}/judgment-context` | Minimum current context needed for a user judgment. |
 
-The MVP-1 evidence and close-readiness path can also be displayed through the exact compact view set `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`, or through `harness.status`, `harness://task/{task_id}/summary`, or `harness://status/card` when the output is derived from current Core state and refs. Exact compact-view behavior and template bodies stay with [Projection And Templates Reference](../projection-and-templates.md) and [Template Reference](../templates/README.md).
+The MVP-1 evidence and close-readiness path can also be displayed through the exact user-facing compact outputs `status-card`, `judgment-request`, `run-evidence-summary`, and `close-result`, or through `harness.status`, `harness://task/{task_id}/summary`, or `harness://status/card` when the output is derived from current Core state and refs. Agent surfaces may derive the separate agent-facing `agent-context-packet` from current Core state and refs. Exact compact-view behavior and template bodies stay with [Projection And Templates Reference](../projection-and-templates.md) and [Template Reference](../templates/README.md).
 
 ### Later resources
 
@@ -174,7 +174,7 @@ StateSummary:
 | Support class | Values | Requirement |
 |---|---|---|
 | Core status output | none required | Engineering Checkpoint can expose status/blocker output without persisted Markdown projection jobs. |
-| MVP-1 compact views | No persisted `ProjectionKind` is required. Exact compact-view names and behavior are owned by [Projection And Templates Reference](../projection-and-templates.md#mvp-1-view-set) and [Template Reference](../templates/README.md#mvp-1-template-set). | These views may satisfy MVP-1 without full template rendering. `TASK` and `DIRECT-RESULT` are later/full-profile or compatibility projections. |
+| MVP-1 compact outputs | No persisted `ProjectionKind` is required. Exact audience-split compact-output names and behavior are owned by [Projection And Templates Reference](../projection-and-templates.md#mvp-1-view-set) and [Template Reference](../templates/README.md#mvp-1-template-set). | The four user-facing outputs and one agent-facing packet may satisfy MVP-1 without full template rendering. `TASK` and `DIRECT-RESULT` are later/full-profile or compatibility projections. |
 | Assurance reports | `APR`, `MANUAL-QA` | Only when the matching approval, Manual QA, waiver, verification, or assurance profile is active. |
 | Operations/export reports | `EXPORT` | Only when export, release-handoff, or operations report profile is active. |
 | Future/diagnostic projections | `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `DEC`, `DESIGN`, `JOURNEY-CARD` | Enable only when an owner-promoted later profile is in scope. |

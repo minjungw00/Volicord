@@ -37,13 +37,10 @@ The active MVP-1 method set is exactly:
 
 There is no active MVP-1 `harness.next` method. Next safe actions are returned through `harness.status.next_actions`.
 
-The active compact view set is exactly:
+The active compact output set is split by audience:
 
-- `status-card`
-- `agent-context-packet`
-- `judgment-request`
-- `run-evidence-summary`
-- `close-result`
+- user-facing: `status-card`, `judgment-request`, `run-evidence-summary`, `close-result`
+- agent-facing: `agent-context-packet`
 
 Detailed reports such as persisted Journey Card, full Evidence Manifest, Eval report, Manual QA report, TDD Trace, Module Map, Interface Contract, and Export report are later/profile material unless an owner explicitly promotes a narrow non-required display.
 
@@ -67,7 +64,7 @@ MVP-1 includes:
 - close blocker summary when required evidence is insufficient, required user judgment is unresolved or blocked, required final acceptance is missing, or residual risk is not visible/accepted as required
 - residual-risk visibility before acceptance or close when close-relevant risk exists
 - design-quality findings routed through the small active MVP blocking set: Autonomy Boundary exceeded, unresolved user judgment, missing active scope, missing required evidence, stale context affecting write/close, and surface capability insufficient for a claimed guarantee
-- compact Core-derived views for the MVP-1 path, using exactly the set owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set)
+- compact Core-derived outputs for the MVP-1 path: four user-facing outputs plus one agent-facing packet, as owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set)
 - honest MCP/Core unavailable behavior: no fabricated authority state when Core cannot be reached
 
 ## MVP-1 excluded
@@ -155,7 +152,7 @@ These decisions are resolved in the documentation baseline but still require mai
 | Judgment naming | Use `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_kind`, `presentation`, and `display_label`. | Compatibility aliases must not create extra authority paths. |
 | Next action | Use `harness.status.next_actions` for MVP-1 next-safe-action output. | A separate `harness.next` method stays later/compatibility unless promoted. |
 | Reference surface scope | Use one reference `capability_profile` for `surface_id=reference-local-mcp`. | Broad connector ecosystem, hosted connector registry, and cross-surface orchestration stay later/profile unless explicitly promoted. |
-| MVP-1 compact views | Use exactly `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`, as owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set). | These views do not authorize writes, satisfy evidence, record acceptance, accept risk, close tasks, or become canonical state. |
+| MVP-1 compact outputs | Use exactly four user-facing outputs, `status-card`, `judgment-request`, `run-evidence-summary`, and `close-result`, plus one agent-facing packet, `agent-context-packet`, as owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set). | These outputs do not authorize writes, satisfy evidence, record acceptance, accept risk, close tasks, or become canonical state. |
 | Minimal storage boundary | Keep MVP-1 storage to the minimal active owner records needed for the user work loop. | Later-profile tables/records stay out unless owner docs promote them. |
 | Acceptance boundaries | Sensitive action approval, final acceptance, and residual-risk acceptance stay separate. | Final acceptance is not Approval, and residual-risk acceptance is not final acceptance. |
 | Minimal evidence and close contract | Use Core-owned `evidence_summary`; successful close requires sufficient required evidence, resolved required judgment, recorded required final acceptance, visible close-relevant residual risk, and explicit residual-risk acceptance for accepted-risk close. | Full Evidence Manifest, detached Eval, full Manual QA, and rich residual-risk lifecycle stay later/profile unless activated by owner scope, policy, or profile. |
@@ -201,6 +198,6 @@ MVP-1 User Work Loop can be considered complete only when a user can observe:
 - reference `capability_profile` limits visible when a claim depends on unsupported behavior
 - close held when required evidence is not `sufficient`, required user judgment is unresolved or blocked, required final acceptance is missing, or residual risk is not visible/accepted as required
 - no fabricated authority when MCP/Core is unavailable
-- compact views derived from Core records, with stale or failed freshness visible where applicable
+- four user-facing compact outputs and one agent-facing packet derived from Core records, with stale or failed freshness visible where applicable
 
 Passing this checklist does not accept Assurance Profile, Operations Profile, Roadmap scope, or runtime conformance suites.

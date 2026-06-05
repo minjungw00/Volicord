@@ -2,7 +2,7 @@
 
 ## 사용 시점
 
-사용자나 에이전트가 닫기 준비 상태, 닫기 막힘, 또는 닫기 결과를 간결하게 봐야 할 때 `close-result`를 사용합니다. 최종 수락, 잔여 위험, 근거, 확인, 막힘을 서로 분리해 보여줍니다.
+사용자가 닫기 준비 상태, 닫기 막힘, 또는 닫기 결과를 간결하게 봐야 할 때 `close-result`를 사용합니다. 최종 수락, 잔여 위험, 근거, 확인, 막힘을 서로 분리해 보여줍니다.
 
 구현 계층: MVP-1 사용자 작업 루프 보기입니다. 상세 continuity, Journey, direct-result, release-handoff, export 보고서는 later/full-profile 템플릿입니다.
 
@@ -17,7 +17,7 @@
 - 필요한 경우 최종 수락 user judgment 참조
 - 관련 있을 때 잔여 위험 표시와 잔여 위험 수락 참조
 - close에 영향을 줄 때 design-quality routed action. Later profile이 active가 아니면 활성 MVP 차단 집합으로 제한합니다.
-- 닫기 막힘과 가장 작은 해소 방법
+- 닫기 가능 여부, 닫기 막힘, 가장 작은 해소 방법
 - source state version, 최신성, capability 상태
 
 ## 렌더링 섹션
@@ -35,7 +35,7 @@
 ## 전체 템플릿
 
 ````text
-닫기 결과: {ready|blocked|closed|not_requested}
+닫기 가능 여부: {ready|blocked|closed|not_requested}
 표시 전용: Core close state와 owner ref가 기준입니다.
 
 범위: {scope_summary}
@@ -45,10 +45,10 @@
 설계 품질: {design_quality_close_action|none}
 잔여 위험 표시: {residual_risk_visibility}
 잔여 위험 수락: {residual_risk_acceptance_status|not_applicable}
-막힘: {close_blockers|none}
+닫기 불가 이유: {close_blockers|none}
 가장 작은 해소 방법: {smallest_unblocker|none}
 닫기 근거 또는 이유: {close_reason|not_applicable}
-다음 안전한 행동: {next_safe_action|none}
+에이전트가 안전하게 할 수 있는 다음 행동: {next_safe_action|none}
 출처/최신성: state={source_state_version}; refs={source_refs}; rendered={updated_at}; freshness={freshness_state}
 ````
 

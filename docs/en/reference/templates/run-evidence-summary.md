@@ -6,7 +6,7 @@ Use `run-evidence-summary` after advice, a run, a check, or a change needs a min
 
 Implementation tier: MVP-1 User Work Loop view. Detailed [RUN-SUMMARY](later-profile/run-summary.md) and [EVIDENCE-MANIFEST](later-profile/evidence-manifest.md) reports are later/full-profile templates.
 
-Boundary: this template displays Run and evidence refs only. It is not the evidence itself, not a full Evidence Manifest, not verification, not Manual QA, not final acceptance, and not close readiness authority.
+Boundary: this template displays Run and evidence refs only. It is not the evidence itself, not a full Evidence Manifest, not verification, not Manual QA, not final acceptance, not residual-risk acceptance, and not close readiness authority.
 
 ## Source records
 
@@ -16,7 +16,7 @@ Boundary: this template displays Run and evidence refs only. It is not the evide
 - ArtifactRefs, `evidence_ref` refs, `redaction_state`, and integrity or availability notes
 - acceptance criteria, completion claims, or close-relevant claims supported by the evidence
 - evidence gaps, stale inputs, or unresolved support
-- next evidence action
+- next safe evidence action
 
 ## Rendered sections
 
@@ -44,7 +44,7 @@ Evidence refs: {evidence_refs|none}
 Artifact refs: {artifact_refs|none}; integrity={sha256_size_content_type_summary|none}; redaction={redaction_summary|none}
 Supports: {supported_claims_or_criteria|none}
 Still missing or stale: {evidence_gaps_or_stale_inputs|none}
-Next evidence action: {next_evidence_action|none}
+Agent can safely do next: {next_evidence_action|none}
 Sources/freshness: state={source_state_version}; refs={source_refs}; rendered={updated_at}; freshness={freshness_state}
 ````
 

@@ -12,7 +12,8 @@ MVP-1에서 사용자가 현재 상태를 짧게 읽어야 할 때 `status-card`
 
 - 현재 Task 상태, 작업 모양, lifecycle, 다음 안전한 행동
 - 관련 있을 때 범위, 하지 않을 일, active Change Unit 요약, 멈춤 조건
-- 대기 중인 `user_judgment` 참조와 간결한 판단 요약
+- 대기 중인 `user_judgment` 참조, 사용자가 결정해야 할 것, 간결한 판단 요약
+- 활성 막힘과 막힌 경우 그 이유
 - Run 참조, `evidence_ref` 참조, ArtifactRefs, `redaction_state`, 근거 공백
 - 닫기 막힘, 최종 수락 필요 여부/상태, 잔여 위험 표시, 필요한 경우 잔여 위험 수락 참조
 - 관련 있을 때 design-quality routed action. Full policy catalog가 아니라 활성 MVP impact class를 사용합니다.
@@ -24,6 +25,7 @@ MVP-1에서 사용자가 현재 상태를 짧게 읽어야 할 때 `status-card`
 - 작업
 - 범위
 - 판단
+- 막힌 이유
 - 근거
 - 확인 또는 검증
 - 닫기
@@ -39,14 +41,15 @@ MVP-1에서 사용자가 현재 상태를 짧게 읽어야 할 때 `status-card`
 작업: {work_shape}. {current_task_summary}
 범위: {scope_summary}
 범위 밖: {non_goals|none}
-판단: {pending_user_judgments|none}
+막힌 이유: {active_blocked_reason|none}
+사용자가 결정할 것: {pending_user_judgments|none}
 근거: status={evidence_summary.status}; summary={known_evidence_summary|none}
 근거 공백: {evidence_gaps|none}
 확인 또는 검증: {check_or_verification_summary|none}
-닫기: {close_readiness_summary}; 막힘={close_blockers|none}
+닫기 가능 여부: {close_readiness_summary}; 닫기 불가 이유={close_blockers|none}
 설계 품질: {design_quality_routed_action|none}
-잔여 위험: {residual_risk_visibility|none}
-다음 안전한 행동: {next_safe_action}
+남은 위험: {residual_risk_visibility|none}
+에이전트가 안전하게 할 수 있는 다음 행동: {next_safe_action}
 보장 수준: {guarantee_level_or_unavailable}; {guarantee_note}
 출처/최신성: state={source_state_version}; refs={source_refs}; rendered={updated_at}; freshness={freshness_state}
 ````

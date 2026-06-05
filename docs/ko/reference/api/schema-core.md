@@ -65,7 +65,7 @@ Read-only resource도 세 부분 맥락 모델을 따릅니다. `harness://statu
 | `harness://task/{task_id}/user-judgments` | Active, resolved, deferred, blocked `user_judgment` summary. |
 | `harness://task/{task_id}/judgment-context` | 사용자 판단에 필요한 minimum current context. |
 
-MVP-1 evidence와 close-readiness path는 output이 current Core state와 refs에서 파생된다면 정확한 compact view set인 `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, `close-result` 또는 `harness.status`, `harness://task/{task_id}/summary`, `harness://status/card`로 표시할 수 있습니다. 정확한 compact view 동작과 template body는 [Projection과 Template 참조](../projection-and-templates.md)와 [Template 참조](../templates/README.md)에 남습니다.
+MVP-1 evidence와 close-readiness path는 output이 current Core state와 refs에서 파생된다면 정확한 사용자용 작은 출력인 `status-card`, `judgment-request`, `run-evidence-summary`, `close-result` 또는 `harness.status`, `harness://task/{task_id}/summary`, `harness://status/card`로 표시할 수 있습니다. Agent 접점은 current Core state와 refs에서 별도의 에이전트용 `agent-context-packet`을 만들 수 있습니다. 정확한 compact view 동작과 template body는 [Projection과 Template 참조](../projection-and-templates.md)와 [Template 참조](../templates/README.md)에 남습니다.
 
 ### Later resources
 
@@ -174,7 +174,7 @@ StateSummary:
 | Support class | Values | Requirement |
 |---|---|---|
 | Core status output | none required | 내부 엔지니어링 점검은 persisted Markdown projection job 없이 status/blocker output을 노출할 수 있습니다. |
-| MVP-1의 작은 보기 | Persisted `ProjectionKind`는 필요하지 않습니다. 정확한 compact view name과 동작은 [Projection과 Template 참조](../projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../templates/README.md#mvp-1-템플릿-세트)가 담당합니다. | 이 보기들은 full template rendering 없이 MVP-1을 충족할 수 있습니다. `TASK`와 `DIRECT-RESULT`는 later/full-profile 또는 compatibility projection입니다. |
+| MVP-1 작은 출력 | Persisted `ProjectionKind`는 필요하지 않습니다. 독자별 compact output name과 동작은 [Projection과 Template 참조](../projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../templates/README.md#mvp-1-템플릿-세트)가 담당합니다. | 네 가지 사용자용 출력과 에이전트용 패킷 하나는 full template rendering 없이 MVP-1을 충족할 수 있습니다. `TASK`와 `DIRECT-RESULT`는 later/full-profile 또는 compatibility projection입니다. |
 | Assurance reports | `APR`, `MANUAL-QA` | Matching approval, Manual QA, waiver, verification, assurance profile이 active일 때만 사용합니다. |
 | Operations/export reports | `EXPORT` | Export, release-handoff, operations report profile이 active일 때만 사용합니다. |
 | Future/diagnostic projections | `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `TDD-TRACE`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `DEC`, `DESIGN`, `JOURNEY-CARD` | Owner-promoted later profile이 scope에 있을 때만 enable합니다. |

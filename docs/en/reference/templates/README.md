@@ -20,7 +20,8 @@ Owner boundary: this directory owns rendered template bodies and display card sh
 | Tier | Template scope | Rule |
 |---|---|---|
 | Engineering Checkpoint status | Plain structured status/blocker output; optional [status-card](status-card.md) rendering | No projection job or full renderer is required. |
-| MVP-1 User Work Loop views | [status-card](status-card.md), [agent-context-packet](agent-context-packet.md), [judgment-request](judgment-request.md), [run-evidence-summary](run-evidence-summary.md), [close-result](close-result.md) | This is exactly the complete MVP-1 template/view set. Each view is derived from Core state and refs. |
+| MVP-1 user-facing compact outputs | [status-card](status-card.md), [judgment-request](judgment-request.md), [run-evidence-summary](run-evidence-summary.md), [close-result](close-result.md) | This is exactly the complete MVP-1 user-facing output set. Each output is derived from Core state and refs. |
+| MVP-1 agent-facing compact output | [agent-context-packet](agent-context-packet.md) | This is the only active MVP-1 agent-facing packet. It carries compact Core-derived refs for the next safe action, not user prose. |
 | Later/full-profile templates | [later-profile/](later-profile/README.md) | Detailed assurance, diagnostic, operations, export, stewardship, and full-report templates stay later-profile unless an owner profile explicitly promotes them. |
 
 ## Template implementation classes
@@ -35,17 +36,17 @@ Owner boundary: this directory owns rendered template bodies and display card sh
 
 ## MVP-1 Template Set
 
-MVP-1 templates/views are limited exactly to:
+MVP-1 active compact outputs are limited exactly to these audience-specific shapes:
 
-- [status-card](status-card.md): short user-visible current state.
-- [agent-context-packet](agent-context-packet.md): compact context for the next safe action.
-- [judgment-request](judgment-request.md): user-owned judgment request.
-- [run-evidence-summary](run-evidence-summary.md): minimal run and evidence summary.
-- [close-result](close-result.md): close readiness, acceptance, residual risk, and blockers.
+- User-facing [status-card](status-card.md): short current state.
+- User-facing [judgment-request](judgment-request.md): user-owned judgment request.
+- User-facing [run-evidence-summary](run-evidence-summary.md): minimal run and evidence summary.
+- User-facing [close-result](close-result.md): close readiness, acceptance, residual risk, and blockers.
+- Agent-facing [agent-context-packet](agent-context-packet.md): compact Core-derived refs for the next safe action.
 
-These five views can be returned as structured payloads, compact text, cards, or Markdown snippets depending on the surface. MVP-1 does not require persisted Markdown projection jobs, a full renderer, or every detailed report template.
+The four user-facing outputs can be returned as compact text, cards, Markdown snippets, or structured payloads depending on the surface. The agent-facing packet can be structured or prompt-sized text. MVP-1 does not require persisted Markdown projection jobs, a full renderer, or every detailed report template.
 
-MVP-1 views may show design-quality findings only through the routed action owned by [Design Quality Policies](../design-quality-policies.md#impact-classes-and-allowed-routes): block write, block close, ask one focused user judgment, request evidence, mark residual risk, show advisory next action, or no action. Do not render the full policy catalog as a default close checklist.
+MVP-1 outputs may show design-quality findings only through the routed action owned by [Design Quality Policies](../design-quality-policies.md#impact-classes-and-allowed-routes): block write, block close, ask one focused user judgment, request evidence, mark residual risk, show advisory next action, or no action. Do not render the full policy catalog as a default close checklist.
 
 ## Later/Full-Profile Templates
 

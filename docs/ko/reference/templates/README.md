@@ -20,7 +20,8 @@ Owner 경계: 이 디렉터리는 렌더링된 템플릿 본문과 표시 카드
 | 계층 | 템플릿 범위 | 규칙 |
 |---|---|---|
 | 내부 엔지니어링 점검 상태 | Plain structured status/blocker output. 선택적으로 [상태 카드](status-card.md)를 렌더링할 수 있습니다. | Projection job이나 full renderer가 필요하지 않습니다. |
-| MVP-1 사용자 작업 루프 보기 | [상태 카드](status-card.md), [에이전트 맥락 패킷](agent-context-packet.md), [판단 요청](judgment-request.md), [실행/근거 요약](run-evidence-summary.md), [닫기 결과](close-result.md) | 이것이 정확한 전체 MVP-1 템플릿/보기 세트입니다. 각 보기는 Core 상태와 참조에서 파생됩니다. |
+| MVP-1 사용자용 작은 출력 | [상태 카드](status-card.md), [판단 요청](judgment-request.md), [실행/근거 요약](run-evidence-summary.md), [닫기 결과](close-result.md) | 이것이 정확한 전체 MVP-1 사용자용 출력 세트입니다. 각 출력은 Core 상태와 참조에서 파생됩니다. |
+| MVP-1 에이전트용 작은 출력 | [에이전트 맥락 패킷](agent-context-packet.md) | 활성 MVP-1의 유일한 에이전트용 패킷입니다. 사용자용 문장이 아니라 다음 안전한 행동을 위한 Core 기반 참조를 작게 담습니다. |
 | Later/full-profile 템플릿 | [later-profile/](later-profile/README.md) | 상세 보증, 진단, 운영, export, stewardship, 전체 보고서 템플릿은 owner profile이 명시적으로 승격하기 전까지 later-profile로 남습니다. |
 
 ## 템플릿 구현 계층
@@ -35,17 +36,17 @@ Owner 경계: 이 디렉터리는 렌더링된 템플릿 본문과 표시 카드
 
 ## MVP-1 템플릿 세트
 
-MVP-1 템플릿/보기는 정확히 다음 다섯 개로 제한됩니다.
+MVP-1 활성 작은 출력은 독자별로 정확히 아래 형태로 제한됩니다.
 
-- [상태 카드](status-card.md): 사용자가 보는 짧은 현재 상태.
-- [에이전트 맥락 패킷](agent-context-packet.md): 다음 안전한 행동을 위한 작은 맥락.
-- [판단 요청](judgment-request.md): 사용자 소유 판단 요청.
-- [실행/근거 요약](run-evidence-summary.md): 최소 실행과 근거 요약.
-- [닫기 결과](close-result.md): 닫기 준비 상태, 최종 수락, 잔여 위험, 막힘.
+- 사용자용 [상태 카드](status-card.md): 짧은 현재 상태.
+- 사용자용 [판단 요청](judgment-request.md): 사용자 소유 판단 요청.
+- 사용자용 [실행/근거 요약](run-evidence-summary.md): 최소 실행과 근거 요약.
+- 사용자용 [닫기 결과](close-result.md): 닫기 준비 상태, 최종 수락, 잔여 위험, 막힘.
+- 에이전트용 [에이전트 맥락 패킷](agent-context-packet.md): 다음 안전한 행동을 위한 Core 기반 참조.
 
-이 다섯 보기는 접점에 따라 structured payload, 짧은 text, card, Markdown snippet으로 반환될 수 있습니다. MVP-1은 persisted Markdown projection job, full renderer, 모든 상세 report template을 요구하지 않습니다.
+네 가지 사용자용 출력은 접점에 따라 짧은 텍스트, 카드, Markdown snippet, structured payload로 반환될 수 있습니다. 에이전트용 패킷은 structured payload 또는 prompt 크기의 텍스트가 될 수 있습니다. MVP-1은 persisted Markdown projection job, full renderer, 모든 상세 report template을 요구하지 않습니다.
 
-MVP-1 보기에는 [설계 품질 정책](../design-quality-policies.md#영향-분류와-허용-라우트)이 소유하는 routed action을 통해서만 design-quality finding을 표시할 수 있습니다. Action은 block write, block close, ask one focused user judgment, request evidence, mark residual risk, show advisory next action, no action 중 하나입니다. Full policy catalog를 기본 close checklist로 렌더링하지 않습니다.
+MVP-1 출력에는 [설계 품질 정책](../design-quality-policies.md#영향-분류와-허용-라우트)이 소유하는 routed action을 통해서만 design-quality finding을 표시할 수 있습니다. Action은 block write, block close, ask one focused user judgment, request evidence, mark residual risk, show advisory next action, no action 중 하나입니다. Full policy catalog를 기본 close checklist로 렌더링하지 않습니다.
 
 ## Later/Full-Profile 템플릿
 

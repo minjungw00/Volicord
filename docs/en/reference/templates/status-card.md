@@ -12,7 +12,8 @@ Boundary: this template is rendered display only. It is not Core state, not evid
 
 - current Task state, work shape, lifecycle, and next safe action
 - scope, non-goals, active Change Unit summary, and stop conditions when relevant
-- pending `user_judgment` refs and compact judgment summaries
+- pending `user_judgment` refs, what the user must decide, and compact judgment summaries
+- active blockers and why work is blocked when blocked
 - run refs, `evidence_ref` refs, ArtifactRefs, `redaction_state`, and evidence gaps
 - close blockers, final-acceptance need/status, residual-risk visibility, and residual-risk acceptance refs when relevant
 - design-quality routed action when relevant, using the active MVP impact classes rather than the full policy catalog
@@ -24,6 +25,7 @@ Boundary: this template is rendered display only. It is not Core state, not evid
 - work
 - scope
 - judgment
+- blocked reason
 - evidence
 - check or verification
 - close
@@ -39,14 +41,15 @@ Display only: derived from Core state and refs; not Core state or write authorit
 Work: {work_shape}. {current_task_summary}
 Scope: {scope_summary}
 Out of scope: {non_goals|none}
-Judgment: {pending_user_judgments|none}
+Blocked because: {active_blocked_reason|none}
+User must decide: {pending_user_judgments|none}
 Evidence: status={evidence_summary.status}; summary={known_evidence_summary|none}
 Evidence gaps: {evidence_gaps|none}
 Check or verification: {check_or_verification_summary|none}
-Close: {close_readiness_summary}; blockers={close_blockers|none}
+Close availability: {close_readiness_summary}; why unavailable={close_blockers|none}
 Design quality: {design_quality_routed_action|none}
-Residual risk: {residual_risk_visibility|none}
-Next safe action: {next_safe_action}
+Remaining risk: {residual_risk_visibility|none}
+Agent can safely do next: {next_safe_action}
 Guarantee: {guarantee_level_or_unavailable}; {guarantee_note}
 Sources/freshness: state={source_state_version}; refs={source_refs}; rendered={updated_at}; freshness={freshness_state}
 ````

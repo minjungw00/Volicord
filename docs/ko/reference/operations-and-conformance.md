@@ -376,7 +376,7 @@ MVP-1 사용자 작업 루프 계획에서 user judgment visibility는 status/ne
 
 Standalone full-format judgment, design, export, journey, detailed run, detailed evidence, Eval, TDD trace, module map, interface-contract projection을 위한 dedicated refresh target은 기능이 켜져 있을 때만 사용하는 profile-gated Future/diagnostic projections 또는 Operations/export reports이며, 커널 스모크(Kernel Smoke) 필수 대상이 아닙니다.
 
-Projection support는 source-backed입니다. MVP-1은 [Projection과 Template 참조](projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](templates/README.md#mvp-1-템플릿-세트)가 소유한 compact view set으로 persisted projection support 없이 사용자 읽기용 output을 충족할 수 있습니다. Later/full-profile, assurance, operations/export, diagnostic report kind는 owner profile이 승격하지 않는 한 projection/template owner에 남습니다. Projection refresh는 template을 채우기 위해 state를 만들지 말고 source record가 없음을 unavailable 또는 not applicable로 보고해야 합니다.
+Projection support는 source-backed입니다. MVP-1은 [Projection과 Template 참조](projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](templates/README.md#mvp-1-템플릿-세트)가 소유한 네 가지 사용자용 작은 출력으로 persisted projection support 없이 사용자 읽기용 output을 충족할 수 있습니다. 에이전트용 맥락은 별도 `agent-context-packet`을 사용합니다. Later/full-profile, assurance, operations/export, diagnostic report kind는 owner profile이 승격하지 않는 한 projection/template owner에 남습니다. Projection refresh는 template을 채우기 위해 state를 만들지 말고 source record가 없음을 unavailable 또는 not applicable로 보고해야 합니다.
 
 Projection refresh status 예시:
 

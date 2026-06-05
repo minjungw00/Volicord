@@ -226,7 +226,7 @@ Stage/profile support:
 | Stage/profile | 표현할 수 있는 것 |
 |---|---|
 | 내부 엔지니어링 점검 / Kernel Smoke | 좁은 internal 권한 루프입니다. Local project registration, 활성 Task, 활성 Change Unit 또는 scoped work boundary, `prepare_write`, single-use Write Authorization 하나, compatible Run 하나, artifact/evidence ref 하나, structured status/blocker response 하나, 좁은 close-blocker check가 범위입니다. Verification, 수동 QA, 최종 수락, residual-risk acceptance, full Evidence Manifest, profile별 full-format user judgment presentation은 named smoke path가 명시적으로 포함하지 않는 한 내부 엔지니어링 점검 requirement가 아닙니다. |
-| MVP-1 사용자 작업 루프 | Scope, pending user judgment, evidence summary, close readiness, required final acceptance, close-relevant risk가 있을 때 잔여 위험 표시를 사용자에게 보여줍니다. MVP-1이 detached verification이 항상 required라고 암시하면 안 됩니다. |
+| MVP-1 사용자 작업 루프 | 현재 상태, 범위, 대기 중인 사용자 판단, 근거 요약, 닫기 준비 상태, 필요한 최종 수락, 닫기 관련 위험이 있을 때의 잔여 위험 표시, 막힌 이유, 에이전트가 안전하게 할 수 있는 다음 행동을 사용자용 작은 출력으로 보여줍니다. 에이전트 맥락은 별도의 작은 참조 패킷입니다. MVP-1이 detached verification이 항상 required라고 암시하면 안 됩니다. |
 | Later assurance and operations profiles | Detached verification independence, richer Manual QA, stewardship, feedback-loop/TDD policy, projection/reconcile operations, export/recover, handoff behavior입니다. Active profile이나 owner doc이 켰을 때만 blocker가 됩니다. |
 
 활성 MVP-1 근거는 full Evidence Manifest report prose가 아니라 Core가 소유한 `evidence_summary`를 사용합니다. 최소 summary state는 `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked`입니다. Item 또는 criterion 단위 coverage가 필요하면 최소 coverage state는 `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, `blocked`입니다.

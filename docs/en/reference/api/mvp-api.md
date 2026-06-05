@@ -16,7 +16,7 @@ This API does not claim OS-level blocking, arbitrary-tool sandboxing, tamper-pro
 
 Active MVP-1 uses one registered reference `capability_profile` for `surface_id=reference-local-mcp`. The profile is routing and capability context, not write authority and not a replacement for Core gates. It affects validator results, blocked reasons, fallback behavior, and guarantee display. If a requested write or guarantee claim depends on an unsupported profile field, the API must lower the display, return `CAPABILITY_INSUFFICIENT` or a structured blocker, and avoid creating write authority.
 
-Status output follows the three-part model: `harness.status.status_card` is the user status card, agent surfaces may derive an agent context packet from current status and refs, and Core state is the only operational source of truth. Status cards, next-action text, rendered templates, and projections are read-only views; stale views are not authority. The active compact view set is exactly `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`; detailed report surfaces stay later/profile.
+Status output follows the three-part model: `harness.status.status_card` is the user status card, agent surfaces may derive an `agent-context-packet` from current status and refs, and Core state is the only operational source of truth. Status cards, next-action text, rendered templates, agent packets, and projections are read-only views; stale views are not authority. The active user-facing compact outputs are exactly `status-card`, `judgment-request`, `run-evidence-summary`, and `close-result`. The active agent-facing compact output is exactly `agent-context-packet`. Detailed report surfaces stay later/profile.
 
 ## MVP-1 method set
 

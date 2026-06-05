@@ -91,9 +91,9 @@ Evidence links claims to registered artifact refs or owner records. Engineering 
 
 Owner docs: [Core Model Reference: Evidence Manifest](../reference/core-model.md#evidence-manifest), [API Schema Core: ArtifactRef](../reference/api/schema-core.md#artifactref), [Storage](../reference/storage.md).
 
-### 8. Evidence -> status and compact views
+### 8. Evidence -> status and compact outputs
 
-Status and compact views read Core state and artifact refs. They help users see scope, pending judgments, evidence gaps, blockers, next safe action, acceptance, and residual risk. They do not authorize writes, satisfy evidence, or close work.
+Status and compact outputs read Core state and artifact refs. The user-facing outputs help users see scope, pending judgments, evidence gaps, blockers, next safe action, acceptance, and residual risk. The agent-facing packet keeps next-action refs compact. These outputs do not authorize writes, satisfy evidence, or close work.
 
 Owner docs: [`harness.status`](../reference/api/mvp-api.md#harnessstatus), [API Schema Core](../reference/api/schema-core.md), [Projection And Templates Reference](../reference/projection-and-templates.md).
 
@@ -108,7 +108,7 @@ Owner docs: [Core Model Reference: `close_task`](../reference/core-model.md#clos
 | Stage | Walkthrough portion in scope |
 |---|---|
 | Engineering Checkpoint | Project state, one registered reference `capability_profile`, active Task, active Change Unit/scope boundary, `prepare_write`, Write Authorization, `record_run`, one artifact/evidence ref, status/blocker output, and narrow close-blocker check. |
-| MVP-1 User Work Loop | Engineering Checkpoint plus ordinary-language start/resume, work-shape classification, minimal user judgment, evidence summary, close result/blocker display, next safe action through `harness.status.next_actions`, residual-risk visibility, honest reference-surface guarantee display, and the five compact views. |
+| MVP-1 User Work Loop | Engineering Checkpoint plus ordinary-language start/resume, work-shape classification, minimal user judgment, evidence summary, close result/blocker display, next safe action through `harness.status.next_actions`, residual-risk visibility, honest reference-surface guarantee display, four user-facing compact outputs, and one agent-facing context packet. |
 | Assurance Profile | Verification, Manual QA, richer final acceptance and residual-risk behavior, stewardship, TDD, feedback-loop, and context-hygiene hardening. |
 | Operations Profile | Doctor/readiness, recover/export, artifact integrity, release handoff, projection/reconcile operations, and conformance runner after suites exist. |
 | Roadmap | Dashboards, hosted UI, broad connectors, hosted connector registry, automation, metrics, team workflow, cross-surface orchestration, parallel orchestration, and other promoted future candidates. |
