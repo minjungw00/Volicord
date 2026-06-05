@@ -148,20 +148,20 @@ ProjectionJobRef:
 
 StateSummary:
   mode: advisor | direct | work
-  lifecycle_phase: intake | shaping | ready | executing | verifying | qa | waiting_user | blocked | completed | cancelled
+  lifecycle_phase: intake | shaping | ready | executing | waiting_user | blocked | completed | cancelled
   result: none | advice_only | passed | failed | cancelled
-  close_reason: none | completed_verified | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
-  assurance_level: none | self_checked | detached_verified
+  close_reason: none | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
+  assurance_level: none | self_checked
   gates:
     scope_gate: not_required | required | pending | passed | failed | blocked
     decision_gate: not_required | required | pending | resolved | deferred | blocked
     approval_gate: not_required | required | pending | granted | denied | expired
     design_gate: not_required | required | pending | passed | partial | waived | stale | blocked
     evidence_gate: not_required | none | partial | sufficient | stale | blocked
-    verification_gate: not_required | required | pending | passed | failed | waived_by_user | blocked
-    qa_gate: not_required | required | pending | passed | failed | waived
     acceptance_gate: not_required | required | pending | accepted | rejected
 ```
+
+MVP-1 `StateSummary` intentionally omits detached-verification and Manual QA lifecycle/gate values. Later/profile extensions such as `lifecycle_phase=verifying`, `lifecycle_phase=qa`, `close_reason=completed_verified`, `assurance_level=detached_verified`, `verification_gate`, and `qa_gate` are owned by [Schema Later: later close and assurance extensions](schema-later.md#later-close-and-assurance-extensions).
 
 `EventRef.state_version` is the affected-scope resulting version after that event. It is not an event ordering key; event ordering uses `event_seq`.
 
@@ -460,7 +460,7 @@ UserJudgmentScope:
   note: string | null
 
 UserJudgmentGateRef:
-  gate: scope_gate | decision_gate | approval_gate | design_gate | evidence_gate | verification_gate | qa_gate | acceptance_gate
+  gate: scope_gate | decision_gate | approval_gate | design_gate | evidence_gate | acceptance_gate
   blocked_action: string | null
 
 UserJudgmentCriterionRef:
@@ -536,8 +536,6 @@ AcceptanceJudgment:
   result_ref: StateRecordRef | null
   result_summary: string
   evidence_status_refs: StateRecordRef[]
-  verification_status_refs: StateRecordRef[]
-  qa_status_refs: StateRecordRef[]
   residual_risk_visibility: ResidualRiskSummary
   does_not_replace: string[]
 
@@ -569,7 +567,7 @@ CancellationJudgment:
   follow_up: string | null
 ```
 
-For `judgment_kind=sensitive_approval`, `approval_scope` is required. For `judgment_kind=qa_waiver`, `qa_waiver` is required and policy must allow the waiver. For `judgment_kind=verification_risk_acceptance`, `verification_risk_acceptance` is required and must not set `assurance_level=detached_verified`. For `judgment_kind=final_acceptance`, `acceptance` is required. For `judgment_kind=residual_risk_acceptance`, `residual_risk_acceptance` is required. For `judgment_kind=cancellation`, `cancellation` is required. Later reconcile branches live in [Schema Later](schema-later.md#later-user-judgment-branches).
+For `judgment_kind=sensitive_approval`, `approval_scope` is required. For `judgment_kind=qa_waiver`, `qa_waiver` is required and policy must allow the waiver. For `judgment_kind=verification_risk_acceptance`, `verification_risk_acceptance` is required and must not upgrade MVP-1 assurance. For `judgment_kind=final_acceptance`, `acceptance` is required. For `judgment_kind=residual_risk_acceptance`, `residual_risk_acceptance` is required. For `judgment_kind=cancellation`, `cancellation` is required. Later reconcile branches and profile-specific final-acceptance verification/QA refs live in [Schema Later](schema-later.md#later-user-judgment-branches).
 
 <a id="userjudgmentcandidate"></a>
 
@@ -817,8 +815,6 @@ AcceptanceVisibilityContext:
   unaccepted_close_relevant_risk_refs: StateRecordRef[]
   evidence_summary: EvidenceSummary | null
   evidence_refs: StateRecordRef[]
-  verification_status: not_required | required | pending | passed | failed | waived_by_user | blocked
-  qa_status: not_required | required | pending | passed | failed | waived
   acceptance_status: not_required | required | pending | accepted | rejected
   what_acceptance_does_not_replace: string[]
 ```

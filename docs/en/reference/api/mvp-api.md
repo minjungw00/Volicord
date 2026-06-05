@@ -378,7 +378,7 @@ In MVP-1, `accepted_risk_refs` contain the `user_judgment` and `blocker` refs th
 
 Use this to ask Core whether a Task can complete, cancel, or be superseded.
 
-Stage meaning: optional narrow blocker/status smoke for Engineering Checkpoint; active close-readiness and blocker response for MVP-1. Full assurance, QA, waiver, report freshness, export, and operations blockers are later/profile-gated.
+Stage meaning: optional narrow blocker/status smoke for Engineering Checkpoint; active close-readiness and blocker response for MVP-1. Detached verification, Manual QA, full assurance, report freshness, export, and operations blockers are later/profile-gated.
 
 Allowed actors: `user`, `lead_agent`, `operator`.
 
@@ -387,7 +387,7 @@ CloseTaskRequest:
   envelope: ToolEnvelope
   task_id: string
   intent: complete | cancel | supersede
-  requested_close_reason: completed_verified | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
+  requested_close_reason: completed_self_checked | completed_with_risk_accepted | cancelled | superseded
   user_note: string | null
   superseded_by_task_id: string | null
 
@@ -395,24 +395,19 @@ CloseTaskResponse:
   base: ToolResponseBase
   close_state: open | blocked | closed | cancelled | superseded
   closed: boolean
-  close_reason: none | completed_verified | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
-  assurance_level: none | self_checked | detached_verified
+  close_reason: none | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
+  assurance_level: none | self_checked
   residual_risk_state: ResidualRiskSummary
   evidence_summary: EvidenceSummary | null
   acceptance_state:
     status: not_required | required | pending | accepted | rejected
     accepted_by_ref: StateRecordRef | null
     required_before_close: boolean
-  profile_required_verification:
-    active: boolean
-    status: not_required | required | pending | passed | failed | waived_by_user | blocked
-    required_profile: string | null
-    related_refs: StateRecordRef[]
   state: StateSummary
   blockers:
     - code: ErrorCode
-      category: open_run | scope | user_judgment | sensitive_approval | design_policy | evidence | verification | manual_qa | residual_risk_visibility | residual_risk_acceptance | final_acceptance | projection_freshness | artifact_availability
-      required_judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation | null
+      category: task | open_run | scope | user_judgment | sensitive_approval | design_policy | evidence | artifact_availability | final_acceptance | residual_risk_visibility | residual_risk_acceptance | cancellation | supersession
+      required_judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | final_acceptance | residual_risk_acceptance | cancellation | null
       message: string
       required_next_action: string
       related_refs: StateRecordRef[]
@@ -420,7 +415,7 @@ CloseTaskResponse:
   artifact_refs: ArtifactRef[]
 ```
 
-MVP-1 close uses the core close state, blockers, residual-risk visibility, final-acceptance state when required, artifact availability, and the Core-owned `evidence_summary`. Close readiness is derived from current records. Verification, Manual QA, projection/report, and operations refs are active only when their profiles are enabled.
+MVP-1 close uses the active Task, active scope, open-Run state, blockers, residual-risk visibility, final-acceptance state when required, artifact availability, and the Core-owned `evidence_summary`. Close readiness is derived from current records. `completed_verified`, `assurance_level=detached_verified`, `profile_required_verification`, verification blockers, Manual QA blockers, projection/report freshness blockers, and operations refs are later/profile-only extensions owned by [Schema Later](schema-later.md#later-close-and-assurance-extensions).
 
 For `intent=complete`, a closed response requires a Task state compatible with the close intent, no unresolved close-relevant active Run, no unresolved or blocked required user judgment, `evidence_summary.status=sufficient` when evidence is required, recorded `judgment_kind=final_acceptance` when final acceptance is required, visible close-relevant residual risk, and explicit residual-risk acceptance for `completed_with_risk_accepted`. Close-required artifact refs must still be available and match their required owner relation, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `produced_by`, and `retention_class` metadata; missing artifacts or `hash_mismatch`-style integrity failures make the affected evidence stale or blocked. Stale or blocked Write Authorization facts affect close only through the current Run, scope, artifact, evidence, or blocker records they affect; they are not close results by themselves. Projection freshness is display freshness, not canonical close state; callers must not close from stale projection prose.
 

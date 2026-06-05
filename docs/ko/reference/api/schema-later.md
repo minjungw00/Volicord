@@ -17,11 +17,46 @@ MVP-1 path 밖에 두어야 하는 later/profile-gated API material을 확인할
 | Later read-only resources | [Later read-only resources](#later-read-only-resources) |
 | Later Record Run branches | [Later `harness.record_run` branches](#later-harnessrecord_run-branches) |
 | Later user-judgment branches | [Later user judgment branches](#later-user-judgment-branches) |
+| Later close and assurance fields | [Later close and assurance extensions](#later-close-and-assurance-extensions) |
 | Validator IDs | [ValidatorResult stable IDs](#validatorresult-stable-ids) |
 
 ## Profile rule
 
 아래 schema block은 owner profile이 active일 때만 exact합니다. Public validator는 matching profile을 owner 문서가 승격하지 않는 한 Engineering Checkpoint와 minimum MVP-1에서 이 method, enum value, extension branch를 reject해야 합니다. [Schema Core](schema-core.md)의 활성 MVP-1 schema block은 이 later value를 의도적으로 포함하지 않습니다. 그래야 generated MVP-1 validator와 client가 해당 값을 실수로 accept하지 않습니다.
+
+<a id="later-close-and-assurance-extensions"></a>
+
+## Later close and assurance extensions
+
+이 field들은 보증 프로필이나 다른 owner profile이 detached verification, Manual QA, projection/report freshness를 close-relevant behavior로 명시적으로 켰을 때만 [MVP `harness.close_task`](mvp-api.md#harnessclose_task)와 [Schema Core `StateSummary`](schema-core.md#shared-schemas)를 확장합니다. Minimum MVP-1 validator는 이 값과 field를 reject해야 합니다.
+
+```yaml
+StateSummary later-profile extensions:
+  lifecycle_phase: verifying | qa
+  close_reason: completed_verified
+  assurance_level: detached_verified
+  gates:
+    verification_gate: not_required | required | pending | passed | failed | waived_by_user | blocked
+    qa_gate: not_required | required | pending | passed | failed | waived
+
+CloseTaskRequest later-profile extension:
+  requested_close_reason: completed_verified
+
+CloseTaskResponse later-profile extensions:
+  close_reason: completed_verified
+  assurance_level: detached_verified
+  profile_required_verification:
+    active: boolean
+    status: not_required | required | pending | passed | failed | waived_by_user | blocked
+    required_profile: string | null
+    related_refs: StateRecordRef[]
+  blockers[].category:
+    verification | manual_qa | projection_freshness
+  blockers[].required_judgment_kind:
+    qa_waiver | verification_risk_acceptance
+```
+
+`completed_verified`와 `assurance_level=detached_verified`는 active profile 아래에서 qualifying Eval이 valid independence와 current input을 가질 때만 valid합니다. `profile_required_verification`은 later/profile response field이며 MVP-1 close field가 아닙니다. Manual QA blocker는 active Manual QA owner profile이 필요합니다. Projection freshness는 display/readiness material이며 그 자체로 canonical close state가 되면 안 됩니다.
 
 ## Later read-only resources
 
@@ -199,6 +234,17 @@ RecordRunResponse later-profile extensions:
 이 branch는 waiver, reconcile, residual-risk, 더 풍부한 assurance profile이 active일 때만 `UserJudgmentPayload`와 활성 residual-risk acceptance input을 확장합니다.
 
 ```yaml
+UserJudgmentGateRef.gate later-profile extension:
+  verification_gate | qa_gate
+
+AcceptanceJudgment later-profile extensions:
+  verification_status_refs: StateRecordRef[]
+  qa_status_refs: StateRecordRef[]
+
+AcceptanceVisibilityContext later-profile extensions:
+  verification_status: not_required | required | pending | passed | failed | waived_by_user | blocked
+  qa_status: not_required | required | pending | passed | failed | waived
+
 UserJudgmentPayload later-profile extensions:
   waiver: WaiverJudgment | null
   reconcile: ReconcileJudgment | null

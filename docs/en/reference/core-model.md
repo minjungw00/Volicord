@@ -80,7 +80,7 @@ These are the small Core invariants the rest of the Kernel contract serves:
 
 4. Can this Task close?
 
-   `close_task` checks the close intent against open Run state, scope, required decisions, sensitive-action permission, evidence, verification when required, Manual QA when required, residual-risk visibility and residual-risk acceptance when required, final acceptance when required, projection freshness when relevant, and artifact availability.
+   `close_task` checks the close intent against active Task existence, open Run state, scope, required decisions, sensitive-action permission, evidence summary sufficiency, artifact availability, residual-risk visibility and residual-risk acceptance when required, final acceptance when required, and cancellation or supersession safety. Later profiles may add detached verification, Manual QA, and report/display freshness checks.
 
 ## Work modes
 
@@ -222,7 +222,7 @@ Stage/profile support:
 | Stage/profile | What it can represent |
 |---|---|
 | Engineering Checkpoint / Kernel Smoke | The narrow internal authority loop: local project registration, active Task, active Change Unit or scoped work boundary, `prepare_write`, one single-use Write Authorization, one compatible Run, one artifact/evidence ref, one structured status/blocker response, and a narrow close-blocker check. Verification, Manual QA, final acceptance, residual-risk acceptance, full Evidence Manifest, and profile-specific full-format user judgment presentation are not Engineering Checkpoint requirements unless the named smoke path explicitly includes them. |
-| MVP-1 User Work Loop | User-facing compact outputs for current state, scope, pending user judgments, evidence summary, close readiness, final acceptance when required, residual-risk visibility when close-relevant risk exists, why work is blocked, and what the agent can safely do next. Agent-facing context is a separate compact refs packet. MVP-1 must not imply detached verification is always required. |
+| MVP-1 User Work Loop | User-facing compact outputs for current state, scope, pending user judgments, evidence summary, close readiness, final acceptance when required, residual-risk visibility when close-relevant risk exists, why work is blocked, and what the agent can safely do next. Agent-facing context is a separate compact refs packet. MVP-1 does not expose detached verification, `profile_required_verification`, or Manual QA close fields. |
 | Later assurance and operations profiles | Detached verification independence, richer Manual QA, stewardship, feedback-loop/TDD policy, projection/reconcile operations, export/recover, and handoff behavior. These are blockers only when the active profile or owner doc enables them. |
 
 Active MVP-1 evidence uses a Core-owned `evidence_summary`, not full Evidence Manifest report prose. Its minimum summary states are `not_required`, `none`, `partial`, `sufficient`, `stale`, and `blocked`. When item-level or criterion-level coverage is needed, the minimum coverage states are `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, and `blocked`.
@@ -408,8 +408,8 @@ Close readiness must not be represented as one "done" bit. Keep these dimensions
 | Dimension | Meaning |
 |---|---|
 | Close state | Whether close is blocked, ready for the requested intent, completed, cancelled, or superseded. |
-| Close reason | Why the Task closed, such as `completed_self_checked`, `completed_verified`, `completed_with_risk_accepted`, `cancelled`, or `superseded`. |
-| Assurance level | What technical checking level is supported: `none`, `self_checked`, or `detached_verified`. |
+| Close reason | Why the Task closed. MVP-1 active values are `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, and `superseded`; later assurance profiles may add `completed_verified`. |
+| Assurance level | What technical checking level is supported. MVP-1 active values are `none` and `self_checked`; later assurance profiles may add `detached_verified`. |
 | Residual risk state | Whether close-relevant risk is absent, not visible, visible, accepted, or blocked. |
 | Acceptance state | Whether final acceptance is not required, pending, accepted, rejected, or blocked. |
 
@@ -422,8 +422,8 @@ Close readiness must not be represented as one "done" bit. Keep these dimensions
 | [Approval Gate](#approval-gate) | Whether sensitive-action permission is missing, pending, granted, denied, expired, or drifted. |
 | [Design Gate](#design-gate) | Whether enabled design-quality policy routes a finding, and whether it reaches a Core-backed blocker. |
 | [Evidence Gate](#evidence-gate) | Whether required evidence is absent, partial, sufficient, stale, or blocked. |
-| [Verification Gate](#verification-gate) | Whether required verification has passed, is pending, failed, waived, or blocked. |
-| [QA Gate](#qa-gate) | Whether required Manual QA passed, failed, was waived, or remains pending. |
+| [Verification Gate](#verification-gate) | Later/profile gate for required verification. It is not an active MVP-1 close response field. |
+| [QA Gate](#qa-gate) | Later/profile gate for required Manual QA. It is not an active MVP-1 close response field. |
 | [Acceptance Gate](#acceptance-gate) | Whether final acceptance and residual-risk visibility/acceptance allow the requested close when applicable. |
 | [Capability Boundary](#capability-boundary) | How surface capability affects blockers and guarantee display without becoming a gate. |
 
@@ -518,7 +518,7 @@ not_required | required | pending | passed | failed | waived
 not_required | required | pending | accepted | rejected
 ```
 
-`acceptance_gate` records final acceptance when required. Acceptance can be recorded only after the close basis is visible: evidence status, verification status when applicable, Manual QA status when applicable, and residual-risk visibility or confirmed absence.
+`acceptance_gate` records final acceptance when required. In MVP-1, acceptance can be recorded only after the active close basis is visible: evidence summary status, artifact availability for close-relevant evidence refs, and residual-risk visibility or confirmed absence. Later assurance profiles may add applicable verification and Manual QA status to that visible basis.
 
 Residual-risk visibility is separate. If no known close-relevant risk exists, `ResidualRiskSummary.status=none` satisfies visibility. If known close-relevant risk exists, it must be visible before final acceptance or successful close. In MVP-1, a risk-accepted close records the acceptance through a residual-risk acceptance `user_judgment` and the relevant blocker/evidence refs; rich Residual Risk refs are later/profile-promoted.
 
@@ -539,9 +539,10 @@ advisor | direct | work
 ### Lifecycle Phase
 
 ```text
-intake | shaping | ready | executing | verifying | qa |
-waiting_user | blocked | completed | cancelled
+intake | shaping | ready | executing | waiting_user | blocked | completed | cancelled
 ```
+
+Later/profile extensions may add `verifying` and `qa` when the matching owner profiles are active.
 
 ### Result
 
@@ -552,14 +553,15 @@ none | advice_only | passed | failed | cancelled
 ### Close Reason
 
 ```text
-none | completed_verified | completed_self_checked |
-completed_with_risk_accepted | cancelled | superseded
+none | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
 ```
+
+`completed_verified` is a later/profile close reason owned by the detached verification assurance path.
 
 ### Assurance Level
 
 ```text
-none | self_checked | detached_verified
+none | self_checked
 ```
 
 Assurance summarizes technical checking support. It is not Approval, QA, final acceptance, or residual-risk acceptance.
@@ -567,9 +569,9 @@ Assurance summarizes technical checking support. It is not Approval, QA, final a
 | Display phrase | Meaning |
 |---|---|
 | self-checked | The implementing path checked its own result. This is not detached verification. |
-| detached candidate | A verification path might qualify, but detached assurance is not earned yet. |
-| detached verified | A qualifying Eval passed with valid independence and current inputs. |
-| waived with accepted risk | Required verification was skipped through waiver and the close depends on accepted residual risk. This is not detached verification. |
+| risk accepted | The close depends on accepted visible residual risk. This is not detached verification. |
+
+Later assurance profiles may add detached-candidate and detached-verified display states only when a qualifying Eval path is active.
 
 ### Compatibility matrix
 
@@ -580,8 +582,8 @@ Compatibility is profile-driven. A mode or close reason is compatible only when 
 | Mode | Product writes | Default close posture |
 |---|---|---|
 | `advisor` | No. | Advice/read-only result, usually no assurance. |
-| `direct` | Yes, after compatible scope and internal Write Authorization record. | Self-checked unless a required profile adds QA, verification, final acceptance, or residual-risk handling. |
-| `work` | Yes, after compatible scope and internal Write Authorization record. | Profile-driven close. Evidence and blockers are visible; detached verification is required only when the active profile or explicit requirement requires it. |
+| `direct` | Yes, after compatible scope and internal Write Authorization record. | Self-checked unless a required profile adds final acceptance, residual-risk handling, QA, or verification. |
+| `work` | Yes, after compatible scope and internal Write Authorization record. | Profile-driven close. MVP-1 keeps evidence and blockers visible; detached verification is later/profile unless the active owner profile requires it. |
 
 ### Decision Gate Compatibility
 
@@ -708,7 +710,7 @@ A replayed committed `record_run` with the same idempotency key and canonical re
 
 `close_task` is the single completion decision point. Agent summaries, Eval reports, QA notes, acceptance messages, projections, and final reports may provide inputs, but they do not close the Task by themselves.
 
-Close readiness is profile-driven. Detached verification is required only when the active profile, user request, task type, security/criticality profile, or explicit requirement says it is required. A verification-risk acceptance is needed only when required verification is intentionally skipped. If verification was not required, there is nothing to waive.
+MVP-1 close readiness is based on active state, the visible evidence summary, artifact availability, required user judgments, final acceptance when required, and residual-risk visibility or acceptance when applicable. Detached verification, `profile_required_verification`, Manual QA close blockers, and `completed_verified` are later/profile behavior. A verification-risk acceptance is needed only when a later/profile owner has made verification required and that required verification is intentionally skipped.
 
 For `intent=complete`, Core can return successful close only when all of these close-relevant conditions hold:
 
@@ -716,6 +718,7 @@ For `intent=complete`, Core can return successful close only when all of these c
 - No active Run remains unresolved in a close-relevant way.
 - Required user judgment is resolved or compatibly deferred; unresolved, rejected, blocked, stale, or incompatible judgment blocks close.
 - If evidence is required, `evidence_gate=sufficient`.
+- Close-relevant artifact refs are available and compatible with the evidence claims that rely on them.
 - If final acceptance is required, a compatible `judgment_kind=final_acceptance` `user_judgment` is recorded after close basis visibility.
 - Close-relevant residual risk is visible before close; if the requested close is `completed_with_risk_accepted` or the close path depends on accepted risk, a compatible residual-risk acceptance `user_judgment` is required.
 - Stale, blocked, missing, or invalid Write Authorization facts do not become close success or close failure by themselves. Their effects route through the current Run, scope, artifact, evidence, or blocker records they affect.
@@ -732,22 +735,19 @@ The decision algorithm checks the close intent and required gates:
 7. Check sensitive-action permission when sensitive categories applied.
 8. Check enabled design policy only through the active impact routing; active MVP blocks only on the small Core-backed design-quality set.
 9. Check evidence when evidence is required.
-10. Check verification only when verification is required.
-11. Check Manual QA only when Manual QA is required.
-12. Check residual-risk visibility; if risk-accepted close is requested or required, check a residual-risk acceptance `user_judgment` plus the relevant blocker/evidence refs. Rich Residual Risk refs apply only when that profile is active.
-13. Check final acceptance only when final acceptance is required.
-14. Check artifact availability for close-relevant evidence refs.
-15. Assign result, close reason, assurance level, residual-risk state, and acceptance state as separate facts.
-16. Report projection freshness when projection support is enabled, without using projection text as canonical state.
-17. Append close events and enqueue projection refresh when projection support is enabled.
+10. Check artifact availability for close-relevant evidence refs.
+11. Check residual-risk visibility; if risk-accepted close is requested or required, check a residual-risk acceptance `user_judgment` plus the relevant blocker/evidence refs. Rich Residual Risk refs apply only when that profile is active.
+12. Check final acceptance only when final acceptance is required.
+13. Assign result, close reason, assurance level, residual-risk state, and acceptance state as separate facts.
+14. Append close events and enqueue projection refresh when projection support is enabled.
 
-This close-decision flow is a design-contract summary. Verification, Manual QA, final acceptance, and residual-risk acceptance are checked only when the active profile, task, user request, or explicit requirement makes them relevant; they are not always-required detached steps.
+This active close-decision flow is a design-contract summary for MVP-1. Later assurance profiles may insert verification and Manual QA checks before final close only when their owner docs enable those requirements and schema extensions.
 
 ```mermaid
 flowchart TD
   Intent["close_task"] --> Safe["no unsafe open Run"]
   Safe --> Gates["scope, judgments, Approval"]
-  Gates --> Proof["required evidence, verification, QA"]
+  Gates --> Proof["required evidence and artifact availability"]
   Proof --> Acceptance["final acceptance and residual-risk handling when required"]
   Acceptance --> Ready{"compatible to close?"}
   Ready -->|no| Blockers["return blockers"]
@@ -755,25 +755,26 @@ flowchart TD
   Close --> Events["append close events"]
 ```
 
-Structured close blockers must name the category that blocks close, such as open Run, scope, user-owned judgment, sensitive-action permission, design policy, evidence, verification, Manual QA, residual-risk visibility, residual-risk acceptance, final acceptance, projection freshness, or artifact availability. Public responses may choose one primary error code, but secondary blockers and refs must remain visible.
+Structured MVP-1 close blockers must name the category that blocks close: active Task, open Run, scope, user-owned judgment, sensitive-action permission, active design policy, evidence summary sufficiency, artifact availability, final acceptance, residual-risk visibility, residual-risk acceptance, cancellation, or supersession. Public responses may choose one primary error code, but secondary blockers and refs must remain visible. Verification, Manual QA, and projection freshness blocker categories are later/profile extensions.
 
-### Close matrix by work shape and active profile
+### Active MVP-1 close matrix by work shape
 
-| Work shape and profile | Required before ordinary successful close | Verification treatment | Close result |
+| Work shape | Required before ordinary successful close | Assurance treatment | Close result |
 |---|---|---|---|
-| Advice/read-only | The requested advice, explanation, review, or comparison is complete. Required source refs are shown if the user or profile asked for them. | Normally `not_required`. No waiver is needed when verification was not required. | `result=advice_only`, `assurance_level=none`, usually `close_reason=completed_self_checked`. |
-| Small direct change | No open Run; active scope covered any product writes; compatible Write Authorization was consumed for writes; lightweight evidence or self-check supports the narrow completion claim; required user judgments, Approval, QA, final acceptance, or residual-risk handling are satisfied if triggered. | Normally `not_required`. Optional qualifying Eval may support `detached_verified`; required verification follows the required-verification row. | Usually `result=passed`, `assurance_level=self_checked`, `close_reason=completed_self_checked`. |
-| Tracked work with no required detached verification | No open Run; Change Unit is complete, explicitly deferred, or superseded; scope, required user judgments, Approval, evidence, QA when required, residual-risk visibility, and final acceptance when required are satisfied. | `verification_gate=not_required` or non-detached self-check evidence is shown as applicable. No verification-risk acceptance is needed. | `result=passed`, `assurance_level=self_checked` when checked by the implementing path, `close_reason=completed_self_checked`. |
-| Tracked work with required detached verification | All tracked-work requirements above plus `verification_gate=passed` from a qualifying Eval with valid independence and current inputs. | If required verification is intentionally skipped, record a verification-risk acceptance and use the risk-accepted path; do not call it verified. | With passed verification: `result=passed`, `assurance_level=detached_verified`, `close_reason=completed_verified`. |
-| Tracked work with residual risk acceptance required | All other required gates for the active profile are satisfied, close-relevant residual risk is visible, and a compatible residual-risk acceptance `user_judgment` records the accepted risk with related blocker/evidence refs. | Verification may be not required, passed, or waived only if the required verification-risk acceptance path is satisfied. | `result=passed`, `close_reason=completed_with_risk_accepted`, `assurance_level=none` or `self_checked`; do not display as `detached_verified`. |
+| Advice/read-only | The requested advice, explanation, review, or comparison is complete. Required source refs are shown if the user or active path asked for them. | No technical assurance unless supported by recorded self-check evidence. | `result=advice_only`, `assurance_level=none`, usually `close_reason=completed_self_checked`. |
+| Small direct change | No open Run; active scope covered any product writes; compatible Write Authorization was consumed for writes; lightweight evidence or self-check supports the narrow completion claim; required user judgments, sensitive-action permission, final acceptance, or residual-risk handling are satisfied if triggered. | `self_checked` only when the implementing path checked the result. | Usually `result=passed`, `assurance_level=self_checked`, `close_reason=completed_self_checked`. |
+| Tracked work | No open Run; Change Unit is complete, explicitly deferred, or superseded; scope, required user judgments, sensitive-action permission, evidence summary sufficiency, artifact availability, residual-risk visibility, and final acceptance when required are satisfied. | `self_checked` when the implementing path checked the result; otherwise `none`. | `result=passed`, `assurance_level=self_checked` or `none`, `close_reason=completed_self_checked`. |
+| Tracked work with residual risk acceptance required | All other active MVP-1 close requirements are satisfied, close-relevant residual risk is visible, and a compatible residual-risk acceptance `user_judgment` records the accepted risk with related blocker/evidence refs. | Accepted risk does not upgrade assurance. | `result=passed`, `close_reason=completed_with_risk_accepted`, `assurance_level=none` or `self_checked`. |
+
+Later assurance profiles may add a detached-verification row in which a qualifying Eval with valid independence and current inputs can support `assurance_level=detached_verified` and `close_reason=completed_verified`. That row is not part of active MVP-1.
 
 ### Close result semantics
 
-`completed_self_checked` means the result was checked by the implementing path or detached verification was not required.
+`completed_self_checked` means the result was checked by the implementing path, or the active close path did not require additional assurance beyond the visible evidence summary and required user judgments.
 
-`completed_verified` means detached verification was required or requested for the close path and actually passed with valid independence and current inputs.
+`completed_verified` is later/profile-only. It means detached verification was required or requested for the close path and actually passed with valid independence and current inputs.
 
-`completed_with_risk_accepted` means the user accepted visible close-relevant residual risk, including verification risk when required verification was waived. This is successful close with explicit accepted risk, not verified close.
+`completed_with_risk_accepted` means the user accepted visible close-relevant residual risk. This is successful close with explicit accepted risk, not verified close.
 
 `cancelled` means the Task stopped without a passed result.
 
@@ -786,8 +787,8 @@ Waivers are scoped exceptions to named requirements. A waiver must record the re
 Allowed waivers:
 
 - `design_gate=waived` when design policy allows it.
-- `verification_gate=waived_by_user` only when a required verification path is intentionally skipped.
-- `qa_gate=waived` when required Manual QA is validly waived.
+- `verification_gate=waived_by_user` only in a later/profile path where required verification is intentionally skipped.
+- `qa_gate=waived` only in a later/profile path where required Manual QA is validly waived.
 
 Not allowed:
 
@@ -796,7 +797,7 @@ Not allowed:
 - evidence waiver where evidence is required for completion
 - final acceptance waiver where acceptance is required
 
-Verification-risk acceptance is not detached verification. If the waived verification gap is close-relevant, close requires visible residual risk plus a compatible residual-risk acceptance `user_judgment` and uses `completed_with_risk_accepted`. QA waiver is not Manual QA pass, verification, final acceptance, or assurance upgrade. Decision deferral is not waiver.
+Verification-risk acceptance is not detached verification. In a later/profile path, if the waived verification gap is close-relevant, close requires visible residual risk plus a compatible residual-risk acceptance `user_judgment` and uses `completed_with_risk_accepted`. QA waiver is not Manual QA pass, verification, final acceptance, or assurance upgrade. Decision deferral is not waiver.
 
 ## Invariant enforcement mapping
 
@@ -806,7 +807,7 @@ Verification-risk acceptance is not detached verification. If the waived verific
 | Product writes require explicit scope and a compatible pre-write scope check. | `prepare_write` blocks missing scope and creates an active single-use Write Authorization record only when `dry_run=false` and `decision=allowed`; `record_run` consumes the active row. |
 | User-owned judgment cannot be replaced by agent judgment. | User judgment records and `decision_gate` block affected writes or close until compatible resolution, compatible deferral, or required residual-risk handling is recorded. |
 | Sensitive-action approval is separate. | Sensitive-action approval user judgments, later Approval records, and `approval_gate` cover sensitive permission only. |
-| Evidence, verification, QA, final acceptance, residual-risk visibility, and residual-risk acceptance stay separate. | Separate gates, refs, and close blockers prevent substitution. |
+| Evidence, final acceptance, residual-risk visibility, and residual-risk acceptance stay separate in MVP-1; later verification and QA profiles stay separate when enabled. | Separate gates, refs, and close blockers prevent substitution. |
 | Close exposes blockers and residual risk. | `close_task` returns structured blockers and separate close reason, assurance, acceptance, and residual-risk state. |
 | Active profile determines required gates. | Gate checks apply only when required by stage/profile, user request, task type, security/criticality profile, policy, or explicit requirement. |
 | Projections cannot override state. | Projection edits route through reconcile and projection freshness affects display, not authority by itself. |
@@ -845,10 +846,10 @@ The following combinations are invalid or require repair:
 | Sensitive approval used as product, technical, or scope decision | Reject or repair through a compatible `UserJudgment`. |
 | Generic "yes, do it" or "go ahead" used to satisfy incompatible routes | Clarify or split routes before recording state; the prompt, `judgment_kind`, affected object, scope, and recorded user intent must match. |
 | Required evidence missing but `evidence_gate=not_required` | Recompute and repair. |
-| Required verification skipped without verification-risk acceptance when that risk path is required | Keep verification pending/blocked. |
+| Later/profile required verification skipped without verification-risk acceptance when that risk path is required | Keep verification pending/blocked. |
 | Verification-risk acceptance treated as `detached_verified` or `completed_verified` | Reject or repair to risk-accepted close requirements. |
-| Required Manual QA missing or failed | Block close unless valid waiver applies. |
-| QA waiver treated as QA evidence or QA pass | Reject or repair; record only the allowed waiver/risk path. |
+| Later/profile required Manual QA missing or failed | Block close unless valid waiver applies. |
+| QA waiver treated as QA evidence or QA pass | Reject or repair; record only the allowed later/profile waiver/risk path. |
 | Final acceptance recorded before residual-risk visibility | Reject or repair; show residual risk or confirmed absence first. |
 | Residual-risk accepted close with hidden or unaccepted close-relevant risk | Block close until risk is visible and accepted. |
 | Projection prose used as canonical state | Create reconcile item or reject as state mutation. |
@@ -858,4 +859,4 @@ The following combinations are invalid or require repair:
 
 `close_ready` is not a `lifecycle_phase`. It is a derived condition meaning the Task has no open Run and every close-relevant required gate is compatible with the requested close intent. Only `close_task` moves a Task to `lifecycle_phase=completed`.
 
-Close displays should show separate category lines for evidence, verification, Manual QA, final acceptance, residual-risk visibility, residual-risk acceptance, sensitive approval, and projection freshness when those categories apply. A display may say a category is `not_required`, but it must not replace pending, waived, failed, blocked, stale, or accepted-with-risk categories with a single "done" line.
+MVP-1 close displays should show separate category lines for evidence summary, artifact availability, final acceptance, residual-risk visibility, residual-risk acceptance, and sensitive-action permission when those categories apply. Later/profile displays may add verification, Manual QA, and projection freshness lines. A display may say a category is `not_required`, but it must not replace pending, waived, failed, blocked, stale, or accepted-with-risk categories with a single "done" line.

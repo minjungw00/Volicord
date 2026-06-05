@@ -17,11 +17,46 @@ This document preserves reference shapes for future Harness behavior. It does no
 | Later read-only resources | [Later read-only resources](#later-read-only-resources) |
 | Later Record Run branches | [Later `harness.record_run` branches](#later-harnessrecord_run-branches) |
 | Later user-judgment branches | [Later user judgment branches](#later-user-judgment-branches) |
+| Later close and assurance fields | [Later close and assurance extensions](#later-close-and-assurance-extensions) |
 | Validator IDs | [ValidatorResult stable IDs](#validatorresult-stable-ids) |
 
 ## Profile rule
 
 The schema blocks below are exact only when their owner profile is active. Public validators must reject these methods, enum values, and extension branches in Engineering Checkpoint and minimum MVP-1 unless an owner document promotes the matching profile. The active MVP-1 schema blocks in [Schema Core](schema-core.md) intentionally omit these later values so generated MVP-1 validators and clients do not accept them by accident.
+
+<a id="later-close-and-assurance-extensions"></a>
+
+## Later close and assurance extensions
+
+These fields extend [MVP `harness.close_task`](mvp-api.md#harnessclose_task) and [Schema Core `StateSummary`](schema-core.md#shared-schemas) only when an Assurance Profile or other owner profile explicitly enables detached verification, Manual QA, or projection/report freshness as close-relevant behavior. Minimum MVP-1 validators must reject these values and fields.
+
+```yaml
+StateSummary later-profile extensions:
+  lifecycle_phase: verifying | qa
+  close_reason: completed_verified
+  assurance_level: detached_verified
+  gates:
+    verification_gate: not_required | required | pending | passed | failed | waived_by_user | blocked
+    qa_gate: not_required | required | pending | passed | failed | waived
+
+CloseTaskRequest later-profile extension:
+  requested_close_reason: completed_verified
+
+CloseTaskResponse later-profile extensions:
+  close_reason: completed_verified
+  assurance_level: detached_verified
+  profile_required_verification:
+    active: boolean
+    status: not_required | required | pending | passed | failed | waived_by_user | blocked
+    required_profile: string | null
+    related_refs: StateRecordRef[]
+  blockers[].category:
+    verification | manual_qa | projection_freshness
+  blockers[].required_judgment_kind:
+    qa_waiver | verification_risk_acceptance
+```
+
+`completed_verified` and `assurance_level=detached_verified` are valid only when a qualifying Eval has valid independence and current inputs under the active profile. `profile_required_verification` is a later/profile response field, not an MVP-1 close field. Manual QA blockers require an active Manual QA owner profile; projection freshness remains display/readiness material and must not become canonical close state by itself.
 
 ## Later read-only resources
 
@@ -199,6 +234,17 @@ When a later profile enables `verification_input`, the same one-to-one branch ru
 These branches extend `UserJudgmentPayload` and active residual-risk acceptance input only when waiver, reconcile, residual-risk, or richer assurance profiles are active.
 
 ```yaml
+UserJudgmentGateRef.gate later-profile extension:
+  verification_gate | qa_gate
+
+AcceptanceJudgment later-profile extensions:
+  verification_status_refs: StateRecordRef[]
+  qa_status_refs: StateRecordRef[]
+
+AcceptanceVisibilityContext later-profile extensions:
+  verification_status: not_required | required | pending | passed | failed | waived_by_user | blocked
+  qa_status: not_required | required | pending | passed | failed | waived
+
 UserJudgmentPayload later-profile extensions:
   waiver: WaiverJudgment | null
   reconcile: ReconcileJudgment | null
