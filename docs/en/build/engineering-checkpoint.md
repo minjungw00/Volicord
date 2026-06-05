@@ -20,10 +20,10 @@ Engineering Checkpoint is designed to prove that future Harness can keep one loc
 2. An owner-valid setup/intake path can create exactly one active Task.
 3. One reference `capability_profile` is registered for `surface_id=reference-local-mcp`.
 4. One active Change Unit or equivalent owner-approved scope boundary is required before a compatible product-write check can succeed.
-5. `harness.prepare_write` returns structured blockers for missing or out-of-scope work, creates one durable active Write Authorization only for a compatible non-dry-run decision, creates no authorization for dry-run, and replays without duplicating authorization.
+5. `harness.prepare_write` returns structured blockers for missing or out-of-scope work, creates one durable active Write Authorization only for a compatible non-dry-run decision, creates no authorization for dry-run, replays without duplicating authorization, and reports same-key/different-hash idempotency conflicts without side effects.
 6. `harness.record_run` records one compatible Run and consumes that authorization once.
-7. Consumed, missing, or stale authorization blocks `record_run` without creating completion evidence.
-8. Artifact/evidence refs record hash and redaction metadata through an owner path.
+7. Consumed, missing, stale, or observed-outside-authorized-scope attempts block `record_run` or route to an owner violation/audit path without creating completion evidence.
+8. Artifact/evidence refs record hash and redaction metadata through an owner path, and raw secret artifact storage is blocked or represented only with safe omission/block metadata.
 9. Evidence summary can show partial or sufficient state from registered refs.
 10. Status/blocker output reads current Core state without mutating it and shows the reference surface guarantee limit.
 11. Narrow `harness.close_task` blocker checks can show close is blocked by missing evidence or unresolved user judgment, and can show residual risk before acceptance without implementing full close semantics.
@@ -69,9 +69,9 @@ A future Engineering Checkpoint plan is ready for maintainer planning review whe
 - It uses one registered reference `capability_profile`, not a connector platform or registry.
 - It remains planning-only until [Documentation acceptance status](implementation-overview.md#documentation-acceptance-status) accepts implementation planning readiness.
 - It demonstrates one scoped Harness authority path through `prepare_write`, Write Authorization, `record_run`, artifact/evidence ref, structured status/blocker output, and a narrow close-blocker check.
-- It returns structured blockers or non-`allowed` responses for missing scope, out-of-scope intended work, missing Write Authorization for product-write Runs, reuse of a consumed Write Authorization, and missing artifact/evidence support where the active path requires support.
+- It returns structured blockers, non-`allowed` responses, or API-owned errors for missing scope, out-of-scope intended work, same-key/different-hash idempotency conflicts, missing Write Authorization for product-write Runs, reuse of a consumed Write Authorization, observed attempts outside authorized scope, raw secret artifact input, and missing artifact/evidence support where the active path requires support.
 - It treats all status text, generated prose, and projection-like output as downstream reads from Core records, not fixture proof.
-- Its future smoke checks assert Core-owned state, `task_events` when stable events exist, returned errors, storage rows, artifact refs, evidence state, close blockers, and guarantee display facts.
+- Its future smoke checks use the structured draft fields owned by [Conformance Fixtures Reference](../reference/conformance-fixtures.md): `expected_response`, `expected_state_changes`, `expected_storage_rows`, `expected_events`, `expected_artifacts`, `expected_blockers`, `expected_errors`, and `forbidden_side_effects`.
 - It does not require full projection rendering, multiple projection kinds, detailed templates, operations, conformance runner, broad connector ecosystem, hosted connector registry, cross-surface orchestration, or later-profile storage to pass.
 - It links strict fixture format and assertions to [Conformance Fixtures Reference](../reference/conformance-fixtures.md) instead of defining them here.
 
@@ -81,9 +81,9 @@ These are documentation planning checks only. They do not create acceptance stat
 
 Kernel Smoke is only the narrow future authoring label for Engineering Checkpoint checks. It is not a stage name, not a full suite, and not a current executable fixture set.
 
-When runtime implementation exists, future smoke checks should assert owner records, state transitions, storage rows, `task_events` when stable events exist, artifact/evidence refs, structured blockers, primary errors, and guarantee display facts. They should not prove success by matching rendered prose, generated Markdown, or polished templates.
+When runtime implementation exists, future smoke checks should assert owner records, state transitions, storage rows, `task_events` when stable events exist, artifact/evidence refs, structured blockers, primary errors, guarantee display facts, and forbidden side effects. They should not prove success by matching rendered prose, generated Markdown, or polished templates.
 
-Use [Conformance Fixtures Reference: Kernel Smoke Authoring Queue](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue) for future authoring order and [Conformance Fixture Format](../reference/conformance-fixtures.md#conformance-fixture-format) for exact future fixture shape.
+Use [Conformance Fixtures Reference: Kernel Smoke Authoring Queue](../reference/conformance-fixtures.md#kernel-smoke-authoring-queue) for future authoring order and [Conformance Fixture Format](../reference/conformance-fixtures.md#conformance-fixture-format) for the structured non-executable fixture draft shape.
 
 ## What this proves
 
@@ -99,6 +99,6 @@ Engineering Checkpoint proves:
 
 ## What remains for MVP-1
 
-MVP-1 User Work Loop starts after this checkpoint. It adds ordinary-language start/resume, work-shape classification, scope/non-goals/success criteria, minimal user judgment, evidence summary, user-facing close result/blocker display, next safe action, residual-risk visibility, and separate display of sensitive approval, final acceptance, and risk acceptance.
+MVP-1 User Work Loop starts after this checkpoint. It adds ordinary-language start/resume, work-shape classification, scope/non-goals/success criteria, minimal user judgment, evidence summary, user-facing close result/blocker display, next safe action, residual-risk visibility, final-acceptance blockers, accepted-risk close when a compatible residual-risk acceptance judgment exists, and display-label proof that localized labels are not canonical state.
 
 Use [MVP-1 User Work Loop](mvp-user-work-loop.md) for that plan.

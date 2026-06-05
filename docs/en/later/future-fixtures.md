@@ -10,7 +10,7 @@ The old long pseudo-fixture payloads have been intentionally removed. Do not rec
 
 ## Catalog Boundary
 
-[Conformance Fixtures Reference](../reference/conformance-fixtures.md) owns the core conformance model, MVP behavior examples, exact future fixture body shape, future runner behavior, assertion semantics, fixture profiles, current-phase status, and the narrow Engineering Checkpoint Kernel Smoke authoring queue.
+[Conformance Fixtures Reference](../reference/conformance-fixtures.md) owns the core conformance model, active MVP structured fixture drafts, exact structured fixture draft shape, future runner behavior, assertion semantics, fixture profiles, current-phase status, and the narrow Engineering Checkpoint Kernel Smoke authoring queue.
 
 This catalog owns only future scenario inventory. A row here is a candidate family, not a fixture body, public request schema, storage schema, DDL row, stage exit criterion, generated artifact, runtime result, or implementation task. Catalog rows must not be cited as proof that a behavior exists, that an API is active, that a table must be implemented now, or that MVP-1 scope has expanded.
 
@@ -23,7 +23,7 @@ Future scenario families may become active only through an owner promotion path.
 | Promotion target | Minimum criteria before promotion |
 |---|---|
 | Active behavior example | The owner document names the behavior, delivery stage or profile, user-visible outcome, affected owner records, fallback behavior, security or guarantee wording, and non-claims. The example stays explanatory unless the owner also materializes an executable fixture. |
-| Runtime conformance case | The behavior has an accepted implementation-planning scope, exact API and storage owners, exact-shape fixture body, seed-state expansion rules where needed, runner behavior, assertion semantics, and state/artifact/error observations. It must prove Core state and owner records, not rendered prose alone. |
+| Runtime conformance case | The behavior has an accepted implementation-planning scope, exact API and storage owners, exact structured fixture body fields, seed-state expansion rules where needed, runner behavior, assertion semantics, request/response observations, storage/event/artifact/blocker/error observations, and forbidden-side-effect assertions. It must prove Core state and owner records, not rendered prose alone. |
 
 Every promotion must also:
 
@@ -192,7 +192,7 @@ Browser QA Capture is a Roadmap candidate, not an Engineering Checkpoint, MVP-1 
 
 ## Agency, Stewardship, Context, And Design-Quality Suites
 
-Agency, stewardship, context hygiene, and design-quality remain catalog-only Assurance Profile suite candidates until owner docs promote them. If promoted, they must test state behavior through Core entrypoints or operator actions that call Core. They must not pass by matching Journey Card, user judgment, residual-risk, review-stage, status, or report prose.
+Agency, stewardship, context hygiene, and design-quality remain catalog-only Assurance Profile suite candidates until owner docs promote them. If promoted, they must test response facts, Core state, storage rows, events, artifacts, blockers, errors, and forbidden side effects through Core entrypoints or operator actions that call Core. They must not pass by matching Journey Card, user judgment, residual-risk, review-stage, status, or report prose.
 
 Status and `next` recommendations, including Role Lens and Browser QA recommendations, are observable only as read responses unless a later public mutation records an owner record. A recommendation alone must not mutate state, satisfy a gate, enqueue a projection, create evidence, record verification, record QA, accept work, accept residual risk, close a Task, or upgrade assurance.
 
@@ -229,4 +229,4 @@ Future suite names are planning labels, not a required file set. They group inve
 
 ## Retired Detail Boundary
 
-Pseudo-fixture YAML, long scenario scripts, detailed assertion payloads, renderer-output expectations, and future runner output requirements were removed from this catalog. Reintroduce that level of detail only in an owner Reference document after promotion, and only when it is needed to prove a specific active behavior or runtime conformance case.
+Pseudo-fixture YAML, long scenario scripts, detailed assertion payloads, renderer-output expectations, and future runner output requirements were removed from this catalog. Active MVP structured drafts now live in Conformance Fixtures Reference; reintroduce future-profile detail only in an owner Reference document after promotion, and only when it is needed to prove a specific active behavior or runtime conformance case.
