@@ -1,8 +1,12 @@
 # 문서 점검표
 
-최종 문서 수락 전이나 큰 리뷰 인계 전에 이 점검표를 사용합니다. Markdown 문서만 보는 실무용 문서 유지보수 점검표입니다.
+최종 문서 수락 전이나 큰 리뷰 인계 전에 이 점검표를 사용합니다. Markdown 문서만 보는 실무용 docs-maintenance 점검표입니다. 즉 읽기 전용 문서 품질 점검 profile입니다.
 
-이 점검표는 runtime conformance suite가 아닙니다. Fixture를 실행하지 않습니다. Runtime state를 seed하지 않습니다. Runtime state/events/artifacts/projections/errors를 비교하지 않습니다. Generated operational artifact나 conformance report를 만들지 않습니다. 근거, QA, Acceptance, Residual Risk, close를 기록하지 않습니다. Implementation readiness도 증명하지 않습니다.
+이 점검표는 runtime conformance suite가 아닙니다. Fixture를 실행하지 않습니다. Runtime state를 seed하지 않습니다. Runtime state/events/artifacts/projections/errors를 비교하지 않습니다. `task_events`를 append하지 않습니다. artifact를 만들지 않고, projection을 refresh하지 않으며, generated operational artifact나 conformance report를 만들지 않습니다. QA 또는 acceptance state를 만들지 않습니다. 근거, QA, Acceptance, Residual Risk, close를 기록하지 않습니다. close readiness에 영향을 주지 않고 implementation readiness도 증명하지 않습니다.
+
+docs-maintenance의 `PASS`, `WARN`, `FAIL` label은 manual review가 다음에 볼 것과 고칠 것을 정하는 데 도움이 될 수 있습니다. 하지만 manual acceptance, final acceptance, close readiness, implementation readiness, runtime fixture result가 아닙니다.
+
+runtime conformance는 별도입니다. 구현된 Core/API/storage/surface behavior에만 적용되며, documentation prose가 아니라 실행 가능한 fixture와 state assertion으로 판단합니다. Runtime implementation과 materialized fixture suite가 생기기 전에는 runtime conformance result를 암시하면 안 됩니다.
 
 ## 점검 유형
 
@@ -84,7 +88,7 @@
 - 점검 유형: `manual`.
 - 볼 것: [문서 작성 가이드: 사전 구현 문서 정비 대상 owner 지도](authoring-guide.md#사전-구현-문서-정비-대상-owner-지도)의 알려진 사전 구현 정비 축을 봅니다. Owner contract, API/schema, Storage/DDL, Core transition, stage/profile, evidence/close, security/local-access, conformance proof, user-output/context, design-quality drift가 포함됩니다.
 - 자주 실패하는 예: Later-profile API branch가 MVP requirement처럼 쓰입니다. Status card가 gate authority처럼 다뤄집니다. Design-quality validator가 owner activation rule 밖에서 blocker가 됩니다. Documentation check가 runtime conformance처럼 설명됩니다. 보안 문구가 증명된 owner path 없이 pre-tool blocking을 주장합니다.
-- 통과 의미: 관찰된 정비 축이 기준 owner 문서군으로 라우팅됩니다. Owner가 아닌 문서는 짧은 local summary와 owner link만 둡니다. 표의 `FAIL` 증상은 docs-maintenance 실패로만 보고합니다. 이 점검은 문서 수락이나 implementation readiness를 결정하지 않습니다.
+- 통과 의미: 관찰된 정비 축이 기준 owner 문서군으로 라우팅됩니다. Owner가 아닌 문서는 짧은 local summary와 owner link만 둡니다. 표의 `FAIL` 증상은 docs-maintenance 실패로만 보고합니다. 이 점검은 문서 수락, manual acceptance, runtime conformance, implementation readiness를 결정하지 않습니다.
 
 ### Projection/상태 점검
 

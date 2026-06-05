@@ -2,11 +2,11 @@
 
 ## 이 문서로 할 수 있는 일
 
-Harness conformance material의 세 층을 구분해 볼 때 이 참조 문서를 사용합니다. 세 층은 문서 점검, 활성 state-assertion 동작 예시, 향후 런타임 적합성입니다. 이 문서는 향후 conformance가 무엇을 증명하는지, 활성 Kernel Smoke, MVP-1 user-loop, security/capability, artifact/evidence 동작 예시, exact future fixture body shape, future runner execution behavior, fixture assertion semantics, 현재 단계 상태, 향후 fixture catalog와의 경계를 설명합니다.
+Harness conformance material의 세 층을 구분해 볼 때 이 참조 문서를 사용합니다. 세 층은 문서 점검, 활성 state-assertion 동작 예시, 향후 runtime conformance입니다. 이 문서는 향후 conformance가 무엇을 증명하는지, 활성 Kernel Smoke, MVP-1 user-loop, security/capability, artifact/evidence 동작 예시, exact future fixture body shape, future runner execution behavior, fixture assertion semantics, 현재 단계 상태, 향후 fixture catalog와의 경계를 설명합니다.
 
 이 문서는 conformance author, implementer, maintainer를 위한 lookup 문서입니다. 운영자 절차 문서가 아니므로 operator entrypoint와 `harness conformance run` overview는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용합니다.
 
-이 문서는 향후 conformance work를 위한 참조 문서입니다. 현재 저장소는 문서 전용이며 실행 가능한 Harness Server 적합성 테스트를 담고 있지 않습니다. 현재 단계와 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
+이 문서는 향후 conformance work를 위한 참조 문서입니다. 현재 저장소는 문서 전용이며 실행 가능한 Harness Server conformance test를 담고 있지 않습니다. 현재 단계와 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
 
 ## 이런 때 읽기
 
@@ -21,13 +21,13 @@ Conformance run entrypoint, suite-selection overview, docs-maintenance profile b
 
 ## 핵심 생각
 
-현재 이 문서는 실행 가능한 테스트 모음이 아니라 향후 적합성 검증 계획입니다. 이후 구현 계획에서 쓸 동작 예시 ID와 필요한 동작을 정의할 뿐이며 fixture file, runner code, generated output, runtime state, 실행 가능한 Harness Server 적합성 suite를 만들지 않습니다. 문서 전용 단계에서는 이 예시에서 실제 fixture 파일을 만들지 않습니다.
+현재 이 문서는 실행 가능한 테스트 모음이 아니라 향후 runtime conformance 계획입니다. 이후 구현 계획에서 쓸 동작 예시 ID와 필요한 동작을 정의할 뿐이며 fixture file, runner code, generated output, runtime state, 실행 가능한 Harness Server conformance suite를 만들지 않습니다. 문서 전용 단계에서는 이 예시에서 실제 fixture 파일을 만들지 않습니다.
 
 세 층을 항상 구분합니다.
 
-- 문서 점검은 Markdown 문서에 대한 편집 점검입니다. Link integrity, terminology consistency, stage boundary, security wording, user-language check, owner-boundary drift, 영어/한국어 의미 일치를 봅니다. Fixture action을 실행하거나 runtime result를 만들지 않습니다.
+- 문서 점검은 Markdown 문서에 대한 읽기 전용 편집 점검입니다. Link integrity, terminology consistency, stage boundary, security wording, user-language check, owner-boundary drift, 영어/한국어 의미 일치를 봅니다. Markdown drift를 보고할 수 있지만 fixture action을 실행하거나, `task_events`를 append하거나, artifact를 만들거나, projection을 refresh하거나, QA 또는 acceptance state를 만들거나, close readiness에 영향을 주거나, implementation readiness 또는 runtime result를 만들지 않습니다.
 - MVP 동작 예시는 내부 엔지니어링 점검과 MVP-1을 위한 작은 설계 예시입니다. 기대 동작을 설명하지만 아직 실행 가능한 fixture가 아님. Generated runtime artifact도 아닙니다.
-- 향후 런타임 적합성은 향후 Harness Server 구현 작업입니다. Server implementation과 fixture materialization이 있은 뒤에만 exact-shape fixture가 Core 또는 operator entrypoint를 실행하고 runtime pass/fail result를 만듭니다.
+- runtime conformance는 향후 Harness Server 구현 작업입니다. 구현된 Core/API/storage/surface behavior에 적용되며 documentation prose가 아니라 실행 가능한 fixture와 state assertion으로 판단합니다. Server implementation과 fixture materialization이 있은 뒤에만 exact-shape fixture가 Core 또는 operator entrypoint를 실행하고 runtime pass/fail result를 만듭니다.
 
 핵심 모델과 작은 MVP 동작 예시는 이 파일에 남습니다. Detailed later scenario는 [향후 Fixtures](../later/future-fixtures.md)에 둡니다. 이렇게 해야 내부 엔지니어링 점검 Kernel Smoke와 MVP-1 사용자 가치를 설명하면서도 later catalog coverage가 early implementation requirement처럼 보이지 않습니다.
 
@@ -177,7 +177,7 @@ Detailed clarification catalog, full Evidence Manifest case, detached verificati
 
 ## Conformance Fixture Format
 
-향후 런타임 적합성은 Harness Server 구현과 fixture materialization 이후 fixture 기반입니다. 동작 예시 table만으로는 충분하지 않습니다. 구체화된 각 test fixture는 action을 실행하고 state, events, artifacts, 관련되는 경우 projection status, errors를 검증해야 합니다.
+runtime conformance는 Harness Server 구현과 fixture materialization 이후 fixture 기반입니다. 동작 예시 table만으로는 충분하지 않습니다. 구체화된 각 test fixture는 action을 실행하고 state, events, artifacts, 관련되는 경우 projection status, errors를 검증해야 합니다.
 
 각 fixture는 이 shape를 포함해야 합니다.
 

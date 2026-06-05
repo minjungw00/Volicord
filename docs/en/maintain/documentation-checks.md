@@ -1,8 +1,12 @@
 # Documentation Checks
 
-Use this checklist before final documentation acceptance or a major review handoff. It is a practical docs-maintenance checklist for Markdown documentation only.
+Use this checklist before final documentation acceptance or a major review handoff. It is a practical docs-maintenance checklist for Markdown documentation only: a read-only documentation quality profile.
 
-This checklist is not a runtime conformance suite. It does not run fixtures, seed runtime state, compare runtime state/events/artifacts/projections/errors, create generated operational artifacts, create conformance reports, record evidence, record QA, record Acceptance, record Residual Risk, close work, or prove implementation readiness.
+This checklist is not a runtime conformance suite. It does not run fixtures, seed runtime state, compare runtime state/events/artifacts/projections/errors, append `task_events`, create artifacts, refresh projections, create generated operational artifacts, create conformance reports, create QA or acceptance state, record evidence, record QA, record Acceptance, record Residual Risk, affect close readiness, close work, or prove implementation readiness.
+
+Docs-maintenance `PASS`, `WARN`, and `FAIL` labels may help manual review decide what to inspect or edit next. They are not manual acceptance, final acceptance, close readiness, implementation readiness, or runtime fixture results.
+
+Runtime conformance is separate. It applies only to implemented Core/API/storage/surface behavior and is judged by executable fixtures and state assertions, not documentation prose. No runtime conformance result should be implied before runtime implementation and materialized fixture suites exist.
 
 ## Review Types
 
@@ -84,7 +88,7 @@ Use these labels when reporting a check result.
 - Review type: `manual`.
 - What to inspect: The known pre-implementation repair axes in [Authoring Guide: Pre-implementation repair target owner map](authoring-guide.md#pre-implementation-repair-target-owner-map), including owner contract, API/schema, Storage/DDL, Core transition, stage/profile, evidence/close, security/local-access, conformance proof, user-output/context, and design-quality drift.
 - Common failure examples: A later-profile API branch is written as an MVP requirement. A status card is treated as gate authority. A design-quality validator becomes a blocker outside its owner activation rule. Documentation checks are described as runtime conformance. Security wording claims pre-tool blocking without a proven owner path.
-- Pass means: Each observed repair axis routes to the canonical owner family, and non-owner docs keep only a short local summary plus owner link. Listed `FAIL` symptoms are reported as docs-maintenance failures only; this check does not decide documentation acceptance or implementation readiness.
+- Pass means: Each observed repair axis routes to the canonical owner family, and non-owner docs keep only a short local summary plus owner link. Listed `FAIL` symptoms are reported as docs-maintenance failures only; this check does not decide documentation acceptance, manual acceptance, runtime conformance, or implementation readiness.
 
 ### Projection/State Check
 

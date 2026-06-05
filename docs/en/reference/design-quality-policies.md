@@ -148,7 +148,7 @@ This section does not create a finding schema, DDL table, gate, validator ID, or
 | Eval or verification review | In active MVP, treat same-session review or optional verification as self-check/advisory unless required evidence or a user-requested verification route is active. Detached verification, Eval independence, and verification-gate blockers are later/profile unless enabled. |
 | Manual QA | In active MVP, route human-inspection concerns to `show advisory next action`, `request evidence`, `ask one focused user judgment` for a QA waiver/risk choice, or `mark residual risk`. Detailed Manual QA records and automatic `qa_gate` close blockers are later/profile unless enabled or explicitly required by the active owner path. |
 | Design-quality or stewardship review | Record validator results and owner refs; route each finding to exactly one allowed action. Active MVP blocks only for the six blocking conditions listed above. Full domain-language, module/interface, TDD, feedback-loop, codebase-stewardship, and review-display findings are routed candidate or advisory/later by default. |
-| Operator or conformance finding | Assert the finding through existing state, events, artifacts, projection freshness, errors, reconcile/recover paths, or docs-maintenance report labels. Docs-maintenance findings keep runtime effect `none`. |
+| Operator or conformance finding | Runtime findings route through existing state, events, artifacts, projection freshness, errors, or reconcile/recover paths. Docs-maintenance findings use separate read-only report labels, keep runtime effect `none`, and do not become runtime conformance assertions. |
 
 ## Policy contract shape
 

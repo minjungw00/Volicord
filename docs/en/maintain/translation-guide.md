@@ -263,6 +263,8 @@ Keep official identifiers exact inside headings when the heading is about that i
 
 Heading order and document meaning should remain aligned with the English document. Heading text does not need to match word for word.
 
+Translation drift checks are documentation-quality checks only. They may reveal enum, API, owner-boundary, source-of-truth, or terminology drift in the docs, but they do not prove Core/API/storage/surface behavior, runtime conformance, close readiness, manual acceptance, or implementation readiness.
+
 ## Bilingual review checklist
 
 ```text
@@ -277,5 +279,5 @@ Heading order and document meaning should remain aligned with the English docume
 [ ] In user-facing docs, do natural Korean phrases appear before Harness labels when both are needed?
 [ ] Are headings idiomatic while preserving the same document structure and scope?
 [ ] Were English and Korean link changes made in the same batch?
-[ ] Does the review avoid treating translation drift as runtime state, evidence, QA, final acceptance, close readiness, or implementation readiness?
+[ ] Does the review avoid treating translation drift as runtime state, evidence, QA, final acceptance, close readiness, manual acceptance, runtime conformance, or implementation readiness?
 ```

@@ -21,14 +21,14 @@ Use this map when a contract appears to fit more than one document. The owner is
 | Projections, compact views, projection freshness/failure behavior, managed blocks, human-editable sections, template classes, and artifact-ref rendering | [Projection And Templates Reference](projection-and-templates.md) |
 | Full rendered template bodies, card bodies, and template display shapes | [Template Reference](templates/README.md) |
 | Fixture bodies, fixture assertions, conformance scope, runner behavior, fixture profiles, suite metadata boundaries, current-phase fixture status, and the reduced Kernel Smoke queue | [Conformance Fixtures Reference](conformance-fixtures.md) |
-| Operator behavior, diagnostics, staged operator surface, conformance run entrypoints, recovery/export/reconcile operations, and docs-maintenance reporting entrypoints | [Operations And Conformance Reference](operations-and-conformance.md); use [Operations Profile](../later/operations-profile.md) for the later reader path. |
+| Operator behavior, diagnostics, staged operator surface, conformance run entrypoints, recovery/export/reconcile operations, and read-only docs-maintenance reporting entrypoints | [Operations And Conformance Reference](operations-and-conformance.md); use [Operations Profile](../later/operations-profile.md) for the later reader path. |
 | Future scenario-family inventory, promotion criteria, suite-family labels, and catalog-only future candidates | [Future Fixtures](../later/future-fixtures.md) |
 | Terminology, capitalization, official term wording, record-name orientation, and owner routing | [Glossary Reference](glossary.md) |
 | Runtime spaces, Core process placement, Core-only canonical mutation authority, transaction ordering, artifact/projection/reconcile placement, and architecture-level recovery overview | [Runtime Architecture Reference](runtime-architecture.md) |
 | Design-quality policies, policy-to-validator mapping, stable validator IDs, severity composition, waiver semantics, evidence expectations, and design-quality close impact | [Design Quality Policies](design-quality-policies.md) |
 | Documentation drift rules, bilingual parity, strict-contract ownership rules, link hygiene, and translation guidance | [Authoring Guide](../maintain/authoring-guide.md), [Translation Guide](../maintain/translation-guide.md), [Korean Authoring Guide](../../ko/maintain/authoring-guide.md), and [Korean Translation Guide](../../ko/maintain/translation-guide.md). |
 
-This map identifies strict contract owners. For known pre-implementation repair axes that cross owner families, use the [Authoring Guide repair-target owner map](../maintain/authoring-guide.md#pre-implementation-repair-target-owner-map). That map is docs-maintenance guidance only; it does not decide documentation acceptance or implementation readiness.
+This map identifies strict contract owners. For known pre-implementation repair axes that cross owner families, use the [Authoring Guide repair-target owner map](../maintain/authoring-guide.md#pre-implementation-repair-target-owner-map). That map is docs-maintenance guidance only; it does not decide documentation acceptance, manual acceptance, runtime conformance, close readiness, or implementation readiness.
 
 ## Reader Shortcuts
 

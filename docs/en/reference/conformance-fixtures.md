@@ -25,9 +25,9 @@ Today this document is a future conformance design, not a set of runnable tests.
 
 Keep three layers separate:
 
-- Documentation checks are editorial checks over Markdown docs: link integrity, terminology consistency, stage boundaries, security wording, user-language checks, owner-boundary drift, and English/Korean parity. They do not execute fixture actions or create runtime results.
+- Documentation checks are read-only editorial checks over Markdown docs: link integrity, terminology consistency, stage boundaries, security wording, user-language checks, owner-boundary drift, and English/Korean parity. They may report Markdown drift, but they do not execute fixture actions, append `task_events`, create artifacts, refresh projections, create QA or acceptance state, affect close readiness, create implementation readiness, or create runtime results.
 - MVP behavior examples are compact design examples for Engineering Checkpoint and MVP-1. They describe expected behavior but are not executable fixtures yet and are not generated runtime artifacts.
-- Runtime conformance is future Harness Server implementation work. Only after server implementation and fixture materialization will exact-shape fixtures run through Core or operator entrypoints and produce runtime pass/fail results.
+- Runtime conformance is future Harness Server implementation work. It applies to implemented Core/API/storage/surface behavior and is judged by executable fixtures and state assertions, not documentation prose. Only after server implementation and fixture materialization will exact-shape fixtures run through Core or operator entrypoints and produce runtime pass/fail results.
 
 The core model and small MVP behavior examples stay in this file. Detailed later scenarios stay in [Future Fixtures](../later/future-fixtures.md). This keeps Engineering Checkpoint Kernel Smoke and MVP-1 user-facing value understandable without making later catalog coverage look like an early implementation requirement.
 

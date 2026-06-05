@@ -61,9 +61,9 @@ Use this as an implementation planning order after readiness is accepted. It nam
 
 For API staging, use the [Stage Profile Manifest](../reference/api/schema-core.md#stage-profile-manifest). For storage planning, use [Storage](../reference/storage.md) and apply only the owner-approved minimal subset needed by this checkpoint.
 
-## Doc-level acceptance checks
+## Doc-level planning review checks
 
-A future Engineering Checkpoint plan is acceptable when:
+A future Engineering Checkpoint plan is ready for maintainer planning review when:
 
 - It is local, single-project, and focused on one Task authority loop.
 - It uses one registered reference `capability_profile`, not a connector platform or registry.
@@ -74,6 +74,8 @@ A future Engineering Checkpoint plan is acceptable when:
 - Its future smoke checks assert Core-owned state, `task_events` when stable events exist, returned errors, storage rows, artifact refs, evidence state, close blockers, and guarantee display facts.
 - It does not require full projection rendering, multiple projection kinds, detailed templates, operations, conformance runner, broad connector ecosystem, hosted connector registry, cross-surface orchestration, or later-profile storage to pass.
 - It links strict fixture format and assertions to [Conformance Fixtures Reference](../reference/conformance-fixtures.md) instead of defining them here.
+
+These are documentation planning checks only. They do not create acceptance state, manual acceptance, close readiness, runtime conformance results, generated artifacts, projection refreshes, or implementation readiness.
 
 ## Future smoke checks
 

@@ -117,7 +117,7 @@ Use Later docs for material that must stay out of the MVP implementation path un
 
 ## Maintain
 
-Use Maintain to keep the docs and future Harness system coherent over time. Maintain docs govern documentation maintenance, not runtime behavior.
+Use Maintain to keep the docs and future Harness system coherent over time. Maintain docs govern documentation maintenance, not runtime behavior. Documentation Checks are read-only docs-maintenance checks; their `PASS`, `WARN`, and `FAIL` labels help review but do not create runtime conformance, manual acceptance, close readiness, or implementation readiness.
 
 - [Authoring Guide](maintain/authoring-guide.md)
 - [Documentation Checks](maintain/documentation-checks.md)

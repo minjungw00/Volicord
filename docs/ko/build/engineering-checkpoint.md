@@ -61,9 +61,9 @@ Readiness가 수락된 뒤 구현 계획 순서로 사용합니다. 여기서는
 
 API 단계 구분은 [Stage Profile Manifest](../reference/api/schema-core.md#stage-profile-manifest)를 사용합니다. Storage 계획은 [Storage](../reference/storage.md)를 사용하고, 이 checkpoint에 필요한 owner-approved minimal subset만 적용합니다.
 
-## 문서 수준 수락 점검
+## 문서 수준 계획 리뷰 점검
 
-향후 내부 엔지니어링 점검 계획은 아래를 만족해야 합니다.
+향후 내부 엔지니어링 점검 계획이 maintainer planning review에 들어가려면 아래를 만족해야 합니다.
 
 - Local, single-project, one Task 권한 루프에 집중한다.
 - Registered reference `capability_profile` 하나를 사용하며 connector platform이나 registry를 요구하지 않는다.
@@ -74,6 +74,8 @@ API 단계 구분은 [Stage Profile Manifest](../reference/api/schema-core.md#st
 - Future smoke check는 Core-owned state, stable event가 있을 때의 `task_events`, returned error, storage row, artifact ref, evidence state, close blocker, guarantee display fact를 assert한다.
 - 통과 조건에 full projection rendering, multiple projection kind, detailed template, operations, conformance runner, broad connector ecosystem, hosted connector registry, cross-surface orchestration, later-profile storage를 요구하지 않는다.
 - Strict fixture format과 assertion은 여기서 정의하지 않고 [Conformance Fixtures 참조](../reference/conformance-fixtures.md)로 연결한다.
+
+이 항목은 문서 계획 점검일 뿐입니다. acceptance state, manual acceptance, close readiness, runtime conformance result, generated artifact, projection refresh, implementation readiness를 만들지 않습니다.
 
 ## 향후 smoke check
 
