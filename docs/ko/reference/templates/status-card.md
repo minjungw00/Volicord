@@ -39,7 +39,7 @@ MVP-1에서 사용자가 현재 상태를 짧게 읽어야 할 때 `status-card`
 범위: {scope_summary}
 범위 밖: {non_goals|none}
 판단: {pending_user_judgments|none}
-근거: {known_evidence_summary|none}
+근거: status={evidence_summary.status}; summary={known_evidence_summary|none}
 근거 공백: {evidence_gaps|none}
 확인 또는 검증: {check_or_verification_summary|none}
 닫기: {close_readiness_summary}; 막힘={close_blockers|none}

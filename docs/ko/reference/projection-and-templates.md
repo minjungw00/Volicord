@@ -143,7 +143,7 @@ flowchart LR
 
 생성된 보고서는 독자가 이 참조 문서를 몰라도 그 경계를 볼 수 있어야 합니다. 예시와 template에서 `source_state_version`은 렌더링에 사용한 state clock을 가리키고, `projection_version` 또는 projection status는 렌더링된 view를 가리키며, `updated_at`은 그 view가 만들어진 시각을 가리킵니다. Freshness line은 이 view가 source record와 아직 맞는지 표시할 뿐입니다. 이 field들이 Markdown을 Task state, gate, approval, 근거, 검증, 수동 QA, user judgment, 작업 수락, 잔여 위험 표시, 잔여 위험 수용의 owner로 만들지는 않습니다.
 
-최신성 표시는 진단 정보이며 운영상 중요할 수 있지만 여전히 표시입니다. 오래되었거나 failed인 projection은 current readable context가 필요한 close/readiness view를 막거나, 담당 API path를 통해 `PROJECTION_STALE`을 보고하게 만들 수 있습니다. 하지만 committed Core 상태를 롤백하거나, gate value를 바꾸거나, Task를 failed로 표시하거나, 오래된 report를 authoritative하게 만들면 안 됩니다.
+최신성 표시는 진단 정보이며 운영상 중요할 수 있지만 여전히 표시입니다. 오래되었거나 failed인 projection은 current readable context가 필요한 close/readiness view를 막거나, 담당 API path를 통해 `PROJECTION_STALE`을 보고하게 만들 수 있습니다. 하지만 committed Core 상태를 롤백하거나, gate value를 바꾸거나, Task를 failed로 표시하거나, 오래된 report를 authoritative하게 만들면 안 됩니다. Close display는 current Core close result 또는 current state-derived context에서 렌더링해야 합니다. 오래된 projection prose는 close basis가 될 수 없습니다.
 
 ## 담당하는 참조 범위
 
@@ -240,7 +240,7 @@ Projection과 report surface는 current record, ref, advisory next action을 표
 
 사용자 판단 display는 모든 항목을 "Judgment" 또는 "Approval"로 뭉치지 말고 판단 유형을 이름 붙여야 합니다. 판단이 pending이면 제품/UX 판단, 기술 판단, 민감 동작 승인, 작업 수락, 잔여 위험 수용을 사용자 대상 label로 렌더링합니다. 보안/개인정보, 범위/자율성, QA 면제, 검증 면제 세부사항은 context, affected gate, owner ref로 보여줄 수 있지만 별도 표시 범주는 아닙니다. 여러 판단이 대기 중이면 별도 줄 또는 card로 표시합니다. 잔여 위험 수용 display는 수용하는 위험을 이름 붙여야 합니다.
 
-Close/readiness display는 관련 있을 때 근거, 검증, 수동 QA, 작업 수락, 잔여 위험 표시, 잔여 위험 수용을 별도 줄로 유지해야 합니다. Projection은 test pass, Eval, QA waiver, 작업 수락 user judgment, accepted Residual Risk ref를 요약할 수 있지만, 그중 하나를 다른 범주나 모든 것을 대신하는 "완료" flag로 렌더링하면 안 됩니다.
+Close/readiness display는 관련 있을 때 근거, 검증, 수동 QA, 작업 수락, 잔여 위험 표시, 잔여 위험 수용, blocker, projection 최신성을 별도 줄로 유지해야 합니다. Projection은 test pass, Eval, QA waiver, 작업 수락 user judgment, accepted Residual Risk ref를 요약할 수 있지만, 그중 하나를 다른 범주나 모든 것을 대신하는 "완료" flag로 렌더링하면 안 됩니다. 활성 MVP-1 evidence line은 report prose에서 충분성을 추론하게 하지 말고 Core가 소유한 `evidence_summary.status`와 refs를 보여줘야 합니다.
 
 ## Document authority matrix
 
@@ -403,7 +403,7 @@ MVP-1 표시 형태는 [Template 참조](templates/README.md)에 있습니다. L
 
 MVP-1 작은 보기의 projection 최신성은 current owner 또는 affected-scope state clock과 read가 반환한 source version에서 계산할 수 있습니다. Operations/profile-promoted projection에서는 current owner 또는 affected-scope state clock, 기준 `projection_jobs.source_state_version`, projection job state, managed hash, artifact availability, 알려진 `stale` trigger에서 계산됩니다. Front matter `source_state_version`은 마지막 successful 렌더링의 기준 값을 그대로 비추어, operator가 Markdown을 기준 상태로 취급하지 않고도 최신이 아닌 projection을 진단할 수 있게 합니다.
 
-Close/readiness display는 세 사실을 구분해야 합니다. 현재 Core state version, projection source version 또는 failed job status, 그리고 요청한 operation에 대해 readable view가 충분히 current한지입니다. 오래된 Markdown에서 readiness를 추론하면 안 되며, failed projection을 현재 Task, Run, evidence, Eval, QA, Approval, user judgment, residual-risk state의 rollback이나 mutation으로 취급하면 안 됩니다.
+Close/readiness display는 세 사실을 구분해야 합니다. 현재 Core state version, projection source version 또는 failed job status, 그리고 요청한 operation에 대해 readable view가 충분히 current한지입니다. 오래된 Markdown에서 readiness를 추론하면 안 되며, failed projection을 현재 Task, Run, evidence summary, Eval, QA, Approval, user judgment, residual-risk state의 rollback이나 mutation으로 취급하면 안 됩니다.
 
 아래 표는 해당 stage 또는 owner profile이 켠 projection에만 적용되는 freshness rule입니다. 여기에 projection이 listed되어 있다는 사실만으로 MVP-1 사용자 작업 루프 범위에 포함되지는 않습니다.
 

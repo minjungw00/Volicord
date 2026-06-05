@@ -178,7 +178,7 @@ Core](api/schema-core.md).
 | `runs` | Committed execution or observation record, including compatible write consumption when a product write happened. | `run_id`, `task_id`, `change_unit_id`, `write_authorization_id`, `surface_id`, `kind`, `status`, `summary`, `observed_changes_json`, `command_results_json`, `created_at`. |
 | `artifacts` | Registered durable evidence bytes or safe metadata with integrity and redaction facts. | `artifact_id`, `project_id`, `task_id`, `run_id`, `kind`, `uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `retention_class`, `produced_by`, `status`, `created_at`, `updated_at`. |
 | `artifact_links` | Owner relation from an artifact to the Core/API record it supports. | `artifact_link_id`, `artifact_id`, `task_id`, `owner_record_kind`, `owner_record_id`, `relation`, `created_at`. |
-| `evidence_summaries` | Minimal evidence coverage and gap record for MVP-1 status and close. It replaces full Evidence Manifest tables in the active slice. | `evidence_summary_id`, `task_id`, `change_unit_id`, `coverage_state`, `summary`, `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `updated_at`. |
+| `evidence_summaries` | Minimal evidence coverage and gap record for MVP-1 status and close. It replaces full Evidence Manifest tables in the active slice. | `evidence_summary_id`, `task_id`, `change_unit_id`, `coverage_state`, `coverage_items_json`, `summary`, `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `updated_at`. |
 | `blockers` | Structured blocker for next action, write compatibility, evidence gaps, close readiness, or recovery. | `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, `status`, `message`, `owner_ref_json`, `related_refs_json`, `required_next_action`, `created_at`, `resolved_at`. |
 | `tool_invocations` | Committed idempotency replay row for non-dry-run state-changing tool responses. | `invocation_id`, `project_id`, `tool_name`, `idempotency_key`, `request_hash`, `task_id`, `basis_state_version`, `response_json`, `status`, `created_at`. |
 
@@ -237,7 +237,7 @@ broad validator-run archives, long-term metrics, or connector ecosystem tables.
 | Sensitive-action permission is missing or denied | `user_judgments` rows with `judgment_type=sensitive_action_approval`, plus current `write_authorizations.related_user_judgment_refs_json` when a write is involved |
 | Write Authorization is missing, expired, stale, revoked, consumed, or incompatible | `write_authorizations.status`, `write_authorizations.basis_state_version`, `write_authorizations.consumed_by_run_id`, current `tasks.state_version` |
 | Run or artifact support is missing | `runs.status`, `artifacts.status`, `artifact_links.owner_record_kind`, `artifact_links.owner_record_id` |
-| Evidence coverage is missing or insufficient | `evidence_summaries.coverage_state`, `evidence_summaries.supporting_artifact_link_ids_json`, `evidence_summaries.gap_blocker_ids_json` |
+| Evidence coverage is missing or insufficient | `evidence_summaries.coverage_state`, `evidence_summaries.coverage_items_json`, `evidence_summaries.supporting_artifact_link_ids_json`, `evidence_summaries.gap_blocker_ids_json` |
 | Work acceptance is required but missing | `user_judgments` rows with `judgment_type=work_acceptance` and compatible `status` / `selected_option_json` |
 | Residual risk is not visible or not accepted | `blockers` rows with residual-risk blocker kinds, plus `user_judgments` rows with `judgment_type=residual_risk_acceptance` when acceptance is required |
 | A blocker is still open | `blockers.status`, `blockers.blocker_kind`, `blockers.blocked_action`, `blockers.related_refs_json`, `blockers.required_next_action` |
@@ -247,6 +247,20 @@ The close response may expose a compact close-readiness summary, evidence
 summary, and next action. Those are derived outputs over active records.
 Persisting a `close_readiness`, status-card cache, projection cache, or full
 report table is optional/later unless an owner profile promotes it.
+
+For MVP-1, `evidence_summaries.coverage_state` uses exactly `not_required`,
+`none`, `partial`, `sufficient`, `stale`, and `blocked`. If `coverage_items_json`
+is present, each item's `coverage_state` uses exactly `supported`, `unsupported`,
+`partial`, `not_applicable`, `stale`, and `blocked`. `coverage_state=sufficient`
+is the only evidence state that can satisfy close when evidence is required.
+Full Evidence Manifest rows, detached Eval rows, and Manual QA matrices are not
+needed for this active storage slice unless their owner profiles are active.
+
+Write Authorization rows are not close-readiness rows. A stale, blocked, missing,
+expired, revoked, or invalid authorization affects close only through the current
+Run, scope, artifact, evidence summary, or blocker record that depends on it.
+Storage must not turn an authorization lifecycle value into a close result, and
+must not use an attempted invalid authorization ref as evidence support.
 
 ## Later/Profile Storage
 
@@ -356,6 +370,7 @@ Storage-owned compatibility values promoted here:
 | `user_judgments.status` | `proposed`, `pending_user`, `resolved`, `deferred`, `rejected`, `blocked`, `superseded` | User judgment lifecycle. A resolved judgment affects only the judgment type and payload it records. |
 | `write_authorizations.status` | `active`, `consumed`, `expired`, `stale`, `revoked` | Durable authorization lifecycle, matching the Core/API owner value set. Only `active` and compatible rows can be consumed by `record_run`. |
 | `artifacts.status` | `available`, `missing`, `stale`, `blocked` | Artifact availability. It is a storage and integrity fact, not full evidence sufficiency. |
+| `evidence_summaries.coverage_state` | `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked` | Minimal evidence coverage state used by MVP-1 status and close. `sufficient` is required when evidence is close-required. |
 | `blockers.status` | `open`, `resolved`, `superseded` | Stored blocker lifecycle. Open blockers remain visible until Core resolves or supersedes them. |
 | `tool_invocations.status` | `committed` | A row exists only for a committed replayable non-dry-run response. |
 

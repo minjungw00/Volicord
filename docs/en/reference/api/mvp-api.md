@@ -118,6 +118,7 @@ StatusResponse:
   autonomy_boundary_summary: AutonomyBoundarySummary | null
   write_authority_summary: WriteAuthoritySummary | null
   residual_risk_summary: ResidualRiskSummary | null
+  evidence_summary: EvidenceSummary | null
   evidence_refs: StateRecordRef[]
   blocker_refs: StateRecordRef[]
   projection_freshness:
@@ -132,7 +133,7 @@ StatusResponse:
 
 `next_actions` is the MVP-1 next-safe-action surface. It should name the smallest useful next action or unblocker in ordinary language, with exact enum values as secondary detail.
 
-`evidence_refs` carries active minimal evidence coverage refs, normally `StateRecordRef.record_kind=evidence_summary`, plus artifact refs where the nested schema permits them. It is not a full Evidence Manifest table or report.
+`evidence_summary` is the Core-owned compact MVP-1 evidence summary. `evidence_refs` carries the active minimal evidence coverage refs, normally `StateRecordRef.record_kind=evidence_summary`, plus artifact refs where the nested schema permits them. These fields are not a full Evidence Manifest table or report and do not replace verification, Manual QA, work acceptance, residual-risk acceptance, or close.
 
 When status cannot reach Core, reports stale state, names an unsupported surface, or shows blockers such as out-of-scope work, missing judgment, missing evidence, close blocked, or residual risk present, it uses the canonical condition behavior in [Errors: MVP-1 guarantee and status taxonomy](errors.md#mvp-1-guarantee-and-status-taxonomy).
 
@@ -240,6 +241,7 @@ RecordRunResponse:
   state: StateSummary
   write_authorization_ref: StateRecordRef | null
   evidence_ref: StateRecordRef | null
+  evidence_summary: EvidenceSummary | null
   run_summary_ref: StateRecordRef | null
   direct_result_ref: StateRecordRef | null
   registered_artifacts: ArtifactRef[]
@@ -248,7 +250,7 @@ RecordRunResponse:
 
 The payload branch must match `kind`. MVP-1 accepts `shaping_update`, `implementation`, and `direct`; `verification_input` is later-profile only.
 
-`evidence_ref` points to the active minimal evidence coverage record, normally `StateRecordRef.record_kind=evidence_summary`. Durable bytes returned by the same operation appear in `registered_artifacts`.
+`evidence_ref` points to the active minimal evidence coverage record, normally `StateRecordRef.record_kind=evidence_summary`, and `evidence_summary` returns the current Core-owned compact summary after the Run is recorded. Durable bytes returned by the same operation appear in `registered_artifacts`.
 
 An exact idempotent replay of a committed `record_run` response returns the original response before current freshness checks, authorization consumption, Run creation, artifact registration, blocker/gate updates, projection enqueue, or event append. It must not consume a Write Authorization twice.
 
@@ -372,6 +374,7 @@ CloseTaskResponse:
   close_reason: none | completed_verified | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
   assurance_level: none | self_checked | detached_verified
   residual_risk_state: ResidualRiskSummary
+  evidence_summary: EvidenceSummary | null
   acceptance_state:
     status: not_required | required | pending | accepted | rejected
     accepted_by_ref: StateRecordRef | null
@@ -392,7 +395,9 @@ CloseTaskResponse:
   artifact_refs: ArtifactRef[]
 ```
 
-MVP-1 close uses the core close state, blockers, residual-risk visibility, work-acceptance state when required, artifact availability, and minimal evidence coverage refs. Close readiness is derived from current records. Verification, Manual QA, projection/report, and operations refs are active only when their profiles are enabled.
+MVP-1 close uses the core close state, blockers, residual-risk visibility, work-acceptance state when required, artifact availability, and the Core-owned `evidence_summary`. Close readiness is derived from current records. Verification, Manual QA, projection/report, and operations refs are active only when their profiles are enabled.
+
+For `intent=complete`, a closed response requires a Task state compatible with the close intent, no unresolved close-relevant active Run, no unresolved or blocked required user judgment, `evidence_summary.status=sufficient` when evidence is required, recorded work acceptance when acceptance is required, visible close-relevant residual risk, and explicit residual-risk acceptance for `completed_with_risk_accepted`. Stale or blocked Write Authorization facts affect close only through the current Run, scope, artifact, evidence, or blocker records they affect; they are not close results by themselves. Projection freshness is display freshness, not canonical close state; callers must not close from stale projection prose.
 
 `CloseTaskRequest` does not carry accepted-risk refs. For `completed_with_risk_accepted`, Core reads accepted state from the blocker that made the close-relevant risk visible and the residual-risk acceptance `user_judgment`; rich Residual Risk records are needed only when that later profile is active.
 

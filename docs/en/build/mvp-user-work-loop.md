@@ -57,9 +57,10 @@ MVP-1 includes:
 - separate display of Product/UX judgment, Technical judgment, Sensitive action approval, Work acceptance, and Residual risk acceptance when those routes are relevant
 - cooperative pre-write scope checking through Core and `prepare_write`
 - `record_run` plus registered artifact/evidence refs or the minimum evidence summary path
+- Core-owned `evidence_summary` with the minimum states `not_required`, `none`, `partial`, `sufficient`, `stale`, and `blocked`
 - status and next-safe-action output through `harness.status.next_actions`
 - evidence summary and evidence-gap display
-- close blocker summary when required evidence or required user judgment is missing
+- close blocker summary when required evidence is insufficient, required user judgment is unresolved or blocked, required work acceptance is missing, or residual risk is not visible/accepted as required
 - residual-risk visibility before acceptance or close when close-relevant risk exists
 - compact Core-derived views for the MVP-1 path, using exactly the set owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set)
 - honest MCP/Core unavailable behavior: no fabricated authority state when Core cannot be reached
@@ -149,6 +150,7 @@ These decisions are resolved in the documentation baseline but still require mai
 | MVP-1 compact views | Use exactly `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, and `close-result`, as owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set). | These views do not authorize writes, satisfy evidence, record acceptance, accept risk, close tasks, or become canonical state. |
 | Minimal storage boundary | Keep MVP-1 storage to the minimal active owner records needed for the user work loop. | Later-profile tables/records stay out unless owner docs promote them. |
 | Acceptance boundaries | Sensitive action approval, work acceptance, and residual-risk acceptance stay separate. | Work acceptance is not Approval, and residual-risk acceptance is not work acceptance. |
+| Minimal evidence and close contract | Use Core-owned `evidence_summary`; successful close requires sufficient required evidence, resolved required judgment, recorded required work acceptance, visible close-relevant residual risk, and explicit residual-risk acceptance for accepted-risk close. | Full Evidence Manifest, detached Eval, full Manual QA, and rich residual-risk lifecycle stay later/profile unless activated by owner scope, policy, or profile. |
 | Small direct changes | Small changes still need explicit scope, compatible `prepare_write`, `record_run`, and required evidence support. | Small-change labeling must not bypass authority, user judgment, evidence, or risk visibility. |
 | Local access and errors | Use the API, Operations, and Security owner contracts for local access, unavailable Core/MCP, state conflict, and display-safe details. | Build docs do not define new public error codes or precedence. |
 
@@ -186,7 +188,7 @@ MVP-1 User Work Loop can be considered complete only when a user can observe:
 - compatible pre-write scope checks through Core
 - recorded Run and evidence refs or evidence summaries
 - current status, next safe action, evidence gaps, close blockers, and residual-risk visibility
-- close held when required evidence or required user judgment is missing
+- close held when required evidence is not `sufficient`, required user judgment is unresolved or blocked, required acceptance is missing, or residual risk is not visible/accepted as required
 - no fabricated authority when MCP/Core is unavailable
 - compact views derived from Core records, with stale or failed freshness visible where applicable
 

@@ -310,6 +310,26 @@ EvidenceRefs:
   state_refs: StateRecordRef[]
   artifact_refs: ArtifactRef[]
 
+EvidenceCoverageItem:
+  claim_or_criterion: string
+  coverage_state: supported | unsupported | partial | not_applicable | stale | blocked
+  supporting_state_refs: StateRecordRef[]
+  supporting_artifact_refs: ArtifactRef[]
+  gap_blocker_refs: StateRecordRef[]
+  note: string | null
+
+EvidenceSummary:
+  evidence_summary_ref: StateRecordRef | null
+  task_id: string
+  change_unit_id: string | null
+  status: not_required | none | partial | sufficient | stale | blocked
+  coverage_items: EvidenceCoverageItem[]
+  supporting_run_refs: StateRecordRef[]
+  supporting_artifact_refs: ArtifactRef[]
+  gap_blocker_refs: StateRecordRef[]
+  summary: string
+  updated_at: string
+
 ApprovalScope:
   sensitive_categories: string[]
   allowed_paths: string[]
@@ -358,6 +378,8 @@ WriteAuthoritySummary:
 `WriteAuthorizationSummary.approval_refs` is empty in minimum MVP-1. Resolved sensitive-action approval user judgments appear in `user_judgment_refs`; committed Approval refs appear only when the Approval owner profile is active.
 
 `WriteAuthorizationSummary` and `WriteAuthoritySummary` are API/internal names. MVP-1 user-facing displays should call this a pre-write scope check first. Fields such as `allowed_paths`, `allowed_tools`, `decision=allowed`, and `status=active` describe Harness compatibility for the cooperative record/check only; they do not mean OS permission, sandboxing, tamper-proof enforcement, preventive blocking, or isolation. `allowed` belongs to `PrepareWriteResponse.decision`. `blocked` has no authorization row or lifecycle value.
+
+`EvidenceSummary` is the active MVP-1 compact evidence contract. `status` uses exactly `not_required`, `none`, `partial`, `sufficient`, `stale`, and `blocked`; item coverage uses exactly `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, and `blocked`. It is Core-owned state used by status and close checks. It is not a full Evidence Manifest, detached verification result, Manual QA record, work acceptance, residual-risk acceptance, or projection.
 
 ## UserJudgment
 
@@ -526,6 +548,7 @@ ResidualRiskSummary:
 AcceptanceVisibilityContext:
   residual_risk_summary: ResidualRiskSummary | null
   unaccepted_close_relevant_risk_refs: StateRecordRef[]
+  evidence_summary: EvidenceSummary | null
   evidence_refs: StateRecordRef[]
   verification_status: not_required | required | pending | passed | failed | waived_by_user | blocked
   qa_status: not_required | required | pending | passed | failed | waived

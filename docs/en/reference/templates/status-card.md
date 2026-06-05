@@ -39,7 +39,7 @@ Work: {work_shape}. {current_task_summary}
 Scope: {scope_summary}
 Out of scope: {non_goals|none}
 Judgment: {pending_user_judgments|none}
-Evidence: {known_evidence_summary|none}
+Evidence: status={evidence_summary.status}; summary={known_evidence_summary|none}
 Evidence gaps: {evidence_gaps|none}
 Check or verification: {check_or_verification_summary|none}
 Close: {close_readiness_summary}; blockers={close_blockers|none}

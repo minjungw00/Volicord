@@ -370,7 +370,7 @@ Why this is good: it maps the user's short reply only to the named pending judgm
 Bad agent response:
 
 ```text
-I will treat that as approval for implementation, acceptance of the result, QA waiver, and residual-risk acceptance.
+Invalid: I would collapse that into implementation approval, result acceptance, QA waiver, and residual-risk acceptance.
 ```
 
 Why this is bad: one broad phrase cannot collapse separate judgment routes.

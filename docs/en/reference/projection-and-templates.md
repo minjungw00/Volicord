@@ -143,7 +143,7 @@ Strict projection behavior is owned by this reference, especially the [Document 
 
 Generated reports should make this visible without requiring the reader to know this reference first. In examples and templates, `source_state_version` names the state clock used for the render, `projection_version` or projection status names the rendered view, `updated_at` names when the view was produced, and freshness lines say whether the view still matches its source records. None of those fields make Markdown the owner of Task state, gates, approvals, evidence, verification, Manual QA, user judgments, work acceptance, residual-risk visibility, and residual-risk acceptance.
 
-Freshness display is diagnostic and operationally relevant, but it is still display. A stale or failed projection can block close/readiness views that require current readable context or can cause an action to report `PROJECTION_STALE` through the owning API path, but it must not roll back committed Core state, change gate values, mark a Task failed, or make an old report authoritative.
+Freshness display is diagnostic and operationally relevant, but it is still display. A stale or failed projection can block close/readiness views that require current readable context or can cause an action to report `PROJECTION_STALE` through the owning API path, but it must not roll back committed Core state, change gate values, mark a Task failed, or make an old report authoritative. Close display must be rendered from the current Core close result or current state-derived context; stale projection prose is never the close basis.
 
 ## Reference scope
 
@@ -240,7 +240,7 @@ Projection and report surfaces may display current records, refs, and advisory n
 
 User judgment displays must name the judgment type instead of flattening everything into "Judgment" or "Approval." Render Product/UX judgment, Technical judgment, Sensitive action approval, Work acceptance, and Residual risk acceptance as the user-facing labels when those judgments are pending. Security/privacy, scope/autonomy, QA waiver, and verification-waiver details may appear as context, affected gates, or owner refs, but they are not additional display categories. If multiple judgments are pending, render separate lines or cards. Residual-risk acceptance displays must name the risk being accepted.
 
-Close/readiness displays must keep evidence, verification, Manual QA, work acceptance, residual-risk visibility, and residual-risk acceptance on separate lines when those categories are relevant. A projection may summarize a test pass, Eval, QA waiver, work-acceptance user judgment, or accepted Residual Risk ref, but it must not render one of those as another category or as a single all-purpose "done" flag.
+Close/readiness displays must keep evidence, verification, Manual QA, work acceptance, residual-risk visibility, residual-risk acceptance, blockers, and projection freshness on separate lines when those categories are relevant. A projection may summarize a test pass, Eval, QA waiver, work-acceptance user judgment, or accepted Residual Risk ref, but it must not render one of those as another category or as a single all-purpose "done" flag. The active MVP-1 evidence line should show the Core-owned `evidence_summary.status` and refs rather than asking readers to infer sufficiency from report prose.
 
 ## Document authority matrix
 
@@ -403,7 +403,7 @@ The MVP-1 display shapes live in the [Template Reference](templates/README.md). 
 
 For MVP-1 compact views, freshness can be computed from the current owner or affected-scope state clock and the source version returned with the read. For Operations/profile-promoted projections, freshness is computed from the current owner or affected-scope state clock, canonical `projection_jobs.source_state_version`, projection job state, managed hashes, artifact availability, and known stale triggers. Front matter `source_state_version` mirrors the canonical value from the last successful render so operators can diagnose stale projections without treating the Markdown as canonical.
 
-Close/readiness displays must distinguish three facts: the current Core state version, the projection source version or failed job status, and whether the readable view is current enough for the requested operation. They must not infer readiness from stale Markdown, and they must not treat a failed projection as a rollback or mutation of the current Task, Run, evidence, Eval, QA, Approval, user judgment, or residual-risk state.
+Close/readiness displays must distinguish three facts: the current Core state version, the projection source version or failed job status, and whether the readable view is current enough for the requested operation. They must not infer readiness from stale Markdown, and they must not treat a failed projection as a rollback or mutation of the current Task, Run, evidence summary, Eval, QA, Approval, user judgment, or residual-risk state.
 
 The table below describes freshness rules only for projections whose stage or owner profile has enabled them. Listing a projection here does not make it part of MVP-1 User Work Loop scope.
 

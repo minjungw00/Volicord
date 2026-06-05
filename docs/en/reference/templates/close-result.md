@@ -38,10 +38,11 @@ Close result: {ready|blocked|closed|not_requested}
 Display only: Core close state and owner refs remain authoritative.
 
 Scope: {scope_summary}
-Evidence: {evidence_summary}; gaps={evidence_gaps|none}
+Evidence: status={evidence_summary.status}; summary={evidence_summary.summary}; gaps={evidence_gaps|none}
 Check or verification: {check_verification_manual_qa_summary}
 Judgment and acceptance: work_acceptance={work_acceptance_status}; sensitive_action_permission={sensitive_permission_status|not_applicable}
-Residual risk: {residual_risk_visibility}; acceptance={residual_risk_acceptance_status|not_applicable}
+Residual risk visibility: {residual_risk_visibility}
+Residual risk acceptance: {residual_risk_acceptance_status|not_applicable}
 Blockers: {close_blockers|none}
 Smallest unblocker: {smallest_unblocker|none}
 Close basis or reason: {close_reason|not_applicable}
@@ -51,4 +52,4 @@ Sources/freshness: state={source_state_version}; refs={source_refs}; rendered={u
 
 ## Notes
 
-Do not collapse evidence, verification, Manual QA, work acceptance, residual-risk visibility, residual-risk acceptance, and readable-view freshness into one "done" line. If close is blocked, name the primary blocker and keep secondary blockers visible when they affect the next path.
+Do not collapse evidence, verification, Manual QA, work acceptance, residual-risk visibility, residual-risk acceptance, blockers, and readable-view freshness into one "done" line. If close is blocked, name the primary blocker and keep secondary blockers visible when they affect the next path. If the readable close view is stale or failed, fetch a current Core close result instead of closing from this template's prose.

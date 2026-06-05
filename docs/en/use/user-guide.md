@@ -377,7 +377,7 @@ Why this is good: it maps broad language only to the active, clearly named judgm
 Bad agent response:
 
 ```text
-Great. I will treat that as approval for all writes, work acceptance, QA waiver, and residual-risk acceptance.
+Invalid: I would treat that as all write permission, work acceptance, QA waiver, and residual-risk acceptance.
 ```
 
 Why this is bad: "go ahead" is not automatically every approval and acceptance path.

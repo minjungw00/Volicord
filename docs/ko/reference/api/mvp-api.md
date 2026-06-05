@@ -118,6 +118,7 @@ StatusResponse:
   autonomy_boundary_summary: AutonomyBoundarySummary | null
   write_authority_summary: WriteAuthoritySummary | null
   residual_risk_summary: ResidualRiskSummary | null
+  evidence_summary: EvidenceSummary | null
   evidence_refs: StateRecordRef[]
   blocker_refs: StateRecordRef[]
   projection_freshness:
@@ -132,7 +133,7 @@ StatusResponse:
 
 `next_actions`가 MVP-1의 다음 안전한 행동 surface입니다. 사용자에게는 가장 작은 useful next action이나 unblocker를 쉬운 말로 보여 주고, exact enum value는 secondary detail로 둡니다.
 
-`evidence_refs`는 active minimal evidence coverage ref를 담습니다. 보통 `StateRecordRef.record_kind=evidence_summary`를 사용하며, nested schema가 허용하는 곳에서는 artifact ref도 함께 둡니다. Full Evidence Manifest table이나 report가 아닙니다.
+`evidence_summary`는 Core가 소유한 compact MVP-1 evidence summary입니다. `evidence_refs`는 active minimal evidence coverage ref를 담습니다. 보통 `StateRecordRef.record_kind=evidence_summary`를 사용하며, nested schema가 허용하는 곳에서는 artifact ref도 함께 둡니다. 이 field들은 full Evidence Manifest table이나 report가 아니며, verification, 수동 QA, 작업 수락, 잔여 위험 수용, close를 대신하지 않습니다.
 
 Status가 Core에 닿지 못하거나, stale state를 보고하거나, unsupported surface를 이름 붙이거나, 범위 밖 작업, 필요한 사용자 판단, 부족한 근거, 닫기 막힘, 남은 잔여 위험 같은 blocker를 보여줄 때는 [Errors: MVP-1 guarantee와 상태/error taxonomy](errors.md#mvp-1-guarantee-and-status-taxonomy)의 canonical condition 동작을 사용합니다.
 
@@ -240,6 +241,7 @@ RecordRunResponse:
   state: StateSummary
   write_authorization_ref: StateRecordRef | null
   evidence_ref: StateRecordRef | null
+  evidence_summary: EvidenceSummary | null
   run_summary_ref: StateRecordRef | null
   direct_result_ref: StateRecordRef | null
   registered_artifacts: ArtifactRef[]
@@ -248,7 +250,7 @@ RecordRunResponse:
 
 `payload` branch는 `kind`와 일치해야 합니다. MVP-1은 `shaping_update`, `implementation`, `direct`를 허용합니다. `verification_input`은 later-profile only입니다.
 
-`evidence_ref`는 active minimal evidence coverage record를 가리킵니다. 보통 `StateRecordRef.record_kind=evidence_summary`를 사용합니다. 같은 operation이 반환하는 durable byte는 `registered_artifacts`에 나타납니다.
+`evidence_ref`는 active minimal evidence coverage record를 가리킵니다. 보통 `StateRecordRef.record_kind=evidence_summary`를 사용합니다. `evidence_summary`는 Run이 기록된 뒤의 current Core-owned compact summary를 반환합니다. 같은 operation이 반환하는 durable byte는 `registered_artifacts`에 나타납니다.
 
 Committed `record_run` response를 exact idempotent replay하면 current freshness check, authorization consumption, Run creation, artifact registration, blocker/gate update, projection enqueue, event append 전에 original response를 반환합니다. Write Authorization을 두 번 소비하면 안 됩니다.
 
@@ -372,6 +374,7 @@ CloseTaskResponse:
   close_reason: none | completed_verified | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
   assurance_level: none | self_checked | detached_verified
   residual_risk_state: ResidualRiskSummary
+  evidence_summary: EvidenceSummary | null
   acceptance_state:
     status: not_required | required | pending | accepted | rejected
     accepted_by_ref: StateRecordRef | null
@@ -392,7 +395,9 @@ CloseTaskResponse:
   artifact_refs: ArtifactRef[]
 ```
 
-MVP-1 close는 core close state, blocker, residual-risk visibility, required work-acceptance state, artifact availability, minimal evidence coverage ref를 사용합니다. Close readiness는 current record에서 파생됩니다. Verification, Manual QA, projection/report, operations ref는 해당 profile이 enabled일 때만 active입니다.
+MVP-1 close는 core close state, blocker, residual-risk visibility, required work-acceptance state, artifact availability, Core가 소유한 `evidence_summary`를 사용합니다. Close readiness는 current record에서 파생됩니다. Verification, Manual QA, projection/report, operations ref는 해당 profile이 enabled일 때만 active입니다.
+
+`intent=complete`에서 closed response가 되려면 Task state가 close intent와 호환되고, close와 관련해 unresolved active Run이 없고, required user judgment가 unresolved 또는 blocked 상태가 아니며, evidence가 required이면 `evidence_summary.status=sufficient`여야 합니다. Acceptance가 required이면 작업 수락이 기록되어야 합니다. Close-relevant residual risk는 visible해야 하며, `completed_with_risk_accepted`에는 명시적인 residual-risk acceptance가 필요합니다. Stale 또는 blocked Write Authorization fact는 그 영향이 닿는 current Run, scope, artifact, evidence, blocker record를 통해서만 close에 영향을 줍니다. Projection freshness는 display freshness이지 canonical close state가 아닙니다. Caller는 stale projection prose에서 close하면 안 됩니다.
 
 `CloseTaskRequest`는 accepted-risk refs를 싣지 않습니다. `completed_with_risk_accepted`에서는 Core가 close-relevant risk를 보여 주는 blocker와 residual-risk acceptance `user_judgment`의 accepted state를 읽고, 그 상태가 없으면 block합니다. Rich Residual Risk record는 해당 later profile이 active일 때만 필요합니다.
 

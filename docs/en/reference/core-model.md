@@ -212,6 +212,12 @@ Stage/profile support:
 | MVP-1 User Work Loop | User-facing status for scope, pending user judgments, evidence summary, close readiness, work acceptance when required, and residual-risk visibility when close-relevant risk exists. MVP-1 must not imply detached verification is always required. |
 | Later assurance and operations profiles | Detached verification independence, richer Manual QA, stewardship, feedback-loop/TDD policy, projection/reconcile operations, export/recover, and handoff behavior. These are blockers only when the active profile or owner doc enables them. |
 
+Active MVP-1 evidence uses a Core-owned `evidence_summary`, not full Evidence Manifest report prose. Its minimum summary states are `not_required`, `none`, `partial`, `sufficient`, `stale`, and `blocked`. When item-level or criterion-level coverage is needed, the minimum coverage states are `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, and `blocked`.
+
+`evidence_summary.status=sufficient` means every close-relevant required criterion, condition, or completion claim has compatible current support and any referenced artifacts are available enough for the claim. `none` means evidence is required but no compatible support is recorded. `partial` means some required support exists but coverage is incomplete. `stale` means prior support no longer matches current state, baseline, scope, or artifact integrity. `blocked` means Core cannot inspect, link, or trust required support until a named blocker is resolved. `not_required` is valid only when the active path does not require recorded evidence.
+
+The MVP-1 `evidence_summary` may cite Runs, blockers, user judgments, and `ArtifactRef` values. It does not create detached verification, Manual QA, work acceptance, residual-risk acceptance, or close by itself.
+
 ## Reference scope
 
 This document owns:
@@ -447,7 +453,9 @@ not_required | required | pending | passed | partial | waived | stale | blocked
 not_required | none | partial | sufficient | stale | blocked
 ```
 
-When evidence is required, successful close needs `evidence_gate=sufficient`. `not_required` must not be used when evidence is required but missing.
+`evidence_gate` is derived from the Core-owned `evidence_summary`. When evidence is required, successful close needs `evidence_gate=sufficient`. `not_required` must not be used when evidence is required but missing, stale, blocked, or only partially covered.
+
+The active MVP-1 evidence path is compact: Core keeps enough summary state, coverage refs, supporting Run refs, supporting `ArtifactRef` links, and gap blockers to decide status and close. Full Evidence Manifest tables, detailed criteria matrices, detached Eval outputs, and full Manual QA evidence matrices are later/profile material unless an owner profile explicitly activates them.
 
 ### Evidence Sufficiency Profiles
 
@@ -670,11 +678,22 @@ A replayed committed `record_run` with the same idempotency key and canonical re
 
 Close readiness is profile-driven. Detached verification is required only when the active profile, user request, task type, security/criticality profile, or explicit requirement says it is required. A verification waiver is needed only when required verification is intentionally skipped. If verification was not required, there is nothing to waive.
 
+For `intent=complete`, Core can return successful close only when all of these close-relevant conditions hold:
+
+- The Task lifecycle/result is compatible with the requested close intent and is not already terminal in a conflicting way.
+- No active Run remains unresolved in a close-relevant way.
+- Required user judgment is resolved or compatibly deferred; unresolved, rejected, blocked, stale, or incompatible judgment blocks close.
+- If evidence is required, `evidence_gate=sufficient`.
+- If work acceptance is required, a compatible work-acceptance `user_judgment` is recorded after close basis visibility.
+- Close-relevant residual risk is visible before close; if the requested close is `completed_with_risk_accepted` or the close path depends on accepted risk, a compatible residual-risk acceptance `user_judgment` is required.
+- Stale, blocked, missing, or invalid Write Authorization facts do not become close success or close failure by themselves. Their effects route through the current Run, scope, artifact, evidence, or blocker records they affect.
+- Projection freshness is not canonical state. A stale or failed close display must not be used as the close basis; close display must be rendered from the current Core close result or must show that current readable context is unavailable.
+
 The decision algorithm checks the close intent and required gates:
 
 1. Resolve the active Task and requested close intent.
 2. For cancellation or supersession, ensure no write is in an unsafe in-progress state, then close with the matching reason.
-3. Reject completion if an active Run is still open.
+3. Reject completion if an active Run remains unresolved in a close-relevant way.
 4. Check active Change Unit completion, deferral, or supersession according to the active profile.
 5. Check scope.
 6. Check blocking user judgments and `decision_gate`.
@@ -685,9 +704,10 @@ The decision algorithm checks the close intent and required gates:
 11. Check Manual QA only when Manual QA is required.
 12. Check residual-risk visibility; if risk-accepted close is requested or required, check a residual-risk acceptance `user_judgment` plus the relevant blocker/evidence refs. Rich Residual Risk refs apply only when that profile is active.
 13. Check work acceptance only when work acceptance is required.
-14. Assign result, close reason, assurance level, residual-risk state, and acceptance state as separate facts.
-15. Report projection freshness when projection support is enabled.
-16. Append close events and enqueue projection refresh when projection support is enabled.
+14. Check artifact availability for close-relevant evidence refs.
+15. Assign result, close reason, assurance level, residual-risk state, and acceptance state as separate facts.
+16. Report projection freshness when projection support is enabled, without using projection text as canonical state.
+17. Append close events and enqueue projection refresh when projection support is enabled.
 
 This close-decision flow is a design-contract summary. Verification, Manual QA, work acceptance, and residual-risk acceptance are checked only when the active profile, task, user request, or explicit requirement makes them relevant; they are not always-required detached steps.
 

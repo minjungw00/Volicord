@@ -310,6 +310,26 @@ EvidenceRefs:
   state_refs: StateRecordRef[]
   artifact_refs: ArtifactRef[]
 
+EvidenceCoverageItem:
+  claim_or_criterion: string
+  coverage_state: supported | unsupported | partial | not_applicable | stale | blocked
+  supporting_state_refs: StateRecordRef[]
+  supporting_artifact_refs: ArtifactRef[]
+  gap_blocker_refs: StateRecordRef[]
+  note: string | null
+
+EvidenceSummary:
+  evidence_summary_ref: StateRecordRef | null
+  task_id: string
+  change_unit_id: string | null
+  status: not_required | none | partial | sufficient | stale | blocked
+  coverage_items: EvidenceCoverageItem[]
+  supporting_run_refs: StateRecordRef[]
+  supporting_artifact_refs: ArtifactRef[]
+  gap_blocker_refs: StateRecordRef[]
+  summary: string
+  updated_at: string
+
 ApprovalScope:
   sensitive_categories: string[]
   allowed_paths: string[]
@@ -358,6 +378,8 @@ WriteAuthoritySummary:
 Minimum MVP-1에서 `WriteAuthorizationSummary.approval_refs`는 empty입니다. Resolved sensitive-action approval user judgment는 `user_judgment_refs`에 나타납니다. Committed Approval ref는 Approval owner profile이 active일 때만 나타납니다.
 
 `WriteAuthorizationSummary`와 `WriteAuthoritySummary`는 API/internal 이름입니다. MVP-1 사용자 표시에서는 먼저 쓰기 전 범위 확인이라고 설명해야 합니다. `allowed_paths`, `allowed_tools`, `decision=allowed`, `status=active` 같은 field는 협력형 기록/확인에 대한 하네스 호환성만 뜻합니다. OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단, 권한 격리를 뜻하지 않습니다. `allowed`는 `PrepareWriteResponse.decision`에 속합니다. `blocked`에는 authorization row나 lifecycle value가 없습니다.
+
+`EvidenceSummary`는 활성 MVP-1의 compact evidence contract입니다. `status`는 정확히 `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked`를 사용합니다. Item coverage는 정확히 `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, `blocked`를 사용합니다. 이 값은 status와 close check에 쓰는 Core 소유 상태입니다. Full Evidence Manifest, detached verification result, Manual QA record, 작업 수락, 잔여 위험 수용, projection이 아닙니다.
 
 ## UserJudgment
 
@@ -526,6 +548,7 @@ ResidualRiskSummary:
 AcceptanceVisibilityContext:
   residual_risk_summary: ResidualRiskSummary | null
   unaccepted_close_relevant_risk_refs: StateRecordRef[]
+  evidence_summary: EvidenceSummary | null
   evidence_refs: StateRecordRef[]
   verification_status: not_required | required | pending | passed | failed | waived_by_user | blocked
   qa_status: not_required | required | pending | passed | failed | waived

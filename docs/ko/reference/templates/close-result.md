@@ -38,10 +38,11 @@
 표시 전용: Core close state와 owner ref가 기준입니다.
 
 범위: {scope_summary}
-근거: {evidence_summary}; 공백={evidence_gaps|none}
+근거: status={evidence_summary.status}; summary={evidence_summary.summary}; 공백={evidence_gaps|none}
 확인 또는 검증: {check_verification_manual_qa_summary}
 판단과 작업 수락: work_acceptance={work_acceptance_status}; sensitive_action_permission={sensitive_permission_status|not_applicable}
-잔여 위험: {residual_risk_visibility}; 수용={residual_risk_acceptance_status|not_applicable}
+잔여 위험 표시: {residual_risk_visibility}
+잔여 위험 수용: {residual_risk_acceptance_status|not_applicable}
 막힘: {close_blockers|none}
 가장 작은 해소 방법: {smallest_unblocker|none}
 닫기 근거 또는 이유: {close_reason|not_applicable}
@@ -51,4 +52,4 @@
 
 ## 메모
 
-근거, 검증, 수동 QA, 작업 수락, 잔여 위험 표시, 잔여 위험 수용, 읽기용 보기 최신성을 하나의 "완료" 줄로 뭉개지 않습니다. 닫기가 막혔으면 primary blocker를 먼저 말하고, 다음 경로에 영향을 주는 secondary blocker도 보이게 둡니다.
+근거, 검증, 수동 QA, 작업 수락, 잔여 위험 표시, 잔여 위험 수용, blocker, 읽기용 보기 최신성을 하나의 "완료" 줄로 뭉개지 않습니다. 닫기가 막혔으면 primary blocker를 먼저 말하고, 다음 경로에 영향을 주는 secondary blocker도 보이게 둡니다. 읽기용 close view가 stale 또는 failed이면 이 템플릿의 prose에서 close하지 말고 current Core close result를 가져와야 합니다.

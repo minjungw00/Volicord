@@ -57,9 +57,10 @@ MVP-1에는 아래가 포함됩니다.
 - 관련 경로가 있을 때 제품/UX 판단, 기술 판단, 민감 동작 승인, 작업 수락, 잔여 위험 수용을 분리해서 표시
 - Core와 `prepare_write`를 통한 협력형 쓰기 전 범위 확인
 - `record_run`과 registered artifact/evidence ref 또는 minimum evidence summary path
+- 최소 state `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked`를 쓰는 Core-owned `evidence_summary`
 - `harness.status.next_actions`를 통한 status와 next-safe-action output
 - 근거 요약과 근거 gap 표시
-- 필요한 근거나 사용자 판단이 없을 때 close blocker summary
+- 필요한 근거가 부족하거나, 필요한 사용자 판단이 unresolved 또는 blocked이거나, required work acceptance가 없거나, 잔여 위험이 required 상태로 보이지 않거나 수용되지 않았을 때 close blocker summary
 - 닫기와 관련된 위험이 있을 때 작업 수락이나 close 전에 잔여 위험 표시
 - MVP-1 path를 위한 compact Core-derived view. 정확한 view set은 [Projection과 Template 참조](../reference/projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../reference/templates/README.md#mvp-1-템플릿-세트)가 담당하는 set으로 제한됩니다.
 - MCP/Core를 사용할 수 없을 때 정직하게 동작하기. Core에 닿을 수 없으면 권한 상태를 만들어 내지 않습니다.
@@ -149,6 +150,7 @@ Guarantee level은 [보안 참조](../reference/security.md#단계별-guarantee-
 | MVP-1 compact views | [Projection과 Template 참조](../reference/projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../reference/templates/README.md#mvp-1-템플릿-세트)가 소유한 `status-card`, `agent-context-packet`, `judgment-request`, `run-evidence-summary`, `close-result`만 사용합니다. | 이 view는 쓰기를 허가하거나 근거를 충족하거나 수락을 기록하거나 위험을 수용하거나 task를 close하거나 canonical state가 되지 않습니다. |
 | Minimal storage boundary | MVP-1 storage는 user work loop에 필요한 최소 active owner record로 제한합니다. | Later-profile table/record는 owner docs가 승격하기 전까지 제외합니다. |
 | Acceptance boundaries | Sensitive action approval, work acceptance, residual-risk acceptance를 분리합니다. | Work acceptance는 Approval이 아니며, residual-risk acceptance는 work acceptance가 아닙니다. |
+| Minimal evidence and close contract | Core-owned `evidence_summary`를 사용합니다. Successful close에는 required evidence가 sufficient이고, required judgment가 resolved이며, required work acceptance가 기록되어 있고, close-relevant residual risk가 visible해야 합니다. Accepted-risk close에는 explicit residual-risk acceptance가 필요합니다. | Full Evidence Manifest, detached Eval, full Manual QA, rich residual-risk lifecycle은 owner scope, policy, profile이 활성화하기 전까지 later/profile에 남습니다. |
 | Small direct changes | Small change도 explicit scope, compatible `prepare_write`, `record_run`, required evidence support가 필요합니다. | Small-change label이 authority, user judgment, evidence, risk visibility를 우회하면 안 됩니다. |
 | Local access and errors | Local access, unavailable Core/MCP, state conflict, display-safe detail은 API, Operations, Security 담당 계약을 사용합니다. | Build 문서는 새 public error code나 precedence를 정의하지 않습니다. |
 
@@ -186,7 +188,7 @@ MVP-1 사용자 작업 루프는 사용자가 아래를 볼 수 있을 때만 co
 - Core를 통한 compatible 쓰기 전 범위 확인
 - Recorded Run과 evidence ref 또는 evidence summary
 - 현재 상태, 다음 안전한 행동, 근거 공백, close blocker, 잔여 위험 표시
-- Required evidence나 required user judgment가 없으면 close가 hold됨
+- Required evidence가 `sufficient`가 아니거나, required user judgment가 unresolved 또는 blocked이거나, required acceptance가 없거나, residual risk가 required 상태로 보이지 않거나 수용되지 않으면 close가 hold됨
 - MCP/Core를 사용할 수 없을 때 권한 상태를 만들어 내지 않음
 - Core record에서 파생된 compact view와, 필요한 경우 stale/failed freshness 표시
 

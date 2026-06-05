@@ -334,7 +334,7 @@ Why this is good: it applies broad language only where the active prompt made th
 Bad agent response:
 
 ```text
-Great. I will treat that as approval for all writes, acceptance of the finished work, QA waiver, and residual-risk acceptance.
+Invalid: I would treat that as all write permission, finished-work acceptance, QA waiver, and residual-risk acceptance.
 ```
 
 Why this is bad: broad continuation language must not collapse separate user-owned judgments.

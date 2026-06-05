@@ -85,7 +85,7 @@ Owner docs: [Core Model Reference: `record_run`](../reference/core-model.md#reco
 
 ### 7. Run -> evidence and artifacts
 
-Evidence links claims to registered artifact refs or owner records. Engineering Checkpoint needs one ref. MVP-1 needs an evidence summary and visible gaps. Detailed Evidence Manifest behavior is later-profile scope unless promoted.
+Evidence links claims to registered artifact refs or owner records. Engineering Checkpoint needs one ref. MVP-1 needs a Core-owned `evidence_summary` with visible gaps; `sufficient` is required only when evidence is required for close. Detailed Evidence Manifest behavior is later-profile scope unless promoted.
 
 Owner docs: [Core Model Reference: Evidence Manifest](../reference/core-model.md#evidence-manifest), [API Schema Core: ArtifactRef](../reference/api/schema-core.md#artifactref), [Storage](../reference/storage.md).
 
@@ -97,7 +97,7 @@ Owner docs: [`harness.status`](../reference/api/mvp-api.md#harnessstatus), [API 
 
 ### 9. Status -> close blocker or close
 
-When close is in scope, Core checks close-relevant state and either closes the Task or returns blockers. Engineering Checkpoint may use only a narrow status/close blocker smoke. MVP-1 needs close blocker display and separation between work acceptance and residual-risk acceptance. Full assurance close semantics are later-profile scope.
+When close is in scope, Core checks close-relevant state and either closes the Task or returns blockers. Engineering Checkpoint may use only a narrow status/close blocker smoke. MVP-1 needs close blocker display, sufficient required evidence, unresolved-judgment blockers, residual-risk visibility, explicit residual-risk acceptance for accepted-risk close, and separation between work acceptance and residual-risk acceptance. Full assurance close semantics are later-profile scope.
 
 Owner docs: [Core Model Reference: `close_task`](../reference/core-model.md#close_task), [`harness.close_task`](../reference/api/mvp-api.md#harnessclose_task), [API Errors](../reference/api/errors.md).
 
