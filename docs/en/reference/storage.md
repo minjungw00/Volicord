@@ -33,6 +33,7 @@ redefine Core or API state machines.
 | Concern | Owner |
 |---|---|
 | Public MCP request/response shapes | [MVP API](api/mvp-api.md) and [API Schema Core](api/schema-core.md) |
+| Active MVP method row mutations, dry-run/failure side effects, and response refs | [MVP API: Active MVP transition matrix](api/mvp-api.md#active-mvp-transition-matrix) |
 | `ArtifactRef`, staged active ref kinds, idempotency, and state conflict behavior | [API Schema Core](api/schema-core.md#artifactref), [API Schema Core: Stage-Specific Active Value Sets](api/schema-core.md#stage-specific-active-value-sets), and [API Errors](api/errors.md) |
 | Task lifecycle, gates, `prepare_write`, Write Authorization, `record_run`, `close_task`, and stable events | [Core Model Reference](core-model.md) |
 | Core process model, transaction order, locks, projection/reconcile placement | [Runtime Architecture Reference](runtime-architecture.md) |
@@ -174,6 +175,8 @@ The table below gives the contract-level persisted fields for the active slice.
 Exact lifecycle meanings and API response meanings stay with [Core Model
 Reference](core-model.md), [MVP API](api/mvp-api.md), and [API Schema
 Core](api/schema-core.md).
+The method-by-method index for which API call creates or updates these rows is
+[MVP API: Active MVP transition matrix](api/mvp-api.md#active-mvp-transition-matrix).
 
 | Record | Minimal persisted role | Essential fields |
 |---|---|---|
@@ -372,6 +375,15 @@ updates a stored blocker, that blocker mutation is the event-worthy state
 change. `dry_run=true` creates no current record, `task_events` row, artifact,
 consumable Write Authorization, projection job, or `tool_invocations` replay
 row.
+
+For `harness.record_run`, pre-commit rejection creates no Run row, artifact row,
+artifact link, evidence summary, authorization consumption, blocker/gate update,
+`task_events` row, projection job, state-version advance, or `tool_invocations`
+row. The only active-contract exception is an explicit committed
+violation/audit path for observed after-the-fact behavior, which may store a
+`runs.status=violation` row plus recovery/blocker/event state but must not
+consume an invalid authorization or satisfy evidence, QA, verification, final
+acceptance, residual-risk acceptance, or close readiness.
 
 <a id="canonical-enum-hardening"></a>
 

@@ -6,6 +6,8 @@ Public API error code, primary error precedence, idempotency replay, stale-state
 
 이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 문서 저장소에 MCP server가 구현되어 있다는 뜻이 아닙니다.
 
+Request input, Core state owner, storage row, idempotency basis, dry-run/failure side effect, response ref, related error, status/close blocker를 method별로 연결한 활성 매트릭스는 [MVP API: 활성 MVP 전이 매트릭스](mvp-api.md#활성-mvp-전이-매트릭스)를 사용합니다.
+
 <a id="mvp-1-guarantee-and-status-taxonomy"></a>
 
 ## MVP-1 guarantee와 상태/error taxonomy

@@ -33,6 +33,7 @@ The active stage and profile decide which gates are required for a specific oper
 | Entity relationship semantics | [Entity model](#entity-model) | Physical tables stay in [Storage](storage.md). |
 | Gate meaning | [Gates](#gates), [Gate Rule Map](#gate-rule-map) | Public blockers and errors stay in [API Errors](api/errors.md#primary-error-code-precedence). |
 | Pre-write scope checks / Write Authorization | [`prepare_write`](#prepare_write), [Write Authorization](#write-authorization), [`record_run`](#record_run) | Public request/response shape stays in [`harness.prepare_write`](api/mvp-api.md#harnessprepare_write) and [`harness.record_run`](api/mvp-api.md#harnessrecord_run). |
+| Active method side effects | [Lifecycle and transitions](#lifecycle-and-transitions), [`prepare_write`](#prepare_write), [`record_run`](#record_run), [`close_task`](#close_task) | The method-by-method API/Core/storage/error matrix lives in [MVP API: Active MVP transition matrix](api/mvp-api.md#active-mvp-transition-matrix). |
 | Close semantics | [`close_task`](#close_task), [Close matrix by work shape and active profile](#close-matrix-by-work-shape-and-active-profile), [Close result semantics](#close-result-semantics) | Public close response shape stays in [`harness.close_task`](api/mvp-api.md#harnessclose_task). |
 | Waivers and invalid combinations | [Waiver semantics](#waiver-semantics), [Invalid state combinations](#invalid-state-combinations) | Design-policy details stay in [Design Quality Policies](design-quality-policies.md). |
 
@@ -597,6 +598,8 @@ Successful close requires no open Run, compatible scope, and every close-relevan
 
 This reference does not duplicate a full state machine table. The invariant is that write-capable transitions route through `prepare_write` and `record_run`, user-owned judgment routes through `user_judgment` records and Approvals as applicable, and completion routes through `close_task`.
 
+For the active MVP method-by-method contract that binds public request input, Core owner, state-version basis, idempotency replay, storage rows, events, response refs, dry-run behavior, errors, and status/close blocker impact, use [MVP API: Active MVP transition matrix](api/mvp-api.md#active-mvp-transition-matrix). The Core transition sections below explain the state logic behind that matrix; they do not broaden active side effects beyond it.
+
 #### Stable Event Catalog
 
 Stable event names are append-only state history labels, not authority by themselves. Storage and API docs own exact payload shapes. Event names should describe state changes such as Task lifecycle updates, `prepare_write` decisions, Write Authorization creation/consumption/staling, Run recording, user judgment updates, Approval updates, gate recompute, evidence updates, residual-risk visibility or acceptance, waiver recording, close attempts, close success, projection freshness changes, and reconcile outcomes.
@@ -698,6 +701,8 @@ Implementation and direct Runs that report product-file writes must consume a Wr
 
 Out-of-scope changes, missing Write Authorization, expired Write Authorization, stale Write Authorization, revoked Write Authorization, consumed Write Authorization, incompatible Write Authorization, or insufficient surface capability become rejection, violation, recovery, or stale/blocker state according to the case. Core must not record an invalid authorization as successfully consumed. A violation or audit Run may be recorded when the active contract supports recording observed behavior, but it does not count as completion evidence and does not satisfy evidence sufficiency, verification, QA, final acceptance, residual-risk acceptance, or close readiness for the affected scope until repaired through the relevant owner records. Attempted authorization refs may appear only in validator findings, violation payloads, or event payloads.
 
+For a pre-commit rejected `record_run`, Core creates no Run, artifact, artifact link, evidence summary, authorization consumption, blocker/gate update, task event, projection job, state-version advance, or replay row unless the explicit committed violation/audit exception above applies.
+
 Read-only and shaping-only Runs may be recorded without Write Authorization only when they do not report product-file changes.
 
 For `dry_run=true`, `record_run` validates the request and reports the planned or blocked effects without consuming authorization, creating a Run, registering artifacts, updating evidence or blockers/gates, appending `task_events`, enqueueing projection jobs, or creating an idempotency replay row.
@@ -742,6 +747,8 @@ The decision algorithm checks the close intent and required gates:
 14. Append close events and enqueue projection refresh when projection support is enabled.
 
 This active close-decision flow is a design-contract summary for MVP-1. Later assurance profiles may insert verification and Manual QA checks before final close only when their owner docs enable those requirements and schema extensions.
+
+Method-level failure, dry-run, idempotency, row mutation, and response-ref behavior for `close_task` is constrained by [MVP API: Active MVP transition matrix](api/mvp-api.md#active-mvp-transition-matrix). In particular, `dry_run=true` can return would-close diagnostics but must not mark the Task terminal, create or update close blockers, append close events, enqueue projection jobs, advance state version, or create replay state.
 
 ```mermaid
 flowchart TD

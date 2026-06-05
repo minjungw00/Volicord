@@ -6,6 +6,8 @@ Use this reference for public API error codes, primary error precedence, idempot
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server.
 
+For the active method-by-method mapping between request input, Core state owner, storage rows, idempotency basis, dry-run/failure side effects, response refs, related errors, and status/close blockers, use [MVP API: Active MVP transition matrix](mvp-api.md#active-mvp-transition-matrix).
+
 <a id="mvp-1-guarantee-and-status-taxonomy"></a>
 
 ## MVP-1 guarantee and status taxonomy
