@@ -149,7 +149,7 @@ Guarantee level은 [보안 참조](../reference/security.md#단계별-guarantee-
 
 | 결정 | 문서 기준선 | 코딩 경계 |
 |---|---|---|
-| Judgment naming | `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_kind`, `presentation`, `display_label`을 사용합니다. | Compatibility alias가 추가 authority path를 만들면 안 됩니다. |
+| Judgment naming | `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_kind`, `presentation`을 사용하고, 사용자 표시 라벨은 `judgment_kind`와 locale에서 렌더링합니다. | Compatibility alias나 표시 라벨이 추가 authority path를 만들면 안 됩니다. |
 | Next action | MVP-1 next-safe-action output은 `harness.status.next_actions`를 사용합니다. | 별도 `harness.next` method는 승격 전까지 later/compatibility입니다. |
 | Reference surface scope | `surface_id=reference-local-mcp`인 reference `capability_profile` 하나를 사용합니다. | Broad connector ecosystem, hosted connector registry, cross-surface orchestration은 명시적으로 승격되기 전까지 later/profile입니다. |
 | MVP-1 작은 출력 | [Projection과 Template 참조](../reference/projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](../reference/templates/README.md#mvp-1-템플릿-세트)가 소유한 네 가지 사용자용 출력 `status-card`, `judgment-request`, `run-evidence-summary`, `close-result`와 에이전트용 패킷 `agent-context-packet`만 사용합니다. | 이 출력은 쓰기를 승인하거나 증거를 충족하거나 수락을 기록하거나 위험을 수용하거나 Task를 닫거나 기준 상태가 되지 않습니다. |

@@ -77,7 +77,7 @@ Keep these exact in schemas, API docs, code-like examples, records, DDL/table co
 | `UserJudgment` | Canonical schema shape for a user judgment. Keep exact in schema/API contexts. |
 | `judgment_kind` | Canonical compact internal judgment kind. Values are `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `qa_waiver`, `verification_risk_acceptance`, `final_acceptance`, `residual_risk_acceptance`, and `cancellation`. |
 | `presentation` | Canonical prompt depth field. Use `short` for compact prompts and `full` for full-format Decision Packet presentation. |
-| `display_label` | User-facing judgment label: Product decision, Technical decision, Scope decision, Sensitive action approval, QA waiver, Verification risk acceptance, Final acceptance, Residual risk acceptance, or Cancellation. |
+| `display_label` | Compatibility or response-only user-facing judgment label when a surface exposes that name. It is not an active canonical schema/storage field; renderers derive labels from `judgment_kind` and locale. |
 | `request_user_decision`, `record_user_decision` | Compatibility aliases for `request_user_judgment` and `record_user_judgment`. Preserve only in compatibility docs or migration notes. |
 | `judgment_type`, `judgment_domain`, `decision_kind`, `decision_profile` | Compatibility aliases mapped to `judgment_kind`, route-specific payload validation, and `presentation`. Preserve only in compatibility docs or old payloads. |
 | `judgment_category`, `judgment_route`, `display_depth` | Legacy or implementation routing terms from older Decision Packet drafts. Do not use as primary public concepts in new docs, examples, or fixtures. |
@@ -259,7 +259,7 @@ The Task-level aggregate gate for blocking user-owned judgment before progress, 
 
 ### User Judgment
 
-The canonical record family for user-owned judgment. A `UserJudgment` names the exact question, `judgment_kind`, `presentation`, `display_label`, pending options or chosen outcome, affected Task/Change Unit/write/close scope, affected object refs, supporting refs, recommendation, rationale, uncertainty, no-decision consequence, why the agent cannot decide, owner, status, and next action. Public refs use `StateRecordRef.record_kind=user_judgment`. User judgment visibility required by the active stage/profile is provided through Task/status/next/judgment-context and user-judgment resources; standalone `DEC` Markdown renderings are optional full-format projections unless enabled.
+The canonical record family for user-owned judgment. A `UserJudgment` names the exact question, `judgment_kind`, `presentation`, pending options or chosen outcome, affected Task/Change Unit/write/close scope, affected object refs, supporting refs, recommendation, rationale, uncertainty, no-decision consequence, why the agent cannot decide, owner, status, and next action. Public refs use `StateRecordRef.record_kind=user_judgment`. User judgment visibility required by the active stage/profile is provided through Task/status/next/judgment-context and user-judgment resources; standalone `DEC` Markdown renderings are optional full-format projections unless enabled.
 
 The supported `judgment_kind` values are `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `qa_waiver`, `verification_risk_acceptance`, `final_acceptance`, `residual_risk_acceptance`, and `cancellation`.
 
@@ -301,7 +301,7 @@ Legacy prompt-depth terminology from older Decision Packet drafts. New public do
 
 ### Judgment Category
 
-Legacy grouping terminology from older Decision Packet drafts. New public docs should use `display_label` and `judgment_kind`. The old field may appear only in compatibility docs or old payloads.
+Legacy grouping terminology from older Decision Packet drafts. New public docs should use `judgment_kind` and locale-derived rendered labels. The old field may appear only in compatibility docs or old payloads.
 
 ### User Judgment Request
 
@@ -465,7 +465,7 @@ A compact human-readable projection of the current Task position: state, next ac
 
 ### Judgment Category (Legacy)
 
-Legacy grouping field from older Decision Packet drafts. New public docs should use `judgment_kind`, `presentation`, and `display_label` instead. Preserve `judgment_category` only in compatibility docs or old payload migration notes.
+Legacy grouping field from older Decision Packet drafts. New public docs should use `judgment_kind`, `presentation`, and locale-derived rendered labels instead. Preserve `judgment_category` only in compatibility docs or old payload migration notes.
 
 ### Journey Spine
 

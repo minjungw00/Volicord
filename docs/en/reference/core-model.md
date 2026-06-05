@@ -178,10 +178,10 @@ These values describe presentation detail. They do not revive `display_depth` as
 - `user_judgment` is the canonical record family.
 - `harness.request_user_judgment` is the canonical request action, and `harness.record_user_judgment` records the compatible user answer.
 - `judgment_kind` stores the compact internal type: `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `qa_waiver`, `verification_risk_acceptance`, `final_acceptance`, `residual_risk_acceptance`, or `cancellation`.
-- User-facing display is limited to Product decision, Technical decision, Scope decision, Sensitive action approval, QA waiver, Verification risk acceptance, Final acceptance, Residual risk acceptance, and Cancellation.
+- User-facing labels are rendered from `judgment_kind` and locale. English displays use Product decision, Technical decision, Scope decision, Sensitive action approval, QA waiver, Verification risk acceptance, Final acceptance, Residual risk acceptance, and Cancellation; Korean displays may render the matching localized labels such as 제품 판단, 기술 판단, and 범위 판단.
 - `presentation=short` is the default for small unblockers and one-screen prompts.
 - `presentation=full` is full-format Decision Packet-style presentation for complex, high-risk, or close-affecting judgments.
-- `display_label` is the user-facing label. Allowed labels are Product decision, Technical decision, Scope decision, Sensitive action approval, QA waiver, Verification risk acceptance, Final acceptance, Residual risk acceptance, and Cancellation.
+- `display_label` is not an active canonical schema field. If a surface exposes that name for compatibility, it is response-only display text derived from `judgment_kind` and locale; it is never authoritative input, validator input, storage identity, state-compatibility data, a gate key, or a close aggregation key.
 - Route-like and depth-like details are validation or presentation metadata, not separate concepts users must learn.
 - `affected_gates`, owner refs, and the user judgment status determine what the judgment can influence.
 
@@ -279,7 +279,7 @@ The Autonomy Boundary is not scope, Approval, a pre-write scope check, evidence,
 
 ### User Judgment
 
-`user_judgment` is the canonical record family for user-owned judgment. Each record stores the exact question, `judgment_kind`, `presentation`, `display_label`, status, options or selected outcome, affected Task/Change Unit/write/close scope, affected object refs, related refs, recommendation/rationale/uncertainty, what happens if the user does not decide, why the agent cannot decide on the user's behalf, and route-specific context for sensitive approval, QA waiver, verification-risk acceptance, final acceptance, residual-risk acceptance, cancellation, or reconcile.
+`user_judgment` is the canonical record family for user-owned judgment. Each record stores the exact question, `judgment_kind`, `presentation`, status, options or selected outcome, affected Task/Change Unit/write/close scope, affected object refs, related refs, recommendation/rationale/uncertainty, what happens if the user does not decide, why the agent cannot decide on the user's behalf, and route-specific context for sensitive approval, QA waiver, verification-risk acceptance, final acceptance, residual-risk acceptance, cancellation, or reconcile.
 
 User judgment records feed `decision_gate`. Blocking user-owned judgment cannot be satisfied by chat text, broad approval, or projection prose alone. The recorded `user_judgment` and its resolution, deferral, rejection, blocked state, or supersession are the authority for that judgment.
 

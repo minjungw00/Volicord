@@ -11,7 +11,7 @@ Boundary: this template displays a pending or recorded `user_judgment`; it does 
 ## Source records
 
 - pending or recorded `user_judgment`
-- `judgment_kind`, `presentation`, and `display_label`
+- `judgment_kind`, `presentation`, and the locale-derived rendered judgment label
 - exact question, rationale, recommendation, uncertainty, and no-decision consequence
 - affected Task, Change Unit, write scope, close scope, criteria, paths, gates, sensitive-action scope, or other affected object
 - options or selected outcome
@@ -38,7 +38,7 @@ Boundary: this template displays a pending or recorded `user_judgment`; it does 
 
 ````text
 Judgment request: {short_title}
-Judgment kind: {display_label} (`{judgment_kind}`)
+Judgment kind: {rendered_judgment_label} (`{judgment_kind}`)
 Exact question: {question}
 Choices: {choices_or_selected_outcome}
 Recommendation: {recommendation|none}

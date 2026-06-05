@@ -296,7 +296,6 @@ RequestUserJudgmentRequest:
   change_unit_id: string | null
   judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
   presentation: short | full
-  display_label: Product decision | Technical decision | Scope decision | Sensitive action approval | QA waiver | Verification risk acceptance | Final acceptance | Residual risk acceptance | Cancellation
   context:
     why_now: string
     source_refs: StateRecordRef[]

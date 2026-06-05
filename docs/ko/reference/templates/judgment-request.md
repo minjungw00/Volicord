@@ -11,7 +11,7 @@
 ## 기준 기록
 
 - 대기 중이거나 기록된 `user_judgment`
-- `judgment_kind`, `presentation`, `display_label`
+- `judgment_kind`, `presentation`, locale에서 파생한 표시 판단 라벨
 - 정확한 질문, 증거, 추천, 불확실성, 사용자가 결정하지 않을 때의 결과
 - 영향을 받는 Task, Change Unit, 쓰기 범위, close 범위, 기준, 경로, gate, 민감 동작 범위 또는 다른 affected object
 - 선택지 또는 선택된 결과
@@ -38,7 +38,7 @@
 
 ````text
 판단 요청: {short_title}
-판단 유형: {display_label} (`{judgment_kind}`)
+판단 유형: {rendered_judgment_label} (`{judgment_kind}`)
 정확한 질문: {question}
 선택지: {choices_or_selected_outcome}
 추천: {recommendation|none}

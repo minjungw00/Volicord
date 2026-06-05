@@ -427,7 +427,6 @@ UserJudgment:
   status: proposed | pending_user | resolved | deferred | rejected | blocked | superseded
   judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
   presentation: short | full
-  display_label: Product decision | Technical decision | Scope decision | Sensitive action approval | QA waiver | Verification risk acceptance | Final acceptance | Residual risk acceptance | Cancellation
   context:
     why_now: string
     source_refs: StateRecordRef[]
@@ -476,13 +475,15 @@ UserJudgmentResolution:
 
 `presentation=short` is the default for small one-screen prompts. `presentation=full` is full-format Decision Packet-style presentation for complex or high-risk judgments. Presentation changes how much context is rendered; it does not change authority.
 
+`judgment_kind` is the canonical decision-type field. User-facing labels such as Product decision, Technical decision, Scope decision, Sensitive action approval, QA waiver, Verification risk acceptance, Final acceptance, Residual risk acceptance, Cancellation, and their localized equivalents are renderer output derived from `judgment_kind` and locale. Active MVP-1 request, record, validator, storage, state-compatibility, and gate logic must not accept or compare `display_label` as authoritative input.
+
 Legacy fields and methods map to the canonical names:
 
 | Legacy | Canonical |
 |---|---|
 | `harness.request_user_decision` / `harness.record_user_decision` | `harness.request_user_judgment` / `harness.record_user_judgment` |
 | `judgment_type` | `judgment_kind` |
-| `judgment_domain` | `judgment_kind` plus display label |
+| `judgment_domain` | `judgment_kind` plus a locale-derived rendered label |
 | `decision_kind` | `judgment_kind` plus route-specific validation |
 | `decision_profile` | `presentation` |
 | `product_choice` / `technical_choice` / `sensitive_action_approval` / `work_acceptance` | `product_decision` / `technical_decision` / `sensitive_approval` / `final_acceptance` |
@@ -583,7 +584,6 @@ UserJudgmentCandidate:
   change_unit_id: string | null
   judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
   presentation: short | full
-  display_label: Product decision | Technical decision | Scope decision | Sensitive action approval | QA waiver | Verification risk acceptance | Final acceptance | Residual risk acceptance | Cancellation
   context:
     why_now: string
     source_refs: StateRecordRef[]

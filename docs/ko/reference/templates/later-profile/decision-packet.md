@@ -4,7 +4,7 @@
 
 특정 `user_judgment` 기록에 대해 독립형 전체 형식 판단 패킷(Decision Packet) 표시가 켜져 있을 때만 `DEC`를 사용합니다. 일반 MVP-1 경로는 상태, 다음 행동, 사용자 판단 리소스를 통한 간결한 판단 요청입니다. 작은 차단 사유 해소 질문은 한 화면에 들어가야 하며, 사용자가 세부 보기를 요청하지 않는 한 이 전체 템플릿을 노출하지 않습니다.
 
-사용자에게 보이는 표시 라벨(`display_label`)은 다음 아홉 가지뿐입니다.
+사용자에게 보이는 표시 라벨은 `judgment_kind`와 locale에서 파생하며, 한국어 렌더링은 다음 아홉 가지입니다.
 
 - 제품 판단
 - 기술 판단
@@ -24,7 +24,7 @@
 
 - `state.sqlite.user_judgments`
 - 관련 Task와 작업 조각(Change Unit) 참조
-- `judgment_kind`, `presentation`, `display_label`
+- `judgment_kind`, `presentation`, locale에서 파생한 표시 판단 라벨
 - 관련 `decision_gate` 상태와 사용자 판단 이벤트
 - `judgment_kind=sensitive_approval`의 `approval_scope`, 그리고 나중 민감 동작 승인(Approval) 프로필이 활성화된 경우에만 민감 동작 승인 기록
 - 나중 프로필이 활성화된 경우 관련 reconcile 기록
@@ -34,7 +34,7 @@
 - 영향받는 범위 표시 입력: 제품 영역, 화면/흐름, 모듈, 인터페이스, 경로, 수용 기준, 관문, 민감 범주
 - 읽기용 보기 최신성(projection freshness) 입력
 
-`decision_packet_id`, `judgment_category`, `judgment_route`, `display_depth` 같은 레거시 이름은 마이그레이션 메모 또는 호환성 세부 보기에서만 나타날 수 있습니다. 새 템플릿, 예시, fixture는 `user_judgment_id`, `judgment_kind`, `presentation`, `display_label`, `record_kind=user_judgment`를 사용해야 합니다.
+`decision_packet_id`, `judgment_category`, `judgment_route`, `display_depth`, canonical state에서 쓰는 `display_label` 같은 레거시 이름은 마이그레이션 메모 또는 호환성 세부 보기에서만 나타날 수 있습니다. 새 템플릿, 예시, fixture는 `user_judgment_id`, `judgment_kind`, `presentation`, locale에서 파생한 표시 라벨, `record_kind=user_judgment`를 사용해야 합니다.
 
 민감 동작 승인 표시의 "포괄하는 것", "포괄하지 않는 것", "비밀 정보 노출 경계"는 `judgment_payload.approval_scope`, 관련 `user_judgment` 참조, 나중 프로필이 활성화된 경우에만 연결되는 민감 동작 승인(Approval) 기록, 현재 쓰기/닫기 맥락에서 파생한 표시용 요약입니다. 경계만 설명하며 별도 사용자 판단을 확정하거나 쓰기 승인 기록(Write Authorization)을 만들거나 최소 MVP-1에서 커밋된 민감 동작 승인(Approval) 기록을 암시하지 않습니다. 민감 동작 승인 표시는 최종 수락이나 잔여 위험 수락처럼 보여서는 안 됩니다.
 
@@ -89,7 +89,7 @@
 기록: user_judgment_id=UJ-0001
 판단 유형: product_decision
 표시 형식: short
-표시 라벨: 제품 판단
+표시 라벨(렌더링): 제품 판단
 질문: 이 범위가 지정된 설정 라벨을 "Save"로 할까요, "Update"로 할까요?
 범위/참조: CU-04의 설정 폼 문구; 출처 참조 TASK-012/CU-04; 민감 동작 또는 닫기 위험 참조 없음.
 기록할 선택: Save | Update
@@ -103,7 +103,7 @@
 기록: user_judgment_id=UJ-0002
 판단 유형: sensitive_approval
 표시 형식: short
-표시 라벨: 민감 동작 승인
+표시 라벨(렌더링): 민감 동작 승인
 질문: 이 Task에 대해 이름 붙은 의존성 설치/업데이트 동작을 승인하시겠습니까?
 민감 동작 승인(Approval) 범위: 이름 붙은 설치 명령 또는 의존성 파일 업데이트, 이름 붙은 매니페스트/잠금 파일 경로, 현재 Task와 승인 유효 기간만 포함.
 포괄하는 것: 범위가 지정된 민감 동작.
@@ -119,7 +119,7 @@
 기록: user_judgment_id=UJ-0003
 판단 유형: technical_decision
 표시 형식: full
-표시 라벨: 기술 판단
+표시 라벨(렌더링): 기술 판단
 질문: 이 로그인 작업은 어떤 세션 모델을 써야 합니까?
 선택지: 서버 쪽 세션 쿠키, 클라이언트 보유 bearer/JWT 토큰, OAuth/OIDC 제공자와 로컬 세션 전략, 소셜 로그인 제공자 통합.
 추천: 자사 웹 앱이면 현재 요구사항이 제3자 ID, 브라우저 밖 클라이언트, 소셜 로그인을 요구하지 않는 한 서버 쪽 세션 쿠키.
@@ -140,7 +140,6 @@ task_id: TASK-0001
 change_unit_id: CU-01
 judgment_kind: product_decision
 presentation: full
-display_label: 제품 판단
 status: pending_user
 source_state_version: 42
 updated_at: 2026-05-06T09:30:15+09:00
@@ -167,7 +166,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## 판단 유형과 표시 형식
 - `judgment_kind`: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
 - `presentation`: short | full
-- 표시 라벨(`display_label`): 제품 판단 | 기술 판단 | 범위 판단 | 민감 동작 승인 | QA 면제 판단 | 검증 위험 수락 | 최종 수락 | 잔여 위험 수락 | 취소 판단
+- 표시 라벨: 제품 판단 | 기술 판단 | 범위 판단 | 민감 동작 승인 | QA 면제 판단 | 검증 위험 수락 | 최종 수락 | 잔여 위험 수락 | 취소 판단, `judgment_kind`와 locale에서 파생
 - 최종 기록 답변:
 - 이 판단이 기록할 수 있는 것:
 - 이 판단이 기록할 수 없는 것:
@@ -188,7 +187,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## 사용자가 판단하는 것
 - 판단 유형:
-- 표시 라벨:
+- 표시 라벨(렌더링):
 - 사용자에게 보이는 질문:
 - 결정:
 - 이 결정이 확정하는 것:

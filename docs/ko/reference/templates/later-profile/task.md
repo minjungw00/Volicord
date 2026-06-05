@@ -177,7 +177,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 - 판단 제목:
 - judgment_kind:
 - presentation:
-- 표시 라벨:
+- 표시 라벨(렌더링):
 - 지금 필요한 이유:
 - 사용자가 판단하는 것:
 - 선택지:
@@ -517,7 +517,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 관문 그룹 요약은 읽는 사람이 원시 관문 상세(gate detail)보다 실제 차단 사유 이야기를 먼저 보도록 첫 관리 섹션으로 둡니다. 범위, 사용자 판단, 증거, 닫기 준비 상태는 기존 owner 기록, 관문, 차단 사유, 참조에서 파생되는 표시 그룹입니다. 기준 필드(field), 정확한 관문 값(gate value)의 별칭(alias), 새 관문(gate), 재계산 입력(recompute input), 닫기 의미(close semantics), 권한 경로(authority path)가 아닙니다. 사용자 판단은 구조화되어 있으며 하나의 넓은 판단 또는 승인 묶음처럼 렌더링하면 안 됩니다. 정확한 관문(gate) 값과 재계산 규칙(recompute rule)은 [Core Model 참조](../../core-model.md#gates)가 담당하고, 닫기 동작은 [`close_task`](../../core-model.md#close_task)가 담당합니다.
 
-`TASK`의 사용자 판단(User Judgment) 표시는 기준 schema field와 렌더링 라벨을 분리해야 합니다. `judgment_kind`은 내부 판단 유형이고, `presentation`은 compact 또는 full 표시 깊이를 제어하며, `display_label`은 제품 판단, 기술 판단, 범위 판단, 민감 동작 승인, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소 판단 중 하나입니다. 지원하는 `judgment_kind` 값은 `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `qa_waiver`, `verification_risk_acceptance`, `final_acceptance`, `residual_risk_acceptance`, `cancellation`입니다. 판단이 여러 영역에 걸쳐 있으면 라벨을 배타적으로 다루지 말고 부차적인 고려사항을 장단점, 영향받는 관문, 위험, 증거, 후속 조치에 렌더링해야 합니다. `judgment_category`, `judgment_route`, `display_depth` 같은 레거시 필드는 마이그레이션 메모나 호환성 세부 보기에서만 나타날 수 있습니다. 이런 필드는 새 payload branch selector, gate, status value, gate recompute input, close aggregation rule, authority path, `judgment_kind`의 대체물이 아닙니다. `presentation` 또는 `display_label`에서 파생한 표시용 라벨은 validator input이 아니며 민감 동작 승인, 최종 수락, QA 면제 판단, 검증 위험 수락, 잔여 위험 수락, 닫기, 쓰기 승인 기록(Write Authorization)의 owner contract를 흐리면 안 됩니다.
+`TASK`의 사용자 판단(User Judgment) 표시는 기준 schema field와 렌더링 라벨을 분리해야 합니다. `judgment_kind`은 내부 판단 유형이고, `presentation`은 compact 또는 full 표시 깊이를 제어합니다. Friendly label은 `judgment_kind`와 locale에서 파생합니다. 지원하는 `judgment_kind` 값은 `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `qa_waiver`, `verification_risk_acceptance`, `final_acceptance`, `residual_risk_acceptance`, `cancellation`입니다. 한국어 표시는 제품 판단, 기술 판단, 범위 판단, 민감 동작 승인, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소 판단을 사용합니다. 판단이 여러 영역에 걸쳐 있으면 라벨을 배타적으로 다루지 말고 부차적인 고려사항을 장단점, 영향받는 관문, 위험, 증거, 후속 조치에 렌더링해야 합니다. `judgment_category`, `judgment_route`, `display_depth` 또는 canonical state에서 쓰는 `display_label` 같은 레거시 필드는 마이그레이션 메모나 호환성 세부 보기에서만 나타날 수 있습니다. 이런 필드는 새 payload branch selector, gate, status value, gate recompute input, close aggregation rule, authority path, `judgment_kind`의 대체물이 아닙니다. 표시용 라벨은 validator input이 아니며 민감 동작 승인, 최종 수락, QA 면제 판단, 검증 위험 수락, 잔여 위험 수락, 닫기, 쓰기 승인 기록(Write Authorization)의 owner contract를 흐리면 안 됩니다.
 
 대기 중인 사용자 판단은 한 줄로 합치면 안 됩니다. 민감 동작 승인, 최종 수락, 잔여 위험 수락이 모두 대기 중이면 세 가지 라벨로 세 항목을 렌더링합니다. 민감 동작 승인 카드(Approval Card)는 최종 수락처럼 보이면 안 되고, 잔여 위험 수락은 수락하는 위험을 이름 붙여야 합니다.
 

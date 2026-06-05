@@ -149,7 +149,7 @@ These decisions are resolved in the documentation baseline but still require mai
 
 | Decision | Documentation baseline | Coding boundary |
 |---|---|---|
-| Judgment naming | Use `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_kind`, `presentation`, and `display_label`. | Compatibility aliases must not create extra authority paths. |
+| Judgment naming | Use `UserJudgment` / `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_kind`, and `presentation`; render user-facing labels from `judgment_kind` and locale. | Compatibility aliases or display labels must not create extra authority paths. |
 | Next action | Use `harness.status.next_actions` for MVP-1 next-safe-action output. | A separate `harness.next` method stays later/compatibility unless promoted. |
 | Reference surface scope | Use one reference `capability_profile` for `surface_id=reference-local-mcp`. | Broad connector ecosystem, hosted connector registry, and cross-surface orchestration stay later/profile unless explicitly promoted. |
 | MVP-1 compact outputs | Use exactly four user-facing outputs, `status-card`, `judgment-request`, `run-evidence-summary`, and `close-result`, plus one agent-facing packet, `agent-context-packet`, as owned by [Projection And Templates Reference](../reference/projection-and-templates.md#mvp-1-view-set) and [Template Reference](../reference/templates/README.md#mvp-1-template-set). | These outputs do not authorize writes, satisfy evidence, record acceptance, accept risk, close tasks, or become canonical state. |

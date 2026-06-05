@@ -222,17 +222,17 @@ Shared Design은 기록된 shared understanding이지 broad approval, sensitive-
 
 재사용 가능한 user judgment 예시:
 
-- `judgment_kind=product_decision`, `presentation=full`, `display_label=제품 판단`: 로그인 실패 피드백을 inline message, toast, modal/layer 중에서 고릅니다. 사용자 흐름, 방해 정도, 접근성, 문구, 제품 위험의 trade-off를 기록합니다.
-- `judgment_kind=product_decision`, `presentation=full`, `display_label=제품 판단`: 비어 있는 화면이 바로 설정을 유도할지, 데이터가 생길 때까지 조용히 둘지처럼 경험의 product taste가 달라지는 선택입니다. 제품 의도, 사용자군, 명확성, 방해 정도, 수동 QA 필요성, 추천안, 불확실성, 판단을 미뤘을 때 계속할 수 있는 일 또는 판단 전에는 진행하면 안 되는 이유를 기록합니다.
-- `judgment_kind=technical_decision`, `presentation=full`, `display_label=기술 판단`: session auth, token auth, social login 중에서 고릅니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 운영 복잡도, migration 경로, 추천안이 Task에 맞는 이유를 기록합니다.
-- `judgment_kind=technical_decision`, `presentation=full`, `display_label=기술 판단`: dependency addition, schema migration, public API/interface change, module boundary change입니다. 대안, 영향 범위, 호환성, rollback 또는 migration 비용, test boundary, 향후 유지보수 비용, 추천안, 결정을 미룰 때의 영향을 기록합니다.
+- `judgment_kind=product_decision`, `presentation=full`: 로그인 실패 피드백을 inline message, toast, modal/layer 중에서 고릅니다. 사용자 흐름, 방해 정도, 접근성, 문구, 제품 위험의 trade-off를 기록합니다.
+- `judgment_kind=product_decision`, `presentation=full`: 비어 있는 화면이 바로 설정을 유도할지, 데이터가 생길 때까지 조용히 둘지처럼 경험의 product taste가 달라지는 선택입니다. 제품 의도, 사용자군, 명확성, 방해 정도, 수동 QA 필요성, 추천안, 불확실성, 판단을 미뤘을 때 계속할 수 있는 일 또는 판단 전에는 진행하면 안 되는 이유를 기록합니다.
+- `judgment_kind=technical_decision`, `presentation=full`: session auth, token auth, social login 중에서 고릅니다. 폐기 가능성, CSRF/XSS 노출, client 호환성, 운영 복잡도, migration 경로, 추천안이 Task에 맞는 이유를 기록합니다.
+- `judgment_kind=technical_decision`, `presentation=full`: dependency addition, schema migration, public API/interface change, module boundary change입니다. 대안, 영향 범위, 호환성, rollback 또는 migration 비용, test boundary, 향후 유지보수 비용, 추천안, 결정을 미룰 때의 영향을 기록합니다.
 - `judgment_kind=product_decision` 또는 `technical_decision`, `presentation=full`: product copy, API name, storage-facing code에서 "Account"와 "Profile"처럼 domain language가 충돌하는 경우입니다. User-facing meaning, code impact, compatibility 또는 migration 비용, documentation promise, 추천안, 결정을 미룰 때의 영향을 기록합니다.
-- `judgment_kind=scope_decision`, `presentation=full`, `display_label=범위 판단`: 범위 확장, 비목표 제거, Change Unit 경계 변경, Autonomy Boundary 변경입니다. 무엇이 범위에 들어오고 무엇이 계속 범위 밖인지, prior broad approval로 추론할 수 없는 이유, 영향을 받는 write 또는 close path를 기록합니다.
-- `judgment_kind=sensitive_approval`, `presentation=full`, `display_label=민감 동작 승인`: auth, 승인, secret, data-export 작업입니다. Approval boundary는 민감한 단계를 승인할 수 있지만, 역할, exported fields, redaction, audit logging, retention, rollback, user notice가 아직 결정되지 않았다면 제품, 기술, 범위, 보안, QA, 검증, 최종 수락, 잔여 위험 판단에는 별도의 compatible user judgment가 필요합니다.
-- `judgment_kind=qa_waiver`, `presentation=full`, `display_label=QA 면제`: policy가 허용하는 수동 QA 생략입니다. 무엇을 확인하지 않았는지, 왜 waiver가 허용되는지, 보이는 risk path, 이 waiver가 QA 증거나 QA pass를 만들지 않는 이유를 기록합니다.
-- `judgment_kind=verification_risk_acceptance`, `presentation=full`, `display_label=검증 위험 수락`: 필요한 검증이 면제되거나 사용할 수 없습니다. 어떤 검증이 빠졌는지, 사용자가 수락하는 위험, 결과를 `detached_verified`로 보여주면 안 되는 이유, 가장 작은 신뢰 가능한 follow-up을 기록합니다.
-- `judgment_kind=final_acceptance`, `presentation=full`, `display_label=최종 수락`: close basis가 보인 뒤 결과를 최종 수락할지 묻습니다. 증거, 검증, QA, scope, 민감 동작 승인, 잔여 위험 표시 상태를 보여주고, 최종 수락이 빠진 증거, QA, 검증, scope, 잔여 위험 수락을 대신하지 않는다는 경계를 기록합니다.
-- `judgment_kind=residual_risk_acceptance`, `presentation=full`, `display_label=잔여 위험 수락`: 알려진 잔여 위험을 두고 close합니다. 사용자에게 보인 한계, 이미 있는 증거, close를 진행할 수 있는 이유, 사용자에게 보인 residual-risk ref, follow-up을 기록합니다.
+- `judgment_kind=scope_decision`, `presentation=full`: 범위 확장, 비목표 제거, Change Unit 경계 변경, Autonomy Boundary 변경입니다. 무엇이 범위에 들어오고 무엇이 계속 범위 밖인지, prior broad approval로 추론할 수 없는 이유, 영향을 받는 write 또는 close path를 기록합니다.
+- `judgment_kind=sensitive_approval`, `presentation=full`: auth, 승인, secret, data-export 작업입니다. Approval boundary는 민감한 단계를 승인할 수 있지만, 역할, exported fields, redaction, audit logging, retention, rollback, user notice가 아직 결정되지 않았다면 제품, 기술, 범위, 보안, QA, 검증, 최종 수락, 잔여 위험 판단에는 별도의 compatible user judgment가 필요합니다.
+- `judgment_kind=qa_waiver`, `presentation=full`: policy가 허용하는 수동 QA 생략입니다. 무엇을 확인하지 않았는지, 왜 waiver가 허용되는지, 보이는 risk path, 이 waiver가 QA 증거나 QA pass를 만들지 않는 이유를 기록합니다.
+- `judgment_kind=verification_risk_acceptance`, `presentation=full`: 필요한 검증이 면제되거나 사용할 수 없습니다. 어떤 검증이 빠졌는지, 사용자가 수락하는 위험, 결과를 `detached_verified`로 보여주면 안 되는 이유, 가장 작은 신뢰 가능한 follow-up을 기록합니다.
+- `judgment_kind=final_acceptance`, `presentation=full`: close basis가 보인 뒤 결과를 최종 수락할지 묻습니다. 증거, 검증, QA, scope, 민감 동작 승인, 잔여 위험 표시 상태를 보여주고, 최종 수락이 빠진 증거, QA, 검증, scope, 잔여 위험 수락을 대신하지 않는다는 경계를 기록합니다.
+- `judgment_kind=residual_risk_acceptance`, `presentation=full`: 알려진 잔여 위험을 두고 close합니다. 사용자에게 보인 한계, 이미 있는 증거, close를 진행할 수 있는 이유, 사용자에게 보인 residual-risk ref, follow-up을 기록합니다.
 
 `secret_access`, `data_export`, `policy_override` 같은 Sensitive category label은 Approval 필요성을 식별합니다. 그 label만으로 user judgment type이 정해지거나 사용자 소유 판단이 해결되지는 않습니다. Category 예시는 [API Schema Core](api/schema-core.md#sensitive-categories)가 담당합니다.
 

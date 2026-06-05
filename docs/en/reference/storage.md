@@ -177,7 +177,7 @@ Core](api/schema-core.md).
 | `tasks` | User-value work unit and task-scoped state clock. | `task_id`, `project_id`, `title`, `user_request`, `mode`, `lifecycle_phase`, `result`, `summary`, `active_change_unit_id`, `state_version`, `created_at`, `updated_at`, `closed_at`. |
 | `task_events` | Append-only audit/order trail for committed Core mutations. | `event_id`, `task_id` or project scope, `event_seq`, `event_type`, `state_version`, `actor_kind`, `surface_id`, `payload_json`, `created_at`. |
 | `change_units` | Current scoped work boundary for product writes and close basis. | `change_unit_id`, `task_id`, `scope_summary`, `non_goals_json`, `success_criteria_json`, `allowed_paths_json`, `denied_paths_json`, `status`, `created_at`, `updated_at`. |
-| `user_judgments` | User-owned judgment record for product decision, technical decision, scope decision, sensitive approval, QA waiver, verification-risk acceptance, final acceptance, residual-risk acceptance, and cancellation. | `user_judgment_id`, `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `display_label`, `status`, `question`, `options_json`, `selected_option_json`, `judgment_payload_json`, `affected_scope_json`, `context_refs_json`, `artifact_refs_json`, `expires_at`, `resolved_at`, `created_at`, `updated_at`. |
+| `user_judgments` | User-owned judgment record for product decision, technical decision, scope decision, sensitive approval, QA waiver, verification-risk acceptance, final acceptance, residual-risk acceptance, and cancellation. | `user_judgment_id`, `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `status`, `question`, `options_json`, `selected_option_json`, `judgment_payload_json`, `affected_scope_json`, `context_refs_json`, `artifact_refs_json`, `expires_at`, `resolved_at`, `created_at`, `updated_at`. |
 | `write_authorizations` | Durable single-use cooperative record created only by non-dry-run `prepare_write.decision=allowed`. The row preserves the full active MVP `AuthorizedAttemptScope` used by Core comparison. | `write_authorization_id`, `task_id`, `change_unit_id`, `surface_id`, `status`, `basis_state_version`, `attempt_scope_json`, `consumed_by_run_id`, `expires_at`, `created_at`, `updated_at`. |
 | `runs` | Committed execution or observation record, including compatible write consumption when a product write happened. | `run_id`, `task_id`, `change_unit_id`, `write_authorization_id`, `surface_id`, `kind`, `status`, `summary`, `observed_changes_json`, `command_results_json`, `tool_invocations_json`, `network_accesses_json`, `secret_accesses_json`, `created_at`. |
 | `artifacts` | Registered durable evidence bytes or safe metadata with integrity and redaction facts. | `artifact_id`, `project_id`, `task_id`, `run_id`, `kind`, `uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `retention_class`, `produced_by`, `status`, `created_at`, `updated_at`. |
@@ -189,6 +189,11 @@ Core](api/schema-core.md).
 `tool_invocations` rows exist only for committed replayable non-dry-run
 responses. Dry runs and pre-commit conflicts do not reserve idempotency keys in
 storage.
+
+`user_judgments.judgment_kind` is the stored judgment identity. Display labels
+are derived at read/render time from `judgment_kind` and locale; active storage
+does not keep a canonical `display_label` column or use display text for
+compatibility checks, validators, gates, close aggregation, or owner refs.
 
 `write_authorizations.attempt_scope_json` is the storage serialization of
 `AuthorizedAttemptScope` from [API Schema Core](api/schema-core.md#evidence-and-pre-write-scope-schemas).

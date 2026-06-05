@@ -182,10 +182,10 @@ flowchart LR
 - `user_judgment`가 기준 기록 family입니다.
 - `harness.request_user_judgment`가 기준 요청 action이고, `harness.record_user_judgment`는 호환되는 사용자 답변을 기록합니다.
 - `judgment_kind`는 compact 내부 판단 종류를 저장합니다. 값은 `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `qa_waiver`, `verification_risk_acceptance`, `final_acceptance`, `residual_risk_acceptance`, `cancellation`입니다.
-- 사용자에게 보이는 표시는 제품 판단, 기술 판단, 범위 판단, 민감 동작 승인, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소 판단으로 제한됩니다.
+- 사용자 표시 라벨은 `judgment_kind`와 locale에서 렌더링합니다. 한국어 표시는 제품 판단, 기술 판단, 범위 판단, 민감 동작 승인, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소 판단을 사용하고, 영어 표시는 대응하는 English label을 사용합니다.
 - `presentation=short`는 작은 차단 사유와 한 화면 prompt의 기본값입니다.
 - `presentation=full`은 복잡하거나 위험이 크거나 close에 영향을 주는 판단을 위한 full-format Decision Packet-style presentation입니다.
-- `display_label`은 사용자가 보는 라벨입니다. 허용 라벨은 제품 판단, 기술 판단, 범위 판단, 민감 동작 승인, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소 판단입니다.
+- `display_label`은 active canonical schema field가 아닙니다. Surface가 compatibility를 위해 그 이름을 노출하더라도 `judgment_kind`와 locale에서 파생한 response-only display text입니다. 권한 있는 입력, validator input, storage identity, state-compatibility data, gate key, close aggregation key가 아닙니다.
 - Route-like detail과 depth-like detail은 validation 또는 presentation metadata입니다. 사용자가 별도 concept으로 배워야 하는 항목이 아닙니다.
 - `affected_gates`, owner ref, user judgment status가 그 판단이 무엇에 영향을 줄 수 있는지 정합니다.
 
@@ -283,7 +283,7 @@ Autonomy Boundary는 scope, Approval, 쓰기 전 범위 확인, evidence, verifi
 
 ### User Judgment
 
-`user_judgment`는 사용자 소유 판단을 위한 기준 기록군입니다. 각 기록은 정확한 질문, `judgment_kind`, `presentation`, `display_label`, status, options 또는 selected outcome, affected Task/Change Unit/write/close scope, affected object refs, related refs, recommendation/rationale/uncertainty, 사용자가 결정하지 않을 때의 결과, 에이전트가 사용자 대신 판단할 수 없는 이유, 그리고 민감 동작 승인, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소, reconcile에 필요한 route별 context를 저장합니다.
+`user_judgment`는 사용자 소유 판단을 위한 기준 기록군입니다. 각 기록은 정확한 질문, `judgment_kind`, `presentation`, status, options 또는 selected outcome, affected Task/Change Unit/write/close scope, affected object refs, related refs, recommendation/rationale/uncertainty, 사용자가 결정하지 않을 때의 결과, 에이전트가 사용자 대신 판단할 수 없는 이유, 그리고 민감 동작 승인, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소, reconcile에 필요한 route별 context를 저장합니다.
 
 User Judgment는 `decision_gate`에 반영됩니다. 차단하는 사용자 소유 판단은 chat text, broad approval, projection prose만으로 충족될 수 없습니다. 기록된 User Judgment와 그 resolution, deferral, rejection, blocked state, supersession이 그 판단의 기준입니다.
 

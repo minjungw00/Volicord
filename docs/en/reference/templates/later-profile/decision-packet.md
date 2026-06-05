@@ -24,7 +24,7 @@ Implementation tier: optional full-format judgment presentation. A standalone pe
 
 - `state.sqlite.user_judgments`
 - related Task and Change Unit refs
-- `judgment_kind`, `presentation`, and `display_label`
+- `judgment_kind`, `presentation`, and the locale-derived rendered judgment label
 - related `decision_gate` state and user-judgment events
 - `approval_scope` for `judgment_kind=sensitive_approval`, plus Approval records only when a later Approval profile is active
 - related reconcile records, if applicable and enabled by a later profile
@@ -34,7 +34,7 @@ Implementation tier: optional full-format judgment presentation. A standalone pe
 - affected scope display inputs: product areas, screens or flows, modules, interfaces, paths, acceptance criteria, gates, and sensitive categories
 - projection freshness inputs
 
-Legacy names such as `decision_packet_id`, `judgment_category`, `judgment_route`, and `display_depth` may appear only in migration notes or compatibility drill-down. New templates, examples, and fixtures should use `user_judgment_id`, `judgment_kind`, `presentation`, `display_label`, and `record_kind=user_judgment`.
+Legacy names such as `decision_packet_id`, `judgment_category`, `judgment_route`, `display_depth`, and canonical-state use of `display_label` may appear only in migration notes or compatibility drill-down. New templates, examples, and fixtures should use `user_judgment_id`, `judgment_kind`, `presentation`, a locale-derived rendered label, and `record_kind=user_judgment`.
 
 Sensitive-action approval display bullets such as "what this approval covers," "what this approval does not cover," and "secret exposure boundary" are derived display summaries from `judgment_payload.approval_scope`, the related `user_judgment` ref, linked Approval records only when that later profile is active, and current write or close context. They explain the boundary only; they do not settle separate user-owned judgment, create Write Authorization, or imply a committed Approval record in minimum MVP-1. Sensitive action approval displays must not look like final acceptance or residual risk acceptance.
 
@@ -89,7 +89,7 @@ Judgment request: Settings label wording
 Record: user_judgment_id=UJ-0001
 Judgment type: product_decision
 Presentation: short
-Display label: Product decision
+Rendered label: Product decision
 Question: Should this scoped settings label say "Save" or "Update"?
 Scope/refs: settings form copy in CU-04; source ref TASK-012/CU-04; no sensitive action or close-risk ref.
 Choice to record: Save | Update
@@ -103,7 +103,7 @@ Judgment request: Dependency install approval
 Record: user_judgment_id=UJ-0002
 Judgment type: sensitive_approval
 Presentation: short
-Display label: Sensitive action approval
+Rendered label: Sensitive action approval
 Question: Do you grant this named dependency install/update action for this task?
 Approval scope: named install command or dependency-file update; named manifest/lockfile paths; current task and approval window only.
 Covers: the scoped sensitive action.
@@ -119,7 +119,7 @@ Judgment request: Login session architecture
 Record: user_judgment_id=UJ-0003
 Judgment type: technical_decision
 Presentation: full
-Display label: Technical decision
+Rendered label: Technical decision
 Question: Which session model should this login work use?
 Options: server-side session cookie; client-held bearer/JWT; OAuth/OIDC provider plus local session strategy; social-login provider integration.
 Recommendation: server-side session cookie for a first-party web app unless current requirements need third-party identity, non-browser clients, or social sign-in now.
@@ -140,7 +140,6 @@ task_id: TASK-0001
 change_unit_id: CU-01
 judgment_kind: product_decision
 presentation: full
-display_label: Product decision
 status: pending_user
 source_state_version: 42
 updated_at: 2026-05-06T09:30:15+09:00
@@ -167,7 +166,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 ## Judgment Type And Presentation
 - judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
 - presentation: short | full
-- display_label: Product decision | Technical decision | Scope decision | Sensitive action approval | QA waiver | Verification risk acceptance | Final acceptance | Residual risk acceptance | Cancellation
+- rendered label: Product decision | Technical decision | Scope decision | Sensitive action approval | QA waiver | Verification risk acceptance | Final acceptance | Residual risk acceptance | Cancellation, derived from `judgment_kind` and locale
 - final recorded answer:
 - what this judgment can record:
 - what this judgment cannot record:
@@ -188,7 +187,7 @@ updated_at: 2026-05-06T09:30:15+09:00
 
 ## What User Is Judging
 - judgment type:
-- display label:
+- rendered label:
 - user-facing question:
 - decision:
 - what this decision settles:
