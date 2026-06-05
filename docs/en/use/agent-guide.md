@@ -26,7 +26,7 @@ The agent translates ordinary requests into work shape, scope, user judgment, ev
 
 | User says | Agent behavior |
 |---|---|
-| "Turn this feature idea into an implementable plan." | Start intake and requirement clarification. Inspect available facts, separate goal/scope/non-goals, then ask the most important blocking question if needed. |
+| "Make this plan concrete enough to implement." | Start intake and requirement shaping. Inspect available facts; separate goal, non-goals, success criteria, unknowns, user-owned decisions, and the next safe implementation unit; then ask the most important blocking question if needed. |
 | "Ask me first about the parts only I can decide." | Identify user-owned product, technical, scope, sensitive-action, QA, acceptance, or risk decisions; ask one focused judgment at a time. |
 | "Before changing files, confirm which files you expect to touch." | Prepare a product-write scope check. Do not claim the write is compatible unless Core/Harness returns a compatible response for the intended write. |
 | "Before you say it is done, show the evidence and remaining risks." | After execution, summarize what ran or changed, evidence and gaps, checks, residual risk, and close blockers/result. |
@@ -51,7 +51,7 @@ Escalate from small change to tracked work when you discover scope drift, new fi
 
 Clarification is the agent behavior before implementation planning when the next safe action is not clear. It is not sensitive-action approval, evidence, a pre-write scope check, a Write Authorization, final acceptance, residual-risk acceptance, or close.
 
-Before asking, inspect what is available: repository files, docs, tests, current state, active scope, accepted decisions, and current artifacts. Then ask only the question that changes the next safe action.
+Before asking, inspect what is available: repository files, docs, tests, current state, active scope, accepted decisions, and current artifacts. Then ask only the question that changes the next safe action or user-owned judgment.
 
 In MVP-1, clarification output should land in the active working boundary: the Task's current goal and shaping summary, a proposed or active Change Unit, and user-judgment candidates or records. Do not invent a separate committed Discovery Brief, Question Queue, Assumption Register, First Safe Change Unit Candidate, Shared Design record, full Decision Packet, or full design artifact.
 
@@ -60,15 +60,16 @@ A useful clarification response shows:
 - what the agent already checked
 - original request and current goal
 - proposed scope and non-goals
+- success criteria for the implementation slice
 - confirmed facts and remaining uncertainties
 - the one blocking question, if there is one
 - useful non-blocking questions parked for later
 - user-owned judgment candidates
 - the next safe action or proposed Change Unit
 
-Do not start ambiguous large implementation from a broad request alone. Also do not expand blockers into endless planning loops. If the blocker is agent-resolvable, inspect, refresh, retry, narrow, or record it. If the blocker is user-owned, ask the most important focused question. If nothing can proceed safely, say that and name the smallest unblocker.
+Do not start ambiguous large implementation from a broad request alone. Challenge vague requirements strongly when the ambiguity would cause unsafe or unimplementable work. Also do not expand blockers into endless planning loops. If the blocker is agent-resolvable, inspect, refresh, retry, narrow, or record it. If the blocker is user-owned, ask the most important focused question. If nothing can proceed safely, say that and name the smallest unblocker.
 
-When possible, end status with one next safe action, not a menu of unrelated possibilities.
+When enough information exists, stop shaping and propose the next safe implementation unit or active Change Unit. When possible, end status with one next safe action, not a menu of unrelated possibilities.
 
 ## 5. Request user judgment narrowly
 
@@ -192,6 +193,8 @@ Good agent response:
 
 ```text
 This is ambiguous feature work. I will inspect the current auth routes, session handling, login UI, tests, and docs before writing.
+
+I will shape this into a goal, non-goals, success criteria, unknowns, user-owned decisions, and the smallest safe implementation slice.
 
 Likely user-owned decisions:
 - product flow: email/password, magic link, OAuth/OIDC, social login, or another path;

@@ -14,6 +14,6 @@ Read these instead:
 2. [Harness in One Task](one-task.md) for how one task feels.
 3. [Concepts](concepts.md) for the minimum vocabulary.
 
-The short idea is unchanged: users can speak normally, agents should clarify when needed, and Harness keeps scope, user-owned judgment, evidence, checks, final acceptance, close readiness, and residual risk from living only in chat.
+The short idea is unchanged: users can speak normally, including requests like "make this plan concrete enough to implement." Agents should clarify only what matters, identify goal, non-goals, success criteria, unknowns, user-owned decisions, and the next safe implementation unit, and Harness keeps scope, user-owned judgment, evidence, checks, final acceptance, close readiness, and residual risk from living only in chat.
 
 This is not an API guide and not a claim that this documentation repository already contains a running Harness Server.

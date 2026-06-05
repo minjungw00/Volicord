@@ -6,14 +6,15 @@ Read this after [Overview](overview.md) and [One Task](one-task.md), or when a s
 
 This page keeps only the minimum concepts for first-time readers. It describes intended future Harness behavior in a documentation-only repository. It does not mean runtime records already exist here.
 
-## Six Questions
+## Seven Questions
 
-Harness is easiest to read through six ordinary questions:
+Harness is easiest to read through seven ordinary questions:
 
 | Question | Plain concept |
 |---|---|
 | What are we trying to do? | Work |
 | What may change, and what is out of bounds? | Scope |
+| What will count as a good enough result? | Success criteria |
 | What must the user decide, accept, waive, or defer? | User-owned judgment |
 | What supports the claim? | Evidence |
 | What was checked, and what still needs checking? | Check, verification, or manual QA |
@@ -22,6 +23,7 @@ Harness is easiest to read through six ordinary questions:
 Users do not need to say these words exactly. They can ask in ordinary language:
 
 ```text
+Make this plan concrete enough to implement.
 Turn this feature idea into an implementable plan.
 Ask me first about the parts only I can decide.
 Before changing files, confirm which files you expect to touch.
@@ -36,9 +38,9 @@ Harness should usually feel like one of three work shapes.
 |---|---|---|
 | Advice/read-only work | Explanation, planning, comparison, investigation, recommendation. | Advice can guide work, but it does not authorize product writes or accept risk. |
 | Small direct change | A narrow typo, copy, or leaf fix with low risk. | Keep it light while the scope holds; stop if meaning, risk, UX, sensitive action, or shared-contract impact appears. |
-| Tracked work | Meaningful scope, user choices, evidence, QA, verification, acceptance, or residual risk. | Keep scope, judgments, evidence, checks, remaining risk, and close blockers visible. |
+| Tracked work | Meaningful scope, success criteria, user choices, evidence, QA, verification, acceptance, or residual risk. | Keep scope, judgments, evidence, checks, remaining risk, and close blockers visible. |
 
-The agent should infer the shape from the request and explain when the shape changes.
+The agent should infer the shape from the request and explain when the shape changes. If enough information exists, tracked work should move toward the next safe implementation unit instead of staying in planning.
 
 ## Non-Substitution Rules
 

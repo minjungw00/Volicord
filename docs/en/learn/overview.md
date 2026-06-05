@@ -9,12 +9,13 @@ Harness is a local work-authority server for AI-assisted product work. Its job i
 Users can speak normally:
 
 ```text
+Make this plan concrete enough to implement.
 Help me clarify the plan before implementation.
 Tell me if the scope is getting bigger.
 Show what I need to decide and what you can verify.
 ```
 
-The agent should answer in the same ordinary language. When requirements are blurry, it should clarify before acting. When the agent should not decide, Harness routes that judgment back to the user instead of letting tool output, tests, or summaries silently decide.
+The agent should answer in the same ordinary language. When requirements are blurry, it should clarify before acting by naming the goal, non-goals, success criteria, unknowns, user-owned decisions, and next safe implementation unit. When the agent should not decide, Harness routes that judgment back to the user instead of letting tool output, tests, or summaries silently decide.
 
 This repository is documentation-only today. It describes intended future Harness behavior, but no Harness Server or runtime implementation exists here yet. This repository is not a Product Repository and not a Harness Runtime Home.
 
@@ -37,6 +38,15 @@ Add remember-me behavior to login, but clarify the plan before changing files.
 A useful agent response names the boundary:
 
 ```text
+Goal I heard:
+Add remember-me behavior to login without redesigning authentication.
+
+Out of scope unless you decide otherwise:
+Password reset, signup, social login, and unrelated session cleanup.
+
+Success criteria to shape:
+The chosen remember-me behavior is clear to the user, covered by focused checks, and does not silently widen the login scope.
+
 I can inspect the login form, session settings, and focused tests.
 
 You likely need to decide:

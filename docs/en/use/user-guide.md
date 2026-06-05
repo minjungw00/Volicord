@@ -10,6 +10,7 @@ Harness is meant to let you ask for help in normal language. You should not have
 Useful requests can be as simple as:
 
 ```text
+Make this plan concrete enough to implement.
 Turn this feature idea into an implementable plan.
 Ask me first about the parts only I can decide.
 Before changing files, confirm which files you expect to touch.
@@ -39,7 +40,7 @@ Harness turns ordinary requests into a visible working basis. You do not need to
 
 | What you ask for | What Harness should route internally | What you should see |
 |---|---|---|
-| "Make this concrete before coding." | Intake and requirement clarification, stored through the active Task, proposed or active Change Unit, and user-decision boundaries. | Original request, current goal, confirmed facts, likely scope, non-goals, remaining uncertainties, and the next safe action. |
+| "Make this plan concrete enough to implement." | Intake and requirement shaping, stored through the active Task, proposed or active Change Unit, and user-decision boundaries. | Original request, current goal, success criteria, confirmed facts, likely scope, non-goals, remaining uncertainties, user-owned decisions, and the next safe implementation unit. |
 | "Ask me before deciding the UX." | Focused user judgment through the user-owned judgment path. | One specific question with choices, recommendation, uncertainty, and consequence if deferred. |
 | "Keep reset out of scope." | Active scope, internally represented by the bounded work area or Change Unit when a product write is involved. | What may change, what is out of bounds, and when scope expansion needs a decision. |
 | "Before changing files, tell me what you will touch." | A pre-write scope check. In owner terms, product writes go through `prepare_write`; an allowed response may create one single-use cooperative Write Authorization record when Harness is connected. | Intended paths or operation, scope match or mismatch, pending decisions, stale or unavailable authority, and the smallest unblocker. |
@@ -56,13 +57,15 @@ For anything beyond an obvious tiny edit, the agent should first answer:
 
 - What did you originally ask for, and what is the current goal?
 - What result are we trying to get?
+- What success criteria would make the result implementable and checkable?
 - What is in scope?
 - What is out of scope?
 - What can the agent inspect before asking you?
 - What facts are confirmed, and what uncertainty remains?
 - What decisions belong to you?
-- What question blocks the next safe action, if any?
+- What question blocks the next safe action or user-owned judgment, if any?
 - What can safely continue while non-blocking questions wait?
+- What is the next safe implementation unit, or the next Change Unit when product writes are involved?
 
 A useful first response is short:
 
@@ -70,14 +73,18 @@ A useful first response is short:
 Scope I heard: add email login only.
 Out of scope for now: password reset, account creation, social login, and a full authentication redesign.
 
+Success criteria to shape: a user can sign in with the chosen email-login flow, failure feedback follows the chosen UI pattern, and the slice does not add reset or signup.
+
 I can inspect: current login routes, session handling, auth tests, login form patterns, and validation helpers.
 
 Likely decisions for you: password credentials, magic link, one-time code, or external identity provider; failed-login feedback; security and privacy trade-offs.
 
-Next safe action: inspect the current auth shape, then return with confirmed facts, open decisions, and a proposed smallest safe implementation slice.
+Next safe action: inspect the current auth shape, then return with confirmed facts, open decisions, and the smallest safe implementation slice.
 ```
 
 If the answer is available in files, tests, docs, saved Harness context, or current project state, the agent should inspect first. It should not turn agent-resolvable uncertainty into a questionnaire.
+
+The agent should ask only questions that block the next safe action or a user-owned judgment. If the requirement is too vague to implement safely, it should challenge that strongly and name the ambiguity instead of pretending the work is ready. Once enough information exists, shaping should end in a safe implementation unit, not another planning loop.
 
 For MVP-1, this clarification does not create a separate Shared Design record, Discovery Brief record, Question Queue record, Assumption Register record, or First Safe Change Unit Candidate record. The result should become an updated Task summary, a proposed or active Change Unit when product writes are near, and focused user-decision prompts when the choice belongs to you.
 

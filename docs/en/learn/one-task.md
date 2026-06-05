@@ -7,10 +7,10 @@ This page follows one future Harness-assisted task. It is a learning story, not 
 The user asks:
 
 ```text
-Build a login feature.
+Build a login feature. Make the plan concrete enough to implement before changing files.
 ```
 
-The user does not need to know internal labels. The agent should make the work understandable through plain questions: what is the work, what is in scope, what does the user need to decide, what evidence will support the result, what was checked, and what still blocks close?
+The user does not need to know internal labels. The agent should make the work understandable through plain questions: what is the goal, what is not a goal, what will count as success, what is still unknown, what does the user need to decide, what evidence will support the result, what was checked, and what still blocks close?
 
 ## 1. Clarify Before Writing
 
@@ -20,6 +20,15 @@ Good agent response:
 
 ```text
 This is larger than a direct edit, so I need to clarify before implementation.
+
+Goal I heard:
+Add a login capability that can be implemented as a narrow first slice.
+
+Non-goals I will not assume:
+Signup, password reset, social login, global auth redesign, hard-coded secrets, or broad UI rewrites.
+
+Success criteria to shape:
+The first slice lets the chosen user type sign in, reports failure in the chosen UI pattern, has focused checks, and keeps excluded auth work out of scope.
 
 What I can inspect:
 - current auth routes and middleware;
@@ -43,7 +52,7 @@ Bad agent response:
 I will build login with JWTs, social login, reset, signup, and modal errors, then mark it done when tests pass.
 ```
 
-The good response is useful because it separates the broad request into facts the agent can inspect and decisions the user owns. The bad response silently chooses architecture, UX, and scope.
+The good response is useful because it separates the broad request into goal, non-goals, success criteria, facts the agent can inspect, and decisions the user owns. The bad response silently chooses architecture, UX, and scope.
 
 ## 2. Separate Facts From User Judgment
 
@@ -79,11 +88,13 @@ Still user-owned if it matters:
 Session lifetime, secret handling policy, Manual QA expectation, residual-risk acceptance, and final acceptance.
 ```
 
+When product writes are involved, this bounded first slice is the next safe Change Unit. The user did not have to say that label; the agent should create the scoped work boundary once enough information exists.
+
 If the user says "Show a message after clicking Save" inside this work, the agent should treat that as a product choice, not a hidden default. A toast may be right for non-blocking success feedback; inline text may be right for field-specific errors; a modal should be chosen only when interrupting the flow is intentional.
 
 ## 4. Ask Specific Questions
 
-Harness should not turn every uncertainty into a heavy ceremony. It should ask the specific question that blocks honest progress.
+Harness should not turn every uncertainty into a heavy ceremony. It should ask the specific question that blocks the next safe action or the user-owned judgment needed for honest progress.
 
 ```text
 Decision needed:
