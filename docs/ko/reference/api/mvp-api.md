@@ -4,7 +4,7 @@
 
 큰 future schema appendix를 읽지 않고 MVP-1에서 활성인 public API surface를 확인할 때 이 짧은 참조를 사용합니다.
 
-이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 저장소에는 하네스 runtime이나 server 구현이 없습니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../../build/implementation-overview.md#문서-수락-상태)가 담당합니다.
+이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 저장소에는 하네스 runtime이나 server 구현이 없습니다. 현재 저장소 단계와 구현 인계 상태는 [MVP 계획](../../build/mvp-plan.md#문서-수락-상태)가 담당합니다.
 
 ## 핵심 생각
 

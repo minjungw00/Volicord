@@ -4,7 +4,7 @@
 
 Use this page as a compact inventory of future fixture scenario families. It preserves design knowledge that may be useful after MVP-1 without turning that knowledge into an MVP requirement, a runnable conformance suite, a required fixture file set, or a server implementation plan.
 
-This is future design documentation only. It is not an MVP-1 requirement, not implemented runtime behavior, not active API or DDL, and not current conformance. The current repository is documentation-only and contains no runnable Harness Server conformance tests, generated conformance artifacts, executable fixture catalog files, server implementation, or runtime state. Current phase and handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+This is future design documentation only. It is not an MVP-1 requirement, not implemented runtime behavior, not active API or DDL, and not current conformance. The current repository is documentation-only and contains no runnable Harness Server conformance tests, generated conformance artifacts, executable fixture catalog files, server implementation, or runtime state. Current phase and handoff status are tracked in [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 The old long pseudo-fixture payloads have been intentionally removed. Do not reconstruct scenario scripts here merely for completeness. If a future owner promotes a scenario, the exact behavior and exact fixture body belong in the owner Reference path named below.
 

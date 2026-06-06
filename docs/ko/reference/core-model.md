@@ -4,7 +4,7 @@
 
 이 문서는 향후 하네스 Core model 계약을 확인하기 위한 참조 문서입니다. Core 권한, 작업 모양, 쓰기 전 범위 확인과 쓰기 승인 기록, 사용자 판단 라우팅, 증거, 검증, 수동 QA, 최종 수락, 잔여 위험, 닫기 동작을 다룹니다.
 
-이 문서는 미래의 로컬 Harness Server 동작을 설명합니다. 이 저장소에는 현재 Harness runtime이나 server 구현이 없습니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
+이 문서는 미래의 로컬 Harness Server 동작을 설명합니다. 이 저장소에는 현재 Harness runtime이나 server 구현이 없습니다. 현재 저장소 단계와 구현 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)에 있습니다.
 
 ## 이런 때 읽기
 

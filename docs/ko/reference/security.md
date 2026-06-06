@@ -6,7 +6,7 @@ Runtime 구현 계획에 들어가기 전에 Harness 보안 자산, trust bounda
 
 이 문서는 local authority boundary를 명확하게 유지해야 하는 implementer, operator, connector author, conformance author를 위한 lookup 문서입니다. Architecture, API, storage, kernel, connector, operations owner 문서를 대체하지 않습니다.
 
-이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
+이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)에 있습니다.
 
 ## 이런 때 읽기
 

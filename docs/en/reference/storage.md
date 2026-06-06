@@ -5,7 +5,7 @@
 This is reference documentation for a future local Harness Server. No database,
 migration runner, server, runtime state, generated artifact, or generated
 projection exists in this repository yet. Current repository phase and handoff
-status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+status are tracked in [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 This page owns the initial storage design for the active first implementation
 slice: Runtime Home identity, project-local persisted records, artifact storage
@@ -40,7 +40,7 @@ redefine Core or API state machines.
 | Projection authority, freshness, managed blocks, rendered templates | [Projection And Templates Reference](projection-and-templates.md) and [Template Reference](templates/README.md) |
 | Operator behavior, doctor/recover/export/reconcile/conformance entrypoints | [Operations And Conformance Reference](operations-and-conformance.md) |
 | Fixture format and assertion semantics | [Conformance Fixtures Reference](conformance-fixtures.md) |
-| Stage sequence and implementation readiness | [Build: MVP-1 User Work Loop](../build/mvp-user-work-loop.md), [Engineering Checkpoint](../build/engineering-checkpoint.md), and [Implementation Overview](../build/implementation-overview.md) |
+| Stage sequence and implementation readiness | [Build: MVP-1 User Work Loop](../build/mvp-plan.md#user-work-loop), [Engineering Checkpoint](../build/mvp-plan.md#first-internal-smoke-target), and [MVP Plan](../build/mvp-plan.md) |
 
 ## Active First Implementation Storage Slice
 

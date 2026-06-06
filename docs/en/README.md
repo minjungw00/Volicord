@@ -16,7 +16,7 @@ Use this path when you do not know where to start:
 
 1. [Start](start.md) for the first mental model, one ordinary task, minimum concepts, and current guarantee boundary.
 2. [User Guide](use/user-guide.md) for practical user and agent interaction.
-3. [Implementation Overview](build/implementation-overview.md) only if you are reviewing future Harness Server implementation.
+3. [MVP Plan](build/mvp-plan.md) only if you are reviewing future Harness Server implementation.
 4. [Reference Index](reference/README.md) only when you need exact contracts.
 
 This path intentionally stops before large Reference docs. First-time readers do not need schemas, DDL, transition tables, fixture bodies, or threat catalogs to understand what Harness is for.
@@ -27,7 +27,7 @@ This path intentionally stops before large Reference docs. First-time readers do
 |---|---|---|
 | General user | [Start](start.md) | [User Guide](use/user-guide.md) for practical session behavior. |
 | Agent instruction writer | [Agent Guide](use/agent-guide.md) | [Agent Integration Reference](reference/agent-integration.md) and [Surface Cookbook](reference/surface-cookbook.md) only when exact connector or context behavior matters. |
-| Future server implementer | [Implementation Overview](build/implementation-overview.md) | [Engineering Checkpoint](build/engineering-checkpoint.md) for the first internal proof, [MVP-1 User Work Loop](build/mvp-user-work-loop.md) for the first user-value slice, then [Reference Index](reference/README.md) for exact owners. |
+| Future server implementer | [MVP Plan](build/mvp-plan.md) | Use its smoke target, user work loop, request-to-close path, and server-coding decisions, then [Reference Index](reference/README.md) for exact owners. |
 | Exact contract reader | [Reference Index](reference/README.md) | Pick the owner for the specific contract instead of reading the whole Reference set. |
 | Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md), [Documentation Checks](maintain/documentation-checks.md), [Rewrite Plan](maintain/rewrite-plan.md), and [Rewrite Acceptance Review](maintain/rewrite-acceptance-review.md). |
 | Later/profile reader | [Assurance Profile](later/assurance-profile.md) | [Operations Profile](later/operations-profile.md), [Future Fixtures](later/future-fixtures.md), and [Roadmap](roadmap.md). These are outside the MVP path unless an owner promotes them. |
@@ -45,15 +45,9 @@ This path intentionally stops before large Reference docs. First-time readers do
 
 ## Build Route
 
-Build pages are for future implementation orientation after documentation acceptance and a separate implementation-planning readiness decision. They describe sequence and stage boundaries; exact API, schema, storage, fixture, and security contracts stay in Reference. Build pages do not authorize server/runtime implementation.
+The Build page is for future implementation orientation after documentation acceptance and a separate implementation-planning readiness decision. It describes sequence and stage boundaries; exact API, schema, storage, fixture, and security contracts stay in Reference. Build does not authorize server/runtime implementation.
 
-Recommended Build order:
-
-1. [Implementation Overview](build/implementation-overview.md): current state, handoff, readiness criteria, and reading path.
-2. [Engineering Checkpoint](build/engineering-checkpoint.md): the first internal Core authority-loop proof, not the product MVP.
-3. [MVP-1 User Work Loop](build/mvp-user-work-loop.md): the first user-value implementation plan and central server-coding decision log.
-4. [Runtime Walkthrough](build/runtime-walkthrough.md): intended request-to-close design path, not evidence that runtime exists.
-5. [Reference Index](reference/README.md): exact contract owners.
+Recommended Build route: start with [MVP Plan](build/mvp-plan.md), then use [Reference Index](reference/README.md) for exact contract owners.
 
 ## Use Route
 
@@ -85,7 +79,7 @@ Docs-maintenance checks are read-only Markdown quality checks. Their `PASS`, `WA
 
 ## Status Owners
 
-Current handoff status lives in [Implementation Overview: Maintainer handoff summary](build/implementation-overview.md#maintainer-handoff-summary). Documentation acceptance status lives in [Implementation Overview: Documentation acceptance status](build/implementation-overview.md#documentation-acceptance-status). Server-coding decisions live in [MVP-1 User Work Loop: Implementation decisions needed before server coding](build/mvp-user-work-loop.md#implementation-decisions-needed-before-server-coding).
+Current handoff status, documentation acceptance boundary, and server-coding decisions live in [MVP Plan](build/mvp-plan.md).
 
 Documentation acceptance, when it happens, is a maintainer review milestone. It does not start runtime/server implementation and does not prove runtime conformance.
 

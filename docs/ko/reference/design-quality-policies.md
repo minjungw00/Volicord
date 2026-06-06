@@ -6,7 +6,7 @@
 
 이 정책들은 AI 지원 작업이 제품 설계, 도메인 언어, 모듈 경계, 테스트 규율, 사람의 QA, 맥락 관리와 어긋나지 않도록 돕습니다. 동시에 모든 품질 선호를 커널 불변 규칙으로 승격하지는 않습니다.
 
-이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
+이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)에 있습니다.
 
 이 문서는 MCP schema, SQLite DDL, 상태 전이 표, runtime/server 동작, 전체 projection template을 정의하지 않습니다.
 

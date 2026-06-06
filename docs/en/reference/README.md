@@ -31,8 +31,8 @@ Documentation authoring, translation, review, link hygiene, owner-boundary drift
 
 ## Reader Shortcuts
 
-- Future server implementer: start with [Implementation Overview](../build/implementation-overview.md), then [Engineering Checkpoint](../build/engineering-checkpoint.md) and [MVP-1 User Work Loop](../build/mvp-user-work-loop.md). Return here only for exact owner contracts.
-- First internal proof: use [Engineering Checkpoint](../build/engineering-checkpoint.md), then [Core Model Reference](core-model.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [Storage](storage.md), and [Security Reference](security.md) as needed.
+- Future server implementer: start with [MVP Plan](../build/mvp-plan.md). Return here only for exact owner contracts.
+- First internal proof: use [MVP Plan: First internal smoke target](../build/mvp-plan.md#first-internal-smoke-target), then [Core Model Reference](core-model.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [Storage](storage.md), and [Security Reference](security.md) as needed.
 - User or agent behavior wording: start with [User Guide](../use/user-guide.md) or [Agent Guide](../use/agent-guide.md), then use Reference only for the exact fact behind a visible blocker, judgment, write check, evidence gap, close result, or connector behavior.
 - API question: start with [MVP API](api/mvp-api.md) for active methods, [API Schema Core](api/schema-core.md) for shared shapes, [API Errors](api/errors.md) for public errors, and [API Schema Later](api/schema-later.md) for later/profile-gated material.
 - Storage or DDL question: start with [Storage](storage.md).

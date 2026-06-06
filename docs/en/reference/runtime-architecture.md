@@ -6,7 +6,7 @@ Use this reference to understand where Harness runs, where canonical state lives
 
 It is a lookup document for implementers and operators. It does not repeat the first-read [Start](../start.md) overview or teach the whole Harness model from first principles.
 
-This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 ## Read this when
 

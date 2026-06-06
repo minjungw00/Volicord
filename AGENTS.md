@@ -16,7 +16,7 @@ This repo is in pre-MVP Harness documentation redesign / feedback incorporation 
 - Do not treat documentation files as Harness runtime objects, runtime state, generated artifacts, projections, evidence, QA, Acceptance, residual-risk records, or close records.
 - Do not run or simulate Harness runtime procedures for documentation edits: no `prepare_write`, MCP state transitions, `close_task`, runtime state, `task_events`, Write Authorizations, Evidence Manifests, Manual QA records, Acceptance records, Residual Risk records, Journey Cards, generated projections, or other generated operational/projection documents for docs work. These terms may be documented only as future Harness behavior.
 - Path allowlists and batch boundaries for docs edits are maintainer editing controls, not Harness runtime override capabilities.
-- Final documentation handoff status lives in `docs/en/build/implementation-overview.md` and `docs/ko/build/implementation-overview.md`. Major implementation decisions found during review belong only in the MVP-1 User Work Loop decision-log sections, not scattered TODOs.
+- Final documentation handoff status and major server-coding decisions live in `docs/en/build/mvp-plan.md` and `docs/ko/build/mvp-plan.md`. Major implementation decisions found during review belong only in the MVP Plan decision section, not scattered TODOs.
 - When changing meaning, work in `docs/en` first and mirror semantic changes in `docs/ko` in the same batch.
 - Maintain semantic parity between English and Korean docs, while allowing natural Korean headings and prose.
 - Use the current documentation tree: `docs/*/start.md`, `docs/*/use/*`, `docs/*/build/*`, `docs/*/reference/*`, `docs/*/later/*`, `docs/*/maintain/*`, and `docs/*/roadmap.md`.

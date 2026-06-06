@@ -26,7 +26,7 @@ Design-quality, stewardship, TDD trace, feedback-loop, and context-hygiene mater
 
 ## Main Path
 
-Start with the MVP boundary in [MVP-1 User Work Loop](../build/mvp-user-work-loop.md), then use only the owner needed for the assurance question:
+Start with the MVP boundary in [MVP-1 User Work Loop](../build/mvp-plan.md#user-work-loop), then use only the owner needed for the assurance question:
 
 | Need | Owner |
 |---|---|

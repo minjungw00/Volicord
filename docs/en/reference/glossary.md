@@ -4,7 +4,7 @@
 
 Use this glossary to confirm official Harness terms, capitalization, record names, and non-substitution boundaries while reading other docs.
 
-This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 ## Read this when
 

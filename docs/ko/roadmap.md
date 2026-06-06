@@ -14,7 +14,7 @@
 
 ## 읽기 전에
 
-단계별 전달은 [MVP-1 사용자 작업 루프 계획](build/mvp-user-work-loop.md)이 담당합니다. 현재 인계와 구현 계획은 [구현 개요의 문서 인계 요약](build/implementation-overview.md#문서-인계-요약)에서 시작한 뒤 [서버 코딩 전 필요한 구현 결정](build/mvp-user-work-loop.md#서버-코딩-전-필요한-구현-결정), [내부 엔지니어링 점검](build/engineering-checkpoint.md), [MVP-1 사용자 작업 루프 계획](build/mvp-user-work-loop.md)을 확인합니다. 정확한 계약은 Reference 문서를 사용합니다.
+단계별 전달, 현재 인계, 구현 계획, 서버 코딩 전 결정은 [Build: MVP 계획](build/mvp-plan.md)이 담당합니다. 정확한 계약은 Reference 문서를 사용합니다.
 
 현재 단계 이름은 다음과 같습니다.
 
@@ -74,4 +74,4 @@
 | 고급 export, release/deployment/canary/rollback/merge/production-monitoring automation | 향후 통합 작업이 될 수 있습니다. 담당 문서가 더 많은 권한을 승격하기 전까지 release handoff는 report/export 경계로 남고, deployment, merge, rollback, production authority는 외부에 둡니다. |
 | 고급 validator, language 또는 interface check | 향후 stewardship 또는 진단 범위가 될 수 있습니다. 담당 문서가 정확한 policy, severity, waiver, fixture 동작을 정의하기 전까지 초기 단계 fixture failure, 최종 수락, QA, close 기준이 되면 안 됩니다. |
 
-단계별 전달 경계는 [MVP-1 사용자 작업 루프 계획의 아직 만들지 않을 이후 프로필](build/mvp-user-work-loop.md#아직-만들지-않을-이후-프로필)을 사용합니다. 이 문서는 승격 전까지 staged delivery 밖에 남는 후보 항목을 추적하는 데만 사용합니다.
+단계별 전달 경계는 [Build: MVP 계획](build/mvp-plan.md#제외되는-이후-자료)을 사용합니다. 이 문서는 승격 전까지 staged delivery 밖에 남는 후보 항목을 추적하는 데만 사용합니다.

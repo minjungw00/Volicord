@@ -6,7 +6,7 @@
 
 이 참조는 공통 접점 계약을 담당합니다. Capability tier, 활성 기준 `capability_profile`, generated manifest 기대사항, Context Push/Pull Principles, Fallback Semantics, Role Lens 동작, 기준 접점 기대사항, 이후 connector conformance 개요를 다룹니다.
 
-사용자 세션에서 에이전트가 무엇을 말하고 어떻게 행동해야 하는지는 [에이전트 가이드](../use/agent-guide.md)를 봅니다. 접점별 설정 메모는 [Surface Cookbook](surface-cookbook.md)을 봅니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)가 담당합니다.
+사용자 세션에서 에이전트가 무엇을 말하고 어떻게 행동해야 하는지는 [에이전트 가이드](../use/agent-guide.md)를 봅니다. 접점별 설정 메모는 [Surface Cookbook](surface-cookbook.md)을 봅니다. 현재 저장소 단계와 구현 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)가 담당합니다.
 
 ## 이런 때 읽기
 

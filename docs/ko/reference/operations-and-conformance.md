@@ -6,7 +6,7 @@ Harness 운영자 절차, Conformance staging과 향후 run entrypoint behavior,
 
 이 문서는 operator, implementer, conformance author, maintainer를 위한 lookup 문서입니다. 온보딩 경로가 아니므로 처음 읽는 사람은 [시작하기](../start.md) 또는 Build 문서에서 전체 흐름을 잡고, 정확한 운영 또는 Conformance 의미가 필요할 때 여기로 돌아옵니다.
 
-이 문서는 향후 operator와 conformance behavior를 위한 참조 문서입니다. 현재 저장소는 문서 전용이며 실행 가능한 Harness Server conformance test를 담고 있지 않습니다. 현재 단계와 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
+이 문서는 향후 operator와 conformance behavior를 위한 참조 문서입니다. 현재 저장소는 문서 전용이며 실행 가능한 Harness Server conformance test를 담고 있지 않습니다. 현재 단계와 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)에 있습니다.
 
 ## 이런 때 읽기
 
@@ -126,13 +126,13 @@ Conformance는 runtime implementation이 존재한 뒤 단계적으로 실행할
 
 Build 문서는 첫 implementation slice와 stage exit를 계획하기 위한 문서 수준 계획 리뷰 점검을 제공할 수 있습니다. 이 문서 점검은 reviewer가 내부 엔지니어링 점검을 좁게 유지하도록 돕지만 acceptance state, manual acceptance, fixture field, suite metadata, public request schema, storage row, primary error, generated conformance artifact, runner comparison mode가 아닙니다. 향후 runtime pass/fail은 [Conformance Fixtures 참조](conformance-fixtures.md)의 exact structured body shape와 assertion semantics를 사용하는 실행 가능한 fixture에서만 나옵니다.
 
-내부 엔지니어링 점검은 첫 향후 내부 authority-loop target이며, Kernel Smoke는 구현이 시작된 뒤 그 좁은 경로를 실행하는 향후 smoke-check label입니다. Stage exit criteria는 Build의 [내부 엔지니어링 점검](../build/engineering-checkpoint.md)이 담당합니다. Exact future runtime fixture queue는 [Conformance Fixtures 참조: Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue)가 담당합니다. 그곳의 MVP 예시는 structured draft일 뿐이며 아직 실행 가능한 fixture가 아닙니다. Materialized된 뒤 최소 Kernel Smoke subset은 첫 내부 Core 권한 경로만 증명합니다. 전체 conformance suite를 요구하지 않고 MVP-1 사용자 작업 루프 fixtures, 보증 프로필 fixtures, operations conformance를 주장하지 않습니다.
+내부 엔지니어링 점검은 첫 향후 내부 authority-loop target이며, Kernel Smoke는 구현이 시작된 뒤 그 좁은 경로를 실행하는 향후 smoke-check label입니다. Stage exit criteria는 Build의 [내부 엔지니어링 점검](../build/mvp-plan.md#first-internal-smoke-target)이 담당합니다. Exact future runtime fixture queue는 [Conformance Fixtures 참조: Kernel Smoke Authoring Queue](conformance-fixtures.md#kernel-smoke-authoring-queue)가 담당합니다. 그곳의 MVP 예시는 structured draft일 뿐이며 아직 실행 가능한 fixture가 아닙니다. Materialized된 뒤 최소 Kernel Smoke subset은 첫 내부 Core 권한 경로만 증명합니다. 전체 conformance suite를 요구하지 않고 MVP-1 사용자 작업 루프 fixtures, 보증 프로필 fixtures, operations conformance를 주장하지 않습니다.
 
 Reference-surface smoke expectation은 이 좁은 Kernel Smoke 작성 target에 속하지만, 현재 문서 전용 단계에서는 pass claim이 아닙니다. 예상 active profile은 `surface_id=reference-local-mcp`, `mcp_available=true`, `max_guarantee_level=detective`, unsupported pre-tool blocking과 isolation field, runtime fixture가 materialize되고 실행되기 전까지 `conformance_smoke_status=planned_not_run` 또는 equivalent planned/not-run state를 보고합니다.
 
 MVP-1 사용자 작업 루프는 [Conformance Fixtures 참조](conformance-fixtures.md#mvp-1-user-work-loop-behavior-examples)의 활성 user-value fixture draft를 사용합니다. User loop에 영향을 주는 경우 [Security And Capability 동작 예시](conformance-fixtures.md#security-and-capability-behavior-examples)와 [Artifact And Evidence 동작 예시](conformance-fixtures.md#artifact-and-evidence-behavior-examples)도 함께 봅니다. 이 draft는 아직 실행 가능한 fixture가 아니며, 향후 각 fixture는 rendered prose가 아니라 response fact, Core state, storage row, event, artifact ref, blocker, error, forbidden side effect를 assert해야 합니다. MVP-1은 broad future catalog, full Manual QA, Eval systems, TDD trace, module map, interface contract, Journey/Spine projection, export/recover, dashboard/team/orchestration, later advanced connector/security fixture를 실행해야 하는 단계가 아닙니다.
 
-이후 conformance profile은 [MVP-1 사용자 작업 루프 계획](../build/mvp-user-work-loop.md)의 stage name을 따릅니다. 보증 프로필 fixtures는 보증 프로필에, 운영 프로필 또는 승격된 로드맵 fixtures는 운영 프로필과 승격된 로드맵 candidate에 대응합니다. Exact policy, API, storage, projection, connector, fixture requirement는 각 Reference owner에 남습니다. Suite catalog metadata는 runner selection과 reporting을 위해 scenario를 suite, delivery stage, tag로 group할 수 있지만 Core에 전달되지 않습니다. 향후 실행 가능한 fixture는 여전히 response fact, Core state, storage row, event, artifact, blocker, 승격된 경우 projection/freshness, error, forbidden side effect를 통해 검증해야 합니다.
+이후 conformance profile은 [MVP-1 사용자 작업 루프 계획](../build/mvp-plan.md#user-work-loop)의 stage name을 따릅니다. 보증 프로필 fixtures는 보증 프로필에, 운영 프로필 또는 승격된 로드맵 fixtures는 운영 프로필과 승격된 로드맵 candidate에 대응합니다. Exact policy, API, storage, projection, connector, fixture requirement는 각 Reference owner에 남습니다. Suite catalog metadata는 runner selection과 reporting을 위해 scenario를 suite, delivery stage, tag로 group할 수 있지만 Core에 전달되지 않습니다. 향후 실행 가능한 fixture는 여전히 response fact, Core state, storage row, event, artifact, blocker, 승격된 경우 projection/freshness, error, forbidden side effect를 통해 검증해야 합니다.
 
 MVP-1 사용자 작업 루프 계획의 guard/freeze conformance는 cooperative/detective level에서 honest display와 behavior를 검증합니다. Freeze request는 work를 보류하거나, next action을 더 엄격하게 만들거나, existing scope가 incompatible할 때 `prepare_write`가 구조화된 차단 사유를 반환하거나 보류하게 만들 수 있습니다. Persistent owner-record change는 기존 Core 상태 변경 경로, User Judgment route, owner-record update path를 통해 일어날 때만 검증해야 합니다. Guard display는 현재 경로가 cooperative인지 detective인지, 그리고 어떤 위반이 사후에만 감지될 수 있는지 보고합니다. Preventive `T4` guard fixture와 higher guarantee level은 owner 문서가 해당 reference surface의 구체적인 covered operation에 대해 fixture-backed 도구 실행 전 차단을 승격하고 증명하기 전까지 operations/future 또는 로드맵 scope에 남습니다. Isolated-profile conformance는 그 boundary가 verification independence/stale-context control을 뒷받침하는지, 아니면 더 강한 보안 격리를 뒷받침하는지 이름 붙여야 하며, exact mechanism이 증명되지 않은 worktree, fresh evaluator bundle, process split을 OS sandbox 격리나 변조 불가능한 보안 경계로 취급하면 안 됩니다.
 
@@ -159,7 +159,7 @@ Minimum 보고서 fields:
 - 가능한 경우 affected file path와 heading 또는 anchor
 - 기준 owner doc과 expected source section
 - observed documentation finding 또는 drift
-- suggested fix class: update owner, replace duplicate with summary plus link, mirror translation, repair link, 또는 [Build: MVP-1 사용자 작업 루프 계획의 서버 코딩 전 필요한 구현 결정](../build/mvp-user-work-loop.md#서버-코딩-전-필요한-구현-결정)에 항목 추가
+- suggested fix class: update owner, replace duplicate with summary plus link, mirror translation, repair link, 또는 [Build: MVP-1 사용자 작업 루프 계획의 서버 코딩 전 필요한 구현 결정](../build/mvp-plan.md#서버-코딩-전-필요한-구현-결정)에 항목 추가
 - runtime effect: none; 기준 상태 전이가 수행되지 않았고 runtime fixture result가 기록되지 않았다는 statement
 
 Check category는 [문서 작성 가이드의 docs-maintenance checks](../maintain/authoring-guide.md#docs-maintenance-checks)를 다시 정의하지 말고 참조해야 합니다. 필수 category, review-output expectation, pass/warn/fail 의미, owner-first drift resolution flow도 그 section을 따릅니다. Operator output은 해당 category를 이름 붙일 수 있지만 Maintain guidance를 runtime fixture semantics로 바꾸면 안 됩니다.

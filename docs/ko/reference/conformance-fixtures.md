@@ -6,7 +6,7 @@
 
 이 문서는 conformance 작성자, 구현자, 유지보수 담당자를 위한 조회용 문서입니다. 운영자 절차 문서가 아니므로 운영자 entrypoint와 `harness conformance run` 개요는 [운영과 Conformance 참조](operations-and-conformance.md)를 사용합니다.
 
-이 문서는 향후 conformance 작업을 위한 참조 문서입니다. 현재 저장소는 문서 전용이며 실행 가능한 하네스 서버 conformance test를 담고 있지 않습니다. 현재 단계와 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
+이 문서는 향후 conformance 작업을 위한 참조 문서입니다. 현재 저장소는 문서 전용이며 실행 가능한 하네스 서버 conformance test를 담고 있지 않습니다. 현재 단계와 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)에 있습니다.
 
 ## 이런 때 읽기
 

@@ -6,7 +6,7 @@ Use this reference to decide when a design-quality policy applies, what record o
 
 These policies help AI-assisted work stay aligned with product design, domain language, module boundaries, testing discipline, human QA, and context hygiene without turning every quality preference into a kernel rule.
 
-This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 This document does not define MCP schemas, SQLite DDL, state transition tables, runtime behavior, server behavior, or full projection templates.
 

@@ -25,7 +25,7 @@ It is not the user's Product Repository and not a Harness Runtime Home. Document
 |---|---|---|
 | 1 | [Start](en/start.md) | [시작하기](ko/start.md) |
 | 2 | [User Guide](en/use/user-guide.md) | [사용자 가이드](ko/use/user-guide.md) |
-| Implementers only / 구현자만 | [Implementation Overview](en/build/implementation-overview.md), then [Engineering Checkpoint](en/build/engineering-checkpoint.md) and [MVP-1 User Work Loop](en/build/mvp-user-work-loop.md) | [구현 개요](ko/build/implementation-overview.md), 그다음 [내부 엔지니어링 점검](ko/build/engineering-checkpoint.md)과 [MVP-1 사용자 작업 루프](ko/build/mvp-user-work-loop.md) |
+| Implementers only / 구현자만 | [MVP Plan](en/build/mvp-plan.md) | [MVP 계획](ko/build/mvp-plan.md) |
 | Lookup only / 찾아볼 때만 | [Reference Index](en/reference/README.md) | [Reference 색인](ko/reference/README.md) |
 
 ## Reader Paths / 독자별 경로
@@ -34,7 +34,7 @@ It is not the user's Product Repository and not a Harness Runtime Home. Document
 |---|---|---|
 | General user / 일반 사용자 | [Start](en/start.md) -> [User Guide](en/use/user-guide.md). | [시작하기](ko/start.md) -> [사용자 가이드](ko/use/user-guide.md). |
 | Agent instruction writer / 에이전트 지침 작성자 | [Agent Guide](en/use/agent-guide.md); use [Agent Integration Reference](en/reference/agent-integration.md) only for exact connector/context contracts. | [에이전트 가이드](ko/use/agent-guide.md); 정확한 connector/context 계약이 필요할 때만 [Agent 통합 참조](ko/reference/agent-integration.md). |
-| Future server implementer / 향후 서버 구현자 | [Implementation Overview](en/build/implementation-overview.md) -> [Engineering Checkpoint](en/build/engineering-checkpoint.md) -> [MVP-1 User Work Loop](en/build/mvp-user-work-loop.md) -> [Reference Index](en/reference/README.md). | [구현 개요](ko/build/implementation-overview.md) -> [내부 엔지니어링 점검](ko/build/engineering-checkpoint.md) -> [MVP-1 사용자 작업 루프](ko/build/mvp-user-work-loop.md) -> [Reference 색인](ko/reference/README.md). |
+| Future server implementer / 향후 서버 구현자 | [MVP Plan](en/build/mvp-plan.md) -> [Reference Index](en/reference/README.md). | [MVP 계획](ko/build/mvp-plan.md) -> [Reference 색인](ko/reference/README.md). |
 | Documentation maintainer / 문서 유지보수자 | [Authoring Guide](en/maintain/authoring-guide.md) -> [Translation Guide](en/maintain/translation-guide.md) -> [Documentation Checks](en/maintain/documentation-checks.md). | [문서 작성 가이드](ko/maintain/authoring-guide.md) -> [번역 가이드](ko/maintain/translation-guide.md) -> [문서 점검표](ko/maintain/documentation-checks.md). |
 | Later/profile reader / 이후 프로필 독자 | [Assurance Profile](en/later/assurance-profile.md), [Operations Profile](en/later/operations-profile.md), [Future Fixtures](en/later/future-fixtures.md), and [Roadmap](en/roadmap.md). | [보증 프로필](ko/later/assurance-profile.md), [운영 프로필](ko/later/operations-profile.md), [향후 Fixtures](ko/later/future-fixtures.md), [로드맵](ko/roadmap.md). |
 
@@ -53,12 +53,12 @@ It is not the user's Product Repository and not a Harness Runtime Home. Document
 
 ## Status And Handoff / 상태와 인계
 
-Detailed status belongs in Build and Maintain owner docs:
+Detailed status belongs in the Build plan and Maintain owner docs:
 
-- [English maintainer handoff summary](en/build/implementation-overview.md#maintainer-handoff-summary)
-- [한국어 문서 인계 요약](ko/build/implementation-overview.md#문서-인계-요약)
-- [English implementation decisions before server coding](en/build/mvp-user-work-loop.md#implementation-decisions-needed-before-server-coding)
-- [한국어 서버 코딩 전 필요한 구현 결정](ko/build/mvp-user-work-loop.md#서버-코딩-전-필요한-구현-결정)
+- [English maintainer handoff summary](en/build/mvp-plan.md#maintainer-handoff-summary)
+- [한국어 문서 인계 요약](ko/build/mvp-plan.md#문서-인계-요약)
+- [English implementation decisions before server coding](en/build/mvp-plan.md#implementation-decisions-needed-before-server-coding)
+- [한국어 서버 코딩 전 필요한 구현 결정](ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정)
 - [English Authoring Guide](en/maintain/authoring-guide.md)
 - [한국어 문서 작성 가이드](ko/maintain/authoring-guide.md)
 - [English manual pre-implementation consistency checklist](en/maintain/documentation-checks.md#final-pre-implementation-consistency-checklist)

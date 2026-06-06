@@ -104,6 +104,6 @@ Preventive or isolated claims need a documented mechanism and proof path for the
 
 - [User Guide](use/user-guide.md) for practical user and agent behavior.
 - [Agent Guide](use/agent-guide.md) for agent-facing session guidance.
-- [Implementation Overview](build/implementation-overview.md) for repository status, handoff, and future implementation readiness boundaries.
+- [MVP Plan](build/mvp-plan.md) for repository status, handoff, and future implementation readiness boundaries.
 - [Reference Index](reference/README.md) only when you need exact future contracts.
 - [Authoring Guide](maintain/authoring-guide.md) before editing documentation.

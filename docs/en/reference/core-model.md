@@ -4,7 +4,7 @@
 
 Use this reference to check the future Harness Core model contract for Core authority, work shape, pre-write scope checks and internal Write Authorization records, user judgment routing, evidence, verification, QA, final acceptance, residual-risk visibility, residual-risk acceptance, and close behavior.
 
-This is reference documentation for a future local Harness Server. No Harness runtime or server implementation exists in this repository today. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+This is reference documentation for a future local Harness Server. No Harness runtime or server implementation exists in this repository today. Current repository phase and implementation handoff status are tracked in [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 ## Read this when
 

@@ -31,8 +31,8 @@ Exact field, enum value, lifecycle state, DDL, request/response shape, security 
 
 ## 독자별 바로가기
 
-- 향후 서버 구현자: [구현 개요](../build/implementation-overview.md)에서 시작한 뒤 [내부 엔지니어링 점검](../build/engineering-checkpoint.md)과 [MVP-1 사용자 작업 루프](../build/mvp-user-work-loop.md)를 봅니다. 정확한 owner 계약이 필요할 때만 이 색인으로 돌아옵니다.
-- 첫 내부 증명: [내부 엔지니어링 점검](../build/engineering-checkpoint.md)을 보고, 필요에 따라 [Core Model 참조](core-model.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [Storage](storage.md), [보안 참조](security.md)를 사용합니다.
+- 향후 서버 구현자: [MVP 계획](../build/mvp-plan.md)에서 시작합니다. 정확한 owner 계약이 필요할 때만 이 색인으로 돌아옵니다.
+- 첫 내부 증명: [MVP 계획: 첫 내부 smoke 목표](../build/mvp-plan.md#first-internal-smoke-target)를 보고, 필요에 따라 [Core Model 참조](core-model.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [Storage](storage.md), [보안 참조](security.md)를 사용합니다.
 - 사용자 또는 에이전트 동작 문구: [사용자 가이드](../use/user-guide.md)나 [에이전트 가이드](../use/agent-guide.md)에서 시작합니다. 보이는 차단 사유, 판단, 쓰기 전 확인, 증거 공백, 닫기 결과, connector behavior의 정확한 증거가 필요할 때만 Reference를 사용합니다.
 - API 질문: active method는 [MVP API](api/mvp-api.md), shared shape는 [API Schema Core](api/schema-core.md), public error는 [API Errors](api/errors.md), later/profile-gated material은 [API Schema Later](api/schema-later.md)에서 시작합니다.
 - Storage 또는 DDL 질문: [Storage](storage.md)에서 시작합니다.

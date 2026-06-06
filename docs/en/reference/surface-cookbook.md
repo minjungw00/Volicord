@@ -6,7 +6,7 @@ Use this reference to check the active reference local surface recipe and to kee
 
 This document owns local setup notes, generated file names, MCP configuration hints, capture/guard/isolation options, common fallbacks, and conformance risks that vary by surface. The common surface contract and the active reference `capability_profile` live in [Agent Integration Reference](agent-integration.md).
 
-This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 ## Read this when
 

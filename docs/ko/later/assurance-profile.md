@@ -26,7 +26,7 @@ Design-quality, stewardship, TDD trace, feedback-loop, context-hygiene 내용은
 
 ## 읽는 경로
 
-먼저 [MVP-1 사용자 작업 루프](../build/mvp-user-work-loop.md)에서 MVP 경계를 확인합니다. 그다음 필요한 질문의 담당 문서만 엽니다.
+먼저 [MVP-1 사용자 작업 루프](../build/mvp-plan.md#user-work-loop)에서 MVP 경계를 확인합니다. 그다음 필요한 질문의 담당 문서만 엽니다.
 
 | 필요한 것 | 담당 문서 |
 |---|---|

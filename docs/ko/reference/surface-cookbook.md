@@ -6,7 +6,7 @@
 
 이 문서는 surface마다 달라질 수 있는 local setup note, generated file name, MCP configuration hint, capture/guard/isolation option, common fallback, conformance risk를 담당합니다. 공통 surface contract와 활성 reference `capability_profile`은 [Agent 통합 참조](agent-integration.md)가 담당합니다.
 
-이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
+이 문서는 향후 Harness 동작을 위한 참조 문서입니다. 현재 저장소 단계와 구현 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)에 있습니다.
 
 ## 이런 때 읽기
 

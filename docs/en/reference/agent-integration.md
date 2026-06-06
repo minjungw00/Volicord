@@ -6,7 +6,7 @@ Use this reference when connecting the active reference agent surface to future 
 
 This reference owns the common surface contract: capability tiers, the active reference `capability_profile`, generated manifest expectations, context push/pull principles, fallback semantics, Role Lens behavior, reference-surface expectations, and later connector conformance overview.
 
-For what the agent says and does in a user session, read [Agent Guide](../use/agent-guide.md). For surface-specific setup notes, read [Surface Cookbook](surface-cookbook.md). Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+For what the agent says and does in a user session, read [Agent Guide](../use/agent-guide.md). For surface-specific setup notes, read [Surface Cookbook](surface-cookbook.md). Current repository phase and implementation handoff status are tracked in [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 ## Read this when
 

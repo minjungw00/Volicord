@@ -6,7 +6,7 @@ Use this reference to identify Harness security assets, trust boundaries, threat
 
 It is a lookup document for implementers, operators, connector authors, and conformance authors who need to keep local authority boundaries explicit. It does not replace the architecture, API, storage, kernel, connector, or operations owner documents.
 
-This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
+This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 ## Read this when
 

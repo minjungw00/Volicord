@@ -29,7 +29,7 @@ Use [docs/README.md](docs/README.md) for the compact bilingual route.
 | Choose a language / 언어 선택 | [docs/README.md](docs/README.md) |
 | First-time reader / 처음 읽는 독자 | [English Start](docs/en/start.md) / [한국어 시작하기](docs/ko/start.md) |
 | User working with an agent / 에이전트와 작업하는 사용자 | [English User Guide](docs/en/use/user-guide.md) / [한국어 사용자 가이드](docs/ko/use/user-guide.md) |
-| Future server implementer / 향후 서버 구현자 | [English Implementation Overview](docs/en/build/implementation-overview.md) / [한국어 구현 개요](docs/ko/build/implementation-overview.md) |
+| Future server implementer / 향후 서버 구현자 | [English MVP Plan](docs/en/build/mvp-plan.md) / [한국어 MVP 계획](docs/ko/build/mvp-plan.md) |
 | Exact contract lookup / 정확한 계약 확인 | [English Reference Index](docs/en/reference/README.md) / [한국어 Reference 색인](docs/ko/reference/README.md) |
 | Documentation maintainer / 문서 유지보수자 | [English Authoring Guide](docs/en/maintain/authoring-guide.md) / [한국어 문서 작성 가이드](docs/ko/maintain/authoring-guide.md) |
 | Manual pre-implementation docs consistency review / 사전 구현 문서 일관성 수동 검토 | [English Documentation Checks](docs/en/maintain/documentation-checks.md) / [한국어 문서 점검표](docs/ko/maintain/documentation-checks.md) |
@@ -50,6 +50,6 @@ Documentation Checks is a manual review aid. Its `PASS`, `WARN`, and `FAIL` labe
 
 ## Status Owners / 상태 담당 문서
 
-Current handoff status lives in [Implementation Overview](docs/en/build/implementation-overview.md#maintainer-handoff-summary) / [구현 개요](docs/ko/build/implementation-overview.md#문서-인계-요약). Server-coding decisions live in [MVP-1 User Work Loop](docs/en/build/mvp-user-work-loop.md#implementation-decisions-needed-before-server-coding) / [MVP-1 사용자 작업 루프](docs/ko/build/mvp-user-work-loop.md#서버-코딩-전-필요한-구현-결정).
+Current handoff status and server-coding decisions live in [MVP Plan](docs/en/build/mvp-plan.md) / [MVP 계획](docs/ko/build/mvp-plan.md).
 
-현재 인계 상태는 [Implementation Overview](docs/en/build/implementation-overview.md#maintainer-handoff-summary) / [구현 개요](docs/ko/build/implementation-overview.md#문서-인계-요약)가 담당합니다. 서버 코딩 전 결정은 [MVP-1 User Work Loop](docs/en/build/mvp-user-work-loop.md#implementation-decisions-needed-before-server-coding) / [MVP-1 사용자 작업 루프](docs/ko/build/mvp-user-work-loop.md#서버-코딩-전-필요한-구현-결정)에 둡니다.
+현재 인계 상태와 서버 코딩 전 결정은 [MVP Plan](docs/en/build/mvp-plan.md) / [MVP 계획](docs/ko/build/mvp-plan.md)이 담당합니다.

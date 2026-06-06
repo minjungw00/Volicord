@@ -14,7 +14,7 @@ Authority rule:
 - Chat, Markdown, status cards, agent packets, and reports cannot override Core state.
 - A template existing in this repository does not make it required for MVP-1.
 
-Owner boundary: this directory owns rendered template bodies and display card shapes. It does not define canonical kernel state, MCP schemas, SQLite DDL, gates, artifact storage, conformance, operations behavior, or implementation readiness. Current repository phase and handoff status are tracked in [Implementation Overview](../../build/implementation-overview.md#documentation-acceptance-status).
+Owner boundary: this directory owns rendered template bodies and display card shapes. It does not define canonical kernel state, MCP schemas, SQLite DDL, gates, artifact storage, conformance, operations behavior, or implementation readiness. Current repository phase and handoff status are tracked in [MVP Plan](../../build/mvp-plan.md#documentation-acceptance-status).
 
 ## Output tiers
 

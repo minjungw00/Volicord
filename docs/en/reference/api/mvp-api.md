@@ -4,7 +4,7 @@
 
 Use this short reference when you need the active MVP-1 public API surface without the later schema appendix.
 
-This document describes future Harness Server behavior for planning and review. No Harness runtime or server implementation exists in this repository today. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../../build/implementation-overview.md#documentation-acceptance-status).
+This document describes future Harness Server behavior for planning and review. No Harness runtime or server implementation exists in this repository today. Current repository phase and implementation handoff status are tracked in [MVP Plan](../../build/mvp-plan.md#documentation-acceptance-status).
 
 ## Main idea
 

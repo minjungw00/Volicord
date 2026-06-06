@@ -4,7 +4,7 @@
 
 이 문서는 향후 fixture 시나리오 묶음을 작게 정리한 목록입니다. MVP-1 이후에 유용할 수 있는 설계 지식은 남기되, 그것이 MVP 요구사항, 실행 가능한 conformance suite, 필수 fixture 파일 묶음, 서버 구현 계획처럼 읽히지 않게 합니다.
 
-이 문서는 향후 설계 문서일 뿐입니다. MVP-1 요구사항이 아니고, 구현된 런타임 동작이 아니며, active API나 DDL도 아니고, 현재 conformance도 아닙니다. 현재 저장소는 문서 전용입니다. 실행 가능한 Harness Server conformance test, generated conformance artifact, 실행 가능한 fixture catalog file, 서버 구현, 런타임 상태가 없습니다. 현재 단계와 인계 상태는 [구현 개요](../build/implementation-overview.md#문서-수락-상태)에 있습니다.
+이 문서는 향후 설계 문서일 뿐입니다. MVP-1 요구사항이 아니고, 구현된 런타임 동작이 아니며, active API나 DDL도 아니고, 현재 conformance도 아닙니다. 현재 저장소는 문서 전용입니다. 실행 가능한 Harness Server conformance test, generated conformance artifact, 실행 가능한 fixture catalog file, 서버 구현, 런타임 상태가 없습니다. 현재 단계와 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)에 있습니다.
 
 예전의 긴 pseudo-fixture payload는 의도적으로 제거했습니다. 완전성을 이유로 이 문서에 scenario script를 다시 만들지 않습니다. 향후 owner가 scenario를 승격하면 exact behavior와 exact fixture body는 아래에 이름 붙인 owner Reference 경로에 둡니다.
 

@@ -26,7 +26,7 @@ Projection refresh, reconcile, artifact checks, and conformance run entrypoints 
 
 ## Main Path
 
-Start with the stage boundary in [MVP-1 User Work Loop](../build/mvp-user-work-loop.md), then use only the owner needed for the operations question:
+Start with the stage boundary in [MVP-1 User Work Loop](../build/mvp-plan.md#user-work-loop), then use only the owner needed for the operations question:
 
 | Need | Owner |
 |---|---|
