@@ -26,7 +26,7 @@ The owner is the only place to define exact fields, enum values, lifecycle state
 | Active design-quality role, finding severity, close-blocker conditions, waiver boundary, evidence expectations, validator ID boundary, and later policy catalog boundary | [Design Quality](design-quality.md) |
 | Terminology, capitalization, official term wording, record-name orientation, and owner routing | [Glossary Reference](glossary.md) |
 
-Documentation authoring, translation, review, link hygiene, owner-boundary drift, and docs-maintenance checks are Maintain responsibilities: [Authoring Guide](../maintain/authoring-guide.md), [Translation Guide](../maintain/translation-guide.md), and [Documentation Checks](../maintain/documentation-checks.md).
+Documentation authoring, translation, review, link hygiene, owner-boundary drift, and docs-maintenance checks are Maintain responsibilities: [Authoring Guide](../maintain/authoring-guide.md), [Translation Guide](../maintain/translation-guide.md), and [Checks](../maintain/checks.md).
 
 ## Reader Shortcuts
 

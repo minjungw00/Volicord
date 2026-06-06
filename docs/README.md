@@ -35,10 +35,10 @@ It is not the user's Product Repository and not a Harness Runtime Home. Document
 | General user / 일반 사용자 | [Start](en/start.md) -> [User Guide](en/use/user-guide.md). | [시작하기](ko/start.md) -> [사용자 가이드](ko/use/user-guide.md). |
 | Agent instruction writer / 에이전트 지침 작성자 | [Agent Guide](en/use/agent-guide.md); use [Agent Integration Reference](en/reference/agent-integration.md) only for exact connector/context contracts. | [에이전트 가이드](ko/use/agent-guide.md); 정확한 connector/context 계약이 필요할 때만 [Agent 통합 참조](ko/reference/agent-integration.md). |
 | Future server implementer / 향후 서버 구현자 | [MVP Plan](en/build/mvp-plan.md) -> [Reference Index](en/reference/README.md). | [MVP 계획](ko/build/mvp-plan.md) -> [Reference 색인](ko/reference/README.md). |
-| Documentation maintainer / 문서 유지보수자 | [Authoring Guide](en/maintain/authoring-guide.md) -> [Translation Guide](en/maintain/translation-guide.md) -> [Documentation Checks](en/maintain/documentation-checks.md). | [문서 작성 가이드](ko/maintain/authoring-guide.md) -> [번역 가이드](ko/maintain/translation-guide.md) -> [문서 점검표](ko/maintain/documentation-checks.md). |
+| Documentation maintainer / 문서 유지보수자 | [Authoring Guide](en/maintain/authoring-guide.md) -> [Translation Guide](en/maintain/translation-guide.md) -> [Checks](en/maintain/checks.md). | [작성 가이드](ko/maintain/authoring-guide.md) -> [번역 가이드](ko/maintain/translation-guide.md) -> [문서 점검](ko/maintain/checks.md). |
 | Later/profile reader / 이후 프로필 독자 | [Assurance Profile](en/later/index.md#assurance-candidates), [Operations Profile](en/later/index.md#operations-candidates), [Future Fixture Families](en/later/index.md#future-fixture-families), and [Roadmap](en/later/index.md#roadmap-candidates). | [보증 프로필](ko/later/index.md#assurance-candidates), [운영 프로필](ko/later/index.md#operations-candidates), [Future fixture families](ko/later/index.md#future-fixture-families), [로드맵](ko/later/index.md#roadmap-candidates). |
 
-[Documentation Checks](en/maintain/documentation-checks.md) / [문서 점검표](ko/maintain/documentation-checks.md)는 사전 구현 문서 일관성을 수동으로 검토하기 위한 보조 자료입니다. `PASS`, `WARN`, `FAIL` 라벨은 문서 수락, 구현 준비, 개발 준비, runtime conformance, server coding 시작 허가를 결정하지 않습니다.
+[Checks](en/maintain/checks.md) / [문서 점검](ko/maintain/checks.md)은 문서 일관성을 수동으로 검토하기 위한 보조 자료입니다. `PASS`, `WARN`, `FAIL` 라벨은 문서 수락, 구현 준비, 개발 준비, 런타임 적합성, 서버 코딩 시작 허가를 결정하지 않습니다.
 
 ## Layer Responsibilities / 문서층 역할
 
@@ -61,7 +61,7 @@ Detailed status belongs in the Build plan and Maintain owner docs:
 - [한국어 서버 코딩 전 필요한 구현 결정](ko/build/mvp-plan.md#서버-코딩-전-필요한-구현-결정)
 - [English Authoring Guide](en/maintain/authoring-guide.md)
 - [한국어 문서 작성 가이드](ko/maintain/authoring-guide.md)
-- [English manual pre-implementation consistency checklist](en/maintain/documentation-checks.md#final-pre-implementation-consistency-checklist)
-- [한국어 최종 사전 구현 일관성 점검표](ko/maintain/documentation-checks.md#최종-사전-구현-일관성-점검표)
+- [English docs-maintenance checks](en/maintain/checks.md)
+- [한국어 문서 점검](ko/maintain/checks.md)
 
-상세 상태는 Build와 Maintain 담당 문서가 관리합니다. 이 경로들은 문서 검토를 돕기 위한 것이며 런타임 conformance, 최종 수락, close readiness, implementation readiness를 만들지 않습니다.
+상세 상태는 Build와 Maintain 담당 문서가 관리합니다. 이 경로들은 문서 검토를 돕기 위한 것이며 런타임 적합성, 최종 수락, 닫기 준비 상태, 구현 준비 상태를 만들지 않습니다.

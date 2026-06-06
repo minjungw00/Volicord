@@ -32,11 +32,11 @@ Use [docs/README.md](docs/README.md) for the compact bilingual route.
 | Future server implementer / 향후 서버 구현자 | [English MVP Plan](docs/en/build/mvp-plan.md) / [한국어 MVP 계획](docs/ko/build/mvp-plan.md) |
 | Exact contract lookup / 정확한 계약 확인 | [English Reference Index](docs/en/reference/README.md) / [한국어 Reference 색인](docs/ko/reference/README.md) |
 | Documentation maintainer / 문서 유지보수자 | [English Authoring Guide](docs/en/maintain/authoring-guide.md) / [한국어 문서 작성 가이드](docs/ko/maintain/authoring-guide.md) |
-| Manual pre-implementation docs consistency review / 사전 구현 문서 일관성 수동 검토 | [English Documentation Checks](docs/en/maintain/documentation-checks.md) / [한국어 문서 점검표](docs/ko/maintain/documentation-checks.md) |
+| Manual docs-maintenance review / 문서 유지보수 점검 | [English Checks](docs/en/maintain/checks.md) / [한국어 문서 점검](docs/ko/maintain/checks.md) |
 
-Documentation Checks is a manual review aid. Its `PASS`, `WARN`, and `FAIL` labels do not decide documentation acceptance, implementation readiness, development readiness, runtime conformance, or permission to start server coding.
+Checks are manual review aids. Their `PASS`, `WARN`, and `FAIL` labels do not decide documentation acceptance, implementation readiness, development readiness, runtime conformance, or permission to start server coding.
 
-문서 점검표는 수동 검토 보조 자료입니다. `PASS`, `WARN`, `FAIL` 라벨은 문서 수락, 구현 준비, 개발 준비, runtime conformance, server coding 시작 허가를 결정하지 않습니다.
+문서 점검은 수동 검토 보조 자료입니다. `PASS`, `WARN`, `FAIL` 라벨은 문서 수락, 구현 준비, 개발 준비, 런타임 적합성, 서버 코딩 시작 허가를 결정하지 않습니다.
 
 ## Layer Responsibilities / 문서층 역할
 

@@ -29,7 +29,7 @@
 | 에이전트 지침 작성자 | [에이전트 가이드](use/agent-guide.md) | 정확한 connector 또는 context 동작이 필요할 때만 [Agent 통합 참조](reference/agent-integration.md). |
 | 향후 서버 구현자 | [MVP 계획](build/mvp-plan.md) | 첫 내부 smoke 목표, 사용자 작업 루프, 요청에서 닫기까지의 경로, 서버 코딩 전 결정을 본 뒤 정확한 owner는 [Reference 색인](reference/README.md)에서 확인합니다. |
 | 정확한 계약을 찾는 독자 | [Reference 색인](reference/README.md) | Reference 전체를 읽기보다 필요한 계약의 담당 문서를 고릅니다. |
-| 문서 유지보수자 | [문서 작성 가이드](maintain/authoring-guide.md) | [번역 가이드](maintain/translation-guide.md), [문서 점검표](maintain/documentation-checks.md), [재작성 계획](maintain/rewrite-plan.md), [재작성 수락 리뷰](maintain/rewrite-acceptance-review.md). |
+| 문서 유지보수자 | [작성 가이드](maintain/authoring-guide.md) | [번역 가이드](maintain/translation-guide.md), [문서 점검](maintain/checks.md). |
 | 이후 프로필 독자 | [보증 프로필](later/index.md#assurance-candidates) | [운영 프로필](later/index.md#operations-candidates), [Later 후보 색인: Future fixture families](later/index.md#future-fixture-families), [로드맵](later/index.md#roadmap-candidates). 담당 문서가 승격하기 전까지 MVP 경로 밖에 둡니다. |
 
 ## 문서층 역할
@@ -41,7 +41,7 @@
 | Build | 향후 구현 순서, 활성 조각, 첫 증명, 활성/이후 경계, 구현자 읽기 경로, 제외 범위를 설명합니다. | 정확한 API shape, schema, DDL, storage table, 상태 전이, fixture body, security guarantee, threat catalog는 Reference로 연결합니다. |
 | Reference | Core 전이, API schema, Storage/DDL, Security, Agent Integration, Projection/Templates, Conformance, Glossary, runtime architecture, operations, 설계 품질 경계의 정확한 계약을 담당합니다. | 첫 읽기 튜토리얼이나 단계별 구현 계획이 아닙니다. |
 | Later | 활성 MVP 경로 밖의 향후/profile 자료를 둡니다. | 담당 문서가 범위와 증명 기대를 함께 승격하기 전까지 활성 전달 범위가 아닙니다. |
-| Maintain | 문서 작성, 번역, 검토, drift, owner 경계, link 규칙을 관리합니다. | runtime readiness, 최종 수락, close readiness, implementation readiness를 결정하지 않습니다. |
+| Maintain | 문서 작성, 번역, 검토, 불일치, 담당 문서 경계, 링크 규칙을 관리합니다. | 런타임 준비, 최종 수락, 닫기 준비 상태, 구현 준비 상태를 결정하지 않습니다. |
 
 ## 구현 문서 경로
 
@@ -71,11 +71,9 @@ Maintain 문서는 문서 작업에만 사용합니다.
 
 - [문서 작성 가이드](maintain/authoring-guide.md)
 - [번역 가이드](maintain/translation-guide.md)
-- [문서 점검표](maintain/documentation-checks.md)
-- [재작성 계획](maintain/rewrite-plan.md)
-- [재작성 수락 리뷰](maintain/rewrite-acceptance-review.md)
+- [문서 점검](maintain/checks.md)
 
-Docs-maintenance 점검은 Markdown 품질을 보는 읽기 전용 점검입니다. `PASS`, `WARN`, `FAIL` label은 runtime conformance, 최종 수락, close readiness, implementation readiness를 만들지 않습니다.
+문서 유지보수 점검은 Markdown 품질을 보는 읽기 전용 점검입니다. `PASS`, `WARN`, `FAIL` 라벨은 런타임 적합성, 최종 수락, 닫기 준비 상태, 구현 준비 상태를 만들지 않습니다.
 
 ## 상태 담당 문서
 

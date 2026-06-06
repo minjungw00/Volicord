@@ -29,7 +29,7 @@ This path intentionally stops before large Reference docs. First-time readers do
 | Agent instruction writer | [Agent Guide](use/agent-guide.md) | [Agent Integration Reference](reference/agent-integration.md) only when exact connector or context behavior matters. |
 | Future server implementer | [MVP Plan](build/mvp-plan.md) | Use its smoke target, user work loop, request-to-close path, and server-coding decisions, then [Reference Index](reference/README.md) for exact owners. |
 | Exact contract reader | [Reference Index](reference/README.md) | Pick the owner for the specific contract instead of reading the whole Reference set. |
-| Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md), [Documentation Checks](maintain/documentation-checks.md), [Rewrite Plan](maintain/rewrite-plan.md), and [Rewrite Acceptance Review](maintain/rewrite-acceptance-review.md). |
+| Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md) and [Checks](maintain/checks.md). |
 | Later/profile reader | [Assurance Profile](later/index.md#assurance-candidates) | [Operations Profile](later/index.md#operations-candidates), [Later Candidate Index: Future Fixture Families](later/index.md#future-fixture-families), and [Roadmap](later/index.md#roadmap-candidates). These are outside the MVP path unless an owner promotes them. |
 
 ## Layer Responsibilities
@@ -71,9 +71,7 @@ Use Maintain docs for documentation work only:
 
 - [Authoring Guide](maintain/authoring-guide.md)
 - [Translation Guide](maintain/translation-guide.md)
-- [Documentation Checks](maintain/documentation-checks.md)
-- [Rewrite Plan](maintain/rewrite-plan.md)
-- [Rewrite Acceptance Review](maintain/rewrite-acceptance-review.md)
+- [Checks](maintain/checks.md)
 
 Docs-maintenance checks are read-only Markdown quality checks. Their `PASS`, `WARN`, and `FAIL` labels do not create runtime conformance, final acceptance, close readiness, or implementation readiness.
 

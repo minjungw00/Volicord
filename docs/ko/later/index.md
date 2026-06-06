@@ -52,7 +52,7 @@
 | Projection refresh와 최신성 진단 | 파생 보기 상태 확인을 위한 later 후보입니다. | Projection이 non-authoritative로 남도록 하는 Projection owner 동작이 필요합니다. | 현재 MVP 영향 없음 |
 | 향후 conformance run entrypoint | Runtime fixture가 생긴 뒤의 later 후보입니다. 현재 명령이나 runner가 아닙니다. | 정확한 runner, suite, assertion, 요청/응답, storage/event/artifact/error, 보고 계약이 필요합니다. | 현재 MVP 영향 없음 |
 
-문서 점검 메모: 이 tree에는 아직 `docs/*/maintain/checks.md`가 없습니다. 문서 점검 guidance를 운영 후보나 runtime conformance에 섞지 않습니다. dedicated maintain-docs rewrite가 필요하면 그 route를 만들도록 둡니다. 현재 MVP 영향 없음.
+문서 점검 메모: `docs/*/maintain/checks.md`가 문서 유지보수 점검을 담당합니다. 문서 점검 지침을 운영 후보나 런타임 적합성에 섞지 않습니다. 현재 MVP 영향 없음.
 
 <a id="later-api-candidates"></a>
 ## 5. Later API 후보

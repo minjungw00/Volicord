@@ -26,7 +26,7 @@ Exact field, enum value, lifecycle state, DDL, request/response shape, security 
 | 활성 설계 품질 역할, 발견 사항 심각도, 닫기 blocker 조건, 면제 경계, 증거 기대치, validator ID 경계, later 정책 후보 경계 | [설계 품질](design-quality.md) |
 | 용어, capitalization, official term wording, record-name orientation, owner routing | [용어집 참조](glossary.md) |
 
-문서 작성, 번역, 검토, link hygiene, owner-boundary drift, docs-maintenance 점검은 Maintain이 담당합니다. [문서 작성 가이드](../maintain/authoring-guide.md), [번역 가이드](../maintain/translation-guide.md), [문서 점검표](../maintain/documentation-checks.md)를 사용합니다.
+문서 작성, 번역, 검토, 링크 정리, 담당 문서 경계 불일치, 문서 유지보수 점검은 Maintain이 담당합니다. [작성 가이드](../maintain/authoring-guide.md), [번역 가이드](../maintain/translation-guide.md), [문서 점검](../maintain/checks.md)을 사용합니다.
 
 ## 독자별 바로가기
 

@@ -30,9 +30,9 @@ This repo is in pre-MVP Harness documentation redesign / feedback incorporation 
 - Do not preserve existing prose merely for continuity if it conflicts with the clarified product thesis or implementation feasibility.
 - Feel free to rewrite, move, merge, shrink, or delete old prose when it conflicts with the clarified product thesis, owner boundaries, Korean quality rules, or implementation feasibility.
 - Preserve the product thesis: Harness is not a prompt pack; it is a local authority record for scope, user-owned judgment, evidence, and close readiness. User-owned judgments, evidence/verification/QA/acceptance/risk boundaries, and Core-owned state/artifact authority must stay distinct.
-- Mandatory documentation workflow, preserved principles, document-family ownership guidance, stage boundaries, Korean quality rules, and [redesign risk/regression checks](docs/en/maintain/authoring-guide.md#known-redesign-issues-and-regression-checks) live in [Authoring Guide](docs/en/maintain/authoring-guide.md).
-- Future documentation validation checklist lives in [Documentation Checks](docs/en/maintain/documentation-checks.md); it is editorial docs-maintenance, not runtime conformance or implementation readiness.
-- Future rewrite triage categories live in [Rewrite Plan](docs/en/maintain/rewrite-plan.md) and [Korean Rewrite Plan](docs/ko/maintain/rewrite-plan.md).
+- Mandatory documentation workflow, preserved principles, document-family ownership guidance, active/later boundaries, Korean quality rules, and stale-content triage live in [Authoring Guide](docs/en/maintain/authoring-guide.md).
+- Documentation validation checks live in [Checks](docs/en/maintain/checks.md); they are editorial docs-maintenance, not runtime conformance or implementation readiness.
+- Korean writing and terminology rules live in [Korean Authoring Guide](docs/ko/maintain/authoring-guide.md) and [Korean Translation Guide](docs/ko/maintain/translation-guide.md).
 
 ## Harness Compass
 

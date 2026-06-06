@@ -52,7 +52,7 @@ Rows here are planning candidates only. They are not MVP-1 requirements, active 
 | Projection refresh and freshness diagnostics | Later candidate for derived view health. | Projection owner behavior that keeps projections non-authoritative. | none |
 | Future conformance run entrypoint | Later candidate after runtime fixtures exist; not a current command or runner. | Exact runner, suite, assertion, request/response, storage/event/artifact/error, and reporting contracts. | none |
 
-Documentation checks note: `docs/*/maintain/checks.md` does not exist in this tree. Do not move docs-maintenance guidance into operations candidates or runtime conformance; leave that route for a dedicated maintain-docs rewrite if it is introduced. Active current MVP impact: none.
+Documentation checks note: `docs/*/maintain/checks.md` owns docs-maintenance checks. Do not move docs-maintenance guidance into operations candidates or runtime conformance. Active current MVP impact: none.
 
 <a id="later-api-candidates"></a>
 ## 5. Later API Candidates
