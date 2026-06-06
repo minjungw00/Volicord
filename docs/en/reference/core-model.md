@@ -230,6 +230,6 @@ Use these owners when Core authority touches another contract:
 - Runtime boundary placement and Core-only mutation authority: [Runtime Boundaries Reference](runtime-boundaries.md).
 - Design-quality active role and close-impact boundary: [Design Quality](design-quality.md).
 - Connector capability profiles and surface-specific fallback behavior: [Agent Integration Reference](agent-integration.md).
-- Conformance examples, future fixture boundaries, and operations entrypoints: [Conformance Reference](conformance.md), [Operations And Conformance Reference](operations-and-conformance.md), and [Later](../later/index.md).
+- Conformance examples, future fixture boundaries, and operations entrypoint candidates: [Conformance Reference](conformance.md), [Later Candidate Index: Future Fixture Families](../later/index.md#future-fixture-families), and [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates).
 
 If another document needs an exact schema, DDL table, rendered template body, or later/profile catalog, it must link to the owner instead of redefining it here.

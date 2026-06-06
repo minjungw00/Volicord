@@ -121,7 +121,8 @@ Active delivery label은 일관되게 씁니다.
 | 활성 설계 품질, 발견 사항 심각도, 닫기 blocker 조건, 면제 경계, 증거 기대치, validator ID 경계, later 정책 후보 경계 | [설계 품질](design-quality.md) |
 | Surface capability, guarantee display, connector behavior | [Agent 통합 참조](agent-integration.md) |
 | Security asset, trust boundary, threat category, high-risk control expectation, guarantee-level 의미 | [보안 참조](security.md) |
-| Operator procedure, conformance run overview, docs-maintenance 보고 | [운영과 Conformance 참조](operations-and-conformance.md) |
+| 향후 운영자 절차와 운영 후보. Future conformance run entrypoint 후보 포함 | [Later 후보 색인: 운영 후보](../later/index.md#operations-candidates) |
+| 문서 점검 | [문서 작성 가이드](../maintain/authoring-guide.md#docs-maintenance-checks)와 [문서 점검표](../maintain/documentation-checks.md) |
 | 현재 적합성 상태, future fixture 형태, 주장 권한, 대표 예시, catalog 경계, metrics 경계 | [적합성 참조](conformance.md) |
 | 이름만 남긴 future fixture family 후보 | [Later 후보 색인: Future fixture families](../later/index.md#future-fixture-families) |
 
@@ -363,9 +364,9 @@ Fresh session, fresh worktree, sandbox, manual evaluator bundle처럼 의미 있
 
 Scope와 result가 명확한 작고 low-risk인 changes를 위한 work mode입니다. Direct product writes에도 active scoped Change Unit이 필요합니다. Direct에는 trivial typo, single-sentence docs, obvious rename work를 위한 tiny direct profile이 포함됩니다. Tiny는 top-level mode가 아니며 사용자 소유 판단, 민감 동작 승인, security boundary, evidence, scope, 쓰기 승인 기록, 잔여 위험 표시, close rule을 우회하지 않습니다.
 
-### Docs-Maintenance Conformance
+### 문서 점검
 
-Bilingual parity, links, owner 경계, stable catalogs, glossary terms, 기준 기록 표현, TODO usage, non-owner duplicate contracts의 drift를 감지하는 read-only documentation maintenance check profile입니다. Rule bodies는 [문서 작성 가이드](../maintain/authoring-guide.md#docs-maintenance-checks)가 담당하고, operator 보고와 entrypoint expectation은 [운영과 Conformance 참조](operations-and-conformance.md#docs-maintenance-프로필)가 담당합니다. Runtime conformance나 Task state 권한이 아닌 docs-only profile입니다.
+Bilingual parity, link, owner 경계, stable catalog, glossary term, 기준 기록 표현, TODO usage, owner 밖 중복 contract의 drift를 감지하는 읽기 전용 documentation maintenance check profile입니다. Rule body는 [문서 작성 가이드](../maintain/authoring-guide.md#docs-maintenance-checks)가 담당하고, 현재 최종 checklist는 [문서 점검표](../maintain/documentation-checks.md)입니다. Future `docs/*/maintain/checks.md` route가 생기면 Maintain이 담당해야 합니다. 문서 전용 review이며 runtime conformance나 Task state 권한이 아닙니다.
 
 ### Domain Language
 
@@ -645,7 +646,7 @@ Current state와 policy/playbook context에서 계산되는 non-authoritative st
 
 ### Release Handoff
 
-External PR, review, deployment, rollback, monitoring process를 위한 release readiness를 요약하는 optional 보고서/export profile입니다. Close readiness, blocker, evidence ref, verification ref, 수동 QA ref, residual-risk ref, changed file, 상태 보기 최신성, redaction note, suggested checklist item을 포함합니다. 정확한 보고서/export 권한 경계는 [Operations And Conformance](operations-and-conformance.md#release-handoff-export-profile)가 담당합니다.
+External PR, review, deployment, rollback, monitoring process를 위한 release readiness를 요약하는 optional 보고서/export profile입니다. Close readiness, blocker, evidence ref, verification ref, 수동 QA ref, residual-risk ref, changed file, 상태 보기 최신성, redaction note, suggested checklist item을 포함합니다. [Later 후보 색인](../later/index.md#operations-candidates)에 남는 later operations/template 후보입니다. Future owner가 승격하기 전까지 활성 보고서/export 권한 경계는 없습니다.
 
 ### Role Lens
 

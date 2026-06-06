@@ -28,7 +28,7 @@ This reference does not own:
 - projection/template authority and active rendered template bodies; see [Projection And Templates Reference](projection-and-templates.md)
 - threat model and guarantee-level meanings; see [Security Reference](security.md)
 - future fixture shape or assertion authority; see [Conformance Reference](conformance.md)
-- operator commands and diagnostics; see [Operations And Conformance Reference](operations-and-conformance.md)
+- operator commands and diagnostics as active Reference scope; future candidates stay in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates)
 - future connector marketplaces, hosted-agent assumptions, broad connector ecosystems, or cross-surface orchestration
 
 Surface recipes in this document are integration guidance. They do not create Core state authority, write authority, evidence, verification, QA, sensitive-action approval, final acceptance, residual-risk acceptance, close readiness, or any new security boundary.
@@ -246,4 +246,4 @@ Reference-surface checks include:
 - `CAPABILITY_INSUFFICIENT` or an equivalent blocked reason for unsupported capabilities
 - read-only recommendations unless a later Core mutation path records the action
 
-Future fixture shape and assertion authority are owned by [Conformance Reference](conformance.md). Operational commands and diagnostics are owned by [Operations And Conformance Reference](operations-and-conformance.md).
+Future fixture shape and assertion authority are owned by [Conformance Reference](conformance.md). Operational commands and diagnostics are later candidates in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates) until a future owner promotes them.

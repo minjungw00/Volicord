@@ -54,7 +54,7 @@
 
 주요 축소와 이동은 다음과 같습니다.
 
-- Broad report/dashboard/export/handoff material은 필요에 따라 [운영 프로필](../later/index.md#operations-candidates), [운영과 Conformance 참조](../reference/operations-and-conformance.md), template owner로 이동했습니다.
+- Broad report/dashboard/export/handoff material은 필요에 따라 [운영 프로필](../later/index.md#operations-candidates)과 template owner로 이동했습니다.
 - Detached verification hardening, Manual QA matrix, detailed Evidence Manifest behavior, detailed Eval output, risk-review hardening, stewardship validator 같은 full assurance material은 [보증 프로필](../later/index.md#assurance-candidates)이나 관련 Reference owner로 이동했습니다.
 - Conformance runner와 executable fixture 표현은 [적합성 참조](../reference/conformance.md)와 [Later 후보 색인: Future fixture families](../later/index.md#future-fixture-families)에서 future-oriented로 남습니다. 현재 runnable validation처럼 다루지 않습니다.
 - Strict schema, DDL, state transition, error semantics, projection rule, template body, storage rule, security guarantee는 Start, Use, Build, Maintain에서 반복하지 않고 Reference owner로 보냅니다.

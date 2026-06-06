@@ -54,7 +54,7 @@ The redesign no longer treats broad workflow, dashboard, reporting, hosted-agent
 
 Major reductions and moves:
 
-- Broad report/dashboard/export/handoff material is moved to [Operations Profile](../later/index.md#operations-candidates), [Operations And Conformance Reference](../reference/operations-and-conformance.md), and template owners where appropriate.
+- Broad report/dashboard/export/handoff material is moved to [Operations Profile](../later/index.md#operations-candidates) and template owners where appropriate.
 - Full assurance material such as detached verification hardening, Manual QA matrices, detailed Evidence Manifest behavior, detailed Eval output, risk-review hardening, and stewardship validators is moved to [Assurance Profile](../later/index.md#assurance-candidates) or the relevant Reference owner.
 - Conformance-runner and executable fixture language is kept future-oriented in [Conformance Reference](../reference/conformance.md) and [Later Candidate Index: Future Fixture Families](../later/index.md#future-fixture-families), not treated as current runnable validation.
 - Strict schemas, DDL, state transitions, error semantics, projection rules, template bodies, storage rules, and security guarantees are routed to Reference owners instead of repeated in Start, Use, Build, or Maintain pages.

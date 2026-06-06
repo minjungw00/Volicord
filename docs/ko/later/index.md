@@ -43,13 +43,16 @@
 
 | later 후보 | 현재 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
-| operations profile | Later 후보입니다. 상세 본문 없음. | Exact operator command, diagnostic, fallback behavior, proof expectation을 갖춘 owner-scoped operations profile이 필요합니다. | 없음 |
-| Export | Task bundle, redaction/omission note, retained/unavailable artifact, integrity summary를 위한 later 후보입니다. | Operations/export owner contract, storage/artifact rule, redaction rule, non-leakage proof가 필요합니다. | 없음 |
-| Release Handoff | Report/export handoff만을 위한 later 후보입니다. | Handoff owner가 deploy, merge, rollback, production authority를 별도 승격 전까지 Harness 밖에 두어야 합니다. | 없음 |
-| Recovery and reconcile | Lock, projection, artifact, managed-output repair path를 위한 later 후보입니다. | Operations, Storage, Projection, Reconcile, Security owner rule이 필요합니다. | 없음 |
-| Operator readiness and `doctor` surfaces | Local status, diagnostic, next operator action을 위한 later 후보입니다. | Operations owner command, capability check, security posture wording, unsupported-surface fallback이 필요합니다. | 없음 |
-| Projection refresh and freshness diagnostics | Derived view 상태 확인을 위한 later 후보입니다. | Projection이 non-authoritative로 남는 Projection owner behavior가 필요합니다. | 없음 |
-| Future conformance run entrypoint | Runtime fixture가 생긴 뒤의 later 후보입니다. | Exact runner, suite, assertion, request/response, storage/event/artifact/error, reporting contract가 필요합니다. | 없음 |
+| 운영 프로필(Operations Profile) | Later 후보입니다. 상세 본문 없음. 활성 Reference owner는 없습니다. | Owner가 범위를 정한 운영 프로필이 필요합니다. 정확한 운영자 명령, 진단, 대체 동작, 증명 기대치를 함께 정의해야 합니다. | 현재 MVP 영향 없음 |
+| 향후 로컬 운영자 명령 묶음 | 이름만 남긴 later 후보입니다: `harness connect`, `harness serve mcp`, `harness doctor`, `harness projection refresh`, `harness reconcile`, `harness recover`, `harness export`, `harness artifacts check`, `harness conformance run`. 이 이름은 예시일 뿐이며 명령 구문, 절차, 런타임 동작, 활성 명령 목록을 정의하지 않습니다. | 승격된 운영 owner가 정확한 명령 범위, 보안 태세, Storage/API 효과, 보고, 대체 동작, 증명 기대치를 정의해야 합니다. | 현재 MVP 영향 없음 |
+| Export | Task bundle, redaction/omission note, retained/unavailable artifact, integrity summary를 위한 later 후보입니다. | 운영/export owner 계약, 저장소/아티팩트 규칙, 가림/생략 규칙, 유출 방지 증명이 필요합니다. | 현재 MVP 영향 없음 |
+| Release Handoff | 보고서/export handoff만을 위한 later 후보입니다. | Handoff owner가 배포, 병합, 롤백, production 권한을 별도 승격 전까지 Harness 밖에 두어야 합니다. | 현재 MVP 영향 없음 |
+| Recovery and reconcile | Lock, projection, artifact, managed output repair path를 위한 later 후보입니다. | Operations, Storage, Projection, Reconcile, Security owner 규칙이 필요합니다. | 현재 MVP 영향 없음 |
+| 운영자 준비 상태와 `doctor` 접점 | 로컬 상태, 진단, 다음 운영자 행동을 위한 later 후보입니다. | 운영 owner 명령, capability check, 보안 태세 표현, 지원되지 않는 접점의 대체 동작이 필요합니다. | 현재 MVP 영향 없음 |
+| Projection refresh와 최신성 진단 | 파생 보기 상태 확인을 위한 later 후보입니다. | Projection이 non-authoritative로 남도록 하는 Projection owner 동작이 필요합니다. | 현재 MVP 영향 없음 |
+| 향후 conformance run entrypoint | Runtime fixture가 생긴 뒤의 later 후보입니다. 현재 명령이나 runner가 아닙니다. | 정확한 runner, suite, assertion, 요청/응답, storage/event/artifact/error, 보고 계약이 필요합니다. | 현재 MVP 영향 없음 |
+
+문서 점검 메모: 이 tree에는 아직 `docs/*/maintain/checks.md`가 없습니다. 문서 점검 guidance를 운영 후보나 runtime conformance에 섞지 않습니다. dedicated maintain-docs rewrite가 필요하면 그 route를 만들도록 둡니다. 현재 MVP 영향 없음.
 
 <a id="later-api-candidates"></a>
 ## 5. Later API 후보

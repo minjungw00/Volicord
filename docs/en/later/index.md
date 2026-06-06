@@ -43,13 +43,16 @@ Rows here are planning candidates only. They are not MVP-1 requirements, active 
 
 | Candidate | Current status | Promotion requires | Active current MVP impact |
 |---|---|---|---|
-| operations profile | Later candidate; detailed body removed. | Owner-scoped operations profile with exact operator commands, diagnostics, fallback behavior, and proof expectations. | none |
+| operations profile | Later candidate; detailed body removed; no active Reference owner. | Owner-scoped operations profile with exact operator commands, diagnostics, fallback behavior, and proof expectations. | none |
+| Future local operator command family | Later candidate names only: `harness connect`, `harness serve mcp`, `harness doctor`, `harness projection refresh`, `harness reconcile`, `harness recover`, `harness export`, `harness artifacts check`, and `harness conformance run`. These names are illustrative and do not define command syntax, procedures, runtime behavior, or an active command catalog. | A promoted operations owner must define exact command scope, security posture, storage/API effects, reporting, fallback behavior, and proof expectations. | none |
 | Export | Later candidate for task bundles, redaction/omission notes, retained/unavailable artifacts, and integrity summaries. | Operations/export owner contracts, storage/artifact rules, redaction rules, and non-leakage proof. | none |
 | Release Handoff | Later candidate for report/export handoff only. | Handoff owner must keep deployment, merge, rollback, and production authority outside Harness unless separately promoted. | none |
 | Recovery and reconcile | Later candidate for lock, projection, artifact, and managed-output repair paths. | Operations, Storage, Projection, Reconcile, and Security owner rules. | none |
 | Operator readiness and `doctor` surfaces | Later candidate for local status, diagnostics, and next operator action. | Operations owner commands, capability checks, security posture wording, and unsupported-surface fallback. | none |
 | Projection refresh and freshness diagnostics | Later candidate for derived view health. | Projection owner behavior that keeps projections non-authoritative. | none |
-| Future conformance run entrypoint | Later candidate after runtime fixtures exist. | Exact runner, suite, assertion, request/response, storage/event/artifact/error, and reporting contracts. | none |
+| Future conformance run entrypoint | Later candidate after runtime fixtures exist; not a current command or runner. | Exact runner, suite, assertion, request/response, storage/event/artifact/error, and reporting contracts. | none |
+
+Documentation checks note: `docs/*/maintain/checks.md` does not exist in this tree. Do not move docs-maintenance guidance into operations candidates or runtime conformance; leave that route for a dedicated maintain-docs rewrite if it is introduced. Active current MVP impact: none.
 
 <a id="later-api-candidates"></a>
 ## 5. Later API Candidates

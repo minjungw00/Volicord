@@ -138,7 +138,7 @@ Build summarizes sequence and scope only. Use these Reference owners for exact c
 | Reference surface `capability_profile` and user-facing surface behavior | [Agent Integration Reference](../reference/agent-integration.md). |
 | Runtime boundaries and local Core authority placement | [Runtime Boundaries Reference](../reference/runtime-boundaries.md). |
 | Active design-quality blocking boundary | [Design Quality](../reference/design-quality.md#when-a-finding-blocks-close). |
-| Future fixture/conformance and operations material | [Conformance Reference](../reference/conformance.md), [Later Candidate Index: Future Fixture Families](../later/index.md#future-fixture-families), and [Operations And Conformance Reference](../reference/operations-and-conformance.md). |
+| Future fixture/conformance and operations material | [Conformance Reference](../reference/conformance.md), [Later Candidate Index: Future Fixture Families](../later/index.md#future-fixture-families), and [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates). |
 
 <a id="implementation-readiness-criteria"></a>
 <a id="exit-checklist"></a>

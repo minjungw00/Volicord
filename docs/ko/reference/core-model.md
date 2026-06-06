@@ -232,6 +232,6 @@ Core 권한이 다른 계약과 닿을 때는 아래 owner를 사용합니다.
 - 런타임 경계 안의 placement와 Core-only mutation authority: [런타임 경계 참조](runtime-boundaries.md).
 - Design-quality 활성 역할과 close-impact 경계: [설계 품질](design-quality.md).
 - Connector capability profile과 surface-specific fallback behavior: [Agent 통합 참조](agent-integration.md).
-- Conformance example, future fixture boundary, operations entrypoint: [적합성 참조](conformance.md), [운영과 Conformance 참조](operations-and-conformance.md), [Later](../later/index.md).
+- Conformance example, future fixture boundary, operations entrypoint 후보: [적합성 참조](conformance.md), [Later 후보 색인: Future fixture families](../later/index.md#future-fixture-families), [Later 후보 색인: 운영 후보](../later/index.md#operations-candidates).
 
 다른 문서가 exact schema, DDL table, rendered template body, later/profile catalog를 필요로 하면 여기서 다시 정의하지 말고 owner로 연결해야 합니다.

@@ -21,7 +21,7 @@
 - Public MCP request/response schema, `ProjectionKind`, `ArtifactRef`, error shape. [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md)를 봅니다.
 - SQLite DDL, storage layout, artifact storage, projection job storage. [Storage](storage.md)를 봅니다.
 - 설계 품질 close-impact 경계. [설계 품질](design-quality.md)을 봅니다.
-- 운영자 command 동작. [운영과 Conformance 참조](operations-and-conformance.md)를 봅니다.
+- 활성 Reference 범위로서의 운영자 명령 동작. 향후 운영 후보는 [Later 후보 색인: 운영 후보](../later/index.md#operations-candidates)에 남습니다.
 - Conformance fixture assertion 동작. [적합성 참조](conformance.md)를 봅니다.
 - Connector 맥락 동작. [Agent 통합 참조](agent-integration.md)를 봅니다.
 - Later-profile 템플릿 본문. Active documentation이 아닙니다.

@@ -21,7 +21,7 @@ This document does not own:
 - public MCP request/response schemas, `ProjectionKind`, `ArtifactRef`, or error shapes; see [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), and [API Errors](api/errors.md)
 - SQLite DDL, storage layout, artifact storage, or projection job storage; see [Storage](storage.md)
 - design-quality close-impact boundary; see [Design Quality](design-quality.md)
-- operator command behavior; see [Operations And Conformance Reference](operations-and-conformance.md)
+- operator command behavior as active Reference scope; future candidates stay in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates)
 - conformance fixture assertion behavior; see [Conformance Reference](conformance.md)
 - connector context behavior; see [Agent Integration Reference](agent-integration.md)
 - later-profile template bodies; they are not active documentation

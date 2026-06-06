@@ -121,7 +121,8 @@ Use the active delivery labels consistently.
 | Active design quality, finding severity, close-blocker conditions, waiver boundary, evidence expectations, validator ID boundary, later policy catalog boundary | [Design Quality](design-quality.md) |
 | Surface capability, guarantee display, connector behavior | [Agent Integration Reference](agent-integration.md) |
 | Security assets, trust boundaries, threat categories, high-risk control expectations, guarantee-level meanings | [Security Reference](security.md) |
-| Operator procedures, conformance run overview, docs-maintenance reporting | [Operations And Conformance Reference](operations-and-conformance.md) |
+| Future operator procedure and operations candidates, including future conformance run entrypoint candidates | [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates) |
+| Documentation maintenance checks | [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks) and [Documentation Checks](../maintain/documentation-checks.md) |
 | Current conformance status, future fixture shape, assertion authority, representative examples, catalog boundary, and metrics boundary | [Conformance Reference](conformance.md) |
 | Names-only future fixture family candidates | [Later Candidate Index: Future Fixture Families](../later/index.md#future-fixture-families) |
 
@@ -339,9 +340,9 @@ A guarantee level where the harness can detect violations and mark state blocked
 
 A work mode for small, low-risk changes with obvious scope and result. Direct product writes still require an active scoped Change Unit. Direct includes the tiny direct profile for trivial typo, single-sentence docs, or obvious rename work; Tiny is not a top-level mode and does not bypass user-owned judgment, sensitive-action Approval, security boundaries, evidence, scope, Write Authorization, residual-risk visibility, or close rules.
 
-### Docs-Maintenance Conformance
+### Docs-Maintenance Checks
 
-A read-only documentation maintenance check profile that detects drift in bilingual parity, links, owner boundaries, stable catalogs, glossary terms, source-of-truth phrasing, TODO usage, and non-owner duplicate contracts. Its rule bodies are owned by the [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks), and operator reporting and entrypoint expectations are owned by [Operations And Conformance Reference](operations-and-conformance.md#docs-maintenance-profile). It is a docs-only profile, not runtime conformance or task state authority.
+A read-only documentation maintenance check profile that detects drift in bilingual parity, links, owner boundaries, stable catalogs, glossary terms, source-of-truth phrasing, TODO usage, and non-owner duplicate contracts. Its rule bodies are owned by the [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks), and the current final checklist is [Documentation Checks](../maintain/documentation-checks.md). If a future `docs/*/maintain/checks.md` route is introduced, Maintain should own it. This is docs-only review, not runtime conformance or task state authority.
 
 ### Domain Language
 
@@ -597,7 +598,7 @@ Non-authoritative status/next display guidance computed from current state and p
 
 ### Release Handoff
 
-An optional report/export profile that summarizes release readiness for external PR, review, deployment, rollback, and monitoring processes. It includes close readiness, blockers, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, redaction notes, and suggested checklist items. The exact report/export authority boundary is owned by [Operations And Conformance](operations-and-conformance.md#release-handoff-export-profile).
+An optional report/export profile that summarizes release readiness for external PR, review, deployment, rollback, and monitoring processes. It includes close readiness, blockers, evidence refs, verification refs, Manual QA refs, residual-risk refs, changed files, projection freshness, redaction notes, and suggested checklist items. It is a later operations/template candidate in [Later Candidate Index](../later/index.md#operations-candidates). No active report/export authority boundary exists until a future owner promotes it.
 
 ### Role Lens
 
