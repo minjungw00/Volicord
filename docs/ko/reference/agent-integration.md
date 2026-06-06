@@ -78,7 +78,7 @@ user conversation surface
 
 접점은 제품명, 접점 이름, mode label에서 동작을 가정하지 않고 `capability_profile`을 사용해야 합니다. Profile은 실제 작업을 실행할 host/profile에 한정됩니다.
 
-`capability_profile`은 쓰기 권한이 아닙니다. Core gate를 대체하는 first-class 수단도 아닙니다. Active Task, active Change Unit, `prepare_write`, 한 번만 쓰는 협력형 Write Authorization record, `record_run`을 우회할 수 없습니다. Capability는 validator result, Harness `allowed`/`blocked` 호환성 결과, fallback behavior, guarantee display에 영향을 줍니다. 여기서 `allowed`는 현재 Harness 상태와 active surface capability에 호환된다는 뜻이고, `blocked`는 Harness protocol, state, capability상 허용되지 않는다는 뜻입니다. 둘 다 증명된 preventive profile이 covered operation을 이름 붙이지 않는 한 OS 수준 permission이나 물리적 차단을 뜻하지 않습니다. Product write는 지원하지 않는 접점에서 조용히 진행되면 안 됩니다.
+`capability_profile`은 쓰기 권한이 아닙니다. Core gate를 대체하는 first-class 수단도 아닙니다. Active Task, active Change Unit, `prepare_write`, 한 번만 쓰는 협력형 Write Authorization record, `record_run`을 우회할 수 없습니다. Capability는 validator result, Harness `allowed`/`blocked` 호환성 결과, fallback behavior, guarantee display에 영향을 줍니다. 여기서 `allowed`는 현재 하네스 상태와 활성 접점 역량(active surface capability)에 호환된다는 뜻입니다. `blocked`는 현재 하네스 protocol, state, capability 아래에서 허용되지 않는다는 뜻입니다. 둘 다 증명된 preventive profile이 covered operation을 이름 붙이지 않는 한 OS 수준 permission이나 물리적 차단을 뜻하지 않습니다. Product write는 지원하지 않는 접점에서 조용히 진행되면 안 됩니다.
 
 활성 MVP 기준 profile은 아래 field를 사용합니다.
 

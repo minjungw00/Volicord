@@ -858,7 +858,7 @@ Verification-risk acceptance는 detached verification이 아닙니다. Later/pro
 | 필요한 민감 동작 승인 없이 product write attempt | `approval_required`를 반환합니다. Write Authorization을 만들지 않습니다. |
 | Unresolved user-owned judgment가 있는데 product write attempt | `decision_required`를 반환합니다. Write Authorization을 만들지 않습니다. |
 | Compatible unconsumed Write Authorization 없이 implementation/direct Run 기록 | Reject하거나 compatible authority consumed로 취급하지 않는 violation/recovery state를 기록합니다. |
-| 민감 동작 승인을 product 또는 technical decision로 사용 | Reject하거나 user judgment로 repair합니다. |
+| 민감 동작 승인을 product, technical, scope decision으로 사용 | Reject하거나 compatible `UserJudgment`로 repair합니다. |
 | Generic "go ahead"로 incompatible routes를 만족 처리 | State를 기록하기 전에 clarify하거나 route를 분리합니다. |
 | Required evidence가 missing인데 `evidence_gate=not_required` | Recompute하고 repair합니다. |
 | Later/profile required verification을 waiver 없이 skip | Verification을 pending/blocked로 둡니다. |

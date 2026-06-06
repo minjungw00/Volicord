@@ -95,7 +95,7 @@ MVP-1에서 구체화 출력은 활성 작업 경계에 남아야 합니다. 즉
 
 ## 6. 제품 파일 쓰기 전에 범위 확인
 
-하네스에 연결된 작업에서 제품 코드나 파일을 쓰기 전에는 정확히 의도한 쓰기가 현재 범위, 상태, active surface capability에 맞는지 확인합니다. 소유자 용어로는 `prepare_write` / Write Authorization 경로입니다.
+하네스에 연결된 작업에서 제품 코드나 파일을 쓰기 전에는 정확히 의도한 쓰기가 현재 범위, 상태, 활성 접점 역량(active surface capability)에 맞는지 확인합니다. 소유자 용어로는 `prepare_write` / Write Authorization 경로입니다.
 
 의도한 쓰기에 대해 Core/하네스가 호환되는 응답을 주기 전에는 쓰기 가능하다고 말하지 않습니다. 계획, 상태 카드, 생성 요약, 오래된 대화 답변, 사용자의 넓은 호응, 오래된 읽기용 보기를 쓰기 전 범위 확인이나 Write Authorization처럼 취급하지 않습니다.
 
@@ -108,7 +108,7 @@ MVP-1에서 구체화 출력은 활성 작업 경계에 남아야 합니다. 즉
 - 현재 보장 수준. Core가 답할 수 없으면 사용 불가/역량 조건(unavailable/capability condition)
 - 가장 작은 해소 방법
 
-호환되거나 `allowed`인 쓰기 전 범위 확인은 의도한 쓰기가 현재 Harness 상태와 active surface capability에 맞는다는 뜻입니다. `blocked` 결과는 Harness protocol, state, capability상 그 claim을 계속 진행할 수 없다는 뜻입니다. OS 권한, 샌드박스, 변조 방지 저장소, 임의 도구 격리, 실행 전 차단 증명이 아닙니다. Owner 용어에서 stored boundary는 `AuthorizedAttemptScope`입니다. Operation, paths, tools, commands와 command classes, product-file-write intent, network targets, secret scope, sensitive categories, baseline, Task, Change Unit, state, surface, related judgments, guarantee level을 포함합니다. Write Authorization은 이 stored boundary에 대한 한 번만 쓰는 협력형 record입니다. 그중 하나라도 바뀌거나 active surface에서 관찰할 수 없으면 쓰기 전에 확인을 새로 하거나 claim을 unverified/blocked로 다룹니다.
+호환되거나 `allowed`인 쓰기 전 범위 확인은 의도한 쓰기가 현재 하네스 상태와 활성 접점 역량(active surface capability)에 맞는다는 뜻입니다. `blocked` 결과는 현재 하네스 protocol, state, capability 아래에서는 그 주장을 계속할 수 없다는 뜻입니다. OS 권한, 샌드박스, 변조 방지 저장소, 임의 도구 격리, 실행 전 차단 증명이 아닙니다. 담당 문서 용어에서 저장된 경계는 `AuthorizedAttemptScope`입니다. Operation, paths, tools, commands와 command classes, product-file-write intent, network targets, secret scope, sensitive categories, baseline, Task, Change Unit, state, surface, related judgments, guarantee level을 포함합니다. Write Authorization은 이 저장된 경계에 대한 한 번만 쓰는 협력형 기록입니다. 그중 하나라도 바뀌거나 활성 접점에서 관찰할 수 없으면 쓰기 전에 확인을 새로 하거나 검증되지 않았거나 막힌 주장으로 다룹니다.
 
 ## 7. 의미 있는 행동 뒤에는 증거 기록
 

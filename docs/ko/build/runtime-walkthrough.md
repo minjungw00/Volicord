@@ -57,7 +57,7 @@ flowchart LR
 
 ### 2. Task -> 구체화
 
-요청이 모호하거나, 위험하거나, 제품-facing이거나, 사용자 판단이 필요할 가능성이 있으면 하네스는 original request, current goal summary, scope, non-goals, success criteria, confirmed facts, remaining uncertainties, blocking question, likely judgment boundary, next safe action을 구체화합니다. MVP-1에서 Discovery와 요구사항 구체화는 active Task update, proposed 또는 active Change Unit update, User Judgment 후보나 기록으로만 지속됩니다. Committed Shared Design record, Discovery Brief record, Question Queue record, Assumption Register record, First Safe Change Unit Candidate record, evidence, Approval, Write Authorization, final acceptance, residual-risk acceptance, close가 아닙니다.
+요청이 모호하거나, 위험하거나, 제품에 영향을 주거나, 사용자 판단이 필요할 가능성이 있으면 하네스는 original request, current goal summary, scope, non-goals, success criteria, confirmed facts, remaining uncertainties, blocking question, likely judgment boundary, next safe action을 구체화합니다. MVP-1에서 Discovery와 요구사항 구체화는 active Task update, proposed 또는 active Change Unit update, User Judgment 후보나 기록으로만 지속됩니다. Committed Shared Design record, Discovery Brief record, Question Queue record, Assumption Register record, First Safe Change Unit Candidate record, evidence, Approval, Write Authorization, final acceptance, residual-risk acceptance, close가 아닙니다.
 
 담당 문서: [Core Model 참조: MVP-1 shaping boundary](../reference/core-model.md#mvp-1-shaping-boundary), [API Schema Core: `ShapingUpdatePayload`](../reference/api/schema-core.md#record-run-payloads), [`harness.request_user_judgment`](../reference/api/mvp-api.md#harnessrequest_user_judgment).
 

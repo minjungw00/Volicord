@@ -23,7 +23,6 @@ Use a judgment request when the next safe action depends on one of these user-ow
 - Final acceptance
 - Residual risk acceptance
 - Cancellation
-- Cancellation
 
 Do not merge these into one "approve?" prompt. Permission to install a dependency is not the same as adopting that dependency as the architecture. A scope decision is not a write authorization. Final acceptance is not the same as accepting known residual risk. A QA waiver is not evidence that QA passed. Verification-risk acceptance is not detached verification.
 
