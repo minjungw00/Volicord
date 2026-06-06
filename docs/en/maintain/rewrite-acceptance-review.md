@@ -57,7 +57,7 @@ Major reductions and moves:
 - Broad report/dashboard/export/handoff material is moved to [Operations Profile](../later/operations-profile.md), [Operations And Conformance Reference](../reference/operations-and-conformance.md), and template owners where appropriate.
 - Full assurance material such as detached verification hardening, Manual QA matrices, detailed Evidence Manifest behavior, detailed Eval output, risk-review hardening, and stewardship validators is moved to [Assurance Profile](../later/assurance-profile.md) or the relevant Reference owner.
 - Conformance-runner and executable fixture language is kept future-oriented in [Conformance Fixtures Reference](../reference/conformance-fixtures.md) and [Future Fixtures](../later/future-fixtures.md), not treated as current runnable validation.
-- Strict schemas, DDL, state transitions, error semantics, projection rules, template bodies, storage rules, and security guarantees are routed to Reference owners instead of repeated in Learn, Use, Build, or Maintain pages.
+- Strict schemas, DDL, state transitions, error semantics, projection rules, template bodies, storage rules, and security guarantees are routed to Reference owners instead of repeated in Start, Use, Build, or Maintain pages.
 - User-facing prose has been reduced away from internal labels as the default starting point. User docs are expected to start from ordinary user situations.
 
 ## Current Stage Model
@@ -235,7 +235,7 @@ Checks actually run during this review:
 - Legacy stage/fixture term check using `rg` for `v01`, `v02`, `CORE-v01`, `MVP-v02`, `v0.1`, `v0.2`, `Core Authority Smoke`, and `First User-Value Slice`: no active misuse was found; remaining matches are legacy-label guidance or this review's own check text.
 - Decision Packet authority-path wording check using `rg` plus manual review of the Core Model and later-profile Decision Packet template: no checked wording describes Decision Packet as the authority path for user-owned judgment. It remains a full-format/later-profile or legacy presentation label for `user_judgment`.
 - Security wording spot check over Security Reference and Implementation Overview: checked cooperative/detective/preventive/isolated wording and local-access non-claims; checked wording does not claim OS permission, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, or security isolation for early stages.
-- User-language/internal-term scan using `rg` over Learn and Use docs, followed by spot review of Learn Overview, the Learn concepts page, User Guide opening and advanced-terms section, Agent Guide guidance, and the English/Korean Judgment Request Cookbook openings. Internal labels appear in explicit lookup, advanced, reference-link, stable-anchor, or "do not require this startup language" contexts, not as required user startup language in the scanned openings.
+- User-language/internal-term scan using `rg` over Start and Use docs, followed by spot review of Start, User Guide opening and advanced-terms section, Agent Guide guidance, and the English/Korean Judgment Request Cookbook openings. Internal labels appear in explicit lookup, advanced, reference-link, stable-anchor, or "do not require this startup language" contexts, not as required user startup language in the scanned openings.
 - Korean later-profile template localization check: targeted exact scan plus broader rendered-label, heading, table-label, and cue-label review found the prior cleanup complete for the checked scope. Old unresolved examples were absent, dependency labels now use Korean labels with exact field names in parentheses, and remaining English hits are exact/stable identifiers, field names, placeholders, enum values, template IDs, or Korean-explained lookup labels.
 - Core Model English/Korean judgment schema wording spot check: the prior wording drift is resolved. The checked summary paragraphs and canonical-schema bullets are aligned on `user_judgment`, `harness.request_user_judgment`, `harness.record_user_judgment`, `judgment_kind`, `presentation`, locale-derived display labels, and compatibility/legacy terms.
 - Mermaid inventory and basic fence review: found 24 actual Mermaid fences in paired Build/Reference docs; all actual fences begin with `flowchart LR`, `flowchart TD`, or `flowchart TB`. Mermaid rendering or parser validation was not run because `command -v mmdc` found no renderer in `PATH`, local `npm list mermaid @mermaid-js/mermaid-cli --depth=0` was empty, and the global npm package list contained only `corepack` and `npm`.
@@ -246,7 +246,7 @@ Checks not run:
 
 - Mermaid parser or renderer. `mmdc` was not available in `PATH` during this review, so Mermaid syntax/rendering was not validated.
 - Full bilingual semantic review of every paired file.
-- Full user-language audit across every Learn and Use sentence.
+- Full user-language audit across every Start and Use sentence.
 - Full owner-boundary duplicate-contract audit across all docs.
 - Full line-by-line Korean prose polish beyond the targeted later-profile localization audit.
 - Runtime conformance, executable fixture execution, conformance-runner checks, generated projection checks, generated operational artifact checks, or runtime state checks. Those do not exist in this documentation-only repository phase.
@@ -272,7 +272,7 @@ These limitations should be considered during maintainer documentation acceptanc
 
 - Mermaid parser/renderer validation was not performed; only inventory and basic source audit were performed and passed at the source-audit level. This review found 24 actual Mermaid fences, all starting with `flowchart LR`, `flowchart TD`, or `flowchart TB`, but actual syntax rendering was not validated.
 - Full paired-file semantic review of every English/Korean file was not performed.
-- Full manual user-language audit of every Learn/Use sentence was not performed.
+- Full manual user-language audit of every Start/Use sentence was not performed.
 - Full owner-boundary duplicate-contract audit across all docs was not performed.
 - Full line-by-line Korean prose polish beyond the targeted later-profile localization audit was not performed.
 

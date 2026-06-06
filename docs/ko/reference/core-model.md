@@ -15,7 +15,7 @@
 
 ## 읽기 전에
 
-정확한 규칙보다 예시를 먼저 보고 싶다면 [핵심 개념](../learn/concepts.md)이나 [하나의 작업으로 보는 하네스](../learn/one-task.md)를 먼저 읽습니다. Active MVP-1 public method는 [MVP API](api/mvp-api.md)가 담당하고, shared API shape는 [API Schema Core](api/schema-core.md), API error는 [API Errors](api/errors.md)가 담당합니다. Storage table은 [Storage](storage.md)이 담당합니다. Connector capability wording은 [Agent 통합 참조](agent-integration.md)가 담당합니다.
+정확한 규칙보다 예시를 먼저 보고 싶다면 [시작하기](../start.md)를 먼저 읽습니다. Active MVP-1 public method는 [MVP API](api/mvp-api.md)가 담당하고, shared API shape는 [API Schema Core](api/schema-core.md), API error는 [API Errors](api/errors.md)가 담당합니다. Storage table은 [Storage](storage.md)이 담당합니다. Connector capability wording은 [Agent 통합 참조](agent-integration.md)가 담당합니다.
 
 ## 핵심 생각
 

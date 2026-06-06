@@ -173,7 +173,7 @@ Use these as the preferred terms in Korean prose. Keep exact English strings whe
 | artifact ref | 아티팩트 참조 | In evidence contexts, `증거 아티팩트 참조` is also acceptable. Keep the `ArtifactRef` schema name exact. |
 | projection / Projection | 상태 보기 / 요약 / 상태 카드 | User-facing explanation should use `상태 보기`, `요약`, or `상태 카드` first and omit `Projection` unless exact API/schema precision or a reference link needs it. Translate Markdown projection as `Markdown 상태 보기`, `Markdown 요약`, or `Markdown으로 렌더링된 상태 카드` when the exact English phrase is not itself the subject. Projection is a derived view and not operational authority. Keep `Projection`, `ProjectionKind`, `projection freshness`, API fields, template kinds, or `projection view` in reference/schema contexts. |
 | kernel | 커널 | Use `커널` outside exact headings and owner links. |
-| gate | 관문 | Prefer `관문` in Learn/Use docs. Reference docs may retain `gate` when referring to kernel fields or values. |
+| gate | 관문 | Prefer `관문` in Start/Use docs. Reference docs may retain `gate` when referring to kernel fields or values. |
 | detached verification | 분리 검증 | May retain `detached verification` in assurance explanations. |
 | cooperative | 협력형 / 협력형 확인 | Retain the English label in guarantee-level tables. In explanatory prose, `협력형 확인` is preferred. |
 | detective | 탐지형 / 사후 확인 | Retain the English label in guarantee-level tables. In explanatory prose, `사후 확인` is preferred. |

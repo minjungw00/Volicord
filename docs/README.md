@@ -23,10 +23,8 @@ It is not the user's Product Repository and not a Harness Runtime Home. Document
 
 | Step / 순서 | English | 한국어 |
 |---|---|---|
-| 1 | [Overview](en/learn/overview.md) | [개요](ko/learn/overview.md) |
-| 2 | [One Task](en/learn/one-task.md) | [하나의 작업](ko/learn/one-task.md) |
-| 3 | [Concepts](en/learn/concepts.md) | [핵심 개념](ko/learn/concepts.md) |
-| 4 | [User Guide](en/use/user-guide.md) | [사용자 가이드](ko/use/user-guide.md) |
+| 1 | [Start](en/start.md) | [시작하기](ko/start.md) |
+| 2 | [User Guide](en/use/user-guide.md) | [사용자 가이드](ko/use/user-guide.md) |
 | Implementers only / 구현자만 | [Implementation Overview](en/build/implementation-overview.md), then [Engineering Checkpoint](en/build/engineering-checkpoint.md) and [MVP-1 User Work Loop](en/build/mvp-user-work-loop.md) | [구현 개요](ko/build/implementation-overview.md), 그다음 [내부 엔지니어링 점검](ko/build/engineering-checkpoint.md)과 [MVP-1 사용자 작업 루프](ko/build/mvp-user-work-loop.md) |
 | Lookup only / 찾아볼 때만 | [Reference Index](en/reference/README.md) | [Reference 색인](ko/reference/README.md) |
 
@@ -34,7 +32,7 @@ It is not the user's Product Repository and not a Harness Runtime Home. Document
 
 | Reader / 독자 | English path | 한국어 경로 |
 |---|---|---|
-| General user / 일반 사용자 | [Overview](en/learn/overview.md) -> [One Task](en/learn/one-task.md) -> [User Guide](en/use/user-guide.md). | [개요](ko/learn/overview.md) -> [하나의 작업](ko/learn/one-task.md) -> [사용자 가이드](ko/use/user-guide.md). |
+| General user / 일반 사용자 | [Start](en/start.md) -> [User Guide](en/use/user-guide.md). | [시작하기](ko/start.md) -> [사용자 가이드](ko/use/user-guide.md). |
 | Agent instruction writer / 에이전트 지침 작성자 | [Agent Guide](en/use/agent-guide.md); use [Agent Integration Reference](en/reference/agent-integration.md) only for exact connector/context contracts. | [에이전트 가이드](ko/use/agent-guide.md); 정확한 connector/context 계약이 필요할 때만 [Agent 통합 참조](ko/reference/agent-integration.md). |
 | Future server implementer / 향후 서버 구현자 | [Implementation Overview](en/build/implementation-overview.md) -> [Engineering Checkpoint](en/build/engineering-checkpoint.md) -> [MVP-1 User Work Loop](en/build/mvp-user-work-loop.md) -> [Reference Index](en/reference/README.md). | [구현 개요](ko/build/implementation-overview.md) -> [내부 엔지니어링 점검](ko/build/engineering-checkpoint.md) -> [MVP-1 사용자 작업 루프](ko/build/mvp-user-work-loop.md) -> [Reference 색인](ko/reference/README.md). |
 | Documentation maintainer / 문서 유지보수자 | [Authoring Guide](en/maintain/authoring-guide.md) -> [Translation Guide](en/maintain/translation-guide.md) -> [Documentation Checks](en/maintain/documentation-checks.md). | [문서 작성 가이드](ko/maintain/authoring-guide.md) -> [번역 가이드](ko/maintain/translation-guide.md) -> [문서 점검표](ko/maintain/documentation-checks.md). |
@@ -46,7 +44,7 @@ It is not the user's Product Repository and not a Harness Runtime Home. Document
 
 | Family / 문서군 | Purpose / 목적 | Boundary / 경계 |
 |---|---|---|
-| Learn / 학습 | Why Harness exists and the concepts readers need first. / 하네스가 왜 필요한지와 먼저 알아야 할 개념. | No strict schemas, gates, DDL, implementation sequence, or fixture mechanics. / 엄격한 schema, gate, DDL, 구현 순서, fixture mechanics를 정의하지 않습니다. |
+| Start / 첫 읽기 | Why Harness exists, one ordinary task, first concepts, and the current guarantee boundary. / 하네스가 왜 필요한지, 평소 작업 하나, 첫 개념, 현재 보장 경계를 설명합니다. | No strict schemas, gates, DDL, implementation sequence, or fixture mechanics. / 엄격한 schema, gate, DDL, 구현 순서, fixture mechanics를 정의하지 않습니다. |
 | Use / 사용 | User and agent usage in ordinary language, including judgment requests, write checks, evidence summaries, and close flow. / 평소 말로 보는 사용자와 에이전트 사용 방식. 판단 요청, 쓰기 전 확인, 증거 요약, 닫기 흐름을 다룹니다. | No canonical enum definitions, DDL, or full transition tables. / canonical enum definition, DDL, 전체 전이 표를 두지 않습니다. |
 | Build / 구현 | Future implementation sequence, active slice, first proof, active/later boundary, reading path, and exclusions. / 향후 구현 순서, 활성 조각, 첫 증명, 활성/이후 경계, 읽기 경로, 제외 범위. | Exact API shapes, schemas, DDL, storage tables, fixture bodies, transition tables, security guarantees, and full threat catalogs are linked, not duplicated. / 정확한 API shape, schema, DDL, storage table, fixture body, 전이 표, 보안 보장, 전체 threat catalog는 중복하지 않고 링크합니다. |
 | Reference / 참조 | Exact owner contracts: Core transition, API schema, Storage/DDL, Security, Agent Integration, Projection/Templates, Conformance, Glossary, and related owners. / Core 전이, API schema, Storage/DDL, Security, Agent Integration, Projection/Templates, Conformance, Glossary와 관련 owner의 정확한 계약. | Not a tutorial or staged implementation plan. / 튜토리얼이나 단계별 구현 계획이 아닙니다. |

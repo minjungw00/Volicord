@@ -12,7 +12,7 @@ Read this when you need to check a Harness term, avoid mixing authority paths, o
 
 ## Before you read
 
-For a first explanation of Harness concepts, use the Learn path. For exact behavior, follow the owner links below or the links inside individual definitions.
+For a first explanation of Harness concepts, read [Start](../start.md). For exact behavior, follow the owner links below or the links inside individual definitions.
 
 ## Main idea
 

@@ -4,7 +4,7 @@
 
 Use this reference to understand where Harness runs, where canonical state lives, how Core commits state transitions, how artifacts and projections move through the system, and what control strength the runtime can honestly claim.
 
-It is a lookup document for implementers and operators. It does not repeat the Learn overview or teach the whole Harness model from first principles.
+It is a lookup document for implementers and operators. It does not repeat the first-read [Start](../start.md) overview or teach the whole Harness model from first principles.
 
 This is reference documentation for future Harness behavior. Current repository phase and implementation handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 

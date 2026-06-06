@@ -42,4 +42,4 @@ Documentation authoring, translation, review, link hygiene, owner-boundary drift
 
 ## Non-Owner Rule
 
-If a Build, Use, Learn, Maintain, or README page needs a strict contract, it should state the reader-visible consequence and link here or to the owner. It should not paste a full schema, DDL block, transition table, fixture mini-language, template body, enum table, validator table, projection table, threat catalog, or glossary definition.
+If a Build, Use, Start, Maintain, or README page needs a strict contract, it should state the reader-visible consequence and link here or to the owner. It should not paste a full schema, DDL block, transition table, fixture mini-language, template body, enum table, validator table, projection table, threat catalog, or glossary definition.

@@ -4,7 +4,7 @@
 
 Use this reference to look up Harness operator procedures, conformance staging and future run entrypoint behavior, and the boundary between documentation checks, active MVP structured drafts, and future runtime conformance.
 
-It is a lookup document for operators, implementers, conformance authors, and maintainers. It is not an onboarding path; first-time readers should start with Learn or Build docs and return here when they need exact operational or conformance semantics.
+It is a lookup document for operators, implementers, conformance authors, and maintainers. It is not an onboarding path; first-time readers should start with [Start](../start.md) or Build docs and return here when they need exact operational or conformance semantics.
 
 This is reference documentation for future operator and conformance behavior. The current repository is documentation-only and contains no runnable Harness Server conformance tests; current phase and handoff status are tracked in [Implementation Overview](../build/implementation-overview.md#documentation-acceptance-status).
 
@@ -52,7 +52,7 @@ This document owns:
 
 This reference does not claim runtime implementation readiness. It defines stage-specific semantics for future implementation and conformance work.
 
-It also does not own conformance fixture body shape, fixture assertion semantics, compact future scenario inventory, public MCP schemas, SQLite DDL, projection template bodies, Learn/Use workflow, or long-term analytics. Core fixture mechanics are owned by [Conformance Fixtures Reference](conformance-fixtures.md), and future scenario-family inventory is owned by [Future Fixtures](../later/future-fixtures.md). Docs-maintenance rule bodies are owned by the [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks); this reference owns only the operator profile boundary below.
+It also does not own conformance fixture body shape, fixture assertion semantics, compact future scenario inventory, public MCP schemas, SQLite DDL, projection template bodies, Start/Use workflow, or long-term analytics. Core fixture mechanics are owned by [Conformance Fixtures Reference](conformance-fixtures.md), and future scenario-family inventory is owned by [Future Fixtures](../later/future-fixtures.md). Docs-maintenance rule bodies are owned by the [Authoring Guide](../maintain/authoring-guide.md#docs-maintenance-checks); this reference owns only the operator profile boundary below.
 
 ## Contract map
 

@@ -42,4 +42,4 @@ Exact field, enum value, lifecycle state, DDL, request/response shape, security 
 
 ## Owner가 아닌 문서 규칙
 
-Build, Use, Learn, Maintain, README 문서가 strict contract를 필요로 하면 독자에게 보이는 결과를 말하고 이 색인이나 담당 문서로 연결합니다. Full schema, DDL block, transition table, fixture mini-language, template body, enum table, validator table, projection table, threat catalog, glossary definition을 붙여 넣지 않습니다.
+Build, Use, Start, Maintain, README 문서가 strict contract를 필요로 하면 독자에게 보이는 결과를 말하고 이 색인이나 담당 문서로 연결합니다. Full schema, DDL block, transition table, fixture mini-language, template body, enum table, validator table, projection table, threat catalog, glossary definition을 붙여 넣지 않습니다.

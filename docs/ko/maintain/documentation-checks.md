@@ -77,7 +77,7 @@ runtime conformance는 별도입니다. 구현된 Core/API/storage/surface behav
 ### 용어 점검
 
 - 점검 유형: `manual`.
-- 볼 것: Learn과 Use 문서의 예시, 제목, 요약, 상태 설명에서 internal label이 기본 사용자 언어처럼 쓰이는지 봅니다.
+- 볼 것: Start와 Use 문서의 예시, 제목, 요약, 상태 설명에서 internal label이 기본 사용자 언어처럼 쓰이는지 봅니다.
 - 자주 실패하는 예: 사용자용 문서가 평소 사용자 상황을 설명하기 전에 `Discovery`, `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Projection`, `Gate`, `task_events`로 시작합니다. 사용자가 내부 라벨을 말해야 도움을 받을 수 있는 것처럼 보입니다.
 - 통과 의미: 사용자용 prose는 평소 말에서 시작합니다. 내부 라벨은 보이는 경계, 차단 사유, record, API, template, Reference link를 설명할 때만 씁니다.
 

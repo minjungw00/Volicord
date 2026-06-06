@@ -77,7 +77,7 @@ Use this as a final manual sweep before maintainers consider documentation accep
 ### Term Check
 
 - Review type: `manual`.
-- What to inspect: Learn and Use pages, examples, headings, summaries, and status text for internal labels used as default user-facing language.
+- What to inspect: Start and Use pages, examples, headings, summaries, and status text for internal labels used as default user-facing language.
 - Common failure examples: A user-facing page opens with `Discovery`, `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Projection`, `Gate`, or `task_events` before explaining the ordinary user situation. A user example implies the user must say an internal label to get help.
 - Pass means: User-facing prose starts from normal user language. Internal labels appear only when they help explain a visible boundary, blocker, record, API, template, or Reference link.
 

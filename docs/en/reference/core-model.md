@@ -15,7 +15,7 @@ This is reference documentation for a future local Harness Server. No Harness ru
 
 ## Before you read
 
-Read [Concepts](../learn/concepts.md) or [Harness in One Task](../learn/one-task.md) first if you want examples before exact rules. Active MVP-1 public methods are owned by [MVP API](api/mvp-api.md), shared API shapes by [API Schema Core](api/schema-core.md), and API errors by [API Errors](api/errors.md). Storage tables are owned by [Storage](storage.md). Connector capability wording is owned by [Agent Integration Reference](agent-integration.md).
+Read [Start](../start.md) first if you want examples before exact rules. Active MVP-1 public methods are owned by [MVP API](api/mvp-api.md), shared API shapes by [API Schema Core](api/schema-core.md), and API errors by [API Errors](api/errors.md). Storage tables are owned by [Storage](storage.md). Connector capability wording is owned by [Agent Integration Reference](agent-integration.md).
 
 ## Main idea
 

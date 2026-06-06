@@ -19,7 +19,7 @@ This repo is in pre-MVP Harness documentation redesign / feedback incorporation 
 - Final documentation handoff status lives in `docs/en/build/implementation-overview.md` and `docs/ko/build/implementation-overview.md`. Major implementation decisions found during review belong only in the MVP-1 User Work Loop decision-log sections, not scattered TODOs.
 - When changing meaning, work in `docs/en` first and mirror semantic changes in `docs/ko` in the same batch.
 - Maintain semantic parity between English and Korean docs, while allowing natural Korean headings and prose.
-- Use the current documentation tree: `docs/*/learn/*`, `docs/*/use/*`, `docs/*/build/*`, `docs/*/reference/*`, `docs/*/later/*`, `docs/*/maintain/*`, and `docs/*/roadmap.md`.
+- Use the current documentation tree: `docs/*/start.md`, `docs/*/use/*`, `docs/*/build/*`, `docs/*/reference/*`, `docs/*/later/*`, `docs/*/maintain/*`, and `docs/*/roadmap.md`.
 - Use small batches and report changed files.
 - Do not create commits unless the user explicitly asks for commits.
 

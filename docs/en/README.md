@@ -14,12 +14,10 @@ No server/runtime implementation, runtime state, generated projection system, co
 
 Use this path when you do not know where to start:
 
-1. [Overview](learn/overview.md) for the first mental model.
-2. [One Task](learn/one-task.md) for the feel of one user work loop.
-3. [Concepts](learn/concepts.md) for the minimum vocabulary.
-4. [User Guide](use/user-guide.md) for practical user and agent interaction.
-5. [Implementation Overview](build/implementation-overview.md) only if you are reviewing future Harness Server implementation.
-6. [Reference Index](reference/README.md) only when you need exact contracts.
+1. [Start](start.md) for the first mental model, one ordinary task, minimum concepts, and current guarantee boundary.
+2. [User Guide](use/user-guide.md) for practical user and agent interaction.
+3. [Implementation Overview](build/implementation-overview.md) only if you are reviewing future Harness Server implementation.
+4. [Reference Index](reference/README.md) only when you need exact contracts.
 
 This path intentionally stops before large Reference docs. First-time readers do not need schemas, DDL, transition tables, fixture bodies, or threat catalogs to understand what Harness is for.
 
@@ -27,7 +25,7 @@ This path intentionally stops before large Reference docs. First-time readers do
 
 | Reader | Start here | Then use |
 |---|---|---|
-| General user | [Overview](learn/overview.md) | [One Task](learn/one-task.md) for the work-loop feel; [User Guide](use/user-guide.md) for practical session behavior. |
+| General user | [Start](start.md) | [User Guide](use/user-guide.md) for practical session behavior. |
 | Agent instruction writer | [Agent Guide](use/agent-guide.md) | [Agent Integration Reference](reference/agent-integration.md) and [Surface Cookbook](reference/surface-cookbook.md) only when exact connector or context behavior matters. |
 | Future server implementer | [Implementation Overview](build/implementation-overview.md) | [Engineering Checkpoint](build/engineering-checkpoint.md) for the first internal proof, [MVP-1 User Work Loop](build/mvp-user-work-loop.md) for the first user-value slice, then [Reference Index](reference/README.md) for exact owners. |
 | Exact contract reader | [Reference Index](reference/README.md) | Pick the owner for the specific contract instead of reading the whole Reference set. |
@@ -38,7 +36,7 @@ This path intentionally stops before large Reference docs. First-time readers do
 
 | Family | Role | Boundary |
 |---|---|---|
-| Learn | Explains why Harness exists, where authority lives, and the concepts readers need before strict contracts. | Does not define schemas, gates, DDL, implementation sequence, or fixture mechanics. |
+| Start | Explains why Harness exists, where authority lives, one ordinary task, the first concepts, and the current guarantee boundary. | Does not define schemas, gates, DDL, implementation sequence, or fixture mechanics. |
 | Use | Explains user and agent usage through ordinary-language examples, agent behavior, judgment request handling, write checks, evidence summaries, and close flow. | Does not define canonical enums, DDL, or full transition tables. |
 | Build | Explains future implementation sequence, active slice, first proof, active/later boundary, build reading path, and excluded areas. | Links to Reference for exact API shapes, schemas, DDL, storage tables, state transitions, fixture bodies, security guarantees, and threat catalogs. |
 | Reference | Owns exact contracts: Core transition, API schema, Storage/DDL, Security, Agent Integration, Projection/Templates, Conformance, Glossary, runtime architecture, operations, and design-quality policy. | Does not serve as the first-read tutorial or staged implementation plan. |
@@ -71,7 +69,7 @@ Exact user judgment, write, run/evidence, close, projection, and error contracts
 
 Use [Reference Index](reference/README.md) when you need exact contracts. It owns the compact map to Core state transitions, API schemas, Storage/DDL, Security, Agent Integration, Projection/Templates, Conformance, Glossary, runtime architecture, operations, and design-quality policy.
 
-Do not copy Reference tables into Learn, Use, Build, or Maintain pages. Non-owner pages should summarize the reader-visible consequence and link to the owner.
+Do not copy Reference tables into Start, Use, Build, or Maintain pages. Non-owner pages should summarize the reader-visible consequence and link to the owner.
 
 ## Maintain Route
 

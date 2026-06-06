@@ -14,12 +14,10 @@
 
 어디서 시작해야 할지 모를 때는 이 순서로 읽습니다.
 
-1. [개요](learn/overview.md)에서 첫 번째 이해 모델을 잡습니다.
-2. [하나의 작업](learn/one-task.md)에서 사용자 작업 하나가 어떻게 느껴지는지 봅니다.
-3. [핵심 개념](learn/concepts.md)에서 최소 어휘를 봅니다.
-4. [사용자 가이드](use/user-guide.md)에서 실제 사용자와 에이전트 상호작용을 봅니다.
-5. 향후 하네스 서버 구현을 검토할 때만 [구현 개요](build/implementation-overview.md)를 봅니다.
-6. 정확한 계약이 필요할 때만 [Reference 색인](reference/README.md)을 봅니다.
+1. [시작하기](start.md)에서 첫 이해 모델, 평소 작업 하나, 최소 개념, 현재 보장 경계를 봅니다.
+2. [사용자 가이드](use/user-guide.md)에서 실제 사용자와 에이전트 상호작용을 봅니다.
+3. 향후 하네스 서버 구현을 검토할 때만 [구현 개요](build/implementation-overview.md)를 봅니다.
+4. 정확한 계약이 필요할 때만 [Reference 색인](reference/README.md)을 봅니다.
 
 이 경로는 일부러 큰 Reference 문서 앞에서 멈춥니다. 처음 읽는 독자는 하네스의 목적을 이해하기 위해 schema, DDL, 전이 표, fixture body, threat catalog부터 볼 필요가 없습니다.
 
@@ -27,7 +25,7 @@
 
 | 독자 | 먼저 읽기 | 이어서 보기 |
 |---|---|---|
-| 일반 사용자 | [개요](learn/overview.md) | 작업 흐름의 느낌은 [하나의 작업](learn/one-task.md), 실제 세션 동작은 [사용자 가이드](use/user-guide.md). |
+| 일반 사용자 | [시작하기](start.md) | 실제 세션 동작은 [사용자 가이드](use/user-guide.md). |
 | 에이전트 지침 작성자 | [에이전트 가이드](use/agent-guide.md) | 정확한 connector 또는 context 동작이 필요할 때만 [Agent 통합 참조](reference/agent-integration.md)와 [Surface Cookbook](reference/surface-cookbook.md). |
 | 향후 서버 구현자 | [구현 개요](build/implementation-overview.md) | 첫 내부 증명은 [내부 엔지니어링 점검](build/engineering-checkpoint.md), 첫 사용자 가치 조각은 [MVP-1 사용자 작업 루프](build/mvp-user-work-loop.md), 정확한 owner는 [Reference 색인](reference/README.md). |
 | 정확한 계약을 찾는 독자 | [Reference 색인](reference/README.md) | Reference 전체를 읽기보다 필요한 계약의 담당 문서를 고릅니다. |
@@ -38,7 +36,7 @@
 
 | 문서군 | 역할 | 경계 |
 |---|---|---|
-| Learn | 하네스가 왜 필요한지, 권한이 어디에 있는지, 엄격한 계약 전에 필요한 개념을 설명합니다. | schema, gate, DDL, 구현 순서, fixture mechanics를 정의하지 않습니다. |
+| Start | 하네스가 왜 필요한지, 권한이 어디에 있는지, 평소 작업 하나, 첫 개념, 현재 보장 경계를 설명합니다. | schema, gate, DDL, 구현 순서, fixture mechanics를 정의하지 않습니다. |
 | Use | 평소 말 예시, 에이전트 행동, 판단 요청 처리, 쓰기 전 확인, 증거 요약, 닫기 흐름을 통해 사용자와 에이전트 사용 방식을 설명합니다. | canonical enum, DDL, 전체 전이 표를 정의하지 않습니다. |
 | Build | 향후 구현 순서, 활성 조각, 첫 증명, 활성/이후 경계, 구현자 읽기 경로, 제외 범위를 설명합니다. | 정확한 API shape, schema, DDL, storage table, 상태 전이, fixture body, security guarantee, threat catalog는 Reference로 연결합니다. |
 | Reference | Core 전이, API schema, Storage/DDL, Security, Agent Integration, Projection/Templates, Conformance, Glossary, runtime architecture, operations, design-quality policy의 정확한 계약을 담당합니다. | 첫 읽기 튜토리얼이나 단계별 구현 계획이 아닙니다. |
@@ -71,7 +69,7 @@ Use 문서는 사용자와 에이전트가 신뢰 경계에서 실제로 보게 
 
 정확한 계약이 필요할 때 [Reference 색인](reference/README.md)을 사용합니다. Core 상태 전이, API schema, Storage/DDL, Security, Agent Integration, Projection/Templates, Conformance, Glossary, runtime architecture, operations, design-quality policy의 담당 문서 지도를 제공합니다.
 
-Reference 표를 Learn, Use, Build, Maintain 문서로 복사하지 않습니다. Owner가 아닌 문서는 독자에게 보이는 결과만 짧게 요약하고 담당 문서로 연결합니다.
+Reference 표를 Start, Use, Build, Maintain 문서로 복사하지 않습니다. Owner가 아닌 문서는 독자에게 보이는 결과만 짧게 요약하고 담당 문서로 연결합니다.
 
 ## 유지보수 경로
 
