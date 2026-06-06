@@ -469,8 +469,14 @@ expected_response:
       change_unit_id: CU-001
       basis_state_version: 3
       surface_id: reference-local-mcp
+      intended_operation: "Update settings copy."
       intended_paths: ["app/settings/page.tsx"]
+      intended_tools: ["edit"]
+      intended_commands: []
       product_file_write_intended: true
+      intended_network: []
+      intended_secret_scope: []
+      sensitive_categories: []
       baseline_ref: BASE-001
       related_user_judgment_refs: []
       guarantee_level: cooperative
@@ -647,8 +653,25 @@ initial_state:
     - write_authorization_id: WA-001
       task_id: TASK-001
       change_unit_id: CU-001
+      surface_id: reference-local-mcp
       status: active
       basis_state_version: 5
+      attempt_scope_json:
+        task_id: TASK-001
+        change_unit_id: CU-001
+        basis_state_version: 5
+        surface_id: reference-local-mcp
+        intended_operation: "Update settings copy."
+        intended_paths: ["app/settings/page.tsx"]
+        intended_tools: ["edit"]
+        intended_commands: []
+        product_file_write_intended: true
+        intended_network: []
+        intended_secret_scope: []
+        sensitive_categories: []
+        baseline_ref: BASE-001
+        related_user_judgment_refs: []
+        guarantee_level: cooperative
   tool_invocations:
     - tool_name: harness.prepare_write
       idempotency_key: IDEMP-005
@@ -829,6 +852,7 @@ initial_state:
         change_unit_id: CU-001
         basis_state_version: 7
         surface_id: reference-local-mcp
+        intended_operation: "Update settings copy."
         intended_paths: ["app/settings/page.tsx"]
         intended_tools: ["edit"]
         intended_commands: []
@@ -1135,6 +1159,7 @@ initial_state:
         change_unit_id: CU-001
         basis_state_version: 9
         surface_id: reference-local-mcp
+        intended_operation: "Update settings copy."
         intended_paths: ["app/settings/page.tsx"]
         intended_tools: ["edit"]
         intended_commands: []
@@ -1470,6 +1495,7 @@ initial_state:
         change_unit_id: CU-001
         basis_state_version: 12
         surface_id: reference-local-mcp
+        intended_operation: "Update settings copy."
         intended_paths: ["app/settings/page.tsx"]
         intended_tools: ["edit"]
         intended_commands: []
