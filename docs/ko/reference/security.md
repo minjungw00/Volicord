@@ -9,7 +9,7 @@
 이 문서가 소유하는 것:
 
 - 보안 자산 범주와 신뢰 경계 범주
-- `cooperative`, `detective`, `preventive`, `isolated` 보안 보장 라벨의 의미
+- `cooperative`, `detective`, profile-gated `preventive` / `isolated` 보안 보장 라벨의 의미
 - 보안 표시가 입증된 통제와 일치해야 한다는 규칙
 - 현재 MVP의 명시적 비보장
 - Core 권한, 사용자 소유 판단, 증거, 저장소, connector, projection을 구분하는 위협/통제 요약
@@ -32,9 +32,11 @@
 
 현재 MVP 보장 수준은 기본적으로 협력형입니다. 활성 기준 접점이 관련 사실을 정직하게 관찰할 수 있는 곳에서만 제한된 탐지적 동작을 말할 수 있습니다. 활성 기준 접점은 등록된 `capability_profile`로 표현됩니다. 이 프로필은 보장 수준 표시와 역량 차단 사유를 제한하지만 쓰기 권한을 만들지는 않습니다.
 
+현재 MVP 값 집합에서 `GuaranteeDisplay.level`의 기본 값은 `cooperative`와 `detective`뿐입니다. `preventive`와 `isolated`는 profile-gated 표시 값 이름입니다. 대상 동작이나 경계에 대한 승격된 profile과 증명이 있어야 사용할 수 있으며, 현재 MVP의 기본 보장이 아닙니다.
+
 `allowed`는 현재 하네스 상태, 소유자 기록, 활성 접점 역량과 호환된다는 뜻입니다. 운영체제가 그 동작을 허용한다는 뜻이 아닙니다. `blocked`는 하네스 프로토콜, 상태, 소유자 기록, 역량 확인상 그 경로가 진행되면 안 된다는 뜻입니다. 실행 전에 프로세스가 물리적으로 멈췄다는 뜻이 아닙니다.
 
-기준 `capability_profile`에는 기본 예방적 또는 격리형 태세가 없습니다. `pre_tool_blocking_supported=false`이면 MVP는 제품/런타임/코드 쓰기에 `preventive`를 표시하면 안 됩니다. `isolation_supported=false`이면 MVP는 `isolated`를 표시하거나 보안 격리 경계를 암시하면 안 됩니다.
+기준 `capability_profile`에는 기본 예방적 또는 격리형 태세가 없습니다. `pre_tool_blocking_supported=false`이면 MVP는 제품/런타임/코드 쓰기에 `preventive`를 표시하면 안 됩니다. `isolation_supported=false`이면 MVP는 `isolated`를 표시하거나 보안 격리 경계를 암시하면 안 됩니다. 사용자가 더 강한 안전을 요청했거나 guard/freeze/careful-mode label이 있거나 향후 profile 아이디어가 있다는 이유만으로 profile이 승격되지 않습니다.
 
 Write Authorization은 호환되는 non-dry-run `prepare_write` 경로만 만들고 compatible `record_run`이 소비하는 한 번만 쓰는 협력형 하네스 기록입니다. 하네스 기록/확인일 뿐이며 운영체제 권한, 샌드박싱, 변조 방지 강제, 물리적 도구 실행 전 차단, 격리가 아닙니다.
 

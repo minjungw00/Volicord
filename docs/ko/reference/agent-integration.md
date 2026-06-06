@@ -75,14 +75,23 @@ Generated rule, skill, MCP snippet, adapter file, managed block에는 connector 
 
 ## 3. 보장 수준
 
-보장 수준 표시는 [보안 참조](security.md#정직한-guarantee-display)를 따릅니다. 이 참조는 커넥터가 `capability_profile`을 사용자에게 보이는 표시로 어떻게 연결하는지 담당합니다.
+보장 수준 표시는 [보안 참조](security.md#정직한-guarantee-display)를 따릅니다. 정확한 schema 값 집합은 [API Schema Core](api/schema-core.md#current-mvp-value-sets)가 담당합니다. 이 참조는 커넥터가 `capability_profile`을 사용자에게 보이는 표시로 어떻게 연결하는지 담당합니다.
+
+현재 MVP 커넥터 표시 값은 다음과 같습니다.
 
 | Level | 커넥터 표시 규칙 |
 |---|---|
 | `cooperative` | 접점이 하네스 지시를 따를 것으로 기대된다고 말합니다. 보류는 지시로 이루어지며 물리적 차단이 아닙니다. |
 | `detective` | 하네스가 행동 뒤에 changed path, log, artifact, drift 같은 지원되는 사실을 보고 상태를 stale, partial, blocked, failed로 표시할 수 있다고 말합니다. |
-| `preventive` | Fixture로 입증된 hook, wrapper, permission layer, policy engine, sidecar path와 실행 전에 막을 수 있는 정확한 operation을 이름 붙입니다. |
-| `isolated` | 문서화된 separation boundary를 이름 붙입니다. 해당 메커니즘이 입증되지 않았으면 운영체제 샌드박싱, 권한 격리, 변조 방지 저장소를 암시하지 않습니다. |
+
+profile-gated 표시 값 이름은 다음과 같습니다.
+
+| 이름 | 커넥터 표시 규칙 |
+|---|---|
+| `preventive` | 승격된 profile이 있을 때만 사용합니다. fixture로 입증된 hook, wrapper, permission layer, policy engine, sidecar path와 실행 전에 막을 수 있는 정확한 동작을 이름 붙입니다. |
+| `isolated` | 승격된 profile이 있을 때만 사용합니다. 문서화된 separation boundary를 이름 붙입니다. 해당 메커니즘이 입증되지 않았으면 운영체제 샌드박싱, 권한 격리, 변조 방지 저장소를 암시하지 않습니다. |
+
+에이전트는 사용자가 더 강한 안전을 요청했다는 이유만으로 `preventive` 또는 `isolated`를 고르면 안 됩니다. 활성 profile이 더 강한 주장을 증명하지 못하면 커넥터는 표시 보장을 낮추거나 `CAPABILITY_INSUFFICIENT`를 반환해야 합니다.
 
 Reference local MCP profile은 `cooperative` 동작과, changed-path 또는 artifact-gap 관찰이 뒷받침하는 제한된 `detective` 동작만 표시할 수 있습니다. `pre_tool_blocking_supported=false`와 `isolation_supported=false`이므로 `preventive`나 `isolated` 동작을 주장하면 안 됩니다.
 

@@ -29,7 +29,7 @@ Conformance는 생성된 prose를 판단하지 않습니다. 향후에는 owner-
 - 생성된 conformance artifact, report, projection, runtime state, Harness Runtime Home data
 - 현재 runtime `PASS`, `WARN`, `FAIL` result
 - 현재 MVP 또는 later 후보를 위한 active fixture suite
-- 예방적 차단, OS 권한 제어, 임의 도구 샌드박스, 변조 방지 저장소, 보안 격리에 대한 현재 증명
+- 예방적 차단, OS 권한 제어, 임의 도구 샌드박스, 변조 방지 저장소, 보안 격리, profile-gated `preventive` / `isolated` 보장에 대한 현재 증명
 
 이 문서의 예시는 구현 계획을 도울 수 있습니다. 하지만 runtime state, acceptance evidence, close readiness, implementation readiness를 만들지 않습니다.
 
@@ -44,7 +44,7 @@ Conformance는 생성된 prose를 판단하지 않습니다. 향후에는 owner-
 | `scenario_id` | 검토할 동작의 stable identifier. |
 | owner scope | Action을 해석하는 데 필요한 Task, Change Unit, surface, state-version, owner ref. |
 | action | Owner request schema를 사용하는 public Core/API/operator request 하나. |
-| initial authority context | Action 전의 관련 Core state, storage row, artifact ref, surface capability. |
+| initial authority context | 동작 전의 관련 Core 상태, storage row, artifact ref, 접점 역량. |
 | expected authoritative assertions | Structured response, state, storage, event, artifact, blocker, error, guarantee, forbidden-side-effect fact. |
 | owner links | Exact value를 정의하는 API, Core, Storage, Security, ArtifactRef, policy owner. |
 
@@ -64,6 +64,8 @@ Materialized fixture는 public owner schema를 사용해야 합니다. Fixture-o
 - API/Core owner의 primary `ErrorCode`, error detail, structured blocker field
 - Security와 Agent Integration owner에 맞는 guarantee-level fact
 - durable authorization 없음, Run row 없음, artifact mutation 없음, close-state change 없음 같은 forbidden side effect 부재 assertion
+
+현재 활성 예시는 `cooperative`와 지원되는 `detective` fact만 assertion할 수 있습니다. `preventive` 또는 `isolated` assertion은 승격된 profile과 담당 문서가 정의한 증명이 있을 때만 유효합니다. Conformance 계획 문구만으로 이런 보장이 현재 실행 가능하거나 증명된 것이 되지 않습니다.
 
 권한이 없는 자료는 다음입니다.
 

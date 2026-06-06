@@ -9,7 +9,7 @@ Use this page when security wording, local-access posture, threat/control summar
 This document owns:
 
 - security asset categories and trust-boundary categories
-- the meaning of `cooperative`, `detective`, `preventive`, and `isolated` as security guarantee labels
+- the meaning of `cooperative`, `detective`, and profile-gated `preventive` / `isolated` as security guarantee labels
 - the rule that security display must match the proven control
 - the current MVP security non-claims
 - the threat/control summary that keeps Core authority, user-owned judgment, evidence, storage, connectors, and projections distinct
@@ -32,9 +32,11 @@ This document does not own:
 
 The current MVP guarantee level is cooperative by default, with limited detective behavior only where the active reference surface can honestly observe the relevant fact. The active reference surface is represented by a registered `capability_profile`; that profile constrains guarantee display and capability blockers, but it does not create write authority.
 
+For the current MVP value set, `cooperative` and `detective` are the only default `GuaranteeDisplay.level` values. `preventive` and `isolated` are profile-gated display value names. They require a promoted profile and proof for the covered operation or boundary; they are not default active MVP guarantees.
+
 `allowed` means compatible with current Harness state, owner records, and the active surface capability. It does not mean the operating system permits the action. `blocked` means the Harness protocol, state, owner record, or capability check says the path must not proceed. It does not mean a process was physically stopped before execution.
 
-The reference `capability_profile` has no default preventive or isolated posture. When `pre_tool_blocking_supported=false`, the MVP must not display `preventive` for product/runtime/code writes. When `isolation_supported=false`, the MVP must not display `isolated` or imply a security-isolation boundary.
+The reference `capability_profile` has no default preventive or isolated posture. When `pre_tool_blocking_supported=false`, the MVP must not display `preventive` for product/runtime/code writes. When `isolation_supported=false`, the MVP must not display `isolated` or imply a security-isolation boundary. A user request for stronger safety, a guard/freeze/careful-mode label, or a future profile idea does not promote the profile.
 
 Write Authorization is a single-use cooperative Harness record created only by the compatible non-dry-run `prepare_write` path and consumed by compatible `record_run`. It is a Harness record/check, not OS permission, sandboxing, tamper-proof enforcement, physical pre-tool blocking, or isolation.
 

@@ -75,14 +75,23 @@ Generated rules, skills, MCP snippets, adapter files, and managed blocks need a 
 
 ## 3. Guarantee Levels
 
-Guarantee level display follows [Security Reference](security.md#honest-guarantee-display). This reference owns how a connector maps a `capability_profile` to what the user sees.
+Guarantee level display follows [Security Reference](security.md#honest-guarantee-display). Exact schema value sets are owned by [API Schema Core](api/schema-core.md#current-mvp-value-sets). This reference owns how a connector maps a `capability_profile` to what the user sees.
+
+Current MVP connector display values:
 
 | Level | Connector display rule |
 |---|---|
 | `cooperative` | Say the surface is expected to follow Harness instructions. Holds are by instruction, not physical blocking. |
 | `detective` | Say Harness can observe supported after-action facts such as changed paths, logs, artifacts, or drift and then mark state stale, partial, blocked, or failed. |
-| `preventive` | Name the fixture-proven hook, wrapper, permission layer, policy engine, or sidecar path and the exact operations it can block before execution. |
-| `isolated` | Name the documented separation boundary. Do not imply OS sandboxing, permission isolation, or tamper-proof storage unless that exact mechanism is proven. |
+
+Profile-gated display value names:
+
+| Name | Connector display rule |
+|---|---|
+| `preventive` | Use only with a promoted profile. Name the fixture-proven hook, wrapper, permission layer, policy engine, or sidecar path and the exact operations it can block before execution. |
+| `isolated` | Use only with a promoted profile. Name the documented separation boundary. Do not imply OS sandboxing, permission isolation, or tamper-proof storage unless that exact mechanism is proven. |
+
+Agents must not choose `preventive` or `isolated` merely because a user requested stronger safety. The connector must lower the displayed guarantee or return `CAPABILITY_INSUFFICIENT` when the active profile cannot prove the stronger claim.
 
 The reference local MCP profile can display `cooperative` behavior and limited `detective` behavior only where changed-path or artifact-gap observation supports it. Because `pre_tool_blocking_supported=false` and `isolation_supported=false`, it must not claim `preventive` or `isolated` behavior.
 

@@ -29,7 +29,7 @@ The following are future implementation work, not current repository contents:
 - generated conformance artifacts, reports, projections, runtime state, or Harness Runtime Home data
 - current runtime `PASS`, `WARN`, or `FAIL` results
 - active fixture suites for the active MVP or later candidates
-- current proof of preventive blocking, OS permission control, arbitrary-tool sandboxing, tamper-proof storage, or security isolation
+- current proof of preventive blocking, OS permission control, arbitrary-tool sandboxing, tamper-proof storage, security isolation, or profile-gated `preventive` / `isolated` guarantees
 
 Documentation examples here may guide implementation planning, but they do not create runtime state, acceptance evidence, close readiness, or implementation readiness.
 
@@ -64,6 +64,8 @@ Authoritative future assertions:
 - primary `ErrorCode`, error details, and structured blocker fields from API/Core owners
 - guarantee-level facts that match the Security and Agent Integration owners
 - absence assertions for forbidden side effects, such as no durable authorization, no Run row, no artifact mutation, or no close-state change
+
+Current active examples may assert `cooperative` and supported `detective` facts. `preventive` or `isolated` assertions are valid only for a promoted profile with owner-defined proof; conformance planning text does not make those guarantees currently executable or proven.
 
 Non-authoritative material:
 

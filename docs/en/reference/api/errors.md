@@ -8,16 +8,18 @@ This document describes future Harness Server behavior for planning and review. 
 
 <a id="active-mvp-guarantee-and-status-taxonomy"></a>
 
-## Active MVP Guarantee And Status Taxonomy
+## Current MVP Guarantee And Profile-Gated Claim Taxonomy
 
-`guarantee_display.level` uses the exact values `cooperative`, `detective`, `preventive`, and `isolated`. Security meaning is owned by [Security Reference: Honest guarantee display](../security.md#honest-guarantee-display).
+`guarantee_display.level` uses the current MVP values `cooperative` and `detective` unless a promoted profile explicitly supports a profile-gated display value. Security meaning is owned by [Security Reference: Honest guarantee display](../security.md#honest-guarantee-display), and the exact value-set boundary is owned by [API Schema Core](schema-core.md#current-mvp-value-sets).
 
-| Level | Active meaning |
+Unsupported requests to require or display a profile-gated guarantee are claim-boundary errors. Use `CAPABILITY_INSUFFICIENT` when the surface lacks the needed blocking, isolation, observation, or proof support. Use `VALIDATION_FAILED` when the requested value is not valid for the active profile or request shape. Neither error proves that the stronger guarantee exists.
+
+| Level or name | Error/status meaning |
 |---|---|
 | `cooperative` | Harness can check and record when the agent or tool follows the documented path. It is not OS permission, sandboxing, tamper-proof storage, or pre-execution blocking. |
 | `detective` | Harness or the connected surface can detect, record, or report an observable mismatch after or during the action. It is not prevention. |
-| `preventive` | A promoted mechanism has a proven control that blocks the covered operation before it happens. Use only when the exact operation and proof are named. |
-| `isolated` | A promoted mechanism has a documented and proven separation boundary for the claim. Name the boundary; do not infer broader authority from it. |
+| `preventive` | Profile-gated display value name. Without promoted pre-tool blocking support for the covered operation, return a capability or validation error and lower the displayed guarantee. |
+| `isolated` | Profile-gated display value name. Without promoted isolation support for the named boundary, return a capability or validation error and lower the displayed guarantee. |
 
 Active MVP behavior defaults to cooperative checks with limited detective reporting where the connected surface can honestly observe facts.
 

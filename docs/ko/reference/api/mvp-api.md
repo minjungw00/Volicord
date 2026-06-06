@@ -30,7 +30,7 @@ harness.close_task
 |---|---|
 | [`harness.intake`](#harnessintake) | 평소 사용자 작업을 시작, 재개, 분류합니다. |
 | [`harness.status`](#harnessstatus) | 현재 상태 요약, 차단 사유, 대기 중인 판단, 증거 요약, 닫기 상태, 다음 안전한 행동을 반환합니다. |
-| [`harness.prepare_write`](#harnessprepare_write) | 제안된 제품 쓰기를 현재 범위, 상태, 민감 동작 승인, baseline, surface capability와 비교합니다. |
+| [`harness.prepare_write`](#harnessprepare_write) | 제안된 제품 쓰기를 현재 범위, 상태, 민감 동작 승인, baseline, 접점 역량과 비교합니다. |
 | [`harness.record_run`](#harnessrecord_run) | shaping, direct, implementation 작업과 compact evidence/artifact ref를 기록합니다. |
 | [`harness.request_user_judgment`](#harnessrequest_user_judgment) | 대기 중인 사용자 소유 판단 요청 하나를 만듭니다. |
 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) | 기존 pending `UserJudgment`에 대한 사용자의 답을 기록합니다. |
@@ -126,7 +126,7 @@ StatusResponse:
 - **상태 효과:** 없습니다. `harness.status`는 `tool_invocations` replay row를 만들지 않습니다.
 - **오류:** `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`, `NO_ACTIVE_TASK`, 요청한 readable view가 stale 또는 failed이면 `PROJECTION_STALE`.
 - **저장소 담당 문서:** `project_state`, `tasks`, `change_units`, `user_judgments`, `write_authorizations`, `runs`, `evidence_summaries`, `artifacts`, `artifact_links`, `blockers`를 read-only로 읽습니다.
-- **보안 경계:** Status는 Core가 뒷받침할 수 있는 사실에 따라 `cooperative`, `detective`, `preventive`, `isolated`를 표시할 수 있습니다. 최신이 아닌 상태 text, chat, rendered view, cached summary는 권한 근거가 아닙니다.
+- **보안 경계:** 승격된 profile이 없으면 status는 현재 MVP `GuaranteeDisplay.level` 값인 `cooperative` 또는 `detective`만 표시합니다. `preventive`와 `isolated`는 schema와 security 담당 문서가 뒷받침하는 profile-gated 표시 값으로만 나타날 수 있습니다. 최신이 아닌 상태 text, chat, rendered view, cached summary는 권한 근거가 아닙니다.
 
 <a id="harnessprepare_write"></a>
 
@@ -134,7 +134,7 @@ StatusResponse:
 
 - **담당:** 협력형 쓰기 전 범위 확인과 proposed attempt가 compatible할 때 durable single-use Write Authorization.
 - **담당하지 않음:** OS 권한, sandboxing, 변조 방지 enforcement, 사전 도구 차단, 사용자 판단 생성, 증거 충분성, run recording, close.
-- **호출 시점:** 제품 파일 쓰기 또는 write-capable action 직전에, 현재 Task, Change Unit, baseline, 민감 동작 승인, surface capability와 맞는지 확인해야 할 때.
+- **호출 시점:** 제품 파일 쓰기 또는 쓰기 가능한 동작 직전에, 현재 Task, Change Unit, baseline, 민감 동작 승인, 접점 역량과 맞는지 확인해야 할 때.
 - **Request:**
 
 ```yaml

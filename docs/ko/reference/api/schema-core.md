@@ -2,7 +2,7 @@
 
 ## 이 문서로 할 수 있는 일
 
-현재 MVP의 활성 shared API shape를 확인할 때 이 참조를 사용합니다. Tool envelope, common response, `ArtifactRef`, `StateRecordRef`, `UserJudgment`, Write Authorization summary, evidence summary, run summary, close blocker, next action summary, 활성 value set을 다룹니다.
+현재 MVP에서 쓰는 활성 공용 API 형태를 확인할 때 이 참조를 사용합니다. `ToolEnvelope`, 공통 응답, `ArtifactRef`, `StateRecordRef`, `UserJudgment`, Write Authorization 요약, 증거 요약, 실행 요약, 닫기 차단 사유, 다음 행동 요약, 현재 MVP 값 집합, profile-gated 표시 값 이름의 경계를 다룹니다.
 
 이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 문서 저장소에 MCP server가 구현되어 있다는 뜻이 아닙니다. 향후 schema 후보는 [Later 후보 색인](../../later/index.md#later-schema-candidates)에 남습니다.
 
@@ -103,11 +103,11 @@ StateSummary:
     acceptance_gate: not_required | required | pending | accepted | rejected
 
 GuaranteeDisplay:
-  level: cooperative | detective | preventive | isolated
+  level: cooperative | detective
   notes: string[]
 ```
 
-Localized label은 display text이지 enum value가 아닙니다. `GuaranteeDisplay.level`은 문서화된 surface capability와 proof level에 대한 주장입니다. Permission이나 state authority를 부여하지 않습니다.
+화면에 표시되는 label은 canonical schema value가 아니다. `GuaranteeDisplay.level`은 문서화된 접점 역량과 증명 수준을 보여 주는 표시 주장입니다. 권한이나 상태 권한을 부여하지 않습니다. `preventive`와 `isolated`는 profile-gated 표시 값이며, 현재 MVP의 기본 보장이 아니다.
 
 <a id="staterecordref"></a>
 
@@ -222,7 +222,7 @@ AuthorizedAttemptScope:
   sensitive_categories: string[]
   baseline_ref: string | null
   related_user_judgment_refs: StateRecordRef[]
-  guarantee_level: cooperative | detective | preventive | isolated
+  guarantee_level: cooperative | detective
 
 WriteAuthorizationSummary:
   write_authorization_id: string
@@ -398,7 +398,7 @@ ValidatorResult:
   validator_id: surface_capability_check
   validator_kind: capability
   status: passed | warning | failed | blocked | skipped
-  guarantee_level: cooperative | detective | preventive | isolated
+  guarantee_level: cooperative | detective
   checked_at: string
   target:
     task_id: string | null
@@ -447,12 +447,13 @@ policy_override
 ```
 
 <a id="stage-specific-active-value-sets"></a>
+<a id="current-mvp-value-sets"></a>
 
-## Stage-Specific Active Value Sets
+## 현재 MVP 값 집합
 
-아래 값은 위 schema block에서 이미 사용하는 현재 MVP 활성 값입니다. 더 넓은 active enum을 prose로 거르는 방식이 아닙니다.
+아래 값은 승격된 profile 없이 사용할 수 있는 현재 MVP 값 집합입니다. 여기에 없는 값은 현재 MVP의 기본 활성 값이 아닙니다. 화면에 표시되는 label은 canonical schema value가 아니다.
 
-| Field | 활성 값 |
+| Field | 현재 MVP 값 |
 |---|---|
 | Active method set | `harness.intake`, `harness.status`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
 | `ToolEnvelope.actor_kind` | `user`, `lead_agent`, `evaluator`, `operator` |
@@ -468,4 +469,21 @@ policy_override
 | `ArtifactRef.redaction_state` | `none`, `redacted`, `secret_omitted`, `blocked` |
 | `CloseBlocker.category` | `task`, `open_run`, `scope`, `user_judgment`, `sensitive_approval`, `design_policy`, `write_compatibility`, `baseline`, `surface_capability`, `evidence`, `artifact_availability`, `final_acceptance`, `residual_risk_visibility`, `residual_risk_acceptance`, `cancellation`, `supersession`, `recovery` |
 | `NextActionSummary.action_kind` | `ask_user`, `prepare_write`, `implement`, `request_acceptance`, `close_task`, `idle` |
-| `GuaranteeDisplay.level` | `cooperative`, `detective`, `preventive`, `isolated` |
+| `GuaranteeDisplay.level` | `cooperative`, `detective` |
+| `AuthorizedAttemptScope.guarantee_level` | `cooperative`, `detective` |
+| `ValidatorResult.guarantee_level` | `cooperative`, `detective` |
+
+`GuaranteeDisplay.level`에서 `cooperative`는 현재 MVP의 기본값입니다. `detective`는 활성 접점이 관련 사실을 정직하게 관찰할 수 있는 곳에서만 사용할 수 있습니다.
+
+<a id="profile-gated-value-names"></a>
+
+## profile-gated 값 이름
+
+아래 이름은 승격된 profile이 해당 보장을 명시적으로 지원할 때만 나타날 수 있습니다. 현재 MVP의 기본 보장이 아닙니다. `preventive`와 `isolated`는 profile-gated 표시 값이며, 현재 MVP의 기본 보장이 아니다.
+
+| Field | profile-gated 값 이름 | 요구사항 |
+|---|---|---|
+| `GuaranteeDisplay.level` | `preventive` | 대상 동작에 대한 명시적 도구 실행 전 차단 지원이 필요합니다. 또한 담당 문서가 동작, 대체 동작, 증명 경로를 정의해야 합니다. |
+| `GuaranteeDisplay.level` | `isolated` | 대상 경계에 대한 명시적 격리 지원이 필요합니다. 또한 이름 붙은 경계, 담당 문서가 정의한 동작, 대체 동작, 증명 경로가 있어야 합니다. |
+
+profile-gated 표시 값 이름은 그 자체로 Write Authorization, 검증기, 저장소, 오류 동작을 넓히지 않습니다. 지원되지 않는 값의 사용 또는 표시 요청은 역량 부족 또는 검증 실패로 남습니다. 더 강한 보장이 존재한다는 증거가 아닙니다.

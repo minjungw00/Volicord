@@ -126,7 +126,7 @@ StatusResponse:
 - **State effect:** None. `harness.status` does not create `tool_invocations` replay rows.
 - **Errors:** `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`, `NO_ACTIVE_TASK`, `PROJECTION_STALE` when a requested readable view is stale or failed.
 - **Storage owner:** Read-only over `project_state`, `tasks`, `change_units`, `user_judgments`, `write_authorizations`, `runs`, `evidence_summaries`, `artifacts`, `artifact_links`, and `blockers`.
-- **Security boundary:** Status may display `cooperative`, `detective`, `preventive`, or `isolated`, but only according to facts Core can support. Stale status text, chat, rendered views, and cached summaries are not authority.
+- **Security boundary:** Without a promoted profile, status displays only the current MVP `GuaranteeDisplay.level` values `cooperative` or `detective`. `preventive` and `isolated` may appear only as profile-gated display values supported by the schema and security owners. Stale status text, chat, rendered views, and cached summaries are not authority.
 
 <a id="harnessprepare_write"></a>
 

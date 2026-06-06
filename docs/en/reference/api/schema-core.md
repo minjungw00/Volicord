@@ -2,7 +2,7 @@
 
 ## What this document helps you do
 
-Use this reference for active current MVP shared API shapes: the tool envelope, common response, `ArtifactRef`, `StateRecordRef`, `UserJudgment`, Write Authorization summary, evidence summary, run summary, close blockers, next-action summary, and active value sets.
+Use this reference for active current MVP shared API shapes: the tool envelope, common response, `ArtifactRef`, `StateRecordRef`, `UserJudgment`, Write Authorization summary, evidence summary, run summary, close blockers, next-action summary, current MVP value sets, and the boundary around profile-gated display value names.
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server. Future schema candidates stay in [Later Candidate Index](../../later/index.md#later-schema-candidates).
 
@@ -103,11 +103,11 @@ StateSummary:
     acceptance_gate: not_required | required | pending | accepted | rejected
 
 GuaranteeDisplay:
-  level: cooperative | detective | preventive | isolated
+  level: cooperative | detective
   notes: string[]
 ```
 
-Localized labels are display text, not enum values. `GuaranteeDisplay.level` is a claim about the documented surface capability and proof level; it does not grant permission or state authority.
+Rendered labels are not canonical schema values. `GuaranteeDisplay.level` is a display claim about the documented surface capability and proof level; it does not grant permission or state authority. `preventive` and `isolated` are profile-gated display values, not default active MVP guarantees.
 
 <a id="staterecordref"></a>
 
@@ -222,7 +222,7 @@ AuthorizedAttemptScope:
   sensitive_categories: string[]
   baseline_ref: string | null
   related_user_judgment_refs: StateRecordRef[]
-  guarantee_level: cooperative | detective | preventive | isolated
+  guarantee_level: cooperative | detective
 
 WriteAuthorizationSummary:
   write_authorization_id: string
@@ -398,7 +398,7 @@ ValidatorResult:
   validator_id: surface_capability_check
   validator_kind: capability
   status: passed | warning | failed | blocked | skipped
-  guarantee_level: cooperative | detective | preventive | isolated
+  guarantee_level: cooperative | detective
   checked_at: string
   target:
     task_id: string | null
@@ -447,12 +447,13 @@ policy_override
 ```
 
 <a id="stage-specific-active-value-sets"></a>
+<a id="current-mvp-value-sets"></a>
 
-## Stage-Specific Active Value Sets
+## Current MVP Value Sets
 
-These are the active current MVP values already used by the schema blocks above. They are not a prose filter over broader active enums.
+These values are valid without a promoted profile. Values not listed here are not default active MVP values. Rendered labels are not canonical schema values.
 
-| Field | Active values |
+| Field | Current MVP values |
 |---|---|
 | Active method set | `harness.intake`, `harness.status`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
 | `ToolEnvelope.actor_kind` | `user`, `lead_agent`, `evaluator`, `operator` |
@@ -468,4 +469,21 @@ These are the active current MVP values already used by the schema blocks above.
 | `ArtifactRef.redaction_state` | `none`, `redacted`, `secret_omitted`, `blocked` |
 | `CloseBlocker.category` | `task`, `open_run`, `scope`, `user_judgment`, `sensitive_approval`, `design_policy`, `write_compatibility`, `baseline`, `surface_capability`, `evidence`, `artifact_availability`, `final_acceptance`, `residual_risk_visibility`, `residual_risk_acceptance`, `cancellation`, `supersession`, `recovery` |
 | `NextActionSummary.action_kind` | `ask_user`, `prepare_write`, `implement`, `request_acceptance`, `close_task`, `idle` |
-| `GuaranteeDisplay.level` | `cooperative`, `detective`, `preventive`, `isolated` |
+| `GuaranteeDisplay.level` | `cooperative`, `detective` |
+| `AuthorizedAttemptScope.guarantee_level` | `cooperative`, `detective` |
+| `ValidatorResult.guarantee_level` | `cooperative`, `detective` |
+
+For `GuaranteeDisplay.level`, `cooperative` is the default current MVP value. `detective` may be used only where the active surface can honestly observe the relevant fact.
+
+<a id="profile-gated-value-names"></a>
+
+## Profile-Gated Value Names
+
+These names may appear only when a promoted profile explicitly supports the corresponding guarantee. They are not default active MVP guarantees. `preventive` and `isolated` are profile-gated display values, not default active MVP guarantees.
+
+| Field | Profile-gated value name | Requirement |
+|---|---|---|
+| `GuaranteeDisplay.level` | `preventive` | Requires explicit pre-tool blocking support for the covered operation, plus an owner-defined behavior, fallback, and proof path. |
+| `GuaranteeDisplay.level` | `isolated` | Requires explicit isolation support for the covered boundary, plus a named boundary, owner-defined behavior, fallback, and proof path. |
+
+Profile-gated display value names do not expand Write Authorization, validator, storage, or error behavior by themselves. Unsupported requests to use or display them remain capability or validation failures; they are not evidence that the stronger guarantee exists.

@@ -8,16 +8,18 @@
 
 <a id="active-mvp-guarantee-and-status-taxonomy"></a>
 
-## 현재 MVP guarantee와 상태 taxonomy
+## 현재 MVP 보장과 profile-gated 주장 경계
 
-`guarantee_display.level`은 exact value인 `cooperative`, `detective`, `preventive`, `isolated`를 사용합니다. 보안 의미는 [보안 참조: 정직한 guarantee display](../security.md#정직한-guarantee-display)가 담당합니다.
+`guarantee_display.level`은 승격된 profile이 profile-gated 표시 값을 명시적으로 지원하지 않는 한 현재 MVP 값인 `cooperative`와 `detective`를 사용합니다. 보안 의미는 [보안 참조: 정직한 guarantee display](../security.md#정직한-guarantee-display)가 담당하고, 정확한 값 집합 경계는 [API Schema Core](schema-core.md#current-mvp-value-sets)가 담당합니다.
 
-| Level | 활성 의미 |
+지원되지 않는 profile-gated 보장을 요구하거나 표시해 달라는 요청은 주장 경계 오류입니다. 필요한 차단, 격리, 관찰, 증명 지원이 접점에 없으면 `CAPABILITY_INSUFFICIENT`를 사용합니다. 요청한 값이 활성 profile이나 요청 형태에서 유효하지 않으면 `VALIDATION_FAILED`를 사용합니다. 어떤 오류도 더 강한 보장이 존재한다는 증거가 아닙니다.
+
+| Level 또는 이름 | 오류/상태 의미 |
 |---|---|
 | `cooperative` | Agent나 tool이 문서화된 경로를 따를 때 하네스가 확인하고 기록할 수 있습니다. OS 권한, sandboxing, 변조 방지 저장소, 실행 전 차단이 아닙니다. |
 | `detective` | 하네스 또는 연결된 surface가 관찰 가능한 mismatch를 action 중이나 이후에 감지, 기록, 보고할 수 있습니다. 예방이 아닙니다. |
-| `preventive` | 승격된 mechanism이 covered operation을 실행 전에 막는 증명된 control을 가지고 있습니다. Exact operation과 proof가 이름 붙은 경우에만 사용합니다. |
-| `isolated` | 승격된 mechanism이 해당 claim에 맞는 문서화되고 증명된 separation boundary를 가지고 있습니다. Boundary를 이름 붙이며, isolation만으로 더 넓은 authority를 추론하지 않습니다. |
+| `preventive` | profile-gated 표시 값 이름입니다. 대상 동작에 대한 승격된 도구 실행 전 차단 지원이 없으면 역량 부족 또는 검증 오류를 반환하고 표시 보장을 낮춥니다. |
+| `isolated` | profile-gated 표시 값 이름입니다. 이름 붙은 경계에 대한 승격된 격리 지원이 없으면 역량 부족 또는 검증 오류를 반환하고 표시 보장을 낮춥니다. |
 
 활성 MVP behavior는 기본적으로 협력형 확인입니다. 연결된 surface가 사실을 정직하게 관찰할 수 있을 때만 제한된 사후 확인을 함께 표시합니다.
 
