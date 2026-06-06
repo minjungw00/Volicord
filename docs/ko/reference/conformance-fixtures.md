@@ -150,6 +150,7 @@ Active 내부 엔지니어링 점검과 MVP-1 fixture body에는 다음 규칙�
 
 <a id="engineering-checkpoint-behavior-examples"></a>
 <a id="mvp-1-user-work-loop-behavior-examples"></a>
+<a id="security-and-capability-behavior-examples"></a>
 <a id="artifact-and-evidence-behavior-examples"></a>
 
 ### Active Structured Fixture Drafts
