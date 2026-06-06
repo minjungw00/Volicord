@@ -41,7 +41,7 @@ Use this audience split when deciding what to render or retrieve:
 
 ## Projection in plain language
 
-A Harness projection is a readable view of work that already exists in canonical state or evidence/artifact storage. MVP-1 can derive four user-facing compact outputs directly from current Core records and refs: `status-card`, `judgment-request`, `run-evidence-summary`, and `close-result`. It can also derive one agent-facing compact output, `agent-context-packet`, for Core-derived refs and the next safe action. Later profiles may add fuller Markdown reports such as `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`, and other report projections under [Template later-profile](templates/later-profile/README.md).
+A Harness projection is a readable view of work that already exists in canonical state or evidence/artifact storage. MVP-1 can derive four user-facing compact outputs directly from current Core records and refs: `status-card`, `judgment-request`, `run-evidence-summary`, and `close-result`. It can also derive one agent-facing compact output, `agent-context-packet`, for Core-derived refs and the next safe action. Later profiles may add fuller Markdown reports such as `TASK`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `DIRECT-RESULT`, and other report projections under [Template later-profile](../later/index.md#later-template-candidates).
 
 Markdown helps humans understand the work, resume context, inspect evidence, and propose corrections. Markdown does not own the work. A report can summarize a gate, link evidence, display a Write Authorization ref, or show a user judgment or optional full-format Decision Packet presentation, but the report text is not the gate, evidence, authorization, or judgment.
 
@@ -382,7 +382,7 @@ The template catalog is intentionally broader than the early implementation set.
 | MVP-1 judgment prompt | [judgment-request](templates/judgment-request.md) | User-owned judgment request. Full Decision Packet display is later/full-profile. |
 | MVP-1 run/evidence display | [run-evidence-summary](templates/run-evidence-summary.md) | Minimal Run and evidence summary. Detailed run reports and full evidence catalogs are later/full-profile. |
 | MVP-1 close display | [close-result](templates/close-result.md) | Close readiness, acceptance, residual risk, and blockers. |
-| Later/full-profile templates | [later-profile](templates/later-profile/README.md) | Detailed assurance, operations/export, future/diagnostic, stewardship, full Decision Packet, and full report templates. Pull on demand or enable only through an owner-promoted profile. |
+| Later/full-profile templates | [later-profile](../later/index.md#later-template-candidates) | Detailed assurance, operations/export, future/diagnostic, stewardship, full Decision Packet, and full report templates. Pull on demand or enable only through an owner-promoted profile. |
 
 `Future/diagnostic projections` means later-profile or diagnostic scope, not automatically Roadmap only.
 
@@ -396,7 +396,7 @@ User judgment visibility required by the active stage/profile is provided throug
 
 User Judgment record IDs use the user judgment identifier family. `DEC` as a `projection_kind` is only the projection kind label; when a standalone projection needs its own identity, use a separate `projection_id` such as `DEC-PROJ-0001`.
 
-The MVP-1 display shapes live in the [Template Reference](templates/README.md). Later/full-profile display shapes live under [Template later-profile](templates/later-profile/README.md).
+The MVP-1 display shapes live in the [Template Reference](templates/README.md). Later/full-profile display shapes live under [Template later-profile](../later/index.md#later-template-candidates).
 
 ## Freshness and failure rules
 

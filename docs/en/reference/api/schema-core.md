@@ -12,7 +12,7 @@ This document describes future Harness Server behavior for planning and review. 
 |---|---|
 | Active MVP-1 tools | [MVP API](mvp-api.md) |
 | Error codes, MVP-1 status/error conditions, precedence, idempotency, stale-state behavior | [Errors](errors.md) |
-| Later/profile-gated schemas and methods | [Schema Later](schema-later.md) |
+| Later/profile-gated schemas and methods | [Schema Later](../../later/index.md#later-schema-candidates) |
 | Core Model state semantics | [Core Model Reference](../core-model.md) |
 | Storage and DDL | [Storage](../storage.md) |
 | Compact view behavior and template bodies | [Projection And Templates Reference](../projection-and-templates.md) and [Template Reference](../templates/README.md) |
@@ -28,13 +28,13 @@ The YAML-like blocks in these API docs are normative schema notation, not exampl
 - `one_of:` means exactly one listed branch is present.
 - `a | b | c` is a closed enum unless the section explicitly labels it extensible.
 - Unlisted fields are rejected outside an explicit extension container.
-- Later/profile-gated enum values and branches are not valid for MVP-1 and are not part of the active schema blocks below. They are defined in [Schema Later](schema-later.md).
+- Later/profile-gated enum values and branches are not valid for MVP-1 and are not part of the active schema blocks below. They are defined in [Schema Later](../../later/index.md#later-schema-candidates).
 
 Storage validation is a separate ownership boundary. API payloads and API-shaped stored JSON validate against this API reference first; storage-only JSON `TEXT`, DDL nullability, column defaults, and storage hardening validate against [Storage](../storage.md).
 
 ## Stage Profile Manifest
 
-The schema blocks in this document define the active MVP-1 API shape. The Engineering Checkpoint may use narrower subsets of those values, but later/profile values are defined in [Schema Later](schema-later.md) instead of being listed here and gated only by prose.
+The schema blocks in this document define the active MVP-1 API shape. The Engineering Checkpoint may use narrower subsets of those values, but later/profile values are defined in [Schema Later](../../later/index.md#later-schema-candidates) instead of being listed here and gated only by prose.
 
 | Stage/profile | Active API slice | Not active in that slice |
 |---|---|---|
@@ -69,7 +69,7 @@ The MVP-1 evidence and close-readiness path can also be displayed through the ex
 
 ### Later resources
 
-Assurance, operations, and diagnostic resources such as evidence-manifest reads, report reads, bundle reads, design maps, Journey views, and broad projection resources are later/profile-gated. See [Schema Later](schema-later.md#later-read-only-resources).
+Assurance, operations, and diagnostic resources such as evidence-manifest reads, report reads, bundle reads, design maps, Journey views, and broad projection resources are later/profile-gated. See [Schema Later](../../later/index.md#later-schema-candidates).
 
 ## Tool envelope
 
@@ -161,7 +161,7 @@ StateSummary:
     acceptance_gate: not_required | required | pending | accepted | rejected
 ```
 
-MVP-1 `StateSummary` intentionally omits detached-verification and Manual QA lifecycle/gate values. Later/profile extensions such as `lifecycle_phase=verifying`, `lifecycle_phase=qa`, `close_reason=completed_verified`, `assurance_level=detached_verified`, `verification_gate`, and `qa_gate` are owned by [Schema Later: later close and assurance extensions](schema-later.md#later-close-and-assurance-extensions).
+MVP-1 `StateSummary` intentionally omits detached-verification and Manual QA lifecycle/gate values. Later/profile extensions such as `lifecycle_phase=verifying`, `lifecycle_phase=qa`, `close_reason=completed_verified`, `assurance_level=detached_verified`, `verification_gate`, and `qa_gate` are owned by [Schema Later: later close and assurance extensions](../../later/index.md#later-schema-candidates).
 
 `EventRef.state_version` is the affected-scope resulting version after that event. It is not an event ordering key; event ordering uses `event_seq`.
 
@@ -256,7 +256,7 @@ Raw secrets, tokens, and full sensitive logs must not be stored as evidence arti
 
 ## Stage-Specific Active Value Sets
 
-These tables summarize the separated schemas. The active MVP-1 values in the left column are already present in the normative schema blocks in this document; they are not a prose-only filter over a broader enum. Later/profile values are owned by [Schema Later](schema-later.md) and must be rejected by an MVP-1 validator.
+These tables summarize the separated schemas. The active MVP-1 values in the left column are already present in the normative schema blocks in this document; they are not a prose-only filter over a broader enum. Later/profile values are owned by [Schema Later](../../later/index.md#later-schema-candidates) and must be rejected by an MVP-1 validator.
 
 | Field | Active MVP-1 schema values | Later/profile extension values owned by Schema Later |
 |---|---|---|
@@ -327,7 +327,7 @@ StateRecordRef:
 
 `record_kind=user_judgment` is the canonical MVP-1 ref kind for user-owned judgments, including sensitive-action approval, final acceptance, and residual-risk acceptance judgments. MVP-1 evidence coverage and blockers use `record_kind=evidence_summary` and `record_kind=blocker`; durable evidence bytes use `ArtifactRef`. There is no standalone accepted-risk ref kind and no active MVP-1 `shared_design` ref kind. Discovery and requirements shaping refs point to `task`, `change_unit`, `user_judgment`, `evidence_summary`, or `blocker` owner paths as applicable.
 
-Later/profile-only ref kinds such as `approval`, `residual_risk`, `close_readiness`, `shared_design`, `domain_term`, `module_map_item`, `interface_contract`, `feedback_loop`, `evidence_manifest`, `eval`, `manual_qa_record`, `tdd_trace`, `change_unit_dependency`, `reconcile_item`, and `projection` are defined in [Schema Later](schema-later.md#later-profile-ref-and-artifact-values), not accepted by this active schema. Projection-specific metadata such as `projection_path` is also later/profile material.
+Later/profile-only ref kinds such as `approval`, `residual_risk`, `close_readiness`, `shared_design`, `domain_term`, `module_map_item`, `interface_contract`, `feedback_loop`, `evidence_manifest`, `eval`, `manual_qa_record`, `tdd_trace`, `change_unit_dependency`, `reconcile_item`, and `projection` are defined in [Schema Later](../../later/index.md#later-schema-candidates), not accepted by this active schema. Projection-specific metadata such as `projection_path` is also later/profile material.
 
 ## Evidence and pre-write scope schemas
 
@@ -569,7 +569,7 @@ CancellationJudgment:
   follow_up: string | null
 ```
 
-For `judgment_kind=sensitive_approval`, `approval_scope` is required. For `judgment_kind=qa_waiver`, `qa_waiver` is required and policy must allow the waiver. For `judgment_kind=verification_risk_acceptance`, `verification_risk_acceptance` is required and must not upgrade MVP-1 assurance. For `judgment_kind=final_acceptance`, `acceptance` is required. For `judgment_kind=residual_risk_acceptance`, `residual_risk_acceptance` is required. For `judgment_kind=cancellation`, `cancellation` is required. Later reconcile branches and profile-specific final-acceptance verification/QA refs live in [Schema Later](schema-later.md#later-user-judgment-branches).
+For `judgment_kind=sensitive_approval`, `approval_scope` is required. For `judgment_kind=qa_waiver`, `qa_waiver` is required and policy must allow the waiver. For `judgment_kind=verification_risk_acceptance`, `verification_risk_acceptance` is required and must not upgrade MVP-1 assurance. For `judgment_kind=final_acceptance`, `acceptance` is required. For `judgment_kind=residual_risk_acceptance`, `residual_risk_acceptance` is required. For `judgment_kind=cancellation`, `cancellation` is required. Later reconcile branches and profile-specific final-acceptance verification/QA refs live in [Schema Later](../../later/index.md#later-schema-candidates).
 
 <a id="userjudgmentcandidate"></a>
 
@@ -620,7 +620,7 @@ AcceptedRiskInput:
   follow_up: string | null
 ```
 
-For active MVP-1, `visible_risk_ref.record_kind` must be `blocker`. The blocker must be close-relevant, visible in the pending residual-risk acceptance `UserJudgment`, and scoped to the same Task. `accepted_risks` must be `[]` for every other `judgment_kind`. Rich residual-risk owner refs, lifecycle status, review metadata, and accepted-risk metadata are later/profile material in [Schema Later](schema-later.md#later-user-judgment-branches).
+For active MVP-1, `visible_risk_ref.record_kind` must be `blocker`. The blocker must be close-relevant, visible in the pending residual-risk acceptance `UserJudgment`, and scoped to the same Task. `accepted_risks` must be `[]` for every other `judgment_kind`. Rich residual-risk owner refs, lifecycle status, review metadata, and accepted-risk metadata are later/profile material in [Schema Later](../../later/index.md#later-schema-candidates).
 
 <a id="record-run-payloads"></a>
 
@@ -787,7 +787,7 @@ NextActionSummary:
   blocker_code: ErrorCode | null
 ```
 
-MVP-1 uses `harness.status.next_actions`, not a separate `harness.next` method. The schema block above is the complete active MVP-1 enum. Later/profile action kinds such as `launch_verify`, `record_eval`, `record_manual_qa`, and `reconcile` are defined in [Schema Later](schema-later.md#later-next-action-values) and must be rejected by an MVP-1 validator.
+MVP-1 uses `harness.status.next_actions`, not a separate `harness.next` method. The schema block above is the complete active MVP-1 enum. Later/profile action kinds such as `launch_verify`, `record_eval`, `record_manual_qa`, and `reconcile` are defined in [Schema Later](../../later/index.md#later-schema-candidates) and must be rejected by an MVP-1 validator.
 
 ## Current-position display schemas
 
@@ -854,4 +854,4 @@ ValidatorResult:
   suggested_next_action: string | null
 ```
 
-For active MVP-1, `validator_id` is `surface_capability_check`. Additional validator kinds and stable IDs are listed in [Schema Later](schema-later.md#validatorresult-stable-ids).
+For active MVP-1, `validator_id` is `surface_capability_check`. Additional validator kinds and stable IDs are listed in [Schema Later](../../later/index.md#later-schema-candidates).

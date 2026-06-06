@@ -165,7 +165,7 @@ Each policy uses the same fields:
 | `evidence` | Evidence or projection refs expected by the policy. |
 | `close_impact` | How unmet requirements affect close or gates. |
 
-Policy validators return the `ValidatorResult` schema owned by [API Schema Core](api/schema-core.md#validatorresult) and the later-profile stable ID set owned by [API Schema Later](api/schema-later.md#validatorresult-stable-ids).
+Policy validators return the `ValidatorResult` schema owned by [API Schema Core](api/schema-core.md#validatorresult) and the later-profile stable ID set owned by [API Schema Later](../later/index.md#later-schema-candidates).
 
 Policy validator findings must also carry or derive an impact class and routed action from [Impact classes and allowed routes](#impact-classes-and-allowed-routes). The policy contract may describe possible close impact, but active MVP blocking still requires one of the [active MVP blocking conditions](#active-mvp-blocking-set) and a Core owner path.
 
@@ -521,7 +521,7 @@ Use this when:
 
 Example: A task resumes after a week. Read current status or current-position context first, using Journey Card only when that projection/profile is enabled and fresh. Then choose the active planning/clarification, write preparation, execution/run recording, evidence review, close readiness, user judgment request, or recovery/error context profile, and show refs-first summaries only where that profile needs them. The always-on envelope stays limited to current Task summary, work shape, scope/non-goals, pending user judgments, active blockers, next safe actions, evidence gaps, close blockers, residual-risk summary, guarantee level, and source refs/freshness. Pull old PRDs, old projections, logs, screenshots, diffs, registered artifact files, module maps, full artifact contents, or future catalog material only if the next safe action needs inspection, and mark stale inputs.
 
-Retrieved, indexed, remembered, or summarized context is a context-hygiene input, not an authority source. It may point the agent to compact status, pull refs, or source excerpts, but the underlying owner records still control any write authority, gates, evidence, verification, QA, final acceptance, residual-risk acceptance, projection freshness, implementation readiness, and close effect. Context Index remains a roadmap candidate; see [Roadmap: Candidate Inventory](../roadmap.md#candidate-inventory), with connector handling in [Agent Integration](agent-integration.md#context-pushpull-principles).
+Retrieved, indexed, remembered, or summarized context is a context-hygiene input, not an authority source. It may point the agent to compact status, pull refs, or source excerpts, but the underlying owner records still control any write authority, gates, evidence, verification, QA, final acceptance, residual-risk acceptance, projection freshness, implementation readiness, and close effect. Context Index remains a roadmap candidate; see [Roadmap: Candidate Inventory](../later/index.md#roadmap-candidates), with connector handling in [Agent Integration](agent-integration.md#context-pushpull-principles).
 
 | Field | Contract |
 |---|---|

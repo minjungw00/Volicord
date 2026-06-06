@@ -249,5 +249,5 @@ Guard, freeze, careful-mode, recipe names, product names, surface names, and fri
 | Connector capability profiles, generated manifests, context push/pull, fallback display | [Agent Integration Reference](agent-integration.md) |
 | Stage-specific operator diagnostics, severity baselines, `doctor`, `serve mcp`, artifact check, recover, reconcile | [Operations And Conformance Reference](operations-and-conformance.md) |
 | Core fixture mechanics: fixture body shape, runner behavior, assertion semantics, fixture profiles, suite metadata boundaries, reduced Kernel Smoke queue | [Conformance Fixtures Reference](conformance-fixtures.md) |
-| Compact future scenario-family inventory, promotion criteria, suite-family labels, catalog-only future candidates | [Future Fixtures](../later/future-fixtures.md) |
+| Compact future scenario-family inventory, promotion criteria, suite-family labels, catalog-only future candidates | [Future Fixtures](../later/index.md#future-fixture-families) |
 | Projection freshness, managed blocks, reconcile behavior, template ownership | [Projection And Templates Reference](projection-and-templates.md) and [Template Reference](templates/README.md) |

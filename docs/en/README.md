@@ -30,7 +30,7 @@ This path intentionally stops before large Reference docs. First-time readers do
 | Future server implementer | [MVP Plan](build/mvp-plan.md) | Use its smoke target, user work loop, request-to-close path, and server-coding decisions, then [Reference Index](reference/README.md) for exact owners. |
 | Exact contract reader | [Reference Index](reference/README.md) | Pick the owner for the specific contract instead of reading the whole Reference set. |
 | Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) | [Translation Guide](maintain/translation-guide.md), [Documentation Checks](maintain/documentation-checks.md), [Rewrite Plan](maintain/rewrite-plan.md), and [Rewrite Acceptance Review](maintain/rewrite-acceptance-review.md). |
-| Later/profile reader | [Assurance Profile](later/assurance-profile.md) | [Operations Profile](later/operations-profile.md), [Future Fixtures](later/future-fixtures.md), and [Roadmap](roadmap.md). These are outside the MVP path unless an owner promotes them. |
+| Later/profile reader | [Assurance Profile](later/index.md#assurance-candidates) | [Operations Profile](later/index.md#operations-candidates), [Future Fixtures](later/index.md#future-fixture-families), and [Roadmap](later/index.md#roadmap-candidates). These are outside the MVP path unless an owner promotes them. |
 
 ## Layer Responsibilities
 

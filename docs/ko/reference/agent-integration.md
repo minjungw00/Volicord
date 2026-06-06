@@ -56,7 +56,7 @@ user conversation surface
 | 범위, 증거, 검증, QA, 잔여 위험, 닫기에 대한 사용자용 설명 | [사용자 가이드](../use/user-guide.md) |
 | 공통 커넥터 capability, 맥락, fallback, conformance 계약 | 이 참조 |
 | 구체적인 접점별 recipe | [Surface Cookbook](surface-cookbook.md) |
-| Public MCP request/response schema | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [API Schema Later](api/schema-later.md) |
+| Public MCP request/response schema | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [API Schema Later](../later/index.md#later-schema-candidates) |
 | Core state transition과 write/close rule | [Core Model 참조](core-model.md) |
 | Security guarantee 의미 | [보안 참조](security.md#정직한-guarantee-display) |
 

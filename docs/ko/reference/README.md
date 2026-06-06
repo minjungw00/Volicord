@@ -13,7 +13,7 @@ Exact field, enum value, lifecycle state, DDL, request/response shape, security 
 | 계약 영역 | 담당 문서 |
 |---|---|
 | Core 권한, entity, gate, 상태 전이, `prepare_write`, Write Authorization, `record_run`, `close_task`, blocker, waiver, 대체 불가능한 경계 | [Core Model 참조](core-model.md) |
-| Public MCP/API method와 active/later method ownership | Active MVP-1은 [MVP API](api/mvp-api.md), later/profile-gated method는 [API Schema Later](api/schema-later.md) |
+| Public MCP/API method와 active/later method ownership | Active MVP-1은 [MVP API](api/mvp-api.md), later/profile-gated method는 [API Schema Later](../later/index.md#later-schema-candidates) |
 | API schema, envelope, shared ref, `ArtifactRef`, `ValidatorResult`, staged value set, read-only resource, public error, idempotency, replay, state conflict | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), 그리고 위 method owner |
 | Storage layout, SQLite DDL profile, persisted table, storage-owned JSON `TEXT`, lock, migration, artifact, baseline, projection-job storage, validator-run storage | [Storage](storage.md) |
 | Security asset, local access posture, trust boundary, threat/control category, guarantee-level 의미, 정직한 cooperative/detective/preventive/isolated 표현 | [보안 참조](security.md) |
@@ -21,7 +21,7 @@ Exact field, enum value, lifecycle state, DDL, request/response shape, security 
 | Projection rule, 읽기용 보기, 권한 경계, freshness/failure behavior, managed block, 사람이 편집할 수 있는 section, template class, artifact-ref rendering | [Projection과 Template 참조](projection-and-templates.md) |
 | 전체 rendered template body, card body, template display shape | [Template 참조](templates/README.md) |
 | Conformance model, MVP behavior example, future fixture body shape, future runner/assertion semantics, fixture profile, suite metadata boundary, current-phase fixture status, Kernel Smoke authoring queue | [Conformance Fixtures 참조](conformance-fixtures.md) |
-| 활성 MVP 경로 밖의 향후 scenario family 목록, 승격 조건, suite-family label, catalog-only future candidate | [향후 Fixtures](../later/future-fixtures.md) |
+| 활성 MVP 경로 밖의 향후 scenario family 목록, 승격 조건, suite-family label, catalog-only future candidate | [향후 Fixtures](../later/index.md#future-fixture-families) |
 | Operations, diagnostic, staged operator surface, recovery/export/reconcile operation, artifact check, future conformance run entrypoint, docs-maintenance reporting profile | [운영과 Conformance 참조](operations-and-conformance.md) |
 | Runtime space, Core process placement, Core-only canonical mutation authority, transaction ordering, artifact/projection/reconcile placement, architecture-level recovery overview | [런타임 아키텍처 참조](runtime-architecture.md) |
 | Design-quality policy, policy-to-validator mapping, stable validator ID, severity composition, waiver semantics, evidence expectation, design-quality close impact | [설계 품질 정책](design-quality-policies.md) |
@@ -34,11 +34,11 @@ Exact field, enum value, lifecycle state, DDL, request/response shape, security 
 - 향후 서버 구현자: [MVP 계획](../build/mvp-plan.md)에서 시작합니다. 정확한 owner 계약이 필요할 때만 이 색인으로 돌아옵니다.
 - 첫 내부 증명: [MVP 계획: 첫 내부 smoke 목표](../build/mvp-plan.md#first-internal-smoke-target)를 보고, 필요에 따라 [Core Model 참조](core-model.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [Storage](storage.md), [보안 참조](security.md)를 사용합니다.
 - 사용자 또는 에이전트 동작 문구: [사용자 가이드](../use/user-guide.md)나 [에이전트 가이드](../use/agent-guide.md)에서 시작합니다. 보이는 차단 사유, 판단, 쓰기 전 확인, 증거 공백, 닫기 결과, connector behavior의 정확한 증거가 필요할 때만 Reference를 사용합니다.
-- API 질문: active method는 [MVP API](api/mvp-api.md), shared shape는 [API Schema Core](api/schema-core.md), public error는 [API Errors](api/errors.md), later/profile-gated material은 [API Schema Later](api/schema-later.md)에서 시작합니다.
+- API 질문: active method는 [MVP API](api/mvp-api.md), shared shape는 [API Schema Core](api/schema-core.md), public error는 [API Errors](api/errors.md), later/profile-gated material은 [API Schema Later](../later/index.md#later-schema-candidates)에서 시작합니다.
 - Storage 또는 DDL 질문: [Storage](storage.md)에서 시작합니다.
 - 보안 보장 질문: [보안 참조](security.md)에서 시작한 뒤, 대상 operation의 정확한 API, storage, Core, connector, operations, conformance owner를 함께 봅니다.
 - Projection 또는 template 질문: [Projection과 Template 참조](projection-and-templates.md)에서 시작합니다. 정확한 rendered body나 card shape가 필요할 때만 [Template 참조](templates/README.md)를 봅니다.
-- 향후 보증, 운영, fixture catalog material: [보증 프로필](../later/assurance-profile.md), [운영 프로필](../later/operations-profile.md), [향후 Fixtures](../later/future-fixtures.md)를 사용합니다. 담당 문서가 승격하기 전까지 이 경로는 MVP 구현 경로가 아닙니다.
+- 향후 보증, 운영, fixture catalog material: [보증 프로필](../later/index.md#assurance-candidates), [운영 프로필](../later/index.md#operations-candidates), [향후 Fixtures](../later/index.md#future-fixture-families)를 사용합니다. 담당 문서가 승격하기 전까지 이 경로는 MVP 구현 경로가 아닙니다.
 
 ## Owner가 아닌 문서 규칙
 

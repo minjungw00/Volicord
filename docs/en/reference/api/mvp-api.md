@@ -10,7 +10,7 @@ This document describes future Harness Server behavior for planning and review. 
 
 MVP-1 exposes a small local MCP surface for the user work loop: intake ordinary work, show current status and next safe actions, check proposed writes cooperatively against current scope, record runs and evidence refs, route user-owned judgment, record the user's answer, and close only when the minimal contract allows it.
 
-`harness.next` is not a separate MVP-1 method. MVP-1 callers read next safe actions from `harness.status.next_actions`. A separate `harness.next` method is later/compatibility material in [Schema Later](schema-later.md#harnessnext).
+`harness.next` is not a separate MVP-1 method. MVP-1 callers read next safe actions from `harness.status.next_actions`. A separate `harness.next` method is later/compatibility material in [Schema Later](../../later/index.md#later-schema-candidates).
 
 This API does not claim OS-level blocking, arbitrary-tool sandboxing, tamper-proof files, or pre-tool prevention. `harness.prepare_write` is a cooperative pre-write scope check against Core state. Any Write Authorization it returns is a Harness-level record/check, not OS permission, sandboxing, tamper-proof enforcement, or preventive blocking. Stronger preventive or isolated claims require an owner-promoted profile and proof in the relevant security and connector docs.
 
@@ -47,7 +47,7 @@ All methods use [`ToolEnvelope`](schema-core.md#tool-envelope) and [`ToolRespons
 
 When a method has both a tool-specific `task_id` and `ToolEnvelope.task_id`, the tool-specific `task_id` is the first primary Task candidate. Core resolves the primary Task in this order: tool-specific `task_id`, envelope `task_id`, then active Task resolution. If no primary Task exists, the mutation is project-scoped for `expected_state_version` and `ToolResponseBase.state_version`.
 
-MVP-1 request validators use the active schema blocks and value-set summaries in [Schema Core](schema-core.md#stage-specific-active-value-sets). Later enum values and extension branches are defined separately in [Schema Later](schema-later.md) and are not valid for the active MVP-1 validator.
+MVP-1 request validators use the active schema blocks and value-set summaries in [Schema Core](schema-core.md#stage-specific-active-value-sets). Later enum values and extension branches are defined separately in [Schema Later](../../later/index.md#later-schema-candidates) and are not valid for the active MVP-1 validator.
 
 Error codes, MVP-1 status/error condition names, user-facing message patterns, primary error precedence, idempotency replay, and stale-state behavior are owned by [Errors](errors.md). Security meanings for guarantee levels are owned by [Security Reference: Honest guarantee display](../security.md#honest-guarantee-display). `dry_run=true` is non-authoritative for every state-changing tool: it may return validation diagnostics or a would-change summary, but it creates no current record, `task_events` row, artifact, consumable Write Authorization, projection job, or idempotency replay row.
 
@@ -457,7 +457,7 @@ CloseTaskResponse:
   artifact_refs: ArtifactRef[]
 ```
 
-MVP-1 close uses the active Task, active scope, open-Run state, blockers, residual-risk visibility, final-acceptance state when required, artifact availability, and the Core-owned `evidence_summary`. Close readiness is derived from current records. `completed_verified`, `assurance_level=detached_verified`, `profile_required_verification`, verification blockers, Manual QA blockers, projection/report freshness blockers, and operations refs are later/profile-only extensions owned by [Schema Later](schema-later.md#later-close-and-assurance-extensions).
+MVP-1 close uses the active Task, active scope, open-Run state, blockers, residual-risk visibility, final-acceptance state when required, artifact availability, and the Core-owned `evidence_summary`. Close readiness is derived from current records. `completed_verified`, `assurance_level=detached_verified`, `profile_required_verification`, verification blockers, Manual QA blockers, projection/report freshness blockers, and operations refs are later/profile-only extensions owned by [Schema Later](../../later/index.md#later-schema-candidates).
 
 For `intent=complete`, a closed response requires a Task state compatible with the close intent, no unresolved close-relevant active Run, no unresolved or blocked required user judgment, `evidence_summary.status=sufficient` when evidence is required, recorded `judgment_kind=final_acceptance` when final acceptance is required, visible close-relevant residual risk, and explicit residual-risk acceptance for `completed_with_risk_accepted`. Close-required artifact refs must still be available and match their required owner relation, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `produced_by`, and `retention_class` metadata; missing artifacts or `hash_mismatch`-style integrity failures make the affected evidence stale or blocked. Stale or blocked Write Authorization facts affect close only through the current Run, scope, artifact, evidence, or blocker records they affect; they are not close results by themselves. Projection freshness is display freshness, not canonical close state; callers must not close from stale projection prose.
 

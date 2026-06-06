@@ -4,7 +4,7 @@
 
 진행, 범위, 민감 동작 승인, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소 판단에 영향을 주는 선택을 사용자가 소유할 때 `judgment-request`를 사용합니다. 이것은 일반 사용자 소유 판단을 위한 MVP-1 prompt shape입니다.
 
-구현 계층: MVP-1 사용자 작업 루프 보기입니다. 전체 Decision Packet presentation은 later/full-profile 범위이며 [later-profile/decision-packet.md](later-profile/decision-packet.md)에 있습니다.
+구현 계층: MVP-1 사용자 작업 루프 보기입니다. 전체 Decision Packet presentation은 later/full-profile 범위이며 [../../later/index.md#later-template-candidates](../../later/index.md#later-template-candidates)에 있습니다.
 
 경계: 이 템플릿은 대기 중이거나 기록된 `user_judgment`를 표시합니다. 이 표시만으로 판단 기록을 만들거나, Write Authorization을 부여하거나, QA 또는 검증을 수행하거나, QA 증거를 만들거나, 최종 수락을 기록하거나, 잔여 위험을 수락하거나, 검증 위험을 수락하거나, Task를 닫지 않습니다.
 

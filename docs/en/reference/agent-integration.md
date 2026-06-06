@@ -56,7 +56,7 @@ The session procedure belongs in [Agent Guide](../use/agent-guide.md). Connector
 | User-facing explanation of scope, evidence, verification, QA, residual risk, and close | [User Guide](../use/user-guide.md) |
 | Common connector capability, context, fallback, and conformance contract | This reference |
 | Concrete surface recipes | [Surface Cookbook](surface-cookbook.md) |
-| Public MCP request/response schemas | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [API Schema Later](api/schema-later.md) |
+| Public MCP request/response schemas | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [API Schema Later](../later/index.md#later-schema-candidates) |
 | Core state transitions and write/close rules | [Core Model Reference](core-model.md) |
 | Security guarantee meanings | [Security Reference](security.md#honest-guarantee-display) |
 

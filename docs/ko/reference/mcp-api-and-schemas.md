@@ -8,14 +8,14 @@
 |---|---|
 | MVP-1 active public API | [MVP API](api/mvp-api.md) |
 | 활성 MVP-1 shared schemas, read-only resources, artifact refs, value sets | [API Schema Core](api/schema-core.md) |
-| Later/profile-gated methods and future schema material | [API Schema Later](api/schema-later.md) |
+| Later/profile-gated methods and future schema material | [API Schema Later](../later/index.md#later-schema-candidates) |
 | Error taxonomy, MVP-1 status/error condition, primary precedence, idempotency, state conflict behavior | [API Errors](api/errors.md) |
 
 API를 읽을 때도 같은 권한 분리를 유지합니다. Public API call은 active method 계약을 통해서만 Core가 소유한 상태를 보여 주거나 변경합니다. 상태 카드, read-only resource, 렌더링된 template, Projection은 파생 보기입니다. 정확한 상태 권한은 [Core Model 참조](core-model.md)가 담당하고, 정확한 보기 동작은 [Projection과 Template 참조](projection-and-templates.md)가 담당합니다.
 
 ## MVP-1 shortcut
 
-Active MVP-1 method set은 [MVP API](api/mvp-api.md#mvp-1-method-set)가 담당합니다. 정확한 set은 `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, `harness.close_task`입니다. MVP-1의 다음 안전한 행동 출력은 `harness.status.next_actions`에 담깁니다. 별도 `harness.next` compatibility path는 [Schema Later](api/schema-later.md#harnessnext)가 담당하며 활성 MVP-1이 아닙니다.
+Active MVP-1 method set은 [MVP API](api/mvp-api.md#mvp-1-method-set)가 담당합니다. 정확한 set은 `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, `harness.close_task`입니다. MVP-1의 다음 안전한 행동 출력은 `harness.status.next_actions`에 담깁니다. 별도 `harness.next` compatibility path는 [Schema Later](../later/index.md#later-schema-candidates)가 담당하며 활성 MVP-1이 아닙니다.
 
 `harness.prepare_write` 뒤의 쓰기 전 범위 확인은 하네스 수준의 협력형 확인입니다. 정확한 method field는 [MVP API: `harness.prepare_write`](api/mvp-api.md#harnessprepare_write)가, Core 상태 동작은 [Core Model 참조: `prepare_write`](core-model.md#prepare_write)가, 보장 표현은 [보안 참조](security.md#정직한-guarantee-display)가 담당합니다.
 
@@ -35,7 +35,7 @@ Public tools: [MVP API](api/mvp-api.md).
 `harness.intake`: [MVP API: `harness.intake`](api/mvp-api.md#harnessintake).
 
 <a id="harnessnext"></a>
-Later/compatibility only, 활성 MVP-1 아님: `harness.next`: [Schema Later: `harness.next`](api/schema-later.md#harnessnext).
+Later/compatibility only, 활성 MVP-1 아님: `harness.next`: [Schema Later: `harness.next`](../later/index.md#later-schema-candidates).
 
 <a id="harnessprepare_write"></a>
 `harness.prepare_write`: [MVP API: `harness.prepare_write`](api/mvp-api.md#harnessprepare_write).
@@ -117,10 +117,10 @@ Idempotency: [API Errors: Idempotency](api/errors.md#idempotency).
 State conflict behavior: [API Errors: State conflict behavior](api/errors.md#state-conflict-behavior).
 
 <a id="harnesslaunch_verify"></a>
-`harness.launch_verify`: [Schema Later: `harness.launch_verify`](api/schema-later.md#harnesslaunch_verify).
+`harness.launch_verify`: [Schema Later: `harness.launch_verify`](../later/index.md#later-schema-candidates).
 
 <a id="harnessrecord_eval"></a>
-`harness.record_eval`: [Schema Later: `harness.record_eval`](api/schema-later.md#harnessrecord_eval).
+`harness.record_eval`: [Schema Later: `harness.record_eval`](../later/index.md#later-schema-candidates).
 
 <a id="harnessrecord_manual_qa"></a>
-`harness.record_manual_qa`: [Schema Later: `harness.record_manual_qa`](api/schema-later.md#harnessrecord_manual_qa).
+`harness.record_manual_qa`: [Schema Later: `harness.record_manual_qa`](../later/index.md#later-schema-candidates).

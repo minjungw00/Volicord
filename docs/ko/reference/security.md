@@ -249,5 +249,5 @@ Guard, freeze, careful-mode, recipe name, product name, surface name, friendly m
 | Connector capability profile, generated manifest, context push/pull, fallback display | [Agent 통합 참조](agent-integration.md) |
 | 단계별 operator diagnostic, severity baseline, `doctor`, `serve mcp`, artifact check, recover, reconcile | [운영과 Conformance 참조](operations-and-conformance.md) |
 | Core fixture mechanics: 정확한 fixture body, runner 동작, assertion semantics, fixture profile, suite metadata boundary, 축소된 Kernel Smoke 작성 순서 | [Conformance Fixtures 참조](conformance-fixtures.md) |
-| 간결한 향후 scenario family 목록, 승격 조건, suite-family label, catalog-only future candidate | [향후 Fixtures](../later/future-fixtures.md) |
+| 간결한 향후 scenario family 목록, 승격 조건, suite-family label, catalog-only future candidate | [향후 Fixtures](../later/index.md#future-fixture-families) |
 | Projection freshness, managed block, reconcile behavior, template ownership | [Projection과 Template 참조](projection-and-templates.md)와 [Template 참조](templates/README.md) |

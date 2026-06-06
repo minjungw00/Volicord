@@ -23,7 +23,7 @@ Owner boundary: this directory owns rendered template bodies and display card sh
 | Engineering Checkpoint status | Plain structured status/blocker output; optional [status-card](status-card.md) rendering | No projection job or full renderer is required. |
 | MVP-1 user-facing compact outputs | [status-card](status-card.md), [judgment-request](judgment-request.md), [run-evidence-summary](run-evidence-summary.md), [close-result](close-result.md) | This is exactly the complete MVP-1 user-facing output set. Each output is derived from Core state and refs, uses ordinary language, and avoids unnecessary internal schema fields. |
 | MVP-1 agent-facing compact output | [agent-context-packet](agent-context-packet.md) | This is the only active MVP-1 agent-facing packet. It carries only task/change-unit refs, state/source refs, active scope, unresolved user judgments, blockers, one next safe action, evidence gaps, close blockers, residual-risk summary when active, and guarantee level. |
-| Later/full-profile templates | [later-profile/](later-profile/README.md) | Detailed assurance, diagnostic, operations, export, stewardship, and full-report templates stay later-profile unless an owner profile explicitly promotes them. |
+| Later/full-profile templates | [Later template candidates](../../later/index.md#later-template-candidates) | Detailed assurance, diagnostic, operations, export, stewardship, and full-report templates stay candidate-only unless an owner profile explicitly promotes them. |
 
 ## Template implementation classes
 
@@ -55,15 +55,15 @@ MVP-1 outputs may show design-quality findings only through the routed action ow
 
 ## Later/Full-Profile Templates
 
-Detailed templates are kept in [later-profile/](later-profile/README.md). They are useful for later profiles, but they are not MVP-1 requirements and their presence does not mean the runtime implements them.
+Detailed template bodies are retired from active documentation and summarized in [Later template candidates](../../later/index.md#later-template-candidates). They may be useful for later profiles, but they are not MVP-1 requirements and their listing does not mean the runtime implements them.
 
 | Bucket | Templates | Boundary |
 |---|---|---|
-| Assurance Profile | [DEC / Decision Packet](later-profile/decision-packet.md), [APR](later-profile/approval.md), [Approval Card](later-profile/approval-card.md), [EVIDENCE-MANIFEST](later-profile/evidence-manifest.md), [EVAL](later-profile/eval.md), [MANUAL-QA](later-profile/manual-qa.md), [Manual QA Card](later-profile/manual-qa-card.md), [Verification Result Card](later-profile/verification-result-card.md) | Verification strengthening, Manual QA, detailed evidence, risk review, and detailed evaluation output only when the owner profile is active. |
-| Operations Profile | [EXPORT](later-profile/export.md) | Export, handoff, artifact availability, redaction/omission, and release-handoff displays only when the operations/export path is active. |
-| Future/diagnostic profile material | [TASK](later-profile/task.md), [DIRECT-RESULT](later-profile/direct-result.md), [JOURNEY-CARD](later-profile/journey-card.md), [DESIGN](later-profile/design.md), [DOMAIN-LANGUAGE](later-profile/domain-language.md), [MODULE-MAP](later-profile/module-map.md), [INTERFACE-CONTRACT](later-profile/interface-contract.md), [RUN-SUMMARY](later-profile/run-summary.md), [TDD-TRACE](later-profile/tdd-trace.md) | Detailed continuity, stewardship, TDD, diagnostic, and reporting views stay later-profile unless an owner promotes them as non-required display or later-stage scope. |
+| Assurance Profile | [DEC / Decision Packet](../../later/index.md#later-template-candidates), [APR](../../later/index.md#later-template-candidates), [Approval Card](../../later/index.md#later-template-candidates), [EVIDENCE-MANIFEST](../../later/index.md#later-template-candidates), [EVAL](../../later/index.md#later-template-candidates), [MANUAL-QA](../../later/index.md#later-template-candidates), [Manual QA Card](../../later/index.md#later-template-candidates), [Verification Result Card](../../later/index.md#later-template-candidates) | Verification strengthening, Manual QA, detailed evidence, risk review, and detailed evaluation output only when the owner profile is active. |
+| Operations Profile | [EXPORT](../../later/index.md#later-template-candidates) | Export, handoff, artifact availability, redaction/omission, and release-handoff displays only when the operations/export path is active. |
+| Future/diagnostic profile material | [TASK](../../later/index.md#later-template-candidates), [DIRECT-RESULT](../../later/index.md#later-template-candidates), [JOURNEY-CARD](../../later/index.md#later-template-candidates), [DESIGN](../../later/index.md#later-template-candidates), [DOMAIN-LANGUAGE](../../later/index.md#later-template-candidates), [MODULE-MAP](../../later/index.md#later-template-candidates), [INTERFACE-CONTRACT](../../later/index.md#later-template-candidates), [RUN-SUMMARY](../../later/index.md#later-template-candidates), [TDD-TRACE](../../later/index.md#later-template-candidates) | Detailed continuity, stewardship, TDD, diagnostic, and reporting views stay later-profile unless an owner promotes them as non-required display or later-stage scope. |
 
-Dashboard, hosted workflow, team workflow, broader connector, automation, and analytics views are [Roadmap](../../roadmap.md) candidates, not template requirements.
+Dashboard, hosted workflow, team workflow, broader connector, automation, and analytics views are [Roadmap](../../later/index.md#roadmap-candidates) candidates, not template requirements.
 
 ## Notes
 

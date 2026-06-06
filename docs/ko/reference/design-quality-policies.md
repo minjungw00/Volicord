@@ -165,7 +165,7 @@ Run, Eval record, 수동 QA, design-quality validator, 같은 세션 review disp
 | `evidence` | Policy가 기대하는 증거 또는 projection ref. |
 | `close_impact` | 충족되지 않은 요구사항이 close 또는 gate에 미치는 영향. |
 
-Policy validator는 [API Schema Core](api/schema-core.md#validatorresult)가 담당하는 `ValidatorResult` schema와 [API Schema Later](api/schema-later.md#validatorresult-stable-ids)가 담당하는 later-profile stable ID set에 맞춰 결과를 반환합니다.
+Policy validator는 [API Schema Core](api/schema-core.md#validatorresult)가 담당하는 `ValidatorResult` schema와 [API Schema Later](../later/index.md#later-schema-candidates)가 담당하는 later-profile stable ID set에 맞춰 결과를 반환합니다.
 
 Policy validator finding은 [영향 분류와 허용 라우트](#영향-분류와-허용-라우트)의 영향 분류와 routed action도 담거나 파생해야 합니다. 정책 계약이 가능한 close impact를 설명할 수는 있지만, 활성 MVP 차단에는 [활성 MVP 차단 집합](#활성-mvp-차단-집합)의 조건과 Core owner path가 필요합니다.
 
@@ -523,7 +523,7 @@ Domain term, module map item, interface contract, Feedback Loop records, TDD가 
 
 예시: Task가 일주일 뒤 resume되면 current status 또는 현재 위치 맥락을 먼저 읽고, Journey Card는 해당 projection/profile이 활성화되어 있고 최신일 때만 사용합니다. 그다음 active 계획/구체화, 쓰기 준비, 실행/Run 기록, 증거 검토, close readiness, 사용자 판단 요청, 복구/오류 맥락 프로필을 고른 뒤, 해당 프로필이 필요로 하는 refs-first summary만 보여줍니다. 항상 주입되는 envelope는 현재 Task 요약, 작업 모양, 범위/하지 않을 일, 대기 중인 사용자 판단, 활성 차단 사유, 다음 안전한 행동, 증거 공백, 닫기 차단 사유, 잔여 위험 요약, 보장 수준, 출처 refs/최신성으로 제한합니다. Old PRD, old projection, log, screenshot, diff, 등록된 artifact 파일, module map, full artifact contents, future catalog material은 다음 safe action이 inspection을 요구할 때만 가져오고 최신이 아닌 input으로 표시합니다.
 
-Retrieved, indexed, remembered, summarized context는 context hygiene input이지 권한 출처가 아닙니다. Agent가 compact status, pull ref, source excerpt를 찾는 데 도움을 줄 수는 있지만 쓰기 전 범위 확인 / Write Authorization, gate, evidence, verification, QA, final acceptance, 잔여 위험 수락 판단, projection 최신성, implementation readiness, close effect는 여전히 해당 owner record가 결정합니다. Context Index는 로드맵 후보로 남습니다. [로드맵: 후보 항목 목록](../roadmap.md#후보-항목-목록)을 보고, connector 처리는 [Agent Integration](agent-integration.md#context-pushpull-principles)을 봅니다.
+Retrieved, indexed, remembered, summarized context는 context hygiene input이지 권한 출처가 아닙니다. Agent가 compact status, pull ref, source excerpt를 찾는 데 도움을 줄 수는 있지만 쓰기 전 범위 확인 / Write Authorization, gate, evidence, verification, QA, final acceptance, 잔여 위험 수락 판단, projection 최신성, implementation readiness, close effect는 여전히 해당 owner record가 결정합니다. Context Index는 로드맵 후보로 남습니다. [로드맵: 후보 항목 목록](../later/index.md#roadmap-candidates)을 보고, connector 처리는 [Agent Integration](agent-integration.md#context-pushpull-principles)을 봅니다.
 
 | Field | Contract |
 |---|---|

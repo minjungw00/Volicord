@@ -251,7 +251,7 @@ MVP-1 `evidence_summary`는 Run, blocker, user judgment, `ArtifactRef`를 참조
 
 이 문서는 다음을 담당하지 않습니다.
 
-- full public MCP request/response schema. [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [API Schema Later](api/schema-later.md)를 봅니다.
+- full public MCP request/response schema. [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [API Schema Later](../later/index.md#later-schema-candidates)를 봅니다.
 - SQLite DDL과 storage layout. [Storage](storage.md)를 봅니다.
 - full projection template body
 - document projection rule. [Projection과 Template 참조](projection-and-templates.md)를 봅니다.

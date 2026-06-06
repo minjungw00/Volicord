@@ -8,14 +8,14 @@ Use the split documents instead of loading one large schema file:
 |---|---|
 | MVP-1 active public API | [MVP API](api/mvp-api.md) |
 | Active MVP-1 shared schemas, read-only resources, artifact refs, and value sets | [API Schema Core](api/schema-core.md) |
-| Later/profile-gated methods and future schema material | [API Schema Later](api/schema-later.md) |
+| Later/profile-gated methods and future schema material | [API Schema Later](../later/index.md#later-schema-candidates) |
 | Error taxonomy, MVP-1 status/error conditions, primary precedence, idempotency, state conflict behavior | [API Errors](api/errors.md) |
 
 API readers should keep the same authority split used elsewhere: public API calls expose or change Core-owned state only through the active method contracts, while status cards, read-only resources, rendered templates, and projections remain derived views. Exact state authority is owned by [Core Model Reference](core-model.md); exact view behavior is owned by [Projection And Templates Reference](projection-and-templates.md).
 
 ## MVP-1 shortcut
 
-The active MVP-1 method set is owned by [MVP API](api/mvp-api.md#mvp-1-method-set). It is exactly `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, and `harness.close_task`. MVP-1 next-safe-action output is part of `harness.status.next_actions`; the separate `harness.next` compatibility path is owned by [Schema Later](api/schema-later.md#harnessnext) and is not active MVP-1.
+The active MVP-1 method set is owned by [MVP API](api/mvp-api.md#mvp-1-method-set). It is exactly `harness.status`, `harness.intake`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.prepare_write`, `harness.record_run`, and `harness.close_task`. MVP-1 next-safe-action output is part of `harness.status.next_actions`; the separate `harness.next` compatibility path is owned by [Schema Later](../later/index.md#later-schema-candidates) and is not active MVP-1.
 
 The pre-write scope-check behavior behind `harness.prepare_write` is a cooperative Harness check. Exact method fields are owned by [MVP API: `harness.prepare_write`](api/mvp-api.md#harnessprepare_write), Core state behavior by [Core Model Reference: `prepare_write`](core-model.md#prepare_write), and guarantee wording by [Security Reference](security.md#honest-guarantee-display).
 
@@ -35,7 +35,7 @@ Public tools: [MVP API](api/mvp-api.md).
 `harness.intake`: [MVP API: `harness.intake`](api/mvp-api.md#harnessintake).
 
 <a id="harnessnext"></a>
-Later/compatibility only, not active MVP-1: `harness.next`: [Schema Later: `harness.next`](api/schema-later.md#harnessnext).
+Later/compatibility only, not active MVP-1: `harness.next`: [Schema Later: `harness.next`](../later/index.md#later-schema-candidates).
 
 <a id="harnessprepare_write"></a>
 `harness.prepare_write`: [MVP API: `harness.prepare_write`](api/mvp-api.md#harnessprepare_write).
@@ -115,10 +115,10 @@ Idempotency: [API Errors: Idempotency](api/errors.md#idempotency).
 State conflict behavior: [API Errors: State conflict behavior](api/errors.md#state-conflict-behavior).
 
 <a id="harnesslaunch_verify"></a>
-`harness.launch_verify`: [Schema Later: `harness.launch_verify`](api/schema-later.md#harnesslaunch_verify).
+`harness.launch_verify`: [Schema Later: `harness.launch_verify`](../later/index.md#later-schema-candidates).
 
 <a id="harnessrecord_eval"></a>
-`harness.record_eval`: [Schema Later: `harness.record_eval`](api/schema-later.md#harnessrecord_eval).
+`harness.record_eval`: [Schema Later: `harness.record_eval`](../later/index.md#later-schema-candidates).
 
 <a id="harnessrecord_manual_qa"></a>
-`harness.record_manual_qa`: [Schema Later: `harness.record_manual_qa`](api/schema-later.md#harnessrecord_manual_qa).
+`harness.record_manual_qa`: [Schema Later: `harness.record_manual_qa`](../later/index.md#later-schema-candidates).

@@ -30,7 +30,7 @@
 | 향후 서버 구현자 | [MVP 계획](build/mvp-plan.md) | 첫 내부 smoke 목표, 사용자 작업 루프, 요청에서 닫기까지의 경로, 서버 코딩 전 결정을 본 뒤 정확한 owner는 [Reference 색인](reference/README.md)에서 확인합니다. |
 | 정확한 계약을 찾는 독자 | [Reference 색인](reference/README.md) | Reference 전체를 읽기보다 필요한 계약의 담당 문서를 고릅니다. |
 | 문서 유지보수자 | [문서 작성 가이드](maintain/authoring-guide.md) | [번역 가이드](maintain/translation-guide.md), [문서 점검표](maintain/documentation-checks.md), [재작성 계획](maintain/rewrite-plan.md), [재작성 수락 리뷰](maintain/rewrite-acceptance-review.md). |
-| 이후 프로필 독자 | [보증 프로필](later/assurance-profile.md) | [운영 프로필](later/operations-profile.md), [향후 Fixtures](later/future-fixtures.md), [로드맵](roadmap.md). 담당 문서가 승격하기 전까지 MVP 경로 밖에 둡니다. |
+| 이후 프로필 독자 | [보증 프로필](later/index.md#assurance-candidates) | [운영 프로필](later/index.md#operations-candidates), [향후 Fixtures](later/index.md#future-fixture-families), [로드맵](later/index.md#roadmap-candidates). 담당 문서가 승격하기 전까지 MVP 경로 밖에 둡니다. |
 
 ## 문서층 역할
 

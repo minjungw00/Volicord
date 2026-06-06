@@ -247,7 +247,7 @@ This document owns:
 
 This document does not own:
 
-- full public MCP request/response schemas; see [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), and [API Schema Later](api/schema-later.md)
+- full public MCP request/response schemas; see [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), and [API Schema Later](../later/index.md#later-schema-candidates)
 - SQLite DDL and storage layout; see [Storage](storage.md)
 - full projection template bodies
 - document projection rules; see [Projection And Templates Reference](projection-and-templates.md)

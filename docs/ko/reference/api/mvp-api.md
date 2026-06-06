@@ -10,7 +10,7 @@
 
 MVP-1은 작은 local MCP surface만 노출합니다. 평소 작업 요청을 받아들이고, 현재 상태와 다음 안전한 행동을 보여 주고, 제안된 쓰기가 현재 범위에 맞는지 협력형으로 확인하고, 실행과 증거 ref를 기록하고, 사용자 소유 판단을 요청하고, 사용자의 답을 기록하고, 최소 계약이 허용할 때만 닫습니다.
 
-MVP-1에서는 별도 `harness.next` method를 두지 않습니다. 다음 안전한 행동은 `harness.status.next_actions`에서 읽습니다. 별도 `harness.next`는 [Schema Later](schema-later.md#harnessnext)의 later/compatibility material입니다.
+MVP-1에서는 별도 `harness.next` method를 두지 않습니다. 다음 안전한 행동은 `harness.status.next_actions`에서 읽습니다. 별도 `harness.next`는 [Schema Later](../../later/index.md#later-schema-candidates)의 later/compatibility material입니다.
 
 이 API는 OS-level blocking, arbitrary-tool sandboxing, tamper-proof file, pre-tool prevention을 주장하지 않습니다. `harness.prepare_write`는 Core state를 기준으로 하는 협력형 쓰기 전 범위 확인입니다. 반환되는 Write Authorization은 하네스 수준의 기록/확인이지 OS 권한, sandboxing, 변조 방지 enforcement, 사전 차단이 아닙니다. 더 강한 preventive 또는 isolated 주장은 관련 보안/connector 문서에서 owner-promoted profile과 증명이 필요합니다.
 
@@ -47,7 +47,7 @@ Status output은 세 부분 모델을 따릅니다. `harness.status.status_card`
 
 Method가 tool-specific `task_id`와 `ToolEnvelope.task_id`를 모두 가지면 tool-specific `task_id`가 첫 primary Task 후보입니다. Core는 tool-specific `task_id`, envelope `task_id`, active Task resolution 순서로 primary Task를 찾습니다. Primary Task가 없으면 그 mutation은 `expected_state_version`과 `ToolResponseBase.state_version`에 대해 project-scoped mutation입니다.
 
-MVP-1 request validator는 [Schema Core](schema-core.md#stage-specific-active-value-sets)의 활성 schema block과 value-set summary를 사용합니다. Later enum value와 extension branch는 [Schema Later](schema-later.md)에 따로 정의되며, 활성 MVP-1 validator에서 valid하지 않습니다.
+MVP-1 request validator는 [Schema Core](schema-core.md#stage-specific-active-value-sets)의 활성 schema block과 value-set summary를 사용합니다. Later enum value와 extension branch는 [Schema Later](../../later/index.md#later-schema-candidates)에 따로 정의되며, 활성 MVP-1 validator에서 valid하지 않습니다.
 
 Error code, MVP-1 status/error condition name, 사용자 표시 문구 pattern, primary error precedence, idempotency replay, stale-state behavior는 [Errors](errors.md)가 담당합니다. Guarantee level의 보안 의미는 [보안 참조: 정직한 guarantee display](../security.md#정직한-guarantee-display)가 담당합니다. 모든 state-changing tool에서 `dry_run=true`는 기준 권한이 아닙니다. Validation diagnostic 또는 would-change summary를 반환할 수 있지만 current record, `task_events` row, artifact, consumable Write Authorization, projection job, idempotency replay row를 만들지 않습니다.
 
@@ -457,7 +457,7 @@ CloseTaskResponse:
   artifact_refs: ArtifactRef[]
 ```
 
-MVP-1 close는 active Task, active scope, open Run state, blocker, residual-risk visibility, required final-acceptance state, 아티팩트 가용성, Core가 소유한 `evidence_summary`를 사용합니다. Close readiness는 current record에서 파생됩니다. `completed_verified`, `assurance_level=detached_verified`, `profile_required_verification`, verification blocker, Manual QA blocker, projection/report freshness blocker, operations ref는 [Schema Later](schema-later.md#later-close-and-assurance-extensions)가 소유하는 later/profile-only extension입니다.
+MVP-1 close는 active Task, active scope, open Run state, blocker, residual-risk visibility, required final-acceptance state, 아티팩트 가용성, Core가 소유한 `evidence_summary`를 사용합니다. Close readiness는 current record에서 파생됩니다. `completed_verified`, `assurance_level=detached_verified`, `profile_required_verification`, verification blocker, Manual QA blocker, projection/report freshness blocker, operations ref는 [Schema Later](../../later/index.md#later-schema-candidates)가 소유하는 later/profile-only extension입니다.
 
 `intent=complete`에서 closed response가 되려면 Task state가 close intent와 호환되고, close와 관련해 unresolved active Run이 없고, required user judgment가 unresolved 또는 blocked 상태가 아니며, evidence가 required이면 `evidence_summary.status=sufficient`여야 합니다. Final acceptance가 required이면 `judgment_kind=final_acceptance`가 기록되어야 합니다. Close-relevant residual risk는 visible해야 하며, `completed_with_risk_accepted`에는 명시적인 residual-risk acceptance가 필요합니다. Close-required artifact ref는 여전히 available이어야 하고 required owner relation, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `produced_by`, `retention_class` metadata와 일치해야 합니다. Missing artifact나 `hash_mismatch` 같은 integrity failure는 affected evidence를 stale 또는 blocked로 만듭니다. Stale 또는 blocked Write Authorization fact는 그 영향이 닿는 current Run, scope, artifact, evidence, blocker record를 통해서만 close에 영향을 줍니다. Projection freshness는 display freshness이지 canonical close state가 아닙니다. Caller는 stale projection prose에서 close하면 안 됩니다.
 

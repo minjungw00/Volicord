@@ -115,7 +115,7 @@ Use the active delivery labels consistently.
 | Term family | Reference owner |
 |---|---|
 | Task, Change Unit, gates, close, sensitive-action approval, final acceptance, verification, QA, residual risk, write authority | [Core Model Reference](core-model.md) |
-| MCP resources, MCP tools, public schemas, errors, `ValidatorResult`, `ProjectionKind` | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), and [API Schema Later](api/schema-later.md) |
+| MCP resources, MCP tools, public schemas, errors, `ValidatorResult`, `ProjectionKind` | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), and [API Schema Later](../later/index.md#later-schema-candidates) |
 | SQLite records, artifact layout, enum hardening, `tree_hash`, `request_hash` storage use | [Storage](storage.md) |
 | Derived views / Projections, managed blocks, projection freshness, Markdown reports, template bodies | [Projection And Templates Reference](projection-and-templates.md); [Template Reference](templates/README.md) |
 | Discovery and Shared Design, design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contracts | [Design Quality Policies](design-quality-policies.md) |
@@ -123,7 +123,7 @@ Use the active delivery labels consistently.
 | Security assets, trust boundaries, threat categories, high-risk control expectations, guarantee-level meanings | [Security Reference](security.md) |
 | Operator procedures, conformance run overview, docs-maintenance reporting | [Operations And Conformance Reference](operations-and-conformance.md) |
 | Core conformance model, fixture body shape, runner behavior, assertion semantics, fixture profiles, and reduced Kernel Smoke queue | [Conformance Fixtures Reference](conformance-fixtures.md) |
-| Compact future scenario-family inventory, promotion criteria, suite-family labels, and catalog-only future candidates | [Future Fixtures](../later/future-fixtures.md) |
+| Compact future scenario-family inventory, promotion criteria, suite-family labels, and catalog-only future candidates | [Future Fixtures](../later/index.md#future-fixture-families) |
 
 ## Official Terms
 
@@ -251,7 +251,7 @@ Stale chat memory is pull-only context. It cannot authorize writes, satisfy gate
 
 ### Context Index
 
-A later read-only context provider that may surface relevant projections, artifact refs, repo files, docs, or notes. Until promoted through owner docs, it is a Roadmap candidate and non-authoritative retrieval only; even after promotion, it cannot replace existing authority paths unless those owner docs explicitly change. Retrieved context may point to sources to inspect, but it must not authorize writes, resolve decisions, grant Approval, create evidence, perform verification, accept residual risk, satisfy gates, or close Tasks. Context Index remains a roadmap candidate; see [Roadmap: Candidate Inventory](../roadmap.md#candidate-inventory), with connector handling in [Agent Integration](agent-integration.md#context-pushpull-principles).
+A later read-only context provider that may surface relevant projections, artifact refs, repo files, docs, or notes. Until promoted through owner docs, it is a Roadmap candidate and non-authoritative retrieval only; even after promotion, it cannot replace existing authority paths unless those owner docs explicitly change. Retrieved context may point to sources to inspect, but it must not authorize writes, resolve decisions, grant Approval, create evidence, perform verification, accept residual risk, satisfy gates, or close Tasks. Context Index remains a roadmap candidate; see [Roadmap: Candidate Inventory](../later/index.md#roadmap-candidates), with connector handling in [Agent Integration](agent-integration.md#context-pushpull-principles).
 
 ### Decision Gate
 
@@ -485,7 +485,7 @@ A SQLite `TEXT` column whose stored value is JSON. The `TEXT` type is reference 
 
 ### Local Derived Metrics
 
-Later diagnostic-only metrics derived from local records such as `state.sqlite.task_events`, runs, validator results, projection jobs, and reconcile items. Until promoted through owner docs, metric readouts may report rates, counts, durations, or guard-trigger summaries only as read-only diagnostics. Local Derived Metrics remain a roadmap candidate; see [Roadmap: Candidate Inventory](../roadmap.md#candidate-inventory).
+Later diagnostic-only metrics derived from local records such as `state.sqlite.task_events`, runs, validator results, projection jobs, and reconcile items. Until promoted through owner docs, metric readouts may report rates, counts, durations, or guard-trigger summaries only as read-only diagnostics. Local Derived Metrics remain a roadmap candidate; see [Roadmap: Candidate Inventory](../later/index.md#roadmap-candidates).
 
 ### Manual QA
 
@@ -497,7 +497,7 @@ A verification handoff package for a human or separate evaluator. It includes ta
 
 ### Manual QA Record
 
-A record-level Manual QA result, including performer, profile, result, artifacts, findings, waiver reason when applicable, and next action. Its result value set is owned by [QA Gate](core-model.md#qa-gate) and later/profile-gated [`harness.record_manual_qa`](api/schema-later.md#harnessrecord_manual_qa). Pending required QA is represented by `qa_gate=pending`; it is not a Manual QA record result.
+A record-level Manual QA result, including performer, profile, result, artifacts, findings, waiver reason when applicable, and next action. Its result value set is owned by [QA Gate](core-model.md#qa-gate) and later/profile-gated [`harness.record_manual_qa`](../later/index.md#later-schema-candidates). Pending required QA is represented by `qa_gate=pending`; it is not a Manual QA record result.
 
 ### `managed_hash`
 
@@ -557,7 +557,7 @@ A derived view generated from Core state records and artifact references, such a
 
 ### ProjectionKind
 
-The API enum for projection job and template kinds. Support classes, active values, and extension rules are owned by [API Schema Core](api/schema-core.md#projectionkind-support); later/profile-gated values stay in [API Schema Later](api/schema-later.md#later-profile-ref-and-artifact-values). Support class labels are not Engineering Checkpoint run obligations; Engineering Checkpoint has no projection-rendering exit requirement beyond preserving any owner-produced freshness/read facts. No ProjectionKind makes a projection canonical state.
+The API enum for projection job and template kinds. Support classes, active values, and extension rules are owned by [API Schema Core](api/schema-core.md#projectionkind-support); later/profile-gated values stay in [API Schema Later](../later/index.md#later-schema-candidates). Support class labels are not Engineering Checkpoint run obligations; Engineering Checkpoint has no projection-rendering exit requirement beyond preserving any owner-produced freshness/read facts. No ProjectionKind makes a projection canonical state.
 
 ### Projection Freshness
 
@@ -717,7 +717,7 @@ A separation between Harness surfaces, files, callers, or runtime spaces where i
 
 ### Verification
 
-The process of checking whether the result satisfies the relevant criteria. Verification may support assurance when recorded through a valid Eval path and independence profile, but same-session self-check is not detached verification. Verification is separate from approval, Manual QA, final acceptance, and residual-risk acceptance. Exact gate and independence behavior is owned by [Verification Gate](core-model.md#verification-gate) and later/profile-gated [`harness.record_eval`](api/schema-later.md#harnessrecord_eval).
+The process of checking whether the result satisfies the relevant criteria. Verification may support assurance when recorded through a valid Eval path and independence profile, but same-session self-check is not detached verification. Verification is separate from approval, Manual QA, final acceptance, and residual-risk acceptance. Exact gate and independence behavior is owned by [Verification Gate](core-model.md#verification-gate) and later/profile-gated [`harness.record_eval`](../later/index.md#later-schema-candidates).
 
 ### Verification Gate
 
