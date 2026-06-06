@@ -10,7 +10,7 @@ Users should be able to speak normally:
 Make this plan concrete enough to implement.
 Tell me if the scope is getting bigger.
 Show what I need to decide and what you can verify.
-Before you say it is done, show the evidence and remaining risk.
+Before you say it is done, show the evidence and residual risk.
 ```
 
 The agent can answer in the same ordinary language. When a request hides product, technical, QA, acceptance, or risk choices, Harness should make those choices visible instead of letting the agent infer them silently.
@@ -29,7 +29,7 @@ Readable projections, templates, status cards, and summaries are derived display
 
 AI-assisted work can move faster than the record around it. A small request grows. A product choice gets buried in implementation. A test pass starts sounding like proof of the whole user experience. A user says "looks good" and the agent treats every unresolved judgment as settled.
 
-Harness exists to stop those substitutions. It keeps the working basis explicit enough that a future reader can see what was in scope, what the user decided, what evidence supports the claim, what was checked, what still needs human judgment, and whether the work can honestly close.
+Harness exists to stop those substitutions. It keeps the working basis explicit enough that a future reader can see what was in scope, what the user decided, what evidence supports the claim, what was verified, what still needs human judgment, and whether the work can honestly close.
 
 ## One Ordinary Task
 
@@ -46,7 +46,7 @@ Goal I heard:
 Add remember-me behavior to login without redesigning authentication.
 
 Out of scope unless you decide otherwise:
-Password reset, signup, social login, and unrelated session cleanup.
+Password reset, signup, social login, and unrelated session maintenance.
 
 I can inspect:
 The login form, session settings, and focused tests.

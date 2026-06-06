@@ -2,7 +2,7 @@
 
 ## 1. 현재 상태
 
-이 저장소는 현재 문서 전용이며 재설계 이후 검토 상태입니다. Harness Server runtime, conformance runner, 실행 가능한 fixture 파일, 생성된 conformance report, 생성된 runtime artifact, 현재 runtime conformance result는 없습니다.
+이 저장소는 현재 문서 전용이며 문서 검토 상태입니다. Harness Server runtime, conformance runner, 실행 가능한 fixture 파일, 생성된 conformance report, 생성된 runtime artifact, 현재 runtime conformance result는 없습니다.
 
 이 문서는 현재 적합성 계획의 담당 문서입니다. 실행 가능한 suite 아님. Test catalog도 아니고, 향후 서버 동작이 이미 실행되었다는 증거도 아닙니다. 현재 단계와 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)이 담당합니다.
 

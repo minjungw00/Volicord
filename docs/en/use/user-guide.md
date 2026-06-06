@@ -15,7 +15,7 @@ You should be able to ask for careful work in everyday terms:
 Help me make this plan concrete before implementation.
 Ask me before deciding product behavior.
 Before changing files, tell me what you expect to touch.
-Show what you checked before calling it done.
+Show what you verified before calling it done.
 Tell me what still blocks close.
 ```
 
@@ -42,7 +42,7 @@ Before product files change, the agent should make the working scope plain:
 - what may change
 - what is out of bounds
 - likely paths, commands, tools, or external actions
-- facts the agent already checked
+- facts the agent already verified
 - facts still unknown
 - decisions that belong to you
 - the next safe action
@@ -131,7 +131,7 @@ Useful evidence can include changed paths, diffs, command output, test results, 
 - what claim each item supports
 - what passed, failed, was skipped, or was not applicable
 - what evidence is missing, stale, redacted, omitted, blocked, or insufficient
-- what was not checked
+- what was not verified
 
 Evidence does not replace your judgment. Tests do not replace human QA when human inspection is required. A screenshot does not prove accessibility. A generated summary does not become operational truth. Raw secrets, tokens, and full sensitive logs should be redacted, omitted, blocked, or represented by safe handles.
 
@@ -140,7 +140,7 @@ Evidence does not replace your judgment. Tests do not replace human QA when huma
 Before larger work is called done, ask:
 
 ```text
-Show what changed, what was checked, what risk remains, and what still blocks close.
+Show what changed, what was verified, what residual risk is visible, and what still blocks close.
 ```
 
 The agent should show:
@@ -162,11 +162,11 @@ In owner terms, `close_task` returns blockers or a close result. In user terms, 
 
 ## 8. Accept final result separately from residual risk
 
-Final acceptance means you accept the result you can see. Residual-risk acceptance means you accept a named remaining risk that is still visible. They are separate judgments.
+Final acceptance means you accept the result you can see. Residual-risk acceptance means you accept a named residual risk that is still visible. They are separate judgments.
 
 The agent should ask for final acceptance only after the close basis is visible: scope, result, evidence, checks, known gaps, QA status, and blockers. The prompt should name exactly what result you are accepting.
 
-The agent should ask for residual-risk acceptance only when a known remaining risk is visible and the active close path requires that judgment. The prompt should name the risk, affected area, consequence, evidence gap or uncertainty, and any safer alternative.
+The agent should ask for residual-risk acceptance only when a known residual risk is visible and the active close path requires that judgment. The prompt should name the risk, affected area, consequence, evidence gap or uncertainty, and any safer alternative.
 
 "Looks good" may be final acceptance only when the agent has clearly asked for final acceptance of a named result. It is not residual-risk acceptance unless the risk was named and the prompt asked for that judgment.
 

@@ -1,6 +1,6 @@
 # Later 후보 색인
 
-이 문서는 현재 활성인 유일한 later 후보 색인입니다. 상세 later profile 문서, later schema appendix, future fixture catalog, 예전 로드맵 서사, later-profile 템플릿 본문을 이 색인으로 접었습니다.
+이 문서는 later 후보와 승격 경계를 다루는 현재 활성 색인입니다.
 
 아래 항목은 승격 전 후보 목록입니다. MVP-1 요구사항, 활성 API/schema 계약, fixture 본문, template 본문, 런타임 동작, 구현 작업, 생성 산출물, 수락 증거가 아닙니다. 상세 본문 없음.
 
@@ -10,7 +10,7 @@
 | later 후보 | 현재 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
 | Later candidate index | 활성 문서 색인일 뿐입니다. | 세부 계약을 되살리려면 future owner가 좁은 후보를 먼저 승격해야 합니다. | 없음 |
-| Current repository phase | 문서 전용 계획/검토 기준입니다. | 런타임 작업 전 문서 수락과 별도의 구현 계획 준비 결정이 필요합니다. | 없음 |
+| Current repository phase | 문서 전용 계획입니다. | 런타임 작업 전 문서 수락과 별도의 구현 계획 준비 결정이 필요합니다. | 없음 |
 | Candidate authority | 후보 row는 Core state, evidence, verification, QA, final acceptance, residual-risk acceptance, close readiness, conformance, security guarantee를 만들지 않습니다. | 승격된 owner path의 owner record, exact contract, proof가 필요합니다. | 없음 |
 | Bilingual parity | 영어와 한국어 색인은 같은 후보 묶음과 승격 경계를 담습니다. | 의미가 바뀌면 같은 batch에서 양쪽을 함께 고칩니다. | 없음 |
 
@@ -146,5 +146,3 @@
 | Full later schema definitions | Active documentation에서 폐기했습니다. 상세 본문 없음. | 승격 뒤 active 또는 profile-gated owner schema로만 다시 도입합니다. | 없음 |
 | Full later template bodies | Active documentation에서 폐기했습니다. 상세 본문 없음. | Template owner가 profile을 켜고 source record를 정의할 때만 다시 도입합니다. | 없음 |
 | Full YAML fixtures and scenario scripts | Active documentation에서 폐기했습니다. 상세 본문 없음. | 승격 뒤 conformance owner 아래 exact-shape fixture material로만 다시 도입합니다. | 없음 |
-| Old roadmap narratives, resolved goals, and historical cleanup notes | Active documentation에서 폐기했습니다. | 필요하면 현재 후보 row 또는 maintainer-owned history로만 다시 도입합니다. | 없음 |
-| Archive copies, migration notes, and scratch files for this collapse | 만들지 않았고 보존하지 않습니다. | 승격 path는 없습니다. Maintainer가 별도 non-active migration record를 요청할 때만 다시 만듭니다. | 없음 |

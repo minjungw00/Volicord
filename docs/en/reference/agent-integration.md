@@ -1,6 +1,6 @@
 # Agent Integration Reference
 
-Use this reference when connecting an agent surface to future Harness behavior with low context cost, honest guarantee display, and preserved user-owned judgment. This repository is still documentation-only and in post-redesign review; this file describes planned Harness behavior and does not imply that a runtime server or connector implementation exists.
+Use this reference when connecting an agent surface to future Harness behavior with low context cost, honest guarantee display, and preserved user-owned judgment. This repository is still documentation-only and in documentation review; this file describes planned Harness behavior and does not imply that a runtime server or connector implementation exists.
 
 For what the agent says in a user session, read [Agent Guide](../use/agent-guide.md). For exact Core, API, schema, storage, projection, security, conformance, and operations contracts, pull only the owner section needed for the next action.
 
@@ -100,7 +100,7 @@ Retrieval-cost rules:
 
 - Do not inject the full Reference set by default.
 - Do not inject full schemas by default.
-- Do not inject full Storage DDL, full templates, full projection bodies, complete histories, historical event logs, raw artifact contents, raw logs, raw screenshots, raw traces, or unrelated Roadmap material by default.
+- Do not inject full Storage DDL, full templates, full projection bodies, complete histories, full event logs, raw artifact contents, raw logs, raw screenshots, raw traces, or unrelated Roadmap material by default.
 - Do not inject future/later catalog material by default.
 - Pull the owner section needed for the next action, then stop.
 - Choose one language for a normal work prompt. Do not load English and Korean paired docs for the same `doc_id` into one prompt; bilingual review should compare targeted sections rather than pushing both full paired documents.
@@ -125,7 +125,7 @@ Always-on context should fit on one screen or less. Include only current, action
 - guarantee level, or the unavailable/capability condition when Core or required MCP cannot answer
 - source refs and freshness
 
-Do not put full reference material, full schemas, full DDL, full projection text, complete artifact bodies, unrelated templates, future catalogs, old task history, or historical logs in always-on context.
+Do not put full reference material, full schemas, full DDL, full projection text, complete artifact bodies, unrelated templates, future catalogs, stale or unrelated task history, or full logs in always-on context.
 
 ## 6. Phase-Relevant Context Profiles
 
@@ -176,7 +176,7 @@ Fallbacks are described by guarantee level and risk, not by surface brand.
 
 `MCP_SERVER_UNAVAILABLE` and `SURFACE_MCP_UNAVAILABLE` are diagnostic conditions. `MCP_UNAVAILABLE` remains the stable public availability code.
 
-While Core is unreachable, do not invent Core state, Write Authorization, gate status, approvals, evidence, final acceptance, residual-risk acceptance, projection repair, or close readiness from chat memory, generated files, cached projections, old status text, or operator prose.
+While Core is unreachable, do not invent Core state, Write Authorization, gate status, approvals, evidence, final acceptance, residual-risk acceptance, projection repair, or close readiness from chat memory, generated files, cached projections, stale status text, or operator prose.
 
 Projection staleness is separate from Core state. If the connector can read current Core state directly, it may continue from that state. Actions that depend on stale projections must refresh or reconcile first.
 
@@ -196,7 +196,7 @@ Keep a recipe to:
 - fallback behavior when a required capability is missing
 - conformance status for that profile
 
-Do not include generic Core rules, public API schemas, full Reference docs, future connector ambitions, hosted-agent assumptions, historical audit notes, unrelated Roadmap items, full projection bodies, or long setup tutorials.
+Do not include generic Core rules, public API schemas, full Reference docs, future connector ambitions, hosted-agent assumptions, audit notes, unrelated Roadmap items, full projection bodies, or long setup tutorials.
 
 <a id="reference-local-surface"></a>
 
@@ -231,7 +231,7 @@ Because `pre_tool_blocking_supported=false`, "hold" language means cooperative s
 
 Connector conformance proves that a declared profile can uphold this common contract at its stated capability level. It does not prove a broad connector ecosystem, hosted registry, remote/shared MCP exposure, cross-surface orchestration, implementation readiness, runtime conformance for this documentation repository, or final documentation acceptance.
 
-The active smoke target is the reference `capability_profile`, not a connector marketplace. Until runtime fixtures exist and run, `conformance_smoke_status` must remain planned or not run.
+The active smoke target is the reference `capability_profile`, not a connector marketplace. Until runtime fixtures exist and run, `conformance_smoke_status` must remain `planned_not_run`.
 
 Reference-surface checks include:
 

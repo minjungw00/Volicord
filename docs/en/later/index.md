@@ -1,6 +1,6 @@
 # Later Candidate Index
 
-This is the single active index for later candidates. It replaces detailed later profile pages, the later schema appendix, the future fixture catalog, the old roadmap narrative, and later-profile template bodies.
+This is the single active index for later candidates and their promotion boundaries.
 
 Rows here are planning candidates only. They are not MVP-1 requirements, active API or schema contracts, fixture bodies, template bodies, runtime behavior, implementation tasks, generated artifacts, or acceptance evidence. Detailed body: none.
 
@@ -10,7 +10,7 @@ Rows here are planning candidates only. They are not MVP-1 requirements, active 
 | Boundary | Current status | Promotion requires | Active current MVP impact |
 |---|---|---|---|
 | Later candidate index | Active documentation index only. | A future owner must promote a narrow candidate before any detailed contract returns. | none |
-| Current repository phase | Documentation-only planning and review baseline. | Documentation acceptance and a separate implementation-planning readiness decision before runtime work. | none |
+| Current repository phase | Documentation-only planning. | Documentation acceptance and a separate implementation-planning readiness decision before runtime work. | none |
 | Candidate authority | Candidate rows do not create Core state, evidence, verification, QA, final acceptance, residual-risk acceptance, close readiness, conformance, or security guarantees. | Owner records, exact contracts, and proof in the promoted owner path. | none |
 | Bilingual parity | English and Korean indexes carry the same candidate set and promotion boundary. | Same-batch paired updates for any meaning change. | none |
 
@@ -146,5 +146,3 @@ These are names only. They are catalog-only future candidates, not fixture bodie
 | Full later schema definitions | Retired from active documentation; detailed body removed. | Reintroduce only as active or profile-gated owner schema after promotion. | none |
 | Full later template bodies | Retired from active documentation; detailed body removed. | Reintroduce only when a template owner activates the profile and defines source records. | none |
 | Full YAML fixtures and scenario scripts | Retired from active documentation; detailed body removed. | Reintroduce only as exact-shape fixture material under conformance owners after promotion. | none |
-| Old roadmap narratives, resolved goals, and historical cleanup notes | Retired from active documentation. | Reintroduce only as current candidate rows or maintainer-owned history if needed. | none |
-| Archive copies, migration notes, and scratch files for this collapse | Not created and not retained. | No promotion path; recreate only if maintainers request a separate non-active migration record. | none |

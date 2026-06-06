@@ -2,7 +2,7 @@
 
 Use this guide before changing Harness documentation. It is a living editing rulebook for documentation work only. It does not authorize Harness Server/runtime implementation, product-repository writes, generated operational files, runtime state, projections, evidence records, QA records, acceptance records, close records, residual-risk records, executable fixtures, or conformance runners.
 
-The repository is documentation-only today and remains in post-redesign review unless the maintainer handoff owner says otherwise. Treat the docs as source material for a future Harness Server, not as accepted implementation-ready runtime behavior.
+The repository is documentation-only today and remains in documentation review unless the maintainer handoff owner says otherwise. Treat the docs as source material for a future Harness Server, not as accepted implementation-ready runtime behavior.
 
 ## 1. Editing rule
 

@@ -42,7 +42,7 @@ Always-on context should fit on one screen and support the next action. Include 
 - source refs and freshness
 - one next safe action
 
-Do not inject full schemas, full DDL, full template bodies, historical logs, full artifact contents, paired bilingual docs, unrelated reference sections, future catalog material, or generated projections into every prompt. Pull exact owner sections only when the next action needs them.
+Do not inject full schemas, full DDL, full template bodies, full logs, full artifact contents, paired bilingual docs, unrelated reference sections, future catalog material, or generated projections into every prompt. Pull exact owner sections only when the next action needs them.
 
 Status output should lead with the primary blocker and the smallest unblocker. Name whether the blocker is user-owned, agent-resolvable, or surface/system-owned. Do not ask the user to solve something the agent can safely inspect, refresh, retry, narrow, or record.
 
@@ -56,7 +56,7 @@ Ask only the question that changes the next safe action or a user-owned judgment
 
 A focused clarification should show:
 
-- what you checked
+- what you verified
 - current goal
 - proposed scope and non-goals
 - success criteria for the next slice
@@ -80,7 +80,7 @@ A judgment request should include the exact question, concise options, recommend
 
 Do not treat "yes," "approved," "looks good," "go ahead," or "continue" as a bundle of every pending judgment. Map a short reply only when one active prompt made the kind, affected object, option, scope, user intent, consequences, and remaining open items unambiguous.
 
-Sensitive approval is permission for a named action. Final acceptance is judgment on the result. Residual-risk acceptance is judgment on a named remaining risk. QA waiver and verification-risk acceptance are separate from both. None substitutes for another.
+Sensitive approval is permission for a named action. Final acceptance is judgment on the result. Residual-risk acceptance is judgment on a named residual risk. QA waiver and verification-risk acceptance are separate from both. None substitutes for another.
 
 ## 5. Do Not Claim Stronger Guarantees
 
@@ -101,7 +101,7 @@ If Core or Harness authority is unavailable, do not invent task state, write com
 
 Before product/code/file writes in Harness-connected work, use a pre-write scope check only after the intended operation is specific enough to evaluate. In owner terms this is the `prepare_write` / Write Authorization path.
 
-Do not claim write compatibility from a plan, old chat, broad user enthusiasm, stale status, generated summary, or rendered view. Show the user:
+Do not claim write compatibility from a plan, stale chat context, broad user enthusiasm, stale status, generated summary, or rendered view. Show the user:
 
 - intended paths or operation
 - scope match or mismatch
@@ -130,7 +130,7 @@ Evidence does not automatically satisfy verification, Manual QA, final acceptanc
 
 Close only when the active path can support the close claim. In owner terms, `close_task` should return blockers or a close result.
 
-For small work, a close-like result can be brief: request, scope, changed files or no-file outcome, checks, and known remaining risk.
+For small work, a close-like result can be brief: request, scope, changed files or no-file outcome, checks, and known residual risk.
 
 For tracked work, show the close basis before asking for final acceptance or attempting close:
 
@@ -143,7 +143,7 @@ For tracked work, show the close basis before asking for final acceptance or att
 - residual-risk visibility and acceptance status when relevant
 - close blockers and smallest unblocker
 
-Do not close from prose, tests alone, broad acceptance-like language, a generated projection, or an old status summary. If blockers remain, lead with them and name the next safe action.
+Do not close from prose, tests alone, broad acceptance-like language, a generated projection, or a stale status summary. If blockers remain, lead with them and name the next safe action.
 
 ## 9. Respect The Active/Later Boundary
 

@@ -139,15 +139,12 @@ Later terms are candidates or delivery labels. They are not active API/schema/st
 
 ## Retired / compatibility terms
 
-Keep these only where they prevent confusion with old docs, payloads, or labels. Do not use them as primary concepts in new active docs.
+Keep these only where they prevent confusion with compatibility payloads or labels. Do not use them as primary concepts in new active docs.
 
 | Term | Compatibility note | Current route |
 |---|---|---|
-| Decision Packet | Full-format user-judgment presentation and legacy label. The active MVP uses compact `presentation=short`; `presentation=full` is later/profile material. | [API Schema Core](api/schema-core.md#userjudgment), [Later](../later/index.md#assurance-candidates) |
+| Decision Packet | Full-format user-judgment presentation and compatibility label. The active MVP uses compact `presentation=short`; `presentation=full` is later/profile material. | [API Schema Core](api/schema-core.md#userjudgment), [Later](../later/index.md#assurance-candidates) |
 | `request_user_decision` / `record_user_decision` | Compatibility aliases for `request_user_judgment` / `record_user_judgment`. | [API Schema Core](api/schema-core.md#stage-specific-active-value-sets) |
-| `judgment_type`, `judgment_domain`, `decision_kind`, `decision_profile` | Older judgment-shape aliases. Prefer `judgment_kind`, route-specific payload validation, and `presentation`. | [API Schema Core](api/schema-core.md#userjudgment) |
-| `judgment_category`, `judgment_route`, `display_depth` | Legacy or implementation routing terms from older Decision Packet drafts. | [API Schema Core](api/schema-core.md#userjudgment) |
+| `judgment_type`, `judgment_domain`, `decision_kind`, `decision_profile` | Compatibility aliases. Prefer `judgment_kind`, route-specific payload validation, and `presentation`. | [API Schema Core](api/schema-core.md#userjudgment) |
 | `display_label` | Compatibility or response-only display label when a surface exposes that name. It is not an active canonical schema/storage field; render labels from `judgment_kind` and locale. | [API Schema Core](api/schema-core.md#userjudgment), [Storage](storage.md#4-tables) |
 | `MCP_SERVER_UNAVAILABLE` / `SURFACE_MCP_UNAVAILABLE` | Diagnostic conditions. The stable public availability code is `MCP_UNAVAILABLE`. | [Agent Integration](agent-integration.md#8-fallback-behavior), [API Errors](api/errors.md) |
-| Historical delivery labels | `v0.1 Core Authority Smoke`, `v0.2 First User-Value Slice`, `v0.3 Agency Assurance Pack`, `v0.4 Operations & Handoff Pack`, and `v1+ Expansion` are not current stage names. | [Translation Guide](../maintain/translation-guide.md) |
-| Full later schemas, template bodies, fixture bodies, old roadmap narratives, archive copies, and scratch migration files | Retired from active documentation. Reintroduce only through a promoted owner document when needed. | [Later](../later/index.md#explicitly-retired-material) |

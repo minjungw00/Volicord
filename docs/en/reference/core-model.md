@@ -81,7 +81,7 @@ The judgment kinds stay distinct:
 - QA waiver: a scoped waiver of a policy-allowed Manual QA requirement.
 - Verification-risk acceptance: acceptance of the risk from missing or waived required verification.
 - Final acceptance: the user's result judgment when the path requires acceptance.
-- Residual-risk acceptance: acceptance of a named visible remaining risk for the requested close.
+- Residual-risk acceptance: acceptance of a named visible residual risk for the requested close.
 - Cancellation: stopping the Task without a successful result.
 
 Ambiguous consent is narrow. "Go ahead", "looks good", or similar broad approval cannot silently satisfy another judgment kind. One user reply may satisfy multiple judgment routes only when the prompt explicitly asked those distinct questions and Core records each compatible judgment with its affected object, scope, consequence, and close or write impact.
@@ -193,7 +193,7 @@ Invalid state combinations must become blockers, rejections, or repair paths. Th
 
 ## 12. Waivers
 
-A waiver is a scoped exception to a named requirement where policy allows it. It must preserve what requirement was skipped, the affected Task and Change Unit, the reason, actor, timing, affected gate or close impact, expiry or follow-up when needed, and any close-relevant residual risk.
+A waiver is a scoped exception to a named requirement where policy allows it. It must preserve what requirement was skipped, the affected Task and Change Unit, the reason, actor, timing, affected gate or close impact, expiry or required next action when needed, and any close-relevant residual risk.
 
 Allowed waiver paths are narrow:
 

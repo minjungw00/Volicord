@@ -95,7 +95,7 @@ Keep the judgment routes separate:
 - `qa_waiver` waives a scoped QA requirement only where the QA owner path allows it; it is not QA evidence or a passed QA result.
 - `verification_risk_acceptance` accepts the risk of missing or waived verification; it does not create detached verification.
 - `final_acceptance` is the user's result judgment after the close basis is visible; it does not create evidence or accept residual risk.
-- `residual_risk_acceptance` accepts a named visible remaining risk; it does not prove correctness or replace final acceptance.
+- `residual_risk_acceptance` accepts a named visible residual risk; it does not prove correctness or replace final acceptance.
 
 Broad approval, a friendly "looks good", or a general go-ahead must not be treated as any of these judgments unless the active owner path asked for that specific judgment.
 

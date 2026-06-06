@@ -2,7 +2,7 @@
 
 Use Reference when you need the owner document for an exact Harness planning contract. It is an index for future Harness Server review, not a first-read tutorial and not the implementation plan.
 
-These documents describe future Harness Server contracts under post-redesign review. They do not mean a server/runtime, Harness Runtime Home, generated projection system, conformance runner, runtime data, or implementation-complete behavior exists in this repository today.
+These documents describe future Harness Server contracts under current documentation review. They do not mean a server/runtime, Harness Runtime Home, generated projection system, conformance runner, runtime data, or implementation-complete behavior exists in this repository today.
 
 ## Reading Rules
 

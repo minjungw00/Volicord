@@ -103,7 +103,7 @@ Rules:
 - Managed hash detects drift; it does not make Markdown state.
 - If a managed block hash differs from the last projected hash before rendering, the projector reports drift or creates an owner-routed repair candidate. It does not silently accept the edited block.
 - Regeneration must preserve unrelated human-editable sections.
-- Rendering failure or stale source data must display `failed`, `stale`, `unknown`, or unavailable as appropriate. It must not roll back committed Core state, rewrite events, or change gate values.
+- Rendering failure or stale source data must display `failed`, `stale`, `unknown`, or unavailable as appropriate. It must not roll back committed Core state, alter events, or change gate values.
 
 Rendered views should include a short boundary notice near the top or managed summary: display only, derived from Core state and refs, not write authority, not close authority.
 
@@ -192,7 +192,7 @@ Evidence gaps: {evidence_gaps|none}
 Checks: {check_summary|none}
 Close: {close_readiness_summary}; blockers={close_blockers|none}
 Design quality action: {design_quality_routed_action|none}
-Remaining risk: {residual_risk_visibility|none}
+Residual risk: {residual_risk_visibility|none}
 Next safe action: {next_safe_action}
 Guarantee: {guarantee_level_or_unavailable}; {guarantee_note}
 Sources/freshness: {source_freshness_summary}
@@ -443,7 +443,7 @@ agent_context_packet:
 Notes:
 
 - Keep the packet one screen or less. It carries only current, next-action-relevant state.
-- Do not include full schemas, full reference docs, full historical event logs, registered artifact file bodies, full report bodies, full templates, unrelated templates, full design-quality catalogs, or future catalog material by default.
+- Do not include full schemas, full reference docs, full event logs, registered artifact file bodies, full report bodies, full templates, unrelated templates, full design-quality catalogs, or future catalog material by default.
 - If the next action needs a fuller owner section, the agent should pull that owner section on demand instead of embedding it in the packet.
 - The `guarantee_level` field is required context. If Core/MCP is unavailable, set it to the unavailable/capability condition and treat Harness-dependent state, write, evidence, acceptance, residual-risk, and close claims as unavailable until refreshed.
 

@@ -108,7 +108,7 @@ Use when verification is missing, incomplete, stale, or waived through an allowe
 ```text
 Judgment needed: accept or reject the risk of missing browser verification.
 
-Context: automated unit tests passed, but browser verification could not run because the local browser surface is unavailable.
+Context: automated unit tests passed, but browser verification is unavailable because the local browser surface is unavailable.
 
 Options:
 - Accept the verification risk and keep the limitation visible in close.
@@ -142,14 +142,14 @@ Options:
 - Keep the task open for broader review.
 
 Settles: final acceptance of the typo-only result.
-Does not settle: residual risk, scope expansion, future editorial cleanup, or acceptance of unrelated files.
+Does not settle: residual risk, scope expansion, future editorial work, or acceptance of unrelated files.
 ```
 
 ## 7. Residual Risk Acceptance
 
 Kind: `residual_risk_acceptance`
 
-Use when a named remaining risk is visible and the active close path requires the user to accept or reject that risk.
+Use when a named residual risk is visible and the active close path requires the user to accept or reject that risk.
 
 ```text
 Judgment needed: accept the residual risk that small-screen visual QA was not performed.

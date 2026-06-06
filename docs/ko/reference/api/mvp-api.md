@@ -126,7 +126,7 @@ StatusResponse:
 - **상태 효과:** 없습니다. `harness.status`는 `tool_invocations` replay row를 만들지 않습니다.
 - **오류:** `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`, `NO_ACTIVE_TASK`, 요청한 readable view가 stale 또는 failed이면 `PROJECTION_STALE`.
 - **저장소 담당 문서:** `project_state`, `tasks`, `change_units`, `user_judgments`, `write_authorizations`, `runs`, `evidence_summaries`, `artifacts`, `artifact_links`, `blockers`를 read-only로 읽습니다.
-- **보안 경계:** Status는 Core가 뒷받침할 수 있는 사실에 따라 `cooperative`, `detective`, `preventive`, `isolated`를 표시할 수 있습니다. 오래된 상태 text, chat, rendered view, cached summary는 권한 근거가 아닙니다.
+- **보안 경계:** Status는 Core가 뒷받침할 수 있는 사실에 따라 `cooperative`, `detective`, `preventive`, `isolated`를 표시할 수 있습니다. 최신이 아닌 상태 text, chat, rendered view, cached summary는 권한 근거가 아닙니다.
 
 <a id="harnessprepare_write"></a>
 
@@ -260,7 +260,7 @@ RequestUserJudgmentResponse:
 - **상태 효과:** Committed non-dry-run call은 pending `user_judgments` row 하나를 만들고, affected blocker를 link/update할 수 있으며, event와 replay row를 만듭니다. 다른 method가 반환한 candidate는 이 method가 commit되기 전까지 pending judgment가 아닙니다.
 - **오류:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`, `VALIDATOR_FAILED`.
 - **저장소 담당 문서:** `user_judgments`, `blockers`, `task_events`, `tool_invocations`.
-- **보안 경계:** 이 요청은 질문을 표시합니다. `harness.record_user_judgment`가 matching answer를 기록하기 전에는 permission을 부여하거나 gate를 해소하지 않습니다.
+- **보안 경계:** 이 요청은 질문을 표시합니다. `harness.record_user_judgment`가 matching answer를 기록하기 전에는 permission을 부여하거나 gate를 만족하지 않습니다.
 
 <a id="harnessrecord_user_judgment"></a>
 

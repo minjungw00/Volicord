@@ -195,7 +195,7 @@ Invalid state combination은 blocker, rejection, repair path가 되어야 합니
 
 ## 12. 면제
 
-면제는 policy가 허용하는 이름 붙은 requirement에 대한 scoped exception입니다. 어떤 requirement를 건너뛰었는지, affected Task와 Change Unit, reason, actor, timing, affected gate 또는 close impact, 필요한 expiry 또는 follow-up, close-relevant residual risk를 보존해야 합니다.
+면제는 policy가 허용하는 이름 붙은 requirement에 대한 scoped exception입니다. 어떤 requirement를 건너뛰었는지, affected Task와 Change Unit, reason, actor, timing, affected gate 또는 close impact, 필요한 만료 조건 또는 다음 조치, close-relevant residual risk를 보존해야 합니다.
 
 허용되는 면제 경로는 좁습니다.
 

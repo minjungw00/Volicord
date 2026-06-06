@@ -79,7 +79,7 @@ Security-sensitive assets include:
 | Harness Runtime Home | Runtime Home stores Core-owned records and artifacts for future operation. Treat broad local read/write access as tampering and confidentiality risk; do not claim tamper-proof storage. |
 | MCP / local API surface | Reachability is not authorization. Core/API validation, project/task/surface compatibility, idempotency, expected state version, and active capability still apply. |
 | Connector-generated files | Generated manifests, snippets, prompts, or adapter files may drift or be edited. They do not create authority without the owner path and current `capability_profile`. |
-| Artifact store | Artifact bytes are untrusted until registered, related to the owner record, and checked for required integrity/redaction metadata. |
+| Artifact store | Artifact bytes are untrusted until registered, related to the owner record, and validated for required integrity/redaction metadata. |
 | External tools, commands, and network calls | Local execution can mutate files, leak data, or affect external systems. Cooperative Harness checks do not physically restrain those tools by default. |
 
 ## 6. Threat/Control Summary
@@ -90,7 +90,7 @@ This summary names the active threat categories without turning the MVP document
 |---|---|---|
 | Authority spoofing | Chat, generated Markdown, caller claims, or stale projections pretend to approve, verify, accept, or close work. | Route authority through Core-owned records; fail or hold when MCP/Core authority is unavailable. |
 | Out-of-scope write | A path, command, network target, or secret use exceeds the active Change Unit, user judgment, sensitive-action permission, or stored `AuthorizedAttemptScope`. | Use cooperative `prepare_write`, single-use Write Authorization, compatible `record_run`, and changed-path detection only where the surface can observe. |
-| Stale context or replay | Old status text, approvals, projections, baselines, evaluator bundles, or cached state steer current work. | Check current state version, idempotency, freshness, and owner-record compatibility before relying on the input. |
+| Stale context or replay | Stale status text, approvals, projections, baselines, evaluator bundles, or cached state steer current work. | Check current state version, idempotency, freshness, and owner-record compatibility before relying on the input. |
 | Artifact or evidence tampering | Bytes, paths, hashes, or metadata are swapped, stale, missing, redacted, blocked, or unrelated to the owner record. | Treat evidence as insufficient or blocked until registration, integrity, redaction, and owner relation checks pass. |
 | Secret or PII exposure | Logs, screenshots, traces, prompts, artifacts, projections, manifests, or exports contain sensitive values. | Prefer redaction, omission, blocked-payload notices, display-safe handles, and owner-approved evidence summaries. |
 | Capability overclaim | A surface claims blocking, capture, isolation, or MCP reachability beyond its actual `capability_profile`. | Lower the displayed guarantee, mark the claim unverified, return a capability blocker/error, or hold by instruction. |

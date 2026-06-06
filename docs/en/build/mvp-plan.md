@@ -8,11 +8,11 @@ Build docs are planning guidance only. They do not define exact schemas, DDL, AP
 <a id="maintainer-handoff-summary"></a>
 ## Repository status
 
-This repository is documentation-only and is still in post-redesign review. It is intended to become the Harness Server source repository only after documentation acceptance and a separate implementation-planning readiness decision.
+This repository is documentation-only and is still in documentation review. It is intended to become the Harness Server source repository only after documentation acceptance and a separate implementation-planning readiness decision.
 
 No Harness Server/runtime implementation, runtime state, generated projections, generated operational artifacts, executable fixture files, conformance runner, Harness Runtime Home contents, or product code exists here now. Documentation files are source material, not Harness runtime records.
 
-Server coding must not begin until the open decisions in [Implementation decisions before server coding](#implementation-decisions-before-server-coding) are resolved, accepted, or explicitly deferred with stage impact by maintainers.
+Server coding must not begin until the open decisions in [Implementation decisions before server coding](#implementation-decisions-before-server-coding) are decided, accepted, or explicitly deferred with stage impact by maintainers.
 
 ## What exists now
 
@@ -85,7 +85,7 @@ This smoke target may use an owner-valid setup or seed path instead of ordinary-
 
 ## User work loop
 
-The user work loop starts or resumes ordinary work without requiring the user to know Harness internal labels. The loop should first clarify what the user wants, what can be checked from the repository or Harness state, what remains uncertain, and what judgment the user still owns.
+The user work loop starts or resumes ordinary work without requiring the user to know Harness internal labels. The loop should first clarify what the user wants, what can be verified from the repository or Harness state, what remains uncertain, and what judgment the user still owns.
 
 MVP shaping persists only through active Task, scope/Change Unit, and user judgment owner paths. It is not a separate committed Discovery Brief, Shared Design record, Question Queue, Assumption Register, evidence record, Write Authorization, final acceptance, residual-risk acceptance, or close record.
 
@@ -106,11 +106,11 @@ The loop should keep the next safe action visible. If Core, MCP, or the referenc
 <a id="implementation-decisions-still-open"></a>
 ## Implementation decisions before server coding
 
-Server coding must not begin until each row is accepted, resolved, or deferred with explicit stage impact by maintainers.
+Server coding must not begin until each row is accepted, decided, or deferred with explicit stage impact by maintainers.
 
 | Decision item | Current status | What must be decided before coding |
 |---|---|---|
-| Implementation-planning readiness | Not accepted. | Maintainers must accept that the documentation planning baseline is ready for first runtime-batch planning, or name the remaining blocker and affected stage. |
+| Implementation-planning readiness | Not accepted. | Maintainers must accept that the documentation planning set is ready for first runtime-batch planning, or name the blocker and affected stage. |
 | Public API coding acceptance | Not accepted for coding. | The active MVP method set, shared schemas, resources, errors, idempotency/replay behavior, unavailable Core/MCP behavior, and later/profile exclusions must be accepted in the API owners before affected tools or resources are coded. |
 | Storage/DDL coding acceptance | Not accepted for coding. | The minimal storage profile, runtime home layout, locks, artifacts, migrations, replay/audit needs, and later-profile storage boundary must be accepted before DDL, runtime data files, or artifact storage are created. |
 | Core transition acceptance | Not accepted for coding. | Active Task/scope, `user_judgment`, `prepare_write`, Write Authorization, `record_run`, blocker, status, evidence summary, and `close_task` semantics must be accepted for the active MVP paths. |
@@ -146,9 +146,9 @@ Build summarizes sequence and scope only. Use these Reference owners for exact c
 
 Documentation planning can exit only when maintainers have explicitly confirmed:
 
-- this single Build plan is the active Build entry point and old Build routes have been retired
+- this single Build plan is confirmed as the active Build entry point
 - the current MVP boundary and later/profile exclusions are accepted or any remaining boundary issue is reclassified with stage impact
-- the server-coding decisions above are resolved, accepted, or deferred with named stage impact
+- the server-coding decisions above are decided, accepted, or deferred with named stage impact
 - Reference owners agree on the active API, Core, Storage, Security, projection/template, and surface boundaries needed for the active MVP
 - English and Korean Build pages preserve the same implementation decisions and active MVP boundary
 - no later/profile material is presented as required for the active MVP

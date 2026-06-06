@@ -287,9 +287,8 @@ The active migration boundary is:
 - Keep status cards, compact views, projection freshness, close readiness, and
   report prose derived from current records. They are not migration authority.
 
-This page intentionally does not include future DDL bundles, historical
-migration notes, resolved planning notes, or profile-specific migration
-catalogs.
+This page intentionally excludes inactive DDL bundles, migration catalogs, and
+profile-specific migration details.
 
 ## 11. Later storage excluded from active current MVP
 
@@ -301,7 +300,7 @@ The active current MVP excludes storage for:
 
 - projection jobs, durable projection caches, managed-output outboxes, and
   projection dashboards;
-- validator-run archives, conformance-runner state, fixture execution history,
+- validator-run records, conformance-runner state, fixture execution history,
   and generated conformance artifacts;
 - operations-profile storage for doctor suites, recover, export, release
   handoff, artifact dashboards, reconcile queues, or operational reports;

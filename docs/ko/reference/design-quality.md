@@ -31,7 +31,7 @@
 
 활성 역할은 아래 영향으로 제한됩니다.
 
-- 범위, 사용자 소유 판단, 필요한 증거, 오래된 닫기/쓰기 맥락, surface capability, 정직한 guarantee 표시, 보이는 잔여 위험에 영향을 주는 발견 사항을 표시합니다.
+- 범위, 사용자 소유 판단, 필요한 증거, 최신이 아닌 닫기/쓰기 맥락, surface capability, 정직한 guarantee 표시, 보이는 잔여 위험에 영향을 주는 발견 사항을 표시합니다.
 - `ask one focused user judgment`, `request evidence`, `mark residual risk`, `show advisory next action`, `no action` 중 집중된 다음 행동 하나로 라우팅합니다.
 - Core owner 경로가 해당 blocker를 이미 뒷받침할 때만 `block write` 또는 `block close`로 라우팅합니다.
 - 사용자 소유 제품 판단, 중요한 기술 판단, QA 면제, 검증 위험, 최종 수락, 잔여 위험 판단을 구분합니다.
@@ -60,17 +60,17 @@
 
 - 활성 Task 또는 Change Unit과 시도 중인 close에 연결되어 있습니다.
 - 기존 Core-backed close blocker, gate, API error, owner 경로를 이름 붙입니다.
-- 해소, 연기, 허용된 면제, 잔여 위험 표시 중 하나로 이어지는 다음 행동을 정확히 하나 제공합니다.
+- 해결, 연기, 허용된 면제, 잔여 위험 표시 중 하나로 이어지는 다음 행동을 정확히 하나 제공합니다.
 - 아래 활성 현재 MVP blocker 조건 중 하나에 해당합니다.
 
 활성 현재 MVP blocker 조건은 다음뿐입니다.
 
 | 조건 | Owner path |
 |---|---|
-| 필요한 사용자 소유 판단이 해소되지 않았습니다. | `decision_gate`, `user_judgment`, Core close semantics. |
+| 필요한 사용자 소유 판단이 해결되지 않았습니다. | `decision_gate`, `user_judgment`, Core close semantics. |
 | close에 영향을 주는 작업에 필요한 활성 범위가 없거나 맞지 않거나 Autonomy Boundary를 넘었습니다. | Scope Gate, Change Unit, Autonomy Boundary, `prepare_write`, close blocker. |
 | 필요한 증거가 없거나, 사용할 수 없거나, 오래됐거나, blocked 상태입니다. | Core evidence summary, artifact availability, `EVIDENCE_INSUFFICIENT` path. |
-| 오래된 맥락 때문에 close 근거를 안전하게 믿을 수 없습니다. | Core freshness, 보이는 close 근거에 쓰이는 projection/source ref, reconcile/recovery owner 경로. |
+| 최신이 아닌 맥락 때문에 close 근거를 안전하게 믿을 수 없습니다. | Core freshness, 보이는 close 근거에 쓰이는 projection/source ref, reconcile/recovery owner 경로. |
 | 접점(surface)이 주장한 operation 또는 guarantee를 지원하지 못합니다. | Capability boundary, `CAPABILITY_INSUFFICIENT`, honest guarantee display owner. |
 
 Finding이 domain language, vertical slice shape, TDD, module/interface review, stewardship, Manual QA, detached verification, review stage, 향후 정책 후보를 언급한다는 이유만으로 close를 차단하지 않습니다. 활성 owner 경로가 좁은 행동을 필요로 할 때만 조언성 다음 행동, 증거 요청, 집중된 사용자 판단, 잔여 위험 표시로 이어질 수 있습니다.
@@ -107,7 +107,7 @@ Finding이 domain language, vertical slice shape, TDD, module/interface review, 
 유용한 증거 참조는 다음을 포함할 수 있습니다.
 
 - 등록된 `ArtifactRef` 값, Run ref, command/check summary, source ref
-- 오래된 맥락이 close 근거에 영향을 줄 때 current state/version/freshness ref
+- 최신이 아닌 맥락이 close 근거에 영향을 줄 때 current state/version/freshness ref
 - 제품, 기술, 범위, QA 면제, 검증 위험, 최종 수락, 잔여 위험 판단에 대한 user-judgment ref
 - 알려진 한계가 close에서 보일 때 residual-risk ref
 - 해당 owner 경로가 active이거나 명시적으로 요구할 때만 Manual QA 또는 verification ref

@@ -277,8 +277,8 @@ maintainer가 실제 DDL, migration mechanism, storage profile, tightening behav
 - Status card, compact view, projection freshness, close readiness, report prose는 current
   record에서 파생합니다. Migration authority가 아닙니다.
 
-이 문서는 future DDL bundle, historical migration note, resolved planning note,
-profile-specific migration catalog를 의도적으로 포함하지 않습니다.
+이 문서는 inactive DDL bundle, migration catalog, profile-specific migration detail을
+의도적으로 제외합니다.
 
 ## 11. 현재 활성 MVP에서 제외되는 later storage
 
@@ -289,7 +289,7 @@ Later/profile storage는 owner 문서가 scope, fallback behavior, proof expecta
 현재 활성 MVP는 아래 storage를 제외합니다.
 
 - Projection job, durable projection cache, managed-output outbox, projection dashboard.
-- Validator-run archive, conformance-runner state, fixture execution history, generated
+- Validator-run record, conformance-runner state, fixture execution history, generated
   conformance artifact.
 - Doctor suite, recover, export, release handoff, artifact dashboard, reconcile queue,
   operational report를 위한 operations-profile storage.

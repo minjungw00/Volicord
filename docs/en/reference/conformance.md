@@ -2,7 +2,7 @@
 
 ## 1. Current Status
 
-This repository is documentation-only and still in post-redesign review. No Harness Server runtime, conformance runner, executable fixture files, generated conformance reports, generated runtime artifacts, or current runtime conformance results exist here.
+This repository is documentation-only and still in documentation review. No Harness Server runtime, conformance runner, executable fixture files, generated conformance reports, generated runtime artifacts, or current runtime conformance results exist here.
 
 This page is the current conformance owner for planning. It is not a runnable suite, not a test catalog, and not evidence that any future server behavior has run. Current phase and handoff status remain owned by [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 

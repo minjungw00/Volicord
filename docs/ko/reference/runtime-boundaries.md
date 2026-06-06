@@ -66,7 +66,7 @@ Artifact는 evidence, verification, QA, acceptance review, residual-risk visibil
 
 Recovery는 같은 권한 모델 안에 머뭅니다. Recovery는 Runtime Home state records, `state.sqlite.task_events`, artifact refs, integrity metadata, projection freshness fact를 사용해 무엇이 stale, interrupted, missing, inconsistent인지 분류할 수 있습니다.
 
-Recovery는 파생 표시를 다시 만들거나, owner 경로를 통해 artifact를 다시 scan하거나 등록하거나, dependent evidence나 view를 stale 또는 blocked로 표시하거나, owner contract가 허용하는 경우 오래된 work record를 interrupted로 처리할 수 있습니다. 필요한 사용자 판단이나 Core action으로 라우팅할 수도 있습니다. 두 번째 상태 모델을 만들면 안 됩니다.
+Recovery는 파생 표시를 다시 만들거나, owner 경로를 통해 artifact를 다시 scan하거나 등록하거나, dependent evidence나 view를 stale 또는 blocked로 표시하거나, owner contract가 허용하는 경우 최신이 아닌 work record를 interrupted로 처리할 수 있습니다. 필요한 사용자 판단이나 Core action으로 라우팅할 수도 있습니다. 두 번째 상태 모델을 만들면 안 됩니다.
 
 Recovery는 chat, generated Markdown, stale projection, export text, operator console output, staging path, recovery artifact에서 성공한 구현을 추론할 수 없습니다. Recovery 자체로 evidence를 충족하거나, verification 또는 QA를 통과시키거나, 최종 수락을 기록하거나, 잔여 위험을 수락하거나, task를 close하지 않습니다.
 
