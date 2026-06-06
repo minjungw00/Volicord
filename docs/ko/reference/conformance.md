@@ -2,7 +2,7 @@
 
 ## 1. 현재 상태
 
-이 저장소는 현재 문서 전용이며 문서 검토 상태입니다. Harness Server runtime, conformance runner, 실행 가능한 fixture 파일, 생성된 conformance report, 생성된 runtime artifact, 현재 runtime conformance result는 없습니다.
+이 저장소는 현재 문서 전용이며 문서 검토 상태입니다. Harness Server runtime, 적합성 실행기, 실행 가능한 fixture 파일, 생성된 conformance report, 생성된 runtime artifact, 현재 runtime conformance result는 없습니다.
 
 이 문서는 현재 적합성 계획의 담당 문서입니다. 실행 가능한 suite 아님. Test catalog도 아니고, 향후 서버 동작이 이미 실행되었다는 증거도 아닙니다. 현재 단계와 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)이 담당합니다.
 
@@ -16,7 +16,7 @@
 |---|---|---|
 | 문서 점검 | Link, terminology, owner boundary, stage wording, security wording, 영어/한국어 의미 일치를 보는 읽기 전용 Markdown maintenance check. | 현재 문서 유지보수 보조 자료일 뿐입니다. Runtime conformance가 아닙니다. |
 | 동작 예시 | Engineering Checkpoint와 MVP-1에서 기대하는 동작을 작게 보여주는 예시. | 계획 참조일 뿐입니다. Fixture 파일도 아니고 pass/fail 기준도 아닙니다. |
-| runtime conformance | 구현된 Core/API/storage/operator behavior를 대상으로 하는 향후 실행 점검. | 아직 없습니다. |
+| runtime conformance | 구현된 Core/API/storage/operator 동작을 대상으로 하는 향후 실행 점검. | 아직 없습니다. |
 
 Conformance는 생성된 prose를 판단하지 않습니다. 향후에는 owner-state effect, response fact, storage effect, 승격된 stable event, artifact ref, blocker, error, forbidden side effect를 판단합니다.
 
@@ -29,7 +29,7 @@ Conformance는 생성된 prose를 판단하지 않습니다. 향후에는 owner-
 - 생성된 conformance artifact, report, projection, runtime state, Harness Runtime Home data
 - 현재 runtime `PASS`, `WARN`, `FAIL` result
 - Engineering Checkpoint, MVP-1, Assurance Profile, Operations Profile, Roadmap 후보를 위한 active fixture suite
-- preventive blocking, OS permission control, arbitrary-tool sandboxing, tamper-proof storage, security isolation에 대한 현재 proof
+- 예방적 차단, OS 권한 제어, 임의 도구 샌드박스, 변조 방지 저장소, 보안 격리에 대한 현재 증명
 
 이 문서의 예시는 구현 계획을 도울 수 있습니다. 하지만 runtime state, acceptance evidence, close readiness, implementation readiness를 만들지 않습니다.
 

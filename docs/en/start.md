@@ -29,7 +29,7 @@ Readable projections, templates, status cards, and summaries are derived display
 
 AI-assisted work can move faster than the record around it. A small request grows. A product choice gets buried in implementation. A test pass starts sounding like proof of the whole user experience. A user says "looks good" and the agent treats every unresolved judgment as settled.
 
-Harness exists to stop those substitutions. It keeps the working basis explicit enough that a future reader can see what was in scope, what the user decided, what evidence supports the claim, what was verified, what still needs human judgment, and whether the work can honestly close.
+Harness exists to make those substitutions visible and invalid as authority. It keeps the working basis explicit enough that a future reader can see what was in scope, what the user decided, what evidence supports the claim, what was verified, what still needs human judgment, and whether the work can honestly close.
 
 ## One Ordinary Task
 

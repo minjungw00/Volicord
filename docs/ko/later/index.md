@@ -11,7 +11,7 @@
 |---|---|---|---|
 | Later candidate index | 활성 문서 색인일 뿐입니다. | 세부 계약을 되살리려면 future owner가 좁은 후보를 먼저 승격해야 합니다. | 없음 |
 | Current repository phase | 문서 전용 계획입니다. | 런타임 작업 전 문서 수락과 별도의 구현 계획 준비 결정이 필요합니다. | 없음 |
-| Candidate authority | 후보 row는 Core state, evidence, verification, QA, final acceptance, residual-risk acceptance, close readiness, conformance, security guarantee를 만들지 않습니다. | 승격된 owner path의 owner record, exact contract, proof가 필요합니다. | 없음 |
+| Candidate authority | 후보 row는 Core state, 증거, 검증, QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태, conformance, security guarantee를 만들지 않습니다. | 승격된 owner path의 owner record, exact contract, proof가 필요합니다. | 없음 |
 | Bilingual parity | 영어와 한국어 색인은 같은 후보 묶음과 승격 경계를 담습니다. | 의미가 바뀌면 같은 batch에서 양쪽을 함께 고칩니다. | 없음 |
 
 <a id="promotion-rule"></a>
@@ -19,9 +19,9 @@
 
 | later 후보 | 현재 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
-| Owner decision | 후보는 승격 전까지 보관 상태입니다. | 이름 있는 future stage/profile owner, 좁은 범위, fallback behavior, 명시적인 non-claim이 필요합니다. | 없음 |
+| Owner decision | 후보는 승격 전까지 보관 상태입니다. | 이름 있는 future stage/profile owner, 좁은 범위, 대체 동작, 명시적인 비보장이 필요합니다. | 없음 |
 | Contract placement | 여기에는 full later schema, template body, fixture body, scenario script가 없습니다. | Exact API, schema, storage, security, projection, fixture, template, operator contract는 알맞은 owner 문서에 둡니다. | 없음 |
-| Proof expectation | 후보로 적혀 있다는 사실은 proof가 아닙니다. | 정확히 승격된 동작에 대한 fixture/conformance target 또는 owner가 정한 증거가 필요합니다. | 없음 |
+| Proof expectation | 후보로 적혀 있다는 사실은 증명이 아닙니다. | 정확히 승격된 동작에 대한 fixture/conformance target 또는 owner가 정한 증거가 필요합니다. | 없음 |
 | Non-substitution | 후보 output은 Core state, user judgment, evidence, verification, Manual QA, final acceptance, residual-risk acceptance, close readiness를 대신할 수 없습니다. | Core-owned record와 owner별 lifecycle rule을 계속 분리해야 합니다. | 없음 |
 | Early-stage inflation check | Later material은 기본적으로 Engineering Checkpoint와 MVP-1 밖에 남습니다. | 승격 후보가 earlier stage에 unsupported requirement를 더하지 않는다는 확인이 필요합니다. | 없음 |
 
@@ -131,7 +131,7 @@
 | Browser capture automation | Roadmap 후보입니다. | Capture profile, redaction/PII handling, artifact retention, fallback behavior, QA/acceptance non-substitution이 필요합니다. | 없음 |
 | Cross-surface verification | Roadmap 후보입니다. | Core-owned return record, Eval independence semantics, unsupported-surface fallback이 필요합니다. | 없음 |
 | Broader connectors, connector marketplace, hosted UI, hosted/remote runtime | Roadmap 후보입니다. | Connector/API/security owner와 local-authority boundary proof가 필요합니다. | 없음 |
-| Native hooks, preventive guard expansion, advanced sidecar watcher | Roadmap 후보입니다. | Preventive, isolation, arbitrary-tool-control claim 전에 covered mechanism proof가 필요합니다. | 없음 |
+| Native hooks, preventive guard expansion, advanced sidecar watcher | Roadmap 후보입니다. | `preventive`, 격리, 임의 도구 제어 주장을 하기 전에 covered mechanism proof가 필요합니다. | 없음 |
 | Context Index, local derived metrics, long-term metrics | Roadmap 후보입니다. | Read-only retrieval/diagnostic owner가 필요하며 authority나 close effect가 없어야 합니다. | 없음 |
 | Team workflows, permissions, shared profiles, orchestration, parallel lanes | Roadmap 후보입니다. | Scope, authority, permission, user-owned judgment owner가 필요합니다. | 없음 |
 | Advanced exports, release/deployment/canary/rollback/merge/production-monitoring automation | Roadmap 후보입니다. | 별도 owner scope가 필요합니다. 명시적으로 승격하기 전까지 deploy와 production authority는 외부에 남습니다. | 없음 |

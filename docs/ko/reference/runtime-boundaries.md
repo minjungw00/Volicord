@@ -2,7 +2,7 @@
 
 이 참조 문서는 향후 Harness Server 계획에서 사용하는 활성 런타임 경계를 작게 정의합니다. 어느 공간이 제품 파일을 소유하는지, 어느 공간이 하네스 권한 확인을 실행하는지, 어느 공간이 Core가 소유한 기준 상태를 지속 보관하는지, 무엇이 파생 표시나 아티팩트 보조 자료로 남는지 설명합니다.
 
-이 문서는 source 문서입니다. 지금 이 저장소에는 Harness Server/runtime 구현, Harness Runtime Home, 생성된 projection 시스템, conformance runner, 런타임 데이터가 없습니다. 현재 저장소 단계와 handoff 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)이 담당합니다.
+이 문서는 원천 문서입니다. 지금 이 저장소에는 Harness Server/runtime 구현, Harness Runtime Home, 생성된 Projection 시스템, 적합성 실행기, 런타임 데이터가 없습니다. 현재 저장소 단계와 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)이 담당합니다.
 
 정확한 계약은 [Core Model 참조](core-model.md), [Storage](storage.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [Projection과 Template 참조](projection-and-templates.md), [보안 참조](security.md), [Agent 통합 참조](agent-integration.md)를 사용합니다. 이 문서는 작은 경계 모델만 담당합니다.
 
@@ -28,21 +28,21 @@ Harness Server / Installation은 Product Repository도 아니고 Harness Runtime
 
 ## 3. Harness Runtime Home
 
-Harness Runtime Home은 사용자별 또는 설치별 운영 데이터 공간입니다. 짧게 Runtime Home이라고도 부릅니다. Reference location과 정확한 layout은 [Storage](storage.md)가 담당합니다. 향후 일반적인 내용에는 project registration data, project configuration, `state.sqlite`, artifact storage가 포함됩니다.
+Harness Runtime Home은 사용자별 또는 설치별 운영 데이터 공간입니다. 짧게 Runtime Home이라고도 부릅니다. 기준 위치와 정확한 배치는 [Storage](storage.md)가 담당합니다. 향후 일반적인 내용에는 project registration data, project configuration, `state.sqlite`, artifact storage가 포함됩니다.
 
 하네스 기준 상태는 Runtime Home storage에 지속 보관되는 Core-owned current records에 있습니다. `state.sqlite.task_events`는 state store 안의 audit와 ordering history를 기록합니다. 별도의 display log도 아니고 current records를 대체하지도 않습니다.
 
 Harness Runtime Home은 대화 기록이 사라지거나 Product Repository의 projection이 오래되어도 하네스 운영 의미를 복구할 수 있을 만큼 충분해야 합니다. Projection support가 있으면 Product Repository의 표시는 state records와 artifact refs에서 다시 만들 수 있습니다. 표시는 그 기록을 대체할 수 없습니다.
 
-Runtime Home의 파일은 private local control data로 취급해야 합니다. 하지만 하네스는 operating-system permission을 강제하거나, 파일을 tamper-proof로 만들거나, 임의의 local tool로부터 파일을 스스로 격리한다고 주장하지 않습니다.
+Runtime Home의 파일은 비공개 로컬 제어 데이터로 취급해야 합니다. 하지만 하네스는 운영체제 권한을 강제하거나, 파일을 변조 방지 상태로 만들거나, 임의의 로컬 도구로부터 파일을 스스로 격리한다고 주장하지 않습니다.
 
 ## 4. Core 변경 권한
 
 하네스 기준 상태 변경은 Core 상태 변경 경로에서만 일어납니다. Core는 범위, 사용자 소유 판단, 증거와 아티팩트 참조, 검증과 QA 기대, 최종 수락, 잔여 위험 상태, 닫기 준비 상태에 대한 하네스 기록을 만들거나 업데이트할 권한을 소유합니다.
 
-Agent, MCP caller, CLI text, operator output, 제품 파일, projection Markdown, template, status card, artifact bytes, chat transcript는 그 자체로 기준 상태를 변경하지 않습니다. 관련 owner 경로가 받아들일 때만 입력 또는 증거 후보가 될 수 있습니다.
+Agent, MCP caller, CLI text, operator output, 제품 파일, Projection Markdown, template, status card, artifact bytes, chat transcript는 그 자체로 기준 상태를 변경하지 않습니다. 관련 owner 경로가 받아들일 때만 입력 또는 증거 후보가 될 수 있습니다.
 
-`prepare_write`, Write Authorization, `record_run`, `close_task`는 Core/API가 소유하는 계약입니다. Write Authorization은 협력형 하네스 기록과 확인입니다. OS permission, sandbox enforcement, tamper-proof protection, 실행 전 물리적 차단, security-isolation mechanism이 아닙니다.
+`prepare_write`, Write Authorization, `record_run`, `close_task`는 Core/API가 소유하는 계약입니다. Write Authorization은 협력형 하네스 기록과 확인입니다. OS 권한, 샌드박스 강제, 변조 방지 보호, 실행 전 물리적 차단, 보안 격리 메커니즘이 아닙니다.
 
 정확한 상태 전이, gate 영향, row 경계, idempotency 동작, response shape는 [Core Model 참조](core-model.md), [Storage](storage.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md)에 남습니다.
 
@@ -50,7 +50,7 @@ Agent, MCP caller, CLI text, operator output, 제품 파일, projection Markdown
 
 Projection, template, status card, generated Markdown, read-only status resource는 파생 표시입니다. Core가 소유한 state records와 등록된 artifact refs에서 렌더링됩니다. 최신성, 실패, blocker, next-action 정보를 담을 수 있지만, 그 정보도 owner record를 보여주는 표시일 뿐 두 번째 권한 근거가 아닙니다.
 
-Projection은 stale, missing, failed 상태일 수 있고 사람이 직접 고쳤을 수도 있습니다. 이런 조건은 그 자체로 하네스 기준 상태를 바꾸지 않습니다. 오래되었거나 실패한 projection은 보이는 blocker나 freshness warning을 만들 수 있습니다. 하지만 Core state를 roll back하거나, evidence를 충족하거나, verification 또는 QA를 통과시키거나, 최종 수락을 기록하거나, 잔여 위험을 수락하거나, task를 close하지 않습니다.
+Projection은 stale, missing, failed 상태일 수 있고 사람이 직접 고쳤을 수도 있습니다. 이런 조건은 그 자체로 하네스 기준 상태를 바꾸지 않습니다. 오래되었거나 실패한 Projection은 보이는 blocker나 freshness warning을 만들 수 있습니다. 하지만 Core state를 roll back하거나, 증거를 충족하거나, 검증 또는 QA를 통과시키거나, 최종 수락을 기록하거나, 잔여 위험을 수락하거나, Task를 닫지 않습니다.
 
 Managed generated area는 계속 파생 표시입니다. Human-editable area는 proposal input입니다. Proposal은 Core-owned path가 상태 변경 action으로 수락한 뒤에만 하네스 상태에 영향을 줍니다.
 
@@ -72,8 +72,8 @@ Recovery는 chat, generated Markdown, stale projection, export text, operator co
 
 ## 8. 현재 MVP가 격리하지 않는 것
 
-현재 MVP 경계는 future owner가 이름 붙인 operation에 대해 더 강한 profile을 승격하고 증명하기 전까지 cooperative와 detective 수준입니다. OS-level permission, arbitrary-tool sandboxing, permission enforcement, tamper-proof storage, universal pre-tool blocking, security isolation을 주장하지 않습니다.
+현재 MVP 경계는 향후 담당 문서가 이름 붙인 동작에 대해 더 강한 profile을 승격하고 증명하기 전까지 협력형과 탐지형 수준입니다. 운영체제 수준 권한, 임의 도구 샌드박스, 권한 강제, 변조 방지 저장소, 보편적 도구 실행 전 차단, 보안 격리를 주장하지 않습니다.
 
-Local-only MCP reachability는 authorization이 아닙니다. 도달 가능한 caller도 valid Core/API state, project/task/surface compatibility, state-version compatibility, active surface capability profile이 필요합니다. `allowed`는 하네스 상태와 활성 surface capability에 맞는다는 뜻입니다. `blocked`는 하네스 권한 경로나 capability check상 진행하면 안 된다는 뜻입니다. 증명된 preventive profile이 정확한 covered operation을 이름 붙이지 않는 한 두 단어 모두 물리적 차단을 뜻하지 않습니다.
+로컬 전용 MCP 도달 가능성은 권한 부여가 아닙니다. 도달 가능한 caller도 valid Core/API state, project/task/surface compatibility, state-version compatibility, active surface capability profile이 필요합니다. `allowed`는 하네스 상태와 활성 surface capability에 맞는다는 뜻입니다. `blocked`는 하네스 권한 경로나 capability check상 진행하면 안 된다는 뜻입니다. 증명된 preventive profile이 정확한 covered operation을 이름 붙이지 않는 한 두 단어 모두 물리적 차단을 뜻하지 않습니다.
 
-Surface name, connector recipe, friendly mode label, projection, template, status card, artifact, documentation check는 guarantee level을 올려 주지 않습니다. 더 강한 preventive 또는 isolated claim은 관련 Reference owner에서 문서화한 mechanism, covered operation, owner, proof path가 필요합니다.
+Surface name, connector recipe, friendly mode label, Projection, template, status card, artifact, documentation check는 guarantee level을 올려 주지 않습니다. 더 강한 preventive 또는 isolated claim은 관련 Reference owner에서 문서화한 mechanism, covered operation, owner, proof path가 필요합니다.

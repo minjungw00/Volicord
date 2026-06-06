@@ -71,7 +71,7 @@
 | close에 영향을 주는 작업에 필요한 활성 범위가 없거나 맞지 않거나 Autonomy Boundary를 넘었습니다. | Scope Gate, Change Unit, Autonomy Boundary, `prepare_write`, close blocker. |
 | 필요한 증거가 없거나, 사용할 수 없거나, 오래됐거나, blocked 상태입니다. | Core evidence summary, artifact availability, `EVIDENCE_INSUFFICIENT` path. |
 | 최신이 아닌 맥락 때문에 close 근거를 안전하게 믿을 수 없습니다. | Core freshness, 보이는 close 근거에 쓰이는 projection/source ref, reconcile/recovery owner 경로. |
-| 접점(surface)이 주장한 operation 또는 guarantee를 지원하지 못합니다. | Capability boundary, `CAPABILITY_INSUFFICIENT`, honest guarantee display owner. |
+| 접점(surface)이 주장한 operation 또는 guarantee를 지원하지 못합니다. | 역량 경계, `CAPABILITY_INSUFFICIENT`, 정직한 보장 표시 owner. |
 
 Finding이 domain language, vertical slice shape, TDD, module/interface review, stewardship, Manual QA, detached verification, review stage, 향후 정책 후보를 언급한다는 이유만으로 close를 차단하지 않습니다. 활성 owner 경로가 좁은 행동을 필요로 할 때만 조언성 다음 행동, 증거 요청, 집중된 사용자 판단, 잔여 위험 표시로 이어질 수 있습니다.
 
@@ -112,7 +112,7 @@ Finding이 domain language, vertical slice shape, TDD, module/interface review, 
 - 알려진 한계가 close에서 보일 때 residual-risk ref
 - 해당 owner 경로가 active이거나 명시적으로 요구할 때만 Manual QA 또는 verification ref
 
-채팅 주장, 일반 요약, 렌더링된 projection prose, 등록되지 않은 파일, owner 경로 없는 screenshot, passing test alone, QA waiver, final acceptance, residual-risk acceptance는 필요한 증거를 자동으로 충족하지 않습니다. 필요한 증거는 Core evidence owner 경로를 통해서만 close를 차단할 수 있습니다. Required가 아닌 evidence gap은 상황에 맞게 `request evidence`, `show advisory next action`, 또는 residual-risk visibility로 라우팅해야 합니다.
+채팅 주장, 일반 요약, 렌더링된 Projection prose, 등록되지 않은 파일, owner 경로 없는 screenshot, 테스트 통과만 있는 상태, QA 면제, 최종 수락, 잔여 위험 수락은 필요한 증거를 자동으로 충족하지 않습니다. 필요한 증거는 Core evidence owner 경로를 통해서만 close를 차단할 수 있습니다. Required가 아닌 evidence gap은 상황에 맞게 `request evidence`, `show advisory next action`, 또는 residual-risk visibility로 라우팅해야 합니다.
 
 <a id="validator-id-boundary"></a>
 ## 7. Validator ID 경계
@@ -126,6 +126,6 @@ Validator ID는 보고용 라벨입니다. Core invariant, gate, 닫기 blocker,
 <a id="later-policy-catalog-boundary"></a>
 ## 8. Later 정책 후보 경계
 
-전체 설계 품질 later 정책 후보 목록은 활성 현재 MVP scope가 아닙니다. 향후 정책 후보, steward profile, detailed review display, operations/reporting material, full validator mapping, future conformance fixture는 이름 있는 owner가 scope, fallback behavior, exact contract, proof expectation과 함께 좁은 동작을 승격하기 전까지 [Later 후보 색인](../later/index.md)에 남습니다.
+전체 설계 품질 later 정책 후보 목록은 활성 현재 MVP scope가 아닙니다. 향후 정책 후보, steward profile, detailed review display, operations/reporting material, full validator mapping, future conformance fixture는 이름 있는 owner가 범위, 대체 동작, exact contract, 증명 기대와 함께 좁은 동작을 승격하기 전까지 [Later 후보 색인](../later/index.md)에 남습니다.
 
 Later 후보는 이름만 유지할 수 있습니다. 이를 활성 현재 MVP requirement, blocker, 면제 규칙, 증거 기대치, validator mapping, fixture requirement, operations report, implementation task처럼 제시하면 안 됩니다.
