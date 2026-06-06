@@ -117,7 +117,7 @@ Use the active delivery labels consistently.
 | Task, Change Unit, gates, close, sensitive-action approval, final acceptance, verification, QA, residual risk, write authority | [Core Model Reference](core-model.md) |
 | MCP resources, MCP tools, public schemas, errors, `ValidatorResult`, `ProjectionKind` | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), and [API Schema Later](../later/index.md#later-schema-candidates) |
 | SQLite records, artifact layout, enum hardening, `tree_hash`, `request_hash` storage use | [Storage](storage.md) |
-| Derived views / Projections, managed blocks, projection freshness, Markdown reports, template bodies | [Projection And Templates Reference](projection-and-templates.md); [Template Reference](templates/README.md) |
+| Derived views / Projections, managed blocks, projection freshness, Markdown reports, active template bodies | [Projection And Templates Reference](projection-and-templates.md) |
 | Discovery and Shared Design, design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contracts | [Design Quality Policies](design-quality-policies.md) |
 | Surface capability, guarantee display, connector behavior | [Agent Integration Reference](agent-integration.md) |
 | Security assets, trust boundaries, threat categories, high-risk control expectations, guarantee-level meanings | [Security Reference](security.md) |
@@ -453,7 +453,7 @@ A Markdown area where a human can write notes, proposals, questions, or correcti
 
 ### Implementation Micro-Plan
 
-A managed `TASK` projection section that shows small execution steps or slices, their purpose, active Change Unit scope alignment or likely paths, selected feedback loop or TDD status when relevant, expected evidence, and stop conditions. It is an execution aid, not canonical state, not a `ProjectionKind`, not scope authority, not approval, and not Write Authorization. Editing its text does not mutate state except through an accepted reconcile outcome or Core state-changing action.
+A managed task projection section that shows small execution steps or slices, their purpose, active Change Unit scope alignment or likely paths, selected feedback loop or TDD status when relevant, expected evidence, and stop conditions. It is an execution aid, not canonical state, not a `ProjectionKind`, not scope authority, not approval, and not Write Authorization. Editing its text does not mutate state except through an accepted reconcile outcome or Core state-changing action.
 
 ### Isolated Guarantee
 
@@ -607,7 +607,7 @@ A non-authoritative skill or playbook surface that lets a user ask for a product
 
 A Markdown report generated from state records and artifact references, such as a Task report, approval report, run summary, evidence manifest report, Eval report, or direct-result report.
 
-The named report projection kinds are projections generated from state records and artifact refs; state authority stays with Core records and evidence-file authority stays with registered artifact files. Exact projection rules are owned by [Projection And Templates Reference](projection-and-templates.md), and full rendered bodies are owned by [Template Reference](templates/README.md).
+The named report projection kinds are projections generated from state records and artifact refs; state authority stays with Core records and evidence-file authority stays with registered artifact files. Exact projection rules and active current MVP rendered bodies are owned by [Projection And Templates Reference](projection-and-templates.md).
 
 ### Review Stages
 

@@ -117,7 +117,7 @@ Active delivery label은 일관되게 씁니다.
 | Task, Change Unit, gate(관문), close, 민감 동작 승인, 최종 수락, 검증, 수동 QA, 잔여 위험, 쓰기 전 범위 확인 / Write Authorization | [Core Model Reference](core-model.md) |
 | MCP resource, MCP tool, public schema, error, `ValidatorResult`, `ProjectionKind` | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [API Schema Later](../later/index.md#later-schema-candidates) |
 | SQLite record, artifact layout, enum hardening, `tree_hash`, `request_hash` storage use | [Storage](storage.md) |
-| 파생 보기 / Projection, managed block, projection freshness, Markdown 보고서, template body | [Projection과 Template 참조](projection-and-templates.md); [Template 참조](templates/README.md) |
+| 파생 보기 / Projection, managed block, projection freshness, Markdown 보고서, active template body | [Projection과 Template 참조](projection-and-templates.md) |
 | Discovery와 Shared Design, design quality, stewardship, Feedback Loop finding routing, context hygiene, severity composition, policy contract | [설계 품질 정책](design-quality-policies.md) |
 | Surface capability, guarantee display, connector behavior | [Agent 통합 참조](agent-integration.md) |
 | Security asset, trust boundary, threat category, high-risk control expectation, guarantee-level 의미 | [보안 참조](security.md) |
@@ -487,7 +487,7 @@ MVP-1 사용자 작업 루프 이후 담당 문서가 정의한 보증 프로필
 
 ### Implementation Micro-Plan
 
-작은 execution step 또는 slice, purpose, active Change Unit scope alignment 또는 likely paths, relevant한 경우 selected feedback loop 또는 TDD status, expected evidence, stop condition을 보여주는 managed `TASK` projection section입니다. Execution aid이지 기준 상태, `ProjectionKind`, scope authority, approval, 쓰기 승인 기록이 아닙니다. 이 text를 edit해도 accepted reconcile outcome 또는 Core state-changing action을 통하지 않으면 상태를 변경하지 않습니다.
+작은 execution step 또는 slice, purpose, active Change Unit scope alignment 또는 likely paths, relevant한 경우 selected feedback loop 또는 TDD status, expected evidence, stop condition을 보여주는 managed task projection section입니다. Execution aid이지 기준 상태, `ProjectionKind`, scope authority, approval, 쓰기 승인 기록이 아닙니다. 이 text를 edit해도 accepted reconcile outcome 또는 Core state-changing action을 통하지 않으면 상태를 변경하지 않습니다.
 
 ### Isolated Guarantee
 
@@ -655,7 +655,7 @@ External PR, review, deployment, rollback, monitoring process를 위한 release 
 
 Task 보고서, approval 보고서, run summary, 증거 목록 보고서, Eval 보고서, direct-result 보고서처럼 state records와 아티팩트 참조에서 생성되는 Markdown 보고서입니다.
 
-이름 있는 보고서 ProjectionKind 값은 state records와 아티팩트 참조에서 생성되는 Projection입니다. State authority는 Core records에 남고, evidence-file authority는 등록된 아티팩트 파일에 남습니다. 정확한 Projection rule은 [Projection과 Template 참조](projection-and-templates.md)가 담당하며, 전체 rendered body는 [Template 참조](templates/README.md)가 담당합니다.
+이름 있는 보고서 ProjectionKind 값은 state records와 아티팩트 참조에서 생성되는 Projection입니다. State authority는 Core records에 남고, evidence-file authority는 등록된 아티팩트 파일에 남습니다. 정확한 Projection rule과 활성 현재 MVP rendered body는 [Projection과 Template 참조](projection-and-templates.md)가 담당합니다.
 
 ### Review Stages
 

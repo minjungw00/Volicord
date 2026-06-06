@@ -134,7 +134,7 @@ Build summarizes sequence and scope only. Use these Reference owners for exact c
 | Task, scope, user judgment, `prepare_write`, Write Authorization, `record_run`, evidence gates, blockers, status, and close semantics | [Core Model Reference](../reference/core-model.md). |
 | Runtime home layout, minimal storage profile, locks, migrations, artifacts, and later-profile storage boundaries | [Storage](../reference/storage.md). |
 | MVP security guarantee wording and local-access posture | [Security Reference](../reference/security.md). |
-| Compact derived views, projection authority boundaries, freshness, and template ownership | [Projection And Templates Reference](../reference/projection-and-templates.md) and [Template Reference](../reference/templates/README.md). |
+| Compact derived views, projection authority boundaries, freshness, and active template ownership | [Projection And Templates Reference](../reference/projection-and-templates.md). |
 | Reference surface `capability_profile` and user-facing surface behavior | [Agent Integration Reference](../reference/agent-integration.md). |
 | Runtime boundaries and local Core authority placement | [Runtime Boundaries Reference](../reference/runtime-boundaries.md). |
 | Active design-quality blocking boundary | [Design Quality Policies](../reference/design-quality-policies.md#active-mvp-blocking-set). |

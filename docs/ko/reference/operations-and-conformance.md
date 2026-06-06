@@ -114,7 +114,7 @@ Operator guarantee posture는 [보안 참조의 단계별 guarantee level](secur
 
 Operator output은 사람이 다음 조치를 고를 수 있게 해야 하며, 두 번째 상태 모델을 가르치면 안 됩니다. 유용한 diagnostic line은 category, level, 관찰된 사실, 안전하게 표시할 수 있는 affected record 또는 path, operational effect, next action을 함께 이름 붙입니다. Finding이 diagnostic only인 경우도 분명히 말해야 합니다.
 
-예를 들어 "projection `TASK` is stale"은 사람이 읽는 view가 owner record보다 뒤처졌다는 뜻이지 Task state가 failed라는 뜻이 아닙니다. Report freshness에 의존하는 close/readiness line은 현재 Core state version을 projection `source_state_version` 또는 failed job status와 분리해 보여줘야 합니다. "generated-file drift detected"는 connector-managed file이 manifest와 더 이상 맞지 않는다는 뜻이며, 조용히 덮어쓰지 않고 보고한 뒤 reconcile로 보냅니다. "recovery event appended"는 compensating record로 history를 확장했다는 뜻이지 기존 `task_events`를 rewrite했다는 뜻이 아닙니다.
+예를 들어 "projection view is stale"은 사람이 읽는 view가 owner record보다 뒤처졌다는 뜻이지 Task state가 failed라는 뜻이 아닙니다. Report freshness에 의존하는 close/readiness line은 현재 Core state version을 projection `source_state_version` 또는 failed job status와 분리해 보여줘야 합니다. "generated-file drift detected"는 connector-managed file이 manifest와 더 이상 맞지 않는다는 뜻이며, 조용히 덮어쓰지 않고 보고한 뒤 reconcile로 보냅니다. "recovery event appended"는 compensating record로 history를 확장했다는 뜻이지 기존 `task_events`를 rewrite했다는 뜻이 아닙니다.
 
 이 예시는 display guidance입니다. Command flag, state table, event name, public `ErrorCode`, fixture field를 추가하지 않습니다.
 
@@ -260,8 +260,8 @@ Compact doctor 예시:
 | MCP availability | `MCP availability FAIL MCP_SERVER_UNAVAILABLE localhost endpoint refused` | MCP를 통해 Core에 닿을 수 없으므로 이 path에서는 authoritative Core response나 state-changing claim이 없습니다. |
 | reference surface | `reference surface WARN SURFACE_MCP_UNAVAILABLE required tool not callable by SURFACE-REF` | Core는 reachable일 수 있지만 연결된 접점이 required MCP path를 사용할 수 없습니다. Write-capable work는 guarantee profile에 따라 held 상태입니다. |
 | artifact store | `artifact store FAIL ART-204 hash_mismatch; evidence_gate may become stale` | Artifact record와 stored file이 일치하지 않습니다. Markdown edit로 evidence를 repair할 수 없습니다. |
-| projections | `projections WARN TASK stale source_state_version=41 current_task_state_version=44` | Task state는 여전히 valid할 수 있습니다. 사람이 읽는 `TASK` view가 뒤처졌으므로 refresh 또는 reconcile이 필요합니다. |
-| projections | `projections FAIL RUN-SUMMARY failed render_error=template_input_missing` | Projection job이 failed입니다. 이 display failure가 Run record를 failed Run으로 바꾸지는 않습니다. |
+| projections | `projections WARN task-view stale source_state_version=41 current_task_state_version=44` | Task state는 여전히 valid할 수 있습니다. 사람이 읽는 task view가 뒤처졌으므로 refresh 또는 reconcile이 필요합니다. |
+| projections | `projections FAIL run-summary-view failed render_error=template_input_missing` | Projection job이 failed입니다. 이 display failure가 Run record를 failed Run으로 바꾸지는 않습니다. |
 | reconcile | `reconcile MANUAL generated-file drift .harness/agent/generated/reference-instructions.md` | Generated file을 보고하고 review로 보냅니다. 조용히 overwrite하거나 state로 취급하지 않습니다. |
 | validators/checks | `validators/checks WARN context_hygiene_check stale projection refs` | Stable validator와 Core check는 별도로 보고합니다. Mechanical projection freshness issue는 새 validator ID가 아닙니다. |
 | agency/stewardship/context | `agency/stewardship/context FAIL User Judgment required for user-owned trade-off` | Blocker는 User Judgment path로 route됩니다. Broad approval이나 status prose만으로 judgment를 충족할 수 없습니다. |
@@ -376,17 +376,17 @@ MVP-1 사용자 작업 루프 계획에서 user judgment visibility는 status/ne
 
 Standalone full-format judgment, design, export, journey, detailed run, detailed evidence, Eval, TDD trace, module map, interface-contract projection을 위한 dedicated refresh target은 기능이 켜져 있을 때만 사용하는 profile-gated Future/diagnostic projections 또는 Operations/export reports이며, Kernel Smoke 필수 대상이 아닙니다.
 
-Projection support는 source-backed입니다. MVP-1은 [Projection과 Template 참조](projection-and-templates.md#mvp-1-보기-세트)와 [Template 참조](templates/README.md#mvp-1-템플릿-세트)가 소유한 네 가지 사용자용 작은 출력으로 persisted projection support 없이 사용자 읽기용 output을 충족할 수 있습니다. 에이전트용 맥락은 별도 `agent-context-packet`을 사용합니다. Later/full-profile, assurance, operations/export, diagnostic report kind는 owner profile이 승격하지 않는 한 projection/template owner에 남습니다. Projection refresh는 template을 채우기 위해 state를 만들지 말고 source record가 없음을 unavailable 또는 not applicable로 보고해야 합니다.
+Projection support는 source-backed입니다. MVP-1은 [Projection과 Template 참조](projection-and-templates.md#mvp-1-보기-세트)가 소유한 네 가지 사용자용 작은 출력으로 persisted projection support 없이 사용자 읽기용 output을 충족할 수 있습니다. 에이전트용 맥락은 별도 `agent-context-packet`을 사용합니다. Later/full-profile, assurance, operations/export, diagnostic report kind는 owner profile이 승격하기 전까지 후보일 뿐입니다. Projection refresh는 template을 채우기 위해 state를 만들지 말고 source record가 없음을 unavailable 또는 not applicable로 보고해야 합니다.
 
 Projection refresh status 예시:
 
 | Report line | Meaning |
 |---|---|
-| `TASK current source_state_version=44` | 렌더링된 `TASK` view가 committed Task state version 및 managed hash와 일치합니다. |
-| `TASK stale source_state_version=41 current_task_state_version=44` | State가 렌더링된 view보다 앞서 이동했습니다. Task result가 failed된 것이 아니며, view에 refresh 또는 reconcile이 필요합니다. |
-| `RUN-SUMMARY failed projection_job_id=PJOB-088` | Latest render가 failed입니다. Committed Run은 자기 `runs.status`를 유지하며 projection failure는 별도로 보고됩니다. |
-| `APR skipped managed_block_drift reconcile_item=REC-019` | Projector가 변경된 managed block을 overwrite하지 않고 drift를 reconcile로 보냈습니다. |
-| optional `EXPORT` projection enabled: `EXPORT stale artifact ART-204 unavailable` | Optional `EXPORT` projection/report surface가 켜진 경우에만 해당합니다. `EXPORT`를 Kernel Smoke 또는 초기 필수 refresh target으로 만들지 않으며, underlying Task state가 failed했다는 증거도 아닙니다. |
+| `task view current source_state_version=44` | 렌더링된 task view가 committed Task state version 및 managed hash와 일치합니다. |
+| `task view stale source_state_version=41 current_task_state_version=44` | State가 렌더링된 view보다 앞서 이동했습니다. Task result가 failed된 것이 아니며, view에 refresh 또는 reconcile이 필요합니다. |
+| `run summary view failed projection_job_id=PJOB-088` | Latest render가 failed입니다. Committed Run은 자기 `runs.status`를 유지하며 projection failure는 별도로 보고됩니다. |
+| `approval view skipped managed_block_drift reconcile_item=REC-019` | Projector가 변경된 managed block을 overwrite하지 않고 drift를 reconcile로 보냈습니다. |
+| optional export projection enabled: `export report stale artifact ART-204 unavailable` | Optional export projection/report surface가 켜진 경우에만 해당합니다. Export를 Kernel Smoke 또는 초기 필수 refresh target으로 만들지 않으며, underlying Task state가 failed했다는 증거도 아닙니다. |
 
 ## reconcile
 
@@ -509,8 +509,8 @@ Export manifest summary 예시:
 task_id: TASK-1234
 created_at: 2026-05-10T09:30:00Z
 included_projection_freshness:
-  TASK: current
-  EVAL: stale
+  task_report: current
+  verification_report: stale
 export_bundle_status: current
 user_judgment_refs:
   included: [UJ-010, UJ-011]
@@ -535,7 +535,7 @@ omitted_artifacts:
     note: metadata-only notice included; raw payload unavailable
 ```
 
-이 display shape는 예시입니다. 필요한 동작은 export가 included projection freshness, artifact integrity, user judgments, residual risks, omitted 또는 blocked artifacts, redaction/omission/block effect를 보고하면서 raw staged, omitted, blocked, secret, PII value를 bundle에 복사하지 않는 것입니다. `export_bundle_status`는 생성 중인 bundle에 대한 report status이며, canonical state record나 required `EXPORT` projection job이 아닙니다.
+이 display shape는 예시입니다. 필요한 동작은 export가 included projection freshness, artifact integrity, user judgments, residual risks, omitted 또는 blocked artifacts, redaction/omission/block effect를 보고하면서 raw staged, omitted, blocked, secret, PII value를 bundle에 복사하지 않는 것입니다. `export_bundle_status`는 생성 중인 bundle에 대한 report status이며, canonical state record나 required export projection job이 아닙니다.
 
 ### Release Handoff Export Profile
 
@@ -551,7 +551,7 @@ Release Handoff는 release readiness visibility를 위한 optional 보고서/exp
 - secret, sensitive log, PII, omitted artifact, blocked artifact에 대한 redaction/omission/block note
 - 사용자 external system을 위한 suggested PR, review, deployment, rollback, monitoring checklist item
 
-Release Handoff는 `EXPORT` projection/보고서로 렌더링되거나, export bundle에 포함되거나, ephemeral 보고서 접점으로 반환될 수 있습니다. 새로운 deployment 권한 기록을 만들지 않습니다.
+Release Handoff는 export projection/보고서로 렌더링되거나, export bundle에 포함되거나, ephemeral 보고서 접점으로 반환될 수 있습니다. 새로운 deployment 권한 기록을 만들지 않습니다.
 
 Boundary:
 

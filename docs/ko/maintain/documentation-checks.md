@@ -184,6 +184,6 @@ runtime conformance는 별도입니다. 구현된 Core/API/storage/surface behav
 ### Template scope 점검
 
 - 점검 유형: `manual`.
-- 볼 것: Template reference, projection/template page, Use 문서, Build 문서, Later 문서, future template이나 rendered output을 언급하는 Roadmap item.
-- 자주 실패하는 예: Later-profile export template이 MVP-1 close에 필요하다고 합니다. Future template body가 current MVP requirement처럼 쓰입니다. 사용자용 문서가 Template Reference owner로 link하지 않고 full template body를 중복합니다.
-- 통과 의미: Future template은 owner가 승격하기 전까지 future 또는 later-profile material로 남습니다. Active MVP requirement는 active stage에 필요한 template과 rendered view만 이름 붙입니다. Full template body는 Template Reference owner에 남습니다.
+- 볼 것: Projection/template page, Use 문서, Build 문서, Later 문서, future template이나 rendered output을 언급하는 Roadmap item.
+- 자주 실패하는 예: Later-profile export template이 MVP-1 close에 필요하다고 합니다. Future template body가 current MVP requirement처럼 쓰입니다. 사용자용 문서가 Projection과 Template owner로 link하지 않고 full template body를 중복합니다.
+- 통과 의미: Future template은 owner가 승격하기 전까지 future 또는 later-profile material로 남습니다. Active MVP requirement는 active stage에 필요한 template과 rendered view만 이름 붙입니다. 활성 현재 MVP template body는 Projection과 Template owner에 남습니다.

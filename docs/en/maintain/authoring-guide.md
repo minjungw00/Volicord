@@ -100,7 +100,7 @@ Use this map before adding a strict rule:
 | Core Model | [Core Model Reference](../reference/core-model.md) | Invariants, entity relationship semantics where they affect state, lifecycle and state transitions, gates, `prepare_write`, Write Authorization, `record_run`, close semantics, waivers, and non-substitution rules. |
 | MCP API | [MVP API](../reference/api/mvp-api.md), [API Schema Core](../reference/api/schema-core.md), [API Errors](../reference/api/errors.md), and [API Schema Later](../later/index.md#later-schema-candidates) | Active MVP-1 tools, public MCP resources, common envelopes, request/response schemas, shared refs, public errors, idempotency/replay, state conflict behavior, `ValidatorResult`, API `ArtifactRef`, and later-profile API material. |
 | Storage | [Storage](../reference/storage.md) | Runtime home layout, persisted state, SQLite DDL profiles, storage-owned JSON `TEXT`, enum hardening, migrations, locks, artifact storage, baseline capture, projection job table, and validator-run storage. |
-| Projection | [Projection And Templates Reference](../reference/projection-and-templates.md) and [Template Reference](../reference/templates/README.md) | Derived view rules, output tiers, managed blocks, human-editable sections, artifact-ref rendering, projection freshness/failure behavior, and full rendered template bodies. |
+| Projection | [Projection And Templates Reference](../reference/projection-and-templates.md) | Derived view rules, output tiers, managed blocks, human-editable sections, artifact-ref rendering, projection freshness/failure behavior, and active current MVP rendered template bodies. |
 | Security | [Security Reference](../reference/security.md) | Threat model, assets, trust boundaries, threat/control categories, high-risk control expectations, local access security posture, guarantee-level meanings, and honest-display rules. |
 | Conformance | [Conformance Fixtures Reference](../reference/conformance-fixtures.md) and [Future Fixtures](../later/index.md#future-fixture-families) | Conformance Fixtures owns the three-layer boundary, core conformance model, MVP behavior examples, future fixture body shape, future runner behavior, assertion semantics, future fixture profiles, suite metadata boundaries, current-phase status, and reduced Kernel Smoke queue. Future Fixtures owns compact future scenario-family inventory, promotion criteria, suite-family labels, and catalog-only future candidates outside the active MVP path. |
 | Operations | [Operations And Conformance Reference](../reference/operations-and-conformance.md) | Operator behavior, staged operator surface, diagnostics, `connect`, `doctor`, `serve mcp`, projection refresh, reconcile, recover, export, artifact checks, future conformance run entrypoint, and documentation-check/docs-maintenance reporting boundary. |
@@ -352,20 +352,19 @@ Start and Use docs may start with ordinary requests, practical examples, or user
 
 Heading text differences are not drift when the document serves the reader situation, necessary context is present, owner links remain valid, exact contract details stay in Reference owners, and English/Korean versions are semantically aligned.
 
-### Template reference opening
+### Projection template body sections
 
-Template reference files use a specialized opening pattern. Docs-maintenance identifies them by path: `docs/*/reference/templates/README.md` for the directory index and non-README Markdown files under `docs/*/reference/templates/` for individual templates.
+Active current MVP template bodies live in [Projection And Templates Reference](../reference/projection-and-templates.md), not in a separate template directory.
 
-The directory README should begin with `Used when`, then output tiers and template implementation classes. It should explain that the directory owns rendered template bodies and display card shapes while projection rules, freshness behavior, and authority boundaries stay with their Reference owners.
-
-Each individual template file should begin with these sections, in this order:
+Each active template body should include these parts:
 
 - `Used when`
 - `Source records`
 - `Rendered sections`
-- `Full template`
+- `Template`
+- notes only when they protect authority, compactness, freshness, or display-label boundaries
 
-Template files must make the non-authority boundary visible: a template is rendered display, not canonical state, gate authority, sensitive-action approval, final acceptance, residual-risk acceptance, evidence, schema, DDL, or runtime behavior.
+Template body sections must make the non-authority boundary visible: a template is rendered display, not canonical state, gate authority, sensitive-action approval, final acceptance, residual-risk acceptance, evidence, schema, DDL, or runtime behavior.
 
 ### Conformance and fixture layering
 
@@ -391,9 +390,9 @@ For boundaries that are easy to repeat, use these owners:
 | Local Derived Metrics | [Roadmap: Candidate Inventory](../later/index.md#roadmap-candidates) |
 | Role Lens | [Agent Integration: Role Lens Behavior](../reference/agent-integration.md#role-lens-behavior) |
 | Review Stages | [Design Quality Policies: Two-stage Review Display](../reference/design-quality-policies.md#two-stage-review-display) |
-| Release Handoff and export | [Operations And Conformance: Release Handoff Export Profile](../reference/operations-and-conformance.md#release-handoff-export-profile); rendered shape in the later-profile [EXPORT Template](../later/index.md#later-template-candidates) |
+| Release Handoff and export | [Operations And Conformance: Release Handoff Export Profile](../reference/operations-and-conformance.md#release-handoff-export-profile); later rendered shapes stay candidate-only in [Later Template Candidates](../later/index.md#later-template-candidates) until promoted. |
 | Docs-maintenance | [Authoring Guide: Docs-maintenance checks](#docs-maintenance-checks) for rule bodies; [Documentation Checks](documentation-checks.md) for the final validation checklist; [Operations And Conformance: Docs-maintenance profile](../reference/operations-and-conformance.md#docs-maintenance-profile) for operator reporting |
-| Projection and report surfaces | [Projection And Templates Reference](../reference/projection-and-templates.md); rendered shapes in [Template Reference](../reference/templates/README.md) |
+| Projection and report surfaces | [Projection And Templates Reference](../reference/projection-and-templates.md) |
 | Security assets, trust boundaries, threat categories, control categories, guarantee-level meanings, and high-risk cooperative/detective/preventive/isolated security expectations | [Security Reference](../reference/security.md) for threat concepts and honest guarantee display; exact API, storage, Core, connector, operations, and conformance behavior stays with those owners |
 
 ### Owner-link summary pattern
@@ -428,7 +427,7 @@ Use this map for broad document routing. For strict Reference contracts, use the
 | SQLite DDL, migrations, storage layout, lock policy, artifact directory layout, baseline capture format, projection job table | `reference/storage.md` |
 | MVP implementation order, smoke target, and planning exit criteria | `build/mvp-plan.md` |
 | Markdown-rendered projection principles, authority matrix, managed blocks, human-editable sections, artifact reference rendering, output tiers, template implementation classes, projection freshness/failure rules | `reference/projection-and-templates.md` |
-| All projection template bodies and display card shapes | `reference/templates/*.md` |
+| All active current MVP projection template bodies and display card shapes | `reference/projection-and-templates.md` |
 | Design-quality policy contracts, validators, severity composition, waiver semantics, evidence expectations, close impact | `reference/design-quality-policies.md` |
 | User-facing conversation, status reading, user judgments, close checklist | `use/user-guide.md` |
 | Practical user-owned judgment examples and user-facing judgment request patterns | `use/judgment-examples.md` for examples; `reference/core-model.md` and `reference/api/mvp-api.md` for exact user judgment behavior |

@@ -114,7 +114,7 @@ Operator command map by behavior family:
 
 Operator output should help a person decide what to do next without teaching a second state model. A useful diagnostic line names the category, level, observed fact, affected record or path when safe, operational effect, and next action. It also says when a finding is only diagnostic.
 
-For example, "projection `TASK` is stale" means the readable view is behind the owner records; it does not mean Task state failed. A close/readiness line that depends on report freshness must show the current Core state version separately from the projection `source_state_version` or failed job status. "generated-file drift detected" means a connector-managed file no longer matches the manifest; it is reported and routed to reconcile rather than overwritten. "recovery event appended" means history was extended with a compensating record; it does not mean older `task_events` were rewritten.
+For example, "projection view is stale" means the readable view is behind the owner records; it does not mean Task state failed. A close/readiness line that depends on report freshness must show the current Core state version separately from the projection `source_state_version` or failed job status. "generated-file drift detected" means a connector-managed file no longer matches the manifest; it is reported and routed to reconcile rather than overwritten. "recovery event appended" means history was extended with a compensating record; it does not mean older `task_events` were rewritten.
 
 These examples are display guidance. They do not add command flags, state tables, event names, public `ErrorCode` values, or fixture fields.
 
@@ -260,8 +260,8 @@ Compact doctor examples:
 | MCP availability | `MCP availability FAIL MCP_SERVER_UNAVAILABLE localhost endpoint refused` | Core cannot be reached through MCP, so no authoritative Core response or state-changing claim is available from that path. |
 | reference surface | `reference surface WARN SURFACE_MCP_UNAVAILABLE required tool not callable by SURFACE-REF` | Core may be reachable, but this connected surface cannot use the required MCP path; write-capable work is held according to the guarantee profile. |
 | artifact store | `artifact store FAIL ART-204 hash_mismatch; evidence_gate may become stale` | The artifact record and stored file disagree; Markdown edits do not repair the evidence. |
-| projections | `projections WARN TASK stale source_state_version=41 current_task_state_version=44` | Task state may still be valid; the readable `TASK` view lags and should be refreshed or reconciled. |
-| projections | `projections FAIL RUN-SUMMARY failed render_error=template_input_missing` | The projection job failed; the Run record is not converted into a failed Run by this display failure. |
+| projections | `projections WARN task-view stale source_state_version=41 current_task_state_version=44` | Task state may still be valid; the readable task view lags and should be refreshed or reconciled. |
+| projections | `projections FAIL run-summary-view failed render_error=template_input_missing` | The projection job failed; the Run record is not converted into a failed Run by this display failure. |
 | reconcile | `reconcile MANUAL generated-file drift .harness/agent/generated/reference-instructions.md` | The generated file is reported and routed for review; it is not silently overwritten or treated as state. |
 | validators/checks | `validators/checks WARN context_hygiene_check stale projection refs` | Stable validators and Core checks are reported separately; a mechanical projection freshness issue is not a new validator ID. |
 | agency/stewardship/context | `agency/stewardship/context FAIL User Judgment required for user-owned trade-off` | The blocker routes to the User Judgment path; broad approval or status prose cannot satisfy the judgment. |
@@ -374,17 +374,17 @@ flowchart TD
 
 For staged delivery, user judgment visibility is rendered through status/next responses, judgment-context resources, user-judgment resources, compatibility decision-packet resources when enabled, and the owner-defined MVP-1 judgment view. Current-position context is rendered through the owner-defined compact MVP views first. Kernel Smoke does not require dedicated refresh targets for standalone full-format judgment, design, export, journey, detailed run, detailed evidence, Eval, TDD trace, module map, or interface-contract projections; those targets are profile-gated Future/diagnostic projections or Operations/export reports when enabled.
 
-Projection support is source-backed. MVP-1 can satisfy user-readable output with the four user-facing compact outputs owned by [Projection And Templates Reference](projection-and-templates.md#mvp-1-view-set) and [Template Reference](templates/README.md#mvp-1-template-set) without persisted projection support; agent-facing context uses the separate `agent-context-packet`. Later/full-profile, assurance, operations/export, and diagnostic report kinds remain with their projection/template owners unless an owner profile promotes them. Projection refresh must report missing source records as unavailable or not applicable rather than creating state to satisfy a template.
+Projection support is source-backed. MVP-1 can satisfy user-readable output with the four user-facing compact outputs owned by [Projection And Templates Reference](projection-and-templates.md#mvp-1-view-set) without persisted projection support; agent-facing context uses the separate `agent-context-packet`. Later/full-profile, assurance, operations/export, and diagnostic report kinds remain candidate-only unless an owner profile promotes them. Projection refresh must report missing source records as unavailable or not applicable rather than creating state to satisfy a template.
 
 Illustrative projection refresh statuses:
 
 | Report line | Meaning |
 |---|---|
-| `TASK current source_state_version=44` | The rendered `TASK` view matches the committed Task state version and managed hash. |
-| `TASK stale source_state_version=41 current_task_state_version=44` | State moved ahead of the rendered view. The Task result did not fail; the view needs refresh or reconcile. |
-| `RUN-SUMMARY failed projection_job_id=PJOB-088` | The latest render failed. The committed Run keeps its own `runs.status`; projection failure is reported separately. |
-| `APR skipped managed_block_drift reconcile_item=REC-019` | The projector avoided overwriting a changed managed block and routed the drift to reconcile. |
-| optional `EXPORT` projection enabled: `EXPORT stale artifact ART-204 unavailable` | Applies only when the optional `EXPORT` projection/report surface is enabled. It does not make `EXPORT` a Kernel Smoke or early mandatory refresh target, and it is not proof that the underlying Task state failed. |
+| `task view current source_state_version=44` | The rendered task view matches the committed Task state version and managed hash. |
+| `task view stale source_state_version=41 current_task_state_version=44` | State moved ahead of the rendered view. The Task result did not fail; the view needs refresh or reconcile. |
+| `run summary view failed projection_job_id=PJOB-088` | The latest render failed. The committed Run keeps its own `runs.status`; projection failure is reported separately. |
+| `approval view skipped managed_block_drift reconcile_item=REC-019` | The projector avoided overwriting a changed managed block and routed the drift to reconcile. |
+| optional export projection enabled: `export report stale artifact ART-204 unavailable` | Applies only when the optional export projection/report surface is enabled. It does not make export a Kernel Smoke or early mandatory refresh target, and it is not proof that the underlying Task state failed. |
 
 ## reconcile
 
@@ -507,8 +507,8 @@ Illustrative export manifest summary:
 task_id: TASK-1234
 created_at: 2026-05-10T09:30:00Z
 included_projection_freshness:
-  TASK: current
-  EVAL: stale
+  task_report: current
+  verification_report: stale
 export_bundle_status: current
 user_judgment_refs:
   included: [UJ-010, UJ-011]
@@ -533,7 +533,7 @@ omitted_artifacts:
     note: metadata-only notice included; raw payload unavailable
 ```
 
-This display shape is illustrative. The required behavior is that export reports freshness for included projections, artifact integrity, user judgments, residual risks, omitted or blocked artifacts, and redaction/omission/block effects without copying raw staged, omitted, blocked, secret, or PII values into the bundle. `export_bundle_status` is report status for the bundle being produced; it is not a canonical state record or a required `EXPORT` projection job.
+This display shape is illustrative. The required behavior is that export reports freshness for included projections, artifact integrity, user judgments, residual risks, omitted or blocked artifacts, and redaction/omission/block effects without copying raw staged, omitted, blocked, secret, or PII values into the bundle. `export_bundle_status` is report status for the bundle being produced; it is not a canonical state record or a required export projection job.
 
 ### Release Handoff Export Profile
 
@@ -549,7 +549,7 @@ The profile summarizes:
 - redaction, omission, or block notes for secrets, sensitive logs, PII, omitted artifacts, and blocked artifacts
 - suggested PR, review, deployment, rollback, and monitoring checklist items for the user's external systems
 
-Release Handoff may be rendered as an `EXPORT` projection/report, included in an export bundle, or returned as an ephemeral report surface. It does not create a new deployment authority record.
+Release Handoff may be rendered as an export projection/report, included in an export bundle, or returned as an ephemeral report surface. It does not create a new deployment authority record.
 
 Boundary:
 

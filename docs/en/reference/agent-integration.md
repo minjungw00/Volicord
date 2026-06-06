@@ -25,7 +25,7 @@ This reference does not own:
 - Core state transitions, gates, `prepare_write`, Write Authorization, `record_run`, or `close_task`; see [Core Model Reference](core-model.md)
 - public MCP method contracts, schemas, or public errors; see [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), and [API Errors](api/errors.md)
 - Storage DDL, persisted state, and artifact layout; see [Storage](storage.md)
-- projection/template authority and rendered template bodies; see [Projection And Templates Reference](projection-and-templates.md) and [Template Reference](templates/README.md)
+- projection/template authority and active rendered template bodies; see [Projection And Templates Reference](projection-and-templates.md)
 - threat model and guarantee-level meanings; see [Security Reference](security.md)
 - exact fixture format or future runner behavior; see [Conformance Fixtures Reference](conformance-fixtures.md)
 - operator commands and diagnostics; see [Operations And Conformance Reference](operations-and-conformance.md)

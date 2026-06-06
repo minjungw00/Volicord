@@ -25,7 +25,7 @@
 - Core 상태 전이, gate, `prepare_write`, Write Authorization, `record_run`, `close_task`. [Core Model 참조](core-model.md)를 봅니다.
 - 공개 MCP method 계약, schema, public error. [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md)를 봅니다.
 - Storage DDL, 지속 상태, artifact layout. [Storage](storage.md)를 봅니다.
-- Projection/template 권한과 rendered template body. [Projection과 Template 참조](projection-and-templates.md)와 [Template 참조](templates/README.md)를 봅니다.
+- Projection/template 권한과 active rendered template body. [Projection과 Template 참조](projection-and-templates.md)를 봅니다.
 - 위협 모델과 guarantee-level 의미. [보안 참조](security.md)를 봅니다.
 - 정확한 fixture format 또는 future runner behavior. [Conformance Fixtures 참조](conformance-fixtures.md)를 봅니다.
 - Operator command와 diagnostic. [운영과 Conformance 참조](operations-and-conformance.md)를 봅니다.

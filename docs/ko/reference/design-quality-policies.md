@@ -101,7 +101,7 @@ request evidence | mark residual risk | show advisory next action | no action
 - gate enum 정의. [Core Model 참조](core-model.md)와 [API Schema Core](api/schema-core.md)를 봅니다.
 - public MCP request/response schema. [MVP API](api/mvp-api.md)와 [API Schema Core](api/schema-core.md)를 봅니다.
 - SQLite DDL 또는 storage layout. [Storage](storage.md)를 봅니다.
-- projection template 본문. [Projection과 Template 참조](projection-and-templates.md)와 [Template 참조](templates/README.md)를 봅니다.
+- projection template 본문. [Projection과 Template 참조](projection-and-templates.md)를 봅니다.
 - operator command 의미. [운영과 Conformance](operations-and-conformance.md)를 봅니다.
 - connector capability profile. [Agent 통합 참조](agent-integration.md)를 봅니다.
 - surface recipe. [Agent 통합 참조](agent-integration.md)를 봅니다.
@@ -374,7 +374,7 @@ Requirement levels:
 | `applies_when` | Domain logic, service module, bug fix, parser/validator, state transition, deep module internal, edge-case-heavy behavior. API/caller boundary와 integration behavior에는 권장된다. |
 | `default_requirement` | TDD가 가장 알맞고 비례적인 selected feedback loop이거나 Change Unit, behavior slice, active policy/profile, user, operator가 `tdd_trace_required`로 표시한 경우 TDD를 사용한다. Enabled required-TDD path의 normal execution order는 feedback loop와 RED target 정의, RED check 작성 또는 실행, actual RED 증거 기록, actual RED 증거 또는 valid waiver가 있을 때만 non-test implementation 수행, GREEN 증거 기록, relevant한 경우 refactor/check evidence 기록, TDD trace를 evidence coverage에 연결하는 순서다. |
 | `allowed_waiver` | Docs, typo, throwaway prototype, exploratory UI prototype, initial scaffold, 또는 user/operator가 non-TDD justification과 대체 feedback loop를 기록한 경우 허용된다. Waiver는 이 slice에 TDD가 유용하지 않거나 proportionate하지 않은 이유를 명시하고 신뢰할 수 있는 feedback을 제공할 대체 feedback loop를 참조하거나 정의해야 한다. |
-| `required_record` | `tdd_traces` 기록과 렌더링될 때 `TDD-TRACE` projection. |
+| `required_record` | `tdd_traces` 기록과 active일 때 렌더링되는 TDD trace projection. |
 | `validator` | `tdd_trace_required` |
 | `evidence` | Actual failing test artifact/log/result 또는 policy가 명시적으로 인정한 failing-check evidence, passing test log, relevant한 경우 refactor check log, diff refs, 활성 evidence summary ref, 해당 profile이 active일 때만 later Evidence Manifest coverage ref, 면제 시 non-TDD justification과 대체 feedback loop. RED target 또는 RED plan은 planning record이지 증거가 아니다. |
 | `close_impact` | 활성 MVP 기본값: user, active profile, owner path가 TDD를 required evidence로 명시적으로 선택하지 않는 한 advisory/later입니다. Missing TDD Trace는 증거 요청 또는 조언으로 보는 다음 행동으로 라우팅할 수 있습니다. Core evidence path에서 required evidence가 missing일 때만 write 또는 close를 차단합니다. Full RED/GREEN/refactor trace enforcement는 enabled 전까지 later/profile입니다. |
@@ -408,7 +408,7 @@ TDD execution loop:
 | `applies_when` | New product term이 나타나거나, existing term이 new meaning으로 쓰이거나, code와 product language가 diverge하거나, 여러 이름이 하나의 concept를 가리키거나, reviewer/evaluator가 term mismatch를 발견할 때. |
 | `default_requirement` | 영향을 받는 term의 meaning, code representation, "not this" 경계, related term, source, status를 기록하거나 갱신한다. Implementation agent는 task-relevant term만 가져오고, reviewer/evaluator는 relevant term과 active terminology uncertainty를 받는다. Term choice에 사용자 소유 제품 판단이나 기술 판단이 필요하면 그 판단을 `decision_quality`로 라우팅한다. Term record는 decision path가 허용한 뒤 선택된 language를 담는다. |
 | `allowed_waiver` | Work에 domain term impact가 없거나 term이 의도적으로 local/temporary일 때 허용된다. Waiver는 기준 term update가 필요 없는 이유를 기록해야 한다. |
-| `required_record` | Domain/stewardship profile이 active일 때 `record_kind=domain_term`으로 참조되는 `domain_terms` record; `DOMAIN-LANGUAGE`는 projection/proposal 접점일 뿐이다. 활성 MVP에서는 `record_kind=domain_term`을 accept하지 않고도 terminology concern을 advisory guidance, evidence request, residual-risk visibility, user judgment로 라우팅할 수 있습니다. |
+| `required_record` | Domain/stewardship profile이 active일 때 `record_kind=domain_term`으로 참조되는 `domain_terms` record. Domain-language projection은 projection/proposal 접점일 뿐입니다. 활성 MVP에서는 `record_kind=domain_term`을 accept하지 않고도 terminology concern을 advisory guidance, evidence request, residual-risk visibility, user judgment로 라우팅할 수 있습니다. |
 | `validator` | `domain_language_consistency` |
 | `evidence` | Domain term ref, code ref, test naming ref, proposal용 reconcile item ref. |
 | `close_impact` | 활성 MVP 기본값: routed candidate 또는 advisory/later. Full domain-language consistency는 자동 write/close blocker가 아닙니다. Term conflict는 집중된 사용자 판단 요청, 증거 요청, 잔여 위험 표시, 조언으로 보는 다음 행동 중 하나로 라우팅할 수 있습니다. Conflict가 unresolved user judgment, missing required evidence, stale context affecting write/close, 또는 Core가 scope/decision/evidence blocker로 표현하는 active public-scope commitment에도 해당할 때만 write 또는 close를 차단합니다. |
@@ -430,7 +430,7 @@ TDD execution loop:
 | `applies_when` | 공개 interface change, module 경계 change, schema/data model change, auth/security 경계, compatibility impact, deep module internal, shallow-module risk. |
 | `default_requirement` | 영향을 받는 module, current role, proposed 공개 interface, interface 뒤에 숨겨진 internal complexity, 모듈 단위 watchpoints, 영향을 받는 caller, compatibility impact, 테스트 경계를 식별한다. 충분한 internal capability를 뒤에 둔 작고 simple한 공개 interface를 선호한다. 사용자 소유 제품 판단이나 기술 판단이 필요한 공개 interface, compatibility, architecture, module responsibility 선택에는 user judgment를 사용한다. |
 | `allowed_waiver` | Public 경계 impact, dependency direction change, 호환성 위험이 없고 localized internal change일 때 허용된다. Module/interface review가 불필요한 이유를 기록해야 한다. |
-| `required_record` | Module/interface profile이 active일 때 `record_kind=module_map_item`과 `record_kind=interface_contract`로 참조되는 `module_map_items` 및 `interface_contracts` records, decision record, 선택적 `MODULE-MAP` / `INTERFACE-CONTRACT` projection. 활성 MVP에서는 이 later record kind를 accept하지 않고도 boundary concern을 advisory guidance, evidence request, residual-risk visibility, user judgment로 라우팅할 수 있습니다. |
+| `required_record` | Module/interface profile이 active일 때 `record_kind=module_map_item`과 `record_kind=interface_contract`로 참조되는 `module_map_items` 및 `interface_contracts` records, decision record, 선택적 module-map 또는 interface-contract projection. 활성 MVP에서는 이 later record kind를 accept하지 않고도 boundary concern을 advisory guidance, evidence request, residual-risk visibility, user judgment로 라우팅할 수 있습니다. |
 | `validator` | `module_interface_review` |
 | `evidence` | Module map item ref, relevant한 경우 모듈 단위 watchpoints, interface contract ref, 호출자 영향 list, 경계 테스트, design decision, compatibility note. |
 | `close_impact` | 활성 MVP 기본값: routed candidate 또는 advisory/later. Full module/interface review는 자동 write/close blocker가 아닙니다. Boundary concern은 집중된 사용자 판단 요청, 증거 요청, 잔여 위험 표시, 조언으로 보는 다음 행동 중 하나로 라우팅할 수 있습니다. Core에 이미 missing scope, unresolved user judgment, missing required evidence, stale context, 또는 claimed guarantee에 대한 surface capability insufficiency가 있을 때만 write 또는 close를 차단합니다. |

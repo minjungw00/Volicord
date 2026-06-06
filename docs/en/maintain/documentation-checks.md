@@ -184,6 +184,6 @@ Use this as a final manual sweep before maintainers consider documentation accep
 ### Template-Scope Check
 
 - Review type: `manual`.
-- What to inspect: Template references, projection/template pages, Use docs, Build docs, Later docs, and Roadmap items that mention future templates or rendered outputs.
-- Common failure examples: A later-profile export template is required for MVP-1 close. Future template bodies are treated as current MVP requirements. A user-facing page duplicates full template bodies instead of linking to the Template Reference owner.
-- Pass means: Future templates remain future or later-profile material unless an owner promotes them. Active MVP requirements name only the templates and rendered views required by the active stage. Full template bodies stay with the Template Reference owner.
+- What to inspect: Projection/template pages, Use docs, Build docs, Later docs, and Roadmap items that mention future templates or rendered outputs.
+- Common failure examples: A later-profile export template is required for MVP-1 close. Future template bodies are treated as current MVP requirements. A user-facing page duplicates full template bodies instead of linking to the Projection And Templates owner.
+- Pass means: Future templates remain future or later-profile material unless an owner promotes them. Active MVP requirements name only the templates and rendered views required by the active stage. Active current MVP template bodies stay with the Projection And Templates owner.

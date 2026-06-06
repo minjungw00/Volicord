@@ -19,7 +19,7 @@ This document does not own:
 
 - Public MCP request or response shapes. Use [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), and [API Errors](api/errors.md).
 - Storage tables, DDL, runtime home layout, locks, migrations, or persisted JSON layout. Use [Storage](storage.md).
-- Rendered projection bodies or template text. Use [Projection And Templates Reference](projection-and-templates.md) and [Template Reference](templates/README.md).
+- Rendered projection bodies or template text. Use [Projection And Templates Reference](projection-and-templates.md).
 - Connector capability profiles or surface recipes. Use [Agent Integration Reference](agent-integration.md).
 - Security guarantee vocabulary beyond Core authority consequences. Use [Security Reference](security.md).
 - Later/profile catalogs. Use [Later](../later/index.md) until a profile owner promotes material into active scope.
@@ -225,7 +225,7 @@ Use these owners when Core authority touches another contract:
 
 - Public API methods, request/response shapes, envelopes, state conflicts, and errors: [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), and [API Errors](api/errors.md).
 - Storage tables, DDL, runtime home layout, locks, migrations, artifact storage, and enum hardening: [Storage](storage.md).
-- Projection freshness, readable views, managed blocks, human-editable sections, and rendered template bodies: [Projection And Templates Reference](projection-and-templates.md) and [Template Reference](templates/README.md).
+- Projection freshness, readable views, managed blocks, human-editable sections, and active rendered template bodies: [Projection And Templates Reference](projection-and-templates.md).
 - Security guarantee language, cooperative/detective/preventive/isolated labels, and local access posture: [Security Reference](security.md).
 - Runtime boundary placement and Core-only mutation authority: [Runtime Boundaries Reference](runtime-boundaries.md).
 - Design-quality policy activation and validator impact routing: [Design Quality Policies](design-quality-policies.md).

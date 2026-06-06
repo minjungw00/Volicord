@@ -152,7 +152,7 @@ Build는 순서와 범위만 요약합니다. 정확한 contract는 아래 담�
 | Task, scope, user judgment, `prepare_write`, Write Authorization, `record_run`, evidence gate, blocker, status, close semantics | [Core Model 참조](../reference/core-model.md). |
 | Runtime home layout, minimal storage profile, lock, migration, artifact, later-profile storage boundary | [Storage](../reference/storage.md). |
 | MVP security guarantee wording과 local-access posture | [보안 참조](../reference/security.md). |
-| Compact derived view, projection authority boundary, freshness, template ownership | [Projection과 Template 참조](../reference/projection-and-templates.md)와 [Template 참조](../reference/templates/README.md). |
+| Compact derived view, projection authority boundary, freshness, active template ownership | [Projection과 Template 참조](../reference/projection-and-templates.md). |
 | Reference surface `capability_profile`과 사용자용 surface behavior | [Agent 통합 참조](../reference/agent-integration.md). |
 | 런타임 경계와 local Core authority placement | [런타임 경계 참조](../reference/runtime-boundaries.md). |
 | Active design-quality blocking boundary | [설계 품질 정책](../reference/design-quality-policies.md#활성-mvp-차단-집합). |

@@ -18,8 +18,7 @@ The owner is the only place to define exact fields, enum values, lifecycle state
 | Storage layout, SQLite DDL profiles, persisted tables, storage-owned JSON `TEXT`, locks, migrations, artifacts, baselines, projection-job storage, and validator-run storage | [Storage](storage.md) |
 | Security assets, local access posture, trust boundaries, threat/control categories, guarantee-level meanings, and honest cooperative/detective/preventive/isolated wording | [Security Reference](security.md) |
 | Agent integration, connector capability profiles, fallback behavior, context push/pull, generated manifests, Role Lens behavior, and compact surface recipes | [Agent Integration Reference](agent-integration.md) |
-| Projection rules, readable views, authority boundaries, freshness/failure behavior, managed blocks, human-editable sections, template classes, and artifact-ref rendering | [Projection And Templates Reference](projection-and-templates.md) |
-| Full rendered template bodies, card bodies, and template display shapes | [Template Reference](templates/README.md) |
+| Projection rules, readable views, authority boundaries, freshness/failure behavior, managed blocks, human-editable sections, active template bodies, template classes, card bodies, template display shapes, and artifact-ref rendering | [Projection And Templates Reference](projection-and-templates.md) |
 | Conformance model, MVP behavior examples, future fixture body shape, future runner/assertion semantics, fixture profiles, suite metadata boundaries, current-phase fixture status, and Kernel Smoke authoring queue | [Conformance Fixtures Reference](conformance-fixtures.md) |
 | Future scenario-family inventory, promotion criteria, suite-family labels, and catalog-only future candidates outside the MVP path | [Future Fixtures](../later/index.md#future-fixture-families) |
 | Operations, diagnostics, staged operator surface, recovery/export/reconcile operations, artifact checks, future conformance run entrypoints, and docs-maintenance reporting profile | [Operations And Conformance Reference](operations-and-conformance.md) |
@@ -37,7 +36,7 @@ Documentation authoring, translation, review, link hygiene, owner-boundary drift
 - API question: start with [MVP API](api/mvp-api.md) for active methods, [API Schema Core](api/schema-core.md) for shared shapes, [API Errors](api/errors.md) for public errors, and [API Schema Later](../later/index.md#later-schema-candidates) for later/profile-gated material.
 - Storage or DDL question: start with [Storage](storage.md).
 - Security guarantee question: start with [Security Reference](security.md), then the exact API, storage, Core, connector, operations, or conformance owner for the covered operation.
-- Projection or template question: start with [Projection And Templates Reference](projection-and-templates.md); use [Template Reference](templates/README.md) only when the exact rendered body or card shape matters.
+- Projection or template question: use [Projection And Templates Reference](projection-and-templates.md) for derived-display rules, active current MVP template bodies, card shapes, freshness, and authority boundaries.
 - Future assurance, operations, or fixture catalog material: use [Assurance Profile](../later/index.md#assurance-candidates), [Operations Profile](../later/index.md#operations-candidates), and [Future Fixtures](../later/index.md#future-fixture-families). These are not the MVP implementation path unless promoted by an owner.
 
 ## Non-Owner Rule

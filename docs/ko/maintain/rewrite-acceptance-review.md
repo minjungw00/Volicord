@@ -167,7 +167,7 @@ Projection과 template은 derived display로 설명됩니다. Compact MVP-1 view
 
 상태: 인계 가능.
 
-현재 기준선은 full template body를 Template Reference owner에 둡니다. Future export/report template은 owner가 승격하기 전까지 MVP-1 밖에 둡니다. 내부 엔지니어링 점검에는 status/blocker output, artifact/evidence ref 하나, 좁은 close-blocker check만 필요합니다. MVP-1은 compact Core-derived view를 사용할 수 있고, later export/report/handoff template은 later-profile material로 남습니다.
+현재 기준선은 활성 현재 MVP template body를 Projection과 Template owner에 둡니다. Future export/report template은 owner가 승격하기 전까지 MVP-1 밖에 둡니다. 내부 엔지니어링 점검에는 status/blocker output, artifact/evidence ref 하나, 좁은 close-blocker check만 필요합니다. MVP-1은 compact Core-derived view를 사용할 수 있고, later export/report/handoff template은 later-profile material로 남습니다.
 
 Artifact는 owner path로 등록된 reference로 다룹니다. 자유로운 문서 출력물이 authority가 되는 것이 아닙니다.
 

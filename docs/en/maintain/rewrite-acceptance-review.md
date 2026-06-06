@@ -167,7 +167,7 @@ Projection and template docs are framed as derived display. Compact MVP-1 views 
 
 Status: acceptable for handoff.
 
-The active baseline keeps full template bodies with Template Reference owners and keeps future export/report templates out of MVP-1 unless promoted. Engineering Checkpoint needs only status/blocker output, one artifact/evidence ref, and a narrow close-blocker check. MVP-1 may use compact Core-derived views, while later export/report/handoff templates stay later-profile material.
+The active baseline keeps active current MVP template bodies with the Projection And Templates owner and keeps future export/report templates out of MVP-1 unless promoted. Engineering Checkpoint needs only status/blocker output, one artifact/evidence ref, and a narrow close-blocker check. MVP-1 may use compact Core-derived views, while later export/report/handoff templates stay later-profile material.
 
 Artifacts are treated as references registered through owner paths, not as free-form documentation outputs that become authority.
 
