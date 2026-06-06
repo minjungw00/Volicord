@@ -61,7 +61,7 @@ Use 문서는 사용자와 에이전트가 신뢰 경계에서 실제로 보게 
 
 - [사용자 가이드](use/user-guide.md)는 기본 사용자 진입점입니다.
 - [에이전트 가이드](use/agent-guide.md)는 에이전트 행동 지침입니다.
-- [사용자 소유 판단 예시](use/decision-packet-cookbook.md)는 실용적인 판단 요청 예시를 제공합니다. `Decision Packet`을 사용자가 꼭 말해야 하는 표현으로 만들지 않습니다.
+- [사용자 소유 판단 예시](use/judgment-examples.md)는 실용적인 판단 요청 예시를 제공합니다. 전체 형식 Decision Packet 표시를 active 사용자 경로처럼 만들지 않습니다.
 
 정확한 사용자 판단, 쓰기, 실행/증거, 닫기, 읽기용 보기, error 계약은 [Reference 색인](reference/README.md)에서 연결하는 Reference 담당 문서가 맡습니다.
 

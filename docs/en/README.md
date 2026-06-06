@@ -61,7 +61,7 @@ Use pages stay at the user and agent trust boundary.
 
 - [User Guide](use/user-guide.md) is the primary user entry.
 - [Agent Guide](use/agent-guide.md) is agent behavior guidance.
-- [User-owned judgment examples](use/decision-packet-cookbook.md) gives practical judgment request examples without making `Decision Packet` a required user phrase.
+- [User-owned judgment examples](use/judgment-examples.md) gives practical judgment request examples without making full-format Decision Packet presentation a required user path.
 
 Exact user judgment, write, run/evidence, close, projection, and error contracts are owned by Reference docs linked from the [Reference Index](reference/README.md).
 

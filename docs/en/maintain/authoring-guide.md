@@ -432,7 +432,7 @@ Use this map for broad document routing. For strict Reference contracts, use the
 | All projection template bodies and display card shapes | `reference/templates/*.md` |
 | Design-quality policy contracts, validators, severity composition, waiver semantics, evidence expectations, close impact | `reference/design-quality-policies.md` |
 | User-facing conversation, status reading, user judgments, close checklist | `use/user-guide.md` |
-| Practical user-owned judgment examples and user-facing judgment request patterns | `use/decision-packet-cookbook.md` for examples; `reference/core-model.md` and `reference/api/mvp-api.md` for exact user judgment behavior |
+| Practical user-owned judgment examples and user-facing judgment request patterns | `use/judgment-examples.md` for examples; `reference/core-model.md` and `reference/api/mvp-api.md` for exact user judgment behavior |
 | User/agent session procedure | `use/agent-guide.md` |
 | Agent surface capability profiles, common connector contract, fallback semantics, Role Lens, connector conformance overview | `reference/agent-integration.md` |
 | Surface-specific recipes | `reference/surface-cookbook.md` |
