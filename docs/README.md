@@ -29,7 +29,7 @@ English and Korean docs are both active. Every major active doc should have a pa
 | Judgment examples / 판단 예시 | [Judgment Examples](en/use/judgment-examples.md) | [판단 예시](ko/use/judgment-examples.md) |
 | Current MVP / 현재 MVP | [MVP Plan](en/build/mvp-plan.md) | [MVP 계획](ko/build/mvp-plan.md) |
 | Contract owner index / 계약 담당 문서 색인 | [Reference Index](en/reference/README.md) | [참조 색인](ko/reference/README.md) |
-| Later candidates / later 후보 | [Later Index](en/later/index.md) | [later 후보 색인](ko/later/index.md) |
+| Later candidates / 이후 후보 | [Later Index](en/later/index.md) | [이후 후보 색인](ko/later/index.md) |
 | Authoring guide / 작성 가이드 | [Authoring Guide](en/maintain/authoring-guide.md) | [작성 가이드](ko/maintain/authoring-guide.md) |
 | Translation guide / 번역 가이드 | [Translation Guide](en/maintain/translation-guide.md) | [번역 가이드](ko/maintain/translation-guide.md) |
 | Checks / 문서 점검 | [Checks](en/maintain/checks.md) | [문서 점검](ko/maintain/checks.md) |
@@ -39,7 +39,7 @@ English and Korean docs are both active. Every major active doc should have a pa
 
 Use `start.md` for the first model, `use/*` for user and agent behavior, `build/mvp-plan.md` for current MVP planning and implementation-readiness decisions, `reference/README.md` for exact contract owners, `later/index.md` for later candidate material, `maintain/*` for documentation work, and `doc-index.yaml` for stable `doc_id` routing metadata.
 
-첫 이해 모델은 `start.md`에서 봅니다. 사용자와 에이전트 동작은 `use/*`, 현재 MVP 계획과 구현 준비 결정은 `build/mvp-plan.md`, 정확한 계약의 담당 문서는 `reference/README.md`, later 후보 자료는 `later/index.md`, 문서 작업 규칙은 `maintain/*`, 안정적인 `doc_id` 경로 정보는 `doc-index.yaml`에서 봅니다.
+첫 이해 모델은 `start.md`에서 봅니다. 사용자와 에이전트 동작은 `use/*`, 현재 MVP 계획과 구현 준비 결정은 `build/mvp-plan.md`, 정확한 계약의 담당 문서는 `reference/README.md`, 이후 후보 자료는 `later/index.md`, 문서 작업 규칙은 `maintain/*`, 안정적인 `doc_id` 경로 정보는 `doc-index.yaml`에서 봅니다.
 
 Documentation checks are manual maintenance aids. Their `PASS`, `WARN`, and `FAIL` labels do not decide documentation acceptance, implementation readiness, runtime conformance, or permission to start server coding.
 
@@ -53,7 +53,7 @@ Keep route tables on the compact structure above. Keep review history, cleanup n
 
 Do not list profile-gated values as default active MVP values. Do not describe later candidates as active requirements. Do not make unsupported security claims about prevention, isolation, sandboxing, tamper-proof storage, or default tool blocking.
 
-profile-gated 값을 기본 현재 MVP 값처럼 나열하지 않습니다. later 후보를 활성 요구사항처럼 설명하지 않습니다. 예방, 격리, 샌드박스, 변조 방지 저장소, 기본 도구 차단에 대한 근거 없는 보안 주장을 만들지 않습니다.
+profile-gated 값을 기본 현재 MVP 값처럼 나열하지 않습니다. 이후 후보를 활성 요구사항처럼 설명하지 않습니다. 예방, 격리, 샌드박스, 변조 방지 저장소, 기본 도구 차단에 대한 근거 없는 보안 주장을 만들지 않습니다.
 
 ## Agent Context / 에이전트 맥락
 

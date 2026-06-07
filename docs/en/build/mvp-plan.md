@@ -34,21 +34,27 @@ Server coding must not begin until maintainers resolve, accept, or explicitly de
 
 The active MVP is the smallest user work loop that proves the product thesis: Harness is a local authority record for scope, user-owned judgment, evidence, verification expectations, close readiness, and residual-risk visibility. It is not a prompt pack and not an enforcement sandbox.
 
-The active slice includes:
+The current active MVP scope list is deliberately closed. It includes only:
 
-- ordinary-language start or resume for tracked work
-- work-shape classification, scope, non-goals, success criteria, current status, and next safe action
-- minimal user judgment handling through the owner path, with sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation kept distinct when relevant
-- one reference `capability_profile` for `surface_id=reference-local-mcp`, including honest unavailable/fallback behavior and guarantee display
-- cooperative pre-write scope checking through `prepare_write`
-- single-use Write Authorization behavior where the Core owner requires it
-- `record_run` for recording work/checks and linking registered artifact/evidence refs or the compact evidence summary path
-- compact Core-owned evidence summary rather than a full Evidence Manifest
-- close blockers for insufficient required evidence, unresolved required judgment, missing required final acceptance, or close-relevant residual risk that is not visible at the required level, or not accepted when required by the active close path
-- residual-risk visibility before close when close-relevant risk exists
-- compact derived outputs for the current user work loop, with projections treated as derived reads rather than authority
+- `harness.intake`
+- `harness.status`
+- `harness.update_scope`
+- `harness.prepare_write`
+- `harness.record_run`
+- `harness.request_user_judgment`
+- `harness.record_user_judgment`
+- `harness.close_task`
+- Core state
+- Runtime Home storage contract
+- reference local MCP surface for `surface_id=reference-local-mcp`
+- path-level Write Authorization
+- compact `EvidenceSummary`
+- `CloseBlocker`
+- final acceptance
+- residual risk visibility and residual risk acceptance
+- cooperative/detective guarantee display
 
-Exact active method names and active schema value sets are owned by [API Schema Core](../reference/api/schema-core.md#current-mvp-value-sets). Method behavior, storage, Core transition meaning, and security wording remain with their Reference owners. This Build plan does not promote extra enum values, gates, storage records, validators, operations, or workflow candidates.
+These items cover ordinary-language intake, status, scope updates, write compatibility, run recording, user judgments, and close checks only through their active owners. Exact active method names and active schema value sets are owned by [API Schema Core](../reference/api/schema-core.md#current-mvp-value-sets). Method behavior, storage, Core transition meaning, and security wording remain with their Reference owners. This Build plan does not promote extra enum values, gates, storage records, validators, operations, richer evidence formats, QA paths, Eval paths, connector ecosystems, export/handoff formats, or workflow candidates.
 
 Current MVP wording is cooperative with limited detective visibility. It must not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, or security isolation.
 
@@ -56,11 +62,12 @@ Current MVP wording is cooperative with limited detective visibility. It must no
 
 The following material stays outside the active MVP unless an owner document promotes a narrow behavior with scope, fallback behavior, and proof-path expectations for future promotion:
 
-- Full Evidence Manifest, detailed evidence catalogs, persisted Journey Cards, detailed run reports, TDD Trace, Module Map, Interface Contract, Domain Language, export reports, rich templates, and later-profile templates
-- detached Eval, detached verification hardening, verification gate, Manual QA gate, full Manual QA, full waiver machinery, rich approval lifecycle, rich residual-risk lifecycle, and broad stewardship or context-hygiene validators
-- dashboard, hosted UI, artifact dashboard, hosted connector registry, connector marketplace, broad connector ecosystem, cross-surface orchestration, team workflow, metrics, and automation candidates
-- active operations profile, doctor/readiness suites, recover/export flows, artifact integrity operations, release handoff, projection refresh/reconcile operations, broad operator coverage, conformance runner, executable fixture catalog, and generated conformance artifacts
-- command/network/secret observation as an active proof requirement, preventive guard expansion, native hook expansion, broad isolated execution, permission isolation, deployment, canary, rollback, and production monitoring
+- verification gate, Manual QA, QA waiver, verification-risk acceptance, design policy gate, broader validators, detached Eval, evaluation workflows, full Manual QA, full waiver machinery, rich approval lifecycle, and rich residual-risk lifecycle
+- Full Evidence Manifest, detailed evidence catalogs, persisted Journey Cards, detailed run reports, full Decision Packet format, TDD Trace, Module Map, Interface Contract, Domain Language, rich templates, and later-profile templates
+- `harness.record_manual_qa`, `harness.launch_verify`, `harness.record_eval`, later `record_run` branches, later user-judgment branches, later next-action values, later schema fields, and later artifact/ref values
+- command/network/secret observation as an active proof requirement, preventive or isolated profiles, preventive guard expansion, native hook expansion, broad isolated execution, permission isolation, and stronger local capability profiles
+- dashboard, hosted UI, artifact dashboard, hosted connector registry, connector marketplace, broad connector ecosystem, connector conformance ecosystem, cross-surface orchestration, team workflow, metrics, and automation candidates
+- active operations profile, doctor/readiness suites, recover/export flows, export/handoff formats, artifact integrity operations, release handoff, projection refresh/reconcile operations, broad operator coverage, conformance runner, executable fixture catalog, generated conformance artifacts, deployment, canary, rollback, and production monitoring
 
 Reference-schema presence does not expand the active MVP. Required fields apply only when the owning tool, record, or promoted later candidate is active or actually used.
 

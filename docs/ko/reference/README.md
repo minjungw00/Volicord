@@ -9,7 +9,7 @@
 - 참조 문서 전체를 기본으로 읽지 않기: 지금 질문에 맞는 담당 문서 하나를 고르고, 그 담당 문서가 더 엄격한 세부사항을 위임할 때만 링크를 따라갑니다.
 - 같은 담당 문서의 영어/한국어 대응 문서를 같은 프롬프트에 함께 넣지 않습니다. 작업 언어를 하나 고르고, 이중 언어 비교는 별도의 작은 확인으로만 합니다.
 - 이 README는 색인으로 유지합니다. 계약 세부사항을 여기로 복사하지 않습니다.
-- active/later 경계는 활성 담당 문서와 [Later 후보 색인](../later/index.md)에 둡니다.
+- active/later 경계는 활성 담당 문서와 [이후 후보 색인](../later/index.md)에 둡니다.
 
 ## 담당 문서 라우팅
 
@@ -24,12 +24,12 @@
 | 저장소, DDL, `write_authorizations` 같은 지속 행, 멱등성 | [storage.md](storage.md) |
 | 런타임 공간, 변경 권한, 비격리 / OS 샌드박싱 비보장 | [runtime-boundaries.md](runtime-boundaries.md) |
 | 보안 보장, OS 샌드박싱 비보장, profile-gated `preventive` / `isolated` 표시 라벨 | [security.md](security.md) |
-| 에이전트 맥락, connector 동작, 접점 기능, 하나의 `doc_id`에는 한 언어만 싣는 검색 규칙 | [agent-integration.md](agent-integration.md) |
+| 에이전트 맥락, 커넥터 동작, 접점 기능, 하나의 `doc_id`에는 한 언어만 싣는 검색 규칙 | [agent-integration.md](agent-integration.md) |
 | 파생 표시인 Projection/상태 카드, 렌더링된 라벨, 활성 템플릿 | [projection-and-templates.md](projection-and-templates.md) |
 | 적합성 모델, 향후 fixture 형식, 주장 권한, 실행 가능한 모음이 아니라는 경계 | [conformance.md](conformance.md) |
 | 좁은 설계 품질 라우팅, 닫기 영향, waiver 경계, validator ID 경계 | [design-quality.md](design-quality.md) |
 | 공식 용어 | [glossary.md](glossary.md) |
-| 전체 형식 판단 표시와 향후 fixture 계열을 포함한 later 후보 | [../later/index.md](../later/index.md) |
+| 전체 형식 판단 표시와 향후 fixture 계열을 포함한 이후 후보 | [../later/index.md](../later/index.md) |
 
 ## 중복 주입 금지
 

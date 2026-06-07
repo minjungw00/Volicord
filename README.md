@@ -28,7 +28,7 @@ Start at [docs/README.md](docs/README.md) to choose a language. English and Kore
 | Judgment examples / 판단 예시 | [docs/en/use/judgment-examples.md](docs/en/use/judgment-examples.md) | [docs/ko/use/judgment-examples.md](docs/ko/use/judgment-examples.md) |
 | Current MVP plan / 현재 MVP 계획 | [docs/en/build/mvp-plan.md](docs/en/build/mvp-plan.md) | [docs/ko/build/mvp-plan.md](docs/ko/build/mvp-plan.md) |
 | Contract owner index / 계약 담당 문서 색인 | [docs/en/reference/README.md](docs/en/reference/README.md) | [docs/ko/reference/README.md](docs/ko/reference/README.md) |
-| Later candidates / later 후보 | [docs/en/later/index.md](docs/en/later/index.md) | [docs/ko/later/index.md](docs/ko/later/index.md) |
+| Later candidates / 이후 후보 | [docs/en/later/index.md](docs/en/later/index.md) | [docs/ko/later/index.md](docs/ko/later/index.md) |
 | Authoring rules / 작성 규칙 | [docs/en/maintain/authoring-guide.md](docs/en/maintain/authoring-guide.md) | [docs/ko/maintain/authoring-guide.md](docs/ko/maintain/authoring-guide.md) |
 | Translation rules / 번역 규칙 | [docs/en/maintain/translation-guide.md](docs/en/maintain/translation-guide.md) | [docs/ko/maintain/translation-guide.md](docs/ko/maintain/translation-guide.md) |
 | Documentation checks / 문서 점검 | [docs/en/maintain/checks.md](docs/en/maintain/checks.md) | [docs/ko/maintain/checks.md](docs/ko/maintain/checks.md) |
@@ -42,7 +42,7 @@ Active routes stay in the compact structure above. Use the reference index to fi
 
 Do not list profile-gated values as default active MVP values, describe later candidates as active requirements, or make unsupported preventive, isolation, sandboxing, tamper-proof, or default tool-blocking security claims.
 
-profile-gated 값을 기본 현재 MVP 값처럼 나열하지 않습니다. later 후보를 활성 요구사항처럼 설명하지 않습니다. 근거 없는 예방형, 격리, 샌드박스, 변조 방지, 기본 도구 차단 보안 주장을 만들지 않습니다.
+profile-gated 값을 기본 현재 MVP 값처럼 나열하지 않습니다. 이후 후보를 활성 요구사항처럼 설명하지 않습니다. 근거 없는 예방형, 격리, 샌드박스, 변조 방지, 기본 도구 차단 보안 주장을 만들지 않습니다.
 
 Korean docs should read as natural Korean technical prose while preserving exact identifiers such as file paths, `doc_id`, schema fields, enum values, error codes, table names, validator IDs, and template names.
 
