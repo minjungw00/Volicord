@@ -44,7 +44,7 @@ The active slice includes:
 - single-use Write Authorization behavior where the Core owner requires it
 - `record_run` for recording work/checks and linking registered artifact/evidence refs or the compact evidence summary path
 - compact Core-owned evidence summary rather than a full Evidence Manifest
-- close blockers for insufficient required evidence, unresolved required judgment, missing required final acceptance, or close-relevant residual risk that is not visible or accepted as required
+- close blockers for insufficient required evidence, unresolved required judgment, missing required final acceptance, or close-relevant residual risk that is not visible at the required level or is not accepted when the active close path requires acceptance
 - residual-risk visibility before close when close-relevant risk exists
 - compact derived outputs for the current user work loop, with projections treated as derived reads rather than authority
 
