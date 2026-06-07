@@ -408,6 +408,30 @@ CloseTaskResponse:
   next_actions: NextActionSummary[]
 ```
 
+The diagram below is a compact aid for the active `close_task` decision flow. `ready` and `blocked` are response-level `CloseTaskResponse.close_state` results before a terminal lifecycle update; `completed`, `cancelled`, and `superseded` are terminal `Task.lifecycle_phase` values.
+
+```mermaid
+flowchart TD
+    close_task_check["close_task check"]
+    active_blocker_calculation["active blocker calculation"]
+    ready["ready"]
+    blocked["blocked"]
+    complete_cancel_supersede_intent["complete/cancel/supersede intent"]
+    terminal_lifecycle_transition["terminal lifecycle transition"]
+    completed["completed"]
+    cancelled["cancelled"]
+    superseded["superseded"]
+
+    close_task_check --> active_blocker_calculation
+    active_blocker_calculation -->|no active blockers| ready
+    active_blocker_calculation -->|active blockers remain| blocked
+    ready --> complete_cancel_supersede_intent
+    complete_cancel_supersede_intent --> terminal_lifecycle_transition
+    terminal_lifecycle_transition --> completed
+    terminal_lifecycle_transition --> cancelled
+    terminal_lifecycle_transition --> superseded
+```
+
 - **Close-field mapping:** A committed non-dry-run `intent=complete` sets `lifecycle_phase=completed` and `result=completed` with `close_reason=completed_self_checked` or `completed_with_risk_accepted`. `intent=cancel` sets `lifecycle_phase=cancelled`, `close_reason=cancelled`, and `result=cancelled`. `intent=supersede` sets the old Task to `lifecycle_phase=superseded`, `close_reason=superseded`, and `result=superseded`.
 - **Active-task pointer:** On committed `intent=supersede`, if the old Task is `project_state.active_task_id`, `superseding_task_id` must become `project_state.active_task_id` only when it names a valid open same-project Task; otherwise the active pointer must be cleared. The old superseded Task must not remain active.
 - **State effect:** `intent=check` is read-only: it may compute close blockers, evidence summaries, artifact refs, and next actions for the response, but it stores no blockers, events, replay rows, or close state and does not increment `state_version`. A committed non-dry-run terminal close updates `tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `tasks.closed_at`, affected `change_units`, blockers, project active-task state when needed, events, replay, and the affected state clock. A committed blocked terminal close may record blockers, append an event, create a replay row, and increment the affected state clock, but it must leave the Task open. `dry_run` creates no close state, blocker row, event, replay row, or state-version increment.

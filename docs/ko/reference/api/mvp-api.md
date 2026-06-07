@@ -407,6 +407,30 @@ CloseTaskResponse:
   next_actions: NextActionSummary[]
 ```
 
+아래 그림은 활성 `close_task` 판단 흐름을 간단히 보여 주는 보조 자료입니다. `ready`와 `blocked`는 종료 생명주기 업데이트 전에 반환되는 응답 수준의 `CloseTaskResponse.close_state` 결과이고, `completed`, `cancelled`, `superseded`는 종료 `Task.lifecycle_phase` 값입니다.
+
+```mermaid
+flowchart TD
+    close_task_check["close_task check"]
+    active_blocker_calculation["활성 차단 사유 계산"]
+    ready["ready"]
+    blocked["blocked"]
+    complete_cancel_supersede_intent["complete/cancel/supersede intent"]
+    terminal_lifecycle_transition["종료 생명주기 전이"]
+    completed["completed"]
+    cancelled["cancelled"]
+    superseded["superseded"]
+
+    close_task_check --> active_blocker_calculation
+    active_blocker_calculation -->|활성 차단 사유 없음| ready
+    active_blocker_calculation -->|활성 차단 사유 남음| blocked
+    ready --> complete_cancel_supersede_intent
+    complete_cancel_supersede_intent --> terminal_lifecycle_transition
+    terminal_lifecycle_transition --> completed
+    terminal_lifecycle_transition --> cancelled
+    terminal_lifecycle_transition --> superseded
+```
+
 - **닫기 필드 매핑:** 커밋된 non-dry-run `intent=complete`는 `lifecycle_phase=completed`, `result=completed`로 설정하고 `close_reason=completed_self_checked` 또는 `completed_with_risk_accepted`를 사용합니다. `intent=cancel`은 `lifecycle_phase=cancelled`, `close_reason=cancelled`, `result=cancelled`로 설정합니다. `intent=supersede`는 이전 Task를 `lifecycle_phase=superseded`, `close_reason=superseded`, `result=superseded`로 설정합니다.
 - **활성 Task 포인터:** 커밋된 `intent=supersede`에서 이전 Task가 `project_state.active_task_id`라면, `superseding_task_id`가 같은 프로젝트의 유효한 열린 Task를 가리킬 때만 그 값을 `project_state.active_task_id`로 삼아야 합니다. 그렇지 않으면 활성 포인터를 비워야 합니다. superseded된 이전 Task를 active로 남기면 안 됩니다.
 - **상태 효과:** `intent=check`는 읽기 전용입니다. 응답에 닫기 차단 사유, 증거 요약, 아티팩트 참조, 다음 행동을 계산해 담을 수 있지만 차단 사유, 이벤트, 재실행 행, 닫기 상태를 저장하지 않고 `state_version`을 올리지 않습니다. 커밋된 non-dry-run 최종 닫기는 `tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `tasks.closed_at`, 영향을 받는 `change_units`, 차단 사유, 필요한 경우 project active-task 상태, 이벤트, 재실행, 영향을 받은 상태 시계를 업데이트합니다. 커밋된 차단 닫기는 차단 사유를 기록하고, 이벤트를 추가하고, 재실행 행을 만들고, 영향을 받은 상태 시계를 올릴 수 있습니다. 하지만 Task는 열린 상태로 둬야 합니다. `dry_run`은 닫기 상태, blocker 행, 이벤트, 재실행 행, 상태 버전 증가를 만들지 않습니다.

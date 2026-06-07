@@ -149,9 +149,10 @@ Shaping lifecycle values have these active meanings:
 - `ready`: the Task has enough current scope to proceed. For write-capable work, this means there is an active Change Unit and the next safe action may move toward `prepare_write`; it is still not Write Authorization.
 - `blocked`: a system, scope, capability, evidence, recovery, close, or other active blocker prevents honest progress until the named unblocker is addressed.
 
+The diagram below is a compact aid for the active lifecycle transitions above. It does not add lifecycle values or replace the rules in this section.
+
 ```mermaid
-stateDiagram-v2
-    [*] --> shaping
+flowchart TD
     shaping --> ready
     ready --> executing
     executing --> waiting_user
