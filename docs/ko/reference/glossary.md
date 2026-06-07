@@ -72,7 +72,7 @@
 | `UserJudgment` / `UserJudgmentCandidate` / `RecordUserJudgmentPayload` / `AcceptedRiskInput` | 판단 요청, 후보, 해결 기록, 잔여 위험 수락 입력 형태입니다. | [API Schema Core](api/schema-core.md) |
 | `judgment_kind` | 사용자 판단 종류의 기준 필드입니다. 값은 정확히 유지하고 지역화된 라벨로 바꾸지 않습니다. | [API Schema Core](api/schema-core.md) |
 | `presentation` | 활성 간결한 프롬프트/세부 표시 필드입니다. `short`는 active이고 `full`은 later 전체 형식 표시입니다. | [API Schema Core](api/schema-core.md), [Later](../later/index.md) |
-| `CloseBlocker` | 구조화된 닫기/진행 차단 결과입니다. 산문 보고 문구만으로는 blocker result가 아닙니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
+| `CloseBlocker` | 구조화된 닫기/진행 차단 결과입니다. 산문 보고 문구만으로는 차단 결과가 아닙니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
 | `ValidatorResult` | 구조화된 validator 출력입니다. 활성 안정 validator ID: `surface_capability_check`. | [API Schema Core](api/schema-core.md) |
 | 민감 범주 | `auth_change`, `destructive_write`, `secret_access`, `privacy_or_pii_change`, `policy_override` 같은 정확한 값입니다. | [API Schema Core](api/schema-core.md) |
 | 공개 오류 코드 | `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`, `PROJECTION_STALE` 같은 안정적인 공개 오류입니다. | [API Errors](api/errors.md) |
@@ -104,7 +104,7 @@ Storage 용어는 향후 하네스 기록이 어디에 사는지 알려줍니다
 | `preventive` | 이름 붙은 메커니즘이 대상 동작을 실행 전에 막을 수 있다는 주장입니다. 현재 MVP에는 기본 예방형 주장이 없습니다. | [보안](security.md) |
 | `isolated` | 이름 붙고 증명된 분리 경계가 대상 동작에서 어떤 것을 다른 것에서 격리한다는 주장입니다. 현재 MVP에는 기본 격리 주장이 없습니다. | [보안](security.md), [런타임 경계](runtime-boundaries.md) |
 | 정직한 보장 표시 | 사용자에게 보이는 보장 문구는 `capability_profile` 사실과 담당 문서의 증명 수준에 맞아야 합니다. 지원되지 않는 강한 주장은 낮추거나 차단해야 합니다. | [보안](security.md), [API Errors](api/errors.md) |
-| 명시적 비보장 / 신뢰 경계 | 현재 MVP는 OS 수준 권한 제어, 임의 도구 샌드박싱, 변조 방지 저장소, 기본 사전 도구 차단, 보안 격리를 제공하지 않습니다. | [보안](security.md), [런타임 경계](runtime-boundaries.md) |
+| 명시적 비보장 / 신뢰 경계 | 현재 MVP는 OS 수준 권한 제어, 임의 도구 샌드박싱, 변조 방지 저장소, 기본 도구 실행 전 차단, 보안 격리를 제공하지 않습니다. | [보안](security.md), [런타임 경계](runtime-boundaries.md) |
 
 ## 에이전트/맥락 용어
 

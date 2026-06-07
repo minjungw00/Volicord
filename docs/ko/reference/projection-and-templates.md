@@ -67,7 +67,7 @@ User Notes and Proposals:
 상태 변경 경로는 명시적입니다.
 
 ```text
-사람 편집 -> reconcile 후보 -> 명시적 reconcile 결과 -> Core 상태 변경 action, rejection, deferral, or note
+사람 편집 -> reconcile 후보 -> 명시적 reconcile 결과 -> Core 상태 변경 조치, 거절, 보류, 메모
 ```
 
 담당 경로가 Core 결과를 기록하기 전까지 사람이 편집한 텍스트는 Task 상태, 증거, 검증, QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태, 그 밖의 담당 기록이 아닙니다.
@@ -103,7 +103,7 @@ User Notes and Proposals:
 - 관리 hash는 drift를 감지할 뿐입니다. Markdown을 상태로 만들지 않습니다.
 - 렌더링 전에 관리 블록 hash가 마지막 Projection hash와 다르면 projector는 drift를 보고하거나 담당 경로로 가는 복구 후보를 만듭니다. 편집된 블록을 조용히 담당 경로로 기록된 상태처럼 받아들이지 않습니다.
 - 다시 생성할 때 관련 없는 사람이 편집 가능한 영역은 보존해야 합니다.
-- 렌더링 실패나 최신이 아닌 원천 데이터는 상황에 맞게 `failed`, `stale`, `unknown`, unavailable을 표시해야 합니다. 커밋된 Core 상태를 롤백하거나, event를 바꾸거나, gate 값을 바꾸면 안 됩니다.
+- 렌더링 실패나 최신이 아닌 원천 데이터는 상황에 맞게 `failed`, `stale`, `unknown`, `unavailable`을 표시해야 합니다. 커밋된 Core 상태를 롤백하거나, event를 바꾸거나, gate 값을 바꾸면 안 됩니다.
 
 렌더링된 보기의 위쪽 또는 관리 요약 근처에는 짧은 경계 안내가 있어야 합니다. 표시 전용이고, Core 상태와 참조에서 파생되었으며, Write Authorization이나 닫기 결과가 아니라는 점을 보여줍니다.
 
@@ -200,7 +200,7 @@ User Notes and Proposals:
 
 - 하네스 내부를 모르는 사용자도 읽을 수 있게 유지합니다.
 - 기준 기록이 없으면 상태를 만들어내지 말고 `none`, `unknown`, `not_required`, 또는 명시적인 차단 사유로 렌더링합니다.
-- 보장 표시 줄은 항상 렌더링합니다. 현재 MVP 기본 동작에서는 실제 한계가 협력형 보류이면 그렇게 적고, 사후 보고라면 그 한계를 메모에 적어야 합니다. Core/MCP가 unavailable이면 최신이 아니거나 추측한 보장 표시 값 대신 unavailable 조건을 렌더링합니다.
+- 보장 표시 줄은 항상 렌더링합니다. 현재 MVP 기본 동작에서는 실제 한계가 협력형 보류이면 그렇게 적고, 사후 보고라면 그 한계를 메모에 적어야 합니다. Core/MCP를 사용할 수 없으면 최신이 아니거나 추측한 보장 표시 값 대신 `unavailable` 조건을 렌더링합니다.
 - 설계 품질 내용은 한 줄에 맞춥니다. 현재 담당 경로로 전달된 조치와, 차단일 때는 하나의 다음 행동만 보여줍니다.
 - 에이전트 전용 참조와 행동 경계 세부사항은 [에이전트 맥락 패킷 본문](#에이전트-맥락-패킷-본문)에 둡니다. 사용자가 판단하거나 차단 사유를 이해하거나 출처 최신성을 살피는 데 도움이 될 때만 상태 카드에 참조를 넣습니다.
 
@@ -420,7 +420,7 @@ User Notes and Proposals:
 ````text
 agent_context_packet:
   display_only: true
-  authority: none; authority는 현재 Core 상태를 사용
+  authority: none; 실제 권한은 현재 Core 상태를 사용
   task_ref: {task_ref}
   change_unit_ref: {change_unit_ref|none}
   state_version: {source_state_version}
@@ -441,7 +441,7 @@ agent_context_packet:
 - 에이전트 맥락 패킷은 한 화면 안팎으로 유지합니다. 현재 다음 행동에 필요한 상태만 담습니다.
 - 전체 스키마, 전체 참조 문서, 전체 이벤트 로그, 등록된 아티팩트 파일 본문, 전체 보고서 본문, 전체 템플릿, 관련 없는 템플릿, 전체 설계 품질 목록, 향후 목록 자료를 기본으로 넣지 않습니다.
 - 다음 행동에 더 자세한 담당 문서 섹션이 필요하면 그 섹션을 패킷에 넣지 말고 필요할 때 따로 불러옵니다.
-- `guarantee_level` 필드는 필수 보장 표시 맥락입니다. Core/MCP를 사용할 수 없으면 unavailable/capability 조건을 넣고, refresh 전까지 하네스에 의존하는 상태, 쓰기, 증거, 최종 수락, 잔여 위험, 닫기 주장을 unavailable로 다룹니다.
+- `guarantee_level` 필드는 필수 보장 표시 맥락입니다. Core/MCP를 사용할 수 없으면 `unavailable`/capability 조건을 넣고, 새로 확인하기 전까지 하네스에 의존하는 상태, 쓰기, 증거, 최종 수락, 잔여 위험, 닫기 주장을 `unavailable`로 다룹니다.
 
 ## later 후보 템플릿 경계
 

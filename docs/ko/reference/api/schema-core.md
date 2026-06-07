@@ -147,7 +147,7 @@ ArtifactRelationOwner:
   relation: string
 ```
 
-`uri`는 Harness storage를 통해 해석되며 보통 `harness-artifact://{project_id}/{artifact_id}`입니다. 원시 비밀값, token, full sensitive log를 evidence로 저장하면 안 됩니다. Content가 redacted, omitted, blocked이면 `sha256`와 `size_bytes`는 hidden original이 아니라 committed safe bytes를 설명합니다.
+`uri`는 하네스 저장소를 통해 해석되며 보통 `harness-artifact://{project_id}/{artifact_id}`입니다. 원시 비밀값, 토큰, 민감한 전체 로그를 증거로 저장하면 안 됩니다. 본문이 `redacted`, `omitted`, `blocked` 상태라면 `sha256`와 `size_bytes`는 숨겨진 원본이 아니라 커밋된 안전한 바이트를 설명합니다.
 
 <a id="artifactinput"></a>
 
@@ -169,7 +169,7 @@ ArtifactInput:
   expected_size_bytes: integer | null
 ```
 
-`source_kind`에 맞는 source field 하나만 있어야 합니다. 잘못된 source shape, 호출자가 임의로 준 path, 원시 비밀값, token, full sensitive log는 mutation 전에 거부됩니다.
+`source_kind`에 맞는 출처 필드 하나만 있어야 합니다. 잘못된 출처 형태, 호출자가 임의로 준 경로, 원시 비밀값, 토큰, 민감한 전체 로그는 변경 전에 거부됩니다.
 
 <a id="evidence-and-pre-write-scope-schemas"></a>
 
