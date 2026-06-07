@@ -47,7 +47,7 @@ ToolEnvelope:
   dry_run: boolean
 ```
 
-Envelope 필드는 call의 경로를 정하고 감사 추적에 쓰입니다. `surface_id`는 capability, write authority, local access, user judgment, 민감 동작 승인, final acceptance, residual-risk acceptance, close를 부여하지 않습니다.
+Envelope 필드는 호출 경로를 정하고 감사 추적에 쓰입니다. `surface_id`는 역량, 쓰기 권한, 로컬 접근, 사용자 판단, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 닫기를 부여하지 않습니다.
 
 <a id="common-response"></a>
 
@@ -79,7 +79,7 @@ EventRef:
   state_version: integer
 ```
 
-`ToolResponseBase.state_version`은 committed mutation에서는 영향을 받은 범위의 결과 버전이고, read-only와 dry-run 응답에서는 현재 읽을 수 있는 버전 또는 영향을 받을 버전입니다. `dry_run=true`는 현재 기록, event, artifact, evidence summary, Write Authorization, close state, idempotency replay row를 만들지 않습니다.
+`ToolResponseBase.state_version`은 committed mutation에서는 영향을 받은 범위의 결과 버전이고, read-only와 dry-run 응답에서는 현재 읽을 수 있는 버전 또는 영향을 받을 버전입니다. `dry_run=true`는 현재 기록, 이벤트, 아티팩트, 증거 요약, Write Authorization, 닫기 상태, 멱등 재실행 행을 만들지 않습니다.
 
 ## StateSummary
 
@@ -115,7 +115,7 @@ StateRecordRef:
   record_id: string
 ```
 
-지속 보관되는 증거 바이트는 `StateRecordRef`가 아니라 `ArtifactRef`를 사용합니다. 민감 동작 승인, final acceptance, residual-risk acceptance, QA waiver, verification-risk acceptance, cancellation은 matching `UserJudgment.judgment_kind`를 가진 `record_kind=user_judgment`로 표현합니다.
+지속 보관되는 증거 바이트는 `StateRecordRef`가 아니라 `ArtifactRef`를 사용합니다. 민감 동작 승인, 최종 수락, 잔여 위험 수락, QA 면제 판단, 검증 위험 수락, 취소는 맞는 `UserJudgment.judgment_kind`를 가진 `record_kind=user_judgment`로 표현합니다.
 
 <a id="artifactref"></a>
 
@@ -264,7 +264,7 @@ RunSummary:
   completed_at: string
 ```
 
-`status=completed`만 정상 담당 참조를 통해 evidence를 뒷받침할 수 있습니다. `interrupted`, `blocked`, `violation`은 audit/recovery fact이며 evidence, final acceptance, residual-risk acceptance, close를 스스로 충족하지 않습니다.
+`status=completed`만 정상 담당 참조를 통해 증거를 뒷받침할 수 있습니다. `interrupted`, `blocked`, `violation`은 감사/복구 사실이며 증거, 최종 수락, 잔여 위험 수락, 닫기를 스스로 충족하지 않습니다.
 
 <a id="userjudgment"></a>
 
@@ -326,7 +326,7 @@ UserJudgmentCandidate:
   required_for: next_action | write | run | close | acceptance | risk
 ```
 
-후보는 committed `user_judgment` row가 아닙니다. `StateRecordRef`가 없고 gate를 충족하지 않으며 민감 동작 승인, final acceptance, residual-risk acceptance, evidence, Write Authorization, close state를 만들지 않습니다.
+후보는 커밋된 `user_judgment` 행이 아닙니다. `StateRecordRef`가 없고 gate를 충족하지 않으며 민감 동작 승인, 최종 수락, 잔여 위험 수락, 증거, Write Authorization, 닫기 상태를 만들지 않습니다.
 
 ```yaml
 RecordUserJudgmentPayload:
@@ -337,7 +337,7 @@ RecordUserJudgmentPayload:
   note: string | null
 ```
 
-`judgment_kind=sensitive_approval`에서는 `approval_scope`가 pending judgment와 맞아야 합니다. `final_acceptance`에서는 `accepted_result_refs`가 보이는 근거를 이름 붙입니다. `cancellation`에서는 `cancellation_reason`이 필요합니다.
+`judgment_kind=sensitive_approval`에서는 `approval_scope`가 대기 중인 판단과 맞아야 합니다. `final_acceptance`에서는 `accepted_result_refs`가 보이는 근거를 이름 붙입니다. `cancellation`에서는 `cancellation_reason`이 필요합니다.
 
 <a id="acceptedriskinput"></a>
 
@@ -412,7 +412,7 @@ ValidatorResult:
   suggested_next_action: string | null
 ```
 
-활성 stable validator ID는 `surface_capability_check`입니다. Validator output은 blocker, 대체 동작, guarantee display에 영향을 줄 수 있습니다. Write Authorization, user judgment, evidence, final acceptance, residual-risk acceptance, close를 만들지 않습니다.
+활성 stable validator ID는 `surface_capability_check`입니다. `ValidatorResult` 출력은 blocker, 대체 동작, 보장 표시에 영향을 줄 수 있습니다. Write Authorization, 사용자 판단, 증거, 최종 수락, 잔여 위험 수락, 닫기를 만들지 않습니다.
 
 <a id="sensitive-categories"></a>
 

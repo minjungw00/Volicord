@@ -42,7 +42,7 @@ Korean documentation should be natural Korean technical prose.
 - Put the Korean concept first in user-facing prose.
 - Add the exact English identifier only when precision, search, or owner alignment needs it.
 - Do not leave English noun phrases in Korean prose unless they are exact identifiers or intentional Harness labels; translate explanatory noun phrases into Korean.
-- Do not compress English negative coordination in Korean in a way that reverses meaning. If the condition means "not visible, or not accepted when required," make both negative requirements explicit. Good: "보이지 않거나, 요구될 때 수락되지 않은 경우". Bad: "보이거나 수락되지 않은 경우".
+- Do not compress English negative coordination in Korean in a way that reverses meaning. If the condition means "not visible, or not accepted when required," make both negative requirements explicit and do not drop the first negative requirement.
 - Avoid Korean sentences made mostly of English nouns with Korean particles attached.
 - Keep exact identifiers exact even when the surrounding sentence is fully Korean.
 

@@ -87,7 +87,7 @@ Harness preserves user-owned judgment. Product behavior, material technical dire
 
 Do not treat broad approval such as "go ahead" or "looks good" as a substitute for a specific judgment. Sensitive-action approval permits a named sensitive step only; it does not decide product behavior, architecture, final acceptance, or residual risk. Final acceptance does not create evidence, erase evidence gaps, or accept residual risk unless the residual-risk path asks for that judgment.
 
-When blocker wording combines more than one negative requirement, state each negative explicitly. For residual-risk close blockers, preserve the meaning as "not visible, or not accepted when required"; do not compress it into wording that can be read as "visible, or not accepted when required."
+When blocker wording combines more than one negative requirement, state each negative explicitly. For residual-risk close blockers, preserve the meaning as "not visible, or not accepted when required"; do not drop the visibility negative or otherwise compress the condition into an ambiguous form.
 
 User-facing docs should start with what the user can ask, what the agent should clarify, what is blocked, what evidence exists, what judgment is needed, and what close means. Introduce internal labels only after the visible user situation is clear.
 

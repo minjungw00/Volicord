@@ -96,7 +96,7 @@ Pass when product decisions, technical decisions, scope decisions, sensitive-act
 
 Inspect residual-risk close blocker text, Korean translations of blocker conditions, and examples that combine visibility, acceptance, waiver, evidence, or required judgment.
 
-Pass when each negative requirement is stated explicitly and residual-risk close blockers preserve the meaning "not visible, or not accepted when required." Korean should use a clear form such as "보이지 않거나, 요구될 때 수락되지 않은 경우." Fail when wording can be read as "visible, or not accepted when required," including Korean compression such as "보이거나 수락되지 않은 경우," or when residual-risk acceptance substitutes for final acceptance, QA waiver, evidence, or verification.
+Pass when each negative requirement is stated explicitly and residual-risk close blockers preserve the meaning "not visible, or not accepted when required." Korean should use a clear form such as "보이지 않거나, 요구될 때 수락되지 않은 경우." Fail when wording drops the first negative requirement or when residual-risk acceptance substitutes for final acceptance, QA waiver, evidence, or verification.
 
 ## 12. Projection-Derived-Display Check
 
