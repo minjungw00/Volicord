@@ -2,7 +2,7 @@
 
 ## Owns / Does not own
 
-This document owns the projection and active template display contract for future Harness behavior. It is documentation source material only; it is not a runtime projection, runtime state, generated artifact, evidence record, QA record, Acceptance record, residual-risk record, close record, or implementation-ready server plan.
+This document owns the projection and active template display contract for future Harness behavior. It is documentation source material only; it is not a runtime projection, runtime state, generated artifact, evidence record, QA record, final-acceptance record, residual-risk record, close record, or implementation-ready server plan.
 
 This document owns:
 
@@ -34,7 +34,7 @@ Templates cannot override Core state. A rendered view cannot authorize writes, c
 
 Display labels are not canonical schema values. A localized label such as a user-readable judgment type is rendered from canonical fields such as `judgment_kind` and locale. If `display_label` appears in compatibility or response-only output, it remains display text and must not be treated as an enum value, storage value, API field owner, or schema category.
 
-User edits to a projection are input only. They may become state only through an explicit owner path such as reconcile plus a Core state-changing action. Direct edits to managed text, front matter, displayed state, artifact refs, close status, acceptance status, residual-risk status, or template text do not become accepted state.
+User edits to a projection are input only. They may become state only through an explicit owner path such as reconcile plus a Core state-changing action. Direct edits to managed text, front matter, displayed state, artifact refs, close status, acceptance status, residual-risk status, or template text do not become owner-recorded state.
 
 ## Projection is derived display
 
@@ -70,7 +70,7 @@ The state-changing path is explicit:
 human edit -> reconcile candidate -> explicit reconcile outcome -> Core state-changing action, rejection, deferral, or note
 ```
 
-Until an owner path records an accepted Core outcome, the human-editable text is not Task state, evidence, verification, QA, final acceptance, residual-risk acceptance, close readiness, or any other owner record.
+Until an owner path records a Core outcome, the human-editable text is not Task state, evidence, verification, QA, final acceptance, residual-risk acceptance, close readiness, or any other owner record.
 
 Humans may not edit these directly into state:
 
@@ -96,7 +96,7 @@ Rules:
 - Managed block content is generated from committed Core-owned records and registered artifact refs.
 - The projector may regenerate managed blocks.
 - A managed block is display, not authority.
-- Direct edits inside a managed block are drift, not accepted state.
+- Direct edits inside a managed block are drift, not owner-recorded state.
 - If projection job storage is active, the projector records source state version, projection version or status, render timestamp, job status, and managed hash through the storage owner path.
 - Active MVP compact views may instead carry read-time source/freshness text without a persisted projection job.
 - Managed hash is computed over the projector-owned managed block body, excluding the marker lines, with normalized line endings and the projector's meaningful whitespace rules.
@@ -140,7 +140,7 @@ The active current MVP template set is exactly:
 
 The four user-facing outputs use ordinary language, source refs, and freshness only where they help the user decide, understand a blocker, inspect evidence, or understand close. They should not dump schemas, DDL, event logs, full artifacts, full report bodies, full evidence catalogs, or future catalogs.
 
-The agent-facing packet is a separate audience. It carries only current, next-action-relevant refs, blockers, evidence gaps, close blockers, guarantee level, and one next safe action. It is not user prose and is not authority.
+The agent-facing packet is a separate audience. It carries only current, next-action-relevant refs, blockers, evidence gaps, close blockers, guarantee display level, and one next safe action. It is not user prose and is not authority.
 
 ## Status Card body
 
@@ -159,7 +159,7 @@ Source records:
 - current evidence summary, supporting refs, redaction or availability notes, and evidence gaps
 - close blockers, final-acceptance need, residual-risk visibility, and residual-risk acceptance status when relevant
 - design-quality routed action only when it changes the visible next step
-- guarantee level or unavailable capability status
+- guarantee display level or unavailable capability status
 - short source refs, render time, and freshness state
 
 Rendered sections:
@@ -192,7 +192,7 @@ Close: {close_readiness_summary}; blockers={close_blockers|none}
 Design quality action: {design_quality_routed_action|none}
 Residual risk: {residual_risk_visibility|none}
 Next safe action: {next_safe_action}
-Guarantee: {guarantee_level_or_unavailable}; {guarantee_note}
+Guarantee display: {guarantee_level_or_unavailable}; {guarantee_note}
 Sources/freshness: {source_freshness_summary}
 ````
 
@@ -200,7 +200,7 @@ Notes:
 
 - Keep this card readable for a user who does not know Harness internals.
 - When a field has no source record, render `none`, `unknown`, `not_required`, or an explicit blocker instead of inventing state.
-- Always render the guarantee line. For active MVP default behavior, the note should say cooperative hold or detective reporting when that is the actual limit. If Core/MCP is unavailable, render the unavailable condition instead of a stale or guessed guarantee.
+- Always render the guarantee display line. For active MVP default behavior, the note should say cooperative hold or detective reporting when that is the actual limit. If Core/MCP is unavailable, render the unavailable condition instead of a stale or guessed guarantee display value.
 - Design-quality content should fit one line: the current routed action and, when blocking, the single next action.
 - Agent-only refs and action-boundary details belong in [Agent Context Packet body](#agent-context-packet-body). Put a ref in the status card only when it helps the user decide, understand a blocker, or inspect source freshness.
 
@@ -317,7 +317,7 @@ Sources/freshness: {source_freshness_summary}
 
 Notes:
 
-- Evidence sufficiency is coverage, not volume. If a claim has no current supporting ref, or a critical artifact ref lacks owner relation, integrity metadata, redaction state, or availability, show the gap and current evidence status instead of treating a long artifact list or report prose as proof.
+- Evidence sufficiency is coverage, not volume. If a claim has no current supporting ref, or a critical artifact ref lacks owner relation, integrity metadata, redaction state, or availability, show the gap and current evidence status instead of treating a long artifact list or report prose as sufficient support.
 - Only a compatible consumed Write Authorization may be displayed as the product-write compatibility record for a product-write Run. Attempted invalid authorization refs may be shown only as violation/audit or validator-finding context, and they must not be rendered as a consumed Write Authorization or completion evidence.
 - Keep this summary intentionally smaller than a full evidence report. Show the evidence refs and visible gaps needed for the user's next decision; do not expand full artifact inventories or raw artifact bodies.
 
@@ -385,7 +385,7 @@ Notes:
 
 ## Agent Context Packet body
 
-Use `agent-context-packet` when an agent needs compact, current context for the next safe action. It is optimized for accuracy, freshness, Core-derived refs, active blockers, unresolved user judgments, evidence gaps, close blockers, guarantee level, and one next action, not for user-facing prose or full report detail.
+Use `agent-context-packet` when an agent needs compact, current context for the next safe action. It is optimized for accuracy, freshness, Core-derived refs, active blockers, unresolved user judgments, evidence gaps, close blockers, guarantee display level, and one next action, not for user-facing prose or full report detail.
 
 Implementation tier: active MVP support view. It can be returned as a structured payload or prompt-sized text. It is not a required persisted Markdown projection.
 
@@ -401,7 +401,7 @@ Source records:
 - evidence gaps
 - close blockers
 - residual-risk summary if active
-- guarantee level or unavailable capability status
+- guarantee display level or unavailable capability status
 - exactly one next safe action
 
 Rendered sections:
@@ -415,7 +415,7 @@ Rendered sections:
 - evidence gaps
 - close blockers
 - residual-risk summary
-- guarantee level
+- guarantee display level
 
 Template:
 
@@ -443,7 +443,7 @@ Notes:
 - Keep the packet one screen or less. It carries only current, next-action-relevant state.
 - Do not include full schemas, full reference docs, full event logs, registered artifact file bodies, full report bodies, full templates, unrelated templates, full design-quality catalogs, or future catalog material by default.
 - If the next action needs a fuller owner section, the agent should pull that owner section on demand instead of embedding it in the packet.
-- The `guarantee_level` field is required context. If Core/MCP is unavailable, set it to the unavailable/capability condition and treat Harness-dependent state, write, evidence, acceptance, residual-risk, and close claims as unavailable until refreshed.
+- The `guarantee_level` field is the required guarantee display context. If Core/MCP is unavailable, set it to the unavailable/capability condition and treat Harness-dependent state, write, evidence, acceptance, residual-risk, and close claims as unavailable until refreshed.
 
 ## Later template boundary
 
@@ -451,4 +451,4 @@ Later candidate template bodies are not active documentation and are not stored 
 
 A later candidate listing does not create a current MVP requirement, active `ProjectionKind`, schema contract, runtime behavior, template body, generated Projection, evidence, verification, QA, final acceptance, residual-risk acceptance, close readiness, implementation task, or acceptance evidence.
 
-To promote a later template, a future owner document must define a narrow scope, source records, fallback behavior, non-substitution rules, freshness behavior, proof expectations, and exact owner placement. Until then, active current MVP output remains limited to the five templates in this document.
+To promote a later template, a future owner document must define a narrow scope, source records, fallback behavior, non-substitution rules, freshness behavior, proof-path expectations for future promotion, and exact owner placement. Until then, active current MVP output remains limited to the five templates in this document.

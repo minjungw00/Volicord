@@ -6,20 +6,20 @@ Use this reference for active current MVP public error codes, primary-error prec
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server.
 
-## Current MVP Guarantee And Profile-Gated Claim Taxonomy
+## Current MVP Guarantee Display And Profile-Gated Claim Taxonomy
 
 `guarantee_display.level` uses the current MVP values `cooperative` and `detective` unless a promoted profile explicitly supports a profile-gated display value. Security meaning is owned by [Security Reference: Honest guarantee display](../security.md#honest-guarantee-display), and the exact value-set boundary is owned by [API Schema Core](schema-core.md#current-mvp-value-sets).
 
-Requesting or displaying a profile-gated guarantee without profile support is a claim-boundary error, not evidence that the guarantee exists. Use `CAPABILITY_INSUFFICIENT` when the surface lacks the needed blocking, isolation, observation, or proof support. Use `VALIDATION_FAILED` when the requested value is not valid for the active profile or request shape. Neither error implies current runtime enforcement in this documentation-only repository.
+Requesting or displaying a profile-gated guarantee display value without profile support is a claim-boundary error, not evidence that the guarantee claim is supported. Use `CAPABILITY_INSUFFICIENT` when the surface lacks the needed blocking, isolation, observation, or proof-path support. Use `VALIDATION_FAILED` when the requested value is not valid for the active profile or request shape. Neither error implies current runtime enforcement in this documentation-only repository.
 
 | Level or name | Error/status meaning |
 |---|---|
 | `cooperative` | Harness can check and record when the agent or tool follows the documented path. It is not OS permission, sandboxing, tamper-proof storage, or pre-execution blocking. |
 | `detective` | Harness or the connected surface can detect, record, or report an observable mismatch after or during the action. It is not prevention. |
-| `preventive` | Profile-gated display value name. Without promoted pre-tool blocking support for the covered operation, return a capability or validation error and lower the displayed guarantee. |
-| `isolated` | Profile-gated display value name. Without promoted isolation support for the named boundary, return a capability or validation error and lower the displayed guarantee. |
+| `preventive` | Profile-gated display value name. Without promoted pre-tool blocking support for the covered operation, return a capability or validation error and lower the displayed `guarantee_display.level` value. |
+| `isolated` | Profile-gated display value name. Without promoted isolation support for the named boundary, return a capability or validation error and lower the displayed `guarantee_display.level` value. |
 
-Active MVP behavior defaults to cooperative checks with limited detective reporting where the connected surface can honestly observe facts. These security non-claims are boundary statements, not runtime errors or enforced capabilities. Close blockers are separate structured task-readiness results about user judgment, evidence, residual-risk visibility, and residual-risk acceptance state; they are not proof of preventive blocking, isolation, sandboxing, or tamper-proof storage.
+Active MVP behavior defaults to cooperative checks with limited detective reporting where the connected surface can honestly observe facts. These security non-claims are boundary statements, not runtime errors or enforced capabilities. Close blockers are separate structured task-readiness results about user judgment, evidence, residual-risk visibility, and residual-risk acceptance state; they are not runtime proof of preventive blocking, isolation, sandboxing, or tamper-proof storage.
 
 | Condition | Public path | Agent rule |
 |---|---|---|

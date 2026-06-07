@@ -19,31 +19,31 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 |---|---|---|---|
 | Owner assignment | required before promotion | Named owner, narrow scope, non-goals, and fallback behavior. | none |
 | Contract placement | index boundary only | Exact API, schema, storage, projection, template, fixture, or operator contract in the owning active document. | none until promoted |
-| Security wording | no active guarantee here | Honest cooperative, detective, preventive, or isolated wording matched to a proven mechanism. | none until promoted |
-| Proof expectation | listing is not proof | Conformance target, fixture, evidence expectation, or other owner-defined proof for the promoted behavior. | none until promoted |
-| Active-scope inheritance | disabled by default | Proof that promotion does not add unsupported requirements to the active MVP or earlier smoke target. | must not affect active MVP |
+| Security wording | no active guarantee claim here | Honest cooperative, detective, preventive, or isolated wording matched to a proven mechanism. | none until promoted |
+| Future proof-path expectation | listing is not current runtime proof | Conformance target, fixture, evidence expectation, or other owner-defined proof path for the promoted behavior. | none until promoted |
+| Active-scope inheritance | disabled by default | Future owner proof that promotion does not add unsupported requirements to the active MVP or earlier smoke target. | must not affect active MVP |
 | Non-substitution | required boundary | Core state, user judgment, evidence, verification, Manual QA, final acceptance, residual-risk acceptance, and close readiness stay separate. | none |
 
 ## 3. Assurance Candidates
 
 | Candidate | Status | Promotion requires | Active MVP impact |
 |---|---|---|---|
-| assurance hardening | later candidate | Owner-scoped gates, fallback behavior, and proof expectations. | none until promoted |
-| Evidence Manifest | later candidate | Evidence owner rules for artifact refs, redaction, close impact, and proof expectations. | none until promoted |
+| assurance hardening | later candidate | Owner-scoped gates, fallback behavior, and proof-path expectations for future promotion. | none until promoted |
+| Evidence Manifest | later candidate | Evidence owner rules for artifact refs, redaction, close impact, and proof-path expectations for future promotion. | none until promoted |
 | Manual QA | later candidate | Manual QA owner policy for waivers, artifact refs, findings, and QA gate impact. | none until promoted |
 | Eval / detached verification | later candidate | Eval owner rules for independence, baseline freshness, artifact integrity, and assurance updates. | none until promoted |
 | Decision Packet full-format presentation | later candidate | User-judgment owner activation of `presentation=full` without making it the default MVP path. | none until promoted |
 | Risk review and residual-risk visibility | later candidate | Core and user-judgment owner rules for risk visibility, acceptance, expiry, and close impact. | none until promoted |
-| Full design-quality policy families: full `shared_design` policy, `domain_language`, `vertical_slice`, `feedback_loop`, `tdd_trace`, `deep_module_interface`, `codebase_stewardship`, detailed `manual_qa`, `two_stage_review_display`, detached-verification policy, steward policies | names only | Design-quality owner rules for exact scope, validator boundaries, waiver/evidence rules, and proof expectations. | none until promoted |
+| Full design-quality policy families: full `shared_design` policy, `domain_language`, `vertical_slice`, `feedback_loop`, `tdd_trace`, `deep_module_interface`, `codebase_stewardship`, detailed `manual_qa`, `two_stage_review_display`, detached-verification policy, steward policies | names only | Design-quality owner rules for exact scope, validator boundaries, waiver/evidence rules, and proof-path expectations for future promotion. | none until promoted |
 
 <a id="operations-candidates"></a>
 ## 4. Operations Candidates
 
 | Candidate | Status | Promotion requires | Active MVP impact |
 |---|---|---|---|
-| operations hardening | later candidate | Operations owner rules for commands, diagnostics, fallback behavior, security wording, and proof expectations. | none until promoted |
-| Future local operator command family: `harness connect`, `harness serve mcp`, `harness doctor`, `harness projection refresh`, `harness reconcile`, `harness recover`, `harness export`, `harness artifacts check`, `harness conformance run` | command names only | Operations owner rules for exact syntax, security posture, API/storage effects, reporting, fallback behavior, and proof expectations. | none until promoted |
-| Export | later candidate | Export owner contracts for storage/artifact handling, redaction, omissions, integrity, and non-leakage proof. | none until promoted |
+| operations hardening | later candidate | Operations owner rules for commands, diagnostics, fallback behavior, security wording, and proof-path expectations for future promotion. | none until promoted |
+| Future local operator command family: `harness connect`, `harness serve mcp`, `harness doctor`, `harness projection refresh`, `harness reconcile`, `harness recover`, `harness export`, `harness artifacts check`, `harness conformance run` | command names only | Operations owner rules for exact syntax, security posture, API/storage effects, reporting, fallback behavior, and proof-path expectations for future promotion. | none until promoted |
+| Export | later candidate | Export owner contracts for storage/artifact handling, redaction, omissions, integrity, and future non-leakage proof expectation. | none until promoted |
 | Release Handoff | later candidate | Handoff owner rules that keep deployment, merge, rollback, and production authority external unless separately promoted. | none until promoted |
 | Recovery and reconcile | later candidate | Operations, Storage, Projection, Reconcile, and Security owner rules. | none until promoted |
 | Operator readiness and `doctor` surfaces | later candidate | Operations owner rules for diagnostics, capability checks, security posture, and unsupported-surface fallback. | none until promoted |
@@ -72,7 +72,7 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | Later next-action values: `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile` | value names only | Matching API or owner activation. | none until promoted |
 | Recommended playbooks and judgment context | metadata names only | Agent Integration/API owner rules that keep metadata read-only and non-satisfying. | none until promoted |
 | Later ref and artifact values: bundle, manifest, QA capture, export component, design, Eval, Manual QA, TDD, projection, related refs | value names only | ArtifactRef, StateRecordRef, Storage, and relevant owner activation. | none until promoted |
-| ValidatorResult later stable IDs: design, autonomy, feedback-loop, TDD, stewardship, residual-risk, shared-design, manual-QA, context-hygiene checks | ID names only | Validator owner contracts for stable IDs, severity, waiver, and fixture proof. | none until promoted |
+| ValidatorResult later stable IDs: design, autonomy, feedback-loop, TDD, stewardship, residual-risk, shared-design, manual-QA, context-hygiene checks | ID names only | Validator owner contracts for stable IDs, severity, waiver, and future fixture proof expectation. | none until promoted |
 | Waiver, reconcile, and residual-risk branches | branch names only | User-judgment, Core, and close owner rules. | none until promoted |
 
 <a id="later-template-candidates"></a>
@@ -80,7 +80,7 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 
 | Candidate | Status | Promotion requires | Active MVP impact |
 |---|---|---|---|
-| Decision Packet full-format presentation (`DEC`), `APR`, Approval Card, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, Verification Result Card, `MANUAL-QA`, Manual QA Card, `TASK`, `DIRECT-RESULT`, `JOURNEY-CARD`, `DESIGN`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `TDD-TRACE`, `EXPORT` | template names only | Template owner assignment, source records, fallback behavior, non-substitution rules, freshness behavior, and proof expectations. | none until promoted |
+| Decision Packet full-format presentation (`DEC`), `APR`, Approval Card, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, Verification Result Card, `MANUAL-QA`, Manual QA Card, `TASK`, `DIRECT-RESULT`, `JOURNEY-CARD`, `DESIGN`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `TDD-TRACE`, `EXPORT` | template names only | Template owner assignment, source records, fallback behavior, non-substitution rules, freshness behavior, and proof-path expectations for future promotion. | none until promoted |
 
 <a id="future-fixture-families"></a>
 ## 8. Future Fixture Families
@@ -89,7 +89,7 @@ The long row below preserves future fixture family names only. It is not a curre
 
 | Candidate | Status | Promotion requires | Active MVP impact |
 |---|---|---|---|
-| Intake and decision routing; Core, evidence, verification, and close; Artifact redaction and export non-leakage; Agency and user-judgment separation; Connector capability honesty; Design-quality and stewardship; Context hygiene and resume freshness; Projection, reconcile, and verification boundary; Operations diagnostics, export, recover, and handoff; Browser QA Capture | fixture family names only | Conformance owner assignment, exact fixture shape, assertions, payload/API/storage/error effects, and proof expectations. | none until promoted |
+| Intake and decision routing; Core, evidence, verification, and close; Artifact redaction and export non-leakage; Agency and user-judgment separation; Connector capability honesty; Design-quality and stewardship; Context hygiene and resume freshness; Projection, reconcile, and verification boundary; Operations diagnostics, export, recover, and handoff; Browser QA Capture | fixture family names only | Conformance owner assignment, exact fixture shape, assertions, payload/API/storage/error effects, and proof-path expectations for future promotion. | none until promoted |
 
 ## 9. Broad Future Candidates
 
@@ -98,8 +98,8 @@ The long row below preserves future fixture family names only. It is not a curre
 | Dashboard, hosted workflows, artifact dashboard, richer cards, richer visualizations | later candidate | Derived-display owner rules for read-only, non-authoritative behavior. | none until promoted |
 | Browser capture automation | later candidate | Capture owner rules for redaction/PII, retention, fallback behavior, and QA/acceptance non-substitution. | none until promoted |
 | Cross-surface verification | later candidate | Core/Eval owner rules for return records, independence, and unsupported-surface fallback. | none until promoted |
-| Broader connectors, connector marketplace, hosted UI, hosted/remote runtime | later candidate | Connector/API/security owners and local-authority boundary proof. | none until promoted |
-| Native hooks, preventive guard expansion, advanced sidecar watcher | later candidate | Proven covered mechanism before any preventive, isolation, or arbitrary-tool-control claim. | none until promoted |
+| Broader connectors, connector marketplace, hosted UI, hosted/remote runtime | later candidate | Connector/API/security owners and future local-authority boundary proof expectation. | none until promoted |
+| Native hooks, preventive guard expansion, advanced sidecar watcher | later candidate | Owner-proven covered mechanism before any preventive, isolation, or arbitrary-tool-control claim. | none until promoted |
 | Context Index, local derived metrics, long-term metrics | later candidate | Read-only retrieval/diagnostic owners and no authority or close effect. | none until promoted |
 | Team workflows, permissions, shared capability sets, orchestration, parallel lanes | later candidate | Scope, authority, permission, and user-owned judgment owners. | none until promoted |
 | Advanced exports, release/deployment/canary/rollback/merge/production-monitoring automation | later candidate | Separate owner scope; deployment and production authority remain external unless explicitly promoted. | none until promoted |

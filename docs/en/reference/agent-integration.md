@@ -9,7 +9,7 @@ For what the agent says in a user session, read [Agent Guide](../use/agent-guide
 This reference owns:
 
 - agent surface capability profiles
-- guarantee-level display for connected surfaces
+- guarantee display level for connected surfaces
 - context push/pull rules and always-on context budget
 - phase-relevant context profiles for cheap retrieval
 - user judgment request behavior at the connector boundary
@@ -26,7 +26,7 @@ This reference does not own:
 - public MCP method contracts, schemas, or public errors; see [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), and [API Errors](api/errors.md)
 - Storage DDL, persisted state, and artifact layout; see [Storage](storage.md)
 - projection/template authority and active rendered template bodies; see [Projection And Templates Reference](projection-and-templates.md)
-- threat model and guarantee-level meanings; see [Security Reference](security.md)
+- threat model and guarantee display meanings; see [Security Reference](security.md)
 - future fixture shape or assertion authority; see [Conformance Reference](conformance.md)
 - operator commands and diagnostics as active Reference scope; future candidates stay in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates)
 - future connector marketplaces, hosted-agent assumptions, broad connector ecosystems, or cross-surface orchestration
@@ -67,9 +67,9 @@ Refresh the profile when the surface version, MCP configuration, hooks, permissi
 
 Generated rules, skills, MCP snippets, adapter files, and managed blocks need a connector manifest. The manifest records generated paths, managed block ids and hashes, MCP exposure posture, display-safe handles, profile freshness, drift, and fallback behavior. It must not store raw tokens, secrets, private config values, blocked payload bytes, or canonical Task state.
 
-## 3. Guarantee Levels
+## 3. Guarantee Display Levels
 
-Guarantee level display follows [Security Reference](security.md#honest-guarantee-display). Exact schema value sets are owned by [API Schema Core](api/schema-core.md#current-mvp-value-sets). This reference owns how a connector maps a `capability_profile` to what the user sees.
+`guarantee_display.level` display follows [Security Reference](security.md#honest-guarantee-display). Exact schema value sets are owned by [API Schema Core](api/schema-core.md#current-mvp-value-sets). This reference owns how a connector maps a `capability_profile` to what the user sees.
 
 Current MVP connector display values:
 
@@ -85,13 +85,13 @@ Profile-gated display value names:
 | `preventive` | Use only when a promoted profile explicitly supports the label. Name the fixture-proven hook, wrapper, permission layer, policy engine, or sidecar path and the exact operations it can block before execution. |
 | `isolated` | Use only when a promoted profile explicitly supports the label. Name the documented separation boundary. Do not imply OS sandboxing, permission isolation, or tamper-proof storage unless that exact mechanism is proven. |
 
-Agents must not choose `preventive` or `isolated` merely because a user requested stronger safety, asked for a guard/freeze/careful mode, or used stronger wording in chat. The connector must lower the displayed guarantee or return `CAPABILITY_INSUFFICIENT` when the active profile cannot prove the stronger claim.
+Agents must not choose `preventive` or `isolated` merely because a user requested stronger safety, asked for a guard/freeze/careful mode, or used stronger wording in chat. The connector must lower the displayed `guarantee_display.level` value or return `CAPABILITY_INSUFFICIENT` when the active profile cannot support the stronger claim.
 
 The reference local MCP profile can display `cooperative` behavior and limited `detective` behavior only where changed-path or artifact-gap observation supports it. Because `pre_tool_blocking_supported=false` and `isolation_supported=false`, it must not claim `preventive` or `isolated` behavior.
 
 Guard, freeze, and careful-mode labels are display labels over the actual profile. They must say what can actually stop before execution and what can only be detected later. They are not sensitive-action approval, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a Core gate.
 
-Do not claim current MVP security guarantees beyond the profile and owner docs. Harness does not provide default OS permissions, arbitrary-tool sandboxing, tamper-proof local files, pre-tool blocking, or security isolation.
+Do not make current MVP security guarantee claims beyond the profile and owner docs. Harness does not provide default OS permissions, arbitrary-tool sandboxing, tamper-proof local files, pre-tool blocking, or security isolation.
 
 ## 4. Context Push/Pull
 
@@ -124,7 +124,7 @@ Always-on context should fit on one screen or less. Include only current, action
 - evidence gaps
 - close blockers
 - residual-risk summary
-- guarantee level, or the unavailable/capability condition when Core or required MCP cannot answer
+- guarantee display level, or the unavailable/capability condition when Core or required MCP cannot answer
 - source refs and freshness
 
 Do not put full reference material, full schemas, full DDL, full projection text, complete artifact bodies, unrelated templates, future catalogs, stale or unrelated task history, or full logs in always-on context.
@@ -166,13 +166,13 @@ Judgment records are separate from evidence, verification, Manual QA, final acce
 
 ## 8. Fallback Behavior
 
-Fallbacks are described by guarantee level and risk, not by surface brand.
+Fallbacks are described by guarantee display level and risk, not by surface brand.
 
 | Fallback | Use when | Boundary |
 |---|---|---|
 | Cooperative | The surface can follow instructions but cannot enforce them. | Hold product writes by instruction when the Core/MCP owner path or write-scope checks are unavailable. |
 | Detective | Harness can observe supported facts after action. | Mark state stale, partial, blocked, or failed and require repair, reconcile, or fresh evidence. |
-| Capability insufficient | A requested write, capture, guard, isolation, or guarantee depends on an unsupported field. | Return `CAPABILITY_INSUFFICIENT` or a structured blocked reason; lower the displayed guarantee. |
+| Capability insufficient | A requested write, capture, guard, isolation, or guarantee claim depends on an unsupported field. | Return `CAPABILITY_INSUFFICIENT` or a structured blocked reason; lower the displayed `guarantee_display.level` value. |
 | MCP unavailable | The surface or call path cannot reach the current Core authority path. | Use stable public `MCP_UNAVAILABLE` behavior and do not claim state mutation. |
 | Local access mismatch | The caller or transport is outside the registered local profile. | Use `LOCAL_ACCESS_MISMATCH` with display-safe diagnostics; do not introduce a surface-specific `UNAUTHORIZED` code. |
 
@@ -235,8 +235,8 @@ Reference-surface checks include:
 
 - status with and without an active Task
 - compact current-position status before significant resume when the Use procedure requires it
-- guarantee display derived from actual `capability_profile` fields
-- no `preventive` or `isolated` claim when the `capability_profile` cannot prove it
+- guarantee display level derived from actual `capability_profile` fields
+- no `preventive` or `isolated` claim when the `capability_profile` cannot support that display claim
 - `prepare_write` allowed/blocked compatibility outcomes without OS-permission wording
 - single-use cooperative Write Authorization only after `prepare_write.decision=allowed`
 - `record_run` with summary and owner-registered artifact refs

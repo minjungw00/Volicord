@@ -19,31 +19,31 @@
 |---|---|---|---|
 | 담당 문서 지정 | 승격 전 필요 | 이름 있는 담당 문서, 좁은 범위, 비목표, 대체 동작이 필요합니다. | 없음 |
 | 계약 위치 | 색인 경계만 있음 | 정확한 API, 스키마, 저장소, Projection, 템플릿, fixture, 운영자 명령 계약은 알맞은 활성 담당 문서에 둡니다. | 승격 전까지 없음 |
-| 보안 표현 | 이 문서에는 활성 보장 없음 | 증명된 메커니즘에 맞는 협력형, 탐지형, 예방형, 격리형 표현이 필요합니다. | 승격 전까지 없음 |
-| 증명 기대치 | 후보 목록은 증명이 아님 | 승격된 동작에 대한 적합성 목표, fixture, 증거 기대치, 또는 담당 문서가 정한 다른 증명이 필요합니다. | 승격 전까지 없음 |
-| 활성 범위 상속 | 기본적으로 비활성 | 승격이 현재 MVP나 더 이른 smoke 목표에 근거 없는 요구사항을 더하지 않는다는 증명이 필요합니다. | 현재 MVP에 영향을 주면 안 됨 |
+| 보안 표현 | 이 문서에는 활성 보장 주장 없음 | 증명된 메커니즘에 맞는 협력형, 탐지형, 예방형, 격리형 표현이 필요합니다. | 승격 전까지 없음 |
+| 향후 증명 경로 기대치 | 후보 목록은 현재 런타임 증명이 아님 | 승격된 동작에 대한 적합성 목표, fixture, 증거 기대치, 또는 담당 문서가 정한 다른 증명 경로가 필요합니다. | 승격 전까지 없음 |
+| 활성 범위 상속 | 기본적으로 비활성 | 향후 담당 문서가 승격이 현재 MVP나 더 이른 smoke 목표에 근거 없는 요구사항을 더하지 않는다는 점을 증명해야 합니다. | 현재 MVP에 영향을 주면 안 됨 |
 | 대체 불가 경계 | 필요한 경계 | Core 상태, 사용자 판단, 증거, 검증, Manual QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태는 계속 분리합니다. | 없음 |
 
 ## 3. 보증 후보
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
-| assurance hardening | later 후보 | 담당 문서가 관문, 대체 동작, 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
-| Evidence Manifest | later 후보 | 증거 담당 문서가 아티팩트 참조, 가림, 닫기 영향, 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
+| assurance hardening | later 후보 | 담당 문서가 관문, 대체 동작, 향후 승격에 필요한 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
+| Evidence Manifest | later 후보 | 증거 담당 문서가 아티팩트 참조, 가림, 닫기 영향, 향후 승격에 필요한 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | Manual QA | later 후보 | Manual QA 담당 문서가 면제 경로, 아티팩트 참조, 발견 사항, QA 관문 영향을 정해야 합니다. | 승격 전까지 없음 |
 | Eval / detached verification | later 후보 | Eval 담당 문서가 독립성 의미, 기준선 최신성, 아티팩트 무결성, 보증 갱신 규칙을 정해야 합니다. | 승격 전까지 없음 |
 | Decision Packet full-format presentation | later 후보 | 사용자 판단 담당 문서가 `presentation=full`을 켜되 기본 현재 MVP 경로로 만들지 않아야 합니다. | 승격 전까지 없음 |
 | Risk review and residual-risk visibility | later 후보 | Core와 사용자 판단 담당 문서가 위험 표시, 수락, 만료, 닫기 영향을 정해야 합니다. | 승격 전까지 없음 |
-| Full design-quality policy families: full `shared_design` policy, `domain_language`, `vertical_slice`, `feedback_loop`, `tdd_trace`, `deep_module_interface`, `codebase_stewardship`, detailed `manual_qa`, `two_stage_review_display`, detached-verification policy, steward policies | 이름만 있음 | 설계 품질 담당 문서가 정확한 범위, 검증기 경계, 면제/증거 규칙, 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
+| Full design-quality policy families: full `shared_design` policy, `domain_language`, `vertical_slice`, `feedback_loop`, `tdd_trace`, `deep_module_interface`, `codebase_stewardship`, detailed `manual_qa`, `two_stage_review_display`, detached-verification policy, steward policies | 이름만 있음 | 설계 품질 담당 문서가 정확한 범위, 검증기 경계, 면제/증거 규칙, 향후 승격에 필요한 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
 
 <a id="operations-candidates"></a>
 ## 4. 운영 후보
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
-| operations hardening | later 후보 | 운영 담당 문서가 명령, 진단, 대체 동작, 보안 표현, 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
-| 향후 로컬 운영자 명령 묶음: `harness connect`, `harness serve mcp`, `harness doctor`, `harness projection refresh`, `harness reconcile`, `harness recover`, `harness export`, `harness artifacts check`, `harness conformance run` | 명령 이름만 있음 | 운영 담당 문서가 정확한 구문, 보안 태세, API와 저장소 영향, 보고, 대체 동작, 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
-| Export | later 후보 | Export 담당 문서가 저장소/아티팩트 처리, 가림, 생략, 무결성, 유출 방지 증명을 정해야 합니다. | 승격 전까지 없음 |
+| operations hardening | later 후보 | 운영 담당 문서가 명령, 진단, 대체 동작, 보안 표현, 향후 승격에 필요한 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
+| 향후 로컬 운영자 명령 묶음: `harness connect`, `harness serve mcp`, `harness doctor`, `harness projection refresh`, `harness reconcile`, `harness recover`, `harness export`, `harness artifacts check`, `harness conformance run` | 명령 이름만 있음 | 운영 담당 문서가 정확한 구문, 보안 태세, API와 저장소 영향, 보고, 대체 동작, 향후 승격에 필요한 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
+| Export | later 후보 | Export 담당 문서가 저장소/아티팩트 처리, 가림, 생략, 무결성, 향후 유출 방지 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | Release Handoff | later 후보 | Handoff 담당 문서가 배포, 병합, 롤백, 운영 환경 권한을 별도 승격 전까지 외부에 남겨야 합니다. | 승격 전까지 없음 |
 | Recovery and reconcile | later 후보 | Operations, Storage, Projection, Reconcile, Security 담당 문서 규칙이 필요합니다. | 승격 전까지 없음 |
 | Operator readiness and `doctor` surfaces | later 후보 | 운영 담당 문서가 진단, 기능 확인, 보안 태세, 지원되지 않는 접점의 대체 동작을 정해야 합니다. | 승격 전까지 없음 |
@@ -72,7 +72,7 @@
 | Later next-action values: `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile` | 값 이름만 있음 | 대응 API 또는 담당 문서 활성화가 필요합니다. | 승격 전까지 없음 |
 | Recommended playbooks and judgment context | 메타데이터 이름만 있음 | Agent Integration/API 담당 문서가 메타데이터를 읽기 전용으로 두고 상태를 만족시키지 못하게 해야 합니다. | 승격 전까지 없음 |
 | Later ref and artifact values: bundle, manifest, QA capture, export component, design, Eval, Manual QA, TDD, projection, related refs | 값 이름만 있음 | ArtifactRef, StateRecordRef, Storage, 관련 담당 문서 활성화가 필요합니다. | 승격 전까지 없음 |
-| ValidatorResult later stable IDs: design, autonomy, feedback-loop, TDD, stewardship, residual-risk, shared-design, manual-QA, context-hygiene checks | ID 이름만 있음 | Validator 담당 문서가 stable ID, 심각도, 면제, fixture 증명을 정해야 합니다. | 승격 전까지 없음 |
+| ValidatorResult later stable IDs: design, autonomy, feedback-loop, TDD, stewardship, residual-risk, shared-design, manual-QA, context-hygiene checks | ID 이름만 있음 | Validator 담당 문서가 stable ID, 심각도, 면제, 향후 fixture 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | Waiver, reconcile, and residual-risk branches | 분기 이름만 있음 | 사용자 판단, Core, 닫기 담당 문서 규칙이 필요합니다. | 승격 전까지 없음 |
 
 <a id="later-template-candidates"></a>
@@ -80,7 +80,7 @@
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
-| Decision Packet full-format presentation (`DEC`), `APR`, Approval Card, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, Verification Result Card, `MANUAL-QA`, Manual QA Card, `TASK`, `DIRECT-RESULT`, `JOURNEY-CARD`, `DESIGN`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `TDD-TRACE`, `EXPORT` | 템플릿 이름만 있음 | 템플릿 담당 문서 지정, 원천 기록, 대체 동작, 대체 불가 규칙, 최신성 동작, 증명 기대치가 필요합니다. | 승격 전까지 없음 |
+| Decision Packet full-format presentation (`DEC`), `APR`, Approval Card, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, Verification Result Card, `MANUAL-QA`, Manual QA Card, `TASK`, `DIRECT-RESULT`, `JOURNEY-CARD`, `DESIGN`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `TDD-TRACE`, `EXPORT` | 템플릿 이름만 있음 | 템플릿 담당 문서 지정, 원천 기록, 대체 동작, 대체 불가 규칙, 최신성 동작, 향후 승격에 필요한 증명 경로 기대치가 필요합니다. | 승격 전까지 없음 |
 
 <a id="future-fixture-families"></a>
 ## 8. 향후 fixture 계열
@@ -89,7 +89,7 @@
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
-| Intake and decision routing; Core, evidence, verification, and close; Artifact redaction and export non-leakage; Agency and user-judgment separation; Connector capability honesty; Design-quality and stewardship; Context hygiene and resume freshness; Projection, reconcile, and verification boundary; Operations diagnostics, export, recover, and handoff; Browser QA Capture | 향후 fixture 계열 이름만 있음 | 적합성 담당 문서 지정, 정확한 fixture 형태, 검증 주장, 페이로드, API, 저장소, 오류 영향, 증명 기대치가 필요합니다. | 승격 전까지 없음 |
+| Intake and decision routing; Core, evidence, verification, and close; Artifact redaction and export non-leakage; Agency and user-judgment separation; Connector capability honesty; Design-quality and stewardship; Context hygiene and resume freshness; Projection, reconcile, and verification boundary; Operations diagnostics, export, recover, and handoff; Browser QA Capture | 향후 fixture 계열 이름만 있음 | 적합성 담당 문서 지정, 정확한 fixture 형태, 검증 주장, 페이로드, API, 저장소, 오류 영향, 향후 승격에 필요한 증명 경로 기대치가 필요합니다. | 승격 전까지 없음 |
 
 ## 9. 넓은 향후 후보
 
@@ -98,8 +98,8 @@
 | Dashboard, hosted workflows, artifact dashboard, richer cards, richer visualizations | later 후보 | 파생 표시 담당 문서가 읽기 전용, 비권위 동작을 정해야 합니다. | 승격 전까지 없음 |
 | Browser capture automation | later 후보 | Capture 담당 문서가 가림/PII, 보존, 대체 동작, QA/수락 대체 불가 규칙을 정해야 합니다. | 승격 전까지 없음 |
 | Cross-surface verification | later 후보 | Core/Eval 담당 문서가 반환 기록, 독립성, 지원되지 않는 접점의 대체 동작을 정해야 합니다. | 승격 전까지 없음 |
-| Broader connectors, connector marketplace, hosted UI, hosted/remote runtime | later 후보 | Connector/API/보안 담당 문서와 로컬 권위 경계 증명이 필요합니다. | 승격 전까지 없음 |
-| Native hooks, preventive guard expansion, advanced sidecar watcher | later 후보 | 예방형, 격리, 임의 도구 제어 주장을 하기 전에 증명된 대상 메커니즘이 필요합니다. | 승격 전까지 없음 |
+| Broader connectors, connector marketplace, hosted UI, hosted/remote runtime | later 후보 | Connector/API/보안 담당 문서와 향후 로컬 권위 경계 증명 기대치가 필요합니다. | 승격 전까지 없음 |
+| Native hooks, preventive guard expansion, advanced sidecar watcher | later 후보 | 예방형, 격리, 임의 도구 제어 주장을 하기 전에 담당 문서가 증명한 대상 메커니즘이 필요합니다. | 승격 전까지 없음 |
 | Context Index, local derived metrics, long-term metrics | later 후보 | 읽기 전용 검색/진단 담당 문서가 필요하며 권한이나 닫기 효과가 없어야 합니다. | 승격 전까지 없음 |
 | Team workflows, permissions, shared capability sets, orchestration, parallel lanes | later 후보 | 범위, 권한, 허가 체계, 사용자 소유 판단 담당 문서가 필요합니다. | 승격 전까지 없음 |
 | Advanced exports, release/deployment/canary/rollback/merge/production-monitoring automation | later 후보 | 별도 담당 범위가 필요합니다. 명시적으로 승격하기 전까지 배포와 운영 환경 권한은 외부에 남습니다. | 승격 전까지 없음 |

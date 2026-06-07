@@ -39,7 +39,7 @@ report prose are not storage authority.
 
 Storage defines where Harness records persist and how committed state
 transitions are recorded. It does not claim tamper-proof storage, security
-isolation, cryptographic evidence guarantees, or authority beyond the
+isolation, cryptographic evidence guarantee claims, or authority beyond the
 Core/API/storage contracts.
 
 ## 2. Runtime Home identity
@@ -203,7 +203,7 @@ An artifact is evidence-eligible only when storage has:
 
 `sha256`, `size_bytes`, and `content_type` are artifact integrity facts for
 comparison and availability handling. They do not make artifact storage
-tamper-proof or create a cryptographic evidence guarantee.
+tamper-proof or create a cryptographic evidence guarantee claim.
 
 `uri` resolves through Harness storage, normally as
 `harness-artifact://{project_id}/{artifact_id}`. It is not a caller-supplied
@@ -273,7 +273,7 @@ lock/recovery metadata is later operations material until an owner
 promotes it.
 
 Locks protect concurrent state writes. They do not provide OS sandboxing,
-artifact integrity guarantees, tamper-proof storage, permission isolation, or
+artifact-integrity enforcement, tamper-proof storage, permission isolation, or
 pre-tool blocking.
 
 ## 10. Migration boundary
@@ -286,7 +286,7 @@ DDL, migration mechanism, storage profile, and tightening behavior.
 The active migration boundary is:
 
 - Store schema/profile version in Runtime Home metadata and `project_state`, or
-  an equivalent accepted mechanism.
+  an equivalent maintainer-accepted mechanism.
 - Validate owner-shaped JSON before commit and before tightening constraints.
 - Treat unknown owner-bound status or enum values as invalid until an owner
   defines them.
@@ -301,9 +301,10 @@ profile-specific migration details.
 
 ## 11. Later storage excluded from active current MVP
 
-Later/profile storage is outside the active current MVP unless an owner document
-promotes a narrow behavior with scope, fallback behavior, and proof
-expectations. Reference-schema presence alone does not make storage active.
+Profile-gated later storage is outside the active current MVP unless an owner
+document promotes a narrow behavior with scope, fallback behavior, and
+proof-path expectations for future promotion. Reference-schema presence alone
+does not make storage active.
 
 The active current MVP excludes storage for:
 
