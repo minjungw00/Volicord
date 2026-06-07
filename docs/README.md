@@ -48,4 +48,4 @@ Documentation checks are manual maintenance aids. Their `PASS`, `WARN`, and `FAI
 
 Agents should keep a small current context, pull owner docs only when needed, and avoid duplicate injection. Do not load paired English/Korean docs for the same `doc_id` in one prompt unless the task is translation or semantic-parity review.
 
-에이전트는 작은 현재 맥락을 유지하고 필요한 담당 문서만 불러와야 합니다. 에이전트 중복 주입 금지도 지켜야 합니다. 번역이나 의미 일치 검토가 필요한 작업이 아니라면 같은 `doc_id`의 영어/한국어 문서를 한 prompt에 함께 넣지 않습니다.
+에이전트는 작은 현재 맥락을 유지하고 필요한 담당 문서만 불러와야 합니다. 에이전트 중복 주입 금지도 지켜야 합니다. 번역이나 의미 일치 검토가 필요한 작업이 아니라면 같은 `doc_id`의 영어/한국어 문서를 한 프롬프트에 함께 넣지 않습니다.

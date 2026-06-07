@@ -8,7 +8,7 @@ Harness is a future local work-authority server for AI-assisted product work. It
 
 This repository is documentation-only today. It contains bilingual planning documentation for a future local Harness Server. It has no server/runtime implementation, product implementation code, runtime state, generated projections, generated operational artifacts, executable fixtures, or conformance runner.
 
-이 저장소는 현재 문서 전용입니다. 향후 로컬 하네스 서버를 위한 계획 문서를 담고 있으며, 한영 문서 동시 유지 원칙으로 관리됩니다. 서버/런타임 구현, 제품 구현 코드, 런타임 상태, 생성된 상태 보기, 생성된 운영 산출물, 실행 가능한 fixture, conformance runner는 없습니다.
+이 저장소는 현재 문서 전용입니다. 향후 로컬 하네스 서버를 위한 계획 문서를 담고 있으며, 한영 문서 동시 유지 원칙으로 관리됩니다. 서버/런타임 구현, 제품 구현 코드, 런타임 상태, 생성된 상태 보기, 생성된 운영 산출물, 실행 가능한 fixture, 적합성 실행기는 없습니다.
 
 The repository is not the user's Product Repository and not a Harness Runtime Home. Documentation acceptance, when it happens, is a maintainer documentation milestone only. Server/runtime implementation still requires a separate implementation-planning readiness decision.
 
@@ -37,4 +37,4 @@ Start at [docs/README.md](docs/README.md) to choose a language. English and Kore
 
 Future agents should follow [AGENTS.md](AGENTS.md) before editing. Keep context small, load owner docs only when needed, and do not load paired English/Korean docs for the same `doc_id` in one prompt unless translation or parity review requires it.
 
-향후 에이전트는 편집 전에 [AGENTS.md](AGENTS.md)를 따라야 합니다. 작은 현재 맥락을 유지하고, 필요한 담당 문서만 불러오며, 번역이나 의미 일치 검토가 필요한 경우가 아니면 같은 `doc_id`의 영어/한국어 문서를 한 prompt에 함께 넣지 않습니다.
+향후 에이전트는 편집 전에 [AGENTS.md](AGENTS.md)를 따라야 합니다. 작은 현재 맥락을 유지하고, 필요한 담당 문서만 불러오며, 번역이나 의미 일치 검토가 필요한 경우가 아니면 같은 `doc_id`의 영어/한국어 문서를 한 프롬프트에 함께 넣지 않습니다.
