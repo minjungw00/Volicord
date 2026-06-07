@@ -65,7 +65,7 @@ Keep these identifiers exact in schemas, API docs, records, examples, file paths
 
 | Identifier | Short orientation | Owner route |
 |---|---|---|
-| Active MCP methods | `harness.intake`, `harness.update_scope`, `harness.status`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task`. | [MVP API](api/mvp-api.md) |
+| Active MCP methods | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task`. | [MVP API](api/mvp-api.md) |
 | `ToolEnvelope` / `ToolResponseBase` / `ToolError` / `EventRef` | Shared call identity, response, error, and event reference shapes. | [API Schema Core](api/schema-core.md) |
 | `StateSummary` / `StateRecordRef` / `NextActionSummary` / `GuaranteeDisplay` | Current-state, owner-ref, next-action, and guarantee-display shapes. | [API Schema Core](api/schema-core.md) |
 | `ArtifactRef` / `ArtifactInput` | Public artifact pointer and accepted `record_run` artifact input shapes. | [API Schema Core](api/schema-core.md), [Storage](storage.md) |

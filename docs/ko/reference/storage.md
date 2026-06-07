@@ -92,7 +92,7 @@ Runtime Home 파일은 로컬 운영 제어 데이터이고 민감한 지원 데
 ## 3. 활성 영속 레코드
 
 현재 활성 MVP는 활성 메서드 집합에 필요한 레코드만 영속화합니다.
-`harness.intake`, `harness.update_scope`, `harness.status`, `harness.prepare_write`,
+`harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`,
 `harness.record_run`, `harness.request_user_judgment`,
 `harness.record_user_judgment`, `harness.close_task`가 그 범위입니다.
 

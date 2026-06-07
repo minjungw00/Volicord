@@ -397,7 +397,7 @@ CloseBlocker:
 NextActionSummary:
   action_kind: ask_user | update_scope | prepare_write | implement | request_acceptance | close_task | idle
   summary: string
-  required_tool: harness.intake | harness.update_scope | harness.status | harness.prepare_write | harness.record_run | harness.request_user_judgment | harness.record_user_judgment | harness.close_task | null
+  required_tool: harness.intake | harness.status | harness.update_scope | harness.prepare_write | harness.record_run | harness.request_user_judgment | harness.record_user_judgment | harness.close_task | null
   related_refs: StateRecordRef[]
   blocker_code: ErrorCode | null
 ```
@@ -479,7 +479,7 @@ These values are valid without a promoted profile. Values not listed here are no
 
 | Field | Current MVP values |
 |---|---|
-| Active method set | `harness.intake`, `harness.update_scope`, `harness.status`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
+| Active method set | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
 | `ToolEnvelope.actor_kind` | `user`, `lead_agent`, `evaluator`, `operator` |
 | Local API access classes | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
 | `surfaces.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` |

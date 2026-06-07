@@ -125,7 +125,7 @@ Do not claim write compatibility from a plan, stale chat context, broad user ent
 - current guarantee level or unavailable/capability condition
 - smallest unblocker
 
-A compatible result means the intended write matches current Harness state and active surface capability. It is a single-use cooperative record for the stated boundary. If paths, commands, tools, network targets, secret scope, sensitive category, baseline, task, work slice, state, surface, related judgments, or guarantee level change, refresh the check or treat the claim as unverified/blocked.
+A compatible result means the intended write matches current Harness state and active surface capability. It is a single-use cooperative record for the stated path-level boundary. If intended product-file paths, sensitive category, baseline, task, work slice, state, surface, related judgments, or guarantee level change, refresh the check or treat the claim as unverified/blocked. Command, network, and secret-access facts remain separate capability or sensitive-action issues unless a future owner promotes observation support.
 
 If the scope change is valid, update the active scope or active work slice through `harness.update_scope` before asking for a new pre-write check. Existing Write Authorizations that no longer match the updated scope must be treated as stale.
 

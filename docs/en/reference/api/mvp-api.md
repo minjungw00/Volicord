@@ -8,7 +8,7 @@ This document describes future Harness Server behavior for planning and review. 
 
 ## Main Idea
 
-The active MVP API is a small local MCP surface for one user work loop. It can intake work, update active scope, show status, check proposed product writes against current Core state, record runs and evidence refs, ask and record user-owned judgment, and close only when active blockers allow it.
+The active MVP API is a small local MCP surface for one user work loop. It can intake work, show status, update active scope, check proposed product writes against current Core state, record runs and evidence refs, ask and record user-owned judgment, and close only when active blockers allow it.
 
 The API does not provide OS permissions, arbitrary-tool sandboxing, tamper-proof files, pre-tool blocking, or security isolation. `harness.prepare_write` returns a cooperative Harness record/check only.
 
@@ -23,8 +23,8 @@ The exact active method-name value set is owned by [API Schema Core](schema-core
 | Method | Active role |
 |---|---|
 | [`harness.intake`](#harnessintake) | Start, resume, or classify ordinary user work. |
-| [`harness.update_scope`](#harnessupdate_scope) | Update active Task scope and the active Change Unit after intake. |
 | [`harness.status`](#harnessstatus) | Return current state summary, blockers, pending judgments, evidence summary, close state, and next safe actions. |
+| [`harness.update_scope`](#harnessupdate_scope) | Update active Task scope and the active Change Unit after intake. |
 | [`harness.prepare_write`](#harnessprepare_write) | Check a proposed product write against current scope, state, sensitive-action permission, baseline, and surface capability. |
 | [`harness.record_run`](#harnessrecord_run) | Record shaping, direct, or implementation work plus compact evidence and artifact refs. |
 | [`harness.request_user_judgment`](#harnessrequest_user_judgment) | Create one pending user-owned judgment request. |
@@ -39,8 +39,8 @@ event, replay row, or version increment.
 | Method | Read-only or mutating | `dry_run` allowed | `idempotency_key` required | `expected_state_version` required | Blocked response commit allowed | Event created | `tool_invocations` replay row created | `state_version` increments |
 |---|---|---|---|---|---|---|---|---|
 | `harness.intake` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, when intake commits shaping/blocker state instead of a write-ready path | Yes, on commit | Yes, on first commit | Yes, on commit |
-| `harness.update_scope` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only for method-owned blocker/current-row updates; no scope authority is created by a failed precondition | Yes, on commit | Yes, on first commit | Yes, on commit |
 | `harness.status` | Read-only | Yes; no state distinction | No | No; may be `null` | No; blockers are computed response fields only | No | No | No |
+| `harness.update_scope` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only for method-owned blocker/current-row updates; no scope authority is created by a failed precondition | Yes, on commit | Yes, on first commit | Yes, on commit |
 | `harness.prepare_write` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, for committed `blocked`, `approval_required`, or `decision_required` blocker updates; no consumable Write Authorization is created | Yes, on committed `allowed` or committed blocker update | Yes, on first committed `allowed` or committed blocker update | Yes, on committed `allowed` or committed blocker update |
 | `harness.record_run` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only when recording a compatible Run or run-related blocker state; rejected attempts are pre-commit failures | Yes, on commit | Yes, on first commit | Yes, on commit |
 | `harness.request_user_judgment` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | No separate blocked-response commit; the method either commits the pending judgment path or fails pre-commit | Yes, on commit | Yes, on first commit | Yes, on commit |

@@ -99,7 +99,7 @@ control, tamper-proof storage, or pre-execution blocking.
 ## 3. Active persisted records
 
 The active current MVP persists only the records needed by the active method set:
-`harness.intake`, `harness.update_scope`, `harness.status`, `harness.prepare_write`,
+`harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`,
 `harness.record_run`, `harness.request_user_judgment`,
 `harness.record_user_judgment`, and `harness.close_task`.
 

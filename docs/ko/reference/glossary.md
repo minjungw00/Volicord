@@ -65,7 +65,7 @@
 
 | 식별자 | 짧은 설명 | 담당 경로 |
 |---|---|---|
-| 활성 MCP 메서드 | `harness.intake`, `harness.update_scope`, `harness.status`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task`. | [MVP API](api/mvp-api.md) |
+| 활성 MCP 메서드 | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task`. | [MVP API](api/mvp-api.md) |
 | `ToolEnvelope` / `ToolResponseBase` / `ToolError` / `EventRef` | 공통 호출 식별, 응답, 오류, 이벤트 참조 형태입니다. | [API Schema Core](api/schema-core.md) |
 | `StateSummary` / `StateRecordRef` / `NextActionSummary` / `GuaranteeDisplay` | 현재 상태, 담당 기록 참조, 다음 행동, 보장 표시 형태입니다. | [API Schema Core](api/schema-core.md) |
 | `ArtifactRef` / `ArtifactInput` | 공개 아티팩트 포인터와 `record_run`이 받을 수 있는 아티팩트 입력 형태입니다. | [API Schema Core](api/schema-core.md), [Storage](storage.md) |
