@@ -48,7 +48,7 @@
 | `read_status` | `harness.status`, 읽기 전용 상태 리소스, `harness.close_task intent=check` 같은 읽기 전용 닫기 확인. | 같은 프로젝트에 등록된 `surface_id`, `surfaces.status=active`, 요청한 읽기에 필요한 Core/접점 경로 도달 가능성, Task 범위 읽기라면 호환되는 `task_id`가 필요합니다. 상태 읽기는 표시해도 안전한 가용성 또는 불일치 진단을 반환할 수 있지만, 오래된 텍스트에서 상태를 만들어 내거나 로컬 접근을 확인할 수 없을 때 보호되어야 할 Core 세부정보를 노출하면 안 됩니다. |
 | `core_mutation` | `harness.intake`, `harness.update_scope`, `harness.request_user_judgment`, `harness.record_user_judgment`, 상태를 끝내는 `harness.close_task` intent. | `read_status` 조건에 더해 `surfaces.local_access_posture=registered_local`, non-null `idempotency_key`, 현재 `expected_state_version`, 적용되는 경우 호환되는 `project_id`, `surface_id`, `task_id`, 담당 기록이 필요합니다. |
 | `write_authorization` | `harness.prepare_write`. | `core_mutation` 조건에 더해 의도한 attempt에 필요한 활성 Task/Change Unit 호환성, 범위, baseline, 민감 동작, 역량 확인이 필요합니다. |
-| `run_recording` | `harness.record_run`. | `core_mutation` 조건에 더해 호환되는 `task_id`, `change_unit_id`, `baseline_ref`, 관찰된 attempt 사실, 그리고 제품 쓰기를 기록하는 Run이면 소비 가능한 active Write Authorization이 필요합니다. |
+| `run_recording` | `harness.record_run`. | `core_mutation` 조건에 더해 호환되는 `task_id`, `change_unit_id`, `baseline_ref`, 관찰된 시도 사실, 그리고 제품 쓰기를 기록하는 Run이면 소비 가능한 활성 Write Authorization이 필요합니다. |
 | `artifact_registration` | `harness.record_run`이 받는 `ArtifactInput[]`. | `run_recording` 조건에 더해 문서화된 `staged_file`, `capture_adapter`, `existing_artifact` 핸들만 받을 수 있습니다. 호출자가 임의로 준 파일시스템 경로, 원시 비밀값, 토큰, 민감한 전체 로그는 등록 권한으로 인정하지 않습니다. |
 | `artifact_read` | 등록된 `ArtifactRef`에서 담당 경로가 노출하는 로컬 아티팩트 메타데이터 또는 본문 읽기. | 같은 프로젝트에 등록된 `surface_id`, `surfaces.status=active`, 본문 읽기에는 `surfaces.local_access_posture=registered_local`, 등록된 `ArtifactRef`, 호환되는 `project_id`/`task_id`, 필요한 가림/가용성 확인, `artifact_links`의 일치하는 담당 관계가 필요합니다. 원시 아티팩트 경로 읽기는 기본으로 허용되지 않습니다. |
 
@@ -197,7 +197,7 @@ StatusResponse:
 
 ## `harness.prepare_write`
 
-- **담당:** 협력형 쓰기 전 범위 확인과 proposed attempt가 compatible할 때 오래 남는 1회용 Write Authorization.
+- **담당:** 협력형 쓰기 전 범위 확인과 제안된 시도가 호환될 때 오래 남는 1회용 Write Authorization.
 - **담당하지 않음:** OS 권한, 샌드박스, 변조 방지 강제, 도구 실행 전 차단, 사용자 판단 생성, 증거 충분성, Run 기록, 닫기.
 - **호출 시점:** 제품 파일 쓰기 또는 쓰기 가능한 동작 직전에, 현재 Task, Change Unit, baseline, 민감 동작 승인, 접점 역량과 맞는지 확인해야 할 때.
 - **요청:**
@@ -209,18 +209,7 @@ PrepareWriteRequest:
   change_unit_id: string | null
   intended_operation: string
   intended_paths: string[]
-  intended_tools: string[]
-  intended_commands:
-    - command: string
-      command_class: string
-      writes_product_files: boolean
   product_file_write_intended: boolean
-  intended_network:
-    - target: string
-      direction: read | write
-  intended_secret_scope:
-    - secret_handle: string
-      access_kind: read | write
   sensitive_categories: string[]
   baseline_ref: string | null
 ```
@@ -241,10 +230,10 @@ PrepareWriteResponse:
   guarantee_display: GuaranteeDisplay
 ```
 
-- **상태 효과:** 커밋된 non-dry-run `decision=allowed`는 `write_authorizations.status=active` 행 하나와 재실행 행을 만듭니다. 커밋된 blocked 응답은 차단 사유를 업데이트할 수 있지만 소비 가능한 Write Authorization을 만들면 안 됩니다. Dry-run과 커밋 전 실패는 현재 기록, Write Authorization, blocker 행, 이벤트, 아티팩트, 증거 요약, 재실행 행을 만들지 않습니다.
+- **상태 효과:** 커밋된 non-dry-run `decision=allowed`는 활성 경로 수준 `AuthorizedAttemptScope`에 대해 `write_authorizations.status=active` 행 하나와 재실행 행을 만듭니다. 커밋된 blocked 응답은 차단 사유를 업데이트할 수 있지만 소비 가능한 Write Authorization을 만들면 안 됩니다. Dry-run과 커밋 전 실패는 현재 기록, Write Authorization, blocker 행, 이벤트, 아티팩트, 증거 요약, 재실행 행을 만들지 않습니다.
 - **오류:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `DECISION_REQUIRED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `BASELINE_STALE`, `VALIDATOR_FAILED`.
 - **저장소 담당 문서:** `write_authorizations`, `blockers`, `tasks` 또는 `project_state` version clock, `task_events`, `tool_invocations`.
-- **보안 경계:** `decision=allowed`는 이 attempt가 하네스 기록과 compatible하다는 뜻입니다. 운영체제가 incompatible write를 막거나 임의 도구가 격리된다는 뜻이 아닙니다.
+- **보안 경계:** `decision=allowed`는 이 경로 수준 제품 쓰기 시도가 하네스 기록과 호환된다는 뜻입니다. 운영체제가 호환되지 않는 쓰기를 막거나 임의 도구가 격리된다는 뜻이 아닙니다. 현재 MVP 요청이 명령, 네트워크, 비밀값 접근, 아티팩트 캡처, 도구 실행 전 차단, 격리에 대한 보장을 요구하면 활성 접점에 역량이 없을 때 `CAPABILITY_INSUFFICIENT`를 반환하고, 요청 형태나 요구한 보장이 활성 프로필에 유효하지 않으면 `VALIDATION_FAILED`를 반환해야 합니다.
 
 <a id="harnessrecord_run"></a>
 
@@ -252,7 +241,7 @@ PrepareWriteResponse:
 
 - **담당:** Run 기록, compatible Write Authorization 소비, artifact 등록, 간결한 evidence-summary 업데이트, Run 관련 차단 사유.
 - **담당하지 않음:** 새 범위, 사용자 판단 해결, 최종 수락, 잔여 위험 수락, 별도 보증 기록, 닫기.
-- **호출 시점:** Shaping work, direct answer/result, implementation work가 끝난 뒤. 제품 쓰기 Run은 `harness.prepare_write`가 반환한 compatible active Write Authorization을 제공해야 합니다.
+- **호출 시점:** Shaping work, direct answer/result, implementation work가 끝난 뒤. 제품 쓰기 Run은 `harness.prepare_write`가 반환한 호환되는 활성 Write Authorization을 제공해야 합니다.
 - **요청:**
 
 ```yaml
@@ -282,10 +271,10 @@ RecordRunResponse:
   state: StateSummary
 ```
 
-- **상태 효과:** 호환되는 커밋 호출은 `runs`, `artifacts`, `artifact_links`, `evidence_summaries`를 만들고, 차단 사유를 업데이트하고, `write_authorizations.status=active`를 소비하고, 이벤트와 커밋된 재실행 행을 만들 수 있습니다. 거부된 호출은 Run 생성, 아티팩트 등록, 증거 업데이트, 유효하지 않은 Write Authorization 소비를 하면 안 됩니다.
+- **상태 효과:** 호환되는 커밋 호출은 `runs`, `artifacts`, `artifact_links`, `evidence_summaries`를 만들고, 차단 사유를 업데이트하고, `write_authorizations.status=active`를 소비하고, 이벤트와 커밋된 재실행 행을 만들 수 있습니다. 제품 쓰기 Run은 저장된 Write Authorization과 관찰된 변경 경로가 호환될 때만 활성 Write Authorization을 소비합니다. 거부된 호출은 Run 생성, 아티팩트 등록, 증거 업데이트, 유효하지 않은 Write Authorization 소비를 하면 안 됩니다.
 - **오류:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `WRITE_AUTHORIZATION_REQUIRED`, `WRITE_AUTHORIZATION_INVALID`, `SCOPE_VIOLATION`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `BASELINE_STALE`, `ARTIFACT_MISSING`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`.
 - **저장소 담당 문서:** `runs`, `write_authorizations`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`, `task_events`, `tool_invocations`.
-- **보안 경계:** Run은 접점이 관찰한 사실을 기록할 수 있습니다. 접점이 경로, 명령, 네트워크, 비밀 접근, 아티팩트 캡처, 차단, 격리 사실을 관찰할 수 없으면 API는 그 사실을 검증됨으로 표시하면 안 됩니다.
+- **보안 경계:** Run은 접점이 관찰한 사실을 기록할 수 있습니다. 기준 `reference-local-mcp` 프로필에서 제품 쓰기 호환성은 관찰된 변경 경로에 대해서만 탐지형입니다. 활성 접점이 관찰할 수 없는 명령 실행, 네트워크 활동, 비밀값 접근, 아티팩트 캡처, 차단, 격리 사실을 API가 검증됨으로 표시하면 안 됩니다.
 
 <a id="harnessrequest_user_judgment"></a>
 

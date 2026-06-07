@@ -39,6 +39,8 @@ The reference `capability_profile` has no default preventive or isolated posture
 
 Write Authorization is a single-use cooperative Harness record created only by the compatible non-dry-run `prepare_write` path and consumed by compatible `record_run`. It is a Harness record/check, not OS permission, sandboxing, tamper-proof enforcement, physical pre-tool blocking, or isolation.
 
+For the baseline `reference-local-mcp` profile, Write Authorization and product-write Run compatibility are path-level. The profile is cooperative by default and has limited detective support only for observed changed paths. It has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. Manual artifact attachment may exist through owner-approved artifact registration, but that is not connector artifact capture and does not verify how the artifact was produced.
+
 Local access posture is also a Harness compatibility fact. `registered_local` means the API owner can treat the caller/transport as matching the registered local surface for the requested access class. It does not mean an OS account, editor, shell, package manager, or arbitrary local process is constrained. `unavailable`, `mismatch`, and `revoked` posture states route to public API errors and safe diagnostics; they are not proof of a stronger security boundary.
 
 Documentation checks, fixture drafts, examples, and conformance plans do not prove runtime security behavior. They can check wording and future contract intent, but preventive or isolated security claims require an implemented mechanism and proof for the covered operation or boundary.
@@ -51,6 +53,7 @@ The current MVP does not provide:
 - arbitrary-tool sandboxing
 - tamper-proof storage
 - default pre-tool blocking
+- native artifact capture in the baseline reference profile
 - security isolation
 
 These are explicit non-claims even when Harness returns a blocker, records a Write Authorization, validates an artifact hash, detects stale context, reports a capability mismatch, or marks a projection stale. Those outcomes may be cooperative or detective. They are not preventive or isolated unless another owner documents and proves that exact mechanism for that exact operation.
@@ -92,7 +95,7 @@ This summary names the active threat categories without turning the MVP document
 | Threat category | Common path | MVP control posture |
 |---|---|---|
 | Authority spoofing | Chat, generated Markdown, caller claims, or stale projections pretend to approve, verify, accept, or close work. | Route authority through Core-owned records; fail or hold when MCP/Core authority is unavailable. |
-| Out-of-scope write | A path, command, network target, or secret use exceeds the active Change Unit, user judgment, sensitive-action permission, or stored `AuthorizedAttemptScope`. | Use cooperative `prepare_write`, single-use Write Authorization, compatible `record_run`, and changed-path detection only where the surface can observe. |
+| Out-of-scope write | A product-file path or sensitive category exceeds the active Change Unit, user judgment, sensitive-action permission, or stored `AuthorizedAttemptScope`. Command, network, and secret effects are separate capability and sensitive-action concerns unless a future profile promotes observation for them. | Use cooperative `prepare_write`, single-use Write Authorization, compatible `record_run`, and changed-path detection only where the surface can observe. Reject or block requests that require unobservable command, network, or secret guarantees. |
 | Stale context or replay | Stale status text, approvals, projections, baselines, evaluator bundles, or cached state steer current work. | Check current state version, idempotency, freshness, and owner-record compatibility before relying on the input. |
 | Artifact or evidence tampering | Bytes, paths, hashes, or metadata are swapped, stale, missing, redacted, blocked, or unrelated to the owner record. | Treat evidence as insufficient or blocked until registration, integrity, redaction, and owner relation checks pass. |
 | Secret or PII exposure | Logs, screenshots, traces, prompts, artifacts, projections, manifests, or exports contain sensitive values. | Prefer redaction, omission, blocked-payload notices, display-safe handles, and owner-approved evidence summaries. |
@@ -107,7 +110,7 @@ Examples of cooperative behavior in the current MVP plan:
 - a surface calls `prepare_write` before a product write
 - Core declines to create a Write Authorization when scope, judgment, sensitive-action permission, state version, or capability is incompatible
 - a compatible non-dry-run `prepare_write` creates one consumable Write Authorization
-- `record_run` consumes that Write Authorization only when the observed attempt is compatible to the extent the surface can honestly observe it
+- `record_run` consumes that Write Authorization only when the observed changed paths are compatible to the extent the surface can honestly observe them
 - the agent holds product/runtime/code writes by instruction when MCP/Core authority or required capability is unavailable
 - generated status text tells the user what Harness can and cannot confirm
 
@@ -120,12 +123,12 @@ Detective behavior means Harness can detect, record, or report a mismatch after 
 Examples of detective behavior in the current MVP plan:
 
 - changed-path comparison after a run, when the surface supports it
-- artifact `sha256`, `size_bytes`, `content_type`, ownership, availability, redaction, omission, or blocked-payload checks where the owner path requires them
+- artifact `sha256`, `size_bytes`, `content_type`, ownership, availability, redaction, omission, or blocked-payload checks for owner-registered artifact refs where the owner path requires them; these checks are not native artifact capture
 - stale state, stale projection, stale connector profile, stale baseline, or stale retrieved-context reporting
 - capability mismatch or unsupported-surface reporting
 - generated-file or managed-block drift reporting where the owner path supports it
 
-Detective behavior must say what was observed and what remains unverified. Unsupported command, network, secret, or external-system effects must not be reported as passed merely because nearby Harness checks succeeded.
+Detective behavior must say what was observed and what remains unverified. For baseline product-write compatibility, the `detective` label is justified only by changed-path observation. Unsupported command, network, secret, artifact-capture, blocking, isolation, or external-system effects must not be reported as passed merely because nearby Harness checks succeeded.
 
 ## 9. Preventive Claims Rule
 

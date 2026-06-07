@@ -10,7 +10,7 @@ This document describes future Harness Server behavior for planning and review. 
 
 `guarantee_display.level` uses the current MVP values `cooperative` and `detective` unless a promoted profile explicitly supports a profile-gated display value. Security meaning is owned by [Security Reference: Honest guarantee display](../security.md#honest-guarantee-display), and the exact value-set boundary is owned by [API Schema Core](schema-core.md#current-mvp-value-sets).
 
-Requesting or displaying a profile-gated guarantee display value without profile support is a claim-boundary error, not evidence that the guarantee claim is supported. Use `CAPABILITY_INSUFFICIENT` when the surface lacks the needed blocking, isolation, observation, or proof-path support. Use `VALIDATION_FAILED` when the requested value is not valid for the active profile or request shape. Neither error implies current runtime enforcement in this documentation-only repository.
+Requesting or displaying a profile-gated guarantee display value without profile support is a claim-boundary error, not evidence that the guarantee claim is supported. Use `CAPABILITY_INSUFFICIENT` when the surface lacks the needed blocking, isolation, observation, or proof-path support, including command, network, or secret-access observation. Use `VALIDATION_FAILED` when the requested value is not valid for the active profile or request shape. Neither error implies current runtime enforcement in this documentation-only repository.
 
 | Level or name | Error/status meaning |
 |---|---|
@@ -25,7 +25,7 @@ Active MVP behavior defaults to cooperative checks with limited detective report
 |---|---|---|
 | `core_or_surface_unavailable` | `MCP_UNAVAILABLE` | Do not invent Harness state. Hold Harness-dependent writes and close until Core and the required surface path are reachable, or until the user explicitly chooses to proceed outside Harness. |
 | `local_access_mismatch` | `LOCAL_ACCESS_MISMATCH` | Do not guess local file or command facts. Use the registered local surface, repair local access registration, or label input unverified. |
-| `missing_capability` | `CAPABILITY_INSUFFICIENT` | Use a capable surface, reduce the operation, or choose a path that does not require the missing observation, capture, local access class, blocking/isolation claim, or active behavior. |
+| `missing_capability` | `CAPABILITY_INSUFFICIENT` | Use a capable surface, reduce the operation, or choose a path that does not require the missing observation, capture, local access class, blocking/isolation claim, or active behavior. Baseline `reference-local-mcp` requests that require command, network, secret-access, native artifact-capture, pre-tool-blocking, or isolation guarantees belong here unless the payload shape is invalid. |
 | `stale_state` | `STATE_CONFLICT`, `BASELINE_STALE`, `PROJECTION_STALE`, stale `WRITE_AUTHORIZATION_INVALID` | Refresh current state, baseline, readable view, scope-update result, or pre-write check before relying on it. |
 | `unsupported_surface` | `CAPABILITY_INSUFFICIENT` or `VALIDATION_FAILED` | Reduce the request, move to a capable surface, or return a blocker. Do not emulate unsupported authority with prose. |
 | `out_of_scope` | `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `NO_ACTIVE_CHANGE_UNIT`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | Hold the affected action, show the mismatch, narrow to current scope, request the specific user-owned scope judgment, or apply the resolved scope change through `harness.update_scope`. |
@@ -45,7 +45,7 @@ Active MVP behavior defaults to cooperative checks with limited detective report
 | `NO_ACTIVE_TASK` | A Task is required but none is active or addressed. |
 | `NO_ACTIVE_CHANGE_UNIT` | A write-capable or close-relevant operation has no active scoped Change Unit. |
 | `SCOPE_REQUIRED` | Scope confirmation is required before the requested write or action can proceed. |
-| `SCOPE_VIOLATION` | Intended or observed paths, tools, commands, network targets, secret access, or sensitive categories exceed active scope or stored `AuthorizedAttemptScope`. |
+| `SCOPE_VIOLATION` | Intended or observed product-file paths or sensitive categories exceed active scope or stored `AuthorizedAttemptScope`. |
 | `WRITE_AUTHORIZATION_REQUIRED` | A write-capable Run is missing a required Write Authorization from `harness.prepare_write`. |
 | `WRITE_AUTHORIZATION_INVALID` | The supplied Write Authorization is missing, expired, stale, revoked, consumed outside replay, or incompatible. |
 | `DECISION_REQUIRED` | A blocking user-owned judgment must be requested before the action can proceed. |

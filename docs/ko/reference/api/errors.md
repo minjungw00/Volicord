@@ -10,7 +10,7 @@
 
 `guarantee_display.level`은 승격된 프로필이 profile-gated 표시 값을 명시적으로 지원하지 않는 한 현재 MVP 값인 `cooperative`와 `detective`를 사용합니다. 보안 의미는 [보안 참조: 정직한 보장 표시](../security.md#정직한-guarantee-display)가 담당하고, 정확한 값 집합 경계는 [API Schema Core](schema-core.md#current-mvp-value-sets)가 담당합니다.
 
-프로필 지원 없이 profile-gated 보장 표시 값을 요청하거나 표시하는 것은 보장 주장이 뒷받침된다는 증거가 아니라, 보장 주장 경계 오류입니다. 필요한 차단, 격리, 관찰, 증명 경로 지원이 접점에 없으면 `CAPABILITY_INSUFFICIENT`를 사용합니다. 요청한 값이 활성 프로필이나 요청 형태에서 유효하지 않으면 `VALIDATION_FAILED`를 사용합니다. 어떤 오류도 문서 전용인 현재 저장소에 런타임 강제가 있다는 뜻은 아닙니다.
+프로필 지원 없이 profile-gated 보장 표시 값을 요청하거나 표시하는 것은 보장 주장이 뒷받침된다는 증거가 아니라, 보장 주장 경계 오류입니다. 명령, 네트워크, 비밀값 접근 관찰을 포함해 필요한 차단, 격리, 관찰, 증명 경로 지원이 접점에 없으면 `CAPABILITY_INSUFFICIENT`를 사용합니다. 요청한 값이 활성 프로필이나 요청 형태에서 유효하지 않으면 `VALIDATION_FAILED`를 사용합니다. 어떤 오류도 문서 전용인 현재 저장소에 런타임 강제가 있다는 뜻은 아닙니다.
 
 | 수준 또는 이름 | 오류/상태 의미 |
 |---|---|
@@ -25,7 +25,7 @@
 |---|---|---|
 | `core_or_surface_unavailable` | `MCP_UNAVAILABLE` | 하네스 상태를 만들어 내지 않습니다. Core와 필요한 접점 경로에 다시 닿거나 사용자가 하네스 밖 진행을 명시적으로 선택하기 전까지 하네스에 의존하는 쓰기와 닫기를 보류합니다. |
 | `local_access_mismatch` | `LOCAL_ACCESS_MISMATCH` | 로컬 파일이나 명령 사실을 추측하지 않습니다. 등록된 로컬 접점을 쓰거나, 로컬 접근 등록을 고치거나, 입력을 미검증으로 표시합니다. |
-| `missing_capability` | `CAPABILITY_INSUFFICIENT` | 역량이 맞는 접점을 쓰거나, 동작을 줄이거나, 빠진 관찰, 캡처, 로컬 접근 분류, 차단/격리 주장, 활성 동작이 필요 없는 경로를 선택합니다. |
+| `missing_capability` | `CAPABILITY_INSUFFICIENT` | 역량이 맞는 접점을 쓰거나, 동작을 줄이거나, 빠진 관찰, 캡처, 로컬 접근 분류, 차단/격리 주장, 활성 동작이 필요 없는 경로를 선택합니다. 기준 `reference-local-mcp`에서 명령, 네트워크, 비밀값 접근, 접점 자체 아티팩트 캡처, 도구 실행 전 차단, 격리 보장을 요구하는 요청은 요청 형태가 잘못된 경우가 아니라면 이 경로에 속합니다. |
 | `stale_state` | `STATE_CONFLICT`, `BASELINE_STALE`, `PROJECTION_STALE`, 오래된 `WRITE_AUTHORIZATION_INVALID` | 의존하기 전에 현재 상태, baseline, 읽기용 상태 보기, 범위 갱신 결과, 쓰기 전 확인을 새로 확인합니다. |
 | `unsupported_surface` | `CAPABILITY_INSUFFICIENT` 또는 `VALIDATION_FAILED` | 요청을 줄이거나, 역량이 맞는 접점으로 옮기거나, 차단 사유를 반환합니다. 지원하지 않는 권한을 설명 문구로 흉내 내지 않습니다. |
 | `out_of_scope` | `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `NO_ACTIVE_CHANGE_UNIT`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | 영향을 받는 행동을 보류하고, 불일치를 보여 주며, 현재 범위로 줄이거나 구체적인 사용자 소유 범위 판단을 요청하거나, 해결된 범위 변경을 `harness.update_scope`로 적용합니다. |
@@ -45,7 +45,7 @@
 | `NO_ACTIVE_TASK` | Task가 필요하지만 활성 Task나 지정된 Task가 없습니다. |
 | `NO_ACTIVE_CHANGE_UNIT` | 쓰기를 할 수 있거나 닫기와 관련된 동작에 활성 범위 지정 Change Unit이 없습니다. |
 | `SCOPE_REQUIRED` | 요청한 쓰기나 동작 전에 범위 확인이 필요합니다. |
-| `SCOPE_VIOLATION` | 의도했거나 관찰된 경로, 도구, 명령, 네트워크 대상, 비밀 접근, 민감 범주가 활성 범위 또는 저장된 `AuthorizedAttemptScope`를 넘었습니다. |
+| `SCOPE_VIOLATION` | 의도했거나 관찰된 제품 파일 경로나 민감 범주가 활성 범위 또는 저장된 `AuthorizedAttemptScope`를 넘었습니다. |
 | `WRITE_AUTHORIZATION_REQUIRED` | 쓰기 가능한 Run에 `harness.prepare_write`에서 요구하는 Write Authorization이 없습니다. |
 | `WRITE_AUTHORIZATION_INVALID` | 제공된 Write Authorization이 `missing`, `expired`, `stale`, `revoked`, 재실행 밖에서 `consumed`, 또는 `incompatible` 상태입니다. |
 | `DECISION_REQUIRED` | 동작 전에 차단 중인 사용자 소유 판단을 요청해야 합니다. |

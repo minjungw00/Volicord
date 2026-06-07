@@ -241,18 +241,7 @@ AuthorizedAttemptScope:
   surface_id: string
   intended_operation: string
   intended_paths: string[]
-  intended_tools: string[]
-  intended_commands:
-    - command: string
-      command_class: string
-      writes_product_files: boolean
   product_file_write_intended: boolean
-  intended_network:
-    - target: string
-      direction: read | write
-  intended_secret_scope:
-    - secret_handle: string
-      access_kind: read | write
   sensitive_categories: string[]
   baseline_ref: string | null
   related_user_judgment_refs: StateRecordRef[]
@@ -278,7 +267,7 @@ WriteAuthoritySummary:
 
 `AuthorizedAttemptScope` is the exact scope stored in `write_authorizations.attempt_scope_json` and later compared by `harness.record_run`. `WriteAuthorizationSummary.status` is the durable authorization lifecycle. `blocked` is not a Write Authorization status; blocked writes return blockers without a consumable authorization.
 
-`intended_commands`, `intended_network`, and `intended_secret_scope` are declared intent/scope descriptors. They are not proof that the active MVP can observe command execution, network effects, secret access, blocking, or isolation. Observation support is profile-owned; unsupported observations must remain unverified or become capability blockers rather than active evidence.
+The current MVP `AuthorizedAttemptScope` is path-level for product writes. It records the intended product-file paths, sensitive categories, baseline, related user judgments, and the honest guarantee level. Command execution, network effects, secret access, tool observation, artifact capture, pre-tool blocking, and isolation are not active baseline authorization fields. Requests that require those unobservable guarantees must be rejected or blocked as validation or capability failures rather than represented as verified scope.
 
 <a id="record-run-payloads"></a>
 
@@ -516,8 +505,6 @@ These values are valid without a promoted profile. Values not listed here are no
 | `ArtifactInput.source_kind` | `staged_file`, `capture_adapter`, `existing_artifact` |
 | `EvidenceCoverageItem.coverage_state` | `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, `blocked` |
 | `EvidenceSummary.status` | `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked` |
-| `AuthorizedAttemptScope.intended_network.direction` | `read`, `write` |
-| `AuthorizedAttemptScope.intended_secret_scope.access_kind` | `read`, `write` |
 | `AuthorizedAttemptScope.guarantee_level` | `cooperative`, `detective` |
 | `WriteAuthorizationSummary.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
 | `WriteAuthoritySummary.approval_status` | `not_required`, `required`, `pending`, `granted`, `denied`, `expired`, `unknown` |

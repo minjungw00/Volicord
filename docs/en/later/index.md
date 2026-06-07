@@ -55,6 +55,7 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | Recovery and reconcile | later candidate | Operations, Storage, Projection, Reconcile, and Security owner rules. | none until promoted |
 | Operator readiness and `doctor` surfaces | later candidate | Operations owner rules for diagnostics, capability checks, security posture, and unsupported-surface fallback. | none until promoted |
 | Projection refresh and freshness diagnostics | later candidate | Projection owner behavior that keeps projections non-authoritative. | none until promoted |
+| Stronger `preventive` / `isolated` local capability profiles for command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation | later candidate | Agent Integration, Security, API, Storage, and Conformance owner rules for exact capability fields, covered operations, fallback behavior, errors, and proof paths. | none until promoted |
 | Future conformance run entrypoint | later candidate after runtime fixtures exist | Runner, suite, assertion, API/storage/event/artifact/error, and reporting contracts. | none until promoted |
 
 ## 5. Later API Candidates
@@ -67,6 +68,7 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | `harness.record_manual_qa` | method name only | Manual QA owner contract for waiver route, artifacts, findings, and gate impact. | none until promoted |
 | Later read-only resources: policy, evidence-manifest, surface, report, bundle, journey, design | resource names only | Resource-specific owner contracts and no mutation side effects. | none until promoted |
 | Later `harness.record_run` branches: verification input, feedback-loop updates, TDD trace updates | branch names only | `record_run` owner activation and one-branch payload rules. | none until promoted |
+| Capability-gated `prepare_write` / `record_run` observation for commands, network effects, and secret access | later candidate | API, Core, Security, Agent Integration, and Conformance owner rules for exact request fields, compatibility checks, validator behavior, public errors, storage impact, and proof expectations. | none until promoted |
 | Later user-judgment branches: `qa_waiver`, `verification_risk_acceptance`, waiver, reconcile, residual-risk, richer acceptance visibility | branch names only | User-judgment owner activation with non-substitution rules. | none until promoted |
 
 <a id="later-schema-candidates"></a>
@@ -75,6 +77,7 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | Candidate | Status | Promotion requires | Active MVP impact |
 |---|---|---|---|
 | later schema extensions | schema names only | Promoted owner defines exact fields and validators in the active owner contract. | none until promoted |
+| Capability-gated authorization observation fields: `intended_commands`, `intended_network`, `intended_secret_scope` | field names only | Promoted API/schema owner defines exact shapes, profile gates, validation, storage, and `record_run` compatibility semantics. Baseline `reference-local-mcp` does not include these fields in active `AuthorizedAttemptScope`. | none until promoted |
 | Later close and assurance fields: `verifying`, `qa`, `completed_verified`, `detached_verified`, `design_gate`, `verification_gate`, `qa_gate`, Manual QA gate, design-policy blockers, assurance blockers | field names only | Core/API owner activation with close non-substitution rules, exact active schema fields, fallback behavior, and proof expectations. | none until promoted |
 | Later next-action values: `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile` | value names only | Matching API or owner activation. | none until promoted |
 | Recommended playbooks and judgment context | metadata names only | Agent Integration/API owner rules that keep metadata read-only and non-satisfying. | none until promoted |

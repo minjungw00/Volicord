@@ -192,7 +192,7 @@ It may create or replace the active Change Unit for the active Task. Replacing t
 
 ## 9. prepare_write authority
 
-`prepare_write` is the unique pre-write compatibility decision point for product-file writes. It checks the intended operation against active Task, Change Unit, scope, baseline, Autonomy Boundary, required user-owned judgment, sensitive-action approval, surface capability, and other active owner-path preconditions.
+`prepare_write` is the unique pre-write compatibility decision point for product-file writes. In the current MVP it checks a path-level intended operation against active Task, Change Unit, scope, baseline, Autonomy Boundary, required user-owned judgment, sensitive-action approval, surface capability, and other active owner-path preconditions.
 
 Only a compatible non-dry-run allowed path creates a consumable Write Authorization. Dry-run responses, `blocked`, `approval_required`, `decision_required`, and `state_conflict` remain response, blocker, or error states only. They must not create a consumable authorization row, replay row, evidence record, close state, or Harness write-compatibility record.
 
@@ -200,13 +200,15 @@ Write Authorization is a cooperative Harness record. It can tell a connected age
 
 When MCP or the connected surface cannot perform the needed cooperative check, the honest result is a hold, blocker, degraded guarantee display, or capability error. Preventive or isolated wording is allowed only when the documented surface proves that exact boundary for the covered operation.
 
+Current-MVP `prepare_write` must reject or block requests that require command observation, network observation, secret-access observation, artifact capture, pre-tool blocking, or isolation that the active surface cannot provide. Use the public API validation or capability errors owned by [API Errors](api/errors.md); do not encode unsupported observations into an active Write Authorization.
+
 <a id="record_run"></a>
 
 ## 10. record_run authority
 
 `record_run` records execution or observation. It is not a second chance to authorize a write.
 
-For a product-write Run, Core must load a compatible active Write Authorization, compare the observed attempt against the stored authorized attempt and current state to the extent the surface can honestly observe it, and consume the authorization exactly once when compatible. Missing, stale, expired, revoked, consumed, incompatible, or insufficiently observable authorization cannot be recorded as successful consumption.
+For a product-write Run, Core must load a compatible active Write Authorization, compare the observed changed paths against the stored path-level authorized attempt and current state to the extent the surface can honestly observe it, and consume the authorization exactly once when compatible. Missing, stale, expired, revoked, consumed, incompatible, or insufficiently observable authorization cannot be recorded as successful consumption. Command, network, secret-access, artifact-capture, blocking, or isolation compatibility must not be marked verified under the baseline profile.
 
 `record_run` may register or link `ArtifactRef` values only through owner-approved artifact paths. Raw secrets, tokens, forbidden sensitive logs, arbitrary caller paths, or untrusted bytes must be rejected, redacted, represented as omitted/blocked, or routed through an approved safe handle rather than stored to make evidence look complete.
 

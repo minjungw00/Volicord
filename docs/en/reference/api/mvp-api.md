@@ -209,18 +209,7 @@ PrepareWriteRequest:
   change_unit_id: string | null
   intended_operation: string
   intended_paths: string[]
-  intended_tools: string[]
-  intended_commands:
-    - command: string
-      command_class: string
-      writes_product_files: boolean
   product_file_write_intended: boolean
-  intended_network:
-    - target: string
-      direction: read | write
-  intended_secret_scope:
-    - secret_handle: string
-      access_kind: read | write
   sensitive_categories: string[]
   baseline_ref: string | null
 ```
@@ -241,10 +230,10 @@ PrepareWriteResponse:
   guarantee_display: GuaranteeDisplay
 ```
 
-- **State effect:** A committed non-dry-run `decision=allowed` creates exactly one `write_authorizations.status=active` row and a replay row. A committed blocked response may update blockers, but it must not create a consumable authorization. Dry-run and pre-commit failure create no current record, authorization, blocker row, event, artifact, evidence summary, or replay row.
+- **State effect:** A committed non-dry-run `decision=allowed` creates exactly one `write_authorizations.status=active` row and a replay row for the active path-level `AuthorizedAttemptScope`. A committed blocked response may update blockers, but it must not create a consumable authorization. Dry-run and pre-commit failure create no current record, authorization, blocker row, event, artifact, evidence summary, or replay row.
 - **Errors:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `DECISION_REQUIRED`, `AUTONOMY_BOUNDARY_EXCEEDED`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `BASELINE_STALE`, `VALIDATOR_FAILED`.
 - **Storage owner:** `write_authorizations`, `blockers`, `tasks` or `project_state` version clocks, `task_events`, and `tool_invocations`.
-- **Security boundary:** `decision=allowed` means compatible with Harness records for this attempt. It does not mean the operating system will block incompatible writes or that arbitrary tools are isolated.
+- **Security boundary:** `decision=allowed` means compatible with Harness records for this path-level product-write attempt. It does not mean the operating system will block incompatible writes or that arbitrary tools are isolated. Current-MVP requests that require command, network, secret-access, artifact-capture, pre-tool-blocking, or isolation guarantees must return `CAPABILITY_INSUFFICIENT` when the active surface lacks the capability, or `VALIDATION_FAILED` when the request shape or requested guarantee is invalid for the active profile.
 
 <a id="harnessrecord_run"></a>
 
@@ -282,10 +271,10 @@ RecordRunResponse:
   state: StateSummary
 ```
 
-- **State effect:** A compatible committed call may create `runs`, `artifacts`, `artifact_links`, and `evidence_summaries`, update blockers, consume `write_authorizations.status=active`, append events, and create a committed replay row. Rejected calls must not create a Run, register artifacts, update evidence, or consume an invalid authorization.
+- **State effect:** A compatible committed call may create `runs`, `artifacts`, `artifact_links`, and `evidence_summaries`, update blockers, consume `write_authorizations.status=active`, append events, and create a committed replay row. Product-write runs consume the active Write Authorization only when the stored authorization and observed changed paths are compatible. Rejected calls must not create a Run, register artifacts, update evidence, or consume an invalid authorization.
 - **Errors:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `WRITE_AUTHORIZATION_REQUIRED`, `WRITE_AUTHORIZATION_INVALID`, `SCOPE_VIOLATION`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `BASELINE_STALE`, `ARTIFACT_MISSING`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`.
 - **Storage owner:** `runs`, `write_authorizations`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`, `task_events`, and `tool_invocations`.
-- **Security boundary:** A run can record what the surface observed. If a surface cannot observe paths, commands, network, secret access, artifact capture, blocking, or isolation facts, the API must not mark those facts verified.
+- **Security boundary:** A run can record what the surface observed. In the baseline `reference-local-mcp` profile, product-write compatibility is detective only for observed changed paths. The API must not mark command execution, network activity, secret access, artifact capture, blocking, or isolation facts verified when the active surface cannot observe them.
 
 <a id="harnessrequest_user_judgment"></a>
 

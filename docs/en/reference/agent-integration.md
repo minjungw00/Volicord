@@ -88,7 +88,7 @@ Current MVP connector display values:
 | Level | Connector display rule |
 |---|---|
 | `cooperative` | Say the surface is expected to follow Harness instructions. Holds are by instruction, not physical blocking. |
-| `detective` | Say Harness can observe supported after-action facts such as changed paths, logs, artifacts, or drift and then mark state stale, partial, blocked, or failed. |
+| `detective` | Say Harness can observe supported after-action facts and then mark state stale, partial, blocked, or failed. For `reference-local-mcp`, this is limited to changed-path observation; command, network, secret-access, artifact-capture, blocking, and isolation facts require a promoted capable profile. |
 
 Profile-gated display value names:
 
@@ -99,7 +99,7 @@ Profile-gated display value names:
 
 Agents must not choose `preventive` or `isolated` merely because a user requested stronger safety, asked for a guard/freeze/careful mode, or used stronger wording in chat. The connector must lower the displayed `guarantee_display.level` value or return `CAPABILITY_INSUFFICIENT` when the active profile cannot support the stronger claim.
 
-The reference local MCP profile can display `cooperative` behavior and limited `detective` behavior only where changed-path or artifact-gap observation supports it. Because `pre_tool_blocking_supported=false` and `isolation_supported=false`, it must not claim `preventive` or `isolated` behavior.
+The reference local MCP profile is cooperative by default and can display limited `detective` behavior only where changed-path observation supports it. It has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. Manual artifact attachment may be available through owner-approved artifact registration, but that does not turn the surface into an artifact-capture profile. Because `pre_tool_blocking_supported=false` and `isolation_supported=false`, it must not claim `preventive` or `isolated` behavior.
 
 Guard, freeze, and careful-mode labels are display labels over the actual profile. They must say what can actually stop before execution and what can only be detected later. They are not sensitive-action approval, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a Core gate.
 
@@ -184,7 +184,7 @@ Fallbacks are described by guarantee display level and risk, not by surface bran
 |---|---|---|
 | Cooperative | The surface can follow instructions but cannot enforce them. | Hold product writes by instruction when the Core/MCP owner path or write-scope checks are unavailable. |
 | Detective | Harness can observe supported facts after action. | Mark state stale, partial, blocked, or failed and require repair, reconcile, or fresh evidence. |
-| Capability insufficient | A requested write, capture, guard, isolation, or guarantee claim depends on an unsupported field. | Return `CAPABILITY_INSUFFICIENT` or a structured blocked reason; lower the displayed `guarantee_display.level` value. |
+| Capability insufficient | A requested write, capture, guard, isolation, or guarantee claim depends on an unsupported capability or profile-gated claim. | Return `CAPABILITY_INSUFFICIENT` or a structured blocked reason; lower the displayed `guarantee_display.level` value. |
 | MCP unavailable | The surface or call path cannot reach the current Core authority path. | Use stable public `MCP_UNAVAILABLE` behavior and do not claim state mutation. |
 | Local access mismatch | The caller or transport is outside the registered local profile, or local access was revoked. | Use `LOCAL_ACCESS_MISMATCH` with display-safe diagnostics; do not introduce a surface-specific `UNAUTHORIZED` code. |
 
@@ -231,7 +231,7 @@ artifact_read_boundary:
   raw_artifact_path_read_supported: false
 guarantee_boundary:
   default_level: cooperative
-  max_level: detective only for supported after-action observation
+  max_level: detective only for supported changed-path observation
   can_block_before_execution: false
   isolation_supported: false
 fallbacks:
@@ -240,7 +240,7 @@ fallbacks:
 conformance_smoke_status: planned_not_run
 ```
 
-Because `pre_tool_blocking_supported=false`, "hold" language means cooperative scope discipline plus detective changed-path validation when available. It does not mean preventive guard behavior.
+Because `pre_tool_blocking_supported=false`, "hold" language means cooperative scope discipline plus detective changed-path validation when available. It does not mean preventive guard behavior, command observation, network observation, secret-access observation, artifact capture, or isolation.
 
 ## 10. Connector Conformance Boundary
 
@@ -256,7 +256,7 @@ Reference-surface checks include:
 - no `preventive` or `isolated` claim when the `capability_profile` cannot support that display claim
 - `prepare_write` allowed/blocked compatibility outcomes without OS-permission wording
 - single-use cooperative Write Authorization only after `prepare_write.decision=allowed`
-- `record_run` with summary and owner-registered artifact refs
+- `record_run` with summary, changed-path compatibility, and owner-registered artifact refs
 - MCP-unavailable product-write hold
 - `CAPABILITY_INSUFFICIENT` or an equivalent blocked reason for unsupported capabilities
 - read-only recommendations unless a separate Core mutation path records the action

@@ -55,6 +55,7 @@
 | Recovery and reconcile | later 후보 | Operations, Storage, Projection, Reconcile, Security 담당 문서 규칙이 필요합니다. | 승격 전까지 없음 |
 | Operator readiness and `doctor` surfaces | later 후보 | 운영 담당 문서가 진단, 기능 확인, 보안 태세, 지원되지 않는 접점의 대체 동작을 정해야 합니다. | 승격 전까지 없음 |
 | Projection refresh and freshness diagnostics | later 후보 | Projection 담당 문서가 Projection이 비권위 상태 보기로 남는 동작을 정해야 합니다. | 승격 전까지 없음 |
+| 명령 관찰, 네트워크 관찰, 비밀값 접근 관찰, 접점 자체 아티팩트 캡처, 도구 실행 전 차단, 격리를 위한 더 강한 `preventive` / `isolated` 로컬 역량 프로필 | later 후보 | Agent Integration, Security, API, Storage, Conformance 담당 문서가 정확한 역량 필드, 대상 동작, 대체 동작, 오류, 증명 경로를 정해야 합니다. | 승격 전까지 없음 |
 | Future conformance run entrypoint | 런타임 fixture가 생긴 뒤의 later 후보 | 실행기, 스위트, 검증 주장, API, 저장소, 이벤트, 아티팩트, 오류, 보고 계약이 필요합니다. | 승격 전까지 없음 |
 
 ## 5. Later API 후보
@@ -67,6 +68,7 @@
 | `harness.record_manual_qa` | 메서드 이름만 있음 | 수동 QA 담당 문서가 면제 경로, 아티팩트, 발견 사항, 관문 영향을 정해야 합니다. | 승격 전까지 없음 |
 | Later read-only resources: policy, evidence-manifest, surface, report, bundle, journey, design | 리소스 이름만 있음 | 각 리소스 담당 문서가 읽기 전용 계약과 변경 부작용 없음을 정해야 합니다. | 승격 전까지 없음 |
 | Later `harness.record_run` branches: verification input, feedback-loop updates, TDD trace updates | 분기 이름만 있음 | `record_run` 담당 문서 활성화와 단일 분기 페이로드 규칙이 필요합니다. | 승격 전까지 없음 |
+| 명령, 네트워크 효과, 비밀값 접근에 대한 역량 조건부 `prepare_write` / `record_run` 관찰 | later 후보 | API, Core, Security, Agent Integration, Conformance 담당 문서가 정확한 요청 필드, 호환성 확인, validator 동작, 공개 오류, 저장소 영향, 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | Later user-judgment branches: `qa_waiver`, `verification_risk_acceptance`, waiver, reconcile, residual-risk, richer acceptance visibility | 분기 이름만 있음 | 사용자 판단 담당 문서 활성화와 대체 불가 규칙이 필요합니다. | 승격 전까지 없음 |
 
 <a id="later-schema-candidates"></a>
@@ -75,6 +77,7 @@
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
 | later schema extensions | 스키마 이름만 있음 | 승격된 담당 문서가 정확한 필드와 검증기를 활성 계약에 정의해야 합니다. | 승격 전까지 없음 |
+| 역량 조건부 `Write Authorization` 관찰 필드: `intended_commands`, `intended_network`, `intended_secret_scope` | 필드 이름만 있음 | 승격된 API/schema 담당 문서가 정확한 형태, 프로필 조건, 검증, 저장소, `record_run` 호환성 의미를 정의해야 합니다. 기준 `reference-local-mcp`는 활성 `AuthorizedAttemptScope`에 이 필드를 포함하지 않습니다. | 승격 전까지 없음 |
 | Later 닫기와 보증 필드: `verifying`, `qa`, `completed_verified`, `detached_verified`, `design_gate`, `verification_gate`, `qa_gate`, 수동 QA gate, 설계 정책 차단 사유, 보증 차단 사유 | 필드 이름만 있음 | Core/API 담당 문서 활성화, 닫기 대체 불가 규칙, 정확한 활성 스키마 필드, 대체 동작, 증명 기대치가 필요합니다. | 승격 전까지 없음 |
 | Later next-action values: `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile` | 값 이름만 있음 | 대응 API 또는 담당 문서 활성화가 필요합니다. | 승격 전까지 없음 |
 | Recommended playbooks and judgment context | 메타데이터 이름만 있음 | Agent Integration/API 담당 문서가 메타데이터를 읽기 전용으로 두고 상태를 만족시키지 못하게 해야 합니다. | 승격 전까지 없음 |

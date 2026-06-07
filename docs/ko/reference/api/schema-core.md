@@ -241,18 +241,7 @@ AuthorizedAttemptScope:
   surface_id: string
   intended_operation: string
   intended_paths: string[]
-  intended_tools: string[]
-  intended_commands:
-    - command: string
-      command_class: string
-      writes_product_files: boolean
   product_file_write_intended: boolean
-  intended_network:
-    - target: string
-      direction: read | write
-  intended_secret_scope:
-    - secret_handle: string
-      access_kind: read | write
   sensitive_categories: string[]
   baseline_ref: string | null
   related_user_judgment_refs: StateRecordRef[]
@@ -278,7 +267,7 @@ WriteAuthoritySummary:
 
 `AuthorizedAttemptScope`는 `write_authorizations.attempt_scope_json`에 저장되고 나중에 `harness.record_run`에서 비교하는 정확한 범위입니다. `WriteAuthorizationSummary.status`는 오래 남는 authorization lifecycle입니다. `blocked`는 Write Authorization status가 아닙니다. 차단된 쓰기는 소비 가능한 authorization 없이 blocker를 반환합니다.
 
-`intended_commands`, `intended_network`, `intended_secret_scope`는 의도와 범위를 선언하는 필드입니다. 현재 MVP가 명령 실행, 네트워크 효과, 비밀값 접근, 차단, 격리를 관찰할 수 있다는 증거가 아닙니다. 관찰 지원은 profile 담당 문서 경계입니다. 지원되지 않는 관찰은 검증되지 않은 상태로 남기거나 역량 차단 사유가 되어야 하며, 활성 증거처럼 표시하면 안 됩니다.
+현재 MVP의 `AuthorizedAttemptScope`는 제품 파일 쓰기를 경로 수준으로 다룹니다. 의도한 제품 파일 경로, 민감 범주, baseline, 관련 사용자 판단, 정직한 보장 수준만 기록합니다. 명령 실행, 네트워크 효과, 비밀값 접근, 도구 관찰, 아티팩트 캡처, 도구 실행 전 차단, 격리는 현재 기준 `AuthorizedAttemptScope` 필드가 아닙니다. 이런 관찰할 수 없는 보장을 요구하는 요청은 검증 오류나 역량 부족으로 거절하거나 차단해야 하며, 검증된 범위처럼 기록하면 안 됩니다.
 
 <a id="record-run-payloads"></a>
 
@@ -516,8 +505,6 @@ policy_override
 | `ArtifactInput.source_kind` | `staged_file`, `capture_adapter`, `existing_artifact` |
 | `EvidenceCoverageItem.coverage_state` | `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, `blocked` |
 | `EvidenceSummary.status` | `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked` |
-| `AuthorizedAttemptScope.intended_network.direction` | `read`, `write` |
-| `AuthorizedAttemptScope.intended_secret_scope.access_kind` | `read`, `write` |
 | `AuthorizedAttemptScope.guarantee_level` | `cooperative`, `detective` |
 | `WriteAuthorizationSummary.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
 | `WriteAuthoritySummary.approval_status` | `not_required`, `required`, `pending`, `granted`, `denied`, `expired`, `unknown` |
