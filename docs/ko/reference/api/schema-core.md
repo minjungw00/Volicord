@@ -52,6 +52,32 @@ ToolEnvelope:
 
 Envelope 필드는 호출 경로를 정하고 감사 추적에 쓰입니다. `surface_id`는 역량, 쓰기 권한, 로컬 접근, 사용자 판단, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 닫기를 부여하지 않습니다.
 
+<a id="local-surface-access-values"></a>
+
+## 로컬 접점 접근 값
+
+로컬 접점 접근 값은 하네스 API 호환성을 설명하는 값입니다. OS 권한, 샌드박스 경계, 변조 방지 보장, 보편적 도구 실행 전 차단, 격리를 뜻하지 않습니다.
+
+`surfaces.local_access_posture`는 닫힌 현재 MVP 값 집합입니다.
+
+| 값 | 의미 |
+|---|---|
+| `registered_local` | 호출자/전송 경로가 이 프로젝트에 등록된 로컬 접점 태세와 맞아, API 담당 문서가 요청한 접근 분류를 평가할 수 있습니다. |
+| `unavailable` | 필요한 MCP/Core 또는 접점 도달 가능성을 현재 확인할 수 없습니다. |
+| `mismatch` | 도달 가능한 호출자/전송 경로가 프로젝트에 등록된 로컬 접점 태세와 맞지 않습니다. |
+| `revoked` | 등록된 접점의 로컬 접근이 명시적으로 철회되었으며, 새로 유효한 등록이 대체하기 전까지 쓰면 안 됩니다. |
+
+`surfaces.status`는 닫힌 현재 MVP 값 집합입니다.
+
+| 값 | 의미 |
+|---|---|
+| `active` | 등록된 접점을 현재 API 접근 확인에 사용할 수 있습니다. |
+| `disabled` | 접점 기록은 남아 있지만 현재 API 접근에 쓰면 안 됩니다. |
+| `stale` | 현재 API 접근에서 이 접점에 의존하기 전에 접점 등록 또는 역량 태세를 새로 고쳐야 합니다. |
+| `revoked` | 접점 등록이 현재 API 접근에 더 이상 유효하지 않습니다. |
+
+활성 로컬 API 접근 분류 라벨은 `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read`입니다. 이 분류의 메서드별 조건은 [현재 MVP API](mvp-api.md#shared-request-rules)가 담당하고, 공개 오류 선택은 [API Errors](errors.md)가 담당합니다.
+
 <a id="common-response"></a>
 
 ## 공통 응답
@@ -165,7 +191,7 @@ ArtifactRelationOwner:
 
 ## ArtifactInput
 
-`ArtifactInput`은 `harness.record_run`에서 staging, capture-adapter, existing-artifact handle로만 받습니다. 임의 파일 읽기 권한을 부여하지 않습니다.
+`ArtifactInput`은 `harness.record_run`에서 staging, capture-adapter, existing-artifact 핸들로만 받습니다. 임의 파일 읽기 권한을 부여하지 않습니다.
 
 ```yaml
 ArtifactInput:
@@ -466,6 +492,9 @@ policy_override
 |---|---|
 | 활성 메서드 집합 | `harness.intake`, `harness.update_scope`, `harness.status`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
 | `ToolEnvelope.actor_kind` | `user`, `lead_agent`, `evaluator`, `operator` |
+| 로컬 API 접근 분류 | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
+| `surfaces.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` |
+| `surfaces.status` | `active`, `disabled`, `stale`, `revoked` |
 | `IntakeRequest.requested_mode` | `advisor`, `direct`, `work`, `auto` |
 | `StateSummary.mode`와 지속 저장되는 `tasks.mode` | `advisor`, `direct`, `work` |
 | `StateSummary.lifecycle_phase` | `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded` |

@@ -179,6 +179,26 @@ fresh compatible `harness.prepare_write` result for the exact operation.
 It is the active local/reference surface registration needed to interpret
 `surface_id`, capability, local access posture, and guarantee display.
 
+`surfaces.local_access_posture` is a closed current MVP value set:
+
+| Value | Storage meaning |
+|---|---|
+| `registered_local` | The stored surface registration can be used as the registered local posture for current API compatibility checks. |
+| `unavailable` | Required MCP/Core or surface reachability cannot currently be established from this registration. |
+| `mismatch` | The observed caller or transport does not match the stored registered local posture. |
+| `revoked` | Local access for this registration was explicitly revoked and cannot be used. |
+
+`surfaces.status` is a closed current MVP value set:
+
+| Value | Storage meaning |
+|---|---|
+| `active` | The stored surface row may be used by current API access checks. |
+| `disabled` | The row is retained but must not be used for current API access. |
+| `stale` | The row requires refresh before current API access can rely on it. |
+| `revoked` | The surface registration is no longer valid for current API access. |
+
+Unknown `surfaces.local_access_posture` or `surfaces.status` values are invalid. State-changing API calls require `surfaces.status=active` and `surfaces.local_access_posture=registered_local` before commit. Read-only status paths may return display-safe diagnostics for unavailable, mismatched, stale, disabled, or revoked surfaces, but they must not turn those diagnostics into Core state or expose artifact content.
+
 `display_label` is not an active storage identity column. Display labels are
 derived from stable identifiers such as `judgment_kind` and locale.
 
@@ -237,6 +257,13 @@ required.
 safe metadata. Storage implements it through `artifacts` plus `artifact_links`;
 see [API Schema Core: ArtifactRef](api/schema-core.md#artifactref).
 
+Artifact registration accepts only the owner-documented `ArtifactInput`
+sources: `staged_file`, `capture_adapter`, or `existing_artifact`. A staged or
+captured handle must be resolved by the owner path before storage commits the
+artifact row. An `existing_artifact` input must name an already registered
+`ArtifactRef` that belongs to the same project and has a compatible owner
+relation. Caller-supplied raw filesystem paths are not registration authority.
+
 An artifact is evidence-eligible only when storage has:
 
 - registered bytes or a safe metadata notice under the artifact store,
@@ -256,6 +283,13 @@ tamper-proof or create a cryptographic evidence guarantee claim.
 arbitrary filesystem path. Raw secrets, tokens, and full sensitive logs must not
 be stored as evidence bytes. Store redacted bytes, `secret_omitted` or `blocked`
 notices, safe handles, or other owner-approved safe representations instead.
+
+Raw artifact path reads are not granted by default. Artifact metadata or content
+reads require a registered `ArtifactRef`, the matching same-project `task_id`,
+the required `artifact_links` owner relation, and the redaction/availability
+state needed by the caller's access class. A local path under the artifact store,
+an artifact `uri`, or a copied file is not enough by itself to read or rely on
+artifact bytes.
 
 An artifact link does not create the owner record, satisfy a gate by itself,
 prove evidence sufficiency, perform QA, create final acceptance, accept

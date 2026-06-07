@@ -29,6 +29,8 @@ The exact active method-name value set is owned by [API Schema Core](schema-core
 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) | Record the user's answer to an existing pending `UserJudgment`. |
 | [`harness.close_task`](#harnessclose_task) | Check close readiness and close, cancel, or supersede only when blockers allow it. |
 
+<a id="shared-request-rules"></a>
+
 ## Shared Request Rules
 
 All methods use [`ToolEnvelope`](schema-core.md#tool-envelope) and [`ToolResponseBase`](schema-core.md#common-response). State-changing methods require a non-null `idempotency_key` and a current `expected_state_version`. `harness.status` is read-only and may use `expected_state_version: null`.
@@ -38,6 +40,19 @@ When a method has a tool-specific `task_id`, Core resolves the primary Task in t
 `dry_run=true` is never authoritative. It may return diagnostics or a would-change result, but it creates no current record, `task_events` row, artifact, consumable Write Authorization, evidence summary, close state, or idempotency replay row.
 
 Error codes, primary error precedence, idempotency, stale-state behavior, close blocker ordering, and user-facing error labels are owned by [API Errors](errors.md). Shared schemas and active value sets are owned by [API Schema Core](schema-core.md).
+
+Local access classes are Harness API compatibility classes, not OS permission classes. Every class requires `surface_id` to name a `surfaces` row registered to the same `project_id`, and requires `surfaces.status=active` before the API can rely on that surface. State-changing classes also require `surfaces.local_access_posture=registered_local`.
+
+| Access class | Covers | Minimum access conditions |
+|---|---|---|
+| `read_status` | `harness.status`, read-only status resources, and read-only close checks such as `harness.close_task intent=check`. | Registered same-project `surface_id`, `surfaces.status=active`, reachable Core/surface path for the requested read, and compatible `task_id` when a Task-scoped read is requested. A status read may return display-safe availability or mismatch diagnostics, but it must not invent state from stale text or expose protected Core detail when local access cannot be confirmed. |
+| `core_mutation` | `harness.intake`, `harness.update_scope`, `harness.request_user_judgment`, `harness.record_user_judgment`, and terminal `harness.close_task` intents. | `read_status` conditions plus `surfaces.local_access_posture=registered_local`, non-null `idempotency_key`, current `expected_state_version`, and compatible `project_id`, `surface_id`, `task_id`, and owner records when applicable. |
+| `write_authorization` | `harness.prepare_write`. | `core_mutation` conditions plus active Task/Change Unit compatibility, scope, baseline, sensitive-action, and capability checks required for the intended attempt. |
+| `run_recording` | `harness.record_run`. | `core_mutation` conditions plus compatible `task_id`, `change_unit_id`, `baseline_ref`, observed attempt facts, and a consumable active Write Authorization when the run records a product write. |
+| `artifact_registration` | `ArtifactInput[]` accepted by `harness.record_run`. | `run_recording` conditions plus documented `staged_file`, `capture_adapter`, or `existing_artifact` handles only. Caller-supplied raw filesystem paths, raw secrets, tokens, and full sensitive logs are not accepted as registration authority. |
+| `artifact_read` | Local artifact metadata or content reads when an owner path exposes them from a registered `ArtifactRef`. | Registered same-project `surface_id`, `surfaces.status=active`, `surfaces.local_access_posture=registered_local` for content reads, a registered `ArtifactRef`, compatible `project_id`/`task_id`, required redaction and availability checks, and a matching owner relation in `artifact_links`. Raw artifact path reads are not granted by default. |
+
+Use `MCP_UNAVAILABLE` when required MCP/Core or surface reachability is unavailable. Use `LOCAL_ACCESS_MISMATCH` when the reachable caller or transport is outside the registered local posture. Use `CAPABILITY_INSUFFICIENT` when the surface is recognized but lacks the capability required for the access class, observation, capture, blocking/isolation claim, or active behavior.
 
 <a id="harnessintake"></a>
 

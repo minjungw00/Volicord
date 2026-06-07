@@ -39,6 +39,8 @@ The reference `capability_profile` has no default preventive or isolated posture
 
 Write Authorization is a single-use cooperative Harness record created only by the compatible non-dry-run `prepare_write` path and consumed by compatible `record_run`. It is a Harness record/check, not OS permission, sandboxing, tamper-proof enforcement, physical pre-tool blocking, or isolation.
 
+Local access posture is also a Harness compatibility fact. `registered_local` means the API owner can treat the caller/transport as matching the registered local surface for the requested access class. It does not mean an OS account, editor, shell, package manager, or arbitrary local process is constrained. `unavailable`, `mismatch`, and `revoked` posture states route to public API errors and safe diagnostics; they are not proof of a stronger security boundary.
+
 Documentation checks, fixture drafts, examples, and conformance plans do not prove runtime security behavior. They can check wording and future contract intent, but preventive or isolated security claims require an implemented mechanism and proof for the covered operation or boundary.
 
 ## 3. Explicit Non-Claims
@@ -78,7 +80,7 @@ Security-sensitive assets include:
 | Product Repository | Product files, repository rules, generated Markdown, and projections are product work, inputs, or derived display. They are not Harness operational authority by presence or proximity. |
 | Harness Server / Installation | The future local control-plane program runs Harness authority checks. It is not a general OS sandbox or arbitrary-tool permission system. |
 | Harness Runtime Home | Runtime Home stores Core-owned records and artifacts for future operation. Treat broad local read/write access as tampering and confidentiality risk; do not claim tamper-proof storage. |
-| MCP / local API surface | Reachability is not authorization. Core/API validation, project/task/surface compatibility, idempotency, expected state version, and active capability still apply. |
+| MCP / local API surface | Reachability is not authorization. Core/API validation, project/task/surface compatibility, idempotency, expected state version, local access posture, surface status, and active capability still apply. |
 | Connector-generated files | Generated manifests, snippets, prompts, or adapter files may drift or be edited. They do not create authority without the owner path and current `capability_profile`. |
 | Artifact store | Artifact bytes are untrusted until registered, related to the owner record, and validated for required integrity/redaction metadata. |
 | External tools, commands, and network calls | Local execution can mutate files, leak data, or affect external systems. Cooperative Harness checks do not physically restrain those tools by default. |

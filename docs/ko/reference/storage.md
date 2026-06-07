@@ -170,6 +170,26 @@ Task의 현재 쓰기 호환성과 닫기 근거입니다. `replaced`는 `harnes
 `surface_id`, 기능, 로컬 접근 상태, 보장 표시를 해석하는 데 필요한
 active 로컬/참조 접점 등록입니다.
 
+`surfaces.local_access_posture`는 닫힌 현재 MVP 값 집합입니다.
+
+| 값 | 저장 의미 |
+|---|---|
+| `registered_local` | 저장된 접점 등록을 현재 API 호환성 확인의 등록된 로컬 태세로 사용할 수 있습니다. |
+| `unavailable` | 이 등록으로 필요한 MCP/Core 또는 접점 도달 가능성을 현재 확인할 수 없습니다. |
+| `mismatch` | 관찰된 호출자나 전송 경로가 저장된 등록 로컬 태세와 맞지 않습니다. |
+| `revoked` | 이 등록의 로컬 접근이 명시적으로 철회되었고 사용할 수 없습니다. |
+
+`surfaces.status`는 닫힌 현재 MVP 값 집합입니다.
+
+| 값 | 저장 의미 |
+|---|---|
+| `active` | 저장된 접점 행을 현재 API 접근 확인에 사용할 수 있습니다. |
+| `disabled` | 행은 보존하지만 현재 API 접근에 쓰면 안 됩니다. |
+| `stale` | 현재 API 접근에서 행에 의존하기 전에 새로 고쳐야 합니다. |
+| `revoked` | 접점 등록이 현재 API 접근에 더 이상 유효하지 않습니다. |
+
+알 수 없는 `surfaces.local_access_posture` 또는 `surfaces.status` 값은 유효하지 않습니다. 상태 변경 API 호출은 커밋 전에 `surfaces.status=active`와 `surfaces.local_access_posture=registered_local`을 요구합니다. 읽기 전용 상태 경로는 unavailable, mismatch, stale, disabled, revoked 접점에 대해 표시해도 안전한 진단을 반환할 수 있지만, 그 진단을 Core 상태로 바꾸거나 아티팩트 본문을 노출하면 안 됩니다.
+
 `display_label`은 active 저장소 식별 열이 아닙니다. 표시 라벨은
 `judgment_kind` 같은 안정 식별자와 locale에서 파생합니다.
 
@@ -223,6 +243,13 @@ lookup table을 사용할 수 있지만 Core 검증은 계속 필요합니다.
 저장소는 `artifacts`와 `artifact_links`로 이를 구현합니다. 자세한 형태는
 [API Schema Core: ArtifactRef](api/schema-core.md#artifactref)를 봅니다.
 
+아티팩트 등록은 담당 문서가 문서화한 `ArtifactInput` 출처인 `staged_file`,
+`capture_adapter`, `existing_artifact`만 받습니다. 스테이징 또는 캡처 핸들은
+저장소가 아티팩트 행을 커밋하기 전에 담당 경로가 해석해야 합니다.
+`existing_artifact` 입력은 이미 등록된 `ArtifactRef`를 가리켜야 하며, 같은 프로젝트에
+속하고 호환되는 담당 관계를 가져야 합니다. 호출자가 임의로 준 파일시스템 경로는
+등록 권한이 아닙니다.
+
 아티팩트가 증거로 쓰일 수 있으려면 저장소가 아래 사실을 가져야 합니다.
 
 - 아티팩트 저장소 아래 등록된 바이트 또는 안전한 메타데이터 알림,
@@ -240,8 +267,14 @@ lookup table을 사용할 수 있지만 Core 검증은 계속 필요합니다.
 `uri`는 보통 `harness-artifact://{project_id}/{artifact_id}` 형태로 Harness 저장소를 통해
 해석됩니다. 호출자가 임의로 준 파일시스템 경로가 아닙니다. 원문 비밀값, 토큰, 민감한 전체
 로그를 증거 바이트로 저장하면 안 됩니다. 대신 가림 처리된 바이트,
-`secret_omitted` 또는 `blocked` 알림, 안전한 handle, 담당 문서가 허용한 안전한 표현을
+`secret_omitted` 또는 `blocked` 알림, 안전한 핸들, 담당 문서가 허용한 안전한 표현을
 저장합니다.
+
+원시 아티팩트 경로 읽기는 기본으로 허용되지 않습니다. 아티팩트 메타데이터나 본문을
+읽으려면 등록된 `ArtifactRef`, 같은 프로젝트의 일치하는 `task_id`, 필요한
+`artifact_links` 담당 관계, 호출자의 접근 분류에 필요한 가림/가용성 상태가 있어야 합니다.
+아티팩트 저장소 아래 로컬 경로, artifact `uri`, 복사된 파일만으로는 아티팩트 바이트를
+읽거나 신뢰할 수 없습니다.
 
 아티팩트 연결은 담당 기록을 만들지 않습니다. 그 자체로 gate를 충족하거나, 증거
 충분성을 증명하거나, QA를 수행하거나, 최종 수락을 만들거나, 잔여 위험을 수락하거나,

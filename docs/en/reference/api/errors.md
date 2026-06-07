@@ -23,8 +23,9 @@ Active MVP behavior defaults to cooperative checks with limited detective report
 
 | Condition | Public path | Agent rule |
 |---|---|---|
-| `core_unavailable` | `MCP_UNAVAILABLE` | Do not invent Harness state. Hold Harness-dependent writes and close until Core is reachable or the user explicitly chooses to proceed outside Harness. |
-| `local_access_denied` | `LOCAL_ACCESS_MISMATCH` or `CAPABILITY_INSUFFICIENT` | Do not guess local file or command facts. Use a capable local surface, repair capability registration, narrow scope, or label input unverified. |
+| `core_or_surface_unavailable` | `MCP_UNAVAILABLE` | Do not invent Harness state. Hold Harness-dependent writes and close until Core and the required surface path are reachable, or until the user explicitly chooses to proceed outside Harness. |
+| `local_access_mismatch` | `LOCAL_ACCESS_MISMATCH` | Do not guess local file or command facts. Use the registered local surface, repair local access registration, or label input unverified. |
+| `missing_capability` | `CAPABILITY_INSUFFICIENT` | Use a capable surface, reduce the operation, or choose a path that does not require the missing observation, capture, local access class, blocking/isolation claim, or active behavior. |
 | `stale_state` | `STATE_CONFLICT`, `BASELINE_STALE`, `PROJECTION_STALE`, stale `WRITE_AUTHORIZATION_INVALID` | Refresh current state, baseline, readable view, scope-update result, or pre-write check before relying on it. |
 | `unsupported_surface` | `CAPABILITY_INSUFFICIENT` or `VALIDATION_FAILED` | Reduce the request, move to a capable surface, or return a blocker. Do not emulate unsupported authority with prose. |
 | `out_of_scope` | `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `NO_ACTIVE_CHANGE_UNIT`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | Hold the affected action, show the mismatch, narrow to current scope, request the specific user-owned scope judgment, or apply the resolved scope change through `harness.update_scope`. |
@@ -53,9 +54,9 @@ Active MVP behavior defaults to cooperative checks with limited detective report
 | `APPROVAL_REQUIRED` | Sensitive-action approval is required before proceeding. |
 | `APPROVAL_DENIED` | The relevant sensitive-action approval was denied. |
 | `APPROVAL_EXPIRED` | The relevant sensitive-action approval expired or drifted from scope/baseline. |
-| `CAPABILITY_INSUFFICIENT` | The surface is recognized but cannot satisfy a required observation, capture, local access, blocking/isolation condition, guarantee claim, or active behavior. |
-| `MCP_UNAVAILABLE` | Required MCP/Core access is unavailable, stale, or unreachable. |
-| `LOCAL_ACCESS_MISMATCH` | The reachable local caller/access path is outside the registered local profile or lacks required local access. |
+| `CAPABILITY_INSUFFICIENT` | The surface is recognized but cannot satisfy a required access class, observation, capture, blocking/isolation condition, guarantee claim, or active behavior. |
+| `MCP_UNAVAILABLE` | Required MCP/Core or surface reachability is unavailable, stale, or unreachable. |
+| `LOCAL_ACCESS_MISMATCH` | The reachable local caller, transport, or `surface_id`/project pairing is outside the registered local posture, or that local access was revoked. |
 | `EVIDENCE_INSUFFICIENT` | Required evidence coverage is absent, partial, stale, or blocked. |
 | `ACCEPTANCE_REQUIRED` | Required final acceptance is pending, rejected, or not compatible with the visible result basis. |
 | `PROJECTION_STALE` | A requested readable status/view is stale or failed. It is not Core state and is not a close blocker by itself. |
@@ -71,6 +72,8 @@ missing | expired | stale | revoked | consumed | incompatible
 ```
 
 Use `WRITE_AUTHORIZATION_REQUIRED` with `authorization_reason=missing` when no required authorization is supplied. Use `WRITE_AUTHORIZATION_INVALID` for an existing authorization that cannot be consumed.
+
+Use the local-access codes narrowly. `LOCAL_ACCESS_MISMATCH` is for a reachable caller or transport that does not match the registered project surface, including revoked local access. `CAPABILITY_INSUFFICIENT` is for a recognized active surface that lacks the capability needed by the requested access class or guarantee claim. `MCP_UNAVAILABLE` is for unavailable MCP/Core or surface reachability. Do not substitute a surface-specific `UNAUTHORIZED` code for these public paths.
 
 <a id="primary-error-code-precedence"></a>
 
@@ -167,8 +170,8 @@ These labels are display guidance, not new public error codes.
 |---|---|---|
 | `VALIDATION_FAILED` | invalid request | Fix the payload, enum value, activation rule, or field set before retrying. |
 | `STATE_CONFLICT` | state conflict | Refresh current status and retry with the current state version, or replay the original idempotent request. |
-| `MCP_UNAVAILABLE` | Core unavailable | Reconnect or diagnose Core access before claiming state changes, gate updates, write compatibility, or close. |
-| `LOCAL_ACCESS_MISMATCH` | local access denied or off capability | Use the registered local surface, repair local access, or move to a capable surface. |
+| `MCP_UNAVAILABLE` | Core or surface unavailable | Reconnect or diagnose MCP/Core and surface reachability before claiming state changes, gate updates, write compatibility, or close. |
+| `LOCAL_ACCESS_MISMATCH` | local access mismatch | Use the registered local surface or repair local access registration before relying on Harness state. |
 | `CAPABILITY_INSUFFICIENT` | unsupported or insufficient surface | Use a capable surface, reduce the operation, or choose a path that does not require the missing capability. |
 | `NO_ACTIVE_TASK` | no active Task | Select or create a Task before a Task-scoped action. |
 | `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | scope, boundary, or baseline issue | Confirm or narrow scope, use `harness.update_scope` to update the Change Unit or baseline when the scope change is valid, or request the needed user judgment. |

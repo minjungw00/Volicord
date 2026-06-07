@@ -23,8 +23,9 @@
 
 | 조건 | 공개 경로 | 에이전트 규칙 |
 |---|---|---|
-| `core_unavailable` | `MCP_UNAVAILABLE` | 하네스 상태를 만들어 내지 않습니다. Core에 다시 닿거나 사용자가 하네스 밖 진행을 명시적으로 선택하기 전까지 하네스에 의존하는 쓰기와 닫기를 보류합니다. |
-| `local_access_denied` | `LOCAL_ACCESS_MISMATCH` 또는 `CAPABILITY_INSUFFICIENT` | 로컬 파일이나 명령 사실을 추측하지 않습니다. 가능한 로컬 접점을 쓰거나, 역량 등록을 고치거나, 범위를 줄이거나, 입력을 미검증으로 표시합니다. |
+| `core_or_surface_unavailable` | `MCP_UNAVAILABLE` | 하네스 상태를 만들어 내지 않습니다. Core와 필요한 접점 경로에 다시 닿거나 사용자가 하네스 밖 진행을 명시적으로 선택하기 전까지 하네스에 의존하는 쓰기와 닫기를 보류합니다. |
+| `local_access_mismatch` | `LOCAL_ACCESS_MISMATCH` | 로컬 파일이나 명령 사실을 추측하지 않습니다. 등록된 로컬 접점을 쓰거나, 로컬 접근 등록을 고치거나, 입력을 미검증으로 표시합니다. |
+| `missing_capability` | `CAPABILITY_INSUFFICIENT` | 역량이 맞는 접점을 쓰거나, 동작을 줄이거나, 빠진 관찰, 캡처, 로컬 접근 분류, 차단/격리 주장, 활성 동작이 필요 없는 경로를 선택합니다. |
 | `stale_state` | `STATE_CONFLICT`, `BASELINE_STALE`, `PROJECTION_STALE`, 오래된 `WRITE_AUTHORIZATION_INVALID` | 의존하기 전에 현재 상태, baseline, 읽기용 상태 보기, 범위 갱신 결과, 쓰기 전 확인을 새로 확인합니다. |
 | `unsupported_surface` | `CAPABILITY_INSUFFICIENT` 또는 `VALIDATION_FAILED` | 요청을 줄이거나, 역량이 맞는 접점으로 옮기거나, 차단 사유를 반환합니다. 지원하지 않는 권한을 설명 문구로 흉내 내지 않습니다. |
 | `out_of_scope` | `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `NO_ACTIVE_CHANGE_UNIT`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | 영향을 받는 행동을 보류하고, 불일치를 보여 주며, 현재 범위로 줄이거나 구체적인 사용자 소유 범위 판단을 요청하거나, 해결된 범위 변경을 `harness.update_scope`로 적용합니다. |
@@ -53,9 +54,9 @@
 | `APPROVAL_REQUIRED` | 진행 전에 민감 동작 승인이 필요합니다. |
 | `APPROVAL_DENIED` | 관련 민감 동작 승인이 거부되었습니다. |
 | `APPROVAL_EXPIRED` | 관련 민감 동작 승인이 만료되었거나 범위/baseline에서 달라졌습니다. |
-| `CAPABILITY_INSUFFICIENT` | 접점은 인식되었지만 필요한 관찰, 캡처, 로컬 접근, 차단/격리 조건, 보장 주장, 활성 동작을 충족할 수 없습니다. |
-| `MCP_UNAVAILABLE` | 필요한 MCP/Core 접근을 사용할 수 없거나, 오래되었거나, 닿을 수 없습니다. |
-| `LOCAL_ACCESS_MISMATCH` | 도달 가능한 로컬 호출자/접근 경로가 등록된 로컬 프로필 밖에 있거나 필요한 로컬 접근 권한이 없습니다. |
+| `CAPABILITY_INSUFFICIENT` | 접점은 인식되었지만 필요한 접근 분류, 관찰, 캡처, 차단/격리 조건, 보장 주장, 활성 동작을 충족할 수 없습니다. |
+| `MCP_UNAVAILABLE` | 필요한 MCP/Core 또는 접점 도달 가능성을 사용할 수 없거나, 오래되었거나, 닿을 수 없습니다. |
+| `LOCAL_ACCESS_MISMATCH` | 도달 가능한 로컬 호출자, 전송 경로, 또는 `surface_id`/project 짝이 등록된 로컬 태세 밖에 있거나 해당 로컬 접근이 철회되었습니다. |
 | `EVIDENCE_INSUFFICIENT` | 필요한 증거 범위가 없거나, 부분적이거나, 오래되었거나, 막혔습니다. |
 | `ACCEPTANCE_REQUIRED` | 필요한 최종 수락이 대기 중이거나, 거부되었거나, 표시된 결과 근거와 호환되지 않습니다. |
 | `PROJECTION_STALE` | 요청한 읽기용 상태/보기가 오래되었거나 실패했습니다. Core 상태가 아니며 그 자체로 닫기 차단 사유가 아닙니다. |
@@ -71,6 +72,8 @@ missing | expired | stale | revoked | consumed | incompatible
 ```
 
 필요한 권한이 제공되지 않았으면 `authorization_reason=missing`과 함께 `WRITE_AUTHORIZATION_REQUIRED`를 사용합니다. 기존 권한을 소비할 수 없으면 `WRITE_AUTHORIZATION_INVALID`를 사용합니다.
+
+로컬 접근 관련 코드는 좁게 사용합니다. `LOCAL_ACCESS_MISMATCH`는 도달 가능한 호출자나 전송 경로가 등록된 프로젝트 접점과 맞지 않을 때 쓰며, 철회된 로컬 접근도 여기에 포함합니다. `CAPABILITY_INSUFFICIENT`는 인식된 활성 접점이 요청한 접근 분류나 보장 주장에 필요한 역량을 갖추지 못했을 때 씁니다. `MCP_UNAVAILABLE`은 MCP/Core 또는 접점 도달 가능성을 사용할 수 없을 때 씁니다. 이 공개 경로 대신 접점별 `UNAUTHORIZED` code를 만들지 않습니다.
 
 <a id="primary-error-code-precedence"></a>
 
@@ -167,8 +170,8 @@ Run 실패, violation, Projection 실패, 아티팩트 무결성 실패, validat
 |---|---|---|
 | `VALIDATION_FAILED` | 잘못된 요청 | 다시 시도하기 전에 요청 본문, enum 값, 활성화 규칙, 필드 집합을 고칩니다. |
 | `STATE_CONFLICT` | 상태 충돌 | 현재 상태를 새로 고치고 현재 상태 버전으로 다시 시도하거나 원래 멱등 요청을 재실행합니다. |
-| `MCP_UNAVAILABLE` | Core 사용 불가 | 상태 변경, gate 업데이트, 쓰기 호환성, 닫기를 주장하기 전에 Core 접근을 다시 연결하거나 진단합니다. |
-| `LOCAL_ACCESS_MISMATCH` | 로컬 접근 거부 또는 역량 불일치 | 등록된 로컬 접점을 사용하거나, 로컬 접근을 복구하거나, 역량이 있는 접점으로 옮깁니다. |
+| `MCP_UNAVAILABLE` | Core 또는 접점 사용 불가 | 상태 변경, gate 업데이트, 쓰기 호환성, 닫기를 주장하기 전에 MCP/Core와 접점 도달 가능성을 다시 연결하거나 진단합니다. |
+| `LOCAL_ACCESS_MISMATCH` | 로컬 접근 불일치 | 하네스 상태에 의존하기 전에 등록된 로컬 접점을 사용하거나 로컬 접근 등록을 고칩니다. |
 | `CAPABILITY_INSUFFICIENT` | 지원되지 않거나 부족한 접점 | 역량이 있는 접점을 사용하거나, 동작을 줄이거나, 누락된 역량이 필요 없는 경로를 선택합니다. |
 | `NO_ACTIVE_TASK` | 활성 Task 없음 | Task 범위 동작 전에 Task를 선택하거나 생성합니다. |
 | `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | 범위, 경계, baseline 문제 | 범위를 확인하거나 좁히고, 범위 변경이 유효하면 `harness.update_scope`로 Change Unit이나 baseline을 갱신하거나, 필요한 사용자 판단을 요청합니다. |

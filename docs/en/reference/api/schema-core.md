@@ -52,6 +52,32 @@ ToolEnvelope:
 
 Envelope fields route and audit the call. `surface_id` does not grant capability, write authority, local access, user judgment, sensitive-action permission, final acceptance, residual-risk acceptance, or close.
 
+<a id="local-surface-access-values"></a>
+
+## Local Surface Access Values
+
+Local surface access values describe Harness API compatibility. They are not OS permissions, sandbox boundaries, tamper-proof guarantees, universal pre-tool blocking, or isolation.
+
+`surfaces.local_access_posture` is a closed current MVP value set:
+
+| Value | Meaning |
+|---|---|
+| `registered_local` | The caller/transport matches the registered local surface posture for this project closely enough for the API owner to evaluate the requested access class. |
+| `unavailable` | Required MCP/Core or surface reachability cannot currently be established. |
+| `mismatch` | A reachable caller/transport does not match the registered local surface posture for the project. |
+| `revoked` | Local access for the registered surface was explicitly revoked and must not be used until a new valid registration replaces it. |
+
+`surfaces.status` is a closed current MVP value set:
+
+| Value | Meaning |
+|---|---|
+| `active` | The registered surface may be considered for current API access checks. |
+| `disabled` | The surface remains recorded but must not be used for current API access. |
+| `stale` | The surface registration or capability posture must be refreshed before current API access can rely on it. |
+| `revoked` | The surface registration is no longer valid for current API access. |
+
+The active local API access-class labels are `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, and `artifact_read`. Method-level conditions for these classes are owned by [MVP API](mvp-api.md#shared-request-rules); public error selection is owned by [API Errors](errors.md).
+
 <a id="common-response"></a>
 
 ## Common Response
@@ -466,6 +492,9 @@ These values are valid without a promoted profile. Values not listed here are no
 |---|---|
 | Active method set | `harness.intake`, `harness.update_scope`, `harness.status`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
 | `ToolEnvelope.actor_kind` | `user`, `lead_agent`, `evaluator`, `operator` |
+| Local API access classes | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
+| `surfaces.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` |
+| `surfaces.status` | `active`, `disabled`, `stale`, `revoked` |
 | `IntakeRequest.requested_mode` | `advisor`, `direct`, `work`, `auto` |
 | `StateSummary.mode` and persisted `tasks.mode` | `advisor`, `direct`, `work` |
 | `StateSummary.lifecycle_phase` | `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded` |

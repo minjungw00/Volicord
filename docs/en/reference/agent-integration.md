@@ -47,11 +47,21 @@ The active reference profile is intentionally small:
 capability_profile:
   surface_id: reference-local-mcp
   surface_name: Reference local MCP surface
+  surface_status: active
+  local_access_posture: registered_local
   mcp_available: true
+  supported_access_classes:
+    - read_status
+    - core_mutation
+    - write_authorization
+    - run_recording
+    - artifact_registration
+    - artifact_read
   cooperative_prepare_write_supported: true
   changed_path_detection_supported: true
   artifact_capture_supported: false
   manual_artifact_attachment_supported: true
+  raw_artifact_path_read_supported: false
   command_observation_supported: false
   network_observation_supported: false
   secret_access_observation_supported: false
@@ -62,6 +72,8 @@ capability_profile:
 ```
 
 Exact public tool and resource contracts belong to the API owners. The connector may summarize the available subset, but it should not duplicate full method schemas in prompt context.
+
+`surface_status`, `local_access_posture`, and `supported_access_classes` report the connector's current API compatibility posture. They do not grant authority by themselves. Current access-class labels and surface value sets are owned by [API Schema Core](api/schema-core.md#local-surface-access-values), and minimum request conditions are owned by [MVP API](api/mvp-api.md#shared-request-rules). In the reference profile, `artifact_read` means registered `ArtifactRef` reads through the owner path only; `raw_artifact_path_read_supported=false` means a local filesystem path under the artifact store is not enough to read artifact bytes.
 
 Refresh the profile when the surface version, MCP configuration, hooks, permissions, workspace policy, generated files, managed blocks, capture path, QA capture path, redaction policy, artifact retention, local access posture, guard wrapper, isolation wrapper, or conformance basis changes.
 
@@ -174,7 +186,7 @@ Fallbacks are described by guarantee display level and risk, not by surface bran
 | Detective | Harness can observe supported facts after action. | Mark state stale, partial, blocked, or failed and require repair, reconcile, or fresh evidence. |
 | Capability insufficient | A requested write, capture, guard, isolation, or guarantee claim depends on an unsupported field. | Return `CAPABILITY_INSUFFICIENT` or a structured blocked reason; lower the displayed `guarantee_display.level` value. |
 | MCP unavailable | The surface or call path cannot reach the current Core authority path. | Use stable public `MCP_UNAVAILABLE` behavior and do not claim state mutation. |
-| Local access mismatch | The caller or transport is outside the registered local profile. | Use `LOCAL_ACCESS_MISMATCH` with display-safe diagnostics; do not introduce a surface-specific `UNAUTHORIZED` code. |
+| Local access mismatch | The caller or transport is outside the registered local profile, or local access was revoked. | Use `LOCAL_ACCESS_MISMATCH` with display-safe diagnostics; do not introduce a surface-specific `UNAUTHORIZED` code. |
 
 `MCP_SERVER_UNAVAILABLE` and `SURFACE_MCP_UNAVAILABLE` are diagnostic conditions. `MCP_UNAVAILABLE` remains the stable public availability code.
 
@@ -206,12 +218,17 @@ Reference local MCP recipe:
 surface_kind: reference_local_mcp
 target_profile: reference-local-mcp
 mcp_posture: local-only registered project, or owner-approved alternative
+surface_status: active
+local_access_posture: registered_local
 context_strategy: compact always-on context plus phase-relevant owner pulls
 write_behavior: cooperative prepare_write discipline before product writes
 run_behavior: record_run with summary and owner-registered artifact refs
 capture_boundary:
   native_capture: unsupported in the minimum reference profile
   fallback_capture: manual artifact attachment
+artifact_read_boundary:
+  registered_artifact_ref_required: true
+  raw_artifact_path_read_supported: false
 guarantee_boundary:
   default_level: cooperative
   max_level: detective only for supported after-action observation

@@ -29,6 +29,8 @@
 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) | 기존 pending `UserJudgment`에 대한 사용자의 답을 기록합니다. |
 | [`harness.close_task`](#harnessclose_task) | 닫기 준비 상태를 확인하고, 차단 사유가 허용할 때만 close, cancel, supersede합니다. |
 
+<a id="shared-request-rules"></a>
+
 ## 공통 요청 규칙
 
 모든 메서드는 [`ToolEnvelope`](schema-core.md#tool-envelope)와 [`ToolResponseBase`](schema-core.md#common-response)를 사용합니다. 상태를 바꾸는 메서드는 non-null `idempotency_key`와 현재 `expected_state_version`을 요구합니다. `harness.status`는 read-only이며 `expected_state_version: null`을 사용할 수 있습니다.
@@ -38,6 +40,19 @@
 `dry_run=true`는 기준 권한이 아닙니다. 진단이나 would-change 결과를 반환할 수 있지만 현재 기록, `task_events` 행, 아티팩트, 소비 가능한 Write Authorization, 증거 요약, 닫기 상태, 멱등 재실행 행을 만들지 않습니다.
 
 오류 코드, 기본 오류 우선순위, 멱등성, stale-state 동작, 닫기 차단 사유 순서, 사용자 표시 오류 라벨은 [API Errors](errors.md)가 담당합니다. 공용 스키마와 활성 값 집합은 [API Schema Core](schema-core.md)가 담당합니다.
+
+로컬 접근 분류는 하네스 API 호환성 분류이지 OS 권한 분류가 아닙니다. 모든 분류는 `surface_id`가 같은 `project_id`에 등록된 `surfaces` 행을 가리켜야 하며, API가 그 접점에 의존하려면 `surfaces.status=active`여야 합니다. 상태를 바꾸는 분류는 `surfaces.local_access_posture=registered_local`도 요구합니다.
+
+| 접근 분류 | 포함하는 동작 | 최소 접근 조건 |
+|---|---|---|
+| `read_status` | `harness.status`, 읽기 전용 상태 리소스, `harness.close_task intent=check` 같은 읽기 전용 닫기 확인. | 같은 프로젝트에 등록된 `surface_id`, `surfaces.status=active`, 요청한 읽기에 필요한 Core/접점 경로 도달 가능성, Task 범위 읽기라면 호환되는 `task_id`가 필요합니다. 상태 읽기는 표시해도 안전한 가용성 또는 불일치 진단을 반환할 수 있지만, 오래된 텍스트에서 상태를 만들어 내거나 로컬 접근을 확인할 수 없을 때 보호되어야 할 Core 세부정보를 노출하면 안 됩니다. |
+| `core_mutation` | `harness.intake`, `harness.update_scope`, `harness.request_user_judgment`, `harness.record_user_judgment`, 상태를 끝내는 `harness.close_task` intent. | `read_status` 조건에 더해 `surfaces.local_access_posture=registered_local`, non-null `idempotency_key`, 현재 `expected_state_version`, 적용되는 경우 호환되는 `project_id`, `surface_id`, `task_id`, 담당 기록이 필요합니다. |
+| `write_authorization` | `harness.prepare_write`. | `core_mutation` 조건에 더해 의도한 attempt에 필요한 활성 Task/Change Unit 호환성, 범위, baseline, 민감 동작, 역량 확인이 필요합니다. |
+| `run_recording` | `harness.record_run`. | `core_mutation` 조건에 더해 호환되는 `task_id`, `change_unit_id`, `baseline_ref`, 관찰된 attempt 사실, 그리고 제품 쓰기를 기록하는 Run이면 소비 가능한 active Write Authorization이 필요합니다. |
+| `artifact_registration` | `harness.record_run`이 받는 `ArtifactInput[]`. | `run_recording` 조건에 더해 문서화된 `staged_file`, `capture_adapter`, `existing_artifact` 핸들만 받을 수 있습니다. 호출자가 임의로 준 파일시스템 경로, 원시 비밀값, 토큰, 민감한 전체 로그는 등록 권한으로 인정하지 않습니다. |
+| `artifact_read` | 등록된 `ArtifactRef`에서 담당 경로가 노출하는 로컬 아티팩트 메타데이터 또는 본문 읽기. | 같은 프로젝트에 등록된 `surface_id`, `surfaces.status=active`, 본문 읽기에는 `surfaces.local_access_posture=registered_local`, 등록된 `ArtifactRef`, 호환되는 `project_id`/`task_id`, 필요한 가림/가용성 확인, `artifact_links`의 일치하는 담당 관계가 필요합니다. 원시 아티팩트 경로 읽기는 기본으로 허용되지 않습니다. |
+
+필요한 MCP/Core 또는 접점 도달 가능성이 없으면 `MCP_UNAVAILABLE`을 사용합니다. 도달 가능한 호출자나 전송 경로가 등록된 로컬 태세 밖이면 `LOCAL_ACCESS_MISMATCH`를 사용합니다. 접점은 인식되었지만 접근 분류, 관찰, 캡처, 차단/격리 주장, 활성 동작에 필요한 역량이 없으면 `CAPABILITY_INSUFFICIENT`를 사용합니다.
 
 <a id="harnessintake"></a>
 
