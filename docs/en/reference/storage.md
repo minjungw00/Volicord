@@ -65,11 +65,20 @@ Reference layout:
         checkpoints/
 ```
 
-`registry.sqlite` stores the Runtime Home identity and minimal project
-registration data. `project.yaml` stores static project configuration only.
-`state.sqlite` stores project-local Core state. Artifact directories store
-registered evidence bytes or safe metadata after Core applies the artifact
-registration boundary.
+The path meanings are part of the storage contract:
+
+- The Runtime Home root, shown as `~/.harness`, is Harness operational data. It
+  is not the Product Repository and not a grant of filesystem permission.
+- `registry.sqlite` stores Runtime Home identity and minimal project
+  registration. It is the Runtime Home registry, not project-local Task state.
+- A project directory under `projects/{project_id}/` is the Harness project
+  home for one registered project. It is not the same thing as `repo_root`.
+- `project.yaml` stores static project configuration only.
+- `state.sqlite` stores project-local Core state for the registered project.
+- `artifacts/` is the project artifact store. Paths below it store registered
+  evidence bytes or safe metadata only after Core applies the artifact
+  registration boundary. `artifacts/tmp/` is staging space, not evidence
+  authority.
 
 `project.yaml` must not store current Task state, gates, Write Authorization
 state, evidence sufficiency, final acceptance, residual-risk acceptance, or
@@ -150,8 +159,110 @@ they serve. It is not full DDL and does not duplicate API schemas.
 | `artifact_links` | `state.sqlite` | Owner relation from an artifact to the active Core/API record it supports. | `artifact_link_id`, `artifact_id`, `task_id`, `owner_record_kind`, `owner_record_id`, `relation`, `created_at`. |
 | `evidence_summaries` | `state.sqlite` | Compact evidence coverage and gap record used by status, run/evidence summaries, blockers, and close. | `evidence_summary_id`, `task_id`, `change_unit_id`, `status`, `coverage_items_json`, `summary`, `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `updated_at`. |
 | `blockers` | `state.sqlite` | Structured blocker for next action, write compatibility, evidence gaps, close readiness, or recovery. | `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, `status`, `message`, `owner_ref_json`, `related_refs_json`, `required_next_action`, `created_at`, `resolved_at`. |
-| `task_events` | `state.sqlite` | Append-only audit and ordering trail for committed Core mutations. | `event_id`, `task_id`, `event_seq`, `event_type`, `state_version`, `actor_kind`, `surface_id`, `payload_json`, `created_at`. |
+| `task_events` | `state.sqlite` | Append-only audit and ordering trail for committed Core mutations. | `event_id`, `project_id`, `task_id`, `event_seq`, `event_type`, `state_version`, `actor_kind`, `surface_id`, `payload_json`, `created_at`. |
 | `tool_invocations` | `state.sqlite` | Committed idempotency replay row for non-dry-run state-changing tool responses. | `invocation_id`, `project_id`, `tool_name`, `idempotency_key`, `request_hash`, `task_id`, `basis_state_version`, `response_json`, `status`, `created_at`. |
+
+### First schema integrity contract
+
+This section is a first-implementation storage contract for future SQLite
+schema design. It is not full DDL, a migration file, or proof that runtime
+implementation has started.
+
+Required identity and uniqueness constraints:
+
+- Active tables use opaque stable ids as primary keys or equivalent unique
+  keys: `project_id`, `surface_id`, `task_id`, `change_unit_id`,
+  `user_judgment_id`, `write_authorization_id`, `run_id`, `artifact_id`,
+  `artifact_link_id`, `evidence_summary_id`, `blocker_id`, `event_id`, and
+  `invocation_id`.
+- Runtime Home identity stores one `runtime_home_id` for the Runtime Home.
+- Project registration requires unique `project_id`, unique `project_home`, and
+  one active registration for a `repo_root` unless a future owner defines
+  multi-registration behavior.
+- `project_state.project_id` is one row per registered project.
+- `surfaces` requires a unique `(project_id, surface_id)`.
+- `tasks` requires a unique `(project_id, task_id)`.
+- `change_units` requires unique `(task_id, change_unit_id)` and at most one
+  `status=active` Change Unit per Task.
+- `write_authorizations.consumed_by_run_id`, when non-null, is unique.
+  `runs.write_authorization_id`, when non-null, is unique. Together these
+  preserve the single-use consumption relation.
+- `artifact_links` requires a uniqueness rule equivalent to
+  `(artifact_id, owner_record_kind, owner_record_id, relation)` so the same
+  owner relation is not duplicated.
+- `task_events` requires unique `event_id` and monotonic unique `event_seq`
+  within the affected scope: `(project_id, task_id, event_seq)` for Task-scoped
+  events, and `(project_id, event_seq)` when `task_id` is null for
+  project-scoped events.
+- `tool_invocations` requires a unique replay key on
+  `(project_id, tool_name, idempotency_key)`. `request_hash` is stored in the
+  row and must not be added to a second uniqueness key that would allow the same
+  idempotency key to fork into multiple committed responses.
+
+Main foreign key relationships:
+
+- `project_state.project_id`, `surfaces.project_id`, `tasks.project_id`,
+  `artifacts.project_id`, `task_events.project_id`, and
+  `tool_invocations.project_id` belong to project registration.
+- `tasks.active_change_unit_id` points to a `change_units` row for the same
+  Task, and may be null while the Task is still shaping or not write-capable.
+- `change_units.task_id`, `user_judgments.task_id`,
+  `write_authorizations.task_id`, `runs.task_id`,
+  `evidence_summaries.task_id`, `blockers.task_id`, and Task-scoped
+  `task_events.task_id` point to `tasks`.
+- `user_judgments.change_unit_id`, `write_authorizations.change_unit_id`,
+  `runs.change_unit_id`, and `evidence_summaries.change_unit_id`, when present,
+  point to a `change_units` row for the same Task.
+- `write_authorizations.surface_id` and `runs.surface_id` point to a same-project
+  `surfaces` row.
+- `runs.write_authorization_id`, when present, points to the consumed
+  `write_authorizations` row and must match the same Task, Change Unit, surface,
+  and compatible attempt scope.
+- `artifacts.task_id` points to the owning Task. `artifacts.run_id`, when
+  present, points to a same-Task `runs` row.
+- `artifact_links.artifact_id` points to `artifacts`, and
+  `artifact_links.task_id` points to the same Task as the artifact and owner
+  relation.
+
+Cascade delete policy:
+
+- Ordinary active MVP Core operations do not hard-delete authority rows. They
+  move rows through status or lifecycle fields, append events, and keep replay
+  and artifact metadata available for audit and recovery.
+- Foreign keys should default to `RESTRICT` or equivalent owner validation for
+  authority rows. Closing, cancelling, or superseding a Task must not cascade
+  delete `tasks`, `change_units`, `user_judgments`, `write_authorizations`,
+  `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`,
+  `task_events`, or `tool_invocations`.
+- `artifacts/tmp/` staging bytes may be cleaned before registration because they
+  are not evidence authority. Once an `artifacts` row is committed, retention
+  purge, project teardown, or destructive cleanup is outside ordinary active MVP
+  mutation behavior and needs an owner-defined path.
+- A future retention or migration path must preserve artifact hashes, owner
+  links, events, and replay rows, or mark affected refs invalid for recovery. It
+  must not silently cascade-delete evidence support that current records still
+  name.
+
+Closed current MVP storage value sets:
+
+| Field | Current MVP values | Storage rule |
+|---|---|---|
+| Project registration `status` | `active` | Only registered active projects are in the baseline current MVP. Disable/unregister behavior is later until promoted. |
+| `surfaces.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` | Stored surface posture for API compatibility checks; meanings are below and mirrored by Schema Core. |
+| `surfaces.status` | `active`, `disabled`, `stale`, `revoked` | Stored surface row usability; meanings are below and mirrored by Schema Core. |
+| `change_units.status` | `proposed`, `active`, `replaced`, `closed` | Storage-owned active Change Unit lifecycle for write compatibility and close basis. |
+| `write_authorizations.status` | `active`, `consumed`, `expired`, `stale`, `revoked` | Durable authorization lifecycle. Schema Core exposes the same public summary values; storage owns persistence and transition rules. |
+| `artifacts.status` | `available`, `missing`, `integrity_failed`, `unavailable` | Storage-owned artifact availability state. Redaction and blocked-payload handling stay in `redaction_state`. |
+| `artifacts.redaction_state` | `none`, `redacted`, `secret_omitted`, `blocked` | Persisted `ArtifactRef.redaction_state` values from Schema Core. Hash and size describe the committed safe bytes or safe notice, not a hidden original. |
+| `blockers.status` | `active`, `resolved`, `superseded` | Storage-owned blocker row state. Public close blocker shapes remain API-owned. |
+| `tool_invocations.status` | `committed` | A replay row exists only for a committed non-dry-run state-changing response. Dry-run and pre-commit failures have no replay row. |
+
+Other persisted status-like API fields, including `tasks.mode`,
+`tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `runs.kind`,
+`runs.status`, `user_judgments.status`, and `evidence_summaries.status`, validate
+against [API Schema Core](api/schema-core.md#current-mvp-value-sets) and the
+Core/API method owners. Storage may index and constrain them, but this page does
+not redefine their public schema values.
 
 After intake, `harness.update_scope` owns committed updates to active Task scope
 fields such as goal summary, scope boundary, non-goals, acceptance criteria,
@@ -161,19 +272,42 @@ create or replace the active `change_units` row for the Task. A resolved
 `harness.record_user_judgment` does not directly update those active scope or
 Change Unit fields.
 
-At the storage contract level, `change_units.status` distinguishes only
-`proposed`, `active`, `replaced`, and `closed`. `proposed` may hold an intake or
-clarification candidate, `active` is the current write-compatibility and close
-basis for the Task, `replaced` is no longer the active basis after
-`harness.update_scope`, and `closed` is no longer active because the owning Task
-closed, cancelled, or was superseded. This is a storage value boundary, not full
-DDL or a migration recipe.
+`change_units.status` transitions are closed:
 
-When `harness.update_scope` changes the active scope, active Change Unit,
-baseline, or Autonomy Boundary, any active `write_authorizations` that no longer
-match the current basis are marked `status=stale`. Stale authorizations remain
-records but cannot be consumed by `harness.record_run`; the caller must get a
-fresh compatible `harness.prepare_write` result for the exact operation.
+- New write-capable intake or clarification candidates may start as `proposed`.
+- `proposed` may become `active` only through the owner path that makes it the
+  Task's current write-compatibility basis.
+- `proposed` may become `replaced` if a different candidate supersedes it before
+  activation.
+- `active` becomes `replaced` when `harness.update_scope` selects a different
+  active Change Unit for the Task.
+- Any non-`closed` Change Unit may become `closed` when the owning Task is
+  completed, cancelled, or superseded.
+- `closed` is terminal for active MVP storage.
+
+`write_authorizations.status` transitions are closed:
+
+- A non-dry-run `harness.prepare_write` with `decision=allowed` creates exactly
+  one `status=active` row. `active` is the durable open state; there is no stored
+  `open` value.
+- `active` becomes `consumed` only when a compatible `harness.record_run`
+  consumes it. Storage then sets `consumed_by_run_id` and `consumed_at`.
+- `active` becomes `stale` when `harness.update_scope` or another owner path
+  changes the active Task, Change Unit, baseline, scope boundary, acceptance
+  basis, Autonomy Boundary, or state version so the authorization no longer
+  matches the current basis.
+- `active` becomes `revoked` only through an explicit owner path that invalidates
+  the authorization without consuming it.
+- `active` becomes `expired` when the stored `expires_at` boundary has passed or
+  the owner path marks the time-bound authorization expired. `expired` is active
+  current MVP because Schema Core exposes it, but it is a terminal state for a
+  row that was previously active; storage must not create an already-expired row
+  as a consumable authorization.
+- `consumed`, `stale`, `revoked`, and `expired` cannot transition back to
+  `active`. A caller must obtain a fresh compatible `harness.prepare_write`
+  result for the exact operation.
+- Blocked, dry-run, malformed, or pre-commit failed `prepare_write` attempts
+  create no consumable `write_authorizations` row.
 
 `surfaces` is not a connector marketplace or broad connector ecosystem table.
 It is the active local/reference surface registration needed to interpret
@@ -221,6 +355,11 @@ API-shaped stored JSON validates against [MVP API](api/mvp-api.md) and
 [API Schema Core](api/schema-core.md). Storage-only JSON validates against this
 page or the owner document named by this page. SQLite defaults such as `'{}'`
 and `'[]'` are storage defaults only; they do not make API fields optional.
+Malformed JSON, unknown owner-bound fields, unknown enum values, wrong scalar
+types, unbounded arrays, and JSON that names records outside the compatible
+project/task scope must fail before commit. SQLite `json_valid`, `CHECK`
+constraints, generated columns, or lookup tables may harden the representation,
+but they do not replace Core/API/storage owner validation.
 
 Active JSON `TEXT` columns are limited to compact owner-shaped data needed by
 the active records, including:
@@ -274,9 +413,32 @@ An artifact is evidence-eligible only when storage has:
 - and an owner link to an active record such as `task`, `change_unit`, `run`,
   `user_judgment`, `evidence_summary`, or `blocker`.
 
+`artifacts.status` is an availability state:
+
+| Value | Storage meaning |
+|---|---|
+| `available` | The registered safe bytes or safe metadata notice is present and matches stored integrity metadata. |
+| `missing` | The artifact row remains, but the registered bytes or safe metadata notice cannot be found. |
+| `integrity_failed` | The available bytes or metadata do not match stored integrity facts such as `sha256` or `size_bytes`. |
+| `unavailable` | The artifact store or required retrieval path cannot currently provide the registered bytes or safe metadata notice. |
+
+`artifacts.redaction_state` uses the active `ArtifactRef.redaction_state`
+values from [API Schema Core](api/schema-core.md#artifactref). `blocked` is a
+redaction/omission state, not an artifact availability status. A `blocked`,
+`secret_omitted`, or `redacted` artifact may still have `artifacts.status=available`
+when the committed safe notice or redacted bytes are present and integrity-aware.
+
 `sha256`, `size_bytes`, and `content_type` are artifact integrity facts for
 comparison and availability handling. They do not make artifact storage
 tamper-proof or create a cryptographic evidence guarantee claim.
+
+Artifact owner relation integrity is required even though `artifact_links` is a
+polymorphic owner table. Storage must validate that `owner_record_kind` is one
+of `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, or
+`blocker`; that `owner_record_id` exists in the matching active table; that the
+owner belongs to the same `project_id` and `task_id`; and that the relation is
+compatible with the way the artifact is used. A raw `artifact_id` without a
+valid owner link is not evidence support.
 
 `uri` resolves through Harness storage, normally as
 `harness-artifact://{project_id}/{artifact_id}`. It is not a caller-supplied
@@ -303,12 +465,20 @@ ordinary operation. Current rows such as `tasks`, `change_units`,
 `user_judgments`, `write_authorizations`, `runs`, `artifacts`,
 `artifact_links`, `evidence_summaries`, and `blockers` remain the current state.
 
+`task_events` is append-only for ordinary active MVP operation: after an event is
+committed, Core must not update or delete that row to change history. Corrections
+or repairs are recorded by new events and current-row updates through the owner
+path. Idempotent replay, dry-run, malformed requests, and pre-commit failures do
+not append events.
+
 `tool_invocations` stores exact replay for committed non-dry-run state-changing
 responses. Keys are scoped as described by [API Errors: Idempotency](api/errors.md#idempotency).
 If the same key and request hash are replayed, Core returns the original
 committed response without appending events, registering artifacts, consuming
 authorization, or changing state again. If the key is reused with a different
-request hash, Core returns the API-owned state conflict behavior.
+request hash, Core returns the API-owned state conflict behavior. The storage
+unique key is `(project_id, tool_name, idempotency_key)`; `request_hash` is the
+conflict discriminator stored in that row.
 
 Dry runs, malformed requests, pre-commit validation failures, pre-commit state
 conflicts, and rejected `record_run` attempts that create no mutation do not
@@ -322,7 +492,8 @@ example, blocked `prepare_write` responses do not create consumable
 
 ## 8. State versioning
 
-State clocks are scoped. Task-scoped mutations increment
+State clocks are scoped. A committed state-changing call increments the affected
+scope's state clock exactly once. Task-scoped mutations increment
 `tasks.state_version`. Project-scoped mutations with no Core-selected primary
 Task increment `project_state.state_version`.
 
@@ -330,6 +501,19 @@ State-changing API calls compare `ToolEnvelope.expected_state_version` against
 the affected scope before committing. The response `ToolResponseBase.state_version`
 is the resulting affected-scope version for a committed mutation, or the current
 readable/would-be affected version for read-only and dry-run responses.
+
+`harness.status`, dry-run calls, malformed requests, pre-commit validation
+failures, pre-commit state conflicts, and idempotent replay do not increment a
+state clock. A committed blocked response increments the affected clock only when
+the method owner allows Core to persist a blocker or other current-row mutation.
+
+Task-level and project-level scopes must not be conflated. When Core resolves or
+creates a primary Task for a mutation, freshness and the response state version
+use that Task's `tasks.state_version`. When no primary Task exists for the
+mutation, freshness and the response state version use
+`project_state.state_version`. A future owner must define explicit multi-scope
+version behavior before a single public call can require more than one
+`expected_state_version`.
 
 `write_authorizations.basis_state_version` stores the state version used when
 Core allowed the attempt. `write_authorizations.attempt_scope_json` stores the
@@ -367,12 +551,22 @@ The active migration boundary is:
 
 - Store schema/profile version in Runtime Home metadata and `project_state`, or
   an equivalent maintainer-accepted mechanism.
+- Each future migration must declare a source version, target version, storage
+  profile, owner, and rollback or repair expectation before it is accepted.
+- Run future migrations transactionally for `registry.sqlite` or one
+  `state.sqlite` at a time, with a clear interrupted-state recovery rule before
+  runtime implementation.
 - Validate owner-shaped JSON before commit and before tightening constraints.
 - Treat unknown owner-bound status or enum values as invalid until an owner
   defines them.
+- Tighten nullable fields, foreign keys, enum checks, and JSON validation only
+  after existing rows have been validated or routed to an owner-defined repair
+  state.
 - Preserve `task_events.event_seq` ordering when `task_events` is retained.
 - Preserve artifact hashes and owner links, or mark affected refs invalid for
   recovery.
+- Preserve committed `tool_invocations` replay rows so idempotency does not fork
+  after migration.
 - Keep status cards, compact views, projection freshness, close readiness, and
   report prose derived from current records. They are not migration authority.
 
