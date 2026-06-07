@@ -37,6 +37,11 @@ Core and validate against the owning Core/API/storage contracts. Chat, generated
 Markdown, status cards, projections, connector output, operator output, and
 report prose are not storage authority.
 
+Storage defines where Harness records persist and how committed state
+transitions are recorded. It does not claim tamper-proof storage, security
+isolation, cryptographic evidence guarantees, or authority beyond the
+Core/API/storage contracts.
+
 ## 2. Runtime Home identity
 
 Harness uses one local Runtime Home and one project-local state database per
@@ -196,6 +201,10 @@ An artifact is evidence-eligible only when storage has:
 - and an owner link to an active record such as `task`, `change_unit`, `run`,
   `user_judgment`, `evidence_summary`, or `blocker`.
 
+`sha256`, `size_bytes`, and `content_type` are artifact integrity facts for
+comparison and availability handling. They do not make artifact storage
+tamper-proof or create a cryptographic evidence guarantee.
+
 `uri` resolves through Harness storage, normally as
 `harness-artifact://{project_id}/{artifact_id}`. It is not a caller-supplied
 arbitrary filesystem path. Raw secrets, tokens, and full sensitive logs must not
@@ -264,8 +273,8 @@ lock/recovery metadata is later operations material until an owner
 promotes it.
 
 Locks protect concurrent state writes. They do not provide OS sandboxing,
-artifact integrity, tamper-proof storage, permission isolation, or pre-tool
-blocking.
+artifact integrity guarantees, tamper-proof storage, permission isolation, or
+pre-tool blocking.
 
 ## 10. Migration boundary
 
