@@ -76,8 +76,8 @@ docs:
       en: docs/en/reference/README.md
       ko: docs/ko/reference/README.md
     default_for_agent: en
-    owns: "Reference owner routing for exact contract questions and no-duplicate-injection guidance."
-    does_not_own: "Detailed schemas, DDL, transition tables, templates, errors, or security guarantees."
+    owns: "Reference owner routing for exact contract questions and compact owner selection."
+    does_not_own: "Detailed schemas, DDL, transition tables, templates, errors, retrieval guidance, or security guarantees."
 
   - doc_id: reference.core-model
     status: active
@@ -146,7 +146,7 @@ docs:
       en: docs/en/reference/security.md
       ko: docs/ko/reference/security.md
     default_for_agent: en
-    owns: "Security assets, trust boundaries, OS-sandboxing non-claims, guarantee wording boundary, and profile-gated security display boundary."
+    owns: "Security assets, trust boundaries, explicit current MVP non-claims, guarantee wording boundaries, and profile-gated security display boundaries."
     does_not_own: "API schemas, storage DDL, connector context budgets, exact profile fields, or OS-level enforcement."
 
   - doc_id: reference.agent-integration
@@ -156,7 +156,7 @@ docs:
       en: docs/en/reference/agent-integration.md
       ko: docs/ko/reference/agent-integration.md
     default_for_agent: en
-    owns: "Agent connector behavior, capability profiles, one-language-per-doc_id retrieval guidance, context push/pull guidance, fallback semantics, surface recipes, and agent guarantee wording limits."
+    owns: "Agent connector behavior, capability profiles, one-language-per-`doc_id` retrieval guidance, context push/pull guidance, fallback semantics, surface recipes, and agent guarantee wording limits."
     does_not_own: "Core state authority, public API schemas, storage layout, security guarantee meanings, or security proof."
 
   - doc_id: reference.projection-and-templates
