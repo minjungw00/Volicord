@@ -62,11 +62,11 @@ The user did not need to say an internal mode name. The agent clarified because 
 
 ## What The User Owns
 
-The user owns goals, meaningful scope changes, product behavior, material technical direction, QA expectations, final acceptance, and residual-risk acceptance. The user also owns scoped permission for named sensitive actions when those actions are needed.
+The user owns goals, meaningful scope changes, product behavior, material technical direction, human-review or quality expectations, final acceptance, and residual-risk acceptance. The user also owns scoped permission for named sensitive actions when those actions are needed.
 
 The agent may recommend, compare options, inspect source, run checks, and explain consequences. It must not turn tool output, passing tests, generated summaries, or its own confidence into the user's judgment.
 
-Broad phrases such as "go ahead" or "looks good" should be applied only to the specific pending choice they reasonably answer. They do not automatically grant new sensitive-action permission, waive QA, accept the finished work, or accept known residual risk.
+Broad phrases such as "go ahead" or "looks good" should be applied only to the specific pending choice they reasonably answer. They do not automatically grant new sensitive-action permission, accept the finished work, accept known residual risk, or satisfy a later/reserved QA waiver path.
 
 ## What The Agent Can Do
 
@@ -88,9 +88,9 @@ If evidence is missing, stale, weak, or limited to the agent's own check, Harnes
 
 Close readiness answers a simple question: can this work honestly finish now, and what still blocks it?
 
-A close-ready task should show that scope stayed bounded, required user-owned judgments were handled, evidence supports the stated result, checks or verification expectations are clear, required QA is passed or explicitly waived where allowed, final acceptance is handled when required, known residual risk is visible when present, and any required residual-risk acceptance is recorded only when the user actually accepts the named risk. The user judges final acceptance and residual-risk acceptance separately.
+A close-ready task should show that scope stayed bounded, required user-owned judgments were handled, evidence supports the stated result, checks and known verification limits are clear, final acceptance is handled when required, known residual risk is visible when present, and any required residual-risk acceptance is recorded only when the user actually accepts the named risk. The current MVP does not add a verification gate or Manual QA gate. The user judges final acceptance and residual-risk acceptance separately.
 
-If something is missing, close should name the smallest unblocker, such as a pending product decision, missing evidence, deferred QA, unaccepted residual risk, or final acceptance that has not happened yet.
+If something is missing, close should name the smallest unblocker, such as a pending product decision, missing evidence, an unresolved check, unaccepted residual risk, or final acceptance that has not happened yet.
 
 ## Current MVP Guarantee Boundary
 

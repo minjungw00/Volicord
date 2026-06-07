@@ -88,15 +88,15 @@ Pass when the claim matches the documented guarantee level and names the owner/p
 
 ## 10. User Judgment Boundary Check
 
-Inspect judgment prompts, examples, close wording, approval wording, final acceptance wording, QA waiver wording, and residual-risk wording.
+Inspect judgment prompts, examples, close wording, approval wording, final acceptance wording, residual-risk wording, and any later/reserved QA waiver or verification-risk wording.
 
-Pass when product decisions, technical decisions, scope decisions, sensitive-action approval, QA waiver, verification-risk acceptance, final acceptance, residual-risk acceptance, and cancellation stay distinct. Fail when broad approval, sensitive-action approval, final acceptance, QA waiver, evidence, verification, or residual-risk acceptance silently substitutes for another route.
+Pass when product decisions, technical decisions, scope decisions, sensitive-action approval, final acceptance, residual-risk acceptance, cancellation, and later/reserved QA waiver or verification-risk acceptance stay distinct. Fail when broad approval, sensitive-action approval, final acceptance, later QA waiver, evidence, verification, or residual-risk acceptance silently substitutes for another route.
 
 ## 11. Residual-Risk Close Blocker Wording Check
 
 Inspect residual-risk close blocker text, Korean translations of blocker conditions, and examples that combine visibility, acceptance, waiver, evidence, or required judgment.
 
-Pass when each negative requirement is stated explicitly and residual-risk close blockers preserve the meaning "not visible, or not accepted when required." Korean should use a clear form such as "보이지 않거나, 요구될 때 수락되지 않은 경우." Fail when wording drops the first negative requirement or when residual-risk acceptance substitutes for final acceptance, QA waiver, evidence, or verification.
+Pass when each negative requirement is stated explicitly and residual-risk close blockers preserve the meaning "not visible, or not accepted when required." Korean should use a clear form such as "보이지 않거나, 요구될 때 수락되지 않은 경우." Fail when wording drops the first negative requirement or when residual-risk acceptance substitutes for final acceptance, later QA waiver, evidence, or verification.
 
 ## 12. Projection-Derived-Display Check
 

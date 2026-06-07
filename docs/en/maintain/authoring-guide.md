@@ -83,7 +83,7 @@ If an active schema or DDL block contains inactive values, fix the owner boundar
 
 ## 6. User Judgment Boundary
 
-Harness preserves user-owned judgment. Product behavior, material technical direction, scope expansion, sensitive-action approval, QA waiver, final acceptance, verification-risk acceptance, residual-risk acceptance, and cancellation are distinct judgment routes.
+Harness preserves user-owned judgment. Product behavior, material technical direction, scope expansion, sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation are distinct active judgment routes. Later/reserved QA waiver and verification-risk acceptance routes must stay distinct when mentioned or promoted.
 
 Do not treat broad approval such as "go ahead" or "looks good" as a substitute for a specific judgment. Sensitive-action approval permits a named sensitive step only; it does not decide product behavior, architecture, final acceptance, or residual risk. Final acceptance does not create evidence, erase evidence gaps, or accept residual risk unless the residual-risk path asks for that judgment.
 

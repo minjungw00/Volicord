@@ -226,7 +226,7 @@ RequestUserJudgmentRequest:
   envelope: ToolEnvelope
   task_id: string | null
   change_unit_id: string | null
-  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
+  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | final_acceptance | residual_risk_acceptance | cancellation
   presentation: short
   question: string
   options: UserJudgmentOption[]
@@ -265,7 +265,7 @@ RequestUserJudgmentResponse:
 RecordUserJudgmentRequest:
   envelope: ToolEnvelope
   user_judgment_id: string
-  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
+  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | final_acceptance | residual_risk_acceptance | cancellation
   selected_option_id: string
   answer: RecordUserJudgmentPayload
   note: string | null
@@ -286,7 +286,7 @@ RecordUserJudgmentResponse:
 - **State effect:** A committed non-dry-run call updates `user_judgments.status`, records the answer, updates only covered blockers and affected state, appends an event, and creates a replay row. It creates no standalone accepted-risk row in active MVP.
 - **Errors:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `DECISION_UNRESOLVED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `ACCEPTANCE_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `VALIDATOR_FAILED`.
 - **Storage owner:** `user_judgments`, `blockers`, affected `tasks` or `change_units`, `task_events`, and `tool_invocations`.
-- **Security boundary:** Broad phrases such as "go ahead" or "looks good" do not become product decisions, sensitive-action approval, final acceptance, residual-risk acceptance, cancellation, QA waiver, or scope expansion unless the pending judgment explicitly asked for that kind and the recorded answer matches it.
+- **Security boundary:** Broad phrases such as "go ahead" or "looks good" do not become product decisions, sensitive-action approval, final acceptance, residual-risk acceptance, cancellation, scope expansion, or later/reserved QA waiver and verification-risk routes unless the pending judgment explicitly asked for that kind and the recorded answer matches it.
 
 <a id="harnessclose_task"></a>
 

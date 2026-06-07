@@ -77,7 +77,7 @@ User Notes and Proposals:
 - 관리 블록 내용
 - `source_state_version` 같은 front matter 필드
 - gate 값, lifecycle 단계, 결과, 닫기 이유, 닫기 상태, assurance 수준
-- 사용자 판단, 민감 동작 승인, 최종 수락, QA 면제, 검증 위험 수락, 잔여 위험 수락, 닫기 표시 문구
+- 사용자 판단, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 닫기 표시 문구, later/reserved QA 면제 판단과 검증 위험 수락 표시 문구
 - 아티팩트 식별 정보, `sha256`, `size_bytes`, `content_type`, `redaction_state`, 아티팩트 가용성
 - 상태 카드, 에이전트 맥락 패킷, 생성된 보고서, 템플릿 본문
 
@@ -206,7 +206,7 @@ User Notes and Proposals:
 
 ## 판단 요청 본문
 
-진행, 범위, 민감 동작 승인, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소 판단에 영향을 주는 선택을 사용자가 소유할 때 `judgment-request`를 사용합니다. 이것은 일반 사용자 소유 판단을 위한 현재 MVP 질문 형태입니다.
+진행, 범위, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 취소 판단에 영향을 주는 선택을 사용자가 소유할 때 `judgment-request`를 사용합니다. 이것은 일반 사용자 소유 판단을 위한 현재 MVP 질문 형태입니다. Later/reserved QA 면제 판단과 검증 위험 수락 질문은 향후 담당 경로가 승격되어야 활성 값이 됩니다.
 
 구현 계층: 현재 MVP 사용자 작업 루프 보기입니다. 전체 형식 판단 표시는 later 후보 범위이며 [Later template 후보](../later/index.md#later-template-candidates)에 후보로만 남습니다.
 
@@ -260,7 +260,7 @@ User Notes and Proposals:
 메모:
 
 - 작은 판단은 한 화면에 들어가야 하며 현재 MVP에서는 `presentation=short`를 사용합니다. `presentation=full`과 `Decision Packet`은 담당 사용자 판단/템플릿 경로가 승격하기 전까지 later 후보 자료로 남습니다.
-- 민감 동작 승인, 제품 판단, 기술 판단, 범위 판단, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소 판단을 하나의 넓은 승인 질문으로 합치지 않습니다.
+- 민감 동작 승인, 제품 판단, 기술 판단, 범위 판단, 최종 수락, 잔여 위험 수락, 취소 판단, later/reserved QA 면제 판단과 검증 위험 수락 경로를 하나의 넓은 승인 질문으로 합치지 않습니다.
 - "yes, do it", "진행해", "좋아" 같은 채팅 문구는 범위, `judgment_kind`, 영향받는 대상, 기록된 사용자 의도가 대기 중인 판단과 맞을 때만 해당 gate를 만족합니다.
 - 표시되는 `유형` 라벨은 `judgment_kind`와 사용자 locale에서 렌더링합니다. 이 라벨은 표시 문구일 뿐이며, 기준 판단 범주는 `judgment_kind`입니다.
 

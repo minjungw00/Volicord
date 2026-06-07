@@ -160,7 +160,7 @@ A judgment request should preserve:
 - what the agent is not deciding for the user
 - the active prompt form. In the current MVP this is `presentation=short`; `presentation=full` and `Decision Packet` remain later candidate material until promoted.
 
-Agents must not decide final acceptance, sensitive-action approval, QA waiver, verification risk acceptance, or residual-risk acceptance for the user. They also must not silently make user-owned product decisions, material technical decisions, or scope-expansion decisions. A broad "looks good" or "continue" message does not substitute for any required judgment path.
+Agents must not decide final acceptance, sensitive-action approval, residual-risk acceptance, or any future promoted QA waiver or verification-risk acceptance for the user. They also must not silently make user-owned product decisions, material technical decisions, or scope-expansion decisions. A broad "looks good" or "continue" message does not substitute for any required judgment path.
 
 Judgment records are separate from evidence, verification, Manual QA, final acceptance, residual risk, and close readiness. None of those records substitutes for another.
 

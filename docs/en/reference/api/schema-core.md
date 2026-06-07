@@ -118,7 +118,7 @@ StateRecordRef:
   record_id: string
 ```
 
-Durable evidence bytes use `ArtifactRef`, not `StateRecordRef`. Sensitive-action approval, final acceptance, residual-risk acceptance, QA waiver, verification-risk acceptance, and cancellation are represented by `record_kind=user_judgment` with the matching `UserJudgment.judgment_kind`.
+Durable evidence bytes use `ArtifactRef`, not `StateRecordRef`. Active current MVP user-owned judgments are represented by `record_kind=user_judgment` with the matching `UserJudgment.judgment_kind`.
 
 <a id="artifactref"></a>
 
@@ -281,7 +281,7 @@ UserJudgment:
   task_id: string
   change_unit_id: string | null
   status: proposed | pending_user | resolved | deferred | rejected | blocked | superseded
-  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
+  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | final_acceptance | residual_risk_acceptance | cancellation
   presentation: short
   question: string
   options: UserJudgmentOption[]
@@ -322,7 +322,7 @@ UserJudgmentResolution:
 
 ```yaml
 UserJudgmentCandidate:
-  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
+  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | final_acceptance | residual_risk_acceptance | cancellation
   presentation: short
   question: string
   options: UserJudgmentOption[]
@@ -363,11 +363,11 @@ AcceptedRiskInput:
 
 ```yaml
 CloseBlocker:
-  category: task | open_run | scope | user_judgment | sensitive_approval | design_policy | write_compatibility | baseline | surface_capability | evidence | artifact_availability | final_acceptance | residual_risk_visibility | residual_risk_acceptance | cancellation | supersession | recovery
+  category: task | open_run | scope | user_judgment | sensitive_approval | write_compatibility | baseline | surface_capability | evidence | artifact_availability | final_acceptance | residual_risk_visibility | residual_risk_acceptance | cancellation | supersession | recovery
   code: ErrorCode
   message: string
   related_refs: StateRecordRef[]
-  required_judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation | null
+  required_judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | final_acceptance | residual_risk_acceptance | cancellation | null
   next_action: string
 
 NextActionSummary:
@@ -484,7 +484,7 @@ These values are valid without a promoted profile. Values not listed here are no
 | `RunSummary.kind` | `shaping_update`, `implementation`, `direct` |
 | `RunSummary.status` | `completed`, `interrupted`, `blocked`, `violation` |
 | `UserJudgment.status` | `proposed`, `pending_user`, `resolved`, `deferred`, `rejected`, `blocked`, `superseded` |
-| `UserJudgment.judgment_kind` | `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `qa_waiver`, `verification_risk_acceptance`, `final_acceptance`, `residual_risk_acceptance`, `cancellation` |
+| `UserJudgment.judgment_kind` | `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `final_acceptance`, `residual_risk_acceptance`, `cancellation` |
 | `UserJudgment.presentation` | `short` |
 | `UserJudgment.required_for` | `next_action`, `write`, `run`, `close`, `acceptance`, `risk` |
 | `UserJudgmentCandidate.judgment_kind` | same values as `UserJudgment.judgment_kind` |
@@ -492,7 +492,7 @@ These values are valid without a promoted profile. Values not listed here are no
 | `UserJudgmentCandidate.required_for` | same values as `UserJudgment.required_for` |
 | `UserJudgmentOption.meaning` | `approve`, `reject`, `defer`, `choose`, `cancel` |
 | `ArtifactRef.redaction_state` | `none`, `redacted`, `secret_omitted`, `blocked` |
-| `CloseBlocker.category` | `task`, `open_run`, `scope`, `user_judgment`, `sensitive_approval`, `design_policy`, `write_compatibility`, `baseline`, `surface_capability`, `evidence`, `artifact_availability`, `final_acceptance`, `residual_risk_visibility`, `residual_risk_acceptance`, `cancellation`, `supersession`, `recovery` |
+| `CloseBlocker.category` | `task`, `open_run`, `scope`, `user_judgment`, `sensitive_approval`, `write_compatibility`, `baseline`, `surface_capability`, `evidence`, `artifact_availability`, `final_acceptance`, `residual_risk_visibility`, `residual_risk_acceptance`, `cancellation`, `supersession`, `recovery` |
 | `CloseBlocker.required_judgment_kind` | same values as `UserJudgment.judgment_kind`, plus `null` |
 | `NextActionSummary.action_kind` | `ask_user`, `prepare_write`, `implement`, `request_acceptance`, `close_task`, `idle` |
 | `NextActionSummary.required_tool` | active method set values, plus `null` |
@@ -506,7 +506,7 @@ These values are valid without a promoted profile. Values not listed here are no
 
 For `GuaranteeDisplay.level`, `cooperative` is the default current MVP value. `detective` is also a current MVP value, but only where the active surface can honestly observe the relevant fact. Neither value means OS permission, arbitrary-tool sandboxing, tamper-proof storage, pre-tool blocking, or isolation.
 
-`qa_waiver` and `verification_risk_acceptance` are active user-judgment value names only for focused user-owned judgment routing. They do not activate Manual QA, a verification gate, detached verification, full waiver machinery, or any QA/verification record family. The active `StateSummary.gates` object intentionally has no `verification_gate` or `qa_gate` field.
+`qa_waiver` and `verification_risk_acceptance` are later/reserved user-judgment candidate names, not active current MVP `UserJudgment.judgment_kind` values. They remain catalog-only in [Later Candidate Index](../../later/index.md) until a future owner promotes exact active schema values, request behavior, fallback behavior, and proof expectations. The active `StateSummary.gates` object intentionally has no `verification_gate` or `qa_gate` field.
 
 <a id="profile-gated-value-names"></a>
 

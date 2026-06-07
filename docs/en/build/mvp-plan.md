@@ -38,7 +38,7 @@ The active slice includes:
 
 - ordinary-language start or resume for tracked work
 - work-shape classification, scope, non-goals, success criteria, current status, and next safe action
-- minimal user judgment handling through the owner path, with sensitive-action approval, final acceptance, waiver, verification-risk acceptance, and residual-risk acceptance kept distinct when relevant
+- minimal user judgment handling through the owner path, with sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation kept distinct when relevant
 - one reference `capability_profile` for `surface_id=reference-local-mcp`, including honest unavailable/fallback behavior and guarantee display
 - cooperative pre-write scope checking through `prepare_write`
 - single-use Write Authorization behavior where the Core owner requires it
@@ -96,7 +96,7 @@ The next safe action must remain visible. If Core, MCP, or the reference surface
 3. Before a product write, the agent or surface calls `prepare_write`; compatible work receives the owner-defined Write Authorization result, and incompatible work returns a blocker or owner-defined error.
 4. After the write or direct work, `record_run` records what happened and links registered artifact/evidence refs or the compact evidence summary path.
 5. Status and compact outputs show current scope, pending judgments, evidence gaps, blockers, next safe action, guarantee display level, and residual-risk visibility as derived reads from Core records.
-6. `close_task` either closes through the owner-defined active path or returns close blockers. MVP close keeps final acceptance, residual-risk acceptance, verification, QA, and evidence sufficiency distinct.
+6. `close_task` either closes through the owner-defined active path or returns close blockers. MVP close keeps final acceptance, residual-risk acceptance, evidence sufficiency, and later verification/QA candidates distinct without adding a current verification or Manual QA gate.
 
 `compatible`, `blocked`, and `allowed` are Harness record-compatibility results. They do not mean physical OS blocking, arbitrary-tool prevention, sandbox isolation, or permission isolation unless a future promoted mechanism proves that exact behavior.
 

@@ -31,8 +31,8 @@ The active role is limited to these effects:
 
 - flag a finding that affects scope, user-owned judgment, required evidence, stale close/write context, surface capability, guarantee honesty, or visible residual risk
 - route one focused next action: `ask one focused user judgment`, `request evidence`, `mark residual risk`, `show advisory next action`, or `no action`
-- route `block write` or `block close` only when the Core owner path already supports that blocker
-- keep user-owned product, material technical, QA waiver, verification-risk, final-acceptance, and residual-risk judgments distinct
+- route `block write` or `block close` only when the Core owner path already supports that blocker; the active MVP has no separate `design_policy` `CloseBlocker.category`
+- keep user-owned product, material technical, final-acceptance, residual-risk, and later/reserved QA waiver or verification-risk judgments distinct
 - keep evidence, verification, Manual QA, final acceptance, residual-risk visibility, residual-risk acceptance, and close readiness distinct
 
 Design quality must not turn ordinary work into an open-ended planning loop. Full domain-language audits, full module/interface review, full TDD trace, full feedback-loop audit, full codebase-stewardship review, detailed Manual QA policy, detached verification, two-stage review displays, and steward policies are not active current MVP blockers unless another active owner path explicitly requires a narrow piece of that work.
@@ -56,7 +56,7 @@ For the same affected concern, show the strongest valid active action and keep w
 A design-quality finding blocks close only when all of these are true:
 
 - it is tied to the active Task or Change Unit and the attempted close
-- it names an existing Core-backed close blocker, gate, API error, or owner path
+- it names an existing Core-backed close blocker category, gate, API error, or owner path from the active close-blocking set
 - it gives exactly one next action that can unblock, defer, waive where allowed, or mark residual risk
 - it fits one of the active current MVP blocker conditions below
 
@@ -71,6 +71,8 @@ Active current MVP blocker conditions:
 | The surface cannot support the claimed operation or guarantee. | Capability boundary, `CAPABILITY_INSUFFICIENT`, and honest guarantee display owners. |
 
 A finding does not block close merely because it mentions domain language, vertical slice shape, TDD, module/interface review, stewardship, Manual QA, detached verification, review stages, or a future policy family. Those may produce an advisory next action, an evidence request, a focused user judgment, or a residual-risk marker only when an active owner path needs that narrow action.
+
+When a design-quality finding affects close, the blocker must use one of the active `CloseBlocker.category` values owned by [API Schema Core](api/schema-core.md#current-mvp-value-sets), such as `scope`, `user_judgment`, `evidence`, `artifact_availability`, `residual_risk_visibility`, `surface_capability`, `baseline`, `recovery`, `cancellation`, or `supersession`.
 
 ## 5. Waiver boundary
 
@@ -88,8 +90,8 @@ A design-quality waiver does not waive:
 
 Keep the judgment routes separate:
 
-- `qa_waiver` waives a scoped QA requirement only where the QA owner path allows it; it is not QA evidence or a passed QA result.
-- `verification_risk_acceptance` accepts the risk of missing or waived verification; it does not create detached verification.
+- `qa_waiver` is a later/reserved value. If promoted, it waives a scoped QA requirement only where the QA owner path allows it; it is not QA evidence or a passed QA result.
+- `verification_risk_acceptance` is a later/reserved value. If promoted, it accepts the risk of missing or waived verification; it does not create detached verification.
 - `final_acceptance` is the user's result judgment after the close basis is visible; it does not create evidence or accept residual risk.
 - `residual_risk_acceptance` accepts a named visible residual risk; it does not prove correctness or replace final acceptance.
 
@@ -103,11 +105,11 @@ Useful evidence references can include:
 
 - registered `ArtifactRef` values, Run refs, command/check summaries, or source refs
 - current state/version/freshness refs when stale context affects the close basis
-- user-judgment refs for product, technical, scope, QA waiver, verification-risk, final-acceptance, or residual-risk decisions
+- user-judgment refs for product, technical, scope, final-acceptance, residual-risk, or later/reserved QA waiver and verification-risk decisions when promoted
 - residual-risk refs when a known limitation remains visible at close
 - Manual QA or verification refs only when those owner paths are active or explicitly required
 
-Chat assertions, generic summaries, rendered projection prose, unregistered files, screenshots without an owner path, passing tests alone, QA waiver, final acceptance, or residual-risk acceptance do not automatically satisfy required evidence. Required evidence can block close only through the Core evidence owner path. Non-required evidence gaps should be routed as `request evidence`, `show advisory next action`, or residual-risk visibility as appropriate.
+Chat assertions, generic summaries, rendered projection prose, unregistered files, screenshots without an owner path, passing tests alone, later QA waiver, final acceptance, or residual-risk acceptance do not automatically satisfy required evidence. Required evidence can block close only through the Core evidence owner path. Non-required evidence gaps should be routed as `request evidence`, `show advisory next action`, or residual-risk visibility as appropriate.
 
 ## 7. Validator ID boundary
 

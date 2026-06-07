@@ -70,15 +70,15 @@ In the active MVP, clarification should update the active task summary, proposed
 
 <a id="5-request-user-judgment-narrowly"></a>
 
-The agent may recommend. The user decides product behavior, material technical direction, scope changes, sensitive-action approval, QA waiver, verification-risk acceptance, final acceptance, residual-risk acceptance, and cancellation.
+The agent may recommend. The user decides product behavior, material technical direction, scope changes, sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation. Later/reserved QA waiver and verification-risk acceptance routes remain separate if a future owner promotes them.
 
-When using the owner path, keep these `judgment_kind` values separate: `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `qa_waiver`, `verification_risk_acceptance`, `final_acceptance`, `residual_risk_acceptance`, and `cancellation`.
+When using the active owner path, keep these `judgment_kind` values separate: `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `final_acceptance`, `residual_risk_acceptance`, and `cancellation`.
 
 A judgment request should include the exact question, concise options, recommendation, rationale, uncertainty, consequence of deferral, affected scope, and what the answer does not settle. Ask one judgment at a time unless the user explicitly asks to review grouped options and the group still preserves separate answers.
 
 Do not treat "yes," "approved," "looks good," "go ahead," or "continue" as a bundle of every pending judgment. Map a short reply only when one active prompt made the kind, affected object, option, scope, user intent, consequences, and remaining open items unambiguous.
 
-Sensitive approval is permission for a named action. Final acceptance is judgment on the result. Residual-risk acceptance is judgment on a named residual risk. QA waiver and verification-risk acceptance are separate from both. None substitutes for another.
+Sensitive approval is permission for a named action. Final acceptance is judgment on the result. Residual-risk acceptance is judgment on a named residual risk. A future QA waiver or verification-risk acceptance route would be separate from all three. None substitutes for another.
 
 ## 5. Do Not Claim Stronger Guarantees
 
@@ -120,7 +120,7 @@ Use refs and short summaries by default. Pull full artifact bodies only when the
 
 Evidence display should say what ran or changed, which claim it supports, which refs or artifacts support it, what passed or failed, and what is missing, stale, redacted, omitted, blocked, or insufficient.
 
-Evidence does not automatically satisfy verification, Manual QA, final acceptance, residual-risk acceptance, or close.
+Evidence does not automatically satisfy final acceptance, residual-risk acceptance, close, or any future promoted verification or Manual QA path.
 
 ## 8. Do Not Close When Blockers Remain
 
@@ -134,12 +134,13 @@ For tracked work, show the close basis before asking for final acceptance or att
 
 - scope match
 - evidence coverage or gap
-- verification status
-- promoted Manual QA status or allowed waiver path when an owner made it active
+- checks run and known verification limits
 - sensitive-action approval status when relevant
 - final acceptance status when required
 - residual-risk visibility and acceptance status when relevant
 - close blockers and smallest unblocker
+
+The current MVP has no active `verification_gate`, `qa_gate`, Manual QA gate, `qa_waiver`, or `verification_risk_acceptance` close requirement. If a future owner promotes one, route it as later material with its own active contract.
 
 Do not close from prose, tests alone, broad acceptance-like language, a generated projection, or a stale status summary. If blockers remain, lead with them and name the next safe action.
 
@@ -147,7 +148,7 @@ Do not close from prose, tests alone, broad acceptance-like language, a generate
 
 Active MVP behavior should stay compact. Later candidate presentation formats may be named for contrast or routing, but they must not look like active requirements.
 
-Do not make full-format judgment presentation such as `Decision Packet`, standalone `DEC` projections, full Evidence Manifest display, detached verification, broad Manual QA catalogs, future conformance runners, operations hardening, or later candidates appear required for ordinary active MVP work unless the relevant owner has promoted them.
+Do not make full-format judgment presentation such as `Decision Packet`, standalone `DEC` projections, full Evidence Manifest display, detached verification, broad Manual QA catalogs, future conformance runners, operations hardening, or later candidates appear required for ordinary active MVP work.
 
 Use compact user-facing shapes first: status, focused judgment request, run/evidence summary, and close result. Reference exact contracts only when needed for a visible blocker, source ref, write check, evidence gap, close result, connector behavior, or implementation owner link.
 

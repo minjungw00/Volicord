@@ -32,6 +32,9 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | assurance hardening | later candidate | Owner-scoped gates, fallback behavior, and proof-path expectations for future promotion. | none until promoted |
 | Evidence Manifest | later candidate | Evidence owner rules for artifact refs, redaction, close impact, and proof-path expectations for future promotion. | none until promoted |
 | Manual QA | later candidate | Manual QA owner policy for waivers, artifact refs, findings, and QA gate impact. | none until promoted |
+| QA waiver | later user-judgment candidate | Manual QA and user-judgment owner rules for exact `qa_waiver` activation, allowed scope, non-substitution, residual-risk visibility, and close impact. | none until promoted |
+| verification gate | later candidate | Core/API/Eval owner rules for exact `verification_gate` fields, requiredness, fallback behavior, proof expectations, and close impact. | none until promoted |
+| verification-risk acceptance | later user-judgment candidate | Verification and user-judgment owner rules for exact `verification_risk_acceptance` activation, allowed risk scope, non-substitution, and close impact. | none until promoted |
 | Eval / detached verification | later candidate | Eval owner rules for independence, baseline freshness, artifact integrity, and assurance updates. | none until promoted |
 | Decision Packet full-format presentation | later candidate | User-judgment owner activation of `presentation=full` without making it the default MVP path. | none until promoted |
 | Rich risk review and residual-risk lifecycle | later candidate | Core and user-judgment owner rules for rich risk records, review workflow, expiry, and close impact. Compact residual-risk visibility remains active only through the Core/API owners. | none until promoted |
@@ -61,7 +64,7 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | `harness.record_manual_qa` | method name only | Manual QA owner contract for waiver route, artifacts, findings, and gate impact. | none until promoted |
 | Later read-only resources: policy, evidence-manifest, surface, report, bundle, journey, design | resource names only | Resource-specific owner contracts and no mutation side effects. | none until promoted |
 | Later `harness.record_run` branches: verification input, feedback-loop updates, TDD trace updates | branch names only | `record_run` owner activation and one-branch payload rules. | none until promoted |
-| Later user-judgment branches: waiver, reconcile, residual-risk, richer acceptance visibility | branch names only | User-judgment owner activation with non-substitution rules. | none until promoted |
+| Later user-judgment branches: `qa_waiver`, `verification_risk_acceptance`, waiver, reconcile, residual-risk, richer acceptance visibility | branch names only | User-judgment owner activation with non-substitution rules. | none until promoted |
 
 <a id="later-schema-candidates"></a>
 ## 6. Later Schema Candidates
@@ -97,6 +100,7 @@ The long row below preserves future fixture family names only. It is not a curre
 | Candidate | Status | Promotion requires | Active MVP impact |
 |---|---|---|---|
 | Dashboard, hosted workflows, artifact dashboard, richer cards, richer visualizations | later candidate | Derived-display owner rules for read-only, non-authoritative behavior. | none until promoted |
+| Verification Result Cards and richer verification/QA workflows | later candidate | Projection/template, Core/API, Eval, and Manual QA owner rules for source records, freshness, non-substitution, fallback behavior, and proof-path expectations. | none until promoted |
 | Browser capture automation | later candidate | Capture owner rules for redaction/PII, retention, fallback behavior, and QA/acceptance non-substitution. | none until promoted |
 | Cross-surface verification | later candidate | Core/Eval owner rules for return records, independence, and unsupported-surface fallback. | none until promoted |
 | Broader connectors, connector marketplace, hosted UI, hosted/remote runtime | later candidate | Connector/API/security owners and future local-authority boundary proof expectation. | none until promoted |

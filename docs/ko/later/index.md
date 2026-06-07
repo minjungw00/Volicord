@@ -23,7 +23,7 @@
 | 보안 표현 | 이 문서에는 활성 보장 주장 없음 | 증명된 메커니즘에 맞는 협력형, 탐지형, 예방형, 격리형 표현이 필요합니다. | 승격 전까지 없음 |
 | 향후 증명 경로 기대치 | 후보 목록은 현재 런타임 증명이 아님 | 승격된 동작에 대한 적합성 목표, fixture, 증거 기대치, 또는 담당 문서가 정한 다른 증명 경로가 필요합니다. | 승격 전까지 없음 |
 | 활성 범위 상속 | 기본적으로 비활성 | 향후 담당 문서가 승격이 현재 MVP나 더 이른 smoke 목표에 근거 없는 요구사항을 더하지 않는다는 점을 증명해야 합니다. | 현재 MVP에 영향을 주면 안 됨 |
-| 대체 불가 경계 | 필요한 경계 | Core 상태, 사용자 판단, 증거, 검증, Manual QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태는 계속 분리합니다. | 없음 |
+| 대체 불가 경계 | 필요한 경계 | Core 상태, 사용자 판단, 증거, 검증, 수동 QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태는 계속 분리합니다. | 없음 |
 
 ## 3. 보증 후보
 
@@ -31,7 +31,10 @@
 |---|---|---|---|
 | assurance hardening | later 후보 | 담당 문서가 관문, 대체 동작, 향후 승격에 필요한 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | Evidence Manifest | later 후보 | 증거 담당 문서가 아티팩트 참조, 가림, 닫기 영향, 향후 승격에 필요한 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
-| Manual QA | later 후보 | Manual QA 담당 문서가 면제 경로, 아티팩트 참조, 발견 사항, QA 관문 영향을 정해야 합니다. | 승격 전까지 없음 |
+| 수동 QA | later 후보 | 수동 QA 담당 문서가 면제 경로, 아티팩트 참조, 발견 사항, QA 관문 영향을 정해야 합니다. | 승격 전까지 없음 |
+| QA waiver | later 사용자 판단 후보 | 수동 QA와 사용자 판단 담당 문서가 정확한 `qa_waiver` 활성화, 허용 범위, 대체 불가 규칙, 잔여 위험 표시, 닫기 영향을 정해야 합니다. | 승격 전까지 없음 |
+| verification gate | later 후보 | Core/API/Eval 담당 문서가 정확한 `verification_gate` 필드, 필수 조건, 대체 동작, 증명 기대치, 닫기 영향을 정해야 합니다. | 승격 전까지 없음 |
+| verification-risk acceptance | later 사용자 판단 후보 | 검증과 사용자 판단 담당 문서가 정확한 `verification_risk_acceptance` 활성화, 허용되는 위험 범위, 대체 불가 규칙, 닫기 영향을 정해야 합니다. | 승격 전까지 없음 |
 | Eval / detached verification | later 후보 | Eval 담당 문서가 독립성 의미, 기준선 최신성, 아티팩트 무결성, 보증 갱신 규칙을 정해야 합니다. | 승격 전까지 없음 |
 | Decision Packet full-format presentation | later 후보 | 사용자 판단 담당 문서가 `presentation=full`을 켜되 기본 현재 MVP 경로로 만들지 않아야 합니다. | 승격 전까지 없음 |
 | Rich risk review and residual-risk lifecycle | later 후보 | Core와 사용자 판단 담당 문서가 상세 위험 기록, 검토 흐름, 만료, 닫기 영향을 정해야 합니다. 간결한 잔여 위험 표시는 Core/API 담당 경로를 통해서만 active로 남습니다. | 승격 전까지 없음 |
@@ -58,10 +61,10 @@
 | `harness.next` | 메서드 이름만 있음 | 별도 다음 행동 페이로드를 위한 담당 문서 활성화가 필요합니다. MVP는 계속 `harness.status.next_actions`를 씁니다. | 승격 전까지 없음 |
 | `harness.launch_verify` | 메서드 이름만 있음 | Eval/검증 담당 문서가 기능 처리, 기준선 최신성, 정직한 격리 표현을 정해야 합니다. | 승격 전까지 없음 |
 | `harness.record_eval` | 메서드 이름만 있음 | Eval 담당 문서가 독립성 검증, 아티팩트 참조, 관문/보증 갱신을 정해야 합니다. | 승격 전까지 없음 |
-| `harness.record_manual_qa` | 메서드 이름만 있음 | Manual QA 담당 문서가 면제 경로, 아티팩트, 발견 사항, 관문 영향을 정해야 합니다. | 승격 전까지 없음 |
+| `harness.record_manual_qa` | 메서드 이름만 있음 | 수동 QA 담당 문서가 면제 경로, 아티팩트, 발견 사항, 관문 영향을 정해야 합니다. | 승격 전까지 없음 |
 | Later read-only resources: policy, evidence-manifest, surface, report, bundle, journey, design | 리소스 이름만 있음 | 각 리소스 담당 문서가 읽기 전용 계약과 변경 부작용 없음을 정해야 합니다. | 승격 전까지 없음 |
 | Later `harness.record_run` branches: verification input, feedback-loop updates, TDD trace updates | 분기 이름만 있음 | `record_run` 담당 문서 활성화와 단일 분기 페이로드 규칙이 필요합니다. | 승격 전까지 없음 |
-| Later user-judgment branches: waiver, reconcile, residual-risk, richer acceptance visibility | 분기 이름만 있음 | 사용자 판단 담당 문서 활성화와 대체 불가 규칙이 필요합니다. | 승격 전까지 없음 |
+| Later user-judgment branches: `qa_waiver`, `verification_risk_acceptance`, waiver, reconcile, residual-risk, richer acceptance visibility | 분기 이름만 있음 | 사용자 판단 담당 문서 활성화와 대체 불가 규칙이 필요합니다. | 승격 전까지 없음 |
 
 <a id="later-schema-candidates"></a>
 ## 6. Later schema 후보
@@ -69,10 +72,10 @@
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
 | later schema extensions | 스키마 이름만 있음 | 승격된 담당 문서가 정확한 필드와 검증기를 활성 계약에 정의해야 합니다. | 승격 전까지 없음 |
-| Later close and assurance fields: `verifying`, `qa`, `completed_verified`, `detached_verified`, `verification_gate`, `qa_gate`, Manual QA gate, assurance blockers | 필드 이름만 있음 | Core/API 담당 문서 활성화, 닫기 대체 불가 규칙, 정확한 활성 스키마 필드, 대체 동작, 증명 기대치가 필요합니다. | 승격 전까지 없음 |
+| Later close and assurance fields: `verifying`, `qa`, `completed_verified`, `detached_verified`, `verification_gate`, `qa_gate`, 수동 QA gate, assurance blockers | 필드 이름만 있음 | Core/API 담당 문서 활성화, 닫기 대체 불가 규칙, 정확한 활성 스키마 필드, 대체 동작, 증명 기대치가 필요합니다. | 승격 전까지 없음 |
 | Later next-action values: `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile` | 값 이름만 있음 | 대응 API 또는 담당 문서 활성화가 필요합니다. | 승격 전까지 없음 |
 | Recommended playbooks and judgment context | 메타데이터 이름만 있음 | Agent Integration/API 담당 문서가 메타데이터를 읽기 전용으로 두고 상태를 만족시키지 못하게 해야 합니다. | 승격 전까지 없음 |
-| Later ref and artifact values: bundle, manifest, QA capture, export component, design, Eval, Manual QA, TDD, projection, related refs | 값 이름만 있음 | ArtifactRef, StateRecordRef, Storage, 관련 담당 문서 활성화가 필요합니다. | 승격 전까지 없음 |
+| Later ref and artifact values: bundle, manifest, QA capture, export component, design, Eval, 수동 QA, TDD, projection, related refs | 값 이름만 있음 | ArtifactRef, StateRecordRef, Storage, 관련 담당 문서 활성화가 필요합니다. | 승격 전까지 없음 |
 | ValidatorResult later stable IDs: design, autonomy, feedback-loop, TDD, stewardship, residual-risk, shared-design, manual-QA, context-hygiene checks | ID 이름만 있음 | Validator 담당 문서가 stable ID, 심각도, 면제, 향후 fixture 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | Waiver, reconcile, and residual-risk branches | 분기 이름만 있음 | 사용자 판단, Core, 닫기 담당 문서 규칙이 필요합니다. | 승격 전까지 없음 |
 
@@ -97,6 +100,7 @@
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
 |---|---|---|---|
 | Dashboard, hosted workflows, artifact dashboard, richer cards, richer visualizations | later 후보 | 파생 표시 담당 문서가 읽기 전용, 비권위 동작을 정해야 합니다. | 승격 전까지 없음 |
+| Verification Result Card와 더 풍부한 검증/QA 작업 흐름 | later 후보 | Projection/template, Core/API, Eval, 수동 QA 담당 문서가 원천 기록, 최신성, 대체 불가 규칙, 대체 동작, 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | Browser capture automation | later 후보 | Capture 담당 문서가 가림/PII, 보존, 대체 동작, QA/수락 대체 불가 규칙을 정해야 합니다. | 승격 전까지 없음 |
 | Cross-surface verification | later 후보 | Core/Eval 담당 문서가 반환 기록, 독립성, 지원되지 않는 접점의 대체 동작을 정해야 합니다. | 승격 전까지 없음 |
 | Broader connectors, connector marketplace, hosted UI, hosted/remote runtime | later 후보 | Connector/API/보안 담당 문서와 향후 로컬 권위 경계 증명 기대치가 필요합니다. | 승격 전까지 없음 |

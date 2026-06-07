@@ -226,7 +226,7 @@ RequestUserJudgmentRequest:
   envelope: ToolEnvelope
   task_id: string | null
   change_unit_id: string | null
-  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
+  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | final_acceptance | residual_risk_acceptance | cancellation
   presentation: short
   question: string
   options: UserJudgmentOption[]
@@ -265,7 +265,7 @@ RequestUserJudgmentResponse:
 RecordUserJudgmentRequest:
   envelope: ToolEnvelope
   user_judgment_id: string
-  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | qa_waiver | verification_risk_acceptance | final_acceptance | residual_risk_acceptance | cancellation
+  judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | final_acceptance | residual_risk_acceptance | cancellation
   selected_option_id: string
   answer: RecordUserJudgmentPayload
   note: string | null
@@ -286,7 +286,7 @@ RecordUserJudgmentResponse:
 - **상태 효과:** 커밋된 non-dry-run 호출은 `user_judgments.status`를 업데이트하고, 답변을 기록하고, 관련 차단 사유와 영향받은 상태만 업데이트하며, 이벤트와 재실행 행을 만듭니다. 활성 MVP에서는 독립 accepted-risk 행을 만들지 않습니다.
 - **오류:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `DECISION_UNRESOLVED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `ACCEPTANCE_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `VALIDATOR_FAILED`.
 - **저장소 담당 문서:** `user_judgments`, `blockers`, 영향을 받는 `tasks` 또는 `change_units`, `task_events`, `tool_invocations`.
-- **보안 경계:** "go ahead"나 "looks good" 같은 넓은 말은 대기 중인 판단이 그 종류를 명시적으로 묻고 기록된 답변이 맞을 때만 제품 판단, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 취소, QA 면제 판단, 범위 확장으로 작동합니다.
+- **보안 경계:** "go ahead"나 "looks good" 같은 넓은 말은 대기 중인 판단이 그 종류를 명시적으로 묻고 기록된 답변이 맞을 때만 제품 판단, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 취소, 범위 확장, later/reserved QA 면제 판단과 검증 위험 수락 경로로 작동합니다.
 
 <a id="harnessclose_task"></a>
 

@@ -91,7 +91,7 @@ If deferred: backend error mapping can continue, but final UI behavior, copy, sc
 Does not settle: login architecture, account recovery, final acceptance, or residual-risk acceptance.
 ```
 
-A broad reply such as "go ahead," "approved," or "looks good" applies only to the one active, clearly named judgment. It does not automatically grant sensitive-action approval, waive QA, accept verification risk, accept the final result, change scope, cancel the task, or accept residual risk.
+A broad reply such as "go ahead," "approved," or "looks good" applies only to the one active, clearly named judgment. It does not automatically grant sensitive-action approval, accept the final result, change scope, cancel the task, accept residual risk, or satisfy later/reserved QA waiver or verification-risk paths.
 
 The compact active path is a judgment request through the `user_judgment` owner path. Full-format presentation such as `Decision Packet` remains later candidate material for complex judgments; it is not required for ordinary user decisions.
 
@@ -116,7 +116,7 @@ Approving a dependency install does not mean the dependency is the right archite
 
 After meaningful work, the agent should summarize what happened and what supports the claim. In owner terms, the active path may use `record_run` and evidence references when that path is available.
 
-Useful evidence can include changed paths, diffs, command output, test results, screenshots, logs, source links, inspection notes, and, when a promoted owner path requires it, Manual QA notes. The summary should say:
+Useful evidence can include changed paths, diffs, command output, test results, screenshots, logs, source links, and inspection notes. If a future owner promotes Manual QA, its notes remain separate later-path material. The summary should say:
 
 - what ran or changed
 - what claim each item supports
@@ -124,14 +124,14 @@ Useful evidence can include changed paths, diffs, command output, test results, 
 - what evidence is missing, stale, redacted, omitted, blocked, or insufficient
 - what was not verified
 
-Evidence does not replace your judgment or final acceptance. Tests do not replace human inspection; when a promoted owner path requires Manual QA, tests do not satisfy it. A screenshot does not prove accessibility. A generated summary does not become operational truth. Raw secrets, tokens, and full sensitive logs should be redacted, omitted, blocked, or represented by safe handles.
+Evidence does not replace your judgment or final acceptance. Tests do not replace human inspection. If a future owner promotes Manual QA, tests do not satisfy that separate path. A screenshot does not prove accessibility. A generated summary does not become operational truth. Raw secrets, tokens, and full sensitive logs should be redacted, omitted, blocked, or represented by safe handles.
 
 ## 7. Review blockers before close
 
 Before larger work is called done, ask:
 
 ```text
-Show what changed, what was verified, what residual risk is visible, and what still blocks close.
+Show what changed, what was checked, what residual risk is visible, and what still blocks close.
 ```
 
 The agent should show:
@@ -142,20 +142,20 @@ The agent should show:
 - changed paths or no-file result
 - evidence supporting important completion claims
 - checks and their status
-- human-review result, and any promoted Manual QA requirement when relevant
+- human-review result when relevant
 - final acceptance need
 - residual risk visibility and acceptance need
 - the smallest unblocker
 
-Tests can pass while close is still blocked. A UI change can need human review; Manual QA is close-blocking only when a promoted owner path makes it required. A security-sensitive change can need a risk decision. Missing evidence remains a blocker until it is gathered, waived through an allowed path, or honestly reported as unresolved.
+Tests can pass while close is still blocked. A UI change can need human review, but the current MVP has no active Manual QA gate. A security-sensitive change can need a risk decision. Missing evidence remains a blocker until it is gathered or honestly reported as unresolved.
 
-In owner terms, `close_task` returns blockers or a close result. In user terms, the agent should not claim close while required scope, evidence, promoted verification or QA requirements, user judgment, final acceptance, residual-risk handling, or close blockers remain unresolved.
+In owner terms, `close_task` returns blockers or a close result. In user terms, the agent should not claim close while required scope, evidence, user judgment, final acceptance, residual-risk handling, or close blockers remain unresolved. Verification and QA gates are later candidates unless a future owner promotes them.
 
 ## 8. Accept final result separately from residual risk
 
 Final acceptance means you accept the result you can see. Residual-risk acceptance means you accept a named residual risk that is still visible. They are separate judgments.
 
-The agent should ask for final acceptance only after the close basis is visible: scope, result, evidence, checks, known gaps, human-review or promoted Manual QA status, and blockers. The prompt should name exactly what result you are accepting.
+The agent should ask for final acceptance only after the close basis is visible: scope, result, evidence, checks, known gaps, human-review status when relevant, and blockers. The prompt should name exactly what result you are accepting.
 
 The agent should ask for residual-risk acceptance only when a known residual risk is visible and the active close path requires that judgment. The prompt should name the risk, affected area, consequence, evidence gap or uncertainty, and any safer alternative.
 
@@ -227,7 +227,7 @@ Good agent behavior:
 User: Can we call this done?
 
 Good agent behavior:
-- show scope, evidence, checks, human-review or promoted Manual QA status, final acceptance need, and residual risk;
+- show scope, evidence, checks, human-review status when relevant, final acceptance need, and residual risk;
 - name blockers before close;
 - ask final acceptance and residual-risk acceptance separately when both are relevant.
 ```

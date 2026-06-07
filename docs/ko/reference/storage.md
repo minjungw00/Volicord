@@ -298,8 +298,8 @@ Profile-gated later 저장소는 담당 문서가 범위, 대체 동작, 향후 
   conformance 아티팩트.
 - Doctor suite, recover, export, release handoff, artifact dashboard, reconcile queue,
   operational report를 위한 operations-profile 저장소.
-- 전체 Evidence Manifest 테이블, 상세 evidence 카탈로그, detached Eval, detached
-  verification, 전체 Manual QA matrix, rich QA/waiver machinery.
+- 전체 Evidence Manifest 테이블, 상세 evidence 카탈로그, detached Eval, 분리형
+  검증, 전체 수동 QA 행렬, 풍부한 QA/waiver 장치.
 - `user_judgments`와 `blockers`에서 분리된 rich Approval 테이블과 rich residual-risk lifecycle
   테이블.
 - 대시보드, 메트릭, 분석, 팀 workflow, hosted connector registry, connector

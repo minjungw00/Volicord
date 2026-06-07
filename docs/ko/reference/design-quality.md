@@ -31,8 +31,8 @@
 
 - 범위, 사용자 소유 판단, 필요한 증거, 최신이 아닌 닫기/쓰기 맥락, 접점 역량, 정직한 보장 표시, 보이는 잔여 위험에 영향을 주는 발견 사항을 표시합니다.
 - `ask one focused user judgment`, `request evidence`, `mark residual risk`, `show advisory next action`, `no action` 중 집중된 다음 행동 하나로 라우팅합니다.
-- Core 담당 경로가 해당 차단 사유를 이미 뒷받침할 때만 `block write` 또는 `block close`로 라우팅합니다.
-- 사용자 소유 제품 판단, 중요한 기술 판단, QA 면제, 검증 위험, 최종 수락, 잔여 위험 판단을 구분합니다.
+- Core 담당 경로가 해당 차단 사유를 이미 뒷받침할 때만 `block write` 또는 `block close`로 라우팅합니다. 현재 MVP에는 별도 `design_policy` `CloseBlocker.category`가 없습니다.
+- 사용자 소유 제품 판단, 중요한 기술 판단, 최종 수락, 잔여 위험 판단, later/reserved QA 면제 또는 검증 위험 판단을 구분합니다.
 - 증거, 검증, 수동 QA, 최종 수락, 잔여 위험 표시, 잔여 위험 수락, 닫기 준비 상태를 구분합니다.
 
 설계 품질은 평범한 작업을 끝없는 계획 반복으로 만들면 안 됩니다. 전체 도메인 언어 점검, 전체 모듈/인터페이스 검토, 전체 TDD 추적, 전체 피드백 루프 감사, 전체 `codebase_stewardship` 검토, 자세한 수동 QA 정책, 분리형 검증, 두 단계 검토 표시, steward 정책은 다른 활성 담당 경로가 좁은 일부를 명시적으로 요구하지 않는 한 현재 활성 MVP 차단 사유가 아닙니다.
@@ -56,7 +56,7 @@
 설계 품질 발견 사항은 아래 조건을 모두 만족할 때만 닫기를 차단합니다.
 
 - 활성 Task 또는 Change Unit과 시도 중인 닫기에 연결되어 있습니다.
-- 기존 Core가 뒷받침하는 닫기 차단 사유, gate, API 오류, 담당 경로를 이름 붙입니다.
+- 현재 활성 닫기 차단 집합 안에서 기존 Core가 뒷받침하는 닫기 차단 사유 category, gate, API 오류, 담당 경로를 이름 붙입니다.
 - 해결, 연기, 허용된 면제, 잔여 위험 표시 중 하나로 이어지는 다음 행동을 정확히 하나 제공합니다.
 - 아래 현재 활성 MVP 차단 조건 중 하나에 해당합니다.
 
@@ -70,7 +70,9 @@
 | 최신이 아닌 맥락 때문에 닫기 근거를 안전하게 믿을 수 없습니다. | Core freshness, 보이는 닫기 근거에 쓰이는 Projection/source ref, reconcile/recovery 담당 경로. |
 | 접점(surface)이 주장한 동작 또는 보장을 지원하지 못합니다. | 역량 경계, `CAPABILITY_INSUFFICIENT`, 정직한 보장 표시 담당 문서. |
 
-발견 사항이 도메인 언어, 세로 조각 형태, TDD, 모듈/인터페이스 검토, stewardship, Manual QA, 분리형 검증, 검토 단계, 향후 정책 후보를 언급한다는 이유만으로 닫기를 차단하지 않습니다. 활성 담당 경로가 좁은 행동을 필요로 할 때만 조언성 다음 행동, 증거 요청, 집중된 사용자 판단, 잔여 위험 표시로 이어질 수 있습니다.
+발견 사항이 도메인 언어, 세로 조각 형태, TDD, 모듈/인터페이스 검토, stewardship, 수동 QA, 분리형 검증, 검토 단계, 향후 정책 후보를 언급한다는 이유만으로 닫기를 차단하지 않습니다. 활성 담당 경로가 좁은 행동을 필요로 할 때만 조언성 다음 행동, 증거 요청, 집중된 사용자 판단, 잔여 위험 표시로 이어질 수 있습니다.
+
+설계 품질 발견 사항이 닫기에 영향을 주더라도 차단 사유는 [API Schema Core](api/schema-core.md#current-mvp-value-sets)가 담당하는 활성 `CloseBlocker.category` 값 중 하나를 사용해야 합니다. 예를 들면 `scope`, `user_judgment`, `evidence`, `artifact_availability`, `residual_risk_visibility`, `surface_capability`, `baseline`, `recovery`, `cancellation`, `supersession`입니다.
 
 ## 5. 면제 경계
 
@@ -88,8 +90,8 @@
 
 판단 경로는 서로 구분합니다.
 
-- `qa_waiver`는 QA 담당 경로가 허용하는 범위 있는 QA 요구사항만 면제합니다. QA 증거나 QA 통과 결과가 아닙니다.
-- `verification_risk_acceptance`는 빠졌거나 면제된 검증의 위험을 수락합니다. 분리 검증(detached verification)을 만들지 않습니다.
+- `qa_waiver`는 later/reserved 값입니다. 승격되면 QA 담당 경로가 허용하는 범위 있는 QA 요구사항만 면제합니다. QA 증거나 QA 통과 결과가 아닙니다.
+- `verification_risk_acceptance`는 later/reserved 값입니다. 승격되면 빠졌거나 면제된 검증의 위험을 수락합니다. 분리 검증(detached verification)을 만들지 않습니다.
 - `final_acceptance`는 닫기 근거가 보인 뒤 사용자가 결과를 판단하는 것입니다. 증거를 만들거나 잔여 위험을 수락하지 않습니다.
 - `residual_risk_acceptance`는 이름 붙은 보이는 잔여 위험을 수락합니다. 정확성을 증명하거나 최종 수락을 대신하지 않습니다.
 
@@ -103,11 +105,11 @@
 
 - 등록된 `ArtifactRef` 값, Run ref, command/check summary, source ref
 - 최신이 아닌 맥락이 닫기 근거에 영향을 줄 때 current state/version/freshness ref
-- 제품, 기술, 범위, QA 면제, 검증 위험, 최종 수락, 잔여 위험 판단에 대한 user-judgment ref
+- 제품, 기술, 범위, 최종 수락, 잔여 위험 판단, 그리고 승격된 later/reserved QA 면제와 검증 위험 판단에 대한 user-judgment ref
 - 알려진 한계가 닫기에서 보일 때 residual-risk ref
-- 해당 담당 경로가 active이거나 명시적으로 요구할 때만 Manual QA 또는 verification ref
+- 해당 담당 경로가 active이거나 명시적으로 요구할 때만 수동 QA 또는 verification ref
 
-채팅 주장, 일반 요약, 렌더링된 Projection 문장, 등록되지 않은 파일, 담당 경로 없는 screenshot, 테스트 통과만 있는 상태, QA 면제, 최종 수락, 잔여 위험 수락은 필요한 증거를 자동으로 충족하지 않습니다. 필요한 증거는 Core evidence 담당 경로를 통해서만 닫기를 차단할 수 있습니다. 필수가 아닌 증거 공백은 상황에 맞게 `request evidence`, `show advisory next action`, 또는 residual-risk visibility로 라우팅해야 합니다.
+채팅 주장, 일반 요약, 렌더링된 Projection 문장, 등록되지 않은 파일, 담당 경로 없는 screenshot, 테스트 통과만 있는 상태, later QA 면제, 최종 수락, 잔여 위험 수락은 필요한 증거를 자동으로 충족하지 않습니다. 필요한 증거는 Core evidence 담당 경로를 통해서만 닫기를 차단할 수 있습니다. 필수가 아닌 증거 공백은 상황에 맞게 `request evidence`, `show advisory next action`, 또는 residual-risk visibility로 라우팅해야 합니다.
 
 ## 7. Validator ID 경계
 

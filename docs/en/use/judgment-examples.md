@@ -72,14 +72,14 @@ Options:
 - Ask for a separate technical judgment before any install approval.
 
 Settles: permission for the named install/update action.
-Does not settle: whether the dependency is the right architecture, future installs, product writes outside scope, QA waiver, verification-risk acceptance, final acceptance, or residual-risk acceptance.
+Does not settle: whether the dependency is the right architecture, future installs, product writes outside scope, later/reserved QA waiver, later/reserved verification-risk acceptance, final acceptance, or residual-risk acceptance.
 ```
 
 ## 4. QA Waiver
 
 Kind: `qa_waiver`
 
-Reserved path example. `qa_waiver` is an active `UserJudgment.judgment_kind` value name, but the current MVP has no default Manual QA gate. Use this only when a promoted owner path has made a scoped Manual QA requirement active and allows the user to perform it, waive it where allowed, or keep close blocked.
+Reserved path example. `qa_waiver` is not an active current MVP `UserJudgment.judgment_kind` value. It remains a later candidate in [Later Candidate Index](../later/index.md) until a future owner promotes a scoped Manual QA requirement and allows the user to perform it, waive it where allowed, or keep close blocked.
 
 ```text
 Judgment needed: decide how to handle a promoted Manual QA requirement for the responsive login layout.
@@ -93,7 +93,7 @@ Recommendation: perform Manual QA for a user-facing login workflow. Waive only i
 
 Uncertainty: small-screen layout, keyboard flow, screen-reader behavior, and visual polish have not been inspected by a person.
 
-If deferred: implementation can remain complete, but close stays blocked only if the promoted owner path made this Manual QA requirement close-blocking.
+If deferred: implementation can remain complete. The current MVP has no Manual QA gate; close is blocked only if a future promoted owner path makes this specific Manual QA requirement close-blocking.
 
 Settles: whether this promoted Manual QA requirement is performed, waived, or left blocking.
 Does not settle: evidence sufficiency, verification, final acceptance, or residual-risk acceptance.
@@ -103,7 +103,7 @@ Does not settle: evidence sufficiency, verification, final acceptance, or residu
 
 Kind: `verification_risk_acceptance`
 
-Use only when an active owner path has made a specific verification requirement explicit and that verification is missing, incomplete, stale, or waived through an allowed path. Without that promoted requirement, route the gap as ordinary evidence, residual risk, or a narrowed claim instead of implying a verification gate.
+Reserved path example. `verification_risk_acceptance` is not an active current MVP `UserJudgment.judgment_kind` value. Use it only after a future owner path has promoted a specific verification requirement and that verification is missing, incomplete, stale, or waived through an allowed path. Without that promoted requirement, route the gap as ordinary evidence, residual risk, or a narrowed claim instead of implying a verification gate.
 
 ```text
 Judgment needed: accept or reject the risk of missing browser verification.
@@ -166,7 +166,7 @@ Options:
 Recommendation: do not accept for a high-traffic login screen unless mobile review is temporarily impossible.
 
 Settles: acceptance of this named residual risk.
-Does not settle: final acceptance of the whole result, other residual risks, QA waiver, or verification-risk acceptance.
+Does not settle: final acceptance of the whole result, other residual risks, later/reserved QA waiver, or later/reserved verification-risk acceptance.
 ```
 
 ## 8. Cancellation Or Defer Decision

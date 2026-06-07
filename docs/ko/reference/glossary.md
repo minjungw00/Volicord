@@ -24,10 +24,10 @@
 | 증거 | 작업에 대한 주장을 뒷받침하는 오래 남는 자료입니다. 변경 경로, 변경 차이, 로그, 스크린샷, 검사 메모, `ArtifactRef`가 될 수 있습니다. | [API Schema Core](api/schema-core.md), [Storage](storage.md) |
 | 검증 | 담당 경로가 요구할 때 기록되는 정확성 확인입니다. 증거, QA, 최종 수락, 잔여 위험 수락을 대신하지 않습니다. | [Core Model](core-model.md) |
 | 수동 QA | 자동 확인이나 증거만으로는 부족하고 사람이 직접 판단해야 하는 품질 확인입니다. | [Core Model](core-model.md), [Later](../later/index.md) |
-| QA 면제 판단 | 담당 경로가 허용할 때 QA 기대치를 면제하거나 줄이는 사용자가 소유하는 판단입니다. 증거나 최종 수락을 만들지 않습니다. | [Core Model](core-model.md) |
+| QA 면제 판단 | 향후 담당 경로가 허용할 때 QA 기대치를 면제하거나 줄이는 later/reserved 사용자 소유 판단 후보입니다. 증거나 최종 수락을 만들지 않습니다. | [Later](../later/index.md), [Core Model](core-model.md) |
 | 최종 수락 | 작업 경로가 수락을 요구할 때 사용자가 결과를 받아들이는 판단입니다. 그 자체로 민감 동작을 승인하거나 잔여 위험을 수락하지 않습니다. | [Core Model](core-model.md) |
 | 잔여 위험 | 닫기에 영향을 주는 알려진 남은 불확실성, 확인하지 못한 조건, 한계, 절충입니다. | [Core Model](core-model.md) |
-| 잔여 위험 수락 | 알려진 잔여 위험을 받아들이는 사용자가 소유하는 판단입니다. 최종 수락, QA 면제 판단, 검증 위험 수락과 구분됩니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md) |
+| 잔여 위험 수락 | 알려진 잔여 위험을 받아들이는 사용자가 소유하는 판단입니다. 최종 수락, later/reserved QA 면제 판단, 검증 위험 수락과 구분됩니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md) |
 | 닫기 가능 여부 | 작업을 지금 정직하게 닫을 수 있는지와 닫기 전에 남은 일을 보여주는 상태입니다. | [Core Model](core-model.md) |
 | 닫기 차단 사유 | 진행, 쓰기, 닫기를 정직하게 계속할 수 없게 하는 구체적인 이유입니다. 해결하거나 유효하게 미뤄야 합니다. | [Core Model](core-model.md) |
 | 다음 안전한 행동 | 해결되지 않은 범위, 판단, 증거, QA, 검증, 수락, 위험을 숨기지 않고 진행할 수 있는 다음 행동입니다. | [API Schema Core](api/schema-core.md) |

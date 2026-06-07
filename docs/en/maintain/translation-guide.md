@@ -103,8 +103,8 @@ Common examples:
 | `technical_decision` | 기술 판단 값 |
 | `scope_decision` | 범위 판단 값 |
 | `sensitive_approval` | 민감 동작 승인 값 |
-| `qa_waiver` | QA 면제 판단 값 |
-| `verification_risk_acceptance` | 검증 위험 수락 값 |
+| `qa_waiver` | later/reserved QA 면제 판단 값 |
+| `verification_risk_acceptance` | later/reserved 검증 위험 수락 값 |
 | `final_acceptance` | 최종 수락 값 |
 | `residual_risk_acceptance` | 잔여 위험 수락 값 |
 | `presentation` | 표시 형식 필드 |
@@ -124,7 +124,7 @@ Do not translate active/later, security, or judgment boundaries into stronger cl
 - "profile-gated" means available only under the named profile, capability, connector mode, or future configuration. It is not a default active MVP value.
 - "later candidate" means deferred material. It is not an active requirement unless the owner promotes it with scope and proof expectations.
 - Cooperative or detective security wording must not become preventive, isolated, sandboxed, tamper-proof, or default tool-blocking wording in Korean.
-- Broad approval, final acceptance, QA waiver, verification-risk acceptance, and residual-risk acceptance remain distinct judgment routes.
+- Broad approval, final acceptance, residual-risk acceptance, and later/reserved QA waiver or verification-risk acceptance remain distinct judgment routes.
 
 ## 8. Bilingual Review Checklist
 

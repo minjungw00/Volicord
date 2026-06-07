@@ -36,7 +36,7 @@ Exact API request fields and storage table definitions may be named here only by
 5. A Write Authorization is single-use for one compatible attempt. It is not reusable scope and not OS permission.
 6. `record_run` records what happened and consumes the compatible Write Authorization; it cannot retroactively authorize work that lacked scope, user judgment, sensitive-action approval, or Write Authorization.
 7. User-owned judgment cannot be replaced by agent inference, broad consent, generated prose, evidence, or projection text.
-8. Product judgment, technical judgment, scope judgment, sensitive-action approval, final acceptance, QA waiver, verification-risk acceptance, residual-risk acceptance, and cancellation are distinct.
+8. Product judgment, technical judgment, scope judgment, sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation are distinct active judgment routes. Later/reserved QA waiver and verification-risk acceptance routes must stay distinct if promoted.
 9. Evidence, verification, Manual QA, final acceptance, residual-risk visibility, residual-risk acceptance, and close readiness do not substitute for one another.
 10. `close_task` must return blockers instead of a successful close while close-relevant blockers remain; known residual risk must be visible before a successful close path depends on it.
 11. Active current MVP scope and later candidate material stay separate. A later candidate becomes active only when its owner promotes it with scope, fallback behavior, and proof expectations.
@@ -67,17 +67,17 @@ Findings from commands, Runs, reviews, validators, diagnostics, QA, or verificat
 
 User-owned judgment is the boundary where Harness must ask or preserve the user's choice instead of inferring it. The exact `UserJudgment` schema and API fields live in [API Schema Core](api/schema-core.md) and [MVP API](api/mvp-api.md); this section owns the meaning of the boundaries.
 
-The judgment kinds stay distinct:
+Active current MVP judgment kinds stay distinct:
 
 - Product judgment: product behavior, UX, wording, release-facing promise, or user value.
 - Technical judgment: architecture, dependency, migration, public interface, compatibility, security/privacy, or material technical direction.
 - Scope judgment: scope expansion, non-goal removal, Change Unit boundary, or Autonomy Boundary change.
 - Sensitive-action approval: permission for a named sensitive step inside a bounded scope.
-- QA waiver: a scoped waiver of a policy-allowed Manual QA requirement.
-- Verification-risk acceptance: acceptance of the risk from missing or waived required verification.
 - Final acceptance: the user's result judgment when the path requires acceptance.
 - Residual-risk acceptance: acceptance of a named visible residual risk for the requested close.
 - Cancellation: stopping the Task without a successful result.
+
+Later/reserved judgment candidates stay conceptual until promoted by an owner and cataloged in [Later](../later/index.md): QA waiver for a policy-allowed Manual QA requirement, and verification-risk acceptance for the risk from missing or waived required verification. They are not active current MVP `UserJudgment.judgment_kind` values.
 
 Ambiguous consent is narrow. "Go ahead", "looks good", or similar broad approval cannot silently satisfy another judgment kind. One user reply may satisfy multiple judgment routes only when the prompt explicitly asked those distinct questions and Core records each compatible judgment with its affected object, scope, consequence, and close or write impact.
 
@@ -87,11 +87,11 @@ Core must preserve these separations:
 
 - Chat, generated Markdown, projection prose, or report text does not substitute for Core state.
 - Evidence, logs, screenshots, artifacts, or test output do not substitute for final acceptance, Manual QA, verification, or residual-risk acceptance.
-- QA is not final acceptance; a QA waiver is not QA evidence or QA pass.
-- Verification-risk acceptance is not verification, detached verification, or assurance upgrade.
+- QA is not final acceptance; a later QA waiver would not be QA evidence or QA pass.
+- Later verification-risk acceptance would not be verification, detached verification, or assurance upgrade.
 - Sensitive-action approval does not decide product direction, technical direction, scope, correctness, evidence, QA, final acceptance, residual-risk acceptance, or Write Authorization.
 - Product judgment, technical judgment, and scope judgment do not substitute for one another.
-- Final acceptance does not create evidence, erase evidence gaps, waive QA, prove verification, grant sensitive-action approval, change scope, accept residual risk, or override blockers.
+- Final acceptance does not create evidence, erase evidence gaps, satisfy QA, prove verification, grant sensitive-action approval, change scope, accept residual risk, or override blockers.
 - Residual-risk acceptance does not verify work, make a no-risk close, satisfy evidence, satisfy QA, or imply final acceptance.
 - A stale or failed projection does not block or allow close by itself; the current Core close state and blockers do.
 
@@ -129,7 +129,7 @@ The lifecycle is a Core state-transition discipline, not a display script. Activ
 
 <a id="stable-event-catalog"></a>
 
-Stable event names are append-only history labels for Core changes, not authority by themselves. The catalog should cover Task lifecycle updates, `prepare_write` decisions, Write Authorization creation/consumption/staling/expiry/revocation, Run recording, user judgment updates, gate recompute, evidence updates, blocker updates, residual-risk visibility or acceptance, waiver recording, close attempts, and close success or cancellation. Exact event payloads and persistence are owned by API and Storage.
+Stable event names are append-only history labels for Core changes, not authority by themselves. The catalog should cover Task lifecycle updates, `prepare_write` decisions, Write Authorization creation/consumption/staling/expiry/revocation, Run recording, user judgment updates, gate recompute, evidence updates, blocker updates, residual-risk visibility or acceptance, close attempts, and close success or cancellation. Waiver event names are reserved for owner-promoted later paths. Exact event payloads and persistence are owned by API and Storage.
 
 <a id="prepare_write"></a>
 
@@ -161,11 +161,11 @@ Read-only and shaping-only Runs may be recorded without Write Authorization only
 
 `close_task` is the single completion decision point. Agent summaries, final reports, acceptance-looking chat, projections, Evals, QA notes, and evidence displays may inform close, but they do not close a Task by themselves.
 
-For a successful close, Core must confirm the close intent against current Task state, open Runs, scope, user-owned judgments, sensitive-action approval when applicable, active design-policy blockers, required evidence sufficiency, close-relevant artifact availability, final acceptance when required, residual-risk visibility when close-relevant risk exists, and residual-risk acceptance when the active close path requires acceptance.
+For a successful close, Core must confirm the close intent against current Task state, open Runs, scope, user-owned judgments, sensitive-action approval when applicable, Write Authorization and Run compatibility, baseline and surface capability when relevant, required evidence sufficiency, close-relevant artifact availability, final acceptance when required, residual-risk visibility when close-relevant risk exists, residual-risk acceptance when the active close path requires acceptance, recovery constraints, and cancellation or supersession conflicts.
 
 MVP close must keep later assurance material out of active response semantics. `verification_gate`, `qa_gate`, detached verification, `completed_verified`, detailed Manual QA close fields, full Evidence Manifest behavior, and assurance display detail are later candidate behavior unless their owners explicitly activate them.
 
-`close_task` must return blockers instead of pretending close is complete when required scope, judgment, evidence, artifact availability, final acceptance, residual-risk visibility, residual-risk acceptance, or owner-defined safety conditions remain unresolved. A public response may choose one primary error, but secondary close blockers and refs must remain visible enough for the next safe action.
+`close_task` must return blockers instead of pretending close is complete when required task/scope correctness, user-owned judgment, sensitive-action approval, Write Authorization or Run compatibility, evidence, artifact availability, final acceptance, residual-risk visibility, residual-risk acceptance, cancellation/supersession handling, surface capability, baseline, or recovery conditions remain unresolved. A public response may choose one primary error, but secondary close blockers and refs must remain visible enough for the next safe action.
 
 Cancellation and supersession are honest terminal paths, not successful completion. Risk-accepted close is successful close with named accepted risk; it is not verified close and not no-risk close.
 
@@ -173,7 +173,7 @@ Cancellation and supersession are honest terminal paths, not successful completi
 
 Blockers are structured reasons a transition cannot proceed honestly. They can block progress, a write, Run recording, or close. They should name the affected Task or Change Unit when available, the category, the missing or incompatible condition, related refs, and the next safe action.
 
-Common blocker categories include missing active Task, missing active scope, out-of-scope write intent, unresolved user-owned judgment, missing sensitive-action approval, incompatible Autonomy Boundary, insufficient surface capability, missing or invalid Write Authorization, stale baseline, missing evidence, stale or unavailable artifact support, active design-policy blocker, missing final acceptance, hidden residual risk, unaccepted close-relevant residual risk, unsafe open Run, cancellation conflict, and supersession conflict.
+Common blocker categories include missing active Task, missing active scope, out-of-scope write intent, unresolved user-owned judgment, missing sensitive-action approval, incompatible Autonomy Boundary, insufficient surface capability, missing or invalid Write Authorization, stale baseline, missing evidence, stale or unavailable artifact support, missing final acceptance, hidden residual risk, unaccepted close-relevant residual risk, unsafe open Run, recovery constraint, cancellation conflict, and supersession conflict.
 
 Invalid state combinations must become blockers, rejections, or repair paths. They must not be papered over by projection prose, broad approval, a waiver that does not apply, or a close result that hides the conflict.
 
@@ -184,8 +184,8 @@ A waiver is a scoped exception to a named requirement where policy allows it. It
 Allowed waiver paths are narrow:
 
 - Design-policy waiver only when the design policy owner allows it.
-- QA waiver only when required Manual QA is active and policy allows waiver.
-- Verification-risk acceptance only when required verification is active and the user accepts the named risk of missing or waived verification.
+- Later/reserved QA waiver only if a future owner promotes required Manual QA and policy allows waiver.
+- Later/reserved verification-risk acceptance only if a future owner promotes required verification and the user accepts the named risk of missing or waived verification.
 
 Not allowed:
 
@@ -195,7 +195,7 @@ Not allowed:
 - Final acceptance waiver where acceptance is required.
 - Residual-risk visibility waiver.
 
-Decision deferral is not waiver. QA waiver is not QA pass. Verification-risk acceptance is not verification. A waiver can unblock only the requirement it names and only through the owner path that permits it.
+Decision deferral is not waiver. Later QA waiver is not QA pass. Later verification-risk acceptance is not verification. A waiver can unblock only the requirement it names and only through the owner path that permits it.
 
 ## 13. Residual risk
 

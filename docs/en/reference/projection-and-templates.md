@@ -77,7 +77,7 @@ Humans may not edit these directly into state:
 - managed block content
 - front matter fields such as `source_state_version`
 - gate values, lifecycle phase, result, close reason, close status, or assurance level
-- user judgment, sensitive-action approval, final-acceptance, QA waiver, verification-risk acceptance, residual-risk acceptance, or close display text
+- user judgment, sensitive-action approval, final-acceptance, residual-risk acceptance, close display text, or later/reserved QA waiver and verification-risk display text
 - artifact identity, `sha256`, `size_bytes`, `content_type`, `redaction_state`, or artifact availability
 - status cards, agent context packets, generated reports, or template bodies
 
@@ -206,7 +206,7 @@ Notes:
 
 ## Judgment Request body
 
-Use `judgment-request` when the user owns a choice that affects progress, scope, sensitive-action permission, QA waiver, verification-risk acceptance, final acceptance, residual-risk acceptance, or cancellation. This is the active MVP prompt shape for ordinary user-owned judgments.
+Use `judgment-request` when the user owns a choice that affects progress, scope, sensitive-action permission, final acceptance, residual-risk acceptance, or cancellation. This is the active MVP prompt shape for ordinary user-owned judgments. Later/reserved QA waiver and verification-risk prompts require a future promoted owner path before they become active values.
 
 Implementation tier: active MVP user work-loop view. Full-format judgment presentation is later candidate scope and remains only a candidate in [Later Template Candidates](../later/index.md#later-template-candidates).
 
@@ -260,7 +260,7 @@ Refs: judgment={user_judgment_ref}; task={task_ref}; supporting={supporting_refs
 Notes:
 
 - Small judgments should fit on one screen and use `presentation=short` in the active MVP. `presentation=full` and `Decision Packet` remain later candidate material until promoted by the owning user-judgment/template path.
-- Do not merge sensitive approval, product decision, technical decision, scope decision, QA waiver, verification-risk acceptance, final acceptance, residual-risk acceptance, or cancellation into one broad approval prompt.
+- Do not merge sensitive approval, product decision, technical decision, scope decision, final acceptance, residual-risk acceptance, cancellation, or later/reserved QA waiver and verification-risk routes into one broad approval prompt.
 - Chat phrases such as "yes, do it" satisfy a gate only when the scope, `judgment_kind`, affected object, and recorded user intent match the pending judgment.
 - The displayed `Type` label is rendered from `judgment_kind` and the user's locale. It is display text only; the canonical judgment category remains `judgment_kind`.
 
