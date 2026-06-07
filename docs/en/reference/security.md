@@ -2,7 +2,7 @@
 
 This reference owns the security boundary language for the active Harness MVP plan. The repository is still documentation-only: no Harness Server/runtime implementation, Harness Runtime Home, executable conformance runner, or runtime security proof exists here today. This document describes the boundary future implementation must preserve; it is not evidence that controls are already implemented.
 
-Use this page when security wording, local-access posture, threat/control summaries, or guarantee labels need to stay honest. Use the exact owner documents for exact behavior: [Core Model Reference](core-model.md), [Runtime Boundaries Reference](runtime-boundaries.md), [Storage](storage.md), [Agent Integration Reference](agent-integration.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), and [Conformance Reference](conformance.md). Future operations candidates stay in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates).
+Use this page when security wording, local-access posture, threat/control summaries, or guarantee labels need to stay honest. Use the exact owner documents for exact behavior: [Core Model Reference](core-model.md), [Runtime Boundaries Reference](runtime-boundaries.md), [Storage](storage.md), [Agent Integration Reference](agent-integration.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), and [Conformance Reference](conformance.md). Future operations candidates stay in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates); they do not become active MVP security guarantees by being mentioned here.
 
 ## 1. Owns / Does Not Own
 
@@ -32,11 +32,11 @@ This document does not own:
 
 The current MVP guarantee level is cooperative by default, with limited detective behavior only where the active reference surface can honestly observe the relevant fact. The active reference surface is represented by a registered `capability_profile`; that profile constrains guarantee display and capability blockers, but it does not create write compatibility or a Write Authorization.
 
-For the current MVP value set, `cooperative` and `detective` are the only default `GuaranteeDisplay.level` values. `preventive` and `isolated` are profile-gated display value names. They require a promoted profile and proof for the covered operation or boundary; they are not default active MVP guarantees.
+For the current MVP value set, `cooperative` and `detective` are the only default `GuaranteeDisplay.level` values. `preventive` and `isolated` are profile-gated display value names only. They require a promoted profile and proof for the covered operation or boundary; they are not default active MVP guarantees.
 
 `allowed` means compatible with current Harness state, owner records, and the active surface capability. It does not mean the operating system permits the action. `blocked` means the Harness protocol, state, owner record, or capability check says the path must not proceed. It does not mean a process was physically stopped before execution.
 
-The reference `capability_profile` has no default preventive or isolated posture. When `pre_tool_blocking_supported=false`, the MVP must not display `preventive` for product/runtime/code writes. When `isolation_supported=false`, the MVP must not display `isolated` or imply a security-isolation boundary. A user request for stronger safety, a guard/freeze/careful-mode label, or a future profile idea does not promote the profile.
+The reference `capability_profile` has no default preventive or isolated posture. Profile support must be explicit; agents and connectors must not infer stronger guarantee labels from user intent. When `pre_tool_blocking_supported=false`, the MVP must not display `preventive` for product/runtime/code writes. When `isolation_supported=false`, the MVP must not display `isolated` or imply a security-isolation boundary. A user request for stronger safety, a guard/freeze/careful-mode label, or a future profile idea does not promote the profile.
 
 Write Authorization is a single-use cooperative Harness record created only by the compatible non-dry-run `prepare_write` path and consumed by compatible `record_run`. It is a Harness record/check, not OS permission, sandboxing, tamper-proof enforcement, physical pre-tool blocking, or isolation.
 
@@ -54,7 +54,7 @@ The current MVP does not provide:
 
 These are explicit non-claims even when Harness returns a blocker, records a Write Authorization, validates an artifact hash, detects stale context, reports a capability mismatch, or marks a projection stale. Those outcomes may be cooperative or detective. They are not preventive or isolated unless another owner documents and proves that exact mechanism for that exact operation.
 
-The MVP also does not claim that local files are trustworthy because they are local, that MCP reachability is authorization, that chat or generated Markdown can create authority, or that conformance fixture language proves runtime security behavior before implementation exists.
+The MVP also does not claim that local files are trustworthy because they are local, that runtime boundaries are OS isolation boundaries, that MCP reachability is authorization, that chat or generated Markdown can create authority, or that conformance fixture language proves runtime security behavior before implementation exists.
 
 ## 4. Assets
 

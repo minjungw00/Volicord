@@ -2,7 +2,7 @@
 
 Use this reference when connecting an agent surface to future Harness behavior with low context cost, honest guarantee display, and preserved user-owned judgment. This repository is still documentation-only and in documentation review; this file describes planned Harness behavior and does not imply that a runtime server or connector implementation exists.
 
-For what the agent says in a user session, read [Agent Guide](../use/agent-guide.md). For exact Core, API, schema, storage, projection, security, conformance, and operations contracts, pull only the owner section needed for the next action.
+For what the agent says in a user session, read [Agent Guide](../use/agent-guide.md). For exact Core, API, schema, storage, projection, security, conformance, and operations contracts, pull only the owner section needed for the next action. Do not turn later candidates, surface recipes, or conformance plans into active requirements.
 
 ## 1. Owns / Does Not Own
 
@@ -31,7 +31,7 @@ This reference does not own:
 - operator commands and diagnostics as active Reference scope; future candidates stay in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates)
 - future connector marketplaces, hosted-agent assumptions, broad connector ecosystems, or cross-surface orchestration
 
-Surface recipes in this document are integration guidance. They do not create Core state authority, Write Authorization, evidence, verification, QA, sensitive-action approval, final acceptance, residual-risk acceptance, close readiness, or any new security boundary.
+Surface recipes in this document are integration guidance. They do not create Core state authority, Write Authorization, evidence, verification, QA, sensitive-action approval, final acceptance, residual-risk acceptance, close readiness, active later-candidate obligations, or any new security boundary.
 
 <a id="role-lens-behavior"></a>
 
@@ -43,7 +43,7 @@ Role Lens behavior, when present, is read-only posture guidance. A lens may reco
 
 Surface name is not capability. A connector must use a `capability_profile` scoped to the actual host, version/configuration, workspace policy, MCP posture, capture path, guard path, and separation boundary in use.
 
-A `capability_profile` is not a Write Authorization and does not create write compatibility or bypass active Task scope, active Change Unit scope, `prepare_write`, single-use cooperative Write Authorization, `record_run`, or Core close rules. Capability affects blocked reasons, fallback behavior, validator results, and guarantee display. `allowed` and `blocked` are Harness compatibility outcomes unless a proven preventive profile names the covered operation.
+A `capability_profile` is not a Write Authorization and does not create write compatibility or bypass active Task scope, active Change Unit scope, `prepare_write`, single-use cooperative Write Authorization, `record_run`, or Core close rules. Capability affects blocked reasons, fallback behavior, validator results, and guarantee display. `allowed` and `blocked` are Harness compatibility outcomes unless a proven preventive profile names the covered operation. Runtime boundaries remain authority and storage boundaries, not OS isolation boundaries.
 
 The active reference profile is intentionally small:
 
@@ -91,7 +91,7 @@ Profile-gated display value names:
 | `preventive` | Use only with a promoted profile. Name the fixture-proven hook, wrapper, permission layer, policy engine, or sidecar path and the exact operations it can block before execution. |
 | `isolated` | Use only with a promoted profile. Name the documented separation boundary. Do not imply OS sandboxing, permission isolation, or tamper-proof storage unless that exact mechanism is proven. |
 
-Agents must not choose `preventive` or `isolated` merely because a user requested stronger safety. The connector must lower the displayed guarantee or return `CAPABILITY_INSUFFICIENT` when the active profile cannot prove the stronger claim.
+Agents must not choose `preventive` or `isolated` merely because a user requested stronger safety, asked for a guard/freeze/careful mode, or used stronger wording in chat. The connector must lower the displayed guarantee or return `CAPABILITY_INSUFFICIENT` when the active profile cannot prove the stronger claim.
 
 The reference local MCP profile can display `cooperative` behavior and limited `detective` behavior only where changed-path or artifact-gap observation supports it. Because `pre_tool_blocking_supported=false` and `isolation_supported=false`, it must not claim `preventive` or `isolated` behavior.
 
@@ -111,6 +111,7 @@ Retrieval-cost rules:
 - Do not inject full schemas by default.
 - Do not inject full Storage DDL, full templates, full projection bodies, complete histories, full event logs, raw artifact contents, raw logs, raw screenshots, raw traces, or unrelated later candidate material by default.
 - Do not inject future/later catalog material by default.
+- Do not promote later candidates, future catalog entries, surface recipes, or conformance plans into active requirements.
 - Pull the owner section needed for the next action, then stop.
 - Choose one language for a normal work prompt. Do not load English and Korean paired docs for the same `doc_id` into one prompt; bilingual review should compare targeted sections rather than pushing both full paired documents.
 
@@ -205,7 +206,7 @@ Keep a recipe to:
 - fallback behavior when a required capability is missing
 - conformance status for that `capability_profile`
 
-Do not include generic Core rules, public API schemas, full Reference docs, future connector ambitions, hosted-agent assumptions, audit notes, unrelated later candidate items, full projection bodies, or long setup tutorials.
+Do not include generic Core rules, public API schemas, full Reference docs, future connector ambitions, hosted-agent assumptions, audit notes, unrelated later candidate items, full projection bodies, or long setup tutorials. A recipe may point to later material only as later material; it must not make that material required for the active MVP.
 
 <a id="reference-local-surface"></a>
 
@@ -253,6 +254,6 @@ Reference-surface checks include:
 - `record_run` with summary and owner-registered artifact refs
 - MCP-unavailable product-write hold
 - `CAPABILITY_INSUFFICIENT` or an equivalent blocked reason for unsupported capabilities
-- read-only recommendations unless a later Core mutation path records the action
+- read-only recommendations unless a separate Core mutation path records the action
 
 Future fixture shape and assertion authority are owned by [Conformance Reference](conformance.md). Operational commands and diagnostics are later candidates in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates) until a future owner promotes them.

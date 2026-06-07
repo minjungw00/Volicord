@@ -2,6 +2,8 @@
 
 This reference defines the active runtime boundary model for future Harness Server planning. It explains which space owns product files, which space runs Harness authority checks, which space persists Core-owned state, and what remains derived display or artifact support.
 
+Runtime boundaries are authority and storage boundaries, not OS isolation boundaries. They separate who may create Harness authority, where Core-owned records and artifacts are persisted, and what remains derived display. They do not imply process isolation, sandboxing, permission enforcement, arbitrary-tool control, tamper-proof storage, or security isolation.
+
 This is source documentation only. No Harness Server/runtime implementation, Harness Runtime Home, generated projection system, conformance runner, or runtime data exists in this repository today. Current repository phase and handoff status remain owned by [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
 Use [Core Model Reference](core-model.md), [Storage](storage.md), [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [Projection And Templates Reference](projection-and-templates.md), [Security Reference](security.md), and [Agent Integration Reference](agent-integration.md) for exact contracts. This page owns only the small boundary model.
@@ -22,7 +24,7 @@ This documentation repository is also not the user's Product Repository. It is a
 
 The Harness Server / Installation is the future local Harness program boundary. It receives local tool/resource calls, runs Core-owned authority checks, records state-changing actions through Core, invokes validators where the active profile requires them, registers artifacts, and renders derived display when projection support is in scope.
 
-The MVP boundary does not require a service fleet or detailed process split. It is compatible with one local process as long as the authority boundaries stay clear: callers ask, Core evaluates and records compatible state changes, storage persists, and display derives from recorded state.
+The MVP boundary does not require a service fleet or detailed process split. It is compatible with one local process as long as the authority and storage boundaries stay clear: callers ask, Core evaluates and records compatible state changes, storage persists, and display derives from recorded state.
 
 The Harness Server / Installation is not the Product Repository and not the Harness Runtime Home. It may read product files, write product files only through the user's chosen work surface and the documented cooperative Harness checks, and persist Harness records only through Runtime Home storage paths owned by [Storage](storage.md).
 
@@ -72,7 +74,7 @@ Recovery cannot infer successful implementation from chat, generated Markdown, s
 
 ## 8. What the current MVP does not isolate
 
-The current MVP boundary is cooperative and detective unless a future owner promotes and proves a stronger mechanism for a named operation. It does not claim OS-level permissions, arbitrary-tool sandboxing, permission enforcement, tamper-proof storage, universal pre-tool blocking, or security isolation.
+The current MVP boundary is cooperative and detective unless a future owner promotes and proves a stronger mechanism for a named operation. It does not claim OS-level permissions, arbitrary-tool sandboxing, permission enforcement, tamper-proof storage, universal pre-tool blocking, or security isolation. `preventive` and `isolated` are not current MVP defaults; they remain profile-gated display values owned by the relevant Reference owners.
 
 Local-only MCP reachability is not authorization. A reachable caller still needs valid Core/API state, project/task/surface compatibility, state-version compatibility, and the active surface capability. `allowed` means compatible with Harness state and active surface capability. `blocked` means the Harness owner path or capability check says the action should not proceed. Neither word means physical prevention unless a proven preventive mechanism names that exact covered operation.
 
