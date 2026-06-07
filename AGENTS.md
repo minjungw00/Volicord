@@ -22,6 +22,7 @@ This repository is a documentation-only Harness planning repository. It is in pr
 
 Use only the compact active structure:
 
+- `docs/doc-index.yaml`
 - `docs/*/start.md`
 - `docs/*/use/user-guide.md`
 - `docs/*/use/agent-guide.md`
@@ -33,7 +34,7 @@ Use only the compact active structure:
 - `docs/*/maintain/translation-guide.md`
 - `docs/*/maintain/checks.md`
 
-Do not route active docs outside this compact structure. If an old path appears during review, replace it with the current owner route or delete the stale route.
+Do not route README or Maintain guidance outside this compact structure. Use `docs/*/reference/README.md` to choose exact contract owners instead of turning reference subpages into top-level routes. If an old path appears during review, replace it with the current compact route or delete the stale route wording.
 
 ## Bilingual Documentation Rules
 
@@ -58,6 +59,7 @@ Do not route active docs outside this compact structure. If an old path appears 
 - Rewrite, move, merge, shrink, or delete old prose when it conflicts with the product thesis, owner boundaries, Korean quality rules, active/later boundaries, or implementation feasibility.
 - Remove stale improvement goals, resolved review records, old cleanup notes, legacy history, migration notes, and one-language-primacy guidance from active docs.
 - Do not list profile-gated values as default active MVP values, and do not describe later candidates as active MVP requirements.
+- Check stale route wording, active/profile-gated confusion, unsupported security claims, Korean natural prose, and one-language-per-`doc_id` retrieval before finishing documentation batches.
 - Preserve the product thesis: Harness is not a prompt pack. It is a local authority record for scope, user-owned judgment, evidence, verification expectations, acceptance, close readiness, and residual risk.
 - Keep user-owned judgments distinct from Core-owned state/artifact authority. Evidence, verification, QA, acceptance, waiver, and residual-risk boundaries must not collapse into one broad approval.
 - Major implementation-readiness decisions belong in `docs/en/build/mvp-plan.md` and `docs/ko/build/mvp-plan.md`, not scattered TODOs.
