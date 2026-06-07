@@ -132,7 +132,7 @@ GuaranteeDisplay:
   notes: string[]
 ```
 
-`StateSummary.mode` mirrors persisted `tasks.mode` and is always a concrete task mode. `auto` is not a stored mode, displayed task mode, or status-summary mode. `StateSummary.lifecycle_phase` mirrors persisted `Task.lifecycle_phase`. `intake` is an API method and start-handling step, not a lifecycle value. The terminal lifecycle phases are `completed`, `cancelled`, and `superseded`; `superseded` means the Task was replaced by another Task or route and must not return to active work. `StateSummary.result` mirrors coarse `Task.result`; Run failure, violation, evidence gaps, and blockers remain in Run status, evidence state, blockers, or current Task state instead of becoming a terminal Task result. The `passed` and `failed` strings in this document are gate or validator statuses only, not `Task.result` values.
+`StateSummary.mode` mirrors persisted `tasks.mode` and is always a concrete task mode. `auto` is not a stored mode, displayed task mode, or status-summary mode. `StateSummary.lifecycle_phase` mirrors persisted `Task.lifecycle_phase`. `intake` is an API method and start-handling step, not a lifecycle value. The terminal lifecycle phases are `completed`, `cancelled`, and `superseded`; `superseded` means the Task was replaced by another Task or route and must not return to active work. `StateSummary.close_reason` mirrors persisted `Task.close_reason`. `StateSummary.result` mirrors coarse `Task.result`; failed Runs, violations, blocked closes, evidence gaps, and blockers remain in Run status, `CloseBlocker`, evidence state, blockers, or current Task state instead of becoming a terminal Task result. The `passed` and `failed` strings in this document are gate or validator statuses only, not `Task.result` values.
 
 Task mode values have these reader-facing meanings:
 
@@ -485,7 +485,7 @@ These values are valid without a promoted profile. Values not listed here are no
 | `StateSummary.mode` and persisted `tasks.mode` | `advisor`, `direct`, `work` |
 | `Task.lifecycle_phase` and `StateSummary.lifecycle_phase` | `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded` |
 | `Task.result` and `StateSummary.result` | `none`, `advice_only`, `completed`, `cancelled`, `superseded` |
-| `StateSummary.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` |
+| `Task.close_reason` and `StateSummary.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` |
 | `StatusResponse.close_state` | `none`, `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
 | `CloseTaskResponse.close_state` | `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
 | `StateSummary.assurance_level` | `none`, `self_checked` |

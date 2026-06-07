@@ -44,9 +44,9 @@
 |---|---|---|
 | Core가 소유한 상태 | 하네스 운영 권한이 되는 커밋된 담당 기록과 `state.sqlite.task_events`입니다. | [Core Model](core-model.md), [Storage](storage.md) |
 | `Task` | 사용자의 작업, 상태, 차단 사유, 증거 상태, 닫기 가능 여부, 결과를 담는 내부 단위입니다. | [Core Model](core-model.md) |
-| `Task.lifecycle_phase` | 지속 저장되는 Task 생명주기 필드입니다. `intake`는 값이 아니며, `superseded`는 종료 값입니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
-| `Task.close_reason` | 지속 저장되는 닫기 사유 세부값입니다. 생명주기와 굵은 결과와는 별도입니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
-| `Task.result` | 작업 수준의 굵은 결과입니다. `failed`는 종료 Task 결과 값이 아닙니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
+| `Task.lifecycle_phase` | 지속 저장되는 Task 생명주기 필드입니다. 값은 `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded`입니다. `intake`는 값이 아니며, `superseded`는 종료 값입니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
+| `Task.close_reason` | 지속 저장되는 닫기 사유 세부값입니다. 값은 `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded`입니다. 생명주기와 굵은 결과와는 별도입니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
+| `Task.result` | 작업 수준의 굵은 결과입니다. 값은 `none`, `advice_only`, `completed`, `cancelled`, `superseded`입니다. `passed`와 `failed`는 종료 Task 결과 값이 아닙니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
 | `Change Unit` | 쓰기 가능한 작업의 활성 범위 경계입니다. 그 자체로 쓰기를 승인하지 않습니다. | [Core Model](core-model.md) |
 | `Autonomy Boundary` | 활성 `Change Unit` 안에서 에이전트가 다시 묻지 않고 결정할 수 있는 선택의 경계입니다. 범위 부여, 승인, 쓰기 권한이 아닙니다. | [Core Model](core-model.md) |
 | `user_judgment` | 사용자가 소유하는 판단을 위한 기준 기록 계열입니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md) |
@@ -76,7 +76,7 @@
 | `UserJudgment` / `UserJudgmentCandidate` / `UserJudgmentResolution` / `RecordUserJudgmentPayload` / `AcceptedRiskInput` | 판단 요청, 후보, 저장된 해결 기록, 답변 세부정보, 잔여 위험 수락 입력 형태입니다. | [API Schema Core](api/schema-core.md) |
 | `judgment_kind` | 사용자 판단 종류의 기준 필드입니다. 값은 정확히 유지하고 지역화된 라벨로 바꾸지 않습니다. | [API Schema Core](api/schema-core.md) |
 | `presentation` | 활성 간결한 프롬프트/세부 표시 필드입니다. `short`는 active이고 `full`은 later 전체 형식 표시입니다. | [API Schema Core](api/schema-core.md), [Later](../later/index.md) |
-| `CloseTaskResponse.close_state` | `harness.close_task`가 돌려주는 응답 수준의 닫기 상태입니다. 지속 저장되는 `Task.lifecycle_phase`와는 별도입니다. | [MVP API](api/mvp-api.md) |
+| `CloseTaskResponse.close_state` | `harness.close_task`가 돌려주는 응답 수준의 닫기 상태입니다. 값은 `ready`, `blocked`, `closed`, `cancelled`, `superseded`입니다. 지속 저장되는 `Task.lifecycle_phase`와는 별도입니다. | [MVP API](api/mvp-api.md) |
 | `CloseBlocker` | 구조화된 닫기/진행 차단 결과입니다. 산문 보고 문구만으로는 차단 결과가 아닙니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
 | `ValidatorResult` | 구조화된 validator 출력입니다. 활성 안정 validator ID: `surface_capability_check`. | [API Schema Core](api/schema-core.md) |
 | 민감 범주 | `auth_change`, `destructive_write`, `secret_access`, `privacy_or_pii_change`, `policy_override` 같은 정확한 값입니다. | [API Schema Core](api/schema-core.md) |

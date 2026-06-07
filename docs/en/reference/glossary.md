@@ -44,9 +44,9 @@ These terms orient readers to Core authority. Exact lifecycle, gate, close, waiv
 |---|---|---|
 | Core-owned state | Committed owner records and `state.sqlite.task_events` that serve as Harness operational authority. | [Core Model](core-model.md), [Storage](storage.md) |
 | `Task` | Internal unit for the user's work, state, blockers, evidence status, close readiness, and result. | [Core Model](core-model.md) |
-| `Task.lifecycle_phase` | Persisted Task lifecycle field. `intake` is not a value, and `superseded` is terminal. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
-| `Task.close_reason` | Persisted close-reason detail, separate from lifecycle and coarse result. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
-| `Task.result` | Coarse Task outcome. `failed` is not a terminal Task result. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
+| `Task.lifecycle_phase` | Persisted Task lifecycle field. Values: `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded`. `intake` is not a value, and `superseded` is terminal. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
+| `Task.close_reason` | Persisted close-reason detail. Values: `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded`. It is separate from lifecycle and coarse result. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
+| `Task.result` | Coarse Task outcome. Values: `none`, `advice_only`, `completed`, `cancelled`, `superseded`. `passed` and `failed` are not terminal Task results. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md), [Storage](storage.md) |
 | `Change Unit` | Active scoped work boundary for write-capable work. It does not authorize a write by itself. | [Core Model](core-model.md) |
 | `Autonomy Boundary` | Choices the agent may make inside an active `Change Unit` without asking again. It is not scope grant, approval, or write authority. | [Core Model](core-model.md) |
 | `user_judgment` | Canonical record family for user-owned choices. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md) |
@@ -76,7 +76,7 @@ Keep these identifiers exact in schemas, API docs, records, examples, file paths
 | `UserJudgment` / `UserJudgmentCandidate` / `UserJudgmentResolution` / `RecordUserJudgmentPayload` / `AcceptedRiskInput` | Judgment request, candidate, stored resolution, answer detail, and residual-risk acceptance input shapes. | [API Schema Core](api/schema-core.md) |
 | `judgment_kind` | Canonical user judgment kind field. Keep values exact; do not replace them with localized labels. | [API Schema Core](api/schema-core.md) |
 | `presentation` | Active compact prompt/detail field. `short` is active; `full` belongs to later full-format presentation. | [API Schema Core](api/schema-core.md), [Later](../later/index.md) |
-| `CloseTaskResponse.close_state` | Response-level close status from `harness.close_task`, separate from persisted `Task.lifecycle_phase`. | [MVP API](api/mvp-api.md) |
+| `CloseTaskResponse.close_state` | Response-level close status from `harness.close_task`. Values: `ready`, `blocked`, `closed`, `cancelled`, `superseded`. It is separate from persisted `Task.lifecycle_phase`. | [MVP API](api/mvp-api.md) |
 | `CloseBlocker` | Structured close/progress blocker result. Prose-only report text is not a blocker result. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
 | `ValidatorResult` | Structured validator output. Active stable validator ID: `surface_capability_check`. | [API Schema Core](api/schema-core.md) |
 | sensitive categories | Exact values such as `auth_change`, `destructive_write`, `secret_access`, `privacy_or_pii_change`, and `policy_override`. | [API Schema Core](api/schema-core.md) |

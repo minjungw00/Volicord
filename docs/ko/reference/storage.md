@@ -236,6 +236,9 @@ Register, First Safe Change Unit Candidate 테이블을 만들지 않습니다. 
 | 프로젝트 등록 `status` | `active` | 기준 현재 MVP에는 등록된 active 프로젝트만 있습니다. 비활성화/등록 해제 동작은 담당 문서가 승격하기 전까지 later입니다. |
 | `surfaces.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` | API 호환성 확인을 위한 저장된 접점 태세입니다. 의미는 아래에 있으며 Schema Core와 같은 값입니다. |
 | `surfaces.status` | `active`, `disabled`, `stale`, `revoked` | 저장된 접점 행의 사용 가능성입니다. 의미는 아래에 있으며 Schema Core와 같은 값입니다. |
+| `tasks.lifecycle_phase` | `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded` | 지속 저장되는 Task 생명주기입니다. `intake`는 저장 값이 아니며 `superseded`는 종료 값입니다. |
+| `tasks.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` | 생명주기와 결과와는 별도로 저장되는 닫기 세부 사유입니다. |
+| `tasks.result` | `none`, `advice_only`, `completed`, `cancelled`, `superseded` | 저장되는 굵은 결과입니다. 실패한 Run, violation, 차단된 닫기, 증거 공백은 각 담당 기록에 남깁니다. |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` | 쓰기 호환성과 닫기 근거를 위한 저장소 소유 활성 Change Unit 생명주기입니다. |
 | `write_authorizations.status` | `active`, `consumed`, `expired`, `stale`, `revoked` | 오래 남는 authorization 생명주기입니다. Schema Core가 같은 공개 요약 값을 노출하며, 저장소는 영속 방식과 전이 규칙을 담당합니다. |
 | `artifacts.status` | `available`, `missing`, `integrity_failed`, `unavailable` | 저장소가 소유하는 아티팩트 가용성 상태입니다. 가림 처리와 차단된 payload 처리는 `redaction_state`에 남습니다. |
@@ -243,8 +246,7 @@ Register, First Safe Change Unit Candidate 테이블을 만들지 않습니다. 
 | `blockers.status` | `active`, `resolved`, `superseded` | 저장소가 소유하는 blocker 행 상태입니다. 공개 close blocker 형태는 API가 담당합니다. |
 | `tool_invocations.status` | `committed` | 재실행 행은 커밋된 non-dry-run 상태 변경 응답에만 존재합니다. `dry_run`과 커밋 전 실패에는 재실행 행이 없습니다. |
 
-그 밖의 지속 저장되는 상태형 API 필드, 예를 들어 `tasks.mode`,
-`tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `runs.kind`,
+그 밖의 지속 저장되는 상태형 API 필드, 예를 들어 `tasks.mode`, `runs.kind`,
 `runs.status`, `user_judgments.status`, `evidence_summaries.status`는
 [API Schema Core](api/schema-core.md#current-mvp-value-sets)와 Core/API 메서드 담당 문서에
 맞게 검증합니다. 저장소가 인덱스나 제약을 둘 수는 있지만, 이 문서는 공개 스키마 값을
@@ -318,10 +320,11 @@ active 로컬/참조 접점 등록입니다.
 `judgment_kind` 같은 안정 식별자와 locale에서 파생합니다.
 
 `tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`는 서로 다른 Core
-개념을 저장합니다. `tasks.lifecycle_phase`에는 `intake`를 저장하면 안 됩니다.
+개념을 저장합니다. `CloseTaskResponse.close_state`는 응답 수준의 닫기 상태이지
+지속 저장되는 `tasks` 열이 아닙니다. `tasks.lifecycle_phase`에는 `intake`를 저장하면 안 됩니다.
 종료 생명주기 값은 `completed`, `cancelled`, `superseded`입니다. `tasks.result`에는
-`failed`를 저장하면 안 됩니다. 실패한 Run, Projection, 아티팩트, validator,
-증거 공백, 닫기 차단 사유는 각 담당 기록에 남습니다. 커밋된 supersession이 활성
+`passed`나 `failed`를 저장하면 안 됩니다. 실패한 Run, Projection, 아티팩트, validator,
+증거 공백, 차단된 닫기, 닫기 차단 사유는 각 담당 기록이나 현재 Task 상태에 남습니다. 커밋된 supersession이 활성
 포인터를 바꿀 때 `project_state.active_task_id`는 `harness.close_task`의
 `superseding_task_id` 규칙을 따라야 하며, superseded된 Task를 계속 가리키면 안 됩니다.
 

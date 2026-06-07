@@ -250,6 +250,9 @@ Closed current MVP storage value sets:
 | Project registration `status` | `active` | Only registered active projects are in the baseline current MVP. Disable/unregister behavior is later until promoted. |
 | `surfaces.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` | Stored surface posture for API compatibility checks; meanings are below and mirrored by Schema Core. |
 | `surfaces.status` | `active`, `disabled`, `stale`, `revoked` | Stored surface row usability; meanings are below and mirrored by Schema Core. |
+| `tasks.lifecycle_phase` | `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded` | Persisted Task lifecycle. `intake` is not a stored value; `superseded` is terminal. |
+| `tasks.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` | Persisted close detail, separate from lifecycle and result. |
+| `tasks.result` | `none`, `advice_only`, `completed`, `cancelled`, `superseded` | Persisted coarse outcome. Failed Runs, violations, blocked closes, and evidence gaps stay in their owning records. |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` | Storage-owned active Change Unit lifecycle for write compatibility and close basis. |
 | `write_authorizations.status` | `active`, `consumed`, `expired`, `stale`, `revoked` | Durable authorization lifecycle. Schema Core exposes the same public summary values; storage owns persistence and transition rules. |
 | `artifacts.status` | `available`, `missing`, `integrity_failed`, `unavailable` | Storage-owned artifact availability state. Redaction and blocked-payload handling stay in `redaction_state`. |
@@ -257,8 +260,7 @@ Closed current MVP storage value sets:
 | `blockers.status` | `active`, `resolved`, `superseded` | Storage-owned blocker row state. Public close blocker shapes remain API-owned. |
 | `tool_invocations.status` | `committed` | A replay row exists only for a committed non-dry-run state-changing response. Dry-run and pre-commit failures have no replay row. |
 
-Other persisted status-like API fields, including `tasks.mode`,
-`tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `runs.kind`,
+Other persisted status-like API fields, including `tasks.mode`, `runs.kind`,
 `runs.status`, `user_judgments.status`, and `evidence_summaries.status`, validate
 against [API Schema Core](api/schema-core.md#current-mvp-value-sets) and the
 Core/API method owners. Storage may index and constrain them, but this page does
@@ -337,10 +339,12 @@ Unknown `surfaces.local_access_posture` or `surfaces.status` values are invalid.
 derived from stable identifiers such as `judgment_kind` and locale.
 
 `tasks.lifecycle_phase`, `tasks.close_reason`, and `tasks.result` store separate
-Core concepts. `tasks.lifecycle_phase` must not store `intake`; terminal
-lifecycle values are `completed`, `cancelled`, and `superseded`.
-`tasks.result` must not store `failed`; failed Runs, projections, artifacts,
-validators, evidence gaps, and close blockers remain in their owning records.
+Core concepts. `CloseTaskResponse.close_state` is response-level close status,
+not a persisted `tasks` column. `tasks.lifecycle_phase` must not store `intake`;
+terminal lifecycle values are `completed`, `cancelled`, and `superseded`.
+`tasks.result` must not store `passed` or `failed`; failed Runs, projections,
+artifacts, validators, evidence gaps, blocked closes, and close blockers remain
+in their owning records or current Task state.
 When committed supersession changes the active pointer, `project_state.active_task_id`
 must follow the `harness.close_task` `superseding_task_id` rule and must not
 continue pointing at the superseded Task.

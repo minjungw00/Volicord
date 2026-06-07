@@ -132,7 +132,7 @@ GuaranteeDisplay:
   notes: string[]
 ```
 
-`StateSummary.mode`는 지속 저장되는 `tasks.mode`를 그대로 보여 주며 항상 구체적 Task `mode`입니다. `auto`는 저장되는 `mode`, 표시되는 Task `mode`, 상태 요약의 `mode`가 아닙니다. `StateSummary.lifecycle_phase`는 지속 저장되는 `Task.lifecycle_phase`를 그대로 보여줍니다. `intake`는 API 메서드이자 시작 처리 단계이지 생명주기 값이 아닙니다. 종료 `lifecycle_phase` 값은 `completed`, `cancelled`, `superseded`입니다. 특히 `superseded`는 Task가 다른 Task나 경로로 대체되어 다시 활성 작업으로 돌아가지 않는다는 뜻입니다. `StateSummary.result`는 큰 단위의 `Task.result`를 보여줍니다. 실행 실패, `violation`, 증거 공백, 차단 사유는 `RunSummary.status`, 증거 상태, 차단 사유, 현재 Task 상태에 남고 Task의 종료 결과가 되지 않습니다. 이 문서의 `passed`와 `failed`는 `StateSummary.gates.*` 또는 `ValidatorResult.status` 값일 때만 활성이며 `Task.result` 값이 아닙니다.
+`StateSummary.mode`는 지속 저장되는 `tasks.mode`를 그대로 보여 주며 항상 구체적 Task `mode`입니다. `auto`는 저장되는 `mode`, 표시되는 Task `mode`, 상태 요약의 `mode`가 아닙니다. `StateSummary.lifecycle_phase`는 지속 저장되는 `Task.lifecycle_phase`를 그대로 보여줍니다. `intake`는 API 메서드이자 시작 처리 단계이지 생명주기 값이 아닙니다. 종료 `lifecycle_phase` 값은 `completed`, `cancelled`, `superseded`입니다. 특히 `superseded`는 Task가 다른 Task나 경로로 대체되어 다시 활성 작업으로 돌아가지 않는다는 뜻입니다. `StateSummary.close_reason`은 지속 저장되는 `Task.close_reason`을 그대로 보여줍니다. `StateSummary.result`는 큰 단위의 `Task.result`를 보여줍니다. 실패한 Run, `violation`, 차단된 닫기, 증거 공백, 차단 사유는 `RunSummary.status`, `CloseBlocker`, 증거 상태, 차단 사유, 현재 Task 상태에 남고 Task의 종료 결과가 되지 않습니다. 이 문서의 `passed`와 `failed`는 `StateSummary.gates.*` 또는 `ValidatorResult.status` 값일 때만 활성이며 `Task.result` 값이 아닙니다.
 
 Task `mode` 값은 독자에게 다음 뜻으로 설명됩니다.
 
@@ -485,7 +485,7 @@ policy_override
 | `StateSummary.mode`와 지속 저장되는 `tasks.mode` | `advisor`, `direct`, `work` |
 | `Task.lifecycle_phase`와 `StateSummary.lifecycle_phase` | `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded` |
 | `Task.result`와 `StateSummary.result` | `none`, `advice_only`, `completed`, `cancelled`, `superseded` |
-| `StateSummary.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` |
+| `Task.close_reason`과 `StateSummary.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` |
 | `StatusResponse.close_state` | `none`, `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
 | `CloseTaskResponse.close_state` | `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
 | `StateSummary.assurance_level` | `none`, `self_checked` |

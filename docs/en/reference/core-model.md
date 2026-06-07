@@ -142,11 +142,12 @@ The lifecycle is a Core state-transition discipline, not a display script. Activ
 - Idempotency replay must not duplicate state transitions, events, Write Authorizations, Runs, artifacts, evidence updates, or close effects.
 - Dry-run calls describe possible outcomes but create no authoritative state, no consumable Write Authorization, no artifact, no close state, and no replay row.
 
-Shaping lifecycle values have these active meanings:
+Open lifecycle values have these active meanings:
 
 - `shaping`: the request is not yet writable. Core has a Task, but the minimum shaping information is still incomplete, ambiguous, stale, or not yet represented as an active Change Unit for write-capable work.
-- `waiting_user`: progress is waiting on a specific user-owned judgment before the next safe action. Non-blocking curiosity questions may be parked for later, but they are not active blockers and do not require `waiting_user`.
 - `ready`: the Task has enough current scope to proceed. For write-capable work, this means there is an active Change Unit and the next safe action may move toward `prepare_write`; it is still not Write Authorization.
+- `executing`: the Task is in an active work or observation step whose result must be recorded through the owner path before close can rely on it.
+- `waiting_user`: progress is waiting on a specific user-owned judgment before the next safe action. Non-blocking curiosity questions may be parked for later, but they are not active blockers and do not require `waiting_user`.
 - `blocked`: a system, scope, capability, evidence, recovery, close, or other active blocker prevents honest progress until the named unblocker is addressed.
 
 The diagram below is a compact aid for the active lifecycle transitions above. It does not add lifecycle values or replace the rules in this section.
@@ -230,7 +231,7 @@ Close-related fields are separate contracts:
 | `Task.lifecycle_phase` | Persisted lifecycle position: `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded`. |
 | `CloseTaskResponse.close_state` | Response-level close status: `ready`, `blocked`, `closed`, `cancelled`, `superseded`. It is not the persisted lifecycle field. |
 | `Task.close_reason` | Persisted close detail: `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded`. |
-| `Task.result` | Coarse task outcome: `none`, `advice_only`, `completed`, `cancelled`, `superseded`. It is not a Run status, validator result, evidence status, or blocker. |
+| `Task.result` | Coarse task outcome: `none`, `advice_only`, `completed`, `cancelled`, `superseded`. A failed Run, violation, blocked close, or evidence gap stays in Run status, `CloseBlocker`, evidence state, or current Task state, not a terminal Task result. |
 
 MVP close must keep later assurance and design-policy material out of active response semantics. `design_gate`, `CloseBlocker.category=design_policy`, `verification_gate`, `qa_gate`, detached verification, `completed_verified`, detailed Manual QA close fields, full Evidence Manifest behavior, and assurance display detail are later candidate behavior unless their owners explicitly activate them.
 
