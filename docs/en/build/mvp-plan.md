@@ -5,8 +5,6 @@ Use this as the single Build entry point before server coding. It records reposi
 Build docs are planning guidance only. They do not define exact schemas, DDL, API request/response shapes, storage tables, projection template bodies, fixture formats, or security guarantees. Those contracts stay with the Reference owners linked below.
 
 <a id="documentation-acceptance-status"></a>
-<a id="maintainer-handoff-summary"></a>
-<a id="repository-status"></a>
 ## Repository status
 
 This repository is documentation-only and remains in documentation review. It is source material for a future Harness Server; it is not a Harness Server implementation, Harness Runtime Home, Product Repository, runtime record store, or implementation-complete behavior.
@@ -32,8 +30,6 @@ Server coding must not begin until maintainers resolve, accept, or explicitly de
 - Default pre-tool blocking.
 - Active operations profile.
 
-<a id="main-idea"></a>
-<a id="active-current-mvp"></a>
 ## Active MVP slice
 
 The active MVP is the smallest user work loop that proves the product thesis: Harness is a local authority record for scope, user-owned judgment, evidence, verification expectations, close readiness, and residual-risk visibility. It is not a prompt pack and not an enforcement sandbox.
@@ -54,7 +50,6 @@ The active slice includes:
 
 Current MVP wording is cooperative with limited detective visibility. It must not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, or security isolation.
 
-<a id="excluded-later-material"></a>
 ## Excluded later material
 
 The following material stays outside the active MVP unless an owner document promotes a narrow behavior with scope, fallback behavior, and proof expectations:
@@ -67,7 +62,6 @@ The following material stays outside the active MVP unless an owner document pro
 
 Reference-schema presence does not expand the active MVP. Required fields apply only when the owning tool, record, or promoted later candidate is active or actually used.
 
-<a id="first-internal-smoke-target"></a>
 ## First internal smoke target
 
 The first internal smoke target is not the product MVP and not a conformance runner. It is the narrowest planned check that can exercise the Core record/state-transition path before the user-facing loop is broadened.
@@ -85,7 +79,6 @@ It should show:
 
 This smoke target may use an owner-valid setup or seed path instead of ordinary-language intake. It does not require generated runtime reports, full projection rendering, a dashboard, hosted UI, active operations profile, executable fixtures, or broad connector support.
 
-<a id="user-work-loop"></a>
 ## User work loop
 
 The user work loop starts or resumes ordinary work without requiring the user to know Harness internal labels. The loop should clarify what the user wants, what the repository or Harness state can support, what remains uncertain, and what judgment the user still owns.
@@ -94,7 +87,6 @@ MVP shaping persists only through active Task, scope/Change Unit, and user judgm
 
 The next safe action must remain visible. If Core, MCP, or the reference surface cannot support a claim, status must say so instead of fabricating authority.
 
-<a id="request-to-close-path"></a>
 ## Request-to-close path
 
 1. The user asks for work in ordinary language.
@@ -107,8 +99,6 @@ The next safe action must remain visible. If Core, MCP, or the reference surface
 `compatible`, `blocked`, and `allowed` are Harness record-compatibility results. They do not mean physical OS blocking, arbitrary-tool prevention, sandbox isolation, or permission isolation unless a future promoted mechanism proves that exact behavior.
 
 <a id="implementation-decisions-before-server-coding"></a>
-<a id="implementation-decisions-needed-before-server-coding"></a>
-<a id="implementation-decisions-still-open"></a>
 ## Implementation decisions before server coding
 
 Server coding must not begin until each row is accepted, decided, or deferred with explicit scope impact by maintainers.
@@ -122,11 +112,6 @@ Server coding must not begin until each row is accepted, decided, or deferred wi
 | Security and local-access acceptance | Not accepted for coding. | The local-only posture and cooperative/limited-detective security guarantee wording must be accepted before API/MCP exposure. MVP must not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, or security isolation. |
 | Surface and compact-output acceptance | Not accepted for coding. | The one reference `capability_profile`, compact user-facing views, compact agent-facing packet, freshness/unavailable behavior, and projection-as-derived-read boundary must be accepted before display or connector code is implemented. |
 
-<a id="reference-owners"></a>
-<a id="active-mvp-owner-docs"></a>
-<a id="api-docs-needed-for-active-mvp"></a>
-<a id="storage-docs-needed-for-active-mvp"></a>
-<a id="security-guarantees-for-active-mvp"></a>
 ## Reference owners
 
 Build summarizes sequence and scope only. Use these Reference owners for exact contracts:
@@ -147,9 +132,6 @@ Build summarizes sequence and scope only. Use these Reference owners for exact c
 | Official terminology | [Glossary Reference](../reference/glossary.md). |
 | Later candidates and promotion rule | [Later Candidate Index](../later/index.md). |
 
-<a id="implementation-readiness-criteria"></a>
-<a id="exit-checklist"></a>
-<a id="exit-criteria-for-documentation-planning"></a>
 ## Exit criteria for documentation planning
 
 Documentation planning can exit only when maintainers explicitly confirm:

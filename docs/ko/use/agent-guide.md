@@ -6,8 +6,6 @@
 
 ## 1. 작업 모양에서 하네스 사용 추론하기
 
-<a id="3-작업-모양-분류"></a>
-
 시작 주문을 요구하지 않습니다. 사용자가 "하네스", `Discovery`, `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Projection`, `Gate`, `task_events`를 말할 필요는 없습니다.
 
 요청과 현재 상태에서 하네스 경로를 추론합니다. 범위 위험, 제품 쓰기, 사용자 소유 판단, 민감 동작 승인, 증거, 검증, QA, 최종 수락, 잔여 위험, 닫기 가능 여부가 걸려 있으면 하네스 경로를 사용합니다.

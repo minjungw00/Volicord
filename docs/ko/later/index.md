@@ -4,7 +4,6 @@
 
 아래 행은 계획 후보일 뿐입니다. 현재 MVP 요구사항, 활성 API/schema 계약, fixture 본문, template 본문, 런타임 동작, 구현 작업, 생성 산출물, 수락 증거, 런타임 작업 시작 허가가 아닙니다. 원칙은 간단합니다: 후보는 승격 전까지 동작하지 않는다.
 
-<a id="boundary"></a>
 ## 1. 경계
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
@@ -14,7 +13,6 @@
 | 후보 권한 | 이름만 있는 후보 | 승격된 담당 문서에서 담당 문서 지정과 API, schema, storage, 보안, 적합성, 증거에 생기는 정확한 효과를 정해야 합니다. | 승격 전까지 없음 |
 | 한영 문서 동시 유지 | 대응 active 문서 | 의미가 바뀌면 영어와 한국어를 같은 작업 묶음에서 함께 고칩니다. | 문서상 후보일 뿐임 |
 
-<a id="promotion-rule"></a>
 ## 2. 승격 규칙
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
@@ -26,7 +24,6 @@
 | active 범위 상속 | 기본적으로 비활성 | 승격이 현재 MVP나 더 이른 smoke 목표에 근거 없는 요구사항을 더하지 않는다는 증명이 필요합니다. | 현재 MVP에 영향을 주면 안 됨 |
 | 대체 불가 경계 | 필요한 경계 | Core 상태, 사용자 판단, 증거, 검증, Manual QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태는 계속 분리합니다. | 없음 |
 
-<a id="assurance-candidates"></a>
 ## 3. 보증 후보
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
@@ -53,7 +50,6 @@
 | Projection refresh and freshness diagnostics | later 후보 | Projection 담당 문서가 Projection이 비권위 상태 보기로 남는 동작을 정해야 합니다. | 승격 전까지 없음 |
 | Future conformance run entrypoint | 런타임 fixture 이후의 later 후보 | runner, suite, assertion, API/storage/event/artifact/error, 보고 계약이 필요합니다. | 승격 전까지 없음 |
 
-<a id="later-api-candidates"></a>
 ## 5. Later API 후보
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
@@ -93,7 +89,6 @@
 |---|---|---|---|
 | Intake and decision routing; Core, evidence, verification, and close; Artifact redaction and export non-leakage; Agency and user-judgment separation; Connector capability honesty; Design-quality and stewardship; Context hygiene and resume freshness; Projection, reconcile, and verification boundary; Operations diagnostics, export, recover, and handoff; Browser QA Capture | 향후 fixture 계열 이름만 있음 | 적합성 담당 문서 지정, 정확한 fixture 형태, assertion, payload/API/storage/error 영향, 증명 기대치가 필요합니다. | 승격 전까지 없음 |
 
-<a id="broad-future-candidates"></a>
 ## 9. 넓은 향후 후보
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |
@@ -108,7 +103,6 @@
 | Advanced exports, release/deployment/canary/rollback/merge/production-monitoring automation | later 후보 | 별도 담당 범위가 필요합니다. 명시적으로 승격하기 전까지 배포와 production 권한은 외부에 남습니다. | 승격 전까지 없음 |
 | Advanced validators and language or interface checks | later 후보 | Validator 담당 문서가 정확한 ID, severity, waiver, fixture 동작을 정해야 합니다. | 승격 전까지 없음 |
 
-<a id="explicitly-retired-material"></a>
 ## 10. 명시적으로 제거한 상세 자료
 
 | 후보 | 상태 | 승격 조건 | 현재 MVP 영향 |

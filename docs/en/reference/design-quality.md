@@ -1,6 +1,5 @@
 # Design Quality
 
-<a id="owns-does-not-own"></a>
 ## 1. Owns / Does not own
 
 This Reference page owns the active current MVP design-quality boundary: how design-quality findings may affect gates, close blockers, waivers, and evidence expectations without becoming Core invariants.
@@ -24,7 +23,6 @@ It does not own:
 
 Documentation in this repository remains planning source material. It does not mean a Harness Server, runtime state, generated evidence, QA record, Acceptance record, residual-risk record, or close record exists here today.
 
-<a id="active-current-mvp-design-quality-role"></a>
 ## 2. Active current MVP design-quality role
 
 Active current MVP design quality is a narrow routing layer. It makes close-relevant quality findings visible, then routes each finding through an existing owner path. It does not create new Core state, new gates, new schemas, new validator result fields, or a separate design-review authority.
@@ -39,7 +37,6 @@ The active role is limited to these effects:
 
 Design quality must not turn ordinary work into an open-ended planning loop. Full domain-language audits, full module/interface review, full TDD trace, full feedback-loop audit, full codebase-stewardship review, detailed Manual QA policy, detached verification, two-stage review displays, and steward policies are not active current MVP blockers unless another active owner path explicitly requires a narrow piece of that work.
 
-<a id="finding-severity"></a>
 ## 3. Finding severity
 
 `ValidatorResult.findings.severity` is owned by [API Schema Core](api/schema-core.md#validatorresult). Design Quality interprets severity only for the visible next action and possible close impact.
@@ -75,7 +72,6 @@ Active current MVP blocker conditions:
 
 A finding does not block close merely because it mentions domain language, vertical slice shape, TDD, module/interface review, stewardship, Manual QA, detached verification, review stages, or a future policy family. Those may produce an advisory next action, an evidence request, a focused user judgment, or a residual-risk marker only when an active owner path needs that narrow action.
 
-<a id="waiver-boundary"></a>
 ## 5. Waiver boundary
 
 A design-quality waiver can affect only a design-quality expectation that the active owner path allows to be waived. It must be explicit, scoped to the affected Task/Change Unit or finding, and recorded through the relevant user-judgment or owner path when the decision belongs to the user.
@@ -99,7 +95,6 @@ Keep the judgment routes separate:
 
 Broad approval, a friendly "looks good", or a general go-ahead must not be treated as any of these judgments unless the active owner path asked for that specific judgment.
 
-<a id="evidence-expectation"></a>
 ## 6. Evidence expectation
 
 Design-quality evidence expectations are narrow and close-relevant. A finding should ask for evidence only when the active owner path needs support for a claim that affects write safety, close readiness, user judgment, residual risk, or guarantee honesty.
@@ -114,7 +109,6 @@ Useful evidence references can include:
 
 Chat assertions, generic summaries, rendered projection prose, unregistered files, screenshots without an owner path, passing tests alone, QA waiver, final acceptance, or residual-risk acceptance do not automatically satisfy required evidence. Required evidence can block close only through the Core evidence owner path. Non-required evidence gaps should be routed as `request evidence`, `show advisory next action`, or residual-risk visibility as appropriate.
 
-<a id="validator-id-boundary"></a>
 ## 7. Validator ID boundary
 
 Validator IDs are reporting labels. They do not create Core invariants, gates, close blockers, waivers, evidence records, or user judgments.
@@ -123,7 +117,6 @@ Validator IDs are reporting labels. They do not create Core invariants, gates, c
 
 This document does not publish a full policy-to-validator mapping. If a current or future validator result reports a design-quality finding, close impact still comes from [When a finding blocks close](#when-a-finding-blocks-close) and the relevant Core/API owner path, not from the validator ID alone.
 
-<a id="later-policy-catalog-boundary"></a>
 ## 8. Later policy catalog boundary
 
 The full design-quality policy catalog is not active current MVP scope. Future policy families, steward policies, detailed review displays, operations/reporting candidates, full validator mappings, and future conformance fixtures stay in [Later Candidate Index](../later/index.md) until a named owner promotes a narrow behavior with scope, fallback behavior, exact contracts, and proof expectations.

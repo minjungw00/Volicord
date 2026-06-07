@@ -126,8 +126,6 @@ Do not expand `secret_omitted`, `blocked`, unavailable, or redacted artifact bod
 
 A displayed `ArtifactRef` is a pointer to a registered artifact record. It is not, by itself, evidence sufficiency, verification, QA, final acceptance, residual-risk acceptance, or close readiness. If the ref lacks owner relation, integrity metadata, redaction state, or availability needed for the claim, show the gap.
 
-<a id="active-mvp-view-set"></a>
-<a id="active-mvp-template-set"></a>
 ## Active current MVP template set
 
 The active current MVP template set is exactly:

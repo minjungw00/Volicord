@@ -17,8 +17,6 @@ This document describes future Harness Server behavior for planning and review. 
 | Security guarantee meanings | [Security Reference](../security.md) |
 | Future API/schema candidates | [Later Candidate Index](../../later/index.md#later-schema-candidates) |
 
-<a id="schema-notation-convention"></a>
-
 ## Schema Notation Convention
 
 The YAML-like blocks in this document are normative schema notation, not examples unless marked as examples.
@@ -82,8 +80,6 @@ EventRef:
 ```
 
 `ToolResponseBase.state_version` is the resulting affected-scope version for a committed mutation, or the current readable/would-be affected version for read-only and dry-run responses. `dry_run=true` creates no current records, events, artifacts, evidence summaries, Write Authorizations, close state, or idempotency replay rows.
-
-<a id="shared-schemas"></a>
 
 ## State Summary
 
@@ -446,7 +442,6 @@ model_or_prompt_policy_change
 policy_override
 ```
 
-<a id="stage-specific-active-value-sets"></a>
 <a id="current-mvp-value-sets"></a>
 
 ## Current MVP Value Sets

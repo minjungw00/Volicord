@@ -6,8 +6,6 @@ This is Use documentation. It is not a connector contract, schema reference, tem
 
 ## 1. Infer Harness Use From Task Shape
 
-<a id="3-classify-the-work-shape"></a>
-
 Do not require a startup phrase. Users do not need to say "Harness," `Discovery`, `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Projection`, `Gate`, or `task_events`.
 
 Infer Harness use from the request and current state. Use the Harness path when the work involves scope risk, product writes, user-owned judgment, sensitive action approval, evidence, verification, QA, final acceptance, residual risk, or close readiness.

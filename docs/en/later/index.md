@@ -4,7 +4,6 @@ This is the single active index for later candidates and promotion boundaries.
 
 Rows here are planning candidates only. They are not active MVP requirements, active API or schema contracts, fixture bodies, template bodies, runtime behavior, implementation tasks, generated artifacts, acceptance evidence, or permission to start runtime work. A candidate remains inert until explicitly promoted.
 
-<a id="boundary"></a>
 ## 1. Boundary
 
 | Candidate | Status | Promotion requires | Active MVP impact |
@@ -14,7 +13,6 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | Candidate authority | names only | Owner assignment plus exact API, schema, storage, security, conformance, or evidence effects in the promoted owner path. | none until promoted |
 | Bilingual parity | paired active docs | Same-batch semantic updates for English and Korean. | documentation only |
 
-<a id="promotion-rule"></a>
 ## 2. Promotion Rule
 
 | Candidate | Status | Promotion requires | Active MVP impact |
@@ -26,7 +24,6 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | Active-scope inheritance | disabled by default | Proof that promotion does not add unsupported requirements to the active MVP or earlier smoke target. | must not affect active MVP |
 | Non-substitution | required boundary | Core state, user judgment, evidence, verification, Manual QA, final acceptance, residual-risk acceptance, and close readiness stay separate. | none |
 
-<a id="assurance-candidates"></a>
 ## 3. Assurance Candidates
 
 | Candidate | Status | Promotion requires | Active MVP impact |
@@ -53,7 +50,6 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | Projection refresh and freshness diagnostics | later candidate | Projection owner behavior that keeps projections non-authoritative. | none until promoted |
 | Future conformance run entrypoint | later candidate after runtime fixtures exist | Runner, suite, assertion, API/storage/event/artifact/error, and reporting contracts. | none until promoted |
 
-<a id="later-api-candidates"></a>
 ## 5. Later API Candidates
 
 | Candidate | Status | Promotion requires | Active MVP impact |
@@ -93,7 +89,6 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 |---|---|---|---|
 | Intake and decision routing; Core, evidence, verification, and close; Artifact redaction and export non-leakage; Agency and user-judgment separation; Connector capability honesty; Design-quality and stewardship; Context hygiene and resume freshness; Projection, reconcile, and verification boundary; Operations diagnostics, export, recover, and handoff; Browser QA Capture | fixture family names only | Conformance owner assignment, exact fixture shape, assertions, payload/API/storage/error effects, and proof expectations. | none until promoted |
 
-<a id="broad-future-candidates"></a>
 ## 9. Broad Future Candidates
 
 | Candidate | Status | Promotion requires | Active MVP impact |
@@ -108,7 +103,6 @@ Rows here are planning candidates only. They are not active MVP requirements, ac
 | Advanced exports, release/deployment/canary/rollback/merge/production-monitoring automation | later candidate | Separate owner scope; deployment and production authority remain external unless explicitly promoted. | none until promoted |
 | Advanced validators and language or interface checks | later candidate | Validator owner rules for exact IDs, severity, waiver, and fixture behavior. | none until promoted |
 
-<a id="explicitly-retired-material"></a>
 ## 10. Explicitly Retired Material
 
 | Candidate | Status | Promotion requires | Active MVP impact |

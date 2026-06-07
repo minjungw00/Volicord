@@ -18,8 +18,6 @@ Product Repository의 파일은 하네스 기준 상태가 아닙니다. 제품 
 
 이 문서 저장소도 사용자의 Product Repository가 아닙니다. 이 저장소는 문서 전용 계획 저장소입니다. 문서 수락과 별도의 구현 계획 준비 결정 이후에 향후 Harness Server source repository가 되는 것을 목표로 합니다.
 
-<a id="2-harness-server--installation"></a>
-
 ## 2. Harness Server / Installation
 
 Harness Server / Installation은 향후 로컬 하네스 프로그램 경계입니다. 로컬 tool/resource 호출을 받고, Core가 소유한 권한 확인을 실행하며, Core를 통해 상태 변경 action을 기록합니다. 활성 담당 경로가 요구할 때 validator를 호출하고, artifact를 등록하며, Projection 지원이 범위에 있을 때 파생 표시를 렌더링합니다.

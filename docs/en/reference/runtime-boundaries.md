@@ -18,8 +18,6 @@ The Product Repository may contain generated readable outputs when an active pro
 
 This documentation repository is also not the user's Product Repository. It is a documentation-only planning repository intended to become the future Harness Server source repository after documentation acceptance and a separate implementation-planning readiness decision.
 
-<a id="2-harness-server--installation"></a>
-
 ## 2. Harness Server / Installation
 
 The Harness Server / Installation is the future local Harness program boundary. It receives local tool/resource calls, runs Core-owned authority checks, records state-changing actions through Core, invokes validators where the active profile requires them, registers artifacts, and renders derived display when projection support is in scope.

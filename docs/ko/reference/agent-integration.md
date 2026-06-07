@@ -33,11 +33,7 @@
 
 이 문서의 접점 구성 메모는 통합 지침입니다. Core 상태 권한, Write Authorization, 증거, 검증, QA, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 닫기 준비 상태를 만들지 않고, later 후보를 active 의무로 바꾸지 않으며, 새로운 보안 권한 경계를 만들지 않습니다.
 
-<a id="role-lens-behavior"></a>
-
 Role Lens가 쓰일 때 그 출력은 읽기 전용 검토 자세 안내입니다. Role Lens는 판단 요청, 증거 수집, 검증, 수동 QA, 민감 동작 승인, 잔여 위험 처리, 범위 업데이트, 다음 playbook을 추천할 수 있습니다. 하지만 담당 API/Core 경로가 실제 행동을 기록하기 전까지 추천에는 권한이 없습니다.
-
-<a id="capability-profiles"></a>
 
 ## 2. `capability_profile`
 
@@ -69,8 +65,6 @@ capability_profile:
 
 접점 버전, MCP 설정, hook, permission, 작업공간 정책, generated file, managed block, capture path, QA capture path, redaction policy, artifact retention, local access posture, guard wrapper, isolation wrapper, 적합성 근거가 바뀌면 `capability_profile`을 갱신합니다.
 
-<a id="generated-manifest-expectations"></a>
-
 Generated rule, skill, MCP snippet, adapter file, managed block에는 connector manifest가 필요합니다. Manifest는 generated path, managed block id와 hash, MCP exposure posture, 표시해도 안전한 handle, profile freshness, drift, 대체 동작을 기록합니다. Raw token, secret, private config value, blocked payload byte, canonical Task state는 저장하지 않습니다.
 
 ## 3. 보장 수준
@@ -98,8 +92,6 @@ Reference local MCP profile은 `cooperative` 동작과, changed-path 또는 arti
 Guard, freeze, careful-mode label은 실제 `capability_profile` 위에 놓이는 표시 label입니다. 무엇을 실행 전에 실제로 멈출 수 있고 무엇은 나중에만 감지할 수 있는지 말해야 합니다. 이것들은 민감 동작 승인, 검증, QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태, Core gate가 아닙니다.
 
 현재 MVP가 문서화하지 않은 보안 보장을 주장하지 않습니다. 하네스는 기본 OS 권한, 임의 도구 샌드박스, 변조 방지 로컬 파일, 도구 실행 전 차단, 보안 격리를 제공하지 않습니다.
-
-<a id="context-pushpull-principles"></a>
 
 ## 4. 맥락 주입 / 필요할 때 가져오기
 
@@ -172,8 +164,6 @@ Reference 자료 전체, 전체 스키마, 전체 DDL, Projection 본문 전체,
 
 판단 기록은 증거, 검증, 수동 QA, 최종 수락, 잔여 위험, 닫기 준비 상태와 분리됩니다. 어느 하나도 다른 하나를 대신하지 않습니다.
 
-<a id="8-fallback-behavior"></a>
-
 ## 8. 대체 동작
 
 대체 동작은 접점 이름이나 브랜드가 아니라 보장 수준과 위험으로 설명합니다.
@@ -210,8 +200,6 @@ Projection staleness는 Core state와 분리됩니다. 커넥터가 current Core
 
 일반 Core 규칙, public API schema, Reference 문서 전체, 향후 커넥터 확장 구상, 호스팅 에이전트 가정, 감사 메모, 관련 없는 later 후보 항목, Projection 본문 전체, 긴 설정 튜토리얼을 넣지 않습니다. 구성 메모가 later 자료를 가리킬 수는 있지만, 그 자료를 active MVP 필수사항으로 만들면 안 됩니다.
 
-<a id="reference-local-surface"></a>
-
 Reference local MCP 구성 메모:
 
 ```yaml
@@ -236,8 +224,6 @@ conformance_smoke_status: planned_not_run
 ```
 
 `pre_tool_blocking_supported=false`이므로 "hold" 표현은 협력형 범위 규율과, 가능할 때의 탐지형 changed-path validation을 뜻합니다. 예방적 guard 동작이 아닙니다.
-
-<a id="connector-conformance-overview"></a>
 
 ## 10. 커넥터 적합성 경계
 

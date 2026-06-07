@@ -26,8 +26,6 @@ This document does not own:
 
 Exact API request fields and storage table definitions may be named here only by reference. Core state values are discussed only when needed to explain authority and transition meaning.
 
-<a id="kernel-invariants"></a>
-
 ## 2. Kernel invariants
 
 1. Core-owned state is canonical for Harness operations; chat, reports, generated Markdown, status cards, projections, and template output are derived or contextual.
@@ -41,8 +39,6 @@ Exact API request fields and storage table definitions may be named here only by
 9. Evidence, verification, Manual QA, final acceptance, residual-risk visibility, residual-risk acceptance, and close readiness do not substitute for one another.
 10. `close_task` must return blockers instead of a successful close while close-relevant blockers remain; known residual risk must be visible before a successful close path depends on it.
 11. Active current MVP scope and later candidate material stay separate. A later candidate becomes active only when its owner promotes it with scope, fallback behavior, and proof expectations.
-
-<a id="entity-model"></a>
 
 ## 3. Entity model
 
@@ -66,8 +62,6 @@ Discovery and requirement shaping persist through Task, Change Unit, and `user_j
 
 Findings from commands, Runs, reviews, validators, diagnostics, QA, or verification affect Core only when routed through an active owner path such as blocker, evidence summary, user judgment, Change Unit update, or close blocker. A finding left in chat or report prose is not state.
 
-<a id="judgment-route-boundaries"></a>
-
 ## 4. User-owned judgment boundaries
 
 User-owned judgment is the boundary where Harness must ask or preserve the user's choice instead of inferring it. The exact `UserJudgment` schema and API fields live in [API Schema Core](api/schema-core.md) and [MVP API](api/mvp-api.md); this section owns the meaning of the boundaries.
@@ -86,9 +80,6 @@ The judgment kinds stay distinct:
 
 Ambiguous consent is narrow. "Go ahead", "looks good", or similar broad approval cannot silently satisfy another judgment kind. One user reply may satisfy multiple judgment routes only when the prompt explicitly asked those distinct questions and Core records each compatible judgment with its affected object, scope, consequence, and close or write impact.
 
-<a id="boundaries-and-non-substitutions"></a>
-<a id="evidence-verification-qa-final-acceptance-and-risk"></a>
-
 ## 5. Non-substitution rules
 
 Core must preserve these separations:
@@ -105,9 +96,6 @@ Core must preserve these separations:
 
 These rules apply even when a user-facing surface compresses the display. Compact output can be friendly, but it must not collapse authority boundaries.
 
-<a id="gates"></a>
-<a id="gate-rule-map"></a>
-
 ## 6. Gates
 
 Gates are Core compatibility dimensions for progress, write, run recording, and close. A gate can exist in the reference model without being required for every Task. The active owner path, user request, task type, policy, sensitivity, and explicit requirements decide requiredness.
@@ -123,8 +111,6 @@ Gates are Core compatibility dimensions for progress, write, run recording, and 
 - <a id="capability-boundary"></a>Capability Boundary: surface capability affects blockers, validator findings, and guarantee display, but it is not a gate that creates authority. Missing capability must narrow the claim, hold the action through the owner path, or produce a capability blocker rather than pretending verification or prevention happened.
 
 Gate state exposure in public responses is owned by [API Schema Core](api/schema-core.md) and method owners. Core owns the compatibility meaning and the rule that stale gate summaries must be recomputed before write or close relies on them.
-
-<a id="lifecycle-and-transitions"></a>
 
 ## 7. Task lifecycle
 
@@ -179,8 +165,6 @@ MVP close must keep later assurance material out of active response semantics. D
 
 Cancellation and supersession are honest terminal paths, not successful completion. Risk-accepted close is successful close with named accepted risk; it is not verified close and not no-risk close.
 
-<a id="invalid-state-combinations"></a>
-
 ## 11. Blockers
 
 Blockers are structured reasons a transition cannot proceed honestly. They can block progress, a write, Run recording, or close. They should name the affected Task or Change Unit when available, the category, the missing or incompatible condition, related refs, and the next safe action.
@@ -188,8 +172,6 @@ Blockers are structured reasons a transition cannot proceed honestly. They can b
 Common blocker categories include missing active Task, missing active scope, out-of-scope write intent, unresolved user-owned judgment, missing sensitive-action approval, incompatible Autonomy Boundary, insufficient surface capability, missing or invalid Write Authorization, stale baseline, missing evidence, stale or unavailable artifact support, active design-policy blocker, missing final acceptance, hidden residual risk, unaccepted close-relevant residual risk, unsafe open Run, cancellation conflict, and supersession conflict.
 
 Invalid state combinations must become blockers, rejections, or repair paths. They must not be papered over by projection prose, broad approval, a waiver that does not apply, or a close result that hides the conflict.
-
-<a id="waiver-semantics"></a>
 
 ## 12. Waivers
 

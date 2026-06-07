@@ -33,11 +33,7 @@ This reference does not own:
 
 Surface recipes in this document are integration guidance. They do not create Core state authority, Write Authorization, evidence, verification, QA, sensitive-action approval, final acceptance, residual-risk acceptance, close readiness, active later-candidate obligations, or any new security boundary.
 
-<a id="role-lens-behavior"></a>
-
 Role Lens behavior, when present, is read-only posture guidance. A lens may recommend a judgment request, evidence collection, verification, Manual QA, sensitive-action permission, residual-risk handling, scope update, or next playbook, but the recommendation has no authority until an owner API/Core path records the underlying action.
-
-<a id="capability-profiles"></a>
 
 ## 2. Capability Profile
 
@@ -69,8 +65,6 @@ Exact public tool and resource contracts belong to the API owners. The connector
 
 Refresh the profile when the surface version, MCP configuration, hooks, permissions, workspace policy, generated files, managed blocks, capture path, QA capture path, redaction policy, artifact retention, local access posture, guard wrapper, isolation wrapper, or conformance basis changes.
 
-<a id="generated-manifest-expectations"></a>
-
 Generated rules, skills, MCP snippets, adapter files, and managed blocks need a connector manifest. The manifest records generated paths, managed block ids and hashes, MCP exposure posture, display-safe handles, profile freshness, drift, and fallback behavior. It must not store raw tokens, secrets, private config values, blocked payload bytes, or canonical Task state.
 
 ## 3. Guarantee Levels
@@ -98,8 +92,6 @@ The reference local MCP profile can display `cooperative` behavior and limited `
 Guard, freeze, and careful-mode labels are display labels over the actual profile. They must say what can actually stop before execution and what can only be detected later. They are not sensitive-action approval, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a Core gate.
 
 Do not claim current MVP security guarantees beyond the profile and owner docs. Harness does not provide default OS permissions, arbitrary-tool sandboxing, tamper-proof local files, pre-tool blocking, or security isolation.
-
-<a id="context-pushpull-principles"></a>
 
 ## 4. Context Push/Pull
 
@@ -208,8 +200,6 @@ Keep a recipe to:
 
 Do not include generic Core rules, public API schemas, full Reference docs, future connector ambitions, hosted-agent assumptions, audit notes, unrelated later candidate items, full projection bodies, or long setup tutorials. A recipe may point to later material only as later material; it must not make that material required for the active MVP.
 
-<a id="reference-local-surface"></a>
-
 Reference local MCP recipe:
 
 ```yaml
@@ -234,8 +224,6 @@ conformance_smoke_status: planned_not_run
 ```
 
 Because `pre_tool_blocking_supported=false`, "hold" language means cooperative scope discipline plus detective changed-path validation when available. It does not mean preventive guard behavior.
-
-<a id="connector-conformance-overview"></a>
 
 ## 10. Connector Conformance Boundary
 

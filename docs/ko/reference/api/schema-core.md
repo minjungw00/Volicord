@@ -17,8 +17,6 @@
 | 보안 보장 의미 | [보안 참조](../security.md) |
 | 향후 API/schema 후보 | [Later 후보 색인](../../later/index.md#later-schema-candidates) |
 
-<a id="schema-notation-convention"></a>
-
 ## 스키마 표기 규칙
 
 이 문서의 YAML 형식 표기는 예시라고 표시하지 않는 한 규범 스키마 표기입니다.
@@ -82,8 +80,6 @@ EventRef:
 ```
 
 `ToolResponseBase.state_version`은 committed mutation에서는 영향을 받은 범위의 resulting version이고, read-only와 dry-run 응답에서는 current readable version 또는 would-be affected version입니다. `dry_run=true`는 current record, event, artifact, evidence summary, Write Authorization, close state, idempotency replay row를 만들지 않습니다.
-
-<a id="shared-schemas"></a>
 
 ## StateSummary
 
@@ -446,7 +442,6 @@ model_or_prompt_policy_change
 policy_override
 ```
 
-<a id="stage-specific-active-value-sets"></a>
 <a id="current-mvp-value-sets"></a>
 
 ## 현재 MVP 값 집합

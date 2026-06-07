@@ -6,8 +6,6 @@ Use this reference for active current MVP public error codes, primary-error prec
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server.
 
-<a id="active-mvp-guarantee-and-status-taxonomy"></a>
-
 ## Current MVP Guarantee And Profile-Gated Claim Taxonomy
 
 `guarantee_display.level` uses the current MVP values `cooperative` and `detective` unless a promoted profile explicitly supports a profile-gated display value. Security meaning is owned by [Security Reference: Honest guarantee display](../security.md#honest-guarantee-display), and the exact value-set boundary is owned by [API Schema Core](schema-core.md#current-mvp-value-sets).

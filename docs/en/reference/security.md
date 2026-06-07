@@ -27,7 +27,6 @@ This document does not own:
 
 ## 2. Current MVP Guarantee Level
 
-<a id="guarantee-levels-by-stage"></a>
 <a id="honest-guarantee-display"></a>
 
 The current MVP guarantee level is cooperative by default, with limited detective behavior only where the active reference surface can honestly observe the relevant fact. The active reference surface is represented by a registered `capability_profile`; that profile constrains guarantee display and capability blockers, but it does not create write compatibility or a Write Authorization.

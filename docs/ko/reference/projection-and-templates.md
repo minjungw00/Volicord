@@ -126,8 +126,6 @@ human edit -> reconcile candidate -> explicit reconcile outcome -> Core state-ch
 
 표시된 `ArtifactRef`는 등록된 artifact record를 가리키는 포인터입니다. 그 자체가 증거 충분성, 검증, QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태는 아닙니다. Claim에 필요한 담당 관계, integrity metadata, redaction state, availability가 빠졌으면 공백을 보여줍니다.
 
-<a id="active-mvp-view-set"></a>
-<a id="active-mvp-template-set"></a>
 ## 활성 현재 MVP 템플릿 세트
 
 활성 현재 MVP 템플릿 세트는 정확히 아래 다섯 개입니다.
@@ -265,8 +263,6 @@ human edit -> reconcile candidate -> explicit reconcile outcome -> Core state-ch
 - 민감 동작 승인, 제품 판단, 기술 판단, 범위 판단, QA 면제 판단, 검증 위험 수락, 최종 수락, 잔여 위험 수락, 취소 판단을 하나의 넓은 승인 질문으로 합치지 않습니다.
 - "yes, do it", "진행해", "좋아" 같은 채팅 문구는 scope, `judgment_kind`, affected object, recorded user intent가 pending judgment와 맞을 때만 해당 gate를 만족합니다.
 - 표시되는 `유형` 라벨은 `judgment_kind`와 사용자 locale에서 렌더링합니다. 이 라벨은 표시 문구일 뿐이며, 기준 판단 범주는 `judgment_kind`입니다.
-
-<a id="run--evidence-summary-body"></a>
 
 ## 실행/증거 요약 본문
 

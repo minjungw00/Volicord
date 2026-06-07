@@ -6,9 +6,6 @@ This guide describes intended active user behavior for a future local Harness Se
 
 ## 1. Start in ordinary language
 
-<a id="first-read-path"></a>
-<a id="phrase-reference"></a>
-
 You should be able to ask for careful work in everyday terms:
 
 ```text
@@ -32,8 +29,6 @@ The agent should translate that into visible working context: the current goal, 
 You do not need to say `Discovery`, `Change Unit`, `Decision Packet`, `Write Authorization`, `Evidence Manifest`, `Projection`, `Gate`, or `task_events`. Those labels may appear only when they help explain a visible blocker, source reference, or owner contract.
 
 ## 2. Clarify scope before write
-
-<a id="what-the-agent-should-answer-first"></a>
 
 Before product files change, the agent should make the working scope plain:
 
@@ -67,8 +62,6 @@ Facts are things the agent can inspect, verify, or cite. User judgments are choi
 Harness preserves this boundary so the agent can recommend without replacing your judgment.
 
 ## 4. Ask one narrow judgment at a time
-
-<a id="judgment"></a>
 
 A useful judgment request asks for one decision and fits on one screen when possible. It should include:
 
@@ -120,8 +113,6 @@ A good sensitive-action prompt should name:
 Approving a dependency install does not mean the dependency is the right architecture. Approving a deployment command does not mean the product result is accepted. Approving secret access does not accept residual risk. Each of those needs its own judgment when relevant.
 
 ## 6. Record evidence after meaningful action
-
-<a id="the-four-display-groups"></a>
 
 After meaningful work, the agent should summarize what happened and what supports the claim. In owner terms, the active path may use `record_run` and evidence references when that path is available.
 

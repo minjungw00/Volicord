@@ -1,6 +1,5 @@
 # 설계 품질
 
-<a id="owns-does-not-own"></a>
 ## 1. 담당하는 것 / 담당하지 않는 것
 
 이 참조 문서는 활성 현재 MVP의 설계 품질 경계를 담당합니다. 설계 품질 발견 사항이 gate, 닫기 blocker, 면제, 증거 기대치에 영향을 줄 수 있는 시점을 설명하되, 이를 Core 불변 규칙처럼 만들지 않습니다.
@@ -24,7 +23,6 @@
 
 이 저장소의 문서는 계획용 자료입니다. 지금 이 저장소에 하네스 서버, 런타임 상태, 생성된 증거, QA record, Acceptance record, residual-risk record, close record가 있다는 뜻이 아닙니다.
 
-<a id="active-current-mvp-design-quality-role"></a>
 ## 2. 활성 현재 MVP 설계 품질 역할
 
 활성 현재 MVP에서 설계 품질은 좁은 라우팅 층입니다. 닫기에 영향을 주는 품질 발견 사항을 보이게 하고, 각 발견 사항을 기존 담당 경로로 보냅니다. 새 Core 상태, 새 gate, 새 schema, 새 validator result field, 별도 design-review authority를 만들지 않습니다.
@@ -39,7 +37,6 @@
 
 설계 품질은 평범한 작업을 끝없는 계획 반복으로 만들면 안 됩니다. 전체 domain-language 점검, 전체 module/interface review, 전체 TDD trace, 전체 feedback-loop audit, 전체 codebase-stewardship review, detailed Manual QA policy, detached verification, two-stage review display, steward policy는 다른 활성 담당 경로가 좁은 일부를 명시적으로 요구하지 않는 한 활성 현재 MVP blocker가 아닙니다.
 
-<a id="finding-severity"></a>
 ## 3. 발견 사항 심각도
 
 `ValidatorResult.findings.severity`는 [API Schema Core](api/schema-core.md#validatorresult)가 담당합니다. 설계 품질은 보이는 다음 행동과 가능한 닫기 영향에 필요한 범위에서만 심각도를 해석합니다.
@@ -75,7 +72,6 @@
 
 Finding이 domain language, vertical slice shape, TDD, module/interface review, stewardship, Manual QA, detached verification, review stage, 향후 정책 후보를 언급한다는 이유만으로 close를 차단하지 않습니다. 활성 담당 경로가 좁은 행동을 필요로 할 때만 조언성 다음 행동, 증거 요청, 집중된 사용자 판단, 잔여 위험 표시로 이어질 수 있습니다.
 
-<a id="waiver-boundary"></a>
 ## 5. 면제 경계
 
 설계 품질 면제는 활성 담당 경로가 면제를 허용하는 설계 품질 기대치에만 영향을 줄 수 있습니다. 면제는 명시적이어야 하고 affected Task/Change Unit 또는 발견 사항에 범위가 정해져야 하며, 판단이 사용자에게 속하면 관련 user-judgment 또는 담당 경로로 기록해야 합니다.
@@ -99,7 +95,6 @@ Finding이 domain language, vertical slice shape, TDD, module/interface review, 
 
 넓은 승인, "looks good" 같은 말, 일반적인 go-ahead는 활성 담당 경로가 그 특정 판단을 물은 경우가 아니라면 위 판단으로 취급하면 안 됩니다.
 
-<a id="evidence-expectation"></a>
 ## 6. 증거 기대치
 
 설계 품질의 증거 기대치는 좁고 닫기에 관련됩니다. 발견 사항은 활성 담당 경로가 쓰기 안전성, 닫기 준비 상태, 사용자 판단, 잔여 위험, 정직한 guarantee 표시에 영향을 주는 claim을 뒷받침해야 할 때만 증거를 요청해야 합니다.
@@ -114,7 +109,6 @@ Finding이 domain language, vertical slice shape, TDD, module/interface review, 
 
 채팅 주장, 일반 요약, 렌더링된 Projection prose, 등록되지 않은 파일, 담당 경로 없는 screenshot, 테스트 통과만 있는 상태, QA 면제, 최종 수락, 잔여 위험 수락은 필요한 증거를 자동으로 충족하지 않습니다. 필요한 증거는 Core evidence 담당 경로를 통해서만 close를 차단할 수 있습니다. Required가 아닌 evidence gap은 상황에 맞게 `request evidence`, `show advisory next action`, 또는 residual-risk visibility로 라우팅해야 합니다.
 
-<a id="validator-id-boundary"></a>
 ## 7. Validator ID 경계
 
 Validator ID는 보고용 라벨입니다. Core invariant, gate, 닫기 blocker, 면제, evidence record, user judgment를 만들지 않습니다.
@@ -123,7 +117,6 @@ Validator ID는 보고용 라벨입니다. Core invariant, gate, 닫기 blocker,
 
 이 문서는 전체 policy-to-validator mapping을 제공하지 않습니다. 현재 또는 향후 validator result가 설계 품질 발견 사항을 보고하더라도 close impact는 validator ID 자체가 아니라 [닫기 blocker가 되는 조건](#when-a-finding-blocks-close)과 관련 Core/API 담당 경로에서 옵니다.
 
-<a id="later-policy-catalog-boundary"></a>
 ## 8. Later 정책 후보 경계
 
 전체 설계 품질 later 정책 후보 목록은 활성 현재 MVP scope가 아닙니다. 향후 정책 후보, steward policy, detailed review display, operations/reporting 후보, full validator mapping, future conformance fixture는 이름 있는 담당 문서가 범위, 대체 동작, exact contract, 증명 기대치와 함께 좁은 동작을 승격하기 전까지 [Later 후보 색인](../later/index.md)에 남습니다.

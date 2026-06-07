@@ -27,7 +27,6 @@
 
 ## 2. 현재 MVP 보장 수준
 
-<a id="단계별-guarantee-level"></a>
 <a id="정직한-guarantee-display"></a>
 
 현재 MVP 보장 수준은 기본적으로 협력형입니다. 활성 기준 접점이 관련 사실을 정직하게 관찰할 수 있는 곳에서만 제한된 탐지적 동작을 말할 수 있습니다. 활성 기준 접점은 등록된 `capability_profile`로 표현됩니다. 이 프로필은 보장 수준 표시와 역량 차단 사유를 제한하지만 쓰기 호환성이나 Write Authorization을 만들지는 않습니다.
