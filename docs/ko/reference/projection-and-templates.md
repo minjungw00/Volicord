@@ -2,7 +2,7 @@
 
 ## 담당하는 것 / 담당하지 않는 것
 
-이 문서는 향후 하네스 동작을 위한 Projection과 활성 템플릿 표시 계약을 담당합니다. 문서 원천 자료일 뿐입니다. 런타임 Projection, 런타임 상태, 생성 산출물, 증거 기록, QA 기록, Acceptance 기록, 잔여 위험 기록, 닫기 기록, 구현 준비가 끝난 서버 계획이 아닙니다.
+이 문서는 향후 하네스 동작을 위한 Projection과 활성 템플릿 표시 계약을 담당합니다. 문서 원천 자료일 뿐입니다. 런타임 Projection, 런타임 상태, 생성 산출물, 증거 기록, QA 기록, 수락 기록, 잔여 위험 기록, 닫기 기록, 구현 준비가 끝난 서버 계획이 아닙니다.
 
 이 문서가 담당하는 것:
 
@@ -21,7 +21,7 @@
 - 공개 MCP 요청/응답 스키마, `ProjectionKind`, `ArtifactRef`, 오류 형태. [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md)를 봅니다.
 - SQLite DDL, 저장소 배치, 아티팩트 저장소, Projection 작업 저장소. [Storage](storage.md)를 봅니다.
 - 설계 품질의 닫기 영향 경계. [설계 품질](design-quality.md)을 봅니다.
-- 활성 Reference 범위로서의 운영자 명령 동작. 향후 운영 후보는 [Later 후보 색인: 운영 후보](../later/index.md#operations-candidates)에 남습니다.
+- 활성 참조 범위로서의 운영자 명령 동작. 향후 운영 후보는 [Later 후보 색인: 운영 후보](../later/index.md#operations-candidates)에 남습니다.
 - 적합성 fixture assertion 동작. [적합성 참조](conformance.md)를 봅니다.
 - 커넥터 맥락 동작. [Agent 통합 참조](agent-integration.md)를 봅니다.
 - later 후보 템플릿 본문. active 문서가 아닙니다.
@@ -67,7 +67,7 @@ User Notes and Proposals:
 상태 변경 경로는 명시적입니다.
 
 ```text
-human edit -> reconcile candidate -> explicit reconcile outcome -> Core state-changing action, rejection, deferral, or note
+사람 편집 -> reconcile 후보 -> 명시적 reconcile 결과 -> Core 상태 변경 action, rejection, deferral, or note
 ```
 
 담당 경로가 수락된 Core 결과를 기록하기 전까지 사람이 편집한 텍스트는 Task 상태, 증거, 검증, QA, 최종 수락, 잔여 위험 수락, 닫기 준비 상태, 그 밖의 담당 기록이 아닙니다.
@@ -138,7 +138,7 @@ human edit -> reconcile candidate -> explicit reconcile outcome -> Core state-ch
 | 사용자용 | `close-result` | [닫기 결과 본문](#닫기-결과-본문) |
 | 에이전트용 | `agent-context-packet` | [에이전트 맥락 패킷 본문](#에이전트-맥락-패킷-본문) |
 
-사용자용 출력 네 가지는 평범한 말을 씁니다. 사용자가 판단하거나, 차단 사유를 이해하거나, 증거를 살피거나, 닫기를 이해하는 데 도움이 될 때만 출처 참조와 최신성을 보여줍니다. 스키마, DDL, 이벤트 로그, 전체 아티팩트, 전체 보고서 본문, 전체 증거 카탈로그, 향후 카탈로그를 쏟아내지 않습니다.
+사용자용 출력 네 가지는 평범한 말을 씁니다. 사용자가 판단하거나, 차단 사유를 이해하거나, 증거를 살피거나, 닫기를 이해하는 데 도움이 될 때만 출처 참조와 최신성을 보여줍니다. 스키마, DDL, 이벤트 로그, 전체 아티팩트, 전체 보고서 본문, 전체 증거 목록, 향후 목록을 쏟아내지 않습니다.
 
 에이전트용 패킷은 별도 독자를 위한 것입니다. 현재 다음 행동에 필요한 참조, 차단 사유, 증거 공백, 닫기 차단 사유, 보장 수준, 하나의 다음 안전한 행동만 담습니다. 사용자용 문장이 아니며 권한도 아닙니다.
 
@@ -385,7 +385,7 @@ human edit -> reconcile candidate -> explicit reconcile outcome -> Core state-ch
 
 다음 안전한 행동에 필요한 현재 맥락을 에이전트가 작고 정확하게 받아야 할 때 `agent-context-packet`을 사용합니다. 이 보기는 사용자용 문장이나 전체 보고서가 아니라 최신성, Core 기반 참조, 활성 차단 사유, 해결되지 않은 사용자 판단, 증거 공백, 닫기 차단 사유, 보장 수준, 하나의 다음 행동에 최적화됩니다.
 
-구현 계층: 현재 MVP 지원 보기입니다. 구조화된 페이로드나 prompt 크기의 텍스트로 반환할 수 있습니다. 영속 Markdown Projection이 필수는 아닙니다.
+구현 계층: 현재 MVP 지원 보기입니다. 구조화된 페이로드나 프롬프트 크기의 텍스트로 반환할 수 있습니다. 영속 Markdown Projection이 필수는 아닙니다.
 
 경계: 에이전트 맥락 패킷은 행동을 돕는 맥락일 뿐입니다. 쓰기를 승인하거나, gate를 충족하거나, 증거를 만들거나, 민감 동작 승인을 부여하거나, 최종 수락을 기록하거나, 잔여 위험을 수락하거나, 닫기 준비 상태를 만들거나, Task를 닫을 수 없습니다.
 
@@ -439,7 +439,7 @@ agent_context_packet:
 메모:
 
 - 에이전트 맥락 패킷은 한 화면 안팎으로 유지합니다. 현재 다음 행동에 필요한 상태만 담습니다.
-- 전체 스키마, 전체 Reference 문서, 전체 이벤트 로그, 등록된 아티팩트 파일 본문, 전체 보고서 본문, 전체 템플릿, 관련 없는 템플릿, 전체 설계 품질 카탈로그, 향후 카탈로그 자료를 기본으로 넣지 않습니다.
+- 전체 스키마, 전체 참조 문서, 전체 이벤트 로그, 등록된 아티팩트 파일 본문, 전체 보고서 본문, 전체 템플릿, 관련 없는 템플릿, 전체 설계 품질 목록, 향후 목록 자료를 기본으로 넣지 않습니다.
 - 다음 행동에 더 자세한 담당 문서 섹션이 필요하면 그 섹션을 패킷에 넣지 말고 필요할 때 따로 불러옵니다.
 - `guarantee_level` 필드는 필수 맥락입니다. Core/MCP를 사용할 수 없으면 unavailable/capability 조건을 넣고, refresh 전까지 하네스에 의존하는 상태, 쓰기, 증거, 최종 수락, 잔여 위험, 닫기 주장을 unavailable로 다룹니다.
 
