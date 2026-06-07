@@ -1,111 +1,81 @@
 # Conformance Reference
 
-## 1. Current Status
+## 1. Current status
 
 This repository is documentation-only and still in documentation review. No Harness Server runtime, conformance runner, executable fixture files, generated conformance reports, generated runtime artifacts, or current runtime conformance results exist here.
 
-This page is the current conformance owner for planning. It is not a runnable suite, not a test catalog, and not evidence that any future server behavior has run. Current phase and handoff status remain owned by [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
+This document is not an executable conformance suite. It is the planning owner for conformance meaning, future fixture shape, assertion authority, and compact representative examples. Current phase and handoff status remain owned by [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
 
-## 2. What Conformance Means
+## 2. What conformance means
 
-Conformance means future executable checks can demonstrate specific behavior against Harness-owned authority records. A future check must drive an owner-defined Core, API, or operator action and compare captured facts with structured expectations.
+Conformance means that, after a Harness Server and runner exist, future executable checks can compare a specific owner-defined action with owner-defined authority records. A future check drives one Core, API, or operator action, captures response facts and owner-state effects, and compares them with structured expectations, including forbidden side effects that must remain absent.
 
-Keep these layers separate:
+Documentation checks are separate. Markdown maintenance checks inspect links, terminology, owner boundaries, active/later wording, security wording, and bilingual parity. They are current documentation aids only, not runtime conformance.
 
-| Layer | Meaning | Current status |
-|---|---|---|
-| Documentation checks | Read-only Markdown maintenance checks for links, terminology, owner boundaries, active/later wording, security wording, and bilingual parity. | Current docs-maintenance aid only; not runtime conformance. |
-| Behavior examples | Compact examples of expected first-smoke and active MVP behavior. | Planning reference only; not fixture files and not pass/fail criteria. |
-| Runtime conformance | Future executable checks over implemented Core/API/storage/operator behavior. | Does not exist yet. |
+Conformance does not judge generated prose, agent summaries, rendered reports, or status wording. It judges only the facts that an owning document has made authoritative.
 
-Conformance does not judge generated prose. It will judge owner-state effects, response facts, storage effects, stable events when promoted, artifact refs, blockers, errors, and forbidden side effects.
-
-## 3. What Does Not Exist Yet
+## 3. What does not exist yet
 
 The following are future implementation work, not current repository contents:
 
+- Harness Server runtime or Harness Runtime Home data
 - executable fixture files or a fixture directory
 - a conformance runner or `harness conformance run` implementation
-- generated conformance artifacts, reports, projections, runtime state, or Harness Runtime Home data
-- current runtime `PASS`, `WARN`, or `FAIL` results
-- active fixture suites for the active MVP or later candidates
+- generated conformance reports, generated runtime artifacts, projections, operational files, or runtime state
+- current runtime results for active MVP behavior or later candidates
 - current proof of preventive blocking, OS permission control, arbitrary-tool sandboxing, tamper-proof storage, security isolation, or profile-gated `preventive` / `isolated` guarantees
 
-Documentation examples here may guide implementation planning, but they do not create runtime state, acceptance evidence, close readiness, or implementation readiness.
+Examples on this page may guide planning, but they do not create runtime state, acceptance evidence, close readiness, residual-risk acceptance, generated reports, or implementation readiness.
 
-## 4. Fixture Shape
+## 4. Fixture shape
 
-Future fixtures should be ordinary structured inputs for a runner after the Harness Server exists. This page records the intended shape only; it does not provide full YAML bodies.
-
-A promoted fixture should include these parts:
+Fixture shape is future structure, not current files. After the Harness Server and runner exist, a promoted fixture should be a compact structured record with these parts:
 
 | Part | Purpose |
 |---|---|
 | `scenario_id` | Stable identifier for the behavior under review. |
-| owner scope | Task, Change Unit, surface, state-version, and owner refs needed to interpret the action. |
-| action | One public Core/API/operator request using the owner request schema. |
-| initial authority context | The relevant Core state, storage rows, artifact refs, and surface capabilities before the action. |
-| expected authoritative assertions | Structured response, state, storage, event, artifact, blocker, error, guarantee, or forbidden-side-effect facts. |
-| owner links | The API, Core, Storage, Security, ArtifactRef, and policy owners that define the exact values. |
+| authority context | The Task, Change Unit, state version, surface, owner refs, Core state, storage rows, artifact refs, and capability facts needed before the action. |
+| action | One public Core, API, or operator request using the owner request schema. |
+| expected assertions | Structured response facts, owner-state effects, storage or artifact facts, blocker facts, error facts, guarantee-level facts, and required absence of forbidden side effects. |
+| owner links | The API, Core, Storage, Security, Agent Integration, ArtifactRef, and policy owners that define exact values and meaning. |
 
 Materialized fixtures must use public owner schemas. They must not invent fixture-only enum values, pseudo-fields, localized display labels as state, prose-only expectations, or later-candidate-only values.
 
-## 5. Assertion Authority
+## 5. Assertion authority
 
-Assertion authority is narrower than scenario prose.
+Assertion authority is the narrow set of facts a future fixture may judge. Authority comes from owner-defined facts, not from scenario prose or generated summaries.
 
-Authoritative future assertions:
+Authoritative future assertions may use:
 
 - response facts returned by public owner APIs
-- Core-owned Task, Change Unit, user judgment, Write Authorization, Run, evidence summary, blocker, close, and residual-risk state
-- Storage-owned row effects, JSON `TEXT` owner fields, idempotency/replay facts, and state-version effects
-- stable `task_events` only after the Core owner promotes their names
-- `ArtifactRef`, artifact-link, `sha256`, `size_bytes`, `content_type`, `redaction_state`, retention, availability, and file-integrity facts when artifact integrity matters
-- primary `ErrorCode`, error details, and structured blocker fields from API/Core owners
-- guarantee-level facts that match the Security and Agent Integration owners
+- Core-owned Task, Change Unit, user judgment, Write Authorization, Run or evidence summary, blocker, close, and residual-risk state
+- Storage-owned row effects, idempotency/replay facts, state-version facts, and artifact-integrity facts when artifacts are in scope
+- stable `task_events` only after the Core owner promotes event names
+- primary `ErrorCode`, structured blocker fields, and guarantee-level facts that match the API, Core, Security, and Agent Integration owners
 - absence assertions for forbidden side effects, such as no durable authorization, no Run row, no artifact mutation, or no close-state change
 
 Current active examples may assert `cooperative` and supported `detective` facts. `preventive` or `isolated` assertions are valid only for a promoted profile with owner-defined proof; conformance planning text does not make those guarantees currently executable or proven.
 
-Non-authoritative material:
+Non-authoritative material includes prose scenario descriptions, comments, author notes, rendered Markdown, generated reports, status prose, agent summaries, documentation-check labels, and projections. Projection freshness or availability may be asserted only when projection support is explicitly in scope.
 
-- prose scenario descriptions
-- comments and author notes
-- rendered Markdown, status prose, Journey Card prose, close report prose, or agent summaries
-- documentation-check `PASS`, `WARN`, or `FAIL` labels
-- projections, except for freshness or availability assertions when projection support is explicitly in scope
+## 6. Representative active examples
 
-## 6. Representative Active Examples
+These are compact behavior references only. They are not fixture files, full YAML bodies, or current runtime results.
 
-These examples are compact behavior references. They are not fixture files, not full YAML, not a current runnable suite, and not runtime pass/fail criteria.
-
-| Example | Behavior | Structured assertions a future fixture would use |
+| Example | Behavior | Future assertion focus |
 |---|---|---|
-| `MVP-ACTIVE-prepare-write-blocked-or-dry-run-no-durable-authorization` | `prepare_write` returns blocked or dry-run information without creating a durable authorization. | Response has no consumable Write Authorization; `write_authorizations` has no inserted active row; no Run, artifact, evidence, close, final-acceptance, or residual-risk effect is created; blocker or dry-run facts match API/Core owners. |
-| `MVP-ACTIVE-prepare-write-committed-scoped-authorization` | A committed allowed `prepare_write` records a scoped single-use Write Authorization. | Response authorization scope, Core state, and `write_authorizations.attempt_scope_json` agree on Task, Change Unit, state version, surface, intended paths/tools/commands/network/secrets/sensitive categories, baseline refs, related judgments, and guarantee level. |
-| `MVP-ACTIVE-close-task-blocks-missing-acceptance-or-risk-condition` | `close_task` blocks when required final acceptance is missing, or when close-relevant residual risk is not visible or accepted as required. | Response blockers use owner categories and `required_judgment_kind` where applicable; Task is not completed; no close record substitutes for missing acceptance or risk acceptance; evidence, final acceptance, and residual-risk state remain separate. |
+| `MVP-ACTIVE-prepare-write-blocked-or-dry-run-no-durable-authorization` | A blocked or dry-run `prepare_write` does not create durable authorization. | The response has no consumable Write Authorization; `write_authorizations` has no inserted active row; no Run, artifact, evidence, close, final-acceptance, or residual-risk state changes. |
+| `MVP-ACTIVE-prepare-write-committed-scoped-authorization` | A committed allowed `prepare_write` records a scoped single-use Write Authorization. | Response authorization scope, Core state, and `write_authorizations.attempt_scope_json` agree on Task, Change Unit, state version, surface, allowed paths/tools/commands/network/secrets/sensitive categories, baseline refs, related judgments, and guarantee level. |
+| `MVP-ACTIVE-close-task-blocks-missing-acceptance-or-risk-condition` | `close_task` blocks when required final acceptance is missing, or when a close-relevant residual-risk condition is not visible or accepted as required. | Response blockers use owner categories and `required_judgment_kind` where applicable; Task is not completed; close state does not substitute for missing acceptance or risk acceptance; evidence, final acceptance, and residual-risk state remain separate. |
 
-## 7. Catalog-Only Future Boundary
+## 7. Catalog-only future boundary
 
-Future fixture families belong in [Later Candidate Index: Future Fixture Families](../later/index.md#future-fixture-families). That index lists names only as future candidates. It must not contain full scenario scripts, fixture bodies, active API payload examples, or suite requirements.
+Future fixture families belong in [Later Candidate Index: Future Fixture Families](../later/index.md#future-fixture-families). That index keeps names only as later candidates, and this page does not reproduce the catalog.
 
-Current future family names are:
+Future-family names are not scenario scripts, fixture bodies, active API payload examples, runner or reporting requirements, active MVP scope, implementation tasks, current results, or proof. A future owner must promote a narrow behavior with scope, fallback behavior, exact contracts, and proof expectations before executable fixture material exists.
 
-- Intake and decision routing
-- Core, evidence, verification, and close
-- Artifact redaction and export non-leakage
-- Agency and user-judgment separation
-- Connector capability honesty
-- Design-quality and stewardship
-- Context hygiene and resume freshness
-- Projection, reconcile, and verification boundary
-- Operations diagnostics, export, recover, and handoff
-- Browser QA Capture
+## 8. Metrics boundary
 
-Listing a family does not make it an active MVP or later-candidate requirement. A future owner must promote a narrow behavior with scope, fallback behavior, exact contracts, and proof expectations before executable fixture material exists.
+Metrics are not conformance authority in the current documentation set. Future local metrics may be useful for diagnostics or planning, but until an owner promotes them they remain read-only derived displays.
 
-## 8. Metrics Boundary
-
-Metrics are not conformance authority in the current documentation set. Future local derived metrics may be useful for diagnostics or planning, but they remain read-only derived displays until an owner promotes them.
-
-Metrics must not create Core state, satisfy evidence, pass QA or verification, authorize writes, accept final results, accept residual risk, close work, prove implementation readiness, or replace runtime conformance. If a future metric is promoted, its owner must define the source records, freshness boundary, display wording, and non-substitution rule.
+Metrics must not create Core state, satisfy evidence, pass QA or verification, authorize writes, accept final results, accept residual risk, close work, prove implementation readiness, or replace runtime conformance. If a future metric is promoted, its owner must define source records, freshness boundary, display wording, and the non-substitution rule.

@@ -2,110 +2,80 @@
 
 ## 1. 현재 상태
 
-이 저장소는 현재 문서 전용이며 문서 검토 상태입니다. Harness Server runtime, 적합성 실행기, 실행 가능한 fixture 파일, 생성된 conformance report, 생성된 runtime artifact, 현재 runtime conformance result는 없습니다.
+이 저장소는 문서 전용이며 아직 문서 검토 단계입니다. 여기에는 Harness Server 런타임, 적합성 실행기, 실행 가능한 fixture 파일, 생성된 적합성 보고서, 생성된 런타임 산출물, 현재 런타임 적합성 결과가 없습니다.
 
-이 문서는 현재 적합성 계획의 담당 문서입니다. 실행 가능한 suite 아님. Test catalog도 아니고, 향후 서버 동작이 이미 실행되었다는 증거도 아닙니다. 현재 단계와 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)이 담당합니다.
+이 문서는 실행 가능한 적합성 테스트 모음이 아닙니다. 현재는 적합성의 의미, 향후 fixture 형태, 주장 권한, 간결한 대표 예시를 다루는 계획 담당 문서입니다. 현재 단계와 인계 상태는 [MVP 계획](../build/mvp-plan.md#문서-수락-상태)이 담당합니다.
 
 ## 2. 적합성이 뜻하는 것
 
-적합성은 향후 실행 점검이 특정 동작을 Harness가 소유한 권한 기록에 맞게 보여줄 수 있다는 뜻입니다. 향후 점검은 owner가 정의한 Core, API, operator action 하나를 실행하고, captured fact를 structured expectation과 비교해야 합니다.
+적합성은 Harness Server와 실행기가 생긴 뒤, 향후 실행 점검이 담당 문서가 정의한 특정 동작을 담당 문서의 권한 기록과 비교할 수 있다는 뜻입니다. 향후 점검은 Core, API, operator 동작 하나를 실행하고, 응답에 담긴 사실과 담당 문서가 소유하는 상태 변경 효과를 수집한 뒤 구조화된 기대값과 비교합니다. 금지된 부작용이 없어야 한다는 주장도 여기에 포함됩니다.
 
-아래 세 층을 분리합니다.
+문서 점검은 별도입니다. Markdown 문서 점검은 링크, 용어, 담당 문서 경계, active/later 문구, 보안 표현, 한영 문서 의미 일치를 확인합니다. 이는 현재 문서 유지보수 보조 도구일 뿐이며 런타임 적합성이 아닙니다.
 
-| 층 | 의미 | 현재 상태 |
-|---|---|---|
-| 문서 점검 | Link, terminology, owner boundary, active/later wording, security wording, 영어/한국어 의미 일치를 보는 읽기 전용 Markdown maintenance check. | 현재 문서 유지보수 보조 자료일 뿐입니다. Runtime conformance가 아닙니다. |
-| 동작 예시 | 첫 smoke와 현재 MVP에서 기대하는 동작을 작게 보여주는 예시. | 계획 참조일 뿐입니다. Fixture 파일도 아니고 pass/fail 기준도 아닙니다. |
-| runtime conformance | 구현된 Core/API/storage/operator 동작을 대상으로 하는 향후 실행 점검. | 아직 없습니다. |
-
-Conformance는 생성된 prose를 판단하지 않습니다. 향후에는 owner-state effect, response fact, storage effect, 승격된 stable event, artifact ref, blocker, error, forbidden side effect를 판단합니다.
+적합성은 생성된 글, 에이전트 요약, 렌더링된 보고서, 상태 문구를 판단하지 않습니다. 담당 문서가 권한 있는 사실로 정한 것만 판단합니다.
 
 ## 3. 아직 없는 것
 
 아래 항목은 향후 구현 작업이며 현재 저장소 내용이 아닙니다.
 
-- 실행 가능한 fixture 파일 또는 fixture directory
-- conformance runner 또는 `harness conformance run` 구현
-- 생성된 conformance artifact, report, projection, runtime state, Harness Runtime Home data
-- 현재 runtime `PASS`, `WARN`, `FAIL` result
-- 현재 MVP 또는 later 후보를 위한 active fixture suite
+- Harness Server 런타임 또는 Harness Runtime Home 데이터
+- 실행 가능한 fixture 파일 또는 fixture 디렉터리
+- 적합성 실행기 또는 `harness conformance run` 구현
+- 생성된 적합성 보고서, 생성된 런타임 산출물, Projection, 운영 파일, 런타임 상태
+- 현재 MVP 동작이나 later 후보에 대한 현재 런타임 결과
 - 예방적 차단, OS 권한 제어, 임의 도구 샌드박스, 변조 방지 저장소, 보안 격리, profile-gated `preventive` / `isolated` 보장에 대한 현재 증명
 
-이 문서의 예시는 구현 계획을 도울 수 있습니다. 하지만 runtime state, acceptance evidence, close readiness, implementation readiness를 만들지 않습니다.
+이 문서의 예시는 계획을 도울 수 있습니다. 하지만 런타임 상태, 수락 증거, 닫기 준비 상태, 잔여 위험 수락, 생성된 보고서, 구현 준비 상태를 만들지 않습니다.
 
 ## 4. fixture 형태
 
-향후 fixture는 Harness Server가 생긴 뒤 runner가 읽는 일반 structured input이어야 합니다. 이 문서는 의도한 fixture 형태만 기록합니다. Full YAML body는 제공하지 않습니다.
-
-승격된 fixture에는 아래 부분이 필요합니다.
+fixture 형태는 향후 구조를 설명할 뿐 현재 파일을 만들지 않습니다. Harness Server와 실행기가 생긴 뒤 승격된 fixture는 아래 부분을 담은 작은 구조화 기록이어야 합니다.
 
 | 부분 | 목적 |
 |---|---|
-| `scenario_id` | 검토할 동작의 stable identifier. |
-| owner scope | Action을 해석하는 데 필요한 Task, Change Unit, surface, state-version, owner ref. |
-| action | Owner request schema를 사용하는 public Core/API/operator request 하나. |
-| initial authority context | 동작 전의 관련 Core 상태, storage row, artifact ref, 접점 역량. |
-| expected authoritative assertions | Structured response, state, storage, event, artifact, blocker, error, guarantee, forbidden-side-effect fact. |
-| owner links | Exact value를 정의하는 API, Core, Storage, Security, ArtifactRef, policy owner. |
+| `scenario_id` | 검토할 동작의 안정적인 식별자입니다. |
+| 권한 맥락 | 동작 전에 필요한 Task, Change Unit, 상태 버전, 접점, 담당 문서 참조, Core 상태, 저장소 row, `ArtifactRef`, 접점 기능 사실입니다. |
+| 동작 | 담당 요청 스키마를 사용하는 공개 Core, API, operator 요청 하나입니다. |
+| 기대 주장 | 구조화된 응답에 담긴 사실, 담당 문서가 소유하는 상태 변경 효과, 저장소 또는 아티팩트 사실, 차단 사유 사실, 오류 사실, 보장 수준 사실, 금지된 부작용의 필수 부재입니다. |
+| 담당 문서 링크 | 정확한 값과 의미를 정의하는 API, Core, Storage, Security, Agent Integration, ArtifactRef, policy 담당 문서입니다. |
 
-Materialized fixture는 public owner schema를 사용해야 합니다. Fixture-only enum value, pseudo-field, 상태값으로 쓰는 localized display label, prose-only expectation, later 후보 전용 value를 만들면 안 됩니다.
+구체화된 fixture는 공개 담당 스키마를 사용해야 합니다. fixture 전용 enum 값, 가짜 필드, 상태로 쓰는 지역화 표시 라벨, 글로만 된 기대값, later 후보 전용 값을 만들면 안 됩니다.
 
 ## 5. 주장 권한
 
-주장 권한은 scenario prose보다 좁습니다.
+주장 권한은 향후 fixture가 판단할 수 있는 사실의 좁은 범위입니다. 권한은 시나리오 설명이나 생성된 요약이 아니라 담당 문서가 정의한 사실에서 옵니다.
 
-향후 권한 있는 assertion은 다음입니다.
+향후 권한 있는 주장은 다음을 사용할 수 있습니다.
 
-- public owner API가 반환한 response fact
-- Core가 소유한 Task, Change Unit, user judgment, Write Authorization, Run, evidence summary, blocker, close, residual-risk state
-- Storage가 소유한 row effect, JSON `TEXT` owner field, idempotency/replay fact, state-version effect
-- Core owner가 이름을 승격한 뒤의 stable `task_events`
-- artifact 무결성 근거가 필요할 때의 `ArtifactRef`, artifact link, `sha256`, `size_bytes`, `content_type`, `redaction_state`, retention, availability, file-integrity fact
-- API/Core owner의 primary `ErrorCode`, error detail, structured blocker field
-- Security와 Agent Integration owner에 맞는 guarantee-level fact
-- durable authorization 없음, Run row 없음, artifact mutation 없음, close-state change 없음 같은 forbidden side effect 부재 assertion
+- 공개 담당 API가 반환한 응답에 담긴 사실
+- Core가 소유하는 Task, Change Unit, 사용자 판단, Write Authorization, Run 또는 증거 요약, 차단 사유, 닫기, 잔여 위험 상태
+- Storage가 소유하는 row 변경 효과, idempotency/replay 사실, 상태 버전 사실, 아티팩트가 범위에 있을 때의 아티팩트 무결성 사실
+- Core 담당 문서가 이벤트 이름을 승격한 뒤의 안정적인 `task_events`
+- API, Core, Security, Agent Integration 담당 문서와 맞는 주 `ErrorCode`, 구조화된 차단 사유 필드, 보장 수준 사실
+- 지속되는 승인 없음, Run row 없음, 아티팩트 변경 없음, 닫기 상태 변경 없음 같은 금지된 부작용의 부재 주장
 
-현재 활성 예시는 `cooperative`와 지원되는 `detective` fact만 assertion할 수 있습니다. `preventive` 또는 `isolated` assertion은 승격된 profile과 담당 문서가 정의한 증명이 있을 때만 유효합니다. Conformance 계획 문구만으로 이런 보장이 현재 실행 가능하거나 증명된 것이 되지 않습니다.
+현재 활성 예시는 `cooperative`와 지원되는 `detective` 사실만 주장할 수 있습니다. `preventive` 또는 `isolated` 주장은 승격된 profile과 담당 문서가 정의한 증명이 있을 때만 유효합니다. 적합성 계획 문구만으로 이런 보장이 현재 실행 가능하거나 증명된 것이 되지 않습니다.
 
-권한이 없는 자료는 다음입니다.
+권한이 없는 자료에는 시나리오 설명, 주석, 작성자 메모, 렌더링된 Markdown, 생성된 보고서, 상태 문구, 에이전트 요약, 문서 점검 라벨, Projection이 포함됩니다. Projection 지원이 명시 범위에 있을 때만 최신성 또는 가용성 주장이 예외로 가능할 수 있습니다.
 
-- prose scenario description
-- comment와 author note
-- rendered Markdown, status prose, Journey Card prose, close report prose, agent summary
-- documentation-check `PASS`, `WARN`, `FAIL` label
-- projection. 단, projection support가 명시적으로 범위에 들어온 경우 freshness 또는 availability assertion은 예외입니다.
+## 6. 현재 MVP 대표 예시
 
-## 6. 대표 예시
+아래 항목은 간결한 동작 참조일 뿐입니다. fixture 파일, 전체 YAML 본문, 현재 런타임 결과가 아닙니다.
 
-이 대표 예시는 compact behavior reference입니다. Fixture 파일도 아니고, full YAML도 아니고, 현재 실행 가능한 suite도 아니며, runtime pass/fail 기준도 아닙니다.
-
-| 예시 | 동작 | 향후 fixture가 사용할 structured assertion |
+| 예시 | 동작 | 향후 주장 초점 |
 |---|---|---|
-| `MVP-ACTIVE-prepare-write-blocked-or-dry-run-no-durable-authorization` | `prepare_write`가 blocked 또는 dry-run 정보를 반환하지만 durable authorization을 만들지 않습니다. | Response에 소비 가능한 Write Authorization이 없습니다. `write_authorizations`에는 inserted active row가 없습니다. Run, artifact, evidence, close, final-acceptance, residual-risk effect가 생기지 않습니다. Blocker 또는 dry-run fact는 API/Core owner와 맞습니다. |
-| `MVP-ACTIVE-prepare-write-committed-scoped-authorization` | Committed allowed `prepare_write`가 scope가 정해진 single-use Write Authorization을 기록합니다. | Response authorization scope, Core state, `write_authorizations.attempt_scope_json`이 Task, Change Unit, state version, surface, intended paths/tools/commands/network/secrets/sensitive categories, baseline ref, related judgment, guarantee level에서 같은 의미를 가집니다. |
-| `MVP-ACTIVE-close-task-blocks-missing-acceptance-or-risk-condition` | 필요한 final acceptance가 없거나 close-relevant residual risk가 요구 수준으로 보이지 않거나 수락되지 않으면 `close_task`가 차단됩니다. | Response blocker는 owner category와 필요한 경우 `required_judgment_kind`를 사용합니다. Task는 completed가 되지 않습니다. Close record가 missing acceptance나 risk acceptance를 대신하지 않습니다. Evidence, final acceptance, residual-risk state는 분리되어 남습니다. |
+| `MVP-ACTIVE-prepare-write-blocked-or-dry-run-no-durable-authorization` | 차단되었거나 dry-run인 `prepare_write`는 지속되는 승인을 만들지 않습니다. | 응답에는 소비 가능한 Write Authorization이 없습니다. `write_authorizations`에는 활성 row가 추가되지 않습니다. Run, 아티팩트, 증거, 닫기, 최종 수락, 잔여 위험 상태가 바뀌지 않습니다. |
+| `MVP-ACTIVE-prepare-write-committed-scoped-authorization` | 허용되어 committed 처리된 `prepare_write`는 범위가 정해진 1회용 Write Authorization을 기록합니다. | 응답의 승인 범위, Core 상태, `write_authorizations.attempt_scope_json`이 Task, Change Unit, 상태 버전, 접점, 허용된 경로/도구/명령/네트워크, 비밀값과 민감 범주, 기준 참조, 관련 판단, 보장 수준에서 같은 의미를 가집니다. |
+| `MVP-ACTIVE-close-task-blocks-missing-acceptance-or-risk-condition` | 필요한 최종 수락이 없거나 닫기에 영향을 주는 잔여 위험 조건이 요구대로 보이거나 수락되지 않으면 `close_task`가 차단됩니다. | 응답 차단 사유는 담당 문서의 category와 필요한 경우 `required_judgment_kind`를 사용합니다. Task는 completed가 되지 않습니다. 닫기 상태가 누락된 수락이나 위험 수락을 대신하지 않습니다. 증거, 최종 수락, 잔여 위험 상태는 분리되어 남습니다. |
 
-## 7. Catalog-only future 경계
+## 7. future 항목은 목록으로만 유지하는 경계
 
-Future fixture family는 [Later 후보 색인: Future fixture families](../later/index.md#future-fixture-families)에만 둡니다. 그 색인은 future candidate 이름만 나열합니다. Full scenario script, fixture body, active API payload example, suite requirement를 담으면 안 됩니다.
+향후 fixture 계열은 [Later 후보 색인: Future fixture families](../later/index.md#future-fixture-families)에 둡니다. 그 색인은 later 후보 이름만 보존하며, 이 문서는 그 목록을 반복하지 않습니다.
 
-현재 future fixture family 이름은 다음입니다.
+향후 계열 이름은 시나리오 스크립트, fixture 본문, active API payload 예시, 실행기 또는 보고 요구사항, 현재 MVP 범위, 구현 작업, 현재 결과, 증명이 아닙니다. 향후 담당 문서가 좁은 동작을 범위, 대체 동작, 정확한 계약, 증명 기대치와 함께 승격해야 실행 가능한 fixture 자료가 생깁니다.
 
-- Intake and decision routing
-- Core, evidence, verification, and close
-- Artifact redaction and export non-leakage
-- Agency and user-judgment separation
-- Connector capability honesty
-- Design-quality and stewardship
-- Context hygiene and resume freshness
-- Projection, reconcile, and verification boundary
-- Operations diagnostics, export, recover, and handoff
-- Browser QA Capture
+## 8. 지표 경계
 
-Family 이름을 적었다고 현재 MVP나 later 후보 requirement가 되지는 않습니다. 향후 owner가 좁은 동작을 scope, fallback behavior, exact contract, proof expectation과 함께 승격해야 실행 가능한 fixture 자료가 생깁니다.
+현재 문서 세트에서 지표는 적합성 권한이 아닙니다. 향후 로컬 지표는 진단이나 계획에 유용할 수 있지만, 담당 문서가 승격하기 전에는 읽기 전용 파생 표시로 남습니다.
 
-## 8. Metrics 경계
-
-현재 문서 세트에서 metrics는 적합성 권한이 아닙니다. Future local derived metrics는 진단이나 계획에 유용할 수 있지만, owner가 승격하기 전까지 읽기 전용 파생 표시로 남습니다.
-
-Metrics는 Core state를 만들거나, evidence를 충족하거나, QA 또는 verification을 통과시키거나, write를 authorize하거나, final result를 수락하거나, residual risk를 수락하거나, work를 close하거나, implementation readiness를 증명하거나, runtime conformance를 대신하면 안 됩니다. 향후 metric이 승격되면 owner가 source record, freshness boundary, display wording, non-substitution rule을 정의해야 합니다.
+지표는 Core 상태를 만들거나, 증거를 충족하거나, QA 또는 검증을 통과시키거나, 쓰기를 승인하거나, 최종 결과를 수락하거나, 잔여 위험을 수락하거나, 작업을 닫거나, 구현 준비 상태를 증명하거나, 런타임 적합성을 대신하면 안 됩니다. 향후 지표가 승격되면 담당 문서가 원천 기록, 최신성 경계, 표시 문구, 대체 불가 규칙을 정의해야 합니다.
