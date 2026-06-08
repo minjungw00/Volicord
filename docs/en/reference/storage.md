@@ -520,16 +520,29 @@ required.
 safe metadata. Storage implements it through `artifacts` plus `artifact_links`;
 see [API Schema Core: ArtifactRef](api/schema-core.md#artifactref).
 
-Artifact registration accepts only the active owner-documented `ArtifactInput`
-sources: `staged_artifact` or `existing_artifact`. A `staged_artifact` input
-must carry a `StagedArtifactHandle` from the active `harness.stage_artifact`
-utility and must be resolved by the owner path before storage commits the
-artifact row. An `existing_artifact` input must name an already registered
-`ArtifactRef` that belongs to the same project and has a compatible owner
-relation. Caller-supplied raw filesystem paths, arbitrary local path strings,
-raw logs as authority claims, `captured_artifact` handles, raw capture-adapter
-outputs, and native capture claims are not registration authority in the active
-MVP.
+Artifact registration and linking accept only the active owner-documented
+`ArtifactInput` sources: `staged_artifact` or `existing_artifact`. A
+`staged_artifact` input must carry a `StagedArtifactHandle` from the active
+`harness.stage_artifact` utility and must be resolved by the owner path before
+storage commits the artifact row. An `existing_artifact` input must name an
+already registered persistent `ArtifactRef` that belongs to the same project and
+allowed Task scope. `existing_artifact` is not a path to new artifact bytes, does
+not register a new artifact body, and may only add a compatible owner link to a
+previously persisted artifact. Caller-supplied raw filesystem paths, arbitrary
+local path strings, raw logs as authority claims, `captured_artifact` handles,
+raw capture-adapter outputs, and native capture claims are not registration
+authority in the active MVP.
+
+For `harness.record_run`, storage effects must follow the API-owned validation
+order: request-level `VerifiedSurfaceContext.access_class=run_recording`,
+project-wide `ToolEnvelope.expected_state_version`, referenced Task and Change
+Unit, compatible Write Authorization when product file writes are recorded,
+staged-handle validation, staged-handle field checks, staged promotion, staged
+consumption, existing-artifact link validation, and no artifact body read.
+Storage must not commit any staged promotion, consumed handle, existing-artifact
+link, Run, evidence update, event, replay row, authorization consumption, or
+state-version increment when any validation in this sequence fails. Artifact body reads
+are separate reads that require `access_class=artifact_read`.
 
 Temporary staging is not artifact authority. `artifact_staging` or an
 equivalent storage-owned staging manifest must track at least `handle_id`,
@@ -553,22 +566,27 @@ persistent `ArtifactRef`, and only when the current verified
 `surface_instance_id` matches `created_by_surface_instance_id`. The active MVP
 does not support cross-surface staged artifact handoff, and
 `StagedArtifactHandle` is not a bearer token that any local caller may use. The
-consuming transaction must mark the staging handle `consumed`, set the consuming
-Run and promoted artifact ids, commit the durable `artifacts` row and required
-`artifact_links`, and update evidence coverage only as allowed by the method
-owner. Expired, mismatched, already-consumed, discarded, cross-surface,
+consuming transaction must validate stored `project_id`, `task_id`,
+`created_by_surface_instance_id`, expiration, consumed status, `sha256`,
+`size_bytes`, and `redaction_state`; promote only validated staged handles; mark
+promoted handles `consumed`; set the consuming Run and promoted artifact ids;
+commit the durable `artifacts` row and required `artifact_links`; and update
+evidence coverage only as allowed by the method owner. Missing, expired,
+mismatched, already-consumed, discarded, cross-surface,
 wrong-`created_by_surface_instance_id`, wrong-`sha256`, wrong-`size_bytes`,
-integrity-incompatible, or cross-task staging handles must be rejected before
-mutation and must not be hidden as evidence sufficiency. Projection files,
-generated Markdown, chat text, Product Repository files, and agent memory
-cannot create staged-handle provenance.
+wrong-`redaction_state`, integrity-incompatible, or cross-task staging handles
+must be rejected before mutation with the API-owned `VALIDATION_FAILED`
+`artifact_input_error` detail and must not be hidden as evidence sufficiency,
+local access mismatch, or capability insufficiency. Projection files, generated
+Markdown, chat text, Product Repository files, and agent memory cannot create
+staged-handle provenance.
 
-Registering an `existing_artifact` reuses the registered artifact row only when
-its availability, integrity facts, redaction state, and owner relation remain
-compatible with the new use. It may add a new `artifact_links` row for the new
-owner relation, subject to the uniqueness and same-project/same-Task rules; it
-must not clone bytes, skip integrity checks, or use a raw artifact path as
-authority.
+Using an `existing_artifact` reuses the registered artifact row only when its
+availability, integrity facts, redaction state, same-project identity, and
+allowed Task scope remain compatible with the new use. It may add a new
+`artifact_links` row for the new owner relation, subject to the uniqueness and
+same-project/same-Task rules; it must not clone bytes, register a new artifact
+body, skip integrity checks, or use a raw artifact path as authority.
 
 An artifact is evidence-eligible only when storage has:
 

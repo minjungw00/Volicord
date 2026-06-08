@@ -40,7 +40,7 @@
 
 | 코드 | 의미 |
 |---|---|
-| `VALIDATION_FAILED` | 요청 본문 형태, enum 값, 활성화 규칙, 프로필별 검증이 변경 전에 실패했습니다. |
+| `VALIDATION_FAILED` | 요청 본문 형태, enum 값, 활성화 규칙, 프로필별 검증, 또는 `record_run` `ArtifactInput` 검증이 변경 전에 실패했습니다. |
 | `STATE_VERSION_CONFLICT` | `ToolEnvelope.expected_state_version`이 현재 `project_state.state_version`과 맞지 않거나, Write Authorization의 프로젝트 전체 `basis_state_version`이 현재 `project_state.state_version`과 더 이상 맞지 않거나, 같은 멱등 키를 다른 정규화된 요청으로 다시 사용했습니다. |
 | `NO_ACTIVE_TASK` | Task가 필요하지만 활성 Task나 지정된 Task가 없습니다. |
 | `NO_ACTIVE_CHANGE_UNIT` | 쓰기를 할 수 있거나 닫기와 관련된 동작에 활성 범위 지정 Change Unit이 없습니다. |
@@ -61,7 +61,7 @@
 | `ACCEPTANCE_REQUIRED` | 필요한 최종 수락이 대기 중이거나, 거부되었거나, 표시된 결과 근거와 호환되지 않습니다. |
 | `PROJECTION_STALE` | 요청한 읽기용 상태/보기가 오래되었거나 실패했습니다. Core 상태가 아니며 그 자체로 닫기 차단 사유가 아닙니다. |
 | `RESIDUAL_RISK_NOT_VISIBLE` | 닫기에 영향을 주는 알려진 잔여 위험이 최종 수락 또는 닫기 전에 보이지 않았습니다. |
-| `ARTIFACT_MISSING` | 참조한 아티팩트나 스테이징 아티팩트 핸들이 없거나, 만료되었거나, 이미 소비되었거나, 범위가 맞지 않거나, 사용할 수 없거나, 닫기 근거로 쓸 수 없거나, 무결성/메타데이터 확인에 실패했습니다. |
+| `ARTIFACT_MISSING` | 참조한 지속 아티팩트가 없거나, 사용할 수 없거나, 닫기 근거로 쓸 수 없거나, 무결성/메타데이터 확인에 실패했습니다. |
 | `BASELINE_STALE` | 동작에 필요한 저장소 상태와 baseline이 더 이상 맞지 않습니다. |
 | `VALIDATOR_FAILED` | 필수 활성 validator 또는 차단 사유 확인이 실패했고, 더 구체적인 타입 코드가 없을 때 쓰는 대체 코드입니다. 현재 MVP에서 설계 정책 오류가 아닙니다. 설계 품질 우려는 활성 판단, 차단 사유, 증거, 역량, 잔여 위험 경로로 라우팅되거나 조언으로 남아야 합니다. |
 
@@ -74,13 +74,25 @@ missing | expired | stale | revoked | consumed | incompatible
 필요한 권한이 제공되지 않았으면 `authorization_reason=missing`과 함께 `WRITE_AUTHORIZATION_REQUIRED`를 사용합니다. 기존 권한을 버전 불일치가 아닌 이유로 소비할 수 없으면 `authorization_reason=expired`, `revoked`, `consumed`, `incompatible` 중 맞는 값과 함께 `WRITE_AUTHORIZATION_INVALID`를 사용합니다.
 제공된 Write Authorization이 프로젝트 전체 `basis_state_version`과 현재 `project_state.state_version`의 불일치 때문에 오래된 경우에는 `authorization_reason=stale`과 함께 `STATE_VERSION_CONFLICT`를 사용합니다.
 
-`ToolError.details.staging_handle_reason`은 정확히 다음 값만 사용합니다.
+`ArtifactInput.source_kind`와 출처 필드가 스키마 형태에 맞지 않으면 `VALIDATION_FAILED`를 사용합니다. `ArtifactInput.source_kind=staged_artifact`의 스테이징된 핸들 검증 실패도 공개 `VALIDATION_FAILED`를 사용하고, `ToolError.details.artifact_input_error`에 구조화된 세부정보를 둡니다. 스테이징된 핸들 검증 실패마다 새 top-level 공개 오류 코드를 만들지 않습니다.
 
-```text
-missing | expired | consumed | mismatch | incompatible
+`ToolError.details.artifact_input_error`는 입력 id와 구체적인 사유를 담아야 합니다. 활성 세부 사유 집합에는 아래 값이 포함됩니다.
+
+```yaml
+artifact_input_error:
+  artifact_input_id: string
+  reason:
+    - staged_handle_expired
+    - staged_handle_consumed
+    - staged_handle_project_mismatch
+    - staged_handle_task_mismatch
+    - staged_handle_surface_mismatch
+    - staged_handle_checksum_mismatch
+    - staged_handle_size_mismatch
+    - staged_handle_not_found
 ```
 
-`ArtifactInput.source_kind`와 출처 필드가 스키마 형태에 맞지 않으면 `VALIDATION_FAILED`를 사용합니다. 형태는 맞지만 스테이징 핸들이 없거나, 만료되었거나, 이미 소비되었거나, 다른 프로젝트/Task 범위이거나, 기대한 hash, size, content type, artifact relation과 맞지 않으면 `ARTIFACT_MISSING`와 `staging_handle_reason`을 함께 사용합니다. 스테이징 핸들 오류는 그 자체로 증거 부족이 아니며, 등록된 로컬 접점 검증도 실패한 경우가 아니라면 `LOCAL_ACCESS_MISMATCH`로 보고하면 안 됩니다.
+스테이징된 핸들 검증은 저장된 `project_id`, `task_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`, `size_bytes`, `redaction_state`를 다룹니다. `redaction_state`가 맞지 않는 경우에는 메시지나 추가 detail 필드에서 그 필드를 이름 붙이되 공개 코드는 `VALIDATION_FAILED`로 유지합니다. 스테이징된 핸들의 출처나 범위가 맞지 않는 것은 검증 오류이지 요청 수준 로컬 접근 실패가 아닙니다. 스테이징된 핸들 출처 불일치에 `LOCAL_ACCESS_MISMATCH`를 쓰지 않습니다. `LOCAL_ACCESS_MISMATCH`는 요청 접점 검증 실패에만 씁니다. 스테이징된 핸들 범위나 출처 불일치에 `CAPABILITY_INSUFFICIENT`도 쓰지 않습니다. `CAPABILITY_INSUFFICIENT`는 확인된 접점 역량이 없거나 부족할 때만 씁니다. `ARTIFACT_MISSING`은 참조된 지속 아티팩트와 닫기 관련 아티팩트 가용성에 남겨 두며 스테이징된 핸들 검증에는 쓰지 않습니다.
 
 로컬 접근 관련 코드는 좁게 쓰고 서로 구분합니다. `MCP_UNAVAILABLE`은 MCP/Core 또는 접점 도달 가능성 자체를 사용할 수 없을 때 쓰며, `VerifiedSurfaceContext.failure_reason=unavailable`을 포함합니다. `LOCAL_ACCESS_MISMATCH`는 도달 가능한 로컬 transport/session/binding이 등록된 프로젝트 접점과 맞지 않거나 로컬 접근이 철회되었을 때 쓰며, `failure_reason=mismatch` 또는 `revoked`를 포함합니다. `CAPABILITY_INSUFFICIENT`는 인식된 활성 접점이 요청한 접근 분류나 보장 주장에 필요한 역량을 갖추지 못했을 때 쓰며, `failure_reason=insufficient_capability`을 포함합니다. `surface_id`만으로는 이 오류 중 어느 것도 해결되지 않습니다. 이 공개 경로 대신 접점별 `UNAUTHORIZED` code를 만들지 않습니다.
 
@@ -172,7 +184,7 @@ task_id: string | null
 - `ShapingReadiness` 공백은 담당 경로에 따라 `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, 또는 구조화된 차단 사유로 드러날 수 있습니다. 읽기 전용 상태나 준비 상태 읽기는 상태를 바꾸지 않습니다.
 - `prepare_write decision=allowed`는 담당 범위의 1회용 Write Authorization을 만듭니다. `decision=blocked`는 적용되는 범위, baseline, 역량, 검증, 판단 코드를 사용합니다. `decision=approval_required`는 `APPROVAL_*` 경로를 사용하며 소비 가능한 Write Authorization을 만들면 안 됩니다.
 - `SensitiveActionScope`는 `judgment_kind=sensitive_approval`에 속합니다. 민감 동작 승인 오류는 `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`를 사용합니다. 이 승인은 Write Authorization, 최종 수락, 잔여 위험 수락, 증거, 아티팩트 권한을 대신하지 않습니다.
-- `harness.stage_artifact` 성공은 임시 핸들만 만들고 Core 변경을 만들지 않습니다. 유효한 스테이징 핸들을 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`입니다. 출처 필드 형태가 잘못되면 `VALIDATION_FAILED`를 사용하고, 없거나 만료되었거나 이미 소비되었거나 범위가 맞지 않거나 사용할 수 없거나 호환되지 않는 스테이징 핸들은 `staging_handle_reason`을 담은 `ARTIFACT_MISSING`을 사용합니다. 이런 조건을 증거 충분성으로 숨기면 안 됩니다.
+- `harness.stage_artifact` 성공은 임시 핸들만 만들고 Core 변경을 만들지 않습니다. 유효한 스테이징 핸들을 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`입니다. 출처 필드 형태가 잘못되었거나 스테이징된 핸들 검증이 실패하면 `artifact_input_error` detail을 담은 `VALIDATION_FAILED`를 사용합니다. 이런 조건을 증거 충분성, 로컬 접근 불일치, 역량 부족으로 숨기면 안 됩니다.
 - `harness.record_run`은 호환되는 Write Authorization을 정확히 한 번 소비합니다. Write Authorization이 없으면 `WRITE_AUTHORIZATION_REQUIRED`를 사용합니다. 프로젝트 전체 근거 버전이 오래된 Write Authorization은 `STATE_VERSION_CONFLICT`를 사용합니다. 만료, 철회, 이미 소비됨, 버전 불일치가 아닌 비호환 상태이면 `WRITE_AUTHORIZATION_INVALID`를 사용합니다. 승인 범위 밖 관찰 시도는 적용되는 범위 또는 Write Authorization 관련 코드를 사용합니다.
 - `close_task intent=check`는 차단 사유를 반환하더라도 읽기 전용입니다. `close_task intent=complete`는 구조화된 차단 사유와 함께 `CloseTaskResponse.close_state=blocked`를 반환하거나, 담당 문서가 정의한 complete 차단 사유가 없을 때만 `close_state=closed`를 반환합니다.
 - 닫기 스모크 범위는 증거 차단 사유의 `EVIDENCE_INSUFFICIENT`, 아티팩트 사용 불가 또는 누락 차단 사유의 `ARTIFACT_MISSING`, 최종 수락 차단 사유의 `ACCEPTANCE_REQUIRED`, 보이지만 수락되지 않은 잔여 위험에 대한 `category=residual_risk_acceptance`와 `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED`를 포함해야 합니다. `RESIDUAL_RISK_NOT_VISIBLE`은 아직 보이지 않은 위험에만 둡니다.

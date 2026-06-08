@@ -478,14 +478,26 @@ Core/API 담당 문서와 이 문서의 저장소 설명이 담당합니다. 방
 저장소는 `artifacts`와 `artifact_links`로 이를 구현합니다. 자세한 형태는
 [API Schema Core: ArtifactRef](api/schema-core.md#artifactref)를 봅니다.
 
-아티팩트 등록은 활성 담당 문서가 문서화한 `ArtifactInput` 출처인 `staged_artifact`
-또는 `existing_artifact`만 받습니다. `staged_artifact` 입력은 활성
+아티팩트 등록과 연결은 활성 담당 문서가 문서화한 `ArtifactInput` 출처인
+`staged_artifact` 또는 `existing_artifact`만 받습니다. `staged_artifact` 입력은 활성
 `harness.stage_artifact` 유틸리티가 만든 `StagedArtifactHandle`을 가져야 하며,
 저장소가 아티팩트 행을 커밋하기 전에 담당 경로가 이를 해석해야 합니다.
-`existing_artifact` 입력은 이미 등록된 `ArtifactRef`를 가리켜야 하며, 같은 프로젝트에
-속하고 호환되는 담당 관계를 가져야 합니다. 호출자가 임의로 준 파일시스템 경로, 임의
-로컬 경로 문자열, 권한 주장으로서의 원시 로그, `captured_artifact` 핸들, 원시 캡처
-어댑터 출력, 접점 자체 캡처 주장은 현재 MVP의 등록 권한이 아닙니다.
+`existing_artifact` 입력은 이미 등록된 지속 `ArtifactRef`를 가리켜야 하며, 같은
+프로젝트와 허용된 Task 범위에 속해야 합니다. `existing_artifact`는 새 아티팩트 바이트로
+가는 경로가 아니고 새 아티팩트 본문을 등록하지 않습니다. 이전에 지속 저장된 아티팩트에
+호환되는 담당 연결을 추가할 때만 사용할 수 있습니다. 호출자가 임의로 준 파일시스템
+경로, 임의 로컬 경로 문자열, 권한 주장으로서의 원시 로그, `captured_artifact` 핸들,
+원시 캡처 어댑터 출력, 접점 자체 캡처 주장은 현재 MVP의 등록 권한이 아닙니다.
+
+`harness.record_run`에서 저장소 효과는 API가 소유한 검증 순서를 따라야 합니다. 순서는
+요청 수준 `VerifiedSurfaceContext.access_class=run_recording`, 프로젝트 전체
+`ToolEnvelope.expected_state_version`, 참조된 Task와 Change Unit, 제품 파일 쓰기를
+기록할 때 호환되는 Write Authorization, 스테이징된 핸들 검증, 스테이징된 핸들 필드 확인,
+스테이징된 핸들 승격, 스테이징된 핸들 소비 표시, `existing_artifact` 연결 검증, 아티팩트 본문 읽기 없음입니다.
+이 순서의 어느 검증이라도 실패하면 저장소는 스테이징된 핸들 승격, `consumed` 표시, `existing_artifact`
+연결, Run, 증거 갱신, 이벤트, 재실행 행, Write Authorization 소비, 상태 버전 증가를
+커밋하면 안 됩니다. 아티팩트 본문 읽기는 `access_class=artifact_read`가 필요한 별도
+읽기입니다.
 
 임시 스테이징은 아티팩트 권한이 아닙니다. `artifact_staging` 또는 동등한 저장소 소유
 스테이징 기록은 최소한 `handle_id`, `project_id`, `task_id`, `created_by_surface_id`,
@@ -504,19 +516,25 @@ Core/API 담당 문서와 이 문서의 저장소 설명이 담당합니다. 방
 `harness.record_run`뿐입니다. 또한 현재 확인된 `surface_instance_id`가
 `created_by_surface_instance_id`와 일치해야 합니다. 현재 MVP는 접점 간(cross-surface)
 staged artifact handoff를 지원하지 않으며, `StagedArtifactHandle`은 어떤 로컬 호출자나
-사용할 수 있는 bearer token이 아닙니다. 소비 트랜잭션은 스테이징 핸들을 `consumed`로
-표시하고, 소비한 Run과 승격된 아티팩트 id를 설정하고, 지속 `artifacts` 행과 필요한
-`artifact_links`를 커밋하며, 메서드 담당 문서가 허용한 범위에서만 증거 범위를
-갱신해야 합니다. 만료되었거나, 범위가 맞지 않거나, 이미 소비되었거나, discarded
-상태이거나, cross-surface이거나, `created_by_surface_instance_id`/`sha256`/`size_bytes`가 맞지 않거나, 무결성 기대와 호환되지 않거나, 다른 Task의 스테이징 핸들은 변경 전에
-거부해야 하며 증거 충분성으로 숨기면 안 됩니다. Projection 파일, 생성된 Markdown,
-대화 텍스트, Product Repository 파일, 에이전트 기억은 staged handle의 출처 기록을 만들 수 없습니다.
+사용할 수 있는 bearer token이 아닙니다. 소비 트랜잭션은 저장된 `project_id`,
+`task_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`,
+`size_bytes`, `redaction_state`를 검증하고, 검증된 스테이징된 핸들만 승격하며, 승격된
+handle을 `consumed`로 표시하고, 소비한 Run과 승격된 아티팩트 id를 설정하고, 지속
+`artifacts` 행과 필요한 `artifact_links`를 커밋하며, 메서드 담당 문서가 허용한
+범위에서만 증거 범위를 갱신해야 합니다. 없거나, 만료되었거나, 범위가 맞지 않거나,
+이미 소비되었거나, discarded 상태이거나, cross-surface이거나,
+`created_by_surface_instance_id`/`sha256`/`size_bytes`/`redaction_state`가 맞지 않거나,
+무결성 기대와 호환되지 않거나, 다른 Task의 스테이징된 핸들은 변경 전에 API가 소유한
+`VALIDATION_FAILED` `artifact_input_error` detail로 거부해야 합니다. 이런 실패를 증거
+충분성, 로컬 접근 불일치, 역량 부족으로 숨기면 안 됩니다. Projection 파일, 생성된
+Markdown, 대화 텍스트, Product Repository 파일, 에이전트 기억은 스테이징된 핸들의 출처
+기록을 만들 수 없습니다.
 
-`existing_artifact`를 등록할 때는 가용성, 무결성 사실, `redaction_state`, 담당 관계가
-새 용도와 계속 호환될 때만 기존 아티팩트 행을 재사용합니다. 새 담당 관계를 위해
-`artifact_links` 행을 추가할 수 있지만, 고유 제약과 동일 `project_id`/`task_id` 규칙을 따라야
-합니다. 바이트를 복제하거나, 무결성 확인을 건너뛰거나, 원시 아티팩트 경로를 권한으로
-사용하면 안 됩니다.
+`existing_artifact`를 사용할 때는 가용성, 무결성 사실, `redaction_state`, 같은 프로젝트
+식별자, 허용된 Task 범위가 새 용도와 계속 호환될 때만 기존 아티팩트 행을 재사용합니다.
+새 담당 관계를 위해 `artifact_links` 행을 추가할 수 있지만, 고유 제약과 동일
+`project_id`/`task_id` 규칙을 따라야 합니다. 바이트를 복제하거나, 새 아티팩트 본문을
+등록하거나, 무결성 확인을 건너뛰거나, 원시 아티팩트 경로를 권한으로 사용하면 안 됩니다.
 
 아티팩트가 증거로 쓰일 수 있으려면 저장소가 아래 사실을 가져야 합니다.
 

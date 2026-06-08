@@ -40,7 +40,7 @@ Active MVP behavior defaults to cooperative checks with limited detective report
 
 | Code | Meaning |
 |---|---|
-| `VALIDATION_FAILED` | Payload shape, enum value, activation rule, or profile-specific validation failed before mutation. |
+| `VALIDATION_FAILED` | Payload shape, enum value, activation rule, profile-specific validation, or `record_run` `ArtifactInput` validation failed before mutation. |
 | `STATE_VERSION_CONFLICT` | `ToolEnvelope.expected_state_version` does not match current `project_state.state_version`, a Write Authorization is stale because its project-wide `basis_state_version` no longer matches current `project_state.state_version`, or the same idempotency key was reused with a different canonical request. |
 | `NO_ACTIVE_TASK` | A Task is required but none is active or addressed. |
 | `NO_ACTIVE_CHANGE_UNIT` | A write-capable or close-relevant operation has no active scoped Change Unit. |
@@ -61,7 +61,7 @@ Active MVP behavior defaults to cooperative checks with limited detective report
 | `ACCEPTANCE_REQUIRED` | Required final acceptance is pending, rejected, or not compatible with the visible result basis. |
 | `PROJECTION_STALE` | A requested readable status/view is stale or failed. It is not Core state and is not a close blocker by itself. |
 | `RESIDUAL_RISK_NOT_VISIBLE` | Known close-relevant residual risk has not been made visible before final acceptance or close. |
-| `ARTIFACT_MISSING` | A referenced artifact or staged artifact handle is missing, expired, consumed, mismatched, unavailable, unusable for the close basis, or failed integrity/metadata checks. |
+| `ARTIFACT_MISSING` | A referenced persistent artifact is missing, unavailable, unusable for the close basis, or failed integrity/metadata checks. |
 | `BASELINE_STALE` | Baseline no longer matches the repository state required by the operation. |
 | `VALIDATOR_FAILED` | Fallback when a required active validator or blocker check failed and no more specific typed code applies. In the current MVP, this is not a design-policy error. Design-quality concerns must route through an active judgment, blocker, evidence, capability, or residual-risk path, or remain advisory. |
 
@@ -74,13 +74,25 @@ missing | expired | stale | revoked | consumed | incompatible
 Use `WRITE_AUTHORIZATION_REQUIRED` with `authorization_reason=missing` when no required authorization is supplied. Use `WRITE_AUTHORIZATION_INVALID` with `authorization_reason=expired`, `revoked`, `consumed`, or `incompatible` when an existing authorization cannot be consumed for a non-version reason.
 Use `STATE_VERSION_CONFLICT` with `authorization_reason=stale` when the supplied Write Authorization is stale because its project-wide `basis_state_version` does not match current `project_state.state_version`.
 
-`ToolError.details.staging_handle_reason` uses exactly:
+Use `VALIDATION_FAILED` when `ArtifactInput.source_kind` and its source fields do not match the schema shape. Staged-handle validation failures for `ArtifactInput.source_kind=staged_artifact` also use public `VALIDATION_FAILED`, with structured detail in `ToolError.details.artifact_input_error`. Do not introduce new top-level public error codes for each staged-handle validation failure.
 
-```text
-missing | expired | consumed | mismatch | incompatible
+`ToolError.details.artifact_input_error` should include the input id and a specific reason. The active detail reason set includes:
+
+```yaml
+artifact_input_error:
+  artifact_input_id: string
+  reason:
+    - staged_handle_expired
+    - staged_handle_consumed
+    - staged_handle_project_mismatch
+    - staged_handle_task_mismatch
+    - staged_handle_surface_mismatch
+    - staged_handle_checksum_mismatch
+    - staged_handle_size_mismatch
+    - staged_handle_not_found
 ```
 
-Use `VALIDATION_FAILED` when `ArtifactInput.source_kind` and its source fields do not match the schema shape. Use `ARTIFACT_MISSING` with `staging_handle_reason` when a syntactically valid staged handle is missing, expired, already consumed, scoped to the wrong project or Task, or incompatible with the expected hash, size, content type, or artifact relation. A staged-handle error is not evidence insufficiency by itself, and it must not be reported as `LOCAL_ACCESS_MISMATCH` unless the registered local surface verification also failed.
+Staged-handle validation covers stored `project_id`, `task_id`, `created_by_surface_instance_id`, expiration, consumed status, `sha256`, `size_bytes`, and `redaction_state`. When `redaction_state` is the mismatched staged metadata, the message or an additional detail field should name it while keeping the public code `VALIDATION_FAILED`. A staged-handle provenance or scope mismatch is a validation error, not a request-level local access failure. Do not use `LOCAL_ACCESS_MISMATCH` for staged-handle provenance mismatch; `LOCAL_ACCESS_MISMATCH` is only for request surface verification failure. Do not use `CAPABILITY_INSUFFICIENT` for staged-handle scope or provenance mismatch; `CAPABILITY_INSUFFICIENT` is only for missing or insufficient verified surface capability. `ARTIFACT_MISSING` remains available for referenced persistent artifacts and close-relevant artifact availability, not for staged-handle validation.
 
 Use the local-access codes narrowly and keep them distinguishable. `MCP_UNAVAILABLE` is for unavailable MCP/Core or surface reachability itself, including `VerifiedSurfaceContext.failure_reason=unavailable`. `LOCAL_ACCESS_MISMATCH` is for a reachable local transport/session/binding that does not match the registered project surface, or for revoked local access, including `failure_reason=mismatch` or `revoked`. `CAPABILITY_INSUFFICIENT` is for a recognized active surface that lacks the capability needed by the requested access class or guarantee claim, including `failure_reason=insufficient_capability`. `surface_id` alone never resolves any of these errors. Do not substitute a surface-specific `UNAUTHORIZED` code for these public paths.
 
@@ -172,7 +184,7 @@ The first internal documentation smoke target in [MVP Plan](../../build/mvp-plan
 - A shaping readiness gap may surface `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, or a structured blocker, depending on the owner path. Read-only status or readiness reads do not mutate state.
 - `prepare_write decision=allowed` creates the owner-scoped single-use Write Authorization. `decision=blocked` uses the applicable scope, baseline, capability, validation, or decision code. `decision=approval_required` uses the `APPROVAL_*` path and must not create a consumable Write Authorization.
 - `SensitiveActionScope` belongs to `judgment_kind=sensitive_approval`. Sensitive approval errors use `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, or `APPROVAL_EXPIRED`; that approval does not replace Write Authorization, final acceptance, residual-risk acceptance, evidence, or artifact authority.
-- `harness.stage_artifact` success creates only a temporary handle and no Core mutation. `harness.record_run` is the active path that can promote a valid staged handle to persistent `ArtifactRef`; invalid source-field shape uses `VALIDATION_FAILED`, while missing, expired, consumed, mismatched, unavailable, or incompatible staged handles use `ARTIFACT_MISSING` with `staging_handle_reason` and must not be hidden as evidence sufficiency.
+- `harness.stage_artifact` success creates only a temporary handle and no Core mutation. `harness.record_run` is the active path that can promote a valid staged handle to persistent `ArtifactRef`; invalid source-field shape and staged-handle validation failures use `VALIDATION_FAILED` with `artifact_input_error` detail and must not be hidden as evidence sufficiency, local access mismatch, or capability insufficiency.
 - `harness.record_run` consumes a compatible Write Authorization exactly once. Missing authorization uses `WRITE_AUTHORIZATION_REQUIRED`. A project-wide stale authorization basis uses `STATE_VERSION_CONFLICT`. Expired, revoked, consumed, or non-version-incompatible authorization uses `WRITE_AUTHORIZATION_INVALID`; observed-outside-authorized-scope attempts use the applicable scope or authorization code.
 - `close_task intent=check` is read-only even when it returns blockers. `close_task intent=complete` returns `CloseTaskResponse.close_state=blocked` with structured blockers or `close_state=closed` only when no owner-defined complete blocker remains.
 - Close smoke coverage must include `EVIDENCE_INSUFFICIENT` for evidence blockers, `ARTIFACT_MISSING` for artifact unavailable or missing blockers, `ACCEPTANCE_REQUIRED` for final acceptance blockers, and `DECISION_REQUIRED` or `DECISION_UNRESOLVED` with `category=residual_risk_acceptance` for visible but unaccepted residual risk. `RESIDUAL_RISK_NOT_VISIBLE` is reserved for risk that has not been shown.
