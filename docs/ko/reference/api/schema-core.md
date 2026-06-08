@@ -4,7 +4,7 @@
 
 현재 MVP에서 쓰는 활성 메서드 이름 집합, 공용 API 형태, 닫힌 스키마 값 집합을 확인할 때 이 참조를 사용합니다. `ToolEnvelope`, 공통 응답, `ArtifactRef`, `StateRecordRef`, `UserJudgment`, Write Authorization 요약, 증거 요약, 실행 요약, 닫기 차단 사유, 다음 행동 요약, 현재 MVP enum 값을 다룹니다.
 
-이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 문서 저장소에 MCP 서버가 구현되어 있다는 뜻이 아닙니다. 향후 스키마 후보는 [Later 후보 색인](../../later/index.md#later-schema-candidates)에 남습니다.
+이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 문서 저장소에 MCP 서버가 구현되어 있다는 뜻이 아닙니다. 향후 스키마 후보는 [이후 후보 색인](../../later/index.md#later-schema-candidates)에 남습니다.
 
 ## 계약 위치 지도
 
@@ -12,11 +12,11 @@
 |---|---|
 | 정확한 활성 메서드 이름 값 집합과 공용 스키마 값 집합 | 이 문서 |
 | 활성 메서드별 요청/응답 동작 | [MVP API](mvp-api.md) |
-| 공개 오류, 우선순위, 멱등성, 차단 응답, stale-state 동작 | [API Errors](errors.md) |
+| 공개 오류, 우선순위, 멱등성, 차단 응답, 오래된 상태 동작 | [API Errors](errors.md) |
 | Core 상태 의미와 lifecycle 의미 | [Core Model 참조](../core-model.md) |
 | 저장소 테이블, JSON `TEXT`, enum hardening, artifact persistence | [Storage](../storage.md) |
 | 보안 보장 의미 | [보안 참조](../security.md) |
-| 향후 API/schema 후보 | [Later 후보 색인](../../later/index.md#later-schema-candidates) |
+| 향후 API/스키마 후보 | [이후 후보 색인](../../later/index.md#later-schema-candidates) |
 
 ## 스키마 표기 규칙
 
@@ -26,10 +26,10 @@
 - `field: Type | null`은 필드가 필수이고 JSON `null`을 허용한다는 뜻입니다.
 - `Type[]`은 필드가 존재하고 배열을 담는다는 뜻입니다. 빈 배열은 `[]`로 씁니다.
 - `a | b | c`는 해당 필드의 닫힌 활성 enum입니다.
-- later, reserved, profile-gated 이름은 활성 enum 표기나 활성 값 표에 넣지 않습니다. 담당 문서가 승격하기 전까지 [Later 후보 색인](../../later/index.md)에 남깁니다.
+- later, reserved, profile-gated 이름은 활성 enum 표기나 활성 값 표에 넣지 않습니다. 담당 문서가 승격하기 전까지 [이후 후보 색인](../../later/index.md)에 남깁니다.
 - 명시되지 않은 필드는 명시적인 확장 컨테이너 밖에서 거부됩니다.
 
-Storage validation은 별도 담당 문서 경계입니다. API payload와 API-shaped stored JSON은 먼저 이 API 참조로 검증합니다. DDL, storage-only JSON, 기본값, 잠금, 마이그레이션은 [Storage](../storage.md)가 담당합니다.
+저장소 검증은 별도 담당 문서 경계입니다. API 페이로드와 API 형태로 저장되는 JSON은 먼저 이 API 참조로 검증합니다. DDL, 저장소 전용 JSON, 기본값, 잠금, 마이그레이션은 [Storage](../storage.md)가 담당합니다.
 
 [현재 MVP 값 집합](#current-mvp-value-sets)은 정확한 활성 메서드 이름 집합과 이 문서가 선언하는 활성 스키마 enum 값을 담당합니다. 메서드별 동작은 [MVP API](mvp-api.md)가 담당하고, 공개 `ErrorCode` 분류는 [API Errors](errors.md)가 담당합니다.
 
@@ -160,7 +160,7 @@ StateRecordRef:
 
 ## ArtifactRef
 
-`ArtifactRef`는 Harness storage에 등록된 durable evidence file을 가리킵니다. 호출자가 임의로 준 path가 아닙니다.
+`ArtifactRef`는 하네스 저장소에 등록된 영속 증거 파일을 가리킵니다. 호출자가 임의로 준 경로가 아닙니다.
 
 ```yaml
 ArtifactRef:
@@ -266,7 +266,7 @@ WriteAuthoritySummary:
 
 `EvidenceSummary`는 활성 간결 증거 기록입니다. 상세 증거 보고서, 별도 보증 결과, 최종 수락, 잔여 위험 수락, 렌더링된 보기가 아닙니다.
 
-`AuthorizedAttemptScope`는 `write_authorizations.attempt_scope_json`에 저장되고 나중에 `harness.record_run`에서 비교하는 정확한 범위입니다. `WriteAuthorizationSummary.status`는 오래 남는 authorization 생명주기입니다. `blocked`는 Write Authorization status가 아닙니다. 차단된 쓰기는 소비 가능한 authorization 없이 blocker를 반환합니다.
+`AuthorizedAttemptScope`는 `write_authorizations.attempt_scope_json`에 저장되고 나중에 `harness.record_run`에서 비교하는 정확한 범위입니다. `WriteAuthorizationSummary.status`는 오래 남는 Write Authorization 생명주기입니다. `blocked`는 Write Authorization의 `status`가 아닙니다. 차단된 쓰기는 소비 가능한 Write Authorization 없이 차단 사유를 반환합니다.
 
 현재 MVP의 `AuthorizedAttemptScope`는 제품 파일 쓰기를 경로 수준으로 다룹니다. 의도한 제품 파일 경로, 활성 민감 범주, baseline, 관련 사용자 판단, 정직한 보장 수준만 기록합니다. 명령 실행, 네트워크 효과, 비밀값 접근, 도구 관찰, 네이티브 아티팩트 캡처, 도구 실행 전 차단, 격리는 현재 기준 `AuthorizedAttemptScope` 필드가 아닙니다. 이런 관찰할 수 없는 보장을 요구하는 요청은 검증 오류나 역량 부족으로 거절하거나 차단해야 하며, 검증된 범위처럼 기록하면 안 됩니다.
 
@@ -339,7 +339,7 @@ UserJudgmentResolution:
   note: string | null
 ```
 
-`judgment_kind`는 기준 판단 종류 필드입니다. 렌더링된 라벨과 지역화된 라벨은 스키마 값이 아닙니다. `presentation=short`가 활성 MVP presentation입니다. 확장 표시 본문은 활성 API 스키마가 아닙니다.
+`judgment_kind`는 기준 판단 종류 필드입니다. 렌더링된 라벨과 지역화된 라벨은 스키마 값이 아닙니다. `presentation=short`가 현재 MVP의 활성 `presentation` 값입니다. 확장 표시 본문은 활성 API 스키마가 아닙니다.
 
 `UserJudgmentResolution.selected_option_id`와 `UserJudgmentResolution.note`는 기준 요청 필드인 `RecordUserJudgmentRequest.selected_option_id`와 `RecordUserJudgmentRequest.note`에서 저장된 복사본입니다. `RecordUserJudgmentPayload`는 판단 종류별 답변 세부정보만 담으며 선택지 식별자나 요청 메모를 반복하면 안 됩니다.
 
@@ -380,7 +380,7 @@ AcceptedRiskInput:
   user_note: string | null
 ```
 
-`AcceptedRiskInput`은 `judgment_kind=residual_risk_acceptance`에서만 유효합니다. `visible_risk_ref`는 같은 Task의 보이는 닫기 관련 `blocker`를 가리켜야 합니다. 독립적인 residual-risk record를 만들지 않습니다.
+`AcceptedRiskInput`은 `judgment_kind=residual_risk_acceptance`에서만 유효합니다. `visible_risk_ref`는 같은 Task의 보이는 닫기 관련 `blocker`를 가리켜야 합니다. 독립적인 잔여 위험 기록을 만들지 않습니다.
 
 <a id="current-position-display-schemas"></a>
 
@@ -442,7 +442,7 @@ ValidatorResult:
   suggested_next_action: string | null
 ```
 
-활성 stable validator ID는 `surface_capability_check`입니다. `ValidatorResult` 출력은 결과가 이름 붙인 활성 담당 경로를 통해서만 차단 사유, 대체 동작, 보장 표시에 영향을 줄 수 있습니다. 예를 들어 역량이 실제 문제일 때 `CloseBlocker.category=surface_capability`로 이어질 수 있습니다. `status=blocked` 결과나 `findings.severity=blocker`는 설계 정책 차단 사유가 아니며, `design_gate`나 `design_policy`를 활성화하지 않고, 심각도만으로 닫기를 차단하지 않습니다. Write Authorization, 사용자 판단, 증거, 최종 수락, 잔여 위험 수락, 닫기를 만들지 않습니다.
+활성 안정 validator ID는 `surface_capability_check`입니다. `ValidatorResult` 출력은 결과가 이름 붙인 활성 담당 경로를 통해서만 차단 사유, 대체 동작, 보장 표시에 영향을 줄 수 있습니다. 예를 들어 역량이 실제 문제일 때 `CloseBlocker.category=surface_capability`로 이어질 수 있습니다. `status=blocked` 결과나 `findings.severity=blocker`는 설계 정책 차단 사유가 아니며, `design_gate`나 `design_policy`를 활성화하지 않고, 심각도만으로 닫기를 차단하지 않습니다. Write Authorization, 사용자 판단, 증거, 최종 수락, 잔여 위험 수락, 닫기를 만들지 않습니다.
 
 <a id="sensitive-categories"></a>
 
@@ -473,7 +473,7 @@ policy_override
 
 ## 현재 MVP 값 집합
 
-아래 값은 활성 현재 MVP 스키마 값입니다. 메서드별 역량과 접근 분류 확인은 구체적인 요청에서 어떤 값을 거부할 수 있습니다. 여기에 없는 값은 활성 현재 MVP 값이 아닙니다. 이 표는 첫 validator가 복사해 쓸 수 있는 현재 MVP 값 집합입니다. 화면에 표시되는 라벨은 기준 스키마 값이 아닙니다. 공개 `ErrorCode` 값은 이 표가 아니라 [API Errors](errors.md)가 담당합니다.
+아래 값은 현재 MVP의 활성 스키마 값입니다. 메서드별 역량과 접근 분류 확인은 구체적인 요청에서 어떤 값을 거부할 수 있습니다. 여기에 없는 값은 현재 MVP의 활성 값이 아닙니다. 이 표는 첫 validator 구현이 참조할 수 있는 현재 MVP 값 집합입니다. 화면에 표시되는 라벨은 기준 스키마 값이 아닙니다. 공개 `ErrorCode` 값은 이 표가 아니라 [API Errors](errors.md)가 담당합니다.
 
 | 필드 | 현재 MVP 값 |
 |---|---|
@@ -535,6 +535,6 @@ Schema Core는 활성 표 안에 비활성 enum 값을 예약하지 않습니다
 
 <a id="later-candidate-value-names"></a>
 
-## Later 후보 값 이름
+## 이후 후보 값 이름
 
-Later 후보 값 이름은 승격된 담당 문서가 정확한 활성 필드, 값 집합, validator, 대체 동작, 증명 기대치를 이 문서나 다른 활성 담당 문서에 추가하기 전까지 [Later 후보 색인](../../later/index.md#later-schema-candidates)에만 남는 목록 전용 이름입니다. 이 활성 API 참조는 later 스키마 본문을 일부러 정의하지 않습니다.
+이후 후보 값 이름은 승격된 담당 문서가 정확한 활성 필드, 값 집합, validator, 대체 동작, 증명 기대치를 이 문서나 다른 활성 담당 문서에 추가하기 전까지 [이후 후보 색인](../../later/index.md#later-schema-candidates)에만 남는 목록 전용 이름입니다. 이 활성 API 참조는 이후 후보 스키마 본문을 일부러 정의하지 않습니다.

@@ -2,7 +2,7 @@
 
 이 용어집은 하네스 용어, 대소문자, 정확한 식별자, 담당 문서 경로를 확인하는 짧은 문서입니다. 계획된 하네스 동작을 위한 원천 문서일 뿐이며, [MVP 계획](../build/mvp-plan.md)이 다르게 말하지 않는 한 이 저장소는 문서 전용입니다.
 
-용어집은 이름과 경로를 정합니다. Core 동작, API 스키마, Storage DDL, 보안 보장, Projection 템플릿, 커넥터 동작, 적합성 fixture, later 후보 계약의 전체 정의는 각 담당 문서에 남습니다.
+용어집은 이름과 경로를 정합니다. Core 동작, API 스키마, Storage DDL, 보안 보장, Projection 템플릿, 커넥터 동작, 적합성 fixture, 이후 후보 계약의 전체 정의는 각 담당 문서에 남습니다.
 
 ## 공개 용어
 
@@ -34,7 +34,7 @@
 | 권한 경계 | 무엇이 하네스 권한을 만들고 무엇이 정보로만 쓰이는지를 나누는 선입니다. 채팅, Projection, 보고서는 권한이 아닙니다. | [런타임 경계](runtime-boundaries.md) |
 | 파생 표시 | 상태 카드나 Projection처럼 담당 기록에서 렌더링된 사용자 표시입니다. Core가 소유한 상태를 대체하지 않습니다. | [Projection과 Template](projection-and-templates.md) |
 | 현재 MVP | 활성 계획 기준 MVP 참조 범위입니다. 런타임/서버 구현이 존재한다는 증거가 아닙니다. | [MVP 계획](../build/mvp-plan.md) |
-| later 후보 | 담당 문서가 범위, 대체 동작, 증명 기대치와 함께 승격하기 전까지 현재 MVP 밖에 남는 향후 자료입니다. | [Later 후보 색인](../later/index.md) |
+| 이후 후보 | 담당 문서가 범위, 대체 동작, 증명 기대치와 함께 승격하기 전까지 현재 MVP 밖에 남는 향후 자료입니다. | [이후 후보 색인](../later/index.md) |
 
 ## Core 용어
 
@@ -59,7 +59,7 @@
 | `record_run` | 실행 또는 관찰을 기록하고 필요한 경우 호환되는 `Write Authorization`을 소비하는 Core 경로입니다. 공개 API 메서드는 `harness.record_run`입니다. | [Core Model](core-model.md), [MVP API](api/mvp-api.md) |
 | `close_task` | Core의 완료 판단 지점입니다. 공개 API 메서드는 `harness.close_task`입니다. | [Core Model](core-model.md), [MVP API](api/mvp-api.md) |
 
-## API/schema 식별자
+## API/스키마 식별자
 
 스키마, API 문서, 기록, 예시, 파일 경로, 진단 출력, 코드 형태 문장에서는 아래 내부 식별자를 정확히 유지합니다. 의미와 값 집합은 [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API Errors](api/errors.md)가 담당합니다.
 
@@ -75,11 +75,11 @@
 | `RunSummary` / `ObservedChanges` | 공개 실행 결과와 관찰된 변경 요약 형태입니다. | [API Schema Core](api/schema-core.md) |
 | `UserJudgment` / `UserJudgmentCandidate` / `UserJudgmentResolution` / `RecordUserJudgmentPayload` / `AcceptedRiskInput` | 판단 요청, 후보, 저장된 해결 기록, 답변 세부정보, 잔여 위험 수락 입력 형태입니다. | [API Schema Core](api/schema-core.md) |
 | `judgment_kind` | 사용자 판단 종류의 기준 필드입니다. 값은 정확히 유지하고 지역화된 라벨로 바꾸지 않습니다. | [API Schema Core](api/schema-core.md) |
-| `presentation` | 활성 간결한 프롬프트/세부 표시 필드입니다. `short`는 active이고 `full`은 later 전체 형식 표시입니다. | [API Schema Core](api/schema-core.md), [Later](../later/index.md) |
+| `presentation` | 활성 간결한 프롬프트/세부 표시 필드입니다. `short`는 활성이고 `full`은 이후 전체 형식 표시입니다. | [API Schema Core](api/schema-core.md), [Later](../later/index.md) |
 | `CloseTaskResponse.close_state` | `harness.close_task`가 돌려주는 응답 수준의 닫기 상태입니다. 값은 `ready`, `blocked`, `closed`, `cancelled`, `superseded`입니다. 지속 저장되는 `Task.lifecycle_phase`와는 별도입니다. | [MVP API](api/mvp-api.md) |
 | `CloseBlocker` | 구조화된 닫기/진행 차단 결과입니다. 산문 보고 문구만으로는 차단 결과가 아닙니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
 | `ValidatorResult` | 구조화된 validator 출력입니다. 활성 안정 validator ID: `surface_capability_check`. | [API Schema Core](api/schema-core.md) |
-| 민감 범주 | `auth_change`, `destructive_write`, `secret_access`, `privacy_or_pii_change`, `policy_override` 같은 정확한 값입니다. | [API Schema Core](api/schema-core.md) |
+| 민감 범주 | `auth_change`, `destructive_write`, `privacy_or_pii_change`, `data_export`, `policy_override` 같은 정확한 값입니다. | [API Schema Core](api/schema-core.md) |
 | 공개 오류 코드 | `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`, `PROJECTION_STALE` 같은 안정적인 공개 오류입니다. | [API Errors](api/errors.md) |
 
 ## Storage 용어
@@ -95,8 +95,8 @@ Storage 용어는 향후 하네스 기록이 어디에 사는지 알려줍니다
 | 활성 저장 기록 | 활성 테이블 이름에는 `project_state`, `surfaces`, `tasks`, `change_units`, `user_judgments`, `write_authorizations`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`, `task_events`, `tool_invocations`가 포함됩니다. | [Storage](storage.md) |
 | JSON `TEXT` 열 | Core/API/storage 검증 이후 담당 문서 형태를 따르는 JSON을 저장하는 SQLite `TEXT` 열입니다. 임의 JSON 컨테이너가 아닙니다. | [Storage](storage.md) |
 | 아티팩트 저장 연결 | `artifacts`와 `artifact_links`는 증거 바이트나 안전한 메타데이터를 등록하고 담당 기록과 연결합니다. 연결 자체가 `Gate`를 만족하지는 않습니다. | [Storage](storage.md) |
-| event/replay 저장 | `task_events`는 커밋된 변경 감사 추적 기록이고, `tool_invocations`는 커밋된 멱등성 재실행 행입니다. | [Storage](storage.md) |
-| 상태 버전과 hash | `state_version`, `project_state.state_version`, `tasks.state_version`, `tree_hash`, `request_hash`는 오래된 상태, 기준선, 멱등성 확인을 지원합니다. | [Storage](storage.md), [API Errors](api/errors.md) |
+| 이벤트/재실행 저장 | `task_events`는 커밋된 변경 감사 추적 기록이고, `tool_invocations`는 커밋된 멱등성 재실행 행입니다. | [Storage](storage.md) |
+| 상태 버전과 해시 | `state_version`, `project_state.state_version`, `tasks.state_version`, `tree_hash`, `request_hash`는 오래된 상태, 기준선, 멱등성 확인을 지원합니다. | [Storage](storage.md), [API Errors](api/errors.md) |
 
 ## 보안 보장 용어
 
@@ -119,28 +119,28 @@ Storage 용어는 향후 하네스 기록이 어디에 사는지 알려줍니다
 |---|---|---|
 | 에이전트 접점 / `surface_id` | 연결된 환경과 API 호출자 식별자입니다. 접점 이름이나 `surface_id`만으로 기능이나 권한이 생기지 않습니다. | [Agent 통합](agent-integration.md) |
 | `capability_profile` | 접점이 실제로 할 수 있는 일을 선언하고 갱신한 사실입니다. MCP 태세, 관찰, 캡처, 보호, 격리 지원을 포함합니다. | [Agent 통합](agent-integration.md), [보안](security.md) |
-| 커넥터 manifest | 커넥터가 관리하는 경로, 스니펫, 관리 블록 hash, 프로필 최신성, 드리프트, 대체 동작 요약입니다. | [Agent 통합](agent-integration.md) |
+| 커넥터 매니페스트 | 커넥터가 관리하는 경로, 스니펫, 관리 블록 해시, 프로필 최신성, 드리프트, 대체 동작 요약입니다. | [Agent 통합](agent-integration.md) |
 | 항상 주입되는 맥락 | 한 화면 이하의 현재 맥락입니다. 작업 요약, 범위, 대기 중인 판단, 차단 사유, 다음 안전한 행동, 증거 공백, 닫기 차단 사유, 잔여 위험, 보장 수준, 최신 참조만 둡니다. | [Agent 통합](agent-integration.md) |
 | 단계별 맥락 / push-pull | 간결한 현재 맥락을 먼저 주고, 다음 행동에 필요한 담당 섹션만 가져오는 방식입니다. | [Agent 통합](agent-integration.md), [참조 색인](README.md) |
 | Role Lens | 읽기 전용 역할 관점 안내입니다. `Role Lens` 추천은 담당 경로가 행동을 기록하기 전까지 권한이 없습니다. | [Agent 통합](agent-integration.md) |
 | 기준 로컬 MCP 접점 | 활성 참조 통합 프로필인 `reference-local-mcp`입니다. 지원되는 범위에서만 협력형 동작과 제한된 탐지형 동작을 표시합니다. | [Agent 통합](agent-integration.md) |
 | 대체 동작 | Core, MCP, Projection, 로컬 접근, 기능을 사용할 수 없거나 기능이 부족할 때의 커넥터 응답입니다. | [Agent 통합](agent-integration.md), [API Errors](api/errors.md) |
 
-## later 용어
+## 이후 후보 용어
 
-later 용어는 후보 또는 전달 라벨입니다. 담당 문서가 승격하기 전에는 active API/schema/storage 계약, fixture 본문, 런타임 동작, 생성된 artifact, 현재 MVP 요구사항이 아닙니다.
+이후 후보 용어는 후보 또는 전달 라벨입니다. 담당 문서가 승격하기 전에는 활성 API/스키마/저장소 계약, fixture 본문, 런타임 동작, 생성된 아티팩트, 현재 MVP 요구사항이 아닙니다.
 
-| later 용어 | 현재 상태 | 담당 경로 |
+| 이후 후보 용어 | 현재 상태 | 담당 경로 |
 |---|---|---|
 | Context Index | 나중의 읽기 전용 검색 지원입니다. 쓰기 승인, `Gate` 충족, 위험 수락, 닫기를 대신하지 않습니다. | [Later](../later/index.md) |
 | Journey Card / Journey Spine | 나중의 연속성 표시입니다. 활성화되고 최신이면 방향 잡기에 도움을 줄 수 있지만 Core가 소유한 상태는 아닙니다. | [Later](../later/index.md) |
-| Browser QA Capture | later 캡처 지원 후보입니다. 그 자체로 수동 QA, 최종 수락, 분리된 검증이 아닙니다. | [Later](../later/index.md) |
+| Browser QA Capture | 이후 캡처 지원 후보입니다. 그 자체로 수동 QA, 최종 수락, 분리된 검증이 아닙니다. | [Later](../later/index.md) |
 
 ## 폐기/호환 용어
 
-아래 호환 용어는 호환 라벨과의 혼동을 막을 때만 남깁니다. 새 active 문서의 주 개념으로 쓰지 않습니다.
+아래 호환 용어는 호환 라벨과의 혼동을 막을 때만 남깁니다. 새 활성 문서의 주 개념으로 쓰지 않습니다.
 
 | 용어 | 호환 메모 | 현재 경로 |
 |---|---|---|
-| Decision Packet | 전체 형식의 later 표시입니다. active 사용자 경로의 필수 형식이 아닙니다. | [API Schema Core](api/schema-core.md), [Later](../later/index.md) |
-| `MVP-1` | 현재 MVP 범위를 가리키던 이전 라벨입니다. 호환 설명이 필요한 곳에서만 사용하고, 새 active 문서에서는 현재 MVP를 씁니다. | [MVP 계획](../build/mvp-plan.md) |
+| Decision Packet | 전체 형식의 이후 후보 표시입니다. 현재 사용자 경로의 필수 형식이 아닙니다. | [API Schema Core](api/schema-core.md), [Later](../later/index.md) |
+| `MVP-1` | 현재 MVP 범위를 가리키던 이전 라벨입니다. 호환 설명이 필요한 곳에서만 사용하고, 새 활성 문서에서는 현재 MVP를 씁니다. | [MVP 계획](../build/mvp-plan.md) |

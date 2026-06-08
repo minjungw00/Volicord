@@ -79,7 +79,7 @@ Keep these identifiers exact in schemas, API docs, records, examples, file paths
 | `CloseTaskResponse.close_state` | Response-level close status from `harness.close_task`. Values: `ready`, `blocked`, `closed`, `cancelled`, `superseded`. It is separate from persisted `Task.lifecycle_phase`. | [MVP API](api/mvp-api.md) |
 | `CloseBlocker` | Structured close/progress blocker result. Prose-only report text is not a blocker result. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
 | `ValidatorResult` | Structured validator output. Active stable validator ID: `surface_capability_check`. | [API Schema Core](api/schema-core.md) |
-| sensitive categories | Exact values such as `auth_change`, `destructive_write`, `secret_access`, `privacy_or_pii_change`, and `policy_override`. | [API Schema Core](api/schema-core.md) |
+| sensitive categories | Exact values such as `auth_change`, `destructive_write`, `privacy_or_pii_change`, `data_export`, and `policy_override`. | [API Schema Core](api/schema-core.md) |
 | public error codes | Stable public errors such as `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`, and `PROJECTION_STALE`. | [API Errors](api/errors.md) |
 
 ## Storage terms
