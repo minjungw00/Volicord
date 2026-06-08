@@ -393,6 +393,13 @@ terminal lifecycle values are `completed`, `cancelled`, and `superseded`.
 `tasks.result` must not store `passed` or `failed`; failed Runs, projections,
 artifacts, validators, evidence gaps, blocked closes, and close blockers remain
 in their owning records or current Task state.
+`tasks.close_reason` must be compatible with the committed `close_task` intent:
+`completed_self_checked` and `completed_with_risk_accepted` are successful
+completion reasons that require sufficient required evidence and required final
+acceptance, while `cancelled` and `superseded` are terminal non-completion
+reasons. `cancelled` and `superseded` must not be stored as if they satisfied
+`CompletionPolicy` evidence, final acceptance, or residual-risk acceptance
+requirements.
 When committed supersession changes the active pointer, `project_state.active_task_id`
 must follow the `harness.close_task` `superseding_task_id` rule and must not
 continue pointing at the superseded Task.
@@ -438,7 +445,8 @@ manifest body, QA record, acceptance record, residual-risk record, or close
 record under another name.
 
 `evidence_summaries.completion_policy_json` stores the compact
-`CompletionPolicy` for the Task or Change Unit. `coverage_items_json` stores
+`CompletionPolicy` for `close_task intent=complete` on the Task or Change Unit.
+It is not a cancellation or supersession policy. `coverage_items_json` stores
 bounded `EvidenceCoverageItem` entries with explicit `claim`,
 `required_for_close`, `coverage_state`, and validated supporting or gap refs.
 Storage must reject coverage JSON that omits the required/optional distinction,

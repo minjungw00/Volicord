@@ -163,6 +163,10 @@ For tracked work, show the close basis before asking for final acceptance or att
 - residual-risk visibility and acceptance status when relevant
 - close blockers and smallest unblocker
 
+Use `harness.close_task intent=check` for a read-only close check. Use `intent=complete` only after the complete blocker order has passed: Task validity, Run state, scope and `completion_policy`, unresolved judgments and approvals, write and baseline compatibility, surface capability, required evidence, artifact availability, final acceptance when required, residual-risk visibility, residual-risk acceptance when required, and recovery constraints. Evidence comes before final acceptance and residual-risk acceptance; those judgments cannot fill an evidence gap.
+
+Use `intent=cancel` or `intent=supersede` only when the user is ending or replacing the Task rather than completing it. These paths still need valid Task identity, lifecycle, local access, recovery compatibility, and a valid superseding Task when applicable, but they do not require evidence sufficiency, final acceptance, or residual-risk acceptance.
+
 The current MVP has no extra active close requirement for separate quality review or broad quality-risk acceptance. Those separate quality routes stay in [Later](../later/index.md) until an owner promotes a separate active contract.
 
 Do not close from prose, tests alone, broad acceptance-like language, residual-risk acceptance, a generated readable view, or a stale status summary. Final acceptance and residual-risk acceptance cannot override missing required evidence. If blockers remain, lead with them and name the next safe action.

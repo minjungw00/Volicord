@@ -166,6 +166,8 @@ GuaranteeDisplay:
 
 `StateSummary.mode`는 지속 저장되는 `tasks.mode`를 그대로 보여 주며 항상 구체적 Task `mode`입니다. `auto`는 저장되는 `mode`, 표시되는 Task `mode`, 상태 요약의 `mode`가 아닙니다. `StateSummary.lifecycle_phase`는 지속 저장되는 `Task.lifecycle_phase`를 그대로 보여줍니다. `intake`는 API 메서드이자 시작 처리 단계이지 생명주기 값이 아닙니다. 종료 `lifecycle_phase` 값은 `completed`, `cancelled`, `superseded`입니다. 특히 `superseded`는 Task가 다른 Task나 경로로 대체되어 다시 활성 작업으로 돌아가지 않는다는 뜻입니다. `StateSummary.close_reason`은 지속 저장되는 `Task.close_reason`을 그대로 보여줍니다. `StateSummary.result`는 큰 단위의 `Task.result`를 보여줍니다. 실패한 Run, `violation`, 차단된 닫기, 증거 공백, 차단 사유는 `RunSummary.status`, `CloseBlocker`, 증거 상태, 차단 사유, 현재 Task 상태에 남고 Task의 종료 결과가 되지 않습니다. 이 문서의 `passed`와 `failed`는 `StateSummary.gates.*` 또는 `ValidatorResult.status` 값일 때만 활성이며 `Task.result` 값이 아닙니다.
 
+`Task.close_reason` 값은 서로 바꿔 쓸 수 있는 라벨이 아닙니다. `completed_self_checked`는 필수 증거가 충분하고, 필요한 `final_acceptance`가 해결되었고, 닫기에 영향을 주는 `residual_risk_acceptance`가 필요하지 않다는 뜻입니다. `completed_with_risk_accepted`는 필수 증거가 충분하고, 필요한 `final_acceptance`가 해결되었고, 닫기에 영향을 주는 보이는 잔여 위험에 대해 호환되는 `residual_risk_acceptance`가 있다는 뜻입니다. `cancelled`와 `superseded`는 종료 상태이지만 성공 완료가 아니며 `CompletionPolicy`의 증거, 최종 수락, 잔여 위험 수락 요구를 만족시키지 않습니다.
+
 Task `mode` 값은 독자에게 다음 뜻으로 설명됩니다.
 
 - `advisor`: 제품 쓰기 없는 조언, 검토, 계획.
@@ -351,7 +353,7 @@ WriteAuthoritySummary:
   guarantee_display: GuaranteeDisplay
 ```
 
-`CompletionPolicy`는 Task 또는 Change Unit의 활성 닫기 정책을 간결하게 담습니다. 해당 닫기 경로에서 증거, 최종 수락, 보이는 잔여 위험의 수락, 제품 쓰기 완료, 사용자에게 보이는 결과가 필요한지 이름 붙입니다. QA gate, verification gate, 전체 Evidence Manifest, 별도 보증 흐름을 추가하는 허가가 아닙니다.
+`CompletionPolicy`는 Task 또는 Change Unit에서 `close_task intent=complete`에 쓰는 활성 닫기 정책을 간결하게 담습니다. 해당 완료 경로에서 증거, 최종 수락, 보이는 잔여 위험의 수락, 제품 쓰기 완료, 사용자에게 보이는 결과가 필요한지 이름 붙입니다. `intent=cancel`과 `intent=supersede`는 성공 완료가 아니며 이 정책을 만족시키지 않습니다. `CompletionPolicy`는 QA gate, verification gate, 전체 Evidence Manifest, 별도 보증 흐름을 추가하는 허가가 아닙니다.
 
 `EvidenceSummary`는 그 `CompletionPolicy`에 묶인 현재 MVP의 간결한 증거 기록입니다. 증거 충분성은 막연한 산문 판단이 아닙니다. `completion_policy.evidence_required=false`이면 증거 상태는 `not_required`여야 합니다. `EvidenceSummary.status=sufficient`는 `required_for_close=true`인 모든 `EvidenceCoverageItem`이 존재하고 `coverage_state=supported` 또는 `not_applicable`일 때만 허용됩니다. 필수 `EvidenceCoverageItem` 중 하나라도 `unsupported`, `partial`, `stale`, `blocked`이면 `harness.close_task`는 닫기 차단 사유를 보고해야 합니다. 필수 증거가 통째로 빠졌다면 그 필수 항목을 `unsupported` 또는 `blocked` `EvidenceCoverageItem`이나 `gap_blocker_refs`로 표현해야 하며, 항목을 생략해서 숨기면 안 됩니다.
 
@@ -500,7 +502,7 @@ NextActionSummary:
   blocker_code: ErrorCode | null
 ```
 
-`CloseBlocker`는 구조화된 차단 결과입니다. 산문으로만 된 상태 텍스트, 보고서, 렌더링된 보기는 차단 결과가 아닙니다.
+`CloseBlocker`는 구조화된 차단 결과입니다. 산문으로만 된 상태 텍스트, 보고서, 렌더링된 보기는 차단 결과가 아닙니다. `harness.close_task intent=complete`에서는 [Core Model](../core-model.md#close_task)이 담당하는 결정적 순서로 차단 범주를 계산합니다. `cancellation`과 `supersession` 범주는 해당 종료 intent와의 충돌을 설명합니다. 성공 완료 증거가 아니며 `completed_self_checked` 또는 `completed_with_risk_accepted`와 섞으면 안 됩니다.
 
 <a id="nextactionsummary"></a>
 
@@ -588,6 +590,8 @@ policy_override
 | `Task.close_reason`과 `StateSummary.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` |
 | `StatusResponse.close_state` | `none`, `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
 | `CloseTaskResponse.close_state` | `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
+| `CloseTaskRequest.intent` | `check`, `complete`, `cancel`, `supersede` |
+| `CloseTaskRequest.close_reason` | `Task.close_reason`과 같은 값, 그리고 `null`. 메서드 동작이 각 `intent`에서 유효한 값을 정합니다. |
 | `StateSummary.assurance_level` | `none`, `self_checked` |
 | `StateSummary.gates.scope_gate` | `not_required`, `required`, `pending`, `passed`, `failed`, `blocked` |
 | `StateSummary.gates.decision_gate` | `not_required`, `required`, `pending`, `resolved`, `deferred`, `blocked` |

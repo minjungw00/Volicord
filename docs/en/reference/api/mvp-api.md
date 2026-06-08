@@ -51,7 +51,9 @@ effects only in rows whose "Committed blocked response allowed" cell says yes.
 | `harness.request_user_judgment` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | No separate blocked-response commit; the method either commits the pending judgment path or fails pre-commit | Yes, on commit | Yes, on first commit | Yes, on commit |
 | `harness.record_user_judgment` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, when the addressed judgment is committed as rejected, deferred, blocked, or otherwise blocker-producing | Yes, on commit | Yes, on first commit | Yes, on commit |
 | `harness.close_task intent=check` | Read-only | Yes; no state distinction | No | No; may be `null` | No; close blockers are computed response fields only | No | No | No |
-| `harness.close_task intent=complete/cancel/supersede` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, when close blockers are persisted while the Task remains open | Yes, on terminal commit or committed blocked close | Yes, on first terminal commit or committed blocked close | Yes, on terminal commit or committed blocked close |
+| `harness.close_task intent=complete` | Mutating completion attempt | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, when complete blockers are persisted while the Task remains open | Yes, on completed commit or committed blocked complete | Yes, on first completed commit or committed blocked complete | Yes, on completed commit or committed blocked complete |
+| `harness.close_task intent=cancel` | Mutating terminal cancellation attempt | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only for blockers that invalidate cancellation itself while the Task remains open | Yes, on cancelled commit or committed blocked cancellation | Yes, on first cancelled commit or committed blocked cancellation | Yes, on cancelled commit or committed blocked cancellation |
+| `harness.close_task intent=supersede` | Mutating terminal supersession attempt | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only for blockers that invalidate supersession itself while the Task remains open | Yes, on superseded commit or committed blocked supersession | Yes, on first superseded commit or committed blocked supersession | Yes, on superseded commit or committed blocked supersession |
 
 <a id="shared-request-rules"></a>
 
@@ -460,37 +462,23 @@ CloseTaskResponse:
 
 Close concepts stay separate. `Task.lifecycle_phase` is the persisted lifecycle field; active values are `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, and `superseded`. `CloseTaskResponse.close_state` is response-level close status with values `ready`, `blocked`, `closed`, `cancelled`, and `superseded`. `Task.close_reason` stores close detail as `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, or `superseded`. `Task.result` stores only the coarse outcome `none`, `advice_only`, `completed`, `cancelled`, or `superseded`; unsuccessful Runs, violations, blocked closes, and evidence gaps remain in Run status, `CloseBlocker`, evidence state, or current Task state.
 
+`intent` determines the API behavior:
+
+| `intent` | API behavior |
+|---|---|
+| `check` | Read-only. Computes close readiness and blockers without storing blockers, events, replay rows, close state, or a state-version increment. `close_reason` must be `null`. |
+| `complete` | Runs the ordered complete blocker matrix from [Core Model](../core-model.md#close_task). If no blocker remains, stores `lifecycle_phase=completed`, `result=completed`, and the derived `close_reason`. |
+| `cancel` | Terminal cancellation, not successful completion. Requires valid task identity, valid lifecycle, compatible local access, and no recovery constraint that prevents the transition. It does not require evidence sufficiency, final acceptance, or residual-risk acceptance. If `close_reason` is non-null it must be `cancelled`; the committed row stores `close_reason=cancelled` and `result=cancelled`. |
+| `supersede` | Terminal replacement, not successful completion. Requires the same identity, lifecycle, local-access, and recovery checks as cancellation, plus a valid open same-project `superseding_task_id` when the active pointer will move. It does not require evidence sufficiency, final acceptance, or residual-risk acceptance. If `close_reason` is non-null it must be `superseded`; the committed row stores `close_reason=superseded` and `result=superseded`. |
+
+For `intent=complete`, Core derives `close_reason` from the close basis. `completed_self_checked` means required evidence is sufficient, required `final_acceptance` is resolved, and no close-affecting `residual_risk_acceptance` is required. `completed_with_risk_accepted` means required evidence is sufficient, required `final_acceptance` is resolved, and compatible `residual_risk_acceptance` exists for close-affecting visible residual risk. A request-supplied `close_reason` must match the derived outcome; incompatible combinations fail validation instead of mixing completion, cancellation, and supersession.
+
 Evidence sufficiency for `close_task` is derived from `EvidenceSummary.completion_policy` and `EvidenceSummary.coverage_items`. If `completion_policy.evidence_required=true`, `close_task` may treat `EvidenceSummary.status=sufficient` as valid only when every `EvidenceCoverageItem` with `required_for_close=true` has `coverage_state=supported` or `not_applicable`. If any required item is `unsupported`, `partial`, `stale`, or `blocked`, or if a required item is absent from the coverage set, `close_task` must return `close_state=blocked` with an evidence close blocker and may use `EVIDENCE_INSUFFICIENT` as the primary error. Artifact availability remains separate: missing, unavailable, integrity-failed, or unusable close-relevant artifacts can produce `ARTIFACT_MISSING` or an `artifact_availability` close blocker even when the evidence record is otherwise well formed.
 
-Final acceptance and residual-risk acceptance are checked only after the close basis is visible. They cannot override an evidence close blocker, cannot turn an unsupported required coverage item into sufficient evidence, and cannot substitute for a missing required `ArtifactRef` or `StateRecordRef`.
+Final acceptance and residual-risk acceptance are checked only after required evidence and close-relevant artifacts have passed. They cannot override an evidence close blocker, cannot turn an unsupported required coverage item into sufficient evidence, and cannot substitute for a missing required `ArtifactRef` or `StateRecordRef`.
 
-The diagram below is a compact aid for the active `close_task` decision flow. `ready` and `blocked` are response-level `CloseTaskResponse.close_state` results before a terminal lifecycle update; `completed`, `cancelled`, and `superseded` are terminal `Task.lifecycle_phase` values.
-
-```mermaid
-flowchart TD
-    close_task_check["close_task check"]
-    active_blocker_calculation["active blocker calculation"]
-    ready["ready"]
-    blocked["blocked"]
-    complete_cancel_supersede_intent["complete/cancel/supersede intent"]
-    terminal_lifecycle_transition["terminal lifecycle transition"]
-    completed["completed"]
-    cancelled["cancelled"]
-    superseded["superseded"]
-
-    close_task_check --> active_blocker_calculation
-    active_blocker_calculation -->|no active blockers| ready
-    active_blocker_calculation -->|active blockers remain| blocked
-    ready --> complete_cancel_supersede_intent
-    complete_cancel_supersede_intent --> terminal_lifecycle_transition
-    terminal_lifecycle_transition --> completed
-    terminal_lifecycle_transition --> cancelled
-    terminal_lifecycle_transition --> superseded
-```
-
-- **Close-field mapping:** A committed non-dry-run `intent=complete` sets `lifecycle_phase=completed` and `result=completed` with `close_reason=completed_self_checked` or `completed_with_risk_accepted`. `intent=cancel` sets `lifecycle_phase=cancelled`, `close_reason=cancelled`, and `result=cancelled`. `intent=supersede` sets the old Task to `lifecycle_phase=superseded`, `close_reason=superseded`, and `result=superseded`.
 - **Active-task pointer:** On committed `intent=supersede`, if the old Task is `project_state.active_task_id`, `superseding_task_id` must become `project_state.active_task_id` only when it names a valid open same-project Task; otherwise the active pointer must be cleared. The old superseded Task must not remain active. Even when this updates both Task lifecycle and `project_state.active_task_id`, the committed call is one state mutation with one project-wide version increment.
-- **State effect:** `intent=check` is read-only: it may compute close blockers, evidence summaries, artifact refs, and next actions for the response, but it stores no blockers, events, replay rows, or close state and does not increment `state_version`. A committed non-dry-run terminal close updates `tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `tasks.closed_at`, affected `change_units`, blockers, project active-task state when needed, events, replay, and `project_state.state_version` exactly once. A committed blocked close attempt may record blockers, append an event, create a replay row, and increment `project_state.state_version` exactly once, but it must leave the Task open. `dry_run` and pre-commit failure create no close state, blocker row, event, replay row, or state-version increment.
+- **State effect:** `intent=check` is read-only. A committed non-dry-run terminal close updates `tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `tasks.closed_at`, affected `change_units`, blockers, project active-task state when needed, events, replay, and `project_state.state_version` exactly once. A committed blocked close attempt may record blockers, append an event, create a replay row, and increment `project_state.state_version` exactly once, but it must leave the Task open. `dry_run` and pre-commit failure create no close state, blocker row, event, replay row, or state-version increment.
 - **Errors:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `EVIDENCE_INSUFFICIENT`, `ARTIFACT_MISSING`, `ACCEPTANCE_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `VALIDATOR_FAILED`.
 - **Storage owner:** `tasks`, `change_units`, `blockers`, `runs`, `evidence_summaries`, `artifacts`, `artifact_links`, `user_judgments`, `task_events`, and `tool_invocations`.
 - **Security boundary:** Close is a Core state transition, not a report. It cannot be inferred from chat, status text, final acceptance alone, residual-risk acceptance alone, evidence alone, or a rendered view.

@@ -156,7 +156,9 @@ task_id: string | null
 
 `CloseTaskResponse.blockers`는 [API Schema Core](schema-core.md#current-position-display-schemas)의 구조화된 `CloseBlocker` 객체를 사용해야 합니다. 설명 문구만 있는 상태 텍스트, 보고서 텍스트, 렌더링된 보기, 에이전트 요약은 닫기 차단 사유 결과가 아닙니다.
 
-닫기 차단 사유는 공개 오류와 매핑될 때 기본 오류 우선순위에 따라 정렬합니다. 증거 차단 사유는 보통 `EVIDENCE_INSUFFICIENT`를 사용합니다. 아티팩트 사용 가능성 차단 사유는 `ARTIFACT_MISSING`을 사용합니다. 해결되지 않은 사용자 판단 차단 사유는 `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED`를 사용합니다. 민감 동작 승인 차단 사유는 `APPROVAL_*` 코드를 사용합니다. 범위 차단 사유는 범위와 baseline 코드를 사용합니다.
+`harness.close_task intent=complete`의 닫기 차단 사유는 [Core Model](../core-model.md#close_task)의 결정적 행렬 순서로 정렬합니다. 공개 오류 우선순위는 메서드가 기본 `ErrorCode` 하나를 골라야 할 때 여전히 쓰이지만, complete 차단 행렬의 순서를 바꾸거나 앞선 차단 사유를 뒤의 수락/위험 확인 아래 숨기면 안 됩니다. 증거 차단 사유는 보통 `EVIDENCE_INSUFFICIENT`를 사용합니다. 아티팩트 사용 가능성 차단 사유는 `ARTIFACT_MISSING`을 사용합니다. 해결되지 않은 사용자 판단 차단 사유는 `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED`를 사용합니다. 민감 동작 승인 차단 사유는 `APPROVAL_*` 코드를 사용합니다. 범위 차단 사유는 범위와 baseline 코드를 사용합니다.
+
+`intent=cancel`과 `intent=supersede`는 성공 완료가 아닙니다. 이 intent의 차단 응답은 Task 식별자나 생명주기, 로컬 접근, 복구 제약, cancellation 충돌, supersession 유효성처럼 해당 종료 전이를 무효로 만드는 조건으로 제한합니다. 증거 충분성, 최종 수락, 잔여 위험 수락을 요구하면 안 되며, 그런 누락 조건을 cancellation이나 supersession의 차단 사유로 쓰면 안 됩니다.
 
 닫기에 영향을 주는 알려진 잔여 위험이 아직 보이지 않으면 `RESIDUAL_RISK_NOT_VISIBLE`를 사용합니다. 보이지만 수락되지 않은 닫기 관련 잔여 위험은 이 코드 아래 숨기지 않습니다. 잔여 위험 수락이 필요하면 닫기 차단 사유는 `category=residual_risk_acceptance`와 `required_judgment_kind=residual_risk_acceptance`를 사용하고, `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED`를 반환합니다.
 

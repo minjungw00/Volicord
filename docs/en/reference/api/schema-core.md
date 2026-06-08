@@ -166,6 +166,8 @@ GuaranteeDisplay:
 
 `StateSummary.mode` mirrors persisted `tasks.mode` and is always a concrete task mode. `auto` is not a stored mode, displayed task mode, or status-summary mode. `StateSummary.lifecycle_phase` mirrors persisted `Task.lifecycle_phase`. `intake` is an API method and start-handling step, not a lifecycle value. The terminal lifecycle phases are `completed`, `cancelled`, and `superseded`; `superseded` means the Task was replaced by another Task or route and must not return to active work. `StateSummary.close_reason` mirrors persisted `Task.close_reason`. `StateSummary.result` mirrors coarse `Task.result`; failed Runs, violations, blocked closes, evidence gaps, and blockers remain in Run status, `CloseBlocker`, evidence state, blockers, or current Task state instead of becoming a terminal Task result. The `passed` and `failed` strings in this document are gate or validator statuses only, not `Task.result` values.
 
+`Task.close_reason` values are not interchangeable labels. `completed_self_checked` means required evidence is sufficient, required `final_acceptance` is resolved, and no close-affecting `residual_risk_acceptance` is required. `completed_with_risk_accepted` means required evidence is sufficient, required `final_acceptance` is resolved, and compatible `residual_risk_acceptance` exists for close-affecting visible residual risk. `cancelled` and `superseded` are terminal but not successful completion, and they do not satisfy `CompletionPolicy` evidence, final acceptance, or residual-risk acceptance requirements.
+
 Task mode values have these reader-facing meanings:
 
 - `advisor`: advice, review, or planning without product writes.
@@ -351,7 +353,7 @@ WriteAuthoritySummary:
   guarantee_display: GuaranteeDisplay
 ```
 
-`CompletionPolicy` is the compact active close policy for a Task or Change Unit. It names whether evidence, final acceptance, residual-risk acceptance when visible, product-write completion, and a user-visible result are required for that close path. It is not a QA gate, verification gate, full Evidence Manifest, or permission to add separate assurance workflows.
+`CompletionPolicy` is the compact active close policy for `close_task intent=complete` on a Task or Change Unit. It names whether evidence, final acceptance, residual-risk acceptance when visible, product-write completion, and a user-visible result are required for that completion path. `intent=cancel` and `intent=supersede` are not successful completion and do not satisfy this policy. `CompletionPolicy` is not a QA gate, verification gate, full Evidence Manifest, or permission to add separate assurance workflows.
 
 `EvidenceSummary` is the compact active evidence record tied to that `CompletionPolicy`. Evidence sufficiency is not a vague prose judgment. When `completion_policy.evidence_required=false`, the evidence status should be `not_required`. `EvidenceSummary.status=sufficient` is allowed only when every `EvidenceCoverageItem` with `required_for_close=true` is present and has `coverage_state=supported` or `not_applicable`. If any required coverage item is `unsupported`, `partial`, `stale`, or `blocked`, `harness.close_task` must report a close blocker. If required evidence is missing entirely, the required item must be represented as an unsupported or blocked coverage item or through `gap_blocker_refs`; it cannot be hidden by omitting the item.
 
@@ -500,7 +502,7 @@ NextActionSummary:
   blocker_code: ErrorCode | null
 ```
 
-`CloseBlocker` is a structured blocker result. Prose-only status text, reports, or rendered views are not blocker results.
+`CloseBlocker` is a structured blocker result. Prose-only status text, reports, or rendered views are not blocker results. For `harness.close_task intent=complete`, Core calculates blocker categories in the deterministic order owned by [Core Model](../core-model.md#close_task). `cancellation` and `supersession` categories describe conflicts with those terminal intents; they are not successful-completion evidence and must not be mixed with `completed_self_checked` or `completed_with_risk_accepted`.
 
 <a id="nextactionsummary"></a>
 
@@ -588,6 +590,8 @@ These values are active current MVP schema values. Method-level capability and a
 | `Task.close_reason` and `StateSummary.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` |
 | `StatusResponse.close_state` | `none`, `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
 | `CloseTaskResponse.close_state` | `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
+| `CloseTaskRequest.intent` | `check`, `complete`, `cancel`, `supersede` |
+| `CloseTaskRequest.close_reason` | same values as `Task.close_reason`, plus `null`; method behavior determines which values are valid for each `intent` |
 | `StateSummary.assurance_level` | `none`, `self_checked` |
 | `StateSummary.gates.scope_gate` | `not_required`, `required`, `pending`, `passed`, `failed`, `blocked` |
 | `StateSummary.gates.decision_gate` | `not_required`, `required`, `pending`, `resolved`, `deferred`, `blocked` |

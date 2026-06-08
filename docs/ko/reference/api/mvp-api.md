@@ -51,7 +51,9 @@ non-dry-run 상태 변경을 뜻합니다. 버전 증가는 항상 프로젝트 
 | `harness.request_user_judgment` | 상태 변경 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 별도 차단 응답 커밋은 없습니다. 대기 중인 판단 경로를 커밋하거나 커밋 전 실패가 됩니다. | 예. 커밋 시 | 예. 첫 커밋 시 | 예. 커밋 시 |
 | `harness.record_user_judgment` | 상태 변경 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 예. 지정된 판단을 rejected, deferred, blocked 또는 차단 사유를 만드는 상태로 커밋할 때 | 예. 커밋 시 | 예. 첫 커밋 시 | 예. 커밋 시 |
 | `harness.close_task intent=check` | 읽기 전용 | 예. 상태 차이는 없음 | 필요 없음 | 필요 없음. `null` 가능 | 아니요. 닫기 차단 사유는 계산된 응답 필드일 뿐입니다. | 아니요 | 아니요 | 아니요 |
-| `harness.close_task intent=complete/cancel/supersede` | 상태 변경 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 예. Task를 열린 상태로 둔 채 닫기 차단 사유를 저장할 때 | 예. 종료 커밋 또는 커밋된 차단 닫기 시 | 예. 종료 커밋 또는 커밋된 차단 닫기의 첫 커밋 시 | 예. 종료 커밋 또는 커밋된 차단 닫기 시 |
+| `harness.close_task intent=complete` | 상태 변경 완료 시도 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 예. Task를 열린 상태로 둔 채 complete 차단 사유를 저장할 때 | 예. completed 커밋 또는 커밋된 차단 complete 시 | 예. completed 커밋 또는 커밋된 차단 complete의 첫 커밋 시 | 예. completed 커밋 또는 커밋된 차단 complete 시 |
+| `harness.close_task intent=cancel` | 상태 변경 종료 취소 시도 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 예. cancellation 자체를 무효로 만드는 차단 사유를 Task가 열린 상태로 남기며 저장할 때만 | 예. cancelled 커밋 또는 커밋된 차단 cancellation 시 | 예. cancelled 커밋 또는 커밋된 차단 cancellation의 첫 커밋 시 | 예. cancelled 커밋 또는 커밋된 차단 cancellation 시 |
+| `harness.close_task intent=supersede` | 상태 변경 종료 대체 시도 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 예. supersession 자체를 무효로 만드는 차단 사유를 Task가 열린 상태로 남기며 저장할 때만 | 예. superseded 커밋 또는 커밋된 차단 supersession 시 | 예. superseded 커밋 또는 커밋된 차단 supersession의 첫 커밋 시 | 예. superseded 커밋 또는 커밋된 차단 supersession 시 |
 
 <a id="shared-request-rules"></a>
 
@@ -460,37 +462,23 @@ CloseTaskResponse:
 
 닫기 관련 개념은 서로 분리됩니다. `Task.lifecycle_phase`는 지속 저장되는 생명주기 필드이며 활성 값은 `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded`입니다. `CloseTaskResponse.close_state`는 응답 수준의 닫기 상태이며 값은 `ready`, `blocked`, `closed`, `cancelled`, `superseded`입니다. `Task.close_reason`은 닫기 세부 사유를 `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` 중 하나로 저장합니다. `Task.result`는 `none`, `advice_only`, `completed`, `cancelled`, `superseded` 중 하나의 굵은 결과만 저장합니다. 성공하지 못한 Run, violation, 차단된 닫기, 증거 공백은 Run 상태, `CloseBlocker`, 증거 상태, 현재 Task 상태에 남깁니다.
 
+`intent`가 API 동작을 결정합니다.
+
+| `intent` | API 동작 |
+|---|---|
+| `check` | 읽기 전용입니다. 닫기 준비 상태와 차단 사유를 계산하지만 차단 사유, 이벤트, 재실행 행, 닫기 상태, 상태 버전 증가를 저장하지 않습니다. `close_reason`은 `null`이어야 합니다. |
+| `complete` | [Core Model](../core-model.md#close_task)의 순서 있는 `complete` 차단 사유 행렬을 실행합니다. 차단 사유가 없으면 `lifecycle_phase=completed`, `result=completed`, 파생된 `close_reason`을 저장합니다. |
+| `cancel` | 종료 취소이며 성공 완료가 아닙니다. 유효한 Task 식별자, 유효한 생명주기, 호환되는 로컬 접근, 전이를 막는 복구 제약이 없음을 요구합니다. 증거 충분성, 최종 수락, 잔여 위험 수락은 요구하지 않습니다. `close_reason`이 `null`이 아니면 `cancelled`여야 하며, 커밋된 행은 `close_reason=cancelled`, `result=cancelled`를 저장합니다. |
+| `supersede` | 종료 대체이며 성공 완료가 아닙니다. cancellation과 같은 식별자, 생명주기, 로컬 접근, 복구 확인을 요구하고, 활성 포인터를 옮길 때는 같은 프로젝트의 유효한 열린 `superseding_task_id`도 필요합니다. 증거 충분성, 최종 수락, 잔여 위험 수락은 요구하지 않습니다. `close_reason`이 `null`이 아니면 `superseded`여야 하며, 커밋된 행은 `close_reason=superseded`, `result=superseded`를 저장합니다. |
+
+`intent=complete`에서 Core는 닫기 근거로 `close_reason`을 파생합니다. `completed_self_checked`는 필수 증거가 충분하고, 필요한 `final_acceptance`가 해결되었고, 닫기에 영향을 주는 `residual_risk_acceptance`가 필요하지 않다는 뜻입니다. `completed_with_risk_accepted`는 필수 증거가 충분하고, 필요한 `final_acceptance`가 해결되었고, 닫기에 영향을 주는 보이는 잔여 위험에 대해 호환되는 `residual_risk_acceptance`가 있다는 뜻입니다. 요청에 들어온 `close_reason`은 파생 결과와 맞아야 합니다. 맞지 않는 조합은 완료, 취소, 대체를 섞지 말고 검증 실패로 처리합니다.
+
 `close_task`의 증거 충분성은 `EvidenceSummary.completion_policy`와 `EvidenceSummary.coverage_items`에서 파생됩니다. `completion_policy.evidence_required=true`이면 `required_for_close=true`인 모든 `EvidenceCoverageItem`의 `coverage_state`가 `supported` 또는 `not_applicable`일 때만 `EvidenceSummary.status=sufficient`를 유효하게 볼 수 있습니다. 필수 항목 중 하나라도 `unsupported`, `partial`, `stale`, `blocked`이거나 필수 항목이 `coverage_items` 집합에서 빠져 있으면 `close_task`는 `close_state=blocked`와 증거 닫기 차단 사유를 반환해야 하며, 주 오류로 `EVIDENCE_INSUFFICIENT`를 사용할 수 있습니다. 아티팩트 가용성은 별도입니다. 닫기 관련 아티팩트가 없거나, 사용할 수 없거나, 무결성에 실패했거나, 닫기 근거로 쓸 수 없으면 증거 기록의 형태가 맞더라도 `ARTIFACT_MISSING` 또는 `artifact_availability` 닫기 차단 사유가 생길 수 있습니다.
 
-최종 수락과 잔여 위험 수락은 닫기 근거가 보인 뒤 별도로 확인합니다. 이 판단들은 증거 닫기 차단 사유를 덮어쓰지 못하고, 뒷받침되지 않은 필수 `EvidenceCoverageItem`을 충분한 증거로 바꾸지 못하며, 빠진 필수 `ArtifactRef`나 `StateRecordRef`를 대신하지 못합니다.
+최종 수락과 잔여 위험 수락은 필수 증거와 닫기 관련 아티팩트가 통과한 뒤 확인합니다. 이 판단들은 증거 닫기 차단 사유를 덮어쓰지 못하고, 뒷받침되지 않은 필수 `EvidenceCoverageItem`을 충분한 증거로 바꾸지 못하며, 빠진 필수 `ArtifactRef`나 `StateRecordRef`를 대신하지 못합니다.
 
-아래 그림은 활성 `close_task` 판단 흐름을 간단히 보여 주는 보조 자료입니다. `ready`와 `blocked`는 종료 생명주기 업데이트 전에 반환되는 응답 수준의 `CloseTaskResponse.close_state` 결과이고, `completed`, `cancelled`, `superseded`는 종료 `Task.lifecycle_phase` 값입니다.
-
-```mermaid
-flowchart TD
-    close_task_check["close_task 확인"]
-    active_blocker_calculation["활성 차단 사유 계산"]
-    ready["ready"]
-    blocked["blocked"]
-    complete_cancel_supersede_intent["intent=complete/cancel/supersede"]
-    terminal_lifecycle_transition["종료 생명주기 전이"]
-    completed["completed"]
-    cancelled["cancelled"]
-    superseded["superseded"]
-
-    close_task_check --> active_blocker_calculation
-    active_blocker_calculation -->|활성 차단 사유 없음| ready
-    active_blocker_calculation -->|활성 차단 사유 남음| blocked
-    ready --> complete_cancel_supersede_intent
-    complete_cancel_supersede_intent --> terminal_lifecycle_transition
-    terminal_lifecycle_transition --> completed
-    terminal_lifecycle_transition --> cancelled
-    terminal_lifecycle_transition --> superseded
-```
-
-- **닫기 필드 매핑:** 커밋된 non-dry-run `intent=complete`는 `lifecycle_phase=completed`, `result=completed`로 설정하고 `close_reason=completed_self_checked` 또는 `completed_with_risk_accepted`를 사용합니다. `intent=cancel`은 `lifecycle_phase=cancelled`, `close_reason=cancelled`, `result=cancelled`로 설정합니다. `intent=supersede`는 이전 Task를 `lifecycle_phase=superseded`, `close_reason=superseded`, `result=superseded`로 설정합니다.
 - **활성 Task 포인터:** 커밋된 `intent=supersede`에서 이전 Task가 `project_state.active_task_id`라면, `superseding_task_id`가 같은 프로젝트의 유효한 열린 Task를 가리킬 때만 그 값을 `project_state.active_task_id`로 삼아야 합니다. 그렇지 않으면 활성 포인터를 비워야 합니다. superseded된 이전 Task를 active로 남기면 안 됩니다. 이 호출이 Task 생명주기와 `project_state.active_task_id`를 함께 바꾸더라도 하나의 상태 변경이며 프로젝트 전체 버전 증가는 한 번만 일어납니다.
-- **상태 효과:** `intent=check`는 읽기 전용입니다. 응답에 닫기 차단 사유, 증거 요약, 아티팩트 참조, 다음 행동을 계산해 담을 수 있지만 차단 사유, 이벤트, 재실행 행, 닫기 상태를 저장하지 않고 `state_version`을 올리지 않습니다. 커밋된 non-dry-run 최종 닫기는 `tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `tasks.closed_at`, 영향을 받는 `change_units`, 차단 사유, 필요한 경우 프로젝트 활성 Task 상태, 이벤트, 재실행, `project_state.state_version`을 정확히 한 번 업데이트합니다. 커밋된 차단된 닫기 시도는 차단 사유를 기록하고, 이벤트를 추가하고, 재실행 행을 만들고, `project_state.state_version`을 정확히 한 번 올릴 수 있습니다. 하지만 Task는 열린 상태로 둬야 합니다. `dry_run`과 커밋 전 실패는 닫기 상태, `blockers` 행, 이벤트, 재실행 행, 상태 버전 증가를 만들지 않습니다.
+- **상태 효과:** `intent=check`는 읽기 전용입니다. 커밋된 non-dry-run 최종 닫기는 `tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `tasks.closed_at`, 영향을 받는 `change_units`, 차단 사유, 필요한 경우 프로젝트 활성 Task 상태, 이벤트, 재실행, `project_state.state_version`을 정확히 한 번 업데이트합니다. 커밋된 차단된 닫기 시도는 차단 사유를 기록하고, 이벤트를 추가하고, 재실행 행을 만들고, `project_state.state_version`을 정확히 한 번 올릴 수 있습니다. 하지만 Task는 열린 상태로 둬야 합니다. `dry_run`과 커밋 전 실패는 닫기 상태, `blockers` 행, 이벤트, 재실행 행, 상태 버전 증가를 만들지 않습니다.
 - **오류:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `EVIDENCE_INSUFFICIENT`, `ARTIFACT_MISSING`, `ACCEPTANCE_REQUIRED`, `RESIDUAL_RISK_NOT_VISIBLE`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `VALIDATOR_FAILED`.
 - **저장소 담당 문서:** `tasks`, `change_units`, `blockers`, `runs`, `evidence_summaries`, `artifacts`, `artifact_links`, `user_judgments`, `task_events`, `tool_invocations`.
 - **보안 경계:** Close는 Core 상태 전이이며 보고서가 아닙니다. 대화, 상태 텍스트, 최종 수락만 있는 상태, 잔여 위험 수락만 있는 상태, 증거만 있는 상태, 렌더링된 보기에서 추론하면 안 됩니다.

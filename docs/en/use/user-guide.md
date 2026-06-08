@@ -157,9 +157,9 @@ The agent should show:
 
 Tests can pass while close is still blocked. A UI change can still have a visible inspection gap. A security-sensitive change can need a risk decision. Missing required evidence remains a blocker until it is gathered, marked not applicable through the active evidence path, or honestly reported as unresolved.
 
-In owner terms, `harness.close_task` returns blockers or a close result. In user terms, the agent should not claim close while required scope, evidence, user judgment, final acceptance, residual-risk handling, or close blockers remain unresolved. Separate quality routes are later candidates unless a future owner promotes them.
+In owner terms, `harness.close_task` returns blockers or a close result. A close check is read-only: it can show whether close would be blocked, but it should not change Task state. In user terms, the agent should not claim completed close while required scope, evidence, user judgment, final acceptance, residual-risk handling, or close blockers remain unresolved. Separate quality routes are later candidates unless a future owner promotes them.
 
-Close can end as completed, cancelled, or superseded. A failed command, failed derived view, missing artifact, evidence gap, or unresolved blocker should stay visible as the specific problem; it is not a generic failed Task result.
+Close can end as completed, cancelled, or superseded, but those are different outcomes. Completed close requires the required evidence first, then required final acceptance, and then residual-risk acceptance only when a visible close-affecting risk requires it. Cancelled and superseded are honest terminal outcomes, not successful completion, and they do not require evidence sufficiency, final acceptance, or residual-risk acceptance. A failed command, failed derived view, missing artifact, evidence gap, or unresolved blocker should stay visible as the specific problem; it is not a generic failed Task result.
 
 ## 8. Accept final result separately from residual risk
 
@@ -312,7 +312,7 @@ Harness routing after the ordinary request is clear:
 - `harness.update_scope`: update scope only if the close check reveals accepted scope drift.
 - `harness.prepare_write`: do not reuse stale write checks as close evidence.
 - `harness.record_run`: rely on recorded actions and evidence summaries, or name the gap.
-- `harness.close_task`: return blockers or a close result; broad "looks good" does not settle every judgment.
+- `harness.close_task`: use `intent=check` for a read-only close check, `intent=complete` only when required evidence and judgments are resolved, and `intent=cancel` or `intent=supersede` only as terminal non-completion outcomes; broad "looks good" does not settle every judgment.
 ```
 
 For compact judgment prompt patterns, see [Judgment Examples](judgment-examples.md).

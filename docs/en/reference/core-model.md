@@ -227,9 +227,32 @@ Read-only and shaping-only Runs may be recorded without Write Authorization only
 
 `close_task` is the single completion decision point. Agent summaries, final reports, acceptance-looking chat, projections, Evals, QA notes, and evidence displays may inform close, but they do not close a Task by themselves.
 
-For a successful close, Core must confirm the close intent against current Task state, open Runs, scope, user-owned judgments, sensitive-action approval when applicable, Write Authorization and Run compatibility, baseline and surface capability when relevant, the active `CompletionPolicy`, required evidence sufficiency, close-relevant artifact availability, final acceptance when required, residual-risk visibility when close-relevant risk exists, residual-risk acceptance when the active close path requires acceptance, recovery constraints, and cancellation or supersession conflicts.
+`intent=complete` uses a deterministic blocker calculation. Core may collect more than one blocker, but the response order and primary close-blocker basis follow this matrix:
 
-Required evidence sufficiency is deterministic. When `CompletionPolicy.evidence_required=true`, `EvidenceSummary.status=sufficient` is valid only if every `EvidenceCoverageItem` with `required_for_close=true` is `supported` or `not_applicable`. Any required item that is `unsupported`, `partial`, `stale`, or `blocked`, or any omitted required item that leaves the coverage set incomplete, must produce a close blocker. Artifact availability is checked separately: an artifact can be available without making evidence sufficient, and missing or unusable close-relevant artifacts can create `artifact_availability` blockers in addition to evidence blockers.
+| Order | Check | Blocking result when the check fails |
+|---:|---|---|
+| 1 | Task existence and lifecycle validity | `task` blocker when the Task is missing, belongs to a different project, is already terminal, or cannot enter a complete transition. |
+| 2 | Open, interrupted, or violation Run check | `open_run` blocker when a Run remains open, interrupted, in violation, incompatible, or otherwise unrepaired for the close basis. |
+| 3 | Scope, Change Unit, and `completion_policy` check | `scope` blocker when active scope, active Change Unit, acceptance criteria, or the applicable `CompletionPolicy` is missing, stale, or incompatible. |
+| 4 | Unresolved user-owned judgment check | `user_judgment` blocker when a required product, technical, scope, or other non-sensitive active user-owned judgment is pending, deferred without coverage, rejected, blocked, stale, superseded, or incompatible. |
+| 5 | Unresolved sensitive approval check | `sensitive_approval` blocker when required sensitive-action approval is missing, denied, expired, stale, or incompatible. |
+| 6 | Write Authorization and Run compatibility check | `write_compatibility` blocker when a required Write Authorization or product-write Run is missing, stale, invalid, consumed by the wrong Run, or incompatible with the active Change Unit, paths, baseline, or observed write. |
+| 7 | Baseline and surface capability check | `baseline` or `surface_capability` blocker when the baseline or registered local surface cannot honestly support the close claim or required guarantee display. |
+| 8 | Evidence sufficiency check | `evidence` blocker when required evidence is insufficient under the active `CompletionPolicy`. |
+| 9 | Artifact availability check | `artifact_availability` blocker when a close-relevant `ArtifactRef` is missing, unavailable, integrity-failed, blocked beyond the allowed safe notice, or otherwise unusable. |
+| 10 | Final acceptance check | `final_acceptance` blocker when `CompletionPolicy.final_acceptance_required=true` and compatible `final_acceptance` is missing, rejected, stale, or not tied to the visible close basis. |
+| 11 | Residual risk visibility check | `residual_risk_visibility` blocker when close-affecting residual risk is known but not visible enough for the user to judge. |
+| 12 | Residual risk acceptance check | `residual_risk_acceptance` blocker when a close-affecting visible residual risk requires compatible `residual_risk_acceptance` and that acceptance is missing, rejected, stale, or incompatible. |
+| 13 | Recovery constraint check | `recovery` blocker when replay, corruption, local access recovery, unresolved blocker state, or another repair constraint must be addressed before close. |
+| 14 | Close transition or blocked response | If no blocker remains, commit the complete transition; otherwise return `CloseTaskResponse.close_state=blocked` and leave the Task open. |
+
+The matrix never lets a later check satisfy an earlier one. Final acceptance and residual-risk acceptance cannot replace required evidence, cannot make an unsupported `EvidenceCoverageItem` sufficient, and cannot substitute for a required artifact or state ref.
+
+Required evidence sufficiency is deterministic. When `CompletionPolicy.evidence_required=true`, `EvidenceSummary.status=sufficient` is valid only if every `EvidenceCoverageItem` with `required_for_close=true` is present and has `coverage_state=supported` or `not_applicable`. Any required item that is `unsupported`, `partial`, `stale`, or `blocked`, or any omitted required item that leaves the coverage set incomplete, must produce an `evidence` close blocker. Artifact availability is checked separately: an artifact can be available without making evidence sufficient, and missing or unusable close-relevant artifacts can create `artifact_availability` blockers in addition to evidence blockers.
+
+`intent=check` is read-only. It may compute the current complete-readiness matrix, close blockers, evidence summary, artifact refs, and next actions for the response, but it must not store blockers, append events, create replay rows, change close state, or increment `project_state.state_version`.
+
+`intent=cancel` and `intent=supersede` are terminal paths, but they are not successful completion. They do not require evidence sufficiency, final acceptance, or residual-risk acceptance. They still require valid task identity, valid lifecycle, compatible local access, and a transition that does not hide unresolved recovery constraints. `intent=supersede` also requires `superseding_task_id` to name a valid open same-project Task before that Task can become active.
 
 A committed terminal close is one public state mutation. `harness.close_task intent=supersede` may update both the old Task lifecycle/result fields and `project_state.active_task_id`, but it still increments `project_state.state_version` exactly once.
 
@@ -242,11 +265,18 @@ Close-related fields are separate contracts:
 | `Task.close_reason` | Persisted close detail: `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded`. |
 | `Task.result` | Coarse task outcome: `none`, `advice_only`, `completed`, `cancelled`, `superseded`. A failed Run, violation, blocked close, or evidence gap stays in Run status, `CloseBlocker`, evidence state, or current Task state, not a terminal Task result. |
 
+`close_reason` is derived from the validated terminal transition. A request-supplied value, when present, must match the requested `intent` and the derived close basis; otherwise the request fails validation rather than mixing close modes.
+
+| `close_reason` | Meaning |
+|---|---|
+| `completed_self_checked` | Successful completion: required evidence is sufficient, required `final_acceptance` is resolved, and no close-affecting `residual_risk_acceptance` is required. |
+| `completed_with_risk_accepted` | Successful completion with risk accepted: required evidence is sufficient, required `final_acceptance` is resolved, and compatible `residual_risk_acceptance` exists for close-affecting visible residual risk. |
+| `cancelled` | Terminal cancellation. It is not successful completion and does not satisfy `CompletionPolicy` evidence, final acceptance, or residual-risk acceptance requirements. |
+| `superseded` | Terminal replacement by another Task or route. It is not successful completion and does not satisfy `CompletionPolicy` evidence, final acceptance, or residual-risk acceptance requirements. |
+
 MVP close must keep later assurance and design-policy material out of active response semantics. Design-policy gates, verification gates, QA gates, detached verification, verified-completion fields, detailed Manual QA close fields, full Evidence Manifest behavior, and assurance display detail are later candidate behavior unless their owners explicitly activate them.
 
 `close_task` must return blockers instead of pretending close is complete when required task/scope correctness, user-owned judgment, sensitive-action approval, Write Authorization or Run compatibility, evidence, artifact availability, final acceptance, residual-risk visibility, residual-risk acceptance, cancellation/supersession handling, surface capability, baseline, or recovery conditions remain unresolved. A public response may choose one primary error, but secondary close blockers and refs must remain visible enough for the next safe action.
-
-Cancellation and supersession are honest terminal paths, not successful completion. Risk-accepted close is successful close with named accepted risk; it is not verified close and not no-risk close.
 
 `harness.close_task` with `intent=supersede` moves the old Task to `lifecycle_phase=superseded`, `close_reason=superseded`, and `result=superseded`. If the superseded Task is `project_state.active_task_id`, Core must set `project_state.active_task_id` to `superseding_task_id` only when it names a valid open same-project Task; otherwise it must clear the active pointer. It must not leave the superseded Task active.
 
