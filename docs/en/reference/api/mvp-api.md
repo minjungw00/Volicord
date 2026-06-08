@@ -26,6 +26,7 @@ The exact active method-name value set is owned by [API Schema Core](schema-core
 | [`harness.status`](#harnessstatus) | Return current state summary, blockers, pending judgments, evidence summary, close state, and next safe actions. |
 | [`harness.update_scope`](#harnessupdate_scope) | Update active Task scope and the active Change Unit after intake. |
 | [`harness.prepare_write`](#harnessprepare_write) | Check a proposed product-file write against current scope, state, required separate sensitive-action permission, baseline, and surface capability. |
+| [`harness.stage_artifact`](#harnessstage_artifact) | Stage safe artifact bytes or a safe notice as a temporary handle for later `record_run` promotion. |
 | [`harness.record_run`](#harnessrecord_run) | Record shaping, direct, or implementation work plus compact evidence and artifact refs. |
 | [`harness.request_user_judgment`](#harnessrequest_user_judgment) | Create one pending user-owned judgment request. |
 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) | Record the user's answer to an existing pending `UserJudgment`. |
@@ -45,6 +46,7 @@ effects only in rows whose "Committed blocked response allowed" cell says yes.
 | `harness.status` | Read-only | Yes; no state distinction | No | No; may be `null` | No; blockers are computed response fields only | No | No | No |
 | `harness.update_scope` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only for method-owned blocker/current-row updates; no scope authority is created by an unsatisfied precondition | Yes, on commit | Yes, on first commit | Yes, on commit |
 | `harness.prepare_write` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, for committed `blocked`, `approval_required`, or `decision_required` blocker updates; no consumable Write Authorization is created | Yes, on committed `allowed` or committed blocker update | Yes, on first committed `allowed` or committed blocker update | Yes, on committed `allowed` or committed blocker update |
+| `harness.stage_artifact` | Temporary artifact utility; not Core-state-changing | Yes; no Core state distinction | No | No; may be `null` | No; invalid staging requests fail without Core mutation | No | No | No |
 | `harness.record_run` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only when recording a compatible Run or run-related blocker state; rejected attempts are pre-commit failures | Yes, on commit | Yes, on first commit | Yes, on commit |
 | `harness.request_user_judgment` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | No separate blocked-response commit; the method either commits the pending judgment path or fails pre-commit | Yes, on commit | Yes, on first commit | Yes, on commit |
 | `harness.record_user_judgment` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, when the addressed judgment is committed as rejected, deferred, blocked, or otherwise blocker-producing | Yes, on commit | Yes, on first commit | Yes, on commit |
@@ -55,13 +57,13 @@ effects only in rows whose "Committed blocked response allowed" cell says yes.
 
 ## Shared Request Rules
 
-All methods use [`ToolEnvelope`](schema-core.md#tool-envelope) and [`ToolResponseBase`](schema-core.md#common-response). Committed non-dry-run state-changing calls require a non-null `idempotency_key` and a current project-wide `expected_state_version`. `harness.status`, `harness.close_task intent=check`, and dry-run calls may use `idempotency_key: null` and `expected_state_version: null`.
+All methods use [`ToolEnvelope`](schema-core.md#tool-envelope). Committed non-dry-run state-changing calls use [`ToolResponseBase`](schema-core.md#common-response) and require a non-null `idempotency_key` and a current project-wide `expected_state_version`. `harness.stage_artifact`, `harness.status`, `harness.close_task intent=check`, and dry-run calls may use `idempotency_key: null` and `expected_state_version: null`. `harness.stage_artifact` creates only a temporary `StagedArtifactHandle`; it is not a Core state transition and does not create a replay row or increment `project_state.state_version`.
 
 When a method has a tool-specific `task_id`, Core resolves the primary Task in this order: tool-specific `task_id`, `ToolEnvelope.task_id`, then active Task. That resolution selects owner records; it does not select a separate state clock. Every fresh non-dry-run state mutation compares `ToolEnvelope.expected_state_version` with the current `project_state.state_version` before commit.
 
 Read-only calls may compute and return blockers, close blockers, next actions, and diagnostics, but those values are response fields only. They must not store blockers, append `task_events`, create `tool_invocations` replay rows, or increment `state_version`.
 
-`dry_run=true` is never authoritative. It may return diagnostics, candidate blockers, or a would-change result, but it creates no current record, `task_events` row, artifact, Write Authorization, evidence summary, close state, `tool_invocations` replay row, or state-version increment.
+`dry_run=true` is never authoritative. It may return diagnostics, candidate blockers, or a would-change result, but it creates no current record, `task_events` row, persistent artifact, Write Authorization, evidence summary, close state, `tool_invocations` replay row, or state-version increment.
 
 Only committed non-dry-run mutations create `tool_invocations` replay rows. A replay with the same `idempotency_key` and same request hash returns the existing committed response. The same key with a different request hash returns `STATE_CONFLICT`. `dry_run` calls and pre-commit failures do not create or reserve replay rows.
 
@@ -77,7 +79,7 @@ Every access class requires `surface_id` to select a same-project `LocalSurfaceR
 | `core_mutation` | `harness.intake`, `harness.update_scope`, `harness.request_user_judgment`, `harness.record_user_judgment`, and terminal `harness.close_task` intents. | `read_status` conditions plus `VerifiedSurfaceContext.access_class=core_mutation`, `verified=true`, non-null `idempotency_key` and current project-wide `expected_state_version` for non-dry-run commits, and compatible `project_id`, `surface_id`, `surface_instance_id`, `task_id`, and owner records when applicable. |
 | `write_authorization` | `harness.prepare_write`. | `VerifiedSurfaceContext.access_class=write_authorization`, `verified=true`, plus active Task/Change Unit compatibility, scope, baseline, required separate sensitive-action approval compatibility, and capability checks required for the intended product-file write attempt. |
 | `run_recording` | `harness.record_run`. | `VerifiedSurfaceContext.access_class=run_recording`, `verified=true`, plus compatible `task_id`, `change_unit_id`, `baseline_ref`, observed attempt facts, and a consumable active Write Authorization when the run records a product write. |
-| `artifact_registration` | `ArtifactInput[]` accepted by `harness.record_run`. | `VerifiedSurfaceContext.access_class=artifact_registration`, `verified=true`, plus a documented `staged_file` handle from the active `stage_artifact` utility, or a compatible `existing_artifact` ref. Caller-supplied raw filesystem paths, raw secrets, tokens, full sensitive logs, `captured_artifact` handles, raw capture-adapter outputs, and native capture claims are not accepted as registration authority in the active MVP. |
+| `artifact_registration` | `harness.stage_artifact` and `ArtifactInput[]` accepted by `harness.record_run`. | `VerifiedSurfaceContext.access_class=artifact_registration`, `verified=true`, compatible `project_id`/`task_id`, and `manual_artifact_attachment_supported=true` for the staging path. `harness.stage_artifact` accepts only safe bytes or a safe notice with `content_type`, `redaction_state`, and expected integrity hints when provided. `harness.record_run` accepts only `source_kind=staged_artifact` with an unexpired same-project same-Task unconsumed `StagedArtifactHandle`, or `source_kind=existing_artifact` with a compatible `existing_artifact_ref`. Caller-supplied raw filesystem paths, arbitrary local path strings, raw logs as authority claims, raw secrets, tokens, full sensitive logs, `captured_artifact` handles, raw capture-adapter outputs, and native capture claims are not accepted as registration authority in the active MVP. |
 | `artifact_read` | Local artifact metadata or content reads when an owner path exposes them from a registered `ArtifactRef`. | Same-project `LocalSurfaceRegistration`, `status=active`, a registered `ArtifactRef`, compatible `project_id`/`task_id`, required redaction and availability checks, and a matching owner relation in `artifact_links`. Artifact body/content reads additionally require `VerifiedSurfaceContext.access_class=artifact_read` and `verified=true`. Raw artifact path reads are not granted by default. |
 
 Use `MCP_UNAVAILABLE` when required MCP/Core or surface reachability itself is unavailable, corresponding to `VerifiedSurfaceContext.failure_reason=unavailable`. Use `LOCAL_ACCESS_MISMATCH` when registered local access expectations do not match the reachable transport/session/binding or when local access was revoked, corresponding to `failure_reason=mismatch` or `revoked`. Use `CAPABILITY_INSUFFICIENT` when the surface is recognized but lacks the capability required for the access class, observation, capture, blocking/isolation claim, or active behavior, corresponding to `failure_reason=insufficient_capability`.
@@ -263,6 +265,45 @@ PrepareWriteResponse:
 - **Storage owner:** `write_authorizations`, `blockers`, `project_state` state clock, `task_events`, and `tool_invocations`.
 - **Security boundary:** `decision=allowed` means compatible with Harness records for this path-level product-file write attempt. It does not mean the operating system will block incompatible writes or that arbitrary tools are isolated. The active `PrepareWriteRequest` contains only the product-write path-level fields listed above and does not encode command, dependency, host, network, secret, deployment, destructive-action, or system-access approval scope. Those approvals are recorded separately as `SensitiveActionScope` through `judgment_kind=sensitive_approval`. Current-MVP requests that require command, network, secret-access, artifact-capture, pre-tool-blocking, or isolation guarantees must return `CAPABILITY_INSUFFICIENT` when the active surface lacks the capability, or `VALIDATION_FAILED` when the request shape or requested guarantee is invalid for the active profile.
 
+<a id="harnessstage_artifact"></a>
+
+## `harness.stage_artifact`
+
+- **Owns:** Temporary staging of safe artifact bytes or a safe notice for one project and Task.
+- **Does not own:** Core state transitions, evidence creation, evidence sufficiency, gate satisfaction, artifact registration, final acceptance, residual-risk acceptance, or close.
+- **When to call:** Before `harness.record_run` when new artifact bytes need to be available as a staged `ArtifactInput.source_kind=staged_artifact`.
+- **Request:**
+
+```yaml
+StageArtifactRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  display_name: string
+  content_type: string
+  redaction_state: none | redacted | secret_omitted | blocked
+  safe_bytes_or_notice: bytes | string
+  expected_sha256: string | null
+  expected_size_bytes: integer | null
+  relation_hint: string | null
+```
+
+- **Response:**
+
+```yaml
+StageArtifactResponse:
+  request_id: string
+  project_id: string
+  task_id: string
+  staged_artifact_handle: StagedArtifactHandle
+  expires_at: string
+  errors: ToolError[]
+```
+
+- **State effect:** A successful call creates only a temporary `StagedArtifactHandle` scoped to `project_id` and `task_id`, with `content_type`, `sha256`, `size_bytes`, `redaction_state`, and `expires_at`. It creates no Core record, persistent `ArtifactRef`, evidence summary, blocker, event, `tool_invocations` replay row, close effect, or `project_state.state_version` increment. `harness.record_run` is the only active path that can consume the handle and promote it to a persistent `ArtifactRef`.
+- **Errors:** `VALIDATION_FAILED`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`.
+- **Storage owner:** Temporary staging bytes or notices under the storage-owned staging boundary; persistent `artifacts` and `artifact_links` are created only by a later compatible `harness.record_run`.
+- **Security boundary:** The request carries safe bytes or a safe notice, not arbitrary file authority. Raw file paths, raw logs as authority claims, arbitrary local path strings, raw secrets, tokens, full sensitive logs, `captured_artifact` handles, raw capture-adapter outputs, and native capture claims are rejected as active MVP artifact authority. `manual_artifact_attachment_supported=true` means this staging path is available; it does not mean native artifact capture.
+
 <a id="harnessrecord_run"></a>
 
 ## `harness.record_run`
@@ -270,6 +311,7 @@ PrepareWriteResponse:
 - **Owns:** Run recording, compatible Write Authorization consumption, artifact registration, compact evidence-summary updates, and run-related blockers.
 - **Does not own:** New scope, user judgment resolution, final acceptance, residual-risk acceptance, separate assurance records, or close.
 - **When to call:** After shaping work, a direct answer/result, or implementation work. Product-write runs must provide a compatible active Write Authorization from `harness.prepare_write`.
+- **Artifact inputs:** New artifact bytes must enter through a valid `StagedArtifactHandle` created by `harness.stage_artifact`; existing bytes may be reused only through a compatible `existing_artifact_ref`. Expired, mismatched, already-consumed, or cross-task staging handles are rejected before mutation.
 - **Request:**
 
 ```yaml
@@ -299,7 +341,7 @@ RecordRunResponse:
   state: StateSummary
 ```
 
-- **State effect:** A compatible committed call may create `runs`, `artifacts`, `artifact_links`, and `evidence_summaries`, update run-related blockers, consume `write_authorizations.status=active`, append events, create a committed replay row, and increment `project_state.state_version` exactly once. Product-write runs consume the active Write Authorization only when current `project_state.state_version` matches the authorization's project-wide `basis_state_version` and observed changed paths are compatible with the stored authorized attempt. Rejected calls and pre-commit failures must not create a Run, register artifacts, update evidence, consume an invalid authorization, append events, create replay rows, or increment `state_version`.
+- **State effect:** A compatible committed call may create `runs`, promote valid staged handles into persistent `artifacts`, add `artifact_links`, create `evidence_summaries`, update run-related blockers, consume `write_authorizations.status=active`, append events, create a committed replay row, and increment `project_state.state_version` exactly once. Product-write runs consume the active Write Authorization only when current `project_state.state_version` matches the authorization's project-wide `basis_state_version` and observed changed paths are compatible with the stored authorized attempt. Rejected calls and pre-commit failures must not create a Run, register artifacts, consume staged handles, update evidence, consume an invalid authorization, append events, create replay rows, or increment `state_version`.
 - **Errors:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `WRITE_AUTHORIZATION_REQUIRED`, `WRITE_AUTHORIZATION_INVALID`, `SCOPE_VIOLATION`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `BASELINE_STALE`, `ARTIFACT_MISSING`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`.
 - **Storage owner:** `runs`, `write_authorizations`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`, `task_events`, and `tool_invocations`.
 - **Security boundary:** A run can record what the surface observed. In the baseline `reference-local-mcp` profile, product-write compatibility is detective only for observed changed paths after the relevant capability check has passed, and a product-write Run consumes an active Write Authorization only on that path-level compatibility. The API must not mark command execution, network activity, secret access, artifact capture, blocking, or isolation facts verified when the active surface cannot observe them.

@@ -42,7 +42,7 @@ The current active MVP scope list is deliberately closed. It includes only:
 - sensitive-action approval recording as the active `sensitive_approval` judgment path
 - path-level `harness.prepare_write` and single-use Write Authorization for product-file writes
 - `harness.record_run` for shaping, direct, and implementation Runs
-- staged artifact registration through the active `stage_artifact` utility and `record_run` artifact inputs
+- staged artifact registration through the active `harness.stage_artifact` utility, `ArtifactInput.source_kind=staged_artifact`, and `record_run` artifact inputs
 - compact `EvidenceSummary`
 - `harness.close_task` blocker calculation for close/cancel/supersede requests, without adding richer assurance close behavior
 - read-time `harness.status` and compact read-time projection/status outputs
@@ -52,7 +52,7 @@ The current active MVP scope list is deliberately closed. It includes only:
 
 These items cover ordinary-language intake, status, scope updates, write compatibility, staged artifact registration, run recording, user judgments, and close checks only through their active owners. Exact active method names and active schema value sets are owned by [API Schema Core](../reference/api/schema-core.md#current-mvp-value-sets). Method behavior, storage, Core transition meaning, and security wording remain with their Reference owners. This Build plan does not promote extra enum values, extra gates, extra storage records, validators beyond `surface_capability_check`, operations, richer evidence formats, QA paths, Eval paths, connector ecosystems, export/handoff formats, projection jobs, reconcile workflows, or workflow candidates.
 
-`stage_artifact` is the active MVP staging utility for turning owner-approved local evidence material into a safe staged handle that `record_run` may register. This Build plan names the utility only to fix the active boundary; detailed API and schema work belongs to the API and storage owners.
+`harness.stage_artifact` is the active MVP staging utility for turning owner-approved safe local evidence material into a temporary `StagedArtifactHandle` that `record_run` may register. It is not a Core state transition by itself and does not create evidence, satisfy gates, or make `close_task` pass. New artifact bytes enter the active MVP only through this staging path; existing bytes are reused only through compatible `existing_artifact` references. Raw file paths, raw logs, and arbitrary local path strings are not artifact authority. This Build plan names the utility only to fix the active boundary; detailed API and schema work belongs to the API and storage owners.
 
 Current MVP wording is cooperative by default. Detective wording is allowed only for facts supported by the registered local surface and a passed capability check. The MVP must not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, security isolation, native artifact capture, command execution observation, network observation, or secret access observation.
 
@@ -62,7 +62,7 @@ The following material stays outside the active MVP unless an owner document pro
 
 - `verification_gate`, Manual QA workflow, `qa_waiver`, `verification_risk_acceptance`, `design_gate`, `design_policy`, broader validators beyond `surface_capability_check`, detached Eval, evaluation workflows, full Manual QA, full waiver machinery, rich approval lifecycle, and rich residual-risk lifecycle
 - Full Evidence Manifest, detailed evidence catalogs, persisted Journey Cards, Discovery Brief as a persistent artifact, Question Queue, Assumption Register, detailed run reports, full Decision Packet format, TDD Trace, Module Map, Interface Contract, Domain Language, rich templates, and later-profile templates
-- `harness.record_manual_qa`, `harness.launch_verify`, `harness.record_eval`, later `record_run` branches, later user-judgment branches, later next-action values, later schema fields, later artifact/ref values, and `captured_artifact`
+- `harness.record_manual_qa`, `harness.launch_verify`, `harness.record_eval`, later `record_run` branches, later user-judgment branches, later next-action values, later schema fields, later artifact/ref values, `captured_artifact`, and any active `ArtifactInput.source_kind` beyond `staged_artifact` and `existing_artifact`
 - command execution observation, network observation, secret access observation, command/network/secret observation as an active proof requirement, command/network/secret observation schema values, preventive or isolated profiles, command/network/secret pre-tool blocking, preventive guard expansion, native hook expansion, broad isolated execution, permission isolation, and stronger local capability profiles
 - dashboard, hosted UI, artifact dashboard, hosted connector registry, connector marketplace, broad connector ecosystem, connector conformance ecosystem, cross-surface orchestration, team workflow, metrics, and automation candidates
 - captured artifact handles, native artifact capture, active operations profile, doctor/readiness suites, recover/export flows, export/handoff formats, artifact integrity operations, release handoff, persistent projection jobs, projection refresh/reconcile operations, managed block drift repair, broad operator coverage, conformance runner, executable fixture catalog, generated conformance artifacts, deployment, canary, rollback, and production monitoring
@@ -80,7 +80,7 @@ It should show:
 - `prepare_write` compatible, blocked, dry-run, and replay behavior through the owner path
 - one compatible `record_run` that consumes a required Write Authorization once
 - blocked handling for missing, stale, consumed, or observed-outside-authorized-scope attempts without creating completion evidence
-- one `stage_artifact`-produced staged handle, one registered artifact/evidence ref, and a compact evidence coverage/gap read
+- one `harness.stage_artifact`-produced `StagedArtifactHandle`, one registered artifact/evidence ref produced only through `record_run`, rejection of an expired or cross-task staging handle without mutation, and a compact evidence coverage/gap read
 - status/blocker output that reads Core state without mutating it
 - a narrow close-blocker read that can show missing evidence, unresolved judgment, or visible residual risk without implementing full assurance close semantics
 
@@ -99,7 +99,7 @@ The next safe action must remain visible. If Core, MCP, or the reference surface
 1. The user asks for work in ordinary language.
 2. Harness shapes or resumes a Task, summarizes scope and non-goals, and asks for minimal user judgment only when the user owns the decision.
 3. Before a product write, the agent or surface calls `prepare_write`; compatible work receives the owner-defined Write Authorization result, and incompatible work returns a blocker or owner-defined error.
-4. Before registering artifact bytes, the active `stage_artifact` utility creates a safe staged handle; after the write or direct work, `record_run` records what happened and links registered artifact/evidence refs or the compact evidence summary path.
+4. Before registering artifact bytes, the active `harness.stage_artifact` utility creates a temporary `StagedArtifactHandle`; after the write or direct work, `record_run` records what happened and is the only active path that can consume the handle and link registered artifact/evidence refs or the compact evidence summary path.
 5. Status and compact outputs show current scope, pending judgments, evidence gaps, blockers, next safe action, guarantee display level, and residual-risk visibility as derived reads from Core records.
 6. `close_task` calculates close blockers for the owner-defined active path. MVP close keeps final acceptance, residual-risk acceptance, evidence sufficiency, and later verification/QA candidates distinct without adding a current verification or Manual QA gate.
 

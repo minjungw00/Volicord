@@ -98,10 +98,15 @@ control, tamper-proof storage, or pre-execution blocking.
 
 ## 3. Active persisted records
 
-The active current MVP persists only the records needed by the active method set:
-`harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`,
-`harness.record_run`, `harness.request_user_judgment`,
-`harness.record_user_judgment`, and `harness.close_task`.
+The active current MVP persists only the Core records needed by the active
+state-changing method set: `harness.intake`, `harness.update_scope`,
+`harness.prepare_write`, `harness.record_run`,
+`harness.request_user_judgment`, `harness.record_user_judgment`, and
+`harness.close_task`. `harness.status` and `harness.close_task intent=check`
+are read-only. `harness.stage_artifact` is an active local artifact utility,
+but it creates only temporary staging bytes or notices and a
+`StagedArtifactHandle`; it does not create a current Core record or increment
+the project state clock.
 
 The active persisted records are:
 
@@ -257,10 +262,11 @@ Cascade delete policy:
   delete `tasks`, `change_units`, `user_judgments`, `write_authorizations`,
   `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`,
   `task_events`, or `tool_invocations`.
-- `artifacts/tmp/` staging bytes may be cleaned before registration because they
-  are not evidence authority. Once an `artifacts` row is committed, retention
-  purge, project teardown, or destructive cleanup is outside ordinary active MVP
-  mutation behavior and needs an owner-defined path.
+- `artifacts/tmp/` staging bytes, notices, and temporary handles may be cleaned
+  before registration because they are not evidence authority. Once an
+  `artifacts` row is committed, retention purge, project teardown, or
+  destructive cleanup is outside ordinary active MVP mutation behavior and needs
+  an owner-defined path.
 - A future retention or migration path must preserve artifact hashes, owner
   links, events, and replay rows, or mark affected refs invalid for recovery. It
   must not silently cascade-delete evidence support that current records still
@@ -441,13 +447,27 @@ safe metadata. Storage implements it through `artifacts` plus `artifact_links`;
 see [API Schema Core: ArtifactRef](api/schema-core.md#artifactref).
 
 Artifact registration accepts only the active owner-documented `ArtifactInput`
-sources: `staged_file` or `existing_artifact`. A `staged_file` handle must come
-from the active `stage_artifact` utility and must be resolved by the owner path
-before storage commits the artifact row. An `existing_artifact` input must name
-an already registered `ArtifactRef` that belongs to the same project and has a
-compatible owner relation. Caller-supplied raw filesystem paths,
-`captured_artifact` handles, raw capture-adapter outputs, and native capture
-claims are not registration authority in the active MVP.
+sources: `staged_artifact` or `existing_artifact`. A `staged_artifact` input
+must carry a `StagedArtifactHandle` from the active `harness.stage_artifact`
+utility and must be resolved by the owner path before storage commits the
+artifact row. An `existing_artifact` input must name an already registered
+`ArtifactRef` that belongs to the same project and has a compatible owner
+relation. Caller-supplied raw filesystem paths, arbitrary local path strings,
+raw logs as authority claims, `captured_artifact` handles, raw capture-adapter
+outputs, and native capture claims are not registration authority in the active
+MVP.
+
+Temporary staging is not artifact authority. A staging boundary must track at
+least `handle_id`, `project_id`, `task_id`, `sha256`, `size_bytes`,
+`content_type`, `redaction_state`, `expires_at`, and whether the handle has
+already been consumed. `harness.stage_artifact` may write safe bytes or a safe
+notice under `artifacts/tmp/`, but it creates no `artifacts` row, no
+`artifact_links` row, no `evidence_summaries` row, no `task_events` row, no
+`tool_invocations` replay row, and no `project_state.state_version` increment.
+Only a compatible `harness.record_run` may consume an unexpired same-project
+same-Task unconsumed handle and promote it to a persistent `ArtifactRef`.
+Expired, mismatched, already-consumed, or cross-task staging handles must be
+rejected before mutation.
 
 Registering an `existing_artifact` reuses the registered artifact row only when
 its availability, integrity facts, redaction state, and owner relation remain
@@ -510,8 +530,8 @@ Raw artifact path reads are not granted by default. Artifact metadata or content
 reads require a registered `ArtifactRef`, the matching same-project `task_id`,
 the required `artifact_links` owner relation, and the redaction/availability
 state needed by the caller's access class. A local path under the artifact store,
-an artifact `uri`, or a copied file is not enough by itself to read or rely on
-artifact bytes.
+an artifact `uri`, a staged path, or a copied file is not enough by itself to
+read or rely on artifact bytes.
 
 An artifact link does not create the owner record, satisfy a gate by itself,
 prove evidence sufficiency, perform QA, create final acceptance, accept

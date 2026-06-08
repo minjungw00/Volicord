@@ -37,7 +37,7 @@ Role Lens behavior, when present, is read-only posture guidance. A lens may reco
 
 ## 2. Capability Profile
 
-Surface name is not capability. A connector must use a `capability_profile` scoped to the actual host, version/configuration, workspace policy, MCP posture, active `stage_artifact` staging path, and any future promoted capture, guard, or separation boundary in use.
+Surface name is not capability. A connector must use a `capability_profile` scoped to the actual host, version/configuration, workspace policy, MCP posture, active `harness.stage_artifact` staging path, `manual_artifact_attachment_supported` value, and any future promoted capture, guard, or separation boundary in use.
 
 A `capability_profile` is not a Write Authorization and does not create write compatibility or bypass active Task scope, active Change Unit scope, `prepare_write`, single-use cooperative Write Authorization, `record_run`, or Core close rules. `surface_id` is also not authority proof; it is a selector that must match the server-derived `VerifiedSurfaceContext` for the current local transport/session/binding. Capability affects blocked reasons, fallback behavior, validator results, and guarantee display. `allowed` and `blocked` are Harness compatibility outcomes, not physical blocking outcomes, in the baseline profile. Runtime boundaries remain authority and storage boundaries, not OS isolation boundaries.
 
@@ -59,7 +59,7 @@ capability_profile:
     - artifact_read
   cooperative_prepare_write_supported: true
   changed_path_detection_supported: true
-  stage_artifact_supported: true
+  manual_artifact_attachment_supported: true
   raw_artifact_path_read_supported: false
   guarantee_level_default: cooperative
   guarantee_level_max: detective only after the relevant capability check passes
@@ -68,11 +68,11 @@ capability_profile:
 
 Exact public tool and resource contracts belong to the API owners. The connector may summarize the available subset, but it should not duplicate full method schemas in prompt context.
 
-`surface_status`, `local_access_posture`, and `supported_access_classes` report the connector's current API compatibility posture. `surface_status` must mirror stored `LocalSurfaceRegistration.status`; none of these fields grant authority by themselves. The server verifies the current local surface from transport/session/binding facts, not from connector prose, generated files, chat text, Product Repository files, or agent memory. Current access-class labels, `LocalSurfaceRegistration`, and `VerifiedSurfaceContext` are owned by [API Schema Core](api/schema-core.md#local-surface-access-values), and minimum request conditions are owned by [MVP API](api/mvp-api.md#shared-request-rules). In the reference profile, `artifact_read` means registered `ArtifactRef` reads through the owner path only; artifact body reads require a verified local surface, and `raw_artifact_path_read_supported=false` means a local filesystem path under the artifact store is not enough to read artifact bytes. For `artifact_registration`, `stage_artifact` can provide a documented staged handle. `captured_artifact` handles and native artifact capture require future owner-documented support, which the active baseline profile does not have.
+`surface_status`, `local_access_posture`, and `supported_access_classes` report the connector's current API compatibility posture. `surface_status` must mirror stored `LocalSurfaceRegistration.status`; none of these fields grant authority by themselves. The server verifies the current local surface from transport/session/binding facts, not from connector prose, generated files, chat text, Product Repository files, or agent memory. Current access-class labels, `LocalSurfaceRegistration`, and `VerifiedSurfaceContext` are owned by [API Schema Core](api/schema-core.md#local-surface-access-values), and minimum request conditions are owned by [MVP API](api/mvp-api.md#shared-request-rules). In the reference profile, `artifact_read` means registered `ArtifactRef` reads through the owner path only; artifact body reads require a verified local surface, and `raw_artifact_path_read_supported=false` means a local filesystem path under the artifact store is not enough to read artifact bytes. For `artifact_registration`, `manual_artifact_attachment_supported=true` means `harness.stage_artifact` can provide a documented `StagedArtifactHandle` for safe bytes or a safe notice. It is not native artifact capture, and it does not make raw paths, raw logs, arbitrary local path strings, or capture-adapter output into artifact authority. `captured_artifact` handles and native artifact capture require future owner-documented support, which the active baseline profile does not have.
 
 The baseline `reference-local-mcp` profile has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation capability. Those capability fields and profile types are later/profile-gated material in [Later Candidate Index](../later/index.md); absence from the active profile means unsupported, not unknown or implicitly available.
 
-Refresh the profile when the surface version, MCP configuration, permissions, workspace policy, generated files, managed blocks, `stage_artifact` path, redaction policy, artifact retention, local access posture, or conformance basis changes. Profile refresh does not refresh `LocalSurfaceRegistration` by itself; registration changes require the server owner path that verifies the current local surface context. Hook, native capture, pre-tool blocking, and isolation support remain later/profile-gated until promoted.
+Refresh the profile when the surface version, MCP configuration, permissions, workspace policy, generated files, managed blocks, `harness.stage_artifact` path, manual attachment support, redaction policy, artifact retention, local access posture, or conformance basis changes. Profile refresh does not refresh `LocalSurfaceRegistration` by itself; registration changes require the server owner path that verifies the current local surface context. Hook, native capture, pre-tool blocking, and isolation support remain later/profile-gated until promoted.
 
 Generated rules, skills, MCP snippets, adapter files, and managed blocks need a connector manifest. The manifest records generated paths, managed block ids and hashes, MCP exposure posture, display-safe handles, profile freshness, drift, and fallback behavior. It must not store raw tokens, secrets, private config values, blocked payload bytes, or canonical Task state.
 
@@ -89,7 +89,7 @@ Current MVP connector display values:
 
 Profile-gated display names such as `preventive` and `isolated` stay in [Later Candidate Index](../later/index.md) until a future owner promotes exact profile fields, covered operations, fallback behavior, errors, and proof paths. Agents must not choose those labels merely because a user requested stronger safety, asked for a guard/freeze/careful mode, or used stronger wording in chat. The connector must lower the displayed `guarantee_display.level` value or return `CAPABILITY_INSUFFICIENT` when the active profile cannot support the stronger claim.
 
-The reference local MCP profile is cooperative by default and can display limited `detective` behavior only where changed-path observation is supported and the relevant capability check has passed. It has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. Staged artifact registration through `stage_artifact` does not turn the surface into an artifact-capture profile. It must not claim `preventive` or `isolated` behavior.
+The reference local MCP profile is cooperative by default and can display limited `detective` behavior only where changed-path observation is supported and the relevant capability check has passed. It has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. Manual artifact attachment through `harness.stage_artifact` does not turn the surface into an artifact-capture profile. It must not claim `preventive` or `isolated` behavior.
 
 Guard, freeze, and careful-mode labels are display labels over the actual profile. They must say what can actually stop before execution and what can only be detected later. They are not sensitive-action approval, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a Core gate.
 
@@ -218,7 +218,9 @@ write_behavior: cooperative prepare_write discipline before product writes
 run_behavior: record_run with summary and owner-registered artifact refs
 capture_boundary:
   native_capture: unsupported in the minimum reference profile
-  active_staging: stage_artifact staged handles only
+  manual_artifact_attachment_supported: true
+  active_staging: harness.stage_artifact StagedArtifactHandle only
+  active_source_kind: staged_artifact
 artifact_read_boundary:
   registered_artifact_ref_required: true
   raw_artifact_path_read_supported: false
@@ -255,7 +257,8 @@ Reference-surface checks include:
 - no `preventive` or `isolated` claim when the `capability_profile` cannot support that display claim
 - `prepare_write` allowed/blocked compatibility outcomes without OS-permission wording
 - single-use cooperative Write Authorization only after `prepare_write.decision=allowed`
-- `record_run` with summary, changed-path compatibility, and owner-registered artifact refs
+- `harness.stage_artifact` produces only temporary same-project same-Task staging handles and no Core state
+- `record_run` with summary, changed-path compatibility, valid staged-handle consumption or compatible existing artifact refs, and owner-registered artifact refs
 - MCP-unavailable product-write hold
 - `CAPABILITY_INSUFFICIENT` or an equivalent blocked reason for unsupported capabilities
 - read-only recommendations unless a separate Core mutation path records the action

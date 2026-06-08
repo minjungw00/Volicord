@@ -38,7 +38,7 @@
 
 ## ToolEnvelope 봉투
 
-모든 공개 도구 요청은 `ToolEnvelope`를 가집니다. 커밋되는 non-dry-run 상태 변경 도구는 non-null `idempotency_key`와 현재 프로젝트 전체 `project_state.state_version`에 맞는 `expected_state_version`을 요구합니다. `harness.status`, `harness.close_task intent=check`, `dry_run` 호출은 `idempotency_key`와 `expected_state_version`을 `null`로 둘 수 있습니다. 읽기 전용 호출은 멱등 키를 요구하거나 예약하지 않습니다. 메서드별 상태 효과는 [현재 MVP API](mvp-api.md#active-mvp-method-behavior)가 담당합니다.
+모든 공개 도구 요청은 `ToolEnvelope`를 가집니다. 커밋되는 non-dry-run 상태 변경 도구는 non-null `idempotency_key`와 현재 프로젝트 전체 `project_state.state_version`에 맞는 `expected_state_version`을 요구합니다. `harness.stage_artifact`, `harness.status`, `harness.close_task intent=check`, `dry_run` 호출은 `idempotency_key`와 `expected_state_version`을 `null`로 둘 수 있습니다. `harness.stage_artifact`는 임시 스테이징 핸들만 만들며 Core 상태 전이가 아닙니다. 읽기 전용 호출은 멱등 키를 요구하거나 예약하지 않습니다. 메서드별 상태 효과는 [현재 MVP API](mvp-api.md#active-mvp-method-behavior)가 담당합니다.
 
 ```yaml
 ToolEnvelope:
@@ -109,7 +109,7 @@ VerifiedSurfaceContext:
 | `stale` | 현재 API 접근에서 이 접점에 의존하기 전에 접점 등록 또는 역량 태세를 새로 고쳐야 합니다. |
 | `revoked` | 접점 등록이 현재 API 접근에 더 이상 유효하지 않습니다. |
 
-활성 로컬 API 접근 분류 라벨은 `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read`입니다. 이 분류의 메서드별 조건은 [현재 MVP API](mvp-api.md#shared-request-rules)가 담당하고, 공개 오류 선택은 [API Errors](errors.md)가 담당합니다. `VerifiedSurfaceContext.failure_reason=unavailable`, `mismatch` 또는 `revoked`, `insufficient_capability`는 각각 `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`로 구분되어야 합니다.
+활성 로컬 API 접근 분류 라벨은 `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read`입니다. `artifact_registration`은 `harness.stage_artifact`와 `harness.record_run`이 소비할 수 있는 `ArtifactInput[]` 값을 포함합니다. 이 분류의 메서드별 조건은 [현재 MVP API](mvp-api.md#shared-request-rules)가 담당하고, 공개 오류 선택은 [API Errors](errors.md)가 담당합니다. `VerifiedSurfaceContext.failure_reason=unavailable`, `mismatch` 또는 `revoked`, `insufficient_capability`는 각각 `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`로 구분되어야 합니다.
 
 <a id="common-response"></a>
 
@@ -224,22 +224,55 @@ ArtifactRelationOwner:
 
 ## ArtifactInput
 
-`ArtifactInput`은 `harness.record_run`에서 활성 `stage_artifact` 유틸리티가 만든 문서화된 스테이징 핸들이나 이미 등록된 아티팩트 참조로만 받습니다. 임의 파일 읽기 권한을 부여하지 않습니다. `stage_artifact`는 현재 MVP의 스테이징 유틸리티이지 접점 자체 아티팩트 캡처나 일반 파일시스템 읽기 API가 아닙니다.
+`ArtifactInput`은 `harness.record_run`에서 활성 `harness.stage_artifact` 유틸리티가 만든 문서화된 `StagedArtifactHandle`이나 이미 등록된 `ArtifactRef`로만 받습니다. 임의 파일 읽기 권한을 부여하지 않습니다. `harness.stage_artifact`는 새 아티팩트 바이트를 위한 현재 MVP 스테이징 유틸리티이지 접점 자체 아티팩트 캡처나 일반 파일시스템 읽기 API가 아닙니다.
 
 ```yaml
 ArtifactInput:
   artifact_input_id: string
-  source_kind: staged_file | existing_artifact
+  source_kind: staged_artifact | existing_artifact
   relation: string
-  staged_uri: string | null
+  staged_artifact_handle: StagedArtifactHandle | null
   existing_artifact_ref: ArtifactRef | null
   display_name: string | null
   content_type: string
   expected_sha256: string | null
   expected_size_bytes: integer | null
+
+StageArtifactRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  display_name: string
+  content_type: string
+  redaction_state: none | redacted | secret_omitted | blocked
+  safe_bytes_or_notice: bytes | string
+  expected_sha256: string | null
+  expected_size_bytes: integer | null
+  relation_hint: string | null
+
+StageArtifactResponse:
+  request_id: string
+  project_id: string
+  task_id: string
+  staged_artifact_handle: StagedArtifactHandle
+  expires_at: string
+  errors: ToolError[]
+
+StagedArtifactHandle:
+  handle_id: string
+  project_id: string
+  task_id: string
+  sha256: string
+  size_bytes: integer
+  content_type: string
+  redaction_state: none | redacted | secret_omitted | blocked
+  expires_at: string
 ```
 
-`source_kind`에 맞는 출처 필드 하나만 있어야 합니다. `staged_file`에는 `staged_uri`, `existing_artifact`에는 `existing_artifact_ref`가 필요합니다. `staged_uri`는 담당 경로가 승인한 `stage_artifact` 경로에서 나온 안전한 핸들이어야 합니다. `captured_artifact`, 캡처 핸들, 접점 자체 아티팩트 캡처, 호출자가 임의로 준 경로, 원시 캡처 어댑터 출력, 원시 비밀값, 토큰, 민감한 전체 로그는 현재 MVP 밖이며 변경 전에 거부됩니다.
+`source_kind`에 맞는 출처 필드 하나만 있어야 합니다. `staged_artifact`에는 `staged_artifact_handle`, `existing_artifact`에는 `existing_artifact_ref`가 필요합니다. 스테이징 핸들은 같은 `project_id`와 `task_id` 범위에 있어야 하고 `content_type`, `sha256`, `size_bytes`, `redaction_state`, `expires_at`을 가져야 하며, `harness.record_run`이 사용할 때 만료되지 않았고 아직 소비되지 않았어야 합니다. 만료된 핸들, 범위가 맞지 않는 핸들, 이미 소비된 핸들, 다른 Task의 핸들은 변경 전에 거부됩니다.
+
+`harness.stage_artifact`는 임시 `StagedArtifactHandle`을 만들 수 있지만 그 자체로 Core 상태 전이가 아닙니다. 증거를 만들지 않고, gate를 만족하지 않고, 증거 요약을 갱신하지 않으며, `harness.close_task`가 통과하게 만들 수도 없습니다. 유효한 스테이징 핸들을 소비해 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`뿐입니다.
+
+원시 파일 경로, 원시 로그, 임의 로컬 경로 문자열, `captured_artifact`, 캡처 핸들, 접점 자체 아티팩트 캡처, 원시 캡처 어댑터 출력, 원시 비밀값, 토큰, 민감한 전체 로그는 현재 MVP 밖이며 변경 전에 아티팩트 권한으로 거부됩니다. 새 아티팩트 바이트는 `harness.stage_artifact`를 통해서만 현재 MVP에 들어오고, 기존 바이트는 호환되는 `existing_artifact_ref`를 통해서만 재사용합니다.
 
 <a id="evidence-and-pre-write-scope-schemas"></a>
 
@@ -447,7 +480,7 @@ CloseBlocker:
 NextActionSummary:
   action_kind: ask_user | update_scope | prepare_write | implement | request_acceptance | close_task | idle
   summary: string
-  required_tool: harness.intake | harness.status | harness.update_scope | harness.prepare_write | harness.record_run | harness.request_user_judgment | harness.record_user_judgment | harness.close_task | null
+  required_tool: harness.intake | harness.status | harness.update_scope | harness.prepare_write | harness.stage_artifact | harness.record_run | harness.request_user_judgment | harness.record_user_judgment | harness.close_task | null
   related_refs: StateRecordRef[]
   blocker_code: ErrorCode | null
 ```
@@ -526,7 +559,7 @@ policy_override
 
 | 필드 | 현재 MVP 값 |
 |---|---|
-| 활성 메서드 집합 | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
+| 활성 메서드 집합 | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.stage_artifact`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
 | `ToolEnvelope.actor_kind` | `user`, `lead_agent` |
 | 로컬 API 접근 분류 | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
 | `LocalSurfaceRegistration.transport_kind` | `local_mcp_stdio`, `local_http` |
@@ -551,7 +584,7 @@ policy_override
 | `ArtifactRef.produced_by` | `lead_agent`, `harness` |
 | `ArtifactRef.retention_class` | `task`, `project`, `temporary` |
 | `ArtifactRelationOwner.record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` |
-| `ArtifactInput.source_kind` | `staged_file`, `existing_artifact` |
+| `ArtifactInput.source_kind` | `staged_artifact`, `existing_artifact` |
 | `EvidenceCoverageItem.coverage_state` | `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, `blocked` |
 | `EvidenceSummary.status` | `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked` |
 | `AuthorizedAttemptScope.guarantee_level` | `cooperative`, `detective` |

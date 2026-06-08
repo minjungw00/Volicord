@@ -38,7 +38,7 @@ The [Current MVP Value Sets](#current-mvp-value-sets) section owns the exact act
 
 ## Tool Envelope
 
-Every public tool request carries `ToolEnvelope`. Committed non-dry-run state-changing tools require a non-null `idempotency_key` and a current project-wide `expected_state_version` matching `project_state.state_version`. `harness.status`, `harness.close_task intent=check`, and dry-run calls may set `idempotency_key` and `expected_state_version` to `null`. Read-only calls do not require or reserve idempotency keys. Method-level state effects are owned by [MVP API](mvp-api.md#active-mvp-method-behavior).
+Every public tool request carries `ToolEnvelope`. Committed non-dry-run state-changing tools require a non-null `idempotency_key` and a current project-wide `expected_state_version` matching `project_state.state_version`. `harness.stage_artifact`, `harness.status`, `harness.close_task intent=check`, and dry-run calls may set `idempotency_key` and `expected_state_version` to `null`. `harness.stage_artifact` creates only a temporary staging handle and is not a Core state transition. Read-only calls do not require or reserve idempotency keys. Method-level state effects are owned by [MVP API](mvp-api.md#active-mvp-method-behavior).
 
 ```yaml
 ToolEnvelope:
@@ -109,7 +109,7 @@ VerifiedSurfaceContext:
 | `stale` | The surface registration or capability posture must be refreshed before current API access can rely on it. |
 | `revoked` | The surface registration is no longer valid for current API access. |
 
-The active local API access-class labels are `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, and `artifact_read`. Method-level conditions for these classes are owned by [MVP API](mvp-api.md#shared-request-rules); public error selection is owned by [API Errors](errors.md). `VerifiedSurfaceContext.failure_reason=unavailable`, `mismatch` or `revoked`, and `insufficient_capability` must remain distinguishable so callers can receive `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, and `CAPABILITY_INSUFFICIENT` respectively.
+The active local API access-class labels are `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, and `artifact_read`. `artifact_registration` covers `harness.stage_artifact` and the `ArtifactInput[]` values that `harness.record_run` may consume. Method-level conditions for these classes are owned by [MVP API](mvp-api.md#shared-request-rules); public error selection is owned by [API Errors](errors.md). `VerifiedSurfaceContext.failure_reason=unavailable`, `mismatch` or `revoked`, and `insufficient_capability` must remain distinguishable so callers can receive `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, and `CAPABILITY_INSUFFICIENT` respectively.
 
 <a id="common-response"></a>
 
@@ -224,22 +224,55 @@ ArtifactRelationOwner:
 
 ## ArtifactInput
 
-`ArtifactInput` is accepted by `harness.record_run` only as a documented staged handle from the active `stage_artifact` utility or as an existing registered artifact ref. It never grants arbitrary file read authority. `stage_artifact` is the active MVP staging utility, not native artifact capture and not a general filesystem-read API.
+`ArtifactInput` is accepted by `harness.record_run` only as a documented `StagedArtifactHandle` from the active `harness.stage_artifact` utility or as an existing registered `ArtifactRef`. It never grants arbitrary file read authority. `harness.stage_artifact` is the active MVP staging utility for new artifact bytes, not native artifact capture and not a general filesystem-read API.
 
 ```yaml
 ArtifactInput:
   artifact_input_id: string
-  source_kind: staged_file | existing_artifact
+  source_kind: staged_artifact | existing_artifact
   relation: string
-  staged_uri: string | null
+  staged_artifact_handle: StagedArtifactHandle | null
   existing_artifact_ref: ArtifactRef | null
   display_name: string | null
   content_type: string
   expected_sha256: string | null
   expected_size_bytes: integer | null
+
+StageArtifactRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  display_name: string
+  content_type: string
+  redaction_state: none | redacted | secret_omitted | blocked
+  safe_bytes_or_notice: bytes | string
+  expected_sha256: string | null
+  expected_size_bytes: integer | null
+  relation_hint: string | null
+
+StageArtifactResponse:
+  request_id: string
+  project_id: string
+  task_id: string
+  staged_artifact_handle: StagedArtifactHandle
+  expires_at: string
+  errors: ToolError[]
+
+StagedArtifactHandle:
+  handle_id: string
+  project_id: string
+  task_id: string
+  sha256: string
+  size_bytes: integer
+  content_type: string
+  redaction_state: none | redacted | secret_omitted | blocked
+  expires_at: string
 ```
 
-Exactly one source field must match `source_kind`: `staged_uri` for `staged_file`, or `existing_artifact_ref` for `existing_artifact`. `staged_uri` must be a safe handle produced by the owner-approved `stage_artifact` path. `captured_artifact`, captured handles, native artifact capture, caller-supplied arbitrary paths, raw capture-adapter outputs, raw secrets, tokens, and full sensitive logs are outside the active MVP and are rejected before mutation.
+Exactly one source field must match `source_kind`: `staged_artifact_handle` for `staged_artifact`, or `existing_artifact_ref` for `existing_artifact`. A staged handle must be scoped to the same `project_id` and `task_id`, carry `content_type`, `sha256`, `size_bytes`, `redaction_state`, and `expires_at`, and be unexpired and unconsumed when `harness.record_run` uses it. Expired, mismatched, already-consumed, or cross-task handles are rejected before mutation.
+
+`harness.stage_artifact` may create a temporary `StagedArtifactHandle`, but it is not a Core state transition by itself. It creates no evidence, satisfies no gate, updates no evidence summary, and cannot make `harness.close_task` pass. `harness.record_run` is the only active path that can consume a valid staged handle and promote it to a persistent `ArtifactRef`.
+
+Raw file paths, raw logs, arbitrary local path strings, `captured_artifact`, captured handles, native artifact capture, raw capture-adapter outputs, raw secrets, tokens, and full sensitive logs are outside the active MVP and are rejected as artifact authority before mutation. New artifact bytes enter the active MVP only through `harness.stage_artifact`; existing bytes are reused only through a compatible `existing_artifact_ref`.
 
 <a id="evidence-and-pre-write-scope-schemas"></a>
 
@@ -447,7 +480,7 @@ CloseBlocker:
 NextActionSummary:
   action_kind: ask_user | update_scope | prepare_write | implement | request_acceptance | close_task | idle
   summary: string
-  required_tool: harness.intake | harness.status | harness.update_scope | harness.prepare_write | harness.record_run | harness.request_user_judgment | harness.record_user_judgment | harness.close_task | null
+  required_tool: harness.intake | harness.status | harness.update_scope | harness.prepare_write | harness.stage_artifact | harness.record_run | harness.request_user_judgment | harness.record_user_judgment | harness.close_task | null
   related_refs: StateRecordRef[]
   blocker_code: ErrorCode | null
 ```
@@ -526,7 +559,7 @@ These values are active current MVP schema values. Method-level capability and a
 
 | Field | Current MVP values |
 |---|---|
-| Active method set | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
+| Active method set | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.stage_artifact`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
 | `ToolEnvelope.actor_kind` | `user`, `lead_agent` |
 | Local API access classes | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
 | `LocalSurfaceRegistration.transport_kind` | `local_mcp_stdio`, `local_http` |
@@ -551,7 +584,7 @@ These values are active current MVP schema values. Method-level capability and a
 | `ArtifactRef.produced_by` | `lead_agent`, `harness` |
 | `ArtifactRef.retention_class` | `task`, `project`, `temporary` |
 | `ArtifactRelationOwner.record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` |
-| `ArtifactInput.source_kind` | `staged_file`, `existing_artifact` |
+| `ArtifactInput.source_kind` | `staged_artifact`, `existing_artifact` |
 | `EvidenceCoverageItem.coverage_state` | `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, `blocked` |
 | `EvidenceSummary.status` | `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked` |
 | `AuthorizedAttemptScope.guarantee_level` | `cooperative`, `detective` |

@@ -26,6 +26,7 @@
 | [`harness.status`](#harnessstatus) | 현재 상태 요약, 차단 사유, 대기 중인 판단, 증거 요약, 닫기 상태, 다음 안전한 행동을 반환합니다. |
 | [`harness.update_scope`](#harnessupdate_scope) | `harness.intake` 이후 활성 Task 범위와 활성 Change Unit을 갱신합니다. |
 | [`harness.prepare_write`](#harnessprepare_write) | 제안된 제품 파일 쓰기를 현재 범위, 상태, 필요한 별도 민감 동작 승인, baseline, 접점 역량과 비교합니다. |
+| [`harness.stage_artifact`](#harnessstage_artifact) | 안전한 아티팩트 바이트 또는 안전한 알림을 나중에 `record_run`이 승격할 수 있는 임시 핸들로 스테이징합니다. |
 | [`harness.record_run`](#harnessrecord_run) | shaping, direct, implementation 작업과 간결한 증거/아티팩트 참조를 기록합니다. |
 | [`harness.request_user_judgment`](#harnessrequest_user_judgment) | 대기 중인 사용자 소유 판단 요청 하나를 만듭니다. |
 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) | 기존 대기 중인 `UserJudgment`에 대한 사용자의 답을 기록합니다. |
@@ -45,6 +46,7 @@ non-dry-run 상태 변경을 뜻합니다. 버전 증가는 항상 프로젝트 
 | `harness.status` | 읽기 전용 | 예. 상태 차이는 없음 | 필요 없음 | 필요 없음. `null` 가능 | 아니요. 차단 사유는 계산된 응답 필드일 뿐입니다. | 아니요 | 아니요 | 아니요 |
 | `harness.update_scope` | 상태 변경 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 예. 메서드가 소유한 차단 사유 또는 현재 행 갱신에 한정합니다. 충족되지 않은 선행조건이 범위 권한을 만들지는 않습니다. | 예. 커밋 시 | 예. 첫 커밋 시 | 예. 커밋 시 |
 | `harness.prepare_write` | 상태 변경 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 예. 커밋된 `blocked`, `approval_required`, `decision_required` 차단 사유 갱신에 한정합니다. 소비 가능한 Write Authorization은 만들지 않습니다. | 예. 커밋된 `allowed` 또는 커밋된 차단 사유 갱신 시 | 예. 커밋된 `allowed` 또는 커밋된 차단 사유 갱신의 첫 커밋 시 | 예. 커밋된 `allowed` 또는 커밋된 차단 사유 갱신 시 |
+| `harness.stage_artifact` | 임시 아티팩트 유틸리티. Core 상태 변경 아님 | 예. Core 상태 차이는 없음 | 필요 없음 | 필요 없음. `null` 가능 | 아니요. 유효하지 않은 스테이징 요청은 Core 변경 없이 실패합니다. | 아니요 | 아니요 | 아니요 |
 | `harness.record_run` | 상태 변경 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 예. 호환되는 Run 또는 Run 관련 차단 사유 상태를 기록할 때만 허용합니다. 거부된 시도는 커밋 전 실패입니다. | 예. 커밋 시 | 예. 첫 커밋 시 | 예. 커밋 시 |
 | `harness.request_user_judgment` | 상태 변경 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 별도 차단 응답 커밋은 없습니다. 대기 중인 판단 경로를 커밋하거나 커밋 전 실패가 됩니다. | 예. 커밋 시 | 예. 첫 커밋 시 | 예. 커밋 시 |
 | `harness.record_user_judgment` | 상태 변경 | 예. 커밋하지 않음 | non-dry-run에는 필요 | non-dry-run에는 필요 | 예. 지정된 판단을 rejected, deferred, blocked 또는 차단 사유를 만드는 상태로 커밋할 때 | 예. 커밋 시 | 예. 첫 커밋 시 | 예. 커밋 시 |
@@ -55,13 +57,13 @@ non-dry-run 상태 변경을 뜻합니다. 버전 증가는 항상 프로젝트 
 
 ## 공통 요청 규칙
 
-모든 메서드는 [`ToolEnvelope`](schema-core.md#tool-envelope)와 [`ToolResponseBase`](schema-core.md#common-response)를 사용합니다. 커밋되는 non-dry-run 상태 변경 호출은 non-null `idempotency_key`와 현재 프로젝트 전체 `expected_state_version`을 요구합니다. `harness.status`, `harness.close_task intent=check`, `dry_run` 호출은 `idempotency_key: null`과 `expected_state_version: null`을 사용할 수 있습니다.
+모든 메서드는 [`ToolEnvelope`](schema-core.md#tool-envelope)를 사용합니다. 커밋되는 non-dry-run 상태 변경 호출은 [`ToolResponseBase`](schema-core.md#common-response)를 사용하며 non-null `idempotency_key`와 현재 프로젝트 전체 `expected_state_version`을 요구합니다. `harness.stage_artifact`, `harness.status`, `harness.close_task intent=check`, `dry_run` 호출은 `idempotency_key: null`과 `expected_state_version: null`을 사용할 수 있습니다. `harness.stage_artifact`는 임시 `StagedArtifactHandle`만 만들며 Core 상태 전이가 아니고 재실행 행이나 `project_state.state_version` 증가를 만들지 않습니다.
 
 메서드에 도구별 `task_id`가 있으면 Core는 도구별 `task_id`, `ToolEnvelope.task_id`, 활성 Task 순서로 주 Task를 찾습니다. 이 해석은 담당 기록을 고르는 일이며 별도 상태 시계를 고르지 않습니다. 새 non-dry-run 상태 변경은 모두 커밋 전에 `ToolEnvelope.expected_state_version`을 현재 `project_state.state_version`과 비교합니다.
 
 읽기 전용 호출은 차단 사유, 닫기 차단 사유, 다음 행동, 진단을 계산해 반환할 수 있습니다. 하지만 그 값은 응답 필드일 뿐입니다. 차단 사유를 저장하거나, `task_events`를 추가하거나, `tool_invocations` 재실행 행을 만들거나, `state_version`을 올리면 안 됩니다.
 
-`dry_run=true`는 기준 권한이 아닙니다. 진단, 후보 차단 사유, 변경 예상 결과를 반환할 수 있지만 현재 기록, `task_events` 행, 아티팩트, Write Authorization, 증거 요약, 닫기 상태, `tool_invocations` 재실행 행, 상태 버전 증가를 만들지 않습니다.
+`dry_run=true`는 기준 권한이 아닙니다. 진단, 후보 차단 사유, 변경 예상 결과를 반환할 수 있지만 현재 기록, `task_events` 행, 지속 `ArtifactRef`, Write Authorization, 증거 요약, 닫기 상태, `tool_invocations` 재실행 행, 상태 버전 증가를 만들지 않습니다.
 
 `tool_invocations` 재실행 행은 커밋된 non-dry-run 상태 변경만 만듭니다. 같은 `idempotency_key`와 같은 요청 해시의 재실행은 기존 커밋 응답을 반환합니다. 같은 키를 다른 요청 해시와 함께 쓰면 `STATE_CONFLICT`를 반환합니다. `dry_run` 호출과 커밋 전 실패는 재실행 행을 만들거나 예약하지 않습니다.
 
@@ -77,7 +79,7 @@ non-dry-run 상태 변경을 뜻합니다. 버전 증가는 항상 프로젝트 
 | `core_mutation` | `harness.intake`, `harness.update_scope`, `harness.request_user_judgment`, `harness.record_user_judgment`, 상태를 끝내는 `harness.close_task` intent. | `read_status` 조건에 더해 `VerifiedSurfaceContext.access_class=core_mutation`, `verified=true`, non-dry-run 커밋에는 non-null `idempotency_key`와 현재 프로젝트 전체 `expected_state_version`, 적용되는 경우 호환되는 `project_id`, `surface_id`, `surface_instance_id`, `task_id`, 담당 기록이 필요합니다. |
 | `write_authorization` | `harness.prepare_write`. | `VerifiedSurfaceContext.access_class=write_authorization`, `verified=true`에 더해 의도한 제품 파일 쓰기 시도에 필요한 활성 Task/Change Unit 호환성, 범위, baseline, 필요한 별도 민감 동작 승인 호환성, 역량 확인이 필요합니다. |
 | `run_recording` | `harness.record_run`. | `VerifiedSurfaceContext.access_class=run_recording`, `verified=true`에 더해 호환되는 `task_id`, `change_unit_id`, `baseline_ref`, 관찰된 시도 사실, 그리고 제품 쓰기를 기록하는 Run이면 소비 가능한 활성 Write Authorization이 필요합니다. |
-| `artifact_registration` | `harness.record_run`이 받는 `ArtifactInput[]`. | `VerifiedSurfaceContext.access_class=artifact_registration`, `verified=true`에 더해 활성 `stage_artifact` 유틸리티가 만든 문서화된 `staged_file` 핸들 또는 호환되는 `existing_artifact` 참조만 받을 수 있습니다. 호출자가 임의로 준 파일시스템 경로, 원시 비밀값, 토큰, 민감한 전체 로그, `captured_artifact` 핸들, 원시 캡처 어댑터 출력, 접점 자체 캡처 주장은 현재 MVP의 등록 권한으로 인정하지 않습니다. |
+| `artifact_registration` | `harness.stage_artifact`와 `harness.record_run`이 받는 `ArtifactInput[]`. | `VerifiedSurfaceContext.access_class=artifact_registration`, `verified=true`, 호환되는 `project_id`/`task_id`, 스테이징 경로에 대한 `manual_artifact_attachment_supported=true`가 필요합니다. `harness.stage_artifact`는 `content_type`, `redaction_state`, 제공된 경우 기대 무결성 힌트를 가진 안전한 바이트 또는 안전한 알림만 받습니다. `harness.record_run`은 만료되지 않았고 같은 프로젝트/같은 Task에 속하며 아직 소비되지 않은 `StagedArtifactHandle`을 가진 `source_kind=staged_artifact`, 또는 호환되는 `existing_artifact_ref`를 가진 `source_kind=existing_artifact`만 받습니다. 호출자가 임의로 준 파일시스템 경로, 임의 로컬 경로 문자열, 권한 주장으로서의 원시 로그, 원시 비밀값, 토큰, 민감한 전체 로그, `captured_artifact` 핸들, 원시 캡처 어댑터 출력, 접점 자체 캡처 주장은 현재 MVP의 등록 권한으로 인정하지 않습니다. |
 | `artifact_read` | 등록된 `ArtifactRef`에서 담당 경로가 노출하는 로컬 아티팩트 메타데이터 또는 본문 읽기. | 같은 프로젝트의 `LocalSurfaceRegistration`, `status=active`, 등록된 `ArtifactRef`, 호환되는 `project_id`/`task_id`, 필요한 가림/가용성 확인, `artifact_links`의 일치하는 담당 관계가 필요합니다. 아티팩트 본문 읽기에는 추가로 `VerifiedSurfaceContext.access_class=artifact_read`와 `verified=true`가 필요합니다. 원시 아티팩트 경로 읽기는 기본으로 허용되지 않습니다. |
 
 필요한 MCP/Core 또는 접점 도달 가능성 자체가 없으면 `VerifiedSurfaceContext.failure_reason=unavailable`에 해당하므로 `MCP_UNAVAILABLE`을 사용합니다. 등록된 로컬 접근 기대가 도달 가능한 transport/session/binding과 맞지 않거나 로컬 접근이 철회되었으면 `failure_reason=mismatch` 또는 `revoked`에 해당하므로 `LOCAL_ACCESS_MISMATCH`를 사용합니다. 접점은 인식되었지만 접근 분류, 관찰, 캡처, 차단/격리 주장, 활성 동작에 필요한 역량이 없으면 `failure_reason=insufficient_capability`에 해당하므로 `CAPABILITY_INSUFFICIENT`를 사용합니다.
@@ -263,6 +265,45 @@ PrepareWriteResponse:
 - **저장소 담당 문서:** `write_authorizations`, `blockers`, `project_state` 상태 시계, `task_events`, `tool_invocations`.
 - **보안 경계:** `decision=allowed`는 이 경로 수준 제품 파일 쓰기 시도가 하네스 기록과 호환된다는 뜻입니다. 운영체제가 호환되지 않는 쓰기를 막거나 임의 도구가 격리된다는 뜻이 아닙니다. 활성 `PrepareWriteRequest`는 위에 적은 제품 쓰기 경로 수준 필드만 포함하며 명령, 의존성, 호스트, 네트워크, 비밀값, 배포, 파괴적 동작, 시스템 접근의 승인 범위를 인코딩하지 않습니다. 그런 승인은 `judgment_kind=sensitive_approval`을 통해 `SensitiveActionScope`로 별도 기록됩니다. 현재 MVP 요청이 명령, 네트워크, 비밀값 접근, 아티팩트 캡처, 도구 실행 전 차단, 격리에 대한 보장을 요구하면 활성 접점에 역량이 없을 때 `CAPABILITY_INSUFFICIENT`를 반환하고, 요청 형태나 요구한 보장이 활성 프로필에 유효하지 않으면 `VALIDATION_FAILED`를 반환해야 합니다.
 
+<a id="harnessstage_artifact"></a>
+
+## `harness.stage_artifact`
+
+- **담당:** 한 프로젝트와 Task에 속한 안전한 아티팩트 바이트 또는 안전한 알림의 임시 스테이징.
+- **담당하지 않음:** Core 상태 전이, 증거 생성, 증거 충분성, gate 만족, 아티팩트 등록, 최종 수락, 잔여 위험 수락, 닫기.
+- **호출 시점:** 새 아티팩트 바이트를 `ArtifactInput.source_kind=staged_artifact`로 `harness.record_run`에 넘겨야 할 때, `harness.record_run` 전에 호출합니다.
+- **요청:**
+
+```yaml
+StageArtifactRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  display_name: string
+  content_type: string
+  redaction_state: none | redacted | secret_omitted | blocked
+  safe_bytes_or_notice: bytes | string
+  expected_sha256: string | null
+  expected_size_bytes: integer | null
+  relation_hint: string | null
+```
+
+- **응답:**
+
+```yaml
+StageArtifactResponse:
+  request_id: string
+  project_id: string
+  task_id: string
+  staged_artifact_handle: StagedArtifactHandle
+  expires_at: string
+  errors: ToolError[]
+```
+
+- **상태 효과:** 성공한 호출은 `project_id`와 `task_id`에 묶이고 `content_type`, `sha256`, `size_bytes`, `redaction_state`, `expires_at`을 가진 임시 `StagedArtifactHandle`만 만듭니다. Core 기록, 지속 `ArtifactRef`, 증거 요약, 차단 사유, 이벤트, `tool_invocations` 재실행 행, 닫기 효과, `project_state.state_version` 증가를 만들지 않습니다. 그 핸들을 소비해 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`뿐입니다.
+- **오류:** `VALIDATION_FAILED`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`.
+- **저장소 담당 문서:** 저장소가 담당하는 스테이징 경계 아래 임시 스테이징 바이트 또는 알림. 지속 `artifacts`와 `artifact_links`는 나중에 호환되는 `harness.record_run`만 만듭니다.
+- **보안 경계:** 요청은 안전한 바이트 또는 안전한 알림을 전달할 뿐, 임의 파일 권한을 전달하지 않습니다. 원시 파일 경로, 권한 주장으로서의 원시 로그, 임의 로컬 경로 문자열, 원시 비밀값, 토큰, 민감한 전체 로그, `captured_artifact` 핸들, 원시 캡처 어댑터 출력, 접점 자체 캡처 주장은 현재 MVP 아티팩트 권한으로 거부됩니다. `manual_artifact_attachment_supported=true`는 이 스테이징 경로를 사용할 수 있다는 뜻이지 접점 자체 아티팩트 캡처가 아닙니다.
+
 <a id="harnessrecord_run"></a>
 
 ## `harness.record_run`
@@ -270,6 +311,7 @@ PrepareWriteResponse:
 - **담당:** Run 기록, 호환되는 Write Authorization 소비, 아티팩트 등록, 간결한 증거 요약 업데이트, Run 관련 차단 사유.
 - **담당하지 않음:** 새 범위, 사용자 판단 해결, 최종 수락, 잔여 위험 수락, 별도 보증 기록, 닫기.
 - **호출 시점:** 구체화 작업, 직접 답변/결과, 구현 작업이 끝난 뒤. 제품 쓰기 Run은 `harness.prepare_write`가 반환한 호환되는 활성 Write Authorization을 제공해야 합니다.
+- **아티팩트 입력:** 새 아티팩트 바이트는 `harness.stage_artifact`가 만든 유효한 `StagedArtifactHandle`을 통해서만 들어옵니다. 기존 바이트는 호환되는 `existing_artifact_ref`를 통해서만 재사용할 수 있습니다. 만료된 핸들, 범위가 맞지 않는 핸들, 이미 소비된 핸들, 다른 Task의 핸들은 변경 전에 거부됩니다.
 - **요청:**
 
 ```yaml
@@ -299,7 +341,7 @@ RecordRunResponse:
   state: StateSummary
 ```
 
-- **상태 효과:** 호환되는 커밋 호출은 `runs`, `artifacts`, `artifact_links`, `evidence_summaries`를 만들고, Run 관련 차단 사유를 업데이트하고, `write_authorizations.status=active`를 소비하고, 이벤트와 커밋된 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 올릴 수 있습니다. 제품 쓰기 Run은 현재 `project_state.state_version`이 Write Authorization의 프로젝트 전체 `basis_state_version`과 맞고, 관찰된 변경 경로가 저장된 승인 시도와 호환될 때만 활성 Write Authorization을 소비합니다. 거부된 호출과 커밋 전 실패는 Run 생성, 아티팩트 등록, 증거 업데이트, 유효하지 않은 Write Authorization 소비, 이벤트 추가, 재실행 행 생성, `state_version` 증가를 하면 안 됩니다.
+- **상태 효과:** 호환되는 커밋 호출은 `runs`를 만들고, 유효한 스테이징 핸들을 지속 `artifacts`로 승격하고, `artifact_links`를 추가하고, `evidence_summaries`를 만들고, Run 관련 차단 사유를 업데이트하고, `write_authorizations.status=active`를 소비하고, 이벤트와 커밋된 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 올릴 수 있습니다. 제품 쓰기 Run은 현재 `project_state.state_version`이 Write Authorization의 프로젝트 전체 `basis_state_version`과 맞고, 관찰된 변경 경로가 저장된 승인 시도와 호환될 때만 활성 Write Authorization을 소비합니다. 거부된 호출과 커밋 전 실패는 Run 생성, 아티팩트 등록, 스테이징 핸들 소비, 증거 업데이트, 유효하지 않은 Write Authorization 소비, 이벤트 추가, 재실행 행 생성, `state_version` 증가를 하면 안 됩니다.
 - **오류:** `VALIDATION_FAILED`, `STATE_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `WRITE_AUTHORIZATION_REQUIRED`, `WRITE_AUTHORIZATION_INVALID`, `SCOPE_VIOLATION`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `BASELINE_STALE`, `ARTIFACT_MISSING`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`.
 - **저장소 담당 문서:** `runs`, `write_authorizations`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`, `task_events`, `tool_invocations`.
 - **보안 경계:** Run은 접점이 관찰한 사실을 기록할 수 있습니다. 기준 `reference-local-mcp` 프로필에서 제품 쓰기 호환성은 관련 역량 확인이 통과한 뒤 관찰된 변경 경로에 대해서만 탐지형이며, 제품 쓰기 Run은 그 경로 수준 호환성이 있을 때만 활성 Write Authorization을 소비합니다. 활성 접점이 관찰할 수 없는 명령 실행, 네트워크 활동, 비밀값 접근, 아티팩트 캡처, 차단, 격리 사실을 API가 검증됨으로 표시하면 안 됩니다.

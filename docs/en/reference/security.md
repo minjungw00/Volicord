@@ -41,7 +41,7 @@ Write Authorization is a single-use cooperative Harness record created only by t
 
 Sensitive-action approval is a separate user judgment recorded with `SensitiveActionScope`. It can permit a named command, dependency change, network access, secret access, deployment, destructive action, system access, product-file write, or other scoped sensitive action, but that permission does not create Write Authorization and does not prove Harness observed, blocked, enforced, sandboxed, or isolated the action. The only honest observation or enforcement claim is the one supported by the active surface capability for the exact operation.
 
-For the baseline `reference-local-mcp` profile, Write Authorization and product-write Run compatibility are path-level. The profile is cooperative by default and has limited detective support only for observed changed paths after the relevant capability check has passed. It has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. Staged artifact registration may exist through the active `stage_artifact` path, but that is not connector artifact capture and does not verify how the artifact was produced.
+For the baseline `reference-local-mcp` profile, Write Authorization and product-write Run compatibility are path-level. The profile is cooperative by default and has limited detective support only for observed changed paths after the relevant capability check has passed. It has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. `manual_artifact_attachment_supported=true` means the active `harness.stage_artifact` staging path is available for safe bytes or safe notices; it is not connector artifact capture and does not verify how the artifact was produced.
 
 Local access posture is also a Harness compatibility fact. `surface_id` is a selector, not an authority proof. `registered_local` means a stored `LocalSurfaceRegistration` and the current local transport/session/binding can produce a matching server-derived `VerifiedSurfaceContext` for the requested access class. It does not mean an OS account, editor, shell, package manager, or arbitrary local process is constrained. API access still requires a same-project registration, `status=active`, compatible `project_id`/`surface_id`/`surface_instance_id`/`task_id`/`expected_state_version` when applicable, `VerifiedSurfaceContext.verified=true` for mutating APIs and artifact body reads, and active surface capability. `unavailable`, `mismatch`, `revoked`, and `insufficient_capability` verification failures route to distinct public API errors and safe diagnostics; they are not proof of a stronger security boundary.
 
@@ -55,7 +55,7 @@ The current MVP does not provide:
 - arbitrary-tool sandboxing
 - tamper-proof storage
 - default pre-tool blocking
-- native artifact capture in the baseline reference profile
+- native artifact capture or `captured_artifact` source authority in the baseline reference profile
 - security isolation
 
 These are explicit non-claims even when Harness returns a blocker, records a Write Authorization, validates an artifact hash, detects stale context, reports a capability mismatch, or marks a projection stale. Those outcomes may be cooperative, or detective only after the relevant capability check has passed. They are not preventive or isolated unless another owner documents and proves that exact mechanism for that exact operation.
@@ -99,7 +99,7 @@ This summary names the active threat categories without turning the MVP document
 | Authority spoofing | Chat, generated Markdown, caller claims, copied `surface_id` values, Product Repository files, agent memory, or stale projections pretend to approve, verify, accept, close work, or refresh a surface registration. | Route authority through Core-owned records and server-verified local surface context; fail or hold when MCP/Core authority or local verification is unavailable. |
 | Out-of-scope write or sensitive action | A product-file path or product-write sensitive category exceeds the active Change Unit, user judgment, or stored `AuthorizedAttemptScope`; or a named command, dependency, host, network access, secret handle, deployment, destructive action, or system access exceeds the recorded `SensitiveActionScope`. Command, network, and secret effects are separate capability and sensitive-action concerns unless a future profile promotes observation for them. | Use cooperative `prepare_write`, single-use Write Authorization, compatible `record_run`, and changed-path detection only where the surface can observe. Record sensitive approvals separately and reject or block requests that require unobservable command, network, or secret guarantees. |
 | Stale context or replay | Stale status text, approvals, projections, baselines, evaluator bundles, or cached state steer current work. | Check current state version, idempotency, freshness, and owner-record compatibility before relying on the input. |
-| Artifact or evidence tampering | Bytes, paths, hashes, or metadata are swapped, stale, missing, redacted, blocked, or unrelated to the owner record. | Treat evidence as insufficient or blocked until registration, integrity, redaction, and owner relation checks pass. |
+| Artifact or evidence tampering | Bytes, paths, hashes, staging handles, or metadata are swapped, stale, expired, consumed, missing, redacted, blocked, cross-task, or unrelated to the owner record. | Treat evidence as insufficient or blocked until staging-handle validity where applicable, registration, integrity, redaction, and owner relation checks pass. Raw paths, raw logs, arbitrary local path strings, and native capture claims are not artifact authority. |
 | Secret or PII exposure | Logs, screenshots, traces, prompts, artifacts, projections, manifests, or exports contain sensitive values. | Prefer redaction, omission, blocked-payload notices, display-safe handles, and owner-approved evidence summaries. |
 | Capability overclaim | A surface claims blocking, capture, isolation, or MCP reachability beyond its actual `capability_profile`. | Lower the displayed guarantee, mark the claim unverified, return a capability blocker/error, or hold by instruction. |
 
@@ -112,7 +112,9 @@ Examples of cooperative behavior in the current MVP plan:
 - a surface calls `prepare_write` before a product write
 - Core declines to create a Write Authorization when scope, judgment, sensitive-action permission, state version, or capability is incompatible
 - a compatible non-dry-run `prepare_write` creates one consumable Write Authorization
+- `harness.stage_artifact` creates only a temporary same-project same-Task staging handle for safe bytes or a safe notice
 - `record_run` consumes that Write Authorization only when the observed changed paths are compatible to the extent the surface can honestly observe them
+- `record_run` is the only active path that can consume a valid staging handle and promote it to a persistent `ArtifactRef`
 - the agent holds product/runtime/code writes by instruction when MCP/Core authority or required capability is unavailable
 - generated status text tells the user what Harness can and cannot confirm
 
