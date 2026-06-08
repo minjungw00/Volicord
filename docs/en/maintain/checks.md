@@ -27,7 +27,7 @@ These checks look for documentation drift:
 - projection reconcile wording that treats `reconcile` as an active Core state mutation path
 - final acceptance or residual-risk acceptance wording that substitutes for missing required evidence
 - user-facing documentation or templates that expose internal enum, schema, or error-code terms unnecessarily
-- public error-code wording that uses `STATE_CONFLICT` or any public state-version conflict code other than `STATE_VERSION_CONFLICT`
+- public error-code wording that uses any public state-version conflict code other than `STATE_VERSION_CONFLICT`
 - `access_class`, `record_run`, `run_recording`, `artifact_registration`, `stage_artifact`, `existing_artifact`, and staged artifact promotion wording that blurs active MVP contracts
 - staged handle provenance or scope validation wording that maps validation failure to `LOCAL_ACCESS_MISMATCH` or `CAPABILITY_INSUFFICIENT` instead of `VALIDATION_FAILED`
 - one-language-per-`doc_id` agent retrieval problems
@@ -125,7 +125,7 @@ Pass when agent-facing docs retrieve only one language for a given `doc_id` duri
 
 Inspect `state_version`, `project_state.state_version`, `tasks.state_version`, task-scoped state clocks, project-scoped state clocks, conflict wording, concurrency wording, public `ErrorCode` lists, and public API examples.
 
-Pass when active MVP public conflict wording uses the project-wide `project_state.state_version` basis unless an owner explicitly promotes another clock, and when project-wide mismatch uses the single public `ErrorCode` `STATE_VERSION_CONFLICT`. Fail when active MVP text exposes both task-scoped and project-scoped `state_version` as public conflict clocks, asks clients or agents to choose between them, treats `tasks.state_version` as an active public conflict/concurrency basis, or uses `STATE_CONFLICT` as a public error code, synonym, deprecated alias, alternate spelling, or storage-layer public error name.
+Pass when active MVP public conflict wording uses the project-wide `project_state.state_version` basis unless an owner explicitly promotes another clock, and when project-wide mismatch uses the single public `ErrorCode` `STATE_VERSION_CONFLICT`. Fail when active MVP text exposes both task-scoped and project-scoped `state_version` as public conflict clocks, asks clients or agents to choose between them, treats `tasks.state_version` as an active public conflict/concurrency basis, or documents any alternate public code, synonym, deprecated alias, alternate spelling, or storage-layer public error name for that mismatch.
 
 ## 15. User-Facing Internal-Term Check
 
@@ -141,8 +141,8 @@ Pass when public error codes follow the API Errors document, active state-versio
 
 Fail when any of these conditions appear in active MVP documentation:
 
-- `STATE_CONFLICT` is used as a public `ErrorCode`.
-- A state version conflict public error is described with any value other than `STATE_VERSION_CONFLICT`.
+- A state-version conflict public error is described with any value other than `STATE_VERSION_CONFLICT`.
+- Any alternate public code, alias, deprecated spelling, or storage-layer public error name is documented for project-wide state-version mismatch.
 - A single request is described as carrying multiple active `access_class` values, or `access_class` is described as something other than method-level verified request context.
 - `artifact_registration` is described as including `record_run`.
 - `record_run` is described as requiring both `run_recording` and `artifact_registration`.

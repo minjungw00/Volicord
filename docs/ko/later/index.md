@@ -10,7 +10,7 @@
 
 ## 1. 경계
 
-대조 기준으로, 현재 MVP 경계는 [MVP 계획](../build/mvp-plan.md)에 닫힌 목록으로 정해져 있습니다. 그 목록에는 평소 말 입력과 Task 생성, `update_scope`, 사용자 판단 기록, 민감 동작 승인 기록, 경로 수준 `prepare_write`와 Write Authorization, `access_class=run_recording`으로 처리하는 `record_run`, `access_class=artifact_registration`으로 처리하는 `harness.stage_artifact` 아티팩트 스테이징, `StagedArtifactHandle` 출처와 범위 검증을 통과한 스테이징된 아티팩트 승격 때 쓰는 `ArtifactInput.source_kind=staged_artifact`, 이미 등록된 영속 `ArtifactRef`를 가리키는 `existing_artifact` 참조, `access_class=artifact_read`가 필요한 별도 아티팩트 본문 읽기, `EvidenceSummary`, `close_task` 차단 사유 계산, 읽는 시점의 상태/Projection, 등록된 로컬 접점 접근, 협력형 보장, 관련 활성 역량 확인이 실제로 통과한 뒤의 탐지형 보장만 포함됩니다. 이 페이지의 어떤 항목도 그 목록을 넓히지 않습니다.
+대조 기준으로, 현재 MVP 경계는 [MVP 계획](../build/mvp-plan.md)에 닫힌 목록으로 정해져 있습니다. 그 목록에는 평소 말 입력과 Task 생성, `update_scope`, 사용자 판단 기록, 민감 동작 승인 기록, 경로 수준 `prepare_write`와 Write Authorization, `access_class=run_recording`으로 처리하는 `record_run`, `access_class=artifact_registration`으로 처리하는 `harness.stage_artifact` 아티팩트 스테이징, `StagedArtifactHandle` 출처와 범위 검증을 통과한 스테이징된 아티팩트 승격 때 쓰는 `ArtifactInput.source_kind=staged_artifact`, 이미 지속된 `ArtifactRef`를 가리키는 `existing_artifact` 참조, `access_class=artifact_read`가 필요한 별도 아티팩트 본문 읽기, `EvidenceSummary`, `close_task` 차단 사유 계산, 읽는 시점의 상태/Projection, 등록된 로컬 접점 접근, 협력형 보장, 관련 활성 역량 확인이 실제로 통과한 뒤의 탐지형 보장만 포함됩니다. 이 페이지의 어떤 항목도 그 목록을 넓히지 않습니다.
 
 | 후보 | 상태 | 승격 경계 | 현재 MVP 영향 |
 |---|---|---|---|
@@ -95,10 +95,10 @@
 | 역량 프로필 지원 필드: `command_observation_supported`, `network_observation_supported`, `secret_access_observation_supported`, `artifact_capture_supported`, `pre_tool_blocking_supported`, `isolation_supported` | 필드 이름만 있음 | 승격된 Agent Integration, API/스키마, Security, Storage, Conformance 담당 문서가 정확한 프로필 형태, 대상 동작, 대체 동작, 검증, 저장소, 오류, 증명 기대치를 정의해야 합니다. 기준 `reference-local-mcp`는 활성 프로필에서 이 필드를 생략하며 해당 역량을 지원하지 않는 것으로 다룹니다. | 승격 전까지 없음 |
 | 역량 조건부 `Write Authorization` 관찰 필드: `intended_commands`, `intended_network`, `intended_secret_scope`; 명령 관찰, 네트워크 관찰, 비밀값 접근 관찰 범주 이름: `network_write`, `external_service_write`, `secret_access` | 필드와 값 이름만 있음 | 승격된 API/스키마 담당 문서가 정확한 형태, 프로필 조건, 검증, 저장소, `record_run` 호환성 의미를 정의해야 합니다. 기준 `reference-local-mcp`는 활성 `AuthorizedAttemptScope`나 활성 `SensitiveCategory`에 이 필드와 값을 포함하지 않습니다. | 승격 전까지 없음 |
 | 이후 actor, producer, capture source 값: `evaluator`, `operator`, `capture_adapter` | 값 이름만 있음 | 승격된 Eval, 운영, 캡처, API/스키마, 저장소 담당 문서가 정확한 요청 권한, 아티팩트 관계, 대체 동작, 증명 기대치를 정의해야 합니다. 현재 MVP의 활성 표에는 이 값이 없습니다. | 승격 전까지 없음 |
-| `captured_artifact`와 캡처된 아티팩트 핸들 | 값 이름만 있음 | 승격된 접점 자체 캡처/API/스키마/저장소 담당 문서가 정확한 핸들 출처, 역량 프로필 조건, 검증, 저장소, 가림 처리, 대체 동작, 증명 기대치를 정의해야 합니다. 현재 MVP에서 새 아티팩트 바이트는 `harness.stage_artifact`로 스테이징하고, `ArtifactInput.source_kind=staged_artifact`는 적격 스테이징 핸들 승격에만 쓰며, `existing_artifact` 참조는 이미 등록된 아티팩트에만 사용합니다. | 승격 전까지 없음 |
+| `captured_artifact`와 캡처된 아티팩트 핸들 | 값 이름만 있음 | 승격된 접점 자체 캡처/API/스키마/저장소 담당 문서가 정확한 핸들 출처, 역량 프로필 조건, 검증, 저장소, 가림 처리, 대체 동작, 증명 기대치를 정의해야 합니다. 현재 MVP에서 새 아티팩트 바이트는 `harness.stage_artifact`로 스테이징하고, `ArtifactInput.source_kind=staged_artifact`는 적격 스테이징 핸들 승격에만 쓰며, `existing_artifact` 참조는 이미 지속된 아티팩트 참조에만 사용합니다. | 승격 전까지 없음 |
 | 이후 닫기와 보증 필드: `verifying`, `qa`, `completed_verified`, `detached_verified`, `design_gate`, `verification_gate`, `qa_gate`, 수동 QA 관문, 설계 정책 차단 사유, 보증 차단 사유 | 필드 이름만 있음 | Core/API 담당 문서 활성화, 닫기 대체 불가 규칙, 정확한 활성 스키마 필드, 대체 동작, 증명 기대치가 필요합니다. | 승격 전까지 없음 |
 | 이후 다음 행동 값: `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile` | 값 이름만 있음 | 대응 API 또는 담당 문서 활성화가 필요합니다. | 승격 전까지 없음 |
-| 추천 playbook과 판단 맥락 | 메타데이터 이름만 있음 | Agent Integration/API 담당 문서가 메타데이터를 읽기 전용으로 두고 상태를 만족시키지 못하게 해야 합니다. | 승격 전까지 없음 |
+| 읽기 전용 playbook과 판단 맥락 | 메타데이터 이름만 있음 | Agent Integration/API 담당 문서가 메타데이터를 읽기 전용으로 두고 상태를 만족시키지 못하게 해야 합니다. | 승격 전까지 없음 |
 | 이후 참조와 아티팩트 값: bundle, manifest, QA capture, export component, design, Eval, 수동 QA, TDD, projection, related refs | 값 이름만 있음 | ArtifactRef, StateRecordRef, Storage, 관련 담당 문서 활성화가 필요합니다. | 승격 전까지 없음 |
 | `ValidatorResult` 이후 stable ID와 정책 계열: design, design-policy, autonomy, feedback-loop, TDD, stewardship, residual-risk, shared-design, manual-QA, context-hygiene checks | ID와 계열 이름만 있음 | Validator 담당 문서가 stable ID, 심각도, waiver 경계, 닫기 영향, 향후 fixture 증명 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | waiver, reconcile, 잔여 위험 분기 | 분기 이름만 있음 | 사용자 판단, Core, 닫기 담당 문서 규칙이 필요합니다. | 승격 전까지 없음 |

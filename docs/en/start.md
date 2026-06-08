@@ -64,13 +64,13 @@ The user did not need to say an internal mode name. The agent clarified because 
 
 The user owns goals, meaningful scope changes, product behavior, material technical direction, user-visible inspection or quality expectations, final acceptance, and residual-risk acceptance. The user also owns scoped permission for named sensitive actions when those actions are needed.
 
-The agent may recommend, compare options, inspect source, run checks, and explain consequences. It must not turn tool output, passing tests, generated summaries, or its own confidence into the user's judgment.
+The agent may compare options, inspect source, run checks, name evidence gaps, and explain consequences. It must not turn tool output, passing tests, generated summaries, or its own confidence into the user's judgment.
 
 Broad phrases such as "go ahead" or "looks good" should be applied only to the specific pending choice they reasonably answer. They do not automatically grant new sensitive-action permission, accept the finished work, accept known residual risk, or settle another future judgment candidate.
 
 ## What The Agent Can Do
 
-The agent can clarify requirements, name non-goals, propose a next safe work slice, inspect the relevant files or sources, recommend options with uncertainty, implement inside the agreed scope, run focused checks, and report evidence.
+The agent can clarify requirements, name non-goals, propose a next safe work slice, inspect the relevant files or sources, show options with uncertainty, implement inside the agreed scope, run focused checks, and report evidence.
 
 When the work shape changes, the agent should say so. A typo fix can stay light. A bug fix can begin with inspection and a narrow repair. A broad feature request should expose the goal, non-goals, success criteria, unknowns, user-owned judgments, evidence plan, and close blockers.
 

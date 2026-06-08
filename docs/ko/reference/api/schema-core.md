@@ -118,7 +118,7 @@ VerifiedSurfaceContext:
 | `write_authorization` | `harness.prepare_write`가 경로 수준 제품 파일 쓰기 Write Authorization을 준비합니다. |
 | `run_recording` | `harness.record_run`이 실행 결과를 기록하고, 필요할 때 호환되는 Write Authorization을 소비하며, 기존 artifact를 연결하고, 적격 staged artifact를 승격합니다. |
 | `artifact_registration` | `harness.stage_artifact`가 새 아티팩트 바이트 또는 안전 공지를 임시 `StagedArtifactHandle`로 staging합니다. |
-| `artifact_read` | 담당 경로를 통해 등록된 `ArtifactRef`의 아티팩트 본문을 읽습니다. |
+| `artifact_read` | 담당 경로를 통해 지속 `ArtifactRef`의 아티팩트 본문을 읽습니다. |
 
 `ArtifactInput[]`은 `harness.record_run`이 검증하는 payload입니다. 이 값이 있다고 해서 그 요청의 `access_class`가 `run_recording`에서 바뀌지 않습니다. 새 아티팩트 바이트를 staging하는 행위와 `record_run` 중 검증된 스테이징된 핸들을 지속 `ArtifactRef`로 승격하는 행위는 분리됩니다. `staged_artifact` 승격은 `run_recording` 요청과 스테이징된 핸들 유효성 확인으로 다루며, 아티팩트 본문 읽기는 별도 `artifact_read`를 씁니다. 이 분류의 메서드별 조건은 [현재 MVP API](mvp-api.md#shared-request-rules)가 담당하고, 공개 오류 선택은 [API Errors](errors.md)가 담당합니다. `VerifiedSurfaceContext.failure_reason=unavailable`, `mismatch` 또는 `revoked`, `insufficient_capability`는 각각 `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`로 구분되어야 합니다.
 
@@ -142,7 +142,7 @@ capability_profile:
   guarantee_level_max_when_verified: detective
 ```
 
-`changed_path_detection_verification=passed`만 `detective` 표시를 뒷받침할 수 있으며, 그 경우에도 검증된 변경 경로 탐지 범위 안으로 제한됩니다. `not_run`, 예전 `planned_not_run` 문구, `failed`, `stale`은 통과 상태가 아닙니다. `native_artifact_capture_supported=false`는 활성 아티팩트 경로가 `harness.stage_artifact` 스테이징과 담당 경로 등록으로 제한된다는 뜻입니다. `captured_artifact`나 접점 자체 캡처 권한을 추가하지 않습니다.
+`changed_path_detection_verification=passed`만 `detective` 표시를 뒷받침할 수 있으며, 그 경우에도 검증된 변경 경로 탐지 범위 안으로 제한됩니다. `not_run`, 예전 `planned_not_run` 문구, `failed`, `stale`은 통과 상태가 아닙니다. `native_artifact_capture_supported=false`는 활성 아티팩트 경로가 `harness.stage_artifact` 스테이징과 담당 경로 승격/연결로 제한된다는 뜻입니다. `captured_artifact`나 접점 자체 캡처 권한을 추가하지 않습니다.
 
 <a id="common-response"></a>
 
@@ -244,7 +244,7 @@ StateRecordRef:
 
 ## ArtifactRef
 
-`ArtifactRef`는 하네스 저장소에 등록된 영속 증거 파일을 가리킵니다. 호출자가 임의로 준 경로가 아닙니다.
+`ArtifactRef`는 하네스 저장소에 지속 저장된 증거 파일을 가리킵니다. 호출자가 임의로 준 경로가 아닙니다.
 
 ```yaml
 ArtifactRef:
@@ -276,7 +276,7 @@ ArtifactRelationOwner:
 
 ## ArtifactInput
 
-`ArtifactInput`은 `harness.record_run`에서 활성 `harness.stage_artifact` 유틸리티가 만든 문서화된 `StagedArtifactHandle`이나 이미 등록된 `ArtifactRef`로만 받습니다. `ArtifactInput[]`은 `run_recording` 요청 접근 분류 아래에서 소비되며, `record_run`에 두 번째 접근 분류를 더하지 않습니다. 임의 파일 읽기 권한을 부여하지 않고, `record_run`은 아티팩트 본문을 읽지 않습니다. 아티팩트 본문 읽기는 `VerifiedSurfaceContext.access_class=artifact_read`가 필요한 별도 담당 경로를 사용합니다. `harness.stage_artifact`는 새 아티팩트 바이트를 위한 현재 MVP staging 유틸리티이지 접점 자체 아티팩트 캡처나 일반 파일시스템 읽기 API가 아닙니다.
+`ArtifactInput`은 `harness.record_run`에서 활성 `harness.stage_artifact` 유틸리티가 만든 문서화된 `StagedArtifactHandle`이나 이미 지속된 `ArtifactRef`로만 받습니다. `ArtifactInput[]`은 `run_recording` 요청 접근 분류 아래에서 소비되며, `record_run`에 두 번째 접근 분류를 더하지 않습니다. 임의 파일 읽기 권한을 부여하지 않고, `record_run`은 아티팩트 본문을 읽지 않습니다. 아티팩트 본문 읽기는 `VerifiedSurfaceContext.access_class=artifact_read`가 필요한 별도 담당 경로를 사용합니다. `harness.stage_artifact`는 새 아티팩트 바이트를 위한 현재 MVP staging 유틸리티이지 접점 자체 아티팩트 캡처나 일반 파일시스템 읽기 API가 아닙니다.
 
 ```yaml
 ArtifactInput:
@@ -322,11 +322,11 @@ StagedArtifactHandle:
   expires_at: string
 ```
 
-`source_kind`에 맞는 출처 필드 하나만 있어야 합니다. `staged_artifact`에는 `staged_artifact_handle`, `existing_artifact`에는 `existing_artifact_ref`가 필요합니다. 출처 필드가 빠졌거나, `source_kind`와 맞지 않거나, 두 출처 필드가 모두 있으면 요청 형태 검증 실패입니다. 스테이징 핸들은 같은 `project_id`와 `task_id` 범위에 있어야 하고 `content_type`, `sha256`, `size_bytes`, `redaction_state`, `expires_at`을 가져야 하며, `harness.record_run`이 사용할 때 만료되지 않았고 아직 소비되지 않았어야 합니다. 스테이징된 핸들 검증은 저장소가 소유한 `project_id`, `task_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`, `size_bytes`, `redaction_state`를 대조합니다. 실패하면 공개 `VALIDATION_FAILED`와 `ToolError.details.artifact_input_error`를 사용합니다.
+`source_kind`에 맞는 출처 필드 하나만 있어야 합니다. `staged_artifact`에는 `staged_artifact_handle`, `existing_artifact`에는 `existing_artifact_ref`가 필요합니다. 출처 필드가 빠졌거나, `source_kind`와 맞지 않거나, 두 출처 필드가 모두 있으면 요청 형태 검증 실패입니다. 스테이징 핸들은 같은 `project_id`와 `task_id` 범위에 있어야 하고 `content_type`, `sha256`, `size_bytes`, `redaction_state`, `expires_at`을 가져야 하며, `harness.record_run`이 사용할 때 만료되지 않았고 아직 소비되지 않았어야 합니다. 스테이징된 핸들 검증은 저장소가 소유한 `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`, `size_bytes`, `redaction_state`를 대조합니다. 실패하면 공개 `VALIDATION_FAILED`와 `ToolError.details.artifact_input_error`를 사용합니다.
 
-`created_by_surface_id`와 `created_by_surface_instance_id`는 서버가 기록하는 출처 기록 필드입니다. `harness.stage_artifact`가 성공하면 서버는 해당 요청의 `VerifiedSurfaceContext`에서 이 값을 기록합니다. 호출자는 `StageArtifactRequest`에서 이 값을 고르지 않으며, 에이전트나 사용자가 같은 모양의 객체를 제출해도 그것은 권한 주장이 아닙니다. `ArtifactInput`이 `StagedArtifactHandle`을 `harness.record_run`에 다시 제출하면 서버는 저장소가 소유한 staging 기록과 대조하고, 현재 확인된 `surface_instance_id`가 `created_by_surface_instance_id`와 같을 때만 승격을 허용합니다. 현재 MVP는 접점 간(cross-surface) staged artifact handoff를 지원하지 않습니다. 모양이 맞는 handle이라도 `project_id`, `task_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`, `size_bytes`, `redaction_state`가 저장된 staged artifact와 요청 기대에 맞지 않으면 거부됩니다.
+`created_by_surface_id`와 `created_by_surface_instance_id`는 서버가 기록하는 출처 기록 필드입니다. `harness.stage_artifact`가 성공하면 서버는 해당 요청의 `VerifiedSurfaceContext`에서 이 값을 기록합니다. 호출자는 `StageArtifactRequest`에서 이 값을 고르지 않으며, 에이전트나 사용자가 같은 모양의 객체를 제출해도 그것은 권한 주장이 아닙니다. `ArtifactInput`이 `StagedArtifactHandle`을 `harness.record_run`에 다시 제출하면 서버는 저장소가 소유한 staging 기록과 대조하고, 현재 확인된 `surface_id`와 `surface_instance_id`가 `created_by_surface_id`와 `created_by_surface_instance_id`와 같을 때만 승격을 허용합니다. 현재 MVP는 접점 간(cross-surface) staged artifact handoff를 지원하지 않습니다. 모양이 맞는 handle이라도 `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`, `size_bytes`, `redaction_state`가 저장된 staged artifact와 요청 기대에 맞지 않으면 거부됩니다.
 
-`harness.stage_artifact`는 임시 `StagedArtifactHandle`을 만들 수 있지만 그 자체로 Core 상태 전이가 아닙니다. 증거를 만들지 않고, gate를 만족하지 않고, 증거 요약을 갱신하지 않으며, `harness.close_task`가 통과하게 만들 수도 없습니다. `StagedArtifactHandle`은 어떤 로컬 호출자나 사용할 수 있는 bearer token이 아닙니다. 유효한 스테이징된 핸들을 소비해 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`뿐입니다. 그 승격은 `run_recording`과 같은 프로젝트, 같은 Task, 같은 확인된 접점 인스턴스, 미만료, 미소비, 무결성 호환 handle 확인으로 승인됩니다. Projection 파일, 생성된 Markdown, 대화 텍스트, Product Repository 파일, 에이전트 기억은 스테이징된 핸들의 출처 기록을 만들거나 새로 고칠 수 없습니다.
+`harness.stage_artifact`는 임시 `StagedArtifactHandle`을 만들 수 있지만 그 자체로 Core 상태 전이가 아닙니다. 증거를 만들지 않고, gate를 만족하지 않고, 증거 요약을 갱신하지 않으며, `harness.close_task`가 통과하게 만들 수도 없습니다. `StagedArtifactHandle`은 어떤 로컬 호출자나 사용할 수 있는 bearer token이 아닙니다. 유효한 스테이징된 핸들을 소비해 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`뿐입니다. 그 승격은 `run_recording`과 같은 프로젝트, 같은 Task, 서버 기록 `created_by_surface_id` / `created_by_surface_instance_id`와 현재 확인된 `surface_id` / `surface_instance_id`, 미만료, 미소비, 무결성 호환 handle 확인으로 승인됩니다. Projection 파일, 생성된 Markdown, 대화 텍스트, Product Repository 파일, 에이전트 기억은 스테이징된 핸들의 출처 기록을 만들거나 새로 고칠 수 없습니다.
 
 원시 파일 경로, 원시 로그, 임의 로컬 경로 문자열, `captured_artifact`, 캡처 핸들, 접점 자체 아티팩트 캡처, 원시 캡처 어댑터 출력, 원시 비밀값, 토큰, 민감한 전체 로그는 현재 MVP 밖이며 변경 전에 아티팩트 권한으로 거부됩니다. 새 아티팩트 바이트는 `harness.stage_artifact`를 통해서만 현재 MVP에 들어옵니다. `existing_artifact`는 같은 프로젝트와 허용된 Task 범위에서 유효한 이전 지속 `ArtifactRef`를 연결할 뿐입니다. 새 아티팩트 바이트로 가는 경로가 아니며 새 아티팩트 본문을 등록하지 않습니다.
 
@@ -413,7 +413,7 @@ WriteAuthoritySummary:
 
 선택 증거 항목은 `required_for_close=false`로 명시할 수 있습니다. 선택 공백은 보이게 남아도 `EvidenceSummary.status=sufficient`를 막지 않을 수 있지만, 현재 MVP 요약이 작더라도 필수/선택 구분은 명시해야 합니다.
 
-아티팩트 가용성과 증거 충분성은 관련되어 있지만 별개의 조건입니다. 등록되어 사용할 수 있는 `ArtifactRef`가 있어도 `EvidenceCoverageItem`이 그 아티팩트를 주장에 연결하지 않으면 증거가 충분해지지 않습니다. 필수 `EvidenceCoverageItem`이 빠졌거나, 필수 항목이 없거나 사용할 수 없거나 무결성에 실패했거나 닫기 근거로 쓸 수 없는 아티팩트에 의존하면 충분할 수 없으며, `close_task`는 `CloseBlocker.category=artifact_availability`도 보고할 수 있습니다. 최종 수락과 잔여 위험 수락은 빠진 필수 증거를 대신할 수 없고, 증거도 최종 수락이나 잔여 위험 수락을 만들 수 없습니다.
+아티팩트 가용성과 증거 충분성은 관련되어 있지만 별개의 조건입니다. 지속되어 사용할 수 있는 `ArtifactRef`가 있어도 `EvidenceCoverageItem`이 그 아티팩트를 주장에 연결하지 않으면 증거가 충분해지지 않습니다. 필수 `EvidenceCoverageItem`이 빠졌거나, 필수 항목이 없거나 사용할 수 없거나 무결성에 실패했거나 닫기 근거로 쓸 수 없는 아티팩트에 의존하면 충분할 수 없으며, `close_task`는 `CloseBlocker.category=artifact_availability`도 보고할 수 있습니다. 최종 수락과 잔여 위험 수락은 빠진 필수 증거를 대신할 수 없고, 증거도 최종 수락이나 잔여 위험 수락을 만들 수 없습니다.
 
 `AuthorizedAttemptScope`는 `write_authorizations.attempt_scope_json`에 저장되고 나중에 `harness.record_run`에서 비교하는 정확한 범위입니다. `AuthorizedAttemptScope.basis_state_version`은 `prepare_write`가 권한을 준비할 때 사용한 프로젝트 전체 `project_state.state_version`입니다. `WriteAuthorizationSummary.status`는 오래 남는 Write Authorization 생명주기입니다. `blocked`는 Write Authorization의 `status`가 아닙니다. 차단된 쓰기는 소비 가능한 Write Authorization 없이 차단 사유를 반환합니다.
 

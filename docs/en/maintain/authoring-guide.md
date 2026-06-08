@@ -74,7 +74,7 @@ Use these principles whenever writing active MVP API, access, error, or artifact
 - Artifact lifecycle descriptions must distinguish staging through `stage_artifact` / `artifact_registration`, promotion from a staged handle after provenance and scope validation, persistent artifact linking, and artifact body read. `existing_artifact` links an existing persistent artifact; it does not register new artifact body bytes.
 - `record_run` uses the `run_recording` path. Do not describe `record_run` as requiring both `run_recording` and `artifact_registration`, and do not place `record_run` inside `artifact_registration`.
 - Staged handle provenance or scope validation failure maps to `VALIDATION_FAILED`, not `LOCAL_ACCESS_MISMATCH` or `CAPABILITY_INSUFFICIENT`.
-- Active MVP public state-version conflict uses `STATE_VERSION_CONFLICT`. Do not use `STATE_CONFLICT` as a public `ErrorCode` alias, synonym, deprecated name, alternate spelling, or storage-layer public error name.
+- Active MVP public state-version conflict uses `STATE_VERSION_CONFLICT`. Do not document another public `ErrorCode` alias, synonym, deprecated name, alternate spelling, or storage-layer public error name for that mismatch.
 
 When a non-owner repeats a contract, update the owner if needed, then replace the duplicate with a short consequence and compact owner route.
 

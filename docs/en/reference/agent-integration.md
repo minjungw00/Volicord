@@ -33,7 +33,7 @@ This reference does not own:
 
 Surface recipes in this document are integration guidance. They do not create Core state authority, Write Authorization, evidence, verification, QA, sensitive-action approval, final acceptance, residual-risk acceptance, close readiness, active later-candidate obligations, or any new security boundary.
 
-Role Lens behavior, when present, is read-only posture guidance. A lens may recommend a judgment request, evidence collection, verification, Manual QA, sensitive-action permission, residual-risk handling, scope update, or next playbook, but the recommendation has no authority until an owner API/Core path records the underlying action.
+Role Lens behavior, when present, is read-only posture guidance. A lens may point to a needed judgment request, evidence collection, verification, Manual QA, sensitive-action permission, residual-risk handling, scope update, or next playbook, but that guidance has no authority until an owner API/Core path records the underlying action.
 
 ## 2. Capability Profile
 
@@ -61,7 +61,7 @@ Exact public tool and resource contracts belong to the API owners. The connector
 
 `surface_status` and `local_access_posture` report the connector's current API compatibility posture. `surface_status` must mirror stored `LocalSurfaceRegistration.status`; none of these fields grant authority by themselves. The server verifies the current local surface from transport/session/binding facts, not from connector prose, generated files, chat text, Product Repository files, or agent memory. Current access-class labels, `LocalSurfaceRegistration`, and `VerifiedSurfaceContext` are owned by [API Schema Core](api/schema-core.md#local-surface-access-values), and minimum request conditions are owned by [MVP API](api/mvp-api.md#shared-request-rules).
 
-In the reference profile, `artifact_registration` is reserved for `harness.stage_artifact`: with `manual_artifact_attachment_supported=true`, the connector can stage caller-provided safe bytes or a safe notice into a temporary staging area and receive a documented `StagedArtifactHandle`. That is input staging, not proof that arbitrary local files are safe, authorized, or Harness-observed. `StagedArtifactHandle` is a server-validated reference, not a bearer token or arbitrary artifact-registration authority. `harness.record_run` uses `access_class=run_recording` only; when it receives `ArtifactInput[]`, it validates staged handles or compatible existing `ArtifactRef` values and may promote or link them through the run owner path. Staged-handle promotion requires project, task, current verified surface instance, expiration, consumed status, checksum, and size validation. `record_run` does not require `artifact_registration` for that request, and cross-surface staged artifact handoff is outside the active MVP. In the reference profile, `artifact_read` means registered `ArtifactRef` reads through the owner path only; artifact body reads require `access_class=artifact_read` and are separate from staged-handle promotion. Sensitive-action approval and Write Authorization do not grant artifact body reads. `native_artifact_capture_supported=false` keeps the active artifact model as manual staging plus owner promotion/linking. It is not native artifact capture, and it does not make raw paths, raw logs, arbitrary local path strings, or capture-adapter output into artifact authority. `captured_artifact` handles and native artifact capture require future owner-documented support, which the active baseline profile does not have.
+In the reference profile, `artifact_registration` is reserved for `harness.stage_artifact`: with `manual_artifact_attachment_supported=true`, the connector can stage caller-provided safe bytes or a safe notice into a temporary staging area and receive a documented `StagedArtifactHandle`. That is input staging, not proof that arbitrary local files are safe, authorized, or Harness-observed. `StagedArtifactHandle` is a server-validated reference, not a bearer token or arbitrary persistent artifact authority. `harness.record_run` uses `access_class=run_recording` only; when it receives `ArtifactInput[]`, it validates staged handles or compatible existing `ArtifactRef` values and may promote or link them through the run owner path. Staged-handle promotion requires project, task, server-recorded `created_by_surface_id` / `created_by_surface_instance_id` against current verified `surface_id` / `surface_instance_id`, expiration, consumed status, checksum, and size validation. `record_run` does not require `artifact_registration` for that request, and cross-surface staged artifact handoff is outside the active MVP. In the reference profile, `artifact_read` means persisted `ArtifactRef` reads through the owner path only; artifact body reads require `access_class=artifact_read` and are separate from staged-handle promotion. Sensitive-action approval and Write Authorization do not grant artifact body reads. `native_artifact_capture_supported=false` keeps the active artifact model as manual staging plus owner promotion/linking. It is not native artifact capture, and it does not make raw paths, raw logs, arbitrary local path strings, or capture-adapter output into artifact authority. `captured_artifact` handles and native artifact capture require future owner-documented support, which the active baseline profile does not have.
 
 The baseline `reference-local-mcp` profile has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation capability. Those capability fields and profile types are later/profile-gated material in [Later Candidate Index](../later/index.md); absence from the active profile means unsupported, not unknown or implicitly available.
 
@@ -102,7 +102,7 @@ Retrieval-cost rules:
 - Pull the owner section needed for the next action, then stop.
 - Choose one language for a normal work prompt. Do not load English and Korean paired docs for the same `doc_id` into one prompt; bilingual review should compare targeted sections rather than pushing both full paired documents.
 
-Status cards, projections, rendered templates, `agent-context-packet`, retrieved context, recommendations, and chat memory are read-only. They can point the agent to owner refs, but they cannot create or refresh Harness authority, authorize writes, satisfy gates, create evidence, resolve user judgments, grant sensitive-action approval, perform verification, record QA, accept the result, accept residual risk, repair projection freshness, refresh local surface registration, or close a Task. Editing a rendered projection, Markdown status card, or generated document is not a connector mutation path; a desired state change must route through the normal natural-language or active API flow.
+Status cards, projections, rendered templates, `agent-context-packet`, retrieved context, read-only guidance, and chat memory are read-only. They can point the agent to owner refs, but they cannot create or refresh Harness authority, authorize writes, satisfy gates, create evidence, resolve user judgments, grant sensitive-action approval, perform verification, record QA, accept the result, accept residual risk, repair projection freshness, refresh local surface registration, or close a Task. Editing a rendered projection, Markdown status card, or generated document is not a connector mutation path; a desired state change must route through the normal natural-language or active API flow.
 
 Token savings must not hide user-owned judgments, scope limits, blockers, safety boundaries, evidence gaps, close blockers, or close-relevant residual risk.
 
@@ -120,7 +120,7 @@ Always-on context should fit on one screen or less. Include only current, action
 - pending user judgments
 - active `SensitiveActionScope` summary when a named sensitive action is relevant
 - Write Authorization summary when product-file writes are near or a previous authorization may be stale, consumed, expired, or revoked
-- staged artifact handle status and registered `ArtifactRef` status when evidence or artifact registration is relevant
+- staged artifact handle status and persisted `ArtifactRef` status when evidence or artifact promotion/linking is relevant
 - `EvidenceSummary` status and refs, or evidence gaps
 - active blockers
 - next safe actions
@@ -135,7 +135,7 @@ Agent-facing rules at this boundary:
 
 - Do not claim unsupported capabilities, stronger guarantee levels, OS permissions, sandboxing, tamper-proof storage, pre-tool blocking, or isolation.
 - Do not describe `detective` status unless the relevant capability verification is `passed`; for the baseline profile, that is only verified changed-path detection scope.
-- Use `harness.stage_artifact` with `access_class=artifact_registration` for new artifact bytes in the active MVP, then route staged-handle promotion or compatible existing-artifact linking through the owner `harness.record_run` path under `access_class=run_recording`. Promotion requires project, task, same verified surface instance, expiration, consumed status, checksum, and size validation. Do not use `captured_artifact`, native capture, raw paths, raw logs, or capture-adapter output as active artifact authority.
+- Use `harness.stage_artifact` with `access_class=artifact_registration` for new artifact bytes in the active MVP, then route staged-handle promotion or compatible existing-artifact linking through the owner `harness.record_run` path under `access_class=run_recording`. Promotion requires project, task, server-recorded `created_by_surface_id` / `created_by_surface_instance_id` against current verified `surface_id` / `surface_instance_id`, expiration, consumed status, checksum, and size validation. Do not use `captured_artifact`, native capture, raw paths, raw logs, or capture-adapter output as active artifact authority.
 - Keep artifact body reads separate from promotion. Artifact body reads require `access_class=artifact_read`; sensitive-action approval and Write Authorization do not grant them.
 - Do not treat generated status cards, projections, rendered templates, chat summaries, or `agent-context-packet` fields as Core state inputs. Refresh from the owner Core/API path before mutation or close claims.
 - Ask users plain-language questions. Do not require Harness vocabulary when a focused ordinary question can capture the needed user-owned judgment.
@@ -150,7 +150,7 @@ Use the narrowest context that answers the next question.
 | Planning / clarification | Current repo/docs/state refs and [Agent Guide: Clarify without endless planning loops](../use/agent-guide.md#4-clarify-without-endless-planning-loops). |
 | Write preparation | Current scope/state, [Agent Guide: Check scope before product writes](../use/agent-guide.md#6-check-scope-before-product-writes), and only the `prepare_write` owner sections needed for the intended write. |
 | Execution / run recording | Current write authorization, run/evidence refs, and [Agent Guide: Record evidence after meaningful action](../use/agent-guide.md#7-record-evidence-after-meaningful-action). |
-| Artifact staging / run artifact linking | Current verified surface status, staged-handle status, registered `ArtifactRef` refs, redaction/availability summary, and only the artifact owner section needed for the next `harness.stage_artifact` staging action or `harness.record_run` promotion/linking action. |
+| Artifact staging / run artifact linking | Current verified surface status, staged-handle status, persisted `ArtifactRef` refs, redaction/availability summary, and only the artifact owner section needed for the next `harness.stage_artifact` staging action or `harness.record_run` promotion/linking action. |
 | Evidence review | Current evidence refs, artifact refs, freshness facts, missing evidence, and the exact evidence or projection owner section only when needed. |
 | Close readiness | Current owner records, blockers, residual-risk summary, and [Agent Guide: Close work honestly](../use/agent-guide.md#10-close-work-honestly). |
 | User judgment request | Current judgment refs or candidates, consequences, uncertainty, and [Agent Guide: Request user judgment narrowly](../use/agent-guide.md#5-request-user-judgment-narrowly). |
@@ -168,7 +168,7 @@ A judgment request should preserve:
 - the available options
 - consequences and trade-offs
 - uncertainty or missing evidence
-- the agent recommendation, if any
+- any agent-suggested path, with uncertainty and limits
 - what the agent is not deciding for the user
 - the active prompt form. In the current MVP this is `presentation=short`; `presentation=full` and `Decision Packet` remain later candidate material until promoted.
 
@@ -219,7 +219,7 @@ Reference local MCP recipe:
 ```yaml
 surface_kind: reference_local_mcp
 target_profile: reference-local-mcp
-mcp_posture: local-only registered project, or owner-approved alternative
+mcp_posture: local-only registered project, or owner-approved posture
 surface_status: active
 local_access_posture: registered_local
 surface_verification: server-derived VerifiedSurfaceContext required for mutations and artifact body reads
@@ -227,7 +227,7 @@ access_class_model: one request-level access_class; record_run uses run_recordin
 context_strategy: compact always-on context plus phase-relevant owner pulls
 context_packet_focus: verified surface, project-wide state_version, active Task/Change Unit, shaping gaps, user judgments, sensitive scope, write authorization, artifact status, evidence gaps, close blockers, honest guarantee display, one next action
 write_behavior: cooperative prepare_write discipline before product writes
-run_behavior: record_run under run_recording with summary, valid staged-handle promotion after project/task/surface-instance/expiration/consumed-status/checksum/size validation, and compatible existing artifact refs
+run_behavior: record_run under run_recording with summary, valid staged-handle promotion after project/task/created_by_surface_id/created_by_surface_instance_id/current surface_id/current surface_instance_id/expiration/consumed-status/checksum/size validation, and compatible existing artifact refs
 capture_boundary:
   native_capture: unsupported in the minimum reference profile
   manual_artifact_attachment_supported: true
@@ -274,11 +274,11 @@ Reference-surface checks include:
 - `prepare_write` allowed/blocked compatibility outcomes without OS-permission wording
 - single-use cooperative Write Authorization only after `prepare_write.decision=allowed`
 - `harness.stage_artifact` produces only temporary same-project same-Task input-staging handles and no Core state or arbitrary local-file authority
-- `record_run` uses `run_recording` only, with summary, changed-path compatibility, staged-handle promotion only after project/task/surface-instance/expiration/consumed-status/checksum/size validation, compatible existing artifact refs, and owner-registered artifact refs
+- `record_run` uses `run_recording` only, with summary, changed-path compatibility, staged-handle promotion only after project/task/created_by_surface_id/created_by_surface_instance_id/current surface_id/current surface_instance_id/expiration/consumed-status/checksum/size validation, compatible existing artifact refs, and owner-persisted artifact refs
 - no `artifact_registration` requirement on `record_run`; `artifact_registration` remains `harness.stage_artifact` staging only
 - artifact body reads require separate `artifact_read`; sensitive-action approval and Write Authorization do not grant them
 - MCP-unavailable product-write hold
 - `CAPABILITY_INSUFFICIENT` or an equivalent blocked reason for unsupported capabilities
-- read-only recommendations unless a separate Core mutation path records the action
+- read-only guidance unless a separate Core mutation path records the action
 
 Future fixture shape and assertion authority are owned by [Conformance Reference](conformance.md). Operational commands and diagnostics are later candidates in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates) until a future owner promotes them.

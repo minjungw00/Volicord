@@ -92,7 +92,7 @@ artifact_input_error:
     - staged_handle_not_found
 ```
 
-스테이징된 핸들 검증은 저장된 `project_id`, `task_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`, `size_bytes`, `redaction_state`를 다룹니다. `redaction_state`가 맞지 않는 경우에는 메시지나 추가 detail 필드에서 그 필드를 이름 붙이되 공개 코드는 `VALIDATION_FAILED`로 유지합니다. 스테이징된 핸들의 출처나 범위가 맞지 않는 것은 검증 오류이지 요청 수준 로컬 접근 실패가 아닙니다. 스테이징된 핸들 출처 불일치에 `LOCAL_ACCESS_MISMATCH`를 쓰지 않습니다. `LOCAL_ACCESS_MISMATCH`는 요청 접점 검증 실패에만 씁니다. 스테이징된 핸들 범위나 출처 불일치에 `CAPABILITY_INSUFFICIENT`도 쓰지 않습니다. `CAPABILITY_INSUFFICIENT`는 확인된 접점 역량이 없거나 부족할 때만 씁니다. `ARTIFACT_MISSING`은 참조된 지속 아티팩트와 닫기 관련 아티팩트 가용성에 남겨 두며 스테이징된 핸들 검증에는 쓰지 않습니다.
+스테이징된 핸들 검증은 저장된 `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`, `size_bytes`, `redaction_state`를 다룹니다. `redaction_state`가 맞지 않는 경우에는 메시지나 추가 detail 필드에서 그 필드를 이름 붙이되 공개 코드는 `VALIDATION_FAILED`로 유지합니다. 스테이징된 핸들의 출처나 범위가 맞지 않는 것은 검증 오류이지 요청 수준 로컬 접근 실패가 아닙니다. 스테이징된 핸들 출처 불일치에 `LOCAL_ACCESS_MISMATCH`를 쓰지 않습니다. `LOCAL_ACCESS_MISMATCH`는 요청 접점 검증 실패에만 씁니다. 스테이징된 핸들 범위나 출처 불일치에 `CAPABILITY_INSUFFICIENT`도 쓰지 않습니다. `CAPABILITY_INSUFFICIENT`는 확인된 접점 역량이 없거나 부족할 때만 씁니다. `ARTIFACT_MISSING`은 참조된 지속 아티팩트와 닫기 관련 아티팩트 가용성에 남겨 두며 스테이징된 핸들 검증에는 쓰지 않습니다.
 
 로컬 접근 관련 코드는 좁게 쓰고 서로 구분합니다. `MCP_UNAVAILABLE`은 MCP/Core 또는 접점 도달 가능성 자체를 사용할 수 없을 때 쓰며, `VerifiedSurfaceContext.failure_reason=unavailable`을 포함합니다. `LOCAL_ACCESS_MISMATCH`는 도달 가능한 로컬 transport/session/binding이 등록된 프로젝트 접점과 맞지 않거나 로컬 접근이 철회되었을 때 쓰며, `failure_reason=mismatch` 또는 `revoked`를 포함합니다. `CAPABILITY_INSUFFICIENT`는 인식된 활성 접점이 요청한 접근 분류나 보장 주장에 필요한 역량을 갖추지 못했을 때 쓰며, `failure_reason=insufficient_capability`을 포함합니다. `surface_id`만으로는 이 오류 중 어느 것도 해결되지 않습니다. 이 공개 경로 대신 접점별 `UNAUTHORIZED` code를 만들지 않습니다.
 
@@ -147,7 +147,7 @@ artifact_input_error:
 
 `request_hash`는 도구 이름, 스키마 정규화된 요청 본문, 그리고 `request_id`와 `idempotency_key`를 제외한 모든 `ToolEnvelope` 필드에 대한 정규 JSON에서 계산합니다.
 
-같은 키와 같은 요청 해시를 가진 커밋된 재실행 행이 있으면 Core는 최신성 확인을 다시 실행하거나 이벤트 추가, 아티팩트 등록, 권한 소비, 차단 사유 업데이트, 재실행 행 변경을 하지 않고 원래 커밋된 응답을 반환합니다. 같은 키를 다른 요청 해시로 재사용하면 Core는 `STATE_VERSION_CONFLICT`를 반환하고 원래 재실행 행을 보존합니다.
+같은 키와 같은 요청 해시를 가진 커밋된 재실행 행이 있으면 Core는 최신성 확인을 다시 실행하거나 이벤트 추가, 아티팩트 승격/연결, 권한 소비, 차단 사유 업데이트, 재실행 행 변경을 하지 않고 원래 커밋된 응답을 반환합니다. 같은 키를 다른 요청 해시로 재사용하면 Core는 `STATE_VERSION_CONFLICT`를 반환하고 원래 재실행 행을 보존합니다.
 
 `dry_run` 호출과 커밋 전 실패는 재실행 행을 만들거나 예약하지 않습니다.
 
@@ -159,7 +159,7 @@ artifact_input_error:
 
 새 non-dry-run 상태 변경은 모두 `ToolEnvelope.expected_state_version`을 현재 프로젝트 전체 `project_state.state_version`과 비교합니다. 불일치하면 `STATE_VERSION_CONFLICT`를 반환하고 현재 기록, 이벤트, 아티팩트, 증거 요약, Write Authorization, 닫기 상태, 재실행 행, 상태 버전 증가를 만들지 않습니다. `tasks.state_version`은 활성 충돌 기준이나 동시성 기준이 아닙니다.
 
-프로젝트 전체 상태 버전 불일치에 쓰는 현재 MVP의 유일한 공개 `ErrorCode`는 `STATE_VERSION_CONFLICT`입니다. `STATE_CONFLICT`는 활성 공개 코드, 별칭, 폐기된 표기, 저장소 계층의 다른 공개 오류 이름, 공개할 내부 예외 이름이 아닙니다.
+프로젝트 전체 상태 버전 불일치에 쓰는 현재 MVP의 유일한 공개 `ErrorCode`는 `STATE_VERSION_CONFLICT`입니다. 이 불일치에 대해 다른 공개 코드, 별칭, 폐기된 표기, 저장소 계층의 다른 공개 오류 이름, 내부 예외 이름을 노출하지 않습니다.
 
 `STATE_VERSION_CONFLICT.details`에는 다음 값을 담아야 합니다.
 

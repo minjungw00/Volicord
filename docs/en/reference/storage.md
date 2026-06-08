@@ -39,7 +39,7 @@ Markdown, status cards, projections, connector output, operator output, and
 report prose are not storage authority.
 
 Read-time status/projection output is derived from committed records and
-registered artifact refs. Editing a rendered projection, Markdown status card,
+persisted artifact refs. Editing a rendered projection, Markdown status card,
 or generated document does not update storage or mutate Core state. The active
 current MVP has no `projection_jobs` table, durable projection cache, reconcile
 queue, managed-output outbox, or managed block drift-repair storage.
@@ -520,7 +520,7 @@ required.
 safe metadata. Storage implements it through `artifacts` plus `artifact_links`;
 see [API Schema Core: ArtifactRef](api/schema-core.md#artifactref).
 
-Artifact registration and linking accept only the active owner-documented
+Persistent artifact promotion and linking accept only the active owner-documented
 `ArtifactInput` sources: `staged_artifact` or `existing_artifact`. A
 `staged_artifact` input must carry a `StagedArtifactHandle` from the active
 `harness.stage_artifact` utility and must be resolved by the owner path before
@@ -562,18 +562,19 @@ not trusted merely because a submitted handle has the right shape.
 
 Only a compatible `harness.record_run` may consume an unexpired same-project
 same-Task handle with `artifact_staging.status=staged` and promote it to a
-persistent `ArtifactRef`, and only when the current verified
-`surface_instance_id` matches `created_by_surface_instance_id`. The active MVP
+persistent `ArtifactRef`, and only when the current verified `surface_id` and
+`surface_instance_id` match `created_by_surface_id` and
+`created_by_surface_instance_id`. The active MVP
 does not support cross-surface staged artifact handoff, and
 `StagedArtifactHandle` is not a bearer token that any local caller may use. The
 consuming transaction must validate stored `project_id`, `task_id`,
-`created_by_surface_instance_id`, expiration, consumed status, `sha256`,
-`size_bytes`, and `redaction_state`; promote only validated staged handles; mark
+`created_by_surface_id`, `created_by_surface_instance_id`, expiration, consumed
+status, `sha256`, `size_bytes`, and `redaction_state`; promote only validated staged handles; mark
 promoted handles `consumed`; set the consuming Run and promoted artifact ids;
 commit the durable `artifacts` row and required `artifact_links`; and update
 evidence coverage only as allowed by the method owner. Missing, expired,
 mismatched, already-consumed, discarded, cross-surface,
-wrong-`created_by_surface_instance_id`, wrong-`sha256`, wrong-`size_bytes`,
+wrong-`created_by_surface_id`, wrong-`created_by_surface_instance_id`, wrong-`sha256`, wrong-`size_bytes`,
 wrong-`redaction_state`, integrity-incompatible, or cross-task staging handles
 must be rejected before mutation with the API-owned `VALIDATION_FAILED`
 `artifact_input_error` detail and must not be hidden as evidence sufficiency,
@@ -581,7 +582,7 @@ local access mismatch, or capability insufficiency. Projection files, generated
 Markdown, chat text, Product Repository files, and agent memory cannot create
 staged-handle provenance.
 
-Using an `existing_artifact` reuses the registered artifact row only when its
+Using an `existing_artifact` reuses the persisted artifact row only when its
 availability, integrity facts, redaction state, same-project identity, and
 allowed Task scope remain compatible with the new use. It may add a new
 `artifact_links` row for the new owner relation, subject to the uniqueness and
@@ -676,13 +677,13 @@ For a new committed non-dry-run mutation, current-row writes, the
 `tool_invocations` replay-row insert must commit atomically. For
 `harness.record_run`, staged-handle consumption in `artifact_staging` is part of
 that same transaction. If any part fails, the transaction must leave no partial
-authority row, staging consumption, event, artifact registration, authorization
-consumption, evidence update, close effect, or replay row.
+authority row, staging consumption, event, persistent artifact promotion/linking,
+authorization consumption, evidence update, close effect, or replay row.
 
 `tool_invocations` stores exact replay for committed non-dry-run state-changing
 responses. Keys are scoped as described by [API Errors: Idempotency](api/errors.md#idempotency).
 If the same key and request hash are replayed, Core returns the original
-committed response without appending events, registering artifacts, consuming
+committed response without appending events, promoting or linking artifacts, consuming
 authorization, or changing state again. If the key is reused with a different
 request hash, Core returns `STATE_VERSION_CONFLICT` as defined by
 [API Errors](api/errors.md#state-conflict-behavior). The storage unique key is
@@ -693,7 +694,7 @@ Dry runs, malformed requests, pre-commit validation failures, pre-commit state
 version conflicts, read-only calls such as `harness.status` and
 `harness.close_task intent=check`, and rejected `record_run` attempts that
 create no mutation do not create current rows, consume or update
-`artifact_staging` handles, append `task_events`, register artifacts, update
+`artifact_staging` handles, append `task_events`, promote or link artifacts, update
 evidence summaries, create Write Authorizations, change close state, create
 `tool_invocations` replay rows, or increment state versions.
 
@@ -718,9 +719,9 @@ Fresh non-dry-run state-changing API calls compare
 `STATE_VERSION_CONFLICT` and creates no current records, events, artifacts,
 evidence summaries, Write Authorizations, close state, replay rows, or
 state-version increments. `STATE_VERSION_CONFLICT` is the only active current
-MVP public `ErrorCode` for project-wide state-version mismatch; `STATE_CONFLICT`
-is not an active public code, alias, deprecated spelling, or storage-layer
-public error name. No active current MVP call requires or accepts more than one
+MVP public `ErrorCode` for project-wide state-version mismatch; no alternate
+public code, alias, deprecated spelling, or storage-layer public error name is
+exposed for that mismatch. No active current MVP call requires or accepts more than one
 public `expected_state_version`.
 
 Every committed non-dry-run mutation increments

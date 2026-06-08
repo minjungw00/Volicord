@@ -74,7 +74,7 @@ README와 유지보수 문서는 아래 현재 간결 구조만 경로로 안내
 - 아티팩트 생명주기는 `stage_artifact` / `artifact_registration`을 통한 스테이징, 출처와 범위 검증을 통과한 스테이징 핸들의 승격, 영속 아티팩트 연결, 아티팩트 본문 읽기를 구분해서 씁니다. `existing_artifact`는 기존 영속 아티팩트를 연결하는 경로이지 새 아티팩트 본문 바이트를 등록하는 경로가 아닙니다.
 - `record_run`은 `run_recording` 경로를 씁니다. `record_run`에 `run_recording`과 `artifact_registration`이 둘 다 필요하다고 쓰지 않고, `artifact_registration` 안에 `record_run`을 넣지 않습니다.
 - 스테이징된 핸들의 출처나 범위 검증 실패는 `VALIDATION_FAILED`로 매핑합니다. `LOCAL_ACCESS_MISMATCH`나 `CAPABILITY_INSUFFICIENT`로 쓰지 않습니다.
-- 현재 MVP의 상태 버전 충돌 공개 오류는 `STATE_VERSION_CONFLICT`입니다. `STATE_CONFLICT`를 공개 `ErrorCode` 별칭, 동의어, 폐기된 이름, 대체 표기, 저장소 계층의 공개 오류 이름처럼 쓰지 않습니다.
+- 현재 MVP의 상태 버전 충돌 공개 오류는 `STATE_VERSION_CONFLICT`입니다. 이 불일치에 대해 다른 공개 `ErrorCode` 별칭, 동의어, 폐기된 이름, 대체 표기, 저장소 계층의 공개 오류 이름을 문서화하지 않습니다.
 
 담당 문서 밖에서 계약이 반복되면 먼저 담당 문서를 확인합니다. 필요하면 담당 문서를 고친 뒤, 중복 문구는 짧은 결과 설명과 허용된 담당 경로로 바꿉니다.
 

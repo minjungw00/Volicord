@@ -73,7 +73,7 @@
 | `StateSummary` / `StateRecordRef` / `NextActionSummary` / `GuaranteeDisplay` | 현재 상태, 담당 기록 참조, 다음 행동, 보장 표시 형태입니다. | [API Schema Core](api/schema-core.md) |
 | `ShapingReadiness` | 목표, 비목표, 영향 영역이나 경로, 수락 기준, `Autonomy Boundary`, 첫 `Change Unit`, 사용자 소유 차단 사유, 다음 안전한 행동이 충분히 알려졌는지 보여주는 파생 상태 보기입니다. 영속 계획 아티팩트가 아닙니다. | [API Schema Core](api/schema-core.md) |
 | `CompletionPolicy` | Task 또는 `Change Unit`의 간결한 활성 완료 정책입니다. 필요한 증거, 최종 수락, 보이는 잔여 위험의 수락, 제품 쓰기 완료, 사용자에게 보이는 결과 기대치를 나타냅니다. QA 관문, 검증 관문, 전체 Evidence Manifest, 별도 보증 절차가 아닙니다. | [API Schema Core](api/schema-core.md), [Core Model](core-model.md) |
-| `ArtifactRef` | 등록된 아티팩트를 가리키는 공개 포인터입니다. 관련 증거 범위가 해당 주장을 연결할 때만 증거를 뒷받침합니다. | [API Schema Core](api/schema-core.md), [Storage](storage.md) |
+| `ArtifactRef` | 지속 아티팩트를 가리키는 공개 포인터입니다. 관련 증거 범위가 해당 주장을 연결할 때만 증거를 뒷받침합니다. | [API Schema Core](api/schema-core.md), [Storage](storage.md) |
 | `ArtifactInput` | `harness.record_run`이 받는 입력 형태입니다. 유효한 `StagedArtifactHandle` 또는 호환되는 기존 `ArtifactRef`만 받을 수 있으며, 임의 파일 읽기 권한이나 접점 자체 아티팩트 캡처를 주지 않습니다. | [API Schema Core](api/schema-core.md), [Storage](storage.md) |
 | `StagedArtifactHandle` | `harness.stage_artifact`가 만드는 같은 프로젝트, 같은 Task 범위의 임시 핸들입니다. 호환되는 `harness.record_run`이 소비하기 전까지 Core 상태, 증거, 관문 충족, 지속 `ArtifactRef`가 아닙니다. | [API Schema Core](api/schema-core.md), [MVP API](api/mvp-api.md), [Storage](storage.md) |
 | `EvidenceSummary` | 활성 `CompletionPolicy`에 연결된 간결한 활성 증거 상태입니다. | [API Schema Core](api/schema-core.md), [Storage](storage.md) |
@@ -103,7 +103,7 @@ Storage 용어는 향후 하네스 기록이 어디에 사는지 알려줍니다
 | 런타임 식별 파일 | `registry.sqlite`, `project.yaml`, `state.sqlite`는 Runtime Home, 정적 프로젝트 설정, 프로젝트별 Core 상태를 식별합니다. | [Storage](storage.md) |
 | 활성 저장 기록 | 활성 테이블 이름에는 `project_state`, `surfaces`, `tasks`, `change_units`, `user_judgments`, `write_authorizations`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`, `task_events`, `tool_invocations`가 포함됩니다. | [Storage](storage.md) |
 | JSON `TEXT` 열 | Core/API/storage 검증 이후 담당 문서 형태를 따르는 JSON을 저장하는 SQLite `TEXT` 열입니다. 임의 JSON 컨테이너가 아닙니다. | [Storage](storage.md) |
-| 아티팩트 저장 연결 | `artifacts`와 `artifact_links`는 증거 바이트나 안전한 메타데이터를 등록하고 담당 기록과 연결합니다. 연결 자체가 `Gate`를 만족하지는 않습니다. | [Storage](storage.md) |
+| 아티팩트 저장 연결 | `artifacts`와 `artifact_links`는 증거 바이트나 안전한 메타데이터를 지속 보관하고 담당 기록과 연결합니다. 연결 자체가 `Gate`를 만족하지는 않습니다. | [Storage](storage.md) |
 | 이벤트/재실행 저장 | `task_events`는 커밋된 변경 감사 추적 기록이고, `tool_invocations`는 커밋된 멱등성 재실행 행입니다. | [Storage](storage.md) |
 | 프로젝트 전체 state_version / `project_state.state_version` | 현재 MVP의 단일 공개 상태 시계이며, 공개 API 변경의 승인, 충돌, 최신성, 동시성 판단에 쓰는 유일한 활성 기준입니다. `tasks.state_version`과 Task 범위 상태 시계는 활성 기준이 아닙니다. `tree_hash`는 baseline 확인을 돕고, `request_hash`는 멱등성 충돌 확인을 돕습니다. | [Storage](storage.md), [API Errors](api/errors.md) |
 
@@ -131,7 +131,7 @@ Storage 용어는 향후 하네스 기록이 어디에 사는지 알려줍니다
 | 커넥터 매니페스트 | 커넥터가 관리하는 경로, 스니펫, 관리 블록 해시, 프로필 최신성, 불일치 상태, 대체 동작 요약입니다. | [Agent 통합](agent-integration.md) |
 | 항상 주입되는 맥락 | 한 화면 이하의 현재 맥락입니다. 작업 요약, 범위, 대기 중인 판단, 차단 사유, 다음 안전한 행동, 증거 공백, 닫기 차단 사유, 잔여 위험, 보장 수준, 최신 참조만 둡니다. | [Agent 통합](agent-integration.md) |
 | 단계별 맥락 / push-pull | 간결한 현재 맥락을 먼저 주고, 다음 행동에 필요한 담당 섹션만 가져오는 방식입니다. | [Agent 통합](agent-integration.md), [참조 색인](README.md) |
-| Role Lens | 읽기 전용 역할 관점 안내입니다. `Role Lens` 추천은 담당 경로가 행동을 기록하기 전까지 권한이 없습니다. | [Agent 통합](agent-integration.md) |
+| Role Lens | 읽기 전용 역할 관점 안내입니다. `Role Lens` 출력은 담당 경로가 행동을 기록하기 전까지 권한이 없습니다. | [Agent 통합](agent-integration.md) |
 | 기준 로컬 MCP 접점 | 활성 참조 통합 프로필인 `reference-local-mcp`입니다. 협력형 동작을 기본으로 하며, 제한된 탐지형 동작은 지원되는 범위와 관련 역량 확인이 통과한 경우에만 표시합니다. | [Agent 통합](agent-integration.md) |
 | 대체 동작 | Core, MCP, 상태 보기, 로컬 접근, 기능을 사용할 수 없거나 기능이 부족할 때의 커넥터 응답입니다. | [Agent 통합](agent-integration.md), [API Errors](api/errors.md) |
 
@@ -150,7 +150,7 @@ Storage 용어는 향후 하네스 기록이 어디에 사는지 알려줍니다
 | 지속 저장되는 상태 보기 작업(`persistent projection job`) | 이후 상태 보기/저장소 후보입니다. 현재 MVP는 읽을 때 만드는 간결한 상태나 상태 보기 표시만 쓰며 활성 영속 상태 보기 작업이 없습니다. | [Later](../later/index.md), [상태 보기와 템플릿](projection-and-templates.md), [Storage](storage.md) |
 | 상태 보기 조정(`projection reconcile`) | 이후 운영/상태 보기 후보입니다. 사람이 편집한 상태 보기, 생성된 Markdown, 조정 큐, 상태 보기에서 파생한 상태 변경은 담당 문서가 승격하기 전까지 활성 권한이 아닙니다. | [Later](../later/index.md), [상태 보기와 템플릿](projection-and-templates.md) |
 | 관리 블록 불일치 복구(`managed block drift repair`) | 이후 커넥터/상태 보기 복구 후보입니다. 현재 MVP는 관리 블록, 생성 파일 매니페스트, 불일치 복구, 상태 보기 복구를 요구하지 않습니다. | [Later](../later/index.md), [Agent 통합](agent-integration.md) |
-| 접점 자체 아티팩트 캡처(`native artifact capture`) | 이후 역량 후보입니다. 현재 MVP의 아티팩트 입력은 `harness.stage_artifact`를 통한 수동 스테이징과 담당 경로 등록이지, 접점 자체 캡처가 아닙니다. | [Later](../later/index.md), [Agent 통합](agent-integration.md), [API Schema Core](api/schema-core.md) |
+| 접점 자체 아티팩트 캡처(`native artifact capture`) | 이후 역량 후보입니다. 현재 MVP의 아티팩트 입력은 `harness.stage_artifact`를 통한 수동 스테이징과 담당 경로 승격/연결이지, 접점 자체 캡처가 아닙니다. | [Later](../later/index.md), [Agent 통합](agent-integration.md), [API Schema Core](api/schema-core.md) |
 | `captured_artifact` | 이후 값 이름일 뿐입니다. 현재 MVP는 `captured_artifact` 핸들과 캡처된 핸들을 변경 전에 아티팩트 권한으로 거부합니다. | [Later](../later/index.md), [API Schema Core](api/schema-core.md) |
 | Task 범위 상태 시계(`task-scoped state clock`) | 현재 MVP 밖입니다. 현재 MVP에는 공개 프로젝트 전체 상태 시계인 `project_state.state_version`만 있으며, Task 라우팅이 별도 공개 상태 시계를 고르지 않습니다. | [Storage](storage.md), [API Schema Core](api/schema-core.md) |
 

@@ -88,7 +88,7 @@ Design-quality observations may identify evidence gaps, but required evidence be
 
 Useful evidence references can include:
 
-- registered `ArtifactRef` values, Run refs, command/check summaries, or source refs
+- persisted `ArtifactRef` values, Run refs, command/check summaries, or source refs
 - current state/version/freshness refs when stale context affects the close basis
 - user-judgment refs for product, technical, scope, final-acceptance, or residual-risk decisions
 - residual-risk refs when a known limitation remains visible at close

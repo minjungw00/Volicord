@@ -28,7 +28,7 @@ This document does not own:
 
 ## Authority boundary
 
-Core-owned state and registered artifact refs are the authority. A projection, status card, Markdown report, rendered template, chat message, connector output, or agent context packet is display or support context only.
+Core-owned state and persisted artifact refs are the authority. A projection, status card, Markdown report, rendered template, chat message, connector output, or agent context packet is display or support context only.
 
 Templates cannot override Core state. A rendered view cannot authorize writes, create Write Authorization, satisfy gates, create evidence, perform verification, record QA, grant sensitive-action approval, record final acceptance, accept residual risk, create close readiness, close a Task, or mutate owner records. Those effects must come from the owner Core/API path.
 
@@ -80,9 +80,9 @@ When useful to the reader or next action, render:
 
 Do not expand `secret_omitted`, `blocked`, unavailable, or redacted artifact bodies into Markdown. Do not reconstruct omitted raw values from metadata or surrounding prose.
 
-A displayed `ArtifactRef` is a pointer to a registered artifact record. It is not, by itself, evidence sufficiency, verification, QA, final acceptance, residual-risk acceptance, or close readiness. If the ref lacks owner relation, integrity metadata, redaction state, or availability needed for the claim, show the gap.
+A displayed `ArtifactRef` is a pointer to a persisted artifact record. It is not, by itself, evidence sufficiency, verification, QA, final acceptance, residual-risk acceptance, or close readiness. If the ref lacks owner relation, integrity metadata, redaction state, or availability needed for the claim, show the gap.
 
-Temporary staged artifact data is different from a registered `ArtifactRef`. User-facing renderings may say that an attachment is staged, expiring, or waiting to be recorded, but they must not call it persistent evidence until a compatible `harness.record_run` consumes the staged handle and links the registered artifact to a claim. Raw file paths, copied local paths, raw logs, or "the screenshot is at this path" text are not artifact authority in the active MVP.
+Temporary staged artifact data is different from a persisted `ArtifactRef`. User-facing renderings may say that an attachment is staged, expiring, or waiting to be recorded, but they must not call it persistent evidence until a compatible `harness.record_run` consumes the staged handle and links the persisted artifact ref to a claim. Raw file paths, copied local paths, raw logs, or "the screenshot is at this path" text are not artifact authority in the active MVP.
 
 ## Active current MVP template set
 
@@ -249,7 +249,7 @@ Source records:
 - Run refs and command/check summaries
 - changed paths or no-file outcome
 - consumed Write Authorization ref, no-write basis, or attempted invalid authorization context when relevant
-- evidence refs, staged artifact status, registered artifact refs, redaction, and availability notes
+- evidence refs, staged artifact status, persisted artifact refs, redaction, and availability notes
 - completion claims, acceptance criteria, or close-relevant claims supported by the evidence
 - evidence gaps, stale inputs, or unresolved support
 - next safe evidence action
@@ -261,7 +261,7 @@ Rendered sections:
 - checks
 - evidence refs
 - staged attachments
-- registered artifacts
+- persisted artifacts
 - supported claims
 - gaps or stale support
 - redaction and availability
@@ -291,7 +291,7 @@ Sources/freshness: {source_freshness_summary}
 Notes:
 
 - Evidence sufficiency is coverage, not volume. If a claim has no current supporting ref, or a critical artifact ref lacks owner relation, integrity metadata, redaction state, or availability, show the gap and current evidence status instead of treating a long artifact list or report prose as sufficient support.
-- Staged attachments are temporary input staging only. Show them separately from registered artifact refs, and do not count staged data as persistent evidence until run recording consumes it and links the registered artifact to a claim.
+- Staged attachments are temporary input staging only. Show them separately from persisted artifact refs, and do not count staged data as persistent evidence until run recording consumes it and links the persisted artifact ref to a claim.
 - Only a compatible consumed Write Authorization may be displayed as the product-write compatibility record for a product-write Run. Attempted invalid authorization refs may be shown only as violation/audit or validator-finding context, and they must not be rendered as a consumed Write Authorization or completion evidence.
 - Keep this summary intentionally smaller than a full evidence report. Show the evidence refs and visible gaps needed for the user's next decision; do not expand full artifact inventories or raw artifact bodies.
 
@@ -395,7 +395,7 @@ Rendered sections:
 - unresolved user judgments
 - active sensitive-action scope
 - Write Authorization
-- staged and registered artifacts
+- staged and persisted artifacts
 - evidence summary or gaps
 - blockers
 - next safe action
@@ -453,7 +453,7 @@ Notes:
 - `state_version` is the project-wide Core/API state version, not a task-local clock.
 - `verified_surface` is display-safe current access context. It does not refresh `LocalSurfaceRegistration`, grant authority, or prove physical blocking.
 - This agent-facing packet may keep machine-readable field names such as `change_unit_ref`, `autonomy_boundary`, `close_blockers`, `SensitiveActionScope`, `WriteAuthorizationSummary`, and `EvidenceSummary`; do not reuse those names as labels in user-facing cards.
-- Do not include full schemas, full reference docs, full event logs, registered artifact file bodies, full report bodies, full templates, unrelated templates, full design-quality catalogs, or future catalog material by default.
+- Do not include full schemas, full reference docs, full event logs, persisted artifact file bodies, full report bodies, full templates, unrelated templates, full design-quality catalogs, or future catalog material by default.
 - If the next action needs a fuller owner section, the agent should pull that owner section on demand instead of embedding it in the packet.
 - The `guarantee_display` field is required context. If Core/MCP is unavailable, do not invent a `GuaranteeDisplay.level`; set the unavailable/capability condition and treat Harness-dependent state, write, evidence, acceptance, residual-risk, and close claims as unavailable until refreshed. Use `detective` only when the relevant capability verification has passed and only for the verified observable scope.
 - New artifact bytes enter active MVP through `harness.stage_artifact` and remain staged until the owner `harness.record_run` path consumes them. Do not render `captured_artifact`, native capture, raw paths, raw logs, or capture-adapter output as active artifact authority.

@@ -38,7 +38,7 @@ Always-on context should fit on one screen and support the next action. Include 
 - pending user judgments
 - active `SensitiveActionScope` summary when a named sensitive action is relevant
 - Write Authorization summary when product-file writes are near or an existing authorization may no longer match current state
-- staged artifact handle status and registered `ArtifactRef` status when evidence or artifact registration is relevant
+- staged artifact handle status and persisted `ArtifactRef` status when evidence or artifact promotion/linking is relevant
 - active blockers
 - latest pre-write scope result, if any
 - `EvidenceSummary` status and gaps
@@ -157,7 +157,7 @@ Use refs and short summaries by default. Pull full artifact bodies only when the
 
 Evidence display should say what ran or changed, which claim it supports, which refs or artifacts support it, what passed or failed, and what is missing, stale, redacted, omitted, blocked, or insufficient.
 
-When new artifact bytes matter, use the active `harness.stage_artifact` path to create a temporary staged handle and let the owner `harness.record_run` path consume it before treating it as a registered `ArtifactRef`. Do not use `captured_artifact`, native artifact capture, raw local paths, raw logs, or capture-adapter output as active artifact authority.
+When new artifact bytes matter, use the active `harness.stage_artifact` path to create a temporary staged handle and let the owner `harness.record_run` path consume it before treating it as a persisted `ArtifactRef`. Do not use `captured_artifact`, native artifact capture, raw local paths, raw logs, or capture-adapter output as active artifact authority.
 
 For tracked work, derive the evidence summary from the active `CompletionPolicy`. Mark each close-relevant claim as required or optional. Do not mark evidence sufficient while any required item is unsupported, partial, stale, blocked, or missing; return or surface an evidence blocker instead. Keep artifact availability separate from sufficiency: an available `ArtifactRef` supports a claim only when the evidence coverage links it to that claim.
 

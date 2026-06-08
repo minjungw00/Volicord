@@ -20,7 +20,7 @@ Options:
 - Toast that confirms the save without blocking the flow.
 - Modal that interrupts the flow.
 
-Recommendation: toast for a non-blocking success confirmation; the existing UI message layer if the message is tied to a field or error.
+Decision basis: toast keeps success feedback non-blocking; the existing UI message layer fits messages tied to a field or error.
 
 If deferred: save-state wiring can continue, but final UI behavior, screenshots, and user-visible inspection remain blocked.
 
@@ -42,7 +42,7 @@ Options:
 - Token auth with a client-handled JWT or bearer token.
 - Social login through an OAuth/OIDC provider with a local session or token strategy.
 
-Recommendation: inspect the current auth model first. If this is a first-party web app without external identity-provider requirements, server-side session auth is likely the conservative default.
+Required basis before choosing: inspect the current auth model first. If this is a first-party web app without external identity-provider requirements, server-side session auth is likely the conservative default.
 
 Uncertainty: current clients, revocation needs, SSO requirements, deployment constraints, and migration cost.
 
@@ -68,7 +68,7 @@ Options:
 - Expand scope to include the named helper file in `src/session`.
 - Narrow this task to read-only investigation and return with a concrete follow-up.
 
-Recommendation: expand only to the named helper file if the helper change is required for the login fix and no unrelated session behavior changes.
+Safe boundary if expanded: include only the named helper file when that change is required for the login fix and no unrelated session behavior changes.
 
 If deferred: inspection can continue, but product-file writes outside `src/auth` stay blocked.
 
@@ -148,7 +148,7 @@ Options:
 - Do not accept; keep close blocked until password reset is added or the close claim is narrowed.
 - Narrow the close claim to email/password sign-in only.
 
-Recommendation: accept only if this task was intentionally limited to the login slice and account recovery will be handled separately.
+Required basis for acceptance: accept only if this task was intentionally limited to the login slice and account recovery will be handled separately.
 
 Settles: acceptance of this named residual risk.
 Does not settle: final acceptance of the whole result, other residual risks, or missing required evidence.
@@ -168,7 +168,7 @@ Options:
 - Defer the technical choice and keep the task open.
 - Narrow the task to read-only investigation and return later.
 
-Recommendation: defer rather than cancel if the goal still matters but the architecture choice is not ready.
+Safe boundary if deferred: defer rather than cancel only when the goal still matters but the architecture choice is not ready.
 
 If deferred: the agent may keep notes on inspected facts and blockers, but must not claim implementation completion or final acceptance.
 

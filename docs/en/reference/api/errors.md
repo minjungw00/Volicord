@@ -92,7 +92,7 @@ artifact_input_error:
     - staged_handle_not_found
 ```
 
-Staged-handle validation covers stored `project_id`, `task_id`, `created_by_surface_instance_id`, expiration, consumed status, `sha256`, `size_bytes`, and `redaction_state`. When `redaction_state` is the mismatched staged metadata, the message or an additional detail field should name it while keeping the public code `VALIDATION_FAILED`. A staged-handle provenance or scope mismatch is a validation error, not a request-level local access failure. Do not use `LOCAL_ACCESS_MISMATCH` for staged-handle provenance mismatch; `LOCAL_ACCESS_MISMATCH` is only for request surface verification failure. Do not use `CAPABILITY_INSUFFICIENT` for staged-handle scope or provenance mismatch; `CAPABILITY_INSUFFICIENT` is only for missing or insufficient verified surface capability. `ARTIFACT_MISSING` remains available for referenced persistent artifacts and close-relevant artifact availability, not for staged-handle validation.
+Staged-handle validation covers stored `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, expiration, consumed status, `sha256`, `size_bytes`, and `redaction_state`. When `redaction_state` is the mismatched staged metadata, the message or an additional detail field should name it while keeping the public code `VALIDATION_FAILED`. A staged-handle provenance or scope mismatch is a validation error, not a request-level local access failure. Do not use `LOCAL_ACCESS_MISMATCH` for staged-handle provenance mismatch; `LOCAL_ACCESS_MISMATCH` is only for request surface verification failure. Do not use `CAPABILITY_INSUFFICIENT` for staged-handle scope or provenance mismatch; `CAPABILITY_INSUFFICIENT` is only for missing or insufficient verified surface capability. `ARTIFACT_MISSING` remains available for referenced persistent artifacts and close-relevant artifact availability, not for staged-handle validation.
 
 Use the local-access codes narrowly and keep them distinguishable. `MCP_UNAVAILABLE` is for unavailable MCP/Core or surface reachability itself, including `VerifiedSurfaceContext.failure_reason=unavailable`. `LOCAL_ACCESS_MISMATCH` is for a reachable local transport/session/binding that does not match the registered project surface, or for revoked local access, including `failure_reason=mismatch` or `revoked`. `CAPABILITY_INSUFFICIENT` is for a recognized active surface that lacks the capability needed by the requested access class or guarantee claim, including `failure_reason=insufficient_capability`. `surface_id` alone never resolves any of these errors. Do not substitute a surface-specific `UNAUTHORIZED` code for these public paths.
 
@@ -147,7 +147,7 @@ Every committed state-changing method requires `idempotency_key`. Read-only call
 
 `request_hash` is computed from canonical JSON over the tool name, schema-normalized request body, and every `ToolEnvelope` field except `request_id` and `idempotency_key`.
 
-If a committed replay row exists with the same key and same request hash, Core returns the original committed response without re-running freshness checks, appending events, registering artifacts, consuming authorization, updating blockers, or changing the replay row. If the same key is reused with a different request hash, Core returns `STATE_VERSION_CONFLICT` and preserves the original replay row.
+If a committed replay row exists with the same key and same request hash, Core returns the original committed response without re-running freshness checks, appending events, promoting or linking artifacts, consuming authorization, updating blockers, or changing the replay row. If the same key is reused with a different request hash, Core returns `STATE_VERSION_CONFLICT` and preserves the original replay row.
 
 Dry-run calls and pre-commit failures do not create or reserve replay rows.
 
@@ -159,7 +159,7 @@ For a new state-changing attempt with no committed replay row, Core may resolve 
 
 Every fresh non-dry-run state mutation compares `ToolEnvelope.expected_state_version` with the current project-wide `project_state.state_version`. Mismatch returns `STATE_VERSION_CONFLICT` and creates no current records, events, artifacts, evidence summaries, Write Authorizations, close state, replay rows, or state-version increments. `tasks.state_version` is not an active conflict or concurrency basis.
 
-`STATE_VERSION_CONFLICT` is the only active current MVP public `ErrorCode` for project-wide state-version mismatch. `STATE_CONFLICT` is not an active public code, alias, deprecated spelling, alternate storage-layer public error name, or internal exception name to expose.
+`STATE_VERSION_CONFLICT` is the only active current MVP public `ErrorCode` for project-wide state-version mismatch. Do not expose another public code, alias, deprecated spelling, alternate storage-layer public error name, or internal exception name for that mismatch.
 
 `STATE_VERSION_CONFLICT.details` should include:
 

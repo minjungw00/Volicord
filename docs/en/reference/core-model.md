@@ -232,7 +232,7 @@ Current-MVP `prepare_write` must reject or block requests that require command o
 
 For a product-write Run, Core must load a compatible active Write Authorization, compare the current `project_state.state_version` and observed changed paths against the stored project-wide `basis_state_version` and path-level authorized attempt to the extent the surface can honestly observe it, and consume the authorization exactly once when compatible. A stale project-wide authorization basis maps to `STATE_VERSION_CONFLICT`; missing, expired, revoked, consumed, incompatible, or insufficiently observable authorization cannot be recorded as successful consumption. Under the baseline `reference-local-mcp` profile, the `detective` label is justified only by changed-path observation after the relevant capability check has passed. Command, network, secret-access, artifact-capture, blocking, or isolation compatibility must not be marked verified under the baseline profile.
 
-`record_run` may register or link `ArtifactRef` values only through owner-approved artifact paths. Raw secrets, tokens, forbidden sensitive logs, arbitrary caller paths, or untrusted bytes must be rejected, redacted, represented as omitted/blocked, or routed through an approved safe handle rather than stored to make evidence look complete.
+`record_run` may promote staged artifacts or link persisted `ArtifactRef` values only through owner-approved artifact paths. Raw secrets, tokens, forbidden sensitive logs, arbitrary caller paths, or untrusted bytes must be rejected, redacted, represented as omitted/blocked, or routed through an approved safe handle rather than stored to make evidence look complete.
 
 Read-only and shaping-only Runs may be recorded without Write Authorization only when they do not report product-file changes. A violation or audit record may document an observed problem when an active owner path supports it, but it does not satisfy completion evidence, final acceptance, residual-risk acceptance, close readiness, QA, or verification until repaired through the relevant owner records.
 
@@ -316,7 +316,7 @@ Close readiness uses only the active `CloseBlocker.category` values owned by [AP
 | `final_acceptance` | Required final acceptance is missing, rejected, stale, or not tied to the visible close basis. |
 | `residual_risk_visibility` | Close-relevant residual risk is not visible enough for the user to judge. |
 | `residual_risk_acceptance` | A visible close-relevant residual risk still requires compatible user acceptance. |
-| `cancellation` | Cancellation intent or cancellation state conflicts with the requested transition. |
+| `cancellation` | Cancellation intent or cancellation state is incompatible with the requested transition. |
 | `supersession` | Supersession intent, replacement Task validity, or active-task pointer handling conflicts with the requested transition. |
 | `recovery` | Recovery, replay, corruption, local access, or other repair constraints must be addressed before the transition. |
 

@@ -145,7 +145,7 @@ Useful evidence can include changed paths, diffs, command output, test results, 
 
 Evidence does not replace your judgment or final acceptance. Tests do not replace user-visible inspection or any future promoted review path. A screenshot does not prove accessibility. A generated summary does not become operational truth. Raw secrets, tokens, and full sensitive logs should be redacted, omitted, blocked, or represented by safe handles.
 
-Large diffs, logs, screenshots, and similar support may be staged first and registered later. At the user level, this means a temporary staged attachment is not persistent evidence yet. It becomes persistent evidence support only when a compatible run recording consumes it and links the registered artifact to a claim. A raw file path, copied local path, or "the log is over there" claim is not evidence authority by itself.
+Large diffs, logs, screenshots, and similar support may be staged first and promoted into persistent artifact refs later. At the user level, this means a temporary staged attachment is not persistent evidence yet. It becomes persistent evidence support only when a compatible run recording consumes it and links the persisted artifact ref to a claim. A raw file path, copied local path, or "the log is over there" claim is not evidence authority by itself.
 
 For tracked work, the evidence summary should distinguish required close evidence from optional support. In current MVP terms, evidence is sufficient only when every required coverage item is supported or not applicable. Unsupported, partial, stale, blocked, or missing required evidence remains a reason the work cannot be closed yet. A usable artifact can support a claim, but artifact availability by itself is not evidence sufficiency.
 
@@ -326,20 +326,20 @@ User: Add the test output and screenshot as evidence for this task.
 Good agent behavior:
 - avoid treating a raw local path as evidence authority;
 - stage safe artifact bytes or a safe notice when the artifact path is available;
-- record the run so staged data can become a registered artifact linked to the claim;
+- record the run so staged data can become a persistent artifact ref linked to the claim;
 - show what each artifact supports and what still is not verified.
 
 Visible evidence summary:
 - Changed paths: `src/auth/login.ts`, `src/auth/login.test.ts`.
 - Checks: login tests passed; accessibility check not run.
-- Supporting artifacts: registered test log and screenshot, with redaction and availability shown.
+- Supporting artifacts: persisted test log and screenshot refs, with redaction and availability shown.
 - What this supports: existing users can sign in; failed login path is covered by tests.
 - Still missing: no user-visible accessibility inspection yet.
 - Next safe evidence action: run or record the missing inspection, or keep it visible as a blocker if required for close.
 
 Reference alignment after the request is clear:
 - staged artifact data is temporary until run recording consumes it;
-- a registered artifact can support evidence only when linked to the relevant claim;
+- a persisted artifact ref can support evidence only when linked to the relevant claim;
 - artifact availability and evidence sufficiency remain separate.
 ```
 
