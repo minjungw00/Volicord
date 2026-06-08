@@ -2,7 +2,7 @@
 
 ## What this document helps you do
 
-Use this reference for the active current MVP method-name set, shared API shapes, and closed schema value sets: the tool envelope, common response, `ArtifactRef`, `StateRecordRef`, `UserJudgment`, Write Authorization summary, `CompletionPolicy`, evidence summary, run summary, close blockers, next-action summary, and current MVP enum values.
+Use this reference for the active current MVP method-name set, shared API shapes, and closed schema value sets: the tool envelope, common response, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization summary, `CompletionPolicy`, evidence summary, run summary, close blockers, next-action summary, and current MVP enum values.
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server. Future schema candidates stay in [Later Candidate Index](../../later/index.md#later-schema-candidates).
 
@@ -14,7 +14,7 @@ This document describes future Harness Server behavior for planning and review. 
 | `ToolEnvelope.surface_id`, `LocalSurfaceRegistration`, `VerifiedSurfaceContext`, and local surface access value sets | This document |
 | Method request/response behavior for active methods | [MVP API](mvp-api.md) |
 | Public errors, precedence, idempotency, blocked behavior, and stale-state behavior | [API Errors](errors.md) |
-| Core state semantics and lifecycle meaning | [Core Model Reference](../core-model.md) |
+| Core state semantics, shaping readiness meaning, and lifecycle meaning | [Core Model Reference](../core-model.md) |
 | Storage tables, JSON `TEXT`, enum hardening, and artifact persistence | [Storage](../storage.md) |
 | Security guarantee meanings | [Security Reference](../security.md) |
 | Future API/schema candidates | [Later Candidate Index](../../later/index.md#later-schema-candidates) |
@@ -143,6 +143,8 @@ EventRef:
 
 `ToolResponseBase.state_version` is always the project-wide version: the resulting `project_state.state_version` after a committed mutation, or the current project-wide version observed for read-only and dry-run responses. Read-only responses may include computed blockers or close blockers without storing them. `dry_run=true` creates no current records, events, artifacts, evidence summaries, Write Authorizations, close state, `tool_invocations` replay rows, or state-version increments.
 
+<a id="state-summary"></a>
+
 ## State Summary
 
 ```yaml
@@ -152,6 +154,7 @@ StateSummary:
   result: none | advice_only | completed | cancelled | superseded
   close_reason: none | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
   assurance_level: none | self_checked
+  shaping_readiness: ShapingReadiness
   gates:
     scope_gate: not_required | required | pending | passed | failed | blocked
     decision_gate: not_required | required | pending | resolved | deferred | blocked
@@ -162,9 +165,23 @@ StateSummary:
 GuaranteeDisplay:
   level: cooperative | detective
   notes: string[]
+
+ShapingReadiness:
+  goal_summary_known: boolean
+  non_goals_known: boolean
+  affected_area_or_paths_known: boolean
+  acceptance_criteria_known: boolean
+  autonomy_boundary_known: boolean
+  first_change_unit_known: boolean
+  user_owned_blockers_named: boolean
+  next_safe_action_known: boolean
 ```
 
 `StateSummary.mode` mirrors persisted `tasks.mode` and is always a concrete task mode. `auto` is not a stored mode, displayed task mode, or status-summary mode. `StateSummary.lifecycle_phase` mirrors persisted `Task.lifecycle_phase`. `intake` is an API method and start-handling step, not a lifecycle value. The terminal lifecycle phases are `completed`, `cancelled`, and `superseded`; `superseded` means the Task was replaced by another Task or route and must not return to active work. `StateSummary.close_reason` mirrors persisted `Task.close_reason`. `StateSummary.result` mirrors coarse `Task.result`; failed Runs, violations, blocked closes, evidence gaps, and blockers remain in Run status, `CloseBlocker`, evidence state, blockers, or current Task state instead of becoming a terminal Task result. The `passed` and `failed` strings in this document are gate or validator statuses only, not `Task.result` values.
+
+`StateSummary.shaping_readiness` is a derived active-state view. It is computed from current Task state, active or proposed Change Unit state, pending `UserJudgment` candidates or records, blockers, evidence summary, and next-action state. It is not a persisted Task field, not a separate `StateRecordRef.record_kind`, and not a committed `Discovery Brief`, `Question Queue`, `Assumption Register`, or similar planning artifact. A `false` field stays visible, but it blocks only when the unknown or stale item affects the first safe Change Unit or the next safe action.
+
+Before the first Change Unit is created for write-capable work, `user_owned_blockers_named=true` means any blocking user-owned issue has been identified as a `product_decision`, `technical_decision`, `scope_decision`, or `sensitive_approval`, or no user-owned blocker is currently needed for the next safe action. `next_safe_action_known=true` means the response can name the next owner-path action, such as inspection, `harness.request_user_judgment`, `harness.update_scope`, or `harness.prepare_write`.
 
 `Task.close_reason` values are not interchangeable labels. `completed_self_checked` means required evidence is sufficient, required `final_acceptance` is resolved, and no close-affecting `residual_risk_acceptance` is required. `completed_with_risk_accepted` means required evidence is sufficient, required `final_acceptance` is resolved, and compatible `residual_risk_acceptance` exists for close-affecting visible residual risk. `cancelled` and `superseded` are terminal but not successful completion, and they do not satisfy `CompletionPolicy` evidence, final acceptance, or residual-risk acceptance requirements.
 

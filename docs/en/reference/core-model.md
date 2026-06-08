@@ -10,6 +10,7 @@ This document owns:
 
 - Core invariants and authority boundaries.
 - Entity relationship semantics where they affect state, write compatibility, gate behavior, or close.
+- `ShapingReadiness` meaning and the active-state readiness boundary before the first Change Unit.
 - User-owned judgment boundaries and non-substitution rules.
 - Gate meaning, blocker meaning, lifecycle principles, and state-transition principles.
 - `update_scope`, `prepare_write`, Write Authorization, `record_run`, `close_task`, reserved waiver boundaries, residual-risk visibility, and close honesty.
@@ -69,6 +70,18 @@ The minimum active shaping information is the compact state needed to turn an or
 - Evidence summary and blocker records for evidence expectations, evidence gaps, active blockers, and close blockers.
 
 If any required shaping item is unknown, stale, unavailable, or disputed, Core must expose that as `unknown`, a pending user-owned judgment, a blocker, or the next safe action. It must not create a separate active `Discovery Brief`, `Question Queue`, `Assumption Register`, or similar committed planning artifact to make the request look writable.
+
+`ShapingReadiness` is the compact derived view of that active state. It is computed from the current Task, active or proposed Change Unit, pending `user_judgment` candidates or records, evidence summary, blockers, and next-action state. It is not persisted as a separate record and is not a license to create a persistent planning artifact. Exact API field names are owned by [API Schema Core](api/schema-core.md#state-summary).
+
+The readiness meaning covers whether the current owner state knows the goal summary, non-goals, affected areas or paths, acceptance criteria, Autonomy Boundary, first Change Unit, user-owned blockers, and next safe action.
+
+A `true` value means the active owner state is concrete enough for the next safe action. A `false` value means the item is unknown, stale, unavailable, disputed, or not yet represented in the owner state. A false readiness field is blocking only when it affects the first safe Change Unit or the next safe action. Remaining ambiguity must stay visible, but it must not block progress when it does not affect that first safe Change Unit.
+
+Users may request shaping in plain language. They do not need to say "Discovery", "Change Unit", or any Harness API name. If the user says "make the plan concrete", "help me shape this before implementation", or similar ordinary wording, the agent routes into shaping behavior.
+
+The agent may ask multiple questions over time, but each active question must target one user-owned judgment at a time and must affect the next safe action. The agent must not ask questions whose answers would not change the next safe action, and it must not ask the user for facts it can safely inspect. Before creating the first Change Unit, Core-facing behavior should identify whether any blocking user-owned issue is a `product_decision`, `technical_decision`, `scope_decision`, or `sensitive_approval`; if no user-owned blocker is present, the next safe action should name the agent-resolvable or surface/system-owned step instead.
+
+Shaping is not an open-ended planning loop. Once the readiness view shows enough current state for the first safe Change Unit and the next safe action, Core should move through the owner path that applies that state, such as `harness.update_scope` for accepted scope or work-slice changes, instead of continuing to ask exploratory questions.
 
 <a id="finding-routing"></a>
 

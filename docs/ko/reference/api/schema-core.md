@@ -2,7 +2,7 @@
 
 ## 이 문서로 할 수 있는 일
 
-현재 MVP에서 쓰는 활성 메서드 이름 집합, 공용 API 형태, 닫힌 스키마 값 집합을 확인할 때 이 참조를 사용합니다. `ToolEnvelope`, 공통 응답, `ArtifactRef`, `StateRecordRef`, `UserJudgment`, Write Authorization 요약, `CompletionPolicy`, 증거 요약, 실행 요약, 닫기 차단 사유, 다음 행동 요약, 현재 MVP enum 값을 다룹니다.
+현재 MVP에서 쓰는 활성 메서드 이름 집합, 공용 API 형태, 닫힌 스키마 값 집합을 확인할 때 이 참조를 사용합니다. `ToolEnvelope`, 공통 응답, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization 요약, `CompletionPolicy`, 증거 요약, 실행 요약, 닫기 차단 사유, 다음 행동 요약, 현재 MVP enum 값을 다룹니다.
 
 이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 문서 저장소에 MCP 서버가 구현되어 있다는 뜻이 아닙니다. 향후 스키마 후보는 [이후 후보 색인](../../later/index.md#later-schema-candidates)에 남습니다.
 
@@ -14,7 +14,7 @@
 | `ToolEnvelope.surface_id`, `LocalSurfaceRegistration`, `VerifiedSurfaceContext`, 로컬 접점 접근 값 집합 | 이 문서 |
 | 활성 메서드별 요청/응답 동작 | [MVP API](mvp-api.md) |
 | 공개 오류, 우선순위, 멱등성, 차단 응답, 오래된 상태 동작 | [API Errors](errors.md) |
-| Core 상태 의미와 lifecycle 의미 | [Core Model 참조](../core-model.md) |
+| Core 상태 의미, 구체화 준비 상태 의미, lifecycle 의미 | [Core Model 참조](../core-model.md) |
 | 저장소 테이블, JSON `TEXT`, enum hardening, artifact persistence | [Storage](../storage.md) |
 | 보안 보장 의미 | [보안 참조](../security.md) |
 | 향후 API/스키마 후보 | [이후 후보 색인](../../later/index.md#later-schema-candidates) |
@@ -143,6 +143,8 @@ EventRef:
 
 `ToolResponseBase.state_version`은 항상 프로젝트 전체 버전입니다. 커밋된 상태 변경에서는 커밋 뒤의 `project_state.state_version`이고, 읽기 전용과 `dry_run` 응답에서는 그 응답이 관찰한 현재 프로젝트 전체 버전입니다. 읽기 전용 응답은 계산된 차단 사유나 닫기 차단 사유를 저장하지 않고 포함할 수 있습니다. `dry_run=true`는 현재 기록, 이벤트, 아티팩트, 증거 요약, Write Authorization, 닫기 상태, `tool_invocations` 재실행 행, 상태 버전 증가를 만들지 않습니다.
 
+<a id="state-summary"></a>
+
 ## StateSummary
 
 ```yaml
@@ -152,6 +154,7 @@ StateSummary:
   result: none | advice_only | completed | cancelled | superseded
   close_reason: none | completed_self_checked | completed_with_risk_accepted | cancelled | superseded
   assurance_level: none | self_checked
+  shaping_readiness: ShapingReadiness
   gates:
     scope_gate: not_required | required | pending | passed | failed | blocked
     decision_gate: not_required | required | pending | resolved | deferred | blocked
@@ -162,9 +165,23 @@ StateSummary:
 GuaranteeDisplay:
   level: cooperative | detective
   notes: string[]
+
+ShapingReadiness:
+  goal_summary_known: boolean
+  non_goals_known: boolean
+  affected_area_or_paths_known: boolean
+  acceptance_criteria_known: boolean
+  autonomy_boundary_known: boolean
+  first_change_unit_known: boolean
+  user_owned_blockers_named: boolean
+  next_safe_action_known: boolean
 ```
 
 `StateSummary.mode`는 지속 저장되는 `tasks.mode`를 그대로 보여 주며 항상 구체적 Task `mode`입니다. `auto`는 저장되는 `mode`, 표시되는 Task `mode`, 상태 요약의 `mode`가 아닙니다. `StateSummary.lifecycle_phase`는 지속 저장되는 `Task.lifecycle_phase`를 그대로 보여줍니다. `intake`는 API 메서드이자 시작 처리 단계이지 생명주기 값이 아닙니다. 종료 `lifecycle_phase` 값은 `completed`, `cancelled`, `superseded`입니다. 특히 `superseded`는 Task가 다른 Task나 경로로 대체되어 다시 활성 작업으로 돌아가지 않는다는 뜻입니다. `StateSummary.close_reason`은 지속 저장되는 `Task.close_reason`을 그대로 보여줍니다. `StateSummary.result`는 큰 단위의 `Task.result`를 보여줍니다. 실패한 Run, `violation`, 차단된 닫기, 증거 공백, 차단 사유는 `RunSummary.status`, `CloseBlocker`, 증거 상태, 차단 사유, 현재 Task 상태에 남고 Task의 종료 결과가 되지 않습니다. 이 문서의 `passed`와 `failed`는 `StateSummary.gates.*` 또는 `ValidatorResult.status` 값일 때만 활성이며 `Task.result` 값이 아닙니다.
+
+`StateSummary.shaping_readiness`는 활성 상태에서 파생한 보기입니다. 현재 Task 상태, 활성 또는 제안된 Change Unit 상태, 대기 중인 `UserJudgment` 후보나 기록, 차단 사유, 증거 요약, 다음 행동 상태에서 계산합니다. 지속 저장되는 Task 필드가 아니고, 별도 `StateRecordRef.record_kind`도 아니며, 커밋된 `Discovery Brief`, `Question Queue`, `Assumption Register` 같은 계획 아티팩트도 아닙니다. `false` 필드는 계속 보이지만, 알 수 없거나 오래된 항목이 첫 안전한 Change Unit 또는 다음 안전한 행동에 영향을 줄 때만 막는 조건입니다.
+
+쓰기 가능한 작업에서 첫 Change Unit을 만들기 전 `user_owned_blockers_named=true`는 막고 있는 사용자 소유 문제가 `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval` 중 하나로 식별되었거나, 다음 안전한 행동에 사용자 소유 blocker가 현재 필요하지 않다는 뜻입니다. `next_safe_action_known=true`는 응답이 확인, `harness.request_user_judgment`, `harness.update_scope`, `harness.prepare_write` 같은 다음 담당 경로 행동을 이름 붙일 수 있다는 뜻입니다.
 
 `Task.close_reason` 값은 서로 바꿔 쓸 수 있는 라벨이 아닙니다. `completed_self_checked`는 필수 증거가 충분하고, 필요한 `final_acceptance`가 해결되었고, 닫기에 영향을 주는 `residual_risk_acceptance`가 필요하지 않다는 뜻입니다. `completed_with_risk_accepted`는 필수 증거가 충분하고, 필요한 `final_acceptance`가 해결되었고, 닫기에 영향을 주는 보이는 잔여 위험에 대해 호환되는 `residual_risk_acceptance`가 있다는 뜻입니다. `cancelled`와 `superseded`는 종료 상태이지만 성공 완료가 아니며 `CompletionPolicy`의 증거, 최종 수락, 잔여 위험 수락 요구를 만족시키지 않습니다.
 

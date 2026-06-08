@@ -38,6 +38,7 @@ The current active MVP scope list is deliberately closed. It includes only:
 
 - plain-language intake and Task creation through `harness.intake`
 - active scope and Change Unit updates through `harness.update_scope`
+- derived `ShapingReadiness` display over active Task, Change Unit, user judgment, blocker, evidence, and next-action state
 - user-owned judgment requests and recorded answers through `harness.request_user_judgment` and `harness.record_user_judgment`
 - sensitive-action approval recording as the active `sensitive_approval` judgment path
 - path-level `harness.prepare_write` and single-use Write Authorization for product-file writes
@@ -61,7 +62,7 @@ Current MVP wording is cooperative by default. Detective wording is allowed only
 The following material stays outside the active MVP unless an owner document promotes a narrow behavior with scope, fallback behavior, and proof-path expectations for future promotion:
 
 - `verification_gate`, Manual QA workflow, `qa_waiver`, `verification_risk_acceptance`, `design_gate`, `design_policy`, broader validators beyond `surface_capability_check`, detached Eval, evaluation workflows, full Manual QA, full waiver machinery, rich approval lifecycle, and rich residual-risk lifecycle
-- Full Evidence Manifest, detailed evidence catalogs, persisted Journey Cards, Discovery Brief as a persistent artifact, Question Queue, Assumption Register, detailed run reports, full Decision Packet format, TDD Trace, Module Map, Interface Contract, Domain Language, rich templates, and later-profile templates
+- Full Evidence Manifest, detailed evidence catalogs, persisted Journey Cards, Discovery Brief as a persistent artifact, Question Queue, Assumption Register, detailed run reports, full Decision Packet format, TDD Trace, Module Map, Interface Contract, Domain Language, rich templates, and later-profile templates. The active `ShapingReadiness` view does not promote any of these persistent planning artifacts.
 - `harness.record_manual_qa`, `harness.launch_verify`, `harness.record_eval`, later `record_run` branches, later user-judgment branches, later next-action values, later schema fields, later artifact/ref values, `captured_artifact`, and any active `ArtifactInput.source_kind` beyond `staged_artifact` and `existing_artifact`
 - command execution observation, network observation, secret access observation, command/network/secret observation as an active proof requirement, command/network/secret observation schema values, preventive or isolated profiles, command/network/secret pre-tool blocking, preventive guard expansion, native hook expansion, broad isolated execution, permission isolation, and stronger local capability profiles
 - dashboard, hosted UI, artifact dashboard, hosted connector registry, connector marketplace, broad connector ecosystem, connector conformance ecosystem, cross-surface orchestration, team workflow, metrics, and automation candidates
@@ -82,6 +83,7 @@ It should show:
 - blocked handling for missing, stale, consumed, or observed-outside-authorized-scope attempts without creating completion evidence
 - one `harness.stage_artifact`-produced `StagedArtifactHandle`, one registered artifact/evidence ref produced only through `record_run`, rejection of an expired or cross-task staging handle without mutation, and a compact evidence coverage/gap read
 - status/blocker output that reads Core state without mutating it
+- a derived `ShapingReadiness` read that can show whether the first Change Unit and next safe action are concrete enough without creating a Discovery Brief, Question Queue, or Assumption Register
 - a narrow close-blocker read that can show missing evidence, unresolved judgment, or visible residual risk without implementing full assurance close semantics
 
 This smoke target may use an owner-valid setup or seed path instead of ordinary-language intake. It does not require generated runtime reports, full projection rendering, persistent projection jobs, projection reconcile, managed block drift repair, a dashboard, hosted UI, active operations profile, executable fixtures, native artifact capture, or broad connector support.
@@ -92,12 +94,14 @@ The user work loop starts or resumes ordinary work without requiring the user to
 
 MVP shaping persists only through active Task, scope/Change Unit, and user judgment owner paths. Shaping itself does not create separate committed planning, evidence, acceptance, residual-risk, or close records unless the relevant owner path explicitly records that item.
 
+The active readiness display is `ShapingReadiness`, a derived view over the current Task, Change Unit, user judgment, blocker, evidence, and next-action state. It should help the agent know whether the goal summary, non-goals, affected areas or paths, acceptance criteria, Autonomy Boundary, first Change Unit, named user-owned blockers, and next safe action are concrete enough. It is not a persistent planning artifact and must not become an open-ended planning loop.
+
 The next safe action must remain visible. If Core, MCP, or the reference surface cannot support a claim, status must say so instead of fabricating authority.
 
 ## Request-to-close path
 
 1. The user asks for work in ordinary language.
-2. Harness shapes or resumes a Task, summarizes scope and non-goals, and asks for minimal user judgment only when the user owns the decision.
+2. Harness shapes or resumes a Task, summarizes scope and non-goals, exposes `ShapingReadiness`, and asks for minimal user judgment only when the user owns the decision and the answer changes the next safe action.
 3. Before a product write, the agent or surface calls `prepare_write`; compatible work receives the owner-defined Write Authorization result, and incompatible work returns a blocker or owner-defined error.
 4. Before registering artifact bytes, the active `harness.stage_artifact` utility creates a temporary `StagedArtifactHandle`; after the write or direct work, `record_run` records what happened and is the only active path that can consume the handle and link registered artifact/evidence refs or the compact evidence summary path.
 5. Status and compact outputs show current scope, pending judgments, evidence gaps, blockers, next safe action, guarantee display level, and residual-risk visibility as derived reads from Core records.
@@ -113,8 +117,8 @@ Server coding must not begin until maintainers mark each row accepted, decided, 
 | Decision item | Current status | What must be decided before coding |
 |---|---|---|
 | Implementation-planning readiness | Not maintainer-accepted. | Maintainers must accept that the compact documentation set is ready for the first runtime-batch plan, or name the blocker and affected scope. |
-| Core transition maintainer acceptance | Not maintainer-accepted for coding. | Active Task/scope, `user_judgment`, sensitive approval, `prepare_write`, Write Authorization, `record_run`, staged artifact registration, blocker, status, compact evidence summary, residual-risk visibility, and `close_task` semantics must be maintainer-accepted for active MVP paths. |
-| Public API and schema maintainer acceptance | Not maintainer-accepted for coding. | Method behavior, the Schema Core-owned active method-name value set, API request/response shapes, shared schemas, resources, errors, idempotency/replay behavior, unavailable Core/MCP behavior, and later-candidate exclusions must be maintainer-accepted before affected tools or resources are coded. |
+| Core transition maintainer acceptance | Not maintainer-accepted for coding. | Active Task/scope, `ShapingReadiness`, `user_judgment`, sensitive approval, `prepare_write`, Write Authorization, `record_run`, staged artifact registration, blocker, status, compact evidence summary, residual-risk visibility, and `close_task` semantics must be maintainer-accepted for active MVP paths. |
+| Public API and schema maintainer acceptance | Not maintainer-accepted for coding. | Method behavior, the Schema Core-owned active method-name value set, API request/response shapes including `ShapingReadiness`, shared schemas, resources, errors, idempotency/replay behavior, unavailable Core/MCP behavior, and later-candidate exclusions must be maintainer-accepted before affected tools or resources are coded. |
 | Storage and runtime-home maintainer acceptance | Not maintainer-accepted for coding. | The minimal storage profile, runtime home layout, locks, artifact refs, migrations, replay/audit needs, and later-candidate storage boundary must be maintainer-accepted before DDL, runtime data files, or artifact storage are created. |
 | Security and local-access maintainer acceptance | Not maintainer-accepted for coding. | The local-only posture and cooperative/limited-detective security guarantee-claim wording must be maintainer-accepted before API/MCP exposure. Detective claims require a passed active capability check. MVP must not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, security isolation, native artifact capture, command execution observation, network observation, or secret access observation. |
 | Surface and compact-output maintainer acceptance | Not maintainer-accepted for coding. | The one reference `capability_profile`, compact user-facing views, compact agent-facing packet, freshness/unavailable behavior, and projection-as-derived-read boundary must be maintainer-accepted before display or connector code is implemented. |
@@ -125,9 +129,9 @@ Build summarizes sequence and scope only. Use these Reference owners for exact c
 
 | Need | Owner docs |
 |---|---|
-| Core authority, Task/scope lifecycle, user judgments, `prepare_write`, Write Authorization, `record_run`, blockers, status, compact evidence meaning, residual risk, and `close_task` | [Core Model Reference](../reference/core-model.md). |
+| Core authority, Task/scope lifecycle, `ShapingReadiness` meaning, user judgments, `prepare_write`, Write Authorization, `record_run`, blockers, status, compact evidence meaning, residual risk, and `close_task` | [Core Model Reference](../reference/core-model.md). |
 | Method-level behavior for active public API methods | [MVP API](../reference/api/mvp-api.md). |
-| Exact active method-name set, shared envelopes, refs, enum value sets, resources, and active schema shapes | [API Schema Core](../reference/api/schema-core.md). |
+| Exact active method-name set, shared envelopes, refs, `ShapingReadiness`, enum value sets, resources, and active schema shapes | [API Schema Core](../reference/api/schema-core.md). |
 | Public errors, idempotency, replay, stale-state, and state-conflict behavior | [API Errors](../reference/api/errors.md). |
 | Storage layout, DDL, locks, migrations, artifact refs, and later-candidate storage boundaries | [Storage](../reference/storage.md). |
 | Security guarantee-claim wording, local-access posture, trust boundaries, and non-claims | [Security Reference](../reference/security.md). |

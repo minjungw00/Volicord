@@ -52,9 +52,11 @@ Status output should lead with the primary blocker and the smallest unblocker. N
 
 Inspect first. Check repository files, docs, tests, current Harness state, accepted judgments, and relevant artifacts before asking the user. If a source is stale or unavailable, say that instead of treating it as authority. Do not ask the user to know or translate Harness labels before ordinary work can begin.
 
+Plain-language shaping requests count. If the user says "make the plan concrete", "help me shape this before implementation", or similar wording, route into shaping behavior without requiring Harness terms.
+
 Ask only the question that changes the next safe action or a user-owned judgment. Do not turn agent-resolvable uncertainty into a questionnaire. Do not start broad implementation when the requirement is too ambiguous to be safe.
 
-Prefer one blocking question at a time. Non-blocking curiosity questions can be parked for later, but they are not active blockers and should not move the task to a waiting state.
+Prefer one blocking question at a time. Multiple questions over time can be correct when each one targets a distinct user-owned judgment that changes the next safe action. Non-blocking curiosity questions can be parked for later, but they are not active blockers and should not move the task to a waiting state.
 
 A focused clarification should show:
 
@@ -72,7 +74,13 @@ A focused clarification should show:
 - close blockers that are already visible
 - next safe action
 
+Use the schema-owned `ShapingReadiness` view for that display. In user-facing terms, it should show whether the goal summary, non-goals, affected areas or paths, acceptance criteria, Autonomy Boundary, first Change Unit, user-owned blockers, and next safe action are currently known. An unknown item blocks only when it affects the first safe Change Unit or the next safe action.
+
+Before creating the first Change Unit for write-capable work, name the blocker type if the blocker belongs to the user: `product_decision`, `technical_decision`, `scope_decision`, or `sensitive_approval`. If the blocker is agent-resolvable or surface/system-owned, name the inspection, refresh, narrowing, or capability step instead of asking the user.
+
 In the active MVP, clarification should update the active task summary, the proposed or active work slice when product writes are near, and user-judgment candidates or records through the active owner paths. Start with `harness.intake`; ask blocking user-owned choices through `harness.request_user_judgment`; record answers through `harness.record_user_judgment`; and apply accepted scope or work-slice changes through `harness.update_scope`. Do not create separate active requirements for committed planning briefs, question queues, assumption registers, standalone detailed artifacts, or full-format judgment presentations.
+
+Do not let shaping become an open-ended planning loop. Once the first safe Change Unit and next safe action are concrete enough, move to the owner path that applies the state. Remaining ambiguity can stay visible without blocking progress when it does not affect that first safe Change Unit.
 
 Use lifecycle labels narrowly when they help the agent choose the next action:
 

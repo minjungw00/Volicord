@@ -28,7 +28,7 @@ The agent should translate that into visible working context: the current goal, 
 
 Harness may classify ordinary requests as advice/review/planning without product writes, a small direct change, or tracked work. You do not need to choose or say `advisor`, `direct`, `work`, or `auto`; `auto` is only an API input that asks for classification, not a task label shown to you.
 
-You do not need internal Harness labels or API method names before work can begin. The agent can explain exact routing only after the natural request is clear.
+You do not need internal Harness labels or API method names before work can begin. If you say "make the plan concrete" or "help me shape this before implementation," the agent should understand that as a request to shape the work before the first implementation step. The agent can explain exact routing only after the natural request is clear.
 
 ## 2. Clarify scope before write
 
@@ -45,6 +45,8 @@ Before product files change, the agent should make the working scope plain:
 - the next safe action
 
 For anything larger than a tiny obvious edit, the agent should inspect available files, tests, docs, current Harness state, and accepted judgments before asking you. If the answer is discoverable, the agent should discover it. If the work is still too vague to implement safely, the agent should name the ambiguity and ask the one question that changes the next safe action.
+
+You may see a compact readiness view called `ShapingReadiness`. It is not a form you must fill out and not a persistent Discovery Brief, Question Queue, or Assumption Register. It is the agent's current view of whether the goal summary, non-goals, affected area or paths, acceptance criteria, autonomy boundary, first Change Unit, user-owned blockers, and next safe action are known enough for the first safe step. Unknowns should remain visible, but they should not hold up the first safe Change Unit when they do not affect it.
 
 In a Harness-connected session, product writes go through a pre-write scope check. In owner terms, the active method is `harness.prepare_write`. A compatible result says the intended write matches current Harness state and active surface capability for the named operation. It is not OS permission, sandboxing, tamper-proof enforcement, arbitrary-tool isolation, or proof that every tool was blocked before action.
 
@@ -214,6 +216,7 @@ Visible shaped result:
 - Scope: login form, submit handling, session creation, and focused tests.
 - Out of scope: account creation, password reset, social login, and production deployment.
 - Acceptance: existing users can sign in, failed login shows a chosen error treatment, and tests cover the touched path.
+- Readiness: goal, non-goals, affected areas, acceptance, and next action are known; failed-login feedback is the named product blocker before the first Change Unit.
 - Blocking question: should failed login feedback be inline text or a toast?
 - Next safe action: after that answer, update the active scope and check the intended login-form write.
 
@@ -234,13 +237,14 @@ User: Make this plan more concrete before implementation.
 
 Good agent behavior:
 - read the plan and related docs before asking anything;
-- identify the first writable slice, non-goals, acceptance criteria, evidence expectation, and close blockers;
-- ask only the decision that changes the first safe slice.
+- identify whether the goal, non-goals, affected areas or paths, acceptance criteria, autonomy boundary, first Change Unit, user-owned blockers, and next safe action are known;
+- ask only the decision that changes the first safe Change Unit or next safe action.
 
 Visible shaped result:
 - Goal: turn the plan into one implementable first change.
 - Scope: clarify the current objective, affected areas, acceptance criteria, and evidence expectation.
 - Out of scope: new standalone artifacts, broad roadmap rewrite, and implementation.
+- Readiness: affected docs are known, but the first Change Unit is not known until the user outcome is chosen; no persistent planning artifact is created.
 - Evidence gap: no repository files or tests have been checked yet.
 - Blocking question: which user outcome should the first slice prove?
 - Next safe action: inspect the named owner docs or files, then update the active scope for the first implementable slice.
