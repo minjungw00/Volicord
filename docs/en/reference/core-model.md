@@ -354,7 +354,7 @@ Use these owners when Core authority touches another contract:
 
 - Public API method behavior, request/response shapes, active method-name and schema value sets, envelopes, state conflicts, and errors: [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), and [API Errors](api/errors.md).
 - Storage tables, DDL, runtime home layout, locks, migrations, artifact storage, and enum hardening: [Storage](storage.md).
-- Projection freshness, readable views, managed blocks, human-editable sections, and active rendered template bodies: [Projection And Templates Reference](projection-and-templates.md).
+- Projection freshness, read-time readable views, read-only display boundaries, the active Projection set, and active rendered template bodies: [Projection And Templates Reference](projection-and-templates.md).
 - Security guarantee language, cooperative/detective/preventive/isolated labels, and local access posture: [Security Reference](security.md).
 - Runtime boundary placement and Core-only mutation authority: [Runtime Boundaries Reference](runtime-boundaries.md).
 - Design-quality boundary and non-gate routing: [Design Quality](design-quality.md).

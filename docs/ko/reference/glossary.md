@@ -121,7 +121,7 @@ Storage 용어는 향후 하네스 기록이 어디에 사는지 알려줍니다
 |---|---|---|
 | 에이전트 접점 / `surface_id` | 연결된 환경과 API 호출자 식별자입니다. 접점 이름이나 `surface_id`만으로 기능이나 권한이 생기지 않습니다. | [Agent 통합](agent-integration.md) |
 | `capability_profile` | 접점이 실제로 할 수 있는 일을 선언하고 갱신한 사실입니다. MCP 태세, 관찰, 캡처, 보호, 격리 지원을 포함합니다. | [Agent 통합](agent-integration.md), [보안](security.md) |
-| 커넥터 매니페스트 | 커넥터가 관리하는 경로, 스니펫, 관리 블록 해시, 프로필 최신성, 드리프트, 대체 동작 요약입니다. | [Agent 통합](agent-integration.md) |
+| 커넥터 매니페스트 | 커넥터가 관리하는 경로, 스니펫, managed block 해시, 프로필 최신성, 드리프트, 대체 동작 요약입니다. | [Agent 통합](agent-integration.md) |
 | 항상 주입되는 맥락 | 한 화면 이하의 현재 맥락입니다. 작업 요약, 범위, 대기 중인 판단, 차단 사유, 다음 안전한 행동, 증거 공백, 닫기 차단 사유, 잔여 위험, 보장 수준, 최신 참조만 둡니다. | [Agent 통합](agent-integration.md) |
 | 단계별 맥락 / push-pull | 간결한 현재 맥락을 먼저 주고, 다음 행동에 필요한 담당 섹션만 가져오는 방식입니다. | [Agent 통합](agent-integration.md), [참조 색인](README.md) |
 | Role Lens | 읽기 전용 역할 관점 안내입니다. `Role Lens` 추천은 담당 경로가 행동을 기록하기 전까지 권한이 없습니다. | [Agent 통합](agent-integration.md) |

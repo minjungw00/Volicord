@@ -14,7 +14,7 @@ The Product Repository is the user's product workspace. Product source files, te
 
 Product Repository files are not canonical Harness state. A product file can be an input, a changed work target, or product-owned truth about the product, but it does not become Harness operational authority merely because it is near Harness.
 
-The Product Repository may contain generated readable outputs when an active profile supports them: projections, templates, status cards, compact evidence summaries, close-readiness views, or managed Markdown blocks. Those files help humans and agents read the work. They are derived display, not Core-owned state. A human-editable proposal area is input only until an accepted Core state-changing action records the change.
+The active MVP does not require generated projection files in the Product Repository. A surface may show compact readable outputs such as `status-card`, `judgment-request`, `run-evidence-summary`, `close-result`, or `agent-context-packet`, but those outputs are read-time derived display, not Core-owned state. Editing a rendered projection, Markdown status card, or generated document in the Product Repository does not mutate Harness state; a desired state change must enter through the normal natural-language or active API flow. Editable projection areas, managed Markdown blocks, reconcile queues, persistent projection jobs, and drift repair remain later candidates until promoted by their owners.
 
 This documentation repository is also not the user's Product Repository. It is a documentation-only planning repository intended to become the future Harness Server source repository after documentation acceptance and a separate implementation-planning readiness decision.
 
@@ -52,11 +52,11 @@ Exact state transitions, gate effects, row boundaries, idempotency behavior, and
 
 ## 5. Projection derivation boundary
 
-Projections, templates, status cards, generated Markdown, and read-only status resources are derived display. They are rendered from Core-owned state records and registered artifact refs. They may include freshness, failure, blocker, and next-action information, but those facts remain display of owner records, not a second authority source.
+Projections, templates, status cards, generated Markdown, and read-only status resources are read-time derived display. They are rendered from current Core-owned state records and registered artifact refs. They may include freshness, failure, blocker, and next-action information, but those facts remain display of owner records, not a second authority source.
 
 A projection can be stale, missing, failed, or manually edited. None of those conditions changes canonical Harness state by itself. A stale or failed projection may create a visible blocker or freshness warning; it does not roll back Core state, satisfy evidence, pass verification or QA, record final acceptance, accept residual risk, or close a task.
 
-Managed generated areas stay derived. Human-editable areas are proposal input. A proposal affects Harness state only after a Core-owned path accepts it as a state-changing action.
+Editing a rendered projection, Markdown status card, generated document, managed block, or front matter field is not a Core mutation path. If the user wants a state change, the request must route through the owning natural-language/API path. The active MVP has no reconcile queue, no persistent projection jobs, and no managed block drift repair.
 
 ## 6. Artifact storage boundary
 

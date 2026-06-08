@@ -7,9 +7,9 @@ This document owns the projection and active template display contract for futur
 This document owns:
 
 - projection authority boundaries
-- projection as derived display
-- human-editable section rules
-- managed block rules
+- projection as read-time derived display
+- read-only rendering and non-mutation rules
+- active compact projection/template rendering rules
 - `ArtifactRef` rendering rules
 - source/freshness display rules for compact views
 - the active current MVP template set
@@ -19,7 +19,7 @@ This document does not own:
 
 - Core state, lifecycle, gates, `prepare_write`, `record_run`, `close_task`, or user-judgment state changes; see [Core Model Reference](core-model.md)
 - public MCP request/response schemas, `ProjectionKind`, `ArtifactRef`, or error shapes; see [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), and [API Errors](api/errors.md)
-- SQLite DDL, storage layout, artifact storage, or projection job storage; see [Storage](storage.md)
+- SQLite DDL, storage layout, artifact storage, or persistent projection-job storage; see [Storage](storage.md)
 - design-quality close-impact boundary; see [Design Quality](design-quality.md)
 - operator command behavior as active Reference scope; future candidates stay in [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates)
 - conformance fixture assertion behavior; see [Conformance Reference](conformance.md)
@@ -34,18 +34,22 @@ Templates cannot override Core state. A rendered view cannot authorize writes, c
 
 Display labels are not canonical schema values. A localized label such as a user-readable judgment type is rendered from canonical fields such as `judgment_kind` and locale. If `display_label` appears in compatibility or response-only output, it remains display text and must not be treated as an enum value, storage value, API field owner, or schema category.
 
-User edits to a projection are input only. Projection reconcile is not active current MVP behavior; until a future owner promotes it, a human edit can affect state only when a user or agent routes the intended change through an active owner action such as `harness.update_scope` or `user_judgment`. Direct edits to managed text, front matter, displayed state, artifact refs, close status, acceptance status, residual-risk status, or template text do not become owner-recorded state.
+Editing a rendered projection, Markdown status card, generated document, managed block, front matter, displayed state, artifact ref, close status, acceptance status, residual-risk status, or template text does not directly mutate Core state. If a user wants a state change, the request must enter through the normal natural-language or active API flow, such as a scope update, user judgment, run/evidence recording, or close check handled by the owning Core/API path.
+
+There is no active MVP reconcile queue, editable projection intake path, projection-to-Core repair path, persistent projection job, or managed block drift repair. Those remain later candidates until a future owner promotes them with scope, fallback behavior, non-substitution rules, and proof expectations.
 
 ## Projection is derived display
 
-Projection is derived display from current Core-owned records and registered `ArtifactRef` metadata. It helps humans and agents read current work, source refs, blockers, evidence gaps, close blockers, freshness, and the next safe action. It is not a second state store.
+Projection is a read-time derived view from current Core-owned records and registered `ArtifactRef` metadata. It helps humans and agents read current work, source refs, blockers, evidence gaps, close blockers, freshness, and the next safe action. It is not a second state store.
 
-The active MVP keeps projection small:
+The active MVP Projection set is exactly:
 
 - four user-facing compact views: `status-card`, `judgment-request`, `run-evidence-summary`, and `close-result`
 - one agent-facing support packet: `agent-context-packet`
 
-These views may be rendered as compact text, cards, Markdown snippets, or structured payloads depending on the surface. They do not require persisted Markdown projection jobs or a full report renderer. The first internal smoke target may return plain structured status/blocker output instead of a rendered card.
+The four user-facing views and `agent-context-packet` stay distinct. User-facing projections use ordinary language for the user's decision and inspection needs. `agent-context-packet` is compact support context for the next agent action, not user prose and not a hidden authority channel.
+
+These views may be rendered as compact text, cards, Markdown snippets, or structured payloads depending on the surface. They are computed from current source records when read and do not require persisted Markdown projection jobs, durable projection caches, a reconcile queue, managed block repair, or a full report renderer. The first internal smoke target may return plain structured status/blocker output instead of a rendered card.
 
 Projection freshness is display over source clocks. A stale, failed, unknown, or too-broad readable view must not become the basis for state-changing work or close. If current state matters, retrieve current Core state or a current state-derived packet.
 
@@ -53,59 +57,11 @@ When a source record or ref is missing, render `none`, `unknown`, `not_required`
 
 Projection is also a privacy boundary. Render omission, redaction, blocked-artifact, and availability notes without reconstructing omitted or blocked raw values.
 
-## Human-editable sections
+## No editable projection state
 
-Only explicitly marked human-editable sections are editable input. A common shape is:
+The active MVP has no human-editable projection area that writes back to Core. Notes, corrections, and proposals are ordinary user input only when the user sends them through the normal natural-language or active API flow. A rendered Markdown status card, generated document, template body, front matter field, displayed artifact ref, or displayed close/acceptance/residual-risk line is read-only derived display.
 
-```md
-User Notes and Proposals:
--
-```
-
-Human-editable text can contain notes, questions, corrections, or proposals. It can propose changes to Task summary, scope, acceptance criteria, design notes, evidence notes, or other owner records, but the proposal is not the target record.
-
-Any future state-changing path is explicit and later-owned:
-
-```text
-human edit -> reconcile candidate -> explicit reconcile outcome -> Core state-changing action, rejection, deferral, or note
-```
-
-This reconcile path is not active current MVP scope. Until a future owner promotes it and an owner path records a Core outcome, the human-editable text is not Task state, evidence, verification, QA, final acceptance, residual-risk acceptance, close readiness, or any other owner record.
-
-Humans may not edit these directly into state:
-
-- managed block content
-- front matter fields such as `source_state_version`
-- gate values, lifecycle phase, result, close reason, close status, or assurance level
-- user judgment, sensitive-action approval, final-acceptance, residual-risk acceptance, close display text, or later/reserved QA waiver and verification-risk display text
-- artifact identity, `sha256`, `size_bytes`, `content_type`, `redaction_state`, or artifact availability
-- status cards, agent context packets, generated reports, or template bodies
-
-## Managed block rules
-
-Managed blocks are projector-owned Markdown regions:
-
-```md
-<!-- HARNESS:BEGIN managed -->
-...
-<!-- HARNESS:END managed -->
-```
-
-Rules:
-
-- Managed block content is generated from committed Core-owned records and registered artifact refs.
-- The projector may regenerate managed blocks.
-- A managed block is display, not authority.
-- Direct edits inside a managed block are drift, not owner-recorded state.
-- Persistent projection jobs, projection-job storage, and managed block drift repair are later candidates, not active MVP obligations.
-- Active MVP compact views carry read-time source/freshness text without a persisted projection job.
-- Managed hash is computed over the projector-owned managed block body, excluding the marker lines, with normalized line endings and the projector's meaningful whitespace rules.
-- Managed hash detects drift; it does not make Markdown state.
-- If a managed block hash differs from the last projected hash before rendering in a future promoted projection-job path, the projector may report drift or create an owner-routed repair candidate. This is later drift-repair behavior, not an active MVP repair obligation. It must not silently accept the edited block.
-- Regeneration must preserve unrelated human-editable sections.
-- Rendering failure or stale source data must display `failed`, `stale`, `unknown`, or unavailable as appropriate. It must not roll back committed Core state, alter events, or change gate values.
-
-Rendered views should include a short boundary notice near the top or managed summary: display only, derived from Core state and refs, not Write Authorization, not close result.
+Future managed block, reconcile, projection-job, and drift-repair designs may define editable input handling later. Until promoted, they do not exist as active Core mutation paths, storage rows, queues, repair candidates, freshness repair, or close/evidence/acceptance authority. Rendered views should include a short boundary notice near the top: display only, derived from Core state and refs, not Write Authorization, not close result.
 
 ## ArtifactRef rendering
 

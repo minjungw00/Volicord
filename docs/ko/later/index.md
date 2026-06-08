@@ -65,9 +65,9 @@
 | 내보내기/인계 형식 | 이후 후보 | Export/Handoff 담당 문서가 파일 형식, 가림, 생략, 무결성, 출처 추적, 대체 동작, 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | 복구와 reconcile | 이후 후보 | Operations, Storage, Projection, Reconcile, Security 담당 문서 규칙이 필요합니다. | 승격 전까지 없음 |
 | 운영자 준비 상태와 `doctor` 접점 | 이후 후보 | 운영 담당 문서가 진단, 기능 확인, 보안 태세, 지원되지 않는 접점의 대체 동작을 정해야 합니다. | 승격 전까지 없음 |
-| Projection 새로고침과 최신성 진단 | 이후 후보 | Projection 담당 문서가 Projection이 비권위 상태 보기로 남는 동작을 정해야 합니다. | 승격 전까지 없음 |
-| 영속 Projection 작업과 Projection 작업 저장소 | 이후 후보 | Projection과 Storage 담당 문서가 작업 생명주기, 저장 행, 최신성, 실패 동작, 증명 기대치를 정의해야 합니다. 현재 MVP는 읽는 시점의 간결한 상태/Projection만 사용합니다. | 승격 전까지 없음 |
-| Projection reconcile과 관리 블록 drift 복구 | 이후 후보 | Projection, Core, API, Storage 담당 문서가 사람이 편집한 입력 처리, reconcile 결과, 복구 후보, 상태 변경 라우팅, 대체 불가 규칙, 증명 기대치를 정의해야 합니다. 사람이 편집한 Projection은 활성 상태가 아닙니다. | 승격 전까지 없음 |
+| Projection 새로고침과 최신성 진단 | 이후 후보 | Projection 담당 문서가 Projection이 비권위 읽기 전용 보기로 남는 동작을 정해야 합니다. 별도 상태 변경 경로는 향후 담당 문서가 따로 정의해야 합니다. | 승격 전까지 없음 |
+| 영속 Projection 작업과 Projection 작업 저장소 | 이후 후보 | Projection과 Storage 담당 문서가 작업 생명주기, 저장 행, 최신성, 실패 동작, 필요한 경우 queue 동작, 증명 기대치를 정의해야 합니다. 현재 MVP는 읽는 시점의 간결한 상태/Projection만 사용하며 활성 영속 Projection 작업은 없습니다. | 승격 전까지 없음 |
+| Projection reconcile, 편집 가능한 Projection 영역, reconcile queue, managed block drift repair | 이후 후보 | Projection, Core, API, Storage 담당 문서가 사람이 편집한 입력 처리, reconcile 결과, queue 동작, managed block 해시와 drift 의미, 복구 후보, 상태 변경 라우팅, 대체 불가 규칙, 증명 기대치를 정의해야 합니다. 사람이 편집한 Projection, Markdown `status-card`, 생성된 문서, managed block은 활성 상태가 아닙니다. | 승격 전까지 없음 |
 | 예방형 프로필, 격리형 프로필, 명령 관찰, 네트워크 관찰, 비밀값 접근 관찰, 접점 자체 아티팩트 캡처, 도구 실행 전 차단, 격리를 위한 더 강한 로컬 역량 프로필 | 이후 후보 | Agent Integration, Security, API, Storage, Conformance 담당 문서가 정확한 역량 필드, 대상 동작, 대체 동작, 오류, 증명 경로를 정해야 합니다. | 승격 전까지 없음 |
 | 명령 실행 관찰, 네트워크 관찰, 비밀값 접근 관찰 | 이후 역량 후보 | API, Core, Security, Agent Integration, Conformance 담당 문서가 정확한 요청 필드, 관찰 권한, 대체 동작, 공개 오류, 저장소 영향, 증명 기대치를 정의해야 합니다. | 승격 전까지 없음 |
 | 명령/네트워크/비밀값 도구 실행 전 차단 | 이후 예방형 후보 | 향후 예방형 담당 문서가 정확한 차단 메커니즘, 대상 동작, 대체 동작, 사용자에게 보이는 보장 표현, 증명 경로를 정의해야 합니다. | 승격 전까지 없음 |

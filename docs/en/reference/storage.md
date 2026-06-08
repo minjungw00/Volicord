@@ -27,7 +27,8 @@ This document does not own:
   replay behavior; see [MVP API](api/mvp-api.md),
   [API Schema Core](api/schema-core.md), and [API Errors](api/errors.md).
 - Projection rendering, template bodies, report formats, dashboards, exports,
-  reconcile behavior, operations entrypoints, conformance runners, or future
+  reconcile behavior, persistent projection jobs, reconcile queues, managed
+  block drift repair, operations entrypoints, conformance runners, or future
   fixture storage.
 - OS permissions, sandboxing, tamper-proof files, pre-tool blocking, or
   security isolation claims; see [Security Reference](security.md).
@@ -36,6 +37,12 @@ Storage is the source of current Harness records only when rows are committed by
 Core and validate against the owning Core/API/storage contracts. Chat, generated
 Markdown, status cards, projections, connector output, operator output, and
 report prose are not storage authority.
+
+Read-time status/projection output is derived from committed records and
+registered artifact refs. Editing a rendered projection, Markdown status card,
+or generated document does not update storage or mutate Core state. The active
+current MVP has no `projection_jobs` table, durable projection cache, reconcile
+queue, managed-output outbox, or managed block drift-repair storage.
 
 Storage defines where Harness records persist and how committed state
 transitions are recorded. It does not claim tamper-proof storage, security
@@ -135,6 +142,11 @@ Brief, Shared Design, Question Queue, Assumption Register, or First Safe Change
 Unit Candidate table. Evidence persists through compact evidence summaries,
 completion policy, required coverage items, and artifact refs, not through full
 Evidence Manifest storage.
+
+Projection has no active persisted table family. `status-card`,
+`judgment-request`, `run-evidence-summary`, `close-result`, and
+`agent-context-packet` are read-time views over the active records, not stored
+state or storage mutation paths.
 
 The minimum active shaping information is stored through those existing records:
 current goal summary, active scope summary, allowed paths or affected areas,
@@ -703,7 +715,8 @@ The active migration boundary is:
 - Preserve committed `tool_invocations` replay rows so idempotency does not fork
   after migration.
 - Keep status cards, compact views, projection freshness, close readiness, and
-  report prose derived from current records. They are not migration authority.
+  report prose derived from current records at read time. They are not migration
+  authority, repair input, or storage mutation paths.
 
 This page intentionally excludes inactive DDL bundles, migration catalogs, and
 profile-specific migration details.
@@ -717,8 +730,8 @@ does not make storage active.
 
 The active current MVP excludes storage for:
 
-- projection jobs, durable projection caches, managed-output outboxes, and
-  projection dashboards;
+- projection jobs, durable projection caches, managed-output outboxes, managed
+  block hash/drift-repair records, and projection dashboards;
 - validator-run records, conformance-runner state, fixture execution history,
   and generated conformance artifacts;
 - operations-profile storage for doctor suites, recover, export, release
@@ -734,6 +747,6 @@ The active current MVP excludes storage for:
   stewardship, and long-term design-support storage.
 
 Active status, close readiness, run/evidence summaries, next actions, readable
-cards, and guarantee display are derived from the active persisted records above.
-They may be stale, absent, failed, or recomputed without changing storage
-authority.
+cards, `agent-context-packet`, and guarantee display are read-time derived views
+over the active persisted records above. They may be stale, absent, failed, or
+recomputed without changing storage authority.

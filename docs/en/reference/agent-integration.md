@@ -63,9 +63,9 @@ Exact public tool and resource contracts belong to the API owners. The connector
 
 The baseline `reference-local-mcp` profile has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation capability. Those capability fields and profile types are later/profile-gated material in [Later Candidate Index](../later/index.md); absence from the active profile means unsupported, not unknown or implicitly available.
 
-Refresh the profile when the surface version, MCP configuration, permissions, workspace policy, generated files, managed blocks, `harness.stage_artifact` path, manual attachment support, redaction policy, artifact retention, local access posture, or conformance basis changes. Profile refresh does not refresh `LocalSurfaceRegistration` by itself; registration changes require the server owner path that verifies the current local surface context. Hook, native capture, pre-tool blocking, and isolation support remain later/profile-gated until promoted.
+Refresh the profile when the surface version, MCP configuration, permissions, workspace policy, `harness.stage_artifact` path, manual attachment support, redaction policy, artifact retention, local access posture, or conformance basis changes. Profile refresh does not refresh `LocalSurfaceRegistration` by itself; registration changes require the server owner path that verifies the current local surface context. Generated file manifests, managed blocks, hook support, native capture, pre-tool blocking, and isolation support remain later/profile-gated until promoted.
 
-Generated rules, skills, MCP snippets, adapter files, and managed blocks need a connector manifest. The manifest records generated paths, managed block ids and hashes, MCP exposure posture, display-safe handles, profile freshness, drift, and fallback behavior. It must not store raw tokens, secrets, private config values, blocked payload bytes, or canonical Task state.
+Future generated rules, skills, MCP snippets, adapter files, and managed blocks need a promoted connector-manifest owner before they become active connector behavior. If promoted later, the manifest must keep generated paths, managed block ids and hashes, MCP exposure posture, display-safe handles, profile freshness, drift, and fallback behavior separate from Core authority. The active MVP does not require generated files, managed blocks, manifest drift handling, projection repair, or managed block drift repair, and no manifest may store raw tokens, secrets, private config values, blocked payload bytes, or canonical Task state.
 
 ## 3. Guarantee Display Levels
 
@@ -88,7 +88,7 @@ Do not make current MVP security guarantee claims beyond the profile and owner d
 
 ## 4. Context Push/Pull
 
-Connectors should push compact current context and pull larger owner docs only when the next action needs them. A context packet is operational support for the next agent action. It is not agent memory, chat history, a full report, a cached projection body, or a complete Reference dump.
+Connectors should push compact current context and pull larger owner docs only when the next action needs them. A context packet is operational support for the next agent action. It is distinct from user-facing projections and is not agent memory, chat history, a full report, a cached projection body, or a complete Reference dump.
 
 Retrieval-cost rules:
 
@@ -100,7 +100,7 @@ Retrieval-cost rules:
 - Pull the owner section needed for the next action, then stop.
 - Choose one language for a normal work prompt. Do not load English and Korean paired docs for the same `doc_id` into one prompt; bilingual review should compare targeted sections rather than pushing both full paired documents.
 
-Status cards, projections, rendered templates, retrieved context, recommendations, and chat memory are read-only. They can point the agent to owner refs, but they cannot authorize writes, satisfy gates, create evidence, resolve user judgments, grant sensitive-action approval, perform verification, record QA, accept the result, accept residual risk, repair projection freshness, or close a Task.
+Status cards, projections, rendered templates, `agent-context-packet`, retrieved context, recommendations, and chat memory are read-only. They can point the agent to owner refs, but they cannot authorize writes, satisfy gates, create evidence, resolve user judgments, grant sensitive-action approval, perform verification, record QA, accept the result, accept residual risk, repair projection freshness, or close a Task. Editing a rendered projection, Markdown status card, or generated document is not a connector mutation path; a desired state change must route through the normal natural-language or active API flow.
 
 Token savings must not hide user-owned judgments, scope limits, blockers, safety boundaries, evidence gaps, close blockers, or close-relevant residual risk.
 
@@ -164,7 +164,7 @@ Fallbacks are described by guarantee display level and risk, not by surface bran
 | Fallback | Use when | Boundary |
 |---|---|---|
 | Cooperative | The surface can follow instructions but cannot enforce them. | Hold product writes by instruction when the Core/MCP owner path or write-scope checks are unavailable. |
-| Detective | Harness can observe supported facts after action, after the relevant capability check has passed. For `reference-local-mcp`, that means `changed_path_detection_verification=passed` inside verified changed-path scope. | Mark state stale, partial, blocked, or failed and require an active owner action, fresh evidence, or a future promoted reconcile/repair path. |
+| Detective | Harness can observe supported facts after action, after the relevant capability check has passed. For `reference-local-mcp`, that means `changed_path_detection_verification=passed` inside verified changed-path scope. | Mark state stale, partial, blocked, or failed and require an active owner action or fresh evidence. Reconcile/repair remains a future promoted path, not active MVP behavior. |
 | Capability insufficient | A requested write, capture, guard, isolation, or guarantee claim depends on an unsupported capability or profile-gated claim. | Return `CAPABILITY_INSUFFICIENT` or a structured blocked reason; lower the displayed `guarantee_display.level` value. |
 | MCP unavailable | The surface or call path cannot reach the current Core authority path. | Use stable public `MCP_UNAVAILABLE` behavior and do not claim state mutation. |
 | Local access mismatch | The current transport/session/binding does not match the registered local surface context, or local access was revoked. | Use `LOCAL_ACCESS_MISMATCH` with display-safe diagnostics; do not introduce a surface-specific `UNAUTHORIZED` code and do not trust a copied `surface_id`. |
@@ -175,7 +175,7 @@ While Core is unreachable, do not invent Core state, Write Authorization, gate s
 
 While local surface verification is unavailable or mismatched, do not create, modify, or refresh surface registration from Product Repository files, projections, generated Markdown, chat text, or agent memory. Hold mutating API claims and artifact body reads until the server can derive a matching `VerifiedSurfaceContext`.
 
-Projection staleness is separate from Core state. If the connector can read current Core state directly, it may continue from that state. Actions that depend on stale projections must refresh from current Core state; reconcile is a later candidate unless a future owner promotes that path.
+Projection staleness is separate from Core state. If the connector can read current Core state directly, it may continue from that state. Actions that depend on stale projections must refresh from current Core state. There is no active MVP reconcile queue, persistent projection job, or managed block drift repair; reconcile and repair remain later candidates unless a future owner promotes those paths.
 
 Documentation-maintenance edits in this repository are governed by [Authoring Guide](../maintain/authoring-guide.md), not by runtime Harness procedures. They do not create runtime state, Write Authorization, evidence, QA, acceptance, residual-risk acceptance, close readiness, projections, `task_events`, or runtime transitions.
 
