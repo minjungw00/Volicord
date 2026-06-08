@@ -72,22 +72,24 @@ Reference-schema presence does not expand the active MVP. Required fields apply 
 
 ## First internal smoke target
 
-The first internal smoke target is not the product MVP and not a conformance runner. It is the narrowest planned check that can exercise the Core record/state-transition path before the user-facing loop is broadened.
+The first internal smoke target is a documentation smoke target. It is not the product MVP, not a complete conformance suite, and not an implementation plan. It is the compact owner-aligned target future maintainers should use to ensure the high-risk active MVP contracts are exercised instead of avoided before the user-facing loop is broadened.
 
-It should show:
+It should touch these active contract risks:
 
-- one local project registration and one reference `capability_profile`
-- baseline `capability_profile` fields including `changed_path_detection_verification`, `native_artifact_capture_supported=false`, `guarantee_level_default=cooperative`, and `guarantee_level_max_when_verified=detective`
-- one active Task and one active Change Unit or owner-approved scope boundary
-- `prepare_write` compatible, blocked, dry-run, and replay behavior through the owner path
-- one compatible `record_run` that consumes a required Write Authorization once
-- blocked handling for missing, stale, consumed, or observed-outside-authorized-scope attempts without creating completion evidence
-- one `harness.stage_artifact`-produced `StagedArtifactHandle`, one registered artifact/evidence ref produced only through `record_run`, rejection of an expired or cross-task staging handle without mutation, and a compact evidence coverage/gap read
-- status/blocker output that reads Core state without mutating it
-- a derived `ShapingReadiness` read that can show whether the first Change Unit and next safe action are concrete enough without creating a Discovery Brief, Question Queue, or Assumption Register
-- a narrow close-blocker read that can show missing evidence, unresolved judgment, or visible residual risk without implementing full assurance close semantics
+- registered local surface verification success and failure for `surface_id=reference-local-mcp`, including one reference `capability_profile`, supported `changed_path_detection_verification`, `native_artifact_capture_supported=false`, `guarantee_level_default=cooperative`, and `guarantee_level_max_when_verified=detective`, plus unavailable, mismatched, or insufficient-capability surface failure without trusting a copied `surface_id`
+- one active Task and one active Change Unit or owner-approved scope boundary, with a `ShapingReadiness` gap returning an active blocker or pending user-owned judgment instead of creating a Discovery Brief, Question Queue, Assumption Register, or other persistent planning artifact
+- project-wide `state_version` conflict handling, where fresh mutating requests compare `ToolEnvelope.expected_state_version` with `project_state.state_version`, stale requests return the owner-defined conflict without mutation, and `tasks.state_version` is not used as the active conflict basis
+- `prepare_write` returning `allowed`, `blocked`, or `approval_required` as appropriate; `allowed` creates the scoped single-use Write Authorization, while `blocked`, `approval_required`, and `dry_run` do not create a consumable authorization
+- `SensitiveActionScope` recording through the active `sensitive_approval` user-judgment path, kept separate from path-level `AuthorizedAttemptScope` and Write Authorization
+- `harness.stage_artifact` creating a temporary same-project same-Task `StagedArtifactHandle` without creating Core state, evidence, a persistent artifact, close readiness, or a state-version increment
+- `harness.record_run` consuming one valid staged handle and promoting it to a persistent `ArtifactRef`, linking the resulting artifact/evidence refs through the owner path, and rejecting expired, mismatched, already-consumed, or cross-task staging handles without mutation
+- Write Authorization one-time consumption by a compatible product-write `record_run`, including blocked handling for missing, stale, expired, revoked, consumed, incompatible, or observed-outside-authorized-scope attempts without creating completion evidence
+- close blockers for insufficient evidence, artifact unavailable or missing, required final acceptance, and visible but unaccepted residual risk, keeping each blocker separate and leaving the Task open while blockers remain
+- `close_task intent=check` as read-only: it may compute close readiness and blockers for the response but must not store blockers, append events, create replay rows, change close state, consume authorization, register artifacts, or increment `project_state.state_version`
+- `close_task intent=complete` returning `close_state=blocked` with structured blockers or `close_state=closed` only when the owner-defined complete path has no blockers
+- `close_task intent=supersede` updating the old Task lifecycle/result and the `project_state.active_task_id` pointer under one project-wide `state_version` mutation when valid, or returning the applicable supersession blocker without requiring evidence sufficiency, final acceptance, or residual-risk acceptance
 
-This smoke target may use an owner-valid setup or seed path instead of ordinary-language intake. It does not require generated runtime reports, full projection rendering, persistent projection jobs, projection reconcile, managed block drift repair, a dashboard, hosted UI, active operations profile, executable fixtures, native artifact capture, or broad connector support.
+This smoke target may use an owner-valid setup or seed path instead of ordinary-language intake. It does not require or rely on later features: generated runtime reports, full projection rendering, persistent projection jobs, projection reconcile, managed block drift repair, a dashboard, hosted UI, active operations profile, executable fixtures, native artifact capture, broad connector support, full Evidence Manifest, Manual QA, Eval, verification gate, design gate, or a conformance runner.
 
 ## User work loop
 

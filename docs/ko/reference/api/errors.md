@@ -2,7 +2,7 @@
 
 ## 이 문서로 할 수 있는 일
 
-현재 MVP의 공개 오류 코드, 기본 오류 우선순위, 차단 응답과 `dry_run` 동작, 멱등 재실행, 상태 충돌 처리, 닫기 차단 사유 동작, 사용자 표시 라벨 지침을 확인할 때 이 참조를 사용합니다.
+현재 MVP의 공개 오류 코드, 기본 오류 우선순위, 차단 응답과 `dry_run` 동작, 멱등 재실행, 상태 충돌 처리, 문서 스모크 목표의 오류 범위, 닫기 차단 사유 동작, 사용자 표시 라벨 지침을 확인할 때 이 참조를 사용합니다.
 
 이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 문서 저장소에 MCP 서버가 구현되어 있다는 뜻이 아닙니다.
 
@@ -30,7 +30,7 @@
 | `unsupported_surface` | `CAPABILITY_INSUFFICIENT` 또는 `VALIDATION_FAILED` | 요청을 줄이거나, 역량이 맞는 접점으로 옮기거나, 차단 사유를 반환합니다. 지원하지 않는 권한을 설명 문구로 흉내 내지 않습니다. |
 | `out_of_scope` | `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `NO_ACTIVE_CHANGE_UNIT`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | 영향을 받는 행동을 보류하고, 불일치를 보여 주며, 현재 범위로 줄이거나 구체적인 사용자 소유 범위 판단을 요청하거나, 해결된 범위 변경을 `harness.update_scope`로 적용합니다. |
 | `missing_judgment` | `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `ACCEPTANCE_REQUIRED` | 집중된 활성 `UserJudgment`를 묻거나 해결합니다. 제품 판단, 기술 판단, 범위 판단, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 취소 판단, later/reserved QA 면제 판단과 검증 위험 수락 경로를 넓은 승인 하나로 합치지 않습니다. |
-| `missing_evidence` | `EVIDENCE_INSUFFICIENT`, `ARTIFACT_MISSING` | 영향을 받는 주장, 참조, 증거 상태, 차단 해소에 필요한 최소 조치를 보여 줍니다. 테스트 결과, 아티팩트 무결성, 증거 충분성을 만들어 내지 않습니다. |
+| `missing_evidence` | `EVIDENCE_INSUFFICIENT`, `ARTIFACT_MISSING` | 영향을 받는 주장, 참조, 증거 상태, 아티팩트 가용성, 차단 해소에 필요한 최소 조치를 보여 줍니다. 테스트 결과, 아티팩트 무결성, 증거 충분성을 만들어 내지 않습니다. |
 | `close_blocked` | `CloseTaskResponse.close_state=blocked`와 기본 `ErrorCode` | 구조화된 차단 사유와 다음 행동을 반환합니다. Task를 종료 상태로 표시하지 않습니다. |
 | `residual_risk_present` | `RESIDUAL_RISK_NOT_VISIBLE`, `DECISION_REQUIRED`, 또는 `DECISION_UNRESOLVED` | 잔여 위험을 보여 주고, 활성 닫기 또는 수락 경로가 요구할 때만 `judgment_kind=residual_risk_acceptance`를 묻습니다. |
 
@@ -61,7 +61,7 @@
 | `ACCEPTANCE_REQUIRED` | 필요한 최종 수락이 대기 중이거나, 거부되었거나, 표시된 결과 근거와 호환되지 않습니다. |
 | `PROJECTION_STALE` | 요청한 읽기용 상태/보기가 오래되었거나 실패했습니다. Core 상태가 아니며 그 자체로 닫기 차단 사유가 아닙니다. |
 | `RESIDUAL_RISK_NOT_VISIBLE` | 닫기에 영향을 주는 알려진 잔여 위험이 최종 수락 또는 닫기 전에 보이지 않았습니다. |
-| `ARTIFACT_MISSING` | 참조한 아티팩트가 없거나 무결성/메타데이터 확인에 실패했습니다. |
+| `ARTIFACT_MISSING` | 참조한 아티팩트가 없거나, 사용할 수 없거나, 닫기 근거로 쓸 수 없거나, 무결성/메타데이터 확인에 실패했습니다. |
 | `BASELINE_STALE` | 동작에 필요한 저장소 상태와 baseline이 더 이상 맞지 않습니다. |
 | `VALIDATOR_FAILED` | 필수 활성 validator 또는 차단 사유 확인이 실패했고, 더 구체적인 타입 코드가 없을 때 쓰는 대체 코드입니다. 현재 MVP에서 설계 정책 오류가 아닙니다. 설계 품질 우려는 활성 판단, 차단 사유, 증거, 역량, 잔여 위험 경로로 라우팅되거나 조언으로 남아야 합니다. |
 
@@ -150,13 +150,30 @@ task_id: string | null
 
 `WriteAuthorization.basis_state_version`은 허용 결정에 쓰는 프로젝트 전체 호환성 근거입니다. 오래된 Write Authorization인지 판단할 때는 이 값을 현재 `project_state.state_version`과 비교하며, Task별 시계는 참여하지 않습니다.
 
+<a id="documentation-smoke-error-coverage"></a>
+
+## 문서 스모크 오류 범위
+
+[MVP 계획](../../build/mvp-plan.md#첫-내부-스모크-목표)의 첫 내부 문서 스모크 목표는 활성 공개 오류와 활성 `CloseBlocker.category` 값만 사용해야 합니다. 스모크 전용 코드를 만들지 않고, 완전한 적합성 테스트 모음이나 구현 계획을 정의하지 않습니다.
+
+- 등록된 접점 검증은 Core가 등록된 접점에 맞는 `VerifiedSurfaceContext`를 파생할 때만 오류 없이 성공합니다. 실패는 `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`를 사용합니다. 복사된 `surface_id`는 접근이나 역량의 증거가 아닙니다.
+- 프로젝트 전체 상태 충돌은 `ToolEnvelope.expected_state_version`이 `project_state.state_version`보다 오래되었을 때 `STATE_CONFLICT`를 사용합니다. 실패한 시도는 기록, 이벤트, 아티팩트, 증거, Write Authorization, 닫기 상태, 재실행 행, 상태 버전 증가를 만들면 안 됩니다.
+- `ShapingReadiness` 공백은 담당 경로에 따라 `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, 또는 구조화된 차단 사유로 드러날 수 있습니다. 읽기 전용 상태나 준비 상태 읽기는 상태를 바꾸지 않습니다.
+- `prepare_write decision=allowed`는 담당 범위의 1회용 Write Authorization을 만듭니다. `decision=blocked`는 적용되는 범위, baseline, 역량, 검증, 판단 코드를 사용합니다. `decision=approval_required`는 `APPROVAL_*` 경로를 사용하며 소비 가능한 Write Authorization을 만들면 안 됩니다.
+- `SensitiveActionScope`는 `judgment_kind=sensitive_approval`에 속합니다. 민감 동작 승인 오류는 `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`를 사용합니다. 이 승인은 Write Authorization, 최종 수락, 잔여 위험 수락, 증거, 아티팩트 권한을 대신하지 않습니다.
+- `harness.stage_artifact` 성공은 임시 핸들만 만들고 Core 변경을 만들지 않습니다. 유효한 스테이징 핸들을 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`입니다. 유효하지 않거나 사용할 수 없는 아티팩트 조건은 담당 검증/아티팩트 경로를 사용하며 증거 충분성으로 숨기면 안 됩니다.
+- `harness.record_run`은 호환되는 Write Authorization을 정확히 한 번 소비합니다. Write Authorization이 없으면 `WRITE_AUTHORIZATION_REQUIRED`를 사용합니다. 오래됨, 만료, 철회, 이미 소비됨, 비호환 상태이면 `WRITE_AUTHORIZATION_INVALID`를 사용합니다. 승인 범위 밖 관찰 시도는 적용되는 범위 또는 Write Authorization 관련 코드를 사용합니다.
+- `close_task intent=check`는 차단 사유를 반환하더라도 읽기 전용입니다. `close_task intent=complete`는 구조화된 차단 사유와 함께 `CloseTaskResponse.close_state=blocked`를 반환하거나, 담당 문서가 정의한 complete 차단 사유가 없을 때만 `close_state=closed`를 반환합니다.
+- 닫기 스모크 범위는 증거 차단 사유의 `EVIDENCE_INSUFFICIENT`, 아티팩트 사용 불가 또는 누락 차단 사유의 `ARTIFACT_MISSING`, 최종 수락 차단 사유의 `ACCEPTANCE_REQUIRED`, 보이지만 수락되지 않은 잔여 위험에 대한 `category=residual_risk_acceptance`와 `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED`를 포함해야 합니다. `RESIDUAL_RISK_NOT_VISIBLE`은 아직 보이지 않은 위험에만 둡니다.
+- `close_task intent=supersede`가 유효하지 않으면 supersession, 생명주기, 로컬 접근, 상태 충돌, 복구 차단 사유를 사용합니다. 증거 충분성, 최종 수락, 잔여 위험 수락을 요구하면 안 됩니다. 유효한 supersede가 생명주기와 `project_state.active_task_id`를 함께 바꾸는 경우에도 하나의 프로젝트 전체 상태 변경입니다.
+
 <a id="harnessclose_task-close-blockers"></a>
 
 ## `harness.close_task` 닫기 차단 사유
 
 `CloseTaskResponse.blockers`는 [API Schema Core](schema-core.md#current-position-display-schemas)의 구조화된 `CloseBlocker` 객체를 사용해야 합니다. 설명 문구만 있는 상태 텍스트, 보고서 텍스트, 렌더링된 보기, 에이전트 요약은 닫기 차단 사유 결과가 아닙니다.
 
-`harness.close_task intent=complete`의 닫기 차단 사유는 [Core Model](../core-model.md#close_task)의 결정적 행렬 순서로 정렬합니다. 공개 오류 우선순위는 메서드가 기본 `ErrorCode` 하나를 골라야 할 때 여전히 쓰이지만, complete 차단 행렬의 순서를 바꾸거나 앞선 차단 사유를 뒤의 수락/위험 확인 아래 숨기면 안 됩니다. 증거 차단 사유는 보통 `EVIDENCE_INSUFFICIENT`를 사용합니다. 아티팩트 사용 가능성 차단 사유는 `ARTIFACT_MISSING`을 사용합니다. 해결되지 않은 사용자 판단 차단 사유는 `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED`를 사용합니다. 민감 동작 승인 차단 사유는 `APPROVAL_*` 코드를 사용합니다. 범위 차단 사유는 범위와 baseline 코드를 사용합니다.
+`harness.close_task intent=complete`의 닫기 차단 사유는 [Core Model](../core-model.md#close_task)의 결정적 행렬 순서로 정렬합니다. 공개 오류 우선순위는 메서드가 기본 `ErrorCode` 하나를 골라야 할 때 여전히 쓰이지만, complete 차단 행렬의 순서를 바꾸거나 앞선 차단 사유를 뒤의 수락/위험 확인 아래 숨기면 안 됩니다. 증거 차단 사유는 보통 `EVIDENCE_INSUFFICIENT`를 사용합니다. 사용할 수 없거나 누락된 닫기 관련 아티팩트를 포함한 아티팩트 가용성 차단 사유는 `ARTIFACT_MISSING`을 사용합니다. 해결되지 않은 사용자 판단 차단 사유는 `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED`를 사용합니다. 민감 동작 승인 차단 사유는 `APPROVAL_*` 코드를 사용합니다. 범위 차단 사유는 범위와 baseline 코드를 사용합니다.
 
 `intent=cancel`과 `intent=supersede`는 성공 완료가 아닙니다. 이 intent의 차단 응답은 Task 식별자나 생명주기, 로컬 접근, 복구 제약, cancellation 충돌, supersession 유효성처럼 해당 종료 전이를 무효로 만드는 조건으로 제한합니다. 증거 충분성, 최종 수락, 잔여 위험 수락을 요구하면 안 되며, 그런 누락 조건을 cancellation이나 supersession의 차단 사유로 쓰면 안 됩니다.
 
@@ -186,5 +203,5 @@ Run 실패, violation, Projection 실패, 아티팩트 무결성 실패, validat
 | `ACCEPTANCE_REQUIRED` | 최종 수락 필요 | 표시된 결과 근거에 대해 `judgment_kind=final_acceptance`를 요청하거나 해결합니다. |
 | `RESIDUAL_RISK_NOT_VISIBLE` | 잔여 위험이 보이지 않음 | 최종 수락 또는 닫기 전에 닫기 관련 잔여 위험을 보여 줍니다. |
 | `PROJECTION_STALE` | 읽기용 보기 오래됨 | 그 보기를 새로 고친 뒤 의존합니다. 기준 닫기 상태로 취급하지 않습니다. |
-| `ARTIFACT_MISSING` | 아티팩트 문제 | 누락되었거나 실패한 아티팩트를 다시 첨부, 다시 생성, 교체한 뒤 의존합니다. |
+| `ARTIFACT_MISSING` | 아티팩트 문제 | 누락되었거나 사용할 수 없거나 닫기 근거로 쓸 수 없거나 실패한 아티팩트를 다시 첨부, 다시 생성, 가용성 복구, 교체한 뒤 의존합니다. |
 | `VALIDATOR_FAILED` | 확인 또는 차단 사유 실패 | 특정 validator 또는 차단 사유를 보여 줍니다. 타입 있는 차단 사유가 없을 때만 이 대체 코드를 사용합니다. 설계 정책 차단 사유로 사용하면 안 됩니다. |

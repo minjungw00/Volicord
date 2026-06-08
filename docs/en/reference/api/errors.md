@@ -2,7 +2,7 @@
 
 ## What this document helps you do
 
-Use this reference for active current MVP public error codes, primary-error precedence, blocked and dry-run behavior, `tool_invocations` replay, state conflict behavior, close blocker behavior, and user-facing label guidance.
+Use this reference for active current MVP public error codes, primary-error precedence, blocked and dry-run behavior, `tool_invocations` replay, state conflict behavior, documentation smoke-target error coverage, close blocker behavior, and user-facing label guidance.
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server.
 
@@ -30,7 +30,7 @@ Active MVP behavior defaults to cooperative checks with limited detective report
 | `unsupported_surface` | `CAPABILITY_INSUFFICIENT` or `VALIDATION_FAILED` | Reduce the request, move to a capable surface, or return a blocker. Do not emulate unsupported authority with prose. |
 | `out_of_scope` | `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `NO_ACTIVE_CHANGE_UNIT`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | Hold the affected action, show the mismatch, narrow to current scope, request the specific user-owned scope judgment, or apply the resolved scope change through `harness.update_scope`. |
 | `missing_judgment` | `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `ACCEPTANCE_REQUIRED` | Ask or resolve the focused active `UserJudgment`. Do not collapse product, technical, scope, sensitive approval, final acceptance, residual-risk acceptance, cancellation, or later/reserved QA waiver and verification-risk routes into one broad approval. |
-| `missing_evidence` | `EVIDENCE_INSUFFICIENT`, `ARTIFACT_MISSING` | Show the affected claim, refs, evidence status, and smallest unblocker. Do not invent test results, artifact integrity, or evidence sufficiency. |
+| `missing_evidence` | `EVIDENCE_INSUFFICIENT`, `ARTIFACT_MISSING` | Show the affected claim, refs, evidence status, artifact availability, and smallest unblocker. Do not invent test results, artifact integrity, or evidence sufficiency. |
 | `close_blocked` | `CloseTaskResponse.close_state=blocked` plus the primary `ErrorCode` | Return structured blockers and next actions. Do not mark the Task terminal. |
 | `residual_risk_present` | `RESIDUAL_RISK_NOT_VISIBLE`, `DECISION_REQUIRED`, or `DECISION_UNRESOLVED` | Show the risk and ask `judgment_kind=residual_risk_acceptance` only when the active close or acceptance path requires it. |
 
@@ -61,7 +61,7 @@ Active MVP behavior defaults to cooperative checks with limited detective report
 | `ACCEPTANCE_REQUIRED` | Required final acceptance is pending, rejected, or not compatible with the visible result basis. |
 | `PROJECTION_STALE` | A requested readable status/view is stale or failed. It is not Core state and is not a close blocker by itself. |
 | `RESIDUAL_RISK_NOT_VISIBLE` | Known close-relevant residual risk has not been made visible before final acceptance or close. |
-| `ARTIFACT_MISSING` | A referenced artifact is missing or failed integrity/metadata checks. |
+| `ARTIFACT_MISSING` | A referenced artifact is missing, unavailable, unusable for the close basis, or failed integrity/metadata checks. |
 | `BASELINE_STALE` | Baseline no longer matches the repository state required by the operation. |
 | `VALIDATOR_FAILED` | Fallback when a required active validator or blocker check failed and no more specific typed code applies. In the current MVP, this is not a design-policy error. Design-quality concerns must route through an active judgment, blocker, evidence, capability, or residual-risk path, or remain advisory. |
 
@@ -150,13 +150,30 @@ task_id: string | null
 
 `WriteAuthorization.basis_state_version` is the project-wide compatibility basis for the allow decision. Stale Write Authorization detection compares it with current `project_state.state_version`; no Task-local clock participates.
 
+<a id="documentation-smoke-error-coverage"></a>
+
+## Documentation Smoke Error Coverage
+
+The first internal documentation smoke target in [MVP Plan](../../build/mvp-plan.md#first-internal-smoke-target) must use only active public errors and active `CloseBlocker.category` values. It does not define smoke-only codes, a complete conformance suite, or an implementation plan.
+
+- Registered surface verification succeeds without an error only when Core derives a compatible `VerifiedSurfaceContext` for the registered surface. Failure uses `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, or `CAPABILITY_INSUFFICIENT`; a copied `surface_id` is not proof of access or capability.
+- Project-wide state conflict uses `STATE_CONFLICT` when `ToolEnvelope.expected_state_version` is stale against `project_state.state_version`. The failed attempt must not create records, events, artifacts, evidence, Write Authorization, close state, replay rows, or a state-version increment.
+- A shaping readiness gap may surface `NO_ACTIVE_CHANGE_UNIT`, `SCOPE_REQUIRED`, `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, or a structured blocker, depending on the owner path. Read-only status or readiness reads do not mutate state.
+- `prepare_write decision=allowed` creates the owner-scoped single-use Write Authorization. `decision=blocked` uses the applicable scope, baseline, capability, validation, or decision code. `decision=approval_required` uses the `APPROVAL_*` path and must not create a consumable Write Authorization.
+- `SensitiveActionScope` belongs to `judgment_kind=sensitive_approval`. Sensitive approval errors use `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, or `APPROVAL_EXPIRED`; that approval does not replace Write Authorization, final acceptance, residual-risk acceptance, evidence, or artifact authority.
+- `harness.stage_artifact` success creates only a temporary handle and no Core mutation. `harness.record_run` is the active path that can promote a valid staged handle to persistent `ArtifactRef`; invalid or unavailable artifact conditions use the owner validation/artifact path and must not be hidden as evidence sufficiency.
+- `harness.record_run` consumes a compatible Write Authorization exactly once. Missing authorization uses `WRITE_AUTHORIZATION_REQUIRED`; stale, expired, revoked, consumed, or incompatible authorization uses `WRITE_AUTHORIZATION_INVALID`; observed-outside-authorized-scope attempts use the applicable scope or authorization code.
+- `close_task intent=check` is read-only even when it returns blockers. `close_task intent=complete` returns `CloseTaskResponse.close_state=blocked` with structured blockers or `close_state=closed` only when no owner-defined complete blocker remains.
+- Close smoke coverage must include `EVIDENCE_INSUFFICIENT` for evidence blockers, `ARTIFACT_MISSING` for artifact unavailable or missing blockers, `ACCEPTANCE_REQUIRED` for final acceptance blockers, and `DECISION_REQUIRED` or `DECISION_UNRESOLVED` with `category=residual_risk_acceptance` for visible but unaccepted residual risk. `RESIDUAL_RISK_NOT_VISIBLE` is reserved for risk that has not been shown.
+- `close_task intent=supersede` uses supersession, lifecycle, local-access, state-conflict, or recovery blockers when invalid. It must not require evidence sufficiency, final acceptance, or residual-risk acceptance, and a valid supersede that updates lifecycle plus `project_state.active_task_id` is one project-wide state mutation.
+
 <a id="harnessclose_task-close-blockers"></a>
 
 ## `harness.close_task` Close Blockers
 
 `CloseTaskResponse.blockers` must use structured `CloseBlocker` objects from [API Schema Core](schema-core.md#current-position-display-schemas). Prose-only status text, report text, rendered views, or agent summaries are not close-blocker results.
 
-For `harness.close_task intent=complete`, close blockers are ordered by the deterministic matrix in [Core Model](../core-model.md#close_task). Public error precedence still selects between public `ErrorCode` values when a method needs one primary error, but it must not reorder the complete blocker matrix or hide earlier blockers behind later acceptance or risk checks. Evidence blockers normally use `EVIDENCE_INSUFFICIENT`; artifact availability blockers use `ARTIFACT_MISSING`; unresolved user judgment blockers use `DECISION_REQUIRED` or `DECISION_UNRESOLVED`; sensitive-action permission blockers use the `APPROVAL_*` codes; scope blockers use the scope and baseline codes.
+For `harness.close_task intent=complete`, close blockers are ordered by the deterministic matrix in [Core Model](../core-model.md#close_task). Public error precedence still selects between public `ErrorCode` values when a method needs one primary error, but it must not reorder the complete blocker matrix or hide earlier blockers behind later acceptance or risk checks. Evidence blockers normally use `EVIDENCE_INSUFFICIENT`; artifact availability blockers, including unavailable or missing close-relevant artifacts, use `ARTIFACT_MISSING`; unresolved user judgment blockers use `DECISION_REQUIRED` or `DECISION_UNRESOLVED`; sensitive-action permission blockers use the `APPROVAL_*` codes; scope blockers use the scope and baseline codes.
 
 `intent=cancel` and `intent=supersede` are not successful completion. Their blocked responses are limited to the conditions that make that terminal transition invalid, such as task identity or lifecycle, local access, recovery constraints, cancellation conflict, and supersession validity. They must not require evidence sufficiency, final acceptance, or residual-risk acceptance and must not use those missing conditions as blockers for cancellation or supersession.
 
@@ -186,5 +203,5 @@ These labels are display guidance, not new public error codes.
 | `ACCEPTANCE_REQUIRED` | final acceptance needed | Request or resolve `judgment_kind=final_acceptance` for the visible result basis. |
 | `RESIDUAL_RISK_NOT_VISIBLE` | residual risk not visible | Show the close-relevant risk before final acceptance or close. |
 | `PROJECTION_STALE` | stale readable view | Refresh the readable view before relying on it; do not treat it as canonical close state. |
-| `ARTIFACT_MISSING` | artifact issue | Reattach, regenerate, or replace the missing or failed artifact before relying on it. |
+| `ARTIFACT_MISSING` | artifact issue | Reattach, regenerate, restore availability, or replace the missing, unavailable, unusable, or failed artifact before relying on it. |
 | `VALIDATOR_FAILED` | check or blocker failed | Show the specific validator or blocker when available; use this fallback only when no typed blocker applies. Do not use it as a design-policy blocker. |
