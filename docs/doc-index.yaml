@@ -17,7 +17,7 @@ docs:
       en: docs/en/README.md
       ko: docs/ko/README.md
     default_for_agent: en
-    owns: "Language-specific documentation entry points, current route overview, and reader guidance."
+    owns: "Language-specific documentation entry points, current route overview, reader guidance, and compact pointers to Reference, Later, Maintain, and route metadata."
     does_not_own: "Product thesis, exact contracts, implementation readiness, or detailed owner routing."
 
   - doc_id: start
@@ -67,7 +67,7 @@ docs:
       en: docs/en/build/mvp-plan.md
       ko: docs/ko/build/mvp-plan.md
     default_for_agent: en
-    owns: "Implementation sequencing, current repository status, readiness decisions, the closed active MVP boundary, and active/later planning scope."
+    owns: "Implementation sequencing, current repository status, readiness decisions, the closed active MVP boundary, shaping readiness planning scope, first smoke target, and active/later planning exclusions."
     does_not_own: "Runtime records, generated artifacts, exact method-name sets, detailed schemas, enum value sets, DDL, or accepted implementation behavior."
 
   - doc_id: reference.index
@@ -77,8 +77,8 @@ docs:
       en: docs/en/reference/README.md
       ko: docs/ko/reference/README.md
     default_for_agent: en
-    owns: "Reference owner routing for exact contract questions and compact owner selection."
-    does_not_own: "Detailed schemas, DDL, transition tables, templates, errors, retrieval guidance, or security guarantees."
+    owns: "Reference owner routing for exact contract questions, including active MVP boundary, verified local surface access, project-wide `state_version`, scope schemas, staged artifacts, evidence/close/projection/security/judgment/shaping owners, later-only routing, and maintain-route pointers."
+    does_not_own: "Detailed schemas, DDL, transition tables, templates, errors, retrieval guidance, security guarantees, or implementation readiness."
 
   - doc_id: reference.core-model
     status: active
@@ -87,7 +87,7 @@ docs:
       en: docs/en/reference/core-model.md
       ko: docs/ko/reference/core-model.md
     default_for_agent: en
-    owns: "Core authority, task lifecycle, user judgment boundaries, final/residual-risk non-substitution, active gate meaning, reserved gate promotion boundary, close blockers, waivers, and residual risk."
+    owns: "Core authority, task lifecycle, `ShapingReadiness` meaning, user judgment boundaries, final/residual-risk non-substitution, active gate meaning, `CompletionPolicy` and `EvidenceSummary` close effects, reserved gate promotion boundary, `close_task` blocker matrix, waivers, and residual risk."
     does_not_own: "Wire schema detail, exact enum/value sets, storage layout, public error precedence, connector recipes, or template bodies."
 
   - doc_id: reference.api.mvp-api
@@ -97,7 +97,7 @@ docs:
       en: docs/en/reference/api/mvp-api.md
       ko: docs/ko/reference/api/mvp-api.md
     default_for_agent: en
-    owns: "Method-level request/response behavior for the active public API methods, including `harness.update_scope` scope updates and `harness.prepare_write` authorization effects."
+    owns: "Method-level request/response behavior for active public API methods, including verified local surface request conditions, `harness.update_scope`, `harness.prepare_write` authorization effects, `harness.stage_artifact`, `harness.record_run`, and `harness.close_task` behavior."
     does_not_own: "Exact active method-name value set, shared schema definitions, enum value sets, error precedence, storage DDL, or core lifecycle authority."
 
   - doc_id: reference.api.schema-core
@@ -107,7 +107,7 @@ docs:
       en: docs/en/reference/api/schema-core.md
       ko: docs/ko/reference/api/schema-core.md
     default_for_agent: en
-    owns: "Exact active method-name set, shared API schemas, envelopes, common response shapes, active enum and schema value sets, rendered-label boundaries, and profile-gated value names."
+    owns: "Exact active method-name set, shared API schemas, envelopes, common response shapes, `ToolEnvelope.expected_state_version`, `LocalSurfaceRegistration`, `VerifiedSurfaceContext`, `StagedArtifactHandle`, `ArtifactInput`, `CompletionPolicy`, `EvidenceSummary`, `SensitiveActionScope`, product-file `AuthorizedAttemptScope`, `ShapingReadiness`, close blocker schemas, active enum and schema value sets, rendered-label boundaries, and profile-gated value names."
     does_not_own: "Method-specific API behavior, persisted DDL, public error precedence, security guarantee claims, later schema bodies, or template bodies."
 
   - doc_id: reference.api.errors
@@ -117,7 +117,7 @@ docs:
       en: docs/en/reference/api/errors.md
       ko: docs/ko/reference/api/errors.md
     default_for_agent: en
-    owns: "Public error taxonomy, status taxonomy, error precedence, general blocked/dry-run response semantics, and idempotency error behavior."
+    owns: "Public error taxonomy, status taxonomy, error precedence, local surface errors, `STATE_VERSION_CONFLICT`, general blocked/dry-run response semantics, `close_task` blocker error mapping, and idempotency error behavior."
     does_not_own: "Core gates, method payload schemas, method-specific durable state effects such as `prepare_write` authorization creation, storage records, or connector fallback rules."
 
   - doc_id: reference.storage
@@ -127,7 +127,7 @@ docs:
       en: docs/en/reference/storage.md
       ko: docs/ko/reference/storage.md
     default_for_agent: en
-    owns: "Storage layout, DDL, persisted records such as `write_authorizations`, locks, artifact references, idempotency, and migrations."
+    owns: "Storage layout, DDL, `project_state.state_version` as the single public project-wide state clock, persisted records such as `surfaces`, `write_authorizations`, staged artifact storage, evidence summary rows, locks, artifact references, idempotency, and migrations."
     does_not_own: "API wire schema, security guarantees, projection templates, or generated runtime data."
 
   - doc_id: reference.runtime-boundaries
@@ -147,7 +147,7 @@ docs:
       en: docs/en/reference/security.md
       ko: docs/ko/reference/security.md
     default_for_agent: en
-    owns: "Security assets, trust boundaries, explicit current MVP non-claims, guarantee wording boundaries, and profile-gated security display boundaries."
+    owns: "Security assets, trust boundaries, explicit current MVP non-claims, cooperative/detective guarantee wording boundaries, capability-backed detective gating, sensitive-action permission versus product-file write scope, and profile-gated security display boundaries."
     does_not_own: "API schemas, storage DDL, connector context budgets, exact profile fields, or OS-level enforcement."
 
   - doc_id: reference.agent-integration
@@ -157,7 +157,7 @@ docs:
       en: docs/en/reference/agent-integration.md
       ko: docs/ko/reference/agent-integration.md
     default_for_agent: en
-    owns: "Agent connector behavior, capability profiles, one-language-per-`doc_id` retrieval guidance, context push/pull guidance, fallback semantics, surface recipes, and agent guarantee wording limits."
+    owns: "Agent connector behavior, `capability_profile`, verified surface context in agent packets, detective display gating from capability checks, one-language-per-`doc_id` retrieval guidance, context push/pull guidance, fallback semantics, surface recipes, and agent guarantee wording limits."
     does_not_own: "Core state authority, public API schemas, storage layout, security guarantee meanings, or security proof."
 
   - doc_id: reference.projection-and-templates
@@ -167,8 +167,8 @@ docs:
       en: docs/en/reference/projection-and-templates.md
       ko: docs/ko/reference/projection-and-templates.md
     default_for_agent: en
-    owns: "Derived display boundaries, projection/status-card non-authority, rendered display labels, template bodies, freshness, and managed-block behavior."
-    does_not_own: "Source-of-truth state, storage authority, API method contracts, or evidence authority."
+    owns: "Read-only derived display boundaries, projection/status-card non-authority, rendered display labels, template bodies, freshness, and later-only boundary for projection reconcile, persistent projection jobs, and managed block drift repair."
+    does_not_own: "Source-of-truth state, storage authority, API method contracts, evidence authority, or active projection mutation paths."
 
   - doc_id: reference.conformance
     status: active
@@ -177,7 +177,7 @@ docs:
       en: docs/en/reference/conformance.md
       ko: docs/ko/reference/conformance.md
     default_for_agent: en
-    owns: "Conformance meaning, future fixture shape, assertion authority, non-executable suite boundaries, and representative examples."
+    owns: "Conformance meaning, future fixture shape, assertion authority, active smoke-target examples, capability honesty assertions, non-executable suite boundaries, and representative examples."
     does_not_own: "Executable runners, runtime conformance reports, active implementation output, or API schemas."
 
   - doc_id: reference.design-quality
@@ -207,7 +207,7 @@ docs:
       en: docs/en/later/index.md
       ko: docs/ko/later/index.md
     default_for_agent: en
-    owns: "Later candidate names and promotion boundaries only, including deferred capture, reconcile, projection jobs, gates, observation, full-format judgment presentation, and future fixture families."
+    owns: "Later candidate names and promotion boundaries only, including `captured_artifact`, native artifact capture, projection reconcile, persistent projection jobs, managed block drift repair, full Evidence Manifest, `qa_gate`, `verification_gate`, observation, full-format judgment presentation, future operations, and future fixture families."
     does_not_own: "Active MVP requirements, active API/schema contracts, full template bodies, full fixture YAML, later schema bodies, or implementation readiness."
 
   - doc_id: maintain.authoring-guide

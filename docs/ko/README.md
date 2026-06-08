@@ -26,7 +26,9 @@
 
 ## 읽는 방법
 
-먼저 [시작하기](start.md)를 읽습니다. 작업에 따라 [사용자 가이드](use/user-guide.md)나 [에이전트 가이드](use/agent-guide.md)를 이어서 봅니다. 현재 MVP 범위와 서버 코딩 전 결정은 [MVP 계획](build/mvp-plan.md)에서 확인합니다. 정확한 스키마, API 동작, 저장소, 상태 전이, 보안 표현, 상태 보기와 템플릿 규칙, 적합성 의미, 통합 동작, 용어의 담당 문서는 [참조 색인](reference/README.md)에서 찾습니다.
+먼저 [시작하기](start.md)를 읽습니다. 작업에 따라 [사용자 가이드](use/user-guide.md)나 [에이전트 가이드](use/agent-guide.md)를 이어서 봅니다. 현재 MVP 범위와 서버 코딩 전 결정은 [MVP 계획](build/mvp-plan.md)에서 확인합니다. 정확한 스키마, API 동작, 저장소, 상태 전이, 보안 표현, 상태 보기와 템플릿 규칙, 적합성 의미, 통합 동작, 용어, 문서 점검, 번역 규칙의 담당 문서는 [참조 색인](reference/README.md)에서 찾습니다.
+
+참조 색인은 확인된 로컬 접점 접근, 프로젝트 전체 `state_version`, `SensitiveActionScope`, 제품 파일 쓰기 범위인 `AuthorizedAttemptScope`, 스테이징된 아티팩트 처리, `CompletionPolicy`, `EvidenceSummary`, `close_task` 차단 사유, 읽기 전용 Projection, 역량 프로필, 탐지형 보장 조건, 사용자 소유 판단, 구체화 준비 상태의 활성 담당 문서로 안내합니다.
 
 현재 MVP 경로 밖의 자료는 [이후 후보 색인](later/index.md)에서 봅니다. 이후 후보 자료는 관련 담당 문서가 범위와 증명 기대를 함께 승격하기 전까지 활성 전달 범위가 아닙니다.
 
@@ -34,9 +36,9 @@
 
 ## 현재 MVP 경계
 
-현재 MVP는 평소 말 입력과 Task 생성, `update_scope`, 사용자 판단 기록, 민감 동작 승인 기록, 경로 수준 `prepare_write`와 Write Authorization, `record_run`, `stage_artifact`를 통한 스테이징된 아티팩트 등록, 간결한 `EvidenceSummary`, `close_task` 차단 사유 계산, 읽는 시점의 상태/Projection, 등록된 로컬 접점 접근, 협력형 보장 표시, 관련 역량 확인이 통과한 뒤의 탐지형 보장 표시에만 닫혀 있습니다.
+현재 MVP는 평소 말 입력과 Task 생성, `harness.update_scope`, 사용자 판단 기록, 민감 동작 승인 기록, 경로 수준 `harness.prepare_write`와 Write Authorization, `harness.record_run`, `harness.stage_artifact`를 통한 스테이징된 아티팩트 등록, 간결한 `EvidenceSummary`, `harness.close_task` 차단 사유 계산, 읽을 때 계산되는 읽기 전용 상태/Projection 출력, 등록된 접점에서 확인된 로컬 접점 접근, 협력형 보장 표시, 관련 역량 확인이 통과한 뒤의 탐지형 보장 표시에만 닫혀 있습니다.
 
-현재 MVP에는 `captured_artifact`, 접점 자체 아티팩트 캡처, Projection reconcile, 영속 Projection 작업, managed block drift 복구, 전체 Evidence Manifest, QA gate, verification gate, 명령 실행 관찰, 네트워크 관찰, 비밀값 접근 관찰, 명령/네트워크/비밀값 도구 실행 전 차단, Question Queue, Assumption Register, 영속 아티팩트로서의 Discovery Brief가 포함되지 않습니다.
+현재 MVP에는 `captured_artifact`, 접점 자체 아티팩트 캡처, projection reconcile, 영속 Projection 작업, 관리 블록 불일치 복구, 전체 Evidence Manifest, `qa_gate`, `verification_gate`, 명령 실행 관찰, 네트워크 관찰, 비밀값 접근 관찰, 명령/네트워크/비밀값 도구 실행 전 차단, Question Queue, Assumption Register, 영속 아티팩트로서의 Discovery Brief가 포함되지 않습니다. 이 항목들은 승격 전까지 [이후 후보 색인](later/index.md)의 이후 전용 자료입니다.
 
 ## 품질 규칙
 

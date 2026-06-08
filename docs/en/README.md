@@ -26,7 +26,9 @@ This entry point routes only to the compact active structure plus the route inde
 
 ## How To Read
 
-Start with [Start](start.md), then use [User Guide](use/user-guide.md) or [Agent Guide](use/agent-guide.md) depending on the task. Use [MVP Plan](build/mvp-plan.md) for the current MVP scope and server-coding readiness decisions. Use [Reference Index](reference/README.md) to choose the single owner for exact schemas, API behavior, storage, state transitions, security wording, projection/template rules, conformance meaning, integration behavior, and terminology.
+Start with [Start](start.md), then use [User Guide](use/user-guide.md) or [Agent Guide](use/agent-guide.md) depending on the task. Use [MVP Plan](build/mvp-plan.md) for the current MVP scope and server-coding readiness decisions. Use [Reference Index](reference/README.md) to choose the single owner for exact schemas, API behavior, storage, state transitions, security wording, projection/template rules, conformance meaning, integration behavior, terminology, maintain checks, and translation rules.
+
+The Reference Index routes the active owners for verified local surface access, project-wide `state_version`, `SensitiveActionScope`, product-file `AuthorizedAttemptScope`, staged artifact handling, `CompletionPolicy`, `EvidenceSummary`, `close_task` blockers, read-only projections, capability profiles, detective guarantee gating, user-owned judgments, and shaping readiness.
 
 Use [Later Index](later/index.md) only for material outside the active MVP path. Later candidate material does not become active delivery unless the relevant owner promotes it with scope and proof expectations.
 
@@ -34,9 +36,9 @@ Use [Authoring Guide](maintain/authoring-guide.md), [Translation Guide](maintain
 
 ## Active MVP Boundary
 
-The active MVP is closed to plain-language intake and Task creation, `update_scope`, user judgment recording, sensitive approval recording, path-level `prepare_write` and Write Authorization, `record_run`, staged artifact registration through `stage_artifact`, compact `EvidenceSummary`, `close_task` blocker calculation, read-time status/projection, registered local surface access, cooperative guarantee display, and detective guarantee display only after the relevant capability check has passed.
+The active MVP is closed to plain-language intake and Task creation, `harness.update_scope`, user judgment recording, sensitive approval recording, path-level `harness.prepare_write` and Write Authorization, `harness.record_run`, staged artifact registration through `harness.stage_artifact`, compact `EvidenceSummary`, `harness.close_task` blocker calculation, read-time read-only status/projection output, verified local surface access through a registered surface, cooperative guarantee display, and detective guarantee display only after the relevant capability check has passed.
 
-The active MVP does not include `captured_artifact`, native artifact capture, projection reconcile, persistent projection jobs, managed block drift repair, full Evidence Manifest, QA gate, verification gate, command execution observation, network observation, secret access observation, command/network/secret pre-tool blocking, Question Queue, Assumption Register, or Discovery Brief as a persistent artifact.
+The active MVP does not include `captured_artifact`, native artifact capture, projection reconcile, persistent projection jobs, managed block drift repair, full Evidence Manifest, `qa_gate`, `verification_gate`, command execution observation, network observation, secret access observation, command/network/secret pre-tool blocking, Question Queue, Assumption Register, or Discovery Brief as a persistent artifact. Those remain later-only through [Later Index](later/index.md) until promoted.
 
 ## Quality Rules
 

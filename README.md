@@ -16,13 +16,13 @@ This repository is not the user's Product Repository and not a Harness Runtime H
 
 ## Active MVP Boundary / 현재 MVP 경계
 
-The active MVP is closed to plain-language intake and Task creation, scope updates, user judgment and sensitive approval recording, path-level `prepare_write` and Write Authorization, `record_run`, staged artifact registration through `stage_artifact`, `EvidenceSummary`, `close_task` blocker calculation, read-time status/projection, registered local surface access, cooperative guarantees, and detective guarantees only after the relevant capability check has passed.
+The active MVP is closed to plain-language intake and Task creation, `harness.update_scope`, user judgment and sensitive approval recording, path-level `harness.prepare_write` and Write Authorization, `harness.record_run`, staged artifact registration through `harness.stage_artifact`, `EvidenceSummary`, `harness.close_task` blocker calculation, read-time read-only status/projection output, verified local surface access through a registered surface, cooperative guarantees, and detective guarantees only after the relevant capability check has passed.
 
-현재 MVP는 평소 말 입력과 Task 생성, 범위 갱신, 사용자 판단과 민감 동작 승인 기록, 경로 수준 `prepare_write`와 Write Authorization, `record_run`, `stage_artifact`를 통한 스테이징된 아티팩트 등록, `EvidenceSummary`, `close_task` 차단 사유 계산, 읽는 시점의 상태/Projection, 등록된 로컬 접점 접근, 협력형 보장, 관련 역량 확인이 통과한 뒤의 탐지형 보장에만 닫혀 있습니다.
+현재 MVP는 평소 말 입력과 Task 생성, `harness.update_scope`, 사용자 판단과 민감 동작 승인 기록, 경로 수준 `harness.prepare_write`와 Write Authorization, `harness.record_run`, `harness.stage_artifact`를 통한 스테이징된 아티팩트 등록, `EvidenceSummary`, `harness.close_task` 차단 사유 계산, 읽을 때 계산되는 읽기 전용 상태/Projection 출력, 등록된 접점에서 확인된 로컬 접점 접근, 협력형 보장, 관련 역량 확인이 통과한 뒤의 탐지형 보장에만 닫혀 있습니다.
 
-Future capture, reconcile, persistent projection jobs, managed block drift repair, full evidence manifests, QA/verification gates, command/network/secret observation or pre-tool blocking, Question Queue, Assumption Register, and Discovery Brief as a persistent artifact are later material unless an owner promotes them.
+Later-only material remains in [Later Index](docs/en/later/index.md) / [이후 후보 색인](docs/ko/later/index.md): `captured_artifact`, native artifact capture, projection reconcile, persistent projection jobs, managed block drift repair, full Evidence Manifest, `qa_gate` / `verification_gate`, command/network/secret observation or pre-tool blocking, Question Queue, Assumption Register, and Discovery Brief as a persistent artifact.
 
-향후 캡처, reconcile, 영속 Projection 작업, 관리 블록 drift 복구, 전체 Evidence Manifest, QA/verification gate, 명령/네트워크/비밀값 관찰이나 도구 실행 전 차단, Question Queue, Assumption Register, 영속 아티팩트로서의 Discovery Brief는 담당 문서가 승격하기 전까지 이후 자료입니다.
+이후 전용 자료는 [Later Index](docs/en/later/index.md) / [이후 후보 색인](docs/ko/later/index.md)에 남아 있습니다. 여기에는 `captured_artifact`, 접점 자체 아티팩트 캡처, projection reconcile, 영속 Projection 작업, 관리 블록 불일치 복구, 전체 Evidence Manifest, `qa_gate` / `verification_gate`, 명령/네트워크/비밀값 관찰이나 도구 실행 전 차단, Question Queue, Assumption Register, 영속 아티팩트로서의 Discovery Brief가 포함됩니다.
 
 ## Current Routes / 현재 경로
 
@@ -49,6 +49,10 @@ Start at [docs/README.md](docs/README.md) to choose a language. English and Kore
 Active routes stay in the compact structure above. Use the reference index to find exact contract owners. Do not restore stale routes, historical rewrite notes, old cleanup records, or migration notes into active docs.
 
 활성 경로는 위의 현재 간결 구조에만 둡니다. 정확한 계약 담당 문서는 참조 색인에서 찾습니다. 오래된 경로, 과거 재작성 기록, 예전 정리 기록, 마이그레이션 메모를 활성 문서로 되돌리지 않습니다.
+
+The [Reference Index](docs/en/reference/README.md) / [참조 색인](docs/ko/reference/README.md) routes named owner documents for active MVP boundary questions, verified local surface access, project-wide `state_version`, `SensitiveActionScope`, product-file `AuthorizedAttemptScope`, staged artifacts, `CompletionPolicy`, `EvidenceSummary`, `close_task` blockers, read-only projections, capability profiles, detective guarantee gating, user-owned judgments, shaping readiness, maintain checks, and translation rules.
+
+[Reference Index](docs/en/reference/README.md) / [참조 색인](docs/ko/reference/README.md)은 현재 MVP 경계, 확인된 로컬 접점 접근, 프로젝트 전체 `state_version`, `SensitiveActionScope`, 제품 파일 쓰기 범위인 `AuthorizedAttemptScope`, 스테이징된 아티팩트, `CompletionPolicy`, `EvidenceSummary`, `close_task` 차단 사유, 읽기 전용 Projection, 역량 프로필, 탐지형 보장 조건, 사용자 소유 판단, 구체화 준비 상태, 문서 점검, 번역 규칙의 담당 문서로 안내합니다.
 
 Do not list profile-gated values as default active MVP values, describe later candidates as active requirements, or make unsupported preventive, isolation, sandboxing, tamper-proof, or default tool-blocking security claims.
 
