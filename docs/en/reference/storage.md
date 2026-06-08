@@ -424,16 +424,14 @@ required.
 safe metadata. Storage implements it through `artifacts` plus `artifact_links`;
 see [API Schema Core: ArtifactRef](api/schema-core.md#artifactref).
 
-Artifact registration accepts only the owner-documented `ArtifactInput`
-sources: `staged_file`, `captured_artifact`, or `existing_artifact`. A staged
-handle must be resolved by the owner path before storage commits the artifact
-row. A `captured_artifact` handle must be an owner-issued captured handle from a
-documented captured-handle path, and the active surface must support presenting
-that handle. An
-`existing_artifact` input must name an already registered `ArtifactRef` that
-belongs to the same project and has a compatible owner relation. Caller-supplied
-raw filesystem paths, raw capture-adapter outputs, and native capture claims are
-not registration authority in the baseline profile.
+Artifact registration accepts only the active owner-documented `ArtifactInput`
+sources: `staged_file` or `existing_artifact`. A `staged_file` handle must come
+from the active `stage_artifact` utility and must be resolved by the owner path
+before storage commits the artifact row. An `existing_artifact` input must name
+an already registered `ArtifactRef` that belongs to the same project and has a
+compatible owner relation. Caller-supplied raw filesystem paths,
+`captured_artifact` handles, raw capture-adapter outputs, and native capture
+claims are not registration authority in the active MVP.
 
 Registering an `existing_artifact` reuses the registered artifact row only when
 its availability, integrity facts, redaction state, and owner relation remain

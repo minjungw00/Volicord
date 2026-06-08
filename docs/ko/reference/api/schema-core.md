@@ -192,15 +192,14 @@ ArtifactRelationOwner:
 
 ## ArtifactInput
 
-`ArtifactInput`은 `harness.record_run`에서 문서화된 스테이징, 캡처, 기존 아티팩트 핸들로만 받습니다. 임의 파일 읽기 권한을 부여하지 않습니다. 캡처 핸들은 문서화된 캡처 경로에서 담당 경로가 발급한 불투명 핸들이어야 하며, 호출자가 임의로 준 원시 캡처 어댑터 출력이 아닙니다.
+`ArtifactInput`은 `harness.record_run`에서 활성 `stage_artifact` 유틸리티가 만든 문서화된 스테이징 핸들이나 이미 등록된 아티팩트 참조로만 받습니다. 임의 파일 읽기 권한을 부여하지 않습니다. `stage_artifact`는 현재 MVP의 스테이징 유틸리티이지 접점 자체 아티팩트 캡처나 일반 파일시스템 읽기 API가 아닙니다.
 
 ```yaml
 ArtifactInput:
   artifact_input_id: string
-  source_kind: staged_file | captured_artifact | existing_artifact
+  source_kind: staged_file | existing_artifact
   relation: string
   staged_uri: string | null
-  captured_handle: string | null
   existing_artifact_ref: ArtifactRef | null
   display_name: string | null
   content_type: string
@@ -208,7 +207,7 @@ ArtifactInput:
   expected_size_bytes: integer | null
 ```
 
-`source_kind`에 맞는 출처 필드 하나만 있어야 합니다. `captured_artifact`에는 문서화된 캡처 핸들 경로가 필요하고, 활성 접점이 그 핸들을 제시할 수 있어야 합니다. 기준 `reference-local-mcp` 프로필에는 접점 자체 캡처 역량이 없습니다. 잘못된 출처 형태, 호출자가 임의로 준 경로, 원시 캡처 어댑터 출력, 원시 비밀값, 토큰, 민감한 전체 로그는 변경 전에 거부됩니다.
+`source_kind`에 맞는 출처 필드 하나만 있어야 합니다. `staged_file`에는 `staged_uri`, `existing_artifact`에는 `existing_artifact_ref`가 필요합니다. `staged_uri`는 담당 경로가 승인한 `stage_artifact` 경로에서 나온 안전한 핸들이어야 합니다. `captured_artifact`, 캡처 핸들, 접점 자체 아티팩트 캡처, 호출자가 임의로 준 경로, 원시 캡처 어댑터 출력, 원시 비밀값, 토큰, 민감한 전체 로그는 현재 MVP 밖이며 변경 전에 거부됩니다.
 
 <a id="evidence-and-pre-write-scope-schemas"></a>
 
@@ -500,7 +499,7 @@ policy_override
 | `ArtifactRef.produced_by` | `lead_agent`, `harness` |
 | `ArtifactRef.retention_class` | `task`, `project`, `temporary` |
 | `ArtifactRelationOwner.record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` |
-| `ArtifactInput.source_kind` | `staged_file`, `captured_artifact`, `existing_artifact` |
+| `ArtifactInput.source_kind` | `staged_file`, `existing_artifact` |
 | `EvidenceCoverageItem.coverage_state` | `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, `blocked` |
 | `EvidenceSummary.status` | `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked` |
 | `AuthorizedAttemptScope.guarantee_level` | `cooperative`, `detective` |
@@ -529,9 +528,9 @@ policy_override
 | `ValidatorResult.findings.severity` | `info`, `warning`, `error`, `blocker` |
 | `SensitiveCategory` | `auth_change`, `permission_model_change`, `schema_change`, `dependency_change`, `public_api_change`, `destructive_write`, `production_config_change`, `ci_cd_change`, `infra_or_deployment_change`, `privacy_or_pii_change`, `data_export`, `telemetry_or_logging_change`, `license_or_compliance_change`, `billing_or_cost_change`, `model_or_prompt_policy_change`, `policy_override` |
 
-`GuaranteeDisplay.level`에서 `cooperative`는 현재 MVP의 기본값입니다. `detective`도 현재 MVP 값이지만, 활성 접점이 관련 사실을 정직하게 관찰할 수 있는 곳에서만 사용할 수 있습니다. 두 값 모두 OS 권한, 임의 도구 샌드박스, 변조 방지 저장소, 도구 실행 전 차단, 격리를 뜻하지 않습니다.
+`GuaranteeDisplay.level`에서 `cooperative`는 현재 MVP의 기본값입니다. `detective`도 현재 MVP 값이지만, 활성 접점이 관련 사실을 정직하게 관찰할 수 있고 관련 역량 확인이 실제로 통과한 곳에서만 사용할 수 있습니다. 두 값 모두 OS 권한, 임의 도구 샌드박스, 변조 방지 저장소, 도구 실행 전 차단, 격리를 뜻하지 않습니다.
 
-Schema Core는 활성 표 안에 비활성 enum 값을 예약하지 않습니다. 이 섹션에 없는 사용자 판단 종류, gate 필드, validator ID, actor/source 값, 더 강한 보장 라벨, 명령/네트워크/비밀값 관찰 이름, API 메서드는 담당 문서가 승격하고 관련 활성 담당 계약에 추가하기 전까지 비활성입니다.
+Schema Core는 활성 표 안에 비활성 enum 값을 예약하지 않습니다. 이 섹션에 없는 사용자 판단 종류, gate 필드, validator ID, `captured_artifact` 같은 actor/source 값, 더 강한 보장 라벨, 명령/네트워크/비밀값 관찰 이름, API 메서드는 담당 문서가 승격하고 관련 활성 담당 계약에 추가하기 전까지 비활성입니다.
 
 <a id="later-candidate-value-names"></a>
 

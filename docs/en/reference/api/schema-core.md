@@ -192,15 +192,14 @@ ArtifactRelationOwner:
 
 ## ArtifactInput
 
-`ArtifactInput` is accepted by `harness.record_run` only as a documented staged, captured, or existing handle. It never grants arbitrary file read authority. A captured handle is an opaque owner-issued handle from a documented capture path, not a caller-supplied raw capture-adapter output.
+`ArtifactInput` is accepted by `harness.record_run` only as a documented staged handle from the active `stage_artifact` utility or as an existing registered artifact ref. It never grants arbitrary file read authority. `stage_artifact` is the active MVP staging utility, not native artifact capture and not a general filesystem-read API.
 
 ```yaml
 ArtifactInput:
   artifact_input_id: string
-  source_kind: staged_file | captured_artifact | existing_artifact
+  source_kind: staged_file | existing_artifact
   relation: string
   staged_uri: string | null
-  captured_handle: string | null
   existing_artifact_ref: ArtifactRef | null
   display_name: string | null
   content_type: string
@@ -208,7 +207,7 @@ ArtifactInput:
   expected_size_bytes: integer | null
 ```
 
-Exactly one source field must match `source_kind`. `captured_artifact` requires an owner-documented captured-handle path and active surface support for presenting that handle; the baseline `reference-local-mcp` profile has no native capture capability. Invalid source shapes, caller-supplied arbitrary paths, raw capture-adapter outputs, raw secrets, tokens, and full sensitive logs are rejected before mutation.
+Exactly one source field must match `source_kind`: `staged_uri` for `staged_file`, or `existing_artifact_ref` for `existing_artifact`. `staged_uri` must be a safe handle produced by the owner-approved `stage_artifact` path. `captured_artifact`, captured handles, native artifact capture, caller-supplied arbitrary paths, raw capture-adapter outputs, raw secrets, tokens, and full sensitive logs are outside the active MVP and are rejected before mutation.
 
 <a id="evidence-and-pre-write-scope-schemas"></a>
 
@@ -500,7 +499,7 @@ These values are active current MVP schema values. Method-level capability and a
 | `ArtifactRef.produced_by` | `lead_agent`, `harness` |
 | `ArtifactRef.retention_class` | `task`, `project`, `temporary` |
 | `ArtifactRelationOwner.record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` |
-| `ArtifactInput.source_kind` | `staged_file`, `captured_artifact`, `existing_artifact` |
+| `ArtifactInput.source_kind` | `staged_file`, `existing_artifact` |
 | `EvidenceCoverageItem.coverage_state` | `supported`, `unsupported`, `partial`, `not_applicable`, `stale`, `blocked` |
 | `EvidenceSummary.status` | `not_required`, `none`, `partial`, `sufficient`, `stale`, `blocked` |
 | `AuthorizedAttemptScope.guarantee_level` | `cooperative`, `detective` |
@@ -529,9 +528,9 @@ These values are active current MVP schema values. Method-level capability and a
 | `ValidatorResult.findings.severity` | `info`, `warning`, `error`, `blocker` |
 | `SensitiveCategory` | `auth_change`, `permission_model_change`, `schema_change`, `dependency_change`, `public_api_change`, `destructive_write`, `production_config_change`, `ci_cd_change`, `infra_or_deployment_change`, `privacy_or_pii_change`, `data_export`, `telemetry_or_logging_change`, `license_or_compliance_change`, `billing_or_cost_change`, `model_or_prompt_policy_change`, `policy_override` |
 
-For `GuaranteeDisplay.level`, `cooperative` is the default current MVP value. `detective` is also a current MVP value, but only where the active surface can honestly observe the relevant fact. Neither value means OS permission, arbitrary-tool sandboxing, tamper-proof storage, pre-tool blocking, or isolation.
+For `GuaranteeDisplay.level`, `cooperative` is the default current MVP value. `detective` is also a current MVP value, but only where the active surface can honestly observe the relevant fact and the relevant capability check has actually passed. Neither value means OS permission, arbitrary-tool sandboxing, tamper-proof storage, pre-tool blocking, or isolation.
 
-Schema Core intentionally does not reserve inactive enum members inside active tables. User-judgment kinds, gate fields, validator IDs, actor/source values, stronger guarantee labels, command/network/secret observation names, and API methods not listed in this section are inactive until promoted by an owner document and added to the relevant active owner contract.
+Schema Core intentionally does not reserve inactive enum members inside active tables. User-judgment kinds, gate fields, validator IDs, actor/source values such as `captured_artifact`, stronger guarantee labels, command/network/secret observation names, and API methods not listed in this section are inactive until promoted by an owner document and added to the relevant active owner contract.
 
 <a id="later-candidate-value-names"></a>
 

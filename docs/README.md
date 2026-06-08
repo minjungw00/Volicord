@@ -41,6 +41,16 @@ Use `start.md` for the first model, `use/*` for user and agent behavior, `build/
 
 첫 이해 모델은 `start.md`에서 봅니다. 사용자와 에이전트 동작은 `use/*`, 현재 MVP 계획과 구현 준비 결정은 `build/mvp-plan.md`, 정확한 계약의 담당 문서는 `reference/README.md`, 이후 후보 자료는 `later/index.md`, 문서 작업 규칙은 `maintain/*`, 안정적인 `doc_id` 경로 정보는 `doc-index.yaml`에서 봅니다.
 
+## Active MVP Boundary / 현재 MVP 경계
+
+The active MVP is closed to plain-language intake and Task creation, `update_scope`, user judgment recording, sensitive approval recording, path-level `prepare_write` and Write Authorization, `record_run`, staged artifact registration through `stage_artifact`, `EvidenceSummary`, `close_task` blocker calculation, read-time status/projection, registered local surface access, cooperative guarantee display, and detective guarantee display only after the relevant capability check has passed.
+
+현재 MVP는 평소 말 입력과 Task 생성, `update_scope`, 사용자 판단 기록, 민감 동작 승인 기록, 경로 수준 `prepare_write`와 Write Authorization, `record_run`, `stage_artifact`를 통한 스테이징된 아티팩트 등록, `EvidenceSummary`, `close_task` 차단 사유 계산, 읽는 시점의 상태/Projection, 등록된 로컬 접점 접근, 협력형 보장 표시, 관련 역량 확인이 통과한 뒤의 탐지형 보장 표시에만 닫혀 있습니다.
+
+Future-only material includes `captured_artifact`, native artifact capture, projection reconcile, persistent projection jobs, managed block drift repair, full Evidence Manifest, QA gate, verification gate, command/network/secret observation or pre-tool blocking, Question Queue, Assumption Register, and Discovery Brief as a persistent artifact.
+
+`captured_artifact`, 접점 자체 아티팩트 캡처, Projection reconcile, 영속 Projection 작업, 관리 블록 drift 복구, 전체 Evidence Manifest, QA gate, verification gate, 명령/네트워크/비밀값 관찰이나 도구 실행 전 차단, Question Queue, Assumption Register, 영속 아티팩트로서의 Discovery Brief는 이후 자료입니다.
+
 Documentation checks are manual maintenance aids. Their `PASS`, `WARN`, and `FAIL` labels do not decide documentation acceptance, implementation readiness, runtime conformance, or permission to start server coding.
 
 문서 점검은 수동 유지보수 보조 자료입니다. `PASS`, `WARN`, `FAIL` 라벨은 문서 수락, 구현 준비, 런타임 적합성, 서버 코딩 시작 허가를 결정하지 않습니다.

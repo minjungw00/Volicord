@@ -104,7 +104,7 @@ Harness authority is authority over Harness records and state transitions. It is
 Use guarantee wording carefully:
 
 - cooperative: the agent is instructed to hold, ask, refresh, or proceed through the record path
-- detective: Harness or a surface can report mismatch after observation
+- detective: Harness or a surface can report supported observable mismatch after the relevant capability check has passed
 - preventive: a specific proven mechanism blocks a covered action before it happens
 - isolated: a documented separation boundary exists
 

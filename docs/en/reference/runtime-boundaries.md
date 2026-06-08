@@ -64,7 +64,7 @@ Raw paths, caller claims, chat text, Markdown prose, unregistered files, and art
 
 Artifact reads use the same authority boundary. A raw artifact-store path is not granted to local callers by default. Reading artifact metadata or bytes requires a registered `ArtifactRef`, compatible project/task context, a matching owner relation, and redaction/availability checks owned by [Storage](storage.md) and [API Schema Core](api/schema-core.md#artifactref).
 
-Artifact registration uses only owner-documented staged, captured, or existing handles. A captured handle still requires a documented captured-handle path and active surface support for presenting that handle; a raw local path, copied file, or raw capture-adapter output is not registration authority by itself.
+Artifact registration uses only owner-documented staged handles from the active `stage_artifact` utility or compatible existing `ArtifactRef` values. A raw local path, copied file, `captured_artifact` handle, raw capture-adapter output, or native capture claim is not registration authority in the active MVP.
 
 Artifacts can support evidence, verification, QA, final-acceptance visibility, residual-risk visibility, and close-readiness display. They do not prove success, approve work, accept risk, or close work without the separate owner records and user-owned judgments required by Core.
 
@@ -78,7 +78,7 @@ Recovery cannot infer successful implementation from chat, generated Markdown, s
 
 ## 8. What the current MVP does not isolate
 
-The current MVP boundary is cooperative and detective unless a future owner promotes and proves a stronger mechanism for a named operation. It does not claim OS-level permissions, arbitrary-tool sandboxing, permission enforcement, tamper-proof storage, universal pre-tool blocking, or security isolation. `preventive` and `isolated` are not current MVP defaults; they remain profile-gated display values owned by the relevant Reference owners.
+The current MVP boundary is cooperative by default, with detective behavior only for supported observable facts after the relevant capability check has passed, unless a future owner promotes and proves a stronger mechanism for a named operation. It does not claim OS-level permissions, arbitrary-tool sandboxing, permission enforcement, tamper-proof storage, universal pre-tool blocking, or security isolation. `preventive` and `isolated` are not current MVP defaults; they remain profile-gated display values owned by the relevant Reference owners.
 
 Local-only MCP reachability is not authorization. A reachable caller still needs valid Core/API state, project/task/surface compatibility, `surfaces.status=active`, local access posture compatibility, state-version compatibility, and the active surface capability. `MCP_UNAVAILABLE` means reachability itself is unavailable; `LOCAL_ACCESS_MISMATCH` means the registered local caller/path/posture expectation does not match; `CAPABILITY_INSUFFICIENT` means the recognized surface lacks a required capability. `allowed` means compatible with Harness state and active surface capability. `blocked` means the Harness owner path or capability check says the action should not proceed. Neither word means physical prevention unless a proven preventive mechanism names that exact covered operation.
 

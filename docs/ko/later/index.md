@@ -10,6 +10,8 @@
 
 ## 1. 경계
 
+대조 기준으로, 현재 MVP 경계는 [MVP 계획](../build/mvp-plan.md)에 닫힌 목록으로 정해져 있습니다. 그 목록에는 평소 말 입력과 Task 생성, `update_scope`, 사용자 판단 기록, 민감 동작 승인 기록, 경로 수준 `prepare_write`와 Write Authorization, `record_run`, `stage_artifact`를 통한 스테이징된 아티팩트 등록, `EvidenceSummary`, `close_task` 차단 사유 계산, 읽는 시점의 상태/Projection, 등록된 로컬 접점 접근, 협력형 보장, 관련 활성 역량 확인이 실제로 통과한 뒤의 탐지형 보장만 포함됩니다. 이 페이지의 어떤 항목도 그 목록을 넓히지 않습니다.
+
 | 후보 | 상태 | 승격 경계 | 현재 MVP 영향 |
 |---|---|---|---|
 | 이후 후보 색인 | 문서 전용 | 세부 계약이 돌아오려면 향후 담당 문서가 좁은 후보를 먼저 승격해야 합니다. | 문서에만 영향 |
@@ -38,6 +40,7 @@
 |---|---|---|---|
 | 보증 강화 | 이후 후보 | 담당 문서가 관문, 대체 동작, 향후 승격에 필요한 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
 | Full Evidence Manifest | 이후 후보 | 증거 담당 문서가 아티팩트 참조, 가림, 닫기 영향, 향후 승격에 필요한 증명 경로 기대치를 정해야 합니다. | 승격 전까지 없음 |
+| 영속 아티팩트로서의 Discovery Brief, Question Queue, Assumption Register | 이후 구체화 후보 | Core/API/저장소 담당 문서가 정확한 범위, 지속 방식, 대체 불가 규칙, 닫기 영향, 증명 경로 기대치를 정해야 합니다. 현재 MVP 구체화는 Task, Change Unit, `user_judgment`, 증거 요약, 차단 사유, 다음 안전한 행동 안에 남습니다. | 승격 전까지 없음 |
 | 수동 QA 작업 흐름과 `qa_gate` | 이후 후보 | 수동 QA 담당 문서가 작업 흐름 단계, 면제 경로, 아티팩트 참조, 발견 사항, 정확한 `qa_gate` 활성화, 수동 QA 관문 닫기 영향을 정해야 합니다. | 승격 전까지 없음 |
 | `qa_waiver` 수동 QA 면제 판단 | 이후 사용자 판단 후보 | 수동 QA와 사용자 판단 담당 문서가 정확한 `qa_waiver` 활성화, 허용 범위, 대체 불가 규칙, 잔여 위험 표시, 닫기 영향을 정해야 합니다. | 승격 전까지 없음 |
 | `verification_gate` 검증 관문 | 이후 후보 | Core/API/Eval 담당 문서가 정확한 `verification_gate` 필드, 필수 조건, 대체 동작, 증명 기대치, 닫기 영향을 정해야 합니다. | 승격 전까지 없음 |
@@ -63,7 +66,11 @@
 | 복구와 reconcile | 이후 후보 | Operations, Storage, Projection, Reconcile, Security 담당 문서 규칙이 필요합니다. | 승격 전까지 없음 |
 | 운영자 준비 상태와 `doctor` 접점 | 이후 후보 | 운영 담당 문서가 진단, 기능 확인, 보안 태세, 지원되지 않는 접점의 대체 동작을 정해야 합니다. | 승격 전까지 없음 |
 | Projection 새로고침과 최신성 진단 | 이후 후보 | Projection 담당 문서가 Projection이 비권위 상태 보기로 남는 동작을 정해야 합니다. | 승격 전까지 없음 |
+| 영속 Projection 작업과 Projection 작업 저장소 | 이후 후보 | Projection과 Storage 담당 문서가 작업 생명주기, 저장 행, 최신성, 실패 동작, 증명 기대치를 정의해야 합니다. 현재 MVP는 읽는 시점의 간결한 상태/Projection만 사용합니다. | 승격 전까지 없음 |
+| Projection reconcile과 관리 블록 drift 복구 | 이후 후보 | Projection, Core, API, Storage 담당 문서가 사람이 편집한 입력 처리, reconcile 결과, 복구 후보, 상태 변경 라우팅, 대체 불가 규칙, 증명 기대치를 정의해야 합니다. 사람이 편집한 Projection은 활성 상태가 아닙니다. | 승격 전까지 없음 |
 | 예방형 프로필, 격리형 프로필, 명령 관찰, 네트워크 관찰, 비밀값 접근 관찰, 접점 자체 아티팩트 캡처, 도구 실행 전 차단, 격리를 위한 더 강한 로컬 역량 프로필 | 이후 후보 | Agent Integration, Security, API, Storage, Conformance 담당 문서가 정확한 역량 필드, 대상 동작, 대체 동작, 오류, 증명 경로를 정해야 합니다. | 승격 전까지 없음 |
+| 명령 실행 관찰, 네트워크 관찰, 비밀값 접근 관찰 | 이후 역량 후보 | API, Core, Security, Agent Integration, Conformance 담당 문서가 정확한 요청 필드, 관찰 권한, 대체 동작, 공개 오류, 저장소 영향, 증명 기대치를 정의해야 합니다. | 승격 전까지 없음 |
+| 명령/네트워크/비밀값 도구 실행 전 차단 | 이후 예방형 후보 | 향후 예방형 담당 문서가 정확한 차단 메커니즘, 대상 동작, 대체 동작, 사용자에게 보이는 보장 표현, 증명 경로를 정의해야 합니다. | 승격 전까지 없음 |
 | 향후 적합성 실행 진입점 | 런타임 fixture가 생긴 뒤의 이후 후보 | 실행기, 스위트, 검증 주장, API, 저장소, 이벤트, 아티팩트, 오류, 보고 계약이 필요합니다. | 승격 전까지 없음 |
 
 ## 5. 이후 API 후보
@@ -88,6 +95,7 @@
 | 역량 프로필 지원 필드: `command_observation_supported`, `network_observation_supported`, `secret_access_observation_supported`, `artifact_capture_supported`, `pre_tool_blocking_supported`, `isolation_supported` | 필드 이름만 있음 | 승격된 Agent Integration, API/스키마, Security, Storage, Conformance 담당 문서가 정확한 프로필 형태, 대상 동작, 대체 동작, 검증, 저장소, 오류, 증명 기대치를 정의해야 합니다. 기준 `reference-local-mcp`는 활성 프로필에서 이 필드를 생략하며 해당 역량을 지원하지 않는 것으로 다룹니다. | 승격 전까지 없음 |
 | 역량 조건부 `Write Authorization` 관찰 필드: `intended_commands`, `intended_network`, `intended_secret_scope`; 명령 관찰, 네트워크 관찰, 비밀값 접근 관찰 범주 이름: `network_write`, `external_service_write`, `secret_access` | 필드와 값 이름만 있음 | 승격된 API/스키마 담당 문서가 정확한 형태, 프로필 조건, 검증, 저장소, `record_run` 호환성 의미를 정의해야 합니다. 기준 `reference-local-mcp`는 활성 `AuthorizedAttemptScope`나 활성 `SensitiveCategory`에 이 필드와 값을 포함하지 않습니다. | 승격 전까지 없음 |
 | 이후 actor, producer, capture source 값: `evaluator`, `operator`, `capture_adapter` | 값 이름만 있음 | 승격된 Eval, 운영, 캡처, API/스키마, 저장소 담당 문서가 정확한 요청 권한, 아티팩트 관계, 대체 동작, 증명 기대치를 정의해야 합니다. 현재 MVP의 활성 표에는 이 값이 없습니다. | 승격 전까지 없음 |
+| `captured_artifact`와 캡처된 아티팩트 핸들 | 값 이름만 있음 | 승격된 캡처/API/스키마/저장소 담당 문서가 정확한 핸들 출처, 역량 프로필 조건, 검증, 저장소, 가림 처리, 대체 동작, 증명 기대치를 정의해야 합니다. 현재 MVP는 대신 `stage_artifact`와 `source_kind=staged_file`을 사용합니다. | 승격 전까지 없음 |
 | 이후 닫기와 보증 필드: `verifying`, `qa`, `completed_verified`, `detached_verified`, `design_gate`, `verification_gate`, `qa_gate`, 수동 QA 관문, 설계 정책 차단 사유, 보증 차단 사유 | 필드 이름만 있음 | Core/API 담당 문서 활성화, 닫기 대체 불가 규칙, 정확한 활성 스키마 필드, 대체 동작, 증명 기대치가 필요합니다. | 승격 전까지 없음 |
 | 이후 다음 행동 값: `launch_verify`, `record_eval`, `record_manual_qa`, `reconcile` | 값 이름만 있음 | 대응 API 또는 담당 문서 활성화가 필요합니다. | 승격 전까지 없음 |
 | 추천 playbook과 판단 맥락 | 메타데이터 이름만 있음 | Agent Integration/API 담당 문서가 메타데이터를 읽기 전용으로 두고 상태를 만족시키지 못하게 해야 합니다. | 승격 전까지 없음 |

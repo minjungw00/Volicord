@@ -105,7 +105,7 @@ Storage 용어는 향후 하네스 기록이 어디에 사는지 알려줍니다
 | 보안 용어 | 뜻 | 담당 경로 |
 |---|---|---|
 | `cooperative` | 연결된 접점이 절차를 따를 때 하네스가 하네스 상태 변경 경로를 안내, 기록, 비교, 거부할 수 있다는 뜻입니다. 물리적 차단이 아닙니다. | [보안](security.md), [Agent 통합](agent-integration.md) |
-| `detective` | 행동 이후나 관찰 가능해진 시점에 지원되는 사실을 감지, 기록, 보고할 수 있다는 뜻입니다. 사전 차단이 아닙니다. | [보안](security.md), [Agent 통합](agent-integration.md) |
+| `detective` | 행동 이후나 관찰 가능해진 시점에 지원되는 사실을 감지, 기록, 보고할 수 있다는 뜻입니다. 현재 MVP에서는 관련 역량 확인이 통과한 뒤에만 이 라벨을 쓸 수 있습니다. 사전 차단이 아닙니다. | [보안](security.md), [Agent 통합](agent-integration.md) |
 | `preventive` | 이름 붙은 메커니즘이 대상 동작을 실행 전에 막을 수 있다는 주장입니다. 현재 MVP에는 기본 예방형 주장이 없습니다. | [보안](security.md) |
 | `isolated` | 이름 붙고 증명된 분리 경계가 대상 동작에서 어떤 것을 다른 것에서 격리한다는 주장입니다. 현재 MVP에는 기본 격리 주장이 없습니다. | [보안](security.md), [런타임 경계](runtime-boundaries.md) |
 | 정직한 보장 표시 | 사용자에게 보이는 보장 문구는 `capability_profile` 사실과 담당 문서의 증명 수준에 맞아야 합니다. 지원되지 않는 강한 주장은 낮추거나 차단해야 합니다. | [보안](security.md), [API Errors](api/errors.md) |
@@ -123,7 +123,7 @@ Storage 용어는 향후 하네스 기록이 어디에 사는지 알려줍니다
 | 항상 주입되는 맥락 | 한 화면 이하의 현재 맥락입니다. 작업 요약, 범위, 대기 중인 판단, 차단 사유, 다음 안전한 행동, 증거 공백, 닫기 차단 사유, 잔여 위험, 보장 수준, 최신 참조만 둡니다. | [Agent 통합](agent-integration.md) |
 | 단계별 맥락 / push-pull | 간결한 현재 맥락을 먼저 주고, 다음 행동에 필요한 담당 섹션만 가져오는 방식입니다. | [Agent 통합](agent-integration.md), [참조 색인](README.md) |
 | Role Lens | 읽기 전용 역할 관점 안내입니다. `Role Lens` 추천은 담당 경로가 행동을 기록하기 전까지 권한이 없습니다. | [Agent 통합](agent-integration.md) |
-| 기준 로컬 MCP 접점 | 활성 참조 통합 프로필인 `reference-local-mcp`입니다. 지원되는 범위에서만 협력형 동작과 제한된 탐지형 동작을 표시합니다. | [Agent 통합](agent-integration.md) |
+| 기준 로컬 MCP 접점 | 활성 참조 통합 프로필인 `reference-local-mcp`입니다. 협력형 동작을 기본으로 하며, 제한된 탐지형 동작은 지원되는 범위와 관련 역량 확인이 통과한 경우에만 표시합니다. | [Agent 통합](agent-integration.md) |
 | 대체 동작 | Core, MCP, Projection, 로컬 접근, 기능을 사용할 수 없거나 기능이 부족할 때의 커넥터 응답입니다. | [Agent 통합](agent-integration.md), [API Errors](api/errors.md) |
 
 ## 이후 후보 용어

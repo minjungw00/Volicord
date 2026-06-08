@@ -32,6 +32,12 @@
 
 문서 작업에는 [작성 가이드](maintain/authoring-guide.md), [번역 가이드](maintain/translation-guide.md), [문서 점검](maintain/checks.md)을 사용합니다. 문서 점검은 수동 유지보수 보조 자료입니다. 점검 라벨은 런타임 적합성, 최종 수락, 닫기 준비 상태, 구현 준비, 서버 코딩 시작 허가를 만들지 않습니다.
 
+## 현재 MVP 경계
+
+현재 MVP는 평소 말 입력과 Task 생성, `update_scope`, 사용자 판단 기록, 민감 동작 승인 기록, 경로 수준 `prepare_write`와 Write Authorization, `record_run`, `stage_artifact`를 통한 스테이징된 아티팩트 등록, 간결한 `EvidenceSummary`, `close_task` 차단 사유 계산, 읽는 시점의 상태/Projection, 등록된 로컬 접점 접근, 협력형 보장 표시, 관련 역량 확인이 통과한 뒤의 탐지형 보장 표시에만 닫혀 있습니다.
+
+현재 MVP에는 `captured_artifact`, 접점 자체 아티팩트 캡처, Projection reconcile, 영속 Projection 작업, 관리 블록 drift 복구, 전체 Evidence Manifest, QA gate, verification gate, 명령 실행 관찰, 네트워크 관찰, 비밀값 접근 관찰, 명령/네트워크/비밀값 도구 실행 전 차단, Question Queue, Assumption Register, 영속 아티팩트로서의 Discovery Brief가 포함되지 않습니다.
+
 ## 품질 규칙
 
 의미가 바뀌는 문서 편집을 한 언어에만 남긴 채 마치지 않습니다. 리뷰 이력, 정리 메모, 임시 마이그레이션 계획을 활성 문서에 넣지 않습니다.

@@ -11,6 +11,12 @@ These documents describe future Harness Server contracts under current documenta
 - Keep this README as an index. Do not copy contract details here.
 - Keep the active/later boundary with the active owner documents and [Later Candidate Index](../later/index.md).
 
+## Active MVP Boundary
+
+The current active MVP is closed to ordinary-language intake and Task creation, `harness.update_scope`, user judgment recording, sensitive approval recording, path-level `harness.prepare_write` and Write Authorization, `harness.record_run`, staged artifact registration through `stage_artifact`, compact `EvidenceSummary`, `harness.close_task` blocker calculation, read-time status/projection, registered local surface access, cooperative guarantee display, and detective guarantee display only after the relevant capability check has actually passed.
+
+Everything else is outside the active MVP unless the owning Reference document explicitly promotes it with scope, fallback behavior, and proof expectations. That includes `captured_artifact`, native artifact capture, projection reconcile, persistent projection jobs, managed block drift repair, Full Evidence Manifest, QA gate, verification gate, command execution observation, network observation, secret access observation, command/network/secret pre-tool blocking, Question Queue, Assumption Register, and Discovery Brief as a persistent artifact.
+
 ## Owner Routing
 
 The table routes agents and implementers to the compact owner documents that currently exist.

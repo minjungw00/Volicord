@@ -37,7 +37,7 @@ Role Lens behavior, when present, is read-only posture guidance. A lens may reco
 
 ## 2. Capability Profile
 
-Surface name is not capability. A connector must use a `capability_profile` scoped to the actual host, version/configuration, workspace policy, MCP posture, manual artifact attachment path, and any future promoted capture, guard, or separation boundary in use.
+Surface name is not capability. A connector must use a `capability_profile` scoped to the actual host, version/configuration, workspace policy, MCP posture, active `stage_artifact` staging path, and any future promoted capture, guard, or separation boundary in use.
 
 A `capability_profile` is not a Write Authorization and does not create write compatibility or bypass active Task scope, active Change Unit scope, `prepare_write`, single-use cooperative Write Authorization, `record_run`, or Core close rules. Capability affects blocked reasons, fallback behavior, validator results, and guarantee display. `allowed` and `blocked` are Harness compatibility outcomes, not physical blocking outcomes, in the baseline profile. Runtime boundaries remain authority and storage boundaries, not OS isolation boundaries.
 
@@ -59,20 +59,20 @@ capability_profile:
     - artifact_read
   cooperative_prepare_write_supported: true
   changed_path_detection_supported: true
-  manual_artifact_attachment_supported: true
+  stage_artifact_supported: true
   raw_artifact_path_read_supported: false
   guarantee_level_default: cooperative
-  guarantee_level_max: detective
+  guarantee_level_max: detective only after the relevant capability check passes
   conformance_smoke_status: planned_not_run
 ```
 
 Exact public tool and resource contracts belong to the API owners. The connector may summarize the available subset, but it should not duplicate full method schemas in prompt context.
 
-`surface_status`, `local_access_posture`, and `supported_access_classes` report the connector's current API compatibility posture. `surface_status` must mirror stored `surfaces.status`; none of these fields grant authority by themselves. Current access-class labels and surface value sets are owned by [API Schema Core](api/schema-core.md#local-surface-access-values), and minimum request conditions are owned by [MVP API](api/mvp-api.md#shared-request-rules). In the reference profile, `artifact_read` means registered `ArtifactRef` reads through the owner path only; `raw_artifact_path_read_supported=false` means a local filesystem path under the artifact store is not enough to read artifact bytes. For `artifact_registration`, manual attachment can provide a documented staged handle; `captured_artifact` handles require owner-documented captured-handle support, which the baseline profile does not have.
+`surface_status`, `local_access_posture`, and `supported_access_classes` report the connector's current API compatibility posture. `surface_status` must mirror stored `surfaces.status`; none of these fields grant authority by themselves. Current access-class labels and surface value sets are owned by [API Schema Core](api/schema-core.md#local-surface-access-values), and minimum request conditions are owned by [MVP API](api/mvp-api.md#shared-request-rules). In the reference profile, `artifact_read` means registered `ArtifactRef` reads through the owner path only; `raw_artifact_path_read_supported=false` means a local filesystem path under the artifact store is not enough to read artifact bytes. For `artifact_registration`, `stage_artifact` can provide a documented staged handle. `captured_artifact` handles and native artifact capture require future owner-documented support, which the active baseline profile does not have.
 
 The baseline `reference-local-mcp` profile has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation capability. Those capability fields and profile types are later/profile-gated material in [Later Candidate Index](../later/index.md); absence from the active profile means unsupported, not unknown or implicitly available.
 
-Refresh the profile when the surface version, MCP configuration, permissions, workspace policy, generated files, managed blocks, manual artifact attachment path, redaction policy, artifact retention, local access posture, or conformance basis changes. Hook, native capture, pre-tool blocking, and isolation support remain later/profile-gated until promoted.
+Refresh the profile when the surface version, MCP configuration, permissions, workspace policy, generated files, managed blocks, `stage_artifact` path, redaction policy, artifact retention, local access posture, or conformance basis changes. Hook, native capture, pre-tool blocking, and isolation support remain later/profile-gated until promoted.
 
 Generated rules, skills, MCP snippets, adapter files, and managed blocks need a connector manifest. The manifest records generated paths, managed block ids and hashes, MCP exposure posture, display-safe handles, profile freshness, drift, and fallback behavior. It must not store raw tokens, secrets, private config values, blocked payload bytes, or canonical Task state.
 
@@ -85,11 +85,11 @@ Current MVP connector display values:
 | Level | Connector display rule |
 |---|---|
 | `cooperative` | Say the surface is expected to follow Harness instructions. Holds are by instruction, not physical blocking. |
-| `detective` | Say Harness can observe supported after-action facts and then mark state stale, partial, blocked, or failed. For `reference-local-mcp`, this is limited to changed-path observation; command, network, secret-access, artifact-capture, blocking, and isolation facts require a promoted capable profile. |
+| `detective` | Say Harness can observe supported after-action facts and then mark state stale, partial, blocked, or failed only after the relevant capability check has passed. For `reference-local-mcp`, this is limited to changed-path observation; command, network, secret-access, artifact-capture, blocking, and isolation facts require a promoted capable profile. |
 
 Profile-gated display names such as `preventive` and `isolated` stay in [Later Candidate Index](../later/index.md) until a future owner promotes exact profile fields, covered operations, fallback behavior, errors, and proof paths. Agents must not choose those labels merely because a user requested stronger safety, asked for a guard/freeze/careful mode, or used stronger wording in chat. The connector must lower the displayed `guarantee_display.level` value or return `CAPABILITY_INSUFFICIENT` when the active profile cannot support the stronger claim.
 
-The reference local MCP profile is cooperative by default and can display limited `detective` behavior only where changed-path observation supports it. It has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. Manual artifact attachment may be available through owner-approved artifact registration, but that does not turn the surface into an artifact-capture profile. It must not claim `preventive` or `isolated` behavior.
+The reference local MCP profile is cooperative by default and can display limited `detective` behavior only where changed-path observation is supported and the relevant capability check has passed. It has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. Staged artifact registration through `stage_artifact` does not turn the surface into an artifact-capture profile. It must not claim `preventive` or `isolated` behavior.
 
 Guard, freeze, and careful-mode labels are display labels over the actual profile. They must say what can actually stop before execution and what can only be detected later. They are not sensitive-action approval, verification, QA, final acceptance, residual-risk acceptance, close readiness, or a Core gate.
 
@@ -173,7 +173,7 @@ Fallbacks are described by guarantee display level and risk, not by surface bran
 | Fallback | Use when | Boundary |
 |---|---|---|
 | Cooperative | The surface can follow instructions but cannot enforce them. | Hold product writes by instruction when the Core/MCP owner path or write-scope checks are unavailable. |
-| Detective | Harness can observe supported facts after action. | Mark state stale, partial, blocked, or failed and require repair, reconcile, or fresh evidence. |
+| Detective | Harness can observe supported facts after action, after the relevant capability check has passed. | Mark state stale, partial, blocked, or failed and require an active owner action, fresh evidence, or a future promoted reconcile/repair path. |
 | Capability insufficient | A requested write, capture, guard, isolation, or guarantee claim depends on an unsupported capability or profile-gated claim. | Return `CAPABILITY_INSUFFICIENT` or a structured blocked reason; lower the displayed `guarantee_display.level` value. |
 | MCP unavailable | The surface or call path cannot reach the current Core authority path. | Use stable public `MCP_UNAVAILABLE` behavior and do not claim state mutation. |
 | Local access mismatch | The caller, path, or posture is outside the registered local profile, or local access was revoked. | Use `LOCAL_ACCESS_MISMATCH` with display-safe diagnostics; do not introduce a surface-specific `UNAUTHORIZED` code. |
@@ -182,7 +182,7 @@ Fallbacks are described by guarantee display level and risk, not by surface bran
 
 While Core is unreachable, do not invent Core state, Write Authorization, gate status, approvals, evidence, final acceptance, residual-risk acceptance, projection repair, or close readiness from chat memory, generated files, cached projections, stale status text, or operator prose.
 
-Projection staleness is separate from Core state. If the connector can read current Core state directly, it may continue from that state. Actions that depend on stale projections must refresh or reconcile first.
+Projection staleness is separate from Core state. If the connector can read current Core state directly, it may continue from that state. Actions that depend on stale projections must refresh from current Core state; reconcile is a later candidate unless a future owner promotes that path.
 
 Documentation-maintenance edits in this repository are governed by [Authoring Guide](../maintain/authoring-guide.md), not by runtime Harness procedures. They do not create runtime state, Write Authorization, evidence, QA, acceptance, residual-risk acceptance, close readiness, projections, `task_events`, or runtime transitions.
 
@@ -215,13 +215,13 @@ write_behavior: cooperative prepare_write discipline before product writes
 run_behavior: record_run with summary and owner-registered artifact refs
 capture_boundary:
   native_capture: unsupported in the minimum reference profile
-  fallback_capture: manual artifact attachment
+  active_staging: stage_artifact staged handles only
 artifact_read_boundary:
   registered_artifact_ref_required: true
   raw_artifact_path_read_supported: false
 guarantee_boundary:
   default_level: cooperative
-  max_level: detective only for supported changed-path observation
+  max_level: detective only for supported changed-path observation after the relevant capability check passes
   unverified_under_baseline:
     - command observation
     - network observation
@@ -236,7 +236,7 @@ fallbacks:
 conformance_smoke_status: planned_not_run
 ```
 
-In the baseline profile, "hold" language means cooperative scope discipline plus detective changed-path validation when available. It does not mean preventive guard behavior, command observation, network observation, secret-access observation, artifact capture, or isolation.
+In the baseline profile, "hold" language means cooperative scope discipline plus detective changed-path validation only when the relevant capability check has passed. It does not mean preventive guard behavior, command observation, network observation, secret-access observation, artifact capture, or isolation.
 
 ## 10. Connector Conformance Boundary
 

@@ -14,6 +14,16 @@ This repository is not the user's Product Repository and not a Harness Runtime H
 
 이 저장소는 사용자의 제품 저장소도, 하네스 런타임 홈도 아닙니다. 문서 수락이 이루어져도 유지보수자의 문서 이정표일 뿐입니다. 서버/런타임 구현에는 MVP 계획의 별도 준비 결정이 필요합니다.
 
+## Active MVP Boundary / 현재 MVP 경계
+
+The active MVP is closed to plain-language intake and Task creation, scope updates, user judgment and sensitive approval recording, path-level `prepare_write` and Write Authorization, `record_run`, staged artifact registration through `stage_artifact`, `EvidenceSummary`, `close_task` blocker calculation, read-time status/projection, registered local surface access, cooperative guarantees, and detective guarantees only after the relevant capability check has passed.
+
+현재 MVP는 평소 말 입력과 Task 생성, 범위 갱신, 사용자 판단과 민감 동작 승인 기록, 경로 수준 `prepare_write`와 Write Authorization, `record_run`, `stage_artifact`를 통한 스테이징된 아티팩트 등록, `EvidenceSummary`, `close_task` 차단 사유 계산, 읽는 시점의 상태/Projection, 등록된 로컬 접점 접근, 협력형 보장, 관련 역량 확인이 통과한 뒤의 탐지형 보장에만 닫혀 있습니다.
+
+Future capture, reconcile, persistent projection jobs, managed block drift repair, full evidence manifests, QA/verification gates, command/network/secret observation or pre-tool blocking, Question Queue, Assumption Register, and Discovery Brief as a persistent artifact are later material unless an owner promotes them.
+
+향후 캡처, reconcile, 영속 Projection 작업, 관리 블록 drift 복구, 전체 Evidence Manifest, QA/verification gate, 명령/네트워크/비밀값 관찰이나 도구 실행 전 차단, Question Queue, Assumption Register, 영속 아티팩트로서의 Discovery Brief는 담당 문서가 승격하기 전까지 이후 자료입니다.
+
 ## Current Routes / 현재 경로
 
 Start at [docs/README.md](docs/README.md) to choose a language. English and Korean docs are both active, must keep semantic parity, and do not require line-by-line translation.

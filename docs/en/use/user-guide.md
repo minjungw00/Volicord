@@ -169,12 +169,12 @@ The agent should ask for residual-risk acceptance only when a known residual ris
 
 ## 9. Read current MVP guarantees honestly
 
-Early Harness behavior is mostly cooperative and detective unless a specific owner-documented mechanism proves more.
+Early Harness behavior is cooperative by default. Limited detective reporting applies only to supported observable facts after the relevant capability check has passed, unless a specific owner-documented mechanism proves more.
 
 | Guarantee level | What it means | What it does not mean |
 |---|---|---|
 | Cooperative | The agent is instructed to hold, ask, refresh, or proceed through the Harness record path. | Harness is not automatically stopping every tool at the OS level. |
-| Detective | Harness or a surface can report a mismatch after observing state, output, or recorded action. | The action was not necessarily blocked before it happened. |
+| Detective | Harness or a surface can report a mismatch after observing a supported fact and passing the relevant capability check. | The action was not necessarily blocked before it happened, and unsupported command, network, secret, or native-capture effects were not verified. |
 | Preventive | A specific proven mechanism blocks a covered action before it occurs. | Do not assume this unless the exact mechanism and operation are named. |
 | Isolated | A documented separation boundary exists. | Do not assume broader OS sandboxing, arbitrary-tool isolation, or tamper-proof storage. |
 

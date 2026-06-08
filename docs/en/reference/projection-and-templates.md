@@ -34,7 +34,7 @@ Templates cannot override Core state. A rendered view cannot authorize writes, c
 
 Display labels are not canonical schema values. A localized label such as a user-readable judgment type is rendered from canonical fields such as `judgment_kind` and locale. If `display_label` appears in compatibility or response-only output, it remains display text and must not be treated as an enum value, storage value, API field owner, or schema category.
 
-User edits to a projection are input only. They may become state only through an explicit owner path such as reconcile plus a Core state-changing action. Direct edits to managed text, front matter, displayed state, artifact refs, close status, acceptance status, residual-risk status, or template text do not become owner-recorded state.
+User edits to a projection are input only. Projection reconcile is not active current MVP behavior; until a future owner promotes it, a human edit can affect state only when a user or agent routes the intended change through an active owner action such as `harness.update_scope` or `user_judgment`. Direct edits to managed text, front matter, displayed state, artifact refs, close status, acceptance status, residual-risk status, or template text do not become owner-recorded state.
 
 ## Projection is derived display
 
@@ -64,13 +64,13 @@ User Notes and Proposals:
 
 Human-editable text can contain notes, questions, corrections, or proposals. It can propose changes to Task summary, scope, acceptance criteria, design notes, evidence notes, or other owner records, but the proposal is not the target record.
 
-The state-changing path is explicit:
+Any future state-changing path is explicit and later-owned:
 
 ```text
 human edit -> reconcile candidate -> explicit reconcile outcome -> Core state-changing action, rejection, deferral, or note
 ```
 
-Until an owner path records a Core outcome, the human-editable text is not Task state, evidence, verification, QA, final acceptance, residual-risk acceptance, close readiness, or any other owner record.
+This reconcile path is not active current MVP scope. Until a future owner promotes it and an owner path records a Core outcome, the human-editable text is not Task state, evidence, verification, QA, final acceptance, residual-risk acceptance, close readiness, or any other owner record.
 
 Humans may not edit these directly into state:
 
@@ -97,11 +97,11 @@ Rules:
 - The projector may regenerate managed blocks.
 - A managed block is display, not authority.
 - Direct edits inside a managed block are drift, not owner-recorded state.
-- If projection job storage is active, the projector records source state version, projection version or status, render timestamp, job status, and managed hash through the storage owner path.
-- Active MVP compact views may instead carry read-time source/freshness text without a persisted projection job.
+- Persistent projection jobs, projection-job storage, and managed block drift repair are later candidates, not active MVP obligations.
+- Active MVP compact views carry read-time source/freshness text without a persisted projection job.
 - Managed hash is computed over the projector-owned managed block body, excluding the marker lines, with normalized line endings and the projector's meaningful whitespace rules.
 - Managed hash detects drift; it does not make Markdown state.
-- If a managed block hash differs from the last projected hash before rendering, the projector reports drift or creates an owner-routed repair candidate. It does not silently accept the edited block.
+- If a managed block hash differs from the last projected hash before rendering in a future promoted projection-job path, the projector may report drift or create an owner-routed repair candidate. This is later drift-repair behavior, not an active MVP repair obligation. It must not silently accept the edited block.
 - Regeneration must preserve unrelated human-editable sections.
 - Rendering failure or stale source data must display `failed`, `stale`, `unknown`, or unavailable as appropriate. It must not roll back committed Core state, alter events, or change gate values.
 
@@ -205,7 +205,7 @@ Notes:
 
 - Keep this card readable for a user who does not know Harness internals.
 - When a field has no source record, render `none`, `unknown`, `not_required`, or an explicit blocker instead of inventing state.
-- Always render the guarantee display line. For active MVP default behavior, the note should say cooperative hold or detective reporting when that is the actual limit. If Core/MCP is unavailable, render the unavailable condition instead of a stale or guessed guarantee display value.
+- Always render the guarantee display line. For active MVP default behavior, the note should say cooperative hold, or detective reporting only when a supported observable fact and passed capability check justify that limit. If Core/MCP is unavailable, render the unavailable condition instead of a stale or guessed guarantee display value.
 - Design-quality content should fit one line: the current routed action and, when blocking, the single next action.
 - Agent-only refs and action-boundary details belong in [Agent Context Packet body](#agent-context-packet-body). Put a ref in the status card only when it helps the user decide, understand a blocker, or inspect source freshness.
 

@@ -96,13 +96,13 @@ User-facing docs should start with what the user can ask, what the agent should 
 Security wording must match the documented guarantee level.
 
 - Use cooperative wording when Harness can guide or record expected behavior but cannot technically block the action.
-- Use detective wording when Harness can detect or report after the action.
+- Use detective wording when Harness can detect or report a supported observable fact after the action, and for current MVP claims only after the relevant capability check has passed.
 - Use preventive wording only when the documented surface can block before the covered action and the proof path exists for that operation.
 - Use isolated wording only when a documented separation boundary exists. Name the boundary.
 
 Do not imply early Harness provides OS permissions, arbitrary-tool sandboxing, tamper-proof local files, universal pre-tool blocking, or security isolation unless the exact mechanism is documented and proven. Write Authorization is a cooperative Harness record/check, not OS permission, sandboxing, tamper-proof enforcement, preventive blocking, or isolation.
 
-Do not make unsupported preventive, isolation, sandboxing, tamper-proof, or default tool-blocking claims in user-facing summaries, examples, checklists, or diagrams. A short, honest cooperative or detective claim is better than a stronger claim the current owner cannot prove.
+Do not make unsupported preventive, isolation, sandboxing, tamper-proof, or default tool-blocking claims in user-facing summaries, examples, checklists, or diagrams. A short, honest cooperative claim, or a capability-backed detective claim, is better than a stronger claim the current owner cannot prove.
 
 ## 8. Korean Quality Rule
 

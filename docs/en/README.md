@@ -32,6 +32,12 @@ Use [Later Index](later/index.md) only for material outside the active MVP path.
 
 Use [Authoring Guide](maintain/authoring-guide.md), [Translation Guide](maintain/translation-guide.md), and [Checks](maintain/checks.md) for documentation work. Checks are manual maintenance aids; their labels do not create runtime conformance, final acceptance, close readiness, implementation readiness, or permission to start server coding.
 
+## Active MVP Boundary
+
+The active MVP is closed to plain-language intake and Task creation, `update_scope`, user judgment recording, sensitive approval recording, path-level `prepare_write` and Write Authorization, `record_run`, staged artifact registration through `stage_artifact`, compact `EvidenceSummary`, `close_task` blocker calculation, read-time status/projection, registered local surface access, cooperative guarantee display, and detective guarantee display only after the relevant capability check has passed.
+
+The active MVP does not include `captured_artifact`, native artifact capture, projection reconcile, persistent projection jobs, managed block drift repair, full Evidence Manifest, QA gate, verification gate, command execution observation, network observation, secret access observation, command/network/secret pre-tool blocking, Question Queue, Assumption Register, or Discovery Brief as a persistent artifact.
+
 ## Quality Rules
 
 Do not finish a meaning-changing documentation edit with only one language updated. Keep review history, cleanup notes, and temporary migration plans out of active docs.

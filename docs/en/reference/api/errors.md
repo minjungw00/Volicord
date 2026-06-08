@@ -15,11 +15,11 @@ Requesting or displaying a profile-gated guarantee display value without profile
 | Level or name | Error/status meaning |
 |---|---|
 | `cooperative` | Harness can check and record when the agent or tool follows the documented path. It is not OS permission, sandboxing, tamper-proof storage, or pre-execution blocking. |
-| `detective` | Harness or the connected surface can detect, record, or report an observable mismatch after or during the action. It is not prevention. |
+| `detective` | Harness or the connected surface can detect, record, or report a supported observable mismatch after or during the action, after the relevant capability check has passed. It is not prevention. |
 | `preventive` | Profile-gated display value name. Without promoted pre-tool blocking support for the covered operation, return a capability or validation error and lower the displayed `guarantee_display.level` value. |
 | `isolated` | Profile-gated display value name. Without promoted isolation support for the named boundary, return a capability or validation error and lower the displayed `guarantee_display.level` value. |
 
-Active MVP behavior defaults to cooperative checks with limited detective reporting where the connected surface can honestly observe facts. These security non-claims are boundary statements, not runtime errors or enforced capabilities. Close blockers are separate structured task-readiness results about user judgment, evidence, residual-risk visibility, and residual-risk acceptance state; they are not runtime proof of preventive blocking, isolation, sandboxing, or tamper-proof storage.
+Active MVP behavior defaults to cooperative checks with limited detective reporting only where the connected surface can honestly observe facts and the relevant capability check has passed. These security non-claims are boundary statements, not runtime errors or enforced capabilities. Close blockers are separate structured task-readiness results about user judgment, evidence, residual-risk visibility, and residual-risk acceptance state; they are not runtime proof of preventive blocking, isolation, sandboxing, or tamper-proof storage.
 
 | Condition | Public path | Agent rule |
 |---|---|---|

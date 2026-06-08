@@ -105,7 +105,7 @@ Security wording must match the control the owner docs define and prove. Exact g
 | Security term | Meaning | Owner route |
 |---|---|---|
 | `cooperative` | Harness can guide, record, compare, or refuse Harness state-changing paths when the connected surface follows the procedure. It is not hard blocking. | [Security](security.md), [Agent Integration](agent-integration.md) |
-| `detective` | Harness can detect, record, or report supported facts after an action or when they become observable. It is not prevention. | [Security](security.md), [Agent Integration](agent-integration.md) |
+| `detective` | Harness can detect, record, or report supported facts after an action or when they become observable, but in the active MVP only after the relevant capability check has passed. It is not prevention. | [Security](security.md), [Agent Integration](agent-integration.md) |
 | `preventive` | A claim that a named mechanism can block a covered operation before execution. The current MVP has no default preventive claim. | [Security](security.md) |
 | `isolated` | A claim that a named and proven separation boundary isolates one thing from another for a covered operation. The current MVP has no default isolation claim. | [Security](security.md), [Runtime Boundaries](runtime-boundaries.md) |
 | honest guarantee display | User-visible guarantee text must match `capability_profile` facts and owner-proof level. Unsupported stronger claims must be lowered or blocked. | [Security](security.md), [API Errors](api/errors.md) |
@@ -123,7 +123,7 @@ Agent and connector terms explain how a surface should use owner records with lo
 | always-on context | One-screen current context: task summary, scope, pending judgments, blockers, next safe actions, evidence gaps, close blockers, residual risk, guarantee level, and fresh refs. | [Agent Integration](agent-integration.md) |
 | phase-relevant context / push-pull | Push compact current context; pull only the owner sections needed for the next action. | [Agent Integration](agent-integration.md), [Reference Index](README.md) |
 | Role Lens | Read-only posture guidance. A lens recommendation has no authority until an owner path records the action. | [Agent Integration](agent-integration.md) |
-| reference local MCP surface | Active reference integration profile `reference-local-mcp`, with cooperative behavior and limited detective behavior only where supported. | [Agent Integration](agent-integration.md) |
+| reference local MCP surface | Active reference integration profile `reference-local-mcp`, with cooperative behavior and limited detective behavior only where supported and after the relevant capability check has passed. | [Agent Integration](agent-integration.md) |
 | fallback behavior | Connector response when Core, MCP, projections, local access, or capability is unavailable or insufficient. | [Agent Integration](agent-integration.md), [API Errors](api/errors.md) |
 
 ## Later terms

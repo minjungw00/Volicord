@@ -395,13 +395,13 @@ Core/API 담당 문서와 이 문서의 저장소 설명이 담당합니다. 방
 저장소는 `artifacts`와 `artifact_links`로 이를 구현합니다. 자세한 형태는
 [API Schema Core: ArtifactRef](api/schema-core.md#artifactref)를 봅니다.
 
-아티팩트 등록은 담당 문서가 문서화한 `ArtifactInput` 출처인 `staged_file`,
-`captured_artifact`, `existing_artifact`만 받습니다. 스테이징 핸들은 저장소가
-아티팩트 행을 커밋하기 전에 담당 경로가 해석해야 합니다. `captured_artifact` 핸들은
-문서화된 캡처 핸들 경로에서 담당 경로가 발급한 핸들이어야 하며, 활성 접점이 그 핸들을
-제시할 수 있어야 합니다. `existing_artifact` 입력은 이미 등록된 `ArtifactRef`를 가리켜야 하며, 같은
-프로젝트에 속하고 호환되는 담당 관계를 가져야 합니다. 호출자가 임의로 준 파일시스템
-경로, 원시 캡처 어댑터 출력, 접점 자체 캡처 주장은 기준 프로필의 등록 권한이 아닙니다.
+아티팩트 등록은 활성 담당 문서가 문서화한 `ArtifactInput` 출처인 `staged_file` 또는
+`existing_artifact`만 받습니다. `staged_file` 핸들은 활성 `stage_artifact` 유틸리티에서
+나와야 하며, 저장소가 아티팩트 행을 커밋하기 전에 담당 경로가 해석해야 합니다.
+`existing_artifact` 입력은 이미 등록된 `ArtifactRef`를 가리켜야 하며, 같은 프로젝트에
+속하고 호환되는 담당 관계를 가져야 합니다. 호출자가 임의로 준 파일시스템 경로,
+`captured_artifact` 핸들, 원시 캡처 어댑터 출력, 접점 자체 캡처 주장은 현재 MVP의 등록
+권한이 아닙니다.
 
 `existing_artifact`를 등록할 때는 가용성, 무결성 사실, `redaction_state`, 담당 관계가
 새 용도와 계속 호환될 때만 기존 아티팩트 행을 재사용합니다. 새 담당 관계를 위해

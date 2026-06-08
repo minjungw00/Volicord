@@ -67,7 +67,7 @@ docs:
       en: docs/en/build/mvp-plan.md
       ko: docs/ko/build/mvp-plan.md
     default_for_agent: en
-    owns: "Implementation sequencing, current repository status, readiness decisions, MVP planning boundaries, and active/later planning scope."
+    owns: "Implementation sequencing, current repository status, readiness decisions, the closed active MVP boundary, and active/later planning scope."
     does_not_own: "Runtime records, generated artifacts, exact method-name sets, detailed schemas, enum value sets, DDL, or accepted implementation behavior."
 
   - doc_id: reference.index
@@ -207,7 +207,7 @@ docs:
       en: docs/en/later/index.md
       ko: docs/ko/later/index.md
     default_for_agent: en
-    owns: "Later candidate names and promotion boundaries only, including full-format judgment presentation and future fixture families."
+    owns: "Later candidate names and promotion boundaries only, including deferred capture, reconcile, projection jobs, gates, observation, full-format judgment presentation, and future fixture families."
     does_not_own: "Active MVP requirements, active API/schema contracts, full template bodies, full fixture YAML, later schema bodies, or implementation readiness."
 
   - doc_id: maintain.authoring-guide

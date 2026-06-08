@@ -32,42 +32,40 @@ Server coding must not begin until maintainers resolve, accept, or explicitly de
 
 ## Active MVP slice
 
-The active MVP is the smallest user work loop that proves the product thesis: Harness is a local authority record for scope, user-owned judgment, Write Authorization, Run recording, compact evidence summary, final acceptance, close readiness, residual-risk visibility, and residual-risk acceptance. It is not a prompt pack and not an enforcement sandbox.
+The active MVP is the smallest user work loop that proves the product thesis: Harness is a local authority record for user-owned scope, judgments, write authorization, evidence, artifacts, residual risk, and closure state. It is not a prompt pack and not an enforcement sandbox.
 
 The current active MVP scope list is deliberately closed. It includes only:
 
-- `harness.intake`
-- `harness.status`
-- `harness.update_scope`
-- `harness.prepare_write`
-- `harness.record_run`
-- `harness.request_user_judgment`
-- `harness.record_user_judgment`
-- `harness.close_task`
-- Core state
-- Runtime Home storage contract
-- reference local MCP surface for `surface_id=reference-local-mcp`
-- path-level Write Authorization
+- plain-language intake and Task creation through `harness.intake`
+- active scope and Change Unit updates through `harness.update_scope`
+- user-owned judgment requests and recorded answers through `harness.request_user_judgment` and `harness.record_user_judgment`
+- sensitive-action approval recording as the active `sensitive_approval` judgment path
+- path-level `harness.prepare_write` and single-use Write Authorization for product-file writes
+- `harness.record_run` for shaping, direct, and implementation Runs
+- staged artifact registration through the active `stage_artifact` utility and `record_run` artifact inputs
 - compact `EvidenceSummary`
-- `CloseBlocker`
-- final acceptance
-- residual risk visibility and residual risk acceptance
-- cooperative/detective guarantee display
+- `harness.close_task` blocker calculation for close/cancel/supersede requests, without adding richer assurance close behavior
+- read-time `harness.status` and compact read-time projection/status outputs
+- registered local surface access for the reference local MCP surface, including `surface_id=reference-local-mcp`
+- cooperative guarantee display
+- detective guarantee display only when the relevant active capability check has actually passed
 
-These items cover ordinary-language intake, status, scope updates, write compatibility, run recording, user judgments, and close checks only through their active owners. Exact active method names and active schema value sets are owned by [API Schema Core](../reference/api/schema-core.md#current-mvp-value-sets). Method behavior, storage, Core transition meaning, and security wording remain with their Reference owners. This Build plan does not promote extra enum values, extra gates, extra storage records, validators beyond `surface_capability_check`, operations, richer evidence formats, QA paths, Eval paths, connector ecosystems, export/handoff formats, or workflow candidates.
+These items cover ordinary-language intake, status, scope updates, write compatibility, staged artifact registration, run recording, user judgments, and close checks only through their active owners. Exact active method names and active schema value sets are owned by [API Schema Core](../reference/api/schema-core.md#current-mvp-value-sets). Method behavior, storage, Core transition meaning, and security wording remain with their Reference owners. This Build plan does not promote extra enum values, extra gates, extra storage records, validators beyond `surface_capability_check`, operations, richer evidence formats, QA paths, Eval paths, connector ecosystems, export/handoff formats, projection jobs, reconcile workflows, or workflow candidates.
 
-Current MVP wording is cooperative with limited detective visibility. It must not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, or security isolation.
+`stage_artifact` is the active MVP staging utility for turning owner-approved local evidence material into a safe staged handle that `record_run` may register. This Build plan names the utility only to fix the active boundary; detailed API and schema work belongs to the API and storage owners.
+
+Current MVP wording is cooperative by default. Detective wording is allowed only for facts supported by the registered local surface and a passed capability check. The MVP must not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, security isolation, native artifact capture, command execution observation, network observation, or secret access observation.
 
 ## Excluded later material
 
 The following material stays outside the active MVP unless an owner document promotes a narrow behavior with scope, fallback behavior, and proof-path expectations for future promotion:
 
 - `verification_gate`, Manual QA workflow, `qa_waiver`, `verification_risk_acceptance`, `design_gate`, `design_policy`, broader validators beyond `surface_capability_check`, detached Eval, evaluation workflows, full Manual QA, full waiver machinery, rich approval lifecycle, and rich residual-risk lifecycle
-- Full Evidence Manifest, detailed evidence catalogs, persisted Journey Cards, detailed run reports, full Decision Packet format, TDD Trace, Module Map, Interface Contract, Domain Language, rich templates, and later-profile templates
-- `harness.record_manual_qa`, `harness.launch_verify`, `harness.record_eval`, later `record_run` branches, later user-judgment branches, later next-action values, later schema fields, and later artifact/ref values
-- command/network/secret observation as an active proof requirement, command/network/secret observation schema values, preventive or isolated profiles, preventive guard expansion, native hook expansion, broad isolated execution, permission isolation, and stronger local capability profiles
+- Full Evidence Manifest, detailed evidence catalogs, persisted Journey Cards, Discovery Brief as a persistent artifact, Question Queue, Assumption Register, detailed run reports, full Decision Packet format, TDD Trace, Module Map, Interface Contract, Domain Language, rich templates, and later-profile templates
+- `harness.record_manual_qa`, `harness.launch_verify`, `harness.record_eval`, later `record_run` branches, later user-judgment branches, later next-action values, later schema fields, later artifact/ref values, and `captured_artifact`
+- command execution observation, network observation, secret access observation, command/network/secret observation as an active proof requirement, command/network/secret observation schema values, preventive or isolated profiles, command/network/secret pre-tool blocking, preventive guard expansion, native hook expansion, broad isolated execution, permission isolation, and stronger local capability profiles
 - dashboard, hosted UI, artifact dashboard, hosted connector registry, connector marketplace, broad connector ecosystem, connector conformance ecosystem, cross-surface orchestration, team workflow, metrics, and automation candidates
-- active operations profile, doctor/readiness suites, recover/export flows, export/handoff formats, artifact integrity operations, release handoff, projection refresh/reconcile operations, broad operator coverage, conformance runner, executable fixture catalog, generated conformance artifacts, deployment, canary, rollback, and production monitoring
+- captured artifact handles, native artifact capture, active operations profile, doctor/readiness suites, recover/export flows, export/handoff formats, artifact integrity operations, release handoff, persistent projection jobs, projection refresh/reconcile operations, managed block drift repair, broad operator coverage, conformance runner, executable fixture catalog, generated conformance artifacts, deployment, canary, rollback, and production monitoring
 
 Reference-schema presence does not expand the active MVP. Required fields apply only when the owning tool, record, or promoted later candidate is active or actually used.
 
@@ -82,11 +80,11 @@ It should show:
 - `prepare_write` compatible, blocked, dry-run, and replay behavior through the owner path
 - one compatible `record_run` that consumes a required Write Authorization once
 - blocked handling for missing, stale, consumed, or observed-outside-authorized-scope attempts without creating completion evidence
-- one artifact/evidence ref and a compact evidence coverage/gap read
+- one `stage_artifact`-produced staged handle, one registered artifact/evidence ref, and a compact evidence coverage/gap read
 - status/blocker output that reads Core state without mutating it
 - a narrow close-blocker read that can show missing evidence, unresolved judgment, or visible residual risk without implementing full assurance close semantics
 
-This smoke target may use an owner-valid setup or seed path instead of ordinary-language intake. It does not require generated runtime reports, full projection rendering, a dashboard, hosted UI, active operations profile, executable fixtures, or broad connector support.
+This smoke target may use an owner-valid setup or seed path instead of ordinary-language intake. It does not require generated runtime reports, full projection rendering, persistent projection jobs, projection reconcile, managed block drift repair, a dashboard, hosted UI, active operations profile, executable fixtures, native artifact capture, or broad connector support.
 
 ## User work loop
 
@@ -101,9 +99,9 @@ The next safe action must remain visible. If Core, MCP, or the reference surface
 1. The user asks for work in ordinary language.
 2. Harness shapes or resumes a Task, summarizes scope and non-goals, and asks for minimal user judgment only when the user owns the decision.
 3. Before a product write, the agent or surface calls `prepare_write`; compatible work receives the owner-defined Write Authorization result, and incompatible work returns a blocker or owner-defined error.
-4. After the write or direct work, `record_run` records what happened and links registered artifact/evidence refs or the compact evidence summary path.
+4. Before registering artifact bytes, the active `stage_artifact` utility creates a safe staged handle; after the write or direct work, `record_run` records what happened and links registered artifact/evidence refs or the compact evidence summary path.
 5. Status and compact outputs show current scope, pending judgments, evidence gaps, blockers, next safe action, guarantee display level, and residual-risk visibility as derived reads from Core records.
-6. `close_task` either closes through the owner-defined active path or returns close blockers. MVP close keeps final acceptance, residual-risk acceptance, evidence sufficiency, and later verification/QA candidates distinct without adding a current verification or Manual QA gate.
+6. `close_task` calculates close blockers for the owner-defined active path. MVP close keeps final acceptance, residual-risk acceptance, evidence sufficiency, and later verification/QA candidates distinct without adding a current verification or Manual QA gate.
 
 `compatible`, `blocked`, and `allowed` are Harness record-compatibility results. They do not mean physical OS blocking, arbitrary-tool prevention, sandbox isolation, or permission isolation unless a future promoted mechanism proves that exact behavior.
 
@@ -115,10 +113,10 @@ Server coding must not begin until maintainers mark each row accepted, decided, 
 | Decision item | Current status | What must be decided before coding |
 |---|---|---|
 | Implementation-planning readiness | Not maintainer-accepted. | Maintainers must accept that the compact documentation set is ready for the first runtime-batch plan, or name the blocker and affected scope. |
-| Core transition maintainer acceptance | Not maintainer-accepted for coding. | Active Task/scope, `user_judgment`, `prepare_write`, Write Authorization, `record_run`, blocker, status, compact evidence summary, residual-risk visibility, and `close_task` semantics must be maintainer-accepted for active MVP paths. |
+| Core transition maintainer acceptance | Not maintainer-accepted for coding. | Active Task/scope, `user_judgment`, sensitive approval, `prepare_write`, Write Authorization, `record_run`, staged artifact registration, blocker, status, compact evidence summary, residual-risk visibility, and `close_task` semantics must be maintainer-accepted for active MVP paths. |
 | Public API and schema maintainer acceptance | Not maintainer-accepted for coding. | Method behavior, the Schema Core-owned active method-name value set, API request/response shapes, shared schemas, resources, errors, idempotency/replay behavior, unavailable Core/MCP behavior, and later-candidate exclusions must be maintainer-accepted before affected tools or resources are coded. |
 | Storage and runtime-home maintainer acceptance | Not maintainer-accepted for coding. | The minimal storage profile, runtime home layout, locks, artifact refs, migrations, replay/audit needs, and later-candidate storage boundary must be maintainer-accepted before DDL, runtime data files, or artifact storage are created. |
-| Security and local-access maintainer acceptance | Not maintainer-accepted for coding. | The local-only posture and cooperative/limited-detective security guarantee-claim wording must be maintainer-accepted before API/MCP exposure. MVP must not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, or security isolation. |
+| Security and local-access maintainer acceptance | Not maintainer-accepted for coding. | The local-only posture and cooperative/limited-detective security guarantee-claim wording must be maintainer-accepted before API/MCP exposure. Detective claims require a passed active capability check. MVP must not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, permission isolation, security isolation, native artifact capture, command execution observation, network observation, or secret access observation. |
 | Surface and compact-output maintainer acceptance | Not maintainer-accepted for coding. | The one reference `capability_profile`, compact user-facing views, compact agent-facing packet, freshness/unavailable behavior, and projection-as-derived-read boundary must be maintainer-accepted before display or connector code is implemented. |
 
 ## Reference owners

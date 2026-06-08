@@ -11,6 +11,12 @@
 - 이 README는 색인으로 유지합니다. 계약 세부사항을 여기로 복사하지 않습니다.
 - active/later 경계는 활성 담당 문서와 [이후 후보 색인](../later/index.md)에 둡니다.
 
+## 현재 MVP 경계
+
+현재 MVP는 평소 말 입력과 Task 생성, `harness.update_scope`, 사용자 판단 기록, 민감 동작 승인 기록, 경로 수준 `harness.prepare_write`와 Write Authorization, `harness.record_run`, `stage_artifact`를 통한 스테이징된 아티팩트 등록, 간결한 `EvidenceSummary`, `harness.close_task` 차단 사유 계산, 읽는 시점의 상태/Projection, 등록된 로컬 접점 접근, 협력형 보장 표시, 관련 역량 확인이 실제로 통과한 뒤의 탐지형 보장 표시에만 닫혀 있습니다.
+
+그 밖의 항목은 담당 참조 문서가 범위, 대체 동작, 증명 기대치를 함께 명시적으로 승격하기 전까지 현재 MVP 밖입니다. 여기에는 `captured_artifact`, 접점 자체 아티팩트 캡처, Projection reconcile, 영속 Projection 작업, 관리 블록 drift 복구, Full Evidence Manifest, QA gate, verification gate, 명령 실행 관찰, 네트워크 관찰, 비밀값 접근 관찰, 명령/네트워크/비밀값 도구 실행 전 차단, Question Queue, Assumption Register, 영속 아티팩트로서의 Discovery Brief가 포함됩니다.
+
 ## 담당 문서 라우팅
 
 아래 표는 에이전트와 구현자가 현재 존재하는 간결한 담당 문서 하나로 이동하도록 안내합니다.
