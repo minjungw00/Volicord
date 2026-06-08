@@ -111,11 +111,12 @@ state-changing method set: `harness.intake`, `harness.update_scope`,
 `harness.request_user_judgment`, `harness.record_user_judgment`, and
 `harness.close_task`. `harness.status` and `harness.close_task intent=check`
 are read-only. `harness.stage_artifact` is an active local artifact utility,
-but it creates only temporary staging bytes or notices and a
-`StagedArtifactHandle`; it does not create a current Core record or increment
-the project state clock.
+but it creates only temporary storage-owned staging bytes or notices plus an
+`artifact_staging` row or equivalent staging manifest behind a
+`StagedArtifactHandle`; it does not create a current Core authority record or
+increment the project state clock.
 
-The active persisted records are:
+The active Core persisted records are:
 
 - Runtime Home identity in `registry.sqlite`.
 - Minimal project registration in `registry.sqlite`.
@@ -135,13 +136,20 @@ The active persisted records are:
 - `task_events`.
 - `tool_invocations`.
 
-No other persisted table family is active current MVP scope. Requirement
-shaping persists through `tasks`, `change_units`, `user_judgments`,
-`evidence_summaries`, and `blockers`; it is not a separate committed Discovery
-Brief, Shared Design, Question Queue, Assumption Register, or First Safe Change
-Unit Candidate table. Evidence persists through compact evidence summaries,
-completion policy, required coverage items, and artifact refs, not through full
-Evidence Manifest storage.
+The active temporary storage boundary is `artifact_staging` or an equivalent
+storage-owned staging manifest, together with safe temporary bytes or notices
+under `artifacts/tmp/`. It exists only to let `harness.stage_artifact` produce a
+scoped, expiring, single-consumption handle for later `harness.record_run`
+promotion. It is not a persistent `ArtifactRef`, evidence authority, a Core
+mutation record, an event source, a replay row, or a state-version source.
+
+No other persisted table family or temporary handle family is active current MVP
+scope. Requirement shaping persists through `tasks`, `change_units`,
+`user_judgments`, `evidence_summaries`, and `blockers`; it is not a separate
+committed Discovery Brief, Shared Design, Question Queue, Assumption Register,
+or First Safe Change Unit Candidate table. Evidence persists through compact evidence summaries,
+`CompletionPolicy` on the Task or Change Unit, required coverage items, and
+artifact refs, not through full Evidence Manifest storage.
 
 Projection has no active persisted table family. `status-card`,
 `judgment-request`, `run-evidence-summary`, `close-result`, and
@@ -152,7 +160,7 @@ The minimum active shaping information is stored through those existing records:
 current goal summary, active scope summary, allowed paths or affected areas,
 non-goals, acceptance criteria, Autonomy Boundary, required user-owned
 judgments, one blocking question when necessary, one next safe action,
-completion policy, required evidence expectation or evidence gap, and close
+`CompletionPolicy`, required evidence expectation or evidence gap, and close
 blockers. Missing or unknown pieces stay
 as `unknown`, pending `user_judgments`, evidence gaps, or `blockers`; storage
 must not create extra active planning tables to make the request appear ready.
@@ -169,14 +177,15 @@ they serve. It is not full DDL and does not duplicate API schemas.
 | `project.yaml` | Project directory | Static project configuration. | `project_id`, `repo_root`, display/config defaults. |
 | `project_state` | `state.sqlite` | Project-local state header, single public project-wide state clock, active Task pointer, and default surface pointer. | `project_id`, `schema_version`, `storage_profile`, `state_version`, `active_task_id`, `default_surface_id`, `created_at`, `updated_at`. |
 | `surfaces` | `state.sqlite` | Stored `LocalSurfaceRegistration` facts used to verify a local surface context for API access. The row is registration data, not live proof that the current caller is trusted. | `project_id`, `surface_id`, `surface_instance_id`, `transport_kind`, `transport_binding_fingerprint`, `access_secret_hash`, `capability_profile_hash`, `capability_profile_json`, `status`, `local_access_posture`, `registered_at`, `last_verified_at`, `updated_at`. |
-| `tasks` | `state.sqlite` | User-value work unit, current shaping summary, lifecycle, result, next-action, and close fields. | `task_id`, `project_id`, `title`, `user_request`, `current_goal_summary`, `mode`, `lifecycle_phase`, `close_reason`, `result`, `summary`, shaping JSON columns, `blocking_question`, `next_safe_action`, `active_change_unit_id`, `created_at`, `updated_at`, `closed_at`. |
-| `change_units` | `state.sqlite` | Current or proposed scoped work boundary for write compatibility and close basis. | `change_unit_id`, `task_id`, `scope_summary`, scope JSON columns for allowed paths or affected areas, `baseline_ref`, `autonomy_boundary_json`, `status`, `created_at`, `updated_at`. |
-| `user_judgments` | `state.sqlite` | User-owned judgment records for the active `UserJudgment.judgment_kind` values. | `user_judgment_id`, `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `status`, request/context JSON columns, `question`, `resolution_json`, `expires_at`, `resolved_at`, `created_at`, `updated_at`. |
+| `tasks` | `state.sqlite` | User-value work unit, current shaping summary, lifecycle, result, next-action, active Task-level `CompletionPolicy`, and close fields. | `task_id`, `project_id`, `title`, `user_request`, `current_goal_summary`, `mode`, `lifecycle_phase`, `close_reason`, `result`, `summary`, shaping JSON columns, `completion_policy_json`, `blocking_question`, `next_safe_action`, `active_change_unit_id`, `created_at`, `updated_at`, `closed_at`. |
+| `change_units` | `state.sqlite` | Current or proposed scoped work boundary for write compatibility, Change Unit-level `CompletionPolicy`, and close basis. | `change_unit_id`, `task_id`, `scope_summary`, scope JSON columns for allowed paths or affected areas, `baseline_ref`, `autonomy_boundary_json`, `completion_policy_json`, `status`, `created_at`, `updated_at`. |
+| `user_judgments` | `state.sqlite` | User-owned judgment records for the active `UserJudgment.judgment_kind` values, including separate sensitive-action approval scope when relevant. | `user_judgment_id`, `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `status`, request/context JSON columns, `question`, `sensitive_action_scope_json`, `resolution_json`, `expires_at`, `resolved_at`, `created_at`, `updated_at`. |
 | `write_authorizations` | `state.sqlite` | Durable single-use cooperative Write Authorization created only by non-dry-run `prepare_write` with `decision=allowed`. | `write_authorization_id`, `task_id`, `change_unit_id`, `surface_id`, `status`, `basis_state_version`, `attempt_scope_json`, `consumed_by_run_id`, `expires_at`, `created_at`, `updated_at`, `consumed_at`. |
 | `runs` | `state.sqlite` | Committed execution or observation record, including compatible authorization consumption when a product write happened. | `run_id`, `task_id`, `change_unit_id`, `write_authorization_id`, `surface_id`, `kind`, `status`, `product_write`, `baseline_ref`, `summary`, observed/evidence JSON columns, `created_at`, `completed_at`. |
+| `artifact_staging` | `state.sqlite` plus `artifacts/tmp/` | Temporary staged safe bytes or safe notices created by `harness.stage_artifact` for later single-use `harness.record_run` consumption. It is not a persistent `ArtifactRef` and not evidence authority. | `handle_id`, `project_id`, `task_id`, `surface_id`, `display_name`, `relation_hint`, `tmp_uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `status`, `consumed_by_run_id`, `promoted_artifact_id`, `expires_at`, `created_at`, `consumed_at`. |
 | `artifacts` | `state.sqlite` plus artifact store | Registered durable evidence bytes or safe metadata with integrity, redaction, producer, retention, and availability facts. | `artifact_id`, `project_id`, `task_id`, `run_id`, `kind`, `uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `retention_class`, `produced_by`, `status`, `created_at`, `updated_at`. |
 | `artifact_links` | `state.sqlite` | Owner relation from an artifact to the active Core/API record it supports. | `artifact_link_id`, `artifact_id`, `task_id`, `owner_record_kind`, `owner_record_id`, `relation`, `created_at`. |
-| `evidence_summaries` | `state.sqlite` | Compact evidence coverage, completion policy, and gap record used by status, run/evidence summaries, blockers, and close. | `evidence_summary_id`, `task_id`, `change_unit_id`, `status`, `completion_policy_json`, `coverage_items_json`, `summary`, `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `updated_at`. |
+| `evidence_summaries` | `state.sqlite` | Compact evidence coverage and gap record used by status, run/evidence summaries, blockers, and close. It is evaluated against the Task or Change Unit `CompletionPolicy`; it does not own that policy. | `evidence_summary_id`, `task_id`, `change_unit_id`, `status`, `coverage_items_json`, `summary`, `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `updated_at`. |
 | `blockers` | `state.sqlite` | Structured blocker for next action, write compatibility, evidence gaps, close readiness, or recovery. | `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, `status`, `message`, `owner_ref_json`, `related_refs_json`, `required_next_action`, `created_at`, `resolved_at`. |
 | `task_events` | `state.sqlite` | Append-only audit and ordering trail for committed Core mutations. | `event_id`, `project_id`, `task_id`, `event_seq`, `event_type`, `state_version`, `actor_kind`, `surface_id`, `payload_json`, `created_at`. |
 | `tool_invocations` | `state.sqlite` | Committed replay row for non-dry-run state-changing tool responses. | `invocation_id`, `project_id`, `tool_name`, `idempotency_key`, `request_hash`, `task_id`, `basis_state_version`, `response_json`, `status`, `created_at`. |
@@ -199,8 +208,8 @@ Required identity and uniqueness constraints:
 - Active tables use opaque stable ids as primary keys or equivalent unique
   keys: `project_id`, `surface_id`, `surface_instance_id`, `task_id`,
   `change_unit_id`, `user_judgment_id`, `write_authorization_id`, `run_id`,
-  `artifact_id`, `artifact_link_id`, `evidence_summary_id`, `blocker_id`,
-  `event_id`, and `invocation_id`.
+  `handle_id`, `artifact_id`, `artifact_link_id`, `evidence_summary_id`,
+  `blocker_id`, `event_id`, and `invocation_id`.
 - Runtime Home identity stores one `runtime_home_id` for the Runtime Home.
 - Project registration requires unique `project_id`, unique `project_home`, and
   one active registration for a `repo_root` unless a future owner defines
@@ -216,6 +225,11 @@ Required identity and uniqueness constraints:
 - `write_authorizations.consumed_by_run_id`, when non-null, is unique.
   `runs.write_authorization_id`, when non-null, is unique. Together these
   preserve the single-use consumption relation.
+- `artifact_staging` requires a unique `(project_id, handle_id)` and a unique
+  `tmp_uri` or equivalent staging-object identity within the project while the
+  handle exists. `consumed_by_run_id` and `promoted_artifact_id`, when non-null,
+  are unique so one staged handle cannot be consumed twice or promoted into two
+  durable artifacts.
 - `artifact_links` requires a uniqueness rule equivalent to
   `(artifact_id, owner_record_kind, owner_record_id, relation)` so the same
   owner relation is not duplicated.
@@ -233,7 +247,7 @@ Required identity and uniqueness constraints:
 Main foreign key relationships:
 
 - `project_state.project_id`, `surfaces.project_id`, `tasks.project_id`,
-  `artifacts.project_id`, `task_events.project_id`, and
+  `artifact_staging.project_id`, `artifacts.project_id`, `task_events.project_id`, and
   `tool_invocations.project_id` belong to project registration.
 - `project_state.active_task_id`, when present, points to an open same-project
   `tasks` row. `project_state.default_surface_id`, when present, points to a
@@ -252,6 +266,11 @@ Main foreign key relationships:
 - `runs.write_authorization_id`, when present, points to the consumed
   `write_authorizations` row and must match the same Task, Change Unit, surface,
   and compatible attempt scope.
+- `artifact_staging.task_id` points to the owning Task.
+  `artifact_staging.consumed_by_run_id` and
+  `artifact_staging.promoted_artifact_id`, when present, point to same-project
+  same-Task `runs` and `artifacts` rows created by the consuming
+  `harness.record_run` transaction.
 - `artifacts.task_id` points to the owning Task. `artifacts.run_id`, when
   present, points to a same-Task `runs` row.
 - `artifact_links.artifact_id` points to `artifacts`, and
@@ -276,9 +295,10 @@ Cascade delete policy:
   delete `tasks`, `change_units`, `user_judgments`, `write_authorizations`,
   `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`,
   `task_events`, or `tool_invocations`.
-- `artifacts/tmp/` staging bytes, notices, and temporary handles may be cleaned
-  before registration because they are not evidence authority. Once an
-  `artifacts` row is committed, retention purge, project teardown, or
+- Unconsumed or expired `artifact_staging` rows and `artifacts/tmp/` staging
+  bytes or notices may be marked `expired` or `discarded`, and temporary bytes
+  may be cleaned before registration, because they are not evidence authority.
+  Once an `artifacts` row is committed, retention purge, project teardown, or
   destructive cleanup is outside ordinary active MVP mutation behavior and needs
   an owner-defined path.
 - A future retention or migration path must preserve artifact hashes, owner
@@ -302,6 +322,8 @@ body. Unknown values fail before commit.
 | `tasks.result` | `none`, `advice_only`, `completed`, `cancelled`, `superseded` | Persisted coarse outcome. Failed Runs, violations, blocked closes, and evidence gaps stay in their owning records. |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` | Storage-owned active Change Unit lifecycle for write compatibility and close basis. |
 | `write_authorizations.status` | `active`, `consumed`, `expired`, `stale`, `revoked` | Durable authorization lifecycle. Schema Core exposes the same public summary values; storage owns persistence and transition rules. |
+| `artifact_staging.status` | `staged`, `consumed`, `expired`, `discarded` | Storage-owned temporary handle lifecycle. Only `staged` is consumable by `harness.record_run`; terminal values cannot return to `staged`. |
+| `artifact_staging.redaction_state` | `none`, `redacted`, `secret_omitted`, `blocked` | Temporary staging uses the same safe-byte or safe-notice redaction vocabulary as `ArtifactRef`; it does not describe a hidden original. |
 | `artifacts.status` | `available`, `missing`, `integrity_failed`, `unavailable` | Storage-owned artifact availability state. Redaction and blocked-payload handling stay in `redaction_state`. |
 | `artifacts.redaction_state` | `none`, `redacted`, `secret_omitted`, `blocked` | Persisted `ArtifactRef.redaction_state` values from Schema Core. Hash and size describe the committed safe bytes or safe notice, not a hidden original. |
 | `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` | Persisted owner relation discriminator. Values mirror `ArtifactRelationOwner.record_kind`; storage owns same-project/same-Task owner lookup and relation validation. |
@@ -359,6 +381,16 @@ Change Unit fields.
 - Blocked, dry-run, malformed, or pre-commit failed `prepare_write` attempts
   create no consumable `write_authorizations` row.
 
+`SensitiveActionScope` storage is distinct from `write_authorizations`.
+For `judgment_kind=sensitive_approval`, `user_judgments` stores the approved or
+pending sensitive-action scope in `sensitive_action_scope_json` or an equivalent
+validated judgment payload field. That scope describes the named sensitive
+action the user is judging. It is not `AuthorizedAttemptScope`, is not stored in
+`write_authorizations.attempt_scope_json`, and does not create or consume a
+Write Authorization. A product-file write may need both a compatible
+`SensitiveActionScope` judgment and a separate compatible Write Authorization,
+but one record cannot substitute for the other.
+
 `surfaces` is not a connector marketplace or broad connector ecosystem table.
 It stores the active `LocalSurfaceRegistration` facts needed to interpret
 `surface_id`, surface instance identity, local transport binding, capability
@@ -369,6 +401,8 @@ registration basis; the server must still derive a per-request
 `VerifiedSurfaceContext` from the local transport/session/binding before a
 mutating API call commits or an artifact body is read. `ToolEnvelope.surface_id`
 selects the row to compare against. It does not prove authority by itself.
+`VerifiedSurfaceContext` is derived request context, not user-provided data, not
+a stored registration row, and not a durable authority record.
 
 Product Repository files, projections, generated Markdown, chat text, and agent
 memory cannot create, modify, or refresh a `surfaces` row. A registration
@@ -439,13 +473,13 @@ the active records, including:
 - Task and Change Unit shaping columns such as `success_criteria_json`,
   `acceptance_criteria_json`, `scope_boundary_json`, `non_goals_json`,
   `affected_areas_json`, `affected_path_candidates_json`, `constraints_json`,
-  and `autonomy_boundary_json`.
+  `autonomy_boundary_json`, and `completion_policy_json`.
 - `user_judgments` request, context, option, affected-ref, artifact-ref, and
-  `resolution_json` columns.
+  `sensitive_action_scope_json` or `resolution_json` columns.
 - `write_authorizations.attempt_scope_json`, which stores
   `AuthorizedAttemptScope`.
 - `runs` observed-attempt and evidence-update JSON columns.
-- `evidence_summaries.completion_policy_json`, `coverage_items_json`, and supporting/gap ref arrays.
+- `evidence_summaries.coverage_items_json` and supporting/gap ref arrays.
 - `blockers.owner_ref_json` and `blockers.related_refs_json`.
 - `task_events.payload_json`.
 - `tool_invocations.response_json`.
@@ -456,17 +490,23 @@ Assumption Register, full design artifact, generated projection body, evidence
 manifest body, QA record, acceptance record, residual-risk record, or close
 record under another name.
 
-`evidence_summaries.completion_policy_json` stores the compact
-`CompletionPolicy` for `close_task intent=complete` on the Task or Change Unit.
-It is not a cancellation or supersession policy. `coverage_items_json` stores
-bounded `EvidenceCoverageItem` entries with explicit `claim`,
-`required_for_close`, `coverage_state`, and validated supporting or gap refs.
-Storage must reject coverage JSON that omits the required/optional distinction,
-uses unknown coverage states, or names refs outside the compatible project/task
-scope. When `completion_policy_json.evidence_required=true`, the stored summary
-must leave enough information for `harness.close_task` to derive an evidence
-blocker whenever a required coverage item is unsupported, partial, stale,
-blocked, or missing.
+`tasks.completion_policy_json` or `change_units.completion_policy_json` stores
+the compact `CompletionPolicy` for `close_task intent=complete` on the Task or
+Change Unit. It is not a cancellation or supersession policy. An
+`evidence_summaries` row is tied to that owner policy through `task_id` and,
+when present, `change_unit_id`; response shapes that include
+`EvidenceSummary.completion_policy` read the policy from the owning Task or
+Change Unit instead of treating evidence coverage as the policy owner.
+
+`evidence_summaries.coverage_items_json` stores bounded `EvidenceCoverageItem`
+entries with explicit `claim`, `required_for_close`, `coverage_state`, and
+validated supporting or gap refs. Storage must reject coverage JSON that omits
+the required/optional distinction, uses unknown coverage states, or names refs
+outside the compatible project/task scope. When the owning
+`completion_policy_json.evidence_required=true`, the stored summary must leave
+enough information for `harness.close_task` to derive an evidence blocker
+whenever a required coverage item is unsupported, partial, stale, blocked, or
+missing.
 
 Status-like `TEXT` values are closed owner value sets, not open strings. Active
 values are owned by Core/API owners and by the storage notes here. Defensive
@@ -490,17 +530,25 @@ raw logs as authority claims, `captured_artifact` handles, raw capture-adapter
 outputs, and native capture claims are not registration authority in the active
 MVP.
 
-Temporary staging is not artifact authority. A staging boundary must track at
-least `handle_id`, `project_id`, `task_id`, `sha256`, `size_bytes`,
-`content_type`, `redaction_state`, `expires_at`, and whether the handle has
-already been consumed. `harness.stage_artifact` may write safe bytes or a safe
-notice under `artifacts/tmp/`, but it creates no `artifacts` row, no
-`artifact_links` row, no `evidence_summaries` row, no `task_events` row, no
-`tool_invocations` replay row, and no `project_state.state_version` increment.
+Temporary staging is not artifact authority. `artifact_staging` or an
+equivalent storage-owned staging manifest must track at least `handle_id`,
+`project_id`, `task_id`, `sha256`, `size_bytes`, `content_type`,
+`redaction_state`, `status`, `expires_at`, and consumption facts such as
+`consumed_by_run_id`, `promoted_artifact_id`, and `consumed_at`.
+`harness.stage_artifact` may write safe bytes or a safe notice under
+`artifacts/tmp/` and create the temporary staging row, but it creates no
+`artifacts` row, no `artifact_links` row, no `evidence_summaries` row, no
+`task_events` row, no `tool_invocations` replay row, and no
+`project_state.state_version` increment.
+
 Only a compatible `harness.record_run` may consume an unexpired same-project
-same-Task unconsumed handle and promote it to a persistent `ArtifactRef`.
-Expired, mismatched, already-consumed, or cross-task staging handles must be
-rejected before mutation.
+same-Task handle with `artifact_staging.status=staged` and promote it to a
+persistent `ArtifactRef`. The consuming transaction must mark the staging handle
+`consumed`, set the consuming Run and promoted artifact ids, commit the durable
+`artifacts` row and required `artifact_links`, and update evidence coverage only
+as allowed by the method owner. Expired, mismatched, already-consumed,
+discarded, integrity-incompatible, or cross-task staging handles must be
+rejected before mutation and must not be hidden as evidence sufficiency.
 
 Registering an `existing_artifact` reuses the registered artifact row only when
 its availability, integrity facts, redaction state, and owner relation remain
@@ -594,10 +642,11 @@ not append events.
 
 For a new committed non-dry-run mutation, current-row writes, the
 `task_events` append, the project-wide state-version increment, and the
-`tool_invocations` replay-row insert must commit atomically. If any part fails,
-the transaction must leave no partial authority row, event, artifact
-registration, authorization consumption, evidence update, close effect, or replay
-row.
+`tool_invocations` replay-row insert must commit atomically. For
+`harness.record_run`, staged-handle consumption in `artifact_staging` is part of
+that same transaction. If any part fails, the transaction must leave no partial
+authority row, staging consumption, event, artifact registration, authorization
+consumption, evidence update, close effect, or replay row.
 
 `tool_invocations` stores exact replay for committed non-dry-run state-changing
 responses. Keys are scoped as described by [API Errors: Idempotency](api/errors.md#idempotency).
@@ -612,9 +661,10 @@ discriminator stored in that row.
 Dry runs, malformed requests, pre-commit validation failures, pre-commit state
 conflicts, read-only calls such as `harness.status` and
 `harness.close_task intent=check`, and rejected `record_run` attempts that
-create no mutation do not create current rows, `task_events`, artifacts,
-evidence summaries, Write Authorizations, close state, or `tool_invocations`
-replay rows or state-version increments.
+create no mutation do not create current rows, consume or update
+`artifact_staging` handles, append `task_events`, register artifacts, update
+evidence summaries, create Write Authorizations, change close state, create
+`tool_invocations` replay rows, or increment state versions.
 
 A blocked response may persist only the blocker or other mutation the API
 method-state-effect matrix allows. It must not create the authority the blocker
@@ -736,6 +786,8 @@ The active current MVP excludes storage for:
   and generated conformance artifacts;
 - operations-profile storage for doctor suites, recover, export, release
   handoff, artifact dashboards, reconcile queues, or operational reports;
+- `captured_artifact` handles, native capture storage, capture-adapter output
+  tables, raw capture queues, or surface-native artifact capture records;
 - full Evidence Manifest tables, detailed evidence catalogs, detached Eval,
   detached verification, full Manual QA matrices, and rich QA/waiver machinery;
 - rich Approval tables and rich residual-risk lifecycle tables separate from

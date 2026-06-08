@@ -302,9 +302,9 @@ StageArtifactResponse:
   errors: ToolError[]
 ```
 
-- **상태 효과:** 성공한 호출은 `project_id`와 `task_id`에 묶이고 `content_type`, `sha256`, `size_bytes`, `redaction_state`, `expires_at`을 가진 임시 `StagedArtifactHandle`만 만듭니다. Core 기록, 지속 `ArtifactRef`, 증거 요약, 차단 사유, 이벤트, `tool_invocations` 재실행 행, 닫기 효과, `project_state.state_version` 증가를 만들지 않습니다. 그 핸들을 소비해 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`뿐입니다.
+- **상태 효과:** 성공한 호출은 `artifact_staging` 또는 동등한 저장소 소유 스테이징 기록이 뒷받침하고 `project_id`와 `task_id`에 묶이며 `content_type`, `sha256`, `size_bytes`, `redaction_state`, `expires_at`을 가진 임시 `StagedArtifactHandle`만 만듭니다. Core 기록, 지속 `ArtifactRef`, 증거 요약, 차단 사유, 이벤트, `tool_invocations` 재실행 행, 닫기 효과, `project_state.state_version` 증가를 만들지 않습니다. 그 핸들을 소비해 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`뿐입니다.
 - **오류:** `VALIDATION_FAILED`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`.
-- **저장소 담당 문서:** 저장소가 담당하는 스테이징 경계 아래 임시 스테이징 바이트 또는 알림. 지속 `artifacts`와 `artifact_links`는 나중에 호환되는 `harness.record_run`만 만듭니다.
+- **저장소 담당 문서:** `artifact_staging` 또는 동등한 저장소 소유 스테이징 기록과 `artifacts/tmp/` 아래 임시 바이트 또는 알림. 지속 `artifacts`와 `artifact_links`는 나중에 호환되는 `harness.record_run`만 만듭니다.
 - **보안 경계:** 요청은 안전한 바이트 또는 안전한 알림을 전달할 뿐, 임의 파일 권한을 전달하지 않습니다. 원시 파일 경로, 권한 주장으로서의 원시 로그, 임의 로컬 경로 문자열, 원시 비밀값, 토큰, 민감한 전체 로그, `captured_artifact` 핸들, 원시 캡처 어댑터 출력, 접점 자체 캡처 주장은 현재 MVP 아티팩트 권한으로 거부됩니다. `manual_artifact_attachment_supported=true`는 이 스테이징 경로를 사용할 수 있다는 뜻입니다. `native_artifact_capture_supported=false`는 현재 MVP가 수동 아티팩트 스테이징과 담당 경로 등록으로 남아 있으며 접점 자체 아티팩트 캡처가 아니라는 뜻입니다.
 
 <a id="harnessrecord_run"></a>
@@ -345,9 +345,9 @@ RecordRunResponse:
   state: StateSummary
 ```
 
-- **상태 효과:** 호환되는 커밋 호출은 `runs`를 만들고, 유효한 스테이징 핸들을 지속 `artifacts`로 승격하고, `artifact_links`를 추가하고, `evidence_summaries`를 만들고, Run 관련 차단 사유를 업데이트하고, `write_authorizations.status=active`를 소비하고, 이벤트와 커밋된 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 올릴 수 있습니다. 제품 쓰기 Run은 현재 `project_state.state_version`이 Write Authorization의 프로젝트 전체 `basis_state_version`과 맞고, 관찰된 변경 경로가 저장된 승인 시도와 호환될 때만 활성 Write Authorization을 소비합니다. 거부된 호출과 커밋 전 실패는 Run 생성, 아티팩트 등록, 스테이징 핸들 소비, 증거 업데이트, 유효하지 않은 Write Authorization 소비, 이벤트 추가, 재실행 행 생성, `state_version` 증가를 하면 안 됩니다.
+- **상태 효과:** 호환되는 커밋 호출은 `runs`를 만들고, 유효한 `artifact_staging` 핸들을 소비하고, 그 스테이징 핸들을 지속 `artifacts`로 승격하고, `artifact_links`를 추가하고, `evidence_summaries`를 만들고, Run 관련 차단 사유를 업데이트하고, `write_authorizations.status=active`를 소비하고, 이벤트와 커밋된 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 올릴 수 있습니다. 제품 쓰기 Run은 현재 `project_state.state_version`이 Write Authorization의 프로젝트 전체 `basis_state_version`과 맞고, 관찰된 변경 경로가 저장된 승인 시도와 호환될 때만 활성 Write Authorization을 소비합니다. 거부된 호출과 커밋 전 실패는 Run 생성, 아티팩트 등록, 스테이징 핸들 소비 또는 갱신, 증거 업데이트, 유효하지 않은 Write Authorization 소비, 이벤트 추가, 재실행 행 생성, `state_version` 증가를 하면 안 됩니다.
 - **오류:** `VALIDATION_FAILED`, `STATE_VERSION_CONFLICT`, `NO_ACTIVE_TASK`, `NO_ACTIVE_CHANGE_UNIT`, `WRITE_AUTHORIZATION_REQUIRED`, `WRITE_AUTHORIZATION_INVALID`, `SCOPE_VIOLATION`, `CAPABILITY_INSUFFICIENT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `BASELINE_STALE`, `ARTIFACT_MISSING`, `EVIDENCE_INSUFFICIENT`, `VALIDATOR_FAILED`.
-- **저장소 담당 문서:** `runs`, `write_authorizations`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`, `task_events`, `tool_invocations`.
+- **저장소 담당 문서:** `runs`, `write_authorizations`, `artifact_staging`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`, `task_events`, `tool_invocations`.
 - **보안 경계:** Run은 접점이 관찰한 사실을 기록할 수 있습니다. 기준 `reference-local-mcp` 프로필에서 제품 쓰기 호환성은 `changed_path_detection_verification=passed` 뒤 관찰된 변경 경로에 대해서만 탐지형이며, 그 검증된 변경 경로 범위 안으로 제한됩니다. `not_run`, 예전 `planned_not_run` 문구, `failed`, `stale`은 `detective` Run 표시의 근거가 될 수 없습니다. 실패했거나 오래된 필수 확인은 `CAPABILITY_INSUFFICIENT`를 반환해야 하고, 더 강한 주장을 요구하지 않는 메서드 경로는 `cooperative`로 낮춰야 합니다. 활성 접점이 관찰할 수 없는 명령 실행, 네트워크 활동, 비밀값 접근, 아티팩트 캡처, 차단, 격리 사실을 API가 검증됨으로 표시하면 안 됩니다.
 
 <a id="harnessrequest_user_judgment"></a>
