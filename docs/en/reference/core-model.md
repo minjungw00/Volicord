@@ -37,7 +37,7 @@ Exact API request fields and storage table definitions may be named here only by
 6. A Write Authorization is single-use for one compatible attempt. It is not reusable scope and not OS permission.
 7. `record_run` records what happened and consumes the compatible Write Authorization; it cannot retroactively authorize work that lacked scope, user judgment, sensitive-action approval, or Write Authorization.
 8. User-owned judgment cannot be replaced by agent inference, broad consent, generated prose, evidence, or projection text.
-9. Product judgment, technical judgment, scope judgment, sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation are the only active current MVP judgment routes.
+9. The only active current MVP judgment routes are `product_decision`, `technical_decision`, `scope_decision`, `sensitive_approval`, `final_acceptance`, `residual_risk_acceptance`, and `cancellation`.
 10. Verification and Manual QA are not active current MVP gates; evidence, future verification or Manual QA routes, final acceptance, residual-risk visibility, residual-risk acceptance, and close readiness do not substitute for one another.
 11. `close_task` must return blockers instead of a successful close while close-relevant blockers remain; known residual risk must be visible before a successful close path depends on it.
 12. Active current MVP scope and later candidate material stay separate. A later candidate becomes active only when its owner promotes it with scope, fallback behavior, and proof expectations.
@@ -77,21 +77,21 @@ Findings from commands, Runs, reviews, validators, diagnostics, or future QA/ver
 
 User-owned judgment is the boundary where Harness must ask or preserve the user's choice instead of inferring it. The exact `UserJudgment` schema and API fields live in [API Schema Core](api/schema-core.md) and [MVP API](api/mvp-api.md); this section owns the meaning of the boundaries.
 
-Active current MVP judgment kinds stay distinct:
+The only active current MVP values for `UserJudgment.judgment_kind` are:
 
-- Product judgment: product behavior, UX, wording, release-facing promise, or user value.
-- Technical judgment: architecture, dependency, migration, public interface, compatibility, security/privacy, or material technical direction.
-- Scope judgment: scope expansion, non-goal removal, Change Unit boundary, or Autonomy Boundary change.
-- Sensitive-action approval: permission for a named sensitive step inside a bounded scope.
-- Final acceptance: the user's result judgment when the path requires acceptance.
-- Residual-risk acceptance: acceptance of a named visible residual risk for the requested close.
-- Cancellation: stopping the Task without a successful result.
+- `product_decision`: product behavior, UX, wording, release-facing promise, or user value.
+- `technical_decision`: architecture, dependency, migration, public interface, compatibility, security/privacy, or material technical direction.
+- `scope_decision`: scope expansion, non-goal removal, Change Unit boundary, or Autonomy Boundary change.
+- `sensitive_approval`: permission for a named sensitive step inside a bounded scope.
+- `final_acceptance`: the user's result judgment when the path requires acceptance.
+- `residual_risk_acceptance`: acceptance of a named visible residual risk for the requested close.
+- `cancellation`: stopping the Task without a successful result.
 
 Other judgment candidates stay catalog-only in [Later](../later/index.md) until a future owner promotes them. They are not active current MVP `UserJudgment.judgment_kind` values.
 
 Ambiguous consent is narrow. "Go ahead", "looks good", or similar broad approval cannot silently satisfy another judgment kind. One user reply may satisfy multiple judgment routes only when the prompt explicitly asked those distinct questions and Core records each compatible judgment with its affected object, scope, consequence, and close or write impact.
 
-Recording a `judgment_kind=scope_decision` resolution preserves the user's scope choice. It does not directly update the active Task scope fields or active Change Unit; the next state-changing action for that effect is `harness.update_scope`, linked to the resolved judgment where relevant.
+`harness.record_user_judgment` records the resolution of a pending `UserJudgment`, including a `judgment_kind=scope_decision` answer. It preserves the user's scope choice, but it does not directly update the active Task scope fields or active Change Unit; the next state-changing action for that effect is `harness.update_scope`, linked to the resolved judgment where relevant.
 
 ## 5. Non-substitution rules
 
@@ -111,18 +111,18 @@ These rules apply even when a user-facing surface compresses the display. Compac
 
 ## 6. Active Gates And Reserved Gate Names
 
-Gates are Core compatibility dimensions for progress, write, run recording, and close. The active current MVP gate fields exposed in public schemas are only the fields owned by [API Schema Core](api/schema-core.md#current-mvp-value-sets). A gate name in planning prose does not create an active schema field, storage record, validator, or close requirement.
+Gates are Core compatibility summaries for progress, write, Run recording, and close. In the current MVP, the only active gate status fields exposed in public schemas are the `StateSummary.gates.*` fields owned by [API Schema Core](api/schema-core.md#current-mvp-value-sets). A gate name in planning prose does not create an active schema field, storage record, validator, close blocker category, or close requirement.
 
-- <a id="scope-gate"></a>Scope Gate: whether active scope covers the requested write or close-relevant work.
-- <a id="decision-gate"></a>Decision Gate: whether unresolved user-owned judgment blocks progress, write, or close. It does not replace sensitive-action approval, evidence, future verification or QA routes, final acceptance, or residual-risk acceptance.
-- <a id="approval-gate"></a>Approval Gate: whether scoped sensitive-action approval is needed, pending, usable, denied, expired, or drifted. It is permission for the sensitive action only.
-- <a id="evidence-gate"></a>Evidence Gate: whether required close-relevant evidence is absent, partial, sufficient, stale, or blocked.
-- <a id="acceptance-gate"></a>Acceptance Gate: whether final acceptance is required and, if so, recorded after the close basis is visible.
-- <a id="capability-boundary"></a>Capability Boundary: surface capability affects blockers, validator findings, and guarantee display, but it is not a gate that creates authority. Missing capability must narrow the claim, hold the action through the owner path, or produce a capability blocker rather than pretending verification or prevention happened.
+- <a id="scope-gate"></a>Scope Gate: whether active scope covers the requested write or close-relevant work. Its active status values are `not_required`, `required`, `pending`, `passed`, `failed`, and `blocked`.
+- <a id="decision-gate"></a>Decision Gate: whether unresolved user-owned judgment blocks progress, write, or close. Its active status values are `not_required`, `required`, `pending`, `resolved`, `deferred`, and `blocked`. It does not replace sensitive-action approval, evidence, future verification or QA routes, final acceptance, or residual-risk acceptance.
+- <a id="approval-gate"></a>Approval Gate: whether scoped sensitive-action approval is required, pending, granted, denied, or expired. Its active status values are `not_required`, `required`, `pending`, `granted`, `denied`, and `expired`. It is permission for the sensitive action only.
+- <a id="evidence-gate"></a>Evidence Gate: whether close-relevant evidence is not required, missing, partial, sufficient, stale, or blocked. Its active status values are `not_required`, `none`, `partial`, `sufficient`, `stale`, and `blocked`.
+- <a id="acceptance-gate"></a>Acceptance Gate: whether final acceptance is not required, required, pending, accepted, or rejected after the close basis is visible. Its active status values are `not_required`, `required`, `pending`, `accepted`, and `rejected`.
+- <a id="capability-boundary"></a>Capability Boundary: surface capability affects blockers, validator findings, and guarantee display, but it is not a gate that creates authority. Missing capability must narrow the claim, hold the action through the owner path, or produce `CloseBlocker.category=surface_capability` rather than pretending verification or prevention happened.
 
 Reserved gate names stay catalog-only in [Later](../later/index.md) until promoted:
 
-- <a id="design-gate"></a>Design Gate is a later/reserved gate name. The active MVP has no independent design-policy close gate. Design-quality observations route through active owner paths such as product, technical, or scope judgment; evidence; residual-risk visibility; surface capability; or an already-active `CloseBlocker.category`.
+- <a id="design-gate"></a>Design Gate is a later/reserved gate name. Design Quality is not an active current MVP gate, and the active MVP has no independent design-policy close gate. Design-quality observations affect close only when they fit an active owner path such as product, technical, or scope judgment; evidence; residual-risk visibility; surface capability; or an active `CloseBlocker.category`.
 - <a id="verification-gate"></a>Verification Gate is a later/reserved concept. The active MVP has no detached verification workflow and no verification close gate. A future owner must promote exact fields, requiredness, fallback behavior, and proof expectations before it affects active close semantics.
 - <a id="qa-gate"></a>QA Gate is a later/reserved concept. The active MVP has no Manual QA workflow and no Manual QA close gate. A future owner must promote exact fields, waiver behavior, artifact handling, and proof expectations before it affects active close semantics.
 
@@ -243,9 +243,30 @@ Cancellation and supersession are honest terminal paths, not successful completi
 
 ## 12. Blockers
 
-Blockers are structured reasons a transition cannot proceed honestly. They can block progress, a write, Run recording, or close. They should name the affected Task or Change Unit when available, the category, the missing or incompatible condition, related refs, and the next safe action.
+Blockers are structured reasons a transition cannot proceed honestly. They can block progress, a write, Run recording, or close. They should name the affected Task or Change Unit when available, the active category, the missing or incompatible condition, related refs, and the next safe action.
 
-Common blocker categories include missing active Task, missing active scope, out-of-scope write intent, unresolved user-owned judgment, missing sensitive-action approval, incompatible Autonomy Boundary, insufficient surface capability, missing or invalid Write Authorization, stale baseline, missing evidence, stale or unavailable artifact support, missing final acceptance, hidden residual risk, unaccepted close-relevant residual risk, unsafe open Run, recovery constraint, cancellation conflict, and supersession conflict.
+Close readiness uses only the active `CloseBlocker.category` values owned by [API Schema Core](api/schema-core.md#current-mvp-value-sets):
+
+| Active category | Core meaning |
+|---|---|
+| `task` | Missing, incompatible, already terminal, or otherwise unusable Task state. |
+| `open_run` | A Run is still open, unsafe, incompatible, or not recorded in a way close can rely on. |
+| `scope` | Missing active scope, out-of-scope work, or an active Change Unit mismatch. |
+| `user_judgment` | A required product, technical, scope, or other active user-owned judgment is unresolved. |
+| `sensitive_approval` | A required sensitive-action approval is missing, denied, expired, or incompatible with the attempted action. |
+| `write_compatibility` | Required Write Authorization or product-write Run compatibility is missing, stale, invalid, consumed, or incompatible. |
+| `baseline` | The baseline needed for compatibility or close is stale, missing, or mismatched. |
+| `surface_capability` | The connected surface cannot honestly support the required active capability or guarantee display. |
+| `evidence` | Required evidence summary is `none`, `partial`, `stale`, or `blocked` instead of sufficient for the close path. |
+| `artifact_availability` | A close-relevant artifact is missing, unavailable, integrity-failed, or cannot support close after required redaction handling. |
+| `final_acceptance` | Required final acceptance is missing, rejected, stale, or not tied to the visible close basis. |
+| `residual_risk_visibility` | Close-relevant residual risk is not visible enough for the user to judge. |
+| `residual_risk_acceptance` | A visible close-relevant residual risk still requires compatible user acceptance. |
+| `cancellation` | Cancellation intent or cancellation state conflicts with the requested transition. |
+| `supersession` | Supersession intent, replacement Task validity, or active-task pointer handling conflicts with the requested transition. |
+| `recovery` | Recovery, replay, corruption, local access, or other repair constraints must be addressed before the transition. |
+
+Conceptual issues such as design quality, future verification, future Manual QA, waiver handling, or Autonomy Boundary mismatch must map to one of those active categories when they are close-relevant. They do not create extra current MVP close blocker categories or independent close gates.
 
 Invalid state combinations must become blockers, rejections, or repair paths. They must not be papered over by projection prose, broad approval, a waiver that does not apply, or a close result that hides the conflict.
 
@@ -282,7 +303,7 @@ Use these owners when Core authority touches another contract:
 - Projection freshness, readable views, managed blocks, human-editable sections, and active rendered template bodies: [Projection And Templates Reference](projection-and-templates.md).
 - Security guarantee language, cooperative/detective/preventive/isolated labels, and local access posture: [Security Reference](security.md).
 - Runtime boundary placement and Core-only mutation authority: [Runtime Boundaries Reference](runtime-boundaries.md).
-- Design-quality active role and close-impact boundary: [Design Quality](design-quality.md).
+- Design-quality boundary and non-gate routing: [Design Quality](design-quality.md).
 - Connector capability profiles and surface-specific fallback behavior: [Agent Integration Reference](agent-integration.md).
 - Conformance examples, future fixture boundaries, and operations entrypoint candidates: [Conformance Reference](conformance.md), [Later Candidate Index: Future Fixture Families](../later/index.md#future-fixture-families), and [Later Candidate Index: Operations Candidates](../later/index.md#operations-candidates).
 
