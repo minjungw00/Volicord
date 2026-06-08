@@ -11,7 +11,7 @@
 | 필요한 것 | 담당 문서 |
 |---|---|
 | 정확한 활성 메서드 이름 값 집합과 공용 스키마 값 집합 | 이 문서 |
-| `ToolEnvelope.surface_id`, `LocalSurfaceRegistration`, `VerifiedSurfaceContext`, 로컬 접점 접근 값 집합 | 이 문서 |
+| `ToolEnvelope.surface_id`, `LocalSurfaceRegistration`, `VerifiedSurfaceContext`, 로컬 접점 접근 값 집합, 보장 표시에 쓰이는 `capability_profile` 값 집합 | 이 문서 |
 | 활성 메서드별 요청/응답 동작 | [MVP API](mvp-api.md) |
 | 공개 오류, 우선순위, 멱등성, 차단 응답, 오래된 상태 동작 | [API Errors](errors.md) |
 | Core 상태 의미, 구체화 준비 상태 의미, lifecycle 의미 | [Core Model 참조](../core-model.md) |
@@ -111,6 +111,28 @@ VerifiedSurfaceContext:
 
 활성 로컬 API 접근 분류 라벨은 `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read`입니다. `artifact_registration`은 `harness.stage_artifact`와 `harness.record_run`이 소비할 수 있는 `ArtifactInput[]` 값을 포함합니다. 이 분류의 메서드별 조건은 [현재 MVP API](mvp-api.md#shared-request-rules)가 담당하고, 공개 오류 선택은 [API Errors](errors.md)가 담당합니다. `VerifiedSurfaceContext.failure_reason=unavailable`, `mismatch` 또는 `revoked`, `insufficient_capability`는 각각 `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `CAPABILITY_INSUFFICIENT`로 구분되어야 합니다.
 
+<a id="capability-profile-value-sets"></a>
+
+## Capability Profile 값 집합
+
+Agent 통합 참조는 `capability_profile` 필드 의미, 갱신 규칙, 커넥터 대체 동작, 접점별 메모를 담당합니다. Schema Core는 그 프로필과 `GuaranteeDisplay`가 쓰는 활성 값 집합을 담당합니다.
+
+```yaml
+capability_profile:
+  surface_id: reference-local-mcp
+  surface_status: active
+  local_access_posture: registered_local
+  cooperative_prepare_write_supported: true
+  changed_path_detection_supported: true
+  changed_path_detection_verification: not_run | passed | failed | stale
+  manual_artifact_attachment_supported: true
+  native_artifact_capture_supported: false
+  guarantee_level_default: cooperative
+  guarantee_level_max_when_verified: detective
+```
+
+`changed_path_detection_verification=passed`만 `detective` 표시를 뒷받침할 수 있으며, 그 경우에도 검증된 변경 경로 탐지 범위 안으로 제한됩니다. `not_run`, 예전 `planned_not_run` 문구, `failed`, `stale`은 통과 상태가 아닙니다. `native_artifact_capture_supported=false`는 활성 아티팩트 경로가 `harness.stage_artifact` 스테이징과 담당 경로 등록으로 제한된다는 뜻입니다. `captured_artifact`나 접점 자체 캡처 권한을 추가하지 않습니다.
+
 <a id="common-response"></a>
 
 ## 공통 응답
@@ -193,7 +215,7 @@ Task `mode` 값은 독자에게 다음 뜻으로 설명됩니다.
 
 `IntakeRequest.requested_mode=auto`는 `harness.intake` 입력에서만 쓰는 분류 요청입니다. 서버는 `tasks.mode`를 저장하거나 `StateSummary.mode`를 만들거나 `harness.intake`/`harness.status` 요약을 반환하기 전에 이를 `advisor`, `direct`, `work` 중 정확히 하나로 확정해야 합니다.
 
-화면에 표시되는 라벨은 기준 스키마 값이 아닙니다. `GuaranteeDisplay.level`은 문서화된 접점 역량과 증명 수준을 보여 주는 표시 주장입니다. 권한이나 상태 권한을 부여하지 않습니다. 현재 MVP의 활성 `GuaranteeDisplay.level` 값은 `cooperative`와 `detective`뿐입니다. 더 강한 표시 이름은 이후 후보이며 현재 MVP 스키마 값이 아닙니다.
+화면에 표시되는 라벨은 기준 스키마 값이 아닙니다. `GuaranteeDisplay.level`은 문서화된 접점 역량과 증명 수준을 보여 주는 표시 주장입니다. 권한이나 상태 권한을 부여하지 않습니다. 현재 MVP의 활성 `GuaranteeDisplay.level` 값은 `cooperative`와 `detective`뿐입니다. 기본값은 `cooperative`입니다. `detective`는 관련 활성 역량 확인이 통과했을 때만 표시할 수 있습니다. 기준 `reference-local-mcp` 프로필에서는 `changed_path_detection_verification=passed`이고 검증된 변경 경로 탐지 범위 안일 때만 가능합니다. 더 강한 표시 이름은 이후 후보이며 현재 MVP 스키마 값이 아닙니다.
 
 <a id="staterecordref"></a>
 
@@ -560,6 +582,8 @@ ValidatorResult:
 
 활성 안정 validator ID는 `surface_capability_check`입니다. `ValidatorResult` 출력은 결과가 이름 붙인 활성 담당 경로를 통해서만 차단 사유, 대체 동작, 보장 표시에 영향을 줄 수 있습니다. 예를 들어 역량이 실제 문제일 때 `CloseBlocker.category=surface_capability`로 이어질 수 있습니다. `status=blocked` 결과나 `findings.severity=blocker`는 설계 정책 차단 사유가 아니며, `design_gate`나 `design_policy`를 활성화하지 않고, 심각도만으로 닫기를 차단하지 않습니다. Write Authorization, 사용자 판단, 증거, 최종 수락, 잔여 위험 수락, 닫기를 만들지 않습니다.
 
+`ValidatorResult.status=passed`만 `detective` 표시에 쓰이는 검증된 역량 상태를 뒷받침할 수 있습니다. `skipped`, `warning`, `failed`, `blocked`는 더 강한 라벨의 근거가 아닙니다. 변경 경로 탐지에서는 프로필 수준의 `changed_path_detection_verification` 값이 반드시 `passed`여야 합니다. `not_run`, 예전 `planned_not_run` 문구, `failed`, `stale`이면 메서드에 따라 표시를 `cooperative`로 유지하거나 `CAPABILITY_INSUFFICIENT`를 반환해야 합니다.
+
 <a id="sensitive-categories"></a>
 
 ## 민감 범주
@@ -600,6 +624,12 @@ policy_override
 | `LocalSurfaceRegistration.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` |
 | `LocalSurfaceRegistration.status` | `active`, `disabled`, `stale`, `revoked` |
 | `VerifiedSurfaceContext.failure_reason` | `unavailable`, `mismatch`, `revoked`, `insufficient_capability`, `null` |
+| `capability_profile.surface_id` | `reference-local-mcp` |
+| `capability_profile.surface_status` | `LocalSurfaceRegistration.status`와 같은 값 |
+| `capability_profile.local_access_posture` | `LocalSurfaceRegistration.local_access_posture`와 같은 값 |
+| `capability_profile.changed_path_detection_verification` | `not_run`, `passed`, `failed`, `stale` |
+| `capability_profile.guarantee_level_default` | `cooperative` |
+| `capability_profile.guarantee_level_max_when_verified` | `detective` |
 | `IntakeRequest.requested_mode` | `advisor`, `direct`, `work`, `auto` |
 | `StateSummary.mode`와 지속 저장되는 `tasks.mode` | `advisor`, `direct`, `work` |
 | `Task.lifecycle_phase`와 `StateSummary.lifecycle_phase` | `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded` |
@@ -651,7 +681,7 @@ policy_override
 | `ValidatorResult.findings.severity` | `info`, `warning`, `error`, `blocker` |
 | `SensitiveCategory` | `auth_change`, `permission_model_change`, `schema_change`, `dependency_change`, `public_api_change`, `destructive_write`, `production_config_change`, `ci_cd_change`, `infra_or_deployment_change`, `privacy_or_pii_change`, `data_export`, `telemetry_or_logging_change`, `license_or_compliance_change`, `billing_or_cost_change`, `model_or_prompt_policy_change`, `policy_override` |
 
-`GuaranteeDisplay.level`에서 `cooperative`는 현재 MVP의 기본값입니다. `detective`도 현재 MVP 값이지만, 활성 접점이 관련 사실을 정직하게 관찰할 수 있고 관련 역량 확인이 실제로 통과한 곳에서만 사용할 수 있습니다. 두 값 모두 OS 권한, 임의 도구 샌드박스, 변조 방지 저장소, 도구 실행 전 차단, 격리를 뜻하지 않습니다.
+`GuaranteeDisplay.level`에서 `cooperative`는 현재 MVP의 기본값입니다. `detective`도 현재 MVP 값이지만, 활성 접점이 관련 사실을 정직하게 관찰할 수 있고 관련 역량 확인이 실제로 통과한 곳에서만 사용할 수 있습니다. 기준 프로필에서는 `changed_path_detection_verification=passed`가 필요하며 검증된 변경 경로 탐지 범위로 제한됩니다. 두 값 모두 OS 권한, 임의 도구 샌드박스, 변조 방지 저장소, 도구 실행 전 차단, 격리를 뜻하지 않습니다.
 
 Schema Core는 활성 표 안에 비활성 enum 값을 예약하지 않습니다. 이 섹션에 없는 사용자 판단 종류, gate 필드, validator ID, `captured_artifact` 같은 actor/source 값, 더 강한 보장 라벨, 여기에 없는 명령/네트워크/비밀값 관찰 또는 차단 필드, API 메서드는 담당 문서가 승격하고 관련 활성 담당 계약에 추가하기 전까지 비활성입니다.
 

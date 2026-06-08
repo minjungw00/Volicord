@@ -29,7 +29,7 @@ This document does not own:
 
 <a id="honest-guarantee-display"></a>
 
-The current MVP guarantee level is cooperative by default, with limited detective behavior only where the active reference surface can honestly observe the relevant fact and the relevant capability check has actually passed. The active reference surface is represented by a registered `capability_profile`; that profile constrains guarantee display and capability blockers, but it does not create write compatibility or a Write Authorization.
+The current MVP guarantee level is cooperative by default, with limited detective behavior only where the active reference surface can honestly observe the relevant fact and the relevant capability check has actually passed. For the baseline `reference-local-mcp` surface, that means `changed_path_detection_verification=passed`, and only for the verified changed-path detection scope. The active reference surface is represented by a registered `capability_profile`; that profile constrains guarantee display and capability blockers, but it does not create write compatibility or a Write Authorization.
 
 For the current MVP value set, `cooperative` and `detective` are the only `GuaranteeDisplay.level` values. `preventive` and `isolated` are later/profile-gated display names in [Later Candidate Index](../later/index.md), not current MVP schema values or active guarantees.
 
@@ -41,7 +41,7 @@ Write Authorization is a single-use cooperative Harness record created only by t
 
 Sensitive-action approval is a separate user judgment recorded with `SensitiveActionScope`. It can permit a named command, dependency change, network access, secret access, deployment, destructive action, system access, product-file write, or other scoped sensitive action, but that permission does not create Write Authorization and does not prove Harness observed, blocked, enforced, sandboxed, or isolated the action. The only honest observation or enforcement claim is the one supported by the active surface capability for the exact operation.
 
-For the baseline `reference-local-mcp` profile, Write Authorization and product-write Run compatibility are path-level. The profile is cooperative by default and has limited detective support only for observed changed paths after the relevant capability check has passed. It has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. `manual_artifact_attachment_supported=true` means the active `harness.stage_artifact` staging path is available for safe bytes or safe notices; it is not connector artifact capture and does not verify how the artifact was produced.
+For the baseline `reference-local-mcp` profile, Write Authorization and product-write Run compatibility are path-level. The profile is cooperative by default and has limited detective support only when `changed_path_detection_supported=true` and `changed_path_detection_verification=passed`, and only for observed changed paths within that verified scope. `changed_path_detection_verification=not_run`, legacy `planned_not_run` wording, `failed`, or `stale` cannot justify a `detective` label. A failed or stale capability check must produce `CAPABILITY_INSUFFICIENT` where the method requires that capability, or a downgraded `cooperative` display where the method can proceed without the stronger claim. The profile has no command observation, network observation, secret-access observation, native artifact capture, pre-tool blocking, or isolation. `manual_artifact_attachment_supported=true` means the active `harness.stage_artifact` staging path is available for safe bytes or safe notices; it is not connector artifact capture and does not verify how the artifact was produced. `native_artifact_capture_supported=false` must stay consistent with this active manual staging model.
 
 Local access posture is also a Harness compatibility fact. `surface_id` is a selector, not an authority proof. `registered_local` means a stored `LocalSurfaceRegistration` and the current local transport/session/binding can produce a matching server-derived `VerifiedSurfaceContext` for the requested access class. It does not mean an OS account, editor, shell, package manager, or arbitrary local process is constrained. API access still requires a same-project registration, `status=active`, compatible `project_id`/`surface_id`/`surface_instance_id`/`task_id`/`expected_state_version` when applicable, `VerifiedSurfaceContext.verified=true` for mutating APIs and artifact body reads, and active surface capability. `unavailable`, `mismatch`, `revoked`, and `insufficient_capability` verification failures route to distinct public API errors and safe diagnostics; they are not proof of a stronger security boundary.
 
@@ -58,7 +58,7 @@ The current MVP does not provide:
 - native artifact capture or `captured_artifact` source authority in the baseline reference profile
 - security isolation
 
-These are explicit non-claims even when Harness returns a blocker, records a Write Authorization, validates an artifact hash, detects stale context, reports a capability mismatch, or marks a projection stale. Those outcomes may be cooperative, or detective only after the relevant capability check has passed. They are not preventive or isolated unless another owner documents and proves that exact mechanism for that exact operation.
+These are explicit non-claims even when Harness returns a blocker, records a Write Authorization, validates an artifact hash, detects stale context, reports a capability mismatch, or marks a projection stale. Those outcomes may be cooperative, or detective only after the relevant capability check has passed. For the reference local surface, `detective` is displayable only after `changed_path_detection_verification=passed` and only inside that verified changed-path scope. They are not preventive or isolated unless another owner documents and proves that exact mechanism for that exact operation.
 
 The MVP also does not claim that local files are trustworthy because they are local, that runtime boundaries are OS isolation boundaries, that MCP reachability or `surface_id` is authorization, that Product Repository files, projections, chat, generated Markdown, or agent memory can create or refresh surface registration, or that conformance fixture language proves runtime security behavior before implementation exists.
 
@@ -101,7 +101,7 @@ This summary names the active threat categories without turning the MVP document
 | Stale context or replay | Stale status text, approvals, projections, baselines, evaluator bundles, or cached state steer current work. | Check current state version, idempotency, freshness, and owner-record compatibility before relying on the input. |
 | Artifact or evidence tampering | Bytes, paths, hashes, staging handles, or metadata are swapped, stale, expired, consumed, missing, redacted, blocked, cross-task, or unrelated to the owner record. | Treat evidence as insufficient or blocked until staging-handle validity where applicable, registration, integrity, redaction, and owner relation checks pass. Raw paths, raw logs, arbitrary local path strings, and native capture claims are not artifact authority. |
 | Secret or PII exposure | Logs, screenshots, traces, prompts, artifacts, projections, manifests, or exports contain sensitive values. | Prefer redaction, omission, blocked-payload notices, display-safe handles, and owner-approved evidence summaries. |
-| Capability overclaim | A surface claims blocking, capture, isolation, or MCP reachability beyond its actual `capability_profile`. | Lower the displayed guarantee, mark the claim unverified, return a capability blocker/error, or hold by instruction. |
+| Capability overclaim | A surface claims blocking, capture, isolation, `detective` changed-path detection, or MCP reachability beyond its actual `capability_profile`. | Lower the displayed guarantee, mark the claim unverified, return `CAPABILITY_INSUFFICIENT` or another capability blocker/error, or hold by instruction. |
 
 ## 7. Cooperative Behavior
 
@@ -113,7 +113,7 @@ Examples of cooperative behavior in the current MVP plan:
 - Core declines to create a Write Authorization when scope, judgment, sensitive-action permission, state version, or capability is incompatible
 - a compatible non-dry-run `prepare_write` creates one consumable Write Authorization
 - `harness.stage_artifact` creates only a temporary same-project same-Task staging handle for safe bytes or a safe notice
-- `record_run` consumes that Write Authorization only when the observed changed paths are compatible to the extent the surface can honestly observe them
+- `record_run` consumes that Write Authorization only when the observed changed paths are compatible to the extent the surface can honestly observe them; a `detective` display for that fact requires `changed_path_detection_verification=passed`
 - `record_run` is the only active path that can consume a valid staging handle and promote it to a persistent `ArtifactRef`
 - the agent holds product/runtime/code writes by instruction when MCP/Core authority or required capability is unavailable
 - generated status text tells the user what Harness can and cannot confirm
@@ -122,17 +122,17 @@ Cooperative behavior may keep honest agents aligned with Harness, but it does no
 
 ## 8. Detective Behavior
 
-Detective behavior means Harness can detect, record, or report a supported mismatch after the action or when the relevant fact becomes observable, but in the active MVP only after the relevant capability check has passed. It is after-the-fact checking, not prevention.
+Detective behavior means Harness can detect, record, or report a supported mismatch after the action or when the relevant fact becomes observable, but in the active MVP only after the relevant capability check has passed. For the reference local surface, the active check is `changed_path_detection_verification=passed`. It is after-the-fact checking, not prevention.
 
 Examples of detective behavior in the current MVP plan:
 
-- changed-path comparison after a run, when the surface supports it and the relevant capability check has passed
+- changed-path comparison after a run, when the surface supports it and `changed_path_detection_verification=passed`
 - artifact `sha256`, `size_bytes`, `content_type`, ownership, availability, redaction, omission, or blocked-payload checks for owner-registered artifact refs where the owner path requires them; these checks are not native artifact capture
 - stale state, stale projection, stale connector profile, stale baseline, or stale retrieved-context reporting
 - capability mismatch or unsupported-surface reporting
 - generated-file or managed-block drift reporting where the owner path supports it
 
-Detective behavior must say what was observed and what remains unverified. For baseline product-write compatibility, the `detective` label is justified only by changed-path observation after the relevant capability check has passed. Unsupported command, network, secret, artifact-capture, blocking, isolation, or external-system effects must not be reported as passed merely because nearby Harness checks succeeded.
+Detective behavior must say what was observed and what remains unverified. For baseline product-write compatibility, the `detective` label is justified only by changed-path observation after `changed_path_detection_verification=passed`; `not_run`, legacy `planned_not_run` wording, `failed`, or `stale` keep the display at `cooperative` or produce a capability failure, depending on the method. Unsupported command, network, secret, artifact-capture, blocking, isolation, or external-system effects must not be reported as passed merely because nearby Harness checks succeeded.
 
 ## 9. Later Preventive Boundary
 

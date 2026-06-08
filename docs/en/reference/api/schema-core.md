@@ -11,7 +11,7 @@ This document describes future Harness Server behavior for planning and review. 
 | Need | Owner |
 |---|---|
 | Exact active method-name value set and shared schema value sets | This document |
-| `ToolEnvelope.surface_id`, `LocalSurfaceRegistration`, `VerifiedSurfaceContext`, and local surface access value sets | This document |
+| `ToolEnvelope.surface_id`, `LocalSurfaceRegistration`, `VerifiedSurfaceContext`, local surface access value sets, and capability-profile value sets used by guarantee display | This document |
 | Method request/response behavior for active methods | [MVP API](mvp-api.md) |
 | Public errors, precedence, idempotency, blocked behavior, and stale-state behavior | [API Errors](errors.md) |
 | Core state semantics, shaping readiness meaning, and lifecycle meaning | [Core Model Reference](../core-model.md) |
@@ -111,6 +111,28 @@ VerifiedSurfaceContext:
 
 The active local API access-class labels are `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, and `artifact_read`. `artifact_registration` covers `harness.stage_artifact` and the `ArtifactInput[]` values that `harness.record_run` may consume. Method-level conditions for these classes are owned by [MVP API](mvp-api.md#shared-request-rules); public error selection is owned by [API Errors](errors.md). `VerifiedSurfaceContext.failure_reason=unavailable`, `mismatch` or `revoked`, and `insufficient_capability` must remain distinguishable so callers can receive `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, and `CAPABILITY_INSUFFICIENT` respectively.
 
+<a id="capability-profile-value-sets"></a>
+
+## Capability Profile Value Sets
+
+Agent Integration owns `capability_profile` field semantics, refresh rules, connector fallback behavior, and surface recipes. Schema Core owns the active value sets used by that profile and by `GuaranteeDisplay`.
+
+```yaml
+capability_profile:
+  surface_id: reference-local-mcp
+  surface_status: active
+  local_access_posture: registered_local
+  cooperative_prepare_write_supported: true
+  changed_path_detection_supported: true
+  changed_path_detection_verification: not_run | passed | failed | stale
+  manual_artifact_attachment_supported: true
+  native_artifact_capture_supported: false
+  guarantee_level_default: cooperative
+  guarantee_level_max_when_verified: detective
+```
+
+`changed_path_detection_verification=passed` is the only value that can support a `detective` display, and only inside the verified changed-path detection scope. `not_run`, legacy `planned_not_run` wording, `failed`, and `stale` are not passing states. `native_artifact_capture_supported=false` keeps the active artifact path limited to `harness.stage_artifact` staging and owner registration; it does not add `captured_artifact` or native capture authority.
+
 <a id="common-response"></a>
 
 ## Common Response
@@ -193,7 +215,7 @@ Task mode values have these reader-facing meanings:
 
 `IntakeRequest.requested_mode=auto` is only an intake input asking the server to classify the request. The server must resolve it to exactly one of `advisor`, `direct`, or `work` before writing `tasks.mode`, producing `StateSummary.mode`, or returning intake/status summaries.
 
-Rendered labels are not canonical schema values. `GuaranteeDisplay.level` is a display claim about the documented surface capability and proof level; it does not grant permission or state authority. The active MVP guarantee-display values are only `cooperative` and `detective`. Stronger display names are later candidates, not current MVP schema values.
+Rendered labels are not canonical schema values. `GuaranteeDisplay.level` is a display claim about the documented surface capability and proof level; it does not grant permission or state authority. The active MVP guarantee-display values are only `cooperative` and `detective`. `cooperative` is the default. `detective` can be displayed only when the relevant active capability check has passed; for the baseline `reference-local-mcp` profile, that means `changed_path_detection_verification=passed` and only within verified changed-path detection scope. Stronger display names are later candidates, not current MVP schema values.
 
 <a id="staterecordref"></a>
 
@@ -560,6 +582,8 @@ ValidatorResult:
 
 The active stable validator ID is `surface_capability_check`. Validator output can affect blockers, fallback behavior, and guarantee display only through the active owner path named by the result, such as `CloseBlocker.category=surface_capability` when capability is truly the issue. A `status=blocked` result or `findings.severity=blocker` is not a design-policy blocker, does not activate `design_gate` or `design_policy`, and does not block close by severity alone. It does not create Write Authorization, user judgment, evidence, final acceptance, residual-risk acceptance, or close.
 
+`ValidatorResult.status=passed` is the only validator status that can support the verified capability state used for `detective` display. `skipped`, `warning`, `failed`, and `blocked` do not justify a stronger label. For changed-path detection specifically, the profile-level `changed_path_detection_verification` value must be `passed`; `not_run`, legacy `planned_not_run` wording, `failed`, and `stale` keep the display `cooperative` or produce `CAPABILITY_INSUFFICIENT`, depending on the method.
+
 <a id="sensitive-categories"></a>
 
 ## Sensitive Categories
@@ -600,6 +624,12 @@ These values are active current MVP schema values. Method-level capability and a
 | `LocalSurfaceRegistration.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` |
 | `LocalSurfaceRegistration.status` | `active`, `disabled`, `stale`, `revoked` |
 | `VerifiedSurfaceContext.failure_reason` | `unavailable`, `mismatch`, `revoked`, `insufficient_capability`, `null` |
+| `capability_profile.surface_id` | `reference-local-mcp` |
+| `capability_profile.surface_status` | same values as `LocalSurfaceRegistration.status` |
+| `capability_profile.local_access_posture` | same values as `LocalSurfaceRegistration.local_access_posture` |
+| `capability_profile.changed_path_detection_verification` | `not_run`, `passed`, `failed`, `stale` |
+| `capability_profile.guarantee_level_default` | `cooperative` |
+| `capability_profile.guarantee_level_max_when_verified` | `detective` |
 | `IntakeRequest.requested_mode` | `advisor`, `direct`, `work`, `auto` |
 | `StateSummary.mode` and persisted `tasks.mode` | `advisor`, `direct`, `work` |
 | `Task.lifecycle_phase` and `StateSummary.lifecycle_phase` | `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded` |
@@ -651,7 +681,7 @@ These values are active current MVP schema values. Method-level capability and a
 | `ValidatorResult.findings.severity` | `info`, `warning`, `error`, `blocker` |
 | `SensitiveCategory` | `auth_change`, `permission_model_change`, `schema_change`, `dependency_change`, `public_api_change`, `destructive_write`, `production_config_change`, `ci_cd_change`, `infra_or_deployment_change`, `privacy_or_pii_change`, `data_export`, `telemetry_or_logging_change`, `license_or_compliance_change`, `billing_or_cost_change`, `model_or_prompt_policy_change`, `policy_override` |
 
-For `GuaranteeDisplay.level`, `cooperative` is the default current MVP value. `detective` is also a current MVP value, but only where the active surface can honestly observe the relevant fact and the relevant capability check has actually passed. Neither value means OS permission, arbitrary-tool sandboxing, tamper-proof storage, pre-tool blocking, or isolation.
+For `GuaranteeDisplay.level`, `cooperative` is the default current MVP value. `detective` is also a current MVP value, but only where the active surface can honestly observe the relevant fact and the relevant capability check has actually passed. For the baseline profile, `detective` requires `changed_path_detection_verification=passed` and is limited to verified changed-path detection scope. Neither value means OS permission, arbitrary-tool sandboxing, tamper-proof storage, pre-tool blocking, or isolation.
 
 Schema Core intentionally does not reserve inactive enum members inside active tables. User-judgment kinds, gate fields, validator IDs, actor/source values such as `captured_artifact`, stronger guarantee labels, command/network/secret observation or blocking fields not listed here, and API methods not listed in this section are inactive until promoted by an owner document and added to the relevant active owner contract.
 
