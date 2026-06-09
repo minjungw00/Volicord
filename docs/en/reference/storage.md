@@ -189,7 +189,7 @@ they serve. It is not full DDL and does not duplicate API schemas.
 | `artifacts` | `state.sqlite` plus artifact store | Registered durable evidence bytes or safe metadata with integrity, redaction, producer, retention, and availability facts. | `artifact_id`, `project_id`, `task_id`, `run_id`, `kind`, `uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `retention_class`, `produced_by`, `status`, `created_at`, `updated_at`. |
 | `artifact_links` | `state.sqlite` | Owner relation from an artifact to the active Core/API record it supports. | `artifact_link_id`, `artifact_id`, `task_id`, `owner_record_kind`, `owner_record_id`, `relation`, `created_at`. |
 | `evidence_summaries` | `state.sqlite` | Compact evidence coverage and gap record used by status, run/evidence summaries, blockers, and close. It is evaluated against the Task or Change Unit `CompletionPolicy`; it does not own that policy. | `evidence_summary_id`, `task_id`, `change_unit_id`, `status`, `coverage_items_json`, `summary`, `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `updated_at`. |
-| `blockers` | `state.sqlite` | Structured blocker for next action, write compatibility, evidence gaps, close readiness, or recovery. | `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, `status`, `message`, `owner_ref_json`, `related_refs_json`, `required_next_action`, `created_at`, `resolved_at`. |
+| `blockers` | `state.sqlite` | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. Close-matrix blocker rows committed by `close_task`, when allowed by that method contract, are `CloseBlocker`-related. `prepare_write` `write_decision_reasons` are response/replay payload decision reasons, not close blocker rows. | `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, `status`, `message`, `owner_ref_json`, `related_refs_json`, `required_next_action`, `created_at`, `resolved_at`. |
 | `task_events` | `state.sqlite` | Append-only audit and ordering trail for committed Core mutations. | `event_id`, `project_id`, `task_id`, `event_seq`, `event_type`, `state_version`, `actor_kind`, `surface_id`, `payload_json`, `created_at`. |
 | `tool_invocations` | `state.sqlite` | Replay row only for committed non-dry-run Core `MethodResult` responses whose method state-effect row creates replay. `ToolRejectedResponse`, `ToolDryRunResponse`, read-only results, and staging-created responses are not stored here; this includes `CloseTaskResult` for `harness.close_task intent=check` with `dry_run=true`. | `invocation_id`, `project_id`, `tool_name`, `idempotency_key`, `request_hash`, `task_id`, `basis_state_version`, `response_json`, `status`, `created_at`. |
 
@@ -382,7 +382,10 @@ Change Unit fields.
   `active`. A caller must obtain a fresh compatible `harness.prepare_write`
   result for the exact operation.
 - Blocked, dry-run, malformed, or pre-commit failed `prepare_write` attempts
-  create no consumable `write_authorizations` row.
+  create no consumable `write_authorizations` row. A committed non-allowed
+  `PrepareWriteResult` may carry `write_decision_reasons` in its
+  response/replay payload, but those reasons are not `CloseBlocker` records and
+  are not close-state blocker storage.
 
 `SensitiveActionScope` storage is distinct from `write_authorizations`.
 For `judgment_kind=sensitive_approval`, `user_judgments` stores the approved or
@@ -491,6 +494,13 @@ the active records, including:
 Core `MethodResult` response for a replay-row-creating state effect. A committed
 blocked result is stored only when the API method state-effect table permits the
 blocked commit and the response is a committed `MethodResult`.
+For committed `PrepareWriteResult` responses with `decision=blocked`,
+`decision=approval_required`, or `decision=decision_required`,
+`tool_invocations.response_json` may include `write_decision_reasons` as the
+current API contract permits. Those `WriteDecisionReason` values are
+prepare_write decision reasons in the response/replay payload, not
+`CloseBlocker` records; `prepare_write` does not mutate `close_state`, does not
+run the close matrix, and does not create close matrix blocker records.
 `CloseTaskResult(close_state=blocked)` is stored only when it is a committed
 blocked close result from a valid close matrix evaluation. Storage must not
 store `ToolRejectedResponse`, `ToolDryRunResponse`, read-only `MethodResult`
@@ -751,6 +761,38 @@ increment. `tool_invocations.response_json` stores only committed non-dry-run
 Core `MethodResult` responses whose method state-effect row creates replay, so
 read-only results are not stored as replay rows.
 
+### `prepare_write` storage effects
+
+`harness.prepare_write` storage effects must match the response branch. A
+committed non-dry-run `PrepareWriteResult(decision=allowed)` may create or
+return the compatible active Write Authorization allowed by the API contract,
+append events, create a replay row, and increment `project_state.state_version`
+exactly once.
+
+A committed non-dry-run `PrepareWriteResult` with `decision=blocked`,
+`decision=approval_required`, or `decision=decision_required` may include
+`write_decision_reasons: WriteDecisionReason[]` in the response and replay
+payload when the method state-effect contract permits committing that decision.
+Those reasons are prepare_write decision reasons, not `CloseBlocker` records and
+not close matrix blocker records. This branch must not create a consumable Write
+Authorization, mutate `close_state`, run the close matrix, create
+`CloseBlocker`, create close matrix blocker records, update evidence, touch
+artifacts, consume staged handles, or perform `close_task` effects. It may have
+only the event, replay-row, write-decision-reason payload, and
+`project_state.state_version` effects allowed by the method contract.
+
+A rejected `prepare_write` returns `ToolRejectedResponse` with
+`effect_kind=no_effect`. It creates no replay row, no
+`tool_invocations.response_json`, no event, no Write Authorization creation or
+consumption, no `close_state` mutation, no `CloseBlocker`, no close matrix
+blocker record, no artifact effect, no evidence update, no staged-handle
+consumption, and no `project_state.state_version` increment.
+
+A valid dry-run `prepare_write` returns `ToolDryRunResponse` and creates no
+replay row or state/storage effects. Expected write decision blockers are
+preview-only `PlannedBlocker` entries, not stored `WriteDecisionReason` objects
+and not `CloseBlocker` records.
+
 ### `close_task` storage effects
 
 `harness.close_task` storage effects must match the response branch. A close
@@ -778,14 +820,14 @@ API/storage contract, and it must leave the Task open. It must not be used for
 `STATE_VERSION_CONFLICT`; that code belongs to the preflight
 `ToolRejectedResponse` branch and is not stored as replay.
 
-A committed blocked `MethodResult` for any method may persist only the blocker
-or other mutation the API method-state-effect matrix allows. It must not create
-the authority the blocker says is missing. For example, blocked `prepare_write`
-responses do not create consumable `write_authorizations`. When the API owner
-allows a committed blocked `MethodResult` to persist a blocker or other
-current-row mutation, that response is a committed non-dry-run Core
-`MethodResult` for event, replay-row, and state-version purposes and is stored
-in `tool_invocations.response_json`.
+Committed blocked results must follow the owning method shape. A non-allowed
+committed `PrepareWriteResult` uses `write_decision_reasons` in the
+response/replay payload; storage must not turn those reasons into `CloseBlocker`
+or close matrix blocker records. A committed blocked `CloseTaskResult` uses
+`CloseBlocker` and may create only the close-task blocker, event, replay-row,
+and `project_state.state_version` effects explicitly allowed by the method
+contract. No committed blocked result may create the authority it says is
+missing; blocked `prepare_write` creates no consumable `write_authorizations`.
 
 ## 8. State versioning
 
