@@ -113,8 +113,10 @@ state-changing method set: `harness.intake`, `harness.update_scope`,
 are read-only. `harness.stage_artifact` is an active local artifact utility,
 but it creates only temporary storage-owned staging bytes or notices plus an
 `artifact_staging` row or equivalent staging manifest behind a
-`StagedArtifactHandle`; it does not create a current Core authority record or
-increment the project state clock.
+`StagedArtifactHandle`. A successful call returns `StageArtifactResult` with
+`base.effect_kind=staging_created`; it does not create Core records,
+`task_events`, `tool_invocations` replay rows, or
+`project_state.state_version` increments.
 
 The active Core persisted records are:
 
@@ -189,7 +191,7 @@ they serve. It is not full DDL and does not duplicate API schemas.
 | `evidence_summaries` | `state.sqlite` | Compact evidence coverage and gap record used by status, run/evidence summaries, blockers, and close. It is evaluated against the Task or Change Unit `CompletionPolicy`; it does not own that policy. | `evidence_summary_id`, `task_id`, `change_unit_id`, `status`, `coverage_items_json`, `summary`, `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `updated_at`. |
 | `blockers` | `state.sqlite` | Structured blocker for next action, write compatibility, evidence gaps, close readiness, or recovery. | `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, `status`, `message`, `owner_ref_json`, `related_refs_json`, `required_next_action`, `created_at`, `resolved_at`. |
 | `task_events` | `state.sqlite` | Append-only audit and ordering trail for committed Core mutations. | `event_id`, `project_id`, `task_id`, `event_seq`, `event_type`, `state_version`, `actor_kind`, `surface_id`, `payload_json`, `created_at`. |
-| `tool_invocations` | `state.sqlite` | Committed replay row for non-dry-run state-changing tool responses. | `invocation_id`, `project_id`, `tool_name`, `idempotency_key`, `request_hash`, `task_id`, `basis_state_version`, `response_json`, `status`, `created_at`. |
+| `tool_invocations` | `state.sqlite` | Replay row only for committed non-dry-run Core `MethodResult` responses whose method state-effect row creates replay. Rejected, dry-run, read-only, and staging-created responses are not stored here. | `invocation_id`, `project_id`, `tool_name`, `idempotency_key`, `request_hash`, `task_id`, `basis_state_version`, `response_json`, `status`, `created_at`. |
 
 ### First schema integrity contract
 
@@ -329,7 +331,7 @@ body. Unknown values fail before commit.
 | `artifacts.redaction_state` | `none`, `redacted`, `secret_omitted`, `blocked` | Persisted `ArtifactRef.redaction_state` values from Schema Core. Hash and size describe the committed safe bytes or safe notice, not a hidden original. |
 | `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` | Persisted owner relation discriminator. Values mirror `ArtifactRelationOwner.record_kind`; storage owns same-project/same-Task owner lookup and relation validation. |
 | `blockers.status` | `active`, `resolved`, `superseded` | Storage-owned blocker row state. Public close blocker shapes remain API-owned. |
-| `tool_invocations.status` | `committed` | A replay row exists only for a committed non-dry-run state-changing response. Dry-run and pre-commit failures have no replay row. |
+| `tool_invocations.status` | `committed` | A replay row exists only for a committed non-dry-run Core `MethodResult` response whose method state-effect row creates replay. `ToolRejectedResponse`, `ToolDryRunResponse`, read-only results, and successful `StageArtifactResult` staging results have no replay row. |
 
 Other persisted status-like API fields, including `tasks.mode`, `runs.kind`,
 `runs.status`, `user_judgments.status`, and `evidence_summaries.status`, validate
@@ -485,6 +487,14 @@ the active records, including:
 - `task_events.payload_json`.
 - `tool_invocations.response_json`.
 
+`tool_invocations.response_json` stores only the exact committed non-dry-run
+Core `MethodResult` response for a replay-row-creating state effect. A committed
+blocked result is stored only when the API method state-effect table permits the
+blocked commit and the response is a committed `MethodResult`. Storage must not
+store `ToolRejectedResponse`, `ToolDryRunResponse`, read-only `MethodResult`
+results, or successful `StageArtifactResult` staging results in
+`tool_invocations.response_json`.
+
 Task and Change Unit shaping JSON stores compact summaries and bounded lists
 only. It must not store a standalone Discovery Brief, Question Queue,
 Assumption Register, full design artifact, generated projection body, evidence
@@ -539,10 +549,11 @@ project-wide `ToolEnvelope.expected_state_version`, referenced Task and Change
 Unit, compatible Write Authorization when product file writes are recorded,
 staged-handle validation, staged-handle field checks, staged promotion, staged
 consumption, existing-artifact link validation, and no artifact body read.
-Storage must not commit any staged promotion, consumed handle, existing-artifact
-link, Run, evidence update, event, replay row, authorization consumption, or
-state-version increment when any validation in this sequence fails. Artifact body reads
-are separate reads that require `access_class=artifact_read`.
+If any validation in this sequence fails before commit, storage must not change
+`artifact_staging.status`, `consumed_by_run_id`, `promoted_artifact_id`,
+`artifacts`, `artifact_links`, `evidence_summaries`, `write_authorizations.status`,
+`task_events`, `tool_invocations`, or `project_state.state_version`. Artifact
+body reads are separate reads that require `access_class=artifact_read`.
 
 Temporary staging is not artifact authority. `artifact_staging` or an
 equivalent storage-owned staging manifest must track at least `handle_id`,
@@ -554,8 +565,10 @@ equivalent storage-owned staging manifest must track at least `handle_id`,
 `harness.stage_artifact` request's `VerifiedSurfaceContext`; they are not
 caller-provided authority claims and must be checked against the staging row,
 not trusted merely because a submitted handle has the right shape.
-`harness.stage_artifact` may write safe bytes or a safe notice under
-`artifacts/tmp/` and create the temporary staging row, but it creates no
+A successful `harness.stage_artifact` returns `StageArtifactResult` with
+`base.effect_kind=staging_created`; it may write safe bytes or a safe notice
+under `artifacts/tmp/` and create the temporary staging row, but that is a
+storage-owned temporary staging side effect. It creates no Core record, no
 `artifacts` row, no `artifact_links` row, no `evidence_summaries` row, no
 `task_events` row, no `tool_invocations` replay row, and no
 `project_state.state_version` increment.
@@ -675,13 +688,17 @@ not append events.
 For a new committed non-dry-run mutation, current-row writes, the
 `task_events` append, the project-wide state-version increment, and the
 `tool_invocations` replay-row insert must commit atomically. For
-`harness.record_run`, staged-handle consumption in `artifact_staging` is part of
-that same transaction. If any part fails, the transaction must leave no partial
-authority row, staging consumption, event, persistent artifact promotion/linking,
-authorization consumption, evidence update, close effect, or replay row.
+`harness.record_run`, staged-handle consumption in `artifact_staging`, artifact
+promotion/linking, evidence update, Write Authorization consumption, event
+append, replay-row insert, and exactly one `project_state.state_version`
+increment are part of that same transaction. If any part fails, the transaction
+must leave no partial authority row, staging consumption, persistent artifact
+promotion/linking, authorization consumption, evidence update, event, close
+effect, replay row, or state-version increment.
 
-`tool_invocations` stores exact replay for committed non-dry-run state-changing
-responses. Keys are scoped as described by [API Errors: Idempotency](api/errors.md#idempotency).
+`tool_invocations` stores exact replay only for committed non-dry-run Core
+`MethodResult` responses whose method state-effect row creates replay. Keys are
+scoped as described by [API Errors: Idempotency](api/errors.md#idempotency).
 If the same key and request hash are replayed, Core returns the original
 committed response without appending events, promoting or linking artifacts, consuming
 authorization, or changing state again. If the key is reused with a different
@@ -690,20 +707,27 @@ request hash, Core returns `STATE_VERSION_CONFLICT` as defined by
 `(project_id, tool_name, idempotency_key)`; `request_hash` is the conflict
 discriminator stored in that row.
 
+`ToolRejectedResponse`, `ToolDryRunResponse`, read-only results, and successful
+`StageArtifactResult` staging results are not stored in `tool_invocations`.
 Dry runs, malformed requests, pre-commit validation failures, pre-commit state
 version conflicts, read-only calls such as `harness.status` and
 `harness.close_task intent=check`, and rejected `record_run` attempts that
-create no mutation do not create current rows, consume or update
-`artifact_staging` handles, append `task_events`, promote or link artifacts, update
-evidence summaries, create Write Authorizations, change close state, create
-`tool_invocations` replay rows, or increment state versions.
+create no mutation do not create current rows, change `artifact_staging.status`,
+set `consumed_by_run_id` or `promoted_artifact_id`, append `task_events`,
+promote or link artifacts, update evidence summaries, create Write
+Authorizations, change `write_authorizations.status`, change close state, create
+`tool_invocations` replay rows, or increment state versions. Successful
+`harness.stage_artifact` is limited to the storage-owned temporary staging
+contract above; that staging side effect is not a Core current row, event,
+replay row, or state-version increment.
 
 A blocked response may persist only the blocker or other mutation the API
 method-state-effect matrix allows. It must not create the authority the blocker
 says is missing. For example, blocked `prepare_write` responses do not create consumable
-`write_authorizations`. When the API owner allows a committed blocked response
-to persist a blocker or other current-row mutation, that response is a committed
-non-dry-run mutation for event, replay-row, and state-version purposes.
+`write_authorizations`. When the API owner allows a committed blocked
+`MethodResult` to persist a blocker or other current-row mutation, that response
+is a committed non-dry-run Core `MethodResult` for event, replay-row, and
+state-version purposes and is stored in `tool_invocations.response_json`.
 
 ## 8. State versioning
 
@@ -737,7 +761,7 @@ requests, pre-commit validation failures, pre-commit state-version conflicts, an
 idempotent replay do not increment `project_state.state_version`.
 `ToolResponseBase.state_version` always returns the project-wide version: the
 resulting version after a committed mutation, or the current project-wide
-version observed for read-only and dry-run responses.
+version observed for read-only, dry-run, and temporary staging responses.
 
 The active first schema should omit `tasks.state_version`. If an implementation
 encounters a legacy or prototype `tasks.state_version` column, that value is
