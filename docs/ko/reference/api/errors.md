@@ -46,7 +46,7 @@
 | `out_of_scope` | `SCOPE_REQUIRED`, `SCOPE_VIOLATION`, `NO_ACTIVE_CHANGE_UNIT`, `AUTONOMY_BOUNDARY_EXCEEDED`, `BASELINE_STALE` | 영향을 받는 행동을 보류하고, 불일치를 보여 주며, 현재 범위로 줄이거나 구체적인 사용자 소유 범위 판단을 요청하거나, 해결된 범위 변경을 `harness.update_scope`로 적용합니다. |
 | `missing_judgment` | `DECISION_REQUIRED`, `DECISION_UNRESOLVED`, `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`, `ACCEPTANCE_REQUIRED` | 집중된 활성 `UserJudgment`를 묻거나 해결합니다. 제품 판단, 기술 판단, 범위 판단, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 취소 판단, later/reserved QA 면제 판단과 검증 위험 수락 경로를 넓은 승인 하나로 합치지 않습니다. |
 | `missing_evidence` | `EVIDENCE_INSUFFICIENT`, `ARTIFACT_MISSING` | 영향을 받는 주장, 참조, 증거 상태, 아티팩트 가용성, 차단 해소에 필요한 최소 조치를 보여 줍니다. 테스트 결과, 아티팩트 무결성, 증거 충분성을 만들어 내지 않습니다. |
-| `close_blocked` | `CloseTaskResponse.close_state=blocked`와 주 `ErrorCode` | 유효한 닫기 차단 사유 행렬 평가 뒤 구조화된 차단 사유와 다음 행동을 반환합니다. 행렬 전 거절은 `ToolRejectedResponse`를 반환하며, Task를 종료 상태로 표시하지 않습니다. |
+| `close_blocked` | `CloseTaskResult.close_state=blocked`와 주 `ErrorCode` | 유효한 닫기 차단 사유 행렬 평가 뒤 구조화된 차단 사유와 다음 행동을 반환합니다. 행렬 전 거절은 `ToolRejectedResponse`를 반환하며, Task를 종료 상태로 표시하지 않습니다. |
 | `residual_risk_present` | `RESIDUAL_RISK_NOT_VISIBLE`, `DECISION_REQUIRED`, 또는 `DECISION_UNRESOLVED` | 잔여 위험을 보여 주고, 활성 닫기 또는 수락 경로가 요구할 때만 `judgment_kind=residual_risk_acceptance`를 묻습니다. |
 
 <a id="error-taxonomy"></a>
@@ -245,7 +245,7 @@ task_id: string | null
 - `SensitiveActionScope`는 `judgment_kind=sensitive_approval`에 속합니다. 민감 동작 승인 오류는 `APPROVAL_REQUIRED`, `APPROVAL_DENIED`, `APPROVAL_EXPIRED`를 사용합니다. 이 승인은 Write Authorization, 최종 수락, 잔여 위험 수락, 증거, 아티팩트 권한을 대신하지 않습니다.
 - `harness.stage_artifact` 성공은 임시 핸들만 만들고 Core 변경을 만들지 않습니다. 유효한 스테이징 핸들을 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`입니다. 출처 필드 형태가 잘못되었거나 스테이징된 핸들 검증이 실패하면, 실제 실패가 요청 수준 로컬 접근이나 역량 확인이 아닌 한 `artifact_input_error` detail을 담은 `VALIDATION_FAILED`의 `ToolRejectedResponse`를 반환합니다. 이런 조건을 증거 충분성, 로컬 접근 불일치, 역량 부족으로 숨기면 안 됩니다.
 - `harness.record_run`은 호환되는 Write Authorization을 정확히 한 번 소비합니다. Write Authorization이 없으면 `WRITE_AUTHORIZATION_REQUIRED`를 사용합니다. 프로젝트 전체 근거 버전이 오래된 Write Authorization은 `STATE_VERSION_CONFLICT`를 사용합니다. 만료, 철회, 이미 소비됨, 버전 불일치가 아닌 비호환 상태이면 `WRITE_AUTHORIZATION_INVALID`를 사용합니다. 승인 범위 밖 관찰 시도는 적용되는 범위 또는 Write Authorization 관련 코드를 사용합니다.
-- `close_task intent=check`는 차단 사유를 반환하더라도 읽기 전용입니다. `close_task intent=complete`는 구조화된 차단 사유와 함께 `CloseTaskResponse.close_state=blocked`를 반환하거나, 담당 문서가 정의한 complete 차단 사유가 없을 때만 `close_state=closed`를 반환합니다.
+- `close_task intent=check`는 차단 사유를 반환하더라도 읽기 전용입니다. `close_task intent=complete`는 구조화된 차단 사유와 함께 `CloseTaskResult.close_state=blocked`를 반환하거나, 담당 문서가 정의한 complete 차단 사유가 없을 때만 `close_state=closed`를 반환합니다.
 - 닫기 스모크 범위는 증거 차단 사유의 `EVIDENCE_INSUFFICIENT`, 아티팩트 사용 불가 또는 누락 차단 사유의 `ARTIFACT_MISSING`, 최종 수락 차단 사유의 `ACCEPTANCE_REQUIRED`, 보이지만 수락되지 않은 잔여 위험에 대한 `category=residual_risk_acceptance`와 `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED`를 포함해야 합니다. `RESIDUAL_RISK_NOT_VISIBLE`은 아직 보이지 않은 위험에만 둡니다.
 - `close_task intent=supersede`가 유효하지 않으면 supersession, 생명주기, 로컬 접근, 복구 차단 사유를 사용합니다. 오래된 `expected_state_version`, 오래된 `WriteAuthorization.basis_state_version`, `idempotency_key`의 `request_hash` 충돌은 `ToolRejectedResponse` 경우이며 커밋된 차단 사유가 아닙니다. 증거 충분성, 최종 수락, 잔여 위험 수락을 요구하면 안 됩니다. 유효한 supersede가 생명주기와 `project_state.active_task_id`를 함께 바꾸는 경우에도 하나의 프로젝트 전체 상태 변경입니다.
 
@@ -253,7 +253,7 @@ task_id: string | null
 
 ## `harness.close_task` 닫기 차단 사유
 
-`CloseTaskResponse.blockers`는 [API Schema Core](schema-core.md#current-position-display-schemas)의 구조화된 `CloseBlocker` 객체를 사용해야 합니다. 설명 문구만 있는 상태 텍스트, 보고서 텍스트, 렌더링된 보기, 에이전트 요약은 닫기 차단 사유 결과가 아닙니다.
+`CloseTaskResult.blockers`는 [API Schema Core](schema-core.md#current-position-display-schemas)의 구조화된 `CloseBlocker` 객체를 사용해야 합니다. 설명 문구만 있는 상태 텍스트, 보고서 텍스트, 렌더링된 보기, 에이전트 요약은 닫기 차단 사유 결과가 아닙니다.
 
 `harness.close_task`에는 닫기 차단 사유 행렬 실행 전의 커밋 전 거절 경계가 있습니다. 아래 조건은 반드시 `ToolRejectedResponse`를 반환해야 하며 `CloseTaskResult(close_state=blocked)`를 반환하면 안 됩니다.
 

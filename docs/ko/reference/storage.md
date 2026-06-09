@@ -406,7 +406,7 @@ Product Repository 파일, Projection, 생성된 Markdown, 대화 텍스트, 에
 `judgment_kind` 같은 안정 식별자와 locale에서 파생합니다.
 
 `tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`는 서로 다른 Core
-개념을 저장합니다. `CloseTaskResponse.close_state`는 응답 수준의 닫기 상태이지
+개념을 저장합니다. `CloseTaskResult.close_state`는 응답 수준의 닫기 상태이지
 지속 저장되는 `tasks` 열이 아닙니다. `tasks.lifecycle_phase`에는 `intake`를 저장하면 안 됩니다.
 종료 생명주기 값은 `completed`, `cancelled`, `superseded`입니다. `tasks.result`에는
 `passed`나 `failed`를 저장하면 안 됩니다. 실패한 Run, Projection, 아티팩트, validator,

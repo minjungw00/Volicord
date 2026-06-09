@@ -439,7 +439,7 @@ Unknown `surfaces.transport_kind`, `surfaces.local_access_posture`, or `surfaces
 derived from stable identifiers such as `judgment_kind` and locale.
 
 `tasks.lifecycle_phase`, `tasks.close_reason`, and `tasks.result` store separate
-Core concepts. `CloseTaskResponse.close_state` is response-level close status,
+Core concepts. `CloseTaskResult.close_state` is response-level close status,
 not a persisted `tasks` column. `tasks.lifecycle_phase` must not store `intake`;
 terminal lifecycle values are `completed`, `cancelled`, and `superseded`.
 `tasks.result` must not store `passed` or `failed`; failed Runs, projections,

@@ -680,6 +680,8 @@ ValidatorResult:
 
 The active stable validator ID is `surface_capability_check`. Validator output can affect blockers, fallback behavior, and guarantee display only through the active owner path named by the result, such as `CloseBlocker.category=surface_capability` when capability is truly the issue. A `status=blocked` result or `findings.severity=blocker` is not a design-policy blocker, does not activate `design_gate` or `design_policy`, and does not block close by severity alone. It does not create Write Authorization, user judgment, evidence, final acceptance, residual-risk acceptance, or close.
 
+`ValidatorResult.blocked_reasons` is validator-local explanatory text for a blocked validator status. It is not a `prepare_write` response field, not `PrepareWriteResult.write_decision_reasons`, not `DryRunSummary.would_blockers`, and not `CloseTaskResult.blockers`.
+
 `ValidatorResult.status=passed` is the only validator status that can support the verified capability state used for `detective` display. `skipped`, `warning`, `failed`, and `blocked` do not justify a stronger label. For changed-path detection specifically, the profile-level `changed_path_detection_verification` value must be `passed`; `not_run`, legacy `planned_not_run` wording, `failed`, and `stale` keep the display `cooperative` or produce `CAPABILITY_INSUFFICIENT`, depending on the method.
 
 <a id="sensitive-categories"></a>
@@ -741,7 +743,7 @@ These values are active current MVP schema values. Method-level capability and a
 | `Task.result` and `StateSummary.result` | `none`, `advice_only`, `completed`, `cancelled`, `superseded` |
 | `Task.close_reason` and `StateSummary.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` |
 | `StatusResponse.close_state` | `none`, `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
-| `CloseTaskResponse.close_state` | `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
+| `CloseTaskResult.close_state` | `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
 | `CloseTaskRequest.intent` | `check`, `complete`, `cancel`, `supersede` |
 | `CloseTaskRequest.close_reason` | same values as `Task.close_reason`, plus `null`; method behavior determines which values are valid for each `intent` |
 | `StateSummary.assurance_level` | `none`, `self_checked` |

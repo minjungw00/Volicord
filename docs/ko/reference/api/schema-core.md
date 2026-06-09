@@ -680,6 +680,8 @@ ValidatorResult:
 
 활성 안정 validator ID는 `surface_capability_check`입니다. `ValidatorResult` 출력은 결과가 이름 붙인 활성 담당 경로를 통해서만 차단 사유, 대체 동작, 보장 표시에 영향을 줄 수 있습니다. 예를 들어 역량이 실제 문제일 때 `CloseBlocker.category=surface_capability`로 이어질 수 있습니다. `status=blocked` 결과나 `findings.severity=blocker`는 설계 정책 차단 사유가 아니며, `design_gate`나 `design_policy`를 활성화하지 않고, 심각도만으로 닫기를 차단하지 않습니다. Write Authorization, 사용자 판단, 증거, 최종 수락, 잔여 위험 수락, 닫기를 만들지 않습니다.
 
+`ValidatorResult.blocked_reasons`는 검증기 상태가 `blocked`인 이유를 설명하는 검증기 내부 텍스트입니다. `prepare_write` 응답 필드가 아니며, `PrepareWriteResult.write_decision_reasons`, `DryRunSummary.would_blockers`, `CloseTaskResult.blockers`도 아닙니다.
+
 `ValidatorResult.status=passed`만 `detective` 표시에 쓰이는 검증된 역량 상태를 뒷받침할 수 있습니다. `skipped`, `warning`, `failed`, `blocked`는 더 강한 라벨의 근거가 아닙니다. 변경 경로 탐지에서는 프로필 수준의 `changed_path_detection_verification` 값이 반드시 `passed`여야 합니다. `not_run`, 예전 `planned_not_run` 문구, `failed`, `stale`이면 메서드에 따라 표시를 `cooperative`로 유지하거나 `CAPABILITY_INSUFFICIENT`를 반환해야 합니다.
 
 <a id="sensitive-categories"></a>
@@ -741,7 +743,7 @@ policy_override
 | `Task.result`와 `StateSummary.result` | `none`, `advice_only`, `completed`, `cancelled`, `superseded` |
 | `Task.close_reason`과 `StateSummary.close_reason` | `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded` |
 | `StatusResponse.close_state` | `none`, `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
-| `CloseTaskResponse.close_state` | `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
+| `CloseTaskResult.close_state` | `ready`, `blocked`, `closed`, `cancelled`, `superseded` |
 | `CloseTaskRequest.intent` | `check`, `complete`, `cancel`, `supersede` |
 | `CloseTaskRequest.close_reason` | `Task.close_reason`과 같은 값, 그리고 `null`. 메서드 동작이 각 `intent`에서 유효한 값을 정합니다. |
 | `StateSummary.assurance_level` | `none`, `self_checked` |

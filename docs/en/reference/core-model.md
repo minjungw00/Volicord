@@ -284,7 +284,7 @@ After preflight succeeds, `intent=complete` uses the deterministic complete clos
 | 11 | Residual risk visibility check | `residual_risk_visibility` blocker when close-affecting residual risk is known but not visible enough for the user to judge. |
 | 12 | Residual risk acceptance check | `residual_risk_acceptance` blocker when a close-affecting visible residual risk requires compatible `residual_risk_acceptance` and that acceptance is missing, rejected, stale, or incompatible. |
 | 13 | Recovery constraint check | `recovery` blocker when current state can be read, preflight has succeeded, and unresolved repair or recovery state, corruption, unresolved blocker state, or another repair constraint must be handled before close. Idempotency request hash conflict and state-version conflict are preflight rejections, not recovery blockers. |
-| 14 | Close transition or blocked response | If no blocker remains, commit the complete transition; otherwise return `CloseTaskResponse.close_state=blocked` and leave the Task open. |
+| 14 | Close transition or blocked response | If no blocker remains, commit the complete transition; otherwise return `CloseTaskResult.close_state=blocked` and leave the Task open. |
 
 The matrix never lets a later check satisfy an earlier one. Final acceptance and residual-risk acceptance cannot replace required evidence, cannot make an unsupported `EvidenceCoverageItem` sufficient, and cannot substitute for a required artifact or state ref.
 
@@ -305,7 +305,7 @@ Close-related fields are separate contracts:
 | Concept | Core meaning |
 |---|---|
 | `Task.lifecycle_phase` | Persisted lifecycle position: `shaping`, `ready`, `executing`, `waiting_user`, `blocked`, `completed`, `cancelled`, `superseded`. |
-| `CloseTaskResponse.close_state` | Response-level close status: `ready`, `blocked`, `closed`, `cancelled`, `superseded`. It is not the persisted lifecycle field. |
+| `CloseTaskResult.close_state` | Response-level close status: `ready`, `blocked`, `closed`, `cancelled`, `superseded`. It is not the persisted lifecycle field. |
 | `Task.close_reason` | Persisted close detail: `none`, `completed_self_checked`, `completed_with_risk_accepted`, `cancelled`, `superseded`. |
 | `Task.result` | Coarse task outcome: `none`, `advice_only`, `completed`, `cancelled`, `superseded`. A failed Run, violation, blocked close, or evidence gap stays in Run status, `CloseBlocker`, evidence state, or current Task state, not a terminal Task result. |
 
