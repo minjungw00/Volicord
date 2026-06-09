@@ -2,7 +2,7 @@
 
 ## 이 문서로 할 수 있는 일
 
-현재 MVP에서 쓰는 활성 메서드 이름 집합, 공용 API 형태, 닫힌 스키마 값 집합을 확인할 때 이 참조를 사용합니다. `ToolEnvelope`, 응답 분기, `DryRunSummary`, `PlannedEffect`, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization 요약, `CompletionPolicy`, 증거 요약, 실행 요약, 닫기 차단 사유, 다음 행동 요약, 현재 MVP enum 값을 다룹니다.
+현재 MVP에서 쓰는 활성 메서드 이름 집합, 공용 API 형태, 닫힌 스키마 값 집합을 확인할 때 이 참조를 사용합니다. `ToolEnvelope`, 응답 분기, `DryRunSummary`, `PlannedEffect`, `PlannedBlocker`, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization 요약, `WriteDecisionReason`, `CompletionPolicy`, 증거 요약, 실행 요약, 닫기 차단 사유, 다음 행동 요약, 현재 MVP enum 값을 다룹니다.
 
 이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 문서 저장소에 MCP 서버가 구현되어 있다는 뜻이 아닙니다. 향후 스키마 후보는 [이후 후보 색인](../../later/index.md#later-schema-candidates)에 남습니다.
 
@@ -200,9 +200,15 @@ DryRunSummary:
   primary_would_result: string | null
   would_create: PlannedEffect[]
   would_update: PlannedEffect[]
-  would_blockers: CloseBlocker[]
+  would_blockers: PlannedBlocker[]
   would_errors: ToolError[]
   next_actions: NextActionSummary[]
+
+PlannedBlocker:
+  source_kind: write_decision | close_matrix
+  category: string
+  code: ErrorCode
+  description: string
 
 PlannedEffect:
   record_kind: task | change_unit | run | write_authorization | user_judgment | evidence_summary | blocker | artifact_staging | artifact | artifact_link
@@ -234,6 +240,8 @@ EventRef:
 `dry_run=true` 요청 자체가 읽기 전용 결과나 `ToolDryRunResponse` 미리보기를 만들기 전에 요청 검증, 로컬 접근 확인, 역량 확인, 상태 조회에서 실패하면 응답은 `dry_run=true`, `effect_kind=no_effect`인 `ToolRejectedResponse`입니다.
 
 `DryRunSummary`는 미리보기 정보일 뿐입니다. `PlannedEffect` 항목은 예상 효과의 기록 종류, 효과, 설명을 담습니다. 아직 존재하지 않는 기록에 대한 실제 생성 ref를 담지 않으며 `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, `user_judgment_ref`, 이벤트 참조, 아티팩트 참조, 권한을 만들어 내면 안 됩니다.
+
+`PlannedBlocker`는 `DryRunSummary.would_blockers`에만 쓰는 dry-run 예상 차단 사유입니다. 저장되지 않고, `WriteDecisionReason`도 아니며, `CloseBlocker`도 아닙니다. 이벤트, 재실행 행, `close_state` 변경, Write Authorization 생성 또는 소비, 스테이징된 핸들 생성 또는 소비, 아티팩트 효과, 증거 업데이트, `state_version` 증가를 암시하지 않습니다. 즉 상태 효과 없음입니다. `STATE_VERSION_CONFLICT`는 `PlannedBlocker.code`로 사용하면 안 됩니다. 오래된 상태는 미리보기 데이터가 아니라 커밋 전 실패이며 `ToolRejectedResponse` 거절 응답으로 반환합니다.
 
 `ToolError`는 공개 오류 식별자, 재시도 안내, 구조화된 세부정보를 유지합니다. `EventRef`는 실제 이벤트 참조가 있는 결과 분기에만 나타납니다. `ToolRejectedResponse`와 `ToolDryRunResponse`는 항상 `events=[]`를 씁니다.
 
@@ -467,6 +475,13 @@ WriteAuthoritySummary:
   active_authorized_attempt_scope: AuthorizedAttemptScope | null
   approval_status: not_required | required | pending | granted | denied | expired | unknown
   guarantee_display: GuaranteeDisplay
+
+WriteDecisionReason:
+  category: scope | baseline | write_authority | user_judgment | validator | evidence
+  code: ErrorCode
+  message: string
+  related_refs: StateRecordRef[]
+  next_actions: NextActionSummary[]
 ```
 
 `CompletionPolicy`는 Task 또는 Change Unit에서 `close_task intent=complete`에 쓰는 활성 닫기 정책을 간결하게 담습니다. 해당 완료 경로에서 증거, 최종 수락, 보이는 잔여 위험의 수락, 제품 쓰기 완료, 사용자에게 보이는 결과가 필요한지 이름 붙입니다. `intent=cancel`과 `intent=supersede`는 성공 완료가 아니며 이 정책을 만족시키지 않습니다. `CompletionPolicy`는 QA gate, verification gate, 전체 Evidence Manifest, 별도 보증 흐름을 추가하는 허가가 아닙니다.
@@ -484,6 +499,10 @@ WriteAuthoritySummary:
 `SensitiveActionScope`는 `judgment_kind=sensitive_approval`에 대해 별도로 기록되는 민감 동작 승인 범위입니다. 의도한 명령, 의존성 변경, 네트워크 접근, 비밀값 접근, 배포, 파괴적 동작, 시스템 접근, 제품 파일 쓰기, 그 밖의 이름 붙은 민감 동작을 설명할 수 있습니다. `capability_claim`은 활성 접점이 그 동작에 대해 정직하게 주장할 수 있는 수준만 기록합니다. 값은 `cooperative_only`, `observed_by_surface`, `not_observable`입니다. 민감 동작 승인은 그 정확한 동작에 대한 검증된 역량이 따로 있지 않은 한 하네스가 동작을 관찰, 차단, 강제, 샌드박스 처리, 격리할 수 있다는 뜻이 아닙니다.
 
 `WriteAuthoritySummary.approval_status`는 필요한 별도 민감 동작 승인 상태를 보여줍니다. `WriteAuthorizationSummary.status` 생명주기가 아니며, `SensitiveActionScope`를 `AuthorizedAttemptScope`로 바꾸지도 않습니다.
+
+`PrepareWriteResult.write_decision_reasons`는 `WriteDecisionReason[]`입니다. 각 `WriteDecisionReason`은 `harness.prepare_write`가 `decision=blocked`, `decision=approval_required`, `decision=decision_required`를 반환한 prepare_write 판단 사유, 즉 write decision 이유를 설명합니다. 닫기 차단 사유 행렬과 독립적이고, `close_state`를 만들지 않으며, `CloseBlocker`를 만들지 않습니다. 커밋 전 실패에는 쓰지 않습니다. 커밋 전 실패는 `ToolRejectedResponse.errors: ToolError[]` 거절 응답으로 반환합니다.
+
+다음 커밋 전 실패 코드는 `WriteDecisionReason.code`로 사용하면 안 됩니다. `STATE_VERSION_CONFLICT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `VALIDATION_FAILED`, `NO_ACTIVE_TASK`.
 
 <a id="record-run-payloads"></a>
 
@@ -618,7 +637,7 @@ NextActionSummary:
   blocker_code: ErrorCode | null
 ```
 
-`CloseBlocker`는 닫기 차단 사유 행렬이 닫기 가능 여부를 평가할 만큼 유효하게 실행된 뒤 반환되는 구조화된 차단 결과입니다. 커밋 전 실패를 담는 곳이 아닙니다. 요청 검증 실패, 오래된 상태, 다른 `request_hash`로 `idempotency_key`를 재사용한 경우, 오래된 `WriteAuthorization.basis_state_version`, 로컬 접근 또는 역량 실패, 닫기 차단 사유 행렬 실행 전 Core 상태를 읽을 수 없는 경우, Project 또는 Task 식별자를 확정할 수 없는 경우는 `effect_kind=no_effect`인 `ToolRejectedResponse`를 반환해야 하며 `CloseBlocker`로 인코딩하면 안 됩니다. `STATE_VERSION_CONFLICT`는 `CloseBlocker.code`로 사용하면 안 됩니다.
+`CloseBlocker`는 `close_task`의 닫기 차단 사유 행렬 전용 차단 타입입니다. 닫기 차단 사유 행렬이 닫기 가능 여부를 평가할 만큼 유효하게 실행된 뒤 `close_task`만 반환합니다. `prepare_write`에서 쓰지 않고, `DryRunSummary` 미리보기 데이터에서도 쓰지 않으며, 커밋 전 실패를 담는 컨테이너도 아닙니다. 요청 검증 실패, 오래된 상태, 다른 `request_hash`로 `idempotency_key`를 재사용한 경우, 오래된 `WriteAuthorization.basis_state_version`, 로컬 접근 또는 역량 실패, 닫기 차단 사유 행렬 실행 전 Core 상태를 읽을 수 없는 경우, Project 또는 Task 식별자를 확정할 수 없는 경우는 `effect_kind=no_effect`인 `ToolRejectedResponse` 거절 응답을 반환해야 하며 `CloseBlocker`로 인코딩하면 안 됩니다. `STATE_VERSION_CONFLICT`는 `CloseBlocker.code`로 사용하면 안 됩니다.
 
 산문으로만 된 상태 텍스트, 보고서, 렌더링된 보기는 차단 결과가 아닙니다. `harness.close_task intent=complete`에서는 [Core Model](../core-model.md#close_task)이 담당하는 결정적 순서로 차단 범주를 계산합니다. `cancellation`과 `supersession` 범주는 해당 종료 intent와의 충돌을 설명합니다. 성공 완료 증거가 아니며 `completed_self_checked` 또는 `completed_with_risk_accepted`와 섞으면 안 됩니다.
 
@@ -702,6 +721,7 @@ policy_override
 | `response_kind` | `result`, `rejected`, `dry_run` |
 | `effect_kind` | `read_only`, `core_committed`, `staging_created`, `no_effect` |
 | `DryRunSummary.would_effect_kind` | `core_committed`, `staging_created`, `no_effect` |
+| `PlannedBlocker.source_kind` | `write_decision`, `close_matrix` |
 | `PlannedEffect.record_kind` | `task`, `change_unit`, `run`, `write_authorization`, `user_judgment`, `evidence_summary`, `blocker`, `artifact_staging`, `artifact`, `artifact_link` |
 | `PlannedEffect.effect` | `create`, `update`, `consume`, `promote`, `link`, `close`, `mark_blocked` |
 | 로컬 API 접근 분류 | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
@@ -743,6 +763,7 @@ policy_override
 | `SensitiveActionScope.capability_claim` | `cooperative_only`, `observed_by_surface`, `not_observable` |
 | `WriteAuthorizationSummary.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
 | `WriteAuthoritySummary.approval_status` | `not_required`, `required`, `pending`, `granted`, `denied`, `expired`, `unknown` |
+| `WriteDecisionReason.category` | `scope`, `baseline`, `write_authority`, `user_judgment`, `validator`, `evidence` |
 | `RunSummary.kind` | `shaping_update`, `implementation`, `direct` |
 | `RunSummary.status` | `completed`, `interrupted`, `blocked`, `violation` |
 | `UserJudgment.status` | `proposed`, `pending_user`, `resolved`, `deferred`, `rejected`, `blocked`, `superseded` |

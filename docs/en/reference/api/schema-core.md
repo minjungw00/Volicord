@@ -2,7 +2,7 @@
 
 ## What this document helps you do
 
-Use this reference for the active current MVP method-name set, shared API shapes, and closed schema value sets: the tool envelope, response branches, `DryRunSummary`, `PlannedEffect`, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization summary, `CompletionPolicy`, evidence summary, run summary, close blockers, next-action summary, and current MVP enum values.
+Use this reference for the active current MVP method-name set, shared API shapes, and closed schema value sets: the tool envelope, response branches, `DryRunSummary`, `PlannedEffect`, `PlannedBlocker`, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization summary, `WriteDecisionReason`, `CompletionPolicy`, evidence summary, run summary, close blockers, next-action summary, and current MVP enum values.
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server. Future schema candidates stay in [Later Candidate Index](../../later/index.md#later-schema-candidates).
 
@@ -200,9 +200,15 @@ DryRunSummary:
   primary_would_result: string | null
   would_create: PlannedEffect[]
   would_update: PlannedEffect[]
-  would_blockers: CloseBlocker[]
+  would_blockers: PlannedBlocker[]
   would_errors: ToolError[]
   next_actions: NextActionSummary[]
+
+PlannedBlocker:
+  source_kind: write_decision | close_matrix
+  category: string
+  code: ErrorCode
+  description: string
 
 PlannedEffect:
   record_kind: task | change_unit | run | write_authorization | user_judgment | evidence_summary | blocker | artifact_staging | artifact | artifact_link
@@ -234,6 +240,8 @@ For `ToolRejectedResponse.state_version`, if Core could read the current project
 If a `dry_run=true` request itself fails validation, local access verification, capability verification, or state lookup before Core can produce either a read-only result or a dry-run preview, the response is `ToolRejectedResponse` with `dry_run=true` and `effect_kind=no_effect`.
 
 `DryRunSummary` is descriptive preview data only. `PlannedEffect` items identify the kind of record and effect that would be attempted, plus a human-readable description. They do not contain real generated refs for records that do not exist yet, and they must not invent `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, `user_judgment_ref`, event refs, artifact refs, or authority.
+
+`PlannedBlocker` is preview data only for `DryRunSummary.would_blockers`. It is not stored, not a `WriteDecisionReason`, and not a `CloseBlocker`. It does not imply any event, replay row, `close_state` mutation, Write Authorization creation or consumption, staged handle creation or consumption, artifact effect, evidence update, or `state_version` increment. `STATE_VERSION_CONFLICT` must not be used as `PlannedBlocker.code`; stale state is a pre-commit failure returned as `ToolRejectedResponse`, not dry-run preview data.
 
 `ToolError` keeps public error identity, retry guidance, and structured details. `EventRef` appears only in result branches that actually have event refs; `ToolRejectedResponse` and `ToolDryRunResponse` always use `events=[]`.
 
@@ -467,6 +475,13 @@ WriteAuthoritySummary:
   active_authorized_attempt_scope: AuthorizedAttemptScope | null
   approval_status: not_required | required | pending | granted | denied | expired | unknown
   guarantee_display: GuaranteeDisplay
+
+WriteDecisionReason:
+  category: scope | baseline | write_authority | user_judgment | validator | evidence
+  code: ErrorCode
+  message: string
+  related_refs: StateRecordRef[]
+  next_actions: NextActionSummary[]
 ```
 
 `CompletionPolicy` is the compact active close policy for `close_task intent=complete` on a Task or Change Unit. It names whether evidence, final acceptance, residual-risk acceptance when visible, product-write completion, and a user-visible result are required for that completion path. `intent=cancel` and `intent=supersede` are not successful completion and do not satisfy this policy. `CompletionPolicy` is not a QA gate, verification gate, full Evidence Manifest, or permission to add separate assurance workflows.
@@ -484,6 +499,10 @@ The current MVP `AuthorizedAttemptScope` is only for product-file write attempts
 `SensitiveActionScope` is the separate scope recorded for `judgment_kind=sensitive_approval`. It can describe permission for an intended command, dependency change, network access, secret access, deployment, destructive action, system access, product-file write, or other named sensitive action. Its `capability_claim` records only what the active surface can honestly claim about the action: `cooperative_only`, `observed_by_surface`, or `not_observable`. A sensitive approval does not mean Harness can observe, block, enforce, sandbox, or isolate the action unless a verified capability for that exact operation says so.
 
 `WriteAuthoritySummary.approval_status` reports the status of any required separate sensitive-action approval. It is not the `WriteAuthorizationSummary.status` lifecycle and does not turn `SensitiveActionScope` into `AuthorizedAttemptScope`.
+
+`PrepareWriteResult.write_decision_reasons` is a `WriteDecisionReason[]`. Each `WriteDecisionReason` explains why `harness.prepare_write` returned `decision=blocked`, `decision=approval_required`, or `decision=decision_required`. It is independent of the close matrix, does not create `close_state`, does not create a `CloseBlocker`, and is not used for pre-commit failures. Pre-commit failures are returned as `ToolRejectedResponse.errors: ToolError[]`.
+
+The following pre-commit failure codes must not be used as `WriteDecisionReason.code`: `STATE_VERSION_CONFLICT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `VALIDATION_FAILED`, and `NO_ACTIVE_TASK`.
 
 <a id="record-run-payloads"></a>
 
@@ -618,7 +637,7 @@ NextActionSummary:
   blocker_code: ErrorCode | null
 ```
 
-`CloseBlocker` is a structured blocker result returned after the close matrix has run successfully enough to evaluate close eligibility. It is not a container for pre-commit failures. Request validation failures, stale state, `idempotency_key` reuse with a different request hash, stale `WriteAuthorization.basis_state_version`, local access or capability failures, unreadable Core state, or missing project or Task identity before close-matrix execution return `ToolRejectedResponse` with `effect_kind=no_effect`; they must not be encoded as `CloseBlocker`. `STATE_VERSION_CONFLICT` must not be used as `CloseBlocker.code`.
+`CloseBlocker` is the `close_task` close-matrix blocker type. It is returned only by `close_task` after the close matrix has run successfully enough to evaluate close eligibility. It is not used by `prepare_write`, not used by `DryRunSummary` preview data, and not a container for pre-commit failures. Request validation failures, stale state, `idempotency_key` reuse with a different request hash, stale `WriteAuthorization.basis_state_version`, local access or capability failures, unreadable Core state, or missing project or Task identity before close-matrix execution return `ToolRejectedResponse` with `effect_kind=no_effect`; they must not be encoded as `CloseBlocker`. `STATE_VERSION_CONFLICT` must not be used as `CloseBlocker.code`.
 
 Prose-only status text, reports, or rendered views are not blocker results. For `harness.close_task intent=complete`, Core calculates blocker categories in the deterministic order owned by [Core Model](../core-model.md#close_task). `cancellation` and `supersession` categories describe conflicts with those terminal intents; they are not successful-completion evidence and must not be mixed with `completed_self_checked` or `completed_with_risk_accepted`.
 
@@ -702,6 +721,7 @@ These values are active current MVP schema values. Method-level capability and a
 | `response_kind` | `result`, `rejected`, `dry_run` |
 | `effect_kind` | `read_only`, `core_committed`, `staging_created`, `no_effect` |
 | `DryRunSummary.would_effect_kind` | `core_committed`, `staging_created`, `no_effect` |
+| `PlannedBlocker.source_kind` | `write_decision`, `close_matrix` |
 | `PlannedEffect.record_kind` | `task`, `change_unit`, `run`, `write_authorization`, `user_judgment`, `evidence_summary`, `blocker`, `artifact_staging`, `artifact`, `artifact_link` |
 | `PlannedEffect.effect` | `create`, `update`, `consume`, `promote`, `link`, `close`, `mark_blocked` |
 | Local API access classes | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
@@ -743,6 +763,7 @@ These values are active current MVP schema values. Method-level capability and a
 | `SensitiveActionScope.capability_claim` | `cooperative_only`, `observed_by_surface`, `not_observable` |
 | `WriteAuthorizationSummary.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
 | `WriteAuthoritySummary.approval_status` | `not_required`, `required`, `pending`, `granted`, `denied`, `expired`, `unknown` |
+| `WriteDecisionReason.category` | `scope`, `baseline`, `write_authority`, `user_judgment`, `validator`, `evidence` |
 | `RunSummary.kind` | `shaping_update`, `implementation`, `direct` |
 | `RunSummary.status` | `completed`, `interrupted`, `blocked`, `violation` |
 | `UserJudgment.status` | `proposed`, `pending_user`, `resolved`, `deferred`, `rejected`, `blocked`, `superseded` |
