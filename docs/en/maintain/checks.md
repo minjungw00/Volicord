@@ -34,6 +34,9 @@ These checks look for documentation drift:
 - `dry_run=true` wording that treats every valid dry-run request as `ToolDryRunResponse` or requires `ToolDryRunResponse` for a read-only selected intent
 - mixed intent method wording that chooses response branches by method name instead of the selected intent's state effect
 - `harness.close_task intent=check` with `dry_run=true` wording that creates `task_events`, replay rows, close-state mutations, Write Authorization changes, staged-handle consumption, or `state_version` increments
+- blocker-like schema wording that blurs current-MVP type ownership among `ToolRejectedResponse.errors` / `ToolError`, `PrepareWriteResult.write_decision_reasons` / `WriteDecisionReason`, `CloseTaskResult.blockers` / `CloseBlocker`, and `DryRunSummary.would_blockers` / `PlannedBlocker`
+- `prepare_write` wording that reuses `CloseBlocker`, creates `close_state`, runs the close matrix, or stores close-matrix blockers
+- `STATE_VERSION_CONFLICT` wording that treats the pre-commit failure as `WriteDecisionReason.code`, `CloseBlocker.code`, or `PlannedBlocker.code`
 - `close_task` wording that turns preflight `STATE_VERSION_CONFLICT`, stale `WriteAuthorization.basis_state_version`, or `idempotency_key` request-hash conflict into committed close blockers
 - one-language-per-`doc_id` agent retrieval problems
 - stale rewrite/history notes, closed issue records, and obsolete review prose
@@ -179,7 +182,25 @@ Fail when any of these conditions appear in active MVP documentation:
 - `RecordRunResponse` rejection is described as requiring `run_summary`.
 - `ToolRejectedResponse`, `ToolDryRunResponse`, or read-only `dry_run` `MethodResult` branches are described as creating replay rows, events, `state_version` increments, staged-handle consumption, artifact promotion, or Write Authorization creation or consumption.
 
-## 18. `close_task` Preflight And Blocked-Close Check
+## 18. Blocker-Type Ownership Check
+
+Inspect API schemas, method response shapes, response examples, dry-run prose, `prepare_write` prose, close-matrix prose, storage effects, and authoring guidance.
+
+Pass when blocker-like fields preserve current-MVP type ownership: pre-commit failures use `ToolRejectedResponse.errors: ToolError[]`; `PrepareWriteResult.write_decision_reasons` uses `WriteDecisionReason[]` for `prepare_write` decision reasons; `CloseTaskResult.blockers` uses `CloseBlocker[]` only for `close_task` close-matrix blockers after a valid close-matrix evaluation; and `DryRunSummary.would_blockers` uses `PlannedBlocker[]` for dry-run expected blockers. Pass when any new blocker-like field declares its owning method or owning response branch before examples or summaries use it.
+
+Fail when any of these conditions appear in active MVP documentation:
+
+- `PrepareWriteResult` requires or returns `CloseBlocker[]`.
+- `prepare_write` decision reasons are described as `CloseBlocker`.
+- `DryRunSummary.would_blockers` is described as `CloseBlocker[]` or as returning real `CloseBlocker` objects.
+- `CloseBlocker` is described as a common blocker, generic blocker, shared blocker type, or general error container.
+- `STATE_VERSION_CONFLICT` is used as `WriteDecisionReason.code`.
+- `STATE_VERSION_CONFLICT` is used as `CloseBlocker.code`.
+- `STATE_VERSION_CONFLICT` is used as `PlannedBlocker.code`.
+- `prepare_write` is described as creating `close_state`, running the close matrix, storing close-matrix blockers, or creating or storing `CloseBlocker`.
+- `CloseBlocker` is reused outside `close_task` without explicitly changing the `close_task`-only contract everywhere it is owned or referenced.
+
+## 19. `close_task` Preflight And Blocked-Close Check
 
 Inspect `close_task` prose, response examples, error lists, close blocker matrices, write-compatibility wording, recovery wording, storage effects, smoke examples, and authoring guidance.
 
@@ -195,7 +216,7 @@ Fail when any of these conditions appear in active MVP documentation:
 - Close preflight rejection is described as creating a `CloseBlocker`, `task_event`, `task_events` append, replay row, `tool_invocations.response_json`, `close_state` mutation, Write Authorization creation or consumption, staged-handle consumption, artifact promotion or link, evidence update, or `project_state.state_version` increment.
 - The same state effects are assigned to `ToolRejectedResponse` and committed blocked `CloseTaskResult`.
 
-## 19. Stale Content Check
+## 20. Stale Content Check
 
 Inspect Maintain docs and nearby routes for historical rewrite reviews, closed issue records, obsolete acceptance records, obsolete delivery-label explanations, prior stage label history, obsolete alias history, later-candidate localization audit records, past translation problem records, past audit result narrative, and temporary migration plans.
 
