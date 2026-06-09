@@ -244,7 +244,7 @@ task_id: string | null
 - 닫기 차단 사유 행렬 실행 전 Core 상태를 읽을 수 없는 경우.
 - 닫기 차단 사유 행렬 실행 전 Project 또는 Task 식별자를 확정할 수 없는 경우.
 
-닫기 행렬 전 거절 응답은 `effect_kind=no_effect`입니다. `CloseBlocker` 없음, `task_event` 없음, `tool_invocations` 재실행 행 없음, `close_state` 변경 없음, 아티팩트 승격 또는 연결 없음, 스테이징된 핸들 소비 없음, 증거 요약 갱신 없음, Write Authorization 생성 또는 소비 없음, `project_state.state_version` 증가 없음이 적용됩니다. `STATE_VERSION_CONFLICT`는 커밋 전 거절 오류일 뿐이며 절대 `CloseBlocker.code`가 될 수 없습니다.
+닫기 행렬 전 거절 응답은 `effect_kind=no_effect`입니다. `CloseBlocker` 없음, `task_event` 또는 `task_events` 추가 없음, 재실행 행 없음, `tool_invocations.response_json` 없음, `close_state` 변경 없음, Write Authorization 생성 없음, Write Authorization 소비 없음, 스테이징된 핸들 소비 없음, 아티팩트 승격 또는 연결 없음, 증거 요약 갱신 없음, `project_state.state_version` 증가 없음이 적용됩니다. `STATE_VERSION_CONFLICT`는 커밋 전 거절 오류일 뿐이며 절대 `CloseBlocker.code`가 될 수 없습니다.
 
 유효한 닫기 차단 사유 행렬 평가에서 발견한 의미 차단 사유만 `CloseTaskResult(close_state=blocked)`와 커밋된 닫기 차단 결과로 반환할 수 있습니다. 이런 커밋된 닫기 차단 결과의 `CloseTaskResult(close_state=blocked).errors[0]`과 `blockers[*].code`는 행렬 실행 뒤 발견한 의미 차단 사유를 설명합니다. 커밋 전 실패 코드를 그 자리에 넣으면 안 되며, `STATE_VERSION_CONFLICT`는 커밋된 닫기 차단 결과 밖에 있습니다. 상태 효과가 있는 `intent=complete`, `intent=cancel`, `intent=supersede`의 유효한 `dry_run` 미리보기는 계속 `ToolDryRunResponse`를 반환합니다. 커밋 전 실패는 `dry_run=true`여도 `ToolRejectedResponse`입니다.
 

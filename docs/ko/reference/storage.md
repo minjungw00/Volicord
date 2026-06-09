@@ -678,7 +678,7 @@ Write Authorization을 소비하거나, 상태를 다시 바꾸지 않고 원래
 
 `harness.close_task intent=check`의 두 형태 모두 상태 효과가 없습니다. 재실행 행 없음,
 `task_events` 없음, 닫기 상태 변경 없음, 아티팩트 갱신 또는 아티팩트 연결 없음,
-스테이징된 핸들 소비 없음, Write Authorization 생성 또는 소비 없음,
+스테이징된 핸들 소비 없음, Write Authorization 생성 없음, Write Authorization 소비 없음,
 `project_state.state_version` 증가 없음입니다. `tool_invocations.response_json`은
 재실행 행을 만드는 상태 효과가 있는 커밋된 `dry_run=false` Core `MethodResult` 응답만
 저장하므로, 읽기 전용 결과는 재실행 행으로 저장하지 않습니다.
@@ -696,8 +696,8 @@ Write Authorization을 소비하거나, 상태를 다시 바꾸지 않고 원래
 닫기 차단 사유 행렬 실행 전 검증 실패가 포함됩니다. 이 커밋 전 실패는 저장소 효과 없음입니다.
 `CloseBlocker` 없음, `task_event` 또는 `task_events` 추가 없음,
 `tool_invocations` 행 없음, `tool_invocations.response_json` 없음, 재실행 행 없음,
-`close_state` 변경 없음, 아티팩트 갱신 또는 연결 없음, 스테이징된 핸들 소비 없음,
-증거 요약 갱신 없음, Write Authorization 생성 또는 소비 없음, `project_state.state_version`
+`close_state` 변경 없음, 아티팩트 승격 또는 연결 없음, 스테이징된 핸들 소비 없음,
+증거 요약 갱신 없음, Write Authorization 생성 없음, Write Authorization 소비 없음, `project_state.state_version`
 증가 없음입니다.
 
 `CloseTaskResult(close_state=blocked)`는 닫기 차단 사유 행렬이 실행되었고

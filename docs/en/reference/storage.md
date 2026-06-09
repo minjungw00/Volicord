@@ -766,7 +766,7 @@ be selected, local access or capability failure before close matrix evaluation,
 or validation failure before close matrix execution. That rejected call creates no
 `CloseBlocker`, no `task_event` or `task_events` append, no
 `tool_invocations` row, no `tool_invocations.response_json`, no replay row, no
-`close_state` mutation, no artifact update or link, no staged handle
+`close_state` mutation, no artifact promotion or link, no staged handle
 consumption, no evidence summary update, no Write Authorization creation or
 consumption, and no `project_state.state_version` increment.
 

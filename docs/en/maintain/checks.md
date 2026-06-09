@@ -192,7 +192,7 @@ Fail when any of these conditions appear in active MVP documentation:
 - `STATE_VERSION_CONFLICT` is described as a committed blocked close result rather than a `ToolRejectedResponse`.
 - Stale `WriteAuthorization.basis_state_version` is described as a committed `write_compatibility` blocker.
 - `idempotency_key` reuse with a different request hash is described as a `recovery` blocker.
-- Close preflight rejection is described as creating a `CloseBlocker`, `task_event`, `task_events` append, `tool_invocations` replay row, replay row, `close_state` mutation, Write Authorization consumption, staged-handle consumption, artifact effect, evidence update, or `state_version` increment.
+- Close preflight rejection is described as creating a `CloseBlocker`, `task_event`, `task_events` append, replay row, `tool_invocations.response_json`, `close_state` mutation, Write Authorization creation or consumption, staged-handle consumption, artifact promotion or link, evidence update, or `project_state.state_version` increment.
 - The same state effects are assigned to `ToolRejectedResponse` and committed blocked `CloseTaskResult`.
 
 ## 19. Stale Content Check

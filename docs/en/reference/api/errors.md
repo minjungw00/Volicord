@@ -244,7 +244,7 @@ The first internal documentation smoke target in [MVP Plan](../../build/mvp-plan
 - Core state cannot be read before close matrix execution.
 - Project or Task identity cannot be established before close matrix execution.
 
-Close preflight rejection has `effect_kind=no_effect`. It creates no `CloseBlocker`, no `task_event`, no `tool_invocations` replay row, no `close_state` mutation, no artifact promotion or link, no staged handle consumption, no evidence summary update, no Write Authorization creation or consumption, and no `project_state.state_version` increment. `STATE_VERSION_CONFLICT` is a pre-commit rejection error only and must never be `CloseBlocker.code`.
+Close preflight rejection has `effect_kind=no_effect`. It creates no `CloseBlocker`, no `task_event` or `task_events` append, no replay row, no `tool_invocations.response_json`, no `close_state` mutation, no Write Authorization creation or consumption, no staged handle consumption, no artifact promotion or link, no evidence summary update, and no `project_state.state_version` increment. `STATE_VERSION_CONFLICT` is a pre-commit rejection error only and must never be `CloseBlocker.code`.
 
 Only semantic blockers found by a valid close matrix evaluation may return `CloseTaskResult(close_state=blocked)` with committed close blockers. For those committed blocked close results, `CloseTaskResult(close_state=blocked).errors[0]` and `blockers[*].code` describe semantic close blockers found after the matrix runs. Pre-commit failure codes must not be placed there; `STATE_VERSION_CONFLICT` is outside committed blocked close results. Valid dry-run previews of state-effecting close intents still return `ToolDryRunResponse`; preflight failures remain `ToolRejectedResponse` even when `dry_run=true`.
 
