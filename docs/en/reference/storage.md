@@ -490,10 +490,13 @@ the active records, including:
 `tool_invocations.response_json` stores only the exact committed non-dry-run
 Core `MethodResult` response for a replay-row-creating state effect. A committed
 blocked result is stored only when the API method state-effect table permits the
-blocked commit and the response is a committed `MethodResult`. Storage must not
+blocked commit and the response is a committed `MethodResult`.
+`CloseTaskResult(close_state=blocked)` is stored only when it is a committed
+blocked close result from a valid close matrix evaluation. Storage must not
 store `ToolRejectedResponse`, `ToolDryRunResponse`, read-only `MethodResult`
 results, or successful `StageArtifactResult` staging results in
-`tool_invocations.response_json`. `CloseTaskResult` returned by
+`tool_invocations.response_json`. `ToolRejectedResponse` with
+`STATE_VERSION_CONFLICT` is not replay-stored. `CloseTaskResult` returned by
 `harness.close_task intent=check`, including when the request has
 `dry_run=true`, is a read-only `MethodResult` with `effect_kind=read_only` and
 is not replay-stored.
@@ -700,8 +703,10 @@ promotion/linking, Write Authorization consumption, evidence update, event, clos
 effect, replay row, or state-version increment.
 
 `tool_invocations` stores exact replay only for committed non-dry-run Core
-`MethodResult` responses whose method state-effect row creates replay. Keys are
-scoped as described by [API Errors: Idempotency](api/errors.md#idempotency).
+`MethodResult` responses whose method state-effect row creates replay. It does
+not store `ToolRejectedResponse` or `ToolDryRunResponse`, and those branches
+never create or reserve replay rows. Keys are scoped as described by
+[API Errors: Idempotency](api/errors.md#idempotency).
 If the same key and request hash are replayed, Core returns the original
 committed response without appending events, promoting or linking artifacts, consuming
 Write Authorization, or changing state again. If the key is reused with a different
@@ -719,7 +724,8 @@ that create no mutation do not create current rows, change
 `artifact_staging.status`, set `consumed_by_run_id` or `promoted_artifact_id`,
 append `task_events`, promote or link artifacts, update evidence summaries,
 create or consume Write Authorizations, change `write_authorizations.status`,
-change close state, create `tool_invocations` replay rows, or increment state
+change close state, create `tool_invocations` rows or
+`tool_invocations.response_json`, create replay rows, or increment state
 versions. Successful
 `harness.stage_artifact` is limited to the storage-owned temporary staging
 contract above; that staging side effect is not a Core current row, event,
@@ -745,13 +751,41 @@ increment. `tool_invocations.response_json` stores only committed non-dry-run
 Core `MethodResult` responses whose method state-effect row creates replay, so
 read-only results are not stored as replay rows.
 
-A blocked response may persist only the blocker or other mutation the API
-method-state-effect matrix allows. It must not create the authority the blocker
-says is missing. For example, blocked `prepare_write` responses do not create consumable
-`write_authorizations`. When the API owner allows a committed blocked
-`MethodResult` to persist a blocker or other current-row mutation, that response
-is a committed non-dry-run Core `MethodResult` for event, replay-row, and
-state-version purposes and is stored in `tool_invocations.response_json`.
+### `close_task` storage effects
+
+`harness.close_task` storage effects must match the response branch. A close
+preflight rejection returns `ToolRejectedResponse` with `effect_kind=no_effect`;
+it is not `CloseTaskResult` and not
+`CloseTaskResult(close_state=blocked)`.
+
+Close preflight rejection includes an `expected_state_version` mismatch,
+`idempotency_key` reuse with a different request hash, stale
+`WriteAuthorization.basis_state_version`, Core state unreadability before close
+matrix evaluation, request identity failure before a valid Project or Task can
+be selected, local access or capability failure before close matrix evaluation,
+or validation failure before close matrix execution. That rejected call creates no
+`CloseBlocker`, no `task_event` or `task_events` append, no
+`tool_invocations` row, no `tool_invocations.response_json`, no replay row, no
+`close_state` mutation, no artifact update or link, no staged handle
+consumption, no evidence summary update, no Write Authorization creation or
+consumption, and no `project_state.state_version` increment.
+
+`CloseTaskResult(close_state=blocked)` is storage-effective only when the close
+matrix has run and the `harness.close_task` method contract permits committing
+the blocked result. It may create only the `CloseBlocker`, `task_events`,
+replay-row, and `project_state.state_version` effects explicitly allowed by the
+API/storage contract, and it must leave the Task open. It must not be used for
+`STATE_VERSION_CONFLICT`; that code belongs to the preflight
+`ToolRejectedResponse` branch and is not stored as replay.
+
+A committed blocked `MethodResult` for any method may persist only the blocker
+or other mutation the API method-state-effect matrix allows. It must not create
+the authority the blocker says is missing. For example, blocked `prepare_write`
+responses do not create consumable `write_authorizations`. When the API owner
+allows a committed blocked `MethodResult` to persist a blocker or other
+current-row mutation, that response is a committed non-dry-run Core
+`MethodResult` for event, replay-row, and state-version purposes and is stored
+in `tool_invocations.response_json`.
 
 ## 8. State versioning
 
@@ -800,9 +834,12 @@ concurrency basis.
 Stale Write Authorization detection compares that stored value with the current
 project-wide state version, not with any Task-local clock. When that mismatch
 is surfaced through the public API, the public error is `STATE_VERSION_CONFLICT`.
-Storage examples may describe stale state or version mismatch, but storage does
-not define a different public error name or expose internal database exception
-names.
+The call is rejected before consumption. That rejected call does not change the
+Write Authorization status to `consumed`, `invalid`, `stale`, or any other
+state unless another current contract explicitly says so, and `close_task` must
+not store a close blocker for that stale basis condition. Storage examples may
+describe stale state or version mismatch, but storage does not define a
+different public error name or expose internal database exception names.
 `write_authorizations.attempt_scope_json` stores the authorized attempt boundary
 that `record_run` later compares against observed facts. The top-level
 `task_id`, `change_unit_id`, `surface_id`, and `basis_state_version` columns are
