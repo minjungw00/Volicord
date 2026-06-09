@@ -2,7 +2,7 @@
 
 ## 이 문서로 할 수 있는 일
 
-현재 MVP에서 쓰는 활성 메서드 이름 집합, 공용 API 형태, 닫힌 스키마 값 집합을 확인할 때 이 참조를 사용합니다. `ToolEnvelope`, 공통 응답, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization 요약, `CompletionPolicy`, 증거 요약, 실행 요약, 닫기 차단 사유, 다음 행동 요약, 현재 MVP enum 값을 다룹니다.
+현재 MVP에서 쓰는 활성 메서드 이름 집합, 공용 API 형태, 닫힌 스키마 값 집합을 확인할 때 이 참조를 사용합니다. `ToolEnvelope`, 응답 분기, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization 요약, `CompletionPolicy`, 증거 요약, 실행 요약, 닫기 차단 사유, 다음 행동 요약, 현재 MVP enum 값을 다룹니다.
 
 이 문서는 향후 하네스 서버 동작을 계획하고 검토하기 위한 참조입니다. 현재 문서 저장소에 MCP 서버가 구현되어 있다는 뜻이 아닙니다. 향후 스키마 후보는 [이후 후보 색인](../../later/index.md#later-schema-candidates)에 남습니다.
 
@@ -23,7 +23,7 @@
 
 이 문서의 YAML 형식 표기는 예시라고 표시하지 않는 한 규범 스키마 표기입니다.
 
-- `field: Type`은 필드가 필수이고 non-null이라는 뜻입니다.
+- `field: Type`은 그 필드를 선언한 객체나 응답 공용체 분기 안에서 필드가 필수이고 non-null이라는 뜻입니다. 한 응답 분기에서 필수인 필드는 다른 분기에도 그 필드가 선언되어 있을 때만 필수입니다.
 - `field: Type | null`은 필드가 필수이고 JSON `null`을 허용한다는 뜻입니다.
 - `Type[]`은 필드가 존재하고 배열을 담는다는 뜻입니다. 빈 배열은 `[]`로 씁니다.
 - `a | b | c`는 해당 필드의 닫힌 활성 enum입니다.
@@ -146,19 +146,57 @@ capability_profile:
 
 <a id="common-response"></a>
 
-## 공통 응답
+## 응답 분기
+
+모든 공개 도구 응답은 정확히 하나의 응답 분기입니다. 메서드별 성공 필드는 `ToolResultBase`를 바탕으로 한 실제 메서드 결과 분기에만 붙습니다. 거절 응답과 `dry_run` 응답은 쓰기 결정, 실행 요약, 스테이징된 아티팩트 핸들 같은 성공 전용 필드를 만들어 내면 안 됩니다.
 
 ```yaml
-ToolResponseBase:
+ToolResultBase:
   request_id: string
   idempotency_key: string | null
   project_id: string
   task_id: string | null
   state_version: integer
   dry_run: boolean
+  response_kind: result
+  effect_kind: read_only | core_committed | staging_created | no_effect
   errors: ToolError[]
   validator_results: ValidatorResult[]
   events: EventRef[]
+
+ToolRejectedResponse:
+  request_id: string
+  idempotency_key: string | null
+  project_id: string
+  task_id: string | null
+  state_version: integer | null
+  dry_run: boolean
+  response_kind: rejected
+  effect_kind: no_effect
+  errors: ToolError[]
+  validator_results: ValidatorResult[]
+  events: []
+
+ToolDryRunResponse:
+  request_id: string
+  idempotency_key: string | null
+  project_id: string
+  task_id: string | null
+  state_version: integer | null
+  dry_run: true
+  response_kind: dry_run
+  effect_kind: no_effect
+  errors: ToolError[]
+  validator_results: ValidatorResult[]
+  events: []
+  dry_run_summary: DryRunSummary
+
+DryRunSummary:
+  method: string
+  summary: string
+  would_create: string[]
+  would_update: string[]
+  would_return: string[]
 
 ToolError:
   code: ErrorCode
@@ -174,7 +212,15 @@ EventRef:
   state_version: integer
 ```
 
-`ToolResponseBase.state_version`은 항상 프로젝트 전체 버전입니다. 커밋된 상태 변경에서는 커밋 뒤의 `project_state.state_version`이고, 읽기 전용과 `dry_run` 응답에서는 그 응답이 관찰한 현재 프로젝트 전체 버전입니다. 읽기 전용 응답은 계산된 차단 사유나 닫기 차단 사유를 저장하지 않고 포함할 수 있습니다. `dry_run=true`는 현재 기록, 이벤트, 아티팩트, 증거 요약, Write Authorization, 닫기 상태, `tool_invocations` 재실행 행, 상태 버전 증가를 만들지 않습니다.
+`ToolResultBase`는 실제 메서드 결과의 기반입니다. `state_version`은 프로젝트 전체 버전입니다. 커밋된 Core 상태 변경에서는 커밋 뒤의 `project_state.state_version`이고, 읽기 전용 결과와 임시 스테이징 결과에서는 응답이 관찰한 현재 프로젝트 전체 버전입니다. `effect_kind=staging_created`는 `harness.stage_artifact`가 임시 스테이징된 아티팩트 핸들을 만들었다는 뜻입니다. Core 상태 전이, 이벤트, 재실행 행, `state_version` 증가가 아닙니다.
+
+`ToolRejectedResponse`는 `STATE_VERSION_CONFLICT`, 요청 검증 실패, Core 또는 로컬 MCP 접점 사용 불가, 로컬 접근 실패, 역량 부족, 유효하지 않은 스테이징된 아티팩트 핸들 같은 커밋 전 실패 응답입니다. 이 분기는 `effect_kind=no_effect`이고, 메서드별 성공 필드를 담지 않으며, 현재 기록, 이벤트, 아티팩트, 증거 요약, Write Authorization, 닫기 상태, `tool_invocations` 재실행 행, `state_version` 증가를 만들지 않습니다. `ToolRejectedResponse.errors`는 항상 비어 있지 않습니다. `ToolRejectedResponse.events`는 항상 `[]`입니다.
+
+`ToolRejectedResponse.state_version`은 Core가 거절 전에 현재 프로젝트 상태를 읽을 수 있었다면 관찰한 프로젝트 전체 `project_state.state_version`입니다. Core나 로컬 MCP 접점이 프로젝트 상태를 읽기 전에 사용할 수 없었다면 `state_version`은 `null`일 수 있습니다.
+
+`ToolDryRunResponse`는 `dry_run=true` 호출이 커밋 없이 메서드가 무엇을 검증하거나 바꿀지를 보고할 때 쓰는 응답입니다. 이 분기는 `effect_kind=no_effect`, `events=[]`이며 메서드별 성공 필드를 담지 않습니다. 현재 기록, 이벤트, 아티팩트, 증거 요약, Write Authorization, 닫기 상태, `tool_invocations` 재실행 행, `state_version` 증가를 만들지 않습니다. `DryRunSummary`의 `would_create`, `would_update`, `would_return` 항목은 `dry_run` 설명 문자열일 뿐입니다. 실제 생성된 기록, 이벤트 참조, 아티팩트 참조, 권한이 아닙니다.
+
+`ToolError`는 공개 오류 식별자, 재시도 안내, 구조화된 세부정보를 유지합니다. `EventRef`는 실제 이벤트 참조가 있는 결과 분기에만 나타납니다. 거절 응답과 dry-run 응답은 항상 `events=[]`를 씁니다.
 
 <a id="state-summary"></a>
 
@@ -301,13 +347,12 @@ StageArtifactRequest:
   expected_size_bytes: integer | null
   relation_hint: string | null
 
-StageArtifactResponse:
-  request_id: string
-  project_id: string
-  task_id: string
+StageArtifactResponse: StageArtifactResult | ToolRejectedResponse | ToolDryRunResponse
+
+StageArtifactResult:
+  base: ToolResultBase
   staged_artifact_handle: StagedArtifactHandle
   expires_at: string
-  errors: ToolError[]
 
 StagedArtifactHandle:
   handle_id: string
@@ -325,6 +370,8 @@ StagedArtifactHandle:
 `source_kind`에 맞는 출처 필드 하나만 있어야 합니다. `staged_artifact`에는 `staged_artifact_handle`, `existing_artifact`에는 `existing_artifact_ref`가 필요합니다. 출처 필드가 빠졌거나, `source_kind`와 맞지 않거나, 두 출처 필드가 모두 있으면 요청 형태 검증 실패입니다. 스테이징 핸들은 같은 `project_id`와 `task_id` 범위에 있어야 하고 `content_type`, `sha256`, `size_bytes`, `redaction_state`, `expires_at`을 가져야 하며, `harness.record_run`이 사용할 때 만료되지 않았고 아직 소비되지 않았어야 합니다. 스테이징된 핸들 검증은 저장소가 소유한 `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`, `size_bytes`, `redaction_state`를 대조합니다. 실패하면 공개 `VALIDATION_FAILED`와 `ToolError.details.artifact_input_error`를 사용합니다.
 
 `created_by_surface_id`와 `created_by_surface_instance_id`는 서버가 기록하는 출처 기록 필드입니다. `harness.stage_artifact`가 성공하면 서버는 해당 요청의 `VerifiedSurfaceContext`에서 이 값을 기록합니다. 호출자는 `StageArtifactRequest`에서 이 값을 고르지 않으며, 에이전트나 사용자가 같은 모양의 객체를 제출해도 그것은 권한 주장이 아닙니다. `ArtifactInput`이 `StagedArtifactHandle`을 `harness.record_run`에 다시 제출하면 서버는 저장소가 소유한 staging 기록과 대조하고, 현재 확인된 `surface_id`와 `surface_instance_id`가 `created_by_surface_id`와 `created_by_surface_instance_id`와 같을 때만 승격을 허용합니다. 현재 MVP는 접점 간(cross-surface) staged artifact handoff를 지원하지 않습니다. 모양이 맞는 handle이라도 `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, 만료 여부, 소비 상태, `sha256`, `size_bytes`, `redaction_state`가 저장된 staged artifact와 요청 기대에 맞지 않으면 거부됩니다.
+
+`StageArtifactResult`는 `harness.stage_artifact`의 성공 결과 분기입니다. `base.response_kind`는 `result`이고 `base.effect_kind`는 `staging_created`입니다. 검증 실패, 로컬 접점 실패, 역량 부족, 안전하게 스테이징된 아티팩트 핸들을 만들 수 없는 요청은 `ToolRejectedResponse`를 반환하며 `staged_artifact_handle`을 포함하지 않습니다. `dry_run` 호출은 `ToolDryRunResponse`를 반환하며 이때도 `staged_artifact_handle`을 포함하지 않습니다.
 
 `harness.stage_artifact`는 임시 `StagedArtifactHandle`을 만들 수 있지만 그 자체로 Core 상태 전이가 아닙니다. 증거를 만들지 않고, gate를 만족하지 않고, 증거 요약을 갱신하지 않으며, `harness.close_task`가 통과하게 만들 수도 없습니다. `StagedArtifactHandle`은 어떤 로컬 호출자나 사용할 수 있는 bearer token이 아닙니다. 유효한 스테이징된 핸들을 소비해 지속 `ArtifactRef`로 승격할 수 있는 활성 경로는 `harness.record_run`뿐입니다. 그 승격은 `run_recording`과 같은 프로젝트, 같은 Task, 서버 기록 `created_by_surface_id` / `created_by_surface_instance_id`와 현재 확인된 `surface_id` / `surface_instance_id`, 미만료, 미소비, 무결성 호환 handle 확인으로 승인됩니다. Projection 파일, 생성된 Markdown, 대화 텍스트, Product Repository 파일, 에이전트 기억은 스테이징된 핸들의 출처 기록을 만들거나 새로 고칠 수 없습니다.
 
@@ -634,6 +681,8 @@ policy_override
 |---|---|
 | 활성 메서드 집합 | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.stage_artifact`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
 | `ToolEnvelope.actor_kind` | `user`, `lead_agent` |
+| `response_kind` | `result`, `rejected`, `dry_run` |
+| `effect_kind` | `read_only`, `core_committed`, `staging_created`, `no_effect` |
 | 로컬 API 접근 분류 | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
 | `LocalSurfaceRegistration.transport_kind` | `local_mcp_stdio`, `local_http` |
 | `LocalSurfaceRegistration.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` |

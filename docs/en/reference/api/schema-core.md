@@ -2,7 +2,7 @@
 
 ## What this document helps you do
 
-Use this reference for the active current MVP method-name set, shared API shapes, and closed schema value sets: the tool envelope, common response, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization summary, `CompletionPolicy`, evidence summary, run summary, close blockers, next-action summary, and current MVP enum values.
+Use this reference for the active current MVP method-name set, shared API shapes, and closed schema value sets: the tool envelope, response branches, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization summary, `CompletionPolicy`, evidence summary, run summary, close blockers, next-action summary, and current MVP enum values.
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server. Future schema candidates stay in [Later Candidate Index](../../later/index.md#later-schema-candidates).
 
@@ -23,7 +23,7 @@ This document describes future Harness Server behavior for planning and review. 
 
 The YAML-like blocks in this document are normative schema notation, not examples unless marked as examples.
 
-- `field: Type` means the field is required and non-null.
+- `field: Type` means the field is required and non-null inside the object or union branch that declares it. A field required in one response branch is not required in sibling branches unless those branches also declare it.
 - `field: Type | null` means the field is required and may be JSON `null`.
 - `Type[]` means the field is present and contains an array; an empty array is written as `[]`.
 - `a | b | c` is a closed active enum for that field.
@@ -146,19 +146,57 @@ capability_profile:
 
 <a id="common-response"></a>
 
-## Common Response
+## Response Branches
+
+Every public tool response is exactly one response branch. Method-specific success fields attach only to a method result branch built on `ToolResultBase`; rejected and dry-run branches must not invent success-only fields such as a write decision, run summary, or staged artifact handle.
 
 ```yaml
-ToolResponseBase:
+ToolResultBase:
   request_id: string
   idempotency_key: string | null
   project_id: string
   task_id: string | null
   state_version: integer
   dry_run: boolean
+  response_kind: result
+  effect_kind: read_only | core_committed | staging_created | no_effect
   errors: ToolError[]
   validator_results: ValidatorResult[]
   events: EventRef[]
+
+ToolRejectedResponse:
+  request_id: string
+  idempotency_key: string | null
+  project_id: string
+  task_id: string | null
+  state_version: integer | null
+  dry_run: boolean
+  response_kind: rejected
+  effect_kind: no_effect
+  errors: ToolError[]
+  validator_results: ValidatorResult[]
+  events: []
+
+ToolDryRunResponse:
+  request_id: string
+  idempotency_key: string | null
+  project_id: string
+  task_id: string | null
+  state_version: integer | null
+  dry_run: true
+  response_kind: dry_run
+  effect_kind: no_effect
+  errors: ToolError[]
+  validator_results: ValidatorResult[]
+  events: []
+  dry_run_summary: DryRunSummary
+
+DryRunSummary:
+  method: string
+  summary: string
+  would_create: string[]
+  would_update: string[]
+  would_return: string[]
 
 ToolError:
   code: ErrorCode
@@ -174,7 +212,15 @@ EventRef:
   state_version: integer
 ```
 
-`ToolResponseBase.state_version` is always the project-wide version: the resulting `project_state.state_version` after a committed mutation, or the current project-wide version observed for read-only and dry-run responses. Read-only responses may include computed blockers or close blockers without storing them. `dry_run=true` creates no current records, events, artifacts, evidence summaries, Write Authorizations, close state, `tool_invocations` replay rows, or state-version increments.
+`ToolResultBase` is the base for actual method results. Its `state_version` is the project-wide version: the resulting `project_state.state_version` after a committed Core mutation, or the current project-wide version observed for read-only results and temporary staging results. `effect_kind=staging_created` means a temporary staged artifact handle was created by `harness.stage_artifact`; it is not a Core state transition, event, replay row, or `state_version` increment.
+
+`ToolRejectedResponse` is the response for pre-commit failures, including `STATE_VERSION_CONFLICT`, request validation failure, unavailable Core or local MCP surface, local access failure, capability failure, and invalid staged artifact handle. It has `effect_kind=no_effect`, contains no method-specific success fields, and creates no current record, event, artifact, evidence summary, Write Authorization, close state, `tool_invocations` replay row, or `state_version` increment. `ToolRejectedResponse.errors` is always non-empty. `ToolRejectedResponse.events` is always `[]`.
+
+For `ToolRejectedResponse.state_version`, if Core could read the current project state before rejecting, the value is the observed project-wide `project_state.state_version`. If Core or the local MCP surface is unavailable before project state can be read, `state_version` may be `null`.
+
+`ToolDryRunResponse` is the response for a `dry_run=true` call that reports what the method would validate or change without committing it. It has `effect_kind=no_effect`, `events=[]`, and no method-specific success fields. It creates no current record, event, artifact, evidence summary, Write Authorization, close state, `tool_invocations` replay row, or `state_version` increment. `DryRunSummary` names would-create, would-update, or would-return items only as explanatory dry-run output; those strings are not created records, event refs, artifact refs, or authority.
+
+`ToolError` keeps public error identity, retry guidance, and structured details. `EventRef` appears only in result branches that actually have event refs; rejected and dry-run branches always use `events=[]`.
 
 <a id="state-summary"></a>
 
@@ -301,13 +347,12 @@ StageArtifactRequest:
   expected_size_bytes: integer | null
   relation_hint: string | null
 
-StageArtifactResponse:
-  request_id: string
-  project_id: string
-  task_id: string
+StageArtifactResponse: StageArtifactResult | ToolRejectedResponse | ToolDryRunResponse
+
+StageArtifactResult:
+  base: ToolResultBase
   staged_artifact_handle: StagedArtifactHandle
   expires_at: string
-  errors: ToolError[]
 
 StagedArtifactHandle:
   handle_id: string
@@ -325,6 +370,8 @@ StagedArtifactHandle:
 Exactly one source field must match `source_kind`: `staged_artifact_handle` for `staged_artifact`, or `existing_artifact_ref` for `existing_artifact`. A missing source field, a source field that does not match `source_kind`, or both source fields present is a request-shape validation failure. A staged handle must be scoped to the same `project_id` and `task_id`, carry `content_type`, `sha256`, `size_bytes`, `redaction_state`, and `expires_at`, and be unexpired and unconsumed when `harness.record_run` uses it. Staged handle validation compares storage-owned `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, expiration, consumed status, `sha256`, `size_bytes`, and `redaction_state`; failures use public `VALIDATION_FAILED` with `ToolError.details.artifact_input_error`.
 
 `created_by_surface_id` and `created_by_surface_instance_id` are server-recorded provenance fields. `harness.stage_artifact` records them from the successful request's `VerifiedSurfaceContext`; the caller does not choose them in `StageArtifactRequest`, and a user-provided object with those fields is not proof of authority. When `ArtifactInput` submits a `StagedArtifactHandle` back to `harness.record_run`, the server resolves it against the storage-owned staging record and requires the current verified `surface_id` and `surface_instance_id` to match `created_by_surface_id` and `created_by_surface_instance_id`. The active MVP does not support cross-surface staged artifact handoff. A handle with the right shape is still rejected when `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, expiration, consumed status, `sha256`, `size_bytes`, or `redaction_state` do not match the stored staged artifact and request expectations.
+
+`StageArtifactResult` is the successful result branch for `harness.stage_artifact`; its `base.response_kind` is `result` and its `base.effect_kind` is `staging_created`. Validation failure, local surface failure, capability failure, or any request that cannot safely create a staged handle returns `ToolRejectedResponse` and does not include `staged_artifact_handle`. A dry run returns `ToolDryRunResponse` and also does not include `staged_artifact_handle`.
 
 `harness.stage_artifact` may create a temporary `StagedArtifactHandle`, but it is not a Core state transition by itself. It creates no evidence, satisfies no gate, updates no evidence summary, and cannot make `harness.close_task` pass. `StagedArtifactHandle` is not a bearer token that any local caller may use. `harness.record_run` is the only active path that can consume a valid staged handle and promote it to a persistent `ArtifactRef`; that promotion is authorized by `run_recording` plus same-project, same-Task, server-recorded `created_by_surface_id` / `created_by_surface_instance_id` against current verified `surface_id` / `surface_instance_id`, unexpired, unconsumed, integrity-compatible handle checks. Projection files, generated Markdown, chat text, Product Repository files, and agent memory cannot create or refresh staged-handle provenance.
 
@@ -634,6 +681,8 @@ These values are active current MVP schema values. Method-level capability and a
 |---|---|
 | Active method set | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.stage_artifact`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task` |
 | `ToolEnvelope.actor_kind` | `user`, `lead_agent` |
+| `response_kind` | `result`, `rejected`, `dry_run` |
+| `effect_kind` | `read_only`, `core_committed`, `staging_created`, `no_effect` |
 | Local API access classes | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
 | `LocalSurfaceRegistration.transport_kind` | `local_mcp_stdio`, `local_http` |
 | `LocalSurfaceRegistration.local_access_posture` | `registered_local`, `unavailable`, `mismatch`, `revoked` |
