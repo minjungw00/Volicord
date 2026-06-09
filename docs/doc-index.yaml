@@ -17,7 +17,7 @@ docs:
       en: docs/en/README.md
       ko: docs/ko/README.md
     default_for_agent: en
-    owns: "Language-specific documentation entry points, current route overview, reader guidance, compact pointers to Reference, Later, Maintain, and route metadata, plus high-level routing for public API response branch owners."
+    owns: "Language-specific documentation entry points, current route overview, reader guidance, compact pointers to Reference, Later, Maintain, and route metadata, plus high-level routing for public API response branch owners and the dry-run branch-selection reminder that `StatusResult`/`CloseTaskResult` read-only results are distinct from `ToolDryRunResponse` previews."
     does_not_own: "Product thesis, exact contracts, implementation readiness, or detailed owner routing."
 
   - doc_id: start
@@ -77,7 +77,7 @@ docs:
       en: docs/en/reference/README.md
       ko: docs/ko/reference/README.md
     default_for_agent: en
-    owns: "Reference owner routing for exact contract questions, including active MVP boundary, public API response branch routing for `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`, `MethodResult`, `response_kind`, and `effect_kind`, public `ErrorCode` and `STATE_VERSION_CONFLICT` owners, verified local surface access, request-level `VerifiedSurfaceContext.access_class`, `run_recording`, `artifact_registration`, `artifact_read`, project-wide `project_state.state_version`, staged artifacts, `StagedArtifactHandle` promotion, persistent `existing_artifact` / `ArtifactRef` linking, artifact body reads, evidence/close/projection/security/judgment/shaping owners, later-only routing, and maintain-route pointers."
+    owns: "Reference owner routing for exact contract questions, including active MVP boundary, public API response branch routing for `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`, `MethodResult`, `response_kind`, `effect_kind`, and read-only `dry_run=true` examples such as `StatusResult` and `CloseTaskResult`, public `ErrorCode` and `STATE_VERSION_CONFLICT` owners, verified local surface access, request-level `VerifiedSurfaceContext.access_class`, `run_recording`, `artifact_registration`, `artifact_read`, project-wide `project_state.state_version`, staged artifacts, `StagedArtifactHandle` promotion, persistent `existing_artifact` / `ArtifactRef` linking, artifact body reads, evidence/close/projection/security/judgment/shaping owners, later-only routing, and maintain-route pointers."
     does_not_own: "Detailed schemas, DDL, transition tables, templates, errors, retrieval guidance, security guarantees, or implementation readiness."
 
   - doc_id: reference.core-model
@@ -117,7 +117,7 @@ docs:
       en: docs/en/reference/api/errors.md
       ko: docs/ko/reference/api/errors.md
     default_for_agent: en
-    owns: "Public `ErrorCode` contract, status taxonomy, error precedence, `ToolError` public error use, local surface errors, `STATE_VERSION_CONFLICT`, `ToolRejectedResponse` pre-commit error boundaries, `ToolDryRunResponse` dry-run error boundaries, committed blocked `MethodResult` boundaries, `close_task` blocker error mapping, and idempotency error behavior."
+    owns: "Public `ErrorCode` contract, status taxonomy, error precedence, `ToolError` public error use, local surface errors, `STATE_VERSION_CONFLICT`, `ToolRejectedResponse` pre-commit error boundaries, `ToolDryRunResponse` dry-run preview boundaries, read-only `dry_run=true` `MethodResult` behavior, committed blocked `MethodResult` boundaries, `close_task` blocker error mapping, and idempotency error behavior."
     does_not_own: "Core gates, method payload schemas, method-specific durable state effects such as `prepare_write` authorization creation, storage records, or connector fallback rules."
 
   - doc_id: reference.storage
@@ -197,7 +197,7 @@ docs:
       en: docs/en/reference/glossary.md
       ko: docs/ko/reference/glossary.md
     default_for_agent: en
-    owns: "Official terminology for public, core, API/schema, storage, security, agent, and later terms, including `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`, `MethodResult`, `ToolError`, `EventRef`, `response_kind`, and `effect_kind`."
+    owns: "Official terminology for public, core, API/schema, storage, security, agent, and later terms, including active MVP methods, `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`, `MethodResult`, `StatusResult`, `CloseTaskResult`, `ToolError`, `EventRef`, `response_kind`, `dry_run`, `effect_kind`, and `effect_kind=read_only`."
     does_not_own: "Contract details, schemas, DDL, transition rules, or implementation sequencing."
 
   - doc_id: later.index

@@ -30,6 +30,8 @@
 
 `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`, `MethodResult`, `response_kind`, `effect_kind` 같은 공개 API 응답 분기를 확인할 때는 참조 색인에서 공통 분기와 활성 값 집합은 API Schema Core로, 메서드별 응답 공용체와 상태 효과는 MVP API로, 거절/차단/dry-run 오류 경계는 API Errors로 이동합니다.
 
+`ToolDryRunResponse`는 모든 `dry_run=true` 요청을 가리키는 포괄 응답이 아닙니다. API 담당 문서는 Core 커밋이나 스테이징 동작의 유효한 dry-run 미리보기와 읽기 전용 선택 동작을 구분합니다. `harness.status dry_run=true`와 `harness.close_task intent=check dry_run=true`는 `effect_kind=read_only`인 `StatusResult` 또는 `CloseTaskResult`를 반환합니다.
+
 참조 색인은 공개 `ErrorCode` 계약과 `STATE_VERSION_CONFLICT`, 프로젝트 전체 `project_state.state_version`, 요청 수준 `VerifiedSurfaceContext.access_class`, `run_recording`, `artifact_registration`, `artifact_read`, `harness.record_run`, `harness.stage_artifact`, `StagedArtifactHandle` 승격, `existing_artifact` / `ArtifactRef` 영속 연결, 별도 아티팩트 본문 읽기, 확인된 로컬 접점 접근, `SensitiveActionScope`, 제품 파일 쓰기 범위인 `AuthorizedAttemptScope`, `CompletionPolicy`, `EvidenceSummary`, `close_task` 차단 사유, 읽기 전용 Projection, 역량 프로필, 탐지형 보장 조건, 사용자 소유 판단, 구체화 준비 상태의 활성 담당 문서로 안내합니다. 문서 작업 중 오류 코드, `access_class`, 아티팩트 생명주기 일관성은 문서 점검에서 확인합니다.
 
 현재 MVP 경로 밖의 자료는 [이후 후보 색인](later/index.md)에서 봅니다. 이후 후보 자료는 관련 담당 문서가 범위와 증명 기대를 함께 승격하기 전까지 활성 전달 범위가 아닙니다.
