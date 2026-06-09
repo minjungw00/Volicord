@@ -67,7 +67,15 @@
 | 식별자 | 짧은 설명 | 담당 경로 |
 |---|---|---|
 | 활성 MCP 메서드 | `harness.intake`, `harness.status`, `harness.update_scope`, `harness.prepare_write`, `harness.record_run`, `harness.request_user_judgment`, `harness.record_user_judgment`, `harness.close_task`. | [MVP API](api/mvp-api.md) |
-| `ToolEnvelope` / `ToolResponseBase` / `ToolError` / `EventRef` | 공통 호출 식별, 응답, 오류, 이벤트 참조 형태입니다. | [API Schema Core](api/schema-core.md) |
+| `ToolEnvelope` | 공개 도구 호출에 쓰는 공통 요청 봉투입니다. | [API Schema Core](api/schema-core.md) |
+| `ToolResultBase` | 실제 메서드 결과의 공통 기반입니다. 읽기 전용 결과, 커밋된 Core 결과, 성공한 스테이징 결과, 허용된 커밋된 차단 결과가 이 기반을 씁니다. | [API Schema Core](api/schema-core.md), [MVP API](api/mvp-api.md) |
+| `MethodResult` | `PrepareWriteResult`나 `CloseTaskResult`처럼 `ToolResultBase`를 바탕으로 한 메서드별 결과 분기입니다. 메서드별 상태 효과 표가 커밋된 차단 결과를 허용하면 그 응답은 `ToolRejectedResponse`가 아니라 `MethodResult`입니다. | [MVP API](api/mvp-api.md), [API Errors](api/errors.md) |
+| `ToolRejectedResponse` | 커밋 전 실패에 쓰는 응답 분기입니다. `response_kind=rejected`, `effect_kind=no_effect`를 가지며, 상태 효과 없음이고 메서드별 결과 필드를 담지 않습니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
+| `ToolDryRunResponse` | 유효한 dry-run 미리보기에 쓰는 응답 분기입니다. `response_kind=dry_run`, `effect_kind=no_effect`를 가지며, 상태 효과 없음이고 아직 존재하지 않는 기록에 대한 생성된 실제 ref 없음입니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [MVP API](api/mvp-api.md) |
+| `ToolError` | 공개 오류 식별자, 재시도 안내, 구조화된 세부정보를 담는 공통 오류 형태입니다. 정확한 공개 코드와 우선순위는 API Errors가 담당합니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
+| `EventRef` | 실제 커밋 이벤트가 있는 결과 분기에서 쓰는 공통 이벤트 참조 형태입니다. 거절 응답과 dry-run 응답은 `events=[]`를 씁니다. | [API Schema Core](api/schema-core.md) |
+| `response_kind` | 응답 분기를 구분하는 필드입니다. 활성 값은 실제 메서드 결과, 거절 응답, dry-run 미리보기를 나눕니다. | [API Schema Core](api/schema-core.md) |
+| `effect_kind` | 응답의 상태 효과를 분류하는 필드입니다. 활성 값은 읽기 전용 결과, Core 커밋, 임시 스테이징, 상태 효과 없음 분기를 나누며, 메서드별 상태 효과는 MVP API가 담당합니다. | [API Schema Core](api/schema-core.md), [MVP API](api/mvp-api.md) |
 | `LocalSurfaceRegistration` | 같은 프로젝트의 로컬 접점 등록 사실입니다. 호출자 권한이 아니며 Product Repository 파일, 상태 보기, 대화, 에이전트 기억으로 만들거나 새로 고칠 수 없습니다. | [API Schema Core](api/schema-core.md), [Storage](storage.md), [Agent 통합](agent-integration.md) |
 | `VerifiedSurfaceContext` | 구체적인 요청과 접근 분류마다 서버가 파생하는 확인된 접점 맥락입니다. 요청 본문, Markdown 주장, 생성 파일 표시, 에이전트 기억이 아닙니다. | [API Schema Core](api/schema-core.md), [MVP API](api/mvp-api.md), [Agent 통합](agent-integration.md) |
 | `StateSummary` / `StateRecordRef` / `NextActionSummary` / `GuaranteeDisplay` | 현재 상태, 담당 기록 참조, 다음 행동, 보장 표시 형태입니다. | [API Schema Core](api/schema-core.md) |
