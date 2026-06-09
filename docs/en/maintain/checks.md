@@ -30,6 +30,7 @@ These checks look for documentation drift:
 - public error-code wording that uses any public state-version conflict code other than `STATE_VERSION_CONFLICT`
 - `access_class`, `record_run`, `run_recording`, `artifact_registration`, `stage_artifact`, `existing_artifact`, and staged artifact promotion wording that blurs active MVP contracts
 - staged handle provenance or scope validation wording that maps validation failure to `LOCAL_ACCESS_MISMATCH` or `CAPABILITY_INSUFFICIENT` instead of `VALIDATION_FAILED`
+- response-branch wording that leaks method-result-only fields into `ToolRejectedResponse` or generated refs and side effects into `dry_run` responses
 - one-language-per-`doc_id` agent retrieval problems
 - stale rewrite/history notes, closed issue records, and obsolete review prose
 
@@ -151,7 +152,22 @@ Fail when any of these conditions appear in active MVP documentation:
 - Staged handle provenance or scope validation failure is mapped to `CAPABILITY_INSUFFICIENT`.
 - `existing_artifact` is described as registering new artifact body bytes.
 
-## 17. Stale Content Check
+## 17. Response-Branch Shape Check
+
+Inspect public response unions, method-specific result branches, rejected-response prose, `dry_run` prose, examples, representative conformance rows, and smoke-target wording.
+
+Pass when public method responses are written as a method-specific `MethodResult` branch, `ToolDryRunResponse` when the method has a distinct dry-run branch, or `ToolRejectedResponse`; strictly read-only methods may omit `ToolDryRunResponse` only by explicit contract. Method-specific fields appear only on the method result branch, valid dry runs contain only preview data and no generated refs, and rejected or dry-run responses have no state effect.
+
+Fail when any of these conditions appear in active MVP documentation:
+
+- `ToolRejectedResponse` is described as requiring method-specific result-only fields such as `decision`, `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, `user_judgment_ref`, or `close_state`.
+- `dry_run`, `ToolDryRunResponse`, or `DryRunSummary` is described as requiring real generated refs, including generated `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, `user_judgment_ref`, event refs, artifact refs, or authority for records that do not exist.
+- `STATE_VERSION_CONFLICT` is described as a `PrepareWriteResult.decision` value instead of a public `ErrorCode` on `ToolRejectedResponse`.
+- `StageArtifactResponse` failure is described as requiring `staged_artifact_handle`.
+- `RecordRunResponse` rejection is described as requiring `run_summary`.
+- Rejected responses or dry-run responses are described as creating replay rows, events, `state_version` increments, staged-handle consumption, artifact promotion, or Write Authorization consumption.
+
+## 18. Stale Content Check
 
 Inspect Maintain docs and nearby routes for historical rewrite reviews, closed issue records, obsolete acceptance records, obsolete delivery-label explanations, prior stage label history, obsolete alias history, later-candidate localization audit records, past translation problem records, past audit result narrative, and temporary migration plans.
 

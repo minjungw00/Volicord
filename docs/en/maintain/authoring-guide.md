@@ -75,6 +75,8 @@ Use these principles whenever writing active MVP API, access, error, or artifact
 - `record_run` uses the `run_recording` path. Do not describe `record_run` as requiring both `run_recording` and `artifact_registration`, and do not place `record_run` inside `artifact_registration`.
 - Staged handle provenance or scope validation failure maps to `VALIDATION_FAILED`, not `LOCAL_ACCESS_MISMATCH` or `CAPABILITY_INSUFFICIENT`.
 - Active MVP public state-version conflict uses `STATE_VERSION_CONFLICT`. Do not document another public `ErrorCode` alias, synonym, deprecated name, alternate spelling, or storage-layer public error name for that mismatch.
+- New public method responses must be written as `MethodResult | ToolDryRunResponse | ToolRejectedResponse` unless the method is strictly read-only and explicitly omits `ToolDryRunResponse` by contract. Use the concrete method result name in the owner, such as `PrepareWriteResult`, `StageArtifactResult`, `RecordRunResult`, or `CloseTaskResult`.
+- Method-specific fields belong only in the method Result branch. `ToolRejectedResponse` and `ToolDryRunResponse` must not require result-only fields such as `decision`, `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, `user_judgment_ref`, or `close_state`, and dry-run prose must not require generated refs for records that do not exist.
 
 When a non-owner repeats a contract, update the owner if needed, then replace the duplicate with a short consequence and compact owner route.
 
