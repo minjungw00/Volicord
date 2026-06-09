@@ -160,7 +160,7 @@ Core는 아래 분리를 지켜야 합니다.
 - 제품 파일 쓰기 경로는 범위 확정 또는 `harness.update_scope`, 필요한 사용자 판단과 민감 동작 확인, `prepare_write`, 호환되는 제품 쓰기 Run 하나, `record_run`, 증거/차단 사유 업데이트, `close_task`를 통과합니다.
 - `close_ready`는 파생 조건입니다. `lifecycle_phase`가 아니며 Task를 completed로 옮기지 않습니다. Task를 completed로 옮기는 것은 `close_task`뿐입니다.
 - 멱등 재실행은 상태 전이, 이벤트, Write Authorization, Run, 아티팩트, 증거 업데이트, 닫기 효과를 중복 만들면 안 됩니다.
-- `dry_run` 호출은 가능한 결과를 설명할 수 있지만 기준 상태, 소비 가능한 Write Authorization, 아티팩트, 닫기 상태, 재실행 행을 만들지 않습니다.
+- 상태 효과가 있거나 스테이징하는 `dry_run` 미리보기는 `ToolDryRunResponse`로 가능한 결과를 설명하지만 기준 상태, 소비 가능한 Write Authorization, 아티팩트, 닫기 상태, 재실행 행을 만들지 않습니다. `dry_run=true`인 읽기 전용 선택 동작은 `effect_kind=read_only`인 실제 메서드 결과로 남습니다.
 
 종료 전 생명주기 값은 현재 MVP에서 아래 의미로 씁니다.
 

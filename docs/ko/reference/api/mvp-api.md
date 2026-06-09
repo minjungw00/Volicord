@@ -59,7 +59,7 @@
 
 ## 공통 요청 규칙
 
-모든 메서드는 [`ToolEnvelope`](schema-core.md#tool-envelope)를 사용합니다. 공개 메서드 응답은 항상 정확히 하나의 응답 분기입니다. 분기는 구체적인 메서드별 `MethodResult`, `ToolRejectedResponse`, `ToolDryRunResponse` 중 하나입니다. 메서드 결과 스키마는 실제 읽기 전용 결과, 성공한 스테이징 결과, Core 커밋 결과, 또는 메서드별 상태 효과 표가 허용하는 커밋된 차단 결과를 담습니다. 메서드 결과는 `response_kind=result`인 [`ToolResultBase`](schema-core.md#common-response)를 사용합니다. 거절 응답과 `dry_run` 응답은 [API Schema Core](schema-core.md#common-response)의 공용 응답 스키마를 쓰며, 메서드별 결과 전용 필드를 물려받지 않습니다.
+모든 메서드는 [`ToolEnvelope`](schema-core.md#tool-envelope)를 사용합니다. 공개 메서드 응답은 항상 정확히 하나의 응답 분기입니다. 분기는 구체적인 메서드별 `MethodResult`, `ToolRejectedResponse`, `ToolDryRunResponse` 중 하나입니다. 메서드 결과 스키마는 실제 읽기 전용 결과, 성공한 스테이징 결과, Core 커밋 결과, 또는 메서드별 상태 효과 표가 허용하는 커밋된 차단 결과를 담습니다. 메서드 결과는 `response_kind=result`인 [`ToolResultBase`](schema-core.md#common-response)를 사용합니다. `ToolRejectedResponse`와 `ToolDryRunResponse`는 [API Schema Core](schema-core.md#common-response)의 공용 응답 스키마를 쓰며, 메서드별 결과 전용 필드를 물려받지 않습니다.
 
 커밋되는 `dry_run=false` 상태 변경 호출은 non-null `idempotency_key`와 현재 프로젝트 전체 `expected_state_version`을 요구합니다. `harness.stage_artifact`, `harness.status`, `harness.close_task intent=check`, `dry_run` 호출은 `idempotency_key: null`과 `expected_state_version: null`을 사용할 수 있습니다. `harness.stage_artifact`는 저장소가 소유하는 임시 스테이징만 만들며, Core 상태 전이가 아니고 재실행 행이나 `project_state.state_version` 증가를 만들지 않습니다.
 

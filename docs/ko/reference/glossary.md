@@ -73,7 +73,7 @@
 | `ToolRejectedResponse` | 커밋 전 실패에 쓰는 응답 분기입니다. `response_kind=rejected`, `effect_kind=no_effect`를 가지며 메서드별 결과 필드를 담지 않습니다. 재실행 행 없음, 상태 버전 증가 없음, 스테이징된 핸들 소비 없음, Write Authorization 생성 또는 소비 없음이 이 분기의 규칙입니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
 | `ToolDryRunResponse` | 선택된 동작이 Core 커밋이나 저장소 소유 스테이징 부작용을 만들 수 있을 때 쓰는 유효한 `dry_run` 미리보기 응답입니다. 모든 `dry_run=true` 요청의 응답이 아닙니다. `response_kind=dry_run`, `effect_kind=no_effect`를 가지며 메서드별 결과 필드를 담지 않습니다. 아직 존재하지 않는 기록의 실제 생성 ref, 재실행 행, 상태 버전 증가, 스테이징된 핸들 소비, Write Authorization 생성 또는 소비를 만들지 않습니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [MVP API](api/mvp-api.md) |
 | `ToolError` | 공개 오류 식별자, 재시도 안내, 구조화된 세부정보를 담는 공통 오류 형태입니다. 정확한 공개 코드와 우선순위는 API Errors가 담당합니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
-| `EventRef` | 실제 커밋 이벤트가 있는 결과 분기에서 쓰는 공통 이벤트 참조 형태입니다. 거절 응답과 `dry_run` 응답은 `events=[]`를 씁니다. | [API Schema Core](api/schema-core.md) |
+| `EventRef` | 실제 커밋 이벤트가 있는 결과 분기에서 쓰는 공통 이벤트 참조 형태입니다. `ToolRejectedResponse`와 `ToolDryRunResponse` 분기는 `events=[]`를 씁니다. | [API Schema Core](api/schema-core.md) |
 | `response_kind` | 응답 분기를 구분하는 필드입니다. 활성 값은 실제 메서드 결과, 거절 응답, `dry_run` 미리보기를 나눕니다. | [API Schema Core](api/schema-core.md) |
 | `effect_kind` | 응답의 상태 효과를 분류하는 필드입니다. 활성 값은 읽기 전용 결과, Core 커밋, 임시 스테이징, 상태 효과 없음 분기를 나눕니다. 선택 동작이 읽기 전용이면 `effect_kind=read_only`가 `dry_run=true`와 함께 나타날 수 있습니다. 메서드별 상태 효과는 MVP API가 담당합니다. | [API Schema Core](api/schema-core.md), [MVP API](api/mvp-api.md) |
 | `LocalSurfaceRegistration` | 같은 프로젝트의 로컬 접점 등록 사실입니다. 호출자 권한이 아니며 Product Repository 파일, 상태 보기, 대화, 에이전트 기억으로 만들거나 새로 고칠 수 없습니다. | [API Schema Core](api/schema-core.md), [Storage](storage.md), [Agent 통합](agent-integration.md) |

@@ -160,7 +160,7 @@ The lifecycle is a Core state-transition discipline, not a display script. Activ
 - A product write path moves through scope establishment or `harness.update_scope`, user-judgment and sensitive-action checks when applicable, `prepare_write`, one compatible product-write Run, `record_run`, evidence/blocker update, and `close_task`.
 - `close_ready` is derived. It is not a lifecycle phase and does not move a Task to completed; only `close_task` can do that.
 - Idempotency replay must not duplicate state transitions, events, Write Authorizations, Runs, artifacts, evidence updates, or close effects.
-- Dry-run calls describe possible outcomes but create no authoritative state, no consumable Write Authorization, no artifact, no close state, and no replay row.
+- State-effecting or staging dry-run previews describe possible outcomes through `ToolDryRunResponse` but create no authoritative state, no consumable Write Authorization, no artifact, no close state, and no replay row. Read-only selections with `dry_run=true` remain actual method results with `effect_kind=read_only`.
 
 Open lifecycle values have these active meanings:
 
