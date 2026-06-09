@@ -2,7 +2,7 @@
 
 ## What this document helps you do
 
-Use this reference for the active current MVP method-name set, shared API shapes, and closed schema value sets: the tool envelope, response branches, `DryRunSummary`, `PlannedEffect`, `PlannedBlocker`, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization summary, `WriteDecisionReason`, `CompletionPolicy`, evidence summary, run summary, close blockers, next-action summary, and current MVP enum values.
+Use this reference for the active current MVP method-name set, shared API shapes, and closed schema value sets: the tool envelope, response branches, `DryRunSummary`, `PlannedEffect`, `PlannedBlocker`, `ArtifactRef`, `StateRecordRef`, `ShapingReadiness`, `UserJudgment`, Write Authorization summary, `WriteDecisionReason`, `CompletionPolicy`, evidence summary, run summary, close-readiness blockers, next-action summary, and current MVP enum values.
 
 This document describes future Harness Server behavior for planning and review. It does not mean the current documentation repository implements an MCP server. Future schema candidates stay in [Later Candidate Index](../../later/index.md#later-schema-candidates).
 
@@ -205,7 +205,7 @@ DryRunSummary:
   next_actions: NextActionSummary[]
 
 PlannedBlocker:
-  source_kind: write_decision | close_matrix
+  source_kind: write_decision | close_readiness
   category: string
   code: ErrorCode
   description: string
@@ -235,13 +235,13 @@ EventRef:
 
 For `ToolRejectedResponse.state_version`, if Core could read the current project state before rejecting, the value is the observed project-wide `project_state.state_version`. If Core or the local MCP surface is unavailable before project state can be read, `state_version` may be `null`.
 
-`ToolDryRunResponse` is not every response to a `dry_run=true` request. It is the preview response for a valid dry-run request where the selected operation could otherwise create a Core commit or a storage-owned staging side effect, and where request shape, local access verification, capability verification, and reachable state/preconditions can be evaluated enough to produce that preview. If the selected operation is read-only, the response remains the method-specific `MethodResult` with `ToolResultBase.dry_run=true` and `effect_kind=read_only`. `ToolDryRunResponse` has `effect_kind=no_effect`, `events=[]`, and no method-specific result-only fields. It has no state effect: no current record, event, artifact, evidence summary, staged handle, staged-handle consumption, Write Authorization creation or consumption, close state, `tool_invocations` replay row, or `state_version` increment. It does not store `WriteDecisionReason`, does not store `CloseBlocker`, and returns only `PlannedBlocker` preview entries for expected blockers. `ToolDryRunResponse.errors` is `[]`; previewable diagnostics belong in `DryRunSummary.would_errors`.
+`ToolDryRunResponse` is not every response to a `dry_run=true` request. It is the preview response for a valid dry-run request where the selected operation could otherwise create a Core commit or a storage-owned staging side effect, and where request shape, local access verification, capability verification, and reachable state/preconditions can be evaluated enough to produce that preview. If the selected operation is read-only, the response remains the method-specific `MethodResult` with `ToolResultBase.dry_run=true` and `effect_kind=read_only`. `ToolDryRunResponse` has `effect_kind=no_effect`, `events=[]`, and no method-specific result-only fields. It has no state effect: no current record, event, artifact, evidence summary, staged handle, staged-handle consumption, Write Authorization creation or consumption, close state, `tool_invocations` replay row, or `state_version` increment. It does not store `WriteDecisionReason`, does not store `CloseReadinessBlocker`, and returns only `PlannedBlocker` preview entries for expected blockers. `ToolDryRunResponse.errors` is `[]`; previewable diagnostics belong in `DryRunSummary.would_errors`.
 
 If a `dry_run=true` request itself fails validation, local access verification, capability verification, or state lookup before Core can produce either a read-only result or a dry-run preview, the response is `ToolRejectedResponse` with `dry_run=true` and `effect_kind=no_effect`.
 
-`DryRunSummary` is descriptive preview data only. `PlannedEffect` items identify the kind of record and effect that would be attempted, plus a human-readable description. They do not contain real generated refs for records that do not exist yet, and they must not invent `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, `user_judgment_ref`, event refs, artifact refs, or authority. `DryRunSummary.would_blockers` is always `PlannedBlocker[]`; dry-run preview does not return real `WriteDecisionReason` or real `CloseBlocker` objects.
+`DryRunSummary` is descriptive preview data only. `PlannedEffect` items identify the kind of record and effect that would be attempted, plus a human-readable description. They do not contain real generated refs for records that do not exist yet, and they must not invent `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, `user_judgment_ref`, event refs, artifact refs, or authority. `DryRunSummary.would_blockers` is always `PlannedBlocker[]`; dry-run preview does not return real `WriteDecisionReason` or real `CloseReadinessBlocker` objects.
 
-`PlannedBlocker` is preview data only for `DryRunSummary.would_blockers`. It is not stored, not a `WriteDecisionReason`, and not a `CloseBlocker`. It does not imply any state or storage effect: no current record, event, replay row, `close_state` mutation, Write Authorization creation or consumption, staged handle creation or consumption, artifact effect, evidence update, or `state_version` increment. `STATE_VERSION_CONFLICT` must not be used as `PlannedBlocker.code`; stale state is a pre-commit failure returned as `ToolRejectedResponse`, not dry-run preview data.
+`PlannedBlocker` is preview data only for `DryRunSummary.would_blockers`. It is not stored, not a `WriteDecisionReason`, and not a `CloseReadinessBlocker`. Use `source_kind=write_decision` for `prepare_write` preview findings and `source_kind=close_readiness` for close-readiness preview findings. It does not imply any state or storage effect: no current record, event, replay row, `close_state` mutation, Write Authorization creation or consumption, staged handle creation or consumption, artifact effect, evidence update, or `state_version` increment. `STATE_VERSION_CONFLICT` appears only in `ToolRejectedResponse.errors` and must not be used as `PlannedBlocker.code`; stale state is a pre-commit failure returned as `ToolRejectedResponse`, not dry-run preview data.
 
 `ToolError` keeps public error identity, retry guidance, and structured details. `EventRef` appears only in result branches that actually have event refs; `ToolRejectedResponse` and `ToolDryRunResponse` always use `events=[]`.
 
@@ -279,7 +279,7 @@ ShapingReadiness:
   next_safe_action_known: boolean
 ```
 
-`StateSummary.mode` mirrors persisted `tasks.mode` and is always a concrete task mode. `auto` is not a stored mode, displayed task mode, or status-summary mode. `StateSummary.lifecycle_phase` mirrors persisted `Task.lifecycle_phase`. `intake` is an API method and start-handling step, not a lifecycle value. The terminal lifecycle phases are `completed`, `cancelled`, and `superseded`; `superseded` means the Task was replaced by another Task or route and must not return to active work. `StateSummary.close_reason` mirrors persisted `Task.close_reason`. `StateSummary.result` mirrors coarse `Task.result`; failed Runs, violations, blocked closes, evidence gaps, and blockers remain in Run status, `CloseBlocker`, evidence state, blockers, or current Task state instead of becoming a terminal Task result. The `passed` and `failed` strings in this document are gate or validator statuses only, not `Task.result` values.
+`StateSummary.mode` mirrors persisted `tasks.mode` and is always a concrete task mode. `auto` is not a stored mode, displayed task mode, or status-summary mode. `StateSummary.lifecycle_phase` mirrors persisted `Task.lifecycle_phase`. `intake` is an API method and start-handling step, not a lifecycle value. The terminal lifecycle phases are `completed`, `cancelled`, and `superseded`; `superseded` means the Task was replaced by another Task or route and must not return to active work. `StateSummary.close_reason` mirrors persisted `Task.close_reason`. `StateSummary.result` mirrors coarse `Task.result`; failed Runs, violations, blocked closes, evidence gaps, and blockers remain visible through Run status, close-readiness findings, evidence state, blocker state, or current Task state instead of becoming a terminal Task result. The `passed` and `failed` strings in this document are gate or validator statuses only, not `Task.result` values.
 
 `StateSummary.shaping_readiness` is a derived active-state view. It is computed from current Task state, active or proposed Change Unit state, pending `UserJudgment` candidates or records, blockers, evidence summary, and next-action state. It is not a persisted Task field, not a separate `StateRecordRef.record_kind`, and not a committed `Discovery Brief`, `Question Queue`, `Assumption Register`, or similar planning artifact. A `false` field stays visible, but it blocks only when the unknown or stale item affects the first safe Change Unit or the next safe action.
 
@@ -490,7 +490,7 @@ WriteDecisionReason:
 
 Optional coverage may remain explicit with `required_for_close=false`. Optional gaps can be visible without preventing `EvidenceSummary.status=sufficient`, but the required/optional distinction must be explicit even when the MVP summary is small.
 
-Artifact availability and evidence sufficiency are related but distinct. An available persisted `ArtifactRef` does not make evidence sufficient unless a coverage item links it to the claim. A required coverage item that links to a missing, unavailable, integrity-failed, or unusable artifact cannot be sufficient, and `close_task` may also report `CloseBlocker.category=artifact_availability`. Final acceptance and residual-risk acceptance cannot substitute for missing required evidence, and evidence cannot create final acceptance or residual-risk acceptance.
+Artifact availability and evidence sufficiency are related but distinct. An available persisted `ArtifactRef` does not make evidence sufficient unless a coverage item links it to the claim. A required coverage item that links to a missing, unavailable, integrity-failed, or unusable artifact cannot be sufficient, and `close_task` may also report `CloseReadinessBlocker.category=artifact_availability`. Final acceptance and residual-risk acceptance cannot substitute for missing required evidence, and evidence cannot create final acceptance or residual-risk acceptance.
 
 `AuthorizedAttemptScope` is the exact scope stored in `write_authorizations.attempt_scope_json` and later compared by `harness.record_run`. `AuthorizedAttemptScope.basis_state_version` is the project-wide `project_state.state_version` used when `prepare_write` prepared the authorization. `WriteAuthorizationSummary.status` is the durable authorization lifecycle. `blocked` is not a Write Authorization status; blocked writes return blockers without a consumable authorization.
 
@@ -500,7 +500,7 @@ The current MVP `AuthorizedAttemptScope` is only for product-file write attempts
 
 `WriteAuthoritySummary.approval_status` reports the status of any required separate sensitive-action approval. It is not the `WriteAuthorizationSummary.status` lifecycle and does not turn `SensitiveActionScope` into `AuthorizedAttemptScope`.
 
-`PrepareWriteResult.write_decision_reasons` is a `WriteDecisionReason[]`. Each `WriteDecisionReason` explains why `harness.prepare_write` returned `decision=blocked`, `decision=approval_required`, or `decision=decision_required`. It is independent of the close matrix, does not create `close_state`, does not create a `CloseBlocker`, and is not used for pre-commit failures. Pre-commit failures are returned as `ToolRejectedResponse.errors: ToolError[]`.
+`PrepareWriteResult.write_decision_reasons` is a `WriteDecisionReason[]`. Each `WriteDecisionReason` explains why `harness.prepare_write` returned `decision=blocked`, `decision=approval_required`, or `decision=decision_required`. It is independent of close-readiness evaluation, does not create `close_state`, does not create a `CloseReadinessBlocker`, and is not used for pre-commit failures. Pre-commit failures are returned as `ToolRejectedResponse.errors: ToolError[]`.
 
 The following pre-commit failure codes must not be used as `WriteDecisionReason.code`: `STATE_VERSION_CONFLICT`, `MCP_UNAVAILABLE`, `LOCAL_ACCESS_MISMATCH`, `VALIDATION_FAILED`, and `NO_ACTIVE_TASK`.
 
@@ -621,13 +621,12 @@ AcceptedRiskInput:
 ## Current-Position Display Schemas
 
 ```yaml
-CloseBlocker:
+CloseReadinessBlocker:
   category: task | open_run | scope | user_judgment | sensitive_approval | write_compatibility | baseline | surface_capability | evidence | artifact_availability | final_acceptance | residual_risk_visibility | residual_risk_acceptance | cancellation | supersession | recovery
   code: ErrorCode
   message: string
   related_refs: StateRecordRef[]
-  required_judgment_kind: product_decision | technical_decision | scope_decision | sensitive_approval | final_acceptance | residual_risk_acceptance | cancellation | null
-  next_action: string
+  next_actions: NextActionSummary[]
 
 NextActionSummary:
   action_kind: ask_user | update_scope | prepare_write | implement | request_acceptance | close_task | idle
@@ -637,9 +636,15 @@ NextActionSummary:
   blocker_code: ErrorCode | null
 ```
 
-`CloseBlocker` is the `close_task` close-matrix blocker type. It is returned only by `close_task` after the close matrix has run successfully enough to evaluate close eligibility. It is not used by `prepare_write`, not used by `DryRunSummary` preview data, and not a container for pre-commit failures. Request validation failures, stale state, `idempotency_key` reuse with a different request hash, stale `WriteAuthorization.basis_state_version`, local access or capability failures, unreadable Core state, or missing project or Task identity before close-matrix execution return `ToolRejectedResponse` with `effect_kind=no_effect`; they must not be encoded as `CloseBlocker`. `STATE_VERSION_CONFLICT` must not be used as `CloseBlocker.code`.
+`CloseReadinessBlocker` is the data shape for a close-readiness finding discovered when the current task state is evaluated for close eligibility. The type itself does not mean persistence. The type itself does not create `task_events`, replay rows, `close_state` mutations, Write Authorization changes, staged handle consumption, artifact effects, evidence updates, or `project_state.state_version` increments. State effects are determined by the response branch and the method state-effect table, not by the presence of `CloseReadinessBlocker`.
 
-Prose-only status text, reports, or rendered views are not blocker results. For `harness.close_task intent=complete`, Core calculates blocker categories in the deterministic order owned by [Core Model](../core-model.md#close_task). `cancellation` and `supersession` categories describe conflicts with those terminal intents; they are not successful-completion evidence and must not be mixed with `completed_self_checked` or `completed_with_risk_accepted`.
+The only active use sites are `StatusResult.close_blockers: CloseReadinessBlocker[]` and `CloseTaskResult.blockers: CloseReadinessBlocker[]`. `StatusResult.close_blockers` is a read-only observation. `CloseTaskResult.blockers` may appear in a read-only close check or in a committed blocked close result only as allowed by the selected `close_task` intent and the method state-effect table.
+
+`PrepareWriteResult` must not use `CloseReadinessBlocker`; it uses `WriteDecisionReason` for `prepare_write` decision reasons. `DryRunSummary.would_blockers` must not use `CloseReadinessBlocker`; it remains `PlannedBlocker[]` for dry-run preview findings. `ToolRejectedResponse.errors` must not use `CloseReadinessBlocker`; it remains `ToolError[]` for pre-commit failures. Pre-commit failures must not be encoded as `CloseReadinessBlocker`.
+
+`STATE_VERSION_CONFLICT` appears only in `ToolRejectedResponse.errors`. It must not be used as `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`.
+
+Prose-only status text, reports, or rendered views are not blocker results. For `harness.close_task intent=complete`, Core calculates close-readiness blocker categories in the deterministic order owned by [Core Model](../core-model.md#close_task). `cancellation` and `supersession` categories describe conflicts with those terminal intents; they are not successful-completion evidence and must not be mixed with `completed_self_checked` or `completed_with_risk_accepted`.
 
 <a id="nextactionsummary"></a>
 
@@ -678,7 +683,7 @@ ValidatorResult:
   suggested_next_action: string | null
 ```
 
-The active stable validator ID is `surface_capability_check`. Validator output can affect blockers, fallback behavior, and guarantee display only through the active owner path named by the result, such as `CloseBlocker.category=surface_capability` when capability is truly the issue. A `status=blocked` result or `findings.severity=blocker` is not a design-policy blocker, does not activate `design_gate` or `design_policy`, and does not block close by severity alone. It does not create Write Authorization, user judgment, evidence, final acceptance, residual-risk acceptance, or close.
+The active stable validator ID is `surface_capability_check`. Validator output can affect blockers, fallback behavior, and guarantee display only through the active owner path named by the result, such as `CloseReadinessBlocker.category=surface_capability` when capability is truly the issue. A `status=blocked` result or `findings.severity=blocker` is not a design-policy blocker, does not activate `design_gate` or `design_policy`, and does not block close by severity alone. It does not create Write Authorization, user judgment, evidence, final acceptance, residual-risk acceptance, or close.
 
 `ValidatorResult.blocked_reasons` is validator-local explanatory text for a blocked validator status. It is not a `prepare_write` response field, not `PrepareWriteResult.write_decision_reasons`, not `DryRunSummary.would_blockers`, and not `CloseTaskResult.blockers`.
 
@@ -723,7 +728,7 @@ These values are active current MVP schema values. Method-level capability and a
 | `response_kind` | `result`, `rejected`, `dry_run` |
 | `effect_kind` | `read_only`, `core_committed`, `staging_created`, `no_effect` |
 | `DryRunSummary.would_effect_kind` | `core_committed`, `staging_created`, `no_effect` |
-| `PlannedBlocker.source_kind` | `write_decision`, `close_matrix` |
+| `PlannedBlocker.source_kind` | `write_decision`, `close_readiness` |
 | `PlannedEffect.record_kind` | `task`, `change_unit`, `run`, `write_authorization`, `user_judgment`, `evidence_summary`, `blocker`, `artifact_staging`, `artifact`, `artifact_link` |
 | `PlannedEffect.effect` | `create`, `update`, `consume`, `promote`, `link`, `close`, `mark_blocked` |
 | Local API access classes | `read_status`, `core_mutation`, `write_authorization`, `run_recording`, `artifact_registration`, `artifact_read` |
@@ -777,8 +782,7 @@ These values are active current MVP schema values. Method-level capability and a
 | `UserJudgmentCandidate.required_for` | same values as `UserJudgment.required_for` |
 | `UserJudgmentOption.meaning` | `approve`, `reject`, `defer`, `choose`, `cancel` |
 | `ArtifactRef.redaction_state` | `none`, `redacted`, `secret_omitted`, `blocked` |
-| `CloseBlocker.category` | `task`, `open_run`, `scope`, `user_judgment`, `sensitive_approval`, `write_compatibility`, `baseline`, `surface_capability`, `evidence`, `artifact_availability`, `final_acceptance`, `residual_risk_visibility`, `residual_risk_acceptance`, `cancellation`, `supersession`, `recovery` |
-| `CloseBlocker.required_judgment_kind` | same values as `UserJudgment.judgment_kind`, plus `null` |
+| `CloseReadinessBlocker.category` | `task`, `open_run`, `scope`, `user_judgment`, `sensitive_approval`, `write_compatibility`, `baseline`, `surface_capability`, `evidence`, `artifact_availability`, `final_acceptance`, `residual_risk_visibility`, `residual_risk_acceptance`, `cancellation`, `supersession`, `recovery` |
 | `NextActionSummary.action_kind` | `ask_user`, `update_scope`, `prepare_write`, `implement`, `request_acceptance`, `close_task`, `idle` |
 | `NextActionSummary.required_tool` | active method set values, plus `null` |
 | `GuaranteeDisplay.level` | `cooperative`, `detective` |
