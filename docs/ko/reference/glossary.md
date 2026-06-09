@@ -53,7 +53,7 @@
 | `user_judgment` | 사용자가 소유하는 판단을 위한 기준 기록 계열입니다. | [Core Model](core-model.md), [API Schema Core](api/schema-core.md) |
 | `Gate` | 진행, 쓰기, 실행 기록, 닫기에 대한 Core 호환성 축입니다. 필요한지는 활성 담당 경로가 정합니다. | [Core Model](core-model.md) |
 | `Blocker` | 진행, 쓰기, 닫기 또는 요청된 다음 단계를 정직하게 계속할 수 없는 구조화된 이유입니다. | [Core Model](core-model.md) |
-| `Write Authorization` | 제품 파일 쓰기 시도에 대해 호환되는 non-dry-run `prepare_write`만 만드는 1회용 협력형 Core 기록입니다. 민감 동작 승인, OS 권한, 격리가 아닙니다. | [Core Model](core-model.md) |
+| `Write Authorization` | 제품 파일 쓰기 시도에 대해 `dry_run=false`인 호환 `prepare_write`만 만드는 1회용 협력형 Core 기록입니다. 민감 동작 승인, OS 권한, 격리가 아닙니다. | [Core Model](core-model.md) |
 | `Run` | 실행 또는 관찰을 남기는 커밋된 기록입니다. 제품 쓰기 `Run`은 호환되는 활성 `Write Authorization`을 소비해야 합니다. | [Core Model](core-model.md) |
 | `update_scope` | `harness.intake` 이후 활성 Task 범위와 활성 Change Unit을 갱신하는 Core 경로입니다. 공개 API 메서드는 `harness.update_scope`입니다. | [Core Model](core-model.md), [MVP API](api/mvp-api.md) |
 | `prepare_write` | 제품 파일 쓰기를 위한 Core의 쓰기 전 호환성 판단 지점입니다. 공개 API 메서드는 `harness.prepare_write`입니다. | [Core Model](core-model.md), [MVP API](api/mvp-api.md) |
@@ -71,10 +71,10 @@
 | `ToolResultBase` | 실제 메서드 결과의 공통 기반입니다. 읽기 전용 결과, 커밋된 Core 결과, 성공한 스테이징 결과, 허용된 커밋된 차단 결과가 이 기반을 씁니다. 읽기 전용 선택 동작은 실제 메서드 결과로 남으면서 `ToolResultBase.dry_run=true`와 `effect_kind=read_only`를 함께 쓸 수 있습니다. | [API Schema Core](api/schema-core.md), [MVP API](api/mvp-api.md) |
 | `MethodResult` | `StatusResult`, `PrepareWriteResult`, `CloseTaskResult`처럼 `ToolResultBase`를 바탕으로 한 메서드별 실제 메서드 결과 분기입니다. 읽기 전용 선택 동작은 `base.dry_run=true`, `effect_kind=read_only`인 `MethodResult`를 반환할 수 있습니다. 예를 들어 `harness.status dry_run=true`는 `StatusResult`를 반환하고, `harness.close_task intent=check dry_run=true`는 `CloseTaskResult`를 반환합니다. 메서드별 상태 효과 표가 커밋된 차단 결과를 허용하면 그 응답은 `ToolRejectedResponse`가 아니라 `MethodResult`입니다. | [MVP API](api/mvp-api.md), [API Errors](api/errors.md) |
 | `ToolRejectedResponse` | 커밋 전 실패에 쓰는 응답 분기입니다. `response_kind=rejected`, `effect_kind=no_effect`를 가지며 메서드별 결과 필드를 담지 않습니다. 재실행 행 없음, 상태 버전 증가 없음, 스테이징된 핸들 소비 없음, Write Authorization 생성 또는 소비 없음이 이 분기의 규칙입니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
-| `ToolDryRunResponse` | 선택된 동작이 Core 커밋이나 저장소 소유 스테이징 부작용을 만들 수 있을 때 쓰는 유효한 dry-run 미리보기 응답입니다. 모든 `dry_run=true` 요청의 응답이 아닙니다. `response_kind=dry_run`, `effect_kind=no_effect`를 가지며 메서드별 결과 필드를 담지 않습니다. 아직 존재하지 않는 기록의 실제 생성 ref, 재실행 행, 상태 버전 증가, 스테이징된 핸들 소비, Write Authorization 생성 또는 소비를 만들지 않습니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [MVP API](api/mvp-api.md) |
+| `ToolDryRunResponse` | 선택된 동작이 Core 커밋이나 저장소 소유 스테이징 부작용을 만들 수 있을 때 쓰는 유효한 `dry_run` 미리보기 응답입니다. 모든 `dry_run=true` 요청의 응답이 아닙니다. `response_kind=dry_run`, `effect_kind=no_effect`를 가지며 메서드별 결과 필드를 담지 않습니다. 아직 존재하지 않는 기록의 실제 생성 ref, 재실행 행, 상태 버전 증가, 스테이징된 핸들 소비, Write Authorization 생성 또는 소비를 만들지 않습니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md), [MVP API](api/mvp-api.md) |
 | `ToolError` | 공개 오류 식별자, 재시도 안내, 구조화된 세부정보를 담는 공통 오류 형태입니다. 정확한 공개 코드와 우선순위는 API Errors가 담당합니다. | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
-| `EventRef` | 실제 커밋 이벤트가 있는 결과 분기에서 쓰는 공통 이벤트 참조 형태입니다. 거절 응답과 dry-run 응답은 `events=[]`를 씁니다. | [API Schema Core](api/schema-core.md) |
-| `response_kind` | 응답 분기를 구분하는 필드입니다. 활성 값은 실제 메서드 결과, 거절 응답, dry-run 미리보기를 나눕니다. | [API Schema Core](api/schema-core.md) |
+| `EventRef` | 실제 커밋 이벤트가 있는 결과 분기에서 쓰는 공통 이벤트 참조 형태입니다. 거절 응답과 `dry_run` 응답은 `events=[]`를 씁니다. | [API Schema Core](api/schema-core.md) |
+| `response_kind` | 응답 분기를 구분하는 필드입니다. 활성 값은 실제 메서드 결과, 거절 응답, `dry_run` 미리보기를 나눕니다. | [API Schema Core](api/schema-core.md) |
 | `effect_kind` | 응답의 상태 효과를 분류하는 필드입니다. 활성 값은 읽기 전용 결과, Core 커밋, 임시 스테이징, 상태 효과 없음 분기를 나눕니다. 선택 동작이 읽기 전용이면 `effect_kind=read_only`가 `dry_run=true`와 함께 나타날 수 있습니다. 메서드별 상태 효과는 MVP API가 담당합니다. | [API Schema Core](api/schema-core.md), [MVP API](api/mvp-api.md) |
 | `LocalSurfaceRegistration` | 같은 프로젝트의 로컬 접점 등록 사실입니다. 호출자 권한이 아니며 Product Repository 파일, 상태 보기, 대화, 에이전트 기억으로 만들거나 새로 고칠 수 없습니다. | [API Schema Core](api/schema-core.md), [Storage](storage.md), [Agent 통합](agent-integration.md) |
 | `VerifiedSurfaceContext` | 구체적인 요청과 접근 분류마다 서버가 파생하는 확인된 접점 맥락입니다. 요청 본문, Markdown 주장, 생성 파일 표시, 에이전트 기억이 아닙니다. | [API Schema Core](api/schema-core.md), [MVP API](api/mvp-api.md), [Agent 통합](agent-integration.md) |

@@ -738,7 +738,7 @@ storage must not persist those computed values merely because the read occurred.
 `base.effect_kind=read_only`; it is not `ToolDryRunResponse`.
 
 Both `harness.close_task intent=check` forms have no storage effect: no
-`tool_invocations` replay row, no `task_event`, no close-state update, no
+`tool_invocations` replay row, no `task_events`, no close-state update, no
 artifact update or artifact link, no staged-handle consumption, no Write
 Authorization creation or consumption, and no `project_state.state_version`
 increment. `tool_invocations.response_json` stores only committed non-dry-run

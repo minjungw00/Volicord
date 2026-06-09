@@ -45,9 +45,9 @@ For public API response branch questions, including `ToolResultBase`, `ToolRejec
 
 `ToolDryRunResponse` is not the umbrella response for every `dry_run=true` request. The API owners distinguish valid dry-run previews for selected Core-commit or staging operations from read-only selections such as `harness.status dry_run=true` and `harness.close_task intent=check dry_run=true`, which return `StatusResult` or `CloseTaskResult` with `effect_kind=read_only`.
 
-`ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`, `MethodResult`, `response_kind`, `effect_kind` 같은 공개 API 응답 분기를 확인할 때는 참조 색인에서 공통 분기와 활성 값 집합은 API Schema Core로, 메서드별 응답 공용체와 상태 효과는 MVP API로, 거절/차단/dry-run 오류 경계는 API Errors로 이동합니다.
+`ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`, `MethodResult`, `response_kind`, `effect_kind` 같은 공개 API 응답 분기를 확인할 때는 참조 색인에서 공통 분기와 활성 값 집합은 API Schema Core로, 메서드별 응답 공용체와 상태 효과는 MVP API로, 거절/차단/`dry_run` 오류 경계는 API Errors로 이동합니다.
 
-`ToolDryRunResponse`는 모든 `dry_run=true` 요청을 가리키는 포괄 응답이 아닙니다. API 담당 문서는 Core 커밋이나 스테이징 동작의 유효한 dry-run 미리보기와 읽기 전용 선택 동작을 구분합니다. `harness.status dry_run=true`와 `harness.close_task intent=check dry_run=true`는 `effect_kind=read_only`인 `StatusResult` 또는 `CloseTaskResult`를 반환합니다.
+`ToolDryRunResponse`는 모든 `dry_run=true` 요청을 가리키는 포괄 응답이 아닙니다. API 담당 문서는 Core 커밋이나 스테이징 동작의 유효한 `dry_run` 미리보기와 읽기 전용 선택 동작을 구분합니다. `harness.status dry_run=true`와 `harness.close_task intent=check dry_run=true`는 `effect_kind=read_only`인 `StatusResult` 또는 `CloseTaskResult`를 반환합니다.
 
 The Reference Index routes active owner documents for the public `ErrorCode` contract and `STATE_VERSION_CONFLICT`, project-wide `project_state.state_version`, request-level `VerifiedSurfaceContext.access_class`, `run_recording`, `artifact_registration`, `artifact_read`, `harness.record_run`, `harness.stage_artifact`, `StagedArtifactHandle` promotion, persistent `existing_artifact` / `ArtifactRef` linking, separate artifact body reads, verified local surface access, `SensitiveActionScope`, product-file `AuthorizedAttemptScope`, `CompletionPolicy`, `EvidenceSummary`, `close_task` blockers, read-only projections, capability profiles, detective guarantee gating, user-owned judgments, shaping readiness, maintain checks for error-code and access-class consistency, and translation rules.
 

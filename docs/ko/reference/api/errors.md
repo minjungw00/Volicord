@@ -140,7 +140,7 @@ artifact_input_error:
 1. 커밋 전 실패는 `dry_run` 값과 무관하게 `ToolRejectedResponse`를 반환합니다. 오래된 `expected_state_version`, 소비 전 오래된 `WriteAuthorization.basis_state_version`, 요청 검증 실패, 로컬 접근 실패, 역량 부족, 상태 조회 실패, 스테이징된 핸들 검증 실패가 여기에 속합니다.
 2. 유효한 읽기 전용 선택 동작은 `dry_run=true`여도 메서드별 `MethodResult`를 반환합니다. 이 결과는 `base.dry_run=true`, `base.effect_kind=read_only`를 사용합니다.
 3. Core 커밋이나 저장소 소유 스테이징 부작용을 만들 수 있는 유효한 선택 동작은 `dry_run=true`이고 Core가 미리보기를 만들 수 있을 때 `ToolDryRunResponse`를 반환합니다.
-4. 성공한 non-dry-run 커밋 또는 스테이징 동작은 메서드별 `MethodResult`를 반환합니다.
+4. 성공한 `dry_run=false` 커밋 또는 스테이징 동작은 메서드별 `MethodResult`를 반환합니다.
 
 `dry_run=true`는 `ToolDryRunResponse`의 동의어가 아닙니다. `dry_run=true`는 주 오류를 가리지 않고, 유효한 읽기 전용 메서드 결과를 `ToolDryRunResponse` 분기로 바꾸지도 않습니다.
 
@@ -171,7 +171,7 @@ artifact_input_error:
 
 `request_hash`는 도구 이름, 스키마 정규화된 요청 본문, 그리고 `request_id`와 `idempotency_key`를 제외한 모든 `ToolEnvelope` 필드에 대한 정규 JSON에서 계산합니다.
 
-재실행 행을 만드는 상태 효과의 커밋된 non-dry-run `MethodResult` 응답만 재실행 행에 저장합니다. 같은 키와 같은 요청 해시를 가진 커밋된 재실행 행이 있으면 Core는 최신성 확인을 다시 실행하거나 이벤트 추가, 아티팩트 승격/연결, Write Authorization 소비, 차단 사유 업데이트, 재실행 행 변경을 하지 않고 원래 커밋된 응답을 반환합니다. 같은 키를 다른 요청 해시로 재사용하면 Core는 기존 재실행 행을 보존하고 `STATE_VERSION_CONFLICT`를 담은 `ToolRejectedResponse`를 반환합니다.
+재실행 행을 만드는 상태 효과의 커밋된 `dry_run=false` `MethodResult` 응답만 재실행 행에 저장합니다. 같은 키와 같은 요청 해시를 가진 커밋된 재실행 행이 있으면 Core는 최신성 확인을 다시 실행하거나 이벤트 추가, 아티팩트 승격/연결, Write Authorization 소비, 차단 사유 업데이트, 재실행 행 변경을 하지 않고 원래 커밋된 응답을 반환합니다. 같은 키를 다른 요청 해시로 재사용하면 Core는 기존 재실행 행을 보존하고 `STATE_VERSION_CONFLICT`를 담은 `ToolRejectedResponse`를 반환합니다.
 
 `ToolRejectedResponse`와 `ToolDryRunResponse`는 재실행 행을 만들거나 예약하지 않습니다.
 
@@ -181,7 +181,7 @@ artifact_input_error:
 
 커밋된 재실행 행이 없는 새 상태 변경 시도에서 Core는 담당 기록을 고르기 위해 최신성 확인 전에 기본 Task를 찾을 수 있습니다. 해석 순서는 도구별 `task_id`, `ToolEnvelope.task_id`, 활성 Task입니다. 이 해석은 별도 상태 시계를 고르지 않습니다.
 
-새 non-dry-run 상태 변경은 모두 `ToolEnvelope.expected_state_version`을 현재 프로젝트 전체 `project_state.state_version`과 비교합니다. 오래된 `expected_state_version`은 `STATE_VERSION_CONFLICT`를 담은 `ToolRejectedResponse`를 반환합니다. 메서드별 결과가 아니며 절대 `PrepareWriteResult.decision` 값이 아닙니다. `dry_run=true` 요청이 오래된 `expected_state_version`을 제공해도 읽기 전용 결과나 `ToolDryRunResponse` 미리보기 전에 같은 커밋 전 거절이 적용됩니다. 이 커밋 전 실패는 현재 기록, `task_events`, 재실행 행, 아티팩트, 스테이징된 핸들 소비, 증거 요약, Write Authorization 생성 또는 소비, 닫기 상태 변경, `state_version` 증가를 만들지 않습니다. `tasks.state_version`은 활성 충돌 기준이나 동시성 기준이 아닙니다.
+새 `dry_run=false` 상태 변경은 모두 `ToolEnvelope.expected_state_version`을 현재 프로젝트 전체 `project_state.state_version`과 비교합니다. 오래된 `expected_state_version`은 `STATE_VERSION_CONFLICT`를 담은 `ToolRejectedResponse`를 반환합니다. 메서드별 결과가 아니며 절대 `PrepareWriteResult.decision` 값이 아닙니다. `dry_run=true` 요청이 오래된 `expected_state_version`을 제공해도 읽기 전용 결과나 `ToolDryRunResponse` 미리보기 전에 같은 커밋 전 거절이 적용됩니다. 이 커밋 전 실패는 현재 기록, `task_events`, 재실행 행, 아티팩트, 스테이징된 핸들 소비, 증거 요약, Write Authorization 생성 또는 소비, 닫기 상태 변경, `state_version` 증가를 만들지 않습니다. `tasks.state_version`은 활성 충돌 기준이나 동시성 기준이 아닙니다.
 
 프로젝트 전체 상태 버전 불일치에 쓰는 현재 MVP의 유일한 공개 `ErrorCode`는 `STATE_VERSION_CONFLICT`입니다. 이 불일치에 대해 다른 공개 코드, 별칭, 폐기된 표기, 저장소 계층의 다른 공개 오류 이름, 내부 예외 이름을 노출하지 않습니다.
 

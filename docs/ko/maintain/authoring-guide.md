@@ -76,8 +76,8 @@ README와 유지보수 문서는 아래 현재 간결 구조만 경로로 안내
 - 스테이징된 핸들의 출처나 범위 검증 실패는 `VALIDATION_FAILED`로 매핑합니다. `LOCAL_ACCESS_MISMATCH`나 `CAPABILITY_INSUFFICIENT`로 쓰지 않습니다.
 - 현재 MVP의 상태 버전 충돌 공개 오류는 `STATE_VERSION_CONFLICT`입니다. 이 불일치에 대해 다른 공개 `ErrorCode` 별칭, 동의어, 폐기된 이름, 대체 표기, 저장소 계층의 공개 오류 이름을 문서화하지 않습니다.
 - 새 공개 메서드 응답은 메서드가 엄격한 읽기 전용이고 계약에서 `ToolDryRunResponse`를 명시적으로 생략하는 경우가 아니라면 `MethodResult | ToolDryRunResponse | ToolRejectedResponse`로 씁니다. 담당 문서에서는 `PrepareWriteResult`, `StageArtifactResult`, `RecordRunResult`, `CloseTaskResult`처럼 구체적인 실제 메서드 결과 이름을 사용합니다.
-- 공개 메서드가 읽기 전용 intent와 상태 효과가 있는 intent를 모두 가진 혼합 intent 메서드라면, 메서드 이름만이 아니라 선택된 intent의 상태 효과로 응답 분기를 설명합니다. `dry_run=true`가 읽기 전용 선택 동작에 적용되면 `base.dry_run=true`, `effect_kind=read_only`인 메서드별 `MethodResult`를 반환할 수 있습니다. 상태 효과가 있는 선택 동작의 유효한 dry-run 미리보기는 `ToolDryRunResponse`를 사용합니다.
-- 메서드별 결과 필드는 메서드별 `MethodResult` 분기에만 둡니다. `ToolRejectedResponse`와 `ToolDryRunResponse`는 `decision`, `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, `user_judgment_ref`, `close_state` 같은 결과 전용 필드를 요구하면 안 되며, dry-run 문구는 아직 존재하지 않는 기록의 생성된 ref를 요구하면 안 됩니다. 거절 응답과 `ToolDryRunResponse` 분기는 `effect_kind=no_effect`입니다. 재실행 행 없음, 상태 버전 증가 없음, 스테이징된 핸들 소비 없음, Write Authorization 생성 또는 소비 없음이 유지되어야 합니다.
+- 공개 메서드가 읽기 전용 intent와 상태 효과가 있는 intent를 모두 가진 혼합 intent 메서드라면, 메서드 이름만이 아니라 선택된 intent의 상태 효과로 응답 분기를 설명합니다. `dry_run=true`가 읽기 전용 선택 동작에 적용되면 `base.dry_run=true`, `effect_kind=read_only`인 메서드별 `MethodResult`를 반환할 수 있습니다. 상태 효과가 있는 선택 동작의 유효한 `dry_run` 미리보기는 `ToolDryRunResponse`를 사용합니다.
+- 메서드별 결과 필드는 메서드별 `MethodResult` 분기에만 둡니다. `ToolRejectedResponse`와 `ToolDryRunResponse`는 `decision`, `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, `user_judgment_ref`, `close_state` 같은 결과 전용 필드를 요구하면 안 되며, `dry_run` 문구는 아직 존재하지 않는 기록의 생성된 ref를 요구하면 안 됩니다. 거절 응답과 `ToolDryRunResponse` 분기는 `effect_kind=no_effect`입니다. 재실행 행 없음, 상태 버전 증가 없음, 스테이징된 핸들 소비 없음, Write Authorization 생성 또는 소비 없음이 유지되어야 합니다.
 
 담당 문서 밖에서 계약이 반복되면 먼저 담당 문서를 확인합니다. 필요하면 담당 문서를 고친 뒤, 중복 문구는 짧은 결과 설명과 허용된 담당 경로로 바꿉니다.
 
