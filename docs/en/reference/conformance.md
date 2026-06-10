@@ -4,15 +4,25 @@
 
 This repository is documentation-only and still in documentation review. No Harness Server runtime, conformance runner, executable fixture files, generated conformance reports, generated runtime artifacts, or current runtime conformance results exist here.
 
-This document is not an executable conformance suite. It is the planning owner for conformance meaning, future fixture shape, assertion authority, and compact representative examples. Current phase and handoff status remain owned by [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
+This document is not an executable conformance suite. It owns current documentation criteria for conformance meaning, candidate future fixture shape, assertion authority, and compact representative examples. Current phase and handoff status remain owned by [MVP Plan](../build/mvp-plan.md#documentation-acceptance-status).
+
+| Item | Current status | Owner | Executable now? |
+|---|---|---|---|
+| current documentation criteria | active reference criteria | `docs/en/reference/conformance.md` | no runtime execution |
+| planned internal smoke target | planned/documented | `docs/en/build/mvp-plan.md` | no |
+| future fixture shape | candidate format | `docs/en/reference/conformance.md` | no |
+| future executable fixtures | not implemented | future runner and owner-promoted fixtures | no |
+| later conformance reporting | later candidate | `docs/en/later/index.md` | no |
+
+When this page says "must", "required", or "always", it is naming the current documentation criterion or a requirement for a future server/runner after implementation exists. It is not a claim that this repository already contains executable checks.
 
 ## 2. What conformance means
 
-Conformance means that, after a Harness Server and runner exist, future executable checks can compare a specific owner-defined action with owner-defined authority records. A future check drives one Core, API, or operator action, captures response facts and owner-state effects, and compares them with structured expectations, including forbidden side effects that must remain absent.
+For a future server, conformance means executable checks can compare a specific owner-defined action with owner-defined authority records. A future check drives one Core, API, or operator action, captures response facts and owner-state effects, and compares them with structured expectations, including forbidden side effects that must remain absent.
 
 Documentation checks are separate. Markdown maintenance checks inspect links, terminology, owner boundaries, active/later wording, security wording, and bilingual parity. They are current documentation aids only, not runtime conformance.
 
-Conformance does not judge generated prose, agent summaries, rendered reports, or status wording. It judges only the facts that an owning document has made authoritative.
+A future runtime conformance check must not judge generated prose, agent summaries, rendered reports, or status wording. It may judge only the facts that an owning document has made authoritative.
 
 ## 3. What does not exist yet
 
@@ -30,7 +40,7 @@ Examples on this page may guide planning, but they do not create runtime state, 
 
 ## 4. Fixture shape
 
-Fixture shape is future structure, not current files. After the Harness Server and runner exist, a promoted fixture should be a compact structured record with these parts:
+Fixture shape is a candidate future format, not current files. After the Harness Server and runner exist, a promoted fixture should be a compact structured record with these parts:
 
 | Part | Purpose |
 |---|---|
@@ -40,11 +50,11 @@ Fixture shape is future structure, not current files. After the Harness Server a
 | expected assertions | Structured response facts, owner-state effects, storage or artifact facts, blocker facts, error facts, guarantee-display facts, and required absence of forbidden side effects. |
 | owner links | The API, Core, Storage, Security, Agent Integration, ArtifactRef, and policy owners that define exact values and meaning. |
 
-Materialized fixtures must use public owner schemas. They must not invent fixture-only enum values, pseudo-fields, localized display labels as state, prose-only expectations, or later-candidate-only values.
+A future materialized fixture must use public owner schemas. It must not invent fixture-only enum values, pseudo-fields, localized display labels as state, prose-only expectations, or later-candidate-only values.
 
 ## 5. Assertion authority
 
-Assertion authority is the narrow set of facts a future fixture may judge. Authority comes from owner-defined facts, not from scenario prose or generated summaries.
+Assertion authority is the narrow set of facts a future fixture may judge after executable fixtures exist. Authority comes from owner-defined facts, not from scenario prose or generated summaries.
 
 Authoritative future assertions may use:
 
@@ -57,17 +67,17 @@ Authoritative future assertions may use:
 - primary `ErrorCode`, structured blocker fields, and guarantee-display facts that match the API, Core, Security, and Agent Integration owners
 - absence assertions for forbidden side effects, such as no durable authorization, no Run row, no artifact mutation, or no close-state change
 
-Current active examples may assert `cooperative` and supported `detective` facts. For the baseline `reference-local-mcp` surface, `detective` assertions are valid only when `changed_path_detection_verification=passed` and only for the verified changed-path detection scope. `not_run`, legacy `planned_not_run` wording, `failed`, and `stale` are not passing assertion states and cannot justify a `detective` label. `preventive` or `isolated` assertions are valid only for a promoted profile with an owner-defined proof path for that profile; conformance planning text does not make those display values currently executable or proven.
+As current documentation criteria, active examples may name `cooperative` and supported `detective` facts. For a future server/runner on the baseline `reference-local-mcp` surface, `detective` assertions are valid only when `changed_path_detection_verification=passed` and only for the verified changed-path detection scope. `not_run`, legacy `planned_not_run` wording, `failed`, and `stale` are not passing assertion states and cannot justify a `detective` label. `preventive` or `isolated` assertions are valid only for a promoted profile with an owner-defined proof path for that profile; conformance planning text does not make those display values currently executable or proven.
 
-Non-authoritative material includes prose scenario descriptions, comments, author notes, rendered Markdown, generated reports, status prose, agent summaries, documentation-check labels, and projections. Projection freshness or availability may be asserted only when projection support is explicitly in scope.
+For future conformance, non-authoritative material includes prose scenario descriptions, comments, author notes, rendered Markdown, generated reports, status prose, agent summaries, documentation-check labels, and projections. Projection freshness or availability may be asserted only when projection support is explicitly in scope.
 
 ## 6. Representative active examples
 
-These are compact documentation-level behavior references only. They are not fixture files, full YAML bodies, current runtime results, a complete conformance suite, generated runtime objects, or an implementation plan. The response-branch expectations in these rows are documentation-level conformance examples; they do not create executable fixtures, test runners, generated operational files, or runtime state. The first internal documentation smoke target in [MVP Plan](../build/mvp-plan.md#first-internal-smoke-target) may draw from these rows, but future executable coverage still needs owner-promoted fixtures and a runner.
+These are compact current documentation criteria for future server behavior. They are not fixture files, full YAML bodies, current runtime results, a complete conformance suite, generated runtime objects, or an implementation plan. The response-branch expectations in these rows are documentation-level conformance examples; they do not create executable fixtures, test runners, generated operational files, or runtime state. The first internal documentation smoke target in [MVP Plan](../build/mvp-plan.md#first-internal-smoke-target) may draw from these rows, but future executable coverage still needs owner-promoted fixtures and a runner.
 
 These examples keep the blocker-like response structures separate. Pre-commit failures use `ToolRejectedResponse.errors: ToolError[]`, with `errors[0].code` carrying the relevant `ErrorCode`; they use no `WriteDecisionReason`, `CloseReadinessBlocker`, or `PlannedBlocker`, and create no replay row or `project_state.state_version` increment. Non-allowed `prepare_write` results use `PrepareWriteResult.write_decision_reasons: WriteDecisionReason[]`; they use no `CloseReadinessBlocker` and do not mutate `close_state`. Read-only status and close-check results use `StatusResult.close_blockers: CloseReadinessBlocker[]` or `CloseTaskResult.blockers: CloseReadinessBlocker[]` only as read-only observation/evaluation data. Committed blocked `close_task` results use `CloseTaskResult(close_state=blocked).blockers: CloseReadinessBlocker[]` only for semantic close-readiness findings after preflight succeeds. Valid dry-run previews use `DryRunSummary.would_blockers: PlannedBlocker[]` with `PlannedBlocker.source_kind=write_decision` or `source_kind=close_readiness`; dry-run preview does not store or return real/current `WriteDecisionReason` or `CloseReadinessBlocker` objects. `STATE_VERSION_CONFLICT` is not `WriteDecisionReason.code`, not `CloseReadinessBlocker.code`, and not `PlannedBlocker.code`. `CloseBlocker` is not an active current-MVP conformance type.
 
-| Example | Behavior | Future assertion focus |
+| Example | Current documentation criterion for a future server | Future fixture assertion focus |
 |---|---|---|
 | `MVP-ACTIVE-registered-surface-mismatch-blocks-mutation` | A mutating request whose `surface_id` selects a stored `LocalSurfaceRegistration` but whose reachable transport, session, or binding does not match must stop before commit. | Expected response branch: `ToolRejectedResponse` with `errors[0].code=LOCAL_ACCESS_MISMATCH`. No owner record, event, replay row, Write Authorization, Run, artifact, close effect, or `project_state.state_version` increment is created. A copied `surface_id` is not authority. |
 | `MVP-ACTIVE-verified-local-surface-allows-owner-mutation` | A same-project active local registration can allow mutation only when the server derives `VerifiedSurfaceContext.verified=true` for the method's required `access_class`. | The request proceeds to method-specific scope, judgment, artifact, close, and current `ToolEnvelope.expected_state_version` checks; if those owner checks pass, the committed mutation creates only method-owned effects and increments `project_state.state_version` exactly once. Surface verification alone creates no scope, approval, evidence, Write Authorization, or close state. |
@@ -102,10 +112,10 @@ These examples keep the blocker-like response structures separate. Pre-commit fa
 
 Future fixture families belong in [Later Candidate Index: Future Fixture Families](../later/index.md#future-fixture-families). That index keeps names only as later candidates, and this page does not reproduce the catalog.
 
-Future-family names are not scenario scripts, fixture bodies, active API payload examples, runner or reporting requirements, active MVP scope, implementation tasks, current results, or current runtime proof. A future owner must promote a narrow behavior with scope, fallback behavior, exact contracts, and proof-path expectations for future promotion before executable fixture material exists.
+Future-family names are not scenario scripts, fixture bodies, active API payload examples, runner or reporting requirements, active MVP scope, implementation tasks, current results, or current runtime proof. A future owner must promote a narrow behavior with scope, fallback behavior, exact contracts, and proof-path expectations before executable fixture material exists.
 
 ## 8. Metrics boundary
 
-Metrics are not conformance authority in the current documentation set. Future local metrics may be useful for diagnostics or planning, but until an owner promotes them they remain read-only derived displays.
+Metrics are not conformance authority in the current documentation set. Future local metrics and later conformance reporting may be useful for diagnostics or planning, but until an owner promotes them they remain read-only derived displays or later candidates.
 
 Metrics must not create Core state, satisfy evidence, pass QA or verification, authorize writes, accept final results, accept residual risk, close work, prove implementation readiness, or replace runtime conformance. If a future metric is promoted, its owner must define source records, freshness boundary, display wording, and the non-substitution rule.
