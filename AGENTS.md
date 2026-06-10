@@ -1,87 +1,94 @@
-# Codex working rules
+# Agent working rules
 
 This repository is a documentation-only Harness planning repository. It is in pre-MVP documentation redesign, review, and acceptance work.
 
 Runtime/server implementation has not started. Do not describe the current docs as implementation-complete, accepted runtime behavior, or permission to start server coding unless the maintainer handoff status in `docs/*/build/mvp-plan.md` explicitly says so.
 
-## Repo phase
+## Repository phase
 
-- Always read this `AGENTS.md` first before working in this repository.
+- Read this `AGENTS.md` before working in this repository.
 - Before documentation edits, read the relevant maintainer guidance:
   - For English-facing edits, read `docs/en/maintain/authoring-guide.md`.
   - For Korean-facing edits, read `docs/ko/maintain/authoring-guide.md`.
-  - For bilingual edits or terminology-affecting edits, read both translation guides: `docs/en/maintain/translation-guide.md` and `docs/ko/maintain/translation-guide.md`.
+  - For bilingual edits or terminology-affecting edits, read the relevant translation guidance and terminology sources.
 - Keep all work documentation-only. Do not implement Harness server/runtime code, product implementation code, generated operational files, runtime state, projections, artifacts, executable fixtures, conformance runners, or Harness runtime objects.
 - This repository is not the user's Product Repository and not a Harness Runtime Home.
 - Treat documentation files as source material for a future Harness Server, not as Harness runtime state, generated artifacts, projections, evidence, QA, acceptance, residual-risk records, close records, or implementation output.
 - Do not run or simulate Harness runtime procedures for documentation edits. Do not create `prepare_write`, MCP state-transition, `close_task`, runtime-state, judgment, evidence, QA, acceptance, residual-risk, projection, operational, or fixture outputs.
-- Path allowlists and batch boundaries for docs edits are maintainer editing controls, not Harness runtime override capabilities.
-- Use small batches and report changed files.
-- Do not create archive copies or temporary migration notes.
+- Path allowlists and batch boundaries for documentation edits are maintainer editing controls, not Harness runtime override capabilities.
+- Use small documentation batches and report changed files.
 - Do not create commits unless the user explicitly asks for commits.
 
-## Current documentation routes
+## Entry routes
 
-Use only the compact active structure:
+Compact entry routes are first-hop navigation aids. Use compact entry routes only to choose a documentation family.
 
-- `docs/doc-index.yaml`
-- `docs/*/start.md`
-- `docs/*/use/user-guide.md`
-- `docs/*/use/agent-guide.md`
-- `docs/*/use/judgment-examples.md`
-- `docs/*/build/mvp-plan.md`
-- `docs/*/reference/README.md`
-- `docs/*/later/index.md`
-- `docs/*/maintain/authoring-guide.md`
-- `docs/*/maintain/translation-guide.md`
-- `docs/*/maintain/checks.md`
+Entry-route families include:
 
-Do not route README or Maintain guidance outside this compact structure.
+- `docs/*/start.md` for product orientation.
+- `docs/*/use/` for user and agent workflow guidance.
+- `docs/*/build/mvp-plan.md` for implementation-readiness planning and maintainer handoff status.
+- `docs/*/reference/README.md` for the reference family index.
+- `docs/*/later/index.md` for deferred candidates and promotion boundaries.
+- `docs/*/maintain/` for authoring, translation, and check guidance.
 
-Use `docs/*/reference/README.md` to choose exact contract owners instead of turning reference subpages into top-level routes. If an old path appears during review, replace it with the current compact route or delete the stale route wording.
+Do not assume the compact route list is the full owner list. Split canonical owner documents live below these families, especially under `docs/*/reference/`, and may not appear as compact entry routes.
 
-Use `docs/doc-index.yaml` as the stable machine-readable route table. When it has an exact question route, load the listed default owner first and pull related documents only if that owner sends you there.
+## Canonical owner lookup
 
-## Bilingual documentation rules
+For exact owner routing, use `docs/doc-index.yaml`. It is the stable machine-readable route table for `doc_id`, owner family, canonical ownership, related documents, and language paths.
 
-- English and Korean docs are both active. Neither language is an archive, appendix, or translation-only copy.
-- Every major active doc should have a paired English/Korean path.
-- Maintain semantic parity between paired docs. Line-by-line translation is not required, and natural Korean technical prose is expected in Korean files.
-- Do not finish a meaning-changing documentation batch with only one language updated.
-- Preserve exact identifiers in both languages, including file paths, `doc_id` values, API method names, schema fields, enum values, table names, validator IDs, and error codes.
-- When editing Korean docs, use natural Korean terms such as "한영 문서 동시 유지", "의미 일치", "줄 단위 번역 아님", "에이전트 중복 주입 금지", "현재 MVP", and "담당 문서" where they fit.
+When `docs/doc-index.yaml` lists an exact owner for the question or concept, load that owner first. Pull related documents only when the owner, index metadata, or maintainer guidance sends you there.
 
-## Agent context rules
+One concept should have one canonical owner. Edit the owner when the change affects normative meaning, including active MVP scope, API behavior, schemas, storage effects, security wording, access boundaries, close readiness, product terminology, or later-candidate promotion rules.
 
-- Load only one language for the same `doc_id` in a single prompt. Do not inject paired English and Korean docs for the same `doc_id` into the same agent context unless the task is translation/parity review and the comparison is necessary.
-- Keep current context small. Include only what the next action needs, such as:
-  - task summary and work shape
-  - scope/non-goals
-  - pending user judgments
-  - blockers and next safe actions
-  - evidence gaps and close blockers
-  - residual-risk summary
-  - guarantee level
-  - source refs/freshness
-- Pull owner docs only when needed for the next edit or check. Prefer `docs/*/reference/README.md` to choose the owner instead of loading the whole Reference set.
-- Do not bury state by injecting full reference docs, full schemas, full DDL, historical logs, projection bodies, artifact contents, unrelated templates, future catalog material, or both language versions of the same document.
+If an entry route, README, or maintain document cannot point to a current owner, do not fill the gap with duplicate contract prose. Name the owner gap or route to the closest current owner.
 
-## Documentation redesign compass
+## Language selection
 
-- The repository is in documentation review/redesign only; these edits do not start runtime/server implementation.
-- The redesign may change terminology, the delivery/later candidate model, schema structure, projection structure, security wording, and document organization.
-- Rewrite, move, merge, shrink, or delete old prose when it conflicts with the product thesis, owner boundaries, Korean quality rules, active/later boundaries, or implementation feasibility.
-- Remove stale improvement goals, resolved review records, old cleanup notes, legacy history, migration notes, and one-language-primacy guidance from active docs.
-- Do not list profile-gated values as default active MVP values, and do not describe later candidates as active MVP requirements.
-- Check stale route wording, active/profile-gated confusion, unsupported security claims, Korean natural prose, and one-language-per-`doc_id` retrieval before finishing documentation batches.
+English and Korean docs are both active. Neither language is an archive, appendix, or translation-only copy.
+
+Read one language version of the same `doc_id` unless checking translation parity, doing bilingual editing, or resolving a terminology/parity issue that requires comparison.
+
+For normal agent retrieval, use the language that matches the user request or the default language in `docs/doc-index.yaml`. Do not inject paired English and Korean docs for the same `doc_id` into the same context without a parity reason.
+
+Do not finish a meaning-changing documentation batch with only one language updated when the changed document has an active paired path.
+
+## Editing rules
+
 - Preserve the product thesis: Harness is not a prompt pack. It is a local authority record for scope, user-owned judgment, evidence, verification expectations, acceptance, close readiness, and residual risk.
 - Keep user-owned judgments distinct from Core-owned state/artifact authority. Evidence, verification, QA, acceptance, waiver, and residual-risk boundaries must not collapse into one broad approval.
-- Major implementation-readiness decisions belong in `docs/en/build/mvp-plan.md` and `docs/ko/build/mvp-plan.md`, not scattered TODOs.
+- Keep active MVP behavior separate from reserved, profile-gated, and later-candidate material. Do not describe later candidates as active MVP requirements.
+- Guard, freeze, careful-mode, and security wording must match the actual guarantee level documented by the security owner. Only documented preventive mechanisms should claim preventive behavior.
+- Rewrite, move, merge, shrink, or delete old prose when it conflicts with current owner boundaries, active/later boundaries, Korean quality rules, or implementation feasibility.
+- Remove stale route wording, legacy history, resolved cleanup notes, one-language-primacy guidance, and scattered TODOs from active docs when encountered in scope.
+- Preserve exact identifiers in backticks, including file paths, `doc_id` values, API method names, schema fields, enum values, status values, table names, validator IDs, error codes, anchors, and code literals.
+- Major implementation-readiness decisions belong in `docs/en/build/mvp-plan.md` and `docs/ko/build/mvp-plan.md`, not scattered across route or maintain documents.
 
-## Harness compass
+## Contract duplication rule
 
-- When Harness is connected, no startup phrase is required. Infer Harness use from task shape; users do not need to say "Harness" or know internal labels.
-- Product/runtime writes are out of scope in this repo phase. In Harness-connected product work outside this repository, product writes require compatible `prepare_write` / Write Authorization where applicable.
-- User-owned product, material technical, QA/waiver, final acceptance, and residual-risk judgment routes through the documented `user_judgment` / owner path. Decision Packet is only an optional full-format later presentation.
-- Sensitive-action approval, final acceptance, residual-risk acceptance, waiver, and reconciliation remain distinct. Broad approval does not substitute for any of them.
-- Guard, freeze, careful-mode, and security wording must match the actual guarantee level documented in `docs/*/reference/security.md`; only documented preventive mechanisms should claim preventive behavior.
+Do not duplicate long technical contracts into README, route, or maintain documents.
+
+README files, Start pages, Use pages, Build pages, Later indexes, Maintain pages, and reference indexes may summarize reader purpose, expected result, and where to go next. They should use short summaries plus links to canonical owners.
+
+Do not copy API response branches, schema field tables, DDL, storage effects, access class lists, security guarantees, projection behavior, close-readiness contracts, or error-code contracts into non-owner documents. If a duplicate explanation is stale, shrink it to a practical consequence and link to the owner instead of refreshing the duplicate.
+
+## Temporary file rule
+
+Do not create archive copies, temporary migration plans, scratch notes, TODO-only files, review leftovers, generated runtime records, or one-off planning files in the repository.
+
+Do not leave temporary migration plans, scratch notes, or TODO-only files in the repo. Remove scratch notes before finishing.
+
+If planning is needed, keep it in the conversation or in the requested target document. If the user explicitly asks for a planning document, place it only in an appropriate maintained documentation path and make sure it has durable reader value.
+
+## Korean documentation rule
+
+Korean documentation edits must use natural Korean technical prose, not literal English translation.
+
+When editing Korean docs, use `docs/terminology-map.yaml` and `docs/ko/reference/glossary.md`. Also consult `docs/ko/maintain/translation-guide.md` for Korean style, semantic parity, hidden anchors, and forbidden mixed-language patterns.
+
+Preserve identifiers in backticks. Do not translate exact identifiers, file paths, anchors, `doc_id` values, API methods, schema names, schema fields, enum values, table names, validator IDs, error codes, or code literals.
+
+Do not literal-translate English prose into Korean. Maintain semantic parity by meaning unit while allowing natural Korean sentence order, paragraph rhythm, terminology, and heading style.
+
+Use Korean concept-first phrasing for ordinary prose. Avoid mixed-language patterns where the English word is not an identifier or intentional product label. Prefer terms from the terminology map and Korean glossary, such as `현재 MVP`, `이후 후보`, `담당 문서`, `의미 일치`, `닫기 준비 상태`, `닫기 가능 여부`, `사용자 소유 판단`, `아티팩트`, `접점`, and `상태 보기` where they fit.
