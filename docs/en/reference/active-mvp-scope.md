@@ -30,7 +30,7 @@ The included scope is:
 |---|---|---|
 | Plain-language intake and Task creation | A local task can be started from plain-language user intent through the active intake path. | [MVP API](api/mvp-api.md), [Core Model](core-model.md) |
 | Scope updates | Task and Change Unit scope can be updated through the active scope-update path. | [MVP API](api/mvp-api.md), [Core Model](core-model.md) |
-| Status and close-readiness review | Current status, evidence sufficiency, known blockers, and close-readiness review can be read without creating a generated projection or runtime artifact. | [API State Schemas](api/schema-state.md), [Errors](api/errors.md), [Projection And Templates](projection-and-templates.md) |
+| Status and close-readiness review | Current status, evidence sufficiency, known blockers, and close-readiness review can be read without creating a generated projection or runtime artifact. | [API State Schemas](api/schema-state.md), [Errors](api/errors.md), [Projection Authority Reference](projection-and-templates.md) |
 | Prepare-write authorization | `harness.prepare_write` can create an owner-scoped, single-use `Write Authorization` for a compatible product-file write attempt. | [MVP API](api/mvp-api.md), [Storage Effects](storage-effects.md), [Security](security.md) |
 | Local surface registration | Registered local surfaces can identify the active surface and its supported capabilities for current scope checks. | [Agent Integration](agent-integration.md), [Surface Recipes](../use/surface-recipes.md), [Security](security.md) |
 | Artifact staging | New artifact bytes can enter active scope only through the active staging path, and existing artifacts can be linked only through compatible persisted artifact references. | [API Artifact Schemas](api/schema-artifacts.md), [Artifact Storage](storage-artifacts.md), [Storage Effects](storage-effects.md) |
@@ -87,6 +87,7 @@ Implementation readiness and maintainer handoff status stay in [MVP Plan](../bui
 | Runtime, repository, and server boundaries | [Runtime Boundaries](runtime-boundaries.md) |
 | Security claims and non-claims | [Security](security.md) |
 | Surface and connector behavior | [Agent Integration](agent-integration.md), [Surface Recipes](../use/surface-recipes.md) |
-| Projection authority and template bodies | [Projection And Templates](projection-and-templates.md), [Template Bodies](template-bodies.md) |
+| Projection authority and source-state/freshness boundaries | [Projection Authority Reference](projection-and-templates.md) |
+| Template bodies for readable displays | [Template Bodies](template-bodies.md) |
 | Later candidates and promotion boundaries | [Later Candidate Index](../later/index.md) |
 | Product terminology | [Glossary](glossary.md), [Translation Guide](../maintain/translation-guide.md), [docs/terminology-map.yaml](../../terminology-map.yaml) |

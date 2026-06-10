@@ -34,8 +34,8 @@
 | 메서드별 저장 효과는 어디가 담당하나요? | [저장 효과](storage-effects.md) |
 | 보안 주장과 비보장은 어디가 담당하나요? | [보안](security.md) |
 | 제품 용어는 어디가 담당하나요? | [용어집](glossary.md), [docs/terminology-map.yaml](../../terminology-map.yaml) |
-| 읽기 가능한 상태 보기 권한은 어디가 담당하나요? | [상태 보기와 템플릿](projection-and-templates.md) |
-| 템플릿 본문은 어디가 담당하나요? | [템플릿 본문](template-bodies.md) |
+| 읽기 전용 상태 보기 권한과 원천/최신성 경계는 어디가 담당하나요? | [상태 보기 권한 참조](projection-and-templates.md) |
+| 상태 카드, 판단 요청, 실행/증거 요약, 닫기 결과, 에이전트 맥락 패킷 본문은 어디가 담당하나요? | [템플릿 본문](template-bodies.md) |
 
 ## API와 스키마 담당 문서
 

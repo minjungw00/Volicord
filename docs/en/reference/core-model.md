@@ -46,7 +46,8 @@ These entities describe authority relationships, not storage tables or API bodie
 | `ArtifactRef` | A durable reference to an evidence-eligible artifact when the artifact owners allow it. | Artifact shape, staging, promotion, integrity, and body-read rules are owned by [API Artifact Schemas](api/schema-artifacts.md) and [Artifact Storage](storage-artifacts.md). |
 | Blocker | A structured reason progress, write, Run recording, or close cannot proceed honestly. | Schema shape and active value sets belong to the API schema/value owners. |
 | Residual-risk summary | The compact visibility path for known remaining uncertainty, limits, or trade-offs. | Rich residual-risk records and assurance displays are later candidate material until promoted. |
-| Projection and templates | Derived displays from Core state and refs. | Readability or manual editing does not turn a display into authority. |
+| Projection output | Derived display from Core state and refs. | Authority and freshness boundaries belong to [Projection Authority Reference](projection-and-templates.md). |
+| Template output | Rendered body text for cards, requests, summaries, results, and packets. | Body expectations belong to [Template Bodies](template-bodies.md); readability or manual editing does not turn output into authority. |
 
 `ShapingReadiness` is a compact derived view over Task, Change Unit, pending judgments, evidence summary, blockers, and next-action state. Core owns the readiness meaning: whether the current owner state is concrete enough for the next safe action. The wire fields are owned by [API State Schemas](api/schema-state.md).
 
@@ -199,7 +200,8 @@ Residual risk is known remaining uncertainty, an unchecked condition, limitation
 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle`, artifact staging, promotion, integrity, redaction, and body-read eligibility | [API Artifact Schemas](api/schema-artifacts.md), [Artifact Storage](storage-artifacts.md) |
 | Public error codes, error routing, and error precedence | [API Errors](api/errors.md) |
 | Storage records, DDL, persisted JSON layout, locks, migrations, and method-to-storage effects | [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Storage Versioning](storage-versioning.md) |
-| Projection authority, read-only display boundaries, and exact template bodies | [Projection And Templates Reference](projection-and-templates.md), [Template Bodies](template-bodies.md) |
+| Projection authority and read-only display boundaries | [Projection Authority Reference](projection-and-templates.md) |
+| Status card, judgment request, run/evidence summary, close result, and agent context packet bodies | [Template Bodies](template-bodies.md) |
 | Security guarantee wording, cooperative/detective/preventive claims, and local access posture | [Security Reference](security.md) |
 | Product Repository, Harness Server, and Harness Runtime Home separation | [Runtime Boundaries Reference](runtime-boundaries.md) |
 | Design-quality boundaries and non-gate routing | [Design Quality](design-quality.md) |

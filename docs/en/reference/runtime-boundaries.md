@@ -18,7 +18,7 @@ This document does not own:
 - storage record shapes, effects, artifacts, versioning, locks, or migrations; see storage owners through [Reference Index](README.md)
 - public API schemas or method behavior; see API owners through [Reference Index](README.md)
 - security guarantee meanings or detailed security non-claims; see [Security](security.md)
-- projection authority; see [Projection And Templates](projection-and-templates.md)
+- projection authority; see [Projection Authority Reference](projection-and-templates.md)
 
 ## Three locations
 
@@ -82,4 +82,5 @@ Detailed guarantee levels, capability-gated detective wording, explicit non-clai
 - [Security](security.md): owns security claims, non-claims, trust boundaries, and guarantee levels.
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md): own storage layout, effects, artifacts, locks, migrations, and versioning.
 - [MVP API](api/mvp-api.md) and API schema owners: own method behavior and API shapes.
-- [Projection And Templates](projection-and-templates.md): owns projection authority and template boundaries.
+- [Projection Authority Reference](projection-and-templates.md): owns projection authority and source-state/freshness boundaries.
+- [Template Bodies](template-bodies.md): owns status card, judgment request, run/evidence summary, close result, and agent context packet bodies.

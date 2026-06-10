@@ -20,7 +20,7 @@
 - SQLite DDL과 지속 테이블. [저장소 기록](storage-records.md)을 봅니다.
 - validator-run 저장 효과. [저장 효과](storage-effects.md)를 봅니다.
 - 아티팩트 저장소. [아티팩트 저장소](storage-artifacts.md)를 봅니다.
-- 상태 보기 권한. [Projection과 템플릿 참조](projection-and-templates.md)를 봅니다.
+- 상태 보기 권한. [상태 보기 권한 참조](projection-and-templates.md)를 봅니다.
 - 템플릿 본문, 상태 카드, 렌더링된 보고서. [템플릿 본문](template-bodies.md)을 봅니다.
 - 넓은 설계 정책 validator, 설계 정책 waiver, 심각도 기반 활성 차단 정책, steward 정책, 전체 검토 절차, 운영/보고 후보, 향후 적합성 목록.
 

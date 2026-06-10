@@ -873,18 +873,25 @@ docs:
     primary_role: projection_authority_owner
     canonical_for:
       - projection_authority
-      - derived_display_boundaries
+      - read_only_derived_display_boundaries
       - projection_freshness
+      - source_state_freshness_boundaries
+      - rendered_display_non_authority
       - rendered_label_boundaries
       - later_projection_boundaries
     owns:
       - projection authority
-      - derived-display boundaries
-      - freshness boundaries
-      - rendered-label boundaries
+      - read-only derived-display boundaries
+      - source-state and freshness boundaries
+      - rendered display non-authority rules
+      - rendered label boundaries
       - later projection boundaries
     does_not_own:
-      - template bodies
+      - status card bodies
+      - judgment request bodies
+      - run/evidence summary bodies
+      - close result bodies
+      - agent context packet bodies
       - source-of-truth state
       - storage authority
       - API schemas
@@ -892,7 +899,10 @@ docs:
     related_docs:
       - reference.template-bodies
       - reference.core-model
-      - reference.storage-records
+      - reference.api.schema-state
+      - reference.api.schema-judgment
+      - reference.api.schema-artifacts
+      - reference.security
       - later.index
 
   - doc_id: reference.template-bodies
@@ -905,19 +915,35 @@ docs:
     primary_role: template_body_owner
     canonical_for:
       - active_template_bodies
+      - status_card_body
+      - judgment_request_body
+      - run_evidence_summary_body
+      - close_result_body
+      - agent_context_packet_body
       - rendered_wording_boundaries
       - template_display_text
     owns:
-      - exact active template bodies
+      - status card body
+      - judgment request body
+      - run/evidence summary body
+      - close result body
+      - agent context packet body
       - rendered wording boundaries
       - template display text boundaries
     does_not_own:
       - projection authority
+      - source-state and freshness authority
       - source-of-truth state
       - API schemas
       - later template candidates
     related_docs:
       - reference.projection-and-templates
+      - reference.core-model
+      - reference.agent-integration
+      - reference.api.schema-state
+      - reference.api.schema-judgment
+      - reference.api.schema-artifacts
+      - reference.security
       - terminology.map
       - later.index
 

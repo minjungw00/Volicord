@@ -34,8 +34,8 @@ These documents are source material for a future Harness Server. They do not mea
 | Which document owns method-to-storage effects? | [Storage Effects](storage-effects.md) |
 | Which document owns security claims and non-claims? | [Security](security.md) |
 | Which document owns product terminology? | [Glossary](glossary.md), [docs/terminology-map.yaml](../../terminology-map.yaml) |
-| Which document owns readable projection authority? | [Projection And Templates](projection-and-templates.md) |
-| Which document owns template bodies? | [Template Bodies](template-bodies.md) |
+| Which document owns read-only projection authority and source-state/freshness boundaries? | [Projection Authority Reference](projection-and-templates.md) |
+| Which document owns status card, judgment request, run/evidence summary, close result, and agent context packet bodies? | [Template Bodies](template-bodies.md) |
 
 ## API and schema owners
 

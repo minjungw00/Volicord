@@ -20,7 +20,7 @@ It does not own:
 - SQLite DDL and persisted tables; see [Storage Records](storage-records.md)
 - validator-run storage effects; see [Storage Effects](storage-effects.md)
 - artifact storage; see [Artifact Storage](storage-artifacts.md)
-- projection authority; see [Projection And Templates Reference](projection-and-templates.md)
+- projection authority; see [Projection Authority Reference](projection-and-templates.md)
 - template bodies, status cards, or rendered reports; see [Template Bodies](template-bodies.md)
 - broad design-policy validators, design-policy waiver, severity-based active blocking policy, steward policies, full review procedure, operations/reporting candidates, or future conformance catalogs
 

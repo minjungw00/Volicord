@@ -82,12 +82,12 @@ This document does not own:
 | `capability_profile` | Connector-owned description of supported surface capabilities. | [Agent Integration](agent-integration.md) |
 | surface recipe | Practical usage guidance for a named surface. | [Surface Recipes](../use/surface-recipes.md) |
 
-## Projection And Template Terms
+## Projection And Template Body Terms
 
 | Term | Meaning | Owner |
 |---|---|---|
-| projection | Read-only derived display or support context from owner records. | [Projection And Templates](projection-and-templates.md) |
-| rendered label | User-visible display text, not a canonical schema value. | [Projection And Templates](projection-and-templates.md), [Template Bodies](template-bodies.md) |
+| projection | Read-only derived display or support context from owner records. | [Projection Authority Reference](projection-and-templates.md) |
+| rendered label | User-visible display text, not a canonical schema value. | [Projection Authority Reference](projection-and-templates.md), [Template Bodies](template-bodies.md) |
 | template body | Exact rendered text owned separately from projection authority. | [Template Bodies](template-bodies.md) |
 
 ## Terminology Control
