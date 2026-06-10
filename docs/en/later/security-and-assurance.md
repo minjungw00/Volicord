@@ -14,7 +14,7 @@ It also does not decide that a stronger guarantee is possible. Any preventive, d
 
 ## Category boundary
 
-This category is for candidates whose main question is "what assurance can Harness honestly claim?" It includes preventive-control candidates, isolation labels, capability-profile hardening, command/network/secret observation, pre-tool blocking, capture assurance, and stronger verification-confidence claims.
+This category is for candidates whose main question is "what assurance can Harness honestly claim?" It includes preventive-control candidates, isolation labels, capability-profile hardening, command/network/secret observation, pre-tool blocking, and stronger verification-confidence claims.
 
 It does not own native artifact capture as a storage mechanism, connector surface design, team workflow, or validator catalog detail unless the candidate is specifically about an assurance claim. Cross-cutting candidates may also appear in another category later, but this document owns only the security-and-assurance framing before promotion.
 
@@ -23,115 +23,91 @@ It does not own native artifact capture as a storage mechanism, connector surfac
 | Candidate | Summary |
 |---|---|
 | Assurance hardening | Stronger evidence, verification, and close-readiness assurance claims beyond the current MVP. |
+| Operations hardening | Future operator diagnostics and stronger security posture for local operation. |
 | Stronger local capability profiles | Future profile labels for observation, capture, isolation, or blocking capabilities. |
-| Command, network, and secret-access observation | Future ability to observe selected tool intentions or access patterns. |
-| Command, network, and secret pre-tool blocking | Future preventive control claims before tool execution. |
-| Capability-gated authorization observation fields | Future fields such as `intended_commands`, `intended_network`, `intended_secret_scope`, `network_write`, `external_service_write`, and `secret_access`. |
+| Command, network, and secret-access observation | Future observation of selected command, network, or secret-access intent. |
+| Command, network, and secret pre-tool blocking | Future preventive blocking claims before tool execution. |
+| Capability-gated `prepare_write` and `record_run` observation | Future command, network, or secret-access observation around write preparation and run recording. |
+| Capability-profile support fields | Future support fields for observation, capture, pre-tool blocking, and isolation capabilities. |
+| Capability-gated authorization observation fields | Future fields such as `intended_commands`, `intended_network`, `network_write`, and `secret_access`. |
+| Later close and assurance fields | Future close, gate, verification, QA, design, and assurance fields. |
 | Native hooks and advanced sidecar watcher | Future native hook or sidecar watcher claims for broader tool visibility. |
-| Capture redaction and retention assurance | Future security claims around browser capture, artifact body capture, redaction, and retention. |
-| Verification assurance escalation | Future stronger verification confidence claims, including detached or cross-surface verification framing. |
 
 ## Candidate details
 
+<a id="assurance-hardening"></a>
 ### Assurance hardening
 
-Summary: Tracks future claims that Harness can make stronger assurance statements than the current MVP permits.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active gates, validators, or close-readiness requirements.
+- Promotion focus: assurance owners, schema owners, API behavior, and conformance checks if stronger assurance becomes normative.
 
-Status: Later candidate.
+<a id="operations-hardening"></a>
+### Operations hardening
 
-Not active: Not part of the current MVP and does not create active requirements.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active operator commands, diagnostics, or security guarantees.
+- Promotion focus: operations owners, security wording, API behavior, and conformance checks if local-operation hardening becomes normative.
 
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
+<a id="stronger-local-capability-profiles"></a>
 ### Stronger local capability profiles
 
-Summary: Groups future capability profile labels for observation, capture, pre-tool blocking, or isolation support.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active preventive, isolated, observation, capture, pre-tool blocking, or isolation guarantees.
+- Promotion focus: agent-integration owners, security owners, schema owners, and conformance checks for any promoted capability profile.
 
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
+<a id="command-network-and-secret-access-observation"></a>
 ### Command, network, and secret-access observation
 
-Summary: Holds future observation candidates for commands, network activity, and secret-access intent.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active command observation, network observation, or secret-access observation authority.
+- Promotion focus: agent-integration owners, security owners, API behavior, and conformance checks for any promoted observation claim.
 
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
+<a id="command-network-and-secret-pre-tool-blocking"></a>
 ### Command, network, and secret pre-tool blocking
 
-Summary: Holds future preventive blocking candidates for tool actions before execution.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active preventive blocking, isolation, or arbitrary-tool-control guarantees.
+- Promotion focus: security owners, agent-integration owners, API behavior, and conformance checks for any promoted blocking claim.
 
-Status: Later candidate.
+<a id="capability-gated-prepare-write-and-record-run-observation"></a>
+### Capability-gated `prepare_write` and `record_run` observation
 
-Not active: Not part of the current MVP and does not create active requirements.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active command, network, or secret-access observation for `prepare_write` or `record_run`.
+- Promotion focus: API behavior, security owners, schema owners, and conformance checks for any promoted observation branch.
 
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
+<a id="capability-profile-support-fields"></a>
+### Capability-profile support fields
 
-Current owner impact: none before promotion.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not activate `command_observation_supported`, `network_observation_supported`, `secret_access_observation_supported`, `artifact_capture_supported`, `pre_tool_blocking_supported`, or `isolation_supported`.
+- Promotion focus: schema owners, agent-integration owners, security owners, and conformance checks for any supported profile field.
 
+<a id="capability-gated-authorization-observation-fields"></a>
 ### Capability-gated authorization observation fields
 
-Summary: Tracks future schema or API vocabulary for observed command, network, external-service, and secret-access intent.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not activate `intended_commands`, `intended_network`, `intended_secret_scope`, `network_write`, `external_service_write`, or `secret_access`.
+- Promotion focus: schema owners, API behavior, security owners, and conformance checks for any promoted observation field.
 
-Status: Later candidate.
+<a id="later-close-and-assurance-fields"></a>
+### Later close and assurance fields
 
-Not active: Not part of the current MVP and does not create active requirements.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not activate `verifying`, `qa`, `completed_verified`, `detached_verified`, `design_gate`, `verification_gate`, `qa_gate`, Manual QA gate fields, design-policy blockers, or assurance blockers.
+- Promotion focus: schema owners, core owners, API behavior, and conformance checks for any promoted close or assurance field.
 
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
+<a id="native-hooks-and-advanced-sidecar-watcher"></a>
 ### Native hooks and advanced sidecar watcher
 
-Summary: Holds future sidecar or native hook concepts that could support stronger observation or blocking claims.
-
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
-### Capture redaction and retention assurance
-
-Summary: Tracks security claims around future browser capture, artifact capture, redaction, retention, or access boundaries.
-
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
-### Verification assurance escalation
-
-Summary: Holds future assurance framing for detached verification, cross-surface verification, and stronger verification-confidence displays.
-
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active preventive guard expansion, native hook, sidecar watcher, or arbitrary-tool-control guarantees.
+- Promotion focus: security owners, agent-integration owners, API behavior, and conformance checks for any promoted hook or watcher claim.
 
 ## Promotion rule
 
-Promotion is not a local edit to this file. A candidate becomes active only when the current active scope and the relevant current owner documents are updated in the same documentation-only batch.
+Promotion is not a local edit to this file. A candidate becomes active only when current active scope and the relevant current owner documents are updated in the same documentation-only batch.
 
 If no current owner exists for the promoted behavior, the promotion batch must create or designate that owner before defining active API, storage, security, UI, or conformance requirements.
 

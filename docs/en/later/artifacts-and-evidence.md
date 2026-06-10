@@ -2,7 +2,7 @@
 
 ## What this document owns
 
-This document owns inactive later candidates about richer evidence, native artifact capture, artifact body policies, exportable evidence packages, and evidence-related display or template expansion. It keeps artifact and evidence candidates grouped so [Later Candidate Index](index.md) can remain a router and short summary.
+This document owns inactive later candidates about richer evidence, native artifact capture, artifact body policy, exportable evidence packages, browser capture, and evidence-related display or template expansion. It keeps artifact and evidence candidates grouped so [Later Candidate Index](index.md) can remain a router and short summary.
 
 Every candidate here is future-facing. The candidate details are documentation source material only and do not create current evidence, artifact, storage, or close-readiness behavior.
 
@@ -22,116 +22,84 @@ It does not own security control claims, connector mechanics, validator catalogs
 
 | Candidate | Summary |
 |---|---|
-| Full `Evidence Manifest` | Future manifest-level evidence record and presentation candidate. |
+| Full `Evidence Manifest` | Future manifest-level evidence records and rendered summaries. |
+| Export | Future export behavior, export artifacts, and redaction boundaries. |
+| Export and handoff formats | Future file formats, bundle contracts, and provenance requirements for export or handoff. |
+| Later actor, producer, and capture source values | Future producer, actor, and capture-source values such as `evaluator`, `operator`, and `capture_adapter`. |
 | Native artifact capture | Future capture of artifact bodies instead of reference-only artifact records. |
-| Artifact body policies | Future retention, read eligibility, redaction, checksum, and size policy candidates. |
-| Export and handoff bundles | Future evidence, artifact, provenance, and handoff package formats. |
-| Browser capture evidence | Future browser screenshots, recordings, or captured UI state as evidence material. |
+| Read-only playbook and judgment context metadata | Future read-only metadata that can support evidence review without satisfying judgment by itself. |
 | Later reference and artifact value families | Future value families for bundles, manifests, QA capture, export components, design, Eval, Manual QA, TDD, `Projection`, and related references. |
-| Evidence-related template names | Future template names such as `EVIDENCE-MANIFEST`, `EXPORT`, `RUN-SUMMARY`, and related display bodies. |
-| Read-only context metadata | Future playbook and judgment context metadata that can support evidence review without satisfying judgment by itself. |
+| Later template names | Future template names for richer decision, evidence, run, design, and export displays. |
+| Browser capture automation | Future browser screenshots, recordings, or captured UI state as evidence material. |
 
 ## Candidate details
 
+<a id="full-evidence-manifest"></a>
 ### Full `Evidence Manifest`
 
-Summary: Holds future manifest-level evidence records and rendered summaries.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active evidence, artifact, or close-readiness requirements.
+- Promotion focus: evidence owners, schema owners, storage effects, and conformance checks if manifest-level evidence becomes normative.
 
-Status: Later candidate.
+<a id="export"></a>
+### Export
 
-Not active: Not part of the current MVP and does not create active requirements.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active export behavior, export artifacts, or redaction guarantees.
+- Promotion focus: export owners, artifact owners, storage effects, and conformance checks if export becomes normative.
 
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
+<a id="export-and-handoff-formats"></a>
+### Export and handoff formats
 
-Current owner impact: none before promotion.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active file formats, bundle contracts, or provenance requirements.
+- Promotion focus: export owners, handoff owners, storage effects, and conformance checks for any promoted format.
 
+<a id="later-actor-producer-and-capture-source-values"></a>
+### Later actor, producer, and capture source values
+
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not activate `evaluator`, `operator`, or `capture_adapter`.
+- Promotion focus: schema owners, API behavior, storage effects, and conformance checks for any promoted actor, producer, or capture-source value.
+
+<a id="native-artifact-capture"></a>
 ### Native artifact capture
 
-Summary: Tracks future capture of artifact bodies by Harness rather than reference-only artifact metadata.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active API requirements.
+- Promotion focus: schema owners, API behavior, storage effects, and conformance checks if Harness captures artifact data directly rather than only staging references.
 
-Status: Later candidate.
+<a id="read-only-playbook-and-judgment-context-metadata"></a>
+### Read-only playbook and judgment context metadata
 
-Not active: Not part of the current MVP and does not create active requirements.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active read-only metadata requirements or satisfy any judgment by itself.
+- Promotion focus: agent-integration owners, API behavior, schema owners, and conformance checks for any promoted read-only context metadata.
 
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
-### Artifact body policies
-
-Summary: Groups future policies for artifact bytes, retention, redaction, body-read eligibility, checksums, and size limits.
-
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
-### Export and handoff bundles
-
-Summary: Holds future export, release handoff, bundle, provenance, and archive-format candidates.
-
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
-### Browser capture evidence
-
-Summary: Tracks future browser capture material as evidence input, including screenshots, recordings, retention, and redaction boundaries.
-
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
+<a id="later-reference-and-artifact-value-families"></a>
 ### Later reference and artifact value families
 
-Summary: Holds future value families for references, artifacts, bundles, manifests, QA capture, export components, design, Eval, Manual QA, TDD, `Projection`, and related references.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not activate later bundle, manifest, QA capture, export component, design, Eval, Manual QA, TDD, projection, or related-reference value families.
+- Promotion focus: artifact owners, schema owners, storage effects, and conformance checks for any promoted value family.
 
-Status: Later candidate.
+<a id="later-template-names"></a>
+### Later template names
 
-Not active: Not part of the current MVP and does not create active requirements.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not activate `DEC`, `APR`, `RUN-SUMMARY`, `EVIDENCE-MANIFEST`, `EVAL`, `MANUAL-QA`, `TASK`, `DIRECT-RESULT`, `JOURNEY-CARD`, `DESIGN`, `DOMAIN-LANGUAGE`, `MODULE-MAP`, `INTERFACE-CONTRACT`, `TDD-TRACE`, or `EXPORT` templates.
+- Promotion focus: template owners, source-record owners, API behavior, and conformance checks for any promoted template name or display body.
 
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
+<a id="browser-capture-automation"></a>
+### Browser capture automation
 
-Current owner impact: none before promotion.
-
-### Evidence-related template names
-
-Summary: Tracks future template names that could render richer evidence, run, export, or handoff material.
-
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
-
-### Read-only context metadata
-
-Summary: Holds future metadata that may help a user review evidence or judgment context without substituting for user-owned judgment.
-
-Status: Later candidate.
-
-Not active: Not part of the current MVP and does not create active requirements.
-
-Promotion requires: current active scope update, relevant current owner update or new owner creation during promotion, conformance/check updates if the behavior becomes normative.
-
-Current owner impact: none before promotion.
+- Status: Later candidate; currently inactive.
+- Current MVP non-effect: Not part of the current MVP. Does not create active browser capture, retention, redaction, QA, or acceptance behavior.
+- Promotion focus: capture owners, security owners, storage effects, and conformance checks if browser capture becomes normative evidence material.
 
 ## Promotion rule
 
-Promotion is not a local edit to this file. A candidate becomes active only when the current active scope and the relevant current owner documents are updated in the same documentation-only batch.
+Promotion is not a local edit to this file. A candidate becomes active only when current active scope and the relevant current owner documents are updated in the same documentation-only batch.
 
 If no current owner exists for the promoted behavior, the promotion batch must create or designate that owner before defining active API, storage, security, UI, or conformance requirements.
 
