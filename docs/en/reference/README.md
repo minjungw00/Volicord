@@ -31,7 +31,7 @@ This route is for implementers and reviewers who need exact owners. New and work
 |---|---|
 | Where is the current MVP scope defined? | [Active MVP Scope](active-mvp-scope.md) |
 | Is a capability active, profile-gated, or later-only? | [Active MVP Scope](active-mvp-scope.md), [API Value Sets](api/schema-value-sets.md), [Later Candidate Index](../later/index.md) |
-| Which document explains current-MVP guarantee availability and boundaries? | [Active MVP Scope](active-mvp-scope.md) |
+| Is `isolated` active in the current MVP? | [Security](security.md), [Active MVP Scope](active-mvp-scope.md) |
 | Has this repository started runtime or server implementation? | [MVP Plan](../build/mvp-plan.md), [Active MVP Scope](active-mvp-scope.md) |
 | Where is the documentation-only boundary stated? | [Active MVP Scope](active-mvp-scope.md), [Runtime Boundaries](runtime-boundaries.md) |
 | Where is implementation-readiness or maintainer handoff status tracked? | [MVP Plan](../build/mvp-plan.md) |
@@ -62,7 +62,7 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Which document owns active method names, `response_kind`, `effect_kind`, and enum-like API values? | [API Value Sets](api/schema-value-sets.md) |
 | Where are access classes defined? | [API Value Sets](api/schema-value-sets.md) |
 | Where are dry-run preview structures such as `DryRunSummary`, `PlannedEffect`, and `PlannedBlocker` defined? | [API Schema Core](api/schema-core.md), [API Value Sets](api/schema-value-sets.md) |
-| Where are guarantee label values for `GuaranteeDisplay.level` defined? | [API Value Sets](api/schema-value-sets.md) |
+| Which document owns guarantee label values? | [API Value Sets](api/schema-value-sets.md) |
 | Which document owns `StateSummary`, `ShapingReadiness`, `NextActionSummary`, `CloseReadinessBlocker`, and `ValidatorResult` shapes? | [API State Schemas](api/schema-state.md) |
 | Which document owns `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle` shapes? | [API Artifact Schemas](api/schema-artifacts.md) |
 | Which document owns `UserJudgment`, `SensitiveActionScope`, and accepted-risk input shapes? | [API Judgment Schemas](api/schema-judgment.md) |
@@ -84,7 +84,7 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Question | Owner document(s) |
 |---|---|
 | Does the current MVP provide OS sandboxing? | [Security](security.md) |
-| Is `isolated` an active current-MVP guarantee? | [Security](security.md), [Active MVP Scope](active-mvp-scope.md) |
+| Which document owns `isolated` guarantee semantics? | [Security](security.md) |
 | Where are guarantee semantics defined? | [Security](security.md) |
 | Which document owns Product Repository, Harness Server, and Harness Runtime Home separation? | [Runtime Boundaries](runtime-boundaries.md) |
 | Which document owns local connector behavior, capability context, and verified surface boundaries? | [Agent Integration](agent-integration.md), [MVP API](api/mvp-api.md), [Security](security.md) |
@@ -107,6 +107,11 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Question | Owner document(s) |
 |---|---|
 | Where should later candidates be documented? | [Later Candidate Index](../later/index.md) |
+| Where are later security and assurance candidates documented? | [Security and Assurance Later Candidates](../later/security-and-assurance.md) |
+| Where are later artifact and evidence candidates documented? | [Artifacts and Evidence Later Candidates](../later/artifacts-and-evidence.md) |
+| Where are later connector and surface candidates documented? | [Connectors and Surfaces Later Candidates](../later/connectors-and-surfaces.md) |
+| Where are later policy and conformance candidates documented? | [Policy and Conformance Later Candidates](../later/policy-and-conformance.md) |
+| Where are later workflow and collaboration candidates documented? | [Workflow and Collaboration Later Candidates](../later/workflow-and-collaboration.md) |
 | What else must change before a later candidate becomes active? | [Later Candidate Index](../later/index.md), [Active MVP Scope](active-mvp-scope.md) |
 | How should "close readiness" be written in Korean? | [docs/terminology-map.yaml](../../terminology-map.yaml) |
 | Where is Korean terminology controlled? | [docs/terminology-map.yaml](../../terminology-map.yaml), [Translation Guide](../maintain/translation-guide.md), [Glossary](glossary.md) |

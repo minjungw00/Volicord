@@ -31,7 +31,7 @@
 |---|---|
 | 현재 MVP 범위는 어디에 정의되어 있나요? | [현재 MVP 범위](active-mvp-scope.md) |
 | 어떤 기능이 현재 활성인지, 프로필로 제한되는지, 이후 후보인지 어디서 확인하나요? | [현재 MVP 범위](active-mvp-scope.md), [API 값 집합](api/schema-value-sets.md), [이후 후보 색인](../later/index.md) |
-| 현재 MVP 보장 경계와 사용 가능 여부의 담당 문서는 어디인가요? | [현재 MVP 범위](active-mvp-scope.md) |
+| 현재 MVP에서 `isolated`가 활성인가요? | [보안](security.md), [현재 MVP 범위](active-mvp-scope.md) |
 | 이 저장소에서 런타임이나 서버 구현이 시작되었는지는 어디서 확인하나요? | [MVP 계획](../build/mvp-plan.md), [현재 MVP 범위](active-mvp-scope.md) |
 | 문서 전용 경계는 어디에 있나요? | [현재 MVP 범위](active-mvp-scope.md), [런타임 경계](runtime-boundaries.md) |
 | 구현 준비 상태나 유지보수자 인계 상태는 어디서 보나요? | [MVP 계획](../build/mvp-plan.md) |
@@ -62,7 +62,7 @@
 | 활성 메서드 이름, `response_kind`, `effect_kind`, enum 형태 API 값은 어디가 담당하나요? | [API 값 집합](api/schema-value-sets.md) |
 | 접근 등급은 어디에 정의되어 있나요? | [API 값 집합](api/schema-value-sets.md) |
 | `DryRunSummary`, `PlannedEffect`, `PlannedBlocker` 같은 `dry_run` 미리보기 구조는 어디에 정의되어 있나요? | [API 코어 스키마](api/schema-core.md), [API 값 집합](api/schema-value-sets.md) |
-| `GuaranteeDisplay.level`에 쓰는 보장 라벨 값의 담당 문서는 어디인가요? | [API 값 집합](api/schema-value-sets.md) |
+| 보장 라벨 값의 담당 문서는 어디인가요? | [API 값 집합](api/schema-value-sets.md) |
 | `StateSummary`, `ShapingReadiness`, `NextActionSummary`, `CloseReadinessBlocker`, `ValidatorResult` 구조는 어디가 담당하나요? | [API 상태 스키마](api/schema-state.md) |
 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle` 구조는 어디가 담당하나요? | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | `UserJudgment`, `SensitiveActionScope`, 수락된 위험 입력 구조는 어디가 담당하나요? | [API 판단 스키마](api/schema-judgment.md) |
@@ -84,7 +84,7 @@
 | 질문 | 담당 문서 |
 |---|---|
 | 현재 MVP가 OS 수준 샌드박싱을 제공하나요? | [보안](security.md) |
-| 현재 MVP에서 `isolated`가 활성 격리 보장인지 확인하려면 어디를 보나요? | [보안](security.md), [현재 MVP 범위](active-mvp-scope.md) |
+| `isolated` 보장 의미의 담당 문서는 어디인가요? | [보안](security.md) |
 | 보장 의미의 담당 문서는 어디인가요? | [보안](security.md) |
 | Product Repository, Harness Server, Harness Runtime Home의 분리는 어디가 담당하나요? | [런타임 경계](runtime-boundaries.md) |
 | 로컬 커넥터 동작, 역량 맥락, 확인된 접점 경계는 어디가 담당하나요? | [에이전트 통합](agent-integration.md), [MVP API](api/mvp-api.md), [보안](security.md) |
@@ -107,6 +107,11 @@
 | 질문 | 담당 문서 |
 |---|---|
 | 이후 후보는 어디에 문서화해야 하나요? | [이후 후보 색인](../later/index.md) |
+| 보안과 보증 이후 후보의 담당 문서는 어디인가요? | [보안과 보증 이후 후보](../later/security-and-assurance.md) |
+| 아티팩트와 증거 이후 후보의 담당 문서는 어디인가요? | [아티팩트와 증거 이후 후보](../later/artifacts-and-evidence.md) |
+| 커넥터와 접점 이후 후보의 담당 문서는 어디인가요? | [커넥터와 접점 이후 후보](../later/connectors-and-surfaces.md) |
+| 정책과 적합성 이후 후보의 담당 문서는 어디인가요? | [정책과 적합성 이후 후보](../later/policy-and-conformance.md) |
+| 작업 흐름과 협업 이후 후보의 담당 문서는 어디인가요? | [작업 흐름과 협업 이후 후보](../later/workflow-and-collaboration.md) |
 | 이후 후보가 활성 기능이 되려면 어떤 문서가 더 바뀌어야 하나요? | [이후 후보 색인](../later/index.md), [현재 MVP 범위](active-mvp-scope.md) |
 | "close readiness"를 한국어 참조 문서에서 "닫기 준비 상태"로 쓰는 기준은 어디가 담당하나요? | [docs/terminology-map.yaml](../../terminology-map.yaml) |
 | 한국어 용어는 어디서 통제하나요? | [docs/terminology-map.yaml](../../terminology-map.yaml), [번역 가이드](../maintain/translation-guide.md), [용어집](glossary.md) |
