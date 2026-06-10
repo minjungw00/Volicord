@@ -2,6 +2,8 @@
 
 This document owns persistent storage record layout for the current MVP source design. It is documentation source material only and does not create a runtime database, generated records, migration files, or implementation-complete DDL in this repository.
 
+Persistent records are local records committed by Core for later reads. They are not tamper-proof storage, anti-forgery proof, or external audit guarantees. Security non-claims and guarantee levels belong to [Security](security.md).
+
 ## Owns / Does not own
 
 This document owns:

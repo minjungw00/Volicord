@@ -167,7 +167,7 @@ An artifact link does not create the owner record, satisfy a gate by itself, pro
 
 Artifact body reads are separate from staged artifact promotion. Raw artifact path reads are not granted by default.
 
-Artifact metadata or content reads require a registered `ArtifactRef`, the matching same-project `task_id`, the required `artifact_links` owner relation, the redaction/availability state needed by the caller's access class, and the API/security owner requirements for `access_class=artifact_read`. A local path under the artifact store, an artifact `uri`, a staged path, or a copied file is not enough by itself to read or rely on artifact bytes.
+Artifact metadata or content reads require a registered `ArtifactRef`, the matching same-project `task_id`, the required `artifact_links` owner relation, the redaction/availability state needed by the caller's access class, and the API/security owner requirements for `access_class=artifact_read`, including any documented surface or connector capability boundary. A local path under the artifact store, an artifact `uri`, a staged path, or a copied file is not enough by itself to read or rely on artifact bytes.
 
 ## Retention boundary
 

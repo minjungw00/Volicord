@@ -2,6 +2,15 @@
 
 This page is a short router for the storage document family. It is documentation source material only; it does not create a Harness Server, Runtime Home, database, artifact store, migration runner, generated projection, runtime state, or implementation-complete DDL in this repository.
 
+## How to read
+
+The storage family separates conditions, results, exceptions, and non-claims. Do not infer storage effects from API schema shape or user-visible display prose.
+
+- Conditions identify the method branch, record state, or artifact lifecycle stage where a storage rule applies.
+- Results identify stored rows, artifacts, replay rows, events, and state-version impact.
+- Exceptions identify rejected, dry-run, read-only, or compatibility-failure branches where storage effects are absent or limited.
+- Non-claims mark boundaries where response shape, projections, report prose, or path strings do not create storage authority.
+
 ## Owns / Does not own
 
 The storage family owns:

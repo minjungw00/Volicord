@@ -12,6 +12,7 @@ This document owns:
 - event meaning for `task_events`
 - lock policy
 - migration semantics and active/later migration boundaries
+- failure and retry interpretation for state versions and idempotency keys
 
 This document does not own:
 
@@ -19,6 +20,7 @@ This document does not own:
 - which method branch produces an effect; see [Storage Effects](storage-effects.md) and [MVP API](api/mvp-api.md)
 - public error codes and precedence; see [API Errors](api/errors.md)
 - artifact lifecycle; see [Artifact Storage](storage-artifacts.md)
+- security guarantee wording; see [Security](security.md)
 - runtime deployment or operational commands
 
 ## Project-wide state clock
@@ -112,6 +114,23 @@ The active migration boundary is:
 - Keep status cards, compact views, projection freshness, close readiness, and report prose derived from current records at read time. They are not migration authority, repair input, or storage mutation paths.
 
 This document intentionally excludes inactive DDL bundles, migration catalogs, and profile-specific migration details.
+
+## Failures and retry
+
+Pre-commit failures have no storage effect. Stale `expected_state_version`, stale `WriteAuthorization.basis_state_version`, validation failure, malformed request, and idempotency request-hash conflict end in `ToolRejectedResponse` before commit and do not increment `state_version`.
+
+Transaction failures must leave no partial result. If any part of a new committed `dry_run=false` state change fails, storage must not partially leave current-row writes, events, replay rows, artifact effects, Write Authorization consumption, evidence updates, close effects, or a `state_version` increment.
+
+Retry rules depend on the failure type:
+
+| Situation | Retry method | Note |
+|---|---|---|
+| Stale `expected_state_version` | Read current state again and send a new request with the latest `project_state.state_version`. | This is a freshness check only; it does not replace user-owned judgment. |
+| Transport uncertainty for the same request | Retry with the same `idempotency_key` and same `request_hash`. | If the original committed, the original response is returned as replay and the state change is not repeated. |
+| Different request with the same `idempotency_key` | Do not retry; use a new idempotency key. | Same key with a different `request_hash` is `STATE_VERSION_CONFLICT`. |
+| Pre-commit validation failure | Fix the request and send a new request. | The failed request did not create a replay row. |
+
+Retry does not lower user-judgment boundaries. If a new acceptance, sensitive-action approval, residual-risk acceptance, or `Write Authorization` is needed after failure, the owning route must be used again.
 
 ## Related owners
 
