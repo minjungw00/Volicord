@@ -4,7 +4,7 @@
 
 이 참조 문서는 현재 MVP의 설계 품질 라우팅 경계를 판단 라우팅, 증거 참조, 범위 참조로 담당합니다. 설계 품질에서 보인 관찰 사항이 제품 판단, 기술 판단, 범위 판단, 증거 공백, 잔여 위험 표시 문제, 또는 이미 활성 Core/API 범주가 담당하는 닫기 차단 사유인지 식별하는 방법을 다룹니다.
 
-이 문서는 독립적인 활성 관문, 활성 `CloseBlocker.category`, 활성 validator 계열, 설계 정책 면제 경로, 심각도 기반 차단 정책, 증거 기록, QA 기록, 수락 기록, 잔여 위험 기록, 닫기 권한을 정의하지 않습니다.
+이 문서는 독립적인 활성 관문, 설계 품질 전용 활성 `CloseReadinessBlocker.category`, 활성 validator 계열, 설계 정책 면제 경로, 심각도 기반 차단 정책, 증거 기록, QA 기록, 수락 기록, 잔여 위험 기록, 닫기 권한을 정의하지 않습니다.
 
 이 문서가 담당합니다.
 
@@ -25,15 +25,15 @@
 
 ## 2. 현재 MVP 설계 품질 역할
 
-현재 MVP에서 설계 품질은 판단 라우팅을 하고 증거와 범위를 참조하는 좁은 층입니다. 품질 관련 우려를 이해할 수 있게 만들고, 그 우려를 기존 활성 담당 경로로 보냅니다. 새 Core 상태, `StateSummary.gates.design_gate`, `CloseBlocker.category=design_policy`, 새 스키마, 새 `ValidatorResult` 필드, 활성 설계 정책 validator, 설계 정책 waiver, 별도 설계 검토 권한을 만들지 않습니다.
+현재 MVP에서 설계 품질은 판단 라우팅을 하고 증거와 범위를 참조하는 좁은 층입니다. 품질 관련 우려를 이해할 수 있게 만들고, 그 우려를 기존 활성 담당 경로로 보냅니다. 새 Core 상태, `StateSummary.gates.design_gate`, `CloseReadinessBlocker.category=design_policy`, 새 스키마, 새 `ValidatorResult` 필드, 활성 설계 정책 validator, 설계 정책 waiver, 별도 설계 검토 권한을 만들지 않습니다.
 
 활성 역할은 아래 영향으로 제한됩니다.
 
 - 제품 동작, UX, 문구, 릴리스 약속, 사용자 가치 선택을 `judgment_kind=product_decision`으로 식별합니다.
 - 아키텍처, 의존성, 마이그레이션, 공개 인터페이스, 호환성, 보안/개인정보, 중요한 기술 방향 선택을 `judgment_kind=technical_decision`으로 식별합니다.
 - 범위 확장, 비목표 제거, Change Unit 경계, Autonomy Boundary 변경을 `judgment_kind=scope_decision`으로 식별합니다.
-- 해당 활성 담당 경로가 이미 차단을 요구할 때만 `CloseBlocker.category=scope`, `CloseBlocker.category=user_judgment`, `CloseBlocker.category=evidence`, `CloseBlocker.category=artifact_availability`를 가리킵니다.
-- 해당 담당 경로가 실제로 맞을 때만 `CloseBlocker.category=residual_risk_visibility`, `CloseBlocker.category=residual_risk_acceptance`, `CloseBlocker.category=surface_capability`, 또는 다른 이미 활성화된 범주를 가리킵니다.
+- 해당 활성 담당 경로가 이미 차단을 요구할 때만 `CloseReadinessBlocker.category=scope`, `CloseReadinessBlocker.category=user_judgment`, `CloseReadinessBlocker.category=evidence`, `CloseReadinessBlocker.category=artifact_availability`를 가리킵니다.
+- 해당 담당 경로가 실제로 맞을 때만 `CloseReadinessBlocker.category=residual_risk_visibility`, `CloseReadinessBlocker.category=residual_risk_acceptance`, `CloseReadinessBlocker.category=surface_capability`, 또는 다른 이미 활성화된 범주를 가리킵니다.
 - 집중된 사용자 판단 하나 묻기, 증거 요청, 잔여 위험 표시, 조언성 다음 행동 표시, 또는 아무 행동 없음 중 하나로 라우팅합니다.
 - 사용자 소유 제품 판단, 중요한 기술 판단, 범위 판단, 최종 수락, 잔여 위험 판단, 취소 판단을 구분합니다.
 - 증거, 검증, 수동 QA, 최종 수락, 잔여 위험 표시, 잔여 위험 수락, 닫기 준비 상태를 구분합니다. 검증과 수동 QA는 현재 MVP의 활성 관문이 아닙니다.
@@ -46,12 +46,12 @@
 
 | 우려 | 현재 MVP 활성 경로 |
 |---|---|
-| 제품 동작, UX, 문구, 릴리스 약속, 사용자 가치가 정해지지 않았습니다. | `judgment_kind=product_decision`. 활성 닫기 경로가 그 판단을 요구할 때만 `CloseBlocker.category=user_judgment`를 사용합니다. |
-| 아키텍처, 의존성, 마이그레이션, 공개 인터페이스, 호환성, 보안/개인정보, 중요한 기술 방향이 정해지지 않았습니다. | `judgment_kind=technical_decision`. 활성 닫기 경로가 그 판단을 요구할 때만 `CloseBlocker.category=user_judgment`를 사용합니다. |
-| 범위 확장, 비목표 제거, Change Unit 경계, Autonomy Boundary 변경이 필요합니다. | 담당 경로에 따라 `judgment_kind=scope_decision` 또는 `CloseBlocker.category=scope`를 사용합니다. |
-| 닫기와 관련된 주장을 뒷받침하는 자료가 부족합니다. | Core 증거 담당 경로에서 `CloseBlocker.category=evidence`, `CloseBlocker.category=artifact_availability`, 또는 증거 요청을 사용합니다. |
-| 알려진 한계나 확인하지 못한 조건이 닫기에 중요합니다. | `CloseBlocker.category=residual_risk_visibility`로 잔여 위험을 보이게 하고, 활성 닫기 경로가 수락을 요구할 때만 `CloseBlocker.category=residual_risk_acceptance`를 사용합니다. |
-| 연결된 접점이 주장한 동작이나 보장을 정직하게 지원하지 못합니다. | 역량 담당 경로에서 `CloseBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, 또는 낮아진 보장 표시를 사용합니다. |
+| 제품 동작, UX, 문구, 릴리스 약속, 사용자 가치가 정해지지 않았습니다. | `judgment_kind=product_decision`. 활성 닫기 경로가 그 판단을 요구할 때만 `CloseReadinessBlocker.category=user_judgment`를 사용합니다. |
+| 아키텍처, 의존성, 마이그레이션, 공개 인터페이스, 호환성, 보안/개인정보, 중요한 기술 방향이 정해지지 않았습니다. | `judgment_kind=technical_decision`. 활성 닫기 경로가 그 판단을 요구할 때만 `CloseReadinessBlocker.category=user_judgment`를 사용합니다. |
+| 범위 확장, 비목표 제거, Change Unit 경계, Autonomy Boundary 변경이 필요합니다. | 담당 경로에 따라 `judgment_kind=scope_decision` 또는 `CloseReadinessBlocker.category=scope`를 사용합니다. |
+| 닫기와 관련된 주장을 뒷받침하는 자료가 부족합니다. | Core 증거 담당 경로에서 `CloseReadinessBlocker.category=evidence`, `CloseReadinessBlocker.category=artifact_availability`, 또는 증거 요청을 사용합니다. |
+| 알려진 한계나 확인하지 못한 조건이 닫기에 중요합니다. | `CloseReadinessBlocker.category=residual_risk_visibility`로 잔여 위험을 보이게 하고, 활성 닫기 경로가 수락을 요구할 때만 `CloseReadinessBlocker.category=residual_risk_acceptance`를 사용합니다. |
+| 연결된 접점이 주장한 동작이나 보장을 정직하게 지원하지 못합니다. | 역량 담당 경로에서 `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, 또는 낮아진 보장 표시를 사용합니다. |
 
 설계 품질 라벨, 정책 이름, 심각도 값, validator ID, 검토 문구는 그 자체로 경로를 만들지 않습니다. 적용되는 활성 담당 경로가 없으면 현재 MVP 결과는 조언 문구이거나 아무 행동 없음입니다.
 
@@ -61,14 +61,14 @@
 설계 품질 관찰 사항은 아래 조건을 모두 만족할 때만 닫기를 차단합니다.
 
 - 활성 Task 또는 Change Unit과 시도 중인 닫기에 연결되어 있습니다.
-- 활성 닫기 차단 집합 안의 기존 활성 `CloseBlocker.category`, `judgment_kind`, API 오류, 담당 경로를 이름 붙입니다.
+- 활성 닫기 차단 집합 안의 기존 활성 `CloseReadinessBlocker.category`, `judgment_kind`, API 오류, 담당 경로를 이름 붙입니다.
 - 이름 붙인 담당 경로가 설계 품질 라벨 없이도 닫기를 차단할 조건입니다.
 - 차단 해소, 담당 경로를 통한 유예, 필요한 증거 요청, 잔여 위험 표시 중 하나로 이어지는 다음 행동을 정확히 하나 제공합니다.
-- `design_gate`, `CloseBlocker.category=design_policy`, 설계 정책 waiver, 넓은 정책 목록, 심각도 값만으로 차단하지 않습니다.
+- `design_gate`, `CloseReadinessBlocker.category=design_policy`, 설계 정책 waiver, 넓은 정책 목록, 심각도 값만으로 차단하지 않습니다.
 
 발견 사항이 도메인 언어, 세로 조각 형태, TDD, 모듈/인터페이스 검토, stewardship, 수동 QA, 분리형 검증, 검토 단계, 향후 정책 후보를 언급한다는 이유만으로 닫기를 차단하지 않습니다. 활성 담당 경로가 좁은 행동을 필요로 할 때만 조언성 다음 행동, 증거 요청, 집중된 사용자 판단, 잔여 위험 표시로 이어질 수 있습니다.
 
-설계 품질 관찰 사항이 닫기에 영향을 주더라도 차단 사유는 [API Schema Core](api/schema-core.md#current-mvp-value-sets)가 담당하는 활성 `CloseBlocker.category` 값 중 하나를 사용해야 합니다. 예를 들면 `scope`, `user_judgment`, `evidence`, `artifact_availability`, `residual_risk_visibility`, `residual_risk_acceptance`, `surface_capability`, `baseline`, `recovery`, `cancellation`, `supersession`입니다.
+설계 품질 관찰 사항이 닫기에 영향을 주더라도 close 가능성 평가의 닫기 차단 사유는 [API Schema Core](api/schema-core.md#current-mvp-value-sets)가 담당하는 활성 `CloseReadinessBlocker.category` 값 중 하나를 사용해야 합니다. 예를 들면 `scope`, `user_judgment`, `evidence`, `artifact_availability`, `residual_risk_visibility`, `residual_risk_acceptance`, `surface_capability`, `baseline`, `recovery`, `cancellation`, `supersession`입니다.
 
 ## 5. 현재 설계 정책 waiver 없음
 

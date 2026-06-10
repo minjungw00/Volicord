@@ -98,7 +98,7 @@ The active current MVP template set is exactly:
 
 The four user-facing outputs use ordinary language, source refs, and freshness only where they help the user decide, understand a blocker, inspect evidence, or understand close. They render plain labels such as current stage, what the agent may decide on its own, what Harness can verify, and reason this cannot be closed yet. They should not dump schemas, DDL, event logs, full artifacts, full report bodies, full evidence catalogs, or future catalogs.
 
-User-facing outputs should not require Harness vocabulary such as persistent discovery artifacts, Change Unit, `EvidenceSummary`, or `CloseBlocker`. Render the ordinary consequence first: what is known, what the user must decide, what is approved for this action only, what evidence exists or is missing, what risk remains visible, and what blocks closure. Exact schema names may appear only when the output is explicitly explaining the reference model or rendering an agent-facing packet.
+User-facing outputs should not require Harness vocabulary such as persistent discovery artifacts, Change Unit, `EvidenceSummary`, or `CloseReadinessBlocker`. Render the ordinary consequence first: what is known, what the user must decide, what is approved for this action only, what evidence exists or is missing, what risk remains visible, and what blocks closure. Exact schema names may appear only when the output is explicitly explaining the reference model or rendering an agent-facing packet.
 
 The agent-facing packet is a separate audience. It carries only current, next-action-relevant refs, blockers, evidence gaps, close blockers, guarantee display level, and one next safe action. It is not user prose and is not authority.
 

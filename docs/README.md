@@ -55,7 +55,7 @@ The Reference Index routes active owner documents for the public `ErrorCode` con
 
 For close/freshness questions, Reference routes `STATE_VERSION_CONFLICT`, pre-commit failure errors, and blocker-code exclusions to API Errors; status, `prepare_write`, and `close_task` response fields to MVP API; write decision evaluation versus close readiness evaluation to Core Model; and effect differences between read-only observation, dry-run preview, and committed blocked result to Storage. `CloseReadinessBlocker` is the close-readiness finding data shape used by `StatusResult.close_blockers` and `CloseTaskResult.blockers`; it does not mean persistence or state effect by itself.
 
-닫기와 최신성 질문에서는 `STATE_VERSION_CONFLICT`, 커밋 전 실패 오류, 차단 사유 코드 제외 규칙은 API Errors가, status, `prepare_write`, `close_task` 응답 필드는 MVP API가, `prepare_write` 판단 평가와 close 가능성 평가의 분리는 Core Model이, 읽기 전용 관찰, dry-run 미리보기, 커밋된 차단 결과의 효과 차이는 Storage가 담당합니다. `CloseReadinessBlocker`는 `StatusResult.close_blockers`와 `CloseTaskResult.blockers`에 쓰이는 close 가능성 평가의 닫기 차단 사유 데이터 구조이며, 그 자체가 저장 효과를 뜻하지 않는다.
+닫기와 최신성 질문에서는 `STATE_VERSION_CONFLICT`, 커밋 전 실패 오류, 차단 사유 코드 제외 규칙은 API Errors가, status, `prepare_write`, `close_task` 응답 필드는 MVP API가, `prepare_write` 판단 평가와 close 가능성 평가의 분리는 Core Model이, 읽기 전용 관찰, dry-run 미리보기, 커밋된 차단 결과의 효과 차이는 Storage가 담당합니다. `CloseReadinessBlocker`는 `StatusResult.close_blockers`와 `CloseTaskResult.blockers`에 쓰이는 close 가능성 평가의 닫기 차단 사유 데이터 구조이며, 그 자체가 저장 효과를 뜻하지 않습니다.
 
 ## Active MVP Boundary / 현재 MVP 경계
 

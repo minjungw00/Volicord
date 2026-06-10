@@ -88,7 +88,7 @@ Use one Korean expression consistently for one concept. Schema fields, method na
 | residual risk | 잔여 위험 |
 | residual risk acceptance | 잔여 위험 수락 |
 | close readiness | 닫기 가능 여부 또는 닫기 준비 상태 |
-| CloseBlocker or close blocker in user-facing display | 닫기를 막는 이유 |
+| close blocker in user-facing display | 닫기를 막는 이유 |
 | `lifecycle_phase` in user-facing display | 현재 단계 |
 | Autonomy Boundary in user-facing display | 에이전트가 스스로 판단해도 되는 범위 |
 | `guarantee_level` in user-facing display | 하네스가 확인할 수 있는 수준 |
@@ -183,7 +183,7 @@ Do not translate active/later, security, or judgment boundaries into stronger cl
 - Active MVP public conflict wording uses project-wide `project_state.state_version` unless an owner promotes another clock. Do not expose both task-scoped and project-scoped `state_version` as public conflict clocks.
 - Projection reconcile and `reconcile` stay later-only unless promoted, and must not become a Core state mutation path through translation.
 - Final acceptance and residual risk acceptance do not fill missing required evidence.
-- User-facing templates should not expose internal enum or schema terms such as `EvidenceSummary`, `CloseBlocker.category`, `judgment_kind`, or `guarantee_level` unless the contract value itself is being explained.
+- User-facing templates should not expose internal enum or schema terms such as `EvidenceSummary`, `CloseReadinessBlocker.category`, `judgment_kind`, or `guarantee_level` unless the contract value itself is being explained.
 
 ## 8. Bilingual Review Checklist
 

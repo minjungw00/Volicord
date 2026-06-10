@@ -4,7 +4,7 @@
 
 This Reference page owns the active current MVP design-quality routing boundary as a judgment-routing and evidence/scope reference: how design-quality observations identify product decisions, technical decisions, scope decisions, evidence gaps, residual-risk visibility issues, or close blockers that are already owned by active Core/API categories.
 
-It does not define an independent active gate, active `CloseBlocker.category`, active validator family, design-policy waiver route, severity-based blocking policy, evidence record, QA record, acceptance record, residual-risk record, or close authority.
+It does not define an independent active gate, active design-quality `CloseReadinessBlocker.category`, active validator family, design-policy waiver route, severity-based blocking policy, evidence record, QA record, acceptance record, residual-risk record, or close authority.
 
 It owns:
 
@@ -25,15 +25,15 @@ Documentation in this repository remains planning source material. It does not m
 
 ## 2. Active current MVP design-quality role
 
-Active current MVP design quality is a narrow judgment-routing and evidence/scope reference layer. It makes a quality concern legible, then sends the concern to an existing active owner path. It does not create new Core state, `StateSummary.gates.design_gate`, `CloseBlocker.category=design_policy`, new schemas, new validator result fields, active design-policy validators, design-policy waiver, or a separate design-review authority.
+Active current MVP design quality is a narrow judgment-routing and evidence/scope reference layer. It makes a quality concern legible, then sends the concern to an existing active owner path. It does not create new Core state, `StateSummary.gates.design_gate`, `CloseReadinessBlocker.category=design_policy`, new schemas, new validator result fields, active design-policy validators, design-policy waiver, or a separate design-review authority.
 
 The active role is limited to these effects:
 
 - identify a product behavior, UX, wording, release promise, or user-value choice as `judgment_kind=product_decision`
 - identify an architecture, dependency, migration, public-interface, compatibility, security/privacy, or material technical direction choice as `judgment_kind=technical_decision`
 - identify scope expansion, non-goal removal, Change Unit boundary, or Autonomy Boundary change as `judgment_kind=scope_decision`
-- point to `CloseBlocker.category=scope`, `CloseBlocker.category=user_judgment`, `CloseBlocker.category=evidence`, or `CloseBlocker.category=artifact_availability` when the matching active owner path already requires that blocker
-- point to `CloseBlocker.category=residual_risk_visibility`, `CloseBlocker.category=residual_risk_acceptance`, `CloseBlocker.category=surface_capability`, or another already-active category only when that owner path truly applies
+- point to `CloseReadinessBlocker.category=scope`, `CloseReadinessBlocker.category=user_judgment`, `CloseReadinessBlocker.category=evidence`, or `CloseReadinessBlocker.category=artifact_availability` when the matching active owner path already requires that close-readiness finding
+- point to `CloseReadinessBlocker.category=residual_risk_visibility`, `CloseReadinessBlocker.category=residual_risk_acceptance`, `CloseReadinessBlocker.category=surface_capability`, or another already-active category only when that owner path truly applies
 - route one focused next action: ask one focused user judgment, request evidence, mark residual risk visible, show an advisory next action, or no action
 - keep user-owned product, material technical, scope, final-acceptance, residual-risk, and cancellation judgments distinct
 - keep evidence, verification, Manual QA, final acceptance, residual-risk visibility, residual-risk acceptance, and close readiness distinct; verification and Manual QA are not active current MVP gates
@@ -46,12 +46,12 @@ A design-quality observation affects current MVP state only through an active ow
 
 | Concern | Active current MVP route |
 |---|---|
-| Product behavior, UX, wording, release promise, or user value is undecided. | `judgment_kind=product_decision`; use `CloseBlocker.category=user_judgment` only when the active close path requires that judgment. |
-| Architecture, dependency, migration, public interface, compatibility, security/privacy, or material technical direction is undecided. | `judgment_kind=technical_decision`; use `CloseBlocker.category=user_judgment` only when the active close path requires that judgment. |
-| Scope expansion, non-goal removal, Change Unit boundary, or Autonomy Boundary change is needed. | `judgment_kind=scope_decision` or `CloseBlocker.category=scope`, depending on the owner path. |
-| A close-relevant claim lacks support. | `CloseBlocker.category=evidence`, `CloseBlocker.category=artifact_availability`, or an evidence request through the Core evidence owner path. |
-| A known limitation or unchecked condition matters to close. | Residual-risk visibility through `CloseBlocker.category=residual_risk_visibility`, and `CloseBlocker.category=residual_risk_acceptance` only when the active close path requires acceptance. |
-| The connected surface cannot honestly support the claimed operation or guarantee. | `CloseBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, or a lower guarantee display through the capability owner path. |
+| Product behavior, UX, wording, release promise, or user value is undecided. | `judgment_kind=product_decision`; use `CloseReadinessBlocker.category=user_judgment` only when the active close path requires that judgment. |
+| Architecture, dependency, migration, public interface, compatibility, security/privacy, or material technical direction is undecided. | `judgment_kind=technical_decision`; use `CloseReadinessBlocker.category=user_judgment` only when the active close path requires that judgment. |
+| Scope expansion, non-goal removal, Change Unit boundary, or Autonomy Boundary change is needed. | `judgment_kind=scope_decision` or `CloseReadinessBlocker.category=scope`, depending on the owner path. |
+| A close-relevant claim lacks support. | `CloseReadinessBlocker.category=evidence`, `CloseReadinessBlocker.category=artifact_availability`, or an evidence request through the Core evidence owner path. |
+| A known limitation or unchecked condition matters to close. | Residual-risk visibility through `CloseReadinessBlocker.category=residual_risk_visibility`, and `CloseReadinessBlocker.category=residual_risk_acceptance` only when the active close path requires acceptance. |
+| The connected surface cannot honestly support the claimed operation or guarantee. | `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, or a lower guarantee display through the capability owner path. |
 
 A design-quality label, policy name, severity value, validator ID, or review phrase does not create the route. If no active owner path applies, the current MVP result is advisory text or no action.
 
@@ -61,14 +61,14 @@ A design-quality label, policy name, severity value, validator ID, or review phr
 A design-quality observation blocks close only when all of these are true:
 
 - it is tied to the active Task or Change Unit and the attempted close
-- it names an existing active `CloseBlocker.category`, `judgment_kind`, API error, or owner path from the active close-blocking set
+- it names an existing active `CloseReadinessBlocker.category`, `judgment_kind`, API error, or owner path from the active close-blocking set
 - the named owner path would block close even if no design-quality label existed
 - it gives exactly one next action that can unblock, defer through the owning path, request the required evidence, or mark residual risk visible
-- it does not rely on `design_gate`, `CloseBlocker.category=design_policy`, a design-policy waiver, a broad policy catalog, or severity alone
+- it does not rely on `design_gate`, `CloseReadinessBlocker.category=design_policy`, a design-policy waiver, a broad policy catalog, or severity alone
 
 A finding does not block close merely because it mentions domain language, vertical slice shape, TDD, module/interface review, stewardship, Manual QA, detached verification, review stages, or a future policy family. Those may produce an advisory next action, an evidence request, a focused user judgment, or a residual-risk marker only when an active owner path needs that narrow action.
 
-When a design-quality observation affects close, the blocker must use one of the active `CloseBlocker.category` values owned by [API Schema Core](api/schema-core.md#current-mvp-value-sets), such as `scope`, `user_judgment`, `evidence`, `artifact_availability`, `residual_risk_visibility`, `residual_risk_acceptance`, `surface_capability`, `baseline`, `recovery`, `cancellation`, or `supersession`.
+When a design-quality observation affects close, the close-readiness finding must use one of the active `CloseReadinessBlocker.category` values owned by [API Schema Core](api/schema-core.md#current-mvp-value-sets), such as `scope`, `user_judgment`, `evidence`, `artifact_availability`, `residual_risk_visibility`, `residual_risk_acceptance`, `surface_capability`, `baseline`, `recovery`, `cancellation`, or `supersession`.
 
 ## 5. No Current Design-Policy Waiver
 
