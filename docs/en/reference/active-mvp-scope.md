@@ -74,7 +74,7 @@ The active MVP excludes:
 - Manual QA workflow, `qa_gate`, and `verification_gate`
 - command, network, and secret access observation
 - command/network/secret pre-tool blocking
-- preventive or isolated guarantees
+- preventive guarantees and `isolated` guarantee semantics
 - hosted dashboards
 - connector marketplaces
 - export or handoff formats
@@ -86,9 +86,9 @@ Approving a sensitive action does not create active observation or blocking unle
 
 ## Profile-gated values
 
-Some value names may be reserved or profile-gated without being active user-visible capabilities. Reserved or profile-gated names do not extend the current MVP by appearing in examples, schemas, or later-candidate tables.
+Some value names may be reserved or profile-gated without being active user-visible capabilities. Reserved or profile-gated guarantee labels do not expand the current MVP scope. Their appearance in examples, schemas, or later-candidate tables does not activate behavior, make a guarantee available, or make the value a default current-MVP value.
 
-Exact value-set placement belongs to [API Value Sets](api/schema-value-sets.md). Security and guarantee meaning belongs to [Security](security.md).
+Exact guarantee label value entries belong to [API Value Sets](api/schema-value-sets.md). Guarantee semantics, including non-claims for `isolated`, belong to [Security](security.md).
 
 ## Later candidates
 
@@ -98,7 +98,9 @@ Mentioning a later candidate in examples, route text, schema notes, or this refe
 
 ## Current guarantee boundary
 
-The current MVP guarantee boundary is cooperative by default. For canonical guarantee levels, detective wording, preventive/isolated promotion rules, and security non-claims, see [Security](security.md).
+The current MVP guarantee boundary is `cooperative` by default. The current MVP does not provide `isolated` guarantee semantics. Reserved or profile-gated guarantee labels do not expand the current MVP scope.
+
+For guarantee semantics, detective wording, promotion rules for `preventive` and `isolated`, and security non-claims, see [Security](security.md). For guarantee label value entries, see [API Value Sets](api/schema-value-sets.md).
 
 `harness.prepare_write` and `Write Authorization` remain product-file write compatibility mechanisms. Their method behavior belongs to [MVP API](api/mvp-api.md), and their Core meaning belongs to [Core Model](core-model.md).
 
