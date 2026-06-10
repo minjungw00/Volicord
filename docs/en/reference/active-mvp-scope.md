@@ -62,13 +62,7 @@ Read-time status or derived display is active only as part of status and close-r
 
 ## Excluded from the active MVP
 
-The active MVP is not:
-
-- an OS permission control system
-- a sandbox
-- tamper-proof storage
-- a full security isolation layer
-- a runtime implementation while this repository remains documentation-only
+The active MVP is intentionally narrow. For canonical security non-claims and guarantee levels, see [Security](security.md). While this repository remains documentation-only, the active MVP is also not a runtime implementation.
 
 Later candidates do not create active requirements.
 
@@ -88,16 +82,7 @@ The active MVP excludes:
 - generated conformance artifacts
 - operations profiles
 
-Approving any of these actions does not mean Harness can observe or block that action in the current MVP:
-
-- command
-- dependency change
-- host
-- network access
-- secret handle
-- deployment
-- destructive action
-- system access
+Approving a sensitive action does not create active observation or blocking unless an owner promotes that capability. Security and observation boundaries belong to [Security](security.md) and the relevant later-candidate owners.
 
 ## Profile-gated values
 
@@ -113,11 +98,9 @@ Mentioning a later candidate in examples, route text, schema notes, or this refe
 
 ## Current guarantee boundary
 
-The current MVP guarantee boundary is cooperative by default. Harness can record and display authority boundaries, compatibility checks, evidence summaries, user-owned judgment, and close-readiness findings, but that display is not OS enforcement, arbitrary-tool isolation, tamper-proof storage, or broad security isolation.
+The current MVP guarantee boundary is cooperative by default. For canonical guarantee levels, detective wording, preventive/isolated promotion rules, and security non-claims, see [Security](security.md).
 
-Detective wording is allowed only for the covered observable scope after the relevant active capability check has passed. Preventive or isolated wording requires a separately documented and proven mechanism before it can be active.
-
-`harness.prepare_write` and `Write Authorization` are cooperative product-file write compatibility mechanisms. They do not grant operating-system permission, sandbox arbitrary tools, prove all tools were blocked before action, or make local files tamper-proof.
+`harness.prepare_write` and `Write Authorization` remain product-file write compatibility mechanisms. Their method behavior belongs to [MVP API](api/mvp-api.md), and their Core meaning belongs to [Core Model](core-model.md).
 
 ## Documentation-only boundary
 

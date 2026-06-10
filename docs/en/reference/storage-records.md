@@ -51,9 +51,9 @@ The path meanings are storage assumptions:
 
 `project.yaml` must not store current Task state, gates, Write Authorization state, evidence sufficiency, final acceptance, residual-risk acceptance, or close state.
 
-Runtime Home identity must not depend only on a filesystem path. A copied or moved Runtime Home may carry the same stored `runtime_home_id`; a newly created Runtime Home gets a new id. The id helps detect suspicious copies, duplicate registrations, or path drift. It does not make storage tamper-proof.
+Runtime Home identity must not depend only on a filesystem path. A copied or moved Runtime Home may carry the same stored `runtime_home_id`; a newly created Runtime Home gets a new id. The id helps detect suspicious copies, duplicate registrations, or path drift, but it is not a security guarantee.
 
-Runtime Home files are local operational control data and may contain sensitive support data. Broad read access can expose secrets, PII, tokens, logs, screenshots, diffs, and artifact content. Broad write access is a tampering and evidence-poisoning risk. File permissions, owner checks, hashes, and diagnostics are defensive checks; they do not create OS-level sandboxing, arbitrary-tool control, tamper-proof storage, or pre-execution blocking.
+Runtime Home files are local operational control data and may contain sensitive support data. Security non-claims and guarantee levels belong to [Security](security.md); location boundaries belong to [Runtime Boundaries](runtime-boundaries.md).
 
 ## Persisted record categories
 
@@ -78,7 +78,7 @@ The active Core persisted records are:
 - `task_events`.
 - `tool_invocations`.
 
-The active temporary storage boundary is `artifact_staging` or an equivalent storage-owned staging manifest, together with safe temporary bytes or notices under `artifacts/tmp/`. It exists only to let `harness.stage_artifact` produce a scoped, expiring, single-consumption handle with recorded creation surface provenance for later `harness.record_run` promotion. It is not a persistent `ArtifactRef`, evidence authority, a Core mutation record, an event source, a replay row, or a state-version source.
+The active temporary storage boundary is `artifact_staging` or an equivalent storage-owned staging manifest, together with safe temporary bytes or notices under `artifacts/tmp/`. This is storage placement only; staging lifecycle, provenance, consumption, and promotion belong to [Artifact Storage](storage-artifacts.md).
 
 No other persisted table family or temporary handle family is active current MVP scope. Requirement shaping persists through `tasks`, `change_units`, `user_judgments`, `evidence_summaries`, and `blockers`; it is not a separate committed Discovery Brief, Shared Design, Question Queue, Assumption Register, or First Safe Change Unit Candidate table. Evidence persists through compact evidence summaries, `CompletionPolicy` on the Task or Change Unit, required coverage items, and artifact refs, not through full Evidence Manifest storage.
 

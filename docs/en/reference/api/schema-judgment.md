@@ -114,7 +114,7 @@ RecordUserJudgmentPayload:
 
 ## SensitiveActionScope
 
-`SensitiveActionScope` describes the named sensitive step the user is asked to approve. It is not `AuthorizedAttemptScope`, not Write Authorization, and not proof that the active surface can observe, block, sandbox, or isolate the step.
+`SensitiveActionScope` describes the named sensitive step the user is asked to approve. It is not `AuthorizedAttemptScope`, not Write Authorization, and not security authority; see [Security](../security.md).
 
 ```yaml
 SensitiveActionScope:

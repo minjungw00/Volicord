@@ -114,7 +114,7 @@ RecordUserJudgmentPayload:
 
 ## `SensitiveActionScope`
 
-`SensitiveActionScope`는 사용자가 승인할지 판단해야 하는 이름 붙은 민감 단계를 설명합니다. `AuthorizedAttemptScope`도 아니고, Write Authorization도 아니며, 활성 접점이 그 단계를 관찰하거나 차단하거나 샌드박스 처리하거나 격리할 수 있다는 증명도 아닙니다.
+`SensitiveActionScope`는 사용자가 승인할지 판단해야 하는 이름 붙은 민감 단계를 설명합니다. `AuthorizedAttemptScope`도 아니고, Write Authorization도 아니며, 보안 권한도 아닙니다. [보안](../security.md)을 확인하세요.
 
 ```yaml
 SensitiveActionScope:

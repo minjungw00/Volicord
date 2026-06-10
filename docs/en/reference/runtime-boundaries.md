@@ -11,7 +11,7 @@ This document owns:
 - the separation between Product Repository, Harness Server or installation, and Harness Runtime Home
 - the rule that Product Repository files, generated displays, chat text, connector prose, and agent memory do not create Harness authority
 - the distinction between server installation location and runtime data location
-- the boundary statement that a Runtime Home is not automatically secure, isolated, or tamper-proof
+- the boundary statement that a Runtime Home is not automatically a security boundary
 
 This document does not own:
 
@@ -28,7 +28,7 @@ Harness documentation must keep these locations distinct:
 |---|---|---|
 | Product Repository | The user's project workspace. | It can supply product files as input, but it is not Harness runtime state or a Runtime Home by default. |
 | Harness Server or installation | The future server process, package, or installed application location. | It may mediate Harness APIs and records, but the install location is not automatically where runtime data lives. |
-| Harness Runtime Home | The future operational data space for Harness records, local store metadata, and artifact storage. | It is runtime data space, not the Product Repository and not proof of OS-level security. |
+| Harness Runtime Home | The future operational data space for Harness records, local store metadata, and artifact storage. | It is runtime data space, not the Product Repository and not proof of security authority. |
 
 ## Product repository
 
@@ -48,7 +48,7 @@ This repository does not contain a Harness Server implementation. Documentation 
 
 Harness Runtime Home is the future per-user or per-installation operational data space. It may contain Harness-owned records, local store metadata, staged or persisted artifact data, locks, migrations, and other operational data only as defined by the storage/runtime owners.
 
-A Runtime Home is not automatically secure, isolated, or tamper-proof. File permissions, hashes, diagnostics, and owner checks may be useful defensive mechanisms when documented by their owners, but they do not by themselves create OS-level sandboxing, arbitrary-tool control, or pre-execution blocking.
+A Runtime Home is not automatically a security boundary. Security guarantee wording and non-claims belong to [Security](security.md).
 
 This documentation repository is not a Runtime Home.
 
@@ -58,7 +58,7 @@ This documentation repository is not a Runtime Home.
 |---|---|---|
 | Product Repository | Product source, product docs, tests, project configuration, and product files that future Harness checks may inspect. | Harness runtime state, generated Harness records, a Runtime Home, or authority proof. |
 | Harness Server or installation | Future server executable code, installed packages, server configuration, and application resources. | Product workspace content, canonical runtime data, or proof that a Runtime Home exists. |
-| Harness Runtime Home | Future Harness operational records, runtime metadata, local store data, artifacts, locks, migrations, and related diagnostics defined by storage/runtime owners. | Product source, server install files, tamper-proof storage, or an OS permission boundary. |
+| Harness Runtime Home | Future Harness operational records, runtime metadata, local store data, artifacts, locks, migrations, and related diagnostics defined by storage/runtime owners. | Product source, server install files, or a security boundary. |
 | This documentation repository | Source documentation for future Harness behavior. | Runtime state, server implementation, generated projections, evidence, QA, acceptance, close records, or conformance output. |
 
 ## What must not be inferred
@@ -67,14 +67,12 @@ This documentation repository is not a Runtime Home.
 - Do not infer that documentation files are Harness records or generated operational files.
 - Do not infer that the Product Repository is the Runtime Home unless an owner-defined runtime configuration says so.
 - Do not infer that the server installation directory is the runtime data directory.
-- Do not infer that a Runtime Home is tamper-proof, isolated, or protected from arbitrary local tools.
+- Do not infer that a Runtime Home is a security boundary.
 - Do not infer Harness authority from Product Repository text, generated Markdown, rendered displays, chat text, connector prose, agent memory, copied `surface_id` values, displayed `ArtifactRef` values, or rendered projections.
 
 ## Security boundary links
 
-This page states the location boundary and the non-inference rules. It summarizes security non-claims only to keep the boundary honest: current documentation does not claim OS-level permission control, arbitrary-tool sandboxing, tamper-proof storage, default pre-tool blocking, security isolation, or permission isolation.
-
-Detailed guarantee levels, capability-gated detective wording, explicit non-claims, and later preventive-control requirements belong to [Security](security.md).
+This page states the location boundary and the non-inference rules. Detailed guarantee levels, capability-gated detective wording, explicit non-claims, and later preventive-control requirements belong to [Security](security.md).
 
 ## Owner links
 

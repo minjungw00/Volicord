@@ -110,7 +110,7 @@ The agent must not:
 - Write outside the named scope.
 - Treat write approval as product approval, final acceptance, residual-risk acceptance, or blanket permission for later writes.
 - Treat sensitive-action approval as the same thing as product-file write approval.
-- Claim OS permission, sandboxing, tamper-proof storage, arbitrary-tool isolation, or pre-tool blocking unless the exact documented mechanism supports that claim.
+- Claim stronger security behavior than the security owner supports; see [Security](../reference/security.md).
 
 ## Recording runs and evidence
 
@@ -208,7 +208,7 @@ The agent must not:
 
 ## What Harness does not guarantee
 
-Harness makes scope, judgment, evidence, and close basis visible. That visibility is useful, but it is not the same thing as enforcement or proof.
+Harness makes scope, judgment, evidence, and close basis visible. That visibility is useful, but it is not the same thing as enforcement or proof. For canonical security non-claims and guarantee levels, see [Security](../reference/security.md).
 
 You decide:
 - Whether to continue when Harness authority, evidence, or observable surface information is unavailable.
@@ -222,8 +222,7 @@ Harness records:
 - Known limits that affect write, evidence, judgment, or close claims.
 
 The agent must not:
-- Imply OS-level permissions, arbitrary-tool sandboxing, tamper-proof local files, broad security isolation, or universal pre-tool blocking.
-- Claim command, network, secret, native capture, or external-system effects were observed unless the active surface can honestly observe them.
+- Imply stronger security, observation, or prevention than the relevant owner and active surface support.
 - Claim Harness proves correctness, completeness, accessibility, privacy, security, or production safety by itself.
 - Turn "Harness recorded this" into "the user accepted this."
 

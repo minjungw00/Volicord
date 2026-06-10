@@ -10,7 +10,7 @@ This document describes future Harness Server behavior for planning and review. 
 
 The active MVP API is a small local MCP surface for one user work loop. It can intake work, show status, update active scope, check proposed product writes against current Core state, record runs and evidence refs, ask and record user-owned judgment, and close only when active blockers allow it.
 
-The API does not provide OS permissions, arbitrary-tool sandboxing, tamper-proof files, pre-tool blocking, or security isolation. `harness.prepare_write` returns a cooperative Harness record/check only.
+The API returns cooperative Harness record/check behavior only. Security non-claims and guarantee wording belong to [Security](../security.md).
 
 The specification requires requirement shaping to use the active Task, Change Unit, `user_judgment`, evidence summary, blocker paths, next actions, and the derived `ShapingReadiness` view.
 
@@ -39,28 +39,7 @@ The exact active method-name value set is owned by [API Value Sets](schema-value
 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) | Record the user's answer to an existing pending `UserJudgment`. |
 | [`harness.close_task`](#harnessclose_task) | Check close readiness and close, cancel, or supersede only when blockers allow it. |
 
-Method state effects are fixed by this matrix. "Event created",
-"`tool_invocations` replay row created", and "`state_version` increments" mean a
-new committed non-dry-run mutation. The version increment is always one
-project-wide `project_state.state_version` increment by exactly 1. Idempotent
-replay returns the existing committed response and does not create a second
-event, replay row, or version increment. A committed blocked response has those
-effects only in rows whose "Committed blocked response allowed" cell says yes.
-
-| Method | Read-only or mutating | `dry_run` allowed | `idempotency_key` required | `expected_state_version` required | Committed blocked response allowed | Event created | `tool_invocations` replay row created | `state_version` increments |
-|---|---|---|---|---|---|---|---|---|
-| `harness.intake` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, when the method commits shaping/blocker state instead of a write-ready path | Yes, on commit | Yes, on first commit | Yes, on commit |
-| `harness.status` | Read-only | Yes; returns read-only result | No | No; may be `null` | No; blockers are computed response fields only | No | No | No |
-| `harness.update_scope` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only for method-owned blocker/current-row updates; no scope authority is created by an unsatisfied precondition | Yes, on commit | Yes, on first commit | Yes, on commit |
-| `harness.prepare_write` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, for committed `blocked`, `approval_required`, or `decision_required` write-decision reason updates; no consumable Write Authorization is created | Yes, on committed `allowed` or committed write-decision reason update | Yes, on first committed `allowed` or committed write-decision reason update | Yes, on committed `allowed` or committed write-decision reason update |
-| `harness.stage_artifact` | Temporary artifact utility; not Core-state-changing | Yes; previews staging | No | No; may be `null` | No; invalid staging requests fail without Core mutation | No | No | No |
-| `harness.record_run` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only when recording a compatible Run or run-related blocker state; rejected attempts are pre-commit failures | Yes, on commit | Yes, on first commit | Yes, on commit |
-| `harness.request_user_judgment` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | No separate blocked-response commit; the method either commits the pending judgment path or fails pre-commit | Yes, on commit | Yes, on first commit | Yes, on commit |
-| `harness.record_user_judgment` | Mutating | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, when the addressed judgment is committed as rejected, deferred, blocked, or otherwise blocker-producing | Yes, on commit | Yes, on first commit | Yes, on commit |
-| `harness.close_task intent=check` | Read-only | Yes; flag allowed, response branch remains `CloseTaskResult` | No | No; may be `null` | No; close blockers are computed response fields only | No | No | No |
-| `harness.close_task intent=complete` | Mutating completion attempt | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, when complete blockers are persisted while the Task remains open | Yes, on completed commit or committed blocked complete | Yes, on first completed commit or committed blocked complete | Yes, on completed commit or committed blocked complete |
-| `harness.close_task intent=cancel` | Mutating terminal cancellation attempt | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only for blockers that invalidate cancellation itself while the Task remains open | Yes, on cancelled commit or committed blocked cancellation | Yes, on first cancelled commit or committed blocked cancellation | Yes, on cancelled commit or committed blocked cancellation |
-| `harness.close_task intent=supersede` | Mutating terminal supersession attempt | Yes; never commits | Yes for non-dry-run | Yes for non-dry-run | Yes, only for blockers that invalidate supersession itself while the Task remains open | Yes, on superseded commit or committed blocked supersession | Yes, on first superseded commit or committed blocked supersession | Yes, on superseded commit or committed blocked supersession |
+This page names the method role and method-specific result behavior. For the canonical branch, storage-effect, `dry_run`, replay, and state-version rules, see [API Schema Core](schema-core.md), [Storage Effects](../storage-effects.md), and [Storage Versioning](../storage-versioning.md).
 
 <a id="shared-request-rules"></a>
 
@@ -70,97 +49,15 @@ All methods use [`ToolEnvelope`](schema-core.md#tool-envelope). Each public meth
 
 Examples below are compact branch examples, not full schema definitions. Minimal request examples include the fields needed to construct a valid call for that method. Representative response examples show branch-critical fields and may omit schema-owned nested fields that do not affect the behavior being illustrated; use the linked schema owners for complete shapes.
 
-Committed non-dry-run state-changing calls require a non-null `idempotency_key` and a current project-wide `expected_state_version`. `harness.stage_artifact`, `harness.status`, `harness.close_task intent=check`, and dry-run calls may use `idempotency_key: null` and `expected_state_version: null`. `harness.stage_artifact` creates only storage-owned temporary staging; it is not a Core state transition and does not create a replay row or increment `project_state.state_version`.
+Committed non-dry-run state-changing calls require a non-null `idempotency_key` and a current project-wide `expected_state_version`; read-only calls, valid dry-run previews, and staging utility calls use the exceptions defined by their owners.
 
-Response branch selection is normative and follows this precedence:
+Response branch selection is owned by [API Schema Core](schema-core.md#common-response). Storage and replay effects are owned by [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md). Public errors, stale-state precedence, and close blocker routing are owned by [API Errors](errors.md).
 
-1. A pre-commit failure returns `ToolRejectedResponse` regardless of `dry_run`.
-2. A selected read-only operation returns its method-specific `MethodResult`, even when `dry_run=true`; the result uses `base.dry_run=true` and `base.effect_kind=read_only`.
-3. A selected state-effecting operation or staging operation with `dry_run=true` returns `ToolDryRunResponse` when the request is otherwise valid and previewable.
-4. A non-dry-run committed operation or successful staging operation returns its method-specific `MethodResult`.
+When a method has a tool-specific `task_id`, Core resolves the primary Task from the method field before `ToolEnvelope.task_id` and then the active Task. That resolution selects owner records; it does not create a separate state clock.
 
-Mixed-intent methods choose the response branch by the selected intent's state effect, not by the method name alone. For `harness.close_task`, `intent=check` is read-only, while `intent=complete`, `intent=cancel`, and `intent=supersede` are state-effecting intents.
+Local access classes are Harness API compatibility classes, not OS permission classes. Active `access_class` values are owned by [API Value Sets](schema-value-sets.md#access-class-values); connector derivation and capability posture are owned by [Agent Integration](../agent-integration.md) and [Security](../security.md).
 
-Response branches map to state effect this way:
-
-| Response branch | State-effect meaning |
-|---|---|
-| Read-only result | `MethodResult` with `effect_kind=read_only`. |
-| Core committed result | `MethodResult` with `effect_kind=core_committed`. |
-| Successful `harness.stage_artifact` staging | `StageArtifactResult` with `effect_kind=staging_created`. |
-| Pre-commit failure | `ToolRejectedResponse` with `response_kind=rejected` and `effect_kind=no_effect`. |
-| Valid dry run of a selected state-effecting or staging operation | `ToolDryRunResponse` with `response_kind=dry_run` and `effect_kind=no_effect`. |
-
-`ToolRejectedResponse` is used for pre-commit failures, including:
-
-- stale `expected_state_version` / `STATE_VERSION_CONFLICT`
-- request validation failure
-- invalid staged artifact handle
-- unavailable MCP/Core or local surface
-- local surface mismatch
-- capability failure
-- similar failures before a method commit
-
-It does not include method-specific result-only fields such as `decision`, `task_ref`, `run_summary`, `staged_artifact_handle`, or `close_state`.
-
-`ToolDryRunResponse` is used for valid `dry_run=true` calls when the selected operation has a state effect or storage-owned staging effect and Core can evaluate the request shape, local access, capabilities, and reachable state/preconditions enough to produce a preview. It has `effect_kind=no_effect`, no state effect, and no method-specific result-only fields or real generated refs such as `task_ref`, `run_summary`, `staged_artifact_handle`, `write_authorization_ref`, or `user_judgment_ref`. Expected blockers in the preview are `DryRunSummary.would_blockers: PlannedBlocker[]` entries only, not stored `WriteDecisionReason` or real `CloseReadinessBlocker` objects. If a dry-run request fails validation, local access verification, capability verification, or state lookup before a read-only result or preview can be produced, the response is `ToolRejectedResponse` with `dry_run=true` and `effect_kind=no_effect`.
-
-Explicit read-only examples: `harness.status` with `dry_run=true` returns `StatusResult` with `base.dry_run=true` and `base.effect_kind=read_only`; `harness.close_task` with `intent=check` and `dry_run=true` returns `CloseTaskResult` with `base.dry_run=true` and `base.effect_kind=read_only`. Conversely, `harness.close_task` with `intent=complete`, `intent=cancel`, or `intent=supersede` and `dry_run=true` returns `ToolDryRunResponse` when the request is otherwise valid and previewable.
-
-Committed blocked outcomes are distinct from rejected responses. A committed blocked `harness.prepare_write` or `harness.close_task` outcome is a `MethodResult` when the method state-effect table allows the blocked commit. Stale `expected_state_version`, validation failure, bad staged handle, unavailable local surface, and similar pre-commit failures are `ToolRejectedResponse`.
-
-When a method has a tool-specific `task_id`, Core resolves the primary Task in this order: tool-specific `task_id`, `ToolEnvelope.task_id`, then active Task. That resolution selects owner records; it does not select a separate state clock. Every fresh non-dry-run state mutation compares `ToolEnvelope.expected_state_version` with the current `project_state.state_version` before commit.
-Mismatch returns `STATE_VERSION_CONFLICT`; no method defines a separate public stale-state error or storage-layer alias.
-
-`STATE_VERSION_CONFLICT` appears only in `ToolRejectedResponse.errors`. It must not be `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`.
-
-Read-only calls may compute and return blockers, close blockers, next actions, and diagnostics, but those values are response fields only. They must not store blockers, append `task_events`, create `tool_invocations` replay rows, increment `state_version`, mutate close state, create, update, or link artifacts, consume staged handles, or create or consume Write Authorizations.
-
-`dry_run=true` is never authoritative. A valid dry run for a selected state-effecting or staging operation returns `ToolDryRunResponse.dry_run_summary` with descriptive `PlannedEffect` preview data, `PlannedBlocker` candidate blockers, previewable would-be diagnostics, and next actions.
-
-It creates no:
-
-- current record
-- `task_events` row
-- persistent artifact
-- staged handle
-- Write Authorization creation or consumption
-- evidence summary
-- close state
-- `tool_invocations` replay row
-- state-version increment
-
-Preview descriptions must not contain fake refs for records that do not exist.
-
-Only committed non-dry-run mutations create `tool_invocations` replay rows. A replay with the same `idempotency_key` and same request hash returns the existing committed response. The same key with a different request hash returns `STATE_VERSION_CONFLICT`. `dry_run` calls and pre-commit failures do not create or reserve replay rows.
-
-Error codes, primary error precedence, idempotency, stale-state behavior, close blocker ordering, and user-facing error labels are owned by [API Errors](errors.md). Common envelopes and response branches are owned by [API Schema Core](schema-core.md); state, artifact, judgment, and value-set schemas are owned by the split API schema owners.
-
-Local access classes are Harness API compatibility classes, not OS permission classes. `ToolEnvelope.surface_id` is required for every public request, but it is only a selector. It is not an authority proof and must match `VerifiedSurfaceContext` derived by a future server before the API can rely on the surface; active `access_class` values are owned by [API Value Sets](schema-value-sets.md#access-class-values).
-
-A future server derives `VerifiedSurfaceContext` from the local transport/session/binding and the stored `LocalSurfaceRegistration`, not from:
-
-- user prose
-- generated Markdown
-- Product Repository files
-- projections
-- chat text
-- agent memory
-
-The same context, derived by a future server, is the only source for staged-handle `created_by_surface_id` and `created_by_surface_instance_id` provenance.
-
-Every access class requires `surface_id` to select a same-project `LocalSurfaceRegistration` with `status=active` before the API can rely on that surface. Each public API request has exactly one request-level `VerifiedSurfaceContext.access_class`; nested payloads such as `ArtifactInput[]` do not add a second access class. Every mutating API requires `VerifiedSurfaceContext.verified=true` for the method's access class before commit. Artifact body reads also require `VerifiedSurfaceContext.verified=true` for `access_class=artifact_read`. When applicable, `project_id`, `surface_id`, `surface_instance_id`, `task_id`, and current project-wide `expected_state_version` must be mutually compatible before a protected read exposes Core details or a mutation commits.
-
-| Access class | Covers | Minimum access conditions |
-|---|---|---|
-| `read_status` | Read-only status/projection methods, including `harness.status`, read-only status resources, and `harness.close_task intent=check`. | Same-project `LocalSurfaceRegistration`, `status=active`, Core/surface reachability for the requested read, `VerifiedSurfaceContext.access_class=read_status` for protected Core detail, and compatible `task_id` when a Task-scoped read is requested. A status read may return display-safe availability or mismatch diagnostics, but it must not invent state from stale text or expose protected Core detail when local access cannot be verified. |
-| `core_mutation` | Core state mutation not otherwise specialized: task creation through `harness.intake`, `harness.update_scope`, `harness.request_user_judgment`, `harness.record_user_judgment`, and `harness.close_task` when it mutates state. | `read_status` conditions plus `VerifiedSurfaceContext.access_class=core_mutation`, `verified=true`, non-null `idempotency_key` and current project-wide `expected_state_version` for non-dry-run commits, and compatible `project_id`, `surface_id`, `surface_instance_id`, `task_id`, and owner records when applicable. |
-| `write_authorization` | `harness.prepare_write`. | `VerifiedSurfaceContext.access_class=write_authorization`, `verified=true`, plus active Task/Change Unit compatibility, scope, baseline, required separate sensitive-action approval compatibility, and capability checks required for the intended product-file write attempt. |
-| `run_recording` | `harness.record_run` only. | `VerifiedSurfaceContext.access_class=run_recording`, `verified=true`, plus compatible `task_id`, `change_unit_id`, `baseline_ref`, observed attempt facts, and a consumable active Write Authorization when the run records a product write. The same `run_recording` request covers recording the result, consuming a compatible Write Authorization when needed, linking compatible existing artifacts, and promoting eligible staged artifacts after staged-handle validity checks. Promotion also requires the current verified `surface_id` and `surface_instance_id` to match the staged handle's recorded `created_by_surface_id` and `created_by_surface_instance_id`; the active MVP has no cross-surface staged artifact handoff. `harness.record_run` does not require `artifact_registration`, even when `ArtifactInput[]` contains `source_kind=staged_artifact`. |
-| `artifact_registration` | `harness.stage_artifact` only. | `VerifiedSurfaceContext.access_class=artifact_registration`, `verified=true`, compatible `project_id`/`task_id`, and `manual_artifact_attachment_supported=true` for staging new artifact bytes or a safe notice into a temporary `StagedArtifactHandle`. On success, a future server records `created_by_surface_id` and `created_by_surface_instance_id` from `VerifiedSurfaceContext`; the caller does not submit those fields as authority. This is input staging, not persistent `ArtifactRef` promotion, not proof that arbitrary local files are safe or authorized, and not a second access class for `harness.record_run`. Caller-supplied raw filesystem paths, arbitrary local path strings, raw logs as authority claims, raw secrets, tokens, full sensitive logs, `captured_artifact` handles, raw capture-adapter outputs, and native capture claims are not accepted as artifact authority in the active MVP. |
-| `artifact_read` | Artifact body reads from registered `ArtifactRef` records when an owner path exposes them. | Same-project `LocalSurfaceRegistration`, `status=active`, a registered `ArtifactRef`, compatible `project_id`/`task_id`, required redaction and availability checks, and a matching owner relation in `artifact_links`. Artifact body/content reads require `VerifiedSurfaceContext.access_class=artifact_read` and `verified=true`. Artifact body read is separate from staged artifact promotion, and raw artifact path reads are not granted by default. |
-
-Use `MCP_UNAVAILABLE` when required MCP/Core or surface reachability itself is unavailable, corresponding to `VerifiedSurfaceContext.failure_reason=unavailable`. Use `LOCAL_ACCESS_MISMATCH` when registered local access expectations do not match the reachable transport/session/binding or when local access was revoked, corresponding to `failure_reason=mismatch` or `revoked`. Use `CAPABILITY_INSUFFICIENT` when the surface is recognized but lacks the capability required for the access class, observation, capture, blocking/isolation claim, changed-path detection claim, or active behavior, corresponding to `failure_reason=insufficient_capability`. For baseline changed-path detection, `changed_path_detection_verification=failed` or `stale` must produce `CAPABILITY_INSUFFICIENT` when the method requires that capability; `not_run` or legacy `planned_not_run` cannot support a `detective` label.
+Each public API request has exactly one request-level access class. Nested payloads such as `ArtifactInput[]` do not add a second access class; artifact staging, promotion, and body-read boundaries are owned by [API Artifact Schemas](schema-artifacts.md) and [Artifact Storage](../storage-artifacts.md).
 
 <a id="harnessintake"></a>
 
@@ -198,11 +95,11 @@ Returns `ToolRejectedResponse` for pre-commit failures such as validation failur
 
 ### Dry-run behavior
 
-For `dry_run=true`, a valid state-effecting preview returns `ToolDryRunResponse`, not `IntakeResult`. The preview may describe Task or Change Unit effects through `DryRunSummary.planned_effects`, but it must not contain a real `task_ref`, `change_unit_ref`, replay row, event, or state-version increment.
+For `dry_run=true`, a valid state-effecting preview returns `ToolDryRunResponse`, not `IntakeResult`. Branch shape is owned by [API Schema Core](schema-core.md); no-effect persistence semantics are owned by [Storage Effects](../storage-effects.md).
 
 ### Storage effect
 
-On commit, the method may touch `project_state`, `tasks`, `change_units`, `blockers`, `task_events`, and `tool_invocations`. Storage-effect semantics are owned by [Storage Effects](../storage-effects.md), and storage record shapes are owned by [Storage Records](../storage-records.md).
+On commit, the method may persist intake-owned Task or Change Unit state. Exact storage effects are owned by [Storage Effects](../storage-effects.md), and storage record shapes are owned by [Storage Records](../storage-records.md).
 
 ### Minimal valid request
 
@@ -323,11 +220,11 @@ Returns `ToolRejectedResponse` for pre-commit failures such as stale `expected_s
 
 ### Dry-run behavior
 
-For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. It may preview scope, active Change Unit, blocker, and stale Write Authorization effects through `DryRunSummary`, but it creates no scope update, no real stale authorization refs, no event, no replay row, and no state-version increment.
+For `dry_run=true`, a valid state-effecting preview returns `ToolDryRunResponse`. Branch shape is owned by [API Schema Core](schema-core.md); no-effect persistence semantics are owned by [Storage Effects](../storage-effects.md).
 
 ### Storage effect
 
-On commit, the method may touch `tasks`, `change_units`, `write_authorizations`, `blockers`, `task_events`, `tool_invocations`, and the project state clock. Storage-effect semantics are owned by [Storage Effects](../storage-effects.md).
+On commit, the method may persist scope-owned current state and stale-authorization consequences. Exact storage effects are owned by [Storage Effects](../storage-effects.md).
 
 ### Minimal valid request
 
@@ -466,11 +363,11 @@ Returns `ToolRejectedResponse` only when the read cannot be safely served, such 
 
 ### Dry-run behavior
 
-`dry_run=true` does not create a `ToolDryRunResponse` branch for this read-only method. A valid request returns the same `StatusResult` shape with `base.dry_run=true` and `base.effect_kind=read_only`.
+`dry_run=true` does not create a `ToolDryRunResponse` branch for this read-only method. A valid request returns the same `StatusResult` shape with `base.dry_run=true` and `base.effect_kind=read_only`; branch rules are owned by [API Schema Core](schema-core.md).
 
 ### Storage effect
 
-Read-only over `project_state`, `tasks`, `change_units`, `user_judgments`, `write_authorizations`, `runs`, `evidence_summaries`, `artifacts`, `artifact_links`, and `blockers`. Storage-effect semantics are owned by [Storage Effects](../storage-effects.md).
+This is a read-only method. Exact no-effect persistence semantics are owned by [Storage Effects](../storage-effects.md).
 
 ### Minimal valid request
 
@@ -563,7 +460,7 @@ guarantee_display:
 
 ### Purpose
 
-Check one proposed product-file write against current Task, active Change Unit, scope, baseline, required separate sensitive-action approval, and verified local surface capability. When the check is allowed, it creates a consumable single-use Write Authorization. When it is not allowed, it denies or defers that Write Authorization path; it is not general permission, OS enforcement, sandboxing, or pre-tool blocking.
+Check one proposed product-file write against current Task, active Change Unit, scope, baseline, required separate sensitive-action approval, and verified local surface capability. When the check is allowed, it creates a consumable single-use Write Authorization. When it is not allowed, it denies or defers that Write Authorization path. Security non-claims belong to [Security](../security.md).
 
 ### Required inputs
 
@@ -593,11 +490,11 @@ Returns `ToolRejectedResponse` for failures before decision evaluation or commit
 
 ### Dry-run behavior
 
-For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. The `DryRunSummary` may describe whether the non-dry-run path would create, reuse, or decline a Write Authorization. It must not create or return a real `write_authorization_ref`, real `WriteDecisionReason`, event, replay row, or state-version increment.
+For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. Branch shape is owned by [API Schema Core](schema-core.md); no-effect persistence semantics are owned by [Storage Effects](../storage-effects.md).
 
 ### Storage effect
 
-On `decision=allowed`, the method may create or return `write_authorizations`, append `task_events`, create `tool_invocations`, and update the project state clock. On committed blocked decisions, it may persist method-owned write-decision reason or blocker state without creating a consumable authorization. Storage-effect semantics are owned by [Storage Effects](../storage-effects.md).
+On commit, the method may persist Write Authorization or write-decision state according to the method result. Exact storage effects are owned by [Storage Effects](../storage-effects.md).
 
 ### Minimal valid request
 
@@ -715,11 +612,11 @@ Returns `ToolRejectedResponse` for invalid request shape, checksum or size misma
 
 ### Dry-run behavior
 
-For `dry_run=true`, a valid staging preview returns `ToolDryRunResponse`, not `StageArtifactResult`. The preview may describe the planned temporary staging effect, but it creates no bytes or notice, no storage-owned staging manifest, no `StagedArtifactHandle`, no replay row, and no state-version increment.
+For `dry_run=true`, a valid staging preview returns `ToolDryRunResponse`, not `StageArtifactResult`. Branch shape is owned by [API Schema Core](schema-core.md); no-effect staging semantics are owned by [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).
 
 ### Storage effect
 
-On success, creates only `artifact_staging` or an equivalent storage-owned staging manifest plus temporary bytes or safe notices under `artifacts/tmp/`. Persistent `artifacts` and `artifact_links` can be created only by a later compatible `harness.record_run` promotion. Storage-effect semantics are owned by [Storage Effects](../storage-effects.md), and artifact lifecycle details are owned by [Artifact Storage](../storage-artifacts.md).
+On success, the method creates a temporary staging result only. Exact storage effects are owned by [Storage Effects](../storage-effects.md), and artifact lifecycle details are owned by [Artifact Storage](../storage-artifacts.md).
 
 ### Minimal valid request
 
@@ -817,11 +714,11 @@ Returns `ToolRejectedResponse` for stale `expected_state_version`, stale Write A
 
 ### Dry-run behavior
 
-For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. The preview may describe run, artifact promotion, evidence, blocker, and Write Authorization consumption effects, but it creates no `run_summary`, persistent artifact, artifact link, evidence update, blocker update, event, replay row, staged-handle consumption, Write Authorization consumption, or state-version increment.
+For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. Branch shape is owned by [API Schema Core](schema-core.md); no-effect persistence and promotion semantics are owned by [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).
 
 ### Storage effect
 
-On commit, the method may touch `runs`, `write_authorizations`, `artifact_staging`, `artifacts`, `artifact_links`, `evidence_summaries`, `blockers`, `task_events`, `tool_invocations`, and the project state clock. Storage-effect semantics are owned by [Storage Effects](../storage-effects.md), and artifact promotion details are owned by [Artifact Storage](../storage-artifacts.md).
+On commit, the method may persist run, evidence, blocker, authorization-consumption, and artifact-linking results. Exact storage effects are owned by [Storage Effects](../storage-effects.md), and artifact promotion details are owned by [Artifact Storage](../storage-artifacts.md).
 
 ### Minimal valid request
 
@@ -966,11 +863,11 @@ Returns `ToolRejectedResponse` for invalid question shape, invalid `judgment_kin
 
 ### Dry-run behavior
 
-For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. The preview may describe a planned pending `user_judgment` effect, but it creates no real `user_judgment_ref`, no pending judgment, no blocker update, no event, no replay row, and no state-version increment.
+For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. Branch shape is owned by [API Schema Core](schema-core.md); no-effect persistence semantics are owned by [Storage Effects](../storage-effects.md).
 
 ### Storage effect
 
-On commit, the method may create `user_judgments`, update or link `blockers`, append `task_events`, create `tool_invocations`, and update the project state clock. Storage-effect semantics are owned by [Storage Effects](../storage-effects.md).
+On commit, the method may persist pending judgment and related blocker state. Exact storage effects are owned by [Storage Effects](../storage-effects.md).
 
 ### Minimal valid request
 
@@ -1113,11 +1010,11 @@ Returns `ToolRejectedResponse` for stale `expected_state_version`, unknown or no
 
 ### Dry-run behavior
 
-For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. It may preview the judgment resolution and dependent blocker or next-action effects, but it does not update the judgment, update blockers, append events, create replay rows, or increment state version.
+For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. Branch shape is owned by [API Schema Core](schema-core.md); no-effect persistence semantics are owned by [Storage Effects](../storage-effects.md).
 
 ### Storage effect
 
-On commit, the method updates `user_judgments`, may update covered `blockers` and judgment-dependent summaries, appends `task_events`, creates `tool_invocations`, and updates the project state clock. It creates no standalone accepted-risk row in the active MVP. Storage-effect semantics are owned by [Storage Effects](../storage-effects.md).
+On commit, the method may persist judgment resolution and dependent blocker or summary state. Exact storage effects are owned by [Storage Effects](../storage-effects.md).
 
 ### Minimal valid request
 
@@ -1260,11 +1157,11 @@ Returns `ToolRejectedResponse` for close preflight failures before close-readine
 
 ### Dry-run behavior
 
-`intent=check` with `dry_run=true` still returns `CloseTaskResult` with `base.dry_run=true` and `base.effect_kind=read_only`; it must not return `ToolDryRunResponse`. `intent=complete`, `intent=cancel`, or `intent=supersede` with `dry_run=true` returns `ToolDryRunResponse` when the request is valid and previewable. Close dry-run previews represent expected close blockers only as `DryRunSummary.would_blockers: PlannedBlocker[]` entries with `source_kind=close_readiness`, not as `CloseReadinessBlocker`.
+`intent=check` with `dry_run=true` remains the read-only `CloseTaskResult` branch. Mutating intents with `dry_run=true` use the common preview branch when valid; branch shape and planned-blocker representation are owned by [API Schema Core](schema-core.md) and [API Errors](errors.md).
 
 ### Storage effect
 
-`intent=check` has no storage effect. A committed terminal close updates `tasks.lifecycle_phase`, `tasks.close_reason`, `tasks.result`, `tasks.closed_at`, affected `change_units`, blockers, project active-task state when needed, `task_events`, `tool_invocations`, and the project state clock. A committed blocked close may create only the blocker-state, event, replay-row, and state-version effects allowed by the method contract and must leave the Task open. Storage-effect semantics are owned by [Storage Effects](../storage-effects.md).
+`intent=check` has no storage effect. Mutating close intents may persist close or blocker outcomes according to the method result. Exact storage effects are owned by [Storage Effects](../storage-effects.md).
 
 ### Minimal valid request
 

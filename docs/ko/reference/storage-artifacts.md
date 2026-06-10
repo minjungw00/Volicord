@@ -95,7 +95,7 @@
 
 `artifacts.redaction_state`는 [API 아티팩트 스키마](api/schema-artifacts.md)의 활성 `ArtifactRef.redaction_state` 값을 사용합니다. `blocked`는 가림/생략 상태이지 아티팩트 가용성 상태가 아닙니다. 커밋된 안전 알림이나 가림 처리된 바이트가 존재하고 무결성 확인이 가능하면 `blocked`, `secret_omitted`, `redacted` 아티팩트도 `artifacts.status=available`일 수 있습니다.
 
-`sha256`, `size_bytes`, `content_type`은 비교와 가용성 처리를 위한 아티팩트 무결성 사실입니다. 이 값들은 아티팩트 저장소를 변조 방지 상태로 만들거나 암호학적 증거 보장 주장을 만들지 않습니다.
+`sha256`, `size_bytes`, `content_type`은 비교와 가용성 처리를 위한 아티팩트 무결성 사실입니다. 보안 보장 주장이 아닙니다. [보안](security.md)을 확인하세요.
 
 `uri`는 보통 `harness-artifact://{project_id}/{artifact_id}`처럼 하네스 저장소를 통해 해석됩니다. 호출자가 제공한 임의 파일시스템 경로가 아닙니다. 원시 비밀값, 토큰, 민감한 전체 로그는 증거 바이트로 저장하면 안 됩니다. 대신 가림 처리된 바이트, `secret_omitted` 또는 `blocked` 알림, 안전 핸들, 담당 문서가 승인한 다른 안전 표현을 저장합니다.
 

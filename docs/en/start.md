@@ -34,15 +34,7 @@ Harness is not:
 - a Product Repository
 - a Harness Runtime Home
 
-Harness also is not:
-
-- an operating-system permission system
-- an arbitrary-tool sandbox
-- a tamper-proof store
-- a default pre-tool blocker
-- a security-isolation boundary
-
-It can record and display authority boundaries, but it must not claim enforcement that the current MVP does not provide.
+Harness can record and display authority boundaries, but it must not claim enforcement that the current MVP does not provide. For the canonical security boundary, see [Security](reference/security.md).
 
 Readable views, templates, status cards, and summaries are derived display. They help people read Harness state, but they do not become the authority record just because they are well written or manually edited.
 
@@ -151,40 +143,19 @@ If evidence is missing, stale, weak, or limited to the agent's own check, Harnes
 
 ## What close readiness means
 
-Close readiness answers a simple question: can this work honestly finish now, and what still blocks it?
+Close readiness answers a simple question: can this work honestly finish now, and what still blocks it? The detailed current behavior belongs in [Active MVP Scope](reference/active-mvp-scope.md) and the Reference owners it links to.
 
-A first reader can treat close readiness as a check for missing authority:
-
-- bounded scope
-- handled user-owned judgments
-- evidence for the claim
-- clear checks and limits
-- final acceptance when required
-- named residual risk when present
-
-The detailed current behavior belongs in [Active MVP Scope](reference/active-mvp-scope.md) and the Reference owners it links to.
-
-If something is missing, close should name the smallest unblocker, such as a pending product decision, missing evidence, an unresolved check, unaccepted residual risk, or final acceptance that has not happened yet.
+If something is missing, close should name the smallest unblocker. Close-readiness order and blocker details belong to [Core Model](reference/core-model.md), [MVP API](reference/api/mvp-api.md), and [API Errors](reference/api/errors.md).
 
 ## Current MVP scope
 
-The current MVP is intentionally narrow. Detailed included and excluded scope is owned by [Active MVP Scope](reference/active-mvp-scope.md); this page only summarizes the reader-facing idea.
+The current MVP is intentionally narrow. For the canonical current scope, see [Active MVP scope](reference/active-mvp-scope.md).
 
 Later candidates are not active requirements until an owner promotes them. If a detail is not in current scope, treat it as deferred even when it appears in examples or future-looking notes.
 
 ## Current MVP guarantee boundary
 
-The current MVP guarantee boundary is modest. Read MVP wording as cooperative guidance unless a specific owner documents a stronger mechanism.
-
-Harness can record, guide, display, and report supported findings. It does not claim:
-
-- OS-level permissions
-- arbitrary-tool sandboxing
-- tamper-proof local files
-- default pre-tool blocking
-- broad security isolation
-
-For the detailed boundary, use [Active MVP Scope](reference/active-mvp-scope.md) and the [Reference Index](reference/README.md).
+The current MVP guarantee boundary is modest. For canonical guarantee levels and security non-claims, see [Security](reference/security.md); for owner routing, use the [Reference Index](reference/README.md).
 
 ## Where to read next
 

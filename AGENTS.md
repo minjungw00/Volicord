@@ -11,29 +11,10 @@ Runtime/server implementation has not started. Do not describe the current docs 
   - For English-facing edits, read `docs/en/maintain/authoring-guide.md`.
   - For Korean-facing edits, read `docs/ko/maintain/authoring-guide.md`.
   - For bilingual edits or terminology-affecting edits, read both translation guides: `docs/en/maintain/translation-guide.md` and `docs/ko/maintain/translation-guide.md`.
-- Keep all work documentation-only. Do not implement:
-  - the Harness server or runtime code
-  - product implementation code
-  - generated operational files
-  - runtime state
-  - projections
-  - artifacts
-  - executable fixtures
-  - conformance runners
-  - Harness runtime objects
+- Keep all work documentation-only. Do not implement Harness server/runtime code, product implementation code, generated operational files, runtime state, projections, artifacts, executable fixtures, conformance runners, or Harness runtime objects.
 - This repository is not the user's Product Repository and not a Harness Runtime Home.
-- Treat documentation files as source material for a future Harness Server, not as Harness runtime state, generated artifacts, projections, evidence, QA, Acceptance, residual-risk records, close records, or implementation output.
-- Do not run or simulate Harness runtime procedures for documentation edits. Do not create:
-  - `prepare_write`, MCP state-transition, or `close_task` results
-  - runtime state or `task_events`
-  - Write Authorizations
-  - Evidence Manifests
-  - Manual QA records
-  - Acceptance records
-  - Residual Risk records
-  - Journey Cards
-  - generated projections
-  - generated operational or projection documents
+- Treat documentation files as source material for a future Harness Server, not as Harness runtime state, generated artifacts, projections, evidence, QA, acceptance, residual-risk records, close records, or implementation output.
+- Do not run or simulate Harness runtime procedures for documentation edits. Do not create `prepare_write`, MCP state-transition, `close_task`, runtime-state, judgment, evidence, QA, acceptance, residual-risk, projection, operational, or fixture outputs.
 - Path allowlists and batch boundaries for docs edits are maintainer editing controls, not Harness runtime override capabilities.
 - Use small batches and report changed files.
 - Do not create archive copies or temporary migration notes.
@@ -101,5 +82,4 @@ Use `docs/*/reference/README.md` to choose exact contract owners instead of turn
 - Product/runtime writes are out of scope in this repo phase. In Harness-connected product work outside this repository, product writes require compatible `prepare_write` / Write Authorization where applicable.
 - User-owned product, material technical, QA/waiver, final acceptance, and residual-risk judgment routes through the documented `user_judgment` / owner path. Decision Packet is only an optional full-format later presentation.
 - Sensitive-action approval, final acceptance, residual-risk acceptance, waiver, and reconciliation remain distinct. Broad approval does not substitute for any of them.
-- Guard, freeze, and careful-mode wording must match the actual guarantee level. Cooperative or detective surfaces can hold by instruction or detect after action; only documented preventive mechanisms should claim pre-execution blocking.
-- Do not imply early Harness provides OS-level permissions, arbitrary-tool sandboxing, tamper-proof local files, pre-tool blocking, or security isolation unless the exact mechanism being claimed is documented and proven for the covered operation.
+- Guard, freeze, careful-mode, and security wording must match the actual guarantee level documented in `docs/*/reference/security.md`; only documented preventive mechanisms should claim preventive behavior.

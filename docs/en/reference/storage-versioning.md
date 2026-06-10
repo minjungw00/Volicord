@@ -92,7 +92,7 @@ Runtime mutations serialize through Core-owned state-changing paths, with ordina
 
 The active current MVP does not require a `persistent_locks` table. Durable lock/recovery metadata is later operations material until an owner promotes it.
 
-Locks protect concurrent state writes. They do not provide OS sandboxing, artifact-integrity enforcement, tamper-proof storage, permission isolation, or pre-tool blocking.
+Locks protect concurrent state writes. Security guarantee wording and non-claims belong to [Security](security.md).
 
 ## Migration boundary
 

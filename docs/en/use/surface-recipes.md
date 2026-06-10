@@ -40,7 +40,7 @@ For editing work, the recipe is:
 - After saving meaningful edits, summarize changed files, checks run, evidence gaps, and close blockers.
 - Display changed-path detection as `detective` only after the relevant capability check passed for the observed scope.
 
-An IDE/editor integration may help keep the agent honest, but it must not describe ordinary editor save behavior as OS-level enforcement, sandboxing, or pre-tool blocking unless a separate owner documents and proves that mechanism.
+An IDE/editor integration may help keep the agent honest, but it must not claim stronger security behavior than the security owner supports. See [Security](../reference/security.md).
 
 ## Chat surface
 
@@ -69,7 +69,7 @@ For local MCP work, the recipe is:
 - Keep artifact body access separate from artifact staging and run/evidence recording.
 - When local MCP is unavailable, report `MCP_UNAVAILABLE` or the owner-provided equivalent and name the next safe recovery action.
 
-Do not use local MCP availability to imply command monitoring, network monitoring, secret access monitoring, pre-tool blocking, or isolation. Those are outside the current active guarantee unless a separate owner promotes a proven mechanism.
+Do not use local MCP availability to imply stronger observation, prevention, or isolation than the relevant owners support. For canonical guarantee wording, see [Security](../reference/security.md).
 
 ## Failure reporting
 

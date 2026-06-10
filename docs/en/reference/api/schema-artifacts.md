@@ -11,7 +11,7 @@ This document owns:
 - `StagedArtifactHandle`
 - staged versus existing artifact input distinctions
 - artifact-shaped request and response fields for staging, linking, and body-read references
-- artifact-related access constraints by reference
+- artifact-shaped reference constraints needed to validate the schema
 - redaction, availability, checksum, and size fields that appear on artifact-shaped API responses
 
 This document does not own:
@@ -24,7 +24,7 @@ This document does not own:
 
 ## Boundary
 
-Artifact schemas never make a caller-supplied path authoritative. New artifact bytes enter the active MVP only through `harness.stage_artifact`, which returns a temporary `StagedArtifactHandle`. Existing artifacts are linked only through compatible persistent `ArtifactRef` records. The storage and API method owners define validation, promotion, linking, and read eligibility.
+Artifact schemas never make a caller-supplied path authoritative. They describe the request and response shapes used by the artifact owner paths; validation, staging, promotion, linking, and body-read eligibility stay with [MVP API](mvp-api.md) and [Artifact Storage](../storage-artifacts.md).
 
 ## ArtifactRef
 
@@ -47,7 +47,7 @@ ArtifactRef:
   storage_ref: string | null
 ```
 
-`ArtifactRef` is a reference and metadata shape. It does not make artifact body content readable by default and does not prove that the content is sufficient evidence for close. Artifact body reads require the owner path with `access_class=artifact_read`.
+`ArtifactRef` is a reference and metadata shape. It does not make artifact body content readable by default and does not prove that the content is sufficient evidence for close.
 
 ## StagedArtifactHandle
 
@@ -68,7 +68,7 @@ StagedArtifactHandle:
   consumed: boolean
 ```
 
-The caller does not submit `created_by_surface_id` or `created_by_surface_instance_id` as authority claims. A future server records those fields from the verified local surface context of the staging request. A staged handle is scoped, expiring, and single-consumption. It is not a bearer token for any local caller and is not evidence authority until a compatible `harness.record_run` promotion creates a persistent `ArtifactRef`.
+The caller does not submit `created_by_surface_id` or `created_by_surface_instance_id` as authority claims. Staged-handle lifecycle, provenance validation, expiry, and promotion are owned by [Artifact Storage](../storage-artifacts.md).
 
 ## ArtifactInput
 
@@ -91,23 +91,16 @@ Exactly one source field is active for each input:
 
 | `source_kind` | Required source field | Meaning |
 |---|---|---|
-| `staged_artifact` | `staged_artifact_handle` | Promote a compatible temporary staged handle during `harness.record_run`. |
+| `staged_artifact` | `staged_artifact_handle` | Use a compatible temporary staged handle through the owner path. |
 | `existing_artifact` | `existing_artifact_ref` | Link an already persistent same-project artifact without registering new bytes. |
 
 `captured_artifact`, native capture handles, raw capture-adapter output, raw filesystem paths, arbitrary local path strings, and raw logs as authority claims are not active MVP `ArtifactInput` sources.
 
-## Access constraints by reference
+## Reference constraints
 
-Artifact-shaped references are checked through owner paths:
+`ArtifactInput[]` selects one artifact source shape per input. It does not add a second request-level access class to a public API request.
 
-- `harness.stage_artifact` uses `access_class=artifact_registration` and creates only a temporary `StagedArtifactHandle`.
-- `harness.record_run` uses `access_class=run_recording`, even when `ArtifactInput[]` contains `source_kind=staged_artifact`.
-- Staged promotion requires the current verified `surface_id` and `surface_instance_id` to match the staged handle's recorded `created_by_surface_id` and `created_by_surface_instance_id`.
-- `existing_artifact` requires a persistent `ArtifactRef` that is valid for the same project and allowed Task scope.
-- Artifact body reads are separate from staging and promotion; they require `access_class=artifact_read` and the artifact-body owner path.
-- `ArtifactInput[]` does not add a second request-level access class to a public API request.
-
-Invalid source-field shape and staged-handle validation failures return through `ToolRejectedResponse` with public error semantics owned by [API Errors](errors.md). Staged-handle storage validation and promotion lifecycle are owned by [Artifact Storage](../storage-artifacts.md).
+Invalid source-field shape returns through `ToolRejectedResponse` with public error semantics owned by [API Errors](errors.md). Staged-handle validation, promotion, body-read eligibility, and persistent linking are owned by [Artifact Storage](../storage-artifacts.md).
 
 ## Related owners
 

@@ -167,7 +167,7 @@ An artifact link does not create the owner record, satisfy a gate by itself, pro
 
 `artifacts.redaction_state` uses the active `ArtifactRef.redaction_state` values from [API Artifact Schemas](api/schema-artifacts.md). `blocked` is a redaction/omission state, not an artifact availability status. A `blocked`, `secret_omitted`, or `redacted` artifact may still have `artifacts.status=available` when the committed safe notice or redacted bytes are present and integrity-aware.
 
-`sha256`, `size_bytes`, and `content_type` are artifact integrity facts for comparison and availability handling. They do not make artifact storage tamper-proof or create a cryptographic evidence guarantee claim.
+`sha256`, `size_bytes`, and `content_type` are artifact integrity facts for comparison and availability handling. They are not security guarantee claims; see [Security](security.md).
 
 `uri` resolves through Harness storage, normally as `harness-artifact://{project_id}/{artifact_id}`. It is not a caller-supplied arbitrary filesystem path. Raw secrets, tokens, and full sensitive logs must not be stored as evidence bytes. Store redacted bytes, `secret_omitted` or `blocked` notices, safe handles, or other owner-approved safe representations instead.
 

@@ -51,9 +51,9 @@
 
 `project.yaml`은 현재 Task 상태, gate, Write Authorization 상태, 증거 충분성, 최종 수락, 잔여 위험 수락, 닫기 상태를 저장하면 안 됩니다.
 
-Runtime Home 식별은 파일시스템 경로에만 의존하면 안 됩니다. 복사되거나 이동된 Runtime Home은 같은 저장된 `runtime_home_id`를 가질 수 있습니다. 새 Runtime Home은 새 id를 가져야 합니다. 이 id는 의심스러운 복사본, 중복 등록, 경로 변경을 감지하는 데 도움이 됩니다. 하지만 저장소를 변조 방지 상태로 만들지는 않습니다.
+Runtime Home 식별은 파일시스템 경로에만 의존하면 안 됩니다. 복사되거나 이동된 Runtime Home은 같은 저장된 `runtime_home_id`를 가질 수 있습니다. 새 Runtime Home은 새 id를 가져야 합니다. 이 id는 의심스러운 복사본, 중복 등록, 경로 변경을 감지하는 데 도움이 되지만 보안 보장은 아닙니다.
 
-Runtime Home 파일은 로컬 운영 제어 데이터이고 민감한 지원 데이터를 담을 수 있습니다. 넓은 읽기 접근은 비밀값, PII, 토큰, 로그, 스크린샷, diff, 아티팩트 내용을 노출할 수 있습니다. 넓은 쓰기 접근은 변조와 증거 오염 위험입니다. 파일 권한, 소유자 확인, 해시, 진단은 방어적 확인입니다. 그 자체로 OS 수준 샌드박스, 임의 도구 제어, 변조 방지 저장소, 실행 전 차단을 만들지 않습니다.
+Runtime Home 파일은 로컬 운영 제어 데이터이고 민감한 지원 데이터를 담을 수 있습니다. 보안 비주장과 보장 수준은 [보안](security.md)이 담당하고, 위치 경계는 [런타임 경계](runtime-boundaries.md)가 담당합니다.
 
 ## 지속 기록 범주
 
@@ -78,7 +78,7 @@ Runtime Home 파일은 로컬 운영 제어 데이터이고 민감한 지원 데
 - `task_events`.
 - `tool_invocations`.
 
-활성 임시 저장 경계는 `artifact_staging` 또는 동등한 저장소 소유 스테이징 기록과 `artifacts/tmp/` 아래 안전한 임시 바이트 또는 알림입니다. 이 경계는 `harness.stage_artifact`가 나중에 `harness.record_run`으로 승격할 수 있는, 범위가 정해지고 만료되며 한 번만 소비되고 서버가 기록한 생성 접점 출처를 가진 핸들을 만들기 위한 용도입니다. 지속 `ArtifactRef`, 증거 권한, Core 변경 기록, 이벤트 출처, 재실행 행, 상태 버전 출처가 아닙니다.
+활성 임시 저장 경계는 `artifact_staging` 또는 동등한 저장소 소유 스테이징 기록과 `artifacts/tmp/` 아래 안전한 임시 바이트 또는 알림입니다. 이는 저장 위치 설명일 뿐이며, 아티팩트 스테이징 생명주기, 출처, 소비, 승격은 [아티팩트 저장소](storage-artifacts.md)가 담당합니다.
 
 그 밖의 지속 테이블 계열이나 임시 핸들 계열은 현재 MVP 범위가 아닙니다. 요구사항 구체화는 `tasks`, `change_units`, `user_judgments`, `evidence_summaries`, `blockers`를 통해 저장합니다. 별도의 커밋된 Discovery Brief, Shared Design, Question Queue, Assumption Register, First Safe Change Unit Candidate 테이블을 만들지 않습니다. 증거는 간결한 증거 요약, Task 또는 Change Unit의 `CompletionPolicy`, 필수 범위 항목, 아티팩트 참조를 통해 저장합니다. 전체 Evidence Manifest 저장소를 요구하지 않습니다.
 

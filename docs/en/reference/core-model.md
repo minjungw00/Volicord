@@ -2,7 +2,7 @@
 
 This reference defines the future Harness Core authority model as documentation source material only. This repository still has no Harness runtime or server implementation, and the current documentation is not implementation-complete unless the maintainer-owned status says so in [MVP Plan](../build/mvp-plan.md).
 
-Core is the local authority record for task scope, user-owned judgment, evidence, verification expectations, close readiness, and residual risk. It owns the product meaning of those boundaries. It does not grant OS permissions, sandbox arbitrary tools, make files tamper-proof, or provide isolation unless another owner documents and proves that exact mechanism.
+Core is the local authority record for task scope, user-owned judgment, evidence, verification expectations, close readiness, and residual risk. It owns the product meaning of those boundaries. Security guarantee wording and non-claims belong to [Security](security.md).
 
 ## 1. Owns / Does not own
 
@@ -21,7 +21,7 @@ Exact identifiers may appear here when needed to explain meaning. Their schema s
 | Invariant | Consequence |
 |---|---|
 | Core-owned state is the authority for Harness operations. | Chat, reports, generated Markdown, projections, and template output are displays or context, not authority. |
-| Harness governs Harness records and state transitions. | It is not an OS permission system, arbitrary-tool sandbox, tamper-proof store, or security isolation layer by default. |
+| Harness governs Harness records and state transitions. | It is not a general security-control surface; see [Security](security.md) for canonical non-claims. |
 | Product writes require compatible active scope. | A write path outside the current Task and Change Unit must be reshaped before it can be compatible. |
 | User-owned judgment stays user-owned. | Agent inference, broad consent, evidence, projection text, and generated summaries cannot replace a required user judgment. |
 | A non-dry-run allowed `prepare_write` path is the only Core path that creates a consumable `Write Authorization`. | `Write Authorization` is single-use for one compatible product-file attempt. It is not reusable scope and not general permission. |

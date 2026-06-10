@@ -6,9 +6,9 @@ This repository is documentation-only. It contains planning source material for 
 
 이 저장소는 문서 전용입니다. 향후 로컬 하네스 서버를 위한 계획 원천 자료를 담고 있습니다. 현재 저장소 내용 기준으로 하네스 런타임 서버 구현은 포함하지 않습니다.
 
-The current MVP scope is defined in [`docs/en/reference/active-mvp-scope.md`](docs/en/reference/active-mvp-scope.md).
+For the canonical current scope, see [Active MVP scope](docs/en/reference/active-mvp-scope.md).
 
-현재 MVP 범위는 [`docs/ko/reference/active-mvp-scope.md`](docs/ko/reference/active-mvp-scope.md)에서 정의합니다.
+현재 범위의 canonical 설명은 [현재 MVP 범위 참조](docs/ko/reference/active-mvp-scope.md)를 확인하세요.
 
 ## What this repository contains / 이 저장소에 있는 것
 
@@ -22,11 +22,9 @@ The current MVP scope is defined in [`docs/en/reference/active-mvp-scope.md`](do
 
 ## What this repository does not contain / 이 저장소에 없는 것
 
-- A running Harness instance or Harness Runtime Home.
-- Runtime server implementation, product implementation code, generated runtime state, projections, operational artifacts, executable fixtures, or conformance runners.
+- A running Harness instance, runtime implementation, Harness Runtime Home, generated runtime state, operational artifacts, executable fixtures, or conformance runners.
 
-- 실행 중인 하네스 인스턴스나 Harness Runtime Home.
-- 런타임 서버 구현, 제품 구현 코드, 생성된 런타임 상태, 상태 보기, 운영 산출물, 실행 가능한 fixture, 적합성 실행기.
+- 실행 중인 하네스 인스턴스, 런타임 구현, Harness Runtime Home, 생성된 런타임 상태, 운영 아티팩트, 실행 가능한 fixture, 적합성 실행기.
 
 ## Start reading / 읽기 시작하기
 

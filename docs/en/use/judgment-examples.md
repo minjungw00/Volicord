@@ -85,7 +85,7 @@ Harness records:
 - The honest capability claim for what the active surface can observe or enforce.
 
 Harness must not imply:
-- Sensitive approval is OS permission, sandboxing, arbitrary-tool blocking, product-file write authorization, final acceptance, or residual-risk acceptance.
+- Sensitive approval is product-file write authorization, final acceptance, residual-risk acceptance, or security authority; see [Security](../reference/security.md).
 - A broad "go ahead" approves unrelated installs, future upgrades, deploys, secret printing, or product decisions.
 
 Reference links:

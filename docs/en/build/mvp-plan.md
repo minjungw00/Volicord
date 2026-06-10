@@ -15,19 +15,9 @@ It does not define:
 
 Maintainer handoff status: **not accepted for server coding**.
 
-This repository is still documentation-only. It is source material for a future Harness Server.
+This repository is still documentation-only source material for a future Harness Server. It is not a Harness Server implementation, Product Repository, Harness Runtime Home, runtime record store, generated projection store, evidence store, QA record, acceptance record, or close record.
 
-It is not:
-
-- a Harness Server implementation
-- a Harness Runtime Home
-- a Product Repository
-- a runtime record store
-- a generated projection store
-- an evidence store
-- a QA record
-- an acceptance record
-- a close record
+For the canonical current scope, see [Active MVP scope](../reference/active-mvp-scope.md). Runtime location boundaries are owned by [Runtime Boundaries](../reference/runtime-boundaries.md).
 
 The active documentation set has paired English and Korean Start, Use, Build, Reference, Later, and Maintain routes. Canonical contracts live in Reference owners; this Build plan only explains how implementation planning should proceed once maintainers are ready to start a server build.
 
@@ -93,19 +83,7 @@ Maintainers must record one of these outcomes for each item before implementatio
 
 ## Documentation-only boundary
 
-Edits in this repository do not create runtime behavior. Do not add:
-
-- server code
-- runtime state
-- generated operational files
-- generated projections
-- evidence records
-- QA records
-- acceptance records
-- close records
-- residual-risk records
-- executable fixtures
-- conformance runner output
+Edits in this repository do not create runtime behavior. Do not add server code, runtime state, generated operational files, generated projections, evidence records, QA records, acceptance records, close records, residual-risk records, executable fixtures, or conformance runner output.
 
 Path allowlists, batch boundaries, owner links, and planning sequence are documentation-maintenance controls. They are not Harness runtime permissions, write authorizations, sandbox guarantees, or proof of enforcement.
 

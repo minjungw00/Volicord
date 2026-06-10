@@ -162,18 +162,11 @@ Final acceptance is judgment on the result. Residual-risk acceptance is judgment
 
 ## 5. Do not claim stronger guarantees
 
-Harness authority is authority over Harness records and state transitions. It is not OS permission control, arbitrary-tool sandboxing, tamper-proof storage, universal pre-tool blocking, or security isolation unless the exact mechanism and covered operation are documented and proven.
-
-Use guarantee wording carefully:
-
-- cooperative: the agent is instructed to hold, ask, refresh, or proceed through the record path
-- detective: Harness or a surface can report supported observable mismatch after the relevant capability check has passed
-- preventive: a specific proven mechanism blocks a covered action before it happens
-- isolated: a documented separation boundary exists
+Harness authority is authority over Harness records and state transitions. For canonical security non-claims and guarantee levels, see [Security](../reference/security.md). Use `cooperative` by default, use `detective` only after an owner-supported capability check for the covered scope, and do not use stronger wording unless a promoted owner documents the mechanism.
 
 If Core or Harness authority is unavailable, do not invent task state, write compatibility, user judgment, sensitive-action approval, evidence, final acceptance, residual-risk acceptance, readable-view freshness, or close readiness. Reconnect, diagnose, move to a capable surface, narrow the task, or continue outside Harness only if the user explicitly chooses that mode.
 
-Do not describe `detective` status just because a surface name, status card, chat summary, or user phrase sounds careful. Use it only after the relevant capability verification has passed and only for the covered observable fact. Otherwise describe the behavior as cooperative or unavailable/capability-limited.
+Do not describe `detective` status just because a surface name, status card, chat summary, or user phrase sounds careful.
 
 <a id="6-check-scope-before-product-writes"></a>
 ## 6. Prepare write only when scope is clear
@@ -189,7 +182,7 @@ Do not claim write compatibility from a plan, stale chat context, broad user ent
 - what Harness can verify, or unavailable/capability condition
 - next action that would unblock the write check
 
-A compatible result means the intended product-file write matches current Harness state and active surface capability. It is a single-use cooperative result for the stated path-level boundary. If intended product-file paths, product-write sensitive category, baseline, task, work slice, state, surface, related judgments, or the set of things Harness can verify changes, refresh the check or treat the claim as unverified/blocked. Command, dependency, host, network, secret-access, deployment, destructive-action, and system-access facts remain separate `SensitiveActionScope` or capability issues unless a future owner promotes observation support.
+A compatible result is a single-use cooperative result for the stated product-file write boundary. Exact refresh, staleness, sensitive-action, and capability semantics are owned by [MVP API](../reference/api/mvp-api.md), [API Errors](../reference/api/errors.md), and [Security](../reference/security.md).
 
 If the scope change is valid, update the active scope or active work slice through `harness.update_scope` before asking for a new pre-write check. Existing pre-write results that no longer match the updated scope must be treated as stale.
 
@@ -202,9 +195,9 @@ Use refs and short summaries by default. Pull full artifact bodies only when the
 
 Evidence display should say what ran or changed, which claim it supports, which refs or artifacts support it, what passed or failed, and what is missing, stale, redacted, omitted, blocked, or insufficient.
 
-When new artifact bytes matter, use the active `harness.stage_artifact` path to create a temporary staged handle and let the owner `harness.record_run` path consume it before treating it as a persisted `ArtifactRef`. Do not use `captured_artifact`, native artifact capture, raw local paths, raw logs, or capture-adapter output as active artifact authority.
+When new artifact bytes matter, treat staging as temporary input until the owner path promotes or links a persistent `ArtifactRef`. Exact artifact shapes and lifecycle rules live in [API Artifact Schemas](../reference/api/schema-artifacts.md) and [Artifact Storage](../reference/storage-artifacts.md).
 
-For tracked work, derive the evidence summary from the active `CompletionPolicy`. Mark each close-relevant claim as required or optional. Do not mark evidence sufficient while any required item is unsupported, partial, stale, blocked, or missing; return or surface an evidence blocker instead. Keep artifact availability separate from sufficiency: an available `ArtifactRef` supports a claim only when the evidence coverage links it to that claim.
+For tracked work, keep evidence sufficiency, artifact availability, and close readiness separate. Exact evidence and close-readiness structures are owned by [Core Model](../reference/core-model.md) and [API State Schemas](../reference/api/schema-state.md).
 
 Evidence does not automatically satisfy final acceptance, residual-risk acceptance, close, or any future promoted quality path.
 
@@ -215,38 +208,15 @@ Close only when the active path can support the close claim. In owner terms, `ha
 
 For small work, a close-like result can be brief: request, scope, changed files or no-file outcome, checks, and known residual risk.
 
-For tracked work, show the close basis before asking for final acceptance or attempting close:
+For tracked work, show the close basis before asking for final acceptance or attempting close: scope, evidence, checks, required judgments, residual risk, blockers, and the next close-unblocking action.
 
-- scope match
-- completion policy and required evidence coverage
-- evidence coverage or gap
-- close-relevant artifact availability
-- checks run and known check limits
-- sensitive-action approval status when relevant
-- final acceptance status when required
-- residual-risk visibility and acceptance status when relevant
-- reasons the work cannot be closed yet and the next close-unblocking action
+Use `harness.close_task intent=check` for a read-only close check. Use state-changing close intents only when the owner path says the relevant blockers allow it.
 
-Use `harness.close_task intent=check` for a read-only close check.
-
-Use `intent=complete` only after the complete blocker order has passed:
-
-- Task validity
-- Run state
-- scope and `completion_policy`
-- unresolved judgments and approvals
-- write and baseline compatibility
-- surface capability
-- required evidence
-- artifact availability
-- final acceptance when required
-- residual-risk visibility
-- residual-risk acceptance when required
-- recovery constraints
+For canonical close readiness and blocker behavior, see [Core Model](../reference/core-model.md), [MVP API](../reference/api/mvp-api.md), [API State Schemas](../reference/api/schema-state.md), and [API Errors](../reference/api/errors.md).
 
 Evidence comes before final acceptance and residual-risk acceptance; those judgments cannot fill an evidence gap.
 
-Use `intent=cancel` or `intent=supersede` only when the user is ending or replacing the Task rather than completing it. These paths still need valid Task identity, lifecycle, local access, recovery compatibility, and a valid superseding Task when applicable, but they do not require evidence sufficiency, final acceptance, or residual-risk acceptance.
+Use `intent=cancel` or `intent=supersede` only when the user is ending or replacing the Task rather than completing it. Their exact requirements belong to the close owner path.
 
 The current MVP has no extra active close requirement for separate quality review or broad quality-risk acceptance. Those separate quality routes stay in [Later](../later/index.md) until an owner promotes a separate active contract.
 

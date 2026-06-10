@@ -11,7 +11,7 @@
 - `StagedArtifactHandle`
 - 스테이징된 아티팩트 입력과 기존 아티팩트 입력의 구분
 - 스테이징, 연결, 본문 읽기 참조에 쓰이는 아티팩트 형태 요청/응답 필드
-- 참조별 아티팩트 접근 제약
+- 스키마 검증에 필요한 아티팩트 참조 제약
 - 아티팩트 형태 API 응답에 나타나는 가림 처리, 가용성, 체크섬, 크기 필드
 
 이 문서는 담당하지 않습니다.
@@ -24,7 +24,7 @@
 
 ## 경계
 
-아티팩트 스키마는 호출자가 보낸 경로 문자열을 권한으로 만들지 않습니다. 새 아티팩트 바이트는 임시 `StagedArtifactHandle`을 반환하는 `harness.stage_artifact`를 통해서만 현재 MVP에 들어옵니다. 기존 아티팩트는 호환되는 지속 `ArtifactRef` 기록을 통해서만 연결됩니다. 검증, 승격, 연결, 읽기 자격은 저장소와 API 메서드 담당 문서가 정합니다.
+아티팩트 스키마는 호출자가 보낸 경로 문자열을 권한으로 만들지 않습니다. 이 문서는 아티팩트 담당 경로가 쓰는 요청/응답 형태를 설명합니다. 검증, 스테이징, 승격, 연결, 본문 읽기 자격은 [MVP API](mvp-api.md)와 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
 
 ## `ArtifactRef`
 
@@ -47,7 +47,7 @@ ArtifactRef:
   storage_ref: string | null
 ```
 
-`ArtifactRef`는 참조와 메타데이터 형태입니다. 이 값만으로 아티팩트 본문을 읽을 수 있는 것도 아니고, 그 본문이 닫기에 충분한 증거라는 뜻도 아닙니다. 아티팩트 본문 읽기에는 `access_class=artifact_read`를 쓰는 담당 경로가 필요합니다.
+`ArtifactRef`는 참조와 메타데이터 형태입니다. 이 값만으로 아티팩트 본문을 읽을 수 있는 것도 아니고, 그 본문이 닫기에 충분한 증거라는 뜻도 아닙니다.
 
 ## `StagedArtifactHandle`
 
@@ -68,7 +68,7 @@ StagedArtifactHandle:
   consumed: boolean
 ```
 
-호출자는 `created_by_surface_id`나 `created_by_surface_instance_id`를 권한 주장으로 제출하지 않습니다. 이 값들은 스테이징 요청의 확인된 로컬 접점 맥락에서 서버가 기록합니다. 스테이징된 핸들은 범위가 정해져 있고, 만료되며, 한 번만 소비됩니다. 어떤 로컬 호출자나 사용할 수 있는 베어러 토큰이 아니며, 호환되는 `harness.record_run` 승격이 지속 `ArtifactRef`를 만들기 전까지 증거 권한도 아닙니다.
+호출자는 `created_by_surface_id`나 `created_by_surface_instance_id`를 권한 주장으로 제출하지 않습니다. 스테이징 핸들의 생명주기, 출처 검증, 만료, 승격은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
 
 ## `ArtifactInput`
 
@@ -91,23 +91,16 @@ ArtifactInput:
 
 | `source_kind` | 필요한 출처 필드 | 의미 |
 |---|---|---|
-| `staged_artifact` | `staged_artifact_handle` | `harness.record_run` 중 호환되는 임시 스테이징 핸들을 승격합니다. |
+| `staged_artifact` | `staged_artifact_handle` | 담당 경로를 통해 호환되는 임시 스테이징 핸들을 사용합니다. |
 | `existing_artifact` | `existing_artifact_ref` | 새 바이트를 등록하지 않고 이미 지속되는 같은 프로젝트 아티팩트를 연결합니다. |
 
 `captured_artifact`, 접점 자체 캡처 핸들, 원시 캡처 어댑터 출력, 원시 파일시스템 경로, 임의 로컬 경로 문자열, 권한 주장으로서의 원시 로그는 현재 MVP의 활성 `ArtifactInput` 출처가 아닙니다.
 
-## 참조별 접근 제약
+## 참조 제약
 
-아티팩트 형태 참조는 담당 경로를 통해 확인합니다.
+`ArtifactInput[]`은 입력마다 아티팩트 출처 형태 하나를 고릅니다. 공개 API 요청에 두 번째 요청 수준 접근 등급을 더하지 않습니다.
 
-- `harness.stage_artifact`는 `access_class=artifact_registration`을 사용하고 임시 `StagedArtifactHandle`만 만듭니다.
-- `harness.record_run`은 `ArtifactInput[]`에 `source_kind=staged_artifact`가 있어도 `access_class=run_recording`을 사용합니다.
-- 스테이징된 아티팩트 승격에는 현재 확인된 `surface_id`와 `surface_instance_id`가 스테이징된 핸들의 서버 기록 `created_by_surface_id`, `created_by_surface_instance_id`와 일치해야 합니다.
-- `existing_artifact`에는 같은 프로젝트와 허용된 Task 범위에서 유효한 지속 `ArtifactRef`가 필요합니다.
-- 아티팩트 본문 읽기는 스테이징과 승격과 별개입니다. `access_class=artifact_read`와 아티팩트 본문 담당 경로가 필요합니다.
-- `ArtifactInput[]`은 공개 API 요청에 두 번째 요청 수준 접근 등급을 더하지 않습니다.
-
-출처 필드 형태가 잘못되었거나 스테이징된 핸들 검증이 실패하면 [API 오류](errors.md)가 담당하는 공개 오류 의미에 따라 `ToolRejectedResponse`로 반환합니다. 스테이징된 핸들의 저장소 검증과 승격 생명주기는 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
+출처 필드 형태가 잘못되면 [API 오류](errors.md)가 담당하는 공개 오류 의미에 따라 `ToolRejectedResponse`로 반환합니다. 스테이징 핸들 검증, 승격, 본문 읽기 자격, 지속 연결은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
 
 ## 관련 담당 문서
 
