@@ -85,7 +85,7 @@ avoid:
     - phrase: "스코프"
       use: "범위"
     - phrase: "격리 보장이 제공됩니다"
-      use: "`isolated`는 예약된 값 또는 profile-gated 값이며 현재 보장이 아니라고 설명"
+      use: "`isolated`는 예약된 값 또는 profile-gated 값이며 현재 활성 보장이 아니라고 설명"
     - phrase: "현재 격리됩니다"
       use: "`isolated`가 현재 MVP 격리 동작을 뜻하지 않는다고 설명"
     - phrase: "현재 MVP가 isolated 보장을 제공합니다"
@@ -620,8 +620,8 @@ terms:
   active_guarantee:
     category: "security_concept"
     en: "active guarantee"
-    ko_reference: "현재 보장"
-    ko_user: "현재 보장"
+    ko_reference: "현재 활성 보장"
+    ko_user: "현재 활성 보장"
     owner_documents:
       en:
         - "docs/en/reference/security.md"
