@@ -4,7 +4,7 @@
 
 ## 담당하는 것
 
-이 문서는 현재 MVP에서 `harness.prepare_write` 메서드가 담당하는 동작을 담당합니다.
+이 문서는 현재 MVP의 `harness.prepare_write` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - 계정 데이터 내보내기 확인 예시의 최소 요청과 대표 응답
@@ -78,6 +78,10 @@
 ## 차단 결과
 
 커밋된 차단 결정은 아래 `decision` 값 중 하나를 가진 `PrepareWriteResult`입니다.
+
+- `decision=blocked`
+- `decision=approval_required`
+- `decision=decision_required`
 
 조건:
 

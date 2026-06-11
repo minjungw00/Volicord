@@ -8,7 +8,7 @@
 
 현재 범위의 기준 설명은 [현재 MVP 범위 참조](active-mvp-scope.md)를 확인하세요. 현재 단계와 인계 상태는 [MVP 계획의 저장소 상태](../build/mvp-plan.md#문서-수락-상태)가 담당합니다.
 
-## Conformance 항목 요약
+## 적합성 항목 요약
 
 | 항목 | 현재 상태 | 상세 |
 |---|---|---|
@@ -224,7 +224,7 @@
 | `MVP-ACTIVE-close-task-blocks-final-acceptance-missing` | [최종 수락 차단](#scenario-mvp-active-close-task-blocks-final-acceptance-missing) 참고 |
 | `MVP-ACTIVE-close-task-blocks-visible-unaccepted-residual-risk` | [잔여 위험 차단](#scenario-mvp-active-close-task-blocks-visible-unaccepted-residual-risk) 참고 |
 | `MVP-ACTIVE-close-task-check-read-only` | [읽기 전용 닫기 확인](#scenario-mvp-active-close-task-check-read-only) 참고 |
-| `MVP-ACTIVE-close-task-state-effecting-dry-run-preview` | [상태 효과가 있는 닫기 dry-run](#scenario-mvp-active-close-task-state-effecting-dry-run-preview) 참고 |
+| `MVP-ACTIVE-close-task-state-effecting-dry-run-preview` | [상태 효과가 있는 닫기 `dry_run`](#scenario-mvp-active-close-task-state-effecting-dry-run-preview) 참고 |
 | `MVP-ACTIVE-close-task-supersede-one-state-version` | [`supersede` 상태 버전](#scenario-mvp-active-close-task-supersede-one-state-version) 참고 |
 
 <a id="scenario-mvp-active-registered-surface-mismatch-blocks-mutation"></a>

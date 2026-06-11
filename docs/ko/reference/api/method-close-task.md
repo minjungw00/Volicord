@@ -4,7 +4,7 @@
 
 ## 담당하는 것
 
-이 문서는 현재 MVP에서 `harness.close_task` 메서드가 담당하는 동작을 담당합니다.
+이 문서는 현재 MVP의 `harness.close_task` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - 계정 데이터 내보내기 확인 예시의 최소 요청과 대표 응답
@@ -125,7 +125,7 @@ close_readiness:
     - "사용자가 계정 내보내기 확인 문구를 수락했습니다."
 ```
 
-같은 시나리오에서 차단된 닫기 준비 상태 관찰 예시는 아래와 같습니다. 테스트 증거는 기존 실행 참조 `run_account_export_tests_001`과 승격된 아티팩트 `artifact_account_export_test_log_001`에 기록되어 있지만 해결된 사용자 판단은 없습니다.
+같은 시나리오에서 차단된 닫기 준비 상태 관찰 예시는 아래와 같습니다. 아래 대표 응답이 사용하는 `state_version: 21` 변형입니다. 테스트 증거는 기존 실행 참조 `run_account_export_tests_001`과 승격된 아티팩트 `artifact_account_export_test_log_001`에 기록되어 있지만 해결된 사용자 판단은 없습니다.
 
 ```yaml
 close_readiness:

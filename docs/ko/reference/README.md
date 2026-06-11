@@ -7,7 +7,7 @@
 ## 읽기 규칙
 
 - 먼저 답해야 할 질문을 고르고, 그 질문에 맞는 담당 문서만 엽니다.
-- 계약 세부사항은 담당 문서에 둡니다. 이 색인에 필드 목록, 응답 branch, DDL, 값 집합, 보장 수준을 길게 적고 싶어진다면 담당 문서로 옮기고 여기에는 경로만 남깁니다.
+- 계약 세부사항은 담당 문서에 둡니다. 이 색인에 필드 목록, 응답 분기, DDL, 값 집합, 보장 수준을 길게 적고 싶어진다면 담당 문서로 옮기고 여기에는 경로만 남깁니다.
 - 한영 문서나 용어 의미가 바뀌는 편집은 같은 작업 묶음에서 영어/한국어 담당 문서를 함께 맞춥니다.
 - 번역이나 의미 일치 검토가 아니라면 같은 `doc_id`의 영어/한국어 대응 문서를 한 프롬프트에 함께 넣지 않습니다.
 - 정확한 식별자는 백틱으로 보존하고, 의미는 담당 문서가 정하게 둡니다.
@@ -19,7 +19,7 @@
 | 단계 | 담당 문서 경로 |
 |---|---|
 | 현재 MVP 범위 | [현재 MVP 범위](active-mvp-scope.md) |
-| API method | [MVP API 경로 문서](api/mvp-api.md)를 먼저 보고, 확인할 메서드의 담당 문서로 이동합니다 |
+| API 메서드 | [MVP API 경로 문서](api/mvp-api.md)를 먼저 보고, 확인할 메서드의 담당 문서로 이동합니다 |
 | 스키마 담당 문서 | [API 코어 스키마](api/schema-core.md), [API 상태 스키마](api/schema-state.md), [API 아티팩트 스키마](api/schema-artifacts.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md), [API 오류](api/errors.md) |
 | 저장 효과 | [저장 효과](storage-effects.md)를 먼저 보고, 필요한 경우 [저장소 기록](storage-records.md), [아티팩트 저장소](storage-artifacts.md), [저장소 버전 관리](storage-versioning.md)로 들어갑니다 |
 
@@ -42,9 +42,9 @@
 | 질문 | 담당 문서 |
 |---|---|
 | Core 권한, Task 상태, 증거, 잔여 위험, 비대체 규칙은 어디가 담당하나요? | [Core 모델](core-model.md) |
-| API method 동작은 어느 담당 문서가 맡나요? | 아래 API method 담당 문서 표의 메서드별 담당 문서가 맡습니다. [MVP API 경로 문서](api/mvp-api.md)는 활성 API method 목록과 담당 문서 경로를 맡습니다 |
-| 공통 API 응답 branch와 요청 래퍼는 어느 담당 문서가 맡나요? | [API 코어 스키마](api/schema-core.md) |
-| method 응답 branch 스키마와 중첩 응답 형태는 어느 담당 문서가 맡나요? | [API 코어 스키마](api/schema-core.md), [API 상태 스키마](api/schema-state.md), [API 아티팩트 스키마](api/schema-artifacts.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md) |
+| API 메서드 동작은 어느 담당 문서가 맡나요? | 아래 API 메서드 담당 문서 표의 메서드별 담당 문서가 맡습니다. [MVP API 경로 문서](api/mvp-api.md)는 활성 API 메서드 목록과 담당 문서 경로를 맡습니다 |
+| 공통 API 응답 분기와 요청 래퍼는 어느 담당 문서가 맡나요? | [API 코어 스키마](api/schema-core.md) |
+| 메서드 응답 분기 스키마와 중첩 응답 형태는 어느 담당 문서가 맡나요? | [API 코어 스키마](api/schema-core.md), [API 상태 스키마](api/schema-state.md), [API 아티팩트 스키마](api/schema-artifacts.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md) |
 | 공개 오류 코드와 오류 우선순위는 어디가 담당하나요? | [API 오류](api/errors.md) |
 | 저장소 기록이나 DDL은 어디가 담당하나요? | [저장소 기록](storage-records.md) |
 | 저장 효과는 어느 담당 문서가 맡나요? | [저장 효과](storage-effects.md) |
@@ -61,7 +61,7 @@
 |---|---|
 | API 예시는 어떤 시나리오를 사용하나요? | [MVP API](api/mvp-api.md), [작성 가이드](../maintain/authoring-guide.md), [문서 점검](../maintain/checks.md) |
 | API 예시가 문서 유지보수를 시나리오로 써도 되나요? | [작성 가이드](../maintain/authoring-guide.md), [문서 점검](../maintain/checks.md) |
-| 활성 API method 목록은 어느 담당 문서가 맡나요? | [MVP API 경로 문서](api/mvp-api.md). 정확한 API method 이름 값은 [API 값 집합](api/schema-value-sets.md)이 담당합니다 |
+| 활성 API 메서드 목록은 어느 담당 문서가 맡나요? | [MVP API 경로 문서](api/mvp-api.md). 정확한 API 메서드 이름 값은 [API 값 집합](api/schema-value-sets.md)이 담당합니다 |
 | `harness.status` API 예시의 `state_version` 규칙은 어디에서 확인하나요? | [상태 메서드](api/method-status.md), [문서 점검](../maintain/checks.md) |
 | `harness.prepare_write`는 무엇을 반환하나요? | [쓰기 준비 메서드](api/method-prepare-write.md), [API 코어 스키마](api/schema-core.md), [API 상태 스키마](api/schema-state.md), [API 판단 스키마](api/schema-judgment.md), [Core 모델](core-model.md) |
 | `harness.prepare_write`의 민감 동작 승인은 어디가 담당하나요? | [쓰기 준비 메서드](api/method-prepare-write.md) |
@@ -78,19 +78,19 @@
 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle` 구조는 어디가 담당하나요? | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | `UserJudgment`, `SensitiveActionScope`, 수락된 위험 입력 구조는 어디가 담당하나요? | [API 판단 스키마](api/schema-judgment.md) |
 
-## API method 담당 문서
+## API 메서드 담당 문서
 
 | 질문 | 담당 문서 |
 |---|---|
-| `harness.intake` method 동작 | [접수 메서드](api/method-intake.md) |
-| `harness.update_scope` method 동작 | [범위 갱신 메서드](api/method-update-scope.md) |
-| `harness.status` method 동작 | [상태 메서드](api/method-status.md) |
-| `harness.prepare_write` method 동작 | [쓰기 준비 메서드](api/method-prepare-write.md) |
-| `harness.stage_artifact` method 동작 | [아티팩트 스테이징 메서드](api/method-stage-artifact.md) |
-| `harness.record_run` method 동작 | [실행 기록 메서드](api/method-record-run.md) |
+| `harness.intake` 메서드 동작 | [접수 메서드](api/method-intake.md) |
+| `harness.update_scope` 메서드 동작 | [범위 갱신 메서드](api/method-update-scope.md) |
+| `harness.status` 메서드 동작 | [상태 메서드](api/method-status.md) |
+| `harness.prepare_write` 메서드 동작 | [쓰기 준비 메서드](api/method-prepare-write.md) |
+| `harness.stage_artifact` 메서드 동작 | [아티팩트 스테이징 메서드](api/method-stage-artifact.md) |
+| `harness.record_run` 메서드 동작 | [실행 기록 메서드](api/method-record-run.md) |
 | `harness.record_run`의 증거 동작 | [실행 기록 메서드](api/method-record-run.md), [저장 효과](storage-effects.md) |
-| 사용자 소유 판단 method 동작 | [사용자 판단 메서드](api/method-user-judgment.md) |
-| `harness.close_task` method 동작 | [Task 닫기 메서드](api/method-close-task.md) |
+| 사용자 소유 판단 메서드 동작 | [사용자 판단 메서드](api/method-user-judgment.md) |
+| `harness.close_task` 메서드 동작 | [Task 닫기 메서드](api/method-close-task.md) |
 
 ## 저장소 담당 문서
 

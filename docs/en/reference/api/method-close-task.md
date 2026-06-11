@@ -129,7 +129,7 @@ close_readiness:
     - "User accepted the account export confirmation copy."
 ```
 
-Blocked close-readiness observation for the same scenario. The test evidence is recorded in existing run ref `run_account_export_tests_001` with promoted artifact `artifact_account_export_test_log_001`; no resolved user judgment is available:
+Blocked close-readiness observation for the same scenario. This is the version-21 variant used by the representative response below: the test evidence is recorded in existing run ref `run_account_export_tests_001` with promoted artifact `artifact_account_export_test_log_001`, and no resolved user judgment is available:
 
 ```yaml
 close_readiness:

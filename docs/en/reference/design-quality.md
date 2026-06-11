@@ -566,6 +566,6 @@ Not allowed:
 - No active operations report, fixture requirement, implementation task, or conformance obligation exists.
 
 Promotion would need:
-- Promotion through [Later Candidate Index](../later/index.md), active owner updates, and documentation-only acceptance before implementation work starts.
+- Promotion through [Later Candidate Index](../later/index.md), promotion-time owner updates, and documentation-only acceptance before implementation work starts.
 
 Later candidates may keep names only. They must not be presented as active current MVP requirements, blockers, waiver rules, evidence expectations, validator mappings, fixture requirements, operations reports, or implementation tasks.

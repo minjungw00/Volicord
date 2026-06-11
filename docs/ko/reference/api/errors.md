@@ -8,7 +8,7 @@
 |---|---|
 | 공개 `ErrorCode` 식별자 | 공개 코드 집합, 공개 의미, 각 코드를 실을 수 있는 공개 경로입니다. |
 | 오류 우선순위 | 응답 분기에 공개 오류가 여러 개 있을 때 `errors[0]`을 고르는 방식입니다. |
-| 오류와 차단 사유 경로 | 조건이 `ToolRejectedResponse.errors[]`, 메서드별 차단 결과, dry-run 미리보기 데이터 중 어디에 속하는지입니다. |
+| 오류와 차단 사유 경로 | 조건이 `ToolRejectedResponse.errors[]`, 메서드별 차단 결과, `dry_run` 미리보기 데이터 중 어디에 속하는지입니다. |
 | `STATE_VERSION_CONFLICT` | 공개 오래된 상태와 멱등성 충돌 동작입니다. 이 값은 공개 오류 코드이지 차단 사유 코드가 아닙니다. |
 | 사용자 표시 라벨 | 공개 오류를 화면에 설명하는 지침입니다. 라벨은 공개 식별자를 대체하지 않습니다. |
 
@@ -28,7 +28,7 @@
 |---|---|---|
 | 거부 응답 | `ToolRejectedResponse.errors[]` | [거부 응답](#error-vs-blocker-rejected-response) |
 | 차단 결과 | 메서드별 결과 필드 | [차단 결과](#error-vs-blocker-blocked-result) |
-| dry-run 미리보기 | `ToolDryRunResponse` | [dry-run 미리보기](#error-vs-blocker-dry-run-preview) |
+| `dry_run` 미리보기 | `ToolDryRunResponse` | [`dry_run` 미리보기](#error-vs-blocker-dry-run-preview) |
 
 <a id="error-vs-blocker-rejected-response"></a>
 거부 응답:
@@ -45,9 +45,9 @@
 - 상태 영향: 메서드 담당 문서가 허용한 커밋된 차단 결과나 읽기 전용 차단 사유 데이터만 가능합니다.
 
 <a id="error-vs-blocker-dry-run-preview"></a>
-dry-run 미리보기:
+`dry_run` 미리보기:
 - 공개 형태: `DryRunSummary.would_errors[]` 또는 `DryRunSummary.would_blockers[]`를 담은 `ToolDryRunResponse`입니다.
-- 의미: 유효한 dry-run 요청에서 미리 볼 수 있는 진단입니다.
+- 의미: 유효한 `dry_run` 요청에서 미리 볼 수 있는 진단입니다.
 - 상태 영향: 커밋된 쓰기가 아니며 저장된 차단 사유 상태도 아닙니다.
 
 `ErrorCode` 값은 공개 API 식별자입니다. 차단 사유 코드는 동작별 결과 값입니다. 공개 `ErrorCode`는 기준 메서드나 스키마 담당 문서가 명시적으로 허용하지 않는 한 차단 사유 코드로 재사용하면 안 됩니다.
@@ -609,13 +609,13 @@ dry-run 미리보기:
 ### `dry_run=true` 미리보기 전 실패
 
 조건:
-- `dry_run=true` 요청이 읽기 결과나 dry-run 미리보기를 만들기 전에 실패합니다.
+- `dry_run=true` 요청이 읽기 결과나 `dry_run` 미리보기를 만들기 전에 실패합니다.
 
 라우팅:
 - `dry_run=true`인 `ToolRejectedResponse`.
 
 상태 영향:
-- 커밋되는 동작이나 dry-run 미리보기가 만들어지지 않습니다.
+- 커밋되는 동작이나 `dry_run` 미리보기가 만들어지지 않습니다.
 
 허용되지 않는 것:
 - 이 거부를 `DryRunSummary.would_errors[]`나 `PlannedBlocker`로 표현하지 않습니다.
@@ -680,13 +680,13 @@ dry-run 미리보기:
 
 차단 결과는 메서드가 동작별 차단 결과를 반환했을 수 있다는 뜻입니다. 공개 전송 또는 스키마 오류가 아닙니다. 커밋된 차단 결과와 상태 영향은 [MVP API 경로 문서](mvp-api.md)가 안내하는 관련 메서드 담당 문서와 [저장 효과](../storage-effects.md)가 허용해야 합니다.
 
-## Dry-run 동작
+## `dry_run` 동작
 
 | 요청 | 응답 | 규칙 |
 |---|---|---|
 | `dry_run=true`인 유효한 읽기 전용 호출 | `base.dry_run=true`, `base.effect_kind=read_only`인 메서드별 결과 | `dry_run=true`는 `ToolDryRunResponse`의 동의어가 아닙니다. |
-| `dry_run=true`인, 상태에 영향을 주는 유효한 호출 또는 저장소 담당 스테이징 동작 | `DryRunSummary`를 담은 `ToolDryRunResponse` | Dry-run 미리보기는 커밋된 쓰기가 아닙니다. |
-| 예상 차단 사유가 있는 유효한 dry-run 미리보기 | `DryRunSummary.would_blockers: PlannedBlocker[]` | 미리보기 차단 사유는 저장된 `CloseReadinessBlocker` 객체가 아닙니다. |
+| `dry_run=true`인, 상태에 영향을 주는 유효한 호출 또는 저장소 담당 스테이징 동작 | `DryRunSummary`를 담은 `ToolDryRunResponse` | `dry_run` 미리보기는 커밋된 쓰기가 아닙니다. |
+| 예상 차단 사유가 있는 유효한 `dry_run` 미리보기 | `DryRunSummary.would_blockers: PlannedBlocker[]` | 미리보기 차단 사유는 저장된 `CloseReadinessBlocker` 객체가 아닙니다. |
 | `dry_run=true`의 커밋 전 실패 | `ToolRejectedResponse` | 실패는 미리보기가 아니라 거부입니다. |
 
 `PlannedBlocker.code`는 `STATE_VERSION_CONFLICT`가 될 수 없습니다. 오래된 상태는 미리보기 전에 거부됩니다.
@@ -769,7 +769,7 @@ dry-run 미리보기:
 
 허용되지 않는 것:
 - 이 값을 차단 사유 코드로 사용하지 않습니다.
-- 이 충돌을 dry-run 미리보기 데이터, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`로 표현하지 않습니다.
+- 이 충돌을 `dry_run` 미리보기 데이터, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`로 표현하지 않습니다.
 
 ## 금지된 차단 사유 코드 규칙
 
@@ -779,7 +779,7 @@ dry-run 미리보기:
 | 커밋 전 공개 오류를 차단 사유 배열로 복사 | [커밋 전 공개 오류 복사](#forbidden-pre-commit-public-error-copy) 참고 |
 | 공개 `ErrorCode`를 담당 문서 허용 없이 재사용 | [공개 코드 재사용](#forbidden-public-code-reuse) 참고 |
 | 사용자 표시 라벨을 API 식별자로 사용 | [표시 라벨 식별자](#forbidden-user-facing-label-identifier) 참고 |
-| dry-run 오래된 상태 충돌을 미리보기로 표현 | [dry-run 오래된 상태 미리보기](#forbidden-dry-run-stale-state-preview) 참고 |
+| `dry_run` 오래된 상태 충돌을 미리보기로 표현 | [`dry_run` 오래된 상태 미리보기](#forbidden-dry-run-stale-state-preview) 참고 |
 
 <a id="forbidden-stale-state-blocker-code"></a>
 ### 오래된 상태 차단 사유 코드
@@ -818,10 +818,10 @@ dry-run 미리보기:
 - 공개 `ErrorCode`는 그대로 두고 표시 문구만 지역화합니다.
 
 <a id="forbidden-dry-run-stale-state-preview"></a>
-### dry-run 오래된 상태 미리보기
+### `dry_run` 오래된 상태 미리보기
 
 허용되지 않는 것:
-- dry-run 미리보기의 오래된 상태 충돌을 `DryRunSummary.would_errors[]`나 `DryRunSummary.would_blockers[]`로 표현하지 않습니다.
+- `dry_run` 미리보기의 오래된 상태 충돌을 `DryRunSummary.would_errors[]`나 `DryRunSummary.would_blockers[]`로 표현하지 않습니다.
 
 대신 사용할 것:
 - `STATE_VERSION_CONFLICT`로 요청을 거부합니다.
