@@ -60,7 +60,7 @@
 
 메서드 결과:
 
-- [`ToolResultBase`](schema-core.md#common-response)를 사용합니다.
+- [공통 응답 분기](schema-core.md#common-response)의 `ToolResultBase`를 사용합니다.
 - `response_kind=result`를 설정합니다.
 - 실제 읽기 결과, 성공한 스테이징 결과, Core 커밋 결과, 또는 메서드 상태 효과 표가 허용하는 커밋된 차단 결과를 이름 붙입니다.
 

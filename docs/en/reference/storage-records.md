@@ -805,7 +805,7 @@ Storage rule:
 - `superseded` is terminal.
 
 Owner links:
-- [API Value Sets](api/schema-value-sets.md#task-lifecycle-values).
+- [Task lifecycle values](api/schema-value-sets.md#task-lifecycle-values).
 - [API State Schemas](api/schema-state.md).
 - [Core Model](core-model.md).
 
@@ -824,7 +824,7 @@ Storage rule:
 - It is separate from lifecycle and result.
 
 Owner links:
-- [API Value Sets](api/schema-value-sets.md#task-lifecycle-values).
+- [Task lifecycle values](api/schema-value-sets.md#task-lifecycle-values).
 - [API State Schemas](api/schema-state.md).
 - [Core Model](core-model.md).
 
@@ -843,7 +843,7 @@ Storage rule:
 - Failed Runs, violations, blocked closes, and evidence gaps stay in their owning records.
 
 Owner links:
-- [API Value Sets](api/schema-value-sets.md#task-lifecycle-values).
+- [Task lifecycle values](api/schema-value-sets.md#task-lifecycle-values).
 - [API State Schemas](api/schema-state.md).
 - [Core Model](core-model.md).
 
@@ -938,7 +938,7 @@ Storage rule:
 
 Owner links:
 - [Artifact Storage](storage-artifacts.md).
-- [API Value Sets](api/schema-value-sets.md#record-and-reference-values).
+- [Record and reference values](api/schema-value-sets.md#record-and-reference-values).
 - [Core Model](core-model.md).
 
 <a id="blockersstatus"></a>

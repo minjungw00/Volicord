@@ -96,7 +96,7 @@ Each public method response has exactly one branch:
 
 Method results:
 
-- use [`ToolResultBase`](schema-core.md#common-response)
+- use `ToolResultBase` from [common response branches](schema-core.md#common-response)
 - set `response_kind=result`
 - name the concrete result for read, staging, Core committed, or committed blocked outcomes when the method state-effect table allows that blocked commit
 
