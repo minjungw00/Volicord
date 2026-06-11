@@ -119,6 +119,8 @@ On commit, the method may persist Write Authorization or write-decision state ac
 
 ## Minimal valid request
 
+The sample uses `personal_data_export` as an example `sensitive_categories` value for account data export that may include personal data. This method example does not define `personal_data_export` as a new active value or define the complete sensitive-category value set.
+
 ```yaml
 method: harness.prepare_write
 params:
@@ -134,7 +136,7 @@ params:
     locale: en-US
   task_id: task_456
   change_unit_id: cu_001
-  intended_operation: "update account data export explicit confirmation step"
+  intended_operation: "update account export confirmation flow"
   intended_paths:
     - src/account/export.ts
     - src/account/export-confirmation.ts
@@ -147,7 +149,7 @@ params:
 
 ## Representative response
 
-Allowed branch after the needed approval is already present (`PrepareWriteResult`, `decision=allowed`):
+Allowed branch after the separate sensitive-action approval is already present (`PrepareWriteResult`, `decision=allowed`):
 
 ```yaml
 base:
@@ -201,7 +203,7 @@ write_authorization: null
 authorization_effect: none
 write_decision_reasons:
   - code: sensitive_export_flow
-    message: "Account data export may include personal data and needs approval for the explicit confirmation step."
+    message: "Account data export may include personal data and requires separate sensitive-action approval before Write Authorization."
 ```
 
 ## Owner links

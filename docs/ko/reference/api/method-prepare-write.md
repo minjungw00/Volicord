@@ -115,6 +115,8 @@
 
 ## 최소 유효 요청
 
+이 예시는 개인정보를 포함할 수 있는 계정 데이터 내보내기에 대해 `personal_data_export`를 `sensitive_categories`의 예시 값으로 사용합니다. 이 메서드 예시는 `personal_data_export`를 새 활성 값으로 정의하지 않고, 민감 범주의 전체 값 집합도 정의하지 않습니다.
+
 ```yaml
 method: harness.prepare_write
 params:
@@ -130,7 +132,7 @@ params:
     locale: ko-KR
   task_id: task_456
   change_unit_id: cu_001
-  intended_operation: "계정 데이터 내보내기 명시적 확인 단계 갱신"
+  intended_operation: "계정 내보내기 확인 흐름 갱신"
   intended_paths:
     - src/account/export.ts
     - src/account/export-confirmation.ts
@@ -143,7 +145,7 @@ params:
 
 ## 대표 응답
 
-필요한 승인이 이미 있을 때의 허용 분기(`PrepareWriteResult`, `decision=allowed`):
+별도의 민감 동작 승인이 이미 있을 때의 허용 분기(`PrepareWriteResult`, `decision=allowed`):
 
 ```yaml
 base:
@@ -197,7 +199,7 @@ write_authorization: null
 authorization_effect: none
 write_decision_reasons:
   - code: sensitive_export_flow
-    message: "계정 데이터 내보내기는 개인정보를 포함할 수 있으므로 명시적 확인 단계에 대한 승인이 필요합니다."
+    message: "계정 데이터 내보내기는 개인정보를 포함할 수 있으므로 Write Authorization 전에 별도의 민감 동작 승인이 필요합니다."
 ```
 
 ## 담당 문서 링크
