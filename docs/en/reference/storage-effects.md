@@ -7,7 +7,7 @@ This document owns method-to-storage effect semantics for the current MVP source
 This document owns:
 
 - read-only, dry-run, rejected, staging-created, Core-committed, and committed-blocked storage-effect distinctions
-- whether a method branch creates replay rows, `task_events`, record changes, state-version increments, staged-handle consumption, artifact promotion, or Write Authorization changes
+- whether a method branch creates replay rows, `task_events`, record changes, state-version increments, staged-handle consumption, artifact promotion, or `Write Authorization` changes
 - the persistence boundary for blocker-like response data
 - no-effect guarantees for rejected branches and valid dry-run preview branches
 
@@ -24,16 +24,112 @@ This document does not own:
 
 Response data shape and storage effect are separate. `CloseReadinessBlocker`, `WriteDecisionReason`, `PlannedBlocker`, `ArtifactRef`, and `StagedArtifactHandle` are API data shapes. Their presence in a response does not by itself prove persistence, artifact promotion, staged-handle consumption, replay storage, close-state mutation, or `project_state.state_version` increment.
 
-Effects come from the selected method behavior and response branch:
+Effects come from the selected method behavior and response branch. The table summarizes each branch; the detail blocks separate allowed effects from forbidden effects.
 
-| Branch | Storage effect |
-|---|---|
-| Read-only `MethodResult` | Response only. No replay row, event, current-row mutation, artifact effect, Write Authorization effect, or state-version increment. |
-| `ToolRejectedResponse` | No effect. No current row, no replay row, no event, no artifact effect, no Write Authorization creation/consumption, no state-version increment. |
-| Valid `ToolDryRunResponse` | Preview only. No current row, no generated persistent ref, no replay row, no event, no staged handle, no artifact promotion/link, no state-version increment. |
-| `StageArtifactResult` with `effect_kind=staging_created` | Temporary storage-owned staging only. No Core current row, replay row, event, persistent `ArtifactRef`, or state-version increment. |
-| Core committed `MethodResult` | May mutate current rows, append `task_events`, create replay rows, and increment `project_state.state_version` exactly once as allowed by the method owner. |
-| Committed blocked `MethodResult` | May persist only the blocker-state, event, replay-row, and state-version effects explicitly allowed by the method owner. It must not create the missing authority it reports. |
+| Branch | Summary | Details |
+|---|---|---|
+| Read-only `MethodResult` | Response only | [Read-only result](#read-only-result) |
+| `ToolRejectedResponse` | No storage effect | [`ToolRejectedResponse`](#toolrejectedresponse-effect) |
+| Valid `ToolDryRunResponse` | Preview only | [Valid dry-run preview](#valid-dry-run-preview) |
+| `StageArtifactResult` with `effect_kind=staging_created` | Temporary staging only | [Staging-created artifact result](#staging-created-artifact-result) |
+| Core committed `MethodResult` | Method-owned committed effects | [Core committed result](#core-committed-result) |
+| Committed blocked `MethodResult` | Explicitly allowed blocked effects only | [Committed blocked result](#committed-blocked-result) |
+
+<a id="read-only-result"></a>
+### Read-only result
+
+Storage effect:
+
+- Response only.
+
+Not allowed:
+
+- replay row
+- event
+- current-row mutation
+- artifact effect
+- `Write Authorization` effect
+- `project_state.state_version` increment
+
+<a id="toolrejectedresponse-effect"></a>
+### `ToolRejectedResponse`
+
+Storage effect:
+
+- None.
+
+Not allowed:
+
+- current row
+- replay row
+- event
+- artifact effect
+- `Write Authorization` creation or consumption
+- `project_state.state_version` increment
+
+<a id="valid-dry-run-preview"></a>
+### Valid dry-run preview
+
+Storage effect:
+
+- Response preview only.
+
+Not allowed:
+
+- current row
+- generated persistent ref
+- replay row
+- event
+- staged-handle creation
+- artifact promotion or link
+- `project_state.state_version` increment
+
+<a id="staging-created-artifact-result"></a>
+### Staging-created artifact result
+
+Allowed effect:
+
+- storage-owned temporary staging
+
+Not allowed:
+
+- Core current row
+- replay row
+- event
+- persistent `ArtifactRef`
+- `project_state.state_version` increment
+
+<a id="core-committed-result"></a>
+### Core committed result
+
+Condition:
+
+- The method owner allows the committed effect.
+
+Allowed effects:
+
+- current-row mutation
+- `task_events` append
+- replay row creation
+- exactly one `project_state.state_version` increment
+
+<a id="committed-blocked-result"></a>
+### Committed blocked result
+
+Condition:
+
+- The method owner allows the blocked commit.
+
+Allowed effects:
+
+- explicitly allowed blocker-state effect
+- explicitly allowed event effect
+- explicitly allowed replay-row effect
+- explicitly allowed `project_state.state_version` effect
+
+Not allowed:
+
+- creating the missing authority that the branch reports
 
 ## No-effect branches
 
@@ -56,7 +152,7 @@ No-effect branches must not:
 - create replay rows
 - update evidence summaries
 - mutate close state
-- create or consume Write Authorizations
+- create or consume `Write Authorization`
 - change `artifact_staging.status`
 - set `consumed_by_run_id` or `promoted_artifact_id`
 - promote or link artifacts
@@ -67,7 +163,7 @@ Valid dry-run previews may include `DryRunSummary.would_blockers: PlannedBlocker
 - `task_event` or `task_events` append
 - replay row or `tool_invocations.response_json`
 - `close_state` mutation
-- Write Authorization change
+- `Write Authorization` change
 - staged-handle creation or consumption
 - artifact effect
 - evidence update
@@ -85,7 +181,7 @@ Storage must not persist those computed values merely because the read occurred.
 - `task_event` or `task_events` append
 - replay row or `tool_invocations.response_json`
 - `close_state` mutation
-- Write Authorization change
+- `Write Authorization` change
 - staged-handle consumption
 - artifact effect
 - evidence update
@@ -97,7 +193,29 @@ For `harness.close_task intent=check`, the response branch is owned by [`harness
 
 Committed blocked outcomes are distinct from rejected responses. A committed blocked `harness.prepare_write` or `harness.close_task` outcome is a `MethodResult` only when [MVP API](api/mvp-api.md) allows the blocked commit.
 
-A committed non-dry-run `PrepareWriteResult` with `decision=blocked`, `decision=approval_required`, or `decision=decision_required` may include `write_decision_reasons: WriteDecisionReason[]` in the response and replay payload when the method state-effect contract permits committing that decision.
+<a id="harnessprepare_write-committed-non-allow-decision"></a>
+### `harness.prepare_write` committed non-allow decision
+
+Conditions:
+
+- The call is committed with `dry_run=false`.
+- The result is `decision=blocked`, `decision=approval_required`, or `decision=decision_required`.
+
+Allowed effects:
+
+- The response and replay payload may record `write_decision_reasons: WriteDecisionReason[]`.
+- This is allowed only when the method contract permits the committed decision record.
+
+Not allowed:
+
+- creating consumable `Write Authorization`
+- changing `close_state`
+- evaluating close readiness
+- storing `CloseReadinessBlocker`
+- updating evidence
+- changing artifacts
+- consuming staged handles
+- applying `close_task` effects
 
 Example account export write-decision data:
 
@@ -119,25 +237,31 @@ Those reasons are prepare-write decision reasons. They are not:
 - `CloseReadinessBlocker[]`
 - close-readiness blocker records
 
-This branch must not:
+<a id="harnessclose_task-committed-blocked-result"></a>
+### `harness.close_task` committed blocked result
 
-- create a consumable Write Authorization
-- mutate `close_state`
-- run close-readiness evaluation
-- create `CloseReadinessBlocker` storage
-- update evidence
-- touch artifacts
-- consume staged handles
-- perform `close_task` effects
+Conditions:
 
-`CloseTaskResult(close_state=blocked)` is storage-effective only when close readiness evaluation has run and the `harness.close_task` method contract permits committing the blocked result. It may include `blockers: CloseReadinessBlocker[]` and may create only the effects explicitly allowed by the API/storage contract:
+- Close readiness evaluation has run.
+- The `harness.close_task` method contract permits committing the blocked result.
+
+Allowed effects:
 
 - blocker state
 - `task_events`
 - replay row
 - `project_state.state_version`
 
-The Task remains open. This branch must not be used for `STATE_VERSION_CONFLICT`; that code belongs to the preflight `ToolRejectedResponse` branch and is not stored as replay.
+Result:
+
+- The Task remains open.
+
+Not allowed:
+
+- using this branch for `STATE_VERSION_CONFLICT`
+- storing `STATE_VERSION_CONFLICT` as replay
+
+`STATE_VERSION_CONFLICT` belongs to the preflight `ToolRejectedResponse` branch.
 
 <a id="method-effects"></a>
 ## Method effect summary
@@ -189,7 +313,7 @@ Committed `dry_run=false` may:
 
 - update active Task scope fields
 - create or replace active `change_units`
-- update blockers or stale Write Authorization refs as the method owner allows
+- update blockers or stale `Write Authorization` refs as the method owner allows
 - append events
 - create a replay row
 - increment `project_state.state_version` once
@@ -230,12 +354,14 @@ Owner links:
 
 Committed `dry_run=false` with `decision=allowed` may:
 
-- create or return a compatible active Write Authorization
+- create or return a compatible active `Write Authorization`
 - append events
 - create a replay row
 - increment `project_state.state_version` once
 
-Committed non-allowed decisions may persist only allowed decision-state and replay effects.
+Committed non-allowed decisions:
+
+- See [`harness.prepare_write` committed non-allow decision](#harnessprepare_write-committed-non-allow-decision).
 
 For the account data export explicit confirmation step, a persisted write decision may record only the approval requirement:
 
@@ -251,7 +377,14 @@ No-effect branches:
 - rejected attempts
 - valid dry-run previews
 
-Those branches create no replay row, Write Authorization, event, close-state mutation, artifact/evidence effect, or state-version increment.
+Those branches do not create:
+
+- replay row
+- `Write Authorization`
+- event
+- `close_state` mutation
+- artifact or evidence effect
+- `project_state.state_version` increment
 
 Owner links:
 
@@ -266,14 +399,27 @@ Successful staging may:
 - create `artifact_staging` or an equivalent storage-owned staging manifest
 - store temporary safe bytes or notices under `artifacts/tmp/`
 
-This branch creates only temporary storage-owned staging. It creates no Core current row, persistent `ArtifactRef`, replay row, or state-version increment.
+This branch creates only temporary storage-owned staging.
+
+It does not create:
+
+- Core current row
+- persistent `ArtifactRef`
+- replay row
+- `project_state.state_version` increment
 
 No-effect branches:
 
 - valid `dry_run=true`
 - invalid staging requests
 
-Valid `dry_run=true` creates no bytes, staging manifest, `StagedArtifactHandle`, replay row, or state-version increment.
+Valid `dry_run=true` does not create:
+
+- bytes
+- staging manifest
+- `StagedArtifactHandle`
+- replay row
+- `project_state.state_version` increment
 
 Owner links:
 
@@ -299,7 +445,23 @@ No-effect branches:
 - rejected attempts
 - invalid staged handles before commit
 
-Valid dry-run previews create no `run_summary`, persistent artifact, artifact link, evidence update, blocker update, event, replay row, staged-handle consumption, Write Authorization consumption, or state-version increment. Rejected attempts do not change staging rows or artifacts.
+Valid dry-run previews do not create:
+
+- `run_summary`
+- persistent artifact
+- artifact link
+- evidence update
+- blocker update
+- event
+- replay row
+- staged-handle consumption
+- `Write Authorization` consumption
+- `project_state.state_version` increment
+
+Rejected attempts do not change:
+
+- staging rows
+- artifacts
 
 For an account export confirmation test run, a committed `harness.record_run` may record the run, promote the staged test log, and update evidence:
 
@@ -332,7 +494,14 @@ No-effect branches:
 - valid dry-run previews
 - rejected attempts
 
-Valid dry-run previews create no real `user_judgment_ref`, pending judgment, blocker update, event, replay row, or state-version increment.
+Valid dry-run previews do not create:
+
+- real `user_judgment_ref`
+- pending judgment
+- blocker update
+- event
+- replay row
+- `project_state.state_version` increment
 
 Owner links:
 
@@ -354,7 +523,13 @@ No-effect branches:
 - valid dry-run previews
 - rejected attempts
 
-Valid dry-run previews create no judgment resolution, blocker update, event, replay row, or state-version increment.
+Valid dry-run previews do not create:
+
+- judgment resolution
+- blocker update
+- event
+- replay row
+- `project_state.state_version` increment
 
 Owner links:
 

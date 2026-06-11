@@ -24,18 +24,114 @@
 
 ## 저장 효과 분기 요약
 
-응답 형태와 저장 효과는 별개입니다. 효과는 선택된 메서드 동작과 응답 분기가 정합니다.
+응답 형태와 저장 효과는 별개입니다. `CloseReadinessBlocker`, `WriteDecisionReason`, `PlannedBlocker`, `ArtifactRef`, `StagedArtifactHandle`은 API 데이터 형태입니다. 응답에 이런 값이 있다는 사실만으로 지속 저장, 아티팩트 승격, 스테이징 핸들 소비, 재실행 저장, `close_state` 변경, `project_state.state_version` 증가가 증명되지는 않습니다.
 
-이 표에서 담당 기록은 각 메서드 담당 문서가 소유하는 현재 기록을 뜻합니다. 이벤트 기록은 `task_events` 추가를 뜻합니다.
+효과는 선택된 메서드 동작과 응답 분기가 정합니다. 아래 표는 각 분기를 짧게 요약하고, 세부 블록은 허용될 수 있는 효과와 허용되지 않는 효과를 나누어 설명합니다.
 
-| 분기 | 담당 기록 변경 | 이벤트 기록 | `state_version` 증가 | 메모 |
-|---|---|---|---|---|
-| 읽기 전용 결과 | 없음 | 없음 | 없음 | 응답에만 남습니다. `harness.status`와 `harness.close_task intent=check`가 여기에 속합니다. |
-| 거절 응답 (`ToolRejectedResponse`) | 없음 | 없음 | 없음 | 사전 확인 거절은 요청된 커밋 동작을 수행하지 않습니다. |
-| `dry_run` 미리보기 (`ToolDryRunResponse`) | 없음 | 없음 | 없음 | 쓰기 효과를 지속하지 않습니다. 계획된 효과와 차단 사유는 미리보기 데이터입니다. |
-| 스테이징 생성 (`StageArtifactResult`, `effect_kind=staging_created`) | Core 담당 기록 없음 | 없음 | 없음 | 저장소 소유 임시 스테이징만 만들 수 있습니다. 지속 `ArtifactRef`는 만들지 않습니다. |
-| 커밋된 차단 결과 (`MethodResult`) | 메서드 담당 문서가 허용한 기록만 가능 | 허용된 경우만 가능 | 허용된 커밋인 경우만 가능 | 보고한 부족한 권한이나 근거를 그 분기에서 만들어 내면 안 됩니다. |
-| 성공 결과(상태 변경 커밋) | 메서드 담당 문서가 허용한 기록 가능 | 허용된 경우 가능 | 커밋당 정확히 한 번 | 성공한 상태 변경은 `project_state.state_version`을 올립니다. |
+| 분기 | 요약 | 세부사항 |
+|---|---|---|
+| 읽기 전용 `MethodResult` | 응답만 반환 | [읽기 전용 결과](#read-only-result) |
+| `ToolRejectedResponse` | 저장 효과 없음 | [`ToolRejectedResponse`](#toolrejectedresponse-effect) |
+| 유효한 `ToolDryRunResponse` | 미리보기만 반환 | [유효한 `dry_run` 미리보기](#valid-dry-run-preview) |
+| `StageArtifactResult`, `effect_kind=staging_created` | 임시 스테이징만 생성 | [스테이징 생성 아티팩트 결과](#staging-created-artifact-result) |
+| Core 커밋 `MethodResult` | 메서드 담당 커밋 효과 | [Core 커밋 결과](#core-committed-result) |
+| 커밋된 차단 결과 `MethodResult` | 명시적으로 허용된 차단 효과만 | [커밋된 차단 결과](#committed-blocked-result) |
+
+<a id="read-only-result"></a>
+### 읽기 전용 결과
+
+저장 효과:
+
+- 응답만 반환합니다.
+
+허용되지 않는 효과:
+
+- 재실행 행
+- 이벤트
+- 담당 기록 변경
+- 아티팩트 효과
+- `Write Authorization` 효과
+- `project_state.state_version` 증가
+
+<a id="toolrejectedresponse-effect"></a>
+### `ToolRejectedResponse`
+
+저장 효과:
+
+- 없습니다.
+
+허용되지 않는 효과:
+
+- 담당 기록 생성 또는 변경
+- 재실행 행
+- 이벤트
+- 아티팩트 효과
+- `Write Authorization` 생성 또는 소비
+- `project_state.state_version` 증가
+
+<a id="valid-dry-run-preview"></a>
+### 유효한 `dry_run` 미리보기
+
+저장 효과:
+
+- 응답 미리보기만 반환합니다.
+
+허용되지 않는 효과:
+
+- 담당 기록 생성 또는 변경
+- 생성된 지속 참조
+- 재실행 행
+- 이벤트
+- 스테이징 핸들 생성
+- 아티팩트 승격 또는 연결
+- `project_state.state_version` 증가
+
+<a id="staging-created-artifact-result"></a>
+### 스테이징 생성 아티팩트 결과
+
+허용될 수 있는 효과:
+
+- 저장소 소유 임시 스테이징
+
+허용되지 않는 효과:
+
+- Core 현재 기록
+- 재실행 행
+- 이벤트
+- 지속 `ArtifactRef`
+- `project_state.state_version` 증가
+
+<a id="core-committed-result"></a>
+### Core 커밋 결과
+
+조건:
+
+- 메서드 담당 문서가 커밋 효과를 허용합니다.
+
+허용될 수 있는 효과:
+
+- 담당 기록 변경
+- `task_events` 추가
+- 재실행 행 생성
+- `project_state.state_version` 정확히 한 번 증가
+
+<a id="committed-blocked-result"></a>
+### 커밋된 차단 결과
+
+조건:
+
+- 메서드 담당 문서가 차단 결과 커밋을 허용합니다.
+
+허용될 수 있는 효과:
+
+- 명시적으로 허용된 차단 사유 상태 효과
+- 명시적으로 허용된 이벤트 효과
+- 명시적으로 허용된 재실행 행 효과
+- 명시적으로 허용된 `project_state.state_version` 효과
+
+허용되지 않는 효과:
+
+- 그 분기가 보고하는 부족한 권한이나 근거 생성
 
 ## 효과가 없는 분기
 
@@ -66,7 +162,7 @@
 
 사전 확인에서 `ToolRejectedResponse`가 반환되면 요청된 커밋 동작은 수행되지 않습니다. 이 원칙은 `dry_run` 요청에도 똑같이 적용됩니다. `dry_run`은 검증, 접근, 역량, 오래된 상태 거절을 우회하지 않습니다.
 
-## dry-run 미리보기 효과
+## `dry_run` 미리보기 효과
 
 유효한 `dry_run` 미리보기는 저장 효과가 아니라 응답 미리보기입니다.
 
@@ -89,11 +185,29 @@
 
 커밋된 차단 결과는 거절 응답과 다릅니다. `harness.prepare_write` 또는 `harness.close_task`의 커밋된 차단 결과는 [MVP API](api/mvp-api.md)가 차단 커밋을 허용할 때만 `MethodResult`입니다.
 
-`harness.prepare_write`에서 커밋된 비허용 판단은 메서드 상태 효과 계약이 허용한 경우에만 저장 효과를 가질 수 있습니다.
+<a id="harnessprepare_write-committed-non-allow-decision"></a>
+### `harness.prepare_write`의 커밋된 비허용 판단
 
-| 조건 | 허용될 수 있는 효과 | 허용되지 않는 효과 |
-|---|---|---|
-| 커밋된 `dry_run=false` `PrepareWriteResult`이고 `decision=blocked`, `decision=approval_required`, 또는 `decision=decision_required`인 경우 | 응답과 재실행 페이로드의 `write_decision_reasons: WriteDecisionReason[]`. 단, 메서드 계약이 그 판단 커밋을 허용할 때만 가능합니다. | 소비 가능한 `Write Authorization` 생성, `close_state` 변경, 닫기 준비 상태 평가, `CloseReadinessBlocker` 저장, 증거 업데이트, 아티팩트 변경, 스테이징 핸들 소비, `close_task` 효과. |
+조건:
+
+- `dry_run=false`로 커밋되는 호출입니다.
+- 결과가 `decision=blocked`, `decision=approval_required`, 또는 `decision=decision_required`입니다.
+
+허용될 수 있는 효과:
+
+- 응답과 재실행 페이로드에 `write_decision_reasons: WriteDecisionReason[]`를 남길 수 있습니다.
+- 단, 메서드 계약이 해당 판단 기록을 허용할 때만 가능합니다.
+
+허용되지 않는 효과:
+
+- 소비 가능한 `Write Authorization` 생성
+- `close_state` 변경
+- 닫기 준비 상태 평가
+- `CloseReadinessBlocker` 저장
+- 증거 업데이트
+- 아티팩트 변경
+- 스테이징 핸들 소비
+- `close_task` 효과 적용
 
 계정 데이터 내보내기 쓰기 결정 데이터 예시는 아래와 같습니다.
 
@@ -115,21 +229,31 @@ write_decision_reasons:
 - `CloseReadinessBlocker[]`.
 - 닫기 차단 사유 기록.
 
-`harness.close_task`에서 `CloseTaskResult(close_state=blocked)`는 아래 조건을 모두 만족할 때만 저장 효과가 있습니다.
+<a id="harnessclose_task-committed-blocked-result"></a>
+### `harness.close_task`의 커밋된 차단 결과
+
+조건:
 
 - 닫기 준비 상태 평가가 실행되었습니다.
 - `harness.close_task` 메서드 계약이 차단 결과 커밋을 허용합니다.
 
-허용된 경우에도 만들 수 있는 효과는 API/저장소 계약이 명시한 아래 항목뿐입니다.
+허용될 수 있는 효과:
 
 - 차단 사유 상태.
 - `task_events`.
 - 재실행 행.
 - `project_state.state_version` 증가.
 
-Task는 열린 상태로 남습니다.
+결과:
 
-`STATE_VERSION_CONFLICT`에는 커밋된 차단 결과 분기를 사용하면 안 됩니다. 이 오류는 사전 확인의 `ToolRejectedResponse` 분기에 속하며 재실행으로 저장하지 않습니다.
+- Task는 열린 상태로 남습니다.
+
+허용되지 않는 효과:
+
+- 이 분기를 `STATE_VERSION_CONFLICT`에 사용
+- `STATE_VERSION_CONFLICT`를 재실행으로 저장
+
+`STATE_VERSION_CONFLICT`는 사전 확인의 `ToolRejectedResponse` 분기에 속합니다.
 
 <a id="메서드별-저장-효과"></a>
 ## 메서드 저장 효과 요약
@@ -188,10 +312,10 @@ Task는 열린 상태로 남습니다.
 
 효과가 없는 분기:
 
-- 유효한 dry-run 미리보기
+- 유효한 `dry_run` 미리보기
 - 거절된 시도
 
-유효한 dry-run 미리보기는 범위, Change Unit, 차단 사유, 오래된 승인 효과만 미리 설명합니다.
+유효한 `dry_run` 미리보기는 범위, Change Unit, 차단 사유, 오래된 승인 효과만 미리 설명합니다.
 
 담당 문서:
 
@@ -227,7 +351,9 @@ Task는 열린 상태로 남습니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
 
-커밋되는 비허용 판단은 허용된 판단 상태와 재실행 효과만 지속할 수 있습니다.
+커밋되는 비허용 판단:
+
+- [`harness.prepare_write`의 커밋된 비허용 판단](#harnessprepare_write-committed-non-allow-decision)을 따릅니다.
 
 계정 데이터 내보내기 명시적 확인 단계에서는 저장된 쓰기 결정이 승인 필요 상태만 기록할 수 있습니다.
 
@@ -241,9 +367,16 @@ write_decision_reasons:
 효과가 없는 분기:
 
 - 거절된 시도
-- 유효한 dry-run 미리보기
+- 유효한 `dry_run` 미리보기
 
-이 분기는 재실행 행, `Write Authorization`, 이벤트, `close_state` 변경, 아티팩트/증거 효과, `state_version` 증가를 만들지 않습니다.
+이 분기들은 아래 항목을 만들지 않습니다.
+
+- 재실행 행.
+- `Write Authorization`.
+- 이벤트.
+- `close_state` 변경.
+- 아티팩트 또는 증거 효과.
+- `project_state.state_version` 증가.
 
 담당 문서:
 
@@ -258,14 +391,27 @@ write_decision_reasons:
 - `artifact_staging` 또는 동등한 저장소 소유 스테이징 매니페스트를 생성합니다.
 - `artifacts/tmp/` 아래에 임시 안전 바이트 또는 알림을 둡니다.
 
-이 분기는 저장소 소유 임시 스테이징만 생성합니다. Core 현재 기록, 지속 `ArtifactRef`, 재실행 행, `state_version` 증가는 만들지 않습니다.
+이 분기는 저장소 소유 임시 스테이징만 생성합니다.
+
+아래 항목은 만들지 않습니다.
+
+- Core 현재 기록.
+- 지속 `ArtifactRef`.
+- 재실행 행.
+- `project_state.state_version` 증가.
 
 효과가 없는 분기:
 
 - 유효한 `dry_run=true`
 - 잘못된 스테이징 요청
 
-유효한 `dry_run=true`는 바이트, 스테이징 매니페스트, `StagedArtifactHandle`, 재실행 행, `state_version` 증가를 만들지 않습니다.
+유효한 `dry_run=true`는 아래 항목을 만들지 않습니다.
+
+- 바이트.
+- 스테이징 매니페스트.
+- `StagedArtifactHandle`.
+- 재실행 행.
+- `project_state.state_version` 증가.
 
 담당 문서:
 
@@ -287,11 +433,27 @@ write_decision_reasons:
 
 효과가 없는 분기:
 
-- 유효한 dry-run 미리보기
+- 유효한 `dry_run` 미리보기
 - 거절된 시도
 - 커밋 전의 잘못된 스테이징 핸들
 
-유효한 dry-run 미리보기는 `run_summary`, 지속 아티팩트, 아티팩트 연결, 증거 갱신, 차단 사유 갱신, 이벤트, 재실행 행, 스테이징 핸들 소비, `Write Authorization` 소비, `state_version` 증가를 만들지 않습니다. 거절된 시도는 스테이징 행이나 아티팩트를 바꾸지 않습니다.
+유효한 `dry_run` 미리보기는 아래 항목을 만들지 않습니다.
+
+- `run_summary`.
+- 지속 아티팩트.
+- 아티팩트 연결.
+- 증거 갱신.
+- 차단 사유 갱신.
+- 이벤트.
+- 재실행 행.
+- 스테이징 핸들 소비.
+- `Write Authorization` 소비.
+- `project_state.state_version` 증가.
+
+거절된 시도는 아래 항목을 바꾸지 않습니다.
+
+- 스테이징 행.
+- 아티팩트.
 
 계정 내보내기 확인 테스트 실행에서는 커밋된 `harness.record_run`이 실행을 기록하고, 스테이징된 테스트 로그를 승격하고, 증거를 갱신할 수 있습니다.
 
@@ -321,10 +483,17 @@ run_ref: run_account_export_tests_001
 
 효과가 없는 분기:
 
-- 유효한 dry-run 미리보기
+- 유효한 `dry_run` 미리보기
 - 거절된 시도
 
-유효한 dry-run 미리보기는 실제 `user_judgment_ref`, 대기 중인 판단, 차단 사유 갱신, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다.
+유효한 `dry_run` 미리보기는 아래 항목을 만들지 않습니다.
+
+- 실제 `user_judgment_ref`.
+- 대기 중인 판단.
+- 차단 사유 갱신.
+- 이벤트.
+- 재실행 행.
+- `project_state.state_version` 증가.
 
 담당 문서:
 
@@ -343,10 +512,16 @@ run_ref: run_account_export_tests_001
 
 효과가 없는 분기:
 
-- 유효한 dry-run 미리보기
+- 유효한 `dry_run` 미리보기
 - 거절된 시도
 
-유효한 dry-run 미리보기는 판단 해결, 차단 사유 갱신, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다.
+유효한 `dry_run` 미리보기는 아래 항목을 만들지 않습니다.
+
+- 판단 해결.
+- 차단 사유 갱신.
+- 이벤트.
+- 재실행 행.
+- `project_state.state_version` 증가.
 
 담당 문서:
 
