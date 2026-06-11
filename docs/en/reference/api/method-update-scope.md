@@ -36,7 +36,7 @@ Result: this is the active path that turns shaping into a first safe Change Unit
 
 - `ToolEnvelope` with non-null `idempotency_key` and current `expected_state_version` for non-dry-run commits.
 - `task_id`.
-- Any top-level scope fields to change. `null` means leave the current value unchanged; an empty array replaces that list with an empty list.
+- Any scope fields to change. For include/exclude updates, `scope_update.include` lists product work to bring into scope and `scope_update.exclude` lists product behavior that remains out of scope. `null` means leave the current value unchanged; an empty array replaces that list with an empty list.
 - `change_unit.operation` and the fields needed by that operation.
 - `related_scope_decision_refs` when the update applies a resolved `judgment_kind=scope_decision`.
 
@@ -139,25 +139,34 @@ params:
     locale: en-US
   task_id: task_456
   goal_summary: "Add explicit confirmation before account data export."
-  scope_boundary: "Add an explicit confirmation step for account data export. Update account data export confirmation tests."
+  scope_update:
+    include:
+      - "Add confirmation UI for account data export."
+      - "Update account export tests."
+    exclude:
+      - "Account deletion behavior"
+      - "Billing export behavior"
+  scope_boundary: "Add confirmation UI for account data export and update account export tests."
   non_goals:
     - "Account deletion behavior"
+    - "Billing export behavior"
   acceptance_criteria:
     - "Account data export requires an explicit confirmation step before download."
-  autonomy_boundary: "Stay within the account data export explicit confirmation step and account data export confirmation tests."
+  autonomy_boundary: "Stay within the account data export confirmation UI and account export tests."
   baseline_ref: baseline_account_export_001
   change_unit:
     operation: create_active
-    scope_summary: "Add an explicit confirmation step for account data export and update account data export confirmation tests."
+    scope_summary: "Add confirmation UI for account data export and update account export tests."
     affected_areas:
-      - "Account data export explicit confirmation step"
-      - "Account data export confirmation tests"
+      - "Account data export confirmation UI"
+      - "Account export tests"
     affected_paths:
       - src/account/export.ts
       - src/account/export-confirmation.ts
       - tests/account-export.test.ts
     constraints:
-      - "Keep account deletion behavior unchanged."
+      - "Keep account deletion behavior out of scope."
+      - "Keep billing export behavior out of scope."
   related_scope_decision_refs: []
 ```
 
@@ -205,7 +214,12 @@ state:
     result: none
     closed_at: null
   goal_summary: "Add explicit confirmation before account data export."
-  scope_summary: "Add an explicit confirmation step for account data export. Update account data export confirmation tests."
+  scope_summary: "Add confirmation UI for account data export and update account export tests."
+  non_goals:
+    - "Account deletion behavior"
+    - "Billing export behavior"
+  acceptance_criteria:
+    - "Account data export requires an explicit confirmation step before download."
   active_change_unit_ref:
     record_kind: change_unit
     record_id: cu_001

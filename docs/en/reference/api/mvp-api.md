@@ -104,7 +104,7 @@ Non-claim: Task resolution selects owner records; it does not create a separate 
 
 ## Stable API example scenario summary
 
-Method owner examples use a durable account data export confirmation scenario: the Task summary is account data export confirmation, scope stays limited to the account export flow and tests, changing account deletion behavior is a non-goal, and acceptance requires explicit confirmation before download. Other method examples may extend that same scenario with account data export confirmation tests and representative run and evidence data.
+Method owner examples use a durable account data export confirmation scenario: the Task summary is account data export confirmation, scope includes the account data export confirmation UI and account export tests, account deletion behavior and billing export behavior stay out of scope, and acceptance requires explicit confirmation before download. Other method examples may extend that same scenario with account export tests and representative run and evidence data.
 
 Examples are compact branch examples, not full schema definitions. They rely on schema owners for full nested shapes and keep shared scenario refs internally consistent across `state_version`, artifact refs, run refs, judgment refs, close-readiness evidence, sensitive-action approval reasons, and expiration timestamps. Maintenance rules for replacing or reviewing API examples live in [Authoring Guide](../../maintain/authoring-guide.md) and [Checks](../../maintain/checks.md).
 
