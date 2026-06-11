@@ -73,7 +73,7 @@ A connector may push compact agent context when it is fresh enough for the next 
 - guarantee level
 - source refs and freshness
 
-A connector should pull exact owner sections only when the next action needs them. Do not push full schemas, DDL, template bodies, historical logs, generated artifacts, full artifact contents, unrelated reference sections, future catalog material, or both languages for the same `doc_id` unless bilingual maintenance requires semantic-parity review.
+A connector should pull exact owner sections only when the next action needs them. Do not push full schemas, DDL, template bodies, historical logs, generated artifacts, full artifact contents, unrelated contract material, future catalog material, or both languages for the same `doc_id` unless bilingual maintenance requires semantic-parity review.
 
 If a pushed context packet becomes stale, disconnected, or incompatible with the current surface, the connector should ask the owner path for a refreshed result or show the stale condition before the agent relies on it.
 

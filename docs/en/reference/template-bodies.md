@@ -254,7 +254,7 @@ A compact support packet for an agent, not a replacement for owner records. It m
 - The packet is Core state, storage state, evidence, acceptance, residual-risk acceptance, or close output.
 - A stale packet overrides current owner state.
 - The agent may bypass user judgment, write authorization, artifact rules, or close blockers.
-- Full schemas, DDL, logs, artifact bodies, unrelated reference sections, future catalog material, or paired bilingual docs should be injected by default.
+- Full schemas, DDL, logs, artifact bodies, unrelated contract material, future catalog material, or paired bilingual docs should be injected by default.
 
 ### User-facing wording
 

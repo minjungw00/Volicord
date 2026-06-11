@@ -122,7 +122,7 @@ The agent should not inject these into every prompt:
 - full logs
 - full artifact contents
 - paired bilingual docs
-- unrelated reference sections
+- unrelated contract material
 - future catalog material
 - generated readable views
 
