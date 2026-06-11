@@ -435,19 +435,33 @@ active_task:
     project_id: proj_123
     task_id: task_456
     state_version: 19
-status_summary: "Scope is defined. Implementation evidence is not recorded yet."
+status_summary: "Account export confirmation tests are recorded. User acceptance of the confirmation copy is still pending."
 next_actions:
-  - action: harness.record_run
-    reason: "Record account export confirmation test evidence before close."
+  - action: harness.request_user_judgment
+    reason: "Ask the user to accept the account export confirmation copy before close."
 pending_user_judgments: []
 write_authority_summary: null
-evidence_summary: null
+evidence_summary:
+  status: sufficient
+  coverage_items:
+    - claim: "Account export confirmation tests passed."
+      required_for_close: true
+      coverage_state: supported
+      supporting_refs:
+        - record_kind: run
+          record_id: run_account_export_tests_001
+          project_id: proj_123
+          task_id: task_456
+          state_version: 21
+      supporting_artifact_refs: []
+      gap_refs: []
+  artifact_refs: []
 blocker_refs: []
 close_readiness:
   ready: false
   blockers:
-    - code: missing_test_evidence
-      message: "Account export confirmation tests have not been recorded."
+    - code: missing_user_judgment
+      message: "The user has not accepted the account export confirmation copy."
 guarantee_display:
   level: cooperative
   notes:
@@ -1353,6 +1367,30 @@ Returns `ToolRejectedResponse` for close preflight failures before close-readine
 
 `intent=check` has no storage effect. Mutating close intents may persist close or blocker outcomes according to the method result. Exact storage effects are owned by [Storage Effects](../storage-effects.md).
 
+### Close-readiness scenario data
+
+The literal `intent=complete` selects the completion intent. It is not shorthand for the full close-readiness evaluation order.
+
+Successful close-readiness observation for the account export confirmation scenario:
+
+```yaml
+close_readiness:
+  ready: true
+  evidence:
+    - "Account export confirmation tests passed."
+    - "User accepted the confirmation copy."
+```
+
+Blocked close-readiness observation for the same scenario:
+
+```yaml
+close_readiness:
+  ready: false
+  blockers:
+    - code: missing_user_judgment
+      message: "The user has not accepted the account export confirmation copy."
+```
+
 ### Minimal valid request
 
 ```yaml
@@ -1397,18 +1435,29 @@ state:
     task_id: task_456
     state_version: 23
 blockers:
-  - category: evidence
-    code: EVIDENCE_INSUFFICIENT
-    message: "Required close evidence is not yet sufficient."
+  - category: user_judgment
+    code: missing_user_judgment
+    message: "The user has not accepted the account export confirmation copy."
     related_refs: []
 evidence_summary:
-  status: insufficient
-  coverage_items: []
+  status: sufficient
+  coverage_items:
+    - claim: "Account export confirmation tests passed."
+      required_for_close: true
+      coverage_state: supported
+      supporting_refs:
+        - record_kind: run
+          record_id: run_account_export_tests_001
+          project_id: proj_123
+          task_id: task_456
+          state_version: 21
+      supporting_artifact_refs: []
+      gap_refs: []
   artifact_refs: []
 artifact_refs: []
 next_actions:
-  - action: harness.record_run
-    reason: "Record evidence before attempting close."
+  - action: harness.request_user_judgment
+    reason: "Ask the user to accept the account export confirmation copy before attempting close."
 ```
 
 ### Owner links

@@ -586,19 +586,33 @@ active_task:
     project_id: proj_123
     task_id: task_456
     state_version: 19
-status_summary: "범위가 정의되었습니다. 구현 증거는 아직 기록되지 않았습니다."
+status_summary: "계정 내보내기 확인 테스트가 기록되었습니다. 확인 문구에 대한 사용자 수락은 아직 대기 중입니다."
 next_actions:
-  - action: harness.record_run
-    reason: "닫기 전에 계정 내보내기 확인 테스트 증거를 기록합니다."
+  - action: harness.request_user_judgment
+    reason: "닫기 전에 계정 내보내기 확인 문구에 대한 사용자 판단을 요청합니다."
 pending_user_judgments: []
 write_authority_summary: null
-evidence_summary: null
+evidence_summary:
+  status: sufficient
+  coverage_items:
+    - claim: "계정 내보내기 확인 테스트가 통과했습니다."
+      required_for_close: true
+      coverage_state: supported
+      supporting_refs:
+        - record_kind: run
+          record_id: run_account_export_tests_001
+          project_id: proj_123
+          task_id: task_456
+          state_version: 21
+      supporting_artifact_refs: []
+      gap_refs: []
+  artifact_refs: []
 blocker_refs: []
 close_readiness:
   ready: false
   blockers:
-    - code: missing_test_evidence
-      message: "계정 내보내기 확인 테스트가 아직 기록되지 않았습니다."
+    - code: missing_user_judgment
+      message: "사용자가 계정 내보내기 확인 문구를 아직 수락하지 않았습니다."
 guarantee_display:
   level: cooperative
   notes:
@@ -1775,6 +1789,30 @@ next_actions:
 
 `intent=check`에는 저장 효과가 없습니다. 상태 변경 닫기 `intent`는 메서드 결과에 따라 닫기 또는 차단 결과를 지속할 수 있습니다. 정확한 저장 효과는 [저장 효과](../storage-effects.md)가 담당합니다.
 
+### 닫기 준비 상태 시나리오 데이터
+
+리터럴 `intent=complete`는 완료 의도를 고르는 API 값입니다. 전체 닫기 준비 상태 평가 순서를 뜻하는 산문 표현이 아닙니다.
+
+계정 내보내기 확인 시나리오에서 성공한 닫기 준비 상태 관찰 예시는 아래와 같습니다.
+
+```yaml
+close_readiness:
+  ready: true
+  evidence:
+    - "계정 내보내기 확인 테스트가 통과했습니다."
+    - "사용자가 확인 문구를 수락했습니다."
+```
+
+같은 시나리오에서 차단된 닫기 준비 상태 관찰 예시는 아래와 같습니다.
+
+```yaml
+close_readiness:
+  ready: false
+  blockers:
+    - code: missing_user_judgment
+      message: "사용자가 계정 내보내기 확인 문구를 아직 수락하지 않았습니다."
+```
+
 ### 최소 유효 요청
 
 ```yaml
@@ -1819,18 +1857,29 @@ state:
     task_id: task_456
     state_version: 23
 blockers:
-  - category: evidence
-    code: EVIDENCE_INSUFFICIENT
-    message: "닫기에 필요한 증거가 아직 충분하지 않습니다."
+  - category: user_judgment
+    code: missing_user_judgment
+    message: "사용자가 계정 내보내기 확인 문구를 아직 수락하지 않았습니다."
     related_refs: []
 evidence_summary:
-  status: insufficient
-  coverage_items: []
+  status: sufficient
+  coverage_items:
+    - claim: "계정 내보내기 확인 테스트가 통과했습니다."
+      required_for_close: true
+      coverage_state: supported
+      supporting_refs:
+        - record_kind: run
+          record_id: run_account_export_tests_001
+          project_id: proj_123
+          task_id: task_456
+          state_version: 21
+      supporting_artifact_refs: []
+      gap_refs: []
   artifact_refs: []
 artifact_refs: []
 next_actions:
-  - action: harness.record_run
-    reason: "닫기를 시도하기 전에 증거를 기록한다."
+  - action: harness.request_user_judgment
+    reason: "닫기를 시도하기 전에 계정 내보내기 확인 문구에 대한 사용자 판단을 요청한다."
 ```
 
 ### 담당 문서 링크
