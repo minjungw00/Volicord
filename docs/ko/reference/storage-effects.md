@@ -474,14 +474,15 @@ write_decision_reasons:
 - 스테이징 행.
 - 아티팩트.
 
-계정 데이터 내보내기 확인 테스트 실행에서는 커밋된 `harness.record_run`이 실행을 기록하고, 스테이징된 테스트 로그를 승격하고, 증거를 갱신할 수 있습니다.
+계정 내보내기 확인 테스트 실행에서는 커밋된 `harness.record_run`이 실행을 기록하고, 스테이징된 테스트 로그를 승격하고, 증거를 갱신할 수 있습니다.
 
 ```yaml
 command: "npm test -- account-export"
-summary: "계정 데이터 내보내기 확인 테스트가 통과했습니다."
+summary: "계정 내보내기 확인 테스트가 통과했습니다."
 artifacts:
   - staged_artifact_account_export_test_log_001
 run_ref: run_account_export_tests_001
+state_version: 21
 ```
 
 담당 문서:

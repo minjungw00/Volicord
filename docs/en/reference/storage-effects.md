@@ -463,7 +463,7 @@ Rejected attempts do not change:
 - staging rows
 - artifacts
 
-For an account data export confirmation test run, a committed `harness.record_run` may record the run, promote the staged test log, and update evidence:
+For an account export confirmation test run, a committed `harness.record_run` may record the run, promote the staged test log, and update evidence:
 
 ```yaml
 command: "npm test -- account-export"
@@ -471,6 +471,7 @@ summary: "Account export confirmation tests passed."
 artifacts:
   - staged_artifact_account_export_test_log_001
 run_ref: run_account_export_tests_001
+state_version: 21
 ```
 
 Owner links:
