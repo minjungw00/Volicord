@@ -350,7 +350,7 @@ user_judgment:
   required_for: close
   resolution: null
   expires_at: null
-  created_at: "2026-06-10T12:00:00Z"
+  created_at: "<example-created-at>"
   resolved_at: null
 blocker_refs: []
 state:
@@ -423,8 +423,8 @@ user_judgment:
     accepted_risks: []
     resolved_by_actor_kind: user
   expires_at: null
-  created_at: "2026-06-10T12:00:00Z"
-  resolved_at: "2026-06-10T12:05:00Z"
+  created_at: "<example-created-at>"
+  resolved_at: "<example-resolved-at>"
 updated_refs:
   - record_kind: user_judgment
     record_id: uj_001
