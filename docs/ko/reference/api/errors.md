@@ -24,11 +24,31 @@
 
 ## 오류와 차단 사유
 
-| 개념 | 공개 형태 | 의미 | 상태 효과 |
-|---|---|---|---|
-| 거부 응답 | `ToolRejectedResponse.errors[]`와 `ToolError.code: ErrorCode` | 메서드가 커밋되는 동작으로 진행하지 않았다는 뜻입니다. 공개 전송, 요청, 최신성, 로컬 접근, 역량, 선행조건 거부입니다. | 커밋된 동작이 없고 상태 변경도 없습니다. |
-| 차단 결과 | `write_decision_reasons`나 `blockers` 같은 메서드별 결과 필드 | 메서드가 동작별 차단 결과를 반환했을 수 있다는 뜻입니다. 공개 전송 또는 스키마 오류가 아닙니다. | 메서드 담당 문서가 허용한 커밋된 차단 결과나 읽기 전용 차단 사유 데이터만 가능합니다. |
-| Dry-run 미리보기 | `DryRunSummary.would_errors[]` 또는 `DryRunSummary.would_blockers[]`를 담은 `ToolDryRunResponse` | 유효한 dry-run 요청에서 미리 볼 수 있는 진단입니다. | 커밋된 쓰기가 아니며 저장된 차단 사유 상태도 아닙니다. |
+| 개념 | 공개 형태 | 세부사항 |
+|---|---|---|
+| 거부 응답 | `ToolRejectedResponse.errors[]` | [거부 응답](#error-vs-blocker-rejected-response) |
+| 차단 결과 | 메서드별 결과 필드 | [차단 결과](#error-vs-blocker-blocked-result) |
+| dry-run 미리보기 | `ToolDryRunResponse` | [dry-run 미리보기](#error-vs-blocker-dry-run-preview) |
+
+<a id="error-vs-blocker-rejected-response"></a>
+거부 응답:
+- 공개 형태: `ToolRejectedResponse.errors[]`와 `ToolError.code: ErrorCode`.
+- 의미: 메서드가 커밋되는 동작으로 진행하지 않았다는 뜻입니다.
+- 조건: 공개 전송, 요청, 최신성, 로컬 접근, 역량, 선행조건 거부입니다.
+- 상태 효과: 커밋된 동작이 없고 상태 변경도 없습니다.
+
+<a id="error-vs-blocker-blocked-result"></a>
+차단 결과:
+- 공개 형태: `write_decision_reasons`나 `blockers` 같은 메서드별 결과 필드입니다.
+- 의미: 메서드가 동작별 차단 결과를 반환했을 수 있다는 뜻입니다.
+- 비주장: 공개 전송 또는 스키마 오류가 아닙니다.
+- 상태 효과: 메서드 담당 문서가 허용한 커밋된 차단 결과나 읽기 전용 차단 사유 데이터만 가능합니다.
+
+<a id="error-vs-blocker-dry-run-preview"></a>
+dry-run 미리보기:
+- 공개 형태: `DryRunSummary.would_errors[]` 또는 `DryRunSummary.would_blockers[]`를 담은 `ToolDryRunResponse`입니다.
+- 의미: 유효한 dry-run 요청에서 미리 볼 수 있는 진단입니다.
+- 상태 효과: 커밋된 쓰기가 아니며 저장된 차단 사유 상태도 아닙니다.
 
 `ErrorCode` 값은 공개 API 식별자입니다. 차단 사유 코드는 동작별 결과 값입니다. 공개 `ErrorCode`는 기준 메서드나 스키마 담당 문서가 명시적으로 허용하지 않는 한 차단 사유 코드로 재사용하면 안 됩니다.
 
@@ -178,13 +198,47 @@
 
 ## `close_task` 차단 사유 매핑
 
-| `close_task` 상황 | 응답 경로 | 공개 코드 규칙 |
-|---|---|---|
-| 닫기 준비 상태 평가 전 사전 확인 실패입니다. 오래된 상태, 오래된 Write Authorization 근거, 멱등성 충돌, 검증 실패, 로컬 접근 실패, 역량 실패, Core 상태 읽기 실패, Project/Task 식별 실패가 포함됩니다. | `ToolRejectedResponse.errors[]` | `STATE_VERSION_CONFLICT`와 다른 커밋 전 오류는 거부 응답에 남습니다. `CloseReadinessBlocker` 항목을 반환하지 않습니다. |
-| 유효한 읽기인 `intent=check`입니다. | 읽기 전용 `CloseTaskResult` | `CloseReadinessBlocker` 관찰 데이터를 반환할 수 있습니다. 저장된 차단 사유와 상태 버전 증가가 없습니다. |
-| 유효한 평가에서 닫기 차단 사유를 찾은 `intent=complete`입니다. | `CloseTaskResult(close_state=blocked)` | `CloseReadinessBlocker[]`를 반환할 수 있습니다. `STATE_VERSION_CONFLICT`는 금지됩니다. |
-| `intent=complete`에 대해 담당 문서가 정의한 닫기 차단 사유가 더 없습니다. | `CloseTaskResult(close_state=closed)` | 닫기 차단 사유가 없습니다. |
-| 종료 전이가 유효하지 않은 `intent=cancel` 또는 `intent=supersede`입니다. | 메서드 담당 결과 또는 거부 경로 | 차단 사유는 전이 유효성으로 제한합니다. 취소나 대체에 증거 충분성, 최종 수락, 잔여 위험 수락을 요구하지 않습니다. |
+| `close_task` 상황 | 세부사항 |
+|---|---|
+| 닫기 준비 상태 평가 전 사전 확인 실패 | [사전 확인 실패](#close-task-preflight-failure) |
+| 유효한 읽기인 `intent=check` | [`intent=check`](#close-task-intent-check) |
+| 닫기 차단 사유를 찾은 `intent=complete` | [차단된 `intent=complete`](#close-task-intent-complete-blocked) |
+| 닫기 차단 사유가 없는 `intent=complete` | [닫힌 `intent=complete`](#close-task-intent-complete-closed) |
+| 유효하지 않은 `intent=cancel` 또는 `intent=supersede` 종료 전이 | [유효하지 않은 종료 전이](#close-task-invalid-terminal-transition) |
+
+<a id="close-task-preflight-failure"></a>
+사전 확인 실패:
+- 조건: 닫기 준비 상태 평가 전에 오래된 상태, 오래된 Write Authorization 근거, 멱등성 충돌, 검증 실패, 로컬 접근 실패, 역량 실패, Core 상태 읽기 실패, Project/Task 식별 실패가 발생합니다.
+- 응답 경로: `ToolRejectedResponse.errors[]`.
+- 공개 코드 규칙: `STATE_VERSION_CONFLICT`와 다른 커밋 전 오류는 거부 응답에 남습니다.
+- 허용되지 않는 것: `CloseReadinessBlocker` 항목을 반환하지 않습니다.
+
+<a id="close-task-intent-check"></a>
+`intent=check`:
+- 조건: 요청이 유효한 읽기입니다.
+- 응답 경로: 읽기 전용 `CloseTaskResult`.
+- 허용되는 것: `CloseReadinessBlocker` 관찰 데이터를 반환할 수 있습니다.
+- 허용되지 않는 것: 저장된 차단 사유와 상태 버전 증가가 없습니다.
+
+<a id="close-task-intent-complete-blocked"></a>
+차단된 `intent=complete`:
+- 조건: 유효한 평가에서 닫기 차단 사유를 찾습니다.
+- 응답 경로: `CloseTaskResult(close_state=blocked)`.
+- 허용되는 것: `CloseReadinessBlocker[]`를 반환할 수 있습니다.
+- 허용되지 않는 것: `STATE_VERSION_CONFLICT`는 금지됩니다.
+
+<a id="close-task-intent-complete-closed"></a>
+닫힌 `intent=complete`:
+- 조건: 담당 문서가 정의한 닫기 차단 사유가 더 없습니다.
+- 응답 경로: `CloseTaskResult(close_state=closed)`.
+- 공개 코드 규칙: 닫기 차단 사유가 없습니다.
+
+<a id="close-task-invalid-terminal-transition"></a>
+유효하지 않은 종료 전이:
+- 조건: `intent=cancel` 또는 `intent=supersede`의 종료 전이가 유효하지 않습니다.
+- 응답 경로: 메서드 담당 결과 또는 거부 경로.
+- 공개 코드 규칙: 차단 사유는 전이 유효성으로 제한합니다.
+- 허용되지 않는 것: 취소나 대체에 증거 충분성, 최종 수락, 잔여 위험 수락을 요구하지 않습니다.
 
 | 닫기 준비 상태 발견 사항 | 공개 코드 매핑 |
 |---|---|

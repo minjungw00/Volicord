@@ -26,11 +26,31 @@ This document does not own:
 
 ## Error vs blocker
 
-| Concept | Public shape | What it means | State effect |
-|---|---|---|---|
-| Rejected response | `ToolRejectedResponse.errors[]` with `ToolError.code: ErrorCode` | The method did not proceed to the committed operation. The failure is public transport, request, freshness, local-access, capability, or precondition rejection. | No committed operation and no state change. |
-| Blocked result | Method-specific result fields such as `write_decision_reasons` or `blockers` | The method may have returned an operation-specific blocked outcome. This is not a public transport/schema error. | Only the method owner may allow a committed blocked result or read-only blocker data. |
-| Dry-run preview | `ToolDryRunResponse` with `DryRunSummary.would_errors[]` or `DryRunSummary.would_blockers[]` | Previewable diagnostics for a valid dry-run request. | Not a committed write and not stored blocker state. |
+| Concept | Public shape | Details |
+|---|---|---|
+| Rejected response | `ToolRejectedResponse.errors[]` | [Rejected response](#error-vs-blocker-rejected-response) |
+| Blocked result | method-specific result fields | [Blocked result](#error-vs-blocker-blocked-result) |
+| Dry-run preview | `ToolDryRunResponse` | [Dry-run preview](#error-vs-blocker-dry-run-preview) |
+
+<a id="error-vs-blocker-rejected-response"></a>
+Rejected response:
+- Public shape: `ToolRejectedResponse.errors[]` with `ToolError.code: ErrorCode`.
+- Meaning: The method did not proceed to the committed operation.
+- Condition: The failure is public transport, request, freshness, local-access, capability, or precondition rejection.
+- State effect: No committed operation and no state change.
+
+<a id="error-vs-blocker-blocked-result"></a>
+Blocked result:
+- Public shape: Method-specific result fields such as `write_decision_reasons` or `blockers`.
+- Meaning: The method may have returned an operation-specific blocked outcome.
+- Non-claim: This is not a public transport or schema error.
+- State effect: Only the method owner may allow a committed blocked result or read-only blocker data.
+
+<a id="error-vs-blocker-dry-run-preview"></a>
+Dry-run preview:
+- Public shape: `ToolDryRunResponse` with `DryRunSummary.would_errors[]` or `DryRunSummary.would_blockers[]`.
+- Meaning: Previewable diagnostics for a valid dry-run request.
+- State effect: Not a committed write and not stored blocker state.
 
 `ErrorCode` values are public API identifiers. Blocker codes are operation-specific result values. A public `ErrorCode` must not be reused as a blocker code unless the canonical method or schema owner explicitly allows that use.
 
@@ -182,13 +202,47 @@ Blocked result means the method may have returned an operation-specific blocked 
 
 ## `close_task` blocker mapping
 
-| `close_task` situation | Response path | Public-code rule |
-|---|---|---|
-| Preflight failure before close-readiness evaluation, including stale state, stale Write Authorization basis, idempotency conflict, validation failure, local-access failure, capability failure, unreadable Core state, or unresolved project/Task identity. | `ToolRejectedResponse.errors[]` | `STATE_VERSION_CONFLICT` and other pre-commit errors stay in the rejected response. No `CloseReadinessBlocker` entries. |
-| `intent=check` with a valid read. | `CloseTaskResult` read-only result | May return `CloseReadinessBlocker` observation data. No stored blocker and no state-version increment. |
-| `intent=complete` with a valid evaluation that finds close-readiness blockers. | `CloseTaskResult(close_state=blocked)` | May return `CloseReadinessBlocker[]`; `STATE_VERSION_CONFLICT` is forbidden. |
-| `intent=complete` with no remaining owner-defined close blockers. | `CloseTaskResult(close_state=closed)` | No close blockers. |
-| `intent=cancel` or `intent=supersede` with an invalid terminal transition. | Method-owned result or rejection path | Blockers are limited to transition validity. Do not require evidence sufficiency, final acceptance, or residual-risk acceptance for cancellation or supersession. |
+| `close_task` situation | Details |
+|---|---|
+| Preflight failure before close-readiness evaluation | [Preflight failure](#close-task-preflight-failure) |
+| `intent=check` with a valid read | [`intent=check`](#close-task-intent-check) |
+| `intent=complete` with close-readiness blockers | [`intent=complete` blocked](#close-task-intent-complete-blocked) |
+| `intent=complete` with no close blockers | [`intent=complete` closed](#close-task-intent-complete-closed) |
+| Invalid `intent=cancel` or `intent=supersede` terminal transition | [Invalid terminal transition](#close-task-invalid-terminal-transition) |
+
+<a id="close-task-preflight-failure"></a>
+Preflight failure:
+- Conditions: stale state, stale Write Authorization basis, idempotency conflict, validation failure, local-access failure, capability failure, unreadable Core state, or unresolved project/Task identity before close-readiness evaluation.
+- Response path: `ToolRejectedResponse.errors[]`.
+- Public-code rule: `STATE_VERSION_CONFLICT` and other pre-commit errors stay in the rejected response.
+- Not allowed: No `CloseReadinessBlocker` entries.
+
+<a id="close-task-intent-check"></a>
+`intent=check`:
+- Condition: The request is a valid read.
+- Response path: `CloseTaskResult` read-only result.
+- Allowed: May return `CloseReadinessBlocker` observation data.
+- Not allowed: No stored blocker and no state-version increment.
+
+<a id="close-task-intent-complete-blocked"></a>
+`intent=complete` blocked:
+- Condition: A valid evaluation finds close-readiness blockers.
+- Response path: `CloseTaskResult(close_state=blocked)`.
+- Allowed: May return `CloseReadinessBlocker[]`.
+- Not allowed: `STATE_VERSION_CONFLICT` is forbidden.
+
+<a id="close-task-intent-complete-closed"></a>
+`intent=complete` closed:
+- Condition: No remaining owner-defined close blockers exist.
+- Response path: `CloseTaskResult(close_state=closed)`.
+- Public-code rule: No close blockers.
+
+<a id="close-task-invalid-terminal-transition"></a>
+Invalid terminal transition:
+- Condition: `intent=cancel` or `intent=supersede` has an invalid terminal transition.
+- Response path: Method-owned result or rejection path.
+- Public-code rule: Blockers are limited to transition validity.
+- Not allowed: Do not require evidence sufficiency, final acceptance, or residual-risk acceptance for cancellation or supersession.
 
 | Close-readiness finding | Public code mapping |
 |---|---|

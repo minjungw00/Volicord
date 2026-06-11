@@ -25,29 +25,166 @@ This document does not own:
 
 ## Project-wide state clock
 
-The active current MVP has one public state clock: `project_state.state_version`. It is project-wide and is the only active authorization, conflict, freshness, and concurrency basis for public API mutations. Task routing still matters for ownership, blockers, close state, evidence, and user judgments, but it does not select a separate state clock.
+The active current MVP has one public state clock: `project_state.state_version`. It is project-wide and is the only active authorization, conflict, freshness, and concurrency basis for public API mutations.
 
-Fresh non-dry-run state-changing API calls compare `ToolEnvelope.expected_state_version` with the current `project_state.state_version` before commit. A mismatch returns `STATE_VERSION_CONFLICT` only in `ToolRejectedResponse.errors` and creates no `CloseReadinessBlocker`, current record, `task_event` or `task_events` append, artifact, evidence summary, Write Authorization creation or consumption, `close_state` mutation, replay row, or `project_state.state_version` increment.
+Task routing still matters for ownership, blockers, close state, evidence, and user judgments. It does not select a separate Task-local state clock.
 
-`STATE_VERSION_CONFLICT` is the only active current MVP public `ErrorCode` for project-wide state-version mismatch. No alternate public code, alias, deprecated spelling, or storage-layer public error name is exposed for that mismatch. No active current MVP call requires or accepts more than one public `expected_state_version`.
+Response-branch `state_version` values always use the project-wide version:
 
-Every committed non-dry-run mutation increments `project_state.state_version` by exactly 1. This includes committed blocked responses when the method owner allows Core to persist a blocker or another current-row mutation. A single public call may update Task lifecycle fields and project-level fields together, such as `harness.close_task intent=supersede` updating both `tasks.lifecycle_phase` and `project_state.active_task_id`, but it is still one mutation and creates exactly one project-wide version increment.
+- the resulting version after a committed mutation
+- the current project-wide version observed for read-only results, `ToolDryRunResponse` previews, and temporary staging responses
 
-`harness.status`, `harness.close_task intent=check`, the same check with `dry_run=true`, `ToolDryRunResponse` preview calls, malformed requests, pre-commit validation failures, pre-commit state-version conflicts, and idempotent replay do not increment `project_state.state_version`.
+This summary table shows branch-level outcomes. Detail blocks keep conditions, results, and exceptions separate.
 
-Response-branch `state_version` values always use the project-wide version: the resulting version after a committed mutation, or the current project-wide version observed for read-only results, `ToolDryRunResponse` previews, and temporary staging responses.
+| Situation | Result | Details |
+|---|---|---|
+| Read-only status | no increment | [Read-only status](#state-version-read-only-status) |
+| Rejected response | no increment | [Rejected response](#state-version-rejected-response) |
+| Successful mutation | increments | [Successful mutation](#state-version-successful-mutation) |
+| Committed blocked result | method-specific | [Committed blocked result](#state-version-committed-blocked-result) |
+
+<a id="state-version-read-only-status"></a>
+**Read-only status**
+
+Condition:
+
+- A read-only call such as `harness.status` observes current state.
+
+Result:
+
+- `project_state.state_version` does not increment.
+
+Not allowed storage effects:
+
+- current record creation or mutation
+- event append
+- replay row creation
+
+<a id="state-version-rejected-response"></a>
+**Rejected response**
+
+Condition:
+
+- `ToolRejectedResponse` returns before commit.
+
+Result:
+
+- The requested state change is not performed.
+- `project_state.state_version` does not increment.
+
+<a id="state-version-successful-mutation"></a>
+**Successful mutation**
+
+Condition:
+
+- A `dry_run=false` state change commits.
+
+Result:
+
+- Project-wide state changes.
+- `project_state.state_version` increments exactly once per commit.
+
+<a id="state-version-committed-blocked-result"></a>
+**Committed blocked result**
+
+Condition:
+
+- The method owner allows a blocked result to commit.
+
+Result:
+
+- Whether the blocked result has a state effect is defined by the method owner and [committed blocked result storage effects](storage-effects.md#committed-blocked-result).
+
+Exception:
+
+- A blocked result does not automatically increment `project_state.state_version`.
 
 The active first schema should omit `tasks.state_version`. If an implementation encounters a legacy or prototype `tasks.state_version` column, that value is inactive metadata only. It must not be used as an authorization, `STATE_VERSION_CONFLICT`, stale-state, Write Authorization, idempotency, lock, or concurrency basis.
 
-`write_authorizations.basis_state_version` stores the project-wide `project_state.state_version` used when Core prepared the authorization. Stale Write Authorization detection compares that stored value with the current project-wide state version, not with any Task-local clock. When that mismatch is surfaced through the public API, the public error is `STATE_VERSION_CONFLICT`. The call is rejected before consumption and must not change the Write Authorization status unless another current contract explicitly says so.
+Related storage fields record the project-wide clock:
 
-`tool_invocations.basis_state_version` stores the project-wide state version observed by the call before the committed mutation. `task_events.state_version` stores the resulting project-wide version after the committed event.
+- `write_authorizations.basis_state_version` stores the `project_state.state_version` Core used when preparing the authorization.
+- `tool_invocations.basis_state_version` stores the project-wide state version observed before the committed mutation.
+- `task_events.state_version` stores the resulting project-wide version after the committed event.
+
+## Incrementing cases
+
+Condition: A new `dry_run=false` call commits an actual state change.
+
+Result: `project_state.state_version` increments by exactly 1. If one public call updates Task lifecycle fields and project-level fields together, it is still one state change and one increment. For example, `harness.close_task intent=supersede` may update both `tasks.lifecycle_phase` and `project_state.active_task_id` in the same commit.
+
+Exception: A committed blocked result does not automatically increment. It may increment only when the method owner allows blocker or other current-row mutation storage and [Storage Effects](storage-effects.md) allows a `state_version` effect for that branch.
+
+Owner links: Method-specific persistence effects belong to [Storage Effects](storage-effects.md) and [MVP API](api/mvp-api.md).
+
+## Non-incrementing cases
+
+These branches do not increment `project_state.state_version`:
+
+- `harness.status`
+- `harness.close_task intent=check`
+- `harness.close_task intent=check` with `dry_run=true`
+- `ToolDryRunResponse` preview calls
+- malformed requests
+- pre-commit validation failures
+- pre-commit state-version conflicts
+- stale `WriteAuthorization.basis_state_version`
+- idempotent replay
+- no-effect rejected responses
+
+Result: These branches must not create current records, `task_events`, replay rows, artifact promotion, evidence summaries, `Write Authorization` creation or consumption, `close_state` mutation, or `project_state.state_version` increment.
+
+Exception: Idempotent replay may return an already committed original response. It still creates no new state change, new event, or new `state_version` increment.
+
+Owner links: The detailed branch list and method-specific exceptions belong to [Storage Effects](storage-effects.md).
+
+## `expected_state_version`
+
+Condition: A new `dry_run=false` state-changing API call compares `ToolEnvelope.expected_state_version` with the current `project_state.state_version` before commit.
+
+Result: If the values match, the call may continue to commit after other validation passes. If the values do not match, Core returns `STATE_VERSION_CONFLICT` only in `ToolRejectedResponse.errors`.
+
+Rejected result: A stale-state conflict does not create or change:
+
+- `CloseReadinessBlocker`
+- current record
+- `task_event` or `task_events` append
+- artifact
+- evidence summary
+- `Write Authorization` creation or consumption
+- `close_state` mutation
+- replay row
+- `project_state.state_version` increment
+
+Non-claim: `expected_state_version` is a freshness condition for stale writes. It does not replace user-owned judgment, sensitive-action approval, final acceptance, residual-risk acceptance, or `Write Authorization`.
+
+Public error boundary: `STATE_VERSION_CONFLICT` is the only active current MVP public `ErrorCode` for project-wide state-version mismatch. No active current MVP call requires or accepts more than one public `expected_state_version`.
+
+Related storage field: Stale Write Authorization detection compares `write_authorizations.basis_state_version` with the current `project_state.state_version`. When that mismatch is surfaced through the public API, the public error is also `STATE_VERSION_CONFLICT`. The call is rejected before consumption and must not change the Write Authorization status unless another current contract explicitly says so.
 
 ## Event meaning
 
-`task_events` records committed Core mutations in order. It is an audit and ordering trail, not the normal source used to reconstruct current state during ordinary operation. Current rows such as `tasks`, `change_units`, `user_judgments`, `write_authorizations`, `runs`, `artifacts`, `artifact_links`, `evidence_summaries`, and `blockers` remain the current state.
+`task_events` records committed Core mutations in order. It is an audit and ordering trail, not the normal source used to reconstruct current state during ordinary operation. Current rows remain the current state, including:
 
-`task_events` is append-only for ordinary active MVP operation. After an event is committed, Core must not update or delete that row to change history. Corrections or repairs are recorded by new events and current-row updates through the owner path. Idempotent replay, dry-run, malformed requests, and pre-commit failures do not append events.
+- `tasks`
+- `change_units`
+- `user_judgments`
+- `write_authorizations`
+- `runs`
+- `artifacts`
+- `artifact_links`
+- `evidence_summaries`
+- `blockers`
+
+`task_events` is append-only for ordinary active MVP operation. After an event is committed, Core must not update or delete that row to change history. Corrections or repairs are recorded by new events and current-row updates through the owner path.
+
+Branches that do not append events:
+
+- idempotent replay
+- `dry_run`
+- malformed requests
+- pre-commit failures
+- no-effect rejected responses
 
 For a new committed non-dry-run mutation, these effects must commit atomically:
 
@@ -80,13 +217,28 @@ If any part fails, the transaction must leave no partial:
 
 ## Idempotency and replay
 
-`tool_invocations` stores exact replay only for committed non-dry-run Core `MethodResult` responses whose method state-effect row creates replay. It does not store `ToolRejectedResponse`, `ToolDryRunResponse`, read-only results, or successful `StageArtifactResult` staging results, and those branches never create or reserve replay rows.
+This section explains idempotency and replay meaning.
 
-The storage unique key is `(project_id, tool_name, idempotency_key)`. `request_hash` is the conflict discriminator stored in that row. `request_hash` must not be added to a second uniqueness key that would allow the same idempotency key to fork into multiple committed responses.
+Condition: `tool_invocations` stores exact replay only for committed `dry_run=false` Core `MethodResult` responses whose API method state-effect row creates replay.
 
-If the same key and request hash are replayed, Core returns the original committed response without appending events, promoting or linking artifacts, consuming Write Authorization, or changing state again. If the key is reused with a different request hash, Core returns `STATE_VERSION_CONFLICT` as defined by [state version conflict](api/errors.md#state-conflict-behavior).
+Storage key: The storage unique key is `(project_id, tool_name, idempotency_key)`. `request_hash` is the conflict discriminator stored in that row.
 
-`tool_invocations.response_json` stores only the exact committed non-dry-run Core `MethodResult` response for a replay-row-creating state effect. It does not store `StatusResult`, `ToolRejectedResponse`, `ToolDryRunResponse`, read-only `MethodResult` results, or successful `StageArtifactResult` staging results.
+Stored response: `tool_invocations.response_json` stores only the exact committed `dry_run=false` Core `MethodResult` response for a replay-row-creating state effect.
+
+Branches not stored:
+
+- `ToolRejectedResponse`
+- `ToolDryRunResponse`
+- read-only result
+- read-only `MethodResult`
+- `StatusResult`
+- successful `StageArtifactResult` staging result
+
+Replay result: If the same `idempotency_key` and same `request_hash` are replayed, Core returns the original committed response. It does not append events, promote or link artifacts, consume Write Authorization, or change state again.
+
+Conflict result: If the same `idempotency_key` is reused with a different `request_hash`, Core returns `STATE_VERSION_CONFLICT` as defined by [state version conflict](api/errors.md#state-conflict-behavior).
+
+Non-claim: `request_hash` must not be added to a second uniqueness key that would allow the same idempotency key to fork into multiple committed responses.
 
 ## Lock policy
 

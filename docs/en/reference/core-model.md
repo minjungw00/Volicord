@@ -6,13 +6,21 @@ Core is the local authority record for task scope, user-owned judgment, evidence
 
 ## 1. Owns / Does not own
 
-| This document owns | This document does not own |
-|---|---|
-| Core authority invariants and non-substitution rules. | Public API payload schemas, response branch shapes, envelopes, or method result structures. Use [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), and the API schema owners. |
-| Product meaning for Task scope, Change Unit boundaries, user-owned judgment, evidence, close readiness, close honesty, waivers, and residual risk. | Storage DDL, persisted JSON layout, locks, migrations, runtime-home placement, or method-to-storage effects. Use [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md). |
-| Conceptual lifecycle and gate boundaries. | Exact active enum-like values and wire field lists. Use [API Value Sets](api/schema-value-sets.md) and [API State Schemas](api/schema-state.md). |
-| The difference between `WriteDecisionReason`, close-readiness blocking reasons, and `CloseReadinessBlocker`. | Public error code definitions or error precedence. Use [API Errors](api/errors.md). |
-| Cross-owner routing when Core concepts touch API, Storage, Security, Projection, or Later material. | Rendered projection bodies, template text, connector recipes, security guarantee vocabulary, or later candidate catalogs. |
+This document owns:
+
+- Core authority invariants and non-substitution rules.
+- Product meaning for Task scope, Change Unit boundaries, user-owned judgment, evidence, close readiness, close honesty, waivers, and residual risk.
+- Conceptual lifecycle and gate boundaries.
+- The difference between `WriteDecisionReason`, close-readiness blocking reasons, and `CloseReadinessBlocker`.
+- Cross-owner routing when Core concepts touch API, Storage, Security, Projection, or Later material.
+
+This document does not own:
+
+- Public API payload schemas, response branch shapes, envelopes, or method result structures. Use [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), and the API schema owners.
+- Storage DDL, persisted JSON layout, locks, migrations, runtime-home placement, or method-to-storage effects. Use [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md).
+- Exact active enum-like values and wire field lists. Use [API Value Sets](api/schema-value-sets.md) and [API State Schemas](api/schema-state.md).
+- Public error code definitions or error precedence. Use [API Errors](api/errors.md).
+- Rendered projection bodies, template text, connector recipes, security guarantee vocabulary, or later candidate catalogs.
 
 Exact identifiers may appear here when needed to explain meaning. Their schema shape, value set, storage effect, and public error behavior remain with the linked owner documents.
 

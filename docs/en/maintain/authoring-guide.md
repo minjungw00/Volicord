@@ -143,13 +143,13 @@ Maintain docs should sound like editing instructions. They can name owner paths 
 
 ### Durable examples
 
-Examples in reference and API documentation should use stable product or user scenarios. They should remain useful after the current edit context is forgotten.
+Examples in reference and API documentation should use stable product or user scenarios. They should remain useful after the maintenance context is forgotten.
 
 The current API reference sample task is: add explicit confirmation before account data export, update account data export confirmation tests, and record account data export confirmation test output as representative run/evidence data. If a documentation batch replaces this sample task, update the API examples, paired Korean examples, checks, and routes together.
 
-API examples are not allowed to use the current documentation edit as the scenario.
+API examples must not use documentation maintenance as the scenario.
 
-Do not make the example scenario the current documentation edit, migration, refactor, review, route cleanup, or section restructuring. Repository-internal documentation paths, including paths under `docs/`, should appear as example data only when the document is explicitly about documentation maintenance.
+Do not make the example scenario documentation maintenance, migration, refactoring, route cleanup, or section restructuring. Repository-internal documentation paths, including paths under `docs/`, should appear as example data only when the document is explicitly about documentation maintenance.
 
 API examples should avoid self-referential documentation edits as task payloads, request examples, response examples, run summaries, artifact descriptions, or user judgment prompts.
 

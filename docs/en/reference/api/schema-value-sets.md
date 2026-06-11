@@ -410,11 +410,16 @@ These names are not default active MVP values. A listed name is a value-set boun
 | Name | Boundary |
 |---|---|
 | `preventive` | Profile-gated `GuaranteeDisplay.level`; requires a promoted preventive mechanism and proof path. |
-| `isolated` | Reserved later or `profile-gated` guarantee label for `GuaranteeDisplay.level`. This document owns the value-set entry only; it does not grant or define an active isolation guarantee. See [`../security.md`](../security.md) for guarantee semantics and [`../active-mvp-scope.md`](../active-mvp-scope.md) for current-MVP availability. |
+| `isolated` | Reserved later or `profile-gated` `GuaranteeDisplay.level` label. |
 | `captured_artifact` and native capture names | Reserved or rejected for active `ArtifactInput.source_kind`; active artifact intake uses `staged_artifact` or `existing_artifact`. |
 | cross-surface staged artifact handoff | Not active; staged promotion requires matching recorded surface provenance. |
 | QA waiver and verification-risk judgment kinds | Later candidates; not active `judgment_kind` values. |
 | `design_policy` blocker category | Later or inactive unless promoted by a schema and close-readiness owner. |
+
+`isolated` details:
+- Owner boundary: This document owns the value-set entry only.
+- Non-claim: The entry does not grant or define an active isolation guarantee.
+- Owner links: Guarantee semantics belong to [Security](../security.md). Current-MVP availability belongs to [Active MVP Scope](../active-mvp-scope.md).
 
 ## Related owners
 

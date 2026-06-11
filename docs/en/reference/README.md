@@ -59,7 +59,7 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Question | Owner document(s) |
 |---|---|
 | What is the sample task used in API examples? | [Authoring Guide](../maintain/authoring-guide.md), [Checks](../maintain/checks.md), [MVP API](api/mvp-api.md) |
-| Are API examples allowed to use the current documentation edit as the scenario? | [Authoring Guide](../maintain/authoring-guide.md), [Checks](../maintain/checks.md) |
+| Can API examples use documentation maintenance as the scenario? | [Authoring Guide](../maintain/authoring-guide.md), [Checks](../maintain/checks.md) |
 | What does `harness.prepare_write` return? | [MVP API](api/mvp-api.md), [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Judgment Schemas](api/schema-judgment.md), [Core Model](core-model.md) |
 | Where is `ToolRejectedResponse` defined? | [API Schema Core](api/schema-core.md), [API Errors](api/errors.md) |
 | Is `STATE_VERSION_CONFLICT` a blocker code? | [API Errors](api/errors.md) |

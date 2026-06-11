@@ -59,7 +59,7 @@
 | 질문 | 담당 문서 |
 |---|---|
 | API 예시에서 쓰는 샘플 작업은 무엇인가요? | [작성 가이드](../maintain/authoring-guide.md), [문서 점검](../maintain/checks.md), [MVP API](api/mvp-api.md) |
-| API 예시가 현재 문서 편집을 시나리오로 써도 되나요? | [작성 가이드](../maintain/authoring-guide.md), [문서 점검](../maintain/checks.md) |
+| API 예시가 문서 유지보수를 시나리오로 써도 되나요? | [작성 가이드](../maintain/authoring-guide.md), [문서 점검](../maintain/checks.md) |
 | `harness.prepare_write`는 무엇을 반환하나요? | [MVP API](api/mvp-api.md), [API 코어 스키마](api/schema-core.md), [API 상태 스키마](api/schema-state.md), [API 판단 스키마](api/schema-judgment.md), [Core 모델](core-model.md) |
 | `ToolRejectedResponse`는 어디에 정의되어 있나요? | [API 코어 스키마](api/schema-core.md), [API 오류](api/errors.md) |
 | `STATE_VERSION_CONFLICT`는 차단 사유 코드인가요? | [API 오류](api/errors.md) |

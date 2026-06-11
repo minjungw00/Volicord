@@ -37,12 +37,12 @@ question_routes:
         - maintain.checks
         - reference.api.mvp-api
       route_note: "Authoring Guide owns durable example rules; Checks owns the example scenario review; MVP API carries the current account export confirmation example set."
-    - question: "Are API examples allowed to use the current documentation edit as the scenario?"
+    - question: "Can API examples use documentation maintenance as the scenario?"
       canonical_owner_doc_id: maintain.authoring-guide
       default_path: docs/en/maintain/authoring-guide.md
       supporting_owner_doc_ids:
         - maintain.checks
-      route_note: "API examples must use durable product or user scenarios, not the current documentation edit, refactor, review, route cleanup, or migration."
+      route_note: "API examples must use durable product or user scenarios, not documentation maintenance, refactoring, route cleanup, section restructuring, or migration."
     - question: "Is `STATE_VERSION_CONFLICT` a blocker code?"
       canonical_owner_doc_id: reference.api.errors
       default_path: docs/en/reference/api/errors.md

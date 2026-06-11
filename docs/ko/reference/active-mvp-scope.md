@@ -44,19 +44,53 @@
 - 집중된 사용자 판단 기록
 - 닫기 시도
 
-포함되는 범위는 아래와 같습니다.
+포함되는 범위는 아래와 같습니다. 세부 블록은 현재 의미와 담당 문서 경로가 한 표 셀에 묻히지 않게 분리합니다.
 
-| 범위 항목 | 현재 MVP에서의 의미 | 주 담당 문서 |
-|---|---|---|
-| 평이한 언어 입력과 Task 생성 | 활성 입력 경로를 통해 사용자의 평이한 의도에서 로컬 Task를 시작할 수 있습니다. | [MVP API](api/mvp-api.md), [Core 모델](core-model.md) |
-| 범위 업데이트 | 활성 범위 업데이트 경로로 Task와 Change Unit 범위를 갱신할 수 있습니다. | [MVP API](api/mvp-api.md), [Core 모델](core-model.md) |
-| 상태와 닫기 준비 상태 확인 | 생성된 상태 보기나 런타임 아티팩트를 만들지 않고 현재 상태, 증거 충분성, 알려진 차단 사유, 닫기 준비 상태를 읽을 수 있습니다. | [API 상태 스키마](api/schema-state.md), [오류](api/errors.md), [상태 보기 권한 참조](projection-and-templates.md) |
-| 쓰기 준비 승인 | `harness.prepare_write`는 호환되는 제품 파일 쓰기 시도에 대해 담당 범위의 1회용 `Write Authorization`을 만들 수 있습니다. | [MVP API](api/mvp-api.md), [저장 효과](storage-effects.md), [보안](security.md) |
-| 로컬 접점 등록 | 등록된 로컬 접점은 현재 범위 확인에 필요한 활성 접점과 지원 역량을 식별할 수 있습니다. | [에이전트 통합](agent-integration.md), [접점별 사용 레시피](../use/surface-recipes.md), [보안](security.md) |
-| 아티팩트 스테이징 | 새 아티팩트 바이트는 활성 스테이징 경로로만 현재 범위에 들어오고, 기존 아티팩트는 호환되는 지속 아티팩트 참조를 통해서만 연결됩니다. | [API 아티팩트 스키마](api/schema-artifacts.md), [아티팩트 저장소](storage-artifacts.md), [저장 효과](storage-effects.md) |
-| 실행 및 증거 기록 | 활성 작업의 실행 기록과 간결한 증거 요약을 남길 수 있으며, 아티팩트 담당 문서가 허용할 때 호환되는 아티팩트 승격이나 연결도 함께 다룰 수 있습니다. | [MVP API](api/mvp-api.md), [저장 효과](storage-effects.md), [Core 모델](core-model.md) |
-| 집중된 사용자 판단 기록 | 활성 판단 경로로 사용자 소유 판단을 요청하고 기록할 수 있습니다. 판단 담당 문서가 허용하는 경우 민감 동작 승인, 최종 수락, 잔여 위험 수락, 취소도 여기에 포함됩니다. | [Core 모델](core-model.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md) |
-| 닫기 시도 | `harness.close_task`는 증거, 최종 수락, 잔여 위험, 대체 불가 경계를 지키면서 닫기 준비 상태를 확인하고 지원되는 닫기 결과를 시도할 수 있습니다. | [MVP API](api/mvp-api.md), [Core 모델](core-model.md), [오류](api/errors.md) |
+| 범위 항목 | 주 담당 문서 |
+|---|---|
+| 평이한 언어 입력과 Task 생성 | [MVP API](api/mvp-api.md), [Core 모델](core-model.md) |
+| 범위 업데이트 | [MVP API](api/mvp-api.md), [Core 모델](core-model.md) |
+| 상태와 닫기 준비 상태 확인 | [API 상태 스키마](api/schema-state.md), [오류](api/errors.md), [상태 보기 권한 참조](projection-and-templates.md) |
+| 쓰기 준비 승인 | [MVP API](api/mvp-api.md), [저장 효과](storage-effects.md), [보안](security.md) |
+| 로컬 접점 등록 | [에이전트 통합](agent-integration.md), [접점별 사용 레시피](../use/surface-recipes.md), [보안](security.md) |
+| 아티팩트 스테이징 | [API 아티팩트 스키마](api/schema-artifacts.md), [아티팩트 저장소](storage-artifacts.md), [저장 효과](storage-effects.md) |
+| 실행 및 증거 기록 | [MVP API](api/mvp-api.md), [저장 효과](storage-effects.md), [Core 모델](core-model.md) |
+| 집중된 사용자 판단 기록 | [Core 모델](core-model.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md) |
+| 닫기 시도 | [MVP API](api/mvp-api.md), [Core 모델](core-model.md), [오류](api/errors.md) |
+
+평이한 언어 입력과 Task 생성:
+- 현재 MVP에서의 의미: 활성 입력 경로를 통해 사용자의 평이한 의도에서 로컬 Task를 시작할 수 있습니다.
+
+범위 업데이트:
+- 현재 MVP에서의 의미: 활성 범위 업데이트 경로로 Task와 Change Unit 범위를 갱신할 수 있습니다.
+
+상태와 닫기 준비 상태 확인:
+- 현재 MVP에서의 의미: 현재 상태, 증거 충분성, 알려진 차단 사유, 닫기 준비 상태를 읽을 수 있습니다.
+- 현재 범위가 아닌 것: 이 읽기는 생성된 상태 보기나 런타임 아티팩트를 만들지 않습니다.
+
+쓰기 준비 승인:
+- 현재 MVP에서의 의미: `harness.prepare_write`는 담당 범위의 1회용 `Write Authorization`을 만들 수 있습니다.
+- 조건: 이 승인은 호환되는 제품 파일 쓰기 시도 하나에만 쓰입니다.
+
+로컬 접점 등록:
+- 현재 MVP에서의 의미: 등록된 로컬 접점은 활성 접점과 지원 역량을 식별할 수 있습니다.
+- 조건: 이 사실은 현재 범위 확인에만 사용됩니다.
+
+아티팩트 스테이징:
+- 현재 MVP에서의 의미: 새 아티팩트 바이트는 활성 스테이징 경로로 현재 범위에 들어올 수 있습니다.
+- 조건: 기존 아티팩트는 호환되는 지속 아티팩트 참조를 통해서만 연결됩니다.
+
+실행 및 증거 기록:
+- 현재 MVP에서의 의미: 활성 작업의 실행 기록과 간결한 증거 요약을 남길 수 있습니다.
+- 조건: 호환되는 아티팩트 승격이나 연결은 아티팩트 담당 문서가 허용할 때만 포함됩니다.
+
+집중된 사용자 판단 기록:
+- 현재 MVP에서의 의미: 활성 판단 경로로 사용자 소유 판단을 요청하고 기록할 수 있습니다.
+- 포함되는 판단 경로: 판단 담당 문서가 허용하는 민감 동작 승인, 최종 수락, 잔여 위험 수락, 취소입니다.
+
+닫기 시도:
+- 현재 MVP에서의 의미: `harness.close_task`는 닫기 준비 상태를 확인하고 지원되는 닫기 결과를 시도할 수 있습니다.
+- 필요한 경계: 증거, 최종 수락, 잔여 위험, 대체 불가 경계는 그대로 유지됩니다.
 
 읽는 시점의 상태나 파생 표시는 상태 및 닫기 준비 상태 확인의 일부일 때만 현재 범위에 들어옵니다. 지속 저장되는 상태 보기 작업, 생성된 상태 보기 파일, 관리되는 상태 보기 복구는 현재 범위가 아닙니다.
 
@@ -117,9 +151,9 @@
 | 구현 준비와 유지보수자 인계 상태 | [MVP 계획](../build/mvp-plan.md) |
 | Core 권한, Task 상태, 사용자 소유 판단 경계 | [Core 모델](core-model.md) |
 | API 메서드 동작 | [MVP API](api/mvp-api.md) |
-| API 스키마와 값 집합 | [API 코어 스키마](api/schema-core.md), [API 상태 스키마](api/schema-state.md), [API 아티팩트 스키마](api/schema-artifacts.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md) |
+| API 스키마와 값 집합 | [참조 색인의 API와 스키마 담당 문서](README.md#api와-스키마-담당-문서) |
 | 공개 오류와 닫기 차단 사유 경로 | [오류](api/errors.md) |
-| 저장소 기록, 효과, 아티팩트 생명주기, 버전 관리, 잠금 | [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [아티팩트 저장소](storage-artifacts.md), [저장소 버전 관리](storage-versioning.md) |
+| 저장소 기록, 효과, 아티팩트 생명주기, 버전 관리, 잠금 | [참조 색인의 저장소 담당 문서](README.md#저장소-담당-문서) |
 | 런타임, 제품 저장소, 서버 경계 | [런타임 경계](runtime-boundaries.md) |
 | 보안 주장과 비주장 | [보안](security.md) |
 | 접점과 커넥터 동작 | [에이전트 통합](agent-integration.md), [접점별 사용 레시피](../use/surface-recipes.md) |

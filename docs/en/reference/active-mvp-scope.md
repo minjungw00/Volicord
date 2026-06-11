@@ -44,19 +44,53 @@ The current MVP scope is limited to:
 - focused user judgment capture
 - close attempts
 
-The included scope is:
+The included scope is summarized below. Detail blocks keep the active meaning and owner links visible.
 
-| Scope item | Active MVP meaning | Primary owner |
-|---|---|---|
-| Plain-language intake and Task creation | A local task can be started from plain-language user intent through the active intake path. | [MVP API](api/mvp-api.md), [Core Model](core-model.md) |
-| Scope updates | Task and Change Unit scope can be updated through the active scope-update path. | [MVP API](api/mvp-api.md), [Core Model](core-model.md) |
-| Status and close-readiness review | Current status, evidence sufficiency, known blockers, and close-readiness review can be read without creating a generated projection or runtime artifact. | [API State Schemas](api/schema-state.md), [Errors](api/errors.md), [Projection Authority Reference](projection-and-templates.md) |
-| Prepare-write authorization | `harness.prepare_write` can create an owner-scoped, single-use `Write Authorization` for a compatible product-file write attempt. | [MVP API](api/mvp-api.md), [Storage Effects](storage-effects.md), [Security](security.md) |
-| Local surface registration | Registered local surfaces can identify the active surface and its supported capabilities for current scope checks. | [Agent Integration](agent-integration.md), [Surface Recipes](../use/surface-recipes.md), [Security](security.md) |
-| Artifact staging | New artifact bytes can enter active scope only through the active staging path, and existing artifacts can be linked only through compatible persisted artifact references. | [API Artifact Schemas](api/schema-artifacts.md), [Artifact Storage](storage-artifacts.md), [Storage Effects](storage-effects.md) |
-| Run and evidence recording | Runs and compact evidence summaries can be recorded for active work, including compatible artifact promotion or linking when the artifact owners allow it. | [MVP API](api/mvp-api.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
-| Focused user judgment capture | User-owned judgments can be requested and recorded through the active judgment path, including sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation when the judgment owners allow them. | [Core Model](core-model.md), [API Judgment Schemas](api/schema-judgment.md), [API Value Sets](api/schema-value-sets.md) |
-| Close attempts | `harness.close_task` can check close readiness and attempt supported close outcomes while preserving evidence, final acceptance, residual-risk, and non-substitution boundaries. | [MVP API](api/mvp-api.md), [Core Model](core-model.md), [Errors](api/errors.md) |
+| Scope item | Primary owner |
+|---|---|
+| Plain-language intake and Task creation | [MVP API](api/mvp-api.md), [Core Model](core-model.md) |
+| Scope updates | [MVP API](api/mvp-api.md), [Core Model](core-model.md) |
+| Status and close-readiness review | [API State Schemas](api/schema-state.md), [Errors](api/errors.md), [Projection Authority Reference](projection-and-templates.md) |
+| Prepare-write authorization | [MVP API](api/mvp-api.md), [Storage Effects](storage-effects.md), [Security](security.md) |
+| Local surface registration | [Agent Integration](agent-integration.md), [Surface Recipes](../use/surface-recipes.md), [Security](security.md) |
+| Artifact staging | [API Artifact Schemas](api/schema-artifacts.md), [Artifact Storage](storage-artifacts.md), [Storage Effects](storage-effects.md) |
+| Run and evidence recording | [MVP API](api/mvp-api.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
+| Focused user judgment capture | [Core Model](core-model.md), [API Judgment Schemas](api/schema-judgment.md), [API Value Sets](api/schema-value-sets.md) |
+| Close attempts | [MVP API](api/mvp-api.md), [Core Model](core-model.md), [Errors](api/errors.md) |
+
+Plain-language intake and Task creation:
+- Active MVP meaning: A local task can be started from plain-language user intent through the active intake path.
+
+Scope updates:
+- Active MVP meaning: Task and Change Unit scope can be updated through the active scope-update path.
+
+Status and close-readiness review:
+- Active MVP meaning: Current status, evidence sufficiency, known blockers, and close-readiness review can be read.
+- Not active: This read does not create a generated projection or runtime artifact.
+
+Prepare-write authorization:
+- Active MVP meaning: `harness.prepare_write` can create an owner-scoped, single-use `Write Authorization`.
+- Condition: The authorization is for one compatible product-file write attempt.
+
+Local surface registration:
+- Active MVP meaning: Registered local surfaces can identify the active surface and its supported capabilities.
+- Condition: Those facts are used only for current scope checks.
+
+Artifact staging:
+- Active MVP meaning: New artifact bytes can enter active scope through the active staging path.
+- Condition: Existing artifacts can be linked only through compatible persisted artifact references.
+
+Run and evidence recording:
+- Active MVP meaning: Runs and compact evidence summaries can be recorded for active work.
+- Condition: Compatible artifact promotion or linking is included only when the artifact owners allow it.
+
+Focused user judgment capture:
+- Active MVP meaning: User-owned judgments can be requested and recorded through the active judgment path.
+- Included judgment paths: sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation when the judgment owners allow them.
+
+Close attempts:
+- Active MVP meaning: `harness.close_task` can check close readiness and attempt supported close outcomes.
+- Required boundary: Evidence, final acceptance, residual-risk, and non-substitution boundaries remain intact.
 
 Read-time status or derived display is active only as part of status and close-readiness review. Persistent projection jobs, generated projection files, and managed projection repair are not active scope.
 
@@ -117,9 +151,9 @@ Implementation readiness and maintainer handoff status stay in [MVP Plan](../bui
 | Implementation readiness and maintainer handoff status | [MVP Plan](../build/mvp-plan.md) |
 | Core authority, Task state, and user-owned judgment boundaries | [Core Model](core-model.md) |
 | API method behavior | [MVP API](api/mvp-api.md) |
-| API schemas and value sets | [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), [API Value Sets](api/schema-value-sets.md) |
+| API schemas and value sets | [API schema owners in the Reference Index](README.md#api-and-schema-owners) |
 | Public errors and close-readiness blocker behavior | [Errors](api/errors.md) |
-| Storage records, effects, artifact lifecycle, versioning, and locks | [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), [Storage Versioning](storage-versioning.md) |
+| Storage records, effects, artifact lifecycle, versioning, and locks | [Storage owners in the Reference Index](README.md#storage-owners) |
 | Runtime, repository, and server boundaries | [Runtime Boundaries](runtime-boundaries.md) |
 | Security claims and non-claims | [Security](security.md) |
 | Surface and connector behavior | [Agent Integration](agent-integration.md), [Surface Recipes](../use/surface-recipes.md) |
