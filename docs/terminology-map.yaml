@@ -429,6 +429,9 @@ terms:
       - "entire evaluation order"
       - "full close-readiness evaluation order"
       - "entire close-readiness evaluation order"
+      - "Complete close-readiness order"
+      - "complete close-readiness order"
+      - "complete close-readiness evaluation order"
     avoid_ko:
       - "`complete` 평가 순서"
       - "complete 평가 순서"
@@ -445,6 +448,7 @@ terms:
       - "Do not preserve the English word `complete` when it means full or entire rather than an enum value."
       - "Use 전체, 전체 평가, or 전체 평가 순서 for ordinary prose meaning."
       - "Use 전체 닫기 준비 상태 평가 순서 for the full close-readiness evaluation order."
+      - "If a source phrase says \"Complete close-readiness order\" but means the full order, write 전체 닫기 준비 상태 평가 순서 in Korean."
   close_blocker:
     category: "product_concept"
     en: "close blocker"

@@ -30,6 +30,7 @@
 | 질문 | 담당 문서 |
 |---|---|
 | 현재 MVP 범위는 어디에 정의되어 있나요? | [현재 MVP 범위](active-mvp-scope.md) |
+| 현재 MVP에서 제외되는 범위는 어디에 정의되어 있나요? | [현재 MVP 범위](active-mvp-scope.md) |
 | 어떤 기능이 현재 활성인지, 프로필로 제한되는지, 이후 후보인지 어디서 확인하나요? | [현재 MVP 범위](active-mvp-scope.md), [API 값 집합](api/schema-value-sets.md), [이후 후보 색인](../later/index.md) |
 | 현재 MVP에서 `isolated`가 활성인가요? | [보안](security.md), [현재 MVP 범위](active-mvp-scope.md) |
 | 이 저장소에서 런타임이나 서버 구현이 시작되었는지는 어디서 확인하나요? | [MVP 계획](../build/mvp-plan.md), [현재 MVP 범위](active-mvp-scope.md) |
@@ -45,6 +46,7 @@
 | 공통 API 응답 분기와 요청 래퍼는 어디가 담당하나요? | [API 코어 스키마](api/schema-core.md) |
 | 공개 오류 코드와 오류 우선순위는 어디가 담당하나요? | [API 오류](api/errors.md) |
 | 저장소 기록이나 DDL은 어디가 담당하나요? | [저장소 기록](storage-records.md) |
+| 저장 효과는 어느 담당 문서가 맡나요? | [저장 효과](storage-effects.md) |
 | 메서드별 저장 효과는 어디가 담당하나요? | [저장 효과](storage-effects.md) |
 | 저장 효과 질문은 어디로 가야 하나요? | [저장 효과](storage-effects.md) |
 | 보안 주장과 비주장은 어디가 담당하나요? | [보안](security.md) |
@@ -61,6 +63,7 @@
 | `STATE_VERSION_CONFLICT`는 차단 사유 코드인가요? | [API 오류](api/errors.md) |
 | `dry_run=true`인 `harness.close_task`가 언제 `ToolDryRunResponse`가 아닌 결과를 반환하나요? | [MVP API](api/mvp-api.md) |
 | 활성 메서드 이름, `response_kind`, `effect_kind`, enum 형태 API 값은 어디가 담당하나요? | [API 값 집합](api/schema-value-sets.md) |
+| `complete`가 enum 값인지, 이 문맥에서 "전체"라는 뜻인지 어디서 확인하나요? | [docs/terminology-map.yaml](../../terminology-map.yaml), [용어집](glossary.md), [API 값 집합](api/schema-value-sets.md) |
 | 접근 등급은 어디에 정의되어 있나요? | [API 값 집합](api/schema-value-sets.md) |
 | `DryRunSummary`, `PlannedEffect`, `PlannedBlocker` 같은 `dry_run` 미리보기 구조는 어디에 정의되어 있나요? | [API 코어 스키마](api/schema-core.md), [API 값 집합](api/schema-value-sets.md) |
 | 보장 라벨 값의 담당 문서는 어디인가요? | [API 값 집합](api/schema-value-sets.md) |
@@ -118,10 +121,13 @@
 | 이후 후보는 현재 요구사항인가요? | [이후 후보 색인](../later/index.md), [현재 MVP 범위](active-mvp-scope.md) |
 | 승격 시점의 담당 문서 갱신은 무슨 뜻인가요? | [용어집](glossary.md), [이후 후보 색인](../later/index.md) |
 | 이후 후보가 활성 기능이 되려면 어떤 문서가 더 바뀌어야 하나요? | [이후 후보 색인](../later/index.md), [현재 MVP 범위](active-mvp-scope.md) |
-| "close readiness"를 한국어 참조 문서에서 "닫기 준비 상태"로 쓰는 기준은 어디가 담당하나요? | [docs/terminology-map.yaml](../../terminology-map.yaml) |
+| "Complete close-readiness order"는 한국어로 어떻게 써야 하나요? | [용어집](glossary.md), [번역 가이드](../maintain/translation-guide.md), [API 값 집합](api/schema-value-sets.md) |
+| "close readiness"를 한국어 참조 문서에서 "닫기 준비 상태"로 쓰는 기준은 어디가 담당하나요? | [docs/terminology-map.yaml](../../terminology-map.yaml), [용어집](glossary.md), [번역 가이드](../maintain/translation-guide.md) |
+| 한국어 닫기 준비 상태 용어는 어떻게 써야 하나요? | [docs/terminology-map.yaml](../../terminology-map.yaml), [용어집](glossary.md), [번역 가이드](../maintain/translation-guide.md) |
 | 닫기 준비 상태 한국어 용어는 어디서 통제하나요? | [docs/terminology-map.yaml](../../terminology-map.yaml), [용어집](glossary.md), [번역 가이드](../maintain/translation-guide.md) |
 | 한국어 용어는 어디서 통제하나요? | [docs/terminology-map.yaml](../../terminology-map.yaml), [번역 가이드](../maintain/translation-guide.md), [용어집](glossary.md) |
 | 문서 작성 규칙은 어디에 있나요? | [작성 가이드](../maintain/authoring-guide.md) |
+| 큰 Markdown 표 작성 규칙은 어디에 있나요? | [작성 가이드](../maintain/authoring-guide.md), [문서 점검](../maintain/checks.md) |
 | 문서 점검은 어디에 있나요? | [문서 점검](../maintain/checks.md) |
 | 검색과 경로 메타데이터는 어디에서 관리하나요? | [docs/doc-index.yaml](../../doc-index.yaml) |
 | 에이전트가 먼저 읽어야 할 문서는 무엇인가요? | [AGENTS.md](../../../AGENTS.md)를 먼저 읽고, 그다음 [docs/doc-index.yaml](../../doc-index.yaml)을 봅니다 |

@@ -26,6 +26,10 @@ question_routes:
       canonical_owner_doc_id: reference.active-mvp-scope
       default_path: docs/en/reference/active-mvp-scope.md
       route_note: "Current MVP scope and active/later boundary."
+    - question: "Where is the current MVP excluded scope defined?"
+      canonical_owner_doc_id: reference.active-mvp-scope
+      default_path: docs/en/reference/active-mvp-scope.md
+      route_note: "Active MVP Scope owns included and excluded current-MVP scope items."
     - question: "Is `STATE_VERSION_CONFLICT` a blocker code?"
       canonical_owner_doc_id: reference.api.errors
       default_path: docs/en/reference/api/errors.md
@@ -34,10 +38,24 @@ question_routes:
       canonical_owner_doc_id: reference.storage-records
       default_path: docs/en/reference/storage-records.md
       route_note: "Storage row and DDL ownership; schema meaning remains with API State Schemas."
+    - question: 'Is `complete` an enum value or the word "full" in this context?'
+      canonical_owner_doc_id: terminology.map
+      default_path: docs/terminology-map.yaml
+      supporting_owner_doc_ids:
+        - reference.glossary
+        - reference.api.schema-value-sets
+      route_note: "Terminology Map and Glossary disambiguate prose versus identifier usage; API Value Sets owns `intent=complete` as a value."
     - question: "When can `harness.close_task` with `dry_run=true` return something other than `ToolDryRunResponse`?"
       canonical_owner_doc_id: reference.api.mvp-api
       default_path: docs/en/reference/api/mvp-api.md
       route_note: "Method branch selection for `harness.close_task`."
+    - question: 'How should "Complete close-readiness order" be written in Korean?'
+      canonical_owner_doc_id: reference.glossary
+      default_path: docs/en/reference/glossary.md
+      supporting_owner_doc_ids:
+        - maintain.translation-guide
+        - reference.api.schema-value-sets
+      route_note: "Use `전체 닫기 준비 상태 평가 순서` when `Complete` means full; use API Value Sets only when `complete` is the intent value."
     - question: "Does artifact staging create evidence?"
       canonical_owner_doc_id: reference.storage-artifacts
       default_path: docs/en/reference/storage-artifacts.md
@@ -96,6 +114,13 @@ question_routes:
         - reference.glossary
         - maintain.translation-guide
       route_note: "Use `닫기 준비 상태` in reference prose and the paired glossary/translation guidance for context."
+    - question: "How should Korean close readiness terminology be written?"
+      canonical_owner_doc_id: terminology.map
+      default_path: docs/terminology-map.yaml
+      supporting_owner_doc_ids:
+        - reference.glossary
+        - maintain.translation-guide
+      route_note: "Use `닫기 준비 상태` in reference prose and `닫기 가능 여부` only for user-facing close-readiness wording."
     - question: "Where should later candidates be documented?"
       canonical_owner_doc_id: later.index
       default_path: docs/en/later/index.md
@@ -122,6 +147,16 @@ question_routes:
       canonical_owner_doc_id: reference.storage-effects
       default_path: docs/en/reference/storage-effects.md
       route_note: "Method-to-storage effect semantics route to Storage Effects before narrower storage owners."
+    - question: "Which document owns storage effects?"
+      canonical_owner_doc_id: reference.storage-effects
+      default_path: docs/en/reference/storage-effects.md
+      route_note: "Storage Effects owns method-to-storage effect semantics and no-effect boundaries."
+    - question: "Where is the large-table authoring rule defined?"
+      canonical_owner_doc_id: maintain.authoring-guide
+      default_path: docs/en/maintain/authoring-guide.md
+      supporting_owner_doc_ids:
+        - maintain.checks
+      route_note: "Authoring Guide owns table source maintainability guidance; Checks owns the large-table review check."
 docs:
   - doc_id: agents.root
     status: active
@@ -135,11 +170,13 @@ docs:
       - repository_phase_rules
       - documentation_only_working_rules
       - owner_lookup_entry_rule
+      - question_routes_before_broad_retrieval
     owns:
       - first-read agent instructions
       - repository phase boundaries
       - documentation-only working rules
       - initial owner lookup rule before `docs/doc-index.yaml`
+      - high-signal question route lookup before broad retrieval
     does_not_own:
       - technical contracts
       - active MVP scope
@@ -486,10 +523,12 @@ docs:
       - current_mvp_scope
       - active_later_scope_boundary
       - scope_level_exclusions
+      - current_mvp_excluded_scope
       - current_mvp_guarantee_boundary
     owns:
       - detailed current MVP scope boundary
       - scope-level active/later split
+      - included and excluded current-MVP scope items
       - profile-gated and later-candidate scope boundaries
       - current MVP guarantee boundary
       - out-of-scope material until promoted
@@ -752,6 +791,7 @@ docs:
     canonical_for:
       - active_api_value_sets
       - enum_like_values
+      - complete_intent_value
       - method_name_values
       - response_kind_values
       - effect_kind_values
@@ -762,6 +802,7 @@ docs:
     owns:
       - API value sets
       - enum-like active values
+      - "`complete` as a close-task intent value"
       - active public method names
       - active `response_kind` and `effect_kind` values
       - active `access_class` values
@@ -903,6 +944,7 @@ docs:
     canonical_for:
       - method_storage_effects
       - method_by_method_storage_effects
+      - storage_effect_owner_questions
       - no_effect_boundaries
       - dry_run_storage_effects
       - committed_blocked_storage_effects
@@ -910,6 +952,7 @@ docs:
     owns:
       - storage effects for method branches
       - method-by-method storage effects
+      - storage-effect owner routing
       - no-effect boundaries
       - dry-run storage boundaries
       - committed blocked response storage consequences
@@ -1278,6 +1321,8 @@ docs:
     canonical_for:
       - official_terminology_definitions
       - product_term_definitions
+      - complete_intent_disambiguation
+      - full_evaluation_order_term
       - api_schema_term_definitions
       - storage_term_definitions
       - security_agent_projection_terms
@@ -1286,6 +1331,8 @@ docs:
     owns:
       - official terminology definitions
       - product terms
+      - "`complete` versus full/entire terminology"
+      - full evaluation order terminology
       - Core terms
       - API and schema terms
       - storage terms
@@ -1313,12 +1360,14 @@ docs:
     canonical_for:
       - stable_bilingual_term_mappings
       - semantic_parity_term_keys
+      - complete_identifier_vs_full_prose_term_control
       - documentation_maintenance_terms
       - close_readiness_korean_terminology
       - korean_close_readiness_term_control
     owns:
       - stable English/Korean term mappings
       - cross-language terminology notes
+      - "`complete` identifier versus full/entire prose guidance"
       - search-friendly canonical term keys
       - Korean term controls for close readiness
     does_not_own:
@@ -1566,11 +1615,13 @@ docs:
       - documentation_authoring_rules
       - owner_boundary_discipline
       - route_document_rules
+      - large_table_authoring_rule
       - stale_content_cleanup_rules
     owns:
       - documentation authoring rules
       - owner-boundary discipline
       - route document rules
+      - large-table authoring guidance
       - documentation-only scope reminders
       - stale content cleanup rules
     does_not_own:
@@ -1597,12 +1648,16 @@ docs:
       - bilingual_semantic_parity_rules
       - korean_terminology_guidance
       - close_readiness_korean_style_guidance
+      - complete_vs_full_korean_disambiguation
+      - full_close_readiness_evaluation_order_korean
       - exact_identifier_preservation
       - natural_korean_rule
     owns:
       - bilingual semantic parity rules
       - Korean terminology guidance
       - close readiness Korean style guidance
+      - "`complete` versus full/entire Korean guidance"
+      - full close-readiness evaluation order Korean phrasing
       - exact-identifier preservation
       - natural Korean prose rules
       - route and context parity rules
@@ -1631,12 +1686,14 @@ docs:
       - owner_boundary_check
       - bilingual_check
       - stale_content_check
+      - large_table_source_maintainability_check
     owns:
       - documentation checks
       - route drift checks
       - owner-boundary checks
       - bilingual checks
       - stale-content checks
+      - large-table source maintainability check
       - quality drift checks
     does_not_own:
       - runtime proof

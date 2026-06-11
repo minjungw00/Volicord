@@ -30,6 +30,7 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Question | Owner document(s) |
 |---|---|
 | Where is the current MVP scope defined? | [Active MVP Scope](active-mvp-scope.md) |
+| Where is the current MVP excluded scope defined? | [Active MVP Scope](active-mvp-scope.md) |
 | Is a capability active, profile-gated, or later-only? | [Active MVP Scope](active-mvp-scope.md), [API Value Sets](api/schema-value-sets.md), [Later Candidate Index](../later/index.md) |
 | Is `isolated` active in the current MVP? | [Security](security.md), [Active MVP Scope](active-mvp-scope.md) |
 | Has this repository started runtime or server implementation? | [MVP Plan](../build/mvp-plan.md), [Active MVP Scope](active-mvp-scope.md) |
@@ -45,6 +46,7 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Which document owns shared API response branches and envelopes? | [API Schema Core](api/schema-core.md) |
 | Which document owns public error codes and error precedence? | [API Errors](api/errors.md) |
 | Which document owns storage records or DDL? | [Storage Records](storage-records.md) |
+| Which document owns storage effects? | [Storage Effects](storage-effects.md) |
 | Which document owns method-to-storage effects? | [Storage Effects](storage-effects.md) |
 | Where does a storage effect question go? | [Storage Effects](storage-effects.md) |
 | Which document owns security claims and non-claims? | [Security](security.md) |
@@ -61,6 +63,7 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Is `STATE_VERSION_CONFLICT` a blocker code? | [API Errors](api/errors.md) |
 | When can `harness.close_task` with `dry_run=true` return something other than `ToolDryRunResponse`? | [MVP API](api/mvp-api.md) |
 | Which document owns active method names, `response_kind`, `effect_kind`, and enum-like API values? | [API Value Sets](api/schema-value-sets.md) |
+| Is `complete` an enum value or the word "full" in this context? | [docs/terminology-map.yaml](../../terminology-map.yaml), [Glossary](glossary.md), [API Value Sets](api/schema-value-sets.md) |
 | Where are access classes defined? | [API Value Sets](api/schema-value-sets.md) |
 | Where are dry-run preview structures such as `DryRunSummary`, `PlannedEffect`, and `PlannedBlocker` defined? | [API Schema Core](api/schema-core.md), [API Value Sets](api/schema-value-sets.md) |
 | Which document owns guarantee label values? | [API Value Sets](api/schema-value-sets.md) |
@@ -119,10 +122,13 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Is a later candidate an active requirement? | [Later Candidate Index](../later/index.md), [Active MVP Scope](active-mvp-scope.md) |
 | What does promotion-time owner update mean? | [Glossary](glossary.md), [Later Candidate Index](../later/index.md) |
 | What else must change before a later candidate becomes active? | [Later Candidate Index](../later/index.md), [Active MVP Scope](active-mvp-scope.md) |
-| How should "close readiness" be written in Korean? | [docs/terminology-map.yaml](../../terminology-map.yaml) |
+| How should "Complete close-readiness order" be written in Korean? | [Glossary](glossary.md), [Translation Guide](../maintain/translation-guide.md), [API Value Sets](api/schema-value-sets.md) |
+| How should "close readiness" be written in Korean? | [docs/terminology-map.yaml](../../terminology-map.yaml), [Glossary](glossary.md), [Translation Guide](../maintain/translation-guide.md) |
+| How should Korean close readiness terminology be written? | [docs/terminology-map.yaml](../../terminology-map.yaml), [Glossary](glossary.md), [Translation Guide](../maintain/translation-guide.md) |
 | Where is close readiness Korean terminology controlled? | [docs/terminology-map.yaml](../../terminology-map.yaml), [Glossary](glossary.md), [Translation Guide](../maintain/translation-guide.md) |
 | Where is Korean terminology controlled? | [docs/terminology-map.yaml](../../terminology-map.yaml), [Translation Guide](../maintain/translation-guide.md), [Glossary](glossary.md) |
 | Where are documentation authoring rules? | [Authoring Guide](../maintain/authoring-guide.md) |
+| Where is the large-table authoring rule defined? | [Authoring Guide](../maintain/authoring-guide.md), [Checks](../maintain/checks.md) |
 | Where are documentation checks? | [Checks](../maintain/checks.md) |
 | Where is retrieval or route metadata maintained? | [docs/doc-index.yaml](../../doc-index.yaml) |
 | Which document should an agent read first? | [AGENTS.md](../../../AGENTS.md), then [docs/doc-index.yaml](../../doc-index.yaml) |
