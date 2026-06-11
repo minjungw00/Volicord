@@ -117,24 +117,301 @@ Task는 열린 상태로 남습니다.
 
 `STATE_VERSION_CONFLICT`에는 커밋된 차단 결과 분기를 사용하면 안 됩니다. 이 오류는 사전 확인의 `ToolRejectedResponse` 분기에 속하며 재실행으로 저장하지 않습니다.
 
-## 메서드별 저장 효과
+<a id="메서드별-저장-효과"></a>
+## 메서드 저장 효과 요약
 
 아래 표는 메서드별 지속 저장 효과를 요약합니다. 메서드 동작과 응답 공용체는 [MVP API](api/mvp-api.md)가 담당합니다.
 
-| 메서드 또는 선택된 intent | 커밋된 `dry_run=false` 효과 | 읽기 전용, `dry_run`, 거절 경계 |
+| 메서드 | 주 저장 효과 | 세부사항 |
 |---|---|---|
-| `harness.intake` | Task, 선택적 Change Unit, 구체화 기록, 이벤트, 재실행 행, `project_state.state_version` 한 번 증가를 만들 수 있습니다. | 유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환하며 Task, 참조, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다. 거절은 효과가 없습니다. |
-| `harness.update_scope` | 활성 Task 범위 필드를 갱신하고, 활성 `change_units`를 만들거나 교체하고, 메서드 담당 문서가 허용한 차단 사유 또는 오래된 `Write Authorization` 참조를 갱신하고, 이벤트와 재실행 행을 만들며 `project_state.state_version`을 한 번 올릴 수 있습니다. | 유효한 `dry_run`은 범위, Change Unit, 차단 사유, 오래된 승인 효과만 미리 설명합니다. 거절은 효과가 없습니다. |
-| `harness.status` | 없음. 읽기 전용 응답입니다. | `dry_run=true`도 `effect_kind=read_only`인 `StatusResult`로 유지되며 `ToolDryRunResponse`가 아닙니다. 재실행 행이나 상태 변경이 없습니다. |
-| `harness.prepare_write` | `decision=allowed`는 호환되는 활성 `Write Authorization`을 만들거나 반환하고, 이벤트와 재실행 행을 만들며 `project_state.state_version`을 한 번 올릴 수 있습니다. 커밋된 비허용 판단은 허용된 판단 상태와 재실행 효과만 지속할 수 있습니다. | 거절과 유효한 `dry_run` 분기는 재실행 행, `Write Authorization`, 이벤트, `close_state` 변경, 아티팩트/증거 효과, `state_version` 증가를 만들지 않습니다. |
-| `harness.stage_artifact` | 성공한 스테이징은 `artifact_staging` 또는 동등한 저장소 소유 스테이징 매니페스트와 `artifacts/tmp/` 아래 임시 안전 바이트 또는 알림만 만듭니다. | 유효한 `dry_run=true`는 바이트, 스테이징 매니페스트, `StagedArtifactHandle`, 재실행 행, `state_version` 증가를 만들지 않습니다. 잘못된 스테이징 요청은 효과 없음 거절을 제외하고 Core/저장소 변경을 만들지 않습니다. |
-| `harness.record_run` | `runs` 생성, 호환되는 `write_authorizations` 소비, 적격 `artifact_staging` 소비, `artifacts` 승격/연결, `evidence_summaries` 또는 허용된 `blockers` 갱신, 이벤트 추가, 재실행 행 생성, `project_state.state_version` 한 번 증가를 만들 수 있습니다. | 유효한 `dry_run`은 `run_summary`, 지속 아티팩트, 아티팩트 연결, 증거 갱신, 차단 사유 갱신, 이벤트, 재실행 행, 스테이징 핸들 소비, `Write Authorization` 소비, `state_version` 증가를 만들지 않습니다. 거절된 시도는 스테이징 행이나 아티팩트를 바꾸지 않습니다. |
-| `harness.request_user_judgment` | 대기 중인 `user_judgments` 행을 만들고, 영향받은 차단 사유를 갱신하고, 이벤트와 재실행 행을 만들며 `project_state.state_version`을 한 번 올릴 수 있습니다. | 유효한 `dry_run`은 실제 `user_judgment_ref`, 대기 중인 판단, 차단 사유 갱신, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다. |
-| `harness.record_user_judgment` | `user_judgments` 행을 해결하고, 종속 차단 사유 또는 다음 행동을 갱신하고, 이벤트와 재실행 행을 만들며 `project_state.state_version`을 한 번 올릴 수 있습니다. | 유효한 `dry_run`은 판단 해결, 차단 사유 갱신, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다. |
-| `harness.close_task intent=check` | 없음. 닫기 준비 상태를 계산하는 읽기 전용 응답입니다. | `dry_run=true`도 `effect_kind=read_only`인 `CloseTaskResult`로 유지됩니다. 재실행 행, 이벤트, 차단 사유 행, `close_state` 변경, 아티팩트/증거 효과, `state_version` 증가가 없습니다. |
-| `harness.close_task intent=complete` | 차단 사유가 닫기를 막지 않으면 Task를 닫거나, Task를 열린 상태로 둔 채 허용된 `complete` 차단 효과를 커밋할 수 있습니다. 커밋 시 이벤트, 재실행 행, `project_state.state_version` 한 번 증가를 만듭니다. | 유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환합니다. 사전 확인 실패는 효과가 없는 `ToolRejectedResponse`입니다. |
-| `harness.close_task intent=cancel` | Task를 취소하거나, Task를 열린 상태로 둔 채 취소 자체를 무효화하는 차단 사유를 커밋할 수 있습니다. 커밋 시 이벤트, 재실행 행, `project_state.state_version` 한 번 증가를 만듭니다. | 유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환합니다. 사전 확인 실패는 효과가 없습니다. 취소는 증거 충분성이 아닙니다. |
-| `harness.close_task intent=supersede` | Task를 대체하고 같은 변경에서 `project_state.active_task_id`를 갱신하거나, 대체 자체를 무효화하는 차단 사유를 커밋할 수 있습니다. 커밋 시 이벤트, 재실행 행, `project_state.state_version` 한 번 증가를 만듭니다. | 유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환합니다. 사전 확인 실패는 효과가 없습니다. 대체는 증거 충분성이 아닙니다. |
+| `harness.intake` | Task와 구체화 기록 생성 | [`harness.intake`](#harnessintake) |
+| `harness.update_scope` | 활성 범위 기록 갱신 | [`harness.update_scope`](#harnessupdate_scope) |
+| `harness.status` | 읽기 전용 응답 | [`harness.status`](#harnessstatus) |
+| `harness.prepare_write` | 쓰기 판단 효과 기록 | [`harness.prepare_write`](#harnessprepare_write) |
+| `harness.stage_artifact` | 임시 스테이징만 생성 | [`harness.stage_artifact`](#harnessstage_artifact) |
+| `harness.record_run` | 실행/증거 효과 기록 | [`harness.record_run`](#harnessrecord_run) |
+| `harness.request_user_judgment` | 대기 중인 판단 요청 생성 | [`harness.request_user_judgment`](#harnessrequest_user_judgment) |
+| `harness.record_user_judgment` | 사용자 판단 해결 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) |
+| `harness.close_task intent=check` | 읽기 전용 닫기 준비 상태 점검 | [`harness.close_task intent=check`](#harnessclose_task-intentcheck) |
+| `harness.close_task intent=complete` | 닫기 또는 차단된 `complete` 결과 기록 | [`harness.close_task intent=complete`](#harnessclose_task-intentcomplete) |
+| `harness.close_task intent=cancel` | 취소 또는 차단된 취소 기록 | [`harness.close_task intent=cancel`](#harnessclose_task-intentcancel) |
+| `harness.close_task intent=supersede` | 대체 또는 차단된 대체 기록 | [`harness.close_task intent=supersede`](#harnessclose_task-intentsupersede) |
+
+### `harness.intake`
+
+커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
+
+- Task를 생성합니다.
+- 선택적 Change Unit을 생성합니다.
+- 구체화 기록을 생성합니다.
+- 이벤트를 추가합니다.
+- 재실행 행을 생성합니다.
+- `project_state.state_version`을 한 번 증가시킵니다.
+
+효과가 없는 분기:
+
+- 유효한 `dry_run=true`
+- 거절된 시도
+
+이 분기는 Task, 참조, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessintake)
+- [저장소 기록](storage-records.md)
+- [저장소 버전 관리](storage-versioning.md)
+
+### `harness.update_scope`
+
+커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
+
+- 활성 Task 범위 필드를 갱신합니다.
+- 활성 `change_units`를 만들거나 교체합니다.
+- 메서드 담당 문서가 허용한 차단 사유 또는 오래된 `Write Authorization` 참조를 갱신합니다.
+- 이벤트를 추가합니다.
+- 재실행 행을 생성합니다.
+- `project_state.state_version`을 한 번 증가시킵니다.
+
+효과가 없는 분기:
+
+- 유효한 dry-run 미리보기
+- 거절된 시도
+
+유효한 dry-run 미리보기는 범위, Change Unit, 차단 사유, 오래된 승인 효과만 미리 설명합니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessupdate_scope)
+- [저장소 기록](storage-records.md)
+- [저장소 버전 관리](storage-versioning.md)
+
+### `harness.status`
+
+읽기 전용 호출은 다음 특성을 가집니다.
+
+- 응답 데이터만 반환합니다.
+- 재실행 행을 만들지 않습니다.
+- 저장소를 변경하지 않습니다.
+- `project_state.state_version`을 증가시키지 않습니다.
+
+`dry_run=true`도 `ToolDryRunResponse`가 아니라 `effect_kind=read_only`인 `StatusResult`로 유지됩니다.
+
+효과가 없는 분기:
+
+- 거절된 시도
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessstatus)
+
+### `harness.prepare_write`
+
+`decision=allowed`로 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
+
+- 호환되는 활성 `Write Authorization`을 만들거나 반환합니다.
+- 이벤트를 추가합니다.
+- 재실행 행을 생성합니다.
+- `project_state.state_version`을 한 번 증가시킵니다.
+
+커밋되는 비허용 판단은 허용된 판단 상태와 재실행 효과만 지속할 수 있습니다.
+
+효과가 없는 분기:
+
+- 거절된 시도
+- 유효한 dry-run 미리보기
+
+이 분기는 재실행 행, `Write Authorization`, 이벤트, `close_state` 변경, 아티팩트/증거 효과, `state_version` 증가를 만들지 않습니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessprepare_write)
+- [저장소 기록](storage-records.md)
+- [저장소 버전 관리](storage-versioning.md)
+
+### `harness.stage_artifact`
+
+성공한 스테이징은 다음을 수행할 수 있습니다.
+
+- `artifact_staging` 또는 동등한 저장소 소유 스테이징 매니페스트를 생성합니다.
+- `artifacts/tmp/` 아래에 임시 안전 바이트 또는 알림을 둡니다.
+
+이 분기는 저장소 소유 임시 스테이징만 생성합니다. Core 현재 기록, 지속 `ArtifactRef`, 재실행 행, `state_version` 증가는 만들지 않습니다.
+
+효과가 없는 분기:
+
+- 유효한 `dry_run=true`
+- 잘못된 스테이징 요청
+
+유효한 `dry_run=true`는 바이트, 스테이징 매니페스트, `StagedArtifactHandle`, 재실행 행, `state_version` 증가를 만들지 않습니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessstage_artifact)
+- [아티팩트 저장소](storage-artifacts.md)
+
+### `harness.record_run`
+
+커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
+
+- `runs`를 생성합니다.
+- 호환되는 `write_authorizations`를 소비합니다.
+- 사용할 수 있는 `artifact_staging`을 소비합니다.
+- `artifacts`를 승격하거나 연결합니다.
+- `evidence_summaries` 또는 허용된 `blockers`를 갱신합니다.
+- 이벤트를 추가합니다.
+- 재실행 행을 생성합니다.
+- `project_state.state_version`을 한 번 증가시킵니다.
+
+효과가 없는 분기:
+
+- 유효한 dry-run 미리보기
+- 거절된 시도
+- 커밋 전의 잘못된 스테이징 핸들
+
+유효한 dry-run 미리보기는 `run_summary`, 지속 아티팩트, 아티팩트 연결, 증거 갱신, 차단 사유 갱신, 이벤트, 재실행 행, 스테이징 핸들 소비, `Write Authorization` 소비, `state_version` 증가를 만들지 않습니다. 거절된 시도는 스테이징 행이나 아티팩트를 바꾸지 않습니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessrecord_run)
+- [아티팩트 저장소](storage-artifacts.md)
+- [저장소 기록](storage-records.md)
+
+### `harness.request_user_judgment`
+
+커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
+
+- 대기 중인 `user_judgments` 행을 생성합니다.
+- 영향받은 차단 사유를 갱신합니다.
+- 이벤트를 추가합니다.
+- 재실행 행을 생성합니다.
+- `project_state.state_version`을 한 번 증가시킵니다.
+
+효과가 없는 분기:
+
+- 유효한 dry-run 미리보기
+- 거절된 시도
+
+유효한 dry-run 미리보기는 실제 `user_judgment_ref`, 대기 중인 판단, 차단 사유 갱신, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessrequest_user_judgment)
+- [저장소 기록](storage-records.md)
+
+### `harness.record_user_judgment`
+
+커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
+
+- `user_judgments` 행을 해결합니다.
+- 종속 차단 사유 또는 다음 행동을 갱신합니다.
+- 이벤트를 추가합니다.
+- 재실행 행을 생성합니다.
+- `project_state.state_version`을 한 번 증가시킵니다.
+
+효과가 없는 분기:
+
+- 유효한 dry-run 미리보기
+- 거절된 시도
+
+유효한 dry-run 미리보기는 판단 해결, 차단 사유 갱신, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessrecord_user_judgment)
+- [저장소 기록](storage-records.md)
+
+### `harness.close_task intent=check`
+
+읽기 전용 호출은 다음 특성을 가집니다.
+
+- 계산된 닫기 준비 상태를 반환합니다.
+- 재실행 행을 만들지 않습니다.
+- 이벤트를 추가하지 않습니다.
+- 차단 사유 행을 만들지 않습니다.
+- `close_state`를 변경하지 않습니다.
+- 아티팩트나 증거를 바꾸지 않습니다.
+- `project_state.state_version`을 증가시키지 않습니다.
+
+`dry_run=true`도 `effect_kind=read_only`인 `CloseTaskResult`로 유지됩니다.
+
+효과가 없는 분기:
+
+- 거절된 시도
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessclose_task)
+
+### `harness.close_task intent=complete`
+
+커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
+
+- 차단 사유가 허용할 때 Task를 닫습니다.
+- Task를 열린 상태로 둔 채 허용된 `complete` 차단 효과를 커밋합니다.
+- 이벤트를 추가합니다.
+- 재실행 행을 생성합니다.
+- `project_state.state_version`을 한 번 증가시킵니다.
+
+효과가 없는 분기:
+
+- 유효한 `dry_run=true`
+- 사전 확인 실패
+
+유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환합니다. 사전 확인 실패는 효과가 없는 `ToolRejectedResponse`입니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessclose_task)
+- [저장소 버전 관리](storage-versioning.md)
+
+### `harness.close_task intent=cancel`
+
+커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
+
+- Task를 취소합니다.
+- Task를 열린 상태로 둔 채 취소 자체를 무효화하는 차단 사유를 커밋합니다.
+- 이벤트를 추가합니다.
+- 재실행 행을 생성합니다.
+- `project_state.state_version`을 한 번 증가시킵니다.
+
+취소는 증거 충분성이 아닙니다.
+
+효과가 없는 분기:
+
+- 유효한 `dry_run=true`
+- 사전 확인 실패
+
+유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환합니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessclose_task)
+- [저장소 버전 관리](storage-versioning.md)
+
+### `harness.close_task intent=supersede`
+
+커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
+
+- Task를 대체합니다.
+- 같은 변경에서 `project_state.active_task_id`를 갱신합니다.
+- 대체 자체를 무효화하는 차단 사유를 커밋합니다.
+- 이벤트를 추가합니다.
+- 재실행 행을 생성합니다.
+- `project_state.state_version`을 한 번 증가시킵니다.
+
+대체는 증거 충분성이 아닙니다.
+
+효과가 없는 분기:
+
+- 유효한 `dry_run=true`
+- 사전 확인 실패
+
+유효한 `dry_run=true`는 `ToolDryRunResponse`를 반환합니다.
+
+담당 문서:
+
+- [MVP API](api/mvp-api.md#harnessclose_task)
+- [저장소 버전 관리](storage-versioning.md)
 
 ## `state_version` 영향
 

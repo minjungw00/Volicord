@@ -125,24 +125,301 @@ This branch must not:
 
 The Task remains open. This branch must not be used for `STATE_VERSION_CONFLICT`; that code belongs to the preflight `ToolRejectedResponse` branch and is not stored as replay.
 
-## Method effects
+<a id="method-effects"></a>
+## Method effect summary
 
 This table summarizes persistence effects. Method behavior and response unions remain owned by [MVP API](api/mvp-api.md).
 
-| Method or selected intent | Non-dry-run committed effect | Read-only, dry-run, and rejected boundaries |
+| Method | Primary storage effect | Details |
 |---|---|---|
-| `harness.intake` | May create the Task, optional Change Unit, shaping records, events, replay row, and one `project_state.state_version` increment. | Valid `dry_run=true` returns `ToolDryRunResponse` and creates no Task, refs, event, replay row, or state-version increment. Rejections have no effect. |
-| `harness.update_scope` | May update active Task scope fields, create/replace active `change_units`, update blockers or stale Write Authorization refs as the method owner allows, append events, create replay row, and increment state once. | Valid dry-run previews only describe scope, Change Unit, blocker, and stale authorization effects. Rejections have no effect. |
-| `harness.status` | None; read-only response. | `dry_run=true` remains `StatusResult` with `effect_kind=read_only`, not `ToolDryRunResponse`; no replay row or mutation. |
-| `harness.prepare_write` | `decision=allowed` may create or return a compatible active Write Authorization, append events, create replay row, and increment state once. Committed non-allowed decisions may persist only allowed decision-state/replay effects. | Rejected and valid dry-run branches create no replay row, no Write Authorization, no event, no close-state mutation, no artifact/evidence effect, and no state-version increment. |
-| `harness.stage_artifact` | Successful staging creates only `artifact_staging` or an equivalent storage-owned staging manifest plus temporary safe bytes or notices under `artifacts/tmp/`. | Valid `dry_run=true` creates no bytes, no staging manifest, no `StagedArtifactHandle`, no replay row, and no state-version increment. Invalid staging requests have no Core/storage mutation beyond no-effect rejection. |
-| `harness.record_run` | May create `runs`, consume compatible `write_authorizations`, consume eligible `artifact_staging`, promote/link `artifacts`, update `evidence_summaries` or allowed blockers, append events, create replay row, and increment state once. | Valid dry-run previews create no `run_summary`, persistent artifact, artifact link, evidence update, blocker update, event, replay row, staged-handle consumption, Write Authorization consumption, or state-version increment. Rejected attempts do not change staging rows or artifacts. |
-| `harness.request_user_judgment` | May create a pending `user_judgments` row, update affected blockers, append events, create replay row, and increment state once. | Valid dry-run previews create no real `user_judgment_ref`, pending judgment, blocker update, event, replay row, or state-version increment. |
-| `harness.record_user_judgment` | May resolve a `user_judgments` row, update dependent blockers or next actions, append events, create replay row, and increment state once. | Valid dry-run previews create no judgment resolution, blocker update, event, replay row, or state-version increment. |
-| `harness.close_task intent=check` | None; read-only response with computed close readiness. | `dry_run=true` remains `CloseTaskResult` with `effect_kind=read_only`; no replay row, event, blocker row, close-state mutation, artifact/evidence effect, or state-version increment. |
-| `harness.close_task intent=complete` | May close the Task when blockers allow it, or commit allowed blocked complete effects while the Task remains open; appends events, creates replay row, and increments state once on commit. | Valid `dry_run=true` returns `ToolDryRunResponse`; preflight failures are no-effect `ToolRejectedResponse`. |
-| `harness.close_task intent=cancel` | May cancel the Task, or commit blockers that invalidate cancellation itself while the Task remains open; appends events, creates replay row, and increments state once on commit. | Valid `dry_run=true` returns `ToolDryRunResponse`; preflight failures have no effect. Cancellation is not evidence sufficiency. |
-| `harness.close_task intent=supersede` | May supersede the Task and update `project_state.active_task_id` in the same mutation, or commit blockers that invalidate supersession itself; appends events, creates replay row, and increments state once on commit. | Valid `dry_run=true` returns `ToolDryRunResponse`; preflight failures have no effect. Supersession is not evidence sufficiency. |
+| `harness.intake` | creates task and shaping records | See [`harness.intake`](#harnessintake) |
+| `harness.update_scope` | updates active scope records | See [`harness.update_scope`](#harnessupdate_scope) |
+| `harness.status` | read-only response | See [`harness.status`](#harnessstatus) |
+| `harness.prepare_write` | records write decision effects | See [`harness.prepare_write`](#harnessprepare_write) |
+| `harness.stage_artifact` | creates temporary staging only | See [`harness.stage_artifact`](#harnessstage_artifact) |
+| `harness.record_run` | records run/evidence effects | See [`harness.record_run`](#harnessrecord_run) |
+| `harness.request_user_judgment` | creates pending judgment request | See [`harness.request_user_judgment`](#harnessrequest_user_judgment) |
+| `harness.record_user_judgment` | resolves user judgment | See [`harness.record_user_judgment`](#harnessrecord_user_judgment) |
+| `harness.close_task intent=check` | read-only close-readiness check | See [`harness.close_task intent=check`](#harnessclose_task-intentcheck) |
+| `harness.close_task intent=complete` | closes or records blocked complete outcome | See [`harness.close_task intent=complete`](#harnessclose_task-intentcomplete) |
+| `harness.close_task intent=cancel` | cancels or records blocked cancellation | See [`harness.close_task intent=cancel`](#harnessclose_task-intentcancel) |
+| `harness.close_task intent=supersede` | supersedes or records blocked supersession | See [`harness.close_task intent=supersede`](#harnessclose_task-intentsupersede) |
+
+### `harness.intake`
+
+Committed `dry_run=false` may:
+
+- create the Task
+- create an optional Change Unit
+- create shaping records
+- append events
+- create a replay row
+- increment `project_state.state_version` once
+
+No-effect branches:
+
+- valid `dry_run=true`
+- rejected attempts
+
+Those branches create no Task, refs, event, replay row, or state-version increment.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessintake)
+- [Storage Records](storage-records.md)
+- [Storage Versioning](storage-versioning.md)
+
+### `harness.update_scope`
+
+Committed `dry_run=false` may:
+
+- update active Task scope fields
+- create or replace active `change_units`
+- update blockers or stale Write Authorization refs as the method owner allows
+- append events
+- create a replay row
+- increment `project_state.state_version` once
+
+No-effect branches:
+
+- valid dry-run previews
+- rejected attempts
+
+Valid dry-run previews only describe scope, Change Unit, blocker, and stale authorization effects.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessupdate_scope)
+- [Storage Records](storage-records.md)
+- [Storage Versioning](storage-versioning.md)
+
+### `harness.status`
+
+Read-only calls:
+
+- return response data only
+- do not create replay rows
+- do not mutate storage
+- do not increment `project_state.state_version`
+
+`dry_run=true` remains `StatusResult` with `effect_kind=read_only`, not `ToolDryRunResponse`.
+
+No-effect branches:
+
+- rejected attempts
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessstatus)
+
+### `harness.prepare_write`
+
+Committed `dry_run=false` with `decision=allowed` may:
+
+- create or return a compatible active Write Authorization
+- append events
+- create a replay row
+- increment `project_state.state_version` once
+
+Committed non-allowed decisions may persist only allowed decision-state and replay effects.
+
+No-effect branches:
+
+- rejected attempts
+- valid dry-run previews
+
+Those branches create no replay row, Write Authorization, event, close-state mutation, artifact/evidence effect, or state-version increment.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessprepare_write)
+- [Storage Records](storage-records.md)
+- [Storage Versioning](storage-versioning.md)
+
+### `harness.stage_artifact`
+
+Successful staging may:
+
+- create `artifact_staging` or an equivalent storage-owned staging manifest
+- store temporary safe bytes or notices under `artifacts/tmp/`
+
+This branch creates only temporary storage-owned staging. It creates no Core current row, persistent `ArtifactRef`, replay row, or state-version increment.
+
+No-effect branches:
+
+- valid `dry_run=true`
+- invalid staging requests
+
+Valid `dry_run=true` creates no bytes, staging manifest, `StagedArtifactHandle`, replay row, or state-version increment.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessstage_artifact)
+- [Artifact Storage](storage-artifacts.md)
+
+### `harness.record_run`
+
+Committed `dry_run=false` may:
+
+- create `runs`
+- consume compatible `write_authorizations`
+- consume eligible `artifact_staging`
+- promote or link `artifacts`
+- update `evidence_summaries` or allowed blockers
+- append events
+- create a replay row
+- increment `project_state.state_version` once
+
+No-effect branches:
+
+- valid dry-run previews
+- rejected attempts
+- invalid staged handles before commit
+
+Valid dry-run previews create no `run_summary`, persistent artifact, artifact link, evidence update, blocker update, event, replay row, staged-handle consumption, Write Authorization consumption, or state-version increment. Rejected attempts do not change staging rows or artifacts.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessrecord_run)
+- [Artifact Storage](storage-artifacts.md)
+- [Storage Records](storage-records.md)
+
+### `harness.request_user_judgment`
+
+Committed `dry_run=false` may:
+
+- create a pending `user_judgments` row
+- update affected blockers
+- append events
+- create a replay row
+- increment `project_state.state_version` once
+
+No-effect branches:
+
+- valid dry-run previews
+- rejected attempts
+
+Valid dry-run previews create no real `user_judgment_ref`, pending judgment, blocker update, event, replay row, or state-version increment.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessrequest_user_judgment)
+- [Storage Records](storage-records.md)
+
+### `harness.record_user_judgment`
+
+Committed `dry_run=false` may:
+
+- resolve a `user_judgments` row
+- update dependent blockers or next actions
+- append events
+- create a replay row
+- increment `project_state.state_version` once
+
+No-effect branches:
+
+- valid dry-run previews
+- rejected attempts
+
+Valid dry-run previews create no judgment resolution, blocker update, event, replay row, or state-version increment.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessrecord_user_judgment)
+- [Storage Records](storage-records.md)
+
+### `harness.close_task intent=check`
+
+Read-only calls:
+
+- return computed close readiness
+- do not create replay rows
+- do not append events
+- do not create blocker rows
+- do not mutate close state
+- do not touch artifacts or evidence
+- do not increment `project_state.state_version`
+
+`dry_run=true` remains `CloseTaskResult` with `effect_kind=read_only`.
+
+No-effect branches:
+
+- rejected attempts
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessclose_task)
+
+### `harness.close_task intent=complete`
+
+Committed `dry_run=false` may:
+
+- close the Task when blockers allow it
+- commit allowed blocked `complete` effects while the Task remains open
+- append events
+- create a replay row
+- increment `project_state.state_version` once
+
+No-effect branches:
+
+- valid `dry_run=true`
+- preflight failures
+
+Valid `dry_run=true` returns `ToolDryRunResponse`. Preflight failures are no-effect `ToolRejectedResponse`.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessclose_task)
+- [Storage Versioning](storage-versioning.md)
+
+### `harness.close_task intent=cancel`
+
+Committed `dry_run=false` may:
+
+- cancel the Task
+- commit blockers that invalidate cancellation itself while the Task remains open
+- append events
+- create a replay row
+- increment `project_state.state_version` once
+
+Cancellation is not evidence sufficiency.
+
+No-effect branches:
+
+- valid `dry_run=true`
+- preflight failures
+
+Valid `dry_run=true` returns `ToolDryRunResponse`.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessclose_task)
+- [Storage Versioning](storage-versioning.md)
+
+### `harness.close_task intent=supersede`
+
+Committed `dry_run=false` may:
+
+- supersede the Task
+- update `project_state.active_task_id` in the same mutation
+- commit blockers that invalidate supersession itself
+- append events
+- create a replay row
+- increment `project_state.state_version` once
+
+Supersession is not evidence sufficiency.
+
+No-effect branches:
+
+- valid `dry_run=true`
+- preflight failures
+
+Valid `dry_run=true` returns `ToolDryRunResponse`.
+
+Owner links:
+
+- [MVP API](api/mvp-api.md#harnessclose_task)
+- [Storage Versioning](storage-versioning.md)
 
 ## Related owners
 
