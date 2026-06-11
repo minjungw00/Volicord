@@ -72,8 +72,8 @@ Start, resume, supersede, or reject an ordinary user work loop and resolve the r
 ### Required inputs
 
 - `ToolEnvelope` with `project_id`, `surface_id`, `request_id`, `dry_run`, and, for non-dry-run commits, non-null `idempotency_key` and current `expected_state_version`.
-- `user_request`, `requested_mode`, and `resume_policy`.
-- Any known `acceptance_criteria`, `constraints.allowed_paths`, `constraints.non_goals`, `constraints.sensitive_categories`, and `initial_context_refs`; use empty arrays when none are known.
+- `plain_language_request`, `requested_mode`, and `resume_policy`.
+- Put any known initial scope candidate in `initial_scope.boundary`, `initial_scope.non_goals`, and `initial_scope.acceptance_criteria`; use empty arrays for list fields and `initial_context_refs` when none are known.
 
 ### Access requirements
 
@@ -118,19 +118,15 @@ params:
     expected_state_version: 17
     dry_run: false
     locale: en-US
-  user_request: "Add explicit confirmation before account data export."
+  plain_language_request: "Add explicit confirmation before account data export."
   requested_mode: auto
   resume_policy: create_new
-  acceptance_criteria:
-    - "Account export requires explicit confirmation before download."
-  constraints:
-    allowed_paths:
-      - src/account/export.ts
-      - src/account/export-confirmation.ts
-      - tests/account-export.test.ts
+  initial_scope:
+    boundary: "Only the account export flow and its tests."
     non_goals:
       - "Changing account deletion behavior"
-    sensitive_categories: []
+    acceptance_criteria:
+      - "Account export requires explicit confirmation before download."
   initial_context_refs: []
 ```
 
@@ -170,7 +166,11 @@ state:
     result: none
     closed_at: null
   goal_summary: "Add explicit confirmation before account data export."
-  scope_summary: null
+  scope_summary: "Only the account export flow and its tests."
+  non_goals:
+    - "Changing account deletion behavior"
+  acceptance_criteria:
+    - "Account export requires explicit confirmation before download."
   active_change_unit_ref: null
   blocker_refs: []
 next_actions:

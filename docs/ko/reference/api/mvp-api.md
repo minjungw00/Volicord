@@ -116,8 +116,8 @@
 ### 필수 입력
 
 - `ToolEnvelope`: `project_id`, `surface_id`, `request_id`, `dry_run`이 필요하며, `dry_run=false` 커밋에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
-- `user_request`, `requested_mode`, `resume_policy`.
-- 알고 있는 `acceptance_criteria`, `constraints.allowed_paths`, `constraints.non_goals`, `constraints.sensitive_categories`, `initial_context_refs`. 없으면 빈 배열을 사용합니다.
+- `plain_language_request`, `requested_mode`, `resume_policy`.
+- 알고 있는 첫 범위 후보는 `initial_scope.boundary`, `initial_scope.non_goals`, `initial_scope.acceptance_criteria`에 둡니다. 목록 필드와 `initial_context_refs`에 알려진 항목이 없으면 빈 배열을 사용합니다.
 
 ### 접근 요구사항
 
@@ -199,19 +199,15 @@ params:
     expected_state_version: 17
     dry_run: false
     locale: ko-KR
-  user_request: "계정 데이터 내보내기 전에 명시적 확인 단계를 추가한다."
+  plain_language_request: "계정 데이터 내보내기 전에 명시적 확인 단계를 추가한다."
   requested_mode: auto
   resume_policy: create_new
-  acceptance_criteria:
-    - "다운로드 전에 계정 내보내기 확인이 필요하다."
-  constraints:
-    allowed_paths:
-      - src/account/export.ts
-      - src/account/export-confirmation.ts
-      - tests/account-export.test.ts
+  initial_scope:
+    boundary: "계정 내보내기 흐름과 해당 테스트만."
     non_goals:
       - "계정 삭제 동작 변경"
-    sensitive_categories: []
+    acceptance_criteria:
+      - "다운로드 전에 계정 내보내기 확인이 필요하다."
   initial_context_refs: []
 ```
 
@@ -251,7 +247,11 @@ state:
     result: none
     closed_at: null
   goal_summary: "계정 데이터 내보내기 전에 명시적 확인 단계를 추가한다."
-  scope_summary: null
+  scope_summary: "계정 내보내기 흐름과 해당 테스트만."
+  non_goals:
+    - "계정 삭제 동작 변경"
+  acceptance_criteria:
+    - "다운로드 전에 계정 내보내기 확인이 필요하다."
   active_change_unit_ref: null
   blocker_refs: []
 next_actions:
