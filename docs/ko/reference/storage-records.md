@@ -153,27 +153,444 @@
 
 ## 테이블 개요
 
-아래 표는 활성 저장소 테이블과 최소 저장 역할을 이름 붙입니다. 전체 DDL이 아니며 API 스키마를 복사하지 않습니다.
+아래 표는 현재 MVP의 활성 저장 record 범주를 간결하게 보여 주고 범주별 세부 설명으로 연결합니다. 전체 DDL이 아니며 API 스키마나 렌더링된 템플릿 본문을 복사하지 않습니다. 세부 설명은 영속 record가 저장하는 내용과 저장하지 않는 내용을 분리합니다.
 
-| 테이블 또는 파일 | 위치 | 현재 MVP 역할 | 주요 저장 필드 |
-|---|---|---|---|
-| 런타임 홈 식별 정보 | `registry.sqlite` | 로컬 런타임 홈과 스키마/저장소 프로필을 식별합니다. | `runtime_home_id`, `schema_version`, `storage_profile`, `created_at`, `updated_at`. |
-| 프로젝트 등록 | `registry.sqlite` | 등록된 프로젝트를 프로젝트별 로컬 저장소에 연결합니다. | `project_id`, `repo_root`, `project_home`, `display_name`, `status`, `created_at`, `updated_at`. |
-| `project.yaml` | 프로젝트 디렉터리 | 정적 프로젝트 설정입니다. | `project_id`, `repo_root`, 표시/설정 기본값. |
-| `project_state` | `state.sqlite` | 프로젝트별 로컬 상태 헤더, 단일 공개 프로젝트 전체 상태 시계, 활성 Task 포인터, 기본 접점 포인터를 저장합니다. | `project_id`, `schema_version`, `storage_profile`, `state_version`, `active_task_id`, `default_surface_id`, `created_at`, `updated_at`. |
-| `surfaces` | `state.sqlite` | API 접근에 쓸 로컬 접점 맥락을 확인하기 위한 `LocalSurfaceRegistration` 사실을 저장합니다. 이 행은 등록 데이터이지 현재 호출자가 신뢰된다는 실시간 증명이 아닙니다. | `project_id`, `surface_id`, `surface_instance_id`, `transport_kind`, `transport_binding_fingerprint`, `access_secret_hash`, `capability_profile_hash`, `capability_profile_json`, `status`, `local_access_posture`, `registered_at`, `last_verified_at`, `updated_at`. |
-| `tasks` | `state.sqlite` | 사용자 가치 단위, 구체화 요약, 생명주기, 결과, 다음 행동, Task 수준 활성 `CompletionPolicy`, 닫기 필드를 저장합니다. | `task_id`, `project_id`, `title`, `user_request`, `current_goal_summary`, `mode`, `lifecycle_phase`, `close_reason`, `result`, `summary`, 구체화 JSON 열, `completion_policy_json`, `blocking_question`, `next_safe_action`, `active_change_unit_id`, `created_at`, `updated_at`, `closed_at`. |
-| `change_units` | `state.sqlite` | 쓰기 호환성, Change Unit 수준 `CompletionPolicy`, 닫기 근거를 위한 현재 또는 제안된 범위 있는 작업 경계를 저장합니다. | `change_unit_id`, `task_id`, `scope_summary`, 허용 경로 또는 영향 영역을 담는 범위 JSON 열, `baseline_ref`, `autonomy_boundary_json`, `completion_policy_json`, `status`, `created_at`, `updated_at`. |
-| `user_judgments` | `state.sqlite` | 사용자 소유 판단 기록을 저장하며, 필요하면 별도 민감 동작 승인 범위도 저장합니다. | `user_judgment_id`, `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `status`, 요청/맥락 JSON 열, `question`, `sensitive_action_scope_json`, `resolution_json`, `expires_at`, `resolved_at`, `created_at`, `updated_at`. |
-| `write_authorizations` | `state.sqlite` | `dry_run=false`인 `prepare_write`에서 `decision=allowed`일 때만 만들어지는 영속적인 단일 사용 협력형 Write Authorization입니다. | `write_authorization_id`, `task_id`, `change_unit_id`, `surface_id`, `status`, `basis_state_version`, `attempt_scope_json`, `consumed_by_run_id`, `expires_at`, `created_at`, `updated_at`, `consumed_at`. |
-| `runs` | `state.sqlite` | 제품 쓰기가 있었다면 호환되는 Write Authorization 소비까지 포함하는 커밋된 실행 또는 관찰 기록입니다. | `run_id`, `task_id`, `change_unit_id`, `write_authorization_id`, `surface_id`, `kind`, `status`, `product_write`, `baseline_ref`, `summary`, 관찰/증거 JSON 열, `created_at`, `completed_at`. |
-| `artifact_staging` | `state.sqlite`와 `artifacts/tmp/` | `harness.stage_artifact`가 만들고 나중에 `harness.record_run`이 한 번만 소비할 수 있는 임시 안전 바이트 또는 안전한 알림입니다. | `handle_id`, `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, `display_name`, `relation_hint`, `tmp_uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `status`, `consumed_by_run_id`, `promoted_artifact_id`, `expires_at`, `created_at`, `consumed_at`. |
-| `artifacts` | `state.sqlite`와 아티팩트 저장소 | 무결성, 가림 처리, 생산자, 보존, 가용성 사실을 가진 영속 증거 바이트 또는 안전한 메타데이터입니다. | `artifact_id`, `project_id`, `task_id`, `run_id`, `kind`, `uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `retention_class`, `produced_by`, `status`, `created_at`, `updated_at`. |
-| `artifact_links` | `state.sqlite` | 아티팩트와 그것이 뒷받침하는 활성 Core/API 기록 사이의 담당 관계를 저장합니다. | `artifact_link_id`, `artifact_id`, `task_id`, `owner_record_kind`, `owner_record_id`, `relation`, `created_at`. |
-| `evidence_summaries` | `state.sqlite` | 상태, 실행/증거 요약, 차단 사유, 닫기에 쓰는 간결한 증거 범위와 공백 기록을 저장합니다. | `evidence_summary_id`, `task_id`, `change_unit_id`, `status`, `coverage_items_json`, `summary`, `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `updated_at`. |
-| `blockers` | `state.sqlite` | 다음 행동, 쓰기 호환성, 증거 공백, 닫기 준비 상태, 복구를 위한 구조화된 차단 사유 상태를 저장합니다. `CloseReadinessBlocker`는 API 데이터 형태이며 그 자체가 행이나 저장 신호가 아닙니다. | `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, `status`, `message`, `owner_ref_json`, `related_refs_json`, `required_next_action`, `created_at`, `resolved_at`. |
-| `task_events` | `state.sqlite` | 커밋된 Core 변경의 추가 전용 감사 및 순서 기록입니다. | `event_id`, `project_id`, `task_id`, `event_seq`, `event_type`, `state_version`, `actor_kind`, `surface_id`, `payload_json`, `created_at`. |
-| `tool_invocations` | `state.sqlite` | API 메서드별 상태 효과 행이 재실행 행 생성을 허용한, 커밋된 `dry_run=false` Core `MethodResult` 응답만 저장하는 재실행 행입니다. | `invocation_id`, `project_id`, `tool_name`, `idempotency_key`, `request_hash`, `task_id`, `basis_state_version`, `response_json`, `status`, `created_at`. |
+| 저장 record 범주 | 목적 | 세부사항 |
+|---|---|---|
+| 런타임 홈 식별 정보 | 로컬 런타임 홈과 저장 프로필 식별 | [런타임 홈 식별 정보](#runtime-home-identity) 참고 |
+| 프로젝트 등록 | 등록된 프로젝트와 프로젝트별 로컬 저장소 연결 | [프로젝트 등록](#project-registration) 참고 |
+| `project.yaml` | 정적 프로젝트 설정 | [`project.yaml`](#projectyaml) 참고 |
+| `project_state` | 현재 프로젝트 상태, 버전, 활성 포인터 저장 | [`project_state`](#project_state) 참고 |
+| `surfaces` | API 접근 점검에 쓰는 등록된 로컬 접점 사실 저장 | [`surfaces`](#surfaces) 참고 |
+| `tasks` | 사용자 가치 작업 단위, 구체화 요약, 생명주기, 닫기 상태 저장 | [`tasks`](#tasks) 참고 |
+| `change_units` | 쓰기 호환성과 닫기 근거를 위한 범위 있는 작업 경계 저장 | [`change_units`](#change_units) 참고 |
+| `user_judgments` | 사용자 소유 판단과 민감 동작 승인 record 저장 | [`user_judgments`](#user_judgments) 참고 |
+| `write_authorizations` | 단일 사용 협력형 Write Authorization record 저장 | [`write_authorizations`](#write_authorizations) 참고 |
+| `runs` | 커밋된 실행 또는 관찰 record 저장 | [`runs`](#runs) 참고 |
+| `artifact_staging` | 임시 아티팩트 핸들과 안전한 스테이징 바이트/알림 저장 | [`artifact_staging`](#artifact_staging) 참고 |
+| `artifacts` | 등록된 영속 아티팩트 메타데이터 또는 바이트 저장 | [`artifacts`](#artifacts) 참고 |
+| `artifact_links` | 아티팩트와 지원 대상 Core/API record의 담당 관계 저장 | [`artifact_links`](#artifact_links) 참고 |
+| `evidence_summaries` | 간결한 증거 범위와 공백 record 저장 | [`evidence_summaries`](#evidence_summaries) 참고 |
+| `blockers` | 다음 행동, 쓰기 호환성, 증거, 닫기, 복구를 위한 구조화된 차단 사유 상태 저장 | [`blockers`](#blockers) 참고 |
+| `task_events` | 커밋된 Core 변경의 추가 전용 감사 및 순서 기록 저장 | [`task_events`](#task_events) 참고 |
+| `tool_invocations` | 커밋된 `dry_run=false` Core 메서드 응답의 재실행 행 저장 | [`tool_invocations`](#tool_invocations) 참고 |
+
+## 저장 record 범주 세부사항
+
+<a id="runtime-home-identity"></a>
+### 런타임 홈 식별 정보
+
+목적:
+- 로컬 런타임 홈과 스키마/저장 프로필을 식별합니다.
+
+저장 위치:
+- `registry.sqlite`.
+
+포함하는 것:
+- `runtime_home_id`.
+- `schema_version`과 `storage_profile`.
+- `created_at`과 `updated_at`.
+
+포함하지 않는 것:
+- 프로젝트별 Task 상태.
+- 제품 저장소 내용이나 권한.
+- 변조 불가능성을 증명하는 자료.
+
+담당 문서 링크:
+- [런타임 경계](runtime-boundaries.md).
+- [보안](security.md).
+
+<a id="project-registration"></a>
+### 프로젝트 등록
+
+목적:
+- 등록된 프로젝트를 프로젝트별 로컬 저장소에 연결합니다.
+
+저장 위치:
+- `registry.sqlite`.
+
+포함하는 것:
+- `project_id`.
+- `repo_root`와 `project_home`.
+- `display_name`과 `status`.
+- `created_at`과 `updated_at`.
+
+포함하지 않는 것:
+- 현재 Task 생명주기 상태.
+- 제품 저장소 파일 내용.
+- 기준 현재 MVP를 넘어서는 다중 등록 동작.
+
+담당 문서 링크:
+- [런타임 경계](runtime-boundaries.md).
+- [저장소 버전 관리](storage-versioning.md).
+
+<a id="projectyaml"></a>
+### `project.yaml`
+
+목적:
+- 등록된 프로젝트 하나의 정적 프로젝트 설정을 저장합니다.
+
+저장 위치:
+- 런타임 홈 아래 프로젝트 디렉터리.
+
+포함하는 것:
+- `project_id`.
+- `repo_root`.
+- 표시와 설정 기본값.
+
+포함하지 않는 것:
+- 현재 Task 상태, 관문, Write Authorization 상태.
+- 증거 충분성, 최종 수락, 잔여 위험 수락, 닫기 상태.
+- 렌더링된 템플릿 문구.
+
+담당 문서 링크:
+- [런타임 경계](runtime-boundaries.md).
+- [저장소 버전 관리](storage-versioning.md).
+
+<a id="project_state"></a>
+### `project_state`
+
+목적:
+- 프로젝트별 로컬 상태 헤더, 공개 프로젝트 전체 상태 시계, 활성 Task 포인터, 기본 접점 포인터를 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `project_id`.
+- `schema_version`, `storage_profile`, `state_version`.
+- `active_task_id`와 `default_surface_id`.
+- `created_at`과 `updated_at`.
+
+포함하지 않는 것:
+- 아티팩트 바이트.
+- API 요청 또는 응답 본문.
+- 렌더링된 템플릿 문구.
+- 변조 불가능성을 증명하는 자료.
+
+담당 문서 링크:
+- [저장소 버전 관리](storage-versioning.md).
+- [API 상태 스키마](api/schema-state.md).
+
+<a id="surfaces"></a>
+### `surfaces`
+
+목적:
+- API 접근에 쓸 로컬 접점 맥락을 확인하기 위한 `LocalSurfaceRegistration` 사실을 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `project_id`, `surface_id`, `surface_instance_id`.
+- `transport_kind`, `transport_binding_fingerprint`, `access_secret_hash`.
+- `capability_profile_hash`와 `capability_profile_json`.
+- `status`, `local_access_posture`, `registered_at`, `last_verified_at`, `updated_at`.
+
+포함하지 않는 것:
+- 현재 호출자가 신뢰된다는 실시간 증명.
+- 호출자가 제공한 권한 주장.
+- 호스팅 커넥터 등록소 상태.
+
+담당 문서 링크:
+- [에이전트 통합](agent-integration.md).
+- [MVP API](api/mvp-api.md).
+- [보안](security.md).
+
+<a id="tasks"></a>
+### `tasks`
+
+목적:
+- 사용자 가치 작업 단위, 구체화 요약, 생명주기, 결과, 다음 행동, Task 수준 활성 `CompletionPolicy`, 닫기 필드를 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `task_id`, `project_id`, `title`, `user_request`, `current_goal_summary`.
+- `mode`, `lifecycle_phase`, `close_reason`, `result`, `summary`.
+- 구체화 JSON 열과 `completion_policy_json`.
+- `blocking_question`, `next_safe_action`, `active_change_unit_id`.
+- `created_at`, `updated_at`, `closed_at`.
+
+포함하지 않는 것:
+- 별도 커밋된 Discovery Brief, Question Queue, Assumption Register, First Safe Change Unit Candidate.
+- 전체 Evidence Manifest 저장소.
+- 렌더링된 `status-card` 또는 `close-result` 본문.
+
+담당 문서 링크:
+- [Core Model](core-model.md).
+- [API 상태 스키마](api/schema-state.md).
+- [템플릿 본문](template-bodies.md).
+
+<a id="change_units"></a>
+### `change_units`
+
+목적:
+- 쓰기 호환성, Change Unit 수준 `CompletionPolicy`, 닫기 근거를 위한 현재 또는 제안된 범위 있는 작업 경계를 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `change_unit_id`, `task_id`, `scope_summary`.
+- 허용 경로 또는 영향 영역을 담는 범위 JSON 열.
+- `baseline_ref`, `autonomy_boundary_json`, `completion_policy_json`.
+- `status`, `created_at`, `updated_at`.
+
+포함하지 않는 것:
+- 별도 Shared Design 또는 First Safe Change Unit Candidate 테이블.
+- 제품 저장소 diff 바이트.
+- Write Authorization record.
+
+담당 문서 링크:
+- [Core Model](core-model.md).
+- [저장 효과](storage-effects.md).
+- [MVP API](api/mvp-api.md).
+
+<a id="user_judgments"></a>
+### `user_judgments`
+
+목적:
+- 사용자 소유 판단 record를 저장하며, 필요하면 별도 민감 동작 승인 범위도 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `user_judgment_id`, `task_id`, `change_unit_id`.
+- `judgment_kind`, `presentation`, `status`.
+- 요청/맥락 JSON 열, `question`, `sensitive_action_scope_json`.
+- `resolution_json`, `expires_at`, `resolved_at`, `created_at`, `updated_at`.
+
+포함하지 않는 것:
+- Core 소유 상태 권한이나 아티팩트 권한.
+- 아티팩트 바이트.
+- 기록된 판단 범위를 넘어서는 포괄 승인.
+
+담당 문서 링크:
+- [API 판단 스키마](api/schema-judgment.md).
+- [Core Model](core-model.md).
+- [MVP API](api/mvp-api.md).
+
+<a id="write_authorizations"></a>
+### `write_authorizations`
+
+목적:
+- `dry_run=false`인 `prepare_write`에서 `decision=allowed`일 때만 만들어지는 영속적인 단일 사용 협력형 Write Authorization을 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `write_authorization_id`, `task_id`, `change_unit_id`, `surface_id`.
+- `status`, `basis_state_version`, `attempt_scope_json`.
+- `consumed_by_run_id`, `expires_at`, `created_at`, `updated_at`, `consumed_at`.
+
+포함하지 않는 것:
+- 제품 저장소 쓰기 자체.
+- 증거 충분성이나 최종 수락.
+- 재사용 가능한 권한이나 예방형 보안 보장.
+
+담당 문서 링크:
+- [저장 효과](storage-effects.md).
+- [MVP API](api/mvp-api.md).
+- [보안](security.md).
+
+<a id="runs"></a>
+### `runs`
+
+목적:
+- 제품 쓰기가 있었다면 호환되는 Write Authorization 소비까지 포함하는 커밋된 실행 또는 관찰 record를 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `run_id`, `task_id`, `change_unit_id`, `write_authorization_id`, `surface_id`.
+- `kind`, `status`, `product_write`, `baseline_ref`, `summary`.
+- 관찰/증거 JSON 열.
+- `created_at`, `completed_at`.
+
+포함하지 않는 것:
+- 아티팩트 바이트.
+- 렌더링된 실행/증거 요약 문구.
+- 최종 수락이나 잔여 위험 수락 자체.
+
+담당 문서 링크:
+- [저장 효과](storage-effects.md).
+- [API 상태 스키마](api/schema-state.md).
+- [Core Model](core-model.md).
+
+<a id="artifact_staging"></a>
+### `artifact_staging`
+
+목적:
+- `harness.stage_artifact`가 만들고 나중에 `harness.record_run`이 한 번만 소비할 수 있는 임시 안전 바이트 또는 안전한 알림을 저장합니다.
+
+저장 위치:
+- `state.sqlite`와 `artifacts/tmp/` 아래 안전한 임시 바이트 또는 알림.
+
+포함하는 것:
+- `handle_id`, `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`.
+- `display_name`, `relation_hint`, `tmp_uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`.
+- `status`, `consumed_by_run_id`, `promoted_artifact_id`, `expires_at`, `created_at`, `consumed_at`.
+
+포함하지 않는 것:
+- 영속 `ArtifactRef` 권한.
+- 증거 충분성이나 닫기 준비 상태.
+- 접점 간 스테이징 아티팩트 핸드오프.
+
+담당 문서 링크:
+- [아티팩트 저장소](storage-artifacts.md).
+- [API 아티팩트 스키마](api/schema-artifacts.md).
+- [MVP API](api/mvp-api.md).
+
+<a id="artifacts"></a>
+### `artifacts`
+
+목적:
+- 무결성, 가림 처리, 생산자, 보존, 가용성 사실을 가진 등록된 영속 증거 바이트 또는 안전한 메타데이터를 저장합니다.
+
+저장 위치:
+- `state.sqlite`와 프로젝트 아티팩트 저장소.
+
+포함하는 것:
+- `artifact_id`, `project_id`, `task_id`, `run_id`.
+- `kind`, `uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`.
+- `retention_class`, `produced_by`, `status`, `created_at`, `updated_at`.
+
+포함하지 않는 것:
+- 증거 충분성 자체.
+- 렌더링된 증거 요약 본문.
+- 제한 없는 본문 읽기 권한.
+
+담당 문서 링크:
+- [아티팩트 저장소](storage-artifacts.md).
+- [API 아티팩트 스키마](api/schema-artifacts.md).
+- [보안](security.md).
+
+<a id="artifact_links"></a>
+### `artifact_links`
+
+목적:
+- 아티팩트와 그것이 뒷받침하는 활성 Core/API record 사이의 담당 관계를 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `artifact_link_id`, `artifact_id`, `task_id`.
+- `owner_record_kind`, `owner_record_id`, `relation`.
+- `created_at`.
+
+포함하지 않는 것:
+- 아티팩트 바이트.
+- 담당 record 본문이나 API 스키마 객체.
+- 아티팩트가 충분한 증거라는 증명.
+
+담당 문서 링크:
+- [아티팩트 저장소](storage-artifacts.md).
+- [API 값 집합](api/schema-value-sets.md).
+- [Core Model](core-model.md).
+
+<a id="evidence_summaries"></a>
+### `evidence_summaries`
+
+목적:
+- 상태, 실행/증거 요약, 차단 사유, 닫기에 쓰는 간결한 증거 범위와 공백 record를 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `evidence_summary_id`, `task_id`, `change_unit_id`.
+- `status`, `coverage_items_json`, `summary`.
+- `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`.
+- `updated_at`.
+
+포함하지 않는 것:
+- 전체 Evidence Manifest 저장소.
+- 전체 수동 QA 행렬.
+- 최종 수락.
+- 렌더링된 `run-evidence-summary` 본문.
+
+담당 문서 링크:
+- [Core Model](core-model.md).
+- [API 상태 스키마](api/schema-state.md).
+- [템플릿 본문](template-bodies.md).
+
+<a id="blockers"></a>
+### `blockers`
+
+목적:
+- 다음 행동, 쓰기 호환성, 증거 공백, 닫기 준비 상태, 복구를 위한 구조화된 차단 사유 상태를 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, `status`.
+- `message`, `owner_ref_json`, `related_refs_json`, `required_next_action`.
+- `created_at`, `resolved_at`.
+
+포함하지 않는 것:
+- 저장 행이나 영속 신호로서의 `CloseReadinessBlocker`.
+- 닫기 준비 상태 전체 개념.
+- 렌더링된 템플릿 문구.
+
+담당 문서 링크:
+- [Core Model](core-model.md).
+- [API 상태 스키마](api/schema-state.md).
+- [API 오류](api/errors.md).
+
+<a id="task_events"></a>
+### `task_events`
+
+목적:
+- 커밋된 Core 변경의 추가 전용 감사 및 순서 기록을 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `event_id`, `project_id`, `task_id`, `event_seq`.
+- `event_type`, `state_version`, `actor_kind`, `surface_id`.
+- `payload_json`, `created_at`.
+
+포함하지 않는 것:
+- 제품 저장소 diff 바이트.
+- 렌더링된 템플릿 본문.
+- 외부 감사 보장이나 변조 방지 보장.
+
+담당 문서 링크:
+- [저장소 버전 관리](storage-versioning.md).
+- [저장 효과](storage-effects.md).
+- [보안](security.md).
+
+<a id="tool_invocations"></a>
+### `tool_invocations`
+
+목적:
+- 메서드별 상태 효과 행이 재실행 행 생성을 허용한, 커밋된 `dry_run=false` Core `MethodResult` 응답만 저장합니다.
+
+저장 위치:
+- `state.sqlite`.
+
+포함하는 것:
+- `invocation_id`, `project_id`, `tool_name`, `idempotency_key`.
+- `request_hash`, `task_id`, `basis_state_version`.
+- `response_json`, `status`, `created_at`.
+
+포함하지 않는 것:
+- 재실행 효과가 없는 `dry_run` 또는 읽기 전용 응답.
+- API 스키마 정의.
+- 같은 멱등 키를 여러 커밋 응답으로 갈라지게 하는 권한.
+
+담당 문서 링크:
+- [저장소 버전 관리](storage-versioning.md).
+- [MVP API](api/mvp-api.md).
+- [API 코어 스키마](api/schema-core.md).
 
 ## 첫 스키마 무결성 계약
 

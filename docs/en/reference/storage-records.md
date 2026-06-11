@@ -90,27 +90,444 @@ The minimum active shaping information is stored through existing records: curre
 
 ## Table overview
 
-This table names active storage tables and the minimum storage role they serve. It is not full DDL and does not duplicate API schemas.
+This table names active storage record categories and links to category details. It is not full DDL and does not duplicate API schemas or rendered template bodies.
 
-| Table or file | Location | Active role | Essential stored fields |
-|---|---|---|---|
-| Runtime Home identity | `registry.sqlite` | Identify the local Runtime Home and schema/storage profile. | `runtime_home_id`, `schema_version`, `storage_profile`, `created_at`, `updated_at`. |
-| Project registration | `registry.sqlite` | Map a registered project to its project-local storage. | `project_id`, `repo_root`, `project_home`, `display_name`, `status`, `created_at`, `updated_at`. |
-| `project.yaml` | Project directory | Static project configuration. | `project_id`, `repo_root`, display/config defaults. |
-| `project_state` | `state.sqlite` | Project-local state header, single public project-wide state clock, active Task pointer, and default surface pointer. | `project_id`, `schema_version`, `storage_profile`, `state_version`, `active_task_id`, `default_surface_id`, `created_at`, `updated_at`. |
-| `surfaces` | `state.sqlite` | Stored `LocalSurfaceRegistration` facts used to verify a local surface context for API access. The row is registration data, not live proof that the current caller is trusted. | `project_id`, `surface_id`, `surface_instance_id`, `transport_kind`, `transport_binding_fingerprint`, `access_secret_hash`, `capability_profile_hash`, `capability_profile_json`, `status`, `local_access_posture`, `registered_at`, `last_verified_at`, `updated_at`. |
-| `tasks` | `state.sqlite` | User-value work unit, shaping summary, lifecycle, result, next action, active Task-level `CompletionPolicy`, and close fields. | `task_id`, `project_id`, `title`, `user_request`, `current_goal_summary`, `mode`, `lifecycle_phase`, `close_reason`, `result`, `summary`, shaping JSON columns, `completion_policy_json`, `blocking_question`, `next_safe_action`, `active_change_unit_id`, `created_at`, `updated_at`, `closed_at`. |
-| `change_units` | `state.sqlite` | Current or proposed scoped work boundary for write compatibility, Change Unit-level `CompletionPolicy`, and close basis. | `change_unit_id`, `task_id`, `scope_summary`, scope JSON columns for allowed paths or affected areas, `baseline_ref`, `autonomy_boundary_json`, `completion_policy_json`, `status`, `created_at`, `updated_at`. |
-| `user_judgments` | `state.sqlite` | User-owned judgment records, including separate sensitive-action approval scope when relevant. | `user_judgment_id`, `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `status`, request/context JSON columns, `question`, `sensitive_action_scope_json`, `resolution_json`, `expires_at`, `resolved_at`, `created_at`, `updated_at`. |
-| `write_authorizations` | `state.sqlite` | Durable single-use cooperative Write Authorization created only by non-dry-run `prepare_write` with `decision=allowed`. | `write_authorization_id`, `task_id`, `change_unit_id`, `surface_id`, `status`, `basis_state_version`, `attempt_scope_json`, `consumed_by_run_id`, `expires_at`, `created_at`, `updated_at`, `consumed_at`. |
-| `runs` | `state.sqlite` | Committed execution or observation record, including compatible Write Authorization consumption when a product write happened. | `run_id`, `task_id`, `change_unit_id`, `write_authorization_id`, `surface_id`, `kind`, `status`, `product_write`, `baseline_ref`, `summary`, observed/evidence JSON columns, `created_at`, `completed_at`. |
-| `artifact_staging` | `state.sqlite` plus `artifacts/tmp/` | Temporary staged safe bytes or safe notices created by `harness.stage_artifact` for later single-use `harness.record_run` consumption. | `handle_id`, `project_id`, `task_id`, `created_by_surface_id`, `created_by_surface_instance_id`, `display_name`, `relation_hint`, `tmp_uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `status`, `consumed_by_run_id`, `promoted_artifact_id`, `expires_at`, `created_at`, `consumed_at`. |
-| `artifacts` | `state.sqlite` plus artifact store | Registered durable evidence bytes or safe metadata with integrity, redaction, producer, retention, and availability facts. | `artifact_id`, `project_id`, `task_id`, `run_id`, `kind`, `uri`, `sha256`, `size_bytes`, `content_type`, `redaction_state`, `retention_class`, `produced_by`, `status`, `created_at`, `updated_at`. |
-| `artifact_links` | `state.sqlite` | Owner relation from an artifact to the active Core/API record it supports. | `artifact_link_id`, `artifact_id`, `task_id`, `owner_record_kind`, `owner_record_id`, `relation`, `created_at`. |
-| `evidence_summaries` | `state.sqlite` | Compact evidence coverage and gap record used by status, run/evidence summaries, blockers, and close. | `evidence_summary_id`, `task_id`, `change_unit_id`, `status`, `coverage_items_json`, `summary`, `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `updated_at`. |
-| `blockers` | `state.sqlite` | Structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery. `CloseReadinessBlocker` is the API data shape and is not itself a row or persistence signal. | `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, `status`, `message`, `owner_ref_json`, `related_refs_json`, `required_next_action`, `created_at`, `resolved_at`. |
-| `task_events` | `state.sqlite` | Append-only audit and ordering trail for committed Core mutations. | `event_id`, `project_id`, `task_id`, `event_seq`, `event_type`, `state_version`, `actor_kind`, `surface_id`, `payload_json`, `created_at`. |
-| `tool_invocations` | `state.sqlite` | Replay row only for committed non-dry-run Core `MethodResult` responses whose method state-effect row creates replay. | `invocation_id`, `project_id`, `tool_name`, `idempotency_key`, `request_hash`, `task_id`, `basis_state_version`, `response_json`, `status`, `created_at`. |
+| Record category | Purpose | Details |
+|---|---|---|
+| Runtime Home identity | local Runtime Home identity and storage profile | See [Runtime Home identity](#runtime-home-identity) |
+| Project registration | registered project to project-local storage mapping | See [Project registration](#project-registration) |
+| `project.yaml` | static project configuration | See [`project.yaml`](#projectyaml) |
+| `project_state` | current project state, version, and active pointers | See [`project_state`](#project_state) |
+| `surfaces` | registered local surface facts for API access checks | See [`surfaces`](#surfaces) |
+| `tasks` | user-value work unit, shaping summary, lifecycle, and close state | See [`tasks`](#tasks) |
+| `change_units` | scoped work boundary for write compatibility and close basis | See [`change_units`](#change_units) |
+| `user_judgments` | user-owned judgment and sensitive-action approval records | See [`user_judgments`](#user_judgments) |
+| `write_authorizations` | single-use cooperative Write Authorization records | See [`write_authorizations`](#write_authorizations) |
+| `runs` | committed execution or observation records | See [`runs`](#runs) |
+| `artifact_staging` | temporary staged artifact handles and safe staging bytes/notices | See [`artifact_staging`](#artifact_staging) |
+| `artifacts` | registered durable artifact metadata or bytes | See [`artifacts`](#artifacts) |
+| `artifact_links` | owner relations between artifacts and supported Core/API records | See [`artifact_links`](#artifact_links) |
+| `evidence_summaries` | compact evidence coverage and gap records | See [`evidence_summaries`](#evidence_summaries) |
+| `blockers` | structured blocker state for next action, write compatibility, evidence, close, or recovery | See [`blockers`](#blockers) |
+| `task_events` | append-only audit and ordering trail for committed Core mutations | See [`task_events`](#task_events) |
+| `tool_invocations` | replay rows for committed non-dry-run Core method responses | See [`tool_invocations`](#tool_invocations) |
+
+## Record category details
+
+<a id="runtime-home-identity"></a>
+### Runtime Home identity
+
+Purpose:
+- Identifies the local Runtime Home and the schema/storage profile.
+
+Stored in:
+- `registry.sqlite`.
+
+Contains:
+- `runtime_home_id`.
+- `schema_version` and `storage_profile`.
+- `created_at` and `updated_at`.
+
+Does not contain:
+- project-local Task state.
+- Product Repository content or permissions.
+- tamper-proof proof material.
+
+Owner links:
+- [Runtime Boundaries](runtime-boundaries.md).
+- [Security](security.md).
+
+<a id="project-registration"></a>
+### Project registration
+
+Purpose:
+- Maps a registered project to its project-local storage.
+
+Stored in:
+- `registry.sqlite`.
+
+Contains:
+- `project_id`.
+- `repo_root` and `project_home`.
+- `display_name` and `status`.
+- `created_at` and `updated_at`.
+
+Does not contain:
+- current Task lifecycle state.
+- Product Repository file contents.
+- multi-registration behavior beyond the active current MVP baseline.
+
+Owner links:
+- [Runtime Boundaries](runtime-boundaries.md).
+- [Storage Versioning](storage-versioning.md).
+
+<a id="projectyaml"></a>
+### `project.yaml`
+
+Purpose:
+- Stores static project configuration for one registered project.
+
+Stored in:
+- the project directory under the Runtime Home.
+
+Contains:
+- `project_id`.
+- `repo_root`.
+- display and configuration defaults.
+
+Does not contain:
+- current Task state, gates, or Write Authorization state.
+- evidence sufficiency, final acceptance, residual-risk acceptance, or close state.
+- rendered template text.
+
+Owner links:
+- [Runtime Boundaries](runtime-boundaries.md).
+- [Storage Versioning](storage-versioning.md).
+
+<a id="project_state"></a>
+### `project_state`
+
+Purpose:
+- Stores the project-local state header, public project-wide state clock, active Task pointer, and default surface pointer.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `project_id`.
+- `schema_version`, `storage_profile`, and `state_version`.
+- `active_task_id` and `default_surface_id`.
+- `created_at` and `updated_at`.
+
+Does not contain:
+- artifact bytes.
+- API request or response bodies.
+- rendered template text.
+- tamper-proof proof material.
+
+Owner links:
+- [Storage Versioning](storage-versioning.md).
+- [API State Schemas](api/schema-state.md).
+
+<a id="surfaces"></a>
+### `surfaces`
+
+Purpose:
+- Stores `LocalSurfaceRegistration` facts used to verify a local surface context for API access.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `project_id`, `surface_id`, and `surface_instance_id`.
+- `transport_kind`, `transport_binding_fingerprint`, and `access_secret_hash`.
+- `capability_profile_hash` and `capability_profile_json`.
+- `status`, `local_access_posture`, `registered_at`, `last_verified_at`, and `updated_at`.
+
+Does not contain:
+- live proof that the current caller is trusted.
+- caller-provided authority claims.
+- hosted connector registry state.
+
+Owner links:
+- [Agent Integration](agent-integration.md).
+- [MVP API](api/mvp-api.md).
+- [Security](security.md).
+
+<a id="tasks"></a>
+### `tasks`
+
+Purpose:
+- Stores the user-value work unit, shaping summary, lifecycle, result, next action, active Task-level `CompletionPolicy`, and close fields.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `task_id`, `project_id`, `title`, `user_request`, and `current_goal_summary`.
+- `mode`, `lifecycle_phase`, `close_reason`, `result`, and `summary`.
+- shaping JSON columns and `completion_policy_json`.
+- `blocking_question`, `next_safe_action`, and `active_change_unit_id`.
+- `created_at`, `updated_at`, and `closed_at`.
+
+Does not contain:
+- a separate committed Discovery Brief, Question Queue, Assumption Register, or First Safe Change Unit Candidate.
+- full Evidence Manifest storage.
+- rendered `status-card` or `close-result` bodies.
+
+Owner links:
+- [Core Model](core-model.md).
+- [API State Schemas](api/schema-state.md).
+- [Template Bodies](template-bodies.md).
+
+<a id="change_units"></a>
+### `change_units`
+
+Purpose:
+- Stores the current or proposed scoped work boundary for write compatibility, Change Unit-level `CompletionPolicy`, and close basis.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `change_unit_id`, `task_id`, and `scope_summary`.
+- scope JSON columns for allowed paths or affected areas.
+- `baseline_ref`, `autonomy_boundary_json`, and `completion_policy_json`.
+- `status`, `created_at`, and `updated_at`.
+
+Does not contain:
+- a separate Shared Design or First Safe Change Unit Candidate table.
+- Product Repository diff bytes.
+- Write Authorization records.
+
+Owner links:
+- [Core Model](core-model.md).
+- [Storage Effects](storage-effects.md).
+- [MVP API](api/mvp-api.md).
+
+<a id="user_judgments"></a>
+### `user_judgments`
+
+Purpose:
+- Stores user-owned judgment records, including separate sensitive-action approval scope when relevant.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `user_judgment_id`, `task_id`, and `change_unit_id`.
+- `judgment_kind`, `presentation`, and `status`.
+- request/context JSON columns, `question`, and `sensitive_action_scope_json`.
+- `resolution_json`, `expires_at`, `resolved_at`, `created_at`, and `updated_at`.
+
+Does not contain:
+- Core-owned state or artifact authority.
+- artifact bytes.
+- blanket approval beyond the recorded judgment scope.
+
+Owner links:
+- [API Judgment Schemas](api/schema-judgment.md).
+- [Core Model](core-model.md).
+- [MVP API](api/mvp-api.md).
+
+<a id="write_authorizations"></a>
+### `write_authorizations`
+
+Purpose:
+- Stores durable single-use cooperative Write Authorization created only by non-dry-run `prepare_write` with `decision=allowed`.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `write_authorization_id`, `task_id`, `change_unit_id`, and `surface_id`.
+- `status`, `basis_state_version`, and `attempt_scope_json`.
+- `consumed_by_run_id`, `expires_at`, `created_at`, `updated_at`, and `consumed_at`.
+
+Does not contain:
+- Product Repository writes themselves.
+- evidence sufficiency or final acceptance.
+- reusable permission or a preventive security guarantee.
+
+Owner links:
+- [Storage Effects](storage-effects.md).
+- [MVP API](api/mvp-api.md).
+- [Security](security.md).
+
+<a id="runs"></a>
+### `runs`
+
+Purpose:
+- Stores committed execution or observation records, including compatible Write Authorization consumption when a product write happened.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `run_id`, `task_id`, `change_unit_id`, `write_authorization_id`, and `surface_id`.
+- `kind`, `status`, `product_write`, `baseline_ref`, and `summary`.
+- observed/evidence JSON columns.
+- `created_at` and `completed_at`.
+
+Does not contain:
+- artifact bytes.
+- rendered run/evidence summary text.
+- final acceptance or residual-risk acceptance by itself.
+
+Owner links:
+- [Storage Effects](storage-effects.md).
+- [API State Schemas](api/schema-state.md).
+- [Core Model](core-model.md).
+
+<a id="artifact_staging"></a>
+### `artifact_staging`
+
+Purpose:
+- Stores temporary staged safe bytes or safe notices created by `harness.stage_artifact` for later single-use `harness.record_run` consumption.
+
+Stored in:
+- `state.sqlite` plus safe temporary bytes or notices under `artifacts/tmp/`.
+
+Contains:
+- `handle_id`, `project_id`, `task_id`, `created_by_surface_id`, and `created_by_surface_instance_id`.
+- `display_name`, `relation_hint`, `tmp_uri`, `sha256`, `size_bytes`, `content_type`, and `redaction_state`.
+- `status`, `consumed_by_run_id`, `promoted_artifact_id`, `expires_at`, `created_at`, and `consumed_at`.
+
+Does not contain:
+- persistent `ArtifactRef` authority.
+- evidence sufficiency or close readiness.
+- cross-surface staged artifact handoff.
+
+Owner links:
+- [Artifact Storage](storage-artifacts.md).
+- [API Artifact Schemas](api/schema-artifacts.md).
+- [MVP API](api/mvp-api.md).
+
+<a id="artifacts"></a>
+### `artifacts`
+
+Purpose:
+- Stores registered durable evidence bytes or safe metadata with integrity, redaction, producer, retention, and availability facts.
+
+Stored in:
+- `state.sqlite` plus the project artifact store.
+
+Contains:
+- `artifact_id`, `project_id`, `task_id`, and `run_id`.
+- `kind`, `uri`, `sha256`, `size_bytes`, `content_type`, and `redaction_state`.
+- `retention_class`, `produced_by`, `status`, `created_at`, and `updated_at`.
+
+Does not contain:
+- evidence sufficiency by itself.
+- rendered evidence summary bodies.
+- unrestricted body-read permission.
+
+Owner links:
+- [Artifact Storage](storage-artifacts.md).
+- [API Artifact Schemas](api/schema-artifacts.md).
+- [Security](security.md).
+
+<a id="artifact_links"></a>
+### `artifact_links`
+
+Purpose:
+- Stores the owner relation from an artifact to the active Core/API record it supports.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `artifact_link_id`, `artifact_id`, and `task_id`.
+- `owner_record_kind`, `owner_record_id`, and `relation`.
+- `created_at`.
+
+Does not contain:
+- artifact bytes.
+- embedded owner records or API schema objects.
+- proof that the artifact is sufficient evidence.
+
+Owner links:
+- [Artifact Storage](storage-artifacts.md).
+- [API Value Sets](api/schema-value-sets.md).
+- [Core Model](core-model.md).
+
+<a id="evidence_summaries"></a>
+### `evidence_summaries`
+
+Purpose:
+- Stores compact evidence coverage and gap records used by status, run/evidence summaries, blockers, and close.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `evidence_summary_id`, `task_id`, and `change_unit_id`.
+- `status`, `coverage_items_json`, and `summary`.
+- `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, and `gap_blocker_ids_json`.
+- `updated_at`.
+
+Does not contain:
+- full Evidence Manifest storage.
+- full Manual QA matrices.
+- final acceptance.
+- rendered `run-evidence-summary` bodies.
+
+Owner links:
+- [Core Model](core-model.md).
+- [API State Schemas](api/schema-state.md).
+- [Template Bodies](template-bodies.md).
+
+<a id="blockers"></a>
+### `blockers`
+
+Purpose:
+- Stores structured blocker state for next action, write compatibility, evidence gaps, close readiness, or recovery.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `blocker_id`, `task_id`, `blocked_action`, `blocker_kind`, and `status`.
+- `message`, `owner_ref_json`, `related_refs_json`, and `required_next_action`.
+- `created_at` and `resolved_at`.
+
+Does not contain:
+- `CloseReadinessBlocker` as a stored row or persistence signal.
+- the whole close-readiness concept.
+- rendered template text.
+
+Owner links:
+- [Core Model](core-model.md).
+- [API State Schemas](api/schema-state.md).
+- [API Errors](api/errors.md).
+
+<a id="task_events"></a>
+### `task_events`
+
+Purpose:
+- Stores the append-only audit and ordering trail for committed Core mutations.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `event_id`, `project_id`, `task_id`, and `event_seq`.
+- `event_type`, `state_version`, `actor_kind`, and `surface_id`.
+- `payload_json` and `created_at`.
+
+Does not contain:
+- Product Repository diff bytes.
+- rendered template bodies.
+- external audit or tamper-proof guarantees.
+
+Owner links:
+- [Storage Versioning](storage-versioning.md).
+- [Storage Effects](storage-effects.md).
+- [Security](security.md).
+
+<a id="tool_invocations"></a>
+### `tool_invocations`
+
+Purpose:
+- Stores replay rows only for committed non-dry-run Core `MethodResult` responses whose method state-effect row creates replay.
+
+Stored in:
+- `state.sqlite`.
+
+Contains:
+- `invocation_id`, `project_id`, `tool_name`, and `idempotency_key`.
+- `request_hash`, `task_id`, and `basis_state_version`.
+- `response_json`, `status`, and `created_at`.
+
+Does not contain:
+- dry-run or read-only responses when no replay effect is created.
+- API schema definitions.
+- permission for one idempotency key to fork into multiple committed responses.
+
+Owner links:
+- [Storage Versioning](storage-versioning.md).
+- [MVP API](api/mvp-api.md).
+- [API Schema Core](api/schema-core.md).
 
 ## First schema integrity contract
 
