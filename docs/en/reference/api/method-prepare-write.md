@@ -151,6 +151,8 @@ params:
 
 Allowed branch after the separate sensitive-action approval is already present (`PrepareWriteResult`, `decision=allowed`):
 
+The existing sensitive-action approval is represented by `active_user_judgment_refs` at `state_version: 19`. The `intended_operation` names product UI confirmation work, which remains separate from Harness sensitive-action approval.
+
 ```yaml
 base:
   response_kind: result
@@ -185,7 +187,12 @@ write_authorization:
     - src/account/export-confirmation.ts
     - tests/account-export.test.ts
 authorization_effect: created
-active_user_judgment_refs: []
+active_user_judgment_refs:
+  - record_kind: user_judgment
+    record_id: uj_sensitive_export_001
+    project_id: proj_123
+    task_id: task_456
+    state_version: 19
 write_decision_reasons: []
 user_judgment_candidate: null
 guarantee_display:

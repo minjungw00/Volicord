@@ -151,6 +151,8 @@ params:
 
 별도의 민감 동작 승인이 이미 있을 때의 허용 분기(`PrepareWriteResult`, `decision=allowed`):
 
+기존 민감 동작 승인은 `state_version: 19`의 `active_user_judgment_refs` 사용자 판단 참조로 표시됩니다. `intended_operation`은 제품 UI 확인 작업을 이름 붙일 뿐이며, 하네스 민감 동작 승인을 대신하지 않습니다.
+
 ```yaml
 base:
   response_kind: result
@@ -185,7 +187,12 @@ write_authorization:
     - src/account/export-confirmation.ts
     - tests/account-export.test.ts
 authorization_effect: created
-active_user_judgment_refs: []
+active_user_judgment_refs:
+  - record_kind: user_judgment
+    record_id: uj_sensitive_export_001
+    project_id: proj_123
+    task_id: task_456
+    state_version: 19
 write_decision_reasons: []
 user_judgment_candidate: null
 guarantee_display:
