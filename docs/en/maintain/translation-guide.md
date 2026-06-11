@@ -65,6 +65,8 @@ Good distinction:
 - Korean explanation: 아티팩트 참조 스키마
 - Prose term: 아티팩트
 
+Some English words can be both code values and ordinary adjectives. Determine the context before preserving the word. Preserve `complete` in backticks only when it is an identifier, such as `intent=complete`; when it means full or entire, English prose should prefer "full" or "entire" and Korean prose should use natural phrases such as 전체, 전체 평가, or 전체 평가 순서.
+
 ## 4. Product concept terminology
 
 Use [docs/terminology-map.yaml](../../terminology-map.yaml) as the canonical terminology map for product concepts and mixed-language bans. This guide gives the maintainer-facing standard; the map is the machine-readable control file.
@@ -76,6 +78,8 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | close readiness, reference-facing | 닫기 준비 상태 | Preserve identifiers such as `CloseReadinessBlocker`. |
 | close readiness, user-facing | 닫기 가능 여부 | Use when explaining to end users whether a task can be closed. |
 | close readiness evaluation | 닫기 준비 상태 평가 | Never use "close 가능성 평가". |
+| `complete` as an identifier | `complete` | Preserve only when it is an enum value or identifier, such as `intent=complete`; use "full" or "entire" for ordinary adjective meaning. |
+| full evaluation order | 전체 평가 순서; in close-readiness context, 전체 닫기 준비 상태 평가 순서 | Do not write `complete` 평가 순서, complete 평가 순서, or `complete` 닫기 준비 상태 순서. |
 | artifact | 아티팩트 | Preserve `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle`. |
 | surface | 접점 | Preserve `surface_id`; do not make it sound like proof of authority. |
 | lifecycle | 생명주기 | Do not leave "lifecycle" in Korean prose unless it is an identifier. |
@@ -180,6 +184,10 @@ The following patterns are forbidden in Korean prose unless they appear inside a
 |---|---|
 | close 가능성 평가 | 닫기 준비 상태 평가 |
 | 닫기 가능성 평가 | 닫기 준비 상태 평가 |
+| `complete` 평가 순서 | 전체 평가 순서 |
+| complete 평가 순서 | 전체 평가 순서 |
+| `complete` 닫기 준비 상태 순서 | 전체 닫기 준비 상태 평가 순서 |
+| complete 닫기 준비 상태 순서 | 전체 닫기 준비 상태 평가 순서 |
 | artifact 저장 | 아티팩트 저장, or 아티팩트를 저장 |
 | artifact bytes | 아티팩트 본문 바이트 |
 | staged handle | 스테이징된 아티팩트 핸들, or `StagedArtifactHandle` when naming the identifier |

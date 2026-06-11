@@ -8,6 +8,7 @@ canonical_for:
   - "Mixed-language Korean expressions to avoid during human or LLM editing."
   - "Korean close-readiness terminology routing for `닫기 준비 상태` and `닫기 가능 여부`."
   - "Search-friendly routing for promotion-time owner update terminology."
+  - "Terminology distinction between `complete` as an enum/identifier and ordinary prose meaning full or entire."
 does_not_own:
   - "Product, API, storage, security, projection, or runtime contracts."
   - "Rendered UI copy when an exact template body owner defines the wording."
@@ -84,6 +85,14 @@ avoid:
       use: "접점 정보, 또는 필드 이름이면 `surface_id`"
     - phrase: "close blocker를 확인한다"
       use: "닫기 차단 사유를 확인한다"
+    - phrase: "`complete` 평가 순서"
+      use: "전체 평가 순서"
+    - phrase: "complete 평가 순서"
+      use: "전체 평가 순서"
+    - phrase: "`complete` 닫기 준비 상태 순서"
+      use: "전체 닫기 준비 상태 평가 순서"
+    - phrase: "complete 닫기 준비 상태 순서"
+      use: "전체 닫기 준비 상태 평가 순서"
     - phrase: "스코프"
       use: "범위"
     - phrase: "격리 보장이 제공됩니다"
@@ -378,6 +387,51 @@ terms:
         - "docs/ko/reference/api/errors.md"
     notes:
       - "Do not translate this as 가능성 평가."
+  complete_intent:
+    category: "identifier"
+    en: "complete"
+    ko_reference: "`complete`"
+    ko_user: "`complete`"
+    preserve_identifier: true
+    preserve_as_identifier:
+      - "complete"
+      - "intent=complete"
+    owner_documents:
+      en:
+        - "docs/en/reference/api/mvp-api.md"
+        - "docs/en/reference/api/schema-value-sets.md"
+      ko:
+        - "docs/ko/reference/api/mvp-api.md"
+        - "docs/ko/reference/api/schema-value-sets.md"
+    notes:
+      - "Preserve only when it is an enum value or identifier, such as `intent=complete`."
+      - "Do not preserve `complete` in Korean prose when it means full or entire."
+      - "English prose should prefer full or entire when `complete` could be confused with the enum value."
+  full_evaluation_order:
+    category: "general_prose"
+    en: "full evaluation order"
+    ko_reference: "전체 평가 순서"
+    ko_user: "전체 평가 순서"
+    aliases_en:
+      - "entire evaluation order"
+      - "full close-readiness evaluation order"
+      - "entire close-readiness evaluation order"
+    avoid_ko:
+      - "`complete` 평가 순서"
+      - "complete 평가 순서"
+      - "`complete` 닫기 준비 상태 순서"
+      - "complete 닫기 준비 상태 순서"
+    owner_documents:
+      en:
+        - "docs/en/reference/glossary.md"
+        - "docs/en/maintain/translation-guide.md"
+      ko:
+        - "docs/ko/reference/glossary.md"
+        - "docs/ko/maintain/translation-guide.md"
+    notes:
+      - "Do not preserve the English word `complete` when it means full or entire rather than an enum value."
+      - "Use 전체, 전체 평가, or 전체 평가 순서 for ordinary prose meaning."
+      - "Use 전체 닫기 준비 상태 평가 순서 for the full close-readiness evaluation order."
   close_blocker:
     category: "product_concept"
     en: "close blocker"
