@@ -1,6 +1,12 @@
 # 아티팩트 저장 참조
 
-이 문서는 현재 MVP 원천 설계에서 아티팩트 저장 생명주기를 담당합니다. 문서 원천 자료일 뿐이며 아티팩트 바이트, 아티팩트 디렉터리, 런타임 저장소, 증거 기록, QA 기록, 수락 기록, 닫기 기록을 만들지 않습니다.
+규칙:
+
+- 이 문서는 현재 MVP 원천 설계에서 아티팩트 저장 생명주기를 담당합니다.
+
+허용되지 않는 것:
+
+- 이 문서는 아티팩트 바이트, 아티팩트 디렉터리, 런타임 저장소, 증거 기록, QA 기록, 수락 기록, 닫기 기록을 만들지 않습니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -77,21 +83,51 @@
 
 - 접근 등급, 역량, 가림 처리, 가용성, 담당 관계를 통과해야 합니다.
 
-`ArtifactRef`는 등록된 지속 아티팩트를 가리키는 공개 API 포인터입니다. 저장소는 `artifacts`와 `artifact_links`를 통해 지속 아티팩트 권한을 표현합니다.
+규칙:
 
-`StagedArtifactHandle`은 `ArtifactRef`가 아닙니다. 스테이징 핸들은 임시 입력을 찾기 위한 값이고, 지속 아티팩트 포인터나 증거 권한이 아닙니다.
+- `ArtifactRef`는 등록된 지속 아티팩트를 가리키는 공개 API 포인터입니다.
+- 저장소는 `artifacts`와 `artifact_links`를 통해 지속 아티팩트 권한을 표현합니다.
 
-호출자가 준 원시 파일시스템 경로, 임의 로컬 경로 문자열, 원시 로그, `captured_artifact` 핸들, 원시 캡처 어댑터 출력, 접점 자체 캡처 주장은 현재 MVP의 아티팩트 등록 권한이 아닙니다.
+허용되는 것:
 
-소비되지 않았거나 만료된 `artifact_staging` 행과 `artifacts/tmp/` 아래 임시 바이트 또는 알림은 `expired` 또는 `discarded`로 표시할 수 있습니다. 등록 전 임시 바이트는 정리할 수 있습니다. 이 임시 자료는 증거 권한이 아니기 때문입니다.
+- `StagedArtifactHandle`은 임시 입력을 찾기 위한 값입니다.
 
-반대로 `artifacts` 행이 커밋된 뒤의 보존 삭제, 프로젝트 해체, 파괴적 정리는 일반적인 현재 MVP 변경 동작 밖입니다. 향후 보존 또는 마이그레이션 경로는 아티팩트 해시, 담당 연결, 이벤트, 재실행 행을 보존하거나 영향을 받은 참조를 복구 대상으로 유효하지 않게 표시해야 하며, 현재 기록이 아직 이름 붙인 증거 지원을 조용히 삭제하면 안 됩니다.
+허용되지 않는 것:
+
+- `StagedArtifactHandle`은 `ArtifactRef`가 아닙니다.
+- 스테이징 핸들은 지속 아티팩트 포인터나 증거 권한이 아닙니다.
+- 호출자가 준 원시 파일시스템 경로, 임의 로컬 경로 문자열, 원시 로그, `captured_artifact` 핸들, 원시 캡처 어댑터 출력, 접점 자체 캡처 주장은 현재 MVP의 아티팩트 등록 권한이 아닙니다.
+
+허용되는 것:
+
+- 소비되지 않았거나 만료된 `artifact_staging` 행과 `artifacts/tmp/` 아래 임시 바이트 또는 알림은 `expired` 또는 `discarded`로 표시할 수 있습니다.
+- 등록 전 임시 바이트는 정리할 수 있습니다.
+
+예외:
+
+- 이 임시 자료는 증거 권한이 아니므로 위 정리가 허용됩니다.
+
+허용되지 않는 것:
+
+- `artifacts` 행이 커밋된 뒤의 보존 삭제, 프로젝트 해체, 파괴적 정리는 일반적인 현재 MVP 변경 동작 밖입니다.
+- 향후 보존 또는 마이그레이션 경로는 현재 기록이 아직 이름 붙인 증거 지원을 조용히 삭제하면 안 됩니다.
+
+규칙:
+
+- 향후 보존 또는 마이그레이션 경로는 아티팩트 해시, 담당 연결, 이벤트, 재실행 행을 보존하거나 영향을 받은 참조를 복구 대상으로 유효하지 않게 표시해야 합니다.
 
 ## 스테이징
 
-`harness.stage_artifact`는 아티팩트를 스테이징합니다. 이 메서드는 데이터를 임시 저장할 뿐, 정식 증거를 만들지 않습니다.
+규칙:
 
-성공한 `harness.stage_artifact`는 `base.effect_kind=staging_created`인 `StageArtifactResult`를 반환합니다. 저장소는 `artifacts/tmp/` 아래 안전한 아티팩트 바이트 또는 안전한 알림을 둘 수 있고, `artifact_staging` 또는 동등한 저장소 소유 스테이징 기록을 만들 수 있습니다.
+- `harness.stage_artifact`는 아티팩트를 스테이징합니다.
+- 이 메서드는 데이터를 임시 저장할 뿐, 정식 증거를 만들지 않습니다.
+
+허용되는 것:
+
+- 성공한 `harness.stage_artifact`는 `base.effect_kind=staging_created`인 `StageArtifactResult`를 반환합니다.
+- 저장소는 `artifacts/tmp/` 아래 안전한 아티팩트 바이트 또는 안전한 알림을 둘 수 있습니다.
+- 저장소는 `artifact_staging` 또는 동등한 저장소 소유 스테이징 기록을 만들 수 있습니다.
 
 스테이징할 아티팩트 데이터 예시는 아래와 같습니다.
 
@@ -103,7 +139,14 @@ artifact:
 staged_artifact_handle: staged_artifact_account_export_test_log_001
 ```
 
-이 예시는 제품 테스트 출력을 스테이징하는 입력을 나타냅니다. 지속 `ArtifactRef`가 아니며, 호환되는 담당 메서드가 계약에 따라 기록하고 승격하기 전에는 정식 증거가 아닙니다.
+규칙:
+
+- 이 예시는 제품 테스트 출력을 스테이징하는 입력을 나타냅니다.
+
+허용되지 않는 것:
+
+- 이 예시는 지속 `ArtifactRef`가 아닙니다.
+- 호환되는 담당 메서드가 계약에 따라 기록하고 승격하기 전에는 정식 증거가 아닙니다.
 
 스테이징 기록은 적어도 아래 사실을 추적합니다.
 
@@ -116,7 +159,15 @@ staged_artifact_handle: staged_artifact_account_export_test_log_001
 | 생명주기 | `status`, `expires_at` |
 | 소비 결과 | `consumed_by_run_id`, `promoted_artifact_id`, `consumed_at` 같은 소비 사실 |
 
-`created_by_surface_*` 필드는 성공한 `harness.stage_artifact` 요청의 `VerifiedSurfaceContext`에서 향후 서버가 기록하는 값입니다. 호출자가 제출한 권한 주장이 아니며, 제출된 핸들의 형태가 맞다는 이유만으로 신뢰하지 말고 저장소에 있는 스테이징 기록과 대조해야 합니다.
+규칙:
+
+- `created_by_surface_*` 필드는 성공한 `harness.stage_artifact` 요청의 `VerifiedSurfaceContext`에서 향후 서버가 기록하는 값입니다.
+- 저장소에 있는 스테이징 기록과 대조해야 합니다.
+
+허용되지 않는 것:
+
+- 이 필드는 호출자가 제출한 권한 주장이 아닙니다.
+- 제출된 핸들의 형태가 맞다는 이유만으로 신뢰하면 안 됩니다.
 
 스테이징이 만들지 않는 것은 아래와 같습니다.
 
@@ -201,7 +252,13 @@ staged_artifact_handle: staged_artifact_account_export_test_log_001
 
 ## 기존 아티팩트 참조
 
-`existing_artifact`는 이미 지속되는 아티팩트 행을 재사용하는 입력입니다. 새 아티팩트 바이트를 등록하거나 새 본문을 복제하는 경로가 아닙니다.
+규칙:
+
+- `existing_artifact`는 이미 지속되는 아티팩트 행을 재사용하는 입력입니다.
+
+허용되지 않는 것:
+
+- `existing_artifact`는 새 아티팩트 바이트를 등록하거나 새 본문을 복제하는 경로가 아닙니다.
 
 기존 아티팩트 참조는 아래 조건이 새 사용과 계속 호환될 때만 연결될 수 있습니다.
 
@@ -224,7 +281,10 @@ staged_artifact_handle: staged_artifact_account_export_test_log_001
 
 ## 승격
 
-승격은 스테이징 핸들을 지속 `ArtifactRef`로 바꾸는 저장소 단계입니다. 승격에는 스테이징 핸들을 받아들이는 담당 메서드가 필요합니다.
+규칙:
+
+- 승격은 스테이징 핸들을 지속 `ArtifactRef`로 바꾸는 저장소 단계입니다.
+- 승격에는 스테이징 핸들을 받아들이는 담당 메서드가 필요합니다.
 
 현재 MVP에서 대표적인 담당 메서드는 `harness.record_run`입니다. 호환되는 `harness.record_run`만 아래 조건을 모두 만족하는 스테이징 핸들을 소비할 수 있습니다.
 
@@ -236,7 +296,10 @@ staged_artifact_handle: staged_artifact_account_export_test_log_001
 - 현재 확인된 `surface_instance_id`가 `created_by_surface_instance_id`와 일치함.
 - `sha256`, `size_bytes`, `redaction_state`가 저장된 스테이징 기록과 일치함.
 
-현재 MVP는 접점 간 스테이징 핸들 인계를 지원하지 않습니다. 스테이징을 만든 접점과 승격하려는 접점이 다르면 승격은 거절되어야 합니다.
+허용되지 않는 것:
+
+- 현재 MVP는 접점 간 스테이징 핸들 인계를 지원하지 않습니다.
+- 스테이징을 만든 접점과 승격하려는 접점이 다르면 승격은 거절되어야 합니다.
 
 소비 트랜잭션은 아래 일을 커밋해야 합니다.
 
@@ -247,7 +310,14 @@ staged_artifact_handle: staged_artifact_account_export_test_log_001
 - 필요한 `artifact_links` 행을 커밋합니다.
 - 메서드 담당 문서가 허용한 경우에만 증거 범위를 갱신합니다.
 
-승격은 스테이징 핸들을 지속 아티팩트로 등록할 수 있지만, 그 자체로 모든 증거 관문을 충족하지는 않습니다. 증거 범위 갱신은 `harness.record_run` 같은 담당 메서드의 계약 안에서만 일어납니다.
+허용되는 것:
+
+- 승격은 스테이징 핸들을 지속 아티팩트로 등록할 수 있습니다.
+- 증거 범위 갱신은 `harness.record_run` 같은 담당 메서드의 계약 안에서만 일어납니다.
+
+허용되지 않는 것:
+
+- 승격 자체가 모든 증거 관문을 충족하지는 않습니다.
 
 ## 증거와의 관계
 
@@ -269,11 +339,28 @@ staged_artifact_handle: staged_artifact_account_export_test_log_001
 - 가용성 `status`.
 - `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` 같은 활성 기록에 대한 담당 연결.
 
-유효한 담당 연결이 있는 `artifacts.status=available` 행은 증거 범위 항목을 뒷받침할 수 있습니다. 하지만 필수 범위 항목이 그 아티팩트를 주장에 연결하고 항목 상태가 `supported` 또는 `not_applicable`일 때만 `EvidenceSummary.status=sufficient`가 될 수 있습니다.
+허용되는 것:
 
-없거나, 사용할 수 없거나, 무결성 실패이거나, 그 밖에 쓸 수 없는 아티팩트는 아티팩트 가용성 문제로 남습니다. 이런 문제는 필수 증거 범위를 충분하지 않게 만들 수도 있습니다.
+- 유효한 담당 연결이 있는 `artifacts.status=available` 행은 증거 범위 항목을 뒷받침할 수 있습니다.
+- 필수 범위 항목이 그 아티팩트를 주장에 연결하고 항목 상태가 `supported` 또는 `not_applicable`일 때만 `EvidenceSummary.status=sufficient`가 될 수 있습니다.
 
-`artifact_links`가 다형 담당 테이블이어도 담당 관계 무결성은 필요합니다. 저장소는 `owner_record_kind`, `owner_record_id`, 같은 `project_id`, 같은 `task_id`, 사용 방식과의 호환성을 검증해야 합니다. 유효한 담당 연결이 없는 원시 `artifact_id`는 증거 지원이 아닙니다.
+허용되지 않는 것:
+
+- 없거나, 사용할 수 없거나, 무결성 실패이거나, 그 밖에 쓸 수 없는 아티팩트는 아티팩트 가용성 문제로 남습니다.
+- 유효한 담당 연결이 없는 원시 `artifact_id`는 증거 지원이 아닙니다.
+
+규칙:
+
+- `artifact_links`가 다형 담당 테이블이어도 담당 관계 무결성은 필요합니다.
+- 이런 가용성 문제는 필수 증거 범위를 충분하지 않게 만들 수도 있습니다.
+
+필수 검증:
+
+- `owner_record_kind`가 `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` 중 하나인지 확인합니다.
+- `owner_record_id`가 해당 활성 테이블에 존재하는지 확인합니다.
+- 담당 기록이 같은 `project_id`에 속하는지 확인합니다.
+- 담당 기록이 같은 `task_id`에 속하는지 확인합니다.
+- 관계가 아티팩트 사용 방식과 호환되는지 확인합니다.
 
 아티팩트 연결은 아래 항목을 만들거나 증명하지 않습니다.
 
@@ -289,7 +376,13 @@ staged_artifact_handle: staged_artifact_account_export_test_log_001
 
 ## 아티팩트 본문 읽기
 
-아티팩트 본문 읽기는 스테이징 핸들 승격과 별개입니다. 원시 아티팩트 경로 읽기는 기본으로 부여되지 않습니다.
+규칙:
+
+- 아티팩트 본문 읽기는 스테이징 핸들 승격과 별개입니다.
+
+허용되지 않는 것:
+
+- 원시 아티팩트 경로 읽기는 기본으로 부여되지 않습니다.
 
 아티팩트 메타데이터나 아티팩트 바이트를 읽으려면 아래 조건이 필요합니다.
 
@@ -311,9 +404,18 @@ staged_artifact_handle: staged_artifact_account_export_test_log_001
 - 스테이징 핸들.
 - 원시 `artifact_id`.
 
-`uri`는 보통 `harness-artifact://{project_id}/{artifact_id}`처럼 하네스 저장소를 통해 해석됩니다. 호출자가 제공한 임의 파일시스템 경로가 아닙니다.
+규칙:
 
-원시 비밀값, 토큰, 민감한 전체 로그는 증거로 쓰일 아티팩트 바이트로 저장하면 안 됩니다. 대신 가림 처리된 아티팩트 바이트, `secret_omitted` 또는 `blocked` 알림, 안전 핸들, 담당 문서가 승인한 다른 안전 표현을 저장합니다.
+- `uri`는 보통 `harness-artifact://{project_id}/{artifact_id}`처럼 하네스 저장소를 통해 해석됩니다.
+
+허용되는 것:
+
+- 가림 처리된 아티팩트 바이트, `secret_omitted` 또는 `blocked` 알림, 안전 핸들, 담당 문서가 승인한 다른 안전 표현을 저장합니다.
+
+허용되지 않는 것:
+
+- `uri`는 호출자가 제공한 임의 파일시스템 경로가 아닙니다.
+- 원시 비밀값, 토큰, 민감한 전체 로그는 증거로 쓰일 아티팩트 바이트로 저장하면 안 됩니다.
 
 ## 검증과 실패
 
@@ -431,11 +533,25 @@ staged_artifact_handle: staged_artifact_account_export_test_log_001
 
 - 아티팩트 저장소 또는 필요한 조회 경로가 현재 등록된 바이트 또는 안전한 메타데이터 알림을 제공할 수 없습니다.
 
-`artifacts.redaction_state`는 [API 아티팩트 스키마](api/schema-artifacts.md)의 활성 `ArtifactRef.redaction_state` 값을 사용합니다. `blocked`는 가림 또는 생략 상태이지 아티팩트 가용성 상태가 아닙니다. 커밋된 안전 알림이나 가림 처리된 아티팩트 바이트가 존재하고 무결성 확인이 가능하면 `blocked`, `secret_omitted`, `redacted` 아티팩트도 `artifacts.status=available`일 수 있습니다.
+규칙:
 
-체크섬과 크기 검증은 아티팩트 바이트와 저장된 메타데이터가 맞는지 확인합니다. 이는 저장된 바이트 비교와 가용성 처리를 위한 검증이지, 아티팩트의 의미 내용이 맞는지, 로그가 주장을 실제로 뒷받침하는지, 테스트가 성공했는지, 증거가 충분한지를 증명하지 않습니다.
+- `artifacts.redaction_state`는 [API 아티팩트 스키마](api/schema-artifacts.md)의 활성 `ArtifactRef.redaction_state` 값을 사용합니다.
+- 체크섬과 크기 검증은 아티팩트 바이트와 저장된 메타데이터가 맞는지 확인합니다.
+- `sha256`, `size_bytes`, `content_type`은 저장된 바이트 비교와 가용성 처리를 위한 무결성 사실입니다.
 
-`sha256`, `size_bytes`, `content_type`은 보안 보장 주장도 아닙니다. 보안 보장과 로컬 접근 비주장은 [보안](security.md)이 담당합니다.
+허용되는 것:
+
+- 커밋된 안전 알림이나 가림 처리된 아티팩트 바이트가 존재하고 무결성 확인이 가능하면 `blocked`, `secret_omitted`, `redacted` 아티팩트도 `artifacts.status=available`일 수 있습니다.
+
+허용되지 않는 것:
+
+- `blocked`는 가림 또는 생략 상태이지 아티팩트 가용성 상태가 아닙니다.
+- 체크섬과 크기 검증은 아티팩트의 의미 내용이 맞는지, 로그가 주장을 실제로 뒷받침하는지, 테스트가 성공했는지, 증거가 충분한지를 증명하지 않습니다.
+- `sha256`, `size_bytes`, `content_type`은 보안 보장 주장이 아닙니다.
+
+담당 문서 링크:
+
+- 보안 보장과 로컬 접근 비주장은 [보안](security.md)이 담당합니다.
 
 ## 관련 담당 문서
 

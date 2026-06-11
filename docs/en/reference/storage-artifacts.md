@@ -1,6 +1,12 @@
 # Artifact storage
 
-This document owns the artifact storage lifecycle for the current MVP source design. It is documentation source material only and does not create artifact bytes, artifact directories, runtime storage, evidence records, QA records, acceptance records, or close records.
+Rule:
+
+- This document owns the artifact storage lifecycle for the current MVP source design.
+
+Not allowed:
+
+- This document does not create artifact bytes, artifact directories, runtime storage, evidence records, QA records, acceptance records, or close records.
 
 ## Owns / Does not own
 
@@ -22,17 +28,35 @@ This document does not own:
 
 ## Lifecycle boundary
 
-Artifact storage distinguishes staging, promotion, persistent linking, and body reads.
+Rule:
 
-`ArtifactRef` is the public API pointer to a registered persistent artifact, but its shape is owned by [API Artifact Schemas](api/schema-artifacts.md). Storage implements persistent artifact authority through `artifacts` plus `artifact_links`.
+- Artifact storage distinguishes staging, promotion, persistent linking, and body reads.
+- `ArtifactRef` is the public API pointer to a registered persistent artifact.
+- Storage implements persistent artifact authority through `artifacts` plus `artifact_links`.
 
-`StagedArtifactHandle` is a temporary handle returned by successful `harness.stage_artifact`, but the handle shape is not authority unless it resolves to a compatible stored `artifact_staging` row or equivalent storage-owned staging manifest. `existing_artifact` links an existing persistent artifact; it does not register a new artifact body.
+Owner links:
 
-Caller-supplied raw filesystem paths, arbitrary local path strings, raw logs as authority claims, `captured_artifact` handles, raw capture-adapter outputs, and native capture claims are not registration authority in the active MVP.
+- `ArtifactRef` shape is owned by [API Artifact Schemas](api/schema-artifacts.md).
+
+Allowed:
+
+- `StagedArtifactHandle` is a temporary handle returned by successful `harness.stage_artifact`.
+- `existing_artifact` links an existing persistent artifact.
+
+Not allowed:
+
+- A `StagedArtifactHandle` shape is not authority unless it resolves to a compatible stored `artifact_staging` row or equivalent storage-owned staging manifest.
+- `existing_artifact` does not register a new artifact body.
+- Caller-supplied raw filesystem paths, arbitrary local path strings, raw logs as authority claims, `captured_artifact` handles, raw capture-adapter outputs, and native capture claims are not registration authority in the active MVP.
 
 ## Staging
 
-Temporary staging is not artifact authority. `artifact_staging` or an equivalent storage-owned staging manifest tracks at least:
+Rule:
+
+- Temporary staging is not artifact authority.
+- `artifact_staging` or an equivalent storage-owned staging manifest tracks staging facts.
+
+Tracked facts:
 
 - `handle_id`
 - `project_id`
@@ -47,9 +71,21 @@ Temporary staging is not artifact authority. `artifact_staging` or an equivalent
 - `expires_at`
 - consumption facts such as `consumed_by_run_id`, `promoted_artifact_id`, and `consumed_at`
 
-A future server records the `created_by_surface_*` fields from the successful `harness.stage_artifact` request's `VerifiedSurfaceContext`. They are not caller-provided authority claims and must be checked against the staging row, not trusted merely because a submitted handle has the right shape.
+Rule:
 
-A successful `harness.stage_artifact` returns `StageArtifactResult` with `base.effect_kind=staging_created`. It may write safe bytes or a safe notice under `artifacts/tmp/` and create the temporary staging row.
+- A future server records the `created_by_surface_*` fields from the successful `harness.stage_artifact` request's `VerifiedSurfaceContext`.
+- The fields must be checked against the staging row.
+
+Not allowed:
+
+- The fields are not caller-provided authority claims.
+- A submitted handle must not be trusted merely because it has the right shape.
+
+Allowed:
+
+- A successful `harness.stage_artifact` returns `StageArtifactResult` with `base.effect_kind=staging_created`.
+- It may write safe bytes or a safe notice under `artifacts/tmp/`.
+- It may create the temporary staging row.
 
 Example staged artifact data:
 
@@ -61,9 +97,19 @@ artifact:
 staged_artifact_handle: staged_artifact_account_export_test_log_001
 ```
 
-The example represents product test output prepared for staging. It is not a persistent `ArtifactRef` and does not become canonical evidence until a compatible owner method records and promotes it under that method's contract.
+Rule:
 
-Staging creates only temporary artifact storage. Method-effect questions such as evidence creation, replay rows, and state-version increments are owned by [Storage Effects](storage-effects.md).
+- The example represents product test output prepared for staging.
+- Staging creates only temporary artifact storage.
+
+Not allowed:
+
+- The example is not a persistent `ArtifactRef`.
+- The example does not become canonical evidence until a compatible owner method records and promotes it under that method's contract.
+
+Owner links:
+
+- Method-effect questions such as evidence creation, replay rows, and state-version increments are owned by [Storage Effects](storage-effects.md).
 
 `artifact_staging.status` is a storage-owned temporary handle lifecycle. The summary table stays short; detail blocks define the value meanings.
 
@@ -109,13 +155,32 @@ Only `staged` is consumable. Terminal values cannot return to `staged`.
 
 ## Promotion
 
-Only a compatible `harness.record_run` may consume an unexpired same-project same-Task handle with `artifact_staging.status=staged` and promote it to a persistent `ArtifactRef`. The current verified `surface_id` and `surface_instance_id` must match `created_by_surface_id` and `created_by_surface_instance_id`. The active MVP does not support cross-surface staged artifact handoff, and `StagedArtifactHandle` is not a bearer token that any local caller may use.
+Rule:
 
-The consuming transaction must:
+- Only a compatible `harness.record_run` may consume a staged handle and promote it to a persistent `ArtifactRef`.
 
-- validate stored `project_id`, `task_id`, `created_by_surface_id`, and `created_by_surface_instance_id`
-- validate expiration and consumed status
-- validate `sha256`, `size_bytes`, and `redaction_state`
+Required conditions:
+
+- `artifact_staging.status=staged`.
+- The handle is unexpired.
+- The handle belongs to the same project.
+- The handle belongs to the same Task.
+- The current verified `surface_id` matches `created_by_surface_id`.
+- The current verified `surface_instance_id` matches `created_by_surface_instance_id`.
+
+Not allowed:
+
+- The active MVP does not support cross-surface staged artifact handoff.
+- `StagedArtifactHandle` is not a bearer token that any local caller may use.
+
+The consuming transaction must validate:
+
+- stored `project_id`, `task_id`, `created_by_surface_id`, and `created_by_surface_instance_id`
+- expiration and consumed status
+- `sha256`, `size_bytes`, and `redaction_state`
+
+The consuming transaction may commit only after validation:
+
 - promote only validated staged handles
 - mark promoted handles `consumed`
 - set the consuming Run and promoted artifact ids
@@ -168,9 +233,29 @@ If any validation in this sequence fails before commit, storage must not change:
 
 ## Existing artifacts
 
-Using an `existing_artifact` reuses the persisted artifact row only when its availability, integrity facts, redaction state, same-project identity, and allowed Task scope remain compatible with the new use. It may add a new `artifact_links` row for the new owner relation, subject to uniqueness and same-project/same-Task rules.
+Rule:
 
-`existing_artifact` must not clone bytes, register a new artifact body, skip integrity checks, or use a raw artifact path as authority.
+- `existing_artifact` reuses the persisted artifact row only when the existing artifact remains compatible with the new use.
+
+Required conditions:
+
+- availability
+- integrity facts
+- redaction state
+- same-project identity
+- allowed Task scope
+
+Allowed:
+
+- A compatible `existing_artifact` may add a new `artifact_links` row for the new owner relation.
+- The new link remains subject to uniqueness and same-project/same-Task rules.
+
+Not allowed:
+
+- `existing_artifact` must not clone bytes.
+- `existing_artifact` must not register a new artifact body.
+- `existing_artifact` must not skip integrity checks.
+- `existing_artifact` must not use a raw artifact path as authority.
 
 ## Evidence eligibility
 
@@ -183,11 +268,37 @@ An artifact is evidence-eligible only when storage has:
 - an availability `status`
 - an owner link to an active record such as `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, or `blocker`
 
-Evidence eligibility, artifact availability, and evidence sufficiency remain separate. An `artifacts.status=available` row with a valid owner link can support a coverage item, but it does not make `EvidenceSummary.status=sufficient` unless the required coverage item links that artifact to the claim and the item is `supported` or `not_applicable`. Missing, unavailable, integrity-failed, or otherwise unusable artifacts stay artifact-availability problems and can also keep required evidence coverage from being sufficient.
+Rule:
 
-Artifact owner relation integrity is required even though `artifact_links` is a polymorphic owner table. Storage must validate that `owner_record_kind` is one of `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, or `blocker`; that `owner_record_id` exists in the matching active table; that the owner belongs to the same `project_id` and `task_id`; and that the relation is compatible with the way the artifact is used. A raw `artifact_id` without a valid owner link is not evidence support.
+- Evidence eligibility, artifact availability, and evidence sufficiency remain separate.
+- Artifact owner relation integrity is required even though `artifact_links` is a polymorphic owner table.
 
-An artifact link does not create the owner record, satisfy a gate by itself, prove evidence sufficiency, perform QA, create final acceptance, accept residual risk, or close a Task.
+Allowed:
+
+- An `artifacts.status=available` row with a valid owner link can support a coverage item.
+- The coverage item can make `EvidenceSummary.status=sufficient` only when the required coverage item links that artifact to the claim and the item is `supported` or `not_applicable`.
+
+Required validation:
+
+- `owner_record_kind` is one of `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, or `blocker`.
+- `owner_record_id` exists in the matching active table.
+- The owner belongs to the same `project_id` and `task_id`.
+- The relation is compatible with the way the artifact is used.
+
+Not allowed:
+
+- Missing, unavailable, integrity-failed, or otherwise unusable artifacts do not stop being artifact-availability problems.
+- A raw `artifact_id` without a valid owner link is not evidence support.
+
+An artifact link does not:
+
+- create the owner record
+- satisfy a gate by itself
+- prove evidence sufficiency
+- perform QA
+- create final acceptance
+- accept residual risk
+- close a Task
 
 ## Availability, redaction, and integrity
 
@@ -230,23 +341,61 @@ Storage meaning:
 
 - The artifact store or required retrieval path cannot currently provide the registered bytes or safe metadata notice.
 
-`artifacts.redaction_state` uses the active `ArtifactRef.redaction_state` values from [API Artifact Schemas](api/schema-artifacts.md). `blocked` is a redaction/omission state, not an artifact availability status. A `blocked`, `secret_omitted`, or `redacted` artifact may still have `artifacts.status=available` when the committed safe notice or redacted bytes are present and integrity-aware.
+Rule:
 
-`sha256`, `size_bytes`, and `content_type` are artifact integrity facts for comparison and availability handling. They are not security guarantee claims; see [Security](security.md).
+- `artifacts.redaction_state` uses the active `ArtifactRef.redaction_state` values from [API Artifact Schemas](api/schema-artifacts.md).
+- `sha256`, `size_bytes`, and `content_type` are artifact integrity facts for comparison and availability handling.
 
-`uri` resolves through Harness storage, normally as `harness-artifact://{project_id}/{artifact_id}`. It is not a caller-supplied arbitrary filesystem path. Raw secrets, tokens, and full sensitive logs must not be stored as evidence bytes. Store redacted bytes, `secret_omitted` or `blocked` notices, safe handles, or other owner-approved safe representations instead.
+Allowed:
+
+- A `blocked`, `secret_omitted`, or `redacted` artifact may still have `artifacts.status=available` when the committed safe notice or redacted bytes are present and integrity-aware.
+- `uri` resolves through Harness storage, normally as `harness-artifact://{project_id}/{artifact_id}`.
+- Store redacted bytes, `secret_omitted` or `blocked` notices, safe handles, or other owner-approved safe representations instead of unsafe evidence bytes.
+
+Not allowed:
+
+- `blocked` is a redaction/omission state, not an artifact availability status.
+- `sha256`, `size_bytes`, and `content_type` are not security guarantee claims.
+- `uri` is not a caller-supplied arbitrary filesystem path.
+- Raw secrets, tokens, and full sensitive logs must not be stored as evidence bytes.
+
+Owner links:
+
+- Security guarantee claims belong to [Security](security.md).
 
 ## Body reads
 
 Artifact body reads are separate from staged artifact promotion. Raw artifact path reads are not granted by default.
 
-Artifact metadata or content reads require a registered `ArtifactRef`, the matching same-project `task_id`, the required `artifact_links` owner relation, the redaction/availability state needed by the caller's access class, and the API/security owner requirements for `access_class=artifact_read`, including any documented surface or connector capability boundary. A local path under the artifact store, an artifact `uri`, a staged path, or a copied file is not enough by itself to read or rely on artifact bytes.
+Artifact metadata or content reads require:
+
+- a registered `ArtifactRef`
+- the matching same-project `task_id`
+- the required `artifact_links` owner relation
+- the redaction/availability state needed by the caller's access class
+- the API/security owner requirements for `access_class=artifact_read`
+- any documented surface or connector capability boundary
+
+Not allowed:
+
+- A local path under the artifact store, an artifact `uri`, a staged path, or a copied file is not enough by itself to read or rely on artifact bytes.
 
 ## Retention boundary
 
-Unconsumed or expired `artifact_staging` rows and `artifacts/tmp/` staging bytes or notices may be marked `expired` or `discarded`, and temporary bytes may be cleaned before registration, because they are not evidence authority.
+Allowed:
 
-Once an `artifacts` row is committed, retention purge, project teardown, or destructive cleanup is outside ordinary active MVP mutation behavior and needs an owner-defined path. A future retention or migration path must preserve artifact hashes, owner links, events, and replay rows, or mark affected refs invalid for recovery. It must not silently delete evidence support that current records still name.
+- Unconsumed or expired `artifact_staging` rows and `artifacts/tmp/` staging bytes or notices may be marked `expired` or `discarded`.
+- Temporary bytes may be cleaned before registration.
+
+Rule:
+
+- These temporary staging materials are not evidence authority.
+- Once an `artifacts` row is committed, retention purge, project teardown, or destructive cleanup is outside ordinary active MVP mutation behavior and needs an owner-defined path.
+- A future retention or migration path must preserve artifact hashes, owner links, events, and replay rows, or mark affected refs invalid for recovery.
+
+Not allowed:
+
+- A future retention or migration path must not silently delete evidence support that current records still name.
 
 ## Related owners
 
