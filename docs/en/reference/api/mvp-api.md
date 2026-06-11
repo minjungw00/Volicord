@@ -521,7 +521,7 @@ params:
     locale: en-US
   task_id: task_456
   change_unit_id: cu_001
-  intended_operation: "add account export confirmation step"
+  intended_operation: "update account export confirmation flow"
   intended_paths:
     - src/account/export.ts
     - src/account/export-confirmation.ts
@@ -533,7 +533,7 @@ params:
 
 ### Representative response
 
-Result branch (`PrepareWriteResult`, `decision=allowed`):
+Allowed branch after the needed explicit approval is already present (`PrepareWriteResult`, `decision=allowed`):
 
 ```yaml
 base:
@@ -576,6 +576,18 @@ guarantee_display:
   level: cooperative
   notes:
     - "Write Authorization is a Harness compatibility record, not OS permission."
+```
+
+Approval-required branch excerpt when explicit approval is missing:
+
+```yaml
+decision: approval_required
+write_authorization_ref: null
+write_authorization: null
+authorization_effect: none
+write_decision_reasons:
+  - code: sensitive_export_flow
+    message: "Account data export may include personal data and needs explicit approval."
 ```
 
 ### Owner links

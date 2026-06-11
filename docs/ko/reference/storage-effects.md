@@ -95,6 +95,20 @@
 |---|---|---|
 | 커밋된 `dry_run=false` `PrepareWriteResult`이고 `decision=blocked`, `decision=approval_required`, 또는 `decision=decision_required`인 경우 | 응답과 재실행 페이로드의 `write_decision_reasons: WriteDecisionReason[]`. 단, 메서드 계약이 그 판단 커밋을 허용할 때만 가능합니다. | 소비 가능한 `Write Authorization` 생성, `close_state` 변경, 닫기 준비 상태 평가, `CloseReadinessBlocker` 저장, 증거 업데이트, 아티팩트 변경, 스테이징 핸들 소비, `close_task` 효과. |
 
+계정 데이터 내보내기 쓰기 결정 데이터 예시는 아래와 같습니다.
+
+```yaml
+intended_operation: "계정 내보내기 확인 흐름 갱신"
+affected_paths:
+  - src/account/export.ts
+  - src/account/export-confirmation.ts
+  - tests/account-export.test.ts
+decision: approval_required
+write_decision_reasons:
+  - code: sensitive_export_flow
+    message: "계정 데이터 내보내기는 개인정보를 포함할 수 있으므로 명시적 승인이 필요합니다."
+```
+
 이 사유는 `prepare_write` 판단 사유입니다. 아래 항목이 아닙니다.
 
 - 닫기 준비 상태 평가 결과.
@@ -214,6 +228,15 @@ Task는 열린 상태로 남습니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
 
 커밋되는 비허용 판단은 허용된 판단 상태와 재실행 효과만 지속할 수 있습니다.
+
+계정 데이터 내보내기 확인 흐름에서는 저장된 쓰기 결정이 명시적 승인 필요 상태만 기록할 수 있습니다.
+
+```yaml
+decision: approval_required
+write_decision_reasons:
+  - code: sensitive_export_flow
+    message: "계정 데이터 내보내기는 개인정보를 포함할 수 있으므로 명시적 승인이 필요합니다."
+```
 
 효과가 없는 분기:
 

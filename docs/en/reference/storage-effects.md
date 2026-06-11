@@ -99,6 +99,20 @@ Committed blocked outcomes are distinct from rejected responses. A committed blo
 
 A committed non-dry-run `PrepareWriteResult` with `decision=blocked`, `decision=approval_required`, or `decision=decision_required` may include `write_decision_reasons: WriteDecisionReason[]` in the response and replay payload when the method state-effect contract permits committing that decision.
 
+Example account export write-decision data:
+
+```yaml
+intended_operation: "update account export confirmation flow"
+affected_paths:
+  - src/account/export.ts
+  - src/account/export-confirmation.ts
+  - tests/account-export.test.ts
+decision: approval_required
+write_decision_reasons:
+  - code: sensitive_export_flow
+    message: "Account data export may include personal data and needs explicit approval."
+```
+
 Those reasons are prepare-write decision reasons. They are not:
 
 - close-readiness blockers
@@ -222,6 +236,15 @@ Committed `dry_run=false` with `decision=allowed` may:
 - increment `project_state.state_version` once
 
 Committed non-allowed decisions may persist only allowed decision-state and replay effects.
+
+For an account export confirmation flow, a persisted write decision may record only the approval requirement:
+
+```yaml
+decision: approval_required
+write_decision_reasons:
+  - code: sensitive_export_flow
+    message: "Account data export may include personal data and needs explicit approval."
+```
 
 No-effect branches:
 

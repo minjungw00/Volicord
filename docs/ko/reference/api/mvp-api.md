@@ -720,7 +720,7 @@ params:
     locale: ko-KR
   task_id: task_456
   change_unit_id: cu_001
-  intended_operation: "계정 내보내기 확인 단계 추가"
+  intended_operation: "계정 내보내기 확인 흐름 갱신"
   intended_paths:
     - src/account/export.ts
     - src/account/export-confirmation.ts
@@ -732,7 +732,7 @@ params:
 
 ### 대표 응답
 
-결과 분기(`PrepareWriteResult`, `decision=allowed`):
+필요한 명시적 승인이 이미 있을 때의 허용 분기(`PrepareWriteResult`, `decision=allowed`):
 
 ```yaml
 base:
@@ -775,6 +775,18 @@ guarantee_display:
   level: cooperative
   notes:
     - "쓰기 승인(`Write Authorization`)은 하네스 호환성 기록이며 OS 권한이 아닙니다."
+```
+
+명시적 승인이 없을 때의 승인 필요 분기 발췌:
+
+```yaml
+decision: approval_required
+write_authorization_ref: null
+write_authorization: null
+authorization_effect: none
+write_decision_reasons:
+  - code: sensitive_export_flow
+    message: "계정 데이터 내보내기는 개인정보를 포함할 수 있으므로 명시적 승인이 필요합니다."
 ```
 
 ### 담당 문서 링크
