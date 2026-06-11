@@ -15,7 +15,7 @@ For the active method-name value set owned by [API Value Sets](schema-value-sets
 
 This file currently owns all active MVP method behavior. Method-specific owner documents should be created when the [Active MVP API method split threshold](../../maintain/authoring-guide.md#active-mvp-api-method-split-threshold) is met.
 
-This document describes future Harness Server behavior for planning and review.
+This document describes future Harness Server behavior for planning.
 
 Current repository boundary:
 
@@ -276,9 +276,9 @@ params:
   requested_mode: auto
   resume_policy: create_new
   initial_scope:
-    boundary: "Only the account export flow and its tests."
+    boundary: "Only the account data export flow and its tests."
     non_goals:
-      - "Changing account deletion behavior"
+      - "Account deletion behavior"
     acceptance_criteria:
       - "Account data export requires an explicit confirmation step before download."
   initial_context_refs: []
@@ -320,9 +320,9 @@ state:
     result: none
     closed_at: null
   goal_summary: "Add explicit confirmation before account data export."
-  scope_summary: "Only the account export flow and its tests."
+  scope_summary: "Only the account data export flow and its tests."
   non_goals:
-    - "Changing account deletion behavior"
+    - "Account deletion behavior"
   acceptance_criteria:
     - "Account data export requires an explicit confirmation step before download."
   active_change_unit_ref: null
@@ -465,27 +465,25 @@ params:
     locale: en-US
   task_id: task_456
   goal_summary: "Add explicit confirmation before account data export."
-  scope_boundary: "Add an explicit confirmation step for account data export. Update account export confirmation tests."
+  scope_boundary: "Add an explicit confirmation step for account data export. Update account data export confirmation tests."
   non_goals:
     - "Account deletion behavior"
-    - "Billing export behavior"
   acceptance_criteria:
     - "Account data export requires an explicit confirmation step before download."
-  autonomy_boundary: "Stay within the account data export explicit confirmation step and account export confirmation tests."
+  autonomy_boundary: "Stay within the account data export explicit confirmation step and account data export confirmation tests."
   baseline_ref: baseline_account_export_001
   change_unit:
     operation: create_active
-    scope_summary: "Add an explicit confirmation step for account data export and update account export confirmation tests."
+    scope_summary: "Add an explicit confirmation step for account data export and update account data export confirmation tests."
     affected_areas:
       - "Account data export explicit confirmation step"
-      - "Account export confirmation tests"
+      - "Account data export confirmation tests"
     affected_paths:
       - src/account/export.ts
       - src/account/export-confirmation.ts
       - tests/account-export.test.ts
     constraints:
       - "Keep account deletion behavior unchanged."
-      - "Keep billing export behavior unchanged."
   related_scope_decision_refs: []
 ```
 
@@ -533,7 +531,7 @@ state:
     result: none
     closed_at: null
   goal_summary: "Add explicit confirmation before account data export."
-  scope_summary: "Add an explicit confirmation step for account data export. Update account export confirmation tests."
+  scope_summary: "Add an explicit confirmation step for account data export. Update account data export confirmation tests."
   active_change_unit_ref:
     record_kind: change_unit
     record_id: cu_001
@@ -542,7 +540,7 @@ state:
     state_version: 19
 next_actions:
   - action: harness.prepare_write
-    reason: "Check the account export change against active scope."
+    reason: "Check the account data export change against active scope."
 ```
 
 ### Owner links
@@ -689,14 +687,14 @@ active_task:
     result: none
     closed_at: null
   goal_summary: "Add explicit confirmation before account data export."
-  scope_summary: "Add an explicit confirmation step for account data export and update account export confirmation tests."
+  scope_summary: "Add an explicit confirmation step for account data export and update account data export confirmation tests."
   active_change_unit_ref:
     record_kind: change_unit
     record_id: cu_001
     project_id: proj_123
     task_id: task_456
     state_version: 19
-status_summary: "Account export confirmation tests are recorded. User acceptance of the account data export explicit confirmation copy is still pending."
+status_summary: "Account data export confirmation tests are recorded. User acceptance of the account data export explicit confirmation copy is still pending."
 next_actions:
   - action: harness.request_user_judgment
     reason: "Ask the user to accept the account data export explicit confirmation copy before close."
@@ -705,7 +703,7 @@ write_authority_summary: null
 evidence_summary:
   status: sufficient
   coverage_items:
-    - claim: "Account export confirmation tests passed."
+    - claim: "Account data export confirmation tests passed."
       required_for_close: true
       coverage_state: supported
       supporting_refs:
@@ -1041,7 +1039,7 @@ The staged artifact is stable product test output. The temporary handle can late
 artifact:
   kind: test_log
   name: account_export_confirmation_test.log
-  description: "Test output for account export confirmation tests."
+  description: "Test output for account data export confirmation tests."
 staged_artifact_handle: staged_artifact_account_export_test_log_001
 ```
 
@@ -1064,7 +1062,7 @@ params:
   display_name: "account_export_confirmation_test.log"
   content_type: text/plain
   redaction_state: none
-  safe_bytes_or_notice: "Test output for account export confirmation tests."
+  safe_bytes_or_notice: "Test output for account data export confirmation tests."
   expected_sha256: null
   expected_size_bytes: null
   relation_hint: "test_log"
@@ -1229,7 +1227,7 @@ The run records product test execution and may consume a staged test log as evid
 
 ```yaml
 command: "npm test -- account-export"
-summary: "Account export confirmation tests passed."
+summary: "Account data export confirmation tests passed."
 artifacts:
   - staged_artifact_account_export_test_log_001
 run_ref: run_account_export_tests_001
@@ -1256,7 +1254,7 @@ params:
   run_id: null
   baseline_ref: baseline_account_export_001
   write_authorization_id: null
-  summary: "Account export confirmation tests passed."
+  summary: "Account data export confirmation tests passed."
   observed_changes:
     changed_paths: []
     product_file_write_observed: false
@@ -1279,12 +1277,12 @@ params:
         consumed: false
       existing_artifact_ref: null
       relation_hint: "test_log"
-      claim: "Test output for account export confirmation tests."
+      claim: "Test output for account data export confirmation tests."
       expected_sha256: null
       expected_size_bytes: null
       redaction_state: none
   evidence_updates:
-    - claim: "Account export confirmation tests passed."
+    - claim: "Account data export confirmation tests passed."
       required_for_close: true
       coverage_state: supported
       supporting_refs: []
@@ -1313,7 +1311,7 @@ run_summary:
     task_id: task_456
     state_version: 21
   kind: implementation
-  summary: "Account export confirmation tests passed."
+  summary: "Account data export confirmation tests passed."
   observed_changes:
     changed_paths: []
     product_file_write_observed: false
@@ -1360,7 +1358,7 @@ registered_artifacts:
 evidence_summary:
   status: sufficient
   coverage_items:
-    - claim: "Account export confirmation tests passed."
+    - claim: "Account data export confirmation tests passed."
       required_for_close: true
       coverage_state: supported
       supporting_refs:
@@ -1965,7 +1963,7 @@ Successful close-readiness observation for the account data export explicit conf
 close_readiness:
   ready: true
   evidence:
-    - "Account export confirmation tests passed."
+    - "Account data export confirmation tests passed."
     - "User accepted the account data export explicit confirmation copy."
 ```
 
@@ -2030,7 +2028,7 @@ blockers:
 evidence_summary:
   status: sufficient
   coverage_items:
-    - claim: "Account export confirmation tests passed."
+    - claim: "Account data export confirmation tests passed."
       required_for_close: true
       coverage_state: supported
       supporting_refs:
