@@ -157,7 +157,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessintake)
+- [MVP API의 `harness.intake`](api/mvp-api.md#harnessintake)
 - [저장소 기록](storage-records.md)
 - [저장소 버전 관리](storage-versioning.md)
 
@@ -181,7 +181,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessupdate_scope)
+- [MVP API의 `harness.update_scope`](api/mvp-api.md#harnessupdate_scope)
 - [저장소 기록](storage-records.md)
 - [저장소 버전 관리](storage-versioning.md)
 
@@ -202,7 +202,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessstatus)
+- [MVP API의 `harness.status`](api/mvp-api.md#harnessstatus)
 
 ### `harness.prepare_write`
 
@@ -224,7 +224,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessprepare_write)
+- [MVP API의 `harness.prepare_write`](api/mvp-api.md#harnessprepare_write)
 - [저장소 기록](storage-records.md)
 - [저장소 버전 관리](storage-versioning.md)
 
@@ -246,7 +246,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessstage_artifact)
+- [MVP API의 `harness.stage_artifact`](api/mvp-api.md#harnessstage_artifact)
 - [아티팩트 저장소](storage-artifacts.md)
 
 ### `harness.record_run`
@@ -272,7 +272,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessrecord_run)
+- [MVP API의 `harness.record_run`](api/mvp-api.md#harnessrecord_run)
 - [아티팩트 저장소](storage-artifacts.md)
 - [저장소 기록](storage-records.md)
 
@@ -295,7 +295,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessrequest_user_judgment)
+- [MVP API의 `harness.request_user_judgment`](api/mvp-api.md#harnessrequest_user_judgment)
 - [저장소 기록](storage-records.md)
 
 ### `harness.record_user_judgment`
@@ -317,7 +317,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessrecord_user_judgment)
+- [MVP API의 `harness.record_user_judgment`](api/mvp-api.md#harnessrecord_user_judgment)
 - [저장소 기록](storage-records.md)
 
 ### `harness.close_task intent=check`
@@ -340,7 +340,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessclose_task)
+- [MVP API의 `harness.close_task`](api/mvp-api.md#harnessclose_task)
 
 ### `harness.close_task intent=complete`
 
@@ -361,7 +361,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessclose_task)
+- [MVP API의 `harness.close_task`](api/mvp-api.md#harnessclose_task)
 - [저장소 버전 관리](storage-versioning.md)
 
 ### `harness.close_task intent=cancel`
@@ -385,7 +385,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessclose_task)
+- [MVP API의 `harness.close_task`](api/mvp-api.md#harnessclose_task)
 - [저장소 버전 관리](storage-versioning.md)
 
 ### `harness.close_task intent=supersede`
@@ -410,7 +410,7 @@ Task는 열린 상태로 남습니다.
 
 담당 문서:
 
-- [MVP API](api/mvp-api.md#harnessclose_task)
+- [MVP API의 `harness.close_task`](api/mvp-api.md#harnessclose_task)
 - [저장소 버전 관리](storage-versioning.md)
 
 ## `state_version` 영향

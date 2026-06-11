@@ -165,7 +165,7 @@ Those branches create no Task, refs, event, replay row, or state-version increme
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessintake)
+- [MVP API `harness.intake`](api/mvp-api.md#harnessintake)
 - [Storage Records](storage-records.md)
 - [Storage Versioning](storage-versioning.md)
 
@@ -189,7 +189,7 @@ Valid dry-run previews only describe scope, Change Unit, blocker, and stale auth
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessupdate_scope)
+- [MVP API `harness.update_scope`](api/mvp-api.md#harnessupdate_scope)
 - [Storage Records](storage-records.md)
 - [Storage Versioning](storage-versioning.md)
 
@@ -210,7 +210,7 @@ No-effect branches:
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessstatus)
+- [MVP API `harness.status`](api/mvp-api.md#harnessstatus)
 
 ### `harness.prepare_write`
 
@@ -232,7 +232,7 @@ Those branches create no replay row, Write Authorization, event, close-state mut
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessprepare_write)
+- [MVP API `harness.prepare_write`](api/mvp-api.md#harnessprepare_write)
 - [Storage Records](storage-records.md)
 - [Storage Versioning](storage-versioning.md)
 
@@ -254,7 +254,7 @@ Valid `dry_run=true` creates no bytes, staging manifest, `StagedArtifactHandle`,
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessstage_artifact)
+- [MVP API `harness.stage_artifact`](api/mvp-api.md#harnessstage_artifact)
 - [Artifact Storage](storage-artifacts.md)
 
 ### `harness.record_run`
@@ -280,7 +280,7 @@ Valid dry-run previews create no `run_summary`, persistent artifact, artifact li
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessrecord_run)
+- [MVP API `harness.record_run`](api/mvp-api.md#harnessrecord_run)
 - [Artifact Storage](storage-artifacts.md)
 - [Storage Records](storage-records.md)
 
@@ -303,7 +303,7 @@ Valid dry-run previews create no real `user_judgment_ref`, pending judgment, blo
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessrequest_user_judgment)
+- [MVP API `harness.request_user_judgment`](api/mvp-api.md#harnessrequest_user_judgment)
 - [Storage Records](storage-records.md)
 
 ### `harness.record_user_judgment`
@@ -325,7 +325,7 @@ Valid dry-run previews create no judgment resolution, blocker update, event, rep
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessrecord_user_judgment)
+- [MVP API `harness.record_user_judgment`](api/mvp-api.md#harnessrecord_user_judgment)
 - [Storage Records](storage-records.md)
 
 ### `harness.close_task intent=check`
@@ -348,7 +348,7 @@ No-effect branches:
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessclose_task)
+- [MVP API `harness.close_task`](api/mvp-api.md#harnessclose_task)
 
 ### `harness.close_task intent=complete`
 
@@ -369,7 +369,7 @@ Valid `dry_run=true` returns `ToolDryRunResponse`. Preflight failures are no-eff
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessclose_task)
+- [MVP API `harness.close_task`](api/mvp-api.md#harnessclose_task)
 - [Storage Versioning](storage-versioning.md)
 
 ### `harness.close_task intent=cancel`
@@ -393,7 +393,7 @@ Valid `dry_run=true` returns `ToolDryRunResponse`.
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessclose_task)
+- [MVP API `harness.close_task`](api/mvp-api.md#harnessclose_task)
 - [Storage Versioning](storage-versioning.md)
 
 ### `harness.close_task intent=supersede`
@@ -418,7 +418,7 @@ Valid `dry_run=true` returns `ToolDryRunResponse`.
 
 Owner links:
 
-- [MVP API](api/mvp-api.md#harnessclose_task)
+- [MVP API `harness.close_task`](api/mvp-api.md#harnessclose_task)
 - [Storage Versioning](storage-versioning.md)
 
 ## Related owners

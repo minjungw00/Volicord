@@ -4,7 +4,7 @@
 
 이 참조 문서는 현재 MVP API 표면을 찾아볼 때 사용합니다. [API 값 집합](schema-value-sets.md)이 담당하는 활성 메서드 이름 집합에 대해, 메서드 수준 요청, 응답, 상태 효과, 저장소 담당 문서, 오류, 보안 경계 요약을 이 문서가 담당합니다.
 
-이 파일은 현재 MVP의 모든 활성 메서드 동작을 현재 담당합니다. [작성 가이드](../../maintain/authoring-guide.md#active-mvp-api-method-split-threshold)의 분할 기준을 만족하면 메서드별 담당 문서를 만들어야 합니다.
+이 파일은 현재 MVP의 모든 활성 메서드 동작을 현재 담당합니다. [현재 MVP API 메서드 분할 기준](../../maintain/authoring-guide.md#active-mvp-api-method-split-threshold)을 만족하면 메서드별 담당 문서를 만들어야 합니다.
 
 이 문서는 계획과 검토를 위한 향후 하네스 서버 동작을 설명합니다. 이 저장소에는 현재 하네스 런타임이나 서버 구현이 없습니다. 향후 API 또는 스키마 후보는 이 활성 참조가 아니라 [이후 후보 색인](../../later/index.md)에 둡니다. 저장소 DDL과 전체 공통 스키마 본문은 이 메서드 참조 밖의 담당 문서가 소유합니다.
 

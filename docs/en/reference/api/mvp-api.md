@@ -4,7 +4,7 @@
 
 Use this reference to look up the active current MVP API surface. It owns method-level request, response, state effect, storage owner, error, and security boundary summaries for the active method-name value set owned by [API Value Sets](schema-value-sets.md).
 
-This file currently owns all active MVP method behavior. Method-specific owner documents should be created when the split threshold in the [Authoring Guide](../../maintain/authoring-guide.md#active-mvp-api-method-split-threshold) is met.
+This file currently owns all active MVP method behavior. Method-specific owner documents should be created when the [Active MVP API method split threshold](../../maintain/authoring-guide.md#active-mvp-api-method-split-threshold) is met.
 
 This document describes future Harness Server behavior for planning and review. No Harness runtime or server implementation exists in this repository today. Future API or schema candidates are cataloged in [Later Candidate Index](../../later/index.md), not in this active reference. Storage DDL and full shared schema bodies are owned outside this method reference.
 
