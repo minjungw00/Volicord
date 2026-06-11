@@ -301,6 +301,16 @@ No-effect branches:
 
 Valid dry-run previews create no `run_summary`, persistent artifact, artifact link, evidence update, blocker update, event, replay row, staged-handle consumption, Write Authorization consumption, or state-version increment. Rejected attempts do not change staging rows or artifacts.
 
+For an account export confirmation test run, a committed `harness.record_run` may record the run, promote the staged test log, and update evidence:
+
+```yaml
+command: "npm test -- account-export"
+summary: "Account export confirmation tests passed."
+artifacts:
+  - staged_artifact_account_export_test_log_001
+run_ref: run_account_export_tests_001
+```
+
 Owner links:
 
 - [MVP API `harness.record_run`](api/mvp-api.md#harnessrecord_run)

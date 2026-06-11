@@ -754,6 +754,18 @@ For `dry_run=true`, a valid preview returns `ToolDryRunResponse`. Branch shape i
 
 On commit, the method may persist run, evidence, blocker, authorization-consumption, and artifact-linking results. Exact storage effects are owned by [Storage Effects](../storage-effects.md), and artifact promotion details are owned by [Artifact Storage](../storage-artifacts.md).
 
+### Run data example
+
+The run records product test execution and may consume a staged test log as evidence:
+
+```yaml
+command: "npm test -- account-export"
+summary: "Account export confirmation tests passed."
+artifacts:
+  - staged_artifact_account_export_test_log_001
+run_ref: run_account_export_tests_001
+```
+
 ### Minimal valid request
 
 ```yaml
@@ -774,14 +786,11 @@ params:
   kind: implementation
   run_id: null
   baseline_ref: baseline_account_export_001
-  write_authorization_id: wa_001
-  summary: "Added explicit confirmation before account export download."
+  write_authorization_id: null
+  summary: "Account export confirmation tests passed."
   observed_changes:
-    changed_paths:
-      - src/account/export.ts
-      - src/account/export-confirmation.ts
-      - tests/account-export.test.ts
-    product_file_write_observed: true
+    changed_paths: []
+    product_file_write_observed: false
     sensitive_categories: []
     baseline_ref: baseline_account_export_001
   artifact_inputs:
@@ -801,12 +810,12 @@ params:
         consumed: false
       existing_artifact_ref: null
       relation_hint: "test_log"
-      claim: "Test output for account export confirmation behavior."
+      claim: "Test output for account export confirmation tests."
       expected_sha256: null
       expected_size_bytes: null
       redaction_state: none
   evidence_updates:
-    - claim: "Account export requires explicit confirmation before download."
+    - claim: "Account export confirmation tests passed."
       required_for_close: true
       coverage_state: supported
       supporting_refs: []
@@ -835,13 +844,10 @@ run_summary:
     task_id: task_456
     state_version: 21
   kind: implementation
-  summary: "Added explicit confirmation before account export download."
+  summary: "Account export confirmation tests passed."
   observed_changes:
-    changed_paths:
-      - src/account/export.ts
-      - src/account/export-confirmation.ts
-      - tests/account-export.test.ts
-    product_file_write_observed: true
+    changed_paths: []
+    product_file_write_observed: false
     sensitive_categories: []
     baseline_ref: baseline_account_export_001
   artifact_refs:
@@ -885,7 +891,7 @@ registered_artifacts:
 evidence_summary:
   status: sufficient
   coverage_items:
-    - claim: "Account export requires explicit confirmation before download."
+    - claim: "Account export confirmation tests passed."
       required_for_close: true
       coverage_state: supported
       supporting_refs:

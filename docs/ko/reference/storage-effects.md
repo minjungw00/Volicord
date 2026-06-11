@@ -293,6 +293,16 @@ write_decision_reasons:
 
 유효한 dry-run 미리보기는 `run_summary`, 지속 아티팩트, 아티팩트 연결, 증거 갱신, 차단 사유 갱신, 이벤트, 재실행 행, 스테이징 핸들 소비, `Write Authorization` 소비, `state_version` 증가를 만들지 않습니다. 거절된 시도는 스테이징 행이나 아티팩트를 바꾸지 않습니다.
 
+계정 내보내기 확인 테스트 실행에서는 커밋된 `harness.record_run`이 실행을 기록하고, 스테이징된 테스트 로그를 승격하고, 증거를 갱신할 수 있습니다.
+
+```yaml
+command: "npm test -- account-export"
+summary: "계정 내보내기 확인 테스트가 통과했습니다."
+artifacts:
+  - staged_artifact_account_export_test_log_001
+run_ref: run_account_export_tests_001
+```
+
 담당 문서:
 
 - [MVP API의 `harness.record_run`](api/mvp-api.md#harnessrecord_run)
