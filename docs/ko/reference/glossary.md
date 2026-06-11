@@ -34,10 +34,10 @@
 | scope | 범위 | [Core 모델](core-model.md) |
 | user-owned judgment | 사용자 소유 판단 | [Core 모델](core-model.md) |
 | close readiness | 닫기 준비 상태 | [Core 모델](core-model.md) |
-| close readiness evaluation | 닫기 준비 상태 평가 | [MVP API](api/mvp-api.md) |
+| close readiness evaluation | 닫기 준비 상태 평가 | [Task 닫기 메서드](api/method-close-task.md) |
 | close blocker | 닫기 차단 사유 | [Core 모델](core-model.md) |
 | `CloseReadinessBlocker` | `CloseReadinessBlocker` | [API 상태 스키마](api/schema-state.md) |
-| complete intent | `complete` | [MVP API](api/mvp-api.md) |
+| complete intent | `complete` | [API 값 집합](api/schema-value-sets.md) |
 | full evaluation order | 전체 평가 순서 | [번역 가이드](../maintain/translation-guide.md) |
 | artifact | 아티팩트 | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | `ArtifactRef` | `ArtifactRef` | [API 아티팩트 스키마](api/schema-artifacts.md) |
@@ -345,7 +345,7 @@
 
 담당 문서:
 - [Core 모델](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [범위 갱신 메서드](api/method-update-scope.md)
 - [API 판단 스키마](api/schema-judgment.md)
 
 설명:
@@ -393,7 +393,7 @@
 
 담당 문서:
 - [Core 모델](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [API 오류](api/errors.md)
 
 설명:
@@ -419,7 +419,7 @@
 
 담당 문서:
 - [Core 모델](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [API 오류](api/errors.md)
 
 설명:
@@ -496,7 +496,7 @@
 - 닫기 준비 상태 맥락의 전체 순서에 `complete`를 붙이는 표현
 
 담당 문서:
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
@@ -698,7 +698,7 @@
 담당 문서:
 - [Core 모델](core-model.md)
 - [보안](security.md)
-- [MVP API](api/mvp-api.md)
+- [쓰기 준비 메서드](api/method-prepare-write.md)
 
 설명:
 - `Write Authorization`은 호환되는 제품 파일 쓰기 시도 하나를 위한 Core 권한 부여입니다.
@@ -750,7 +750,7 @@
 
 담당 문서:
 - [API 값 집합](api/schema-value-sets.md)
-- [MVP API](api/mvp-api.md)
+- [공통 요청 규칙](api/mvp-api.md#공통-요청-규칙)
 - [보안](security.md)
 
 설명:
@@ -947,7 +947,7 @@
 
 담당 문서:
 - [API 코어 스키마](api/schema-core.md)
-- [MVP API](api/mvp-api.md)
+- [MVP API 경로 문서](api/mvp-api.md)
 - [API 오류](api/errors.md)
 - [저장 효과](storage-effects.md)
 
@@ -976,7 +976,8 @@
 
 담당 문서:
 - [API 오류](api/errors.md)
-- [MVP API](api/mvp-api.md)
+- [쓰기 준비 메서드](api/method-prepare-write.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [저장 효과](storage-effects.md)
 
 설명:

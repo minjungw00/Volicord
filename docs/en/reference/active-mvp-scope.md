@@ -48,15 +48,15 @@ The included scope is summarized below. Detail blocks keep the active meaning an
 
 | Scope item | Primary owner |
 |---|---|
-| Plain-language intake and Task creation | [MVP API](api/mvp-api.md), [Core Model](core-model.md) |
-| Scope updates | [MVP API](api/mvp-api.md), [Core Model](core-model.md) |
-| Status and close-readiness review | [API State Schemas](api/schema-state.md), [Errors](api/errors.md), [Projection Authority Reference](projection-and-templates.md) |
-| Prepare-write authorization | [MVP API](api/mvp-api.md), [Storage Effects](storage-effects.md), [Security](security.md) |
+| Plain-language intake and Task creation | [Intake method](api/method-intake.md), [Core Model](core-model.md) |
+| Scope updates | [Update-scope method](api/method-update-scope.md), [Core Model](core-model.md) |
+| Status and close-readiness review | [Status method](api/method-status.md), [Close-task method](api/method-close-task.md), [API State Schemas](api/schema-state.md), [Errors](api/errors.md), [Projection Authority Reference](projection-and-templates.md) |
+| Prepare-write authorization | [Prepare-write method](api/method-prepare-write.md), [Storage Effects](storage-effects.md), [Security](security.md) |
 | Local surface registration | [Agent Integration](agent-integration.md), [Surface Recipes](../use/surface-recipes.md), [Security](security.md) |
-| Artifact staging | [API Artifact Schemas](api/schema-artifacts.md), [Artifact Storage](storage-artifacts.md), [Storage Effects](storage-effects.md) |
-| Run and evidence recording | [MVP API](api/mvp-api.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
-| Focused user judgment capture | [Core Model](core-model.md), [API Judgment Schemas](api/schema-judgment.md), [API Value Sets](api/schema-value-sets.md) |
-| Close attempts | [MVP API](api/mvp-api.md), [Core Model](core-model.md), [Errors](api/errors.md) |
+| Artifact staging | [Stage-artifact method](api/method-stage-artifact.md), [API Artifact Schemas](api/schema-artifacts.md), [Artifact Storage](storage-artifacts.md), [Storage Effects](storage-effects.md) |
+| Run and evidence recording | [Record-run method](api/method-record-run.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
+| Focused user judgment capture | [User-judgment methods](api/method-user-judgment.md), [Core Model](core-model.md), [API Judgment Schemas](api/schema-judgment.md), [API Value Sets](api/schema-value-sets.md) |
+| Close attempts | [Close-task method](api/method-close-task.md), [Core Model](core-model.md), [Errors](api/errors.md) |
 
 Plain-language intake and Task creation:
 - Active MVP meaning: A local task can be started from plain-language user intent through the active intake path.

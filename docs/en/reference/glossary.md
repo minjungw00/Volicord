@@ -35,10 +35,10 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | scope | 범위 | [Core Model](core-model.md) |
 | user-owned judgment | 사용자 소유 판단 | [Core Model](core-model.md) |
 | close readiness | 닫기 준비 상태 | [Core Model](core-model.md) |
-| close readiness evaluation | 닫기 준비 상태 평가 | [MVP API](api/mvp-api.md) |
+| close readiness evaluation | 닫기 준비 상태 평가 | [Close-task method](api/method-close-task.md) |
 | close blocker | 닫기 차단 사유 | [Core Model](core-model.md) |
 | `CloseReadinessBlocker` | `CloseReadinessBlocker` | [API State Schemas](api/schema-state.md) |
-| complete intent | `complete` | [MVP API](api/mvp-api.md) |
+| complete intent | `complete` | [API Value Sets](api/schema-value-sets.md) |
 | full evaluation order | 전체 평가 순서 | [Translation Guide](../maintain/translation-guide.md) |
 | artifact | 아티팩트 | [API Artifact Schemas](api/schema-artifacts.md) |
 | `ArtifactRef` | `ArtifactRef` | [API Artifact Schemas](api/schema-artifacts.md) |
@@ -344,7 +344,7 @@ Avoid:
 
 Owner:
 - [Core Model](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [Update-scope method](api/method-update-scope.md)
 - [API Judgment Schemas](api/schema-judgment.md)
 
 Notes:
@@ -392,7 +392,7 @@ Avoid:
 
 Owner:
 - [Core Model](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 - [API Errors](api/errors.md)
 
 Notes:
@@ -418,7 +418,7 @@ Avoid:
 
 Owner:
 - [Core Model](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 - [API Errors](api/errors.md)
 
 Notes:
@@ -495,7 +495,7 @@ Avoid:
 - complete 닫기 준비 상태
 
 Owner:
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
@@ -699,7 +699,7 @@ Avoid:
 Owner:
 - [Core Model](core-model.md)
 - [Security](security.md)
-- [MVP API](api/mvp-api.md)
+- [Prepare-write method](api/method-prepare-write.md)
 
 Notes:
 - `Write Authorization` is the named Core authorization for one compatible product-file write attempt.
@@ -751,7 +751,7 @@ Avoid:
 
 Owner:
 - [API Value Sets](api/schema-value-sets.md)
-- [MVP API](api/mvp-api.md)
+- [Shared request rules](api/mvp-api.md#shared-request-rules)
 - [Security](security.md)
 
 Notes:
@@ -948,7 +948,7 @@ Avoid:
 
 Owner:
 - [API Schema Core](api/schema-core.md)
-- [MVP API](api/mvp-api.md)
+- [MVP API router](api/mvp-api.md)
 - [API Errors](api/errors.md)
 - [Storage Effects](storage-effects.md)
 
@@ -977,7 +977,8 @@ Avoid:
 
 Owner:
 - [API Errors](api/errors.md)
-- [MVP API](api/mvp-api.md)
+- [Prepare-write method](api/method-prepare-write.md)
+- [Close-task method](api/method-close-task.md)
 - [Storage Effects](storage-effects.md)
 
 Notes:

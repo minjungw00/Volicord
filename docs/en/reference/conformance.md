@@ -181,7 +181,7 @@ Exact assertion detail stays with these owners:
 
 | Assertion area | Canonical owner |
 |---|---|
-| API methods and response branch behavior | [MVP API](api/mvp-api.md) |
+| API methods and response branch behavior | [MVP API router](api/mvp-api.md) and method owner documents |
 | Common response branches and `dry_run` preview shapes | [API Schema Core](api/schema-core.md) |
 | State summaries, blockers, evidence, and close-readiness structures | [API State Schemas](api/schema-state.md) |
 | `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle` shapes | [API Artifact Schemas](api/schema-artifacts.md) |
@@ -246,7 +246,7 @@ Focus:
 
 Owner links:
 - [Agent Integration](agent-integration.md)
-- [MVP API](api/mvp-api.md)
+- [Shared request rules](api/mvp-api.md#shared-request-rules)
 - [Storage Effects](storage-effects.md)
 
 <a id="scenario-mvp-active-single-access-class-per-public-request"></a>
@@ -257,7 +257,7 @@ Focus:
 
 Owner links:
 - [API Value Sets](api/schema-value-sets.md)
-- [MVP API](api/mvp-api.md)
+- [Shared request rules](api/mvp-api.md#shared-request-rules)
 - [Security](security.md)
 
 <a id="scenario-mvp-active-detective-display-capability-gated"></a>
@@ -279,7 +279,8 @@ Focus:
 Owner links:
 - [Core Model](core-model.md)
 - [API State Schemas](api/schema-state.md)
-- [MVP API](api/mvp-api.md)
+- [Status method](api/method-status.md)
+- [User-judgment methods](api/method-user-judgment.md)
 
 <a id="scenario-mvp-active-project-state-version-stale-mutation-rejected"></a>
 ### `MVP-ACTIVE-project-state-version-stale-mutation-rejected`
@@ -310,7 +311,8 @@ Focus:
 - Status and close-check blockers can be read without storage mutation.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Status method](api/method-status.md)
+- [Close-task method](api/method-close-task.md)
 - [API State Schemas](api/schema-state.md)
 - [Storage Effects](storage-effects.md)
 
@@ -332,7 +334,7 @@ Focus:
 - `prepare_write` is a cooperative product-file compatibility path.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Prepare-write method](api/method-prepare-write.md)
 - [Core Model](core-model.md)
 - [Security](security.md)
 
@@ -344,7 +346,7 @@ Focus:
 
 Owner links:
 - [Core Model](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [Prepare-write method](api/method-prepare-write.md)
 - [API Judgment Schemas](api/schema-judgment.md)
 
 <a id="scenario-mvp-active-record-run-consumes-write-authorization-once"></a>
@@ -354,7 +356,7 @@ Focus:
 - Compatible Run recording consumes a matching Write Authorization once.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Record-run method](api/method-record-run.md)
 - [Storage Effects](storage-effects.md)
 - [Storage Versioning](storage-versioning.md)
 
@@ -365,7 +367,7 @@ Focus:
 - Staging creates only a temporary staged handle.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Stage-artifact method](api/method-stage-artifact.md)
 - [API Artifact Schemas](api/schema-artifacts.md)
 - [Artifact Storage](storage-artifacts.md)
 
@@ -376,7 +378,7 @@ Focus:
 - Run artifact inputs are validated before promotion or linking.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Record-run method](api/method-record-run.md)
 - [API Artifact Schemas](api/schema-artifacts.md)
 - [Artifact Storage](storage-artifacts.md)
 
@@ -388,7 +390,7 @@ Focus:
 
 Owner links:
 - [Artifact Storage](storage-artifacts.md)
-- [MVP API](api/mvp-api.md)
+- [Record-run method](api/method-record-run.md)
 - [Storage Effects](storage-effects.md)
 
 <a id="scenario-mvp-active-record-run-rejects-staged-artifact-surface-instance-mismatch"></a>
@@ -411,7 +413,7 @@ Focus:
 Owner links:
 - [API Artifact Schemas](api/schema-artifacts.md)
 - [Artifact Storage](storage-artifacts.md)
-- [MVP API](api/mvp-api.md)
+- [Record-run method](api/method-record-run.md)
 
 <a id="scenario-mvp-active-captured-artifact-rejected-in-active-mvp"></a>
 ### `MVP-ACTIVE-captured-artifact-rejected-in-active-mvp`
@@ -431,7 +433,7 @@ Focus:
 - Stale state fails before close-readiness evaluation.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 - [API Errors](api/errors.md)
 - [Storage Effects](storage-effects.md)
 
@@ -442,7 +444,7 @@ Focus:
 - Stale close-relevant Write Authorization basis fails before close commit.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 - [API Errors](api/errors.md)
 - [Storage Versioning](storage-versioning.md)
 
@@ -454,7 +456,7 @@ Focus:
 
 Owner links:
 - [Core Model](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 - [API State Schemas](api/schema-state.md)
 
 <a id="scenario-mvp-active-close-task-blocks-evidence-insufficient"></a>
@@ -488,7 +490,7 @@ Focus:
 Owner links:
 - [Core Model](core-model.md)
 - [API Judgment Schemas](api/schema-judgment.md)
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 
 <a id="scenario-mvp-active-close-task-blocks-visible-unaccepted-residual-risk"></a>
 ### `MVP-ACTIVE-close-task-blocks-visible-unaccepted-residual-risk`
@@ -508,7 +510,7 @@ Focus:
 - `harness.close_task intent=check` is read-only.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 - [API Schema Core](api/schema-core.md)
 - [Storage Effects](storage-effects.md)
 
@@ -519,7 +521,7 @@ Focus:
 - State-effecting close intents use dry-run preview only when valid and previewable.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 - [API Schema Core](api/schema-core.md)
 - [Storage Effects](storage-effects.md)
 
@@ -530,7 +532,7 @@ Focus:
 - Supersede is a terminal non-completion path with one project-wide state mutation when valid.
 
 Owner links:
-- [MVP API](api/mvp-api.md)
+- [Close-task method](api/method-close-task.md)
 - [Core Model](core-model.md)
 - [Storage Effects](storage-effects.md)
 

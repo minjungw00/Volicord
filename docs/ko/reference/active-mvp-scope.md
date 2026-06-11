@@ -48,15 +48,15 @@
 
 | 범위 항목 | 주 담당 문서 |
 |---|---|
-| 평이한 언어 입력과 Task 생성 | [MVP API](api/mvp-api.md), [Core 모델](core-model.md) |
-| 범위 업데이트 | [MVP API](api/mvp-api.md), [Core 모델](core-model.md) |
-| 상태와 닫기 준비 상태 확인 | [API 상태 스키마](api/schema-state.md), [오류](api/errors.md), [상태 보기 권한 참조](projection-and-templates.md) |
-| 쓰기 준비 승인 | [MVP API](api/mvp-api.md), [저장 효과](storage-effects.md), [보안](security.md) |
+| 평이한 언어 입력과 Task 생성 | [접수 메서드](api/method-intake.md), [Core 모델](core-model.md) |
+| 범위 업데이트 | [범위 갱신 메서드](api/method-update-scope.md), [Core 모델](core-model.md) |
+| 상태와 닫기 준비 상태 확인 | [상태 메서드](api/method-status.md), [Task 닫기 메서드](api/method-close-task.md), [API 상태 스키마](api/schema-state.md), [오류](api/errors.md), [상태 보기 권한 참조](projection-and-templates.md) |
+| 쓰기 준비 승인 | [쓰기 준비 메서드](api/method-prepare-write.md), [저장 효과](storage-effects.md), [보안](security.md) |
 | 로컬 접점 등록 | [에이전트 통합](agent-integration.md), [접점별 사용 레시피](../use/surface-recipes.md), [보안](security.md) |
-| 아티팩트 스테이징 | [API 아티팩트 스키마](api/schema-artifacts.md), [아티팩트 저장소](storage-artifacts.md), [저장 효과](storage-effects.md) |
-| 실행 및 증거 기록 | [MVP API](api/mvp-api.md), [저장 효과](storage-effects.md), [Core 모델](core-model.md) |
-| 집중된 사용자 판단 기록 | [Core 모델](core-model.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md) |
-| 닫기 시도 | [MVP API](api/mvp-api.md), [Core 모델](core-model.md), [오류](api/errors.md) |
+| 아티팩트 스테이징 | [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [API 아티팩트 스키마](api/schema-artifacts.md), [아티팩트 저장소](storage-artifacts.md), [저장 효과](storage-effects.md) |
+| 실행 및 증거 기록 | [실행 기록 메서드](api/method-record-run.md), [저장 효과](storage-effects.md), [Core 모델](core-model.md) |
+| 집중된 사용자 판단 기록 | [사용자 판단 메서드](api/method-user-judgment.md), [Core 모델](core-model.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md) |
+| 닫기 시도 | [Task 닫기 메서드](api/method-close-task.md), [Core 모델](core-model.md), [오류](api/errors.md) |
 
 평이한 언어 입력과 Task 생성:
 - 현재 MVP에서의 의미: 활성 입력 경로를 통해 사용자의 평이한 의도에서 로컬 Task를 시작할 수 있습니다.

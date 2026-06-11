@@ -181,7 +181,7 @@
 
 | 주장 영역 | 담당 문서 |
 |---|---|
-| API 메서드와 응답 분기 동작 | [MVP API](api/mvp-api.md) |
+| API 메서드와 응답 분기 동작 | [MVP API 경로 문서](api/mvp-api.md)와 메서드 담당 문서 |
 | 공통 응답 분기와 `dry_run` 미리보기 형태 | [API 코어 스키마](api/schema-core.md) |
 | 상태 요약, 차단 사유, 증거, 닫기 준비 상태 구조 | [API 상태 스키마](api/schema-state.md) |
 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle` 형태 | [API 아티팩트 스키마](api/schema-artifacts.md) |
@@ -246,7 +246,7 @@
 
 담당 문서 링크:
 - [에이전트 통합](agent-integration.md)
-- [MVP API](api/mvp-api.md)
+- [공통 요청 규칙](api/mvp-api.md#공통-요청-규칙)
 - [저장 효과](storage-effects.md)
 
 <a id="scenario-mvp-active-single-access-class-per-public-request"></a>
@@ -257,7 +257,7 @@
 
 담당 문서 링크:
 - [API 값 집합](api/schema-value-sets.md)
-- [MVP API](api/mvp-api.md)
+- [공통 요청 규칙](api/mvp-api.md#공통-요청-규칙)
 - [보안](security.md)
 
 <a id="scenario-mvp-active-detective-display-capability-gated"></a>
@@ -279,7 +279,8 @@
 담당 문서 링크:
 - [Core 모델](core-model.md)
 - [API 상태 스키마](api/schema-state.md)
-- [MVP API](api/mvp-api.md)
+- [상태 메서드](api/method-status.md)
+- [사용자 판단 메서드](api/method-user-judgment.md)
 
 <a id="scenario-mvp-active-project-state-version-stale-mutation-rejected"></a>
 ### `MVP-ACTIVE-project-state-version-stale-mutation-rejected`
@@ -310,7 +311,8 @@
 - 상태와 닫기 확인 차단 사유는 저장 변경 없이 읽을 수 있습니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [상태 메서드](api/method-status.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [API 상태 스키마](api/schema-state.md)
 - [저장 효과](storage-effects.md)
 
@@ -332,7 +334,7 @@
 - `prepare_write`는 협력형 제품 파일 호환성 경로입니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [쓰기 준비 메서드](api/method-prepare-write.md)
 - [Core 모델](core-model.md)
 - [보안](security.md)
 
@@ -344,7 +346,7 @@
 
 담당 문서 링크:
 - [Core 모델](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [쓰기 준비 메서드](api/method-prepare-write.md)
 - [API 판단 스키마](api/schema-judgment.md)
 
 <a id="scenario-mvp-active-record-run-consumes-write-authorization-once"></a>
@@ -354,7 +356,7 @@
 - 호환되는 Run 기록은 맞는 Write Authorization을 한 번 소비합니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [실행 기록 메서드](api/method-record-run.md)
 - [저장 효과](storage-effects.md)
 - [저장소 버전 관리](storage-versioning.md)
 
@@ -365,7 +367,7 @@
 - 스테이징은 임시 스테이징 핸들만 만듭니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [아티팩트 스테이징 메서드](api/method-stage-artifact.md)
 - [API 아티팩트 스키마](api/schema-artifacts.md)
 - [아티팩트 저장소](storage-artifacts.md)
 
@@ -376,7 +378,7 @@
 - Run 아티팩트 입력은 승격이나 연결 전에 검증됩니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [실행 기록 메서드](api/method-record-run.md)
 - [API 아티팩트 스키마](api/schema-artifacts.md)
 - [아티팩트 저장소](storage-artifacts.md)
 
@@ -388,7 +390,7 @@
 
 담당 문서 링크:
 - [아티팩트 저장소](storage-artifacts.md)
-- [MVP API](api/mvp-api.md)
+- [실행 기록 메서드](api/method-record-run.md)
 - [저장 효과](storage-effects.md)
 
 <a id="scenario-mvp-active-record-run-rejects-staged-artifact-surface-instance-mismatch"></a>
@@ -411,7 +413,7 @@
 담당 문서 링크:
 - [API 아티팩트 스키마](api/schema-artifacts.md)
 - [아티팩트 저장소](storage-artifacts.md)
-- [MVP API](api/mvp-api.md)
+- [실행 기록 메서드](api/method-record-run.md)
 
 <a id="scenario-mvp-active-captured-artifact-rejected-in-active-mvp"></a>
 ### `MVP-ACTIVE-captured-artifact-rejected-in-active-mvp`
@@ -431,7 +433,7 @@
 - 오래된 상태는 닫기 준비 상태 평가 전에 실패합니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [API 오류](api/errors.md)
 - [저장 효과](storage-effects.md)
 
@@ -442,7 +444,7 @@
 - 닫기 관련 Write Authorization 근거가 오래됐으면 닫기 커밋 전에 실패합니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [API 오류](api/errors.md)
 - [저장소 버전 관리](storage-versioning.md)
 
@@ -454,7 +456,7 @@
 
 담당 문서 링크:
 - [Core 모델](core-model.md)
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [API 상태 스키마](api/schema-state.md)
 
 <a id="scenario-mvp-active-close-task-blocks-evidence-insufficient"></a>
@@ -488,7 +490,7 @@
 담당 문서 링크:
 - [Core 모델](core-model.md)
 - [API 판단 스키마](api/schema-judgment.md)
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 
 <a id="scenario-mvp-active-close-task-blocks-visible-unaccepted-residual-risk"></a>
 ### `MVP-ACTIVE-close-task-blocks-visible-unaccepted-residual-risk`
@@ -508,7 +510,7 @@
 - `harness.close_task intent=check`는 읽기 전용입니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [API 코어 스키마](api/schema-core.md)
 - [저장 효과](storage-effects.md)
 
@@ -519,7 +521,7 @@
 - 상태 효과가 있는 닫기 의도값은 유효하고 미리보기 가능할 때만 `dry_run` 미리보기를 사용합니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [API 코어 스키마](api/schema-core.md)
 - [저장 효과](storage-effects.md)
 
@@ -530,7 +532,7 @@
 - `supersede`는 유효할 때 프로젝트 전체 상태 변경 하나를 쓰는 성공 완료가 아닌 종료 경로입니다.
 
 담당 문서 링크:
-- [MVP API](api/mvp-api.md)
+- [Task 닫기 메서드](api/method-close-task.md)
 - [Core 모델](core-model.md)
 - [저장 효과](storage-effects.md)
 

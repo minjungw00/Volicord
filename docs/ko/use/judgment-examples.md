@@ -74,7 +74,7 @@
 
 참조 링크:
 - [Core 모델](../reference/core-model.md)
-- [MVP API](../reference/api/mvp-api.md)
+- [범위 갱신 메서드](../reference/api/method-update-scope.md)
 
 ## 민감 동작 승인
 
@@ -186,7 +186,7 @@
 
 참조 링크:
 - [Core 모델의 닫기 준비 상태](../reference/core-model.md)
-- [MVP API의 닫기 준비 상태](../reference/api/mvp-api.md)
+- [Task 닫기 메서드](../reference/api/method-close-task.md)
 - [API 오류의 닫기 준비 상태 경로](../reference/api/errors.md)
 
 ## 취소 또는 유예 판단
@@ -208,7 +208,7 @@
 
 참조 링크:
 - [Core 모델](../reference/core-model.md)
-- [MVP API](../reference/api/mvp-api.md)
+- [Task 닫기 메서드](../reference/api/method-close-task.md)
 
 ## 보통 에이전트가 맡는 구현 세부사항
 

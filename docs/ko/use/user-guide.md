@@ -158,7 +158,7 @@
 무엇이 바뀌었고, 무엇을 확인했으며, 어떤 잔여 위험이 보이고, 아직 무엇이 닫기를 막는지 보여줘.
 ```
 
-사용자에게는 닫기 가능 여부로 읽히지만, 정확한 참조 계약에서는 [Core 모델](../reference/core-model.md)과 [MVP API](../reference/api/mvp-api.md)가 닫기 준비 상태를 담당합니다.
+사용자에게는 닫기 가능 여부로 읽히지만, 정확한 참조 계약에서는 [Core 모델](../reference/core-model.md)과 [Task 닫기 메서드](../reference/api/method-close-task.md)가 닫기 준비 상태를 담당합니다.
 
 사용자가 결정하는 것:
 - 어떤 차단 사유를 다음에 다룰지.

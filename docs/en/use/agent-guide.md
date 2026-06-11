@@ -443,7 +443,7 @@ A compatible result is a single-use cooperative result for the stated product-fi
 
 Owner links:
 
-- Exact refresh, staleness, sensitive-action, and capability semantics are owned by [MVP API](../reference/api/mvp-api.md), [API Errors](../reference/api/errors.md), and [Security](../reference/security.md).
+- Exact refresh, staleness, sensitive-action, and capability semantics are owned by [Prepare-write method](../reference/api/method-prepare-write.md), [API Errors](../reference/api/errors.md), and [Security](../reference/security.md).
 
 If the scope change is valid, the agent should:
 
@@ -464,7 +464,7 @@ After meaningful execution, checks, reviews, or artifact-producing work, summari
 
 Owner link:
 
-- In owner terms this may use `harness.record_run` and evidence refs when that path is active.
+- In owner terms this may use [`harness.record_run`](../reference/api/method-record-run.md) and evidence refs when that path is active.
 
 The agent should:
 
@@ -516,7 +516,7 @@ Rule:
 
 Owner link:
 
-- In owner terms, `harness.close_task` should return blockers or a close result.
+- In owner terms, [`harness.close_task`](../reference/api/method-close-task.md) should return blockers or a close result.
 
 For small work, a close-like result can be brief:
 
@@ -543,7 +543,7 @@ Allowed:
 
 Owner links:
 
-- For canonical close readiness and blocker behavior, see [Core Model](../reference/core-model.md), [MVP API](../reference/api/mvp-api.md), [API State Schemas](../reference/api/schema-state.md), and [API Errors](../reference/api/errors.md).
+- For canonical close readiness and blocker behavior, see [Core Model](../reference/core-model.md), [Close-task method](../reference/api/method-close-task.md), [API State Schemas](../reference/api/schema-state.md), and [API Errors](../reference/api/errors.md).
 
 Evidence comes before final acceptance and residual-risk acceptance; those judgments cannot fill an evidence gap.
 
@@ -551,7 +551,7 @@ Use `intent=cancel` or `intent=supersede` only when the user is ending or replac
 
 Owner link:
 
-- Their exact requirements belong to the close owner path.
+- Their exact requirements belong to the [Close-task method](../reference/api/method-close-task.md).
 
 Rule:
 

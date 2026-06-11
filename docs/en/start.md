@@ -145,7 +145,7 @@ If evidence is missing, stale, weak, or limited to the agent's own check, Harnes
 
 Close readiness answers a simple question: can this work honestly finish now, and what still blocks it? The detailed current behavior belongs in [Active MVP Scope](reference/active-mvp-scope.md) and the Reference owners it links to.
 
-If something is missing, close should name the smallest unblocker. Close-readiness order and blocker details belong to [Core Model](reference/core-model.md), [MVP API](reference/api/mvp-api.md), and [API Errors](reference/api/errors.md).
+If something is missing, close should name the smallest unblocker. Close-readiness order and blocker details belong to [Core Model](reference/core-model.md), [Close-task method](reference/api/method-close-task.md), and [API Errors](reference/api/errors.md).
 
 ## Current MVP scope
 

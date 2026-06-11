@@ -74,7 +74,7 @@ Harness must not imply:
 
 Reference links:
 - [Core Model](../reference/core-model.md)
-- [MVP API](../reference/api/mvp-api.md)
+- [Update-scope method](../reference/api/method-update-scope.md)
 
 ## Sensitive approval
 
@@ -186,7 +186,7 @@ Harness must not imply:
 
 Reference links:
 - [Core Model](../reference/core-model.md)
-- [MVP API](../reference/api/mvp-api.md)
+- [Close-task method](../reference/api/method-close-task.md)
 - [API Errors](../reference/api/errors.md)
 
 ## Cancellation or defer decision
@@ -208,7 +208,7 @@ Harness must not imply:
 
 Reference links:
 - [Core Model](../reference/core-model.md)
-- [MVP API](../reference/api/mvp-api.md)
+- [Close-task method](../reference/api/method-close-task.md)
 
 ## Usually agent-owned implementation detail
 
