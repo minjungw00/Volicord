@@ -139,11 +139,11 @@ Maintain docs should sound like editing instructions. They can name owner paths 
 
 Examples in reference and API documentation should use stable product or user scenarios. They should remain useful after the maintenance context is forgotten.
 
-API examples may share one scenario across methods. When examples share refs, `state_version`, `ArtifactRef` values, run refs, judgment refs, and close-readiness evidence must describe the same timeline and must not contradict each other.
+API examples must be internally consistent. They may share one scenario across method documents, but cross-method examples that share a scenario must use compatible refs, paths, `state_version` values, `ArtifactRef` values, run refs, judgment refs, and close-readiness evidence. Those values must describe the same timeline and must not contradict each other.
 
-Representative examples may omit unrelated fields, but each response snapshot must be internally consistent. A response snapshot must not include refs from a later `state_version` than the snapshot's `base.state_version` or visible state summary.
+Representative examples may omit unrelated fields, but each response snapshot must remain consistent with its own visible state. A response snapshot must not include refs from a later `state_version` than the snapshot's `base.state_version` or visible state summary.
 
-Sensitive-action approval reasons must match request inputs or explicitly stated preconditions. Do not add approval reasons unsupported by `sensitive_categories`, `SensitiveActionScope`, intended paths, intended operation, or the scenario setup.
+Sensitive approval reasons must match request inputs or explicitly stated preconditions. Do not add approval reasons unsupported by `sensitive_categories`, `SensitiveActionScope`, intended paths, intended operation, or the scenario setup.
 
 `ArtifactRef` values must be introduced by staging, promotion, or an explicit existing-artifact statement before they appear as evidence, judgment context, or close-readiness support.
 
@@ -204,6 +204,7 @@ Do not route active documentation through stale legacy paths. If an old path app
 - [ ] README, route, and maintain documents use short summaries plus owner links instead of copied contract explanations.
 - [ ] API, storage, schema, security, access-boundary, and close-readiness details live in the appropriate Reference owner.
 - [ ] Value names are not treated as current MVP behavior merely because they exist in schemas, examples, storage notes, or later-candidate lists.
+- [ ] API examples are internally consistent across response snapshots, `state_version`, refs, paths, `ArtifactRef` values, sensitive approval reasons, expiration timestamps, and shared scenario evidence.
 - [ ] Reserved and profile-gated values are labeled where used and are not described as active guarantees.
 - [ ] Value-set owners define names; semantic owners define meaning, current availability, guarantees, and reader consequences.
 - [ ] Later-candidate promotion wording does not present non-existing owners as current active owner documents.
