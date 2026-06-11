@@ -126,7 +126,7 @@
 
 `ValidatorResult` 형태는 [API 상태 스키마](api/schema-state.md)가 담당합니다. `severity` 형태 값과 활성 안정 `ValidatorResult.validator_id` 집합은 [API 값 집합](api/schema-value-sets.md)이 담당합니다.
 
-이 문서는 활성 설계 정책 검증기 ID나 정책-검증기 매핑을 제공하지 않습니다. 이후 안정 검증기 ID 집합은 담당 문서가 좁은 활성 계약으로 승격하기 전까지 [이후 후보 색인: 이후 스키마 후보](../later/index.md#later-schema-candidates)의 후보로 남습니다.
+이 문서는 활성 설계 정책 검증기 ID나 정책-검증기 매핑을 제공하지 않습니다. 이후 안정 검증기 ID 집합은 담당 문서가 좁은 활성 계약으로 승격하기 전까지 [정책과 적합성: `ValidatorResult` 안정 ID와 정책 계열](../later/policy-and-conformance.md#validatorresult-stable-ids-and-policy-families)의 후보로 남습니다.
 
 ## 8. 이후 정책 후보 경계
 
