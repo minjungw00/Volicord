@@ -213,26 +213,26 @@ Fix:
 ### CHK-EXAMPLE-INTERNAL-CONSISTENCY: API example internal consistency
 
 Owner:
-- [Authoring Guide](authoring-guide.md)
-- The affected API method owner document
+- [`maintain/authoring-guide.md`](authoring-guide.md)
+- affected API method owner document
 
 Check:
-- Confirm example refs are introduced or explicitly described as existing.
-- Confirm a response snapshot does not include refs from a future `state_version`.
-- Confirm sensitive approval reasons match the request's sensitive category or a stated precondition.
-- Confirm artifact refs do not appear without staging, promotion, or an existing-artifact explanation.
-- Confirm expiration timestamps use placeholders or clearly future example dates.
-- Confirm cross-method examples that share a scenario do not contradict each other.
+- Example refs are introduced or explicitly described as existing.
+- A response snapshot does not include refs from a later `state_version`.
+- Sensitive approval reasons match the request's `sensitive_categories` or stated precondition.
+- Artifact refs do not appear without staging, promotion, or existing-artifact context.
+- Expiration timestamps use placeholders or clearly future example dates.
+- Cross-method examples that share a scenario do not contradict each other.
 
 Failure:
-- A status response includes supporting refs from a later `state_version`.
-- A sensitive approval reason appears while `sensitive_categories` is empty and no precondition explains it.
-- An artifact ref appears without staging, promotion, or existing-artifact context.
-- A staged handle has an obviously stale fixed expiration timestamp.
+- status examples include future-version supporting refs
+- approval reasons do not match `sensitive_categories`
+- artifact refs appear without lifecycle context
+- staged handles have stale fixed expiration timestamps
+- close-readiness evidence refers to missing run or judgment refs
 
 Fix:
-- Align refs, versions, sensitive categories, artifact lifecycle, and timestamps.
-- Use placeholders for expiration examples where possible.
+- Align refs, versions, sensitive categories, artifact lifecycle, timestamps, and shared scenario data.
 
 ## 5. Terminology checks
 

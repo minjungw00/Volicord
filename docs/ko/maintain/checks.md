@@ -213,26 +213,26 @@
 ### CHK-EXAMPLE-INTERNAL-CONSISTENCY: API 예시 내부 정합성
 
 담당 문서:
-- [작성 가이드](authoring-guide.md)
+- [`maintain/authoring-guide.md`](authoring-guide.md)
 - 영향을 받는 API 메서드 담당 문서
 
 점검:
-- 예시 ref는 앞에서 도입되었거나 기존 ref라고 명시되어 있는지 확인합니다.
-- 응답 snapshot이 더 나중의 `state_version`에 속한 ref를 포함하지 않는지 확인합니다.
-- 민감 승인 사유가 요청의 민감 범주나 명시된 전제와 맞는지 확인합니다.
-- artifact ref가 스테이징, 승격, 또는 기존 아티팩트 설명 없이 갑자기 등장하지 않는지 확인합니다.
-- 만료 timestamp가 placeholder 또는 명확한 미래 예시 날짜를 사용하는지 확인합니다.
-- 같은 시나리오를 공유하는 메서드 예시가 서로 충돌하지 않는지 확인합니다.
+- 예시 ref가 앞에서 도입되었거나 기존 ref라고 명시되어 있는지 점검합니다.
+- 응답 snapshot이 더 나중의 `state_version`에 속한 ref를 포함하지 않는지 점검합니다.
+- 민감 승인 사유가 요청의 `sensitive_categories`나 명시된 전제와 맞는지 점검합니다.
+- artifact ref가 스테이징, 승격, 또는 기존 아티팩트 맥락 없이 나타나지 않는지 점검합니다.
+- 만료 timestamp가 placeholder 또는 명확한 미래 예시 날짜를 쓰는지 점검합니다.
+- 같은 시나리오를 공유하는 메서드 예시가 서로 충돌하지 않는지 점검합니다.
 
-실패:
-- 상태 응답이 더 나중의 `state_version`에 속한 근거 ref를 포함합니다.
-- `sensitive_categories`가 비어 있는데 전제 설명 없이 민감 승인 사유가 나타납니다.
-- artifact ref가 스테이징, 승격, 또는 기존 아티팩트 설명 없이 나타납니다.
-- 스테이징된 핸들에 명백히 오래된 고정 만료 timestamp가 있습니다.
+실패 조건:
+- 상태 예시가 더 나중 버전의 근거 ref를 포함합니다.
+- 민감 승인 사유가 `sensitive_categories`와 맞지 않습니다.
+- artifact ref가 생명주기 맥락 없이 나타납니다.
+- 스테이징된 핸들에 오래된 고정 만료 timestamp가 있습니다.
+- 닫기 준비 상태 증거가 존재하지 않는 실행 ref나 판단 ref를 가리킵니다.
 
-수정:
-- ref, `state_version`, 민감 범주, 아티팩트 생명주기, timestamp를 서로 맞춥니다.
-- 가능하면 만료 예시에는 placeholder를 사용합니다.
+수정 방향:
+- ref, 버전, 민감 범주, 아티팩트 생명주기, timestamp, 공유 시나리오 데이터를 서로 맞춥니다.
 
 ## 5. 용어 점검
 
