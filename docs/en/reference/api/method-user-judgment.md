@@ -50,7 +50,7 @@ Non-claims:
 
 - `ToolEnvelope` with non-null `idempotency_key` and current `expected_state_version` for non-dry-run commits.
 - `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `question`, `options`, `context`, `affected_refs`, `required_for`, and `expires_at`.
-- A focused question with mutually understandable options and enough context for the user to judge the exact issue.
+- A focused judgment prompt (`question`) with mutually understandable options and enough context for the user to judge the exact issue.
 
 
 ### `harness.record_user_judgment`
@@ -207,6 +207,12 @@ On commit, the method may persist pending judgment and related blocker state. Ex
 
 On commit, the method may persist judgment resolution and dependent blocker or summary state. Exact storage effects are owned by [Storage Effects](../storage-effects.md).
 
+## Example consistency
+
+The example's judgment prompt is the `question` field in the current `UserJudgment` schema. The account export confirmation copy is represented through that prompt and `context.summary`; `context.artifact_refs: []` is intentional because the example does not cite an artifact.
+
+The request and response examples keep the same `options` values and the same affected Task in `affected_refs`. The `record_user_judgment` example selects `accept`, records `decision: accepted`, and gives a rationale that matches the sufficient-copy option. Timestamp fields use `null` or placeholder values.
+
 ## Minimal valid request
 
 
@@ -229,7 +235,7 @@ params:
   change_unit_id: cu_001
   judgment_kind: product_decision
   presentation: short
-  question: "Is the account export confirmation copy sufficient for account data export that may include personal data?"
+  question: "Should the account export confirmation copy that warns users the download may include personal data be accepted as sufficient?"
   options:
     - option_id: accept
       label: "Sufficient"
@@ -242,7 +248,7 @@ params:
       consequence: "Close remains blocked on the product decision."
       is_default: false
   context:
-    summary: "The account export confirmation copy tells the user that the export may include personal data before download."
+    summary: "The account export confirmation copy shown before download warns that the account data export may include personal data."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -281,7 +287,7 @@ params:
     product_decision:
       judgment:
         decision: accepted
-        rationale: "The account export confirmation copy clearly states that the export may include personal data."
+        rationale: "The account export confirmation copy clearly warns that the account data export may include personal data."
     technical_decision: null
     scope_decision: null
     sensitive_action_scope: null
@@ -322,7 +328,7 @@ user_judgment:
   judgment_kind: product_decision
   status: pending
   presentation: short
-  question: "Is the account export confirmation copy sufficient for account data export that may include personal data?"
+  question: "Should the account export confirmation copy that warns users the download may include personal data be accepted as sufficient?"
   options:
     - option_id: accept
       label: "Sufficient"
@@ -335,7 +341,7 @@ user_judgment:
       consequence: "Close remains blocked on the product decision."
       is_default: false
   context:
-    summary: "The account export confirmation copy tells the user that the export may include personal data before download."
+    summary: "The account export confirmation copy shown before download warns that the account data export may include personal data."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -386,7 +392,7 @@ user_judgment:
   judgment_kind: product_decision
   status: resolved
   presentation: short
-  question: "Is the account export confirmation copy sufficient for account data export that may include personal data?"
+  question: "Should the account export confirmation copy that warns users the download may include personal data be accepted as sufficient?"
   options:
     - option_id: accept
       label: "Sufficient"
@@ -399,7 +405,7 @@ user_judgment:
       consequence: "Close remains blocked on the product decision."
       is_default: false
   context:
-    summary: "The account export confirmation copy tells the user that the export may include personal data before download."
+    summary: "The account export confirmation copy shown before download warns that the account data export may include personal data."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -418,7 +424,7 @@ user_judgment:
       product_decision:
         judgment:
           decision: accepted
-          rationale: "The account export confirmation copy clearly states that the export may include personal data."
+          rationale: "The account export confirmation copy clearly warns that the account data export may include personal data."
     note: null
     accepted_risks: []
     resolved_by_actor_kind: user

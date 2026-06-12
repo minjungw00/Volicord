@@ -61,7 +61,7 @@
 
 - `ToolEnvelope`: `dry_run=false` 커밋에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `question`, `options`, `context`, `affected_refs`, `required_for`, `expires_at`.
-- 사용자가 정확한 사안을 판단할 수 있도록 초점이 분명한 질문, 이해 가능한 선택지, 충분한 맥락.
+- 사용자가 정확한 사안을 판단할 수 있도록 초점이 분명한 판단 프롬프트(`question`), 이해 가능한 선택지, 충분한 맥락.
 
 
 ### `harness.record_user_judgment`
@@ -200,6 +200,12 @@
 
 커밋 시 판단 해결과 그에 따른 차단 사유 또는 요약 상태를 지속할 수 있습니다. 정확한 저장 효과는 [저장 효과](../storage-effects.md)가 담당합니다.
 
+## 예시 정합성
+
+현재 `UserJudgment` 스키마에서 사용자에게 보이는 판단 프롬프트는 `question` 필드입니다. 계정 내보내기 확인 문구에 대한 사용자 판단은 이 프롬프트와 `context.summary`에 담습니다. 이 예시는 아티팩트를 근거로 들지 않으므로 `context.artifact_refs: []`는 의도한 값입니다.
+
+요청과 응답 예시는 같은 `options` 선택지 값과 같은 Task를 가리키는 `affected_refs` 영향 받는 ref를 유지합니다. `record_user_judgment` 예시는 `accept`를 선택하고 `decision: accepted`를 기록하며, 근거는 충분함 선택지와 같은 의미입니다. 시간 필드는 `null` 또는 플레이스홀더 값을 사용합니다.
+
 ## 최소 유효 요청
 
 
@@ -222,7 +228,7 @@ params:
   change_unit_id: cu_001
   judgment_kind: product_decision
   presentation: short
-  question: "개인정보가 포함될 수 있는 계정 데이터 내보내기에 대해 계정 내보내기 확인 문구가 충분합니까?"
+  question: "다운로드에 개인정보가 포함될 수 있다고 알리는 계정 내보내기 확인 문구를 충분한 것으로 수락해도 됩니까?"
   options:
     - option_id: accept
       label: "충분함"
@@ -235,7 +241,7 @@ params:
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
-    summary: "계정 내보내기 확인 문구는 다운로드 전에 개인정보가 포함될 수 있음을 사용자에게 알립니다."
+    summary: "다운로드 전에 보이는 계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 알립니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -274,7 +280,7 @@ params:
     product_decision:
       judgment:
         decision: accepted
-        rationale: "계정 내보내기 확인 문구는 내보내기에 개인정보가 포함될 수 있음을 명확히 알립니다."
+        rationale: "계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 명확히 알립니다."
     technical_decision: null
     scope_decision: null
     sensitive_action_scope: null
@@ -315,7 +321,7 @@ user_judgment:
   judgment_kind: product_decision
   status: pending
   presentation: short
-  question: "개인정보가 포함될 수 있는 계정 데이터 내보내기에 대해 계정 내보내기 확인 문구가 충분합니까?"
+  question: "다운로드에 개인정보가 포함될 수 있다고 알리는 계정 내보내기 확인 문구를 충분한 것으로 수락해도 됩니까?"
   options:
     - option_id: accept
       label: "충분함"
@@ -328,7 +334,7 @@ user_judgment:
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
-    summary: "계정 내보내기 확인 문구는 다운로드 전에 개인정보가 포함될 수 있음을 사용자에게 알립니다."
+    summary: "다운로드 전에 보이는 계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 알립니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -379,7 +385,7 @@ user_judgment:
   judgment_kind: product_decision
   status: resolved
   presentation: short
-  question: "개인정보가 포함될 수 있는 계정 데이터 내보내기에 대해 계정 내보내기 확인 문구가 충분합니까?"
+  question: "다운로드에 개인정보가 포함될 수 있다고 알리는 계정 내보내기 확인 문구를 충분한 것으로 수락해도 됩니까?"
   options:
     - option_id: accept
       label: "충분함"
@@ -392,7 +398,7 @@ user_judgment:
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
-    summary: "계정 내보내기 확인 문구는 다운로드 전에 개인정보가 포함될 수 있음을 사용자에게 알립니다."
+    summary: "다운로드 전에 보이는 계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 알립니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -411,7 +417,7 @@ user_judgment:
       product_decision:
         judgment:
           decision: accepted
-          rationale: "계정 내보내기 확인 문구는 내보내기에 개인정보가 포함될 수 있음을 명확히 알립니다."
+          rationale: "계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 명확히 알립니다."
     note: null
     accepted_risks: []
     resolved_by_actor_kind: user
