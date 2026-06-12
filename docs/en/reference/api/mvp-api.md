@@ -53,8 +53,8 @@ This document owns the active public method list and owner routing. The exact ac
 | `harness.prepare_write` | Check product-file write compatibility before Write Authorization. | [Prepare-write method](method-prepare-write.md) |
 | `harness.stage_artifact` | Stage safe bytes or a safe notice. | [Stage-artifact method](method-stage-artifact.md) |
 | `harness.record_run` | Record work, evidence, and artifact refs. | [Record-run method](method-record-run.md) |
-| `harness.request_user_judgment` | Create one pending user-owned judgment. | [User-judgment methods](method-user-judgment.md#harnessrequest_user_judgment) |
-| `harness.record_user_judgment` | Record the user's answer to a pending judgment. | [User-judgment methods](method-user-judgment.md#harnessrecord_user_judgment) |
+| `harness.request_user_judgment` | Create one pending user-owned judgment. | [User-judgment method owner](method-user-judgment.md#harnessrequest_user_judgment) |
+| `harness.record_user_judgment` | Record the user's answer to a pending judgment. | [User-judgment method owner](method-user-judgment.md#harnessrecord_user_judgment) |
 | `harness.close_task` | Check close readiness or close when allowed. | [Close-task method](method-close-task.md) |
 
 <a id="method-owner-routing-table"></a>
@@ -71,7 +71,7 @@ Use this table for method behavior routing.
 | `harness.prepare_write` behavior | [Prepare-write method](method-prepare-write.md) |
 | `harness.stage_artifact` behavior | [Stage-artifact method](method-stage-artifact.md) |
 | `harness.record_run` behavior | [Record-run method](method-record-run.md) |
-| user judgment methods | [User-judgment methods](method-user-judgment.md) |
+| `harness.request_user_judgment` and `harness.record_user_judgment` behavior | [User-judgment method owner](method-user-judgment.md) |
 | `harness.close_task` behavior | [Close-task method](method-close-task.md) |
 
 Method-specific questions:
@@ -147,5 +147,5 @@ API example questions:
 - [Prepare-write method](method-prepare-write.md)
 - [Stage-artifact method](method-stage-artifact.md)
 - [Record-run method](method-record-run.md)
-- [User-judgment methods](method-user-judgment.md)
+- [User-judgment method owner](method-user-judgment.md) for `harness.request_user_judgment` and `harness.record_user_judgment`
 - [Close-task method](method-close-task.md)
