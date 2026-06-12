@@ -1,6 +1,6 @@
 # Reference index
 
-Use this index to answer: "Which document owns this question?" This README routes to canonical owner documents; it does not define API contracts, schemas, storage effects, security guarantees, or active MVP scope.
+Use this index to answer: "Which document owns this question?" This README routes to canonical owner documents; it does not define API contracts, schemas, storage effects, security guarantees, or baseline scope.
 
 These documents are reference material for a Harness Server. They do not mean this repository contains runtime implementation, runtime state, generated artifacts, projections, evidence records, QA records, acceptance records, close records, or conformance output.
 
@@ -30,10 +30,10 @@ This route is for implementers and reviewers who need exact owners. New and work
 
 | Question | Owner |
 |---|---|
-| Where is current MVP inclusion defined? | `scope.md` |
-| Where is current MVP exclusion defined? | `scope.md` |
+| Where is baseline scope inclusion defined? | `scope.md` |
+| Where is baseline scope exclusion defined? | `scope.md` |
 | Is a capability active, profile-gated, reserved, or out of scope? | `scope.md` |
-| Is `isolated` active in the current MVP? | `scope.md`, `security.md` |
+| Is `isolated` active in the baseline scope? | `scope.md`, `security.md` |
 | Where is implementation routing described? | `../build/implementation-guide.md` |
 | Where is the documentation boundary defined? | `runtime-boundaries.md`, `scope.md` |
 
@@ -123,7 +123,7 @@ This route is for implementers and reviewers who need exact owners. New and work
 
 | Question | Owner |
 |---|---|
-| Does the current MVP provide OS sandboxing? | `security.md` |
+| Does the baseline scope provide OS sandboxing? | `security.md` |
 | Where are `isolated` guarantee semantics defined? | `security.md` |
 | Where are guarantee semantics defined? | `security.md` |
 | Where is runtime separation defined? | `runtime-boundaries.md` |

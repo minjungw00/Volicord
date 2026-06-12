@@ -4,7 +4,7 @@
 
 ## What this document owns
 
-This document owns active MVP method behavior for `harness.record_run`:
+This document owns baseline method behavior for `harness.record_run`:
 
 - method-specific required inputs, access requirements, state-version behavior, result branches, and dry-run behavior
 - the minimal request and representative response for the shared account data export confirmation scenario
@@ -55,7 +55,7 @@ For `source_kind=staged_artifact`:
 Non-claims:
 
 - `ArtifactInput[]` does not add `artifact_registration`.
-- The active MVP has no cross-surface staged artifact handoff.
+- Cross-surface staged artifact transfer is outside the baseline scope.
 
 ## State version behavior
 

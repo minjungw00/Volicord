@@ -98,7 +98,7 @@ IDE/editor 통합은 에이전트가 절차를 지키도록 도울 수 있습니
 - [API 오류](../reference/api/errors.md): 공개 오류 코드와 복구 경로.
 - [보안](../reference/security.md): 보장 표현과 비주장.
 - [런타임 경계](../reference/runtime-boundaries.md): Product Repository, Harness Server, Runtime Home 분리.
-- [현재 MVP 범위](../reference/scope.md): 활성, 프로필 조건부, 이후 후보 경계.
+- [기준 범위](../reference/scope.md): 활성, 프로필 조건부, 지원 범위 밖 기능 경계.
 
 ## 다음 읽기 경로
 

@@ -1,6 +1,6 @@
 # Core model reference
 
-This reference defines the Harness Core authority model as documentation reference material only. This repository still has no Harness runtime or server implementation, and the current documentation is not implementation-complete unless the maintainer-owned status says so in [Implementation Guide](../build/implementation-guide.md).
+This reference defines the Harness Core authority model as documentation reference material. It is not runtime state, generated output, or executable server material.
 
 Core is the local authority record for task scope, user-owned judgment, evidence, verification expectations, close readiness, and residual risk. It owns the product meaning of those boundaries. Security guarantee wording and non-claims belong to [Security](security.md).
 
@@ -12,7 +12,7 @@ This document owns:
 - Product meaning for Task scope, Change Unit boundaries, user-owned judgment, evidence, close readiness, close honesty, waivers, and residual risk.
 - Conceptual lifecycle and gate boundaries.
 - The difference between `WriteDecisionReason`, close-readiness blocking reasons, and `CloseReadinessBlocker`.
-- Cross-owner routing when Core concepts touch API, Storage, Security, Projection, or Later material.
+- Cross-owner routing when Core concepts touch API, Storage, Security, Projection, or out-of-scope material.
 
 This document does not own:
 
@@ -36,7 +36,7 @@ Exact identifiers may appear here when needed to explain meaning. Their schema s
 | Runs record what happened. | See [Run record authority](#core-invariant-run-record-authority). |
 | Evidence records support only recorded claims. | See [Evidence record authority](#core-invariant-evidence-record-authority). |
 | Close must stay honest. | See [Honest close](#core-invariant-honest-close). |
-| Current MVP and out-of-scope capabilities stay separate. | See [Current MVP and later boundary](#core-invariant-mvp-later-boundary). |
+| Baseline scope and out-of-scope capabilities stay separate. | See [Baseline scope boundary](#core-invariant-baseline-scope-boundary). |
 
 <a id="core-invariant-state-authority"></a>
 ### Core state authority
@@ -153,14 +153,14 @@ Owner links:
 - [Close Task Method](api/method-close-task.md)
 - [API State Schemas](api/schema-state.md)
 
-<a id="core-invariant-mvp-later-boundary"></a>
-### Current MVP and later boundary
+<a id="core-invariant-baseline-scope-boundary"></a>
+### Baseline Scope Boundary
 
 Concept:
-- Current MVP and out-of-scope capabilities stay separate.
+- Baseline scope and out-of-scope capabilities stay separate.
 
-Not active until promoted:
-- later verification
+Not supported until promoted:
+- detached verification
 - Manual QA
 - rich waiver
 - assurance material
@@ -262,7 +262,7 @@ Concept:
 
 Not the same as:
 - Retroactive authorization for missing scope, missing judgment, missing approval, or missing `Write Authorization`.
-- Compatibility for later product writes when the Run was read-only or shaping-only.
+- Compatibility for subsequent product writes when the Run was read-only or shaping-only.
 
 Owner links:
 - [Record Run Method](api/method-record-run.md)
@@ -447,8 +447,8 @@ Applies to:
 
 Does not substitute for:
 - final acceptance
-- future Manual QA
-- future verification
+- Manual QA
+- detached verification
 - residual-risk acceptance
 
 <a id="core-non-substitution-final-acceptance"></a>
@@ -737,7 +737,7 @@ Owner links:
 - [Close Task Method](api/method-close-task.md)
 - [API State Schemas](api/schema-state.md)
 
-Verification and Manual QA are conceptual boundaries in the current MVP, not active gates. They must not be described as active close requirements unless a future owner promotes them.
+Verification and Manual QA are conceptual boundaries in the baseline scope, not active gates. They must not be described as active close requirements unless an owner promotes them.
 
 ## 8. Write authorization boundary
 
@@ -855,7 +855,7 @@ Can establish:
 
 Not the same as:
 - Proof of broader correctness.
-- Final acceptance, future Manual QA, future verification, or residual-risk acceptance.
+- Final acceptance, Manual QA, detached verification, or residual-risk acceptance.
 - Proof of unrecorded behavior.
 
 Owner links:
@@ -1018,9 +1018,9 @@ Not the same as:
 - Verification, evidence sufficiency, QA, sensitive-action approval, final acceptance, or a no-risk result.
 - A waiver or automatic success.
 
-Current MVP path:
-- The current path is compact residual-risk summary, blockers, evidence refs, and `user_judgment` refs unless an owner promotes more.
-- Rich risk workflows are later material.
+Baseline scope path:
+- The supported path is compact residual-risk summary, blockers, evidence refs, and `user_judgment` refs unless an owner promotes more.
+- Rich risk workflows are out of scope until promoted.
 
 Owner links:
 - [API Judgment Schemas](api/schema-judgment.md)
@@ -1179,7 +1179,7 @@ Owner links:
 
 Applies to:
 - Out-of-scope capabilities.
-- Future assurance, waiver, QA, verification, and fixture material.
+- Assurance, waiver, QA, verification, and fixture material outside the baseline scope.
 
 Owner links:
 - [Scope Reference](scope.md).

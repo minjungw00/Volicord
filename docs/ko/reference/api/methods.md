@@ -29,7 +29,7 @@
 
 API는 협력형 하네스 기록과 점검 동작만 반환합니다. 보안 비주장과 보장 표현은 [보안](../security.md)이 담당합니다. 범위 밖 API나 스키마 기능은 [범위](../scope.md)와 영향받는 담당 문서가 활성 동작으로 정의하기 전까지 이 메서드 경로에 포함되지 않습니다.
 
-<a id="active-mvp-method-behavior"></a>
+<a id="baseline-scope-method-behavior"></a>
 
 ## 현재 API 메서드 목록
 

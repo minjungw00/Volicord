@@ -34,7 +34,7 @@ Harness is not:
 - a Product Repository
 - a Harness Runtime Home
 
-Harness can record and display authority boundaries, but it must not claim enforcement that the current MVP does not provide. For the canonical security boundary, see [Security](reference/security.md).
+Harness can record and display authority boundaries, but it must not claim enforcement that the baseline scope does not provide. For the canonical security boundary, see [Security](reference/security.md).
 
 Readable views, templates, status cards, and summaries are derived display. They help people read Harness state, but they do not become the authority record just because they are well written or manually edited.
 
@@ -147,15 +147,15 @@ Close readiness answers a simple question: can the task honestly finish now, and
 
 If something is missing, close should name the smallest unblocker. Close-readiness order and blocker details belong to [Core Model](reference/core-model.md), [Close-task method](reference/api/method-close-task.md), and [API Errors](reference/api/errors.md).
 
-## Current MVP scope
+## Baseline scope
 
-The current MVP is intentionally narrow. For the canonical current scope, see [Scope](reference/scope.md).
+The baseline scope is intentionally narrow. For the canonical current scope, see [Scope](reference/scope.md).
 
 Out-of-scope capabilities are not active requirements until an owner promotes them. If a detail is not in current scope, treat it as deferred even when it appears in examples or reserved-value notes.
 
-## Current MVP guarantee boundary
+## Baseline scope guarantee boundary
 
-The current MVP guarantee boundary is modest. For canonical guarantee levels and security non-claims, see [Security](reference/security.md); for owner routing, use the [Reference Index](reference/README.md).
+The baseline scope guarantee boundary is modest. For canonical guarantee levels and security non-claims, see [Security](reference/security.md); for owner routing, use the [Reference Index](reference/README.md).
 
 ## Where to go next
 

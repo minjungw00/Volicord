@@ -20,12 +20,12 @@
 
 | 영어 용어 | 한국어 기준 용어 | 주 담당 문서 |
 |---|---|---|
-| Harness | 하네스 | [현재 MVP 범위](scope.md) |
+| Harness | 하네스 | [기준 범위](scope.md) |
 | Product Repository | Product Repository | [런타임 경계](runtime-boundaries.md) |
 | Harness Runtime Home | Harness Runtime Home | [런타임 경계](runtime-boundaries.md) |
 | documentation | 문서 | [작성 가이드](../maintain/authoring-guide.md) |
-| active MVP | 현재 MVP | [현재 MVP 범위](scope.md) |
-| out-of-scope capability | 이후 후보 | [범위 참조](scope.md) |
+| baseline scope | 기준 범위 | [기준 범위](scope.md) |
+| out-of-scope capability | 지원 범위 밖 기능 | [범위 참조](scope.md) |
 | owner document | 담당 문서 | [작성 가이드](../maintain/authoring-guide.md) |
 | current owner | 현재 담당 문서 | [작성 가이드](../maintain/authoring-guide.md) |
 | promotion-time owner update | 승격 시점의 담당 문서 갱신 | [범위 참조](scope.md) |
@@ -53,8 +53,8 @@
 | detective guarantee | 탐지형 보장 | [보안](security.md) |
 | preventive guarantee | 예방형 보장 | [보안](security.md) |
 | `isolated` | `isolated` | [보안](security.md) |
-| reserved value | 예약된 값 | [현재 MVP 범위](scope.md) |
-| profile-gated value | 프로필 조건부 값 | [현재 MVP 범위](scope.md) |
+| reserved value | 예약된 값 | [기준 범위](scope.md) |
+| profile-gated value | 프로필 조건부 값 | [기준 범위](scope.md) |
 | dry-run | dry-run 미리보기 | [API 코어 스키마](api/schema-core.md) |
 | blocked result | 차단 결과 | [API 오류](api/errors.md) |
 | rejected response | 거부 응답 | [API 코어 스키마](api/schema-core.md) |
@@ -78,7 +78,7 @@
 - 이 문서 저장소를 작동 중인 서버로 보는 표현
 
 담당 문서:
-- [현재 MVP 범위](scope.md)
+- [기준 범위](scope.md)
 - [런타임 경계](runtime-boundaries.md)
 
 설명:
@@ -124,7 +124,7 @@
 - [런타임 경계](runtime-boundaries.md)
 
 설명:
-- Harness Runtime Home은 향후 하네스 기록과 아티팩트를 담는 운영 데이터 공간입니다.
+- Harness Runtime Home은 하네스 기록과 아티팩트를 담는 운영 데이터 공간입니다.
 
 ### documentation
 
@@ -140,7 +140,7 @@
 - 담당 문서 라벨
 
 피할 표현:
-- 구현 완료
+- 문서를 구현 권한으로 보는 표현
 - 런타임 준비 완료
 - 생성된 운영 기록
 
@@ -152,29 +152,29 @@
 설명:
 - 문서 작업은 런타임 구현이나 생성된 런타임 기록을 승인하지 않습니다.
 
-### active MVP
+### baseline scope
 
 영어:
-- active MVP
-- current MVP
+- baseline scope
+- 기준 범위
 
 한국어:
-- 참조 문서: 현재 MVP
-- 사용자 문서: 현재 MVP
+- 참조 문서: 기준 범위
+- 사용자 문서: 기준 범위
 
 보존할 식별자:
 - 담당 문서 제목
 - 정확한 값 문자열
 
 피할 표현:
-- 이후 후보나 프로필 조건부 값을 현재 요구사항처럼 쓰는 표현
+- 지원 범위 밖 기능나 프로필 조건부 값을 현재 요구사항처럼 쓰는 표현
 
 담당 문서:
-- [현재 MVP 범위](scope.md)
+- [기준 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
-- 현재 MVP는 첫 로컬 작업 루프를 위한 활성 제품 범위 경계입니다.
+- 기준 범위는 첫 로컬 작업 루프를 위한 활성 제품 범위 경계입니다.
 
 ### out-of-scope capability
 
@@ -182,21 +182,21 @@
 - out-of-scope capability
 
 한국어:
-- 참조 문서: 이후 후보
-- 사용자 문서: 이후 후보
+- 참조 문서: 지원 범위 밖 기능
+- 사용자 문서: 지원 범위 밖 기능
 
 보존할 식별자:
 - 승격 요구사항을 안내할 때 정확한 담당 문서 경로
 
 피할 표현:
-- 미뤄 둔 자료를 현재 MVP 요구사항처럼 부르는 표현
+- 미뤄 둔 자료를 기준 범위 요구사항처럼 부르는 표현
 
 담당 문서:
 - [범위 참조](scope.md)
-- [현재 MVP 범위](scope.md)
+- [기준 범위](scope.md)
 
 설명:
-- 이후 후보는 관련 담당 문서가 승격하기 전까지 활성 범위가 아닙니다.
+- 지원 범위 밖 기능은 관련 담당 문서가 승격하기 전까지 활성 범위가 아닙니다.
 
 ### owner document
 
@@ -264,12 +264,12 @@
 - 앵커
 
 피할 표현:
-- 아직 없는 담당 문서가 이미 현재 기준 담당 문서인 것처럼 이름 붙이는 표현
+- 아직 없는 담당 문서가 이미 현재 담당 문서인 것처럼 이름 붙이는 표현
 
 담당 문서:
 - [작성 가이드](../maintain/authoring-guide.md)
 - [범위 참조](scope.md)
-- [현재 MVP 범위](scope.md)
+- [기준 범위](scope.md)
 
 설명:
 - 승격 시점의 담당 문서 갱신에는 담당 문서를 만들거나 지정한 뒤 현재 범위, 스키마, API 동작, 저장소, 템플릿, 점검, 한영 문서를 함께 맞추는 일이 포함될 수 있습니다.
@@ -287,7 +287,7 @@
 - 범위 밖 기능의 담당 문서 공백을 안내하는 정확한 표현
 
 피할 표현:
-- 자리표시자를 현재 기준 담당 문서처럼 독자에게 안내하는 표현
+- 자리표시자를 현재 담당 문서처럼 독자에게 안내하는 표현
 
 담당 문서:
 - [작성 가이드](../maintain/authoring-guide.md)
@@ -676,7 +676,7 @@
 - [보안](security.md)
 
 설명:
-- 런타임은 향후 실행되는 하네스 서버/런타임 동작과 런타임 데이터 공간을 뜻합니다.
+- 런타임은 실행되는 하네스 서버/런타임 동작과 런타임 데이터 공간을 뜻합니다.
 
 ### `Write Authorization`
 
@@ -775,7 +775,7 @@
 
 담당 문서:
 - [보안](security.md)
-- [현재 MVP 범위](scope.md)
+- [기준 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
@@ -838,7 +838,7 @@
 - `preventive`
 
 피할 표현:
-- 현재 담당 문서 없이 현재 MVP 샌드박싱을 주장하는 표현
+- 현재 담당 문서 없이 기준 범위 샌드박싱을 주장하는 표현
 - 현재 담당 문서 없이 권한 제어를 주장하는 표현
 
 담당 문서:
@@ -863,15 +863,15 @@
 피할 표현:
 - 격리 보장이 제공됩니다
 - 현재 격리됩니다
-- 현재 MVP가 isolated 보장을 제공합니다
+- 기준 범위가 isolated 보장을 제공합니다
 
 담당 문서:
 - [보안](security.md): 의미와 비주장 경계
-- [현재 MVP 범위](scope.md): 현재 MVP 사용 가능성
+- [기준 범위](scope.md): 기준 범위 사용 가능성
 - [API 값 집합](api/schema-value-sets.md): 값 항목
 
 설명:
-- `isolated`는 이후 또는 프로필 조건부 보장 라벨로 예약된 값이며 현재 MVP의 활성 보장이 아닙니다.
+- `isolated`는 이후 또는 프로필 조건부 보장 라벨로 예약된 값이며 기준 범위의 활성 보장이 아닙니다.
 - 값 집합에 있다는 사실만으로 동작이 활성화되지는 않습니다.
 
 ### reserved value
@@ -897,11 +897,11 @@
 - 현재 활성 보장
 
 담당 문서:
-- [현재 MVP 범위](scope.md)
+- [기준 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
-- 예약된 값은 어휘나 향후 접점으로 존재할 수 있지만, 이름만으로 동작이 활성화되지는 않습니다.
+- 예약된 값은 어휘나 예약된 접점으로 존재할 수 있지만, 이름만으로 동작이 활성화되지는 않습니다.
 - 값 집합에 있다는 사실만으로 동작이 활성화되지는 않습니다.
 
 ### profile-gated value
@@ -917,10 +917,10 @@
 - 정확한 값 문자열
 
 피할 표현:
-- 값 집합에 있다는 이유만으로 프로필 조건부 값을 현재 MVP 동작처럼 쓰는 표현
+- 값 집합에 있다는 이유만으로 프로필 조건부 값을 기준 범위 동작처럼 쓰는 표현
 
 담당 문서:
-- [현재 MVP 범위](scope.md)
+- [기준 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:

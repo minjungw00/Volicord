@@ -89,8 +89,8 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | cooperative guarantee | 협력형 보장 | Do not strengthen into detective or preventive wording. |
 | detective guarantee | 탐지형 보장 | Use only when the documented observable scope supports it. |
 | preventive guarantee | 예방형 보장 | Use only when a documented mechanism proves prevention. |
-| active MVP | 현재 MVP | Do not translate out-of-scope capabilities into current requirements. |
-| out-of-scope capability | 이후 후보 | Keep deferred material clearly deferred. |
+| baseline scope | 기준 범위 | Do not translate out-of-scope capabilities into current requirements. |
+| out-of-scope capability | 지원 범위 밖 기능 | Keep deferred material clearly deferred. |
 
 When a term is missing, add it to the terminology map and both translation guides before spreading a new variant across the docs.
 
@@ -214,4 +214,4 @@ Mixed English/Korean may be correct when the English part is an identifier, for 
 - [ ] User-facing Korean and reference-facing Korean use the right level of terminology.
 - [ ] Forbidden mixed-language patterns were removed except where cited as examples in this guide.
 - [ ] New or changed terminology was checked against [docs/terminology-map.yaml](../../terminology-map.yaml).
-- [ ] No temporary planning files, archive copies, generated runtime records, or migration notes remain.
+- [ ] No one-off planning files, archive copies, generated runtime records, or migration notes remain.

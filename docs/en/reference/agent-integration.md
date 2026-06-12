@@ -66,7 +66,7 @@ Agent may:
 
 Agent must not:
 - treat `capability_profile` as authority by itself
-- use a stale, copied, generated, or user-provided capability description to make a out-of-scope capability active
+- use a stale, copied, generated, or user-provided capability description to make an out-of-scope capability active
 - use the same description to justify a stronger guarantee level
 
 Fallback:
@@ -151,7 +151,7 @@ Fallback:
 
 Owner links:
 - [Security](security.md) owns guarantee vocabulary and non-claims.
-- [Scope](scope.md) owns current MVP scope and profile-gated boundaries.
+- [Scope](scope.md) owns baseline scope and profile-gated boundaries.
 
 ## Context push and pull
 
@@ -184,7 +184,7 @@ Agent must not:
 - push generated artifacts
 - push full artifact contents
 - push unrelated contract material
-- push future catalog material
+- push out-of-scope catalog material
 - push both languages for the same `doc_id`, unless bilingual maintenance requires semantic-parity review
 
 Fallback:
@@ -237,7 +237,7 @@ Connector conformance means preserving owner-defined results and not strengtheni
 - keeps user-owned judgment, sensitive-action approval, final acceptance, residual-risk acceptance, evidence sufficiency, and close readiness distinct
 - keeps surface recipes in [Surface Recipes](../use/surface-recipes.md) instead of turning this reference into an operating manual
 
-This boundary is a documentation contract for future connector behavior. It is not an executable conformance runner and does not create generated conformance output.
+This boundary is a documentation contract for connector behavior. It is not an executable conformance runner and does not create generated conformance output.
 
 ## Related owners
 

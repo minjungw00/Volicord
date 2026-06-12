@@ -2,7 +2,7 @@
 
 This document owns projection authority and read-only derived-display boundaries. Exact rendered body expectations live in [Template Bodies](template-bodies.md).
 
-This is documentation reference material only. It is not a runtime projection, runtime state, generated artifact, evidence record, QA record, final-acceptance record, residual-risk record, close record, or implementation-ready server plan.
+This is documentation reference material only. It is not a runtime projection, runtime state, generated artifact, evidence record, QA record, final-acceptance record, residual-risk record, close record, or implementation authority.
 
 ## Owns / Does not own
 
@@ -12,7 +12,7 @@ This document owns:
 - read-only derived-display rules
 - freshness and unavailable-state wording for projected output
 - the rule that rendered labels are display text, not canonical schema values
-- the later-only boundary for projection reconcile, persistent projection jobs, and managed block drift repair
+- the out-of-scope boundary for projection reconcile, persistent projection jobs, and managed block drift repair
 
 This document does not own:
 
@@ -62,7 +62,7 @@ If an owner record exists for one of those outcomes, the display may show or lin
 
 ## Derived display and source state
 
-Projection output is computed from current owner records at read time unless a future owner promotes a persisted projection job. It may help a person read scope, evidence gaps, blockers, freshness, next safe action, residual risk, and current guarantee wording.
+Projection output is computed from current owner records at read time unless an owner promotes a persisted projection job. It may help a person read scope, evidence gaps, blockers, freshness, next safe action, residual risk, and current guarantee wording.
 
 Generated display must preserve omission, redaction, blocked-artifact, and unavailable notes without reconstructing hidden source values. A display that cannot read required owner state must show that condition instead of inventing a friendly-looking status.
 
@@ -88,9 +88,9 @@ Projected output must keep its source boundary visible enough for the reader to 
 
 This document may link to that owner, but it must not redefine those body sections.
 
-## Later boundary
+## Out-of-Scope Boundary
 
-The current MVP has no active reconcile queue, editable projection input path, projection-to-Core repair path, persistent projection job, or managed block drift repair. Those remain out-of-scope capabilities until promoted with scope, fallback behavior, non-substitution rules, and proof expectations.
+The baseline scope has no active reconcile queue, editable projection input path, projection-to-Core repair path, persistent projection job, or managed block drift repair. Those remain out-of-scope capabilities until promoted with scope, fallback behavior, non-substitution rules, and proof expectations.
 
 ## Related owners
 

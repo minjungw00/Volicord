@@ -2,12 +2,12 @@
 
 Rule:
 
-- This document owns persistent storage record layout for the current MVP source design.
+- This document owns persistent storage record layout for the baseline scope source design.
 - Persistent records are local records committed by Core for later reads.
 
 Not allowed:
 
-- This document does not create a runtime database, generated records, migration files, or implementation-complete DDL in this repository.
+- This document does not create a runtime database, generated records, migration files, or runtime DDL in this repository.
 - Persistent records are not tamper-proof storage, anti-forgery proof, or external audit guarantees.
 
 Owner links:
@@ -67,7 +67,7 @@ The path meanings are storage assumptions:
 - `projects/{project_id}/` is the Harness project home for one registered project. It is not the same thing as `repo_root`.
 - `project.yaml` stores static project configuration only.
 - `state.sqlite` stores project-local Core state for the registered project.
-- `artifacts/` is the project artifact store. `artifacts/tmp/` is temporary staging space, not evidence authority.
+- `artifacts/` is the project artifact store. `artifacts/tmp/` is transient staging space, not evidence authority.
 
 Not allowed:
 
@@ -97,7 +97,7 @@ Owner links:
 
 Rule:
 
-- The active current MVP persists only the Core records needed by the active state-changing method set.
+- The baseline persists only the Core records needed by the active state-changing method set.
 - `harness.status` and `harness.close_task intent=check` are read-only.
 
 State-changing method set:
@@ -129,10 +129,10 @@ The active Core persisted records are:
 - `task_events`.
 - `tool_invocations`.
 
-Temporary storage boundary:
+transient storage boundary:
 
 - `artifact_staging` or an equivalent storage-owned staging manifest.
-- Safe temporary bytes or notices under `artifacts/tmp/`.
+- Safe transient bytes or notices under `artifacts/tmp/`.
 
 Owner links:
 
@@ -140,7 +140,7 @@ Owner links:
 
 Not allowed:
 
-- No other persisted table family or temporary handle family is active current MVP scope.
+- No other persisted table family or transient handle family is baseline scope.
 - Requirement shaping is not a separate committed Discovery Brief, Shared Design, Question Queue, Assumption Register, or First Safe Change Unit Candidate table.
 - Evidence is not stored as full Evidence Manifest storage.
 - Projection has no active persisted table family.
@@ -191,7 +191,7 @@ This table names active storage record categories and links to category details.
 | `user_judgments` | user-owned judgment and sensitive-action approval records | See [`user_judgments`](#user_judgments) |
 | `write_authorizations` | single-use cooperative Write Authorization records | See [`write_authorizations`](#write_authorizations) |
 | `runs` | committed execution or observation records | See [`runs`](#runs) |
-| `artifact_staging` | temporary staged artifact handles | See [`artifact_staging`](#artifact_staging) |
+| `artifact_staging` | transient staged artifact handles | See [`artifact_staging`](#artifact_staging) |
 | `artifacts` | registered durable artifact metadata or bytes | See [`artifacts`](#artifacts) |
 | `artifact_links` | owner relations between artifacts and supported Core/API records | See [`artifact_links`](#artifact_links) |
 | `evidence_summaries` | compact evidence coverage and gap records | See [`evidence_summaries`](#evidence_summaries) |
@@ -242,7 +242,7 @@ Contains:
 Does not contain:
 - current Task lifecycle state.
 - Product Repository file contents.
-- multi-registration behavior beyond the active current MVP baseline.
+- multi-registration behavior beyond the baseline scope.
 
 Owner links:
 - [Runtime Boundaries](runtime-boundaries.md).
@@ -450,10 +450,10 @@ Owner links:
 ### `artifact_staging`
 
 Purpose:
-- Stores temporary staged safe bytes or safe notices created by `harness.stage_artifact` for later single-use `harness.record_run` consumption.
+- Stores transient staged safe bytes or safe notices created by `harness.stage_artifact` for later single-use `harness.record_run` consumption.
 
 Stored in:
-- `state.sqlite` plus safe temporary bytes or notices under `artifacts/tmp/`.
+- `state.sqlite` plus safe transient bytes or notices under `artifacts/tmp/`.
 
 Contains:
 - `handle_id`, `project_id`, `task_id`, `created_by_surface_id`, and `created_by_surface_instance_id`.
@@ -463,7 +463,7 @@ Contains:
 Does not contain:
 - persistent `ArtifactRef` authority.
 - evidence sufficiency or close readiness.
-- cross-surface staged artifact handoff.
+- cross-surface staged artifact transfer.
 
 Owner links:
 - [Artifact Storage](storage-artifacts.md).
@@ -653,7 +653,7 @@ Required identity and uniqueness constraints:
   - `event_id`
   - `invocation_id`
 - Runtime Home identity stores one `runtime_home_id` for the Runtime Home.
-- Project registration requires unique `project_id`, unique `project_home`, and one active registration for a `repo_root` unless a future owner defines multi-registration behavior.
+- Project registration requires unique `project_id`, unique `project_home`, and one active registration for a `repo_root` unless an owner defines multi-registration behavior.
 - `project_state.project_id` is one row per registered project.
 - `surfaces` requires a unique `(project_id, surface_id)`. The stored `surface_instance_id` identifies the registered local instance selected by that surface row.
 - `tasks` requires a unique `(project_id, task_id)`.
@@ -678,7 +678,7 @@ Main relationship constraints:
 
 Rule:
 
-- Ordinary active MVP Core operations do not hard-delete authority rows.
+- Ordinary baseline Core operations do not hard-delete authority rows.
 - Rows move through status or lifecycle fields.
 - Core appends events.
 - Replay and artifact metadata remain available for audit and recovery.
@@ -702,18 +702,18 @@ Not allowed:
 Exceptions:
 
 - Unconsumed or expired `artifact_staging` rows and `artifacts/tmp/` staging bytes or notices may be marked `expired` or `discarded`.
-- Temporary bytes may be cleaned before registration.
-- These exceptions are allowed because unconsumed staging rows and temporary bytes are not evidence authority.
+- transient bytes may be cleaned before registration.
+- These exceptions are allowed because unconsumed staging rows and transient bytes are not evidence authority.
 
 Not allowed:
 
-- Once an `artifacts` row is committed, retention purge, project teardown, or destructive cleanup is outside ordinary active MVP mutation behavior and needs an owner-defined path.
+- Once an `artifacts` row is committed, retention purge, project teardown, or destructive cleanup is outside ordinary baseline mutation behavior and needs an owner-defined path.
 
 ## Storage-owned value summary
 
 Rule:
 
-- Closed current MVP storage value sets are table-level persistence constraints.
+- Closed baseline scope storage value sets are table-level persistence constraints.
 - Rows that mirror API schema values must match the API schema owner exactly.
 - Rows marked storage-owned define storage behavior that is not a public API schema body.
 
@@ -732,7 +732,7 @@ Not allowed:
 | `tasks.result` | persisted coarse Task outcome | See [`tasks.result`](#tasksresult) |
 | `change_units.status` | active Change Unit lifecycle | See [`change_units.status`](#change_unitsstatus) |
 | `write_authorizations.status` | durable authorization lifecycle | See [`write_authorizations.status`](#write_authorizationsstatus) |
-| `artifact_staging.status` | temporary handle lifecycle | See [`artifact_staging.status`](#artifact_stagingstatus) |
+| `artifact_staging.status` | transient handle lifecycle | See [`artifact_staging.status`](#artifact_stagingstatus) |
 | `artifacts.status` | artifact availability state | See [`artifacts.status`](#artifactsstatus) |
 | `artifact_links.owner_record_kind` | owner relation discriminator | See [`artifact_links.owner_record_kind`](#artifact_linksowner_record_kind) |
 | `blockers.status` | blocker row state | See [`blockers.status`](#blockersstatus) |
@@ -745,8 +745,8 @@ Values:
 - `active`
 
 Storage rule:
-- Only registered active projects are in the baseline current MVP.
-- Disable/unregister behavior is later until promoted.
+- Only registered active projects are in the baseline scope.
+- Disable/unregister behavior is outside the baseline scope until promoted.
 
 Owner links:
 - [Runtime Boundaries](runtime-boundaries.md).
@@ -912,7 +912,7 @@ Values:
 - `discarded`
 
 Storage rule:
-- Storage-owned temporary handle lifecycle.
+- Storage-owned transient handle lifecycle.
 - Only `staged` is consumable by `harness.record_run`.
 - Terminal values cannot return to `staged`.
 
@@ -1057,11 +1057,11 @@ Not allowed:
   - residual-risk record
   - close record
 
-## Active / later boundary
+## Baseline / Out-of-Scope Boundary
 
 Rule:
 
-- Profile-gated later storage is outside the active current MVP.
+- Profile-gated storage is outside the baseline.
 
 Exceptions:
 
@@ -1070,7 +1070,7 @@ Exceptions:
 Not allowed:
 
 - Reference-schema presence alone does not make storage active.
-- The active current MVP excludes storage for:
+- The baseline excludes storage for:
   - projection jobs
   - durable projection caches
   - managed-output outboxes

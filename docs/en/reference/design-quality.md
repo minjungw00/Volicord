@@ -2,7 +2,7 @@
 
 ## 1. Owns / Does not own
 
-This Reference page owns the active current MVP design-quality routing boundary.
+This Reference page owns the baseline design-quality routing boundary.
 
 Role: design-quality observations route to judgment, evidence, or scope owners when they identify:
 
@@ -21,7 +21,7 @@ It owns:
 - how design-quality observations route to `judgment_kind=product_decision`, `judgment_kind=technical_decision`, and `judgment_kind=scope_decision`
 - how design-quality observations point to existing active blocker categories such as `scope`, `user_judgment`, `evidence`, `artifact_availability`, `residual_risk_visibility`, or `surface_capability`
 - the active design-quality severity boundary: severity-like wording is advisory triage unless an active owner path separately requires action
-- the boundary between design-quality observations, active `ValidatorResult.validator_id` values, and later design-policy catalogs
+- the boundary between design-quality observations, active `ValidatorResult.validator_id` values, and out-of-scope design-policy catalogs
 
 It does not own:
 
@@ -32,7 +32,7 @@ It does not own:
 - artifact storage; see [Artifact Storage](storage-artifacts.md)
 - projection authority; see [Projection Authority Reference](projection-and-templates.md)
 - template bodies, status cards, or rendered reports; see [Template Bodies](template-bodies.md)
-- broad design-policy validators, design-policy waiver, severity-based active blocking policy, steward policies, full review procedure, operations/reporting candidates, or future conformance catalogs
+- broad design-policy validators, design-policy waiver, severity-based active blocking policy, steward policies, full review procedure, operations/reporting candidates, or out-of-scope conformance catalogs
 
 Use these owner links when a design-quality finding crosses another contract:
 
@@ -48,11 +48,11 @@ Use these owner links when a design-quality finding crosses another contract:
 
 Documentation in this repository remains planning reference material. It does not mean a Harness Server, runtime state, generated evidence, QA record, Acceptance record, residual-risk record, or close record exists here today.
 
-## 2. Active current MVP design-quality role
+## 2. Baseline design-quality role
 
-Active current MVP design quality is a narrow judgment-routing and evidence/scope reference layer. It makes a quality concern legible, then sends the concern to an existing active owner path.
+Baseline design quality is a narrow judgment-routing and evidence/scope reference layer. It makes a quality concern legible, then sends the concern to an existing active owner path.
 
-A design-quality finding can do only these things in the active MVP:
+A design-quality finding can do only these things in the baseline:
 
 | Finding type | Details |
 |---|---|
@@ -195,7 +195,7 @@ Condition:
 - No active owner path applies.
 
 Close effect:
-- The current MVP result is advisory text or no action.
+- The baseline scope result is advisory text or no action.
 
 Not allowed:
 - Do not create a new gate, blocker, validator mapping, waiver route, evidence rule, or close authority.
@@ -213,7 +213,7 @@ Active design quality does not create:
 
 Design quality must not turn ordinary work into an open-ended planning loop.
 
-Not active current-MVP blockers unless another active owner path explicitly requires a narrow piece:
+Not supported blockers unless another active owner path explicitly requires a narrow piece:
 - full domain-language audits
 - full module/interface review
 - full TDD trace
@@ -226,7 +226,7 @@ Not active current-MVP blockers unless another active owner path explicitly requ
 
 ## 3. Routing rules
 
-A design-quality observation affects current MVP state only through an active owner path. The observation must name the active route it depends on:
+A design-quality observation affects baseline scope state only through an active owner path. The observation must name the active route it depends on:
 
 | Concern | Details |
 |---|---|
@@ -312,7 +312,7 @@ Route:
 Close effect:
 - Affects close only through the active capability owner path.
 
-A design-quality label, policy name, severity value, validator ID, or review phrase does not create the route. If no active owner path applies, the current MVP result is advisory text or no action.
+A design-quality label, policy name, severity value, validator ID, or review phrase does not create the route. If no active owner path applies, the baseline scope result is advisory text or no action.
 
 <a id="when-a-finding-blocks-close"></a>
 ## 4. When a finding blocks close
@@ -362,13 +362,13 @@ Close effect:
 - The observation does not block close on that basis.
 
 Not allowed:
-- Do not treat later design-policy material as an active gate, close blocker, waiver route, evidence rule, or close authority.
+- Do not treat out-of-scope design-policy material as an active gate, close blocker, waiver route, evidence rule, or close authority.
 
 <a id="design-quality-close-advisory-only-policy-phrase"></a>
 ### Advisory-only policy phrase
 
 Condition:
-- The finding mentions domain language, vertical slice shape, TDD, module/interface review, stewardship, Manual QA, detached verification, review stages, or a future policy family.
+- The finding mentions domain language, vertical slice shape, TDD, module/interface review, stewardship, Manual QA, detached verification, review stages, or an out-of-scope policy family.
 
 Route:
 - Use an advisory next action, evidence request, focused user judgment, or residual-risk marker only when an active owner path needs that narrow action.
@@ -377,7 +377,7 @@ Close effect:
 - The finding does not block close merely because it mentions one of those topics.
 
 Not allowed:
-- Do not present a future policy family as an active current MVP requirement.
+- Do not present an out-of-scope policy family as a baseline requirement.
 
 <a id="design-quality-close-active-category"></a>
 ### Active close category
@@ -392,11 +392,11 @@ Close effect:
 - The close-readiness finding remains in the active category owned by that close path.
 
 Not allowed:
-- Do not create a design-quality-specific close category in the current MVP.
+- Do not create a design-quality-specific close category in the baseline scope.
 
 ## 5. No current design-policy waiver
 
-The current MVP has no active design-quality waiver or design-policy waiver route. If an owner path allows a requirement to be deferred, accepted as risk, or resolved by user judgment, use that active owner path and its exact `judgment_kind`, blocker category, or evidence behavior.
+The baseline scope has no active design-quality waiver or design-policy waiver route. If an owner path allows a requirement to be deferred, accepted as risk, or resolved by user judgment, use that active owner path and its exact `judgment_kind`, blocker category, or evidence behavior.
 
 A waiver-like decision or accepted-risk answer records the responsible user judgment about a named requirement or a named visible risk.
 
@@ -416,7 +416,7 @@ Keep the judgment routes separate:
 | `final_acceptance` | See [`final_acceptance`](#design-quality-route-final-acceptance) |
 | `residual_risk_acceptance` | See [`residual_risk_acceptance`](#design-quality-route-residual-risk-acceptance) |
 | active `UserJudgment.judgment_kind` values | See [Active user judgment values](#design-quality-route-active-user-judgment-values) |
-| future design-quality waiver candidates | See [Future waiver candidates](#design-quality-route-future-waiver-candidates) |
+| out-of-scope design-quality waiver candidates | See [Out-of-scope waiver candidates](#design-quality-route-future-waiver-candidates) |
 
 <a id="design-quality-route-final-acceptance"></a>
 ### `final_acceptance`
@@ -464,16 +464,16 @@ Close effect:
 - They can affect close only through the active owner path that asked for the judgment.
 
 Not allowed:
-- Do not treat them as design-policy waiver, broad approval, later QA waiver, later verification-risk acceptance, or any future candidate that has not been promoted.
+- Do not treat them as design-policy waiver, broad approval, QA waiver, verification-risk acceptance, or any out-of-scope candidate that has not been promoted.
 
 <a id="design-quality-route-future-waiver-candidates"></a>
-### Future waiver candidates
+### Out-of-Scope Waiver Candidates
 
 Condition:
-- A proposed design-quality waiver or policy waiver is not promoted into the active MVP.
+- A proposed design-quality waiver or policy waiver is not promoted into the baseline.
 
 Effect:
-- Remain later-only material.
+- Remain out-of-scope material.
 
 Owner links:
 - [Scope](scope.md)
@@ -552,19 +552,19 @@ This document does not publish:
 - active design-policy validator IDs
 - a policy-to-validator mapping
 
-Later stable validator ID sets remain candidates in [Later policy and conformance: `ValidatorResult` stable IDs and policy families](scope.md) unless an owner promotes a narrow active contract.
+Out-of-scope stable validator ID sets remain candidates in [Policy and conformance: `ValidatorResult` stable IDs and policy families](scope.md) unless an owner promotes a narrow active contract.
 
-## 8. Later policy catalog boundary
+## 8. Out-of-Scope Policy Catalog Boundary
 
-The full design-quality policy catalog is not active current MVP scope. These ideas are later-only until a named owner promotes a narrow behavior with scope, fallback behavior, exact contracts, and proof expectations.
+The full design-quality policy catalog is not baseline scope. These ideas are out of scope until a named owner promotes a narrow behavior with scope, fallback behavior, exact contracts, and proof expectations.
 
-| Later-only idea | Details |
+| Out-of-scope idea | Details |
 |---|---|
 | `design_gate` and `CloseReadinessBlocker.category=design_policy` | See [`design_gate`](#design-quality-later-design-gate) |
 | Design-policy waiver | See [Design-policy waiver](#design-quality-later-design-policy-waiver) |
 | Broad design validators and severity-based blocking | See [Broad validators](#design-quality-later-broad-validators) |
 | Full design-quality policy families and steward policies | See [Policy families](#design-quality-later-policy-families) |
-| Detailed review displays and future reporting material | See [Detailed review displays](#design-quality-later-detailed-review-displays) |
+| Detailed review displays and reporting material | See [Detailed review displays](#design-quality-later-detailed-review-displays) |
 
 <a id="design-quality-later-design-gate"></a>
 ### `design_gate`
@@ -611,4 +611,4 @@ Not allowed:
 Promotion would need:
 - Promotion through [Scope Reference](scope.md), promotion-time owner updates, and documentation acceptance before implementation work starts.
 
-Out-of-scope capabilities may keep names only. They must not be presented as active current MVP requirements, blockers, waiver rules, evidence expectations, validator mappings, fixture requirements, operations reports, or implementation tasks.
+Out-of-scope capabilities may keep names only. They must not be presented as baseline requirements, blockers, waiver rules, evidence expectations, validator mappings, fixture requirements, operations reports, or implementation tasks.

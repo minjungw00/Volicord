@@ -6,7 +6,7 @@ Each example separates the user's decision from agent action, the Harness record
 
 ## Where to go next
 
-Working users can read these examples after the [User Guide](user-guide.md), then check [Scope](../reference/scope.md) when they need to know whether a behavior is active, profile-gated, or later-only.
+Working users can read these examples after the [User Guide](user-guide.md), then check [Scope](../reference/scope.md) when they need to know whether a behavior is supported, profile-gated, or out of scope.
 
 Use per-example reference links only when you need the exact owner. Do not start a user-facing task by asking the user to read schema internals.
 
@@ -236,7 +236,7 @@ Reference links:
 
 User decides:
 - Whether to fix the design-quality finding, treat it as advisory, narrow scope, provide evidence, or route a named risk through an active residual-risk path.
-- The user does not decide an active design-quality waiver in the current MVP because that waiver route is not active.
+- The user does not decide an active design-quality waiver in the baseline scope because that waiver route is not active.
 
 Agent may do:
 - State the finding, the active owner path it affects, and the next safe action.
@@ -244,11 +244,11 @@ Agent may do:
 
 Harness records:
 - The active owner-path decision or blocker, if one exists.
-- No separate design-quality waiver record in the current MVP.
+- No separate design-quality waiver record in the baseline scope.
 
 Harness must not imply:
 - A design-quality finding creates its own active gate, validator family, close blocker category, waiver route, QA result, evidence record, acceptance record, or close authority.
-- A future design-policy waiver candidate can be used as an active MVP waiver.
+- An out-of-scope design-policy waiver candidate can be used as a baseline waiver.
 
 Reference links:
 - [Design Quality](../reference/design-quality.md)

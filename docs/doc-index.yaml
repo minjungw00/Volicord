@@ -22,14 +22,14 @@ question_routes:
       canonical_owner_doc_id: docs.doc-index
       default_path: docs/doc-index.yaml
       route_note: "Machine-readable route metadata for `doc_id`, owner family, canonical ownership, related documents, and language paths."
-    - question: "Where is the current MVP scope defined?"
+    - question: "Where is the baseline scope defined?"
       canonical_owner_doc_id: reference.scope
       default_path: docs/en/reference/scope.md
-      route_note: "Current MVP scope and active/out-of-scope boundary."
-    - question: "Where is the current MVP excluded scope defined?"
+      route_note: "Baseline scope and active/out-of-scope boundary."
+    - question: "Where is the baseline scope excluded scope defined?"
       canonical_owner_doc_id: reference.scope
       default_path: docs/en/reference/scope.md
-      route_note: "Scope owns included and excluded current-MVP scope items."
+      route_note: "Scope owns included and excluded baseline scope items."
     - question: "API examples use what scenario?"
       canonical_owner_doc_id: reference.api.methods
       default_path: docs/en/reference/api/methods.md
@@ -185,7 +185,7 @@ question_routes:
       canonical_owner_doc_id: reference.storage-artifacts
       default_path: docs/en/reference/storage-artifacts.md
       route_note: "Artifact staging, validation, promotion, linking, and body-read lifecycle."
-    - question: "Does the current MVP provide OS sandboxing?"
+    - question: "Does the baseline scope provide OS sandboxing?"
       canonical_owner_doc_id: reference.security
       default_path: docs/en/reference/security.md
       route_note: "Security claims, guarantee wording, and explicit security non-claims."
@@ -194,8 +194,8 @@ question_routes:
       default_path: docs/en/reference/security.md
       supporting_owner_doc_ids:
         - reference.scope
-      route_note: "Security owns `isolated` guarantee semantics and non-claims; Scope confirms current-MVP availability."
-    - question: "Is `isolated` active in the current MVP?"
+      route_note: "Security owns `isolated` guarantee semantics and non-claims; Scope confirms baseline-scope availability."
+    - question: "Is `isolated` active in the baseline scope?"
       canonical_owner_doc_id: reference.security
       default_path: docs/en/reference/security.md
       supporting_owner_doc_ids:
@@ -312,7 +312,7 @@ docs:
       - high-signal question route lookup before broad retrieval
     does_not_own:
       - technical contracts
-      - active MVP scope
+      - baseline scope
       - API behavior
       - storage effects
       - security guarantees
@@ -342,7 +342,7 @@ docs:
       - high-signal question routes
     does_not_own:
       - technical contracts
-      - active MVP scope
+      - baseline scope
       - API behavior
       - storage effects
       - security guarantees
@@ -371,7 +371,7 @@ docs:
       - top-level documentation start links
     does_not_own:
       - technical contracts
-      - active MVP scope
+      - baseline scope
       - API behavior
       - storage effects
       - security guarantees
@@ -399,7 +399,7 @@ docs:
       - route links to language-specific documentation indexes
     does_not_own:
       - technical contracts
-      - active MVP scope
+      - baseline scope
       - API behavior
       - storage effects
       - security guarantees
@@ -429,7 +429,7 @@ docs:
       - first-hop documentation navigation
     does_not_own:
       - technical contracts
-      - active MVP scope
+      - baseline scope
       - API details
       - storage details
       - security details
@@ -603,7 +603,7 @@ docs:
       - owner-based build sequence
       - first runtime slice guidance
     does_not_own:
-      - current MVP scope contracts
+      - baseline scope contracts
       - exact schemas
       - API behavior
       - storage contracts
@@ -651,17 +651,17 @@ docs:
     default_for_agent: en
     primary_role: active_scope_owner
     canonical_for:
-      - current_mvp_scope
-      - active_later_scope_boundary
+      - baseline_scope
+      - baseline_out_of_scope_boundary
       - scope_level_exclusions
-      - current_mvp_excluded_scope
-      - current_mvp_guarantee_boundary
+      - baseline_scope_exclusions
+      - baseline_scope_guarantee_boundary
     owns:
-      - detailed current MVP scope boundary
+      - detailed baseline scope boundary
       - scope-level active/out-of-scope split
-      - included and excluded current-MVP scope items
+      - included and excluded baseline scope items
       - profile-gated and out-of-scope scope boundaries
-      - current MVP guarantee boundary
+      - baseline scope guarantee boundary
       - out-of-scope material until promoted
     does_not_own:
       - implementation sequencing
@@ -1346,7 +1346,7 @@ docs:
       - record_column_meaning
       - storage_record_values
       - storage_owned_json_fields
-      - record_level_active_later_exclusions
+      - record_level_out_of_scope_exclusions
     owns:
       - Runtime Home layout assumptions
       - local store assumptions
@@ -1619,14 +1619,14 @@ docs:
       - source_state_freshness_boundaries
       - rendered_display_non_authority
       - rendered_label_boundaries
-      - later_projection_boundaries
+      - out_of_scope_projection_boundaries
     owns:
       - projection authority
       - read-only derived-display boundaries
       - source-state and freshness boundaries
       - rendered display non-authority rules
       - rendered label boundaries
-      - later projection boundaries
+      - out-of-scope projection boundaries
     does_not_own:
       - status card bodies
       - judgment request bodies
@@ -1675,7 +1675,7 @@ docs:
       - source-state and freshness authority
       - source-of-truth state
       - API schemas
-      - later template candidates
+      - out-of-scope template candidates
     related_docs:
       - reference.projection-and-templates
       - reference.core-model
@@ -1696,13 +1696,13 @@ docs:
     primary_role: conformance_reference
     canonical_for:
       - conformance_meaning
-      - future_fixture_shape
+      - candidate_fixture_shape
       - assertion_authority
       - non_executable_suite_boundary
       - documentation_smoke_examples
     owns:
       - conformance meaning
-      - future fixture shape
+      - candidate fixture shape
       - assertion authority
       - non-executable suite boundary
       - representative documentation smoke examples
@@ -1742,7 +1742,7 @@ docs:
       - Core gate definitions
       - storage DDL
       - conformance runner output
-      - future policy catalog details
+      - out-of-scope policy catalog details
     related_docs:
       - reference.core-model
       - reference.conformance

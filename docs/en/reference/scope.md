@@ -1,12 +1,12 @@
 # Scope reference
 
-This reference owns the current Harness MVP capability boundary.
+This reference owns the current Harness baseline scope capability boundary.
 
 ## Owns / Does Not Own
 
 This document owns:
 
-- the current MVP capability boundary
+- the baseline scope capability boundary
 - included and excluded product-scope items
 - reserved and profile-gated value boundaries where they affect active scope
 - scope-level guarantee and non-claim wording that other documents should summarize instead of repeating
@@ -22,11 +22,11 @@ This document does not own:
 - connector behavior
 - detailed specifications for out-of-scope capabilities
 
-Use this page when deciding whether a capability is part of the current MVP. Route, build, README, and reference documents should link here for the scope boundary instead of repeating the detailed list.
+Use this page when deciding whether a capability is part of the baseline scope. Route, build, README, and reference documents should link here for the scope boundary instead of repeating the detailed list.
 
-## Included in the Current MVP
+## Included in the Baseline scope
 
-The current MVP scope is limited to:
+The baseline scope is limited to:
 
 - plain-language intake and Task creation
 - scope updates
@@ -101,9 +101,9 @@ Status display boundary:
 - Current scope: Read-time status or derived display is active only as part of status and close-readiness review.
 - Not included: Persistent projection jobs, generated projection files, and managed projection repair.
 
-## Excluded from the Current MVP
+## Excluded from the Baseline scope
 
-The current MVP is intentionally narrow.
+The baseline scope is intentionally narrow.
 
 Not included:
 
@@ -116,7 +116,7 @@ Not included:
 - preventive guarantees and `isolated` guarantee semantics
 - hosted dashboards
 - connector marketplaces
-- export or handoff formats
+- export or transfer formats
 - executable fixture runners
 - generated conformance artifacts
 - operations profiles
@@ -134,10 +134,10 @@ Owner links:
 Some value names may be reserved values or profile-gated values without being active user-visible capabilities.
 
 Does not imply:
-- Reserved or profile-gated guarantee labels do not expand the current MVP scope.
+- Reserved or profile-gated guarantee labels do not expand the baseline scope.
 - Appearance in examples or schemas does not activate behavior.
 - Appearance in a value set does not make a guarantee available.
-- Appearance in a value set does not make the value a default current-MVP value.
+- Appearance in a value set does not make the value a default baseline-scope value.
 
 Owner links:
 - Exact guarantee label value entries: [API Value Sets](api/schema-value-sets.md).
@@ -148,19 +148,19 @@ Owner links:
 An out-of-scope capability remains inactive until this Scope reference and the affected owner documents define a narrow active contract with fallback behavior, proof expectations, and paired English/Korean documentation.
 
 Does not imply:
-- Mentioning an excluded or reserved capability in examples, route text, schema notes, or this reference does not promote it and does not make it a current MVP requirement.
+- Mentioning an excluded or reserved capability in examples, route text, schema notes, or this reference does not promote it and does not make it a baseline scope requirement.
 
 ## Current Guarantee Boundary
 
 Current scope:
-- The current MVP guarantee boundary is `cooperative` by default.
+- The baseline scope guarantee boundary is `cooperative` by default.
 - `harness.prepare_write` and `Write Authorization` remain product-file write compatibility mechanisms.
 
 Not included:
-- The current MVP does not provide `isolated` guarantee semantics.
+- The baseline scope does not provide `isolated` guarantee semantics.
 
 Does not imply:
-- Reserved or profile-gated guarantee labels do not expand the current MVP scope.
+- Reserved or profile-gated guarantee labels do not expand the baseline scope.
 
 Owner links:
 - Guarantee semantics, detective wording, promotion rules for `preventive` and `isolated`, and security non-claims: [Security](security.md).

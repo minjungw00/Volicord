@@ -268,7 +268,7 @@ For write-capable work, do this before naming the first safe work item:
   - narrowing
   - capability step
 
-In the active MVP, clarification should update through the active owner paths:
+In the baseline, clarification should update through the active owner paths:
 
 - active task summary
 - candidate or active work slice when product writes are near
@@ -563,7 +563,7 @@ Evidence display should say:
 - what passed or failed
 - what is missing, stale, redacted, omitted, blocked, or insufficient
 
-When new artifact bytes matter, treat staging as temporary input until the owner path promotes or links a persistent `ArtifactRef`.
+When new artifact bytes matter, treat staging as transient input until the owner path promotes or links a persistent `ArtifactRef`.
 
 Owner links:
 
@@ -642,7 +642,7 @@ Owner link:
 
 Rule:
 
-- The current MVP has no extra active close requirement for separate quality review or broad quality-risk acceptance.
+- The baseline scope has no extra active close requirement for separate quality review or broad quality-risk acceptance.
 
 Owner links:
 
@@ -667,30 +667,30 @@ If blockers remain, lead with them and name the next safe action.
 
 Rule:
 
-- Active MVP behavior should stay compact.
+- Baseline behavior should stay compact.
 
 Allowed:
 
-- Later candidate presentation formats may be named for contrast or routing.
+- Out-of-scope capability presentation formats may be named for contrast or routing.
 
 Not allowed:
 
-- Later candidate presentation formats must not look like active requirements.
+- Out-of-scope capability presentation formats must not look like active requirements.
 
-Do not make these appear required for ordinary active MVP work:
+Do not make these appear required for ordinary baseline work:
 
 - full-format judgment presentations
 - standalone derived views
 - full evidence displays
 - detached later-path checks
 - broad review catalogs
-- future conformance runners
+- out-of-scope conformance runners
 - operations hardening
 - other out-of-scope capabilities
 
 Rule:
 
-- Quality concerns are not standalone current MVP requirements or reasons the work cannot be closed yet.
+- Quality concerns are not standalone baseline scope requirements or reasons the work cannot be closed yet.
 
 Allowed:
 

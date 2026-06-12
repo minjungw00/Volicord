@@ -2,7 +2,7 @@
 
 Rule:
 
-- This document owns the artifact storage lifecycle for the current MVP source design.
+- This document owns the artifact storage lifecycle for the baseline scope source design.
 
 Not allowed:
 
@@ -40,20 +40,20 @@ Owner links:
 
 Allowed:
 
-- `StagedArtifactHandle` is a temporary handle returned by successful `harness.stage_artifact`.
+- `StagedArtifactHandle` is a transient handle returned by successful `harness.stage_artifact`.
 - `existing_artifact` links an existing persistent artifact.
 
 Not allowed:
 
 - A `StagedArtifactHandle` shape is not authority unless it resolves to a compatible stored `artifact_staging` row or equivalent storage-owned staging manifest.
 - `existing_artifact` does not register a new artifact body.
-- Caller-supplied raw filesystem paths, arbitrary local path strings, raw logs as authority claims, `captured_artifact` handles, raw capture-adapter outputs, and native capture claims are not registration authority in the active MVP.
+- Caller-supplied raw filesystem paths, arbitrary local path strings, raw logs as authority claims, `captured_artifact` handles, raw capture-adapter outputs, and native capture claims are not registration authority in the baseline.
 
 ## Staging
 
 Rule:
 
-- Temporary staging is not artifact authority.
+- transient staging is not artifact authority.
 - `artifact_staging` or an equivalent storage-owned staging manifest tracks staging facts.
 
 Tracked facts:
@@ -85,7 +85,7 @@ Allowed:
 
 - A successful `harness.stage_artifact` returns `StageArtifactResult` with `base.effect_kind=staging_created`.
 - It may write safe bytes or a safe notice under `artifacts/tmp/`.
-- It may create the temporary staging row.
+- It may create the transient staging row.
 
 Example staged artifact data:
 
@@ -101,7 +101,7 @@ expires_at: "<future-expiration-timestamp>"
 Rule:
 
 - The example represents product test output prepared for staging.
-- Staging creates only temporary artifact storage.
+- Staging creates only transient artifact storage.
 
 Not allowed:
 
@@ -112,14 +112,14 @@ Owner links:
 
 - Method-effect questions such as evidence creation, replay rows, and state-version increments are owned by [Storage Effects](storage-effects.md).
 
-`artifact_staging.status` is a storage-owned temporary handle lifecycle. The summary table stays short; detail blocks define the value meanings.
+`artifact_staging.status` is a storage-owned transient handle lifecycle. The summary table stays short; detail blocks define the value meanings.
 
 | Value | Summary | Details |
 |---|---|---|
 | `staged` | consumable candidate | [`staged`](#artifact-staging-status-staged) |
 | `consumed` | consumed by owner method | [`consumed`](#artifact-staging-status-consumed) |
 | `expired` | usable lifetime passed | [`expired`](#artifact-staging-status-expired) |
-| `discarded` | temporary object discarded | [`discarded`](#artifact-staging-status-discarded) |
+| `discarded` | transient object discarded | [`discarded`](#artifact-staging-status-discarded) |
 
 <a id="artifact-staging-status-staged"></a>
 **`artifact_staging.status=staged`**
@@ -150,7 +150,7 @@ Storage meaning:
 
 Storage meaning:
 
-- The temporary staging object was discarded before persistent registration.
+- The transient staging object was discarded before persistent registration.
 
 Only `staged` is consumable. Terminal values cannot return to `staged`.
 
@@ -171,7 +171,7 @@ Required conditions:
 
 Not allowed:
 
-- The active MVP does not support cross-surface staged artifact handoff.
+- Cross-surface staged artifact transfer is outside the baseline scope.
 - `StagedArtifactHandle` is not a bearer token that any local caller may use.
 
 The consuming transaction must validate:
@@ -386,17 +386,17 @@ Not allowed:
 Allowed:
 
 - Unconsumed or expired `artifact_staging` rows and `artifacts/tmp/` staging bytes or notices may be marked `expired` or `discarded`.
-- Temporary bytes may be cleaned before registration.
+- transient bytes may be cleaned before registration.
 
 Rule:
 
-- These temporary staging materials are not evidence authority.
-- Once an `artifacts` row is committed, retention purge, project teardown, or destructive cleanup is outside ordinary active MVP mutation behavior and needs an owner-defined path.
-- A future retention or migration path must preserve artifact hashes, owner links, events, and replay rows, or mark affected refs invalid for recovery.
+- These transient staging materials are not evidence authority.
+- Once an `artifacts` row is committed, retention purge, project teardown, or destructive cleanup is outside ordinary baseline mutation behavior and needs an owner-defined path.
+- A retention or migration path must preserve artifact hashes, owner links, events, and replay rows, or mark affected refs invalid for recovery.
 
 Not allowed:
 
-- A future retention or migration path must not silently delete evidence support that current records still name.
+- A retention or migration path must not silently delete evidence support that current records still name.
 
 ## Related owners
 

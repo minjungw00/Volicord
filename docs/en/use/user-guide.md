@@ -2,7 +2,7 @@
 
 Harness is meant to let you work in ordinary language while keeping decision boundaries visible. You decide the work and the risky calls. Harness records scope, evidence, approvals, user judgment, and close basis. The agent must not present inference as if it were your decision.
 
-This guide describes intended active user behavior for a local Harness Server. This repository is documentation: it does not contain a Harness runtime, server implementation, runtime state, generated artifacts, evidence records, acceptance records, close records, or conformance output. Exact state, API, schema, storage, and security contracts are owned by the [Reference Index](../reference/README.md).
+This guide describes intended user behavior for a local Harness Server. This repository is documentation: runtime state, generated artifacts, evidence records, acceptance records, close records, and conformance output belong outside this documentation tree. Exact state, API, schema, storage, and security contracts are owned by the [Reference Index](../reference/README.md).
 
 ## Starting a task
 
@@ -34,7 +34,7 @@ The agent must not:
 - Make you learn schema names before helping.
 - Treat a broad request for help as permission to write files.
 - Infer product behavior, technical direction, final acceptance, or residual-risk acceptance from your opening request.
-- Create temporary planning files or artifacts just because the task needs shaping.
+- Create one-off planning files or artifacts just because the task needs shaping.
 
 ## Keeping scope current
 
@@ -239,4 +239,4 @@ This guide is the user-facing workflow. Continue by role instead of starting wit
 
 Use the [Reference Index](../reference/README.md) when you need exact method behavior, schema shape, storage effect, error behavior, security wording, or close-readiness rules. Do not treat this user guide as the API contract, and do not copy detailed contract rules back into the user-facing path.
 
-Reading these docs does not create runtime state, evidence, acceptance, close records, or proof that runtime/server implementation has started in this repository.
+Reading these docs does not create runtime state, evidence, acceptance, close records, or implementation authority.

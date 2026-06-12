@@ -1,6 +1,6 @@
 # API artifact schemas
 
-This document owns API artifact-shaped schemas for the current MVP. It is documentation reference material only and does not grant local file access, create artifact bytes, create storage rows, or prove evidence sufficiency.
+This document owns API artifact-shaped schemas for the baseline scope. It is documentation reference material only and does not grant local file access, create artifact bytes, create storage rows, or prove evidence sufficiency.
 
 ## Owns / Does not own
 
@@ -57,7 +57,7 @@ ArtifactRef:
 
 ## `StagedArtifactHandle`
 
-`StagedArtifactHandle` is a temporary handle returned by successful `harness.stage_artifact`. It represents storage-owned temporary staging, not a persistent artifact.
+`StagedArtifactHandle` is a transient handle returned by successful `harness.stage_artifact`. It represents storage-owned transient staging, not a persistent artifact.
 
 ```yaml
 StagedArtifactHandle:
@@ -97,10 +97,10 @@ Exactly one source field is active for each input:
 
 | `source_kind` | Required source field | Meaning |
 |---|---|---|
-| `staged_artifact` | `staged_artifact_handle` | Use a compatible temporary staged handle through the owner path. |
+| `staged_artifact` | `staged_artifact_handle` | Use a compatible transient staged handle through the owner path. |
 | `existing_artifact` | `existing_artifact_ref` | Link an already persistent same-project artifact without registering new bytes. |
 
-`captured_artifact`, native capture handles, raw capture-adapter output, raw filesystem paths, arbitrary local path strings, and raw logs as authority claims are not active MVP `ArtifactInput` sources.
+`captured_artifact`, native capture handles, raw capture-adapter output, raw filesystem paths, arbitrary local path strings, and raw logs as authority claims are not baseline `ArtifactInput` sources.
 
 ## Reference constraints
 

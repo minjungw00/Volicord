@@ -6,9 +6,9 @@ This repository contains the bilingual Harness documentation set and owner-route
 
 이 저장소는 로컬 하네스 서버를 위한 한영 문서 세트와 담당 문서 경로 메타데이터를 담고 있습니다.
 
-For the canonical current scope, see [Scope](docs/en/reference/scope.md).
+For the canonical baseline scope, see [Scope](docs/en/reference/scope.md).
 
-현재 범위의 기준 설명은 [범위](docs/ko/reference/scope.md)를 확인하세요.
+기준 범위의 설명은 [범위](docs/ko/reference/scope.md)를 확인하세요.
 
 ## What this repository contains / 이 저장소에 있는 것
 
@@ -34,7 +34,7 @@ Runtime state, generated artifacts, operational records, executable fixtures, co
 - Working user: [`docs/en/use/user-guide.md`](docs/en/use/user-guide.md)
 - Agent behavior: [`docs/en/use/agent-guide.md`](docs/en/use/agent-guide.md)
 - Technical contract: [`docs/en/reference/README.md`](docs/en/reference/README.md)
-- Current scope: [`docs/en/reference/scope.md`](docs/en/reference/scope.md)
+- Baseline scope: [`docs/en/reference/scope.md`](docs/en/reference/scope.md)
 
 ### 한국어
 
@@ -42,13 +42,13 @@ Runtime state, generated artifacts, operational records, executable fixtures, co
 - 작업 중인 사용자: [`docs/ko/use/user-guide.md`](docs/ko/use/user-guide.md)
 - 에이전트 동작: [`docs/ko/use/agent-guide.md`](docs/ko/use/agent-guide.md)
 - 기술 계약: [`docs/ko/reference/README.md`](docs/ko/reference/README.md)
-- 현재 범위: [`docs/ko/reference/scope.md`](docs/ko/reference/scope.md)
+- 기준 범위: [`docs/ko/reference/scope.md`](docs/ko/reference/scope.md)
 
 ## Documentation rules / 문서 규칙
 
-README files are route documents. They do not define active MVP scope, API contracts, storage contracts, security guarantees, or runtime behavior.
+README files are route documents. They do not define baseline scope, API contracts, storage contracts, security guarantees, or runtime behavior.
 
-README는 경로 안내 문서입니다. 현재 MVP 범위, API 계약, 저장소 계약, 보안 보장, 런타임 동작을 정의하지 않습니다.
+README는 경로 안내 문서입니다. 기준 범위, API 계약, 저장소 계약, 보안 보장, 런타임 동작을 정의하지 않습니다.
 
 English and Korean docs are both active. Keep semantic parity by meaning, not by line-by-line translation.
 

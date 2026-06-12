@@ -17,29 +17,29 @@ Use the [Reference index](README.md) to route API, storage, connector, runtime-b
 <a id="honest-guarantee-display"></a>
 ## 2. Current guarantee levels
 
-The current MVP guarantee boundary is `cooperative` by default.
+The baseline scope guarantee boundary is `cooperative` by default.
 
 Conditions:
-- "Available in current MVP" means the specification may describe the behavior as current MVP reference material.
+- "Available in baseline scope" means the specification may describe the behavior as baseline scope reference material.
 - Capability-gated `detective` wording requires a documented capability check that passed for the named surface and observed scope.
 
 May claim:
-- `cooperative` is the default current-MVP guarantee level.
+- `cooperative` is the default baseline-scope guarantee level.
 - `detective` is available only for the checked capability and observed scope.
 - `preventive` and `isolated` are reserved or profile-gated values.
 
 Must not claim:
 - This repository contains a working Harness Server, runtime monitor, sandbox, or storage layer.
-- `preventive` or `isolated` is an active current-MVP guarantee.
-- `isolated` supports OS sandboxing, OS permission enforcement, tamper-proof isolation, or full security isolation in the current MVP.
+- `preventive` or `isolated` is an supported guarantee.
+- `isolated` supports OS sandboxing, OS permission enforcement, tamper-proof isolation, or full security isolation in the baseline scope.
 - `isolated` is a synonym for `preventive`.
 
 Owner links:
-- [Scope](scope.md) owns current-MVP inclusion and active/out-of-scope boundaries.
+- [Scope](scope.md) owns baseline-scope inclusion and active/out-of-scope boundaries.
 - [API Value Sets](api/schema-value-sets.md) owns guarantee label value entries.
 - [Scope Reference](scope.md) owns deferred stronger security and assurance candidates.
 
-| Level | Current MVP status | Scan rule |
+| Level | Baseline scope status | Scan rule |
 |---|---|---|
 | `cooperative` | active default | Use for documented procedures and agent cooperation. |
 | `detective` | limited | Use only after the relevant capability check has passed, and name the observed scope. |
@@ -48,7 +48,7 @@ Owner links:
 
 ## 3. Explicit non-claims
 
-The current MVP has these explicit non-claims. Treat each item below as a `Must not claim` boundary.
+The baseline scope has these explicit non-claims. Treat each item below as a `Must not claim` boundary.
 
 ### Operating system and isolation
 
@@ -132,10 +132,10 @@ Must not claim:
 ### Harness Runtime Home and local store
 
 Conditions:
-- The claim is about future operational data space, local store metadata, or runtime data location.
+- The claim is about operational data space, local store metadata, or runtime data location.
 
 May claim:
-- Storage/runtime owners define the future operational data space.
+- Storage/runtime owners define the operational data space.
 
 Must not claim:
 - This documentation repository is a Runtime Home.
@@ -202,7 +202,7 @@ Owner links:
 ### Harness Server / Runtime Home
 
 Conditions:
-- Future server behavior or runtime storage is being described.
+- Server behavior or runtime storage is being described.
 
 May claim:
 - The server would mediate Harness records and storage effects.
@@ -345,7 +345,7 @@ Current control:
 - Storage/runtime owners may define consistency checks or rejection behavior.
 
 Guarantee level:
-- `cooperative` unless a later mechanism is promoted.
+- `cooperative` unless a stronger mechanism is promoted.
 
 Not allowed:
 - No tamper-proof storage is claimed.
@@ -367,7 +367,7 @@ Not allowed:
 
 ## 8. `cooperative` behavior
 
-`cooperative` behavior is the default current-MVP guarantee level.
+`cooperative` behavior is the default baseline-scope guarantee level.
 
 Conditions:
 - The connected surface follows the documented procedure.
@@ -416,12 +416,12 @@ Owner links:
 Exceptions:
 - Another active owner may document and prove an exact stronger mechanism. Without that owner, keep the wording `cooperative` or capability-gated `detective`.
 
-## 10. Later `preventive` and `isolated` boundary
+## 10. Promoted `preventive` and `isolated` boundary
 
-`preventive` and `isolated` are not active current-MVP guarantees.
+`preventive` and `isolated` are not supported guarantees.
 
 Conditions:
-- A later or profile-gated `preventive` or `isolated` claim requires a promoted owner.
+- A profile-gated `preventive` or `isolated` claim requires a promoted owner.
 
 ### `preventive`
 
@@ -432,7 +432,7 @@ May claim:
 - `preventive` is reserved for a documented prevention-oriented mechanism.
 
 Must not claim:
-- The current MVP has an active `preventive` guarantee.
+- The baseline scope has an active `preventive` guarantee.
 - A server obligation is already active prevention.
 
 ### `isolated`
@@ -444,8 +444,8 @@ May claim:
 - `isolated` is reserved for a stronger isolation-oriented guarantee.
 
 Must not claim:
-- The current MVP has an active `isolated` isolation guarantee.
-- `isolated` means OS sandboxing, OS permission enforcement, tamper-proof isolation, or full security isolation in the current MVP.
+- The baseline scope has an active `isolated` isolation guarantee.
+- `isolated` means OS sandboxing, OS permission enforcement, tamper-proof isolation, or full security isolation in the baseline scope.
 - `isolated` is a synonym for `preventive`.
 
 ### Promotion requirements
@@ -464,7 +464,7 @@ Must not claim:
 - A stronger guarantee exists before the promoted owner documents the mechanism, boundary, proof path, and active-scope promotion.
 
 May claim:
-- Future server obligations may be described as "the specification requires" until a stronger guarantee is promoted.
+- Server obligations may be described as "the specification requires" until a stronger guarantee is promoted.
 
 Owner links:
 - [Scope](scope.md) owns active/out-of-scope status.
@@ -473,7 +473,7 @@ Owner links:
 
 ## 11. Cross-owner links
 
-- [Scope](scope.md) owns current MVP inclusion, exclusion, and active/out-of-scope boundaries.
+- [Scope](scope.md) owns baseline scope inclusion, exclusion, and active/out-of-scope boundaries.
 - [Runtime Boundaries](runtime-boundaries.md) owns Product Repository, Harness Server, Runtime Home, and non-isolation separation.
 - [Agent Integration](agent-integration.md) owns connector behavior and `capability_profile` meaning at the surface boundary.
 - [API Methods](api/methods.md), method owner documents, [API Value Sets](api/schema-value-sets.md), and [API Errors](api/errors.md) own method routing, method behavior, value sets, and public error routing.

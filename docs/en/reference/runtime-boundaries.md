@@ -11,7 +11,7 @@ May claim:
 - Product Repository, Harness Server or installation, and Harness Runtime Home are distinct locations.
 
 Must not claim:
-- This repository contains a Harness Server/runtime implementation, Runtime Home, generated projection system, conformance runner, runtime state, or runtime data.
+- Documentation files are Harness Server/runtime implementation material, Runtime Home data, generated projection systems, conformance runners, runtime state, or runtime data.
 - Documentation files are runtime state, Harness records, generated artifacts, projections, acceptance records, evidence records, or operational files.
 
 Owner links:
@@ -81,7 +81,7 @@ Owner links:
 ### Harness Runtime Home location
 
 Conditions:
-- The future operational data space for Harness records, local store metadata, and artifact storage.
+- The operational data space for Harness records, local store metadata, and artifact storage.
 
 May claim:
 - Storage/runtime owners may define what operational data belongs there.
@@ -101,7 +101,7 @@ The Product Repository is the user's project workspace.
 
 Conditions:
 - Product files may be input to Harness checks or user-owned judgments.
-- An implementation may allow project-local Harness metadata only when storage/runtime owners define it.
+- Project-local Harness metadata is allowed only when storage/runtime owners define it.
 
 May claim:
 - Product Repository files are user workspace files.
@@ -121,7 +121,7 @@ Owner links:
 
 ## Harness server or installation
 
-The Harness Server would mediate Harness records and API behavior.
+The Harness Server mediates Harness records and API behavior.
 
 Conditions:
 - A server installation location is where server code, packages, configuration, or application resources may live.
@@ -134,7 +134,7 @@ May claim:
 Must not claim:
 - The installation location and runtime data location are the same by default.
 - Installing or running a server from a directory makes that directory the Runtime Home.
-- This repository contains a Harness Server implementation.
+- Documentation files are executable server material.
 - Documentation edits create server code, start runtime behavior, or authorize product/runtime writes.
 
 Owner links:
@@ -144,7 +144,7 @@ Owner links:
 
 ## Harness runtime home
 
-Harness Runtime Home is the future per-user or per-installation operational data space.
+Harness Runtime Home is the per-user or per-installation operational data space.
 
 Conditions:
 - Storage/runtime owners define what operational data belongs in the Runtime Home.
@@ -156,7 +156,7 @@ May include:
 - Locks, migrations, and related diagnostics.
 
 May claim:
-- A future Runtime Home can hold Harness operational data when storage/runtime owners define the data and validation rules.
+- A Runtime Home can hold Harness operational data when storage/runtime owners define the data and validation rules.
 
 Must not claim:
 - A Runtime Home is the Product Repository.
@@ -174,7 +174,7 @@ Conditions:
 
 May claim:
 - Product Repository storage, Harness Server or installation storage, Harness Runtime Home storage, and documentation repository storage are separate assumptions.
-- Storage/runtime owners may define future operational data placement.
+- Storage/runtime owners may define operational data placement.
 
 Must not claim:
 - Product Repository storage, server installation storage, and Runtime Home storage are the same by default.
@@ -218,7 +218,7 @@ Conditions:
 - The location is the server process, package, or installed application location.
 
 May claim:
-- Future server executable code, installed packages, server configuration, and application resources.
+- Server executable code, installed packages, server configuration, and application resources.
 
 Must not claim:
 - Harness Server or installation storage is product workspace content.
@@ -233,10 +233,10 @@ Owner links:
 ### Harness Runtime Home storage
 
 Conditions:
-- Storage/runtime owners define the future operational data space.
+- Storage/runtime owners define the operational data space.
 
 May claim:
-- Future Harness operational records defined by storage/runtime owners.
+- Harness operational records defined by storage/runtime owners.
 - Runtime metadata and local store data defined by storage/runtime owners.
 - Artifacts, locks, migrations, and related diagnostics defined by storage/runtime owners.
 
@@ -261,7 +261,7 @@ May claim:
 
 Must not claim:
 - Documentation repository storage is runtime state.
-- Documentation repository storage is a server implementation.
+- Documentation repository storage is executable server material.
 - Documentation repository storage contains generated projections.
 - Documentation repository storage contains evidence, QA, acceptance, close records, or conformance output.
 
@@ -276,7 +276,7 @@ Conditions:
 - A reader sees a copied `surface_id`, displayed `ArtifactRef`, rendered projection, install directory, or local directory name.
 
 Must not claim or infer:
-- This repository contains a working Harness Server, Runtime Home, or runtime data.
+- Documentation files are a working Harness Server, Runtime Home, or runtime data.
 - Documentation files are Harness records or generated operational files.
 - The Product Repository is the Runtime Home unless an owner-defined runtime configuration says so.
 - The server installation directory is the runtime data directory.
@@ -292,7 +292,7 @@ Owner links:
 
 ## Security boundary links
 
-This page states the location boundary and the non-inference rules. Detailed guarantee levels, capability-gated detective wording, explicit non-claims, and later preventive-control requirements belong to [Security](security.md).
+This page states the location boundary and the non-inference rules. Detailed guarantee levels, capability-gated detective wording, explicit non-claims, and promoted preventive-control requirements belong to [Security](security.md).
 
 ## Owner links
 

@@ -1,6 +1,6 @@
 # API 값 집합
 
-이 문서는 현재 MVP의 활성 API 값 집합과 enum 형태 공개 값을 담당합니다. 참조 문서일 뿐이며 이후 후보 이름을 적는 것만으로 활성 범위를 넓히지 않습니다.
+이 문서는 기준 범위의 활성 API 값 집합과 enum 형태 공개 값을 담당합니다. 참조 문서일 뿐이며 지원 범위 밖 기능 이름을 적는 것만으로 활성 범위를 넓히지 않습니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -20,7 +20,7 @@
 - 이 값을 쓰는 필드 형태: [API 코어 스키마](schema-core.md), [API 상태 스키마](schema-state.md), [API 아티팩트 스키마](schema-artifacts.md), [API 판단 스키마](schema-judgment.md)
 - 메서드 동작: [API 메서드](methods.md)와 메서드 담당 문서
 - 보안 보장 의미: [보안](../security.md)
-- 이후 후보 승격: [범위 참조](../scope.md)
+- 지원 범위 밖 기능 승격: [범위 참조](../scope.md)
 
 ## 경계
 
@@ -300,7 +300,7 @@ error
 blocking
 ```
 
-`GuaranteeDisplay.level`은 현재 MVP 활성 값으로 아래를 사용합니다.
+`GuaranteeDisplay.level`은 기준 범위 활성 값으로 아래를 사용합니다.
 
 ```text
 cooperative
@@ -435,7 +435,7 @@ incompatible
 
 ## 프로필 조건부 및 예약 값
 
-아래 이름들은 현재 MVP의 기본 활성 값이 아닙니다.
+아래 이름들은 기준 범위의 기본 활성 값이 아닙니다.
 
 - 조건: 승격된 담당 문서가 필드, 대체 동작, 증명 기대를 정의하기 전입니다.
 - 결과: 표에 이름이 있다는 사실은 값 집합 경계만 나타냅니다.
@@ -444,22 +444,22 @@ incompatible
 | 이름 | 경계 |
 |---|---|
 | `preventive` | 프로필 조건부 `GuaranteeDisplay.level`입니다. 승격된 예방 메커니즘과 증명 경로가 필요합니다. |
-| `isolated` | 이후 후보 또는 프로필 조건부 값으로 예약된 `GuaranteeDisplay.level` 라벨입니다. |
+| `isolated` | 지원 범위 밖 기능 또는 프로필 조건부 값으로 예약된 `GuaranteeDisplay.level` 라벨입니다. |
 | `captured_artifact`와 접점 자체 캡처 이름 | 활성 `ArtifactInput.source_kind`로는 예약 또는 거절됩니다. |
-| 접점 간 스테이징된 아티팩트 인계 | 활성 기능이 아닙니다. 스테이징된 아티팩트 승격에는 기록된 접점 출처가 일치해야 합니다. |
-| QA 면제와 검증 위험 판단 종류 | 이후 후보입니다. 활성 `judgment_kind` 값이 아닙니다. |
-| `design_policy` 차단 사유 범주 | 스키마와 닫기 준비 상태 담당 문서가 승격하기 전까지 이후 또는 비활성 값입니다. |
+| 접점 간 스테이징된 아티팩트 전달 | 지원 범위 밖입니다. 스테이징된 아티팩트 승격에는 기록된 접점 출처가 일치해야 합니다. |
+| QA 면제와 검증 위험 판단 종류 | 지원 범위 밖 기능입니다. 활성 `judgment_kind` 값이 아닙니다. |
+| `design_policy` 차단 사유 범주 | 스키마와 닫기 준비 상태 담당 문서가 승격하기 전까지 지원 범위 밖입니다. |
 
 `isolated` 세부사항:
 - 담당 경계: 이 문서는 값 집합 항목만 담당합니다.
 - 비주장: 이 항목은 현재 격리 보장을 부여하거나 정의하지 않습니다.
-- 담당 문서 링크: 보장 의미는 [보안](../security.md)이 담당합니다. 현재 MVP에서의 사용 가능 여부는 [현재 MVP 범위](../scope.md)가 담당합니다.
+- 담당 문서 링크: 보장 의미는 [보안](../security.md)이 담당합니다. 기준 범위에서의 사용 가능 여부는 [기준 범위](../scope.md)가 담당합니다.
 
 활성 아티팩트 입력은 `staged_artifact` 또는 `existing_artifact`를 사용합니다. 아티팩트 출처 의미는 [API 아티팩트 스키마](schema-artifacts.md)와 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
 
 ## 관련 담당 문서
 
-- [현재 MVP 범위](../scope.md): 값이 현재 MVP에 속하는지 판단.
+- [기준 범위](../scope.md): 값이 기준 범위에 속하는지 판단.
 - [API 오류](errors.md): 공개 오류 코드와 우선순위.
 - [API 코어 스키마](schema-core.md), [API 상태 스키마](schema-state.md), [API 아티팩트 스키마](schema-artifacts.md), [API 판단 스키마](schema-judgment.md): 이 값을 쓰는 필드.
 - [API 메서드](methods.md)와 메서드 담당 문서: 이 값을 사용하는 메서드 동작.

@@ -1,6 +1,6 @@
 # API value sets
 
-This document owns active API value sets and enum-like public values for the current MVP. It is documentation reference material only and does not widen active scope by naming out-of-scope capabilities.
+This document owns active API value sets and enum-like public values for the baseline scope. It is documentation reference material only and does not widen active scope by naming out-of-scope capabilities.
 
 ## Owns / Does not own
 
@@ -279,7 +279,7 @@ error
 blocking
 ```
 
-`GuaranteeDisplay.level` uses active current MVP values:
+`GuaranteeDisplay.level` uses baseline values:
 
 ```text
 cooperative
@@ -405,27 +405,27 @@ incompatible
 
 ## Profile-gated and reserved values
 
-These names are not default active MVP values. A listed name is a value-set boundary only; it does not activate behavior or grant a guarantee.
+These names are not default baseline values. A listed name is a value-set boundary only; it does not activate behavior or grant a guarantee.
 
 | Name | Boundary |
 |---|---|
 | `preventive` | Profile-gated `GuaranteeDisplay.level`; requires a promoted preventive mechanism and proof path. |
-| `isolated` | Reserved later or `profile-gated` `GuaranteeDisplay.level` label. |
+| `isolated` | Reserved or `profile-gated` `GuaranteeDisplay.level` label. |
 | `captured_artifact` and native capture names | Reserved or rejected for active `ArtifactInput.source_kind`. |
-| cross-surface staged artifact handoff | Not active; staged promotion requires matching recorded surface provenance. |
+| cross-surface staged artifact transfer | Out of scope; staged promotion requires matching recorded surface provenance. |
 | QA waiver and verification-risk judgment kinds | Out-of-scope capabilities; not active `judgment_kind` values. |
-| `design_policy` blocker category | Later or inactive unless promoted by a schema and close-readiness owner. |
+| `design_policy` blocker category | Out of scope unless promoted by a schema and close-readiness owner. |
 
 `isolated` details:
 - Owner boundary: This document owns the value-set entry only.
 - Non-claim: The entry does not grant or define an active isolation guarantee.
-- Owner links: Guarantee semantics belong to [Security](../security.md). Current-MVP availability belongs to [Scope](../scope.md).
+- Owner links: Guarantee semantics belong to [Security](../security.md). Baseline scope availability belongs to [Scope](../scope.md).
 
 Active artifact intake uses `staged_artifact` or `existing_artifact`; artifact source semantics belong to [API Artifact Schemas](schema-artifacts.md) and [Artifact Storage](../storage-artifacts.md).
 
 ## Related owners
 
-- [Scope](../scope.md) for whether a value belongs in the current MVP.
+- [Scope](../scope.md) for whether a value belongs in the baseline scope.
 - [API Errors](errors.md) for public error codes and precedence.
 - [API Schema Core](schema-core.md), [API State Schemas](schema-state.md), [API Artifact Schemas](schema-artifacts.md), and [API Judgment Schemas](schema-judgment.md) for fields that use these values.
 - [API Methods](methods.md) and method owner documents for method behavior using these values.

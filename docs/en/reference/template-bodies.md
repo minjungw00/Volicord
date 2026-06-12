@@ -1,6 +1,6 @@
 # Template bodies
 
-This document owns active current MVP rendered body expectations for status cards, judgment requests, run/evidence summaries, close results, and agent context packets. It is documentation reference material only and does not generate projection files, runtime artifacts, QA records, acceptance records, or close records.
+This document owns baseline rendered body expectations for status cards, judgment requests, run/evidence summaries, close results, and agent context packets. It is documentation reference material only and does not generate projection files, runtime artifacts, QA records, acceptance records, or close records.
 
 ## Owns / Does not own
 
@@ -16,7 +16,7 @@ This document does not own:
 - projection authority, freshness, or read-only derived-display rules; see [Projection Authority Reference](projection-and-templates.md)
 - source-of-truth state or storage; see [Core Model](core-model.md) and storage owners
 - API schemas or value sets; see API schema owners
-- later template candidates; see [Scope Reference](scope.md)
+- out-of-scope template candidates; see [Scope Reference](scope.md)
 
 ## Boundary
 

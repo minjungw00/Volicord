@@ -37,13 +37,13 @@ Use these routes for first-hop navigation. Follow the linked pages to the exact 
 
 ## Reference owner routing / 참조 담당 문서 찾기
 
-Use the reference README to find owners for API, schema, storage, security, scope, and other contract areas. Use `docs/doc-index.yaml` when an agent or maintainer needs stable `doc_id` routing. This README intentionally does not repeat API schemas, storage effects, active MVP details, or security contracts.
+Use the reference README to find owners for API, schema, storage, security, scope, and other contract areas. Use `docs/doc-index.yaml` when an agent or maintainer needs stable `doc_id` routing. This README intentionally does not repeat API schemas, storage effects, baseline details, or security contracts.
 
-API, 스키마, 저장소, 보안, 범위, 그 밖의 계약 영역은 참조 README에서 담당 문서를 찾아 읽습니다. 에이전트나 유지보수자가 안정적인 `doc_id` 경로가 필요할 때는 `docs/doc-index.yaml`을 사용합니다. 이 README는 API 스키마, 저장 효과, 현재 MVP 세부사항, 보안 계약을 반복하지 않습니다.
+API, 스키마, 저장소, 보안, 범위, 그 밖의 계약 영역은 참조 README에서 담당 문서를 찾아 읽습니다. 에이전트나 유지보수자가 안정적인 `doc_id` 경로가 필요할 때는 `docs/doc-index.yaml`을 사용합니다. 이 README는 API 스키마, 저장 효과, 기준 범위 세부사항, 보안 계약을 반복하지 않습니다.
 
 - English reference index: [`docs/en/reference/README.md`](en/reference/README.md)
 - Korean reference index: [`docs/ko/reference/README.md`](ko/reference/README.md)
-- Current MVP scope route: [`docs/en/reference/scope.md`](en/reference/scope.md), [`docs/ko/reference/scope.md`](ko/reference/scope.md)
+- Baseline scope route: [`docs/en/reference/scope.md`](en/reference/scope.md), [`docs/ko/reference/scope.md`](ko/reference/scope.md)
 - Owner routing metadata: [`docs/doc-index.yaml`](doc-index.yaml)
 - Bilingual terminology controls: [`docs/terminology-map.yaml`](terminology-map.yaml)
 

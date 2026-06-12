@@ -29,7 +29,7 @@ The current API is a small local MCP surface for one user work loop. It can inta
 
 The API returns cooperative Harness record and check behavior only. Security non-claims and guarantee wording belong to [Security](../security.md). Out-of-scope API or schema capabilities remain outside this method router until [Scope](../scope.md) and the affected owners define them as active.
 
-<a id="active-mvp-method-behavior"></a>
+<a id="baseline-scope-method-behavior"></a>
 
 ## Current API method list
 

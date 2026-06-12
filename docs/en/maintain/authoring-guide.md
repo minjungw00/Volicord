@@ -44,7 +44,7 @@ Use this path for documentation maintenance:
 
 [Authoring Guide](authoring-guide.md) -> [Translation Guide](translation-guide.md) -> [Checks](checks.md) -> [doc-index.yaml](../../doc-index.yaml) -> [Terminology Map](../../terminology-map.yaml).
 
-The maintain path helps editors choose inputs and owners. It does not create runtime state, acceptance, evidence, close records, or server implementation permission.
+The maintain path helps editors choose inputs and owners. It does not create runtime state, acceptance, evidence, close records, or implementation authority.
 
 ## 2. Canonical owner rule
 
@@ -56,7 +56,7 @@ Use these single-owner routes before repeating details:
 
 | Topic | Canonical owner |
 |---|---|
-| Current MVP boundary and active/out-of-scope status | [Scope](../reference/scope.md) |
+| Baseline scope boundary and active/out-of-scope status | [Scope](../reference/scope.md) |
 | Common API envelopes and response branches | [API Schema Core](../reference/api/schema-core.md) |
 | Public error codes and error routing | [Errors](../reference/api/errors.md) |
 | Storage effects | [Storage Effects](../reference/storage-effects.md) |
@@ -90,7 +90,7 @@ Maintain docs own authoring rules and checks. They must not become secondary sou
 
 ### Value status stabilization rules
 
-A value name can exist in a schema, example, storage note, or route page without the current MVP providing that behavior. Treat the name as vocabulary or reserved surface area until [Scope](../reference/scope.md) and the semantic owner both say the behavior is active.
+A value name can exist in a schema, example, storage note, or route page without the baseline scope providing that behavior. Treat the name as vocabulary or reserved surface area until [Scope](../reference/scope.md) and the semantic owner both say the behavior is active.
 
 Reserved and profile-gated values are not active guarantees. Mark them at the point of use and avoid default, required, supported, enforced, preventive, detective, accepted, verified, or close-ready wording unless the active owner says the profile and behavior are available.
 
@@ -102,7 +102,7 @@ Route documents must expose canonical owner gaps rather than hide them. If a REA
 
 ## 3. When to edit an existing owner
 
-Edit an existing owner when the change affects normative meaning. This includes active MVP scope, API behavior, schema meaning, error meaning, storage effects, security wording, access-boundary wording, close-readiness meaning, product terminology, or any rule another document should link to.
+Edit an existing owner when the change affects normative meaning. This includes baseline scope, API behavior, schema meaning, error meaning, storage effects, security wording, access-boundary wording, close-readiness meaning, product terminology, or any rule another document should link to.
 
 Start in the owner, then update route and user-facing documents only as needed. A non-owner edit should usually explain what the reader can expect or where to go next, not restate the contract.
 
@@ -112,14 +112,14 @@ If a duplicate explanation is stale, do not refresh the duplicate. Replace it wi
 
 Create a new document only when no existing owner can responsibly hold the concept. The new page must have a stable reader purpose, a clear owner boundary, and a paired English/Korean route when it is part of the active documentation set.
 
-Do not create a new document for temporary planning notes, migration notes, review leftovers, one-off summaries, or duplicated contract extracts. Put implementation decisions in [Implementation Guide](../build/implementation-guide.md). Put contract definitions in the appropriate Reference owner. Put terminology choices in [Glossary](../reference/glossary.md), [Translation Guide](translation-guide.md), or [Terminology Map](../../terminology-map.yaml).
+Do not create a new document for one-off planning notes, migration notes, review leftovers, one-off summaries, or duplicated contract extracts. Put implementation decisions in [Implementation Guide](../build/implementation-guide.md). Put contract definitions in the appropriate Reference owner. Put terminology choices in [Glossary](../reference/glossary.md), [Translation Guide](translation-guide.md), or [Terminology Map](../../terminology-map.yaml).
 
 When adding a real new owner, update [Reference README](../reference/README.md) or the appropriate route index so readers can find it. Update [doc-index.yaml](../../doc-index.yaml) only as documentation retrieval metadata.
 
-<a id="active-mvp-api-method-split-threshold"></a>
+<a id="baseline-scope-api-method-split-threshold"></a>
 ### API method owners
 
-[`reference/api/methods.md`](../reference/api/methods.md) is the stable route document for the active API method family. Method-specific owner documents own active MVP method behavior:
+[`reference/api/methods.md`](../reference/api/methods.md) is the stable route document for the active API method family. Method-specific owner documents own baseline method behavior:
 
 - `reference/api/method-intake.md`
 - `reference/api/method-update-scope.md`
@@ -237,7 +237,7 @@ Do not route active documentation through stale legacy paths. If an old path app
 - [ ] Each concept still has one canonical owner.
 - [ ] README, route, and maintain documents use short summaries plus owner links instead of copied contract explanations.
 - [ ] API, storage, schema, security, access-boundary, and close-readiness details live in the appropriate Reference owner.
-- [ ] Value names are not treated as current MVP behavior merely because they exist in schemas, examples, storage notes, or out-of-scope lists.
+- [ ] Value names are not treated as baseline scope behavior merely because they exist in schemas, examples, storage notes, or out-of-scope lists.
 - [ ] Example field names come from the method, schema, or storage owner, and storage-owned summary data is labeled where it uses a different field name.
 - [ ] API examples are internally consistent across response snapshots, `state_version`, refs, paths, artifact refs, sensitive approval reasons, expiration timestamps, and shared scenario evidence.
 - [ ] Reserved and profile-gated values are labeled where used and are not described as active guarantees.
@@ -254,5 +254,5 @@ Do not route active documentation through stale legacy paths. If an old path app
 - [ ] Check descriptions use named blocks and bullets instead of dense table cells.
 - [ ] Links point to active routes and canonical owners.
 - [ ] New or changed terminology was checked against [Terminology Map](../../terminology-map.yaml).
-- [ ] No temporary planning files, archive copies, generated runtime records, or migration notes remain.
+- [ ] No one-off planning files, archive copies, generated runtime records, or migration notes remain.
 - [ ] Relevant checks in [Checks](checks.md) were run or reported as skipped.

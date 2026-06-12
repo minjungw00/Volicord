@@ -1,6 +1,6 @@
 # Storage versioning
 
-This document owns state versioning, idempotency, event meaning, locks, and migration semantics for current MVP storage source design. It is documentation reference material only and does not run migrations, create runtime locks, or create runtime state.
+This document owns state versioning, idempotency, event meaning, locks, and migration semantics for baseline scope storage source design. It is documentation reference material only and does not run migrations, create runtime locks, or create runtime state.
 
 ## Owns / Does not own
 
@@ -27,12 +27,12 @@ This document does not own:
 
 Meaning:
 
-- The active current MVP has one public state clock: `project_state.state_version`.
+- The baseline has one public state clock: `project_state.state_version`.
 - `project_state.state_version` is project-wide and is the only active authorization, conflict, freshness, and concurrency basis for public API mutations.
 - Task routing still matters for ownership, blockers, close state, evidence, and user judgments.
 - Task routing does not select a separate Task-local state clock.
 - A committed mutation response reports the resulting project-wide version.
-- Read-only results, `ToolDryRunResponse` previews, and temporary staging responses report the current project-wide version they observed.
+- Read-only results, `ToolDryRunResponse` previews, and transient staging responses report the current project-wide version they observed.
 
 Increments when:
 
@@ -40,7 +40,7 @@ Increments when:
 
 Does not increment when:
 
-- A response only observes state, previews a dry-run effect, stages temporary data, or rejects before commit.
+- A response only observes state, previews a dry-run effect, stages transient data, or rejects before commit.
 
 Retry behavior:
 
@@ -283,8 +283,8 @@ Retry behavior:
 
 Public API boundary:
 
-- `STATE_VERSION_CONFLICT` is the only active current MVP public `ErrorCode` for project-wide state-version mismatch.
-- No active current MVP call requires or accepts more than one public `expected_state_version`.
+- `STATE_VERSION_CONFLICT` is the only baseline public `ErrorCode` for project-wide state-version mismatch.
+- No baseline call requires or accepts more than one public `expected_state_version`.
 - When that mismatch is surfaced through the public API, the public error is also `STATE_VERSION_CONFLICT`.
 
 Related storage field:
@@ -314,7 +314,7 @@ Not allowed:
 - `evidence_summaries`
 - `blockers`
 
-`task_events` is append-only for ordinary active MVP operation. After an event is committed, Core must not update or delete that row to change history. Corrections or repairs are recorded by new events and current-row updates through the owner path.
+`task_events` is append-only for ordinary baseline operation. After an event is committed, Core must not update or delete that row to change history. Corrections or repairs are recorded by new events and current-row updates through the owner path.
 
 Branches that do not append events:
 
@@ -410,7 +410,7 @@ Increments when:
 Does not increment when:
 
 - Lock acquisition or release does not itself define a public state change.
-- The active current MVP does not require a `persistent_locks` table.
+- The baseline does not require a `persistent_locks` table.
 - Durable lock/recovery metadata is later operations material until an owner promotes it.
 
 Retry behavior:
@@ -434,9 +434,9 @@ Meaning:
 
 Increments when:
 
-- None for active current MVP migration execution.
+- None for baseline migration execution.
 - No public API `state_version` increment is defined here for migrations.
-- A future accepted migration must state its version and storage-profile behavior in its owning documentation.
+- An accepted migration must state its version and storage-profile behavior in its owning documentation.
 
 Does not increment when:
 
@@ -446,7 +446,7 @@ Does not increment when:
 Retry behavior:
 
 - Each future migration must declare a source version, target version, storage profile, owner, and rollback or repair expectation before it is accepted.
-- Future migrations must run transactionally for `registry.sqlite` or one `state.sqlite` at a time, with a clear interrupted-state recovery rule before runtime implementation.
+- Promoted migrations must run transactionally for `registry.sqlite` or one `state.sqlite` at a time, with a clear interrupted-state recovery rule.
 
 Owner links:
 

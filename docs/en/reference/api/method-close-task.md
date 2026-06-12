@@ -4,7 +4,7 @@
 
 ## What this document owns
 
-This document owns active MVP method behavior for `harness.close_task`:
+This document owns baseline method behavior for `harness.close_task`:
 
 - method-specific required inputs, access requirements, state-version behavior, result branches, and dry-run behavior
 - the minimal request and representative response for the shared account data export confirmation scenario

@@ -1,6 +1,6 @@
 # Checks
 
-Use these read-only documentation checks after documentation edits and before major review handoff. This page defines review procedures only. It does not define API, storage, schema, security, runtime, projection, evidence, QA, acceptance, close-readiness, or residual-risk contracts.
+Use these read-only documentation checks after documentation edits. This page defines maintenance procedures only. It does not define API, storage, schema, security, runtime, projection, evidence, QA, acceptance, close-readiness, or residual-risk contracts.
 
 ## 1. Check inputs
 
@@ -37,7 +37,7 @@ Check:
 - Keep findings tied to file paths, owner documents, and suggested documentation fixes.
 
 Failure:
-- The report treats a check result as documentation acceptance, implementation routing, runtime conformance, final acceptance, QA, close readiness, residual-risk acceptance, or permission to start server implementation.
+- The report treats a check result as documentation acceptance, implementation routing, runtime conformance, final acceptance, QA, close readiness, residual-risk acceptance, or implementation authority.
 
 Fix:
 - Reword the output as a documentation maintenance result.
@@ -54,10 +54,10 @@ Check:
 - Confirm it did not create or simulate Harness runtime records, generated projections, operational artifacts, executable fixtures, conformance reports, QA records, acceptance records, close records, residual-risk records, or product writes.
 
 Failure:
-- A documentation check leaves behind generated operational files, runtime-like state, fixture output, migration notes, archive copies, or temporary planning files.
+- A documentation check leaves behind generated operational files, runtime-like state, fixture output, migration notes, archive copies, or one-off planning files.
 
 Fix:
-- Remove the generated or temporary material.
+- Remove the generated or transient material.
 - Keep the result in the final review report only.
 
 ## 3. Link and anchor checks
@@ -414,7 +414,7 @@ Owner:
 - [Implementation Guide](../build/implementation-guide.md)
 
 Check:
-- Inspect changed active docs, examples, route text, and summaries for out-of-scope capabilities presented as current MVP behavior.
+- Inspect changed active docs, examples, route text, and summaries for out-of-scope capabilities presented as baseline scope behavior.
 - Confirm profile-gated or reserved values are labeled at the point of use.
 
 Failure:
@@ -423,18 +423,18 @@ Failure:
 Fix:
 - Reword it as out of scope and route to the Scope Reference, or promote it through the active owner before using active language.
 
-### CHK-SCOPE-LIST-STRUCTURE: current MVP scope list structure
+### CHK-SCOPE-LIST-STRUCTURE: baseline scope list structure
 
 Owner:
 - [Scope](../reference/scope.md)
 
 Check:
-- Confirm included and excluded current-MVP scope items are represented as scannable lists, tables, or equivalent structured blocks.
+- Confirm included and excluded baseline scope items are represented as scannable lists, tables, or equivalent structured blocks.
 - Confirm the structure makes it easy to tell what is included and what is excluded.
 - Confirm Korean may use natural phrasing, but it does not collapse many scope items into one long sentence.
 
 Failure:
-- Included or excluded current-MVP scope appears as a long comma-separated sentence.
+- Included or excluded baseline scope appears as a long comma-separated sentence.
 - A reader cannot quickly tell which items are included or excluded.
 - One language version omits or compresses important scope items compared with the other.
 
@@ -449,11 +449,11 @@ Owner:
 - [Authoring Guide](authoring-guide.md)
 
 Check:
-- Confirm documentation edits do not imply the server, runtime, conformance runner, generated projections, or implementation-complete behavior already exists.
-- Confirm permission to start server implementation is not claimed unless the Implementation Guide handoff owner explicitly says so.
+- Confirm documentation edits do not imply the server, runtime, conformance runner, generated projections, or runtime behavior exists because of documentation alone.
+- Confirm implementation authority is not claimed outside the Implementation Guide owner.
 
 Failure:
-- Active docs describe documentation reference material as accepted runtime behavior or implementation-ready handoff without the Implementation Guide owner.
+- Active docs describe documentation reference material as accepted runtime behavior or implementation authority without the Implementation Guide owner.
 
 Fix:
 - Reword as planning documentation.
@@ -644,10 +644,10 @@ Owner:
 
 Check:
 - Confirm `isolated` routes to Security for guarantee semantics.
-- Confirm `isolated` is not described as an active current-MVP guarantee merely because it appears in value sets, examples, route text, or out-of-scope material.
+- Confirm `isolated` is not described as an supported guarantee merely because it appears in value sets, examples, route text, or out-of-scope material.
 
 Failure:
-- Any prose says or implies current active isolation, default isolation, enforced isolation, or current-MVP `isolated` guarantee behavior without owner support.
+- Any prose says or implies current active isolation, default isolation, enforced isolation, or baseline-scope `isolated` guarantee behavior without owner support.
 
 Fix:
 - Clarify the reserved or profile-gated status at the point of use.

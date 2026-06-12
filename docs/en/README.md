@@ -12,7 +12,7 @@ This is the English entry point for the Harness documentation set. It helps read
 
 ## Current scope
 
-[Scope](reference/scope.md) is the entry point for what is currently in or out of the MVP. Out-of-scope capabilities are not active requirements unless that owner says they have been promoted.
+[Scope](reference/scope.md) is the entry point for what is currently in or out of the baseline scope. Out-of-scope capabilities are not active requirements unless that owner says they have been promoted.
 
 ## Exact contracts
 

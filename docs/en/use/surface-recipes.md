@@ -24,7 +24,7 @@ For write-capable work, the CLI recipe is:
 - Name the intended product-file paths or operation before checking write compatibility.
 - Use the owner path for write compatibility when product-file writes are near.
 - After meaningful execution, record what ran, what changed, which checks passed or failed, and which evidence or artifact refs support the claim.
-- If artifact bytes matter, treat staging as temporary input until the owner path promotes a persistent `ArtifactRef`.
+- If artifact bytes matter, treat staging as transient input until the owner path promotes a persistent `ArtifactRef`.
 
 Terminal logs, shell history, local paths, and copied summaries are useful context, but they are not authority by themselves. If command observation is not supported for the current surface, say the guarantee is cooperative or capability-limited.
 

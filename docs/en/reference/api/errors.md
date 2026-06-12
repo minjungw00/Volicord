@@ -903,7 +903,7 @@ Not allowed:
 | stale `WriteAuthorization.basis_state_version` | [Stale Write Authorization basis](#state-conflict-write-authorization-basis) |
 | idempotency request-hash conflict | [Idempotency request-hash conflict](#state-conflict-idempotency-hash) |
 
-`STATE_VERSION_CONFLICT` has one active current MVP meaning: a project-wide pre-commit freshness or idempotency conflict.
+`STATE_VERSION_CONFLICT` has one baseline meaning: a project-wide pre-commit freshness or idempotency conflict.
 
 <a id="state-conflict-expected-state-version"></a>
 ### Stale `expected_state_version`

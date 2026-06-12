@@ -1,6 +1,6 @@
 # Storage effects
 
-This document owns method-to-storage effect semantics for the current MVP source design. It is documentation reference material only and does not execute or simulate Harness runtime procedures.
+This document owns method-to-storage effect semantics for the baseline scope source design. It is documentation reference material only and does not execute or simulate Harness runtime procedures.
 
 ## Owns / Does not own
 
@@ -40,7 +40,7 @@ Effects come from the selected method behavior and response branch. The table su
 | Read-only `MethodResult` | Response only | [Read-only result](#read-only-result) |
 | `ToolRejectedResponse` | No storage effect | [`ToolRejectedResponse`](#toolrejectedresponse-effect) |
 | Valid `ToolDryRunResponse` | Preview only | [Valid dry-run preview](#valid-dry-run-preview) |
-| `StageArtifactResult` with `effect_kind=staging_created` | Temporary staging only | [Staging-created artifact result](#staging-created-artifact-result) |
+| `StageArtifactResult` with `effect_kind=staging_created` | transient staging only | [Staging-created artifact result](#staging-created-artifact-result) |
 | Core committed `MethodResult` | Method-owned committed effects | [Core committed result](#core-committed-result) |
 | Committed blocked `MethodResult` | Explicitly allowed blocked effects only | [Committed blocked result](#committed-blocked-result) |
 
@@ -98,7 +98,7 @@ Not allowed:
 
 Allowed effect:
 
-- storage-owned temporary staging
+- storage-owned transient staging
 
 Not allowed:
 
@@ -298,7 +298,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `harness.update_scope` | updates active scope records | See [`harness.update_scope`](#harnessupdate_scope) |
 | `harness.status` | read-only response | See [`harness.status`](#harnessstatus) |
 | `harness.prepare_write` | records write decision effects | See [`harness.prepare_write`](#harnessprepare_write) |
-| `harness.stage_artifact` | creates temporary staging only | See [`harness.stage_artifact`](#harnessstage_artifact) |
+| `harness.stage_artifact` | creates transient staging only | See [`harness.stage_artifact`](#harnessstage_artifact) |
 | `harness.record_run` | records run and evidence effects | See [`harness.record_run`](#harnessrecord_run) |
 | `harness.request_user_judgment` | creates pending judgment request | See [`harness.request_user_judgment`](#harnessrequest_user_judgment) |
 | `harness.record_user_judgment` | resolves user judgment | See [`harness.record_user_judgment`](#harnessrecord_user_judgment) |
@@ -424,9 +424,9 @@ Owner links:
 Successful staging may:
 
 - create `artifact_staging` or an equivalent storage-owned staging manifest
-- store temporary safe bytes or notices under `artifacts/tmp/`
+- store transient safe bytes or notices under `artifacts/tmp/`
 
-This branch creates only temporary storage-owned staging.
+This branch creates only transient storage-owned staging.
 
 It does not create:
 

@@ -1,7 +1,7 @@
 # API schema core
 
 Meaning:
-- This document owns the common API envelope and response-branch schemas for the current MVP.
+- This document owns the common API envelope and response-branch schemas for the baseline scope.
 - It is documentation reference material only.
 
 Not implied:
@@ -35,7 +35,7 @@ This document does not own:
 
 Meaning:
 - Schema blocks in this page are planning notation.
-- They describe future API contract shape only.
+- They describe candidate API contract shape only.
 
 Not implied:
 - Schema blocks are not generated code.

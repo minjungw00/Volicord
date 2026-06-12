@@ -2,7 +2,7 @@
 
 This repository contains the maintained Harness documentation set.
 
-Do not describe documentation as implemented runtime behavior. Runtime code, generated runtime objects, and product implementation outputs are outside this repository's editing scope.
+Do not describe documentation as runtime behavior. Runtime code, generated runtime objects, and product implementation outputs are outside this repository's editing scope.
 
 ## Repository boundaries
 
@@ -43,7 +43,7 @@ For high-signal terminology, example-scenario, API example-consistency, field-na
 
 When `docs/doc-index.yaml` lists an exact owner for the question or concept, load that owner first. Pull related documents only when the owner, index metadata, or maintainer guidance sends you there.
 
-One concept should have one canonical owner. Edit the owner when the change affects normative meaning, including active MVP scope, API behavior, schemas, storage effects, security wording, access boundaries, close readiness, product terminology, or out-of-scope promotion rules.
+One concept should have one canonical owner. Edit the owner when the change affects normative meaning, including baseline scope, API behavior, schemas, storage effects, security wording, access boundaries, close readiness, product terminology, or out-of-scope promotion rules.
 
 API routing shortcut:
 
@@ -70,7 +70,7 @@ Do not finish a meaning-changing documentation batch with only one language upda
 
 - Preserve the product thesis: Harness is not a prompt pack. It is a local authority record for scope, user-owned judgment, evidence, verification expectations, acceptance, close readiness, and residual risk.
 - Keep user-owned judgments distinct from Core-owned state/artifact authority. Evidence, verification, QA, acceptance, waiver, and residual-risk boundaries must not collapse into one broad approval.
-- Keep active MVP behavior separate from reserved, profile-gated, and out-of-scope material. Do not describe out-of-scope capabilities as active MVP requirements.
+- Keep baseline behavior separate from reserved, profile-gated, and out-of-scope material. Do not describe out-of-scope capabilities as baseline requirements.
 - Guard, freeze, careful-mode, and security wording must match the actual guarantee level documented by the security owner. Only documented preventive mechanisms should claim preventive behavior.
 - Rewrite, move, merge, shrink, or delete old prose when it conflicts with current owner boundaries, active/out-of-scope boundaries, Korean quality rules, or implementation feasibility.
 - Remove stale route wording, legacy history, resolved cleanup notes, one-language-primacy guidance, and scattered unresolved notes from active docs when encountered in scope.
@@ -85,11 +85,11 @@ README files, Start pages, Use pages, Build pages, Maintain pages, and reference
 
 Do not copy API response branches, schema field tables, DDL, storage effects, access class lists, security guarantees, projection behavior, close-readiness contracts, or error-code contracts into non-owner documents. If a duplicate explanation is stale, shrink it to a practical consequence and link to the owner instead of refreshing the duplicate.
 
-## Temporary file rule
+## One-off file rule
 
-Do not create archive copies, temporary transition notes, scratch notes, unresolved note-only files, review leftovers, generated runtime records, or one-off planning files in the repository.
+Do not create archive copies, one-off transition notes, scratch notes, unresolved note-only files, review leftovers, generated runtime records, or one-off planning files in the repository.
 
-Do not leave temporary transition notes, scratch notes, or unresolved note-only files in the repo. Remove scratch notes before finishing.
+Do not leave one-off transition notes, scratch notes, or unresolved note-only files in the repo. Remove scratch notes before finishing.
 
 If planning is needed, keep it in the conversation or in the requested target document. If the user explicitly asks for a planning document, place it only in an appropriate maintained documentation path and make sure it has durable reader value.
 
@@ -103,4 +103,4 @@ Preserve identifiers in backticks. Do not translate exact identifiers, file path
 
 Do not literal-translate English prose into Korean. Maintain semantic parity by meaning unit while allowing natural Korean sentence order, paragraph rhythm, terminology, and heading style.
 
-Use Korean concept-first phrasing for ordinary prose. Avoid mixed-language patterns where the English word is not an identifier or intentional product label. Prefer terms from the terminology map and Korean glossary, such as `현재 MVP`, `이후 후보`, `담당 문서`, `의미 일치`, `닫기 준비 상태`, `닫기 가능 여부`, `사용자 소유 판단`, `아티팩트`, `접점`, and `상태 보기` where they fit.
+Use Korean concept-first phrasing for ordinary prose. Avoid mixed-language patterns where the English word is not an identifier or intentional product label. Prefer terms from the terminology map and Korean glossary, such as `기준 범위`, `지원 범위 밖 기능`, `담당 문서`, `의미 일치`, `닫기 준비 상태`, `닫기 가능 여부`, `사용자 소유 판단`, `아티팩트`, `접점`, and `상태 보기` where they fit.

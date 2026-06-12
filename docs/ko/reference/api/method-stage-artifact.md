@@ -4,7 +4,7 @@
 
 ## 담당하는 것
 
-이 문서는 현재 MVP의 `harness.stage_artifact` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `harness.stage_artifact` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - 공유 계정 데이터 내보내기 확인 시나리오의 최소 요청과 대표 응답
@@ -51,7 +51,7 @@
 
 결과:
 
-- 향후 서버는 확인된 로컬 접점에서 `created_by_surface_id`와 `created_by_surface_instance_id`를 기록합니다.
+- 서버는 확인된 로컬 접점에서 `created_by_surface_id`와 `created_by_surface_instance_id`를 기록합니다.
 
 비주장:
 

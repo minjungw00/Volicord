@@ -6,25 +6,25 @@ This reference defines conformance terminology and document-level criteria. Runt
 
 This document owns documentation-level conformance meaning, candidate fixture shape, assertion authority boundaries, and a compact scenario index. It does not define API branches, storage effects, access classes, artifact promotion, security guarantees, or close-readiness behavior.
 
-For the canonical current scope, see [Scope](scope.md). Implementation routing is described in the [Implementation Guide](../build/implementation-guide.md).
+For the canonical baseline scope, see [Scope](scope.md). Implementation routing is described in the [Implementation Guide](../build/implementation-guide.md).
 
 ## Conformance item summary
 
 | Item | Boundary | Details |
 |---|---|---|
-| Current documentation criteria | Active documentation criteria | [Details](#current-documentation-criteria) |
-| Internal smoke target | Planned or documented | [Details](#internal-smoke-target) |
-| Future fixture shape | Future candidate shape | [Details](#future-fixture-shape) |
-| Future executable fixtures | Not implemented | [Details](#future-executable-fixtures) |
-| Runtime conformance report | Later candidate | [Details](#runtime-conformance-report) |
+| Documentation criteria | Supported documentation criteria | [Details](#documentation-criteria) |
+| Internal smoke target | Implementation-owned check target | [Details](#internal-smoke-target) |
+| Fixture shape | Out-of-scope candidate shape | [Details](#fixture-shape-boundary) |
+| Executable fixtures | Out of documentation scope | [Details](#executable-fixtures) |
+| Runtime conformance report | Out-of-scope capability | [Details](#runtime-conformance-report) |
 
-<a id="current-documentation-criteria"></a>
-### Current documentation criteria
+<a id="documentation-criteria"></a>
+### Documentation criteria
 
 Boundary:
-- Active reference criteria for documentation maintenance.
+- Supported reference criteria for documentation maintenance.
 
-Executable now:
+Execution boundary:
 - No runtime execution. These criteria do not run a Harness Server, execute a conformance suite, or create runtime records.
 
 Owner:
@@ -37,87 +37,87 @@ Not allowed:
 ### Internal smoke target
 
 Boundary:
-- Planned or documented.
+- Implementation-owned check target.
 
-Executable now:
-- No, unless a current implementation file explicitly provides it.
+Execution boundary:
+- Execution behavior belongs to the implementation owner.
 
 Owner:
 - `build/implementation-guide.md`
 
 Not allowed:
-- Do not describe this as an implemented conformance suite.
+- Do not describe this as a documentation-owned conformance suite.
 
-<a id="future-fixture-shape"></a>
-### Future fixture shape
+<a id="fixture-shape-boundary"></a>
+### Fixture shape boundary
 
 Boundary:
-- Candidate future format documented by this reference.
+- Out-of-scope candidate format documented by this reference.
 
-Executable now:
-- No. This repository contains no executable fixture files, fixture directory, fixture runner, or suite entry point.
+Execution boundary:
+- The candidate shape is not a fixture file, runner input, or suite entry point.
 
 Owner:
 - `docs/en/reference/conformance.md`
 
 Not allowed:
-- Do not describe the candidate shape as current fixture files, current runner input, or an implemented conformance suite.
+- Do not describe the candidate shape as fixture files, runner input, or an executable conformance suite.
 
-<a id="future-executable-fixtures"></a>
-### Future executable fixtures
+<a id="executable-fixtures"></a>
+### Executable fixtures
 
 Boundary:
-- Not implemented.
+- Out of documentation scope.
 
-Executable now:
-- No. Executable fixture material requires a future runner and owner-promoted fixtures.
+Execution boundary:
+- Executable fixture material requires a runner owner and owner-promoted fixtures.
 
 Owner:
-- Future runner owner and the owners that promote fixtures. This repository has no current fixture runner or executable fixture owner.
+- Runner owner and the owners that promote fixtures.
 
 Not allowed:
-- Do not add fixture bodies, runner output, generated runtime objects, or current runtime results to this documentation repository.
+- Do not add fixture bodies, runner output, generated runtime objects, or runtime results to this documentation repository.
 
 <a id="runtime-conformance-report"></a>
 ### Runtime conformance report
 
 Boundary:
-- Later candidate and not implemented.
+- Out-of-scope capability.
 
-Executable now:
-- No. This repository contains no conformance runner, suite entry point, generated conformance reports, or runtime conformance results.
+Execution boundary:
+- Conformance runners, suite entry points, generated conformance reports, and runtime conformance results belong outside documentation.
 
 Owner:
 - [Scope Reference](scope.md)
-- [Later policy and conformance: future conformance run entrypoint](scope.md)
+- [Policy and conformance: conformance run entrypoint](scope.md)
 
 Not allowed:
-- Do not present metrics, generated prose, rendered reports, or documentation-check labels as conformance authority or current runtime proof.
+- Do not present metrics, generated prose, rendered reports, or documentation-check labels as conformance authority or runtime proof.
 
-When this page says "must", "required", or "always", it is naming a documentation criterion or a requirement for a server/runner after implementation exists. It is not a claim that this repository already contains executable checks.
+When this page says "must", "required", or "always", it is naming a documentation criterion or a requirement for a server or runner contract. It is not a claim that documentation creates executable checks.
 
 ## What conformance means
 
 For a server, conformance means executable checks can compare one owner-defined action with owner-defined authority records. Documentation checks are separate maintenance aids for links, terminology, owner boundaries, active/out-of-scope wording, security wording, and bilingual parity.
 
-A future runtime conformance check must judge only facts made authoritative by an owner document. It must not treat generated prose, agent summaries, rendered reports, status wording, documentation-check labels, or projections as authority unless a specific owner promotes that fact.
+A runtime conformance check must judge only facts made authoritative by an owner document. It must not treat generated prose, agent summaries, rendered reports, status wording, documentation-check labels, or projections as authority unless a specific owner promotes that fact.
 
-## What does not exist yet
+## Documentation boundary
 
-The following are implementation outputs, not current repository contents:
+The following are runtime or implementation outputs, not documentation repository contents:
 
 - Harness Server runtime or Harness Runtime Home data
 - executable fixture files or a fixture directory
 - a conformance runner or `harness conformance run` implementation
 - generated conformance reports, generated runtime artifacts, projections, operational files, or runtime state
-- current runtime results for active MVP behavior or out-of-scope capabilities
-- current runtime proof of preventive blocking, OS permission control, arbitrary-tool sandboxing, tamper-proof storage, security isolation, or profile-gated `preventive` / `isolated` guarantee claims
+- runtime results for baseline behavior or out-of-scope capabilities
+- runtime proof of preventive blocking, OS permission control, arbitrary-tool sandboxing, tamper-proof storage, security isolation, or profile-gated `preventive` / `isolated` guarantee claims
 
-Examples on this page may guide planning, but they do not create runtime state, acceptance evidence, close readiness, residual-risk acceptance, generated reports, or implementation routing.
+Examples on this page explain conformance concepts, but they do not create runtime state, acceptance evidence, close readiness, residual-risk acceptance, generated reports, or implementation routing.
 
 ## Fixture shape
 
-Fixture shape is a candidate future format, not current files. After the Harness Server and runner exist, a promoted fixture should be a compact structured record with these parts:
+Fixture shape is an out-of-scope candidate format, not documentation-owned fixture files. A promoted fixture should be a compact structured record with these parts:
 
 | Part | Details |
 |---|---|
@@ -155,7 +155,7 @@ Owner link:
 ### Expected assertions
 
 Purpose:
-- Names the structured facts a future fixture may compare.
+- Names the structured facts an owner-promoted fixture may compare.
 
 Expected content:
 - Response facts, owner-state effects, storage or artifact facts, blocker facts, error facts, guarantee-display facts, and required absence of forbidden side effects.
@@ -169,13 +169,13 @@ Purpose:
 Owner links:
 - API, Core, Storage, Security, Agent Integration, artifact, and policy owners.
 
-A future materialized fixture must use public owner schemas. It must not invent fixture-only enum values, pseudo-fields, localized display labels as state, prose-only expectations, or out-of-scope-only values.
+An owner-promoted materialized fixture must use public owner schemas. It must not invent fixture-only enum values, pseudo-fields, localized display labels as state, prose-only expectations, or out-of-scope-only values.
 
 ## Assertion authority
 
-Assertion authority is the narrow set of facts a future fixture may judge after executable fixtures exist. Authority comes from owner-defined facts, not from scenario prose or generated summaries.
+Assertion authority is the narrow set of facts an owner-promoted fixture may judge. Authority comes from owner-defined facts, not from scenario prose or generated summaries.
 
-Future assertions may reference owner-defined response facts, Core state, storage effects, artifact facts, public `ErrorCode` values, structured blockers, guarantee-display facts, and required absence of forbidden side effects.
+Fixture assertions may reference owner-defined response facts, Core state, storage effects, artifact facts, public `ErrorCode` values, structured blockers, guarantee-display facts, and required absence of forbidden side effects.
 
 Exact assertion detail stays with these owners:
 
@@ -194,67 +194,67 @@ Exact assertion detail stays with these owners:
 
 ## Representative scenario index
 
-These scenario IDs are compact documentation criteria for future fixture planning. They are not fixture bodies, current runtime results, generated runtime objects, or an implementation plan. Use the owner links above for exact branch, storage, access, artifact, security, and close-readiness contracts.
+These scenario IDs are compact documentation criteria for owner-promoted fixture design. They are not fixture bodies, runtime results, generated runtime objects, or an implementation plan. Use the owner links above for exact branch, storage, access, artifact, security, and close-readiness contracts.
 
-- `MVP-ACTIVE-registered-surface-mismatch-blocks-mutation`
-  See [registered surface mismatch](#scenario-mvp-active-registered-surface-mismatch-blocks-mutation).
-- `MVP-ACTIVE-verified-local-surface-allows-owner-mutation`
-  See [verified local surface](#scenario-mvp-active-verified-local-surface-allows-owner-mutation).
-- `MVP-ACTIVE-single-access-class-per-public-request`
-  See [single access class](#scenario-mvp-active-single-access-class-per-public-request).
-- `MVP-ACTIVE-detective-display-capability-gated`
-  See [`detective` display](#scenario-mvp-active-detective-display-capability-gated).
-- `MVP-ACTIVE-shaping-readiness-gap-blocks-or-asks`
-  See [shaping readiness gap](#scenario-mvp-active-shaping-readiness-gap-blocks-or-asks).
-- `MVP-ACTIVE-project-state-version-stale-mutation-rejected`
-  See [stale mutation](#scenario-mvp-active-project-state-version-stale-mutation-rejected).
-- `MVP-ACTIVE-dry-run-pre-commit-failure-rejected`
-  See [`dry_run` pre-commit failure](#scenario-mvp-active-dry-run-pre-commit-failure-rejected).
-- `MVP-ACTIVE-status-close-blockers-read-only`
-  See [read-only close blockers](#scenario-mvp-active-status-close-blockers-read-only).
-- `MVP-ACTIVE-sensitive-approval-records-sensitive-action-scope`
-  See [sensitive approval scope](#scenario-mvp-active-sensitive-approval-records-sensitive-action-scope).
-- `MVP-ACTIVE-prepare-write-requires-compatible-scope-and-approval`
-  See [`prepare_write` compatibility](#scenario-mvp-active-prepare-write-requires-compatible-scope-and-approval).
-- `MVP-ACTIVE-authorized-attempt-scope-product-file-write-only`
-  See [`AuthorizedAttemptScope`](#scenario-mvp-active-authorized-attempt-scope-product-file-write-only).
-- `MVP-ACTIVE-record-run-consumes-write-authorization-once`
-  See [single-use Write Authorization](#scenario-mvp-active-record-run-consumes-write-authorization-once).
-- `MVP-ACTIVE-stage-artifact-temporary-handle-only`
-  See [temporary staged handle](#scenario-mvp-active-stage-artifact-temporary-handle-only).
-- `MVP-ACTIVE-record-run-artifact-input-validation-order`
-  See [artifact input validation order](#scenario-mvp-active-record-run-artifact-input-validation-order).
-- `MVP-ACTIVE-record-run-promotes-staged-artifact-to-artifact-ref`
-  See [staged artifact promotion](#scenario-mvp-active-record-run-promotes-staged-artifact-to-artifact-ref).
-- `MVP-ACTIVE-record-run-rejects-staged-artifact-surface-instance-mismatch`
-  See [staged artifact mismatch](#scenario-mvp-active-record-run-rejects-staged-artifact-surface-instance-mismatch).
-- `MVP-ACTIVE-record-run-links-existing-artifact-without-registering-bytes`
-  See [existing artifact link](#scenario-mvp-active-record-run-links-existing-artifact-without-registering-bytes).
-- `MVP-ACTIVE-captured-artifact-rejected-in-active-mvp`
-  See [captured artifact rejection](#scenario-mvp-active-captured-artifact-rejected-in-active-mvp).
-- `MVP-ACTIVE-close-task-complete-stale-state-version-rejected`
-  See [stale close state](#scenario-mvp-active-close-task-complete-stale-state-version-rejected).
-- `MVP-ACTIVE-close-task-complete-stale-write-authorization-basis-rejected`
-  See [stale Write Authorization basis](#scenario-mvp-active-close-task-complete-stale-write-authorization-basis-rejected).
-- `MVP-ACTIVE-close-task-blocks-current-write-compatibility`
-  See [write compatibility blocker](#scenario-mvp-active-close-task-blocks-current-write-compatibility).
-- `MVP-ACTIVE-close-task-blocks-evidence-insufficient`
-  See [evidence blocker](#scenario-mvp-active-close-task-blocks-evidence-insufficient).
-- `MVP-ACTIVE-close-task-blocks-required-artifact-unavailable`
-  See [artifact availability blocker](#scenario-mvp-active-close-task-blocks-required-artifact-unavailable).
-- `MVP-ACTIVE-close-task-blocks-final-acceptance-missing`
-  See [final acceptance blocker](#scenario-mvp-active-close-task-blocks-final-acceptance-missing).
-- `MVP-ACTIVE-close-task-blocks-visible-unaccepted-residual-risk`
-  See [residual risk blocker](#scenario-mvp-active-close-task-blocks-visible-unaccepted-residual-risk).
-- `MVP-ACTIVE-close-task-check-read-only`
-  See [read-only close check](#scenario-mvp-active-close-task-check-read-only).
-- `MVP-ACTIVE-close-task-state-effecting-dry-run-preview`
-  See [state-effecting close dry-run](#scenario-mvp-active-close-task-state-effecting-dry-run-preview).
-- `MVP-ACTIVE-close-task-supersede-one-state-version`
-  See [supersede state version](#scenario-mvp-active-close-task-supersede-one-state-version).
+- `BASELINE-registered-surface-mismatch-blocks-mutation`
+  See [registered surface mismatch](#scenario-baseline-registered-surface-mismatch-blocks-mutation).
+- `BASELINE-verified-local-surface-allows-owner-mutation`
+  See [verified local surface](#scenario-baseline-verified-local-surface-allows-owner-mutation).
+- `BASELINE-single-access-class-per-public-request`
+  See [single access class](#scenario-baseline-single-access-class-per-public-request).
+- `BASELINE-detective-display-capability-gated`
+  See [`detective` display](#scenario-baseline-detective-display-capability-gated).
+- `BASELINE-shaping-readiness-gap-blocks-or-asks`
+  See [shaping readiness gap](#scenario-baseline-shaping-readiness-gap-blocks-or-asks).
+- `BASELINE-project-state-version-stale-mutation-rejected`
+  See [stale mutation](#scenario-baseline-project-state-version-stale-mutation-rejected).
+- `BASELINE-dry-run-pre-commit-failure-rejected`
+  See [`dry_run` pre-commit failure](#scenario-baseline-dry-run-pre-commit-failure-rejected).
+- `BASELINE-status-close-blockers-read-only`
+  See [read-only close blockers](#scenario-baseline-status-close-blockers-read-only).
+- `BASELINE-sensitive-approval-records-sensitive-action-scope`
+  See [sensitive approval scope](#scenario-baseline-sensitive-approval-records-sensitive-action-scope).
+- `BASELINE-prepare-write-requires-compatible-scope-and-approval`
+  See [`prepare_write` compatibility](#scenario-baseline-prepare-write-requires-compatible-scope-and-approval).
+- `BASELINE-authorized-attempt-scope-product-file-write-only`
+  See [`AuthorizedAttemptScope`](#scenario-baseline-authorized-attempt-scope-product-file-write-only).
+- `BASELINE-record-run-consumes-write-authorization-once`
+  See [single-use Write Authorization](#scenario-baseline-record-run-consumes-write-authorization-once).
+- `BASELINE-stage-artifact-transient-handle-only`
+  See [transient staged handle](#scenario-baseline-stage-artifact-transient-handle-only).
+- `BASELINE-record-run-artifact-input-validation-order`
+  See [artifact input validation order](#scenario-baseline-record-run-artifact-input-validation-order).
+- `BASELINE-record-run-promotes-staged-artifact-to-artifact-ref`
+  See [staged artifact promotion](#scenario-baseline-record-run-promotes-staged-artifact-to-artifact-ref).
+- `BASELINE-record-run-rejects-staged-artifact-surface-instance-mismatch`
+  See [staged artifact mismatch](#scenario-baseline-record-run-rejects-staged-artifact-surface-instance-mismatch).
+- `BASELINE-record-run-links-existing-artifact-without-registering-bytes`
+  See [existing artifact link](#scenario-baseline-record-run-links-existing-artifact-without-registering-bytes).
+- `BASELINE-captured-artifact-rejected-in-baseline-scope`
+  See [captured artifact rejection](#scenario-baseline-captured-artifact-rejected-in-baseline-scope).
+- `BASELINE-close-task-complete-stale-state-version-rejected`
+  See [stale close state](#scenario-baseline-close-task-complete-stale-state-version-rejected).
+- `BASELINE-close-task-complete-stale-write-authorization-basis-rejected`
+  See [stale Write Authorization basis](#scenario-baseline-close-task-complete-stale-write-authorization-basis-rejected).
+- `BASELINE-close-task-blocks-current-write-compatibility`
+  See [write compatibility blocker](#scenario-baseline-close-task-blocks-current-write-compatibility).
+- `BASELINE-close-task-blocks-evidence-insufficient`
+  See [evidence blocker](#scenario-baseline-close-task-blocks-evidence-insufficient).
+- `BASELINE-close-task-blocks-required-artifact-unavailable`
+  See [artifact availability blocker](#scenario-baseline-close-task-blocks-required-artifact-unavailable).
+- `BASELINE-close-task-blocks-final-acceptance-missing`
+  See [final acceptance blocker](#scenario-baseline-close-task-blocks-final-acceptance-missing).
+- `BASELINE-close-task-blocks-visible-unaccepted-residual-risk`
+  See [residual risk blocker](#scenario-baseline-close-task-blocks-visible-unaccepted-residual-risk).
+- `BASELINE-close-task-check-read-only`
+  See [read-only close check](#scenario-baseline-close-task-check-read-only).
+- `BASELINE-close-task-state-effecting-dry-run-preview`
+  See [state-effecting close dry-run](#scenario-baseline-close-task-state-effecting-dry-run-preview).
+- `BASELINE-close-task-supersede-one-state-version`
+  See [supersede state version](#scenario-baseline-close-task-supersede-one-state-version).
 
-<a id="scenario-mvp-active-registered-surface-mismatch-blocks-mutation"></a>
-### `MVP-ACTIVE-registered-surface-mismatch-blocks-mutation`
+<a id="scenario-baseline-registered-surface-mismatch-blocks-mutation"></a>
+### `BASELINE-registered-surface-mismatch-blocks-mutation`
 
 Focus:
 - Local surface mismatch before mutation.
@@ -264,8 +264,8 @@ Owner links:
 - [API Errors](api/errors.md)
 - [Security](security.md)
 
-<a id="scenario-mvp-active-verified-local-surface-allows-owner-mutation"></a>
-### `MVP-ACTIVE-verified-local-surface-allows-owner-mutation`
+<a id="scenario-baseline-verified-local-surface-allows-owner-mutation"></a>
+### `BASELINE-verified-local-surface-allows-owner-mutation`
 
 Focus:
 - Verified local surface permits only owner-scoped mutation checks.
@@ -275,8 +275,8 @@ Owner links:
 - [Shared envelope and response branch routes](api/methods.md#shared-request-rules)
 - [Storage Effects](storage-effects.md)
 
-<a id="scenario-mvp-active-single-access-class-per-public-request"></a>
-### `MVP-ACTIVE-single-access-class-per-public-request`
+<a id="scenario-baseline-single-access-class-per-public-request"></a>
+### `BASELINE-single-access-class-per-public-request`
 
 Focus:
 - One request-level `access_class` per public API request.
@@ -286,8 +286,8 @@ Owner links:
 - [Shared envelope and response branch routes](api/methods.md#shared-request-rules)
 - [Security](security.md)
 
-<a id="scenario-mvp-active-detective-display-capability-gated"></a>
-### `MVP-ACTIVE-detective-display-capability-gated`
+<a id="scenario-baseline-detective-display-capability-gated"></a>
+### `BASELINE-detective-display-capability-gated`
 
 Focus:
 - `detective` wording requires a supported observed scope.
@@ -296,8 +296,8 @@ Owner links:
 - [Security](security.md)
 - [Agent Integration](agent-integration.md)
 
-<a id="scenario-mvp-active-shaping-readiness-gap-blocks-or-asks"></a>
-### `MVP-ACTIVE-shaping-readiness-gap-blocks-or-asks`
+<a id="scenario-baseline-shaping-readiness-gap-blocks-or-asks"></a>
+### `BASELINE-shaping-readiness-gap-blocks-or-asks`
 
 Focus:
 - Shaping gaps remain owner-path blockers or judgment candidates, not separate planning artifacts.
@@ -308,8 +308,8 @@ Owner links:
 - [Status method](api/method-status.md)
 - [User-judgment methods](api/method-user-judgment.md)
 
-<a id="scenario-mvp-active-project-state-version-stale-mutation-rejected"></a>
-### `MVP-ACTIVE-project-state-version-stale-mutation-rejected`
+<a id="scenario-baseline-project-state-version-stale-mutation-rejected"></a>
+### `BASELINE-project-state-version-stale-mutation-rejected`
 
 Focus:
 - Stale project-wide state version fails before commit.
@@ -319,8 +319,8 @@ Owner links:
 - [Storage Versioning](storage-versioning.md)
 - [Storage Effects](storage-effects.md)
 
-<a id="scenario-mvp-active-dry-run-pre-commit-failure-rejected"></a>
-### `MVP-ACTIVE-dry-run-pre-commit-failure-rejected`
+<a id="scenario-baseline-dry-run-pre-commit-failure-rejected"></a>
+### `BASELINE-dry-run-pre-commit-failure-rejected`
 
 Focus:
 - `dry_run` does not bypass validation, access, capability, or stale-state rejection.
@@ -330,8 +330,8 @@ Owner links:
 - [API Errors](api/errors.md)
 - [Storage Effects](storage-effects.md)
 
-<a id="scenario-mvp-active-status-close-blockers-read-only"></a>
-### `MVP-ACTIVE-status-close-blockers-read-only`
+<a id="scenario-baseline-status-close-blockers-read-only"></a>
+### `BASELINE-status-close-blockers-read-only`
 
 Focus:
 - Status and close-check blockers can be read without storage mutation.
@@ -342,8 +342,8 @@ Owner links:
 - [API State Schemas](api/schema-state.md)
 - [Storage Effects](storage-effects.md)
 
-<a id="scenario-mvp-active-sensitive-approval-records-sensitive-action-scope"></a>
-### `MVP-ACTIVE-sensitive-approval-records-sensitive-action-scope`
+<a id="scenario-baseline-sensitive-approval-records-sensitive-action-scope"></a>
+### `BASELINE-sensitive-approval-records-sensitive-action-scope`
 
 Focus:
 - Sensitive-action approval is separate from Write Authorization and final acceptance.
@@ -353,8 +353,8 @@ Owner links:
 - [API Judgment Schemas](api/schema-judgment.md)
 - [Security](security.md)
 
-<a id="scenario-mvp-active-prepare-write-requires-compatible-scope-and-approval"></a>
-### `MVP-ACTIVE-prepare-write-requires-compatible-scope-and-approval`
+<a id="scenario-baseline-prepare-write-requires-compatible-scope-and-approval"></a>
+### `BASELINE-prepare-write-requires-compatible-scope-and-approval`
 
 Focus:
 - `prepare_write` is a cooperative product-file compatibility path.
@@ -364,8 +364,8 @@ Owner links:
 - [Core Model](core-model.md)
 - [Security](security.md)
 
-<a id="scenario-mvp-active-authorized-attempt-scope-product-file-write-only"></a>
-### `MVP-ACTIVE-authorized-attempt-scope-product-file-write-only`
+<a id="scenario-baseline-authorized-attempt-scope-product-file-write-only"></a>
+### `BASELINE-authorized-attempt-scope-product-file-write-only`
 
 Focus:
 - `AuthorizedAttemptScope` is product-file write scope only.
@@ -375,8 +375,8 @@ Owner links:
 - [Prepare-write method](api/method-prepare-write.md)
 - [API Judgment Schemas](api/schema-judgment.md)
 
-<a id="scenario-mvp-active-record-run-consumes-write-authorization-once"></a>
-### `MVP-ACTIVE-record-run-consumes-write-authorization-once`
+<a id="scenario-baseline-record-run-consumes-write-authorization-once"></a>
+### `BASELINE-record-run-consumes-write-authorization-once`
 
 Focus:
 - Compatible Run recording consumes a matching Write Authorization once.
@@ -386,19 +386,19 @@ Owner links:
 - [Storage Effects](storage-effects.md)
 - [Storage Versioning](storage-versioning.md)
 
-<a id="scenario-mvp-active-stage-artifact-temporary-handle-only"></a>
-### `MVP-ACTIVE-stage-artifact-temporary-handle-only`
+<a id="scenario-baseline-stage-artifact-transient-handle-only"></a>
+### `BASELINE-stage-artifact-transient-handle-only`
 
 Focus:
-- Staging creates only a temporary staged handle.
+- Staging creates only a transient staged handle.
 
 Owner links:
 - [Stage-artifact method](api/method-stage-artifact.md)
 - [API Artifact Schemas](api/schema-artifacts.md)
 - [Artifact Storage](storage-artifacts.md)
 
-<a id="scenario-mvp-active-record-run-artifact-input-validation-order"></a>
-### `MVP-ACTIVE-record-run-artifact-input-validation-order`
+<a id="scenario-baseline-record-run-artifact-input-validation-order"></a>
+### `BASELINE-record-run-artifact-input-validation-order`
 
 Focus:
 - Run artifact inputs are validated before promotion or linking.
@@ -408,8 +408,8 @@ Owner links:
 - [API Artifact Schemas](api/schema-artifacts.md)
 - [Artifact Storage](storage-artifacts.md)
 
-<a id="scenario-mvp-active-record-run-promotes-staged-artifact-to-artifact-ref"></a>
-### `MVP-ACTIVE-record-run-promotes-staged-artifact-to-artifact-ref`
+<a id="scenario-baseline-record-run-promotes-staged-artifact-to-artifact-ref"></a>
+### `BASELINE-record-run-promotes-staged-artifact-to-artifact-ref`
 
 Focus:
 - Compatible Run recording may promote a staged handle to persistent `ArtifactRef`.
@@ -419,8 +419,8 @@ Owner links:
 - [Record-run method](api/method-record-run.md)
 - [Storage Effects](storage-effects.md)
 
-<a id="scenario-mvp-active-record-run-rejects-staged-artifact-surface-instance-mismatch"></a>
-### `MVP-ACTIVE-record-run-rejects-staged-artifact-surface-instance-mismatch`
+<a id="scenario-baseline-record-run-rejects-staged-artifact-surface-instance-mismatch"></a>
+### `BASELINE-record-run-rejects-staged-artifact-surface-instance-mismatch`
 
 Focus:
 - Staged-handle provenance mismatch rejects promotion.
@@ -430,8 +430,8 @@ Owner links:
 - [API Artifact Schemas](api/schema-artifacts.md)
 - [API Errors](api/errors.md)
 
-<a id="scenario-mvp-active-record-run-links-existing-artifact-without-registering-bytes"></a>
-### `MVP-ACTIVE-record-run-links-existing-artifact-without-registering-bytes`
+<a id="scenario-baseline-record-run-links-existing-artifact-without-registering-bytes"></a>
+### `BASELINE-record-run-links-existing-artifact-without-registering-bytes`
 
 Focus:
 - Existing persistent artifacts may be linked without registering new bytes.
@@ -441,19 +441,19 @@ Owner links:
 - [Artifact Storage](storage-artifacts.md)
 - [Record-run method](api/method-record-run.md)
 
-<a id="scenario-mvp-active-captured-artifact-rejected-in-active-mvp"></a>
-### `MVP-ACTIVE-captured-artifact-rejected-in-active-mvp`
+<a id="scenario-baseline-captured-artifact-rejected-in-baseline-scope"></a>
+### `BASELINE-captured-artifact-rejected-in-baseline-scope`
 
 Focus:
-- Native/captured artifact sources are not active MVP artifact authority.
+- Native/captured artifact sources are not baseline artifact authority.
 
 Owner links:
 - [Scope](scope.md)
 - [API Artifact Schemas](api/schema-artifacts.md)
 - [Scope Reference](scope.md)
 
-<a id="scenario-mvp-active-close-task-complete-stale-state-version-rejected"></a>
-### `MVP-ACTIVE-close-task-complete-stale-state-version-rejected`
+<a id="scenario-baseline-close-task-complete-stale-state-version-rejected"></a>
+### `BASELINE-close-task-complete-stale-state-version-rejected`
 
 Focus:
 - Stale state fails before close-readiness evaluation.
@@ -463,8 +463,8 @@ Owner links:
 - [API Errors](api/errors.md)
 - [Storage Effects](storage-effects.md)
 
-<a id="scenario-mvp-active-close-task-complete-stale-write-authorization-basis-rejected"></a>
-### `MVP-ACTIVE-close-task-complete-stale-write-authorization-basis-rejected`
+<a id="scenario-baseline-close-task-complete-stale-write-authorization-basis-rejected"></a>
+### `BASELINE-close-task-complete-stale-write-authorization-basis-rejected`
 
 Focus:
 - Stale close-relevant Write Authorization basis fails before close commit.
@@ -474,8 +474,8 @@ Owner links:
 - [API Errors](api/errors.md)
 - [Storage Versioning](storage-versioning.md)
 
-<a id="scenario-mvp-active-close-task-blocks-current-write-compatibility"></a>
-### `MVP-ACTIVE-close-task-blocks-current-write-compatibility`
+<a id="scenario-baseline-close-task-blocks-current-write-compatibility"></a>
+### `BASELINE-close-task-blocks-current-write-compatibility`
 
 Focus:
 - Close can block on semantic write compatibility.
@@ -485,8 +485,8 @@ Owner links:
 - [Close-task method](api/method-close-task.md)
 - [API State Schemas](api/schema-state.md)
 
-<a id="scenario-mvp-active-close-task-blocks-evidence-insufficient"></a>
-### `MVP-ACTIVE-close-task-blocks-evidence-insufficient`
+<a id="scenario-baseline-close-task-blocks-evidence-insufficient"></a>
+### `BASELINE-close-task-blocks-evidence-insufficient`
 
 Focus:
 - Close can block on insufficient required evidence.
@@ -496,8 +496,8 @@ Owner links:
 - [API State Schemas](api/schema-state.md)
 - [API Errors](api/errors.md)
 
-<a id="scenario-mvp-active-close-task-blocks-required-artifact-unavailable"></a>
-### `MVP-ACTIVE-close-task-blocks-required-artifact-unavailable`
+<a id="scenario-baseline-close-task-blocks-required-artifact-unavailable"></a>
+### `BASELINE-close-task-blocks-required-artifact-unavailable`
 
 Focus:
 - Close can block on required artifact availability.
@@ -507,8 +507,8 @@ Owner links:
 - [Artifact Storage](storage-artifacts.md)
 - [API Errors](api/errors.md)
 
-<a id="scenario-mvp-active-close-task-blocks-final-acceptance-missing"></a>
-### `MVP-ACTIVE-close-task-blocks-final-acceptance-missing`
+<a id="scenario-baseline-close-task-blocks-final-acceptance-missing"></a>
+### `BASELINE-close-task-blocks-final-acceptance-missing`
 
 Focus:
 - Close can block on missing compatible final acceptance.
@@ -518,8 +518,8 @@ Owner links:
 - [API Judgment Schemas](api/schema-judgment.md)
 - [Close-task method](api/method-close-task.md)
 
-<a id="scenario-mvp-active-close-task-blocks-visible-unaccepted-residual-risk"></a>
-### `MVP-ACTIVE-close-task-blocks-visible-unaccepted-residual-risk`
+<a id="scenario-baseline-close-task-blocks-visible-unaccepted-residual-risk"></a>
+### `BASELINE-close-task-blocks-visible-unaccepted-residual-risk`
 
 Focus:
 - Close can block on visible residual risk without compatible acceptance.
@@ -529,8 +529,8 @@ Owner links:
 - [API Judgment Schemas](api/schema-judgment.md)
 - [API State Schemas](api/schema-state.md)
 
-<a id="scenario-mvp-active-close-task-check-read-only"></a>
-### `MVP-ACTIVE-close-task-check-read-only`
+<a id="scenario-baseline-close-task-check-read-only"></a>
+### `BASELINE-close-task-check-read-only`
 
 Focus:
 - `harness.close_task intent=check` is read-only.
@@ -540,8 +540,8 @@ Owner links:
 - [API Schema Core](api/schema-core.md)
 - [Storage Effects](storage-effects.md)
 
-<a id="scenario-mvp-active-close-task-state-effecting-dry-run-preview"></a>
-### `MVP-ACTIVE-close-task-state-effecting-dry-run-preview`
+<a id="scenario-baseline-close-task-state-effecting-dry-run-preview"></a>
+### `BASELINE-close-task-state-effecting-dry-run-preview`
 
 Focus:
 - State-effecting close intents use dry-run preview only when valid and previewable.
@@ -551,8 +551,8 @@ Owner links:
 - [API Schema Core](api/schema-core.md)
 - [Storage Effects](storage-effects.md)
 
-<a id="scenario-mvp-active-close-task-supersede-one-state-version"></a>
-### `MVP-ACTIVE-close-task-supersede-one-state-version`
+<a id="scenario-baseline-close-task-supersede-one-state-version"></a>
+### `BASELINE-close-task-supersede-one-state-version`
 
 Focus:
 - Supersede is a terminal non-completion path with one project-wide state mutation when valid.
@@ -562,26 +562,26 @@ Owner links:
 - [Core Model](core-model.md)
 - [Storage Effects](storage-effects.md)
 
-## Catalog-only future boundary
+## Catalog-only boundary
 
-Future fixture families belong in [Later policy and conformance: future fixture families](scope.md). The out-of-scope index keeps names only as out-of-scope capabilities, and this page does not reproduce the catalog.
+Fixture families outside the baseline scope belong in [Policy and conformance fixture families](scope.md). The out-of-scope index keeps names only as out-of-scope capabilities, and this page does not reproduce the catalog.
 
-Future-family names are not:
+Out-of-scope family names are not:
 
 - scenario scripts
 - fixture bodies
 - active API payload examples
 - runner or reporting requirements
-- active MVP scope
+- baseline scope
 - implementation tasks
-- current results
-- current runtime proof
+- runtime results
+- runtime proof
 
-Promotion requirement: a future owner must promote a narrow behavior with scope, fallback behavior, exact contracts, and proof-path expectations before executable fixture material exists.
+Promotion requirement: an owner must promote a narrow behavior with scope, fallback behavior, exact contracts, and proof-path expectations before executable fixture material is supported.
 
 ## Metrics boundary
 
-Metrics are not conformance authority in the current documentation set. Future local metrics and later conformance reporting may be useful for diagnostics or planning, but until an owner promotes them they remain read-only derived displays or out-of-scope capabilities.
+Metrics are not conformance authority. Local metrics and conformance reporting may be useful for diagnostics, but until an owner promotes them they remain read-only derived displays or out-of-scope capabilities.
 
 Metrics must not:
 
@@ -595,4 +595,4 @@ Metrics must not:
 - prove implementation routing
 - replace runtime conformance
 
-Promotion requirement: if a future metric is promoted, its owner must define source records, freshness boundary, display wording, and the non-substitution rule.
+Promotion requirement: if a metric is promoted, its owner must define source records, freshness boundary, display wording, and the non-substitution rule.

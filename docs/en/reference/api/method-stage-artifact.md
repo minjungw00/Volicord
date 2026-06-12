@@ -4,7 +4,7 @@
 
 ## What this document owns
 
-This document owns active MVP method behavior for `harness.stage_artifact`:
+This document owns baseline method behavior for `harness.stage_artifact`:
 
 - method-specific required inputs, access requirements, state-version behavior, result branches, and dry-run behavior
 - the minimal request and representative response for the shared account data export confirmation scenario
@@ -20,7 +20,7 @@ This document does not own:
 
 ## Purpose
 
-Stage caller-provided safe artifact bytes or a safe notice into a temporary `StagedArtifactHandle` for the same project and Task.
+Stage caller-provided safe artifact bytes or a safe notice into a transient `StagedArtifactHandle` for the same project and Task.
 
 Result:
 
@@ -73,7 +73,7 @@ Returns `StageArtifactResult` with:
 
 - `base.response_kind=result`
 - `base.effect_kind=staging_created`
-- temporary `staged_artifact_handle`
+- transient `staged_artifact_handle`
 - `expires_at`
 
 Non-claim: the result does not contain a persistent `ArtifactRef`.
@@ -110,11 +110,11 @@ Branch shape is owned by [API Schema Core](schema-core.md); no-effect staging se
 
 ## Storage effect
 
-On success, the method creates a temporary staging result only. Exact storage effects are owned by [Storage Effects](../storage-effects.md), and artifact lifecycle details are owned by [Artifact Storage](../storage-artifacts.md).
+On success, the method creates a transient staging result only. Exact storage effects are owned by [Storage Effects](../storage-effects.md), and artifact lifecycle details are owned by [Artifact Storage](../storage-artifacts.md).
 
 Artifact data example:
 
-The staged artifact is stable product test output. The temporary handle can later be submitted to `harness.record_run`, but staging alone does not create canonical evidence.
+The staged artifact is stable product test output. The transient handle can later be submitted to `harness.record_run`, but staging alone does not create canonical evidence.
 
 ```yaml
 artifact:

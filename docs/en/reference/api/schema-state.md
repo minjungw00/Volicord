@@ -1,7 +1,7 @@
 # API state schemas
 
 Meaning:
-- This document owns API state-shaped schemas for the current MVP.
+- This document owns API state-shaped schemas for the baseline scope.
 - It is documentation reference material only.
 
 Not implied:

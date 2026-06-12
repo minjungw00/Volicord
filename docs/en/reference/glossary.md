@@ -25,8 +25,8 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | Product Repository | Product Repository | [Runtime Boundaries](runtime-boundaries.md) |
 | Harness Runtime Home | Harness Runtime Home | [Runtime Boundaries](runtime-boundaries.md) |
 | documentation | 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
-| active MVP | 현재 MVP | [Scope](scope.md) |
-| out-of-scope capability | 이후 후보 | [Scope Reference](scope.md) |
+| baseline scope | 기준 범위 | [Scope](scope.md) |
+| out-of-scope capability | 지원 범위 밖 기능 | [Scope Reference](scope.md) |
 | owner document | 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
 | current owner | 현재 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
 | promotion-time owner update | 승격 시점의 담당 문서 갱신 | [Scope Reference](scope.md) |
@@ -83,7 +83,7 @@ Owner:
 - [Runtime Boundaries](runtime-boundaries.md)
 
 Notes:
-- Harness is the planned local work-authority server for AI-assisted product work.
+- Harness is the local work-authority server for AI-assisted product work.
 
 ### Product Repository
 
@@ -125,7 +125,7 @@ Owner:
 - [Runtime Boundaries](runtime-boundaries.md)
 
 Notes:
-- The Harness Runtime Home is the future operational data space for Harness records and artifacts.
+- The Harness Runtime Home is the operational data space for Harness records and artifacts.
 
 ### documentation
 
@@ -140,8 +140,8 @@ Preserve:
 - File paths and owner labels
 
 Avoid:
-- implementation-complete
-- runtime-ready
+- treating documentation as implementation authority
+- treating documentation as runtime readiness
 - generated operational record
 
 Owner:
@@ -150,17 +150,16 @@ Owner:
 - [Implementation Guide](../build/implementation-guide.md)
 
 Notes:
-- Documentation-only work does not authorize runtime implementation or generated runtime records.
+- Documentation work does not authorize runtime implementation or generated runtime records.
 
-### active MVP
+### baseline scope
 
 English:
-- active MVP
-- current MVP
+- baseline scope
 
 Korean:
-- Reference: 현재 MVP
-- User-facing: 현재 MVP
+- Reference: 기준 범위
+- User-facing: 기준 범위
 
 Preserve:
 - Owner titles and exact value strings
@@ -173,7 +172,7 @@ Owner:
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
-- Active MVP is the active product scope boundary for the first planned local work loop.
+- Baseline scope is the supported product scope boundary.
 
 ### out-of-scope capability
 
@@ -181,21 +180,21 @@ English:
 - out-of-scope capability
 
 Korean:
-- Reference: 이후 후보
-- User-facing: 이후 후보
+- Reference: 지원 범위 밖 기능
+- User-facing: 지원 범위 밖 기능
 
 Preserve:
 - Exact owner paths when routing promotion requirements
 
 Avoid:
-- Calling deferred material an active MVP requirement.
+- Calling deferred material a baseline requirement.
 
 Owner:
 - [Scope Reference](scope.md)
 - [Scope](scope.md)
 
 Notes:
-- A out-of-scope capability is inactive until the relevant owners promote it.
+- An out-of-scope capability is inactive until the relevant owners promote it.
 
 ### owner document
 
@@ -605,7 +604,7 @@ Owner:
 - [Artifact Storage](storage-artifacts.md)
 
 Notes:
-- `StagedArtifactHandle` is temporary and is not persistent artifact authority by itself.
+- `StagedArtifactHandle` is transient and is not persistent artifact authority by itself.
 
 ### projection
 
@@ -839,7 +838,7 @@ Preserve:
 - `preventive`
 
 Avoid:
-- Claiming current-MVP sandboxing without an active owner.
+- Claiming baseline-scope sandboxing without an active owner.
 - Claiming permission control without an active owner.
 
 Owner:
@@ -864,15 +863,15 @@ Preserve:
 Avoid:
 - 격리 보장이 제공됩니다
 - 현재 격리됩니다
-- 현재 MVP가 isolated 보장을 제공합니다
+- 기준 범위가 isolated 보장을 제공합니다
 
 Owner:
 - [Security](security.md) for semantics and non-claims
-- [Scope](scope.md) for current-MVP availability
+- [Scope](scope.md) for baseline-scope availability
 - [API Value Sets](api/schema-value-sets.md) for the value entry
 
 Notes:
-- `isolated` is a reserved or profile-gated guarantee label, not an active current-MVP guarantee.
+- `isolated` is a reserved or profile-gated guarantee label, not a supported guarantee.
 - Presence in a value set does not activate behavior.
 
 ### reserved value
@@ -902,7 +901,7 @@ Owner:
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
-- A reserved value may exist as vocabulary or future surface area without activating behavior.
+- A reserved value may exist as vocabulary or reserved surface area without activating behavior.
 - Presence in a value set does not activate behavior.
 
 ### profile-gated value
@@ -918,7 +917,7 @@ Preserve:
 - Exact value strings
 
 Avoid:
-- Treating a profile-gated value as current MVP behavior because it appears in a value set.
+- Treating a profile-gated value as baseline scope behavior because it appears in a value set.
 
 Owner:
 - [Scope](scope.md)

@@ -4,7 +4,7 @@
 
 ## What this document owns
 
-This document owns active MVP method behavior for `harness.intake`:
+This document owns baseline method behavior for `harness.intake`:
 
 - method-specific required inputs, access requirements, state-version behavior, result branches, and dry-run behavior
 - the scenario request fields and representative response for the shared account data export confirmation scenario

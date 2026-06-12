@@ -1,6 +1,6 @@
 # Storage
 
-This page is a short router for the storage document family. It is documentation reference material only; it does not create a Harness Server, Runtime Home, database, artifact store, migration runner, generated projection, runtime state, or implementation-complete DDL in this repository.
+This page is a short router for the storage document family. It is documentation reference material only; it does not create a Harness Server, Runtime Home, database, artifact store, migration runner, generated projection, runtime state, or runtime DDL in this repository.
 
 ## How to read
 
@@ -18,7 +18,7 @@ The storage family owns:
 - where Harness records persist
 - what committed records mean as storage authority
 - how method branches affect persistence
-- how artifacts move from temporary staging to persistent references
+- how artifacts move from transient staging to persistent references
 - how project-wide versioning, idempotency, locks, and migrations behave at the storage layer
 
 Storage is authority only for rows or artifact records committed by Core and validated against the owning Core, API, artifact, and storage contracts. Chat, generated Markdown, status cards, projections, connector output, operator output, and report prose are not storage authority.

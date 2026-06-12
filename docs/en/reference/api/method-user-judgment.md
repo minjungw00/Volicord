@@ -2,7 +2,7 @@
 
 ## What this document owns
 
-This document owns active MVP method behavior for `harness.request_user_judgment` and `harness.record_user_judgment`:
+This document owns baseline method behavior for `harness.request_user_judgment` and `harness.record_user_judgment`:
 
 - method-specific required inputs, access requirements, state-version behavior, result branches, and dry-run behavior
 - the minimal requests and representative responses for the shared account data export confirmation scenario
