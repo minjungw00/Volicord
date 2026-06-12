@@ -7,7 +7,7 @@
 이 문서는 현재 MVP의 `harness.intake` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
-- 계정 데이터 내보내기 확인 예시의 요청 필드와 대표 응답
+- 계정 내보내기 확인 예시의 요청 필드와 대표 응답
 - 저장 담당 문서가 기록 단위 세부사항을 정의하기 전의 메서드 수준 저장 효과 기대치
 
 ## 담당하지 않는 것
@@ -100,7 +100,7 @@ method: harness.intake
 params:
   plain_language_request: "계정 데이터 내보내기 전에 명시적 확인 단계를 추가한다."
   initial_scope:
-    boundary: "계정 데이터 내보내기 흐름과 계정 내보내기 확인 테스트만."
+    boundary: "계정 내보내기 흐름과 확인 테스트만."
     non_goals:
       - "계정 삭제 동작"
       - "청구 내보내기 동작"
@@ -143,8 +143,8 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "계정 데이터 내보내기 확인"
-  scope_summary: "계정 데이터 내보내기 흐름과 계정 내보내기 확인 테스트만."
+  goal_summary: "계정 데이터 내보내기 전에 명시적 확인 단계를 추가한다."
+  scope_summary: "계정 내보내기 흐름과 확인 테스트만."
   non_goals:
     - "계정 삭제 동작"
     - "청구 내보내기 동작"

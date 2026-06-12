@@ -7,7 +7,7 @@
 이 문서는 현재 MVP의 `harness.prepare_write` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
-- 계정 데이터 내보내기 확인 예시의 최소 요청과 대표 응답
+- 계정 내보내기 확인 예시의 최소 요청과 대표 응답
 - 저장 담당 문서가 기록 단위 세부사항을 정의하기 전의 메서드 수준 저장 효과 기대치
 
 ## 담당하지 않는 것
@@ -22,7 +22,7 @@
 
 제안된 제품 파일 쓰기 하나를 아래 항목과 비교합니다.
 
-- 현재 Task.
+- 활성 Task.
 - 활성 Change Unit.
 - 범위.
 - 기준선.
@@ -136,7 +136,7 @@ params:
     locale: ko-KR
   task_id: task_456
   change_unit_id: cu_001
-  intended_operation: "계정 데이터 내보내기 확인 흐름 갱신"
+  intended_operation: "계정 내보내기 확인 흐름 갱신"
   intended_paths:
     - src/account/export.ts
     - src/account/export-confirmation.ts

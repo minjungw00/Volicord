@@ -7,7 +7,7 @@
 이 문서는 현재 MVP의 `harness.update_scope` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
-- 계정 데이터 내보내기 확인 예시의 최소 요청과 대표 응답
+- 계정 내보내기 확인 예시의 최소 요청과 대표 응답
 - 저장 담당 문서가 기록 단위 세부사항을 정의하기 전의 메서드 수준 저장 효과 기대치
 
 ## 담당하지 않는 것
@@ -119,24 +119,24 @@ params:
   goal_summary: "계정 데이터 내보내기 전에 명시적 확인 단계를 추가한다."
   scope_update:
     include:
-      - "계정 데이터 내보내기 확인 UI를 추가한다."
+      - "계정 내보내기 확인 UI를 추가한다."
       - "계정 내보내기 확인 테스트를 갱신한다."
     exclude:
       - "계정 삭제 동작"
       - "청구 내보내기 동작"
-  scope_boundary: "계정 데이터 내보내기 확인 UI를 추가하고 계정 내보내기 확인 테스트를 갱신한다."
+  scope_boundary: "계정 내보내기 확인 UI를 추가하고 확인 테스트를 갱신한다."
   non_goals:
     - "계정 삭제 동작"
     - "청구 내보내기 동작"
   acceptance_criteria:
     - "계정 데이터 내보내기 전에 명시적 확인 단계가 필요하다."
-  autonomy_boundary: "계정 데이터 내보내기 확인 UI와 계정 내보내기 확인 테스트 범위 안에서만 작업한다."
+  autonomy_boundary: "계정 내보내기 확인 UI와 테스트 범위 안에서만 작업한다."
   baseline_ref: baseline_account_export_001
   change_unit:
     operation: create_active
-    scope_summary: "계정 데이터 내보내기 확인 UI를 추가하고 계정 내보내기 확인 테스트를 갱신한다."
+    scope_summary: "계정 내보내기 확인 UI를 추가하고 확인 테스트를 갱신한다."
     affected_areas:
-      - "계정 데이터 내보내기 확인 UI"
+      - "계정 내보내기 확인 UI"
       - "계정 내보내기 확인 테스트"
     affected_paths:
       - src/account/export.ts
@@ -192,7 +192,7 @@ state:
     result: none
     closed_at: null
   goal_summary: "계정 데이터 내보내기 전에 명시적 확인 단계를 추가한다."
-  scope_summary: "계정 데이터 내보내기 확인 UI를 추가하고 계정 내보내기 확인 테스트를 갱신한다."
+  scope_summary: "계정 내보내기 확인 UI를 추가하고 확인 테스트를 갱신한다."
   non_goals:
     - "계정 삭제 동작"
     - "청구 내보내기 동작"
@@ -206,7 +206,7 @@ state:
     state_version: 19
 next_actions:
   - action: harness.prepare_write
-    reason: "계정 데이터 내보내기 변경을 활성 범위와 비교한다."
+    reason: "계정 내보내기 변경을 활성 범위와 비교한다."
 ```
 
 ## 담당 문서 링크
