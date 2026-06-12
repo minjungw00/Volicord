@@ -240,6 +240,13 @@ question_routes:
         - reference.glossary
         - maintain.translation-guide
       route_note: "Use `닫기 준비 상태` in reference prose and `닫기 가능 여부` only for user-facing close-readiness wording."
+    - question: "Where are Korean prose and translation guidance controlled?"
+      canonical_owner_doc_id: maintain.translation-guide
+      default_path: docs/en/maintain/translation-guide.md
+      supporting_owner_doc_ids:
+        - terminology.map
+        - reference.glossary
+      route_note: "Translation Guide owns natural Korean prose and semantic-parity rules; Terminology Map owns machine-readable term controls; Glossary explains product term meaning and owner routing."
     - question: "Where should later candidates be documented?"
       canonical_owner_doc_id: later.index
       default_path: docs/en/later/index.md

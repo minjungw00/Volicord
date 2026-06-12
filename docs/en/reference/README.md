@@ -59,11 +59,11 @@ This route is for implementers and reviewers who need exact owners. New and work
 
 | Question | Owner |
 |---|---|
-| What scenario do API examples use? | `api/mvp-api.md`, `../maintain/authoring-guide.md` |
+| What scenario do API examples use? | `api/mvp-api.md`, `../maintain/authoring-guide.md`, `../maintain/checks.md` |
 | Can API examples use documentation maintenance as the scenario? | `../maintain/authoring-guide.md` |
-| Where are API example checks defined? | `../maintain/checks.md` |
-| Where are API example consistency checks defined? | `../maintain/checks.md` |
-| Where are field-name checks defined? | `../maintain/checks.md` |
+| Where are API example checks defined? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
+| Where are API example consistency checks defined? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
+| Where are API example field-name checks defined? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
 | Where is the active API method list? | `api/mvp-api.md` |
 | Where are API method-name values defined? | `api/schema-value-sets.md` |
 | Where are method payload fields defined? | [API method owners](#api-method-owners) |
@@ -165,11 +165,11 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Where are policy later candidates documented? | `../later/policy-and-conformance.md` |
 | Where are workflow later candidates documented? | `../later/workflow-and-collaboration.md` |
 | Is a later candidate an active requirement? | `active-mvp-scope.md` |
-| What does promotion-time owner update mean? | `glossary.md` |
+| What does promotion-time owner update mean? | `glossary.md`, `../later/index.md` |
 | What must change before a later candidate becomes active? | `../later/index.md` |
-| How should "Full close-readiness evaluation order" be written in Korean? | `../maintain/translation-guide.md` |
-| How should "close readiness" be written in Korean? | `../../terminology-map.yaml` |
-| Where is Korean terminology controlled? | `../../terminology-map.yaml` |
+| How should "Full close-readiness evaluation order" be written in Korean? | `glossary.md`, `../maintain/translation-guide.md` |
+| How should "close readiness" be written in Korean? | `../../terminology-map.yaml`, `glossary.md`, `../maintain/translation-guide.md` |
+| Where are Korean prose and translation guidance controlled? | `../maintain/translation-guide.md`, `../../terminology-map.yaml`, `glossary.md` |
 | Where are documentation authoring rules? | `../maintain/authoring-guide.md` |
 | Where are large-table rules defined? | `../maintain/authoring-guide.md`, `../maintain/checks.md` |
 | When should a long Markdown table be split? | `../maintain/authoring-guide.md`, `../maintain/checks.md` |

@@ -19,8 +19,8 @@
 | 단계 | 담당 문서 경로 |
 |---|---|
 | 현재 MVP 범위 | `active-mvp-scope.md` |
-| API 메서드 목록 | `api/mvp-api.md` |
-| API 메서드 동작 | [API 메서드 담당 문서](#api-메서드-담당-문서) |
+| API method 목록 | `api/mvp-api.md` |
+| API method 동작 | [API method 담당 문서](#api-메서드-담당-문서) |
 | 스키마 형태 | [API와 스키마 담당 문서](#api와-스키마-담당-문서) |
 | 저장 효과 | `storage-effects.md` |
 
@@ -59,14 +59,14 @@
 
 | 질문 | 담당 문서 |
 |---|---|
-| API 예시는 어떤 시나리오를 쓰는가? | `api/mvp-api.md`, `../maintain/authoring-guide.md` |
+| API 예시는 어떤 시나리오를 쓰는가? | `api/mvp-api.md`, `../maintain/authoring-guide.md`, `../maintain/checks.md` |
 | API 예시가 문서 유지보수를 시나리오로 써도 되는가? | `../maintain/authoring-guide.md` |
-| API 예시 점검은 어디서 정의되는가? | `../maintain/checks.md` |
-| API 예시 정합성 점검은 어디서 정의되는가? | `../maintain/checks.md` |
-| 필드 이름 점검은 어디서 정의되는가? | `../maintain/checks.md` |
-| 활성 API 메서드 목록은 어디에 있는가? | `api/mvp-api.md` |
-| API 메서드 이름 값은 어디서 정의되는가? | `api/schema-value-sets.md` |
-| 메서드 페이로드 필드는 어디서 정의되는가? | [API 메서드 담당 문서](#api-메서드-담당-문서) |
+| API 예시 점검은 어디서 정의되는가? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
+| API 예시 정합성 점검은 어디서 정의되는가? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
+| API 예시 필드 이름 점검은 어디서 정의되는가? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
+| 활성 API method 목록은 어디에 있는가? | `api/mvp-api.md` |
+| API method 이름 값은 어디서 정의되는가? | `api/schema-value-sets.md` |
+| method 페이로드 필드는 어디서 정의되는가? | [API method 담당 문서](#api-메서드-담당-문서) |
 | 공통 페이로드 스키마는 어디서 정의되는가? | `api/schema-core.md` |
 | `harness.status`의 `state_version` 예시 규칙은 어디에 있는가? | `api/method-status.md`, `../maintain/checks.md` |
 | `harness.prepare_write`는 무엇을 반환하는가? | `api/method-prepare-write.md` |
@@ -89,21 +89,23 @@
 | 아티팩트 참조 형태는 어디서 정의되는가? | `api/schema-artifacts.md` |
 | 판단 입력 형태는 어디서 정의되는가? | `api/schema-judgment.md` |
 
-## API 메서드 담당 문서
+<a id="api-메서드-담당-문서"></a>
+
+## API method 담당 문서
 
 | 질문 | 담당 문서 |
 |---|---|
-| `harness.intake` 동작은 어디서 정의되는가? | `api/method-intake.md` |
-| `harness.update_scope` 동작은 어디서 정의되는가? | `api/method-update-scope.md` |
-| `harness.status` 동작은 어디서 정의되는가? | `api/method-status.md` |
-| `harness.prepare_write` 동작은 어디서 정의되는가? | `api/method-prepare-write.md` |
-| `harness.stage_artifact` 동작은 어디서 정의되는가? | `api/method-stage-artifact.md` |
-| `harness.record_run` 동작은 어디서 정의되는가? | `api/method-record-run.md` |
-| `harness.record_run` 증거 동작은 어디서 정의되는가? | `api/method-record-run.md`, `storage-effects.md` |
+| `harness.intake` method 동작은 어디서 정의되는가? | `api/method-intake.md` |
+| `harness.update_scope` method 동작은 어디서 정의되는가? | `api/method-update-scope.md` |
+| `harness.status` method 동작은 어디서 정의되는가? | `api/method-status.md` |
+| `harness.prepare_write` method 동작은 어디서 정의되는가? | `api/method-prepare-write.md` |
+| `harness.stage_artifact` method 동작은 어디서 정의되는가? | `api/method-stage-artifact.md` |
+| `harness.record_run` method 동작은 어디서 정의되는가? | `api/method-record-run.md` |
+| `harness.record_run` 증거 method 동작은 어디서 정의되는가? | `api/method-record-run.md`, `storage-effects.md` |
 | `harness.record_run` 저장 효과는 어디서 정의되는가? | `storage-effects.md` |
-| `harness.request_user_judgment` 동작은 어디서 정의되는가? | `api/method-user-judgment.md` |
-| `harness.record_user_judgment` 동작은 어디서 정의되는가? | `api/method-user-judgment.md` |
-| `harness.close_task` 동작은 어디서 정의되는가? | `api/method-close-task.md` |
+| `harness.request_user_judgment` method 동작은 어디서 정의되는가? | `api/method-user-judgment.md` |
+| `harness.record_user_judgment` method 동작은 어디서 정의되는가? | `api/method-user-judgment.md` |
+| `harness.close_task` method 동작은 어디서 정의되는가? | `api/method-close-task.md` |
 
 ## 저장소 담당 문서
 
@@ -165,11 +167,11 @@
 | 정책 이후 후보는 어디에 있는가? | `../later/policy-and-conformance.md` |
 | 작업 흐름 이후 후보는 어디에 있는가? | `../later/workflow-and-collaboration.md` |
 | 이후 후보는 현재 요구사항인가? | `active-mvp-scope.md` |
-| 승격 시점의 담당 문서 갱신은 무엇인가? | `glossary.md` |
+| 승격 시점의 담당 문서 갱신은 무엇인가? | `glossary.md`, `../later/index.md` |
 | 이후 후보가 활성화되려면 무엇이 바뀌는가? | `../later/index.md` |
-| "Full close-readiness evaluation order"는 한국어로 어떻게 쓰는가? | `../maintain/translation-guide.md` |
-| "close readiness"는 한국어로 어떻게 쓰는가? | `../../terminology-map.yaml` |
-| 한국어 용어는 어디서 통제되는가? | `../../terminology-map.yaml` |
+| "Full close-readiness evaluation order"의 한국어 표현은 어디서 확인하는가? | `glossary.md`, `../maintain/translation-guide.md` |
+| "close readiness"의 한국어 표현은 어디서 확인하는가? | `../../terminology-map.yaml`, `glossary.md`, `../maintain/translation-guide.md` |
+| 한국어 표현과 번역 지침은 어디서 관리되는가? | `../maintain/translation-guide.md`, `../../terminology-map.yaml`, `glossary.md` |
 | 문서 작성 규칙은 어디에 있는가? | `../maintain/authoring-guide.md` |
 | 큰 Markdown 표 규칙은 어디서 정의되는가? | `../maintain/authoring-guide.md`, `../maintain/checks.md` |
 | 긴 Markdown 표는 언제 나누는가? | `../maintain/authoring-guide.md`, `../maintain/checks.md` |
