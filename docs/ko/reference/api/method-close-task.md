@@ -102,8 +102,8 @@
 
 비주장:
 
-- 거절 응답은 `CloseTaskResult.blockers`를 반환하지 않습니다.
-- 거절 응답은 닫기 효과를 만들지 않습니다.
+- 거부 응답은 `CloseTaskResult.blockers`를 반환하지 않습니다.
+- 거부 응답은 닫기 효과를 만들지 않습니다.
 
 ## `dry_run` 동작
 

@@ -109,7 +109,7 @@
 - 유효하지 않은 요청 보장.
 - 역량 실패.
 
-비주장: `STATE_VERSION_CONFLICT`는 항상 거절 응답 오류이며 쓰기 결정 이유가 아닙니다.
+비주장: `STATE_VERSION_CONFLICT`는 항상 거부 응답 오류이며 쓰기 결정 이유가 아닙니다.
 
 ## `dry_run` 동작
 

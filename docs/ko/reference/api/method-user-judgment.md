@@ -228,20 +228,20 @@ params:
   change_unit_id: cu_001
   judgment_kind: product_decision
   presentation: short
-  question: "계정 데이터 내보내기 확인 문구가 내보내기 파일에 개인정보가 포함될 수 있음을 알린다면 충분하다고 수락해도 됩니까?"
+  question: "계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 알리는 확인 문구를 충분한 것으로 수락해도 됩니까?"
   options:
     - option_id: accept
       label: "충분함"
-      description: "계정 데이터 내보내기 확인 문구가 충분하다는 사용자 판단을 기록합니다."
+      description: "확인 문구가 충분하다는 사용자 판단을 기록합니다."
       consequence: "닫기 준비 상태가 제품 판단을 해결된 것으로 평가할 수 있습니다."
       is_default: true
     - option_id: revise
       label: "수정 필요"
-      description: "수정된 계정 데이터 내보내기 확인 문구가 필요하므로 Task를 열어 둡니다."
+      description: "확인 문구를 더 수정해야 하므로 Task를 열어 둡니다."
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
-    summary: "다운로드 전에 표시되는 계정 데이터 내보내기 확인 문구는 내보내기 파일에 개인정보가 포함될 수 있음을 알립니다."
+    summary: "다운로드 전에 표시되는 확인 문구는 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 알립니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -280,7 +280,7 @@ params:
     product_decision:
       judgment:
         decision: accepted
-        rationale: "계정 데이터 내보내기 확인 문구는 내보내기 파일에 개인정보가 포함될 수 있음을 명확히 알립니다."
+        rationale: "확인 문구가 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 명확히 알립니다."
     technical_decision: null
     scope_decision: null
     sensitive_action_scope: null
@@ -321,20 +321,20 @@ user_judgment:
   judgment_kind: product_decision
   status: pending
   presentation: short
-  question: "계정 데이터 내보내기 확인 문구가 내보내기 파일에 개인정보가 포함될 수 있음을 알린다면 충분하다고 수락해도 됩니까?"
+  question: "계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 알리는 확인 문구를 충분한 것으로 수락해도 됩니까?"
   options:
     - option_id: accept
       label: "충분함"
-      description: "계정 데이터 내보내기 확인 문구가 충분하다는 사용자 판단을 기록합니다."
+      description: "확인 문구가 충분하다는 사용자 판단을 기록합니다."
       consequence: "닫기 준비 상태가 제품 판단을 해결된 것으로 평가할 수 있습니다."
       is_default: true
     - option_id: revise
       label: "수정 필요"
-      description: "수정된 계정 데이터 내보내기 확인 문구가 필요하므로 Task를 열어 둡니다."
+      description: "확인 문구를 더 수정해야 하므로 Task를 열어 둡니다."
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
-    summary: "다운로드 전에 표시되는 계정 데이터 내보내기 확인 문구는 내보내기 파일에 개인정보가 포함될 수 있음을 알립니다."
+    summary: "다운로드 전에 표시되는 확인 문구는 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 알립니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -385,20 +385,20 @@ user_judgment:
   judgment_kind: product_decision
   status: resolved
   presentation: short
-  question: "계정 데이터 내보내기 확인 문구가 내보내기 파일에 개인정보가 포함될 수 있음을 알린다면 충분하다고 수락해도 됩니까?"
+  question: "계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 알리는 확인 문구를 충분한 것으로 수락해도 됩니까?"
   options:
     - option_id: accept
       label: "충분함"
-      description: "계정 데이터 내보내기 확인 문구가 충분하다는 사용자 판단을 기록합니다."
+      description: "확인 문구가 충분하다는 사용자 판단을 기록합니다."
       consequence: "닫기 준비 상태가 제품 판단을 해결된 것으로 평가할 수 있습니다."
       is_default: true
     - option_id: revise
       label: "수정 필요"
-      description: "수정된 계정 데이터 내보내기 확인 문구가 필요하므로 Task를 열어 둡니다."
+      description: "확인 문구를 더 수정해야 하므로 Task를 열어 둡니다."
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
-    summary: "다운로드 전에 표시되는 계정 데이터 내보내기 확인 문구는 내보내기 파일에 개인정보가 포함될 수 있음을 알립니다."
+    summary: "다운로드 전에 표시되는 확인 문구는 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 알립니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -417,7 +417,7 @@ user_judgment:
       product_decision:
         judgment:
           decision: accepted
-          rationale: "계정 데이터 내보내기 확인 문구는 내보내기 파일에 개인정보가 포함될 수 있음을 명확히 알립니다."
+          rationale: "확인 문구가 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 명확히 알립니다."
     note: null
     accepted_risks: []
     resolved_by_actor_kind: user

@@ -6,10 +6,10 @@
 
 이 문서가 담당합니다.
 
-- 읽기 전용, `dry_run`, 거절 응답, 스테이징 생성, Core 커밋, 커밋된 차단 결과의 저장 효과 구분.
+- 읽기 전용, `dry_run`, 거부 응답, 스테이징 생성, Core 커밋, 커밋된 차단 결과의 저장 효과 구분.
 - 각 분기가 담당 기록, `task_events`, 재실행 행, `project_state.state_version`, 스테이징 핸들 생성 또는 소비, 아티팩트 승격, `Write Authorization`을 바꿀 수 있는지 여부.
 - 차단 사유형 응답 데이터가 지속 저장되는 경계.
-- 거절 응답과 유효한 `dry_run` 미리보기의 효과 없음 보장.
+- 거부 응답과 유효한 `dry_run` 미리보기의 효과 없음 보장.
 
 이 문서는 담당하지 않습니다.
 
@@ -214,7 +214,7 @@ API 데이터 형태에는 아래 값이 포함됩니다.
 
 ## 커밋된 차단 결과의 저장 효과
 
-커밋된 차단 결과는 거절 응답과 다릅니다.
+커밋된 차단 결과는 거부 응답과 다릅니다.
 
 조건: `harness.prepare_write` 또는 `harness.close_task`의 커밋된 차단 결과는 관련 메서드 담당 문서가 차단 커밋을 허용할 때만 `MethodResult`입니다.
 
@@ -678,7 +678,7 @@ state_version: 21
 ## 관련 담당 문서
 
 - [MVP API 경로 문서](api/mvp-api.md)와 메서드 담당 문서: 선택된 메서드 동작과 응답 공용체.
-- [API 오류](api/errors.md): 거절 응답의 공개 오류.
+- [API 오류](api/errors.md): 거부 응답의 공개 오류.
 - [저장소 기록](storage-records.md): 저장 효과가 건드릴 수 있는 기록.
 - [아티팩트 저장소](storage-artifacts.md): 스테이징 핸들과 아티팩트 생명주기 세부사항.
 - [저장소 버전 관리](storage-versioning.md): `state_version` 시계와 재실행/멱등성 의미.

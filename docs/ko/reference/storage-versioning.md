@@ -58,7 +58,7 @@
 | 상황 | 결과 | 세부사항 |
 |---|---|---|
 | 읽기 전용 상태 조회 | 증가하지 않음 | [읽기 전용 상태 조회](#state-version-read-only-status) |
-| 거절 응답 | 증가하지 않음 | [거절 응답](#state-version-rejected-response) |
+| 거부 응답 | 증가하지 않음 | [거부 응답](#state-version-rejected-response) |
 | 성공한 상태 변경 | 증가함 | [성공한 상태 변경](#state-version-successful-mutation) |
 | 커밋된 차단 결과 | 메서드별 | [커밋된 차단 결과](#state-version-committed-blocked-result) |
 
@@ -87,7 +87,7 @@
 - 메서드별 효과 없음 분기 세부사항은 [저장 효과](storage-effects.md)가 담당합니다.
 
 <a id="state-version-rejected-response"></a>
-**거절 응답**
+**거부 응답**
 
 의미:
 
@@ -225,7 +225,7 @@
 - 커밋 전 상태 버전 충돌.
 - 오래된 `WriteAuthorization.basis_state_version`.
 - 멱등 재실행.
-- 효과가 없는 거절 응답.
+- 효과가 없는 거부 응답.
 
 이 분기들은 아래 항목을 만들면 안 됩니다.
 
@@ -312,7 +312,7 @@
 - `dry_run`.
 - 잘못된 요청.
 - 커밋 전 실패.
-- 효과가 없는 거절 응답.
+- 효과가 없는 거부 응답.
 
 새 커밋된 `dry_run=false` 상태 변경에서는 현재 행 쓰기, `task_events` 추가, 프로젝트 전체 `state_version` 증가, 재실행 행 삽입이 하나의 트랜잭션으로 커밋되어야 합니다. 메서드별로 어떤 현재 행과 아티팩트 효과가 함께 들어가는지는 [저장 효과](storage-effects.md)가 담당합니다.
 
