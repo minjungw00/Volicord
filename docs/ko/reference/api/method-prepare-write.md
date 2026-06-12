@@ -152,7 +152,8 @@ params:
 별도의 민감 동작 승인이 이미 있을 때의 허용 분기입니다.
 
 기존 민감 동작 승인은 `state_version: 19`의 `active_user_judgment_refs` 사용자 판단 참조로 표시됩니다.
-`intended_operation`은 계정 내보내기 흐름 변경을 가리키며, 하네스 민감 동작 승인과는 별도입니다.
+`uj_sensitive_export_001`은 `Write Authorization` 전에 필요한 민감 동작 승인을 나타냅니다.
+계정 내보내기 확인 문구에 대한 사용자 판단은 사용자 판단 메서드에서 별도로 처리되며, 이 민감 동작 승인과 같은 승인이 아닙니다.
 
 ```yaml
 base:

@@ -152,7 +152,8 @@ params:
 Allowed branch after the separate sensitive-action approval is already present:
 
 The existing sensitive-action approval is represented by `active_user_judgment_refs` at `state_version: 19`.
-The `intended_operation` names the account export flow change, which remains separate from Harness sensitive-action approval.
+`uj_sensitive_export_001` represents the sensitive-action approval needed before `Write Authorization`.
+The account export confirmation copy judgment is handled separately by the user-judgment methods and is not the same approval.
 
 ```yaml
 base:
