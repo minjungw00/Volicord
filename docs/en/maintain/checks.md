@@ -733,19 +733,21 @@ Owner:
 - [Checks](checks.md)
 
 Check:
-- Confirm the table maintainability rule applies to all Reference documents, not only storage references.
-- Confirm each Markdown table cell remains short.
-- If a cell needs multiple conditions, exceptions, non-claims, allowed effects, forbidden effects, or owner links, confirm the table uses a summary row plus a detail block.
-- Confirm source diffs remain reviewable and table cells do not hide rule boundaries.
+- Confirm tables are used only for short mappings, comparisons, or owner routing.
+- Confirm the table rule covers all Reference documents, not only storage references.
+- Confirm dense cells are rewritten as summary rows plus detail blocks.
+- Confirm long conditions, exceptions, non-claims, effects, owner links, and list-like examples sit outside cells.
 
 Failure:
-- A Reference table cell contains multiple conditions, exceptions, non-claims, allowed effects, forbidden effects, owner links, multiple sentences, or a list-like sequence.
-- A single source line becomes too long to review.
-- A dense cell makes the condition, result, or exception boundary hard to detect.
+- A cell contains multiple sentences or multiple conditions.
+- A cell hides an exception, non-claim, effect, or owner link.
+- A cell carries a list-like sequence.
+- A source line is hard to review.
 
 Fix:
-- Convert the dense table to a summary row plus a detail block.
-- Move long conditions, exceptions, non-claims, allowed effects, forbidden effects, and owner links out of table cells.
+- Keep the table row as the short mapping.
+- Put detail below the table as bullets or named blocks.
+- Move contract detail to the canonical owner.
 
 ### CHK-EN-HEADING-CASE: English heading case
 

@@ -188,13 +188,19 @@ Use named blocks when a rule has multiple parts:
 - Exceptions: when a different rule or caveat applies.
 - Owner links: where the canonical detail lives.
 
-Prefer short paragraphs, compact bullets, and small tables for routing. If a sentence contains several "must not", "does not", or "only when" clauses, consider a list or named block. Use a Markdown table when each cell is short and the table helps comparison or routing. Source maintainability is part of documentation quality. The table maintainability rule applies to all Reference documents, not only storage references. A table cell should remain short.
+Prefer short paragraphs, compact bullets, and small route tables. If a sentence contains several "must not", "does not", or "only when" clauses, consider a list or named block.
 
-If a cell needs multiple conditions, exceptions, non-claims, allowed effects, forbidden effects, or owner links, use a summary row plus a detail block.
+Use Markdown tables only for short mappings, comparisons, or owner routing. The table maintainability rule applies to all Reference documents, not only storage references.
 
-Split a long Markdown table when any cell needs a list, multiple conditions, multiple sentences, or a source line that is hard to review.
+Use a summary row plus a detail block when a cell would need any of these:
 
-A table should not hide conditions, exceptions, non-claims, effects, or owner links inside a long cell. If a paragraph or table needs several examples of fields, status values, effects, guarantee levels, or owner routes, that is usually a sign the text has become contract material and should move to the owner.
+- multiple sentences or conditions
+- exceptions or non-claims
+- allowed or forbidden effects
+- owner links
+- list-like field, status, guarantee, effect, or route examples
+
+Split the table when a source line becomes hard to review. Move contract detail to the owner instead of hiding it in a dense table cell.
 
 ## 8. Cross-language editing
 
@@ -234,7 +240,7 @@ Do not route active documentation through stale legacy paths. If an old path app
 - [ ] User-facing docs avoid internal schema names unless necessary.
 - [ ] Reference docs keep schema names and other exact identifiers in backticks.
 - [ ] Dense reference paragraphs were split into conditions, allowed effects, not-allowed effects, exceptions, and owner links where useful.
-- [ ] Tables in all Reference documents use short cells, and dense table content was moved into a summary row plus a detail block where needed.
+- [ ] Tables in all Reference documents use short mappings, and dense cells were moved into summary rows plus detail blocks.
 - [ ] Links point to active routes and canonical owners.
 - [ ] New or changed terminology was checked against [Terminology Map](../../terminology-map.yaml).
 - [ ] No temporary planning files, archive copies, generated runtime records, or migration notes remain.
