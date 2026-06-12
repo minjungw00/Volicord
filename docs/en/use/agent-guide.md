@@ -19,13 +19,24 @@ Rule:
 
 Not allowed:
 
-- This guide is not a connector contract, schema reference, template catalog, conformance fixture, or proof that this documentation-only repository already contains a Harness Server/runtime implementation.
+- Do not use this guide as:
+  - a connector contract
+  - a schema reference
+  - a template catalog
+  - a conformance fixture
+- Do not treat this documentation-only repository as proof that a Harness Server/runtime implementation already exists.
 
 Owner links:
 
 - Exact connector behavior lives in [Agent Integration Reference](../reference/agent-integration.md).
 - CLI, IDE/editor, chat, and local MCP recipes live in [Surface Recipes](surface-recipes.md).
-- Exact state, write, run/evidence, close, API, and schema contracts live in the relevant Reference owners linked from the [Reference Index](../reference/README.md).
+- Exact contracts live in the relevant Reference owners linked from the [Reference Index](../reference/README.md):
+  - state
+  - write
+  - run/evidence
+  - close
+  - API
+  - schemas
 
 ## 1. Infer Harness use from task shape
 
@@ -91,9 +102,16 @@ Escalate from small change to tracked work when you find:
 
 ## 2. Keep context small
 
-Always-on context should fit on one screen and support the next action. Include only:
+Always-on context should:
 
-- verified surface status and whether mutation access or artifact body access is currently available
+- fit on one screen
+- support the next action
+
+Include only:
+
+- verified surface status
+- whether mutation access is currently available
+- whether artifact body access is currently available
 - project-wide `state_version`
 - current Task and active Change Unit summary
 - work shape
@@ -101,15 +119,21 @@ Always-on context should fit on one screen and support the next action. Include 
 - active scope and non-goals
 - relevant allowed paths, tools, commands, or operation class
 - pending user judgments
-- active `SensitiveActionScope` summary when a named sensitive action is relevant
-- Write Authorization summary when product-file writes are near or an existing authorization may no longer match current state
-- staged artifact handle status and persisted `ArtifactRef` status when evidence or artifact promotion/linking is relevant
+- active `SensitiveActionScope` summary for a named sensitive action
+- `Write Authorization` summary when:
+  - product-file writes are near
+  - an existing authorization may no longer match current state
+- staged artifact handle status when evidence or artifact promotion/linking is relevant
+- persisted `ArtifactRef` status when evidence or artifact promotion/linking is relevant
 - active blockers
 - latest pre-write scope result, if any
 - `EvidenceSummary` status and gaps
 - reasons close is blocked
 - residual-risk status
-- what Harness can verify: `cooperative` by default, `detective` only after the relevant capability verification has passed for the verified scope, or unavailable/capability condition
+- Harness verification level:
+  - `cooperative` by default
+  - `detective` only after the relevant capability verification has passed for the verified scope
+  - unavailable or capability condition when verification cannot apply
 - source refs and freshness
 - one next safe action
 
@@ -152,7 +176,7 @@ The agent should not ask the user to solve something the agent can safely:
 
 The agent should inspect first.
 
-Check these before asking the user:
+Before asking the user, check:
 
 - repository files
 - docs
@@ -161,11 +185,17 @@ Check these before asking the user:
 - accepted judgments
 - relevant artifacts
 
-If a source is stale or unavailable, say that instead of treating it as authority.
+The agent should:
 
-The agent should not ask the user to know or translate Harness labels before ordinary work can begin.
+- report stale or unavailable sources instead of treating them as authority
+- avoid asking the user to know or translate Harness labels before ordinary work can begin
+- treat plain-language shaping requests as shaping requests
 
-Plain-language shaping requests count. If the user says "make the plan concrete", "help me shape this before implementation", or similar wording, route into shaping behavior without requiring Harness terms.
+Plain-language shaping examples include:
+
+- "make the plan concrete"
+- "help me shape this before implementation"
+- similar wording that asks to narrow the work before starting
 
 The agent should ask only the question that changes:
 
@@ -181,7 +211,8 @@ The agent should prefer one blocking question at a time.
 
 Allowed:
 
-- Multiple questions over time can be correct when each one targets a distinct user-owned judgment that changes the next safe action.
+- Multiple questions over time can be correct.
+- Each question should target a distinct user-owned judgment that changes the next safe action.
 - Non-blocking curiosity questions can be parked for later.
 
 Not allowed:
@@ -222,14 +253,20 @@ Rule:
 
 - An unknown item blocks only when it affects that first safe work item or the next safe action.
 
-Before naming the first safe work item for this change in write-capable work, name the blocker type if the blocker belongs to the user:
+For write-capable work, do this before naming the first safe work item:
 
-- `product_decision`
-- `technical_decision`
-- `scope_decision`
-- `sensitive_approval`
+- If the blocker belongs to the user, name the blocker type:
 
-If the blocker is agent-resolvable or surface/system-owned, name the inspection, refresh, narrowing, or capability step instead of asking the user.
+  - `product_decision`
+  - `technical_decision`
+  - `scope_decision`
+  - `sensitive_approval`
+
+- If the blocker is agent-resolvable or surface/system-owned, name the next action instead of asking the user:
+  - inspection
+  - refresh
+  - narrowing
+  - capability step
 
 In the active MVP, clarification should update through the active owner paths:
 
@@ -246,7 +283,12 @@ The agent should:
 
 Not allowed:
 
-- Do not create separate active requirements for committed planning briefs, question queues, assumption registers, standalone detailed artifacts, or full-format judgment presentations.
+- Do not create separate active requirements for:
+  - committed planning briefs
+  - question queues
+  - assumption registers
+  - standalone detailed artifacts
+  - full-format judgment presentations
 
 The agent should not let shaping become an open-ended planning loop.
 
@@ -257,10 +299,17 @@ The agent should:
 
 Use lifecycle labels narrowly when they help the agent choose the next action:
 
-- `shaping`: the request is not yet writable; inspect more, narrow scope, or ask the one blocking question.
-- `waiting_user`: a specific user-owned judgment is required before the next safe action.
-- `ready`: there is enough active scope for the next action; for write-capable work, the active work slice is specific enough to move toward the pre-write scope check (`harness.prepare_write` in owner terms).
-- `blocked`: a system, scope, capability, evidence, recovery, close, or other active blocker prevents progress.
+- `shaping`:
+  - the request is not yet writable
+  - inspect more, narrow scope, or ask the one blocking question
+- `waiting_user`:
+  - a specific user-owned judgment is required before the next safe action
+- `ready`:
+  - there is enough active scope for the next action
+  - for write-capable work, the active work slice is specific enough to move toward the pre-write scope check
+  - in owner terms, that check is `harness.prepare_write`
+- `blocked`:
+  - a system, scope, capability, evidence, recovery, close, or other active blocker prevents progress
 
 ## 4. Do not decide user-owned judgments
 
@@ -282,12 +331,18 @@ The user decides:
 
 Other future judgment candidates belong to [Later](../later/index.md) and are not active judgment kinds.
 
-Inside accepted scope, the agent may usually decide implementation details that do not change product behavior, scope, or material technical direction. Examples include:
+Inside accepted scope, the agent may usually decide implementation details when they:
+
+- stay inside the accepted scope
+- do not change product behavior
+- do not change material technical direction
+
+Examples include:
 
 - a tiny local variable name that follows project style
 - test file organization details
 - small behavior-preserving refactors
-- internal cleanup
+- internal code organization
 - code details already forced by accepted scope and acceptance criteria
 
 Escalate back to user judgment when an implementation detail:
@@ -337,7 +392,14 @@ Not allowed:
 
 Allowed:
 
-- Map a short reply only when one active prompt made the kind, affected object, option, scope, user intent, consequences, and remaining open items unambiguous.
+- Map a short reply only when one active prompt made these unambiguous:
+  - judgment kind
+  - affected object
+  - option
+  - scope
+  - user intent
+  - consequences
+  - remaining open items
 
 When a resolved `scope_decision` means the active scope should change, the agent should:
 
@@ -346,7 +408,13 @@ When a resolved `scope_decision` means the active scope should change, the agent
 
 Not allowed:
 
-- Do not treat the judgment record itself as an updated goal, non-goal list, acceptance criteria, what the agent may decide on its own, baseline, or active work slice.
+- Do not treat the judgment record itself as updated:
+  - goal
+  - non-goal list
+  - acceptance criteria
+  - what the agent may decide on its own
+  - baseline
+  - active work slice
 
 Sensitive approval is permission for a named action and is recorded with `SensitiveActionScope`.
 
@@ -365,7 +433,7 @@ Sensitive approval may cover:
 
 Not allowed:
 
-- Sensitive approval is not path-level Write Authorization.
+- Sensitive approval is not path-level `Write Authorization`.
 - Sensitive approval does not prove observation or blocking.
 
 Separate judgments:
@@ -376,7 +444,7 @@ Separate judgments:
 
 Not allowed:
 
-- None substitutes for another.
+- No judgment substitutes for another.
 
 ## 5. Do not claim stronger guarantees
 
@@ -447,7 +515,9 @@ A compatible result is a single-use cooperative result for the stated product-fi
 
 Owner links:
 
-- Exact refresh, staleness, sensitive-action, and capability semantics are owned by [Prepare-write method](../reference/api/method-prepare-write.md), [API Errors](../reference/api/errors.md), and [Security](../reference/security.md).
+- Exact prepare-write behavior lives in [Prepare-write method](../reference/api/method-prepare-write.md).
+- Error behavior lives in [API Errors](../reference/api/errors.md).
+- Guarantee and capability wording lives in [Security](../reference/security.md).
 
 If the scope change is valid, the agent should:
 
@@ -509,7 +579,12 @@ Owner links:
 
 - Exact evidence and close-readiness structures are owned by [Core Model](../reference/core-model.md) and [API State Schemas](../reference/api/schema-state.md).
 
-Evidence does not automatically satisfy final acceptance, residual-risk acceptance, close, or any future promoted quality path.
+Evidence does not automatically satisfy:
+
+- final acceptance
+- residual-risk acceptance
+- close
+- any future promoted quality path
 
 <a id="10-close-work-honestly"></a>
 ## 8. Handle close readiness honestly
@@ -547,9 +622,17 @@ Allowed:
 
 Owner links:
 
-- For canonical close readiness and blocker behavior, see [Core Model](../reference/core-model.md), [Close-task method](../reference/api/method-close-task.md), [API State Schemas](../reference/api/schema-state.md), and [API Errors](../reference/api/errors.md).
+- Core meaning lives in [Core Model](../reference/core-model.md).
+- Method behavior lives in [Close-task method](../reference/api/method-close-task.md).
+- Close-readiness structures live in [API State Schemas](../reference/api/schema-state.md).
+- Error behavior lives in [API Errors](../reference/api/errors.md).
 
-Evidence comes before final acceptance and residual-risk acceptance; those judgments cannot fill an evidence gap.
+Evidence comes before:
+
+- final acceptance
+- residual-risk acceptance
+
+Those judgments cannot fill an evidence gap.
 
 Use `intent=cancel` or `intent=supersede` only when the user is ending or replacing the Task rather than completing it.
 
@@ -611,7 +694,14 @@ Rule:
 
 Allowed:
 
-- Route quality concerns through active judgment kinds, evidence gaps, residual-risk visibility, surface capability, scope, or another already-active reason the work cannot be closed yet only when that owner path truly applies.
+- Route quality concerns only when an active owner path truly applies.
+- Use an already-active route, such as:
+  - active judgment kinds
+  - evidence gaps
+  - residual-risk visibility
+  - surface capability
+  - scope
+  - another already-active close blocker
 
 The agent should use compact user-facing shapes first:
 
@@ -669,4 +759,7 @@ Agent authors and operators should use this path:
 
 [AGENTS.md](../../../AGENTS.md) -> [doc-index.yaml](../../doc-index.yaml) -> this guide -> [Agent Integration Reference](../reference/agent-integration.md).
 
-Use [Surface Recipes](surface-recipes.md) for CLI, IDE/editor, chat, and local MCP presentation choices. Use the [Reference Index](../reference/README.md) only when the next action needs an exact owner contract.
+Use these routes after that:
+
+- [Surface Recipes](surface-recipes.md) for CLI, IDE/editor, chat, and local MCP presentation choices
+- [Reference Index](../reference/README.md) only when the next action needs an exact owner contract

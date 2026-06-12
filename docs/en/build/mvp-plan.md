@@ -1,6 +1,14 @@
 # Build: MVP plan
 
-This page is the Build handoff for planning the first Harness Server implementation batch. It records readiness posture, assumptions, sequencing, smoke-target intent, and exit criteria.
+This page is the Build handoff for planning the first Harness Server implementation batch.
+
+It records:
+
+- readiness posture
+- assumptions
+- sequencing
+- smoke-target intent
+- exit criteria
 
 It does not define:
 
@@ -15,22 +23,52 @@ It does not define:
 
 Maintainer handoff status: **not accepted for server coding**.
 
-This repository is still documentation-only source material for a future Harness Server. It is not a Harness Server implementation, Product Repository, Harness Runtime Home, runtime record store, generated projection store, evidence store, QA record, acceptance record, or close record.
+This repository is still documentation-only source material for a future Harness Server.
+
+It is not:
+
+- a Harness Server implementation
+- a `Product Repository`
+- a `Harness Runtime Home`
+- a runtime record store
+- a generated projection store
+- an evidence store
+- a QA record
+- an acceptance record
+- a close record
 
 For the canonical current scope, see [Active MVP scope](../reference/active-mvp-scope.md). Runtime location boundaries are owned by [Runtime Boundaries](../reference/runtime-boundaries.md).
 
-The active documentation set has paired English and Korean Start, Use, Build, Reference, Later, and Maintain routes. Canonical contracts live in Reference owners; this Build plan only explains how implementation planning should proceed once maintainers are ready to start a server build.
+The active documentation set has paired English and Korean Start, Use, Build, Reference, Later, and Maintain routes.
 
-Server coding must not begin from this repository until the decisions in [Decisions before server coding](#decisions-before-server-coding) have been accepted, resolved, or explicitly deferred with named scope impact.
+This Build plan should:
+
+- route planning, status, and handoff decisions
+- leave canonical contracts in Reference owners
+- explain implementation planning only after maintainers are ready to start a server build
+
+Server coding must not begin from this repository until every item in [Decisions before server coding](#decisions-before-server-coding) has one of these outcomes:
+
+- accepted
+- resolved
+- explicitly deferred with named scope impact
 
 ## Planning assumptions
 
 - This Build page supports implementation planning, not runtime implementation.
 - Active MVP scope is owned by [`../reference/active-mvp-scope.md`](../reference/active-mvp-scope.md); this plan does not repeat the scope list.
-- API method routing is owned by [`../reference/api/mvp-api.md`](../reference/api/mvp-api.md), and method behavior is owned by the method owner documents it lists. This plan does not repeat request, response, branch, or error behavior.
-- Common API envelopes and response branches are owned by [`../reference/api/schema-core.md`](../reference/api/schema-core.md). State, artifact, judgment, and value-set schemas are owned by their API schema references.
-- Storage effects are owned by [`../reference/storage-effects.md`](../reference/storage-effects.md); this plan does not define tables, migrations, artifact lifecycle, or state effects.
-- Security claims are owned by [`../reference/security.md`](../reference/security.md), and runtime-home/access boundaries are owned by [`../reference/runtime-boundaries.md`](../reference/runtime-boundaries.md).
+- API owners:
+  - method routing: [`../reference/api/mvp-api.md`](../reference/api/mvp-api.md)
+  - method behavior: the method owner documents listed there
+  - common API envelopes and response branches: [`../reference/api/schema-core.md`](../reference/api/schema-core.md)
+  - state, artifact, judgment, and value-set schemas: their API schema references
+  - this plan does not repeat request, response, branch, or error behavior
+- Storage owners:
+  - storage effects: [`../reference/storage-effects.md`](../reference/storage-effects.md)
+  - this plan does not define tables, migrations, artifact lifecycle, or state effects
+- Security and runtime-boundary owners:
+  - security claims: [`../reference/security.md`](../reference/security.md)
+  - runtime-home and access boundaries: [`../reference/runtime-boundaries.md`](../reference/runtime-boundaries.md)
 - Later candidates remain outside the current MVP unless maintainers promote them through the appropriate owner documents.
 
 ## Implementation sequence
@@ -69,7 +107,13 @@ This target is not a conformance suite, not a fixture specification, and not pro
 <a id="implementation-decisions-before-server-coding"></a>
 ## Decisions before server coding
 
-Maintainers must record one of these outcomes for each item before implementation begins: accepted for the first server slice, blocked with named impact, or deferred with named impact.
+Maintainers must record one outcome for each item before implementation begins:
+
+- accepted for the first server slice
+- blocked with named impact
+- deferred with named impact
+
+Decision items:
 
 - Build handoff:
   - Maintainers confirm this page is the active Build entry point for implementation planning.
@@ -91,28 +135,52 @@ Maintainers must record one of these outcomes for each item before implementatio
 
 ## Documentation-only boundary
 
-Edits in this repository do not create runtime behavior. Do not add server code, runtime state, generated operational files, generated projections, evidence records, QA records, acceptance records, close records, residual-risk records, executable fixtures, or conformance runner output.
+Edits in this repository do not create runtime behavior.
 
-Path allowlists, batch boundaries, owner links, and planning sequence are documentation-maintenance controls. They are not Harness runtime permissions, write authorizations, sandbox guarantees, or proof of enforcement.
+Do not add:
 
-Passing this plan's exit criteria only means the documentation is ready to guide a future implementation batch. It does not implement Harness, prove runtime conformance, or authorize product-repository writes.
+- server code
+- runtime state
+- generated operational files
+- generated projections
+- evidence records
+- QA records
+- acceptance records
+- close records
+- residual-risk records
+- executable fixtures
+- conformance runner output
+
+Path allowlists, batch boundaries, owner links, and planning sequence are documentation-maintenance controls.
+
+They are not:
+
+- Harness runtime permissions
+- write authorizations
+- sandbox guarantees
+- proof of enforcement
+
+Passing this plan's exit criteria only means the documentation is ready to guide a future implementation batch. It does not implement Harness, prove runtime conformance, or authorize `Product Repository` writes.
 
 ## Reference owners
 
-Use these owners instead of repeating contracts in this Build plan:
+Use these owner routes instead of repeating contracts in this Build plan:
 
-| Topic | Owner |
-|---|---|
-| Current MVP scope | [`../reference/active-mvp-scope.md`](../reference/active-mvp-scope.md) |
-| API method behavior | [`../reference/api/mvp-api.md`](../reference/api/mvp-api.md) and the method owner documents it lists |
-| Common API envelopes and response branches | [`../reference/api/schema-core.md`](../reference/api/schema-core.md) |
-| State schemas and close-readiness structures | [`../reference/api/schema-state.md`](../reference/api/schema-state.md) |
-| Artifact schemas | [`../reference/api/schema-artifacts.md`](../reference/api/schema-artifacts.md) |
-| User-owned judgment schemas | [`../reference/api/schema-judgment.md`](../reference/api/schema-judgment.md) |
-| API value sets | [`../reference/api/schema-value-sets.md`](../reference/api/schema-value-sets.md) |
-| Storage effects | [`../reference/storage-effects.md`](../reference/storage-effects.md) |
-| Security guarantees and non-claims | [`../reference/security.md`](../reference/security.md) |
-| Runtime-home and access boundaries | [`../reference/runtime-boundaries.md`](../reference/runtime-boundaries.md) |
+- Scope:
+  - current MVP scope: [`../reference/active-mvp-scope.md`](../reference/active-mvp-scope.md)
+- API:
+  - method routing: [`../reference/api/mvp-api.md`](../reference/api/mvp-api.md)
+  - method behavior: the method owner documents listed by the API router
+  - common envelopes and response branches: [`../reference/api/schema-core.md`](../reference/api/schema-core.md)
+  - state and close-readiness schemas: [`../reference/api/schema-state.md`](../reference/api/schema-state.md)
+  - artifact schemas: [`../reference/api/schema-artifacts.md`](../reference/api/schema-artifacts.md)
+  - user-owned judgment schemas: [`../reference/api/schema-judgment.md`](../reference/api/schema-judgment.md)
+  - API value sets: [`../reference/api/schema-value-sets.md`](../reference/api/schema-value-sets.md)
+- Storage:
+  - storage effects: [`../reference/storage-effects.md`](../reference/storage-effects.md)
+- Security and runtime boundaries:
+  - security guarantees and non-claims: [`../reference/security.md`](../reference/security.md)
+  - runtime-home and access boundaries: [`../reference/runtime-boundaries.md`](../reference/runtime-boundaries.md)
 
 For neighboring Reference pages and navigation, use [`../reference/README.md`](../reference/README.md).
 
@@ -125,6 +193,11 @@ Implementation planning can exit only when:
 - the first server slice can be described using owner links instead of duplicated contract text
 - English and Korean Build pages preserve the same reader purpose, owner routing, and handoff status
 - no later candidate is presented as a current MVP requirement
-- no temporary planning files, generated runtime records, executable fixtures, conformance results, or product implementation outputs remain in this repository
+- this repository contains no:
+  - temporary planning files
+  - generated runtime records
+  - executable fixtures
+  - conformance results
+  - product implementation outputs
 
-After these criteria are met, the next step is a maintainer-approved implementation batch outside this documentation-only edit. Until then, the repository remains planning material.
+After these criteria are met, the next step is a maintainer-approved implementation batch outside the documentation-only repository. Until then, the repository remains planning material.
