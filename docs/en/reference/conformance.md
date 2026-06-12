@@ -10,21 +10,13 @@ For the canonical current scope, see [Active MVP scope](active-mvp-scope.md). Cu
 
 ## Conformance item summary
 
-- Current documentation criteria:
-  - Current status: active documentation criteria; not runtime results.
-  - Details: [Current documentation criteria](#current-documentation-criteria).
-- Internal smoke target:
-  - Current status: planned/documented; not executable here.
-  - Details: [Internal smoke target](#internal-smoke-target).
-- Future fixture shape:
-  - Current status: candidate future format; not executable here.
-  - Details: [Future fixture shape](#future-fixture-shape).
-- Future executable fixtures:
-  - Current status: not implemented; not executable here.
-  - Details: [Future executable fixtures](#future-executable-fixtures).
-- Runtime conformance report:
-  - Current status: later candidate; not implemented; not executable here.
-  - Details: [Runtime conformance report](#runtime-conformance-report).
+| Item | Current status | Details |
+|---|---|---|
+| Current documentation criteria | Active documentation criteria | [Details](#current-documentation-criteria) |
+| Internal smoke target | Planned or documented | [Details](#internal-smoke-target) |
+| Future fixture shape | Future candidate shape | [Details](#future-fixture-shape) |
+| Future executable fixtures | Not implemented | [Details](#future-executable-fixtures) |
+| Runtime conformance report | Later candidate | [Details](#runtime-conformance-report) |
 
 <a id="current-documentation-criteria"></a>
 ### Current documentation criteria
@@ -45,16 +37,16 @@ Not allowed:
 ### Internal smoke target
 
 Current status:
-- Planned or documented as an implementation-planning target.
+- Planned or documented.
 
 Executable now:
-- No, unless a current implementation file explicitly provides it. This repository does not contain one.
+- No, unless a current implementation file explicitly provides it.
 
 Owner:
-- [MVP Plan first internal smoke target](../build/mvp-plan.md#first-internal-smoke-target)
+- `build/mvp-plan.md`
 
 Not allowed:
-- Do not describe this as an implemented conformance suite, a fixture specification, or proof that Harness is implemented.
+- Do not describe this as an implemented conformance suite.
 
 <a id="future-fixture-shape"></a>
 ### Future fixture shape
