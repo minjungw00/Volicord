@@ -23,7 +23,7 @@
 | 주제 | 담당 문서 |
 |---|---|
 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle` 형태 | [API 아티팩트 스키마](api/schema-artifacts.md) |
-| `harness.stage_artifact`, `harness.record_run`, 아티팩트 읽기 API 동작 | [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [MVP API 경로 문서](api/mvp-api.md) |
+| 아티팩트 관련 API 동작 | [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [MVP API 경로 문서](api/mvp-api.md) |
 | 일반 기록 배치와 DDL | [저장소 기록](storage-records.md) |
 | 메서드별 저장 효과와 상태 버전 영향 | [저장 효과](storage-effects.md), [저장소 버전 관리](storage-versioning.md) |
 | 로컬 접근, 접근 등급, 보안 보장 수준 | [보안](security.md), [런타임 경계](runtime-boundaries.md) |

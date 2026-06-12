@@ -445,7 +445,7 @@ incompatible
 |---|---|
 | `preventive` | 프로필 조건부 `GuaranteeDisplay.level`입니다. 승격된 예방 메커니즘과 증명 경로가 필요합니다. |
 | `isolated` | 이후 후보 또는 프로필 조건부 값으로 예약된 `GuaranteeDisplay.level` 라벨입니다. |
-| `captured_artifact`와 접점 자체 캡처 이름 | 활성 `ArtifactInput.source_kind`로는 예약 또는 거절됩니다. 활성 아티팩트 입력은 `staged_artifact` 또는 `existing_artifact`를 사용합니다. |
+| `captured_artifact`와 접점 자체 캡처 이름 | 활성 `ArtifactInput.source_kind`로는 예약 또는 거절됩니다. |
 | 접점 간 스테이징된 아티팩트 인계 | 활성 기능이 아닙니다. 스테이징된 아티팩트 승격에는 기록된 접점 출처가 일치해야 합니다. |
 | QA 면제와 검증 위험 판단 종류 | 이후 후보입니다. 활성 `judgment_kind` 값이 아닙니다. |
 | `design_policy` 차단 사유 범주 | 스키마와 닫기 준비 상태 담당 문서가 승격하기 전까지 이후 또는 비활성 값입니다. |
@@ -454,6 +454,8 @@ incompatible
 - 담당 경계: 이 문서는 값 집합 항목만 담당합니다.
 - 비주장: 이 항목은 현재 격리 보장을 부여하거나 정의하지 않습니다.
 - 담당 문서 링크: 보장 의미는 [보안](../security.md)이 담당합니다. 현재 MVP에서의 사용 가능 여부는 [현재 MVP 범위](../active-mvp-scope.md)가 담당합니다.
+
+활성 아티팩트 입력은 `staged_artifact` 또는 `existing_artifact`를 사용합니다. 아티팩트 출처 의미는 [API 아티팩트 스키마](schema-artifacts.md)와 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
 
 ## 관련 담당 문서
 

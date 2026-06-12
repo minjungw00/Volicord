@@ -58,7 +58,7 @@ Requires:
 
 | Result | State-version effect | Write Authorization effect |
 |---|---|---|
-| Committed `decision=allowed` | Increments `project_state.state_version` exactly once. | Creates exactly one active Write Authorization for the path-level `AuthorizedAttemptScope`. |
+| Committed `decision=allowed` | Increments `project_state.state_version` exactly once. | Creates one active Write Authorization. |
 | Committed non-allow decision | May increment only for method-owned write-decision reason state. | Creates no consumable Write Authorization. |
 | Pre-commit rejection or dry run | Increments nothing. | Creates nothing. |
 
@@ -74,6 +74,7 @@ For `decision=allowed`:
 - `write_authorization_ref` is non-null
 - `write_authorization` is non-null
 - `authorization_effect` is `created` for a new commit or `returned` for an idempotent replay
+- the authorization is scoped to the path-level `AuthorizedAttemptScope`
 - `active_user_judgment_refs` may cite resolved user-owned judgments that satisfy write preconditions, including a separate `sensitive_approval`
 
 ## Blocked result

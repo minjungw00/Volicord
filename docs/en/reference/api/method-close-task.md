@@ -49,7 +49,7 @@ Non-claims:
 | `intent` kind | Conditions |
 |---|---|
 | `intent=check` | Requires `VerifiedSurfaceContext.access_class=read_status` for protected close-readiness detail. |
-| Mutating intents | Require `VerifiedSurfaceContext.access_class=core_mutation`, `verified=true`, compatible Task identity, valid lifecycle, and any close-relevant owner records. |
+| Mutating intents | Require `core_mutation`, verified surface context, compatible Task state, and close-relevant owner records. |
 
 ## State version behavior
 

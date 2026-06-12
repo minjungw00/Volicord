@@ -49,7 +49,7 @@
 | `intent` 종류 | 조건 |
 |---|---|
 | `intent=check` | 보호된 닫기 준비 상태 세부정보를 위해 `VerifiedSurfaceContext.access_class=read_status`가 필요합니다. |
-| 상태 변경 `intent` | `VerifiedSurfaceContext.access_class=core_mutation`, `verified=true`, 호환되는 Task 식별, 유효한 생명주기, 닫기 관련 담당 기록이 필요합니다. |
+| 상태 변경 `intent` | `core_mutation`, 확인된 접점 맥락, 호환되는 Task 상태, 닫기 관련 담당 기록이 필요합니다. |
 
 ## 상태 버전 동작
 

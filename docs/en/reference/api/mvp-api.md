@@ -35,17 +35,27 @@ The API returns cooperative Harness record and check behavior only. Security non
 
 This document owns the active public method list and owner routing. The exact active method-name value set is owned by [API Value Sets](schema-value-sets.md). The active methods route to these owner documents:
 
+<a id="harnessintake"></a>
+<a id="harnessupdate_scope"></a>
+<a id="harnessstatus"></a>
+<a id="harnessprepare_write"></a>
+<a id="harnessstage_artifact"></a>
+<a id="harnessrecord_run"></a>
+<a id="harnessrequest_user_judgment"></a>
+<a id="harnessrecord_user_judgment"></a>
+<a id="harnessclose_task"></a>
+
 | Method | Active role | Owner |
 |---|---|---|
-| <a id="harnessintake"></a>`harness.intake` | Start, resume, or classify ordinary user work. | [Intake method](method-intake.md) |
-| <a id="harnessupdate_scope"></a>`harness.update_scope` | Update active Task scope and the active Change Unit after intake. | [Update-scope method](method-update-scope.md) |
-| <a id="harnessstatus"></a>`harness.status` | Return current state summary, blockers, pending judgments, evidence summary, close state, and next safe actions. | [Status method](method-status.md) |
-| <a id="harnessprepare_write"></a>`harness.prepare_write` | Check product-file write compatibility before Write Authorization. | [Prepare-write method](method-prepare-write.md) |
-| <a id="harnessstage_artifact"></a>`harness.stage_artifact` | Stage safe bytes or a safe notice for later `record_run` promotion. | [Stage-artifact method](method-stage-artifact.md) |
-| <a id="harnessrecord_run"></a>`harness.record_run` | Record shaping, direct, or implementation work plus compact evidence and artifact refs. | [Record-run method](method-record-run.md) |
-| <a id="harnessrequest_user_judgment"></a>`harness.request_user_judgment` | Create one pending user-owned judgment request. | [User-judgment methods](method-user-judgment.md#harnessrequest_user_judgment) |
-| <a id="harnessrecord_user_judgment"></a>`harness.record_user_judgment` | Record the user's answer to an existing pending `UserJudgment`. | [User-judgment methods](method-user-judgment.md#harnessrecord_user_judgment) |
-| <a id="harnessclose_task"></a>`harness.close_task` | Check close readiness and close, cancel, or supersede only when blockers allow it. | [Close-task method](method-close-task.md) |
+| `harness.intake` | Start, resume, or classify ordinary user work. | [Intake method](method-intake.md) |
+| `harness.update_scope` | Update active Task scope and the active Change Unit after intake. | [Update-scope method](method-update-scope.md) |
+| `harness.status` | Return current state and next safe actions. | [Status method](method-status.md) |
+| `harness.prepare_write` | Check product-file write compatibility before Write Authorization. | [Prepare-write method](method-prepare-write.md) |
+| `harness.stage_artifact` | Stage safe bytes or a safe notice. | [Stage-artifact method](method-stage-artifact.md) |
+| `harness.record_run` | Record work, evidence, and artifact refs. | [Record-run method](method-record-run.md) |
+| `harness.request_user_judgment` | Create one pending user-owned judgment. | [User-judgment methods](method-user-judgment.md#harnessrequest_user_judgment) |
+| `harness.record_user_judgment` | Record the user's answer to a pending judgment. | [User-judgment methods](method-user-judgment.md#harnessrecord_user_judgment) |
+| `harness.close_task` | Check close readiness or close when allowed. | [Close-task method](method-close-task.md) |
 
 ## Method owner routing table
 
@@ -92,7 +102,7 @@ Non-claim: Task resolution selects owner records; it does not create a separate 
 
 | Schema area | Owner |
 |---|---|
-| Common request envelope, common response branches, `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`, `ToolError`, and `EventRef` | [API Schema Core](schema-core.md) |
+| Common request envelope, response branches, errors, and events | [API Schema Core](schema-core.md) |
 | State summaries, refs, close-readiness shapes, evidence summaries, and write-authority summaries | [API State Schemas](schema-state.md) |
 | Artifact inputs, staged artifact handles, and artifact refs | [API Artifact Schemas](schema-artifacts.md) |
 | User judgment, judgment options, judgment answers, sensitive-action scopes, and accepted-risk inputs | [API Judgment Schemas](schema-judgment.md) |
