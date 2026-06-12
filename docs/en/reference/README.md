@@ -62,8 +62,11 @@ This route is for implementers and reviewers who need exact owners. New and work
 | What scenario do API examples use? | `api/mvp-api.md`, `../maintain/authoring-guide.md`, `../maintain/checks.md` |
 | Can API examples use documentation maintenance as the scenario? | `../maintain/authoring-guide.md` |
 | Where are API example checks defined? | `../maintain/checks.md` |
+| Where are API example consistency questions routed? | `../maintain/authoring-guide.md`, `../maintain/checks.md`, then the affected method or schema owner |
+| Where are field-name consistency questions routed? | `../maintain/authoring-guide.md`, `../maintain/checks.md`, then the affected method, schema, or storage owner |
 | Where is the active API method list? | `api/mvp-api.md` |
 | Where are exact API method-name values defined? | `api/schema-value-sets.md` |
+| Where do method payload field questions go? | the affected [API method owner](#api-method-owners), or the schema owner for shared envelope and nested fields |
 | Where is the `harness.status` example `state_version` rule? | `api/method-status.md`, `../maintain/checks.md` |
 | What does `harness.prepare_write` return? | `api/method-prepare-write.md` |
 | Which schema owns `harness.prepare_write` response branch schemas? | `api/schema-core.md` |

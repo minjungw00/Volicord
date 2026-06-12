@@ -40,7 +40,7 @@ For exact owner routing, use `docs/doc-index.yaml`. It is the stable machine-rea
 
 LLM agents should read this `AGENTS.md` first for repository phase, documentation-only boundaries, and retrieval rules. Then use `docs/doc-index.yaml` for exact owner routing. Use `docs/*/reference/README.md` as the human-readable owner router, and keep it aligned with `docs/doc-index.yaml`.
 
-For high-signal terminology, example-scenario, scope, storage, and owner questions, check `question_routes.routes` in `docs/doc-index.yaml` before broad keyword retrieval. If a route matches, load the canonical owner first and load listed supporting owners only when the question spans that boundary.
+For high-signal terminology, example-scenario, API example-consistency, field-name consistency, scope, storage, and owner questions, check `question_routes.routes` in `docs/doc-index.yaml` before broad keyword retrieval. If a route matches, load the canonical owner first and load listed supporting owners only when the question spans that boundary.
 
 When `docs/doc-index.yaml` lists an exact owner for the question or concept, load that owner first. Pull related documents only when the owner, index metadata, or maintainer guidance sends you there.
 
@@ -51,7 +51,9 @@ API routing shortcut:
 - `docs/*/reference/api/mvp-api.md` owns the active public API method list and method owner routing, not detailed method behavior.
 - Route method behavior to the method-specific owners: `api/method-intake.md`, `api/method-update-scope.md`, `api/method-status.md`, `api/method-prepare-write.md`, `api/method-stage-artifact.md`, `api/method-record-run.md`, `api/method-user-judgment.md`, and `api/method-close-task.md`.
 - Route response branch schemas and nested API shapes to the schema owner documents: `api/schema-core.md`, `api/schema-state.md`, `api/schema-artifacts.md`, `api/schema-judgment.md`, and `api/schema-value-sets.md`.
+- Route method payload field questions to the affected method owner when the field is method-specific; route shared envelope fields and nested schema fields to the schema owners.
 - Route method storage effects to `docs/*/reference/storage-effects.md` first, then to narrower storage owners when needed.
+- Route API example consistency and field-name consistency questions to `docs/*/maintain/authoring-guide.md` and `docs/*/maintain/checks.md`; open the affected method, schema, or storage owner only when checking the concrete example field or value.
 
 If an entry route, README, or maintain document cannot point to a current owner, do not fill the gap with duplicate contract prose. Name the owner gap or route to the closest current owner.
 

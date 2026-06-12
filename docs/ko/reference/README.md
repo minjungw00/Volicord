@@ -20,7 +20,7 @@
 |---|---|
 | 현재 MVP 범위 | `active-mvp-scope.md` |
 | API 메서드 목록 | `api/mvp-api.md` |
-| API 메서드 동작 | [API 메서드 담당 문서](#api-메서드-담당-문서) |
+| API method 동작 | [API method 담당 문서](#api-메서드-담당-문서) |
 | 스키마 형태 | [API와 스키마 담당 문서](#api와-스키마-담당-문서) |
 | 저장 효과 | `storage-effects.md` |
 
@@ -62,8 +62,11 @@
 | API 예시는 어떤 시나리오를 사용하나요? | `api/mvp-api.md`, `../maintain/authoring-guide.md`, `../maintain/checks.md` |
 | API 예시가 문서 유지보수를 시나리오로 써도 되나요? | `../maintain/authoring-guide.md` |
 | API 예시 점검은 어느 담당 문서가 맡나요? | `../maintain/checks.md` |
+| API 예시 정합성 질문은 어디로 보내나요? | `../maintain/authoring-guide.md`, `../maintain/checks.md`, 그다음 영향을 받는 method 또는 schema 담당 문서 |
+| field name 일관성 질문은 어디로 보내나요? | `../maintain/authoring-guide.md`, `../maintain/checks.md`, 그다음 영향을 받는 method, schema, 또는 저장소 담당 문서 |
 | 활성 API 메서드 목록은 어느 담당 문서가 맡나요? | `api/mvp-api.md` |
 | 정확한 API 메서드 이름 값은 어느 담당 문서가 맡나요? | `api/schema-value-sets.md` |
+| method payload field 질문은 어디로 보내나요? | 영향을 받는 [API method 담당 문서](#api-메서드-담당-문서), 또는 공통 요청 래퍼와 중첩 field의 schema 담당 문서 |
 | `harness.status` 예시의 `state_version` 규칙은 어디에서 확인하나요? | `api/method-status.md`, `../maintain/checks.md` |
 | `harness.prepare_write`는 무엇을 반환하나요? | `api/method-prepare-write.md` |
 | `harness.prepare_write` 응답 분기 스키마는 어느 담당 문서가 맡나요? | `api/schema-core.md` |
@@ -89,17 +92,17 @@
 
 | 질문 | 담당 문서 |
 |---|---|
-| `harness.intake` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-intake.md` |
-| `harness.update_scope` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-update-scope.md` |
-| `harness.status` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-status.md` |
-| `harness.prepare_write` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-prepare-write.md` |
-| `harness.stage_artifact` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-stage-artifact.md` |
-| `harness.record_run` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-record-run.md` |
-| `harness.record_run` 증거 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-record-run.md`, `storage-effects.md` |
+| `harness.intake` method 동작은 어느 담당 문서가 맡나요? | `api/method-intake.md` |
+| `harness.update_scope` method 동작은 어느 담당 문서가 맡나요? | `api/method-update-scope.md` |
+| `harness.status` method 동작은 어느 담당 문서가 맡나요? | `api/method-status.md` |
+| `harness.prepare_write` method 동작은 어느 담당 문서가 맡나요? | `api/method-prepare-write.md` |
+| `harness.stage_artifact` method 동작은 어느 담당 문서가 맡나요? | `api/method-stage-artifact.md` |
+| `harness.record_run` method 동작은 어느 담당 문서가 맡나요? | `api/method-record-run.md` |
+| `harness.record_run` 증거 method 동작은 어느 담당 문서가 맡나요? | `api/method-record-run.md`, `storage-effects.md` |
 | `harness.record_run` 저장 효과는 어느 담당 문서가 맡나요? | `storage-effects.md` |
-| `harness.request_user_judgment` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-user-judgment.md` |
-| `harness.record_user_judgment` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-user-judgment.md` |
-| `harness.close_task` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-close-task.md` |
+| `harness.request_user_judgment` method 동작은 어느 담당 문서가 맡나요? | `api/method-user-judgment.md` |
+| `harness.record_user_judgment` method 동작은 어느 담당 문서가 맡나요? | `api/method-user-judgment.md` |
+| `harness.close_task` method 동작은 어느 담당 문서가 맡나요? | `api/method-close-task.md` |
 
 ## 저장소 담당 문서
 
@@ -141,7 +144,7 @@
 | 민감 동작 승인 스키마는 어느 담당 문서가 맡나요? | `api/schema-judgment.md` |
 | 민감 동작 승인 보안 의미는 어느 담당 문서가 맡나요? | `security.md` |
 | 닫기 준비 상태와 정직한 닫기 의미는 어디가 담당하나요? | `core-model.md` |
-| `harness.close_task` 메서드 동작은 어느 담당 문서가 맡나요? | `api/method-close-task.md` |
+| `harness.close_task` method 동작은 어느 담당 문서가 맡나요? | `api/method-close-task.md` |
 | 닫기 차단 사유 형태는 어느 담당 문서가 맡나요? | `api/schema-state.md` |
 | 닫기 오류 경로는 어느 담당 문서가 맡나요? | `api/errors.md` |
 | 최종 수락과 잔여 위험 경계는 어느 담당 문서가 맡나요? | `core-model.md` |

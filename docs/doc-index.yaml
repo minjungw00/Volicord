@@ -43,6 +43,19 @@ question_routes:
       supporting_owner_doc_ids:
         - maintain.checks
       route_note: "API examples must use durable product or user scenarios, not documentation maintenance, refactoring, route cleanup, section restructuring, or migration."
+    - question: "Where are API example consistency questions routed?"
+      canonical_owner_doc_id: maintain.checks
+      default_path: docs/en/maintain/checks.md
+      supporting_owner_doc_ids:
+        - maintain.authoring-guide
+        - reference.api.mvp-api
+      route_note: "Checks owns API example internal-consistency review; Authoring Guide owns durable example and field-name rules; MVP API owns the shared scenario summary; affected method and schema owners own concrete example fields."
+    - question: "Where are field-name consistency questions routed?"
+      canonical_owner_doc_id: maintain.checks
+      default_path: docs/en/maintain/checks.md
+      supporting_owner_doc_ids:
+        - maintain.authoring-guide
+      route_note: "Checks owns example field-name consistency review; Authoring Guide owns the durable field-name rule. Concrete field definitions route to the affected method, schema, or storage owner."
     - question: "Where is the active API method list?"
       canonical_owner_doc_id: reference.api.mvp-api
       default_path: docs/en/reference/api/mvp-api.md
@@ -75,6 +88,15 @@ question_routes:
       canonical_owner_doc_id: reference.api.method-prepare-write
       default_path: docs/en/reference/api/method-prepare-write.md
       route_note: "`harness.prepare_write` owns the method requirement for separate sensitive-action approval before allowed Write Authorization."
+    - question: "`harness.prepare_write` payload fields"
+      canonical_owner_doc_id: reference.api.method-prepare-write
+      default_path: docs/en/reference/api/method-prepare-write.md
+      supporting_owner_doc_ids:
+        - reference.api.schema-core
+        - reference.api.schema-state
+        - reference.api.schema-judgment
+        - reference.api.schema-value-sets
+      route_note: "`harness.prepare_write` owns method-specific payload fields; shared `ToolEnvelope`, state, judgment, and value fields route to schema owners."
     - question: "`harness.stage_artifact` behavior"
       canonical_owner_doc_id: reference.api.method-stage-artifact
       default_path: docs/en/reference/api/method-stage-artifact.md
@@ -89,6 +111,15 @@ question_routes:
       supporting_owner_doc_ids:
         - reference.storage-effects
       route_note: "`harness.record_run` owns run/evidence method behavior; Storage Effects owns method-to-storage evidence effects and no-effect boundaries."
+    - question: "`harness.record_run` payload fields"
+      canonical_owner_doc_id: reference.api.method-record-run
+      default_path: docs/en/reference/api/method-record-run.md
+      supporting_owner_doc_ids:
+        - reference.api.schema-core
+        - reference.api.schema-state
+        - reference.api.schema-artifacts
+        - reference.api.schema-value-sets
+      route_note: "`harness.record_run` owns method-specific payload fields; shared `ToolEnvelope`, state, artifact, and value fields route to schema owners."
     - question: "user judgment methods"
       canonical_owner_doc_id: reference.api.method-user-judgment
       default_path: docs/en/reference/api/method-user-judgment.md
@@ -103,6 +134,14 @@ question_routes:
       canonical_owner_doc_id: reference.api.method-close-task
       default_path: docs/en/reference/api/method-close-task.md
       route_note: "`harness.close_task` method behavior."
+    - question: "`harness.close_task` payload fields"
+      canonical_owner_doc_id: reference.api.method-close-task
+      default_path: docs/en/reference/api/method-close-task.md
+      supporting_owner_doc_ids:
+        - reference.api.schema-core
+        - reference.api.schema-state
+        - reference.api.schema-value-sets
+      route_note: "`harness.close_task` owns method-specific payload fields; shared `ToolEnvelope`, close-readiness state, and value fields route to schema owners."
     - question: "Where are method response branch schemas defined?"
       canonical_owner_doc_id: reference.api.schema-core
       default_path: docs/en/reference/api/schema-core.md
@@ -704,6 +743,8 @@ docs:
       - method-specific request behavior
       - method-specific response behavior
       - method-specific result examples
+      - API example consistency rules
+      - example field-name consistency rules
       - common response envelopes
       - schema field definitions
       - shared schema bodies
@@ -2023,6 +2064,8 @@ docs:
       - owner_boundary_discipline
       - route_document_rules
       - durable_example_scenarios
+      - api_example_consistency_rules
+      - example_field_name_consistency_rules
       - dense_reference_paragraph_chunking
       - large_table_authoring_rule
       - stale_content_cleanup_rules
@@ -2031,6 +2074,8 @@ docs:
       - owner-boundary discipline
       - route document rules
       - durable example scenario rules
+      - API example consistency rules
+      - example field-name consistency rules
       - dense reference paragraph split guidance
       - large-table authoring guidance
       - documentation-only scope reminders
@@ -2102,6 +2147,7 @@ docs:
       - large_table_source_maintainability_check
       - api_example_internal_consistency_check
       - api_example_state_version_consistency_check
+      - api_example_field_name_consistency_check
     owns:
       - documentation checks
       - route drift checks
@@ -2113,6 +2159,7 @@ docs:
       - large-table source maintainability check
       - API example internal-consistency check
       - API example state-version consistency check
+      - API example field-name consistency check
       - quality drift checks
     does_not_own:
       - runtime proof

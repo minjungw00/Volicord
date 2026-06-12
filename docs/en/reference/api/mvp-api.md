@@ -18,6 +18,7 @@ This document does not own:
 - full per-method behavior details, including method-specific required inputs, access requirements, result fields, dry-run behavior, or representative request and response bodies
 - common API envelope bodies, response branch schema bodies, or schema field definitions
 - state, artifact, judgment, value-set, or error schema definitions
+- API example consistency rules or field-name consistency rules
 - storage-effect details, storage DDL, storage record layouts, artifact lifecycle, state-version storage rules, or security guarantees
 - public error-code semantics
 - future or later-candidate API methods
@@ -48,7 +49,7 @@ This document owns the active public method list and owner routing. The exact ac
 
 ## Method owner routing table
 
-Use this table for method behavior questions. Shared response branch schemas, nested schema fields, storage effects, and public errors route to the owner links below.
+Use this table for method behavior questions. Method-specific payload field questions start with the affected method owner. Shared response branch schemas, shared envelope fields, nested schema fields, storage effects, and public errors route to the owner links below.
 
 | Question | Owner |
 |---|---|
@@ -60,6 +61,8 @@ Use this table for method behavior questions. Shared response branch schemas, ne
 | `harness.record_run` behavior | [Record-run method](method-record-run.md) |
 | user judgment methods | [User-judgment methods](method-user-judgment.md) |
 | `harness.close_task` behavior | [Close-task method](method-close-task.md) |
+| method-specific payload fields | affected method owner above |
+| shared envelope fields and nested schema fields | [schema owner links](#schema-owner-links) |
 
 <a id="shared-request-rules"></a>
 
@@ -122,6 +125,8 @@ Consistency requirements:
 - Shared scenario refs must stay aligned across `state_version`, artifact refs, run refs, judgment refs, close-readiness evidence, sensitive-action approval reasons, and expiration timestamps.
 
 Maintenance rules for replacing or reviewing API examples live in [Authoring Guide](../../maintain/authoring-guide.md) and [Checks](../../maintain/checks.md).
+
+API example consistency questions and field-name consistency questions route to [Authoring Guide](../../maintain/authoring-guide.md) and [Checks](../../maintain/checks.md). Concrete example field definitions then route to the affected method, schema, or storage owner.
 
 ## Method owner documents
 
