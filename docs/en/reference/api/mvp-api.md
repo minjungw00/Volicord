@@ -57,9 +57,11 @@ This document owns the active public method list and owner routing. The exact ac
 | `harness.record_user_judgment` | Record the user's answer to a pending judgment. | [User-judgment methods](method-user-judgment.md#harnessrecord_user_judgment) |
 | `harness.close_task` | Check close readiness or close when allowed. | [Close-task method](method-close-task.md) |
 
-## Method owner routing table
+<a id="method-owner-routing-table"></a>
 
-Use this table for method behavior questions. Method-specific payload field questions start with the affected method owner. Shared response branch schemas, shared envelope fields, nested schema fields, storage effects, and public errors route to the owner links below.
+## Method owner routing
+
+Use this table for method behavior routing.
 
 | Question | Owner |
 |---|---|
@@ -71,52 +73,50 @@ Use this table for method behavior questions. Method-specific payload field ques
 | `harness.record_run` behavior | [Record-run method](method-record-run.md) |
 | user judgment methods | [User-judgment methods](method-user-judgment.md) |
 | `harness.close_task` behavior | [Close-task method](method-close-task.md) |
-| method-specific payload fields | affected method owner above |
-| shared envelope fields and nested schema fields | [schema owner links](#schema-owner-links) |
+
+Method-specific questions:
+
+- Method behavior: use the method owner document above.
+- Method-specific payload fields: use the affected method owner document.
+- Request and response branch shape: use [`schema-core.md`](schema-core.md).
+- Nested state fields: use [`schema-state.md`](schema-state.md).
+- Artifact fields: use [`schema-artifacts.md`](schema-artifacts.md).
+- Judgment fields: use [`schema-judgment.md`](schema-judgment.md).
+- Value sets: use [`schema-value-sets.md`](schema-value-sets.md).
+- Storage effects: use [`../storage-effects.md`](../storage-effects.md).
+- Public errors: use [`errors.md`](errors.md).
+- API example consistency: use [Authoring Guide](../../maintain/authoring-guide.md) and [Checks](../../maintain/checks.md).
 
 <a id="shared-request-rules"></a>
 
 ## Shared envelope and response branch routes
 
-All public methods use [`ToolEnvelope`](schema-core.md#tool-envelope). Each public method response has exactly one branch:
+Shared API shapes route to [API Schema Core](schema-core.md).
 
-- concrete method-specific `MethodResult`
-- `ToolRejectedResponse`
-- `ToolDryRunResponse`
-
-Method results use `ToolResultBase` from [common response branches](schema-core.md#common-response), set `response_kind=result`, and name the concrete result for read, staging, Core committed, or committed blocked outcomes when the method owner allows that branch.
-
-`ToolRejectedResponse` and `ToolDryRunResponse` use the shared response schemas from [common response branches](schema-core.md#common-response). They do not inherit method-specific result-only fields.
-
-Committed non-dry-run state-changing calls require non-null `idempotency_key` and current project-wide `expected_state_version`. Read-only calls, valid dry-run previews, and staging utility calls follow the exception rules in their method owners.
-
-When a method has a method-specific `task_id`, Core resolves the primary Task in this order:
-
-1. Method field.
-2. `ToolEnvelope.task_id`.
-3. Active Task.
-
-Non-claim: Task resolution selects owner records; it does not create a separate state clock.
+- Request envelope: [`ToolEnvelope`](schema-core.md#tool-envelope).
+- Response branches: [common response branches](schema-core.md#common-response).
+- Shared result base: [`ToolResultBase`](schema-core.md#common-response).
+- Rejected and dry-run branches: `ToolRejectedResponse` and `ToolDryRunResponse` in [common response branches](schema-core.md#common-response).
+- Method result branch availability: use the affected method owner document.
+- `idempotency_key`, `expected_state_version`, and `dry_run` exceptions: use the affected method owner document.
+- Task selector precedence: method-specific `task_id`, `ToolEnvelope.task_id`, then active Task.
+- Method-specific `task_id` fields: use the affected method owner document.
 
 ## Schema owner links
 
-| Schema area | Owner |
-|---|---|
-| Common request envelope, response branches, errors, and events | [API Schema Core](schema-core.md) |
-| State summaries, refs, close-readiness shapes, evidence summaries, and write-authority summaries | [API State Schemas](schema-state.md) |
-| Artifact inputs, staged artifact handles, and artifact refs | [API Artifact Schemas](schema-artifacts.md) |
-| User judgment, judgment options, judgment answers, sensitive-action scopes, and accepted-risk inputs | [API Judgment Schemas](schema-judgment.md) |
-| Active method names, method-local values, response/effect kinds, access classes, and lifecycle values | [API Value Sets](schema-value-sets.md) |
-| Public error codes, stale-state precedence, and close blocker routing | [API Errors](errors.md) |
+- Request and response branch shape: [API Schema Core](schema-core.md).
+- Nested state fields: [API State Schemas](schema-state.md).
+- Artifact fields: [API Artifact Schemas](schema-artifacts.md).
+- Judgment fields: [API Judgment Schemas](schema-judgment.md).
+- Value sets: [API Value Sets](schema-value-sets.md).
+- Public errors: [API Errors](errors.md).
 
 ## Storage-effect owner links
 
-| Storage area | Owner |
-|---|---|
-| Method-to-storage effects and no-effect boundaries | [Storage Effects](../storage-effects.md) |
-| Persistent record layouts, DDL ownership, record-column meaning, and storage-owned JSON placement | [Storage Records](../storage-records.md) |
-| State clocks, idempotency replay behavior, and version conflict storage rules | [Storage Versioning](../storage-versioning.md) |
-| Artifact staging, validation, promotion, linking, and body-read lifecycle | [Artifact Storage](../storage-artifacts.md) |
+- Method storage effects and no-effect boundaries: [Storage Effects](../storage-effects.md).
+- Record layouts and DDL ownership: [Storage Records](../storage-records.md).
+- State clocks and version conflict storage rules: [Storage Versioning](../storage-versioning.md).
+- Artifact staging, promotion, and lifecycle: [Artifact Storage](../storage-artifacts.md).
 
 ## Stable API example scenario summary
 
@@ -128,15 +128,16 @@ Method owner examples use a durable account data export confirmation scenario:
 - Acceptance: explicit confirmation is required before account data export download.
 - Extension: method examples may add representative account data export confirmation test run and evidence data.
 
-Examples are compact branch examples, not full schema definitions.
+Examples are compact branch examples, not schema definitions.
 
-Consistency requirements:
-- Nested shapes stay with schema owners.
-- Shared scenario refs must stay aligned across `state_version`, artifact refs, run refs, judgment refs, close-readiness evidence, sensitive-action approval reasons, and expiration timestamps.
+API example questions:
 
-Maintenance rules for replacing or reviewing API examples live in [Authoring Guide](../../maintain/authoring-guide.md) and [Checks](../../maintain/checks.md).
-
-API example consistency questions and field-name consistency questions route to [Authoring Guide](../../maintain/authoring-guide.md) and [Checks](../../maintain/checks.md). Concrete example field definitions then route to the affected method, schema, or storage owner.
+- Consistency rules and replacement guidance: [Authoring Guide](../../maintain/authoring-guide.md) and [Checks](../../maintain/checks.md).
+- Nested shapes: use the schema owner links above.
+- Method payload fields: use the affected method owner document.
+- Schema fields: use the affected schema owner document.
+- Storage-owned example fields: use the affected storage owner document.
+- Shared scenario ref alignment: use [Authoring Guide](../../maintain/authoring-guide.md) and [Checks](../../maintain/checks.md).
 
 ## Method owner documents
 
