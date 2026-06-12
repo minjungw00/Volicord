@@ -19,8 +19,8 @@
 | 단계 | 담당 문서 경로 |
 |---|---|
 | 현재 MVP 범위 | `active-mvp-scope.md` |
-| API method 목록 | `api/mvp-api.md` |
-| API method 동작 | [API method 담당 문서](#api-메서드-담당-문서) |
+| API 메서드 목록 | `api/mvp-api.md` |
+| API 메서드 동작 | [API 메서드 담당 문서](#api-메서드-담당-문서) |
 | 스키마 형태 | [API와 스키마 담당 문서](#api와-스키마-담당-문서) |
 | 저장 효과 | `storage-effects.md` |
 
@@ -45,7 +45,7 @@
 | Core 권한은 어디서 정의되는가? | `core-model.md` |
 | 활성 API 메서드 목록은 어디에 있는가? | `api/mvp-api.md` |
 | 공통 API 요청 래퍼는 어디서 정의되는가? | `api/schema-core.md` |
-| 응답 branch는 어디서 정의되는가? | `api/schema-core.md` |
+| 응답 분기는 어디서 정의되는가? | `api/schema-core.md` |
 | 공개 오류 코드는 어디서 정의되는가? | `api/errors.md` |
 | 저장소 기록은 어디서 정의되는가? | `storage-records.md` |
 | 저장 효과는 어디서 정의되는가? | `storage-effects.md` |
@@ -64,9 +64,9 @@
 | API 예시 점검은 어디서 정의되는가? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
 | API 예시 정합성 점검은 어디서 정의되는가? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
 | API 예시 필드 이름 점검은 어디서 정의되는가? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
-| 활성 API method 목록은 어디에 있는가? | `api/mvp-api.md` |
-| API method 이름 값은 어디서 정의되는가? | `api/schema-value-sets.md` |
-| method 페이로드 필드는 어디서 정의되는가? | [API method 담당 문서](#api-메서드-담당-문서) |
+| 활성 API 메서드 목록은 어디에 있는가? | `api/mvp-api.md` |
+| API 메서드 이름 값은 어디서 정의되는가? | `api/schema-value-sets.md` |
+| 메서드 페이로드 필드는 어디서 정의되는가? | [API 메서드 담당 문서](#api-메서드-담당-문서) |
 | 공통 페이로드 스키마는 어디서 정의되는가? | `api/schema-core.md` |
 | `harness.status`의 `state_version` 예시 규칙은 어디에 있는가? | `api/method-status.md`, `../maintain/checks.md` |
 | `harness.prepare_write`는 무엇을 반환하는가? | `api/method-prepare-write.md` |
@@ -91,21 +91,21 @@
 
 <a id="api-메서드-담당-문서"></a>
 
-## API method 담당 문서
+## API 메서드 담당 문서
 
 | 질문 | 담당 문서 |
 |---|---|
-| `harness.intake` method 동작은 어디서 정의되는가? | `api/method-intake.md` |
-| `harness.update_scope` method 동작은 어디서 정의되는가? | `api/method-update-scope.md` |
-| `harness.status` method 동작은 어디서 정의되는가? | `api/method-status.md` |
-| `harness.prepare_write` method 동작은 어디서 정의되는가? | `api/method-prepare-write.md` |
-| `harness.stage_artifact` method 동작은 어디서 정의되는가? | `api/method-stage-artifact.md` |
-| `harness.record_run` method 동작은 어디서 정의되는가? | `api/method-record-run.md` |
-| `harness.record_run` 증거 method 동작은 어디서 정의되는가? | `api/method-record-run.md`, `storage-effects.md` |
+| `harness.intake` 메서드 동작은 어디서 정의되는가? | `api/method-intake.md` |
+| `harness.update_scope` 메서드 동작은 어디서 정의되는가? | `api/method-update-scope.md` |
+| `harness.status` 메서드 동작은 어디서 정의되는가? | `api/method-status.md` |
+| `harness.prepare_write` 메서드 동작은 어디서 정의되는가? | `api/method-prepare-write.md` |
+| `harness.stage_artifact` 메서드 동작은 어디서 정의되는가? | `api/method-stage-artifact.md` |
+| `harness.record_run` 메서드 동작은 어디서 정의되는가? | `api/method-record-run.md` |
+| `harness.record_run` 증거 메서드 동작은 어디서 정의되는가? | `api/method-record-run.md`, `storage-effects.md` |
 | `harness.record_run` 저장 효과는 어디서 정의되는가? | `storage-effects.md` |
-| `harness.request_user_judgment` method 동작은 어디서 정의되는가? | `api/method-user-judgment.md` |
-| `harness.record_user_judgment` method 동작은 어디서 정의되는가? | `api/method-user-judgment.md` |
-| `harness.close_task` method 동작은 어디서 정의되는가? | `api/method-close-task.md` |
+| `harness.request_user_judgment` 메서드 동작은 어디서 정의되는가? | `api/method-user-judgment.md` |
+| `harness.record_user_judgment` 메서드 동작은 어디서 정의되는가? | `api/method-user-judgment.md` |
+| `harness.close_task` 메서드 동작은 어디서 정의되는가? | `api/method-close-task.md` |
 
 ## 저장소 담당 문서
 

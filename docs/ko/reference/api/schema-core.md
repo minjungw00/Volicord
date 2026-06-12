@@ -131,7 +131,7 @@ ToolDryRunResponse:
 ## `dry_run` 요약 형태
 
 의미:
-- `DryRunSummary`, `PlannedEffect`, `PlannedBlocker`는 공통 `dry_run` branch 보조 형태입니다.
+- `DryRunSummary`, `PlannedEffect`, `PlannedBlocker`는 공통 `dry_run` 분기 보조 형태입니다.
 - 설명용 미리보기 데이터일 뿐입니다.
 
 의미하지 않는 것:

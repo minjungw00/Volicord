@@ -248,7 +248,7 @@ API 데이터 형태에는 아래 값이 포함됩니다.
 
 계정 데이터 내보내기 쓰기 결정 데이터 예시는 아래와 같습니다.
 
-요청 측 `harness.prepare_write` 페이로드 필드는 [`method-prepare-write.md`](api/method-prepare-write.md)를 확인하세요. 이 섹션은 쓰기 결정과 그 사유가 기록되는 저장 효과만 설명합니다.
+요청 측 `harness.prepare_write` 페이로드 필드는 [`harness.prepare_write` 참조](api/method-prepare-write.md)를 확인하세요. 이 섹션은 쓰기 결정과 그 사유가 기록되는 저장 효과만 설명합니다.
 
 ```yaml
 intended_operation: "명시적 확인 단계가 필요하도록 계정 데이터 내보내기 흐름을 갱신"

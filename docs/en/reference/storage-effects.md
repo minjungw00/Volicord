@@ -239,7 +239,7 @@ Not allowed:
 
 Example account data export write-decision data:
 
-For the request-side `harness.prepare_write` payload fields, see [`method-prepare-write.md`](api/method-prepare-write.md). This section only describes the storage effect of recording the write decision and its reasons.
+For the request-side `harness.prepare_write` payload fields, see the [`harness.prepare_write` reference](api/method-prepare-write.md). This section only describes the storage effect of recording the write decision and its reasons.
 
 ```yaml
 intended_operation: "update account data export flow to require explicit confirmation"
