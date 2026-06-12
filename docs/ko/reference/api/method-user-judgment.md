@@ -228,7 +228,7 @@ params:
   change_unit_id: cu_001
   judgment_kind: product_decision
   presentation: short
-  question: "다운로드에 개인정보가 포함될 수 있다고 알리는 계정 내보내기 확인 문구를 충분한 것으로 수락해도 됩니까?"
+  question: "계정 내보내기 확인 문구가 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 충분히 알린다고 판단해 수락해도 됩니까?"
   options:
     - option_id: accept
       label: "충분함"
@@ -241,7 +241,7 @@ params:
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
-    summary: "다운로드 전에 보이는 계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 알립니다."
+    summary: "다운로드 전에 표시되는 계정 내보내기 확인 문구는 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 알립니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -280,7 +280,7 @@ params:
     product_decision:
       judgment:
         decision: accepted
-        rationale: "계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 명확히 알립니다."
+        rationale: "계정 내보내기 확인 문구는 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 명확히 알립니다."
     technical_decision: null
     scope_decision: null
     sensitive_action_scope: null
@@ -321,7 +321,7 @@ user_judgment:
   judgment_kind: product_decision
   status: pending
   presentation: short
-  question: "다운로드에 개인정보가 포함될 수 있다고 알리는 계정 내보내기 확인 문구를 충분한 것으로 수락해도 됩니까?"
+  question: "계정 내보내기 확인 문구가 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 충분히 알린다고 판단해 수락해도 됩니까?"
   options:
     - option_id: accept
       label: "충분함"
@@ -334,7 +334,7 @@ user_judgment:
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
-    summary: "다운로드 전에 보이는 계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 알립니다."
+    summary: "다운로드 전에 표시되는 계정 내보내기 확인 문구는 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 알립니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -385,7 +385,7 @@ user_judgment:
   judgment_kind: product_decision
   status: resolved
   presentation: short
-  question: "다운로드에 개인정보가 포함될 수 있다고 알리는 계정 내보내기 확인 문구를 충분한 것으로 수락해도 됩니까?"
+  question: "계정 내보내기 확인 문구가 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 충분히 알린다고 판단해 수락해도 됩니까?"
   options:
     - option_id: accept
       label: "충분함"
@@ -398,7 +398,7 @@ user_judgment:
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
-    summary: "다운로드 전에 보이는 계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 알립니다."
+    summary: "다운로드 전에 표시되는 계정 내보내기 확인 문구는 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 알립니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
@@ -417,7 +417,7 @@ user_judgment:
       product_decision:
         judgment:
           decision: accepted
-          rationale: "계정 내보내기 확인 문구는 계정 데이터 내보내기에 개인정보가 포함될 수 있음을 명확히 알립니다."
+          rationale: "계정 내보내기 확인 문구는 계정 데이터 내보내기 파일에 개인정보가 포함될 수 있음을 명확히 알립니다."
     note: null
     accepted_risks: []
     resolved_by_actor_kind: user

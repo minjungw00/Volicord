@@ -156,7 +156,7 @@ params:
 별도의 민감 동작 승인이 이미 있을 때 적용되는 분기입니다.
 
 기존 민감 동작 승인은 `state_version: 19`의 `active_user_judgment_refs` 사용자 판단 참조로 표시됩니다.
-`uj_sensitive_export_001`은 계정 데이터 내보내기 단계와 맞는 `SensitiveActionScope`를 가진 기존의 해결된 `judgment_kind=sensitive_approval`이며, `Write Authorization` 전에 필요한 민감 동작 승인을 나타냅니다.
+`uj_sensitive_export_001`은 계정 데이터 내보내기 단계에 맞는 `SensitiveActionScope`를 가진 기존의 해결된 `judgment_kind=sensitive_approval`이며, `Write Authorization` 전에 필요한 민감 동작 승인을 나타냅니다.
 계정 내보내기 확인 문구에 대한 사용자 판단은 사용자 판단 메서드에서 별도로 처리되며, 이 민감 동작 승인과 같은 승인이 아닙니다.
 
 ```yaml
