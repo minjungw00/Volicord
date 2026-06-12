@@ -223,6 +223,7 @@ Check:
 - Artifact refs do not appear without staging, promotion, or existing-artifact context.
 - Expiration timestamps use placeholders or clearly future example dates.
 - Cross-method examples that share a scenario do not contradict each other.
+- Representative responses do not silently drop meaningful request fields unless labeled as abbreviated.
 
 Failure:
 - status examples include future-version supporting refs
@@ -230,6 +231,7 @@ Failure:
 - artifact refs appear without lifecycle context
 - staged handles have stale fixed expiration timestamps
 - close-readiness evidence refers to missing run or judgment refs
+- response examples drop `options` or `affected_refs` from a user-judgment request without saying the response is abbreviated
 
 Fix:
 - Align refs, versions, sensitive categories, artifact lifecycle, timestamps, and shared scenario data.
