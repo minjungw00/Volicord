@@ -111,7 +111,7 @@
 - 적합성 실행기 또는 `harness conformance run` 구현
 - 생성된 적합성 보고서, 생성된 런타임 아티팩트, 상태 보기, 운영 파일, 런타임 상태
 - 현재 MVP 동작이나 이후 후보에 대한 현재 런타임 결과
-- 예방적 차단, OS 권한 제어, 임의 도구 샌드박스, 변조 방지 저장소, 보안 격리, profile-gated `preventive` / `isolated` 보장 주장에 대한 현재 런타임 증명
+- 예방적 차단, OS 권한 제어, 임의 도구 샌드박스, 변조 방지 저장소, 보안 격리, 프로필 조건부 `preventive` / `isolated` 보장 주장에 대한 현재 런타임 증명
 
 이 문서의 예시는 계획을 도울 수 있습니다. 하지만 런타임 상태, 수락 증거, 닫기 준비 상태, 잔여 위험 수락, 생성된 보고서, 구현 준비 상태를 만들지 않습니다.
 
@@ -130,22 +130,22 @@
 <a id="fixture-scenario-id"></a>
 ### `scenario_id`
 
-효과:
+목적:
 - 검토할 동작을 안정적으로 식별합니다.
 
 <a id="fixture-authority-context"></a>
 ### 권한 맥락
 
-효과:
+목적:
 - 동작 전에 필요한 사실을 이름 붙입니다.
 
-조건:
+예상 내용:
 - Task, Change Unit, 상태 버전, 접점, 담당 문서 참조, Core 상태, 저장소 행, `ArtifactRef`, 접점 기능 사실을 담습니다.
 
 <a id="fixture-action"></a>
 ### 동작
 
-효과:
+목적:
 - 공개 Core, API, 운영자 요청 하나를 설명합니다.
 
 담당 문서 링크:
@@ -154,16 +154,16 @@
 <a id="fixture-expected-assertions"></a>
 ### 기대 주장
 
-효과:
+목적:
 - 향후 픽스처가 비교할 수 있는 구조화된 사실을 이름 붙입니다.
 
-조건:
+예상 내용:
 - 응답 사실, 담당 문서가 소유하는 상태 변경 효과, 저장소 또는 아티팩트 사실, 차단 사유 사실, 오류 사실, 보장 표시 사실, 금지된 부작용의 필수 부재를 담습니다.
 
 <a id="fixture-owner-links"></a>
 ### 담당 문서 링크
 
-효과:
+목적:
 - 정확한 값과 의미를 기준 담당 문서로 보냅니다.
 
 담당 문서 링크:
@@ -230,7 +230,7 @@
 <a id="scenario-mvp-active-registered-surface-mismatch-blocks-mutation"></a>
 ### `MVP-ACTIVE-registered-surface-mismatch-blocks-mutation`
 
-조건:
+초점:
 - 상태 변경 전 로컬 접점이 등록 정보와 맞지 않습니다.
 
 담당 문서 링크:
@@ -241,7 +241,7 @@
 <a id="scenario-mvp-active-verified-local-surface-allows-owner-mutation"></a>
 ### `MVP-ACTIVE-verified-local-surface-allows-owner-mutation`
 
-조건:
+초점:
 - 확인된 로컬 접점은 담당 경로의 상태 변경 확인만 허용합니다.
 
 담당 문서 링크:
@@ -252,7 +252,7 @@
 <a id="scenario-mvp-active-single-access-class-per-public-request"></a>
 ### `MVP-ACTIVE-single-access-class-per-public-request`
 
-조건:
+초점:
 - 공개 API 요청 하나에는 요청 수준 `access_class` 하나만 있습니다.
 
 담당 문서 링크:
@@ -263,7 +263,7 @@
 <a id="scenario-mvp-active-detective-display-capability-gated"></a>
 ### `MVP-ACTIVE-detective-display-capability-gated`
 
-조건:
+초점:
 - `detective` 표현은 지원되는 관찰 범위가 있을 때만 가능합니다.
 
 담당 문서 링크:
@@ -273,7 +273,7 @@
 <a id="scenario-mvp-active-shaping-readiness-gap-blocks-or-asks"></a>
 ### `MVP-ACTIVE-shaping-readiness-gap-blocks-or-asks`
 
-조건:
+초점:
 - 구체화 공백은 별도 계획 아티팩트가 아니라 담당 경로의 차단 사유나 판단 후보로 남습니다.
 
 담당 문서 링크:
@@ -285,7 +285,7 @@
 <a id="scenario-mvp-active-project-state-version-stale-mutation-rejected"></a>
 ### `MVP-ACTIVE-project-state-version-stale-mutation-rejected`
 
-조건:
+초점:
 - 오래된 프로젝트 전체 상태 버전은 커밋 전에 실패합니다.
 
 담당 문서 링크:
@@ -296,7 +296,7 @@
 <a id="scenario-mvp-active-dry-run-pre-commit-failure-rejected"></a>
 ### `MVP-ACTIVE-dry-run-pre-commit-failure-rejected`
 
-조건:
+초점:
 - `dry_run`은 검증, 접근, 역량, 오래된 상태 거절을 우회하지 않습니다.
 
 담당 문서 링크:
@@ -307,7 +307,7 @@
 <a id="scenario-mvp-active-status-close-blockers-read-only"></a>
 ### `MVP-ACTIVE-status-close-blockers-read-only`
 
-조건:
+초점:
 - 상태와 닫기 확인 차단 사유는 저장 변경 없이 읽을 수 있습니다.
 
 담당 문서 링크:
@@ -319,7 +319,7 @@
 <a id="scenario-mvp-active-sensitive-approval-records-sensitive-action-scope"></a>
 ### `MVP-ACTIVE-sensitive-approval-records-sensitive-action-scope`
 
-조건:
+초점:
 - 민감 동작 승인은 Write Authorization, 최종 수락과 분리됩니다.
 
 담당 문서 링크:
@@ -330,7 +330,7 @@
 <a id="scenario-mvp-active-prepare-write-requires-compatible-scope-and-approval"></a>
 ### `MVP-ACTIVE-prepare-write-requires-compatible-scope-and-approval`
 
-조건:
+초점:
 - `prepare_write`는 협력형 제품 파일 호환성 경로입니다.
 
 담당 문서 링크:
@@ -341,7 +341,7 @@
 <a id="scenario-mvp-active-authorized-attempt-scope-product-file-write-only"></a>
 ### `MVP-ACTIVE-authorized-attempt-scope-product-file-write-only`
 
-조건:
+초점:
 - `AuthorizedAttemptScope`는 제품 파일 쓰기 범위만 다룹니다.
 
 담당 문서 링크:
@@ -352,7 +352,7 @@
 <a id="scenario-mvp-active-record-run-consumes-write-authorization-once"></a>
 ### `MVP-ACTIVE-record-run-consumes-write-authorization-once`
 
-조건:
+초점:
 - 호환되는 Run 기록은 맞는 Write Authorization을 한 번 소비합니다.
 
 담당 문서 링크:
@@ -363,7 +363,7 @@
 <a id="scenario-mvp-active-stage-artifact-temporary-handle-only"></a>
 ### `MVP-ACTIVE-stage-artifact-temporary-handle-only`
 
-조건:
+초점:
 - 스테이징은 임시 스테이징 핸들만 만듭니다.
 
 담당 문서 링크:
@@ -374,7 +374,7 @@
 <a id="scenario-mvp-active-record-run-artifact-input-validation-order"></a>
 ### `MVP-ACTIVE-record-run-artifact-input-validation-order`
 
-조건:
+초점:
 - Run 아티팩트 입력은 승격이나 연결 전에 검증됩니다.
 
 담당 문서 링크:
@@ -385,7 +385,7 @@
 <a id="scenario-mvp-active-record-run-promotes-staged-artifact-to-artifact-ref"></a>
 ### `MVP-ACTIVE-record-run-promotes-staged-artifact-to-artifact-ref`
 
-조건:
+초점:
 - 호환되는 Run 기록은 스테이징 핸들을 지속 `ArtifactRef`로 승격할 수 있습니다.
 
 담당 문서 링크:
@@ -396,7 +396,7 @@
 <a id="scenario-mvp-active-record-run-rejects-staged-artifact-surface-instance-mismatch"></a>
 ### `MVP-ACTIVE-record-run-rejects-staged-artifact-surface-instance-mismatch`
 
-조건:
+초점:
 - 스테이징 핸들의 출처가 맞지 않으면 승격이 거절됩니다.
 
 담당 문서 링크:
@@ -407,7 +407,7 @@
 <a id="scenario-mvp-active-record-run-links-existing-artifact-without-registering-bytes"></a>
 ### `MVP-ACTIVE-record-run-links-existing-artifact-without-registering-bytes`
 
-조건:
+초점:
 - 이미 지속되는 아티팩트는 새 바이트 등록 없이 연결될 수 있습니다.
 
 담당 문서 링크:
@@ -418,7 +418,7 @@
 <a id="scenario-mvp-active-captured-artifact-rejected-in-active-mvp"></a>
 ### `MVP-ACTIVE-captured-artifact-rejected-in-active-mvp`
 
-조건:
+초점:
 - 접점 자체 캡처 아티팩트 출처는 현재 MVP 아티팩트 권한이 아닙니다.
 
 담당 문서 링크:
@@ -429,7 +429,7 @@
 <a id="scenario-mvp-active-close-task-complete-stale-state-version-rejected"></a>
 ### `MVP-ACTIVE-close-task-complete-stale-state-version-rejected`
 
-조건:
+초점:
 - 오래된 상태는 닫기 준비 상태 평가 전에 실패합니다.
 
 담당 문서 링크:
@@ -440,7 +440,7 @@
 <a id="scenario-mvp-active-close-task-complete-stale-write-authorization-basis-rejected"></a>
 ### `MVP-ACTIVE-close-task-complete-stale-write-authorization-basis-rejected`
 
-조건:
+초점:
 - 닫기 관련 Write Authorization 근거가 오래됐으면 닫기 커밋 전에 실패합니다.
 
 담당 문서 링크:
@@ -451,7 +451,7 @@
 <a id="scenario-mvp-active-close-task-blocks-current-write-compatibility"></a>
 ### `MVP-ACTIVE-close-task-blocks-current-write-compatibility`
 
-조건:
+초점:
 - 닫기는 의미적 쓰기 호환성 때문에 막힐 수 있습니다.
 
 담당 문서 링크:
@@ -462,7 +462,7 @@
 <a id="scenario-mvp-active-close-task-blocks-evidence-insufficient"></a>
 ### `MVP-ACTIVE-close-task-blocks-evidence-insufficient`
 
-조건:
+초점:
 - 닫기는 필수 증거 부족 때문에 막힐 수 있습니다.
 
 담당 문서 링크:
@@ -473,7 +473,7 @@
 <a id="scenario-mvp-active-close-task-blocks-required-artifact-unavailable"></a>
 ### `MVP-ACTIVE-close-task-blocks-required-artifact-unavailable`
 
-조건:
+초점:
 - 닫기는 필수 아티팩트 가용성 때문에 막힐 수 있습니다.
 
 담당 문서 링크:
@@ -484,7 +484,7 @@
 <a id="scenario-mvp-active-close-task-blocks-final-acceptance-missing"></a>
 ### `MVP-ACTIVE-close-task-blocks-final-acceptance-missing`
 
-조건:
+초점:
 - 닫기는 호환되는 최종 수락이 없어 막힐 수 있습니다.
 
 담당 문서 링크:
@@ -495,7 +495,7 @@
 <a id="scenario-mvp-active-close-task-blocks-visible-unaccepted-residual-risk"></a>
 ### `MVP-ACTIVE-close-task-blocks-visible-unaccepted-residual-risk`
 
-조건:
+초점:
 - 닫기는 보이는 잔여 위험에 대한 호환되는 수락이 없어 막힐 수 있습니다.
 
 담당 문서 링크:
@@ -506,7 +506,7 @@
 <a id="scenario-mvp-active-close-task-check-read-only"></a>
 ### `MVP-ACTIVE-close-task-check-read-only`
 
-조건:
+초점:
 - `harness.close_task intent=check`는 읽기 전용입니다.
 
 담당 문서 링크:
@@ -517,7 +517,7 @@
 <a id="scenario-mvp-active-close-task-state-effecting-dry-run-preview"></a>
 ### `MVP-ACTIVE-close-task-state-effecting-dry-run-preview`
 
-조건:
+초점:
 - 상태 효과가 있는 닫기 의도값은 유효하고 미리보기 가능할 때만 `dry_run` 미리보기를 사용합니다.
 
 담당 문서 링크:
@@ -528,7 +528,7 @@
 <a id="scenario-mvp-active-close-task-supersede-one-state-version"></a>
 ### `MVP-ACTIVE-close-task-supersede-one-state-version`
 
-조건:
+초점:
 - `supersede`는 유효할 때 프로젝트 전체 상태 변경 하나를 쓰는 성공 완료가 아닌 종료 경로입니다.
 
 담당 문서 링크:

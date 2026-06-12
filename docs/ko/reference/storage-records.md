@@ -203,7 +203,7 @@
 | `user_judgments` | 사용자 소유 판단과 민감 동작 승인 기록 저장 | [`user_judgments`](#user_judgments) 참고 |
 | `write_authorizations` | 단일 사용 협력형 Write Authorization 기록 저장 | [`write_authorizations`](#write_authorizations) 참고 |
 | `runs` | 커밋된 실행 또는 관찰 기록 저장 | [`runs`](#runs) 참고 |
-| `artifact_staging` | 임시 아티팩트 핸들 저장 | [`artifact_staging`](#artifact_staging) 참고 |
+| `artifact_staging` | 임시 스테이징 아티팩트 핸들 저장 | [`artifact_staging`](#artifact_staging) 참고 |
 | `artifacts` | 등록된 영속 아티팩트 메타데이터 또는 바이트 저장 | [`artifacts`](#artifacts) 참고 |
 | `artifact_links` | 아티팩트와 지원 대상 Core/API 기록의 담당 관계 저장 | [`artifact_links`](#artifact_links) 참고 |
 | `evidence_summaries` | 간결한 증거 범위와 공백 기록 저장 | [`evidence_summaries`](#evidence_summaries) 참고 |

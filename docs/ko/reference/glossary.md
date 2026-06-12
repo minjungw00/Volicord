@@ -54,7 +54,7 @@
 | preventive guarantee | 예방형 보장 | [보안](security.md) |
 | `isolated` | `isolated` | [보안](security.md) |
 | reserved value | 예약된 값 | [현재 MVP 범위](active-mvp-scope.md) |
-| profile-gated value | profile-gated 값 | [현재 MVP 범위](active-mvp-scope.md) |
+| profile-gated value | 프로필 조건부 값 | [현재 MVP 범위](active-mvp-scope.md) |
 | dry-run | dry-run 미리보기 | [API 코어 스키마](api/schema-core.md) |
 | blocked result | 차단 결과 | [API 오류](api/errors.md) |
 | rejected response | 거부 응답 | [API 코어 스키마](api/schema-core.md) |
@@ -167,7 +167,7 @@
 - 정확한 값 문자열
 
 피할 표현:
-- 이후 후보나 profile-gated 값을 현재 요구사항처럼 쓰는 표현
+- 이후 후보나 프로필 조건부 값을 현재 요구사항처럼 쓰는 표현
 
 담당 문서:
 - [현재 MVP 범위](active-mvp-scope.md)
@@ -771,7 +771,7 @@
 - 정확한 보장 라벨 값
 
 피할 표현:
-- 예약된 값이나 profile-gated 값을 현재 활성 보장처럼 쓰는 표현
+- 예약된 값이나 프로필 조건부 값을 현재 활성 보장처럼 쓰는 표현
 
 담당 문서:
 - [보안](security.md)
@@ -871,7 +871,7 @@
 - [API 값 집합](api/schema-value-sets.md): 값 항목
 
 설명:
-- `isolated`는 이후/profile-gated 보장 라벨로 예약된 값이며 현재 MVP의 활성 보장이 아닙니다.
+- `isolated`는 이후 또는 프로필 조건부 보장 라벨로 예약된 값이며 현재 MVP의 활성 보장이 아닙니다.
 - 값 집합에 있다는 사실만으로 동작이 활성화되지는 않습니다.
 
 ### reserved value
@@ -910,21 +910,21 @@
 - profile-gated value
 
 한국어:
-- 참조 문서: profile-gated 값
-- 사용자 문서: profile-gated 값
+- 참조 문서: 프로필 조건부 값
+- 사용자 문서: 프로필 조건부 값
 
 보존할 식별자:
 - 정확한 값 문자열
 
 피할 표현:
-- 값 집합에 있다는 이유만으로 profile-gated 값을 현재 MVP 동작처럼 쓰는 표현
+- 값 집합에 있다는 이유만으로 프로필 조건부 값을 현재 MVP 동작처럼 쓰는 표현
 
 담당 문서:
 - [현재 MVP 범위](active-mvp-scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
-- profile-gated 값은 관련 프로필과 담당 동작이 활성화되어 있을 때만 사용할 수 있습니다.
+- 프로필 조건부 값은 관련 프로필과 담당 동작이 활성화되어 있을 때만 사용할 수 있습니다.
 - 값 집합에 있다는 사실만으로 동작이 활성화되지는 않습니다.
 
 ### dry-run

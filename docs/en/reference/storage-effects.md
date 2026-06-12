@@ -7,7 +7,7 @@ This document owns method-to-storage effect semantics for the current MVP source
 This document owns:
 
 - read-only, dry-run, rejected, staging-created, Core-committed, and committed-blocked storage-effect distinctions
-- whether a method branch creates replay rows, `task_events`, record changes, state-version increments, staged-handle consumption, artifact promotion, or `Write Authorization` changes
+- whether a method branch creates replay rows, `task_events`, record changes, state-version increments, staged-handle creation or consumption, artifact promotion, or `Write Authorization` changes
 - the persistence boundary for blocker-like response data
 - no-effect guarantees for rejected branches and valid dry-run preview branches
 

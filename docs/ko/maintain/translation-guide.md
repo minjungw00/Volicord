@@ -40,7 +40,7 @@
 - `docs/*/maintain/translation-guide.md`
 - `docs/*/maintain/checks.md`
 
-계약 담당 문서는 대응되는 [Reference Index](../../en/reference/README.md) / [참조 색인](../reference/README.md)에서 고릅니다. 경로 문서나 Maintain 문서가 스키마, DDL, API 계약, 보안 보장, 상태 보기 동작, 런타임 상태의 중복 담당 문서가 되면 안 됩니다.
+계약 담당 문서는 대응되는 [Reference Index](../../en/reference/README.md) / [참조 색인](../reference/README.md)에서 고릅니다. 경로 문서나 유지보수 문서가 스키마, DDL, API 계약, 보안 보장, 상태 보기 동작, 런타임 상태의 중복 담당 문서가 되면 안 됩니다.
 
 일반 에이전트 작업에서는 같은 `doc_id`의 한 언어만 불러옵니다. 번역, 의미 일치 검토, 비교가 필요한 이중 언어 편집일 때만 두 언어를 함께 봅니다.
 

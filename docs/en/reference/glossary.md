@@ -55,7 +55,7 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | preventive guarantee | 예방형 보장 | [Security](security.md) |
 | `isolated` | `isolated` | [Security](security.md) |
 | reserved value | 예약된 값 | [Active MVP Scope](active-mvp-scope.md) |
-| profile-gated value | profile-gated 값 | [Active MVP Scope](active-mvp-scope.md) |
+| profile-gated value | 프로필 조건부 값 | [Active MVP Scope](active-mvp-scope.md) |
 | dry-run | dry-run 미리보기 | [API Schema Core](api/schema-core.md) |
 | blocked result | 차단 결과 | [API Errors](api/errors.md) |
 | rejected response | 거부 응답 | [API Schema Core](api/schema-core.md) |
@@ -911,8 +911,8 @@ English:
 - profile-gated value
 
 Korean:
-- Reference: profile-gated 값
-- User-facing: profile-gated 값
+- Reference: 프로필 조건부 값
+- User-facing: 프로필 조건부 값
 
 Preserve:
 - Exact value strings
