@@ -239,7 +239,7 @@ Not allowed:
 
 Example account data export write-decision data:
 
-This storage-effect example reuses prepare-write request data, so the path field follows the method owner document's `intended_paths` name.
+For the request-side `harness.prepare_write` payload fields, see [`method-prepare-write.md`](api/method-prepare-write.md). This section only describes the storage effect of recording the write decision and its reasons.
 
 ```yaml
 intended_operation: "update account data export confirmation flow"

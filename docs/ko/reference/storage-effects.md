@@ -248,7 +248,7 @@ API 데이터 형태에는 아래 값이 포함됩니다.
 
 계정 데이터 내보내기 write decision 데이터 예시는 아래와 같습니다.
 
-이 저장 효과 예시는 `harness.prepare_write` 요청 field 일부를 함께 보여 주므로, 경로 field는 method 담당 문서가 쓰는 `intended_paths`를 따릅니다.
+요청 측 `harness.prepare_write` payload field는 [`method-prepare-write.md`](api/method-prepare-write.md)를 확인하세요. 이 섹션은 write decision과 그 사유가 기록되는 저장 효과만 설명합니다.
 
 ```yaml
 intended_operation: "계정 내보내기 확인 흐름 갱신"
