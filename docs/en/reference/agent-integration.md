@@ -29,122 +29,202 @@ This document does not own:
 
 Connectors carry context between Harness and an agent surface.
 
-Allowed effects:
-- request owner-defined Harness state
+Condition:
+- The connector is only a carrier between owner-defined Harness results and the selected agent surface.
+- Local surface authority depends on the registered and verified surface context defined by the API and security owners.
+
+Agent may:
+- request owner-defined Harness state through a connector
 - display owner results
 - pass compact context to the agent
 
-Non-claims:
-- A connector description, generated file, chat text, Product Repository file, projection, or agent memory does not prove authority by itself.
-- Prose or cached display text does not create Core state, user-owned judgment, Write Authorization, evidence sufficiency, artifact authority, close readiness, residual-risk acceptance, or security guarantees.
+Agent must not:
+- treat a connector description, generated file, chat text, Product Repository file, projection, or agent memory as authority by itself
+- create Core state, user-owned judgment, `Write Authorization`, evidence sufficiency, artifact authority, close readiness, residual-risk acceptance, or security guarantees from prose or cached display text
 
-Local surface authority depends on the registered and verified surface context defined by the API and security owners.
+Owner links:
+- [Surface Recipes](../use/surface-recipes.md) owns surface-specific recipes.
+- [Runtime Boundaries](runtime-boundaries.md) owns Product Repository, Harness Server, and Runtime Home separation.
+- [Security](security.md) owns security guarantee meanings.
 
 ## `capability_profile`
 
 `capability_profile` is the connector-owned description of what a registered surface can support.
 
-When the relevant owner documents make those concepts active, `capability_profile` may describe:
-- supported access classes
-- local reachability
-- changed-path detection
-- artifact staging or body-read support
-- display capabilities
-
-Conditions:
+Condition:
+- The relevant owner documents must make a concept active before `capability_profile` can describe it as supported.
 - Before a protected read, mutation, artifact operation, detective display, or guarantee claim relies on `capability_profile`, compare it with the registered local surface and the current request.
 - Profile-gated behavior remains inactive until active-scope and owner documents promote it with scope, fallback behavior, and proof expectations.
 
-Non-claims:
-- `capability_profile` is not authority by itself.
-- A stale, copied, generated, or user-provided capability description cannot make a later candidate active.
-- The same description cannot justify a stronger guarantee level.
+Agent may:
+- describe supported access classes
+- describe local reachability
+- describe changed-path detection
+- describe artifact staging or body-read support
+- describe display capabilities
+- show missing support as unavailable or capability-limited
 
-A connector should show missing support as unavailable or capability-limited instead of silently degrading into a stronger claim.
+Agent must not:
+- treat `capability_profile` as authority by itself
+- use a stale, copied, generated, or user-provided capability description to make a later candidate active
+- use the same description to justify a stronger guarantee level
+
+Fallback:
+- When required support is absent, stale, mismatched, or insufficient, display unavailable or capability-limited state and route the next decision to the relevant owner result.
+
+Owner links:
+- [Active MVP Scope](active-mvp-scope.md) owns active and profile-gated scope boundaries.
+- [Security](security.md) owns guarantee vocabulary and guarantee-strength non-claims.
+- [API Value Sets](api/schema-value-sets.md) owns access-class value names.
+
+## Local surface registration
+
+Local surface registration provides the facts a future server uses to derive verified surface context. A connector may carry selectors and display owner results, but it does not create local authority.
+
+Condition:
+- A request may select a registered local surface with `surface_id`.
+- A future server, not the connector, matches the selected surface to registered local facts, transport/session/binding evidence, access class, and capability posture.
+- Protected reads, mutations, and artifact operations can rely on a surface only when the method owner says the verified context is compatible.
+
+Agent may:
+- pass `surface_id` as a selector
+- display owner-returned unavailable, mismatched, stale, or insufficient surface states
+
+Agent must not:
+- assert local reachability, access class, `verified=true`, or staged artifact provenance from caller prose, copied identifiers, generated Markdown, chat text, projection text, or agent memory
+- treat `surface_id`, `surface_instance_id`, or a surface name as permission evidence
+
+Fallback:
+- If registered facts cannot be matched to the current request, display the local surface as unavailable, mismatched, stale, or insufficient until the owner method returns a compatible verified context.
+
+Owner links:
+- [MVP API router](api/mvp-api.md) and method owner documents own method request conditions.
+- [API Value Sets](api/schema-value-sets.md) owns access-class values.
+- [Security](security.md) owns access-boundary and guarantee wording.
 
 ## `VerifiedSurfaceContext`
 
 `VerifiedSurfaceContext` is the result a future server derives by matching a request's selected `surface_id` to registered local surface facts, transport/session/binding evidence, access class, and capability posture.
 
-Conditions:
-- The connector may pass `surface_id` as a selector.
-- The connector does not get to assert `verified=true`.
-- Protected reads and mutations can rely on a surface only when the API owner says the verified context is compatible with the method.
-
-Results:
+Condition:
 - A public API request has exactly one request-level `VerifiedSurfaceContext.access_class`.
 - Nested payloads such as artifact inputs do not add a second request access class.
 - In a future server, staged artifact provenance such as `created_by_surface_id` and `created_by_surface_instance_id` comes from `VerifiedSurfaceContext`.
+- Protected reads and mutations can rely on a surface only when the API owner says the verified context is compatible with the method.
 
-Non-claims:
-- Caller prose does not supply staged artifact provenance.
-- Copied identifiers, generated Markdown, chat text, projection text, and agent memory are not substitutes for the verified context.
+Agent may:
+- use an owner response that includes compatible request-level `VerifiedSurfaceContext`
+- preserve request-level `VerifiedSurfaceContext.access_class` when displaying or passing context
 
-The exact request envelope and access-class values belong to the [MVP API router](api/mvp-api.md), method owner documents, and [API Value Sets](api/schema-value-sets.md).
+Agent must not:
+- assert `verified=true`
+- supply staged artifact provenance from caller prose
+- use copied identifiers, generated Markdown, chat text, projection text, or agent memory as substitutes for the verified context
+
+Fallback:
+- If verified context is absent or incompatible with the method, show the relevant unavailable, mismatched, stale, or insufficient state instead of relying on the surface.
+
+Owner links:
+- The exact request envelope and access-class values belong to the [MVP API router](api/mvp-api.md), method owner documents, and [API Value Sets](api/schema-value-sets.md).
 
 ## Guarantee display gating
 
 Guarantee display starts at the current documented level: cooperative by default.
 
-Conditions for limited `detective` display:
-- the relevant capability verification passed
-- the security owner allows that wording
-- the displayed scope is limited to the named surface, capability, and observed scope
+Condition:
+- Limited `detective` display requires the relevant capability verification to pass.
+- Limited `detective` display requires the security owner to allow that wording.
+- The displayed scope must be limited to the named surface, capability, and observed scope.
 
-The connector should display these limitation conditions:
-- Core, MCP, local access, changed-path detection, artifact access, or another required capability is unavailable
-- a required capability is stale, mismatched, or insufficient
+Agent may:
+- display limited `detective` wording only when every condition above is satisfied
+- display limitation conditions when any of these are true:
+  - Core, MCP, local access, changed-path detection, artifact access, or another required capability is unavailable
+  - a required capability is stale, mismatched, or insufficient
 
-Non-claims:
-- Do not infer `detective`, `preventive`, or `isolated` from a surface name.
-- Do not infer a stronger guarantee level from a status card, chat summary, rendered projection, or user phrase.
+Agent must not:
+- infer `detective`, `preventive`, or `isolated` from a surface name
+- infer a stronger guarantee level from a status card, chat summary, rendered projection, or user phrase
 
-The guarantee vocabulary and non-claims belong to [Security](security.md). Current MVP scope and profile-gated boundaries belong to [Active MVP Scope](active-mvp-scope.md).
+Fallback:
+- When the relevant capability cannot support the displayed guarantee, show the limitation as unavailable or capability-limited instead of strengthening the claim.
+
+Owner links:
+- [Security](security.md) owns guarantee vocabulary and non-claims.
+- [Active MVP Scope](active-mvp-scope.md) owns current MVP scope and profile-gated boundaries.
 
 ## Context push and pull
 
-A connector may push compact agent context when it is fresh enough for the next action. Keep the packet to:
+Condition:
+- A connector may push compact agent context only when it is fresh enough for the next action and compatible with the current surface.
+- A connector should pull exact owner sections only when the next action needs them.
 
-- current task summary
-- active scope and non-goals
-- relevant surface status
-- `state_version`
-- pending user-owned judgments
-- blockers
-- next safe action
-- evidence gaps
-- artifact availability summary
-- close readiness
-- residual-risk status
-- guarantee level
-- source refs and freshness
+Agent may:
+- push a compact packet containing:
+  - current task summary
+  - active scope and non-goals
+  - relevant surface status
+  - `state_version`
+  - pending user-owned judgments
+  - blockers
+  - next safe action
+  - evidence gaps
+  - artifact availability summary
+  - close readiness
+  - residual-risk status
+  - guarantee level
+  - source refs and freshness
+- pull exact owner sections for the next action
 
-A connector should pull exact owner sections only when the next action needs them.
+Agent must not:
+- push full schemas
+- push DDL
+- push template bodies
+- push historical logs
+- push generated artifacts
+- push full artifact contents
+- push unrelated contract material
+- push future catalog material
+- push both languages for the same `doc_id`, unless bilingual maintenance requires semantic-parity review
 
-Do not push:
-- full schemas
-- DDL
-- template bodies
-- historical logs
-- generated artifacts
-- full artifact contents
-- unrelated contract material
-- future catalog material
-- both languages for the same `doc_id`, unless bilingual maintenance requires semantic-parity review
+Fallback:
+- If a pushed context packet becomes stale, disconnected, or incompatible with the current surface, ask the owner path for a refreshed result or show the stale condition before the agent relies on it.
 
-If a pushed context packet becomes stale, disconnected, or incompatible with the current surface, the connector should ask the owner path for a refreshed result or show the stale condition before the agent relies on it.
+Owner links:
+- [Reference Index](README.md) routes exact owner sections.
+- [Surface Recipes](../use/surface-recipes.md) owns surface-specific usage recipes.
+- [Translation Guide](../maintain/translation-guide.md) owns bilingual semantic-parity review expectations.
 
 ## Fallback semantics
 
-When Core, MCP, projection data, local access, artifact access, or a capability is unavailable or insufficient, connector behavior should expose that limitation and route the next safe action to the relevant owner instead of fabricating authority.
+Condition:
+- Core, MCP, projection data, local access, changed-path detection, artifact access, or another required capability is unavailable
+- a required capability is stale, mismatched, or insufficient
 
-Use owner-defined failure meanings. Typical routing is:
+Agent may:
+- reconnect or diagnose
+- move to a capable surface
+- narrow the operation
+- refresh state
+- request the missing user-owned judgment
+- continue outside Harness only when the user explicitly chooses that mode
 
-- `MCP_UNAVAILABLE`: Core, MCP, or required surface reachability is unavailable.
-- `LOCAL_ACCESS_MISMATCH`: reachable local access does not match the registered surface expectation or has been revoked.
-- `CAPABILITY_INSUFFICIENT`: the surface is recognized but lacks a required access class, observation, artifact capability, or guarantee support.
+Agent must not:
+- fabricate authority
+- hide unavailable, mismatched, stale, or insufficient capability states inside ordinary success text
+- continue outside Harness without the user's explicit choice
 
-Fallback should be honest and small: reconnect or diagnose, move to a capable surface, narrow the operation, refresh state, request the missing user-owned judgment, or continue outside Harness only when the user explicitly chooses that mode.
+Fallback:
+- Expose the limitation and route the next safe action to the relevant owner.
+- Use owner-defined failure meanings. Typical routing is:
+  - `MCP_UNAVAILABLE`: Core, MCP, or required surface reachability is unavailable.
+  - `LOCAL_ACCESS_MISMATCH`: reachable local access does not match the registered surface expectation or has been revoked.
+  - `CAPABILITY_INSUFFICIENT`: the surface is recognized but lacks a required access class, observation, artifact capability, or guarantee support.
+
+Owner links:
+- [API Errors](api/errors.md) owns public error-code routing.
+- [Surface Recipes](../use/surface-recipes.md) owns practical surface failure summaries.
+- [Security](security.md) owns guarantee limitation wording.
 
 ## Connector conformance boundary
 
