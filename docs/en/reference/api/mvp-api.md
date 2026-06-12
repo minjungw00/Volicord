@@ -6,7 +6,7 @@ This document is the stable route document for the active MVP API method family.
 
 - the active public API method list
 - method owner routing
-- shared envelope and response branch reading rules
+- shared envelope and response branch owner links
 - schema owner links
 - storage-effect owner links
 - the stable API example scenario summary used by method owner documents
@@ -63,7 +63,7 @@ Use this table for method behavior questions. Shared response branch schemas, ne
 
 <a id="shared-request-rules"></a>
 
-## Shared envelope and response branch reading rules
+## Shared envelope and response branch routes
 
 All public methods use [`ToolEnvelope`](schema-core.md#tool-envelope). Each public method response has exactly one branch:
 

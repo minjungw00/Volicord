@@ -66,7 +66,7 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Where are exact API method-name values defined? | `api/schema-value-sets.md` |
 | Where is the `harness.status` example `state_version` rule? | `api/method-status.md` |
 | What does `harness.prepare_write` return? | `api/method-prepare-write.md` |
-| Which schema owns `harness.prepare_write` response branches? | `api/schema-core.md` |
+| Which schema owns `harness.prepare_write` response branch schemas? | `api/schema-core.md` |
 | Which schema owns `harness.prepare_write` state shapes? | `api/schema-state.md` |
 | Which schema owns `harness.prepare_write` judgment shapes? | `api/schema-judgment.md` |
 | Where is `harness.prepare_write` sensitive approval routed? | `api/method-prepare-write.md` |
@@ -89,17 +89,17 @@ This route is for implementers and reviewers who need exact owners. New and work
 
 | Question | Owner |
 |---|---|
-| What does `harness.intake` do? | `api/method-intake.md` |
-| What does `harness.update_scope` do? | `api/method-update-scope.md` |
-| What does `harness.status` return? | `api/method-status.md` |
-| What does `harness.prepare_write` return? | `api/method-prepare-write.md` |
-| What does `harness.stage_artifact` do? | `api/method-stage-artifact.md` |
-| What does `harness.record_run` do? | `api/method-record-run.md` |
-| How does `harness.record_run` handle evidence? | `api/method-record-run.md` |
-| What storage effects does `harness.record_run` have? | `storage-effects.md` |
-| What does `harness.request_user_judgment` do? | `api/method-user-judgment.md` |
-| What does `harness.record_user_judgment` do? | `api/method-user-judgment.md` |
-| What does `harness.close_task` do? | `api/method-close-task.md` |
+| Where is `harness.intake` behavior defined? | `api/method-intake.md` |
+| Where is `harness.update_scope` behavior defined? | `api/method-update-scope.md` |
+| Where is `harness.status` behavior defined? | `api/method-status.md` |
+| Where is `harness.prepare_write` behavior defined? | `api/method-prepare-write.md` |
+| Where is `harness.stage_artifact` behavior defined? | `api/method-stage-artifact.md` |
+| Where is `harness.record_run` behavior defined? | `api/method-record-run.md` |
+| Where is `harness.record_run` evidence behavior defined? | `api/method-record-run.md` |
+| Where are `harness.record_run` storage effects defined? | `storage-effects.md` |
+| Where is `harness.request_user_judgment` behavior defined? | `api/method-user-judgment.md` |
+| Where is `harness.record_user_judgment` behavior defined? | `api/method-user-judgment.md` |
+| Where is `harness.close_task` behavior defined? | `api/method-close-task.md` |
 
 ## Storage owners
 

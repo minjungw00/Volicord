@@ -7,7 +7,7 @@
 ## 읽기 규칙
 
 - 먼저 답해야 할 질문을 고르고, 그 질문에 맞는 담당 문서만 엽니다.
-- 계약 세부사항은 담당 문서에 둡니다. 이 색인에 필드 목록, 응답 분기, DDL, 값 집합, 보장 수준을 길게 적고 싶어진다면 담당 문서로 옮기고 여기에는 경로만 남깁니다.
+- 계약 세부사항은 담당 문서에 둡니다. 이 색인에 필드 목록, 응답 branch, DDL, 값 집합, 보장 수준을 길게 적고 싶어진다면 담당 문서로 옮기고 여기에는 경로만 남깁니다.
 - 한영 문서나 용어 의미가 바뀌는 편집은 같은 작업 묶음에서 영어/한국어 담당 문서를 함께 맞춥니다.
 - 번역이나 의미 일치 검토가 아니라면 같은 `doc_id`의 영어/한국어 대응 문서를 한 프롬프트에 함께 넣지 않습니다.
 - 정확한 식별자는 백틱으로 보존하고, 의미는 담당 문서가 정하게 둡니다.
@@ -20,7 +20,7 @@
 |---|---|
 | 현재 MVP 범위 | `active-mvp-scope.md` |
 | API 메서드 목록 | `api/mvp-api.md` |
-| API 메서드 동작 | [API 메서드 담당 문서](#api-메서드-담당-문서) |
+| API method 동작 | [API 메서드 담당 문서](#api-메서드-담당-문서) |
 | 스키마 형태 | [API와 스키마 담당 문서](#api와-스키마-담당-문서) |
 | 저장 효과 | `storage-effects.md` |
 
@@ -44,8 +44,8 @@
 |---|---|
 | Core 권한, Task 상태, 증거, 잔여 위험, 비대체 규칙은 어느 담당 문서가 맡나요? | `core-model.md` |
 | 활성 API 메서드 목록은 어느 담당 문서가 맡나요? | `api/mvp-api.md` |
-| 공통 API 응답 분기와 요청 래퍼는 어느 담당 문서가 맡나요? | `api/schema-core.md` |
-| 메서드 응답 분기 스키마는 어느 담당 문서가 맡나요? | `api/schema-core.md` |
+| 공통 API 응답 branch와 요청 래퍼는 어느 담당 문서가 맡나요? | `api/schema-core.md` |
+| 메서드별 응답 branch 스키마는 어느 담당 문서가 맡나요? | `api/schema-core.md` |
 | 공개 오류 코드와 오류 우선순위는 어느 담당 문서가 맡나요? | `api/errors.md` |
 | 저장소 기록이나 DDL은 어느 담당 문서가 맡나요? | `storage-records.md` |
 | 저장 효과는 어느 담당 문서가 맡나요? | `storage-effects.md` |
@@ -66,7 +66,7 @@
 | 정확한 API 메서드 이름 값은 어느 담당 문서가 맡나요? | `api/schema-value-sets.md` |
 | `harness.status` 예시의 `state_version` 규칙은 어디에서 확인하나요? | `api/method-status.md` |
 | `harness.prepare_write`는 무엇을 반환하나요? | `api/method-prepare-write.md` |
-| `harness.prepare_write` 응답 분기 스키마는 어느 담당 문서가 맡나요? | `api/schema-core.md` |
+| `harness.prepare_write` 응답 branch 스키마는 어느 담당 문서가 맡나요? | `api/schema-core.md` |
 | `harness.prepare_write` 상태 형태는 어느 담당 문서가 맡나요? | `api/schema-state.md` |
 | `harness.prepare_write` 판단 형태는 어느 담당 문서가 맡나요? | `api/schema-judgment.md` |
 | `harness.prepare_write`의 민감 동작 승인은 어디가 담당하나요? | `api/method-prepare-write.md` |
@@ -89,17 +89,17 @@
 
 | 질문 | 담당 문서 |
 |---|---|
-| `harness.intake`는 무엇을 하나요? | `api/method-intake.md` |
-| `harness.update_scope`는 무엇을 하나요? | `api/method-update-scope.md` |
-| `harness.status`는 무엇을 반환하나요? | `api/method-status.md` |
-| `harness.prepare_write`는 무엇을 반환하나요? | `api/method-prepare-write.md` |
-| `harness.stage_artifact`는 무엇을 하나요? | `api/method-stage-artifact.md` |
-| `harness.record_run`은 무엇을 하나요? | `api/method-record-run.md` |
-| `harness.record_run`은 증거를 어떻게 다루나요? | `api/method-record-run.md` |
-| `harness.record_run`의 저장 효과는 어디서 확인하나요? | `storage-effects.md` |
-| `harness.request_user_judgment`는 무엇을 하나요? | `api/method-user-judgment.md` |
-| `harness.record_user_judgment`는 무엇을 하나요? | `api/method-user-judgment.md` |
-| `harness.close_task`는 무엇을 하나요? | `api/method-close-task.md` |
+| `harness.intake` method 동작은 어느 담당 문서가 맡나요? | `api/method-intake.md` |
+| `harness.update_scope` method 동작은 어느 담당 문서가 맡나요? | `api/method-update-scope.md` |
+| `harness.status` method 동작은 어느 담당 문서가 맡나요? | `api/method-status.md` |
+| `harness.prepare_write` method 동작은 어느 담당 문서가 맡나요? | `api/method-prepare-write.md` |
+| `harness.stage_artifact` method 동작은 어느 담당 문서가 맡나요? | `api/method-stage-artifact.md` |
+| `harness.record_run` method 동작은 어느 담당 문서가 맡나요? | `api/method-record-run.md` |
+| `harness.record_run` 증거 method 동작은 어느 담당 문서가 맡나요? | `api/method-record-run.md` |
+| `harness.record_run` 저장 효과는 어느 담당 문서가 맡나요? | `storage-effects.md` |
+| `harness.request_user_judgment` method 동작은 어느 담당 문서가 맡나요? | `api/method-user-judgment.md` |
+| `harness.record_user_judgment` method 동작은 어느 담당 문서가 맡나요? | `api/method-user-judgment.md` |
+| `harness.close_task` method 동작은 어느 담당 문서가 맡나요? | `api/method-close-task.md` |
 
 ## 저장소 담당 문서
 
@@ -141,7 +141,7 @@
 | 민감 동작 승인 스키마는 어느 담당 문서가 맡나요? | `api/schema-judgment.md` |
 | 민감 동작 승인 보안 의미는 어느 담당 문서가 맡나요? | `security.md` |
 | 닫기 준비 상태와 정직한 닫기 의미는 어디가 담당하나요? | `core-model.md` |
-| `harness.close_task` 동작은 어느 담당 문서가 맡나요? | `api/method-close-task.md` |
+| `harness.close_task` method 동작은 어느 담당 문서가 맡나요? | `api/method-close-task.md` |
 | 닫기 차단 사유 형태는 어느 담당 문서가 맡나요? | `api/schema-state.md` |
 | 닫기 오류 경로는 어느 담당 문서가 맡나요? | `api/errors.md` |
 | 최종 수락과 잔여 위험 경계는 어느 담당 문서가 맡나요? | `core-model.md` |
