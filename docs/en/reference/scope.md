@@ -1,50 +1,30 @@
-# Active MVP scope reference
+# Scope reference
 
-This reference is the canonical owner for detailed current MVP scope in the Harness planning documentation.
+This reference owns the current Harness MVP capability boundary.
 
-## Owns / Does not own
+## Owns / Does Not Own
 
 This document owns:
 
 - the current MVP capability boundary
 - included and excluded product-scope items
-- the reserved-value, profile-gated, and later-candidate boundary where it affects active scope
+- reserved and profile-gated value boundaries where they affect active scope
 - scope-level guarantee and non-claim wording that other documents should summarize instead of repeating
 
 This document does not own:
 
-- implementation readiness, server-coding handoff, maintainer acceptance status, or build sequencing; see [MVP Plan](../build/mvp-plan.md)
+- implementation sequencing; see the [Implementation Guide](../build/implementation-guide.md)
 - API method behavior
 - schema fields
 - storage effects
 - security proof
 - template bodies
 - connector behavior
-- later-candidate details
+- detailed specifications for out-of-scope capabilities
 
-Use this page when deciding whether a capability is part of the current MVP. Other route, build, README, later, and reference documents should link here for the detailed scope list.
+Use this page when deciding whether a capability is part of the current MVP. Route, build, README, and reference documents should link here for the scope boundary instead of repeating the detailed list.
 
-## Current repository status
-
-This repository is documentation-only source material for a future Harness Server. Runtime/server implementation has not started unless the maintainer handoff status in `docs/*/build/mvp-plan.md` explicitly says otherwise.
-
-The repository is not the user's Product Repository and not a Harness Runtime Home.
-
-These docs do not create:
-
-- runtime state
-- generated projections
-- artifacts
-- evidence records
-- QA records
-- acceptance records
-- close records
-- residual-risk records
-- executable fixtures
-- conformance results
-- implementation-complete behavior
-
-## Included in the active MVP
+## Included in the Current MVP
 
 The current MVP scope is limited to:
 
@@ -57,8 +37,6 @@ The current MVP scope is limited to:
 - run and evidence recording
 - focused user judgment capture
 - close attempts
-
-The included scope is summarized below. Detail blocks keep the active meaning and owner links visible.
 
 | Scope item | Primary owner |
 |---|---|
@@ -74,21 +52,21 @@ The included scope is summarized below. Detail blocks keep the active meaning an
 | Close attempts | [Close-task method](api/method-close-task.md), [Core Model](core-model.md), [Errors](api/errors.md) |
 
 Plain-language intake and Task creation:
-- Active MVP meaning: A local task can be started from plain-language user intent through the active intake path.
+- Active meaning: A local task can be started from plain-language user intent through the active intake path.
 
 Scope updates:
-- Active MVP meaning: Task and Change Unit scope can be updated through the active scope-update path.
+- Active meaning: Task and Change Unit scope can be updated through the active scope-update path.
 
 Status and close-readiness review:
-- Active MVP meaning: Current status, evidence sufficiency, known blockers, and close-readiness review can be read.
-- Not active: This read does not create a generated projection or runtime artifact.
+- Active meaning: Current status, evidence sufficiency, known blockers, and close-readiness review can be read.
+- Not included: The read does not create a generated projection or runtime artifact.
 
 Prepare-write authorization:
-- Active MVP meaning: `harness.prepare_write` can create an owner-scoped, single-use `Write Authorization`.
+- Active meaning: `harness.prepare_write` can create an owner-scoped, single-use `Write Authorization`.
 - Condition: The authorization is for one compatible product-file write attempt.
 
 Local surface registration:
-- Active MVP meaning: Registered local surfaces can identify the active surface and its supported capabilities.
+- Active meaning: Registered local surfaces can identify the active surface and its supported capabilities.
 - Condition: Those facts are used only for current scope checks.
 
 <a id="artifact-staging-owners"></a>
@@ -98,11 +76,11 @@ Artifact staging owners:
 - Lifecycle and storage effects: [Artifact Storage](storage-artifacts.md) and [Storage Effects](storage-effects.md).
 
 Artifact staging:
-- Active MVP meaning: New artifact bytes can enter active scope through the active staging path.
+- Active meaning: New artifact bytes can enter active scope through the active staging path.
 - Condition: Existing artifacts can be linked only through compatible persisted artifact references.
 
 Run and evidence recording:
-- Active MVP meaning: Runs and compact evidence summaries can be recorded for active work.
+- Active meaning: Runs and compact evidence summaries can be recorded for active work.
 - Condition: Compatible artifact promotion or linking is included only when the artifact owners allow it.
 
 <a id="user-judgment-owners"></a>
@@ -112,30 +90,29 @@ User judgment owners:
 - API shapes and values: [API Judgment Schemas](api/schema-judgment.md) and [API Value Sets](api/schema-value-sets.md).
 
 Focused user judgment capture:
-- Active MVP meaning: User-owned judgments can be requested and recorded through the active judgment path.
+- Active meaning: User-owned judgments can be requested and recorded through the active judgment path.
 - Included judgment paths: sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation when the judgment owners allow them.
 
 Close attempts:
-- Active MVP meaning: `harness.close_task` can check close readiness and attempt supported close outcomes.
+- Active meaning: `harness.close_task` can check close readiness and attempt supported close outcomes.
 - Required boundary: Evidence, final acceptance, residual-risk, and non-substitution boundaries remain intact.
 
 Status display boundary:
 - Current scope: Read-time status or derived display is active only as part of status and close-readiness review.
 - Not included: Persistent projection jobs, generated projection files, and managed projection repair.
 
-## Excluded from the active MVP
+## Excluded from the Current MVP
 
-Current scope:
-- The active MVP is intentionally narrow.
+The current MVP is intentionally narrow.
 
 Not included:
-- runtime implementation while this repository remains documentation-only
+
 - native artifact capture and `captured_artifact`
 - projection reconcile, persistent projection jobs, and managed block drift repair
 - full `Evidence Manifest`
 - Manual QA workflow, `qa_gate`, and `verification_gate`
 - command, network, and secret access observation
-- command/network/secret pre-tool blocking
+- command, network, and secret pre-tool blocking
 - preventive guarantees and `isolated` guarantee semantics
 - hosted dashboards
 - connector marketplaces
@@ -145,40 +122,35 @@ Not included:
 - operations profiles
 
 Does not imply:
-- Later candidates do not create active requirements.
+- Excluded capabilities are not active requirements.
 - Approving a sensitive action does not create active observation or blocking unless an owner promotes that capability.
 
 Owner links:
-- Security non-claims, guarantee levels, and observation boundaries: [Security](security.md) and relevant later-candidate owners.
-- Deferred promotion boundaries: [Later Candidate Index](../later/index.md).
+- Security non-claims, guarantee levels, and observation boundaries: [Security](security.md).
+- Value names and reserved values: [API Value Sets](api/schema-value-sets.md).
 
-## Reserved and profile-gated values
+## Reserved and Profile-Gated Values
 
-Current scope:
-- Some value names may be reserved values or profile-gated values without being active user-visible capabilities.
+Some value names may be reserved values or profile-gated values without being active user-visible capabilities.
 
 Does not imply:
 - Reserved or profile-gated guarantee labels do not expand the current MVP scope.
-- Appearance in examples, schemas, or later-candidate tables does not activate behavior.
-- Appearance there does not make a guarantee available.
-- Appearance there does not make the value a default current-MVP value.
+- Appearance in examples or schemas does not activate behavior.
+- Appearance in a value set does not make a guarantee available.
+- Appearance in a value set does not make the value a default current-MVP value.
 
 Owner links:
 - Exact guarantee label value entries: [API Value Sets](api/schema-value-sets.md).
 - Guarantee semantics, including non-claims for `isolated`: [Security](security.md).
 
-## Later candidates
+## Out-of-Scope Capability Activation
 
-Owner links:
-- Deferred candidate names and promotion boundaries: [Later Candidate Index](../later/index.md).
-
-Promotion condition:
-- A later candidate remains inert until an owner document promotes a narrow capability with scope, fallback behavior, proof expectations, and paired English/Korean documentation.
+An out-of-scope capability remains inactive until this Scope reference and the affected owner documents define a narrow active contract with fallback behavior, proof expectations, and paired English/Korean documentation.
 
 Does not imply:
-- Mentioning a later candidate in examples, route text, schema notes, or this reference does not promote it and does not make it an active MVP requirement.
+- Mentioning an excluded or reserved capability in examples, route text, schema notes, or this reference does not promote it and does not make it a current MVP requirement.
 
-## Current guarantee boundary
+## Current Guarantee Boundary
 
 Current scope:
 - The current MVP guarantee boundary is `cooperative` by default.
@@ -193,35 +165,37 @@ Does not imply:
 Owner links:
 - Guarantee semantics, detective wording, promotion rules for `preventive` and `isolated`, and security non-claims: [Security](security.md).
 - Guarantee label value entries: [API Value Sets](api/schema-value-sets.md).
-- Method behavior: [Prepare-write method](api/method-prepare-write.md), routed from the [MVP API router](api/mvp-api.md).
+- Method behavior: [Prepare-write method](api/method-prepare-write.md), routed from [API Methods](api/methods.md).
 - Core meaning: [Core Model](core-model.md).
 
-## Documentation-only boundary
+## Documentation Tree Boundary
 
-Editing this document or any linked reference document is documentation-only.
+The documentation tree stores maintained product and system documentation.
 
-Does not imply:
-- Harness Server implementation
-- runtime state creation
-- conformance execution
+It does not store:
+- runtime state
 - generated projections
-- artifact staging
-- evidence recording
-- QA acceptance
-- residual-risk acceptance
-- task closure
-- server-coding authorization
+- generated artifacts
+- evidence records
+- QA records
+- acceptance records
+- close records
+- residual-risk records
+- executable fixtures
+- conformance results
+- product implementation outputs
 
 Owner links:
-- Implementation readiness and maintainer handoff status: [MVP Plan](../build/mvp-plan.md). If that plan does not explicitly authorize runtime work, this repository remains documentation-only.
+- Implementation routing: [Implementation Guide](../build/implementation-guide.md).
+- Runtime, repository, and server boundaries: [Runtime Boundaries](runtime-boundaries.md).
 
-## Owner links
+## Owner Links
 
 | Need | Owner |
 |---|---|
-| Implementation readiness and maintainer handoff status | [MVP Plan](../build/mvp-plan.md) |
+| Implementation routing | [Implementation Guide](../build/implementation-guide.md) |
 | Core authority, Task state, and user-owned judgment boundaries | [Core Model](core-model.md) |
-| API method behavior | [MVP API router](api/mvp-api.md) and method owner documents |
+| API method behavior | [API Methods](api/methods.md) and method owner documents |
 | API schemas and value sets | [API schema owners in the Reference Index](README.md#api-and-schema-owners) |
 | Public errors and close-readiness blocker behavior | [Errors](api/errors.md) |
 | Storage records, effects, artifact lifecycle, versioning, and locks | [Storage owners in the Reference Index](README.md#storage-owners) |
@@ -230,5 +204,5 @@ Owner links:
 | Surface and connector behavior | [Agent Integration](agent-integration.md), [Surface Recipes](../use/surface-recipes.md) |
 | Projection authority and source-state/freshness boundaries | [Projection Authority Reference](projection-and-templates.md) |
 | Template bodies for readable displays | [Template Bodies](template-bodies.md) |
-| Later candidates and promotion boundaries | [Later Candidate Index](../later/index.md) |
+| Out-of-scope and reserved capability boundaries | [Scope](scope.md) |
 | Product terminology | [Glossary](glossary.md), [Translation Guide](../maintain/translation-guide.md), [docs/terminology-map.yaml](../../terminology-map.yaml) |

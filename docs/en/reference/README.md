@@ -2,7 +2,7 @@
 
 Use this index to answer: "Which document owns this question?" This README routes to canonical owner documents; it does not define API contracts, schemas, storage effects, security guarantees, or active MVP scope.
 
-These documents are source material for a future Harness Server. They do not mean this repository contains runtime implementation, runtime state, generated artifacts, projections, evidence records, QA records, acceptance records, close records, or conformance output.
+These documents are reference material for a Harness Server. They do not mean this repository contains runtime implementation, runtime state, generated artifacts, projections, evidence records, QA records, acceptance records, close records, or conformance output.
 
 ## Reading rules
 
@@ -18,8 +18,8 @@ Use this order when moving from product boundary to exact contract owners:
 
 | Step | Owner route |
 |---|---|
-| Active scope | `active-mvp-scope.md` |
-| API method list | `api/mvp-api.md` |
+| Active scope | `scope.md` |
+| API method list | `api/methods.md` |
 | API method behavior | [API method owners](#api-method-owners) |
 | Schema shapes | [API and schema owners](#api-and-schema-owners) |
 | Storage effects | `storage-effects.md` |
@@ -30,20 +30,19 @@ This route is for implementers and reviewers who need exact owners. New and work
 
 | Question | Owner |
 |---|---|
-| Where is current MVP inclusion defined? | `active-mvp-scope.md` |
-| Where is current MVP exclusion defined? | `active-mvp-scope.md` |
-| Is a capability active, profile-gated, or later-only? | `active-mvp-scope.md` |
-| Is `isolated` active in the current MVP? | `active-mvp-scope.md`, `security.md` |
-| Has runtime implementation started? | `../build/mvp-plan.md` |
-| Where is the documentation-only boundary defined? | `runtime-boundaries.md`, `active-mvp-scope.md` |
-| Where is maintainer handoff status tracked? | `../build/mvp-plan.md` |
+| Where is current MVP inclusion defined? | `scope.md` |
+| Where is current MVP exclusion defined? | `scope.md` |
+| Is a capability active, profile-gated, reserved, or out of scope? | `scope.md` |
+| Is `isolated` active in the current MVP? | `scope.md`, `security.md` |
+| Where is implementation routing described? | `../build/implementation-guide.md` |
+| Where is the documentation boundary defined? | `runtime-boundaries.md`, `scope.md` |
 
 ## Find the owner document
 
 | Question | Owner |
 |---|---|
 | Where is Core authority defined? | `core-model.md` |
-| Where is the active API method list? | `api/mvp-api.md` |
+| Where is the active API method list? | `api/methods.md` |
 | Where are shared API request envelopes defined? | `api/schema-core.md` |
 | Where are response branches defined? | `api/schema-core.md` |
 | Where are public error codes defined? | `api/errors.md` |
@@ -59,12 +58,12 @@ This route is for implementers and reviewers who need exact owners. New and work
 
 | Question | Owner |
 |---|---|
-| What scenario do API examples use? | `api/mvp-api.md`, `../maintain/authoring-guide.md`, `../maintain/checks.md` |
+| What scenario do API examples use? | `api/methods.md`, `../maintain/authoring-guide.md`, `../maintain/checks.md` |
 | Can API examples use documentation maintenance as the scenario? | `../maintain/authoring-guide.md` |
 | Where are API example checks defined? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
 | Where are API example consistency checks defined? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
 | Where are API example field-name checks defined? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
-| Where is the active API method list? | `api/mvp-api.md` |
+| Where is the active API method list? | `api/methods.md` |
 | Where are API method-name values defined? | `api/schema-value-sets.md` |
 | Where are method payload fields defined? | [API method owners](#api-method-owners) |
 | Where are shared payload schemas defined? | `api/schema-core.md` |
@@ -154,19 +153,14 @@ This route is for implementers and reviewers who need exact owners. New and work
 | Where is compact evidence summary meaning defined? | `core-model.md` |
 | Where is compact evidence summary shape defined? | `api/schema-state.md` |
 
-## Later and maintenance owners
+## Scope and maintenance owners
 
 | Question | Owner |
 |---|---|
-| Where should later candidates be documented? | `../later/index.md` |
-| Where are security later candidates documented? | `../later/security-and-assurance.md` |
-| Where are artifact later candidates documented? | `../later/artifacts-and-evidence.md` |
-| Where are connector later candidates documented? | `../later/connectors-and-surfaces.md` |
-| Where are policy later candidates documented? | `../later/policy-and-conformance.md` |
-| Where are workflow later candidates documented? | `../later/workflow-and-collaboration.md` |
-| Is a later candidate an active requirement? | `active-mvp-scope.md` |
-| What does promotion-time owner update mean? | `glossary.md`, `../later/index.md` |
-| What must change before a later candidate becomes active? | `../later/index.md` |
+| Is a reserved, profile-gated, or out-of-scope capability active? | `scope.md` |
+| Where are current scope exclusions defined? | `scope.md` |
+| What does promotion-time owner update mean? | `glossary.md`, `scope.md` |
+| What must change before an out-of-scope capability becomes active? | `scope.md`, affected owner documents |
 | How should "Full close-readiness evaluation order" be written in Korean? | `glossary.md`, `../maintain/translation-guide.md` |
 | How should "close readiness" be written in Korean? | `../../terminology-map.yaml`, `glossary.md`, `../maintain/translation-guide.md` |
 | Where are Korean prose and translation guidance controlled? | `../maintain/translation-guide.md`, `../../terminology-map.yaml`, `glossary.md` |

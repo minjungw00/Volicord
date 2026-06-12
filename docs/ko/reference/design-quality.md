@@ -26,7 +26,7 @@
 이 문서는 담당하지 않습니다.
 
 - Core 생명주기, 관문, 차단 사유, `prepare_write`, `close_task`, Write Authorization, 최종 수락, 잔여 위험 수락, 대체 불가능 규칙. [Core 모델 참조](core-model.md)를 봅니다.
-- MCP 요청/응답 스키마, `ValidatorResult`, `UserJudgment`, `AcceptedRiskInput`, 공개 오류, 현재/이후 스키마 값. [MVP API 경로 문서](api/mvp-api.md), 메서드 담당 문서, [API 코어 스키마](api/schema-core.md), [API 판단 스키마](api/schema-judgment.md), [API 오류](api/errors.md)를 봅니다.
+- MCP 요청/응답 스키마, `ValidatorResult`, `UserJudgment`, `AcceptedRiskInput`, 공개 오류, 현재/이후 스키마 값. [API 메서드](api/methods.md), 메서드 담당 문서, [API 코어 스키마](api/schema-core.md), [API 판단 스키마](api/schema-judgment.md), [API 오류](api/errors.md)를 봅니다.
 - SQLite DDL과 지속 테이블. [저장소 기록](storage-records.md)을 봅니다.
 - 검증기 실행 저장 효과. [저장 효과](storage-effects.md)를 봅니다.
 - 아티팩트 저장소. [아티팩트 저장소](storage-artifacts.md)를 봅니다.
@@ -44,7 +44,7 @@
 | 상태 메서드 동작 | [상태 메서드](api/method-status.md) |
 | 닫기 메서드 동작 | [Task 닫기 메서드](api/method-close-task.md) |
 | 활성 API 메서드 분기의 메서드별 저장 효과 | [저장 효과](storage-effects.md) |
-| 이후 설계 관문, 정책 차단 사유, 넓은 검증기, 면제 후보, 정책 목록 | [이후 후보 색인](../later/index.md) |
+| 이후 설계 관문, 정책 차단 사유, 넓은 검증기, 면제 후보, 정책 목록 | [범위 참조](scope.md) |
 
 이 저장소의 문서는 계획용 자료입니다. 지금 이 저장소에 하네스 서버, 런타임 상태, 생성된 증거, QA 기록, 수락 기록, 잔여 위험 기록, 닫기 기록이 있다는 뜻이 아닙니다.
 
@@ -478,7 +478,7 @@
 - 이후 전용 자료로 남습니다.
 
 담당 문서 링크:
-- [이후 후보 색인](../later/index.md)
+- [범위 참조](scope.md)
 
 닫기 영향:
 - 활성 닫기 영향이 없습니다.
@@ -554,7 +554,7 @@
 - 활성 설계 정책 검증기 ID
 - 정책-검증기 매핑
 
-이후 안정 검증기 ID 집합은 담당 문서가 좁은 활성 계약으로 승격하기 전까지 [정책과 적합성: `ValidatorResult` 안정 ID와 정책 계열](../later/policy-and-conformance.md#validatorresult-stable-ids-and-policy-families)의 후보로 남습니다.
+이후 안정 검증기 ID 집합은 담당 문서가 좁은 활성 계약으로 승격하기 전까지 [정책과 적합성: `ValidatorResult` 안정 ID와 정책 계열](scope.md)의 후보로 남습니다.
 
 ## 8. 이후 정책 후보 경계
 
@@ -611,6 +611,6 @@
 - 활성 운영 보고, 픽스처 요구사항, 구현 작업, 적합성 의무는 없습니다.
 
 승격에 필요한 것:
-- 승격하려면 [이후 후보 색인](../later/index.md)을 통한 승격, 승격 시점의 담당 문서 갱신, 구현 작업 전 문서 전용 수락이 필요합니다.
+- 승격하려면 [범위 참조](scope.md)을 통한 승격, 승격 시점의 담당 문서 갱신, 구현 작업 전 문서 수락이 필요합니다.
 
 이후 후보는 이름만 유지할 수 있습니다. 이를 현재 MVP 요구사항, 차단 사유, 면제 규칙, 증거 기대치, 검증기 매핑, 픽스처 요구사항, 운영 보고, 구현 작업처럼 제시하면 안 됩니다.

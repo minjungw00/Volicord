@@ -2,7 +2,7 @@
 
 Harness is meant to let you work in ordinary language while keeping decision boundaries visible. You decide the work and the risky calls. Harness records scope, evidence, approvals, user judgment, and close basis. The agent must not present inference as if it were your decision.
 
-This guide describes intended active user behavior for a future local Harness Server. This repository is documentation-only: it does not contain a Harness runtime, server implementation, runtime state, generated artifacts, evidence records, acceptance records, close records, or conformance output. Exact state, API, schema, storage, and security contracts are owned by the [Reference Index](../reference/README.md).
+This guide describes intended active user behavior for a local Harness Server. This repository is documentation: it does not contain a Harness runtime, server implementation, runtime state, generated artifacts, evidence records, acceptance records, close records, or conformance output. Exact state, API, schema, storage, and security contracts are owned by the [Reference Index](../reference/README.md).
 
 ## Starting a task
 
@@ -232,7 +232,7 @@ This guide is the user-facing workflow. Continue by role instead of starting wit
 
 | Reader | Path |
 |---|---|
-| Working user | [Judgment Examples](judgment-examples.md) -> [Active MVP Scope](../reference/active-mvp-scope.md) |
+| Working user | [Judgment Examples](judgment-examples.md) -> [Scope](../reference/scope.md) |
 | Agent author/operator | [Agent Guide](agent-guide.md) -> [Agent Integration Reference](../reference/agent-integration.md) |
 | Implementer | [Reference Index](../reference/README.md) -> active scope -> API methods -> schema owners -> storage effects |
 | Documentation maintainer | [Authoring Guide](../maintain/authoring-guide.md) -> [Translation Guide](../maintain/translation-guide.md) -> [Checks](../maintain/checks.md) |

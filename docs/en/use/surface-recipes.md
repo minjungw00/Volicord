@@ -12,7 +12,7 @@ Recipes translate the connector contract into user-visible behavior. They say wh
 
 This guide does not define connector behavior, `capability_profile`, `VerifiedSurfaceContext`, fallback semantics, API methods, schema fields, storage effects, artifact authority, template bodies, or guarantee meanings. Those contracts stay in the Reference owners linked below.
 
-This guide also does not prove that this documentation-only repository contains a Harness Server, runtime state, generated artifacts, or executable conformance output.
+This guide also does not prove that this documentation repository contains a Harness Server, runtime state, generated artifacts, or executable conformance output.
 
 ## CLI surface
 
@@ -93,12 +93,12 @@ Do not bury the user in schema fields, logs, generated projections, or long hist
 ## Links to reference contracts
 
 - [Agent Integration Reference](../reference/agent-integration.md): connector behavior, `capability_profile`, `VerifiedSurfaceContext`, context push/pull, fallback semantics, and connector conformance.
-- [MVP API router](../reference/api/mvp-api.md) and method owner documents: active method behavior and request conditions.
+- [API Methods](../reference/api/methods.md) and method owner documents: active method behavior and request conditions.
 - [API Value Sets](../reference/api/schema-value-sets.md): access classes and enum-like API values.
 - [API Errors](../reference/api/errors.md): public error codes and recovery routing.
 - [Security](../reference/security.md): guarantee wording and non-claims.
 - [Runtime Boundaries](../reference/runtime-boundaries.md): Product Repository, Harness Server, and Runtime Home separation.
-- [Active MVP Scope](../reference/active-mvp-scope.md): active, profile-gated, and later-candidate boundaries.
+- [Scope](../reference/scope.md): active, profile-gated, and out-of-scope boundaries.
 
 ## Where to go next
 

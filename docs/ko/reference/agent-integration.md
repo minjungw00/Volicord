@@ -2,7 +2,7 @@
 
 이 문서는 현재 문서 세트의 에이전트 커넥터 동작과 역량 맥락 경계를 담당합니다. 접점별 사용 레시피는 이 문서가 아니라 [접점별 사용 레시피](../use/surface-recipes.md)가 담당합니다.
 
-이 문서는 문서 원천 자료일 뿐입니다. 커넥터, MCP 서버, 런타임 상태, 생성된 매니페스트, 적합성 실행기를 구현하지 않습니다.
+이 문서는 참조 문서일 뿐입니다. 커넥터, MCP 서버, 런타임 상태, 생성된 매니페스트, 적합성 실행기를 구현하지 않습니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -82,7 +82,7 @@ Fallback:
 
 담당 문서 링크:
 
-- [현재 MVP 범위](active-mvp-scope.md)는 활성 범위와 프로필 조건부 범위 경계를 담당합니다.
+- [현재 MVP 범위](scope.md)는 활성 범위와 프로필 조건부 범위 경계를 담당합니다.
 - [보안](security.md)은 보장 어휘와 보장 강도 비주장을 담당합니다.
 - [API 값 집합](api/schema-value-sets.md)은 접근 등급 값 이름을 담당합니다.
 
@@ -112,7 +112,7 @@ Fallback:
 
 담당 문서 링크:
 
-- [MVP API 경로 문서](api/mvp-api.md)와 메서드 담당 문서는 메서드 요청 조건을 담당합니다.
+- [API 메서드](api/methods.md)와 메서드 담당 문서는 메서드 요청 조건을 담당합니다.
 - [API 값 집합](api/schema-value-sets.md)은 접근 등급 값을 담당합니다.
 - [보안](security.md)은 접근 경계와 보장 표현을 담당합니다.
 
@@ -144,7 +144,7 @@ Fallback:
 
 담당 문서 링크:
 
-- 정확한 요청 래퍼와 접근 등급 값은 [MVP API 경로 문서](api/mvp-api.md), 메서드 담당 문서, [API 값 집합](api/schema-value-sets.md)이 담당합니다.
+- 정확한 요청 래퍼와 접근 등급 값은 [API 메서드](api/methods.md), 메서드 담당 문서, [API 값 집합](api/schema-value-sets.md)이 담당합니다.
 
 ## 보장 표시 조건
 
@@ -174,7 +174,7 @@ Fallback:
 담당 문서 링크:
 
 - [보안](security.md)은 보장 어휘와 비주장을 담당합니다.
-- [현재 MVP 범위](active-mvp-scope.md)는 현재 MVP 범위와 프로필 조건부 경계를 담당합니다.
+- [현재 MVP 범위](scope.md)는 현재 MVP 범위와 프로필 조건부 경계를 담당합니다.
 
 ## 맥락 주입과 가져오기
 
@@ -276,7 +276,7 @@ Fallback:
 
 - [접점별 사용 레시피](../use/surface-recipes.md): 실무적인 접점별 사용 레시피.
 - [API 코어 스키마](api/schema-core.md)와 [API 값 집합](api/schema-value-sets.md): 공통 API 맥락 필드와 값.
-- [MVP API 경로 문서](api/mvp-api.md)와 메서드 담당 문서: 메서드 요청 조건.
+- [API 메서드](api/methods.md)와 메서드 담당 문서: 메서드 요청 조건.
 - [보안](security.md): 보장 표현과 비주장.
 - [런타임 경계](runtime-boundaries.md): Product Repository, Harness Server, Runtime Home 분리.
 - [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [아티팩트 저장소](storage-artifacts.md): 저장소와 아티팩트 권한 경계.

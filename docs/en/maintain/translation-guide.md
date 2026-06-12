@@ -1,8 +1,8 @@
 # Translation guide
 
-Use this guide when editing paired English and Korean Harness documentation. This is a documentation-maintenance standard only. It is not a runtime conformance record, implementation-readiness record, QA result, acceptance record, close record, or generated Harness artifact.
+Use this guide when editing paired English and Korean Harness documentation. This is a documentation-maintenance standard only. It is not a runtime conformance record, implementation record, QA result, acceptance record, close record, or generated Harness artifact.
 
-The canonical terminology map exists at [docs/terminology-map.yaml](../../terminology-map.yaml). Check it before adding or changing product terms, Korean prose terms, identifier explanations, or mixed-language bans. If this guide and the terminology map disagree, stop and align them in the same documentation-only batch.
+The canonical terminology map exists at [docs/terminology-map.yaml](../../terminology-map.yaml). Check it before adding or changing product terms, Korean prose terms, identifier explanations, or mixed-language bans. If this guide and the terminology map disagree, stop and align them in the same documentation batch.
 
 ## 1. Semantic parity
 
@@ -14,7 +14,7 @@ Semantic parity requires:
 
 - the same reader purpose
 - the same normative strength
-- the same active/later boundary
+- the same active/out-of-scope boundary
 - the same owner routing
 - the same user-judgment, evidence, verification, acceptance, and residual-risk boundaries
 - the same security guarantee level
@@ -33,9 +33,8 @@ Route and navigation text must use the compact active structure:
 - `docs/*/use/user-guide.md`
 - `docs/*/use/agent-guide.md`
 - `docs/*/use/judgment-examples.md`
-- `docs/*/build/mvp-plan.md`
+- `docs/*/build/implementation-guide.md`
 - `docs/*/reference/README.md`
-- `docs/*/later/index.md`
 - `docs/*/maintain/authoring-guide.md`
 - `docs/*/maintain/translation-guide.md`
 - `docs/*/maintain/checks.md`
@@ -90,8 +89,8 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | cooperative guarantee | 협력형 보장 | Do not strengthen into detective or preventive wording. |
 | detective guarantee | 탐지형 보장 | Use only when the documented observable scope supports it. |
 | preventive guarantee | 예방형 보장 | Use only when a documented mechanism proves prevention. |
-| active MVP | 현재 MVP | Do not translate later candidates into current requirements. |
-| later candidate | 이후 후보 | Keep deferred material clearly deferred. |
+| active MVP | 현재 MVP | Do not translate out-of-scope capabilities into current requirements. |
+| out-of-scope capability | 이후 후보 | Keep deferred material clearly deferred. |
 
 When a term is missing, add it to the terminology map and both translation guides before spreading a new variant across the docs.
 
@@ -201,10 +200,10 @@ Mixed English/Korean may be correct when the English part is an identifier, for 
 
 ## 10. Review checklist
 
-- [ ] The edit stayed documentation-only and did not imply runtime implementation.
+- [ ] The edit stayed documentation and did not imply runtime implementation.
 - [ ] English and Korean pages match by meaning unit, not line count.
 - [ ] Meaning-changing edits were made in both languages in the same batch.
-- [ ] Paired files keep matching reader purpose, route role, owner routing, and active/later boundary.
+- [ ] Paired files keep matching reader purpose, route role, owner routing, and active/out-of-scope boundary.
 - [ ] Identifiers, API methods, file paths, enum values, schema names, table names, validator IDs, error codes, anchors, and code literals are preserved.
 - [ ] Exact identifiers appear in backticks where prose clarity or searchability needs them.
 - [ ] General English nouns were translated into Korean prose unless they are identifiers or intentional labels.

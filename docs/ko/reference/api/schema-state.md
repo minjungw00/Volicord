@@ -2,7 +2,7 @@
 
 의미:
 - 이 문서는 현재 MVP의 상태 형태 API 스키마를 담당합니다.
-- 문서 원천 자료일 뿐입니다.
+- 참조 문서일 뿐입니다.
 
 의미하지 않는 것:
 - 런타임 상태, 생성된 상태 보기, 저장소 행, 상태 효과를 만들지 않습니다.
@@ -23,7 +23,7 @@
 
 - 공통 요청 래퍼나 응답 분기: [API 코어 스키마](schema-core.md)
 - 활성 enum 형태 값: [API 값 집합](schema-value-sets.md)
-- 메서드 동작: [MVP API 경로 문서](mvp-api.md)와 메서드 담당 문서
+- 메서드 동작: [API 메서드](methods.md)와 메서드 담당 문서
 - 공개 오류 의미: [API 오류](errors.md)
 - Core 생명주기와 닫기 준비 상태의 제품 의미: [Core 모델](../core-model.md)
 - 저장소 기록과 지속 효과: [저장소 기록](../storage-records.md), [저장 효과](../storage-effects.md)
@@ -39,7 +39,7 @@
 
 담당 문서 링크:
 - 응답 분기 선택: [공통 응답 분기](schema-core.md#common-response)
-- 메서드 동작과 효과: [MVP API 경로 문서](mvp-api.md)와 메서드 담당 문서
+- 메서드 동작과 효과: [API 메서드](methods.md)와 메서드 담당 문서
 
 ## 상태 참조
 
@@ -98,7 +98,7 @@ StateSummary:
 
 담당 문서 링크:
 - 커밋 결정 분기: [공통 응답 분기](schema-core.md#common-response)
-- 메서드별 커밋 동작: [MVP API 경로 문서](mvp-api.md)가 안내하는 메서드 담당 문서
+- 메서드별 커밋 동작: [API 메서드](methods.md)가 안내하는 메서드 담당 문서
 
 ## Task 생명주기 상태
 
@@ -228,7 +228,7 @@ ObservedChanges:
 담당 문서 링크:
 - `ArtifactRef`: [API 아티팩트 스키마](schema-artifacts.md)
 - 증거 충분성의 의미: [Core 모델의 실행과 증거의 권한](../core-model.md#9-실행과-증거의-권한)
-- 메서드 동작: [MVP API 경로 문서](mvp-api.md)가 안내하는 메서드 담당 문서
+- 메서드 동작: [API 메서드](methods.md)가 안내하는 메서드 담당 문서
 
 ## 닫기 준비 상태와 검증 형태
 
@@ -271,7 +271,7 @@ GuaranteeDisplay:
 
 - [API 코어 스키마](schema-core.md): `ToolEnvelope`, `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`.
 - [API 값 집합](schema-value-sets.md): 상태 필드가 쓰는 정확한 값.
-- [MVP API 경로 문서](mvp-api.md)와 메서드 담당 문서: 이 스키마를 반환하는 메서드.
+- [API 메서드](methods.md)와 메서드 담당 문서: 이 스키마를 반환하는 메서드.
 - [API 아티팩트 스키마](schema-artifacts.md): `ArtifactRef`.
 - [API 판단 스키마](schema-judgment.md): `UserJudgmentCandidate`.
 - [저장 효과](../storage-effects.md): 지속 저장과 상태 효과.

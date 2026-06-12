@@ -17,26 +17,26 @@ question_routes:
       default_path: AGENTS.md
       supporting_owner_doc_ids:
         - docs.doc-index
-      route_note: "Read repository phase and documentation-only rules first, then use `docs/doc-index.yaml` for exact owner lookup."
+      route_note: "Read repository agent rules first, then use `docs/doc-index.yaml` for exact owner lookup."
     - question: "Where is retrieval or route metadata maintained?"
       canonical_owner_doc_id: docs.doc-index
       default_path: docs/doc-index.yaml
       route_note: "Machine-readable route metadata for `doc_id`, owner family, canonical ownership, related documents, and language paths."
     - question: "Where is the current MVP scope defined?"
-      canonical_owner_doc_id: reference.active-mvp-scope
-      default_path: docs/en/reference/active-mvp-scope.md
-      route_note: "Current MVP scope and active/later boundary."
+      canonical_owner_doc_id: reference.scope
+      default_path: docs/en/reference/scope.md
+      route_note: "Current MVP scope and active/out-of-scope boundary."
     - question: "Where is the current MVP excluded scope defined?"
-      canonical_owner_doc_id: reference.active-mvp-scope
-      default_path: docs/en/reference/active-mvp-scope.md
-      route_note: "Active MVP Scope owns included and excluded current-MVP scope items."
+      canonical_owner_doc_id: reference.scope
+      default_path: docs/en/reference/scope.md
+      route_note: "Scope owns included and excluded current-MVP scope items."
     - question: "API examples use what scenario?"
-      canonical_owner_doc_id: reference.api.mvp-api
-      default_path: docs/en/reference/api/mvp-api.md
+      canonical_owner_doc_id: reference.api.methods
+      default_path: docs/en/reference/api/methods.md
       supporting_owner_doc_ids:
         - maintain.authoring-guide
         - maintain.checks
-      route_note: "MVP API owns the current account data export confirmation scenario summary; Authoring Guide owns durable example rules; Checks owns example scenario review."
+      route_note: "API Methods owns the current account data export confirmation scenario summary; Authoring Guide owns durable example rules; Checks owns example scenario review."
     - question: "Can API examples use documentation maintenance as the scenario?"
       canonical_owner_doc_id: maintain.authoring-guide
       default_path: docs/en/maintain/authoring-guide.md
@@ -48,8 +48,8 @@ question_routes:
       default_path: docs/en/maintain/checks.md
       supporting_owner_doc_ids:
         - maintain.authoring-guide
-        - reference.api.mvp-api
-      route_note: "Checks owns API example internal-consistency review; Authoring Guide owns durable example and field-name rules; MVP API owns the shared scenario summary; affected method and schema owners own concrete example fields."
+        - reference.api.methods
+      route_note: "Checks owns API example internal-consistency review; Authoring Guide owns durable example and field-name rules; API Methods owns the shared scenario summary; affected method and schema owners own concrete example fields."
     - question: "Where are field-name consistency questions routed?"
       canonical_owner_doc_id: maintain.checks
       default_path: docs/en/maintain/checks.md
@@ -57,11 +57,11 @@ question_routes:
         - maintain.authoring-guide
       route_note: "Checks owns example field-name consistency review; Authoring Guide owns the durable field-name rule. Concrete field definitions route to the affected method, schema, or storage owner."
     - question: "Where is the active API method list?"
-      canonical_owner_doc_id: reference.api.mvp-api
-      default_path: docs/en/reference/api/mvp-api.md
+      canonical_owner_doc_id: reference.api.methods
+      default_path: docs/en/reference/api/methods.md
       supporting_owner_doc_ids:
         - reference.api.schema-value-sets
-      route_note: "MVP API owns the active public method list and owner routing; API Value Sets owns exact method-name values."
+      route_note: "API Methods owns the active public method list and owner routing; API Value Sets owns exact method-name values."
     - question: "`harness.intake` behavior"
       canonical_owner_doc_id: reference.api.method-intake
       default_path: docs/en/reference/api/method-intake.md
@@ -193,14 +193,14 @@ question_routes:
       canonical_owner_doc_id: reference.security
       default_path: docs/en/reference/security.md
       supporting_owner_doc_ids:
-        - reference.active-mvp-scope
-      route_note: "Security owns `isolated` guarantee semantics and non-claims; Active MVP Scope confirms current-MVP availability."
+        - reference.scope
+      route_note: "Security owns `isolated` guarantee semantics and non-claims; Scope confirms current-MVP availability."
     - question: "Is `isolated` active in the current MVP?"
       canonical_owner_doc_id: reference.security
       default_path: docs/en/reference/security.md
       supporting_owner_doc_ids:
-        - reference.active-mvp-scope
-      route_note: "Security states current isolation non-claims; Active MVP Scope states the current guarantee boundary."
+        - reference.scope
+      route_note: "Security states current isolation non-claims; Scope states the current guarantee boundary."
     - question: "Which document owns guarantee semantics?"
       canonical_owner_doc_id: reference.security
       default_path: docs/en/reference/security.md
@@ -247,28 +247,19 @@ question_routes:
         - terminology.map
         - reference.glossary
       route_note: "Translation Guide owns natural Korean prose and semantic-parity rules; Terminology Map owns machine-readable term controls; Glossary explains product term meaning and owner routing."
-    - question: "Where should later candidates be documented?"
-      canonical_owner_doc_id: later.index
-      default_path: docs/en/later/index.md
-      route_note: "Deferred candidate names and promotion boundaries."
-    - question: "Where are artifact later candidates documented?"
-      canonical_owner_doc_id: later.artifacts-and-evidence
-      default_path: docs/en/later/artifacts-and-evidence.md
+    - question: "Is a reserved, profile-gated, or out-of-scope capability an active requirement?"
+      canonical_owner_doc_id: reference.scope
+      default_path: docs/en/reference/scope.md
       supporting_owner_doc_ids:
-        - later.index
-      route_note: "Artifact and evidence later-candidate details live in the category page; the index routes category membership."
-    - question: "Is a later candidate an active requirement?"
-      canonical_owner_doc_id: later.index
-      default_path: docs/en/later/index.md
-      supporting_owner_doc_ids:
-        - reference.active-mvp-scope
-      route_note: "Later Index owns promotion boundary routing; Active MVP Scope confirms current active/later status."
+        - reference.security
+        - reference.api.schema-value-sets
+      route_note: "Scope owns the active boundary; security and value-set owners define exact guarantee or value meaning."
     - question: "What does promotion-time owner update mean?"
       canonical_owner_doc_id: reference.glossary
       default_path: docs/en/reference/glossary.md
       supporting_owner_doc_ids:
-        - later.index
-      route_note: "Glossary defines the term; Later Index and category pages apply the promotion boundary."
+        - reference.scope
+      route_note: "Glossary defines the term; Scope owns whether a capability is active."
     - question: "Where does a storage effect question go?"
       canonical_owner_doc_id: reference.storage-effects
       default_path: docs/en/reference/storage-effects.md
@@ -309,14 +300,14 @@ docs:
     primary_role: repository_agent_rules
     canonical_for:
       - first_agent_reading_path
-      - repository_phase_rules
-      - documentation_only_working_rules
+      - repository_agent_rules
+      - documentation_editing_rules
       - owner_lookup_entry_rule
       - question_routes_before_broad_retrieval
     owns:
       - first-read agent instructions
-      - repository phase boundaries
-      - documentation-only working rules
+      - repository agent rules
+      - documentation editing rules
       - initial owner lookup rule before `docs/doc-index.yaml`
       - high-signal question route lookup before broad retrieval
     does_not_own:
@@ -372,11 +363,11 @@ docs:
     primary_role: repository_entry_route
     canonical_for:
       - repository_entry_navigation
-      - repository_status_summary
+      - repository_entry_summary
       - top_level_documentation_routes
     owns:
       - repository-level entry routing
-      - documentation-only repository status summary
+      - repository entry summary
       - top-level documentation start links
     does_not_own:
       - technical contracts
@@ -384,12 +375,12 @@ docs:
       - API behavior
       - storage effects
       - security guarantees
-      - implementation readiness
+      - implementation routing
     related_docs:
       - agents.root
       - docs.root-index
       - docs.index
-      - reference.active-mvp-scope
+      - reference.scope
 
   - doc_id: docs.root-index
     status: active
@@ -412,7 +403,7 @@ docs:
       - API behavior
       - storage effects
       - security guarantees
-      - implementation readiness
+      - implementation routing
     related_docs:
       - readme.root
       - docs.index
@@ -442,7 +433,7 @@ docs:
       - API details
       - storage details
       - security details
-      - implementation readiness
+      - implementation routing
     related_docs:
       - readme.root
       - docs.root-index
@@ -468,7 +459,7 @@ docs:
       - introductory user and agent responsibilities
     does_not_own:
       - exact technical contracts
-      - implementation readiness
+      - implementation routing
       - API schemas
       - storage records
     related_docs:
@@ -502,7 +493,7 @@ docs:
       - start
       - use.judgment-examples
       - reference.core-model
-      - reference.api.mvp-api
+      - reference.api.methods
 
   - doc_id: use.agent-guide
     status: active
@@ -520,7 +511,7 @@ docs:
       - agent operating guidance
       - context discipline
       - user-judgment respect from an agent perspective
-      - active/later boundary reminders for agents
+      - active/out-of-scope boundary reminders for agents
     does_not_own:
       - connector reference contracts
       - API schemas
@@ -592,37 +583,35 @@ docs:
       - use.agent-guide
       - reference.agent-integration
       - reference.security
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.errors
 
-  - doc_id: build.mvp-plan
+  - doc_id: build.implementation-guide
     status: active
     family: build
     paths:
-      en: docs/en/build/mvp-plan.md
-      ko: docs/ko/build/mvp-plan.md
+      en: docs/en/build/implementation-guide.md
+      ko: docs/ko/build/implementation-guide.md
     default_for_agent: en
-    primary_role: implementation_readiness_plan
+    primary_role: implementation_guide
     canonical_for:
-      - implementation_readiness_planning
-      - maintainer_handoff_status
-      - server_coding_decision_list
+      - implementation_entry_route
+      - owner_based_build_sequence
+      - first_runtime_slice_guidance
     owns:
-      - implementation-readiness planning
-      - maintainer decisions
-      - build handoff status
-      - server-coding prerequisites
+      - implementation entry routing
+      - owner-based build sequence
+      - first runtime slice guidance
     does_not_own:
       - current MVP scope contracts
       - exact schemas
       - API behavior
       - storage contracts
       - security claims
-      - accepted implementation behavior
+      - runtime behavior
     related_docs:
-      - reference.active-mvp-scope
+      - reference.scope
       - reference.index
-      - later.index
 
   - doc_id: reference.index
     status: active
@@ -646,19 +635,19 @@ docs:
       - DDL
       - template bodies
       - security guarantees
-      - implementation readiness
+      - implementation sequencing
     related_docs:
       - docs.doc-index
       - docs.index
-      - reference.active-mvp-scope
+      - reference.scope
       - maintain.authoring-guide
 
-  - doc_id: reference.active-mvp-scope
+  - doc_id: reference.scope
     status: active
     family: reference.scope
     paths:
-      en: docs/en/reference/active-mvp-scope.md
-      ko: docs/ko/reference/active-mvp-scope.md
+      en: docs/en/reference/scope.md
+      ko: docs/ko/reference/scope.md
     default_for_agent: en
     primary_role: active_scope_owner
     canonical_for:
@@ -669,22 +658,21 @@ docs:
       - current_mvp_guarantee_boundary
     owns:
       - detailed current MVP scope boundary
-      - scope-level active/later split
+      - scope-level active/out-of-scope split
       - included and excluded current-MVP scope items
-      - profile-gated and later-candidate scope boundaries
+      - profile-gated and out-of-scope scope boundaries
       - current MVP guarantee boundary
       - out-of-scope material until promoted
     does_not_own:
-      - implementation readiness
+      - implementation sequencing
       - method behavior
       - API schemas
       - storage contracts
       - security guarantees
-      - later candidate details
+      - out-of-scope capability details
     related_docs:
-      - build.mvp-plan
+      - build.implementation-guide
       - reference.index
-      - later.index
       - reference.security
       - reference.api.schema-value-sets
 
@@ -717,17 +705,17 @@ docs:
       - connector recipes
       - template bodies
     related_docs:
-      - reference.active-mvp-scope
-      - reference.api.mvp-api
+      - reference.scope
+      - reference.api.methods
       - reference.api.schema-judgment
       - reference.api.errors
 
-  - doc_id: reference.api.mvp-api
+  - doc_id: reference.api.methods
     status: active
     family: reference.api
     paths:
-      en: docs/en/reference/api/mvp-api.md
-      ko: docs/ko/reference/api/mvp-api.md
+      en: docs/en/reference/api/methods.md
+      ko: docs/ko/reference/api/methods.md
     default_for_agent: en
     primary_role: public_method_router
     canonical_for:
@@ -808,7 +796,7 @@ docs:
       - public error precedence
       - storage DDL
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.api.schema-state
       - reference.api.schema-value-sets
@@ -840,7 +828,7 @@ docs:
       - public error precedence
       - storage DDL
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.api.schema-state
       - reference.api.schema-judgment
@@ -876,7 +864,7 @@ docs:
       - public error precedence
       - storage DDL
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.api.schema-state
       - reference.api.schema-value-sets
@@ -911,7 +899,7 @@ docs:
       - storage DDL
       - security guarantees
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.api.schema-state
       - reference.api.schema-judgment
@@ -947,7 +935,7 @@ docs:
       - storage DDL
       - artifact lifecycle
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.api.schema-artifacts
       - reference.api.schema-value-sets
@@ -982,7 +970,7 @@ docs:
       - artifact lifecycle
       - Core evidence meaning
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.api.schema-state
       - reference.api.schema-artifacts
@@ -1022,7 +1010,7 @@ docs:
       - storage DDL
       - Core user-owned judgment meaning
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.api.schema-state
       - reference.api.schema-judgment
@@ -1057,7 +1045,7 @@ docs:
       - storage DDL
       - Core close readiness meaning
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.api.schema-state
       - reference.api.schema-value-sets
@@ -1107,7 +1095,7 @@ docs:
       - public errors
       - storage effects
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-state
       - reference.api.schema-artifacts
       - reference.api.schema-judgment
@@ -1229,7 +1217,7 @@ docs:
       - reference.core-model
       - reference.api.schema-value-sets
       - use.judgment-examples
-      - reference.api.mvp-api
+      - reference.api.methods
 
   - doc_id: reference.api.schema-value-sets
     status: active
@@ -1264,16 +1252,15 @@ docs:
       - public `ErrorCode` values
       - field shapes
       - method behavior
-      - later candidate promotion
+      - out-of-scope capability promotion
       - storage status semantics
       - active guarantee semantics
       - security isolation claims
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.api.errors
       - reference.security
-      - later.index
 
   - doc_id: reference.api.errors
     status: active
@@ -1303,7 +1290,7 @@ docs:
       - connector fallback rules
       - security guarantee definitions
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.schema-core
       - reference.core-model
       - reference.storage-versioning
@@ -1370,7 +1357,7 @@ docs:
       - record-column meaning
       - storage-owned record values and status fields
       - storage-owned JSON placement
-      - record-level active/later exclusions
+      - record-level active/out-of-scope exclusions
     does_not_own:
       - method-to-storage effects
       - artifact lifecycle
@@ -1384,7 +1371,7 @@ docs:
       - reference.storage-effects
       - reference.storage-artifacts
       - reference.storage-versioning
-      - reference.api.mvp-api
+      - reference.api.methods
 
   - doc_id: reference.storage-effects
     status: active
@@ -1419,7 +1406,7 @@ docs:
       - API schemas
       - method behavior
     related_docs:
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.storage-records
       - reference.storage-artifacts
       - reference.storage-versioning
@@ -1492,7 +1479,7 @@ docs:
       - API schemas
     related_docs:
       - reference.api.errors
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.storage-records
       - reference.storage-effects
 
@@ -1521,11 +1508,11 @@ docs:
       - API schemas
       - storage DDL
       - deployment steps
-      - implementation readiness
+      - implementation routing
     related_docs:
       - reference.security
       - reference.storage-records
-      - build.mvp-plan
+      - build.implementation-guide
 
   - doc_id: reference.security
     status: active
@@ -1566,11 +1553,11 @@ docs:
       - OS-level enforcement
       - surface usage recipes
     related_docs:
-      - reference.active-mvp-scope
+      - reference.scope
       - reference.runtime-boundaries
       - reference.agent-integration
       - reference.api.schema-value-sets
-      - reference.api.mvp-api
+      - reference.api.methods
       - use.surface-recipes
 
   - doc_id: reference.agent-integration
@@ -1614,7 +1601,7 @@ docs:
       - use.surface-recipes
       - reference.security
       - reference.runtime-boundaries
-      - reference.api.mvp-api
+      - reference.api.methods
       - reference.api.errors
 
   - doc_id: reference.projection-and-templates
@@ -1657,7 +1644,6 @@ docs:
       - reference.api.schema-judgment
       - reference.api.schema-artifacts
       - reference.security
-      - later.index
 
   - doc_id: reference.template-bodies
     status: active
@@ -1699,7 +1685,6 @@ docs:
       - reference.api.schema-artifacts
       - reference.security
       - terminology.map
-      - later.index
 
   - doc_id: reference.conformance
     status: active
@@ -1731,7 +1716,6 @@ docs:
       - reference.api.errors
       - reference.design-quality
       - maintain.checks
-      - later.index
 
   - doc_id: reference.design-quality
     status: active
@@ -1763,7 +1747,6 @@ docs:
       - reference.core-model
       - reference.conformance
       - reference.api.errors
-      - later.index
 
   - doc_id: reference.glossary
     status: active
@@ -1838,226 +1821,6 @@ docs:
       - maintain.translation-guide
       - reference.template-bodies
 
-  - doc_id: later.index
-    status: later
-    family: later
-    paths:
-      en: docs/en/later/index.md
-      ko: docs/ko/later/index.md
-    default_for_agent: en
-    primary_role: later_candidate_index
-    canonical_for:
-      - later_category_model
-      - later_category_routing
-      - later_candidate_names
-      - promotion_boundaries
-      - later_candidate_active_requirement_boundary
-      - promotion_time_owner_update_routing
-      - deferred_feature_catalog
-      - profile_gated_candidate_routing
-    owns:
-      - later candidate category model
-      - later category routing
-      - short later candidate summaries
-      - index-level promotion boundaries
-      - later-candidate active-requirement boundary routing
-      - promotion-time owner update routing
-      - profile-gated candidate routing
-    does_not_own:
-      - category-specific inactive candidate details
-      - active MVP requirements
-      - active API contracts
-      - active schema contracts
-      - active template bodies
-      - fixture YAML
-      - implementation readiness
-    related_docs:
-      - later.security-and-assurance
-      - later.artifacts-and-evidence
-      - later.connectors-and-surfaces
-      - later.policy-and-conformance
-      - later.workflow-and-collaboration
-      - reference.active-mvp-scope
-      - reference.glossary
-      - build.mvp-plan
-      - reference.template-bodies
-      - reference.conformance
-
-  - doc_id: later.security-and-assurance
-    status: later
-    family: later
-    paths:
-      en: docs/en/later/security-and-assurance.md
-      ko: docs/ko/later/security-and-assurance.md
-    default_for_agent: en
-    primary_role: later_candidate_category
-    canonical_for:
-      - inactive_security_and_assurance_candidate_descriptions
-      - stronger_assurance_candidate_grouping
-      - capability_profile_hardening_candidate_grouping
-      - promotion_time_security_documentation_requirements
-    owns:
-      - inactive later-candidate descriptions for security and assurance
-      - inactive later-candidate descriptions for stronger capability profiles
-      - inactive later-candidate descriptions for observation and blocking claims
-      - promotion-time documentation requirements for security and assurance candidates
-    does_not_own:
-      - active security guarantees
-      - active API requirements
-      - active storage requirements
-      - active UI requirements
-      - active conformance requirements
-      - implementation readiness
-    related_docs:
-      - later.index
-      - reference.security
-      - reference.active-mvp-scope
-      - reference.glossary
-      - reference.agent-integration
-      - reference.runtime-boundaries
-      - reference.api.schema-value-sets
-
-  - doc_id: later.artifacts-and-evidence
-    status: later
-    family: later
-    paths:
-      en: docs/en/later/artifacts-and-evidence.md
-      ko: docs/ko/later/artifacts-and-evidence.md
-    default_for_agent: en
-    primary_role: later_candidate_category
-    canonical_for:
-      - inactive_artifacts_and_evidence_candidate_descriptions
-      - richer_evidence_candidate_grouping
-      - artifact_capture_candidate_grouping
-      - artifact_later_candidate_routing
-      - promotion_time_artifact_evidence_documentation_requirements
-    owns:
-      - inactive later-candidate descriptions for artifacts and evidence
-      - inactive later-candidate descriptions for native artifact capture
-      - inactive later-candidate descriptions for exportable evidence packages
-      - artifact and evidence later-candidate category routing
-      - promotion-time documentation requirements for artifact and evidence candidates
-    does_not_own:
-      - active artifact storage behavior
-      - active evidence sufficiency requirements
-      - active API requirements
-      - active storage requirements
-      - active security guarantees
-      - active conformance requirements
-    related_docs:
-      - later.index
-      - reference.active-mvp-scope
-      - reference.glossary
-      - reference.core-model
-      - reference.api.schema-artifacts
-      - reference.storage-artifacts
-      - reference.storage-effects
-      - reference.template-bodies
-
-  - doc_id: later.connectors-and-surfaces
-    status: later
-    family: later
-    paths:
-      en: docs/en/later/connectors-and-surfaces.md
-      ko: docs/ko/later/connectors-and-surfaces.md
-    default_for_agent: en
-    primary_role: later_candidate_category
-    canonical_for:
-      - inactive_connectors_and_surfaces_candidate_descriptions
-      - future_surface_candidate_grouping
-      - connector_ecosystem_candidate_grouping
-      - promotion_time_connector_surface_documentation_requirements
-    owns:
-      - inactive later-candidate descriptions for connectors and surfaces
-      - inactive later-candidate descriptions for dashboard and hosted surfaces
-      - inactive later-candidate descriptions for connector ecosystems
-      - promotion-time documentation requirements for connector and surface candidates
-    does_not_own:
-      - active connector behavior
-      - active surface support requirements
-      - active API requirements
-      - active security guarantees
-      - active artifact body policies
-      - active conformance requirements
-    related_docs:
-      - later.index
-      - reference.active-mvp-scope
-      - reference.glossary
-      - use.surface-recipes
-      - reference.agent-integration
-      - reference.api.mvp-api
-      - reference.projection-and-templates
-      - reference.conformance
-
-  - doc_id: later.policy-and-conformance
-    status: later
-    family: later
-    paths:
-      en: docs/en/later/policy-and-conformance.md
-      ko: docs/ko/later/policy-and-conformance.md
-    default_for_agent: en
-    primary_role: later_candidate_category
-    canonical_for:
-      - inactive_policy_and_conformance_candidate_descriptions
-      - future_validator_candidate_grouping
-      - future_gate_waiver_candidate_grouping
-      - promotion_time_policy_conformance_documentation_requirements
-    owns:
-      - inactive later-candidate descriptions for policy and conformance
-      - inactive later-candidate descriptions for validators, gates, and waivers
-      - inactive later-candidate descriptions for executable fixture families
-      - promotion-time documentation requirements for policy and conformance candidates
-    does_not_own:
-      - active close-readiness requirements
-      - active validator requirements
-      - active waiver routes
-      - active fixture suites
-      - active API requirements
-      - active storage requirements
-    related_docs:
-      - later.index
-      - reference.active-mvp-scope
-      - reference.glossary
-      - reference.core-model
-      - reference.design-quality
-      - reference.conformance
-      - reference.api.schema-state
-      - reference.api.schema-value-sets
-
-  - doc_id: later.workflow-and-collaboration
-    status: later
-    family: later
-    paths:
-      en: docs/en/later/workflow-and-collaboration.md
-      ko: docs/ko/later/workflow-and-collaboration.md
-    default_for_agent: en
-    primary_role: later_candidate_category
-    canonical_for:
-      - inactive_workflow_and_collaboration_candidate_descriptions
-      - future_judgment_flow_candidate_grouping
-      - team_workflow_candidate_grouping
-      - promotion_time_workflow_collaboration_documentation_requirements
-    owns:
-      - inactive later-candidate descriptions for workflow and collaboration
-      - inactive later-candidate descriptions for richer judgment flows
-      - inactive later-candidate descriptions for team workflow and release handoff
-      - promotion-time documentation requirements for workflow and collaboration candidates
-    does_not_own:
-      - active API behavior
-      - active task lifecycle behavior
-      - active close-readiness behavior
-      - active acceptance behavior
-      - active storage requirements
-      - active security guarantees
-    related_docs:
-      - later.index
-      - reference.active-mvp-scope
-      - reference.glossary
-      - reference.core-model
-      - reference.api.mvp-api
-      - reference.api.schema-judgment
-      - reference.projection-and-templates
-
   - doc_id: maintain.authoring-guide
     status: maintain
     family: maintain
@@ -2085,7 +1848,7 @@ docs:
       - example field-name consistency rules
       - dense reference paragraph split guidance
       - large-table authoring guidance
-      - documentation-only scope reminders
+      - documentation editing scope reminders
       - stale content cleanup rules
     does_not_own:
       - Harness runtime contracts

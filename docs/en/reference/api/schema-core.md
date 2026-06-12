@@ -2,7 +2,7 @@
 
 Meaning:
 - This document owns the common API envelope and response-branch schemas for the current MVP.
-- It is documentation source material only.
+- It is documentation reference material only.
 
 Not implied:
 - It does not define method behavior, storage effects, state snapshots, artifact lifecycle, user-judgment meaning, public error semantics, or active value sets.
@@ -23,7 +23,7 @@ This document owns:
 
 This document does not own:
 
-- method behavior; see the [MVP API router](mvp-api.md) and method owner documents
+- method behavior; see the [API Methods](methods.md) and method owner documents
 - state and current-position schemas; see [API State Schemas](schema-state.md)
 - artifact schemas; see [API Artifact Schemas](schema-artifacts.md)
 - user-owned judgment schemas; see [API Judgment Schemas](schema-judgment.md)
@@ -57,7 +57,7 @@ Not implied:
 - It does not override narrower method-specific request rules.
 
 Owner links:
-- Method-specific request rules: method owner documents routed from [MVP API](mvp-api.md).
+- Method-specific request rules: method owner documents routed from [API Methods](methods.md).
 
 ```yaml
 ToolEnvelope:
@@ -77,7 +77,7 @@ Meaning:
 - `expected_state_version` names the project-wide state clock used by state-changing methods.
 
 Precedence:
-- Method-specific `task_id` fields, when present, take precedence as described by the [shared envelope and response branch routes](mvp-api.md#shared-request-rules).
+- Method-specific `task_id` fields, when present, take precedence as described by the [shared envelope and response branch routes](methods.md#shared-request-rules).
 
 Owner links:
 - conflict behavior: [state version conflict](errors.md#state-conflict-behavior)
@@ -93,7 +93,7 @@ Every public method response uses exactly one branch:
 - `ToolDryRunResponse` when the selected state-effecting or storage-staging operation has a valid preview branch
 
 Meaning:
-- `MethodResult` is the method-specific successful or committed result branch defined by method owner documents routed from [MVP API](mvp-api.md).
+- `MethodResult` is the method-specific successful or committed result branch defined by method owner documents routed from [API Methods](methods.md).
 - Every concrete method result carries `base: ToolResultBase` and then only that method's result fields.
 
 Not implied:
@@ -124,7 +124,7 @@ Not implied:
 
 Owner links:
 - active `response_kind` and `effect_kind` values: [response and effect values](schema-value-sets.md#response-and-effect-values)
-- shared branch reading: [shared envelope and response branch routes](mvp-api.md#shared-request-rules)
+- shared branch reading: [shared envelope and response branch routes](methods.md#shared-request-rules)
 - method-specific state effects: method owner documents
 - public error precedence: [API Errors](errors.md)
 

@@ -1,6 +1,6 @@
 # API artifact schemas
 
-This document owns API artifact-shaped schemas for the current MVP. It is documentation source material only and does not grant local file access, create artifact bytes, create storage rows, or prove evidence sufficiency.
+This document owns API artifact-shaped schemas for the current MVP. It is documentation reference material only and does not grant local file access, create artifact bytes, create storage rows, or prove evidence sufficiency.
 
 ## Owns / Does not own
 
@@ -17,7 +17,7 @@ This document owns:
 This document does not own:
 
 - artifact storage layout, staging records, promotion persistence, retention, or body-read storage eligibility; see [Artifact Storage](../storage-artifacts.md)
-- method behavior for `harness.stage_artifact` and `harness.record_run`; see [Stage-artifact method](method-stage-artifact.md), [Record-run method](method-record-run.md), and the [MVP API router](mvp-api.md)
+- method behavior for `harness.stage_artifact` and `harness.record_run`; see [Stage-artifact method](method-stage-artifact.md), [Record-run method](method-record-run.md), and the [API Methods](methods.md)
 - active artifact value sets; see [API Value Sets](schema-value-sets.md)
 - evidence sufficiency; see [Core Model](../core-model.md) and [API State Schemas](schema-state.md)
 - security claims about access, blocking, or isolation; see [Security](../security.md)
@@ -29,7 +29,7 @@ Artifact schemas never make a caller-supplied path authoritative.
 This document describes the request and response shapes used by artifact owner paths.
 
 Owner links:
-- validation, staging, promotion, and linking: method owner documents routed from [MVP API](mvp-api.md)
+- validation, staging, promotion, and linking: method owner documents routed from [API Methods](methods.md)
 - body-read eligibility and artifact lifecycle: [Artifact Storage](../storage-artifacts.md)
 
 ## `ArtifactRef`
@@ -110,7 +110,7 @@ Invalid source-field shape returns through `ToolRejectedResponse` with public er
 
 ## Related owners
 
-- [Stage-artifact method](method-stage-artifact.md), [Record-run method](method-record-run.md), and [MVP API router](mvp-api.md) for artifact-related method behavior.
+- [Stage-artifact method](method-stage-artifact.md), [Record-run method](method-record-run.md), and [API Methods](methods.md) for artifact-related method behavior.
 - [Artifact Storage](../storage-artifacts.md) for staging, promotion, persistent linking, and body-read lifecycle.
 - [API Value Sets](schema-value-sets.md) for `ArtifactInput.source_kind`, `redaction_state`, availability, and related values.
 - [API State Schemas](schema-state.md) for evidence summaries that mention `ArtifactRef`.

@@ -5,14 +5,14 @@
 ## 역할별 읽기 경로
 
 - 처음 읽는 사용자: [시작하기](start.md)에서 큰 그림을 본 뒤 [사용자 가이드](use/user-guide.md)로 이어 갑니다.
-- 작업 중인 사용자: [사용자 가이드](use/user-guide.md), [판단 예시](use/judgment-examples.md), [현재 MVP 범위](reference/active-mvp-scope.md)를 함께 봅니다.
+- 작업 중인 사용자: [사용자 가이드](use/user-guide.md), [판단 예시](use/judgment-examples.md), [범위](reference/scope.md)를 함께 봅니다.
 - 에이전트 작성자·운영자: [AGENTS.md](../../AGENTS.md)를 먼저 읽고, [doc-index.yaml](../doc-index.yaml), [에이전트 가이드](use/agent-guide.md), [에이전트 통합 참조](reference/agent-integration.md)로 이동합니다.
-- 구현 담당자: [현재 MVP 범위](reference/active-mvp-scope.md)를 먼저 확인한 뒤 [참조 색인](reference/README.md)에서 정확한 계약 담당 문서를 찾습니다.
+- 구현 담당자: [범위](reference/scope.md)를 먼저 확인한 뒤 [참조 색인](reference/README.md)에서 정확한 계약 담당 문서를 찾습니다.
 - 문서 유지보수자: [작성 가이드](maintain/authoring-guide.md), [점검](maintain/checks.md), [번역 가이드](maintain/translation-guide.md), [doc-index.yaml](../doc-index.yaml), [용어 지도](../terminology-map.yaml)를 사용합니다.
 
 ## 현재 범위
 
-[현재 MVP 범위](reference/active-mvp-scope.md)는 현재 MVP에 포함되는 것과 제외되는 것을 확인하는 시작점입니다. 이후 후보는 현재 MVP 범위 담당 문서에 승격이 반영되기 전까지 현재 요구사항이 아닙니다.
+[범위](reference/scope.md)는 현재 MVP에 포함되는 것과 제외되는 것을 확인하는 시작점입니다. 범위 밖 기능은 담당 문서가 활성 동작으로 정의하기 전까지 현재 요구사항이 아닙니다.
 
 ## 참조 계약
 

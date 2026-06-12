@@ -2,7 +2,7 @@
 
 This document owns projection authority and read-only derived-display boundaries. Exact rendered body expectations live in [Template Bodies](template-bodies.md).
 
-This is documentation source material only. It is not a runtime projection, runtime state, generated artifact, evidence record, QA record, final-acceptance record, residual-risk record, close record, or implementation-ready server plan.
+This is documentation reference material only. It is not a runtime projection, runtime state, generated artifact, evidence record, QA record, final-acceptance record, residual-risk record, close record, or implementation-ready server plan.
 
 ## Owns / Does not own
 
@@ -18,7 +18,7 @@ This document does not own:
 
 - status card, judgment request, run/evidence summary, close result, or agent context packet bodies; see [Template Bodies](template-bodies.md)
 - source-of-truth Core state; see [Core Model](core-model.md)
-- storage records or projection storage candidates; see storage owners and [Later Index](../later/index.md)
+- storage records or projection storage candidates; see storage owners and [Scope Reference](scope.md)
 - public API schemas; see API schema owners
 - connector behavior; see [Agent Integration](agent-integration.md)
 
@@ -90,7 +90,7 @@ This document may link to that owner, but it must not redefine those body sectio
 
 ## Later boundary
 
-The current MVP has no active reconcile queue, editable projection input path, projection-to-Core repair path, persistent projection job, or managed block drift repair. Those remain later candidates until promoted with scope, fallback behavior, non-substitution rules, and proof expectations.
+The current MVP has no active reconcile queue, editable projection input path, projection-to-Core repair path, persistent projection job, or managed block drift repair. Those remain out-of-scope capabilities until promoted with scope, fallback behavior, non-substitution rules, and proof expectations.
 
 ## Related owners
 
@@ -100,4 +100,4 @@ The current MVP has no active reconcile queue, editable projection input path, p
 - [API Judgment Schemas](api/schema-judgment.md) for user-judgment and accepted-risk input shapes.
 - [API Artifact Schemas](api/schema-artifacts.md) for `ArtifactRef` display inputs.
 - [Security](security.md) for guarantee wording.
-- [Later Candidate Index](../later/index.md) for projection reconcile and persistent projection job candidates.
+- [Scope Reference](scope.md) for projection reconcile and persistent projection job candidates.

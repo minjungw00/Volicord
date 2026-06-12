@@ -3,11 +3,11 @@
 This document owns the boundary between Product Repository, Harness Server or installation, and Harness Runtime Home.
 
 Conditions:
-- Use this page when a claim depends on where product files, server installation files, or future Harness runtime data live.
-- Treat this repository as source documentation for a future Harness Server only.
+- Use this page when a claim depends on where product files, server installation files, or Harness runtime data live.
+- Treat this repository as source documentation for a Harness Server only.
 
 May claim:
-- A Markdown file in this repository may describe a future Harness rule.
+- A Markdown file in this repository may describe a Harness rule.
 - Product Repository, Harness Server or installation, and Harness Runtime Home are distinct locations.
 
 Must not claim:
@@ -65,7 +65,7 @@ Owner links:
 ### Harness Server or installation location
 
 Conditions:
-- The future server process, package, or installed application location.
+- The server process, package, or installed application location.
 
 May claim:
 - It may mediate Harness APIs and records.
@@ -74,7 +74,7 @@ Must not claim:
 - The install location is automatically where runtime data lives.
 
 Owner links:
-- [MVP API router](api/mvp-api.md) routes method behavior to API owners.
+- [API Methods](api/methods.md) routes method behavior to API owners.
 - [Storage Records](storage-records.md) owns runtime data record layout.
 
 <a id="runtime-location-runtime-home"></a>
@@ -100,12 +100,12 @@ Owner links:
 The Product Repository is the user's project workspace.
 
 Conditions:
-- Product files may be input to future Harness checks or user-owned judgments.
-- A future implementation may allow project-local Harness metadata only when storage/runtime owners define it.
+- Product files may be input to Harness checks or user-owned judgments.
+- An implementation may allow project-local Harness metadata only when storage/runtime owners define it.
 
 May claim:
 - Product Repository files are user workspace files.
-- Owner-defined project-local Harness metadata may exist in a future implementation.
+- Owner-defined project-local Harness metadata may exist when the storage and runtime owners define it.
 
 Must not claim:
 - Product Repository content is Harness state.
@@ -121,14 +121,14 @@ Owner links:
 
 ## Harness server or installation
 
-The future Harness Server would mediate Harness records and API behavior.
+The Harness Server would mediate Harness records and API behavior.
 
 Conditions:
-- A server installation location is where server code, packages, configuration, or application resources may live in a future implementation.
+- A server installation location is where server code, packages, configuration, or application resources may live.
 - A directory is a Runtime Home only when storage/runtime owners define it as such.
 
 May claim:
-- A future Harness Server mediates Harness records and API behavior.
+- A Harness Server mediates Harness records and API behavior.
 - A server installation location can be distinct from runtime data storage.
 
 Must not claim:
@@ -138,7 +138,7 @@ Must not claim:
 - Documentation edits create server code, start runtime behavior, or authorize product/runtime writes.
 
 Owner links:
-- [MVP API router](api/mvp-api.md) routes API method behavior.
+- [API Methods](api/methods.md) routes API method behavior.
 - [Storage Records](storage-records.md) owns runtime data record layout.
 - [Storage Effects](storage-effects.md) owns product/runtime write effects.
 
@@ -199,7 +199,7 @@ Conditions:
 - The location is the user's project workspace.
 
 May claim:
-- Product source, product docs, tests, project configuration, and product files that future Harness checks may inspect.
+- Product source, product docs, tests, project configuration, and product files that Harness checks may inspect.
 
 Must not claim:
 - Product Repository storage is Harness runtime state.
@@ -215,7 +215,7 @@ Owner links:
 ### Harness Server or installation storage
 
 Conditions:
-- The location is the future server process, package, or installed application location.
+- The location is the server process, package, or installed application location.
 
 May claim:
 - Future server executable code, installed packages, server configuration, and application resources.
@@ -226,7 +226,7 @@ Must not claim:
 - Harness Server or installation storage proves that a Runtime Home exists.
 
 Owner links:
-- [MVP API router](api/mvp-api.md) routes method behavior.
+- [API Methods](api/methods.md) routes method behavior.
 - [Storage Records](storage-records.md) owns runtime data records.
 
 <a id="runtime-storage-runtime-home"></a>
@@ -257,7 +257,7 @@ Conditions:
 - The location is this documentation repository.
 
 May claim:
-- Source documentation for future Harness behavior.
+- Source documentation for Harness behavior.
 
 Must not claim:
 - Documentation repository storage is runtime state.
@@ -266,7 +266,7 @@ Must not claim:
 - Documentation repository storage contains evidence, QA, acceptance, close records, or conformance output.
 
 Owner links:
-- [MVP Plan](../build/mvp-plan.md) owns maintainer handoff status.
+- [Implementation Guide](../build/implementation-guide.md) owns implementation routing.
 - [Security](security.md) owns security non-claims.
 
 ## What must not be inferred
@@ -299,6 +299,6 @@ This page states the location boundary and the non-inference rules. Detailed gua
 - [Reference Index](README.md): routes questions to canonical owners.
 - [Security](security.md): owns security claims, non-claims, trust boundaries, and guarantee levels.
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md): own storage layout, effects, artifacts, locks, migrations, and versioning.
-- [MVP API router](api/mvp-api.md), method owner documents, and API schema owners: own method routing, method behavior, and API shapes.
+- [API Methods](api/methods.md), method owner documents, and API schema owners: own method routing, method behavior, and API shapes.
 - [Projection Authority Reference](projection-and-templates.md): owns projection authority and source-state/freshness boundaries.
 - [Template Bodies](template-bodies.md): owns status card, judgment request, run/evidence summary, close result, and agent context packet bodies.

@@ -2,7 +2,7 @@
 
 ## What Harness is
 
-Harness is a future local work-authority server for AI-assisted product work. Its job is to keep the fragile basis of a task out of chat-only memory: scope, user-owned judgment, evidence, check expectations, close readiness, and residual risk.
+Harness is a local work-authority server for AI-assisted product work. Its job is to keep the fragile basis of a task out of chat-only memory: scope, user-owned judgment, evidence, check expectations, close readiness, and residual risk.
 
 Users should be able to speak normally:
 
@@ -17,7 +17,7 @@ The agent can answer in the same ordinary language. When a request hides product
 
 The agent should request and record needed judgments, not decide them silently.
 
-This repository is documentation-only. It is source material for a future Harness Server, not a running server or runtime implementation.
+This repository is documentation. It is reference material for a Harness Server, not a running server or runtime implementation.
 
 ## What Harness is not
 
@@ -143,15 +143,15 @@ If evidence is missing, stale, weak, or limited to the agent's own check, Harnes
 
 ## What close readiness means
 
-Close readiness answers a simple question: can this work honestly finish now, and what still blocks it? The detailed current behavior belongs in [Active MVP Scope](reference/active-mvp-scope.md) and the Reference owners it links to.
+Close readiness answers a simple question: can the task honestly finish now, and what still blocks it? The detailed current behavior belongs in [Scope](reference/scope.md) and the Reference owners it links to.
 
 If something is missing, close should name the smallest unblocker. Close-readiness order and blocker details belong to [Core Model](reference/core-model.md), [Close-task method](reference/api/method-close-task.md), and [API Errors](reference/api/errors.md).
 
 ## Current MVP scope
 
-The current MVP is intentionally narrow. For the canonical current scope, see [Active MVP scope](reference/active-mvp-scope.md).
+The current MVP is intentionally narrow. For the canonical current scope, see [Scope](reference/scope.md).
 
-Later candidates are not active requirements until an owner promotes them. If a detail is not in current scope, treat it as deferred even when it appears in examples or future-looking notes.
+Out-of-scope capabilities are not active requirements until an owner promotes them. If a detail is not in current scope, treat it as deferred even when it appears in examples or reserved-value notes.
 
 ## Current MVP guarantee boundary
 
@@ -162,7 +162,7 @@ The current MVP guarantee boundary is modest. For canonical guarantee levels and
 | Reader | Path |
 |---|---|
 | New user | [User Guide](use/user-guide.md) |
-| Working user | [User Guide](use/user-guide.md) -> [Judgment Examples](use/judgment-examples.md) -> [Active MVP Scope](reference/active-mvp-scope.md) |
+| Working user | [User Guide](use/user-guide.md) -> [Judgment Examples](use/judgment-examples.md) -> [Scope](reference/scope.md) |
 | Agent author/operator | [Agent Guide](use/agent-guide.md) -> [Agent Integration Reference](reference/agent-integration.md) |
 | Implementer | [Reference Index](reference/README.md) -> active scope -> API methods -> schema owners -> storage effects |
 | Documentation maintainer | [Authoring Guide](maintain/authoring-guide.md) -> [Translation Guide](maintain/translation-guide.md) -> [Checks](maintain/checks.md) |

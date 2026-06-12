@@ -1,6 +1,6 @@
 # API value sets
 
-This document owns active API value sets and enum-like public values for the current MVP. It is documentation source material only and does not widen active scope by naming later candidates.
+This document owns active API value sets and enum-like public values for the current MVP. It is documentation reference material only and does not widen active scope by naming out-of-scope capabilities.
 
 ## Owns / Does not own
 
@@ -18,9 +18,9 @@ This document does not own:
 
 - public `ErrorCode` values or precedence; see [API Errors](errors.md)
 - field shapes that use these values; see [API Schema Core](schema-core.md), [API State Schemas](schema-state.md), [API Artifact Schemas](schema-artifacts.md), and [API Judgment Schemas](schema-judgment.md)
-- method behavior; see the [MVP API router](mvp-api.md) and method owner documents
+- method behavior; see the [API Methods](methods.md) and method owner documents
 - security guarantee meaning; see [Security](../security.md)
-- later candidate promotion; see [Later Candidate Index](../../later/index.md)
+- out-of-scope capability promotion; see [Scope Reference](../scope.md)
 
 ## Boundary
 
@@ -45,7 +45,7 @@ harness.record_user_judgment
 harness.close_task
 ```
 
-Method behavior is owned by method owner documents routed from [MVP API](mvp-api.md). Method names are not Task lifecycle values.
+Method behavior is owned by method owner documents routed from [API Methods](methods.md). Method names are not Task lifecycle values.
 
 <a id="response-and-effect-values"></a>
 ## Response and effect values
@@ -67,7 +67,7 @@ staging_created
 no_effect
 ```
 
-`response_kind` and `effect_kind` are branch metadata values. Shared branch reading is owned by the [shared envelope and response branch routes](mvp-api.md#shared-request-rules), and method-specific state effects are owned by method owner documents. Public error semantics for rejected branches are owned by [API Errors](errors.md).
+`response_kind` and `effect_kind` are branch metadata values. Shared branch reading is owned by the [shared envelope and response branch routes](methods.md#shared-request-rules), and method-specific state effects are owned by method owner documents. Public error semantics for rejected branches are owned by [API Errors](errors.md).
 
 <a id="access-class-values"></a>
 ## Access class values
@@ -83,7 +83,7 @@ no_effect
 | `artifact_registration` | `harness.stage_artifact`. |
 | `artifact_read` | Artifact body reads when an owner path exposes them. |
 
-Access classes are Harness API compatibility classes, not OS permission classes. Local surface verification behavior stays with the [shared envelope and response branch routes](mvp-api.md#shared-request-rules), [Agent Integration](../agent-integration.md), and [Security](../security.md).
+Access classes are Harness API compatibility classes, not OS permission classes. Local surface verification behavior stays with the [shared envelope and response branch routes](methods.md#shared-request-rules), [Agent Integration](../agent-integration.md), and [Security](../security.md).
 
 <a id="record-and-reference-values"></a>
 ## Record and reference values
@@ -413,20 +413,20 @@ These names are not default active MVP values. A listed name is a value-set boun
 | `isolated` | Reserved later or `profile-gated` `GuaranteeDisplay.level` label. |
 | `captured_artifact` and native capture names | Reserved or rejected for active `ArtifactInput.source_kind`. |
 | cross-surface staged artifact handoff | Not active; staged promotion requires matching recorded surface provenance. |
-| QA waiver and verification-risk judgment kinds | Later candidates; not active `judgment_kind` values. |
+| QA waiver and verification-risk judgment kinds | Out-of-scope capabilities; not active `judgment_kind` values. |
 | `design_policy` blocker category | Later or inactive unless promoted by a schema and close-readiness owner. |
 
 `isolated` details:
 - Owner boundary: This document owns the value-set entry only.
 - Non-claim: The entry does not grant or define an active isolation guarantee.
-- Owner links: Guarantee semantics belong to [Security](../security.md). Current-MVP availability belongs to [Active MVP Scope](../active-mvp-scope.md).
+- Owner links: Guarantee semantics belong to [Security](../security.md). Current-MVP availability belongs to [Scope](../scope.md).
 
 Active artifact intake uses `staged_artifact` or `existing_artifact`; artifact source semantics belong to [API Artifact Schemas](schema-artifacts.md) and [Artifact Storage](../storage-artifacts.md).
 
 ## Related owners
 
-- [Active MVP Scope](../active-mvp-scope.md) for whether a value belongs in the current MVP.
+- [Scope](../scope.md) for whether a value belongs in the current MVP.
 - [API Errors](errors.md) for public error codes and precedence.
 - [API Schema Core](schema-core.md), [API State Schemas](schema-state.md), [API Artifact Schemas](schema-artifacts.md), and [API Judgment Schemas](schema-judgment.md) for fields that use these values.
-- [MVP API router](mvp-api.md) and method owner documents for method behavior using these values.
-- [Later Candidate Index](../../later/index.md) for inactive value names.
+- [API Methods](methods.md) and method owner documents for method behavior using these values.
+- [Scope Reference](../scope.md) for inactive value names.

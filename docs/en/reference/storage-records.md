@@ -23,7 +23,7 @@ This document owns:
 - Record-column meaning for future storage design.
 - Storage-owned record values and status fields.
 - Storage-owned JSON `TEXT` placement and validation expectations.
-- Record-level active/later exclusions.
+- Record-level active/out-of-scope exclusions.
 
 This document does not own:
 
@@ -31,7 +31,7 @@ This document does not own:
 - artifact staging, promotion, linking, body reads, retention, or integrity lifecycle; see [Artifact Storage](storage-artifacts.md)
 - `project_state.state_version`, idempotency, event meaning, locks, or migrations; see [Storage Versioning](storage-versioning.md)
 - API request or response schemas; see [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), and the other API schema owners
-- API method behavior; see the [MVP API router](api/mvp-api.md) and method owner documents
+- API method behavior; see the [API Methods](api/methods.md) and method owner documents
 - runtime/repository/server boundaries; see [Runtime Boundaries](runtime-boundaries.md)
 
 ## Runtime home layout
@@ -318,7 +318,7 @@ Does not contain:
 
 Owner links:
 - [Agent Integration](agent-integration.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 - [Security](security.md).
 
 <a id="tasks"></a>
@@ -370,7 +370,7 @@ Does not contain:
 Owner links:
 - [Core Model](core-model.md).
 - [Storage Effects](storage-effects.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 
 <a id="user_judgments"></a>
 ### `user_judgments`
@@ -395,7 +395,7 @@ Does not contain:
 Owner links:
 - [API Judgment Schemas](api/schema-judgment.md).
 - [Core Model](core-model.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 
 <a id="write_authorizations"></a>
 ### `write_authorizations`
@@ -418,7 +418,7 @@ Does not contain:
 
 Owner links:
 - [Storage Effects](storage-effects.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 - [Security](security.md).
 
 <a id="runs"></a>
@@ -468,7 +468,7 @@ Does not contain:
 Owner links:
 - [Artifact Storage](storage-artifacts.md).
 - [API Artifact Schemas](api/schema-artifacts.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 
 <a id="artifacts"></a>
 ### `artifacts`
@@ -613,7 +613,7 @@ Does not contain:
 
 Owner links:
 - [Storage Versioning](storage-versioning.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 - [API Schema Core](api/schema-core.md).
 
 ## First schema integrity contract
@@ -765,7 +765,7 @@ Storage rule:
 
 Owner links:
 - [Agent Integration](agent-integration.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 - [Security](security.md).
 
 <a id="surfaceslocal_access_posture"></a>
@@ -881,7 +881,7 @@ Storage rule:
 Owner links:
 - [Core Model](core-model.md).
 - [Storage Effects](storage-effects.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 
 <a id="write_authorizationsstatus"></a>
 ### `write_authorizations.status`
@@ -899,7 +899,7 @@ Storage rule:
 
 Owner links:
 - [Storage Effects](storage-effects.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 - [Security](security.md).
 
 <a id="artifact_stagingstatus"></a>
@@ -919,7 +919,7 @@ Storage rule:
 Owner links:
 - [Artifact Storage](storage-artifacts.md).
 - [API Artifact Schemas](api/schema-artifacts.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 
 <a id="artifactsstatus"></a>
 ### `artifacts.status`
@@ -987,7 +987,7 @@ Storage rule:
 
 Owner links:
 - [Storage Versioning](storage-versioning.md).
-- [MVP API](api/mvp-api.md).
+- [API Methods](api/methods.md).
 - [API Schema Core](api/schema-core.md).
 
 ### Values not owned here
@@ -1105,4 +1105,4 @@ Exceptions:
 - [Storage Effects](storage-effects.md) for which methods create, update, observe, or leave records untouched.
 - [Artifact Storage](storage-artifacts.md) for artifact-specific storage lifecycle.
 - [Storage Versioning](storage-versioning.md) for clocks, idempotency, locks, and migration semantics.
-- [MVP API router](api/mvp-api.md) and method owner documents for public method behavior that uses records.
+- [API Methods](api/methods.md) and method owner documents for public method behavior that uses records.

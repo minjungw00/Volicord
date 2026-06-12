@@ -1,6 +1,6 @@
 # API judgment schemas
 
-This document owns API schemas for user-owned judgment in the current MVP. It is documentation source material only and does not record user decisions by itself.
+This document owns API schemas for user-owned judgment in the current MVP. It is documentation reference material only and does not record user decisions by itself.
 
 ## Owns / Does not own
 
@@ -164,4 +164,4 @@ Accepted risk is scoped to the named visible risk and the requested judgment. It
 - [API Value Sets](schema-value-sets.md) for `judgment_kind`, `presentation`, `required_for`, status, and option display boundaries.
 - [API State Schemas](schema-state.md) for `StateRecordRef`.
 - [API Artifact Schemas](schema-artifacts.md) for `ArtifactRef`.
-- [Later Candidate Index](../../later/index.md) for later judgment presentations and later/reserved judgment routes.
+- [Scope Reference](../scope.md) for reserved judgment routes and active-boundary checks.

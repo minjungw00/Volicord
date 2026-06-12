@@ -1,8 +1,8 @@
 # 번역 가이드
 
-영어와 한국어 하네스 문서를 함께 고칠 때 이 가이드를 사용합니다. 이 문서는 문서 유지보수 기준일 뿐입니다. 런타임 적합성 기록, 구현 준비 기록, QA 결과, 수락 기록, 닫기 기록, 생성된 하네스 아티팩트가 아닙니다.
+영어와 한국어 하네스 문서를 함께 고칠 때 이 가이드를 사용합니다. 이 문서는 문서 유지보수 기준일 뿐입니다. 런타임 적합성 기록, 구현 경로 기록, QA 결과, 수락 기록, 닫기 기록, 생성된 하네스 아티팩트가 아닙니다.
 
-기준 용어 지도는 [docs/terminology-map.yaml](../../terminology-map.yaml)입니다. 제품 용어, 한국어 산문 용어, 식별자 설명, 금지할 혼합어를 추가하거나 바꾸기 전에 이 파일을 확인합니다. 이 가이드와 용어 지도가 어긋나면 같은 문서 전용 작업 묶음에서 함께 맞춥니다.
+기준 용어 지도는 [docs/terminology-map.yaml](../../terminology-map.yaml)입니다. 제품 용어, 한국어 산문 용어, 식별자 설명, 금지할 혼합어를 추가하거나 바꾸기 전에 이 파일을 확인합니다. 이 가이드와 용어 지도가 어긋나면 같은 문서 작업 묶음에서 함께 맞춥니다.
 
 ## 1. 의미 일치성
 
@@ -33,9 +33,8 @@
 - `docs/*/use/user-guide.md`
 - `docs/*/use/agent-guide.md`
 - `docs/*/use/judgment-examples.md`
-- `docs/*/build/mvp-plan.md`
+- `docs/*/build/implementation-guide.md`
 - `docs/*/reference/README.md`
-- `docs/*/later/index.md`
 - `docs/*/maintain/authoring-guide.md`
 - `docs/*/maintain/translation-guide.md`
 - `docs/*/maintain/checks.md`
@@ -91,7 +90,7 @@
 | detective guarantee | 탐지형 보장 | 문서화된 관찰 범위가 뒷받침할 때만 씁니다. |
 | preventive guarantee | 예방형 보장 | 예방 메커니즘이 문서로 증명될 때만 씁니다. |
 | active MVP | 현재 MVP | 이후 후보를 현재 요구사항처럼 번역하지 않습니다. |
-| later candidate | 이후 후보 | 미뤄 둔 자료임을 분명히 유지합니다. |
+| out-of-scope capability | 이후 후보 | 미뤄 둔 자료임을 분명히 유지합니다. |
 
 빠진 용어가 있으면 새 변형을 여러 문서에 퍼뜨리기 전에 용어 지도와 양쪽 번역 가이드를 먼저 갱신합니다.
 
@@ -199,7 +198,7 @@
 
 ## 10. 검토 체크리스트
 
-- [ ] 편집이 문서 전용으로 남아 있고 런타임 구현을 암시하지 않습니다.
+- [ ] 편집이 문서 변경으로 남아 있고 런타임 구현을 암시하지 않습니다.
 - [ ] 영어와 한국어 문서가 줄 수가 아니라 의미 단위로 일치합니다.
 - [ ] 의미가 바뀐 내용은 같은 작업 묶음에서 양쪽 언어에 반영했습니다.
 - [ ] 대응 파일의 독자 목적, 경로 역할, 담당 문서 경로, 현재/이후 경계가 맞습니다.

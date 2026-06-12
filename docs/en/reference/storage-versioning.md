@@ -1,6 +1,6 @@
 # Storage versioning
 
-This document owns state versioning, idempotency, event meaning, locks, and migration semantics for current MVP storage source design. It is documentation source material only and does not run migrations, create runtime locks, or create runtime state.
+This document owns state versioning, idempotency, event meaning, locks, and migration semantics for current MVP storage source design. It is documentation reference material only and does not run migrations, create runtime locks, or create runtime state.
 
 ## Owns / Does not own
 
@@ -11,13 +11,13 @@ This document owns:
 - idempotency and request-hash replay semantics
 - event meaning for `task_events`
 - lock policy
-- migration semantics and active/later migration boundaries
+- migration semantics and active/out-of-scope migration boundaries
 - failure and retry interpretation for state versions and idempotency keys
 
 This document does not own:
 
 - record layout or DDL; see [Storage Records](storage-records.md)
-- which method branch produces an effect; see [Storage Effects](storage-effects.md), the [MVP API router](api/mvp-api.md), and method owner documents
+- which method branch produces an effect; see [Storage Effects](storage-effects.md), the [API Methods](api/methods.md), and method owner documents
 - public error codes and precedence; see [API Errors](api/errors.md)
 - artifact lifecycle; see [Artifact Storage](storage-artifacts.md)
 - security guarantee wording; see [Security](security.md)
@@ -49,7 +49,7 @@ Retry behavior:
 
 Owner links:
 
-- Branch-level persistence effects belong to [Storage Effects](storage-effects.md) and the method owner documents routed from the [MVP API router](api/mvp-api.md).
+- Branch-level persistence effects belong to [Storage Effects](storage-effects.md) and the method owner documents routed from the [API Methods](api/methods.md).
 
 This summary table shows branch-level outcomes. Detail blocks keep conditions, results, and exceptions separate.
 
@@ -202,7 +202,7 @@ Retry behavior:
 
 Owner links:
 
-- Method-specific persistence effects belong to [Storage Effects](storage-effects.md) and the method owner documents routed from the [MVP API router](api/mvp-api.md).
+- Method-specific persistence effects belong to [Storage Effects](storage-effects.md) and the method owner documents routed from the [API Methods](api/methods.md).
 
 ## Non-incrementing cases
 

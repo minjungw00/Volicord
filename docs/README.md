@@ -18,22 +18,22 @@ English and Korean are both active documentation languages. Choose the language 
 Use these routes for first-hop navigation. Follow the linked pages to the exact owner when you need more detail.
 
 - New user: [`docs/en/start.md`](en/start.md) -> [`docs/en/use/user-guide.md`](en/use/user-guide.md)
-- Working user: [`docs/en/use/user-guide.md`](en/use/user-guide.md) -> [`docs/en/reference/active-mvp-scope.md`](en/reference/active-mvp-scope.md)
+- Working user: [`docs/en/use/user-guide.md`](en/use/user-guide.md) -> [`docs/en/reference/scope.md`](en/reference/scope.md)
 - Agent behavior: [`docs/en/use/agent-guide.md`](en/use/agent-guide.md) -> [`docs/doc-index.yaml`](doc-index.yaml)
 - Technical contract: [`docs/en/reference/README.md`](en/reference/README.md) -> [`docs/doc-index.yaml`](doc-index.yaml)
 - Maintenance: [`docs/en/maintain/authoring-guide.md`](en/maintain/authoring-guide.md) -> [`docs/en/maintain/translation-guide.md`](en/maintain/translation-guide.md) -> [`docs/terminology-map.yaml`](terminology-map.yaml)
-- Current scope: [`docs/en/reference/active-mvp-scope.md`](en/reference/active-mvp-scope.md)
+- Current scope: [`docs/en/reference/scope.md`](en/reference/scope.md)
 
 ## 한국어 읽기 경로
 
 아래 경로는 처음 이동할 문서를 고르는 안내입니다. 더 자세한 기준이 필요하면 연결된 문서에서 담당 문서로 이동합니다.
 
 - 처음 읽는 사용자: [`docs/ko/start.md`](ko/start.md) -> [`docs/ko/use/user-guide.md`](ko/use/user-guide.md)
-- 작업 중인 사용자: [`docs/ko/use/user-guide.md`](ko/use/user-guide.md) -> [`docs/ko/reference/active-mvp-scope.md`](ko/reference/active-mvp-scope.md)
+- 작업 중인 사용자: [`docs/ko/use/user-guide.md`](ko/use/user-guide.md) -> [`docs/ko/reference/scope.md`](ko/reference/scope.md)
 - 에이전트 동작: [`docs/ko/use/agent-guide.md`](ko/use/agent-guide.md) -> [`docs/doc-index.yaml`](doc-index.yaml)
 - 기술 계약: [`docs/ko/reference/README.md`](ko/reference/README.md) -> [`docs/doc-index.yaml`](doc-index.yaml)
 - 유지보수: [`docs/ko/maintain/authoring-guide.md`](ko/maintain/authoring-guide.md) -> [`docs/ko/maintain/translation-guide.md`](ko/maintain/translation-guide.md) -> [`docs/terminology-map.yaml`](terminology-map.yaml)
-- 현재 범위: [`docs/ko/reference/active-mvp-scope.md`](ko/reference/active-mvp-scope.md)
+- 현재 범위: [`docs/ko/reference/scope.md`](ko/reference/scope.md)
 
 ## Reference owner routing / 참조 담당 문서 찾기
 
@@ -43,7 +43,7 @@ API, 스키마, 저장소, 보안, 범위, 그 밖의 계약 영역은 참조 RE
 
 - English reference index: [`docs/en/reference/README.md`](en/reference/README.md)
 - Korean reference index: [`docs/ko/reference/README.md`](ko/reference/README.md)
-- Current MVP scope route: [`docs/en/reference/active-mvp-scope.md`](en/reference/active-mvp-scope.md), [`docs/ko/reference/active-mvp-scope.md`](ko/reference/active-mvp-scope.md)
+- Current MVP scope route: [`docs/en/reference/scope.md`](en/reference/scope.md), [`docs/ko/reference/scope.md`](ko/reference/scope.md)
 - Owner routing metadata: [`docs/doc-index.yaml`](doc-index.yaml)
 - Bilingual terminology controls: [`docs/terminology-map.yaml`](terminology-map.yaml)
 

@@ -1,16 +1,16 @@
 # Conformance reference
 
-## Current status
+## Boundary
 
-This repository is documentation-only and still in documentation review. It contains no Harness Server runtime, Harness Runtime Home, executable fixture files, conformance runner, generated conformance reports, generated runtime artifacts, or current runtime conformance results.
+This reference defines conformance terminology and document-level criteria. Runtime conformance outputs, generated reports, executable fixtures, and runner artifacts belong outside the documentation tree.
 
-This document owns documentation-level conformance meaning, candidate future fixture shape, assertion authority boundaries, and a compact scenario index. It does not define API branches, storage effects, access classes, artifact promotion, security guarantees, or close-readiness behavior.
+This document owns documentation-level conformance meaning, candidate fixture shape, assertion authority boundaries, and a compact scenario index. It does not define API branches, storage effects, access classes, artifact promotion, security guarantees, or close-readiness behavior.
 
-For the canonical current scope, see [Active MVP scope](active-mvp-scope.md). Current phase and handoff status remain owned by [MVP Plan repository status](../build/mvp-plan.md#documentation-acceptance-status).
+For the canonical current scope, see [Scope](scope.md). Implementation routing is described in the [Implementation Guide](../build/implementation-guide.md).
 
 ## Conformance item summary
 
-| Item | Current status | Details |
+| Item | Boundary | Details |
 |---|---|---|
 | Current documentation criteria | Active documentation criteria | [Details](#current-documentation-criteria) |
 | Internal smoke target | Planned or documented | [Details](#internal-smoke-target) |
@@ -21,8 +21,8 @@ For the canonical current scope, see [Active MVP scope](active-mvp-scope.md). Cu
 <a id="current-documentation-criteria"></a>
 ### Current documentation criteria
 
-Current status:
-- Active reference criteria for documentation review and future planning.
+Boundary:
+- Active reference criteria for documentation maintenance.
 
 Executable now:
 - No runtime execution. These criteria do not run a Harness Server, execute a conformance suite, or create runtime records.
@@ -31,19 +31,19 @@ Owner:
 - `docs/en/reference/conformance.md`
 
 Not allowed:
-- Do not treat documentation criteria as runtime conformance results, acceptance evidence, or implementation readiness.
+- Do not treat documentation criteria as runtime conformance results, acceptance evidence, or implementation routing.
 
 <a id="internal-smoke-target"></a>
 ### Internal smoke target
 
-Current status:
+Boundary:
 - Planned or documented.
 
 Executable now:
 - No, unless a current implementation file explicitly provides it.
 
 Owner:
-- `build/mvp-plan.md`
+- `build/implementation-guide.md`
 
 Not allowed:
 - Do not describe this as an implemented conformance suite.
@@ -51,7 +51,7 @@ Not allowed:
 <a id="future-fixture-shape"></a>
 ### Future fixture shape
 
-Current status:
+Boundary:
 - Candidate future format documented by this reference.
 
 Executable now:
@@ -66,7 +66,7 @@ Not allowed:
 <a id="future-executable-fixtures"></a>
 ### Future executable fixtures
 
-Current status:
+Boundary:
 - Not implemented.
 
 Executable now:
@@ -81,39 +81,39 @@ Not allowed:
 <a id="runtime-conformance-report"></a>
 ### Runtime conformance report
 
-Current status:
+Boundary:
 - Later candidate and not implemented.
 
 Executable now:
 - No. This repository contains no conformance runner, suite entry point, generated conformance reports, or runtime conformance results.
 
 Owner:
-- [Later Candidate Index](../later/index.md)
-- [Later policy and conformance: future conformance run entrypoint](../later/policy-and-conformance.md#future-conformance-run-entrypoint)
+- [Scope Reference](scope.md)
+- [Later policy and conformance: future conformance run entrypoint](scope.md)
 
 Not allowed:
 - Do not present metrics, generated prose, rendered reports, or documentation-check labels as conformance authority or current runtime proof.
 
-When this page says "must", "required", or "always", it is naming a documentation criterion or a requirement for a future server/runner after implementation exists. It is not a claim that this repository already contains executable checks.
+When this page says "must", "required", or "always", it is naming a documentation criterion or a requirement for a server/runner after implementation exists. It is not a claim that this repository already contains executable checks.
 
 ## What conformance means
 
-For a future server, conformance means executable checks can compare one owner-defined action with owner-defined authority records. Documentation checks are separate maintenance aids for links, terminology, owner boundaries, active/later wording, security wording, and bilingual parity.
+For a server, conformance means executable checks can compare one owner-defined action with owner-defined authority records. Documentation checks are separate maintenance aids for links, terminology, owner boundaries, active/out-of-scope wording, security wording, and bilingual parity.
 
 A future runtime conformance check must judge only facts made authoritative by an owner document. It must not treat generated prose, agent summaries, rendered reports, status wording, documentation-check labels, or projections as authority unless a specific owner promotes that fact.
 
 ## What does not exist yet
 
-The following are future implementation work, not current repository contents:
+The following are implementation outputs, not current repository contents:
 
 - Harness Server runtime or Harness Runtime Home data
 - executable fixture files or a fixture directory
 - a conformance runner or `harness conformance run` implementation
 - generated conformance reports, generated runtime artifacts, projections, operational files, or runtime state
-- current runtime results for active MVP behavior or later candidates
+- current runtime results for active MVP behavior or out-of-scope capabilities
 - current runtime proof of preventive blocking, OS permission control, arbitrary-tool sandboxing, tamper-proof storage, security isolation, or profile-gated `preventive` / `isolated` guarantee claims
 
-Examples on this page may guide planning, but they do not create runtime state, acceptance evidence, close readiness, residual-risk acceptance, generated reports, or implementation readiness.
+Examples on this page may guide planning, but they do not create runtime state, acceptance evidence, close readiness, residual-risk acceptance, generated reports, or implementation routing.
 
 ## Fixture shape
 
@@ -169,7 +169,7 @@ Purpose:
 Owner links:
 - API, Core, Storage, Security, Agent Integration, artifact, and policy owners.
 
-A future materialized fixture must use public owner schemas. It must not invent fixture-only enum values, pseudo-fields, localized display labels as state, prose-only expectations, or later-candidate-only values.
+A future materialized fixture must use public owner schemas. It must not invent fixture-only enum values, pseudo-fields, localized display labels as state, prose-only expectations, or out-of-scope-only values.
 
 ## Assertion authority
 
@@ -181,7 +181,7 @@ Exact assertion detail stays with these owners:
 
 | Assertion area | Canonical owner |
 |---|---|
-| API methods and response branch behavior | [MVP API router](api/mvp-api.md) and method owner documents |
+| API methods and response branch behavior | [API Methods](api/methods.md) and method owner documents |
 | Common response branches and `dry_run` preview shapes | [API Schema Core](api/schema-core.md) |
 | State summaries, blockers, evidence, and close-readiness structures | [API State Schemas](api/schema-state.md) |
 | `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle` shapes | [API Artifact Schemas](api/schema-artifacts.md) |
@@ -190,7 +190,7 @@ Exact assertion detail stays with these owners:
 | Storage effects, no-effect branches, and state-version effects | [Storage Effects](storage-effects.md) |
 | Artifact staging, promotion, persistence, and body-read lifecycle | [Artifact Storage](storage-artifacts.md) |
 | Security non-claims and guarantee levels | [Security](security.md) |
-| Runtime location and documentation-only boundaries | [Runtime Boundaries](runtime-boundaries.md) |
+| Runtime location and documentation boundaries | [Runtime Boundaries](runtime-boundaries.md) |
 
 ## Representative scenario index
 
@@ -272,7 +272,7 @@ Focus:
 
 Owner links:
 - [Agent Integration](agent-integration.md)
-- [Shared envelope and response branch routes](api/mvp-api.md#shared-request-rules)
+- [Shared envelope and response branch routes](api/methods.md#shared-request-rules)
 - [Storage Effects](storage-effects.md)
 
 <a id="scenario-mvp-active-single-access-class-per-public-request"></a>
@@ -283,7 +283,7 @@ Focus:
 
 Owner links:
 - [API Value Sets](api/schema-value-sets.md)
-- [Shared envelope and response branch routes](api/mvp-api.md#shared-request-rules)
+- [Shared envelope and response branch routes](api/methods.md#shared-request-rules)
 - [Security](security.md)
 
 <a id="scenario-mvp-active-detective-display-capability-gated"></a>
@@ -448,9 +448,9 @@ Focus:
 - Native/captured artifact sources are not active MVP artifact authority.
 
 Owner links:
-- [Active MVP Scope](active-mvp-scope.md)
+- [Scope](scope.md)
 - [API Artifact Schemas](api/schema-artifacts.md)
-- [Later Candidate Index](../later/index.md)
+- [Scope Reference](scope.md)
 
 <a id="scenario-mvp-active-close-task-complete-stale-state-version-rejected"></a>
 ### `MVP-ACTIVE-close-task-complete-stale-state-version-rejected`
@@ -564,7 +564,7 @@ Owner links:
 
 ## Catalog-only future boundary
 
-Future fixture families belong in [Later policy and conformance: future fixture families](../later/policy-and-conformance.md#future-fixture-families). The later-candidate index keeps names only as later candidates, and this page does not reproduce the catalog.
+Future fixture families belong in [Later policy and conformance: future fixture families](scope.md). The out-of-scope index keeps names only as out-of-scope capabilities, and this page does not reproduce the catalog.
 
 Future-family names are not:
 
@@ -581,7 +581,7 @@ Promotion requirement: a future owner must promote a narrow behavior with scope,
 
 ## Metrics boundary
 
-Metrics are not conformance authority in the current documentation set. Future local metrics and later conformance reporting may be useful for diagnostics or planning, but until an owner promotes them they remain read-only derived displays or later candidates.
+Metrics are not conformance authority in the current documentation set. Future local metrics and later conformance reporting may be useful for diagnostics or planning, but until an owner promotes them they remain read-only derived displays or out-of-scope capabilities.
 
 Metrics must not:
 
@@ -592,7 +592,7 @@ Metrics must not:
 - accept final results
 - accept residual risk
 - close work
-- prove implementation readiness
+- prove implementation routing
 - replace runtime conformance
 
 Promotion requirement: if a future metric is promoted, its owner must define source records, freshness boundary, display wording, and the non-substitution rule.

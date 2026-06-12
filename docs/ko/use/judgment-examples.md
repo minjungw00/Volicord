@@ -6,7 +6,7 @@
 
 ## 다음 읽기 경로
 
-작업 중인 사용자는 [사용자 가이드](user-guide.md)를 읽은 뒤 이 예시를 보고, 어떤 동작이 현재 활성인지, 프로필 조건부인지, 이후 후보인지 확인해야 할 때 [현재 MVP 범위](../reference/active-mvp-scope.md)를 봅니다.
+작업 중인 사용자는 [사용자 가이드](user-guide.md)를 읽은 뒤 이 예시를 보고, 어떤 동작이 현재 활성인지, 프로필 조건부인지, 이후 후보인지 확인해야 할 때 [현재 MVP 범위](../reference/scope.md)를 봅니다.
 
 예시별 참조 링크는 정확한 담당 문서가 필요할 때만 엽니다. 사용자용 작업을 시작하면서 사용자에게 스키마 내부부터 읽으라고 요구하지 않습니다.
 
@@ -253,4 +253,4 @@
 참조 링크:
 - [설계 품질](../reference/design-quality.md)
 - [Core 모델](../reference/core-model.md)
-- [이후 후보 색인](../later/index.md)
+- [범위 참조](../reference/scope.md)

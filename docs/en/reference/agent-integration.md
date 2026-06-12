@@ -2,7 +2,7 @@
 
 This document owns agent connector behavior and capability-context boundaries for the current documentation set. It does not own surface-specific usage recipes; those live in [Surface Recipes](../use/surface-recipes.md).
 
-This is documentation source material only. It does not implement a connector, MCP server, runtime state, generated manifest, or conformance runner.
+This is documentation reference material only. It does not implement a connector, MCP server, runtime state, generated manifest, or conformance runner.
 
 ## Owns / Does not own
 
@@ -66,24 +66,24 @@ Agent may:
 
 Agent must not:
 - treat `capability_profile` as authority by itself
-- use a stale, copied, generated, or user-provided capability description to make a later candidate active
+- use a stale, copied, generated, or user-provided capability description to make a out-of-scope capability active
 - use the same description to justify a stronger guarantee level
 
 Fallback:
 - When required support is absent, stale, mismatched, or insufficient, display unavailable or capability-limited state and route the next decision to the relevant owner result.
 
 Owner links:
-- [Active MVP Scope](active-mvp-scope.md) owns active and profile-gated scope boundaries.
+- [Scope](scope.md) owns active and profile-gated scope boundaries.
 - [Security](security.md) owns guarantee vocabulary and guarantee-strength non-claims.
 - [API Value Sets](api/schema-value-sets.md) owns access-class value names.
 
 ## Local surface registration
 
-Local surface registration provides the facts a future server uses to derive verified surface context. A connector may carry selectors and display owner results, but it does not create local authority.
+Local surface registration provides the facts a server uses to derive verified surface context. A connector may carry selectors and display owner results, but it does not create local authority.
 
 Condition:
 - A request may select a registered local surface with `surface_id`.
-- A future server, not the connector, matches the selected surface to registered local facts, transport/session/binding evidence, access class, and capability posture.
+- A server, not the connector, matches the selected surface to registered local facts, transport/session/binding evidence, access class, and capability posture.
 - Protected reads, mutations, and artifact operations can rely on a surface only when the method owner says the verified context is compatible.
 
 Agent may:
@@ -98,18 +98,18 @@ Fallback:
 - If registered facts cannot be matched to the current request, display the local surface as unavailable, mismatched, stale, or insufficient until the owner method returns a compatible verified context.
 
 Owner links:
-- [MVP API router](api/mvp-api.md) and method owner documents own method request conditions.
+- [API Methods](api/methods.md) and method owner documents own method request conditions.
 - [API Value Sets](api/schema-value-sets.md) owns access-class values.
 - [Security](security.md) owns access-boundary and guarantee wording.
 
 ## `VerifiedSurfaceContext`
 
-`VerifiedSurfaceContext` is the result a future server derives by matching a request's selected `surface_id` to registered local surface facts, transport/session/binding evidence, access class, and capability posture.
+`VerifiedSurfaceContext` is the result a server derives by matching a request's selected `surface_id` to registered local surface facts, transport/session/binding evidence, access class, and capability posture.
 
 Condition:
 - A public API request has exactly one request-level `VerifiedSurfaceContext.access_class`.
 - Nested payloads such as artifact inputs do not add a second request access class.
-- In a future server, staged artifact provenance such as `created_by_surface_id` and `created_by_surface_instance_id` comes from `VerifiedSurfaceContext`.
+- In a server, staged artifact provenance such as `created_by_surface_id` and `created_by_surface_instance_id` comes from `VerifiedSurfaceContext`.
 - Protected reads and mutations can rely on a surface only when the API owner says the verified context is compatible with the method.
 
 Agent may:
@@ -125,7 +125,7 @@ Fallback:
 - If verified context is absent or incompatible with the method, show the relevant unavailable, mismatched, stale, or insufficient state instead of relying on the surface.
 
 Owner links:
-- The exact request envelope and access-class values belong to the [MVP API router](api/mvp-api.md), method owner documents, and [API Value Sets](api/schema-value-sets.md).
+- The exact request envelope and access-class values belong to the [API Methods](api/methods.md), method owner documents, and [API Value Sets](api/schema-value-sets.md).
 
 ## Guarantee display gating
 
@@ -151,7 +151,7 @@ Fallback:
 
 Owner links:
 - [Security](security.md) owns guarantee vocabulary and non-claims.
-- [Active MVP Scope](active-mvp-scope.md) owns current MVP scope and profile-gated boundaries.
+- [Scope](scope.md) owns current MVP scope and profile-gated boundaries.
 
 ## Context push and pull
 
@@ -243,7 +243,7 @@ This boundary is a documentation contract for future connector behavior. It is n
 
 - [Surface Recipes](../use/surface-recipes.md) for practical surface-specific usage.
 - [API Schema Core](api/schema-core.md) and [API Value Sets](api/schema-value-sets.md) for common API context fields and values.
-- [MVP API router](api/mvp-api.md) and method owner documents for method request conditions.
+- [API Methods](api/methods.md) and method owner documents for method request conditions.
 - [Security](security.md) for guarantee wording and non-claims.
 - [Runtime Boundaries](runtime-boundaries.md) for Product Repository, Harness Server, and Runtime Home separation.
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), and [Artifact Storage](storage-artifacts.md) for storage and artifact authority boundaries.

@@ -1,6 +1,6 @@
 # Agent guide
 
-Use this guide when writing or reviewing agent behavior for a future Harness-connected session.
+Use this guide when writing or reviewing agent behavior for a Harness-connected session.
 
 The agent should:
 
@@ -24,7 +24,7 @@ Not allowed:
   - a schema reference
   - a template catalog
   - a conformance fixture
-- Do not treat this documentation-only repository as proof that a Harness Server/runtime implementation already exists.
+- Do not treat this documentation repository as proof that a Harness Server/runtime implementation already exists.
 
 Owner links:
 
@@ -329,7 +329,7 @@ The user decides:
 - residual-risk acceptance
 - cancellation
 
-Other future judgment candidates belong to [Later](../later/index.md) and are not active judgment kinds.
+Other future judgment candidates belong to [Scope](../reference/scope.md) and are not active judgment kinds.
 
 Inside accepted scope, the agent may usually decide implementation details when they:
 
@@ -646,7 +646,7 @@ Rule:
 
 Owner links:
 
-- Those separate quality routes stay in [Later](../later/index.md) until an owner promotes a separate active contract.
+- Those separate quality routes stay in [Scope](../reference/scope.md) until an owner promotes a separate active contract.
 
 Do not close from:
 
@@ -663,7 +663,7 @@ Not allowed:
 
 If blockers remain, lead with them and name the next safe action.
 
-## 9. Respect the active/later boundary
+## 9. Respect the active/out-of-scope boundary
 
 Rule:
 
@@ -686,7 +686,7 @@ Do not make these appear required for ordinary active MVP work:
 - broad review catalogs
 - future conformance runners
 - operations hardening
-- other later candidates
+- other out-of-scope capabilities
 
 Rule:
 

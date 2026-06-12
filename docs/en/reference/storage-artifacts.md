@@ -21,7 +21,7 @@ This document owns:
 This document does not own:
 
 - API artifact schemas; see [API Artifact Schemas](api/schema-artifacts.md)
-- API method behavior; see the [MVP API router](api/mvp-api.md), [Stage-artifact method](api/method-stage-artifact.md), and [Record-run method](api/method-record-run.md)
+- API method behavior; see the [API Methods](api/methods.md), [Stage-artifact method](api/method-stage-artifact.md), and [Record-run method](api/method-record-run.md)
 - general record layout or DDL; see [Storage Records](storage-records.md)
 - generic method storage effects; see [Storage Effects](storage-effects.md)
 - local-access security claims; see [Security](security.md) and [Runtime Boundaries](runtime-boundaries.md)
@@ -73,7 +73,7 @@ Tracked facts:
 
 Rule:
 
-- A future server records the `created_by_surface_*` fields from the successful `harness.stage_artifact` request's `VerifiedSurfaceContext`.
+- A server records the `created_by_surface_*` fields from the successful `harness.stage_artifact` request's `VerifiedSurfaceContext`.
 - The fields must be checked against the staging row.
 
 Not allowed:
@@ -401,7 +401,7 @@ Not allowed:
 ## Related owners
 
 - [API Artifact Schemas](api/schema-artifacts.md) for `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle` shapes.
-- [Stage-artifact method](api/method-stage-artifact.md), [Record-run method](api/method-record-run.md), and [MVP API router](api/mvp-api.md) for `harness.stage_artifact`, `harness.record_run`, and artifact read behavior.
+- [Stage-artifact method](api/method-stage-artifact.md), [Record-run method](api/method-record-run.md), and [API Methods](api/methods.md) for `harness.stage_artifact`, `harness.record_run`, and artifact read behavior.
 - [Storage Effects](storage-effects.md) for whether a response branch creates storage effects.
 - [Storage Records](storage-records.md) for `artifact_staging`, `artifacts`, and `artifact_links` table overview.
 - [Security](security.md) for access and guarantee non-claims.

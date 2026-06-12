@@ -1,6 +1,6 @@
 # API 값 집합
 
-이 문서는 현재 MVP의 활성 API 값 집합과 enum 형태 공개 값을 담당합니다. 문서 원천 자료일 뿐이며 이후 후보 이름을 적는 것만으로 활성 범위를 넓히지 않습니다.
+이 문서는 현재 MVP의 활성 API 값 집합과 enum 형태 공개 값을 담당합니다. 참조 문서일 뿐이며 이후 후보 이름을 적는 것만으로 활성 범위를 넓히지 않습니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -18,9 +18,9 @@
 
 - 공개 `ErrorCode` 값과 우선순위: [API 오류](errors.md)
 - 이 값을 쓰는 필드 형태: [API 코어 스키마](schema-core.md), [API 상태 스키마](schema-state.md), [API 아티팩트 스키마](schema-artifacts.md), [API 판단 스키마](schema-judgment.md)
-- 메서드 동작: [MVP API 경로 문서](mvp-api.md)와 메서드 담당 문서
+- 메서드 동작: [API 메서드](methods.md)와 메서드 담당 문서
 - 보안 보장 의미: [보안](../security.md)
-- 이후 후보 승격: [이후 후보 색인](../../later/index.md)
+- 이후 후보 승격: [범위 참조](../scope.md)
 
 ## 경계
 
@@ -53,7 +53,7 @@ harness.record_user_judgment
 harness.close_task
 ```
 
-메서드 동작은 [MVP API 경로 문서](mvp-api.md)가 안내하는 메서드 담당 문서가 담당합니다. 메서드 이름은 Task 생명주기 값이 아닙니다.
+메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 담당합니다. 메서드 이름은 Task 생명주기 값이 아닙니다.
 
 <a id="response-and-effect-values"></a>
 ## 응답과 효과 값
@@ -75,7 +75,7 @@ staging_created
 no_effect
 ```
 
-`response_kind`와 `effect_kind`는 분기 메타데이터 값입니다. 공통 분기 읽기 규칙은 [공통 요청 래퍼와 응답 분기 경로](mvp-api.md#공통-요청-규칙)가 담당하고, 메서드별 상태 효과는 메서드 담당 문서가 담당합니다. 거절 분기의 공개 오류 의미는 [API 오류](errors.md)가 담당합니다.
+`response_kind`와 `effect_kind`는 분기 메타데이터 값입니다. 공통 분기 읽기 규칙은 [공통 요청 래퍼와 응답 분기 경로](methods.md#공통-요청-규칙)가 담당하고, 메서드별 상태 효과는 메서드 담당 문서가 담당합니다. 거절 분기의 공개 오류 의미는 [API 오류](errors.md)가 담당합니다.
 
 <a id="access-class-values"></a>
 ## 접근 등급 값
@@ -95,7 +95,7 @@ no_effect
 
 - 결과: 접근 등급은 하네스 API 호환성 분류입니다.
 - 비주장: 접근 등급은 OS 권한 분류가 아닙니다.
-- 담당 문서: 로컬 접점 확인 동작은 [공통 요청 래퍼와 응답 분기 경로](mvp-api.md#공통-요청-규칙), [에이전트 통합](../agent-integration.md), [보안](../security.md)에 남습니다.
+- 담당 문서: 로컬 접점 확인 동작은 [공통 요청 래퍼와 응답 분기 경로](methods.md#공통-요청-규칙), [에이전트 통합](../agent-integration.md), [보안](../security.md)에 남습니다.
 
 <a id="record-and-reference-values"></a>
 ## 기록과 참조 값
@@ -453,14 +453,14 @@ incompatible
 `isolated` 세부사항:
 - 담당 경계: 이 문서는 값 집합 항목만 담당합니다.
 - 비주장: 이 항목은 현재 격리 보장을 부여하거나 정의하지 않습니다.
-- 담당 문서 링크: 보장 의미는 [보안](../security.md)이 담당합니다. 현재 MVP에서의 사용 가능 여부는 [현재 MVP 범위](../active-mvp-scope.md)가 담당합니다.
+- 담당 문서 링크: 보장 의미는 [보안](../security.md)이 담당합니다. 현재 MVP에서의 사용 가능 여부는 [현재 MVP 범위](../scope.md)가 담당합니다.
 
 활성 아티팩트 입력은 `staged_artifact` 또는 `existing_artifact`를 사용합니다. 아티팩트 출처 의미는 [API 아티팩트 스키마](schema-artifacts.md)와 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
 
 ## 관련 담당 문서
 
-- [현재 MVP 범위](../active-mvp-scope.md): 값이 현재 MVP에 속하는지 판단.
+- [현재 MVP 범위](../scope.md): 값이 현재 MVP에 속하는지 판단.
 - [API 오류](errors.md): 공개 오류 코드와 우선순위.
 - [API 코어 스키마](schema-core.md), [API 상태 스키마](schema-state.md), [API 아티팩트 스키마](schema-artifacts.md), [API 판단 스키마](schema-judgment.md): 이 값을 쓰는 필드.
-- [MVP API 경로 문서](mvp-api.md)와 메서드 담당 문서: 이 값을 사용하는 메서드 동작.
-- [이후 후보 색인](../../later/index.md): 비활성 값 이름.
+- [API 메서드](methods.md)와 메서드 담당 문서: 이 값을 사용하는 메서드 동작.
+- [범위 참조](../scope.md): 비활성 값 이름.

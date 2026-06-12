@@ -111,10 +111,10 @@ terms:
     ko_user: "하네스"
     owner_documents:
       en:
-        - "docs/en/reference/active-mvp-scope.md"
+        - "docs/en/reference/scope.md"
         - "docs/en/reference/runtime-boundaries.md"
       ko:
-        - "docs/ko/reference/active-mvp-scope.md"
+        - "docs/ko/reference/scope.md"
         - "docs/ko/reference/runtime-boundaries.md"
   product_repository:
     category: "product_label"
@@ -142,18 +142,18 @@ terms:
         - "docs/ko/reference/runtime-boundaries.md"
   documentation_only:
     category: "general_prose"
-    en: "documentation-only"
-    ko_reference: "문서 전용"
-    ko_user: "문서 전용"
+    en: "documentation"
+    ko_reference: "문서"
+    ko_user: "문서"
     owner_documents:
       en:
         - "docs/en/maintain/authoring-guide.md"
         - "docs/en/reference/runtime-boundaries.md"
-        - "docs/en/build/mvp-plan.md"
+        - "docs/en/build/implementation-guide.md"
       ko:
         - "docs/ko/maintain/authoring-guide.md"
         - "docs/ko/reference/runtime-boundaries.md"
-        - "docs/ko/build/mvp-plan.md"
+        - "docs/ko/build/implementation-guide.md"
     notes:
       - "Documentation-only work does not implement runtime behavior or create generated runtime records."
   active_mvp:
@@ -165,27 +165,27 @@ terms:
       - "current MVP"
     owner_documents:
       en:
-        - "docs/en/reference/active-mvp-scope.md"
+        - "docs/en/reference/scope.md"
         - "docs/en/reference/api/schema-value-sets.md"
       ko:
-        - "docs/ko/reference/active-mvp-scope.md"
+        - "docs/ko/reference/scope.md"
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
-      - "Do not describe later candidates as active MVP requirements."
+      - "Do not describe out-of-scope capabilities as active MVP requirements."
   later_candidate:
     category: "product_concept"
-    en: "later candidate"
+    en: "out-of-scope capability"
     ko_reference: "이후 후보"
     ko_user: "이후 후보"
     owner_documents:
       en:
-        - "docs/en/later/index.md"
-        - "docs/en/reference/active-mvp-scope.md"
+        - "docs/en/reference/scope.md"
+        - "docs/en/reference/scope.md"
       ko:
-        - "docs/ko/later/index.md"
-        - "docs/ko/reference/active-mvp-scope.md"
+        - "docs/ko/reference/scope.md"
+        - "docs/ko/reference/scope.md"
     notes:
-      - "A later candidate is deferred material until an owner promotes it."
+      - "A out-of-scope capability is deferred material until an owner promotes it."
   reserved_value:
     category: "value_status"
     en: "reserved value"
@@ -193,10 +193,10 @@ terms:
     ko_user: "예약된 값"
     owner_documents:
       en:
-        - "docs/en/reference/active-mvp-scope.md"
+        - "docs/en/reference/scope.md"
         - "docs/en/reference/api/schema-value-sets.md"
       ko:
-        - "docs/ko/reference/active-mvp-scope.md"
+        - "docs/ko/reference/scope.md"
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "A reserved value may be listed as vocabulary or future surface area without being active current-MVP behavior."
@@ -209,10 +209,10 @@ terms:
     ko_user: "프로필 조건부 값"
     owner_documents:
       en:
-        - "docs/en/reference/active-mvp-scope.md"
+        - "docs/en/reference/scope.md"
         - "docs/en/reference/api/schema-value-sets.md"
       ko:
-        - "docs/ko/reference/active-mvp-scope.md"
+        - "docs/ko/reference/scope.md"
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "A profile-gated value is available only when the documented profile or gate and owner behavior are active."
@@ -249,7 +249,7 @@ terms:
         - "docs/ko/reference/README.md"
     notes:
       - "Use only when the canonical owner exists now and can be linked as the current source of normative meaning."
-      - "Do not use for a future owner placeholder or an owner type that must be created or designated at promotion time."
+      - "Do not use for an owner placeholder or an owner type that must be created or designated at promotion time."
   promotion_time_owner_update:
     category: "documentation_concept"
     en: "promotion-time owner update"
@@ -259,33 +259,33 @@ terms:
       en:
         - "docs/en/reference/glossary.md"
         - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/later/index.md"
-        - "docs/en/reference/active-mvp-scope.md"
+        - "docs/en/reference/scope.md"
+        - "docs/en/reference/scope.md"
       ko:
         - "docs/ko/reference/glossary.md"
         - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/later/index.md"
-        - "docs/ko/reference/active-mvp-scope.md"
+        - "docs/ko/reference/scope.md"
+        - "docs/ko/reference/scope.md"
     notes:
       - "This means the owner does not exist as an active contract owner before promotion."
-      - "Do not name a future owner as if it is a current canonical owner."
-      - "Later index and category documents apply the boundary; the glossary gives the term-level definition."
-  future_owner_placeholder:
+      - "Do not name a missing owner as if it is a current canonical owner."
+      - "Scope applies the active boundary; the glossary gives the term-level definition."
+  owner_placeholder:
     category: "documentation_concept"
-    en: "future owner placeholder"
-    ko_reference: "향후 담당 문서 자리표시자"
-    ko_user: "향후 담당 문서 자리표시자"
+    en: "owner placeholder"
+    ko_reference: "담당 문서 자리표시자"
+    ko_user: "담당 문서 자리표시자"
     owner_documents:
       en:
         - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/later/index.md"
+        - "docs/en/reference/scope.md"
       ko:
         - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/later/index.md"
+        - "docs/ko/reference/scope.md"
     notes:
-      - "Use only to signal that a later candidate needs an owner created or designated at promotion time."
-      - "A future owner placeholder is not a current owner document."
-      - "Do not route readers to a future owner placeholder as if it is a current owner document."
+      - "Use only to signal that an out-of-scope capability needs an owner created or designated before activation."
+      - "An owner placeholder is not a current owner document."
+      - "Do not route readers to an owner placeholder as if it is a current owner document."
   task:
     category: "product_concept"
     en: "Task"
@@ -322,11 +322,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/mvp-api.md"
+        - "docs/en/reference/api/methods.md"
         - "docs/en/reference/api/schema-judgment.md"
       ko:
         - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/mvp-api.md"
+        - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/api/schema-judgment.md"
   user_owned_judgment:
     category: "product_concept"
@@ -359,11 +359,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/mvp-api.md"
+        - "docs/en/reference/api/methods.md"
         - "docs/en/reference/api/errors.md"
       ko:
         - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/mvp-api.md"
+        - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/api/errors.md"
     notes:
       - "`close readiness` is the evaluation concept, not the blocker schema."
@@ -384,11 +384,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/mvp-api.md"
+        - "docs/en/reference/api/methods.md"
         - "docs/en/reference/api/errors.md"
       ko:
         - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/mvp-api.md"
+        - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/api/errors.md"
     notes:
       - "Do not translate this as 가능성 평가."
@@ -409,11 +409,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/glossary.md"
-        - "docs/en/reference/api/mvp-api.md"
+        - "docs/en/reference/api/methods.md"
         - "docs/en/reference/api/schema-value-sets.md"
       ko:
         - "docs/ko/reference/glossary.md"
-        - "docs/ko/reference/api/mvp-api.md"
+        - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "The prose concept is complete intent; only the value string is `complete`."
@@ -651,11 +651,11 @@ terms:
       en:
         - "docs/en/reference/core-model.md"
         - "docs/en/reference/security.md"
-        - "docs/en/reference/api/mvp-api.md"
+        - "docs/en/reference/api/methods.md"
       ko:
         - "docs/ko/reference/core-model.md"
         - "docs/ko/reference/security.md"
-        - "docs/ko/reference/api/mvp-api.md"
+        - "docs/ko/reference/api/methods.md"
     notes:
       - "Use the exact label when naming the Harness concept."
       - "Do not treat sensitive-action approval as Write Authorization."
@@ -690,11 +690,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/api/schema-value-sets.md"
-        - "docs/en/reference/api/mvp-api.md"
+        - "docs/en/reference/api/methods.md"
         - "docs/en/reference/security.md"
       ko:
         - "docs/ko/reference/api/schema-value-sets.md"
-        - "docs/ko/reference/api/mvp-api.md"
+        - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/security.md"
   active_guarantee:
     category: "security_concept"
@@ -704,11 +704,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/security.md"
-        - "docs/en/reference/active-mvp-scope.md"
+        - "docs/en/reference/scope.md"
         - "docs/en/reference/api/schema-value-sets.md"
       ko:
         - "docs/ko/reference/security.md"
-        - "docs/ko/reference/active-mvp-scope.md"
+        - "docs/ko/reference/scope.md"
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "Use only when active scope and Security both document the behavior as current."
@@ -753,10 +753,10 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/security.md"
-        - "docs/en/later/index.md"
+        - "docs/en/reference/scope.md"
       ko:
         - "docs/ko/reference/security.md"
-        - "docs/ko/later/index.md"
+        - "docs/ko/reference/scope.md"
     notes:
       - "Use only when the exact preventive mechanism and proof path are documented."
   isolated_guarantee:
@@ -775,11 +775,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/security.md"
-        - "docs/en/reference/active-mvp-scope.md"
+        - "docs/en/reference/scope.md"
         - "docs/en/reference/api/schema-value-sets.md"
       ko:
         - "docs/ko/reference/security.md"
-        - "docs/ko/reference/active-mvp-scope.md"
+        - "docs/ko/reference/scope.md"
         - "docs/ko/reference/api/schema-value-sets.md"
     owner_roles:
       semantics:
@@ -789,17 +789,17 @@ terms:
           - "docs/ko/reference/security.md"
       current_mvp_availability:
         en:
-          - "docs/en/reference/active-mvp-scope.md"
+          - "docs/en/reference/scope.md"
         ko:
-          - "docs/ko/reference/active-mvp-scope.md"
+          - "docs/ko/reference/scope.md"
       value_entry:
         en:
           - "docs/en/reference/api/schema-value-sets.md"
         ko:
           - "docs/ko/reference/api/schema-value-sets.md"
     notes:
-      - "`isolated` is a reserved later/profile-gated guarantee label, not an active current-MVP guarantee."
-      - "Security owns guarantee semantics and non-claims; Active MVP Scope owns current-MVP availability; API Value Sets owns the value entry."
+      - "`isolated` is a reserved or profile-gated guarantee label, not an active current-MVP guarantee."
+      - "Security owns guarantee semantics and non-claims; Scope owns current-MVP availability; API Value Sets owns the value entry."
       - "Presence in a value set does not activate behavior."
   dry_run:
     category: "api_concept"
@@ -814,12 +814,12 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/api/schema-core.md"
-        - "docs/en/reference/api/mvp-api.md"
+        - "docs/en/reference/api/methods.md"
         - "docs/en/reference/api/errors.md"
         - "docs/en/reference/storage-effects.md"
       ko:
         - "docs/ko/reference/api/schema-core.md"
-        - "docs/ko/reference/api/mvp-api.md"
+        - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/api/errors.md"
         - "docs/ko/reference/storage-effects.md"
     notes:
@@ -838,11 +838,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/api/errors.md"
-        - "docs/en/reference/api/mvp-api.md"
+        - "docs/en/reference/api/methods.md"
         - "docs/en/reference/storage-effects.md"
       ko:
         - "docs/ko/reference/api/errors.md"
-        - "docs/ko/reference/api/mvp-api.md"
+        - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/storage-effects.md"
     notes:
       - "A blocked result is not a public transport or schema rejection."

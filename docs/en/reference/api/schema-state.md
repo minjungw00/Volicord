@@ -2,7 +2,7 @@
 
 Meaning:
 - This document owns API state-shaped schemas for the current MVP.
-- It is documentation source material only.
+- It is documentation reference material only.
 
 Not implied:
 - It does not create runtime state, generated projections, storage rows, or state effects.
@@ -23,7 +23,7 @@ This document does not own:
 
 - common envelopes or response branches; see [API Schema Core](schema-core.md)
 - active enum-like values; see [API Value Sets](schema-value-sets.md)
-- method behavior; see the [MVP API router](mvp-api.md) and method owner documents
+- method behavior; see the [API Methods](methods.md) and method owner documents
 - public error semantics; see [API Errors](errors.md)
 - Core lifecycle and close-readiness product meaning; see [Core Model](../core-model.md)
 - storage records or persistence effects; see [Storage Records](../storage-records.md) and [Storage Effects](../storage-effects.md)
@@ -39,7 +39,7 @@ Not implied:
 
 Owner links:
 - Response branch selection: [Common response branches](schema-core.md#common-response)
-- Method behavior and effects: [MVP API router](mvp-api.md) and method owner documents
+- Method behavior and effects: [API Methods](methods.md) and method owner documents
 
 ## State references
 
@@ -98,7 +98,7 @@ Not implied:
 
 Owner links:
 - Commit decision branch: [Common response branches](schema-core.md#common-response)
-- Method-specific commit behavior: method owner documents routed from [MVP API](mvp-api.md)
+- Method-specific commit behavior: method owner documents routed from [API Methods](methods.md)
 
 ## Task lifecycle state
 
@@ -228,7 +228,7 @@ ObservedChanges:
 Owner links:
 - `ArtifactRef`: [API Artifact Schemas](schema-artifacts.md)
 - Evidence sufficiency meaning: [Core Model evidence and run authority](../core-model.md#9-evidence-and-run-authority)
-- Method behavior: method owner documents routed from [MVP API](mvp-api.md)
+- Method behavior: method owner documents routed from [API Methods](methods.md)
 
 ## Close readiness and validation shapes
 
@@ -271,7 +271,7 @@ Owner links:
 
 - [API Schema Core](schema-core.md) for `ToolEnvelope`, `ToolResultBase`, `ToolRejectedResponse`, and `ToolDryRunResponse`.
 - [API Value Sets](schema-value-sets.md) for exact values used by state fields.
-- [MVP API router](mvp-api.md) and method owner documents for the methods that return these schemas.
+- [API Methods](methods.md) and method owner documents for the methods that return these schemas.
 - [API Artifact Schemas](schema-artifacts.md) for `ArtifactRef`.
 - [API Judgment Schemas](schema-judgment.md) for `UserJudgmentCandidate`.
 - [Storage Effects](../storage-effects.md) for persistence and state-effect consequences.

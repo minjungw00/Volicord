@@ -1,6 +1,6 @@
 # API errors
 
-This document describes future Harness Server behavior for planning and review. It does not mean this documentation repository implements an MCP server or any runtime behavior.
+This document describes Harness Server behavior for planning and review. It does not mean this documentation repository implements an MCP server or any runtime behavior.
 
 ## Owns / Does not own
 
@@ -16,7 +16,7 @@ This document does not own:
 
 - Method payload schemas, response field shapes, and common envelopes:
   - [API Schema Core](schema-core.md)
-  - method owner documents routed from [MVP API](mvp-api.md)
+  - method owner documents routed from [API Methods](methods.md)
   - API schema owners
 - Core gates, user judgments, and close-readiness order:
   - [Core Model](../core-model.md)
@@ -831,7 +831,7 @@ Route:
 Not allowed:
 - No stored blocker and no state-version increment for the read.
 
-Blocked result means the method may have returned an operation-specific blocked outcome. It is not a public transport/schema error. Any committed blocked result and any state effect must be allowed by the relevant method owner routed from [MVP API](mvp-api.md) and [Storage Effects](../storage-effects.md).
+Blocked result means the method may have returned an operation-specific blocked outcome. It is not a public transport/schema error. Any committed blocked result and any state effect must be allowed by the relevant method owner routed from [API Methods](methods.md) and [Storage Effects](../storage-effects.md).
 
 ## Dry-run behavior
 
@@ -1430,7 +1430,7 @@ Smallest unblocker:
   - [API Schema Core](schema-core.md)
   - Applies to `ToolRejectedResponse`, `ToolDryRunResponse`, `ToolError`, `ToolResultBase`, and `DryRunSummary`.
 - Method behavior, branch selection, and method-specific payloads:
-  - method owner documents routed from [MVP API](mvp-api.md)
+  - method owner documents routed from [API Methods](methods.md)
 - State and close-readiness data shapes:
   - [API State Schemas](schema-state.md)
   - Applies to `WriteDecisionReason`, `CloseReadinessBlocker`, and state summaries.

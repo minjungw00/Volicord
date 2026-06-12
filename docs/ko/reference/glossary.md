@@ -20,16 +20,16 @@
 
 | 영어 용어 | 한국어 기준 용어 | 주 담당 문서 |
 |---|---|---|
-| Harness | 하네스 | [현재 MVP 범위](active-mvp-scope.md) |
+| Harness | 하네스 | [현재 MVP 범위](scope.md) |
 | Product Repository | Product Repository | [런타임 경계](runtime-boundaries.md) |
 | Harness Runtime Home | Harness Runtime Home | [런타임 경계](runtime-boundaries.md) |
-| documentation-only | 문서 전용 | [작성 가이드](../maintain/authoring-guide.md) |
-| active MVP | 현재 MVP | [현재 MVP 범위](active-mvp-scope.md) |
-| later candidate | 이후 후보 | [이후 후보 색인](../later/index.md) |
+| documentation | 문서 | [작성 가이드](../maintain/authoring-guide.md) |
+| active MVP | 현재 MVP | [현재 MVP 범위](scope.md) |
+| out-of-scope capability | 이후 후보 | [범위 참조](scope.md) |
 | owner document | 담당 문서 | [작성 가이드](../maintain/authoring-guide.md) |
 | current owner | 현재 담당 문서 | [작성 가이드](../maintain/authoring-guide.md) |
-| promotion-time owner update | 승격 시점의 담당 문서 갱신 | [이후 후보 색인](../later/index.md) |
-| future owner placeholder | 향후 담당 문서 자리표시자 | [작성 가이드](../maintain/authoring-guide.md) |
+| promotion-time owner update | 승격 시점의 담당 문서 갱신 | [범위 참조](scope.md) |
+| owner placeholder | 담당 문서 자리표시자 | [작성 가이드](../maintain/authoring-guide.md) |
 | `Task` | `Task` | [Core 모델](core-model.md) |
 | scope | 범위 | [Core 모델](core-model.md) |
 | user-owned judgment | 사용자 소유 판단 | [Core 모델](core-model.md) |
@@ -53,8 +53,8 @@
 | detective guarantee | 탐지형 보장 | [보안](security.md) |
 | preventive guarantee | 예방형 보장 | [보안](security.md) |
 | `isolated` | `isolated` | [보안](security.md) |
-| reserved value | 예약된 값 | [현재 MVP 범위](active-mvp-scope.md) |
-| profile-gated value | 프로필 조건부 값 | [현재 MVP 범위](active-mvp-scope.md) |
+| reserved value | 예약된 값 | [현재 MVP 범위](scope.md) |
+| profile-gated value | 프로필 조건부 값 | [현재 MVP 범위](scope.md) |
 | dry-run | dry-run 미리보기 | [API 코어 스키마](api/schema-core.md) |
 | blocked result | 차단 결과 | [API 오류](api/errors.md) |
 | rejected response | 거부 응답 | [API 코어 스키마](api/schema-core.md) |
@@ -78,11 +78,11 @@
 - 이 문서 저장소를 작동 중인 서버로 보는 표현
 
 담당 문서:
-- [현재 MVP 범위](active-mvp-scope.md)
+- [현재 MVP 범위](scope.md)
 - [런타임 경계](runtime-boundaries.md)
 
 설명:
-- 하네스는 AI 지원 제품 작업을 위한 향후 로컬 작업 권한 서버입니다.
+- 하네스는 AI 지원 제품 작업을 위한 로컬 작업 권한 서버입니다.
 
 ### Product Repository
 
@@ -126,14 +126,14 @@
 설명:
 - Harness Runtime Home은 향후 하네스 기록과 아티팩트를 담는 운영 데이터 공간입니다.
 
-### documentation-only
+### documentation
 
 영어:
-- documentation-only
+- documentation
 
 한국어:
-- 참조 문서: 문서 전용
-- 사용자 문서: 문서 전용
+- 참조 문서: 문서
+- 사용자 문서: 문서
 
 보존할 식별자:
 - 파일 경로
@@ -147,10 +147,10 @@
 담당 문서:
 - [작성 가이드](../maintain/authoring-guide.md)
 - [런타임 경계](runtime-boundaries.md)
-- [MVP 계획](../build/mvp-plan.md)
+- [구현 가이드](../build/implementation-guide.md)
 
 설명:
-- 문서 전용 작업은 런타임 구현이나 생성된 런타임 기록을 승인하지 않습니다.
+- 문서 작업은 런타임 구현이나 생성된 런타임 기록을 승인하지 않습니다.
 
 ### active MVP
 
@@ -170,16 +170,16 @@
 - 이후 후보나 프로필 조건부 값을 현재 요구사항처럼 쓰는 표현
 
 담당 문서:
-- [현재 MVP 범위](active-mvp-scope.md)
+- [현재 MVP 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
 - 현재 MVP는 첫 로컬 작업 루프를 위한 활성 제품 범위 경계입니다.
 
-### later candidate
+### out-of-scope capability
 
 영어:
-- later candidate
+- out-of-scope capability
 
 한국어:
 - 참조 문서: 이후 후보
@@ -192,8 +192,8 @@
 - 미뤄 둔 자료를 현재 MVP 요구사항처럼 부르는 표현
 
 담당 문서:
-- [이후 후보 색인](../later/index.md)
-- [현재 MVP 범위](active-mvp-scope.md)
+- [범위 참조](scope.md)
+- [현재 MVP 범위](scope.md)
 
 설명:
 - 이후 후보는 관련 담당 문서가 승격하기 전까지 활성 범위가 아닙니다.
@@ -240,7 +240,7 @@
 - `doc_id` 값
 
 피할 표현:
-- 향후 담당 문서 자리표시자를 현재 담당 문서처럼 이름 붙이는 표현
+- 담당 문서 자리표시자를 현재 담당 문서처럼 이름 붙이는 표현
 
 담당 문서:
 - [작성 가이드](../maintain/authoring-guide.md)
@@ -264,38 +264,38 @@
 - 앵커
 
 피할 표현:
-- 향후 담당 문서가 이미 현재 기준 담당 문서인 것처럼 이름 붙이는 표현
+- 아직 없는 담당 문서가 이미 현재 기준 담당 문서인 것처럼 이름 붙이는 표현
 
 담당 문서:
 - [작성 가이드](../maintain/authoring-guide.md)
-- [이후 후보 색인](../later/index.md)
-- [현재 MVP 범위](active-mvp-scope.md)
+- [범위 참조](scope.md)
+- [현재 MVP 범위](scope.md)
 
 설명:
 - 승격 시점의 담당 문서 갱신에는 담당 문서를 만들거나 지정한 뒤 현재 범위, 스키마, API 동작, 저장소, 템플릿, 점검, 한영 문서를 함께 맞추는 일이 포함될 수 있습니다.
 
-### future owner placeholder
+### owner placeholder
 
 영어:
-- future owner placeholder
+- owner placeholder
 
 한국어:
-- 참조 문서: 향후 담당 문서 자리표시자
-- 사용자 문서: 향후 담당 문서 자리표시자
+- 참조 문서: 담당 문서 자리표시자
+- 사용자 문서: 담당 문서 자리표시자
 
 보존할 식별자:
-- 이후 후보의 담당 문서 공백을 안내하는 정확한 표현
+- 범위 밖 기능의 담당 문서 공백을 안내하는 정확한 표현
 
 피할 표현:
 - 자리표시자를 현재 기준 담당 문서처럼 독자에게 안내하는 표현
 
 담당 문서:
 - [작성 가이드](../maintain/authoring-guide.md)
-- [이후 후보 색인](../later/index.md)
+- [범위 참조](scope.md)
 
 설명:
-- 이 표현은 이후 후보가 승격될 때 담당 문서를 만들거나 지정해야 할 수 있음을 나타낼 때만 씁니다.
-- 향후 담당 문서 자리표시자는 현재 담당 문서가 아닙니다.
+- 이 표현은 범위 밖 기능을 활성화하기 전에 담당 문서를 만들거나 지정해야 할 수 있음을 나타낼 때만 씁니다.
+- 담당 문서 자리표시자는 현재 담당 문서가 아닙니다.
 
 ### `Task`
 
@@ -752,7 +752,7 @@
 
 담당 문서:
 - [API 값 집합](api/schema-value-sets.md)
-- [공통 요청 래퍼와 응답 분기 경로](api/mvp-api.md#공통-요청-규칙)
+- [공통 요청 래퍼와 응답 분기 경로](api/methods.md#공통-요청-규칙)
 - [보안](security.md)
 
 설명:
@@ -775,7 +775,7 @@
 
 담당 문서:
 - [보안](security.md)
-- [현재 MVP 범위](active-mvp-scope.md)
+- [현재 MVP 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
@@ -843,7 +843,7 @@
 
 담당 문서:
 - [보안](security.md)
-- [이후 후보 색인](../later/index.md)
+- [범위 참조](scope.md)
 
 설명:
 - 예방형 보장은 정확한 예방 메커니즘과 증명 경로가 문서화되었을 때만 씁니다.
@@ -867,7 +867,7 @@
 
 담당 문서:
 - [보안](security.md): 의미와 비주장 경계
-- [현재 MVP 범위](active-mvp-scope.md): 현재 MVP 사용 가능성
+- [현재 MVP 범위](scope.md): 현재 MVP 사용 가능성
 - [API 값 집합](api/schema-value-sets.md): 값 항목
 
 설명:
@@ -897,7 +897,7 @@
 - 현재 활성 보장
 
 담당 문서:
-- [현재 MVP 범위](active-mvp-scope.md)
+- [현재 MVP 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
@@ -920,7 +920,7 @@
 - 값 집합에 있다는 이유만으로 프로필 조건부 값을 현재 MVP 동작처럼 쓰는 표현
 
 담당 문서:
-- [현재 MVP 범위](active-mvp-scope.md)
+- [현재 MVP 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
@@ -949,7 +949,7 @@
 
 담당 문서:
 - [API 코어 스키마](api/schema-core.md)
-- [MVP API 경로 문서](api/mvp-api.md)
+- [API 메서드](api/methods.md)
 - [API 오류](api/errors.md)
 - [저장 효과](storage-effects.md)
 

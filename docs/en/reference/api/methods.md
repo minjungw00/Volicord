@@ -1,8 +1,8 @@
-# Active MVP API
+# API methods
 
 ## What this document owns
 
-This document is the stable route document for the active MVP API method family. It owns:
+This document is the stable route document for the current API method family. It owns:
 
 - the active public API method list
 - method owner routing
@@ -21,17 +21,17 @@ This document does not own:
 - API example consistency rules or field-name consistency rules
 - storage-effect details, storage DDL, storage record layouts, artifact lifecycle, state-version storage rules, or security guarantees
 - public error-code semantics
-- future or later-candidate API methods
+- out-of-scope API methods
 
 ## API method family boundary
 
-The active MVP API is a small local MCP surface for one user work loop. It can intake work, show status, update active scope, check proposed product writes, stage artifacts, record runs and evidence refs, ask and record user-owned judgment, and close only when no active blockers prevent it.
+The current API is a small local MCP surface for one user work loop. It can intake work, show status, update active scope, check proposed product writes, stage artifacts, record runs and evidence refs, ask and record user-owned judgment, and close only when no active blockers prevent it.
 
-The API returns cooperative Harness record and check behavior only. Security non-claims and guarantee wording belong to [Security](../security.md). Future API or schema candidates are cataloged in [Later Candidate Index](../../later/index.md), not in this active reference.
+The API returns cooperative Harness record and check behavior only. Security non-claims and guarantee wording belong to [Security](../security.md). Out-of-scope API or schema capabilities remain outside this method router until [Scope](../scope.md) and the affected owners define them as active.
 
 <a id="active-mvp-method-behavior"></a>
 
-## Active MVP API method list
+## Current API method list
 
 This document owns the active public method list and owner routing. The exact active method-name value set is owned by [API Value Sets](schema-value-sets.md). The active methods route to these owner documents:
 

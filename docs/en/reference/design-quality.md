@@ -26,7 +26,7 @@ It owns:
 It does not own:
 
 - Core lifecycle, gates, blockers, `prepare_write`, `close_task`, Write Authorization, final acceptance, residual-risk acceptance, or non-substitution rules; see [Core Model Reference](core-model.md)
-- MCP request/response schemas, `ValidatorResult`, `UserJudgment`, `AcceptedRiskInput`, public errors, or active/later schema values; see the [MVP API router](api/mvp-api.md), method owner documents, [API Schema Core](api/schema-core.md), [API Judgment Schemas](api/schema-judgment.md), and [API Errors](api/errors.md)
+- MCP request/response schemas, `ValidatorResult`, `UserJudgment`, `AcceptedRiskInput`, public errors, or active/out-of-scope schema values; see the [API Methods](api/methods.md), method owner documents, [API Schema Core](api/schema-core.md), [API Judgment Schemas](api/schema-judgment.md), and [API Errors](api/errors.md)
 - SQLite DDL and persisted tables; see [Storage Records](storage-records.md)
 - validator-run storage effects; see [Storage Effects](storage-effects.md)
 - artifact storage; see [Artifact Storage](storage-artifacts.md)
@@ -44,9 +44,9 @@ Use these owner links when a design-quality finding crosses another contract:
 | Status method behavior | [Status method](api/method-status.md) |
 | Close-task method behavior | [Close-task method](api/method-close-task.md) |
 | Method-to-storage effects for active API method branches | [Storage Effects](storage-effects.md) |
-| Deferred design gates, policy blockers, broad validators, waiver candidates, and policy catalogs | [Later Candidate Index](../later/index.md) |
+| Deferred design gates, policy blockers, broad validators, waiver candidates, and policy catalogs | [Scope Reference](scope.md) |
 
-Documentation in this repository remains planning source material. It does not mean a Harness Server, runtime state, generated evidence, QA record, Acceptance record, residual-risk record, or close record exists here today.
+Documentation in this repository remains planning reference material. It does not mean a Harness Server, runtime state, generated evidence, QA record, Acceptance record, residual-risk record, or close record exists here today.
 
 ## 2. Active current MVP design-quality role
 
@@ -476,7 +476,7 @@ Effect:
 - Remain later-only material.
 
 Owner links:
-- [Later](../later/index.md)
+- [Scope](scope.md)
 
 Close effect:
 - They have no active close effect.
@@ -552,7 +552,7 @@ This document does not publish:
 - active design-policy validator IDs
 - a policy-to-validator mapping
 
-Later stable validator ID sets remain candidates in [Later policy and conformance: `ValidatorResult` stable IDs and policy families](../later/policy-and-conformance.md#validatorresult-stable-ids-and-policy-families) unless an owner promotes a narrow active contract.
+Later stable validator ID sets remain candidates in [Later policy and conformance: `ValidatorResult` stable IDs and policy families](scope.md) unless an owner promotes a narrow active contract.
 
 ## 8. Later policy catalog boundary
 
@@ -600,7 +600,7 @@ Not allowed:
 - No active policy catalog, stewardship gate, or full review procedure exists.
 
 Promotion would need:
-- A scoped policy owner, reader-facing behavior, proof expectations, and active/later migration path.
+- A scoped policy owner, reader-facing behavior, proof expectations, and active/out-of-scope migration path.
 
 <a id="design-quality-later-detailed-review-displays"></a>
 ### Detailed review displays
@@ -609,6 +609,6 @@ Not allowed:
 - No active operations report, fixture requirement, implementation task, or conformance obligation exists.
 
 Promotion would need:
-- Promotion through [Later Candidate Index](../later/index.md), promotion-time owner updates, and documentation-only acceptance before implementation work starts.
+- Promotion through [Scope Reference](scope.md), promotion-time owner updates, and documentation acceptance before implementation work starts.
 
-Later candidates may keep names only. They must not be presented as active current MVP requirements, blockers, waiver rules, evidence expectations, validator mappings, fixture requirements, operations reports, or implementation tasks.
+Out-of-scope capabilities may keep names only. They must not be presented as active current MVP requirements, blockers, waiver rules, evidence expectations, validator mappings, fixture requirements, operations reports, or implementation tasks.

@@ -1,6 +1,6 @@
 # Storage
 
-This page is a short router for the storage document family. It is documentation source material only; it does not create a Harness Server, Runtime Home, database, artifact store, migration runner, generated projection, runtime state, or implementation-complete DDL in this repository.
+This page is a short router for the storage document family. It is documentation reference material only; it does not create a Harness Server, Runtime Home, database, artifact store, migration runner, generated projection, runtime state, or implementation-complete DDL in this repository.
 
 ## How to read
 
@@ -15,7 +15,7 @@ The storage family separates conditions, results, exceptions, and non-claims. Do
 
 The storage family owns:
 
-- where future Harness records persist
+- where Harness records persist
 - what committed records mean as storage authority
 - how method branches affect persistence
 - how artifacts move from temporary staging to persistent references
@@ -33,7 +33,7 @@ The storage family does not own:
 - Runtime Home deployment
 - permission claims
 
-Use the [MVP API router](api/mvp-api.md), method owner documents, the API schema owners, [Core Model](core-model.md), [API Errors](api/errors.md), [Security](security.md), and [Runtime Boundaries](runtime-boundaries.md) for those contracts.
+Use the [API Methods](api/methods.md), method owner documents, the API schema owners, [Core Model](core-model.md), [API Errors](api/errors.md), [Security](security.md), and [Runtime Boundaries](runtime-boundaries.md) for those contracts.
 
 API data shape and persistence effect are separate. A response field such as `CloseReadinessBlocker[]`, `ArtifactRef`, or `StagedArtifactHandle` describes API data; it does not by itself prove that a row was written, an artifact was promoted, a handle was consumed, or `project_state.state_version` changed.
 
@@ -58,7 +58,7 @@ Use [Storage Records](storage-records.md) for:
 - Table overview.
 - Storage-owned record values and status fields.
 - Storage-owned JSON.
-- Record-level active/later exclusions.
+- Record-level active/out-of-scope exclusions.
 
 **Storage Effects route**
 
@@ -91,4 +91,4 @@ Use [Storage Versioning](storage-versioning.md) for:
 - locks.
 - migrations.
 
-Storage owners describe future Harness Runtime Home records only. This documentation repository is not a Runtime Home and must not contain generated runtime state.
+Storage owners describe Harness Runtime Home records only. This documentation repository is not a Runtime Home and must not contain generated runtime state.

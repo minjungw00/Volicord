@@ -1,14 +1,14 @@
 # Harness project / 하네스 프로젝트
 
-## Repository status / 저장소 상태
+## Repository Role / 저장소 역할
 
-This repository is documentation-only. It contains planning source material for a future local Harness Server. Based on the current repository contents, it does not contain the Harness runtime server implementation.
+This repository contains the bilingual Harness documentation set and owner-route metadata for the local Harness Server.
 
-이 저장소는 문서 전용입니다. 향후 로컬 하네스 서버를 위한 계획 원천 자료를 담고 있습니다. 현재 저장소 내용 기준으로 하네스 런타임 서버 구현은 포함하지 않습니다.
+이 저장소는 로컬 하네스 서버를 위한 한영 문서 세트와 담당 문서 경로 메타데이터를 담고 있습니다.
 
-For the canonical current scope, see [Active MVP scope](docs/en/reference/active-mvp-scope.md).
+For the canonical current scope, see [Scope](docs/en/reference/scope.md).
 
-현재 범위의 기준 설명은 [현재 MVP 범위 참조](docs/ko/reference/active-mvp-scope.md)를 확인하세요.
+현재 범위의 기준 설명은 [범위](docs/ko/reference/scope.md)를 확인하세요.
 
 ## What this repository contains / 이 저장소에 있는 것
 
@@ -20,11 +20,11 @@ For the canonical current scope, see [Active MVP scope](docs/en/reference/active
 - 계획 경계와 기술 계약을 다루는 참조 담당 문서.
 - [`AGENTS.md`](AGENTS.md)와 `docs/*/maintain/*`의 유지보수 지침.
 
-## What this repository does not contain / 이 저장소에 없는 것
+## Runtime Boundaries / 런타임 경계
 
-- A running Harness instance, runtime implementation, Harness Runtime Home, generated runtime state, operational artifacts, executable fixtures, or conformance runners.
+Runtime state, generated artifacts, operational records, executable fixtures, conformance outputs, and product implementation files belong outside this documentation tree.
 
-- 실행 중인 하네스 인스턴스, 런타임 구현, Harness Runtime Home, 생성된 런타임 상태, 운영 아티팩트, 실행 가능한 픽스처, 적합성 실행기.
+런타임 상태, 생성된 아티팩트, 운영 기록, 실행 가능한 픽스처, 적합성 출력, 제품 구현 파일은 이 문서 트리 밖에 둡니다.
 
 ## Start reading
 
@@ -34,7 +34,7 @@ For the canonical current scope, see [Active MVP scope](docs/en/reference/active
 - Working user: [`docs/en/use/user-guide.md`](docs/en/use/user-guide.md)
 - Agent behavior: [`docs/en/use/agent-guide.md`](docs/en/use/agent-guide.md)
 - Technical contract: [`docs/en/reference/README.md`](docs/en/reference/README.md)
-- Current scope: [`docs/en/reference/active-mvp-scope.md`](docs/en/reference/active-mvp-scope.md)
+- Current scope: [`docs/en/reference/scope.md`](docs/en/reference/scope.md)
 
 ### 한국어
 
@@ -42,7 +42,7 @@ For the canonical current scope, see [Active MVP scope](docs/en/reference/active
 - 작업 중인 사용자: [`docs/ko/use/user-guide.md`](docs/ko/use/user-guide.md)
 - 에이전트 동작: [`docs/ko/use/agent-guide.md`](docs/ko/use/agent-guide.md)
 - 기술 계약: [`docs/ko/reference/README.md`](docs/ko/reference/README.md)
-- 현재 범위: [`docs/ko/reference/active-mvp-scope.md`](docs/ko/reference/active-mvp-scope.md)
+- 현재 범위: [`docs/ko/reference/scope.md`](docs/ko/reference/scope.md)
 
 ## Documentation rules / 문서 규칙
 
@@ -56,6 +56,6 @@ English and Korean docs are both active. Keep semantic parity by meaning, not by
 
 ## Contributor notes / 기여자 참고
 
-Read [`AGENTS.md`](AGENTS.md) before editing. Keep work documentation-only, use small batches, and report changed files.
+Read [`AGENTS.md`](AGENTS.md) before editing. Use small documentation batches and report changed files.
 
-편집 전 [`AGENTS.md`](AGENTS.md)를 읽습니다. 작업은 문서 전용으로 유지하고, 작은 묶음으로 수정한 뒤 변경한 파일을 보고합니다.
+편집 전 [`AGENTS.md`](AGENTS.md)를 읽습니다. 작은 문서 묶음으로 수정한 뒤 변경한 파일을 보고합니다.

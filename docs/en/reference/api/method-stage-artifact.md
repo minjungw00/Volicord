@@ -51,7 +51,7 @@ Requires:
 
 Result:
 
-- A future server records `created_by_surface_id` and `created_by_surface_instance_id` from the verified local surface.
+- A server records `created_by_surface_id` and `created_by_surface_instance_id` from the verified local surface.
 
 Non-claim:
 

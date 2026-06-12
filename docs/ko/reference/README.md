@@ -2,7 +2,7 @@
 
 이 색인은 "이 질문의 담당 문서는 어디인가?"에 답하기 위한 문서입니다. 이 README는 담당 문서로 안내할 뿐, API 계약, 스키마, 저장 효과, 보안 보장, 현재 MVP 범위를 정의하지 않습니다.
 
-이 문서들은 향후 하네스 서버를 위한 원천 자료입니다. 이 저장소에 런타임 구현, 런타임 상태, 생성된 아티팩트, 상태 보기, 증거 기록, QA 기록, 수락 기록, 닫기 기록, 적합성 결과가 있다는 뜻이 아닙니다.
+이 문서들은 하네스 서버를 위한 참조 자료입니다. 이 저장소에 런타임 구현, 런타임 상태, 생성된 아티팩트, 상태 보기, 증거 기록, QA 기록, 수락 기록, 닫기 기록, 적합성 결과가 있다는 뜻이 아닙니다.
 
 ## 읽기 규칙
 
@@ -18,8 +18,8 @@
 
 | 단계 | 담당 문서 경로 |
 |---|---|
-| 현재 MVP 범위 | `active-mvp-scope.md` |
-| API 메서드 목록 | `api/mvp-api.md` |
+| 현재 MVP 범위 | `scope.md` |
+| API 메서드 목록 | `api/methods.md` |
 | API 메서드 동작 | [API 메서드 담당 문서](#api-메서드-담당-문서) |
 | 스키마 형태 | [API와 스키마 담당 문서](#api와-스키마-담당-문서) |
 | 저장 효과 | `storage-effects.md` |
@@ -30,20 +30,19 @@
 
 | 질문 | 담당 문서 |
 |---|---|
-| 현재 MVP 포함 범위는 어디서 정의되는가? | `active-mvp-scope.md` |
-| 현재 MVP 제외 범위는 어디서 정의되는가? | `active-mvp-scope.md` |
-| 기능이 현재 활성인가, 프로필 조건부인가, 이후 후보인가? | `active-mvp-scope.md` |
-| 현재 MVP에서 `isolated`가 활성인가? | `active-mvp-scope.md`, `security.md` |
-| 런타임 구현이 시작되었는가? | `../build/mvp-plan.md` |
-| 문서 전용 경계는 어디서 정의되는가? | `runtime-boundaries.md`, `active-mvp-scope.md` |
-| 유지보수자 인계 상태는 어디서 추적하는가? | `../build/mvp-plan.md` |
+| 현재 MVP 포함 범위는 어디서 정의되는가? | `scope.md` |
+| 현재 MVP 제외 범위는 어디서 정의되는가? | `scope.md` |
+| 기능이 현재 활성인가, 프로필 조건부인가, 예약된 값인가, 범위 밖인가? | `scope.md` |
+| 현재 MVP에서 `isolated`가 활성인가? | `scope.md`, `security.md` |
+| 구현 경로는 어디서 설명하는가? | `../build/implementation-guide.md` |
+| 문서 경계는 어디서 정의되는가? | `runtime-boundaries.md`, `scope.md` |
 
 ## 담당 문서 찾기
 
 | 질문 | 담당 문서 |
 |---|---|
 | Core 권한은 어디서 정의되는가? | `core-model.md` |
-| 활성 API 메서드 목록은 어디에 있는가? | `api/mvp-api.md` |
+| 활성 API 메서드 목록은 어디에 있는가? | `api/methods.md` |
 | 공통 API 요청 래퍼는 어디서 정의되는가? | `api/schema-core.md` |
 | 응답 분기는 어디서 정의되는가? | `api/schema-core.md` |
 | 공개 오류 코드는 어디서 정의되는가? | `api/errors.md` |
@@ -59,12 +58,12 @@
 
 | 질문 | 담당 문서 |
 |---|---|
-| API 예시는 어떤 시나리오를 쓰는가? | `api/mvp-api.md`, `../maintain/authoring-guide.md`, `../maintain/checks.md` |
+| API 예시는 어떤 시나리오를 쓰는가? | `api/methods.md`, `../maintain/authoring-guide.md`, `../maintain/checks.md` |
 | API 예시가 문서 유지보수를 시나리오로 써도 되는가? | `../maintain/authoring-guide.md` |
 | API 예시 점검은 어디서 정의되는가? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
 | API 예시 정합성 점검은 어디서 정의되는가? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
 | API 예시 필드 이름 점검은 어디서 정의되는가? | `../maintain/checks.md`, `../maintain/authoring-guide.md` |
-| 활성 API 메서드 목록은 어디에 있는가? | `api/mvp-api.md` |
+| 활성 API 메서드 목록은 어디에 있는가? | `api/methods.md` |
 | API 메서드 이름 값은 어디서 정의되는가? | `api/schema-value-sets.md` |
 | 메서드 페이로드 필드는 어디서 정의되는가? | [API 메서드 담당 문서](#api-메서드-담당-문서) |
 | 공통 페이로드 스키마는 어디서 정의되는가? | `api/schema-core.md` |
@@ -156,19 +155,14 @@
 | 압축된 증거 요약 의미는 어디서 정의되는가? | `core-model.md` |
 | 압축된 증거 요약 형태는 어디서 정의되는가? | `api/schema-state.md` |
 
-## 이후 후보와 유지보수 문서
+## 범위와 유지보수 문서
 
 | 질문 | 담당 문서 |
 |---|---|
-| 이후 후보는 어디에 문서화하는가? | `../later/index.md` |
-| 보안 이후 후보는 어디에 있는가? | `../later/security-and-assurance.md` |
-| 아티팩트 이후 후보는 어디에 있는가? | `../later/artifacts-and-evidence.md` |
-| 커넥터 이후 후보는 어디에 있는가? | `../later/connectors-and-surfaces.md` |
-| 정책 이후 후보는 어디에 있는가? | `../later/policy-and-conformance.md` |
-| 작업 흐름 이후 후보는 어디에 있는가? | `../later/workflow-and-collaboration.md` |
-| 이후 후보는 현재 요구사항인가? | `active-mvp-scope.md` |
-| 승격 시점의 담당 문서 갱신은 무엇인가? | `glossary.md`, `../later/index.md` |
-| 이후 후보가 활성화되려면 무엇이 바뀌는가? | `../later/index.md` |
+| 예약된 값, 프로필 조건부 값, 범위 밖 기능은 활성인가? | `scope.md` |
+| 현재 범위 제외 항목은 어디서 정의되는가? | `scope.md` |
+| 승격 시점의 담당 문서 갱신은 무엇인가? | `glossary.md`, `scope.md` |
+| 범위 밖 기능이 활성화되려면 무엇이 바뀌어야 하는가? | `scope.md`, 영향받는 담당 문서 |
 | "Full close-readiness evaluation order"의 한국어 표현은 어디서 확인하는가? | `glossary.md`, `../maintain/translation-guide.md` |
 | "close readiness"의 한국어 표현은 어디서 확인하는가? | `../../terminology-map.yaml`, `glossary.md`, `../maintain/translation-guide.md` |
 | 한국어 표현과 번역 지침은 어디서 관리되는가? | `../maintain/translation-guide.md`, `../../terminology-map.yaml`, `glossary.md` |

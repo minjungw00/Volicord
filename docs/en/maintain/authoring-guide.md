@@ -17,7 +17,7 @@ It does not authorize:
 - executable fixtures
 - conformance runners
 
-This repository remains documentation-only unless the maintainer handoff owner says otherwise in [MVP Plan](../build/mvp-plan.md). Treat the docs as source material for a future Harness Server, not as accepted implementation-ready runtime behavior.
+The documentation tree stores maintained product and system documentation. Runtime outputs, generated records, and product implementation files belong outside this tree.
 
 ## 1. Documentation architecture
 
@@ -30,9 +30,8 @@ Use the compact active routes:
 - `docs/*/use/user-guide.md`
 - `docs/*/use/agent-guide.md`
 - `docs/*/use/judgment-examples.md`
-- `docs/*/build/mvp-plan.md`
+- `docs/*/build/implementation-guide.md`
 - `docs/*/reference/README.md`
-- `docs/*/later/index.md`
 - `docs/*/maintain/authoring-guide.md`
 - `docs/*/maintain/translation-guide.md`
 - `docs/*/maintain/checks.md`
@@ -45,7 +44,7 @@ Use this path for documentation maintenance:
 
 [Authoring Guide](authoring-guide.md) -> [Translation Guide](translation-guide.md) -> [Checks](checks.md) -> [doc-index.yaml](../../doc-index.yaml) -> [Terminology Map](../../terminology-map.yaml).
 
-The maintain path helps editors choose inputs and owners. It does not create runtime state, implementation readiness, acceptance, evidence, close records, or permission to start server coding.
+The maintain path helps editors choose inputs and owners. It does not create runtime state, acceptance, evidence, close records, or server implementation permission.
 
 ## 2. Canonical owner rule
 
@@ -57,7 +56,7 @@ Use these single-owner routes before repeating details:
 
 | Topic | Canonical owner |
 |---|---|
-| Current MVP boundary and active/later status | [Active MVP Scope](../reference/active-mvp-scope.md) |
+| Current MVP boundary and active/out-of-scope status | [Scope](../reference/scope.md) |
 | Common API envelopes and response branches | [API Schema Core](../reference/api/schema-core.md) |
 | Public error codes and error routing | [Errors](../reference/api/errors.md) |
 | Storage effects | [Storage Effects](../reference/storage-effects.md) |
@@ -68,7 +67,7 @@ Use these single-owner routes before repeating details:
 Use these multi-owner routes when the question crosses an owner boundary:
 
 - API method contracts:
-  - [MVP API router](../reference/api/mvp-api.md)
+  - [API Methods](../reference/api/methods.md)
   - the method owner documents it lists
 - API schema families:
   - [API State Schemas](../reference/api/schema-state.md)
@@ -81,9 +80,8 @@ Use these multi-owner routes when the question crosses an owner boundary:
 - Surface and connector owners:
   - [Surface Recipes](../use/surface-recipes.md)
   - [Agent Integration](../reference/agent-integration.md)
-- Later-candidate routing:
-  - [Later Candidate Index](../later/index.md)
-  - [Active MVP Scope](../reference/active-mvp-scope.md)
+- Out-of-scope capability routing:
+  - [Scope](../reference/scope.md)
 - Translation and bilingual terminology:
   - [Translation Guide](translation-guide.md)
   - [Terminology Map](../../terminology-map.yaml)
@@ -92,15 +90,15 @@ Maintain docs own authoring rules and checks. They must not become secondary sou
 
 ### Value status stabilization rules
 
-A value name can exist in a schema, example, storage note, route page, or later-candidate list without the current MVP providing that behavior. Treat the name as vocabulary or reserved surface area until [Active MVP Scope](../reference/active-mvp-scope.md) and the semantic owner both say the behavior is active.
+A value name can exist in a schema, example, storage note, or route page without the current MVP providing that behavior. Treat the name as vocabulary or reserved surface area until [Scope](../reference/scope.md) and the semantic owner both say the behavior is active.
 
 Reserved and profile-gated values are not active guarantees. Mark them at the point of use and avoid default, required, supported, enforced, preventive, detective, accepted, verified, or close-ready wording unless the active owner says the profile and behavior are available.
 
 Value-set owner documents define exact value names, validation placement, and enum-like vocabulary. Semantic owner documents define what the value means, whether it is currently available, what guarantee level it carries, and what reader consequence follows. If a value-set entry and a semantic owner appear to disagree, do not infer behavior from the value name. Fix the owner gap or route the reader to the correct owner.
 
-Later-candidate promotion requirements may name the kinds of owners that must change at promotion time. They must not name a non-existing owner as if it were already a current active owner document. If no current owner exists, say that promotion requires creating or designating that owner at promotion time, then updating active scope, schemas, API behavior, storage, templates, checks, and paired-language docs as applicable.
+Out-of-scope capability activation requirements may name the kinds of owners that must change when the capability becomes active. They must not name a non-existing owner as if it were already a current active owner document. If no current owner exists, say that activation requires creating or designating that owner, then updating active scope, schemas, API behavior, storage, templates, checks, and paired-language docs as applicable.
 
-Route documents must expose canonical owner gaps rather than hide them. If a README, index, Start page, Use page, Later page, or `doc-index.yaml` route cannot point to a current owner for the question, do not fill the gap with route prose. Say what is missing, route to the closest real owner or deferred owner, and leave the normative definition out of the route document.
+Route documents must expose canonical owner gaps rather than hide them. If a README, index, Start page, Use page, Scope page, or `doc-index.yaml` route cannot point to a current owner for the question, do not fill the gap with route prose. Say what is missing, route to the closest real owner, and leave the normative definition out of the route document.
 
 ## 3. When to edit an existing owner
 
@@ -114,14 +112,14 @@ If a duplicate explanation is stale, do not refresh the duplicate. Replace it wi
 
 Create a new document only when no existing owner can responsibly hold the concept. The new page must have a stable reader purpose, a clear owner boundary, and a paired English/Korean route when it is part of the active documentation set.
 
-Do not create a new document for temporary planning notes, migration notes, review leftovers, one-off summaries, or duplicated contract extracts. Put implementation-readiness decisions in [MVP Plan](../build/mvp-plan.md). Put contract definitions in the appropriate Reference owner. Put terminology choices in [Glossary](../reference/glossary.md), [Translation Guide](translation-guide.md), or [Terminology Map](../../terminology-map.yaml).
+Do not create a new document for temporary planning notes, migration notes, review leftovers, one-off summaries, or duplicated contract extracts. Put implementation decisions in [Implementation Guide](../build/implementation-guide.md). Put contract definitions in the appropriate Reference owner. Put terminology choices in [Glossary](../reference/glossary.md), [Translation Guide](translation-guide.md), or [Terminology Map](../../terminology-map.yaml).
 
 When adding a real new owner, update [Reference README](../reference/README.md) or the appropriate route index so readers can find it. Update [doc-index.yaml](../../doc-index.yaml) only as documentation retrieval metadata.
 
 <a id="active-mvp-api-method-split-threshold"></a>
-### Active MVP API method owners
+### API method owners
 
-[`reference/api/mvp-api.md`](../reference/api/mvp-api.md) is the stable route document for the active MVP API method family. Method-specific owner documents own active MVP method behavior:
+[`reference/api/methods.md`](../reference/api/methods.md) is the stable route document for the active API method family. Method-specific owner documents own active MVP method behavior:
 
 - `reference/api/method-intake.md`
 - `reference/api/method-update-scope.md`
@@ -134,11 +132,11 @@ When adding a real new owner, update [Reference README](../reference/README.md) 
 
 When active method behavior changes, edit the method owner first. Then update the API router, [Reference README](../reference/README.md), [doc-index.yaml](../../doc-index.yaml), paired-language owner, and practical inbound links that should land on the method owner.
 
-Keep [`reference/api/mvp-api.md`](../reference/api/mvp-api.md) as a route and shared-reading document. It should not duplicate method-specific request bodies, response bodies, result branches, blocked-result details, or storage-effect detail already owned by a method owner.
+Keep [`reference/api/methods.md`](../reference/api/methods.md) as a route and shared-reading document. It should not duplicate method-specific request bodies, response bodies, result branches, blocked-result details, or storage-effect detail already owned by a method owner.
 
 ## 5. Route documents and README files
 
-README files, Start pages, Use pages, Build pages, Later indexes, Maintain pages, and reference indexes route readers. They may say what a document is for, who should read it, and what practical result the reader should expect.
+README files, Start pages, Use pages, Build pages, Maintain pages, Scope pages, and reference indexes route readers. They may say what a document is for, who should read it, and what practical result the reader should expect.
 
 They should not carry copied API response branches, blocker schema details, access class lists, storage effect specifics, security guarantee details, or close-readiness contract explanations. Use a short summary plus a link to the owner instead.
 
@@ -235,16 +233,16 @@ Do not route active documentation through stale legacy paths. If an old path app
 
 ## 10. Pre-merge checklist
 
-- [ ] The edit stayed documentation-only and did not imply runtime implementation.
+- [ ] The edit stayed documentation and did not imply runtime implementation.
 - [ ] Each concept still has one canonical owner.
 - [ ] README, route, and maintain documents use short summaries plus owner links instead of copied contract explanations.
 - [ ] API, storage, schema, security, access-boundary, and close-readiness details live in the appropriate Reference owner.
-- [ ] Value names are not treated as current MVP behavior merely because they exist in schemas, examples, storage notes, or later-candidate lists.
+- [ ] Value names are not treated as current MVP behavior merely because they exist in schemas, examples, storage notes, or out-of-scope lists.
 - [ ] Example field names come from the method, schema, or storage owner, and storage-owned summary data is labeled where it uses a different field name.
 - [ ] API examples are internally consistent across response snapshots, `state_version`, refs, paths, artifact refs, sensitive approval reasons, expiration timestamps, and shared scenario evidence.
 - [ ] Reserved and profile-gated values are labeled where used and are not described as active guarantees.
 - [ ] Value-set owners define names; semantic owners define meaning, current availability, guarantees, and reader consequences.
-- [ ] Later-candidate promotion wording does not present non-existing owners as current active owner documents.
+- [ ] Out-of-scope activation wording does not present non-existing owners as current active owner documents.
 - [ ] Route documents expose canonical owner gaps instead of hiding them with broad route text.
 - [ ] Meaning-changing edits were made in both English and Korean.
 - [ ] Korean prose is natural, not a literal translation, and exact identifiers are preserved.

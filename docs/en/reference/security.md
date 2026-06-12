@@ -1,6 +1,6 @@
 # Security reference
 
-Use this page when security wording, local-access posture, trust boundaries, or guarantee levels need to stay honest. This is documentation source material for a future Harness Server. It does not implement security controls, runtime state, generated artifacts, or operational monitoring.
+Use this page when security wording, local-access posture, trust boundaries, or guarantee levels need to stay honest. This is documentation reference material for a Harness Server. It does not implement security controls, runtime state, generated artifacts, or operational monitoring.
 
 ## 1. Owns / Does not own
 
@@ -10,7 +10,7 @@ Use this page when security wording, local-access posture, trust boundaries, or 
 | Guarantee semantics and non-claims for `cooperative`, `detective`, `preventive`, and `isolated`. | Storage layouts, artifact lifecycle, locks, hashes, or migrations. |
 | Trust-boundary wording for local access, surfaces, and generated displays. | Connector implementation or surface-specific operating instructions. |
 | Capability-gated `detective` claim boundaries. | OS hardening, deployment hardening, arbitrary-tool sandboxing, or OS permission enforcement. |
-| Sensitive-action approval versus product-file write-scope separation. | Runtime implementation status or permission to build the server. |
+| Sensitive-action approval versus product-file write-scope separation. | Runtime implementation routing or permission to build the server. |
 
 Use the [Reference index](README.md) to route API, storage, connector, runtime-boundary, and active-scope details to their owners.
 
@@ -20,13 +20,13 @@ Use the [Reference index](README.md) to route API, storage, connector, runtime-b
 The current MVP guarantee boundary is `cooperative` by default.
 
 Conditions:
-- "Available in current MVP" means the specification may describe the behavior as current MVP source material.
+- "Available in current MVP" means the specification may describe the behavior as current MVP reference material.
 - Capability-gated `detective` wording requires a documented capability check that passed for the named surface and observed scope.
 
 May claim:
 - `cooperative` is the default current-MVP guarantee level.
 - `detective` is available only for the checked capability and observed scope.
-- `preventive` and `isolated` are reserved for later/profile-gated use.
+- `preventive` and `isolated` are reserved or profile-gated values.
 
 Must not claim:
 - This repository contains a working Harness Server, runtime monitor, sandbox, or storage layer.
@@ -35,16 +35,16 @@ Must not claim:
 - `isolated` is a synonym for `preventive`.
 
 Owner links:
-- [Active MVP Scope](active-mvp-scope.md) owns current-MVP inclusion and active/later boundaries.
+- [Scope](scope.md) owns current-MVP inclusion and active/out-of-scope boundaries.
 - [API Value Sets](api/schema-value-sets.md) owns guarantee label value entries.
-- [Later Candidate Index](../later/index.md) owns deferred stronger security and assurance candidates.
+- [Scope Reference](scope.md) owns deferred stronger security and assurance candidates.
 
 | Level | Current MVP status | Scan rule |
 |---|---|---|
 | `cooperative` | active default | Use for documented procedures and agent cooperation. |
 | `detective` | limited | Use only after the relevant capability check has passed, and name the observed scope. |
 | `preventive` | not active | Do not claim current prevention, active blocking, sandboxing, permission enforcement, or isolation. |
-| `isolated` | not active | Treat as a reserved later/profile-gated isolation label with no current isolation guarantee. |
+| `isolated` | not active | Treat as a reserved or profile-gated isolation label with no current isolation guarantee. |
 
 ## 3. Explicit non-claims
 
@@ -205,7 +205,7 @@ Conditions:
 - Future server behavior or runtime storage is being described.
 
 May claim:
-- The future server would mediate Harness records and storage effects.
+- The server would mediate Harness records and storage effects.
 - Runtime Home details must come from storage/runtime owners.
 
 Must not claim:
@@ -271,7 +271,7 @@ Owner links:
 | product write outside expected scope | See [Product write outside scope](#security-threat-product-write-outside-scope) |
 | changed paths differ from expected scope | See [Changed paths differ](#security-threat-changed-paths-differ) |
 | stale or copied authority appears in text | See [Stale or copied authority](#security-threat-stale-copied-authority) |
-| local Harness files modified outside future server | See [Local Harness files modified](#security-threat-local-files-modified) |
+| local Harness files modified outside server | See [Local Harness files modified](#security-threat-local-files-modified) |
 | sensitive-action approval treated as broad approval | See [Broad approval confusion](#security-threat-broad-approval-confusion) |
 
 <a id="security-threat-procedure-ignored"></a>
@@ -339,7 +339,7 @@ Not allowed:
 ### Local Harness files modified
 
 Condition:
-- Local Harness files are modified outside the future server.
+- Local Harness files are modified outside the server.
 
 Current control:
 - Storage/runtime owners may define consistency checks or rejection behavior.
@@ -376,7 +376,7 @@ Conditions:
 
 May claim:
 - Harness records, checks, routes, rejects within its own API path, or asks for the right user-owned judgment.
-- The specification requires future server behavior to keep owner-defined outcomes on their documented paths.
+- The specification requires server behavior to keep owner-defined outcomes on their documented paths.
 
 Must not claim:
 - Harness blocks arbitrary tools.
@@ -433,7 +433,7 @@ May claim:
 
 Must not claim:
 - The current MVP has an active `preventive` guarantee.
-- A future server obligation is already active prevention.
+- A server obligation is already active prevention.
 
 ### `isolated`
 
@@ -451,7 +451,7 @@ Must not claim:
 ### Promotion requirements
 
 Conditions:
-- A document wants to promote a later/profile-gated `preventive` or `isolated` claim into active behavior.
+- A document wants to promote a reserved or profile-gated `preventive` or `isolated` claim into active behavior.
 
 Must document:
 - The mechanism that prevents the action or provides isolation.
@@ -467,16 +467,16 @@ May claim:
 - Future server obligations may be described as "the specification requires" until a stronger guarantee is promoted.
 
 Owner links:
-- [Active MVP Scope](active-mvp-scope.md) owns active/later status.
+- [Scope](scope.md) owns active/out-of-scope status.
 - [API Value Sets](api/schema-value-sets.md) owns guarantee label value entries.
-- [Later Candidate Index](../later/index.md) owns deferred stronger capability, monitoring, isolation, and preventive-control candidates.
+- [Scope Reference](scope.md) owns deferred stronger capability, monitoring, isolation, and preventive-control candidates.
 
 ## 11. Cross-owner links
 
-- [Active MVP Scope](active-mvp-scope.md) owns current MVP inclusion, exclusion, and active/later boundaries.
+- [Scope](scope.md) owns current MVP inclusion, exclusion, and active/out-of-scope boundaries.
 - [Runtime Boundaries](runtime-boundaries.md) owns Product Repository, Harness Server, Runtime Home, and non-isolation separation.
 - [Agent Integration](agent-integration.md) owns connector behavior and `capability_profile` meaning at the surface boundary.
-- [MVP API router](api/mvp-api.md), method owner documents, [API Value Sets](api/schema-value-sets.md), and [API Errors](api/errors.md) own method routing, method behavior, value sets, and public error routing.
+- [API Methods](api/methods.md), method owner documents, [API Value Sets](api/schema-value-sets.md), and [API Errors](api/errors.md) own method routing, method behavior, value sets, and public error routing.
 - [Core Model](core-model.md) owns user-owned judgment and non-substitution rules.
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), and [Artifact Storage](storage-artifacts.md) own storage and artifact details.
-- [Later Candidate Index](../later/index.md) owns deferred stronger capability, monitoring, isolation, and preventive-control candidates.
+- [Scope Reference](scope.md) owns deferred stronger capability, monitoring, isolation, and preventive-control candidates.

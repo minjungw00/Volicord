@@ -21,16 +21,16 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 
 | Term | Korean reference term | Primary owner |
 |---|---|---|
-| Harness | 하네스 | [Active MVP Scope](active-mvp-scope.md) |
+| Harness | 하네스 | [Scope](scope.md) |
 | Product Repository | Product Repository | [Runtime Boundaries](runtime-boundaries.md) |
 | Harness Runtime Home | Harness Runtime Home | [Runtime Boundaries](runtime-boundaries.md) |
-| documentation-only | 문서 전용 | [Authoring Guide](../maintain/authoring-guide.md) |
-| active MVP | 현재 MVP | [Active MVP Scope](active-mvp-scope.md) |
-| later candidate | 이후 후보 | [Later Candidate Index](../later/index.md) |
+| documentation | 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
+| active MVP | 현재 MVP | [Scope](scope.md) |
+| out-of-scope capability | 이후 후보 | [Scope Reference](scope.md) |
 | owner document | 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
 | current owner | 현재 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
-| promotion-time owner update | 승격 시점의 담당 문서 갱신 | [Later Candidate Index](../later/index.md) |
-| future owner placeholder | 향후 담당 문서 자리표시자 | [Authoring Guide](../maintain/authoring-guide.md) |
+| promotion-time owner update | 승격 시점의 담당 문서 갱신 | [Scope Reference](scope.md) |
+| owner placeholder | 담당 문서 자리표시자 | [Authoring Guide](../maintain/authoring-guide.md) |
 | `Task` | `Task` | [Core Model](core-model.md) |
 | scope | 범위 | [Core Model](core-model.md) |
 | user-owned judgment | 사용자 소유 판단 | [Core Model](core-model.md) |
@@ -54,8 +54,8 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | detective guarantee | 탐지형 보장 | [Security](security.md) |
 | preventive guarantee | 예방형 보장 | [Security](security.md) |
 | `isolated` | `isolated` | [Security](security.md) |
-| reserved value | 예약된 값 | [Active MVP Scope](active-mvp-scope.md) |
-| profile-gated value | 프로필 조건부 값 | [Active MVP Scope](active-mvp-scope.md) |
+| reserved value | 예약된 값 | [Scope](scope.md) |
+| profile-gated value | 프로필 조건부 값 | [Scope](scope.md) |
 | dry-run | dry-run 미리보기 | [API Schema Core](api/schema-core.md) |
 | blocked result | 차단 결과 | [API Errors](api/errors.md) |
 | rejected response | 거부 응답 | [API Schema Core](api/schema-core.md) |
@@ -79,7 +79,7 @@ Avoid:
 - Treating this documentation repository as a working server.
 
 Owner:
-- [Active MVP Scope](active-mvp-scope.md)
+- [Scope](scope.md)
 - [Runtime Boundaries](runtime-boundaries.md)
 
 Notes:
@@ -127,14 +127,14 @@ Owner:
 Notes:
 - The Harness Runtime Home is the future operational data space for Harness records and artifacts.
 
-### documentation-only
+### documentation
 
 English:
-- documentation-only
+- documentation
 
 Korean:
-- Reference: 문서 전용
-- User-facing: 문서 전용
+- Reference: 문서
+- User-facing: 문서
 
 Preserve:
 - File paths and owner labels
@@ -147,7 +147,7 @@ Avoid:
 Owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
 - [Runtime Boundaries](runtime-boundaries.md)
-- [MVP Plan](../build/mvp-plan.md)
+- [Implementation Guide](../build/implementation-guide.md)
 
 Notes:
 - Documentation-only work does not authorize runtime implementation or generated runtime records.
@@ -166,19 +166,19 @@ Preserve:
 - Owner titles and exact value strings
 
 Avoid:
-- Treating later candidates or profile-gated values as active requirements.
+- Treating out-of-scope capabilities or profile-gated values as active requirements.
 
 Owner:
-- [Active MVP Scope](active-mvp-scope.md)
+- [Scope](scope.md)
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
 - Active MVP is the active product scope boundary for the first planned local work loop.
 
-### later candidate
+### out-of-scope capability
 
 English:
-- later candidate
+- out-of-scope capability
 
 Korean:
 - Reference: 이후 후보
@@ -191,11 +191,11 @@ Avoid:
 - Calling deferred material an active MVP requirement.
 
 Owner:
-- [Later Candidate Index](../later/index.md)
-- [Active MVP Scope](active-mvp-scope.md)
+- [Scope Reference](scope.md)
+- [Scope](scope.md)
 
 Notes:
-- A later candidate is inactive until the relevant owners promote it.
+- A out-of-scope capability is inactive until the relevant owners promote it.
 
 ### owner document
 
@@ -239,7 +239,7 @@ Preserve:
 - `doc_id` values
 
 Avoid:
-- Naming a future owner placeholder as a current canonical owner.
+- Naming an owner placeholder as a current canonical owner.
 
 Owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
@@ -263,38 +263,38 @@ Preserve:
 - Anchors
 
 Avoid:
-- Naming a future owner as if it already exists as a current canonical owner.
+- Naming a missing owner as if it already exists as a current canonical owner.
 
 Owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
-- [Later Candidate Index](../later/index.md)
-- [Active MVP Scope](active-mvp-scope.md)
+- [Scope Reference](scope.md)
+- [Scope](scope.md)
 
 Notes:
 - Promotion may require creating or designating an owner, then updating active scope, schemas, API behavior, storage, templates, checks, and paired-language docs as applicable.
 
-### future owner placeholder
+### owner placeholder
 
 English:
-- future owner placeholder
+- owner placeholder
 
 Korean:
-- Reference: 향후 담당 문서 자리표시자
-- User-facing: 향후 담당 문서 자리표시자
+- Reference: 담당 문서 자리표시자
+- User-facing: 담당 문서 자리표시자
 
 Preserve:
-- Exact owner-gap wording when routing later candidates
+- Exact owner-gap wording when routing out-of-scope capabilities
 
 Avoid:
 - Routing readers to the placeholder as if it were a current canonical owner.
 
 Owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
-- [Later Candidate Index](../later/index.md)
+- [Scope Reference](scope.md)
 
 Notes:
-- Use this phrase only to signal that a later candidate may need an owner created or designated at promotion time.
-- A future owner placeholder is not a current owner document.
+- Use this phrase only to signal that an out-of-scope capability may need an owner created or designated before activation.
+- An owner placeholder is not a current owner document.
 
 ### `Task`
 
@@ -753,7 +753,7 @@ Avoid:
 
 Owner:
 - [API Value Sets](api/schema-value-sets.md)
-- [Shared envelope and response branch routes](api/mvp-api.md#shared-request-rules)
+- [Shared envelope and response branch routes](api/methods.md#shared-request-rules)
 - [Security](security.md)
 
 Notes:
@@ -776,7 +776,7 @@ Avoid:
 
 Owner:
 - [Security](security.md)
-- [Active MVP Scope](active-mvp-scope.md)
+- [Scope](scope.md)
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
@@ -844,7 +844,7 @@ Avoid:
 
 Owner:
 - [Security](security.md)
-- [Later Candidate Index](../later/index.md)
+- [Scope Reference](scope.md)
 
 Notes:
 - Use preventive guarantee only when the exact preventive mechanism and proof path are documented.
@@ -868,11 +868,11 @@ Avoid:
 
 Owner:
 - [Security](security.md) for semantics and non-claims
-- [Active MVP Scope](active-mvp-scope.md) for current-MVP availability
+- [Scope](scope.md) for current-MVP availability
 - [API Value Sets](api/schema-value-sets.md) for the value entry
 
 Notes:
-- `isolated` is a reserved later/profile-gated guarantee label, not an active current-MVP guarantee.
+- `isolated` is a reserved or profile-gated guarantee label, not an active current-MVP guarantee.
 - Presence in a value set does not activate behavior.
 
 ### reserved value
@@ -898,7 +898,7 @@ Avoid:
 - active guarantee
 
 Owner:
-- [Active MVP Scope](active-mvp-scope.md)
+- [Scope](scope.md)
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
@@ -921,7 +921,7 @@ Avoid:
 - Treating a profile-gated value as current MVP behavior because it appears in a value set.
 
 Owner:
-- [Active MVP Scope](active-mvp-scope.md)
+- [Scope](scope.md)
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
@@ -950,7 +950,7 @@ Avoid:
 
 Owner:
 - [API Schema Core](api/schema-core.md)
-- [MVP API router](api/mvp-api.md)
+- [API Methods](api/methods.md)
 - [API Errors](api/errors.md)
 - [Storage Effects](storage-effects.md)
 

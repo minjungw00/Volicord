@@ -23,7 +23,7 @@
 | 주제 | 담당 문서 |
 |---|---|
 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle` 형태 | [API 아티팩트 스키마](api/schema-artifacts.md) |
-| 아티팩트 관련 API 동작 | [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [MVP API 경로 문서](api/mvp-api.md) |
+| 아티팩트 관련 API 동작 | [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [API 메서드](api/methods.md) |
 | 일반 기록 배치와 DDL | [저장소 기록](storage-records.md) |
 | 메서드별 저장 효과와 상태 버전 영향 | [저장 효과](storage-effects.md), [저장소 버전 관리](storage-versioning.md) |
 | 로컬 접근, 접근 등급, 보안 보장 수준 | [보안](security.md), [런타임 경계](runtime-boundaries.md) |
@@ -557,7 +557,7 @@ expires_at: "<future-expiration-timestamp>"
 ## 관련 담당 문서
 
 - [API 아티팩트 스키마](api/schema-artifacts.md): `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle` 형태.
-- [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [MVP API 경로 문서](api/mvp-api.md): `harness.stage_artifact`, `harness.record_run`, 아티팩트 읽기 API 동작.
+- [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [API 메서드](api/methods.md): `harness.stage_artifact`, `harness.record_run`, 아티팩트 읽기 API 동작.
 - [저장 효과](storage-effects.md): 응답 분기가 저장 효과를 만드는지 여부와 상태 버전 영향.
 - [저장소 기록](storage-records.md): `artifact_staging`, `artifacts`, `artifact_links` 테이블 개요.
 - [저장소 버전 관리](storage-versioning.md): 저장소 상태 버전, 잠금, 버전 관리 경계.

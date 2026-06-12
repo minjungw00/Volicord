@@ -12,7 +12,7 @@
 
 이 가이드는 커넥터 동작, `capability_profile`, `VerifiedSurfaceContext`, 대체 동작, API 메서드, 스키마 필드, 저장 효과, 아티팩트 권한, 템플릿 본문, 보장 의미를 정의하지 않습니다. 그런 계약은 아래 참조 담당 문서에 남습니다.
 
-또한 이 가이드는 이 문서 전용 저장소에 하네스 서버, 런타임 상태, 생성된 아티팩트, 실행 가능한 적합성 결과가 있다는 증거가 아닙니다.
+또한 이 가이드는 이 문서 저장소에 하네스 서버, 런타임 상태, 생성된 아티팩트, 실행 가능한 적합성 결과가 있다는 증거가 아닙니다.
 
 ## CLI 접점
 
@@ -93,12 +93,12 @@ IDE/editor 통합은 에이전트가 절차를 지키도록 도울 수 있습니
 ## 참조 계약 링크
 
 - [에이전트 통합 참조](../reference/agent-integration.md): 커넥터 동작, `capability_profile`, `VerifiedSurfaceContext`, 맥락 주입/가져오기, 대체 동작, 커넥터 적합성.
-- [MVP API 경로 문서](../reference/api/mvp-api.md)와 메서드 담당 문서: 활성 메서드 동작과 요청 조건.
+- [API 메서드](../reference/api/methods.md)와 메서드 담당 문서: 활성 메서드 동작과 요청 조건.
 - [API 값 집합](../reference/api/schema-value-sets.md): 접근 등급과 enum 형태 API 값.
 - [API 오류](../reference/api/errors.md): 공개 오류 코드와 복구 경로.
 - [보안](../reference/security.md): 보장 표현과 비주장.
 - [런타임 경계](../reference/runtime-boundaries.md): Product Repository, Harness Server, Runtime Home 분리.
-- [현재 MVP 범위](../reference/active-mvp-scope.md): 활성, 프로필 조건부, 이후 후보 경계.
+- [현재 MVP 범위](../reference/scope.md): 활성, 프로필 조건부, 이후 후보 경계.
 
 ## 다음 읽기 경로
 

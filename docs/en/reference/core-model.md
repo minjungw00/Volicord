@@ -1,6 +1,6 @@
 # Core model reference
 
-This reference defines the future Harness Core authority model as documentation source material only. This repository still has no Harness runtime or server implementation, and the current documentation is not implementation-complete unless the maintainer-owned status says so in [MVP Plan](../build/mvp-plan.md).
+This reference defines the Harness Core authority model as documentation reference material only. This repository still has no Harness runtime or server implementation, and the current documentation is not implementation-complete unless the maintainer-owned status says so in [Implementation Guide](../build/implementation-guide.md).
 
 Core is the local authority record for task scope, user-owned judgment, evidence, verification expectations, close readiness, and residual risk. It owns the product meaning of those boundaries. Security guarantee wording and non-claims belong to [Security](security.md).
 
@@ -16,11 +16,11 @@ This document owns:
 
 This document does not own:
 
-- Public API payload schemas, response branch shapes, envelopes, or method result structures. Use the [MVP API router](api/mvp-api.md), method owner documents, [API Schema Core](api/schema-core.md), and the API schema owners.
+- Public API payload schemas, response branch shapes, envelopes, or method result structures. Use the [API Methods](api/methods.md), method owner documents, [API Schema Core](api/schema-core.md), and the API schema owners.
 - Storage DDL, persisted JSON layout, locks, migrations, runtime-home placement, or method-to-storage effects. Use [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md).
 - Exact active enum-like values and wire field lists. Use [API Value Sets](api/schema-value-sets.md) and [API State Schemas](api/schema-state.md).
 - Public error code definitions or error precedence. Use [API Errors](api/errors.md).
-- Rendered projection bodies, template text, connector recipes, security guarantee vocabulary, or later candidate catalogs.
+- Rendered projection bodies, template text, connector recipes, security guarantee vocabulary, or out-of-scope capability catalogs.
 
 Exact identifiers may appear here when needed to explain meaning. Their schema shape, value set, storage effect, and public error behavior remain with the linked owner documents.
 
@@ -36,7 +36,7 @@ Exact identifiers may appear here when needed to explain meaning. Their schema s
 | Runs record what happened. | See [Run record authority](#core-invariant-run-record-authority). |
 | Evidence records support only recorded claims. | See [Evidence record authority](#core-invariant-evidence-record-authority). |
 | Close must stay honest. | See [Honest close](#core-invariant-honest-close). |
-| Current MVP and later candidates stay separate. | See [Current MVP and later boundary](#core-invariant-mvp-later-boundary). |
+| Current MVP and out-of-scope capabilities stay separate. | See [Current MVP and later boundary](#core-invariant-mvp-later-boundary). |
 
 <a id="core-invariant-state-authority"></a>
 ### Core state authority
@@ -157,7 +157,7 @@ Owner links:
 ### Current MVP and later boundary
 
 Concept:
-- Current MVP and later candidates stay separate.
+- Current MVP and out-of-scope capabilities stay separate.
 
 Not active until promoted:
 - later verification
@@ -166,8 +166,8 @@ Not active until promoted:
 - assurance material
 
 Owner links:
-- [Active MVP Scope](active-mvp-scope.md)
-- [Later Candidate Index](../later/index.md)
+- [Scope](scope.md)
+- [Scope Reference](scope.md)
 
 ## 3. Core entities
 
@@ -322,7 +322,7 @@ Not the same as:
 Owner links:
 - [API Judgment Schemas](api/schema-judgment.md)
 - [API State Schemas](api/schema-state.md)
-- [Later Candidate Index](../later/index.md)
+- [Scope Reference](scope.md)
 
 <a id="core-entity-projection-output"></a>
 ### Projection output
@@ -994,7 +994,7 @@ Not the same as:
 - QA evidence, a QA pass, verification, or an assurance upgrade.
 
 Owner links:
-- [Later Candidate Index](../later/index.md)
+- [Scope Reference](scope.md)
 
 ## 12. Residual risk
 
@@ -1025,7 +1025,7 @@ Current MVP path:
 Owner links:
 - [API Judgment Schemas](api/schema-judgment.md)
 - [API State Schemas](api/schema-state.md)
-- [Later Candidate Index](../later/index.md)
+- [Scope Reference](scope.md)
 
 ## 13. Cross-owner links
 
@@ -1043,7 +1043,7 @@ Owner links:
 | Runtime boundaries | See [Runtime boundaries](#core-owner-runtime-boundaries). |
 | Design quality | See [Design quality](#core-owner-design-quality). |
 | Agent integration | See [Agent integration](#core-owner-agent-integration). |
-| Later candidates | See [Later candidates](#core-owner-later-candidates). |
+| Out-of-scope capabilities | See [Out-of-scope capabilities](#core-owner-out-of-scopes). |
 
 <a id="core-owner-api-methods-envelopes"></a>
 ### API methods and envelopes
@@ -1056,7 +1056,7 @@ Applies to:
 - Method effects.
 
 Owner links:
-- [MVP API router](api/mvp-api.md) and the method owner documents it lists.
+- [API Methods](api/methods.md) and the method owner documents it lists.
 - [API Schema Core](api/schema-core.md).
 
 <a id="core-owner-state-shaped-api-data"></a>
@@ -1174,14 +1174,14 @@ Applies to:
 Owner links:
 - [Agent Integration Reference](agent-integration.md).
 
-<a id="core-owner-later-candidates"></a>
-### Later candidates
+<a id="core-owner-out-of-scopes"></a>
+### Out-of-scope capabilities
 
 Applies to:
-- Later candidates.
+- Out-of-scope capabilities.
 - Future assurance, waiver, QA, verification, and fixture material.
 
 Owner links:
-- [Later Candidate Index](../later/index.md).
+- [Scope Reference](scope.md).
 
-If another document needs exact schema, DDL, rendered template text, public error codes, or later candidate catalogs, it must link to the owner instead of redefining them here.
+If another document needs exact schema, DDL, rendered template text, public error codes, or out-of-scope capability catalogs, it must link to the owner instead of redefining them here.

@@ -1,6 +1,6 @@
 # API 판단 스키마
 
-이 문서는 현재 MVP의 사용자 소유 판단 API 스키마를 담당합니다. 문서 원천 자료일 뿐이며 그 자체로 사용자 결정을 기록하지 않습니다.
+이 문서는 현재 MVP의 사용자 소유 판단 API 스키마를 담당합니다. 참조 문서일 뿐이며 그 자체로 사용자 결정을 기록하지 않습니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -164,4 +164,4 @@ AcceptedRiskInput:
 - [API 값 집합](schema-value-sets.md): `judgment_kind`, `presentation`, `required_for`, 상태, 선택지 표시 경계.
 - [API 상태 스키마](schema-state.md): `StateRecordRef`.
 - [API 아티팩트 스키마](schema-artifacts.md): `ArtifactRef`.
-- [이후 후보 색인](../../later/index.md): 이후 판단 표시와 later/reserved 판단 경로.
+- [범위 참조](../scope.md): 예약된 판단 경로와 활성 경계 확인.

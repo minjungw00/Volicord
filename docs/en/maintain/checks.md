@@ -37,11 +37,11 @@ Check:
 - Keep findings tied to file paths, owner documents, and suggested documentation fixes.
 
 Failure:
-- The report treats a check result as documentation acceptance, implementation readiness, runtime conformance, final acceptance, QA, close readiness, residual-risk acceptance, or permission to start server coding.
+- The report treats a check result as documentation acceptance, implementation routing, runtime conformance, final acceptance, QA, close readiness, residual-risk acceptance, or permission to start server implementation.
 
 Fix:
-- Reword the output as a documentation review result.
-- Route any implementation-readiness question to [MVP Plan](../build/mvp-plan.md).
+- Reword the output as a documentation maintenance result.
+- Route any implementation question to [Implementation Guide](../build/implementation-guide.md).
 
 ### CHK-OUT-002: no generated runtime outputs
 
@@ -120,7 +120,7 @@ Failure:
 
 Fix:
 - Retarget the route to the exact owner selected from the Reference Index.
-- If no current owner exists, state the owner gap and route to the closest real owner, [Later Candidate Index](../later/index.md), or [MVP Plan](../build/mvp-plan.md) as appropriate.
+- If no current owner exists, state the owner gap and route to the closest real owner, [Scope Reference](../reference/scope.md), or [Implementation Guide](../build/implementation-guide.md) as appropriate.
 - Create or designate a real owner only in the same paired documentation batch that defines the owner boundary.
 
 ## 4. Bilingual semantic parity checks
@@ -133,7 +133,7 @@ Owner:
 
 Check:
 - Compare paired files by meaning unit when the edit changes meaning.
-- Confirm the paired files keep the same reader purpose, normative strength, owner routing, active/later boundary, user-judgment boundary, and security guarantee level.
+- Confirm the paired files keep the same reader purpose, normative strength, owner routing, active/out-of-scope boundary, user-judgment boundary, and security guarantee level.
 - Allow natural Korean structure instead of line-by-line translation.
 
 Failure:
@@ -141,7 +141,7 @@ Failure:
 - One language strengthens, weakens, or reroutes a rule compared with the paired file.
 
 Fix:
-- Update both languages in the same documentation-only batch.
+- Update both languages in the same documentation batch.
 - Rewrite Korean naturally while preserving the same meaning.
 
 ### CHK-PARITY-002: exact identifier preservation
@@ -175,7 +175,7 @@ Check:
 
 Failure:
 - Korean text preserves the broad topic but collapses separate condition/result/exception or non-claim structure.
-- A Korean paragraph makes an owner boundary, active/later boundary, security non-claim, or close-readiness consequence harder to detect than in the paired meaning unit.
+- A Korean paragraph makes an owner boundary, active/out-of-scope boundary, security non-claim, or close-readiness consequence harder to detect than in the paired meaning unit.
 
 Fix:
 - Split the Korean prose into natural paragraphs or bullets that preserve the meaning units.
@@ -186,12 +186,12 @@ Fix:
 Owner:
 - [Authoring Guide](authoring-guide.md)
 - [Korean Translation Guide](../../ko/maintain/translation-guide.md)
-- [MVP API router](../reference/api/mvp-api.md)
+- [API Methods](../reference/api/methods.md)
 - The affected Reference owner selected from [Reference Index](../reference/README.md)
 
 Check:
 - Confirm API and Reference examples use stable product or user scenarios.
-- For current MVP API examples, confirm they use the shared account data export confirmation sample task unless the documentation batch intentionally replaces that sample across the API examples, paired Korean examples, checks, and routes.
+- For current API method examples, confirm they use the shared account data export confirmation sample task unless the documentation batch intentionally replaces that sample across the API examples, paired Korean examples, checks, and routes.
 - Confirm examples do not use documentation maintenance, refactoring, migration, or section restructuring as their scenario.
 - Confirm documentation paths are used as example payload only when the document is specifically about documentation maintenance.
 - Confirm example wording does not narrate a documentation maintenance process instead of a product or user scenario.
@@ -308,7 +308,7 @@ Owner:
 - [Terminology Map](../../terminology-map.yaml)
 - [Glossary](../reference/glossary.md)
 - [API Value Sets](../reference/api/schema-value-sets.md)
-- [MVP API](../reference/api/mvp-api.md)
+- [API Methods](../reference/api/methods.md)
 
 Check:
 - Preserve `complete` only when it is an identifier or enum value.
@@ -369,7 +369,7 @@ Owner:
 - [doc-index.yaml](../../doc-index.yaml)
 
 Check:
-- Inspect changed README files, route sections, Start pages, Use pages, Later indexes, and Maintain route lists for scannability.
+- Inspect changed README files, route sections, Start pages, Use pages, Scope pages, and Maintain route lists for scannability.
 - Confirm route lists stay short enough to choose the next owner without carrying contract tables, long owner summaries, or technical branch detail.
 - Confirm long or specialized routing needs are delegated to `doc-index.yaml`, the Reference Index, or the canonical owner.
 
@@ -386,7 +386,7 @@ Fix:
 Owner:
 - [Authoring Guide](authoring-guide.md)
 - [Reference Index](../reference/README.md)
-- [Active MVP Scope](../reference/active-mvp-scope.md)
+- [Scope](../reference/scope.md)
 - [API Value Sets](../reference/api/schema-value-sets.md)
 
 Check:
@@ -395,7 +395,7 @@ Check:
 - Confirm active behavior, current availability, guarantee level, and reader consequence come from the semantic owner.
 
 Failure:
-- A value name is treated as active behavior or an active guarantee merely because it appears in a schema, example, storage note, route page, or later-candidate list.
+- A value name is treated as active behavior or an active guarantee merely because it appears in a schema, example, storage note, route page, or out-of-scope list.
 - A value-set owner is used to define security, storage, close-readiness, user-judgment, template, or runtime semantics that belong elsewhere.
 - Reserved or profile-gated values appear without their reserved/profile-gated status at the point of use.
 
@@ -404,29 +404,29 @@ Fix:
 - Link to the semantic owner for meaning and current availability.
 - If no semantic owner exists, expose the owner gap instead of inferring behavior from the value name.
 
-## 7. Active/later boundary checks
+## 7. Active and out-of-scope boundary checks
 
-### CHK-SCOPE-001: active/later leakage
+### CHK-SCOPE-001: active/out-of-scope leakage
 
 Owner:
-- [Active MVP Scope](../reference/active-mvp-scope.md)
-- [Later Index](../later/index.md)
-- [MVP Plan](../build/mvp-plan.md)
+- [Scope](../reference/scope.md)
+- [Scope Reference](../reference/scope.md)
+- [Implementation Guide](../build/implementation-guide.md)
 
 Check:
-- Inspect changed active docs, examples, route text, and summaries for later candidates presented as current MVP behavior.
-- Confirm profile-gated or later-only values are labeled at the point of use.
+- Inspect changed active docs, examples, route text, and summaries for out-of-scope capabilities presented as current MVP behavior.
+- Confirm profile-gated or reserved values are labeled at the point of use.
 
 Failure:
-- A later candidate, future operation, profile-gated value, or unproved behavior is described as a default active requirement.
+- An out-of-scope capability, reserved operation, profile-gated value, or unproved behavior is described as a default active requirement.
 
 Fix:
-- Reword it as deferred and route to the Later Index, or promote it through the active owner before using active language.
+- Reword it as out of scope and route to the Scope Reference, or promote it through the active owner before using active language.
 
 ### CHK-SCOPE-LIST-STRUCTURE: current MVP scope list structure
 
 Owner:
-- [Active MVP Scope](../reference/active-mvp-scope.md)
+- [Scope](../reference/scope.md)
 
 Check:
 - Confirm included and excluded current-MVP scope items are represented as scannable lists, tables, or equivalent structured blocks.
@@ -442,63 +442,63 @@ Fix:
 - Convert the prose to a bullet list, table, or equivalent structured block.
 - Compare English and Korean by meaning unit and keep the scope contract in the active-scope owner.
 
-### CHK-SCOPE-002: implementation-readiness wording
+### CHK-SCOPE-002: implementation wording
 
 Owner:
-- [MVP Plan](../build/mvp-plan.md)
+- [Implementation Guide](../build/implementation-guide.md)
 - [Authoring Guide](authoring-guide.md)
 
 Check:
 - Confirm documentation edits do not imply the server, runtime, conformance runner, generated projections, or implementation-complete behavior already exists.
-- Confirm permission to start server coding is not claimed unless the MVP Plan handoff owner explicitly says so.
+- Confirm permission to start server implementation is not claimed unless the Implementation Guide handoff owner explicitly says so.
 
 Failure:
-- Active docs describe documentation source material as accepted runtime behavior or implementation-ready handoff without the MVP Plan owner.
+- Active docs describe documentation reference material as accepted runtime behavior or implementation-ready handoff without the Implementation Guide owner.
 
 Fix:
 - Reword as planning documentation.
-- Route readiness decisions to the MVP Plan.
+- Route readiness decisions to the Implementation Guide.
 
-### CHK-SCOPE-003: later promotion owner wording
+### CHK-SCOPE-003: out-of-scope activation owner wording
 
 Owner:
-- [Later Candidate Index](../later/index.md)
-- [Active MVP Scope](../reference/active-mvp-scope.md)
+- [Scope Reference](../reference/scope.md)
+- [Scope](../reference/scope.md)
 - [Authoring Guide](authoring-guide.md)
 
 Check:
-- Inspect later-candidate promotion requirements for owner names and owner paths.
-- Confirm existing current owners are linked when the promotion requirement depends on a current owner.
-- Confirm non-existing or future owners are described as owners to create or designate at promotion time, not as current active owner documents.
+- Inspect out-of-scope activation requirements for owner names and owner paths.
+- Confirm existing current owners are linked when the activation requirement depends on a current owner.
+- Confirm non-existing owners are described as owners to create or designate during activation, not as current active owner documents.
 
 Failure:
 - Promotion wording names a non-existing owner as if it were already an active owner document.
-- A later candidate sounds active because its promotion checklist uses current-owner language without the active scope owner.
-- Promotion wording omits the need to update active scope and paired English/Korean docs when meaning changes.
+- An out-of-scope capability sounds active because its activation checklist uses current-owner language without the active scope owner.
+- Activation wording omits the need to update active scope and paired English/Korean docs when meaning changes.
 
 Fix:
-- Reword the checklist as promotion-time owner creation/designation or owner update.
+- Reword the checklist as owner creation, designation, or owner update during activation.
 - Link existing current owners only when they actually exist.
-- If promoting the candidate, update active scope, the relevant owners, routes, checks, and paired-language docs in the same documentation-only batch.
+- If activating the capability, update active scope, the relevant owners, routes, checks, and paired-language docs in the same documentation batch.
 
-### CHK-LATER-OWNER-PLACEHOLDER: later owner placeholders
+### CHK-SCOPE-OWNER-PLACEHOLDER: owner placeholders
 
 Owner:
-- [Later Candidate Index](../later/index.md)
-- [Active MVP Scope](../reference/active-mvp-scope.md)
+- [Scope Reference](../reference/scope.md)
+- [Scope](../reference/scope.md)
 - [Authoring Guide](authoring-guide.md)
 
 Check:
-- Inspect later-candidate requirements for future owner names, owner-type labels, and placeholders.
-- Confirm wording such as "Assurance owner update" is clear that the owner is created, designated, or updated at promotion time when no current owner exists.
+- Inspect out-of-scope requirements for owner names, owner-type labels, and placeholders.
+- Confirm wording such as "Assurance owner update" is clear that the owner is created, designated, or updated during activation when no current owner exists.
 - Confirm placeholder wording does not send readers to a missing current owner.
 
 Failure:
-- A future owner placeholder is named as if it were an existing current owner.
-- A phrase like "Assurance owner update" appears without clarifying promotion-time owner creation, designation, or update.
+- An owner placeholder is named as if it were an existing current owner.
+- A phrase like "Assurance owner update" appears without clarifying owner creation, designation, or update.
 
 Fix:
-- Use standard promotion-time owner wording.
+- Use standard activation owner wording.
 - Link only existing current owners; otherwise state that promotion requires creating or designating the owner before active wording can be used.
 
 ## 8. API contract reference checks
@@ -506,7 +506,7 @@ Fix:
 ### CHK-API-001: API summaries point to owners
 
 Owner:
-- [MVP API](../reference/api/mvp-api.md)
+- [API Methods](../reference/api/methods.md)
 - [Core Schema](../reference/api/schema-core.md)
 - [State Schema](../reference/api/schema-state.md)
 - [Artifact Schema](../reference/api/schema-artifacts.md)
@@ -567,7 +567,7 @@ Owner:
 - [Authoring Guide](authoring-guide.md)
 
 Check:
-- Confirm storage-related documentation edits remain source material for future implementation.
+- Confirm storage-related documentation edits remain reference material for implementation.
 - Confirm the edit does not create operational records, runtime home content, generated projections, or executable fixture outputs.
 
 Failure:
@@ -575,7 +575,7 @@ Failure:
 
 Fix:
 - Delete generated runtime-like output.
-- Reword the documentation as planning source material and link to the storage or runtime-boundary owner.
+- Reword the documentation as planning reference material and link to the storage or runtime-boundary owner.
 
 ### CHK-KO-STRUCT-STORAGE: Korean storage structure
 
@@ -639,19 +639,19 @@ Fix:
 
 Owner:
 - [Security](../reference/security.md)
-- [Active MVP Scope](../reference/active-mvp-scope.md)
+- [Scope](../reference/scope.md)
 - [API Value Sets](../reference/api/schema-value-sets.md)
 
 Check:
 - Confirm `isolated` routes to Security for guarantee semantics.
-- Confirm `isolated` is not described as an active current-MVP guarantee merely because it appears in value sets, examples, route text, or later-candidate material.
+- Confirm `isolated` is not described as an active current-MVP guarantee merely because it appears in value sets, examples, route text, or out-of-scope material.
 
 Failure:
 - Any prose says or implies current active isolation, default isolation, enforced isolation, or current-MVP `isolated` guarantee behavior without owner support.
 
 Fix:
 - Clarify the reserved or profile-gated status at the point of use.
-- Link to Security for semantics, Active MVP Scope for current availability, and API Value Sets for the value name.
+- Link to Security for semantics, Scope for current availability, and API Value Sets for the value name.
 
 ## 11. User-facing readability checks
 
@@ -807,7 +807,7 @@ Check:
 
 Failure:
 - Findings omit file paths, owners, or fixes.
-- The report claims acceptance, runtime conformance, implementation readiness, QA completion, close readiness, or residual-risk acceptance.
+- The report claims acceptance, runtime conformance, implementation routing, QA completion, close readiness, or residual-risk acceptance.
 
 Fix:
 - Rewrite the report in this format:

@@ -1,6 +1,6 @@
 # 저장소
 
-이 문서는 저장소 문서 묶음의 짧은 경로 문서입니다. 문서 원천 자료일 뿐이며 이 저장소에 Harness Server, Runtime Home, 데이터베이스, 아티팩트 저장소, 마이그레이션 실행기, 생성된 상태 보기, 런타임 상태, 구현 완료 DDL을 만들지 않습니다.
+이 문서는 저장소 문서 묶음의 짧은 경로 문서입니다. 참조 문서일 뿐이며 이 저장소에 Harness Server, Runtime Home, 데이터베이스, 아티팩트 저장소, 마이그레이션 실행기, 생성된 상태 보기, 런타임 상태, 구현 완료 DDL을 만들지 않습니다.
 
 ## 읽는 법
 
@@ -19,7 +19,7 @@
 
 ## 담당하지 않는 것
 
-저장소 문서는 API 요청 또는 응답 형태, 공개 오류 우선순위, 메서드 동작, Core 생명주기 의미, 보안 보장, Runtime Home 배포, 권한 주장을 담당하지 않습니다. 해당 계약은 [MVP API 경로 문서](api/mvp-api.md), 메서드 담당 문서, API 스키마 담당 문서, [Core 모델](core-model.md), [API 오류](api/errors.md), [보안](security.md), [런타임 경계](runtime-boundaries.md)를 봅니다.
+저장소 문서는 API 요청 또는 응답 형태, 공개 오류 우선순위, 메서드 동작, Core 생명주기 의미, 보안 보장, Runtime Home 배포, 권한 주장을 담당하지 않습니다. 해당 계약은 [API 메서드](api/methods.md), 메서드 담당 문서, API 스키마 담당 문서, [Core 모델](core-model.md), [API 오류](api/errors.md), [보안](security.md), [런타임 경계](runtime-boundaries.md)를 봅니다.
 
 API 데이터 형태와 저장 효과는 별개입니다.
 

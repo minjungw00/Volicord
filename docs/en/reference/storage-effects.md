@@ -1,6 +1,6 @@
 # Storage effects
 
-This document owns method-to-storage effect semantics for the current MVP source design. It is documentation source material only and does not execute or simulate Harness runtime procedures.
+This document owns method-to-storage effect semantics for the current MVP source design. It is documentation reference material only and does not execute or simulate Harness runtime procedures.
 
 ## Owns / Does not own
 
@@ -17,7 +17,7 @@ This document does not own:
 - artifact lifecycle details; see [Artifact Storage](storage-artifacts.md)
 - idempotency, locks, state-version clocks, event ordering, or migrations; see [Storage Versioning](storage-versioning.md)
 - public response branches or schemas; see [API Schema Core](api/schema-core.md)
-- API method behavior; see the [MVP API router](api/mvp-api.md) and method owner documents
+- API method behavior; see the [API Methods](api/methods.md) and method owner documents
 - public error code precedence; see [API Errors](api/errors.md)
 
 ## Shape versus effect
@@ -290,7 +290,7 @@ Not allowed:
 <a id="method-effects"></a>
 ## Method effect summary
 
-This table summarizes persistence effects. Method behavior and response unions remain owned by method owner documents routed from the [MVP API router](api/mvp-api.md).
+This table summarizes persistence effects. Method behavior and response unions remain owned by method owner documents routed from the [API Methods](api/methods.md).
 
 | Method | Primary storage effect | Details |
 |---|---|---|
@@ -668,7 +668,7 @@ Owner links:
 
 ## Related owners
 
-- [MVP API router](api/mvp-api.md) and method owner documents for selected method behavior and response unions.
+- [API Methods](api/methods.md) and method owner documents for selected method behavior and response unions.
 - [API Errors](api/errors.md) for rejected-response public errors.
 - [Storage Records](storage-records.md) for records that effects may touch.
 - [Artifact Storage](storage-artifacts.md) for staged-handle and artifact lifecycle details.
