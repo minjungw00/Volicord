@@ -23,7 +23,8 @@ Owner links:
 This document owns:
 
 - the separation between Product Repository, Harness Server or installation, and Harness Runtime Home
-- the rule that Product Repository files, generated displays, chat text, connector prose, and agent memory do not create Harness authority
+- the rule that Product Repository files do not create Harness authority
+- the rule that generated displays, chat text, connector prose, and agent memory do not create Harness authority
 - the distinction between server installation location and runtime data location
 - the boundary statement that a Runtime Home is not automatically a security boundary
 
@@ -88,6 +89,7 @@ May claim:
 Must not claim:
 - It is the Product Repository.
 - It is proof of security authority.
+- It provides isolation by default.
 
 Owner links:
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), and [Artifact Storage](storage-artifacts.md) own runtime data details.
@@ -146,7 +148,12 @@ Harness Runtime Home is the future per-user or per-installation operational data
 
 Conditions:
 - Storage/runtime owners define what operational data belongs in the Runtime Home.
-- Operational data may include Harness-owned records, local store metadata, staged or persisted artifact data, locks, migrations, and related diagnostics.
+
+May include:
+- Harness-owned records.
+- Local store metadata.
+- Staged or persisted artifact data.
+- Locks, migrations, and related diagnostics.
 
 May claim:
 - A future Runtime Home can hold Harness operational data when storage/runtime owners define the data and validation rules.
@@ -160,7 +167,23 @@ Owner links:
 - [Security](security.md) owns security guarantee wording and non-claims.
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md) own storage and runtime data details.
 
-## What may be stored where
+## Storage location assumptions
+
+Conditions:
+- A claim names where product files, server installation files, Harness records, artifact data, or runtime metadata live.
+
+May claim:
+- Product Repository storage, Harness Server or installation storage, Harness Runtime Home storage, and documentation repository storage are separate assumptions.
+- Storage/runtime owners may define future operational data placement.
+
+Must not claim:
+- Product Repository storage, server installation storage, and Runtime Home storage are the same by default.
+- A storage location proves Harness authority, security authority, or isolation.
+- This documentation repository is runtime data storage.
+
+Owner links:
+- [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md) own storage details.
+- [Security](security.md) owns security boundary and isolation non-claims.
 
 | Location | Details |
 |---|---|
@@ -179,7 +202,10 @@ May claim:
 - Product source, product docs, tests, project configuration, and product files that future Harness checks may inspect.
 
 Must not claim:
-- Product Repository storage is Harness runtime state, generated Harness records, a Runtime Home, or authority proof.
+- Product Repository storage is Harness runtime state.
+- Product Repository storage contains generated Harness records by default.
+- Product Repository storage is a Runtime Home.
+- Product Repository storage proves Harness authority.
 
 Owner links:
 - [Storage Effects](storage-effects.md) owns product-file effects.
@@ -195,7 +221,9 @@ May claim:
 - Future server executable code, installed packages, server configuration, and application resources.
 
 Must not claim:
-- Harness Server or installation storage is product workspace content, canonical runtime data, or proof that a Runtime Home exists.
+- Harness Server or installation storage is product workspace content.
+- Harness Server or installation storage is canonical runtime data.
+- Harness Server or installation storage proves that a Runtime Home exists.
 
 Owner links:
 - [MVP API router](api/mvp-api.md) routes method behavior.
@@ -208,14 +236,19 @@ Conditions:
 - Storage/runtime owners define the future operational data space.
 
 May claim:
-- Future Harness operational records, runtime metadata, local store data, artifacts, locks, migrations, and related diagnostics defined by storage/runtime owners.
+- Future Harness operational records defined by storage/runtime owners.
+- Runtime metadata and local store data defined by storage/runtime owners.
+- Artifacts, locks, migrations, and related diagnostics defined by storage/runtime owners.
 
 Must not claim:
-- Harness Runtime Home storage is product source, server install files, or a security boundary.
+- Harness Runtime Home storage is product source.
+- Harness Runtime Home storage is server install files.
+- Harness Runtime Home storage is a security boundary.
+- Harness Runtime Home storage provides isolation by default.
 
 Owner links:
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), [Artifact Storage](storage-artifacts.md), and [Storage Versioning](storage-versioning.md) own runtime data details.
-- [Security](security.md) owns security boundary claims.
+- [Security](security.md) owns security boundary claim wording and non-claims.
 
 <a id="runtime-storage-documentation-repository"></a>
 ### Documentation repository storage
@@ -227,7 +260,10 @@ May claim:
 - Source documentation for future Harness behavior.
 
 Must not claim:
-- Documentation repository storage is runtime state, server implementation, generated projections, evidence, QA, acceptance, close records, or conformance output.
+- Documentation repository storage is runtime state.
+- Documentation repository storage is a server implementation.
+- Documentation repository storage contains generated projections.
+- Documentation repository storage contains evidence, QA, acceptance, close records, or conformance output.
 
 Owner links:
 - [MVP Plan](../build/mvp-plan.md) owns maintainer handoff status.
@@ -235,12 +271,24 @@ Owner links:
 
 ## What must not be inferred
 
-- Do not infer that this repository contains a working Harness Server, Runtime Home, or runtime data.
-- Do not infer that documentation files are Harness records or generated operational files.
-- Do not infer that the Product Repository is the Runtime Home unless an owner-defined runtime configuration says so.
-- Do not infer that the server installation directory is the runtime data directory.
-- Do not infer that a Runtime Home is a security boundary.
-- Do not infer Harness authority from Product Repository text, generated Markdown, rendered displays, chat text, connector prose, agent memory, copied `surface_id` values, displayed `ArtifactRef` values, or rendered projections.
+Conditions:
+- A reader sees Harness concepts in documentation, Product Repository text, generated Markdown, rendered displays, connector prose, chat text, or agent memory.
+- A reader sees a copied `surface_id`, displayed `ArtifactRef`, rendered projection, install directory, or local directory name.
+
+Must not claim or infer:
+- This repository contains a working Harness Server, Runtime Home, or runtime data.
+- Documentation files are Harness records or generated operational files.
+- The Product Repository is the Runtime Home unless an owner-defined runtime configuration says so.
+- The server installation directory is the runtime data directory.
+- A Runtime Home is a security boundary.
+- Product Repository text, generated Markdown, rendered displays, or rendered projections create Harness authority.
+- Chat text, connector prose, or agent memory creates Harness authority.
+- Copied `surface_id` values or displayed `ArtifactRef` values create Harness authority.
+
+Owner links:
+- [Security](security.md) owns detailed authority, guarantee, and isolation non-claims.
+- [Projection Authority Reference](projection-and-templates.md) owns projection authority and freshness boundaries.
+- [Agent Integration](agent-integration.md) owns connector surface boundaries.
 
 ## Security boundary links
 

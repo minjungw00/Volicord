@@ -48,9 +48,11 @@ Owner links:
 
 ## 3. Explicit non-claims
 
-The current MVP has these explicit non-claims.
+The current MVP has these explicit non-claims. Treat each item below as a `Must not claim` boundary.
 
-Operating system and isolation:
+### Operating system and isolation
+
+Must not claim:
 
 - OS-level sandboxing
 - OS permission enforcement
@@ -58,7 +60,9 @@ Operating system and isolation:
 - tamper-proof isolation
 - full security isolation
 
-Monitoring and prevention:
+### Monitoring and prevention
+
+Must not claim:
 
 - guaranteed full filesystem monitoring
 - full prevention of malicious agent behavior
@@ -66,7 +70,9 @@ Monitoring and prevention:
 - universal pre-tool blocking
 - command, network, or secret observation by default
 
-Storage and artifact authority:
+### Storage and artifact authority
+
+Must not claim:
 
 - tamper-proof storage
 - native artifact capture as an active guarantee
@@ -87,24 +93,88 @@ May claim:
 - Missing or insufficient capability routes to the API/error owner behavior, such as `CAPABILITY_INSUFFICIENT`.
 
 Must not claim:
-- A copied `surface_id`, generated file, `Projection`, chat text, Product Repository file, rendered display, or agent memory is proof of capability.
-- `detective` wording upgrades a claim to sandboxing, permission enforcement, tamper-proof storage, or full monitoring.
+- A copied `surface_id` is proof of capability.
+- A generated file, `Projection`, Product Repository file, or rendered display is proof of capability.
+- Chat text or agent memory is proof of capability.
+- `detective` wording upgrades a claim to sandboxing or permission enforcement.
+- `detective` wording upgrades a claim to tamper-proof storage or full monitoring.
 
 Owner links:
 - [Agent Integration](agent-integration.md) owns connector behavior and capability-profile meaning at the surface boundary.
 - [API Errors](api/errors.md) owns public error routing such as `CAPABILITY_INSUFFICIENT`.
 - [Runtime Boundaries](runtime-boundaries.md) owns Product Repository, Runtime Home, and non-isolation separation.
 
-## 5. Assets
+## 5. Assets and authority boundaries
 
-| Asset | May claim | Must not claim |
-|---|---|---|
-| Core-owned Harness records | Changed only through owner-defined Harness paths in the specification. | Local files are tamper-proof. |
-| Product Repository files | User workspace files can be inputs to checks. | Product files are Harness state or proof of Harness authority. |
-| Harness Runtime Home and local store | Future operational data space is owned by storage/runtime owners. | This documentation repository is a Runtime Home. |
-| Artifacts and staged handles | `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle` require API/storage validation. | Displayed identifiers create artifact authority. |
-| Surface identity and capability profile | Registered surface context and capability checks limit what may be claimed. | `surface_id` alone is an authority token. |
-| User-owned judgments | Sensitive-action approval, final acceptance, waiver, and residual-risk acceptance remain distinct. | User-owned judgment grants OS permission. |
+### Core-owned Harness records
+
+Conditions:
+- The claim is about Harness records owned by Core or another Harness owner.
+
+May claim:
+- The specification requires changes through owner-defined Harness paths.
+
+Must not claim:
+- Local files are tamper-proof.
+
+### Product Repository files
+
+Conditions:
+- The claim is about files in the user's Product Repository.
+
+May claim:
+- User workspace files can be inputs to checks.
+
+Must not claim:
+- Product files are Harness state.
+- Product files prove Harness authority.
+
+### Harness Runtime Home and local store
+
+Conditions:
+- The claim is about future operational data space, local store metadata, or runtime data location.
+
+May claim:
+- Storage/runtime owners define the future operational data space.
+
+Must not claim:
+- This documentation repository is a Runtime Home.
+- A Runtime Home is automatically a security boundary.
+
+### Artifacts and staged handles
+
+Conditions:
+- The claim names `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle`, or staged artifact data.
+
+May claim:
+- API/storage validation is required before those values carry artifact authority.
+
+Must not claim:
+- Displayed identifiers create artifact authority.
+
+### Surface identity and capability profile
+
+Conditions:
+- The claim uses surface identity, `surface_id`, or a capability profile.
+
+May claim:
+- Registered surface context and capability checks limit what may be claimed.
+
+Must not claim:
+- `surface_id` alone is an authority token.
+- A copied surface identifier proves capability.
+
+### User-owned judgments
+
+Conditions:
+- The claim mentions sensitive-action approval, final acceptance, waiver, residual-risk acceptance, or write compatibility.
+
+May claim:
+- Sensitive-action approval, final acceptance, waiver, and residual-risk acceptance remain distinct.
+
+Must not claim:
+- User-owned judgment grants OS permission.
+- Broad approval collapses the separate judgment and write-scope boundaries.
 
 Owner links:
 - [Runtime Boundaries](runtime-boundaries.md) owns Product Repository, Harness Server, Runtime Home, and non-isolation separation.
@@ -351,27 +421,50 @@ Exceptions:
 `preventive` and `isolated` are not active current-MVP guarantees.
 
 Conditions:
-- `preventive` behavior requires a documented mechanism that stops or denies an action before it happens.
-- `isolated` behavior requires a documented boundary strong enough to support an isolation guarantee over execution, state, permissions, or storage.
 - A later or profile-gated `preventive` or `isolated` claim requires a promoted owner.
 
-Promotion requirements:
+### `preventive`
+
+Conditions:
+- The behavior has a documented mechanism that stops or denies an action before it happens.
+
+May claim:
+- `preventive` is reserved for a documented prevention-oriented mechanism.
+
+Must not claim:
+- The current MVP has an active `preventive` guarantee.
+- A future server obligation is already active prevention.
+
+### `isolated`
+
+Conditions:
+- The behavior has a documented boundary strong enough to support an isolation guarantee over execution, state, permissions, or storage.
+
+May claim:
+- `isolated` is reserved for a stronger isolation-oriented guarantee.
+
+Must not claim:
+- The current MVP has an active `isolated` isolation guarantee.
+- `isolated` means OS sandboxing, OS permission enforcement, tamper-proof isolation, or full security isolation in the current MVP.
+- `isolated` is a synonym for `preventive`.
+
+### Promotion requirements
+
+Conditions:
+- A document wants to promote a later/profile-gated `preventive` or `isolated` claim into active behavior.
+
+Must document:
 - The mechanism that prevents the action or provides isolation.
 - The exact covered operation, path, surface, profile, and isolation boundary when `isolated` is claimed.
 - The bypass and fallback behavior.
 - The proof path and user-visible error behavior.
 - Paired English/Korean documentation and active-scope promotion.
 
-May claim:
-- `preventive` is reserved for a documented prevention-oriented mechanism.
-- `isolated` is reserved for a stronger isolation-oriented guarantee.
-- Future server obligations may be described as "the specification requires" until a stronger guarantee is promoted.
-
 Must not claim:
-- The current MVP has an active `preventive` guarantee.
-- The current MVP has an active `isolated` isolation guarantee.
-- `isolated` is a synonym for `preventive`.
 - A stronger guarantee exists before the promoted owner documents the mechanism, boundary, proof path, and active-scope promotion.
+
+May claim:
+- Future server obligations may be described as "the specification requires" until a stronger guarantee is promoted.
 
 Owner links:
 - [Active MVP Scope](active-mvp-scope.md) owns active/later status.
