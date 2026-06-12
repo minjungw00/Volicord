@@ -151,7 +151,7 @@ The agent should not inject these into every prompt:
 - full artifact contents
 - paired bilingual docs
 - unrelated contract material
-- future catalog material
+- out-of-scope capability catalogs
 - generated readable views
 
 <a id="8-report-status-for-the-users-next-decision"></a>
@@ -329,7 +329,7 @@ The user decides:
 - residual-risk acceptance
 - cancellation
 
-Other future judgment candidates belong to [Scope](../reference/scope.md) and are not active judgment kinds.
+Unsupported judgment categories stay outside the baseline; see [Scope](../reference/scope.md).
 
 Inside accepted scope, the agent may usually decide implementation details when they:
 
@@ -440,7 +440,7 @@ Separate judgments:
 
 - Final acceptance is judgment on the result.
 - Residual-risk acceptance is judgment on a named residual risk.
-- Future judgment candidates would be separate from all three if promoted.
+- Unsupported judgment categories are separate from all three and are not baseline judgment kinds.
 
 Not allowed:
 
@@ -584,7 +584,7 @@ Evidence does not automatically satisfy:
 - final acceptance
 - residual-risk acceptance
 - close
-- any future promoted quality path
+- any separate quality path outside the current baseline
 
 <a id="10-close-work-honestly"></a>
 ## 8. Handle close readiness honestly
@@ -682,10 +682,10 @@ Do not make these appear required for ordinary baseline work:
 - full-format judgment presentations
 - standalone derived views
 - full evidence displays
-- detached later-path checks
+- detached checks
 - broad review catalogs
 - out-of-scope conformance runners
-- operations hardening
+- operations control programs
 - other out-of-scope capabilities
 
 Rule:

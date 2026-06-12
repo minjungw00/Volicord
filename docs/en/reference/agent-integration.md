@@ -54,7 +54,7 @@ Owner links:
 Condition:
 - The relevant owner documents must make a concept active before `capability_profile` can describe it as supported.
 - Before a protected read, mutation, artifact operation, detective display, or guarantee claim relies on `capability_profile`, compare it with the registered local surface and the current request.
-- Profile-gated behavior remains inactive until active-scope and owner documents promote it with scope, fallback behavior, and proof expectations.
+- Profile-gated behavior is not baseline behavior until [Scope](scope.md) and the affected owners define it as supported.
 
 Agent may:
 - describe supported access classes
@@ -143,7 +143,7 @@ Agent may:
   - a required capability is stale, mismatched, or insufficient
 
 Agent must not:
-- infer `detective`, `preventive`, or `isolated` from a surface name
+- infer `detective` or a stronger guarantee from a surface name
 - infer a stronger guarantee level from a status card, chat summary, rendered projection, or user phrase
 
 Fallback:

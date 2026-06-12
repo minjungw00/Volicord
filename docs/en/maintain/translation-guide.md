@@ -54,7 +54,7 @@ Preserve these exactly:
 - schema names, schema fields, and object names
 - enum values, status values, error codes, validator IDs, and table names
 - DDL, column names, storage identifiers, template names, and code literals
-- Harness labels that are intentionally exact, such as `Write Authorization`, `Evidence Manifest`, `Decision Packet`, and `Projection`
+    - Harness labels that are intentionally exact, such as `Write Authorization`, `Decision Packet`, and `Projection`
 
 Do not translate exact strings inside code blocks, schema examples, API examples, file paths, field lists, or literal-value tables. Localized Korean display labels are reader-facing text; they do not replace canonical identifiers.
 
@@ -86,9 +86,8 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | user-owned judgment | 사용자 소유 판단 | Keep distinct from acceptance and residual-risk acceptance. |
 | sensitive-action approval | 민감 동작 승인 | Do not treat it as Write Authorization. |
 | Write Authorization | 쓰기 권한 부여, or `Write Authorization` as a label | Preserve the exact label when naming the Harness record. |
-| cooperative guarantee | 협력형 보장 | Do not strengthen into detective or preventive wording. |
+| cooperative guarantee | 협력형 보장 | Do not strengthen into detective, sandboxing, enforcement, or stronger-isolation wording. |
 | detective guarantee | 탐지형 보장 | Use only when the documented observable scope supports it. |
-| preventive guarantee | 예방형 보장 | Use only when a documented mechanism proves prevention. |
 | baseline scope | 기준 범위 | Do not translate out-of-scope capabilities into current requirements. |
 | out-of-scope capability | 지원 범위 밖 기능 | Keep deferred material clearly deferred. |
 

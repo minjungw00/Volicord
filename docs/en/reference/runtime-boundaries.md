@@ -292,7 +292,7 @@ Owner links:
 
 ## Security boundary links
 
-This page states the location boundary and the non-inference rules. Detailed guarantee levels, capability-gated detective wording, explicit non-claims, and promoted preventive-control requirements belong to [Security](security.md).
+This page states the location boundary and the non-inference rules. Detailed guarantee levels, capability-gated detective wording, explicit non-claims, and stronger-control requirements belong to [Security](security.md).
 
 ## Owner links
 

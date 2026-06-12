@@ -606,7 +606,7 @@ Owner:
 - [Runtime Boundaries](../reference/runtime-boundaries.md)
 
 Check:
-- Inspect wording around cooperative, detective, preventive, guard, freeze, careful mode, sandbox, permission, blocking, tamper-proof, isolation, local access, and capability claims.
+- Inspect wording around cooperative, detective, prevention, guard, freeze, careful mode, sandbox, permission, blocking, tamper-proof, isolation, local access, and capability claims.
 - Confirm every security claim routes to the security owner and stays within the documented guarantee level.
 - Confirm non-claims are explicit where a reader could otherwise infer stronger security behavior.
 
@@ -635,23 +635,22 @@ Fix:
 - Reword the statement as identification, routing, or documented guidance as appropriate.
 - Link to the security or connector owner.
 
-### CHK-GUARANTEE-ISOLATED: `isolated` guarantee wording
+### CHK-GUARANTEE-STRONGER-ISOLATION: stronger isolation wording
 
 Owner:
 - [Security](../reference/security.md)
 - [Scope](../reference/scope.md)
-- [API Value Sets](../reference/api/schema-value-sets.md)
 
 Check:
-- Confirm `isolated` routes to Security for guarantee semantics.
-- Confirm `isolated` is not described as an supported guarantee merely because it appears in value sets, examples, route text, or out-of-scope material.
+- Confirm stronger isolation, sandboxing, permission-enforcement, or tamper-proof wording routes to Security for guarantee semantics.
+- Confirm stronger isolation is not described as supported merely because a route page, example, or out-of-scope material mentions it.
 
 Failure:
-- Any prose says or implies current active isolation, default isolation, enforced isolation, or baseline-scope `isolated` guarantee behavior without owner support.
+- Any prose says or implies current active isolation, default isolation, enforced isolation, sandboxing, or tamper-proof behavior without owner support.
 
 Fix:
-- Clarify the reserved or profile-gated status at the point of use.
-- Link to Security for semantics, Scope for current availability, and API Value Sets for the value name.
+- Reword to the documented guarantee level or explicit non-claim.
+- Link to Security for semantics and Scope for current availability.
 
 ## 11. User-facing readability checks
 

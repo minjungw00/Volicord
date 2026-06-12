@@ -111,7 +111,7 @@ The following are runtime or implementation outputs, not documentation repositor
 - a conformance runner or `harness conformance run` implementation
 - generated conformance reports, generated runtime artifacts, projections, operational files, or runtime state
 - runtime results for baseline behavior or out-of-scope capabilities
-- runtime proof of preventive blocking, OS permission control, arbitrary-tool sandboxing, tamper-proof storage, security isolation, or profile-gated `preventive` / `isolated` guarantee claims
+- runtime proof of pre-tool blocking, OS permission control, arbitrary-tool sandboxing, tamper-proof storage, security isolation, or profile-gated stronger guarantee claims
 
 Examples on this page explain conformance concepts, but they do not create runtime state, acceptance evidence, close readiness, residual-risk acceptance, generated reports, or implementation routing.
 

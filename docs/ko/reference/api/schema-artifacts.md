@@ -100,7 +100,7 @@ ArtifactInput:
 | `staged_artifact` | `staged_artifact_handle` | 담당 경로를 통해 호환되는 임시 스테이징 핸들을 사용합니다. |
 | `existing_artifact` | `existing_artifact_ref` | 새 바이트를 등록하지 않고 이미 지속되는 같은 프로젝트 아티팩트를 연결합니다. |
 
-`captured_artifact`, 접점 자체 캡처 핸들, 원시 캡처 어댑터 출력, 원시 파일시스템 경로, 임의 로컬 경로 문자열, 권한 주장으로서의 원시 로그는 기준 범위의 활성 `ArtifactInput` 출처가 아닙니다.
+활성 출처 종류 목록 밖의 값은 기준 범위의 `ArtifactInput` 출처가 아닙니다. 호출자가 준 경로, 로그, 캡처 주장, 로컬 파일 참조는 아티팩트 권한이 아닙니다.
 
 ## 참조 제약
 

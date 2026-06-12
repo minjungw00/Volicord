@@ -54,7 +54,7 @@
 - 스키마 이름, 스키마 필드, 객체 이름
 - enum 값, 상태 값, 오류 코드, validator ID, 테이블 이름
 - DDL, 열 이름, 저장소 식별자, 템플릿 이름, 코드 리터럴
-- `Write Authorization`, `Evidence Manifest`, `Decision Packet`, `Projection`처럼 의도적으로 정확해야 하는 하네스 라벨
+- `Write Authorization`, `Decision Packet`, `Projection`처럼 의도적으로 정확해야 하는 하네스 라벨
 
 코드 블록, 스키마 예시, API 예시, 파일 경로, 필드 목록, 리터럴 값 표 안의 정확한 문자열은 번역하지 않습니다. 한국어 표시 라벨은 독자를 위한 문구일 뿐이며 기준 식별자를 대신하지 않습니다.
 
@@ -86,9 +86,8 @@
 | user-owned judgment | 사용자 소유 판단 | 수락, 잔여 위험 수락과 구분합니다. |
 | sensitive-action approval | 민감 동작 승인 | Write Authorization처럼 설명하지 않습니다. |
 | Write Authorization | 쓰기 권한 부여, 또는 라벨로서 `Write Authorization` | 하네스 기록 이름을 말할 때는 정확한 라벨을 보존합니다. |
-| cooperative guarantee | 협력형 보장 | 탐지형이나 예방형 표현으로 강화하지 않습니다. |
+| cooperative guarantee | 협력형 보장 | 탐지형, 샌드박싱, 강제 차단, 더 강한 격리 표현으로 강화하지 않습니다. |
 | detective guarantee | 탐지형 보장 | 문서화된 관찰 범위가 뒷받침할 때만 씁니다. |
-| preventive guarantee | 예방형 보장 | 예방 메커니즘이 문서로 증명될 때만 씁니다. |
 | baseline | 기준 범위 | 지원 범위 밖 기능를 현재 요구사항처럼 번역하지 않습니다. |
 | out-of-scope capability | 지원 범위 밖 기능 | 미뤄 둔 자료임을 분명히 유지합니다. |
 
@@ -170,7 +169,7 @@
 - 닫기 준비 상태 평가
 - 닫기 차단 사유
 - 사용자 소유 판단
-- 협력형 보장, 탐지형 보장, 예방형 보장
+- 협력형 보장, 탐지형 보장, 더 강한 보장
 - 정확한 라벨이 필요할 때 첫 언급에서 `Projection`(읽기 전용 상태 보기)
 
 정확한 원문 값 자체를 설명하는 경우가 아니라면 raw enum 이름이나 스키마 필드를 사용자용 라벨처럼 노출하지 않습니다. 한국어 표시 라벨은 지역화된 문구이지 기준 값을 대체하는 문자열이 아닙니다.

@@ -7,9 +7,9 @@ Use this page when security wording, local-access posture, trust boundaries, or 
 | This document owns | This document does not own |
 |---|---|
 | Security claims and explicit non-claims. | API method behavior or schemas. |
-| Guarantee semantics and non-claims for `cooperative`, `detective`, `preventive`, and `isolated`. | Storage layouts, artifact lifecycle, locks, hashes, or migrations. |
+| Guarantee semantics and non-claims for active guarantee levels. | Storage layouts, artifact lifecycle, locks, hashes, or migrations. |
 | Trust-boundary wording for local access, surfaces, and generated displays. | Connector implementation or surface-specific operating instructions. |
-| Capability-gated `detective` claim boundaries. | OS hardening, deployment hardening, arbitrary-tool sandboxing, or OS permission enforcement. |
+| Capability-gated `detective` claim boundaries. | OS controls, deployment controls, arbitrary-tool sandboxing, or OS permission enforcement. |
 | Sensitive-action approval versus product-file write-scope separation. | Runtime implementation routing or permission to build the server. |
 
 Use the [Reference index](README.md) to route API, storage, connector, runtime-boundary, and active-scope details to their owners.
@@ -26,25 +26,20 @@ Conditions:
 May claim:
 - `cooperative` is the default baseline-scope guarantee level.
 - `detective` is available only for the checked capability and observed scope.
-- `preventive` and `isolated` are reserved or profile-gated values.
 
 Must not claim:
 - This repository contains a working Harness Server, runtime monitor, sandbox, or storage layer.
-- `preventive` or `isolated` is an supported guarantee.
-- `isolated` supports OS sandboxing, OS permission enforcement, tamper-proof isolation, or full security isolation in the baseline scope.
-- `isolated` is a synonym for `preventive`.
+- The baseline scope provides sandboxing, OS permission enforcement, tamper-proof isolation, full security isolation, or universal pre-tool blocking.
+- Any stronger guarantee exists unless [Scope](scope.md) and the affected security owner define it as supported.
 
 Owner links:
 - [Scope](scope.md) owns baseline-scope inclusion and active/out-of-scope boundaries.
-- [API Value Sets](api/schema-value-sets.md) owns guarantee label value entries.
-- [Scope Reference](scope.md) owns deferred stronger security and assurance candidates.
+- [API Value Sets](api/schema-value-sets.md) owns active guarantee label value entries.
 
 | Level | Baseline scope status | Scan rule |
 |---|---|---|
 | `cooperative` | active default | Use for documented procedures and agent cooperation. |
 | `detective` | limited | Use only after the relevant capability check has passed, and name the observed scope. |
-| `preventive` | not active | Do not claim current prevention, active blocking, sandboxing, permission enforcement, or isolation. |
-| `isolated` | not active | Treat as a reserved or profile-gated isolation label with no current isolation guarantee. |
 
 ## 3. Explicit non-claims
 
@@ -416,60 +411,24 @@ Owner links:
 Exceptions:
 - Another active owner may document and prove an exact stronger mechanism. Without that owner, keep the wording `cooperative` or capability-gated `detective`.
 
-## 10. Promoted `preventive` and `isolated` boundary
+## 10. Stronger Guarantee Boundary
 
-`preventive` and `isolated` are not supported guarantees.
-
-Conditions:
-- A profile-gated `preventive` or `isolated` claim requires a promoted owner.
-
-### `preventive`
-
-Conditions:
-- The behavior has a documented mechanism that stops or denies an action before it happens.
-
-May claim:
-- `preventive` is reserved for a documented prevention-oriented mechanism.
+The baseline scope has no active stronger prevention or isolation guarantee.
 
 Must not claim:
-- The baseline scope has an active `preventive` guarantee.
-- A server obligation is already active prevention.
-
-### `isolated`
-
-Conditions:
-- The behavior has a documented boundary strong enough to support an isolation guarantee over execution, state, permissions, or storage.
+- Harness prevents arbitrary tool behavior.
+- Harness provides OS sandboxing or permission enforcement.
+- Harness makes files or records tamper-proof.
+- A profile, surface, or generated display proves a stronger guarantee by itself.
+- A stronger guarantee exists before [Scope](scope.md) and the affected security owner define it as supported.
 
 May claim:
-- `isolated` is reserved for a stronger isolation-oriented guarantee.
-
-Must not claim:
-- The baseline scope has an active `isolated` isolation guarantee.
-- `isolated` means OS sandboxing, OS permission enforcement, tamper-proof isolation, or full security isolation in the baseline scope.
-- `isolated` is a synonym for `preventive`.
-
-### Promotion requirements
-
-Conditions:
-- A document wants to promote a reserved or profile-gated `preventive` or `isolated` claim into active behavior.
-
-Must document:
-- The mechanism that prevents the action or provides isolation.
-- The exact covered operation, path, surface, profile, and isolation boundary when `isolated` is claimed.
-- The bypass and fallback behavior.
-- The proof path and user-visible error behavior.
-- Paired English/Korean documentation and active-scope promotion.
-
-Must not claim:
-- A stronger guarantee exists before the promoted owner documents the mechanism, boundary, proof path, and active-scope promotion.
-
-May claim:
-- Server obligations may be described as "the specification requires" until a stronger guarantee is promoted.
+- Server obligations may be described as "the specification requires" inside the active owner path.
 
 Owner links:
 - [Scope](scope.md) owns active/out-of-scope status.
-- [API Value Sets](api/schema-value-sets.md) owns guarantee label value entries.
-- [Scope Reference](scope.md) owns deferred stronger capability, monitoring, isolation, and preventive-control candidates.
+- [API Value Sets](api/schema-value-sets.md) owns active guarantee label value entries.
+- [Scope Reference](scope.md) owns category-level exclusions for stronger capabilities, monitoring, isolation, and pre-tool controls.
 
 ## 11. Cross-owner links
 
@@ -479,4 +438,4 @@ Owner links:
 - [API Methods](api/methods.md), method owner documents, [API Value Sets](api/schema-value-sets.md), and [API Errors](api/errors.md) own method routing, method behavior, value sets, and public error routing.
 - [Core Model](core-model.md) owns user-owned judgment and non-substitution rules.
 - [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), and [Artifact Storage](storage-artifacts.md) own storage and artifact details.
-- [Scope Reference](scope.md) owns deferred stronger capability, monitoring, isolation, and preventive-control candidates.
+- [Scope Reference](scope.md) owns category-level exclusions for stronger capabilities, monitoring, isolation, and pre-tool controls.

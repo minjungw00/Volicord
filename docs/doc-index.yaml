@@ -748,7 +748,6 @@ documents:
       - "template body wording"
       - "status card wording"
       - "Decision Packet wording"
-      - "Evidence Manifest wording"
     not_owner_for:
       - "projection authority"
       - "API schemas"

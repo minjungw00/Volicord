@@ -160,8 +160,7 @@ Concept:
 - Baseline scope and out-of-scope capabilities stay separate.
 
 Not supported until promoted:
-- detached verification
-- Manual QA
+- separate QA or verification workflows
 - rich waiver
 - assurance material
 
@@ -276,7 +275,7 @@ Concept:
 Not the same as:
 - Final acceptance.
 - Residual-risk acceptance.
-- Full `Evidence Manifest` behavior unless promoted by an owner.
+- Expanded evidence-package behavior outside the active owner paths.
 
 Owner links:
 - [API State Schemas](api/schema-state.md)
@@ -447,8 +446,7 @@ Applies to:
 
 Does not substitute for:
 - final acceptance
-- Manual QA
-- detached verification
+- separate QA or verification outcomes
 - residual-risk acceptance
 
 <a id="core-non-substitution-final-acceptance"></a>
@@ -737,7 +735,7 @@ Owner links:
 - [Close Task Method](api/method-close-task.md)
 - [API State Schemas](api/schema-state.md)
 
-Verification and Manual QA are conceptual boundaries in the baseline scope, not active gates. They must not be described as active close requirements unless an owner promotes them.
+Separate QA and verification workflows are conceptual boundaries in the baseline scope, not active gates. They must not be described as active close requirements unless an owner promotes them.
 
 ## 8. Write authorization boundary
 
@@ -855,7 +853,7 @@ Can establish:
 
 Not the same as:
 - Proof of broader correctness.
-- Final acceptance, Manual QA, detached verification, or residual-risk acceptance.
+- Final acceptance, separate QA or verification outcomes, or residual-risk acceptance.
 - Proof of unrecorded behavior.
 
 Owner links:
@@ -1137,7 +1135,7 @@ Owner links:
 
 Applies to:
 - Security guarantee wording.
-- Cooperative, detective, and preventive claims.
+- Cooperative, detective, and stronger guarantee claims.
 - Local access posture.
 
 Owner links:

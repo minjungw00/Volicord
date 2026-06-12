@@ -218,7 +218,7 @@ You decide:
 Harness records:
 - The facts it can honestly observe or record.
 - Missing, stale, redacted, blocked, or unsupported evidence.
-- Whether the agent is working with a cooperative record rather than a proven preventive control.
+- Whether the agent is working with a cooperative record rather than a proven stronger control.
 - Known limits that affect write, evidence, judgment, or close claims.
 
 The agent must not:

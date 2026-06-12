@@ -232,11 +232,11 @@ Reference links:
 - [Agent Guide](agent-guide.md)
 - [Core Model](../reference/core-model.md)
 
-## Design quality finding waiver
+## Design quality finding routing
 
 User decides:
 - Whether to fix the design-quality finding, treat it as advisory, narrow scope, provide evidence, or route a named risk through an active residual-risk path.
-- The user does not decide an active design-quality waiver in the baseline scope because that waiver route is not active.
+- The user does not decide a separate quality waiver in the baseline scope.
 
 Agent may do:
 - State the finding, the active owner path it affects, and the next safe action.
@@ -244,11 +244,11 @@ Agent may do:
 
 Harness records:
 - The active owner-path decision or blocker, if one exists.
-- No separate design-quality waiver record in the baseline scope.
+- No separate quality-waiver record in the baseline scope.
 
 Harness must not imply:
 - A design-quality finding creates its own active gate, validator family, close blocker category, waiver route, QA result, evidence record, acceptance record, or close authority.
-- An out-of-scope design-policy waiver candidate can be used as a baseline waiver.
+- A separate quality waiver can be used as a baseline result.
 
 Reference links:
 - [Design Quality](../reference/design-quality.md)

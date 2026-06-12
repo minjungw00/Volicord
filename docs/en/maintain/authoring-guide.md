@@ -92,7 +92,7 @@ Maintain docs own authoring rules and checks. They must not become secondary sou
 
 A value name can exist in a schema, example, storage note, or route page without the baseline scope providing that behavior. Treat the name as vocabulary or reserved surface area until [Scope](../reference/scope.md) and the semantic owner both say the behavior is active.
 
-Reserved and profile-gated values are not active guarantees. Mark them at the point of use and avoid default, required, supported, enforced, preventive, detective, accepted, verified, or close-ready wording unless the active owner says the profile and behavior are available.
+Reserved and profile-gated values are not active guarantees. Mark them at the point of use and avoid default, required, supported, enforced, stronger-guarantee, detective, accepted, verified, or close-ready wording unless the active owner says the profile and behavior are available.
 
 Value-set owner documents define exact value names, validation placement, and enum-like vocabulary. Semantic owner documents define what the value means, whether it is currently available, what guarantee level it carries, and what reader consequence follows. If a value-set entry and a semantic owner appear to disagree, do not infer behavior from the value name. Fix the owner gap or route the reader to the correct owner.
 

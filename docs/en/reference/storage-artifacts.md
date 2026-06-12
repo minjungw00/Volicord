@@ -47,7 +47,7 @@ Not allowed:
 
 - A `StagedArtifactHandle` shape is not authority unless it resolves to a compatible stored `artifact_staging` row or equivalent storage-owned staging manifest.
 - `existing_artifact` does not register a new artifact body.
-- Caller-supplied raw filesystem paths, arbitrary local path strings, raw logs as authority claims, `captured_artifact` handles, raw capture-adapter outputs, and native capture claims are not registration authority in the baseline.
+- Caller-supplied paths, logs, capture claims, or local file references are not registration authority in the baseline.
 
 ## Staging
 

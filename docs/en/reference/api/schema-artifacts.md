@@ -100,7 +100,7 @@ Exactly one source field is active for each input:
 | `staged_artifact` | `staged_artifact_handle` | Use a compatible transient staged handle through the owner path. |
 | `existing_artifact` | `existing_artifact_ref` | Link an already persistent same-project artifact without registering new bytes. |
 
-`captured_artifact`, native capture handles, raw capture-adapter output, raw filesystem paths, arbitrary local path strings, and raw logs as authority claims are not baseline `ArtifactInput` sources.
+Values outside the active source-kind list are not baseline `ArtifactInput` sources. Caller-supplied paths, logs, capture claims, or local file references are not artifact authority.
 
 ## Reference constraints
 

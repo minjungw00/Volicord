@@ -51,8 +51,6 @@
 | active guarantee | 현재 활성 보장 | [보안](security.md) |
 | cooperative guarantee | 협력형 보장 | [보안](security.md) |
 | detective guarantee | 탐지형 보장 | [보안](security.md) |
-| preventive guarantee | 예방형 보장 | [보안](security.md) |
-| `isolated` | `isolated` | [보안](security.md) |
 | reserved value | 예약된 값 | [기준 범위](scope.md) |
 | profile-gated value | 프로필 조건부 값 | [기준 범위](scope.md) |
 | dry-run | dry-run 미리보기 | [API 코어 스키마](api/schema-core.md) |
@@ -196,7 +194,7 @@
 - [기준 범위](scope.md)
 
 설명:
-- 지원 범위 밖 기능은 관련 담당 문서가 승격하기 전까지 활성 범위가 아닙니다.
+- 지원 범위 밖 기능은 [범위 참조](scope.md)와 영향받는 담당 문서가 지원된다고 정의하기 전까지 기준 범위 동작이 아닙니다.
 
 ### owner document
 
@@ -794,7 +792,7 @@
 - `cooperative`
 
 피할 표현:
-- 협력형 표현을 탐지형, 예방형, `isolated`, 샌드박스, 강제 차단처럼 강화하는 표현
+- 협력형 표현을 탐지형, 샌드박스, 강제 차단, 더 강한 격리 표현으로 강화하는 표현
 
 담당 문서:
 - [보안](security.md)
@@ -824,55 +822,6 @@
 
 설명:
 - 탐지형 보장은 문서화된 관찰 범위와 역량 확인이 뒷받침할 때만 씁니다.
-
-### preventive guarantee
-
-영어:
-- preventive guarantee
-
-한국어:
-- 참조 문서: 예방형 보장
-- 사용자 문서: 예방형 보장
-
-보존할 식별자:
-- `preventive`
-
-피할 표현:
-- 현재 담당 문서 없이 기준 범위 샌드박싱을 주장하는 표현
-- 현재 담당 문서 없이 권한 제어를 주장하는 표현
-
-담당 문서:
-- [보안](security.md)
-- [범위 참조](scope.md)
-
-설명:
-- 예방형 보장은 정확한 예방 메커니즘과 증명 경로가 문서화되었을 때만 씁니다.
-
-### `isolated`
-
-영어:
-- `isolated`
-
-한국어:
-- 참조 문서: `isolated`
-- 사용자 문서: `isolated`
-
-보존할 식별자:
-- `isolated`
-
-피할 표현:
-- 격리 보장이 제공됩니다
-- 현재 격리됩니다
-- 기준 범위가 isolated 보장을 제공합니다
-
-담당 문서:
-- [보안](security.md): 의미와 비주장 경계
-- [기준 범위](scope.md): 기준 범위 사용 가능성
-- [API 값 집합](api/schema-value-sets.md): 값 항목
-
-설명:
-- `isolated`는 이후 또는 프로필 조건부 보장 라벨로 예약된 값이며 기준 범위의 활성 보장이 아닙니다.
-- 값 집합에 있다는 사실만으로 동작이 활성화되지는 않습니다.
 
 ### reserved value
 

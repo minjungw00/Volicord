@@ -88,11 +88,11 @@ Not included:
 
 - native artifact capture from surfaces
 - persistent projection jobs, projection reconciliation, generated projection files, and managed projection repair
-- full `Evidence Manifest` production
-- manual QA workflows and verification gate workflows
+- full evidence-manifest production
+- manual QA and external verification workflows
 - command, network, and secret access observation
 - command, network, and secret pre-tool blocking
-- preventive isolation, sandboxing, or `isolated` guarantee semantics
+- pre-tool isolation, sandboxing, or stronger isolation guarantee semantics
 - hosted dashboards
 - connector marketplaces
 - export or transfer packages
@@ -129,12 +129,12 @@ Profile-gated value:
 Point-of-use rule:
 
 - Mark reserved and profile-gated values where they appear.
-- Do not describe them as default, required, supported, enforced, accepted, verified, close-ready, detective, preventive, or isolated unless this page and the semantic owner both define that behavior.
+- Do not describe them as default, required, supported, enforced, accepted, verified, close-ready, detective, sandboxed, or stronger-isolation behavior unless this page and the semantic owner both define that behavior.
 
 Owner links:
 
 - Exact value names and value-set placement: [API Value Sets](api/schema-value-sets.md).
-- Guarantee semantics and non-claims, including `isolated`: [Security](security.md).
+- Guarantee semantics and non-claims, including stronger isolation claims: [Security](security.md).
 - Product terminology for reserved and profile-gated values: [Glossary](glossary.md).
 
 <a id="out-of-scope-capability-promotion"></a>
@@ -167,7 +167,7 @@ Supported boundary:
 
 Not included:
 
-- The baseline scope does not provide `isolated` guarantee semantics.
+- The baseline scope does not provide stronger isolation guarantee semantics.
 - Reserved or profile-gated guarantee labels do not expand the baseline scope.
 
 Owner links:

@@ -24,7 +24,7 @@ This document does not own:
 
 ## Boundary
 
-Only values listed here as active are active API values. Profile-gated values must name the profile or capability gate at the point of use. Later names remain catalog-only until a promoted owner adds exact active fields, fallback behavior, and proof expectations.
+Only values listed here as active are active API values. Profile-gated values must name the profile or capability gate at the point of use. Values outside the active lists are not baseline API values unless [Scope](../scope.md) and the affected semantic owner define the supported behavior.
 
 Rendered labels are display text. They do not replace the canonical values listed in this document.
 
@@ -307,17 +307,7 @@ staged_artifact
 existing_artifact
 ```
 
-Inactive or rejected source names include:
-
-```text
-captured_artifact
-native_capture
-raw_path
-raw_log
-capture_adapter_output
-```
-
-These inactive names do not authorize artifact capture or local file reads.
+Values outside this list are not active source values and do not authorize artifact capture or local file reads.
 
 `redaction_state` uses:
 
@@ -405,21 +395,11 @@ incompatible
 
 ## Profile-gated and reserved values
 
-These names are not default baseline values. A listed name is a value-set boundary only; it does not activate behavior or grant a guarantee.
+Reserved or profile-gated names are not default baseline values. This document does not publish unsupported value names as part of the active value sets.
 
-| Name | Boundary |
-|---|---|
-| `preventive` | Profile-gated `GuaranteeDisplay.level`; requires a promoted preventive mechanism and proof path. |
-| `isolated` | Reserved or `profile-gated` `GuaranteeDisplay.level` label. |
-| `captured_artifact` and native capture names | Reserved or rejected for active `ArtifactInput.source_kind`. |
-| cross-surface staged artifact transfer | Out of scope; staged promotion requires matching recorded surface provenance. |
-| QA waiver and verification-risk judgment kinds | Out-of-scope capabilities; not active `judgment_kind` values. |
-| `design_policy` blocker category | Out of scope unless promoted by a schema and close-readiness owner. |
-
-`isolated` details:
-- Owner boundary: This document owns the value-set entry only.
-- Non-claim: The entry does not grant or define an active isolation guarantee.
-- Owner links: Guarantee semantics belong to [Security](../security.md). Baseline scope availability belongs to [Scope](../scope.md).
+Boundary:
+- A name outside an active list is not available as baseline behavior by appearing in a note, example, route page, or rendered label.
+- A reserved or profile-gated value needs the [Scope](../scope.md) boundary and affected semantic owner before any behavior can be described as supported.
 
 Active artifact intake uses `staged_artifact` or `existing_artifact`; artifact source semantics belong to [API Artifact Schemas](schema-artifacts.md) and [Artifact Storage](../storage-artifacts.md).
 
@@ -429,4 +409,4 @@ Active artifact intake uses `staged_artifact` or `existing_artifact`; artifact s
 - [API Errors](errors.md) for public error codes and precedence.
 - [API Schema Core](schema-core.md), [API State Schemas](schema-state.md), [API Artifact Schemas](schema-artifacts.md), and [API Judgment Schemas](schema-judgment.md) for fields that use these values.
 - [API Methods](methods.md) and method owner documents for method behavior using these values.
-- [Scope Reference](../scope.md) for inactive value names.
+- [Scope Reference](../scope.md) for reserved and profile-gated value boundaries.

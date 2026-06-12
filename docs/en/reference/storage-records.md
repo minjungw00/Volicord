@@ -20,7 +20,7 @@ This document owns:
 
 - Runtime Home identity and project-local storage layout assumptions.
 - Active persisted record categories and table-level storage roles.
-- Record-column meaning for future storage design.
+- Record-column meaning for baseline storage design.
 - Storage-owned record values and status fields.
 - Storage-owned JSON `TEXT` placement and validation expectations.
 - Record-level active/out-of-scope exclusions.
@@ -142,7 +142,7 @@ Not allowed:
 
 - No other persisted table family or transient handle family is baseline scope.
 - Requirement shaping is not a separate committed Discovery Brief, Shared Design, Question Queue, Assumption Register, or First Safe Change Unit Candidate table.
-- Evidence is not stored as full Evidence Manifest storage.
+- Evidence is stored only through the active compact evidence-summary and artifact-ref paths.
 - Projection has no active persisted table family.
 - `status-card`, `judgment-request`, `run-evidence-summary`, `close-result`, and `agent-context-packet` are not stored state or storage mutation paths.
 
@@ -339,7 +339,7 @@ Contains:
 
 Does not contain:
 - a separate committed Discovery Brief, Question Queue, Assumption Register, or First Safe Change Unit Candidate.
-- full Evidence Manifest storage.
+- expanded evidence-package storage.
 - rendered `status-card` or `close-result` bodies.
 
 Owner links:
@@ -414,7 +414,7 @@ Contains:
 Does not contain:
 - Product Repository writes themselves.
 - evidence sufficiency or final acceptance.
-- reusable permission or a preventive security guarantee.
+- reusable permission or a stronger security guarantee.
 
 Owner links:
 - [Storage Effects](storage-effects.md).
@@ -534,8 +534,8 @@ Contains:
 - `updated_at`.
 
 Does not contain:
-- full Evidence Manifest storage.
-- full Manual QA matrices.
+- expanded evidence-package storage.
+- separate QA workflow storage.
 - final acceptance.
 - rendered `run-evidence-summary` bodies.
 
@@ -620,7 +620,7 @@ Owner links:
 
 Rule:
 
-- This section is a first-implementation storage contract for future SQLite schema design.
+- This section is a first-implementation storage contract for SQLite schema design.
 - For a first SQLite schema, committed rows must preserve these identities, value sets, relations, and transaction boundaries.
 
 Allowed:
@@ -1051,7 +1051,7 @@ Not allowed:
   - Assumption Register
   - full design artifact
   - generated projection body
-  - evidence manifest body
+  - expanded evidence-package body
   - QA record
   - acceptance record
   - residual-risk record
@@ -1070,27 +1070,7 @@ Exceptions:
 Not allowed:
 
 - Reference-schema presence alone does not make storage active.
-- The baseline excludes storage for:
-  - projection jobs
-  - durable projection caches
-  - managed-output outboxes
-  - conformance-runner state
-  - fixture execution history
-  - operations-profile storage
-  - `captured_artifact` handles
-  - native capture storage
-  - capture-adapter output tables
-  - full Evidence Manifest tables
-  - detailed evidence catalogs
-  - detached verification
-  - full Manual QA matrices
-  - rich QA/waiver machinery
-  - rich approval or residual-risk lifecycle tables separate from `user_judgments` and `blockers`
-  - dashboards
-  - analytics
-  - hosted connector registries
-  - cross-surface orchestration storage
-  - long-term design-support storage
+- The baseline excludes storage for capability families outside the supported scope, generated operational outputs, expanded evidence packages, hosted services, cross-surface orchestration, and long-term design-support records unless [Scope](scope.md) and the storage owners define a supported contract.
 
 Allowed:
 

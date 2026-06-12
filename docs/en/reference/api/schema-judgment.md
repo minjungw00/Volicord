@@ -26,7 +26,7 @@ This document does not own:
 
 ## Boundary
 
-Judgment schemas preserve the structure of a user-owned choice. They do not let broad approval replace product decisions, technical decisions, scope decisions, sensitive-action approval, final acceptance, residual-risk acceptance, cancellation, later QA waiver, or later verification-risk acceptance.
+Judgment schemas preserve the structure of a user-owned choice. They do not let broad approval replace product decisions, technical decisions, scope decisions, sensitive-action approval, final acceptance, residual-risk acceptance, cancellation, or any unsupported judgment category.
 
 `UserJudgmentCandidate` is not a pending judgment.
 

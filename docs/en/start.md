@@ -102,7 +102,7 @@ The user owns:
 
 The agent may compare options, inspect source, run checks, name evidence gaps, and explain consequences. It must not turn tool output, passing tests, generated summaries, or its own confidence into the user's judgment.
 
-Broad phrases such as "go ahead" or "looks good" should be applied only to the specific pending choice they reasonably answer. They do not automatically grant new sensitive-action permission, accept the finished work, accept known residual risk, or settle another future judgment candidate.
+Broad phrases such as "go ahead" or "looks good" should be applied only to the specific pending choice they reasonably answer. They do not automatically grant new sensitive-action permission, accept the finished work, accept known residual risk, or settle another out-of-scope judgment candidate.
 
 ## What the agent can do
 

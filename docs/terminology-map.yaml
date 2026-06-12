@@ -10,7 +10,6 @@ canonical_for:
   - "Search-friendly routing for promotion-time owner update terminology."
   - "Terminology distinction between `complete` as an enum/identifier and ordinary prose meaning full or entire."
   - "Terminology boundaries for reserved/profile-gated value presence versus supported behavior."
-  - "Owner-role routing for `isolated` semantics and value-set entry ownership."
 does_not_own:
   - "Product, API, storage, security, projection, or runtime contracts."
   - "Rendered UI copy when an exact template body owner defines the wording."
@@ -63,7 +62,6 @@ identifier_preservation:
     - "Harness Runtime Home"
     - "Projection"
     - "Write Authorization"
-    - "Evidence Manifest"
     - "Decision Packet"
 avoid:
   ko:
@@ -97,12 +95,6 @@ avoid:
       use: "전체 닫기 준비 상태 평가 순서"
     - phrase: "스코프"
       use: "범위"
-    - phrase: "격리 보장이 제공됩니다"
-      use: "`isolated`는 예약된 값 또는 프로필 조건부 값이며 현재 활성 보장이 아니라고 설명"
-    - phrase: "현재 격리됩니다"
-      use: "`isolated`가 기준 범위 격리 동작을 뜻하지 않는다고 설명"
-    - phrase: "기준 범위가 isolated 보장을 제공합니다"
-      use: "기준 범위는 `isolated` 보장을 제공하지 않는다고 설명"
 terms:
   harness:
     category: "product_concept"
@@ -726,7 +718,7 @@ terms:
       ko:
         - "docs/ko/reference/security.md"
     notes:
-      - "Do not strengthen cooperative wording into detective, preventive, isolated, sandboxed, or enforced wording."
+      - "Do not strengthen cooperative wording into detective, sandboxed, enforced, or stronger isolation wording."
   detective_guarantee:
     category: "product_concept"
     en: "detective guarantee"
@@ -743,64 +735,6 @@ terms:
         - "docs/ko/reference/agent-integration.md"
     notes:
       - "Use only when the documented observable scope and capability check support it."
-  preventive_guarantee:
-    category: "product_concept"
-    en: "preventive guarantee"
-    ko_reference: "예방형 보장"
-    ko_user: "예방형 보장"
-    preserve_as_identifier:
-      - "preventive"
-    owner_documents:
-      en:
-        - "docs/en/reference/security.md"
-        - "docs/en/reference/scope.md"
-      ko:
-        - "docs/ko/reference/security.md"
-        - "docs/ko/reference/scope.md"
-    notes:
-      - "Use only when the exact preventive mechanism and proof path are documented."
-  isolated_guarantee:
-    category: "guarantee_label"
-    en: "isolated"
-    ko_reference: "`isolated`"
-    ko_user: "`isolated`"
-    preserve_as_identifier:
-      - "isolated"
-    preserve_as_value:
-      - "isolated"
-    avoid_ko:
-      - "격리 보장이 제공됩니다"
-      - "현재 격리됩니다"
-      - "기준 범위가 isolated 보장을 제공합니다"
-    owner_documents:
-      en:
-        - "docs/en/reference/security.md"
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/security.md"
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
-    owner_roles:
-      semantics:
-        en:
-          - "docs/en/reference/security.md"
-        ko:
-          - "docs/ko/reference/security.md"
-      baseline_scope_availability:
-        en:
-          - "docs/en/reference/scope.md"
-        ko:
-          - "docs/ko/reference/scope.md"
-      value_entry:
-        en:
-          - "docs/en/reference/api/schema-value-sets.md"
-        ko:
-          - "docs/ko/reference/api/schema-value-sets.md"
-    notes:
-      - "`isolated` is a reserved or profile-gated guarantee label, not a supported guarantee."
-      - "Security owns guarantee semantics and non-claims; Scope owns baseline-scope availability; API Value Sets owns the value entry."
-      - "Presence in a value set does not activate behavior."
   dry_run:
     category: "api_concept"
     en: "dry-run"

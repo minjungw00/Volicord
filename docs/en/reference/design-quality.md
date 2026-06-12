@@ -13,7 +13,7 @@ Role: design-quality observations route to judgment, evidence, or scope owners w
 - residual-risk visibility issues
 - close blockers already owned by active Core/API categories
 
-It does not define an independent active gate, active design-quality `CloseReadinessBlocker.category`, active validator family, design-policy waiver route, severity-based blocking policy, evidence record, QA record, acceptance record, residual-risk record, or close authority.
+It does not define an independent active gate, active design-quality close category, active validator family, quality-waiver route, severity-based blocking policy, evidence record, QA record, acceptance record, residual-risk record, or close authority.
 
 It owns:
 
@@ -21,7 +21,7 @@ It owns:
 - how design-quality observations route to `judgment_kind=product_decision`, `judgment_kind=technical_decision`, and `judgment_kind=scope_decision`
 - how design-quality observations point to existing active blocker categories such as `scope`, `user_judgment`, `evidence`, `artifact_availability`, `residual_risk_visibility`, or `surface_capability`
 - the active design-quality severity boundary: severity-like wording is advisory triage unless an active owner path separately requires action
-- the boundary between design-quality observations, active `ValidatorResult.validator_id` values, and out-of-scope design-policy catalogs
+- the boundary between design-quality observations, active `ValidatorResult.validator_id` values, and out-of-scope quality-policy material
 
 It does not own:
 
@@ -32,7 +32,7 @@ It does not own:
 - artifact storage; see [Artifact Storage](storage-artifacts.md)
 - projection authority; see [Projection Authority Reference](projection-and-templates.md)
 - template bodies, status cards, or rendered reports; see [Template Bodies](template-bodies.md)
-- broad design-policy validators, design-policy waiver, severity-based active blocking policy, steward policies, full review procedure, operations/reporting candidates, or out-of-scope conformance catalogs
+- out-of-scope design-quality policy systems, broad review procedures, operations/reporting material, or conformance catalogs
 
 Use these owner links when a design-quality finding crosses another contract:
 
@@ -44,7 +44,7 @@ Use these owner links when a design-quality finding crosses another contract:
 | Status method behavior | [Status method](api/method-status.md) |
 | Close-task method behavior | [Close-task method](api/method-close-task.md) |
 | Method-to-storage effects for active API method branches | [Storage Effects](storage-effects.md) |
-| Deferred design gates, policy blockers, broad validators, waiver candidates, and policy catalogs | [Scope Reference](scope.md) |
+| Out-of-scope design-quality policy families | [Scope Reference](scope.md) |
 
 Documentation in this repository remains planning reference material. It does not mean a Harness Server, runtime state, generated evidence, QA record, Acceptance record, residual-risk record, or close record exists here today.
 
@@ -202,13 +202,10 @@ Not allowed:
 
 Active design quality does not create:
 
-- new Core state
-- `StateSummary.gates.design_gate`
-- `CloseReadinessBlocker.category=design_policy`
-- new schemas
+- new Core state or schemas
 - new validator result fields
-- active design-policy validators
-- design-policy waiver
+- active policy validators
+- quality-waiver routes
 - separate design-review authority
 
 Design quality must not turn ordinary work into an open-ended planning loop.
@@ -219,10 +216,8 @@ Not supported blockers unless another active owner path explicitly requires a na
 - full TDD trace
 - full feedback-loop audit
 - full codebase-stewardship review
-- detailed Manual QA policy
-- detached verification
-- two-stage review displays
-- steward policies
+- broad review catalogs
+- out-of-scope quality processes
 
 ## 3. Routing rules
 
@@ -323,7 +318,7 @@ A design-quality observation blocks close only through an active owner path.
 |---|---|
 | active close dependency | See [Active close dependency](#design-quality-close-active-dependency) |
 | focused unblock path | See [Focused unblock path](#design-quality-close-focused-unblock-path) |
-| inactive design-policy basis | See [Inactive design-policy basis](#design-quality-close-inactive-design-policy-basis) |
+| unsupported policy basis | See [Unsupported policy basis](#design-quality-close-unsupported-policy-basis) |
 | advisory-only policy phrase | See [Advisory-only policy phrase](#design-quality-close-advisory-only-policy-phrase) |
 | active close category | See [Active close category](#design-quality-close-active-category) |
 
@@ -352,23 +347,23 @@ Close effect:
 Not allowed:
 - Do not widen the next action into a broad design review or open-ended planning loop.
 
-<a id="design-quality-close-inactive-design-policy-basis"></a>
-### Inactive design-policy basis
+<a id="design-quality-close-unsupported-policy-basis"></a>
+### Unsupported policy basis
 
 Condition:
-- The observation relies on `design_gate`, `CloseReadinessBlocker.category=design_policy`, a design-policy waiver, a broad policy catalog, or severity alone.
+- The observation relies on an unsupported quality-policy route, a broad policy catalog, or severity alone.
 
 Close effect:
 - The observation does not block close on that basis.
 
 Not allowed:
-- Do not treat out-of-scope design-policy material as an active gate, close blocker, waiver route, evidence rule, or close authority.
+- Do not treat out-of-scope quality-policy material as an active gate, close blocker, waiver route, evidence rule, or close authority.
 
 <a id="design-quality-close-advisory-only-policy-phrase"></a>
 ### Advisory-only policy phrase
 
 Condition:
-- The finding mentions domain language, vertical slice shape, TDD, module/interface review, stewardship, Manual QA, detached verification, review stages, or an out-of-scope policy family.
+- The finding mentions domain language, vertical slice shape, TDD, module/interface review, stewardship, broad review stages, or another policy family outside baseline scope.
 
 Route:
 - Use an advisory next action, evidence request, focused user judgment, or residual-risk marker only when an active owner path needs that narrow action.
@@ -394,9 +389,9 @@ Close effect:
 Not allowed:
 - Do not create a design-quality-specific close category in the baseline scope.
 
-## 5. No current design-policy waiver
+## 5. No separate quality waiver
 
-The baseline scope has no active design-quality waiver or design-policy waiver route. If an owner path allows a requirement to be deferred, accepted as risk, or resolved by user judgment, use that active owner path and its exact `judgment_kind`, blocker category, or evidence behavior.
+The baseline scope has no separate active quality-waiver route. If an owner path allows a requirement to be deferred, accepted as risk, or resolved by user judgment, use that active owner path and its exact `judgment_kind`, blocker category, or evidence behavior.
 
 A waiver-like decision or accepted-risk answer records the responsible user judgment about a named requirement or a named visible risk.
 
@@ -416,7 +411,6 @@ Keep the judgment routes separate:
 | `final_acceptance` | See [`final_acceptance`](#design-quality-route-final-acceptance) |
 | `residual_risk_acceptance` | See [`residual_risk_acceptance`](#design-quality-route-residual-risk-acceptance) |
 | active `UserJudgment.judgment_kind` values | See [Active user judgment values](#design-quality-route-active-user-judgment-values) |
-| out-of-scope design-quality waiver candidates | See [Out-of-scope waiver candidates](#design-quality-route-future-waiver-candidates) |
 
 <a id="design-quality-route-final-acceptance"></a>
 ### `final_acceptance`
@@ -464,25 +458,7 @@ Close effect:
 - They can affect close only through the active owner path that asked for the judgment.
 
 Not allowed:
-- Do not treat them as design-policy waiver, broad approval, QA waiver, verification-risk acceptance, or any out-of-scope candidate that has not been promoted.
-
-<a id="design-quality-route-future-waiver-candidates"></a>
-### Out-of-Scope Waiver Candidates
-
-Condition:
-- A proposed design-quality waiver or policy waiver is not promoted into the baseline.
-
-Effect:
-- Remain out-of-scope material.
-
-Owner links:
-- [Scope](scope.md)
-
-Close effect:
-- They have no active close effect.
-
-Not allowed:
-- Do not treat them as active requirements, close blockers, validator behavior, or evidence rules.
+- Do not treat them as broad approval, a separate quality waiver, or an unsupported judgment category.
 
 Broad approval, a friendly "looks good", or a general go-ahead must not be treated as any of these judgments unless the active owner path asked for that specific judgment.
 
@@ -518,13 +494,12 @@ Allowed examples:
 - current state/version/freshness refs when stale context affects the close basis
 - user-judgment refs for product, technical, scope, final-acceptance, or residual-risk decisions
 - residual-risk refs when a known limitation remains visible at close
-- future Manual QA or verification refs only after those later owner paths are promoted
 
 <a id="design-quality-evidence-non-satisfying-references"></a>
 ### References that do not automatically satisfy evidence
 
 Not allowed:
-- Do not automatically treat chat assertions, generic summaries, rendered projection prose, unregistered files, screenshots without an owner path, passing tests alone, future waiver candidates, final acceptance, or residual-risk acceptance as required evidence.
+- Do not automatically treat chat assertions, generic summaries, rendered projection prose, unregistered files, screenshots without an owner path, passing tests alone, final acceptance, or residual-risk acceptance as required evidence.
 
 Close effect:
 - These references do not remove a required-evidence blocker by themselves.
@@ -552,63 +527,12 @@ This document does not publish:
 - active design-policy validator IDs
 - a policy-to-validator mapping
 
-Out-of-scope stable validator ID sets remain candidates in [Policy and conformance: `ValidatorResult` stable IDs and policy families](scope.md) unless an owner promotes a narrow active contract.
+Validator IDs outside the active set have no baseline effect unless [Scope](scope.md) and the affected owners promote a narrow active contract.
 
-## 8. Out-of-Scope Policy Catalog Boundary
+## 8. Out-of-Scope Policy Material
 
-The full design-quality policy catalog is not baseline scope. These ideas are out of scope until a named owner promotes a narrow behavior with scope, fallback behavior, exact contracts, and proof expectations.
+The full design-quality policy catalog is not baseline scope.
 
-| Out-of-scope idea | Details |
-|---|---|
-| `design_gate` and `CloseReadinessBlocker.category=design_policy` | See [`design_gate`](#design-quality-later-design-gate) |
-| Design-policy waiver | See [Design-policy waiver](#design-quality-later-design-policy-waiver) |
-| Broad design validators and severity-based blocking | See [Broad validators](#design-quality-later-broad-validators) |
-| Full design-quality policy families and steward policies | See [Policy families](#design-quality-later-policy-families) |
-| Detailed review displays and reporting material | See [Detailed review displays](#design-quality-later-detailed-review-displays) |
+This page does not publish unsupported gate names, blocker categories, waiver branches, validator families, workflow branches, or promotion checklists. Use [Scope](scope.md) for category-level baseline exclusions.
 
-<a id="design-quality-later-design-gate"></a>
-### `design_gate`
-
-Not allowed:
-- No active gate, active close blocker, or close-readiness category exists for `design_gate` or `CloseReadinessBlocker.category=design_policy`.
-
-Promotion would need:
-- Core/API owner changes plus value-set, schema, close-readiness, and storage-effect ownership.
-
-<a id="design-quality-later-design-policy-waiver"></a>
-### Design-policy waiver
-
-Not allowed:
-- No active waiver route or automatic success path exists.
-
-Promotion would need:
-- A named owner path, non-substitution rules, judgment behavior, and close-readiness effects.
-
-<a id="design-quality-later-broad-validators"></a>
-### Broad validators
-
-Not allowed:
-- No active validator IDs, severity meanings, policy-to-validator mapping, or severity-only blocker exists.
-
-Promotion would need:
-- Stable validator set ownership, severity semantics, API/schema boundaries, and fallback behavior.
-
-<a id="design-quality-later-policy-families"></a>
-### Policy families
-
-Not allowed:
-- No active policy catalog, stewardship gate, or full review procedure exists.
-
-Promotion would need:
-- A scoped policy owner, reader-facing behavior, proof expectations, and active/out-of-scope migration path.
-
-<a id="design-quality-later-detailed-review-displays"></a>
-### Detailed review displays
-
-Not allowed:
-- No active operations report, fixture requirement, implementation task, or conformance obligation exists.
-
-Promotion would need:
-- Promotion through [Scope Reference](scope.md), promotion-time owner updates, and documentation acceptance before implementation work starts.
-
-Out-of-scope capabilities may keep names only. They must not be presented as baseline requirements, blockers, waiver rules, evidence expectations, validator mappings, fixture requirements, operations reports, or implementation tasks.
+Out-of-scope quality material must not be presented as baseline requirements, blockers, waiver rules, evidence expectations, validator mappings, fixture requirements, operations reports, or implementation tasks.

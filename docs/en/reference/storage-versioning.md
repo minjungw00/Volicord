@@ -160,7 +160,7 @@ Owner links:
 
 The active first schema should omit `tasks.state_version`.
 
-If an implementation encounters a legacy or prototype `tasks.state_version` column, that value is inactive metadata only.
+If an implementation encounters a legacy or prototype `tasks.state_version` column, that value is ignored metadata only.
 
 `tasks.state_version` must not be used as:
 
@@ -445,8 +445,7 @@ Does not increment when:
 
 Retry behavior:
 
-- Each future migration must declare a source version, target version, storage profile, owner, and rollback or repair expectation before it is accepted.
-- Promoted migrations must run transactionally for `registry.sqlite` or one `state.sqlite` at a time, with a clear interrupted-state recovery rule.
+- Migration execution is outside the baseline unless [Scope](scope.md) and the affected storage owners define a supported migration path.
 
 Owner links:
 
@@ -463,7 +462,7 @@ The active migration boundary is:
 - Preserve artifact hashes and owner links, or mark affected refs invalid for recovery.
 - Preserve committed `tool_invocations` replay rows so idempotency does not fork after migration.
 
-This document intentionally excludes inactive DDL bundles, migration catalogs, and profile-specific migration details.
+This document intentionally excludes DDL bundles, migration catalogs, and profile-specific migration details outside the supported baseline.
 
 ## Failures and retry
 

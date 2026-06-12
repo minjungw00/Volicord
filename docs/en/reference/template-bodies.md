@@ -227,7 +227,7 @@ Use `Closed by owner result` only when the close owner path returned an actual c
 - The packet is Core state, storage state, evidence, acceptance, residual-risk acceptance, or close output.
 - A stale packet overrides current owner state.
 - The agent may bypass user judgment, write authorization, artifact rules, or close blockers.
-- Full schemas, DDL, logs, artifact bodies, unrelated contract material, future catalog material, or paired bilingual docs should be injected by default.
+- Full schemas, DDL, logs, artifact bodies, unrelated contract material, out-of-scope capability catalogs, or paired bilingual docs should be injected by default.
 
 ### User-facing wording
 

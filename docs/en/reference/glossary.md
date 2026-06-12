@@ -52,8 +52,6 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | active guarantee | 현재 활성 보장 | [Security](security.md) |
 | cooperative guarantee | 협력형 보장 | [Security](security.md) |
 | detective guarantee | 탐지형 보장 | [Security](security.md) |
-| preventive guarantee | 예방형 보장 | [Security](security.md) |
-| `isolated` | `isolated` | [Security](security.md) |
 | reserved value | 예약된 값 | [Scope](scope.md) |
 | profile-gated value | 프로필 조건부 값 | [Scope](scope.md) |
 | dry-run | dry-run 미리보기 | [API Schema Core](api/schema-core.md) |
@@ -194,7 +192,7 @@ Owner:
 - [Scope](scope.md)
 
 Notes:
-- An out-of-scope capability is inactive until the relevant owners promote it.
+- An out-of-scope capability is not baseline behavior unless [Scope](scope.md) and the affected owners define it as supported.
 
 ### owner document
 
@@ -676,7 +674,7 @@ Owner:
 - [Security](security.md)
 
 Notes:
-- Runtime means future executing Harness server/runtime behavior and runtime data space.
+- Runtime means executing Harness server/runtime behavior and runtime data space.
 
 ### `Write Authorization`
 
@@ -794,7 +792,7 @@ Preserve:
 - `cooperative`
 
 Avoid:
-- Strengthening cooperative wording into detective, preventive, isolated, sandboxed, or enforced wording.
+- Strengthening cooperative wording into detective, sandboxed, enforced, or stronger isolation wording.
 
 Owner:
 - [Security](security.md)
@@ -824,55 +822,6 @@ Owner:
 
 Notes:
 - Use detective guarantee only when the documented observable scope and capability check support it.
-
-### preventive guarantee
-
-English:
-- preventive guarantee
-
-Korean:
-- Reference: 예방형 보장
-- User-facing: 예방형 보장
-
-Preserve:
-- `preventive`
-
-Avoid:
-- Claiming baseline-scope sandboxing without an active owner.
-- Claiming permission control without an active owner.
-
-Owner:
-- [Security](security.md)
-- [Scope Reference](scope.md)
-
-Notes:
-- Use preventive guarantee only when the exact preventive mechanism and proof path are documented.
-
-### `isolated`
-
-English:
-- `isolated`
-
-Korean:
-- Reference: `isolated`
-- User-facing: `isolated`
-
-Preserve:
-- `isolated`
-
-Avoid:
-- 격리 보장이 제공됩니다
-- 현재 격리됩니다
-- 기준 범위가 isolated 보장을 제공합니다
-
-Owner:
-- [Security](security.md) for semantics and non-claims
-- [Scope](scope.md) for baseline-scope availability
-- [API Value Sets](api/schema-value-sets.md) for the value entry
-
-Notes:
-- `isolated` is a reserved or profile-gated guarantee label, not a supported guarantee.
-- Presence in a value set does not activate behavior.
 
 ### reserved value
 
