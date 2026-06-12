@@ -7,7 +7,7 @@
 이 문서는 현재 MVP의 `harness.prepare_write` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
-- 계정 내보내기 확인 예시의 최소 요청과 대표 응답
+- 공유 계정 데이터 내보내기 확인 시나리오의 최소 요청과 대표 응답
 - 저장 담당 문서가 기록 단위 세부사항을 정의하기 전의 메서드 수준 저장 효과 기대치
 
 ## 담당하지 않는 것
@@ -151,7 +151,7 @@ params:
 
 별도의 민감 동작 승인이 이미 있을 때의 허용 분기(`PrepareWriteResult`, `decision=allowed`):
 
-기존 민감 동작 승인은 `state_version: 19`의 `active_user_judgment_refs` 사용자 판단 참조로 표시됩니다. `intended_operation`은 계정 내보내기 흐름 변경을 이름 붙일 뿐이며, 하네스 민감 동작 승인을 대신하지 않습니다.
+기존 민감 동작 승인은 `state_version: 19`의 `active_user_judgment_refs` 사용자 판단 참조로 표시됩니다. `intended_operation`은 계정 내보내기 흐름 변경을 이름 붙이며 하네스 민감 동작 승인과 별도입니다.
 아래 누락 승인 사유는 요청의 `sensitive_categories: [personal_data_export]`에 대응합니다.
 
 ```yaml
