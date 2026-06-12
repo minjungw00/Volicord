@@ -1,12 +1,8 @@
-# 아티팩트 저장 참조
+# 아티팩트 저장
 
 규칙:
 
 - 이 문서는 기준 범위 원천 설계에서 아티팩트 저장 생명주기를 담당합니다.
-
-허용되지 않는 것:
-
-- 이 문서는 아티팩트 바이트, 아티팩트 디렉터리, 런타임 저장소, 증거 기록, QA 기록, 수락 기록, 닫기 기록을 만들지 않습니다.
 
 ## 담당하는 것 / 담당하지 않는 것
 
@@ -28,6 +24,7 @@
 | 메서드별 저장 효과와 상태 버전 영향 | [저장 효과](storage-effects.md), [저장소 버전 관리](storage-versioning.md) |
 | 로컬 접근, 접근 등급, 보안 보장 수준 | [보안](security.md), [런타임 경계](runtime-boundaries.md) |
 
+<a id="lifecycle-boundary"></a>
 ## 아티팩트 생명주기 요약
 
 아티팩트 저장은 네 단계를 구분합니다. 아래 요약 표는 단계만 보여 주고, 세부 블록은 의미와 증거와의 관계를 분리합니다.
@@ -98,30 +95,12 @@
 - 스테이징 핸들은 지속 아티팩트 포인터나 증거 권한이 아닙니다.
 - 호출자가 준 경로, 로그, 캡처 주장, 로컬 파일 참조는 기준 범위의 아티팩트 등록 권한이 아닙니다.
 
-허용되는 것:
-
-- 소비되지 않았거나 만료된 `artifact_staging` 행과 `artifacts/tmp/` 아래 임시 바이트 또는 알림은 `expired` 또는 `discarded`로 표시할 수 있습니다.
-- 등록 전 임시 바이트는 정리할 수 있습니다.
-
-예외:
-
-- 이 임시 자료는 증거 권한이 아니므로 위 정리가 허용됩니다.
-
-허용되지 않는 것:
-
-- `artifacts` 행이 커밋된 뒤의 보존 삭제, 프로젝트 해체, 파괴적 정리는 일반적인 기준 범위 변경 동작 밖입니다.
-- 보존 또는 마이그레이션 경로는 현재 기록이 아직 이름 붙인 증거 지원을 조용히 삭제하면 안 됩니다.
-
-규칙:
-
-- 보존 또는 마이그레이션 경로는 아티팩트 해시, 담당 연결, 이벤트, 재실행 행을 보존하거나 영향을 받은 참조를 복구 대상으로 유효하지 않게 표시해야 합니다.
-
 ## 스테이징
 
 규칙:
 
 - `harness.stage_artifact`는 아티팩트를 스테이징합니다.
-- 이 메서드는 데이터를 임시 저장할 뿐, 정식 증거를 만들지 않습니다.
+- 스테이징은 데이터를 임시 저장할 뿐, 정식 증거를 만들지 않습니다.
 
 허용되는 것:
 
@@ -162,7 +141,7 @@ expires_at: "<future-expiration-timestamp>"
 
 규칙:
 
-- `created_by_surface_*` 필드는 성공한 `harness.stage_artifact` 요청의 `VerifiedSurfaceContext`에서 서버가 기록하는 값입니다.
+- `created_by_surface_*` 필드는 성공한 `harness.stage_artifact` 요청의 `VerifiedSurfaceContext`에서 Core가 기록하는 값입니다.
 - 저장소에 있는 스테이징 기록과 대조해야 합니다.
 
 허용되지 않는 것:
@@ -251,35 +230,6 @@ expires_at: "<future-expiration-timestamp>"
 
 소비할 수 있는 값은 `staged`뿐입니다. `consumed`, `expired`, `discarded`는 `staged`로 돌아갈 수 없습니다.
 
-## 기존 아티팩트 참조
-
-규칙:
-
-- `existing_artifact`는 이미 지속되는 아티팩트 행을 재사용하는 입력입니다.
-
-허용되지 않는 것:
-
-- `existing_artifact`는 새 아티팩트 바이트를 등록하거나 새 본문을 복제하는 경로가 아닙니다.
-
-기존 아티팩트 참조는 아래 조건이 새 사용과 계속 호환될 때만 연결될 수 있습니다.
-
-- 같은 프로젝트.
-- 허용된 Task 범위.
-- 가용성 상태.
-- 무결성 사실.
-- `redaction_state`.
-- 필요한 담당 관계.
-
-호환되는 경우 새 담당 관계를 위해 `artifact_links` 행을 추가할 수 있습니다. 이 연결은 고유성 규칙, 같은 프로젝트 규칙, 같은 Task 규칙을 따라야 합니다.
-
-기존 아티팩트 참조가 해서는 안 되는 일은 아래와 같습니다.
-
-- 아티팩트 바이트 복제.
-- 새 아티팩트 본문 등록.
-- 체크섬과 크기 검증 생략.
-- 원시 아티팩트 경로를 권한으로 사용.
-- 담당 메서드가 증거로 기록하지 않았는데 새 증거가 생긴 것처럼 암시.
-
 ## 승격
 
 규칙:
@@ -287,7 +237,7 @@ expires_at: "<future-expiration-timestamp>"
 - 승격은 스테이징 핸들을 지속 `ArtifactRef`로 바꾸는 저장소 단계입니다.
 - 승격에는 스테이징 핸들을 받아들이는 담당 메서드가 필요합니다.
 
-기준 범위에서 대표적인 담당 메서드는 `harness.record_run`입니다. 호환되는 `harness.record_run`만 아래 조건을 모두 만족하는 스테이징 핸들을 소비할 수 있습니다.
+호환되는 담당 메서드만 아래 조건을 모두 만족하는 스테이징 핸들을 소비할 수 있습니다.
 
 - `artifact_staging.status=staged`.
 - 만료되지 않음.
@@ -320,7 +270,36 @@ expires_at: "<future-expiration-timestamp>"
 
 - 승격 자체가 모든 증거 관문을 충족하지는 않습니다.
 
-## 증거와의 관계
+## 기존 아티팩트 참조
+
+규칙:
+
+- `existing_artifact`는 이미 지속되는 아티팩트 행을 재사용하는 입력입니다.
+
+허용되지 않는 것:
+
+- `existing_artifact`는 새 아티팩트 바이트를 등록하거나 새 본문을 복제하는 경로가 아닙니다.
+
+기존 아티팩트 참조는 아래 조건이 새 사용과 계속 호환될 때만 연결될 수 있습니다.
+
+- 같은 프로젝트.
+- 허용된 Task 범위.
+- 가용성 상태.
+- 무결성 사실.
+- `redaction_state`.
+- 필요한 담당 관계.
+
+호환되는 경우 새 담당 관계를 위해 `artifact_links` 행을 추가할 수 있습니다. 이 연결은 고유성 규칙, 같은 프로젝트 규칙, 같은 Task 규칙을 따라야 합니다.
+
+기존 아티팩트 참조가 해서는 안 되는 일은 아래와 같습니다.
+
+- 아티팩트 바이트 복제.
+- 새 아티팩트 본문 등록.
+- 체크섬과 크기 검증 생략.
+- 원시 아티팩트 경로를 권한으로 사용.
+- 담당 메서드가 증거로 기록하지 않았는데 새 증거가 생긴 것처럼 암시.
+
+## 증거 자격
 
 스테이징, 아티팩트 가용성, 증거 자격, 증거 충분성은 서로 다릅니다.
 
@@ -375,6 +354,67 @@ expires_at: "<future-expiration-timestamp>"
 
 기존 아티팩트 참조도 마찬가지입니다. `existing_artifact`가 새 `artifact_links` 행을 추가할 수는 있지만, 담당 메서드가 그 연결을 증거로 기록하지 않으면 새 증거가 생겼다고 볼 수 없습니다.
 
+## 가용성, 가림 처리, 무결성
+
+`artifacts.status`는 가용성 상태입니다. 요약 표는 값만 짧게 보여 주고, 세부 블록은 저장소 의미를 나눕니다.
+
+| 값 | 요약 | 세부사항 |
+|---|---|---|
+| `available` | 존재하고 무결성 일치 | [`available`](#artifacts-status-available) |
+| `missing` | 행은 남았지만 본문 없음 | [`missing`](#artifacts-status-missing) |
+| `integrity_failed` | 무결성 사실 불일치 | [`integrity_failed`](#artifacts-status-integrity_failed) |
+| `unavailable` | 조회 경로 사용 불가 | [`unavailable`](#artifacts-status-unavailable) |
+
+<a id="artifacts-status-available"></a>
+**`artifacts.status=available`**
+
+저장소 의미:
+
+- 등록된 안전 바이트 또는 안전한 메타데이터 알림이 존재합니다.
+- 저장된 무결성 메타데이터와 맞습니다.
+
+<a id="artifacts-status-missing"></a>
+**`artifacts.status=missing`**
+
+저장소 의미:
+
+- 아티팩트 행은 남아 있습니다.
+- 등록된 바이트 또는 안전한 메타데이터 알림을 찾을 수 없습니다.
+
+<a id="artifacts-status-integrity_failed"></a>
+**`artifacts.status=integrity_failed`**
+
+저장소 의미:
+
+- 사용할 수 있는 바이트 또는 메타데이터가 `sha256`이나 `size_bytes` 같은 저장된 무결성 사실과 맞지 않습니다.
+
+<a id="artifacts-status-unavailable"></a>
+**`artifacts.status=unavailable`**
+
+저장소 의미:
+
+- 아티팩트 저장소 또는 필요한 조회 경로가 현재 등록된 바이트 또는 안전한 메타데이터 알림을 제공할 수 없습니다.
+
+규칙:
+
+- `artifacts.redaction_state`는 [API 값 집합](api/schema-value-sets.md#아티팩트-값)의 활성 `ArtifactRef.redaction_state` 값을 사용합니다.
+- `sha256`, `size_bytes`, `content_type`은 저장된 바이트 비교와 가용성 처리를 위한 무결성 사실입니다.
+
+허용되는 것:
+
+- 커밋된 안전 알림이나 가림 처리된 아티팩트 바이트가 존재하고 무결성 확인이 가능하면 `blocked`, `secret_omitted`, `redacted` 아티팩트도 `artifacts.status=available`일 수 있습니다.
+- 가림 처리된 아티팩트 바이트, `secret_omitted` 또는 `blocked` 알림, 안전 핸들, 담당 문서가 승인한 다른 안전 표현을 저장합니다.
+
+허용되지 않는 것:
+
+- `blocked`는 가림 또는 생략 상태이지 아티팩트 가용성 상태가 아닙니다.
+- 체크섬과 크기 검증은 아티팩트의 의미 내용이 맞는지, 로그가 주장을 실제로 뒷받침하는지, 테스트가 성공했는지, 증거가 충분한지를 증명하지 않습니다.
+- `sha256`, `size_bytes`, `content_type`은 보안 보장 주장이 아닙니다.
+
+담당 문서 링크:
+
+- 보안 보장과 로컬 접근 비주장은 [보안](security.md)이 담당합니다.
+
 ## 아티팩트 본문 읽기
 
 규칙:
@@ -409,10 +449,6 @@ expires_at: "<future-expiration-timestamp>"
 
 - `uri`는 보통 `harness-artifact://{project_id}/{artifact_id}`처럼 하네스 저장소를 통해 해석됩니다.
 
-허용되는 것:
-
-- 가림 처리된 아티팩트 바이트, `secret_omitted` 또는 `blocked` 알림, 안전 핸들, 담당 문서가 승인한 다른 안전 표현을 저장합니다.
-
 허용되지 않는 것:
 
 - `uri`는 호출자가 제공한 임의 파일시스템 경로가 아닙니다.
@@ -420,20 +456,9 @@ expires_at: "<future-expiration-timestamp>"
 
 ## 검증과 실패
 
-`harness.record_run`에서 아티팩트 입력을 처리할 때 저장 효과는 API가 담당하는 아래 순서를 따릅니다.
+거절된 스테이징 핸들 입력은 아티팩트 검증 실패로 남아야 합니다. 증거 충분성, 로컬 접근 불일치, 역량 부족, 메서드 성공으로 숨기면 안 됩니다.
 
-1. 요청 수준 `VerifiedSurfaceContext.access_class=run_recording`.
-2. 프로젝트 전체 `ToolEnvelope.expected_state_version`.
-3. 참조된 Task와 Change Unit.
-4. 제품 파일 쓰기를 기록할 때 호환되는 `Write Authorization`.
-5. 스테이징 핸들 검증.
-6. 스테이징 핸들 필드 확인.
-7. 스테이징 승격.
-8. 스테이징 소비.
-9. 기존 아티팩트 연결 검증.
-10. 아티팩트 본문 읽기 없음.
-
-아래 스테이징 핸들은 변경 전에 API 담당 검증 오류 경로로 거절해야 합니다. 요약 표는 실패 유형만 보여 주고, 세부 블록은 예를 분리합니다.
+요약 표는 실패 유형만 보여 주고, 세부 블록은 예를 분리합니다.
 
 | 실패 유형 | 세부사항 |
 |---|---|
@@ -480,79 +505,24 @@ expires_at: "<future-expiration-timestamp>"
 - `redaction_state` 불일치.
 - 무결성에 맞지 않음.
 
-이 오류를 증거 충분성, 로컬 접근 불일치, 역량 부족으로 숨기면 안 됩니다.
+아티팩트 검증이 커밋 전에 실패하면 저장소는 `artifact_staging.status`, `consumed_by_run_id`, `promoted_artifact_id`, `artifacts`, `artifact_links` 같은 아티팩트 생명주기 기록을 바꾸면 안 됩니다. 더 넓은 효과 없음 분기 의미는 [저장 효과](storage-effects.md)가 담당합니다.
 
-이 순서의 어떤 검증이든 커밋 전에 실패하면 저장소는 아래 항목을 바꾸면 안 됩니다.
-
-- `artifact_staging.status`.
-- `consumed_by_run_id`.
-- `promoted_artifact_id`.
-- `artifacts`.
-- `artifact_links`.
-- `evidence_summaries`.
-- `write_authorizations.status`.
-- `task_events`.
-- `tool_invocations`.
-- `project_state.state_version`.
-
-`artifacts.status`는 가용성 상태입니다. 요약 표는 값만 짧게 보여 주고, 세부 블록은 저장소 의미를 나눕니다.
-
-| 값 | 요약 | 세부사항 |
-|---|---|---|
-| `available` | 존재하고 무결성 일치 | [`available`](#artifacts-status-available) |
-| `missing` | 행은 남았지만 본문 없음 | [`missing`](#artifacts-status-missing) |
-| `integrity_failed` | 무결성 사실 불일치 | [`integrity_failed`](#artifacts-status-integrity_failed) |
-| `unavailable` | 조회 경로 사용 불가 | [`unavailable`](#artifacts-status-unavailable) |
-
-<a id="artifacts-status-available"></a>
-**`artifacts.status=available`**
-
-저장소 의미:
-
-- 등록된 안전 바이트 또는 안전한 메타데이터 알림이 존재합니다.
-- 저장된 무결성 메타데이터와 맞습니다.
-
-<a id="artifacts-status-missing"></a>
-**`artifacts.status=missing`**
-
-저장소 의미:
-
-- 아티팩트 행은 남아 있습니다.
-- 등록된 바이트 또는 안전한 메타데이터 알림을 찾을 수 없습니다.
-
-<a id="artifacts-status-integrity_failed"></a>
-**`artifacts.status=integrity_failed`**
-
-저장소 의미:
-
-- 사용할 수 있는 바이트 또는 메타데이터가 `sha256`이나 `size_bytes` 같은 저장된 무결성 사실과 맞지 않습니다.
-
-<a id="artifacts-status-unavailable"></a>
-**`artifacts.status=unavailable`**
-
-저장소 의미:
-
-- 아티팩트 저장소 또는 필요한 조회 경로가 현재 등록된 바이트 또는 안전한 메타데이터 알림을 제공할 수 없습니다.
-
-규칙:
-
-- `artifacts.redaction_state`는 [API 값 집합](api/schema-value-sets.md#아티팩트-값)의 활성 `ArtifactRef.redaction_state` 값을 사용합니다.
-- 체크섬과 크기 검증은 아티팩트 바이트와 저장된 메타데이터가 맞는지 확인합니다.
-- `sha256`, `size_bytes`, `content_type`은 저장된 바이트 비교와 가용성 처리를 위한 무결성 사실입니다.
+## 보존 경계
 
 허용되는 것:
 
-- 커밋된 안전 알림이나 가림 처리된 아티팩트 바이트가 존재하고 무결성 확인이 가능하면 `blocked`, `secret_omitted`, `redacted` 아티팩트도 `artifacts.status=available`일 수 있습니다.
+- 소비되지 않았거나 만료된 `artifact_staging` 행과 `artifacts/tmp/` 스테이징 바이트 또는 알림은 `expired` 또는 `discarded`로 표시할 수 있습니다.
+- 등록 전 임시 바이트는 정리할 수 있습니다.
+
+규칙:
+
+- 이 임시 스테이징 자료는 증거 권한이 아닙니다.
+- `artifacts` 행이 커밋된 뒤의 보존 삭제, 프로젝트 해체, 파괴적 정리는 일반적인 기준 범위 변경 동작 밖이며 담당 문서가 정의한 경로가 필요합니다.
+- 보존 또는 마이그레이션 경로는 아티팩트 해시, 담당 연결, 이벤트, 재실행 행을 보존하거나 영향을 받은 참조를 복구 대상으로 유효하지 않게 표시해야 합니다.
 
 허용되지 않는 것:
 
-- `blocked`는 가림 또는 생략 상태이지 아티팩트 가용성 상태가 아닙니다.
-- 체크섬과 크기 검증은 아티팩트의 의미 내용이 맞는지, 로그가 주장을 실제로 뒷받침하는지, 테스트가 성공했는지, 증거가 충분한지를 증명하지 않습니다.
-- `sha256`, `size_bytes`, `content_type`은 보안 보장 주장이 아닙니다.
-
-담당 문서 링크:
-
-- 보안 보장과 로컬 접근 비주장은 [보안](security.md)이 담당합니다.
+- 보존 또는 마이그레이션 경로는 현재 기록이 아직 이름 붙인 증거 지원을 조용히 삭제하면 안 됩니다.
 
 ## 관련 담당 문서
 

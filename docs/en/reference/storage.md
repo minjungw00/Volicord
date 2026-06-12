@@ -1,6 +1,6 @@
 # Storage
 
-This page is a short router for the storage document family. It is documentation reference material only; it does not create a Harness Server, Runtime Home, database, artifact store, migration runner, generated projection, runtime state, or runtime DDL in this repository.
+This page routes readers into the storage reference family and names the owner for each storage contract.
 
 ## How to read
 
@@ -46,7 +46,7 @@ Use this summary table for first-hop routing. The detail blocks keep the routing
 | Record layout | [Storage Records](storage-records.md) |
 | Method effects | [Storage Effects](storage-effects.md) |
 | Artifact lifecycle | [Artifact Storage](storage-artifacts.md) |
-| Versioning and operational boundaries | [Storage Versioning](storage-versioning.md) |
+| Versioning, idempotency, locks, and migrations | [Storage Versioning](storage-versioning.md) |
 
 **Storage Records route**
 
@@ -89,6 +89,4 @@ Use [Storage Versioning](storage-versioning.md) for:
 - idempotency and replay rows.
 - event meaning.
 - locks.
-- migrations.
-
-Storage owners describe Harness Runtime Home records only. This documentation repository is not a Runtime Home and must not contain generated runtime state.
+- migration contract.

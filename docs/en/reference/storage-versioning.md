@@ -1,6 +1,6 @@
 # Storage versioning
 
-This document owns state versioning, idempotency, event meaning, locks, and migration semantics for baseline scope storage source design. It is documentation reference material only and does not run migrations, create runtime locks, or create runtime state.
+This document owns state versioning, idempotency, event meaning, locks, and migration semantics for baseline scope storage source design.
 
 ## Owns / Does not own
 
@@ -331,15 +331,7 @@ For a new committed non-dry-run mutation, these effects must commit atomically:
 - project-wide state-version increment
 - `tool_invocations` replay-row insert
 
-For `harness.record_run`, the same transaction also includes:
-
-- staged-handle consumption in `artifact_staging`
-- artifact promotion/linking
-- evidence update
-- `Write Authorization` consumption
-- event append
-- replay-row insert
-- exactly one `project_state.state_version` increment
+Artifact lifecycle effects such as staged-handle consumption, artifact promotion, and artifact linking join the same committed transaction only when [Artifact Storage](storage-artifacts.md), [Storage Effects](storage-effects.md), and the method owner allow them.
 
 If any part fails, the transaction must leave no partial:
 
@@ -427,16 +419,14 @@ Owner links:
 
 Meaning:
 
-- No migration runner exists in this repository.
-- No runtime data exists to migrate.
-- This document does not define migration steps for existing runtime data.
-- Before runtime implementation, maintainers must separately accept the actual DDL, migration mechanism, storage profile, and tightening behavior.
+- Migration semantics describe how accepted storage profile or schema-version changes preserve Core authority records.
+- Supported migration execution exists only when [Scope](scope.md) and the affected storage owners define an active path.
+- Migration detail must state the version, storage profile, validation, repair, and tightening behavior it owns.
 
 Increments when:
 
-- None for baseline migration execution.
-- No public API `state_version` increment is defined here for migrations.
-- An accepted migration must state its version and storage-profile behavior in its owning documentation.
+- No public API `state_version` increment is defined for migration unless the migration owner explicitly defines one.
+- An accepted migration states its version and storage-profile behavior in its owning documentation.
 
 Does not increment when:
 
@@ -445,7 +435,7 @@ Does not increment when:
 
 Retry behavior:
 
-- Migration execution is outside the baseline unless [Scope](scope.md) and the affected storage owners define a supported migration path.
+- Migration repair and retry follow the owner-defined migration path.
 
 Owner links:
 

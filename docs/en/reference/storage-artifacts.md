@@ -4,10 +4,6 @@ Rule:
 
 - This document owns the artifact storage lifecycle for the baseline scope source design.
 
-Not allowed:
-
-- This document does not create artifact bytes, artifact directories, runtime storage, evidence records, QA records, acceptance records, or close records.
-
 ## Owns / Does not own
 
 This document owns:
@@ -26,13 +22,65 @@ This document does not own:
 - generic method storage effects; see [Storage Effects](storage-effects.md)
 - local-access security claims; see [Security](security.md) and [Runtime Boundaries](runtime-boundaries.md)
 
-## Lifecycle boundary
+<a id="lifecycle-boundary"></a>
+## Lifecycle summary
 
 Rule:
 
 - Artifact storage distinguishes staging, promotion, persistent linking, and body reads.
 - `ArtifactRef` is the public API pointer to a registered persistent artifact.
 - Storage implements persistent artifact authority through `artifacts` plus `artifact_links`.
+
+| Stage | Details |
+|---|---|
+| Staging | [Lifecycle: staging](#artifact-lifecycle-staging) |
+| Promotion | [Lifecycle: promotion](#artifact-lifecycle-promotion) |
+| Existing artifact link | [Lifecycle: existing artifact link](#artifact-lifecycle-existing-artifact-link) |
+| Artifact body read | [Lifecycle: artifact body read](#artifact-lifecycle-body-read) |
+
+<a id="artifact-lifecycle-staging"></a>
+**Lifecycle: staging**
+
+Meaning:
+
+- `harness.stage_artifact` stores transient artifact bytes or a safe notice and returns a staged handle.
+
+Evidence relationship:
+
+- Staging alone does not create canonical evidence.
+
+<a id="artifact-lifecycle-promotion"></a>
+**Lifecycle: promotion**
+
+Meaning:
+
+- An owner method accepts a compatible staged handle and registers a persistent `ArtifactRef` plus required `artifact_links`.
+
+Evidence relationship:
+
+- Evidence coverage changes only when the owner method contract allows them.
+
+<a id="artifact-lifecycle-existing-artifact-link"></a>
+**Lifecycle: existing artifact link**
+
+Meaning:
+
+- An already persistent artifact is linked to a new owner relation.
+
+Evidence relationship:
+
+- The link is not new evidence unless the owner method records it as evidence.
+
+<a id="artifact-lifecycle-body-read"></a>
+**Lifecycle: artifact body read**
+
+Meaning:
+
+- A caller reads metadata or bytes for a registered `ArtifactRef`.
+
+Conditions:
+
+- The read must pass access-class, capability, redaction, availability, and owner-relation checks.
 
 Owner links:
 
@@ -53,7 +101,7 @@ Not allowed:
 
 Rule:
 
-- transient staging is not artifact authority.
+- Transient staging is not artifact authority.
 - `artifact_staging` or an equivalent storage-owned staging manifest tracks staging facts.
 
 Tracked facts:
@@ -73,7 +121,7 @@ Tracked facts:
 
 Rule:
 
-- A server records the `created_by_surface_*` fields from the successful `harness.stage_artifact` request's `VerifiedSurfaceContext`.
+- Core records the `created_by_surface_*` fields from the successful `harness.stage_artifact` request's `VerifiedSurfaceContext`.
 - The fields must be checked against the staging row.
 
 Not allowed:
@@ -112,6 +160,8 @@ Owner links:
 
 - Method-effect questions such as evidence creation, replay rows, and state-version increments are owned by [Storage Effects](storage-effects.md).
 
+## Staging handles
+
 `artifact_staging.status` is a storage-owned transient handle lifecycle. The summary table stays short; detail blocks define the value meanings.
 
 | Value | Summary | Details |
@@ -127,14 +177,14 @@ Owner links:
 Storage meaning:
 
 - The handle is unexpired and unconsumed.
-- A compatible `harness.record_run` may consume it.
+- A compatible owner method may consume it.
 
 <a id="artifact-staging-status-consumed"></a>
 **`artifact_staging.status=consumed`**
 
 Storage meaning:
 
-- A compatible `harness.record_run` consumed the handle.
+- A compatible owner method consumed the handle.
 - Storage recorded the consuming Run and promoted artifact ids.
 
 <a id="artifact-staging-status-expired"></a>
@@ -158,7 +208,7 @@ Only `staged` is consumable. Terminal values cannot return to `staged`.
 
 Rule:
 
-- Only a compatible `harness.record_run` may consume a staged handle and promote it to a persistent `ArtifactRef`.
+- Only a compatible owner method may consume a staged handle and promote it to a persistent `ArtifactRef`.
 
 Required conditions:
 
@@ -187,50 +237,6 @@ The consuming transaction may commit only after validation:
 - set the consuming Run and promoted artifact ids
 - commit the durable `artifacts` row and required `artifact_links`
 - update evidence coverage only as allowed by the method owner
-
-These staging handles must be rejected before mutation with API-owned validation error routing:
-
-- missing
-- expired
-- mismatched
-- already consumed
-- discarded
-- cross-surface
-- wrong `created_by_surface_id`
-- wrong `created_by_surface_instance_id`
-- wrong `sha256`
-- wrong `size_bytes`
-- wrong `redaction_state`
-- integrity-incompatible
-- cross-task
-
-They must not be hidden as evidence sufficiency, local access mismatch, or capability insufficiency.
-
-For `harness.record_run`, storage effects follow this API-owned validation order:
-
-1. request-level `VerifiedSurfaceContext.access_class=run_recording`
-2. project-wide `ToolEnvelope.expected_state_version`
-3. referenced Task and Change Unit
-4. compatible Write Authorization when product-file writes are recorded
-5. staged-handle validation
-6. staged-handle field checks
-7. staged promotion
-8. staged consumption
-9. existing-artifact link validation
-10. no artifact body read
-
-If any validation in this sequence fails before commit, storage must not change:
-
-- `artifact_staging.status`
-- `consumed_by_run_id`
-- `promoted_artifact_id`
-- `artifacts`
-- `artifact_links`
-- `evidence_summaries`
-- `write_authorizations.status`
-- `task_events`
-- `tool_invocations`
-- `project_state.state_version`
 
 ## Existing artifacts
 
@@ -380,6 +386,57 @@ Artifact metadata or content reads require:
 Not allowed:
 
 - A local path under the artifact store, an artifact `uri`, a staged path, or a copied file is not enough by itself to read or rely on artifact bytes.
+
+## Validation and failures
+
+Rejected staged-handle inputs remain artifact validation failures. They must not be hidden as evidence sufficiency, local-access mismatch, capability insufficiency, or method success.
+
+| Failure type | Details |
+|---|---|
+| Existence or lifecycle problem | [Existence or lifecycle problem](#staged-handle-failure-existence-lifecycle) |
+| Scope mismatch | [Scope mismatch](#staged-handle-failure-scope) |
+| Surface mismatch | [Surface mismatch](#staged-handle-failure-surface) |
+| Integrity mismatch | [Integrity mismatch](#staged-handle-failure-integrity) |
+
+<a id="staged-handle-failure-existence-lifecycle"></a>
+**Existence or lifecycle problem**
+
+Examples:
+
+- missing
+- expired
+- already consumed
+- discarded
+
+<a id="staged-handle-failure-scope"></a>
+**Scope mismatch**
+
+Examples:
+
+- mismatched
+- cross-task
+- cross-project
+
+<a id="staged-handle-failure-surface"></a>
+**Surface mismatch**
+
+Examples:
+
+- cross-surface
+- wrong `created_by_surface_id`
+- wrong `created_by_surface_instance_id`
+
+<a id="staged-handle-failure-integrity"></a>
+**Integrity mismatch**
+
+Examples:
+
+- wrong `sha256`
+- wrong `size_bytes`
+- wrong `redaction_state`
+- integrity-incompatible
+
+If artifact validation fails before commit, storage must not change artifact lifecycle records such as `artifact_staging.status`, `consumed_by_run_id`, `promoted_artifact_id`, `artifacts`, or `artifact_links`. Broader no-effect branch semantics belong to [Storage Effects](storage-effects.md).
 
 ## Retention boundary
 

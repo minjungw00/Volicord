@@ -7,7 +7,6 @@ Rule:
 
 Not allowed:
 
-- This document does not create a runtime database, generated records, migration files, or runtime DDL in this repository.
 - Persistent records are not tamper-proof storage, anti-forgery proof, or external audit guarantees.
 
 Owner links:
@@ -32,9 +31,18 @@ This document does not own:
 - `project_state.state_version`, idempotency, event meaning, locks, or migrations; see [Storage Versioning](storage-versioning.md)
 - API request or response schemas; see [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), and the other API schema owners
 - API method behavior; see the [API Methods](api/methods.md) and method owner documents
-- runtime/repository/server boundaries; see [Runtime Boundaries](runtime-boundaries.md)
+- Runtime Home and Product Repository boundaries; see [Runtime Boundaries](runtime-boundaries.md)
 
-## Runtime home layout
+## Records versus API schemas
+
+Storage records and API schemas have different owner boundaries.
+
+- API schema files define request and response data shape, public API values, public errors, and response branches. See [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md).
+- Storage records define persistent record categories, file/table placement, storage-owned JSON `TEXT` placement, stored relationships, and validation expectations.
+- A similar name in both places is not the same authority. `CloseReadinessBlocker` is an API data shape; `blockers` is a storage row. `ArtifactRef` is an API schema; `artifacts` and `artifact_links` are storage records.
+- Storage layout does not own rendered template prose. User-visible status cards, judgment requests, run/evidence summaries, close results, and agent context packets belong to [Template Bodies](template-bodies.md) and [Projection Authority Reference](projection-and-templates.md).
+
+## Runtime Home layout
 
 Rule:
 
@@ -69,10 +77,6 @@ The path meanings are storage assumptions:
 - `state.sqlite` stores project-local Core state for the registered project.
 - `artifacts/` is the project artifact store. `artifacts/tmp/` is transient staging space, not evidence authority.
 
-Not allowed:
-
-- `project.yaml` must not store current Task state, gates, Write Authorization state, evidence sufficiency, final acceptance, residual-risk acceptance, or close state.
-
 Rule:
 
 - Runtime Home identity must not depend only on a filesystem path.
@@ -93,7 +97,18 @@ Owner links:
 - Security non-claims and guarantee levels belong to [Security](security.md).
 - Location boundaries belong to [Runtime Boundaries](runtime-boundaries.md).
 
+## Runtime Home exclusions
+
+Runtime Home is Harness operational data space. It is not automatically the Product Repository, and it does not replace product-repository write authority or safety judgment.
+
+- Product source files, the Product Repository working tree, and build outputs are not Runtime Home records.
+- `repo_root` is the registered Product Repository path. `projects/{project_id}/` is the Harness project home. Do not treat them as the same location or authority.
+- `project.yaml` must not store current Task state, gates, Write Authorization state, evidence sufficiency, final acceptance, residual-risk acceptance, or close state.
+- Generated projection bodies, rendered template prose, expanded evidence-package bodies, QA records, acceptance records, residual-risk records, and close records are not part of this storage record layout.
+
 ## Persisted record categories
+
+### Conditions
 
 Rule:
 
@@ -109,6 +124,8 @@ State-changing method set:
 - `harness.request_user_judgment`.
 - `harness.record_user_judgment`.
 - State-changing `harness.close_task` intents.
+
+### Stored records
 
 The active Core persisted records are:
 
@@ -129,7 +146,7 @@ The active Core persisted records are:
 - `task_events`.
 - `tool_invocations`.
 
-transient storage boundary:
+### Transient storage boundary
 
 - `artifact_staging` or an equivalent storage-owned staging manifest.
 - Safe transient bytes or notices under `artifacts/tmp/`.
@@ -138,19 +155,31 @@ Owner links:
 
 - Staging lifecycle, provenance, consumption, and promotion belong to [Artifact Storage](storage-artifacts.md).
 
+### Not stored
+
 Not allowed:
 
 - No other persisted table family or transient handle family is baseline scope.
 - Requirement shaping is not a separate committed Discovery Brief, Shared Design, Question Queue, Assumption Register, or First Safe Change Unit Candidate table.
 - Evidence is stored only through the active compact evidence-summary and artifact-ref paths.
+
+### Projection non-claim
+
+Not allowed:
+
 - Projection has no active persisted table family.
 - `status-card`, `judgment-request`, `run-evidence-summary`, `close-result`, and `agent-context-packet` are not stored state or storage mutation paths.
 
 Allowed:
 
+- `status-card`, `judgment-request`, `run-evidence-summary`, `close-result`, and `agent-context-packet` are read-time views over active records.
+
+### Shaping storage
+
+Allowed:
+
 - Requirement shaping persists through `tasks`, `change_units`, `user_judgments`, `evidence_summaries`, and `blockers`.
 - Evidence persists through compact evidence summaries, `CompletionPolicy` on the Task or Change Unit, required coverage items, and artifact refs.
-- `status-card`, `judgment-request`, `run-evidence-summary`, `close-result`, and `agent-context-packet` are read-time views over active records.
 
 Minimum active shaping information:
 
@@ -629,7 +658,7 @@ Allowed:
 
 Not allowed:
 
-- This section is not full DDL, a migration file, or proof that runtime implementation has started.
+- This section is not full DDL or a migration file.
 - Implementation choices do not replace Core/API/storage owner validation.
 
 Required identity and uniqueness constraints:
@@ -676,6 +705,8 @@ Main relationship constraints:
 - `artifact_links.artifact_id` points to `artifacts`, and `artifact_links.task_id` points to the same Task as the artifact and owner relation.
 - JSON ref arrays such as `supporting_run_ids_json`, `supporting_artifact_link_ids_json`, `gap_blocker_ids_json`, `related_refs_json`, and `response_json` must be parsed and checked against the same project/task and owner relation before commit, even where SQLite cannot express the relation as a direct foreign key.
 
+### Authority-row deletion non-claim
+
 Rule:
 
 - Ordinary baseline Core operations do not hard-delete authority rows.
@@ -698,6 +729,8 @@ Not allowed:
   - `blockers`
   - `task_events`
   - `tool_invocations`
+
+### Transient staging exception
 
 Exceptions:
 
@@ -1059,6 +1092,8 @@ Not allowed:
 
 ## Baseline / Out-of-Scope Boundary
 
+### Conditions
+
 Rule:
 
 - Profile-gated storage is outside the baseline.
@@ -1070,7 +1105,12 @@ Exceptions:
 Not allowed:
 
 - Reference-schema presence alone does not make storage active.
-- The baseline excludes storage for capability families outside the supported scope, generated operational outputs, expanded evidence packages, hosted services, cross-surface orchestration, and long-term design-support records unless [Scope](scope.md) and the storage owners define a supported contract.
+
+### Not stored
+
+Unless [Scope](scope.md) and the storage owners define a supported contract, the baseline excludes storage for capability families outside the supported scope, generated operational outputs, expanded evidence packages, hosted services, cross-surface orchestration, and long-term design-support records.
+
+### Non-claim
 
 Allowed:
 
@@ -1080,9 +1120,18 @@ Exceptions:
 
 - These views may be stale, absent, failed, or recomputed without changing storage authority.
 
+Not allowed:
+
+- These views do not change storage authority.
+
 ## Related owners
 
 - [Storage Effects](storage-effects.md) for which methods create, update, observe, or leave records untouched.
 - [Artifact Storage](storage-artifacts.md) for artifact-specific storage lifecycle.
 - [Storage Versioning](storage-versioning.md) for clocks, idempotency, locks, and migration semantics.
 - [API Methods](api/methods.md) and method owner documents for public method behavior that uses records.
+- [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md) for request/response shape and public API values.
+- [Template Bodies](template-bodies.md) for user-visible status cards, judgment requests, run/evidence summaries, close results, and agent context packets.
+- [Projection Authority Reference](projection-and-templates.md) for read-only projection authority, source records, and freshness boundaries.
+- [Runtime Boundaries](runtime-boundaries.md) for Runtime Home and Product Repository boundaries.
+- [Security](security.md) for security non-claims, guarantee levels, and security meanings this document does not assert.

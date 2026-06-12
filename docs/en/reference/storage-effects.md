@@ -1,6 +1,6 @@
 # Storage effects
 
-This document owns method-to-storage effect semantics for the baseline scope source design. It is documentation reference material only and does not execute or simulate Harness runtime procedures.
+This document owns method-to-storage effect semantics for the baseline scope source design.
 
 ## Owns / Does not own
 
