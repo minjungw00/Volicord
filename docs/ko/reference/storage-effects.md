@@ -308,7 +308,7 @@ write_decision_reasons:
 | `harness.status` | 읽기 전용 응답 | [`harness.status`](#harnessstatus) |
 | `harness.prepare_write` | 쓰기 판단 효과 기록 | [`harness.prepare_write`](#harnessprepare_write) |
 | `harness.stage_artifact` | 임시 스테이징만 생성 | [`harness.stage_artifact`](#harnessstage_artifact) |
-| `harness.record_run` | 실행/증거 효과 기록 | [`harness.record_run`](#harnessrecord_run) |
+| `harness.record_run` | 실행과 증거 효과 기록 | [`harness.record_run`](#harnessrecord_run) |
 | `harness.request_user_judgment` | 대기 중인 판단 요청 생성 | [`harness.request_user_judgment`](#harnessrequest_user_judgment) |
 | `harness.record_user_judgment` | 사용자 판단 해결 | [`harness.record_user_judgment`](#harnessrecord_user_judgment) |
 | `harness.close_task intent=check` | 읽기 전용 닫기 준비 상태 점검 | [`harness.close_task intent=check`](#harnessclose_task-intentcheck) |
@@ -496,7 +496,9 @@ write_decision_reasons:
 - 스테이징 행.
 - 아티팩트.
 
-계정 내보내기 확인 테스트 실행에서는 커밋된 `harness.record_run`이 실행을 기록하고, 스테이징된 테스트 로그를 승격하고, 증거를 갱신할 수 있습니다.
+제품 파일 쓰기 지속 저장은 테스트 증거 지속 저장과 별개입니다. 메서드 담당 문서가 커밋된 제품 파일 쓰기 실행을 허용할 때 저장소는 호환되는 `write_authorizations` 행을 소비하고 허용된 실행과 증거의 저장 효과를 지속할 수 있습니다. 아래 계정 내보내기 확인 예시는 제품 파일 쓰기 관찰이 아닙니다.
+
+계정 내보내기 확인 테스트 실행에서는 커밋된 `harness.record_run`이 테스트 증거를 기록하고, 스테이징된 테스트 로그 아티팩트를 승격하고, 증거를 갱신할 수 있습니다.
 
 ```yaml
 command: "npm test -- account-export"

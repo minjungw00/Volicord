@@ -135,9 +135,9 @@ Exact storage effects are owned by [Storage Effects](../storage-effects.md), and
 
 Run data example:
 
-The run records product test execution and may consume the staged test log from the shared `harness.stage_artifact` example as evidence:
+The run records account export confirmation test evidence and may consume the staged test log from the shared `harness.stage_artifact` example as evidence:
 
-This example records test evidence after the write path has already been handled. It does not claim that this run observed the product-file write itself.
+This example records test evidence after the write path has already been handled. It does not claim that this run observed the product file write itself.
 
 ```yaml
 command: "npm test -- account-export"

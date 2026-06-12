@@ -299,7 +299,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `harness.status` | read-only response | See [`harness.status`](#harnessstatus) |
 | `harness.prepare_write` | records write decision effects | See [`harness.prepare_write`](#harnessprepare_write) |
 | `harness.stage_artifact` | creates temporary staging only | See [`harness.stage_artifact`](#harnessstage_artifact) |
-| `harness.record_run` | records run/evidence effects | See [`harness.record_run`](#harnessrecord_run) |
+| `harness.record_run` | records run and evidence effects | See [`harness.record_run`](#harnessrecord_run) |
 | `harness.request_user_judgment` | creates pending judgment request | See [`harness.request_user_judgment`](#harnessrequest_user_judgment) |
 | `harness.record_user_judgment` | resolves user judgment | See [`harness.record_user_judgment`](#harnessrecord_user_judgment) |
 | `harness.close_task intent=check` | read-only close-readiness check | See [`harness.close_task intent=check`](#harnessclose_task-intentcheck) |
@@ -487,7 +487,9 @@ Rejected attempts do not change:
 - staging rows
 - artifacts
 
-For an account export confirmation test run, a committed `harness.record_run` may record the run, promote the staged test log, and update evidence:
+Product file write persistence is separate from test evidence persistence. When the method owner allows a committed run that records a product file write, storage may consume a compatible `write_authorizations` row and persist the allowed run and evidence effects. The account export confirmation example below is not a product file write observation.
+
+For an account export confirmation test run, a committed `harness.record_run` may record test evidence, promote the staged test log, and update evidence:
 
 ```yaml
 command: "npm test -- account-export"
