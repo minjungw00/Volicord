@@ -149,10 +149,10 @@ params:
 
 ## Representative response
 
-Allowed branch after the separate sensitive-action approval is already present (`PrepareWriteResult`, `decision=allowed`):
+Allowed branch after the separate sensitive-action approval is already present:
 
-The existing sensitive-action approval is represented by `active_user_judgment_refs` at `state_version: 19`. The `intended_operation` names the account export flow change, which remains separate from Harness sensitive-action approval.
-The missing-approval reason shown below corresponds to request `sensitive_categories: [personal_data_export]`.
+The existing sensitive-action approval is represented by `active_user_judgment_refs` at `state_version: 19`.
+The `intended_operation` names the account export flow change, which remains separate from Harness sensitive-action approval.
 
 ```yaml
 base:
@@ -203,6 +203,8 @@ guarantee_display:
 ```
 
 Approval-required branch excerpt when the matching sensitive-action approval is missing:
+
+The approval-required reason corresponds to request `sensitive_categories: [personal_data_export]`.
 
 ```yaml
 decision: approval_required

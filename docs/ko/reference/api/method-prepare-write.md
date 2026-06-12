@@ -149,10 +149,10 @@ params:
 
 ## 대표 응답
 
-별도의 민감 동작 승인이 이미 있을 때의 허용 분기(`PrepareWriteResult`, `decision=allowed`):
+별도의 민감 동작 승인이 이미 있을 때의 허용 분기입니다.
 
-기존 민감 동작 승인은 `state_version: 19`의 `active_user_judgment_refs` 사용자 판단 참조로 표시됩니다. `intended_operation`은 계정 내보내기 흐름 변경을 이름 붙이며 하네스 민감 동작 승인과 별도입니다.
-아래 누락 승인 사유는 요청의 `sensitive_categories: [personal_data_export]`에 대응합니다.
+기존 민감 동작 승인은 `state_version: 19`의 `active_user_judgment_refs` 사용자 판단 참조로 표시됩니다.
+`intended_operation`은 계정 내보내기 흐름 변경을 가리키며, 하네스 민감 동작 승인과는 별도입니다.
 
 ```yaml
 base:
@@ -203,6 +203,8 @@ guarantee_display:
 ```
 
 대응하는 민감 동작 승인이 없을 때의 승인 필요 분기 발췌:
+
+이 승인 필요 사유는 요청의 `sensitive_categories: [personal_data_export]`에 대응합니다.
 
 ```yaml
 decision: approval_required
