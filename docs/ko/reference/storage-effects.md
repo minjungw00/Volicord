@@ -432,7 +432,7 @@ write_decision_reasons:
 
 성공한 스테이징은 다음을 수행할 수 있습니다.
 
-- `artifact_staging` 또는 동등한 저장소 소유 스테이징 매니페스트를 생성합니다.
+- `artifact_staging` 또는 동등한 저장소 소유 스테이징 기록을 생성합니다.
 - `artifacts/tmp/` 아래에 임시 안전 바이트 또는 알림을 둡니다.
 
 이 분기는 저장소 소유 임시 스테이징만 생성합니다.
@@ -452,7 +452,7 @@ write_decision_reasons:
 유효한 `dry_run=true`는 아래 항목을 만들지 않습니다.
 
 - 바이트.
-- 스테이징 매니페스트.
+- 스테이징 기록.
 - `StagedArtifactHandle`.
 - 재실행 행.
 - `project_state.state_version` 증가.

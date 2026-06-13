@@ -87,13 +87,13 @@ Allowed:
 
 Not allowed:
 
-- A `StagedArtifactHandle` shape is not authority unless it resolves to a compatible stored `artifact_staging` row or equivalent storage-owned staging manifest.
+- A `StagedArtifactHandle` shape is not authority unless it resolves to a compatible stored `artifact_staging` row or equivalent storage-owned staging record.
 - `existing_artifact` does not register a new artifact body.
 - Caller-supplied paths, logs, capture claims, or local file references are not registration authority in the baseline.
 
 ## Staging
 
-Transient staging is not artifact authority. `artifact_staging` or an equivalent storage-owned staging manifest tracks staging facts.
+Transient staging is not artifact authority. `artifact_staging` or an equivalent storage-owned staging record tracks staging facts.
 
 Tracked facts:
 

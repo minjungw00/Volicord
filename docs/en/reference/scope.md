@@ -88,7 +88,7 @@ Excluded capabilities:
 
 - native artifact capture from surfaces
 - persistent projection jobs, projection reconciliation, generated projection files, and managed projection repair
-- expanded evidence packages
+- expanded or additional evidence packages
 - manual QA and external verification workflows
 - command, network, and secret access observation
 - command, network, and secret pre-tool blocking

@@ -425,7 +425,7 @@ Owner links:
 
 Successful staging may:
 
-- create `artifact_staging` or an equivalent storage-owned staging manifest
+- create `artifact_staging` or an equivalent storage-owned staging record
 - store transient safe bytes or notices under `artifacts/tmp/`
 
 This branch creates only transient storage-owned staging.
@@ -445,7 +445,7 @@ No-effect branches:
 Valid `dry_run=true` does not create:
 
 - bytes
-- staging manifest
+- staging record
 - `StagedArtifactHandle`
 - replay row
 - `project_state.state_version` increment
