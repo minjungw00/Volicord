@@ -257,7 +257,7 @@ write_decision_reasons:
     message: "Account data export may include personal data and requires separate sensitive-action approval before Write Authorization."
 ```
 
-Those reasons are prepare-write decision reasons. They are not:
+Those reasons are `harness.prepare_write` decision reasons. They are not:
 
 - close-readiness blockers
 - `CloseReadinessBlocker[]`
