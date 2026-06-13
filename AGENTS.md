@@ -31,13 +31,13 @@ Do not assume the compact route list is the full owner list. Split canonical own
 
 ## Canonical Owner Lookup
 
-Use `docs/doc-index.yaml` for exact owner routing. It is the stable machine-readable route table for `doc_id`, owner family, canonical ownership, related documents, and language paths.
+Use `docs/doc-index.yaml` for exact owner routing. It is the stable machine-readable route table for `doc_id`, language paths, `role`, `owner_for`, `not_owner_for`, `depends_on`, `normative_level`, and `audience`.
 
-LLM agents should read this `AGENTS.md` first for repository editing rules, then use `docs/doc-index.yaml` for exact owner lookup. Use `docs/*/reference/README.md` as the human-readable owner router, and keep it aligned with `docs/doc-index.yaml`.
+LLM agents should read this `AGENTS.md` first for repository editing rules, then use `docs/doc-index.yaml` for exact owner lookup. Use entries in `shared_documents` and `documents` to find the matching `doc_id`, the owning `path` or `path_en`/`path_ko`, the entry's `owner_for` scope, and any `depends_on` support documents.
 
-For high-signal questions about terminology, example scenarios, API example consistency, field-name consistency, scope, storage, or ownership, check `question_routes.routes` in `docs/doc-index.yaml` before broad keyword retrieval. If a route matches, load the canonical owner first and load listed supporting owners only when the question spans that boundary.
+Use `docs/*/reference/README.md` as the human-readable reference owner index, not as a replacement for `docs/doc-index.yaml`. Keep route documents aligned with the index without copying contract details into them.
 
-When `docs/doc-index.yaml` lists an exact owner for the question or concept, load that owner first. Pull related documents only when the owner, index metadata, or maintainer guidance sends you there.
+When an entry's `owner_for` matches the question or concept, load that owner first. Use `not_owner_for` to avoid routing a question to a nearby but non-owning document. Pull `depends_on` documents only when the owner, index metadata, or maintainer guidance sends you there. Use `role`, `normative_level`, and `audience` to distinguish route, guide, reference, build, and maintenance documents before editing.
 
 One concept has one canonical owner. Edit the owner when the change affects normative meaning, including baseline scope, API behavior, schemas, storage effects, security wording, access boundaries, close readiness, product terminology, or out-of-scope promotion rules.
 
@@ -46,8 +46,8 @@ If an entry route, README, or maintain document cannot point to a current owner,
 API routing shortcut:
 
 - `docs/*/reference/api/methods.md` owns the active public API method list and method owner routing, not detailed method behavior.
-- Route method behavior to the method-specific owners: `api/method-intake.md`, `api/method-update-scope.md`, `api/method-status.md`, `api/method-prepare-write.md`, `api/method-stage-artifact.md`, `api/method-record-run.md`, `api/method-user-judgment.md`, and `api/method-close-task.md`.
-- Route response branch schemas and nested API shapes to the schema owner documents: `api/schema-core.md`, `api/schema-state.md`, `api/schema-artifacts.md`, `api/schema-judgment.md`, and `api/schema-value-sets.md`.
+- Route method behavior to the method-specific owner linked from the API method router.
+- Route response branch schemas and nested API shapes to the schema owner documents listed in `docs/doc-index.yaml` and `docs/*/reference/README.md`.
 - Route method payload field questions to the affected method owner when the field is method-specific; route shared envelope fields and nested schema fields to the schema owners.
 - Route method storage effects to `docs/*/reference/storage-effects.md` first, then to narrower storage owners when needed.
 - Route API example consistency and field-name consistency questions to `docs/*/maintain/authoring-guide.md` and `docs/*/maintain/checks.md`; open the affected method, schema, or storage owner only when checking the concrete example field or value.

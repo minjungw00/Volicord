@@ -20,28 +20,12 @@
 | 주제 | 담당 문서 |
 |---|---|
 | 공개 API 메서드 목록과 메서드 경로 | [`api/methods.md`](api/methods.md) |
-| 메서드별 동작 | [API 메서드 담당 문서](#api-method-owners) |
 | 공통 요청 래퍼와 응답 분기 | [`api/schema-core.md`](api/schema-core.md) |
 | 상태와 닫기 준비 상태 형태 | [`api/schema-state.md`](api/schema-state.md) |
 | 아티팩트 참조 형태 | [`api/schema-artifacts.md`](api/schema-artifacts.md) |
 | 사용자 판단과 민감 동작 승인 스키마 | [`api/schema-judgment.md`](api/schema-judgment.md) |
 | API 값 집합 | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
 | 공개 오류 코드와 오류 경로 | [`api/errors.md`](api/errors.md) |
-
-<a id="api-method-owners"></a>
-
-## API 메서드 담당 문서
-
-| 메서드 | 담당 문서 |
-|---|---|
-| `harness.intake` | [`api/method-intake.md`](api/method-intake.md) |
-| `harness.update_scope` | [`api/method-update-scope.md`](api/method-update-scope.md) |
-| `harness.status` | [`api/method-status.md`](api/method-status.md) |
-| `harness.prepare_write` | [`api/method-prepare-write.md`](api/method-prepare-write.md) |
-| `harness.stage_artifact` | [`api/method-stage-artifact.md`](api/method-stage-artifact.md) |
-| `harness.record_run` | [`api/method-record-run.md`](api/method-record-run.md) |
-| `harness.request_user_judgment`와 `harness.record_user_judgment` | [`api/method-user-judgment.md`](api/method-user-judgment.md) |
-| `harness.close_task` | [`api/method-close-task.md`](api/method-close-task.md) |
 
 ## 저장소 담당 문서
 

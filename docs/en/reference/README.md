@@ -20,27 +20,12 @@ For machine-readable routing by `doc_id`, use [`docs/doc-index.yaml`](../../doc-
 | Topic | Owner |
 |---|---|
 | Public API method list and method routing | [`api/methods.md`](api/methods.md) |
-| Method-specific behavior | [API Method Owners](#api-method-owners) |
 | Shared request envelopes and response branches | [`api/schema-core.md`](api/schema-core.md) |
 | State and close-readiness state shapes | [`api/schema-state.md`](api/schema-state.md) |
 | Artifact reference shapes | [`api/schema-artifacts.md`](api/schema-artifacts.md) |
 | User judgment and sensitive-action schemas | [`api/schema-judgment.md`](api/schema-judgment.md) |
 | API value sets | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
 | Public error codes and error routing | [`api/errors.md`](api/errors.md) |
-
-<a id="api-method-owners"></a>
-## API method owners
-
-| Method | Owner |
-|---|---|
-| `harness.intake` | [`api/method-intake.md`](api/method-intake.md) |
-| `harness.update_scope` | [`api/method-update-scope.md`](api/method-update-scope.md) |
-| `harness.status` | [`api/method-status.md`](api/method-status.md) |
-| `harness.prepare_write` | [`api/method-prepare-write.md`](api/method-prepare-write.md) |
-| `harness.stage_artifact` | [`api/method-stage-artifact.md`](api/method-stage-artifact.md) |
-| `harness.record_run` | [`api/method-record-run.md`](api/method-record-run.md) |
-| `harness.request_user_judgment` and `harness.record_user_judgment` | [`api/method-user-judgment.md`](api/method-user-judgment.md) |
-| `harness.close_task` | [`api/method-close-task.md`](api/method-close-task.md) |
 
 ## Storage owners
 
