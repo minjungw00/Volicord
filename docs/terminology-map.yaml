@@ -627,11 +627,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/glossary.md"
-        - "docs/en/reference/api/methods.md"
+        - "docs/en/reference/api/method-close-task.md"
         - "docs/en/reference/api/schema-value-sets.md"
       ko:
         - "docs/ko/reference/glossary.md"
-        - "docs/ko/reference/api/methods.md"
+        - "docs/ko/reference/api/method-close-task.md"
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "The prose concept is complete intent; only the value string is `complete`."
@@ -684,14 +684,13 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/schema-state.md"
-        - "docs/en/reference/api/blocker-routing.md"
       ko:
         - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/schema-state.md"
-        - "docs/ko/reference/api/blocker-routing.md"
     notes:
       - "Use this for a reason that prevents honest close readiness."
+      - "`CloseReadinessBlocker` schema shape belongs to `api/schema-state.md`."
+      - "`CloseReadinessBlocker.category` values belong to `api/schema-value-sets.md`."
+      - "Close-readiness blocker/API response boundary routing belongs to `api/blocker-routing.md`."
   close_readiness_blocker:
     category: "identifier"
     en: "CloseReadinessBlocker"
@@ -702,15 +701,13 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/api/schema-state.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-        - "docs/en/reference/api/blocker-routing.md"
       ko:
         - "docs/ko/reference/api/schema-state.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
-        - "docs/ko/reference/api/blocker-routing.md"
     notes:
       - "Never translate the identifier itself."
       - "Do not use it as a prepare-write reason or as the entire close-readiness concept."
+      - "Route exact category-value questions to `api/schema-value-sets.md`."
+      - "Route close-readiness blocker/API response boundary questions to `api/blocker-routing.md`."
   blocker_category:
     category: "api_concept"
     en: "blocker category"
@@ -721,12 +718,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/api/schema-value-sets.md"
-        - "docs/en/reference/api/blocker-routing.md"
       ko:
         - "docs/ko/reference/api/schema-value-sets.md"
-        - "docs/ko/reference/api/blocker-routing.md"
     notes:
       - "Use for the prose category concept; preserve `CloseReadinessBlocker.category` when naming the exact field."
+      - "Route category-bearing blocker/API response boundary questions to `api/blocker-routing.md`."
   blocker:
     category: "general_prose"
     en: "blocker"
@@ -1081,7 +1077,7 @@ terms:
         - "docs/ko/reference/api/error-codes.md"
     notes:
       - "Public `ErrorCode` identifiers and error code meanings belong to `api/error-codes.md`."
-      - "Public `ErrorCode` values are not close-readiness blocker codes by default."
+      - "Public `ErrorCode` values are not `CloseReadinessBlocker.category` values or `CloseReadinessBlocker.code` values by default."
   error_precedence:
     category: "api_concept"
     en: "error precedence"
@@ -1117,7 +1113,7 @@ terms:
     notes:
       - "Error routing covers API response branch routing for rejected responses, blocked results, and `dry_run` preview responses."
       - "The owner document is `api/error-routing.md`."
-      - "Close-readiness blocker category routing boundaries belong to `api/blocker-routing.md`; exact category values belong to `api/schema-value-sets.md`."
+      - "Close-readiness blocker/API response boundaries belong to `api/blocker-routing.md`; exact category values belong to `api/schema-value-sets.md`."
   tool_error_details:
     category: "api_concept"
     en: "ToolError.details"
@@ -1189,7 +1185,7 @@ terms:
         - "docs/ko/reference/api/blocker-routing.md"
     notes:
       - "Use for the boundary between pre-evaluation public API errors and post-evaluation close-readiness blocker data."
-  forbidden_public_error_as_blocker_mapping:
+  public_error_blocker_boundary:
     category: "api_concept"
     en: "public error as blocker"
     aliases_en:
@@ -1206,7 +1202,7 @@ terms:
       ko:
         - "docs/ko/reference/api/blocker-routing.md"
     notes:
-      - "The YAML key is metadata-only; use the `en` and Korean labels as the current display terms."
+      - "Use this as boundary wording for the distinction between public `ErrorCode` values and close-readiness blocker data."
       - "Public `ErrorCode` values are not copied into `CloseReadinessBlocker.code` unless the schema or method owner explicitly allows that exact use."
   dry_run:
     category: "api_concept"
@@ -1221,12 +1217,10 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/api/schema-core.md"
-        - "docs/en/reference/api/methods.md"
         - "docs/en/reference/api/error-routing.md"
         - "docs/en/reference/storage-effects.md"
       ko:
         - "docs/ko/reference/api/schema-core.md"
-        - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/api/error-routing.md"
         - "docs/ko/reference/storage-effects.md"
     notes:
@@ -1245,13 +1239,11 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/api/error-routing.md"
-        - "docs/en/reference/api/methods.md"
         - "docs/en/reference/api/method-close-task.md"
         - "docs/en/reference/api/method-prepare-write.md"
         - "docs/en/reference/storage-effects.md"
       ko:
         - "docs/ko/reference/api/error-routing.md"
-        - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/api/method-close-task.md"
         - "docs/ko/reference/api/method-prepare-write.md"
         - "docs/ko/reference/storage-effects.md"

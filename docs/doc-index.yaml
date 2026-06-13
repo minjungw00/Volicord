@@ -497,6 +497,7 @@ documents:
       - "`CloseTaskResult` method result branch behavior"
       - "method-specific close-readiness evaluation order"
       - "method-specific blocker-producing branches"
+      - "method-specific `CloseReadinessBlocker.code` production behavior"
       - "close-task examples"
     not_owner_for:
       - "Core close-readiness authority concepts"
@@ -590,7 +591,7 @@ documents:
     path_ko: "docs/ko/reference/api/schema-value-sets.md"
     role: "reference"
     owner_for:
-      - "API value sets"
+      - "public API value sets"
       - "blocker category values"
       - "method-name values"
       - "access-class values"
@@ -649,14 +650,14 @@ documents:
     path_ko: "docs/ko/reference/api/error-codes.md"
     role: "reference"
     owner_for:
-      - "public ErrorCode identifiers"
-      - "public error code meanings"
-      - "error occurrence summaries"
+      - "public `ErrorCode` identifiers and meanings"
     not_owner_for:
       - "primary error precedence"
       - "response branch routing"
       - "blocker/API response routing boundary"
       - "public-code-to-blocker boundary"
+      - "`CloseReadinessBlocker.category` values"
+      - "`CloseReadinessBlocker.code` production behavior"
       - "machine-readable error details"
       - "user-facing display labels"
     normative_level: "contract"
@@ -670,8 +671,9 @@ documents:
     path_ko: "docs/ko/reference/api/error-precedence.md"
     role: "reference"
     owner_for:
-      - "primary ErrorCode precedence"
-      - "STATE_VERSION_CONFLICT conflict selection"
+      - "public error selection precedence"
+      - "primary `ErrorCode` selection"
+      - "`STATE_VERSION_CONFLICT` conflict selection"
       - "stale-state conflict behavior"
       - "idempotency request-hash conflict behavior"
     not_owner_for:
@@ -702,7 +704,7 @@ documents:
       - "machine-readable error details"
       - "Core close-readiness authority concepts"
       - "blocker/API response routing boundary"
-      - "close-readiness blocker category/code routing"
+      - "close-readiness blocker/API response boundary"
       - "`CloseReadinessBlocker` shape"
       - "`CloseReadinessBlocker.category` values"
       - "`harness.close_task` method-specific behavior"
@@ -718,8 +720,8 @@ documents:
     path_ko: "docs/ko/reference/api/blocker-routing.md"
     role: "reference"
     owner_for:
-      - "blocker/API response routing boundary"
       - "close-readiness blocker/API response boundary"
+      - "error/blocker boundary for close-readiness blocker data"
       - "public-code-to-blocker boundary"
     not_owner_for:
       - "Core close-readiness authority concepts"
@@ -744,7 +746,7 @@ documents:
     path_ko: "docs/ko/reference/api/error-details.md"
     role: "reference"
     owner_for:
-      - "ToolError.details semantics"
+      - "`ToolError.details` fields and semantics"
       - "error detail helper values"
       - "state conflict detail fields"
       - "machine-readable error detail constraints"
