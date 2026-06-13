@@ -61,7 +61,7 @@ Storage records and API schemas have different owner boundaries.
 
 ## Persisted record families
 
-Baseline storage persists only the Core records needed by supported owner paths. The exact branches that create, update, observe, or leave records untouched belong to [Storage Effects](storage-effects.md).
+Baseline storage persists only the supported Core record families defined by the baseline storage contract. The exact branches that create, update, observe, or leave records untouched belong to [Storage Effects](storage-effects.md).
 
 Stored families:
 

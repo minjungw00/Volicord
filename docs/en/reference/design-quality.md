@@ -292,7 +292,7 @@ A design-quality observation blocks close only through an applicable owner path.
 
 Condition:
 - The observation is tied to the active `Task` or Change Unit and the attempted close.
-- The observation names an existing supported `CloseReadinessBlocker.category`, `judgment_kind`, API error, or owner path from the applicable close-blocking set.
+- The observation names an existing supported `CloseReadinessBlocker.category`, supported `judgment_kind`, supported API error, or applicable owner path from the close-blocking set.
 
 Close effect:
 - The observation can block close only when the named owner path would block close without the design-quality label.

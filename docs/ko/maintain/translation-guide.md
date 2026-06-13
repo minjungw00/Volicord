@@ -97,8 +97,7 @@
 | active Change Unit | 현재 적용 Change Unit | 권한 모델에서 현재 적용되는 Change Unit입니다. 프로젝트 단계가 아닙니다. |
 | supported API method | 지원되는 API 메서드 | 지원된다고 문서화된 공개 메서드입니다. 정확한 메서드 식별자는 보존합니다. |
 | supported API value | 지원되는 API 값 | 지원된다고 문서화된 값입니다. 값 집합에 있다는 사실만으로는 충분하지 않습니다. |
-| applicable owner path | 적용되는 담당 경로 | 어떤 주제에 적용되는 담당 문서 경로입니다. |
-| supported owner path | 지원되는 담당 경로 | 지원 여부가 문서화된 경우에만 씁니다. 일반 주제 경로 안내에는 적용되는 담당 경로를 씁니다. |
+| applicable owner path | 적용되는 담당 경로 | 어떤 주제에 적용되는 담당 문서 경로입니다. 문서 경로 안내에만 씁니다. |
 | baseline guarantee | 기준 범위 보장 | 기준 범위와 보안 담당 문서가 지원된다고 정의한 보장에만 씁니다. |
 | out-of-scope capability | 지원 범위 밖 기능 | 미뤄 둔 자료임을 분명히 유지합니다. |
 | migration | 마이그레이션 | 스키마, 저장소, 데이터, 문서 구조를 옮기거나 갱신하는 기술 개념에 씁니다. 이전 선택이라는 뜻으로 옮기지 않습니다. |

@@ -97,8 +97,7 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | active Change Unit | 현재 적용 Change Unit | Currently applied Change Unit in the authority model; not a project phase. |
 | supported API method | 지원되는 API 메서드 | Public method documented as supported; preserve exact method identifiers. |
 | supported API value | 지원되는 API 값 | Value documented as supported; value-set presence alone is not enough. |
-| applicable owner path | 적용되는 담당 경로 | Owner route that applies to a topic. |
-| supported owner path | 지원되는 담당 경로 | Use only when support is documented; use applicable owner path for ordinary topic routing. |
+| applicable owner path | 적용되는 담당 경로 | Owner route that applies to a topic; use only for documentation routing. |
 | baseline guarantee | 기준 범위 보장 | Use only when Scope and Security document the behavior as supported in the baseline scope. |
 | out-of-scope capability | 지원 범위 밖 기능 | Keep deferred material clearly deferred. |
 | migration | 마이그레이션 | Use for technical schema, storage, data, or documentation migration concepts; do not translate it as previous choice. |

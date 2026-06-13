@@ -31,7 +31,6 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | out-of-scope capability | 지원 범위 밖 기능 | [Scope Reference](scope.md) |
 | owner document | 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
 | applicable owner path | 적용되는 담당 경로 | [Authoring Guide](../maintain/authoring-guide.md) |
-| supported owner path | 지원되는 담당 경로 | [Authoring Guide](../maintain/authoring-guide.md) |
 | existing owner | 기존 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
 | promotion-time owner update | 승격 시점의 담당 문서 갱신 | [Scope Reference](scope.md) |
 | owner placeholder | 담당 문서 자리표시자 | [Authoring Guide](../maintain/authoring-guide.md) |
@@ -310,7 +309,7 @@ Preserve:
 
 Avoid:
 - using `active` for owner-path routing
-- supported owner path, when the meaning is only topic routing
+- using product support wording when the meaning is only documentation routing
 
 Owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
@@ -319,33 +318,6 @@ Owner:
 
 Notes:
 - An applicable owner path is the owner route that applies to a topic.
-
-### supported owner path
-
-English:
-- supported owner path
-
-Korean:
-- Reference: 지원되는 담당 경로
-- User-facing: 지원되는 담당 경로
-
-Preserve:
-- File paths
-- Anchors
-- `doc_id` values
-
-Avoid:
-- Using this term as a synonym for applicable owner path.
-- Using this term as a runtime-active path.
-
-Owner:
-- [Authoring Guide](../maintain/authoring-guide.md)
-- [Reference Index](README.md)
-- [doc-index.yaml](../../doc-index.yaml)
-
-Notes:
-- Use this only when documentation explicitly describes an owner path as supported for the behavior or capability.
-- For ordinary topic routing, use applicable owner path.
 
 ### existing owner
 

@@ -62,7 +62,7 @@ If the chat surface cannot verify local access, state, artifact availability, or
 
 ## Local MCP surface
 
-A local MCP surface is the practical route for asking supported Harness owner paths for status, scope updates, write checks, run/evidence recording, user-judgment capture, artifact staging, and close checks when those methods are supported.
+A local MCP surface is the practical route for invoking supported Harness methods for status, scope updates, write checks, run/evidence recording, user-judgment capture, artifact staging, and close checks.
 
 For local MCP work:
 

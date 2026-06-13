@@ -296,25 +296,8 @@ terms:
         - "docs/doc-index.yaml"
     notes:
       - "Use for the owner route that applies to a topic."
-      - "Do not use active or supported as a broad substitute for applicable owner routing."
-  supported_owner_path:
-    category: "documentation_concept"
-    en: "supported owner path"
-    ko_reference: "지원되는 담당 경로"
-    ko_user: "지원되는 담당 경로"
-    owner_documents:
-      en:
-        - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/reference/README.md"
-        - "docs/doc-index.yaml"
-      ko:
-        - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/reference/README.md"
-        - "docs/doc-index.yaml"
-    notes:
-      - "Use only when the documentation explicitly describes an owner path as supported for the behavior or capability."
-      - "For ordinary topic routing, prefer applicable owner path."
-      - "A supported owner path is not a runtime-active path."
+      - "Use only for documentation routing, not as a product support contract."
+      - "Do not use active or support-contract wording as a broad substitute for applicable owner routing."
   existing_owner:
     category: "documentation_concept"
     en: "existing owner"

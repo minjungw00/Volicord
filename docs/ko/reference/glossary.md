@@ -31,7 +31,6 @@
 | out-of-scope capability | 지원 범위 밖 기능 | [범위 참조](scope.md) |
 | owner document | 담당 문서 | [작성 가이드](../maintain/authoring-guide.md) |
 | applicable owner path | 적용되는 담당 경로 | [작성 가이드](../maintain/authoring-guide.md) |
-| supported owner path | 지원되는 담당 경로 | [작성 가이드](../maintain/authoring-guide.md) |
 | existing owner | 기존 담당 문서 | [작성 가이드](../maintain/authoring-guide.md) |
 | promotion-time owner update | 승격 시점의 담당 문서 갱신 | [범위 참조](scope.md) |
 | owner placeholder | 담당 문서 자리표시자 | [작성 가이드](../maintain/authoring-guide.md) |
@@ -310,7 +309,7 @@
 
 피할 표현:
 - 담당 경로 안내에 `active`를 쓰는 표현
-- 단순한 주제 경로 안내를 supported owner path라고 부르는 표현
+- 문서 경로 안내만 뜻하는 자리에 제품 지원 계약 표현을 쓰는 표현
 
 담당 문서:
 - [작성 가이드](../maintain/authoring-guide.md)
@@ -319,33 +318,6 @@
 
 설명:
 - 적용되는 담당 경로는 어떤 주제에 적용되는 담당 문서 경로입니다.
-
-### supported owner path
-
-영어:
-- supported owner path
-
-한국어:
-- 참조 문서: 지원되는 담당 경로
-- 사용자 문서: 지원되는 담당 경로
-
-보존할 식별자:
-- 파일 경로
-- 앵커
-- `doc_id` 값
-
-피할 표현:
-- 이 표현을 적용되는 담당 경로의 동의어처럼 쓰는 표현
-- 런타임에서 현재 적용되는 경로처럼 쓰는 표현
-
-담당 문서:
-- [작성 가이드](../maintain/authoring-guide.md)
-- [참조 색인](README.md)
-- [doc-index.yaml](../../doc-index.yaml)
-
-설명:
-- 문서가 특정 동작이나 역량에 대해 그 담당 경로를 지원된다고 명시할 때만 씁니다.
-- 일반적인 주제 경로 안내에는 적용되는 담당 경로를 씁니다.
 
 ### existing owner
 

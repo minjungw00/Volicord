@@ -329,7 +329,7 @@
 
 조건:
 - 관찰 사항이 현재 적용되는 `Task` 또는 Change Unit과 시도 중인 닫기에 연결되어 있습니다.
-- 관찰 사항이 적용되는 닫기 차단 집합 안의 기존 지원 `CloseReadinessBlocker.category`, `judgment_kind`, API 오류, 담당 경로를 이름 붙입니다.
+- 관찰 사항이 닫기 차단 집합 안의 기존에 지원되는 `CloseReadinessBlocker.category`, 지원되는 `judgment_kind`, 지원되는 API 오류, 또는 적용되는 담당 경로를 이름 붙입니다.
 
 닫기 영향:
 - 이름 붙인 담당 경로가 설계 품질 라벨 없이도 닫기를 차단할 때만 닫기를 차단할 수 있습니다.
