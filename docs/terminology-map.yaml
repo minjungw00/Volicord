@@ -14,6 +14,7 @@ canonical_for:
   - "Terminology boundaries between documentation owner routing and product behavior or storage persistence conditions."
   - "Terminology routing for API error routing, blocker routing, error/blocker boundaries, public error as blocker wording, and `ToolError.details`."
   - "Artifact and evidence terminology conventions for bilingual documentation."
+  - "Terminology routing for evidence package wording, close-task behavior, and design-quality owner boundaries."
 does_not_own:
   - "Product, API, storage, security, projection, or runtime contracts."
   - "Rendered UI copy when an exact template body owner defines the wording."
@@ -87,6 +88,8 @@ avoid:
       use: "증거 기록, 또는 식별자를 뜻할 때는 `EvidenceSummary` 같은 정확한 이름"
     - phrase: "evidence summary"
       use: "증거 요약, 또는 스키마를 뜻할 때는 `EvidenceSummary`"
+    - phrase: "evidence package"
+      use: "증거 패키지"
     - phrase: "staged handle"
       use: "스테이징된 아티팩트 핸들, 또는 식별자를 뜻할 때는 `StagedArtifactHandle`"
     - phrase: "checksum, size 검증"
@@ -258,6 +261,42 @@ terms:
         - "docs/ko/reference/scope.md"
     notes:
       - "An out-of-scope capability is deferred material until an owner promotes it."
+  evidence_package:
+    category: "out_of_scope_capability_term"
+    en: "evidence package"
+    ko_reference: "증거 패키지"
+    ko_user: "증거 패키지"
+    avoid_ko:
+      - "evidence package"
+    owner_documents:
+      en:
+        - "docs/en/reference/scope.md"
+        - "docs/en/reference/glossary.md"
+      ko:
+        - "docs/ko/reference/scope.md"
+        - "docs/ko/reference/glossary.md"
+    notes:
+      - "Use this wording for evidence package concepts only as terminology or out-of-scope capability wording unless Scope and the affected owners define support."
+      - "Do not use alternate package-index wording for evidence package concepts unless it is an exact supported identifier."
+      - "Baseline evidence is recorded evidence and evidence summaries, not a package feature by name alone."
+  expanded_evidence_packages:
+    category: "out_of_scope_capability"
+    en: "expanded or additional evidence packages"
+    aliases_en:
+      - "expanded evidence packages"
+      - "additional evidence packages"
+    ko_reference: "확장 또는 추가 증거 패키지"
+    ko_user: "확장 또는 추가 증거 패키지"
+    owner_documents:
+      en:
+        - "docs/en/reference/scope.md"
+        - "docs/en/reference/glossary.md"
+      ko:
+        - "docs/ko/reference/scope.md"
+        - "docs/ko/reference/glossary.md"
+    notes:
+      - "This is an excluded capability family until Scope and the affected existing owner documents define a supported contract."
+      - "Do not define package contents, package exclusions, storage records, or close-readiness behavior from this phrase."
   reserved_value:
     category: "value_status"
     en: "reserved value"
@@ -291,7 +330,7 @@ terms:
       - "Do not treat a profile-gated value as baseline behavior merely because it appears in a value set."
       - "Presence in a value set does not make behavior supported."
   owner_document:
-    category: "product_concept"
+    category: "documentation_concept"
     en: "owner document"
     ko_reference: "담당 문서"
     ko_user: "담당 문서"
@@ -304,6 +343,23 @@ terms:
         - "docs/ko/reference/README.md"
     notes:
       - "Use for the canonical documentation owner of a contract or term."
+      - "Product behavior may refer to the owner document that defines a behavior, but file paths are documentation routes, not product actors."
+  owner_contract:
+    category: "documentation_concept"
+    en: "owner contract"
+    ko_reference: "담당 계약"
+    ko_user: "담당 계약"
+    owner_documents:
+      en:
+        - "docs/en/reference/glossary.md"
+        - "docs/en/maintain/authoring-guide.md"
+      ko:
+        - "docs/ko/reference/glossary.md"
+        - "docs/ko/maintain/authoring-guide.md"
+    notes:
+      - "Use when a product behavior or close effect depends on the contract defined by the relevant owner document."
+      - "Korean may use 담당 문서가 정의한 계약 when that is clearer than 담당 계약."
+      - "Do not make an owner path or documentation route the actor for product behavior."
   applicable_owner_path:
     category: "documentation_concept"
     en: "applicable owner path"
@@ -321,8 +377,26 @@ terms:
     notes:
       - "Use for the owner route that applies to a topic."
       - "Use only for documentation routing, not as a product support contract."
+      - "Product behavior should name the owner document, owner contract, applicable reference, or concrete owner instead."
       - "Do not use owner-routing terminology as a product behavior, storage persistence condition, or runtime state."
       - "Do not use active or support-contract wording as a broad substitute for applicable owner routing."
+  applicable_reference:
+    category: "documentation_concept"
+    en: "applicable reference"
+    ko_reference: "적용되는 참조 문서"
+    ko_user: "적용되는 참조 문서"
+    owner_documents:
+      en:
+        - "docs/en/reference/glossary.md"
+        - "docs/en/maintain/authoring-guide.md"
+        - "docs/en/reference/README.md"
+      ko:
+        - "docs/ko/reference/glossary.md"
+        - "docs/ko/maintain/authoring-guide.md"
+        - "docs/ko/reference/README.md"
+    notes:
+      - "Use when prose needs to point product behavior to the reference document that defines the relevant contract."
+      - "This is documentation routing shorthand; it is not a runtime record, state value, or storage condition."
   existing_owner:
     category: "documentation_concept"
     en: "existing owner"
@@ -518,6 +592,28 @@ terms:
       - "Do not translate this as 가능성 평가."
       - "The close-readiness authority concept belongs to `reference/core-model.md`."
       - "Close-readiness blocker routing belongs to `api/blocker-routing.md`."
+  close_task_behavior:
+    category: "api_concept"
+    en: "close task behavior"
+    aliases_en:
+      - "`harness.close_task` behavior"
+      - "close-task method behavior"
+    ko_reference: "Task 닫기 동작"
+    ko_user: "Task 닫기 동작"
+    preserve_as_identifier:
+      - "harness.close_task"
+      - "CloseTaskResult"
+      - "CloseReadinessBlocker"
+    owner_documents:
+      en:
+        - "docs/en/reference/api/method-close-task.md"
+      ko:
+        - "docs/ko/reference/api/method-close-task.md"
+    notes:
+      - "Use for method-specific request validation, evaluation order, result branches, dry-run behavior, and blocker-producing branches."
+      - "Core close-readiness meaning belongs to `reference/core-model.md`."
+      - "Close-readiness blocker/API response routing belongs to `api/blocker-routing.md`."
+      - "`CloseReadinessBlocker` schema shape belongs to `api/schema-state.md`."
   complete_intent:
     category: "identifier"
     en: "complete"
@@ -956,6 +1052,25 @@ terms:
         - "docs/ko/reference/agent-integration.md"
     notes:
       - "Use only when the documented observable scope and capability check support it."
+  design_quality_owner_boundary:
+    category: "product_concept"
+    en: "design-quality owner boundary"
+    aliases_en:
+      - "design-quality routing boundary"
+      - "design-quality boundary"
+    ko_reference: "설계 품질 담당 경계"
+    ko_user: "설계 품질 담당 경계"
+    preserve_as_identifier:
+      - "ValidatorResult.validator_id"
+    owner_documents:
+      en:
+        - "docs/en/reference/design-quality.md"
+      ko:
+        - "docs/ko/reference/design-quality.md"
+    notes:
+      - "Use for the Design Quality reference boundary that routes observations to relevant judgment, evidence, scope, surface-capability, residual-risk, or close-readiness owners."
+      - "Design-quality wording does not create an independent close blocker, QA result, acceptance decision, residual-risk decision, evidence authority, validator catalog, or close authority."
+      - "Product effects must be defined by the relevant owner document or owner contract."
   error_code:
     category: "api_concept"
     en: "ErrorCode"
@@ -1005,7 +1120,7 @@ terms:
         - "docs/ko/reference/api/error-routing.md"
     notes:
       - "Error routing covers API response branch routing for rejected responses, blocked results, and `dry_run` preview responses."
-      - "The owner document path remains `api/error-routing.md`."
+      - "The owner document is `api/error-routing.md`."
       - "Close-readiness blocker category routing boundaries belong to `api/blocker-routing.md`; exact category values belong to `api/schema-value-sets.md`."
   tool_error_details:
     category: "api_concept"
@@ -1056,7 +1171,7 @@ terms:
         - "docs/ko/reference/api/blocker-routing.md"
     notes:
       - "Blocker routing covers the routing boundary between close-readiness blockers and API response branches, including the error/blocker boundary and public error as blocker wording."
-      - "The owner document path remains `api/blocker-routing.md`."
+      - "The owner document is `api/blocker-routing.md`."
       - "Method-specific `harness.close_task` behavior belongs to `api/method-close-task.md`."
       - "`CloseReadinessBlocker` schema shape belongs to `api/schema-state.md`."
       - "The close-readiness authority concept belongs to `reference/core-model.md`."

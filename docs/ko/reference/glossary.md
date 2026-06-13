@@ -30,8 +30,12 @@
 | supported API method | 지원되는 API 메서드 | [API 메서드](api/methods.md) |
 | supported API value | 지원되는 API 값 | [API 값 집합](api/schema-value-sets.md) |
 | out-of-scope capability | 지원 범위 밖 기능 | [범위 참조](scope.md) |
+| evidence package | 증거 패키지 | [범위 참조](scope.md) |
+| expanded or additional evidence packages | 확장 또는 추가 증거 패키지 | [범위 참조](scope.md) |
 | owner document | 담당 문서 | [작성 가이드](../maintain/authoring-guide.md) |
+| owner contract | 담당 계약 | [작성 가이드](../maintain/authoring-guide.md) |
 | applicable owner path | 적용되는 담당 경로 | [작성 가이드](../maintain/authoring-guide.md) |
+| applicable reference | 적용되는 참조 문서 | [참조 색인](README.md) |
 | existing owner | 기존 담당 문서 | [작성 가이드](../maintain/authoring-guide.md) |
 | promotion-time owner update | 승격 시점의 담당 문서 갱신 | [범위 참조](scope.md) |
 | owner placeholder | 담당 문서 자리표시자 | [작성 가이드](../maintain/authoring-guide.md) |
@@ -42,6 +46,7 @@
 | user-owned judgment | 사용자 소유 판단 | [Core 모델](core-model.md) |
 | close readiness | 닫기 준비 상태 | [Core 모델](core-model.md) |
 | close readiness evaluation | 닫기 준비 상태 평가 | [Task 닫기 메서드](api/method-close-task.md) |
+| close task behavior | Task 닫기 동작 | [Task 닫기 메서드](api/method-close-task.md) |
 | close-readiness blocker | 닫기 차단 사유 | [Core 모델](core-model.md) |
 | `CloseReadinessBlocker` | `CloseReadinessBlocker` | [API 상태 스키마](api/schema-state.md) |
 | blocker category | 차단 사유 범주 | [API 값 집합](api/schema-value-sets.md) |
@@ -62,6 +67,7 @@
 | baseline guarantee | 기준 범위 보장 | [보안](security.md) |
 | cooperative guarantee | 협력형 보장 | [보안](security.md) |
 | detective guarantee | 탐지형 보장 | [보안](security.md) |
+| design-quality owner boundary | 설계 품질 담당 경계 | [설계 품질](design-quality.md) |
 | reserved value | 예약된 값 | [기준 범위](scope.md) |
 | profile-gated value | 프로필 조건부 값 | [기준 범위](scope.md) |
 | error routing | 오류 처리 경로 | [API 오류 처리 경로](api/error-routing.md) |
@@ -298,6 +304,55 @@
 설명:
 - 지원 범위 밖 기능은 [범위 참조](scope.md)와 영향받는 담당 문서가 지원된다고 정의하기 전까지 기준 범위 동작이 아닙니다.
 
+### evidence package
+
+영어:
+- evidence package
+
+한국어:
+- 참조 문서: 증거 패키지
+- 사용자 문서: 증거 패키지
+
+보존할 식별자:
+- 스키마나 필드 이름을 말할 때는 `EvidenceSummary` 같은 정확한 증거 식별자
+
+피할 표현:
+- 패키지 표현을 기준 범위 증거 동작처럼 쓰는 표현
+- 패키지 표현을 저장소 기록이나 닫기 준비 상태 결과처럼 쓰는 표현
+
+담당 문서:
+- [범위 참조](scope.md)
+- [용어 지도](../../terminology-map.yaml)
+
+설명:
+- 증거 패키지는 [범위 참조](scope.md)와 영향받는 담당 문서가 지원을 정의하기 전에는 용어 또는 지원 범위 밖 기능 표현으로만 씁니다.
+- 기준 범위의 증거는 기록된 증거와 증거 요약이지, 이름만으로 성립하는 패키지 기능이 아닙니다.
+
+### expanded or additional evidence packages
+
+영어:
+- expanded or additional evidence packages
+- expanded evidence packages
+- additional evidence packages
+
+한국어:
+- 참조 문서: 확장 또는 추가 증거 패키지
+- 사용자 문서: 확장 또는 추가 증거 패키지
+
+보존할 식별자:
+- 스키마나 필드 이름을 말할 때는 `EvidenceSummary` 같은 정확한 증거 식별자
+
+피할 표현:
+- 이 표현만으로 패키지 내용, 저장소 기록, 닫기 준비 상태 동작을 정의하는 표현
+- 이 기능을 기준 범위 동작처럼 부르는 표현
+
+담당 문서:
+- [범위 참조](scope.md)
+- [용어 지도](../../terminology-map.yaml)
+
+설명:
+- 이 기능 묶음은 [범위 참조](scope.md)와 영향받는 기존 담당 문서가 지원 계약을 정의하기 전까지 지원 범위 밖에 있습니다.
+
 ### owner document
 
 영어:
@@ -322,6 +377,31 @@
 
 설명:
 - 담당 문서는 제품 개념, 계약, 스키마 묶음, 경로, 용어 규칙의 기준 의미를 정의할 수 있는 기준 문서입니다.
+- 제품 동작은 그 동작을 정의하는 담당 문서를 가리킬 수 있지만, 파일 경로 자체는 제품 주체가 아니라 문서 경로 안내입니다.
+
+### owner contract
+
+영어:
+- owner contract
+
+한국어:
+- 참조 문서: 담당 계약
+- 사용자 문서: 담당 계약
+
+보존할 식별자:
+- 출처 문서를 이름 붙일 때 파일 경로, 앵커, `doc_id` 값
+
+피할 표현:
+- 담당 경로를 제품 동작의 주어로 쓰는 표현
+- 경로 메타데이터를 계약 자체처럼 보는 표현
+
+담당 문서:
+- [작성 가이드](../maintain/authoring-guide.md)
+- [용어 지도](../../terminology-map.yaml)
+
+설명:
+- 제품 동작이나 닫기 영향이 관련 담당 문서가 정의한 계약에 의존할 때 담당 계약이라고 씁니다.
+- 문맥상 더 분명하면 담당 문서가 정의한 계약이라고 풀어 쓸 수 있습니다.
 
 ### applicable owner path
 
@@ -350,6 +430,34 @@
 설명:
 - 적용되는 담당 경로는 어떤 주제에 적용되는 담당 문서 경로입니다.
 - 문서 경로 안내 개념일 뿐, 제품 동작, 런타임 상태, 저장 지속 조건이 아닙니다.
+- 제품 동작은 대신 담당 문서, 담당 계약, 적용되는 참조 문서, 또는 구체적인 담당 문서 이름을 가리켜야 합니다.
+
+### applicable reference
+
+영어:
+- applicable reference
+
+한국어:
+- 참조 문서: 적용되는 참조 문서
+- 사용자 문서: 적용되는 참조 문서
+
+보존할 식별자:
+- 파일 경로
+- 앵커
+- `doc_id` 값
+
+피할 표현:
+- 참조 문서 경로를 런타임 상태처럼 보는 표현
+- 경로 메타데이터를 제품 동작처럼 보는 표현
+
+담당 문서:
+- [작성 가이드](../maintain/authoring-guide.md)
+- [참조 색인](README.md)
+- [용어 지도](../../terminology-map.yaml)
+
+설명:
+- 제품 산문에서 관련 계약을 정의하는 참조 문서를 가리켜야 할 때 적용되는 참조 문서라고 씁니다.
+- 문서 경로 안내를 위한 줄임말일 뿐, 런타임 기록이나 저장 조건이 아닙니다.
 
 ### existing owner
 
@@ -603,6 +711,34 @@
 
 설명:
 - 담당 문서 경계에 따라 닫기 준비 상태와 남은 닫기 차단 사유를 도출하는 확인입니다.
+
+### close task behavior
+
+영어:
+- close task behavior
+- `harness.close_task` behavior
+- close-task method behavior
+
+한국어:
+- 참조 문서: Task 닫기 동작
+- 사용자 문서: Task 닫기 동작
+
+보존할 식별자:
+- `harness.close_task`
+- `CloseTaskResult`
+- `CloseReadinessBlocker`
+
+피할 표현:
+- Task 닫기 동작을 Core 닫기 준비 상태 의미처럼 보는 표현
+- Task 닫기 동작을 차단 사유/API 응답 처리 경로처럼 보는 표현
+
+담당 문서:
+- [Task 닫기 메서드](api/method-close-task.md)
+
+설명:
+- 메서드별 요청 검증, 평가 순서, 결과 분기, dry-run 동작, 차단 사유를 만드는 분기를 말할 때 씁니다.
+- Core 닫기 준비 상태 의미는 [Core 모델](core-model.md)이 담당합니다.
+- 닫기 차단 사유와 API 응답 사이의 처리 경계는 [API 차단 사유 처리 경로](api/blocker-routing.md)가 담당합니다.
 
 ### close-readiness blocker
 
@@ -1108,6 +1244,32 @@
 
 설명:
 - 탐지형 보장은 문서화된 관찰 범위와 역량 확인이 뒷받침할 때만 씁니다.
+
+### design-quality owner boundary
+
+영어:
+- design-quality owner boundary
+- design-quality routing boundary
+- design-quality boundary
+
+한국어:
+- 참조 문서: 설계 품질 담당 경계
+- 사용자 문서: 설계 품질 담당 경계
+
+보존할 식별자:
+- `ValidatorResult.validator_id`
+- 식별자를 말할 때는 정확한 차단 사유 범주 값
+
+피할 표현:
+- 설계 품질 문구를 독립적인 닫기 차단 사유로 보는 표현
+- 설계 품질 문구를 QA, 수락, 잔여 위험, 증거, 닫기 권한처럼 보는 표현
+
+담당 문서:
+- [설계 품질](design-quality.md)
+
+설명:
+- 설계 품질 담당 경계는 설계 품질 관찰 사항을 관련 판단, 증거, 범위, 접점 역량, 잔여 위험, 닫기 준비 상태 담당 문서로 보내는 경계를 말합니다.
+- 제품 효과는 관련 담당 문서나 담당 계약이 정의해야 합니다.
 
 ### reserved value
 

@@ -84,6 +84,8 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | full evaluation order | 전체 평가 순서; in close-readiness context, 전체 닫기 준비 상태 평가 순서 | Do not write `complete` 평가 순서, complete 평가 순서, or `complete` 닫기 준비 상태 순서. |
 | artifact | 아티팩트 | Preserve `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle`; do not use artifact availability as evidence sufficiency. |
 | evidence | 증거 | Preserve `EvidenceSummary`, `EvidenceCoverageItem`, and `evidence_summary`. |
+| evidence package | 증거 패키지 | Use only as terminology or out-of-scope capability wording unless Scope and the affected owners define support. |
+| expanded or additional evidence packages | 확장 또는 추가 증거 패키지 | Excluded capability family; do not define package contents, storage, or close-readiness behavior from the term. |
 | surface | 접점 | Preserve `surface_id`; do not make it sound like proof of authority. |
 | active surface context | 현재 적용 접점 맥락 | Use for the current runtime or session surface context for a request or interaction; preserve `VerifiedSurfaceContext`. |
 | lifecycle | 생명주기 | Do not leave "lifecycle" in Korean prose unless it is an identifier. |
@@ -100,14 +102,19 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | active Change Unit | 현재 적용 Change Unit | Currently applied Change Unit in the authority model; not a project phase or documentation support contract. |
 | supported API method | 지원되는 API 메서드 | Public method documented as supported; preserve exact method identifiers. |
 | supported API value | 지원되는 API 값 | Value documented as supported; value-set presence alone is not enough. |
+| owner document | 담당 문서 | Canonical documentation owner for a contract or term. |
+| owner contract | 담당 계약, or 담당 문서가 정의한 계약 | Use when product behavior depends on the contract defined by the relevant owner; do not make an owner path the product actor. |
 | applicable owner path | 적용되는 담당 경로 | Owner route that applies to a topic; use only for documentation routing, not product behavior or storage persistence. |
+| applicable reference | 적용되는 참조 문서 | Use when product prose needs the reference document that defines the relevant contract. |
 | baseline guarantee | 기준 범위 보장 | Use only when Scope and Security document the behavior as supported in the baseline scope. |
-| error routing | 오류 처리 경로 | Covers API response branch routing; owner path remains `api/error-routing.md`. |
-| blocker routing | 차단 사유 처리 경로 | Covers the close-readiness blocker/API response routing boundary; owner path remains `api/blocker-routing.md`. |
+| close task behavior | Task 닫기 동작 | Method-specific `harness.close_task` behavior belongs to the close-task method owner. |
+| error routing | 오류 처리 경로 | Covers API response branch routing; the owner document is `api/error-routing.md`. |
+| blocker routing | 차단 사유 처리 경로 | Covers the close-readiness blocker/API response routing boundary; the owner document is `api/blocker-routing.md`. |
 | error/blocker boundary | 오류와 차단 사유의 경계 | Use for the boundary between pre-evaluation API errors and post-evaluation close-readiness blocker data. |
 | public error as blocker | 공개 오류 코드가 차단 사유로 표현되는 경우 | Preserve `ErrorCode` and `CloseReadinessBlocker.code` as identifiers. |
 | `ToolError.details` | `ToolError.details` | Exact API detail identifier; preserve it in backticks. |
 | blocked result | 차단 결과 | Preserve exact API values when they are enum or code values; otherwise explain naturally in Korean prose. |
+| design-quality owner boundary | 설계 품질 담당 경계 | Design-quality observations route to relevant owner documents or owner contracts; they do not create independent product authority. |
 | out-of-scope capability | 지원 범위 밖 기능 | Keep deferred material clearly deferred. |
 | migration | 마이그레이션 | Use for technical schema, storage, data, or documentation migration concepts; do not translate it as previous choice. |
 
@@ -212,6 +219,7 @@ The following patterns are forbidden in Korean prose unless they appear inside a
 | artifact bytes | 아티팩트 본문 바이트 |
 | evidence 기록 | 증거 기록 |
 | evidence summary | 증거 요약, or `EvidenceSummary` when naming the schema |
+| evidence package | 증거 패키지 |
 | staged handle | 스테이징된 아티팩트 핸들, or `StagedArtifactHandle` when naming the identifier |
 | checksum, size 검증 | 체크섬과 크기 검증 |
 | ToolEnvelope 봉투 | `ToolEnvelope` 요청 래퍼 |

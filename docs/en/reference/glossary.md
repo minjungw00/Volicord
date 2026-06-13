@@ -30,8 +30,12 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | supported API method | 지원되는 API 메서드 | [API Methods](api/methods.md) |
 | supported API value | 지원되는 API 값 | [API Value Sets](api/schema-value-sets.md) |
 | out-of-scope capability | 지원 범위 밖 기능 | [Scope Reference](scope.md) |
+| evidence package | 증거 패키지 | [Scope Reference](scope.md) |
+| expanded or additional evidence packages | 확장 또는 추가 증거 패키지 | [Scope Reference](scope.md) |
 | owner document | 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
+| owner contract | 담당 계약 | [Authoring Guide](../maintain/authoring-guide.md) |
 | applicable owner path | 적용되는 담당 경로 | [Authoring Guide](../maintain/authoring-guide.md) |
+| applicable reference | 적용되는 참조 문서 | [Reference Index](README.md) |
 | existing owner | 기존 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
 | promotion-time owner update | 승격 시점의 담당 문서 갱신 | [Scope Reference](scope.md) |
 | owner placeholder | 담당 문서 자리표시자 | [Authoring Guide](../maintain/authoring-guide.md) |
@@ -42,8 +46,10 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | user-owned judgment | 사용자 소유 판단 | [Core Model](core-model.md) |
 | close readiness | 닫기 준비 상태 | [Core Model](core-model.md) |
 | close readiness evaluation | 닫기 준비 상태 평가 | [Close-task method](api/method-close-task.md) |
+| close task behavior | Task 닫기 동작 | [Close-task method](api/method-close-task.md) |
 | close-readiness blocker | 닫기 차단 사유 | [Core Model](core-model.md) |
 | `CloseReadinessBlocker` | `CloseReadinessBlocker` | [API State Schemas](api/schema-state.md) |
+| blocker category | 차단 사유 범주 | [API Value Sets](api/schema-value-sets.md) |
 | complete intent | `complete` | [API Value Sets](api/schema-value-sets.md) |
 | full evaluation order | 전체 평가 순서 | [Translation Guide](../maintain/translation-guide.md) |
 | artifact | 아티팩트 | [API Artifact Schemas](api/schema-artifacts.md) |
@@ -61,6 +67,7 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | baseline guarantee | 기준 범위 보장 | [Security](security.md) |
 | cooperative guarantee | 협력형 보장 | [Security](security.md) |
 | detective guarantee | 탐지형 보장 | [Security](security.md) |
+| design-quality owner boundary | 설계 품질 담당 경계 | [Design Quality](design-quality.md) |
 | reserved value | 예약된 값 | [Scope](scope.md) |
 | profile-gated value | 프로필 조건부 값 | [Scope](scope.md) |
 | error routing | 오류 처리 경로 | [API error routing](api/error-routing.md) |
@@ -295,6 +302,55 @@ Owner:
 Notes:
 - An out-of-scope capability is not baseline behavior unless [Scope](scope.md) and the affected owners define it as supported.
 
+### evidence package
+
+English:
+- evidence package
+
+Korean:
+- Reference: 증거 패키지
+- User-facing: 증거 패키지
+
+Preserve:
+- Exact evidence identifiers, such as `EvidenceSummary`, when naming schemas or fields.
+
+Avoid:
+- Treating package wording as baseline evidence behavior.
+- Treating package wording as a storage record or close-readiness result.
+
+Owner:
+- [Scope Reference](scope.md)
+- [Terminology Map](../../terminology-map.yaml)
+
+Notes:
+- Use evidence package wording only as terminology or out-of-scope capability wording unless [Scope](scope.md) and the affected owners define support.
+- Baseline evidence is recorded evidence and evidence summaries, not a package feature by name alone.
+
+### expanded or additional evidence packages
+
+English:
+- expanded or additional evidence packages
+- expanded evidence packages
+- additional evidence packages
+
+Korean:
+- Reference: 확장 또는 추가 증거 패키지
+- User-facing: 확장 또는 추가 증거 패키지
+
+Preserve:
+- Exact evidence identifiers, such as `EvidenceSummary`, when naming schemas or fields.
+
+Avoid:
+- Defining package contents, storage records, or close-readiness behavior from this phrase.
+- Calling this capability baseline behavior.
+
+Owner:
+- [Scope Reference](scope.md)
+- [Terminology Map](../../terminology-map.yaml)
+
+Notes:
+- This is an excluded capability family until [Scope](scope.md) and the affected existing owner documents define a supported contract.
+
 ### owner document
 
 English:
@@ -319,6 +375,31 @@ Owner:
 
 Notes:
 - An owner document is the canonical document allowed to define a product concept, contract, schema family, route, or terminology rule.
+- Product behavior may point to the owner document that defines it, but a file path is documentation routing rather than a product actor.
+
+### owner contract
+
+English:
+- owner contract
+
+Korean:
+- Reference: 담당 계약
+- User-facing: 담당 계약
+
+Preserve:
+- File paths, anchors, and `doc_id` values when naming the source document.
+
+Avoid:
+- using an owner path as a product actor
+- treating route metadata as the contract itself
+
+Owner:
+- [Authoring Guide](../maintain/authoring-guide.md)
+- [Terminology Map](../../terminology-map.yaml)
+
+Notes:
+- Use owner contract when product behavior or close effect depends on the contract defined by the relevant owner document.
+- Korean may use 담당 문서가 정의한 계약 when that is clearer than 담당 계약.
 
 ### applicable owner path
 
@@ -347,6 +428,34 @@ Owner:
 Notes:
 - An applicable owner path is the owner route that applies to a topic.
 - It is a documentation-routing concept, not a product behavior, runtime state, or persistence condition.
+- Product behavior should name the owner document, owner contract, applicable reference, or concrete owner instead.
+
+### applicable reference
+
+English:
+- applicable reference
+
+Korean:
+- Reference: 적용되는 참조 문서
+- User-facing: 적용되는 참조 문서
+
+Preserve:
+- File paths
+- Anchors
+- `doc_id` values
+
+Avoid:
+- treating a reference path as runtime state
+- treating route metadata as product behavior
+
+Owner:
+- [Authoring Guide](../maintain/authoring-guide.md)
+- [Reference Index](README.md)
+- [Terminology Map](../../terminology-map.yaml)
+
+Notes:
+- Use applicable reference when product prose needs the reference document that defines the relevant contract.
+- It is documentation routing shorthand, not a runtime record or storage condition.
 
 ### existing owner
 
@@ -599,7 +708,35 @@ Owner:
 - [API blocker routing](api/blocker-routing.md)
 
 Notes:
-- Close readiness evaluation derives close readiness and remaining close blockers through the Core and method owners.
+- Close readiness evaluation derives close readiness and remaining close-readiness blockers through the Core and method owners.
+
+### close task behavior
+
+English:
+- close task behavior
+- `harness.close_task` behavior
+- close-task method behavior
+
+Korean:
+- Reference: Task 닫기 동작
+- User-facing: Task 닫기 동작
+
+Preserve:
+- `harness.close_task`
+- `CloseTaskResult`
+- `CloseReadinessBlocker`
+
+Avoid:
+- Treating close task behavior as Core close-readiness meaning.
+- Treating close task behavior as blocker/API response routing.
+
+Owner:
+- [Close-task method](api/method-close-task.md)
+
+Notes:
+- Use for method-specific request validation, evaluation order, result branches, dry-run behavior, and blocker-producing branches.
+- Core close-readiness meaning belongs to [Core Model](core-model.md).
+- Close-readiness blocker/API response routing belongs to [API blocker routing](api/blocker-routing.md).
 
 ### close-readiness blocker
 
@@ -652,6 +789,29 @@ Owner:
 
 Notes:
 - `CloseReadinessBlocker` is the API schema identifier for close-readiness blocking data.
+
+### blocker category
+
+English:
+- blocker category
+
+Korean:
+- Reference: 차단 사유 범주
+- User-facing: 차단 사유 범주
+
+Preserve:
+- `CloseReadinessBlocker.category`
+
+Avoid:
+- blocker 범주
+- leaving blocker category untranslated in Korean prose
+
+Owner:
+- [API Value Sets](api/schema-value-sets.md)
+- [API blocker routing](api/blocker-routing.md)
+
+Notes:
+- Use this for the prose category concept; preserve `CloseReadinessBlocker.category` when naming the exact field.
 
 ### complete intent
 
@@ -1082,6 +1242,32 @@ Owner:
 
 Notes:
 - Use detective guarantee only when the documented observable scope and capability check support it.
+
+### design-quality owner boundary
+
+English:
+- design-quality owner boundary
+- design-quality routing boundary
+- design-quality boundary
+
+Korean:
+- Reference: 설계 품질 담당 경계
+- User-facing: 설계 품질 담당 경계
+
+Preserve:
+- `ValidatorResult.validator_id`
+- Exact blocker category values when naming identifiers.
+
+Avoid:
+- Treating design-quality wording as an independent close blocker.
+- Treating design-quality wording as QA, acceptance, residual-risk, evidence, or close authority.
+
+Owner:
+- [Design Quality](design-quality.md)
+
+Notes:
+- Use this for the Design Quality reference boundary that routes observations to relevant judgment, evidence, scope, surface-capability, residual-risk, or close-readiness owners.
+- Product effects must be defined by the relevant owner document or owner contract.
 
 ### reserved value
 

@@ -84,6 +84,8 @@
 | full evaluation order | 전체 평가 순서, 닫기 준비 상태 맥락에서는 전체 닫기 준비 상태 평가 순서 | 전체 순서 뜻으로 `complete`를 붙이지 않습니다. |
 | artifact | 아티팩트 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle`은 보존합니다. 아티팩트가 있다는 사실만으로 증거 충분성이 성립한다고 쓰지 않습니다. |
 | evidence | 증거 | `EvidenceSummary`, `EvidenceCoverageItem`, `evidence_summary`는 보존합니다. |
+| evidence package | 증거 패키지 | 범위와 영향받는 담당 문서가 지원을 정의하기 전에는 용어 또는 지원 범위 밖 기능 표현으로만 씁니다. |
+| expanded or additional evidence packages | 확장 또는 추가 증거 패키지 | 지원 범위 밖 기능 묶음입니다. 이 표현만으로 패키지 내용, 저장 동작, 닫기 준비 상태 동작을 정의하지 않습니다. |
 | surface | 접점 | `surface_id`는 보존하고, 권한 증거처럼 들리게 쓰지 않습니다. |
 | active surface context | 현재 적용 접점 맥락 | 요청이나 상호작용에 현재 적용되는 런타임 또는 세션의 접점 맥락에 씁니다. `VerifiedSurfaceContext`는 보존합니다. |
 | lifecycle | 생명주기 | 식별자가 아니라면 한국어 산문에 영어 용어를 남기지 않습니다. |
@@ -100,14 +102,19 @@
 | active Change Unit | 현재 적용 Change Unit | 권한 모델에서 현재 적용되는 Change Unit입니다. 프로젝트 단계나 문서상의 지원 계약이 아닙니다. |
 | supported API method | 지원되는 API 메서드 | 지원된다고 문서화된 공개 메서드입니다. 정확한 메서드 식별자는 보존합니다. |
 | supported API value | 지원되는 API 값 | 지원된다고 문서화된 값입니다. 값 집합에 있다는 사실만으로는 충분하지 않습니다. |
+| owner document | 담당 문서 | 계약이나 용어의 기준 담당 문서입니다. |
+| owner contract | 담당 계약, 또는 담당 문서가 정의한 계약 | 제품 동작이 관련 담당 문서가 정의한 계약에 의존할 때 씁니다. 담당 경로를 제품 동작의 주어로 만들지 않습니다. |
 | applicable owner path | 적용되는 담당 경로 | 어떤 주제에 적용되는 담당 문서 경로입니다. 문서 경로 안내에만 쓰고, 제품 동작이나 저장 지속 조건처럼 쓰지 않습니다. |
+| applicable reference | 적용되는 참조 문서 | 제품 산문에서 관련 계약을 정의하는 참조 문서를 가리킬 때 씁니다. |
 | baseline guarantee | 기준 범위 보장 | 기준 범위와 보안 담당 문서가 지원된다고 정의한 보장에만 씁니다. |
-| error routing | 오류 처리 경로 | API 응답 분기 경로를 다룹니다. 담당 경로는 `api/error-routing.md`로 유지합니다. |
-| blocker routing | 차단 사유 처리 경로 | 닫기 차단 사유와 API 응답 처리 경계를 다룹니다. 담당 경로는 `api/blocker-routing.md`로 유지합니다. |
+| close task behavior | Task 닫기 동작 | 메서드별 `harness.close_task` 동작은 Task 닫기 메서드 담당 문서가 담당합니다. |
+| error routing | 오류 처리 경로 | API 응답 분기 경로를 다룹니다. 담당 문서는 `api/error-routing.md`입니다. |
+| blocker routing | 차단 사유 처리 경로 | 닫기 차단 사유와 API 응답 처리 경계를 다룹니다. 담당 문서는 `api/blocker-routing.md`입니다. |
 | error/blocker boundary | 오류와 차단 사유의 경계 | 유효한 평가 전 API 오류와 유효한 평가 뒤 닫기 차단 사유 데이터를 구분할 때 씁니다. |
 | public error as blocker | 공개 오류 코드가 차단 사유로 표현되는 경우 | `ErrorCode`와 `CloseReadinessBlocker.code`는 식별자로 보존합니다. |
 | `ToolError.details` | `ToolError.details` | 정확한 API 세부 식별자이므로 백틱 안에 그대로 보존합니다. |
 | blocked result | 차단 결과 | enum 값이나 코드 값이면 정확한 API 값을 보존하고, 일반 산문에서는 자연스럽게 설명합니다. |
+| design-quality owner boundary | 설계 품질 담당 경계 | 설계 품질 관찰 사항은 관련 담당 문서나 담당 계약으로 이어집니다. 독립적인 제품 권한을 만들지 않습니다. |
 | out-of-scope capability | 지원 범위 밖 기능 | 미뤄 둔 자료임을 분명히 유지합니다. |
 | migration | 마이그레이션 | 스키마, 저장소, 데이터, 문서 구조를 옮기거나 갱신하는 기술 개념에 씁니다. 이전 선택이라는 뜻으로 옮기지 않습니다. |
 
@@ -212,6 +219,7 @@
 | artifact bytes | 아티팩트 본문 바이트 |
 | evidence 기록 | 증거 기록 |
 | evidence summary | 증거 요약, 또는 스키마 이름이면 `EvidenceSummary` |
+| evidence package | 증거 패키지 |
 | staged handle | 스테이징된 아티팩트 핸들, 또는 식별자 이름이면 `StagedArtifactHandle` |
 | checksum, size 검증 | 체크섬과 크기 검증 |
 | ToolEnvelope 봉투 | `ToolEnvelope` 요청 래퍼 |
