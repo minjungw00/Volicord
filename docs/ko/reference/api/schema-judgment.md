@@ -32,14 +32,14 @@
 
 조건: 대기 중인 `UserJudgment`는 `harness.request_user_judgment`가 커밋된 뒤에만 존재합니다.
 
-효과: 기록된 답변은 해당 대기 중인 판단과 그 `judgment_kind`만 해결합니다.
+효과: 기록된 답변은 그 대기 중인 판단과 그 `judgment_kind`만 해결합니다.
 
 비주장:
 - 활성 범위를 조용히 바꾸지 않습니다.
 - 증거를 만들지 않습니다.
-- Write Authorization을 만들지 않습니다.
+- `Write Authorization`을 만들지 않습니다.
 - 잔여 위험을 수락하지 않습니다.
-- Task를 닫지 않습니다.
+- `Task`를 닫지 않습니다.
 
 ## `UserJudgment`
 
@@ -99,7 +99,7 @@ UserJudgmentContext:
   constraints: string[]
 ```
 
-`option_id`는 해당 판단 안에서만 유효합니다. 화면에 보이는 라벨은 표시 텍스트이며 기준 스키마 값이 아닙니다.
+`option_id`는 그 판단 안에서만 유효합니다. 화면에 보이는 라벨은 표시 텍스트이며 기준 스키마 값이 아닙니다.
 
 ## 해결과 답변 요청 본문
 
@@ -140,7 +140,7 @@ SensitiveActionScope:
   expires_at: string | null
 ```
 
-민감 동작 승인은 쓰기 호환성, Run 기록, 닫기 전에 필요할 수 있습니다. 하지만 제품 파일 쓰기에 대한 `harness.prepare_write` 경로를 대신하지 않습니다.
+민감 동작 승인은 쓰기 호환성, 실행 기록, 닫기 전에 필요할 수 있습니다. 하지만 제품 파일 쓰기에 대한 `harness.prepare_write` 경로를 대신하지 않습니다.
 
 ## `AcceptedRiskInput`
 

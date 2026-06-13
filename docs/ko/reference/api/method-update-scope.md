@@ -20,7 +20,7 @@
 
 ## 목적
 
-`harness.intake` 이후 활성 Task와 Change Unit 필드를 갱신합니다.
+`harness.intake` 이후 활성 `Task`와 Change Unit 필드를 갱신합니다.
 
 - 목표 요약
 - 범위 경계
@@ -36,7 +36,7 @@
 
 - `ToolEnvelope`: `dry_run=false` 커밋에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - `task_id`.
-- 바꿀 범위 필드. 포함/제외 방식으로 범위를 갱신할 때는 `scope_update.include`에 범위에 포함할 제품 작업을, `scope_update.exclude`에 범위에서 제외할 제품 동작을 둡니다. `null`은 현재 값을 유지한다는 뜻이고, 빈 배열은 해당 목록을 빈 목록으로 교체합니다.
+- 바꿀 범위 필드. 포함/제외 방식으로 범위를 갱신할 때는 `scope_update.include`에 범위에 포함할 제품 작업을, `scope_update.exclude`에 범위에서 제외할 제품 동작을 둡니다. `null`은 현재 값을 유지한다는 뜻이고, 빈 배열은 그 목록을 빈 목록으로 교체합니다.
 - `change_unit.operation`과 그 작업에 필요한 필드.
 - 해결된 `judgment_kind=scope_decision`을 적용한다면 `related_scope_decision_refs`.
 
@@ -47,7 +47,7 @@
 - `dry_run=false` 커밋입니다.
 - `VerifiedSurfaceContext.access_class=core_mutation`입니다.
 - `verified=true`입니다.
-- 요청은 같은 프로젝트의 호환되는 Task를 식별합니다.
+- 요청은 같은 프로젝트의 호환되는 `Task`를 식별합니다.
 - 활성 Change Unit을 만들거나 교체할 때는 다음 안전한 행동을 정직하게 만들 만큼의 범위를 제공합니다.
 
 ## 상태 버전 동작
@@ -100,7 +100,7 @@
 커밋 전 실패가 있으면 `ToolRejectedResponse`를 반환합니다. 예시는 아래와 같습니다.
 
 - 오래된 `expected_state_version`.
-- 유효하지 않은 Task 식별.
+- 유효하지 않은 `Task` 식별.
 - 유효하지 않은 Change Unit 작업.
 - 필요한 범위 누락.
 - 범위 위반.

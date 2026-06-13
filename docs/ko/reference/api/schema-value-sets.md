@@ -54,7 +54,7 @@ harness.record_user_judgment
 harness.close_task
 ```
 
-메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 담당합니다. 메서드 이름은 Task 생명주기 값이 아닙니다.
+메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 담당합니다. 메서드 이름은 `Task` 생명주기 값이 아닙니다.
 
 <a id="response-and-effect-values"></a>
 ## 응답과 효과 값
@@ -116,7 +116,7 @@ local_surface_registration
 이 값들은 API 참조에서 지속 Core 기록이나 로컬 접점 기록의 종류를 식별합니다. 저장소 테이블 이름, DDL, 메서드별 담당 규칙을 대신하지 않습니다.
 
 <a id="task-lifecycle-values"></a>
-## Task 생명주기 값
+## `Task` 생명주기 값
 
 `StateSummary.mode`와 지속 저장되는 확정 `Task.mode`는 아래 값을 사용합니다.
 
@@ -126,7 +126,7 @@ direct
 work
 ```
 
-`harness.intake`의 `requested_mode`는 입력 전용으로 `auto`도 받습니다. `auto`는 지속 저장되거나 표시되는 Task 상태가 되기 전에 `advisor`, `direct`, `work` 중 하나로 확정되어야 합니다.
+`harness.intake`의 `requested_mode`는 입력 전용으로 `auto`도 받습니다. `auto`는 지속 저장되거나 표시되는 `Task` 상태가 되기 전에 `advisor`, `direct`, `work` 중 하나로 확정되어야 합니다.
 
 `Task.lifecycle_phase`는 아래 값을 사용합니다.
 
@@ -382,7 +382,7 @@ superseded
 incompatible
 ```
 
-`UserJudgmentOption.option_id`의 범위는 해당 판단 안으로 제한되며 전역 값 집합이 아닙니다. 화면에 보이는 선택지 라벨은 기준 값이 아니라 표시 텍스트일 뿐입니다.
+`UserJudgmentOption.option_id`의 범위는 그 판단 안으로 제한되며 전역 값 집합이 아닙니다. 화면에 보이는 선택지 라벨은 기준 값이 아니라 표시 텍스트일 뿐입니다.
 
 ## 오류 세부사항 보조 값
 

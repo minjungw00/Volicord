@@ -41,7 +41,7 @@
 
 표기:
 - `string | null`은 필드가 존재하며 `null`일 수 있다는 뜻입니다.
-- `Type[]`는 해당 타입의 배열입니다.
+- `Type[]`는 그 타입의 배열입니다.
 
 담당 문서 링크:
 - 필드 값 집합: 이 문서가 자유 형식 텍스트나 불투명 식별자라고 말하지 않는 한 [API 값 집합](schema-value-sets.md)에 둡니다.
@@ -72,11 +72,11 @@ ToolEnvelope:
 ```
 
 의미:
-- `task_id`는 요청 수준의 선택적 Task 선택자입니다.
+- `task_id`는 요청 수준의 선택적 `Task` 선택자입니다.
 - `expected_state_version`은 상태 변경 메서드가 쓰는 프로젝트 전체 상태 시계를 가리킵니다.
 
 우선순위:
-- 메서드별 `task_id` 필드가 있으면 해당 메서드 담당 문서가 설명하는 대로 그 필드가 우선합니다.
+- 메서드별 `task_id` 필드가 있으면 그 메서드 담당 문서가 설명하는 대로 그 필드가 우선합니다.
 
 담당 문서 링크:
 - 충돌 동작: [상태 버전 충돌](errors.md#state-conflict-behavior)
@@ -93,7 +93,7 @@ ToolEnvelope:
 
 의미:
 - `MethodResult`는 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 정의하는 메서드별 성공 또는 커밋 결과 분기입니다.
-- 모든 구체 메서드 결과는 `base: ToolResultBase`를 담고 그 뒤에 해당 메서드의 결과 필드만 둡니다.
+- 모든 구체 메서드 결과는 `base: ToolResultBase`를 담고 그 뒤에 그 메서드의 결과 필드만 둡니다.
 
 의미하지 않는 것:
 - `MethodResult`는 하나의 구체 스키마 이름이 아닙니다.

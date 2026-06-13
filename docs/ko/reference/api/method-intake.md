@@ -22,7 +22,7 @@
 
 평소 사용자 작업 루프를 시작, 재개, 대체, 거절합니다.
 
-이 메서드는 요청된 모드를 구체적인 Task 상태로 확정합니다.
+이 메서드는 요청된 모드를 구체적인 `Task` 상태로 확정합니다.
 
 - `advisor`
 - `direct`
@@ -56,7 +56,7 @@
 - 프로젝트 전체 `project_state.state_version`을 정확히 한 번 올립니다.
 - 멱등 키에 대한 재실행 행을 만듭니다.
 
-아래 경우는 Task, Change Unit, 이벤트, 재실행 행, 차단 사유 갱신, 상태 버전 증가를 만들지 않습니다.
+아래 경우는 `Task`, Change Unit, 이벤트, 재실행 행, 차단 사유 갱신, 상태 버전 증가를 만들지 않습니다.
 
 - `dry_run`.
 - 읽기 실패.
@@ -83,7 +83,7 @@
 
 차단 질문은 아래 필드로 표현해야 합니다.
 
-- Task.
+- `Task`.
 - Change Unit.
 - 사용자 판단.
 - 증거.
@@ -100,7 +100,7 @@
 - 오래된 `expected_state_version`.
 - Core 또는 로컬 접점 사용 불가.
 - 로컬 접근 불일치.
-- 활성 Task 호환성 부족.
+- 활성 `Task` 호환성 부족.
 - 검증기 실패.
 
 공개 오류 코드 의미와 우선순위는 [API 오류](errors.md)가 담당합니다.
@@ -116,7 +116,7 @@
 
 ## 저장 효과
 
-커밋 시 `harness.intake`가 담당하는 Task 또는 Change Unit 상태를 지속할 수 있습니다. 정확한 저장 효과는 [저장 효과](../storage-effects.md)가 담당하고, 저장 기록 형태는 [저장소 기록](../storage-records.md)이 담당합니다.
+커밋 시 `harness.intake`가 담당하는 `Task` 또는 Change Unit 상태를 지속할 수 있습니다. 정확한 저장 효과는 [저장 효과](../storage-effects.md)가 담당하고, 저장 기록 형태는 [저장소 기록](../storage-records.md)이 담당합니다.
 
 ## 시나리오 요청 예시
 

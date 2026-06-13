@@ -20,7 +20,7 @@
 
 ## 목적
 
-활성 Task의 닫기 준비 상태를 평가합니다.
+활성 `Task`의 닫기 준비 상태를 평가합니다.
 
 조건:
 
@@ -49,7 +49,7 @@
 | `intent` 종류 | 조건 |
 |---|---|
 | `intent=check` | 보호된 닫기 준비 상태 세부정보를 위해 `VerifiedSurfaceContext.access_class=read_status`가 필요합니다. |
-| 상태 변경 `intent` | `core_mutation`, 확인된 접점 맥락, 호환되는 Task 상태, 닫기 관련 담당 기록이 필요합니다. |
+| 상태 변경 `intent` | `core_mutation`, 확인된 접점 맥락, 호환되는 `Task` 상태, 닫기 관련 담당 기록이 필요합니다. |
 
 ## 상태 버전 동작
 
@@ -96,7 +96,7 @@
 - 오래된 `expected_state_version`.
 - 닫기 관련 `WriteAuthorization.basis_state_version` 오래됨.
 - 멱등 요청 해시 충돌.
-- 잘못된 프로젝트 또는 읽을 수 없는 Task 식별.
+- 잘못된 프로젝트 또는 읽을 수 없는 `Task` 식별.
 - Core 사용 불가.
 - 역량 부족.
 

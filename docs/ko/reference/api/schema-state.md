@@ -12,7 +12,7 @@
 
 - `StateSummary`
 - `StateRecordRef`
-- API 데이터 형태로서의 Task 생명주기 상태
+- API 데이터 형태로서의 `Task` 생명주기 상태
 - 상태 관련 스냅샷과 참조 구조
 - `ShapingReadiness`
 - `NextActionSummary`, `WriteAuthoritySummary`, `EvidenceSummary`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay` 같은 현재 위치 표시 스키마
@@ -63,7 +63,7 @@ StateRecordRef:
 
 ## `StateSummary`
 
-`StateSummary`는 현재 Task 경로를 보여 줘야 하는 활성 메서드가 반환하는 간결한 현재 위치 상태입니다.
+`StateSummary`는 현재 `Task` 경로를 보여 줘야 하는 활성 메서드가 반환하는 간결한 현재 위치 상태입니다.
 
 ```yaml
 StateSummary:
@@ -99,9 +99,9 @@ StateSummary:
 - 커밋 결정 분기: [공통 응답 분기](schema-core.md#common-response)
 - 메서드별 커밋 동작: [API 메서드](methods.md)가 안내하는 메서드 담당 문서
 
-## Task 생명주기 상태
+## `Task` 생명주기 상태
 
-`TaskLifecycleState`는 `StateSummary`나 닫기 결과 안에 나타날 수 있는 Task 생명주기 필드의 API 형태입니다.
+`TaskLifecycleState`는 `StateSummary`나 닫기 결과 안에 나타날 수 있는 `Task` 생명주기 필드의 API 형태입니다.
 
 ```yaml
 TaskLifecycleState:
@@ -112,13 +112,13 @@ TaskLifecycleState:
 ```
 
 담당 문서 링크:
-- `lifecycle_phase`, `close_reason`, `result`의 활성 값: [Task 생명주기 값](schema-value-sets.md#task-lifecycle-values)
-- 생명주기 영역의 제품 의미: [Core 모델의 Task 생명주기](../core-model.md#6-task-lifecycle)
+- `lifecycle_phase`, `close_reason`, `result`의 활성 값: [`Task` 생명주기 값](schema-value-sets.md#task-lifecycle-values)
+- 생명주기 영역의 제품 의미: [Core 모델의 `Task` 생명주기](../core-model.md#6-task-lifecycle)
 
 ## `ShapingReadiness`
 
 의미:
-- `ShapingReadiness`는 Task, Change Unit, 대기 중인 판단, 증거 요약, 차단 사유, 다음 행동 상태에서 파생되는 API 보기입니다.
+- `ShapingReadiness`는 `Task`, Change Unit, 대기 중인 판단, 증거 요약, 차단 사유, 다음 행동 상태에서 파생되는 API 보기입니다.
 - 현재 담당 상태가 다음 안전한 행동에 충분히 구체적인지를 보여 줍니다.
 
 ```yaml
@@ -188,7 +188,7 @@ WriteDecisionReason:
 - 활성 범주와 사유 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
 - 공개 오류 코드의 의미: [API 오류](errors.md)
 
-## 증거와 Run 스냅샷 형태
+## 증거와 실행 기록 스냅샷 형태
 
 ```yaml
 EvidenceSummary:
@@ -226,7 +226,7 @@ ObservedChanges:
 
 담당 문서 링크:
 - `ArtifactRef`: [API 아티팩트 스키마](schema-artifacts.md)
-- 증거 충분성의 의미: [Core 모델의 실행과 증거의 권한](../core-model.md#9-evidence-and-run-authority)
+- 증거 충분성의 의미: [Core 모델의 실행 기록과 증거의 권한](../core-model.md#9-evidence-and-run-authority)
 - 메서드 동작: [API 메서드](methods.md)가 안내하는 메서드 담당 문서
 
 ## 닫기 준비 상태와 검증 형태

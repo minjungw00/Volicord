@@ -231,7 +231,7 @@ API 데이터 형태에는 아래 값이 포함됩니다.
 허용될 수 있는 효과:
 
 - 응답과 재실행 페이로드에 `write_decision_reasons: WriteDecisionReason[]`를 남길 수 있습니다.
-- 단, 메서드 담당 문서가 해당 판단 기록을 허용할 때만 가능합니다.
+- 단, 메서드 담당 문서가 그 판단 기록을 허용할 때만 가능합니다.
 
 허용되지 않는 효과:
 
@@ -285,7 +285,7 @@ write_decision_reasons:
 
 결과:
 
-- Task는 열린 상태로 남습니다.
+- `Task`는 열린 상태로 남습니다.
 
 허용되지 않는 효과:
 
@@ -301,7 +301,7 @@ write_decision_reasons:
 
 | 메서드 | 주 저장 효과 | 세부사항 |
 |---|---|---|
-| `harness.intake` | Task와 구체화 기록 생성 | [`harness.intake`](#harnessintake) |
+| `harness.intake` | `Task`와 구체화 기록 생성 | [`harness.intake`](#harnessintake) |
 | `harness.update_scope` | 활성 범위 기록 갱신 | [`harness.update_scope`](#harnessupdate_scope) |
 | `harness.status` | 읽기 전용 응답 | [`harness.status`](#harnessstatus) |
 | `harness.prepare_write` | 쓰기 판단 효과 기록 | [`harness.prepare_write`](#harnessprepare_write) |
@@ -318,7 +318,7 @@ write_decision_reasons:
 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- Task를 생성합니다.
+- `Task`를 생성합니다.
 - 선택적 Change Unit을 생성합니다.
 - 구체화 기록을 생성합니다.
 - 이벤트를 추가합니다.
@@ -330,7 +330,7 @@ write_decision_reasons:
 - 유효한 `dry_run=true`
 - 거절된 시도
 
-이 분기는 Task, 참조, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다.
+이 분기는 `Task`, 참조, 이벤트, 재실행 행, `state_version` 증가를 만들지 않습니다.
 
 담당 문서:
 
@@ -343,7 +343,7 @@ write_decision_reasons:
 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- 활성 Task 범위 필드를 갱신합니다.
+- 활성 `Task` 범위 필드를 갱신합니다.
 - 활성 `change_units`를 만들거나 교체합니다.
 - 메서드 담당 문서가 허용한 차단 사유 또는 오래된 `Write Authorization` 참조를 갱신합니다.
 - 이벤트를 추가합니다.
@@ -604,8 +604,8 @@ state_version: 21
 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- 차단 사유가 허용할 때 Task를 닫습니다.
-- Task를 열린 상태로 둔 채 허용된 `complete` 차단 효과를 커밋합니다.
+- 차단 사유가 허용할 때 `Task`를 닫습니다.
+- `Task`를 열린 상태로 둔 채 허용된 `complete` 차단 효과를 커밋합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
@@ -627,8 +627,8 @@ state_version: 21
 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- Task를 취소합니다.
-- Task를 열린 상태로 둔 채 취소 자체를 무효화하는 차단 사유를 커밋합니다.
+- `Task`를 취소합니다.
+- `Task`를 열린 상태로 둔 채 취소 자체를 무효화하는 차단 사유를 커밋합니다.
 - 이벤트를 추가합니다.
 - 재실행 행을 생성합니다.
 - `project_state.state_version`을 한 번 증가시킵니다.
@@ -652,7 +652,7 @@ state_version: 21
 
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
-- Task를 대체합니다.
+- `Task`를 대체합니다.
 - 같은 변경에서 `project_state.active_task_id`를 갱신합니다.
 - 대체 자체를 무효화하는 차단 사유를 커밋합니다.
 - 이벤트를 추가합니다.

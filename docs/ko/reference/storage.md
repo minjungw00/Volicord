@@ -30,10 +30,10 @@
 - 메서드 동작.
 - Core 생명주기 의미.
 - 보안 보장.
-- Runtime Home 배포.
+- 런타임 홈 배포.
 - 권한 주장.
 
-해당 계약은 [API 메서드](api/methods.md), 메서드 담당 문서, API 스키마 담당 문서, [Core 모델](core-model.md), [API 오류](api/errors.md), [보안](security.md), [런타임 경계](runtime-boundaries.md)를 봅니다.
+그 계약은 [API 메서드](api/methods.md), 메서드 담당 문서, API 스키마 담당 문서, [Core 모델](core-model.md), [API 오류](api/errors.md), [보안](security.md), [런타임 경계](runtime-boundaries.md)를 봅니다.
 
 API 데이터 형태와 저장 효과는 별개입니다.
 
@@ -54,7 +54,7 @@ API 데이터 형태와 저장 효과는 별개입니다.
 
 다음이 필요할 때 [저장소 기록](storage-records.md)을 봅니다.
 
-- Runtime Home 배치.
+- 런타임 홈 배치.
 - 로컬 저장소 가정.
 - 지속 기록 범주.
 - 테이블 개요.

@@ -36,7 +36,7 @@
 
 결과:
 
-- 사용자의 답에 따라 특정 대기 판단을 `resolved`, `rejected`, `deferred`, `blocked` 또는 해당 상태로 표시합니다.
+- 사용자의 답에 따라 특정 대기 판단을 `resolved`, `rejected`, `deferred`, `blocked` 중 하나로 표시합니다.
 
 비주장:
 
@@ -66,12 +66,12 @@
 
 ### `harness.request_user_judgment`
 
-`VerifiedSurfaceContext.access_class=core_mutation`과 `verified=true`가 필요합니다. 요청은 같은 프로젝트의 호환되는 Task와 선택적 Change Unit을 대상으로 해야 합니다.
+`VerifiedSurfaceContext.access_class=core_mutation`과 `verified=true`가 필요합니다. 요청은 같은 프로젝트의 호환되는 `Task`와 선택적 Change Unit을 대상으로 해야 합니다.
 
 
 ### `harness.record_user_judgment`
 
-`VerifiedSurfaceContext.access_class=core_mutation`과 `verified=true`가 필요합니다. 대기 중인 판단은 요청이 선택한 같은 프로젝트와 호환되는 Task에 속해야 합니다.
+`VerifiedSurfaceContext.access_class=core_mutation`과 `verified=true`가 필요합니다. 대기 중인 판단은 요청이 선택한 같은 프로젝트와 호환되는 `Task`에 속해야 합니다.
 
 ## 상태 버전 동작
 
@@ -149,7 +149,7 @@
 비주장:
 
 - 해결된 `scope_decision`만으로 활성 범위나 활성 Change Unit 필드가 바뀌지 않습니다.
-- 해당 필드를 바꾸려면 여전히 `harness.update_scope`가 필요합니다.
+- 그 필드를 바꾸려면 여전히 `harness.update_scope`가 필요합니다.
 
 ## 거절 결과
 
@@ -160,7 +160,7 @@
 
 - 유효하지 않은 질문 형태.
 - 유효하지 않은 `judgment_kind`.
-- Task 없음.
+- `Task` 없음.
 - 미해결 선행 판단.
 - 로컬 접근 실패.
 - 역량 부족.
@@ -213,7 +213,7 @@
 
 현재 `UserJudgment` 스키마에서 사용자에게 보이는 판단 프롬프트는 `question` 필드입니다. 계정 데이터 내보내기 확인 문구에 대한 사용자 판단은 이 프롬프트와 `context.summary`에 담습니다. 이 예시는 아티팩트를 근거로 들지 않으므로 `context.artifact_refs: []`는 의도한 값입니다.
 
-요청과 응답 예시는 같은 `options` 선택지 값과 같은 Task를 가리키는 `affected_refs`를 유지합니다. `record_user_judgment` 예시는 `accept`를 선택하고 `decision: accepted`를 기록하며, 근거는 충분함 선택지와 같은 의미입니다. 시간 필드는 `null` 또는 플레이스홀더 값을 사용합니다.
+요청과 응답 예시는 같은 `options` 선택지 값과 같은 `Task`를 가리키는 `affected_refs`를 유지합니다. `record_user_judgment` 예시는 `accept`를 선택하고 `decision: accepted`를 기록하며, 근거는 충분함 선택지와 같은 의미입니다. 시간 필드는 `null` 또는 플레이스홀더 값을 사용합니다.
 
 ## 최소 유효 요청
 
@@ -246,7 +246,7 @@ params:
       is_default: true
     - option_id: revise
       label: "수정 필요"
-      description: "확인 문구를 더 수정해야 하므로 Task를 열어 둡니다."
+      description: "확인 문구를 더 수정해야 하므로 작업을 열어 둡니다."
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
@@ -339,7 +339,7 @@ user_judgment:
       is_default: true
     - option_id: revise
       label: "수정 필요"
-      description: "확인 문구를 더 수정해야 하므로 Task를 열어 둡니다."
+      description: "확인 문구를 더 수정해야 하므로 작업을 열어 둡니다."
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:
@@ -403,7 +403,7 @@ user_judgment:
       is_default: true
     - option_id: revise
       label: "수정 필요"
-      description: "확인 문구를 더 수정해야 하므로 Task를 열어 둡니다."
+      description: "확인 문구를 더 수정해야 하므로 작업을 열어 둡니다."
       consequence: "제품 판단이 남아 있어 닫기가 계속 차단됩니다."
       is_default: false
   context:

@@ -78,7 +78,7 @@ StagedArtifactHandle:
 
 ## `ArtifactInput`
 
-`ArtifactInput`은 Run이나 증거 출력에 아티팩트를 연결하는 메서드가 사용합니다.
+`ArtifactInput`은 실행 기록이나 증거 출력에 아티팩트를 연결하는 메서드가 사용합니다.
 
 ```yaml
 ArtifactInput:

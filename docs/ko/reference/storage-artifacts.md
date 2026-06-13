@@ -187,7 +187,7 @@ expires_at: "<future-expiration-timestamp>"
 저장소 의미:
 
 - 호환되는 담당 메서드가 핸들을 소비했습니다.
-- 소비한 Run과 승격된 아티팩트 식별자를 기록합니다.
+- 소비한 실행 기록과 승격된 아티팩트 식별자를 기록합니다.
 
 <a id="artifact-staging-status-expired"></a>
 **`artifact_staging.status=expired`**
@@ -217,7 +217,7 @@ expires_at: "<future-expiration-timestamp>"
 - `artifact_staging.status=staged`.
 - 핸들이 만료되지 않았습니다.
 - 핸들이 같은 프로젝트에 속합니다.
-- 핸들이 같은 Task에 속합니다.
+- 핸들이 같은 `Task`에 속합니다.
 - 현재 확인된 `surface_id`가 `created_by_surface_id`와 일치합니다.
 - 현재 확인된 `surface_instance_id`가 `created_by_surface_instance_id`와 일치합니다.
 
@@ -236,7 +236,7 @@ expires_at: "<future-expiration-timestamp>"
 
 - 검증된 스테이징 핸들만 승격합니다.
 - 승격된 핸들을 `consumed`로 표시합니다.
-- 소비한 Run과 승격된 아티팩트 식별자를 기록합니다.
+- 소비한 실행 기록과 승격된 아티팩트 식별자를 기록합니다.
 - 지속 `artifacts` 행과 필요한 `artifact_links`를 커밋합니다.
 - 메서드 담당 문서가 허용한 경우에만 증거 범위를 갱신합니다.
 
@@ -252,12 +252,12 @@ expires_at: "<future-expiration-timestamp>"
 - 무결성 사실
 - `redaction_state`
 - 같은 프로젝트 식별 정보
-- 허용된 Task 범위
+- 허용된 `Task` 범위
 
 허용되는 것:
 
 - 호환되는 `existing_artifact`는 새 담당 관계를 위해 새 `artifact_links` 행을 추가할 수 있습니다.
-- 새 연결은 고유성 규칙과 같은 프로젝트/같은 Task 규칙을 따라야 합니다.
+- 새 연결은 고유성 규칙과 같은 프로젝트/같은 `Task` 규칙을 따라야 합니다.
 
 허용되지 않는 것:
 
@@ -290,7 +290,7 @@ expires_at: "<future-expiration-timestamp>"
 필수 검증:
 
 - `owner_record_kind`가 `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` 중 하나인지 확인합니다.
-- `owner_record_id`가 해당 활성 테이블에 존재하는지 확인합니다.
+- `owner_record_id`가 그 활성 테이블에 존재하는지 확인합니다.
 - 담당 기록이 같은 `project_id`와 `task_id`에 속하는지 확인합니다.
 - 관계가 아티팩트 사용 방식과 호환되는지 확인합니다.
 
@@ -307,7 +307,7 @@ expires_at: "<future-expiration-timestamp>"
 - QA 수행.
 - 최종 수락 생성.
 - 잔여 위험 수락.
-- Task 닫기.
+- `Task` 닫기.
 
 기존 아티팩트 참조도 마찬가지입니다. `existing_artifact`가 새 `artifact_links` 행을 추가할 수는 있지만, 담당 메서드가 그 연결을 증거로 기록하지 않으면 새 증거가 생겼다고 볼 수 없습니다.
 
@@ -420,7 +420,7 @@ expires_at: "<future-expiration-timestamp>"
 예:
 
 - 일치하지 않음.
-- Task가 다름.
+- `Task`가 다름.
 - 프로젝트가 다름.
 
 <a id="staged-handle-failure-surface"></a>

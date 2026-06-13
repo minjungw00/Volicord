@@ -22,7 +22,7 @@
 
 제안된 제품 파일 쓰기 하나를 아래 항목과 비교합니다.
 
-- 활성 Task.
+- 활성 `Task`.
 - 활성 Change Unit.
 - 범위.
 - 기준선.
@@ -39,7 +39,7 @@
 ## 필수 입력
 
 - `ToolEnvelope`: `dry_run=false` 커밋에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
-- `task_id`와 `change_unit_id`. 담당 해석이 활성 Task와 활성 Change Unit을 모호하지 않게 사용할 수 있을 때만 `null`을 사용할 수 있습니다.
+- `task_id`와 `change_unit_id`. 담당 해석이 활성 `Task`와 활성 Change Unit을 모호하지 않게 사용할 수 있을 때만 `null`을 사용할 수 있습니다.
 - `intended_operation`, `intended_paths`, `product_file_write_intended`, `sensitive_categories`, `baseline_ref`.
 
 ## 접근 요구사항
@@ -102,7 +102,7 @@
 - 오래된 `expected_state_version`.
 - 멱등 요청 해시 충돌.
 - 요청 검증 실패.
-- 활성 Task 또는 Change Unit 없음.
+- 활성 `Task` 또는 Change Unit 없음.
 - 로컬 접근 실패.
 - Core 사용 불가.
 - 기준선이 오래되었습니다.

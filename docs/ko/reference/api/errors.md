@@ -171,7 +171,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- Task가 필요하지만 활성 Task나 지정된 Task가 없습니다.
+- `Task`가 필요하지만 활성 `Task`나 지정된 `Task`가 없습니다.
 
 상태 영향:
 - 커밋되는 동작이 진행되지 않습니다.
@@ -255,7 +255,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 쓰기 가능한 Run에 필요한 Write Authorization이 없습니다.
+- 쓰기 가능한 실행 기록에 필요한 `Write Authorization`이 없습니다.
 
 상태 영향:
 - 커밋되는 동작이 진행되지 않습니다.
@@ -271,7 +271,7 @@
 - `ToolRejectedResponse.errors[]`
 
 조건:
-- 제공된 Write Authorization이 만료, 철회, 소비, 또는 버전 외 사유로 비호환입니다.
+- 제공된 `Write Authorization`이 만료, 철회, 소비, 또는 버전 외 사유로 비호환입니다.
 
 상태 영향:
 - 커밋되는 동작이 진행되지 않습니다.
@@ -510,7 +510,7 @@
 | `staged_handle_expired` | 스테이징된 아티팩트 핸들의 사용 가능 시간이 지났습니다. |
 | `staged_handle_consumed` | 스테이징된 아티팩트 핸들이 이미 소비되었습니다. |
 | `staged_handle_project_mismatch` | 스테이징된 아티팩트 핸들이 다른 프로젝트에 속합니다. |
-| `staged_handle_task_mismatch` | 스테이징된 아티팩트 핸들이 다른 Task에 속합니다. |
+| `staged_handle_task_mismatch` | 스테이징된 아티팩트 핸들이 다른 `Task`에 속합니다. |
 | `staged_handle_surface_mismatch` | 스테이징된 아티팩트 핸들의 출처가 확인된 접점과 맞지 않습니다. |
 | `staged_handle_checksum_mismatch` | 스테이징된 바이트가 예상 체크섬과 맞지 않습니다. |
 | `staged_handle_size_mismatch` | 스테이징된 바이트가 예상 크기와 맞지 않습니다. |
@@ -571,7 +571,7 @@
 ### 우선순위 5: `NO_ACTIVE_TASK`
 
 적용 대상:
-- Task 식별자가 없어 거부된 경우입니다.
+- `Task` 식별자가 없어 거부된 경우입니다.
 
 <a id="precedence-no-active-change-unit"></a>
 ### 우선순위 6: `NO_ACTIVE_CHANGE_UNIT`
@@ -737,7 +737,7 @@
 ### 선행조건 실패
 
 조건:
-- 커밋 전에 Core, MCP, 로컬 접근, 접점 역량, 상태 조회, Task 식별자, 필요한 선행조건이 실패합니다.
+- 커밋 전에 Core, MCP, 로컬 접근, 접점 역량, 상태 조회, `Task` 식별자, 필요한 선행조건이 실패합니다.
 
 라우팅:
 - `ToolRejectedResponse.errors[]`.
@@ -1049,7 +1049,7 @@
 ### 사전 확인 실패
 
 조건:
-- 닫기 준비 상태 평가 전에 오래된 상태, 오래된 Write Authorization 근거, 멱등성 충돌, 검증 실패, 로컬 접근 실패, 역량 실패, Core 상태 읽기 실패, Project/Task 식별 실패가 발생합니다.
+- 닫기 준비 상태 평가 전에 오래된 상태, 오래된 `Write Authorization` 근거, 멱등성 충돌, 검증 실패, 로컬 접근 실패, 역량 실패, Core 상태 읽기 실패, 프로젝트/`Task` 식별 실패가 발생합니다.
 
 응답 경로:
 - `ToolRejectedResponse.errors[]`

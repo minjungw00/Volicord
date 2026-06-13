@@ -38,7 +38,7 @@
 - `ToolEnvelope`: `dry_run=false` 커밋에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_authorization_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`.
 - 제품 쓰기 실행은 `harness.prepare_write`가 만든 호환되는 활성 쓰기 승인이 필요합니다.
-- 새 아티팩트 바이트는 이미 유효한 `StagedArtifactHandle`로 표현되어 있어야 합니다. `record_run`은 새 바이트를 스테이징하지 않습니다.
+- 새 아티팩트 바이트는 이미 유효한 `StagedArtifactHandle`로 표현되어 있어야 합니다. `harness.record_run`은 새 바이트를 스테이징하지 않습니다.
 
 ## 접근 요구사항
 
