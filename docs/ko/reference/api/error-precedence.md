@@ -2,7 +2,7 @@
 
 이 문서는 공개 오류 후보가 둘 이상 있을 때 주 공개 오류를 선택하는 규칙을 담당합니다. `STATE_VERSION_CONFLICT`의 공개 오래된 상태와 멱등성 충돌 동작도 담당합니다.
 
-공개 `ErrorCode` 값 집합, 차단 사유 경로, 기계 판독용 세부 필드, 응답 분기 형태, 저장소 재실행 행, 렌더링 라벨은 정의하지 않습니다.
+공개 `ErrorCode` 값 집합, 응답 분기 경로, 닫기 준비 상태 blocker 처리 경로, `harness.close_task` 차단 사유 매핑, 기계 판독용 세부 필드, 응답 분기 형태, 저장소 재실행 행, 렌더링 라벨은 정의하지 않습니다.
 
 ## 담당 경계
 
@@ -16,7 +16,7 @@
 
 - 우선순위 선택 밖의 공개 코드 의미: [API 오류 코드](error-codes.md).
 - API 응답 분기 경로: [API 오류 처리 경로](error-routing.md).
-- 닫기 준비 상태 blocker 처리 경로: [API blocker 처리 경로](blocker-routing.md).
+- 닫기 준비 상태 blocker 처리 경로와 `harness.close_task` 차단 사유 매핑: [API blocker 처리 경로](blocker-routing.md).
 - 기계 판독용 충돌 세부 필드: [API 오류 세부사항](error-details.md#state-conflict-detail-fields).
 - 저장소 재실행 행과 상태 시계: [저장소 버전 관리](../storage-versioning.md).
 
@@ -204,7 +204,7 @@
 - 커밋되는 동작이 진행되지 않습니다.
 - 담당 상태 변경이 발생하지 않습니다.
 
-허용되지 않는 것:
+선택 경계:
 - `STATE_VERSION_CONFLICT`를 `MethodResult.base.errors[0]`, `CloseTaskResult(close_state=blocked).errors[0]`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`로 선택하지 않습니다.
 
 관련 충돌 세부사항:
@@ -222,6 +222,15 @@
 
 `STATE_VERSION_CONFLICT`의 기준 범위 의미는 하나뿐입니다. 프로젝트 전체의 커밋 전 최신성 또는 멱등성 충돌입니다.
 
+충돌 처리 경계:
+
+| 경계 | 이 문서의 규칙 | 이웃 담당 문서 |
+|---|---|---|
+| 공개 코드 의미 | 아래 충돌 경우에는 `STATE_VERSION_CONFLICT`를 선택합니다. | 공개 코드 의미: [API 오류 코드](error-codes.md). |
+| 응답 경로 | 이 충돌은 `ToolRejectedResponse.errors[]`를 사용합니다. | 응답 분기 경로: [API 오류 처리 경로](error-routing.md). |
+| 결과, blocker, 닫기 준비 상태 차단 사유 매핑 경로 | `STATE_VERSION_CONFLICT`를 차단 사유 코드, `dry_run` 미리보기, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`로 사용하지 않습니다. | blocker 처리 경로와 `harness.close_task` 차단 사유 매핑: [API blocker 처리 경로](blocker-routing.md). |
+| 세부 필드 | 이 충돌에는 상태 충돌 세부 필드 묶음을 사용합니다. | 기계 판독용 필드: [API 오류 세부사항](error-details.md#state-conflict-detail-fields). |
+
 <a id="state-conflict-expected-state-version"></a>
 ### 오래된 `expected_state_version`
 
@@ -238,11 +247,8 @@
 - 커밋되는 동작이 진행되지 않습니다.
 - 담당 상태 변경이 발생하지 않습니다.
 
-세부정보 지침:
-- 가능하면 `state_clock: project_state.state_version`, `current_state_version`, `expected_state_version`, `project_id`, `task_id`를 포함합니다.
-
-허용되지 않는 것:
-- 이 값을 차단 사유 코드로 사용하지 않습니다.
+세부 필드:
+- [상태 충돌 세부 필드](error-details.md#state-conflict-detail-fields)를 사용합니다.
 
 <a id="state-conflict-write-authorization-basis"></a>
 ### 오래된 Write Authorization 근거 버전
@@ -261,11 +267,8 @@
 - 담당 상태 변경이 발생하지 않습니다.
 - Write Authorization이 소비되지 않습니다.
 
-세부정보 지침:
-- 오래된 권한 근거와 현재 `project_state.state_version`을 식별합니다.
-
-허용되지 않는 것:
-- 이 값을 차단 사유 코드로 사용하지 않습니다.
+세부 필드:
+- [상태 충돌 세부 필드](error-details.md#state-conflict-detail-fields)를 사용합니다.
 
 <a id="state-conflict-idempotency-hash"></a>
 ### 멱등 요청 해시 충돌
@@ -283,9 +286,5 @@
 - 커밋되는 동작이 진행되지 않습니다.
 - 담당 상태 변경이 발생하지 않습니다.
 
-세부정보 지침:
-- 민감한 요청 본문을 노출하지 않고 `idempotency_key`와 요청 해시 불일치를 식별합니다.
-
-허용되지 않는 것:
-- 이 값을 차단 사유 코드로 사용하지 않습니다.
-- 이 충돌을 `dry_run` 미리보기 데이터, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`로 표현하지 않습니다.
+세부 필드:
+- [상태 충돌 세부 필드](error-details.md#state-conflict-detail-fields)를 사용합니다.

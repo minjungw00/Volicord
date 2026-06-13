@@ -2,7 +2,7 @@
 
 This document owns primary public-error selection when more than one public error candidate exists. It also owns public stale-state and idempotency conflict behavior for `STATE_VERSION_CONFLICT`.
 
-It does not define the public `ErrorCode` value set, response branch routing, close-readiness blocker routing, machine-readable detail fields, response branch shapes, storage replay rows, or rendered labels.
+It does not define the public `ErrorCode` value set, response branch routing, close-readiness blocker routing, `harness.close_task` blocker mapping, machine-readable detail fields, response branch shapes, storage replay rows, or rendered labels.
 
 ## Owner boundaries
 
@@ -16,7 +16,7 @@ This document does not own:
 
 - Public code meanings outside precedence selection; see [API error codes](error-codes.md).
 - API response branch routing; see [API error routing](error-routing.md).
-- Close-readiness blocker routing; see [API blocker routing](blocker-routing.md).
+- Close-readiness blocker routing and `harness.close_task` blocker mapping; see [API blocker routing](blocker-routing.md).
 - Machine-readable conflict detail fields; see [API error details](error-details.md#state-conflict-detail-fields).
 - Storage replay rows and state clocks; see [Storage Versioning](../storage-versioning.md).
 
@@ -225,10 +225,12 @@ Related conflict details:
 
 Conflict routing boundary:
 
-| Boundary | Rule |
-|---|---|
-| Response path | Use `ToolRejectedResponse.errors[]` with `STATE_VERSION_CONFLICT`. |
-| Result and blocker paths | Do not use `STATE_VERSION_CONFLICT` as a blocker code, dry-run preview, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`. |
+| Boundary | This document's rule | Neighbor owner |
+|---|---|---|
+| Public code meaning | Select `STATE_VERSION_CONFLICT` for the conflict cases below. | Public code meanings: [API error codes](error-codes.md). |
+| Response path | Use `ToolRejectedResponse.errors[]` for these conflicts. | Response branch routing: [API error routing](error-routing.md). |
+| Result, blocker, and close-readiness mapping paths | Do not use `STATE_VERSION_CONFLICT` as a blocker code, dry-run preview, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`. | Blocker routing and `harness.close_task` blocker mapping: [API blocker routing](blocker-routing.md). |
+| Detail fields | Use the state-conflict detail-field family for these conflicts. | Machine-readable fields: [API error details](error-details.md#state-conflict-detail-fields). |
 
 <a id="state-conflict-expected-state-version"></a>
 ### Stale `expected_state_version`
