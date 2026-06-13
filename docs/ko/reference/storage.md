@@ -12,4 +12,4 @@
 | `project_state.state_version`, 멱등성, 재실행, 이벤트, 잠금, 마이그레이션 | [저장소 버전 관리](storage-versioning.md) |
 | Product Repository, Harness Server, Runtime Home 위치 | [런타임 경계](runtime-boundaries.md) |
 
-저장소가 아닌 계약은 필요에 따라 [API 메서드](api/methods.md), API 스키마 담당 문서, [Core 모델](core-model.md), [API 오류](api/errors.md), [보안](security.md)으로 이동합니다.
+저장소가 아닌 계약은 필요에 따라 [API 메서드](api/methods.md), API 스키마 담당 문서, [Core 모델](core-model.md), [API 오류 문서 묶음 색인](api/errors.md), [보안](security.md)으로 이동합니다.

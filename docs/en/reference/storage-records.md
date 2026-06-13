@@ -579,7 +579,7 @@ Does not contain:
 Owner links:
 - [Core Model](core-model.md).
 - [API State Schemas](api/schema-state.md).
-- [API Errors](api/errors.md).
+- [API error routing](api/error-routing.md).
 
 <a id="task_events"></a>
 ### `task_events`
@@ -978,7 +978,7 @@ Storage rule:
 Owner links:
 - [Core Model](core-model.md).
 - [API State Schemas](api/schema-state.md).
-- [API Errors](api/errors.md).
+- [API error routing](api/error-routing.md).
 
 <a id="tool_invocationsstatus"></a>
 ### `tool_invocations.status`

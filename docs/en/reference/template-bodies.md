@@ -46,7 +46,7 @@ Rendered error copy must:
 - Preserve the public `ErrorCode` when the exact diagnostic identifier is shown.
 - Pair a concise label with one recovery cue when the surface has room.
 - Keep labels separate from `CloseReadinessBlocker.code`, `WriteDecisionReason.code`, `PlannedBlocker.code`, and `ToolError.details` keys.
-- Route error-contract questions to the [API error reference index](api/errors.md).
+- Route public code meanings to [API error codes](api/error-codes.md), precedence or conflict selection to [API error precedence](api/error-precedence.md), error-versus-blocker routing to [API error routing](api/error-routing.md), and machine-readable details to [API error details](api/error-details.md). Use [API errors](api/errors.md) only as the family index.
 
 Rendered error copy must not:
 

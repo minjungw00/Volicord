@@ -113,7 +113,7 @@
 - 역량 부족.
 - 검증기 실패.
 
-비주장: 유효하지 않은 스테이징 핸들은 아티팩트 입력 세부정보가 있는 검증 실패입니다. 요청 수준 로컬 접근 자체가 실패한 경우가 아니라면 로컬 접근 불일치가 아닙니다.
+비주장: 유효하지 않은 스테이징 핸들은 [API 오류 세부사항](error-details.md#artifact-input-error-reason)이 담당하는 아티팩트 입력 세부정보가 있는 검증 실패입니다. 요청 수준 로컬 접근 자체가 실패한 경우가 아니라면 로컬 접근 불일치가 아닙니다.
 
 ## `dry_run` 동작
 
@@ -338,5 +338,5 @@ state:
 - `ArtifactInput`, `StagedArtifactHandle`, `ArtifactRef`: [API 아티팩트 스키마](schema-artifacts.md).
 - 쓰기 승인과 닫기 관련 증거 경계: [Core 모델](../core-model.md).
 - 지원되는 값과 접근 등급: [API 값 집합](schema-value-sets.md).
-- 공개 오류: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md).
+- 공개 오류와 아티팩트 입력 세부 값: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md), [아티팩트 입력 오류 세부사항](error-details.md#artifact-input-error-reason).
 - 저장 효과와 아티팩트 승격: [저장 효과](../storage-effects.md), [아티팩트 저장소](../storage-artifacts.md).

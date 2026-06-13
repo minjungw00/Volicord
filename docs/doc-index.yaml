@@ -602,6 +602,11 @@ documents:
       - "API error family routing"
       - "API error owner lookup"
       - "first-hop API error reference navigation"
+    depends_on:
+      - "reference.api.error-codes"
+      - "reference.api.error-precedence"
+      - "reference.api.error-routing"
+      - "reference.api.error-details"
     not_owner_for:
       - "public error code meanings"
       - "error precedence"

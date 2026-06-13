@@ -361,7 +361,7 @@ Use this table for owner routing. Do not copy the linked contracts into this pag
 | State-shaped API data, including `ShapingReadiness`, `CloseReadinessBlocker`, and `WriteDecisionReason` | [API State Schemas](api/schema-state.md) and [API Value Sets](api/schema-value-sets.md) |
 | User judgment schema shapes, `SensitiveActionScope`, and accepted-risk input shapes | [API Judgment Schemas](api/schema-judgment.md) |
 | Artifact refs, artifact input shapes, staging handles, and artifact schema rules | [API Artifact Schemas](api/schema-artifacts.md) |
-| Public errors, error routing, and error precedence | [API error reference index](api/errors.md) |
+| Public error code meanings, error routing, and error precedence | [API error codes](api/error-codes.md), [API error routing](api/error-routing.md), and [API error precedence](api/error-precedence.md) |
 | Storage records, storage effects, state-version effects, and persistence layout | [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), and [Storage Versioning](storage-versioning.md) |
 | Artifact storage lifecycle and body-read rules | [Artifact Storage](storage-artifacts.md) |
 | Projection authority and derived display boundaries | [Projection Authority Reference](projection-and-templates.md) |

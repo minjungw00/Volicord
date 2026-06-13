@@ -26,7 +26,8 @@ It owns:
 It does not own:
 
 - Core lifecycle, gates, blockers, `prepare_write`, `close_task`, Write Authorization, final acceptance, residual-risk acceptance, or non-substitution rules; see [Core Model Reference](core-model.md)
-- MCP request/response schemas, `ValidatorResult`, `UserJudgment`, `AcceptedRiskInput`, public errors, or supported/out-of-scope schema values; see the [API Methods](api/methods.md), method owner documents, [API Schema Core](api/schema-core.md), [API Judgment Schemas](api/schema-judgment.md), and [API Errors](api/errors.md)
+- MCP request/response schemas, `ValidatorResult`, `UserJudgment`, `AcceptedRiskInput`, or supported/out-of-scope schema values; see the [API Methods](api/methods.md), method owner documents, [API Schema Core](api/schema-core.md), and [API Judgment Schemas](api/schema-judgment.md)
+- Public error semantics; see [API error codes](api/error-codes.md), [API error routing](api/error-routing.md), [API error precedence](api/error-precedence.md), and [API error details](api/error-details.md)
 - SQLite DDL and persisted tables; see [Storage Records](storage-records.md)
 - validator-run storage effects; see [Storage Effects](storage-effects.md)
 - artifact storage; see [Artifact Storage](storage-artifacts.md)

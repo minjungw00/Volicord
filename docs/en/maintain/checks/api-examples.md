@@ -103,7 +103,8 @@ Owner:
 - The applicable API owner selected from the Reference Index or API Methods router
 
 Check:
-- Confirm example notes and surrounding prose route method behavior, common envelopes, state schemas, artifact schemas, judgment schemas, value sets, and public errors to the narrow owner.
+- Confirm example notes and surrounding prose route method behavior, common envelopes, state schemas, artifact schemas, judgment schemas, value sets, and API error concepts to the narrow owner.
+- For API error concepts, route public code meanings to [API error codes](../../reference/api/error-codes.md), precedence and conflicts to [API error precedence](../../reference/api/error-precedence.md), error-versus-blocker routing to [API error routing](../../reference/api/error-routing.md), and machine-readable details to [API error details](../../reference/api/error-details.md).
 - Confirm method-level owner routing is linked through the API Methods router rather than repeated in example guidance.
 - Confirm examples do not redefine API methods, schema names, fields, values, or error codes outside the appropriate API owner.
 

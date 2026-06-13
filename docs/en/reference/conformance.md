@@ -239,7 +239,8 @@ Expected behavior:
 
 Owner links:
 - [Agent Integration](agent-integration.md)
-- [API Errors](api/errors.md)
+- [API error codes](api/error-codes.md)
+- [API error routing](api/error-routing.md)
 - [Security](security.md)
 
 <a id="scenario-baseline-verified-local-surface-allows-owner-mutation"></a>
@@ -293,7 +294,7 @@ Expected behavior:
 - Stale project-wide state version fails before commit.
 
 Owner links:
-- [API Errors](api/errors.md)
+- [State version conflict](api/error-precedence.md#state-conflict-behavior)
 - [Storage Versioning](storage-versioning.md)
 - [Storage Effects](storage-effects.md)
 
@@ -305,7 +306,7 @@ Expected behavior:
 
 Owner links:
 - [API Schema Core](api/schema-core.md)
-- [API Errors](api/errors.md)
+- [`dry_run=true` pre-preview failure](api/error-routing.md#rejected-dry-run-pre-preview-failure)
 - [Storage Effects](storage-effects.md)
 
 <a id="scenario-baseline-status-close-blockers-read-only"></a>
@@ -406,7 +407,7 @@ Expected behavior:
 Owner links:
 - [Artifact Storage](storage-artifacts.md)
 - [API Artifact Schemas](api/schema-artifacts.md)
-- [API Errors](api/errors.md)
+- [Artifact-input error details](api/error-details.md#artifact-input-error-reason)
 
 <a id="scenario-baseline-record-run-links-existing-artifact-without-registering-bytes"></a>
 ### `BASELINE-record-run-links-existing-artifact-without-registering-bytes`
@@ -438,7 +439,7 @@ Expected behavior:
 
 Owner links:
 - [Close-task method](api/method-close-task.md)
-- [API Errors](api/errors.md)
+- [State version conflict](api/error-precedence.md#state-conflict-behavior)
 - [Storage Effects](storage-effects.md)
 
 <a id="scenario-baseline-close-task-complete-stale-write-authorization-basis-rejected"></a>
@@ -449,7 +450,8 @@ Expected behavior:
 
 Owner links:
 - [Close-task method](api/method-close-task.md)
-- [API Errors](api/errors.md)
+- [State version conflict](api/error-precedence.md#state-conflict-behavior)
+- [State conflict detail fields](api/error-details.md#state-conflict-detail-fields)
 - [Storage Versioning](storage-versioning.md)
 
 <a id="scenario-baseline-close-task-blocks-current-write-compatibility"></a>
@@ -472,7 +474,7 @@ Expected behavior:
 Owner links:
 - [Core Model](core-model.md)
 - [API State Schemas](api/schema-state.md)
-- [API Errors](api/errors.md)
+- [`close_task` blocker mapping](api/error-routing.md#harnessclose_task-close-blockers)
 
 <a id="scenario-baseline-close-task-blocks-required-artifact-unavailable"></a>
 ### `BASELINE-close-task-blocks-required-artifact-unavailable`
@@ -483,7 +485,7 @@ Expected behavior:
 Owner links:
 - [API State Schemas](api/schema-state.md)
 - [Artifact Storage](storage-artifacts.md)
-- [API Errors](api/errors.md)
+- [`close_task` blocker mapping](api/error-routing.md#harnessclose_task-close-blockers)
 
 <a id="scenario-baseline-close-task-blocks-final-acceptance-missing"></a>
 ### `BASELINE-close-task-blocks-final-acceptance-missing`

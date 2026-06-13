@@ -595,7 +595,7 @@
 담당 문서 링크:
 - [Core 모델](core-model.md).
 - [API 상태 스키마](api/schema-state.md).
-- [API 오류](api/errors.md).
+- [API 오류 경로](api/error-routing.md).
 
 <a id="task_events"></a>
 ### `task_events`
@@ -1007,7 +1007,7 @@
 담당 문서 링크:
 - [Core 모델](core-model.md).
 - [API 상태 스키마](api/schema-state.md).
-- [API 오류](api/errors.md).
+- [API 오류 경로](api/error-routing.md).
 
 <a id="tool_invocationsstatus"></a>
 ### `tool_invocations.status`

@@ -105,7 +105,7 @@ Returns `ToolRejectedResponse` for:
 - insufficient capability
 - validator failure
 
-Non-claim: invalid staged handles are validation failures with artifact-input details, not local access mismatch unless request-level local access itself failed.
+Non-claim: invalid staged handles are validation failures with artifact-input details owned by [API error details](error-details.md#artifact-input-error-reason), not local access mismatch unless request-level local access itself failed.
 
 ## Dry-run behavior
 
@@ -332,5 +332,5 @@ state:
 - `ArtifactInput`, `StagedArtifactHandle`, and `ArtifactRef`: [API Artifact Schemas](schema-artifacts.md).
 - Write Authorization and close-relevant evidence boundaries: [Core Model](../core-model.md).
 - Supported values and access classes: [API Value Sets](schema-value-sets.md).
-- Public errors: [API error codes](error-codes.md) and [API error precedence](error-precedence.md).
+- Public errors and artifact-input detail values: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [artifact-input error details](error-details.md#artifact-input-error-reason).
 - Persistence effects and artifact promotion: [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).

@@ -46,7 +46,7 @@
 - 정확한 진단 식별자를 보여 줄 때는 공개 `ErrorCode`를 그대로 보존합니다.
 - 접점에 공간이 있으면 짧은 라벨과 해결 안내 하나를 함께 보여 줍니다.
 - 라벨을 `CloseReadinessBlocker.code`, `WriteDecisionReason.code`, `PlannedBlocker.code`, `ToolError.details` 키와 구분합니다.
-- 오류 계약 질문은 [API 오류 참조 색인](api/errors.md)으로 안내합니다.
+- 공개 코드 의미는 [API 오류 코드](api/error-codes.md), 우선순위나 충돌 선택은 [API 오류 우선순위](api/error-precedence.md), 오류와 차단 사유 경로는 [API 오류 경로](api/error-routing.md), 기계 판독용 세부사항은 [API 오류 세부사항](api/error-details.md)으로 안내합니다. [API 오류](api/errors.md)는 문서 묶음 색인으로만 사용합니다.
 
 렌더링 오류 문구는 아래처럼 쓰면 안 됩니다.
 

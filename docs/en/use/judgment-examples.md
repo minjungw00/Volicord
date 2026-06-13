@@ -218,7 +218,7 @@ Owner links:
 
 - [Core Model](../reference/core-model.md)
 - [Close-task Method](../reference/api/method-close-task.md)
-- [API Errors](../reference/api/errors.md)
+- [`close_task` blocker mapping](../reference/api/error-routing.md#harnessclose_task-close-blockers)
 
 ## Ordinary implementation detail
 

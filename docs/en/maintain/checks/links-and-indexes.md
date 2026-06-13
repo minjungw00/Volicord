@@ -13,6 +13,7 @@ Check:
 - Validate changed relative links, file paths, anchors, route tables, and paired-language links.
 - Confirm maintained navigation uses the compact maintained routes from the authoring owner.
 - Confirm contract links point to the canonical owner, not to a convenient duplicate.
+- For API error links, use [API errors](../../reference/api/errors.md) as the family index only; route public code meanings, precedence, error-versus-blocker routing, and machine-readable details to their focused API error owners.
 
 Failure:
 - A link targets a missing file, missing anchor, stale route family, wrong-language owner, or deleted compatibility path.
