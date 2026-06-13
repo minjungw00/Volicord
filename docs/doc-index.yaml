@@ -715,7 +715,7 @@ documents:
       - "active surface context"
       - "`VerifiedSurfaceContext` integration boundaries"
       - "`capability_profile` declaration boundaries"
-      - "agent context handoff boundaries"
+      - "agent context transfer boundaries"
     not_owner_for:
       - "surface-specific recipes"
       - "API method behavior"

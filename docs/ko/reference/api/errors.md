@@ -1127,7 +1127,7 @@
 | 지속 아티팩트 문제 | [지속 아티팩트 문제](#close-mapping-artifact-issue) |
 | 최종 수락 문제 | [최종 수락 문제](#close-mapping-final-acceptance) |
 | 잔여 위험이 보이지 않음 | [잔여 위험이 보이지 않음](#close-mapping-residual-risk-not-visible) |
-| 수락되지 않은 잔여 위험 | [수락되지 않은 잔여 위험](#close-mapping-unaccepted-residual-risk) |
+| 잔여 위험 수락 누락 | [잔여 위험 수락 누락](#close-mapping-unaccepted-residual-risk) |
 | 미해결 사용자 소유 판단 | [해결되지 않은 사용자 소유 판단](#close-mapping-unresolved-user-judgment) |
 | 민감 동작 승인 문제 | [민감 동작 승인 문제](#close-mapping-sensitive-approval) |
 | 범위, 경계, 기준 상태 | [범위, 경계, 기준 상태 차단 사유](#close-mapping-scope-boundary-baseline) |
@@ -1171,10 +1171,10 @@
 - `RESIDUAL_RISK_NOT_VISIBLE`
 
 <a id="close-mapping-unaccepted-residual-risk"></a>
-### 수락되지 않은 잔여 위험
+### 잔여 위험 수락 누락
 
 조건:
-- 잔여 위험은 보였지만 수락되지 않았습니다.
+- 잔여 위험은 보였지만 수락 기록이 없습니다.
 
 공개 코드 매핑:
 - `category=residual_risk_acceptance`와 함께 `DECISION_REQUIRED` 또는 `DECISION_UNRESOLVED`

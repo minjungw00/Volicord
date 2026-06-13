@@ -1129,7 +1129,7 @@ These rows summarize public error-code families for close-readiness findings. Th
 | Persistent artifact issue | [Persistent artifact issue](#close-mapping-artifact-issue) |
 | Final acceptance issue | [Final acceptance issue](#close-mapping-final-acceptance) |
 | Residual risk not visible | [Residual risk not visible](#close-mapping-residual-risk-not-visible) |
-| Unaccepted residual risk | [Unaccepted residual risk](#close-mapping-unaccepted-residual-risk) |
+| Residual risk missing acceptance | [Residual risk missing acceptance](#close-mapping-unaccepted-residual-risk) |
 | Unresolved judgment | [Unresolved user-owned judgment](#close-mapping-unresolved-user-judgment) |
 | Sensitive approval issue | [Sensitive-action approval issue](#close-mapping-sensitive-approval) |
 | Scope, boundary, or baseline | [Scope, boundary, or baseline blocker](#close-mapping-scope-boundary-baseline) |
@@ -1173,10 +1173,10 @@ Public code mapping:
 - `RESIDUAL_RISK_NOT_VISIBLE`
 
 <a id="close-mapping-unaccepted-residual-risk"></a>
-### Unaccepted residual risk
+### Residual risk missing acceptance
 
 Condition:
-- Residual risk is visible but not accepted.
+- Residual risk is visible and lacks a recorded acceptance.
 
 Public code mapping:
 - `DECISION_REQUIRED` or `DECISION_UNRESOLVED` with `category=residual_risk_acceptance`

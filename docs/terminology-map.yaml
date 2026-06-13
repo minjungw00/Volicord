@@ -145,7 +145,7 @@ terms:
         - "docs/en/reference/runtime-boundaries.md"
       ko:
         - "docs/ko/reference/runtime-boundaries.md"
-  documentation_only:
+  documentation:
     category: "general_prose"
     en: "documentation"
     ko_reference: "문서"
@@ -686,11 +686,11 @@ terms:
       en:
         - "docs/en/reference/core-model.md"
         - "docs/en/reference/security.md"
-        - "docs/en/reference/api/methods.md"
+        - "docs/en/reference/api/method-prepare-write.md"
       ko:
         - "docs/ko/reference/core-model.md"
         - "docs/ko/reference/security.md"
-        - "docs/ko/reference/api/methods.md"
+        - "docs/ko/reference/api/method-prepare-write.md"
     notes:
       - "Use the exact label when naming the Harness concept."
       - "Do not treat sensitive-action approval as `Write Authorization`."

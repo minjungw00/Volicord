@@ -42,6 +42,7 @@
 | artifact | 아티팩트 | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | evidence | 증거 | [Core 모델](core-model.md) |
 | `ArtifactRef` | `ArtifactRef` | [API 아티팩트 스키마](api/schema-artifacts.md) |
+| `ArtifactInput` | `ArtifactInput` | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | `StagedArtifactHandle` | `StagedArtifactHandle` | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | projection | 상태 보기 | [상태 보기 권한 참조](projection-and-templates.md) |
 | surface | 접점 | [에이전트 통합](agent-integration.md) |
@@ -611,6 +612,28 @@
 설명:
 - `ArtifactRef`는 등록된 지속 아티팩트를 가리키는 공개 포인터입니다.
 
+### `ArtifactInput`
+
+영어:
+- `ArtifactInput`
+
+한국어:
+- 참조 문서: `ArtifactInput`
+- 사용자 문서: 스키마를 말할 때는 `ArtifactInput`, 일반 설명에서는 제공할 아티팩트
+
+보존할 식별자:
+- `ArtifactInput`
+
+피할 표현:
+- 식별자를 번역하는 표현
+- 아티팩트 입력만으로 증거 충분성이나 지속 아티팩트 권한이 생긴다고 보는 표현
+
+담당 문서:
+- [API 아티팩트 스키마](api/schema-artifacts.md)
+
+설명:
+- `ArtifactInput`은 아티팩트를 다루는 메서드에 제공되는 아티팩트 데이터의 스키마 식별자입니다.
+
 ### `StagedArtifactHandle`
 
 영어:
@@ -922,7 +945,7 @@
 
 피할 표현:
 - 기술 마이그레이션을 이전 선택이나 이전 결정으로 옮기는 표현
-- 일회성 계획 파일로 남는 마이그레이션 메모
+- 일회성 계획 파일로 남는 마이그레이션 설명 파일
 
 담당 문서:
 - [저장소 버전 관리](storage-versioning.md)

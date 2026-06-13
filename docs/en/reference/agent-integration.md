@@ -11,7 +11,7 @@ This document owns:
 - surface registration inputs and selector meaning for agent integration
 - active surface context boundaries, including `surface_id`, `surface_instance_id`, and request-level `VerifiedSurfaceContext`
 - capability declaration boundaries for `capability_profile`
-- agent context handoff rules between owner results and a surface
+- agent context transfer rules between owner results and a surface
 - fallback display when the active surface is unavailable, mismatched, stale, or capability-limited
 - one-language-per-`doc_id` retrieval guidance for agent context
 
@@ -116,9 +116,9 @@ Owner links:
 - [Security](security.md) owns guarantee vocabulary and guarantee-strength non-claims.
 - [API Value Sets](api/schema-value-sets.md) owns access-class value names.
 
-## Agent context handoff
+## Agent context transfer
 
-Agent context handoff gives the agent enough owner context for the next action without turning the packet into an authority record.
+Agent context transfer gives the agent enough owner context for the next action without turning the packet into an authority record.
 
 Condition:
 - Agent context should contain only owner results needed for the next action and active surface limits that affect that action.

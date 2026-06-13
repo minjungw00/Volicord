@@ -59,7 +59,7 @@ Rules:
 - Rename an ID only when the scenario's meaning changes, and update same-page anchors and internal links in the same batch.
 
 Not allowed:
-- Do not use temporary status labels, date labels, runner names, or maintainer workflow labels as scenario IDs.
+- Do not use short-lived status labels, date labels, runner names, or maintainer workflow labels as scenario IDs.
 
 <a id="expected-behavior"></a>
 ### Expected behavior
@@ -90,7 +90,7 @@ When this page says "must", "required", or "always", it is naming a conformance 
 
 Conformance criteria are reference expectations. Examples and tutorials may illustrate how a reader might recognize a scenario, but they do not create authority records, API branches, storage effects, security guarantees, close-readiness results, acceptance evidence, or residual-risk acceptance.
 
-Reference scenarios must use stable behavior descriptions. They must not use documentation maintenance, route cleanup, migration work, broad review stages, or temporary project status as the behavior being tested.
+Reference scenarios must use stable behavior descriptions. They must not use documentation maintenance, route cleanup, migration work, broad review stages, or short-lived project status as the behavior being tested.
 
 ## Scenario criterion shape
 

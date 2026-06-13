@@ -124,7 +124,7 @@ close_readiness:
   ready: false
   blockers:
     - code: missing_user_judgment
-      message: "The user has not accepted the account data export confirmation copy."
+      message: "User acceptance is missing for the account data export confirmation copy."
 ```
 
 ## Minimal valid request
@@ -173,7 +173,7 @@ state:
 blockers:
   - category: user_judgment
     code: missing_user_judgment
-    message: "The user has not accepted the account data export confirmation copy."
+    message: "User acceptance is missing for the account data export confirmation copy."
     related_refs: []
 evidence_summary:
   status: sufficient

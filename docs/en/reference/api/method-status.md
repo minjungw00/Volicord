@@ -234,7 +234,7 @@ close_readiness:
   ready: false
   blockers:
     - code: missing_user_judgment
-      message: "The user has not accepted the account data export confirmation copy."
+      message: "User acceptance is missing for the account data export confirmation copy."
 guarantee_display:
   level: cooperative
   notes:

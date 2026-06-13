@@ -134,7 +134,7 @@ close_readiness:
   ready: false
   blockers:
     - code: missing_user_judgment
-      message: "사용자가 계정 데이터 내보내기 확인 문구를 아직 수락하지 않았습니다."
+      message: "계정 데이터 내보내기 확인 문구에 대한 사용자 수락 기록이 없습니다."
 ```
 
 ## 최소 유효 요청
@@ -183,7 +183,7 @@ state:
 blockers:
   - category: user_judgment
     code: missing_user_judgment
-    message: "사용자가 계정 데이터 내보내기 확인 문구를 아직 수락하지 않았습니다."
+    message: "계정 데이터 내보내기 확인 문구에 대한 사용자 수락 기록이 없습니다."
     related_refs: []
 evidence_summary:
   status: sufficient

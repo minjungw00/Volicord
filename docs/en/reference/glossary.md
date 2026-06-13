@@ -42,6 +42,7 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | artifact | 아티팩트 | [API Artifact Schemas](api/schema-artifacts.md) |
 | evidence | 증거 | [Core Model](core-model.md) |
 | `ArtifactRef` | `ArtifactRef` | [API Artifact Schemas](api/schema-artifacts.md) |
+| `ArtifactInput` | `ArtifactInput` | [API Artifact Schemas](api/schema-artifacts.md) |
 | `StagedArtifactHandle` | `StagedArtifactHandle` | [API Artifact Schemas](api/schema-artifacts.md) |
 | projection | 상태 보기 | [Projection Authority Reference](projection-and-templates.md) |
 | surface | 접점 | [Agent Integration](agent-integration.md) |
@@ -611,6 +612,28 @@ Owner:
 Notes:
 - `ArtifactRef` is a public pointer to a registered persistent artifact.
 
+### `ArtifactInput`
+
+English:
+- `ArtifactInput`
+
+Korean:
+- Reference: `ArtifactInput`
+- User-facing: supplied artifact, when not naming the schema
+
+Preserve:
+- `ArtifactInput`
+
+Avoid:
+- Translating the identifier.
+- Treating artifact input as evidence sufficiency or persistent artifact authority by itself.
+
+Owner:
+- [API Artifact Schemas](api/schema-artifacts.md)
+
+Notes:
+- `ArtifactInput` is the schema identifier for artifact data supplied to an artifact-owning method.
+
 ### `StagedArtifactHandle`
 
 English:
@@ -922,7 +945,7 @@ Preserve:
 
 Avoid:
 - Translating technical migration as previous choice or prior decision.
-- Using migration notes as one-off planning files.
+- Using one-off migration write-ups as planning files.
 
 Owner:
 - [Storage Versioning](storage-versioning.md)
