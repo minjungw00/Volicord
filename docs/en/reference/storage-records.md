@@ -141,7 +141,11 @@ Owner links:
 
 ### Not stored
 
-No other persisted table family or transient handle family is baseline scope. Requirement shaping is not a separate committed Discovery Brief, Shared Design, Question Queue, Assumption Register, or First Safe Change Unit Candidate table. Evidence is stored only through the active compact evidence-summary and artifact-ref paths.
+Not allowed:
+
+- No other persisted table family or transient handle family is baseline scope.
+- Requirement shaping persists only through the active record families listed above and does not create separate requirement-discovery records.
+- Evidence is stored only through the active compact evidence-summary and artifact-ref paths.
 
 ### Projection non-claim
 
@@ -347,7 +351,7 @@ Contains:
 - `created_at`, `updated_at`, and `closed_at`.
 
 Does not contain:
-- a separate committed Discovery Brief, Question Queue, Assumption Register, or First Safe Change Unit Candidate.
+- separate committed requirement-discovery records.
 - expanded evidence-package storage.
 - rendered `status-card` or `close-result` bodies.
 
@@ -372,7 +376,7 @@ Contains:
 - `status`, `created_at`, and `updated_at`.
 
 Does not contain:
-- a separate Shared Design or First Safe Change Unit Candidate table.
+- separate planning records.
 - Product Repository diff bytes.
 - Write Authorization records.
 
@@ -1042,16 +1046,10 @@ Task and Change Unit shaping JSON stores compact summaries and bounded lists onl
 Not allowed:
 
 - It must not store any of these under another name:
-  - standalone Discovery Brief
-  - Question Queue
-  - Assumption Register
-  - full design artifact
-  - generated projection body
-  - expanded evidence-package body
-  - QA record
-  - acceptance record
-  - residual-risk record
-  - close record
+  - separate requirement-discovery or planning records
+  - generated projection bodies
+  - expanded evidence-package bodies
+  - QA, acceptance, residual-risk, or close records
 
 ## Baseline / Out-of-Scope Boundary
 

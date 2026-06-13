@@ -90,7 +90,7 @@ Blocking questions must be represented through:
 - blocker
 - next-action fields
 
-Non-claim: blocking questions are not represented through separate Discovery Brief, Question Queue, or Assumption Register artifacts.
+Non-claim: blocking questions are not represented through separate planning artifacts.
 
 ## Rejected result
 

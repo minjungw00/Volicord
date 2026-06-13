@@ -90,7 +90,7 @@
 - 차단 사유.
 - 다음 행동.
 
-비주장: 별도 Discovery Brief, Question Queue, Assumption Register 아티팩트는 만들지 않습니다.
+비주장: 차단 질문은 별도 계획 아티팩트로 표현하지 않습니다.
 
 ## 거절 결과
 

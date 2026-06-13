@@ -145,7 +145,7 @@ Meaning:
 - Missing readiness can route to a blocker, a pending or candidate user judgment, or an update-scope next action.
 
 Not implied:
-- It does not create separate active Discovery Brief, Question Queue, Assumption Register, or generated planning artifact.
+- It does not create separate active planning records or generated planning artifacts.
 
 ## Current-position display shapes
 
