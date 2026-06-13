@@ -1,6 +1,6 @@
 # Agent integration reference
 
-This document owns how agent-facing surfaces are registered, selected for active surface context, and described by capability declarations. It also defines the boundary for carrying owner-defined Harness context into an agent surface.
+This document owns how agent-facing surfaces are registered, selected for active surface context, and described by capability declarations. It also defines the boundary for carrying owner-result Harness context into an agent surface.
 
 It does not define API schemas, method behavior, storage effects, security guarantee meanings, projection authority, or rendered template wording.
 
@@ -33,8 +33,8 @@ Condition:
 - Display text, chat messages, generated files, surface descriptions, `Product Repository` files, projections, and agent memory are support context only.
 
 Agent may:
-- pass a registered surface selector to an owner path
-- show owner-defined state and display labels
+- include a registered surface selector when the method owner requires it
+- show owner-result state and display labels
 - pass compact owner-result context to the agent
 
 Agent must not:
@@ -48,11 +48,11 @@ Owner links:
 
 ## Surface registration
 
-Surface registration names the user-selected surface and the facts owner paths need when deciding whether that surface can support a request.
+Surface registration names the user-selected surface and the facts method owners need when their contracts decide whether that surface can support a request.
 
 Condition:
 - `surface_id` is a selector for a registered local surface.
-- `surface_instance_id` distinguishes a registered instance when an owner path returns or requires it.
+- `surface_instance_id` distinguishes a registered instance when a method owner returns or requires it.
 - Registration facts are usable only through owner-returned verification for the current request.
 
 Agent may:
@@ -130,7 +130,7 @@ Agent may:
 
 Agent must not:
 - inject full schemas, DDL, historical logs, artifact bodies, unrelated contract material, out-of-scope catalogs, exact template bodies, or both languages for the same `doc_id` unless bilingual maintenance requires semantic-parity review
-- treat a stale or copied context packet as newer authority than the owner path
+- treat a stale or copied context packet as newer authority than the owner result or underlying record
 
 Owner links:
 - [Template Bodies](template-bodies.md) owns agent context packet wording.

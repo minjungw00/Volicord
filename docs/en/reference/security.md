@@ -25,11 +25,11 @@ The supported guarantee display labels are `cooperative` and `detective`; the va
 
 Conditions:
 - The caller, agent, surface, or connector follows the documented Harness paths.
-- The claim stays inside owner-defined Core, API, storage, runtime, and user-judgment boundaries.
+- The claim stays inside documented Core, API, storage, runtime, and user-judgment boundaries.
 
 May claim:
-- Harness records, write compatibility, evidence summaries, user-owned judgments, and close-readiness results are governed by their owner-defined Harness paths.
-- Harness may reject, block, or require a focused user-owned judgment when an owner-defined path says the current state is not compatible.
+- Harness records, write compatibility, evidence summaries, user-owned judgments, and close-readiness results are governed by their owner contracts.
+- Harness may reject, block, or require a focused user-owned judgment when the relevant owner contract says the current state is not compatible.
 
 Must not claim:
 - `cooperative` blocks arbitrary tool behavior, host commands, network access, secret access, or product-file edits outside Harness-owned paths.
@@ -48,7 +48,7 @@ Conditions:
 May claim:
 - The checked surface and checked capability support limited observation or mismatch reporting inside the documented observed scope.
 - Observed changed paths support a limited changed-path detection claim when the reporting condition is met.
-- Missing or insufficient capability routes to owner-defined error behavior, such as `CAPABILITY_INSUFFICIENT`.
+- Missing or insufficient capability routes to documented error behavior, such as `CAPABILITY_INSUFFICIENT`.
 
 Must not claim:
 - A copied `surface_id`, `access_class`, connector description, `Projection`, generated display, chat message, or agent memory proves capability.
@@ -84,7 +84,7 @@ Owner links:
 
 ## Local access assumptions
 
-Harness security claims assume local actors use owner-defined Harness paths for Harness state, records, artifacts, write compatibility, and user-owned judgments.
+Harness security claims assume local actors use the documented Harness contracts for Harness state, records, artifacts, write compatibility, and user-owned judgments.
 
 May claim:
 - Local product files can be inputs to Harness checks or user-owned judgments.
@@ -94,14 +94,14 @@ May claim:
 Must not claim:
 - Local filesystem access proves Harness authority.
 - A local path, directory name, copied identifier, displayed identifier, or rendered text is a security token.
-- Direct local modification outside owner-defined Harness paths creates valid Harness records, evidence, acceptance, residual-risk acceptance, `Write Authorization`, or artifact authority.
+- Direct local modification outside those documented Harness contracts creates valid Harness records, evidence, acceptance, residual-risk acceptance, `Write Authorization`, or artifact authority.
 - `Harness Runtime Home` is automatically an OS security boundary, sandbox, or isolation layer.
 
 ## Authority boundaries
 
 ### Harness records
 
-Harness records carry authority only through the owner-defined Harness paths that create, validate, or update them.
+Harness records carry authority only through the owner contracts that create, validate, or update them.
 
 Must not claim:
 - Local file contents are tamper-proof because they describe or store Harness data.

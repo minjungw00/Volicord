@@ -35,7 +35,7 @@
 
 이 참조 문서는 독립적인 기준 범위 관문, 지원되는 설계 품질 닫기 범주, 지원되는 검증기 계열, 품질 면제 경로, 심각도 기반 차단 정책, 증거 권한, QA 결과, 수락 판단, 잔여 위험 판단, 닫기 권한, 운영 보고서, 적합성 목록, SQLite DDL, 지속 테이블, 상태 보기 권한, 렌더링된 보고서, 템플릿 본문을 정의하지 않습니다.
 
-참조 문구는 설계 품질 경계와 담당 경로를 기록합니다. 하네스 서버 상태, 증거, QA, 수락, 잔여 위험 판단, 닫기 준비 상태를 만들지는 않습니다.
+참조 문구는 설계 품질 경계와 담당 문서 안내를 문서화합니다. 하네스 서버 상태, 증거, QA, 수락, 잔여 위험 판단, 닫기 준비 상태를 만들지는 않습니다.
 
 ## 2. 기준 범위 설계 품질 역할
 
@@ -62,7 +62,7 @@
 | 독립적인 닫기 권한 | 설계 품질 라벨은 닫기 차단 사유, 닫기 범주, 범위 재정의, 증거 규칙, 보장을 만들지 않습니다. |
 | 증거와 위험 | 증거, 최종 수락, 잔여 위험 표시, 잔여 위험 수락은 Core/API 담당 문서의 의미를 유지합니다. |
 | 심각도 | 심각도 형태의 문구는 영향받는 담당 문서가 별도 행동을 요구하지 않는 한 조언입니다. |
-| 집중된 행동 | 다음 행동은 이름 붙은 담당 경로가 필요로 하는 범위로 제한되어야 합니다. |
+| 집중된 행동 | 다음 행동은 영향받는 담당 계약이 요구하는 범위로 제한되어야 합니다. |
 | 담당 문서 공백 | 영향받는 담당 문서가 없으면 기준 범위 결과는 조언 문구이거나 아무 행동 없음입니다. |
 
 <a id="design-quality-product-decision-needed"></a>
@@ -75,7 +75,7 @@
 - `judgment_kind=product_decision`을 사용합니다.
 
 닫기 영향:
-- 적용되는 닫기 경로가 이미 `CloseReadinessBlocker.category=user_judgment`를 요구할 때만 닫기를 차단합니다.
+- 적용되는 닫기 준비 상태 계약이 이미 `CloseReadinessBlocker.category=user_judgment`를 요구할 때만 닫기를 차단합니다.
 
 <a id="design-quality-technical-decision-needed"></a>
 ### 기술 판단 필요
@@ -87,7 +87,7 @@
 - `judgment_kind=technical_decision`을 사용합니다.
 
 닫기 영향:
-- 적용되는 닫기 경로가 이미 `CloseReadinessBlocker.category=user_judgment`를 요구할 때만 닫기를 차단합니다.
+- 적용되는 닫기 준비 상태 계약이 이미 `CloseReadinessBlocker.category=user_judgment`를 요구할 때만 닫기를 차단합니다.
 
 <a id="design-quality-scope-boundary-change"></a>
 ### 범위 경계 변경
@@ -96,10 +96,10 @@
 - 우려가 범위 확장, 비목표 제거, Change Unit 경계 변경, Autonomy Boundary 변경입니다.
 
 라우팅:
-- 담당 경로에 따라 `judgment_kind=scope_decision` 또는 `CloseReadinessBlocker.category=scope`를 사용합니다.
+- 적용되는 범위 또는 판단 계약에 따라 `judgment_kind=scope_decision` 또는 `CloseReadinessBlocker.category=scope`를 사용합니다.
 
 닫기 영향:
-- 범위 또는 판단 담당 경로를 통해서만 닫기를 차단합니다.
+- 범위 또는 판단 계약이 그 차단 사유를 정의할 때만 닫기를 차단합니다.
 
 <a id="design-quality-missing-close-relevant-support"></a>
 ### 닫기 관련 뒷받침 부족
@@ -108,11 +108,11 @@
 - 닫기 관련 주장을 뒷받침하는 자료가 부족합니다.
 
 라우팅:
-- Core 증거 담당 경로를 통해 증거를 요청합니다.
-- `CloseReadinessBlocker.category=evidence` 또는 `CloseReadinessBlocker.category=artifact_availability`는 그 담당 경로를 통해서만 사용합니다.
+- Core 증거 규칙에 따라 증거를 요청합니다.
+- `CloseReadinessBlocker.category=evidence` 또는 `CloseReadinessBlocker.category=artifact_availability`는 증거 계약과 닫기 준비 상태 계약이 그 범주를 허용할 때만 사용합니다.
 
 닫기 영향:
-- 필요한 증거는 Core 증거 담당 경로를 통해서만 닫기를 차단할 수 있습니다.
+- 필요한 증거는 Core 증거 규칙과 닫기 준비 상태 계약이 요구할 때만 닫기를 차단할 수 있습니다.
 
 <a id="design-quality-residual-risk-visibility"></a>
 ### 잔여 위험 표시
@@ -122,10 +122,10 @@
 
 라우팅:
 - 잔여 위험 표시를 사용합니다.
-- 적용되는 닫기 경로가 수락을 요구할 때만 `CloseReadinessBlocker.category=residual_risk_acceptance`를 사용합니다.
+- 적용되는 닫기 준비 상태 계약이 수락을 요구할 때만 `CloseReadinessBlocker.category=residual_risk_acceptance`를 사용합니다.
 
 닫기 영향:
-- 잔여 위험 표시 또는 잔여 위험 수락 담당 경로를 통해서만 닫기에 영향을 줍니다.
+- 잔여 위험 표시 또는 잔여 위험 수락 계약이 의존성을 정의할 때만 닫기에 영향을 줍니다.
 
 <a id="design-quality-surface-capability-gap"></a>
 ### 접점 역량 공백
@@ -134,10 +134,10 @@
 - 연결된 접점이 주장한 동작이나 보장을 정직하게 지원하지 못합니다.
 
 라우팅:
-- 역량 담당 경로에서 `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, 또는 낮아진 보장 표시를 사용합니다.
+- 관련 역량 계약과 API 오류 계약에 따라 `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, 또는 낮아진 보장 표시를 사용합니다.
 
 닫기 영향:
-- 역량 담당 경로를 통해서만 닫기에 영향을 줍니다.
+- 관련 역량 계약이나 API 오류 계약이 그 효과를 정의할 때만 닫기에 영향을 줍니다.
 
 <a id="design-quality-advisory-severity"></a>
 ### 조언성 심각도
@@ -155,13 +155,13 @@
 ### 집중된 다음 행동
 
 조건:
-- 좁은 행동 하나가 이름 붙은 담당 경로를 풀거나 분명히 할 수 있습니다.
+- 좁은 행동 하나가 영향받는 담당 계약을 풀거나 분명히 할 수 있습니다.
 
 라우팅:
 - 집중된 사용자 판단 하나 묻기, 증거 요청, 잔여 위험 표시, 조언성 다음 행동 표시, 아무 행동 없음 중 하나를 사용합니다.
 
 닫기 영향:
-- 이름 붙은 담당 경로가 그 행동을 사용할 때만 닫기에 영향을 줄 수 있습니다.
+- 영향받는 계약이 그 행동을 사용할 때만 닫기에 영향을 줄 수 있습니다.
 
 <a id="design-quality-no-applicable-owner-path"></a>
 ### 영향받는 담당 문서 없음
@@ -205,7 +205,7 @@
 
 라우팅:
 - `judgment_kind=product_decision`을 사용합니다.
-- 적용되는 닫기 경로가 그 판단을 요구할 때만 `CloseReadinessBlocker.category=user_judgment`를 사용합니다.
+- 적용되는 닫기 준비 상태 계약이 그 판단을 요구할 때만 `CloseReadinessBlocker.category=user_judgment`를 사용합니다.
 
 닫기 영향:
 - 영향받는 담당 문서가 그 사용자 판단을 요구할 때만 닫기를 차단합니다.
@@ -218,7 +218,7 @@
 
 라우팅:
 - `judgment_kind=technical_decision`을 사용합니다.
-- 적용되는 닫기 경로가 그 판단을 요구할 때만 `CloseReadinessBlocker.category=user_judgment`를 사용합니다.
+- 적용되는 닫기 준비 상태 계약이 그 판단을 요구할 때만 `CloseReadinessBlocker.category=user_judgment`를 사용합니다.
 
 닫기 영향:
 - 영향받는 담당 문서가 그 사용자 판단을 요구할 때만 닫기를 차단합니다.
@@ -230,10 +230,10 @@
 - 범위 확장, 비목표 제거, Change Unit 경계, Autonomy Boundary 변경이 필요합니다.
 
 라우팅:
-- 담당 경로에 따라 `judgment_kind=scope_decision` 또는 `CloseReadinessBlocker.category=scope`를 사용합니다.
+- 적용되는 범위 또는 판단 계약에 따라 `judgment_kind=scope_decision` 또는 `CloseReadinessBlocker.category=scope`를 사용합니다.
 
 닫기 영향:
-- 범위 또는 판단 담당 경로를 통해서만 닫기를 차단합니다.
+- 범위 또는 판단 계약이 그 차단 사유를 정의할 때만 닫기를 차단합니다.
 
 <a id="design-quality-route-evidence"></a>
 ### 증거 라우팅
@@ -242,10 +242,10 @@
 - 닫기 관련 주장을 뒷받침하는 자료가 부족합니다.
 
 라우팅:
-- Core 증거 담당 경로에서 `CloseReadinessBlocker.category=evidence`, `CloseReadinessBlocker.category=artifact_availability`, 또는 증거 요청을 사용합니다.
+- Core 증거 규칙에 따라 `CloseReadinessBlocker.category=evidence`, `CloseReadinessBlocker.category=artifact_availability`, 또는 증거 요청을 사용합니다.
 
 닫기 영향:
-- 필요한 증거는 Core 증거 담당 경로를 통해서만 닫기를 차단할 수 있습니다.
+- 필요한 증거는 Core 증거 규칙과 닫기 준비 상태 계약이 요구할 때만 닫기를 차단할 수 있습니다.
 
 <a id="design-quality-route-residual-risk"></a>
 ### 잔여 위험 라우팅
@@ -255,10 +255,10 @@
 
 라우팅:
 - `CloseReadinessBlocker.category=residual_risk_visibility`로 잔여 위험을 보이게 합니다.
-- 적용되는 닫기 경로가 수락을 요구할 때만 `CloseReadinessBlocker.category=residual_risk_acceptance`를 사용합니다.
+- 적용되는 닫기 준비 상태 계약이 수락을 요구할 때만 `CloseReadinessBlocker.category=residual_risk_acceptance`를 사용합니다.
 
 닫기 영향:
-- 적용되는 잔여 위험 담당 경로를 통해서만 닫기에 영향을 줍니다.
+- 적용되는 잔여 위험 계약이 의존성을 정의할 때만 닫기에 영향을 줍니다.
 
 <a id="design-quality-route-surface-capability"></a>
 ### 접점 역량 라우팅
@@ -267,10 +267,10 @@
 - 연결된 접점이 주장한 동작이나 보장을 정직하게 지원하지 못합니다.
 
 라우팅:
-- 역량 담당 경로에서 `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, 또는 낮아진 보장 표시를 사용합니다.
+- 관련 역량 계약과 API 오류 계약에 따라 `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, 또는 낮아진 보장 표시를 사용합니다.
 
 닫기 영향:
-- 적용되는 역량 담당 경로를 통해서만 닫기에 영향을 줍니다.
+- 적용되는 역량 계약이나 API 오류 계약이 그 효과를 정의할 때만 닫기에 영향을 줍니다.
 
 설계 품질 라벨, 정책 이름, 심각도 값, 검증기 ID, 검토 문구는 그 자체로 경로를 만들지 않습니다. 영향받는 담당 문서가 없으면 기준 범위 결과는 조언 문구이거나 아무 행동 없음입니다.
 
@@ -295,16 +295,16 @@
 - 관찰 사항이 닫기 차단 집합 안의 기존 지원 `CloseReadinessBlocker.category`, 지원되는 `judgment_kind`, 지원되는 API 오류, 또는 다른 영향받는 담당 문서를 이름 붙입니다.
 
 닫기 영향:
-- 이름 붙인 담당 경로가 설계 품질 라벨 없이도 닫기를 차단할 때만 닫기를 차단할 수 있습니다.
+- 이름 붙은 닫기 의존성이 설계 품질 라벨 없이도 닫기를 차단할 때만 닫기를 차단할 수 있습니다.
 
 <a id="design-quality-close-focused-unblock-path"></a>
 ### 집중된 차단 해소 경로
 
 조건:
-- 이름 붙은 담당 경로 하나에서 차단 사유를 해소하거나, 그 담당 경로로 유예하거나, 필요한 증거로 뒷받침하거나, 보이는 잔여 위험으로 표시할 수 있습니다.
+- 영향받는 계약 하나에서 차단 사유를 해소하거나, 그 계약 안에서 유예하거나, 필요한 증거로 뒷받침하거나, 보이는 잔여 위험으로 표시할 수 있습니다.
 
 닫기 영향:
-- 닫기에 영향을 주려면 그 담당 경로를 위한 다음 행동을 정확히 하나만 제공해야 합니다.
+- 닫기에 영향을 주려면 그 영향받는 계약을 위한 다음 행동을 정확히 하나만 제공해야 합니다.
 
 <a id="design-quality-close-unsupported-policy-basis"></a>
 ### 지원되지 않는 정책 근거
@@ -337,7 +337,7 @@
 - [API 값 집합](api/schema-value-sets.md)이 담당하는 지원되는 `CloseReadinessBlocker.category` 값을 사용합니다.
 
 닫기 영향:
-- 닫기 준비 상태 발견 사항은 그 닫기 경로가 담당하는 지원 범주 안에 남습니다.
+- 닫기 준비 상태 발견 사항은 적용되는 닫기 준비 상태 계약이 정의한 지원 범주 안에 남습니다.
 
 ## 5. 별도 품질 면제 없음
 
@@ -387,7 +387,7 @@
 - 요청한 닫기를 위해 이름 붙은 보이는 잔여 위험을 사용자가 수락한 내용을 기록합니다.
 
 닫기 영향:
-- 적용되는 잔여 위험 담당 경로를 통해서만 닫기에 영향을 줍니다.
+- 적용되는 잔여 위험 계약이 의존성을 정의할 때만 닫기에 영향을 줍니다.
 
 경계:
 - `residual_risk_acceptance`는 정확성 증명, 증거 충분성, 최종 수락, 무위험 결과, 자동 성공이 아닙니다.
@@ -413,7 +413,7 @@
 
 ## 6. 증거 기대치
 
-설계 품질 관찰 사항은 증거 공백을 식별할 수 있지만, 필요한 증거는 Core 증거 담당 경로에 속합니다.
+설계 품질 관찰 사항은 증거 공백을 식별할 수 있지만, 필요한 증거는 Core 증거 규칙에 속합니다.
 
 | 증거 질문 | 상세 |
 |---|---|
@@ -429,10 +429,10 @@
 - 영향받는 담당 문서가 쓰기 안전성, 닫기 준비 상태, 사용자 판단, 잔여 위험, 정직한 보장 표시에 영향을 주는 주장을 뒷받침해야 합니다.
 
 라우팅:
-- Core 증거 담당 경로를 통해 증거를 요청합니다.
+- Core 증거 규칙에 따라 증거를 요청합니다.
 
 닫기 영향:
-- 필요한 증거는 Core 증거 담당 경로를 통해서만 닫기를 차단할 수 있습니다.
+- 필요한 증거는 Core 증거 규칙과 닫기 준비 상태 계약이 요구할 때만 닫기를 차단할 수 있습니다.
 
 <a id="design-quality-useful-evidence-references"></a>
 ### 유용한 증거 참조
@@ -448,7 +448,7 @@
 ### 증거를 자동 충족하지 않는 참조
 
 경계:
-- 채팅 주장, 일반 요약, 렌더링된 상태 보기 문장, 등록되지 않은 파일, 담당 경로 없는 화면 캡처, 테스트 통과 상태 자체, 최종 수락, 잔여 위험 수락은 필요한 증거를 자동으로 충족하지 않습니다.
+- 채팅 주장, 일반 요약, 렌더링된 상태 보기 문장, 등록되지 않은 파일, 기록된 담당 연결이 없는 화면 캡처, 테스트 통과 상태 자체, 최종 수락, 잔여 위험 수락은 필요한 증거를 자동으로 충족하지 않습니다.
 
 닫기 영향:
 - 이런 참조만으로 필요한 증거 차단 사유가 해소되지 않습니다.
@@ -457,7 +457,7 @@
 ### 필수가 아닌 증거 공백
 
 조건:
-- 증거 공백이 Core 증거 담당 경로에서 요구한 필수 증거가 아닙니다.
+- 증거 공백이 Core 증거 규칙에서 요구한 필수 증거가 아닙니다.
 
 라우팅:
 - 상황에 맞게 `request evidence`, `show advisory next action`, 또는 잔여 위험 표시를 사용합니다.

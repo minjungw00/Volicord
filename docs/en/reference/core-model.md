@@ -70,7 +70,7 @@ Acceptance and risk acceptance are specific.
 
 ### Core
 
-Core is the local authority record for a Harness project. It records current authority state and routes changes through owner-defined paths.
+Core is the local authority record for a Harness project. It records current authority state and applies changes through owner-defined transitions.
 
 Core authority is about Harness records. Security guarantee levels, local-access posture, and stronger isolation non-claims belong to [Security](security.md).
 

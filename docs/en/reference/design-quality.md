@@ -35,7 +35,7 @@ Neighboring contracts stay with their owners:
 
 This reference does not define an independent baseline gate, supported design-quality close category, supported validator family, quality-waiver route, severity-based blocking policy, evidence authority, QA result, acceptance decision, residual-risk decision, close authority, operations report, conformance catalog, SQLite DDL, persisted table, projection authority, rendered report, or template body.
 
-Reference text records the design-quality boundary and owner routes. It does not create Harness Server state, evidence, QA, acceptance, residual-risk decisions, or close-readiness state.
+Reference text documents the design-quality boundary and owner routing. It does not create Harness Server state, evidence, QA, acceptance, residual-risk decisions, or close-readiness state.
 
 ## 2. Baseline design-quality role
 
@@ -62,7 +62,7 @@ Baseline owner-boundary rules:
 | Independent close authority | A design-quality label does not create a close blocker, close category, scope override, evidence rule, or guarantee. |
 | Evidence and risk | Evidence, final acceptance, residual-risk visibility, and residual-risk acceptance keep their Core/API owner meanings. |
 | Severity | Severity-like wording is advisory unless the affected owner separately requires action. |
-| Focused action | A next action must stay limited to what the named owner path needs. |
+| Focused action | A next action must stay limited to what the affected owner contract requires. |
 | Owner gap | When no affected owner applies, the baseline result is advisory text or no action. |
 
 <a id="design-quality-product-decision-needed"></a>
@@ -75,7 +75,7 @@ Route:
 - Use `judgment_kind=product_decision`.
 
 Close effect:
-- Blocks close only when the applicable close path already requires `CloseReadinessBlocker.category=user_judgment`.
+- Blocks close only when the applicable close-readiness contract already requires `CloseReadinessBlocker.category=user_judgment`.
 
 <a id="design-quality-technical-decision-needed"></a>
 ### Technical decision needed
@@ -87,7 +87,7 @@ Route:
 - Use `judgment_kind=technical_decision`.
 
 Close effect:
-- Blocks close only when the applicable close path already requires `CloseReadinessBlocker.category=user_judgment`.
+- Blocks close only when the applicable close-readiness contract already requires `CloseReadinessBlocker.category=user_judgment`.
 
 <a id="design-quality-scope-boundary-change"></a>
 ### Scope boundary change
@@ -96,10 +96,10 @@ Condition:
 - The concern is scope expansion, non-goal removal, Change Unit boundary change, or Autonomy Boundary change.
 
 Route:
-- Use `judgment_kind=scope_decision` or `CloseReadinessBlocker.category=scope`, depending on the owner path.
+- Use `judgment_kind=scope_decision` or `CloseReadinessBlocker.category=scope`, depending on the affected scope or judgment contract.
 
 Close effect:
-- Blocks close only through the scope or judgment owner path.
+- Blocks close only when the scope or judgment contract defines that blocker.
 
 <a id="design-quality-missing-close-relevant-support"></a>
 ### Missing close-relevant support
@@ -108,11 +108,11 @@ Condition:
 - A close-relevant claim lacks support.
 
 Route:
-- Request evidence through the Core evidence owner path.
-- Use `CloseReadinessBlocker.category=evidence` or `CloseReadinessBlocker.category=artifact_availability` only through that owner path.
+- Request evidence through Core evidence rules.
+- Use `CloseReadinessBlocker.category=evidence` or `CloseReadinessBlocker.category=artifact_availability` only when the evidence and close-readiness contracts allow that category.
 
 Close effect:
-- Required evidence can block close only through the Core evidence owner path.
+- Required evidence can block close only when Core evidence rules and close-readiness contracts require it.
 
 <a id="design-quality-residual-risk-visibility"></a>
 ### Residual risk visibility
@@ -122,10 +122,10 @@ Condition:
 
 Route:
 - Use residual-risk visibility.
-- Use `CloseReadinessBlocker.category=residual_risk_acceptance` only when the applicable close path requires acceptance.
+- Use `CloseReadinessBlocker.category=residual_risk_acceptance` only when the applicable close-readiness contract requires acceptance.
 
 Close effect:
-- Affects close only through the residual-risk visibility or residual-risk acceptance owner path.
+- Affects close only when the residual-risk visibility or residual-risk acceptance contract defines the dependency.
 
 <a id="design-quality-surface-capability-gap"></a>
 ### Surface capability gap
@@ -134,10 +134,10 @@ Condition:
 - The connected surface cannot honestly support the claimed operation or guarantee.
 
 Route:
-- Use `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, or a lower guarantee display through the capability owner path.
+- Use `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, or a lower guarantee display through the relevant capability and API error contracts.
 
 Close effect:
-- Affects close only through the capability owner path.
+- Affects close only when the relevant capability or API error contract defines the effect.
 
 <a id="design-quality-advisory-severity"></a>
 ### Advisory severity
@@ -155,13 +155,13 @@ Close effect:
 ### Focused next action
 
 Condition:
-- One narrow action can unblock or clarify the named owner path.
+- One narrow action can unblock or clarify the affected owner contract.
 
 Route:
 - Ask one focused user judgment, request evidence, mark residual risk visible, show an advisory next action, or take no action.
 
 Close effect:
-- Can affect close only when the named owner path uses that action.
+- Can affect close only when that affected contract uses the action.
 
 <a id="design-quality-no-applicable-owner-path"></a>
 ### No affected owner
@@ -205,7 +205,7 @@ Condition:
 
 Route:
 - Use `judgment_kind=product_decision`.
-- Use `CloseReadinessBlocker.category=user_judgment` only when the applicable close path requires that judgment.
+- Use `CloseReadinessBlocker.category=user_judgment` only when the applicable close-readiness contract requires that judgment.
 
 Close effect:
 - Blocks close only when the affected owner requires that user decision.
@@ -218,7 +218,7 @@ Condition:
 
 Route:
 - Use `judgment_kind=technical_decision`.
-- Use `CloseReadinessBlocker.category=user_judgment` only when the applicable close path requires that judgment.
+- Use `CloseReadinessBlocker.category=user_judgment` only when the applicable close-readiness contract requires that judgment.
 
 Close effect:
 - Blocks close only when the affected owner requires that user decision.
@@ -230,10 +230,10 @@ Condition:
 - Scope expansion, non-goal removal, Change Unit boundary, or Autonomy Boundary change is needed.
 
 Route:
-- Use `judgment_kind=scope_decision` or `CloseReadinessBlocker.category=scope`, depending on the owner path.
+- Use `judgment_kind=scope_decision` or `CloseReadinessBlocker.category=scope`, depending on the affected scope or judgment contract.
 
 Close effect:
-- Blocks close only through the scope or judgment owner path.
+- Blocks close only when the scope or judgment contract defines that blocker.
 
 <a id="design-quality-route-evidence"></a>
 ### Evidence route
@@ -242,10 +242,10 @@ Condition:
 - A close-relevant claim lacks support.
 
 Route:
-- Use `CloseReadinessBlocker.category=evidence`, `CloseReadinessBlocker.category=artifact_availability`, or an evidence request through the Core evidence owner path.
+- Use `CloseReadinessBlocker.category=evidence`, `CloseReadinessBlocker.category=artifact_availability`, or an evidence request through Core evidence rules.
 
 Close effect:
-- Required evidence can block close only through the Core evidence owner path.
+- Required evidence can block close only when Core evidence rules and close-readiness contracts require it.
 
 <a id="design-quality-route-residual-risk"></a>
 ### Residual-risk route
@@ -255,10 +255,10 @@ Condition:
 
 Route:
 - Use residual-risk visibility through `CloseReadinessBlocker.category=residual_risk_visibility`.
-- Use `CloseReadinessBlocker.category=residual_risk_acceptance` only when the applicable close path requires acceptance.
+- Use `CloseReadinessBlocker.category=residual_risk_acceptance` only when the applicable close-readiness contract requires acceptance.
 
 Close effect:
-- Affects close only through the applicable residual-risk owner path.
+- Affects close only when the applicable residual-risk contract defines the dependency.
 
 <a id="design-quality-route-surface-capability"></a>
 ### Surface capability route
@@ -267,10 +267,10 @@ Condition:
 - The connected surface cannot honestly support the claimed operation or guarantee.
 
 Route:
-- Use `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, or a lower guarantee display through the capability owner path.
+- Use `CloseReadinessBlocker.category=surface_capability`, `CAPABILITY_INSUFFICIENT`, or a lower guarantee display through the relevant capability and API error contracts.
 
 Close effect:
-- Affects close only through the applicable capability owner path.
+- Affects close only when the applicable capability or API error contract defines the effect.
 
 A design-quality label, policy name, severity value, validator ID, or review phrase does not create the route. If no affected owner applies, the baseline scope result is advisory text or no action.
 
@@ -295,16 +295,16 @@ Condition:
 - The observation names an existing supported `CloseReadinessBlocker.category`, supported `judgment_kind`, supported API error, or another affected owner in the close-blocking set.
 
 Close effect:
-- The observation can block close only when the named owner path would block close without the design-quality label.
+- The observation can block close only when the named close dependency would block close without the design-quality label.
 
 <a id="design-quality-close-focused-unblock-path"></a>
 ### Focused unblock path
 
 Condition:
-- One named owner path can be unblocked, deferred through that owner path, supported with required evidence, or marked as visible residual risk.
+- One affected contract can be unblocked, deferred under that contract, supported with required evidence, or marked as visible residual risk.
 
 Close effect:
-- Can affect close only by giving exactly one next action for that owner path.
+- Can affect close only by giving exactly one next action for that affected contract.
 
 <a id="design-quality-close-unsupported-policy-basis"></a>
 ### Unsupported policy basis
@@ -337,7 +337,7 @@ Route:
 - Use a supported `CloseReadinessBlocker.category` value owned by [API Value Sets](api/schema-value-sets.md).
 
 Close effect:
-- The close-readiness finding remains in the supported category owned by that close path.
+- The close-readiness finding remains in the supported category defined by the applicable close-readiness contract.
 
 ## 5. No separate quality waiver
 
@@ -387,7 +387,7 @@ Effect:
 - Records the user's acceptance of a named visible residual risk for the requested close.
 
 Close effect:
-- Affects close only through the applicable residual-risk owner path.
+- Affects close only when the applicable residual-risk contract defines the dependency.
 
 Boundary:
 - `residual_risk_acceptance` is not correctness proof, evidence sufficiency, final acceptance, a no-risk result, or automatic success.
@@ -413,7 +413,7 @@ Boundary:
 
 ## 6. Evidence expectation
 
-Design-quality observations may identify evidence gaps, but required evidence belongs to the Core evidence owner path.
+Design-quality observations may identify evidence gaps, but required evidence belongs to Core evidence rules.
 
 | Evidence question | Details |
 |---|---|
@@ -429,10 +429,10 @@ Condition:
 - The affected owner needs support for a claim that affects write safety, close readiness, user judgment, residual risk, or guarantee honesty.
 
 Route:
-- Ask for evidence through the Core evidence owner path.
+- Ask for evidence through Core evidence rules.
 
 Close effect:
-- Required evidence can block close only through the Core evidence owner path.
+- Required evidence can block close only when Core evidence rules and close-readiness contracts require it.
 
 <a id="design-quality-useful-evidence-references"></a>
 ### Useful evidence references
@@ -448,7 +448,7 @@ Allowed examples:
 ### References that do not automatically satisfy evidence
 
 Boundary:
-- Chat claims, general summaries, rendered projection text, unregistered files, screenshots without an owner route, test-pass status by itself, final acceptance, or residual-risk acceptance do not automatically satisfy required evidence.
+- Chat claims, general summaries, rendered projection text, unregistered files, screenshots without a recorded owner relation, test-pass status by itself, final acceptance, or residual-risk acceptance do not automatically satisfy required evidence.
 
 Close effect:
 - These references do not remove a required-evidence blocker by themselves.
@@ -457,7 +457,7 @@ Close effect:
 ### Non-required evidence gaps
 
 Condition:
-- The evidence gap is not required by the Core evidence owner path.
+- The evidence gap is not required by Core evidence rules.
 
 Route:
 - Use `request evidence`, `show advisory next action`, or residual-risk visibility as appropriate.

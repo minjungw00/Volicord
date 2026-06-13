@@ -43,7 +43,7 @@ Must not claim:
 Harness installation or runtime process location is where Harness executable code, packages, application resources, or process configuration may live.
 
 May claim:
-- The runtime process mediates Harness API behavior and Harness records through owner-defined paths.
+- The runtime process mediates Harness API behavior and Harness records through documented owner contracts.
 - Installation resources and runtime data can live in different locations.
 
 Must not claim:
@@ -72,11 +72,11 @@ Local access to a file or directory is not the same as Harness authority.
 
 May claim:
 - A local actor may have filesystem access to product files, installation files, or runtime data locations according to the host environment.
-- Harness authority depends on owner-defined API, storage, runtime, security, and user-judgment paths.
+- Harness authority depends on documented API, storage, runtime, security, and user-judgment contracts.
 
 Must not claim:
 - A local path, directory name, copied identifier, rendered display, chat message, connector description, or agent memory proves Harness authority.
-- Direct local modification outside owner-defined Harness paths creates valid Harness records, evidence, acceptance, residual-risk acceptance, `Write Authorization`, or artifact authority.
+- Direct local modification outside documented Harness contracts creates valid Harness records, evidence, acceptance, residual-risk acceptance, `Write Authorization`, or artifact authority.
 - The location of runtime data changes the security guarantee level by itself.
 
 ## Runtime location, storage, and security owners

@@ -209,7 +209,7 @@ terms:
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "Use for behavior documented as supported by Scope and the affected semantic owner."
-      - "Do not infer supported behavior from value-set presence, examples, route summaries, or owner path terminology."
+      - "Do not infer supported behavior from value-set presence, examples, route summaries, or owner-routing terminology."
       - "Do not use supported behavior for runtime-active or currently applied session state."
   supported_api_method:
     category: "api_concept"
@@ -317,7 +317,7 @@ terms:
     notes:
       - "Use for the owner route that applies to a topic."
       - "Use only for documentation routing, not as a product support contract."
-      - "Do not use owner path terminology as a product behavior, storage persistence condition, or runtime state."
+      - "Do not use owner-routing terminology as a product behavior, storage persistence condition, or runtime state."
       - "Do not use active or support-contract wording as a broad substitute for applicable owner routing."
   existing_owner:
     category: "documentation_concept"

@@ -219,7 +219,7 @@ Preserve:
 - Owner titles and exact value strings
 
 Avoid:
-- Inferring supported behavior from value-set presence, examples, route summaries, or owner path terminology.
+- Inferring supported behavior from value-set presence, examples, route summaries, or owner-routing terminology.
 - Using this term for runtime-active or currently applied session state.
 
 Owner:
@@ -283,7 +283,7 @@ Korean:
 - User-facing: 지원 범위 밖 기능
 
 Preserve:
-- Exact owner paths when routing promotion requirements
+- Exact owner document paths when routing promotion requirements
 
 Avoid:
 - Calling deferred material a baseline requirement.
@@ -337,7 +337,7 @@ Preserve:
 Avoid:
 - using `active` for owner-path routing
 - using product support wording when the meaning is only documentation routing
-- using owner path terminology as product behavior or a storage persistence condition
+- using owner-routing terminology as product behavior or a storage persistence condition
 
 Owner:
 - [Authoring Guide](../maintain/authoring-guide.md)

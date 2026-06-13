@@ -279,7 +279,7 @@ Owner links:
 ### `BASELINE-shaping-readiness-gap-blocks-or-asks`
 
 Expected behavior:
-- Shaping gaps remain owner-path blockers or judgment candidates, not separate planning artifacts.
+- Shaping gaps remain contract-defined blockers or judgment candidates, not separate planning artifacts.
 
 Owner links:
 - [Core Model](core-model.md)

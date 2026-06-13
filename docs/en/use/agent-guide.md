@@ -210,7 +210,7 @@ For tracked work, show the close basis before asking for final acceptance or att
 - blockers
 - next close-unblocking action
 
-Use a read-only close review when the user only asks whether close would be blocked. Use state-changing close only when the owner path says the relevant blockers allow it.
+Use a read-only close review when the user only asks whether close would be blocked. Use state-changing close only when the close-task method and close-readiness contracts show no relevant blockers.
 
 Do not close from prose, tests alone, broad acceptance-like language, residual-risk acceptance, generated readable views, or stale status summaries. Final acceptance and residual-risk acceptance cannot override missing required evidence.
 

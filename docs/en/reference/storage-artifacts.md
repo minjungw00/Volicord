@@ -110,7 +110,7 @@ Tracked facts:
 - `expires_at`
 - consumption facts such as `consumed_by_run_id`, `promoted_artifact_id`, and `consumed_at`
 
-Core records the `created_by_surface_*` fields from the successful `harness.stage_artifact` request's `VerifiedSurfaceContext`. The consuming owner path must check those fields against the staging row.
+Core records the `created_by_surface_*` fields from the successful `harness.stage_artifact` request's `VerifiedSurfaceContext`. The consuming owner method must check those fields against the staging row.
 
 Not allowed:
 
@@ -420,7 +420,7 @@ Allowed:
 - Unconsumed or expired `artifact_staging` rows and `artifacts/tmp/` staging bytes or notices may be marked `expired` or `discarded`.
 - transient bytes may be cleaned before registration.
 
-These transient staging materials are not evidence authority. Once an `artifacts` row is committed, retention purge, project teardown, or destructive cleanup is outside ordinary baseline mutation behavior and needs an owner-defined path. A retention or migration path must preserve artifact hashes, owner links, events, and replay rows, or mark affected refs invalid for recovery.
+These transient staging materials are not evidence authority. Once an `artifacts` row is committed, retention purge, project teardown, or destructive cleanup is outside ordinary baseline mutation behavior and needs an explicit storage or migration contract. That contract must preserve artifact hashes, owner links, events, and replay rows, or mark affected refs invalid for recovery.
 
 Not allowed:
 
