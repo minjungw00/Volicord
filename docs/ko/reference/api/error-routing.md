@@ -2,7 +2,7 @@
 
 이 문서는 거부 응답, 차단 결과, `dry_run` 미리보기에 대한 API 응답 분기 경로를 담당합니다.
 
-공개 `ErrorCode` 의미, 주 코드 우선순위, `ToolError.details`, 응답 분기 형태, 표시 라벨, 닫기 준비 상태 의미, 자세한 닫기 준비 상태 차단 사유 처리 경로는 정의하지 않습니다.
+공개 `ErrorCode` 의미, 주 코드 우선순위, `ToolError.details`, 응답 분기 형태, 표시 라벨, 닫기 준비 상태 의미, 자세한 차단 사유 처리 경로는 정의하지 않습니다.
 
 ## 담당 경계
 
@@ -15,12 +15,12 @@
 
 이 문서는 담당하지 않습니다.
 
-- 공개 코드 의미: [API 오류 코드](error-codes.md).
+- 공개 오류 코드 의미: [API 오류 코드](error-codes.md).
 - 주 공개 오류 선택: [API 오류 우선순위](error-precedence.md).
 - 기계 판독용 오류 세부사항: [API 오류 세부사항](error-details.md).
 - `CloseReadinessBlocker`, `WriteDecisionReason`, `PlannedBlocker`, 공통 분기 형태: [API 상태 스키마](schema-state.md), [API 코어 스키마](schema-core.md). 범주와 enum 형태 값은 [API 값 집합](schema-value-sets.md)이 담당합니다.
 - 닫기 준비 상태 의미와 대체 불가 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task).
-- 닫기 준비 상태 차단 사유/API 응답 경계와 공개 코드와 차단 사유 경계: [API 차단 사유 처리 경로](blocker-routing.md).
+- 닫기 차단 사유와 API 응답 사이의 경계, 오류와 차단 사유의 경계: [API 차단 사유 처리 경로](blocker-routing.md).
 - `harness.close_task` 메서드별 차단 동작: [`harness.close_task`](method-close-task.md).
 
 ## 오류와 차단 사유
@@ -51,7 +51,7 @@
 - 의미: 유효한 `dry_run` 요청에서 미리 볼 수 있는 진단입니다.
 - 상태 영향: 커밋된 쓰기가 아니며 저장된 차단 사유 상태도 아닙니다.
 
-`ErrorCode` 값은 공개 API 식별자입니다. 닫기 준비 상태 차단 사유/API 응답 경계와 공개 코드와 차단 사유 경계는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
+`ErrorCode` 값은 공개 API 식별자입니다. 닫기 차단 사유와 API 응답 사이의 경계, 오류와 차단 사유의 경계는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
 
 렌더링 라벨과 메시지는 [템플릿 본문](../template-bodies.md)이 담당하는 표시 문구입니다. API 오류 의미나 차단 사유 의미를 정의하지 않으며, 이 값을 `ErrorCode`, 차단 사유 코드 값, 기계 판독용 `ToolError.details` 키로 사용하면 안 됩니다.
 
@@ -166,9 +166,9 @@
 - 커밋된 차단 결과의 상태 영향은 `close_task` 메서드 담당 문서만 정의할 수 있습니다.
 
 결과 데이터:
-- 닫기 준비 상태 차단 사유 처리 경로는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
+- 닫기 차단 사유 처리 경로는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
 
-공개 코드 경계:
+공개 오류 코드가 차단 사유로 표현되는 경우:
 - `CloseTaskResult(close_state=blocked)`는 `STATE_VERSION_CONFLICT`를 사용하지 않습니다.
 
 <a id="blocked-read-only-observation"></a>
@@ -266,6 +266,6 @@
 <a id="close-mapping-readable-view-freshness"></a>
 <a id="close-mapping-stale-state-rejected"></a>
 
-## 닫기 준비 상태 차단 사유 처리 경로
+## 차단 사유 처리 경로
 
-닫기 준비 상태 차단 사유/API 응답 처리 경계와 공개 코드와 차단 사유 경계는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다. 정확한 `CloseReadinessBlocker.category` 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. `harness.close_task` 메서드별 차단 동작은 [`harness.close_task`](method-close-task.md)가 담당합니다.
+닫기 차단 사유와 API 응답 사이의 경계, 오류와 차단 사유의 경계는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다. 정확한 `CloseReadinessBlocker.category` 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. `harness.close_task` 메서드별 차단 동작은 [`harness.close_task`](method-close-task.md)가 담당합니다.

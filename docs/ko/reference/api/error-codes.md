@@ -2,7 +2,7 @@
 
 이 문서는 하네스 API 응답의 공개 `ErrorCode` 식별자, 의미, 발생 위치 요약을 담당합니다.
 
-주 오류 우선순위, 응답 분기 경로, 닫기 준비 상태 차단 사유 처리 경로, `ToolError.details`, 응답 분기 형태, 표시 라벨, 저장 효과, 보안 보장은 정의하지 않습니다.
+주 오류 우선순위, 응답 분기 경로, 차단 사유 처리 경로, `ToolError.details`, 응답 분기 형태, 표시 라벨, 저장 효과, 보안 보장은 정의하지 않습니다.
 
 ## 담당 경계
 
@@ -16,7 +16,7 @@
 
 - 주 코드 선택과 상태 버전 충돌 동작: [API 오류 우선순위](error-precedence.md).
 - 거부 응답, 차단 결과, `dry_run` 분기 경로: [API 오류 처리 경로](error-routing.md).
-- 닫기 준비 상태 차단 사유/API 응답 경계: [API 차단 사유 처리 경로](blocker-routing.md).
+- 닫기 차단 사유와 API 응답 사이의 경계: [API 차단 사유 처리 경로](blocker-routing.md).
 - `harness.close_task` 메서드별 차단 동작: [`harness.close_task`](method-close-task.md).
 - `ToolError.details` 필드와 보조 값: [API 오류 세부사항](error-details.md).
 - 공통 응답 분기 형태: [API 코어 스키마](schema-core.md).
@@ -60,8 +60,8 @@
 |---|---|
 | 거부 응답 오류 | 거부된 공개 API 요청의 `ToolRejectedResponse.errors[]`에서 공개 `ErrorCode` 값을 사용합니다. |
 | 담당 문서가 정의한 결과 경로 | 메서드, 스키마, 닫기 준비 상태 담당 문서는 공개 오류 코드 묶음의 결과 경로 매핑을 정의할 수 있지만, 그 매핑은 공개 `ErrorCode`를 차단 사유 코드로 만들지 않습니다. |
-| 오래된 상태 | `STATE_VERSION_CONFLICT`는 거부 응답 경로에 머물며 닫기 준비 상태 차단 사유, 결과 판단, 쓰기 판단 사유, 예정 차단 사유가 아닙니다. |
-| 읽기용 보기 최신성 | `PROJECTION_STALE`만으로는 닫기 준비 상태 차단 사유 코드가 아닙니다. |
+| 오래된 상태 | `STATE_VERSION_CONFLICT`는 거부 응답 경로에 머물며 닫기 차단 사유, 결과 판단, 쓰기 판단 사유, 예정 차단 사유가 아닙니다. |
+| 읽기용 보기 최신성 | `PROJECTION_STALE`만으로는 닫기 차단 사유 코드가 아닙니다. |
 | 대체 코드 | `VALIDATOR_FAILED`는 더 구체적인 지원 코드가 적용되지 않고 담당 메서드나 스키마가 대체 사용을 담당할 때만 사용할 수 있습니다. |
 
 <a id="errorcode-validation-failed"></a>
@@ -94,7 +94,7 @@
 - 담당 상태 변경이 발생하지 않습니다.
 
 허용되지 않는 것:
-- 이 값을 닫기 준비 상태 차단 사유 코드로 사용하지 않습니다.
+- 이 값을 닫기 차단 사유 코드로 사용하지 않습니다.
 
 관련 충돌 세부사항:
 - 오래된 `WriteAuthorization.basis_state_version`과 멱등 요청 해시 충돌은 [상태 버전 충돌](error-precedence.md#state-conflict-behavior)에서 다룹니다.
@@ -431,7 +431,7 @@
 - 담당 상태 변경이 발생하지 않습니다.
 
 허용되지 않는 것:
-- 이 값만으로 닫기 준비 상태 차단 사유 코드를 만들지 않습니다.
+- 이 값만으로 닫기 차단 사유 코드를 만들지 않습니다.
 
 <a id="errorcode-artifact-missing"></a>
 ### `ARTIFACT_MISSING`

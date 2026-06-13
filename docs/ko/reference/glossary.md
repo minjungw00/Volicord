@@ -44,6 +44,7 @@
 | close readiness evaluation | 닫기 준비 상태 평가 | [Task 닫기 메서드](api/method-close-task.md) |
 | close-readiness blocker | 닫기 차단 사유 | [Core 모델](core-model.md) |
 | `CloseReadinessBlocker` | `CloseReadinessBlocker` | [API 상태 스키마](api/schema-state.md) |
+| blocker category | 차단 사유 범주 | [API 값 집합](api/schema-value-sets.md) |
 | complete intent | `complete` | [API 값 집합](api/schema-value-sets.md) |
 | full evaluation order | 전체 평가 순서 | [번역 가이드](../maintain/translation-guide.md) |
 | artifact | 아티팩트 | [API 아티팩트 스키마](api/schema-artifacts.md) |
@@ -65,6 +66,8 @@
 | profile-gated value | 프로필 조건부 값 | [기준 범위](scope.md) |
 | error routing | 오류 처리 경로 | [API 오류 처리 경로](api/error-routing.md) |
 | blocker routing | 차단 사유 처리 경로 | [API 차단 사유 처리 경로](api/blocker-routing.md) |
+| error/blocker boundary | 오류와 차단 사유의 경계 | [API 차단 사유 처리 경로](api/blocker-routing.md) |
+| public error as blocker | 공개 오류 코드가 차단 사유로 표현되는 경우 | [API 차단 사유 처리 경로](api/blocker-routing.md) |
 | `ToolError.details` | `ToolError.details` | [API 오류 세부사항](api/error-details.md) |
 | dry-run | dry-run 미리보기 | [API 코어 스키마](api/schema-core.md) |
 | blocked result | 차단 결과 | [API 오류 처리 경로](api/error-routing.md) |
@@ -651,7 +654,30 @@
 - [API 차단 사유 처리 경로](api/blocker-routing.md)
 
 설명:
-- `CloseReadinessBlocker`는 닫기 준비 상태의 차단 데이터를 나타내는 API 스키마 식별자입니다.
+- `CloseReadinessBlocker`는 닫기 차단 사유 데이터를 나타내는 API 스키마 식별자입니다.
+
+### blocker category
+
+영어:
+- blocker category
+
+한국어:
+- 참조 문서: 차단 사유 범주
+- 사용자 문서: 차단 사유 범주
+
+보존할 식별자:
+- `CloseReadinessBlocker.category`
+
+피할 표현:
+- blocker 범주
+- blocker category를 번역하지 않고 남기는 표현
+
+담당 문서:
+- [API 값 집합](api/schema-value-sets.md)
+- [API 차단 사유 처리 경로](api/blocker-routing.md)
+
+설명:
+- 차단 사유 범주는 `CloseReadinessBlocker.category` 값이 닫기 차단 사유를 알맞은 담당 관심사로 보내는 분류입니다.
 
 ### complete intent
 
@@ -1176,7 +1202,7 @@
 - `CloseTaskResult(close_state=blocked)`
 
 피할 표현:
-- 오류 처리 경로를 공개 `ErrorCode` 의미, 오류 우선순위, `ToolError.details`, 닫기 준비 상태 차단 사유 처리 경로처럼 쓰는 표현
+- 오류 처리 경로를 공개 `ErrorCode` 의미, 오류 우선순위, `ToolError.details`, 차단 사유 처리 경로처럼 쓰는 표현
 
 담당 문서:
 - [API 오류 처리 경로](api/error-routing.md)
@@ -1207,8 +1233,57 @@
 - [API 차단 사유 처리 경로](api/blocker-routing.md)
 
 설명:
-- 차단 사유 처리 경로는 닫기 준비 상태 차단 사유와 API 응답 분기 사이의 경계, 공개 코드와 차단 사유 경계를 다룹니다.
+- 차단 사유 처리 경로는 닫기 차단 사유와 API 응답 분기 사이의 경계, 오류와 차단 사유의 경계를 다룹니다.
 - `harness.close_task` 메서드별 동작은 Task 닫기 메서드 담당 문서가 맡습니다.
+
+### error/blocker boundary
+
+영어:
+- error/blocker boundary
+- API error versus close-readiness blocker boundary
+
+한국어:
+- 참조 문서: 오류와 차단 사유의 경계
+- 사용자 문서: 오류와 차단 사유의 경계
+
+보존할 식별자:
+- `ErrorCode`
+- `CloseReadinessBlocker`
+- `CloseReadinessBlocker.code`
+
+피할 표현:
+- 공개 오류 코드와 차단 사유를 같은 코드 공간으로 보는 표현
+- 오류와 닫기 차단 사유를 같은 코드 공간으로 보는 표현
+
+담당 문서:
+- [API 차단 사유 처리 경로](api/blocker-routing.md)
+
+설명:
+- 오류와 차단 사유의 경계는 유효한 평가 전에 반환되는 API 오류와 유효한 평가 뒤에 반환되는 닫기 차단 사유 데이터를 구분합니다.
+
+### public error as blocker
+
+영어:
+- public error as blocker
+- public `ErrorCode` as blocker
+
+한국어:
+- 참조 문서: 공개 오류 코드가 차단 사유로 표현되는 경우
+- 사용자 문서: 공개 오류 코드가 차단 사유로 표현되는 경우
+
+보존할 식별자:
+- `ErrorCode`
+- `CloseReadinessBlocker.code`
+
+피할 표현:
+- 공개 `ErrorCode` 값을 자동으로 `CloseReadinessBlocker.code`에 복사하는 표현
+
+담당 문서:
+- [API 차단 사유 처리 경로](api/blocker-routing.md)
+- [API 오류 코드](api/error-codes.md)
+
+설명:
+- 공개 오류 코드가 차단 사유로 표현되는 경우는 스키마나 메서드 담당 문서가 그 정확한 사용을 허용한 때로 제한됩니다.
 
 ### `ToolError.details`
 
@@ -1278,7 +1353,7 @@
 
 피할 표현:
 - 거부 응답
-- 공개 오류
+- 공개 오류 코드
 - `STATE_VERSION_CONFLICT`를 차단 코드로 쓰는 표현
 
 담당 문서:

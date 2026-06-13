@@ -232,21 +232,21 @@ GuaranteeDisplay:
 ```
 
 의미:
-- `CloseReadinessBlocker`는 닫기 준비 상태 발견 사항을 표현하는 데이터 형태입니다.
+- `CloseReadinessBlocker`는 닫기 차단 사유를 표현하는 데이터 형태입니다.
 
 닫기 준비 상태 의미와 지속 동작은 아래에 연결된 메서드, Core 모델, 저장 담당 문서가 담당합니다.
 
 담당 문서 링크:
 - 닫기 준비 상태 의미와 대체 금지 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task)
 - 응답 분기 동작, 닫기 준비 상태 평가 순서, 커밋된 차단 결과: [`harness.close_task`](method-close-task.md)
-- 닫기 준비 상태 차단 사유/API 응답 처리 경로 의미: [API 차단 사유 처리 경로](blocker-routing.md)
+- 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로 의미: [API 차단 사유 처리 경로](blocker-routing.md)
 - 지원되는 `CloseReadinessBlocker.category`, `ValidatorResult.status`, `ValidatorResult.severity`, `GuaranteeDisplay.level` 값: [API 값 집합](schema-value-sets.md#state-and-blocker-values)
 - 보안 보장 의미: [보안](../security.md)
 
 ## 관련 담당 문서
 
 - [API 코어 스키마](schema-core.md): `ToolEnvelope`, `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`.
-- [API 값 집합](schema-value-sets.md#state-and-blocker-values): 닫기 준비 상태 차단 사유 범주 값과 인접 상태 값.
+- [API 값 집합](schema-value-sets.md#state-and-blocker-values): 닫기 차단 사유 범주 값과 인접 상태 값.
 - [API 메서드](methods.md)와 메서드 담당 문서: 이 스키마를 반환하는 메서드.
 - [API 아티팩트 스키마](schema-artifacts.md): `ArtifactRef`.
 - [API 판단 스키마](schema-judgment.md): `UserJudgmentCandidate`.

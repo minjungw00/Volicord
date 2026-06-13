@@ -2,7 +2,7 @@
 
 이 문서는 공개 오류 후보가 둘 이상 있을 때 주 공개 오류를 선택하는 규칙을 담당합니다. `STATE_VERSION_CONFLICT`의 공개 오래된 상태와 멱등성 충돌 동작도 담당합니다.
 
-공개 `ErrorCode` 값 집합, 응답 분기 경로, 닫기 준비 상태 차단 사유 처리 경로, `harness.close_task` 메서드 동작, 기계 판독용 세부 필드, 응답 분기 형태, 저장소 재실행 행, 렌더링 라벨은 정의하지 않습니다.
+공개 `ErrorCode` 값 집합, 응답 분기 경로, 차단 사유 처리 경로, `harness.close_task` 메서드 동작, 기계 판독용 세부 필드, 응답 분기 형태, 저장소 재실행 행, 렌더링 라벨은 정의하지 않습니다.
 
 ## 담당 경계
 
@@ -14,9 +14,9 @@
 
 이 문서는 담당하지 않습니다.
 
-- 우선순위 선택 밖의 공개 코드 의미: [API 오류 코드](error-codes.md).
+- 우선순위 선택 밖의 공개 오류 코드 의미: [API 오류 코드](error-codes.md).
 - API 응답 분기 경로: [API 오류 처리 경로](error-routing.md).
-- 닫기 준비 상태 차단 사유/API 응답 경계: [API 차단 사유 처리 경로](blocker-routing.md).
+- 닫기 차단 사유와 API 응답 사이의 경계: [API 차단 사유 처리 경로](blocker-routing.md).
 - `harness.close_task` 메서드별 차단 동작: [`harness.close_task`](method-close-task.md).
 - 기계 판독용 충돌 세부 필드: [API 오류 세부사항](error-details.md#state-conflict-detail-fields).
 - 저장소 재실행 행과 상태 시계: [저장소 버전 관리](../storage-versioning.md).
@@ -227,7 +227,7 @@
 
 | 경계 | 이 문서의 규칙 | 이웃 담당 문서 |
 |---|---|---|
-| 공개 코드 의미 | 아래 충돌 경우에는 `STATE_VERSION_CONFLICT`를 선택합니다. | 공개 코드 의미: [API 오류 코드](error-codes.md). |
+| 공개 오류 코드 의미 | 아래 충돌 경우에는 `STATE_VERSION_CONFLICT`를 선택합니다. | 공개 오류 코드 의미: [API 오류 코드](error-codes.md). |
 | 응답 경로 | 이 충돌은 `ToolRejectedResponse.errors[]`를 사용합니다. | 응답 분기 경로: [API 오류 처리 경로](error-routing.md). |
 | 결과, 차단 사유, 닫기 준비 상태 경계 경로 | `STATE_VERSION_CONFLICT`를 차단 사유 코드, `dry_run` 미리보기, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`로 사용하지 않습니다. | 경계 처리: [API 차단 사유 처리 경로](blocker-routing.md). 메서드 동작: [`harness.close_task`](method-close-task.md). |
 | 세부 필드 | 이 충돌에는 상태 충돌 세부 필드 묶음을 사용합니다. | 기계 판독용 필드: [API 오류 세부사항](error-details.md#state-conflict-detail-fields). |
@@ -238,7 +238,7 @@
 조건:
 - `ToolEnvelope.expected_state_version`이 `project_state.state_version`보다 오래되었습니다.
 
-공개 코드:
+공개 오류 코드:
 - `STATE_VERSION_CONFLICT`
 
 응답 경로:
@@ -257,7 +257,7 @@
 조건:
 - 소비 전 `WriteAuthorization.basis_state_version`이 오래된 상태입니다.
 
-공개 코드:
+공개 오류 코드:
 - `STATE_VERSION_CONFLICT`
 
 응답 경로:
@@ -277,7 +277,7 @@
 조건:
 - 같은 `idempotency_key`가 다른 요청 해시와 함께 재사용되었습니다.
 
-공개 코드:
+공개 오류 코드:
 - `STATE_VERSION_CONFLICT`
 
 응답 경로:

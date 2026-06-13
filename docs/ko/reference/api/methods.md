@@ -38,4 +38,4 @@
 | `harness.record_user_judgment` | [사용자 판단 메서드 담당 문서](method-user-judgment.md#harnessrecord_user_judgment) |
 | `harness.close_task` | [Task 닫기 메서드 담당 문서](method-close-task.md) |
 
-요청과 응답 동작은 표에 연결된 메서드 담당 문서를 사용합니다. `harness.close_task`의 차단 사유 생성 분기는 Task 닫기 메서드 담당 문서에 남기고, [API 차단 사유 처리 경로](blocker-routing.md)는 닫기 준비 상태 차단 사유/API 응답 처리 경로 의미를 확인할 때만 사용합니다.
+요청과 응답 동작은 표에 연결된 메서드 담당 문서를 사용합니다. `harness.close_task`의 차단 사유 생성 분기는 Task 닫기 메서드 담당 문서에 남기고, [API 차단 사유 처리 경로](blocker-routing.md)는 닫기 차단 사유와 API 응답 사이의 처리 경로 의미를 확인할 때만 사용합니다.

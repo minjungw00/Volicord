@@ -2,7 +2,7 @@
 
 이 문서는 하네스 API 오류의 기계 판독용 `ToolError.details` 의미, 세부 필드, 보조 값, 세부사항 제약을 담당합니다.
 
-`ToolError` 객체 형태, 공개 `ErrorCode` 의미, 우선순위 선택, 닫기 준비 상태 차단 사유 처리 경로, 표시 라벨, 저장 효과는 정의하지 않습니다.
+`ToolError` 객체 형태, 공개 `ErrorCode` 의미, 우선순위 선택, 차단 사유 처리 경로, 표시 라벨, 저장 효과는 정의하지 않습니다.
 
 ## 담당 경계
 
@@ -18,7 +18,7 @@
 - 공개 `ErrorCode` 값과 의미: [API 오류 코드](error-codes.md).
 - 주 코드 우선순위와 충돌 선택: [API 오류 우선순위](error-precedence.md).
 - API 응답 분기 경로: [API 오류 처리 경로](error-routing.md).
-- 닫기 준비 상태 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md).
+- 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md).
 - 표시 문구로만 쓰는 렌더링 라벨과 메시지 문구: [템플릿 본문](../template-bodies.md).
 
 <a id="machine-readable-error-details"></a>

@@ -12,7 +12,7 @@ canonical_for:
   - "Terminology boundaries for reserved/profile-gated value presence versus supported behavior."
   - "Terminology boundaries between stable supported documentation contracts and runtime-active or currently applied context."
   - "Terminology boundaries between documentation owner routing and product behavior or storage persistence conditions."
-  - "Terminology routing for API error routing, blocker routing, and `ToolError.details`."
+  - "Terminology routing for API error routing, blocker routing, error/blocker boundaries, public error as blocker wording, and `ToolError.details`."
   - "Artifact and evidence terminology conventions for bilingual documentation."
 does_not_own:
   - "Product, API, storage, security, projection, or runtime contracts."
@@ -99,6 +99,10 @@ avoid:
       use: "접점 정보, 또는 필드 이름이면 `surface_id`"
     - phrase: "close blocker를 확인한다"
       use: "닫기 차단 사유를 확인한다"
+    - phrase: "blocker 처리 경로"
+      use: "차단 사유 처리 경로"
+    - phrase: "blocker 라우팅"
+      use: "차단 사유 처리 경로"
     - phrase: "`complete` 평가 순서"
       use: "전체 평가 순서"
     - phrase: "complete 평가 순서"
@@ -615,6 +619,22 @@ terms:
     notes:
       - "Never translate the identifier itself."
       - "Do not use it as a prepare-write reason or as the entire close-readiness concept."
+  blocker_category:
+    category: "api_concept"
+    en: "blocker category"
+    ko_reference: "차단 사유 범주"
+    ko_user: "차단 사유 범주"
+    preserve_as_identifier:
+      - "CloseReadinessBlocker.category"
+    owner_documents:
+      en:
+        - "docs/en/reference/api/schema-value-sets.md"
+        - "docs/en/reference/api/blocker-routing.md"
+      ko:
+        - "docs/ko/reference/api/schema-value-sets.md"
+        - "docs/ko/reference/api/blocker-routing.md"
+    notes:
+      - "Use for the prose category concept; preserve `CloseReadinessBlocker.category` when naming the exact field."
   blocker:
     category: "general_prose"
     en: "blocker"
@@ -1026,22 +1046,46 @@ terms:
       - "CloseReadinessBlocker"
       - "CloseReadinessBlocker.category"
       - "CloseReadinessBlocker.code"
+    avoid_ko:
+      - "blocker 처리 경로"
+      - "blocker 라우팅"
     owner_documents:
       en:
         - "docs/en/reference/api/blocker-routing.md"
       ko:
         - "docs/ko/reference/api/blocker-routing.md"
     notes:
-      - "Blocker routing covers the routing boundary between close-readiness blockers and API response branches, including the public-code-to-blocker boundary."
+      - "Blocker routing covers the routing boundary between close-readiness blockers and API response branches, including the error/blocker boundary and public error as blocker wording."
       - "The owner document path remains `api/blocker-routing.md`."
       - "Method-specific `harness.close_task` behavior belongs to `api/method-close-task.md`."
       - "`CloseReadinessBlocker` schema shape belongs to `api/schema-state.md`."
       - "The close-readiness authority concept belongs to `reference/core-model.md`."
+  error_blocker_boundary:
+    category: "api_concept"
+    en: "error/blocker boundary"
+    aliases_en:
+      - "API error versus close-readiness blocker boundary"
+    ko_reference: "오류와 차단 사유의 경계"
+    ko_user: "오류와 차단 사유의 경계"
+    preserve_as_identifier:
+      - "ErrorCode"
+      - "CloseReadinessBlocker"
+      - "CloseReadinessBlocker.code"
+    owner_documents:
+      en:
+        - "docs/en/reference/api/blocker-routing.md"
+      ko:
+        - "docs/ko/reference/api/blocker-routing.md"
+    notes:
+      - "Use for the boundary between pre-evaluation public API errors and post-evaluation close-readiness blocker data."
   forbidden_public_error_as_blocker_mapping:
     category: "api_concept"
-    en: "public-code-to-blocker boundary"
-    ko_reference: "공개 코드와 차단 사유 경계"
-    ko_user: "공개 코드와 차단 사유 경계"
+    en: "public error as blocker"
+    aliases_en:
+      - "public-code-to-blocker boundary"
+      - "public `ErrorCode` as blocker"
+    ko_reference: "공개 오류 코드가 차단 사유로 표현되는 경우"
+    ko_user: "공개 오류 코드가 차단 사유로 표현되는 경우"
     preserve_as_identifier:
       - "ErrorCode"
       - "CloseReadinessBlocker.code"
@@ -1091,10 +1135,14 @@ terms:
       en:
         - "docs/en/reference/api/error-routing.md"
         - "docs/en/reference/api/methods.md"
+        - "docs/en/reference/api/method-close-task.md"
+        - "docs/en/reference/api/method-prepare-write.md"
         - "docs/en/reference/storage-effects.md"
       ko:
         - "docs/ko/reference/api/error-routing.md"
         - "docs/ko/reference/api/methods.md"
+        - "docs/ko/reference/api/method-close-task.md"
+        - "docs/ko/reference/api/method-prepare-write.md"
         - "docs/ko/reference/storage-effects.md"
     notes:
       - "A blocked result is not a public transport or schema rejection."

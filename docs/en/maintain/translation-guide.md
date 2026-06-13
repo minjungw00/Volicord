@@ -79,6 +79,7 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | close readiness, user-facing | 닫기 가능 여부 | Use when explaining to end users whether a task can be closed. |
 | close readiness evaluation | 닫기 준비 상태 평가 | Never use "close 가능성 평가". |
 | close-readiness blocker | 닫기 차단 사유 | A close-relevant blocker; preserve `CloseReadinessBlocker` when naming the schema. |
+| blocker category | 차단 사유 범주 | Preserve the exact field identifier when naming `CloseReadinessBlocker.category`. |
 | `complete` as an identifier | `complete` | Preserve only when it is an enum value or identifier, such as `intent=complete`; use "full" or "entire" for ordinary adjective meaning. |
 | full evaluation order | 전체 평가 순서; in close-readiness context, 전체 닫기 준비 상태 평가 순서 | Do not write `complete` 평가 순서, complete 평가 순서, or `complete` 닫기 준비 상태 순서. |
 | artifact | 아티팩트 | Preserve `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle`; do not use artifact availability as evidence sufficiency. |
@@ -103,7 +104,10 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | baseline guarantee | 기준 범위 보장 | Use only when Scope and Security document the behavior as supported in the baseline scope. |
 | error routing | 오류 처리 경로 | Covers API response branch routing; owner path remains `api/error-routing.md`. |
 | blocker routing | 차단 사유 처리 경로 | Covers the close-readiness blocker/API response routing boundary; owner path remains `api/blocker-routing.md`. |
+| error/blocker boundary | 오류와 차단 사유의 경계 | Use for the boundary between pre-evaluation API errors and post-evaluation close-readiness blocker data. |
+| public error as blocker | 공개 오류 코드가 차단 사유로 표현되는 경우 | Preserve `ErrorCode` and `CloseReadinessBlocker.code` as identifiers. |
 | `ToolError.details` | `ToolError.details` | Exact API detail identifier; preserve it in backticks. |
+| blocked result | 차단 결과 | Preserve exact API values when they are enum or code values; otherwise explain naturally in Korean prose. |
 | out-of-scope capability | 지원 범위 밖 기능 | Keep deferred material clearly deferred. |
 | migration | 마이그레이션 | Use for technical schema, storage, data, or documentation migration concepts; do not translate it as previous choice. |
 
@@ -214,6 +218,8 @@ The following patterns are forbidden in Korean prose unless they appear inside a
 | lifecycle 의미 | 생명주기 의미, or 생명주기의 뜻 |
 | surface 정보 | 접점 정보, or `surface_id` when naming the field |
 | close blocker를 확인한다 | 닫기 차단 사유를 확인한다 |
+| blocker 처리 경로 | 차단 사유 처리 경로 |
+| blocker 라우팅 | 차단 사유 처리 경로 |
 | migration = 이전 선택 | technical migration context: 마이그레이션 |
 
 Mixed English/Korean may be correct when the English part is an identifier, for example `ArtifactRef`를 보존한다 or `surface_id`는 권한 증거가 아니다. When the English part is ordinary prose, translate it.

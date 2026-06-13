@@ -79,6 +79,7 @@
 | close readiness, 사용자 문서 | 닫기 가능 여부 | 사용자가 작업을 닫을 수 있는지 설명할 때 씁니다. |
 | close readiness evaluation | 닫기 준비 상태 평가 | 영어와 한국어를 섞은 평가 표현을 쓰지 않습니다. |
 | close-readiness blocker | 닫기 차단 사유 | 닫기와 관련된 차단 사유입니다. 스키마를 이름 붙일 때는 `CloseReadinessBlocker`를 보존합니다. |
+| blocker category | 차단 사유 범주 | `CloseReadinessBlocker.category`처럼 정확한 필드 이름을 말할 때는 식별자를 보존합니다. |
 | 식별자로서 `complete` | `complete` | `intent=complete`처럼 enum 값이나 식별자일 때만 보존합니다. 일반 형용사 뜻이면 전체나 전체 평가처럼 옮깁니다. |
 | full evaluation order | 전체 평가 순서, 닫기 준비 상태 맥락에서는 전체 닫기 준비 상태 평가 순서 | 전체 순서 뜻으로 `complete`를 붙이지 않습니다. |
 | artifact | 아티팩트 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle`은 보존합니다. 아티팩트가 있다는 사실만으로 증거 충분성이 성립한다고 쓰지 않습니다. |
@@ -102,8 +103,11 @@
 | applicable owner path | 적용되는 담당 경로 | 어떤 주제에 적용되는 담당 문서 경로입니다. 문서 경로 안내에만 쓰고, 제품 동작이나 저장 지속 조건처럼 쓰지 않습니다. |
 | baseline guarantee | 기준 범위 보장 | 기준 범위와 보안 담당 문서가 지원된다고 정의한 보장에만 씁니다. |
 | error routing | 오류 처리 경로 | API 응답 분기 경로를 다룹니다. 담당 경로는 `api/error-routing.md`로 유지합니다. |
-| blocker routing | 차단 사유 처리 경로 | 닫기 준비 상태 차단 사유와 API 응답 처리 경계를 다룹니다. 담당 경로는 `api/blocker-routing.md`로 유지합니다. |
+| blocker routing | 차단 사유 처리 경로 | 닫기 차단 사유와 API 응답 처리 경계를 다룹니다. 담당 경로는 `api/blocker-routing.md`로 유지합니다. |
+| error/blocker boundary | 오류와 차단 사유의 경계 | 유효한 평가 전 API 오류와 유효한 평가 뒤 닫기 차단 사유 데이터를 구분할 때 씁니다. |
+| public error as blocker | 공개 오류 코드가 차단 사유로 표현되는 경우 | `ErrorCode`와 `CloseReadinessBlocker.code`는 식별자로 보존합니다. |
 | `ToolError.details` | `ToolError.details` | 정확한 API 세부 식별자이므로 백틱 안에 그대로 보존합니다. |
+| blocked result | 차단 결과 | enum 값이나 코드 값이면 정확한 API 값을 보존하고, 일반 산문에서는 자연스럽게 설명합니다. |
 | out-of-scope capability | 지원 범위 밖 기능 | 미뤄 둔 자료임을 분명히 유지합니다. |
 | migration | 마이그레이션 | 스키마, 저장소, 데이터, 문서 구조를 옮기거나 갱신하는 기술 개념에 씁니다. 이전 선택이라는 뜻으로 옮기지 않습니다. |
 
@@ -214,6 +218,8 @@
 | lifecycle 의미 | 생명주기 의미, 또는 생명주기의 뜻 |
 | surface 정보 | 접점 정보, 또는 필드 이름이면 `surface_id` |
 | close blocker를 확인한다 | 닫기 차단 사유를 확인한다 |
+| blocker 처리 경로 | 차단 사유 처리 경로 |
+| blocker 라우팅 | 차단 사유 처리 경로 |
 | migration = 이전 선택 | 기술 마이그레이션 문맥에서는 마이그레이션 |
 
 영어 부분이 식별자라면 한국어와 함께 써도 됩니다. 예를 들어 `ArtifactRef`를 보존한다, `surface_id`는 권한 증거가 아니다 같은 문장은 올바릅니다. 영어 부분이 일반 산문이면 한국어로 옮깁니다.
