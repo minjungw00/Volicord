@@ -40,6 +40,7 @@
 | complete intent | `complete` | [API 값 집합](api/schema-value-sets.md) |
 | full evaluation order | 전체 평가 순서 | [번역 가이드](../maintain/translation-guide.md) |
 | artifact | 아티팩트 | [API 아티팩트 스키마](api/schema-artifacts.md) |
+| evidence | 증거 | [Core 모델](core-model.md) |
 | `ArtifactRef` | `ArtifactRef` | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | `StagedArtifactHandle` | `StagedArtifactHandle` | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | projection | 상태 보기 | [상태 보기 권한 참조](projection-and-templates.md) |
@@ -48,7 +49,7 @@
 | `Write Authorization` | 쓰기 권한 부여 | [Core 모델](core-model.md) |
 | sensitive approval | 민감 동작 승인 | [Core 모델](core-model.md) |
 | access class | 접근 등급 | [API 값 집합](api/schema-value-sets.md) |
-| active guarantee | 현재 활성 보장 | [보안](security.md) |
+| baseline guarantee | 기준 범위 보장 | [보안](security.md) |
 | cooperative guarantee | 협력형 보장 | [보안](security.md) |
 | detective guarantee | 탐지형 보장 | [보안](security.md) |
 | reserved value | 예약된 값 | [기준 범위](scope.md) |
@@ -56,6 +57,7 @@
 | dry-run | dry-run 미리보기 | [API 코어 스키마](api/schema-core.md) |
 | blocked result | 차단 결과 | [API 오류](api/errors.md) |
 | rejected response | 거부 응답 | [API 코어 스키마](api/schema-core.md) |
+| migration | 마이그레이션 | [저장소 버전 관리](storage-versioning.md) |
 | lifecycle | 생명주기 | [Core 모델](core-model.md) |
 
 ## 용어
@@ -101,7 +103,7 @@
 - [런타임 경계](runtime-boundaries.md)
 
 설명:
-- Product Repository는 사용자의 프로젝트 작업 공간이며 하네스 런타임 상태가 아닙니다.
+- `Product Repository`는 사용자의 프로젝트 작업 공간이며 하네스 런타임 상태가 아닙니다.
 
 ### Harness Runtime Home
 
@@ -116,13 +118,13 @@
 - 경계를 이름 붙일 때 `Harness Runtime Home`
 
 피할 표현:
-- 이 문서 저장소나 Product Repository를 Runtime Home으로 보는 표현
+- 이 문서 저장소나 `Product Repository`를 `Harness Runtime Home`으로 보는 표현
 
 담당 문서:
 - [런타임 경계](runtime-boundaries.md)
 
 설명:
-- Harness Runtime Home은 하네스 기록과 아티팩트를 담는 운영 데이터 공간입니다.
+- `Harness Runtime Home`은 하네스 기록과 아티팩트를 담는 운영 데이터 공간입니다.
 
 ### documentation
 
@@ -154,7 +156,6 @@
 
 영어:
 - baseline scope
-- 기준 범위
 
 한국어:
 - 참조 문서: 기준 범위
@@ -165,14 +166,14 @@
 - 정확한 값 문자열
 
 피할 표현:
-- 지원 범위 밖 기능나 프로필 조건부 값을 현재 요구사항처럼 쓰는 표현
+- 지원 범위 밖 기능이나 프로필 조건부 값을 기준 범위 요구사항처럼 쓰는 표현
 
 담당 문서:
 - [기준 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
-- 기준 범위는 첫 로컬 작업 루프를 위한 활성 제품 범위 경계입니다.
+- 기준 범위는 지원되는 문서화 제품 범위의 경계입니다.
 
 ### out-of-scope capability
 
@@ -270,7 +271,7 @@
 - [기준 범위](scope.md)
 
 설명:
-- 승격 시점의 담당 문서 갱신에는 담당 문서를 만들거나 지정한 뒤 현재 범위, 스키마, API 동작, 저장소, 템플릿, 점검, 한영 문서를 함께 맞추는 일이 포함될 수 있습니다.
+- 승격 시점의 담당 문서 갱신에는 담당 문서를 만들거나 지정한 뒤 기준 범위, 스키마, API 동작, 저장소, 템플릿, 점검, 한영 문서를 함께 맞추는 일이 포함될 수 있습니다.
 
 ### owner placeholder
 
@@ -292,7 +293,7 @@
 - [범위 참조](scope.md)
 
 설명:
-- 이 표현은 범위 밖 기능을 활성화하기 전에 담당 문서를 만들거나 지정해야 할 수 있음을 나타낼 때만 씁니다.
+- 이 표현은 지원 범위 밖 기능을 기준 범위로 승격하기 전에 담당 문서를 만들거나 지정해야 할 수 있음을 나타낼 때만 씁니다.
 - 담당 문서 자리표시자는 현재 담당 문서가 아닙니다.
 
 ### `Task`
@@ -364,7 +365,7 @@
 - `judgment_kind`
 
 피할 표현:
-- 광범위한 승인을 수락, 잔여 위험 수락, 범위 변경, 민감 동작 승인, Write Authorization으로 보는 표현
+- 광범위한 승인을 수락, 잔여 위험 수락, 범위 변경, 민감 동작 승인, `Write Authorization`으로 보는 표현
 
 담당 문서:
 - [Core 모델](core-model.md)
@@ -554,6 +555,37 @@
 
 설명:
 - 아티팩트의 정확한 저장 동작은 아티팩트 계약이 담당합니다.
+- 아티팩트가 있다는 사실만으로 증거 충분성이 성립하지는 않습니다.
+
+### evidence
+
+영어:
+- evidence
+
+한국어:
+- 참조 문서: 증거
+- 사용자 문서: 증거
+
+보존할 식별자:
+- `EvidenceSummary`
+- `EvidenceCoverageItem`
+- `evidence_summary`
+- `evidence_updates`
+- `evidence_summaries`
+
+피할 표현:
+- 증거를 영어로 남긴 기록 표현
+- 증거 요약을 영어로 남긴 표현
+- 아티팩트가 있다는 사실을 증거 충분성으로 보는 표현
+
+담당 문서:
+- [Core 모델](core-model.md)
+- [API 상태 스키마](api/schema-state.md)
+- [실행 기록 메서드](api/method-record-run.md)
+- [저장소 기록](storage-records.md)
+
+설명:
+- 증거는 기록된 범위 안에서 기록된 주장을 뒷받침합니다. 최종 수락, 잔여 위험 수락, 포괄적 검증, 아티팩트 존재를 대신하지 않습니다.
 
 ### `ArtifactRef`
 
@@ -719,7 +751,7 @@
 - `SensitiveActionScope`
 
 피할 표현:
-- Write Authorization으로 보는 표현
+- `Write Authorization`으로 보는 표현
 - 최종 수락으로 보는 표현
 - 광범위한 승인으로 보는 표현
 
@@ -756,20 +788,20 @@
 설명:
 - 접근 등급은 API와 보안 담당 문서가 보호된 접근 기대를 설명할 때 쓰는 분류입니다.
 
-### active guarantee
+### baseline guarantee
 
 영어:
-- active guarantee
+- baseline guarantee
 
 한국어:
-- 참조 문서: 현재 활성 보장
-- 사용자 문서: 현재 활성 보장
+- 참조 문서: 기준 범위 보장
+- 사용자 문서: 기준 범위 보장
 
 보존할 식별자:
 - 정확한 보장 라벨 값
 
 피할 표현:
-- 예약된 값이나 프로필 조건부 값을 현재 활성 보장처럼 쓰는 표현
+- 예약된 값이나 프로필 조건부 값을 기준 범위 보장처럼 쓰는 표현
 
 담당 문서:
 - [보안](security.md)
@@ -777,7 +809,7 @@
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
-- 현재 범위와 보안 담당 문서가 모두 현재 동작으로 문서화한 보장만 현재 활성 보장입니다.
+- 기준 범위와 보안 담당 문서가 모두 지원된다고 문서화한 보장만 기준 범위 보장입니다.
 
 ### cooperative guarantee
 
@@ -843,15 +875,15 @@
 - 수락됨
 - 검증됨
 - 닫기 준비 상태
-- 현재 활성 보장
+- 기준 범위 보장
 
 담당 문서:
 - [기준 범위](scope.md)
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
-- 예약된 값은 어휘나 예약된 접점으로 존재할 수 있지만, 이름만으로 동작이 활성화되지는 않습니다.
-- 값 집합에 있다는 사실만으로 동작이 활성화되지는 않습니다.
+- 예약된 값은 어휘나 예약된 접점으로 존재할 수 있지만, 이름만으로 지원 동작이 되지는 않습니다.
+- 값 집합에 있다는 사실만으로 동작이 지원되지는 않습니다.
 
 ### profile-gated value
 
@@ -873,8 +905,8 @@
 - [API 값 집합](api/schema-value-sets.md)
 
 설명:
-- 프로필 조건부 값은 관련 프로필과 담당 동작이 활성화되어 있을 때만 사용할 수 있습니다.
-- 값 집합에 있다는 사실만으로 동작이 활성화되지는 않습니다.
+- 프로필 조건부 값은 관련 프로필과 담당 동작이 지원된다고 정의되어 있을 때만 사용할 수 있습니다.
+- 값 집합에 있다는 사실만으로 동작이 지원되지는 않습니다.
 
 ### dry-run
 
@@ -960,6 +992,29 @@
 
 설명:
 - 거부 응답은 메서드가 커밋 동작으로 진행하기 전에 실패했다는 뜻입니다.
+
+### migration
+
+영어:
+- migration
+
+한국어:
+- 참조 문서: 마이그레이션
+- 사용자 문서: 마이그레이션
+
+보존할 식별자:
+- 정확한 마이그레이션 식별자와 파일 경로
+
+피할 표현:
+- 기술 마이그레이션을 이전 선택이나 이전 결정으로 옮기는 표현
+- 일회성 계획 파일로 남는 마이그레이션 메모
+
+담당 문서:
+- [저장소 버전 관리](storage-versioning.md)
+- [저장소 개요](storage.md)
+
+설명:
+- 마이그레이션은 스키마, 저장소, 데이터, 문서 구조를 옮기거나 갱신하는 기술 개념에 씁니다.
 
 ### lifecycle
 

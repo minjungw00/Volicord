@@ -83,7 +83,7 @@ Failure:
 
 Fix:
 - Reword the statement as identification, routing, or documented guidance as appropriate.
-- Link to Security for guarantee semantics, Agent Integration for connector context, and Scope for current availability when needed.
+- Link to Security for guarantee semantics, Agent Integration for connector context, and Scope for support availability when needed.
 
 ## CHK-TERM-005: terminology-map alignment
 

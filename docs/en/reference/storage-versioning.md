@@ -11,7 +11,7 @@ This document owns:
 - idempotency and request-hash replay semantics
 - event meaning for `task_events`
 - lock policy
-- migration semantics and active/out-of-scope migration boundaries
+- migration semantics and baseline/out-of-scope migration boundaries
 - failure and retry interpretation for state versions and idempotency keys
 
 This document does not own:
@@ -28,7 +28,7 @@ This document does not own:
 Meaning:
 
 - The baseline has one public state clock: `project_state.state_version`.
-- `project_state.state_version` is project-wide and is the only active authorization, conflict, freshness, and concurrency basis for public API mutations.
+- `project_state.state_version` is project-wide and is the only baseline authorization, conflict, freshness, and concurrency basis for public API mutations.
 - Task routing still matters for ownership, blockers, close state, evidence, and user judgments.
 - Task routing does not select a separate Task-local state clock.
 - A committed mutation response reports the resulting project-wide version.
@@ -158,7 +158,7 @@ Owner links:
 
 - Blocked-result storage effects belong to [Storage Effects](storage-effects.md#committed-blocked-result) and the affected method owner.
 
-The active first schema should omit `tasks.state_version`.
+The baseline first schema should omit `tasks.state_version`.
 
 If an implementation encounters a legacy or prototype `tasks.state_version` column, that value is ignored metadata only.
 
@@ -420,7 +420,7 @@ Owner links:
 Meaning:
 
 - Migration semantics describe how accepted storage profile or schema-version changes preserve Core authority records.
-- Supported migration execution exists only when [Scope](scope.md) and the affected storage owners define an active path.
+- Supported migration execution exists only when [Scope](scope.md) and the affected storage owners define a supported path.
 - Migration detail must state the version, storage profile, validation, repair, and tightening behavior it owns.
 
 Increments when:
@@ -442,7 +442,7 @@ Owner links:
 - Record layout and DDL belong to [Storage Records](storage-records.md).
 - Runtime Home separation belongs to [Runtime Boundaries](runtime-boundaries.md).
 
-The active migration boundary is:
+The baseline migration boundary is:
 
 - Store schema/profile version in Runtime Home metadata and `project_state`, or an equivalent maintainer-accepted mechanism.
 - Validate owner-shaped JSON before commit and before tightening constraints.

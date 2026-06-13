@@ -23,7 +23,7 @@ The documentation tree stores maintained product and system documentation. Runti
 
 Harness documentation is organized as a routed documentation set with canonical owner documents. Route documents help readers find the right place. Owner documents hold the durable meaning.
 
-Use the compact active routes:
+Use the compact maintained routes:
 
 - `docs/doc-index.yaml`
 - `docs/*/start.md`
@@ -57,7 +57,7 @@ Use these single-owner routes before repeating details:
 
 | Topic | Canonical owner |
 |---|---|
-| Baseline scope boundary and active/out-of-scope status | [Scope](../reference/scope.md) |
+| Baseline scope boundary and baseline/out-of-scope status | [Scope](../reference/scope.md) |
 | Common API envelopes and response branches | [API Schema Core](../reference/api/schema-core.md) |
 | Public error codes and error routing | [Errors](../reference/api/errors.md) |
 | Storage effects | [Storage Effects](../reference/storage-effects.md) |
@@ -91,13 +91,13 @@ Maintain docs own authoring rules and checks. They must not become secondary sou
 
 ### Value status stabilization rules
 
-A value name can exist in a schema, example, storage note, or route page without the baseline scope providing that behavior. Treat the name as vocabulary or reserved surface area until [Scope](../reference/scope.md) and the semantic owner both say the behavior is active.
+A value name can exist in a schema, example, storage note, or route page without the baseline scope providing that behavior. Treat the name as vocabulary or reserved surface area until [Scope](../reference/scope.md) and the semantic owner both define the behavior as supported in the baseline scope.
 
-Reserved and profile-gated values are not active guarantees. Mark them at the point of use and avoid default, required, supported, enforced, stronger-guarantee, detective, accepted, verified, or close-ready wording unless the active owner says the profile and behavior are available.
+Reserved and profile-gated values are not baseline guarantees. Mark them at the point of use and avoid default, required, supported, enforced, stronger-guarantee, detective, accepted, verified, or close-ready wording unless the semantic owner defines the profile and behavior as supported.
 
-Value-set owner documents define exact value names, validation placement, and enum-like vocabulary. Semantic owner documents define what the value means, whether it is currently available, what guarantee level it carries, and what reader consequence follows. If a value-set entry and a semantic owner appear to disagree, do not infer behavior from the value name. Fix the owner gap or route the reader to the correct owner.
+Value-set owner documents define exact value names, validation placement, and enum-like vocabulary. Semantic owner documents define what the value means, whether it is supported, what guarantee level it carries, and what reader consequence follows. If a value-set entry and a semantic owner appear to disagree, do not infer behavior from the value name. Fix the owner gap or route the reader to the correct owner.
 
-Out-of-scope capability activation requirements may name the kinds of owners that must change when the capability becomes active. They must not name a non-existing owner as if it were already a current active owner document. If no current owner exists, say that activation requires creating or designating that owner, then updating active scope, schemas, API behavior, storage, templates, checks, and paired-language docs as applicable.
+Out-of-scope capability promotion requirements may name the kinds of owners that must change when the capability enters the baseline scope. They must not name a non-existing owner as if it were already a current owner document. If no current owner exists, say that promotion requires creating or designating that owner, then updating baseline scope, schemas, API behavior, storage, templates, checks, and paired-language docs as applicable.
 
 Route documents must expose canonical owner gaps rather than hide them. If a README, index, Start page, Use page, Scope page, or `doc-index.yaml` route cannot point to a current owner for the question, do not fill the gap with route prose. Say what is missing, route to the closest real owner, and leave the normative definition out of the route document.
 
@@ -111,7 +111,7 @@ If a duplicate explanation is stale, do not refresh the duplicate. Replace it wi
 
 ## 4. When to create a new document
 
-Create a new document only when no existing owner can responsibly hold the concept. The new page must have a stable reader purpose, a clear owner boundary, and a paired English/Korean route when it is part of the active documentation set.
+Create a new document only when no existing owner can responsibly hold the concept. The new page must have a stable reader purpose, a clear owner boundary, and a paired English/Korean route when it is part of the maintained documentation set.
 
 Do not create a new document for one-off planning notes, migration notes, review leftovers, one-off summaries, or duplicated contract extracts. Put implementation decisions in [Implementation Guide](../build/implementation-guide.md). Put contract definitions in the appropriate Reference owner. Put terminology choices in [Glossary](../reference/glossary.md), [Translation Guide](translation-guide.md), or [Terminology Map](../../terminology-map.yaml).
 
@@ -120,7 +120,7 @@ When adding a real new owner, update [Reference README](../reference/README.md) 
 <a id="baseline-scope-api-method-split-threshold"></a>
 ### API method owners
 
-[`reference/api/methods.md`](../reference/api/methods.md) is the stable route document for the active API method family. Method-specific owner documents own baseline method behavior:
+[`reference/api/methods.md`](../reference/api/methods.md) is the stable route document for the baseline API method family. Method-specific owner documents own baseline method behavior:
 
 - `reference/api/method-intake.md`
 - `reference/api/method-update-scope.md`
@@ -131,7 +131,7 @@ When adding a real new owner, update [Reference README](../reference/README.md) 
 - `reference/api/method-user-judgment.md`
 - `reference/api/method-close-task.md`
 
-When active method behavior changes, edit the method owner first. Then update the API router, [Reference README](../reference/README.md), [doc-index.yaml](../../doc-index.yaml), paired-language owner, and practical inbound links that should land on the method owner.
+When baseline method behavior changes, edit the method owner first. Then update the API router, [Reference README](../reference/README.md), [doc-index.yaml](../../doc-index.yaml), paired-language owner, and practical inbound links that should land on the method owner.
 
 Keep [`reference/api/methods.md`](../reference/api/methods.md) as a route and shared-reading document. It should not duplicate method-specific request bodies, response bodies, result branches, blocked-result details, or storage-effect detail already owned by a method owner.
 
@@ -214,7 +214,7 @@ Split the table when a source line becomes hard to review. Move contract detail 
 
 ## 8. Cross-language editing
 
-English and Korean docs are both active. Do not finish a meaning-changing batch with only one language updated.
+English and Korean docs are both maintained. Do not finish a meaning-changing batch with only one language updated.
 
 Korean docs must not be literal translations. Maintain semantic parity by meaning unit while allowing natural Korean sentence order, paragraph rhythm, and terminology. Preserve exact identifiers in both languages, including file paths, `doc_id` values, API method names, schema fields, enum values, table names, validator IDs, and error codes.
 
@@ -230,7 +230,7 @@ Use relative links inside the documentation tree. Keep exact file paths, anchors
 
 When changing headings, check inbound links and the paired-language document. Korean headings should stay natural; use hidden anchors when a stable English anchor must be preserved.
 
-Do not route active documentation through stale legacy paths. If an old path appears during review, replace it with the compact current route or remove the stale route wording.
+Do not route maintained documentation through stale legacy paths. If an old path appears during review, replace it with the compact maintained route or remove the stale route wording.
 
 ## 10. Pre-merge checklist
 
@@ -241,9 +241,9 @@ Do not route active documentation through stale legacy paths. If an old path app
 - [ ] Value names are not treated as baseline scope behavior merely because they exist in schemas, examples, storage notes, or out-of-scope lists.
 - [ ] Example field names come from the method, schema, or storage owner, and storage-owned summary data is labeled where it uses a different field name.
 - [ ] API examples are internally consistent across response snapshots, `state_version`, refs, paths, artifact refs, sensitive approval reasons, expiration timestamps, and shared scenario evidence.
-- [ ] Reserved and profile-gated values are labeled where used and are not described as active guarantees.
-- [ ] Value-set owners define names; semantic owners define meaning, current availability, guarantees, and reader consequences.
-- [ ] Out-of-scope activation wording does not present non-existing owners as current active owner documents.
+- [ ] Reserved and profile-gated values are labeled where used and are not described as baseline guarantees.
+- [ ] Value-set owners define names; semantic owners define meaning, support availability, guarantees, and reader consequences.
+- [ ] Out-of-scope promotion wording does not present non-existing owners as current owner documents.
 - [ ] Route documents expose canonical owner gaps instead of hiding them with broad route text.
 - [ ] Meaning-changing edits were made in both English and Korean.
 - [ ] Korean prose is natural, not a literal translation, and exact identifiers are preserved.
@@ -253,7 +253,7 @@ Do not route active documentation through stale legacy paths. If an old path app
 - [ ] Dense reference paragraphs were split into conditions, allowed effects, not-allowed effects, exceptions, and owner links where useful.
 - [ ] Tables in all documentation use short mappings, and dense cells were moved into summary rows plus detail blocks.
 - [ ] Check descriptions use named blocks and bullets instead of dense table cells.
-- [ ] Links point to active routes and canonical owners.
+- [ ] Links point to maintained routes and canonical owners.
 - [ ] New or changed terminology was checked against [Terminology Map](../../terminology-map.yaml).
 - [ ] No one-off planning files, archive copies, generated runtime records, or migration notes remain.
 - [ ] Relevant checks in [Checks](checks.md) and its focused check pages were run or reported as skipped.

@@ -6,7 +6,7 @@
 
 ## 1. 의미 일치성
 
-영어와 한국어 문서는 모두 활성 문서입니다. 어느 한쪽도 보관본, 부록, 번역 전용 사본이 아닙니다.
+영어와 한국어 문서는 모두 유지되는 문서입니다. 어느 한쪽도 보관본, 부록, 번역 전용 사본이 아닙니다.
 
 일치 기준은 줄 수가 아니라 의미 단위입니다. 의미 단위는 규칙, 주의 문장, 문단, 표의 행, 예시, 경로, 체크리스트 항목일 수 있습니다. 한국어가 더 분명해진다면 문장 순서를 바꾸거나, 문장을 나누거나 합치거나, 문단 흐름을 영어와 다르게 잡을 수 있습니다.
 
@@ -14,7 +14,7 @@
 
 - 같은 독자 목적
 - 같은 규범 강도
-- 같은 현재/지원 범위 밖 경계
+- 같은 기준 범위/지원 범위 밖 경계
 - 같은 담당 문서 경로
 - 같은 사용자 판단, 증거, 검증, 수락, 잔여 위험 경계
 - 같은 보안 보장 수준
@@ -24,9 +24,9 @@
 
 ## 2. 문서 쌍과 경로 일치성
 
-주요 활성 문서는 `docs/en/`과 `docs/ko/` 아래에 대응 경로를 둡니다. 대응 문서의 줄 번호는 같을 필요가 없지만, 범위와 독자 의도는 같아야 합니다.
+주요 유지 문서는 `docs/en/`과 `docs/ko/` 아래에 대응 경로를 둡니다. 대응 문서의 줄 번호는 같을 필요가 없지만, 범위와 독자 의도는 같아야 합니다.
 
-경로와 탐색 문구는 현재 간결 구조를 사용합니다.
+경로와 탐색 문구는 유지되는 간결 구조를 사용합니다.
 
 - `docs/doc-index.yaml`
 - `docs/*/start.md`
@@ -55,7 +55,7 @@
 - 스키마 이름, 스키마 필드, 객체 이름
 - enum 값, 상태 값, 오류 코드, validator ID, 테이블 이름
 - DDL, 열 이름, 저장소 식별자, 템플릿 이름, 코드 리터럴
-- `Write Authorization`, `Decision Packet`, `Projection`처럼 의도적으로 정확해야 하는 하네스 라벨
+- `Product Repository`, `Harness Runtime Home`, `Projection`, `Write Authorization`, `Evidence Manifest`, `Decision Packet`처럼 의도적으로 정확해야 하는 하네스 라벨
 
 코드 블록, 스키마 예시, API 예시, 파일 경로, 필드 목록, 리터럴 값 표 안의 정확한 문자열은 번역하지 않습니다. 한국어 표시 라벨은 독자를 위한 문구일 뿐이며 기준 식별자를 대신하지 않습니다.
 
@@ -80,17 +80,20 @@
 | close readiness evaluation | 닫기 준비 상태 평가 | 영어와 한국어를 섞은 평가 표현을 쓰지 않습니다. |
 | 식별자로서 `complete` | `complete` | `intent=complete`처럼 enum 값이나 식별자일 때만 보존합니다. 일반 형용사 뜻이면 전체나 전체 평가처럼 옮깁니다. |
 | full evaluation order | 전체 평가 순서, 닫기 준비 상태 맥락에서는 전체 닫기 준비 상태 평가 순서 | 전체 순서 뜻으로 `complete`를 붙이지 않습니다. |
-| artifact | 아티팩트 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle`은 보존합니다. |
+| artifact | 아티팩트 | `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle`은 보존합니다. 아티팩트가 있다는 사실만으로 증거 충분성이 성립한다고 쓰지 않습니다. |
+| evidence | 증거 | `EvidenceSummary`, `EvidenceCoverageItem`, `evidence_summary`는 보존합니다. |
 | surface | 접점 | `surface_id`는 보존하고, 권한 증거처럼 들리게 쓰지 않습니다. |
 | lifecycle | 생명주기 | 식별자가 아니라면 한국어 산문에 영어 용어를 남기지 않습니다. |
 | projection | 상태 보기 | 정확한 하네스 라벨이 필요할 때만 `Projection`을 씁니다. |
 | user-owned judgment | 사용자 소유 판단 | 수락, 잔여 위험 수락과 구분합니다. |
-| sensitive-action approval | 민감 동작 승인 | Write Authorization처럼 설명하지 않습니다. |
+| sensitive-action approval | 민감 동작 승인 | `Write Authorization`처럼 설명하지 않습니다. |
 | Write Authorization | 쓰기 권한 부여, 또는 라벨로서 `Write Authorization` | 하네스 기록 이름을 말할 때는 정확한 라벨을 보존합니다. |
 | cooperative guarantee | 협력형 보장 | 탐지형, 샌드박싱, 강제 차단, 더 강한 격리 표현으로 강화하지 않습니다. |
 | detective guarantee | 탐지형 보장 | 문서화된 관찰 범위가 뒷받침할 때만 씁니다. |
-| baseline scope | 기준 범위 | 지원 범위 밖 기능을 현재 요구사항처럼 번역하지 않습니다. |
+| baseline scope | 기준 범위 | 지원 범위 밖 기능을 기준 범위 요구사항처럼 번역하지 않습니다. |
+| baseline guarantee | 기준 범위 보장 | 기준 범위와 보안 담당 문서가 지원된다고 정의한 보장에만 씁니다. |
 | out-of-scope capability | 지원 범위 밖 기능 | 미뤄 둔 자료임을 분명히 유지합니다. |
+| migration | 마이그레이션 | 스키마, 저장소, 데이터, 문서 구조를 옮기거나 갱신하는 기술 개념에 씁니다. 이전 선택이라는 뜻으로 옮기지 않습니다. |
 
 빠진 용어가 있으면 새 변형을 여러 문서에 퍼뜨리기 전에 용어 지도와 양쪽 번역 가이드를 먼저 갱신합니다.
 
@@ -113,10 +116,12 @@
 | 피할 표현 | 사용할 표현 |
 |---|---|
 | artifact를 저장한다 | 아티팩트를 저장한다 |
+| evidence를 기록한다 | 증거를 기록한다 |
 | surface에서 보인다 | 접점에서 보인다 |
 | lifecycle 의미 | 생명주기의 뜻 |
 | staged handle을 전달한다 | 스테이징된 아티팩트 핸들을 전달한다 |
 | `surface_id`를 접점 권한으로 본다 | `surface_id`는 접점 식별자일 뿐 권한 증거가 아니다 |
+| Evidence Manifest를 일반 증거 목록처럼 번역한다 | 정확한 라벨이면 `Evidence Manifest`, 일반 산문이면 증거 목록이나 증거 명세 |
 
 ## 6. 한국어 기술 문서 문체
 
@@ -170,6 +175,7 @@
 - 닫기 준비 상태 평가
 - 닫기 차단 사유
 - 사용자 소유 판단
+- 증거, 증거 요약
 - 협력형 보장, 탐지형 보장, 예방형 보장
 - 정확한 라벨이 필요할 때 첫 언급에서 `Projection`(읽기 전용 상태 보기)
 
@@ -189,12 +195,15 @@
 | complete 닫기 준비 상태 순서 | 전체 닫기 준비 상태 평가 순서 |
 | artifact 저장 | 아티팩트 저장, 또는 아티팩트를 저장 |
 | artifact bytes | 아티팩트 본문 바이트 |
+| evidence 기록 | 증거 기록 |
+| evidence summary | 증거 요약, 또는 스키마 이름이면 `EvidenceSummary` |
 | staged handle | 스테이징된 아티팩트 핸들, 또는 식별자 이름이면 `StagedArtifactHandle` |
 | checksum, size 검증 | 체크섬과 크기 검증 |
 | ToolEnvelope 봉투 | `ToolEnvelope` 요청 래퍼 |
 | lifecycle 의미 | 생명주기 의미, 또는 생명주기의 뜻 |
 | surface 정보 | 접점 정보, 또는 필드 이름이면 `surface_id` |
 | close blocker를 확인한다 | 닫기 차단 사유를 확인한다 |
+| migration = 이전 선택 | 기술 마이그레이션 문맥에서는 마이그레이션 |
 
 영어 부분이 식별자라면 한국어와 함께 써도 됩니다. 예를 들어 `ArtifactRef`를 보존한다, `surface_id`는 권한 증거가 아니다 같은 문장은 올바릅니다. 영어 부분이 일반 산문이면 한국어로 옮깁니다.
 
@@ -203,7 +212,7 @@
 - [ ] 편집이 문서 변경으로 남아 있고 런타임 구현을 암시하지 않습니다.
 - [ ] 영어와 한국어 문서가 줄 수가 아니라 의미 단위로 일치합니다.
 - [ ] 의미가 바뀐 내용은 같은 작업 묶음에서 양쪽 언어에 반영했습니다.
-- [ ] 대응 파일의 독자 목적, 경로 역할, 담당 문서 경로, 현재/지원 범위 밖 경계가 맞습니다.
+- [ ] 대응 파일의 독자 목적, 경로 역할, 담당 문서 경로, 기준 범위/지원 범위 밖 경계가 맞습니다.
 - [ ] 식별자, API 메서드, 파일 경로, enum 값, 스키마 이름, 테이블 이름, validator ID, 오류 코드, 앵커, 코드 리터럴이 보존되었습니다.
 - [ ] 산문에서 명확성이나 검색성이 필요한 정확한 식별자는 백틱으로 감쌌습니다.
 - [ ] 식별자나 의도적 라벨이 아닌 일반 영어 명사는 한국어 산문으로 옮겼습니다.

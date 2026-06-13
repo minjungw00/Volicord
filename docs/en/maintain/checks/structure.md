@@ -20,7 +20,7 @@ Failure:
 
 Fix:
 - Reduce inputs to changed files, needed paired files, and owner sections needed for the next check.
-- Replace stale routes with compact active routes before continuing.
+- Replace stale routes with compact maintained routes before continuing.
 
 ## CHK-STRUCT-002: maintenance result labels
 
@@ -103,18 +103,18 @@ Owner:
 Check:
 - For status values, enum-like values, profile-gated values, reserved values, access classes, guarantee labels, blocker categories, and display values, identify both the value-set owner and the semantic owner.
 - Confirm the value-set owner is used for exact names and validation placement only.
-- Confirm active behavior, current availability, guarantee level, and reader consequence come from the semantic owner.
+- Confirm supported behavior, support availability, guarantee level, and reader consequence come from the semantic owner.
 
 Failure:
-- A value name is treated as active behavior or an active guarantee merely because it appears in a schema, example, storage note, route page, or out-of-scope list.
+- A value name is treated as supported behavior or a baseline guarantee merely because it appears in a schema, example, storage note, route page, or out-of-scope list.
 - Reserved or profile-gated values appear without their reserved/profile-gated status at the point of use.
 
 Fix:
-- Reword the statement as reserved, profile-gated, deferred, or vocabulary-only until the semantic owner says the behavior is active.
-- Link to the semantic owner for meaning and current availability.
+- Reword the statement as reserved, profile-gated, deferred, or vocabulary-only until the semantic owner says the behavior is supported.
+- Link to the semantic owner for meaning and support availability.
 - If no semantic owner exists, expose the owner gap instead of inferring behavior from the value name.
 
-## CHK-SCOPE-001: active/out-of-scope leakage
+## CHK-SCOPE-001: baseline/out-of-scope leakage
 
 Owner:
 - [Scope](../../reference/scope.md)
@@ -122,19 +122,19 @@ Owner:
 - [Authoring Guide](../authoring-guide.md)
 
 Check:
-- Inspect changed active docs, examples, route text, and summaries for out-of-scope capabilities presented as baseline scope behavior.
+- Inspect changed maintained docs, examples, route text, and summaries for out-of-scope capabilities presented as baseline scope behavior.
 - Confirm profile-gated or reserved values are labeled at the point of use.
 - Confirm out-of-scope activation wording describes missing owners as owners to create or designate, not as existing current owners.
 
 Failure:
-- An out-of-scope capability, reserved operation, profile-gated value, or unproved behavior is described as a default active requirement.
-- Promotion wording names a non-existing owner as if it were already active.
-- Activation wording omits the need to update active scope and paired English/Korean docs when meaning changes.
+- An out-of-scope capability, reserved operation, profile-gated value, or unproved behavior is described as a default baseline requirement.
+- Promotion wording names a non-existing owner as if it were already current.
+- Promotion wording omits the need to update baseline scope and paired English/Korean docs when meaning changes.
 
 Fix:
-- Reword as out of scope and route to Scope, or promote it through the active owner before using active language.
+- Reword as out of scope and route to Scope, or promote it through the semantic owner before using baseline-support language.
 - Link existing current owners only when they actually exist.
-- If activating the capability, update active scope, relevant owners, routes, checks, and paired-language docs in the same documentation batch.
+- If promoting the capability, update baseline scope, relevant owners, routes, checks, and paired-language docs in the same documentation batch.
 
 ## CHK-SCOPE-002: implementation wording
 

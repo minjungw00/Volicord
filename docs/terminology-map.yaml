@@ -10,6 +10,7 @@ canonical_for:
   - "Search-friendly routing for promotion-time owner update terminology."
   - "Terminology distinction between `complete` as an enum/identifier and ordinary prose meaning full or entire."
   - "Terminology boundaries for reserved/profile-gated value presence versus supported behavior."
+  - "Artifact and evidence terminology conventions for bilingual documentation."
 does_not_own:
   - "Product, API, storage, security, projection, or runtime contracts."
   - "Rendered UI copy when an exact template body owner defines the wording."
@@ -39,6 +40,11 @@ identifier_preservation:
     - "StagedArtifactHandle"
     - "artifact_id"
     - "staged_artifact_handle"
+    - "EvidenceSummary"
+    - "EvidenceCoverageItem"
+    - "evidence_summary"
+    - "evidence_updates"
+    - "evidence_summaries"
     - "ProjectionKind"
     - "ToolEnvelope"
     - "ToolRejectedResponse"
@@ -62,6 +68,7 @@ identifier_preservation:
     - "Harness Runtime Home"
     - "Projection"
     - "Write Authorization"
+    - "Evidence Manifest"
     - "Decision Packet"
 avoid:
   ko:
@@ -73,6 +80,10 @@ avoid:
       use: "아티팩트 저장소, 또는 동작을 뜻할 때는 아티팩트를 저장"
     - phrase: "artifact bytes"
       use: "아티팩트 본문 바이트"
+    - phrase: "evidence 기록"
+      use: "증거 기록, 또는 식별자를 뜻할 때는 `EvidenceSummary` 같은 정확한 이름"
+    - phrase: "evidence summary"
+      use: "증거 요약, 또는 스키마를 뜻할 때는 `EvidenceSummary`"
     - phrase: "staged handle"
       use: "스테이징된 아티팩트 핸들, 또는 식별자를 뜻할 때는 `StagedArtifactHandle`"
     - phrase: "checksum, size 검증"
@@ -95,6 +106,8 @@ avoid:
       use: "전체 닫기 준비 상태 평가 순서"
     - phrase: "스코프"
       use: "범위"
+    - phrase: "migration = 이전 선택"
+      use: "기술 마이그레이션 문맥에서는 마이그레이션"
 terms:
   harness:
     category: "product_concept"
@@ -192,8 +205,8 @@ terms:
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "A reserved value may be listed as vocabulary or reserved surface area without being supported behavior."
-      - "Presence in a value set does not activate behavior."
-      - "Mark reserved values at the point of use; do not imply default, required, supported, enforced, accepted, verified, or close-ready behavior unless the active owner says so."
+      - "Presence in a value set does not make behavior supported."
+      - "Mark reserved values at the point of use; do not imply default, required, supported, enforced, accepted, verified, or close-ready behavior unless the semantic owner defines that supported behavior."
   profile_gated_value:
     category: "value_status"
     en: "profile-gated value"
@@ -207,9 +220,9 @@ terms:
         - "docs/ko/reference/scope.md"
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
-      - "A profile-gated value is available only when the documented profile or gate and owner behavior are active."
+      - "A profile-gated value is available only when the documented profile or gate and owner behavior define it as supported."
       - "Do not treat a profile-gated value as baseline behavior merely because it appears in a value set."
-      - "Presence in a value set does not activate behavior."
+      - "Presence in a value set does not make behavior supported."
   owner_document:
     category: "product_concept"
     en: "owner document"
@@ -259,9 +272,9 @@ terms:
         - "docs/ko/reference/scope.md"
         - "docs/ko/reference/scope.md"
     notes:
-      - "This means the owner does not exist as an active contract owner before promotion."
+      - "This means the owner does not exist as a baseline contract owner before promotion."
       - "Do not name a missing owner as if it is a current canonical owner."
-      - "Scope applies the active boundary; the glossary gives the term-level definition."
+      - "Scope applies the baseline boundary; the glossary gives the term-level definition."
   owner_placeholder:
     category: "documentation_concept"
     en: "owner placeholder"
@@ -275,7 +288,7 @@ terms:
         - "docs/ko/maintain/authoring-guide.md"
         - "docs/ko/reference/scope.md"
     notes:
-      - "Use only to signal that an out-of-scope capability needs an owner created or designated before activation."
+      - "Use only to signal that an out-of-scope capability needs an owner created or designated before baseline support."
       - "An owner placeholder is not a current owner document."
       - "Do not route readers to an owner placeholder as if it is a current owner document."
   task:
@@ -337,7 +350,7 @@ terms:
         - "docs/ko/reference/core-model.md"
         - "docs/ko/reference/api/schema-judgment.md"
     notes:
-      - "Keep distinct from final acceptance, residual-risk acceptance, sensitive-action approval, scope changes, and Write Authorization."
+      - "Keep distinct from final acceptance, residual-risk acceptance, sensitive-action approval, scope changes, and `Write Authorization`."
   close_readiness:
     category: "product_concept"
     en: "close readiness"
@@ -515,6 +528,36 @@ terms:
     notes:
       - "Use 아티팩트 in Korean prose."
       - "Preserve artifact schema identifiers exactly."
+      - "Do not use artifact availability alone as evidence sufficiency."
+  evidence:
+    category: "product_concept"
+    en: "evidence"
+    ko_reference: "증거"
+    ko_user: "증거"
+    preserve_as_identifier:
+      - "EvidenceSummary"
+      - "EvidenceCoverageItem"
+      - "evidence_summary"
+      - "evidence_updates"
+      - "evidence_summaries"
+    avoid_ko:
+      - "evidence 기록"
+      - "evidence summary"
+    owner_documents:
+      en:
+        - "docs/en/reference/core-model.md"
+        - "docs/en/reference/api/schema-state.md"
+        - "docs/en/reference/api/method-record-run.md"
+        - "docs/en/reference/storage-records.md"
+      ko:
+        - "docs/ko/reference/core-model.md"
+        - "docs/ko/reference/api/schema-state.md"
+        - "docs/ko/reference/api/method-record-run.md"
+        - "docs/ko/reference/storage-records.md"
+    notes:
+      - "Use 증거 in Korean prose."
+      - "Preserve evidence schema and storage identifiers exactly."
+      - "Evidence supports recorded claims; it is not final acceptance, residual-risk acceptance, broad verification, or artifact availability by itself."
   artifact_ref:
     category: "identifier"
     en: "ArtifactRef"
@@ -650,7 +693,7 @@ terms:
         - "docs/ko/reference/api/methods.md"
     notes:
       - "Use the exact label when naming the Harness concept."
-      - "Do not treat sensitive-action approval as Write Authorization."
+      - "Do not treat sensitive-action approval as `Write Authorization`."
   sensitive_approval:
     category: "product_concept"
     en: "sensitive approval"
@@ -670,7 +713,7 @@ terms:
         - "docs/ko/reference/api/schema-judgment.md"
         - "docs/ko/reference/security.md"
     notes:
-      - "Keep sensitive approval distinct from final acceptance, residual-risk acceptance, and Write Authorization."
+      - "Keep sensitive approval distinct from final acceptance, residual-risk acceptance, and `Write Authorization`."
   access_class:
     category: "product_concept"
     en: "access class"
@@ -688,11 +731,11 @@ terms:
         - "docs/ko/reference/api/schema-value-sets.md"
         - "docs/ko/reference/api/methods.md"
         - "docs/ko/reference/security.md"
-  active_guarantee:
+  baseline_guarantee:
     category: "security_concept"
-    en: "active guarantee"
-    ko_reference: "현재 활성 보장"
-    ko_user: "현재 활성 보장"
+    en: "baseline guarantee"
+    ko_reference: "기준 범위 보장"
+    ko_user: "기준 범위 보장"
     owner_documents:
       en:
         - "docs/en/reference/security.md"
@@ -703,8 +746,25 @@ terms:
         - "docs/ko/reference/scope.md"
         - "docs/ko/reference/api/schema-value-sets.md"
     notes:
-      - "Use only when active scope and Security both document the behavior as current."
-      - "Reserved values and profile-gated values are not active guarantees."
+      - "Use only when Scope and Security both document the behavior as supported in the baseline scope."
+      - "Reserved values and profile-gated values are not baseline guarantees."
+  migration:
+    category: "technical_concept"
+    en: "migration"
+    ko_reference: "마이그레이션"
+    ko_user: "마이그레이션"
+    avoid_ko:
+      - "migration = 이전 선택"
+    owner_documents:
+      en:
+        - "docs/en/reference/storage-versioning.md"
+        - "docs/en/reference/storage.md"
+      ko:
+        - "docs/ko/reference/storage-versioning.md"
+        - "docs/ko/reference/storage.md"
+    notes:
+      - "Use for technical schema, storage, data, or documentation migration concepts."
+      - "Do not translate migration as a previous choice or prior decision."
   cooperative_guarantee:
     category: "product_concept"
     en: "cooperative guarantee"

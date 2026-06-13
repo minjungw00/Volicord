@@ -41,6 +41,7 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | complete intent | `complete` | [API Value Sets](api/schema-value-sets.md) |
 | full evaluation order | 전체 평가 순서 | [Translation Guide](../maintain/translation-guide.md) |
 | artifact | 아티팩트 | [API Artifact Schemas](api/schema-artifacts.md) |
+| evidence | 증거 | [Core Model](core-model.md) |
 | `ArtifactRef` | `ArtifactRef` | [API Artifact Schemas](api/schema-artifacts.md) |
 | `StagedArtifactHandle` | `StagedArtifactHandle` | [API Artifact Schemas](api/schema-artifacts.md) |
 | projection | 상태 보기 | [Projection Authority Reference](projection-and-templates.md) |
@@ -49,7 +50,7 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | `Write Authorization` | 쓰기 권한 부여 | [Core Model](core-model.md) |
 | sensitive approval | 민감 동작 승인 | [Core Model](core-model.md) |
 | access class | 접근 등급 | [API Value Sets](api/schema-value-sets.md) |
-| active guarantee | 현재 활성 보장 | [Security](security.md) |
+| baseline guarantee | 기준 범위 보장 | [Security](security.md) |
 | cooperative guarantee | 협력형 보장 | [Security](security.md) |
 | detective guarantee | 탐지형 보장 | [Security](security.md) |
 | reserved value | 예약된 값 | [Scope](scope.md) |
@@ -57,6 +58,7 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | dry-run | dry-run 미리보기 | [API Schema Core](api/schema-core.md) |
 | blocked result | 차단 결과 | [API Errors](api/errors.md) |
 | rejected response | 거부 응답 | [API Schema Core](api/schema-core.md) |
+| migration | 마이그레이션 | [Storage Versioning](storage-versioning.md) |
 | lifecycle | 생명주기 | [Core Model](core-model.md) |
 
 ## Terms
@@ -102,7 +104,7 @@ Owner:
 - [Runtime Boundaries](runtime-boundaries.md)
 
 Notes:
-- The Product Repository is the user's project workspace, not Harness runtime state.
+- `Product Repository` is the user's project workspace, not Harness runtime state.
 
 ### Harness Runtime Home
 
@@ -117,13 +119,13 @@ Preserve:
 - `Harness Runtime Home` when naming the boundary
 
 Avoid:
-- Treating this documentation repository or a Product Repository as a Runtime Home.
+- Treating this documentation repository or a `Product Repository` as `Harness Runtime Home`.
 
 Owner:
 - [Runtime Boundaries](runtime-boundaries.md)
 
 Notes:
-- The Harness Runtime Home is the operational data space for Harness records and artifacts.
+- `Harness Runtime Home` is the operational data space for Harness records and artifacts.
 
 ### documentation
 
@@ -163,7 +165,7 @@ Preserve:
 - Owner titles and exact value strings
 
 Avoid:
-- Treating out-of-scope capabilities or profile-gated values as active requirements.
+- Treating out-of-scope capabilities or profile-gated values as baseline requirements.
 
 Owner:
 - [Scope](scope.md)
@@ -268,7 +270,7 @@ Owner:
 - [Scope](scope.md)
 
 Notes:
-- Promotion may require creating or designating an owner, then updating active scope, schemas, API behavior, storage, templates, checks, and paired-language docs as applicable.
+- Promotion may require creating or designating an owner, then updating baseline scope, schemas, API behavior, storage, templates, checks, and paired-language docs as applicable.
 
 ### owner placeholder
 
@@ -362,7 +364,7 @@ Preserve:
 - `judgment_kind`
 
 Avoid:
-- Treating broad approval as acceptance, risk acceptance, scope change, sensitive-action approval, or Write Authorization.
+- Treating broad approval as acceptance, risk acceptance, scope change, sensitive-action approval, or `Write Authorization`.
 
 Owner:
 - [Core Model](core-model.md)
@@ -554,6 +556,37 @@ Owner:
 
 Notes:
 - Artifact storage behavior belongs to artifact contracts, not to the general term.
+- Artifact availability alone is not evidence sufficiency.
+
+### evidence
+
+English:
+- evidence
+
+Korean:
+- Reference: 증거
+- User-facing: 증거
+
+Preserve:
+- `EvidenceSummary`
+- `EvidenceCoverageItem`
+- `evidence_summary`
+- `evidence_updates`
+- `evidence_summaries`
+
+Avoid:
+- evidence 기록
+- evidence summary
+- Treating artifact availability as evidence sufficiency.
+
+Owner:
+- [Core Model](core-model.md)
+- [API State Schemas](api/schema-state.md)
+- [Record-run method](api/method-record-run.md)
+- [Storage Records](storage-records.md)
+
+Notes:
+- Evidence supports recorded claims at recorded scope; it is not final acceptance, residual-risk acceptance, broad verification, or artifact availability by itself.
 
 ### `ArtifactRef`
 
@@ -625,7 +658,7 @@ Owner:
 - [Template Bodies](template-bodies.md)
 
 Notes:
-- Projection is read-only derived display or support context from owner records.
+- A projection is read-only derived display or support context from owner records.
 
 ### surface
 
@@ -719,7 +752,7 @@ Preserve:
 - `SensitiveActionScope`
 
 Avoid:
-- Treating it as Write Authorization.
+- Treating it as `Write Authorization`.
 - Treating it as final acceptance.
 - Treating it as broad approval.
 
@@ -756,20 +789,20 @@ Owner:
 Notes:
 - Access class is a classification used by API and security owners to describe protected access expectations.
 
-### active guarantee
+### baseline guarantee
 
 English:
-- active guarantee
+- baseline guarantee
 
 Korean:
-- Reference: 현재 활성 보장
-- User-facing: 현재 활성 보장
+- Reference: 기준 범위 보장
+- User-facing: 기준 범위 보장
 
 Preserve:
 - Exact guarantee label values
 
 Avoid:
-- Treating reserved or profile-gated labels as active guarantees.
+- Treating reserved or profile-gated labels as baseline guarantees.
 
 Owner:
 - [Security](security.md)
@@ -777,7 +810,7 @@ Owner:
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
-- A guarantee is active only when active scope and Security both document it as current behavior.
+- A guarantee is a baseline guarantee only when Scope and Security both document it as supported in the baseline scope.
 
 ### cooperative guarantee
 
@@ -843,15 +876,15 @@ Avoid:
 - accepted
 - verified
 - close-ready
-- active guarantee
+- baseline guarantee
 
 Owner:
 - [Scope](scope.md)
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
-- A reserved value may exist as vocabulary or reserved surface area without activating behavior.
-- Presence in a value set does not activate behavior.
+- A reserved value may exist as vocabulary or reserved surface area without making behavior supported.
+- Presence in a value set does not make behavior supported.
 
 ### profile-gated value
 
@@ -873,8 +906,31 @@ Owner:
 - [API Value Sets](api/schema-value-sets.md)
 
 Notes:
-- A profile-gated value is available only when the relevant profile and owner behavior are active.
-- Presence in a value set does not activate behavior.
+- A profile-gated value is available only when the relevant profile and owner behavior define it as supported.
+- Presence in a value set does not make behavior supported.
+
+### migration
+
+English:
+- migration
+
+Korean:
+- Reference: 마이그레이션
+- User-facing: 마이그레이션
+
+Preserve:
+- Exact migration identifiers and file paths
+
+Avoid:
+- Translating technical migration as previous choice or prior decision.
+- Using migration notes as one-off planning files.
+
+Owner:
+- [Storage Versioning](storage-versioning.md)
+- [Storage Overview](storage.md)
+
+Notes:
+- Use migration for technical schema, storage, data, or documentation migration concepts.
 
 ### dry-run
 
