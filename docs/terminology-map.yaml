@@ -255,9 +255,7 @@ terms:
     owner_documents:
       en:
         - "docs/en/reference/scope.md"
-        - "docs/en/reference/scope.md"
       ko:
-        - "docs/ko/reference/scope.md"
         - "docs/ko/reference/scope.md"
     notes:
       - "An out-of-scope capability is deferred material until an owner promotes it."
@@ -425,11 +423,9 @@ terms:
         - "docs/en/reference/glossary.md"
         - "docs/en/maintain/authoring-guide.md"
         - "docs/en/reference/scope.md"
-        - "docs/en/reference/scope.md"
       ko:
         - "docs/ko/reference/glossary.md"
         - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/reference/scope.md"
         - "docs/ko/reference/scope.md"
     notes:
       - "This means the owner does not exist as a baseline contract owner before promotion."
