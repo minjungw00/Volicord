@@ -1,6 +1,6 @@
 # Terminology checks
 
-Use these checks when an edit changes product terms, Korean prose terms, mixed-language expressions, identifier explanations, close-readiness wording, or access/security wording. The terminology map owns maintainer terminology controls; product contracts remain in their reference owners.
+Use these checks when an edit changes product terms, Korean prose terms, mixed-language expressions, identifier explanations, documentation-routing terms, close-readiness wording, or access/security wording. The terminology map owns maintainer terminology controls; product contracts remain in their reference owners.
 
 ## CHK-TERM-001: close-readiness terminology
 
@@ -94,15 +94,19 @@ Owner:
 
 Check:
 - Compare changed terminology guidance with `docs/terminology-map.yaml`.
+- Confirm `owner_documents` targets point to the focused owner document when one exists, not to a broad index or family page.
+- Confirm glossary owner links follow the same focused-owner rule.
 - Confirm forbidden mixed-language examples in the guides use concrete strings, not vague descriptions.
 - Confirm any new forbidden expression appears in the terminology map and both translation guides.
 
 Failure:
 - The guides and terminology map disagree.
+- A terminology-map or glossary owner target points to an index when a focused owner already owns the term's meaning, value set, API concern, storage concern, or display wording.
 - A Korean guide describes a banned mixed-language pattern without a searchable real string such as "artifact를 저장한다".
 
 Fix:
 - Align the map and both guides in the same documentation batch.
+- Retarget owner links to the focused owner, using an index only for navigation concepts or explicit owner gaps.
 - Replace vague placeholders with concrete examples that can be searched.
 
 ## CHK-TERM-006: `active` versus supported or applicable
@@ -133,16 +137,40 @@ Owner:
 - [Scope](../../reference/scope.md)
 - [Reference Index](../../reference/README.md)
 - [Authoring Guide](../authoring-guide.md)
+- [Template Bodies](../../reference/template-bodies.md)
 
 Check:
-- Search maintained Reference docs for retired, deleted, or unsupported concept names that remain only as negative examples.
+- Search maintained Reference docs, glossary entries, `docs/terminology-map.yaml`, `doc-index.yaml`, display wording owners, and changed metadata for retired, deleted, or unsupported concept names.
 - Confirm unsupported capability names are used only when a semantic owner still needs the exact name, or when a Maintain/terminology owner intentionally lists a searchable forbidden expression.
 - Confirm Reference owners describe stable categories, owner gaps, or out-of-scope capability families instead of preserving obsolete names as examples.
+- Confirm negative examples do not make removed names look like supported concepts, owner routes, storage record families, or display packages.
 
 Failure:
-- A Reference page keeps a removed or unsupported concept name solely to say that it is not supported.
+- A glossary entry, terminology-map entry, metadata route, Reference page, or display wording owner keeps a removed or unsupported concept name solely to say that it is not supported.
 - A negative example causes retrieval to treat the old name as a supported contract, supported capability, or owner route.
+- A display wording owner or storage-related note keeps an unsupported package or pseudo-family name that becomes searchable as an official concept.
 
 Fix:
 - Remove the stale name or replace it with the stable category and the applicable owner link.
 - Move searchable banned terminology to the Terminology Map and translation guides when the term needs to remain searchable for maintainers.
+- Remove unsupported display or storage-like names unless a terminology owner intentionally preserves them as forbidden terminology.
+
+## CHK-TERM-008: documentation-routing terms stay documentary
+
+Owner:
+- [Terminology Map](../../../terminology-map.yaml)
+- [Glossary](../../reference/glossary.md)
+- [Authoring Guide](../authoring-guide.md)
+
+Check:
+- Search changed prose for documentation-routing terms such as `applicable owner path`, owner route, owner target, route metadata, and owner gap.
+- Confirm these terms describe documentation navigation, authoring, retrieval, or metadata only.
+- Confirm they are not described as product behavior, storage persistence, runtime state, evidence authority, close-readiness state, or API support.
+
+Failure:
+- A documentation-routing term is used as if it were a persisted product field, runtime status, API value, storage record, support guarantee, or close-readiness result.
+- A guide says a product behavior is available because an owner path applies, instead of because Scope and the semantic owner define support.
+
+Fix:
+- Reword the term as documentation routing or metadata.
+- Route product behavior, storage persistence, runtime state, and API support to the focused product owner.

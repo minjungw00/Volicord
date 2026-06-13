@@ -88,10 +88,12 @@ Check:
 - Inspect Korean user-facing prose for natural Korean technical writing, Korean concept-first phrasing, and consistent terms.
 - Confirm exact identifiers remain searchable but are not exposed as ordinary display labels.
 - Confirm common English nouns and noun chains are translated into Korean unless they are exact identifiers, intentional product labels, or natural technical borrowings.
+- Confirm Korean prose is not a literal mirror of English sentence order when natural Korean would make the same meaning clearer.
 
 Failure:
 - Korean prose mirrors English sentence order, keeps avoidable English noun phrases, or hides the reader action behind internal identifiers.
 - Korean prose keeps an ordinary English common noun only because it appears in the paired English sentence.
+- Korean keeps a compact English noun chain as visible prose when the words are not identifiers or intentional labels.
 
 Fix:
 - Rewrite in natural Korean while preserving identifiers and semantic parity.
@@ -105,6 +107,7 @@ Owner:
 
 Check:
 - When headings change, compare the paired English and Korean files by heading meaning and reading structure.
+- When sections are added, removed, split, or merged, confirm the paired files still expose the same meaning units through equivalent headings or nearby text.
 - Confirm each language exposes the same major meaning units, owner routes, warnings, exceptions, and checklist scope.
 - Confirm Korean visible headings stay natural; use hidden anchors when a stable English anchor must remain available.
 

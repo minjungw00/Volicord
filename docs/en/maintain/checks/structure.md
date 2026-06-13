@@ -1,6 +1,6 @@
 # Structure checks
 
-Use these checks for documentation architecture, owner boundaries, route-page structure, reference-claim placement, and final report shape. These are documentation quality checks only; they do not certify product runtime behavior.
+Use these checks for documentation architecture, owner boundaries, route-page structure, display wording boundaries, storage record references, reference-claim placement, and final report shape. These are documentation quality checks only; they do not certify product runtime behavior.
 
 ## CHK-STRUCT-001: review scope inputs
 
@@ -63,11 +63,11 @@ Owner:
 - [Checks Index](../checks.md)
 
 Check:
-- Inspect changed files and newly added files for one-off planning files, working-note remnants, review leftovers, archive copies, transition notes, one-off conversion notes, generated runtime records, and unresolved task markers such as `FIXME` or other all-caps placeholders.
+- Inspect changed files and newly added files for one-off planning files, working-note remnants, review leftovers, archive copies, transition notes, one-off conversion notes, scratch files, generated runtime records, and unresolved task markers such as `FIXME` or other all-caps placeholders.
 - Confirm documentation-maintenance findings live in the final report or the appropriate maintained documentation page, not in ad hoc files.
 
 Failure:
-- The final tree contains a one-off plan, working-note remnant, review note, archive copy, generated runtime-like record, one-off conversion note, or unresolved task marker from the documentation batch.
+- The final tree contains a one-off plan, working-note remnant, review note, archive copy, scratch file, generated runtime-like record, one-off conversion note, or unresolved task marker from the documentation batch.
 - A maintained page contains a task marker that names deferred work instead of a durable maintenance rule.
 
 Fix:
@@ -102,9 +102,11 @@ Check:
 - Inspect `README` files, Start pages, Use pages, Build pages, Maintain pages, Scope pages, and route indexes for contract tables, long field explanations, status-value lists, security guarantee details, storage-effect details, and API branch summaries.
 - Confirm method-level owner maps appear only in [API Methods](../../reference/api/methods.md).
 - Confirm those pages route readers instead of defining contracts.
+- Confirm a route or index page does not become the broad contract document for several focused owners.
 
 Failure:
 - A route page becomes useful as a standalone technical contract.
+- A route or index page grows into a broad contract document because it accumulates API, schema, storage, security, error, display, or close-readiness details.
 - A route list tries to enumerate every contract detail, owner subcase, status value, schema branch, storage effect, or security guarantee.
 - A non-method-router page repeats the supported public API method owner table.
 
@@ -175,6 +177,28 @@ Fix:
 - Keep the canonical map and shrink duplicates to a short route link.
 - If the canonical map is wrong, update it first, then update links that point to it.
 
+## CHK-OWNER-006: display wording owner boundaries
+
+Owner:
+- [Template Bodies](../../reference/template-bodies.md)
+- [Authoring Guide](../authoring-guide.md)
+- The focused API, blocker, storage, scope, or terminology owner selected from the Reference Index
+
+Check:
+- Inspect display wording owners, template pages, and rendered-label guidance for contract claims.
+- Confirm display wording owners define rendered body guidance, labels, and display phrasing only.
+- Confirm API semantics, close-readiness blocker semantics, storage records, and unsupported package wording route to the focused owner instead of being defined by display text.
+
+Failure:
+- A display wording owner defines `ErrorCode` meaning, response branch behavior, close-readiness blocker meaning, storage record authority, or storage layout.
+- A rendered label, message, or package phrase is treated as the canonical API value, blocker value, storage record, or supported concept.
+- Unsupported package wording remains in display guidance solely as a negative example and makes the unsupported concept look official.
+
+Fix:
+- Keep the display wording only when it is needed for rendered text.
+- Route API meaning, blocker meaning, storage records, support availability, and terminology to their focused owners.
+- Remove unsupported package wording unless a terminology owner intentionally preserves a searchable banned expression.
+
 ## CHK-SCOPE-001: baseline/out-of-scope leakage
 
 Owner:
@@ -206,13 +230,16 @@ Owner:
 Check:
 - Confirm documentation edits do not imply the server, runtime, conformance runner, generated projections, or runtime behavior exists because of documentation alone.
 - Confirm implementation authority is not claimed outside the Implementation Guide owner.
+- Confirm implementation guidance, build pages, and metadata use durable implementation wording rather than build-moment labels, transfer labels, current-work labels, or interim-stage labels.
 
 Failure:
 - Maintained docs describe documentation reference material as accepted runtime behavior or implementation authority without the Implementation Guide owner.
+- Implementation guidance or metadata depends on a short-lived phase label that will stop being true after the implementation path matures.
 
 Fix:
 - Reword as planning or reference documentation.
 - Route baseline implementation reading-path questions to the Implementation Guide.
+- Replace phase labels with durable baseline, supported-scope, owner-route, or implementation-reading-path language.
 
 ## CHK-SCOPE-003: excluded-scope wording
 
@@ -251,6 +278,29 @@ Failure:
 Fix:
 - Replace duplicated contract text with a short reader consequence and a link to the precise owner.
 - Reword security claims to the documented guarantee level or explicit boundary.
+
+## CHK-REFERENCE-002: storage record family references
+
+Owner:
+- [Storage Records](../../reference/storage-records.md)
+- [Storage Effects](../../reference/storage-effects.md)
+- [Authoring Guide](../authoring-guide.md)
+
+Check:
+- Inspect storage mentions in changed docs, examples, route pages, metadata, and display wording owners.
+- Confirm storage record references focus on persisted record families defined by the storage owner.
+- Confirm unsupported pseudo-families are not preserved as negative examples in a way that turns them into official storage concepts.
+- Confirm API shapes, display labels, and documentation-routing terms are not described as storage record families.
+
+Failure:
+- A non-storage page invents or names a storage-like family that the storage owner does not define.
+- A negative example gives an unsupported pseudo-family enough structure, naming, or repetition that it becomes searchable as an official concept.
+- A schema, rendered label, owner route, or metadata key is described as a persisted storage record.
+
+Fix:
+- Retarget the statement to the persisted record family named by Storage Records, or remove the unsupported name.
+- Route storage effects to Storage Effects and storage layout to Storage Records.
+- Use stable categories when explaining non-storage concepts instead of inventing pseudo-family names.
 
 ## CHK-READ-001: user-facing readability
 

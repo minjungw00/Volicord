@@ -154,6 +154,30 @@ Fix:
 - Shrink broad error explanations to a reader consequence plus owner links.
 - Keep owner maps in the canonical API error route or owner pages.
 
+## CHK-LINK-008: terminology and metadata owner targets
+
+Owner:
+- [Terminology Map](../../../terminology-map.yaml)
+- [Glossary](../../reference/glossary.md)
+- [doc-index.yaml](../../../doc-index.yaml)
+- [Reference Index](../../reference/README.md)
+
+Check:
+- Inspect terminology-map `owner_documents`, glossary owner links, `doc-index.yaml` owner metadata, and route tables touched by the edit.
+- Confirm each owner target points to the focused owner document when one exists.
+- Use a broad index only when the concept is index-owned navigation, a first-hop route, or an explicitly named owner gap.
+- Confirm API error code meanings, error precedence, API response branch routing, close-readiness blocker routing, and `ToolError.details` targets stay separate.
+
+Failure:
+- A terminology, glossary, metadata, or route target points to a broad index when a focused owner exists.
+- An API error family index is used as the owner for public code meanings, precedence, response branch routing, close-readiness blocker routing, or machine-readable details.
+- `doc-index.yaml` metadata makes a route/index document look like the owner of focused contract detail.
+
+Fix:
+- Retarget the link or metadata field to the focused owner.
+- Keep indexes as navigation unless they truly own the route concept.
+- If the focused owner is missing, name the owner gap instead of routing the contract to an index.
+
 ## CHK-LLM-001: duplicate contract text creates retrieval noise
 
 Owner:
@@ -171,7 +195,7 @@ Failure:
 
 Fix:
 - Shrink duplicates to route text and owner links.
-- Keep agent context to the current task summary, needed owner section, and needed language.
+- Keep agent context to the current work summary, needed owner section, and needed language.
 
 ## CHK-LLM-002: one language per `doc_id`
 

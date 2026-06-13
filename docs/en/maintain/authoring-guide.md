@@ -39,6 +39,8 @@ Use the compact maintained routes:
 
 [`docs/doc-index.yaml`](../../doc-index.yaml) owns retrieval and routing metadata. It is not runtime configuration and not a contract owner. [`docs/terminology-map.yaml`](../../terminology-map.yaml) owns bilingual terminology controls. It does not own API, storage, schema, security, projection, or runtime behavior.
 
+Terminology-map owner targets and glossary owner links should point to the focused owner document when one exists. Use a broad index only when the concept is itself index-owned navigation or when the focused owner does not yet exist and the gap is named.
+
 ### Maintainer reading path
 
 For documentation maintenance, read:
@@ -59,7 +61,7 @@ When a question crosses owner boundaries, choose the applicable owner from the R
 
 Maintain docs own authoring rules and checks. They must not become secondary sources of truth for API, storage, schema, security, access class, close-readiness, projection, runtime, or product contracts.
 
-Use "applicable owner path" for topic routing. Do not use `active` for owner routes, supported contracts, supported methods, or maintained reference documents. Reserve `active` for runtime or currently applied state, such as active scope, active Change Unit, active surface context, or exact status values.
+Use "applicable owner path" for topic routing. Do not use `active` for owner routes, supported contracts, supported methods, or maintained reference documents. Reserve `active` for runtime or currently applied state, such as active scope, active Change Unit, active surface context, or exact status values. Do not turn documentation-routing concepts such as `applicable owner path` into product behavior, storage persistence, or runtime state.
 
 Do not repeat the same owner map in multiple documents. Keep the full map in the canonical router or owner, and let other pages use a short purpose summary plus a link. If a repeated map is already present, remove the duplicate instead of refreshing both copies.
 
@@ -95,6 +97,8 @@ When adding a real new owner, update [Reference README](../reference/README.md) 
 
 Split or reroute an existing owner when one reference document starts carrying unrelated concerns. A single owner should not define API behavior, schemas, storage effects, security guarantees, error precedence, templates, and examples simply because a workflow mentions them together. Keep the narrow owner definition in the document that owns the concern, and route neighboring concerns with short links.
 
+Build guidance and route metadata should use durable implementation meaning. Avoid build-moment labels, transfer labels, current-work labels, or interim-stage labels that would stop making sense after the implementation path matures.
+
 <a id="baseline-scope-api-method-split-threshold"></a>
 ### API method owners
 
@@ -120,6 +124,8 @@ User-facing docs explain what the reader can decide, expect, or do. Avoid intern
 
 Reference-facing docs may use schema names, API method names, enum values, table names, and error codes, but exact identifiers must stay in backticks. A reference page may define only the contract it owns. When it mentions a neighboring contract, summarize briefly and link to that owner.
 
+Display wording owners define rendered body guidance, labels, and display phrasing only. They do not own API semantics, close-readiness blocker semantics, storage records, or wording for unsupported package concepts. Route those concerns to the focused API, blocker, storage, scope, or terminology owner.
+
 Maintain docs should sound like editing instructions. They can name owner paths and duplication rules, but they should not reproduce technical contract bodies.
 
 ### Durable examples
@@ -144,7 +150,7 @@ The API reference sample task is: add explicit confirmation before account data 
 
 API examples must not use documentation maintenance as the scenario.
 
-Do not make the example scenario documentation maintenance, migration, refactoring, route cleanup, or section restructuring. Repository-internal documentation paths, including paths under `docs/`, should appear as example data only when the document is explicitly about documentation maintenance.
+Do not make the example scenario documentation maintenance, migration, refactoring, route reshaping, or section restructuring. Repository-internal documentation paths, including paths under `docs/`, should appear as example data only when the document is explicitly about documentation maintenance.
 
 API examples should avoid self-referential documentation edits as task payloads, request examples, response examples, run summaries, artifact descriptions, or user judgment prompts.
 
@@ -208,12 +214,18 @@ Do not route maintained documentation through stale legacy paths. If an old path
 - [ ] The edit stayed documentation and did not imply runtime implementation.
 - [ ] Each concept still has one canonical owner.
 - [ ] No single reference owner now carries unrelated API, schema, storage, security, error, template, and example concerns that should be split or routed.
+- [ ] Terminology-map and glossary owner targets point to focused owners when focused owners exist, not to broad indexes.
 - [ ] Repeated owner maps were reduced to the canonical map plus links.
 - [ ] README, route, and maintain documents use short summaries plus owner links instead of copied contract explanations.
 - [ ] API, storage, schema, security, access-boundary, and close-readiness details live in the appropriate Reference owner.
 - [ ] API error code meanings, precedence, response branch routing, close-readiness blocker routing, and machine-readable details route to their separate API owners.
+- [ ] Display wording owners do not define API semantics, blocker semantics, storage records, or unsupported package wording.
 - [ ] Value names are not treated as baseline scope behavior merely because they exist in schemas, examples, storage notes, or out-of-scope lists.
+- [ ] Removed or unsupported concept names do not remain in glossary, terminology-map, metadata, negative examples, or display wording owners unless a terminology owner intentionally preserves a searchable banned expression.
+- [ ] Storage record references name persisted record families from the storage owner and do not create pseudo-families through negative examples.
 - [ ] `active` is used only for runtime or currently applied state, exact identifiers, or status values, not for supported contracts or owner routing.
+- [ ] Documentation-routing concepts such as `applicable owner path` are not described as product behavior, storage persistence, or runtime state.
+- [ ] Implementation guidance and metadata use durable implementation wording, not build-moment or interim-stage labels.
 - [ ] Example field names come from the method, schema, or storage owner, and storage-owned summary data is labeled where it uses a different field name.
 - [ ] API examples are internally consistent across response snapshots, `state_version`, refs, paths, artifact refs, sensitive approval reasons, expiration timestamps, and shared scenario evidence.
 - [ ] Reserved and profile-gated values are labeled where used and are not described as baseline guarantees.
@@ -234,5 +246,5 @@ Do not route maintained documentation through stale legacy paths. If an old path
 - [ ] Check descriptions use named blocks and bullets instead of dense table cells.
 - [ ] Links point to maintained routes and canonical owners.
 - [ ] New or changed terminology was checked against [Terminology Map](../../terminology-map.yaml).
-- [ ] No one-off planning files, archive copies, working-note remnants, generated runtime records, unresolved task markers, one-off conversion notes, or review leftovers remain.
+- [ ] No one-off planning files, archive copies, working-note remnants, scratch files, generated runtime records, unresolved task markers, one-off conversion notes, or review leftovers remain.
 - [ ] Relevant checks in [Checks](checks.md) and its focused check pages were run or reported as skipped.

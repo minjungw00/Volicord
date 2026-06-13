@@ -8,11 +8,11 @@ Run the checks that match the edit. For most documentation batches, start with [
 
 | Page | Use for |
 |---|---|
-| [Structure checks](checks/structure.md) | owner boundaries, owner granularity, route-page shape, owner-map placement, baseline/out-of-scope wording, implementation wording, reference-claim placement, final-tree leftovers, readability, and final reports |
-| [Language parity checks](checks/language-parity.md) | English/Korean semantic and heading parity, identifier preservation, Korean structure, and Korean technical style |
-| [Terminology checks](checks/terminology.md) | terminology-map usage, mixed-language Korean, `active` wording, `complete` ambiguity, retired concept names, close-readiness wording, and access/security wording terms |
+| [Structure checks](checks/structure.md) | owner boundaries, owner granularity, route-page shape, display wording boundaries, storage record family references, owner-map placement, baseline/out-of-scope wording, implementation wording, reference-claim placement, final-tree leftovers, readability, and final reports |
+| [Language parity checks](checks/language-parity.md) | English/Korean semantic and heading parity, identifier preservation, Korean structure, Korean technical style, and nonliteral Korean prose |
+| [Terminology checks](checks/terminology.md) | terminology-map owner targets, mixed-language Korean, documentation-routing terms, `active` wording, `complete` ambiguity, retired or unsupported concept names, close-readiness wording, and access/security wording terms |
 | [API examples checks](checks/api-examples.md) | durable scenarios, field-name consistency, response snapshot consistency, refs, timestamps, and API owner routing in examples |
-| [Links and indexes checks](checks/links-and-indexes.md) | relative links, anchors, `README` routes, `doc-index.yaml` structure references, owner gaps, API error owner routing, method-router placement, and LLM retrieval routes |
+| [Links and indexes checks](checks/links-and-indexes.md) | relative links, anchors, `README` routes, `doc-index.yaml` structure references, terminology and metadata owner targets, owner gaps, API error owner routing, method-router placement, and LLM retrieval routes |
 
 ## Result labels
 
