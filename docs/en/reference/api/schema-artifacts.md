@@ -26,7 +26,7 @@ This document does not own:
 
 Artifact schemas do not make a caller-supplied path authoritative.
 
-This document describes the request and response shapes used by artifact owner paths.
+This document describes the request and response shapes used by artifact-related methods and owners.
 
 Owner links:
 - validation, staging, promotion, and linking: method owner documents routed from [API Methods](methods.md)
@@ -34,7 +34,7 @@ Owner links:
 
 ## `ArtifactRef`
 
-`ArtifactRef` is the public pointer to a persistent artifact that has already been registered by an owner path.
+`ArtifactRef` is the public pointer to a persistent artifact that has already been registered by an artifact owner.
 
 ```yaml
 ArtifactRef:

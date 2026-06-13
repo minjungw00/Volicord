@@ -22,7 +22,7 @@ This document does not own:
 
 Stage caller-provided safe artifact bytes or a safe notice into a transient `StagedArtifactHandle` for the same project and Task.
 
-Staging is input preparation only. Evidence, persistent artifact links, acceptance, residual-risk, and close-readiness effects are owned by the relevant method and storage owner paths.
+Staging is input preparation only. Evidence, persistent artifact links, acceptance, residual-risk, and close-readiness effects are owned by the relevant method and storage owners.
 
 ## Required inputs
 

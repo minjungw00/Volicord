@@ -79,14 +79,14 @@ no_effect
 
 `VerifiedSurfaceContext.access_class` uses exactly one request-level value per public API request:
 
-| Value | Applicable owner path |
+| Value | Semantic owner |
 |---|---|
 | `read_status` | Read-only status and close-check reads. |
 | `core_mutation` | Core state mutation not otherwise specialized. |
 | `write_authorization` | `harness.prepare_write`. |
 | `run_recording` | `harness.record_run`. |
 | `artifact_registration` | `harness.stage_artifact`. |
-| `artifact_read` | Artifact body reads when an owner path exposes them. |
+| `artifact_read` | Artifact body reads when an artifact owner defines support. |
 
 Access classes are Harness API compatibility classes, not OS permission classes. Method access requirements stay with method owner documents routed from [API Methods](methods.md); local surface verification behavior stays with [Agent Integration](../agent-integration.md) and [Security](../security.md).
 
@@ -304,7 +304,7 @@ existing_artifact
 ```
 
 Value meanings:
-- `staged_artifact` selects a compatible transient staged handle through the artifact owner path.
+- `staged_artifact` selects a compatible transient staged handle through artifact-owner behavior.
 - `existing_artifact` selects an already persistent same-project artifact without registering new bytes.
 
 The selected source value determines which `ArtifactInput` source field applies. The exact shape invariant is owned by [API Artifact Schemas](schema-artifacts.md#artifactinput).

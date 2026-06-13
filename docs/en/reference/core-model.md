@@ -26,7 +26,7 @@ When this page names an exact identifier, it names the authority concept only. T
 
 Core-owned state is authority.
 
-- Core state is the record other Harness owner paths use to decide current scope, required judgment, evidence support, write compatibility, blockers, close readiness, and residual risk.
+- Core state is the local record Harness authority checks use to decide current scope, required judgment, evidence support, write compatibility, blockers, close readiness, and residual risk.
 - Chat, reports, generated Markdown, projections, template output, and summaries can describe Core state, but they do not replace it.
 
 Harness governs Harness records.
@@ -38,7 +38,7 @@ Scope bounds work.
 
 - A `Task` defines the user-value unit. A Change Unit defines the active scoped work boundary for write-capable work inside that `Task`.
 - Product-file writes, evidence claims, final acceptance, and close claims must stay compatible with the active scope and Change Unit.
-- A resolved scope judgment does not silently mutate active scope; the active scope path must be updated by its owner.
+- A resolved scope judgment does not silently mutate active scope; active scope must be updated through the scope owner-defined transition.
 
 User-owned judgment stays user-owned.
 
@@ -57,7 +57,7 @@ Runs and evidence record support, not authority substitutes.
 
 Close must stay honest.
 
-- Close readiness asks whether the current `Task` can close without hiding unresolved owner-path requirements.
+- Close readiness asks whether the current `Task` can close without hiding unresolved owner-defined requirements.
 - If close-relevant blockers remain, Core must expose blockers instead of treating the `Task` as successfully complete.
 
 Acceptance and risk acceptance are specific.
@@ -120,13 +120,13 @@ Core may treat an artifact reference as evidence-eligible only when the artifact
 
 `Write Authorization` is the named Core authorization for one compatible product-file write attempt.
 
-It depends on current Core state, active scope, active Change Unit compatibility, required user-owned judgments, and the write-authorization owner path. Its exact method behavior, API shape, storage effect, and stale-state handling belong to their owners.
+It depends on current Core state, active scope, active Change Unit compatibility, required user-owned judgments, and `Write Authorization` compatibility rules. Its exact method behavior, API shape, storage effect, and stale-state handling belong to their owners.
 
 ### Blocker
 
 A blocker is a structured reason that progress, write preparation, Run recording, or close cannot proceed honestly.
 
-A close blocker is the close-relevant form: it prevents honest close readiness until the responsible owner path handles it. A blocker is not projection prose, broad approval, storage proof by itself, or a successful-looking close.
+A close blocker is the close-relevant form: it prevents honest close readiness until the responsible owner-defined authority condition is resolved. A blocker is not projection prose, broad approval, storage proof by itself, or a successful-looking close.
 
 ### Close readiness
 
@@ -198,7 +198,7 @@ Sensitive-action approval does not substitute for `Write Authorization`.
 
 - `Write Authorization` makes one product-file write attempt compatible with Harness state. It does not prove the write occurred, record evidence, accept the result, accept risk, close the `Task`, or grant system access.
 
-Blocker data does not substitute across owner paths.
+Blocker data does not substitute across authority questions.
 
 - A prepare-write decision reason and a close blocker answer different authority questions.
 - `CloseReadinessBlocker` is an API data representation for close blocking reasons. It is not the whole close-readiness concept and does not prove persistence by itself.
@@ -206,7 +206,7 @@ Blocker data does not substitute across owner paths.
 A waiver or accepted risk does not create automatic success.
 
 - A waiver can matter only for the named requirement and only where the responsible owner allows it.
-- Accepted risk does not replace evidence, final acceptance, verification, or remaining owner paths required for close.
+- Accepted risk does not replace evidence, final acceptance, verification, or remaining requirements for close.
 
 <a id="6-task-lifecycle"></a>
 ## 6. Task lifecycle
@@ -215,10 +215,10 @@ The lifecycle here is conceptual authority meaning, not an API state table.
 
 | Area | Authority meaning |
 |---|---|
-| Intake and shaping | User intent becomes a concrete goal, scope boundary, non-goals, acceptance criteria, Autonomy Boundary, and first safe Change Unit when the owner paths support it. |
-| Scope update | Accepted scope or Change Unit changes become active only through the scope owner path. A judgment record alone does not mutate active scope. |
+| Intake and shaping | User intent becomes a concrete goal, scope boundary, non-goals, acceptance criteria, Autonomy Boundary, and first safe Change Unit when the relevant owners define support. |
+| Scope update | Accepted scope or Change Unit changes become active only through the scope owner-defined transition. A judgment record alone does not mutate active scope. |
 | Execution and observation | Runs record actions and observations. Product-file writes must be compatible with active scope and `Write Authorization`; read-only work does not authorize subsequent writes. |
-| Waiting or blocked | If an owner path is missing, stale, incompatible, or unsafe to bypass, Core exposes the blocker and the next owner path instead of hiding the gap. |
+| Waiting or blocked | If required owner-defined authority data is missing, stale, incompatible, or unsafe to bypass, Core exposes the blocker and the next required step instead of hiding the gap. |
 | Close attempt | Core evaluates whether the current state can close honestly. A final chat summary or generated report is not enough by itself. |
 | Terminal outcome | Completion, cancellation, or supersession ends the `Task` path. Cancellation and supersession are terminal, but they are not successful completion and do not satisfy completion evidence, acceptance, or risk requirements. |
 
@@ -235,7 +235,7 @@ Authority checks summarize whether a Core action or close claim can proceed hone
 | Run and evidence | Recorded Runs, evidence summaries, and evidence-eligible artifacts must support the claims they are used for. |
 | Final acceptance | Required final acceptance must be tied to the visible close basis. |
 | Residual risk | Known close-relevant residual risk must be visible, and required risk acceptance must be compatible with the requested close. |
-| Close readiness | All close-relevant owner paths must support an honest terminal transition; remaining blockers keep the `Task` open. |
+| Close readiness | All close-relevant owner-defined requirements must support an honest terminal transition; remaining blockers keep the `Task` open. |
 
 Separate QA and external verification workflows are not separate baseline authority records unless [Scope](scope.md) and the affected owners define them as supported.
 
@@ -323,7 +323,7 @@ Close readiness is not:
 Close blockers:
 
 - A close blocker is a close-relevant reason that prevents honest close readiness.
-- If a close blocker remains, the `Task` stays open until the responsible owner path addresses it.
+- If a close blocker remains, the `Task` stays open until the responsible owner-defined requirement is resolved.
 - `CloseReadinessBlocker` is the API data representation for close blockers, not the whole close-readiness concept.
 
 Close transition:
@@ -335,7 +335,7 @@ Close transition:
 
 Blockers preserve honesty.
 
-- A blocker points to the owner path that must be handled before progress, write, Run recording, or close can proceed honestly.
+- A blocker identifies the owner-defined requirement that must be handled before progress, write, Run recording, or close can proceed honestly.
 - A blocker must not be hidden by broad approval, projection prose, a generated success summary, or unrelated evidence.
 
 Waivers are narrow.

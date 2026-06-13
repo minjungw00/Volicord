@@ -182,7 +182,7 @@ Route:
 State effect:
 - No stored blocker and no state-version increment for the read.
 
-Blocked result means the method may have returned an operation-specific blocked outcome. It is not a public transport/schema error. Any committed blocked result and any state effect must be allowed by the relevant method owner routed from [API Methods](methods.md) and [Storage Effects](../storage-effects.md).
+Blocked result means the method may have returned an operation-specific blocked outcome. It is not a public transport/schema error. Any committed blocked result and any state effect must be allowed by the relevant method owner listed in [API Methods](methods.md) and [Storage Effects](../storage-effects.md).
 
 ## Dry-run behavior
 

@@ -143,7 +143,7 @@ Suggested label:
 
 Recovery cue:
 - Confirm or narrow scope.
-- Update valid scope or baseline through the owner path.
+- Use the appropriate scope or baseline owner-defined action.
 - Request the needed user judgment.
 
 <a id="label-write-authorization"></a>
@@ -260,7 +260,7 @@ Recovery cue:
 
 ### Input state
 
-- Current read-only state returned by the status owner path, including `StateSummary`, blockers, pending `UserJudgment` items, evidence summary, close-readiness observations, guarantee display, and next safe action.
+- Current read-only state returned by `harness.status`, including `StateSummary`, blockers, pending `UserJudgment` items, evidence summary, close-readiness observations, guarantee display, and next safe action.
 - Freshness cues such as source refs, `state_version`, observation time, stale markers, unavailable markers, or capability-limited markers when present.
 - Artifact availability only through owner-approved `ArtifactRef` display data or an owner-approved unavailable/redacted note.
 
@@ -304,7 +304,7 @@ Avoid wording such as `approved`, `accepted`, `verified`, or `closed` unless the
 
 ### Input state
 
-- One pending user-owned judgment request from the judgment owner path.
+- One pending user-owned judgment request returned by the user-judgment method.
 - Exact question, bounded options, rationale, uncertainty, affected scope, consequence of deferral, and non-substitution notes.
 - Any linked source refs, `state_version`, and freshness or capability-limited notes.
 
@@ -364,7 +364,7 @@ Avoid pressure wording such as `obviously`, `just approve`, or `I can decide thi
 
 - A run result alone is final acceptance, QA, verification, or residual-risk acceptance.
 - An available artifact is automatically sufficient evidence.
-- A summary creates evidence that the owner path did not record.
+- A summary creates evidence that the Run or evidence owner did not record.
 - Redacted, omitted, unavailable, or blocked artifact values can be reconstructed.
 
 ### User-facing wording
@@ -391,7 +391,7 @@ Avoid `fully verified`, `QA passed`, or `accepted` unless the relevant owner rec
 
 ### Input state
 
-- `CloseTaskResult` or close-readiness observations returned by the close owner path.
+- `CloseTaskResult` or close-readiness observations returned by `harness.close_task`.
 - `CloseReadinessBlocker[]`, evidence summary, pending user judgments, final-acceptance state, residual-risk state, artifact availability, source refs, freshness cues, and the requested close intent.
 - The owner result that distinguishes a read-only close check from a state-changing close attempt.
 
@@ -399,7 +399,7 @@ Avoid `fully verified`, `QA passed`, or `accepted` unless the relevant owner rec
 
 - Whether the body is showing a read-only close check, blocked close attempt, or owner-recorded close result.
 - The close intent and whether the owner result was read-only or state-changing.
-- Every returned close blocker and the owner route for resolving it.
+- Every returned close blocker and its responsible blocker category or next action.
 - Remaining evidence, user judgment, final acceptance, residual-risk, or artifact availability gaps.
 - Source state version or equivalent freshness cue when available.
 - The next safe action when close is blocked.
@@ -421,7 +421,7 @@ Use close-position wording:
 - `Ready to attempt close, but not closed by this check.`
 - `Closed by owner result: {close_ref}.`
 
-Use `Closed by owner result` only when the close owner path returned an actual close result.
+Use `Closed by owner result` only when `harness.close_task` returned an actual state-changing close result.
 
 ### Owner links
 
@@ -455,7 +455,7 @@ Use `Closed by owner result` only when the close owner path returned an actual c
 ### Must not imply
 
 - The packet is Core state, storage state, evidence, acceptance, residual-risk acceptance, or close output.
-- A stale packet overrides newer owner-returned state.
+- A stale packet overrides newer state returned by an owner method.
 - The agent may bypass user judgment, write authorization, artifact rules, or close blockers.
 - The packet should include full schemas, DDL, logs, artifact bodies, unrelated contract material, out-of-scope capability catalogs, or paired bilingual docs by default.
 

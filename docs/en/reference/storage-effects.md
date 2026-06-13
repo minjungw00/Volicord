@@ -24,7 +24,7 @@ This document does not own:
 
 Response data shape and storage effect are separate.
 
-API data shapes include:
+API data shapes belong to API schema owners, including [API State Schemas](api/schema-state.md) for blocker-like state shapes and [API Artifact Schemas](api/schema-artifacts.md) for artifact shapes. Examples include:
 - `CloseReadinessBlocker`
 - `WriteDecisionReason`
 - `PlannedBlocker`

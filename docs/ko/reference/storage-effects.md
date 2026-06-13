@@ -24,7 +24,7 @@
 
 응답 형태와 저장 효과는 별개입니다.
 
-API 데이터 형태에는 아래 값이 포함됩니다.
+API 데이터 형태는 API 스키마 담당 문서가 담당합니다. 차단 사유형 상태 형태는 [API 상태 스키마](api/schema-state.md)가, 아티팩트 형태는 [API 아티팩트 스키마](api/schema-artifacts.md)가 담당합니다. 예시는 아래와 같습니다.
 
 - `CloseReadinessBlocker`
 - `WriteDecisionReason`

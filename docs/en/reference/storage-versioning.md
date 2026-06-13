@@ -102,7 +102,7 @@ Does not increment when:
 
 Retry behavior:
 
-- Retry follows the rejected reason: refresh state for stale version conflicts, fix invalid input for validation failures, or use the owner-required route for any judgment or authorization that is still needed.
+- Retry follows the rejected reason: refresh state for stale version conflicts, fix invalid input for validation failures, or use the required judgment or authorization flow for any judgment or authorization that is still needed.
 
 Owner links:
 
@@ -317,7 +317,7 @@ Not allowed:
 - `evidence_summaries`
 - `blockers`
 
-`task_events` is append-only for ordinary baseline operation. After an event is committed, Core must not update or delete that row to change history. Corrections or repairs are recorded by new events and current-row updates through the owner path.
+`task_events` is append-only for ordinary baseline operation. After an event is committed, Core must not update or delete that row to change history. Corrections or repairs are recorded by new events and current-row updates only when the affected method owner and storage owners allow that path.
 
 Branches that do not append events:
 
@@ -550,7 +550,7 @@ Note:
 
 - The failed request did not create a replay row.
 
-Retry does not lower user-judgment boundaries. If a new acceptance, sensitive-action approval, residual-risk acceptance, or `Write Authorization` is needed after failure, the owning route must be used again.
+Retry does not lower user-judgment boundaries. If a new acceptance, sensitive-action approval, residual-risk acceptance, or `Write Authorization` is needed after failure, the relevant judgment or authorization flow must be used again.
 
 Owner links:
 

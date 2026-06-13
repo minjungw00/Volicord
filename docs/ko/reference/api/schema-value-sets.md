@@ -79,14 +79,14 @@ no_effect
 
 `VerifiedSurfaceContext.access_class`는 공개 API 요청 하나마다 요청 수준 값 하나만 사용합니다.
 
-| 값 | 적용되는 담당 경로 |
+| 값 | 의미 담당 문서 |
 |---|---|
 | `read_status` | 읽기 전용 상태와 닫기 확인 읽기. |
 | `core_mutation` | 별도 분류가 없는 Core 상태 변경. |
 | `write_authorization` | `harness.prepare_write`. |
 | `run_recording` | `harness.record_run`. |
 | `artifact_registration` | `harness.stage_artifact`. |
-| `artifact_read` | 담당 경로가 노출하는 아티팩트 본문 읽기. |
+| `artifact_read` | 아티팩트 담당 문서가 지원을 정의한 아티팩트 본문 읽기. |
 
 접근 등급은 하네스 API 호환성 분류이지 OS 권한 분류가 아닙니다. 메서드별 접근 요구사항은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 담당하고, 로컬 접점 확인 동작은 [에이전트 통합](../agent-integration.md)과 [보안](../security.md)이 담당합니다.
 
@@ -304,7 +304,7 @@ existing_artifact
 ```
 
 값 의미:
-- `staged_artifact`는 아티팩트 담당 경로를 통해 호환되는 임시 스테이징 핸들을 선택합니다.
+- `staged_artifact`는 아티팩트 담당 동작을 통해 호환되는 임시 스테이징 핸들을 선택합니다.
 - `existing_artifact`는 새 바이트를 등록하지 않고 이미 지속되는 같은 프로젝트 아티팩트를 선택합니다.
 
 선택된 출처 값은 어느 `ArtifactInput` 출처 필드가 적용되는지 정합니다. 정확한 형태 불변조건은 [API 아티팩트 스키마](schema-artifacts.md#artifactinput)가 담당합니다.
