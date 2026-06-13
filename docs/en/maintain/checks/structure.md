@@ -199,6 +199,53 @@ Fix:
 - Route API meaning, blocker meaning, storage records, support availability, and terminology to their focused owners.
 - Remove out-of-scope rendered-body names unless a terminology owner intentionally preserves a searchable banned expression.
 
+## CHK-OWNER-007: blocker-routing owner boundary
+
+Owner:
+- [API blocker routing](../../reference/api/blocker-routing.md)
+- [API Methods](../../reference/api/methods.md)
+- [API State Schemas](../../reference/api/schema-state.md)
+- [API Value Sets](../../reference/api/schema-value-sets.md)
+- [Core Model](../../reference/core-model.md)
+- [Template Bodies](../../reference/template-bodies.md)
+- [Authoring Guide](../authoring-guide.md)
+
+Check:
+- Inspect blocker-routing docs, route summaries, Maintain guidance, and API error routing text that mention blocker routing.
+- Confirm blocker-routing material stays within its owner boundary and does not become the owner for method behavior, schema shape, value sets, Core authority, or display wording.
+- Confirm method-specific `harness.close_task` behavior routes to the method owner.
+- Confirm `CloseReadinessBlocker` schema shape routes to API State Schemas, blocker category values route to API Value Sets, Core close-readiness meaning routes to Core Model, and rendered wording routes to Template Bodies.
+
+Failure:
+- A blocker-routing document defines request validation, evaluation order, result branches, `CloseReadinessBlocker` fields, category values, Core close-readiness meaning, or rendered body wording.
+- A route, index, or Maintain page treats blocker routing as the broad owner for all blocker-related method, schema, value-set, Core, or display questions.
+
+Fix:
+- Replace the borrowed detail with a short owner link.
+- Move missing detail to the focused owner, or expose the owner gap instead of expanding blocker-routing scope.
+
+## CHK-OWNER-008: split owner size and scope
+
+Owner:
+- [Authoring Guide](../authoring-guide.md)
+- [Reference Index](../../reference/README.md)
+- [doc-index.yaml](../../../doc-index.yaml)
+
+Check:
+- When a Reference owner is newly split or narrowed, compare its introduction, headings, `owner_for`, `not_owner_for`, and inbound routes.
+- Confirm the split owner has a narrow reader purpose and does not collect every neighboring concern left outside the previous owner.
+- Confirm adjacent API behavior, schema, storage, security, error, display wording, template, example, and route concerns point to their focused owners.
+
+Failure:
+- A split document becomes a broad catch-all owner for a workflow, feature family, or leftover concern group.
+- The document's scope is so wide that readers cannot tell whether another focused owner should answer a specific contract question.
+- New sections accumulate unrelated contract families instead of routing them.
+
+Fix:
+- Narrow the owner purpose and move or route unrelated concerns to the focused owners.
+- Split further only when a distinct stable owner is needed.
+- Update the paired owner, Reference Index, `doc-index.yaml`, and inbound links in the same documentation batch when the split changes routing.
+
 ## CHK-SCOPE-001: baseline/out-of-scope leakage
 
 Owner:

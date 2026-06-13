@@ -141,12 +141,14 @@ Owner:
 
 Check:
 - Search maintained Reference docs, glossary entries, `docs/terminology-map.yaml`, `doc-index.yaml`, display wording owners, and changed metadata for retired, deleted, or unsupported concept names.
+- When an English concept label is removed, search Korean prose for paraphrases, translations, mixed-language variants, table rows, list items, and headings that preserve the same removed concept.
 - Confirm unsupported capability names are used only when a semantic owner still needs the exact name, or when a Maintain/terminology owner intentionally lists a searchable forbidden expression.
 - Confirm Reference owners describe stable categories, owner gaps, or out-of-scope capability families instead of preserving obsolete names as examples.
 - Confirm negative examples do not make removed names look like supported concepts, owner routes, storage record families, or rendered body families.
 
 Failure:
 - A glossary entry, terminology-map entry, metadata route, Reference page, or display wording owner keeps a removed or unsupported concept name solely to say that it is not supported.
+- The removed English label is gone literally, but a Korean paraphrase or translation still makes the removed concept look current.
 - A negative example causes retrieval to treat the old name as a supported contract, supported capability, or owner route.
 - A display wording owner or storage-related note keeps an unsupported rendered-body or storage-like family name that becomes searchable as an official concept.
 
@@ -165,12 +167,36 @@ Owner:
 Check:
 - Search changed prose for documentation-routing terms such as `applicable owner path`, owner route, owner target, route metadata, and owner gap.
 - Confirm these terms describe documentation navigation, authoring, retrieval, or metadata only.
+- Confirm owner path terms are not the grammatical actor for product behavior, storage persistence, API support, evidence authority, close-readiness state, or user-visible display.
 - Confirm they are not described as product behavior, storage persistence, runtime state, evidence authority, close-readiness state, or API support.
 
 Failure:
 - A documentation-routing term is used as if it were a persisted product field, runtime status, API value, storage record, support guarantee, or close-readiness result.
+- A sentence says an owner path, route, or metadata entry performs, blocks, allows, stores, verifies, accepts, displays, or authorizes product behavior.
 - A guide says a product behavior is available because an owner path applies, instead of because Scope and the semantic owner define support.
 
 Fix:
 - Reword the term as documentation routing or metadata.
-- Route product behavior, storage persistence, runtime state, and API support to the focused product owner.
+- Name the owner document or owner contract only as the source of definition, then route product behavior, storage persistence, runtime state, and API support to the focused product owner.
+
+## CHK-TERM-009: Korean blocker terminology
+
+Owner:
+- [Terminology Map](../../../terminology-map.yaml)
+- [Glossary](../../reference/glossary.md)
+- [Translation Guide](../translation-guide.md)
+
+Check:
+- Korean prose uses "닫기 차단 사유" for close-readiness blocker prose.
+- Korean prose uses "차단 사유 범주" for blocker category prose and preserves `CloseReadinessBlocker.category` when naming the exact field.
+- Korean prose uses "차단 사유 처리 경로" for blocker routing prose and preserves exact owner paths or identifiers when naming them.
+- Confirm variants such as "close blocker", "blocker category", "blocker 처리 경로", and "blocker 라우팅" appear only in forbidden-expression lists or quoted examples.
+
+Failure:
+- A Korean page mixes blocker terminology variants for the same concept without a terminology-owner distinction.
+- A non-identifier English blocker phrase remains in Korean prose where the terminology map provides the Korean term.
+- The exact schema or field identifier is translated instead of preserved.
+
+Fix:
+- Replace prose terms with "닫기 차단 사유", "차단 사유 범주", or "차단 사유 처리 경로" according to the concept.
+- Preserve exact identifiers such as `CloseReadinessBlocker` and `CloseReadinessBlocker.category` when naming schemas or fields.

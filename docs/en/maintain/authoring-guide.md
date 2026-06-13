@@ -97,6 +97,8 @@ When adding a real new owner, update [Reference README](../reference/README.md) 
 
 Split or reroute an existing owner when one reference document starts carrying unrelated concerns. A single owner should not define API behavior, schemas, storage effects, security guarantees, error precedence, templates, and examples simply because a workflow mentions them together. Keep the narrow owner definition in the document that owns the concern, and route neighboring concerns with short links.
 
+When a large owner is split, the new owner must not become the next catch-all document. Give the split document a narrow reader purpose, keep neighboring concerns routed to their focused owners, and update `owner_for` and `not_owner_for` metadata so the boundary remains reviewable.
+
 Build guidance and route metadata should use durable implementation meaning. Avoid build-moment labels, current-work labels, or interim-stage labels that would stop making sense after the implementation path matures.
 
 <a id="baseline-scope-api-method-split-threshold"></a>
@@ -109,6 +111,8 @@ When baseline method behavior changes, edit the method owner first. Then update 
 Keep [`reference/api/methods.md`](../reference/api/methods.md) as a route and shared-reading document. It should not duplicate method-specific request bodies, response bodies, result branches, blocked-result details, or storage-effect detail already owned by a method owner.
 
 API error documentation is split by concern. [`reference/api/errors.md`](../reference/api/errors.md) is the family index only. Public `ErrorCode` meanings belong in [API error codes](../reference/api/error-codes.md), precedence and conflict selection belong in [API error precedence](../reference/api/error-precedence.md), rejected-response, blocked-result, and `dry_run` branch routing belongs in [API error routing](../reference/api/error-routing.md), close-readiness blocker routing belongs in [API blocker routing](../reference/api/blocker-routing.md), and machine-readable `ToolError.details` belongs in [API error details](../reference/api/error-details.md).
+
+Keep [API blocker routing](../reference/api/blocker-routing.md) within its owner boundary. It should not own method-specific behavior, `CloseReadinessBlocker` schema shape, blocker category value sets, Core close-readiness authority, or display wording. Route those questions to the method owner, API State Schemas, API Value Sets, Core Model, or Template Bodies as applicable.
 
 ## 5. Route documents and README files
 
@@ -197,6 +201,14 @@ Korean docs must not be literal translations. Maintain semantic parity by meanin
 
 Korean reference docs must preserve structural meaning units, not just broad topic coverage. Conditions, effects, exceptions, non-claims, owner links, and close-readiness consequences must remain visible as separate meaning units when the English owner uses that structure. Matching line counts are not required, but do not collapse important structure into dense paragraphs that hide a caveat or owner boundary.
 
+Heading parity is not semantic parity. Use matching headings as the start of comparison, then check the meaning units under those headings.
+
+Table parity includes table count in changed sections, header meanings, row meanings, and placement relative to sections. Row counts may differ only when each condition, value, exception, non-claim, and owner route remains reviewable by meaning.
+
+List parity includes normative lists, allowed and not-allowed clauses, does-not-imply clauses, exceptions, and owner-boundary lists. Korean prose may use a natural rhythm, but it must not drop or absorb a list item that carries a rule, exception, non-claim, or owner link.
+
+When a label or concept is removed, search the paired language for exact strings, paraphrases, translations, and mixed-language variants. A removed English label must not survive through Korean prose unless a terminology owner intentionally preserves it as a searchable forbidden expression.
+
 Use [Translation Guide](translation-guide.md) and [Terminology Map](../../terminology-map.yaml) for bilingual wording. During normal agent work, load only one language for the same `doc_id`; load both only for translation, parity review, or a bilingual edit where comparison is necessary.
 
 ## 9. Link and anchor rules
@@ -214,17 +226,19 @@ Do not route maintained documentation through stale legacy paths. If an old path
 - [ ] The edit stayed documentation and did not imply runtime implementation.
 - [ ] Each concept still has one canonical owner.
 - [ ] No single reference owner now carries unrelated API, schema, storage, security, error, template, and example concerns that should be split or routed.
+- [ ] A newly split Reference owner did not grow into another broad catch-all owner.
 - [ ] Terminology-map and glossary owner targets point to focused owners when focused owners exist, not to broad indexes.
 - [ ] Repeated owner maps were reduced to the canonical map plus links.
 - [ ] README, route, and maintain documents use short summaries plus owner links instead of copied contract explanations.
 - [ ] API, storage, schema, security, access-boundary, and close-readiness details live in the appropriate Reference owner.
 - [ ] API error code meanings, precedence, response branch routing, close-readiness blocker routing, and machine-readable details route to their separate API owners.
+- [ ] API blocker-routing docs do not own method behavior, schema shape, value sets, Core authority, or display wording.
 - [ ] Display wording owners do not define API semantics, blocker semantics, storage records, or out-of-scope rendered-body wording.
 - [ ] Value names are not treated as baseline scope behavior merely because they exist in schemas, examples, storage notes, or out-of-scope lists.
 - [ ] Removed or unsupported concept names do not remain in glossary, terminology-map, metadata, negative examples, or display wording owners unless a terminology owner intentionally preserves a searchable banned expression.
 - [ ] Storage record references name persisted record families from the storage owner and do not create storage-like family names through negative examples.
 - [ ] `active` is used only for runtime or currently applied state, exact identifiers, or status values, not for supported contracts or owner routing.
-- [ ] Documentation-routing concepts such as `applicable owner path` are not described as product behavior, storage persistence, or runtime state.
+- [ ] Documentation-routing concepts such as `applicable owner path` are not described as product behavior, storage persistence, runtime state, or actors for product behavior.
 - [ ] Implementation guidance and metadata use durable implementation wording, not build-moment or interim-stage labels.
 - [ ] Example field names come from the method, schema, or storage owner, and storage-owned summary data is labeled where it uses a different field name.
 - [ ] API examples are internally consistent across response snapshots, `state_version`, refs, paths, artifact refs, sensitive approval reasons, expiration timestamps, and shared scenario evidence.
@@ -236,6 +250,10 @@ Do not route maintained documentation through stale legacy paths. If an old path
 - [ ] References to `docs/doc-index.yaml` name structures and keys that actually exist.
 - [ ] Meaning-changing edits were made in both English and Korean.
 - [ ] Paired English/Korean headings keep equivalent meaning and reading structure.
+- [ ] Heading parity was not treated as sufficient for bilingual semantic parity.
+- [ ] Paired tables were checked for count, headers, row meanings, and placement relative to sections.
+- [ ] Paired normative lists, allowed/not-allowed clauses, does-not-imply clauses, exceptions, and owner-boundary lists were checked by meaning unit.
+- [ ] Removed concept labels do not survive through Korean paraphrase, translation, mixed-language variants, tables, lists, headings, or metadata.
 - [ ] Korean prose is natural, not a literal translation, and exact identifiers are preserved.
 - [ ] Korean prose avoids unnecessary English common nouns when they are not identifiers, product labels, or natural technical borrowings.
 - [ ] Korean reference docs preserve condition, effect, exception, non-claim, and owner-link structure by meaning unit.
