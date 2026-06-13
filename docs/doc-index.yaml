@@ -622,12 +622,13 @@ documents:
     owner_for:
       - "storage family routing"
       - "storage owner reading order"
-      - "storage authority boundaries"
+      - "storage contract routing"
     not_owner_for:
       - "record layout detail"
       - "method storage effects"
       - "artifact lifecycle detail"
       - "versioning detail"
+      - "storage authority semantics"
     normative_level: "guide"
     audience:
       - "implementers"

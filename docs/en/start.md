@@ -1,5 +1,7 @@
 # Start
 
+This is the product-orientation guide for Harness. It introduces the basic ideas and routes exact contract questions to the reference owners.
+
 ## What Harness is
 
 Harness is a local authority record for AI-assisted product work. It keeps the fragile basis of a task out of chat-only memory: scope, user-owned judgment, evidence, verification expectations, acceptance, close readiness, and residual risk.
@@ -88,11 +90,9 @@ When the agent cannot honestly proceed without a user-owned judgment, it should 
 
 ## What evidence means
 
-Evidence supports a claim. It can be a diff, test output, screenshot, log, source citation, review note, or artifact reference. Evidence should say what it supports and what it does not support.
+Evidence is the material a claim points to, such as a diff, test output, screenshot, log, source citation, review note, or artifact reference. It supports a claim; it is not the user's judgment.
 
-Evidence shows what the work did, but it does not replace final acceptance. A test pass is not the same as user-visible review of copy, accessibility, visual layout, or the lived flow.
-
-If evidence is missing, stale, weak, or limited to the agent's own check, Harness should keep that visible instead of rounding it into "done."
+For exact evidence, artifact, and non-substitution boundaries, use [Core Model](reference/core-model.md), [Artifact Storage](reference/storage-artifacts.md), and the relevant owners from the [Reference Index](reference/README.md).
 
 ## What close readiness means
 
@@ -103,8 +103,6 @@ If something is missing, the close path should name the smallest unblocker. Exac
 ## Baseline scope
 
 The baseline scope is intentionally narrow. Use [Scope](reference/scope.md) for active, profile-gated, and out-of-scope boundaries.
-
-Out-of-scope capabilities are not active requirements until the scope owner and affected owners promote them. If a detail is not in active scope, treat it as deferred even when it appears in an example or reserved-value note.
 
 ## Where to go next
 
