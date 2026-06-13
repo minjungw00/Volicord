@@ -239,7 +239,7 @@ GuaranteeDisplay:
 담당 문서 링크:
 - 닫기 준비 상태 의미와 대체 금지 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task)
 - 응답 분기 동작, 닫기 준비 상태 평가 순서, 커밋된 차단 결과: [`harness.close_task`](method-close-task.md)
-- 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로 의미: [API 차단 사유 처리 경로](blocker-routing.md)
+- 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로의 의미: [API 차단 사유 처리 경로](blocker-routing.md)
 - 지원되는 `CloseReadinessBlocker.category`, `ValidatorResult.status`, `ValidatorResult.severity`, `GuaranteeDisplay.level` 값: [API 값 집합](schema-value-sets.md#state-and-blocker-values)
 - 보안 보장 의미: [보안](../security.md)
 

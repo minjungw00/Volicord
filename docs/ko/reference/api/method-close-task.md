@@ -17,7 +17,7 @@
 
 - `ToolEnvelope`, `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`의 공통 스키마 본문
 - 상태, 아티팩트, 사용자 판단, 값 집합, 오류의 중첩 스키마 정의
-- 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로나 차단 사유 범주 값 정의
+- 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로 또는 차단 사유 범주 값 정의
 - 저장 DDL, 저장 기록 레이아웃, 아티팩트 생명주기, 보안 보장, Core 제품 의미
 
 ## 목적
@@ -74,7 +74,7 @@
 4. `intent=check`는 현재 닫기 준비 상태를 계산해 읽기 전용 `CloseTaskResult`를 반환합니다. 이 분기는 `close_state=ready` 또는 `close_state=blocked`를 보고할 수 있으며 커밋하지 않습니다.
 5. 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 공통 미리보기 분기를 반환합니다. 미리보기 차단 사유는 `PlannedBlocker` 데이터이며 저장된 `CloseReadinessBlocker` 객체가 아닙니다.
 6. `intent=complete`는 전체 닫기 준비 상태 평가 순서를 실행합니다. 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=closed`를 커밋합니다.
-7. `intent=cancel` 또는 `intent=supersede`는 요청한 종료 경로의 제약만 평가합니다. 이 경로는 완료 증거나 최종 수락을 요구하지 않지만, 취소나 대체 자체가 정직하지 않은 경우 차단될 수 있습니다.
+7. `intent=cancel` 또는 `intent=supersede`는 요청한 종료 경로의 제약만 평가합니다. 두 종료 경로는 완료 증거나 최종 수락을 요구하지 않지만, 취소나 대체 자체가 정직하지 않은 경우 차단될 수 있습니다.
 
 ## 상태 버전 동작
 
@@ -114,8 +114,8 @@
 |---|---|
 | `intent=check` | 현재 닫기 차단 사유를 읽기 전용 관찰 데이터로 반환합니다. 차단 사유 행을 만들거나 상태를 증가시키지 않습니다. |
 | `intent=complete` | 적용되는 담당 조건이 충족되지 않았을 때 `Task` 상태, 열린 실행 기록 호환성, 범위, 사용자 소유 판단, 민감 동작 승인, 쓰기 호환성, 기준 상태, 접점 역량, 증거, 아티팩트 가용성, 최종 수락, 잔여 위험 표시, 잔여 위험 수락, 복구 제약에 대한 차단 사유를 만들 수 있습니다. |
-| `intent=cancel` | 호환되지 않는 `Task` 상태, 필요한 복구나 수리 제약, 담당 문서가 정의한 취소 제약처럼 취소 자체에 해당하는 종료 제약에 대해서만 차단 사유를 만듭니다. 완료에만 해당하는 증거 공백과 최종 수락 공백은 그 자체로 취소를 막지 않습니다. |
-| `intent=supersede` | 호환되지 않는 `Task` 상태, 호환되지 않는 같은 프로젝트의 대체 `Task` 관계, 복구나 수리 제약처럼 대체 자체에 해당하는 종료 제약에 대해서만 차단 사유를 만듭니다. 완료에만 해당하는 증거 공백과 최종 수락 공백은 그 자체로 대체를 막지 않습니다. |
+| `intent=cancel` | 호환되지 않는 `Task` 상태, 필요한 복구나 수리 제약, 담당 문서가 정의한 취소 제약처럼 취소 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거 공백과 최종 수락 공백은 그 자체로 취소를 막지 않습니다. |
+| `intent=supersede` | 호환되지 않는 `Task` 상태, 호환되지 않는 같은 프로젝트의 대체 `Task` 관계, 복구나 수리 제약처럼 대체 전용 종료 제약에 대해서만 차단 사유를 만듭니다. 완료 전용 증거 공백과 최종 수락 공백은 그 자체로 대체를 막지 않습니다. |
 
 비주장:
 
@@ -143,7 +143,7 @@
 
 ## `dry_run` 동작
 
-`intent=check`와 `dry_run=true`는 읽기 전용 `CloseTaskResult` 분기에 남습니다. 상태 변경 `intent`의 `dry_run=true`는 유효할 때 공통 미리보기 분기를 사용합니다. 분기 형태는 [API 코어 스키마](schema-core.md)가 담당하고, 예상 차단 사유 응답 분기 경로는 [API 오류 처리 경로](error-routing.md)가 담당합니다. 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로 의미는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
+`intent=check`와 `dry_run=true`는 읽기 전용 `CloseTaskResult` 분기에 남습니다. 상태 변경 `intent`의 `dry_run=true`는 유효할 때 공통 미리보기 분기를 사용합니다. 분기 형태는 [API 코어 스키마](schema-core.md)가 담당하고, 예상 차단 사유 응답 분기 경로는 [API 오류 처리 경로](error-routing.md)가 담당합니다. 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로의 의미는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
 
 ## 저장 효과
 
@@ -304,5 +304,5 @@ next_actions:
 - 닫기 준비 상태 의미와 정직한 닫기: [Core 모델의 닫기 준비 상태](../core-model.md#close_task).
 - 공개 `ErrorCode` 의미: [API 오류 코드](error-codes.md).
 - 거부 응답 분기 경로: [API 오류 처리 경로](error-routing.md).
-- 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로 의미: [API 차단 사유 처리 경로](blocker-routing.md).
+- 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로의 의미: [API 차단 사유 처리 경로](blocker-routing.md).
 - 저장 효과와 상태 버전 동작: [저장 효과](../storage-effects.md), [저장소 버전 관리](../storage-versioning.md).

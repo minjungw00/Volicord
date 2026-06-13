@@ -426,7 +426,7 @@
 - [API 상태 스키마](api/schema-state.md): `CloseReadinessBlocker`.
 - [API 판단 스키마](api/schema-judgment.md): 최종 수락과 수락된 위험 입력 형태.
 - [API 오류 처리 경로](api/error-routing.md): 닫기 거부 응답 분기 경로.
-- [API 차단 사유 처리 경로](api/blocker-routing.md): 닫기 차단 사유 처리 경로.
+- [API 차단 사유 처리 경로](api/blocker-routing.md): 차단 사유 처리 경로.
 
 <a id="agent-context-packet-body"></a>
 ## 에이전트 맥락 패킷 본문

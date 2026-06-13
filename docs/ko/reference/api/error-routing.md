@@ -166,7 +166,7 @@
 - 커밋된 차단 결과의 상태 영향은 `close_task` 메서드 담당 문서만 정의할 수 있습니다.
 
 결과 데이터:
-- 닫기 차단 사유 처리 경로는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
+- 차단 사유 처리 경로는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
 
 공개 오류 코드가 차단 사유로 표현되는 경우:
 - `CloseTaskResult(close_state=blocked)`는 `STATE_VERSION_CONFLICT`를 사용하지 않습니다.
