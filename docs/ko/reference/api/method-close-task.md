@@ -17,7 +17,8 @@
 
 - `ToolEnvelope`, `ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse`의 공통 스키마 본문
 - 상태, 아티팩트, 사용자 판단, 값 집합, 오류의 중첩 스키마 정의
-- 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로 또는 차단 사유 범주 값 정의
+- 닫기 차단 사유와 API 응답 분기 사이의 차단 사유 처리 경로
+- 차단 사유 범주 값의 정의. `CloseReadinessBlocker.category`가 여기에 포함됩니다.
 - 저장 DDL, 저장 기록 레이아웃, 아티팩트 생명주기, 보안 보장, Core 제품 의미
 
 ## 목적
@@ -143,7 +144,11 @@
 
 ## `dry_run` 동작
 
-`intent=check`와 `dry_run=true`는 읽기 전용 `CloseTaskResult` 분기에 남습니다. 상태 변경 `intent`의 `dry_run=true`는 유효할 때 공통 미리보기 분기를 사용합니다. 분기 형태는 [API 코어 스키마](schema-core.md)가 담당하고, 예상 차단 사유 응답 분기 경로는 [API 오류 처리 경로](error-routing.md)가 담당합니다. 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로의 의미는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
+`intent=check`와 `dry_run=true`는 읽기 전용 `CloseTaskResult` 분기에 남습니다. 상태 변경 `intent`의 `dry_run=true`는 유효할 때 공통 미리보기 분기를 사용합니다.
+
+분기 형태는 [API 코어 스키마](schema-core.md)가 담당합니다. 미리보기에서 예상 차단 사유가 어떤 API 응답 분기로 나타나는지는 [API 오류 처리 경로](error-routing.md)가 담당합니다.
+
+닫기 차단 사유와 API 응답 분기 사이의 차단 사유 처리 경로는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
 
 ## 저장 효과
 
@@ -300,9 +305,9 @@ next_actions:
 
 - 요청 래퍼, 공통 응답 분기, `dry_run` 요약: [API 코어 스키마](schema-core.md).
 - `CloseTaskResult.blockers`, `CloseReadinessBlocker`, `EvidenceSummary`, `StateSummary` 형태: [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes).
-- 닫기 상태, 생명주기, 닫기 이유, `CloseReadinessBlocker.category` 값: [API 값 집합](schema-value-sets.md#state-and-blocker-values).
+- 닫기 상태, 생명주기, 닫기 이유, 차단 사유 범주 값(`CloseReadinessBlocker.category`): [API 값 집합](schema-value-sets.md#state-and-blocker-values).
 - 닫기 준비 상태 의미와 정직한 닫기: [Core 모델의 닫기 준비 상태](../core-model.md#close_task).
 - 공개 `ErrorCode` 의미: [API 오류 코드](error-codes.md).
 - 거부 응답 분기 경로: [API 오류 처리 경로](error-routing.md).
-- 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로의 의미: [API 차단 사유 처리 경로](blocker-routing.md).
+- 닫기 차단 사유와 API 응답 분기 사이의 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md).
 - 저장 효과와 상태 버전 동작: [저장 효과](../storage-effects.md), [저장소 버전 관리](../storage-versioning.md).

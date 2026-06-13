@@ -109,7 +109,7 @@
 | baseline guarantee | 기준 범위 보장 | 기준 범위와 보안 담당 문서가 지원된다고 정의한 보장에만 씁니다. |
 | close task behavior | Task 닫기 동작 | 메서드별 `harness.close_task` 동작은 Task 닫기 메서드 담당 문서가 담당합니다. |
 | error routing | 오류 처리 경로 | API 응답 분기 경로를 다룹니다. 담당 문서는 `api/error-routing.md`입니다. |
-| blocker routing | 차단 사유 처리 경로 | 닫기 차단 사유와 API 응답 처리 경계를 다룹니다. 담당 문서는 `api/blocker-routing.md`입니다. |
+| blocker routing | 차단 사유 처리 경로 | 닫기 차단 사유와 API 응답 분기 사이의 처리 경계를 다룹니다. 담당 문서는 `api/blocker-routing.md`입니다. |
 | error/blocker boundary | 오류와 차단 사유의 경계 | 유효한 평가 전 API 오류와 유효한 평가 뒤 닫기 차단 사유 데이터를 구분할 때 씁니다. |
 | public error as blocker | 공개 오류 코드가 차단 사유로 표현되는 경우 | `ErrorCode`와 `CloseReadinessBlocker.code`는 식별자로 보존합니다. |
 | `ToolError.details` | `ToolError.details` | 정확한 API 세부 식별자이므로 백틱 안에 그대로 보존합니다. |

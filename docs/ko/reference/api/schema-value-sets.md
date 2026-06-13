@@ -18,7 +18,7 @@
 이 문서는 담당하지 않습니다.
 
 - 공개 `ErrorCode` 값과 우선순위: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md)
-- 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md)
+- 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md). 이 문서는 차단 사유 범주 값만 담당합니다.
 - 이 값을 쓰는 필드 형태: [API 코어 스키마](schema-core.md), [API 상태 스키마](schema-state.md), [API 아티팩트 스키마](schema-artifacts.md), [API 판단 스키마](schema-judgment.md)
 - 메서드 동작: [API 메서드](methods.md)와 메서드 담당 문서
 - 보안 보장 의미: [보안](../security.md)
@@ -220,7 +220,9 @@ direct
 <a id="state-and-blocker-values"></a>
 ## 상태와 차단 사유 값
 
-`CloseReadinessBlocker` 객체 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다. 이 절은 지원되는 `CloseReadinessBlocker.category` 값과 인접 상태/차단 사유 값을 담당합니다.
+`CloseReadinessBlocker` 객체 형태는 [API 상태 스키마](schema-state.md#close-readiness-and-validation-shapes)가 담당합니다.
+
+이 절은 차단 사유 범주 값인 `CloseReadinessBlocker.category`와 인접 상태/차단 사유 값을 담당합니다. 차단 사유 처리 경로는 [API 차단 사유 처리 경로](blocker-routing.md)가 담당합니다.
 
 `PlannedBlocker.source_kind`는 아래 값을 사용합니다.
 
@@ -399,7 +401,7 @@ incompatible
 - [기준 범위](../scope.md): 값이 기준 범위에 속하는지 판단.
 - [API 오류 코드](error-codes.md): 공개 오류 코드 의미.
 - [API 오류 우선순위](error-precedence.md): 공개 오류 우선순위.
-- [API 차단 사유 처리 경로](blocker-routing.md): 차단 사유 처리 경로.
+- [API 차단 사유 처리 경로](blocker-routing.md): 닫기 차단 사유와 API 응답 분기 사이의 처리 경계.
 - [API 오류 세부사항](error-details.md): 기계 판독용 오류 세부사항 보조 값.
 - [API 코어 스키마](schema-core.md), [API 상태 스키마](schema-state.md), [API 아티팩트 스키마](schema-artifacts.md), [API 판단 스키마](schema-judgment.md): 이 값을 쓰는 필드.
 - [API 메서드](methods.md)와 메서드 담당 문서: 이 값을 사용하는 메서드 동작.

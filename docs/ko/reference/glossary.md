@@ -730,7 +730,7 @@
 
 피할 표현:
 - Task 닫기 동작을 Core 닫기 준비 상태 의미처럼 보는 표현
-- Task 닫기 동작을 차단 사유/API 응답 처리 경로처럼 보는 표현
+- Task 닫기 동작을 닫기 차단 사유와 API 응답 분기 사이의 차단 사유 처리 경로처럼 보는 표현
 
 담당 문서:
 - [Task 닫기 메서드](api/method-close-task.md)
@@ -738,7 +738,7 @@
 설명:
 - 메서드별 요청 검증, 평가 순서, 결과 분기, dry-run 동작, 차단 사유를 만드는 분기를 말할 때 씁니다.
 - Core 닫기 준비 상태 의미는 [Core 모델](core-model.md)이 담당합니다.
-- 닫기 차단 사유와 API 응답 사이의 처리 경계는 [API 차단 사유 처리 경로](api/blocker-routing.md)가 담당합니다.
+- 닫기 차단 사유와 API 응답 분기 사이의 차단 사유 처리 경로는 [API 차단 사유 처리 경로](api/blocker-routing.md)가 담당합니다.
 
 ### close-readiness blocker
 
@@ -791,6 +791,8 @@
 
 설명:
 - `CloseReadinessBlocker`는 닫기 차단 사유 데이터를 나타내는 API 스키마 식별자입니다.
+- 객체 형태는 API 상태 스키마가 담당하고, 차단 사유 범주 값은 API 값 집합이 담당합니다.
+- 차단 사유 처리 경로는 API 차단 사유 처리 경로가 담당합니다.
 
 ### blocker category
 
@@ -809,11 +811,12 @@
 - blocker category를 번역하지 않고 남기는 표현
 
 담당 문서:
-- [API 값 집합](api/schema-value-sets.md)
-- [API 차단 사유 처리 경로](api/blocker-routing.md)
+- [API 값 집합](api/schema-value-sets.md) - 정확한 차단 사유 범주 값
+- [API 차단 사유 처리 경로](api/blocker-routing.md) - 차단 사유 범주를 사용하는 처리 경계
 
 설명:
-- 차단 사유 범주는 `CloseReadinessBlocker.category` 값이 닫기 차단 사유를 알맞은 담당 관심사로 보내는 분류입니다.
+- 차단 사유 범주는 닫기 차단 사유를 담당 관심사로 분류하는 산문 개념입니다.
+- 정확한 필드 이름을 말할 때는 `CloseReadinessBlocker.category`를 보존합니다. 지원되는 차단 사유 범주 값은 [API 값 집합](api/schema-value-sets.md)이 담당합니다.
 
 ### complete intent
 
@@ -1395,7 +1398,8 @@
 - [API 차단 사유 처리 경로](api/blocker-routing.md)
 
 설명:
-- 차단 사유 처리 경로는 닫기 차단 사유와 API 응답 분기 사이의 경계, 오류와 차단 사유의 경계를 다룹니다.
+- 차단 사유 처리 경로는 닫기 차단 사유와 API 응답 분기 사이의 처리 경계를 다룹니다.
+- 공개 오류 코드가 차단 사유로 표현되는 경우의 경계도 포함합니다.
 - `harness.close_task` 메서드별 동작은 Task 닫기 메서드 담당 문서가 맡습니다.
 
 ### error/blocker boundary

@@ -1,14 +1,14 @@
 # API 차단 사유 처리 경로
 
-이 문서는 닫기 차단 사유와 API 응답 분기 사이의 처리 경계를 담당합니다. 메서드 동작 담당 문서나 스키마 담당 문서가 아니라 경계 안내 문서입니다.
+이 문서는 닫기 차단 사유와 API 응답 분기 사이의 처리 경계를 담당합니다. 메서드 동작이나 스키마 형태를 정의하는 문서가 아니라 차단 사유 처리 경로를 안내하는 문서입니다.
 
-응답 분기 경계가 식별된 뒤에만 이 문서를 사용합니다. 오류와 차단 사유의 경계에서 담당 문서 질문을 보내는 문서일 뿐입니다. `harness.close_task` 메서드 동작, `CloseReadinessBlocker` 형태, 차단 사유 범주 값, Core 닫기 준비 상태 권한, 저장 효과, 공개 `ErrorCode` 의미, API 오류 우선순위, 응답 분기 선택, 표시 문구는 정의하지 않습니다.
+API 응답 분기 경계를 먼저 식별한 뒤 이 문서를 사용합니다. 이 문서는 오류와 차단 사유의 경계에서 어떤 담당 문서를 볼지 안내합니다. `harness.close_task` 메서드 동작, `CloseReadinessBlocker` 형태, 차단 사유 범주 값, Core 닫기 준비 상태 권한, 저장 효과, 공개 `ErrorCode` 의미, API 오류 우선순위, 응답 분기 선택, 표시 문구는 정의하지 않습니다.
 
 ## 담당 경계
 
 | 관심사 | 담당 문서 |
 |---|---|
-| 닫기 차단 사유/API 응답 처리 경계 | 이 문서, 경계 처리 경로로 한정 |
+| 닫기 차단 사유와 API 응답 분기 사이의 처리 경계 | 이 문서(차단 사유 처리 경로 안내에 한정) |
 | `harness.close_task` 요청 동작, 평가 순서, 결과 분기, 커밋된 차단 결과 | [`harness.close_task`](method-close-task.md) |
 | `CloseReadinessBlocker` 필드와 중첩 형태 | [API 상태 스키마](schema-state.md) |
 | 정확한 `CloseReadinessBlocker.category` 값과 그 밖의 enum 형태 API 어휘 | [API 값 집합](schema-value-sets.md#state-and-blocker-values) |
@@ -20,24 +20,28 @@
 
 ## 오류와 차단 사유의 공통 경계
 
-- 공개 `ErrorCode`는 [API 오류 코드](error-codes.md)가 정의하는 API 오류 조건 식별자입니다. 이것만으로 `CloseReadinessBlocker.category` 값이나 차단 사유 범주가 되지 않습니다.
+- 공개 `ErrorCode`는 [API 오류 코드](error-codes.md)가 정의하는 API 오류 조건 식별자입니다. 이 식별자는 자동으로 `CloseReadinessBlocker.category` 값이 되지 않으며 차단 사유 범주도 아닙니다.
 - 거부 응답의 오류 코드는 같은 조건이 닫기 준비 상태에 영향을 줄 수 있다는 이유만으로 차단 사유 범주로 사용하지 않습니다. 그 오류 코드는 API 오류 쪽에 남습니다.
-- 닫기 차단 사유는 [API 상태 스키마](schema-state.md)의 `CloseReadinessBlocker` 형태와 [API 값 집합](schema-value-sets.md#state-and-blocker-values)의 차단 사유 범주 값 집합을 사용합니다.
+- 닫기 차단 사유의 객체 형태는 [API 상태 스키마](schema-state.md)의 `CloseReadinessBlocker`가 담당합니다. 차단 사유 범주 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다.
 - 차단 사유 처리 경로는 API 응답 분기 처리 경로가 정해진 뒤에 적용되며 [API 오류 우선순위](error-precedence.md)를 대신하지 않습니다.
-- [API 오류 코드](error-codes.md)는 공개 오류 코드 의미를 정의하고, 이 문서는 그 오류와 닫기 차단 사유 처리 경로 사이의 경계를 정의합니다.
+- [API 오류 코드](error-codes.md)는 공개 오류 코드 의미를 정의하고, 이 문서는 공개 API 오류와 닫기 차단 사유 데이터 사이의 경계를 정의합니다.
 
 ## 오류와 차단 사유의 경계
 
 | 상황 | 경로 | 경계 |
 |---|---|---|
 | 유효한 닫기 준비 상태 평가 전 실패 | `ToolRejectedResponse.errors[]`와 `ToolError.code: ErrorCode` | 요청이 유효한 닫기 준비 상태 결과에 도달하지 않았습니다. `CloseReadinessBlocker[]`를 반환하지 않습니다. |
-| 유효한 닫기 준비 상태 평가에서 닫기 차단 사유 발견 | 메서드 결과 또는 읽기 전용 상태 결과의 `CloseReadinessBlocker[]` | 데이터는 닫기가 막힌 이유를 설명합니다. 스키마 형태와 정확한 범주 값은 스키마와 값 집합 담당 문서에 남습니다. |
+| 유효한 닫기 준비 상태 평가에서 닫기 차단 사유 발견 | 메서드 결과 또는 읽기 전용 상태 결과의 `CloseReadinessBlocker[]` | 데이터는 닫기가 막힌 이유를 설명합니다. 객체 형태는 스키마 담당 문서에, 정확한 차단 사유 범주 값은 값 집합 담당 문서에 남습니다. |
 | 유효한 `dry_run` 미리보기에서 차단 사유형 결과 예상 | `DryRunSummary.would_blockers: PlannedBlocker[]` | 미리보기 차단 사유는 저장된 `CloseReadinessBlocker` 객체가 아니며 닫기 준비 상태를 만들지 않습니다. |
 | 응답 분기 선택이 질문인 경우 | [API 오류 처리 경로](error-routing.md) | 이 문서는 분기 경계가 식별된 뒤에 적용됩니다. 모든 응답 분기를 선택하지는 않습니다. |
 
-## 차단 사유 범주 처리 경계
+## 범주 기반 처리 경계
 
-`CloseReadinessBlocker.category`는 메서드나 상태 결과가 담당 계약에 따라 닫기 차단 사유 데이터를 반환한 뒤 그 데이터를 책임지는 담당 문서 묶음을 식별합니다. 정확한 차단 사유 범주 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. 이 문서는 범주를 가진 차단 사유 데이터를 알맞은 담당 관심사로 보내는 경계만 설명합니다. 전체 차단 사유 분류표, 스키마 필드 표, Task 닫기 평가 순서는 이 문서가 담당하지 않습니다.
+메서드나 상태 결과가 담당 계약에 따라 닫기 차단 사유 데이터를 반환하면, `CloseReadinessBlocker.category`는 그 데이터를 어느 담당 관심사로 보낼지 나타냅니다.
+
+정확한 차단 사유 범주 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. 이 문서는 범주 값 자체를 정의하지 않습니다. 범주를 가진 닫기 차단 사유 데이터를 알맞은 담당 관심사로 보내는 경계만 설명합니다.
+
+전체 차단 사유 분류표, 스키마 필드 표, Task 닫기 평가 순서는 이 문서가 담당하지 않습니다.
 
 | 담당 관심사 | 처리 경로에서의 사용 | 경계 |
 |---|---|---|
@@ -48,7 +52,7 @@
 
 ## 공개 오류 코드가 차단 사유로 표현되는 경우
 
-위의 공통 경계를 적용한 뒤에만 이 표를 사용합니다. 공개 오류 코드 묶음은 담당 문서가 정의한 차단 사유 데이터를 통해서만 닫기 차단 사유와 관련될 수 있습니다. 스키마나 메서드 담당 문서가 그 정확한 사용을 명시적으로 허용하지 않는 한 공개 `ErrorCode` 값을 `CloseReadinessBlocker.code`에 복사하지 않습니다.
+공통 경계 규칙을 먼저 적용한 뒤에만 이 표를 사용합니다. 공개 오류 코드 묶음은 담당 문서가 정의한 차단 사유 데이터를 통해서만 닫기 차단 사유와 관련될 수 있습니다. 스키마나 메서드 담당 문서가 공개 `ErrorCode` 값의 사용을 명시적으로 허용하지 않는 한 그 값을 `CloseReadinessBlocker.code`에 복사하지 않습니다.
 
 | 공개 오류 코드와의 관계 | 차단 사유 쪽 경로 | 경계 |
 |---|---|---|
@@ -61,7 +65,7 @@
 
 메서드별 닫기 동작은 [`harness.close_task`](method-close-task.md)가 담당합니다. 요청 검증, `intent` 처리, 종료 상태 변경, 상태 버전 동작, 커밋된 차단 결과는 그 메서드 담당 문서로 보냅니다.
 
-이 문서는 그 메서드가 반환하는 차단 사유 데이터와 이웃 API 오류, 스키마, 값 집합, Core, 저장소, 표시 담당 문서 사이의 경계만 정의합니다.
+이 문서는 `harness.close_task`가 반환하는 차단 사유 데이터와 이웃 API 오류, 스키마, 값 집합, Core, 저장소, 표시 담당 문서 사이의 경계만 정의합니다.
 
 ## 권한 경계
 
