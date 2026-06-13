@@ -82,6 +82,6 @@ For machine-readable routing by `doc_id`, use [`docs/doc-index.yaml`](../../doc-
 | Repository editing rules | [`../../../AGENTS.md`](../../../AGENTS.md) |
 | Machine-readable owner routing | [`../../doc-index.yaml`](../../doc-index.yaml) |
 | Documentation authoring rules | [`../maintain/authoring-guide.md`](../maintain/authoring-guide.md) |
-| Documentation checks | [`../maintain/checks.md`](../maintain/checks.md) |
+| Documentation checks index | [`../maintain/checks.md`](../maintain/checks.md) |
 | Translation guidance | [`../maintain/translation-guide.md`](../maintain/translation-guide.md) |
 | Bilingual terminology controls | [`../../terminology-map.yaml`](../../terminology-map.yaml) |

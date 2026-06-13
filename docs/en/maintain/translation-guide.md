@@ -38,6 +38,7 @@ Route and navigation text must use the compact active structure:
 - `docs/*/maintain/authoring-guide.md`
 - `docs/*/maintain/translation-guide.md`
 - `docs/*/maintain/checks.md`
+- `docs/*/maintain/checks/*.md`
 
 Use the paired [Reference Index](../reference/README.md) / [참조 색인](../../ko/reference/README.md) to choose contract owners. Do not turn route pages or maintain guides into duplicate owners for schemas, DDL, API contracts, security guarantees, projection behavior, or runtime state.
 

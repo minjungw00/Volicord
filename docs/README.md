@@ -25,6 +25,6 @@ This directory routes readers into the active bilingual Harness documentation se
 
 - Authoring: [`docs/en/maintain/authoring-guide.md`](en/maintain/authoring-guide.md), [`docs/ko/maintain/authoring-guide.md`](ko/maintain/authoring-guide.md)
 - Translation: [`docs/en/maintain/translation-guide.md`](en/maintain/translation-guide.md), [`docs/ko/maintain/translation-guide.md`](ko/maintain/translation-guide.md)
-- Checks: [`docs/en/maintain/checks.md`](en/maintain/checks.md), [`docs/ko/maintain/checks.md`](ko/maintain/checks.md)
+- Checks index: [`docs/en/maintain/checks.md`](en/maintain/checks.md), [`docs/ko/maintain/checks.md`](ko/maintain/checks.md)
 - Owner routing metadata: [`docs/doc-index.yaml`](doc-index.yaml)
 - Terminology map: [`docs/terminology-map.yaml`](terminology-map.yaml)

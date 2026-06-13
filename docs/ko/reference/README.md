@@ -84,6 +84,6 @@
 | 저장소 편집 규칙 | [`../../../AGENTS.md`](../../../AGENTS.md) |
 | 기계 판독 가능한 담당 문서 경로 | [`../../doc-index.yaml`](../../doc-index.yaml) |
 | 문서 작성 규칙 | [`../maintain/authoring-guide.md`](../maintain/authoring-guide.md) |
-| 문서 점검 | [`../maintain/checks.md`](../maintain/checks.md) |
+| 문서 점검 색인 | [`../maintain/checks.md`](../maintain/checks.md) |
 | 번역 지침 | [`../maintain/translation-guide.md`](../maintain/translation-guide.md) |
 | 한영 용어 통제 | [`../../terminology-map.yaml`](../../terminology-map.yaml) |

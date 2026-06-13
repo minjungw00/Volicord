@@ -8,7 +8,7 @@
 - 작업 중인 사용자: [사용자 가이드](use/user-guide.md), [판단 예시](use/judgment-examples.md), [접점별 레시피](use/surface-recipes.md)를 봅니다.
 - 에이전트 작성자나 운영자: [AGENTS.md](../../AGENTS.md), [에이전트 가이드](use/agent-guide.md), [에이전트 통합 참조](reference/agent-integration.md)를 사용합니다.
 - 구현 담당자나 검토자: [구현 가이드](build/implementation-guide.md)를 읽은 뒤 [참조 색인](reference/README.md)에서 담당 문서를 찾습니다.
-- 문서 유지보수자: [작성 가이드](maintain/authoring-guide.md), [번역 가이드](maintain/translation-guide.md), [점검](maintain/checks.md), [doc-index.yaml](../doc-index.yaml), [용어 지도](../terminology-map.yaml)를 사용합니다.
+- 문서 유지보수자: [작성 가이드](maintain/authoring-guide.md), [번역 가이드](maintain/translation-guide.md), [점검 색인](maintain/checks.md), [doc-index.yaml](../doc-index.yaml), [용어 지도](../terminology-map.yaml)를 사용합니다.
 
 ## 담당 문서 찾기
 

@@ -35,6 +35,7 @@ Use the compact active routes:
 - `docs/*/maintain/authoring-guide.md`
 - `docs/*/maintain/translation-guide.md`
 - `docs/*/maintain/checks.md`
+- `docs/*/maintain/checks/*.md`
 
 [docs/doc-index.yaml](../../doc-index.yaml) owns retrieval and routing metadata. It is not runtime configuration and not a contract owner. [docs/terminology-map.yaml](../../terminology-map.yaml) owns bilingual terminology controls when it exists. It does not own API, storage, schema, security, projection, or runtime behavior.
 
@@ -42,7 +43,7 @@ Use the compact active routes:
 
 Use this path for documentation maintenance:
 
-[Authoring Guide](authoring-guide.md) -> [Translation Guide](translation-guide.md) -> [Checks](checks.md) -> [doc-index.yaml](../../doc-index.yaml) -> [Terminology Map](../../terminology-map.yaml).
+[Authoring Guide](authoring-guide.md) -> [Translation Guide](translation-guide.md) -> [Checks Index](checks.md) -> focused check pages -> [doc-index.yaml](../../doc-index.yaml) -> [Terminology Map](../../terminology-map.yaml).
 
 The maintain path helps editors choose inputs and owners. It does not create runtime state, acceptance, evidence, close records, or implementation authority.
 
@@ -255,4 +256,4 @@ Do not route active documentation through stale legacy paths. If an old path app
 - [ ] Links point to active routes and canonical owners.
 - [ ] New or changed terminology was checked against [Terminology Map](../../terminology-map.yaml).
 - [ ] No one-off planning files, archive copies, generated runtime records, or migration notes remain.
-- [ ] Relevant checks in [Checks](checks.md) were run or reported as skipped.
+- [ ] Relevant checks in [Checks](checks.md) and its focused check pages were run or reported as skipped.

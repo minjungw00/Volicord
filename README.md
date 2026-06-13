@@ -26,4 +26,4 @@ This repository is the entry point for the active bilingual Harness documentatio
 - Repository editing rules: [`AGENTS.md`](AGENTS.md)
 - Machine-readable owner routing: [`docs/doc-index.yaml`](docs/doc-index.yaml)
 - Bilingual terminology controls: [`docs/terminology-map.yaml`](docs/terminology-map.yaml)
-- Documentation checks: [`docs/en/maintain/checks.md`](docs/en/maintain/checks.md), [`docs/ko/maintain/checks.md`](docs/ko/maintain/checks.md)
+- Documentation checks index: [`docs/en/maintain/checks.md`](docs/en/maintain/checks.md), [`docs/ko/maintain/checks.md`](docs/ko/maintain/checks.md)

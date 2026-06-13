@@ -855,10 +855,9 @@ documents:
     path_ko: "docs/ko/maintain/checks.md"
     role: "maintain"
     owner_for:
-      - "documentation maintenance checks"
-      - "link and anchor check procedures"
-      - "bilingual parity check procedures"
-      - "API example consistency checks"
+      - "documentation checks index"
+      - "documentation-maintenance result label routing"
+      - "focused check page routing"
     not_owner_for:
       - "runtime conformance"
       - "product acceptance"
@@ -867,6 +866,122 @@ documents:
     depends_on:
       - "maintain.authoring-guide"
       - "maintain.translation-guide"
+    normative_level: "maintenance"
+    audience:
+      - "maintainers"
+      - "agents"
+
+  - doc_id: "maintain.checks.structure"
+    path_en: "docs/en/maintain/checks/structure.md"
+    path_ko: "docs/ko/maintain/checks/structure.md"
+    role: "maintain"
+    owner_for:
+      - "documentation structure checks"
+      - "canonical owner boundary checks"
+      - "route-page shape checks"
+      - "active and out-of-scope wording checks"
+      - "documentation final report format"
+    not_owner_for:
+      - "runtime conformance"
+      - "product acceptance"
+      - "API contracts"
+      - "storage contracts"
+      - "security guarantees"
+    depends_on:
+      - "maintain.authoring-guide"
+      - "reference.index"
+    normative_level: "maintenance"
+    audience:
+      - "maintainers"
+      - "agents"
+
+  - doc_id: "maintain.checks.language-parity"
+    path_en: "docs/en/maintain/checks/language-parity.md"
+    path_ko: "docs/ko/maintain/checks/language-parity.md"
+    role: "maintain"
+    owner_for:
+      - "English and Korean semantic parity checks"
+      - "identifier preservation checks"
+      - "Korean structure preservation checks"
+      - "Korean readability checks"
+    not_owner_for:
+      - "product contracts"
+      - "runtime conformance"
+      - "translation-only archive status"
+    depends_on:
+      - "maintain.translation-guide"
+      - "terminology.map"
+    normative_level: "maintenance"
+    audience:
+      - "maintainers"
+      - "translators"
+      - "agents"
+
+  - doc_id: "maintain.checks.terminology"
+    path_en: "docs/en/maintain/checks/terminology.md"
+    path_ko: "docs/ko/maintain/checks/terminology.md"
+    role: "maintain"
+    owner_for:
+      - "terminology-map check procedures"
+      - "mixed-language Korean check procedures"
+      - "`complete` ambiguity checks"
+      - "close-readiness terminology checks"
+      - "surface and access wording checks"
+    not_owner_for:
+      - "product terminology definitions"
+      - "security guarantees"
+      - "API contracts"
+      - "runtime localization configuration"
+    depends_on:
+      - "terminology.map"
+      - "maintain.translation-guide"
+    normative_level: "maintenance"
+    audience:
+      - "maintainers"
+      - "translators"
+      - "agents"
+
+  - doc_id: "maintain.checks.api-examples"
+    path_en: "docs/en/maintain/checks/api-examples.md"
+    path_ko: "docs/ko/maintain/checks/api-examples.md"
+    role: "maintain"
+    owner_for:
+      - "API example durability checks"
+      - "API example internal consistency checks"
+      - "API example field-name consistency checks"
+      - "API example owner-routing checks"
+    not_owner_for:
+      - "API method contracts"
+      - "API schema contracts"
+      - "runtime conformance"
+      - "product acceptance"
+    depends_on:
+      - "maintain.authoring-guide"
+      - "maintain.translation-guide"
+      - "reference.index"
+    normative_level: "maintenance"
+    audience:
+      - "maintainers"
+      - "agents"
+
+  - doc_id: "maintain.checks.links-and-indexes"
+    path_en: "docs/en/maintain/checks/links-and-indexes.md"
+    path_ko: "docs/ko/maintain/checks/links-and-indexes.md"
+    role: "maintain"
+    owner_for:
+      - "link and anchor check procedures"
+      - "README and route index check procedures"
+      - "doc-index route metadata checks"
+      - "LLM retrieval route checks"
+    not_owner_for:
+      - "product contracts"
+      - "API contracts"
+      - "storage contracts"
+      - "security guarantees"
+    depends_on:
+      - "maintain.authoring-guide"
+      - "maintain.translation-guide"
+      - "docs.doc-index"
     normative_level: "maintenance"
     audience:
       - "maintainers"
