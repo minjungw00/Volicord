@@ -338,5 +338,5 @@ state:
 - `ArtifactInput`, `StagedArtifactHandle`, `ArtifactRef`: [API 아티팩트 스키마](schema-artifacts.md).
 - 쓰기 승인과 닫기 관련 증거 경계: [Core 모델](../core-model.md).
 - 지원되는 값과 접근 등급: [API 값 집합](schema-value-sets.md).
-- 공개 오류: [API 오류](errors.md).
+- 공개 오류: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md).
 - 저장 효과와 아티팩트 승격: [저장 효과](../storage-effects.md), [아티팩트 저장소](../storage-artifacts.md).

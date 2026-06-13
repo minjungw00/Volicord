@@ -25,7 +25,7 @@ This document does not own:
 - artifact schemas; see [API Artifact Schemas](schema-artifacts.md)
 - user-owned judgment schemas; see [API Judgment Schemas](schema-judgment.md)
 - supported method names, `response_kind` values, `effect_kind` values, access classes, or other enum-like values; see [API Value Sets](schema-value-sets.md)
-- public error codes, precedence, or error semantics; see [API Errors](errors.md)
+- public error codes, precedence, or error semantics; see [API error codes](error-codes.md) and [API error precedence](error-precedence.md)
 - storage records or effects; see [Storage Records](../storage-records.md) and [Storage Effects](../storage-effects.md)
 
 ## Schema notation
@@ -77,7 +77,7 @@ Precedence:
 - Method-specific `task_id` fields, when present, take precedence as described by the affected method owner document.
 
 Owner links:
-- conflict behavior: [state version conflict](errors.md#state-conflict-behavior)
+- conflict behavior: [state version conflict](error-precedence.md#state-conflict-behavior)
 - storage version behavior: [Storage Versioning](../storage-versioning.md)
 
 <a id="common-response"></a>
@@ -123,7 +123,7 @@ Owner links:
 - supported `response_kind` and `effect_kind` values: [response and effect values](schema-value-sets.md#response-and-effect-values)
 - shared branch reading: [common response branches](#common-response)
 - method-specific state effects: method owner documents
-- public error precedence: [API Errors](errors.md)
+- public error precedence: [API error precedence](error-precedence.md)
 
 ## Dry-run summary shapes
 
@@ -162,7 +162,7 @@ PlannedBlocker:
 Owner links:
 - `NextActionSummary` and `StateRecordRef`: [API State Schemas](schema-state.md)
 - `PlannedBlocker.source_kind` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
-- public `ErrorCode` values used in `ToolError.code`: [API Errors](errors.md)
+- public `ErrorCode` values used in `ToolError.code`: [API error codes](error-codes.md)
 
 ## Shared support shapes
 
@@ -182,4 +182,6 @@ Meaning:
 - `ToolError` is the shape used by `ToolRejectedResponse.errors` and previewable `DryRunSummary.would_errors`.
 
 Owner links:
-- public error code set, error details semantics, and primary-error precedence: [API Errors](errors.md)
+- public error code set: [API error codes](error-codes.md)
+- error details semantics: [API error details](error-details.md)
+- primary-error precedence: [API error precedence](error-precedence.md)

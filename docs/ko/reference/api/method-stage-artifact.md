@@ -97,7 +97,7 @@
 - 로컬 접근 불일치.
 - 아티팩트 등록 역량 부족.
 
-공개 오류 코드 의미와 우선순위는 [API 오류](errors.md)가 담당합니다.
+공개 오류 코드 의미는 [API 오류 코드](error-codes.md)가 담당합니다. 공개 오류 우선순위는 [API 오류 우선순위](error-precedence.md)가 담당합니다.
 
 ## `dry_run` 동작
 
@@ -181,5 +181,5 @@ expires_at: "<future-expiration-timestamp>"
 - 요청 래퍼, 응답 분기, `dry_run` 요약: [API 코어 스키마](schema-core.md).
 - `StagedArtifactHandle`, `ArtifactInput`, `ArtifactRef`: [API 아티팩트 스키마](schema-artifacts.md).
 - 지원되는 아티팩트 값과 접근 등급: [API 값 집합](schema-value-sets.md).
-- 공개 오류: [API 오류](errors.md).
+- 공개 오류: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md).
 - 저장 효과와 아티팩트 생명주기: [저장 효과](../storage-effects.md), [아티팩트 저장소](../storage-artifacts.md).

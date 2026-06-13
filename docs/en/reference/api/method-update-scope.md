@@ -110,7 +110,7 @@ Returns `ToolRejectedResponse` for pre-commit failures such as:
 - local access failure
 - validator failure
 
-Public error code meaning and precedence are owned by [API Errors](errors.md).
+Public error code meaning is owned by [API error codes](error-codes.md). Public error precedence is owned by [API error precedence](error-precedence.md).
 
 ## Dry-run behavior
 
@@ -233,5 +233,5 @@ next_actions:
 - State refs, `StateSummary`, `ShapingReadiness`, blockers, and next actions: [API State Schemas](schema-state.md).
 - Scope-related user judgment shapes: [API Judgment Schemas](schema-judgment.md).
 - Supported value sets and access classes: [API Value Sets](schema-value-sets.md).
-- Public errors: [API Errors](errors.md).
+- Public errors: [API error codes](error-codes.md) and [API error precedence](error-precedence.md).
 - Persistence effects and stale authorization behavior: [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).

@@ -18,7 +18,7 @@
 
 - 기록 배치나 DDL; [저장소 기록](storage-records.md)을 봅니다.
 - 어떤 메서드 분기가 효과를 만드는지; [저장 효과](storage-effects.md), [API 메서드](api/methods.md), 메서드 담당 문서를 봅니다.
-- 공개 오류 코드와 우선순위; [API 오류](api/errors.md)를 봅니다.
+- 공개 오류 코드와 우선순위; [API 오류 코드](api/error-codes.md)와 [API 오류 우선순위](api/error-precedence.md)를 봅니다.
 - 아티팩트 생명주기; [아티팩트 저장소](storage-artifacts.md)를 봅니다.
 - 보안 보장 표현; [보안](security.md)을 봅니다.
 - 런타임 배포나 운영 명령.
@@ -106,7 +106,7 @@
 
 담당 문서 링크:
 
-- 공개 오류 코드 경로는 [API 오류](api/errors.md)가 담당합니다.
+- 공개 오류 코드 경로는 [API 오류 경로](api/error-routing.md)가 담당합니다.
 - 분기별 저장 효과는 [저장 효과](storage-effects.md)가 담당합니다.
 
 <a id="state-version-successful-mutation"></a>
@@ -291,7 +291,7 @@
 
 담당 문서 링크:
 
-- 공개 오류 코드 경로는 [API 오류](api/errors.md)가 담당합니다.
+- 공개 오류 코드 경로는 [API 오류 경로](api/error-routing.md)가 담당합니다.
 
 허용되지 않는 것:
 
@@ -376,11 +376,11 @@
 
 - 같은 `idempotency_key`와 같은 `request_hash`가 재실행되면 Core는 원래 커밋된 응답을 반환합니다.
 - 재실행은 이벤트, 아티팩트 승격 또는 연결, `Write Authorization` 소비, 상태 변경을 다시 만들지 않습니다.
-- 같은 `idempotency_key`가 다른 `request_hash`로 재사용되면 Core는 [상태 버전 충돌](api/errors.md#state-conflict-behavior)이 정의한 `STATE_VERSION_CONFLICT`를 반환합니다.
+- 같은 `idempotency_key`가 다른 `request_hash`로 재사용되면 Core는 [상태 버전 충돌](api/error-precedence.md#state-conflict-behavior)이 정의한 `STATE_VERSION_CONFLICT`를 반환합니다.
 
 담당 문서 링크:
 
-- 공개 충돌 동작은 [API 오류](api/errors.md#state-conflict-behavior)가 담당합니다.
+- 공개 충돌 동작은 [API 오류 우선순위](api/error-precedence.md#state-conflict-behavior)가 담당합니다.
 - 분기별 저장 효과는 [저장 효과](storage-effects.md)가 담당합니다.
 
 비주장: `request_hash`를 두 번째 고유 키에 넣어 같은 `idempotency_key`가 여러 커밋 응답으로 갈라질 수 있게 만들면 안 됩니다.
@@ -550,12 +550,12 @@
 
 담당 문서 링크:
 
-- 공개 충돌 오류는 [API 오류](api/errors.md)가 담당합니다.
+- 공개 충돌 오류는 [API 오류 우선순위](api/error-precedence.md)가 담당합니다.
 - 분기별 저장 효과는 [저장 효과](storage-effects.md)가 담당합니다.
 
 ## 관련 담당 문서
 
-- [API 오류](api/errors.md): `STATE_VERSION_CONFLICT` 같은 공개 충돌 오류.
+- [API 오류 우선순위](api/error-precedence.md): `STATE_VERSION_CONFLICT` 같은 공개 충돌 오류.
 - [저장 효과](storage-effects.md): 어떤 분기가 상태를 올리거나 올리지 않는지.
 - [저장소 기록](storage-records.md): 버전 관리나 재실행 데이터를 저장하는 열.
 - [아티팩트 저장소](storage-artifacts.md): 아티팩트 생명주기와 보존 경계.

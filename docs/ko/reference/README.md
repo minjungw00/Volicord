@@ -25,7 +25,11 @@
 | 아티팩트 참조 형태 | [`api/schema-artifacts.md`](api/schema-artifacts.md) |
 | 사용자 판단과 민감 동작 승인 스키마 | [`api/schema-judgment.md`](api/schema-judgment.md) |
 | API 값 집합 | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
-| 공개 오류 코드와 오류 경로 | [`api/errors.md`](api/errors.md) |
+| API 오류 문서 묶음 경로 | [`api/errors.md`](api/errors.md) |
+| 공개 `ErrorCode` 식별자와 의미 | [`api/error-codes.md`](api/error-codes.md) |
+| API 오류 우선순위와 상태 충돌 동작 | [`api/error-precedence.md`](api/error-precedence.md) |
+| API 오류와 차단 사유 경로 | [`api/error-routing.md`](api/error-routing.md) |
+| 기계 판독용 `ToolError.details` | [`api/error-details.md`](api/error-details.md) |
 
 ## 저장소 담당 문서
 
@@ -59,7 +63,7 @@
 | 닫기 준비 상태 의미 | [`core-model.md`](core-model.md) |
 | 닫기 메서드 | [`api/method-close-task.md`](api/method-close-task.md) |
 | 닫기 준비 상태 형태 | [`api/schema-state.md`](api/schema-state.md) |
-| 닫기 오류 경로 | [`api/errors.md`](api/errors.md) |
+| 닫기 오류 경로 | [`api/error-routing.md`](api/error-routing.md) |
 
 ## 유지보수와 메타데이터
 

@@ -18,7 +18,7 @@ This document does not own:
 
 - record layout or DDL; see [Storage Records](storage-records.md)
 - which method branch produces an effect; see [Storage Effects](storage-effects.md), the [API Methods](api/methods.md), and method owner documents
-- public error codes and precedence; see [API Errors](api/errors.md)
+- public error codes and precedence; see [API error codes](api/error-codes.md) and [API error precedence](api/error-precedence.md)
 - artifact lifecycle; see [Artifact Storage](storage-artifacts.md)
 - security guarantee wording; see [Security](security.md)
 - runtime deployment or operational commands
@@ -106,7 +106,7 @@ Retry behavior:
 
 Owner links:
 
-- Public error-code routing belongs to [API Errors](api/errors.md).
+- Public error-code routing belongs to [API error routing](api/error-routing.md).
 - Branch storage effects belong to [Storage Effects](storage-effects.md).
 
 <a id="state-version-successful-mutation"></a>
@@ -293,7 +293,7 @@ Related storage field:
 
 Owner links:
 
-- Public error-code routing belongs to [API Errors](api/errors.md).
+- Public error-code routing belongs to [API error routing](api/error-routing.md).
 
 Not allowed:
 
@@ -378,11 +378,11 @@ Retry behavior:
 
 - If the same `idempotency_key` and same `request_hash` are replayed, Core returns the original committed response.
 - Replay does not append events, promote or link artifacts, consume `Write Authorization`, or change state again.
-- If the same `idempotency_key` is reused with a different `request_hash`, Core returns `STATE_VERSION_CONFLICT` as defined by [state version conflict](api/errors.md#state-conflict-behavior).
+- If the same `idempotency_key` is reused with a different `request_hash`, Core returns `STATE_VERSION_CONFLICT` as defined by [state version conflict](api/error-precedence.md#state-conflict-behavior).
 
 Owner links:
 
-- Public conflict behavior belongs to [API Errors](api/errors.md#state-conflict-behavior).
+- Public conflict behavior belongs to [API error precedence](api/error-precedence.md#state-conflict-behavior).
 - Branch storage effects belong to [Storage Effects](storage-effects.md).
 
 `request_hash` must not be added to a second uniqueness key that would allow the same idempotency key to fork into multiple committed responses.
@@ -551,12 +551,12 @@ Retry does not lower user-judgment boundaries. If a new acceptance, sensitive-ac
 
 Owner links:
 
-- Public conflict errors belong to [API Errors](api/errors.md).
+- Public conflict errors belong to [API error precedence](api/error-precedence.md).
 - Branch storage effects belong to [Storage Effects](storage-effects.md).
 
 ## Related owners
 
-- [API Errors](api/errors.md) for public conflict errors such as `STATE_VERSION_CONFLICT`.
+- [API error precedence](api/error-precedence.md) for public conflict errors such as `STATE_VERSION_CONFLICT`.
 - [Storage Effects](storage-effects.md) for branches that increment or do not increment state.
 - [Storage Records](storage-records.md) for columns that store versioning or replay data.
 - [Artifact Storage](storage-artifacts.md) for artifact lifecycle and retention boundaries.

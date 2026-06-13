@@ -105,7 +105,7 @@ ArtifactInput:
 
 `ArtifactInput[]`은 입력마다 아티팩트 출처 형태 하나를 고릅니다. 공개 API 요청에 두 번째 요청 수준 접근 등급을 더하지 않습니다.
 
-출처 필드 형태가 잘못되면 [API 오류](errors.md)가 담당하는 공개 오류 의미에 따라 `ToolRejectedResponse`로 반환합니다. 스테이징 핸들 검증, 승격, 본문 읽기 자격, 지속 연결은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
+출처 필드 형태가 잘못되면 [API 오류 코드](error-codes.md)와 [API 오류 경로](error-routing.md)가 담당하는 공개 오류 의미에 따라 `ToolRejectedResponse`로 반환합니다. 스테이징된 아티팩트 핸들 검증, 승격, 본문 읽기 자격, 지속 연결은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다.
 
 ## 관련 담당 문서
 

@@ -22,7 +22,7 @@ This document does not own:
 - method behavior for requesting or recording judgment; see [User-judgment methods](method-user-judgment.md)
 - supported judgment-kind values, status values, presentation values, and required-for values; see [API Value Sets](schema-value-sets.md)
 - final acceptance or residual-risk close effects; see [Core Model](../core-model.md) and [Close-task method](method-close-task.md)
-- public error semantics for missing, unresolved, denied, or expired judgment; see [API Errors](errors.md)
+- public error semantics for missing, unresolved, denied, or expired judgment; see [API error codes](error-codes.md)
 
 ## Boundary
 

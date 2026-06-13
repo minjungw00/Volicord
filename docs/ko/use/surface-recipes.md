@@ -109,7 +109,7 @@ IDE/편집기 통합은 에이전트가 절차를 지키도록 도울 수 있습
 
 - [에이전트 통합 참조](../reference/agent-integration.md): 커넥터 동작, `capability_profile`, `VerifiedSurfaceContext`, 맥락 교환, 대체 경계.
 - [API 메서드](../reference/api/methods.md): 지원되는 메서드 목록과 메서드 담당 경로.
-- [API 오류](../reference/api/errors.md): 공개 오류 코드와 복구 경로.
+- [API 오류 코드](../reference/api/error-codes.md), [API 오류 경로](../reference/api/error-routing.md): 공개 오류 코드와 복구 경로.
 - [보안](../reference/security.md): 보장 표현과 비주장.
 - [런타임 경계](../reference/runtime-boundaries.md): `Product Repository`, Harness Server, `Harness Runtime Home` 분리.
 - [기준 범위](../reference/scope.md): 기준 범위, 프로필 조건부, 지원 범위 밖 기능 경계.

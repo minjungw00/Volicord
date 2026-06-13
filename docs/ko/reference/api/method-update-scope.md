@@ -110,7 +110,7 @@
 - 로컬 접근 실패.
 - 검증기 실패.
 
-공개 오류 코드 의미와 우선순위는 [API 오류](errors.md)가 담당합니다.
+공개 오류 코드 의미는 [API 오류 코드](error-codes.md)가 담당합니다. 공개 오류 우선순위는 [API 오류 우선순위](error-precedence.md)가 담당합니다.
 
 ## `dry_run` 동작
 
@@ -231,5 +231,5 @@ next_actions:
 - 상태 참조, `StateSummary`, `ShapingReadiness`, 차단 사유, 다음 행동: [API 상태 스키마](schema-state.md).
 - 범위 관련 사용자 판단 형태: [API 판단 스키마](schema-judgment.md).
 - 지원되는 값 집합과 접근 등급: [API 값 집합](schema-value-sets.md).
-- 공개 오류: [API 오류](errors.md).
+- 공개 오류: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md).
 - 저장 효과와 `status=stale` 쓰기 승인 동작: [저장 효과](../storage-effects.md), [저장소 버전 관리](../storage-versioning.md).

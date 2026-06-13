@@ -22,7 +22,7 @@
 - 판단 요청과 기록 메서드 동작: [사용자 판단 메서드](method-user-judgment.md)
 - 지원되는 판단 종류 값, 상태 값, 표시 형식 값, 필요 판단 위치 값: [API 값 집합](schema-value-sets.md)
 - 최종 수락이나 잔여 위험 수락의 닫기 효과: [Core 모델](../core-model.md), [Task 닫기 메서드](method-close-task.md)
-- 판단 누락, 미해결, 거절, 만료에 대한 공개 오류 의미: [API 오류](errors.md)
+- 판단 누락, 미해결, 거절, 만료에 대한 공개 오류 의미: [API 오류 코드](error-codes.md)
 
 ## 경계
 

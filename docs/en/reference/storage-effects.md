@@ -18,7 +18,7 @@ This document does not own:
 - idempotency, locks, state-version clocks, event ordering, or migrations; see [Storage Versioning](storage-versioning.md)
 - public response branches or schemas; see [API Schema Core](api/schema-core.md)
 - API method behavior; see the [API Methods](api/methods.md) and method owner documents
-- public error code precedence; see [API Errors](api/errors.md)
+- public error code precedence; see [API error precedence](api/error-precedence.md)
 
 ## Shape versus effect
 
@@ -669,7 +669,7 @@ Owner links:
 ## Related owners
 
 - [API Methods](api/methods.md) and method owner documents for selected method behavior and response unions.
-- [API Errors](api/errors.md) for rejected-response public errors.
+- [API error routing](api/error-routing.md) and [API error codes](api/error-codes.md) for rejected-response public errors.
 - [Storage Records](storage-records.md) for records that effects may touch.
 - [Artifact Storage](storage-artifacts.md) for staged-handle and artifact lifecycle details.
 - [Storage Versioning](storage-versioning.md) for state clocks and replay/idempotency semantics.

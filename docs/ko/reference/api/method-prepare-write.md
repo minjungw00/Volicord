@@ -229,5 +229,5 @@ write_decision_reasons:
 - `WriteAuthorizationSummary`, 상태 요약, 참조: [API 상태 스키마](schema-state.md).
 - `SensitiveActionScope`와 사용자 소유 승인 경계: [API 판단 스키마](schema-judgment.md).
 - 지원되는 값과 접근 등급: [API 값 집합](schema-value-sets.md).
-- 공개 오류, `STATE_VERSION_CONFLICT`, 차단/`dry_run` 동작: [API 오류](errors.md).
+- 공개 오류, `STATE_VERSION_CONFLICT`, 차단/`dry_run` 동작: [API 오류 코드](error-codes.md), [상태 버전 충돌](error-precedence.md#state-conflict-behavior), [API 오류 경로](error-routing.md).
 - 저장 효과와 상태 시계: [저장 효과](../storage-effects.md), [저장소 버전 관리](../storage-versioning.md).

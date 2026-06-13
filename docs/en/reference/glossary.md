@@ -64,7 +64,7 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | reserved value | 예약된 값 | [Scope](scope.md) |
 | profile-gated value | 프로필 조건부 값 | [Scope](scope.md) |
 | dry-run | dry-run 미리보기 | [API Schema Core](api/schema-core.md) |
-| blocked result | 차단 결과 | [API Errors](api/errors.md) |
+| blocked result | 차단 결과 | [API error routing](api/error-routing.md) |
 | rejected response | 거부 응답 | [API Schema Core](api/schema-core.md) |
 | migration | 마이그레이션 | [Storage Versioning](storage-versioning.md) |
 | lifecycle | 생명주기 | [Core Model](core-model.md) |
@@ -569,7 +569,7 @@ Avoid:
 Owner:
 - [Core Model](core-model.md)
 - [Close-task method](api/method-close-task.md)
-- [API Errors](api/errors.md)
+- [API error routing](api/error-routing.md)
 
 Notes:
 - This is the evaluation concept, not the blocker schema.
@@ -595,7 +595,7 @@ Avoid:
 Owner:
 - [Core Model](core-model.md)
 - [Close-task method](api/method-close-task.md)
-- [API Errors](api/errors.md)
+- [API error routing](api/error-routing.md)
 
 Notes:
 - This is the owner-path check that derives close readiness and remaining close blockers.
@@ -620,7 +620,7 @@ Avoid:
 Owner:
 - [Core Model](core-model.md)
 - [API State Schemas](api/schema-state.md)
-- [API Errors](api/errors.md)
+- [API error routing](api/error-routing.md)
 
 Notes:
 - Use this for a close-relevant reason that prevents honest close readiness until the owner path addresses it.
@@ -646,7 +646,7 @@ Avoid:
 Owner:
 - [API State Schemas](api/schema-state.md)
 - [API Value Sets](api/schema-value-sets.md)
-- [API Errors](api/errors.md)
+- [API error routing](api/error-routing.md)
 
 Notes:
 - `CloseReadinessBlocker` is the API schema identifier for close-readiness blocking data.
@@ -1180,7 +1180,7 @@ Avoid:
 Owner:
 - [API Schema Core](api/schema-core.md)
 - [API Methods](api/methods.md)
-- [API Errors](api/errors.md)
+- [API error routing](api/error-routing.md)
 - [Storage Effects](storage-effects.md)
 
 Notes:
@@ -1207,7 +1207,7 @@ Avoid:
 - `STATE_VERSION_CONFLICT` as blocker code
 
 Owner:
-- [API Errors](api/errors.md)
+- [API error routing](api/error-routing.md)
 - [Prepare-write method](api/method-prepare-write.md)
 - [Close-task method](api/method-close-task.md)
 - [Storage Effects](storage-effects.md)
@@ -1236,7 +1236,7 @@ Avoid:
 
 Owner:
 - [API Schema Core](api/schema-core.md)
-- [API Errors](api/errors.md)
+- [API error routing](api/error-routing.md)
 - [Storage Effects](storage-effects.md)
 
 Notes:

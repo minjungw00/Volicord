@@ -17,7 +17,7 @@ This document owns:
 
 This document does not own:
 
-- public `ErrorCode` values or precedence; see [API Errors](errors.md)
+- public `ErrorCode` values or precedence; see [API error codes](error-codes.md) and [API error precedence](error-precedence.md)
 - field shapes that use these values; see [API Schema Core](schema-core.md), [API State Schemas](schema-state.md), [API Artifact Schemas](schema-artifacts.md), and [API Judgment Schemas](schema-judgment.md)
 - method behavior; see the [API Methods](methods.md) and method owner documents
 - security guarantee meaning; see [Security](../security.md)
@@ -74,7 +74,7 @@ staging_created
 no_effect
 ```
 
-`response_kind` and `effect_kind` are branch metadata values. Common branch shape is owned by [API Schema Core](schema-core.md#common-response), and method-specific state effects are owned by method owner documents. Public error semantics for rejected branches are owned by [API Errors](errors.md).
+`response_kind` and `effect_kind` are branch metadata values. Common branch shape is owned by [API Schema Core](schema-core.md#common-response), and method-specific state effects are owned by method owner documents. Public error semantics for rejected branches are owned by [API error codes](error-codes.md) and [API error routing](error-routing.md).
 
 <a id="access-class-values"></a>
 ## Access class values
@@ -384,18 +384,7 @@ incompatible
 
 ## Error detail helper values
 
-`ToolError.details.authorization_reason` uses:
-
-```text
-missing
-expired
-stale
-revoked
-consumed
-incompatible
-```
-
-`ToolError.details.artifact_input_error.reason` uses the staged-handle reason values listed in the [public `ErrorCode` table](errors.md#error-taxonomy). [API Errors](errors.md) owns what each public error code and detail reason means.
+`ToolError.details.authorization_reason` and `ToolError.details.artifact_input_error.reason` helper values are owned by [API error details](error-details.md#error-detail-helper-values). This value-set document does not define machine-readable error detail semantics.
 
 ## Profile-gated and reserved values
 
@@ -408,7 +397,9 @@ Boundary:
 ## Related owners
 
 - [Scope](../scope.md) for whether a value belongs in the baseline scope.
-- [API Errors](errors.md) for public error codes and precedence.
+- [API error codes](error-codes.md) for public error code meanings.
+- [API error precedence](error-precedence.md) for public error precedence.
+- [API error details](error-details.md) for machine-readable error detail helper values.
 - [API Schema Core](schema-core.md), [API State Schemas](schema-state.md), [API Artifact Schemas](schema-artifacts.md), and [API Judgment Schemas](schema-judgment.md) for fields that use these values.
 - [API Methods](methods.md) and method owner documents for method behavior using these values.
 - [Scope Reference](../scope.md) for reserved and profile-gated value boundaries.

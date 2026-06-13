@@ -103,7 +103,7 @@
 - 활성 `Task` 호환성 부족.
 - 검증기 실패.
 
-공개 오류 코드 의미와 우선순위는 [API 오류](errors.md)가 담당합니다.
+공개 오류 코드 의미는 [API 오류 코드](error-codes.md)가 담당합니다. 공개 오류 우선순위는 [API 오류 우선순위](error-precedence.md)가 담당합니다.
 
 ## `dry_run` 동작
 
@@ -185,5 +185,5 @@ next_actions:
 - 요청 래퍼와 응답 분기: [`ToolEnvelope`](schema-core.md#tool-envelope), [공통 응답 분기](schema-core.md#common-response).
 - 상태 참조, `StateSummary`, `ShapingReadiness`, 다음 행동: [API 상태 스키마](schema-state.md).
 - 지원되는 메서드 이름, 모드 값, `resume_policy`, `response_kind`, `effect_kind`, 접근 등급: [API 값 집합](schema-value-sets.md).
-- 공개 오류와 상태 버전 충돌: [API 오류](errors.md).
+- 공개 오류와 상태 버전 충돌: [API 오류 코드](error-codes.md), [상태 버전 충돌](error-precedence.md#state-conflict-behavior).
 - 저장 효과: [저장 효과](../storage-effects.md), [저장소 버전 관리](../storage-versioning.md).

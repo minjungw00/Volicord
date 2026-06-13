@@ -97,7 +97,7 @@ Non-claims:
 
 Mutating intents with `dry_run=true` use the common preview branch when valid.
 
-Branch shape and planned-blocker representation are owned by [API Schema Core](schema-core.md) and [API Errors](errors.md).
+Branch shape is owned by [API Schema Core](schema-core.md). Planned-blocker routing is owned by [API error routing](error-routing.md).
 
 ## Storage effect
 
@@ -256,5 +256,5 @@ next_actions:
 - Close-readiness shapes, `CloseReadinessBlocker`, `EvidenceSummary`, and `StateSummary`: [API State Schemas](schema-state.md).
 - Close state, lifecycle, close reason, and blocker values: [API Value Sets](schema-value-sets.md).
 - Close-readiness meaning and close honesty: [Core Model close readiness](../core-model.md#close_task).
-- Public errors and close blocker routing: [API Errors](errors.md) and [`close_task` blocker mapping](errors.md#harnessclose_task-close-blockers).
+- Public errors and close blocker routing: [API error codes](error-codes.md) and [`close_task` blocker mapping](error-routing.md#harnessclose_task-close-blockers).
 - Persistence effects and state-version behavior: [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).

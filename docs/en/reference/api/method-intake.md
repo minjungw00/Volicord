@@ -103,7 +103,7 @@ Returns `ToolRejectedResponse` for pre-commit failures such as:
 - missing active-task compatibility
 - validator failure
 
-Public error code meaning and precedence are owned by [API Errors](errors.md).
+Public error code meaning is owned by [API error codes](error-codes.md). Public error precedence is owned by [API error precedence](error-precedence.md).
 
 ## Dry-run behavior
 
@@ -185,5 +185,5 @@ next_actions:
 - Request envelope and response branches: [`ToolEnvelope`](schema-core.md#tool-envelope) and [common response branches](schema-core.md#common-response).
 - State refs, `StateSummary`, `ShapingReadiness`, and next actions: [API State Schemas](schema-state.md).
 - Supported method names, mode values, `resume_policy`, `response_kind`, `effect_kind`, and access classes: [API Value Sets](schema-value-sets.md).
-- Public errors and state-version conflicts: [API Errors](errors.md).
+- Public errors and state-version conflicts: [API error codes](error-codes.md), [state version conflict](error-precedence.md#state-conflict-behavior).
 - Persistence effects: [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).

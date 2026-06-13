@@ -25,7 +25,11 @@ For machine-readable routing by `doc_id`, use [`docs/doc-index.yaml`](../../doc-
 | Artifact reference shapes | [`api/schema-artifacts.md`](api/schema-artifacts.md) |
 | User judgment and sensitive-action schemas | [`api/schema-judgment.md`](api/schema-judgment.md) |
 | API value sets | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
-| Public error codes and error routing | [`api/errors.md`](api/errors.md) |
+| API error family route | [`api/errors.md`](api/errors.md) |
+| Public `ErrorCode` identifiers and meanings | [`api/error-codes.md`](api/error-codes.md) |
+| API error precedence and state conflict behavior | [`api/error-precedence.md`](api/error-precedence.md) |
+| API error versus blocker routing | [`api/error-routing.md`](api/error-routing.md) |
+| Machine-readable `ToolError.details` | [`api/error-details.md`](api/error-details.md) |
 
 ## Storage owners
 
@@ -59,7 +63,7 @@ For machine-readable routing by `doc_id`, use [`docs/doc-index.yaml`](../../doc-
 | Close-readiness meaning | [`core-model.md`](core-model.md) |
 | Close task method | [`api/method-close-task.md`](api/method-close-task.md) |
 | Close-readiness state shapes | [`api/schema-state.md`](api/schema-state.md) |
-| Close error routing | [`api/errors.md`](api/errors.md) |
+| Close error routing | [`api/error-routing.md`](api/error-routing.md) |
 
 ## Maintenance and metadata
 

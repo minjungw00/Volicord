@@ -23,7 +23,7 @@ This document does not own:
 - common envelopes or response branches; see [API Schema Core](schema-core.md)
 - supported enum-like values; see [API Value Sets](schema-value-sets.md)
 - method behavior; see the [API Methods](methods.md) and method owner documents
-- public error semantics; see [API Errors](errors.md)
+- public error semantics; see [API error codes](error-codes.md) and [API error routing](error-routing.md)
 - Core lifecycle and close-readiness product meaning; see [Core Model](../core-model.md)
 - storage records or persistence effects; see [Storage Records](../storage-records.md) and [Storage Effects](../storage-effects.md)
 
@@ -186,7 +186,7 @@ Not implied:
 
 Owner links:
 - Supported categories and reason values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
-- Public error code meaning: [API Errors](errors.md)
+- Public error code meaning: [API error codes](error-codes.md)
 
 ## Evidence and run snapshot shapes
 
@@ -262,7 +262,7 @@ Not implied:
 Owner links:
 - Close-readiness meaning and non-substitution rules: [Core Model close readiness](../core-model.md#close_task)
 - Response branch behavior, close-readiness evaluation order, and committed blocked outcomes: [`harness.close_task`](method-close-task.md)
-- Public error routing: [`close_task` blocker mapping](errors.md#harnessclose_task-close-blockers)
+- Public error routing: [`close_task` blocker mapping](error-routing.md#harnessclose_task-close-blockers)
 - Supported `CloseReadinessBlocker.category`, `ValidatorResult.status`, `ValidatorResult.severity`, and `GuaranteeDisplay.level` values: [API Value Sets](schema-value-sets.md)
 - Security guarantee meaning: [Security](../security.md)
 

@@ -164,7 +164,7 @@ Exact assertion detail stays with these owners:
 | State summaries, blockers, evidence, and close-readiness structures | [API State Schemas](api/schema-state.md) |
 | `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle` shapes | [API Artifact Schemas](api/schema-artifacts.md) |
 | API value sets, including `access_class` values | [API Value Sets](api/schema-value-sets.md) |
-| Public errors and precedence | [API Errors](api/errors.md) |
+| Public errors and precedence | [API error codes](api/error-codes.md), [API error precedence](api/error-precedence.md) |
 | Storage effects, no-effect branches, and state-version effects | [Storage Effects](storage-effects.md) |
 | Artifact staging, promotion, persistence, and body-read lifecycle | [Artifact Storage](storage-artifacts.md) |
 | Security non-claims and guarantee levels | [Security](security.md) |

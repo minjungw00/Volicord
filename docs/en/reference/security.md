@@ -203,7 +203,7 @@ Harness does not allow readers or agents to infer authority from:
 - [Runtime Boundaries](runtime-boundaries.md): `Product Repository`, Harness installation/runtime location, and `Harness Runtime Home` boundaries.
 - [Agent Integration](agent-integration.md): surface registration, capability profiles, and verified surface context.
 - [API Value Sets](api/schema-value-sets.md): `GuaranteeDisplay.level`, `access_class`, and other value names.
-- [API Errors](api/errors.md): public error routing such as `CAPABILITY_INSUFFICIENT`.
+- [API error routing](api/error-routing.md): public error routing such as `CAPABILITY_INSUFFICIENT`.
 - [Core Model](core-model.md): user-owned judgment, `Write Authorization`, acceptance, residual risk, and non-substitution rules.
 - [API Judgment Schemas](api/schema-judgment.md): `SensitiveActionScope` and user-owned judgment schema shapes.
 - [Storage Effects](storage-effects.md), [Storage Records](storage-records.md), and [Artifact Storage](storage-artifacts.md): storage effects, record layout, and artifact authority details.

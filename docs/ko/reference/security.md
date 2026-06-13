@@ -203,7 +203,7 @@
 - [런타임 경계](runtime-boundaries.md): `Product Repository`, 하네스 설치/런타임 위치, `Harness Runtime Home` 경계.
 - [에이전트 통합](agent-integration.md): 접점 등록, 역량 프로필, 확인된 접점 맥락.
 - [API 값 집합](api/schema-value-sets.md): `GuaranteeDisplay.level`, `access_class`, 그 밖의 값 이름.
-- [API 오류](api/errors.md): `CAPABILITY_INSUFFICIENT` 같은 공개 오류 경로.
+- [API 오류 경로](api/error-routing.md): `CAPABILITY_INSUFFICIENT` 같은 공개 오류 경로.
 - [Core 모델](core-model.md): 사용자 소유 판단, `Write Authorization`, 수락, 잔여 위험, 비대체 규칙.
 - [API 판단 스키마](api/schema-judgment.md): `SensitiveActionScope`와 사용자 소유 판단 스키마 형태.
 - [저장 효과](storage-effects.md), [저장소 기록](storage-records.md), [아티팩트 저장소](storage-artifacts.md): 저장 효과, 기록 배치, 아티팩트 권한 세부사항.

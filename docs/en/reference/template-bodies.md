@@ -17,14 +17,14 @@ This document does not own:
 - projection authority, freshness, or read-only derived-display rules; see [Projection Authority Reference](projection-and-templates.md)
 - source-of-truth state or storage; see [Core Model](core-model.md) and storage owners
 - API schemas or value sets; see API schema owners
-- public `ErrorCode` identifiers, precedence, rejected-response behavior, error-vs-blocker routing, or machine-readable `ToolError.details`; see [API Errors](api/errors.md)
+- public `ErrorCode` identifiers, precedence, rejected-response behavior, error-vs-blocker routing, or machine-readable `ToolError.details`; see [API error codes](api/error-codes.md), [API error precedence](api/error-precedence.md), [API error routing](api/error-routing.md), and [API error details](api/error-details.md)
 - out-of-scope template candidates; see [Scope Reference](scope.md)
 
 ## Boundary
 
 Template text is display text. It can summarize owner records, but it must route authority questions back to those records.
 
-Public `ErrorCode` values may appear as input conditions for label selection, but those identifiers remain API identifiers owned by [API Errors](api/errors.md).
+Public `ErrorCode` values may appear as input conditions for label selection, but those identifiers remain API identifiers owned by [API error codes](api/error-codes.md).
 
 Template output cannot by wording alone:
 
@@ -46,7 +46,7 @@ Rendered error copy must:
 - Preserve the public `ErrorCode` when the exact diagnostic identifier is shown.
 - Pair a concise label with one recovery cue when the surface has room.
 - Keep labels separate from `CloseReadinessBlocker.code`, `WriteDecisionReason.code`, `PlannedBlocker.code`, and `ToolError.details` keys.
-- Route error-contract questions to [API Errors](api/errors.md).
+- Route error-contract questions to the [API error reference index](api/errors.md).
 
 Rendered error copy must not:
 
@@ -425,7 +425,7 @@ Use `Closed by owner result` only when the close owner path returned an actual c
 - [Close-task method](api/method-close-task.md) for `harness.close_task` behavior.
 - [API State Schemas](api/schema-state.md) for `CloseReadinessBlocker`.
 - [API Judgment Schemas](api/schema-judgment.md) for final acceptance and accepted-risk input shapes.
-- [API Errors](api/errors.md) for close rejection and blocker routing.
+- [API error routing](api/error-routing.md) for close rejection and blocker routing.
 
 <a id="agent-context-packet-body"></a>
 ## Agent context packet body

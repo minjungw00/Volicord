@@ -17,14 +17,14 @@
 - 상태 보기 권한, 최신성, 읽기 전용 파생 표시 규칙: [상태 보기 권한 참조](projection-and-templates.md)
 - 원천 상태나 저장소: [Core 모델](core-model.md)과 저장소 담당 문서
 - API 스키마나 값 집합: API 스키마 담당 문서
-- 공개 `ErrorCode` 식별자, 우선순위, 거부 응답 동작, 오류와 차단 사유 경로, 기계 판독용 `ToolError.details`: [API 오류](api/errors.md)
+- 공개 `ErrorCode` 식별자, 우선순위, 거부 응답 동작, 오류와 차단 사유 경로, 기계 판독용 `ToolError.details`: [API 오류 코드](api/error-codes.md), [API 오류 우선순위](api/error-precedence.md), [API 오류 경로](api/error-routing.md), [API 오류 세부사항](api/error-details.md)
 - 지원 범위 밖 템플릿 후보: [범위 참조](scope.md)
 
 ## 경계
 
 템플릿 문구는 표시 문구입니다. 담당 기록을 요약할 수는 있지만, 권한을 확인해야 할 때는 그 담당 기록으로 되돌려야 합니다.
 
-공개 `ErrorCode` 값은 라벨 선택을 위한 입력 조건으로 나타날 수 있습니다. 그래도 그 식별자는 [API 오류](api/errors.md)가 담당하는 API 식별자입니다.
+공개 `ErrorCode` 값은 라벨 선택을 위한 입력 조건으로 나타날 수 있습니다. 그래도 그 식별자는 [API 오류 코드](api/error-codes.md)가 담당하는 API 식별자입니다.
 
 템플릿 출력은 문구만으로 아래 일을 할 수 없습니다.
 
@@ -46,7 +46,7 @@
 - 정확한 진단 식별자를 보여 줄 때는 공개 `ErrorCode`를 그대로 보존합니다.
 - 접점에 공간이 있으면 짧은 라벨과 해결 안내 하나를 함께 보여 줍니다.
 - 라벨을 `CloseReadinessBlocker.code`, `WriteDecisionReason.code`, `PlannedBlocker.code`, `ToolError.details` 키와 구분합니다.
-- 오류 계약 질문은 [API 오류](api/errors.md)로 안내합니다.
+- 오류 계약 질문은 [API 오류 참조 색인](api/errors.md)으로 안내합니다.
 
 렌더링 오류 문구는 아래처럼 쓰면 안 됩니다.
 
@@ -425,7 +425,7 @@
 - [Task 닫기 메서드](api/method-close-task.md): `harness.close_task` 동작.
 - [API 상태 스키마](api/schema-state.md): `CloseReadinessBlocker`.
 - [API 판단 스키마](api/schema-judgment.md): 최종 수락과 수락된 위험 입력 형태.
-- [API 오류](api/errors.md): 닫기 거절과 차단 사유 경로.
+- [API 오류 경로](api/error-routing.md): 닫기 거절과 차단 사유 경로.
 
 <a id="agent-context-packet-body"></a>
 ## 에이전트 맥락 패킷 본문

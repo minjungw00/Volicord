@@ -153,7 +153,7 @@ Returns `ToolRejectedResponse` for:
 - stale `expected_state_version`
 - validator failure
 
-Public error code meaning and precedence are owned by [API Errors](errors.md).
+Public error code meaning is owned by [API error codes](error-codes.md). Public error precedence is owned by [API error precedence](error-precedence.md).
 
 
 ### `harness.record_user_judgment`
@@ -169,7 +169,7 @@ Returns `ToolRejectedResponse` for:
 - local access failure
 - validator failure
 
-Public error code meaning and precedence are owned by [API Errors](errors.md).
+Public error code meaning is owned by [API error codes](error-codes.md). Public error precedence is owned by [API error precedence](error-precedence.md).
 
 ## Dry-run behavior
 
@@ -443,7 +443,7 @@ next_actions:
 - State refs and summaries: [API State Schemas](schema-state.md).
 - Judgment kinds and supported values: [API Value Sets](schema-value-sets.md).
 - User-owned judgment and non-substitution rules: [Core Model](../core-model.md).
-- Public errors and persistence effects: [API Errors](errors.md) and [Storage Effects](../storage-effects.md).
+- Public errors and persistence effects: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [Storage Effects](../storage-effects.md).
 
 
 ### `harness.record_user_judgment`
@@ -453,4 +453,4 @@ next_actions:
 - State refs and summaries: [API State Schemas](schema-state.md).
 - Judgment values and supported method-local values: [API Value Sets](schema-value-sets.md).
 - User-owned judgment, final acceptance, residual-risk acceptance, and non-substitution rules: [Core Model](../core-model.md).
-- Public errors and persistence effects: [API Errors](errors.md) and [Storage Effects](../storage-effects.md).
+- Public errors and persistence effects: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [Storage Effects](../storage-effects.md).

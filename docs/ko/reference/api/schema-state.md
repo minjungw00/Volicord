@@ -23,7 +23,7 @@
 - 공통 요청 래퍼나 응답 분기: [API 코어 스키마](schema-core.md)
 - 지원되는 enum 형태 값: [API 값 집합](schema-value-sets.md)
 - 메서드 동작: [API 메서드](methods.md)와 메서드 담당 문서
-- 공개 오류 의미: [API 오류](errors.md)
+- 공개 오류 의미: [API 오류 코드](error-codes.md), [API 오류 경로](error-routing.md)
 - Core 생명주기와 닫기 준비 상태의 제품 의미: [Core 모델](../core-model.md)
 - 저장소 기록과 지속 효과: [저장소 기록](../storage-records.md), [저장 효과](../storage-effects.md)
 
@@ -186,7 +186,7 @@ WriteDecisionReason:
 
 담당 문서 링크:
 - 지원되는 범주와 사유 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
-- 공개 오류 코드의 의미: [API 오류](errors.md)
+- 공개 오류 코드의 의미: [API 오류 코드](error-codes.md)
 
 ## 증거와 실행 기록 스냅샷 형태
 
@@ -262,7 +262,7 @@ GuaranteeDisplay:
 담당 문서 링크:
 - 닫기 준비 상태 의미와 대체 금지 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task)
 - 응답 분기 동작, 닫기 준비 상태 평가 순서, 커밋된 차단 결과: [`harness.close_task`](method-close-task.md)
-- 공개 오류 경로: [`close_task` 차단 사유 매핑](errors.md#harnessclose_task-close-blockers)
+- 공개 오류 경로: [`close_task` 차단 사유 매핑](error-routing.md#harnessclose_task-close-blockers)
 - 지원되는 `CloseReadinessBlocker.category`, `ValidatorResult.status`, `ValidatorResult.severity`, `GuaranteeDisplay.level` 값: [API 값 집합](schema-value-sets.md)
 - 보안 보장 의미: [보안](../security.md)
 

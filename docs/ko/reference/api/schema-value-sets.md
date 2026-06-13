@@ -17,7 +17,7 @@
 
 이 문서는 담당하지 않습니다.
 
-- 공개 `ErrorCode` 값과 우선순위: [API 오류](errors.md)
+- 공개 `ErrorCode` 값과 우선순위: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md)
 - 이 값을 쓰는 필드 형태: [API 코어 스키마](schema-core.md), [API 상태 스키마](schema-state.md), [API 아티팩트 스키마](schema-artifacts.md), [API 판단 스키마](schema-judgment.md)
 - 메서드 동작: [API 메서드](methods.md)와 메서드 담당 문서
 - 보안 보장 의미: [보안](../security.md)
@@ -76,7 +76,7 @@ staging_created
 no_effect
 ```
 
-`response_kind`와 `effect_kind`는 분기 메타데이터 값입니다. 공통 분기 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당하고, 메서드별 상태 효과는 메서드 담당 문서가 담당합니다. 거절 분기의 공개 오류 의미는 [API 오류](errors.md)가 담당합니다.
+`response_kind`와 `effect_kind`는 분기 메타데이터 값입니다. 공통 분기 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당하고, 메서드별 상태 효과는 메서드 담당 문서가 담당합니다. 거절 분기의 공개 오류 의미는 [API 오류 코드](error-codes.md)와 [API 오류 경로](error-routing.md)가 담당합니다.
 
 <a id="access-class-values"></a>
 ## 접근 등급 값
@@ -386,18 +386,7 @@ incompatible
 
 ## 오류 세부사항 보조 값
 
-`ToolError.details.authorization_reason`은 아래 값을 사용합니다.
-
-```text
-missing
-expired
-stale
-revoked
-consumed
-incompatible
-```
-
-`ToolError.details.artifact_input_error.reason`은 [공개 `ErrorCode` 표](errors.md#error-taxonomy)에 있는 스테이징된 핸들 사유 값을 사용합니다. 각 공개 오류 코드와 세부 사유의 의미는 [API 오류](errors.md)가 담당합니다.
+`ToolError.details.authorization_reason`과 `ToolError.details.artifact_input_error.reason` 보조 값은 [API 오류 세부사항](error-details.md#error-detail-helper-values)이 담당합니다. 이 값 집합 문서는 기계 판독용 오류 세부사항 의미를 정의하지 않습니다.
 
 ## 프로필 조건부 및 예약 값
 
@@ -410,7 +399,9 @@ incompatible
 ## 관련 담당 문서
 
 - [기준 범위](../scope.md): 값이 기준 범위에 속하는지 판단.
-- [API 오류](errors.md): 공개 오류 코드와 우선순위.
+- [API 오류 코드](error-codes.md): 공개 오류 코드 의미.
+- [API 오류 우선순위](error-precedence.md): 공개 오류 우선순위.
+- [API 오류 세부사항](error-details.md): 기계 판독용 오류 세부사항 보조 값.
 - [API 코어 스키마](schema-core.md), [API 상태 스키마](schema-state.md), [API 아티팩트 스키마](schema-artifacts.md), [API 판단 스키마](schema-judgment.md): 이 값을 쓰는 필드.
 - [API 메서드](methods.md)와 메서드 담당 문서: 이 값을 사용하는 메서드 동작.
 - [범위 참조](../scope.md): 예약된 값과 프로필 조건부 값의 경계.

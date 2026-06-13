@@ -80,7 +80,7 @@ Returns `ToolRejectedResponse` for:
 - local access mismatch
 - insufficient artifact registration capability
 
-Public error code meaning and precedence are owned by [API Errors](errors.md).
+Public error code meaning is owned by [API error codes](error-codes.md). Public error precedence is owned by [API error precedence](error-precedence.md).
 
 ## Dry-run behavior
 
@@ -164,5 +164,5 @@ expires_at: "<future-expiration-timestamp>"
 - Request envelope, response branches, and dry-run summaries: [API Schema Core](schema-core.md).
 - `StagedArtifactHandle`, `ArtifactInput`, and `ArtifactRef`: [API Artifact Schemas](schema-artifacts.md).
 - Supported artifact values and access classes: [API Value Sets](schema-value-sets.md).
-- Public errors: [API Errors](errors.md).
+- Public errors: [API error codes](error-codes.md) and [API error precedence](error-precedence.md).
 - Persistence effects and artifact lifecycle: [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).

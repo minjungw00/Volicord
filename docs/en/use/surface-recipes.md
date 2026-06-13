@@ -109,7 +109,7 @@ Use these owner routes for exact contracts:
 
 - [Agent Integration Reference](../reference/agent-integration.md): connector behavior, `capability_profile`, `VerifiedSurfaceContext`, context exchange, fallback boundaries.
 - [API Methods](../reference/api/methods.md): supported method list and method-owner routing.
-- [API Errors](../reference/api/errors.md): public error codes and recovery routing.
+- [API error codes](../reference/api/error-codes.md), [API error routing](../reference/api/error-routing.md): public error codes and recovery routing.
 - [Security](../reference/security.md): guarantee wording and non-claims.
 - [Runtime Boundaries](../reference/runtime-boundaries.md): `Product Repository`, Harness Server, and `Harness Runtime Home` separation.
 - [Scope](../reference/scope.md): baseline, profile-gated, and out-of-scope boundaries.

@@ -105,7 +105,7 @@ Caller-supplied paths, logs, capture claims, or local file references are not ar
 
 `ArtifactInput[]` selects one artifact source shape per input. It does not add a second request-level access class to a public API request.
 
-Invalid source-field shape returns through `ToolRejectedResponse` with public error semantics owned by [API Errors](errors.md). Staged-handle validation, promotion, body-read eligibility, and persistent linking are owned by [Artifact Storage](../storage-artifacts.md).
+Invalid source-field shape returns through `ToolRejectedResponse` with public error semantics owned by [API error codes](error-codes.md) and [API error routing](error-routing.md). Staged-handle validation, promotion, body-read eligibility, and persistent linking are owned by [Artifact Storage](../storage-artifacts.md).
 
 ## Related owners
 

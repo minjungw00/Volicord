@@ -167,7 +167,7 @@
 - 오래된 `expected_state_version`.
 - 검증기 실패.
 
-공개 오류 코드 의미와 우선순위는 [API 오류](errors.md)가 담당합니다.
+공개 오류 코드 의미는 [API 오류 코드](error-codes.md)가 담당합니다. 공개 오류 우선순위는 [API 오류 우선순위](error-precedence.md)가 담당합니다.
 
 
 ### `harness.record_user_judgment`
@@ -183,7 +183,7 @@
 - 로컬 접근 실패.
 - 검증기 실패.
 
-공개 오류 코드 의미와 우선순위는 [API 오류](errors.md)가 담당합니다.
+공개 오류 코드 의미는 [API 오류 코드](error-codes.md)가 담당합니다. 공개 오류 우선순위는 [API 오류 우선순위](error-precedence.md)가 담당합니다.
 
 ## `dry_run` 동작
 
@@ -457,7 +457,7 @@ next_actions:
 - 상태 참조와 요약: [API 상태 스키마](schema-state.md).
 - 판단 종류와 지원 값: [API 값 집합](schema-value-sets.md).
 - 사용자 소유 판단과 비대체 규칙: [Core 모델](../core-model.md).
-- 공개 오류와 저장 효과: [API 오류](errors.md), [저장 효과](../storage-effects.md).
+- 공개 오류와 저장 효과: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md), [저장 효과](../storage-effects.md).
 
 
 ### `harness.record_user_judgment`
@@ -467,4 +467,4 @@ next_actions:
 - 상태 참조와 요약: [API 상태 스키마](schema-state.md).
 - 판단 값과 지원되는 메서드 내부 값: [API 값 집합](schema-value-sets.md).
 - 사용자 소유 판단, 최종 수락, 잔여 위험 수락, 비대체 규칙: [Core 모델](../core-model.md).
-- 공개 오류와 저장 효과: [API 오류](errors.md), [저장 효과](../storage-effects.md).
+- 공개 오류와 저장 효과: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md), [저장 효과](../storage-effects.md).

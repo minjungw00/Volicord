@@ -27,7 +27,7 @@
 - 아티팩트 스키마: [API 아티팩트 스키마](schema-artifacts.md)
 - 사용자 소유 판단 스키마: [API 판단 스키마](schema-judgment.md)
 - 지원되는 메서드 이름, `response_kind` 값, `effect_kind` 값, 접근 등급, 그 밖의 enum 형태 값: [API 값 집합](schema-value-sets.md)
-- 공개 오류 코드, 우선순위, 오류 의미: [API 오류](errors.md)
+- 공개 오류 코드, 우선순위, 오류 의미: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md)
 - 저장소 기록과 효과: [저장소 기록](../storage-records.md), [저장 효과](../storage-effects.md)
 
 ## 스키마 표기 규칙
@@ -79,7 +79,7 @@ ToolEnvelope:
 - 메서드별 `task_id` 필드가 있으면 그 메서드 담당 문서가 설명하는 대로 그 필드가 우선합니다.
 
 담당 문서 링크:
-- 충돌 동작: [상태 버전 충돌](errors.md#state-conflict-behavior)
+- 충돌 동작: [상태 버전 충돌](error-precedence.md#state-conflict-behavior)
 - 저장소 버전 동작: [저장소 버전 관리](../storage-versioning.md)
 
 <a id="common-response"></a>
@@ -125,7 +125,7 @@ ToolDryRunResponse:
 - 지원되는 `response_kind`와 `effect_kind` 값: [응답과 효과 값](schema-value-sets.md#response-and-effect-values)
 - 공통 분기 읽기 규칙: [공통 응답 분기](#common-response)
 - 메서드별 상태 효과: 메서드 담당 문서
-- 공개 오류 우선순위: [API 오류](errors.md)
+- 공개 오류 우선순위: [API 오류 우선순위](error-precedence.md)
 
 ## `dry_run` 요약 형태
 
@@ -164,7 +164,9 @@ PlannedBlocker:
 담당 문서 링크:
 - `NextActionSummary`와 `StateRecordRef`: [API 상태 스키마](schema-state.md)
 - `PlannedBlocker.source_kind` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
-- `ToolError.code`에 쓰는 공개 `ErrorCode` 값: [API 오류](errors.md)
+- `ToolError.code`에 쓰는 공개 `ErrorCode` 값: [API 오류 코드](error-codes.md)
+
+<a id="shared-support-shapes"></a>
 
 ## 공통 보조 형태
 
@@ -184,4 +186,6 @@ EventRef:
 - `ToolError`는 `ToolRejectedResponse.errors`와 미리보기 가능한 `DryRunSummary.would_errors`가 사용하는 형태입니다.
 
 담당 문서 링크:
-- 공개 오류 코드 집합, 오류 세부사항 의미, 주 오류 우선순위: [API 오류](errors.md)
+- 공개 오류 코드 집합: [API 오류 코드](error-codes.md)
+- 오류 세부사항 의미: [API 오류 세부사항](error-details.md)
+- 주 오류 우선순위: [API 오류 우선순위](error-precedence.md)

@@ -64,7 +64,7 @@
 | reserved value | 예약된 값 | [기준 범위](scope.md) |
 | profile-gated value | 프로필 조건부 값 | [기준 범위](scope.md) |
 | dry-run | dry-run 미리보기 | [API 코어 스키마](api/schema-core.md) |
-| blocked result | 차단 결과 | [API 오류](api/errors.md) |
+| blocked result | 차단 결과 | [API 오류 경로](api/error-routing.md) |
 | rejected response | 거부 응답 | [API 코어 스키마](api/schema-core.md) |
 | migration | 마이그레이션 | [저장소 버전 관리](storage-versioning.md) |
 | lifecycle | 생명주기 | [Core 모델](core-model.md) |
@@ -569,7 +569,7 @@
 담당 문서:
 - [Core 모델](core-model.md)
 - [Task 닫기 메서드](api/method-close-task.md)
-- [API 오류](api/errors.md)
+- [API 오류 경로](api/error-routing.md)
 
 설명:
 - 평가 개념이며 차단 사유 스키마 자체가 아닙니다.
@@ -595,7 +595,7 @@
 담당 문서:
 - [Core 모델](core-model.md)
 - [Task 닫기 메서드](api/method-close-task.md)
-- [API 오류](api/errors.md)
+- [API 오류 경로](api/error-routing.md)
 
 설명:
 - 닫기 준비 상태와 남은 닫기 차단 사유를 도출하는 담당 경로의 확인입니다.
@@ -620,7 +620,7 @@
 담당 문서:
 - [Core 모델](core-model.md)
 - [API 상태 스키마](api/schema-state.md)
-- [API 오류](api/errors.md)
+- [API 오류 경로](api/error-routing.md)
 
 설명:
 - 닫기 차단 사유는 담당 경로에서 처리하기 전까지 정직한 닫기 준비 상태를 막는 이유입니다.
@@ -646,7 +646,7 @@
 담당 문서:
 - [API 상태 스키마](api/schema-state.md)
 - [API 값 집합](api/schema-value-sets.md)
-- [API 오류](api/errors.md)
+- [API 오류 경로](api/error-routing.md)
 
 설명:
 - `CloseReadinessBlocker`는 닫기 준비 상태의 차단 데이터를 나타내는 API 스키마 식별자입니다.
@@ -1180,7 +1180,7 @@
 담당 문서:
 - [API 코어 스키마](api/schema-core.md)
 - [API 메서드](api/methods.md)
-- [API 오류](api/errors.md)
+- [API 오류 경로](api/error-routing.md)
 - [저장 효과](storage-effects.md)
 
 설명:
@@ -1207,7 +1207,7 @@
 - `STATE_VERSION_CONFLICT`를 차단 코드로 쓰는 표현
 
 담당 문서:
-- [API 오류](api/errors.md)
+- [API 오류 경로](api/error-routing.md)
 - [쓰기 준비 메서드](api/method-prepare-write.md)
 - [Task 닫기 메서드](api/method-close-task.md)
 - [저장 효과](storage-effects.md)
@@ -1236,7 +1236,7 @@
 
 담당 문서:
 - [API 코어 스키마](api/schema-core.md)
-- [API 오류](api/errors.md)
+- [API 오류 경로](api/error-routing.md)
 - [저장 효과](storage-effects.md)
 
 설명:

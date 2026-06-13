@@ -149,7 +149,7 @@ Agent may:
 
 Agent must:
 - expose the limitation in support or display text
-- route machine-readable failure meanings to [API Errors](api/errors.md)
+- route machine-readable failure meanings to [API error codes](api/error-codes.md) and [API error details](api/error-details.md)
 - route user-facing wording to [Template Bodies](template-bodies.md) or [Surface Recipes](../use/surface-recipes.md)
 
 Agent must not:

@@ -81,7 +81,7 @@ Returns `ToolRejectedResponse` only when the read cannot be safely served, such 
 - missing active Task for a Task-scoped read
 - stale or unavailable projection when a projection-backed view was requested
 
-Public error code meaning and precedence are owned by [API Errors](errors.md).
+Public error code meaning is owned by [API error codes](error-codes.md). Public error precedence is owned by [API error precedence](error-precedence.md).
 
 ## Dry-run behavior
 
@@ -246,5 +246,5 @@ guarantee_display:
 - Request envelope and response branches: [API Schema Core](schema-core.md).
 - Status state, close-readiness shapes, evidence summaries, and guarantee display: [API State Schemas](schema-state.md).
 - Supported values and access classes: [API Value Sets](schema-value-sets.md).
-- Public errors and close blocker routing: [API Errors](errors.md) and [`close_task` blocker mapping](errors.md#harnessclose_task-close-blockers).
+- Public errors and close blocker routing: [API error codes](error-codes.md) and [`close_task` blocker mapping](error-routing.md#harnessclose_task-close-blockers).
 - Persistence effects: [Storage Effects](../storage-effects.md).

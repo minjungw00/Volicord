@@ -34,7 +34,7 @@
 | 어떤 공개 메서드가 존재하는가? | [API 메서드](../reference/api/methods.md), [API 값 집합](../reference/api/schema-value-sets.md) |
 | 한 메서드는 무엇을 하는가? | [API 메서드](../reference/api/methods.md)가 나열하는 메서드 담당 문서, 공통 요청 래퍼와 응답 분기는 [API 코어 스키마](../reference/api/schema-core.md) |
 | 어떤 필드와 중첩 형태가 유효한가? | 필요에 따라 [API 코어 스키마](../reference/api/schema-core.md), [API 상태 스키마](../reference/api/schema-state.md), [API 아티팩트 스키마](../reference/api/schema-artifacts.md), [API 판단 스키마](../reference/api/schema-judgment.md), [API 값 집합](../reference/api/schema-value-sets.md) |
-| 어떤 공개 오류나 닫기 차단 사유 경로가 유효한가? | [API 오류](../reference/api/errors.md), 그리고 영향을 받는 메서드 담당 문서와 상태 스키마 담당 문서 |
+| 어떤 공개 오류나 닫기 차단 사유 경로가 유효한가? | [API 오류 코드](../reference/api/error-codes.md), [API 오류 경로](../reference/api/error-routing.md), 그리고 영향을 받는 메서드 담당 문서와 상태 스키마 담당 문서 |
 | 저장소에는 무엇이 바뀌는가? | 먼저 [저장 효과](../reference/storage-effects.md)를 읽고, 기록, 아티팩트, 상태 시계, 잠금, 마이그레이션 세부사항이 필요하면 [저장소 기록](../reference/storage-records.md), [아티팩트 저장소](../reference/storage-artifacts.md), [저장소 버전 관리](../reference/storage-versioning.md) |
 | 제품 파일, 서버 파일, 런타임 데이터는 어디에 있는가? | [런타임 경계](../reference/runtime-boundaries.md), 데이터 세부사항은 저장소 담당 문서 |
 | 어떤 보안 표현이나 보장 수준을 쓸 수 있는가? | [보안](../reference/security.md), 지원 여부는 [범위](../reference/scope.md), 정확한 값 이름은 [API 값 집합](../reference/api/schema-value-sets.md) |

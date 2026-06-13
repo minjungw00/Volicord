@@ -79,7 +79,7 @@ Core 상태의 읽기 전용 현재 위치 보기를 반환합니다. 활성 `Ta
 - `Task` 범위 읽기에 필요한 활성 `Task` 없음.
 - 요청한 상태 보기가 오래되었거나 사용 불가.
 
-공개 오류 코드 의미와 우선순위는 [API 오류](errors.md)가 담당합니다.
+공개 오류 코드 의미는 [API 오류 코드](error-codes.md)가 담당합니다. 공개 오류 우선순위는 [API 오류 우선순위](error-precedence.md)가 담당합니다.
 
 ## `dry_run` 동작
 
@@ -244,5 +244,5 @@ guarantee_display:
 - 요청 래퍼와 응답 분기: [API 코어 스키마](schema-core.md).
 - 상태, 닫기 준비 상태 형태, 증거 요약, 보장 표시: [API 상태 스키마](schema-state.md).
 - 지원되는 값과 접근 등급: [API 값 집합](schema-value-sets.md).
-- 공개 오류와 닫기 차단 사유 경로: [API 오류](errors.md), [`close_task` 차단 사유 매핑](errors.md#harnessclose_task-close-blockers).
+- 공개 오류와 닫기 차단 사유 경로: [API 오류 코드](error-codes.md), [`close_task` 차단 사유 매핑](error-routing.md#harnessclose_task-close-blockers).
 - 저장 효과: [저장 효과](../storage-effects.md).

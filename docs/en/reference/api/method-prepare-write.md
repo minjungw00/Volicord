@@ -226,5 +226,5 @@ write_decision_reasons:
 - `WriteAuthorizationSummary`, state summaries, and refs: [API State Schemas](schema-state.md).
 - `SensitiveActionScope` and user-owned approval boundaries: [API Judgment Schemas](schema-judgment.md).
 - Supported values and access classes: [API Value Sets](schema-value-sets.md).
-- Public errors, `STATE_VERSION_CONFLICT`, and blocked/dry-run behavior: [API Errors](errors.md).
+- Public errors, `STATE_VERSION_CONFLICT`, and blocked/dry-run behavior: [API error codes](error-codes.md), [state version conflict](error-precedence.md#state-conflict-behavior), and [API error routing](error-routing.md).
 - Persistence effects and state clocks: [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).

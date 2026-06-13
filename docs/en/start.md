@@ -98,7 +98,7 @@ For exact evidence, artifact, and non-substitution boundaries, use [Core Model](
 
 Close readiness answers a simple question: can the task honestly finish now, and what still blocks it?
 
-If something is missing, the close path should name the smallest unblocker. Exact close-readiness meaning belongs to [Core Model](reference/core-model.md); method behavior belongs to [Close-task Method](reference/api/method-close-task.md); error routing belongs to [API Errors](reference/api/errors.md).
+If something is missing, the close path should name the smallest unblocker. Exact close-readiness meaning belongs to [Core Model](reference/core-model.md); method behavior belongs to [Close-task Method](reference/api/method-close-task.md); error routing belongs to [API error routing](reference/api/error-routing.md).
 
 ## Baseline scope
 

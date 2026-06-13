@@ -18,7 +18,7 @@
 - 멱등성, 잠금, `state_version` 시계, 이벤트 순서, 마이그레이션; [저장소 버전 관리](storage-versioning.md)를 봅니다.
 - 공개 응답 분기와 스키마; [API 코어 스키마](api/schema-core.md)를 봅니다.
 - API 메서드 동작; [API 메서드](api/methods.md)와 메서드 담당 문서를 봅니다.
-- 공개 오류 코드 우선순위; [API 오류](api/errors.md)를 봅니다.
+- 공개 오류 코드 우선순위; [API 오류 우선순위](api/error-precedence.md)를 봅니다.
 
 ## 형태와 효과
 
@@ -676,7 +676,7 @@ state_version: 21
 ## 관련 담당 문서
 
 - [API 메서드](api/methods.md)와 메서드 담당 문서: 선택된 메서드 동작과 응답 공용체.
-- [API 오류](api/errors.md): 거부 응답의 공개 오류.
+- [API 오류 경로](api/error-routing.md), [API 오류 코드](api/error-codes.md): 거부 응답의 공개 오류.
 - [저장소 기록](storage-records.md): 저장 효과가 건드릴 수 있는 기록.
 - [아티팩트 저장소](storage-artifacts.md): 스테이징 핸들과 아티팩트 생명주기 세부사항.
 - [저장소 버전 관리](storage-versioning.md): `state_version` 시계와 재실행/멱등성 의미.

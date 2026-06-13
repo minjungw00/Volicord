@@ -332,5 +332,5 @@ state:
 - `ArtifactInput`, `StagedArtifactHandle`, and `ArtifactRef`: [API Artifact Schemas](schema-artifacts.md).
 - Write Authorization and close-relevant evidence boundaries: [Core Model](../core-model.md).
 - Supported values and access classes: [API Value Sets](schema-value-sets.md).
-- Public errors: [API Errors](errors.md).
+- Public errors: [API error codes](error-codes.md) and [API error precedence](error-precedence.md).
 - Persistence effects and artifact promotion: [Storage Effects](../storage-effects.md) and [Artifact Storage](../storage-artifacts.md).
