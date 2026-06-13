@@ -1,8 +1,8 @@
 # API schema core
 
-This document owns the common API envelope and response-branch schemas for the baseline scope.
+This document owns the common API envelope (`ToolEnvelope`) and shared schema elements used by the baseline public API, including the common response branch model, shared support shapes, and schema notation conventions below.
 
-It does not define method behavior, storage effects, state snapshots, artifact lifecycle, user-judgment meaning, public error semantics, or supported value sets.
+Neighboring contracts stay with their owners: method behavior routes through [API Methods](methods.md), storage effects through [Storage Effects](../storage-effects.md), runtime authority through [Core Model](../core-model.md) and [Runtime Boundaries](../runtime-boundaries.md), and display wording or template text through [Template Bodies](../template-bodies.md).
 
 ## Owns / Does not own
 
