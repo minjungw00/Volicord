@@ -25,7 +25,7 @@ This document does not own:
 
 Template text is display text. It can summarize owner records, but it must route authority questions back to those records.
 
-Public `ErrorCode` values may appear as input conditions for label selection, but those identifiers and their meanings remain API-owned by [API error codes](api/error-codes.md). Error precedence, response branch routing, blocker mappings, and machine-readable details remain with their API owners.
+Public `ErrorCode` values may appear as input conditions for label selection, but those identifiers and their meanings remain API-owned by [API error codes](api/error-codes.md). Error precedence, response branch routing, blocker routing boundaries, and machine-readable details remain with their API owners.
 
 Template wording must not, by itself:
 

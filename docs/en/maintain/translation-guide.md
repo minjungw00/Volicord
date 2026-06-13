@@ -102,7 +102,7 @@ Use one Korean term for one concept unless the terminology map explicitly distin
 | applicable owner path | 적용되는 담당 경로 | Owner route that applies to a topic; use only for documentation routing, not product behavior or storage persistence. |
 | baseline guarantee | 기준 범위 보장 | Use only when Scope and Security document the behavior as supported in the baseline scope. |
 | error routing | 오류 처리 경로 | Covers API response branch routing; owner path remains `api/error-routing.md`. |
-| blocker routing | blocker 처리 경로 | Covers close-readiness blocker routing; owner path remains `api/blocker-routing.md`. |
+| blocker routing | 차단 사유 처리 경로 | Covers the close-readiness blocker/API response routing boundary; owner path remains `api/blocker-routing.md`. |
 | `ToolError.details` | `ToolError.details` | Exact API detail identifier; preserve it in backticks. |
 | out-of-scope capability | 지원 범위 밖 기능 | Keep deferred material clearly deferred. |
 | migration | 마이그레이션 | Use for technical schema, storage, data, or documentation migration concepts; do not translate it as previous choice. |

@@ -20,7 +20,8 @@ This document does not own:
 - Machine-readable error details; see [API error details](error-details.md).
 - `CloseReadinessBlocker`, `WriteDecisionReason`, `PlannedBlocker`, and common branch shapes; see [API State Schemas](schema-state.md), [API Value Sets](schema-value-sets.md), and [API Schema Core](schema-core.md).
 - Close-readiness meaning and non-substitution rules; see [Core Model close readiness](../core-model.md#close_task).
-- Close-readiness blocker routing, the public-code-to-blocker boundary, and `harness.close_task` blocker mapping; see [API blocker routing](blocker-routing.md).
+- Close-readiness blocker/API response boundary and the public-code-to-blocker boundary; see [API blocker routing](blocker-routing.md).
+- `harness.close_task` method-specific blocker behavior; see [`harness.close_task`](method-close-task.md).
 
 ## Error vs blocker
 
@@ -50,7 +51,7 @@ Dry-run preview:
 - Meaning: Previewable diagnostics for a valid dry-run request.
 - State effect: Not a committed write and not stored blocker state.
 
-`ErrorCode` values are public API identifiers. Operation-specific blocker-code routing and close-readiness blocker mapping belong to [API blocker routing](blocker-routing.md).
+`ErrorCode` values are public API identifiers. Close-readiness blocker/API response boundaries and public-code-to-blocker boundaries belong to [API blocker routing](blocker-routing.md).
 
 Rendered labels and messages are display text owned by [Template Bodies](../template-bodies.md). They do not define API error or blocker semantics and must not be used as `ErrorCode` values, blocker-code values, or machine-readable `ToolError.details` keys.
 
@@ -267,4 +268,4 @@ Preview boundary:
 
 ## Close-readiness blocker routing
 
-Close-readiness blocker category routing, the public-code-to-blocker boundary, and `harness.close_task` blocker mapping belong to [API blocker routing](blocker-routing.md).
+Close-readiness blocker category routing boundaries and the public-code-to-blocker boundary belong to [API blocker routing](blocker-routing.md). `harness.close_task` method-specific blocker behavior belongs to [`harness.close_task`](method-close-task.md).

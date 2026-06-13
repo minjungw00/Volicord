@@ -16,7 +16,8 @@ This document does not own:
 
 - Primary-code selection and state-version conflict behavior; see [API error precedence](error-precedence.md).
 - Rejected-response, blocked-result, and `dry_run` branch routing; see [API error routing](error-routing.md).
-- Close-readiness blocker routing and `close_task` blocker mapping; see [API blocker routing](blocker-routing.md).
+- Close-readiness blocker/API response boundary; see [API blocker routing](blocker-routing.md).
+- `harness.close_task` method-specific blocker behavior; see [`harness.close_task`](method-close-task.md).
 - `ToolError.details` fields and helper values; see [API error details](error-details.md).
 - Common response branch shapes; see [API Schema Core](schema-core.md).
 - Rendered labels and message wording as display text only; see [Template Bodies](../template-bodies.md).

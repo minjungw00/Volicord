@@ -680,7 +680,7 @@ documents:
       - "close-readiness meaning"
       - "close-readiness blocker routing"
       - "close-readiness blocker categories"
-      - "close_task blocker mapping"
+      - "close_task method behavior"
       - "public-code-to-blocker boundary"
     normative_level: "contract"
     audience:
@@ -694,10 +694,10 @@ documents:
     role: "reference"
     owner_for:
       - "close-readiness blocker routing"
-      - "close-readiness blocker category routing"
+      - "close-readiness blocker category routing boundary"
       - "API error versus close-readiness blocker boundary"
-      - "close_task blocker mapping"
       - "public-code-to-blocker boundary"
+      - "blocker/API response routing boundary"
     not_owner_for:
       - "Core close-readiness meaning"
       - "CloseReadinessBlocker schema shape"

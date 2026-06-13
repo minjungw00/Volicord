@@ -218,7 +218,7 @@
 
 - [Core 모델](../reference/core-model.md)
 - [`Task` 닫기 메서드](../reference/api/method-close-task.md)
-- [`close_task` 차단 사유 매핑](../reference/api/blocker-routing.md#harnessclose_task-close-blockers)
+- [API 차단 사유 처리 경로](../reference/api/blocker-routing.md)
 
 ## 일반 구현 세부사항
 

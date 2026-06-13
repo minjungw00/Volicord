@@ -98,7 +98,7 @@ AI 지원 작업은 기록보다 빠르게 움직일 수 있습니다.
 
 닫기 가능 여부는 단순한 질문에 답합니다. 지금 작업을 정직하게 끝낼 수 있는가, 무엇이 아직 막고 있는가?
 
-빠진 것이 있으면 닫기 경로는 가장 작은 차단 해소 조건을 이름 붙여야 합니다. 정확한 닫기 준비 상태 의미는 [Core 모델](reference/core-model.md)이, 메서드 동작은 [`Task` 닫기 메서드](reference/api/method-close-task.md)가, 닫기 준비 상태 blocker 처리 경로는 [API blocker 처리 경로](reference/api/blocker-routing.md)가 담당합니다.
+빠진 것이 있으면 닫기 경로는 가장 작은 차단 해소 조건을 이름 붙여야 합니다. 정확한 닫기 준비 상태 의미는 [Core 모델](reference/core-model.md)이, 메서드 동작은 [`Task` 닫기 메서드](reference/api/method-close-task.md)가, 닫기 준비 상태 차단 사유 처리 경로는 [API 차단 사유 처리 경로](reference/api/blocker-routing.md)가 담당합니다.
 
 ## 기준 범위
 

@@ -13,7 +13,7 @@ Check:
 - Validate changed relative links, file paths, anchors, route tables, and paired-language links.
 - Confirm maintained navigation uses the compact maintained routes from the authoring owner.
 - Confirm contract links point to the canonical owner, not to a convenient duplicate.
-- For API error links, use [API errors](../../reference/api/errors.md) as the family index only; route public code meanings, precedence, response branch routing, close-readiness blocker routing and mappings, and machine-readable details to their focused API owners.
+- For API error links, use [API errors](../../reference/api/errors.md) as the family index only; route public code meanings, precedence, response branch routing, close-readiness blocker/API response boundaries, public-code-to-blocker boundaries, and machine-readable details to their focused API owners.
 
 Failure:
 - A link targets a missing file, missing anchor, stale route family, wrong-language owner, or deleted compatibility path.
@@ -141,7 +141,8 @@ Check:
 - Route public `ErrorCode` meanings to [API error codes](../../reference/api/error-codes.md).
 - Route precedence, conflict selection, and stale-state ordering to [API error precedence](../../reference/api/error-precedence.md).
 - Route rejected-response, blocked-result, and `dry_run` response branch routing to [API error routing](../../reference/api/error-routing.md).
-- Route close-readiness blocker routing, `harness.close_task` blocker mapping, and the public-code-to-blocker boundary to [API blocker routing](../../reference/api/blocker-routing.md).
+- Route close-readiness blocker/API response boundaries and the public-code-to-blocker boundary to [API blocker routing](../../reference/api/blocker-routing.md).
+- Route `harness.close_task` method-specific blocker behavior to [`harness.close_task`](../../reference/api/method-close-task.md).
 - Route machine-readable `ToolError.details` fields, helper values, and detail-value meanings to [API error details](../../reference/api/error-details.md).
 
 Failure:

@@ -64,7 +64,7 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | reserved value | 예약된 값 | [Scope](scope.md) |
 | profile-gated value | 프로필 조건부 값 | [Scope](scope.md) |
 | error routing | 오류 처리 경로 | [API error routing](api/error-routing.md) |
-| blocker routing | blocker 처리 경로 | [API blocker routing](api/blocker-routing.md) |
+| blocker routing | 차단 사유 처리 경로 | [API blocker routing](api/blocker-routing.md) |
 | `ToolError.details` | `ToolError.details` | [API error details](api/error-details.md) |
 | dry-run | dry-run 미리보기 | [API Schema Core](api/schema-core.md) |
 | blocked result | 차단 결과 | [API error routing](api/error-routing.md) |
@@ -1192,8 +1192,8 @@ English:
 - API blocker routing, when naming the owner document
 
 Korean:
-- Reference: blocker 처리 경로
-- User-facing: blocker 처리 경로
+- Reference: 차단 사유 처리 경로
+- User-facing: 차단 사유 처리 경로
 
 Preserve:
 - `CloseReadinessBlocker`
@@ -1207,7 +1207,8 @@ Owner:
 - [API blocker routing](api/blocker-routing.md)
 
 Notes:
-- Blocker routing covers close-readiness blocker routing, close-task blocker mapping, and the public-code-to-blocker boundary.
+- Blocker routing covers the routing boundary between close-readiness blockers and API response branches, including the public-code-to-blocker boundary.
+- Method-specific `harness.close_task` behavior belongs to the close-task method owner.
 
 ### `ToolError.details`
 

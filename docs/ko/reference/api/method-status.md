@@ -246,5 +246,5 @@ guarantee_display:
 - 지원되는 값과 접근 등급: [API 값 집합](schema-value-sets.md).
 - 공개 `ErrorCode` 의미: [API 오류 코드](error-codes.md).
 - 거부 응답 분기 경로: [API 오류 처리 경로](error-routing.md).
-- 닫기 준비 상태 blocker 처리 경로: [API blocker 처리 경로](blocker-routing.md).
+- 닫기 준비 상태 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md).
 - 저장 효과: [저장 효과](../storage-effects.md).

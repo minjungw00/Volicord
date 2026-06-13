@@ -986,7 +986,7 @@ terms:
     notes:
       - "Error routing covers API response branch routing for rejected responses, blocked results, and `dry_run` preview responses."
       - "The owner document path remains `api/error-routing.md`."
-      - "Close-readiness blocker categories and blocker mappings belong to `api/blocker-routing.md`."
+      - "Close-readiness blocker category routing boundaries belong to `api/blocker-routing.md`; exact category values belong to `api/schema-value-sets.md`."
   tool_error_details:
     category: "api_concept"
     en: "ToolError.details"
@@ -1020,8 +1020,8 @@ terms:
     aliases_en:
       - "close-readiness blocker routing"
       - "API blocker routing"
-    ko_reference: "blocker 처리 경로"
-    ko_user: "blocker 처리 경로"
+    ko_reference: "차단 사유 처리 경로"
+    ko_user: "차단 사유 처리 경로"
     preserve_as_identifier:
       - "CloseReadinessBlocker"
       - "CloseReadinessBlocker.category"
@@ -1032,15 +1032,16 @@ terms:
       ko:
         - "docs/ko/reference/api/blocker-routing.md"
     notes:
-      - "Blocker routing covers close-readiness blocker routing, close-task blocker mapping, and the public-code-to-blocker boundary."
+      - "Blocker routing covers the routing boundary between close-readiness blockers and API response branches, including the public-code-to-blocker boundary."
       - "The owner document path remains `api/blocker-routing.md`."
+      - "Method-specific `harness.close_task` behavior belongs to `api/method-close-task.md`."
       - "`CloseReadinessBlocker` schema shape belongs to `api/schema-state.md`."
       - "The close-readiness authority concept belongs to `reference/core-model.md`."
   forbidden_public_error_as_blocker_mapping:
     category: "api_concept"
     en: "public-code-to-blocker boundary"
-    ko_reference: "공개 코드와 blocker 경계"
-    ko_user: "공개 코드와 blocker 경계"
+    ko_reference: "공개 코드와 차단 사유 경계"
+    ko_user: "공개 코드와 차단 사유 경계"
     preserve_as_identifier:
       - "ErrorCode"
       - "CloseReadinessBlocker.code"

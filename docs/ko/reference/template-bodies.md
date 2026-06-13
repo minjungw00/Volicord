@@ -18,14 +18,14 @@
 - 원천 상태, 저장소 기록 권한, 저장소 기록 구조: [Core 모델](core-model.md)과 저장소 담당 문서
 - API 스키마, 값 집합, 공개 `ErrorCode` 식별자, 공개 `ErrorCode` 의미: API 스키마 담당 문서와 [API 오류 코드](api/error-codes.md)
 - 오류 우선순위, 거부 응답 동작, 응답 분기 경로, 기계 판독용 `ToolError.details`: [API 오류 우선순위](api/error-precedence.md), [API 오류 처리 경로](api/error-routing.md), [API 오류 세부사항](api/error-details.md)
-- 닫기 준비 상태 차단 사유 의미, blocker 코드 처리 경로, `CloseReadinessBlocker` 형태: [Core 모델](core-model.md), [API 상태 스키마](api/schema-state.md), [API blocker 처리 경로](api/blocker-routing.md)
+- 닫기 준비 상태 차단 사유 의미, 차단 사유 코드 처리 경로, `CloseReadinessBlocker` 형태: [Core 모델](core-model.md), [API 상태 스키마](api/schema-state.md), [API 차단 사유 처리 경로](api/blocker-routing.md)
 - 현재 목록 밖의 렌더링 본문: 지원 경계는 [범위 참조](scope.md)
 
 ## 권한 경계
 
 템플릿 문구는 표시 문구입니다. 담당 기록을 요약할 수는 있지만, 권한을 확인해야 할 때는 그 담당 기록으로 되돌려야 합니다.
 
-공개 `ErrorCode` 값은 라벨 선택을 위한 입력 조건으로 나타날 수 있습니다. 그래도 그 식별자와 의미는 [API 오류 코드](api/error-codes.md)가 담당하는 API 항목입니다. 오류 우선순위, 응답 분기 경로, 차단 사유 매핑, 기계 판독용 세부사항은 각 API 담당 문서에 남습니다.
+공개 `ErrorCode` 값은 라벨 선택을 위한 입력 조건으로 나타날 수 있습니다. 그래도 그 식별자와 의미는 [API 오류 코드](api/error-codes.md)가 담당하는 API 항목입니다. 오류 우선순위, 응답 분기 경로, 차단 사유 처리 경계, 기계 판독용 세부사항은 각 API 담당 문서에 남습니다.
 
 템플릿 문구만으로는 아래 일을 할 수 없습니다.
 
@@ -33,7 +33,7 @@
 - 증거, 지속 아티팩트, 최종 수락, 잔여 위험 수락 생성
 - 증거, QA, 검증, 수락, 닫기 준비 상태, 닫기 관문 충족
 - 저장소 기록 구조 정의 또는 렌더링 본문을 저장소 권한으로 만들기
-- 공개 `ErrorCode` 식별자, 기계 판독용 세부 키, 닫기 준비 상태 차단 사유 의미, 차단 사유 코드, blocker 처리 경로의 정의, 이름 변경, 지역화, 의미 변경
+- 공개 `ErrorCode` 식별자, 기계 판독용 세부 키, 닫기 준비 상태 차단 사유 의미, 차단 사유 코드, 차단 사유 처리 경로의 정의, 이름 변경, 지역화, 의미 변경
 - 거부 응답 오류를 차단 사유나 차단 결과로 바꾸기
 
 ## 공개 오류 표시 라벨
@@ -45,7 +45,7 @@
 - 정확한 진단 식별자를 보여 줄 때는 공개 `ErrorCode`를 그대로 보존합니다.
 - 접점에 공간이 있으면 짧은 라벨과 해결 안내 하나를 함께 보여 줍니다.
 - 라벨을 `CloseReadinessBlocker.code`, `WriteDecisionReason.code`, `PlannedBlocker.code`, `ToolError.details` 키와 구분합니다.
-- 공개 코드 의미는 [API 오류 코드](api/error-codes.md), 우선순위나 충돌 선택은 [API 오류 우선순위](api/error-precedence.md), 응답 분기 경로는 [API 오류 처리 경로](api/error-routing.md), 닫기 준비 상태 blocker 처리 경로는 [API blocker 처리 경로](api/blocker-routing.md), 기계 판독용 세부사항은 [API 오류 세부사항](api/error-details.md)으로 안내합니다. [API 오류](api/errors.md)는 문서 묶음 색인으로만 사용합니다.
+- 공개 코드 의미는 [API 오류 코드](api/error-codes.md), 우선순위나 충돌 선택은 [API 오류 우선순위](api/error-precedence.md), 응답 분기 경로는 [API 오류 처리 경로](api/error-routing.md), 닫기 준비 상태 차단 사유 처리 경로는 [API 차단 사유 처리 경로](api/blocker-routing.md), 기계 판독용 세부사항은 [API 오류 세부사항](api/error-details.md)으로 안내합니다. [API 오류](api/errors.md)는 문서 묶음 색인으로만 사용합니다.
 
 렌더링 오류 문구는 아래처럼 쓰면 안 됩니다.
 
@@ -426,7 +426,7 @@
 - [API 상태 스키마](api/schema-state.md): `CloseReadinessBlocker`.
 - [API 판단 스키마](api/schema-judgment.md): 최종 수락과 수락된 위험 입력 형태.
 - [API 오류 처리 경로](api/error-routing.md): 닫기 거부 응답 분기 경로.
-- [API blocker 처리 경로](api/blocker-routing.md): 닫기 준비 상태 blocker 처리 경로.
+- [API 차단 사유 처리 경로](api/blocker-routing.md): 닫기 준비 상태 차단 사유 처리 경로.
 
 <a id="agent-context-packet-body"></a>
 ## 에이전트 맥락 패킷 본문

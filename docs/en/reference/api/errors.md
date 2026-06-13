@@ -11,7 +11,8 @@ It does not define rendered labels, message copy, templates, storage rows, runti
 | Public `ErrorCode` identifiers, meanings, and occurrence summaries | [API error codes](error-codes.md) |
 | Primary public-error selection, precedence, stale-state conflict, and idempotency conflict behavior | [API error precedence](error-precedence.md) |
 | Rejected responses, blocked results, and `dry_run` previews | [API error routing](error-routing.md) |
-| Close-readiness blocker routing, public-code-to-blocker boundary, and `close_task` blocker mapping | [API blocker routing](blocker-routing.md) |
+| Close-readiness blocker/API response boundary and public-code-to-blocker boundary | [API blocker routing](blocker-routing.md) |
+| `harness.close_task` method-specific blocker behavior | [`harness.close_task`](method-close-task.md) |
 | `ToolError.details`, detail fields, helper values, and machine-readable detail constraints | [API error details](error-details.md) |
 
 ## Related owners

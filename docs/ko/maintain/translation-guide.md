@@ -102,7 +102,7 @@
 | applicable owner path | 적용되는 담당 경로 | 어떤 주제에 적용되는 담당 문서 경로입니다. 문서 경로 안내에만 쓰고, 제품 동작이나 저장 지속 조건처럼 쓰지 않습니다. |
 | baseline guarantee | 기준 범위 보장 | 기준 범위와 보안 담당 문서가 지원된다고 정의한 보장에만 씁니다. |
 | error routing | 오류 처리 경로 | API 응답 분기 경로를 다룹니다. 담당 경로는 `api/error-routing.md`로 유지합니다. |
-| blocker routing | blocker 처리 경로 | 닫기 준비 상태 blocker 처리 경로를 다룹니다. 담당 경로는 `api/blocker-routing.md`로 유지합니다. |
+| blocker routing | 차단 사유 처리 경로 | 닫기 준비 상태 차단 사유와 API 응답 처리 경계를 다룹니다. 담당 경로는 `api/blocker-routing.md`로 유지합니다. |
 | `ToolError.details` | `ToolError.details` | 정확한 API 세부 식별자이므로 백틱 안에 그대로 보존합니다. |
 | out-of-scope capability | 지원 범위 밖 기능 | 미뤄 둔 자료임을 분명히 유지합니다. |
 | migration | 마이그레이션 | 스키마, 저장소, 데이터, 문서 구조를 옮기거나 갱신하는 기술 개념에 씁니다. 이전 선택이라는 뜻으로 옮기지 않습니다. |

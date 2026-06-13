@@ -104,7 +104,7 @@ Owner:
 
 Check:
 - Confirm example notes and surrounding prose route method behavior, common envelopes, state schemas, artifact schemas, judgment schemas, value sets, and API error concepts to the narrow owner.
-- For API error concepts, route public code meanings to [API error codes](../../reference/api/error-codes.md), precedence and conflicts to [API error precedence](../../reference/api/error-precedence.md), rejected-response, blocked-result, and `dry_run` response branch routing to [API error routing](../../reference/api/error-routing.md), close-readiness blocker routing and mappings to [API blocker routing](../../reference/api/blocker-routing.md), and machine-readable details to [API error details](../../reference/api/error-details.md).
+- For API error concepts, route public code meanings to [API error codes](../../reference/api/error-codes.md), precedence and conflicts to [API error precedence](../../reference/api/error-precedence.md), rejected-response, blocked-result, and `dry_run` response branch routing to [API error routing](../../reference/api/error-routing.md), close-readiness blocker/API response boundaries and public-code-to-blocker boundaries to [API blocker routing](../../reference/api/blocker-routing.md), and machine-readable details to [API error details](../../reference/api/error-details.md).
 - Confirm the API error family index is not treated as the owner for code meanings, precedence, response branch routing, close-readiness blocker routing, or detail schemas.
 - Confirm method-level owner routing is linked through the API Methods router rather than repeated in example guidance.
 - Confirm examples do not redefine API methods, schema names, fields, values, or error codes outside the appropriate API owner.

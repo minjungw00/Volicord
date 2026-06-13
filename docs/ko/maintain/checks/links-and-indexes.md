@@ -13,7 +13,7 @@
 - 바뀐 상대 링크, 파일 경로, 앵커, 경로 표, 대응 언어 링크를 확인합니다.
 - 유지되는 탐색 문구가 작성 담당 문서의 간결 경로를 쓰는지 확인합니다.
 - 계약 링크가 편한 중복 문서가 아니라 담당 문서를 가리키는지 확인합니다.
-- API 오류 링크는 [API 오류](../../reference/api/errors.md)를 문서 묶음 색인으로만 사용합니다. 공개 코드 의미, 우선순위, 응답 분기 경로, 닫기 준비 상태 blocker 처리 경로와 매핑, 기계 판독용 세부사항은 각각의 집중 API 담당 문서로 보냅니다.
+- API 오류 링크는 [API 오류](../../reference/api/errors.md)를 문서 묶음 색인으로만 사용합니다. 공개 코드 의미, 우선순위, 응답 분기 경로, 닫기 준비 상태 차단 사유/API 응답 경계, 공개 코드와 차단 사유 경계, 기계 판독용 세부사항은 각각의 집중 API 담당 문서로 보냅니다.
 
 실패 조건:
 - 링크가 없는 파일, 없는 앵커, 오래된 경로 묶음, 잘못된 언어의 담당 문서, 삭제된 호환 경로를 가리킵니다.
@@ -132,7 +132,7 @@
 - [API 오류 코드](../../reference/api/error-codes.md)
 - [API 오류 우선순위](../../reference/api/error-precedence.md)
 - [API 오류 처리 경로](../../reference/api/error-routing.md)
-- [API blocker 처리 경로](../../reference/api/blocker-routing.md)
+- [API 차단 사유 처리 경로](../../reference/api/blocker-routing.md)
 - [API 오류 세부사항](../../reference/api/error-details.md)
 - [작성 가이드](../authoring-guide.md)
 
@@ -141,7 +141,8 @@
 - 공개 `ErrorCode` 의미는 [API 오류 코드](../../reference/api/error-codes.md)로 보냅니다.
 - 우선순위, 충돌 선택, 오래된 상태 순서는 [API 오류 우선순위](../../reference/api/error-precedence.md)로 보냅니다.
 - 거부 응답, 차단 결과, `dry_run` 응답 분기 경로는 [API 오류 처리 경로](../../reference/api/error-routing.md)로 보냅니다.
-- 닫기 준비 상태 blocker 처리 경로, `harness.close_task` 차단 사유 매핑, 공개 코드와 blocker 경계는 [API blocker 처리 경로](../../reference/api/blocker-routing.md)로 보냅니다.
+- 닫기 준비 상태 차단 사유/API 응답 경계와 공개 코드와 차단 사유 경계는 [API 차단 사유 처리 경로](../../reference/api/blocker-routing.md)로 보냅니다.
+- `harness.close_task` 메서드별 차단 동작은 [`harness.close_task`](../../reference/api/method-close-task.md)로 보냅니다.
 - 기계 판독용 `ToolError.details` 필드, 보조 값, 세부 값 의미는 [API 오류 세부사항](../../reference/api/error-details.md)으로 보냅니다.
 
 실패 조건:
@@ -166,11 +167,11 @@
 - 편집한 용어 지도의 `owner_documents`, 용어집 담당 문서 링크, `doc-index.yaml` 담당 메타데이터, 경로 표를 확인합니다.
 - 집중 담당 문서가 있으면 각 담당 대상이 그 문서를 가리키는지 확인합니다.
 - 넓은 색인은 그 개념 자체가 색인 경로 안내이거나, 첫 경로이거나, 담당 문서 공백을 명시할 때만 사용합니다.
-- API 오류 코드 의미, 오류 우선순위, API 응답 분기 경로, 닫기 준비 상태 blocker 처리 경로, `ToolError.details` 대상이 서로 분리되어 있는지 확인합니다.
+- API 오류 코드 의미, 오류 우선순위, API 응답 분기 경로, 닫기 준비 상태 차단 사유 처리 경로, `ToolError.details` 대상이 서로 분리되어 있는지 확인합니다.
 
 실패 조건:
 - 용어, 용어집, 메타데이터, 경로 대상이 집중 담당 문서가 있는데도 넓은 색인을 가리킵니다.
-- API 오류 문서 묶음 색인을 공개 코드 의미, 우선순위, 응답 분기 경로, 닫기 준비 상태 blocker 처리 경로, 기계 판독용 세부사항의 담당 문서처럼 씁니다.
+- API 오류 문서 묶음 색인을 공개 코드 의미, 우선순위, 응답 분기 경로, 닫기 준비 상태 차단 사유 처리 경로, 기계 판독용 세부사항의 담당 문서처럼 씁니다.
 - `doc-index.yaml` 메타데이터가 경로 문서나 색인을 집중 계약 세부사항의 담당 문서처럼 보이게 합니다.
 
 수정 방향:

@@ -2,7 +2,7 @@
 
 이 문서는 하네스 API 응답의 공개 `ErrorCode` 식별자, 의미, 발생 위치 요약을 담당합니다.
 
-주 오류 우선순위, 응답 분기 경로, 닫기 준비 상태 blocker 처리 경로, `ToolError.details`, 응답 분기 형태, 표시 라벨, 저장 효과, 보안 보장은 정의하지 않습니다.
+주 오류 우선순위, 응답 분기 경로, 닫기 준비 상태 차단 사유 처리 경로, `ToolError.details`, 응답 분기 형태, 표시 라벨, 저장 효과, 보안 보장은 정의하지 않습니다.
 
 ## 담당 경계
 
@@ -16,7 +16,8 @@
 
 - 주 코드 선택과 상태 버전 충돌 동작: [API 오류 우선순위](error-precedence.md).
 - 거부 응답, 차단 결과, `dry_run` 분기 경로: [API 오류 처리 경로](error-routing.md).
-- 닫기 준비 상태 blocker 처리 경로와 `close_task` 차단 사유 매핑: [API blocker 처리 경로](blocker-routing.md).
+- 닫기 준비 상태 차단 사유/API 응답 경계: [API 차단 사유 처리 경로](blocker-routing.md).
+- `harness.close_task` 메서드별 차단 동작: [`harness.close_task`](method-close-task.md).
 - `ToolError.details` 필드와 보조 값: [API 오류 세부사항](error-details.md).
 - 공통 응답 분기 형태: [API 코어 스키마](schema-core.md).
 - 표시 문구로만 쓰는 렌더링 라벨과 메시지 문구: [템플릿 본문](../template-bodies.md).

@@ -1,6 +1,6 @@
 # API 오류
 
-이 문서는 API 오류 참조 색인입니다. 공개 오류 코드, 우선순위, 응답 분기 경로, 닫기 준비 상태 blocker 처리 경로, 기계 판독용 세부사항 질문을 집중 담당 문서로 안내합니다.
+이 문서는 API 오류 참조 색인입니다. 공개 오류 코드, 우선순위, 응답 분기 경로, 닫기 준비 상태 차단 사유 처리 경로, 기계 판독용 세부사항 질문을 집중 담당 문서로 안내합니다.
 
 렌더링 라벨, 메시지 문구, 템플릿, 저장소 행, 런타임 출력, 메서드별 결과 본문은 정의하지 않습니다.
 
@@ -11,7 +11,8 @@
 | 공개 `ErrorCode` 식별자, 의미, 발생 위치 요약 | [API 오류 코드](error-codes.md) |
 | 주 공개 오류 선택, 우선순위, 오래된 상태 충돌, 멱등성 충돌 동작 | [API 오류 우선순위](error-precedence.md) |
 | 거부 응답, 차단 결과, `dry_run` 미리보기 | [API 오류 처리 경로](error-routing.md) |
-| 닫기 준비 상태 blocker 처리 경로, 공개 코드와 blocker 경계, `close_task` 차단 사유 매핑 | [API blocker 처리 경로](blocker-routing.md) |
+| 닫기 준비 상태 차단 사유/API 응답 경계, 공개 코드와 차단 사유 경계 | [API 차단 사유 처리 경로](blocker-routing.md) |
+| `harness.close_task` 메서드별 차단 동작 | [`harness.close_task`](method-close-task.md) |
 | `ToolError.details`, 세부 필드, 보조 값, 기계 판독용 세부사항 제약 | [API 오류 세부사항](error-details.md) |
 
 ## 관련 담당 문서
