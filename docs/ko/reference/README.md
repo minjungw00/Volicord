@@ -1,8 +1,14 @@
 # 참조 색인
 
-이 색인은 하네스 참조 질문의 담당 문서를 고르는 사람이 읽는 참조 담당 문서 색인입니다. 이 README는 담당 문서로 안내할 뿐 용어집의 뜻풀이, API 계약, 스키마, 저장 효과, 보안 보장, 범위를 정의하지 않습니다.
+이 색인은 하네스 참조 질문의 담당 문서를 고를 때 사용합니다. 이 README는 경로 안내만 하며, 용어 뜻, 용어 메타데이터, API 값, enum 값, 예약된 값과 프로필 조건부 값, 상태 값, 스키마 필드, API 계약, 스키마, 저장 효과, 보안 보장, 범위를 정의하지 않습니다.
 
-용어집에 포함된 선별 핵심 용어의 간단한 뜻은 [용어집](glossary.md)을 사용합니다. `doc_id` 기준의 기계 판독 가능한 담당 경로는 [`docs/doc-index.yaml`](../../doc-index.yaml)을 사용합니다. 완전한 구조화 용어 메타데이터, 한영 표현 통제, 식별자 통제는 [`docs/terminology-map.yaml`](../../terminology-map.yaml)을 사용합니다.
+핵심 경로는 아래와 같습니다.
+
+- [용어집](glossary.md): 선별된 핵심 용어를 사람이 읽기 쉽게 설명하는 간결한 안내입니다.
+- [`docs/terminology-map.yaml`](../../terminology-map.yaml): 완전한 구조화 용어 메타데이터, 한영 표현 통제, 식별자 통제입니다.
+- [번역 가이드](../maintain/translation-guide.md): 영어/한국어 표현과 한국어 문체 지침입니다.
+- [API 값 집합](api/schema-value-sets.md): API 값, enum 값, 예약된 값과 프로필 조건부 값, 상태 값입니다.
+- 아래 API 스키마 행: 스키마 필드입니다. 메서드별 페이로드 필드는 [API 메서드](api/methods.md)를 통해 담당 메서드 문서로 갑니다.
 
 ## 제품과 시스템 담당 문서
 
@@ -12,8 +18,6 @@
 | Core 권한, 제품 개념, 사용자 소유 판단, 닫기 준비 상태의 권한 개념 | [`core-model.md`](core-model.md) |
 | 런타임과 제품 저장소 경계 | [`runtime-boundaries.md`](runtime-boundaries.md) |
 | 보안 표현과 보장 의미 | [`security.md`](security.md) |
-| 선별된 핵심 용어의 간결한 안내 | [`glossary.md`](glossary.md) |
-| 완전한 구조화 용어 메타데이터와 식별자 통제 | [`docs/terminology-map.yaml`](../../terminology-map.yaml) |
 | 구현 진입 경로 | [`../build/implementation-guide.md`](../build/implementation-guide.md) |
 
 ## API와 스키마 담당 문서
@@ -25,7 +29,7 @@
 | 상태 스키마와 `CloseReadinessBlocker` 형태 | [`api/schema-state.md`](api/schema-state.md) |
 | 아티팩트 참조 형태 | [`api/schema-artifacts.md`](api/schema-artifacts.md) |
 | 사용자 판단과 민감 동작 승인 스키마 | [`api/schema-judgment.md`](api/schema-judgment.md) |
-| API 값 집합과 차단 사유 범주 값 | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
+| API 값, enum 값, 예약된 값과 프로필 조건부 값, 상태 값, 차단 사유 범주 값 | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
 | API 오류 문서 묶음 색인 | [`api/errors.md`](api/errors.md) |
 | 공개 `ErrorCode` 식별자와 의미 | [`api/error-codes.md`](api/error-codes.md) |
 | API 오류 선택 우선순위 | [`api/error-precedence.md`](api/error-precedence.md) |
@@ -41,7 +45,7 @@
 | 저장소 기록 | [`storage-records.md`](storage-records.md) |
 | 저장 효과 | [`storage-effects.md`](storage-effects.md) |
 | 아티팩트 저장소 | [`storage-artifacts.md`](storage-artifacts.md) |
-| 상태 시계, 버전 관리, 마이그레이션 | [`storage-versioning.md`](storage-versioning.md) |
+| 상태 시계와 버전 관리 | [`storage-versioning.md`](storage-versioning.md) |
 | 런타임 홈 분리 | [`runtime-boundaries.md`](runtime-boundaries.md) |
 
 ## 접점, 상태 보기, 품질 담당 문서
@@ -76,6 +80,6 @@
 | 기계 판독 가능한 담당 문서 경로 | [`../../doc-index.yaml`](../../doc-index.yaml) |
 | 문서 작성 규칙 | [`../maintain/authoring-guide.md`](../maintain/authoring-guide.md) |
 | 문서 점검 색인 | [`../maintain/checks.md`](../maintain/checks.md) |
-| 한영 용어와 한국어 문체 지침 | [`../maintain/translation-guide.md`](../maintain/translation-guide.md) |
-| 선별된 핵심 용어의 간결한 안내 | [`glossary.md`](glossary.md) |
+| 영어/한국어 표현과 한국어 문체 지침 | [`../maintain/translation-guide.md`](../maintain/translation-guide.md) |
+| 선별된 핵심 용어의 사람이 읽는 간결한 안내 | [`glossary.md`](glossary.md) |
 | 완전한 구조화 용어 메타데이터 | [`../../terminology-map.yaml`](../../terminology-map.yaml) |

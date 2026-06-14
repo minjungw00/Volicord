@@ -1,8 +1,14 @@
 # Reference index
 
-Use this index to choose the owner document for a Harness reference question. This README is the human-readable reference owner index: it points to owners and does not define glossary term meanings, API contracts, schemas, storage effects, security guarantees, or scope.
+Use this index to choose the owner document for a Harness reference question. This README is route-only: it points to owners and does not define term meanings, terminology metadata, API values, enum values, reserved/profile-gated values, status values, schema fields, API contracts, schemas, storage effects, security guarantees, or scope.
 
-For compact meanings of curated core terms included there, use the [Glossary](glossary.md). For machine-readable owner routing by `doc_id`, use [`docs/doc-index.yaml`](../../doc-index.yaml). For complete structured terminology metadata, bilingual wording controls, and identifier controls, use [`docs/terminology-map.yaml`](../../terminology-map.yaml).
+Key routes:
+
+- [Glossary](glossary.md): compact human-readable guide for selected core terms.
+- [`docs/terminology-map.yaml`](../../terminology-map.yaml): complete structured terminology metadata, bilingual wording controls, and identifier controls.
+- [Translation Guide](../maintain/translation-guide.md): English/Korean wording and Korean style guidance.
+- [API Value Sets](api/schema-value-sets.md): API values, enum values, reserved/profile-gated values, and status values.
+- API schema rows below: schema fields; method-specific payload fields route through [API Methods](api/methods.md).
 
 ## Product and system owners
 
@@ -12,8 +18,6 @@ For compact meanings of curated core terms included there, use the [Glossary](gl
 | Core authority, product concepts, user-owned judgment, and close-readiness authority concepts | [`core-model.md`](core-model.md) |
 | Runtime and repository boundaries | [`runtime-boundaries.md`](runtime-boundaries.md) |
 | Security wording and guarantee semantics | [`security.md`](security.md) |
-| Compact selected core term guide | [`glossary.md`](glossary.md) |
-| Complete structured terminology metadata and identifier controls | [`docs/terminology-map.yaml`](../../terminology-map.yaml) |
 | Implementation entry route | [`../build/implementation-guide.md`](../build/implementation-guide.md) |
 
 ## API and schema owners
@@ -25,7 +29,7 @@ For compact meanings of curated core terms included there, use the [Glossary](gl
 | State schemas and `CloseReadinessBlocker` shape | [`api/schema-state.md`](api/schema-state.md) |
 | Artifact reference shapes | [`api/schema-artifacts.md`](api/schema-artifacts.md) |
 | User judgment and sensitive-action schemas | [`api/schema-judgment.md`](api/schema-judgment.md) |
-| API value sets and blocker category values | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
+| API values, enum values, reserved/profile-gated values, status values, and blocker category values | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
 | API error family index | [`api/errors.md`](api/errors.md) |
 | Public `ErrorCode` identifiers and meanings | [`api/error-codes.md`](api/error-codes.md) |
 | API error selection precedence | [`api/error-precedence.md`](api/error-precedence.md) |
@@ -41,7 +45,7 @@ For compact meanings of curated core terms included there, use the [Glossary](gl
 | Storage records | [`storage-records.md`](storage-records.md) |
 | Storage effects | [`storage-effects.md`](storage-effects.md) |
 | Artifact storage | [`storage-artifacts.md`](storage-artifacts.md) |
-| State clocks, versioning, and migrations | [`storage-versioning.md`](storage-versioning.md) |
+| State clocks and versioning | [`storage-versioning.md`](storage-versioning.md) |
 | Runtime home separation | [`runtime-boundaries.md`](runtime-boundaries.md) |
 
 ## Surface, projection, and quality owners
@@ -76,6 +80,6 @@ For compact meanings of curated core terms included there, use the [Glossary](gl
 | Machine-readable owner routing | [`../../doc-index.yaml`](../../doc-index.yaml) |
 | Documentation authoring rules | [`../maintain/authoring-guide.md`](../maintain/authoring-guide.md) |
 | Documentation checks index | [`../maintain/checks.md`](../maintain/checks.md) |
-| Bilingual terminology and Korean style guidance | [`../maintain/translation-guide.md`](../maintain/translation-guide.md) |
-| Compact selected core term guide | [`glossary.md`](glossary.md) |
+| English/Korean wording and Korean style guidance | [`../maintain/translation-guide.md`](../maintain/translation-guide.md) |
+| Compact human-readable guide for selected core terms | [`glossary.md`](glossary.md) |
 | Complete structured terminology metadata | [`../../terminology-map.yaml`](../../terminology-map.yaml) |
