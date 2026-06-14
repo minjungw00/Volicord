@@ -1,6 +1,6 @@
 # Glossary
 
-This document owns official terminology for Harness documentation. It defines prose meaning, Korean terminology choices, identifier preservation, expressions to avoid, and owner routing for product terms.
+This document owns official terminology for Harness documentation. It defines term-level meaning, Korean terminology choices, and card-level routing for product terms.
 
 It does not define exact schemas, value sets, DDL, storage effects, security mechanisms, API behavior, runtime behavior, or baseline implementation reading paths.
 
@@ -8,17 +8,20 @@ It does not define exact schemas, value sets, DDL, storage effects, security mec
 
 Use the summary table as a compact routing aid. Use the term cards as the editable terminology source for each term.
 
-Use this glossary with [docs/terminology-map.yaml](../../terminology-map.yaml). The glossary gives reader meaning and owner routing.
+Each term card uses these ownership fields:
 
-The terminology map is the machine-readable control file for bilingual term choices, identifier preservation, and mixed-language Korean expressions to avoid.
+- `Primary owner` is the canonical owner for the term's definition or contract.
+- `Related references` are adjacent documents that help interpret the term but do not own it.
 
-Preserve exact identifiers in backticks in both languages.
+Prefer one `Primary owner` per term. When a concept needs a different canonical owner, split it into a more precise glossary term instead of adding another primary owner.
 
-When a card points to a schema, API, storage, security, projection, or runtime contract, follow the owner document instead of copying contract details into the glossary.
+Use this glossary with [docs/terminology-map.yaml](../../terminology-map.yaml), which owns machine-readable bilingual term controls, identifier preservation controls, and Korean mixed-language expressions to avoid.
+
+When a card points to a schema, API, storage, security, projection, or runtime contract, follow the `Primary owner` instead of copying contract detail into the glossary.
 
 ## Summary table
 
-| Term | Korean reference term | Primary owner |
+| Term | Korean term | Primary owner |
 |---|---|---|
 | Harness | 하네스 | [Scope](scope.md) |
 | Product Repository | Product Repository | [Runtime Boundaries](runtime-boundaries.md) |
@@ -29,15 +32,15 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 | supported behavior | 지원 동작 | [Scope](scope.md) |
 | supported API method | 지원되는 API 메서드 | [API Methods](api/methods.md) |
 | supported API value | 지원되는 API 값 | [API Value Sets](api/schema-value-sets.md) |
-| out-of-scope capability | 지원 범위 밖 기능 | [Scope Reference](scope.md) |
-| evidence collection workflow | 증거 수집 흐름 | [Scope Reference](scope.md) |
-| expanded or additional evidence collection workflows | 확장 또는 추가 증거 수집 흐름 | [Scope Reference](scope.md) |
+| out-of-scope capability | 지원 범위 밖 기능 | [Scope](scope.md) |
+| evidence collection workflow | 증거 수집 흐름 | [Scope](scope.md) |
+| expanded or additional evidence collection workflows | 확장 또는 추가 증거 수집 흐름 | [Scope](scope.md) |
 | owner document | 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
 | owner contract | 담당 계약 | [Authoring Guide](../maintain/authoring-guide.md) |
 | applicable owner path | 적용되는 담당 경로 | [Authoring Guide](../maintain/authoring-guide.md) |
 | applicable reference | 적용되는 참조 문서 | [Reference Index](README.md) |
 | existing owner | 기존 담당 문서 | [Authoring Guide](../maintain/authoring-guide.md) |
-| promotion-time owner update | 승격 시점의 담당 문서 갱신 | [Scope Reference](scope.md) |
+| promotion-time owner update | 승격 시점의 담당 문서 갱신 | [Scope](scope.md) |
 | owner placeholder | 담당 문서 자리표시자 | [Authoring Guide](../maintain/authoring-guide.md) |
 | `Task` | `Task` | [Core Model](core-model.md) |
 | scope | 범위 | [Core Model](core-model.md) |
@@ -85,1495 +88,1423 @@ When a card points to a schema, API, storage, security, projection, or runtime c
 
 ### Harness
 
-English:
+Term:
 - Harness
 
-Korean:
-- Reference: 하네스
-- User-facing: 하네스
+Korean term:
+- 하네스
 
-Preserve:
-- Harness when naming the product
+Type:
+- product concept
 
-Avoid:
-- Treating this documentation repository as a working server.
+Meaning:
+- Harness is the local work-authority server for AI-assisted product work.
 
-Owner:
+Primary owner:
 - [Scope](scope.md)
+
+Related references:
 - [Runtime Boundaries](runtime-boundaries.md)
 
-Notes:
-- Harness is the local work-authority server for AI-assisted product work.
+Usage note:
+- Preserve Harness when naming the product; do not treat this documentation repository as a running server.
 
 ### Product Repository
 
-English:
+Term:
 - Product Repository
 
-Korean:
-- Reference: Product Repository
-- User-facing: 제품 저장소
+Korean term:
+- Product Repository; user-facing prose may use 제품 저장소.
 
-Preserve:
-- `Product Repository` when naming the boundary
+Type:
+- product label
 
-Avoid:
-- Treating product files as Harness records.
+Meaning:
+- `Product Repository` is the user's project workspace, separate from Harness runtime state.
 
-Owner:
+Primary owner:
 - [Runtime Boundaries](runtime-boundaries.md)
 
-Notes:
-- `Product Repository` is the user's project workspace, not Harness runtime state.
+Related references:
+- None.
+
+Usage note:
+- Preserve `Product Repository` when naming the boundary.
 
 ### Harness Runtime Home
 
-English:
+Term:
 - Harness Runtime Home
 
-Korean:
-- Reference: Harness Runtime Home
-- User-facing: 런타임 홈
+Korean term:
+- Harness Runtime Home; user-facing prose may use 런타임 홈.
 
-Preserve:
-- `Harness Runtime Home` when naming the boundary
+Type:
+- product label
 
-Avoid:
-- Treating this documentation repository or a `Product Repository` as `Harness Runtime Home`.
+Meaning:
+- `Harness Runtime Home` is the operational data space for Harness records and artifacts.
 
-Owner:
+Primary owner:
 - [Runtime Boundaries](runtime-boundaries.md)
 
-Notes:
-- `Harness Runtime Home` is the operational data space for Harness records and artifacts.
+Related references:
+- None.
+
+Usage note:
+- Preserve `Harness Runtime Home` when naming the boundary.
 
 ### documentation
 
-English:
+Term:
 - documentation
 
-Korean:
-- Reference: 문서
-- User-facing: 문서
+Korean term:
+- 문서
 
-Preserve:
-- File paths and owner labels
+Type:
+- documentation term
 
-Avoid:
-- treating documentation as implementation authority
-- treating documentation as runtime readiness
-- treating generated operational records as documentation
+Meaning:
+- Documentation is maintained source material, not runtime implementation, generated runtime output, or acceptance state.
 
-Owner:
+Primary owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
+
+Related references:
 - [Runtime Boundaries](runtime-boundaries.md)
 - [Implementation Guide](../build/implementation-guide.md)
 
-Notes:
-- Documentation work does not authorize runtime implementation or generated runtime records.
+Usage note:
+- Keep documentation authority separate from runtime behavior and product implementation output.
 
 ### baseline scope
 
-English:
+Term:
 - baseline scope
 
-Korean:
-- Reference: 기준 범위
-- User-facing: 기준 범위
+Korean term:
+- 기준 범위
 
-Preserve:
-- Owner titles and exact value strings
+Type:
+- scope term
 
-Avoid:
-- Treating out-of-scope capabilities or profile-gated values as baseline requirements.
+Meaning:
+- Baseline scope is the stable support boundary documented for Harness.
 
-Owner:
+Primary owner:
 - [Scope](scope.md)
+
+Related references:
 - [API Value Sets](api/schema-value-sets.md)
 
-Notes:
-- Baseline scope is the stable scope contract, not the currently applied `Task` or Change Unit scope.
+Usage note:
+- Do not describe out-of-scope capabilities or profile-gated values as baseline requirements.
 
 ### supported scope
 
-English:
+Term:
 - supported scope
 
-Korean:
-- Reference: 지원 범위
-- User-facing: 지원되는 범위
+Korean term:
+- 지원 범위; 지원되는 범위 when grammar needs a modifier.
 
-Preserve:
-- Owner titles and exact value strings
+Type:
+- scope term
 
-Avoid:
-- Using this term for the scope currently applied inside a `Task` or Change Unit.
+Meaning:
+- Supported scope is behavior or capability documented as supported.
 
-Owner:
+Primary owner:
 - [Scope](scope.md)
 
-Notes:
-- Supported scope is behavior or capability documented as supported.
+Related references:
+- None.
+
+Usage note:
+- Do not use supported scope for the currently applied scope inside a `Task` or Change Unit.
 
 ### supported behavior
 
-English:
+Term:
 - supported behavior
 
-Korean:
-- Reference: 지원 동작
-- User-facing: 지원 동작
+Korean term:
+- 지원 동작
 
-Preserve:
-- Owner titles and exact value strings
+Type:
+- support-boundary term
 
-Avoid:
-- Inferring supported behavior from value-set presence, examples, route summaries, or owner-routing terminology.
-- Using this term for runtime-active or currently applied session state.
+Meaning:
+- Supported behavior is behavior documented as supported by Scope and the affected semantic owner.
 
-Owner:
+Primary owner:
 - [Scope](scope.md)
+
+Related references:
 - [API Value Sets](api/schema-value-sets.md)
 
-Notes:
-- Supported behavior is behavior documented as supported by Scope and the affected semantic owner.
+Usage note:
+- Do not infer support from value-set presence, examples, route summaries, or owner-routing terminology.
 
 ### supported API method
 
-English:
+Term:
 - supported API method
 
-Korean:
-- Reference: 지원되는 API 메서드
-- User-facing: 지원되는 API 메서드
+Korean term:
+- 지원되는 API 메서드
 
-Preserve:
-- Exact public API method identifiers
+Type:
+- API term
 
-Avoid:
-- Treating any mentioned or reserved method name as supported.
+Meaning:
+- A supported API method is a public method documented as supported.
 
-Owner:
+Primary owner:
 - [API Methods](api/methods.md)
 
-Notes:
-- A supported API method is a public method documented as supported.
+Related references:
+- None.
+
+Usage note:
+- Preserve exact method identifiers when naming public API methods.
 
 ### supported API value
 
-English:
+Term:
 - supported API value
 
-Korean:
-- Reference: 지원되는 API 값
-- User-facing: 지원되는 API 값
+Korean term:
+- 지원되는 API 값
 
-Preserve:
-- Exact enum values, status values, and schema value strings
+Type:
+- API value term
 
-Avoid:
-- Treating value-set presence alone as support.
+Meaning:
+- A supported API value is a value documented as supported, not merely present as vocabulary.
 
-Owner:
-- [Scope](scope.md)
+Primary owner:
 - [API Value Sets](api/schema-value-sets.md)
 
-Notes:
-- A supported API value is a value documented as supported.
-- Route exact value-name questions to API Value Sets and behavior/support questions to the semantic owner.
+Related references:
+- [Scope](scope.md)
+
+Usage note:
+- Route exact value-name questions to API Value Sets and support-availability questions to Scope or the semantic owner.
 
 ### out-of-scope capability
 
-English:
+Term:
 - out-of-scope capability
 
-Korean:
-- Reference: 지원 범위 밖 기능
-- User-facing: 지원 범위 밖 기능
+Korean term:
+- 지원 범위 밖 기능
 
-Preserve:
-- Exact owner document paths when routing promotion requirements
+Type:
+- scope boundary term
 
-Avoid:
-- Calling deferred material a baseline requirement.
+Meaning:
+- An out-of-scope capability is excluded from baseline behavior until Scope and the affected owners define support.
 
-Owner:
-- [Scope Reference](scope.md)
+Primary owner:
 - [Scope](scope.md)
 
-Notes:
-- An out-of-scope capability is not baseline behavior unless [Scope](scope.md) and the affected owners define it as supported.
+Related references:
+- None.
+
+Usage note:
+- Do not call deferred material a baseline requirement.
 
 ### evidence collection workflow
 
-English:
+Term:
 - evidence collection workflow
 
-Korean:
-- Reference: 증거 수집 흐름
-- User-facing: 증거 수집 흐름
+Korean term:
+- 증거 수집 흐름
 
-Preserve:
-- Exact evidence identifiers, such as `EvidenceSummary`, when naming schemas or fields.
+Type:
+- out-of-scope capability wording
 
-Avoid:
-- Treating collection workflow wording as baseline evidence behavior.
-- Treating collection workflow wording as a storage record or close-readiness result.
+Meaning:
+- Evidence collection workflow wording names a capability area that remains terminology or out-of-scope wording unless support is defined.
 
-Owner:
-- [Scope Reference](scope.md)
+Primary owner:
+- [Scope](scope.md)
+
+Related references:
 - [Terminology Map](../../terminology-map.yaml)
 
-Notes:
-- Use evidence collection workflow wording only as terminology or out-of-scope capability wording unless [Scope](scope.md) and the affected owners define support.
+Usage note:
 - Baseline evidence is recorded evidence and evidence summaries, not a collection workflow feature by name alone.
 
 ### expanded or additional evidence collection workflows
 
-English:
+Term:
 - expanded or additional evidence collection workflows
 - expanded evidence collection workflows
 - additional evidence collection workflows
 
-Korean:
-- Reference: 확장 또는 추가 증거 수집 흐름
-- User-facing: 확장 또는 추가 증거 수집 흐름
+Korean term:
+- 확장 또는 추가 증거 수집 흐름
 
-Preserve:
-- Exact evidence identifiers, such as `EvidenceSummary`, when naming schemas or fields.
+Type:
+- out-of-scope capability family
 
-Avoid:
-- Defining workflow outputs, storage records, or close-readiness behavior from this phrase.
-- Calling this capability baseline behavior.
+Meaning:
+- This phrase names an excluded evidence-workflow capability family.
 
-Owner:
-- [Scope Reference](scope.md)
+Primary owner:
+- [Scope](scope.md)
+
+Related references:
 - [Terminology Map](../../terminology-map.yaml)
 
-Notes:
-- This is an excluded capability family until [Scope](scope.md) and the affected existing owner documents define a supported contract.
+Usage note:
+- Do not define workflow outputs, storage records, or close-readiness behavior from this phrase.
 
 ### owner document
 
-English:
+Term:
 - owner document
 
-Korean:
-- Reference: 담당 문서
-- User-facing: 담당 문서
+Korean term:
+- 담당 문서
 
-Preserve:
-- File paths
-- Anchors
-- `doc_id` values
+Type:
+- owner-routing term
 
-Avoid:
-- secondary source of truth
-- copied contract owner
+Meaning:
+- An owner document is the canonical document allowed to define a product concept, contract, schema family, route, or terminology rule.
 
-Owner:
+Primary owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
+
+Related references:
 - [Reference Index](README.md)
 
-Notes:
-- An owner document is the canonical document allowed to define a product concept, contract, schema family, route, or terminology rule.
-- Product behavior may point to the owner document that defines it, but a file path is documentation routing rather than a product actor.
+Usage note:
+- A file path is documentation routing, not a product actor.
 
 ### owner contract
 
-English:
+Term:
 - owner contract
 
-Korean:
-- Reference: 담당 계약
-- User-facing: 담당 계약
+Korean term:
+- 담당 계약; 담당 문서가 정의한 계약 when clearer.
 
-Preserve:
-- File paths, anchors, and `doc_id` values when naming the source document.
+Type:
+- owner-routing term
 
-Avoid:
-- using documentation routes as product actors
-- treating route metadata as the contract itself
+Meaning:
+- An owner contract names the contract defined by the relevant owner document.
 
-Owner:
+Primary owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
+
+Related references:
 - [Terminology Map](../../terminology-map.yaml)
 
-Notes:
-- Use owner contract when product behavior or close effect depends on the contract defined by the relevant owner document.
-- Korean may use 담당 문서가 정의한 계약 when that is clearer than 담당 계약.
+Usage note:
+- Use it when product behavior depends on an owner-defined contract, not when route metadata itself is the contract.
 
 ### applicable owner path
 
-English:
+Term:
 - applicable owner path
 
-Korean:
-- Reference: 적용되는 담당 경로
-- User-facing: 적용되는 담당 경로
+Korean term:
+- 적용되는 담당 경로
 
-Preserve:
-- File paths
-- Anchors
-- `doc_id` values
+Type:
+- owner-routing term
 
-Avoid:
-- using `active` for documentation routing
-- using product support wording when the meaning is only documentation routing
-- using owner-routing terminology as product behavior or a storage persistence condition
+Meaning:
+- An applicable owner path is the owner route that applies to a topic.
 
-Owner:
+Primary owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
+
+Related references:
 - [Reference Index](README.md)
 - [doc-index.yaml](../../doc-index.yaml)
 
-Notes:
-- This term names the owner route that applies to a topic.
-- It is a documentation-routing concept, not a product behavior, runtime state, or persistence condition.
-- Product behavior should name the owner document, owner contract, applicable reference, or concrete owner instead.
+Usage note:
+- Use this only for documentation routing; do not use `active` for owner routes.
 
 ### applicable reference
 
-English:
+Term:
 - applicable reference
 
-Korean:
-- Reference: 적용되는 참조 문서
-- User-facing: 적용되는 참조 문서
+Korean term:
+- 적용되는 참조 문서
 
-Preserve:
-- File paths
-- Anchors
-- `doc_id` values
+Type:
+- reference-routing term
 
-Avoid:
-- treating a reference path as runtime state
-- treating route metadata as product behavior
+Meaning:
+- Applicable reference names the reference document that defines the relevant contract.
 
-Owner:
-- [Authoring Guide](../maintain/authoring-guide.md)
+Primary owner:
 - [Reference Index](README.md)
+
+Related references:
+- [Authoring Guide](../maintain/authoring-guide.md)
 - [Terminology Map](../../terminology-map.yaml)
 
-Notes:
-- Use applicable reference when product prose needs the reference document that defines the relevant contract.
-- It is documentation routing shorthand, not a runtime record or storage condition.
+Usage note:
+- Treat it as documentation routing shorthand, not runtime state or a storage condition.
 
 ### existing owner
 
-English:
+Term:
 - existing owner
 - existing canonical owner
 - existing owner document
 
-Korean:
-- Reference: 기존 담당 문서
-- User-facing: 기존 담당 문서
+Korean term:
+- 기존 담당 문서
 
-Preserve:
-- File paths
-- Anchors
-- `doc_id` values
+Type:
+- owner-routing term
 
-Avoid:
-- Naming an owner placeholder as an existing canonical owner.
+Meaning:
+- An existing owner is a canonical owner document that already exists and can be linked as the source of normative meaning.
 
-Owner:
+Primary owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
+
+Related references:
 - [Reference Index](README.md)
 - [doc-index.yaml](../../doc-index.yaml)
 
-Notes:
-- Use this only when the canonical owner already exists and can be linked as the source of normative meaning.
+Usage note:
+- Do not name an owner placeholder as an existing canonical owner.
 
 ### promotion-time owner update
 
-English:
+Term:
 - promotion-time owner update
 
-Korean:
-- Reference: 승격 시점의 담당 문서 갱신
-- User-facing: 승격 시점의 담당 문서 갱신
+Korean term:
+- 승격 시점의 담당 문서 갱신
 
-Preserve:
-- File paths
-- Anchors
+Type:
+- scope-promotion term
 
-Avoid:
-- Naming a missing owner as if it already exists as an existing canonical owner.
+Meaning:
+- Promotion-time owner update names the owner changes needed when an out-of-scope capability is promoted into support.
 
-Owner:
-- [Authoring Guide](../maintain/authoring-guide.md)
-- [Scope Reference](scope.md)
+Primary owner:
 - [Scope](scope.md)
 
-Notes:
-- Promotion may require creating or designating an owner, then updating baseline scope, schemas, API behavior, storage, templates, checks, and paired-language docs as applicable.
+Related references:
+- [Authoring Guide](../maintain/authoring-guide.md)
+
+Usage note:
+- Promotion may require creating or designating an owner before updating scope, API, storage, templates, checks, and paired-language docs.
 
 ### owner placeholder
 
-English:
+Term:
 - owner placeholder
 
-Korean:
-- Reference: 담당 문서 자리표시자
-- User-facing: 담당 문서 자리표시자
+Korean term:
+- 담당 문서 자리표시자
 
-Preserve:
-- Exact owner-gap wording when routing out-of-scope capabilities
+Type:
+- owner-gap term
 
-Avoid:
-- Routing readers to the placeholder as if it were an existing canonical owner.
+Meaning:
+- An owner placeholder signals that a capability may need an owner created or designated before promotion.
 
-Owner:
+Primary owner:
 - [Authoring Guide](../maintain/authoring-guide.md)
-- [Scope Reference](scope.md)
 
-Notes:
-- Use this phrase only to signal that an out-of-scope capability may need an owner created or designated before promotion.
-- An owner placeholder is not an existing owner document.
+Related references:
+- [Scope](scope.md)
+
+Usage note:
+- Do not route readers to a placeholder as if it were an existing canonical owner.
 
 ### `Task`
 
-English:
+Term:
 - `Task`
 
-Korean:
-- Reference: `Task`
-- User-facing: 작업, when exact entity identity is not needed
+Korean term:
+- `Task`; user-facing prose may use 작업 when exact entity identity is not needed.
 
-Preserve:
-- `Task`
-- `task_id`
-- `active_task_id`
+Type:
+- Core entity
 
-Avoid:
-- Translating the identifier.
-- Using "task" for unrelated chores when the Harness entity matters.
+Meaning:
+- `Task` is the user-value unit being shaped, executed, blocked, or closed.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [API State Schemas](api/schema-state.md)
 - [API Value Sets](api/schema-value-sets.md)
 
-Notes:
-- `Task` is the user-value unit being shaped, executed, blocked, or closed.
+Usage note:
+- Preserve identifiers such as `Task`, `task_id`, and `active_task_id`.
 
 ### scope
 
-English:
+Term:
 - scope
 
-Korean:
-- Reference: 범위
-- User-facing: 범위
+Korean term:
+- 범위
 
-Preserve:
-- `scope`
-- `scope_decision`
-- `AuthorizedAttemptScope`
-- `SensitiveActionScope`
+Type:
+- Core authority term
 
-Avoid:
-- 스코프
-- silent scope expansion
-- broad approval
+Meaning:
+- Scope is the accepted boundary for what the current `Task` or Change Unit covers and excludes.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [Update-scope method](api/method-update-scope.md)
 - [API Judgment Schemas](api/schema-judgment.md)
 
-Notes:
-- Scope is the accepted boundary for what the current `Task` or Change Unit covers and excludes.
+Usage note:
+- Preserve exact identifiers such as `scope`, `scope_decision`, `AuthorizedAttemptScope`, and `SensitiveActionScope`.
 
 ### active scope
 
-English:
+Term:
 - active scope
 - currently applied scope
 
-Korean:
-- Reference: 현재 적용 범위
-- User-facing: 현재 적용 범위
+Korean term:
+- 현재 적용 범위
 
-Preserve:
-- `scope`
-- `scope_decision`
-- `AuthorizedAttemptScope`
-- `SensitiveActionScope`
+Type:
+- Core authority term
 
-Avoid:
-- Using active scope to mean baseline scope, supported scope, or a documentation contract.
+Meaning:
+- Active scope is the scope currently applied inside a `Task` or Change Unit context.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [Update-scope method](api/method-update-scope.md)
 
-Notes:
-- Active scope is the scope currently applied inside a `Task` or Change Unit context.
-- In Korean, prefer 현재 적용 범위 when clarity matters instead of automatically translating active as 활성.
+Usage note:
+- Do not use active scope to mean baseline scope, supported scope, or a documentation contract.
 
 ### active Change Unit
 
-English:
+Term:
 - active Change Unit
 
-Korean:
-- Reference: 현재 적용 Change Unit
-- User-facing: 현재 적용 Change Unit
+Korean term:
+- 현재 적용 Change Unit
 
-Preserve:
-- Change Unit
-- `change_unit_id`
+Type:
+- Core authority term
 
-Avoid:
-- Treating an active Change Unit as a project phase or documentation work phase.
+Meaning:
+- An active Change Unit is the currently applied Change Unit in the authority model.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [Update-scope method](api/method-update-scope.md)
 
-Notes:
-- An active Change Unit is the currently applied Change Unit in the authority model.
+Usage note:
 - Preserve Change Unit as the product term in Korean prose.
 
 ### user-owned judgment
 
-English:
+Term:
 - user-owned judgment
 
-Korean:
-- Reference: 사용자 소유 판단
-- User-facing: 사용자 판단
+Korean term:
+- 사용자 소유 판단; user-facing prose may use 사용자 판단.
 
-Preserve:
-- `user_judgment`
-- `UserJudgment`
-- `judgment_kind`
+Type:
+- Core authority term
 
-Avoid:
-- Treating broad approval as acceptance, risk acceptance, scope change, sensitive-action approval, or `Write Authorization`.
+Meaning:
+- User-owned judgment is a decision Harness must ask for or preserve instead of inferring.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [API Judgment Schemas](api/schema-judgment.md)
 
-Notes:
-- Harness must ask for or preserve user-owned judgment instead of inferring it.
+Usage note:
+- Do not treat broad approval as acceptance, risk acceptance, scope change, sensitive-action approval, or `Write Authorization`.
 
 ### close readiness
 
-English:
+Term:
 - close readiness
 
-Korean:
-- Reference: 닫기 준비 상태
-- User-facing: 닫기 가능 여부
+Korean term:
+- 닫기 준비 상태; user-facing prose may use 닫기 가능 여부.
 
-Preserve:
-- `CloseReadinessBlocker`
+Type:
+- Core close-readiness concept
 
-Avoid:
-- close 가능성 평가
-- 닫기 가능성 평가
+Meaning:
+- Close readiness is the Core concept for whether a task can be honestly closed.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [Close-task method](api/method-close-task.md)
 - [API blocker routing](api/blocker-routing.md)
 
-Notes:
-- This is the evaluation concept, not the blocker schema.
+Usage note:
+- This is the evaluation concept, not the `CloseReadinessBlocker` schema.
 
 ### close readiness evaluation
 
-English:
+Term:
 - close readiness evaluation
 
-Korean:
-- Reference: 닫기 준비 상태 평가
-- User-facing: 닫기 준비 상태 평가
+Korean term:
+- 닫기 준비 상태 평가
 
-Preserve:
-- `harness.close_task`
-- `CloseTaskResult`
-- `CloseReadinessBlocker`
+Type:
+- close-task method term
 
-Avoid:
-- close 가능성 평가
-- 닫기 가능성 평가
+Meaning:
+- Close readiness evaluation is the method-specific evaluation that derives close readiness and remaining blockers.
 
-Owner:
-- [Core Model](core-model.md)
+Primary owner:
 - [Close-task method](api/method-close-task.md)
+
+Related references:
+- [Core Model](core-model.md)
 - [API blocker routing](api/blocker-routing.md)
 
-Notes:
-- Close readiness evaluation derives close readiness and remaining close-readiness blockers through the Core and method owners.
+Usage note:
+- Preserve `harness.close_task`, `CloseTaskResult`, and `CloseReadinessBlocker` when naming exact API elements.
 
 ### close task behavior
 
-English:
+Term:
 - close task behavior
 - `harness.close_task` behavior
 - close-task method behavior
 
-Korean:
-- Reference: Task 닫기 동작
-- User-facing: Task 닫기 동작
+Korean term:
+- Task 닫기 동작
 
-Preserve:
-- `harness.close_task`
-- `CloseTaskResult`
-- `CloseReadinessBlocker`
+Type:
+- API method behavior term
 
-Avoid:
-- Treating close task behavior as Core close-readiness meaning.
-- Treating close task behavior as blocker/API response routing.
+Meaning:
+- Close task behavior is method-specific request validation, evaluation order, result branching, dry-run behavior, and blocker production.
 
-Owner:
+Primary owner:
 - [Close-task method](api/method-close-task.md)
 
-Notes:
-- Use for method-specific request validation, evaluation order, result branches, dry-run behavior, and blocker-producing branches.
-- Core close-readiness meaning belongs to [Core Model](core-model.md).
-- Close-readiness blocker/API response routing belongs to [API blocker routing](api/blocker-routing.md).
+Related references:
+- [Core Model](core-model.md)
+- [API blocker routing](api/blocker-routing.md)
+
+Usage note:
+- Do not use close task behavior as the owner for Core close-readiness meaning or blocker/API response routing.
 
 ### close-readiness blocker
 
-English:
+Term:
 - close-readiness blocker
 - close blocker
 
-Korean:
-- Reference: 닫기 차단 사유
-- User-facing: 닫기 차단 사유
+Korean term:
+- 닫기 차단 사유
 
-Preserve:
-- `close_blockers`
-- `CloseReadinessBlocker`
+Type:
+- Core close-readiness concept
 
-Avoid:
-- close blocker를 확인한다
-- blocker reason
+Meaning:
+- A close-readiness blocker is a close-relevant reason that prevents honest close readiness until the responsible owner-defined condition is resolved.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [API State Schemas](api/schema-state.md)
 - [API blocker routing](api/blocker-routing.md)
 
-Notes:
-- Use this for a close-relevant reason that prevents honest close readiness until the responsible owner-defined condition is resolved.
+Usage note:
+- Use the Korean prose term 닫기 차단 사유 and preserve `CloseReadinessBlocker` only when naming the schema.
 
 ### `CloseReadinessBlocker`
 
-English:
+Term:
 - `CloseReadinessBlocker`
 
-Korean:
-- Reference: `CloseReadinessBlocker`
-- User-facing: 닫기 차단 사유, when not naming the schema
+Korean term:
+- `CloseReadinessBlocker`; user-facing prose should use 닫기 차단 사유 when not naming the schema.
 
-Preserve:
-- `CloseReadinessBlocker`
-- `CloseReadinessBlocker.code`
+Type:
+- API schema
 
-Avoid:
-- Translating the identifier.
-- Using it as a prepare-write reason.
-- Using it as the whole close-readiness concept.
+Meaning:
+- `CloseReadinessBlocker` is the API schema identifier for close-readiness blocking data.
 
-Owner:
+Primary owner:
 - [API State Schemas](api/schema-state.md)
+
+Related references:
 - [API Value Sets](api/schema-value-sets.md)
 - [API blocker routing](api/blocker-routing.md)
 
-Notes:
-- `CloseReadinessBlocker` is the API schema identifier for close-readiness blocking data.
+Usage note:
+- Do not use the schema name as the whole close-readiness concept.
 
 ### blocker category
 
-English:
+Term:
 - blocker category
 
-Korean:
-- Reference: 차단 사유 범주
-- User-facing: 차단 사유 범주
+Korean term:
+- 차단 사유 범주
 
-Preserve:
-- `CloseReadinessBlocker.category`
+Type:
+- API value concept
 
-Avoid:
-- blocker 범주
-- leaving blocker category untranslated in Korean prose
+Meaning:
+- Blocker category is the prose concept for classifying close-readiness blockers by responsible concern.
 
-Owner:
+Primary owner:
 - [API Value Sets](api/schema-value-sets.md)
+
+Related references:
 - [API blocker routing](api/blocker-routing.md)
 
-Notes:
-- Use this for the prose category concept; preserve `CloseReadinessBlocker.category` when naming the exact field.
+Usage note:
+- Preserve `CloseReadinessBlocker.category` when naming the exact field.
 
 ### complete intent
 
-English:
+Term:
 - complete intent
 - `complete` when naming the intent value
 
-Korean:
-- Reference: `complete`
-- User-facing: `complete`
-
-Preserve:
+Korean term:
 - `complete`
-- `intent=complete`
 
-Avoid:
-- Preserving `complete` in Korean prose when the meaning is full, entire, or complete evaluation.
-- complete 평가
-- complete 닫기 준비 상태
+Type:
+- API value term
 
-Owner:
-- [Terminology Map](../../terminology-map.yaml)
-- [Close-task method](api/method-close-task.md)
+Meaning:
+- Complete intent is the prose concept behind the `complete` intent value.
+
+Primary owner:
 - [API Value Sets](api/schema-value-sets.md)
 
-Notes:
-- The prose concept is complete intent; only the value string is `complete`.
-- Preserve `complete` only when it is an enum value or explicit identifier.
-- For `complete` enum-versus-full questions, use the Terminology Map and this glossary first. Open API Value Sets only for exact value-name contracts.
+Related references:
+- [Close-task method](api/method-close-task.md)
+- [Terminology Map](../../terminology-map.yaml)
+
+Usage note:
+- Preserve `complete` only when it is an enum value or explicit identifier; use full or entire for ordinary prose meaning.
 
 ### full evaluation order
 
-English:
+Term:
 - full evaluation order
 - entire evaluation order
 
-Korean:
-- Reference: 전체 평가 순서; in close-readiness context, 전체 닫기 준비 상태 평가 순서
-- User-facing: 전체 평가 순서; in close-readiness context, 전체 닫기 준비 상태 평가 순서
+Korean term:
+- 전체 평가 순서; in close-readiness context, 전체 닫기 준비 상태 평가 순서.
 
-Preserve:
-- None specific
+Type:
+- translation term
 
-Avoid:
-- `complete` 평가 순서
-- complete 평가 순서
-- `complete` 닫기 준비 상태 순서
-- complete 닫기 준비 상태 순서
+Meaning:
+- Full evaluation order names an entire evaluation sequence without invoking the `complete` enum value.
 
-Owner:
+Primary owner:
 - [Translation Guide](../maintain/translation-guide.md)
+
+Related references:
 - [Terminology Map](../../terminology-map.yaml)
 
-Notes:
-- English prose should prefer "full" or "entire" when "complete" could be confused with the `complete` enum.
-- Use 전체 닫기 준비 상태 평가 순서 for the full close-readiness evaluation order in Korean.
+Usage note:
+- Prefer full or entire in English when complete could be confused with `intent=complete`.
 
 ### artifact
 
-English:
+Term:
 - artifact
 
-Korean:
-- Reference: 아티팩트
-- User-facing: 아티팩트
+Korean term:
+- 아티팩트
 
-Preserve:
-- `ArtifactRef`
-- `ArtifactInput`
-- `StagedArtifactHandle`
-- `artifact_id`
+Type:
+- artifact term
 
-Avoid:
-- artifact 저장
-- artifact bytes
-- raw path as authority
+Meaning:
+- An artifact is product work material represented through artifact schemas or artifact storage.
 
-Owner:
+Primary owner:
 - [API Artifact Schemas](api/schema-artifacts.md)
+
+Related references:
 - [Artifact Storage](storage-artifacts.md)
 
-Notes:
-- Artifact storage behavior belongs to artifact contracts, not to the general term.
+Usage note:
 - Artifact availability alone is not evidence sufficiency.
 
 ### evidence
 
-English:
+Term:
 - evidence
 
-Korean:
-- Reference: 증거
-- User-facing: 증거
+Korean term:
+- 증거
 
-Preserve:
-- `EvidenceSummary`
-- `EvidenceCoverageItem`
-- `evidence_summary`
-- `evidence_updates`
-- `evidence_summaries`
+Type:
+- Core evidence concept
 
-Avoid:
-- evidence 기록
-- evidence summary
-- Treating artifact availability as evidence sufficiency.
+Meaning:
+- Evidence supports recorded claims at recorded scope.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [API State Schemas](api/schema-state.md)
 - [Record-run method](api/method-record-run.md)
 - [Storage Records](storage-records.md)
 
-Notes:
-- Evidence supports recorded claims at recorded scope; it is not final acceptance, residual-risk acceptance, broad verification, or artifact availability by itself.
+Usage note:
+- Evidence is not final acceptance, residual-risk acceptance, broad verification, or artifact availability by itself.
 
 ### `ArtifactRef`
 
-English:
+Term:
 - `ArtifactRef`
 
-Korean:
-- Reference: `ArtifactRef`
-- User-facing: 아티팩트 참조, when not naming the schema
+Korean term:
+- `ArtifactRef`; user-facing prose may use 아티팩트 참조 when not naming the schema.
 
-Preserve:
-- `ArtifactRef`
-- `existing_artifact_ref`
+Type:
+- API schema
 
-Avoid:
-- Translating the identifier.
-- Treating a displayed ref as proof of readable bytes or evidence sufficiency.
+Meaning:
+- `ArtifactRef` is a public pointer to a registered persistent artifact.
 
-Owner:
+Primary owner:
 - [API Artifact Schemas](api/schema-artifacts.md)
+
+Related references:
 - [Artifact Storage](storage-artifacts.md)
 
-Notes:
-- `ArtifactRef` is a public pointer to a registered persistent artifact.
+Usage note:
+- A displayed ref is not proof of readable bytes or evidence sufficiency.
 
 ### `ArtifactInput`
 
-English:
+Term:
 - `ArtifactInput`
 
-Korean:
-- Reference: `ArtifactInput`
-- User-facing: supplied artifact, when not naming the schema
+Korean term:
+- `ArtifactInput`; user-facing prose may use provided artifact when not naming the schema.
 
-Preserve:
-- `ArtifactInput`
+Type:
+- API schema
 
-Avoid:
-- Translating the identifier.
-- Treating artifact input as evidence sufficiency or persistent artifact authority by itself.
+Meaning:
+- `ArtifactInput` is the schema identifier for artifact data supplied to an artifact-owning method.
 
-Owner:
+Primary owner:
 - [API Artifact Schemas](api/schema-artifacts.md)
 
-Notes:
-- `ArtifactInput` is the schema identifier for artifact data supplied to an artifact-owning method.
+Related references:
+- None.
+
+Usage note:
+- Artifact input is not persistent artifact authority by itself.
 
 ### `StagedArtifactHandle`
 
-English:
+Term:
 - `StagedArtifactHandle`
 
-Korean:
-- Reference: `StagedArtifactHandle`
-- User-facing: 스테이징된 아티팩트 핸들
+Korean term:
+- `StagedArtifactHandle`; user-facing prose may use 스테이징된 아티팩트 핸들.
 
-Preserve:
-- `StagedArtifactHandle`
-- `staged_artifact_handle`
+Type:
+- API schema
 
-Avoid:
-- staged handle
-- bearer token
-- persistent artifact
+Meaning:
+- `StagedArtifactHandle` is the schema identifier for a transient staged artifact handle.
 
-Owner:
+Primary owner:
 - [API Artifact Schemas](api/schema-artifacts.md)
+
+Related references:
 - [Artifact Storage](storage-artifacts.md)
 
-Notes:
-- `StagedArtifactHandle` is transient and is not persistent artifact authority by itself.
+Usage note:
+- A staged handle is transient and is not persistent artifact authority by itself.
 
 ### projection
 
-English:
+Term:
 - projection
 
-Korean:
-- Reference: 상태 보기
-- User-facing: 상태 보기
+Korean term:
+- 상태 보기
 
-Preserve:
-- `Projection`
-- `ProjectionKind`
+Type:
+- projection term
 
-Avoid:
-- Treating rendered display as Core state, evidence, acceptance, or authority.
+Meaning:
+- A projection is read-only derived display or support context from owner records.
 
-Owner:
+Primary owner:
 - [Projection Authority Reference](projection-and-templates.md)
+
+Related references:
 - [Template Bodies](template-bodies.md)
 
-Notes:
-- A projection is read-only derived display or support context from owner records.
+Usage note:
+- Do not treat rendered display as Core state, evidence, acceptance, or authority.
 
 ### surface
 
-English:
+Term:
 - surface
 
-Korean:
-- Reference: 접점
-- User-facing: 접점
+Korean term:
+- 접점
 
-Preserve:
-- `surface_id`
-- `surface_instance_id`
-- `VerifiedSurfaceContext`
+Type:
+- integration term
 
-Avoid:
-- surface 정보
-- surface authority
-- Treating `surface_id` as authority proof.
+Meaning:
+- A surface is a user, agent, tool, connector, or local context where Harness is used or observed.
 
-Owner:
+Primary owner:
 - [Agent Integration](agent-integration.md)
+
+Related references:
 - [Security](security.md)
 
-Notes:
-- A surface is a user, agent, tool, connector, or local context where Harness is used or observed.
+Usage note:
+- `surface_id` is not authority proof.
 
 ### active surface context
 
-English:
+Term:
 - active surface context
 
-Korean:
-- Reference: 현재 적용 접점 맥락
-- User-facing: 현재 적용 접점 맥락
+Korean term:
+- 현재 적용 접점 맥락
 
-Preserve:
-- `VerifiedSurfaceContext`
-- `VerifiedSurfaceContext.access_class`
-- `surface_id`
-- `surface_instance_id`
+Type:
+- integration term
 
-Avoid:
-- Treating active surface context as proof of authority, access, binding, or capability by itself.
+Meaning:
+- Active surface context is the current surface context for a request or interaction.
 
-Owner:
+Primary owner:
 - [Agent Integration](agent-integration.md)
+
+Related references:
 - [Security](security.md)
 
-Notes:
-- Active surface context is the current surface context for a request or interaction.
-- In Korean, prefer 현재 적용 접점 맥락 when clarity matters and preserve exact surface identifiers.
+Usage note:
+- Do not treat active surface context as proof of authority, access, binding, or capability by itself.
 
 ### runtime
 
-English:
+Term:
 - runtime
 
-Korean:
-- Reference: 런타임
-- User-facing: 런타임
+Korean term:
+- 런타임
 
-Preserve:
-- `Harness Runtime Home`
+Type:
+- runtime term
 
-Avoid:
-- Treating Markdown source docs as runtime state.
-- Treating Markdown source docs as generated runtime output.
+Meaning:
+- Runtime means executing Harness server/runtime behavior and runtime data space.
 
-Owner:
+Primary owner:
 - [Runtime Boundaries](runtime-boundaries.md)
+
+Related references:
 - [Security](security.md)
 
-Notes:
-- Runtime means executing Harness server/runtime behavior and runtime data space.
+Usage note:
+- Markdown source docs are not runtime state or generated runtime output.
 
 ### `Write Authorization`
 
-English:
+Term:
 - `Write Authorization`
 
-Korean:
-- Reference: 쓰기 권한 부여
-- User-facing: 쓰기 권한 부여
+Korean term:
+- 쓰기 권한 부여
 
-Preserve:
-- `Write Authorization`
-- `AuthorizedAttemptScope`
-- `WriteAuthorization.basis_state_version`
+Type:
+- Core authorization term
 
-Avoid:
-- write permission
-- command approval
-- sensitive approval substitute
+Meaning:
+- `Write Authorization` is the named Core authorization for one compatible product-file write attempt.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [Security](security.md)
 - [Prepare-write method](api/method-prepare-write.md)
 
-Notes:
-- `Write Authorization` is the named Core authorization for one compatible product-file write attempt.
-- It is not OS permission or sensitive-action approval.
+Usage note:
+- It is not OS permission, command approval, or sensitive-action approval.
 
 ### sensitive approval
 
-English:
+Term:
 - sensitive approval
 - sensitive-action approval
 
-Korean:
-- Reference: 민감 동작 승인
-- User-facing: 민감 동작 승인
+Korean term:
+- 민감 동작 승인
 
-Preserve:
-- `sensitive_approval`
-- `SensitiveActionScope`
+Type:
+- approval term
 
-Avoid:
-- Treating it as `Write Authorization`.
-- Treating it as final acceptance.
-- Treating it as broad approval.
+Meaning:
+- Sensitive-action approval is user permission for a sensitive action boundary.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [API Judgment Schemas](api/schema-judgment.md)
 - [Security](security.md)
 
-Notes:
-- Prefer "sensitive-action approval" in English prose.
+Usage note:
+- Prefer sensitive-action approval in English prose; do not treat it as `Write Authorization` or final acceptance.
 
 ### access class
 
-English:
+Term:
 - access class
 
-Korean:
-- Reference: 접근 등급
-- User-facing: 접근 등급
+Korean term:
+- 접근 등급
 
-Preserve:
-- `access_class`
-- `VerifiedSurfaceContext.access_class`
+Type:
+- access term
 
-Avoid:
-- Treating an access class as OS permission.
-- Treating an access class as broad authority.
+Meaning:
+- Access class is a classification used to describe protected access expectations.
 
-Owner:
+Primary owner:
 - [API Value Sets](api/schema-value-sets.md)
+
+Related references:
 - [Agent Integration](agent-integration.md)
 - [Security](security.md)
 
-Notes:
-- Access class is a classification used by API and security owners to describe protected access expectations.
+Usage note:
+- Do not treat access class as OS permission or broad authority.
 
 ### baseline guarantee
 
-English:
+Term:
 - baseline guarantee
 
-Korean:
-- Reference: 기준 범위 보장
-- User-facing: 기준 범위 보장
+Korean term:
+- 기준 범위 보장
 
-Preserve:
-- Exact guarantee label values
+Type:
+- security term
 
-Avoid:
-- Treating reserved or profile-gated labels as baseline guarantees.
+Meaning:
+- A guarantee is a baseline guarantee only when Scope and Security document it as supported in the baseline scope.
 
-Owner:
+Primary owner:
 - [Security](security.md)
+
+Related references:
 - [Scope](scope.md)
 - [API Value Sets](api/schema-value-sets.md)
 
-Notes:
-- A guarantee is a baseline guarantee only when Scope and Security both document it as supported in the baseline scope.
+Usage note:
+- Do not treat reserved or profile-gated labels as baseline guarantees.
 
 ### cooperative guarantee
 
-English:
+Term:
 - cooperative guarantee
 
-Korean:
-- Reference: 협력형 보장
-- User-facing: 협력형 보장
+Korean term:
+- 협력형 보장
 
-Preserve:
-- `cooperative`
+Type:
+- security term
 
-Avoid:
-- Strengthening cooperative wording into detective, sandboxed, enforced, or stronger isolation wording.
+Meaning:
+- A cooperative guarantee depends on the surface following the documented procedure.
 
-Owner:
+Primary owner:
 - [Security](security.md)
 
-Notes:
-- Cooperative guarantee wording depends on the surface following the documented procedure.
+Related references:
+- None.
+
+Usage note:
+- Do not strengthen cooperative wording into detective, sandboxed, enforced, or stronger-isolation wording.
 
 ### detective guarantee
 
-English:
+Term:
 - detective guarantee
 
-Korean:
-- Reference: 탐지형 보장
-- User-facing: 탐지형 보장
+Korean term:
+- 탐지형 보장
 
-Preserve:
-- `detective`
+Type:
+- security term
 
-Avoid:
-- Claiming full monitoring.
-- Claiming prevention.
+Meaning:
+- A detective guarantee depends on documented observable scope and capability checks.
 
-Owner:
+Primary owner:
 - [Security](security.md)
+
+Related references:
 - [Agent Integration](agent-integration.md)
 
-Notes:
-- Use detective guarantee only when the documented observable scope and capability check support it.
+Usage note:
+- Do not claim full monitoring or prevention from detective wording.
 
 ### design-quality owner boundary
 
-English:
+Term:
 - design-quality owner boundary
 - design-quality routing boundary
 - design-quality boundary
 
-Korean:
-- Reference: 설계 품질 담당 경계
-- User-facing: 설계 품질 담당 경계
+Korean term:
+- 설계 품질 담당 경계
 
-Preserve:
-- `ValidatorResult.validator_id`
-- Exact blocker category values when naming identifiers.
+Type:
+- design-quality term
 
-Avoid:
-- Treating design-quality wording as an independent close blocker.
-- Treating design-quality wording as QA, acceptance, residual-risk, evidence, or close authority.
+Meaning:
+- Design-quality owner boundary routes design-quality observations to the relevant owner documents or owner contracts.
 
-Owner:
+Primary owner:
 - [Design Quality](design-quality.md)
 
-Notes:
-- Use this for the Design Quality reference boundary that routes observations to relevant judgment, evidence, scope, surface-capability, residual-risk, or close-readiness owners.
-- Product effects must be defined by the relevant owner document or owner contract.
+Related references:
+- None.
+
+Usage note:
+- Design-quality wording is not independent QA, acceptance, residual-risk, evidence, or close authority.
 
 ### reserved value
 
-English:
+Term:
 - reserved value
 
-Korean:
-- Reference: 예약된 값
-- User-facing: 예약된 값
+Korean term:
+- 예약된 값
 
-Preserve:
-- Exact value strings
+Type:
+- value-status term
 
-Avoid:
-- default
-- required
-- supported
-- enforced
-- accepted
-- verified
-- close-ready
-- baseline guarantee
+Meaning:
+- A reserved value may exist as vocabulary or reserved surface area without making behavior supported.
 
-Owner:
+Primary owner:
 - [Scope](scope.md)
+
+Related references:
 - [API Value Sets](api/schema-value-sets.md)
 
-Notes:
-- A reserved value may exist as vocabulary or reserved surface area without making behavior supported.
-- Presence in a value set does not make behavior supported.
+Usage note:
+- Value-set presence does not make behavior supported.
 
 ### profile-gated value
 
-English:
+Term:
 - profile-gated value
 
-Korean:
-- Reference: 프로필 조건부 값
-- User-facing: 프로필 조건부 값
+Korean term:
+- 프로필 조건부 값
 
-Preserve:
-- Exact value strings
+Type:
+- value-status term
 
-Avoid:
-- Treating a profile-gated value as baseline scope behavior because it appears in a value set.
+Meaning:
+- A profile-gated value is available only when the relevant profile and owner behavior define it as supported.
 
-Owner:
+Primary owner:
 - [Scope](scope.md)
+
+Related references:
 - [API Value Sets](api/schema-value-sets.md)
 
-Notes:
-- A profile-gated value is available only when the relevant profile and owner behavior define it as supported.
-- Presence in a value set does not make behavior supported.
-
-### migration
-
-English:
-- migration
-
-Korean:
-- Reference: 마이그레이션
-- User-facing: 마이그레이션
-
-Preserve:
-- Exact migration identifiers and file paths
-
-Avoid:
-- Translating technical migration as previous choice or prior decision.
-- Using one-off migration write-ups as planning files.
-
-Owner:
-- [Storage Versioning](storage-versioning.md)
-- [Storage Overview](storage.md)
-
-Notes:
-- Use migration for technical schema, storage, data, or documentation migration concepts.
+Usage note:
+- Do not treat a profile-gated value as baseline behavior because it appears in a value set.
 
 ### error routing
 
-English:
+Term:
 - error routing
 - API response branch routing
 - API error routing, when naming the owner document
 
-Korean:
-- Reference: 오류 처리 경로
-- User-facing: 오류 처리 경로
+Korean term:
+- 오류 처리 경로
 
-Preserve:
-- `ToolRejectedResponse`
-- `ToolDryRunResponse`
-- `CloseTaskResult(close_state=blocked)`
+Type:
+- API error-routing term
 
-Avoid:
-- Treating error routing as public `ErrorCode` meaning, error precedence, `ToolError.details`, or close-readiness blocker routing.
+Meaning:
+- Error routing covers API response branch routing for rejected responses, blocked results, and `dry_run` previews.
 
-Owner:
+Primary owner:
 - [API error routing](api/error-routing.md)
 
-Notes:
-- Error routing covers API response branch routing for rejected responses, blocked results, and `dry_run` previews.
+Related references:
+- None.
+
+Usage note:
+- Do not use error routing for public `ErrorCode` meaning, error precedence, `ToolError.details`, or close-readiness blocker routing.
 
 ### blocker routing
 
-English:
+Term:
 - blocker routing
 - close-readiness blocker routing
 - API blocker routing, when naming the owner document
 
-Korean:
-- Reference: 차단 사유 처리 경로
-- User-facing: 차단 사유 처리 경로
+Korean term:
+- 차단 사유 처리 경로
 
-Preserve:
-- `CloseReadinessBlocker`
-- `CloseReadinessBlocker.category`
-- `CloseReadinessBlocker.code`
+Type:
+- API blocker-routing term
 
-Avoid:
-- Treating blocker routing as public `ErrorCode` meaning, response branch routing, or `ToolError.details`.
+Meaning:
+- Blocker routing covers the boundary between close-readiness blockers and API response branches.
 
-Owner:
+Primary owner:
 - [API blocker routing](api/blocker-routing.md)
 
-Notes:
-- Blocker routing covers the routing boundary between close-readiness blockers and API response branches, including the public-code-to-blocker boundary.
+Related references:
+- [Close-task method](api/method-close-task.md)
+
+Usage note:
 - Method-specific `harness.close_task` behavior belongs to the close-task method owner.
 
 ### error/blocker boundary
 
-English:
+Term:
 - error/blocker boundary
 - API error versus close-readiness blocker boundary
 
-Korean:
-- Reference: 오류와 차단 사유의 경계
-- User-facing: 오류와 차단 사유의 경계
+Korean term:
+- 오류와 차단 사유의 경계
 
-Preserve:
-- `ErrorCode`
-- `CloseReadinessBlocker`
-- `CloseReadinessBlocker.code`
+Type:
+- API blocker-routing term
 
-Avoid:
-- Treating public error codes and blockers as the same code space.
-- Treating API errors and close-readiness blockers as the same code space.
+Meaning:
+- The error/blocker boundary separates API errors returned before a valid evaluation from close-readiness blocker data returned after a valid evaluation.
 
-Owner:
+Primary owner:
 - [API blocker routing](api/blocker-routing.md)
 
-Notes:
-- The error/blocker boundary separates API errors returned before a valid evaluation from close-readiness blocker data returned after a valid evaluation.
+Related references:
+- [API error codes](api/error-codes.md)
+
+Usage note:
+- Do not treat public error codes and blockers as the same code space.
 
 ### public error as blocker
 
-English:
+Term:
 - public error as blocker
 - public `ErrorCode` as blocker
 
-Korean:
-- Reference: 공개 오류 코드가 차단 사유로 표현되는 경우
-- User-facing: 공개 오류 코드가 차단 사유로 표현되는 경우
+Korean term:
+- 공개 오류 코드가 차단 사유로 표현되는 경우
 
-Preserve:
-- `ErrorCode`
-- `CloseReadinessBlocker.code`
+Type:
+- API blocker-routing term
 
-Avoid:
-- Automatically copying public `ErrorCode` values into `CloseReadinessBlocker.code`.
+Meaning:
+- Public error as blocker names the narrow case where a public error code may appear as blocker data.
 
-Owner:
+Primary owner:
 - [API blocker routing](api/blocker-routing.md)
+
+Related references:
 - [API error codes](api/error-codes.md)
 
-Notes:
-- Public error as blocker wording is limited to cases where the schema or method owner allows that exact use.
+Usage note:
+- Do not automatically copy public `ErrorCode` values into `CloseReadinessBlocker.code`.
 
 ### `ToolError.details`
 
-English:
+Term:
 - `ToolError.details`
 
-Korean:
-- Reference: `ToolError.details`
-- User-facing: 오류 세부사항, when not naming the exact API identifier
+Korean term:
+- `ToolError.details`; user-facing prose may use 오류 세부사항 when not naming the exact API identifier.
 
-Preserve:
-- `ToolError.details`
+Type:
+- API detail identifier
 
-Avoid:
-- Translating the identifier.
-- Treating detail helper values as top-level public `ErrorCode` values.
+Meaning:
+- `ToolError.details` is the exact API detail identifier for machine-readable error details.
 
-Owner:
+Primary owner:
 - [API error details](api/error-details.md)
 
-Notes:
-- `ToolError.details` is the exact API detail identifier for machine-readable error details.
+Related references:
+- None.
+
+Usage note:
+- Do not treat detail helper values as top-level public `ErrorCode` values.
 
 ### dry-run
 
-English:
+Term:
 - dry-run
 
-Korean:
-- Reference: dry-run 미리보기
-- User-facing: 미리보기
+Korean term:
+- dry-run 미리보기; user-facing prose may use 미리보기.
 
-Preserve:
-- `dry_run`
-- `ToolDryRunResponse`
-- `DryRunSummary`
-- `PlannedBlocker`
+Type:
+- API preview term
 
-Avoid:
-- Treating dry-run output as committed state.
-- Treating dry-run output as stored blocker state.
-- Treating `PlannedBlocker` as `CloseReadinessBlocker`.
+Meaning:
+- Dry-run is a valid preview path for selected operations.
 
-Owner:
+Primary owner:
 - [API Schema Core](api/schema-core.md)
+
+Related references:
 - [API Methods](api/methods.md)
 - [API error routing](api/error-routing.md)
 - [Storage Effects](storage-effects.md)
 
-Notes:
-- Dry-run is a valid preview path for selected operations and does not commit writes or create owner records.
+Usage note:
+- Dry-run output does not commit writes, create owner records, or store blocker state.
 
 ### blocked result
 
-English:
+Term:
 - blocked result
 
-Korean:
-- Reference: 차단 결과
-- User-facing: 차단 결과
+Korean term:
+- 차단 결과
 
-Preserve:
-- `CloseTaskResult(close_state=blocked)`
-- `decision=blocked`
-- `WriteDecisionReason`
-- `CloseReadinessBlocker`
+Type:
+- API result term
 
-Avoid:
-- rejected response
-- public error
-- `STATE_VERSION_CONFLICT` as blocker code
+Meaning:
+- A blocked result is a method-specific result that reports a valid operation could not proceed.
 
-Owner:
+Primary owner:
 - [API error routing](api/error-routing.md)
+
+Related references:
 - [Prepare-write method](api/method-prepare-write.md)
 - [Close-task method](api/method-close-task.md)
 - [Storage Effects](storage-effects.md)
 
-Notes:
-- A blocked result is method-specific and is not a public transport or schema rejection.
+Usage note:
+- A blocked result is not a public transport error or schema rejection.
 
 ### rejected response
 
-English:
+Term:
 - rejected response
 
-Korean:
-- Reference: 거부 응답
-- User-facing: 거부 응답
+Korean term:
+- 거부 응답
 
-Preserve:
-- `ToolRejectedResponse`
-- `ToolError`
-- `ErrorCode`
+Type:
+- API response branch
 
-Avoid:
-- blocked result
-- close blocker
-- committed outcome
+Meaning:
+- A rejected response means the method failed before proceeding to the committed operation.
 
-Owner:
+Primary owner:
 - [API Schema Core](api/schema-core.md)
+
+Related references:
 - [API error routing](api/error-routing.md)
 - [Storage Effects](storage-effects.md)
 
-Notes:
-- A rejected response means the method failed before proceeding to the committed operation.
+Usage note:
+- Do not treat a rejected response as a blocked result, close blocker, or committed outcome.
+
+### migration
+
+Term:
+- migration
+
+Korean term:
+- 마이그레이션
+
+Type:
+- storage term
+
+Meaning:
+- Migration is a technical schema, storage, data, or documentation migration concept.
+
+Primary owner:
+- [Storage Versioning](storage-versioning.md)
+
+Related references:
+- [Storage Overview](storage.md)
+
+Usage note:
+- Do not translate technical migration as previous choice or prior decision.
 
 ### lifecycle
 
-English:
+Term:
 - lifecycle
 
-Korean:
-- Reference: 생명주기
-- User-facing: 생명주기
+Korean term:
+- 생명주기
 
-Preserve:
-- `Task.lifecycle_phase`
-- `artifact_staging.status`
+Type:
+- lifecycle term
 
-Avoid:
-- lifecycle 의미
+Meaning:
+- Lifecycle is the allowed phase progression of a concept such as a `Task` or artifact handle.
 
-Owner:
+Primary owner:
 - [Core Model](core-model.md)
+
+Related references:
 - [API Value Sets](api/schema-value-sets.md)
 - [Artifact Storage](storage-artifacts.md)
 
-Notes:
-- Use lifecycle for the allowed phase progression of a concept such as a `Task` or artifact handle.
+Usage note:
+- Preserve exact identifiers such as `Task.lifecycle_phase` and `artifact_staging.status`.
