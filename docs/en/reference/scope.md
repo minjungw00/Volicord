@@ -114,7 +114,8 @@ Owner routing:
 - Runtime and repository boundaries: [Runtime Boundaries](runtime-boundaries.md).
 - Security boundary wording, guarantee levels, observation, blocking, isolation, and sensitive-action approval boundaries: [Security](security.md) and [Core Model](core-model.md).
 - Conformance procedures and check expectations: [Conformance](conformance.md).
-- Product terminology and bilingual terminology controls: [Glossary](glossary.md), [Translation Guide](../maintain/translation-guide.md), and [docs/terminology-map.yaml](../../terminology-map.yaml).
+- Selected core term meanings: [Glossary](glossary.md).
+- Complete structured terminology metadata and bilingual wording controls: [Translation Guide](../maintain/translation-guide.md) and [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
 <a id="reserved-and-profile-gated-values"></a>
 ## Reserved and profile-gated values
@@ -140,7 +141,7 @@ Owner links:
 
 - Exact value names and value-set placement: [API Value Sets](api/schema-value-sets.md).
 - Guarantee semantics and security boundaries, including stronger isolation claims: [Security](security.md).
-- Product terminology for reserved and profile-gated values: [Glossary](glossary.md).
+- Structured terminology metadata for reserved and profile-gated values: [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
 <a id="out-of-scope-capability-promotion"></a>
 ## Out-of-scope capability promotion

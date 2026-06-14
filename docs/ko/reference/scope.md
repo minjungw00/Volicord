@@ -114,7 +114,8 @@
 - 런타임과 제품 저장소 경계: [런타임 경계](runtime-boundaries.md).
 - 보안 비주장, 보장 수준, 관찰, 차단, 격리, 민감 동작 승인 경계: [보안](security.md), [Core 모델](core-model.md).
 - 적합성 절차와 점검 기대: [적합성](conformance.md).
-- 제품 용어와 한영 용어 통제: [용어집](glossary.md), [번역 가이드](../maintain/translation-guide.md), [docs/terminology-map.yaml](../../terminology-map.yaml).
+- 선별된 핵심 용어의 간단한 뜻: [용어집](glossary.md).
+- 완전한 구조화 용어 메타데이터와 한영 표현 통제: [번역 가이드](../maintain/translation-guide.md), [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
 <a id="reserved-and-profile-gated-values"></a>
 ## 예약된 값과 프로필 조건부 값
@@ -140,7 +141,7 @@
 
 - 정확한 값 이름과 값 집합 위치: [API 값 집합](api/schema-value-sets.md).
 - 더 강한 격리 주장을 포함한 보장 의미와 비주장: [보안](security.md).
-- 예약된 값과 프로필 조건부 값의 제품 용어: [용어집](glossary.md).
+- 예약된 값과 프로필 조건부 값의 구조화 용어 메타데이터: [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
 <a id="out-of-scope-capability-promotion"></a>
 ## 지원 범위 밖 기능의 승격
