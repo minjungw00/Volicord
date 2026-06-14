@@ -163,11 +163,17 @@ Check sources:
 - [doc-index.yaml](../../../doc-index.yaml)
 - [Reference Index](../../reference/README.md)
 
+Applies to:
+- Terminology-map owner targets, glossary owner and related-reference targets, `doc-index.yaml` owner metadata, and terminology route tables touched by the edit.
+
 Evidence to inspect:
-- Inspect terminology-map `primary_owner` and `related_references`, glossary owner links, `doc-index.yaml` owner metadata, and route tables touched by the edit.
+- Inspect terminology-map `primary_owner` and `related_references`, glossary owner and related-reference targets, `doc-index.yaml` owner metadata, and route tables touched by the edit.
+- Inspect glossary content by role, regardless of whether it is represented as a compact table, compact entries, or another human-readable view.
 - Confirm `docs/terminology-map.yaml` remains the complete structured term inventory.
-- Confirm the glossary remains a curated compact view and is not required to mirror every terminology-map term.
-- Confirm every term shown in the glossary exists in the terminology map.
+- Confirm the glossary remains compact and reader-facing.
+- Confirm the glossary is not required to mirror every terminology-map term.
+- Confirm checks do not require a specific glossary layout, such as both a summary table and detailed cards.
+- Confirm every term included in the glossary has matching terminology-map metadata.
 - Confirm each owner target points to the focused owner document when one exists.
 - Confirm glossary `Primary owner` values and terminology-map `primary_owner` targets match for the same included term unless an explicit owner gap is named.
 - Confirm `doc-index.yaml` `owner_for` and `not_owner_for` metadata does not contradict the focused owner named by the glossary or terminology map for the same concept.
@@ -176,11 +182,15 @@ Evidence to inspect:
 - Use a broad index only when the concept is index-owned navigation, a first-hop route, or an explicitly named owner gap.
 - Confirm API error code meanings, error precedence, API response branch routing, close-readiness blocker routing, and `ToolError.details` targets stay separate.
 
+Pass condition:
+- Terminology routes and metadata point to focused owners; the terminology map remains the complete structured term inventory; the glossary remains a compact reader-facing subset; every glossary-included term has matching terminology-map metadata, the same primary owner, and non-contradictory related references; route and index metadata do not overclaim focused ownership.
+
 Failure:
 - A terminology, glossary, metadata, or route target points to a broad index when a focused owner exists.
-- A glossary term is missing from the terminology map.
+- A glossary-included term is missing from the terminology map or lacks matching terminology-map metadata.
 - A check or route requires the glossary to include every terminology-map term.
-- A glossary entry points to one primary owner while the terminology map points to another.
+- A check requires a specific glossary layout, such as a summary table plus detailed cards.
+- A glossary-included term points to one primary owner while the terminology map points to another.
 - `doc-index.yaml` metadata makes a different document look primary for the same concept without a documented owner split or owner gap.
 - `doc-index.yaml` overclaims ownership for a focused term, API concern, schema concern, storage concern, security concern, or display wording concern.
 - A terminology-map `related_references`, glossary `See also`, or glossary `Related references` entry is treated as a second primary owner or contradicts the adjacent references for the same term.
@@ -190,12 +200,18 @@ Failure:
 Fix:
 - Retarget the link or metadata field to the focused owner.
 - Narrow `doc-index.yaml` `owner_for` metadata or add `not_owner_for` metadata so route and index pages do not overclaim focused terms.
-- Synchronize the glossary entry, terminology map, and `doc-index.yaml` metadata in the same documentation batch when the owner target changes.
-- Add the term to the terminology map before showing it in the glossary, or remove the glossary entry when it is not part of the curated view.
-- Keep terminology-map-only terms out of the glossary unless readers need the compact glossary entry.
+- Synchronize glossary content, the terminology map, and `doc-index.yaml` metadata in the same documentation batch when the owner target changes.
+- Add the term to the terminology map before including it in the glossary, or remove it from the compact glossary view.
+- Keep terminology-map-only terms out of the glossary unless readers need compact glossary coverage.
 - Move adjacent documents from primary-owner fields into related-reference fields.
 - Keep indexes as navigation unless they truly own the route concept.
 - If the focused owner is missing, name the owner gap instead of routing the contract to an index.
+
+Related checks:
+- [CHK-TERM-005](terminology.md#chk-term-005-terminology-map-alignment)
+- [CHK-TERM-011](terminology.md#chk-term-011-glossary-entry-focus)
+- [CHK-TERM-012](terminology.md#chk-term-012-owner-routing-label-usage)
+- [CHK-LINK-003](#chk-link-003-route-documents-expose-owner-gaps)
 
 ## CHK-LINK-009: moved-concept and owner-boundary anchors
 
