@@ -76,18 +76,23 @@ Conditions:
 
 - The read must pass access-class, capability, redaction, availability, and owner-relation checks.
 
-Owner links:
+Owner boundary:
 
-- `ArtifactRef` shape is owned by [API Artifact Schemas](api/schema-artifacts.md).
+- `ArtifactRef` and `StagedArtifactHandle` API shapes are owned by [API Artifact Schemas](api/schema-artifacts.md).
+- Storage-owned staging records and artifact lifecycle behavior are owned by this Artifact Storage document. The `artifact_staging`, `artifacts`, and `artifact_links` table overview is owned by [Storage Records](storage-records.md).
 
 Allowed:
 
 - `StagedArtifactHandle` is a transient handle returned by successful `harness.stage_artifact`.
 - `existing_artifact` links an existing persistent artifact.
 
+Conditions:
+
+- A staged handle can be treated as authority for a staged artifact only when it resolves to a compatible stored `artifact_staging` row or equivalent storage-owned staging record.
+
 Not allowed:
 
-- Do not treat a `StagedArtifactHandle` shape as authority unless it resolves to a compatible stored `artifact_staging` row or equivalent storage-owned staging record.
+- Do not treat the `StagedArtifactHandle` shape alone as artifact authority.
 - Do not use `existing_artifact` to register a new artifact body.
 - Do not treat caller-supplied paths, logs, capture claims, or local file references as registration authority in the baseline.
 

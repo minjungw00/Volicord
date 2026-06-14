@@ -76,18 +76,23 @@
 
 - 접근 등급, 역량, 가림 처리, 가용성, 담당 관계를 통과해야 합니다.
 
-담당 문서 링크:
+담당 경계:
 
-- `ArtifactRef` 형태는 [API 아티팩트 스키마](api/schema-artifacts.md)가 담당합니다.
+- `ArtifactRef`와 `StagedArtifactHandle` API 형태는 [API 아티팩트 스키마](api/schema-artifacts.md)가 담당합니다.
+- 저장소 소유 스테이징 기록과 아티팩트 생명주기 동작은 이 아티팩트 저장 문서가 담당합니다. `artifact_staging`, `artifacts`, `artifact_links` 테이블 개요는 [저장소 기록](storage-records.md)이 담당합니다.
 
 허용되는 것:
 
 - `StagedArtifactHandle`은 성공한 `harness.stage_artifact`가 반환한 임시 핸들입니다.
 - `existing_artifact`는 기존 지속 아티팩트를 연결합니다.
 
+조건:
+
+- 스테이징 핸들은 호환되는 저장된 `artifact_staging` 행이나 동등한 저장소 소유 스테이징 기록으로 해석될 때만 스테이징된 아티팩트에 대한 권한으로 취급할 수 있습니다.
+
 허용되지 않는 것:
 
-- `StagedArtifactHandle` 형태만으로 권한처럼 취급하면 안 됩니다. 호환되는 저장된 `artifact_staging` 행이나 동등한 저장소 소유 스테이징 기록으로 해석되어야 합니다.
+- `StagedArtifactHandle` 형태만으로 아티팩트 권한처럼 취급하면 안 됩니다.
 - `existing_artifact`를 새 아티팩트 본문 등록에 사용하면 안 됩니다.
 - 호출자가 준 경로, 로그, 캡처 주장, 로컬 파일 참조를 기준 범위의 아티팩트 등록 권한으로 취급하면 안 됩니다.
 
