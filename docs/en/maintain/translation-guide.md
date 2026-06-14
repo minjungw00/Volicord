@@ -96,7 +96,7 @@ Use these stable Korean patterns:
 | `changed documents` | Use `변경된 문서`. |
 | `current edit` or `this edit` | Do not make the phrase task-specific. Prefer stable wording such as `문서 변경 시` when the sentence describes a general maintenance condition. |
 
-Do not use Korean task-context wording in maintained docs for general maintenance rules. Except when quoting a prohibited example in Maintain guidance, avoid `이번 작업`, `이번 변경`, `이번 수정`, `이 작업`, `작업에서 바뀐`, and `작업에서 수정한`.
+Do not use Korean task-context wording in maintained docs for general maintenance rules. Use the Structure checks for searchable residue patterns instead of preserving task-bound Korean phrases as prose examples.
 
 ## 6. Korean technical writing style
 

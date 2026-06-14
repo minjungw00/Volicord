@@ -63,9 +63,9 @@ Check sources:
 - [Checks Index](../checks.md)
 
 Evidence to inspect:
-- Inspect changed files and newly added files for one-off planning files, working-note remnants, review leftovers, archive copies, transition notes, one-off conversion notes, ad hoc files, generated runtime records, and unresolved task markers such as `FIXME` or other all-caps placeholders.
-- Search changed maintained prose and Maintain check pages for task-context residue. Include English patterns such as `this task`, `this change`, `this cleanup`, `rework`, `temporary`, `TODO`, `draft`, and `migration note`.
-- Search changed Korean maintained prose and Maintain check pages for task-context residue. Include Korean patterns such as `이번 작업`, `이번 변경`, `이번 수정`, `이 작업`, `작업에서 바뀐`, `작업에서 수정한`, `추후 정리`, `임시`, and `재작업`.
+- Inspect changed files and newly added files for one-off planning files, working-note remnants, review leftovers, archive copies, transition notes, one-off conversion notes, ad hoc files, generated runtime records, and unresolved fix markers or other all-caps placeholders.
+- Search changed maintained prose and Maintain check pages for task-context residue. Include English patterns such as `this\s+(task|change|cleanup)`, `re[- ]?work`, `temp(orary)?`, `T[O]D[O]`, `draf(t|ted)`, and `migration\s+note`.
+- Search changed Korean maintained prose and Maintain check pages for task-context residue. Include Korean patterns such as `이[번]\s+(작업|변경|수정)`, `이\s+작업`, `작업\s*에서\s+(바[뀐]|수정[한])`, `추후\s+정리`, `임시`, and `재작업`.
 - Confirm general maintenance conditions use stable wording such as `changed`, `edited`, `when a document changes`, `변경된`, `편집된`, `문서 변경 시`, and `점검 대상`.
 - Confirm documentation-maintenance findings live in the final report or the appropriate maintained documentation page, not in ad hoc files.
 
