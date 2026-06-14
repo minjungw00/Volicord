@@ -56,7 +56,6 @@ Use this table only after applying the common boundary above. Public-code famili
 | Readable-view freshness families | May be named as related diagnostics when the owner allows it. | A freshness diagnostic by itself is not a close-readiness blocker. |
 | State-version or idempotency conflict families | No close-readiness blocker representation. | These failures are rejected before close-readiness evaluation and stay with [API error precedence](error-precedence.md). |
 
-<a id="harnessclose_task-close-blockers"></a>
 ## `harness.close_task` method route
 
 Method-specific close behavior belongs to [`harness.close_task`](method-close-task.md). Route request validation, intent handling, terminal mutation, state-version behavior, and committed blocked outcomes to that method owner.
