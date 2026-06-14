@@ -94,7 +94,7 @@ Owner:
 
 Check:
 - Compare changed terminology guidance with `docs/terminology-map.yaml`.
-- Confirm `owner_documents` targets point to the focused owner document when one exists, not to a broad index or family page.
+- Confirm `primary_owner` targets point to the focused owner document when one exists, and `related_references` hold adjacent routes instead of broadening ownership.
 - Confirm glossary owner links follow the same focused-owner rule.
 - Confirm forbidden mixed-language examples in the guides use concrete strings, not vague descriptions.
 - Confirm any new forbidden expression appears in the terminology map and both translation guides.

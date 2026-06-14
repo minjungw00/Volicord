@@ -144,13 +144,12 @@ terms:
     en: "Harness"
     ko_reference: "하네스"
     ko_user: "하네스"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/runtime-boundaries.md"
-      ko:
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/runtime-boundaries.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
+    related_references:
+      - en: "docs/en/reference/runtime-boundaries.md"
+        ko: "docs/ko/reference/runtime-boundaries.md"
   product_repository:
     category: "product_label"
     en: "Product Repository"
@@ -158,11 +157,9 @@ terms:
     ko_user: "제품 저장소"
     preserve_as_label:
       - "Product Repository"
-    owner_documents:
-      en:
-        - "docs/en/reference/runtime-boundaries.md"
-      ko:
-        - "docs/ko/reference/runtime-boundaries.md"
+    primary_owner:
+      en: "docs/en/reference/runtime-boundaries.md"
+      ko: "docs/ko/reference/runtime-boundaries.md"
   harness_runtime_home:
     category: "product_label"
     en: "Harness Runtime Home"
@@ -170,25 +167,22 @@ terms:
     ko_user: "런타임 홈"
     preserve_as_label:
       - "Harness Runtime Home"
-    owner_documents:
-      en:
-        - "docs/en/reference/runtime-boundaries.md"
-      ko:
-        - "docs/ko/reference/runtime-boundaries.md"
+    primary_owner:
+      en: "docs/en/reference/runtime-boundaries.md"
+      ko: "docs/ko/reference/runtime-boundaries.md"
   documentation:
     category: "general_prose"
     en: "documentation"
     ko_reference: "문서"
     ko_user: "문서"
-    owner_documents:
-      en:
-        - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/reference/runtime-boundaries.md"
-        - "docs/en/build/implementation-guide.md"
-      ko:
-        - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/reference/runtime-boundaries.md"
-        - "docs/ko/build/implementation-guide.md"
+    primary_owner:
+      en: "docs/en/maintain/authoring-guide.md"
+      ko: "docs/ko/maintain/authoring-guide.md"
+    related_references:
+      - en: "docs/en/reference/runtime-boundaries.md"
+        ko: "docs/ko/reference/runtime-boundaries.md"
+      - en: "docs/en/build/implementation-guide.md"
+        ko: "docs/ko/build/implementation-guide.md"
     notes:
       - "Documentation work does not implement runtime behavior or create generated runtime records."
   baseline_scope:
@@ -198,13 +192,12 @@ terms:
     ko_user: "기준 범위"
     aliases_en:
       - "baseline"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "Do not describe out-of-scope capabilities as baseline requirements."
       - "Baseline scope is the stable scope contract, not the currently applied `Task` or Change Unit scope."
@@ -213,11 +206,9 @@ terms:
     en: "supported scope"
     ko_reference: "지원 범위"
     ko_user: "지원되는 범위"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-      ko:
-        - "docs/ko/reference/scope.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
     notes:
       - "Use for behavior or capability documented as supported."
       - "Do not use supported scope for the currently applied scope inside a `Task` or Change Unit."
@@ -227,13 +218,12 @@ terms:
     en: "supported behavior"
     ko_reference: "지원 동작"
     ko_user: "지원 동작"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "Use for behavior documented as supported by Scope and the affected semantic owner."
       - "Do not infer supported behavior from value-set presence, examples, route summaries, or owner-routing terminology."
@@ -243,11 +233,9 @@ terms:
     en: "supported API method"
     ko_reference: "지원되는 API 메서드"
     ko_user: "지원되는 API 메서드"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/methods.md"
-      ko:
-        - "docs/ko/reference/api/methods.md"
+    primary_owner:
+      en: "docs/en/reference/api/methods.md"
+      ko: "docs/ko/reference/api/methods.md"
     notes:
       - "Use only for a public API method documented as supported."
       - "Preserve exact method identifiers when naming a method."
@@ -256,13 +244,12 @@ terms:
     en: "supported API value"
     ko_reference: "지원되는 API 값"
     ko_user: "지원되는 API 값"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-value-sets.md"
+      ko: "docs/ko/reference/api/schema-value-sets.md"
+    related_references:
+      - en: "docs/en/reference/scope.md"
+        ko: "docs/ko/reference/scope.md"
     notes:
       - "Use only for a value documented as supported."
       - "Presence in a value set does not by itself make an API value supported."
@@ -272,11 +259,9 @@ terms:
     en: "out-of-scope capability"
     ko_reference: "지원 범위 밖 기능"
     ko_user: "지원 범위 밖 기능"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-      ko:
-        - "docs/ko/reference/scope.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
     notes:
       - "An out-of-scope capability is deferred material until an owner promotes it."
   evidence_collection_workflow:
@@ -286,13 +271,12 @@ terms:
     ko_user: "증거 수집 흐름"
     avoid_ko:
       - "evidence collection workflow"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/glossary.md"
-      ko:
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/glossary.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
+    related_references:
+      - en: "docs/en/reference/glossary.md"
+        ko: "docs/ko/reference/glossary.md"
     notes:
       - "Use this wording for evidence collection workflows only as terminology or out-of-scope capability wording unless Scope and the affected owners define support."
       - "Do not use collection-output or index wording as a named artifact unless it is an exact supported identifier."
@@ -305,13 +289,12 @@ terms:
       - "additional evidence collection workflows"
     ko_reference: "확장 또는 추가 증거 수집 흐름"
     ko_user: "확장 또는 추가 증거 수집 흐름"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/glossary.md"
-      ko:
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/glossary.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
+    related_references:
+      - en: "docs/en/reference/glossary.md"
+        ko: "docs/ko/reference/glossary.md"
     notes:
       - "This is an excluded capability family until Scope and the affected existing owner documents define a supported contract."
       - "Do not define workflow outputs, storage records, or close-readiness behavior from this phrase."
@@ -320,13 +303,12 @@ terms:
     en: "reserved value"
     ko_reference: "예약된 값"
     ko_user: "예약된 값"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "A reserved value may be listed as vocabulary or reserved surface area without being supported behavior."
       - "Presence in a value set does not make behavior supported."
@@ -336,13 +318,12 @@ terms:
     en: "profile-gated value"
     ko_reference: "프로필 조건부 값"
     ko_user: "프로필 조건부 값"
-    owner_documents:
-      en:
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "A profile-gated value is available only when the documented profile or gate and owner behavior define it as supported."
       - "Do not treat a profile-gated value as baseline behavior merely because it appears in a value set."
@@ -352,13 +333,12 @@ terms:
     en: "owner document"
     ko_reference: "담당 문서"
     ko_user: "담당 문서"
-    owner_documents:
-      en:
-        - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/reference/README.md"
-      ko:
-        - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/reference/README.md"
+    primary_owner:
+      en: "docs/en/maintain/authoring-guide.md"
+      ko: "docs/ko/maintain/authoring-guide.md"
+    related_references:
+      - en: "docs/en/reference/README.md"
+        ko: "docs/ko/reference/README.md"
     notes:
       - "Use for the canonical documentation owner of a contract or term."
       - "Product behavior may refer to the owner document that defines a behavior, but file paths are documentation routes, not product actors."
@@ -367,13 +347,12 @@ terms:
     en: "owner contract"
     ko_reference: "담당 계약"
     ko_user: "담당 계약"
-    owner_documents:
-      en:
-        - "docs/en/reference/glossary.md"
-        - "docs/en/maintain/authoring-guide.md"
-      ko:
-        - "docs/ko/reference/glossary.md"
-        - "docs/ko/maintain/authoring-guide.md"
+    primary_owner:
+      en: "docs/en/maintain/authoring-guide.md"
+      ko: "docs/ko/maintain/authoring-guide.md"
+    related_references:
+      - en: "docs/en/reference/glossary.md"
+        ko: "docs/ko/reference/glossary.md"
     notes:
       - "Use when a product behavior or close effect depends on the contract defined by the relevant owner document."
       - "Korean may use 담당 문서가 정의한 계약 when that is clearer than 담당 계약."
@@ -383,15 +362,14 @@ terms:
     en: "applicable owner path"
     ko_reference: "적용되는 담당 경로"
     ko_user: "적용되는 담당 경로"
-    owner_documents:
-      en:
-        - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/reference/README.md"
-        - "docs/doc-index.yaml"
-      ko:
-        - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/reference/README.md"
-        - "docs/doc-index.yaml"
+    primary_owner:
+      en: "docs/en/maintain/authoring-guide.md"
+      ko: "docs/ko/maintain/authoring-guide.md"
+    related_references:
+      - en: "docs/en/reference/README.md"
+        ko: "docs/ko/reference/README.md"
+      - en: "docs/doc-index.yaml"
+        ko: "docs/doc-index.yaml"
     notes:
       - "Use for the owner route that applies to a topic."
       - "Use only for documentation routing, not as a product support contract."
@@ -403,15 +381,14 @@ terms:
     en: "applicable reference"
     ko_reference: "적용되는 참조 문서"
     ko_user: "적용되는 참조 문서"
-    owner_documents:
-      en:
-        - "docs/en/reference/glossary.md"
-        - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/reference/README.md"
-      ko:
-        - "docs/ko/reference/glossary.md"
-        - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/reference/README.md"
+    primary_owner:
+      en: "docs/en/reference/README.md"
+      ko: "docs/ko/reference/README.md"
+    related_references:
+      - en: "docs/en/maintain/authoring-guide.md"
+        ko: "docs/ko/maintain/authoring-guide.md"
+      - en: "docs/en/reference/glossary.md"
+        ko: "docs/ko/reference/glossary.md"
     notes:
       - "Use when prose needs to point product behavior to the reference document that defines the relevant contract."
       - "This is documentation routing shorthand; it is not a runtime record, state value, or storage condition."
@@ -423,13 +400,14 @@ terms:
     aliases_en:
       - "existing canonical owner"
       - "existing owner document"
-    owner_documents:
-      en:
-        - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/reference/README.md"
-      ko:
-        - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/reference/README.md"
+    primary_owner:
+      en: "docs/en/maintain/authoring-guide.md"
+      ko: "docs/ko/maintain/authoring-guide.md"
+    related_references:
+      - en: "docs/en/reference/README.md"
+        ko: "docs/ko/reference/README.md"
+      - en: "docs/doc-index.yaml"
+        ko: "docs/doc-index.yaml"
     notes:
       - "Use only when the canonical owner already exists and can be linked as the source of normative meaning."
       - "Do not use for an owner placeholder or an owner type that must be created or designated at promotion time."
@@ -438,15 +416,14 @@ terms:
     en: "promotion-time owner update"
     ko_reference: "승격 시점의 담당 문서 갱신"
     ko_user: "승격 시점의 담당 문서 갱신"
-    owner_documents:
-      en:
-        - "docs/en/reference/glossary.md"
-        - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/reference/scope.md"
-      ko:
-        - "docs/ko/reference/glossary.md"
-        - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/reference/scope.md"
+    primary_owner:
+      en: "docs/en/reference/scope.md"
+      ko: "docs/ko/reference/scope.md"
+    related_references:
+      - en: "docs/en/maintain/authoring-guide.md"
+        ko: "docs/ko/maintain/authoring-guide.md"
+      - en: "docs/en/reference/glossary.md"
+        ko: "docs/ko/reference/glossary.md"
     notes:
       - "This means the owner does not exist as a baseline contract owner before promotion."
       - "Do not name a missing owner as if it is an existing canonical owner."
@@ -456,13 +433,12 @@ terms:
     en: "owner placeholder"
     ko_reference: "담당 문서 자리표시자"
     ko_user: "담당 문서 자리표시자"
-    owner_documents:
-      en:
-        - "docs/en/maintain/authoring-guide.md"
-        - "docs/en/reference/scope.md"
-      ko:
-        - "docs/ko/maintain/authoring-guide.md"
-        - "docs/ko/reference/scope.md"
+    primary_owner:
+      en: "docs/en/maintain/authoring-guide.md"
+      ko: "docs/ko/maintain/authoring-guide.md"
+    related_references:
+      - en: "docs/en/reference/scope.md"
+        ko: "docs/ko/reference/scope.md"
     notes:
       - "Use only to signal that an out-of-scope capability needs an owner created or designated before baseline support."
       - "An owner placeholder is not an existing owner document."
@@ -476,15 +452,14 @@ terms:
       - "Task"
       - "task_id"
       - "active_task_id"
-    owner_documents:
-      en:
-        - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/schema-state.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/schema-state.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "Preserve `Task` when naming the Harness entity."
       - "Use 작업 only when exact entity identity is not needed."
@@ -500,15 +475,14 @@ terms:
       - "SensitiveActionScope"
     avoid_ko:
       - "스코프"
-    owner_documents:
-      en:
-        - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/methods.md"
-        - "docs/en/reference/api/schema-judgment.md"
-      ko:
-        - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/methods.md"
-        - "docs/ko/reference/api/schema-judgment.md"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/method-update-scope.md"
+        ko: "docs/ko/reference/api/method-update-scope.md"
+      - en: "docs/en/reference/api/schema-judgment.md"
+        ko: "docs/ko/reference/api/schema-judgment.md"
   active_scope:
     category: "runtime_context"
     en: "active scope"
@@ -516,13 +490,12 @@ terms:
     ko_user: "현재 적용 범위"
     aliases_en:
       - "currently applied scope"
-    owner_documents:
-      en:
-        - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/method-update-scope.md"
-      ko:
-        - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/method-update-scope.md"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/method-update-scope.md"
+        ko: "docs/ko/reference/api/method-update-scope.md"
     notes:
       - "Use for the scope currently applied inside a `Task` or Change Unit context."
       - "Active is reserved for runtime or session state and exact identifiers, not supported documentation contracts."
@@ -536,13 +509,12 @@ terms:
     preserve_as_identifier:
       - "Change Unit"
       - "change_unit_id"
-    owner_documents:
-      en:
-        - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/method-update-scope.md"
-      ko:
-        - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/method-update-scope.md"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/method-update-scope.md"
+        ko: "docs/ko/reference/api/method-update-scope.md"
     notes:
       - "Use for the currently applied Change Unit in the authority model."
       - "Do not use active Change Unit for a project phase or documentation work phase."
@@ -557,15 +529,35 @@ terms:
       - "user_judgment"
       - "UserJudgment"
       - "judgment_kind"
-    owner_documents:
-      en:
-        - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/schema-judgment.md"
-      ko:
-        - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/schema-judgment.md"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-judgment.md"
+        ko: "docs/ko/reference/api/schema-judgment.md"
     notes:
       - "Keep distinct from final acceptance, residual-risk acceptance, sensitive-action approval, scope changes, and `Write Authorization`."
+  user_judgment_schema:
+    category: "identifier"
+    en: "UserJudgment"
+    preserve_identifier: true
+    ko_reference: "`UserJudgment`"
+    ko_user: "사용자 소유 판단"
+    ko_explanation: "사용자 소유 판단 스키마"
+    preserve_as_identifier:
+      - "UserJudgment"
+      - "user_judgment"
+      - "judgment_kind"
+    primary_owner:
+      en: "docs/en/reference/api/schema-judgment.md"
+      ko: "docs/ko/reference/api/schema-judgment.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/method-user-judgment.md"
+        ko: "docs/ko/reference/api/method-user-judgment.md"
+    notes:
+      - "Use the prose term for the concept and the schema identifier for the schema."
   close_readiness:
     category: "product_concept"
     en: "close readiness"
@@ -576,11 +568,20 @@ terms:
     avoid_ko:
       - "close 가능성 평가"
       - "닫기 가능성 평가"
-    owner_documents:
-      en:
-        - "docs/en/reference/core-model.md"
-      ko:
-        - "docs/ko/reference/core-model.md"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/method-close-task.md"
+        ko: "docs/ko/reference/api/method-close-task.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
+      - en: "docs/en/reference/template-bodies.md"
+        ko: "docs/ko/reference/template-bodies.md"
     notes:
       - "`close readiness` is the evaluation concept, not the blocker schema."
       - "Use 닫기 준비 상태 in reference-facing Korean and 닫기 가능 여부 in user-facing Korean."
@@ -599,11 +600,18 @@ terms:
     avoid_ko:
       - "close 가능성 평가"
       - "닫기 가능성 평가"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/method-close-task.md"
-      ko:
-        - "docs/ko/reference/api/method-close-task.md"
+    primary_owner:
+      en: "docs/en/reference/api/method-close-task.md"
+      ko: "docs/ko/reference/api/method-close-task.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "Do not translate this as 가능성 평가."
       - "The close-readiness authority concept belongs to `reference/core-model.md`."
@@ -615,11 +623,16 @@ terms:
     ko_user: "Task 닫기"
     preserve_as_identifier:
       - "harness.close_task"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/method-close-task.md"
-      ko:
-        - "docs/ko/reference/api/method-close-task.md"
+    primary_owner:
+      en: "docs/en/reference/api/method-close-task.md"
+      ko: "docs/ko/reference/api/method-close-task.md"
+    related_references:
+      - en: "docs/en/reference/api/methods.md"
+        ko: "docs/ko/reference/api/methods.md"
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
     notes:
       - "Use `harness.close_task` when naming the exact public API method."
       - "Core close-readiness authority belongs to `reference/core-model.md`."
@@ -636,16 +649,47 @@ terms:
       - "harness.close_task"
       - "CloseTaskResult"
       - "CloseReadinessBlocker"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/method-close-task.md"
-      ko:
-        - "docs/ko/reference/api/method-close-task.md"
+    primary_owner:
+      en: "docs/en/reference/api/method-close-task.md"
+      ko: "docs/ko/reference/api/method-close-task.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "Use for method-specific request validation, evaluation order, result branches, dry-run behavior, and blocker-producing branches."
       - "Core close-readiness meaning belongs to `reference/core-model.md`."
       - "Close-readiness blocker/API response routing belongs to `api/blocker-routing.md`."
       - "`CloseReadinessBlocker` schema shape belongs to `api/schema-state.md`."
+  harness_close_task:
+    category: "identifier"
+    en: "harness.close_task"
+    preserve_identifier: true
+    ko_reference: "`harness.close_task`"
+    ko_user: "`harness.close_task`"
+    preserve_as_identifier:
+      - "harness.close_task"
+    primary_owner:
+      en: "docs/en/reference/api/method-close-task.md"
+      ko: "docs/ko/reference/api/method-close-task.md"
+    related_references:
+      - en: "docs/en/reference/api/methods.md"
+        ko: "docs/ko/reference/api/methods.md"
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
+    notes:
+      - "Use the method owner for method-specific detail."
   complete_intent:
     category: "identifier"
     en: "complete"
@@ -660,15 +704,14 @@ terms:
     avoid_ko:
       - "complete 평가"
       - "complete 닫기 준비 상태"
-    owner_documents:
-      en:
-        - "docs/en/reference/glossary.md"
-        - "docs/en/reference/api/method-close-task.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/glossary.md"
-        - "docs/ko/reference/api/method-close-task.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-value-sets.md"
+      ko: "docs/ko/reference/api/schema-value-sets.md"
+    related_references:
+      - en: "docs/en/reference/api/method-close-task.md"
+        ko: "docs/ko/reference/api/method-close-task.md"
+      - en: "docs/en/reference/glossary.md"
+        ko: "docs/ko/reference/glossary.md"
     notes:
       - "The prose concept is complete intent; only the value string is `complete`."
       - "Preserve only when it is an enum value or identifier, such as `intent=complete`."
@@ -693,13 +736,12 @@ terms:
       - "complete 평가 순서"
       - "`complete` 닫기 준비 상태 순서"
       - "complete 닫기 준비 상태 순서"
-    owner_documents:
-      en:
-        - "docs/en/reference/glossary.md"
-        - "docs/en/maintain/translation-guide.md"
-      ko:
-        - "docs/ko/reference/glossary.md"
-        - "docs/ko/maintain/translation-guide.md"
+    primary_owner:
+      en: "docs/en/maintain/translation-guide.md"
+      ko: "docs/ko/maintain/translation-guide.md"
+    related_references:
+      - en: "docs/en/reference/glossary.md"
+        ko: "docs/ko/reference/glossary.md"
     notes:
       - "Do not preserve the English word `complete` when it means full or entire rather than an enum value."
       - "Use 전체, 전체 평가, or 전체 평가 순서 for ordinary prose meaning."
@@ -717,11 +759,20 @@ terms:
       - "CloseReadinessBlocker"
     avoid_ko:
       - "close blocker를 확인한다"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/blocker-routing.md"
-      ko:
-        - "docs/ko/reference/api/blocker-routing.md"
+    primary_owner:
+      en: "docs/en/reference/api/blocker-routing.md"
+      ko: "docs/ko/reference/api/blocker-routing.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/method-close-task.md"
+        ko: "docs/ko/reference/api/method-close-task.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
+      - en: "docs/en/reference/template-bodies.md"
+        ko: "docs/ko/reference/template-bodies.md"
     notes:
       - "Use 닫기 차단 사유 for close-readiness blocker prose."
       - "Core close-readiness authority belongs to `reference/core-model.md`."
@@ -736,11 +787,20 @@ terms:
     ko_reference: "`CloseReadinessBlocker`"
     ko_user: "닫기 차단 사유"
     ko_explanation: "닫기 차단 사유 스키마"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/schema-state.md"
-      ko:
-        - "docs/ko/reference/api/schema-state.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-state.md"
+      ko: "docs/ko/reference/api/schema-state.md"
+    related_references:
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/method-close-task.md"
+        ko: "docs/ko/reference/api/method-close-task.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+      - en: "docs/en/reference/template-bodies.md"
+        ko: "docs/ko/reference/template-bodies.md"
     notes:
       - "Never translate the identifier itself."
       - "Do not use it as a prepare-write reason or as the entire close-readiness concept."
@@ -754,11 +814,14 @@ terms:
     ko_user: "차단 사유 범주"
     preserve_as_identifier:
       - "CloseReadinessBlocker.category"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/api/schema-value-sets.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-value-sets.md"
+      ko: "docs/ko/reference/api/schema-value-sets.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
     notes:
       - "Use for the prose category concept; preserve `CloseReadinessBlocker.category` when naming the exact field."
       - "Route the object shape to `api/schema-state.md`."
@@ -768,6 +831,12 @@ terms:
     en: "blocker"
     ko_reference: "차단 사유"
     ko_user: "차단 사유"
+    primary_owner:
+      en: "docs/terminology-map.yaml"
+      ko: "docs/terminology-map.yaml"
+    related_references:
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
     notes:
       - "Use close-readiness blocker / 닫기 차단 사유 when the blocker specifically comes from close readiness."
   artifact:
@@ -785,13 +854,12 @@ terms:
       - "artifact bytes"
       - "staged handle"
       - "checksum, size 검증"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/schema-artifacts.md"
-        - "docs/en/reference/storage-artifacts.md"
-      ko:
-        - "docs/ko/reference/api/schema-artifacts.md"
-        - "docs/ko/reference/storage-artifacts.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-artifacts.md"
+      ko: "docs/ko/reference/api/schema-artifacts.md"
+    related_references:
+      - en: "docs/en/reference/storage-artifacts.md"
+        ko: "docs/ko/reference/storage-artifacts.md"
     notes:
       - "Use 아티팩트 in Korean prose."
       - "Preserve artifact schema identifiers exactly."
@@ -810,17 +878,16 @@ terms:
     avoid_ko:
       - "evidence 기록"
       - "evidence summary"
-    owner_documents:
-      en:
-        - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/schema-state.md"
-        - "docs/en/reference/api/method-record-run.md"
-        - "docs/en/reference/storage-records.md"
-      ko:
-        - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/schema-state.md"
-        - "docs/ko/reference/api/method-record-run.md"
-        - "docs/ko/reference/storage-records.md"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/api/method-record-run.md"
+        ko: "docs/ko/reference/api/method-record-run.md"
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
     notes:
       - "Use 증거 in Korean prose."
       - "Preserve evidence schema and storage identifiers exactly."
@@ -835,13 +902,12 @@ terms:
     preserve_as_identifier:
       - "ArtifactRef"
       - "existing_artifact_ref"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/schema-artifacts.md"
-        - "docs/en/reference/storage-artifacts.md"
-      ko:
-        - "docs/ko/reference/api/schema-artifacts.md"
-        - "docs/ko/reference/storage-artifacts.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-artifacts.md"
+      ko: "docs/ko/reference/api/schema-artifacts.md"
+    related_references:
+      - en: "docs/en/reference/storage-artifacts.md"
+        ko: "docs/ko/reference/storage-artifacts.md"
   artifact_input:
     category: "identifier"
     en: "ArtifactInput"
@@ -849,11 +915,9 @@ terms:
     ko_reference: "`ArtifactInput`"
     ko_user: "아티팩트 입력"
     ko_explanation: "아티팩트 입력 스키마"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/schema-artifacts.md"
-      ko:
-        - "docs/ko/reference/api/schema-artifacts.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-artifacts.md"
+      ko: "docs/ko/reference/api/schema-artifacts.md"
   staged_artifact_handle:
     category: "identifier"
     en: "StagedArtifactHandle"
@@ -866,13 +930,12 @@ terms:
       - "staged_artifact_handle"
     avoid_ko:
       - "staged handle"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/schema-artifacts.md"
-        - "docs/en/reference/storage-artifacts.md"
-      ko:
-        - "docs/ko/reference/api/schema-artifacts.md"
-        - "docs/ko/reference/storage-artifacts.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-artifacts.md"
+      ko: "docs/ko/reference/api/schema-artifacts.md"
+    related_references:
+      - en: "docs/en/reference/storage-artifacts.md"
+        ko: "docs/ko/reference/storage-artifacts.md"
   projection:
     category: "product_concept"
     en: "projection"
@@ -882,16 +945,34 @@ terms:
     preserve_as_identifier:
       - "Projection"
       - "ProjectionKind"
-    owner_documents:
-      en:
-        - "docs/en/reference/projection-and-templates.md"
-        - "docs/en/reference/template-bodies.md"
-      ko:
-        - "docs/ko/reference/projection-and-templates.md"
-        - "docs/ko/reference/template-bodies.md"
+    primary_owner:
+      en: "docs/en/reference/projection-and-templates.md"
+      ko: "docs/ko/reference/projection-and-templates.md"
+    related_references:
+      - en: "docs/en/reference/template-bodies.md"
+        ko: "docs/ko/reference/template-bodies.md"
     notes:
       - "Use 상태 보기 in user-facing prose."
       - "Use `Projection`(읽기 전용 상태 보기) on first reference in reference prose when the exact Harness label helps."
+  projection_label:
+    category: "product_label"
+    en: "Projection"
+    preserve_identifier: true
+    ko_reference: "`Projection`"
+    ko_user: "상태 보기"
+    ko_explanation: "읽기 전용 상태 보기"
+    preserve_as_label:
+      - "Projection"
+    primary_owner:
+      en: "docs/en/reference/projection-and-templates.md"
+      ko: "docs/ko/reference/projection-and-templates.md"
+    related_references:
+      - en: "docs/en/reference/template-bodies.md"
+        ko: "docs/ko/reference/template-bodies.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+    notes:
+      - "Use 상태 보기 in prose unless the exact Harness label matters."
   surface:
     category: "product_concept"
     en: "surface"
@@ -903,15 +984,32 @@ terms:
       - "VerifiedSurfaceContext"
     avoid_ko:
       - "surface 정보"
-    owner_documents:
-      en:
-        - "docs/en/reference/agent-integration.md"
-        - "docs/en/reference/security.md"
-      ko:
-        - "docs/ko/reference/agent-integration.md"
-        - "docs/ko/reference/security.md"
+    primary_owner:
+      en: "docs/en/reference/agent-integration.md"
+      ko: "docs/ko/reference/agent-integration.md"
+    related_references:
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
     notes:
       - "Do not make surface wording sound like proof of authority, access, binding, or capability."
+  surface_id:
+    category: "identifier"
+    en: "surface_id"
+    preserve_identifier: true
+    ko_reference: "`surface_id`"
+    ko_user: "`surface_id`"
+    preserve_as_identifier:
+      - "surface_id"
+    primary_owner:
+      en: "docs/en/reference/agent-integration.md"
+      ko: "docs/ko/reference/agent-integration.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-core.md"
+        ko: "docs/ko/reference/api/schema-core.md"
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
+    notes:
+      - "Use Agent Integration for surface-identity detail."
   active_surface_context:
     category: "runtime_context"
     en: "active surface context"
@@ -922,18 +1020,38 @@ terms:
       - "VerifiedSurfaceContext.access_class"
       - "surface_id"
       - "surface_instance_id"
-    owner_documents:
-      en:
-        - "docs/en/reference/agent-integration.md"
-        - "docs/en/reference/security.md"
-      ko:
-        - "docs/ko/reference/agent-integration.md"
-        - "docs/ko/reference/security.md"
+    primary_owner:
+      en: "docs/en/reference/agent-integration.md"
+      ko: "docs/ko/reference/agent-integration.md"
+    related_references:
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
     notes:
       - "Use for the current surface context for a request or interaction."
       - "Active is reserved for runtime or session state and exact identifiers, not supported documentation contracts."
       - "Do not use active surface context as proof of authority, access, binding, or capability by itself."
       - "In Korean, prefer 현재 적용 접점 맥락 when clarity matters; preserve exact surface identifiers."
+  state_version:
+    category: "identifier"
+    en: "state_version"
+    aliases_en:
+      - "project_state.state_version"
+    preserve_identifier: true
+    ko_reference: "`state_version`"
+    ko_user: "`state_version`"
+    preserve_as_identifier:
+      - "state_version"
+      - "project_state.state_version"
+    primary_owner:
+      en: "docs/en/reference/storage-versioning.md"
+      ko: "docs/ko/reference/storage-versioning.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-core.md"
+        ko: "docs/ko/reference/api/schema-core.md"
+      - en: "docs/en/reference/storage-effects.md"
+        ko: "docs/ko/reference/storage-effects.md"
+    notes:
+      - "Use Storage Versioning for state-clock detail."
   runtime:
     category: "product_concept"
     en: "runtime"
@@ -941,13 +1059,12 @@ terms:
     ko_user: "런타임"
     preserve_as_identifier:
       - "Harness Runtime Home"
-    owner_documents:
-      en:
-        - "docs/en/reference/runtime-boundaries.md"
-        - "docs/en/reference/security.md"
-      ko:
-        - "docs/ko/reference/runtime-boundaries.md"
-        - "docs/ko/reference/security.md"
+    primary_owner:
+      en: "docs/en/reference/runtime-boundaries.md"
+      ko: "docs/ko/reference/runtime-boundaries.md"
+    related_references:
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
     notes:
       - "This documentation repository is not a Harness runtime or Runtime Home."
   lifecycle:
@@ -960,6 +1077,14 @@ terms:
       - "artifact_staging.status"
     avoid_ko:
       - "lifecycle 의미"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
+      - en: "docs/en/reference/storage-artifacts.md"
+        ko: "docs/ko/reference/storage-artifacts.md"
   write_authorization:
     category: "product_label"
     en: "write authorization"
@@ -971,15 +1096,14 @@ terms:
     preserve_as_identifier:
       - "AuthorizedAttemptScope"
       - "WriteAuthorization.basis_state_version"
-    owner_documents:
-      en:
-        - "docs/en/reference/core-model.md"
-        - "docs/en/reference/security.md"
-        - "docs/en/reference/api/method-prepare-write.md"
-      ko:
-        - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/security.md"
-        - "docs/ko/reference/api/method-prepare-write.md"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
+      - en: "docs/en/reference/api/method-prepare-write.md"
+        ko: "docs/ko/reference/api/method-prepare-write.md"
     notes:
       - "Use the exact label when naming the Harness concept."
       - "Do not treat sensitive-action approval as `Write Authorization`."
@@ -992,15 +1116,14 @@ terms:
     preserve_as_identifier:
       - "sensitive_approval"
       - "SensitiveActionScope"
-    owner_documents:
-      en:
-        - "docs/en/reference/core-model.md"
-        - "docs/en/reference/api/schema-judgment.md"
-        - "docs/en/reference/security.md"
-      ko:
-        - "docs/ko/reference/core-model.md"
-        - "docs/ko/reference/api/schema-judgment.md"
-        - "docs/ko/reference/security.md"
+    primary_owner:
+      en: "docs/en/reference/core-model.md"
+      ko: "docs/ko/reference/core-model.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-judgment.md"
+        ko: "docs/ko/reference/api/schema-judgment.md"
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
     notes:
       - "Keep sensitive approval distinct from final acceptance, residual-risk acceptance, and `Write Authorization`."
   access_class:
@@ -1011,29 +1134,27 @@ terms:
     preserve_as_identifier:
       - "access_class"
       - "VerifiedSurfaceContext.access_class"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/schema-value-sets.md"
-        - "docs/en/reference/api/methods.md"
-        - "docs/en/reference/security.md"
-      ko:
-        - "docs/ko/reference/api/schema-value-sets.md"
-        - "docs/ko/reference/api/methods.md"
-        - "docs/ko/reference/security.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-value-sets.md"
+      ko: "docs/ko/reference/api/schema-value-sets.md"
+    related_references:
+      - en: "docs/en/reference/agent-integration.md"
+        ko: "docs/ko/reference/agent-integration.md"
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
   baseline_guarantee:
     category: "security_concept"
     en: "baseline guarantee"
     ko_reference: "기준 범위 보장"
     ko_user: "기준 범위 보장"
-    owner_documents:
-      en:
-        - "docs/en/reference/security.md"
-        - "docs/en/reference/scope.md"
-        - "docs/en/reference/api/schema-value-sets.md"
-      ko:
-        - "docs/ko/reference/security.md"
-        - "docs/ko/reference/scope.md"
-        - "docs/ko/reference/api/schema-value-sets.md"
+    primary_owner:
+      en: "docs/en/reference/security.md"
+      ko: "docs/ko/reference/security.md"
+    related_references:
+      - en: "docs/en/reference/scope.md"
+        ko: "docs/ko/reference/scope.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
       - "Use only when Scope and Security both document the behavior as supported in the baseline scope."
       - "Reserved values and profile-gated values are not baseline guarantees."
@@ -1044,13 +1165,12 @@ terms:
     ko_user: "마이그레이션"
     avoid_ko:
       - "migration = 이전 선택"
-    owner_documents:
-      en:
-        - "docs/en/reference/storage-versioning.md"
-        - "docs/en/reference/storage.md"
-      ko:
-        - "docs/ko/reference/storage-versioning.md"
-        - "docs/ko/reference/storage.md"
+    primary_owner:
+      en: "docs/en/reference/storage-versioning.md"
+      ko: "docs/ko/reference/storage-versioning.md"
+    related_references:
+      - en: "docs/en/reference/storage.md"
+        ko: "docs/ko/reference/storage.md"
     notes:
       - "Use for technical schema, storage, data, or documentation migration concepts."
       - "Do not translate migration as a previous choice or prior decision."
@@ -1061,11 +1181,9 @@ terms:
     ko_user: "협력형 보장"
     preserve_as_identifier:
       - "cooperative"
-    owner_documents:
-      en:
-        - "docs/en/reference/security.md"
-      ko:
-        - "docs/ko/reference/security.md"
+    primary_owner:
+      en: "docs/en/reference/security.md"
+      ko: "docs/ko/reference/security.md"
     notes:
       - "Do not strengthen cooperative wording into detective, sandboxed, enforced, or stronger isolation wording."
   detective_guarantee:
@@ -1075,13 +1193,12 @@ terms:
     ko_user: "탐지형 보장"
     preserve_as_identifier:
       - "detective"
-    owner_documents:
-      en:
-        - "docs/en/reference/security.md"
-        - "docs/en/reference/agent-integration.md"
-      ko:
-        - "docs/ko/reference/security.md"
-        - "docs/ko/reference/agent-integration.md"
+    primary_owner:
+      en: "docs/en/reference/security.md"
+      ko: "docs/ko/reference/security.md"
+    related_references:
+      - en: "docs/en/reference/agent-integration.md"
+        ko: "docs/ko/reference/agent-integration.md"
     notes:
       - "Use only when the documented observable scope and capability check support it."
   design_quality_owner_boundary:
@@ -1094,11 +1211,9 @@ terms:
     ko_user: "설계 품질 담당 경계"
     preserve_as_identifier:
       - "ValidatorResult.validator_id"
-    owner_documents:
-      en:
-        - "docs/en/reference/design-quality.md"
-      ko:
-        - "docs/ko/reference/design-quality.md"
+    primary_owner:
+      en: "docs/en/reference/design-quality.md"
+      ko: "docs/ko/reference/design-quality.md"
     notes:
       - "Use for the Design Quality reference boundary that routes observations to relevant judgment, evidence, scope, surface-capability, residual-risk, or close-readiness owners."
       - "Design-quality wording does not create an independent close blocker, QA result, acceptance decision, residual-risk decision, evidence authority, validator catalog, or close authority."
@@ -1110,11 +1225,18 @@ terms:
     ko_reference: "`ErrorCode`"
     ko_user: "공개 오류 코드"
     ko_explanation: "공개 오류 코드 식별자"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/error-codes.md"
-      ko:
-        - "docs/ko/reference/api/error-codes.md"
+    primary_owner:
+      en: "docs/en/reference/api/error-codes.md"
+      ko: "docs/ko/reference/api/error-codes.md"
+    related_references:
+      - en: "docs/en/reference/api/error-precedence.md"
+        ko: "docs/ko/reference/api/error-precedence.md"
+      - en: "docs/en/reference/api/error-routing.md"
+        ko: "docs/ko/reference/api/error-routing.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+      - en: "docs/en/reference/api/error-details.md"
+        ko: "docs/ko/reference/api/error-details.md"
     notes:
       - "Public `ErrorCode` identifiers and error code meanings belong to `api/error-codes.md`."
       - "Public `ErrorCode` values are not `CloseReadinessBlocker.category` values or `CloseReadinessBlocker.code` values by default."
@@ -1127,11 +1249,18 @@ terms:
     ko_user: "공개 오류 코드 의미"
     preserve_as_identifier:
       - "ErrorCode"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/error-codes.md"
-      ko:
-        - "docs/ko/reference/api/error-codes.md"
+    primary_owner:
+      en: "docs/en/reference/api/error-codes.md"
+      ko: "docs/ko/reference/api/error-codes.md"
+    related_references:
+      - en: "docs/en/reference/api/error-precedence.md"
+        ko: "docs/ko/reference/api/error-precedence.md"
+      - en: "docs/en/reference/api/error-routing.md"
+        ko: "docs/ko/reference/api/error-routing.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+      - en: "docs/en/reference/api/error-details.md"
+        ko: "docs/ko/reference/api/error-details.md"
     notes:
       - "Public error code meanings and allowed occurrence summaries belong to `api/error-codes.md`."
       - "Response branch routing, error precedence, blocker routing, and `ToolError.details` each have focused owners."
@@ -1142,11 +1271,18 @@ terms:
     ko_user: "오류 우선순위"
     preserve_as_identifier:
       - "STATE_VERSION_CONFLICT"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/error-precedence.md"
-      ko:
-        - "docs/ko/reference/api/error-precedence.md"
+    primary_owner:
+      en: "docs/en/reference/api/error-precedence.md"
+      ko: "docs/ko/reference/api/error-precedence.md"
+    related_references:
+      - en: "docs/en/reference/api/error-codes.md"
+        ko: "docs/ko/reference/api/error-codes.md"
+      - en: "docs/en/reference/api/error-routing.md"
+        ko: "docs/ko/reference/api/error-routing.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+      - en: "docs/en/reference/api/error-details.md"
+        ko: "docs/ko/reference/api/error-details.md"
     notes:
       - "Primary public-error selection, conflict selection, and stale-state ordering belong to `api/error-precedence.md`."
   api_response_branch_routing:
@@ -1162,11 +1298,18 @@ terms:
       - "ToolRejectedResponse"
       - "ToolDryRunResponse"
       - "CloseTaskResult(close_state=blocked)"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/error-routing.md"
-      ko:
-        - "docs/ko/reference/api/error-routing.md"
+    primary_owner:
+      en: "docs/en/reference/api/error-routing.md"
+      ko: "docs/ko/reference/api/error-routing.md"
+    related_references:
+      - en: "docs/en/reference/api/error-codes.md"
+        ko: "docs/ko/reference/api/error-codes.md"
+      - en: "docs/en/reference/api/error-precedence.md"
+        ko: "docs/ko/reference/api/error-precedence.md"
+      - en: "docs/en/reference/api/blocker-routing.md"
+        ko: "docs/ko/reference/api/blocker-routing.md"
+      - en: "docs/en/reference/api/error-details.md"
+        ko: "docs/ko/reference/api/error-details.md"
     notes:
       - "Error routing covers API response branch routing for rejected responses, blocked results, and `dry_run` preview responses."
       - "The owner document is `api/error-routing.md`."
@@ -1178,11 +1321,16 @@ terms:
     ko_reference: "`ToolError.details`"
     ko_user: "오류 세부사항"
     ko_explanation: "기계 판독용 오류 세부사항"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/error-details.md"
-      ko:
-        - "docs/ko/reference/api/error-details.md"
+    primary_owner:
+      en: "docs/en/reference/api/error-details.md"
+      ko: "docs/ko/reference/api/error-details.md"
+    related_references:
+      - en: "docs/en/reference/api/error-codes.md"
+        ko: "docs/ko/reference/api/error-codes.md"
+      - en: "docs/en/reference/api/error-precedence.md"
+        ko: "docs/ko/reference/api/error-precedence.md"
+      - en: "docs/en/reference/api/error-routing.md"
+        ko: "docs/ko/reference/api/error-routing.md"
     notes:
       - "`ToolError.details` fields, nested keys, and machine-readable detail constraints belong to `api/error-details.md`."
   error_detail_helper_values:
@@ -1190,11 +1338,16 @@ terms:
     en: "error detail helper values"
     ko_reference: "오류 세부사항 보조 값"
     ko_user: "오류 세부사항 보조 값"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/error-details.md"
-      ko:
-        - "docs/ko/reference/api/error-details.md"
+    primary_owner:
+      en: "docs/en/reference/api/error-details.md"
+      ko: "docs/ko/reference/api/error-details.md"
+    related_references:
+      - en: "docs/en/reference/api/error-codes.md"
+        ko: "docs/ko/reference/api/error-codes.md"
+      - en: "docs/en/reference/api/error-precedence.md"
+        ko: "docs/ko/reference/api/error-precedence.md"
+      - en: "docs/en/reference/api/error-routing.md"
+        ko: "docs/ko/reference/api/error-routing.md"
     notes:
       - "Detail helper values under `ToolError.details` belong to `api/error-details.md`."
       - "Detail helper values are not top-level public `ErrorCode` values."
@@ -1213,11 +1366,26 @@ terms:
     avoid_ko:
       - "blocker 처리 경로"
       - "blocker 라우팅"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/blocker-routing.md"
-      ko:
-        - "docs/ko/reference/api/blocker-routing.md"
+    primary_owner:
+      en: "docs/en/reference/api/blocker-routing.md"
+      ko: "docs/ko/reference/api/blocker-routing.md"
+    related_references:
+      - en: "docs/en/reference/api/error-routing.md"
+        ko: "docs/ko/reference/api/error-routing.md"
+      - en: "docs/en/reference/api/error-codes.md"
+        ko: "docs/ko/reference/api/error-codes.md"
+      - en: "docs/en/reference/api/error-precedence.md"
+        ko: "docs/ko/reference/api/error-precedence.md"
+      - en: "docs/en/reference/core-model.md"
+        ko: "docs/ko/reference/core-model.md"
+      - en: "docs/en/reference/api/method-close-task.md"
+        ko: "docs/ko/reference/api/method-close-task.md"
+      - en: "docs/en/reference/api/schema-state.md"
+        ko: "docs/ko/reference/api/schema-state.md"
+      - en: "docs/en/reference/api/schema-value-sets.md"
+        ko: "docs/ko/reference/api/schema-value-sets.md"
+      - en: "docs/en/reference/template-bodies.md"
+        ko: "docs/ko/reference/template-bodies.md"
     notes:
       - "Blocker routing covers the routing boundary between close-readiness blockers and API response branches, including the error/blocker boundary and public error as blocker wording."
       - "The owner document is `api/blocker-routing.md`."
@@ -1235,11 +1403,12 @@ terms:
       - "ErrorCode"
       - "CloseReadinessBlocker"
       - "CloseReadinessBlocker.code"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/blocker-routing.md"
-      ko:
-        - "docs/ko/reference/api/blocker-routing.md"
+    primary_owner:
+      en: "docs/en/reference/api/blocker-routing.md"
+      ko: "docs/ko/reference/api/blocker-routing.md"
+    related_references:
+      - en: "docs/en/reference/api/error-codes.md"
+        ko: "docs/ko/reference/api/error-codes.md"
     notes:
       - "Use for the boundary between pre-evaluation public API errors and post-evaluation close-readiness blocker data."
   public_error_blocker_boundary:
@@ -1253,11 +1422,12 @@ terms:
     preserve_as_identifier:
       - "ErrorCode"
       - "CloseReadinessBlocker.code"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/blocker-routing.md"
-      ko:
-        - "docs/ko/reference/api/blocker-routing.md"
+    primary_owner:
+      en: "docs/en/reference/api/blocker-routing.md"
+      ko: "docs/ko/reference/api/blocker-routing.md"
+    related_references:
+      - en: "docs/en/reference/api/error-codes.md"
+        ko: "docs/ko/reference/api/error-codes.md"
     notes:
       - "Use this as boundary wording for the distinction between public `ErrorCode` values and close-readiness blocker data."
       - "Public `ErrorCode` values are not copied into `CloseReadinessBlocker.code` unless the schema or method owner explicitly allows that exact use."
@@ -1274,11 +1444,16 @@ terms:
       - "ToolDryRunResponse"
       - "DryRunSummary"
       - "PlannedBlocker"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/error-routing.md"
-      ko:
-        - "docs/ko/reference/api/error-routing.md"
+    primary_owner:
+      en: "docs/en/reference/api/error-routing.md"
+      ko: "docs/ko/reference/api/error-routing.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-core.md"
+        ko: "docs/ko/reference/api/schema-core.md"
+      - en: "docs/en/reference/api/methods.md"
+        ko: "docs/ko/reference/api/methods.md"
+      - en: "docs/en/reference/storage-effects.md"
+        ko: "docs/ko/reference/storage-effects.md"
     notes:
       - "Dry-run preview response branch routing belongs to `api/error-routing.md`."
       - "`ToolDryRunResponse` shape belongs to `api/schema-core.md`; storage effects belong to `storage-effects.md`."
@@ -1292,11 +1467,16 @@ terms:
       - "ToolDryRunResponse"
       - "DryRunSummary"
       - "PlannedBlocker"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/schema-core.md"
-      ko:
-        - "docs/ko/reference/api/schema-core.md"
+    primary_owner:
+      en: "docs/en/reference/api/schema-core.md"
+      ko: "docs/ko/reference/api/schema-core.md"
+    related_references:
+      - en: "docs/en/reference/api/error-routing.md"
+        ko: "docs/ko/reference/api/error-routing.md"
+      - en: "docs/en/reference/storage-effects.md"
+        ko: "docs/ko/reference/storage-effects.md"
+      - en: "docs/en/reference/api/methods.md"
+        ko: "docs/ko/reference/api/methods.md"
     notes:
       - "Dry-run preview is not committed state or stored blocker state."
       - "Preview blockers are `PlannedBlocker`, not `CloseReadinessBlocker`."
@@ -1312,11 +1492,16 @@ terms:
       - "decision=blocked"
       - "WriteDecisionReason"
       - "CloseReadinessBlocker"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/error-routing.md"
-      ko:
-        - "docs/ko/reference/api/error-routing.md"
+    primary_owner:
+      en: "docs/en/reference/api/error-routing.md"
+      ko: "docs/ko/reference/api/error-routing.md"
+    related_references:
+      - en: "docs/en/reference/api/method-prepare-write.md"
+        ko: "docs/ko/reference/api/method-prepare-write.md"
+      - en: "docs/en/reference/api/method-close-task.md"
+        ko: "docs/ko/reference/api/method-close-task.md"
+      - en: "docs/en/reference/storage-effects.md"
+        ko: "docs/ko/reference/storage-effects.md"
     notes:
       - "A blocked result is not a public transport or schema rejection."
       - "`STATE_VERSION_CONFLICT` is a rejected response error, not a blocked-result code."
@@ -1330,11 +1515,18 @@ terms:
       - "ToolRejectedResponse"
       - "ToolError"
       - "ErrorCode"
-    owner_documents:
-      en:
-        - "docs/en/reference/api/error-routing.md"
-      ko:
-        - "docs/ko/reference/api/error-routing.md"
+    primary_owner:
+      en: "docs/en/reference/api/error-routing.md"
+      ko: "docs/ko/reference/api/error-routing.md"
+    related_references:
+      - en: "docs/en/reference/api/schema-core.md"
+        ko: "docs/ko/reference/api/schema-core.md"
+      - en: "docs/en/reference/api/error-codes.md"
+        ko: "docs/ko/reference/api/error-codes.md"
+      - en: "docs/en/reference/api/error-precedence.md"
+        ko: "docs/ko/reference/api/error-precedence.md"
+      - en: "docs/en/reference/storage-effects.md"
+        ko: "docs/ko/reference/storage-effects.md"
     notes:
       - "Rejected response means the method did not proceed to the committed operation."
       - "Do not use rejected responses as close blockers or committed blocked results."

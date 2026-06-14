@@ -39,7 +39,7 @@ Use the compact maintained routes:
 
 [`docs/doc-index.yaml`](../../doc-index.yaml) owns retrieval and routing metadata. It is not runtime configuration and not a contract owner. [`docs/terminology-map.yaml`](../../terminology-map.yaml) owns bilingual terminology controls. It does not own API, storage, schema, security, projection, or runtime behavior.
 
-Terminology-map owner targets and glossary owner links should point to the focused owner document when one exists. Use a broad index only when the concept is itself index-owned navigation or when the focused owner does not yet exist and the gap is named.
+In the terminology map, `primary_owner` should point to the focused owner document when one exists, and `related_references` should hold adjacent references. Glossary owner links should follow the same focused-owner rule. Use a broad index only when the concept is itself index-owned navigation or when the focused owner does not yet exist and the gap is named.
 
 ### Maintainer reading path
 

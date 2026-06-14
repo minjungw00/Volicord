@@ -164,7 +164,7 @@ Owner:
 - [Reference Index](../../reference/README.md)
 
 Check:
-- Inspect terminology-map `owner_documents`, glossary owner links, `doc-index.yaml` owner metadata, and route tables touched by the edit.
+- Inspect terminology-map `primary_owner` and `related_references`, glossary owner links, `doc-index.yaml` owner metadata, and route tables touched by the edit.
 - Confirm each owner target points to the focused owner document when one exists.
 - Use a broad index only when the concept is index-owned navigation, a first-hop route, or an explicitly named owner gap.
 - Confirm API error code meanings, error precedence, API response branch routing, close-readiness blocker routing, and `ToolError.details` targets stay separate.
