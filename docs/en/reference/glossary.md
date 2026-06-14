@@ -46,6 +46,7 @@ Structured terminology metadata, identifier-preservation controls, and Korean mi
 | blocker category | 차단 사유 범주 | The category concept for close-readiness blockers. | [API Value Sets](api/schema-value-sets.md) |
 | blocker | 차단 사유 | A general prose term for a blocking reason. | [Terminology Map](../../terminology-map.yaml) |
 | complete intent | `complete` | The `complete` API value, distinct from ordinary "full" or "entire". | [API Value Sets](api/schema-value-sets.md) |
+| full evaluation order | 전체 평가 순서 | Ordinary prose for the full or entire evaluation order, distinct from the `complete` API value. | [Terminology Map](../../terminology-map.yaml) |
 | artifact | 아티팩트 | Work material referenced or staged through Harness artifact concepts. | [API Artifact Schemas](api/schema-artifacts.md) |
 | evidence | 증거 | Recorded support for claims, verification results, or user judgment context. | [Core Model](core-model.md) |
 | `ArtifactRef` | `ArtifactRef` | The schema identifier for a persisted artifact reference. | [API Artifact Schemas](api/schema-artifacts.md) |

@@ -46,6 +46,7 @@
 | blocker category | 차단 사유 범주 | 닫기 차단 사유의 범주 개념입니다. | [API 값 집합](api/schema-value-sets.md) |
 | blocker | 차단 사유 | 막힘의 이유를 가리키는 일반 산문 용어입니다. | [용어 지도](../../terminology-map.yaml) |
 | complete intent | `complete` | 일반 산문의 "전체"와 구분되는 `complete` API 값입니다. | [API 값 집합](api/schema-value-sets.md) |
+| full evaluation order | 전체 평가 순서 | `complete` API 값과 구분되는 일반 산문의 전체 평가 순서입니다. | [용어 지도](../../terminology-map.yaml) |
 | artifact | 아티팩트 | 하네스 아티팩트 개념으로 참조되거나 스테이징되는 작업 자료입니다. | [API 아티팩트 스키마](api/schema-artifacts.md) |
 | evidence | 증거 | 주장, 검증 결과, 사용자 판단 맥락을 뒷받침하는 기록 자료입니다. | [Core 모델](core-model.md) |
 | `ArtifactRef` | `ArtifactRef` | 지속된 아티팩트 참조를 나타내는 스키마 식별자입니다. | [API 아티팩트 스키마](api/schema-artifacts.md) |
