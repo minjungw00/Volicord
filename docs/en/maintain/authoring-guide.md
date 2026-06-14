@@ -104,17 +104,13 @@ Build guidance and route metadata should use durable implementation meaning. Avo
 Maintenance guidance should describe general documentation conditions, not a named batch, ticket, PR, or reviewer note. Prefer stable wording such as `changed`, `edited`, and `when a document changes`.
 
 <a id="baseline-scope-api-method-split-threshold"></a>
-### API method owners
+### API owner routing
 
-[`reference/api/methods.md`](../reference/api/methods.md) is the stable route document for the baseline API method family. It owns the supported public method list and routes each method to the method owner.
+Use [`reference/api/methods.md`](../reference/api/methods.md) as the first-hop route for supported API methods. Use [Reference README](../reference/README.md) and [`doc-index.yaml`](../../doc-index.yaml) for the exact owner when an API question involves schemas, values, storage effects, errors, blockers, display wording, or another split concern.
 
-When baseline method behavior changes, edit the method owner first. Then update the API router, [Reference README](../reference/README.md), [doc-index.yaml](../../doc-index.yaml), paired-language owner, and practical inbound links that should land on the method owner.
+When API behavior changes, edit the applicable owner first. Then update the API router, Reference README, `doc-index.yaml`, paired-language owner, and practical inbound links only where the route should change.
 
-Keep [`reference/api/methods.md`](../reference/api/methods.md) as a route and shared-reading document. It should not duplicate method-specific request bodies, response bodies, result branches, blocked-result details, or storage-effect detail already owned by a method owner.
-
-API error documentation is split by concern. [`reference/api/errors.md`](../reference/api/errors.md) is the family index only. Public `ErrorCode` meanings belong in [API error codes](../reference/api/error-codes.md), precedence and conflict selection belong in [API error precedence](../reference/api/error-precedence.md), rejected-response, blocked-result, and `dry_run` branch routing belongs in [API error routing](../reference/api/error-routing.md), close-readiness blocker routing belongs in [API blocker routing](../reference/api/blocker-routing.md), and machine-readable `ToolError.details` belongs in [API error details](../reference/api/error-details.md).
-
-Keep [API blocker routing](../reference/api/blocker-routing.md) within its owner boundary. It should not own method-specific behavior, `CloseReadinessBlocker` schema shape, blocker category value sets, Core close-readiness authority, or display wording. Route those questions to the method owner, API State Schemas, API Value Sets, Core Model, or Template Bodies as applicable.
+Keep API route documents as route documents. They should not duplicate method-specific request bodies, response bodies, result branches, blocked-result details, schema fields, value meanings, error behavior, or storage-effect detail already owned elsewhere.
 
 ## 5. Route documents and README files
 
@@ -194,7 +190,7 @@ Artifact refs must be introduced by staging, promotion, or an explicit existing-
 
 Expiration timestamps should use placeholders or clearly future example dates.
 
-The API reference sample task is: add explicit confirmation before account data export, update account data export confirmation tests, and record account data export confirmation test output as representative run/evidence data. When the sample task changes, update the API examples, paired Korean examples, checks, and routes together.
+API examples may share a scenario across method documents when that improves consistency, but the repository does not require one fixed scenario. When a shared scenario changes, update the affected API examples, paired Korean examples, checks, and routes together.
 
 API examples must not use documentation maintenance as the scenario.
 
@@ -296,8 +292,8 @@ Do not route maintained documentation through stale legacy paths. If an old path
 - [ ] README, route, and maintain documents use short summaries plus owner links instead of copied contract explanations.
 - [ ] Route and index documents do not define contracts through accumulated negative rules, exception lists, or non-claim tables.
 - [ ] API, storage, schema, security, access-boundary, and close-readiness details live in the appropriate Reference owner.
-- [ ] API error code meanings, precedence, response branch routing, close-readiness blocker routing, and machine-readable details route to their separate API owners.
-- [ ] API blocker-routing docs do not own method behavior, schema shape, value sets, Core authority, or display wording.
+- [ ] API questions route through the API Methods router, Reference README, and `doc-index.yaml` to the applicable narrow owner.
+- [ ] API route documents and broad indexes do not become secondary owners for method behavior, schema shape, value meanings, errors, blockers, storage effects, Core authority, or display wording.
 - [ ] Display wording owners do not define API semantics, blocker semantics, storage records, or out-of-scope rendered-body wording.
 - [ ] Value names are not treated as baseline scope behavior merely because they exist in schemas, examples, storage notes, or out-of-scope lists.
 - [ ] Removed or unsupported concept names do not remain in glossary, terminology-map, metadata, negative examples, or display wording owners unless a terminology owner intentionally preserves a searchable banned expression.

@@ -1,29 +1,19 @@
-# Harness project / 하네스 프로젝트
+# Harness Documentation
 
-This repository is the entry point for the maintained bilingual Harness documentation set and its routing metadata.
+This repository is the maintained documentation home for Harness, the local work-authority product/system for AI-assisted product work.
 
-이 저장소는 유지되는 한영 Harness 문서 세트와 경로 메타데이터의 진입점입니다.
-
-## Language entry points / 언어 선택
+Start by choosing a language:
 
 - English: [`docs/en/README.md`](docs/en/README.md)
 - 한국어: [`docs/ko/README.md`](docs/ko/README.md)
-- Documentation directory index: [`docs/README.md`](docs/README.md)
+- Documentation directory guide: [`docs/README.md`](docs/README.md)
 
-## Major routes / 주요 경로
+Repository organization:
 
-| Need / 필요 | English | 한국어 |
-|---|---|---|
-| Product orientation / 제품 개요 | [`docs/en/start.md`](docs/en/start.md) | [`docs/ko/start.md`](docs/ko/start.md) |
-| User workflow / 사용자 흐름 | [`docs/en/use/user-guide.md`](docs/en/use/user-guide.md) | [`docs/ko/use/user-guide.md`](docs/ko/use/user-guide.md) |
-| Agent workflow / 에이전트 흐름 | [`docs/en/use/agent-guide.md`](docs/en/use/agent-guide.md) | [`docs/ko/use/agent-guide.md`](docs/ko/use/agent-guide.md) |
-| Reference owner index / 참조 담당 문서 색인 | [`docs/en/reference/README.md`](docs/en/reference/README.md) | [`docs/ko/reference/README.md`](docs/ko/reference/README.md) |
-| Implementation routing / 구현 경로 | [`docs/en/build/implementation-guide.md`](docs/en/build/implementation-guide.md) | [`docs/ko/build/implementation-guide.md`](docs/ko/build/implementation-guide.md) |
-| Documentation maintenance / 문서 유지보수 | [`docs/en/maintain/authoring-guide.md`](docs/en/maintain/authoring-guide.md) | [`docs/ko/maintain/authoring-guide.md`](docs/ko/maintain/authoring-guide.md) |
+- `docs/en/` contains maintained English documentation.
+- `docs/ko/` contains maintained Korean documentation.
+- `docs/doc-index.yaml` is the canonical machine-readable owner route.
+- `docs/terminology-map.yaml` is the terminology and identifier-preservation source of truth.
+- `AGENTS.md` gives repository editing rules for agents and maintainers.
 
-## Maintainer routes / 유지보수 경로
-
-- Repository editing rules: [`AGENTS.md`](AGENTS.md)
-- Machine-readable owner routing: [`docs/doc-index.yaml`](docs/doc-index.yaml)
-- Bilingual terminology controls: [`docs/terminology-map.yaml`](docs/terminology-map.yaml)
-- Documentation checks index: [`docs/en/maintain/checks.md`](docs/en/maintain/checks.md), [`docs/ko/maintain/checks.md`](docs/ko/maintain/checks.md)
+README files are entry points. For contract details, follow the language entry pages to the applicable owner document.
