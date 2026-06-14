@@ -81,6 +81,23 @@ Avoid "English noun + Korean particle" when the English noun is not an identifie
 
 Use the terminology map for concrete replacements. Do not restate those replacements here; link or update the map instead.
 
+### Maintenance and documentation-check wording
+
+Maintenance and documentation-check prose should stay stable after the editing context is gone. Do not translate general phrases such as "changed", "touched by the edit", or "when an edit changes" as if they referred to the maintainer's current task.
+
+Use these stable Korean patterns:
+
+| English source pattern | Korean guidance |
+| --- | --- |
+| `changed` | Use `변경된`. |
+| `touched by the edit` | Use `편집된` or `변경된`, depending on whether the sentence emphasizes the files edited or the content changed. |
+| `when an edit changes` | Use `문서 변경 시`. |
+| `edited files` | Use `편집된 파일`. |
+| `changed documents` | Use `변경된 문서`. |
+| `current edit` or `this edit` | Do not make the phrase task-specific. Prefer stable wording such as `문서 변경 시` when the sentence describes a general maintenance condition. |
+
+Do not use Korean task-context wording in maintained docs for general maintenance rules. Except when quoting a prohibited example in Maintain guidance, avoid `이번 작업`, `이번 변경`, `이번 수정`, `이 작업`, `작업에서 바뀐`, and `작업에서 수정한`.
+
 ## 6. Korean technical writing style
 
 Korean documents should read as native Korean technical documentation, not as mirrored English.
