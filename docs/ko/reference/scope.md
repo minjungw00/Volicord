@@ -109,13 +109,13 @@
 
 담당 문서 경로:
 
-- API 메서드 동작, 스키마, 값 이름: [API 메서드](api/methods.md), [API 코어 스키마](api/schema-core.md), [API 상태 스키마](api/schema-state.md), [API 아티팩트 스키마](api/schema-artifacts.md), [API 판단 스키마](api/schema-judgment.md), [API 값 집합](api/schema-value-sets.md).
+- API 메서드 동작과 스키마 형태: [API 메서드](api/methods.md), [API 코어 스키마](api/schema-core.md), [API 상태 스키마](api/schema-state.md), [API 아티팩트 스키마](api/schema-artifacts.md), [API 판단 스키마](api/schema-judgment.md).
+- API 값의 담당 범위, enum 형태 값과 상태 값의 의미, 정확한 값 이름: [API 값 집합](api/schema-value-sets.md).
 - 저장소 기록/효과와 아티팩트 생명주기: [저장소](storage.md), [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [아티팩트 저장소](storage-artifacts.md).
 - 런타임과 제품 저장소 경계: [런타임 경계](runtime-boundaries.md).
 - 보안 비주장, 보장 수준, 관찰, 차단, 격리, 민감 동작 승인 경계: [보안](security.md), [Core 모델](core-model.md).
 - 적합성 절차와 점검 기대: [적합성](conformance.md).
-- 선별된 핵심 용어의 간단한 뜻: [용어집](glossary.md).
-- 완전한 구조화 용어 메타데이터와 한영 표현 통제: [번역 가이드](../maintain/translation-guide.md), [`docs/terminology-map.yaml`](../../terminology-map.yaml).
+- 완전한 구조화 용어 메타데이터와 한영 표현 통제: [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
 <a id="reserved-and-profile-gated-values"></a>
 ## 예약된 값과 프로필 조건부 값
@@ -139,7 +139,7 @@
 
 담당 문서 링크:
 
-- 정확한 값 이름과 값 집합 위치: [API 값 집합](api/schema-value-sets.md).
+- API 값의 담당 범위, 정확한 값 이름, 값 집합 위치, enum 형태 값과 상태 값의 의미: [API 값 집합](api/schema-value-sets.md).
 - 더 강한 격리 주장을 포함한 보장 의미와 비주장: [보안](security.md).
 - 예약된 값과 프로필 조건부 값의 구조화 용어 메타데이터: [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 

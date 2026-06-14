@@ -109,13 +109,13 @@ Scope rule:
 
 Owner routing:
 
-- API method behavior, schemas, and value names: [API Methods](api/methods.md), [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md).
+- API method behavior and schema shapes: [API Methods](api/methods.md), [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), and [API Judgment Schemas](api/schema-judgment.md).
+- API value ownership, enum/status value semantics, and exact value names: [API Value Sets](api/schema-value-sets.md).
 - Storage records/effects and artifact lifecycle: [Storage](storage.md), [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), and [Artifact Storage](storage-artifacts.md).
 - Runtime and repository boundaries: [Runtime Boundaries](runtime-boundaries.md).
 - Security boundary wording, guarantee levels, observation, blocking, isolation, and sensitive-action approval boundaries: [Security](security.md) and [Core Model](core-model.md).
 - Conformance procedures and check expectations: [Conformance](conformance.md).
-- Selected core term meanings: [Glossary](glossary.md).
-- Complete structured terminology metadata and bilingual wording controls: [Translation Guide](../maintain/translation-guide.md) and [`docs/terminology-map.yaml`](../../terminology-map.yaml).
+- Complete structured terminology metadata and bilingual wording controls: [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
 <a id="reserved-and-profile-gated-values"></a>
 ## Reserved and profile-gated values
@@ -139,7 +139,7 @@ Point-of-use rule:
 
 Owner links:
 
-- Exact value names and value-set placement: [API Value Sets](api/schema-value-sets.md).
+- API value ownership, exact value names, value-set placement, and enum/status value semantics: [API Value Sets](api/schema-value-sets.md).
 - Guarantee semantics and security boundaries, including stronger isolation claims: [Security](security.md).
 - Structured terminology metadata for reserved and profile-gated values: [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
