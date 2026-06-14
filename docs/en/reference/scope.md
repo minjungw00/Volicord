@@ -52,7 +52,7 @@ Supported does not mean:
 <a id="included-capabilities"></a>
 ### Included capabilities
 
-| Baseline capability | Supported boundary | Primary owners |
+| Baseline capability | Supported boundary | Owner documents |
 |---|---|---|
 | Plain-language intake and `Task` creation | A local `Task` can be started from plain-language user intent through the supported intake path. | [Intake method](api/method-intake.md), [Core Model](core-model.md) |
 | Scope updates | `Task` and Change Unit scope can be updated through the supported scope-update path. | [Update-scope method](api/method-update-scope.md), [Core Model](core-model.md) |

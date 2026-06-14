@@ -52,7 +52,7 @@
 <a id="included-capabilities"></a>
 ### 포함되는 기능
 
-| 기준 기능 | 지원되는 경계 | 주 담당 문서 |
+| 기준 기능 | 지원되는 경계 | 담당 문서 |
 |---|---|---|
 | 자연어 접수와 `Task` 생성 | 지원되는 접수 경로로 사용자의 자연어 의도에서 로컬 `Task`를 시작할 수 있습니다. | [접수 메서드](api/method-intake.md), [Core 모델](core-model.md) |
 | 범위 업데이트 | 지원되는 범위 업데이트 경로로 `Task`와 Change Unit 범위를 갱신할 수 있습니다. | [범위 업데이트 메서드](api/method-update-scope.md), [Core 모델](core-model.md) |

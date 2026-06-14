@@ -256,7 +256,7 @@ Evidence to inspect:
 - After comparing paired files, run the semantic label-content check on each language independently.
 - Inspect matching labels such as `Not allowed`, `Required behavior`, `Result`, `Does not imply`, and `Owner boundary`, plus their Korean equivalents or nearby Korean prose.
 - Confirm both languages classify content correctly before accepting parity: required versus prohibited, effect versus non-effect, and route versus contract.
-- Confirm a Korean label is not accepted only because it mirrors the English label, and an English label is not accepted only because the Korean page has the same structure.
+- Do not validate a Korean label only because it mirrors the English label, and do not validate an English label only because the Korean page has the same structure.
 
 Pass condition:
 - Paired languages match by meaning unit, and each language also uses labels and structure that correctly describe the content.
