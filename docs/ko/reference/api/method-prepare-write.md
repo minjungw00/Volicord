@@ -82,7 +82,7 @@
 - `decision=approval_required`
 - `decision=decision_required`
 
-조건:
+결과 데이터:
 
 - `write_decision_reasons`는 비어 있으면 안 됩니다.
 

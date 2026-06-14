@@ -289,7 +289,7 @@ Used in:
 - Owner-defined result paths
 
 Condition:
-- A blocking user-owned judgment must be requested before proceeding.
+- A blocking user-owned judgment is required before proceeding.
 
 State effect:
 - Rejection path: no committed operation proceeds and no owner state mutation occurs.

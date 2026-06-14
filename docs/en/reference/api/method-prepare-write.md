@@ -82,7 +82,7 @@ Committed blocked decisions are `PrepareWriteResult` values with one of these de
 - `decision=approval_required`
 - `decision=decision_required`
 
-Condition:
+Result data:
 
 - `write_decision_reasons` must be non-empty.
 
