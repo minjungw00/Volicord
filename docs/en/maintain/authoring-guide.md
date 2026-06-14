@@ -37,7 +37,7 @@ Use the compact maintained routes:
 - `docs/*/maintain/checks.md`
 - `docs/*/maintain/checks/*.md`
 
-[`docs/doc-index.yaml`](../../doc-index.yaml) owns retrieval and routing metadata. It is not runtime configuration and not a contract owner. [`docs/terminology-map.yaml`](../../terminology-map.yaml) owns bilingual terminology controls. It does not own API, storage, schema, security, projection, or runtime behavior.
+[`docs/doc-index.yaml`](../../doc-index.yaml) owns machine-readable documentation owner routing and paired-path metadata. It is not runtime configuration and not a contract owner. [`docs/terminology-map.yaml`](../../terminology-map.yaml) owns complete structured terminology metadata and bilingual wording controls. It does not own API, storage, schema, security, projection, or runtime behavior. The [Glossary](../reference/glossary.md) is a compact reader-facing guide to selected core terms.
 
 In the terminology map, `primary_owner` should point to the focused owner document when one exists, and `related_references` should hold adjacent references. Glossary owner links should follow the same focused-owner rule. Use a broad index only when the concept is itself index-owned navigation or when the focused owner does not yet exist and the gap is named.
 
@@ -91,7 +91,7 @@ If a duplicate explanation is stale, do not refresh the duplicate. Replace it wi
 
 Create a new document only when no existing owner can responsibly hold the concept. The new page must have a stable reader purpose, a clear owner boundary, and a paired English/Korean route when it is part of the maintained documentation set.
 
-Do not create a new document for one-off planning notes, one-off conversion notes, review leftovers, one-off summaries, or duplicated contract extracts. Put implementation decisions in [Implementation Guide](../build/implementation-guide.md). Put contract definitions in the appropriate Reference owner. Put terminology choices in [Glossary](../reference/glossary.md), [Translation Guide](translation-guide.md), or [Terminology Map](../../terminology-map.yaml).
+Do not create a new document for one-off planning notes, one-off conversion notes, review leftovers, one-off summaries, or duplicated contract extracts. Put implementation decisions in [Implementation Guide](../build/implementation-guide.md). Put contract definitions in the appropriate Reference owner. Put compact selected term meanings in [Glossary](../reference/glossary.md), structured terminology metadata in [Terminology Map](../../terminology-map.yaml), and bilingual parity or Korean prose rules in [Translation Guide](translation-guide.md).
 
 When adding a real new owner, update [Reference README](../reference/README.md) or the appropriate route index so readers can find it. Update [doc-index.yaml](../../doc-index.yaml) only as documentation retrieval metadata.
 

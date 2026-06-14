@@ -169,10 +169,10 @@ Applies to:
 Evidence to inspect:
 - Inspect terminology-map `primary_owner` and `related_references`, glossary owner and related-reference targets, `doc-index.yaml` owner metadata, and route tables touched by the edit.
 - Inspect glossary content by role, regardless of whether it is represented as a compact table, compact entries, or another human-readable view.
-- Confirm `docs/terminology-map.yaml` remains the complete structured term inventory.
+- Confirm `docs/terminology-map.yaml` remains the complete structured terminology metadata source.
 - Confirm the glossary remains compact and reader-facing.
 - Confirm the glossary is not required to mirror every terminology-map term.
-- Confirm checks do not require a specific glossary layout, such as both a summary table and detailed cards.
+- Confirm checks do not require a specific glossary layout.
 - Confirm every term included in the glossary has matching terminology-map metadata.
 - Confirm each owner target points to the focused owner document when one exists.
 - Confirm glossary `Primary owner` values and terminology-map `primary_owner` targets match for the same included term unless an explicit owner gap is named.
@@ -183,13 +183,13 @@ Evidence to inspect:
 - Confirm API error code meanings, error precedence, API response branch routing, close-readiness blocker routing, and `ToolError.details` targets stay separate.
 
 Pass condition:
-- Terminology routes and metadata point to focused owners; the terminology map remains the complete structured term inventory; the glossary remains a compact reader-facing subset; every glossary-included term has matching terminology-map metadata, the same primary owner, and non-contradictory related references; route and index metadata do not overclaim focused ownership.
+- Terminology routes and metadata point to focused owners; the terminology map remains the complete structured terminology metadata source; the glossary remains a compact reader-facing subset; every glossary-included term has matching terminology-map metadata, the same primary owner, and non-contradictory related references; route and index metadata do not overclaim focused ownership.
 
 Failure:
 - A terminology, glossary, metadata, or route target points to a broad index when a focused owner exists.
 - A glossary-included term is missing from the terminology map or lacks matching terminology-map metadata.
 - A check or route requires the glossary to include every terminology-map term.
-- A check requires a specific glossary layout, such as a summary table plus detailed cards.
+- A check requires a specific glossary layout.
 - A glossary-included term points to one primary owner while the terminology map points to another.
 - `doc-index.yaml` metadata makes a different document look primary for the same concept without a documented owner split or owner gap.
 - `doc-index.yaml` overclaims ownership for a focused term, API concern, schema concern, storage concern, security concern, or display wording concern.

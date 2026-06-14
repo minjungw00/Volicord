@@ -1,6 +1,6 @@
 # Terminology checks
 
-Use these checks when an edit changes product terms, Korean prose terms, mixed-language expressions, identifier explanations, documentation-routing terms, glossary owner labels, close-readiness wording, or access/security wording. The terminology map owns maintainer terminology controls; product contracts remain in their reference owners.
+Use these documentation quality checks when an edit changes product terms, Korean prose terms, mixed-language expressions, identifier explanations, documentation-routing terms, glossary owner labels, close-readiness wording, or access/security wording. These checks do not describe Harness product behavior. The terminology map owns complete structured terminology metadata and bilingual wording controls; product contracts remain in their reference owners.
 
 ## CHK-TERM-001: close-readiness terminology
 
@@ -31,7 +31,7 @@ Check sources:
 
 Evidence to inspect:
 - Search changed prose for new product terms, mixed-language Korean, and alternate spellings of existing concepts.
-- Confirm each new durable term is owned by the glossary, the terminology map, or the relevant reference owner.
+- Confirm each new durable term has terminology-map metadata or a relevant reference owner before it appears in glossary or repeated prose.
 - Confirm Korean sentences translate ordinary English noun phrases unless the English is an identifier, intentional product label, or natural technical borrowing.
 
 Failure:
@@ -39,7 +39,7 @@ Failure:
 - A Korean sentence keeps an English noun phrase that is not an identifier, intentional product label, or natural technical borrowing.
 
 Fix:
-- Align wording with the terminology owner.
+- Align wording with `docs/terminology-map.yaml` or the relevant reference owner.
 - Add or revise owner terminology only when the new distinction is intentional.
 
 ## CHK-TERM-003: `complete` intent ambiguity
@@ -99,11 +99,11 @@ Applies to:
 
 Evidence to inspect:
 - Compare changed terminology guidance with `docs/terminology-map.yaml`.
-- Confirm `docs/terminology-map.yaml` remains the complete structured term inventory.
+- Confirm `docs/terminology-map.yaml` remains the complete structured terminology metadata source.
 - Inspect glossary content by role, regardless of whether it is represented as a compact table, compact entries, or another human-readable view.
 - Confirm the glossary remains compact and reader-facing.
 - Confirm the glossary is not required to mirror every terminology-map term.
-- Confirm checks do not require a specific glossary layout, such as both a summary table and detailed cards.
+- Confirm checks do not require a specific glossary layout.
 - Confirm every term included in the glossary has matching terminology-map metadata.
 - Confirm `primary_owner` targets point to the focused owner document when one exists, and `related_references` hold adjacent routes instead of broadening ownership.
 - Confirm glossary `Primary owner` values match terminology-map `primary_owner` for included terms.
@@ -114,13 +114,13 @@ Evidence to inspect:
 - Confirm any new forbidden expression appears in the terminology map and both translation guides.
 
 Pass condition:
-- The terminology map remains the complete structured term inventory; the glossary remains a compact reader-facing subset; every glossary-included term has matching terminology-map metadata, the same primary owner, and non-contradictory related references; no check requires the glossary to mirror the full map or use a specific table/card layout.
+- The terminology map remains the complete structured terminology metadata source; the glossary remains a compact reader-facing subset; every glossary-included term has matching terminology-map metadata, the same primary owner, and non-contradictory related references; no check requires the glossary to mirror the full map or use a specific layout.
 
 Failure:
 - The guides and terminology map disagree.
 - A glossary-included term is missing from the terminology map or lacks matching terminology-map metadata.
 - A check or route requires the glossary to include every terminology-map term.
-- A check requires a specific glossary layout, such as a summary table plus detailed cards.
+- A check requires a specific glossary layout.
 - A terminology-map or glossary owner target points to an index when a focused owner already owns the term's meaning, value set, API concern, storage concern, or display wording.
 - A glossary-included term lists multiple primary owners or treats related references as primary owners.
 - A terminology-map `primary_owner`, glossary `Primary owner`, or `doc-index.yaml` entry names a different primary owner for the same term without an intentional split term or explicit owner gap.
@@ -272,16 +272,16 @@ Evidence to inspect:
 - Confirm each included term's `Primary owner` matches the terminology-map `primary_owner` for the same term.
 - Confirm each included term has only one `Primary owner`; use `See also`, `Related references`, or terminology-map `related_references` for adjacent documents.
 - Confirm glossary `See also` or `Related references` values do not contradict terminology-map `related_references`.
-- Confirm the glossary can be represented as a compact table, compact entries, or another human-readable view without requiring both a summary table and detailed cards.
+- Confirm the glossary can be represented as a compact table, compact entries, or another human-readable view; checks must not require a specific layout.
 - Confirm included terms explain the term and route to the primary owner instead of carrying long avoid lists, identifier-preservation lists, owner-routing maps, or documentation-quality checklists.
-- Confirm the glossary remains a compact reader-facing term guide rather than the complete structured term inventory.
+- Confirm the glossary remains a compact reader-facing term guide rather than the complete structured terminology metadata source.
 - Confirm terminology-map terms do not need glossary coverage unless the compact glossary view includes them.
 - Confirm the glossary does not duplicate the translation guide's prose-style rules, `doc-index.yaml` retrieval metadata role, or reference owners' API, storage, schema, security, projection, runtime, or method contracts.
 - Confirm API behavior, storage effects, security guarantees, method behavior, and detailed response/schema contracts remain in their focused owners.
 - Confirm Korean glossary content uses natural Korean technical prose and preserves exact identifiers unchanged.
 
 Pass condition:
-- The glossary remains a compact reader-facing view of selected terms; every included term has matching terminology-map metadata, one primary owner matching the terminology map, and non-contradictory related references; detailed contracts, style rules, and full structured inventory stay in their owners.
+- The glossary remains a compact reader-facing view of selected terms; every included term has matching terminology-map metadata, one primary owner matching the terminology map, and non-contradictory related references; detailed contracts, style rules, and complete structured terminology metadata stay in their owners.
 
 Failure:
 - A glossary-included term becomes a translation guide, identifier-preservation policy, owner-routing map, or reference contract.
@@ -289,7 +289,7 @@ Failure:
 - A glossary-included term lists multiple primary owners or promotes adjacent documents to primary-owner status.
 - A glossary-included term and terminology metadata disagree about the term's `Primary owner`.
 - A glossary `See also` or `Related references` value contradicts terminology-map `related_references`.
-- The glossary becomes a broad owner-routing map, full structured inventory, or layout-specific table/card system instead of a compact term guide.
+- The glossary becomes a broad owner-routing map, complete structured terminology metadata source, or layout-specific system instead of a compact term guide.
 - A check requires the glossary to mirror every terminology-map term.
 - A usage note accumulates repeated "do not", "must not", or avoid-list wording that belongs in the terminology map, translation guide, authoring guide, or focused checks.
 - A glossary-included term repeats `doc-index.yaml` route metadata or reference contract detail instead of linking to the owner.
@@ -299,7 +299,7 @@ Fix:
 - Shrink the glossary content for the term to compact reader-facing meaning, primary owner, and optional adjacent references.
 - Align the glossary `Primary owner` with the terminology-map `primary_owner` and focused owner target.
 - Keep exactly one primary owner per term and move adjacent documents to related-reference fields.
-- Move the complete structured term inventory and systematic identifier controls to the terminology map.
+- Move complete structured terminology metadata and systematic identifier controls to the terminology map.
 - Move Korean prose style guidance to the translation guide.
 - Move review procedures to Maintain checks.
 - Route contract detail to the applicable reference owner.

@@ -37,7 +37,7 @@
 - `docs/*/maintain/checks.md`
 - `docs/*/maintain/checks/*.md`
 
-[docs/doc-index.yaml](../../doc-index.yaml)은 문서 검색과 경로 메타데이터를 담당합니다. 런타임 설정도 아니고 계약 담당 문서도 아닙니다. [docs/terminology-map.yaml](../../terminology-map.yaml)이 있으면 한영 용어 통제의 담당 문서로 봅니다. 이 파일은 API, 저장소, 스키마, 보안, 상태 보기, 런타임 동작을 담당하지 않습니다.
+[docs/doc-index.yaml](../../doc-index.yaml)은 기계 판독용 문서 담당 경로와 대응 경로 메타데이터를 담당합니다. 런타임 설정도 아니고 계약 담당 문서도 아닙니다. [docs/terminology-map.yaml](../../terminology-map.yaml)은 완전한 구조화 용어 메타데이터와 한영 표현 통제를 담당합니다. 이 파일은 API, 저장소, 스키마, 보안, 상태 보기, 런타임 동작을 담당하지 않습니다. [용어집](../reference/glossary.md)은 선별된 핵심 용어를 독자용으로 간결하게 설명하는 안내입니다.
 
 용어 지도에서는 집중 담당 문서가 있으면 `primary_owner`가 그 문서를 가리켜야 하며, 주변 참조는 `related_references`에 둡니다. 용어집의 담당 문서 링크도 같은 집중 담당 문서 원칙을 따릅니다. 넓은 색인은 그 개념 자체가 색인 경로 안내이거나 아직 집중 담당 문서가 없어서 공백을 명시할 때만 사용합니다.
 
@@ -91,7 +91,7 @@
 
 새 문서는 기존 담당 문서가 그 개념을 책임 있게 담을 수 없을 때만 만듭니다. 새 문서에는 안정적인 독자 목적, 분명한 담당 경계, 유지 문서라면 영어/한국어 대응 경로가 있어야 합니다.
 
-일회성 계획 메모, 일회성 변환 메모, 검토 잔여물, 일회성 요약, 계약 발췌 중복을 위해 새 문서를 만들지 않습니다. 구현 경로 결정은 [구현 가이드](../build/implementation-guide.md)에 둡니다. 계약 정의는 알맞은 참조 담당 문서에 둡니다. 용어 선택은 [용어집](../reference/glossary.md), [번역 가이드](translation-guide.md), [용어 지도](../../terminology-map.yaml)에 둡니다.
+일회성 계획 메모, 일회성 변환 메모, 검토 잔여물, 일회성 요약, 계약 발췌 중복을 위해 새 문서를 만들지 않습니다. 구현 경로 결정은 [구현 가이드](../build/implementation-guide.md)에 둡니다. 계약 정의는 알맞은 참조 담당 문서에 둡니다. 선별된 용어의 간결한 뜻은 [용어집](../reference/glossary.md)에, 구조화 용어 메타데이터는 [용어 지도](../../terminology-map.yaml)에, 한영 의미 일치나 한국어 산문 규칙은 [번역 가이드](translation-guide.md)에 둡니다.
 
 실제로 새 담당 문서를 추가할 때는 [참조 README](../reference/README.md)나 알맞은 경로 색인을 함께 갱신해 독자가 찾을 수 있게 합니다. [doc-index.yaml](../../doc-index.yaml)은 문서 검색 메타데이터로만 갱신합니다.
 

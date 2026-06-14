@@ -4,7 +4,7 @@ Use this guide when editing paired English and Korean Harness documentation. It 
 
 This is a documentation-maintenance guide. It does not define product behavior, API behavior, storage effects, security guarantees, projection behavior, runtime behavior, schema contracts, glossary entries, or owner-routing indexes. When contract detail is needed, link to the focused owner instead of restating it here.
 
-Structured terminology metadata lives in [`docs/terminology-map.yaml`](../../terminology-map.yaml). Human-readable term definitions live in the [Glossary](../reference/glossary.md). Check the terminology map before adding or changing product terms, Korean prose terms, identifier explanations, product labels, or Korean mixed-language examples. If this guide and the terminology map disagree, align them in the same documentation batch.
+Complete structured terminology metadata lives in [`docs/terminology-map.yaml`](../../terminology-map.yaml). The [Glossary](../reference/glossary.md) is a compact human-readable guide to selected core terms. Check the terminology map before adding or changing product terms, Korean prose terms, identifier explanations, product labels, or Korean mixed-language examples. If this guide and the terminology map disagree, align them in the same documentation batch.
 
 ## 1. Semantic parity
 
@@ -52,7 +52,7 @@ Some English words can be both code values and ordinary adjectives. Determine th
 
 ## 4. Recurring terminology
 
-Use [`docs/terminology-map.yaml`](../../terminology-map.yaml) as the canonical terminology map for product concepts, product labels, identifiers, and Korean mixed-language controls. This section is a compact writing aid. It is not a glossary replacement, owner route, or product contract summary.
+Use [`docs/terminology-map.yaml`](../../terminology-map.yaml) as the complete structured terminology metadata for product concepts, product labels, identifiers, and Korean mixed-language controls. This section is a compact writing aid. It is not a glossary replacement, owner-routing index, or product contract summary.
 
 Use one Korean expression for one concept unless the terminology map intentionally distinguishes user-facing and reference-facing wording. When a durable term is missing, add it to the terminology map before spreading a new variant across the docs.
 
@@ -124,7 +124,7 @@ User-facing docs explain what the reader can decide, expect, or do. Reference-fa
 
 Use the terminology map's `ko_user` field when the reader needs a plain operational meaning. Use `ko_reference` when a page names or defines a maintained concept. Use `ko_reference_first_reference`, `ko_explanation`, or related explanation fields when the exact label or identifier matters.
 
-Do not maintain a second audience-specific term list in this guide. Put durable audience distinctions in the terminology map, then use the glossary only for compact human-readable term meanings.
+Do not maintain a second audience-specific term list in this guide. Put durable audience distinctions in the terminology map, then use the glossary only for compact human-readable meanings of selected terms.
 
 Do not expose raw enum names or schema fields as user-facing labels unless the exact raw value is the subject. A Korean display label is localized text, not a replacement for the canonical value.
 
