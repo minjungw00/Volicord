@@ -1,8 +1,8 @@
 # User Guide
 
-Harness lets you work in ordinary language while keeping decision boundaries visible. You decide the work and the risky calls. The agent should keep scope, judgment, evidence, approvals, and close basis separate instead of presenting inference as your decision.
+Harness lets you work in ordinary language while keeping decision boundaries visible. Harness is the local work-authority product/system; Core is the local authority record for Harness state. You decide the work and the risky calls. The agent should keep scope, judgment, evidence, approvals, and close basis separate instead of presenting inference as your decision.
 
-This guide is the user workflow path. Exact API behavior, schemas, storage effects, security wording, and reference-level close-readiness rules live in the owners linked from the [Reference Index](../reference/README.md).
+This guide is the user workflow path. Exact API behavior, schemas, storage effects, security wording, and reference-level close readiness rules live in the owners linked from the [Reference Index](../reference/README.md).
 
 ## Start a task
 
@@ -27,7 +27,7 @@ You decide:
 
 The agent should show:
 
-- active goal, scope, and non-goals
+- current goal, current scope, and non-goals
 - known facts, unknowns, and pending user-owned judgment
 - the next safe action
 - whether the request is still too vague to start safely
@@ -36,13 +36,13 @@ The agent should not treat a broad request for help as permission to write files
 
 ## Keep scope current
 
-Scope changes when the goal, non-goals, affected area, acceptance criteria, allowed paths, or active work slice changes. Say the change plainly. The agent should refresh the visible boundary before relying on old status or old write approval.
+Scope changes when the goal, non-goals, affected area, verification criteria, allowed paths, or current work slice changes. Say the change plainly. The agent should refresh the visible boundary before relying on old status or old write approval.
 
 You decide:
 
 - whether to expand, narrow, pause, cancel, or supersede the task
 - whether a new path, dependency, service, command, migration choice, or user-visible behavior belongs in scope
-- which acceptance criteria or non-goals should change
+- which verification criteria or non-goals should change
 - whether a new question is yours to decide or a local implementation detail
 
 The agent should show the accepted boundary, the reason it changed, any stale approval or status, and the next safe action under the updated scope.
@@ -61,8 +61,8 @@ You decide which pending decision to answer and whether to continue, defer, narr
 
 A useful status summary says:
 
-- active task or work boundary
-- active scope
+- current `Task` or work boundary
+- current scope
 - inspected facts and unknowns
 - primary blocker
 - pending user judgment or approval need
@@ -73,7 +73,9 @@ The agent should not mix inspected facts with user-owned judgment, ask you to re
 
 ## Approve writes and sensitive actions
 
-A write approval is bounded permission for a named write attempt. It is not whole-plan approval, final acceptance, residual-risk acceptance, or a guarantee that Harness can prevent every unsafe action.
+A user-facing write approval is bounded permission for a named write attempt. In this guide, write approval means ordinary user approval for a write flow; it is separate from the exact product label `Write Authorization`.
+
+Write approval is not whole-plan approval, final acceptance, residual-risk acceptance, sensitive-action approval, or a guarantee that Harness can prevent every unsafe action.
 
 You decide:
 
@@ -82,7 +84,7 @@ You decide:
 - whether a separate sensitive action is allowed, such as dependency installation, deployment, secret access, or destructive command use
 - what is explicitly not authorized
 
-The agent should show the intended write, the scope checked for that write, the approval limit, whether a separate sensitive-action approval is needed, and whether the approval basis has gone stale.
+The agent should show the intended write, the current scope checked for that write, the approval limit, whether a separate sensitive-action approval is needed, and whether the approval basis has gone stale.
 
 The agent should not write outside the named scope, treat sensitive-action approval as product-file write approval, or claim stronger security behavior than [Security](../reference/security.md) supports.
 
@@ -125,7 +127,7 @@ Before larger work is called done, ask in ordinary language:
 Show what changed, what was checked, what residual risk is visible, and what still blocks close.
 ```
 
-For users, close readiness means whether the task can honestly finish now. In reference terms, close-readiness meaning belongs to [Core Model](../reference/core-model.md), and close method behavior belongs to [Close-task Method](../reference/api/method-close-task.md).
+For users, close readiness means whether the task can honestly finish now. In reference terms, close readiness meaning belongs to [Core Model](../reference/core-model.md), and close method behavior belongs to [Close-task Method](../reference/api/method-close-task.md).
 
 You decide:
 
@@ -158,7 +160,7 @@ Use the use docs for workflow. Use owner reference docs for exact contracts:
 | Need | Owner Route |
 |---|---|
 | Baseline and out-of-scope boundary | [Scope](../reference/scope.md) |
-| Core authority, user-owned judgment, close-readiness meaning | [Core Model](../reference/core-model.md) |
+| Core authority, user-owned judgment, close readiness meaning | [Core Model](../reference/core-model.md) |
 | Security wording and guarantee levels | [Security](../reference/security.md) |
 | API methods and schemas | [Reference Index](../reference/README.md) |
 | Surface and connector behavior | [Agent Integration Reference](../reference/agent-integration.md) |

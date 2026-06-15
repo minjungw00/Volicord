@@ -7,13 +7,15 @@ Use this guide when writing or reviewing agent behavior for a Harness-connected 
 
 A good Harness-connected agent turns ordinary user requests into careful work, keeps context small, preserves user-owned judgment, checks before writes, records evidence after meaningful action, reports status for the user's next decision, and closes honestly.
 
+In this guide, Harness names the local work-authority product/system. Core names the local authority record for Harness state. Keep those roles separate when summarizing state, approvals, evidence, and close basis.
+
 This guide is use documentation. It is not a connector contract, API schema, template catalog, conformance fixture, storage contract, or security guarantee.
 
 Owner links:
 
 - Exact connector behavior: [Agent Integration Reference](../reference/agent-integration.md)
 - Surface-specific presentation: [Surface Recipes](surface-recipes.md)
-- Exact API, schema, storage, security, and close-readiness contracts: [Reference Index](../reference/README.md)
+- Exact API, schema, storage, security, and close readiness contracts: [Reference Index](../reference/README.md)
 
 <a id="operating-loop"></a>
 ## Operating loop
@@ -40,10 +42,10 @@ Use the Harness path when the work involves:
 - scope risk
 - product writes
 - user-owned judgment
-- sensitive action approval
+- sensitive-action approval
 - evidence gaps
 - check limits
-- user-visible inspection expectations
+- user-visible verification criteria
 - final acceptance
 - residual risk
 - close readiness
@@ -54,7 +56,7 @@ Choose procedure weight from the work shape:
 - Small change: confirm narrow scope, edit inside that scope, run a focused check, and report briefly.
 - Tracked work: clarify scope, preserve judgment, check writes, record evidence, and report close readiness.
 
-Escalate from small change to tracked work when you find scope drift, a new public interface, security or privacy impact, destructive risk, a dependency or migration choice, a user-visible inspection expectation, an evidence limit, final acceptance need, residual risk, or another user-owned judgment.
+Escalate from small change to tracked work when you find scope drift, a new public interface, security or privacy impact, destructive risk, a dependency or migration choice, user-visible verification criteria, an evidence limit, final acceptance need, residual risk, or another user-owned judgment.
 
 <a id="keep-context-small"></a>
 ## Keep context small
@@ -64,14 +66,14 @@ Always-on context should fit the next action. Carry summaries and refs, then loa
 Include only what is currently useful:
 
 - verified surface status and capability limits
-- active task or work boundary
-- active scope, non-goals, and relevant paths or operation class
+- current `Task` or work boundary
+- current scope, non-goals, and relevant paths or operation class
 - pending user-owned judgment
 - sensitive-action approval or write-approval summary when relevant
 - artifact and evidence summaries when they support a claim
-- active blockers and stale-state warnings
+- current blockers and stale-state warnings
 - evidence gaps, residual-risk status, and close blockers when relevant
-- guarantee level as supported by the active surface and [Security](../reference/security.md)
+- guarantee level supported by the current surface context and [Security](../reference/security.md)
 - source freshness
 - one next safe action
 
@@ -87,13 +89,13 @@ Ask only the question that changes the next safe action or resolves a user-owned
 A focused clarification should show:
 
 - what was verified
-- active goal
-- candidate or active scope and non-goals
-- acceptance criteria for the next slice
+- current goal
+- candidate or current scope and non-goals
+- verification criteria for the next slice
 - what the agent may decide on its own
 - remaining uncertainty
 - required user-owned judgment, if any
-- evidence expectation or evidence gap
+- evidence need or evidence gap
 - why close is already blocked, if relevant
 - next safe action
 
@@ -120,7 +122,7 @@ The user decides:
 
 Inside accepted scope, the agent may usually decide local implementation details when they stay inside scope, preserve product behavior, and do not change material technical direction. Examples include a local variable name, nearby test placement, behavior-preserving refactor, or code detail already forced by accepted scope.
 
-Escalate back to the user when a detail becomes product-visible, changes accepted direction, introduces a dependency or service, affects security or privacy, breaks compatibility, becomes costly to reverse, or changes scope, acceptance, sensitive action, or residual risk.
+Escalate back to the user when a detail becomes product-visible, changes accepted direction, introduces a dependency or service, affects security or privacy, breaks compatibility, becomes costly to reverse, or changes scope, verification criteria, sensitive-action approval, final acceptance, or residual risk.
 
 <a id="request-judgment-narrowly"></a>
 ### Request judgment narrowly
@@ -135,7 +137,7 @@ A judgment request should include:
 - affected scope
 - what the answer does not settle
 
-Do not treat "yes", "approved", "looks good", "go ahead", or "continue" as a bundle of every pending judgment. Map a short reply only when one active prompt made the judgment kind, object, option, scope, user intent, consequences, and remaining open items unambiguous.
+Do not treat "yes", "approved", "looks good", "go ahead", or "continue" as a bundle of every pending judgment. Map a short reply only when one current prompt made the judgment kind, object, option, scope, user intent, consequences, and remaining open items unambiguous.
 
 Keep product judgment, technical judgment, scope judgment, sensitive-action approval, final acceptance, residual-risk acceptance, and cancellation separate. No judgment substitutes for another.
 
@@ -155,7 +157,7 @@ Show the user:
 - what Harness can verify, or the capability limit
 - next action that would unblock the write check
 
-If scope changes, update the active scope before asking for a new write check. Treat any old write result that no longer matches the updated scope as stale.
+If scope changes, update the current scope before asking for a new write check. Treat any old write result that no longer matches the updated scope as stale.
 
 <a id="record-evidence"></a>
 ## Record evidence after action
@@ -185,7 +187,7 @@ Status output should lead with:
 
 The agent should not ask the user to solve something it can safely inspect, refresh, retry, narrow, or record.
 
-A compact status summary should include the active task or work boundary, active scope, freshest relevant facts, pending judgment or approval, evidence gap when relevant, close blocker when relevant, and one next safe action.
+A compact status summary should include the current `Task` or work boundary, current scope, freshest relevant facts, pending judgment or approval, evidence gap when relevant, close blocker when relevant, and one next safe action.
 
 <a id="handle-close"></a>
 ## Handle close honestly
@@ -210,7 +212,7 @@ For tracked work, show the close basis before asking for final acceptance or att
 - blockers
 - next close-unblocking action
 
-Use a read-only close review when the user only asks whether close would be blocked. Use state-changing close only when the close-task method and close-readiness contracts show no relevant blockers.
+Use a read-only close review when the user only asks whether close would be blocked. Use state-changing close only when the close-task method and close readiness contracts show no relevant blockers.
 
 Do not close from prose, tests alone, broad acceptance-like language, residual-risk acceptance, generated readable views, or stale status summaries. Final acceptance and residual-risk acceptance cannot override missing required evidence.
 
@@ -237,7 +239,7 @@ Use compact user-facing shapes first: status, focused judgment request, what was
 <a id="language-context"></a>
 ## Choose language context deliberately
 
-For ordinary Harness session context, load the language needed for the active user or task. Do not load both English and Korean paired docs for the same `doc_id` unless translation parity is the work.
+For ordinary Harness session context, load the language needed for the current user or task. Do not load both English and Korean paired docs for the same `doc_id` unless translation parity is the work.
 
 Bilingual documentation maintenance is different: use the authoring and translation guides, compare paired files deliberately, and keep semantic parity.
 
