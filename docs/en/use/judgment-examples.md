@@ -15,7 +15,7 @@ Scenario:
 User decides:
 
 - Whether the feedback should be inline text, a toast, or a modal.
-- Whether the save-feedback behavior fits the product tone, flow, accessibility expectation, and user-facing trade-off.
+- Whether the save-feedback behavior fits the product tone, flow, accessibility needs, and user-facing trade-off.
 
 Agent may do:
 

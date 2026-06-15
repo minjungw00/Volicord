@@ -4,7 +4,7 @@
 
 This reference defines stable conformance scenario semantics and reference criteria.
 
-A conformance scenario is a named behavior expectation. It can be evaluated only against facts made authoritative by the API, storage, security, scope, Core, artifact, and surface owner documents.
+A conformance scenario is a named behavior criterion. It can be evaluated only against facts made authoritative by the API, storage, security, scope, Core, artifact, and surface owner documents.
 
 This document owns:
 
@@ -26,7 +26,7 @@ For the canonical baseline scope, see [Scope](scope.md). For compact meanings of
 
 | Item | Boundary | Details |
 |---|---|---|
-| Scenario semantics | Stable behavior expectation | [Details](#scenario-semantics) |
+| Scenario semantics | Stable behavior criterion | [Details](#scenario-semantics) |
 | Scenario IDs | Stable identifier rules | [Details](#scenario-id-rules) |
 | Expected behavior | Owner-routed criteria | [Details](#expected-behavior) |
 | Assertion authority | Facts owned by canonical owners | [Details](#assertion-authority) |
@@ -36,7 +36,7 @@ For the canonical baseline scope, see [Scope](scope.md). For compact meanings of
 ### Scenario semantics
 
 Definition:
-- A conformance scenario names one behavior expectation that belongs to the baseline scope or to a clearly routed owner boundary.
+- A conformance scenario names one behavior criterion that belongs to the baseline scope or to a clearly routed owner boundary.
 
 Required parts:
 - `scenario_id`

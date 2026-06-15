@@ -115,7 +115,7 @@
 - 저장소 기록/효과와 아티팩트 생명주기: [저장소](storage.md), [저장소 기록](storage-records.md), [저장 효과](storage-effects.md), [아티팩트 저장소](storage-artifacts.md).
 - 런타임과 제품 저장소 경계: [런타임 경계](runtime-boundaries.md).
 - 보안 비주장, 보장 수준, 관찰, 차단, 격리, 민감 동작 승인 경계: [보안](security.md), [Core 모델](core-model.md).
-- 적합성 절차와 점검 기대: [적합성](conformance.md).
+- 적합성 절차와 점검 기준: [적합성](conformance.md).
 - 완전한 구조화 용어 메타데이터와 한영 표현 통제: [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
 <a id="reserved-and-profile-gated-values"></a>

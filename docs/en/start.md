@@ -73,7 +73,7 @@ Safe next step:
 Inspect and return a narrow plan. No product-file writes yet.
 ```
 
-The user did not need to name an internal mode. The agent clarified because the request touches product behavior, security expectations, verification criteria, and user-owned judgment.
+The user did not need to name an internal mode. The agent clarified because the request touches product behavior, security implications, verification criteria, and user-owned judgment.
 
 ## Authority concepts stay separate
 

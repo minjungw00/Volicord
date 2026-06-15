@@ -115,7 +115,7 @@ Owner routing:
 - Storage records/effects and artifact lifecycle: [Storage](storage.md), [Storage Records](storage-records.md), [Storage Effects](storage-effects.md), and [Artifact Storage](storage-artifacts.md).
 - Runtime and repository boundaries: [Runtime Boundaries](runtime-boundaries.md).
 - Security boundary wording, guarantee levels, observation, blocking, isolation, and sensitive-action approval boundaries: [Security](security.md) and [Core Model](core-model.md).
-- Conformance procedures and check expectations: [Conformance](conformance.md).
+- Conformance procedures and check criteria: [Conformance](conformance.md).
 - Complete structured terminology metadata and bilingual wording controls: [`docs/terminology-map.yaml`](../../terminology-map.yaml).
 
 <a id="reserved-and-profile-gated-values"></a>

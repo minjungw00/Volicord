@@ -286,7 +286,7 @@ Run authority:
 
 Evidence authority:
 
-- Evidence can establish that recorded support exists for a named claim, gap, reference, or coverage expectation.
+- Evidence can establish that recorded support exists for a named claim, gap, reference, or coverage item.
 - Evidence cannot establish unrecorded behavior, broad correctness, final acceptance, residual-risk acceptance, or a no-risk result.
 
 `ArtifactRef` authority:
