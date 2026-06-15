@@ -124,7 +124,7 @@ direct
 work
 ```
 
-`harness.intake`의 `requested_mode`는 입력 전용 값으로 `auto`도 받습니다. 출력 `Task.mode` 필드는 `advisor`, `direct`, `work`를 사용합니다. intake 확정 동작은 [intake 메서드](method-intake.md)가 담당합니다.
+`harness.intake`의 `requested_mode`는 입력 전용 값으로 `auto`도 받습니다. 출력 `Task.mode` 필드는 `advisor`, `direct`, `work`를 사용합니다. 접수 확정 동작은 [접수 메서드](method-intake.md)가 담당합니다.
 
 `Task.lifecycle_phase`는 아래 값을 사용합니다.
 
@@ -171,7 +171,7 @@ cancelled
 superseded
 ```
 
-Run 실패, 위반, 차단된 닫기, 증거 공백은 종료 `Task.result` 값이 아닙니다.
+실행 실패, 위반, 차단된 닫기, 증거 공백은 종료 `Task.result` 값이 아닙니다.
 
 <a id="method-local-values"></a>
 ## 메서드 내부 값

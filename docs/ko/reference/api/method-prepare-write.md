@@ -9,7 +9,7 @@
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - `PrepareWriteResult` 결정 동작
 - 소비 가능한 `Write Authorization` 하나를 만드는 메서드별 처리
-- prepare-write 예시
+- 쓰기 준비 예시
 
 ## 담당하지 않는 것
 
