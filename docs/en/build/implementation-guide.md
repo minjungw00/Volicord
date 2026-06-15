@@ -49,13 +49,13 @@ Use documents explain workflows, reader decisions, and expected outcomes. They a
 
 Implementers may use [User Guide](../use/user-guide.md), [Agent Guide](../use/agent-guide.md), [Judgment Examples](../use/judgment-examples.md), and [Surface Recipes](../use/surface-recipes.md) to understand reader intent, surface behavior, and judgment boundaries. For API payloads, storage effects, security guarantees, close-readiness rules, access boundaries, or error behavior, route back to the applicable Reference owner.
 
-If a use document and a Reference owner seem to differ, the Reference owner is the authority. The route or guide mismatch is documentation maintenance work.
+If a use document and a Reference owner seem to differ, the Reference owner is the authority. The route or guide mismatch is a documentation maintenance issue.
 
 ## Out-of-scope behavior
 
 A named capability can remain outside baseline support. Scope and the affected owners decide when that capability becomes supported baseline behavior.
 
-Before that owner work exists, this guide only routes the question back to [Scope](../reference/scope.md) and the affected owners. Detailed handling is defined there, not in this guide.
+Until the affected owner documents define support, this guide only routes the question back to [Scope](../reference/scope.md) and those owners. Detailed handling is defined there, not in this guide.
 
 ## Conformance scenarios
 

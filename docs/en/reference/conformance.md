@@ -96,7 +96,7 @@ When this page says "must", "required", or "always", it is naming a conformance 
 
 Conformance criteria are reference criteria. Examples and tutorials may illustrate how a reader might recognize a scenario, but they do not create authority records, API branches, storage effects, security guarantees, close-readiness results, acceptance evidence, or residual-risk acceptance.
 
-Reference scenarios must use stable behavior descriptions. They must not use documentation maintenance, route cleanup, migration work, broad review stages, or short-lived project status as the behavior being tested.
+Reference scenarios must use stable behavior descriptions. They must not use maintainer workflow labels, broad review stages, or short-lived project status as the behavior being tested.
 
 No example, tutorial, or representative scenario requires API documentation to reuse one product scenario. API examples may use any stable, self-contained product or user scenario that stays consistent with the applicable owner contracts.
 
