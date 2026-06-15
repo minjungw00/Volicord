@@ -111,7 +111,7 @@ On commit, the method may persist judgment resolution and dependent blocker or s
 
 ## Minimal valid request
 
-Method-local precondition: `uj_empty_001` is an existing pending `product_decision` for `task_empty_001`.
+Method-local precondition: `uj_empty_001` is an existing pending `product_decision` for `task_empty_001` and `cu_empty_001` in `proj_empty_001`; the current project `state_version` is `62`, and `keep` is one of its option IDs.
 
 ```yaml
 method: harness.record_user_judgment
@@ -146,7 +146,7 @@ params:
 
 ## Representative response
 
-Result branch (`RecordUserJudgmentResult`, committed):
+Abbreviated result branch (`RecordUserJudgmentResult`, committed):
 
 ```yaml
 base:
@@ -204,6 +204,12 @@ user_judgment:
         judgment:
           decision: accepted
           rationale: "The empty-state illustration is suitable for this Task."
+      technical_decision: null
+      scope_decision: null
+      sensitive_action_scope: null
+      final_acceptance: null
+      residual_risk_acceptance: null
+      cancellation: null
     note: null
     accepted_risks: []
     resolved_by_actor_kind: user

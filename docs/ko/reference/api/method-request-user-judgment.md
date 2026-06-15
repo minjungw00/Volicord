@@ -103,6 +103,8 @@
 
 ## 최소 유효 요청
 
+메서드 안의 전제: `task_banner_001`과 `cu_banner_001`은 `proj_banner_001`에 이미 있으며, 현재 프로젝트 `state_version`은 `51`입니다.
+
 ```yaml
 method: harness.request_user_judgment
 params:
@@ -151,7 +153,7 @@ params:
 
 ## 대표 응답
 
-결과 분기(`RequestUserJudgmentResult`, 커밋됨):
+축약된 결과 분기(`RequestUserJudgmentResult`, 커밋됨):
 
 ```yaml
 base:

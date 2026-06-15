@@ -111,7 +111,7 @@
 
 ## 최소 유효 요청
 
-메서드 안의 전제: `uj_empty_001`은 `task_empty_001`에 속한 기존 대기 `product_decision`입니다.
+메서드 안의 전제: `uj_empty_001`은 `proj_empty_001`의 `task_empty_001`과 `cu_empty_001`에 속한 기존 대기 `product_decision`입니다. 현재 프로젝트 `state_version`은 `62`이고, `keep`은 그 선택지 ID 중 하나입니다.
 
 ```yaml
 method: harness.record_user_judgment
@@ -146,7 +146,7 @@ params:
 
 ## 대표 응답
 
-결과 분기(`RecordUserJudgmentResult`, 커밋됨):
+축약된 결과 분기(`RecordUserJudgmentResult`, 커밋됨):
 
 ```yaml
 base:
@@ -204,6 +204,12 @@ user_judgment:
         judgment:
           decision: accepted
           rationale: "The empty-state illustration is suitable for this Task."
+      technical_decision: null
+      scope_decision: null
+      sensitive_action_scope: null
+      final_acceptance: null
+      residual_risk_acceptance: null
+      cancellation: null
     note: null
     accepted_risks: []
     resolved_by_actor_kind: user

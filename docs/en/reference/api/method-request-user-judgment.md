@@ -103,6 +103,8 @@ On commit, the method may persist a pending `user_judgments` row and related blo
 
 ## Minimal valid request
 
+Method-local precondition: `task_banner_001` and `cu_banner_001` already exist in `proj_banner_001`; the current project `state_version` is `51`.
+
 ```yaml
 method: harness.request_user_judgment
 params:
@@ -151,7 +153,7 @@ params:
 
 ## Representative response
 
-Result branch (`RequestUserJudgmentResult`, committed):
+Abbreviated result branch (`RequestUserJudgmentResult`, committed):
 
 ```yaml
 base:
