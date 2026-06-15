@@ -15,6 +15,7 @@ This document owns:
 - supported lifecycle, close-state, source-kind, write-decision category, judgment-kind, presentation, required-for, artifact redaction, artifact availability display, `ValidatorResult.status`, `ValidatorResult.severity`, guarantee-display, and similar API value sets
 - supported `change_unit.operation` values
 - the boundary for supported public `ValidatorResult.validator_id` values
+- the value-set boundary for method-scoped reason codes and opaque classification strings
 - profile-gated or reserved value boundaries where they affect supported schema interpretation
 - the rule that rendered labels are not canonical schema values
 
@@ -37,6 +38,7 @@ Only values listed as supported in this document are supported API values.
 - Rendered labels are display text. They do not replace the canonical values listed in this document.
 - API examples must use supported enum-like values from this document unless the schema owner explicitly defines the field as a free-form display string, an opaque identifier, or an opaque classification string.
 - A string-like field is controlled by this document only when the schema owner routes that field to a value set here. Opaque identifiers, opaque classification strings, and free-form display strings stay with their schema or method owner.
+- A method example may show an opaque reason code or classification string without making that string a supported global value.
 
 <a id="method-name-values"></a>
 ## Method name values
@@ -60,12 +62,12 @@ Method behavior is owned by method owner documents routed from [API Methods](met
 <a id="actor-values"></a>
 ## Actor values
 
-`ToolEnvelope.actor_kind` and `UserJudgmentResolution.resolved_by_actor_kind` use:
+`ToolEnvelope.actor_kind` and `UserJudgmentResolution.resolved_by_actor_kind` use the same controlled value set:
 
-```text
-agent
-user
-```
+| Value | Used by | Owner route |
+|---|---|---|
+| `agent` | Request envelopes and judgment resolution shapes. | Shape owner: [API Schema Core](schema-core.md#tool-envelope); resolution shape owner: [API Judgment Schemas](schema-judgment.md). |
+| `user` | Request envelopes and judgment resolution shapes. | Shape owner: [API Schema Core](schema-core.md#tool-envelope); resolution shape owner: [API Judgment Schemas](schema-judgment.md). |
 
 These values classify the API actor named by the request or resolution shape. They do not by themselves create user-owned judgment, approval, final acceptance, residual-risk acceptance, or `Write Authorization`.
 
@@ -74,17 +76,17 @@ These values classify the API actor named by the request or resolution shape. Th
 
 `NextActionSummary.action_kind` uses:
 
-```text
-update_scope
-prepare_write
-stage_artifact
-record_run
-request_user_judgment
-record_user_judgment
-close_task
-```
+| `action_kind` value | Matching `owner_method` when a method owns the next step |
+|---|---|
+| `update_scope` | `harness.update_scope` |
+| `prepare_write` | `harness.prepare_write` |
+| `stage_artifact` | `harness.stage_artifact` |
+| `record_run` | `harness.record_run` |
+| `request_user_judgment` | `harness.request_user_judgment` |
+| `record_user_judgment` | `harness.record_user_judgment` |
+| `close_task` | `harness.close_task` |
 
-These values are next-action labels corresponding to public method paths without the `harness.` prefix. They are not method-name values; when a full method name is needed, `NextActionSummary.owner_method` uses the method-name value set.
+`action_kind` is an action category. It is not a method-name value. When a full method name is needed, `NextActionSummary.owner_method` uses the [method-name value set](#method-name-values). Method behavior for the next step stays with the method owner document routed from [API Methods](methods.md).
 
 <a id="response-and-effect-values"></a>
 ## Response and effect values
@@ -107,6 +109,18 @@ no_effect
 ```
 
 `response_kind` and `effect_kind` are branch metadata values. Common branch shape is owned by [API Schema Core](schema-core.md#common-response), method-specific effects are owned by method owner documents, and public error semantics for rejected branches are owned by [API error codes](error-codes.md) and [API error routing](error-routing.md).
+
+<a id="opaque-and-method-scoped-string-fields"></a>
+## Opaque and method-scoped string fields
+
+The fields below are intentionally not global closed value sets:
+
+| Field | Classification | Owner route |
+|---|---|---|
+| `EventRef.event_kind` | Opaque event classification string. Method examples may show event-kind strings, but this document does not publish an exhaustive public event-kind value set. | Shape owner: [API Schema Core](schema-core.md#shared-support-shapes). Event-producing behavior: method owner documents. |
+| `WriteDecisionReason.code` | Method-scoped opaque reason code. Method owners may show example codes without creating a global exhaustive code list. | Shape owner: [API State Schemas](schema-state.md#current-position-display-shapes). Production and local meaning: [`harness.prepare_write`](method-prepare-write.md) and other affected method owners. |
+
+Public `ErrorCode` values are separate and are owned by [API error codes](error-codes.md).
 
 <a id="access-class-values"></a>
 ## Access class values
@@ -291,16 +305,18 @@ close_readiness
 
 `WriteDecisionReason.category` uses:
 
-```text
-scope
-user_judgment
-sensitive_approval
-write_compatibility
-baseline
-surface_capability
-```
+| Value | Category family |
+|---|---|
+| `scope` | Scope compatibility or scope-boundary reason. |
+| `user_judgment` | Required user-owned judgment reason. |
+| `sensitive_approval` | Required separate sensitive-action approval reason. |
+| `write_compatibility` | Write-compatibility reason. |
+| `baseline` | Baseline compatibility reason. |
+| `surface_capability` | Verified surface capability reason. |
 
-These categories classify `harness.prepare_write` decision reasons. They are not `CloseReadinessBlocker` objects and do not evaluate close readiness.
+These categories classify `harness.prepare_write` decision reasons. They are not `CloseReadinessBlocker` objects and do not evaluate close readiness. Method-specific decision behavior and reason production stay with [`harness.prepare_write`](method-prepare-write.md).
+
+`WriteDecisionReason.code` is not a global closed enum. It is a method-scoped opaque reason code; method owners may show example codes without adding them to a global supported list.
 
 `CloseReadinessBlocker.category` uses:
 

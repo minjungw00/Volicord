@@ -15,6 +15,7 @@
 - 지원되는 생명주기, 닫기 상태, 출처 종류, 쓰기 결정 범주, 판단 종류, 표시 형식, 필요 판단 위치, 아티팩트 가림 처리, 아티팩트 가용성 표시, `ValidatorResult.status`, `ValidatorResult.severity`, 보장 표시 등 API 값 집합
 - 지원되는 `change_unit.operation` 값
 - 지원되는 공개 `ValidatorResult.validator_id` 값의 경계
+- 메서드 범위 사유 코드와 불투명 분류 문자열에 대한 값 집합 경계
 - 지원되는 스키마 해석에 영향을 주는 프로필 조건부 또는 예약 값 경계
 - 렌더링된 라벨이 기준 스키마 값이 아니라는 규칙
 
@@ -37,6 +38,7 @@
 - 화면에 보이는 라벨은 표시 텍스트일 뿐이며, 이 문서의 기준 값을 대신하지 않습니다.
 - API 예시는 스키마 담당 문서가 해당 필드를 명시적으로 자유 형식 표시 문자열, 불투명 식별자, 또는 불투명 분류 문자열로 정의하지 않는 한, 이 문서의 지원되는 enum 형태 값을 사용해야 합니다.
 - 문자열 형태 필드는 스키마 담당 문서가 이 문서의 값 집합으로 연결할 때만 이 문서가 담당합니다. 불투명 식별자, 불투명 분류 문자열, 자유 형식 표시 문자열은 해당 스키마 또는 메서드 담당 문서에 남습니다.
+- 메서드 예시가 불투명 사유 코드나 분류 문자열을 보여 주더라도 그 문자열이 지원되는 전역 값이 되지는 않습니다.
 
 <a id="method-name-values"></a>
 ## 메서드 이름 값
@@ -60,12 +62,12 @@ harness.close_task
 <a id="actor-values"></a>
 ## 행위자 값
 
-`ToolEnvelope.actor_kind`와 `UserJudgmentResolution.resolved_by_actor_kind`는 아래 값을 사용합니다.
+`ToolEnvelope.actor_kind`와 `UserJudgmentResolution.resolved_by_actor_kind`는 같은 제어 값 집합을 사용합니다.
 
-```text
-agent
-user
-```
+| 값 | 사용하는 곳 | 담당 문서 경로 |
+|---|---|---|
+| `agent` | 요청 래퍼와 판단 해결 형태. | 형태 담당 문서: [API 코어 스키마](schema-core.md#tool-envelope). 해결 형태 담당 문서: [API 판단 스키마](schema-judgment.md). |
+| `user` | 요청 래퍼와 판단 해결 형태. | 형태 담당 문서: [API 코어 스키마](schema-core.md#tool-envelope). 해결 형태 담당 문서: [API 판단 스키마](schema-judgment.md). |
 
 이 값들은 요청이나 해결 형태가 이름 붙이는 API 행위자를 분류합니다. 이 값만으로 사용자 소유 판단, 승인, 최종 수락, 잔여 위험 수락, `Write Authorization`이 생기지는 않습니다.
 
@@ -74,17 +76,17 @@ user
 
 `NextActionSummary.action_kind`는 아래 값을 사용합니다.
 
-```text
-update_scope
-prepare_write
-stage_artifact
-record_run
-request_user_judgment
-record_user_judgment
-close_task
-```
+| `action_kind` 값 | 다음 단계를 메서드가 담당할 때 대응하는 `owner_method` |
+|---|---|
+| `update_scope` | `harness.update_scope` |
+| `prepare_write` | `harness.prepare_write` |
+| `stage_artifact` | `harness.stage_artifact` |
+| `record_run` | `harness.record_run` |
+| `request_user_judgment` | `harness.request_user_judgment` |
+| `record_user_judgment` | `harness.record_user_judgment` |
+| `close_task` | `harness.close_task` |
 
-이 값들은 `harness.` 접두사 없이 공개 메서드 경로에 대응하는 다음 행동 라벨입니다. 메서드 이름 값은 아닙니다. 전체 메서드 이름이 필요할 때 `NextActionSummary.owner_method`가 메서드 이름 값 집합을 사용합니다.
+`action_kind`는 행동 범주입니다. 메서드 이름 값이 아닙니다. 전체 메서드 이름이 필요할 때 `NextActionSummary.owner_method`는 [메서드 이름 값 집합](#method-name-values)을 사용합니다. 다음 단계의 메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서에 둡니다.
 
 <a id="response-and-effect-values"></a>
 ## 응답과 효과 값
@@ -107,6 +109,18 @@ no_effect
 ```
 
 `response_kind`와 `effect_kind`는 분기 메타데이터 값입니다. 공통 분기 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당하고, 메서드별 효과는 메서드 담당 문서가 담당합니다. 거절 분기의 공개 오류 의미는 [API 오류 코드](error-codes.md)와 [API 오류 처리 경로](error-routing.md)가 담당합니다.
+
+<a id="opaque-and-method-scoped-string-fields"></a>
+## 불투명 문자열과 메서드 범위 문자열 필드
+
+아래 필드는 의도적으로 전역 닫힌 값 집합이 아닙니다.
+
+| 필드 | 분류 | 담당 문서 경로 |
+|---|---|---|
+| `EventRef.event_kind` | 불투명 이벤트 분류 문자열입니다. 메서드 예시가 `event_kind` 문자열을 보여 줄 수 있지만, 이 문서는 빠짐없는 공개 `event_kind` 값 집합을 공개하지 않습니다. | 형태 담당 문서: [API 코어 스키마](schema-core.md#shared-support-shapes). 이벤트를 만드는 동작: 메서드 담당 문서. |
+| `WriteDecisionReason.code` | 메서드 범위의 불투명 사유 코드입니다. 메서드 담당 문서는 전역의 빠짐없는 코드 목록을 만들지 않고 예시 코드를 보여 줄 수 있습니다. | 형태 담당 문서: [API 상태 스키마](schema-state.md#current-position-display-shapes). 생성과 로컬 의미: [`harness.prepare_write`](method-prepare-write.md)와 영향받는 메서드 담당 문서. |
+
+공개 `ErrorCode` 값은 별도이며 [API 오류 코드](error-codes.md)가 담당합니다.
 
 <a id="access-class-values"></a>
 ## 접근 등급 값
@@ -293,16 +307,18 @@ close_readiness
 
 `WriteDecisionReason.category`는 아래 값을 사용합니다.
 
-```text
-scope
-user_judgment
-sensitive_approval
-write_compatibility
-baseline
-surface_capability
-```
+| 값 | 범주 계열 |
+|---|---|
+| `scope` | 범위 호환성 또는 범위 경계 사유. |
+| `user_judgment` | 필요한 사용자 소유 판단 사유. |
+| `sensitive_approval` | 필요한 별도 민감 동작 승인 사유. |
+| `write_compatibility` | 쓰기 호환성 사유. |
+| `baseline` | 기준선 호환성 사유. |
+| `surface_capability` | 확인된 접점 역량 사유. |
 
-이 범주는 `harness.prepare_write` 결정 사유를 분류합니다. `CloseReadinessBlocker` 객체가 아니며 닫기 준비 상태를 평가하지 않습니다.
+이 범주는 `harness.prepare_write` 결정 사유를 분류합니다. `CloseReadinessBlocker` 객체가 아니며 닫기 준비 상태를 평가하지 않습니다. 메서드별 결정 동작과 사유 생성은 [`harness.prepare_write`](method-prepare-write.md)에 둡니다.
+
+`WriteDecisionReason.code`는 전역 닫힌 enum이 아닙니다. 메서드 범위의 불투명 사유 코드이며, 메서드 담당 문서는 예시 코드를 보여 주더라도 전역 지원 목록에 추가하지 않을 수 있습니다.
 
 `CloseReadinessBlocker.category`는 아래 값을 사용합니다.
 

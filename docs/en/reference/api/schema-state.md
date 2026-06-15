@@ -137,6 +137,7 @@ Meaning:
 Owner links:
 - Method behavior and durable effects: method owner documents routed from [API Methods](methods.md) and [Storage Effects](../storage-effects.md)
 
+<a id="current-position-display-shapes"></a>
 ## Current-position display shapes
 
 ```yaml
@@ -170,8 +171,8 @@ WriteDecisionReason:
 
 Meaning:
 - `NextActionSummary` is the canonical next-action display shape.
-- `NextActionSummary.action_kind` is a controlled value string.
-- `owner_method`, when present, names the supported public method that owns the next step.
+- `NextActionSummary.action_kind` is a controlled action-category string.
+- `owner_method`, when present, names the supported public method that owns the next step. It is distinct from `action_kind`.
 - `label` and `blocking_question` are free-form display strings; `required_refs` names records needed for the next step.
 - `WriteAuthoritySummary.status` and `WriteAuthorizationSummary.status` are controlled value strings.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.
@@ -186,6 +187,7 @@ Owner links:
 - `owner_method` values: [method name values](schema-value-sets.md#method-name-values)
 - `WriteAuthoritySummary.status` and `WriteAuthorizationSummary.status` values: [method-local values](schema-value-sets.md#method-local-values)
 - `WriteDecisionReason.category` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
+- `WriteDecisionReason.code` value-set boundary: [opaque and method-scoped string fields](schema-value-sets.md#opaque-and-method-scoped-string-fields)
 - `WriteDecisionReason.code` production and local meaning: method owner documents, including [`harness.prepare_write`](method-prepare-write.md)
 - Public `ErrorCode` values are separate: [API error codes](error-codes.md)
 

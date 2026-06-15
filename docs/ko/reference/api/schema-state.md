@@ -137,6 +137,7 @@ ShapingGap:
 담당 문서 링크:
 - 메서드 동작과 지속 효과: [API 메서드](methods.md)가 안내하는 메서드 담당 문서와 [저장 효과](../storage-effects.md)
 
+<a id="current-position-display-shapes"></a>
 ## 현재 위치 표시 형태
 
 ```yaml
@@ -170,8 +171,8 @@ WriteDecisionReason:
 
 의미:
 - `NextActionSummary`는 기준 다음 행동 표시 형태입니다.
-- `NextActionSummary.action_kind`는 제어 값 문자열입니다.
-- `owner_method`는 값이 있을 때 다음 단계를 담당하는 지원 공개 메서드 이름입니다.
+- `NextActionSummary.action_kind`는 제어되는 행동 범주 문자열입니다.
+- `owner_method`는 값이 있을 때 다음 단계를 담당하는 지원 공개 메서드 이름입니다. `action_kind`와는 구분됩니다.
 - `label`과 `blocking_question`은 자유 형식 표시 문자열이고, `required_refs`는 다음 단계에 필요한 기록을 가리킵니다.
 - `WriteAuthoritySummary.status`와 `WriteAuthorizationSummary.status`는 제어 값 문자열입니다.
 - `WriteDecisionReason`은 `PrepareWriteResult.write_decision_reasons`에서 사용합니다.
@@ -186,6 +187,7 @@ WriteDecisionReason:
 - `owner_method` 값: [메서드 이름 값](schema-value-sets.md#method-name-values)
 - `WriteAuthoritySummary.status`와 `WriteAuthorizationSummary.status` 값: [메서드 내부 값](schema-value-sets.md#method-local-values)
 - `WriteDecisionReason.category` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
+- `WriteDecisionReason.code` 값 집합 경계: [불투명 문자열과 메서드 범위 문자열 필드](schema-value-sets.md#opaque-and-method-scoped-string-fields)
 - `WriteDecisionReason.code` 생성과 로컬 의미: [`harness.prepare_write`](method-prepare-write.md)를 포함한 메서드 담당 문서
 - 공개 `ErrorCode` 값은 별도입니다: [API 오류 코드](error-codes.md)
 

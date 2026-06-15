@@ -199,9 +199,10 @@ EventRef:
 - `ToolError.code`는 공개 `ErrorCode` 값입니다.
 - `ToolError.message`는 자유 형식 표시 문자열입니다.
 - `EventRef.event_id`는 불투명 이벤트 식별자입니다.
-- `EventRef.event_kind`는 불투명 이벤트 분류 문자열입니다. 전달하고 경로를 안내할 만큼 안정적이지만, 이 문서는 빠짐없는 공개 event-kind 값 집합을 공개하지 않습니다.
+- `EventRef.event_kind`는 불투명 이벤트 분류 문자열입니다. 전달하고 경로를 안내할 만큼 안정적이지만, 이 문서는 빠짐없는 공개 `event_kind` 값 집합을 공개하지 않습니다.
 
 담당 문서 링크:
 - 공개 오류 코드 집합: [API 오류 코드](error-codes.md)
 - 오류 세부사항 의미: [API 오류 세부사항](error-details.md)
 - 주 오류 우선순위: [API 오류 우선순위](error-precedence.md)
+- `EventRef.event_kind`의 불투명 경계: [불투명 문자열과 메서드 범위 문자열 필드](schema-value-sets.md#opaque-and-method-scoped-string-fields)

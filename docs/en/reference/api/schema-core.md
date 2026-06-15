@@ -205,3 +205,4 @@ Owner links:
 - public error code set: [API error codes](error-codes.md)
 - error details semantics: [API error details](error-details.md)
 - primary-error precedence: [API error precedence](error-precedence.md)
+- `EventRef.event_kind` opaque boundary: [opaque and method-scoped string fields](schema-value-sets.md#opaque-and-method-scoped-string-fields)
