@@ -2,30 +2,31 @@
 
 This document owns machine-readable `ToolError.details` semantics, detail fields, helper values, and detail constraints for Harness API errors.
 
-It does not define the `ToolError` object shape, public `ErrorCode` meanings, precedence selection, response branch routing, close-readiness blocker routing, display labels, or storage effects.
+Use it for diagnostic keys and helper values under `ToolError.details`. Use adjacent owners for branch routing, public code meaning, schema shape, and display wording.
 
 ## Owner boundaries
 
-This document owns:
+Owned here:
 
 - Semantics for known `ToolError.details` fields and nested detail keys.
 - Helper values used under `ToolError.details`.
-- Constraints that keep machine-readable details separate from display labels and sensitive request bodies.
+- Constraints that keep machine-readable details separate from display wording and sensitive request bodies.
 
-This document does not own:
+Adjacent owners:
 
 - The `ToolError` shape; see [API Schema Core](schema-core.md#shared-support-shapes).
 - Public `ErrorCode` values and meanings; see [API error codes](error-codes.md).
 - Primary-code precedence and conflict selection; see [API error precedence](error-precedence.md).
 - API response branch routing; see [API error routing](error-routing.md).
 - Close-readiness blocker routing; see [API blocker routing](blocker-routing.md).
-- Rendered labels and message wording as display text only; see [Template Bodies](../template-bodies.md).
+- Display wording only; see [Template Bodies](../template-bodies.md).
+- Storage effects; see [Storage Effects](../storage-effects.md).
 
 <a id="machine-readable-error-details"></a>
 
 ## Machine-readable detail constraints
 
-`ToolError.details` is machine-readable diagnostic data. It is not display text and does not replace the public `ToolError.code`.
+`ToolError.details` is machine-readable diagnostic data. It is not display wording and does not replace the public `ToolError.code`.
 
 Detail keys and helper values are exact identifiers.
 
@@ -37,7 +38,7 @@ Required behavior:
 
 Not allowed:
 - Do not localize detail keys or helper values.
-- Do not render them as user-facing labels.
+- Do not render them as user-facing display wording.
 - Do not reuse them as blocker codes without owning method or schema support.
 
 Detail data must stay limited to stable diagnostic facts. It must not expose sensitive request bodies, duplicate method payloads, or define storage effects.

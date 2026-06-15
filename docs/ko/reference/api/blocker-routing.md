@@ -2,33 +2,22 @@
 
 이 문서는 닫기 차단 사유와 API 응답 분기 사이의 경계를 담당합니다. 이 문서는 경계 경로 문서이며, 메서드 동작이나 스키마 형태의 담당 문서가 아닙니다.
 
-API 응답 분기 경계를 먼저 식별한 뒤 이 문서를 사용합니다. 이 문서는 오류와 차단 사유의 경계에서 어떤 담당 문서를 볼지 안내합니다.
+[API 오류 처리 경로](error-routing.md)에서 응답 분기를 먼저 식별한 뒤 이 문서를 사용합니다.
 
-다음 항목은 이 문서가 정의하지 않습니다.
+이 문서가 담당합니다.
 
-- `harness.close_task` 메서드 동작
-- `CloseReadinessBlocker` 형태
-- 차단 사유 범주 값
-- Core 닫기 준비 상태 권한
-- 저장 효과
-- 공개 `ErrorCode` 의미
-- API 오류 우선순위
-- 응답 분기 선택
-- 표시 문구
+- 관심사가 API 오류 쪽인지 닫기 차단 사유 쪽인지에 대한 경계.
+- 공개 오류 코드 묶음이 담당 문서가 정의한 `CloseReadinessBlocker` 데이터와 관련될 수 있는 방식.
+- 닫기 차단 사유와 API 응답 사이의 경계 질문을 보낼 위치.
 
-## 담당 경계
+이웃 담당 문서:
 
-| 관심사 | 담당 문서 |
-|---|---|
-| 닫기 차단 사유와 API 응답 분기 사이의 경계 | 이 문서(차단 사유 처리 경로에 한정) |
-| `harness.close_task` 요청 동작, 평가 순서, 결과 분기, 커밋된 차단 결과 | [`harness.close_task`](method-close-task.md) |
-| `CloseReadinessBlocker` 필드와 중첩 형태 | [API 상태 스키마](schema-state.md) |
-| 정확한 `CloseReadinessBlocker.category` 값과 그 밖의 enum 형태 API 어휘 | [API 값 집합](schema-value-sets.md#state-and-blocker-values) |
-| Core 닫기 준비 상태 권한, 최종 수락, 잔여 위험 수락, 대체 불가 규칙 | [Core 모델의 닫기 준비 상태](../core-model.md#close_task) |
-| 거부 응답, 차단 결과, `dry_run` 미리보기의 API 응답 분기 처리 경로 | [API 오류 처리 경로](error-routing.md) |
-| 공개 `ErrorCode` 의미 | [API 오류 코드](error-codes.md) |
-| API 오류 우선순위와 충돌 선택 | [API 오류 우선순위](error-precedence.md) |
-| 표시 라벨과 렌더링 문구 | [템플릿 본문](../template-bodies.md) |
+- 메서드별 동작: [`harness.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
+- 데이터 형태와 값: [API 상태 스키마](schema-state.md), [API 값 집합](schema-value-sets.md#state-and-blocker-values).
+- 공개 오류 의미와 우선순위: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md).
+- Core 닫기 준비 상태 권한: [Core 모델](../core-model.md#close_task).
+- 저장 효과: [저장 효과](../storage-effects.md).
+- 표시 문구만: [템플릿 본문](../template-bodies.md).
 
 ## 오류와 차단 사유의 공통 경계
 
@@ -58,7 +47,7 @@ API 응답 분기 경계를 먼저 식별한 뒤 이 문서를 사용합니다. 
 | 담당 관심사 | 처리 경로에서의 사용 | 경계 |
 |---|---|---|
 | Core 상태, 종료 전이, 기준 상태, 복구, 쓰기 호환성 | 차단 사유 범주가 붙은 데이터는 Core 또는 메서드가 담당하는 상태 요구사항을 가리킬 수 있습니다. | Core 의미는 [Core 모델](../core-model.md)이, 메서드 동작은 [`harness.close_task`](method-close-task.md)가 담당합니다. |
-| 범위, 사용자 소유 판단, 민감 동작 승인, 접점 역량 | 차단 사유 범주가 붙은 데이터는 닫기가 사용자, 범위, 승인, 접점 역량 담당 문서에 의존함을 보여 줄 수 있습니다. | 차단 사유는 사용자 결정, 승인, 범위 변경, 역량 선언을 기록하지 않습니다. |
+| 범위, 사용자 소유 판단, 민감 동작 승인, 접점 역량 | 차단 사유 범주가 붙은 데이터는 닫기가 사용자, 범위, 민감 동작 승인, 접점 역량 담당 문서에 의존함을 보여 줄 수 있습니다. | 차단 사유는 사용자 결정, 민감 동작 승인, 범위 변경, 역량 선언을 기록하지 않습니다. |
 | 증거와 아티팩트 근거 | 차단 사유 범주가 붙은 데이터는 닫기가 증거 충분성이나 지속 아티팩트 가용성에 의존함을 보여 줄 수 있습니다. | 증거와 아티팩트 의미는 각 담당 문서에 남습니다. 차단 사유 처리 경로는 충분성이나 가용성을 증명하지 않습니다. |
 | 최종 수락과 잔여 위험 | 차단 사유 범주가 붙은 데이터는 닫기가 최종 수락, 잔여 위험 표시, 잔여 위험 수락에 의존함을 보여 줄 수 있습니다. | 차단 사유는 수락이나 위험 수락을 만들지 않습니다. |
 
@@ -75,7 +64,7 @@ API 응답 분기 경계를 먼저 식별한 뒤 이 문서를 사용합니다. 
 
 | 공개 오류 코드와의 관계 | 차단 사유 쪽 경로 | 경계 |
 |---|---|---|
-| 증거, 아티팩트, 수락, 사용자 판단, 승인, 범위, 자율성 경계, 기준 상태, 역량 묶음 | 담당 문서가 정의한 `CloseReadinessBlocker.category`와 `CloseReadinessBlocker.code`를 통해 보냅니다. | 공개 오류 코드 의미는 [API 오류 코드](error-codes.md)에 남습니다. 닫기 차단 사유 형태는 [API 상태 스키마](schema-state.md)가 담당합니다. 차단 사유 범주 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. 메서드별 차단 사유 생성은 [`harness.close_task`](method-close-task.md)가 담당합니다. |
+| 증거, 아티팩트, 수락, 사용자 소유 판단, 민감 동작 승인, 범위, 자율성 경계, 기준 상태, 역량 묶음 | 담당 문서가 정의한 `CloseReadinessBlocker.category`와 `CloseReadinessBlocker.code`를 통해 보냅니다. | 공개 오류 코드 의미는 [API 오류 코드](error-codes.md)에 남습니다. 닫기 차단 사유 형태는 [API 상태 스키마](schema-state.md)가 담당합니다. 차단 사유 범주 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. 메서드별 차단 사유 생성은 [`harness.close_task`](method-close-task.md)가 담당합니다. |
 | 읽기용 보기 최신성 묶음 | 담당 문서가 허용할 때 관련 진단으로 이름 붙일 수 있습니다. | 최신성 진단만으로는 닫기 차단 사유가 아닙니다. |
 | 상태 버전 또는 멱등성 충돌 묶음 | 닫기 차단 사유 표현이 없습니다. | 이 실패는 닫기 준비 상태 평가 전에 거부되며 [API 오류 우선순위](error-precedence.md)에 남습니다. |
 
@@ -94,4 +83,4 @@ API 응답 분기 경계를 먼저 식별한 뒤 이 문서를 사용합니다. 
 - 증거 충분성 또는 아티팩트 가용성
 - 닫기 완료 또는 종료 `Task` 상태
 - 차단 사유의 지속 저장 또는 상태 버전 증가
-- 렌더링 표시 문구
+- 표시 문구

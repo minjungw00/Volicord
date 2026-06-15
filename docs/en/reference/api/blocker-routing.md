@@ -2,33 +2,22 @@
 
 This document owns the routing boundary between close-readiness blockers and API response branches. It is a boundary router, not the method behavior owner or the schema owner.
 
-Use it only after the response branch boundary is known. It routes owner questions at the error/blocker boundary.
+Use it after [API error routing](error-routing.md) identifies the response branch.
 
-This document does not define:
+Owned here:
 
-- `harness.close_task` method behavior
-- `CloseReadinessBlocker` shape
-- blocker category values
-- Core close-readiness authority
-- storage effects
-- public `ErrorCode` meanings
-- API error precedence
-- response-branch selection
-- display wording
+- Whether a concern is on the API error side or the close-readiness blocker side.
+- How public-error families may relate to owner-defined `CloseReadinessBlocker` data.
+- Where to route questions about close-readiness blocker/API boundaries.
 
-## Owner boundaries
+Adjacent owners:
 
-| Concern | Owner |
-|---|---|
-| Close-readiness blocker/API response routing boundary | This document, limited to boundary routing |
-| `harness.close_task` request behavior, evaluation order, result branches, and committed blocked outcomes | [`harness.close_task`](method-close-task.md) |
-| `CloseReadinessBlocker` fields and nested shape | [API State Schemas](schema-state.md) |
-| Exact `CloseReadinessBlocker.category` values and other enum-like API vocabulary | [API Value Sets](schema-value-sets.md#state-and-blocker-values) |
-| Core close-readiness authority, final acceptance, residual-risk acceptance, and non-substitution rules | [Core Model close readiness](../core-model.md#close_task) |
-| API response branch routing for rejected responses, blocked results, and `dry_run` previews | [API error routing](error-routing.md) |
-| Public `ErrorCode` meanings | [API error codes](error-codes.md) |
-| API error precedence and conflict selection | [API error precedence](error-precedence.md) |
-| Display labels and rendered wording | [Template Bodies](../template-bodies.md) |
+- Method-specific behavior: [`harness.close_task`](method-close-task.md) and other method owners.
+- Data shapes and values: [API State Schemas](schema-state.md) and [API Value Sets](schema-value-sets.md#state-and-blocker-values).
+- Public error meanings and precedence: [API error codes](error-codes.md) and [API error precedence](error-precedence.md).
+- Core close-readiness authority: [Core Model](../core-model.md#close_task).
+- Storage effects: [Storage Effects](../storage-effects.md).
+- Display wording only: [Template Bodies](../template-bodies.md).
 
 ## Common error/blocker boundary
 
@@ -36,7 +25,7 @@ This document does not define:
 - A rejected response error code stays on the API error side even when the same underlying condition can affect close readiness. It is not used as a blocker category merely because of that relationship.
 - Close-readiness blockers use the `CloseReadinessBlocker` shape from [API State Schemas](schema-state.md) and the blocker category value set from [API Value Sets](schema-value-sets.md#state-and-blocker-values).
 - Blocker routing applies after API response branch routing and does not replace [API error precedence](error-precedence.md).
-- [API error codes](error-codes.md) defines public error code meanings; this document defines the boundary between those errors and close-readiness blocker routing.
+- The [API error codes](error-codes.md) owner defines public error code meanings; this document defines the boundary between those errors and close-readiness blocker routing.
 
 ## API error and blocker boundary
 
@@ -49,12 +38,16 @@ This document does not define:
 
 ## Category routing boundary
 
-`CloseReadinessBlocker.category` identifies the owner family responsible for close-readiness blocker data after a method or state result has returned that data under its owner contract. Exact category values belong to [API Value Sets](schema-value-sets.md#state-and-blocker-values); this page only routes category-bearing blocker data to the appropriate owner concern. It is not a full blocker taxonomy, schema field table, or close-task evaluation order.
+After a method or state result returns close-readiness blocker data under its owner contract, `CloseReadinessBlocker.category` identifies the owner family for that blocker data.
+
+Exact category values belong to [API Value Sets](schema-value-sets.md#state-and-blocker-values). This page only routes category-bearing blocker data to the appropriate owner concern.
+
+This page is not a full blocker taxonomy, schema field table, or close-task evaluation order.
 
 | Owner concern | Routing use | Boundary |
 |---|---|---|
 | Core state, terminal transition, baseline, recovery, and write compatibility | A category-bearing blocker can point readers to Core or method-owned state requirements. | Core meaning stays with [Core Model](../core-model.md); method behavior stays with [`harness.close_task`](method-close-task.md). |
-| Scope, user-owned judgment, sensitive approval, and surface capability | A category-bearing blocker can show that close depends on a user, scope, approval, or surface-capability owner. | The blocker does not record the user decision, approval, scope change, or capability declaration. |
+| Scope, user-owned judgment, sensitive-action approval, and surface capability | A category-bearing blocker can show that close depends on a user, scope, approval, or surface-capability owner. | The blocker does not record the user decision, sensitive-action approval, scope change, or capability declaration. |
 | Evidence and artifact basis | A category-bearing blocker can show that close depends on evidence sufficiency or persistent artifact availability. | Evidence and artifact semantics stay with their owners; the route does not prove sufficiency or availability. |
 | Final acceptance and residual risk | A category-bearing blocker can show that close depends on final acceptance, residual-risk visibility, or residual-risk acceptance. | The blocker does not create acceptance or risk acceptance. |
 
@@ -71,7 +64,7 @@ Not allowed:
 
 | Public-code relationship | Blocker-side route | Boundary |
 |---|---|---|
-| Evidence, artifact, acceptance, user-judgment, approval, scope, autonomy-boundary, baseline, or capability families | Route through the owner-defined `CloseReadinessBlocker.category` and `CloseReadinessBlocker.code`. | Public code meanings stay with [API error codes](error-codes.md); blocker shape stays with [API State Schemas](schema-state.md), category values stay with [API Value Sets](schema-value-sets.md#state-and-blocker-values), and method-specific blocker production stays with [`harness.close_task`](method-close-task.md). |
+| Evidence, artifact, acceptance, user-judgment, sensitive-action approval, scope, autonomy-boundary, baseline, or capability families | Route through the owner-defined `CloseReadinessBlocker.category` and `CloseReadinessBlocker.code`. | Public code meanings stay with [API error codes](error-codes.md); blocker shape stays with [API State Schemas](schema-state.md), category values stay with [API Value Sets](schema-value-sets.md#state-and-blocker-values), and method-specific blocker production stays with [`harness.close_task`](method-close-task.md). |
 | Readable-view freshness families | May be named as related diagnostics when the owner allows it. | A freshness diagnostic by itself is not a close-readiness blocker. |
 | State-version or idempotency conflict families | No close-readiness blocker representation. | These failures are rejected before close-readiness evaluation and stay with [API error precedence](error-precedence.md). |
 
@@ -90,4 +83,4 @@ Blocker routing classifies close-readiness blocker data. It does not create or r
 - evidence sufficiency or artifact availability
 - close completion or terminal `Task` state
 - blocker persistence or state-version increments
-- rendered display wording
+- display wording

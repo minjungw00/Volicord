@@ -2,20 +2,16 @@
 
 This document owns API response branch routing for rejected responses, blocked results, and `dry_run` previews.
 
-Use it to choose the API response branch. Do not use it to map individual close-readiness blockers, define blocker categories or codes, or decide `harness.close_task` method behavior.
+Use it to choose the API response branch. Do not use it to map individual close-readiness blockers, define blocker categories or codes, or decide method-specific behavior.
 
-It does not define public `ErrorCode` meanings, primary-code precedence, `ToolError.details`, response branch shapes, display labels, close-readiness meaning, or close-readiness blocker category/code routing.
+Owned here:
 
-## Owner boundaries
-
-This document owns:
-
-- The boundary between `ToolRejectedResponse.errors[]`, method-specific blocked results, and `ToolDryRunResponse` preview diagnostics.
+- The branch boundary between `ToolRejectedResponse.errors[]`, method-specific blocked results, and `ToolDryRunResponse` preview diagnostics.
 - Rejected-response routing for request, precondition, state, idempotency, and pre-preview failures.
 - Blocked-result branch routing, including the distinction between `PrepareWriteResult` blocked decisions and `CloseTaskResult(close_state=blocked)`.
 - `dry_run` branch routing for valid read-only calls, valid previews, preview blockers, and pre-commit failures.
 
-This document does not own:
+Adjacent owners:
 
 - Public code meanings; see [API error codes](error-codes.md).
 - Primary public-error selection; see [API error precedence](error-precedence.md).
@@ -23,7 +19,8 @@ This document does not own:
 - `CloseReadinessBlocker`, `WriteDecisionReason`, `PlannedBlocker`, and common branch shapes; see [API State Schemas](schema-state.md) and [API Schema Core](schema-core.md). Category and enum-like values are owned by [API Value Sets](schema-value-sets.md).
 - Close-readiness meaning and non-substitution rules; see [Core Model close readiness](../core-model.md#close_task).
 - Close-readiness blocker/API response boundary and the public-code-to-blocker boundary; see [API blocker routing](blocker-routing.md).
-- `harness.close_task` method-specific blocker behavior; see [`harness.close_task`](method-close-task.md).
+- Method-specific behavior; see [`harness.close_task`](method-close-task.md) and other method owners.
+- Display wording only; see [Template Bodies](../template-bodies.md).
 
 ## Error vs blocker
 
@@ -55,7 +52,7 @@ Dry-run preview:
 
 `ErrorCode` values are public API identifiers. Close-readiness blocker/API response boundaries and public-code-to-blocker boundaries belong to [API blocker routing](blocker-routing.md).
 
-Rendered labels and messages are display text owned by [Template Bodies](../template-bodies.md). They do not define API error or blocker semantics and must not be used as `ErrorCode` values, blocker-code values, or machine-readable `ToolError.details` keys.
+Display wording belongs to [Template Bodies](../template-bodies.md) only. It does not define API error or blocker semantics and must not be used as `ErrorCode` values, blocker-code values, or machine-readable `ToolError.details` keys.
 
 <a id="blocked-and-dry-run-behavior"></a>
 
@@ -94,7 +91,7 @@ Route:
 - `ToolRejectedResponse.errors[]`.
 
 State effect:
-- No records, replay rows, artifacts, events, Write Authorization consumption, close-state mutation, or state-version increment.
+- No records, replay rows, artifacts, events, `Write Authorization` consumption, close-state mutation, or state-version increment.
 
 <a id="rejected-state-or-idempotency-conflict"></a>
 ### State or idempotency conflict

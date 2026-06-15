@@ -1,8 +1,14 @@
 # API errors
 
-Use this error-family router as the first hop to focused API error owners. For exact machine-readable owner routing, use [`docs/doc-index.yaml`](../../../doc-index.yaml).
+Use this error-family router only as the first hop to focused API error owners. For exact machine-readable owner routing, use [`docs/doc-index.yaml`](../../../doc-index.yaml).
 
-This page does not define public error code meaning, error precedence, response branch routing, close-readiness blocker/API boundaries, machine-readable error details, rendered labels, storage effects, or method-specific result payloads.
+This page is not a contract source.
+
+It routes to owners for:
+
+- Public `ErrorCode` meaning, error precedence, and API response branch routing.
+- Close-readiness blocker/API boundaries and `ToolError.details`.
+- Method-specific behavior, schema data shapes, storage effects, and display wording.
 
 ## Error Routes
 
@@ -22,4 +28,4 @@ This page does not define public error code meaning, error precedence, response 
 - State and blocker shapes: [API State Schemas](schema-state.md) and [API Value Sets](schema-value-sets.md).
 - Core concepts that an error may reference: [Core Model](../core-model.md).
 - Storage concerns: [Storage](../storage.md).
-- Display text and rendered labels: [Template Bodies](../template-bodies.md).
+- Display wording only: [Template Bodies](../template-bodies.md).

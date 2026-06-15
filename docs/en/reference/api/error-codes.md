@@ -2,25 +2,26 @@
 
 This document owns public `ErrorCode` identifiers, meanings, and occurrence summaries for Harness API responses.
 
-It does not define primary-error precedence, response branch routing, close-readiness blocker routing, `ToolError.details`, response branch shapes, display labels, storage effects, or security guarantees.
+Use it to answer what a public code means and where that code may appear. Use adjacent owners for selection order, branch routing, schemas, storage effects, security guarantees, and display wording.
 
 ## Owner boundaries
 
-This document owns:
+Owned here:
 
 - The public `ErrorCode` value set.
 - Public meanings and allowed public occurrence paths for each code.
 - Whether a code may appear in `ToolRejectedResponse.errors[]` or owner-defined result paths.
 
-This document does not own:
+Adjacent owners:
 
 - Primary-code selection and state-version conflict behavior; see [API error precedence](error-precedence.md).
 - Rejected-response, blocked-result, and `dry_run` branch routing; see [API error routing](error-routing.md).
 - Close-readiness blocker/API response boundary; see [API blocker routing](blocker-routing.md).
-- `harness.close_task` method-specific blocker behavior; see [`harness.close_task`](method-close-task.md).
+- Method-specific behavior; see [`harness.close_task`](method-close-task.md) and other method owners.
 - `ToolError.details` fields and helper values; see [API error details](error-details.md).
 - Common response branch shapes; see [API Schema Core](schema-core.md).
-- Rendered labels and message wording as display text only; see [Template Bodies](../template-bodies.md).
+- Display wording only; see [Template Bodies](../template-bodies.md).
+- Storage effects; see [Storage Effects](../storage-effects.md).
 
 <a id="error-taxonomy"></a>
 
@@ -57,8 +58,8 @@ This document does not own:
 
 | Occurrence path | Rule |
 |---|---|
-| Rejected-response errors | Public `ErrorCode` values appear in `ToolRejectedResponse.errors[]` for rejected public API requests. |
-| Owner-defined result paths | A method, schema, or close-readiness owner may define whether a public error-code family appears on an owner-defined result path. That result-path use does not change the public meaning owned here. |
+| Rejected-response errors | Public `ErrorCode` values may appear in `ToolRejectedResponse.errors[]` for rejected public API requests. Branch routing belongs to [API error routing](error-routing.md). |
+| Owner-defined result paths | A method, schema, or close-readiness owner may define whether a public error-code family appears on an owner-defined result path. That use does not change the public meaning owned here. |
 | Error/blocker boundary | See [API blocker routing](blocker-routing.md) for the owner boundary between public API errors and `CloseReadinessBlocker` data. |
 
 <a id="errorcode-validation-failed"></a>
@@ -70,10 +71,6 @@ Used in:
 Condition:
 - Invalid payload shape, enum value, activation rule, profile validation, or artifact input shape.
 
-State effect:
-- No committed operation proceeds.
-- No owner state mutation occurs.
-
 <a id="errorcode-state-version-conflict"></a>
 ### `STATE_VERSION_CONFLICT`
 
@@ -81,11 +78,7 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- `expected_state_version` is stale.
-
-State effect:
-- No committed operation proceeds.
-- No owner state mutation occurs.
+- A public freshness or idempotency conflict is present. Stale `expected_state_version` is the request-state form.
 
 Notes:
 - Stale `WriteAuthorization.basis_state_version` and idempotency request-hash conflicts are covered in [State version conflict](error-precedence.md#state-conflict-behavior).
@@ -99,10 +92,6 @@ Used in:
 Condition:
 - Required Core, MCP, or surface reachability is unavailable.
 
-State effect:
-- No committed operation proceeds.
-- No owner state mutation occurs.
-
 <a id="errorcode-local-access-mismatch"></a>
 ### `LOCAL_ACCESS_MISMATCH`
 
@@ -112,10 +101,6 @@ Used in:
 Condition:
 - Reachable local access does not match the registered transport, session, binding, project, or surface instance, or access was revoked.
 
-State effect:
-- No committed operation proceeds.
-- No owner state mutation occurs.
-
 <a id="errorcode-no-active-task"></a>
 ### `NO_ACTIVE_TASK`
 
@@ -123,11 +108,7 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- A Task is required but none is active or addressed.
-
-State effect:
-- No committed operation proceeds.
-- No owner state mutation occurs.
+- A `Task` is required but no current or addressed `Task` is available.
 
 <a id="errorcode-no-active-change-unit"></a>
 ### `NO_ACTIVE_CHANGE_UNIT`
@@ -137,11 +118,7 @@ Used in:
 - Owner-defined result paths
 
 Condition:
-- A write-capable or close-relevant operation lacks an active scoped Change Unit.
-
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
+- A write-capable or close-relevant operation lacks a current Change Unit with scope.
 
 <a id="errorcode-baseline-stale"></a>
 ### `BASELINE_STALE`
@@ -153,10 +130,6 @@ Used in:
 Condition:
 - The baseline no longer matches the repository state required by the operation.
 
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
-
 <a id="errorcode-scope-required"></a>
 ### `SCOPE_REQUIRED`
 
@@ -167,10 +140,6 @@ Used in:
 Condition:
 - Scope confirmation is required before the requested write or action can proceed.
 
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
-
 <a id="errorcode-scope-violation"></a>
 ### `SCOPE_VIOLATION`
 
@@ -179,11 +148,7 @@ Used in:
 - Owner-defined result paths
 
 Condition:
-- Intended or observed paths or sensitive categories exceed active scope or stored authorized scope.
-
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
+- Intended or observed paths or sensitive categories exceed current scope or stored authorized scope.
 
 <a id="errorcode-write-authorization-required"></a>
 ### `WRITE_AUTHORIZATION_REQUIRED`
@@ -192,11 +157,7 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- A write-capable Run lacks a required Write Authorization.
-
-State effect:
-- No committed operation proceeds.
-- No owner state mutation occurs.
+- A write-capable Run lacks a required `Write Authorization`.
 
 <a id="errorcode-write-authorization-invalid"></a>
 ### `WRITE_AUTHORIZATION_INVALID`
@@ -205,11 +166,7 @@ Used in:
 - `ToolRejectedResponse.errors[]`
 
 Condition:
-- Supplied Write Authorization is expired, revoked, consumed, or incompatible for a non-version reason.
-
-State effect:
-- No committed operation proceeds.
-- No owner state mutation occurs.
+- Supplied `Write Authorization` is expired, revoked, consumed, or incompatible for a non-version reason.
 
 <a id="errorcode-approval-denied"></a>
 ### `APPROVAL_DENIED`
@@ -221,10 +178,6 @@ Used in:
 Condition:
 - Required sensitive-action approval was denied.
 
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
-
 <a id="errorcode-approval-expired"></a>
 ### `APPROVAL_EXPIRED`
 
@@ -234,10 +187,6 @@ Used in:
 
 Condition:
 - Required sensitive-action approval expired or drifted from scope or baseline.
-
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
 
 <a id="errorcode-approval-required"></a>
 ### `APPROVAL_REQUIRED`
@@ -249,10 +198,6 @@ Used in:
 Condition:
 - Sensitive-action approval is required before proceeding.
 
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
-
 <a id="errorcode-decision-unresolved"></a>
 ### `DECISION_UNRESOLVED`
 
@@ -261,11 +206,7 @@ Used in:
 - Owner-defined result paths
 
 Condition:
-- A relevant user judgment is pending, deferred without coverage, rejected, blocked, stale, superseded, or incompatible.
-
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
+- A relevant user-owned judgment is pending, deferred without coverage, rejected, blocked, stale, superseded, or incompatible.
 
 <a id="errorcode-autonomy-boundary-exceeded"></a>
 ### `AUTONOMY_BOUNDARY_EXCEEDED`
@@ -275,11 +216,7 @@ Used in:
 - Owner-defined result paths
 
 Condition:
-- The intended operation exceeds the active Change Unit Autonomy Boundary.
-
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
+- The intended operation exceeds the current Change Unit Autonomy Boundary.
 
 <a id="errorcode-decision-required"></a>
 ### `DECISION_REQUIRED`
@@ -291,10 +228,6 @@ Used in:
 Condition:
 - A blocking user-owned judgment is required before proceeding.
 
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
-
 <a id="errorcode-capability-insufficient"></a>
 ### `CAPABILITY_INSUFFICIENT`
 
@@ -304,10 +237,6 @@ Used in:
 
 Condition:
 - The surface is recognized but lacks a required access class, observation, capture, guarantee support, or supported behavior.
-
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
 
 <a id="errorcode-evidence-insufficient"></a>
 ### `EVIDENCE_INSUFFICIENT`
@@ -319,10 +248,6 @@ Used in:
 Condition:
 - Required evidence coverage is absent, partial, stale, or blocked.
 
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
-
 <a id="errorcode-residual-risk-not-visible"></a>
 ### `RESIDUAL_RISK_NOT_VISIBLE`
 
@@ -332,10 +257,6 @@ Used in:
 
 Condition:
 - Known close-relevant residual risk has not been made visible before final acceptance or close.
-
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
 
 <a id="errorcode-acceptance-required"></a>
 ### `ACCEPTANCE_REQUIRED`
@@ -347,10 +268,6 @@ Used in:
 Condition:
 - Required final acceptance is pending, rejected, or incompatible with the visible result basis.
 
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
-
 <a id="errorcode-projection-stale"></a>
 ### `PROJECTION_STALE`
 
@@ -359,10 +276,6 @@ Used in:
 
 Condition:
 - A requested readable status or view is stale or failed.
-
-State effect:
-- No committed operation proceeds.
-- No owner state mutation occurs.
 
 <a id="errorcode-artifact-missing"></a>
 ### `ARTIFACT_MISSING`
@@ -374,10 +287,6 @@ Used in:
 Condition:
 - A referenced persistent artifact is missing, unavailable, unusable for the close basis, or failed integrity/metadata checks.
 
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
-
 <a id="errorcode-validator-failed"></a>
 ### `VALIDATOR_FAILED`
 
@@ -387,7 +296,3 @@ Used in:
 
 Condition:
 - Fallback when a required validator or blocker check failed and no more specific typed code applies.
-
-State effect:
-- Rejection path: no committed operation proceeds and no owner state mutation occurs.
-- Owner-defined result paths: only the owning method or schema may define committed result effects.
