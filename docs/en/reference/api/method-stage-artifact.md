@@ -101,23 +101,23 @@ On success, the method creates a transient staging result only. Exact storage ef
 method: harness.stage_artifact
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_trace_001
+    task_id: task_trace_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_stage_001
+    surface_id: surface_artifact
+    request_id: req_stage_trace_001
     idempotency_key: null
     expected_state_version: null
     dry_run: false
     locale: en-US
-  task_id: task_456
-  display_name: "invoice_download_test.log"
+  task_id: task_trace_001
+  display_name: "diagnostic_trace.log"
   content_type: text/plain
   redaction_state: none
-  safe_bytes_or_notice: "Invoice download confirmation tests passed."
+  safe_bytes_or_notice: "Local trace sample captured for debugging."
   expected_sha256: null
   expected_size_bytes: null
-  relation_hint: "test_log"
+  relation_hint: "diagnostic_log"
 ```
 
 ## Representative response
@@ -132,14 +132,14 @@ base:
   state_version: null
   events: []
 staged_artifact_handle:
-  handle_id: staged_artifact_invoice_download_log_001
-  project_id: proj_123
-  task_id: task_456
-  created_by_surface_id: surface_local
-  created_by_surface_instance_id: surface_instance_01
+  handle_id: staged_trace_log_001
+  project_id: proj_trace_001
+  task_id: task_trace_001
+  created_by_surface_id: surface_artifact
+  created_by_surface_instance_id: surface_instance_trace_01
   content_type: text/plain
-  sha256: sha256:example
-  size_bytes: 52
+  sha256: sha256:example-trace
+  size_bytes: 42
   redaction_state: none
   expires_at: "<future-expiration-timestamp>"
   consumed: false

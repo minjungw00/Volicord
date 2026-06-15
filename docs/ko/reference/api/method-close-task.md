@@ -238,16 +238,16 @@ API 경계 블록:
 method: harness.close_task
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_close_001
+    task_id: task_close_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_close_check_001
+    surface_id: surface_close
+    request_id: req_close_check_local_001
     idempotency_key: null
     expected_state_version: null
     dry_run: false
-    locale: ko-KR
-  task_id: task_456
+    locale: en-US
+  task_id: task_close_001
   intent: check
   close_reason: null
   superseding_task_id: null
@@ -256,36 +256,41 @@ params:
 
 ### 대표 차단 확인 응답
 
-인보이스 PDF 다운로드 확인 문구에 대한 사용자 소유 판단이 아직 필요한 `Task`의 읽기 전용 `CloseTaskResult`:
+최종 수락이 아직 없는 `Task`의 읽기 전용 `CloseTaskResult`:
 
 ```yaml
 base:
   response_kind: result
   effect_kind: read_only
   dry_run: false
-  state_version: 22
+  state_version: 72
   events: []
 close_state: blocked
 state:
-  project_id: proj_123
-  state_version: 22
+  project_id: proj_close_001
+  state_version: 72
   task_ref:
     record_kind: task
-    record_id: task_456
-    project_id: proj_123
-    task_id: task_456
-    state_version: 22
+    record_id: task_close_001
+    project_id: proj_close_001
+    task_id: task_close_001
+    state_version: 72
 blockers:
-  - category: user_judgment
-    code: missing_user_judgment
-    message: "인보이스 PDF 다운로드 확인 문구에 대한 사용자 소유 판단이 아직 필요합니다."
+  - category: final_acceptance
+    code: missing_final_acceptance
+    message: "Final acceptance is still required before this Task can close."
     related_refs: []
     next_actions:
-      - action_kind: record_user_judgment
-        owner_method: harness.record_user_judgment
-        label: "확인 문구에 대한 사용자의 답을 기록합니다."
-        blocking_question: "인보이스 PDF 다운로드 확인 문구가 요청한 결과와 맞습니까?"
-        required_refs: []
+      - action_kind: request_user_judgment
+        owner_method: harness.request_user_judgment
+        label: "Request final acceptance from the user."
+        blocking_question: "Has the user given final acceptance for the completed Task?"
+        required_refs:
+          - record_kind: task
+            record_id: task_close_001
+            project_id: proj_close_001
+            task_id: task_close_001
+            state_version: 72
 evidence_summary: null
 artifact_refs: []
 ```

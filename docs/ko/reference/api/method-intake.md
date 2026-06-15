@@ -120,24 +120,24 @@
 method: harness.intake
 params:
   envelope:
-    project_id: proj_123
+    project_id: proj_onboard_001
     task_id: null
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_intake_001
-    idempotency_key: idem_intake_001
+    surface_id: surface_onboard
+    request_id: req_intake_onboard_001
+    idempotency_key: idem_intake_onboard_001
     expected_state_version: 17
     dry_run: false
-    locale: ko-KR
-  plain_language_request: "인보이스 PDF 다운로드 전에 확인 단계를 추가한다."
+    locale: en-US
+  plain_language_request: "Create a first-run checklist for new workspace setup."
   requested_mode: work
   resume_policy: create_new
   initial_scope:
-    boundary: "인보이스 PDF 다운로드 확인."
+    boundary: "First-run checklist for new workspace setup."
     non_goals:
-      - "인보이스 생성 방식 변경."
+      - "Changing account creation."
     acceptance_criteria:
-      - "인보이스 PDF를 다운로드하려면 명시적 확인이 필요하다."
+      - "New users see the checklist after opening a workspace."
   initial_context_refs: []
 ```
 
@@ -152,23 +152,23 @@ base:
   dry_run: false
   state_version: 18
   events:
-    - event_id: evt_1001
+    - event_id: evt_onboard_001
       event_kind: task_intake
 task_ref:
   record_kind: task
-  record_id: task_456
-  project_id: proj_123
-  task_id: task_456
+  record_id: task_onboard_001
+  project_id: proj_onboard_001
+  task_id: task_onboard_001
   state_version: 18
 change_unit_ref: null
 state:
-  project_id: proj_123
+  project_id: proj_onboard_001
   state_version: 18
   task_ref:
     record_kind: task
-    record_id: task_456
-    project_id: proj_123
-    task_id: task_456
+    record_id: task_onboard_001
+    project_id: proj_onboard_001
+    task_id: task_onboard_001
     state_version: 18
   mode: work
   lifecycle:
@@ -176,24 +176,24 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "인보이스 PDF 다운로드 전에 확인 단계를 추가한다."
-  scope_summary: "인보이스 PDF 다운로드 확인."
+  goal_summary: "Create a first-run checklist for new workspace setup."
+  scope_summary: "First-run checklist for new workspace setup."
   non_goals:
-    - "인보이스 생성 방식 변경."
+    - "Changing account creation."
   acceptance_criteria:
-    - "인보이스 PDF를 다운로드하려면 명시적 확인이 필요하다."
+    - "New users see the checklist after opening a workspace."
   active_change_unit_ref: null
   blocker_refs: []
 next_actions:
   - action_kind: update_scope
     owner_method: harness.update_scope
-    label: "쓰기 확인 전에 첫 현재 적용 Change Unit을 만든다."
+    label: "Create the first currently applied Change Unit before write checking."
     blocking_question: null
     required_refs:
       - record_kind: task
-        record_id: task_456
-        project_id: proj_123
-        task_id: task_456
+        record_id: task_onboard_001
+        project_id: proj_onboard_001
+        task_id: task_onboard_001
         state_version: 18
 ```
 

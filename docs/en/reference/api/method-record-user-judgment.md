@@ -111,27 +111,29 @@ On commit, the method may persist judgment resolution and dependent blocker or s
 
 ## Minimal valid request
 
+Method-local precondition: `uj_empty_001` is an existing pending `product_decision` for `task_empty_001`.
+
 ```yaml
 method: harness.record_user_judgment
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_empty_001
+    task_id: task_empty_001
     actor_kind: user
-    surface_id: surface_local
-    request_id: req_judgment_answer_001
-    idempotency_key: idem_judgment_answer_001
-    expected_state_version: 22
+    surface_id: surface_empty
+    request_id: req_empty_answer_001
+    idempotency_key: idem_empty_answer_001
+    expected_state_version: 62
     dry_run: false
     locale: en-US
-  user_judgment_id: uj_001
+  user_judgment_id: uj_empty_001
   judgment_kind: product_decision
-  selected_option_id: accept
+  selected_option_id: keep
   answer:
     product_decision:
       judgment:
         decision: accepted
-        rationale: "The invoice download confirmation copy is clear enough for this Task."
+        rationale: "The empty-state illustration is suitable for this Task."
     technical_decision: null
     scope_decision: null
     sensitive_action_scope: null
@@ -151,57 +153,57 @@ base:
   response_kind: result
   effect_kind: core_committed
   dry_run: false
-  state_version: 23
+  state_version: 63
   events:
-    - event_id: evt_1006
+    - event_id: evt_empty_001
       event_kind: user_judgment_recorded
 user_judgment_ref:
   record_kind: user_judgment
-  record_id: uj_001
-  project_id: proj_123
-  task_id: task_456
-  state_version: 23
+  record_id: uj_empty_001
+  project_id: proj_empty_001
+  task_id: task_empty_001
+  state_version: 63
 user_judgment:
-  judgment_id: uj_001
-  project_id: proj_123
-  task_id: task_456
-  change_unit_id: cu_001
+  judgment_id: uj_empty_001
+  project_id: proj_empty_001
+  task_id: task_empty_001
+  change_unit_id: cu_empty_001
   judgment_kind: product_decision
   status: resolved
   presentation: short
-  question: "Is the invoice download confirmation copy sufficient for this Task?"
+  question: "Should the empty-state illustration be kept?"
   options:
-    - option_id: accept
-      label: "Sufficient"
-      description: "Record the user-owned product decision that the copy is sufficient."
-      consequence: "Close readiness can evaluate this product decision as resolved."
+    - option_id: keep
+      label: "Keep illustration"
+      description: "Record the user-owned product decision to keep the illustration."
+      consequence: "The pending empty-state decision can be treated as resolved."
       is_default: true
-    - option_id: revise
-      label: "Revise"
-      description: "Keep the Task open for revised confirmation copy."
-      consequence: "Close remains blocked on this product decision."
+    - option_id: replace
+      label: "Replace illustration"
+      description: "Record that the illustration should be replaced."
+      consequence: "The Task remains open for an illustration replacement."
       is_default: false
   context:
-    summary: "The confirmation copy appears before invoice PDF download and tells users they are about to download a billing document."
+    summary: "The empty-state screen has a proposed illustration and needs a user-owned product decision."
     related_refs: []
     artifact_refs: []
     visible_risks: []
     constraints:
-      - "Invoice PDF download confirmation is in scope; invoice generation is out of scope."
+      - "Only the empty-state illustration choice is covered by this judgment."
   affected_refs:
     - record_kind: task
-      record_id: task_456
-      project_id: proj_123
-      task_id: task_456
-      state_version: 21
-  required_for: close
+      record_id: task_empty_001
+      project_id: proj_empty_001
+      task_id: task_empty_001
+      state_version: 62
+  required_for: acceptance
   resolution:
-    selected_option_id: accept
+    selected_option_id: keep
     answer:
       product_decision:
         judgment:
           decision: accepted
-          rationale: "The invoice download confirmation copy is clear enough for this Task."
+          rationale: "The empty-state illustration is suitable for this Task."
     note: null
     accepted_risks: []
     resolved_by_actor_kind: user
@@ -210,13 +212,13 @@ user_judgment:
   resolved_at: "<example-resolved-at>"
 updated_refs:
   - record_kind: user_judgment
-    record_id: uj_001
-    project_id: proj_123
-    task_id: task_456
-    state_version: 23
+    record_id: uj_empty_001
+    project_id: proj_empty_001
+    task_id: task_empty_001
+    state_version: 63
 state:
-  project_id: proj_123
-  state_version: 23
+  project_id: proj_empty_001
+  state_version: 63
 next_actions:
   - action_kind: close_task
     owner_method: harness.close_task
@@ -224,10 +226,10 @@ next_actions:
     blocking_question: null
     required_refs:
       - record_kind: user_judgment
-        record_id: uj_001
-        project_id: proj_123
-        task_id: task_456
-        state_version: 23
+        record_id: uj_empty_001
+        project_id: proj_empty_001
+        task_id: task_empty_001
+        state_version: 63
 ```
 
 ## Owner links

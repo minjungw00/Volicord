@@ -111,27 +111,29 @@
 
 ## 최소 유효 요청
 
+메서드 안의 전제: `uj_empty_001`은 `task_empty_001`에 속한 기존 대기 `product_decision`입니다.
+
 ```yaml
 method: harness.record_user_judgment
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_empty_001
+    task_id: task_empty_001
     actor_kind: user
-    surface_id: surface_local
-    request_id: req_judgment_answer_001
-    idempotency_key: idem_judgment_answer_001
-    expected_state_version: 22
+    surface_id: surface_empty
+    request_id: req_empty_answer_001
+    idempotency_key: idem_empty_answer_001
+    expected_state_version: 62
     dry_run: false
-    locale: ko-KR
-  user_judgment_id: uj_001
+    locale: en-US
+  user_judgment_id: uj_empty_001
   judgment_kind: product_decision
-  selected_option_id: accept
+  selected_option_id: keep
   answer:
     product_decision:
       judgment:
         decision: accepted
-        rationale: "인보이스 다운로드 확인 문구는 이 Task에 충분히 명확합니다."
+        rationale: "The empty-state illustration is suitable for this Task."
     technical_decision: null
     scope_decision: null
     sensitive_action_scope: null
@@ -151,57 +153,57 @@ base:
   response_kind: result
   effect_kind: core_committed
   dry_run: false
-  state_version: 23
+  state_version: 63
   events:
-    - event_id: evt_1006
+    - event_id: evt_empty_001
       event_kind: user_judgment_recorded
 user_judgment_ref:
   record_kind: user_judgment
-  record_id: uj_001
-  project_id: proj_123
-  task_id: task_456
-  state_version: 23
+  record_id: uj_empty_001
+  project_id: proj_empty_001
+  task_id: task_empty_001
+  state_version: 63
 user_judgment:
-  judgment_id: uj_001
-  project_id: proj_123
-  task_id: task_456
-  change_unit_id: cu_001
+  judgment_id: uj_empty_001
+  project_id: proj_empty_001
+  task_id: task_empty_001
+  change_unit_id: cu_empty_001
   judgment_kind: product_decision
   status: resolved
   presentation: short
-  question: "이 Task에서 인보이스 다운로드 확인 문구가 충분합니까?"
+  question: "Should the empty-state illustration be kept?"
   options:
-    - option_id: accept
-      label: "충분함"
-      description: "문구가 충분하다는 사용자 소유 제품 판단을 기록합니다."
-      consequence: "닫기 준비 상태가 이 제품 판단을 해결된 것으로 평가할 수 있습니다."
+    - option_id: keep
+      label: "Keep illustration"
+      description: "Record the user-owned product decision to keep the illustration."
+      consequence: "The pending empty-state decision can be treated as resolved."
       is_default: true
-    - option_id: revise
-      label: "수정 필요"
-      description: "확인 문구를 더 수정해야 하므로 Task를 열어 둡니다."
-      consequence: "이 제품 판단이 남아 있어 닫기가 계속 차단됩니다."
+    - option_id: replace
+      label: "Replace illustration"
+      description: "Record that the illustration should be replaced."
+      consequence: "The Task remains open for an illustration replacement."
       is_default: false
   context:
-    summary: "확인 문구는 인보이스 PDF 다운로드 전에 표시되며, 사용자가 청구 문서를 다운로드하려 한다는 점을 알립니다."
+    summary: "The empty-state screen has a proposed illustration and needs a user-owned product decision."
     related_refs: []
     artifact_refs: []
     visible_risks: []
     constraints:
-      - "인보이스 PDF 다운로드 확인은 범위 안에 있고, 인보이스 생성 방식은 범위 밖입니다."
+      - "Only the empty-state illustration choice is covered by this judgment."
   affected_refs:
     - record_kind: task
-      record_id: task_456
-      project_id: proj_123
-      task_id: task_456
-      state_version: 21
-  required_for: close
+      record_id: task_empty_001
+      project_id: proj_empty_001
+      task_id: task_empty_001
+      state_version: 62
+  required_for: acceptance
   resolution:
-    selected_option_id: accept
+    selected_option_id: keep
     answer:
       product_decision:
         judgment:
           decision: accepted
-          rationale: "인보이스 다운로드 확인 문구는 이 Task에 충분히 명확합니다."
+          rationale: "The empty-state illustration is suitable for this Task."
     note: null
     accepted_risks: []
     resolved_by_actor_kind: user
@@ -210,24 +212,24 @@ user_judgment:
   resolved_at: "<example-resolved-at>"
 updated_refs:
   - record_kind: user_judgment
-    record_id: uj_001
-    project_id: proj_123
-    task_id: task_456
-    state_version: 23
+    record_id: uj_empty_001
+    project_id: proj_empty_001
+    task_id: task_empty_001
+    state_version: 63
 state:
-  project_id: proj_123
-  state_version: 23
+  project_id: proj_empty_001
+  state_version: 63
 next_actions:
   - action_kind: close_task
     owner_method: harness.close_task
-    label: "사용자 소유 제품 판단을 기록한 뒤 닫기 준비 상태를 평가한다."
+    label: "Evaluate close readiness after recording the user's product decision."
     blocking_question: null
     required_refs:
       - record_kind: user_judgment
-        record_id: uj_001
-        project_id: proj_123
-        task_id: task_456
-        state_version: 23
+        record_id: uj_empty_001
+        project_id: proj_empty_001
+        task_id: task_empty_001
+        state_version: 63
 ```
 
 ## 담당 문서 링크

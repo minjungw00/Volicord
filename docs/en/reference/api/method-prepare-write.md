@@ -127,32 +127,31 @@ On commit, the method may persist `Write Authorization` or write-decision state 
 
 ## Minimal valid request
 
-This example uses `billing_document_download` as a sample `sensitive_categories` string. It does not define the sensitive-category value set.
+This example uses `account_preference_update` as a sample `sensitive_categories` string. It does not define the sensitive-category value set.
 
 ```yaml
 method: harness.prepare_write
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_pref_001
+    task_id: task_pref_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_prepare_001
-    idempotency_key: idem_prepare_001
+    surface_id: surface_write
+    request_id: req_prepare_pref_001
+    idempotency_key: idem_prepare_pref_001
     expected_state_version: 19
     dry_run: false
     locale: en-US
-  task_id: task_456
-  change_unit_id: cu_001
-  intended_operation: "update invoice PDF download flow to require confirmation"
+  task_id: task_pref_001
+  change_unit_id: cu_pref_001
+  intended_operation: "update profile preference save flow"
   intended_paths:
-    - src/billing/invoice-download.ts
-    - src/billing/invoice-download-confirmation.ts
-    - tests/invoice-download.test.ts
+    - src/preferences/profile-save.ts
+    - src/preferences/profile-save.test.ts
   product_file_write_intended: true
   sensitive_categories:
-    - billing_document_download
-  baseline_ref: baseline_invoice_download_001
+    - account_preference_update
+  baseline_ref: baseline_pref_001
 ```
 
 ## Representative response
@@ -161,7 +160,7 @@ params:
 
 This branch applies after the separate sensitive-action approval is already present.
 
-`uj_sensitive_invoice_001` represents an existing resolved `judgment_kind=sensitive_approval` whose `SensitiveActionScope` matches the invoice download step. It is not ordinary write approval, final acceptance, residual-risk acceptance, or `Write Authorization`.
+`uj_sensitive_pref_001` represents an existing resolved `judgment_kind=sensitive_approval` whose `SensitiveActionScope` matches the profile preference update. It is not ordinary write approval, final acceptance, residual-risk acceptance, or `Write Authorization`.
 
 ```yaml
 base:
@@ -170,45 +169,44 @@ base:
   dry_run: false
   state_version: 20
   events:
-    - event_id: evt_1003
+    - event_id: evt_pref_001
       event_kind: write_authorization_created
 decision: allowed
 state:
-  project_id: proj_123
+  project_id: proj_pref_001
   state_version: 20
   task_ref:
     record_kind: task
-    record_id: task_456
-    project_id: proj_123
-    task_id: task_456
+    record_id: task_pref_001
+    project_id: proj_pref_001
+    task_id: task_pref_001
     state_version: 20
 write_authorization_ref:
   record_kind: write_authorization
-  record_id: wa_001
-  project_id: proj_123
-  task_id: task_456
+  record_id: wa_pref_001
+  project_id: proj_pref_001
+  task_id: task_pref_001
   state_version: 20
 write_authorization:
-  authorization_id: wa_001
+  authorization_id: wa_pref_001
   status: active
   basis_state_version: 19
   authorized_paths:
-    - src/billing/invoice-download.ts
-    - src/billing/invoice-download-confirmation.ts
-    - tests/invoice-download.test.ts
+    - src/preferences/profile-save.ts
+    - src/preferences/profile-save.test.ts
 authorization_effect: created
 active_user_judgment_refs:
   - record_kind: user_judgment
-    record_id: uj_sensitive_invoice_001
-    project_id: proj_123
-    task_id: task_456
+    record_id: uj_sensitive_pref_001
+    project_id: proj_pref_001
+    task_id: task_pref_001
     state_version: 19
 write_decision_reasons: []
 user_judgment_candidate: null
 guarantee_display:
   level: cooperative
-  notes:
-    - "Write Authorization is a Harness compatibility record, not OS permission."
+  basis: "Write Authorization is a Harness compatibility record, not OS permission."
+  capability_refs: []
 ```
 
 ### Approval-required branch excerpt
@@ -221,8 +219,8 @@ write_authorization_ref: null
 write_authorization: null
 authorization_effect: none
 write_decision_reasons:
-  - code: sensitive_invoice_download
-    message: "Invoice PDF download requires separate sensitive-action approval before Write Authorization."
+  - code: sensitive_account_preference
+    message: "Profile preference updates require separate sensitive-action approval before Write Authorization."
 ```
 
 ## Owner links

@@ -238,16 +238,16 @@ The examples are intentionally compact. They illustrate the method branch and ke
 method: harness.close_task
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_close_001
+    task_id: task_close_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_close_check_001
+    surface_id: surface_close
+    request_id: req_close_check_local_001
     idempotency_key: null
     expected_state_version: null
     dry_run: false
     locale: en-US
-  task_id: task_456
+  task_id: task_close_001
   intent: check
   close_reason: null
   superseding_task_id: null
@@ -256,36 +256,41 @@ params:
 
 ### Representative blocked check response
 
-Read-only `CloseTaskResult` for a `Task` whose invoice PDF download confirmation copy still needs a user-owned judgment:
+Read-only `CloseTaskResult` for a `Task` whose final acceptance is still missing:
 
 ```yaml
 base:
   response_kind: result
   effect_kind: read_only
   dry_run: false
-  state_version: 22
+  state_version: 72
   events: []
 close_state: blocked
 state:
-  project_id: proj_123
-  state_version: 22
+  project_id: proj_close_001
+  state_version: 72
   task_ref:
     record_kind: task
-    record_id: task_456
-    project_id: proj_123
-    task_id: task_456
-    state_version: 22
+    record_id: task_close_001
+    project_id: proj_close_001
+    task_id: task_close_001
+    state_version: 72
 blockers:
-  - category: user_judgment
-    code: missing_user_judgment
-    message: "User-owned judgment is still required for the invoice PDF download confirmation copy."
+  - category: final_acceptance
+    code: missing_final_acceptance
+    message: "Final acceptance is still required before this Task can close."
     related_refs: []
     next_actions:
-      - action_kind: record_user_judgment
-        owner_method: harness.record_user_judgment
-        label: "Record the user's answer about the confirmation copy."
-        blocking_question: "Does the invoice PDF download confirmation copy match the requested outcome?"
-        required_refs: []
+      - action_kind: request_user_judgment
+        owner_method: harness.request_user_judgment
+        label: "Request final acceptance from the user."
+        blocking_question: "Has the user given final acceptance for the completed Task?"
+        required_refs:
+          - record_kind: task
+            record_id: task_close_001
+            project_id: proj_close_001
+            task_id: task_close_001
+            state_version: 72
 evidence_summary: null
 artifact_refs: []
 ```

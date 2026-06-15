@@ -101,15 +101,15 @@
 method: harness.status
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_export_001
+    task_id: task_export_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_status_001
+    surface_id: surface_status
+    request_id: req_status_export_001
     idempotency_key: null
     expected_state_version: null
     dry_run: false
-    locale: ko-KR
+    locale: en-US
   include:
     task: true
     pending_user_judgments: true
@@ -128,59 +128,76 @@ base:
   response_kind: result
   effect_kind: read_only
   dry_run: false
-  state_version: 22
+  state_version: 42
   events: []
 active_task:
-  project_id: proj_123
-  state_version: 22
+  project_id: proj_export_001
+  state_version: 42
   task_ref:
     record_kind: task
-    record_id: task_456
-    project_id: proj_123
-    task_id: task_456
-    state_version: 22
+    record_id: task_export_001
+    project_id: proj_export_001
+    task_id: task_export_001
+    state_version: 42
   mode: work
   lifecycle:
     lifecycle_phase: ready
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "인보이스 PDF 다운로드 전에 확인 단계를 추가한다."
-  scope_summary: "인보이스 PDF 다운로드 확인과 관련 테스트."
+  goal_summary: "Add CSV summary export for dashboard totals."
+  scope_summary: "CSV export column order and summary totals."
   active_change_unit_ref:
     record_kind: change_unit
-    record_id: cu_001
-    project_id: proj_123
-    task_id: task_456
-    state_version: 19
-status_summary: "인보이스 다운로드 확인 문구에 대한 사용자 소유 제품 판단이 대기 중입니다."
+    record_id: cu_export_001
+    project_id: proj_export_001
+    task_id: task_export_001
+    state_version: 41
+status_summary: "A user-owned product decision about CSV column order is pending."
 next_actions:
   - action_kind: record_user_judgment
     owner_method: harness.record_user_judgment
-    label: "대기 중인 제품 판단에 대한 사용자의 답을 기록한다."
-    blocking_question: "대기 중인 제품 판단에 대한 사용자의 답은 무엇입니까?"
+    label: "Record the user's answer for the pending CSV column decision."
+    blocking_question: "What is the user's answer for the pending CSV column decision?"
     required_refs:
       - record_kind: user_judgment
-        record_id: uj_001
-        project_id: proj_123
-        task_id: task_456
-        state_version: 22
+        record_id: uj_export_columns_001
+        project_id: proj_export_001
+        task_id: task_export_001
+        state_version: 42
 pending_user_judgments:
   - record_kind: user_judgment
-    record_id: uj_001
-    project_id: proj_123
-    task_id: task_456
-    state_version: 22
+    record_id: uj_export_columns_001
+    project_id: proj_export_001
+    task_id: task_export_001
+    state_version: 42
 blocker_refs: []
-close_readiness:
-  ready: false
-  blockers:
-    - code: missing_user_judgment
-      message: "사용자 소유 제품 판단이 아직 대기 중입니다."
+close_state: blocked
+close_blockers:
+  - category: user_judgment
+    code: missing_user_judgment
+    message: "User-owned product decision about CSV column order is still pending."
+    related_refs:
+      - record_kind: user_judgment
+        record_id: uj_export_columns_001
+        project_id: proj_export_001
+        task_id: task_export_001
+        state_version: 42
+    next_actions:
+      - action_kind: record_user_judgment
+        owner_method: harness.record_user_judgment
+        label: "Record the user's answer for the pending CSV column decision."
+        blocking_question: "What is the user's answer for the pending CSV column decision?"
+        required_refs:
+          - record_kind: user_judgment
+            record_id: uj_export_columns_001
+            project_id: proj_export_001
+            task_id: task_export_001
+            state_version: 42
 guarantee_display:
   level: cooperative
-  notes:
-    - "더 강한 로컬 보장이 현재 적용 중이지 않습니다."
+  basis: "No stronger local guarantee is currently applied."
+  capability_refs: []
 ```
 
 ## 담당 문서 링크

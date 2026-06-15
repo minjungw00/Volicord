@@ -123,34 +123,69 @@ On commit, the method may persist run, evidence, blocker, authorization-consumpt
 method: harness.record_run
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_validation_001
+    task_id: task_validation_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_run_001
-    idempotency_key: idem_run_001
-    expected_state_version: 20
+    surface_id: surface_run
+    request_id: req_run_validation_001
+    idempotency_key: idem_run_validation_001
+    expected_state_version: 31
     dry_run: false
     locale: en-US
-  task_id: task_456
-  change_unit_id: cu_001
+  task_id: task_validation_001
+  change_unit_id: cu_validation_001
   kind: implementation
   run_id: null
-  baseline_ref: baseline_invoice_download_001
+  baseline_ref: baseline_validation_001
   write_authorization_id: null
-  summary: "Invoice download confirmation tests passed."
+  summary: "Shipping-rate preview validation passed."
   observed_changes:
     changed_paths: []
     product_file_write_observed: false
     sensitive_categories: []
-    baseline_ref: baseline_invoice_download_001
-  artifact_inputs: []
+    baseline_ref: baseline_validation_001
+  artifact_inputs:
+    - artifact_input_id: artifact_input_validation_001
+      source_kind: existing_artifact
+      staged_artifact_handle: null
+      existing_artifact_ref:
+        artifact_id: artifact_validation_report_001
+        project_id: proj_validation_001
+        task_id: task_validation_001
+        display_name: "shipping-rate-validation.json"
+        content_type: application/json
+        sha256: sha256:example-validation
+        size_bytes: 128
+        redaction_state: none
+        availability: available
+        created_by_run_ref: null
+        created_by_surface_id: surface_run
+        created_by_surface_instance_id: surface_instance_run_01
+        storage_ref: "artifact-storage://shipping-rate-validation"
+      relation_hint: "validation_report"
+      claim: "Shipping-rate preview validation passed."
+      expected_sha256: "sha256:example-validation"
+      expected_size_bytes: 128
+      redaction_state: none
   evidence_updates:
-    - claim: "Invoice download confirmation tests passed."
+    - claim: "Shipping-rate preview validation passed."
       required_for_close: true
       coverage_state: supported
       supporting_refs: []
-      supporting_artifact_refs: []
+      supporting_artifact_refs:
+        - artifact_id: artifact_validation_report_001
+          project_id: proj_validation_001
+          task_id: task_validation_001
+          display_name: "shipping-rate-validation.json"
+          content_type: application/json
+          sha256: sha256:example-validation
+          size_bytes: 128
+          redaction_state: none
+          availability: available
+          created_by_run_ref: null
+          created_by_surface_id: surface_run
+          created_by_surface_instance_id: surface_instance_run_01
+          storage_ref: "artifact-storage://shipping-rate-validation"
       gap_refs: []
 ```
 
@@ -163,51 +198,113 @@ base:
   response_kind: result
   effect_kind: core_committed
   dry_run: false
-  state_version: 21
+  state_version: 32
   events:
-    - event_id: evt_1004
+    - event_id: evt_validation_001
       event_kind: run_recorded
 run_summary:
   run_ref:
     record_kind: run
-    record_id: run_invoice_download_tests_001
-    project_id: proj_123
-    task_id: task_456
-    state_version: 21
+    record_id: run_validation_001
+    project_id: proj_validation_001
+    task_id: task_validation_001
+    state_version: 32
   kind: implementation
-  summary: "Invoice download confirmation tests passed."
+  summary: "Shipping-rate preview validation passed."
   observed_changes:
     changed_paths: []
     product_file_write_observed: false
     sensitive_categories: []
-    baseline_ref: baseline_invoice_download_001
-  artifact_refs: []
-registered_artifacts: []
+    baseline_ref: baseline_validation_001
+  artifact_refs:
+    - artifact_id: artifact_validation_report_001
+      project_id: proj_validation_001
+      task_id: task_validation_001
+      display_name: "shipping-rate-validation.json"
+      content_type: application/json
+      sha256: sha256:example-validation
+      size_bytes: 128
+      redaction_state: none
+      availability: available
+      created_by_run_ref: null
+      created_by_surface_id: surface_run
+      created_by_surface_instance_id: surface_instance_run_01
+      storage_ref: "artifact-storage://shipping-rate-validation"
+registered_artifacts:
+  - artifact_id: artifact_validation_report_001
+    project_id: proj_validation_001
+    task_id: task_validation_001
+    display_name: "shipping-rate-validation.json"
+    content_type: application/json
+    sha256: sha256:example-validation
+    size_bytes: 128
+    redaction_state: none
+    availability: available
+    created_by_run_ref: null
+    created_by_surface_id: surface_run
+    created_by_surface_instance_id: surface_instance_run_01
+    storage_ref: "artifact-storage://shipping-rate-validation"
 evidence_summary:
   status: sufficient
+  completion_policy:
+    evidence_required: true
+    required_claims:
+      - "Shipping-rate preview validation passed."
   coverage_items:
-    - claim: "Invoice download confirmation tests passed."
+    - claim: "Shipping-rate preview validation passed."
       required_for_close: true
       coverage_state: supported
       supporting_refs:
         - record_kind: run
-          record_id: run_invoice_download_tests_001
-          project_id: proj_123
-          task_id: task_456
-          state_version: 21
-      supporting_artifact_refs: []
+          record_id: run_validation_001
+          project_id: proj_validation_001
+          task_id: task_validation_001
+          state_version: 32
+      supporting_artifact_refs:
+        - artifact_id: artifact_validation_report_001
+          project_id: proj_validation_001
+          task_id: task_validation_001
+          display_name: "shipping-rate-validation.json"
+          content_type: application/json
+          sha256: sha256:example-validation
+          size_bytes: 128
+          redaction_state: none
+          availability: available
+          created_by_run_ref: null
+          created_by_surface_id: surface_run
+          created_by_surface_instance_id: surface_instance_run_01
+          storage_ref: "artifact-storage://shipping-rate-validation"
       gap_refs: []
-  artifact_refs: []
+  artifact_refs:
+    - artifact_id: artifact_validation_report_001
+      project_id: proj_validation_001
+      task_id: task_validation_001
+      display_name: "shipping-rate-validation.json"
+      content_type: application/json
+      sha256: sha256:example-validation
+      size_bytes: 128
+      redaction_state: none
+      availability: available
+      created_by_run_ref: null
+      created_by_surface_id: surface_run
+      created_by_surface_instance_id: surface_instance_run_01
+      storage_ref: "artifact-storage://shipping-rate-validation"
+  updated_by_run_ref:
+    record_kind: run
+    record_id: run_validation_001
+    project_id: proj_validation_001
+    task_id: task_validation_001
+    state_version: 32
 blocker_refs: []
 state:
-  project_id: proj_123
-  state_version: 21
+  project_id: proj_validation_001
+  state_version: 32
   task_ref:
     record_kind: task
-    record_id: task_456
-    project_id: proj_123
-    task_id: task_456
-    state_version: 21
+    record_id: task_validation_001
+    project_id: proj_validation_001
+    task_id: task_validation_001
+    state_version: 32
 ```
 
 ## Owner links

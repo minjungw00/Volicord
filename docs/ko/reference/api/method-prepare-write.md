@@ -127,32 +127,31 @@
 
 ## 최소 유효 요청
 
-이 예시는 `billing_document_download`를 `sensitive_categories`의 예시 문자열로 사용합니다. 민감 범주의 값 집합을 정의하지 않습니다.
+이 예시는 `account_preference_update`를 `sensitive_categories`의 예시 문자열로 사용합니다. 민감 범주의 값 집합을 정의하지 않습니다.
 
 ```yaml
 method: harness.prepare_write
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_pref_001
+    task_id: task_pref_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_prepare_001
-    idempotency_key: idem_prepare_001
+    surface_id: surface_write
+    request_id: req_prepare_pref_001
+    idempotency_key: idem_prepare_pref_001
     expected_state_version: 19
     dry_run: false
-    locale: ko-KR
-  task_id: task_456
-  change_unit_id: cu_001
-  intended_operation: "확인을 요구하도록 인보이스 PDF 다운로드 흐름 갱신"
+    locale: en-US
+  task_id: task_pref_001
+  change_unit_id: cu_pref_001
+  intended_operation: "update profile preference save flow"
   intended_paths:
-    - src/billing/invoice-download.ts
-    - src/billing/invoice-download-confirmation.ts
-    - tests/invoice-download.test.ts
+    - src/preferences/profile-save.ts
+    - src/preferences/profile-save.test.ts
   product_file_write_intended: true
   sensitive_categories:
-    - billing_document_download
-  baseline_ref: baseline_invoice_download_001
+    - account_preference_update
+  baseline_ref: baseline_pref_001
 ```
 
 ## 대표 응답
@@ -161,7 +160,7 @@ params:
 
 별도의 민감 동작 승인이 이미 있을 때 적용되는 분기입니다.
 
-`uj_sensitive_invoice_001`은 인보이스 다운로드 단계에 맞는 `SensitiveActionScope`를 가진 기존의 해결된 `judgment_kind=sensitive_approval`을 나타냅니다. 이는 일반 쓰기 승인, 최종 수락, 잔여 위험 수락, `Write Authorization`이 아닙니다.
+`uj_sensitive_pref_001`은 프로필 환경설정 갱신에 맞는 `SensitiveActionScope`를 가진 기존의 해결된 `judgment_kind=sensitive_approval`을 나타냅니다. 이는 일반 쓰기 승인, 최종 수락, 잔여 위험 수락, `Write Authorization`이 아닙니다.
 
 ```yaml
 base:
@@ -170,45 +169,44 @@ base:
   dry_run: false
   state_version: 20
   events:
-    - event_id: evt_1003
+    - event_id: evt_pref_001
       event_kind: write_authorization_created
 decision: allowed
 state:
-  project_id: proj_123
+  project_id: proj_pref_001
   state_version: 20
   task_ref:
     record_kind: task
-    record_id: task_456
-    project_id: proj_123
-    task_id: task_456
+    record_id: task_pref_001
+    project_id: proj_pref_001
+    task_id: task_pref_001
     state_version: 20
 write_authorization_ref:
   record_kind: write_authorization
-  record_id: wa_001
-  project_id: proj_123
-  task_id: task_456
+  record_id: wa_pref_001
+  project_id: proj_pref_001
+  task_id: task_pref_001
   state_version: 20
 write_authorization:
-  authorization_id: wa_001
+  authorization_id: wa_pref_001
   status: active
   basis_state_version: 19
   authorized_paths:
-    - src/billing/invoice-download.ts
-    - src/billing/invoice-download-confirmation.ts
-    - tests/invoice-download.test.ts
+    - src/preferences/profile-save.ts
+    - src/preferences/profile-save.test.ts
 authorization_effect: created
 active_user_judgment_refs:
   - record_kind: user_judgment
-    record_id: uj_sensitive_invoice_001
-    project_id: proj_123
-    task_id: task_456
+    record_id: uj_sensitive_pref_001
+    project_id: proj_pref_001
+    task_id: task_pref_001
     state_version: 19
 write_decision_reasons: []
 user_judgment_candidate: null
 guarantee_display:
   level: cooperative
-  notes:
-    - "`Write Authorization`은 하네스 호환성 기록이며 OS 권한이 아닙니다."
+  basis: "Write Authorization is a Harness compatibility record, not OS permission."
+  capability_refs: []
 ```
 
 ### 승인 필요 분기 발췌
@@ -221,8 +219,8 @@ write_authorization_ref: null
 write_authorization: null
 authorization_effect: none
 write_decision_reasons:
-  - code: sensitive_invoice_download
-    message: "인보이스 PDF 다운로드에는 Write Authorization 전에 별도의 민감 동작 승인이 필요합니다."
+  - code: sensitive_account_preference
+    message: "Profile preference updates require separate sensitive-action approval before Write Authorization."
 ```
 
 ## 담당 문서 링크

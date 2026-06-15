@@ -129,42 +129,42 @@ On commit, the method may persist scope-owned current state and stale-authorizat
 method: harness.update_scope
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_filter_001
+    task_id: task_filter_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_scope_001
-    idempotency_key: idem_scope_001
+    surface_id: surface_scope
+    request_id: req_scope_filter_001
+    idempotency_key: idem_scope_filter_001
     expected_state_version: 18
     dry_run: false
     locale: en-US
-  task_id: task_456
-  goal_summary: "Add a confirmation step before invoice PDF download."
+  task_id: task_filter_001
+  goal_summary: "Limit saved search filters to owner and label fields."
   scope_update:
     include:
-      - "Update the invoice PDF download flow to require confirmation."
-      - "Update invoice download confirmation tests."
+      - "Constrain saved-filter edits to owner and label fields."
+      - "Update saved-filter validation tests."
     exclude:
-      - "Invoice generation behavior."
-  scope_boundary: "Invoice PDF download confirmation and related tests."
+      - "Search indexing behavior."
+  scope_boundary: "Saved-filter owner and label edits plus related tests."
   non_goals:
-    - "Invoice generation behavior."
+    - "Search indexing behavior."
   acceptance_criteria:
-    - "Downloading an invoice PDF requires explicit confirmation."
-  autonomy_boundary: "Stay within invoice PDF download confirmation and related tests."
-  baseline_ref: baseline_invoice_download_001
+    - "Saved filters reject changes outside owner and label fields."
+  autonomy_boundary: "Stay within saved-filter edit validation and related tests."
+  baseline_ref: baseline_filter_001
   change_unit:
     operation: create_current
-    scope_summary: "Invoice PDF download confirmation and related tests."
+    scope_summary: "Saved-filter owner and label edit validation."
     affected_areas:
-      - "Invoice PDF download flow"
-      - "Invoice download confirmation tests"
+      - "Saved-filter edit form"
+      - "Saved-filter validation tests"
     affected_paths:
-      - src/billing/invoice-download.ts
-      - src/billing/invoice-download-confirmation.ts
-      - tests/invoice-download.test.ts
+      - src/search/saved-filter.ts
+      - src/search/filter-form.ts
+      - tests/saved-filter.test.ts
     constraints:
-      - "Keep invoice generation behavior out of scope."
+      - "Leave search indexing behavior out of scope."
   related_scope_decision_refs: []
 ```
 
@@ -179,31 +179,31 @@ base:
   dry_run: false
   state_version: 19
   events:
-    - event_id: evt_1002
+    - event_id: evt_filter_001
       event_kind: scope_updated
 task_ref:
   record_kind: task
-  record_id: task_456
-  project_id: proj_123
-  task_id: task_456
+  record_id: task_filter_001
+  project_id: proj_filter_001
+  task_id: task_filter_001
   state_version: 19
 change_unit_ref:
   record_kind: change_unit
-  record_id: cu_001
-  project_id: proj_123
-  task_id: task_456
+  record_id: cu_filter_001
+  project_id: proj_filter_001
+  task_id: task_filter_001
   state_version: 19
 linked_scope_decision_refs: []
 stale_write_authorization_refs: []
 blocker_refs: []
 state:
-  project_id: proj_123
+  project_id: proj_filter_001
   state_version: 19
   task_ref:
     record_kind: task
-    record_id: task_456
-    project_id: proj_123
-    task_id: task_456
+    record_id: task_filter_001
+    project_id: proj_filter_001
+    task_id: task_filter_001
     state_version: 19
   mode: work
   lifecycle:
@@ -211,33 +211,33 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "Add a confirmation step before invoice PDF download."
-  scope_summary: "Invoice PDF download confirmation and related tests."
+  goal_summary: "Limit saved search filters to owner and label fields."
+  scope_summary: "Saved-filter owner and label edit validation."
   non_goals:
-    - "Invoice generation behavior."
+    - "Search indexing behavior."
   acceptance_criteria:
-    - "Downloading an invoice PDF requires explicit confirmation."
+    - "Saved filters reject changes outside owner and label fields."
   active_change_unit_ref:
     record_kind: change_unit
-    record_id: cu_001
-    project_id: proj_123
-    task_id: task_456
+    record_id: cu_filter_001
+    project_id: proj_filter_001
+    task_id: task_filter_001
     state_version: 19
 next_actions:
   - action_kind: prepare_write
     owner_method: harness.prepare_write
-    label: "Check the invoice download change against current scope."
+    label: "Check the saved-filter change against current scope."
     blocking_question: null
     required_refs:
       - record_kind: task
-        record_id: task_456
-        project_id: proj_123
-        task_id: task_456
+        record_id: task_filter_001
+        project_id: proj_filter_001
+        task_id: task_filter_001
         state_version: 19
       - record_kind: change_unit
-        record_id: cu_001
-        project_id: proj_123
-        task_id: task_456
+        record_id: cu_filter_001
+        project_id: proj_filter_001
+        task_id: task_filter_001
         state_version: 19
 ```
 

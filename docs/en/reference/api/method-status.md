@@ -101,11 +101,11 @@ This is a read-only method. Exact no-effect persistence semantics are owned by t
 method: harness.status
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_export_001
+    task_id: task_export_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_status_001
+    surface_id: surface_status
+    request_id: req_status_export_001
     idempotency_key: null
     expected_state_version: null
     dry_run: false
@@ -128,59 +128,76 @@ base:
   response_kind: result
   effect_kind: read_only
   dry_run: false
-  state_version: 22
+  state_version: 42
   events: []
 active_task:
-  project_id: proj_123
-  state_version: 22
+  project_id: proj_export_001
+  state_version: 42
   task_ref:
     record_kind: task
-    record_id: task_456
-    project_id: proj_123
-    task_id: task_456
-    state_version: 22
+    record_id: task_export_001
+    project_id: proj_export_001
+    task_id: task_export_001
+    state_version: 42
   mode: work
   lifecycle:
     lifecycle_phase: ready
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "Add a confirmation step before invoice PDF download."
-  scope_summary: "Invoice PDF download confirmation and related tests."
+  goal_summary: "Add CSV summary export for dashboard totals."
+  scope_summary: "CSV export column order and summary totals."
   active_change_unit_ref:
     record_kind: change_unit
-    record_id: cu_001
-    project_id: proj_123
-    task_id: task_456
-    state_version: 19
-status_summary: "A user-owned product decision about the invoice download confirmation copy is pending."
+    record_id: cu_export_001
+    project_id: proj_export_001
+    task_id: task_export_001
+    state_version: 41
+status_summary: "A user-owned product decision about CSV column order is pending."
 next_actions:
   - action_kind: record_user_judgment
     owner_method: harness.record_user_judgment
-    label: "Record the user's answer for the pending product decision."
-    blocking_question: "What is the user's answer for the pending product decision?"
+    label: "Record the user's answer for the pending CSV column decision."
+    blocking_question: "What is the user's answer for the pending CSV column decision?"
     required_refs:
       - record_kind: user_judgment
-        record_id: uj_001
-        project_id: proj_123
-        task_id: task_456
-        state_version: 22
+        record_id: uj_export_columns_001
+        project_id: proj_export_001
+        task_id: task_export_001
+        state_version: 42
 pending_user_judgments:
   - record_kind: user_judgment
-    record_id: uj_001
-    project_id: proj_123
-    task_id: task_456
-    state_version: 22
+    record_id: uj_export_columns_001
+    project_id: proj_export_001
+    task_id: task_export_001
+    state_version: 42
 blocker_refs: []
-close_readiness:
-  ready: false
-  blockers:
-    - code: missing_user_judgment
-      message: "User-owned product decision is still pending."
+close_state: blocked
+close_blockers:
+  - category: user_judgment
+    code: missing_user_judgment
+    message: "User-owned product decision about CSV column order is still pending."
+    related_refs:
+      - record_kind: user_judgment
+        record_id: uj_export_columns_001
+        project_id: proj_export_001
+        task_id: task_export_001
+        state_version: 42
+    next_actions:
+      - action_kind: record_user_judgment
+        owner_method: harness.record_user_judgment
+        label: "Record the user's answer for the pending CSV column decision."
+        blocking_question: "What is the user's answer for the pending CSV column decision?"
+        required_refs:
+          - record_kind: user_judgment
+            record_id: uj_export_columns_001
+            project_id: proj_export_001
+            task_id: task_export_001
+            state_version: 42
 guarantee_display:
   level: cooperative
-  notes:
-    - "No stronger local guarantee is currently applied."
+  basis: "No stronger local guarantee is currently applied."
+  capability_refs: []
 ```
 
 ## Owner links

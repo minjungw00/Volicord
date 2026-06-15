@@ -107,44 +107,44 @@ On commit, the method may persist a pending `user_judgments` row and related blo
 method: harness.request_user_judgment
 params:
   envelope:
-    project_id: proj_123
-    task_id: task_456
+    project_id: proj_banner_001
+    task_id: task_banner_001
     actor_kind: agent
-    surface_id: surface_local
-    request_id: req_judgment_001
-    idempotency_key: idem_judgment_001
-    expected_state_version: 21
+    surface_id: surface_banner
+    request_id: req_banner_request_001
+    idempotency_key: idem_banner_request_001
+    expected_state_version: 51
     dry_run: false
     locale: en-US
-  task_id: task_456
-  change_unit_id: cu_001
+  task_id: task_banner_001
+  change_unit_id: cu_banner_001
   judgment_kind: product_decision
   presentation: short
-  question: "Is the invoice download confirmation copy sufficient for this Task?"
+  question: "Should the dashboard banner use concise copy?"
   options:
-    - option_id: accept
-      label: "Sufficient"
-      description: "Record the user-owned product decision that the copy is sufficient."
-      consequence: "Close readiness can evaluate this product decision as resolved."
+    - option_id: concise
+      label: "Use concise copy"
+      description: "Record the user-owned product decision to keep the shorter banner copy."
+      consequence: "The pending banner-copy decision can be treated as resolved."
       is_default: true
-    - option_id: revise
-      label: "Revise"
-      description: "Keep the Task open for revised confirmation copy."
-      consequence: "Close remains blocked on this product decision."
+    - option_id: expanded
+      label: "Use expanded copy"
+      description: "Record that the banner copy should include a longer explanation."
+      consequence: "The Task remains open for the expanded banner-copy change."
       is_default: false
   context:
-    summary: "The confirmation copy appears before invoice PDF download and tells users they are about to download a billing document."
+    summary: "The dashboard banner has two candidate copy lengths and needs a user-owned product decision."
     related_refs: []
     artifact_refs: []
     visible_risks: []
     constraints:
-      - "Invoice PDF download confirmation is in scope; invoice generation is out of scope."
+      - "Only banner copy length is in scope for this judgment request."
   affected_refs:
     - record_kind: task
-      record_id: task_456
-      project_id: proj_123
-      task_id: task_456
-      state_version: 21
+      record_id: task_banner_001
+      project_id: proj_banner_001
+      task_id: task_banner_001
+      state_version: 51
   required_for: close
   expires_at: null
 ```
@@ -158,49 +158,49 @@ base:
   response_kind: result
   effect_kind: core_committed
   dry_run: false
-  state_version: 22
+  state_version: 52
   events:
-    - event_id: evt_1005
+    - event_id: evt_banner_001
       event_kind: user_judgment_requested
 user_judgment_ref:
   record_kind: user_judgment
-  record_id: uj_001
-  project_id: proj_123
-  task_id: task_456
-  state_version: 22
+  record_id: uj_banner_001
+  project_id: proj_banner_001
+  task_id: task_banner_001
+  state_version: 52
 user_judgment:
-  judgment_id: uj_001
-  project_id: proj_123
-  task_id: task_456
-  change_unit_id: cu_001
+  judgment_id: uj_banner_001
+  project_id: proj_banner_001
+  task_id: task_banner_001
+  change_unit_id: cu_banner_001
   judgment_kind: product_decision
   status: pending
   presentation: short
-  question: "Is the invoice download confirmation copy sufficient for this Task?"
+  question: "Should the dashboard banner use concise copy?"
   options:
-    - option_id: accept
-      label: "Sufficient"
-      description: "Record the user-owned product decision that the copy is sufficient."
-      consequence: "Close readiness can evaluate this product decision as resolved."
+    - option_id: concise
+      label: "Use concise copy"
+      description: "Record the user-owned product decision to keep the shorter banner copy."
+      consequence: "The pending banner-copy decision can be treated as resolved."
       is_default: true
-    - option_id: revise
-      label: "Revise"
-      description: "Keep the Task open for revised confirmation copy."
-      consequence: "Close remains blocked on this product decision."
+    - option_id: expanded
+      label: "Use expanded copy"
+      description: "Record that the banner copy should include a longer explanation."
+      consequence: "The Task remains open for the expanded banner-copy change."
       is_default: false
   context:
-    summary: "The confirmation copy appears before invoice PDF download and tells users they are about to download a billing document."
+    summary: "The dashboard banner has two candidate copy lengths and needs a user-owned product decision."
     related_refs: []
     artifact_refs: []
     visible_risks: []
     constraints:
-      - "Invoice PDF download confirmation is in scope; invoice generation is out of scope."
+      - "Only banner copy length is in scope for this judgment request."
   affected_refs:
     - record_kind: task
-      record_id: task_456
-      project_id: proj_123
-      task_id: task_456
-      state_version: 21
+      record_id: task_banner_001
+      project_id: proj_banner_001
+      task_id: task_banner_001
+      state_version: 51
   required_for: close
   resolution: null
   expires_at: null
@@ -208,8 +208,8 @@ user_judgment:
   resolved_at: null
 blocker_refs: []
 state:
-  project_id: proj_123
-  state_version: 22
+  project_id: proj_banner_001
+  state_version: 52
 ```
 
 ## Owner links
