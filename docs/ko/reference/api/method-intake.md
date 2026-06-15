@@ -131,7 +131,7 @@ params:
     locale: ko-KR
   plain_language_request: "인보이스 PDF 다운로드 전에 확인 단계를 추가한다."
   requested_mode: work
-  resume_policy: start_new
+  resume_policy: create_new
   initial_scope:
     boundary: "인보이스 PDF 다운로드 확인."
     non_goals:
@@ -185,8 +185,16 @@ state:
   active_change_unit_ref: null
   blocker_refs: []
 next_actions:
-  - action: harness.update_scope
-    reason: "쓰기 확인 전에 처음 현재 적용할 Change Unit을 만든다."
+  - action_kind: update_scope
+    owner_method: harness.update_scope
+    label: "쓰기 확인 전에 첫 현재 적용 Change Unit을 만든다."
+    blocking_question: null
+    required_refs:
+      - record_kind: task
+        record_id: task_456
+        project_id: proj_123
+        task_id: task_456
+        state_version: 18
 ```
 
 ## 담당 문서 링크

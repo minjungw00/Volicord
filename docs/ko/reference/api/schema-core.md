@@ -43,6 +43,7 @@
 
 담당 문서 링크:
 - 필드 값 집합: 이 문서가 자유 형식 텍스트나 불투명 식별자라고 말하지 않는 한 [API 값 집합](schema-value-sets.md)에 둡니다.
+- API 예시는 관련 스키마 담당 문서가 해당 필드를 명시적으로 자유 형식 텍스트나 불투명 식별자로 정의하지 않는 한 [API 값 집합](schema-value-sets.md)의 지원되는 enum 형태 값을 사용해야 합니다.
 
 <a id="tool-envelope"></a>
 ## `ToolEnvelope`
@@ -160,6 +161,8 @@ PlannedBlocker:
 - `NextActionSummary`와 `StateRecordRef`: [API 상태 스키마](schema-state.md)
 - `PlannedBlocker.source_kind` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
 - `ToolError.code`에 쓰는 공개 `ErrorCode` 값: [API 오류 코드](error-codes.md)
+
+`PlannedEffect.target_kind`, `PlannedEffect.action`, `PlannedEffect.description`은 메서드 담당 문서가 특정 `dry_run` 분기에서 더 좁게 정의하지 않는 한 설명용 미리보기 문자열입니다.
 
 <a id="shared-support-shapes"></a>
 

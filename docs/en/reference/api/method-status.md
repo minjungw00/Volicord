@@ -155,8 +155,16 @@ active_task:
     state_version: 19
 status_summary: "A user-owned product decision about the invoice download confirmation copy is pending."
 next_actions:
-  - action: harness.record_user_judgment
-    reason: "Record the user's answer for the pending product decision."
+  - action_kind: record_user_judgment
+    owner_method: harness.record_user_judgment
+    label: "Record the user's answer for the pending product decision."
+    blocking_question: "What is the user's answer for the pending product decision?"
+    required_refs:
+      - record_kind: user_judgment
+        record_id: uj_001
+        project_id: proj_123
+        task_id: task_456
+        state_version: 22
 pending_user_judgments:
   - record_kind: user_judgment
     record_id: uj_001

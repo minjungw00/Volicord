@@ -21,7 +21,7 @@
 
 ## 목적
 
-`harness.update_scope`는 `harness.intake` 이후 현재 `Task`와 Change Unit 필드를 갱신합니다.
+`harness.update_scope`는 `harness.intake` 이후 현재 `Task`와 현재 적용 Change Unit 필드를 갱신합니다.
 
 - 목표 요약
 - 범위 경계
@@ -154,7 +154,7 @@ params:
   autonomy_boundary: "인보이스 PDF 다운로드 확인과 관련 테스트 안에서만 작업한다."
   baseline_ref: baseline_invoice_download_001
   change_unit:
-    operation: create_active
+    operation: create_current
     scope_summary: "인보이스 PDF 다운로드 확인과 관련 테스트."
     affected_areas:
       - "인보이스 PDF 다운로드 흐름"
@@ -224,8 +224,21 @@ state:
     task_id: task_456
     state_version: 19
 next_actions:
-  - action: harness.prepare_write
-    reason: "인보이스 다운로드 변경을 현재 적용 범위와 비교한다."
+  - action_kind: prepare_write
+    owner_method: harness.prepare_write
+    label: "인보이스 다운로드 변경을 현재 적용 범위와 비교한다."
+    blocking_question: null
+    required_refs:
+      - record_kind: task
+        record_id: task_456
+        project_id: proj_123
+        task_id: task_456
+        state_version: 19
+      - record_kind: change_unit
+        record_id: cu_001
+        project_id: proj_123
+        task_id: task_456
+        state_version: 19
 ```
 
 ## 담당 문서 링크

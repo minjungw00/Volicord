@@ -218,8 +218,16 @@ state:
   project_id: proj_123
   state_version: 23
 next_actions:
-  - action: harness.close_task
-    reason: "Evaluate close readiness after recording the user's product decision."
+  - action_kind: close_task
+    owner_method: harness.close_task
+    label: "Evaluate close readiness after recording the user's product decision."
+    blocking_question: null
+    required_refs:
+      - record_kind: user_judgment
+        record_id: uj_001
+        project_id: proj_123
+        task_id: task_456
+        state_version: 23
 ```
 
 ## Owner links

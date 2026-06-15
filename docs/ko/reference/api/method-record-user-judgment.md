@@ -218,8 +218,16 @@ state:
   project_id: proj_123
   state_version: 23
 next_actions:
-  - action: harness.close_task
-    reason: "사용자 소유 제품 판단을 기록한 뒤 닫기 준비 상태를 평가한다."
+  - action_kind: close_task
+    owner_method: harness.close_task
+    label: "사용자 소유 제품 판단을 기록한 뒤 닫기 준비 상태를 평가한다."
+    blocking_question: null
+    required_refs:
+      - record_kind: user_judgment
+        record_id: uj_001
+        project_id: proj_123
+        task_id: task_456
+        state_version: 23
 ```
 
 ## 담당 문서 링크

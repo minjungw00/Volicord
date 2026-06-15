@@ -131,7 +131,7 @@ params:
     locale: en-US
   plain_language_request: "Add a confirmation step before invoice PDF download."
   requested_mode: work
-  resume_policy: start_new
+  resume_policy: create_new
   initial_scope:
     boundary: "Invoice PDF download confirmation."
     non_goals:
@@ -185,8 +185,16 @@ state:
   active_change_unit_ref: null
   blocker_refs: []
 next_actions:
-  - action: harness.update_scope
-    reason: "Create the first currently applied Change Unit before write checking."
+  - action_kind: update_scope
+    owner_method: harness.update_scope
+    label: "Create the first currently applied Change Unit before write checking."
+    blocking_question: null
+    required_refs:
+      - record_kind: task
+        record_id: task_456
+        project_id: proj_123
+        task_id: task_456
+        state_version: 18
 ```
 
 ## Owner links

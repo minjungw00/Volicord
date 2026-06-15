@@ -161,11 +161,15 @@ WriteDecisionReason:
 ```
 
 의미:
+- `NextActionSummary`는 기준 다음 행동 표시 형태입니다.
+- `owner_method`는 값이 있을 때 다음 단계를 담당하는 지원 공개 메서드 이름입니다.
+- `label`과 `blocking_question`은 표시 텍스트이고, `required_refs`는 다음 단계에 필요한 기록을 가리킵니다.
 - `WriteDecisionReason`은 `PrepareWriteResult.write_decision_reasons`에서 사용합니다.
 
 `CloseReadinessBlocker`와는 다른 형태입니다.
 
 담당 문서 링크:
+- `owner_method` 값: [메서드 이름 값](schema-value-sets.md#method-name-values)
 - 지원되는 범주와 사유 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
 - 공개 오류 코드의 의미: [API 오류 코드](error-codes.md)
 

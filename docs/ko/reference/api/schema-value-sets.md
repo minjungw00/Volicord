@@ -11,6 +11,7 @@
 - 지원되는 `access_class` 값
 - 공유 상태 참조에서 쓰는 기록/참조 판별 값
 - 지원되는 생명주기, 닫기 상태, 출처 종류, 판단 종류, 표시 형식, 필요 판단 위치, 아티팩트 가림 처리, 아티팩트 가용성 표시, `ValidatorResult.status`, `ValidatorResult.severity`, 보장 표시 등 API 값 집합
+- 지원되는 `change_unit.operation` 값
 - 지원되는 공개 `ValidatorResult.validator_id` 값의 경계
 - 지원되는 스키마 해석에 영향을 주는 프로필 조건부 또는 예약 값 경계
 - 렌더링된 라벨이 기준 스키마 값이 아니라는 규칙
@@ -32,6 +33,7 @@
 - 지원 목록 밖의 값은 [범위 참조](../scope.md)와 영향받는 의미 담당 문서가 지원 동작을 정의하기 전까지 기준 범위 API 값이 아닙니다.
 - 지원 목록 밖의 이름을 적는 것만으로 기준 범위가 넓어지지 않습니다.
 - 화면에 보이는 라벨은 표시 텍스트일 뿐이며, 이 문서의 기준 값을 대신하지 않습니다.
+- API 예시는 스키마 담당 문서가 해당 필드를 명시적으로 자유 형식 텍스트나 불투명 식별자로 정의하지 않는 한, 이 문서의 지원되는 enum 형태 값을 사용해야 합니다.
 
 <a id="method-name-values"></a>
 ## 메서드 이름 값
@@ -181,6 +183,21 @@ create_new
 supersede_active
 reject_if_active
 ```
+
+`change_unit.operation`은 아래 값을 사용합니다.
+
+```text
+keep_current
+create_current
+replace_current
+```
+
+값 의미:
+- `keep_current`는 현재 적용 Change Unit을 바꾸지 않고 범위 관련 `Task` 필드를 갱신합니다.
+- `create_current`는 알맞은 현재 적용 Change Unit이 없을 때 현재 적용 Change Unit을 만듭니다.
+- `replace_current`는 현재 적용 Change Unit을 새 작업 경계로 교체합니다.
+
+각 작업의 메서드 동작은 [`harness.update_scope`](method-update-scope.md)가 담당합니다. API 예시와 스키마 독자가 하나의 기준 값 담당 문서를 볼 수 있도록 지원 값 집합은 이 문서에 둡니다.
 
 `harness.close_task.intent`는 아래 값을 사용합니다.
 

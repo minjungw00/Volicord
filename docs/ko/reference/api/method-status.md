@@ -155,8 +155,16 @@ active_task:
     state_version: 19
 status_summary: "인보이스 다운로드 확인 문구에 대한 사용자 소유 제품 판단이 대기 중입니다."
 next_actions:
-  - action: harness.record_user_judgment
-    reason: "대기 중인 제품 판단에 대한 사용자의 답을 기록한다."
+  - action_kind: record_user_judgment
+    owner_method: harness.record_user_judgment
+    label: "대기 중인 제품 판단에 대한 사용자의 답을 기록한다."
+    blocking_question: "대기 중인 제품 판단에 대한 사용자의 답은 무엇입니까?"
+    required_refs:
+      - record_kind: user_judgment
+        record_id: uj_001
+        project_id: proj_123
+        task_id: task_456
+        state_version: 22
 pending_user_judgments:
   - record_kind: user_judgment
     record_id: uj_001

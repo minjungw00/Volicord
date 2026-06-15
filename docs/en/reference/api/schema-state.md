@@ -161,11 +161,15 @@ WriteDecisionReason:
 ```
 
 Meaning:
+- `NextActionSummary` is the canonical next-action display shape.
+- `owner_method`, when present, names the supported public method that owns the next step.
+- `label` and `blocking_question` are display text; `required_refs` names records needed for the next step.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.
 
 It is distinct from `CloseReadinessBlocker`.
 
 Owner links:
+- `owner_method` values: [method name values](schema-value-sets.md#method-name-values)
 - Supported categories and reason values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - Public error code meaning: [API error codes](error-codes.md)
 

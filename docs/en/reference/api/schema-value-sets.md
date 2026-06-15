@@ -11,6 +11,7 @@ This document owns:
 - supported `access_class` values
 - record/reference discriminator values used by shared state references
 - supported lifecycle, close-state, source-kind, judgment-kind, presentation, required-for, artifact redaction, artifact availability display, `ValidatorResult.status`, `ValidatorResult.severity`, guarantee-display, and similar API value sets
+- supported `change_unit.operation` values
 - the boundary for supported public `ValidatorResult.validator_id` values
 - profile-gated or reserved value boundaries where they affect supported schema interpretation
 - the rule that rendered labels are not canonical schema values
@@ -32,6 +33,7 @@ Only values listed as supported in this document are supported API values.
 - Values outside the supported lists are not baseline API values unless [Scope](../scope.md) and the affected semantic owner define the supported behavior.
 - Naming a value outside a supported list does not widen baseline scope.
 - Rendered labels are display text. They do not replace the canonical values listed in this document.
+- API examples must use supported enum-like values from this document unless the schema owner explicitly defines the field as free-form text or an opaque identifier.
 
 <a id="method-name-values"></a>
 ## Method name values
@@ -181,6 +183,21 @@ create_new
 supersede_active
 reject_if_active
 ```
+
+`change_unit.operation` uses:
+
+```text
+keep_current
+create_current
+replace_current
+```
+
+Value meanings:
+- `keep_current` updates scope-related Task fields without changing the current Change Unit.
+- `create_current` creates the current Change Unit when there is no suitable current Change Unit.
+- `replace_current` replaces the current Change Unit with a new work boundary.
+
+Method behavior for each operation is owned by [`harness.update_scope`](method-update-scope.md). The supported value set stays here so API examples and schema readers have one canonical value owner.
 
 `harness.close_task.intent` uses:
 

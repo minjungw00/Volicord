@@ -43,6 +43,7 @@ Notation:
 
 Owner links:
 - Field value sets: [API Value Sets](schema-value-sets.md), unless this page says the field is free-form text or an opaque identifier.
+- API examples must use supported enum-like values from [API Value Sets](schema-value-sets.md) unless the relevant schema owner explicitly defines the field as free-form text or an opaque identifier.
 
 <a id="tool-envelope"></a>
 ## `ToolEnvelope`
@@ -160,6 +161,8 @@ Owner links:
 - `NextActionSummary` and `StateRecordRef`: [API State Schemas](schema-state.md)
 - `PlannedBlocker.source_kind` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - public `ErrorCode` values used in `ToolError.code`: [API error codes](error-codes.md)
+
+`PlannedEffect.target_kind`, `PlannedEffect.action`, and `PlannedEffect.description` are descriptive preview strings unless a method owner narrows them for a specific dry-run branch.
 
 <a id="shared-support-shapes"></a>
 

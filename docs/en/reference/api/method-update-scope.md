@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`harness.update_scope` updates current Task and Change Unit fields after intake:
+`harness.update_scope` updates current Task and currently applied Change Unit fields after intake:
 
 - goal summary
 - scope boundary
@@ -154,7 +154,7 @@ params:
   autonomy_boundary: "Stay within invoice PDF download confirmation and related tests."
   baseline_ref: baseline_invoice_download_001
   change_unit:
-    operation: create_active
+    operation: create_current
     scope_summary: "Invoice PDF download confirmation and related tests."
     affected_areas:
       - "Invoice PDF download flow"
@@ -224,8 +224,21 @@ state:
     task_id: task_456
     state_version: 19
 next_actions:
-  - action: harness.prepare_write
-    reason: "Check the invoice download change against current scope."
+  - action_kind: prepare_write
+    owner_method: harness.prepare_write
+    label: "Check the invoice download change against current scope."
+    blocking_question: null
+    required_refs:
+      - record_kind: task
+        record_id: task_456
+        project_id: proj_123
+        task_id: task_456
+        state_version: 19
+      - record_kind: change_unit
+        record_id: cu_001
+        project_id: proj_123
+        task_id: task_456
+        state_version: 19
 ```
 
 ## Owner links
