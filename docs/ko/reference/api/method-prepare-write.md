@@ -59,7 +59,7 @@
 | 결과 | 상태 버전 효과 | `Write Authorization` 효과 |
 |---|---|---|
 | 커밋된 `decision=allowed` | `project_state.state_version`을 정확히 한 번 올립니다. | `status=active`인 `Write Authorization` 하나를 만듭니다. |
-| 커밋된 비허용 판단 | 메서드가 소유한 쓰기 결정 이유 상태에 한해 올릴 수 있습니다. | 소비 가능한 `Write Authorization`을 만들지 않습니다. |
+| 커밋된 비허용 결정 | 메서드가 소유한 쓰기 결정 이유 상태에 한해 올릴 수 있습니다. | 소비 가능한 `Write Authorization`을 만들지 않습니다. |
 | 커밋 전 거절 또는 `dry_run` | 올리지 않습니다. | 만들지 않습니다. |
 
 ## 성공 결과
@@ -74,7 +74,7 @@
 - `write_authorization_ref`는 `null`이 아닙니다.
 - `write_authorization`은 `null`이 아닙니다.
 - `authorization_effect`는 새 커밋에서 `created`, 멱등 재실행에서 `returned`입니다.
-- 권한 부여는 경로 수준 `AuthorizedAttemptScope`에 묶입니다.
+- `Write Authorization`은 경로 수준 `AuthorizedAttemptScope`에 묶입니다.
 - `active_user_judgment_refs`는 별도 `sensitive_approval`을 포함해 쓰기 선행조건을 만족하는 해결된 사용자 소유 판단을 가리킬 수 있습니다.
 
 ## 차단 결과

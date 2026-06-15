@@ -149,7 +149,7 @@ cancelled
 superseded
 ```
 
-`StatusResult.close_state`는 현재 적용 닫기 상태가 없을 때 `none`도 허용합니다.
+`StatusResult.close_state`는 현재 닫기 상태가 없을 때 `none`도 허용합니다.
 
 `Task.close_reason`은 아래 값을 사용합니다.
 
@@ -198,7 +198,7 @@ replace_current
 - `create_current`는 알맞은 현재 적용 Change Unit이 없을 때 현재 적용 Change Unit을 만듭니다.
 - `replace_current`는 현재 적용 Change Unit을 새 작업 경계로 교체합니다.
 
-각 작업의 메서드 동작은 [`harness.update_scope`](method-update-scope.md)가 담당합니다. API 예시와 스키마 독자가 하나의 기준 값 담당 문서를 볼 수 있도록 지원 값 집합은 이 문서에 둡니다.
+각 `operation` 값의 메서드 동작은 [`harness.update_scope`](method-update-scope.md)가 담당합니다. API 예시와 스키마 독자가 하나의 기준 값 담당 문서를 볼 수 있도록 지원 값 집합은 이 문서에 둡니다.
 
 `harness.close_task.intent`는 아래 값을 사용합니다.
 

@@ -121,7 +121,7 @@
 
 ## 저장 효과
 
-커밋 시 범위 담당 현재 상태와 오래된 권한 부여 결과를 지속할 수 있습니다. 정확한 저장 효과는 아래 저장 담당 문서가 담당합니다.
+커밋 시 범위 담당 현재 상태와 오래된 `Write Authorization` 처리 결과를 지속할 수 있습니다. 정확한 저장 효과는 아래 저장 담당 문서가 담당합니다.
 
 아래 예시는 메서드 안에서만 성립하도록 짧게 구성했습니다. 대표 응답은 update-scope 분기, 참조, 상태 버전, 현재 적용 범위, 현재 적용 Change Unit, 생명주기, 다음 행동을 보여 주는 데 필요한 필드로 축약했습니다.
 
@@ -262,4 +262,4 @@ next_actions:
 - 범위 관련 사용자 판단 형태: [API 판단 스키마](schema-judgment.md).
 - 지원되는 값 집합, `change_unit.operation` 의미, 접근 등급: [API 값 집합](schema-value-sets.md#method-local-values), [접근 등급 값](schema-value-sets.md#access-class-values).
 - 공개 오류, 우선순위, 거절 응답 처리 경로: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md), [API 오류 처리 경로](error-routing.md).
-- 저장 효과와 오래된 권한 부여 동작: [저장 효과](../storage-effects.md), [저장소 버전 관리](../storage-versioning.md).
+- 저장 효과와 오래된 `Write Authorization` 동작: [저장 효과](../storage-effects.md), [저장소 버전 관리](../storage-versioning.md).

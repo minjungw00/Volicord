@@ -318,7 +318,7 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 
 담당 문서 링크:
 - [API 코어 스키마](api/schema-core.md)
-- [`dry_run` 미리보기 전 거절](api/error-routing.md#rejected-dry-run-pre-preview-failure)
+- [`dry_run=true` 미리보기 전 실패](api/error-routing.md#rejected-dry-run-pre-preview-failure)
 - [저장 효과](storage-effects.md)
 
 <a id="scenario-baseline-status-close-blockers-read-only"></a>
