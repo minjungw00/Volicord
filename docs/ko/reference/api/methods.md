@@ -1,20 +1,12 @@
 # API 메서드
 
-이 참조 문서는 지원되는 공개 API 메서드 목록과 각 메서드의 동작 담당 문서 경로를 담당합니다. 메서드 동작, 공통 스키마 본문, 저장 효과, 공개 오류 의미, 예시 정합성 규칙은 정의하지 않습니다.
+이 문서는 공개 하네스 API 메서드 동작의 담당 문서를 찾기 위한 메서드 묶음 경로입니다. 정확한 기계 판독 담당 문서 경로는 [`docs/doc-index.yaml`](../../../doc-index.yaml)을 사용합니다.
 
-<a id="baseline-scope-method-behavior"></a>
-
-## 지원 메서드 경계
-
-이 문서에 나열된 메서드만 지원되는 공개 API 메서드입니다. 여기에 없는 메서드 이름은 지원되는 공개 메서드 묶음 밖에 있습니다.
-
-메서드별 동작은 각 메서드 담당 문서가 담당합니다. 범위 밖 API나 스키마 기능은 [범위](../scope.md)와 영향받는 담당 문서가 지원 동작으로 정의하지 않는 한 이 메서드 경로에 포함되지 않습니다.
+이 문서는 메서드 동작, 요청이나 응답 본문, 공통 스키마, 저장 효과, 오류 의미, 보안 보장, Core 권한 의미를 정의하지 않습니다.
 
 <a id="method-owner-routing-table"></a>
 
-## 지원되는 API 메서드 목록
-
-아래 표는 지원되는 공개 메서드 목록이자 메서드 동작 질문의 첫 담당 문서 경로입니다.
+## 메서드 담당 문서
 
 <a id="harnessintake"></a>
 <a id="harnessupdate_scope"></a>
@@ -38,4 +30,10 @@
 | `harness.record_user_judgment` | [사용자 판단 메서드 담당 문서](method-user-judgment.md#harnessrecord_user_judgment) |
 | `harness.close_task` | [Task 닫기 메서드 담당 문서](method-close-task.md) |
 
-요청과 응답 동작은 표에 연결된 메서드 담당 문서를 사용합니다. `harness.close_task`의 차단 사유 생성 분기는 Task 닫기 메서드 담당 문서에 남기고, [API 차단 사유 처리 경로](blocker-routing.md)는 닫기 차단 사유와 API 응답 사이의 처리 경로 의미를 확인할 때만 사용합니다.
+## 가까운 경로
+
+- 공통 요청/응답 래퍼와 응답 분기 형태: [API 코어 스키마](schema-core.md).
+- 메서드와 독립적인 API 값 집합: [API 값 집합](schema-value-sets.md).
+- API 오류 묶음: [API 오류](errors.md).
+- 메서드나 분기별 저장 효과: [저장 효과](../storage-effects.md).
+- 메서드가 사용하는 제품과 Core 개념: [Core 모델](../core-model.md).

@@ -1,20 +1,12 @@
 # API methods
 
-This reference owns the supported public API method list and routes each method to its behavior owner. It does not define method behavior, shared schema bodies, storage effects, public error semantics, or example consistency rules.
+Use this method-family router to find the owner document for public Harness API method behavior. For exact machine-readable owner routing, use [`docs/doc-index.yaml`](../../../doc-index.yaml).
 
-<a id="baseline-scope-method-behavior"></a>
-
-## Supported-method boundary
-
-Only methods listed below are supported public API methods routed by this document. A method name not listed here is outside the supported public method family.
-
-Method-specific behavior belongs to the method owner documents. Out-of-scope API or schema capabilities remain outside this method router unless [Scope](../scope.md) and the affected owners define them as supported.
+This page does not define method behavior, request or response bodies, shared schemas, storage effects, error semantics, security guarantees, or Core authority semantics.
 
 <a id="method-owner-routing-table"></a>
 
-## Supported API method list
-
-This table is both the supported public method list and the first-hop route for method behavior questions.
+## Method Owners
 
 <a id="harnessintake"></a>
 <a id="harnessupdate_scope"></a>
@@ -38,4 +30,10 @@ This table is both the supported public method list and the first-hop route for 
 | `harness.record_user_judgment` | [User-judgment method owner](method-user-judgment.md#harnessrecord_user_judgment) |
 | `harness.close_task` | [Close-task method](method-close-task.md) |
 
-Use the linked method owner for request and response behavior. For `harness.close_task`, blocker-producing branches stay with the close-task method owner; use [API blocker routing](blocker-routing.md) only for close-readiness blocker/API response routing semantics.
+## Nearby Routes
+
+- Shared envelopes and response branch shapes: [API Schema Core](schema-core.md).
+- Method-independent API value sets: [API Value Sets](schema-value-sets.md).
+- API error families: [API Errors](errors.md).
+- Storage effects by method or branch: [Storage Effects](../storage-effects.md).
+- Product and Core concepts used by methods: [Core Model](../core-model.md).

@@ -1,85 +1,29 @@
 # 참조 색인
 
-이 색인은 하네스 참조 질문의 담당 문서를 고를 때 사용합니다. 이 README는 경로 안내만 하며, 용어 뜻, 용어 메타데이터, API 값, enum 값, 예약된 값과 프로필 조건부 값, 상태 값, 스키마 필드, API 계약, 스키마, 저장 효과, 보안 보장, 범위를 정의하지 않습니다.
+이 색인은 하네스 참조 질문에서 다음 담당 문서를 고를 때 쓰는 사람이 읽는 경로 안내입니다. 정확한 기계 판독 담당 문서 경로는 [`docs/doc-index.yaml`](../../doc-index.yaml)을 기준으로 삼습니다. 이 파일이 `doc_id`, 대응 경로, 역할, 담당 범위, 의존 관계, 규범 수준, 독자 메타데이터의 기준입니다.
 
-핵심 경로는 아래와 같습니다.
+이 README는 경로 안내 전용입니다. 용어 뜻, 용어 메타데이터, API 동작, 오류 의미, 오류 우선순위, 응답 분기 처리 경로, 차단 사유 처리 경로, 저장 효과, 스키마 형태, 보안 보장, Core 권한 의미를 정의하지 않습니다.
 
-- [용어집](glossary.md): 선별된 핵심 용어를 사람이 읽기 쉽게 설명하는 간결한 안내입니다.
-- [`docs/terminology-map.yaml`](../../terminology-map.yaml): 완전한 구조화 용어 메타데이터, 한영 표현 통제, 식별자 통제입니다.
-- [번역 가이드](../maintain/translation-guide.md): 영어/한국어 표현과 한국어 문체 지침입니다.
-- [API 값 집합](api/schema-value-sets.md): API 값, enum 값, 예약된 값과 프로필 조건부 값, 상태 값입니다.
-- 아래 API 스키마 행: 스키마 필드입니다. 메서드별 페이로드 필드는 [API 메서드](api/methods.md)를 통해 담당 메서드 문서로 갑니다.
+## 먼저 볼 곳
 
-## 제품과 시스템 담당 문서
+- 제품/시스템 경계: [범위](scope.md), [Core 모델](core-model.md), [런타임 경계](runtime-boundaries.md), [보안](security.md).
+- API 메서드 동작: [API 메서드](api/methods.md)에서 연결된 메서드 담당 문서.
+- API 스키마 묶음: [API 코어 스키마](api/schema-core.md), [상태 스키마](api/schema-state.md), [아티팩트 스키마](api/schema-artifacts.md), [판단 스키마](api/schema-judgment.md), [값 집합](api/schema-value-sets.md).
+- API 오류 묶음: [API 오류](api/errors.md). 오류 코드, 우선순위, 응답 처리 경로, 차단 사유 처리 경로, 기계 판독 세부사항으로 안내합니다.
+- 저장소 묶음: [저장소](storage.md). 기록, 효과, 아티팩트, 버전 관리로 안내합니다.
+- 접점, 상태 보기, 표시 경로: [에이전트 통합](agent-integration.md), [접점별 사용 레시피](../use/surface-recipes.md), [상태 보기와 템플릿](projection-and-templates.md), [템플릿 본문](template-bodies.md).
+- 품질과 검증 경로: [적합성](conformance.md), [설계 품질](design-quality.md), 그리고 질문에 맞는 메서드 또는 Core 담당 문서.
 
-| 주제 | 담당 문서 |
-|---|---|
-| 범위 질문 | [`scope.md`](scope.md) |
-| Core 권한, 제품 개념, 사용자 소유 판단, 닫기 준비 상태의 권한 개념 | [`core-model.md`](core-model.md) |
-| 런타임과 제품 저장소 경계 | [`runtime-boundaries.md`](runtime-boundaries.md) |
-| 보안 표현과 보장 의미 | [`security.md`](security.md) |
-| 구현 진입 경로 | [`../build/implementation-guide.md`](../build/implementation-guide.md) |
+## 자주 갈리는 경로
 
-## API와 스키마 담당 문서
+- 사용자 소유 판단의 의미는 [Core 모델](core-model.md)에, 사용자 판단 메서드 동작은 [사용자 판단 메서드](api/method-user-judgment.md)에, 판단 형태의 API 데이터는 [판단 스키마](api/schema-judgment.md)에 있습니다.
+- 닫기 준비 상태 권한 개념은 [Core 모델](core-model.md)에, `harness.close_task` 동작은 [Task 닫기 메서드](api/method-close-task.md)에, `CloseReadinessBlocker` 형태는 [상태 스키마](api/schema-state.md)에, 차단 사유와 API 응답 사이의 경계 질문은 [API 차단 사유 처리 경로](api/blocker-routing.md)에 있습니다.
+- 공개 오류 코드 의미는 [API 오류 코드](api/error-codes.md)에, 오류 우선순위는 [API 오류 우선순위](api/error-precedence.md)에, 응답 분기 처리 경로는 [API 오류 처리 경로](api/error-routing.md)에, 기계 판독용 오류 세부사항은 [API 오류 세부사항](api/error-details.md)에 있습니다.
+- 용어 조회는 선별된 독자용 용어를 다루는 [용어집](glossary.md)에서 시작하고, 구조화 용어와 식별자 통제는 [`docs/terminology-map.yaml`](../../terminology-map.yaml)을 사용합니다.
 
-| 주제 | 담당 문서 |
-|---|---|
-| 공개 API 메서드 목록과 메서드 경로 | [`api/methods.md`](api/methods.md) |
-| 공통 요청 래퍼와 응답 분기 | [`api/schema-core.md`](api/schema-core.md) |
-| 상태 스키마와 `CloseReadinessBlocker` 형태 | [`api/schema-state.md`](api/schema-state.md) |
-| 아티팩트 참조 형태 | [`api/schema-artifacts.md`](api/schema-artifacts.md) |
-| 사용자 판단과 민감 동작 승인 스키마 | [`api/schema-judgment.md`](api/schema-judgment.md) |
-| API 값, enum 값, 예약된 값과 프로필 조건부 값, 상태 값, 차단 사유 범주 값 | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
-| API 오류 문서 묶음 색인 | [`api/errors.md`](api/errors.md) |
-| 공개 `ErrorCode` 식별자와 의미 | [`api/error-codes.md`](api/error-codes.md) |
-| API 오류 선택 우선순위 | [`api/error-precedence.md`](api/error-precedence.md) |
-| API 응답 분기 처리 경로 | [`api/error-routing.md`](api/error-routing.md) |
-| 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로 | [`api/blocker-routing.md`](api/blocker-routing.md) |
-| 기계 판독용 `ToolError.details`와 보조 값 | [`api/error-details.md`](api/error-details.md) |
+## 유지보수 경로
 
-## 저장소 담당 문서
-
-| 주제 | 담당 문서 |
-|---|---|
-| 저장소 문서 묶음 경로 | [`storage.md`](storage.md) |
-| 저장소 기록 | [`storage-records.md`](storage-records.md) |
-| 저장 효과 | [`storage-effects.md`](storage-effects.md) |
-| 아티팩트 저장소 | [`storage-artifacts.md`](storage-artifacts.md) |
-| 상태 시계와 버전 관리 | [`storage-versioning.md`](storage-versioning.md) |
-| 런타임 홈 분리 | [`runtime-boundaries.md`](runtime-boundaries.md) |
-
-## 접점, 상태 보기, 품질 담당 문서
-
-| 주제 | 담당 문서 |
-|---|---|
-| 에이전트 통합과 현재 적용 접점 맥락 | [`agent-integration.md`](agent-integration.md) |
-| 접점별 사용 레시피 | [`../use/surface-recipes.md`](../use/surface-recipes.md) |
-| 권한과 상태 보기/상태 카드/템플릿 보기의 구분 | [`projection-and-templates.md`](projection-and-templates.md) |
-| 표시용 템플릿 본문과 라벨 | [`template-bodies.md`](template-bodies.md) |
-| 적합성 참조 | [`conformance.md`](conformance.md) |
-| 설계 품질 발견 사항과 담당 경계 | [`design-quality.md`](design-quality.md) |
-
-## 사용자 판단과 닫기 준비 상태 담당 문서
-
-| 주제 | 담당 문서 |
-|---|---|
-| 사용자 소유 판단 의미 | [`core-model.md`](core-model.md) |
-| 사용자 판단 메서드 | [`api/method-user-judgment.md`](api/method-user-judgment.md) |
-| 사용자 판단 스키마 | [`api/schema-judgment.md`](api/schema-judgment.md) |
-| 닫기 준비 상태 권한 개념 | [`core-model.md`](core-model.md) |
-| `harness.close_task` 메서드 동작 | [`api/method-close-task.md`](api/method-close-task.md) |
-| `CloseReadinessBlocker` 형태 | [`api/schema-state.md`](api/schema-state.md) |
-| 차단 사유 범주 값 | [`api/schema-value-sets.md`](api/schema-value-sets.md) |
-| 닫기 차단 사유와 API 응답 사이의 차단 사유 처리 경로 | [`api/blocker-routing.md`](api/blocker-routing.md) |
-
-## 유지보수와 메타데이터
-
-| 필요 | 경로 |
-|---|---|
-| 저장소 편집 규칙 | [`../../../AGENTS.md`](../../../AGENTS.md) |
-| 기계 판독 가능한 담당 문서 경로 | [`../../doc-index.yaml`](../../doc-index.yaml) |
-| 문서 작성 규칙 | [`../maintain/authoring-guide.md`](../maintain/authoring-guide.md) |
-| 문서 점검 색인 | [`../maintain/checks.md`](../maintain/checks.md) |
-| 영어/한국어 표현과 한국어 문체 지침 | [`../maintain/translation-guide.md`](../maintain/translation-guide.md) |
-| 선별된 핵심 용어의 사람이 읽는 간결한 안내 | [`glossary.md`](glossary.md) |
-| 완전한 구조화 용어 메타데이터 | [`../../terminology-map.yaml`](../../terminology-map.yaml) |
+- 저장소 편집 규칙: [`AGENTS.md`](../../../AGENTS.md).
+- 문서 작성 규칙: [작성 가이드](../maintain/authoring-guide.md).
+- 문서 점검: [점검](../maintain/checks.md).
+- 영어/한국어 표현과 한국어 문체: [번역 가이드](../maintain/translation-guide.md).

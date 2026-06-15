@@ -1,15 +1,23 @@
 # Storage
 
-This page is a route into the storage reference family. It points to storage owners and does not define record layout, branch effects, artifact lifecycle, versioning, API shape, security guarantees, or runtime locations.
+Use this storage-family router to find the focused storage owner. For exact machine-readable owner routing, use [`docs/doc-index.yaml`](../../doc-index.yaml).
 
-## Storage owner routes
+This page does not define storage record layouts, storage effects, artifact lifecycle, versioning, API shapes, security guarantees, runtime locations, or Core authority semantics.
+
+## Storage Routes
 
 | Need | Owner |
 |---|---|
-| Persistent record layout and storage-owned values | [Storage Records](storage-records.md) |
-| Method branch storage effects and API-shape-versus-effect distinctions | [Storage Effects](storage-effects.md) |
-| Artifact staging, promotion, linking, body reads, retention, and integrity | [Artifact Storage](storage-artifacts.md) |
-| `project_state.state_version`, idempotency, replay, events, locks, and migrations | [Storage Versioning](storage-versioning.md) |
-| Product Repository, Harness Server, and Runtime Home locations | [Runtime Boundaries](runtime-boundaries.md) |
+| Records and storage-owned values | [Storage Records](storage-records.md) |
+| Method or branch storage effects | [Storage Effects](storage-effects.md) |
+| Artifact storage lifecycle | [Artifact Storage](storage-artifacts.md) |
+| Versioning, replay, locking, and migrations | [Storage Versioning](storage-versioning.md) |
+| Runtime and repository location boundaries | [Runtime Boundaries](runtime-boundaries.md) |
 
-For non-storage contracts, route to [API Methods](api/methods.md), API schema owners, [Core Model](core-model.md), [Security](security.md), or the focused API error owner as needed: [API error codes](api/error-codes.md), [API error precedence](api/error-precedence.md), [API error routing](api/error-routing.md), [API blocker routing](api/blocker-routing.md), or [API error details](api/error-details.md). Use the [API error family index](api/errors.md) only for family navigation.
+## Nearby Routes
+
+- API method behavior: [API Methods](api/methods.md), then the linked method owner.
+- API schema shapes: [API Schema Core](api/schema-core.md) and sibling schema owners.
+- Core authority concepts: [Core Model](core-model.md).
+- Security wording and guarantee semantics: [Security](security.md).
+- API error families: [API Errors](api/errors.md).

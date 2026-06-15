@@ -1,15 +1,23 @@
 # 저장소
 
-이 문서는 저장소 참조 문서 묶음으로 들어가는 경로 문서입니다. 기록 배치, 분기별 저장 효과, 아티팩트 생명주기, 버전 관리, API 형태, 보안 보장, 런타임 위치를 직접 정의하지 않고 담당 문서로 보냅니다.
+이 문서는 저장소 묶음에서 집중 담당 문서를 찾기 위한 경로입니다. 정확한 기계 판독 담당 문서 경로는 [`docs/doc-index.yaml`](../../doc-index.yaml)을 사용합니다.
 
-## 저장소 담당 문서 경로
+이 문서는 저장소 기록 배치, 저장 효과, 아티팩트 생명주기, 버전 관리, API 형태, 보안 보장, 런타임 위치, Core 권한 의미를 정의하지 않습니다.
+
+## 저장소 경로
 
 | 필요 | 담당 문서 |
 |---|---|
-| 영속 기록 배치와 저장소 소유 값 | [저장소 기록](storage-records.md) |
-| 메서드 분기 저장 효과와 API 형태/효과 구분 | [저장 효과](storage-effects.md) |
-| 아티팩트 스테이징, 승격, 연결, 본문 읽기, 보존, 무결성 | [아티팩트 저장소](storage-artifacts.md) |
-| `project_state.state_version`, 멱등성, 재실행, 이벤트, 잠금, 마이그레이션 | [저장소 버전 관리](storage-versioning.md) |
-| Product Repository, Harness Server, Runtime Home 위치 | [런타임 경계](runtime-boundaries.md) |
+| 기록과 저장소 소유 값 | [저장소 기록](storage-records.md) |
+| 메서드나 분기별 저장 효과 | [저장 효과](storage-effects.md) |
+| 아티팩트 저장소 생명주기 | [아티팩트 저장소](storage-artifacts.md) |
+| 버전 관리, 재실행, 잠금, 마이그레이션 | [저장소 버전 관리](storage-versioning.md) |
+| 런타임과 제품 저장소 위치 경계 | [런타임 경계](runtime-boundaries.md) |
 
-저장소가 아닌 계약은 필요에 따라 [API 메서드](api/methods.md), API 스키마 담당 문서, [Core 모델](core-model.md), [보안](security.md), 또는 관심사별 API 오류 담당 문서로 이동합니다. API 오류 개념은 [API 오류 코드](api/error-codes.md), [API 오류 우선순위](api/error-precedence.md), [API 오류 처리 경로](api/error-routing.md), [API 차단 사유 처리 경로](api/blocker-routing.md), [API 오류 세부사항](api/error-details.md) 중 맞는 담당 문서를 사용합니다. [API 오류 문서 묶음 색인](api/errors.md)은 문서 묶음 탐색에만 사용합니다.
+## 가까운 경로
+
+- API 메서드 동작: [API 메서드](api/methods.md)에서 연결된 메서드 담당 문서.
+- API 스키마 형태: [API 코어 스키마](api/schema-core.md)와 같은 API 스키마 담당 문서.
+- Core 권한 개념: [Core 모델](core-model.md).
+- 보안 표현과 보장 의미: [보안](security.md).
+- API 오류 묶음: [API 오류](api/errors.md).

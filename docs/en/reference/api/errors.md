@@ -1,25 +1,25 @@
 # API errors
 
-This document is the API error reference family index. Use it as the first-hop route to focused API error owners, not as the owner for public code meanings, precedence, response branch routing, close-readiness blocker routing, or machine-readable details.
+Use this error-family router as the first hop to focused API error owners. For exact machine-readable owner routing, use [`docs/doc-index.yaml`](../../../doc-index.yaml).
 
-It does not define rendered labels, message copy, templates, storage rows, runtime output, or method-specific result payloads.
+This page does not define public error code meaning, error precedence, response branch routing, close-readiness blocker/API boundaries, machine-readable error details, rendered labels, storage effects, or method-specific result payloads.
 
-## Error owner documents
+## Error Routes
 
 | Question | Owner |
 |---|---|
-| Public `ErrorCode` identifiers, meanings, and occurrence summaries | [API error codes](error-codes.md) |
-| Primary public-error selection, precedence, stale-state conflict, and idempotency conflict behavior | [API error precedence](error-precedence.md) |
-| Rejected responses, blocked results, and `dry_run` previews | [API error routing](error-routing.md) |
-| Close-readiness blocker/API response boundary and public-code-to-blocker boundary | [API blocker routing](blocker-routing.md) |
-| `harness.close_task` method-specific blocker behavior | [`harness.close_task`](method-close-task.md) |
-| `ToolError.details`, detail fields, helper values, and machine-readable detail constraints | [API error details](error-details.md) |
+| What a public `ErrorCode` means | [API Error Codes](error-codes.md) |
+| Which public error is selected | [API Error Precedence](error-precedence.md) |
+| Which API response branch is used | [API Error Routing](error-routing.md) |
+| Where close-readiness blockers meet API responses | [API Blocker Routing](blocker-routing.md) |
+| Which machine-readable fields describe an error | [API Error Details](error-details.md) |
+| How `harness.close_task` produces method-specific blockers | [Close-Task Method](method-close-task.md) |
 
-## Related owners
+## Nearby Routes
 
-- Method payload schemas, response branch shapes, and common envelopes: [API Schema Core](schema-core.md), method owners routed from [API Methods](methods.md), and the API schema owners.
-- Core authority checks, user-owned judgment meaning, and close-readiness meaning: [Core Model](../core-model.md), [User-judgment methods](method-user-judgment.md), and [Close-task method](method-close-task.md).
-- `CloseReadinessBlocker`, `WriteDecisionReason`, `PlannedBlocker`, and value-set field definitions: [API State Schemas](schema-state.md), [API Schema Core](schema-core.md), and [API Value Sets](schema-value-sets.md).
-- Storage rows, replay rows, DDL, locks, migrations, and storage effects: [Storage Records](../storage-records.md), [Storage Effects](../storage-effects.md), and [Storage Versioning](../storage-versioning.md).
-- Security guarantee wording and access-boundary claims: [Security](../security.md).
-- User-facing labels and rendered message phrasing as display text: [Template Bodies](../template-bodies.md).
+- Method behavior: [API Methods](methods.md), then the linked method owner.
+- Shared response and error envelope shapes: [API Schema Core](schema-core.md).
+- State and blocker shapes: [API State Schemas](schema-state.md) and [API Value Sets](schema-value-sets.md).
+- Core concepts that an error may reference: [Core Model](../core-model.md).
+- Storage concerns: [Storage](../storage.md).
+- Display text and rendered labels: [Template Bodies](../template-bodies.md).
