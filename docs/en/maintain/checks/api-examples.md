@@ -1,10 +1,12 @@
 # API examples checks
 
-Use these checks for API and reference examples. They check documentation example quality only; they do not validate product runtime conformance, API conformance, product acceptance, or close readiness.
+Use these checks for API and reference examples. They check documentation example quality only; they do not test or certify product runtime behavior, API conformance, product acceptance, or close readiness.
 
 API method reference examples are method-local minimal examples. They may use stable product or user nouns, but each method owner document must be reviewable on its own and must match the applicable method, schema, value-set, and storage-effect owners. Conformance scenarios may be linked only as conceptual references; they are not payload sources for method examples.
 
 Documentation review boundary: schema, value-set, response-branch, and scenario-spine checks audit example text against owner documents; they are not implementation or conformance tests.
+
+String-like review rule: classify string-like example fields from the owner documents before judging the example. A string-like field may be a controlled value, an opaque identifier or classification string, or a free-form display string. The check outcome is about whether the documentation example uses that class correctly.
 
 ## CHK-EXAMPLE-001: durable method-local API and Reference scenarios
 
@@ -78,7 +80,8 @@ Check sources:
 - [Storage Effects](../../reference/storage-effects.md), when the example claims a storage effect
 
 Evidence to inspect:
-- Audit the example against the applicable schema owners before accepting field names, required fields, nullable fields, response branches, refs, and timestamps.
+- Audit the example against the applicable schema owners before accepting field names, required fields, nullable fields, response branches, refs, timestamps, and value classes.
+- Confirm field names, field presence, value meaning, schema shape, value-set routing, and method-local rules come from owner documents, not from inference across examples.
 - Example refs are introduced inside the method document or explicitly described as method-local existing refs.
 - The example includes enough local context to explain its request payload, visible response state, `state_version`, refs, artifact lifecycle, judgment context, and close-readiness example evidence.
 - `expected_state_version`, `base.state_version`, state snapshots, and `Write Authorization` basis values follow the method owner and storage-version owner.
@@ -94,6 +97,7 @@ Evidence to inspect:
 
 Failure:
 - An example cannot be reviewed as documentation without assuming a hidden fixture, unstated sample task, or external scenario.
+- The example uses field names, value meanings, schema shape, value-set routing, or method-local rules that cannot be traced to the owner documents.
 - Status examples include newer-version supporting refs.
 - `expected_state_version`, `base.state_version`, or `Write Authorization` basis values conflict with the example's local preconditions.
 - Approval reasons do not match `sensitive_categories`.
@@ -107,6 +111,7 @@ Failure:
 
 Fix:
 - Align refs, versions, sensitive categories, artifact lifecycle, judgment context, blocker context, timestamps, response snapshots, and storage-effect claims with the applicable owners.
+- Align field names, field presence, value meanings, schema shape, value-set routing, and method-local rules with the applicable owners.
 - Add concise method-local preconditions when a ref or state is intentionally pre-existing.
 - Remove response fields or storage-effect claims that the owner documents do not support.
 
@@ -171,8 +176,12 @@ Check sources:
 - [API error routing](../../reference/api/error-routing.md), when the example shows rejected or blocked branches
 
 Evidence to inspect:
+- Classify every string-like example field with the applicable owner before checking the literal value.
+- Controlled value strings must use supported values from the applicable value-set owner.
+- Opaque identifiers and opaque classification strings may appear in examples only as carried identifiers or local classifications; do not treat them as global exhaustive value sets.
+- Free-form display strings may show human-facing text; do not treat them as canonical schema values, error codes, blocker codes, storage identifiers, or value-set entries.
 - Audit value-like example fields against the applicable value-set owner before accepting them as current example values.
-- Enum-like values in examples appear in the value-set owner unless the field is explicitly free-form text or an opaque identifier.
+- Enum-like values in examples appear in the value-set owner unless the field is explicitly free-form text, an opaque identifier, or an opaque classification string.
 - Method names, `response_kind`, `effect_kind`, `access_class`, `record_kind`, lifecycle values, close-state values, artifact `source_kind`, judgment values, `presentation` values, `required_for`, `UserJudgment.status`, `CloseReadinessBlocker.category`, `ValidatorResult.status`, `ValidatorResult.severity`, and `GuaranteeDisplay.level` match their value-set owners.
 - Rendered labels are not used as canonical schema values.
 - Each response example uses exactly one branch: method-specific result, `ToolRejectedResponse`, or `ToolDryRunResponse` when the method owner defines a dry-run preview.
@@ -182,6 +191,9 @@ Evidence to inspect:
 
 Failure:
 - An unsupported enum-like value appears in an example for a field that is not explicitly free-form or opaque.
+- A controlled value string is accepted without matching the applicable value-set owner.
+- An opaque identifier or opaque classification string is treated as a supported global value.
+- A free-form display string is used as a canonical schema value, error code, blocker code, storage identifier, or value-set entry.
 - A localized display label is used as a canonical value.
 - A stale response shape mixes method result fields into `ToolRejectedResponse` or `ToolDryRunResponse`.
 - A stale response shape omits `base`, uses obsolete branch fields, or contradicts the method owner's result branch.
@@ -189,6 +201,7 @@ Failure:
 
 Fix:
 - Replace unsupported values with supported value-set entries, or route the field to the owner that explicitly defines it as free-form or opaque.
+- When a string is opaque or free-form, make the example or nearby note follow that owner-defined class instead of inventing a value set.
 - Update stale response shapes to the common branch owner and method owner.
 - Remove branch fields that belong to a different response branch.
 

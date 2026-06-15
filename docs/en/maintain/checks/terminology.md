@@ -430,7 +430,7 @@ Evidence to inspect:
 - Do not route detailed contexts to the glossary unless the exact term is intentionally included as a core glossary term.
 - Confirm reserved or profile-gated value contexts route to [API Value Sets](../../reference/api/schema-value-sets.md) and `docs/terminology-map.yaml`.
 - Do not route reserved or profile-gated value contexts to the glossary unless the linked term actually appears in the glossary.
-- Confirm the check validates semantic route correctness, not only file or anchor existence.
+- Confirm the check reviews semantic route correctness, not only file or anchor existence.
 
 Pass condition:
 - Every glossary link refers to a curated glossary term in a core reader-facing concept-summary context.

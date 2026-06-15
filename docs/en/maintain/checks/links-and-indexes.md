@@ -14,6 +14,8 @@ Use `docs/doc-index.yaml` as the canonical machine-readable owner route. It owns
 
 Use the Reference Index as the human-readable route when readers need a navigation page.
 
+This route metadata is documentation-maintenance input only. It is not runtime configuration, product state, or an API conformance source.
+
 Navigation review boundary: link failures are documentation route failures. They are not failures of the API, storage, security, or product behavior named by a target page.
 
 ## CHK-LINK-001: broken links and stale routes

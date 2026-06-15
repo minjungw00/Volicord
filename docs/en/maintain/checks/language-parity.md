@@ -268,7 +268,7 @@ Evidence to inspect:
 - Confirm both languages classify content correctly before accepting parity: required versus prohibited, effect versus non-effect, and route versus contract.
 - Confirm both languages do not share an unclear conditional prohibition where an `unless`, `only when`, or `except when` condition belongs in `Conditions` or `Owner boundary`, but both pages leave it under `Not allowed` or `허용되지 않는 것`.
 - In Korean, inspect `허용되지 않는 것` sentences that use `되어야 합니다` or `해야 합니다`; do not accept them merely because English has the same prohibition structure.
-- Do not validate a Korean label only because it mirrors the English label, and do not validate an English label only because the Korean page has the same structure.
+- Do not accept a Korean label only because it mirrors the English label, and do not accept an English label only because the Korean page has the same structure.
 
 Pass condition:
 - Paired languages match by meaning unit, and each language also uses labels and structure that correctly describe the content.

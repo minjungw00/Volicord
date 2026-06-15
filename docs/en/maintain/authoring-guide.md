@@ -24,7 +24,7 @@ Route documents help readers choose the next document. README files, Start pages
 
 Maintain documents guide authors, translators, and reviewers. They may explain how to find owners, preserve terminology, and run checks. They must not become secondary sources for API behavior, storage effects, schemas, security guarantees, access boundaries, runtime state, close-readiness contracts, or product implementation.
 
-Check documents describe read-only documentation checks. A passing documentation check is not runtime conformance, product acceptance, QA completion, close readiness, or residual-risk acceptance.
+Check documents describe read-only documentation checks. `PASS`, `WARN`, `FAIL`, and `SKIP` are documentation-quality outcomes only. A passing documentation check is not runtime conformance, product acceptance, QA completion, close readiness, or residual-risk acceptance.
 
 ## 3. Owner Editing
 
@@ -60,7 +60,9 @@ A method example must not depend on refs, state versions, artifact refs, run ref
 
 Conformance scenarios may define scenario-level criteria, but they are not shared fixtures for method references. A method example may link conceptually to a conformance scenario, but it must not copy that scenario's payload, refs, paths, `state_version`, artifact refs, run refs, judgment refs, blocker refs, or response snapshots for consistency. API method examples do not define conformance criteria, and conformance scenarios must not require method reference documents to reuse their payloads.
 
-Validate API examples against schema owners, value-set owners, method-local input rules, and storage-effect owners where applicable. Unsupported enum-like values in examples are documentation failures unless the field is explicitly free-form; stale response shapes in examples are documentation failures.
+Review API examples against schema owners, value-set owners, method-local input rules, and storage-effect owners where applicable. Unsupported enum-like values in examples are documentation failures unless the field is explicitly free-form; stale response shapes in examples are documentation failures.
+
+For string-like fields in examples, first identify the owner-defined class: controlled value string, opaque identifier or classification string, or free-form display string. Controlled values must match the value-set owner, opaque strings must not be treated as global enums, and display strings must not be used as canonical schema values.
 
 Do not use documentation maintenance, migration, refactoring, route reshaping, or section restructuring as ordinary product API example payloads. Repository-internal documentation paths, including paths under `docs/`, should appear as example data only when the document is specifically about documentation maintenance.
 
