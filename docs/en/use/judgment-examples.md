@@ -2,15 +2,15 @@
 
 Use these examples after the [User Guide](user-guide.md) when a task is blocked by a choice the agent should not make alone.
 
-The examples are illustrative. They are not an exhaustive policy, a schema reference, a close-readiness contract, or proof that every similar case uses the same route. For exact owner boundaries, use [Core Model](../reference/core-model.md), [Scope](../reference/scope.md), and the relevant owners from the [Reference Index](../reference/README.md).
+The examples are illustrative. They help readers recognize boundary shapes; they are not an exhaustive policy, a schema reference, a close-readiness contract, or proof that every similar case uses the same route. No scenario here is a required shared sample task. For exact owner boundaries, use [Core Model](../reference/core-model.md), [Scope](../reference/scope.md), and the relevant owners from the [Reference Index](../reference/README.md).
 
-Each example separates the user's decision from what the agent may do and what the agent must not imply.
+Each example separates the user's decision from what the agent may do and what the agent must not imply. User-owned judgment, sensitive-action approval, final acceptance, residual-risk acceptance, verification criteria, evidence, close readiness, and `Write Authorization` stay distinct.
 
 ## Product choice
 
 Scenario:
 
-- The agent is adding save feedback to an account settings form.
+- The agent is adding save feedback to a profile settings form.
 
 User decides:
 
@@ -26,7 +26,7 @@ Agent may do:
 Agent must not imply:
 
 - Surrounding code is enough to infer product intent.
-- This product choice also grants final acceptance, residual-risk acceptance, sensitive-action approval, scope expansion, or write permission.
+- This product choice also grants final acceptance, residual-risk acceptance, sensitive-action approval, scope expansion, evidence sufficiency, or `Write Authorization`.
 
 Owner links:
 
@@ -37,12 +37,14 @@ Owner links:
 
 Scenario:
 
-- The agent needs to choose how account data export confirmation should be implemented.
+- The agent needs to choose whether a new report-export confirmation should live in the UI flow, an existing service boundary, or a new shared helper.
+
+This scenario is only about who owns a material technical direction. It does not make report export confirmation a product policy or a required sample task.
 
 User decides:
 
-- Which material technical direction to take when architecture, dependency, authentication, migration, security, privacy, retention, or compatibility is at stake.
-- Whether the cost and reversibility of the choice fit the task.
+- Which material technical direction to take when architecture, dependency, authentication, security, privacy, retention, or compatibility is at stake.
+- Whether the cost and reversibility of the choice fit the current task.
 
 Agent may do:
 
@@ -53,7 +55,7 @@ Agent may do:
 Agent must not imply:
 
 - A strong recommendation is the same thing as user-owned technical judgment.
-- A technical choice approves dependency installation, product-file writes, or migration work by itself.
+- A technical choice approves dependency installation, product-file writes, data-shape changes, sensitive-action approval, final acceptance, residual-risk acceptance, or `Write Authorization` by itself.
 
 Owner links:
 
@@ -64,28 +66,55 @@ Owner links:
 
 Scenario:
 
-- The accepted task is limited to `src/auth`, but the agent finds a helper path outside the accepted boundary.
+- The current scope is limited to `src/auth`, but the agent finds a helper path outside that boundary.
 
 User decides:
 
-- Whether the task may expand to the named helper path.
-- Whether to keep the original scope, expand it narrowly, or convert the work to read-only investigation.
+- Whether the current scope may expand to the named helper path.
+- Whether to keep the current scope, expand it narrowly, or convert the work to read-only investigation.
 
 Agent may do:
 
 - Name the exact path or behavior that appears necessary.
-- Explain why the accepted boundary blocks the next safe action.
-- Continue inspection inside accepted scope while writes outside scope remain blocked.
+- Explain why the currently applied scope blocks the next safe action.
+- Continue inspection inside current scope while writes outside scope remain blocked.
 
 Agent must not imply:
 
 - Scope expansion can be inferred from implementation convenience.
-- Scope change also creates sensitive-action approval, final acceptance, residual-risk acceptance, or write authorization.
+- Scope change also creates sensitive-action approval, final acceptance, residual-risk acceptance, evidence sufficiency, or `Write Authorization`.
 
 Owner links:
 
 - [Core Model](../reference/core-model.md)
 - [Update-scope Method](../reference/api/method-update-scope.md)
+
+## Verification criteria
+
+Scenario:
+
+- The task asks for clearer import errors, but no one has named what "clearer" means for this slice.
+
+User decides:
+
+- Which visible outcomes count as the criteria for checking the work.
+- Whether the criteria are narrow enough for the requested slice or require a broader product review.
+
+Agent may do:
+
+- Propose criteria from current product behavior and ask the user to confirm or revise them.
+- Use agreed criteria to guide checks and evidence gathering.
+- Name any claim that still lacks supporting evidence.
+
+Agent must not imply:
+
+- Verification criteria are evidence, QA completion, final acceptance, residual-risk acceptance, sensitive-action approval, scope expansion, or `Write Authorization`.
+- Meeting criteria in an agent summary alone makes the task close-ready.
+
+Owner links:
+
+- [Core Model](../reference/core-model.md)
+- [Agent Guide](agent-guide.md)
 
 ## Sensitive action
 
@@ -106,8 +135,8 @@ Agent may do:
 
 Agent must not imply:
 
-- Sensitive approval is product-file write authorization, final acceptance, residual-risk acceptance, or security authority.
-- A broad "go ahead" approves unrelated installs, upgrades, deploys, secret printing, or product decisions.
+- Sensitive-action approval is write approval, `Write Authorization`, final acceptance, residual-risk acceptance, verification criteria, or security authority.
+- A broad "go ahead" approves unrelated installs, upgrades, deploys, secret printing, product decisions, or product-file writes.
 
 Owner links:
 
@@ -134,7 +163,7 @@ Agent may do:
 Agent must not imply:
 
 - Agent confidence, passing tests alone, a chat summary, or broad approval proves evidence sufficiency.
-- Artifact availability by itself creates evidence, final acceptance, residual-risk acceptance, QA, or close readiness.
+- Artifact availability by itself creates evidence, verification criteria, final acceptance, residual-risk acceptance, QA, or close readiness.
 
 Owner links:
 
@@ -155,13 +184,13 @@ User decides:
 
 Agent may do:
 
-- Present completed scope, changed files or no-file outcome, checks, known gaps, and visible residual risk.
+- Present current scope, changed files or no-file outcome, checks, evidence coverage, agreed verification criteria, known gaps, and visible residual risk.
 - Ask for final acceptance only when the result basis is visible enough for the user to judge.
 
 Agent must not imply:
 
 - "Looks good" is final acceptance unless that exact question was pending.
-- Final acceptance supplies missing evidence, accepts residual risk, expands scope, or accepts unrelated files.
+- Final acceptance supplies missing evidence, changes verification criteria, accepts residual risk, expands current scope, creates sensitive-action approval or `Write Authorization`, or accepts unrelated files.
 
 Owner links:
 
@@ -186,7 +215,7 @@ Agent may do:
 
 Agent must not imply:
 
-- Residual-risk acceptance is final acceptance, evidence sufficiency, verification, QA, or proof that no risk remains.
+- Residual-risk acceptance is final acceptance, evidence sufficiency, verification criteria satisfaction, QA, or proof that no risk remains.
 - Acceptance of one risk accepts other risks or hides the risk from close reporting.
 
 Owner links:
@@ -206,13 +235,13 @@ User decides:
 
 Agent may do:
 
-- Summarize changed scope, evidence, checks, known blockers, visible residual risk, and next safe action.
+- Summarize current scope, evidence, checks, known blockers, visible residual risk, and next safe action.
 - Ask only the missing judgment that changes close readiness.
 
 Agent must not imply:
 
 - A status summary, passing checks, final acceptance alone, residual-risk acceptance alone, or chat text closes the task.
-- A read-only close-readiness review creates evidence, acceptance, residual-risk acceptance, or task state.
+- A read-only close-readiness review creates evidence, final acceptance, residual-risk acceptance, or task state.
 
 Owner links:
 
@@ -228,18 +257,18 @@ Scenario:
 
 User decides:
 
-- No new user judgment is needed when the detail stays inside accepted scope and acceptance criteria.
-- Prior accepted product, technical, and scope decisions remain the boundary.
+- No new user judgment is normally apparent when the detail stays inside current scope and agreed verification criteria.
+- Prior accepted product, technical, and scope decisions still provide the boundary.
 
 Agent may do:
 
 - Choose ordinary local details that follow project style.
-- Escalate only if the detail changes user-visible behavior, public interfaces, privacy or security behavior, dependencies, scope, sensitive action, acceptance, or residual risk.
+- Escalate only if the detail changes user-visible behavior, public interfaces, privacy or security behavior, dependencies, current scope, sensitive action, verification criteria, final acceptance, or residual risk.
 
 Agent must not imply:
 
 - Every implementation detail needs a user decision.
-- Agent-owned latitude can change product behavior, scope, sensitive actions, acceptance, or residual risk without asking.
+- Agent-owned latitude can change product behavior, current scope, sensitive actions, verification criteria, final acceptance, or residual risk without asking.
 
 Owner links:
 
