@@ -86,7 +86,7 @@ harness.close_task
 | `record_user_judgment` | `harness.record_user_judgment` |
 | `close_task` | `harness.close_task` |
 
-`action_kind`는 메서드 이름 값이 아닙니다. 지원되는 공개 메서드 하나가 다음 단계를 담당할 때 `NextActionSummary.owner_method`는 [메서드 이름 값 집합](#method-name-values)을 사용하고, 단일 담당 method가 없으면 `null`입니다. 다음 단계의 메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서에 둡니다. 전체 `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다.
+`action_kind`는 메서드 이름 값이 아닙니다. 지원되는 공개 메서드 하나가 다음 단계를 담당할 때 `NextActionSummary.owner_method`는 [메서드 이름 값 집합](#method-name-values)을 사용하고, 단일 담당 메서드가 없으면 `null`입니다. 다음 단계의 메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서에 둡니다. 전체 `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다.
 
 <a id="response-and-effect-values"></a>
 ## 응답과 효과 값
@@ -118,7 +118,7 @@ no_effect
 | 필드 | 분류 | 담당 문서 경로 |
 |---|---|---|
 | `EventRef.event_kind` | 불투명 이벤트 분류 문자열입니다. 메서드 예시가 `event_kind` 문자열을 보여 줄 수 있지만, 이 문서는 빠짐없는 공개 `event_kind` 값 집합을 공개하지 않습니다. | 형태 담당 문서: [API 코어 스키마](schema-core.md#shared-support-shapes). 이벤트를 만드는 동작: 메서드 담당 문서. |
-| `WriteDecisionReason.code` | 메서드 범위의 불투명 reason code입니다. 메서드 담당 문서는 전역의 빠짐없는 코드 목록을 만들지 않고 예시 코드를 보여 줄 수 있습니다. | 형태 담당 문서: [API 상태 스키마](schema-state.md#current-position-display-shapes). 생성과 로컬 의미: [`harness.prepare_write`](method-prepare-write.md)와 영향받는 메서드 담당 문서. |
+| `WriteDecisionReason.code` | 메서드 범위의 불투명 사유 코드입니다. 메서드 담당 문서는 전역의 빠짐없는 코드 목록을 만들지 않고 예시 코드를 보여 줄 수 있습니다. | 형태 담당 문서: [API 상태 스키마](schema-state.md#current-position-display-shapes). 생성과 로컬 의미: [`harness.prepare_write`](method-prepare-write.md)와 영향받는 메서드 담당 문서. |
 
 공개 `ErrorCode` 값은 별도이며 [API 오류 코드](error-codes.md)가 담당합니다.
 
@@ -318,7 +318,7 @@ close_readiness
 
 이 범주는 `harness.prepare_write` 결정 사유를 분류합니다. `CloseReadinessBlocker` 객체가 아니며 닫기 준비 상태를 평가하지 않습니다. 메서드별 결정 동작과 사유 생성은 [`harness.prepare_write`](method-prepare-write.md)에 둡니다.
 
-이 값 집합은 `category`만 제어합니다. `WriteDecisionReason.code`는 전역 닫힌 enum이 아닙니다. 메서드 범위의 불투명 reason code이며, 메서드 담당 문서는 예시 코드를 보여 주더라도 전역 지원 목록에 추가하지 않을 수 있습니다. `message`는 자유 형식 표시 문자열이고, `related_refs`는 `StateRecordRef`를 사용합니다.
+이 값 집합은 `category`만 제어합니다. `WriteDecisionReason.code`는 전역 닫힌 enum이 아닙니다. 메서드 범위의 불투명 사유 코드이며, 메서드 담당 문서는 예시 코드를 보여 주더라도 전역 지원 목록에 추가하지 않을 수 있습니다. `message`는 자유 형식 표시 문자열이고, `related_refs`는 `StateRecordRef`를 사용합니다.
 
 `CloseReadinessBlocker.category`는 아래 값을 사용합니다.
 
