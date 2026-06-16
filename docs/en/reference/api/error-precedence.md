@@ -31,7 +31,7 @@ When an error-bearing branch has non-empty `errors`, `errors[0]` is the primary 
 | Precedence | Primary `ErrorCode` | Meaning owner |
 |---:|---|---|
 | <a id="precedence-validation-failed"></a>1 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](error-codes.md#errorcode-validation-failed) |
-| 2 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT` conflict selection](#state-version-conflict-precedence-exclusion) |
+| 2 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](error-codes.md#errorcode-state-version-conflict) |
 | <a id="precedence-mcp-unavailable"></a>3 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](error-codes.md#errorcode-mcp-unavailable) |
 | <a id="precedence-local-access-mismatch"></a>4 | `LOCAL_ACCESS_MISMATCH` | [`LOCAL_ACCESS_MISMATCH`](error-codes.md#errorcode-local-access-mismatch) |
 | <a id="precedence-no-active-task"></a>5 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](error-codes.md#errorcode-no-active-task) |
