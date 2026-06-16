@@ -62,7 +62,7 @@
 - 오래된 `expected_state_version`, 오래된 `WriteAuthorization.basis_state_version`, 멱등 요청 해시 충돌 때문에 메서드가 진행될 수 없어 거부 응답이 선택됩니다.
 
 선택 경계:
-- `STATE_VERSION_CONFLICT`를 `MethodResult.base.errors[0]`, `CloseTaskResult(close_state=blocked).errors[0]`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`로 선택하지 않습니다.
+- 이 충돌은 `ToolRejectedResponse.errors[]`로 표현하며, `MethodResult`나 `CloseTaskResult(close_state=blocked)` 분기를 만들지 않습니다. `STATE_VERSION_CONFLICT`를 결과 쪽 판단, 차단 사유 코드, 닫기 차단 사유 코드, 미리보기 차단 사유 코드로 모델링하지 않으며, 여기에는 `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`가 포함됩니다.
 
 관련 담당 문서:
 - 이 충돌의 기계 판독용 필드는 [API 오류 세부사항](error-details.md#state-conflict-detail-fields)이 담당합니다.

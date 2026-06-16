@@ -62,7 +62,7 @@ Selection condition:
 - A rejected response is selected because a stale `expected_state_version`, stale `WriteAuthorization.basis_state_version`, or idempotency request-hash conflict prevents the method from proceeding.
 
 Selection boundary:
-- `STATE_VERSION_CONFLICT` is not selected as `MethodResult.base.errors[0]`, `CloseTaskResult(close_state=blocked).errors[0]`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`.
+- Represent these conflicts through `ToolRejectedResponse.errors[]`; they do not produce a `MethodResult` or `CloseTaskResult(close_state=blocked)` branch. Do not model `STATE_VERSION_CONFLICT` as a result-side decision, blocker code, close-readiness blocker code, or planned blocker code, including `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`.
 
 Related owner:
 - Machine-readable fields for these conflicts belong to [API error details](error-details.md#state-conflict-detail-fields).
