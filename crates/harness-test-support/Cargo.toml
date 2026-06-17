@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 harness-types = { path = "../harness-types" }
+tempfile = "3"
 
 [lib]
 path = "src/lib.rs"

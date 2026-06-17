@@ -6,6 +6,10 @@ publish = false
 
 [dependencies]
 harness-types = { path = "../harness-types" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[dev-dependencies]
+harness-test-support = { path = "../harness-test-support" }
 
 [lib]
 path = "src/lib.rs"

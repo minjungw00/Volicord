@@ -2,27 +2,17 @@
 
 //! Storage boundary for SQLite records, artifact plumbing, and migrations.
 //!
-//! This crate intentionally contains no DDL, migrations, or storage effects yet.
+//! This crate implements baseline SQLite schema creation and transaction
+//! utilities only. Public Harness method behavior remains outside this crate.
 
 use harness_types::TypeBoundary;
 
-pub mod artifacts {
-    /// Placement marker for future artifact-store plumbing.
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct ArtifactStoreBoundary;
-}
+pub mod artifacts;
+pub mod error;
+pub mod migrations;
+pub mod sqlite;
 
-pub mod migrations {
-    /// Placement marker for future storage migration wiring.
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct MigrationBoundary;
-}
-
-pub mod sqlite {
-    /// Placement marker for future SQLite-backed store code.
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct SqliteStoreBoundary;
-}
+pub use error::{StoreError, StoreResult};
 
 /// Identifies the shared type boundary this crate depends on.
 pub const fn shared_type_boundary() -> TypeBoundary {
