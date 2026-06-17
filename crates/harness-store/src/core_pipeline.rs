@@ -60,6 +60,11 @@ pub enum CoreStorageMutation {
     ReplaceCurrentChangeUnit(ChangeUnitInsert),
     MarkActiveWriteAuthorizationsStale { task_id: String },
     InsertWriteAuthorization(WriteAuthorizationInsert),
+    ConsumeWriteAuthorization(WriteAuthorizationConsumption),
+    InsertRun(RunInsert),
+    PromoteStagedArtifact(ArtifactPromotion),
+    LinkArtifact(ArtifactLinkInsert),
+    UpsertEvidenceSummary(EvidenceSummaryUpsert),
     InsertUserJudgment(UserJudgmentInsert),
     ResolveUserJudgment(UserJudgmentResolutionUpdate),
 }
@@ -153,6 +158,74 @@ pub struct WriteAuthorizationInsert {
     pub metadata_json: String,
 }
 
+/// Storage input for consuming one active Write Authorization.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteAuthorizationConsumption {
+    pub write_authorization_id: String,
+    pub run_id: String,
+    pub expected_basis_state_version: u64,
+}
+
+/// Storage input for inserting one committed Run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunInsert {
+    pub run_id: String,
+    pub task_id: String,
+    pub change_unit_id: Option<String>,
+    pub write_authorization_id: Option<String>,
+    pub kind: String,
+    pub status: String,
+    pub summary_json: String,
+    pub observed_changes_json: String,
+    pub evidence_updates_json: String,
+    pub authorization_effect_json: String,
+    pub created_by_surface_id: String,
+    pub created_by_surface_instance_id: String,
+    pub metadata_json: String,
+}
+
+/// Storage input for promoting one staged artifact to a persistent artifact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactPromotion {
+    pub handle_id: String,
+    pub artifact_id: String,
+    pub task_id: String,
+    pub run_id: String,
+    pub expected_created_by_surface_id: String,
+    pub expected_created_by_surface_instance_id: String,
+    pub expected_sha256: String,
+    pub expected_size_bytes: u64,
+    pub expected_redaction_state: String,
+    pub uri: String,
+    pub retention_json: String,
+    pub producer_json: String,
+    pub metadata_json: String,
+}
+
+/// Storage input for linking a persistent artifact to an owner relation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactLinkInsert {
+    pub artifact_id: String,
+    pub task_id: String,
+    pub owner_record_kind: String,
+    pub owner_record_id: String,
+    pub created_by_run_id: String,
+    pub metadata_json: String,
+}
+
+/// Storage input for creating or replacing one evidence summary row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvidenceSummaryUpsert {
+    pub evidence_summary_id: String,
+    pub task_id: String,
+    pub change_unit_id: Option<String>,
+    pub status: String,
+    pub coverage_json: String,
+    pub supporting_refs_json: String,
+    pub gap_refs_json: String,
+    pub metadata_json: String,
+}
+
 /// Event reference facts created by an atomic mutation commit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommittedEventRef {
@@ -218,6 +291,8 @@ pub struct StorageEffectCounts {
     pub runs: u64,
     pub artifact_staging: u64,
     pub artifacts: u64,
+    pub artifact_links: u64,
+    pub evidence_summaries: u64,
     pub blockers: u64,
 }
 
@@ -267,6 +342,42 @@ pub struct WriteAuthorizationRecord {
     pub status: String,
     pub attempt_scope_json: String,
     pub expires_at: String,
+}
+
+/// Stored staged artifact facts needed by `harness.record_run`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredArtifactStagingRecord {
+    pub project_id: String,
+    pub handle_id: String,
+    pub task_id: String,
+    pub created_by_surface_id: String,
+    pub created_by_surface_instance_id: String,
+    pub artifact_json: String,
+    pub tmp_path: Option<String>,
+    pub sha256: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub content_type: Option<String>,
+    pub redaction_state: String,
+    pub status: String,
+    pub expires_at: String,
+}
+
+/// Stored persistent artifact facts needed by `harness.record_run`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredArtifactRecord {
+    pub project_id: String,
+    pub artifact_id: String,
+    pub task_id: String,
+    pub producer_run_id: Option<String>,
+    pub source_staging_handle_id: Option<String>,
+    pub uri: String,
+    pub body_path: Option<String>,
+    pub sha256: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub content_type: Option<String>,
+    pub redaction_state: String,
+    pub status: String,
+    pub producer_json: String,
 }
 
 /// Stored user-owned judgment row data needed by Core method implementations.
@@ -437,6 +548,36 @@ impl CoreProjectStore {
         active_write_authorizations(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
+    /// Reads one Write Authorization row by exact project-local identity.
+    pub fn write_authorization_record(
+        &self,
+        write_authorization_id: &str,
+    ) -> StoreResult<Option<WriteAuthorizationRecord>> {
+        write_authorization_record(&self.conn, &self.project.project_id, write_authorization_id)
+    }
+
+    /// Reads one staged artifact row by exact project-local handle identity.
+    pub fn artifact_staging_record(
+        &self,
+        handle_id: &str,
+    ) -> StoreResult<Option<StoredArtifactStagingRecord>> {
+        artifact_staging_record(&self.conn, &self.project.project_id, handle_id)
+    }
+
+    /// Reads one persistent artifact row by exact project-local artifact identity.
+    pub fn artifact_record(&self, artifact_id: &str) -> StoreResult<Option<StoredArtifactRecord>> {
+        artifact_record(&self.conn, &self.project.project_id, artifact_id)
+    }
+
+    /// Returns whether a persistent artifact already has an owner link for a Task.
+    pub fn artifact_has_task_owner_link(
+        &self,
+        artifact_id: &str,
+        task_id: &str,
+    ) -> StoreResult<bool> {
+        artifact_has_task_owner_link(&self.conn, &self.project.project_id, artifact_id, task_id)
+    }
+
     /// Lists pending user-judgment refs for a Task.
     pub fn pending_user_judgment_refs(
         &self,
@@ -550,6 +691,12 @@ impl CoreProjectStore {
                 &self.project.project_id,
             )?,
             artifacts: table_count(&self.conn, "artifacts", &self.project.project_id)?,
+            artifact_links: table_count(&self.conn, "artifact_links", &self.project.project_id)?,
+            evidence_summaries: table_count(
+                &self.conn,
+                "evidence_summaries",
+                &self.project.project_id,
+            )?,
             blockers: table_count(&self.conn, "blockers", &self.project.project_id)?,
         })
     }
@@ -804,6 +951,11 @@ impl CoreStorageMutation {
             Self::InsertWriteAuthorization(input) => {
                 mutation.insert_write_authorization(input, committed_state_version)
             }
+            Self::ConsumeWriteAuthorization(input) => mutation.consume_write_authorization(input),
+            Self::InsertRun(input) => mutation.insert_run(input),
+            Self::PromoteStagedArtifact(input) => mutation.promote_staged_artifact(input),
+            Self::LinkArtifact(input) => mutation.link_artifact(input),
+            Self::UpsertEvidenceSummary(input) => mutation.upsert_evidence_summary(input),
             Self::InsertUserJudgment(input) => mutation.insert_user_judgment(input),
             Self::ResolveUserJudgment(input) => mutation.resolve_user_judgment(input),
         }
@@ -1169,6 +1321,369 @@ impl ProjectMutation<'_> {
                 input.created_by_surface_instance_id,
                 input.created_by_judgment_id,
                 input.expires_at,
+                input.metadata_json
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn consume_write_authorization(
+        &mut self,
+        input: &WriteAuthorizationConsumption,
+    ) -> StoreResult<()> {
+        validate_identifier("write_authorization_id", &input.write_authorization_id)?;
+        validate_identifier("run_id", &input.run_id)?;
+        let expected_basis = u64_to_i64(
+            "write_authorizations.basis_state_version",
+            input.expected_basis_state_version,
+        )?;
+        let changed = self.tx.execute(
+            "UPDATE write_authorizations
+                SET status = 'consumed',
+                    consumed_by_run_id = ?3,
+                    consumed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              WHERE project_id = ?1
+                AND write_authorization_id = ?2
+                AND status = 'active'
+                AND basis_state_version = ?4",
+            params![
+                self.project_id,
+                input.write_authorization_id,
+                input.run_id,
+                expected_basis
+            ],
+        )?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "active Write Authorization consumption changed no rows".to_owned(),
+            })
+        }
+    }
+
+    fn insert_run(&mut self, input: &RunInsert) -> StoreResult<()> {
+        validate_identifier("run_id", &input.run_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        if let Some(change_unit_id) = &input.change_unit_id {
+            validate_identifier("change_unit_id", change_unit_id)?;
+        }
+        if let Some(write_authorization_id) = &input.write_authorization_id {
+            validate_identifier("write_authorization_id", write_authorization_id)?;
+        }
+        validate_identifier("runs.kind", &input.kind)?;
+        validate_identifier("runs.status", &input.status)?;
+        validate_json_text("runs.summary_json", &input.summary_json)?;
+        validate_json_text("runs.observed_changes_json", &input.observed_changes_json)?;
+        validate_json_text("runs.evidence_updates_json", &input.evidence_updates_json)?;
+        validate_json_text(
+            "runs.authorization_effect_json",
+            &input.authorization_effect_json,
+        )?;
+        validate_identifier("created_by_surface_id", &input.created_by_surface_id)?;
+        validate_identifier(
+            "created_by_surface_instance_id",
+            &input.created_by_surface_instance_id,
+        )?;
+        validate_json_text("runs.metadata_json", &input.metadata_json)?;
+
+        self.tx.execute(
+            "INSERT INTO runs (
+                project_id,
+                run_id,
+                task_id,
+                change_unit_id,
+                write_authorization_id,
+                kind,
+                status,
+                summary_json,
+                observed_changes_json,
+                evidence_updates_json,
+                authorization_effect_json,
+                created_by_surface_id,
+                created_by_surface_instance_id,
+                started_at,
+                completed_at,
+                created_at,
+                metadata_json
+            )
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                ?4,
+                ?5,
+                ?6,
+                ?7,
+                ?8,
+                ?9,
+                ?10,
+                ?11,
+                ?12,
+                ?13,
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                ?14
+            )",
+            params![
+                self.project_id,
+                input.run_id,
+                input.task_id,
+                input.change_unit_id,
+                input.write_authorization_id,
+                input.kind,
+                input.status,
+                input.summary_json,
+                input.observed_changes_json,
+                input.evidence_updates_json,
+                input.authorization_effect_json,
+                input.created_by_surface_id,
+                input.created_by_surface_instance_id,
+                input.metadata_json
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn promote_staged_artifact(&mut self, input: &ArtifactPromotion) -> StoreResult<()> {
+        validate_identifier("artifact_staging.handle_id", &input.handle_id)?;
+        validate_identifier("artifact_id", &input.artifact_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        validate_identifier("run_id", &input.run_id)?;
+        validate_identifier(
+            "expected_created_by_surface_id",
+            &input.expected_created_by_surface_id,
+        )?;
+        validate_identifier(
+            "expected_created_by_surface_instance_id",
+            &input.expected_created_by_surface_instance_id,
+        )?;
+        validate_identifier("expected_sha256", &input.expected_sha256)?;
+        validate_identifier("expected_redaction_state", &input.expected_redaction_state)?;
+        validate_identifier("artifacts.uri", &input.uri)?;
+        validate_json_text("artifacts.retention_json", &input.retention_json)?;
+        validate_json_text("artifacts.producer_json", &input.producer_json)?;
+        validate_json_text("artifacts.metadata_json", &input.metadata_json)?;
+
+        let staging = artifact_staging_record_tx(self.tx, self.project_id, &input.handle_id)?
+            .ok_or_else(|| StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "staged artifact disappeared before promotion".to_owned(),
+            })?;
+        if staging.task_id != input.task_id
+            || staging.created_by_surface_id != input.expected_created_by_surface_id
+            || staging.created_by_surface_instance_id
+                != input.expected_created_by_surface_instance_id
+            || staging.status != "staged"
+            || staging.sha256.as_deref() != Some(input.expected_sha256.as_str())
+            || staging.size_bytes != Some(input.expected_size_bytes)
+            || staging.redaction_state != input.expected_redaction_state
+        {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "staged artifact changed before promotion".to_owned(),
+            });
+        }
+        let expired: bool = self.tx.query_row(
+            "SELECT ?1 <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            params![staging.expires_at],
+            |row| row.get::<_, i64>(0).map(|value| value != 0),
+        )?;
+        if expired {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "staged artifact expired before promotion".to_owned(),
+            });
+        }
+
+        let size_bytes = u64_to_i64("artifacts.size_bytes", input.expected_size_bytes)?;
+        self.tx.execute(
+            "INSERT INTO artifacts (
+                project_id,
+                artifact_id,
+                task_id,
+                producer_run_id,
+                source_staging_handle_id,
+                uri,
+                body_path,
+                sha256,
+                size_bytes,
+                content_type,
+                redaction_state,
+                status,
+                retention_json,
+                producer_json,
+                created_at,
+                updated_at,
+                metadata_json
+            )
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                ?4,
+                ?5,
+                ?6,
+                ?7,
+                ?8,
+                ?9,
+                ?10,
+                ?11,
+                'available',
+                ?12,
+                ?13,
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                ?14
+            )",
+            params![
+                self.project_id,
+                input.artifact_id,
+                input.task_id,
+                input.run_id,
+                input.handle_id,
+                input.uri,
+                staging.tmp_path,
+                input.expected_sha256,
+                size_bytes,
+                staging.content_type,
+                input.expected_redaction_state,
+                input.retention_json,
+                input.producer_json,
+                input.metadata_json
+            ],
+        )?;
+
+        let changed = self.tx.execute(
+            "UPDATE artifact_staging
+                SET status = 'consumed',
+                    consumed_by_run_id = ?3,
+                    promoted_artifact_id = ?4,
+                    consumed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              WHERE project_id = ?1
+                AND handle_id = ?2
+                AND status = 'staged'",
+            params![
+                self.project_id,
+                input.handle_id,
+                input.run_id,
+                input.artifact_id
+            ],
+        )?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "staged artifact consumption changed no rows".to_owned(),
+            })
+        }
+    }
+
+    fn link_artifact(&mut self, input: &ArtifactLinkInsert) -> StoreResult<()> {
+        validate_identifier("artifact_id", &input.artifact_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        validate_identifier("owner_record_kind", &input.owner_record_kind)?;
+        validate_identifier("owner_record_id", &input.owner_record_id)?;
+        validate_identifier("created_by_run_id", &input.created_by_run_id)?;
+        validate_json_text("artifact_links.metadata_json", &input.metadata_json)?;
+
+        self.tx.execute(
+            "INSERT OR IGNORE INTO artifact_links (
+                project_id,
+                artifact_id,
+                task_id,
+                owner_record_kind,
+                owner_record_id,
+                created_by_run_id,
+                created_at,
+                metadata_json
+            )
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                ?4,
+                ?5,
+                ?6,
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                ?7
+            )",
+            params![
+                self.project_id,
+                input.artifact_id,
+                input.task_id,
+                input.owner_record_kind,
+                input.owner_record_id,
+                input.created_by_run_id,
+                input.metadata_json
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn upsert_evidence_summary(&mut self, input: &EvidenceSummaryUpsert) -> StoreResult<()> {
+        validate_identifier("evidence_summary_id", &input.evidence_summary_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        if let Some(change_unit_id) = &input.change_unit_id {
+            validate_identifier("change_unit_id", change_unit_id)?;
+        }
+        validate_identifier("evidence_summaries.status", &input.status)?;
+        validate_json_text("evidence_summaries.coverage_json", &input.coverage_json)?;
+        validate_json_text(
+            "evidence_summaries.supporting_refs_json",
+            &input.supporting_refs_json,
+        )?;
+        validate_json_text("evidence_summaries.gap_refs_json", &input.gap_refs_json)?;
+        validate_json_text("evidence_summaries.metadata_json", &input.metadata_json)?;
+
+        self.tx.execute(
+            "INSERT INTO evidence_summaries (
+                project_id,
+                evidence_summary_id,
+                task_id,
+                change_unit_id,
+                status,
+                coverage_json,
+                supporting_refs_json,
+                gap_refs_json,
+                created_at,
+                updated_at,
+                metadata_json
+            )
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                ?4,
+                ?5,
+                ?6,
+                ?7,
+                ?8,
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                ?9
+            )
+            ON CONFLICT(project_id, evidence_summary_id) DO UPDATE SET
+                task_id = excluded.task_id,
+                change_unit_id = excluded.change_unit_id,
+                status = excluded.status,
+                coverage_json = excluded.coverage_json,
+                supporting_refs_json = excluded.supporting_refs_json,
+                gap_refs_json = excluded.gap_refs_json,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                metadata_json = excluded.metadata_json",
+            params![
+                self.project_id,
+                input.evidence_summary_id,
+                input.task_id,
+                input.change_unit_id,
+                input.status,
+                input.coverage_json,
+                input.supporting_refs_json,
+                input.gap_refs_json,
                 input.metadata_json
             ],
         )?;
@@ -1570,6 +2085,31 @@ fn active_write_authorizations(
     Ok(records)
 }
 
+fn write_authorization_record(
+    conn: &Connection,
+    project_id: &str,
+    write_authorization_id: &str,
+) -> StoreResult<Option<WriteAuthorizationRecord>> {
+    conn.query_row(
+        "SELECT
+            project_id,
+            write_authorization_id,
+            task_id,
+            change_unit_id,
+            basis_state_version,
+            status,
+            attempt_scope_json,
+            expires_at
+         FROM write_authorizations
+         WHERE project_id = ?1
+           AND write_authorization_id = ?2",
+        params![project_id, write_authorization_id],
+        write_authorization_record_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
 fn write_authorization_record_from_row(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<WriteAuthorizationRecord> {
@@ -1587,6 +2127,160 @@ fn write_authorization_record_from_row(
         attempt_scope_json: row.get(6)?,
         expires_at: row.get(7)?,
     })
+}
+
+fn artifact_staging_record(
+    conn: &Connection,
+    project_id: &str,
+    handle_id: &str,
+) -> StoreResult<Option<StoredArtifactStagingRecord>> {
+    conn.query_row(
+        "SELECT
+            project_id,
+            handle_id,
+            task_id,
+            created_by_surface_id,
+            created_by_surface_instance_id,
+            artifact_json,
+            tmp_path,
+            sha256,
+            size_bytes,
+            content_type,
+            redaction_state,
+            status,
+            expires_at
+         FROM artifact_staging
+         WHERE project_id = ?1
+           AND handle_id = ?2",
+        params![project_id, handle_id],
+        artifact_staging_record_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
+fn artifact_staging_record_tx(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    handle_id: &str,
+) -> StoreResult<Option<StoredArtifactStagingRecord>> {
+    tx.query_row(
+        "SELECT
+            project_id,
+            handle_id,
+            task_id,
+            created_by_surface_id,
+            created_by_surface_instance_id,
+            artifact_json,
+            tmp_path,
+            sha256,
+            size_bytes,
+            content_type,
+            redaction_state,
+            status,
+            expires_at
+         FROM artifact_staging
+         WHERE project_id = ?1
+           AND handle_id = ?2",
+        params![project_id, handle_id],
+        artifact_staging_record_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
+fn artifact_staging_record_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<StoredArtifactStagingRecord> {
+    let size_bytes = row
+        .get::<_, Option<i64>>(8)?
+        .map(|value| nonnegative_i64_to_u64("artifact_staging.size_bytes", value))
+        .transpose()?;
+    Ok(StoredArtifactStagingRecord {
+        project_id: row.get(0)?,
+        handle_id: row.get(1)?,
+        task_id: row.get(2)?,
+        created_by_surface_id: row.get(3)?,
+        created_by_surface_instance_id: row.get(4)?,
+        artifact_json: row.get(5)?,
+        tmp_path: row.get(6)?,
+        sha256: row.get(7)?,
+        size_bytes,
+        content_type: row.get(9)?,
+        redaction_state: row.get(10)?,
+        status: row.get(11)?,
+        expires_at: row.get(12)?,
+    })
+}
+
+fn artifact_record(
+    conn: &Connection,
+    project_id: &str,
+    artifact_id: &str,
+) -> StoreResult<Option<StoredArtifactRecord>> {
+    conn.query_row(
+        "SELECT
+            project_id,
+            artifact_id,
+            task_id,
+            producer_run_id,
+            source_staging_handle_id,
+            uri,
+            body_path,
+            sha256,
+            size_bytes,
+            content_type,
+            redaction_state,
+            status,
+            producer_json
+         FROM artifacts
+         WHERE project_id = ?1
+           AND artifact_id = ?2",
+        params![project_id, artifact_id],
+        artifact_record_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
+fn artifact_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredArtifactRecord> {
+    let size_bytes = row
+        .get::<_, Option<i64>>(8)?
+        .map(|value| nonnegative_i64_to_u64("artifacts.size_bytes", value))
+        .transpose()?;
+    Ok(StoredArtifactRecord {
+        project_id: row.get(0)?,
+        artifact_id: row.get(1)?,
+        task_id: row.get(2)?,
+        producer_run_id: row.get(3)?,
+        source_staging_handle_id: row.get(4)?,
+        uri: row.get(5)?,
+        body_path: row.get(6)?,
+        sha256: row.get(7)?,
+        size_bytes,
+        content_type: row.get(9)?,
+        redaction_state: row.get(10)?,
+        status: row.get(11)?,
+        producer_json: row.get(12)?,
+    })
+}
+
+fn artifact_has_task_owner_link(
+    conn: &Connection,
+    project_id: &str,
+    artifact_id: &str,
+    task_id: &str,
+) -> StoreResult<bool> {
+    conn.query_row(
+        "SELECT COUNT(*)
+           FROM artifact_links
+          WHERE project_id = ?1
+            AND artifact_id = ?2
+            AND task_id = ?3",
+        params![project_id, artifact_id, task_id],
+        |row| Ok(row.get::<_, i64>(0)? > 0),
+    )
+    .map_err(StoreError::from)
 }
 
 fn user_judgment_record(
