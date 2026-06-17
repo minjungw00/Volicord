@@ -13,12 +13,13 @@ Harness is the local work-authority product/system for AI-assisted product work.
 Use this path when turning product scope into implementation work:
 
 1. Confirm the baseline scope and supported behavior boundary in [Scope](../reference/scope.md).
-2. Use the [Reference Index](../reference/README.md) and [`docs/doc-index.yaml`](../../doc-index.yaml) to choose the applicable owner for each contract question.
-3. Read [Core Model](../reference/core-model.md) for authority concepts that cross APIs, storage, current scope, user-owned judgment, and close readiness.
-4. Use [API Methods](../reference/api/methods.md) for the supported public method list and method-owner routing.
-5. Add the focused schema, storage, runtime, security, error, and conformance owners only when the implementation question touches those concerns.
-6. Use [Agent Integration](../reference/agent-integration.md) for connector boundaries and [Surface Recipes](../use/surface-recipes.md) for surface-specific usage workflows.
-7. Keep user-owned judgment, evidence, verification criteria, ordinary approval, write approval, sensitive-action approval, `Write Authorization`, final acceptance, close readiness, and residual-risk acceptance as distinct concepts. Core Model owns those distinctions.
+2. Read [Implementation Architecture](architecture.md) for guide-level layer separation and the planned Rust workspace shape.
+3. Use the [Reference Index](../reference/README.md) and [`docs/doc-index.yaml`](../../doc-index.yaml) to choose the applicable owner for each contract question.
+4. Read [Core Model](../reference/core-model.md) for authority concepts that cross APIs, storage, current scope, user-owned judgment, and close readiness.
+5. Use [API Methods](../reference/api/methods.md) for the supported public method list and method-owner routing.
+6. Add the focused schema, storage, runtime, security, error, and conformance owners only when the implementation question touches those concerns.
+7. Use [Agent Integration](../reference/agent-integration.md) for connector boundaries and [Surface Recipes](../use/surface-recipes.md) for surface-specific usage workflows.
+8. Keep user-owned judgment, evidence, verification criteria, ordinary approval, write approval, sensitive-action approval, `Write Authorization`, final acceptance, close readiness, and residual-risk acceptance as distinct concepts. Core Model owns those distinctions.
 
 ## Owner route shortcuts
 
