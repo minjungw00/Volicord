@@ -16,7 +16,8 @@
 
 이 문서는 담당하지 않습니다.
 
-- 기록 배치나 DDL; [저장소 기록](storage-records.md)을 봅니다.
+- 기록 계열 개요, 저장소 소유 값, JSON 배치: [저장소 기록](storage-records.md)을 봅니다.
+- 기준 SQLite DDL, 제약, 인덱스, 외래 키, 마이그레이션 테이블 형태: [저장소 DDL](storage-ddl.md)을 봅니다.
 - 어떤 메서드 분기가 효과를 만드는지; [저장 효과](storage-effects.md), [API 메서드](api/methods.md), 메서드 담당 문서를 봅니다.
 - 공개 오류 코드와 우선순위; [API 오류 코드](api/error-codes.md)와 [API 오류 우선순위](api/error-precedence.md)를 봅니다.
 - 아티팩트 생명주기; [아티팩트 저장소](storage-artifacts.md)를 봅니다.
@@ -441,7 +442,8 @@
 
 담당 문서 링크:
 
-- 기록 배치와 DDL은 [저장소 기록](storage-records.md)이 담당합니다.
+- 기록 계열 개요와 저장소 소유 값은 [저장소 기록](storage-records.md)이 담당합니다.
+- 기준 SQLite DDL, 제약, 인덱스, 외래 키, 마이그레이션 테이블 형태는 [저장소 DDL](storage-ddl.md)이 담당합니다.
 - 런타임 홈 분리는 [런타임 경계](runtime-boundaries.md)가 담당합니다.
 
 기준 범위 마이그레이션 경계는 아래와 같습니다.
@@ -562,5 +564,6 @@
 - [API 오류 우선순위](api/error-precedence.md): `STATE_VERSION_CONFLICT` 같은 공개 충돌 오류.
 - [저장 효과](storage-effects.md): 어떤 분기가 상태를 올리거나 올리지 않는지.
 - [저장소 기록](storage-records.md): 버전 관리나 재실행 데이터를 저장하는 열.
+- [저장소 DDL](storage-ddl.md): 기준 SQLite 열, 인덱스, 외래 키, 제약, 마이그레이션 테이블.
 - [아티팩트 저장소](storage-artifacts.md): 아티팩트 생명주기와 보존 경계.
 - [런타임 경계](runtime-boundaries.md): 런타임 홈 분리.

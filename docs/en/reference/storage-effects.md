@@ -13,7 +13,8 @@ This document owns:
 
 This document does not own:
 
-- record layout or DDL; see [Storage Records](storage-records.md)
+- record-family overview; see [Storage Records](storage-records.md)
+- baseline SQLite DDL, constraints, indexes, foreign keys, or migration table shape; see [Storage DDL](storage-ddl.md)
 - artifact lifecycle details; see [Artifact Storage](storage-artifacts.md)
 - idempotency, locks, state-version clocks, event ordering, or migrations; see [Storage Versioning](storage-versioning.md)
 - public response branches or schemas; see [API Schema Core](api/schema-core.md)

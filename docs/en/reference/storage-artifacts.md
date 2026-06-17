@@ -16,7 +16,8 @@ This document does not own:
 
 - API artifact schemas; see [API Artifact Schemas](api/schema-artifacts.md)
 - API method behavior; see the [API Methods](api/methods.md), [Stage-artifact method](api/method-stage-artifact.md), and [Record-run method](api/method-record-run.md)
-- general record layout or DDL; see [Storage Records](storage-records.md)
+- record-family overview; see [Storage Records](storage-records.md)
+- baseline SQLite DDL, constraints, indexes, foreign keys, or migration table shape; see [Storage DDL](storage-ddl.md)
 - generic method storage effects; see [Storage Effects](storage-effects.md)
 - local-access security claims; see [Security](security.md) and [Runtime Boundaries](runtime-boundaries.md)
 

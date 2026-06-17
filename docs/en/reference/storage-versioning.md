@@ -16,7 +16,8 @@ This document owns:
 
 This document does not own:
 
-- record layout or DDL; see [Storage Records](storage-records.md)
+- record-family overview, storage-owned values, or JSON placement; see [Storage Records](storage-records.md)
+- baseline SQLite DDL, constraints, indexes, foreign keys, or migration table shape; see [Storage DDL](storage-ddl.md)
 - which method branch produces an effect; see [Storage Effects](storage-effects.md), the [API Methods](api/methods.md), and method owner documents
 - public error codes and precedence; see [API error codes](api/error-codes.md) and [API error precedence](api/error-precedence.md)
 - artifact lifecycle; see [Artifact Storage](storage-artifacts.md)
@@ -443,7 +444,8 @@ Retry behavior:
 
 Owner links:
 
-- Record layout and DDL belong to [Storage Records](storage-records.md).
+- Record-family overview and storage-owned values belong to [Storage Records](storage-records.md).
+- Baseline SQLite DDL, constraints, indexes, foreign keys, and migration table shape belong to [Storage DDL](storage-ddl.md).
 - Runtime Home separation belongs to [Runtime Boundaries](runtime-boundaries.md).
 
 The baseline migration boundary is:
@@ -563,5 +565,6 @@ Owner links:
 - [API error precedence](api/error-precedence.md) for public conflict errors such as `STATE_VERSION_CONFLICT`.
 - [Storage Effects](storage-effects.md) for branches that increment or do not increment state.
 - [Storage Records](storage-records.md) for columns that store versioning or replay data.
+- [Storage DDL](storage-ddl.md) for baseline SQLite columns, indexes, foreign keys, constraints, and migration tables.
 - [Artifact Storage](storage-artifacts.md) for artifact lifecycle and retention boundaries.
 - [Runtime Boundaries](runtime-boundaries.md) for Runtime Home separation.

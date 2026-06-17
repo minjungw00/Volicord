@@ -895,6 +895,7 @@ documents:
     not_owner_for:
       - "machine-readable owner routing"
       - "record layout detail"
+      - "baseline SQLite DDL"
       - "method storage effects"
       - "artifact lifecycle detail"
       - "versioning detail"
@@ -909,17 +910,43 @@ documents:
     path_ko: "docs/ko/reference/storage-records.md"
     role: "reference"
     owner_for:
-      - "storage record layout"
+      - "baseline persisted record families"
+      - "storage location and record-family overview"
       - "table overview"
       - "storage-owned record values"
       - "storage-owned JSON placement"
     not_owner_for:
+      - "baseline SQLite DDL, indexes, foreign keys, and constraints"
       - "method behavior"
       - "API schemas"
       - "security guarantees"
     normative_level: "contract"
     audience:
       - "storage implementers"
+      - "maintainers"
+
+  - doc_id: "reference.storage-ddl"
+    path_en: "docs/en/reference/storage-ddl.md"
+    path_ko: "docs/ko/reference/storage-ddl.md"
+    role: "reference"
+    owner_for:
+      - "baseline SQLite DDL"
+      - "`registry.sqlite` schema shape"
+      - "project `state.sqlite` schema shape"
+      - "baseline SQLite indexes, foreign keys, migration tables, and constraints"
+      - "storage constraints for state clock columns, replay rows, current Change Unit uniqueness, Write Authorization basis versions, and staged artifact provenance"
+    not_owner_for:
+      - "method behavior"
+      - "method storage effects"
+      - "API request or response schemas"
+      - "artifact lifecycle semantics"
+      - "state-version, idempotency, event, lock, and migration semantics"
+      - "runtime deployment"
+      - "security guarantees"
+    normative_level: "contract"
+    audience:
+      - "storage implementers"
+      - "API implementers"
       - "maintainers"
 
   - doc_id: "reference.storage-effects"
@@ -933,6 +960,7 @@ documents:
     not_owner_for:
       - "API request shapes"
       - "storage table layout"
+      - "baseline SQLite DDL, indexes, foreign keys, and constraints"
       - "artifact body lifecycle"
     normative_level: "contract"
     audience:
@@ -952,6 +980,7 @@ documents:
     not_owner_for:
       - "artifact API schema shapes"
       - "method branch behavior"
+      - "baseline SQLite DDL, indexes, foreign keys, and constraints"
     normative_level: "contract"
     audience:
       - "storage implementers"
@@ -970,6 +999,7 @@ documents:
     not_owner_for:
       - "method behavior"
       - "API schema fields"
+      - "baseline SQLite DDL, indexes, foreign keys, and migration table shape"
       - "runtime deployment"
     normative_level: "contract"
     audience:

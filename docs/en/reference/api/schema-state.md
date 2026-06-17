@@ -43,7 +43,8 @@ StateRecordRef:
 
 Owner links:
 - `record_kind` values: [record and reference values](schema-value-sets.md#record-and-reference-values)
-- storage table names and DDL: [Storage Records](../storage-records.md)
+- storage record families and values: [Storage Records](../storage-records.md)
+- storage table names and DDL: [Storage DDL](../storage-ddl.md)
 
 ## `StateSummary`
 

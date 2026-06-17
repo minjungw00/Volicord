@@ -1,6 +1,6 @@
 # Storage records
 
-This document owns the baseline persistent storage record families and storage record layout. Persistent records are local records committed by Core for later reads inside the `Harness Runtime Home`.
+This document owns the baseline persistent storage record families, placement, and storage-owned values. Persistent records are local records committed by Core for later reads inside the `Harness Runtime Home`.
 
 Persistent records are the local Core storage authority for Harness records. Security guarantees, external audit guarantees, anti-forgery claims, and `Product Repository` write authority remain with their owners.
 
@@ -17,6 +17,7 @@ This document owns:
 
 This document does not own:
 
+- baseline SQLite DDL, indexes, foreign keys, migration tables, or constraints; see [Storage DDL](storage-ddl.md)
 - method branch persistence effects; see [Storage Effects](storage-effects.md)
 - artifact staging, promotion, linking, body reads, retention, or integrity lifecycle; see [Artifact Storage](storage-artifacts.md)
 - `project_state.state_version`, idempotency, replay, events, lock, and migration contracts; see [Storage Versioning](storage-versioning.md)
@@ -47,6 +48,8 @@ Storage placement:
 - `project.yaml` stores static project configuration only.
 - `state.sqlite` stores project-local Core state for the registered project.
 - `artifacts/` is the project artifact store. `artifacts/tmp/` is transient staging space, not evidence authority.
+
+Baseline SQLite table shape, indexes, foreign keys, migration tables, and constraints belong to [Storage DDL](storage-ddl.md).
 
 Runtime Home identity must not depend only on a filesystem path. A copied or moved Runtime Home may carry the same stored `runtime_home_id`, while a newly created Runtime Home gets a new id. The id can help detect suspicious copies, duplicate registrations, or path drift; it is not a security guarantee.
 
@@ -167,6 +170,7 @@ Task and Change Unit shaping JSON stores compact summaries and bounded lists onl
 ## Related owners
 
 - [Storage Effects](storage-effects.md) defines which method branches create, update, observe, or leave records untouched.
+- [Storage DDL](storage-ddl.md) defines baseline SQLite table shape, indexes, foreign keys, migration tables, and constraints.
 - [Artifact Storage](storage-artifacts.md) defines artifact staging, promotion, linking, body reads, retention, and integrity lifecycle.
 - [Storage Versioning](storage-versioning.md) defines state versioning, idempotency, replay, events, locks, and migration contracts.
 - [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md) define API shape and public API values.

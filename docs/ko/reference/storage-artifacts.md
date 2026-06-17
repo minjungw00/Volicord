@@ -16,7 +16,8 @@
 
 - API 아티팩트 스키마; [API 아티팩트 스키마](api/schema-artifacts.md)를 봅니다.
 - API 메서드 동작; [API 메서드](api/methods.md), [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md)를 봅니다.
-- 일반 기록 배치와 DDL; [저장소 기록](storage-records.md)을 봅니다.
+- 기록 계열 개요: [저장소 기록](storage-records.md)을 봅니다.
+- 기준 SQLite DDL, 제약, 인덱스, 외래 키, 마이그레이션 테이블 형태: [저장소 DDL](storage-ddl.md)을 봅니다.
 - 일반 메서드 저장 효과; [저장 효과](storage-effects.md)를 봅니다.
 - 로컬 접근 보안 주장; [보안](security.md)과 [런타임 경계](runtime-boundaries.md)를 봅니다.
 

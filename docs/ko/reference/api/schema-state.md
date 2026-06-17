@@ -43,7 +43,8 @@ StateRecordRef:
 
 담당 문서 링크:
 - `record_kind` 값: [기록과 참조 값](schema-value-sets.md#record-and-reference-values)
-- 저장소 테이블 이름과 DDL: [저장소 기록](../storage-records.md)
+- 저장소 기록 계열과 값: [저장소 기록](../storage-records.md)
+- 저장소 테이블 이름과 DDL: [저장소 DDL](../storage-ddl.md)
 
 ## `StateSummary`
 
