@@ -1,6 +1,6 @@
 # API 상태 스키마
 
-이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ShapingReadiness`, 그리고 `NextActionSummary`, `WriteAuthoritySummary`, `EvidenceSummary`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay` 같은 표시 형태를 정의합니다.
+이 문서는 기준 범위의 상태 형태 API 스키마를 담당합니다. `StateSummary`, `StateRecordRef`, API 데이터 형태의 생명주기 상태, 상태 관련 스냅샷, `ShapingReadiness`, 그리고 `NextActionSummary`, `WriteAuthoritySummary`, `WriteAuthorizationSummary`, `AuthorizedAttemptScope`, `EvidenceSummary`, `CloseReadinessBlocker`, `ValidatorResult`, `GuaranteeDisplay` 같은 표시 형태를 정의합니다.
 
 ## 담당 경계
 
@@ -159,9 +159,18 @@ WriteAuthoritySummary:
 WriteAuthorizationSummary:
   write_authorization_ref: StateRecordRef
   status: string
-  authorized_attempt_scope: object
+  authorized_attempt_scope: AuthorizedAttemptScope
   basis_state_version: integer
   expires_at: string | null
+
+AuthorizedAttemptScope:
+  task_id: string
+  change_unit_id: string
+  intended_operation: string
+  intended_paths: string[]
+  product_file_write_intended: boolean
+  sensitive_categories: string[]
+  baseline_ref: string | null
 
 WriteDecisionReason:
   category: string
@@ -174,6 +183,8 @@ WriteDecisionReason:
 - `NextActionSummary`는 기준 다음 행동 표시 형태입니다. 유효한 필드는 `action_kind`, `owner_method`, `label`, `blocking_question`, `required_refs`입니다.
 - 오래된 `action` 또는 `reason` 필드를 쓰는 `next_actions` 항목은 유효한 `NextActionSummary`가 아닙니다.
 - `WriteAuthoritySummary.status`와 `WriteAuthorizationSummary.status`는 제어 값 문자열입니다.
+- `AuthorizedAttemptScope`는 `Write Authorization`이 포착하는 한 번의 시도 경계입니다.
+- `AuthorizedAttemptScope`는 일반 쓰기 승인, 민감 동작 승인, 최종 수락, 잔여 위험 수락, 포괄적 사용자 승인이 아닙니다.
 - `WriteDecisionReason`은 `PrepareWriteResult.write_decision_reasons`에서 사용합니다.
 
 `NextActionSummary` 필드 분류:
@@ -185,6 +196,18 @@ WriteDecisionReason:
 | `label` | 자유 형식 표시 문자열. | 사람과 에이전트가 읽는 표시 문자열이며 기준 값이 아닙니다. |
 | `blocking_question` | 자유 형식 표시 문자열 또는 `null`. | 행동을 진행하기 전에 풀어야 하는 질문입니다. 필요한 질문이 없으면 `null`을 사용합니다. |
 | `required_refs` | `StateRecordRef[]`. | 다음 행동에 필요한 기록입니다. 필요한 참조가 없으면 `[]`를 사용합니다. |
+
+`AuthorizedAttemptScope` 필드 분류:
+
+| 필드 | 분류 | 규칙 |
+|---|---|---|
+| `task_id` | 불투명 식별자. | 포착된 시도 경계의 `Task`를 식별합니다. |
+| `change_unit_id` | 불투명 식별자. | 포착된 시도 경계의 Change Unit을 식별합니다. |
+| `intended_operation` | 자유 형식 의도 문자열. | 제어 값 집합을 만들지 않고 의도한 작업을 설명합니다. |
+| `intended_paths` | 정규화된 Product Repository 경로 문자열. | API 수준 경로 정규화 뒤의 Product Repository 상대 경로입니다. |
+| `product_file_write_intended` | Boolean. | 포착된 시도가 제품 파일 쓰기를 의도했는지 나타냅니다. |
+| `sensitive_categories` | 불투명 민감 범주 분류 문자열. | 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 빠짐없는 공개 enum이 아닙니다. |
+| `baseline_ref` | 불투명 기준선 식별자 또는 `null`. | 값이 있을 때 시도 경계에 포착된 기준선 식별자입니다. |
 
 `WriteDecisionReason` 필드 분류:
 
@@ -204,6 +227,8 @@ WriteDecisionReason:
 - `WriteDecisionReason.category` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
 - `WriteDecisionReason.code` 값 집합 경계: [불투명 문자열과 메서드 범위 문자열 필드](schema-value-sets.md#opaque-and-method-scoped-string-fields)
 - `WriteDecisionReason.code` 생성과 로컬 의미: [`harness.prepare_write`](method-prepare-write.md)를 포함한 메서드 담당 문서
+- `Write Authorization` 생성 동작: [`harness.prepare_write`](method-prepare-write.md)
+- `Write Authorization`의 제품 의미와 승인 경계: [Core 모델](../core-model.md)
 - 공개 `ErrorCode` 값은 별도입니다: [API 오류 코드](error-codes.md)
 
 <a id="evidence-and-run-snapshot-shapes"></a>

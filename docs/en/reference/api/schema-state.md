@@ -1,6 +1,6 @@
 # API state schemas
 
-This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ShapingReadiness`, and display shapes such as `NextActionSummary`, `WriteAuthoritySummary`, `EvidenceSummary`, `CloseReadinessBlocker`, `ValidatorResult`, and `GuaranteeDisplay`.
+This document owns API state-shaped schemas for the baseline scope. It defines public response shapes for `StateSummary`, `StateRecordRef`, lifecycle state as API data, state-related snapshots, `ShapingReadiness`, and display shapes such as `NextActionSummary`, `WriteAuthoritySummary`, `WriteAuthorizationSummary`, `AuthorizedAttemptScope`, `EvidenceSummary`, `CloseReadinessBlocker`, `ValidatorResult`, and `GuaranteeDisplay`.
 
 ## Owner boundary
 
@@ -159,9 +159,18 @@ WriteAuthoritySummary:
 WriteAuthorizationSummary:
   write_authorization_ref: StateRecordRef
   status: string
-  authorized_attempt_scope: object
+  authorized_attempt_scope: AuthorizedAttemptScope
   basis_state_version: integer
   expires_at: string | null
+
+AuthorizedAttemptScope:
+  task_id: string
+  change_unit_id: string
+  intended_operation: string
+  intended_paths: string[]
+  product_file_write_intended: boolean
+  sensitive_categories: string[]
+  baseline_ref: string | null
 
 WriteDecisionReason:
   category: string
@@ -174,6 +183,8 @@ Meaning:
 - `NextActionSummary` is the canonical next-action display shape. Its valid fields are `action_kind`, `owner_method`, `label`, `blocking_question`, and `required_refs`.
 - A `next_actions` entry that uses stale `action` or `reason` fields is not a valid `NextActionSummary`.
 - `WriteAuthoritySummary.status` and `WriteAuthorizationSummary.status` are controlled value strings.
+- `AuthorizedAttemptScope` is the one-attempt boundary captured by a `Write Authorization`.
+- `AuthorizedAttemptScope` is not ordinary write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user approval.
 - `WriteDecisionReason` is used by `PrepareWriteResult.write_decision_reasons`.
 
 `NextActionSummary` field classifications:
@@ -185,6 +196,18 @@ Meaning:
 | `label` | Free-form display string. | Human- and agent-facing display text, not a canonical value. |
 | `blocking_question` | Free-form display string or `null`. | The question to resolve before the action can proceed, or `null` when no blocking question is needed. |
 | `required_refs` | `StateRecordRef[]`. | Records required for the next action. Use `[]` when there are no required refs. |
+
+`AuthorizedAttemptScope` field classifications:
+
+| Field | Classification | Rule |
+|---|---|---|
+| `task_id` | Opaque identifier. | Identifies the Task for the captured attempt boundary. |
+| `change_unit_id` | Opaque identifier. | Identifies the Change Unit for the captured attempt boundary. |
+| `intended_operation` | Free-form intent string. | Describes the intended operation without creating a controlled value set. |
+| `intended_paths` | Normalized Product Repository path strings. | Product Repository relative paths after API-level path normalization. |
+| `product_file_write_intended` | Boolean. | Indicates whether the captured attempt intended a product-file write. |
+| `sensitive_categories` | Opaque sensitive-category classification strings. | Not an exhaustive public enum unless an affected method or profile owner publishes a narrower local list. |
+| `baseline_ref` | Opaque baseline identifier or `null`. | Names the baseline identifier captured for the attempt boundary when present. |
 
 `WriteDecisionReason` field classifications:
 
@@ -204,6 +227,8 @@ Owner links:
 - `WriteDecisionReason.category` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - `WriteDecisionReason.code` value-set boundary: [opaque and method-scoped string fields](schema-value-sets.md#opaque-and-method-scoped-string-fields)
 - `WriteDecisionReason.code` production and local meaning: method owner documents, including [`harness.prepare_write`](method-prepare-write.md)
+- `Write Authorization` creation behavior: [`harness.prepare_write`](method-prepare-write.md)
+- `Write Authorization` product meaning and approval boundaries: [Core Model](../core-model.md)
 - Public `ErrorCode` values are separate: [API error codes](error-codes.md)
 
 ## Evidence and run snapshot shapes
