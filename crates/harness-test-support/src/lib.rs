@@ -7,7 +7,17 @@
 
 use std::path::{Path, PathBuf};
 
+use harness_store::{
+    bootstrap::{
+        initialize_runtime_home, register_project, register_surface, ProjectRegistration,
+        SurfaceRegistration, ACTIVE_PROJECT_STATUS,
+    },
+    core_pipeline::{CoreProjectStore, StorageEffectCounts},
+    sqlite::open_project_state_database,
+};
 use harness_types::TypeBoundary;
+use rusqlite::Connection;
+use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
 
 pub mod fixtures {
@@ -67,6 +77,927 @@ impl TempRuntimeHome {
         self.project_home_path(project_id)
             .join("artifacts")
             .join("tmp")
+    }
+}
+
+/// Shared Core-method fixture builders for conformance and integration tests.
+pub mod core_fixtures {
+    use std::{error::Error, fs, path::Path};
+
+    use harness_store::StoreError;
+    use harness_types::{
+        AcceptedRiskInput, ActorKind, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind,
+        BaselineRef, ChangeUnitId, ChangeUnitOperation, ChangeUnitUpdate, CloseIntent, CloseReason,
+        CloseTaskRequest, EvidenceCoverageItem, EvidenceCoverageState, IdempotencyKey,
+        InitialScope, IntakeRequest, JsonObject, JudgmentKind, JudgmentPresentation,
+        JudgmentRequiredFor, ObservedChanges, PrepareWriteRequest, ProjectId, RecordId,
+        RecordRunRequest, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState,
+        RequestId, RequestUserJudgmentRequest, RequestedMode, ResumePolicy, RunKind, ScopeUpdate,
+        SensitiveActionScope, StageArtifactRequest, StagedArtifactHandle, StateRecordKind,
+        StateRecordRef, StatusInclude, StatusRequest, SurfaceId, TaskId, ToolEnvelope,
+        UpdateScopeRequest, UserJudgmentId, UserJudgmentOption, UserJudgmentOptionId,
+        WriteAuthorizationId,
+    };
+
+    use super::*;
+
+    /// Canonical project id used by shared disposable fixtures.
+    pub const DEFAULT_PROJECT_ID: &str = "project_fixture";
+    /// Canonical surface id used by shared disposable fixtures.
+    pub const DEFAULT_SURFACE_ID: &str = "surface_fixture";
+    /// Canonical surface instance id used by shared disposable fixtures.
+    pub const DEFAULT_SURFACE_INSTANCE_ID: &str = "surface_instance_fixture";
+    /// Baseline ref used by shared method request fixtures.
+    pub const DEFAULT_BASELINE_REF: &str = "baseline_fixture";
+    /// Product path allowed by the default Change Unit fixture.
+    pub const DEFAULT_PRODUCT_PATH: &str = "src/export.rs";
+
+    /// Automatically cleaned Harness Runtime Home with one registered project and surface.
+    #[derive(Debug)]
+    pub struct CoreFixture {
+        _runtime_home: TempRuntimeHome,
+        runtime_home_path: PathBuf,
+        project_id: String,
+        surface_id: String,
+        surface_instance_id: String,
+    }
+
+    impl CoreFixture {
+        /// Creates a disposable Runtime Home, Product Repository registration, and local surface.
+        pub fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
+            let component = identifier_component(prefix);
+            let runtime_home = TempRuntimeHome::new(&component)?;
+            let repo_root = runtime_home.path().join("repo");
+            fs::create_dir_all(&repo_root)?;
+
+            let project_id = DEFAULT_PROJECT_ID.to_owned();
+            let surface_id = DEFAULT_SURFACE_ID.to_owned();
+            let surface_instance_id = DEFAULT_SURFACE_INSTANCE_ID.to_owned();
+
+            initialize_runtime_home(
+                runtime_home.path(),
+                &format!("runtime_home_{component}"),
+                "{}",
+            )?;
+            register_project(
+                runtime_home.path(),
+                ProjectRegistration {
+                    project_id: project_id.clone(),
+                    repo_root,
+                    project_home: None,
+                    status: ACTIVE_PROJECT_STATUS.to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            register_surface(
+                runtime_home.path(),
+                SurfaceRegistration {
+                    project_id: project_id.clone(),
+                    surface_id: surface_id.clone(),
+                    surface_instance_id: surface_instance_id.clone(),
+                    surface_kind: "local_test".to_owned(),
+                    display_name: Some("Shared Test Surface".to_owned()),
+                    capability_profile_json: default_capability_profile().to_string(),
+                    local_access_json: json!({
+                        "verification_basis": "shared_test_registration"
+                    })
+                    .to_string(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+
+            let runtime_home_path = runtime_home.path().to_path_buf();
+            Ok(Self {
+                _runtime_home: runtime_home,
+                runtime_home_path,
+                project_id,
+                surface_id,
+                surface_instance_id,
+            })
+        }
+
+        /// Returns the disposable Runtime Home path.
+        pub fn runtime_home_path(&self) -> &Path {
+            &self.runtime_home_path
+        }
+
+        /// Returns the registered project id.
+        pub fn project_id(&self) -> &str {
+            &self.project_id
+        }
+
+        /// Returns the registered surface id.
+        pub fn surface_id(&self) -> &str {
+            &self.surface_id
+        }
+
+        /// Returns the registered surface instance id.
+        pub fn surface_instance_id(&self) -> &str {
+            &self.surface_instance_id
+        }
+
+        /// Opens the project-local Core store.
+        pub fn store(&self) -> Result<CoreProjectStore, StoreError> {
+            CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(&self.project_id))
+        }
+
+        /// Reads storage-effect counters for this fixture project.
+        pub fn counts(&self) -> Result<StorageEffectCounts, StoreError> {
+            self.store()?.effect_counts()
+        }
+
+        /// Opens the raw project-local SQLite database for focused fixture inspection.
+        pub fn conn(&self) -> Result<Connection, StoreError> {
+            let path = self
+                .runtime_home_path
+                .join("projects")
+                .join(&self.project_id)
+                .join("state.sqlite");
+            open_project_state_database(path)
+        }
+
+        /// Replaces the registered surface capability profile.
+        pub fn set_surface_capability(&self, capability_profile: Value) -> Result<(), StoreError> {
+            self.conn()?.execute(
+                "UPDATE surfaces
+                    SET capability_profile_json = ?3
+                  WHERE project_id = ?1
+                    AND surface_id = ?2",
+                rusqlite::params![
+                    self.project_id,
+                    self.surface_id,
+                    capability_profile.to_string()
+                ],
+            )?;
+            Ok(())
+        }
+
+        /// Builds a common public request envelope.
+        pub fn envelope(
+            &self,
+            request_id: &str,
+            idempotency_key: Option<&str>,
+            dry_run: bool,
+            expected_state_version: Option<u64>,
+            task_id: Option<&str>,
+        ) -> ToolEnvelope {
+            ToolEnvelope {
+                project_id: ProjectId::new(&self.project_id),
+                task_id: task_id.map(TaskId::new),
+                actor_kind: ActorKind::Agent,
+                surface_id: SurfaceId::new(&self.surface_id),
+                request_id: RequestId::new(request_id),
+                idempotency_key: idempotency_key.map(IdempotencyKey::new),
+                expected_state_version,
+                dry_run,
+                locale: Some("en-US".to_owned()),
+            }
+        }
+
+        /// Builds a default `harness.status` request.
+        pub fn status_request(&self, request_id: &str, task_id: Option<&str>) -> StatusRequest {
+            StatusRequest {
+                envelope: self.envelope(request_id, None, false, None, task_id),
+                include: status_include_all(),
+            }
+        }
+
+        /// Builds a default `harness.intake` request.
+        pub fn intake_request(
+            &self,
+            request_id: &str,
+            idempotency_key: &str,
+            dry_run: bool,
+            expected_state_version: Option<u64>,
+        ) -> IntakeRequest {
+            IntakeRequest {
+                envelope: self.envelope(
+                    request_id,
+                    Some(idempotency_key),
+                    dry_run,
+                    expected_state_version,
+                    None,
+                ),
+                plain_language_request: "Create a test export flow.".to_owned(),
+                requested_mode: RequestedMode::Work,
+                resume_policy: ResumePolicy::CreateNew,
+                initial_scope: InitialScope {
+                    boundary: "Initial test scope.".to_owned(),
+                    non_goals: vec!["Changing unrelated flows.".to_owned()],
+                    acceptance_criteria: vec!["The test export flow is represented.".to_owned()],
+                },
+                initial_context_refs: Vec::new(),
+            }
+        }
+
+        /// Builds a default `harness.update_scope` request.
+        pub fn update_scope_request(&self, input: UpdateScopeFixture<'_>) -> UpdateScopeRequest {
+            let mut fields = Map::new();
+            fields.insert(
+                "scope_summary".to_owned(),
+                Value::String(input.scope_summary.to_owned()),
+            );
+            fields.insert(
+                "affected_paths".to_owned(),
+                json!([DEFAULT_PRODUCT_PATH, "tests/export.rs"]),
+            );
+            UpdateScopeRequest {
+                envelope: self.envelope(
+                    input.request_id,
+                    Some(input.idempotency_key),
+                    input.dry_run,
+                    input.expected_state_version,
+                    Some(input.task_id),
+                ),
+                task_id: TaskId::new(input.task_id),
+                goal_summary: Some(input.scope_summary.to_owned()),
+                scope_update: Some(ScopeUpdate {
+                    include: vec![input.scope_summary.to_owned()],
+                    exclude: vec!["Unrelated behavior.".to_owned()],
+                }),
+                scope_boundary: Some(input.scope_summary.to_owned()),
+                non_goals: Some(vec!["Unrelated behavior.".to_owned()]),
+                acceptance_criteria: Some(vec!["The scoped behavior is represented.".to_owned()]),
+                autonomy_boundary: Some("Stay inside the scoped test behavior.".to_owned()),
+                baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)),
+                change_unit: ChangeUnitUpdate {
+                    operation: input.operation,
+                    fields,
+                },
+                related_scope_decision_refs: Vec::new(),
+            }
+        }
+
+        /// Builds a default `harness.prepare_write` request.
+        pub fn prepare_write_request(
+            &self,
+            request_id: &str,
+            idempotency_key: &str,
+            expected_state_version: Option<u64>,
+            task_id: Option<&str>,
+            change_unit_id: Option<&str>,
+        ) -> PrepareWriteRequest {
+            PrepareWriteRequest {
+                envelope: self.envelope(
+                    request_id,
+                    Some(idempotency_key),
+                    false,
+                    expected_state_version,
+                    task_id,
+                ),
+                task_id: task_id.map(TaskId::new),
+                change_unit_id: change_unit_id.map(ChangeUnitId::new),
+                intended_operation: "local_product_file_update".to_owned(),
+                intended_paths: vec![DEFAULT_PRODUCT_PATH.to_owned()],
+                product_file_write_intended: true,
+                sensitive_categories: Vec::new(),
+                baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
+            }
+        }
+
+        /// Builds a default `harness.stage_artifact` request.
+        pub fn stage_artifact_request(
+            &self,
+            request_id: &str,
+            idempotency_key: Option<&str>,
+            dry_run: bool,
+            expected_state_version: Option<u64>,
+            task_id: &str,
+        ) -> StageArtifactRequest {
+            StageArtifactRequest {
+                envelope: self.envelope(
+                    request_id,
+                    idempotency_key,
+                    dry_run,
+                    expected_state_version,
+                    Some(task_id),
+                ),
+                task_id: TaskId::new(task_id),
+                display_name: "trace.log".to_owned(),
+                content_type: "text/plain".to_owned(),
+                redaction_state: RedactionState::None,
+                safe_bytes_or_notice: "staging sample".to_owned(),
+                expected_sha256: None,
+                expected_size_bytes: None,
+                relation_hint: Some("diagnostic_log".to_owned()),
+            }
+        }
+
+        /// Builds a default `harness.record_run` request.
+        pub fn record_run_request(
+            &self,
+            request_id: &str,
+            idempotency_key: &str,
+            dry_run: bool,
+            expected_state_version: Option<u64>,
+            task_id: &str,
+            change_unit_id: &str,
+        ) -> RecordRunRequest {
+            RecordRunRequest {
+                envelope: self.envelope(
+                    request_id,
+                    Some(idempotency_key),
+                    dry_run,
+                    expected_state_version,
+                    Some(task_id),
+                ),
+                task_id: TaskId::new(task_id),
+                change_unit_id: ChangeUnitId::new(change_unit_id),
+                kind: RunKind::Implementation,
+                run_id: None,
+                baseline_ref: BaselineRef::new(DEFAULT_BASELINE_REF),
+                write_authorization_id: None,
+                summary: "Recorded implementation run.".to_owned(),
+                observed_changes: ObservedChanges {
+                    changed_paths: Vec::new(),
+                    product_file_write_observed: false,
+                    sensitive_categories: Vec::new(),
+                    baseline_ref: Some(BaselineRef::new(DEFAULT_BASELINE_REF)),
+                },
+                artifact_inputs: Vec::new(),
+                evidence_updates: Vec::new(),
+            }
+        }
+
+        /// Builds a default `harness.request_user_judgment` request.
+        pub fn user_judgment_request(
+            &self,
+            input: UserJudgmentFixture<'_>,
+        ) -> RequestUserJudgmentRequest {
+            RequestUserJudgmentRequest {
+                envelope: self.envelope(
+                    input.request_id,
+                    Some(input.idempotency_key),
+                    input.dry_run,
+                    input.expected_state_version,
+                    Some(input.task_id),
+                ),
+                task_id: TaskId::new(input.task_id),
+                change_unit_id: input.change_unit_id.map(ChangeUnitId::new),
+                judgment_kind: input.judgment_kind,
+                presentation: JudgmentPresentation::Short,
+                question: "Choose the focused test judgment outcome.".to_owned(),
+                options: vec![
+                    UserJudgmentOption {
+                        option_id: UserJudgmentOptionId::new("accept"),
+                        label: "Accept".to_owned(),
+                        description: "Record the focused user-owned judgment.".to_owned(),
+                        consequence: "Only this judgment record is resolved.".to_owned(),
+                        is_default: true,
+                    },
+                    UserJudgmentOption {
+                        option_id: UserJudgmentOptionId::new("decline"),
+                        label: "Decline".to_owned(),
+                        description: "Record that the focused judgment was not accepted."
+                            .to_owned(),
+                        consequence: "The Task remains unresolved for this question.".to_owned(),
+                        is_default: false,
+                    },
+                ],
+                context: harness_types::UserJudgmentContext {
+                    summary: "A focused test judgment needs a user-owned answer.".to_owned(),
+                    related_refs: Vec::new(),
+                    artifact_refs: Vec::new(),
+                    visible_risks: Vec::new(),
+                    constraints: vec![
+                        "The answer covers only the requested judgment kind.".to_owned()
+                    ],
+                },
+                affected_refs: vec![self.task_ref(input.task_id, input.expected_state_version)],
+                required_for: JudgmentRequiredFor::Close,
+                expires_at: None,
+            }
+        }
+
+        /// Builds a default `harness.record_user_judgment` request.
+        pub fn record_judgment_request(
+            &self,
+            input: RecordJudgmentFixture<'_>,
+        ) -> RecordUserJudgmentRequest {
+            let mut envelope = self.envelope(
+                input.request_id,
+                Some(input.idempotency_key),
+                false,
+                input.expected_state_version,
+                Some(input.task_id),
+            );
+            envelope.actor_kind = ActorKind::User;
+            RecordUserJudgmentRequest {
+                envelope,
+                user_judgment_id: UserJudgmentId::new(input.user_judgment_id),
+                judgment_kind: input.judgment_kind,
+                selected_option_id: UserJudgmentOptionId::new("accept"),
+                answer: input.answer,
+                note: Some("Recorded by a focused conformance fixture.".to_owned()),
+                accepted_risks: Vec::new(),
+            }
+        }
+
+        /// Builds a default `harness.close_task` request.
+        pub fn close_task_request(&self, input: CloseTaskFixture<'_>) -> CloseTaskRequest {
+            CloseTaskRequest {
+                envelope: self.envelope(
+                    input.request_id,
+                    input.idempotency_key,
+                    input.dry_run,
+                    input.expected_state_version,
+                    Some(input.task_id),
+                ),
+                task_id: TaskId::new(input.task_id),
+                intent: input.intent,
+                close_reason: input.close_reason,
+                superseding_task_id: input.superseding_task_id.map(TaskId::new),
+                user_note: Some("Focused close-task fixture.".to_owned()),
+            }
+        }
+
+        /// Builds a `StateRecordRef` for a fixture Task.
+        pub fn task_ref(&self, task_id: &str, state_version: Option<u64>) -> StateRecordRef {
+            StateRecordRef {
+                record_kind: StateRecordKind::Task,
+                record_id: RecordId::new(task_id),
+                project_id: ProjectId::new(&self.project_id),
+                task_id: Some(TaskId::new(task_id)),
+                state_version,
+            }
+        }
+
+        /// Reads the current status of a Write Authorization row.
+        pub fn write_authorization_status(
+            &self,
+            write_authorization_id: &str,
+        ) -> Result<String, StoreError> {
+            Ok(self.conn()?.query_row(
+                "SELECT status
+                   FROM write_authorizations
+                  WHERE project_id = ?1
+                    AND write_authorization_id = ?2",
+                rusqlite::params![self.project_id, write_authorization_id],
+                |row| row.get(0),
+            )?)
+        }
+
+        /// Reads the basis state version of a Write Authorization row.
+        pub fn write_authorization_basis(
+            &self,
+            write_authorization_id: &str,
+        ) -> Result<u64, Box<dyn Error>> {
+            let basis: i64 = self.conn()?.query_row(
+                "SELECT basis_state_version
+                   FROM write_authorizations
+                  WHERE project_id = ?1
+                    AND write_authorization_id = ?2",
+                rusqlite::params![self.project_id, write_authorization_id],
+                |row| row.get(0),
+            )?;
+            Ok(u64::try_from(basis)?)
+        }
+
+        /// Reads the current status of a user-owned judgment row.
+        pub fn user_judgment_status(&self, judgment_id: &str) -> Result<String, StoreError> {
+            Ok(self.conn()?.query_row(
+                "SELECT status
+                   FROM user_judgments
+                  WHERE project_id = ?1
+                    AND judgment_id = ?2",
+                rusqlite::params![self.project_id, judgment_id],
+                |row| row.get(0),
+            )?)
+        }
+
+        /// Reads the resolved answer JSON for a user-owned judgment row.
+        pub fn user_judgment_resolution(&self, judgment_id: &str) -> Result<Value, Box<dyn Error>> {
+            let text: String = self.conn()?.query_row(
+                "SELECT resolution_json
+                   FROM user_judgments
+                  WHERE project_id = ?1
+                    AND judgment_id = ?2",
+                rusqlite::params![self.project_id, judgment_id],
+                |row| row.get(0),
+            )?;
+            Ok(serde_json::from_str(&text)?)
+        }
+
+        /// Reads the currently applied Change Unit id for a Task.
+        pub fn current_change_unit_id(&self, task_id: &str) -> Result<Option<String>, StoreError> {
+            Ok(self.conn()?.query_row(
+                "SELECT current_change_unit_id
+                   FROM tasks
+                  WHERE project_id = ?1
+                    AND task_id = ?2",
+                rusqlite::params![self.project_id, task_id],
+                |row| row.get(0),
+            )?)
+        }
+
+        /// Reads the current Change Unit scope summary for a Task.
+        pub fn current_change_unit_scope(&self, task_id: &str) -> Result<String, Box<dyn Error>> {
+            let text: String = self.conn()?.query_row(
+                "SELECT scope_summary_json
+                   FROM change_units
+                  WHERE project_id = ?1
+                    AND task_id = ?2
+                    AND status = 'active'
+                    AND is_current = 1",
+                rusqlite::params![self.project_id, task_id],
+                |row| row.get(0),
+            )?;
+            let value: Value = serde_json::from_str(&text)?;
+            Ok(value["scope_summary"]
+                .as_str()
+                .expect("scope_summary should be a string")
+                .to_owned())
+        }
+
+        /// Reads the status of a staged artifact handle.
+        pub fn artifact_staging_status(&self, handle_id: &str) -> Result<String, StoreError> {
+            Ok(self.conn()?.query_row(
+                "SELECT status
+                   FROM artifact_staging
+                  WHERE project_id = ?1
+                    AND handle_id = ?2",
+                rusqlite::params![self.project_id, handle_id],
+                |row| row.get(0),
+            )?)
+        }
+
+        /// Returns whether an artifact has an owner link of the requested kind.
+        pub fn artifact_owner_link_exists(
+            &self,
+            artifact_id: &str,
+            owner_record_kind: &str,
+        ) -> Result<bool, StoreError> {
+            let count: i64 = self.conn()?.query_row(
+                "SELECT COUNT(*)
+                   FROM artifact_links
+                  WHERE project_id = ?1
+                    AND artifact_id = ?2
+                    AND owner_record_kind = ?3",
+                rusqlite::params![self.project_id, artifact_id, owner_record_kind],
+                |row| row.get(0),
+            )?;
+            Ok(count > 0)
+        }
+
+        /// Reads the active Task id from `project_state`.
+        pub fn active_task_id(&self) -> Result<Option<String>, StoreError> {
+            Ok(self.conn()?.query_row(
+                "SELECT active_task_id
+                   FROM project_state
+                  WHERE project_id = ?1",
+                rusqlite::params![self.project_id],
+                |row| row.get(0),
+            )?)
+        }
+
+        /// Inserts a compatible replacement Task for supersede tests.
+        pub fn insert_superseding_task(&self, task_id: &str) -> Result<(), StoreError> {
+            self.conn()?.execute(
+                "INSERT INTO tasks (
+                    project_id,
+                    task_id,
+                    created_by_surface_id,
+                    created_by_surface_instance_id,
+                    mode,
+                    lifecycle_phase,
+                    result,
+                    title,
+                    summary,
+                    shaping_summary_json,
+                    bounded_context_json,
+                    autonomy_boundary_json,
+                    close_summary_json,
+                    completion_policy_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    ?1,
+                    ?2,
+                    ?3,
+                    ?4,
+                    'work',
+                    'ready',
+                    'none',
+                    'Superseding task',
+                    'Superseding task',
+                    '{\"goal_summary\":\"Superseding task\"}',
+                    '{}',
+                    '{}',
+                    '{\"close_reason\":\"none\"}',
+                    '{}',
+                    't0',
+                    't0'
+                )",
+                rusqlite::params![
+                    self.project_id,
+                    task_id,
+                    self.surface_id,
+                    self.surface_instance_id
+                ],
+            )?;
+            Ok(())
+        }
+
+        /// Updates a Task close-summary JSON object for close-readiness fixtures.
+        pub fn set_task_close_summary(
+            &self,
+            task_id: &str,
+            close_summary: Value,
+        ) -> Result<(), StoreError> {
+            self.conn()?.execute(
+                "UPDATE tasks
+                    SET close_summary_json = ?3
+                  WHERE project_id = ?1
+                    AND task_id = ?2",
+                rusqlite::params![self.project_id, task_id, close_summary.to_string()],
+            )?;
+            Ok(())
+        }
+
+        /// Updates a persistent artifact availability status.
+        pub fn set_artifact_status(
+            &self,
+            artifact_id: &str,
+            status: &str,
+        ) -> Result<(), StoreError> {
+            self.conn()?.execute(
+                "UPDATE artifacts
+                    SET status = ?3
+                  WHERE project_id = ?1
+                    AND artifact_id = ?2",
+                rusqlite::params![self.project_id, artifact_id, status],
+            )?;
+            Ok(())
+        }
+
+        /// Reads terminal lifecycle fields for a Task.
+        pub fn task_terminal_fields(
+            &self,
+            task_id: &str,
+        ) -> Result<TaskTerminalFields, Box<dyn Error>> {
+            let (lifecycle_phase, result, close_summary_text, closed_at): (
+                String,
+                Option<String>,
+                String,
+                Option<String>,
+            ) = self.conn()?.query_row(
+                "SELECT lifecycle_phase, result, close_summary_json, closed_at
+                   FROM tasks
+                  WHERE project_id = ?1
+                    AND task_id = ?2",
+                rusqlite::params![self.project_id, task_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
+            Ok(TaskTerminalFields {
+                lifecycle_phase,
+                result,
+                close_summary: serde_json::from_str(&close_summary_text)?,
+                closed_at,
+            })
+        }
+    }
+
+    /// Input object for update-scope request builders.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct UpdateScopeFixture<'a> {
+        pub request_id: &'a str,
+        pub idempotency_key: &'a str,
+        pub dry_run: bool,
+        pub expected_state_version: Option<u64>,
+        pub task_id: &'a str,
+        pub operation: ChangeUnitOperation,
+        pub scope_summary: &'a str,
+    }
+
+    /// Input object for request-user-judgment request builders.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct UserJudgmentFixture<'a> {
+        pub request_id: &'a str,
+        pub idempotency_key: &'a str,
+        pub dry_run: bool,
+        pub expected_state_version: Option<u64>,
+        pub task_id: &'a str,
+        pub change_unit_id: Option<&'a str>,
+        pub judgment_kind: JudgmentKind,
+    }
+
+    /// Input object for record-user-judgment request builders.
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct RecordJudgmentFixture<'a> {
+        pub request_id: &'a str,
+        pub idempotency_key: &'a str,
+        pub expected_state_version: Option<u64>,
+        pub task_id: &'a str,
+        pub user_judgment_id: &'a str,
+        pub judgment_kind: JudgmentKind,
+        pub answer: RecordUserJudgmentPayload,
+    }
+
+    /// Input object for close-task request builders.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct CloseTaskFixture<'a> {
+        pub request_id: &'a str,
+        pub idempotency_key: Option<&'a str>,
+        pub dry_run: bool,
+        pub expected_state_version: Option<u64>,
+        pub task_id: &'a str,
+        pub intent: CloseIntent,
+        pub close_reason: Option<CloseReason>,
+        pub superseding_task_id: Option<&'a str>,
+    }
+
+    /// Terminal Task fields read from storage for close-path assertions.
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct TaskTerminalFields {
+        pub lifecycle_phase: String,
+        pub result: Option<String>,
+        pub close_summary: Value,
+        pub closed_at: Option<String>,
+    }
+
+    /// Returns a status include object with every supported flag enabled.
+    pub fn status_include_all() -> StatusInclude {
+        StatusInclude {
+            task: true,
+            pending_user_judgments: true,
+            write_authority: true,
+            evidence: true,
+            close: true,
+            guarantees: true,
+        }
+    }
+
+    /// Builds an artifact input for a staged handle.
+    pub fn artifact_input_for_handle(
+        artifact_input_id: &str,
+        handle: StagedArtifactHandle,
+        relation_hint: Option<&str>,
+        claim: Option<&str>,
+    ) -> ArtifactInput {
+        ArtifactInput {
+            artifact_input_id: ArtifactInputId::new(artifact_input_id),
+            source_kind: ArtifactInputSourceKind::StagedArtifact,
+            staged_artifact_handle: Some(handle.clone()),
+            existing_artifact_ref: None,
+            relation_hint: relation_hint.map(str::to_owned),
+            claim: claim.map(str::to_owned),
+            expected_sha256: Some(handle.sha256),
+            expected_size_bytes: Some(handle.size_bytes),
+            redaction_state: Some(handle.redaction_state),
+        }
+    }
+
+    /// Builds a supported evidence coverage item.
+    pub fn supported_evidence_update(claim: &str) -> EvidenceCoverageItem {
+        EvidenceCoverageItem {
+            claim: claim.to_owned(),
+            required_for_close: true,
+            coverage_state: EvidenceCoverageState::Supported,
+            supporting_refs: Vec::new(),
+            supporting_artifact_refs: Vec::new(),
+            gap_refs: Vec::new(),
+        }
+    }
+
+    /// Builds an unsupported evidence coverage item.
+    pub fn unsupported_evidence_update(claim: &str) -> EvidenceCoverageItem {
+        EvidenceCoverageItem {
+            claim: claim.to_owned(),
+            required_for_close: true,
+            coverage_state: EvidenceCoverageState::Unsupported,
+            supporting_refs: Vec::new(),
+            supporting_artifact_refs: Vec::new(),
+            gap_refs: Vec::new(),
+        }
+    }
+
+    /// Builds a judgment answer payload with exactly one branch populated.
+    pub fn answer_payload(judgment_kind: JudgmentKind) -> RecordUserJudgmentPayload {
+        let mut payload = RecordUserJudgmentPayload {
+            product_decision: None,
+            technical_decision: None,
+            scope_decision: None,
+            sensitive_action_scope: None,
+            final_acceptance: None,
+            residual_risk_acceptance: None,
+            cancellation: None,
+        };
+        match judgment_kind {
+            JudgmentKind::ProductDecision => {
+                payload.product_decision = Some(json_object(json!({
+                    "judgment": {
+                        "decision": "accepted",
+                        "rationale": "The product direction is accepted for this focused test."
+                    }
+                })));
+            }
+            JudgmentKind::TechnicalDecision => {
+                payload.technical_decision = Some(json_object(json!({
+                    "judgment": {
+                        "decision": "accepted",
+                        "rationale": "The technical direction is accepted for this focused test."
+                    }
+                })));
+            }
+            JudgmentKind::ScopeDecision => {
+                payload.scope_decision = Some(json_object(json!({
+                    "requested_scope_summary": "Expanded scope that must not apply silently.",
+                    "decision": "accepted"
+                })));
+            }
+            JudgmentKind::SensitiveApproval => {
+                payload.sensitive_action_scope = Some(SensitiveActionScope {
+                    action_kind: "local_sensitive_step".to_owned(),
+                    description: "Allow the named sensitive step only.".to_owned(),
+                    intended_paths: vec![DEFAULT_PRODUCT_PATH.to_owned()],
+                    sensitive_categories: vec!["network".to_owned()],
+                    command_or_tool_summary: Some("Run a local diagnostic command.".to_owned()),
+                    network_or_host_summary: Some("No remote host is authorized here.".to_owned()),
+                    secret_or_credential_summary: None,
+                    capability_claim: "This is not Write Authorization.".to_owned(),
+                    expires_at: None,
+                });
+            }
+            JudgmentKind::FinalAcceptance => {
+                payload.final_acceptance = Some(json_object(json!({
+                    "judgment": {
+                        "decision": "accepted",
+                        "basis": "The visible close basis is acceptable."
+                    }
+                })));
+            }
+            JudgmentKind::ResidualRiskAcceptance => {
+                payload.residual_risk_acceptance = Some(json_object(json!({
+                    "risk_id": "risk_visible_001",
+                    "decision": "accepted"
+                })));
+            }
+            JudgmentKind::Cancellation => {
+                payload.cancellation = Some(json_object(json!({
+                    "decision": "cancel",
+                    "reason": "The user chose to stop the Task."
+                })));
+            }
+        }
+        payload
+    }
+
+    /// Builds an accepted-risk input for close-readiness fixtures.
+    pub fn accepted_risk(summary: &str) -> AcceptedRiskInput {
+        AcceptedRiskInput {
+            risk_id: Some(harness_types::RiskId::new("risk_visible_001")),
+            summary: summary.to_owned(),
+            consequence: "The named residual risk remains after close.".to_owned(),
+            related_refs: Vec::new(),
+            accepted_for_close: true,
+        }
+    }
+
+    /// Builds a `WriteAuthorizationId` for tests that need the typed wrapper.
+    pub fn write_authorization_id(value: &str) -> WriteAuthorizationId {
+        WriteAuthorizationId::new(value)
+    }
+
+    fn default_capability_profile() -> Value {
+        json!({
+            "supported_access_classes": [
+                "read_status",
+                "core_mutation",
+                "write_authorization",
+                "run_recording",
+                "artifact_registration"
+            ],
+            "write_authorization": true,
+            "manual_artifact_attachment_supported": true
+        })
+    }
+
+    fn identifier_component(value: &str) -> String {
+        let component = value
+            .chars()
+            .map(|character| {
+                if character.is_ascii_alphanumeric() {
+                    character.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>()
+            .trim_matches('_')
+            .to_owned();
+        if component.is_empty() {
+            "fixture".to_owned()
+        } else {
+            component
+        }
+    }
+
+    fn json_object(value: Value) -> JsonObject {
+        match value {
+            Value::Object(object) => object,
+            _ => panic!("fixture helper expected a JSON object"),
+        }
     }
 }
 

@@ -160,6 +160,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "harness-conformance-tests"
+version = "0.1.0"
+dependencies = [
+ "harness-core",
+ "harness-test-support",
+ "harness-types",
+ "serde_json",
+]
+
+[[package]]
 name = "harness-core"
 version = "0.1.0"
 dependencies = [
@@ -170,6 +180,17 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "harness-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "harness-core",
+ "harness-mcp",
+ "harness-test-support",
+ "harness-types",
+ "serde_json",
 ]
 
 [[package]]
@@ -198,7 +219,10 @@ dependencies = [
 name = "harness-test-support"
 version = "0.1.0"
 dependencies = [
+ "harness-store",
  "harness-types",
+ "rusqlite",
+ "serde_json",
  "tempfile",
 ]
 

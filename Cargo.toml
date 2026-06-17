@@ -6,6 +6,8 @@ members = [
     "crates/harness-cli",
     "crates/harness-mcp",
     "crates/harness-test-support",
+    "tests/conformance",
+    "tests/integration",
 ]
 resolver = "2"
 

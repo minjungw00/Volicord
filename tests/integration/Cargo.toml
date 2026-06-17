@@ -1,0 +1,16 @@
+[package]
+name = "harness-integration-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dev-dependencies]
+harness-core = { path = "../../crates/harness-core" }
+harness-mcp = { path = "../../crates/harness-mcp" }
+harness-test-support = { path = "../../crates/harness-test-support" }
+harness-types = { path = "../../crates/harness-types" }
+serde_json = "1"
+
+[[test]]
+name = "mcp_surface"
+path = "mcp_surface.rs"
