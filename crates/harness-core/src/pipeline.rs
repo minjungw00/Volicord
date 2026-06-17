@@ -97,6 +97,9 @@ pub enum OwnerPipelineBranch {
     ReadOnly {
         result_fields: JsonObject,
     },
+    NoEffectResult {
+        result_fields: JsonObject,
+    },
     DryRunPreview {
         dry_run_summary: DryRunSummary,
     },
@@ -261,6 +264,20 @@ impl CoreService {
                 let base = method_result_base(
                     EffectKind::ReadOnly,
                     request.envelope.dry_run,
+                    Some(project_state.state_version),
+                    Vec::new(),
+                );
+                response_from_value(
+                    method_result_value(base, result_fields)?,
+                    Some(verified_surface),
+                    resolved_task_id,
+                    false,
+                )
+            }
+            OwnerPipelineBranch::NoEffectResult { result_fields } => {
+                let base = method_result_base(
+                    EffectKind::NoEffect,
+                    false,
                     Some(project_state.state_version),
                     Vec::new(),
                 );
@@ -444,6 +461,14 @@ fn validate_envelope(envelope: &ToolEnvelope, request_json: &Value) -> Vec<ToolE
 fn validate_branch_shape(branch: &OwnerPipelineBranch, dry_run: bool) -> CoreResult<()> {
     match (branch, dry_run) {
         (OwnerPipelineBranch::ReadOnly { result_fields }, _) => ensure_no_base_field(result_fields),
+        (OwnerPipelineBranch::NoEffectResult { result_fields }, false) => {
+            ensure_no_base_field(result_fields)
+        }
+        (OwnerPipelineBranch::NoEffectResult { .. }, true) => {
+            Err(CorePipelineError::InvalidDispatch {
+                detail: "no-effect result branch requires ToolEnvelope.dry_run=false".to_owned(),
+            })
+        }
         (OwnerPipelineBranch::DryRunPreview { .. }, true) => Ok(()),
         (OwnerPipelineBranch::DryRunPreview { .. }, false) => {
             Err(CorePipelineError::InvalidDispatch {
@@ -492,7 +517,9 @@ fn precedence_response(
 ) -> CoreResult<Option<PipelineResponse>> {
     let branch_needs_freshness = matches!(
         request.branch,
-        OwnerPipelineBranch::CommitMutation { .. } | OwnerPipelineBranch::DryRunPreview { .. }
+        OwnerPipelineBranch::CommitMutation { .. }
+            | OwnerPipelineBranch::DryRunPreview { .. }
+            | OwnerPipelineBranch::NoEffectResult { .. }
     );
 
     if matches!(request.branch, OwnerPipelineBranch::CommitMutation { .. }) {

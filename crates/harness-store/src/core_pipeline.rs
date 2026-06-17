@@ -55,6 +55,7 @@ pub enum CoreStorageMutation {
     InsertTask(TaskInsert),
     SetActiveTask { task_id: String },
     SupersedeTask { task_id: String },
+    CloseTask(TaskCloseUpdate),
     UpdateTaskScope(TaskScopeUpdate),
     InsertCurrentChangeUnit(ChangeUnitInsert),
     ReplaceCurrentChangeUnit(ChangeUnitInsert),
@@ -101,6 +102,16 @@ pub struct TaskScopeUpdate {
     pub autonomy_boundary_json: Option<String>,
     pub close_summary_json: Option<String>,
     pub completion_policy_json: Option<String>,
+}
+
+/// Storage input for applying one terminal Task close transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskCloseUpdate {
+    pub task_id: String,
+    pub lifecycle_phase: String,
+    pub result: String,
+    pub close_summary_json: String,
+    pub closed_at: String,
 }
 
 /// Storage input for inserting a current Change Unit.
@@ -216,6 +227,20 @@ pub struct ArtifactLinkInsert {
 /// Storage input for creating or replacing one evidence summary row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EvidenceSummaryUpsert {
+    pub evidence_summary_id: String,
+    pub task_id: String,
+    pub change_unit_id: Option<String>,
+    pub status: String,
+    pub coverage_json: String,
+    pub supporting_refs_json: String,
+    pub gap_refs_json: String,
+    pub metadata_json: String,
+}
+
+/// Stored evidence summary facts needed by close-readiness evaluation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvidenceSummaryRecord {
+    pub project_id: String,
     pub evidence_summary_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
@@ -651,6 +676,14 @@ impl CoreProjectStore {
         )
     }
 
+    /// Reads the latest evidence summary row for a Task, when one exists.
+    pub fn latest_evidence_summary(
+        &self,
+        task_id: &TaskId,
+    ) -> StoreResult<Option<EvidenceSummaryRecord>> {
+        latest_evidence_summary(&self.conn, &self.project.project_id, task_id.as_str())
+    }
+
     /// Reads a committed replay row without creating storage effects.
     pub fn tool_invocation(
         &self,
@@ -938,6 +971,7 @@ impl CoreStorageMutation {
             Self::InsertTask(input) => mutation.insert_task(input),
             Self::SetActiveTask { task_id } => mutation.set_active_task(task_id),
             Self::SupersedeTask { task_id } => mutation.supersede_task(task_id),
+            Self::CloseTask(input) => mutation.close_task(input),
             Self::UpdateTaskScope(input) => mutation.update_task_scope(input),
             Self::InsertCurrentChangeUnit(input) => {
                 mutation.insert_current_change_unit(input, committed_state_version)
@@ -1077,6 +1111,41 @@ impl ProjectMutation<'_> {
             params![self.project_id, task_id],
         )?;
         Ok(())
+    }
+
+    fn close_task(&mut self, input: &TaskCloseUpdate) -> StoreResult<()> {
+        validate_identifier("task_id", &input.task_id)?;
+        validate_identifier("lifecycle_phase", &input.lifecycle_phase)?;
+        validate_identifier("result", &input.result)?;
+        validate_json_text("tasks.close_summary_json", &input.close_summary_json)?;
+        validate_identifier("closed_at", &input.closed_at)?;
+
+        let changed = self.tx.execute(
+            "UPDATE tasks
+                SET lifecycle_phase = ?3,
+                    result = ?4,
+                    close_summary_json = ?5,
+                    closed_at = ?6,
+                    updated_at = ?6
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            params![
+                self.project_id,
+                input.task_id,
+                input.lifecycle_phase,
+                input.result,
+                input.close_summary_json,
+                input.closed_at
+            ],
+        )?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "Task close transition changed no rows".to_owned(),
+            })
+        }
     }
 
     fn update_task_scope(&mut self, input: &TaskScopeUpdate) -> StoreResult<()> {
@@ -2281,6 +2350,50 @@ fn artifact_has_task_owner_link(
         |row| Ok(row.get::<_, i64>(0)? > 0),
     )
     .map_err(StoreError::from)
+}
+
+fn latest_evidence_summary(
+    conn: &Connection,
+    project_id: &str,
+    task_id: &str,
+) -> StoreResult<Option<EvidenceSummaryRecord>> {
+    conn.query_row(
+        "SELECT
+            project_id,
+            evidence_summary_id,
+            task_id,
+            change_unit_id,
+            status,
+            coverage_json,
+            supporting_refs_json,
+            gap_refs_json,
+            metadata_json
+         FROM evidence_summaries
+         WHERE project_id = ?1
+           AND task_id = ?2
+         ORDER BY updated_at DESC, evidence_summary_id DESC
+         LIMIT 1",
+        params![project_id, task_id],
+        evidence_summary_record_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
+fn evidence_summary_record_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<EvidenceSummaryRecord> {
+    Ok(EvidenceSummaryRecord {
+        project_id: row.get(0)?,
+        evidence_summary_id: row.get(1)?,
+        task_id: row.get(2)?,
+        change_unit_id: row.get(3)?,
+        status: row.get(4)?,
+        coverage_json: row.get(5)?,
+        supporting_refs_json: row.get(6)?,
+        gap_refs_json: row.get(7)?,
+        metadata_json: row.get(8)?,
+    })
 }
 
 fn user_judgment_record(
