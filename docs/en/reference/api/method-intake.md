@@ -40,6 +40,24 @@ Scope boundary:
 - `plain_language_request`, `requested_mode`, and `resume_policy`.
 - Any known initial scope candidate in `initial_scope.boundary`, `initial_scope.non_goals`, and `initial_scope.acceptance_criteria`; use empty arrays when no list items are known.
 
+## Request schema
+
+This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+
+```yaml
+IntakeRequest:
+  envelope: ToolEnvelope
+  plain_language_request: string
+  requested_mode: string
+  resume_policy: string
+  initial_scope: object
+  initial_context_refs: StateRecordRef[]
+```
+
+Nested owner links:
+- `initial_context_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
+- `requested_mode` and `resume_policy` values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values) and [method-local values](schema-value-sets.md#method-local-values).
+
 ## Access requirements
 
 A committed non-dry-run request requires:

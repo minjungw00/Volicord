@@ -36,6 +36,30 @@ The method may also update compact evidence coverage, consume a compatible `Writ
 - Product-write runs require a compatible `status=active` `Write Authorization` from `harness.prepare_write`.
 - New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `harness.record_run` does not stage new bytes.
 
+## Request schema
+
+This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+
+```yaml
+RecordRunRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  change_unit_id: string
+  kind: string
+  run_id: string | null
+  baseline_ref: string
+  write_authorization_id: string | null
+  summary: string
+  observed_changes: ObservedChanges
+  artifact_inputs: ArtifactInput[]
+  evidence_updates: EvidenceCoverageItem[]
+```
+
+Nested owner links:
+- `observed_changes` and `evidence_updates` use `ObservedChanges` and `EvidenceCoverageItem`; those shapes are owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes).
+- `artifact_inputs` uses `ArtifactInput[]`; `ArtifactInput`, `StagedArtifactHandle`, and `ArtifactRef` shapes are owned by [API Artifact Schemas](schema-artifacts.md#artifactinput).
+- `kind`, artifact source values, `redaction_state`, and evidence coverage values are owned by [API Value Sets](schema-value-sets.md).
+
 ## Access requirements
 
 Requires:

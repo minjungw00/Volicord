@@ -30,6 +30,27 @@
 - 유효한 `ToolEnvelope`. `idempotency_key`와 `expected_state_version`은 `null`일 수 있습니다.
 - `task_id`, `display_name`, `content_type`, `redaction_state`, `safe_bytes_or_notice`, `expected_sha256`, `expected_size_bytes`, `relation_hint`.
 
+## 요청 스키마
+
+이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+
+```yaml
+StageArtifactRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  display_name: string
+  content_type: string
+  redaction_state: string
+  safe_bytes_or_notice: string
+  expected_sha256: string | null
+  expected_size_bytes: integer | null
+  relation_hint: string | null
+```
+
+중첩 형태 담당 문서:
+- `redaction_state` 값은 [API 값 집합의 아티팩트 값](schema-value-sets.md#artifact-values)이 담당합니다.
+- 결과 측 `StagedArtifactHandle` 형태는 [API 아티팩트 스키마](schema-artifacts.md#stagedartifacthandle)에 남습니다.
+
 ## 접근 요구사항
 
 요구사항:

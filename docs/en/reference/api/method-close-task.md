@@ -116,6 +116,24 @@ Additional requirements:
 | `intent=complete`, `intent=cancel`, or `intent=supersede` with `dry_run=false` | `idempotency_key` and `expected_state_version` must be non-null and current. |
 | `intent=supersede` | `superseding_task_id` must identify a compatible same-project replacement `Task`. |
 
+## Request schema
+
+This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+
+```yaml
+CloseTaskRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  intent: string
+  close_reason: string | null
+  superseding_task_id: string | null
+  user_note: string | null
+```
+
+Nested owner links:
+- `intent` values are owned by [API Value Sets method-local values](schema-value-sets.md#method-local-values).
+- `close_reason` values are owned by [API Value Sets task lifecycle values](schema-value-sets.md#task-lifecycle-values).
+
 ## Access requirements
 
 | Request kind | Method access rule |

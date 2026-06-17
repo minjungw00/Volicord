@@ -28,6 +28,19 @@
 - 유효한 `ToolEnvelope`. `idempotency_key`와 `expected_state_version`은 `null`일 수 있습니다.
 - 호출자가 필요한 요약을 고르는 `include` 플래그.
 
+## 요청 스키마
+
+이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+
+```yaml
+StatusRequest:
+  envelope: ToolEnvelope
+  include: object
+```
+
+필드 참고:
+- `include`는 상태 조회 요약을 고르는 메서드 내부 플래그 객체이며, 최소 유효 요청 예시에 표시되어 있습니다.
+
 ## 접근 요구사항
 
 보호된 Core 세부정보를 요청할 때 읽기에는 아래 조건이 필요합니다.

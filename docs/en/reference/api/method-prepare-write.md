@@ -42,6 +42,25 @@ Security non-claims belong to [Security](../security.md).
 - `task_id` and `change_unit_id`, or `null` only when owner resolution can unambiguously use the current Task and currently applied Change Unit.
 - `intended_operation`, `intended_paths`, `product_file_write_intended`, `sensitive_categories`, and `baseline_ref`.
 
+## Request schema
+
+This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+
+```yaml
+PrepareWriteRequest:
+  envelope: ToolEnvelope
+  task_id: string | null
+  change_unit_id: string | null
+  intended_operation: string
+  intended_paths: string[]
+  product_file_write_intended: boolean
+  sensitive_categories: string[]
+  baseline_ref: string
+```
+
+Field notes:
+- `sensitive_categories` entries are opaque sensitive-category classification strings unless this method or a profile owner publishes a narrower local list.
+
 ## Access requirements
 
 Requires:

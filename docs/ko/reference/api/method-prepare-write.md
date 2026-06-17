@@ -42,6 +42,25 @@
 - `task_id`와 `change_unit_id`. 담당 해석이 현재 `Task`와 현재 적용 Change Unit을 모호하지 않게 사용할 수 있을 때만 `null`을 사용할 수 있습니다.
 - `intended_operation`, `intended_paths`, `product_file_write_intended`, `sensitive_categories`, `baseline_ref`.
 
+## 요청 스키마
+
+이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+
+```yaml
+PrepareWriteRequest:
+  envelope: ToolEnvelope
+  task_id: string | null
+  change_unit_id: string | null
+  intended_operation: string
+  intended_paths: string[]
+  product_file_write_intended: boolean
+  sensitive_categories: string[]
+  baseline_ref: string
+```
+
+필드 참고:
+- `sensitive_categories` 항목은 이 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 불투명 민감 범주 분류 문자열입니다.
+
 ## 접근 요구사항
 
 요구사항:

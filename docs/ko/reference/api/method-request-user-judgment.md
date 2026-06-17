@@ -32,6 +32,30 @@
 - 서로 이해할 수 있는 `options`를 가진 초점이 분명한 `question`.
 - 사용자가 숨은 대화 상태에 기대지 않고 정확한 사안을 판단할 수 있는 충분한 `context`.
 
+## 요청 스키마
+
+이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+
+```yaml
+RequestUserJudgmentRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  change_unit_id: string | null
+  judgment_kind: string
+  presentation: string
+  question: string
+  options: UserJudgmentOption[]
+  context: UserJudgmentContext
+  affected_refs: StateRecordRef[]
+  required_for: string
+  expires_at: string | null
+```
+
+중첩 형태 담당 문서:
+- 판단 후보 필드는 `UserJudgmentCandidate`와 맞습니다. 선택지와 맥락 형태는 [API 판단 스키마](schema-judgment.md#userjudgmentcandidate)가 담당합니다.
+- `affected_refs`는 `StateRecordRef[]`를 사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
+- `judgment_kind`, `presentation`, `required_for` 값은 [API 값 집합의 판단 값](schema-value-sets.md#judgment-values)이 담당합니다.
+
 ## 접근 요구사항
 
 이 메서드에는 아래 조건이 필요합니다.

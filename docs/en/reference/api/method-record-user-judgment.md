@@ -36,6 +36,26 @@ The method updates the addressed pending judgment according to the user's answer
 
 `selected_option_id` and `note` stay at request level. `RecordUserJudgmentPayload` must not repeat them inside the decision-specific answer branch.
 
+## Request schema
+
+This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+
+```yaml
+RecordUserJudgmentRequest:
+  envelope: ToolEnvelope
+  user_judgment_id: string
+  judgment_kind: string
+  selected_option_id: string
+  answer: RecordUserJudgmentPayload
+  note: string | null
+  accepted_risks: AcceptedRiskInput[]
+```
+
+Nested owner links:
+- `answer` uses `RecordUserJudgmentPayload`; `SensitiveActionScope` may appear only inside that payload branch and is owned by [API Judgment Schemas](schema-judgment.md#resolution-and-answer-payload).
+- `accepted_risks` uses `AcceptedRiskInput[]`; the nested shape is owned by [API Judgment Schemas](schema-judgment.md#acceptedriskinput).
+- `judgment_kind` values are owned by [API Value Sets judgment values](schema-value-sets.md#judgment-values).
+
 ## Access requirements
 
 The method requires:

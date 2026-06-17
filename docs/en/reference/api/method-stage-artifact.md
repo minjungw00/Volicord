@@ -30,6 +30,27 @@ Staging is input preparation only. Evidence, persistent artifact links, acceptan
 - A valid `ToolEnvelope`; `idempotency_key` and `expected_state_version` may be `null`.
 - `task_id`, `display_name`, `content_type`, `redaction_state`, `safe_bytes_or_notice`, `expected_sha256`, `expected_size_bytes`, and `relation_hint`.
 
+## Request schema
+
+This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+
+```yaml
+StageArtifactRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  display_name: string
+  content_type: string
+  redaction_state: string
+  safe_bytes_or_notice: string
+  expected_sha256: string | null
+  expected_size_bytes: integer | null
+  relation_hint: string | null
+```
+
+Nested owner links:
+- `redaction_state` values are owned by [API Value Sets artifact values](schema-value-sets.md#artifact-values).
+- The result-side `StagedArtifactHandle` shape stays with [API Artifact Schemas](schema-artifacts.md#stagedartifacthandle).
+
 ## Access requirements
 
 Requires:

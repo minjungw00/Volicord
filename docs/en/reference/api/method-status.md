@@ -28,6 +28,19 @@ This document does not own:
 - A valid `ToolEnvelope`; `idempotency_key` and `expected_state_version` may be `null`.
 - `include` flags selecting which summaries the caller needs.
 
+## Request schema
+
+This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+
+```yaml
+StatusRequest:
+  envelope: ToolEnvelope
+  include: object
+```
+
+Field notes:
+- `include` is the method-local flag object selecting status summaries, as shown in the minimal valid request example.
+
 ## Access requirements
 
 When protected Core detail is requested, the read requires:

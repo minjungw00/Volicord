@@ -41,6 +41,29 @@ This method is the supported path that turns shaping into a first safe Change Un
 - `change_unit.operation` and the fields needed by that operation; supported operation values and their meanings are owned by [API Value Sets](schema-value-sets.md#method-local-values).
 - `related_scope_decision_refs` when the update applies a resolved `judgment_kind=scope_decision`.
 
+## Request schema
+
+This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+
+```yaml
+UpdateScopeRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  goal_summary: string | null
+  scope_update: object | null
+  scope_boundary: string | null
+  non_goals: string[] | null
+  acceptance_criteria: string[] | null
+  autonomy_boundary: string | null
+  baseline_ref: string | null
+  change_unit: object
+  related_scope_decision_refs: StateRecordRef[]
+```
+
+Nested owner links:
+- `related_scope_decision_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
+- `change_unit.operation` values are owned by [API Value Sets method-local values](schema-value-sets.md#method-local-values).
+
 ## Access requirements
 
 A committed non-dry-run request requires:

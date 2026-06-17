@@ -36,6 +36,26 @@
 
 `selected_option_id`와 `note`는 요청 수준에 남습니다. `RecordUserJudgmentPayload`는 판단별 답변 분기 안에서 이 필드를 반복하면 안 됩니다.
 
+## 요청 스키마
+
+이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+
+```yaml
+RecordUserJudgmentRequest:
+  envelope: ToolEnvelope
+  user_judgment_id: string
+  judgment_kind: string
+  selected_option_id: string
+  answer: RecordUserJudgmentPayload
+  note: string | null
+  accepted_risks: AcceptedRiskInput[]
+```
+
+중첩 형태 담당 문서:
+- `answer`는 `RecordUserJudgmentPayload`를 사용합니다. `SensitiveActionScope`는 그 요청 본문 분기 안에서만 나타날 수 있으며 [API 판단 스키마](schema-judgment.md#resolution-and-answer-payload)가 담당합니다.
+- `accepted_risks`는 `AcceptedRiskInput[]`을 사용합니다. 중첩 형태는 [API 판단 스키마](schema-judgment.md#acceptedriskinput)가 담당합니다.
+- `judgment_kind` 값은 [API 값 집합의 판단 값](schema-value-sets.md#judgment-values)이 담당합니다.
+
 ## 접근 요구사항
 
 이 메서드에는 아래 조건이 필요합니다.

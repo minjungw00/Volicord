@@ -116,6 +116,24 @@ API 경계 블록:
 | `intent=complete`, `intent=cancel`, `intent=supersede`와 `dry_run=false` | `idempotency_key`와 `expected_state_version`은 `null`이 아니어야 하며 현재 값이어야 합니다. |
 | `intent=supersede` | `superseding_task_id`는 호환되는 같은 프로젝트의 대체 `Task`를 가리켜야 합니다. |
 
+## 요청 스키마
+
+이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+
+```yaml
+CloseTaskRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  intent: string
+  close_reason: string | null
+  superseding_task_id: string | null
+  user_note: string | null
+```
+
+중첩 형태 담당 문서:
+- `intent` 값은 [API 값 집합의 메서드 내부 값](schema-value-sets.md#method-local-values)이 담당합니다.
+- `close_reason` 값은 [API 값 집합의 Task 생명주기 값](schema-value-sets.md#task-lifecycle-values)이 담당합니다.
+
 ## 접근 요구사항
 
 | 요청 종류 | 메서드 접근 규칙 |

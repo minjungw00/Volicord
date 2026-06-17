@@ -32,6 +32,30 @@ The pending judgment is a request for a decision. It is not the decision itself,
 - A focused `question` with mutually understandable `options`.
 - Enough `context` for the user to judge the exact issue without relying on hidden chat state.
 
+## Request schema
+
+This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+
+```yaml
+RequestUserJudgmentRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  change_unit_id: string | null
+  judgment_kind: string
+  presentation: string
+  question: string
+  options: UserJudgmentOption[]
+  context: UserJudgmentContext
+  affected_refs: StateRecordRef[]
+  required_for: string
+  expires_at: string | null
+```
+
+Nested owner links:
+- The judgment-candidate fields align with `UserJudgmentCandidate`; option and context shapes are owned by [API Judgment Schemas](schema-judgment.md#userjudgmentcandidate).
+- `affected_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
+- `judgment_kind`, `presentation`, and `required_for` values are owned by [API Value Sets judgment values](schema-value-sets.md#judgment-values).
+
 ## Access requirements
 
 The method requires:

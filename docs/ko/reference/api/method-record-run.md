@@ -36,6 +36,30 @@
 - 제품 쓰기 실행은 `harness.prepare_write`가 만든 호환되는 `status=active` `Write Authorization`이 필요합니다.
 - 새 아티팩트 바이트는 이미 유효한 `StagedArtifactHandle`로 표현되어 있어야 합니다. `harness.record_run`은 새 바이트를 스테이징하지 않습니다.
 
+## 요청 스키마
+
+이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+
+```yaml
+RecordRunRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  change_unit_id: string
+  kind: string
+  run_id: string | null
+  baseline_ref: string
+  write_authorization_id: string | null
+  summary: string
+  observed_changes: ObservedChanges
+  artifact_inputs: ArtifactInput[]
+  evidence_updates: EvidenceCoverageItem[]
+```
+
+중첩 형태 담당 문서:
+- `observed_changes`와 `evidence_updates`는 `ObservedChanges`와 `EvidenceCoverageItem`을 사용합니다. 이 형태는 [API 상태 스키마](schema-state.md#evidence-and-run-snapshot-shapes)가 담당합니다.
+- `artifact_inputs`는 `ArtifactInput[]`을 사용합니다. `ArtifactInput`, `StagedArtifactHandle`, `ArtifactRef` 형태는 [API 아티팩트 스키마](schema-artifacts.md#artifactinput)가 담당합니다.
+- `kind`, 아티팩트 출처 값, `redaction_state`, 증거 범위 값은 [API 값 집합](schema-value-sets.md)이 담당합니다.
+
 ## 접근 요구사항
 
 요구사항:

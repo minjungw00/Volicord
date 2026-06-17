@@ -41,6 +41,29 @@
 - `change_unit.operation`과 그 작업에 필요한 필드. 지원되는 작업 값과 그 의미는 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다.
 - 해결된 `judgment_kind=scope_decision`을 적용한다면 `related_scope_decision_refs`.
 
+## 요청 스키마
+
+이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+
+```yaml
+UpdateScopeRequest:
+  envelope: ToolEnvelope
+  task_id: string
+  goal_summary: string | null
+  scope_update: object | null
+  scope_boundary: string | null
+  non_goals: string[] | null
+  acceptance_criteria: string[] | null
+  autonomy_boundary: string | null
+  baseline_ref: string | null
+  change_unit: object
+  related_scope_decision_refs: StateRecordRef[]
+```
+
+중첩 형태 담당 문서:
+- `related_scope_decision_refs`는 `StateRecordRef[]`를 사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
+- `change_unit.operation` 값은 [API 값 집합의 메서드 내부 값](schema-value-sets.md#method-local-values)이 담당합니다.
+
 ## 접근 요구사항
 
 커밋되는 `dry_run`이 아닌 요청에는 아래 조건이 필요합니다.
