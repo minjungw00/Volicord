@@ -13,10 +13,10 @@ use crate::values::{
     ActorKind, ArtifactAvailability, ArtifactInputSourceKind, CloseReadinessBlockerCategory,
     CloseReason, CloseState, EffectKind, ErrorCode, EvidenceCoverageState, EvidenceStatus,
     GuaranteeLevel, JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentPresentation,
-    JudgmentRequiredFor, MethodName, NextActionKind, PlannedBlockerSourceKind, RedactionState,
-    ResponseKind, RunKind, StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult,
-    UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WriteAuthorizationStatus,
-    WriteDecisionCategory,
+    JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind,
+    PlannedBlockerSourceKind, RedactionState, ResponseKind, RunKind, StateRecordKind,
+    TaskLifecyclePhase, TaskMode, TaskResult, UserJudgmentStatus, UtcTimestamp, ValidatorSeverity,
+    ValidatorStatus, WriteAuthorizationStatus, WriteDecisionCategory,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -689,6 +689,8 @@ pub struct UserJudgmentOption {
     pub label: String,
     pub description: String,
     pub consequence: String,
+    #[serde(default)]
+    pub resolution_outcome: Option<JudgmentResolutionOutcome>,
     pub is_default: bool,
 }
 
@@ -707,6 +709,7 @@ pub struct UserJudgmentContext {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct UserJudgmentResolution {
     pub selected_option_id: UserJudgmentOptionId,
+    pub resolution_outcome: Option<JudgmentResolutionOutcome>,
     pub answer: RecordUserJudgmentPayload,
     pub note: Option<String>,
     pub accepted_risks: Vec<AcceptedRiskInput>,
@@ -717,6 +720,7 @@ pub struct UserJudgmentResolution {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PersistedUserJudgmentResolution {
     pub selected_option_id: UserJudgmentOptionId,
+    pub resolution_outcome: Option<JudgmentResolutionOutcome>,
     pub answer: RecordUserJudgmentPayload,
     pub note: Option<String>,
     pub accepted_risks: Vec<AcceptedRiskInput>,
@@ -727,6 +731,7 @@ impl From<PersistedUserJudgmentResolution> for UserJudgmentResolution {
     fn from(resolution: PersistedUserJudgmentResolution) -> Self {
         Self {
             selected_option_id: resolution.selected_option_id,
+            resolution_outcome: resolution.resolution_outcome,
             answer: resolution.answer,
             note: resolution.note,
             accepted_risks: resolution.accepted_risks,
@@ -744,6 +749,8 @@ impl<'de> Deserialize<'de> for PersistedUserJudgmentResolution {
         #[serde(deny_unknown_fields)]
         struct Wire {
             selected_option_id: UserJudgmentOptionId,
+            #[serde(default)]
+            resolution_outcome: Option<JudgmentResolutionOutcome>,
             answer: RecordUserJudgmentPayload,
             note: Option<String>,
             accepted_risks: Vec<AcceptedRiskInput>,
@@ -758,6 +765,7 @@ impl<'de> Deserialize<'de> for PersistedUserJudgmentResolution {
         }
         Ok(Self {
             selected_option_id: wire.selected_option_id,
+            resolution_outcome: wire.resolution_outcome,
             answer: wire.answer,
             note: wire.note,
             accepted_risks: wire.accepted_risks,

@@ -4,9 +4,10 @@ use chrono::{DateTime, Duration, Utc};
 use harness_store::{core_pipeline::WriteAuthorizationRecord, StoreError};
 use harness_types::{
     BaselineRef, ChangeUnitId, DryRunSummary, GuaranteeDisplay, GuaranteeLevel,
-    JudgmentBasisCompatibilityStatus, JudgmentKind, PlannedBlocker, PlannedBlockerSourceKind,
-    PlannedEffect, PrepareWriteDecision, SensitiveActionScope, StateRecordRef, TaskId,
-    UserJudgmentStatus, UtcTimestamp, WriteDecisionCategory, WriteDecisionReason,
+    JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentResolutionOutcome, PlannedBlocker,
+    PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision, SensitiveActionScope,
+    StateRecordRef, TaskId, UserJudgmentStatus, UtcTimestamp, WriteDecisionCategory,
+    WriteDecisionReason,
 };
 use serde_json::Value;
 
@@ -198,6 +199,7 @@ pub(crate) fn current_sensitive_approval(
 ) -> bool {
     if !judgment_has_current_basis(judgment)
         || judgment.status != UserJudgmentStatus::Resolved
+        || judgment.resolution_outcome != Some(JudgmentResolutionOutcome::Accepted)
         || judgment.judgment_kind != JudgmentKind::SensitiveApproval
     {
         return false;

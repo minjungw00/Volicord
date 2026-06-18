@@ -161,6 +161,7 @@ fn plan_request_user_judgment(
     validate_user_judgment_request_fields(UserJudgmentRequestValidation {
         dry_run: request.envelope.dry_run,
         state_version: Some(project_state.state_version),
+        judgment_kind: request.judgment_kind,
         question: &request.question,
         options: &request.options,
         context: &request.context,
@@ -925,11 +926,11 @@ fn plan_record_user_judgment(
             "judgment_kind is incompatible with the pending user-owned judgment",
         ))));
     }
-    if !user_judgment
+    let Some(selected_option) = user_judgment
         .options
         .iter()
-        .any(|option| option.option_id == request.selected_option_id)
-    {
+        .find(|option| option.option_id == request.selected_option_id)
+    else {
         let response = validation_rejected(
             request.envelope.dry_run,
             Some(project_state.state_version),
@@ -938,12 +939,36 @@ fn plan_record_user_judgment(
         )
         .map_err(PlanError::Core)?;
         return Err(PlanError::Response(Box::new(response)));
+    };
+    let Some(resolution_outcome) = selected_option.resolution_outcome else {
+        return Err(PlanError::Response(Box::new(decision_rejected_response(
+            &request.envelope,
+            Some(project_state.state_version),
+            "pending user-owned judgment option lacks a machine-readable resolution outcome",
+        ))));
+    };
+    if is_authority_bearing_judgment(request.judgment_kind)
+        && request.envelope.actor_kind != ActorKind::User
+    {
+        return validation_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "envelope.actor_kind",
+            "authority-bearing judgments must be resolved by actor_kind=user",
+        )
+        .map(|()| unreachable!());
     }
     validate_answer_payload(
         request.envelope.dry_run,
         Some(project_state.state_version),
         request.judgment_kind,
         &request.answer,
+    )?;
+    validate_answer_outcome_agrees_with_option(
+        request.envelope.dry_run,
+        Some(project_state.state_version),
+        &request.answer,
+        resolution_outcome,
     )?;
 
     let task_id = TaskId::new(record.task_id.clone());
@@ -980,6 +1005,7 @@ fn plan_record_user_judgment(
     )?;
     let resolution = UserJudgmentResolution {
         selected_option_id: request.selected_option_id.clone(),
+        resolution_outcome: Some(resolution_outcome),
         answer,
         note: request.note.clone().into_option(),
         accepted_risks: request.accepted_risks.clone(),
@@ -1067,6 +1093,7 @@ fn plan_record_user_judgment(
         UserJudgmentResolutionUpdate {
             judgment_id: request.user_judgment_id.as_str().to_owned(),
             status: storage_value(UserJudgmentStatus::Resolved)?,
+            resolution_outcome,
             resolution_json: serde_json::to_string(&resolution)?,
             sensitive_action_scope_json,
             resolved_at: now.to_string(),
@@ -1077,7 +1104,8 @@ fn plan_record_user_judgment(
         "change_unit_id": record.change_unit_id,
         "judgment_id": request.user_judgment_id,
         "judgment_kind": request.judgment_kind,
-        "selected_option_id": request.selected_option_id
+        "selected_option_id": request.selected_option_id,
+        "resolution_outcome": resolution_outcome
     }))?;
 
     Ok(MethodPlan {
@@ -1093,6 +1121,7 @@ fn plan_record_user_judgment(
 struct UserJudgmentRequestValidation<'a> {
     dry_run: bool,
     state_version: Option<u64>,
+    judgment_kind: JudgmentKind,
     question: &'a str,
     options: &'a [UserJudgmentOption],
     context: &'a UserJudgmentContext,
@@ -1123,6 +1152,8 @@ fn validate_user_judgment_request_fields(
         );
     }
     let mut option_ids = BTreeSet::new();
+    let mut accepted_options = 0usize;
+    let mut rejected_options = 0usize;
     for option in input.options {
         if option.option_id.as_str().trim().is_empty() {
             return validation_plan_error(
@@ -1146,6 +1177,46 @@ fn validate_user_judgment_request_fields(
                 input.state_version,
                 "options.label",
                 "option label must not be empty",
+            );
+        }
+        let Some(outcome) = option.resolution_outcome else {
+            return validation_plan_error(
+                input.dry_run,
+                input.state_version,
+                "options.resolution_outcome",
+                "each judgment option must include a machine-readable resolution_outcome",
+            );
+        };
+        match outcome {
+            JudgmentResolutionOutcome::Accepted => accepted_options += 1,
+            JudgmentResolutionOutcome::Rejected => rejected_options += 1,
+            JudgmentResolutionOutcome::Deferred | JudgmentResolutionOutcome::Blocked => {
+                if is_authority_bearing_judgment(input.judgment_kind) {
+                    return validation_plan_error(
+                        input.dry_run,
+                        input.state_version,
+                        "options.resolution_outcome",
+                        "authority-bearing judgment options may only use accepted or rejected outcomes",
+                    );
+                }
+            }
+        }
+    }
+    if is_authority_bearing_judgment(input.judgment_kind) {
+        if accepted_options == 0 || rejected_options == 0 {
+            return validation_plan_error(
+                input.dry_run,
+                input.state_version,
+                "options.resolution_outcome",
+                "authority-bearing judgment options must include accepted and rejected paths",
+            );
+        }
+        if accepted_options > 1 || rejected_options > 1 {
+            return validation_plan_error(
+                input.dry_run,
+                input.state_version,
+                "options.resolution_outcome",
+                "authority-bearing judgment options must not duplicate accepted or rejected machine outcomes",
             );
         }
     }
@@ -1215,6 +1286,99 @@ fn validate_answer_payload(
         );
     }
     Ok(())
+}
+
+fn validate_answer_outcome_agrees_with_option(
+    dry_run: bool,
+    state_version: Option<u64>,
+    answer: &RecordUserJudgmentPayload,
+    selected_outcome: JudgmentResolutionOutcome,
+) -> Result<(), PlanError> {
+    let answer_value = serde_json::to_value(answer)?;
+    let mut claims = Vec::new();
+    collect_answer_outcome_claims(&answer_value, &mut claims);
+    if claims
+        .iter()
+        .any(|claimed_outcome| *claimed_outcome != selected_outcome)
+    {
+        return validation_plan_error(
+            dry_run,
+            state_version,
+            "answer",
+            "answer outcome fields must agree with the selected option resolution_outcome",
+        );
+    }
+    Ok(())
+}
+
+fn collect_answer_outcome_claims(value: &Value, claims: &mut Vec<JudgmentResolutionOutcome>) {
+    match value {
+        Value::Object(object) => {
+            for (key, value) in object {
+                if let Some(outcome) = answer_claimed_outcome(key, value) {
+                    claims.push(outcome);
+                }
+                collect_answer_outcome_claims(value, claims);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                collect_answer_outcome_claims(value, claims);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+fn answer_claimed_outcome(key: &str, value: &Value) -> Option<JudgmentResolutionOutcome> {
+    match key {
+        "resolution_outcome" | "outcome" | "decision" | "acceptance" => {
+            outcome_from_json_value(value)
+        }
+        "accepted" | "approved" => outcome_from_boolean_or_string(value),
+        _ => None,
+    }
+}
+
+fn outcome_from_boolean_or_string(value: &Value) -> Option<JudgmentResolutionOutcome> {
+    match value {
+        Value::Bool(true) => Some(JudgmentResolutionOutcome::Accepted),
+        Value::Bool(false) => Some(JudgmentResolutionOutcome::Rejected),
+        Value::String(raw) => outcome_from_str(raw),
+        _ => None,
+    }
+}
+
+fn outcome_from_json_value(value: &Value) -> Option<JudgmentResolutionOutcome> {
+    match value {
+        Value::String(raw) => outcome_from_str(raw),
+        Value::Bool(_) => outcome_from_boolean_or_string(value),
+        _ => None,
+    }
+}
+
+fn outcome_from_str(raw: &str) -> Option<JudgmentResolutionOutcome> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "accepted" | "accept" | "approve" | "approved" | "yes" | "true" => {
+            Some(JudgmentResolutionOutcome::Accepted)
+        }
+        "rejected" | "reject" | "decline" | "declined" | "deny" | "denied" | "no" | "false" => {
+            Some(JudgmentResolutionOutcome::Rejected)
+        }
+        "deferred" | "defer" => Some(JudgmentResolutionOutcome::Deferred),
+        "blocked" | "block" => Some(JudgmentResolutionOutcome::Blocked),
+        _ => None,
+    }
+}
+
+fn is_authority_bearing_judgment(judgment_kind: JudgmentKind) -> bool {
+    matches!(
+        judgment_kind,
+        JudgmentKind::FinalAcceptance
+            | JudgmentKind::ResidualRiskAcceptance
+            | JudgmentKind::SensitiveApproval
+            | JudgmentKind::Cancellation
+    )
 }
 
 fn populated_answer_branch_count(answer: &RecordUserJudgmentPayload) -> usize {

@@ -517,6 +517,17 @@ mod tests {
             .expect("answer should be an object")
             .remove("technical_decision");
         assert_schema_and_serde("harness.record_user_judgment", answer_missing_branch, false);
+
+        let mut selected_option_missing = record_user_judgment_request_json();
+        selected_option_missing
+            .as_object_mut()
+            .expect("record request should be an object")
+            .remove("selected_option_id");
+        assert_schema_and_serde(
+            "harness.record_user_judgment",
+            selected_option_missing,
+            false,
+        );
     }
 
     #[test]
@@ -1476,6 +1487,7 @@ mod tests {
                     "label": "Use concise copy",
                     "description": "Record the focused product decision.",
                     "consequence": "The pending decision can be resolved.",
+                    "resolution_outcome": "accepted",
                     "is_default": true
                 }
             ],

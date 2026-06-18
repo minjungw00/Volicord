@@ -554,12 +554,19 @@ pub enum JudgmentRequiredFor {
 pub enum UserJudgmentStatus {
     Pending,
     Resolved,
+    Stale,
+    Superseded,
+    Expired,
+}
+
+/// User judgment resolution outcome values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JudgmentResolutionOutcome {
+    Accepted,
     Rejected,
     Deferred,
     Blocked,
-    Stale,
-    Superseded,
-    Incompatible,
 }
 
 /// Judgment-basis compatibility status values.

@@ -90,13 +90,13 @@ pub mod core_fixtures {
         BaselineRef, ChangeUnitId, ChangeUnitOperation, ChangeUnitUpdate, CloseIntent, CloseReason,
         CloseTaskRequest, EvidenceCoverageItem, EvidenceCoverageState, IdempotencyKey,
         InitialScope, IntakeRequest, JsonObject, JudgmentKind, JudgmentPresentation,
-        JudgmentRequiredFor, ObservedChanges, PrepareWriteRequest, ProjectId, RecordId,
-        RecordRunRequest, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState,
-        RequestId, RequestUserJudgmentRequest, RequestedMode, ResumePolicy, RunKind, ScopeUpdate,
-        SensitiveActionScope, StageArtifactRequest, StagedArtifactHandle, StateRecordKind,
-        StateRecordRef, StatusInclude, StatusRequest, SurfaceId, TaskId, ToolEnvelope,
-        UpdateScopeRequest, UserJudgmentId, UserJudgmentOption, UserJudgmentOptionId,
-        WriteAuthorizationId,
+        JudgmentRequiredFor, JudgmentResolutionOutcome, ObservedChanges, PrepareWriteRequest,
+        ProjectId, RecordId, RecordRunRequest, RecordUserJudgmentPayload,
+        RecordUserJudgmentRequest, RedactionState, RequestId, RequestUserJudgmentRequest,
+        RequestedMode, ResumePolicy, RunKind, ScopeUpdate, SensitiveActionScope,
+        StageArtifactRequest, StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusInclude,
+        StatusRequest, SurfaceId, TaskId, ToolEnvelope, UpdateScopeRequest, UserJudgmentId,
+        UserJudgmentOption, UserJudgmentOptionId, WriteAuthorizationId,
     };
 
     use super::*;
@@ -472,6 +472,7 @@ pub mod core_fixtures {
                         label: "Accept".to_owned(),
                         description: "Record the focused user-owned judgment.".to_owned(),
                         consequence: "Only this judgment record is resolved.".to_owned(),
+                        resolution_outcome: Some(JudgmentResolutionOutcome::Accepted),
                         is_default: true,
                     },
                     UserJudgmentOption {
@@ -480,6 +481,7 @@ pub mod core_fixtures {
                         description: "Record that the focused judgment was not accepted."
                             .to_owned(),
                         consequence: "The Task remains unresolved for this question.".to_owned(),
+                        resolution_outcome: Some(JudgmentResolutionOutcome::Rejected),
                         is_default: false,
                     },
                 ],

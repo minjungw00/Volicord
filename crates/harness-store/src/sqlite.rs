@@ -262,6 +262,19 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
         },
     )?;
     validate_user_judgments_basis_status_constraint(conn)?;
+    require_column_spec(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
+        "user_judgments",
+        ColumnSpec {
+            name: "resolution_outcome",
+            type_name: "TEXT",
+            not_null: false,
+            default_value: None,
+            primary_key_position: 0,
+        },
+    )?;
+    validate_user_judgments_resolution_outcome_constraint(conn)?;
     reject_column(conn, PROJECT_STATE_DATABASE_KIND, "tasks", "state_version")?;
     require_column(
         conn,
@@ -598,6 +611,35 @@ fn validate_user_judgments_basis_status_constraint(conn: &Connection) -> StoreRe
     }
 }
 
+fn validate_user_judgments_resolution_outcome_constraint(conn: &Connection) -> StoreResult<()> {
+    let table_sql: String = conn.query_row(
+        "SELECT sql
+           FROM sqlite_master
+          WHERE type = 'table'
+            AND name = 'user_judgments'",
+        [],
+        |row| row.get(0),
+    )?;
+    let normalized = table_sql
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    let has_constraint = normalized.contains(
+        "resolution_outcome is null or resolution_outcome in ('accepted', 'rejected', 'deferred', 'blocked')",
+    ) || normalized.contains(
+        "resolution_outcome is null or resolution_outcome in('accepted', 'rejected', 'deferred', 'blocked')",
+    );
+    if has_constraint {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            PROJECT_STATE_DATABASE_KIND,
+            "user_judgments.resolution_outcome constraint is missing or malformed",
+        ))
+    }
+}
+
 fn validate_tool_invocations_primary_key(conn: &Connection) -> StoreResult<()> {
     let mut stmt = conn.prepare("PRAGMA table_info(tool_invocations)")?;
     let mut rows = stmt.query([])?;
@@ -797,7 +839,7 @@ mod tests {
         let path = project_state_db_path(runtime_home.path(), "PRJ-0001");
 
         let conn = open_project_state_database(&path)?;
-        assert_eq!(migration_count(&conn)?, 4);
+        assert_eq!(migration_count(&conn)?, 5);
         assert_eq!(
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
@@ -812,12 +854,12 @@ mod tests {
             &conn,
             PROJECT_STATE_DATABASE_KIND,
             PROJECT_STATE_SCHEMA_VERSION,
-            "project_state_close_basis_judgment_basis_v4"
+            "project_state_judgment_resolution_outcome_v5"
         )?);
         drop(conn);
 
         let conn = open_project_state_database(&path)?;
-        assert_eq!(migration_count(&conn)?, 4);
+        assert_eq!(migration_count(&conn)?, 5);
         assert!(foreign_keys_enabled(&conn)?);
         assert!(sqlite_object_exists(&conn, "table", "tool_invocations")?);
         assert!(column_exists(

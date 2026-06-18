@@ -18,16 +18,17 @@ use harness_store::{
     StoreError,
 };
 use harness_types::{
-    AccessClass, ArtifactAvailability, ArtifactId, ArtifactInput, ArtifactInputSourceKind,
-    ArtifactRef, AuthorizationEffect, AuthorizedAttemptScope, BaselineRef, ChangeUnitId,
-    ChangeUnitOperation, CloseIntent, CloseReadinessBlocker, CloseReadinessBlockerCategory,
-    CloseReason, CloseState, CloseTaskRequest, CloseTaskResult, CompletionPolicy,
-    CurrentCloseBasis, DryRunSummary, DurableIdKind, EffectKind, ErrorCode, EvidenceCoverageItem,
-    EvidenceCoverageState, EvidenceStatus, EvidenceSummary, GuaranteeDisplay, GuaranteeLevel,
-    JsonObject, JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentKind, MethodAccessClass,
-    MethodName, NextActionKind, NextActionSummary, ObservedChanges, PersistedEvidenceMetadata,
-    PersistedJudgmentBasis, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
-    PlannedEffect, PrepareWriteRequest, PrepareWriteResult, ProjectId, RecordId, RecordRunRequest,
+    AccessClass, ActorKind, ArtifactAvailability, ArtifactId, ArtifactInput,
+    ArtifactInputSourceKind, ArtifactRef, AuthorizationEffect, AuthorizedAttemptScope, BaselineRef,
+    ChangeUnitId, ChangeUnitOperation, CloseIntent, CloseReadinessBlocker,
+    CloseReadinessBlockerCategory, CloseReason, CloseState, CloseTaskRequest, CloseTaskResult,
+    CompletionPolicy, CurrentCloseBasis, DryRunSummary, DurableIdKind, EffectKind, ErrorCode,
+    EvidenceCoverageItem, EvidenceCoverageState, EvidenceStatus, EvidenceSummary, GuaranteeDisplay,
+    GuaranteeLevel, JsonObject, JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentKind,
+    JudgmentResolutionOutcome, MethodAccessClass, MethodName, NextActionKind, NextActionSummary,
+    ObservedChanges, PersistedEvidenceMetadata, PersistedJudgmentBasis,
+    PersistedUserJudgmentRequest, PersistedUserJudgmentResolution, PlannedEffect,
+    PrepareWriteRequest, PrepareWriteResult, ProjectId, RecordId, RecordRunRequest,
     RecordRunResult, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState,
     RequestedMode, RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId,
     RunId, RunSummary, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
@@ -358,9 +359,27 @@ fn decode_optional_persisted_resolution(
     record_ref: impl Into<String>,
     logical_column: &'static str,
     raw: Option<&str>,
+    stored_resolution_outcome: Option<JudgmentResolutionOutcome>,
 ) -> CoreResult<Option<UserJudgmentResolution>> {
-    decode_optional_json::<PersistedUserJudgmentResolution>(table, record_ref, logical_column, raw)
-        .map(|resolution| resolution.map(Into::into))
+    let record_ref = record_ref.into();
+    let resolution = decode_optional_json::<PersistedUserJudgmentResolution>(
+        table,
+        record_ref.clone(),
+        logical_column,
+        raw,
+    )?;
+    let Some(mut resolution) = resolution else {
+        return Ok(None);
+    };
+    if resolution.resolution_outcome.is_some()
+        && resolution.resolution_outcome != stored_resolution_outcome
+    {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(table, record_ref, "resolution_outcome"),
+        ));
+    }
+    resolution.resolution_outcome = stored_resolution_outcome;
+    Ok(Some(resolution.into()))
 }
 
 fn decode_required_json_object(
@@ -402,11 +421,24 @@ fn user_judgment_authority_from_record(
         "status",
         &record.status,
     )?;
+    let resolution_outcome = record
+        .resolution_outcome
+        .as_deref()
+        .map(|outcome| {
+            parse_owner_storage_value(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "resolution_outcome",
+                outcome,
+            )
+        })
+        .transpose()?;
     let resolution = decode_optional_persisted_resolution(
         "user_judgments",
         record.judgment_id.clone(),
         "resolution_json",
         record.resolution_json.as_deref(),
+        resolution_outcome,
     )?;
     if resolution.as_ref().is_some_and(|resolution| {
         !stored_answer_branch_matches_kind(judgment_kind, &resolution.answer)
@@ -424,6 +456,7 @@ fn user_judgment_authority_from_record(
         task_id: TaskId::new(record.task_id.clone()),
         judgment_kind,
         status,
+        resolution_outcome,
         basis_status,
         basis,
         resolution,

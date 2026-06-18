@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 use harness_types::{
     BaselineRef, ChangeUnitId, CloseReadinessBlocker, CloseReadinessBlockerCategory,
     CurrentCloseBasis, JsonObject, JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentKind,
-    MethodName, NextActionKind, NextActionSummary, ProjectId, RecordUserJudgmentPayload,
-    RequiredNullable, RiskAcceptanceCoverage, RiskId, StateRecordKind, StateRecordRef, TaskId,
-    UserJudgmentResolution, UserJudgmentStatus,
+    JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionSummary, ProjectId,
+    RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RiskId, StateRecordKind,
+    StateRecordRef, TaskId, UserJudgmentResolution, UserJudgmentStatus,
 };
 use serde_json::Value;
 
@@ -48,6 +48,7 @@ pub(crate) struct JudgmentAuthority {
     pub(crate) task_id: TaskId,
     pub(crate) judgment_kind: JudgmentKind,
     pub(crate) status: UserJudgmentStatus,
+    pub(crate) resolution_outcome: Option<JudgmentResolutionOutcome>,
     pub(crate) basis_status: JudgmentBasisCompatibilityStatus,
     pub(crate) basis: Option<JudgmentBasis>,
     pub(crate) resolution: Option<UserJudgmentResolution>,
@@ -97,6 +98,7 @@ pub(crate) fn current_final_acceptance(
 ) -> bool {
     if !judgment_has_current_basis(judgment)
         || judgment.status != UserJudgmentStatus::Resolved
+        || judgment.resolution_outcome != Some(JudgmentResolutionOutcome::Accepted)
         || judgment.judgment_kind != JudgmentKind::FinalAcceptance
         || judgment
             .resolution
@@ -177,6 +179,7 @@ pub(crate) fn current_residual_risk_acceptance_covers(
 ) -> bool {
     if !judgment_has_current_basis(judgment)
         || judgment.status != UserJudgmentStatus::Resolved
+        || judgment.resolution_outcome != Some(JudgmentResolutionOutcome::Accepted)
         || judgment.judgment_kind != JudgmentKind::ResidualRiskAcceptance
     {
         return false;

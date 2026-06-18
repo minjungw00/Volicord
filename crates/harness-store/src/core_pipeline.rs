@@ -2,11 +2,11 @@ use std::path::Path;
 
 use harness_types::{
     CurrentCloseBasis, EvidenceCoverageItem, IdempotencyKey, JudgmentBasis,
-    JudgmentBasisCompatibilityStatus, MethodName, PersistedArtifactProducer,
-    PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
-    PersistedJudgmentBasis, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
-    ProjectId, RequestHash, RunId, StagedArtifactHandleId, StateRecordRef, SurfaceId, TaskId,
-    UtcTimestamp,
+    JudgmentBasisCompatibilityStatus, JudgmentResolutionOutcome, MethodName,
+    PersistedArtifactProducer, PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata,
+    PersistedEvidenceMetadata, PersistedJudgmentBasis, PersistedUserJudgmentRequest,
+    PersistedUserJudgmentResolution, ProjectId, RequestHash, RunId, StagedArtifactHandleId,
+    StateRecordRef, SurfaceId, TaskId, UtcTimestamp,
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
@@ -203,6 +203,7 @@ pub struct UserJudgmentInsert {
 pub struct UserJudgmentResolutionUpdate {
     pub judgment_id: String,
     pub status: String,
+    pub resolution_outcome: JudgmentResolutionOutcome,
     pub resolution_json: String,
     pub sensitive_action_scope_json: Option<String>,
     pub resolved_at: String,
@@ -538,6 +539,7 @@ pub struct UserJudgmentRecord {
     pub sensitive_action_scope_json: String,
     pub basis_json: Option<String>,
     pub basis_status: String,
+    pub resolution_outcome: Option<String>,
     pub resolution_json: Option<String>,
     pub requested_by_surface_id: String,
     pub requested_by_surface_instance_id: String,
@@ -2100,7 +2102,7 @@ impl ProjectMutation<'_> {
         validate_identifier("judgment_kind", &input.judgment_kind)?;
         validate_user_judgment_request_json("user_judgments.request_json", &input.request_json)?;
         validate_json_text("user_judgments.context_json", &input.context_json)?;
-        validate_json_text("user_judgments.options_json", &input.options_json)?;
+        validate_user_judgment_options_json("user_judgments.options_json", &input.options_json)?;
         validate_json_text(
             "user_judgments.affected_refs_json",
             &input.affected_refs_json,
@@ -2140,6 +2142,7 @@ impl ProjectMutation<'_> {
                 sensitive_action_scope_json,
                 basis_json,
                 basis_status,
+                resolution_outcome,
                 resolution_json,
                 requested_by_surface_id,
                 requested_by_surface_instance_id,
@@ -2162,6 +2165,7 @@ impl ProjectMutation<'_> {
                 ?11,
                 ?12,
                 ?13,
+                NULL,
                 NULL,
                 ?14,
                 ?15,
@@ -2195,9 +2199,11 @@ impl ProjectMutation<'_> {
     fn resolve_user_judgment(&mut self, input: &UserJudgmentResolutionUpdate) -> StoreResult<()> {
         validate_identifier("judgment_id", &input.judgment_id)?;
         validate_identifier("status", &input.status)?;
+        let resolution_outcome = judgment_resolution_outcome_as_str(input.resolution_outcome);
         validate_user_judgment_resolution_json(
             "user_judgments.resolution_json",
             &input.resolution_json,
+            input.resolution_outcome,
         )?;
         if let Some(value) = &input.sensitive_action_scope_json {
             validate_json_text("user_judgments.sensitive_action_scope_json", value)?;
@@ -2207,9 +2213,10 @@ impl ProjectMutation<'_> {
         let changed = self.tx.execute(
             "UPDATE user_judgments
                 SET status = ?3,
-                    resolution_json = ?4,
-                    sensitive_action_scope_json = COALESCE(?5, sensitive_action_scope_json),
-                    resolved_at = ?6
+                    resolution_outcome = ?4,
+                    resolution_json = ?5,
+                    sensitive_action_scope_json = COALESCE(?6, sensitive_action_scope_json),
+                    resolved_at = ?7
               WHERE project_id = ?1
                 AND judgment_id = ?2
                 AND status = 'pending'",
@@ -2217,6 +2224,7 @@ impl ProjectMutation<'_> {
                 self.project_id,
                 input.judgment_id,
                 input.status,
+                resolution_outcome,
                 input.resolution_json,
                 input.sensitive_action_scope_json,
                 input.resolved_at
@@ -3078,6 +3086,7 @@ fn user_judgment_record(
             sensitive_action_scope_json,
             basis_json,
             basis_status,
+            resolution_outcome,
             resolution_json,
             requested_by_surface_id,
             requested_by_surface_instance_id,
@@ -3116,6 +3125,7 @@ fn resolved_user_judgment_records(
             sensitive_action_scope_json,
             basis_json,
             basis_status,
+            resolution_outcome,
             resolution_json,
             requested_by_surface_id,
             requested_by_surface_instance_id,
@@ -3156,12 +3166,13 @@ fn user_judgment_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Us
         sensitive_action_scope_json: row.get(11)?,
         basis_json: row.get(12)?,
         basis_status: row.get(13)?,
-        resolution_json: row.get(14)?,
-        requested_by_surface_id: row.get(15)?,
-        requested_by_surface_instance_id: row.get(16)?,
-        requested_at: row.get(17)?,
-        resolved_at: row.get(18)?,
-        metadata_json: row.get(19)?,
+        resolution_outcome: row.get(14)?,
+        resolution_json: row.get(15)?,
+        requested_by_surface_id: row.get(16)?,
+        requested_by_surface_instance_id: row.get(17)?,
+        requested_at: row.get(18)?,
+        resolved_at: row.get(19)?,
+        metadata_json: row.get(20)?,
     })
 }
 
@@ -3580,12 +3591,42 @@ fn validate_user_judgment_request_json(field: &'static str, text: &str) -> Store
     Ok(())
 }
 
-fn validate_user_judgment_resolution_json(field: &'static str, text: &str) -> StoreResult<()> {
-    serde_json::from_str::<PersistedUserJudgmentResolution>(text).map_err(|error| {
-        StoreError::InvalidInput {
-            detail: format!("{field} must be persisted user judgment resolution JSON: {error}"),
-        }
-    })?;
+fn validate_user_judgment_options_json(field: &'static str, text: &str) -> StoreResult<()> {
+    let options =
+        serde_json::from_str::<Vec<harness_types::UserJudgmentOption>>(text).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: format!("{field} must be persisted user judgment option JSON: {error}"),
+            }
+        })?;
+    if options
+        .iter()
+        .any(|option| option.resolution_outcome.is_none())
+    {
+        return Err(StoreError::InvalidInput {
+            detail: format!("{field} options must include resolution_outcome"),
+        });
+    }
+    Ok(())
+}
+
+fn validate_user_judgment_resolution_json(
+    field: &'static str,
+    text: &str,
+    expected_outcome: JudgmentResolutionOutcome,
+) -> StoreResult<()> {
+    let resolution =
+        serde_json::from_str::<PersistedUserJudgmentResolution>(text).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: format!("{field} must be persisted user judgment resolution JSON: {error}"),
+            }
+        })?;
+    if resolution.resolution_outcome != Some(expected_outcome) {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "{field} resolution_outcome must match user_judgments.resolution_outcome"
+            ),
+        });
+    }
     Ok(())
 }
 
@@ -3679,6 +3720,15 @@ fn judgment_basis_status_as_str(status: JudgmentBasisCompatibilityStatus) -> &'s
         JudgmentBasisCompatibilityStatus::Stale => "stale",
         JudgmentBasisCompatibilityStatus::Superseded => "superseded",
         JudgmentBasisCompatibilityStatus::LegacyUnbound => "legacy_unbound",
+    }
+}
+
+fn judgment_resolution_outcome_as_str(outcome: JudgmentResolutionOutcome) -> &'static str {
+    match outcome {
+        JudgmentResolutionOutcome::Accepted => "accepted",
+        JudgmentResolutionOutcome::Rejected => "rejected",
+        JudgmentResolutionOutcome::Deferred => "deferred",
+        JudgmentResolutionOutcome::Blocked => "blocked",
     }
 }
 
@@ -4227,7 +4277,15 @@ mod tests {
             })
             .to_string(),
             context_json: "{}".to_owned(),
-            options_json: "[]".to_owned(),
+            options_json: json!([{
+                "option_id": "accept",
+                "label": "Accept",
+                "description": "Accept the current close basis.",
+                "consequence": "The judgment can be resolved.",
+                "resolution_outcome": "accepted",
+                "is_default": true
+            }])
+            .to_string(),
             affected_refs_json: "[]".to_owned(),
             artifact_refs_json: "[]".to_owned(),
             sensitive_action_scope_json: "{}".to_owned(),

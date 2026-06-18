@@ -3593,6 +3593,35 @@ fn request_user_judgment_creates_pending_record() -> Result<(), Box<dyn Error>> 
 }
 
 #[test]
+fn authority_bearing_judgment_request_requires_option_outcomes() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "missing_outcome")?;
+    let mut request = user_judgment_request(
+        "req_judgment_missing_outcome",
+        "idem_judgment_missing_outcome",
+        false,
+        Some(2),
+        &task_id,
+        Some(&change_unit_id),
+        JudgmentKind::FinalAcceptance,
+    );
+    request.options[0].resolution_outcome = None;
+    let before = harness.counts()?;
+
+    let response = harness
+        .service
+        .request_user_judgment(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn record_user_judgment_resolves_pending_record() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "resolve")?;
@@ -3637,6 +3666,10 @@ fn record_user_judgment_resolves_pending_record() -> Result<(), Box<dyn Error>> 
         "user"
     );
     assert_eq!(
+        response.response_value["user_judgment"]["resolution"]["resolution_outcome"],
+        "accepted"
+    );
+    assert_eq!(
         response.response_value["state"]["pending_user_judgment_refs"]
             .as_array()
             .expect("pending refs should be an array")
@@ -3651,6 +3684,238 @@ fn record_user_judgment_resolves_pending_record() -> Result<(), Box<dyn Error>> 
     );
     assert!(
         resolution_json(&harness, &pending_judgment_id)?["answer"]["product_decision"].is_object()
+    );
+    assert_eq!(
+        resolution_json(&harness, &pending_judgment_id)?["resolution_outcome"],
+        "accepted"
+    );
+    assert_eq!(
+        user_judgment_resolution_outcome(&harness, &pending_judgment_id)?,
+        Some("accepted".to_owned())
+    );
+    let (event_kind, event_payload, _) = latest_task_event(&harness)?;
+    assert_eq!(event_kind, "user_judgment_recorded");
+    assert_eq!(event_payload["resolution_outcome"], "accepted");
+    Ok(())
+}
+
+#[test]
+fn record_user_judgment_persists_rejected_option_outcome() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "reject_outcome")?;
+    let pending_judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_reject_outcome",
+            "idem_judgment_reject_outcome",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let pending_judgment_id =
+        response_record_id(&pending_judgment.response_value, "user_judgment_ref");
+    let mut request = record_judgment_request(
+        "req_record_reject_outcome",
+        "idem_record_reject_outcome",
+        Some(3),
+        &task_id,
+        &pending_judgment_id,
+        JudgmentKind::ProductDecision,
+        product_decision_payload_with_decision("rejected"),
+    );
+    request.selected_option_id = harness_types::UserJudgmentOptionId::new("decline");
+
+    let response = harness
+        .service
+        .record_user_judgment(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        response.response_value["user_judgment"]["resolution"]["resolution_outcome"],
+        "rejected"
+    );
+    assert_eq!(
+        user_judgment_resolution_outcome(&harness, &pending_judgment_id)?,
+        Some("rejected".to_owned())
+    );
+    assert_eq!(
+        resolution_json(&harness, &pending_judgment_id)?["resolution_outcome"],
+        "rejected"
+    );
+    let (event_kind, event_payload, _) = latest_task_event(&harness)?;
+    assert_eq!(event_kind, "user_judgment_recorded");
+    assert_eq!(event_payload["resolution_outcome"], "rejected");
+    Ok(())
+}
+
+#[test]
+fn record_user_judgment_persists_deferred_and_blocked_outcomes() -> Result<(), Box<dyn Error>> {
+    for (suffix, option_id, outcome) in [
+        ("deferred_outcome", "defer", "deferred"),
+        ("blocked_outcome", "block", "blocked"),
+    ] {
+        let harness = MethodHarness::new()?;
+        let (task_id, change_unit_id) = create_task_with_change_unit(&harness, suffix)?;
+        let mut request = user_judgment_request(
+            &format!("req_judgment_{suffix}"),
+            &format!("idem_judgment_{suffix}"),
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        );
+        request.options = vec![UserJudgmentOption {
+            option_id: harness_types::UserJudgmentOptionId::new(option_id),
+            label: format!("Record {outcome}"),
+            description: format!("Record a {outcome} outcome for this focused judgment."),
+            consequence: "The answer is durable but not acceptance authority.".to_owned(),
+            resolution_outcome: Some(match outcome {
+                "deferred" => harness_types::JudgmentResolutionOutcome::Deferred,
+                "blocked" => harness_types::JudgmentResolutionOutcome::Blocked,
+                _ => unreachable!(),
+            }),
+            is_default: true,
+        }];
+        let pending_judgment = harness
+            .service
+            .request_user_judgment(request, invocation(AccessClass::CoreMutation))?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
+        let mut record_request = record_judgment_request(
+            &format!("req_record_{suffix}"),
+            &format!("idem_record_{suffix}"),
+            Some(3),
+            &task_id,
+            &pending_judgment_id,
+            JudgmentKind::ProductDecision,
+            product_decision_payload_with_decision(outcome),
+        );
+        record_request.selected_option_id = harness_types::UserJudgmentOptionId::new(option_id);
+
+        let response = harness
+            .service
+            .record_user_judgment(record_request, invocation(AccessClass::CoreMutation))?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
+        assert_eq!(
+            response.response_value["user_judgment"]["resolution"]["resolution_outcome"],
+            outcome
+        );
+        assert_eq!(
+            user_judgment_resolution_outcome(&harness, &pending_judgment_id)?,
+            Some(outcome.to_owned())
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn record_user_judgment_rejects_answer_outcome_contradicting_option() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "outcome_conflict")?;
+    let pending_judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_outcome_conflict",
+            "idem_judgment_outcome_conflict",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let pending_judgment_id =
+        response_record_id(&pending_judgment.response_value, "user_judgment_ref");
+    let mut request = record_judgment_request(
+        "req_record_outcome_conflict",
+        "idem_record_outcome_conflict",
+        Some(3),
+        &task_id,
+        &pending_judgment_id,
+        JudgmentKind::ProductDecision,
+        answer_payload(JudgmentKind::ProductDecision),
+    );
+    request.selected_option_id = harness_types::UserJudgmentOptionId::new("decline");
+    let before = harness.counts()?;
+
+    let response = harness
+        .service
+        .record_user_judgment(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(
+        user_judgment_status(&harness, &pending_judgment_id)?,
+        "pending"
+    );
+    assert_eq!(
+        user_judgment_resolution_outcome(&harness, &pending_judgment_id)?,
+        None
+    );
+    Ok(())
+}
+
+#[test]
+fn non_user_actor_cannot_resolve_authority_bearing_judgment() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "authority_actor")?;
+    let after_basis = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "authority_actor",
+        true,
+    )?;
+    let pending_judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_authority_actor",
+            "idem_judgment_authority_actor",
+            false,
+            Some(after_basis),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::FinalAcceptance,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let pending_judgment_id =
+        response_record_id(&pending_judgment.response_value, "user_judgment_ref");
+    let mut request = record_judgment_request(
+        "req_record_authority_actor",
+        "idem_record_authority_actor",
+        Some(after_basis + 1),
+        &task_id,
+        &pending_judgment_id,
+        JudgmentKind::FinalAcceptance,
+        answer_payload(JudgmentKind::FinalAcceptance),
+    );
+    request.envelope.actor_kind = ActorKind::Agent;
+    let before = harness.counts()?;
+
+    let response = harness
+        .service
+        .record_user_judgment(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(
+        user_judgment_status(&harness, &pending_judgment_id)?,
+        "pending"
     );
     Ok(())
 }
@@ -3891,6 +4156,79 @@ fn final_acceptance_for_old_close_basis_revision_is_rejected_for_close(
 
     assert_eq!(response.response_value["close_state"], "blocked");
     assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    Ok(())
+}
+
+#[test]
+fn ambiguous_legacy_resolved_judgment_is_outcome_null_and_non_authoritative(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_ambiguous")?;
+    let after_basis = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "legacy_ambiguous",
+        true,
+    )?;
+    let judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_legacy_ambiguous_judgment",
+            "idem_legacy_ambiguous_judgment",
+            false,
+            Some(after_basis),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::FinalAcceptance,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    set_user_judgment_resolution_json(
+        &harness,
+        &judgment_id,
+        Some(
+            r#"{
+                "selected_option_id":"accept",
+                "answer":{
+                    "product_decision":null,
+                    "technical_decision":null,
+                    "scope_decision":null,
+                    "sensitive_action_scope":null,
+                    "final_acceptance":{"judgment":{"decision":"accepted"}},
+                    "residual_risk_acceptance":null,
+                    "cancellation":null
+                },
+                "note":null,
+                "accepted_risks":[],
+                "resolved_by_actor_kind":"user"
+            }"#,
+        ),
+    )?;
+    assert_eq!(
+        user_judgment_resolution_outcome(&harness, &judgment_id)?,
+        None
+    );
+    let before_close = harness.counts()?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_legacy_ambiguous_close",
+            idempotency_key: Some("idem_legacy_ambiguous_close"),
+            dry_run: false,
+            expected_state_version: Some(after_basis + 1),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::CoreMutation),
+    )?;
+
+    assert_eq!(response.response_value["close_state"], "blocked");
+    assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    assert_eq!(harness.counts()?, before_close);
     Ok(())
 }
 
@@ -7079,6 +7417,7 @@ fn user_judgment_request(
                 label: "Accept".to_owned(),
                 description: "Record the focused user-owned judgment.".to_owned(),
                 consequence: "Only this judgment record is resolved.".to_owned(),
+                resolution_outcome: Some(harness_types::JudgmentResolutionOutcome::Accepted),
                 is_default: true,
             },
             UserJudgmentOption {
@@ -7086,6 +7425,7 @@ fn user_judgment_request(
                 label: "Decline".to_owned(),
                 description: "Record that the focused judgment was not accepted.".to_owned(),
                 consequence: "The Task remains unresolved for this question.".to_owned(),
+                resolution_outcome: Some(harness_types::JudgmentResolutionOutcome::Rejected),
                 is_default: false,
             },
         ],
@@ -7167,6 +7507,26 @@ fn residual_risk_acceptance_payload(risk_ids: &[String]) -> RecordUserJudgmentPa
         cancellation: None.into(),
     };
     payload.residual_risk_acceptance = Some(json_object(json!({ "risk_ids": risk_ids }))).into();
+    payload
+}
+
+fn product_decision_payload_with_decision(decision: &str) -> RecordUserJudgmentPayload {
+    let mut payload = RecordUserJudgmentPayload {
+        product_decision: None.into(),
+        technical_decision: None.into(),
+        scope_decision: None.into(),
+        sensitive_action_scope: None.into(),
+        final_acceptance: None.into(),
+        residual_risk_acceptance: None.into(),
+        cancellation: None.into(),
+    };
+    payload.product_decision = Some(json_object(json!({
+        "judgment": {
+            "decision": decision,
+            "rationale": "The user selected this focused outcome."
+        }
+    })))
+    .into();
     payload
 }
 
@@ -7472,6 +7832,21 @@ fn user_judgment_basis_status(
     let conn = harness.conn()?;
     Ok(conn.query_row(
         "SELECT basis_status
+               FROM user_judgments
+              WHERE project_id = ?1
+                AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, user_judgment_id],
+        |row| row.get(0),
+    )?)
+}
+
+fn user_judgment_resolution_outcome(
+    harness: &MethodHarness,
+    user_judgment_id: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let conn = harness.conn()?;
+    Ok(conn.query_row(
+        "SELECT resolution_outcome
                FROM user_judgments
               WHERE project_id = ?1
                 AND judgment_id = ?2",
