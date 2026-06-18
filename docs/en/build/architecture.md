@@ -1,6 +1,6 @@
 # Implementation architecture
 
-This guide gives implementers a durable repository-architecture reading path for a planned local Rust implementation. It describes layer separation, crate placement, and owner-routing support only.
+This guide gives implementers a durable repository-architecture reading path for the local Rust implementation. It describes layer separation, crate placement, and owner-routing support only.
 
 It does not define or override public API behavior, request or response fields, schema meaning, storage effects, DDL or table columns, security guarantees, runtime enforcement, Core authority semantics, or product contracts. For those questions, follow the [Implementation Guide](implementation-guide.md) and the applicable Reference owner.
 
@@ -61,7 +61,7 @@ Core owns authority decisions defined by the Reference owners. Adapters translat
 
 ## Rust Workspace Shape
 
-When the Rust implementation is introduced, keep the baseline workspace narrow and layered:
+For Rust implementation work, keep the baseline workspace narrow and layered:
 
 | Crate | Guide-level contents |
 |---|---|
