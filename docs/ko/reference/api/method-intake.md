@@ -62,8 +62,7 @@ IntakeRequest:
 
 커밋되는 `dry_run`이 아닌 요청에는 아래 조건이 필요합니다.
 
-- `VerifiedSurfaceContext.access_class=core_mutation`
-- `verified=true`
+- `access_class=core_mutation`인 서버 파생 `VerifiedSurfaceContext`
 
 접점 식별 경계:
 

@@ -352,9 +352,12 @@
 의미:
 
 - `tool_invocations`는 API 메서드별 상태 효과 행이 재실행 행 생성을 허용한, 커밋된 `dry_run=false` Core `MethodResult` 응답의 정확한 재실행만 저장합니다.
-- 저장소 고유 키는 `(project_id, tool_name, idempotency_key)`입니다.
-- `request_hash`는 그 행에 저장하는 충돌 판별자입니다.
+- 저장소 고유 키는 정확히 `(project_id, tool_name, idempotency_key)`입니다.
+- `request_hash`는 공개 요청 페이로드의 충돌 판별자입니다. `surface_id`, `surface_instance_id`, `access_class`, `verification_basis`, `capability_profile` 같은 호출 맥락을 흡수하지 않습니다.
 - `tool_invocations.response_json`은 재실행 행을 만드는 상태 효과가 있는 커밋된 `dry_run=false` Core `MethodResult` 응답만 정확히 저장합니다.
+- 새로 커밋되는 재실행 행은 유효한 `VerifiedSurfaceContext`에서 온 `surface_id`, `surface_instance_id`, `access_class`를 저장합니다.
+- `verification_basis`는 진단용으로 저장할 수 있지만 호출자 권한이 아닙니다.
+- 확인된 맥락이 없는 레거시 재실행 행은 보존할 수 있지만 재실행 적격이 아닙니다.
 
 증가하는 경우:
 
@@ -376,16 +379,26 @@
 - `StatusResult`.
 - 성공한 `StageArtifactResult` 스테이징 결과.
 
+재실행 적격성:
+
+- 현재 호출이 유효한 `VerifiedSurfaceContext`를 만들기 전에는 저장된 응답을 반환하면 안 됩니다.
+- 재실행 행이 있으면 Core는 요청 해시 호환성보다 먼저 맥락 호환성을 확인합니다.
+- 맥락 호환성에는 `replay_context_status='verified'`와 `surface_id`, `surface_instance_id`, `access_class`의 정확한 일치가 필요합니다.
+- 맥락이 호환되지 않으면 문서화된 로컬 접근 불일치 거절인 `LOCAL_ACCESS_MISMATCH`를 반환하고 저장된 응답을 노출하면 안 됩니다.
+- 적격 재실행은 `expected_state_version`보다 먼저 확인하므로 유효한 재시도는 상태가 진행된 뒤에도 원래 응답을 반환할 수 있습니다.
+
 재시도 동작:
 
-- 같은 `idempotency_key`와 같은 `request_hash`가 재실행되면 Core는 저장된 원래 커밋 응답을 그대로 반환합니다.
+- 호환되는 맥락과 같은 `idempotency_key`, 같은 `request_hash`가 함께 있으면 Core는 저장된 원래 커밋 응답을 그대로 반환합니다.
 - 재실행은 저장된 응답 본문을 사용하며, `authorization_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않습니다.
 - 재실행은 이벤트를 추가하거나, 아티팩트를 승격 또는 연결하거나, `Write Authorization`을 새로 만들거나 소비하거나, 재실행 행을 추가로 만들거나, 상태를 다시 바꾸지 않습니다.
-- 같은 `idempotency_key`가 다른 `request_hash`로 재사용되면 Core는 [상태 버전 충돌](api/error-precedence.md#state-conflict-behavior)이 정의한 `STATE_VERSION_CONFLICT`를 반환합니다.
+- 호환되는 맥락과 같은 `idempotency_key`, 다른 `request_hash`가 함께 있으면 Core는 [상태 버전 충돌](api/error-precedence.md#state-conflict-behavior)이 정의한 `STATE_VERSION_CONFLICT`를 반환합니다.
+- `replay_context_status='legacy_unverified'`인 행이나 완전한 확인 맥락이 없는 동등한 레거시 행은 보존되지만 재실행 적격이 아닙니다.
 
 담당 문서 링크:
 
 - 공개 충돌 동작은 [API 오류 우선순위](api/error-precedence.md#state-conflict-behavior)가 담당합니다.
+- 공개 로컬 접근 불일치 의미는 [API 오류 코드](api/error-codes.md#errorcode-local-access-mismatch)가 담당합니다.
 - 분기별 저장 효과는 [저장 효과](storage-effects.md)가 담당합니다.
 
 `request_hash`를 두 번째 고유 키에 넣어 같은 `idempotency_key`가 여러 커밋 응답으로 갈라질 수 있게 만들면 안 됩니다.
@@ -454,7 +467,8 @@
 - null 허용 필드, 외래 키, enum 검사, JSON 검증을 강화할 때는 기존 행을 먼저 검증하거나 담당 문서가 정의한 복구 상태로 라우팅해야 합니다.
 - `task_events.event_seq`를 유지한다면 그 순서를 보존합니다.
 - 아티팩트 해시와 담당 연결을 보존하거나 영향을 받은 참조를 복구 대상으로 유효하지 않게 표시합니다.
-- 커밋된 `tool_invocations` 재실행 행을 보존해 마이그레이션 뒤 멱등성이 갈라지지 않게 합니다.
+- 커밋된 `tool_invocations` 재실행 행을 보존해 마이그레이션 뒤 멱등성 키가 갈라지지 않게 합니다.
+- 확인된 재실행 맥락이 없는 재실행 행은 담당 문서가 정의한 복구로 완전한 확인 맥락을 붙이기 전까지 `legacy_unverified` 또는 동등한 재실행 부적격 상태로 보존합니다.
 
 이 문서는 기준 범위 밖 DDL 묶음, 마이그레이션 카탈로그, 프로필별 마이그레이션 세부사항을 의도적으로 제외합니다.
 

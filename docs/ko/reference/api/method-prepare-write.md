@@ -67,8 +67,7 @@ PrepareWriteRequest:
 
 요구사항:
 
-- `VerifiedSurfaceContext.access_class=write_authorization`
-- `verified=true`
+- `access_class=write_authorization`인 서버 파생 `VerifiedSurfaceContext`
 - 호환되는 현재 적용 범위
 - 호환되는 기준선
 - 필요한 사용자 소유 판단
@@ -80,7 +79,7 @@ PrepareWriteRequest:
 | 결과 | 상태 버전 효과 | `Write Authorization` 효과 |
 |---|---|---|
 | 커밋된 `decision=allowed` | `project_state.state_version`을 정확히 한 번 올립니다. | `status=active`인 `Write Authorization` 하나를 만듭니다. |
-| 커밋된 비허용 결정 | 메서드가 소유한 쓰기 결정 이유 상태에 한해 올릴 수 있습니다. | 소비 가능한 `Write Authorization`을 만들지 않습니다. |
+| 커밋된 비허용 결정 | `project_state.state_version`을 정확히 한 번 올립니다. | 소비 가능한 `Write Authorization`을 만들지 않습니다. |
 | 커밋 전 거절 또는 `dry_run` | 올리지 않습니다. | 만들지 않습니다. |
 
 ## 메서드 결과 필드
@@ -132,6 +131,9 @@ PrepareWriteRequest:
 - `write_authorization`은 `null`입니다.
 - `authorization_effect`는 `none`입니다.
 - `write_decision_reasons`는 비어 있으면 안 됩니다.
+- 유효하게 커밋된 `dry_run=false` 비허용 결과는 구조화된 `write_decision_reasons`를 담은 태스크 이벤트를 하나 추가하고, 멱등성 키가 있으면 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 증가시킵니다.
+- 소비 가능한 `Write Authorization`, 별도 공개 이력 메서드, 새 공개 응답 필드를 만들지 않습니다.
+- `harness.status`는 과거 비허용 판단을 노출할 필요가 없습니다.
 - 각 항목은 `WriteDecisionReason`입니다.
 - `category`는 제어되는 `WriteDecisionReason.category` 값 집합을 사용합니다.
 - `code`는 아래에 있는 이 메서드의 로컬 v1 코드 목록을 사용합니다.

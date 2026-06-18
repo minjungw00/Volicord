@@ -60,8 +60,7 @@ Nested owner links:
 
 The method requires:
 
-- `VerifiedSurfaceContext.access_class=core_mutation`
-- `verified=true`
+- server-derived `VerifiedSurfaceContext` with `access_class=core_mutation`
 - a compatible same-project Task and optional Change Unit
 
 Local access failures, unreadable project or Task identity, and insufficient local capability reject before commit.

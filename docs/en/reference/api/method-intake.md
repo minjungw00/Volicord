@@ -62,8 +62,7 @@ Nested owner links:
 
 A committed non-dry-run request requires:
 
-- `VerifiedSurfaceContext.access_class=core_mutation`
-- `verified=true`
+- server-derived `VerifiedSurfaceContext` with `access_class=core_mutation`
 
 Surface identity boundary:
 

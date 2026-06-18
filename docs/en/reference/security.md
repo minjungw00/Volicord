@@ -90,12 +90,14 @@ May claim:
 - Local product files can be inputs to Harness checks or user-owned judgments.
 - Local runtime data location can be defined by storage/runtime owners.
 - Local surfaces can provide verified capability context when [Agent Integration](agent-integration.md) and this security owner allow the claim.
+- The baseline local access grant for a registered surface instance is the grant stored in `surfaces.local_access_json`.
 
 Must not claim:
 - Local filesystem access proves Harness authority.
 - A local path, directory name, copied identifier, displayed identifier, or rendered text is a security token.
 - Direct local modification outside those documented Harness contracts creates valid Harness records, evidence, acceptance, residual-risk acceptance, `Write Authorization`, or artifact authority.
 - `Harness Runtime Home` is automatically an OS security boundary, sandbox, or isolation layer.
+- A caller-supplied `verified` flag, requested `access_class`, `capability_profile`, or copied `verification_basis` grants local access.
 
 ## Authority boundaries
 
@@ -139,12 +141,14 @@ Must not claim:
 Surface identity and capability context limit what may be claimed.
 
 May claim:
-- `VerifiedSurfaceContext`, `surface_id`, `surface_instance_id`, `access_class`, and capability checks can be used according to the API, agent-integration, and security owners.
+- `VerifiedSurfaceContext`, `surface_id`, `surface_instance_id`, `access_class`, and capability checks can be used according to the API, agent-integration, and security owners after the current invocation access is verified against the registered local access grant.
 
 Must not claim:
 - `surface_id` alone is an authority token.
 - A copied surface identifier proves capability.
 - An `access_class` is OS permission or broad authority.
+- `capability_profile` grants an access class.
+- `verification_basis` is a caller authority token.
 
 ### Generated displays and text
 

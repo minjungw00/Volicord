@@ -67,12 +67,11 @@ Requests that fail these admission requirements use the existing rejected-result
 
 Requires:
 
-- `VerifiedSurfaceContext.access_class=artifact_registration`
-- `verified=true`
+- server-derived `VerifiedSurfaceContext` with `access_class=artifact_registration`
 - compatible `project_id` and `task_id`
 - `manual_artifact_attachment_supported=true`
 
-A server records `created_by_surface_id` and `created_by_surface_instance_id` from the verified local surface. The caller does not provide those fields as authority.
+A server records `created_by_surface_id` and `created_by_surface_instance_id` from the derived `VerifiedSurfaceContext`. The caller does not provide those fields as authority.
 
 ## State version behavior
 

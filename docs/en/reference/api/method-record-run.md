@@ -68,13 +68,12 @@ Path and access notes:
 
 Requires:
 
-- `VerifiedSurfaceContext.access_class=run_recording`
-- `verified=true`
+- server-derived `VerifiedSurfaceContext` with `access_class=run_recording`
 
 For `source_kind=staged_artifact`:
 
-- the current verified `surface_id` must match the staged handle's recorded provenance
-- the current verified `surface_instance_id` must match the staged handle's recorded provenance
+- the current derived `VerifiedSurfaceContext.surface_id` must match the staged handle's recorded provenance
+- the current derived `VerifiedSurfaceContext.surface_instance_id` must match the staged handle's recorded provenance
 
 The recorded provenance was captured from the derived `VerifiedSurfaceContext` at staging time. This method compares it with the current derived context instead of accepting caller-submitted provenance as authority.
 

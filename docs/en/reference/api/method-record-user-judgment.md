@@ -60,8 +60,7 @@ Nested owner links:
 
 The method requires:
 
-- `VerifiedSurfaceContext.access_class=core_mutation`
-- `verified=true`
+- server-derived `VerifiedSurfaceContext` with `access_class=core_mutation`
 - an addressed pending judgment that belongs to the same project and compatible Task selected by the request
 
 Local access failures, unreadable judgment identity, and insufficient local capability reject before commit.

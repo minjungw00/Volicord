@@ -68,8 +68,7 @@ UpdateScopeRequest:
 
 커밋되는 `dry_run`이 아닌 요청에는 아래 조건이 필요합니다.
 
-- `VerifiedSurfaceContext.access_class=core_mutation`
-- `verified=true`
+- `access_class=core_mutation`인 서버 파생 `VerifiedSurfaceContext`
 - 같은 프로젝트의 호환되는 `Task`
 - 현재 적용 Change Unit을 만들거나 교체할 때 다음 안전한 행동을 정직하게 만들 만큼 충분한 범위
 

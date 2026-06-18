@@ -435,9 +435,27 @@ CREATE TABLE tool_invocations (
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   committed_state_version INTEGER NOT NULL CHECK (committed_state_version > basis_state_version),
   status TEXT NOT NULL DEFAULT 'committed' CHECK (status = 'committed'),
+  surface_id TEXT,
+  surface_instance_id TEXT,
+  access_class TEXT,
+  verification_basis TEXT,
+  replay_context_status TEXT NOT NULL CHECK (replay_context_status IN ('verified', 'legacy_unverified')),
   response_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, tool_name, idempotency_key),
+  CHECK (
+    (
+      replay_context_status = 'verified'
+      AND surface_id IS NOT NULL
+      AND surface_instance_id IS NOT NULL
+      AND access_class IS NOT NULL
+    )
+    OR (
+      replay_context_status = 'legacy_unverified'
+    )
+  ),
+  FOREIGN KEY (project_id, surface_id, surface_instance_id)
+    REFERENCES surfaces (project_id, surface_id, surface_instance_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 ```
@@ -505,11 +523,21 @@ Current Change Unit:
 - `idx_change_units_one_current_active` permits at most one current Change Unit row with `status='active'` per `Task`.
 - When `tasks.current_change_unit_id` is set, typed Core code must ensure it points to the same row that is `status='active'` and `is_current=1`.
 
+Surface local access grants:
+
+- `surfaces.local_access_json` is the baseline storage location for registered local access grants.
+- The preferred grant field is `authorized_access_classes: string[]`; `access_class: string` is a backward-compatible single-value fallback.
+- `verification_basis: string` is trusted registration metadata for explaining how the grant was established.
+- `surfaces.capability_profile_json` is a capability declaration and must not be treated as an access-class grant.
+
 Idempotency replay rows:
 
 - The replay uniqueness key is exactly `(project_id, tool_name, idempotency_key)`.
-- `request_hash` is stored as the conflict discriminator, but it is not part of a unique key.
+- `request_hash` is stored as the public-request conflict discriminator, but it is not part of a unique key and does not absorb invocation context.
 - `tool_invocations.response_json` stores only committed replay responses that [Storage Effects](storage-effects.md) says create replay rows.
+- Newly written replay rows use `replay_context_status='verified'` and store complete `surface_id`, `surface_instance_id`, and `access_class` values from the derived `VerifiedSurfaceContext`.
+- `verification_basis` may be stored on replay rows for diagnostics, but it is not caller authority.
+- Existing replay rows that lack verified context may be represented with `replay_context_status='legacy_unverified'` and null or incomplete context fields; [Storage Versioning](storage-versioning.md) owns replay eligibility.
 
 `Write Authorization` basis versions:
 

@@ -68,13 +68,12 @@ RecordRunRequest:
 
 요구사항:
 
-- `VerifiedSurfaceContext.access_class=run_recording`
-- `verified=true`
+- `access_class=run_recording`인 서버 파생 `VerifiedSurfaceContext`
 
 `source_kind=staged_artifact`인 경우:
 
-- 현재 확인된 `surface_id`가 스테이징 핸들의 기록된 출처와 일치해야 합니다.
-- 현재 확인된 `surface_instance_id`가 스테이징 핸들의 기록된 출처와 일치해야 합니다.
+- 현재 파생된 `VerifiedSurfaceContext.surface_id`가 스테이징 핸들의 기록된 출처와 일치해야 합니다.
+- 현재 파생된 `VerifiedSurfaceContext.surface_instance_id`가 스테이징 핸들의 기록된 출처와 일치해야 합니다.
 
 기록된 출처는 스테이징 시점의 파생된 `VerifiedSurfaceContext`에서 캡처된 것입니다. 이 메서드는 호출자가 제출한 출처를 권한 근거로 받아들이지 않고, 그 기록된 출처를 현재 파생된 맥락과 비교합니다.
 

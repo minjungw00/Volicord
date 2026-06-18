@@ -53,6 +53,9 @@ Surface registration names the user-selected surface and the facts method owners
 Condition:
 - `surface_id` is a selector for a registered local surface.
 - `surface_instance_id` distinguishes a registered instance when a method owner returns or requires it.
+- `surfaces.local_access_json` is the baseline source of registered local access grants for that surface instance.
+- The preferred grant field is `authorized_access_classes: string[]`; `access_class: string` is a backward-compatible single-value fallback.
+- `verification_basis: string` is trusted registration metadata that explains how the grant was established.
 - Registration facts are usable only through owner-returned verification for the current request.
 
 Agent may:
@@ -62,6 +65,7 @@ Agent may:
 Agent must not:
 - infer local reachability, access class, `verified=true`, or artifact provenance from caller prose, copied identifiers, generated Markdown, chat text, projection text, or agent memory
 - treat `surface_id`, `surface_instance_id`, or a surface name as permission evidence
+- treat `capability_profile`, requested invocation access, or `verification_basis` as an access grant
 
 Owner links:
 - [API Methods](api/methods.md) and method owners define method request conditions.
@@ -70,7 +74,9 @@ Owner links:
 
 ## Current surface context
 
-`VerifiedSurfaceContext` is the internal, derived context for one invocation. A `Harness Server` or local adapter derives it from registered surface records and invocation context, then method owners decide whether the derived context is compatible with the request. It is not a public request payload.
+`VerifiedSurfaceContext` is the internal, derived context for one invocation. A `Harness Server` or local adapter derives it from registered surface records, adapter-derived invocation context, and the requested invocation access, then method owners decide whether the derived context is compatible with the request. It is not a public request payload.
+
+`InvocationContext.access_class`, or an equivalent implementation concept, is the requested invocation access for the current call. It is not authority and cannot grant an access class. `VerifiedSurfaceContext` can be derived only when the requested invocation access is included in the registered grant in `surfaces.local_access_json`.
 
 Internal shape, not a public API schema:
 
@@ -86,10 +92,11 @@ VerifiedSurfaceContext:
 
 Condition:
 - A public API request has exactly one request-level `VerifiedSurfaceContext.access_class`.
-- `ToolEnvelope` does not gain `surface_instance_id`; the shared request envelope stays with [API Schema Core](api/schema-core.md#tool-envelope).
+- `surface_instance_id` remains adapter-derived invocation context. `ToolEnvelope` does not gain `surface_instance_id`; the shared request envelope stays with [API Schema Core](api/schema-core.md#tool-envelope).
 - Nested payloads such as `ArtifactInput` or `StagedArtifactHandle` do not add a second request-level access class.
 - Staged artifact provenance fields such as `created_by_surface_id` and `created_by_surface_instance_id` come from the derived `VerifiedSurfaceContext` at staging time, not caller text or nested artifact input.
 - Protected reads, mutations, and artifact operations can rely on a surface only when the method owner accepts the derived verified context.
+- `capability_profile` can describe support, but it cannot grant or elevate `VerifiedSurfaceContext.access_class`.
 
 Agent may:
 - preserve request-level `VerifiedSurfaceContext.access_class` when displaying or passing context
@@ -101,6 +108,7 @@ Agent must not:
 - submit `surface_instance_id` as verification authority
 - fabricate staged artifact provenance
 - use copied identifiers, generated Markdown, chat text, projection text, or agent memory as substitutes for verified context
+- use `capability_profile` or requested invocation access as a substitute for the registered grant
 
 Owner links:
 - Exact request envelopes and response shapes belong to [API Schema Core](api/schema-core.md), [API Methods](api/methods.md), and method owners.
@@ -123,6 +131,7 @@ Agent may:
 
 Agent must not:
 - use `capability_profile` to activate an out-of-scope capability
+- use `capability_profile` to grant or elevate an access class
 - use stale, copied, generated, or user-provided capability text to justify a stronger security guarantee
 - replace method-owner access conditions or security-owner guarantee wording with a capability declaration
 

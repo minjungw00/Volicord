@@ -354,9 +354,12 @@ If any part fails, the transaction must leave no partial:
 Meaning:
 
 - `tool_invocations` stores exact replay only for committed `dry_run=false` Core `MethodResult` responses whose API method state-effect row creates replay.
-- The storage unique key is `(project_id, tool_name, idempotency_key)`.
-- `request_hash` is the conflict discriminator stored in that row.
+- The storage unique key is exactly `(project_id, tool_name, idempotency_key)`.
+- `request_hash` is the conflict discriminator for the public request payload. It does not absorb invocation context such as `surface_id`, `surface_instance_id`, `access_class`, `verification_basis`, or `capability_profile`.
 - `tool_invocations.response_json` stores only the exact committed `dry_run=false` Core `MethodResult` response for a replay-row-creating state effect.
+- Newly committed replay rows store `surface_id`, `surface_instance_id`, and `access_class` from the valid `VerifiedSurfaceContext`.
+- `verification_basis` may be stored for diagnostics, but it is not caller authority.
+- Legacy replay rows without verified context may be preserved, but they are not replay eligible.
 
 Increments when:
 
@@ -378,16 +381,26 @@ Branches not stored:
 - `StatusResult`
 - successful `StageArtifactResult` staging result
 
+Replay eligibility:
+
+- A stored response must never be returned before the current invocation has produced a valid `VerifiedSurfaceContext`.
+- When a replay row exists, Core checks context compatibility before request-hash compatibility.
+- Context compatibility requires `replay_context_status='verified'` and an exact match for `surface_id`, `surface_instance_id`, and `access_class`.
+- Incompatible context returns `LOCAL_ACCESS_MISMATCH` as the documented local-access mismatch rejection and must not expose the stored response.
+- Eligible replay is checked before `expected_state_version`, so a valid retry can return the original response after state has advanced.
+
 Retry behavior:
 
-- If the same `idempotency_key` and same `request_hash` are replayed, Core returns the stored original committed response exactly.
+- Compatible context plus the same `idempotency_key` and same `request_hash` returns the stored original committed response exactly.
 - Replay uses the stored response body; it does not recompute or reclassify `authorization_effect`, `base.state_version`, `base.events`, or any other response field.
 - Replay does not append events, promote or link artifacts, create or consume `Write Authorization`, create another replay row, or change state again.
-- If the same `idempotency_key` is reused with a different `request_hash`, Core returns `STATE_VERSION_CONFLICT` as defined by [state version conflict](api/error-precedence.md#state-conflict-behavior).
+- Compatible context plus the same `idempotency_key` and a different `request_hash` returns `STATE_VERSION_CONFLICT` as defined by [state version conflict](api/error-precedence.md#state-conflict-behavior).
+- A row with `replay_context_status='legacy_unverified'`, or an equivalent legacy row without complete verified context, is preserved but is not replay eligible.
 
 Owner links:
 
 - Public conflict behavior belongs to [API error precedence](api/error-precedence.md#state-conflict-behavior).
+- Public local-access mismatch meaning belongs to [API error codes](api/error-codes.md#errorcode-local-access-mismatch).
 - Branch storage effects belong to [Storage Effects](storage-effects.md).
 
 `request_hash` must not be added to a second uniqueness key that would allow the same idempotency key to fork into multiple committed responses.
@@ -456,7 +469,8 @@ The baseline migration boundary is:
 - Tighten nullable fields, foreign keys, enum checks, and JSON validation only after existing rows have been validated or routed to an owner-defined repair state.
 - Preserve `task_events.event_seq` ordering when `task_events` is retained.
 - Preserve artifact hashes and owner links, or mark affected refs invalid for recovery.
-- Preserve committed `tool_invocations` replay rows so idempotency does not fork after migration.
+- Preserve committed `tool_invocations` replay rows so idempotency keys do not fork after migration.
+- Preserve replay rows that lack verified replay context as `legacy_unverified`, or an equivalent non-replay-eligible state, until an owner-defined repair attaches complete verified context.
 
 This document intentionally excludes DDL bundles, migration catalogs, and profile-specific migration details outside the supported baseline.
 

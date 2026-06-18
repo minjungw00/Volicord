@@ -226,12 +226,17 @@ Conditions:
 
 Allowed effects:
 
-- The response and replay payload may record `write_decision_reasons: WriteDecisionReason[]`.
-- This is allowed only when the method contract permits the committed decision record.
+- append exactly one `task_events` event containing the structured `write_decision_reasons: WriteDecisionReason[]`
+- create a replay row when an idempotency key is present
+- increment `project_state.state_version` exactly once
+- record the method-owned decision and `write_decision_reasons` in the response and replay payload
 
 Disallowed effects:
 
 - creating consumable `Write Authorization`
+- creating a separate public history method
+- adding a new public response field for historical non-allow decisions
+- requiring `harness.status` to expose historical non-allow decisions
 - changing `close_state`
 - evaluating close readiness
 - storing `CloseReadinessBlocker`
@@ -244,6 +249,7 @@ Persistence boundary:
 
 - Request-side `harness.prepare_write` payload fields belong to the [`harness.prepare_write` reference](api/method-prepare-write.md).
 - Stored `write_decision_reasons` remain `harness.prepare_write` decision reasons.
+- The durable audit location for a valid committed non-allow decision is the committed task event and, when keyed, the replay row.
 
 Those stored reasons are not:
 
@@ -380,8 +386,9 @@ Idempotent replay returns the stored original response under [Storage Versioning
 Committed non-allowed decisions:
 
 - See [`harness.prepare_write` committed non-allow decision](#harnessprepare_write-committed-non-allow-decision).
-- They may persist only the method-owned decision and `write_decision_reasons`.
-- They do not create `Write Authorization`.
+- They append exactly one task event, create a replay row when keyed, and increment `project_state.state_version` exactly once.
+- They do not create consumable `Write Authorization`, a separate public history method, or a new public response field.
+- `harness.status` is not required to expose historical non-allow decisions.
 
 No-effect branches:
 

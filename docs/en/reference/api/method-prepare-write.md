@@ -67,8 +67,7 @@ Field notes:
 
 Requires:
 
-- `VerifiedSurfaceContext.access_class=write_authorization`
-- `verified=true`
+- server-derived `VerifiedSurfaceContext` with `access_class=write_authorization`
 - compatible current scope
 - compatible baseline
 - required user-owned judgments
@@ -80,7 +79,7 @@ Requires:
 | Result | State-version effect | `Write Authorization` effect |
 |---|---|---|
 | Committed `decision=allowed` | Increments `project_state.state_version` exactly once. | Creates one `status=active` `Write Authorization`. |
-| Committed non-allow decision | May increment only for method-owned write-decision reason state. | Creates no consumable `Write Authorization`. |
+| Committed non-allow decision | Increments `project_state.state_version` exactly once. | Creates no consumable `Write Authorization`. |
 | Pre-commit rejection or dry run | Increments nothing. | Creates nothing. |
 
 ## Method result fields
@@ -132,6 +131,9 @@ Result data:
 - `write_authorization` is `null`.
 - `authorization_effect` is `none`.
 - `write_decision_reasons` must be non-empty.
+- A valid committed `dry_run=false` non-allow result appends one task event containing the structured `write_decision_reasons`, creates a replay row when an idempotency key is present, and increments `project_state.state_version` exactly once.
+- It creates no consumable `Write Authorization`, no separate public history method, and no new public response field.
+- `harness.status` is not required to expose historical non-allow decisions.
 - Each entry is a `WriteDecisionReason`.
 - `category` uses the controlled `WriteDecisionReason.category` value set.
 - `code` uses this method's local v1 code list below.

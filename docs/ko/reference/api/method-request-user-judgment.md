@@ -60,8 +60,7 @@ RequestUserJudgmentRequest:
 
 이 메서드에는 아래 조건이 필요합니다.
 
-- `VerifiedSurfaceContext.access_class=core_mutation`
-- `verified=true`
+- `access_class=core_mutation`인 서버 파생 `VerifiedSurfaceContext`
 - 같은 프로젝트의 호환되는 `Task`와 선택적 Change Unit
 
 로컬 접근 실패, 읽을 수 없는 프로젝트나 `Task` 식별자, 부족한 로컬 역량은 커밋 전에 거절됩니다.

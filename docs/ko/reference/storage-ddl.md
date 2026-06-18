@@ -435,9 +435,27 @@ CREATE TABLE tool_invocations (
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   committed_state_version INTEGER NOT NULL CHECK (committed_state_version > basis_state_version),
   status TEXT NOT NULL DEFAULT 'committed' CHECK (status = 'committed'),
+  surface_id TEXT,
+  surface_instance_id TEXT,
+  access_class TEXT,
+  verification_basis TEXT,
+  replay_context_status TEXT NOT NULL CHECK (replay_context_status IN ('verified', 'legacy_unverified')),
   response_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, tool_name, idempotency_key),
+  CHECK (
+    (
+      replay_context_status = 'verified'
+      AND surface_id IS NOT NULL
+      AND surface_instance_id IS NOT NULL
+      AND access_class IS NOT NULL
+    )
+    OR (
+      replay_context_status = 'legacy_unverified'
+    )
+  ),
+  FOREIGN KEY (project_id, surface_id, surface_instance_id)
+    REFERENCES surfaces (project_id, surface_id, surface_instance_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 ```
@@ -505,11 +523,21 @@ CREATE INDEX idx_task_events_task_seq
 - `idx_change_units_one_current_active`는 `Task`마다 `status='active'`이고 `is_current=1`인 현재 적용 Change Unit 행이 최대 하나만 있도록 합니다.
 - `tasks.current_change_unit_id`가 설정되어 있으면 타입을 아는 Core 코드는 그 포인터가 `status='active'`이고 `is_current=1`인 같은 행을 가리키는지 확인해야 합니다.
 
+접점 로컬 접근 허용:
+
+- `surfaces.local_access_json`은 등록된 로컬 접근 허용의 기준 저장 위치입니다.
+- 선호되는 허용 필드는 `authorized_access_classes: string[]`입니다. `access_class: string`은 하위 호환을 위한 단일 값 대체 필드입니다.
+- `verification_basis: string`은 허용이 어떻게 성립했는지 설명하는 신뢰된 등록 메타데이터입니다.
+- `surfaces.capability_profile_json`은 역량 선언이며 접근 등급 허용으로 취급하면 안 됩니다.
+
 멱등 재실행 행:
 
 - 재실행 고유 키는 정확히 `(project_id, tool_name, idempotency_key)`입니다.
-- `request_hash`는 충돌 판별자로 저장하지만 고유 키의 일부가 아닙니다.
+- `request_hash`는 공개 요청 충돌 판별자로 저장하지만 고유 키의 일부가 아니며 호출 맥락을 흡수하지 않습니다.
 - `tool_invocations.response_json`은 [저장 효과](storage-effects.md)가 재실행 행 생성을 정의한 커밋된 재실행 응답만 저장합니다.
+- 새로 쓰는 재실행 행은 `replay_context_status='verified'`를 사용하고 파생된 `VerifiedSurfaceContext`의 완전한 `surface_id`, `surface_instance_id`, `access_class` 값을 저장합니다.
+- `verification_basis`는 진단용으로 재실행 행에 저장할 수 있지만 호출자 권한이 아닙니다.
+- 확인된 맥락이 없는 기존 재실행 행은 `replay_context_status='legacy_unverified'`와 null 또는 불완전한 맥락 필드로 표현할 수 있습니다. 재실행 적격성은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 `Write Authorization` 기준 버전:
 

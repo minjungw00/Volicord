@@ -67,12 +67,11 @@ StageArtifactRequest:
 
 요구사항:
 
-- `VerifiedSurfaceContext.access_class=artifact_registration`
-- `verified=true`
+- `access_class=artifact_registration`인 서버 파생 `VerifiedSurfaceContext`
 - 호환되는 `project_id`와 `task_id`
 - `manual_artifact_attachment_supported=true`
 
-서버는 확인된 로컬 접점에서 `created_by_surface_id`와 `created_by_surface_instance_id`를 기록합니다. 호출자는 이 값을 권한 근거로 제출하지 않습니다.
+서버는 파생된 `VerifiedSurfaceContext`에서 `created_by_surface_id`와 `created_by_surface_instance_id`를 기록합니다. 호출자는 이 값을 권한 근거로 제출하지 않습니다.
 
 ## 상태 버전 동작
 
