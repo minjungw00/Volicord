@@ -1,6 +1,9 @@
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
-use crate::{sqlite::begin_immediate_transaction, StoreError, StoreResult};
+use crate::{
+    sqlite::{begin_immediate_transaction, foreign_keys_enabled, set_foreign_keys},
+    StoreError, StoreResult,
+};
 
 /// Baseline storage profile recorded by schema migrations.
 pub const STORAGE_PROFILE: &str = "baseline_sqlite";
@@ -12,7 +15,10 @@ pub const BASELINE_SCHEMA_VERSION: i64 = 1;
 pub const REGISTRY_SCHEMA_VERSION: i64 = 1;
 
 /// Latest schema version for project `state.sqlite`.
-pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 2;
+pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 3;
+
+const PROJECT_STATE_REPLAY_CONTEXT_SCHEMA_VERSION: i64 = 2;
+const PROJECT_STATE_REPLAY_SURFACE_FK_SCHEMA_VERSION: i64 = 3;
 
 /// `schema_migrations.database_kind` for `registry.sqlite`.
 pub const REGISTRY_DATABASE_KIND: &str = "registry";
@@ -24,7 +30,7 @@ const REGISTRY_MIGRATIONS: &[Migration] = &[Migration {
     database_kind: REGISTRY_DATABASE_KIND,
     version: BASELINE_SCHEMA_VERSION,
     name: "registry_baseline_v1",
-    sql: REGISTRY_BASELINE_SQL,
+    kind: MigrationKind::Sql(REGISTRY_BASELINE_SQL),
 }];
 
 const PROJECT_STATE_MIGRATIONS: &[Migration] = &[
@@ -32,13 +38,19 @@ const PROJECT_STATE_MIGRATIONS: &[Migration] = &[
         database_kind: PROJECT_STATE_DATABASE_KIND,
         version: BASELINE_SCHEMA_VERSION,
         name: "project_state_baseline_v1",
-        sql: PROJECT_STATE_BASELINE_SQL,
+        kind: MigrationKind::Sql(PROJECT_STATE_BASELINE_SQL),
     },
     Migration {
         database_kind: PROJECT_STATE_DATABASE_KIND,
-        version: PROJECT_STATE_SCHEMA_VERSION,
+        version: PROJECT_STATE_REPLAY_CONTEXT_SCHEMA_VERSION,
         name: "project_state_replay_context_v2",
-        sql: PROJECT_STATE_REPLAY_CONTEXT_V2_SQL,
+        kind: MigrationKind::Sql(PROJECT_STATE_REPLAY_CONTEXT_V2_SQL),
+    },
+    Migration {
+        database_kind: PROJECT_STATE_DATABASE_KIND,
+        version: PROJECT_STATE_REPLAY_SURFACE_FK_SCHEMA_VERSION,
+        name: "project_state_replay_surface_fk_v3",
+        kind: MigrationKind::Custom(apply_project_state_replay_surface_fk_v3),
     },
 ];
 
@@ -46,7 +58,13 @@ struct Migration {
     database_kind: &'static str,
     version: i64,
     name: &'static str,
-    sql: &'static str,
+    kind: MigrationKind,
+}
+
+#[derive(Clone, Copy)]
+enum MigrationKind {
+    Sql(&'static str),
+    Custom(fn(&mut Connection, &Migration) -> StoreResult<()>),
 }
 
 /// Applies the executable baseline migration for `registry.sqlite`.
@@ -60,10 +78,8 @@ pub fn apply_project_state_migrations(conn: &mut Connection) -> StoreResult<()> 
 }
 
 fn apply_ordered_migrations(conn: &mut Connection, migrations: &[Migration]) -> StoreResult<()> {
-    let tx = begin_immediate_transaction(conn)?;
-
     for migration in migrations {
-        if let Some((actual_name, actual_storage_profile)) = existing_migration(&tx, migration)? {
+        if let Some((actual_name, actual_storage_profile)) = existing_migration(conn, migration)? {
             if actual_name != migration.name || actual_storage_profile != STORAGE_PROFILE {
                 return Err(StoreError::MigrationConflict {
                     database_kind: migration.database_kind,
@@ -77,34 +93,36 @@ fn apply_ordered_migrations(conn: &mut Connection, migrations: &[Migration]) -> 
             continue;
         }
 
-        tx.execute_batch(migration.sql)?;
-        tx.execute(
-            "INSERT INTO schema_migrations (
-                database_kind,
-                version,
-                name,
-                storage_profile,
-                applied_at
-            )
-            VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
-            params![
-                migration.database_kind,
-                migration.version,
-                migration.name,
-                STORAGE_PROFILE
-            ],
-        )?;
+        apply_migration(conn, migration)?;
     }
 
+    Ok(())
+}
+
+fn apply_migration(conn: &mut Connection, migration: &Migration) -> StoreResult<()> {
+    match migration.kind {
+        MigrationKind::Sql(sql) => apply_sql_migration(conn, migration, sql),
+        MigrationKind::Custom(apply) => apply(conn, migration),
+    }
+}
+
+fn apply_sql_migration(
+    conn: &mut Connection,
+    migration: &Migration,
+    sql: &'static str,
+) -> StoreResult<()> {
+    let tx = begin_immediate_transaction(conn)?;
+    tx.execute_batch(sql)?;
+    insert_schema_migration(&tx, migration)?;
     tx.commit()?;
     Ok(())
 }
 
 fn existing_migration(
-    tx: &Transaction<'_>,
+    conn: &Connection,
     migration: &Migration,
 ) -> rusqlite::Result<Option<(String, String)>> {
-    let schema_table_exists = tx.query_row(
+    let schema_table_exists = conn.query_row(
         "SELECT COUNT(*)
            FROM sqlite_master
           WHERE type = 'table' AND name = 'schema_migrations'",
@@ -116,7 +134,7 @@ fn existing_migration(
         return Ok(None);
     }
 
-    tx.query_row(
+    conn.query_row(
         "SELECT name, storage_profile
            FROM schema_migrations
           WHERE database_kind = ?1 AND version = ?2",
@@ -124,6 +142,102 @@ fn existing_migration(
         |row| Ok((row.get(0)?, row.get(1)?)),
     )
     .optional()
+}
+
+fn insert_schema_migration(tx: &Transaction<'_>, migration: &Migration) -> rusqlite::Result<()> {
+    tx.execute(
+        "INSERT INTO schema_migrations (
+            database_kind,
+            version,
+            name,
+            storage_profile,
+            applied_at
+        )
+        VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        params![
+            migration.database_kind,
+            migration.version,
+            migration.name,
+            STORAGE_PROFILE
+        ],
+    )?;
+    Ok(())
+}
+
+fn apply_project_state_replay_surface_fk_v3(
+    conn: &mut Connection,
+    migration: &Migration,
+) -> StoreResult<()> {
+    validate_no_foreign_key_violations(conn, PROJECT_STATE_DATABASE_KIND, None)?;
+
+    let original_foreign_key_mode = foreign_keys_enabled(conn)?;
+    if original_foreign_key_mode {
+        set_foreign_keys(conn, false)?;
+    }
+
+    let migration_result = rebuild_tool_invocations_with_surface_fk(conn, migration);
+    let restore_result = restore_foreign_key_mode(conn, original_foreign_key_mode);
+
+    match (migration_result, restore_result) {
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(StoreError::from(error)),
+        (Ok(()), Ok(())) => {
+            validate_no_foreign_key_violations(conn, PROJECT_STATE_DATABASE_KIND, None)?;
+            Ok(())
+        }
+    }
+}
+
+fn rebuild_tool_invocations_with_surface_fk(
+    conn: &mut Connection,
+    migration: &Migration,
+) -> StoreResult<()> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    tx.execute_batch(PROJECT_STATE_REPLAY_SURFACE_FK_V3_CREATE_COPY_SQL)?;
+    validate_no_foreign_key_violations(
+        &tx,
+        PROJECT_STATE_DATABASE_KIND,
+        Some("tool_invocations_rebuild_v3"),
+    )?;
+    tx.execute_batch(PROJECT_STATE_REPLAY_SURFACE_FK_V3_SWAP_SQL)?;
+    insert_schema_migration(&tx, migration)?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn restore_foreign_key_mode(conn: &Connection, enabled: bool) -> rusqlite::Result<()> {
+    if foreign_keys_enabled(conn)? != enabled {
+        set_foreign_keys(conn, enabled)?;
+    }
+    Ok(())
+}
+
+fn validate_no_foreign_key_violations(
+    conn: &Connection,
+    database_kind: &'static str,
+    table: Option<&str>,
+) -> StoreResult<()> {
+    let sql = match table {
+        Some(table) => format!(
+            "PRAGMA foreign_key_check(\"{}\")",
+            table.replace('"', "\"\"")
+        ),
+        None => "PRAGMA foreign_key_check".to_owned(),
+    };
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([])?;
+
+    if rows.next()?.is_some() {
+        let detail = match table {
+            Some(table) => {
+                format!("PRAGMA foreign_key_check reported a violation for {table}")
+            }
+            None => "PRAGMA foreign_key_check reported a violation".to_owned(),
+        };
+        return Err(StoreError::schema_invariant(database_kind, detail));
+    }
+
+    Ok(())
 }
 
 const REGISTRY_BASELINE_SQL: &str = r#"
@@ -610,6 +724,112 @@ UPDATE project_state
  WHERE schema_version < 2;
 "#;
 
+const PROJECT_STATE_REPLAY_SURFACE_FK_V3_CREATE_COPY_SQL: &str = r#"
+CREATE TABLE tool_invocations_rebuild_v3 (
+  project_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
+  committed_state_version INTEGER NOT NULL CHECK (committed_state_version > basis_state_version),
+  status TEXT NOT NULL DEFAULT 'committed' CHECK (status = 'committed'),
+  surface_id TEXT,
+  surface_instance_id TEXT,
+  access_class TEXT,
+  verification_basis TEXT,
+  replay_context_status TEXT NOT NULL DEFAULT 'legacy_unverified'
+    CHECK (replay_context_status IN ('verified', 'legacy_unverified')),
+  response_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, tool_name, idempotency_key),
+  CHECK (
+    (
+      replay_context_status = 'verified'
+      AND surface_id IS NOT NULL
+      AND surface_instance_id IS NOT NULL
+      AND access_class IS NOT NULL
+    )
+    OR (
+      replay_context_status = 'legacy_unverified'
+    )
+  ),
+  FOREIGN KEY (project_id, surface_id, surface_instance_id)
+    REFERENCES surfaces (project_id, surface_id, surface_instance_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (project_id) REFERENCES project_state (project_id)
+);
+
+INSERT INTO tool_invocations_rebuild_v3 (
+  project_id,
+  tool_name,
+  idempotency_key,
+  request_hash,
+  basis_state_version,
+  committed_state_version,
+  status,
+  surface_id,
+  surface_instance_id,
+  access_class,
+  verification_basis,
+  replay_context_status,
+  response_json,
+  created_at
+)
+SELECT
+  project_id,
+  tool_name,
+  idempotency_key,
+  request_hash,
+  basis_state_version,
+  committed_state_version,
+  status,
+  surface_id,
+  surface_instance_id,
+  access_class,
+  verification_basis,
+  replay_context_status,
+  response_json,
+  created_at
+FROM tool_invocations;
+"#;
+
+const PROJECT_STATE_REPLAY_SURFACE_FK_V3_SWAP_SQL: &str = r#"
+DROP TABLE tool_invocations;
+
+ALTER TABLE tool_invocations_rebuild_v3 RENAME TO tool_invocations;
+
+CREATE TRIGGER tool_invocations_verified_context_insert
+BEFORE INSERT ON tool_invocations
+FOR EACH ROW
+WHEN NEW.replay_context_status = 'verified'
+  AND (
+    NEW.surface_id IS NULL
+    OR NEW.surface_instance_id IS NULL
+    OR NEW.access_class IS NULL
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
+END;
+
+CREATE TRIGGER tool_invocations_verified_context_update
+BEFORE UPDATE ON tool_invocations
+FOR EACH ROW
+WHEN NEW.replay_context_status = 'verified'
+  AND (
+    NEW.surface_id IS NULL
+    OR NEW.surface_instance_id IS NULL
+    OR NEW.access_class IS NULL
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
+END;
+
+UPDATE project_state
+   SET schema_version = 3,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+ WHERE schema_version < 3;
+"#;
+
 #[cfg(test)]
 mod tests {
     use std::{error::Error, fs};
@@ -618,7 +838,10 @@ mod tests {
     use rusqlite::{params, Connection};
 
     use super::*;
-    use crate::sqlite::{open_project_state_database, project_state_db_path};
+    use crate::sqlite::{
+        enable_foreign_keys, foreign_keys_enabled, open_project_state_database,
+        project_state_db_path, validate_project_state_schema,
+    };
 
     #[test]
     fn version_one_project_state_replay_rows_become_legacy_unverified() -> Result<(), Box<dyn Error>>
@@ -688,7 +911,10 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         assert_eq!(schema_version, PROJECT_STATE_SCHEMA_VERSION);
-        assert_eq!(migration_count, 2);
+        assert_eq!(migration_count, 3);
+        assert_integrity_check_clean(&conn)?;
+        assert_tool_invocations_surface_foreign_key(&conn)?;
+        assert_foreign_key_check_clean(&conn)?;
 
         let (status, surface_id, response_json): (String, Option<String>, String) = conn
             .query_row(
@@ -703,6 +929,229 @@ mod tests {
         assert_eq!(status, "legacy_unverified");
         assert!(surface_id.is_none());
         assert_eq!(response_json, "{\"legacy\":true}");
+        Ok(())
+    }
+
+    #[test]
+    fn version_two_project_state_replay_rows_upgrade_to_surface_foreign_key(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("migration-v2-replay-fk")?;
+        let path = project_state_db_path(runtime_home.path(), "project_v2");
+        fs::create_dir_all(path.parent().expect("state db path has parent"))?;
+        let mut conn = Connection::open(&path)?;
+        enable_foreign_keys(&conn)?;
+        create_project_state_v2(&conn, "project_v2")?;
+        conn.execute(
+            "INSERT INTO surfaces (
+                project_id,
+                surface_id,
+                surface_instance_id,
+                surface_kind,
+                registered_at
+            )
+            VALUES ('project_v2', 'surface_main', 'surface_instance_1', 'cli', 't0')",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO tool_invocations (
+                project_id,
+                tool_name,
+                idempotency_key,
+                request_hash,
+                basis_state_version,
+                committed_state_version,
+                replay_context_status,
+                response_json,
+                created_at
+            )
+            VALUES (
+                'project_v2',
+                'harness.update_scope',
+                'idem_legacy',
+                'sha256:legacy',
+                0,
+                1,
+                'legacy_unverified',
+                '{\"legacy\":true}',
+                't0'
+            )",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO tool_invocations (
+                project_id,
+                tool_name,
+                idempotency_key,
+                request_hash,
+                basis_state_version,
+                committed_state_version,
+                surface_id,
+                surface_instance_id,
+                access_class,
+                verification_basis,
+                replay_context_status,
+                response_json,
+                created_at
+            )
+            VALUES (
+                'project_v2',
+                'harness.update_scope',
+                'idem_verified',
+                'sha256:verified',
+                1,
+                2,
+                'surface_main',
+                'surface_instance_1',
+                'core_mutation',
+                'migration_test_registration',
+                'verified',
+                '{\"verified\":true}',
+                't1'
+            )",
+            [],
+        )?;
+
+        apply_project_state_migrations(&mut conn)?;
+        validate_project_state_schema(&conn)?;
+
+        assert!(foreign_keys_enabled(&conn)?);
+        assert_eq!(
+            latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
+        assert_eq!(migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?, 3);
+        assert_integrity_check_clean(&conn)?;
+        assert_tool_invocations_surface_foreign_key(&conn)?;
+        assert_foreign_key_check_clean(&conn)?;
+
+        let legacy_status: String = conn.query_row(
+            "SELECT replay_context_status
+               FROM tool_invocations
+              WHERE idempotency_key = 'idem_legacy'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(legacy_status, "legacy_unverified");
+
+        let verified_context: (String, String, String, String) = conn.query_row(
+            "SELECT
+                replay_context_status,
+                surface_id,
+                surface_instance_id,
+                access_class
+               FROM tool_invocations
+              WHERE idempotency_key = 'idem_verified'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        assert_eq!(
+            verified_context,
+            (
+                "verified".to_owned(),
+                "surface_main".to_owned(),
+                "surface_instance_1".to_owned(),
+                "core_mutation".to_owned(),
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_verified_replay_surface_reference_fails_migration_atomically(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("migration-v2-invalid-verified")?;
+        let path = project_state_db_path(runtime_home.path(), "project_bad_verified");
+        fs::create_dir_all(path.parent().expect("state db path has parent"))?;
+        let mut conn = Connection::open(&path)?;
+        enable_foreign_keys(&conn)?;
+        create_project_state_v2(&conn, "project_bad_verified")?;
+        conn.execute(
+            "INSERT INTO tool_invocations (
+                project_id,
+                tool_name,
+                idempotency_key,
+                request_hash,
+                basis_state_version,
+                committed_state_version,
+                surface_id,
+                surface_instance_id,
+                access_class,
+                replay_context_status,
+                response_json,
+                created_at
+            )
+            VALUES (
+                'project_bad_verified',
+                'harness.update_scope',
+                'idem_invalid_verified',
+                'sha256:invalid',
+                0,
+                1,
+                'missing_surface',
+                'missing_instance',
+                'core_mutation',
+                'verified',
+                '{\"invalid\":true}',
+                't0'
+            )",
+            [],
+        )?;
+        let original_table_sql = tool_invocations_table_sql(&conn)?;
+
+        let error = apply_project_state_migrations(&mut conn)
+            .expect_err("missing verified replay surface must fail migration");
+        assert!(matches!(
+            error,
+            StoreError::SchemaInvariant {
+                database_kind: PROJECT_STATE_DATABASE_KIND,
+                ..
+            }
+        ));
+        assert!(foreign_keys_enabled(&conn)?);
+        assert_eq!(
+            latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_REPLAY_CONTEXT_SCHEMA_VERSION
+        );
+        assert_eq!(migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?, 2);
+        assert_eq!(project_schema_version(&conn, "project_bad_verified")?, 2);
+        assert_eq!(tool_invocations_table_sql(&conn)?, original_table_sql);
+        assert!(!tool_invocations_has_surface_foreign_key(&conn)?);
+        assert_integrity_check_clean(&conn)?;
+
+        let response_json: String = conn.query_row(
+            "SELECT response_json
+               FROM tool_invocations
+              WHERE idempotency_key = 'idem_invalid_verified'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(response_json, "{\"invalid\":true}");
+
+        conn.execute(
+            "INSERT INTO tool_invocations (
+                project_id,
+                tool_name,
+                idempotency_key,
+                request_hash,
+                basis_state_version,
+                committed_state_version,
+                replay_context_status,
+                response_json,
+                created_at
+            )
+            VALUES (
+                'project_bad_verified',
+                'harness.status',
+                'idem_after_failure',
+                'sha256:after',
+                0,
+                1,
+                'legacy_unverified',
+                '{\"after\":true}',
+                't1'
+            )",
+            [],
+        )?;
         Ok(())
     }
 
@@ -738,7 +1187,136 @@ mod tests {
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
         );
+        assert_eq!(migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?, 3);
+        assert_integrity_check_clean(&conn)?;
+        assert_tool_invocations_surface_foreign_key(&conn)?;
+        assert_foreign_key_check_clean(&conn)?;
         Ok(())
+    }
+
+    fn create_project_state_v2(conn: &Connection, project_id: &str) -> rusqlite::Result<()> {
+        conn.execute_batch(PROJECT_STATE_BASELINE_SQL)?;
+        insert_migration_row(conn, BASELINE_SCHEMA_VERSION, "project_state_baseline_v1")?;
+        conn.execute_batch(PROJECT_STATE_REPLAY_CONTEXT_V2_SQL)?;
+        insert_migration_row(
+            conn,
+            PROJECT_STATE_REPLAY_CONTEXT_SCHEMA_VERSION,
+            "project_state_replay_context_v2",
+        )?;
+        conn.execute(
+            "INSERT INTO project_state (
+                project_id,
+                storage_profile,
+                schema_version,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, 2, 't0', 't0')",
+            params![project_id, STORAGE_PROFILE],
+        )?;
+        Ok(())
+    }
+
+    fn insert_migration_row(conn: &Connection, version: i64, name: &str) -> rusqlite::Result<()> {
+        conn.execute(
+            "INSERT INTO schema_migrations (
+                database_kind,
+                version,
+                name,
+                storage_profile,
+                applied_at
+            )
+            VALUES (?1, ?2, ?3, ?4, 't0')",
+            params![PROJECT_STATE_DATABASE_KIND, version, name, STORAGE_PROFILE],
+        )?;
+        Ok(())
+    }
+
+    fn project_schema_version(conn: &Connection, project_id: &str) -> rusqlite::Result<i64> {
+        conn.query_row(
+            "SELECT schema_version
+               FROM project_state
+              WHERE project_id = ?1",
+            [project_id],
+            |row| row.get(0),
+        )
+    }
+
+    fn tool_invocations_table_sql(conn: &Connection) -> rusqlite::Result<String> {
+        conn.query_row(
+            "SELECT sql
+               FROM sqlite_master
+              WHERE type = 'table'
+                AND name = 'tool_invocations'",
+            [],
+            |row| row.get(0),
+        )
+    }
+
+    fn assert_foreign_key_check_clean(conn: &Connection) -> rusqlite::Result<()> {
+        let mut stmt = conn.prepare("PRAGMA foreign_key_check")?;
+        let mut rows = stmt.query([])?;
+        assert!(rows.next()?.is_none());
+        Ok(())
+    }
+
+    fn assert_integrity_check_clean(conn: &Connection) -> rusqlite::Result<()> {
+        let result: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+        assert_eq!(result, "ok");
+        Ok(())
+    }
+
+    fn assert_tool_invocations_surface_foreign_key(conn: &Connection) -> rusqlite::Result<()> {
+        assert!(tool_invocations_has_surface_foreign_key(conn)?);
+        Ok(())
+    }
+
+    fn tool_invocations_has_surface_foreign_key(conn: &Connection) -> rusqlite::Result<bool> {
+        let mut stmt = conn.prepare("PRAGMA foreign_key_list(tool_invocations)")?;
+        let mapped_rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(6)?,
+            ))
+        })?;
+        let mut rows = Vec::new();
+        for row in mapped_rows {
+            rows.push(row?);
+        }
+
+        let expected = [
+            ("project_id", "project_id"),
+            ("surface_id", "surface_id"),
+            ("surface_instance_id", "surface_instance_id"),
+        ];
+        for id in rows.iter().map(|(id, _, _, _, _, _)| *id) {
+            let mut candidate = rows
+                .iter()
+                .filter(|(candidate_id, _, _, _, _, _)| *candidate_id == id)
+                .cloned()
+                .collect::<Vec<_>>();
+            candidate.sort_by_key(|(_, seq, _, _, _, _)| *seq);
+            if candidate.len() != expected.len() {
+                continue;
+            }
+            if !candidate.iter().all(|(_, _, table, _, _, on_delete)| {
+                table == "surfaces" && on_delete == "RESTRICT"
+            }) {
+                continue;
+            }
+            let actual = candidate
+                .iter()
+                .map(|(_, _, _, from, to, _)| (from.as_str(), to.as_str()))
+                .collect::<Vec<_>>();
+            if actual == expected {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     fn column_exists(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<bool> {
@@ -773,6 +1351,16 @@ mod tests {
     fn latest_migration_version(conn: &Connection, database_kind: &str) -> rusqlite::Result<i64> {
         conn.query_row(
             "SELECT COALESCE(MAX(version), 0)
+               FROM schema_migrations
+              WHERE database_kind = ?1",
+            [database_kind],
+            |row| row.get(0),
+        )
+    }
+
+    fn migration_count(conn: &Connection, database_kind: &str) -> rusqlite::Result<i64> {
+        conn.query_row(
+            "SELECT COUNT(*)
                FROM schema_migrations
               WHERE database_kind = ?1",
             [database_kind],

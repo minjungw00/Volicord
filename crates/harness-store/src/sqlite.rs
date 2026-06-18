@@ -78,7 +78,12 @@ pub fn open_project_state_database(path: impl AsRef<Path>) -> StoreResult<Connec
 
 /// Enables SQLite foreign-key enforcement for a connection.
 pub fn enable_foreign_keys(conn: &Connection) -> rusqlite::Result<()> {
-    conn.pragma_update(None, "foreign_keys", "ON")
+    set_foreign_keys(conn, true)
+}
+
+/// Sets SQLite foreign-key enforcement for a connection.
+pub fn set_foreign_keys(conn: &Connection, enabled: bool) -> rusqlite::Result<()> {
+    conn.pragma_update(None, "foreign_keys", if enabled { "ON" } else { "OFF" })
 }
 
 /// Returns whether SQLite foreign-key enforcement is enabled.
@@ -205,6 +210,16 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             column,
         )?;
     }
+    validate_tool_invocations_primary_key(conn)?;
+    validate_tool_invocations_replay_surface_foreign_key(conn)?;
+    require_triggers(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
+        &[
+            "tool_invocations_verified_context_insert",
+            "tool_invocations_verified_context_update",
+        ],
+    )?;
     validate_project_state_versions(conn)?;
     validate_foreign_key_check(conn, PROJECT_STATE_DATABASE_KIND)?;
     Ok(())
@@ -272,6 +287,23 @@ fn require_indexes(
     Ok(())
 }
 
+fn require_triggers(
+    conn: &Connection,
+    database_kind: &'static str,
+    names: &[&str],
+) -> StoreResult<()> {
+    for name in names {
+        if !sqlite_object_exists(conn, "trigger", name)? {
+            return Err(StoreError::schema_invariant(
+                database_kind,
+                format!("missing trigger {name}"),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn sqlite_object_exists(
     conn: &Connection,
     object_type: &str,
@@ -326,6 +358,109 @@ fn validate_project_state_versions(conn: &Connection) -> StoreResult<()> {
             "project_state.schema_version does not match the latest applied migration",
         ))
     }
+}
+
+fn validate_tool_invocations_primary_key(conn: &Connection) -> StoreResult<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(tool_invocations)")?;
+    let mut rows = stmt.query([])?;
+    let mut primary_key_columns = Vec::new();
+
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        let primary_key_position: i64 = row.get(5)?;
+        if primary_key_position > 0 {
+            primary_key_columns.push((primary_key_position, name));
+        }
+    }
+
+    primary_key_columns.sort_by_key(|(position, _)| *position);
+    let primary_key_columns = primary_key_columns
+        .into_iter()
+        .map(|(_, name)| name)
+        .collect::<Vec<_>>();
+    let expected = vec![
+        "project_id".to_owned(),
+        "tool_name".to_owned(),
+        "idempotency_key".to_owned(),
+    ];
+    if primary_key_columns == expected {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            PROJECT_STATE_DATABASE_KIND,
+            format!(
+                "tool_invocations primary key is {:?}, expected {:?}",
+                primary_key_columns, expected
+            ),
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ForeignKeyListRow {
+    id: i64,
+    seq: i64,
+    parent_table: String,
+    from_column: String,
+    to_column: String,
+    on_delete: String,
+}
+
+fn validate_tool_invocations_replay_surface_foreign_key(conn: &Connection) -> StoreResult<()> {
+    let mut stmt = conn.prepare("PRAGMA foreign_key_list(tool_invocations)")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(ForeignKeyListRow {
+            id: row.get(0)?,
+            seq: row.get(1)?,
+            parent_table: row.get(2)?,
+            from_column: row.get(3)?,
+            to_column: row.get(4)?,
+            on_delete: row.get(6)?,
+        })
+    })?;
+
+    let mut rows_by_id = Vec::<ForeignKeyListRow>::new();
+    for row in rows {
+        rows_by_id.push(row?);
+    }
+
+    let expected_columns = [
+        ("project_id", "project_id"),
+        ("surface_id", "surface_id"),
+        ("surface_instance_id", "surface_instance_id"),
+    ];
+
+    for id in rows_by_id.iter().map(|row| row.id) {
+        let mut candidate = rows_by_id
+            .iter()
+            .filter(|row| row.id == id)
+            .cloned()
+            .collect::<Vec<_>>();
+        candidate.sort_by_key(|row| row.seq);
+
+        if candidate.len() != expected_columns.len() {
+            continue;
+        }
+        if !candidate.iter().all(|row| row.parent_table == "surfaces") {
+            continue;
+        }
+        if !candidate.iter().all(|row| row.on_delete == "RESTRICT") {
+            continue;
+        }
+
+        let actual_columns = candidate
+            .iter()
+            .map(|row| (row.from_column.as_str(), row.to_column.as_str()))
+            .collect::<Vec<_>>();
+        if actual_columns == expected_columns {
+            return Ok(());
+        }
+    }
+
+    Err(StoreError::schema_invariant(
+        PROJECT_STATE_DATABASE_KIND,
+        "tool_invocations replay surface foreign key is missing or malformed",
+    ))
 }
 
 fn require_column(
@@ -424,7 +559,7 @@ mod tests {
         let path = project_state_db_path(runtime_home.path(), "PRJ-0001");
 
         let conn = open_project_state_database(&path)?;
-        assert_eq!(migration_count(&conn)?, 2);
+        assert_eq!(migration_count(&conn)?, 3);
         assert_eq!(
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
@@ -435,10 +570,16 @@ mod tests {
             BASELINE_SCHEMA_VERSION,
             "project_state_baseline_v1"
         )?);
+        assert!(migration_exists(
+            &conn,
+            PROJECT_STATE_DATABASE_KIND,
+            PROJECT_STATE_SCHEMA_VERSION,
+            "project_state_replay_surface_fk_v3"
+        )?);
         drop(conn);
 
         let conn = open_project_state_database(&path)?;
-        assert_eq!(migration_count(&conn)?, 2);
+        assert_eq!(migration_count(&conn)?, 3);
         assert!(foreign_keys_enabled(&conn)?);
         assert!(sqlite_object_exists(&conn, "table", "tool_invocations")?);
         assert!(column_exists(
@@ -446,6 +587,7 @@ mod tests {
             "tool_invocations",
             "replay_context_status"
         )?);
+        validate_tool_invocations_replay_surface_foreign_key(&conn)?;
         Ok(())
     }
 
@@ -525,7 +667,7 @@ mod tests {
     fn tool_invocations_key_does_not_include_request_hash() -> StoreResult<()> {
         let runtime_home = TempRuntimeHome::new("tool-invocations")?;
         let conn = open_project_state_database(runtime_home.project_state_db_path("PRJ-tools"))?;
-        insert_project_state(&conn)?;
+        insert_minimal_project_task(&conn)?;
 
         insert_tool_invocation(&conn, "idem_same", "sha256:first", 1)?;
         insert_tool_invocation(&conn, "idem_other", "sha256:first", 2)?;
@@ -568,6 +710,82 @@ mod tests {
     }
 
     #[test]
+    fn verified_tool_invocation_requires_existing_surface() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("tool-invocations-surface-fk")?;
+        let conn =
+            open_project_state_database(runtime_home.project_state_db_path("PRJ-tools-surface"))?;
+        insert_project_state(&conn)?;
+
+        let err = conn
+            .execute(
+                "INSERT INTO tool_invocations (
+                    project_id,
+                    tool_name,
+                    idempotency_key,
+                    request_hash,
+                    basis_state_version,
+                    committed_state_version,
+                    surface_id,
+                    surface_instance_id,
+                    access_class,
+                    replay_context_status,
+                    response_json,
+                    created_at
+                )
+                VALUES (
+                    'project_a',
+                    'harness.intake',
+                    'idem_missing_surface',
+                    'sha256:first',
+                    0,
+                    1,
+                    'missing_surface',
+                    'missing_surface_instance',
+                    'core_mutation',
+                    'verified',
+                    '{}',
+                    't0'
+                )",
+                [],
+            )
+            .expect_err("verified replay context must reference a registered surface");
+        assert_foreign_key_constraint_error(err);
+        Ok(())
+    }
+
+    #[test]
+    fn verified_tool_invocation_restricts_surface_deletion() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("tool-invocations-surface-delete")?;
+        let conn =
+            open_project_state_database(runtime_home.project_state_db_path("PRJ-tools-delete"))?;
+        insert_project_state(&conn)?;
+        conn.execute(
+            "INSERT INTO surfaces (
+                project_id,
+                surface_id,
+                surface_instance_id,
+                surface_kind,
+                registered_at
+            )
+            VALUES ('project_a', 'surface_main', 'surface_instance_1', 'cli', 't0')",
+            [],
+        )?;
+        insert_tool_invocation(&conn, "idem_surface_delete", "sha256:first", 1)?;
+
+        let err = conn
+            .execute(
+                "DELETE FROM surfaces
+                  WHERE project_id = 'project_a'
+                    AND surface_id = 'surface_main'
+                    AND surface_instance_id = 'surface_instance_1'",
+                [],
+            )
+            .expect_err("surface deletion must be restricted while replay rows reference it");
+        assert_restrictive_delete_constraint_error(err);
+        Ok(())
+    }
+
+    #[test]
     fn verified_tool_invocation_requires_complete_replay_context() -> StoreResult<()> {
         let runtime_home = TempRuntimeHome::new("tool-invocations-context")?;
         let conn =
@@ -602,6 +820,30 @@ mod tests {
             )
             .expect_err("verified replay context must include identity fields");
         assert_constraint_error(err);
+        Ok(())
+    }
+
+    #[test]
+    fn project_state_schema_validation_routes_missing_replay_context_trigger() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("schema-validation-trigger")?;
+        let conn =
+            open_project_state_database(runtime_home.project_state_db_path("PRJ-validation"))?;
+        conn.execute("DROP TRIGGER tool_invocations_verified_context_insert", [])?;
+
+        let error = validate_project_state_schema(&conn)
+            .expect_err("missing replay context trigger should fail schema validation");
+        let classification = error.classification();
+
+        assert!(matches!(error, StoreError::SchemaInvariant { .. }));
+        assert!(matches!(
+            classification.route,
+            crate::StoreFailureRoute::OperationalUnavailable
+        ));
+        assert_eq!(classification.category, "schema_invariant");
+        assert_eq!(
+            classification.database_kind,
+            Some(PROJECT_STATE_DATABASE_KIND)
+        );
         Ok(())
     }
 
@@ -785,6 +1027,37 @@ mod tests {
                 assert_eq!(error.code, ErrorCode::ConstraintViolation);
             }
             other => panic!("expected SQLite constraint error, got {other:?}"),
+        }
+    }
+
+    fn assert_foreign_key_constraint_error(err: Error) {
+        match err {
+            Error::SqliteFailure(error, _) => {
+                assert_eq!(error.code, ErrorCode::ConstraintViolation);
+                assert_eq!(
+                    error.extended_code,
+                    rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY
+                );
+            }
+            other => panic!("expected SQLite foreign-key constraint error, got {other:?}"),
+        }
+    }
+
+    fn assert_restrictive_delete_constraint_error(err: Error) {
+        match err {
+            Error::SqliteFailure(error, _) => {
+                assert_eq!(error.code, ErrorCode::ConstraintViolation);
+                assert!(
+                    matches!(
+                        error.extended_code,
+                        rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY
+                            | rusqlite::ffi::SQLITE_CONSTRAINT_TRIGGER
+                    ),
+                    "expected foreign-key or restrictive-delete trigger constraint, got {}",
+                    error.extended_code
+                );
+            }
+            other => panic!("expected SQLite restrictive-delete constraint error, got {other:?}"),
         }
     }
 
