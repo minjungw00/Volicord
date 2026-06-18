@@ -1,8 +1,11 @@
 use std::path::Path;
 
 use harness_types::{
-    CurrentCloseBasis, IdempotencyKey, JudgmentBasis, JudgmentBasisCompatibilityStatus, MethodName,
-    ProjectId, RequestHash, SurfaceId, TaskId,
+    CurrentCloseBasis, EvidenceCoverageItem, IdempotencyKey, JudgmentBasis,
+    JudgmentBasisCompatibilityStatus, MethodName, PersistedArtifactProducer,
+    PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
+    PersistedJudgmentBasis, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
+    ProjectId, RequestHash, RunId, StagedArtifactHandleId, StateRecordRef, SurfaceId, TaskId,
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
@@ -494,7 +497,26 @@ pub struct StoredArtifactRecord {
     pub content_type: Option<String>,
     pub redaction_state: String,
     pub status: String,
-    pub producer_json: String,
+    pub producer: PersistedArtifactProducer,
+    pub provenance: PersistedArtifactProvenance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StoredArtifactRecordRaw {
+    project_id: String,
+    artifact_id: String,
+    task_id: String,
+    producer_run_id: Option<String>,
+    source_staging_handle_id: Option<String>,
+    uri: String,
+    body_path: Option<String>,
+    sha256: Option<String>,
+    size_bytes: Option<u64>,
+    content_type: Option<String>,
+    redaction_state: String,
+    status: String,
+    producer_json: String,
+    metadata_json: String,
 }
 
 /// Stored user-owned judgment row data needed by Core method implementations.
@@ -1847,8 +1869,11 @@ impl ProjectMutation<'_> {
         validate_identifier("expected_redaction_state", &input.expected_redaction_state)?;
         validate_identifier("artifacts.uri", &input.uri)?;
         validate_json_text("artifacts.retention_json", &input.retention_json)?;
-        validate_json_text("artifacts.producer_json", &input.producer_json)?;
-        validate_json_text("artifacts.metadata_json", &input.metadata_json)?;
+        validate_artifact_producer_json("artifacts.producer_json", &input.producer_json)?;
+        validate_artifact_provenance_metadata_json(
+            "artifacts.metadata_json",
+            &input.metadata_json,
+        )?;
 
         let staging = artifact_staging_record_tx(self.tx, self.project_id, &input.handle_id)?
             .ok_or_else(|| StoreError::SchemaInvariant {
@@ -2014,13 +2039,13 @@ impl ProjectMutation<'_> {
             validate_identifier("change_unit_id", change_unit_id)?;
         }
         validate_identifier("evidence_summaries.status", &input.status)?;
-        validate_json_text("evidence_summaries.coverage_json", &input.coverage_json)?;
-        validate_json_text(
+        validate_evidence_coverage_json("evidence_summaries.coverage_json", &input.coverage_json)?;
+        validate_state_refs_json(
             "evidence_summaries.supporting_refs_json",
             &input.supporting_refs_json,
         )?;
-        validate_json_text("evidence_summaries.gap_refs_json", &input.gap_refs_json)?;
-        validate_json_text("evidence_summaries.metadata_json", &input.metadata_json)?;
+        validate_state_refs_json("evidence_summaries.gap_refs_json", &input.gap_refs_json)?;
+        validate_evidence_metadata_json("evidence_summaries.metadata_json", &input.metadata_json)?;
 
         self.tx.execute(
             "INSERT INTO evidence_summaries (
@@ -2080,7 +2105,7 @@ impl ProjectMutation<'_> {
             validate_identifier("change_unit_id", change_unit_id)?;
         }
         validate_identifier("judgment_kind", &input.judgment_kind)?;
-        validate_json_text("user_judgments.request_json", &input.request_json)?;
+        validate_user_judgment_request_json("user_judgments.request_json", &input.request_json)?;
         validate_json_text("user_judgments.context_json", &input.context_json)?;
         validate_json_text("user_judgments.options_json", &input.options_json)?;
         validate_json_text(
@@ -2177,7 +2202,10 @@ impl ProjectMutation<'_> {
     fn resolve_user_judgment(&mut self, input: &UserJudgmentResolutionUpdate) -> StoreResult<()> {
         validate_identifier("judgment_id", &input.judgment_id)?;
         validate_identifier("status", &input.status)?;
-        validate_json_text("user_judgments.resolution_json", &input.resolution_json)?;
+        validate_user_judgment_resolution_json(
+            "user_judgments.resolution_json",
+            &input.resolution_json,
+        )?;
         if let Some(value) = &input.sensitive_action_scope_json {
             validate_json_text("user_judgments.sensitive_action_scope_json", value)?;
         }
@@ -2844,8 +2872,9 @@ fn artifact_record(
     project_id: &str,
     artifact_id: &str,
 ) -> StoreResult<Option<StoredArtifactRecord>> {
-    conn.query_row(
-        "SELECT
+    let row = conn
+        .query_row(
+            "SELECT
             project_id,
             artifact_id,
             task_id,
@@ -2858,23 +2887,78 @@ fn artifact_record(
             content_type,
             redaction_state,
             status,
-            producer_json
+            producer_json,
+            metadata_json
          FROM artifacts
          WHERE project_id = ?1
            AND artifact_id = ?2",
-        params![project_id, artifact_id],
-        artifact_record_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
+            params![project_id, artifact_id],
+            artifact_record_raw_from_row,
+        )
+        .optional()?;
+    row.map(stored_artifact_record_from_raw).transpose()
 }
 
-fn artifact_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredArtifactRecord> {
+fn stored_artifact_record_from_raw(
+    raw: StoredArtifactRecordRaw,
+) -> StoreResult<StoredArtifactRecord> {
+    let producer = decode_owner_json_text::<PersistedArtifactProducer>(
+        "artifacts",
+        raw.artifact_id.clone(),
+        "producer_json",
+        &raw.producer_json,
+    )?;
+    let provenance_metadata = decode_owner_json_text::<PersistedArtifactProvenanceMetadata>(
+        "artifacts",
+        raw.artifact_id.clone(),
+        "metadata_json",
+        &raw.metadata_json,
+    )?;
+    let producer_run_id = raw.producer_run_id.as_ref().ok_or_else(|| {
+        StoreError::corrupt_owner_state_value(
+            "artifacts",
+            raw.artifact_id.clone(),
+            "producer_run_id",
+        )
+    })?;
+    let source_staging_handle_id = raw.source_staging_handle_id.as_ref().ok_or_else(|| {
+        StoreError::corrupt_owner_state_value(
+            "artifacts",
+            raw.artifact_id.clone(),
+            "source_staging_handle_id",
+        )
+    })?;
+    let provenance = PersistedArtifactProvenance {
+        source_kind: provenance_metadata.source_kind,
+        producer_run_id: RunId::new(producer_run_id.clone()),
+        source_staging_handle_id: StagedArtifactHandleId::new(source_staging_handle_id.clone()),
+    };
+    Ok(StoredArtifactRecord {
+        project_id: raw.project_id,
+        artifact_id: raw.artifact_id,
+        task_id: raw.task_id,
+        producer_run_id: raw.producer_run_id,
+        source_staging_handle_id: raw.source_staging_handle_id,
+        uri: raw.uri,
+        body_path: raw.body_path,
+        sha256: raw.sha256,
+        size_bytes: raw.size_bytes,
+        content_type: raw.content_type,
+        redaction_state: raw.redaction_state,
+        status: raw.status,
+        producer,
+        provenance,
+    })
+}
+
+fn artifact_record_raw_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<StoredArtifactRecordRaw> {
     let size_bytes = row
         .get::<_, Option<i64>>(8)?
         .map(|value| nonnegative_i64_to_u64("artifacts.size_bytes", value))
         .transpose()?;
-    Ok(StoredArtifactRecord {
+    Ok(StoredArtifactRecordRaw {
         project_id: row.get(0)?,
         artifact_id: row.get(1)?,
         task_id: row.get(2)?,
@@ -2888,6 +2972,7 @@ fn artifact_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredA
         redaction_state: row.get(10)?,
         status: row.get(11)?,
         producer_json: row.get(12)?,
+        metadata_json: row.get(13)?,
     })
 }
 
@@ -3477,10 +3562,89 @@ fn validate_current_close_basis_json(field: &'static str, text: &str) -> StoreRe
 }
 
 fn validate_judgment_basis_json(field: &'static str, text: &str) -> StoreResult<()> {
-    serde_json::from_str::<JudgmentBasis>(text).map_err(|error| StoreError::InvalidInput {
-        detail: format!("{field} must be JudgmentBasis JSON: {error}"),
+    serde_json::from_str::<PersistedJudgmentBasis>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("{field} must be JudgmentBasis JSON: {error}"),
+        }
     })?;
     Ok(())
+}
+
+fn validate_user_judgment_request_json(field: &'static str, text: &str) -> StoreResult<()> {
+    serde_json::from_str::<PersistedUserJudgmentRequest>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("{field} must be persisted user judgment request JSON: {error}"),
+        }
+    })?;
+    Ok(())
+}
+
+fn validate_user_judgment_resolution_json(field: &'static str, text: &str) -> StoreResult<()> {
+    serde_json::from_str::<PersistedUserJudgmentResolution>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("{field} must be persisted user judgment resolution JSON: {error}"),
+        }
+    })?;
+    Ok(())
+}
+
+fn validate_artifact_producer_json(field: &'static str, text: &str) -> StoreResult<()> {
+    serde_json::from_str::<PersistedArtifactProducer>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("{field} must be persisted artifact producer JSON: {error}"),
+        }
+    })?;
+    Ok(())
+}
+
+fn validate_artifact_provenance_metadata_json(field: &'static str, text: &str) -> StoreResult<()> {
+    serde_json::from_str::<PersistedArtifactProvenanceMetadata>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("{field} must be persisted artifact provenance metadata JSON: {error}"),
+        }
+    })?;
+    Ok(())
+}
+
+fn validate_evidence_coverage_json(field: &'static str, text: &str) -> StoreResult<()> {
+    serde_json::from_str::<Vec<EvidenceCoverageItem>>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("{field} must be persisted evidence coverage JSON: {error}"),
+        }
+    })?;
+    Ok(())
+}
+
+fn validate_state_refs_json(field: &'static str, text: &str) -> StoreResult<()> {
+    serde_json::from_str::<Vec<StateRecordRef>>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("{field} must be persisted StateRecordRef array JSON: {error}"),
+        }
+    })?;
+    Ok(())
+}
+
+fn validate_evidence_metadata_json(field: &'static str, text: &str) -> StoreResult<()> {
+    serde_json::from_str::<PersistedEvidenceMetadata>(text).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("{field} must be persisted evidence metadata JSON: {error}"),
+        }
+    })?;
+    Ok(())
+}
+
+fn decode_owner_json_text<T>(
+    table: &'static str,
+    record_ref: impl Into<String>,
+    logical_column: &'static str,
+    text: &str,
+) -> StoreResult<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let record_ref = record_ref.into();
+    serde_json::from_str(text)
+        .map_err(|_| StoreError::corrupt_owner_state_json(table, record_ref, logical_column))
 }
 
 fn decode_current_close_basis_column(
@@ -3488,9 +3652,7 @@ fn decode_current_close_basis_column(
     text: Option<&str>,
 ) -> StoreResult<Option<CurrentCloseBasis>> {
     text.map(|value| {
-        serde_json::from_str::<CurrentCloseBasis>(value).map_err(|_| {
-            StoreError::corrupt_owner_state_json("tasks", record_ref, "close_basis_json")
-        })
+        decode_owner_json_text::<CurrentCloseBasis>("tasks", record_ref, "close_basis_json", value)
     })
     .transpose()
 }
@@ -3500,9 +3662,12 @@ fn decode_judgment_basis_column(
     text: Option<&str>,
 ) -> StoreResult<Option<JudgmentBasis>> {
     text.map(|value| {
-        serde_json::from_str::<JudgmentBasis>(value).map_err(|_| {
-            StoreError::corrupt_owner_state_json("user_judgments", record_ref, "basis_json")
-        })
+        decode_owner_json_text::<PersistedJudgmentBasis>(
+            "user_judgments",
+            record_ref,
+            "basis_json",
+            value,
+        )
     })
     .transpose()
 }

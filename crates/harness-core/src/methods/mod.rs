@@ -25,8 +25,9 @@ use harness_types::{
     CurrentCloseBasis, DryRunSummary, DurableIdKind, EffectKind, ErrorCode, EvidenceCoverageItem,
     EvidenceCoverageState, EvidenceStatus, EvidenceSummary, GuaranteeDisplay, GuaranteeLevel,
     JsonObject, JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentKind, MethodAccessClass,
-    MethodName, NextActionKind, NextActionSummary, ObservedChanges, PlannedEffect,
-    PrepareWriteRequest, PrepareWriteResult, ProjectId, RecordId, RecordRunRequest,
+    MethodName, NextActionKind, NextActionSummary, ObservedChanges, PersistedEvidenceMetadata,
+    PersistedJudgmentBasis, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
+    PlannedEffect, PrepareWriteRequest, PrepareWriteResult, ProjectId, RecordId, RecordRunRequest,
     RecordRunResult, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState,
     RequestedMode, RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId,
     RunId, RunSummary, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
@@ -275,19 +276,6 @@ fn prepare_or_response(
     }
 }
 
-fn request_member<T>(field: &'static str, object: &JsonObject, key: &str) -> CoreResult<T>
-where
-    T: serde::de::DeserializeOwned,
-{
-    let value = object
-        .get(key)
-        .cloned()
-        .ok_or_else(|| CorePipelineError::InvalidDispatch {
-            detail: format!("{field} missing"),
-        })?;
-    serde_json::from_value(value).map_err(CorePipelineError::from)
-}
-
 fn parse_storage_value<T>(field: &'static str, value: &str) -> CoreResult<T>
 where
     T: serde::de::DeserializeOwned,
@@ -297,12 +285,22 @@ where
     })
 }
 
-fn parse_json_text<T>(field: &'static str, text: &str) -> CoreResult<T>
+fn parse_owner_storage_value<T>(
+    table: &'static str,
+    record_ref: impl Into<String>,
+    logical_column: &'static str,
+    value: &str,
+) -> CoreResult<T>
 where
     T: serde::de::DeserializeOwned,
 {
-    serde_json::from_str(text).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_stored_json("project_state", field))
+    let record_ref = record_ref.into();
+    serde_json::from_value(Value::String(value.to_owned())).map_err(|_| {
+        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
+            table,
+            record_ref,
+            logical_column,
+        ))
     })
 }
 
@@ -350,6 +348,16 @@ where
     }
 }
 
+fn decode_optional_persisted_resolution(
+    table: &'static str,
+    record_ref: impl Into<String>,
+    logical_column: &'static str,
+    raw: Option<&str>,
+) -> CoreResult<Option<UserJudgmentResolution>> {
+    decode_optional_json::<PersistedUserJudgmentResolution>(table, record_ref, logical_column, raw)
+        .map(|resolution| resolution.map(Into::into))
+}
+
 fn decode_required_json_object(
     table: &'static str,
     record_ref: impl Into<String>,
@@ -362,8 +370,13 @@ fn decode_required_json_object(
 fn user_judgment_authority_from_record(
     record: &UserJudgmentRecord,
 ) -> CoreResult<JudgmentAuthority> {
-    let basis_status = parse_storage_value("user_judgments.basis_status", &record.basis_status)?;
-    let mut basis: Option<JudgmentBasis> = decode_optional_json(
+    let basis_status = parse_owner_storage_value(
+        "user_judgments",
+        record.judgment_id.clone(),
+        "basis_status",
+        &record.basis_status,
+    )?;
+    let mut basis: Option<JudgmentBasis> = decode_optional_json::<PersistedJudgmentBasis>(
         "user_judgments",
         record.judgment_id.clone(),
         "basis_json",
@@ -372,20 +385,59 @@ fn user_judgment_authority_from_record(
     if let Some(basis) = &mut basis {
         basis.compatibility_status = basis_status;
     }
+    let judgment_kind = parse_owner_storage_value(
+        "user_judgments",
+        record.judgment_id.clone(),
+        "judgment_kind",
+        &record.judgment_kind,
+    )?;
+    let status = parse_owner_storage_value(
+        "user_judgments",
+        record.judgment_id.clone(),
+        "status",
+        &record.status,
+    )?;
+    let resolution = decode_optional_persisted_resolution(
+        "user_judgments",
+        record.judgment_id.clone(),
+        "resolution_json",
+        record.resolution_json.as_deref(),
+    )?;
+    if resolution.as_ref().is_some_and(|resolution| {
+        !stored_answer_branch_matches_kind(judgment_kind, &resolution.answer)
+    }) {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_json(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "resolution_json",
+            ),
+        ));
+    }
     Ok(JudgmentAuthority {
         judgment_id: record.judgment_id.clone(),
         task_id: TaskId::new(record.task_id.clone()),
-        judgment_kind: parse_storage_value("user_judgments.judgment_kind", &record.judgment_kind)?,
-        status: parse_storage_value("user_judgments.status", &record.status)?,
+        judgment_kind,
+        status,
         basis_status,
         basis,
-        resolution: decode_optional_json(
-            "user_judgments",
-            record.judgment_id.clone(),
-            "resolution_json",
-            record.resolution_json.as_deref(),
-        )?,
+        resolution,
     })
+}
+
+fn stored_answer_branch_matches_kind(
+    judgment_kind: JudgmentKind,
+    answer: &RecordUserJudgmentPayload,
+) -> bool {
+    match judgment_kind {
+        JudgmentKind::ProductDecision => answer.product_decision.is_some(),
+        JudgmentKind::TechnicalDecision => answer.technical_decision.is_some(),
+        JudgmentKind::ScopeDecision => answer.scope_decision.is_some(),
+        JudgmentKind::SensitiveApproval => answer.sensitive_action_scope.is_some(),
+        JudgmentKind::FinalAcceptance => answer.final_acceptance.is_some(),
+        JudgmentKind::ResidualRiskAcceptance => answer.residual_risk_acceptance.is_some(),
+        JudgmentKind::Cancellation => answer.cancellation.is_some(),
+    }
 }
 
 fn resolved_judgment_authorities_for_plan(
@@ -1646,7 +1698,7 @@ fn invalid_storage<T>(field: &'static str) -> CoreResult<T> {
     )))
 }
 
-fn display_json_object_lossy(text: &str) -> JsonObject {
+fn display_only_json_object_lossy(text: &str) -> JsonObject {
     serde_json::from_str::<Value>(text)
         .ok()
         .and_then(|value| match value {

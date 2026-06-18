@@ -1272,11 +1272,17 @@ fn answer_branch_matches_kind(
 }
 
 fn user_judgment_from_record(record: &UserJudgmentRecord) -> CoreResult<UserJudgment> {
-    let request = decode_required_json_object(
+    let request: PersistedUserJudgmentRequest = decode_required_json(
         "user_judgments",
         record.judgment_id.clone(),
         "request_json",
         Some(&record.request_json),
+    )?;
+    let _artifact_refs: Vec<ArtifactRef> = decode_required_json(
+        "user_judgments",
+        record.judgment_id.clone(),
+        "artifact_refs_json",
+        Some(&record.artifact_refs_json),
     )?;
     let authority = user_judgment_authority_from_record(record)?;
     Ok(UserJudgment {
@@ -1286,33 +1292,30 @@ fn user_judgment_from_record(record: &UserJudgmentRecord) -> CoreResult<UserJudg
         change_unit_id: record.change_unit_id.clone().map(ChangeUnitId::new),
         judgment_kind: authority.judgment_kind,
         status: authority.status,
-        presentation: request_member(
-            "user_judgments.request_json.presentation",
-            &request,
-            "presentation",
+        presentation: request.presentation,
+        question: request.question,
+        options: decode_required_json(
+            "user_judgments",
+            record.judgment_id.clone(),
+            "options_json",
+            Some(&record.options_json),
         )?,
-        question: string_member(&request, "question").ok_or_else(|| {
-            CorePipelineError::InvalidDispatch {
-                detail: "user_judgments.request_json.question missing".to_owned(),
-            }
-        })?,
-        options: parse_json_text("user_judgments.options_json", &record.options_json)?,
-        context: parse_json_text("user_judgments.context_json", &record.context_json)?,
-        affected_refs: parse_json_text(
-            "user_judgments.affected_refs_json",
-            &record.affected_refs_json,
+        context: decode_required_json(
+            "user_judgments",
+            record.judgment_id.clone(),
+            "context_json",
+            Some(&record.context_json),
+        )?,
+        affected_refs: decode_required_json(
+            "user_judgments",
+            record.judgment_id.clone(),
+            "affected_refs_json",
+            Some(&record.affected_refs_json),
         )?,
         basis: authority.basis,
-        required_for: request_member(
-            "user_judgments.request_json.required_for",
-            &request,
-            "required_for",
-        )?,
+        required_for: request.required_for,
         resolution: authority.resolution,
-        expires_at: request
-            .get("expires_at")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
+        expires_at: request.expires_at.into_option(),
         created_at: record.requested_at.clone(),
         resolved_at: record.resolved_at.clone(),
     })

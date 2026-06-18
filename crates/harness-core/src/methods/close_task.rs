@@ -948,6 +948,20 @@ pub(super) fn close_evidence_summary(
         })
         .transpose()?
         .unwrap_or_default();
+    if let Some(record) = record {
+        let _supporting_refs: Vec<StateRecordRef> = decode_required_json(
+            "evidence_summaries",
+            record.evidence_summary_id.clone(),
+            "supporting_refs_json",
+            Some(&record.supporting_refs_json),
+        )?;
+        let _gap_refs: Vec<StateRecordRef> = decode_required_json(
+            "evidence_summaries",
+            record.evidence_summary_id.clone(),
+            "gap_refs_json",
+            Some(&record.gap_refs_json),
+        )?;
+    }
     for item in &mut coverage_items {
         if required_set.contains(&item.claim) {
             item.required_for_close = true;
@@ -976,27 +990,36 @@ pub(super) fn close_evidence_summary(
     );
     let status = if coverage_items.is_empty() {
         record
-            .map(|record| parse_storage_value("evidence_summaries.status", &record.status))
+            .map(|record| {
+                parse_owner_storage_value(
+                    "evidence_summaries",
+                    record.evidence_summary_id.clone(),
+                    "status",
+                    &record.status,
+                )
+            })
             .transpose()?
             .unwrap_or(EvidenceStatus::Unknown)
     } else {
         evidence_status_for_items(&coverage_items)
     };
-    let updated_by_run_ref = record.and_then(|record| {
-        string_member(
-            &display_json_object_lossy(&record.metadata_json),
-            "updated_by_run_id",
-        )
-        .map(|run_id| {
-            state_ref(
+    let updated_by_run_ref = record
+        .map(|record| {
+            let metadata: PersistedEvidenceMetadata = decode_required_json(
+                "evidence_summaries",
+                record.evidence_summary_id.clone(),
+                "metadata_json",
+                Some(&record.metadata_json),
+            )?;
+            Ok::<_, CorePipelineError>(state_ref(
                 StateRecordKind::Run,
-                &run_id,
+                metadata.updated_by_run_id.as_str(),
                 project_id,
                 Some(task_id),
                 Some(state_version),
-            )
+            ))
         })
-    });
+        .transpose()?;
 
     Ok(Some(EvidenceSummary {
         status,
@@ -1149,12 +1172,19 @@ fn unavailable_close_artifact_refs(
                         error,
                     )))
                 })?;
+            let stored_available = stored_artifact_is_available(&stored)?;
+            let stored_redaction_state: RedactionState = parse_owner_storage_value(
+                "artifacts",
+                stored.artifact_id.clone(),
+                "redaction_state",
+                &stored.redaction_state,
+            )?;
             if stored.project_id != request.envelope.project_id.as_str()
                 || stored.task_id != request.task_id.as_str()
-                || stored.status != "available"
+                || !stored_available
                 || stored.sha256.as_deref() != Some(artifact_ref.sha256.as_str())
                 || stored.size_bytes != Some(artifact_ref.size_bytes)
-                || stored.redaction_state != redaction_state_value(artifact_ref.redaction_state)
+                || stored_redaction_state != artifact_ref.redaction_state
                 || !owner_link_exists
             {
                 unavailable.push(state_ref);
@@ -1211,12 +1241,29 @@ fn close_basis_artifact_ref_unavailable(
     Ok(stored
         .as_ref()
         .map(|record| {
-            record.project_id != request.envelope.project_id.as_str()
+            let available = stored_artifact_is_available(record)?;
+            let unavailable = record.project_id != request.envelope.project_id.as_str()
                 || record.task_id != request.task_id.as_str()
-                || record.status != "available"
-                || !owner_link_exists
+                || !available
+                || !owner_link_exists;
+            Ok::<_, CorePipelineError>(unavailable)
         })
+        .transpose()?
         .unwrap_or(true))
+}
+
+fn stored_artifact_is_available(record: &StoredArtifactRecord) -> CoreResult<bool> {
+    match record.status.as_str() {
+        "available" => Ok(true),
+        "missing" | "integrity_failed" | "unavailable" => Ok(false),
+        _ => Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                "artifacts",
+                record.artifact_id.clone(),
+                "status",
+            ),
+        )),
+    }
 }
 
 fn has_current_final_acceptance(

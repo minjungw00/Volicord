@@ -6,8 +6,8 @@ use serde_json::{Map, Value};
 
 use crate::ids::{
     ArtifactId, ArtifactInputId, BaselineRef, ChangeUnitId, EventId, IdempotencyKey, ProjectId,
-    RecordId, RequestId, RiskId, StagedArtifactHandleId, StorageRef, SurfaceId, SurfaceInstanceId,
-    TaskId, UserJudgmentId, UserJudgmentOptionId,
+    RecordId, RequestId, RiskId, RunId, StagedArtifactHandleId, StorageRef, SurfaceId,
+    SurfaceInstanceId, TaskId, UserJudgmentId, UserJudgmentOptionId,
 };
 use crate::values::{
     ActorKind, ArtifactAvailability, ArtifactInputSourceKind, CloseReadinessBlockerCategory,
@@ -417,6 +417,13 @@ pub struct EvidenceCoverageItem {
     pub gap_refs: Vec<StateRecordRef>,
 }
 
+/// Persisted audit metadata for an evidence summary row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedEvidenceMetadata {
+    pub updated_by_run_id: RunId,
+}
+
 /// Recorded run summary.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RunSummary {
@@ -545,6 +552,39 @@ pub struct ArtifactRef {
     pub storage_ref: RequiredNullable<StorageRef>,
 }
 
+/// Persisted producer identity facts for a durable artifact row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedArtifactProducer {
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub content_type: Option<String>,
+    pub created_by_surface_id: SurfaceId,
+    pub created_by_surface_instance_id: SurfaceInstanceId,
+    pub artifact_input_id: ArtifactInputId,
+    #[serde(default)]
+    pub relation_hint: RequiredNullable<String>,
+    #[serde(default)]
+    pub claim: RequiredNullable<String>,
+}
+
+/// Persisted provenance facts for a durable artifact row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedArtifactProvenance {
+    pub source_kind: ArtifactInputSourceKind,
+    pub producer_run_id: RunId,
+    pub source_staging_handle_id: StagedArtifactHandleId,
+}
+
+/// Persisted JSON metadata used to complete artifact provenance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedArtifactProvenanceMetadata {
+    pub source_kind: ArtifactInputSourceKind,
+}
+
 /// Transient staged-artifact handle shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -615,6 +655,19 @@ pub struct JudgmentBasis {
     pub compatibility_status: JudgmentBasisCompatibilityStatus,
 }
 
+/// Stored shape for `user_judgments.basis_json`.
+pub type PersistedJudgmentBasis = JudgmentBasis;
+
+/// Stored shape for `user_judgments.request_json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedUserJudgmentRequest {
+    pub presentation: JudgmentPresentation,
+    pub question: String,
+    pub required_for: JudgmentRequiredFor,
+    pub expires_at: RequiredNullable<String>,
+}
+
 /// Proposed focused judgment shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct UserJudgmentCandidate {
@@ -660,6 +713,59 @@ pub struct UserJudgmentResolution {
     pub resolved_by_actor_kind: ActorKind,
 }
 
+/// Stored shape for `user_judgments.resolution_json`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PersistedUserJudgmentResolution {
+    pub selected_option_id: UserJudgmentOptionId,
+    pub answer: RecordUserJudgmentPayload,
+    pub note: Option<String>,
+    pub accepted_risks: Vec<AcceptedRiskInput>,
+    pub resolved_by_actor_kind: ActorKind,
+}
+
+impl From<PersistedUserJudgmentResolution> for UserJudgmentResolution {
+    fn from(resolution: PersistedUserJudgmentResolution) -> Self {
+        Self {
+            selected_option_id: resolution.selected_option_id,
+            answer: resolution.answer,
+            note: resolution.note,
+            accepted_risks: resolution.accepted_risks,
+            resolved_by_actor_kind: resolution.resolved_by_actor_kind,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PersistedUserJudgmentResolution {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            selected_option_id: UserJudgmentOptionId,
+            answer: RecordUserJudgmentPayload,
+            note: Option<String>,
+            accepted_risks: Vec<AcceptedRiskInput>,
+            resolved_by_actor_kind: ActorKind,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        if populated_judgment_answer_branches(&wire.answer) != 1 {
+            return Err(serde::de::Error::custom(
+                "persisted judgment resolution must populate exactly one answer branch",
+            ));
+        }
+        Ok(Self {
+            selected_option_id: wire.selected_option_id,
+            answer: wire.answer,
+            note: wire.note,
+            accepted_risks: wire.accepted_risks,
+            resolved_by_actor_kind: wire.resolved_by_actor_kind,
+        })
+    }
+}
+
 /// Decision-specific judgment payload branches.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -697,4 +803,14 @@ pub struct AcceptedRiskInput {
     pub consequence: String,
     pub related_refs: Vec<StateRecordRef>,
     pub accepted_for_close: bool,
+}
+
+fn populated_judgment_answer_branches(answer: &RecordUserJudgmentPayload) -> usize {
+    usize::from(answer.product_decision.is_some())
+        + usize::from(answer.technical_decision.is_some())
+        + usize::from(answer.scope_decision.is_some())
+        + usize::from(answer.sensitive_action_scope.is_some())
+        + usize::from(answer.final_acceptance.is_some())
+        + usize::from(answer.residual_risk_acceptance.is_some())
+        + usize::from(answer.cancellation.is_some())
 }

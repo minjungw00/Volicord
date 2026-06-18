@@ -943,11 +943,16 @@ fn validate_close_assessment_artifact_ref(
     if record
         .as_ref()
         .map(|record| {
-            record.project_id == request.envelope.project_id.as_str()
-                && record.task_id == request.task_id.as_str()
-                && record.status == "available"
-                && owner_link_exists
+            let available = artifact_availability_from_stored_record(record)?
+                == ArtifactAvailability::Available;
+            Ok::<_, CorePipelineError>(
+                record.project_id == request.envelope.project_id.as_str()
+                    && record.task_id == request.task_id.as_str()
+                    && available
+                    && owner_link_exists,
+            )
         })
+        .transpose()?
         .unwrap_or(false)
     {
         Ok(())
@@ -1397,9 +1402,11 @@ fn plan_existing_artifact_input(
                 "existing artifact cannot be found",
             )))
         })?;
+    let artifact_available =
+        artifact_availability_from_stored_record(&record)? == ArtifactAvailability::Available;
     if record.task_id != request.task_id.as_str()
         || record.project_id != request.envelope.project_id.as_str()
-        || record.status != "available"
+        || !artifact_available
         || !store
             .artifact_has_task_owner_link(
                 existing_ref.artifact_id.as_str(),
@@ -1446,11 +1453,17 @@ fn plan_existing_artifact_input(
             "existing artifact size does not match the stored artifact",
         );
     }
+    let stored_redaction_state: RedactionState = parse_owner_storage_value(
+        "artifacts",
+        record.artifact_id.clone(),
+        "redaction_state",
+        &record.redaction_state,
+    )?;
     let expected_redaction = input
         .redaction_state
         .unwrap_or(existing_ref.redaction_state);
-    if record.redaction_state != redaction_state_value(existing_ref.redaction_state)
-        || record.redaction_state != redaction_state_value(expected_redaction)
+    if stored_redaction_state != existing_ref.redaction_state
+        || stored_redaction_state != expected_redaction
     {
         return artifact_input_validation_plan_error(
             request,
@@ -1642,58 +1655,69 @@ fn artifact_ref_from_stored_record(
     record: &StoredArtifactRecord,
     display_name: Option<String>,
 ) -> CoreResult<ArtifactRef> {
-    let producer = display_json_object_lossy(&record.producer_json);
     let task_id = TaskId::new(record.task_id.clone());
     Ok(ArtifactRef {
         artifact_id: ArtifactId::new(record.artifact_id.clone()),
         project_id: ProjectId::new(record.project_id.clone()),
         task_id: task_id.clone(),
         display_name: display_name
-            .or_else(|| string_member(&producer, "display_name"))
+            .or_else(|| record.producer.display_name.clone())
             .unwrap_or_else(|| record.artifact_id.clone()),
         content_type: record
             .content_type
             .clone()
+            .or_else(|| record.producer.content_type.clone())
             .unwrap_or_else(|| "application/octet-stream".to_owned()),
         sha256: record.sha256.clone().unwrap_or_default(),
         size_bytes: record.size_bytes.unwrap_or_default(),
-        redaction_state: parse_storage_value("artifacts.redaction_state", &record.redaction_state)?,
-        availability: match record.status.as_str() {
-            "available" => ArtifactAvailability::Available,
-            "missing" => ArtifactAvailability::Missing,
-            "integrity_failed" => ArtifactAvailability::IntegrityFailed,
-            "unavailable" => ArtifactAvailability::Unavailable,
-            _ => ArtifactAvailability::Unusable,
-        },
-        created_by_run_ref: record
-            .producer_run_id
-            .as_ref()
-            .map(|run_id| {
-                state_ref(
-                    StateRecordKind::Run,
-                    run_id,
-                    &ProjectId::new(record.project_id.clone()),
-                    Some(&task_id),
-                    None,
-                )
-            })
-            .into(),
-        created_by_surface_id: string_member(&producer, "created_by_surface_id")
-            .map(SurfaceId::new)
-            .into(),
-        created_by_surface_instance_id: string_member(&producer, "created_by_surface_instance_id")
-            .map(SurfaceInstanceId::new)
-            .into(),
+        redaction_state: parse_owner_storage_value(
+            "artifacts",
+            record.artifact_id.clone(),
+            "redaction_state",
+            &record.redaction_state,
+        )?,
+        availability: artifact_availability_from_stored_record(record)?,
+        created_by_run_ref: Some(state_ref(
+            StateRecordKind::Run,
+            record.provenance.producer_run_id.as_str(),
+            &ProjectId::new(record.project_id.clone()),
+            Some(&task_id),
+            None,
+        ))
+        .into(),
+        created_by_surface_id: Some(record.producer.created_by_surface_id.clone()).into(),
+        created_by_surface_instance_id: Some(
+            record.producer.created_by_surface_instance_id.clone(),
+        )
+        .into(),
         storage_ref: Some(StorageRef::new(record.uri.clone())).into(),
     })
 }
 
 fn staged_artifact_display_name(record: &StoredArtifactStagingRecord) -> String {
     string_member(
-        &display_json_object_lossy(&record.artifact_json),
+        &display_only_json_object_lossy(&record.artifact_json),
         "display_name",
     )
     .unwrap_or_else(|| record.handle_id.clone())
+}
+
+fn artifact_availability_from_stored_record(
+    record: &StoredArtifactRecord,
+) -> CoreResult<ArtifactAvailability> {
+    match record.status.as_str() {
+        "available" => Ok(ArtifactAvailability::Available),
+        "missing" => Ok(ArtifactAvailability::Missing),
+        "integrity_failed" => Ok(ArtifactAvailability::IntegrityFailed),
+        "unavailable" => Ok(ArtifactAvailability::Unavailable),
+        _ => Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                "artifacts",
+                record.artifact_id.clone(),
+                "status",
+            ),
+        )),
+    }
 }
 
 fn artifact_link_metadata(input: &ArtifactInput) -> CoreResult<String> {

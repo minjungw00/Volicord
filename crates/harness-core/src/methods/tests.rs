@@ -842,6 +842,7 @@ fn invalid_stored_method_owned_json_routes_to_structured_unavailability(
                 AND judgment_id = ?2",
         rusqlite::params![PROJECT_ID, judgment_id],
     )?;
+    let before = harness.counts()?;
 
     let response = harness.service.record_user_judgment(
         record_judgment_request(
@@ -856,12 +857,14 @@ fn invalid_stored_method_owned_json_routes_to_structured_unavailability(
         invocation(AccessClass::CoreMutation),
     )?;
 
-    assert_store_rejection(&response, "MCP_UNAVAILABLE", "corrupt_stored_json");
-    assert_eq!(
-        response.response_value["errors"][0]["details"]["field"],
-        "user_judgments.options_json"
+    assert_owner_state_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "options_json",
+        &harness.runtime_home_path,
     );
-    assert_public_response_has_no_internal_leak(&response, &harness.runtime_home_path);
+    assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
@@ -4899,6 +4902,628 @@ fn malformed_optional_resolution_json_rejects_close_readiness() -> Result<(), Bo
 }
 
 #[test]
+fn stored_judgment_request_wrong_field_type_rejects_record_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_request_type")?;
+    let judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_bad_request_type",
+            "idem_bad_request_type",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    let corrupt_request_json = r#"{"presentation":17,"question":"must not leak secret-request-path","required_for":"close","expires_at":null}"#;
+    set_user_judgment_owner_json(
+        &harness,
+        &judgment_id,
+        "request_json",
+        Some(corrupt_request_json),
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_record_bad_request_type",
+            "idem_record_bad_request_type",
+            Some(3),
+            &task_id,
+            &judgment_id,
+            JudgmentKind::ProductDecision,
+            answer_payload(JudgmentKind::ProductDecision),
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "request_json",
+        &harness.runtime_home_path,
+    );
+    assert_public_response_omits(&response, "secret-request-path");
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
+    Ok(())
+}
+
+#[test]
+fn stored_judgment_request_missing_required_field_rejects_record_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_request_missing")?;
+    let judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_bad_request_missing",
+            "idem_bad_request_missing",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    let corrupt_request_json =
+        r#"{"presentation":"short","required_for":"close","expires_at":null}"#;
+    set_user_judgment_owner_json(
+        &harness,
+        &judgment_id,
+        "request_json",
+        Some(corrupt_request_json),
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_record_bad_request_missing",
+            "idem_record_bad_request_missing",
+            Some(3),
+            &task_id,
+            &judgment_id,
+            JudgmentKind::ProductDecision,
+            answer_payload(JudgmentKind::ProductDecision),
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "request_json",
+        &harness.runtime_home_path,
+    );
+    assert_public_response_omits(&response, corrupt_request_json);
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
+    Ok(())
+}
+
+#[test]
+fn stored_judgment_resolution_incompatible_branches_rejects_close_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "bad_resolution_branch")?;
+    let after_basis = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "bad_resolution_branch",
+        true,
+    )?;
+    let judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_bad_resolution_branch_judgment",
+            "idem_bad_resolution_branch_judgment",
+            false,
+            Some(after_basis),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::FinalAcceptance,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    set_user_judgment_resolution_json(
+        &harness,
+        &judgment_id,
+        Some(
+            r#"{
+                "selected_option_id":"accept",
+                "answer":{
+                    "product_decision":{"judgment":{"decision":"accepted"}},
+                    "technical_decision":null,
+                    "scope_decision":null,
+                    "sensitive_action_scope":null,
+                    "final_acceptance":{"judgment":{"decision":"accepted"}},
+                    "residual_risk_acceptance":null,
+                    "cancellation":null
+                },
+                "note":null,
+                "accepted_risks":[],
+                "resolved_by_actor_kind":"user"
+            }"#,
+        ),
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_bad_resolution_branch",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "resolution_json",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn stored_judgment_basis_invalid_revision_type_rejects_record_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_basis_revision")?;
+    let judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_bad_basis_revision",
+            "idem_bad_basis_revision",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    set_user_judgment_owner_json(
+        &harness,
+        &judgment_id,
+        "basis_json",
+        Some(
+            &json!({
+                "task_id": task_id,
+                "change_unit_id": change_unit_id,
+                "scope_revision": "not-a-revision",
+                "close_basis_revision": null,
+                "baseline_ref": null,
+                "result_refs": [],
+                "residual_risk_ids": [],
+                "sensitive_action_scope": null,
+                "created_at_state_version": 3,
+                "compatibility_status": "current"
+            })
+            .to_string(),
+        ),
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_record_bad_basis_revision",
+            "idem_record_bad_basis_revision",
+            Some(3),
+            &task_id,
+            &judgment_id,
+            JudgmentKind::ProductDecision,
+            answer_payload(JudgmentKind::ProductDecision),
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "basis_json",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
+    Ok(())
+}
+
+#[test]
+fn stored_accepted_risk_missing_risk_id_rejects_close_without_effect() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_accepted_risk")?;
+    let (after_basis, risk_ids) = record_close_basis_with_risks(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "bad_accepted_risk",
+        vec![residual_risk_input("Risk requiring explicit acceptance.")],
+    )?;
+    let judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_bad_accepted_risk_judgment",
+            "idem_bad_accepted_risk_judgment",
+            false,
+            Some(after_basis),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ResidualRiskAcceptance,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    set_user_judgment_resolution_json(
+        &harness,
+        &judgment_id,
+        Some(
+            &json!({
+                "selected_option_id": "accept",
+                "answer": {
+                    "product_decision": null,
+                    "technical_decision": null,
+                    "scope_decision": null,
+                    "sensitive_action_scope": null,
+                    "final_acceptance": null,
+                    "residual_risk_acceptance": { "risk_ids": risk_ids },
+                    "cancellation": null
+                },
+                "note": null,
+                "accepted_risks": [{
+                    "summary": "Risk accepted without a persisted risk_id.",
+                    "consequence": "The missing risk identity must fail closed.",
+                    "related_refs": [],
+                    "accepted_for_close": true
+                }],
+                "resolved_by_actor_kind": "user"
+            })
+            .to_string(),
+        ),
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_bad_accepted_risk",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "resolution_json",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn malformed_artifact_producer_json_rejects_existing_artifact_run_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_producer")?;
+    let (state_version, artifact_ref) =
+        promote_artifact_for_record_run(&harness, &task_id, &change_unit_id, 2, "bad_producer")?;
+    let artifact_id = artifact_ref.artifact_id.as_str().to_owned();
+    set_artifact_owner_json(
+        &harness,
+        &artifact_id,
+        "producer_json",
+        corrupt_owner_json(),
+    )?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_reuse_bad_producer",
+        "idem_reuse_bad_producer",
+        false,
+        Some(state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![existing_artifact_input(
+        "artifact_input_bad_producer",
+        artifact_ref,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+
+    assert_owner_state_rejection(
+        &response,
+        "artifacts",
+        &artifact_id,
+        "producer_json",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn artifact_provenance_missing_source_ref_rejects_close_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_provenance")?;
+    let (state_version, artifact_ref) =
+        promote_artifact_for_record_run(&harness, &task_id, &change_unit_id, 2, "bad_provenance")?;
+    let artifact_id = artifact_ref.artifact_id.as_str().to_owned();
+    let artifact_state_ref = StateRecordRef {
+        record_kind: StateRecordKind::Artifact,
+        record_id: RecordId::new(&artifact_id),
+        project_id: ProjectId::new(PROJECT_ID),
+        task_id: Some(TaskId::new(&task_id)).into(),
+        state_version: Some(state_version).into(),
+    };
+    let mut basis_request = record_run_request(
+        "req_basis_bad_provenance",
+        "idem_basis_bad_provenance",
+        false,
+        Some(state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    basis_request.artifact_inputs = vec![existing_artifact_input(
+        "artifact_input_bad_provenance_basis",
+        artifact_ref,
+    )];
+    basis_request.close_assessment = Some(harness_types::CloseAssessmentInput {
+        result_summary: "Close basis references the registered artifact.".to_owned(),
+        result_refs: vec![artifact_state_ref],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+    let basis_response = harness
+        .service
+        .record_run(basis_request, invocation(AccessClass::RunRecording))?;
+    assert_eq!(
+        basis_response.response_value["base"]["response_kind"],
+        "result"
+    );
+    clear_artifact_source_staging_handle(&harness, &artifact_id)?;
+    let before = harness.counts()?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_bad_provenance",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_owner_state_value_rejection(
+        &response,
+        "artifacts",
+        &artifact_id,
+        "source_staging_handle_id",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn malformed_evidence_coverage_rejects_status_without_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "bad_evidence_coverage")?;
+    record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "bad_evidence_coverage",
+        true,
+    )?;
+    let evidence_summary_id = latest_evidence_summary_id(&harness, &task_id)?;
+    let corrupt_coverage_json =
+        r#"{"claim":"secret-evidence-coverage-path","coverage_state":"supported"}"#;
+    set_evidence_summary_owner_json(
+        &harness,
+        &evidence_summary_id,
+        "coverage_json",
+        corrupt_coverage_json,
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_bad_evidence_coverage",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "evidence_summaries",
+        &evidence_summary_id,
+        "coverage_json",
+        &harness.runtime_home_path,
+    );
+    assert_public_response_omits(&response, "secret-evidence-coverage-path");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn malformed_evidence_source_refs_rejects_close_without_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_evidence_refs")?;
+    record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "bad_evidence_refs",
+        true,
+    )?;
+    let evidence_summary_id = latest_evidence_summary_id(&harness, &task_id)?;
+    set_evidence_summary_owner_json(
+        &harness,
+        &evidence_summary_id,
+        "supporting_refs_json",
+        r#"{"record_kind":"run"}"#,
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_bad_evidence_refs",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "evidence_summaries",
+        &evidence_summary_id,
+        "supporting_refs_json",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn malformed_evidence_metadata_rejects_status_without_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "bad_evidence_metadata")?;
+    record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "bad_evidence_metadata",
+        true,
+    )?;
+    let evidence_summary_id = latest_evidence_summary_id(&harness, &task_id)?;
+    set_evidence_summary_owner_json(
+        &harness,
+        &evidence_summary_id,
+        "metadata_json",
+        r#"{"updated_by_run_id":123}"#,
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_bad_evidence_metadata",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_owner_state_rejection(
+        &response,
+        "evidence_summaries",
+        &evidence_summary_id,
+        "metadata_json",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn display_only_staged_artifact_metadata_corruption_falls_back() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "display_only_artifact")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "display_only_artifact", 2)?;
+    let handle_id = handle.handle_id.as_str().to_owned();
+    set_artifact_staging_artifact_json(&harness, &handle_id, corrupt_owner_json())?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_display_only_artifact",
+        "idem_display_only_artifact",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_display_only",
+        handle,
+        Some("display_only"),
+        Some("Display-only artifact metadata may fall back."),
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        response.response_value["registered_artifacts"][0]["display_name"],
+        handle_id
+    );
+    assert_public_response_omits(&response, corrupt_owner_json());
+    assert_eq!(harness.counts()?.state_version, before.state_version + 1);
+    Ok(())
+}
+
+#[test]
 fn close_task_complete_blocks_missing_final_acceptance() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "close_no_final")?;
@@ -5251,7 +5876,42 @@ fn assert_owner_state_rejection(
     logical_column: &str,
     runtime_home_path: &Path,
 ) {
-    assert_store_rejection(response, "MCP_UNAVAILABLE", "corrupt_stored_json");
+    assert_owner_state_rejection_with_category(
+        response,
+        table,
+        record_ref,
+        logical_column,
+        "corrupt_stored_json",
+        runtime_home_path,
+    )
+}
+
+fn assert_owner_state_value_rejection(
+    response: &PipelineResponse,
+    table: &str,
+    record_ref: &str,
+    logical_column: &str,
+    runtime_home_path: &Path,
+) {
+    assert_owner_state_rejection_with_category(
+        response,
+        table,
+        record_ref,
+        logical_column,
+        "corrupt_stored_value",
+        runtime_home_path,
+    )
+}
+
+fn assert_owner_state_rejection_with_category(
+    response: &PipelineResponse,
+    table: &str,
+    record_ref: &str,
+    logical_column: &str,
+    corruption_category: &str,
+    runtime_home_path: &Path,
+) {
+    assert_store_rejection(response, "MCP_UNAVAILABLE", corruption_category);
     assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
     let details = &response.response_value["errors"][0]["details"];
     assert_eq!(details["owner_state_error"]["table"], table);
@@ -5262,13 +5922,21 @@ fn assert_owner_state_rejection(
     );
     assert_eq!(
         details["owner_state_error"]["corruption_category"],
-        "corrupt_stored_json"
+        corruption_category
     );
     assert!(!response.response_json.contains(corrupt_owner_json()));
     assert!(!response
         .response_json
         .contains("/home/minjungw00/Projects/Harness_Project/secret"));
     assert_public_response_has_no_internal_leak(response, runtime_home_path);
+}
+
+fn assert_public_response_omits(response: &PipelineResponse, fragment: &str) {
+    assert!(
+        !response.response_json.contains(fragment),
+        "public response leaked forbidden fragment {fragment}: {}",
+        response.response_json
+    );
 }
 
 fn assert_public_response_has_no_internal_leak(
@@ -6672,6 +7340,206 @@ fn set_user_judgment_resolution_json(
         rusqlite::params![PROJECT_ID, judgment_id, value],
     )?;
     Ok(())
+}
+
+fn set_user_judgment_owner_json(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    logical_column: &str,
+    value: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let sql = match logical_column {
+        "request_json" => {
+            "UPDATE user_judgments
+                SET request_json = ?3
+              WHERE project_id = ?1
+                AND judgment_id = ?2"
+        }
+        "basis_json" => {
+            "UPDATE user_judgments
+                SET basis_json = ?3
+              WHERE project_id = ?1
+                AND judgment_id = ?2"
+        }
+        "resolution_json" => {
+            "UPDATE user_judgments
+                SET resolution_json = ?3
+              WHERE project_id = ?1
+                AND judgment_id = ?2"
+        }
+        "artifact_refs_json" => {
+            "UPDATE user_judgments
+                SET artifact_refs_json = ?3
+              WHERE project_id = ?1
+                AND judgment_id = ?2"
+        }
+        _ => panic!("unsupported user-judgment owner JSON column {logical_column}"),
+    };
+    harness
+        .conn()?
+        .execute(sql, rusqlite::params![PROJECT_ID, judgment_id, value])?;
+    Ok(())
+}
+
+fn set_artifact_owner_json(
+    harness: &MethodHarness,
+    artifact_id: &str,
+    logical_column: &str,
+    value: &str,
+) -> Result<(), Box<dyn Error>> {
+    let sql = match logical_column {
+        "producer_json" => {
+            "UPDATE artifacts
+                SET producer_json = ?3
+              WHERE project_id = ?1
+                AND artifact_id = ?2"
+        }
+        "metadata_json" => {
+            "UPDATE artifacts
+                SET metadata_json = ?3
+              WHERE project_id = ?1
+                AND artifact_id = ?2"
+        }
+        _ => panic!("unsupported artifact owner JSON column {logical_column}"),
+    };
+    harness
+        .conn()?
+        .execute(sql, rusqlite::params![PROJECT_ID, artifact_id, value])?;
+    Ok(())
+}
+
+fn clear_artifact_source_staging_handle(
+    harness: &MethodHarness,
+    artifact_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    harness.conn()?.execute(
+        "UPDATE artifacts
+            SET source_staging_handle_id = NULL
+          WHERE project_id = ?1
+            AND artifact_id = ?2",
+        rusqlite::params![PROJECT_ID, artifact_id],
+    )?;
+    Ok(())
+}
+
+fn set_artifact_staging_artifact_json(
+    harness: &MethodHarness,
+    handle_id: &str,
+    value: &str,
+) -> Result<(), Box<dyn Error>> {
+    harness.conn()?.execute(
+        "UPDATE artifact_staging
+            SET artifact_json = ?3
+          WHERE project_id = ?1
+            AND handle_id = ?2",
+        rusqlite::params![PROJECT_ID, handle_id, value],
+    )?;
+    Ok(())
+}
+
+fn latest_evidence_summary_id(
+    harness: &MethodHarness,
+    task_id: &str,
+) -> Result<String, Box<dyn Error>> {
+    let conn = harness.conn()?;
+    Ok(conn.query_row(
+        "SELECT evidence_summary_id
+               FROM evidence_summaries
+              WHERE project_id = ?1
+                AND task_id = ?2
+              ORDER BY updated_at DESC, evidence_summary_id DESC
+              LIMIT 1",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?)
+}
+
+fn set_evidence_summary_owner_json(
+    harness: &MethodHarness,
+    evidence_summary_id: &str,
+    logical_column: &str,
+    value: &str,
+) -> Result<(), Box<dyn Error>> {
+    let sql = match logical_column {
+        "coverage_json" => {
+            "UPDATE evidence_summaries
+                SET coverage_json = ?3
+              WHERE project_id = ?1
+                AND evidence_summary_id = ?2"
+        }
+        "supporting_refs_json" => {
+            "UPDATE evidence_summaries
+                SET supporting_refs_json = ?3
+              WHERE project_id = ?1
+                AND evidence_summary_id = ?2"
+        }
+        "gap_refs_json" => {
+            "UPDATE evidence_summaries
+                SET gap_refs_json = ?3
+              WHERE project_id = ?1
+                AND evidence_summary_id = ?2"
+        }
+        "metadata_json" => {
+            "UPDATE evidence_summaries
+                SET metadata_json = ?3
+              WHERE project_id = ?1
+                AND evidence_summary_id = ?2"
+        }
+        _ => panic!("unsupported evidence summary owner JSON column {logical_column}"),
+    };
+    harness.conn()?.execute(
+        sql,
+        rusqlite::params![PROJECT_ID, evidence_summary_id, value],
+    )?;
+    Ok(())
+}
+
+fn promote_artifact_for_record_run(
+    harness: &MethodHarness,
+    task_id: &str,
+    change_unit_id: &str,
+    expected_state_version: u64,
+    suffix: &str,
+) -> Result<(u64, ArtifactRef), Box<dyn Error>> {
+    enable_record_run_capabilities(harness)?;
+    let handle = stage_artifact_for_record_run(harness, task_id, suffix, expected_state_version)?;
+    let mut request = record_run_request(
+        &format!("req_promote_artifact_{suffix}"),
+        &format!("idem_promote_artifact_{suffix}"),
+        false,
+        Some(expected_state_version),
+        task_id,
+        change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        &format!("artifact_input_{suffix}"),
+        handle,
+        Some("test_artifact"),
+        Some("Artifact registered for corruption coverage."),
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+    let state_version = response.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state_version should be present");
+    let artifact_ref: ArtifactRef =
+        serde_json::from_value(response.response_value["registered_artifacts"][0].clone())?;
+    Ok((state_version, artifact_ref))
+}
+
+fn existing_artifact_input(artifact_input_id: &str, artifact_ref: ArtifactRef) -> ArtifactInput {
+    ArtifactInput {
+        artifact_input_id: harness_types::ArtifactInputId::new(artifact_input_id),
+        source_kind: ArtifactInputSourceKind::ExistingArtifact,
+        staged_artifact_handle: None.into(),
+        existing_artifact_ref: Some(artifact_ref.clone()).into(),
+        relation_hint: Some("reuse_existing_artifact".to_owned()).into(),
+        claim: Some("Reused artifact for corruption coverage.".to_owned()).into(),
+        expected_sha256: Some(artifact_ref.sha256.clone()).into(),
+        expected_size_bytes: Some(artifact_ref.size_bytes).into(),
+        redaction_state: Some(artifact_ref.redaction_state).into(),
+    }
 }
 
 fn active_current_change_units(
