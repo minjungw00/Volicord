@@ -1,10 +1,12 @@
 use std::{error::Error, fs, path::Path};
 
-use harness_core::{rejected_response, tool_error, CoreService, InvocationContext};
+use chrono::{DateTime, Duration, Utc};
+use harness_core::{rejected_response, tool_error, Clock, CoreService, InvocationContext};
 use harness_test_support::core_fixtures::{
     answer_payload, artifact_input_for_handle, supported_evidence_update,
-    unsupported_evidence_update, CloseTaskFixture, CoreFixture, RecordJudgmentFixture,
-    UpdateScopeFixture, UserJudgmentFixture, DEFAULT_PRODUCT_PATH,
+    unsupported_evidence_update, ChangeUnitOwnerJsonColumn, CloseTaskFixture, CoreFixture,
+    RecordJudgmentFixture, TaskOwnerJsonColumn, UpdateScopeFixture, UserJudgmentFixture,
+    DEFAULT_PRODUCT_PATH,
 };
 use harness_types::{
     AccessClass, ChangeUnitOperation, CloseIntent, CloseReason, EffectKind, ErrorCode,
@@ -938,6 +940,455 @@ fn public_error_precedence_keeps_validation_primary() {
     assert_eq!(response.errors[1].code, ErrorCode::StateVersionConflict);
 }
 
+#[test]
+fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("corrupt_completion")?;
+    let service = core(&fixture);
+    let (task_id, _) = create_task_with_change_unit(&fixture, &service, "corrupt_completion")?;
+    fixture.set_task_owner_json_raw(
+        &task_id,
+        TaskOwnerJsonColumn::CompletionPolicy,
+        "{not valid json",
+    )?;
+    let before = fixture.counts()?;
+
+    let check = service.close_task(
+        fixture.close_task_request(CloseTaskFixture {
+            request_id: "req_corrupt_completion_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(&fixture, AccessClass::ReadStatus),
+    )?;
+    assert_owner_state_unavailable(&check.response_value, "tasks", "completion_policy_json");
+    assert_eq!(fixture.counts()?, before);
+
+    let complete = service.close_task(
+        fixture.close_task_request(CloseTaskFixture {
+            request_id: "req_corrupt_completion_complete",
+            idempotency_key: Some("idem_corrupt_completion_complete"),
+            dry_run: false,
+            expected_state_version: Some(before.state_version),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
+            superseding_task_id: None,
+        }),
+        invocation(&fixture, AccessClass::CoreMutation),
+    )?;
+    assert_owner_state_unavailable(&complete.response_value, "tasks", "completion_policy_json");
+    assert_eq!(fixture.counts()?, before);
+
+    let fixture = CoreFixture::new("corrupt_close_summary")?;
+    let service = core(&fixture);
+    let (task_id, _) = create_task_with_change_unit(&fixture, &service, "corrupt_close_summary")?;
+    fixture.set_task_owner_json_raw(&task_id, TaskOwnerJsonColumn::CloseSummary, "[")?;
+    let before = fixture.counts()?;
+    let check = service.close_task(
+        fixture.close_task_request(CloseTaskFixture {
+            request_id: "req_corrupt_close_summary",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(&fixture, AccessClass::ReadStatus),
+    )?;
+    assert_owner_state_unavailable(&check.response_value, "tasks", "close_summary_json");
+    assert_eq!(fixture.counts()?, before);
+
+    let fixture = CoreFixture::new("corrupt_close_basis")?;
+    let service = core(&fixture);
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&fixture, &service, "corrupt_close_basis")?;
+    fixture.set_change_unit_owner_json_raw(
+        &change_unit_id,
+        ChangeUnitOwnerJsonColumn::CloseBasis,
+        "{",
+    )?;
+    let before = fixture.counts()?;
+    let check = service.close_task(
+        fixture.close_task_request(CloseTaskFixture {
+            request_id: "req_corrupt_close_basis",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(&fixture, AccessClass::ReadStatus),
+    )?;
+    assert_owner_state_unavailable(&check.response_value, "change_units", "close_basis_json");
+    assert_eq!(fixture.counts()?, before);
+
+    let fixture = CoreFixture::new("corrupt_write_basis")?;
+    let service = core(&fixture);
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&fixture, &service, "corrupt_write_basis")?;
+    fixture.set_change_unit_owner_json_raw(
+        &change_unit_id,
+        ChangeUnitOwnerJsonColumn::WriteBasis,
+        "{",
+    )?;
+    let before = fixture.counts()?;
+    let prepare = service.prepare_write(
+        fixture.prepare_write_request(
+            "req_corrupt_write_basis",
+            "idem_corrupt_write_basis",
+            Some(before.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(&fixture, AccessClass::WriteAuthorization),
+    )?;
+    assert_owner_state_unavailable(&prepare.response_value, "change_units", "write_basis_json");
+    assert_eq!(fixture.counts()?, before);
+
+    let fixture = CoreFixture::new("corrupt_bounded_paths")?;
+    let service = core(&fixture);
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&fixture, &service, "corrupt_bounded_paths")?;
+    fixture.set_change_unit_owner_json_raw(
+        &change_unit_id,
+        ChangeUnitOwnerJsonColumn::BoundedPaths,
+        "{\"unexpected\":true}",
+    )?;
+    let before = fixture.counts()?;
+    let prepare = service.prepare_write(
+        fixture.prepare_write_request(
+            "req_corrupt_bounded_paths",
+            "idem_corrupt_bounded_paths",
+            Some(before.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(&fixture, AccessClass::WriteAuthorization),
+    )?;
+    assert_owner_state_unavailable(
+        &prepare.response_value,
+        "change_units",
+        "bounded_paths_json",
+    );
+    assert_eq!(fixture.counts()?, before);
+
+    let fixture = CoreFixture::new("corrupt_lifecycle")?;
+    let service = core(&fixture);
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&fixture, &service, "corrupt_lifecycle")?;
+    fixture.set_change_unit_owner_json_raw(
+        &change_unit_id,
+        ChangeUnitOwnerJsonColumn::Lifecycle,
+        "{",
+    )?;
+    let before = fixture.counts()?;
+    let check = service.close_task(
+        fixture.close_task_request(CloseTaskFixture {
+            request_id: "req_corrupt_lifecycle",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(&fixture, AccessClass::ReadStatus),
+    )?;
+    assert_owner_state_unavailable(&check.response_value, "change_units", "lifecycle_json");
+    assert_eq!(fixture.counts()?, before);
+
+    Ok(())
+}
+
+#[test]
+fn optional_owner_json_null_is_absent_but_malformed_text_fails_closed() -> Result<(), Box<dyn Error>>
+{
+    let null_fixture = CoreFixture::new("optional_null")?;
+    let null_service = core(&null_fixture);
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&null_fixture, &null_service, "optional_null")?;
+    let final_version = record_final_acceptance(
+        &null_fixture,
+        &null_service,
+        &task_id,
+        &change_unit_id,
+        2,
+        "optional_null",
+    )?;
+    let final_judgment_id = latest_judgment_id(&null_fixture)?;
+    null_fixture.set_user_judgment_resolution_raw(&final_judgment_id, None)?;
+    let before = null_fixture.counts()?;
+
+    let check = null_service.close_task(
+        null_fixture.close_task_request(CloseTaskFixture {
+            request_id: "req_optional_null_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(&null_fixture, AccessClass::ReadStatus),
+    )?;
+    assert_eq!(check.response_value["base"]["response_kind"], "result");
+    assert_close_blocker(&check.response_value, "missing_final_acceptance");
+    assert_eq!(null_fixture.counts()?, before);
+    assert_eq!(before.state_version, final_version);
+
+    let malformed_fixture = CoreFixture::new("optional_malformed")?;
+    let malformed_service = core(&malformed_fixture);
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&malformed_fixture, &malformed_service, "optional_bad")?;
+    record_final_acceptance(
+        &malformed_fixture,
+        &malformed_service,
+        &task_id,
+        &change_unit_id,
+        2,
+        "optional_bad",
+    )?;
+    let final_judgment_id = latest_judgment_id(&malformed_fixture)?;
+    malformed_fixture.set_user_judgment_resolution_raw(&final_judgment_id, Some("{"))?;
+    let before = malformed_fixture.counts()?;
+    let check = malformed_service.close_task(
+        malformed_fixture.close_task_request(CloseTaskFixture {
+            request_id: "req_optional_bad_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(&malformed_fixture, AccessClass::ReadStatus),
+    )?;
+    assert_owner_state_unavailable(&check.response_value, "user_judgments", "resolution_json");
+    assert_eq!(malformed_fixture.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn write_authorization_expiration_is_enforced_through_record_run() -> Result<(), Box<dyn Error>> {
+    let t0 = fixed_time("2026-01-01T00:00:00Z")?;
+
+    let usable = prepared_write_fixture("auth_usable", t0)?;
+    let before_usable = usable.fixture.counts()?;
+    let usable_response = service_at(&usable.fixture, t0 + Duration::seconds(14 * 60 + 59))
+        .record_run(
+            product_write_run(
+                &usable.fixture,
+                "req_auth_usable_run",
+                "idem_auth_usable_run",
+                before_usable.state_version,
+                &usable.task_id,
+                &usable.change_unit_id,
+                &usable.write_authorization_id,
+            ),
+            invocation(&usable.fixture, AccessClass::RunRecording),
+        )?;
+    assert_eq!(
+        usable_response.response_value["base"]["response_kind"],
+        "result"
+    );
+    assert_eq!(
+        usable
+            .fixture
+            .write_authorization_status(&usable.write_authorization_id)?,
+        "consumed"
+    );
+
+    let expired = prepared_write_fixture("auth_expired_exact", t0)?;
+    let before_expired = expired.fixture.counts()?;
+    let expired_response = service_at(&expired.fixture, t0 + Duration::minutes(15)).record_run(
+        product_write_run(
+            &expired.fixture,
+            "req_auth_expired_run",
+            "idem_auth_expired_run",
+            before_expired.state_version,
+            &expired.task_id,
+            &expired.change_unit_id,
+            &expired.write_authorization_id,
+        ),
+        invocation(&expired.fixture, AccessClass::RunRecording),
+    )?;
+    assert_rejected_code(
+        &expired_response.response_value,
+        "WRITE_AUTHORIZATION_INVALID",
+    );
+    assert_eq!(
+        expired_response.response_value["errors"][0]["details"]["authorization_reason"],
+        "expired"
+    );
+    assert_eq!(expired.fixture.counts()?, before_expired);
+    assert_eq!(
+        expired
+            .fixture
+            .write_authorization_status(&expired.write_authorization_id)?,
+        "active"
+    );
+
+    let capped = prepared_write_fixture("auth_capped", t0)?;
+    capped.fixture.set_write_authorization_timestamps(
+        &capped.write_authorization_id,
+        &format_time(t0),
+        &format_time(t0 + Duration::days(1)),
+    )?;
+    let before_capped = capped.fixture.counts()?;
+    let capped_response = service_at(&capped.fixture, t0 + Duration::minutes(15)).record_run(
+        product_write_run(
+            &capped.fixture,
+            "req_auth_capped_run",
+            "idem_auth_capped_run",
+            before_capped.state_version,
+            &capped.task_id,
+            &capped.change_unit_id,
+            &capped.write_authorization_id,
+        ),
+        invocation(&capped.fixture, AccessClass::RunRecording),
+    )?;
+    assert_rejected_code(
+        &capped_response.response_value,
+        "WRITE_AUTHORIZATION_INVALID",
+    );
+    assert_eq!(capped.fixture.counts()?, before_capped);
+
+    let stale = prepared_write_fixture("auth_stale_precedence", t0)?;
+    service_at(&stale.fixture, t0).update_scope(
+        stale.fixture.update_scope_request(UpdateScopeFixture {
+            request_id: "req_auth_stale_scope",
+            idempotency_key: "idem_auth_stale_scope",
+            dry_run: false,
+            expected_state_version: Some(stale.fixture.counts()?.state_version),
+            task_id: &stale.task_id,
+            operation: ChangeUnitOperation::ReplaceCurrent,
+            scope_summary: "Replacement scope before stale authorization use.",
+        }),
+        invocation(&stale.fixture, AccessClass::CoreMutation),
+    )?;
+    let current_change_unit_id = stale
+        .fixture
+        .current_change_unit_id(&stale.task_id)?
+        .expect("replacement Change Unit should be current");
+    let before_stale = stale.fixture.counts()?;
+    let stale_response = service_at(&stale.fixture, t0 + Duration::minutes(16)).record_run(
+        product_write_run(
+            &stale.fixture,
+            "req_auth_stale_run",
+            "idem_auth_stale_run",
+            before_stale.state_version,
+            &stale.task_id,
+            &current_change_unit_id,
+            &stale.write_authorization_id,
+        ),
+        invocation(&stale.fixture, AccessClass::RunRecording),
+    )?;
+    assert_rejected_code(&stale_response.response_value, "STATE_VERSION_CONFLICT");
+    assert_eq!(stale.fixture.counts()?, before_stale);
+    assert_eq!(
+        stale
+            .fixture
+            .write_authorization_status(&stale.write_authorization_id)?,
+        "stale"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn prepare_write_allocates_authorization_only_on_committed_allowed_effect(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("auth_allocation")?;
+    let service = core(&fixture);
+    let (task_id, change_unit_id) = create_task_with_change_unit(&fixture, &service, "auth_alloc")?;
+
+    let mut blocked = fixture.prepare_write_request(
+        "req_auth_alloc_blocked",
+        "idem_auth_alloc_blocked",
+        Some(2),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    blocked.intended_paths = vec!["src/out_of_scope.rs".to_owned()];
+    let before_blocked = fixture.counts()?;
+    let blocked_response = service.prepare_write(
+        blocked,
+        invocation(&fixture, AccessClass::WriteAuthorization),
+    )?;
+    assert_eq!(blocked_response.response_value["decision"], "blocked");
+    assert!(blocked_response.response_value["write_authorization_ref"].is_null());
+    assert_eq!(
+        fixture.counts()?.write_authorizations,
+        before_blocked.write_authorizations
+    );
+
+    let before_dry_run = fixture.counts()?;
+    let mut dry_run = fixture.prepare_write_request(
+        "req_auth_alloc_dry",
+        "idem_auth_alloc_dry",
+        Some(before_dry_run.state_version),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    dry_run.envelope.dry_run = true;
+    let dry_response = service.prepare_write(
+        dry_run,
+        invocation(&fixture, AccessClass::WriteAuthorization),
+    )?;
+    assert_eq!(
+        dry_response.response_value["base"]["response_kind"],
+        "dry_run"
+    );
+    assert_eq!(fixture.counts()?, before_dry_run);
+
+    let allowed_request = fixture.prepare_write_request(
+        "req_auth_alloc_allowed",
+        "idem_auth_alloc_allowed",
+        Some(before_dry_run.state_version),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    let allowed = service.prepare_write(
+        allowed_request.clone(),
+        invocation(&fixture, AccessClass::WriteAuthorization),
+    )?;
+    let after_allowed = fixture.counts()?;
+    let authorization_id = allowed.response_value["write_authorization_ref"]["record_id"]
+        .as_str()
+        .expect("allowed prepare_write should allocate an authorization")
+        .to_owned();
+    let timestamps = fixture.write_authorization_timestamps(&authorization_id)?;
+
+    let replay = service.prepare_write(
+        allowed_request,
+        invocation(&fixture, AccessClass::WriteAuthorization),
+    )?;
+    assert!(replay.replayed);
+    assert_eq!(replay.response_json, allowed.response_json);
+    assert_eq!(
+        replay.response_value["write_authorization_ref"]["record_id"],
+        authorization_id
+    );
+    assert_eq!(
+        fixture.write_authorization_timestamps(&authorization_id)?,
+        timestamps
+    );
+    assert_eq!(fixture.counts()?, after_allowed);
+    Ok(())
+}
+
 fn core(fixture: &CoreFixture) -> CoreService {
     CoreService::new(fixture.runtime_home_path())
 }
@@ -1014,6 +1465,89 @@ fn prepare_write_authorization(
             .expect("write authorization ref should be present")
             .to_owned(),
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FixedClock {
+    now: DateTime<Utc>,
+}
+
+impl Clock for FixedClock {
+    fn now(&self) -> DateTime<Utc> {
+        self.now
+    }
+}
+
+struct PreparedWriteFixture {
+    fixture: CoreFixture,
+    task_id: String,
+    change_unit_id: String,
+    write_authorization_id: String,
+}
+
+fn fixed_time(value: &str) -> Result<DateTime<Utc>, Box<dyn Error>> {
+    Ok(DateTime::parse_from_rfc3339(value)?.with_timezone(&Utc))
+}
+
+fn format_time(value: DateTime<Utc>) -> String {
+    value.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+fn service_at(fixture: &CoreFixture, now: DateTime<Utc>) -> CoreService {
+    CoreService::with_clock(fixture.runtime_home_path(), FixedClock { now })
+}
+
+fn prepared_write_fixture(
+    suffix: &str,
+    now: DateTime<Utc>,
+) -> Result<PreparedWriteFixture, Box<dyn Error>> {
+    let fixture = CoreFixture::new(suffix)?;
+    let service = service_at(&fixture, now);
+    let (task_id, change_unit_id) = create_task_with_change_unit(&fixture, &service, suffix)?;
+    let response = service.prepare_write(
+        fixture.prepare_write_request(
+            &format!("req_prepare_{suffix}"),
+            &format!("idem_prepare_{suffix}"),
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(&fixture, AccessClass::WriteAuthorization),
+    )?;
+    assert_eq!(response.response_value["decision"], "allowed");
+    let write_authorization_id = response.response_value["write_authorization_ref"]["record_id"]
+        .as_str()
+        .expect("write authorization ref should be present")
+        .to_owned();
+    Ok(PreparedWriteFixture {
+        fixture,
+        task_id,
+        change_unit_id,
+        write_authorization_id,
+    })
+}
+
+fn product_write_run(
+    fixture: &CoreFixture,
+    request_id: &str,
+    idempotency_key: &str,
+    expected_state_version: u64,
+    task_id: &str,
+    change_unit_id: &str,
+    write_authorization_id: &str,
+) -> harness_types::RecordRunRequest {
+    let mut request = fixture.record_run_request(
+        request_id,
+        idempotency_key,
+        false,
+        Some(expected_state_version),
+        task_id,
+        change_unit_id,
+    );
+    request.observed_changes.product_file_write_observed = true;
+    request.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
+    request.write_authorization_id = Some(WriteAuthorizationId::new(write_authorization_id)).into();
+    request
 }
 
 fn stage_artifact_for_record_run(
@@ -1155,6 +1689,32 @@ fn assert_close_blocker(response_value: &Value, code: &str) {
 fn assert_rejected_code(response_value: &Value, code: &str) {
     assert_eq!(response_value["base"]["response_kind"], "rejected");
     assert_eq!(response_value["errors"][0]["code"], code);
+}
+
+fn assert_owner_state_unavailable(response_value: &Value, table: &str, logical_column: &str) {
+    assert_rejected_code(response_value, "MCP_UNAVAILABLE");
+    let error = &response_value["errors"][0]["details"]["owner_state_error"];
+    assert_eq!(error["table"], table);
+    assert_eq!(error["logical_column"], logical_column);
+    assert!(
+        matches!(
+            error["corruption_category"].as_str(),
+            Some("corrupt_stored_json" | "corrupt_stored_value")
+        ),
+        "unexpected owner-state corruption details: {error:?}"
+    );
+}
+
+fn latest_judgment_id(fixture: &CoreFixture) -> Result<String, Box<dyn Error>> {
+    Ok(fixture.conn()?.query_row(
+        "SELECT judgment_id
+           FROM user_judgments
+          WHERE project_id = ?1
+          ORDER BY requested_at DESC, judgment_id DESC
+          LIMIT 1",
+        [fixture.project_id()],
+        |row| row.get(0),
+    )?)
 }
 
 fn assert_public_response_has_no_internal_leak(body: &str, runtime_home_path: &Path) {

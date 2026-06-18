@@ -5,6 +5,7 @@ edition.workspace = true
 publish = false
 
 [dev-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 harness-core = { path = "../../crates/harness-core" }
 harness-test-support = { path = "../../crates/harness-test-support" }
 harness-types = { path = "../../crates/harness-types" }

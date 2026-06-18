@@ -185,6 +185,7 @@ dependencies = [
 name = "harness-conformance-tests"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "harness-core",
  "harness-test-support",
  "harness-types",

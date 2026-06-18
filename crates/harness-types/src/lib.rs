@@ -359,6 +359,66 @@ mod tests {
     }
 
     #[test]
+    fn authority_looking_fields_are_rejected_for_every_public_request() {
+        for (method_name, valid) in public_request_json_samples() {
+            for (field, value) in [
+                ("verified_surface_context", json!({ "verified": true })),
+                ("access_class", json!("core_mutation")),
+                ("capability_profile", json!({ "write_authorization": true })),
+                ("verification_basis", json!("caller_supplied_basis")),
+            ] {
+                let mut forged = valid.clone();
+                forged[field] = value;
+                assert_schema_and_serde(method_name, forged, false);
+            }
+
+            for (field, value) in [
+                ("verified", json!(true)),
+                ("surface_instance_id", json!("surface_instance_forged")),
+            ] {
+                let mut forged = valid.clone();
+                forged["envelope"][field] = value;
+                assert_schema_and_serde(method_name, forged, false);
+            }
+        }
+    }
+
+    #[test]
+    fn required_nullable_presence_parity_covers_public_requests() {
+        for (method_name, valid) in public_request_json_samples() {
+            let mut explicit_null = valid.clone();
+            set_path(
+                &mut explicit_null,
+                &["envelope", "idempotency_key"],
+                Value::Null,
+            );
+            assert_schema_and_serde(method_name, explicit_null, true);
+
+            let mut missing = valid;
+            remove_path(&mut missing, &["envelope", "idempotency_key"]);
+            assert_schema_and_serde(method_name, missing, false);
+        }
+
+        for (method_name, path) in required_nullable_request_paths() {
+            let mut explicit_null = sample_for_method(method_name);
+            set_path(&mut explicit_null, path, Value::Null);
+            assert_schema_and_serde(method_name, explicit_null, true);
+
+            let mut missing = sample_for_method(method_name);
+            remove_path(&mut missing, path);
+            assert_schema_and_serde(method_name, missing, false);
+        }
+    }
+
+    #[test]
+    fn owner_extension_field_omission_remains_accepted_where_documented_open() {
+        let mut update = update_scope_request_json();
+        remove_path(&mut update, &["change_unit", "scope_summary"]);
+        remove_path(&mut update, &["change_unit", "affected_paths"]);
+        assert_schema_and_serde("harness.update_scope", update, true);
+    }
+
+    #[test]
     fn required_nullable_fields_must_be_present_but_accept_null() {
         let mut stage = stage_artifact_request_json();
         stage["expected_sha256"] = Value::Null;
@@ -548,6 +608,30 @@ mod tests {
             serde_json::from_value(changed).expect("changed request should decode");
         let changed_hash = canonical_request_hash(&changed).expect("changed hash");
         assert_ne!(first_hash, changed_hash);
+    }
+
+    #[test]
+    fn typed_request_hashes_are_stable_across_public_request_serialization() {
+        for (method_name, sample) in public_request_json_samples() {
+            let compact_json = serde_json::to_string(&sample).expect("sample should serialize");
+            let pretty_json =
+                serde_json::to_string_pretty(&sample).expect("sample should serialize");
+            let reordered_json = serde_json::to_string(&reversed_object_value(&sample))
+                .expect("sample should serialize");
+
+            let compact = serde_json::from_str(&compact_json).expect("compact should parse");
+            let pretty = serde_json::from_str(&pretty_json).expect("pretty should parse");
+            let reordered = serde_json::from_str(&reordered_json).expect("reordered should parse");
+
+            let compact_hash = typed_request_hash(method_name, compact);
+            assert_eq!(compact_hash, typed_request_hash(method_name, pretty));
+            assert_eq!(compact_hash, typed_request_hash(method_name, reordered));
+        }
+
+        let null_hash = typed_request_hash("harness.record_run", record_run_request_json());
+        let mut changed = record_run_request_json();
+        changed["write_authorization_id"] = json!("wa_hash_change");
+        assert_ne!(null_hash, typed_request_hash("harness.record_run", changed));
     }
 
     fn envelope_json(actor_kind: &str) -> Value {
@@ -769,6 +853,110 @@ mod tests {
             validate_against(schema, property, &Value::Null, field).is_ok(),
             "{field} should allow null"
         );
+    }
+
+    fn required_nullable_request_paths() -> Vec<(&'static str, &'static [&'static str])> {
+        vec![
+            ("harness.update_scope", &["goal_summary"]),
+            ("harness.prepare_write", &["task_id"]),
+            ("harness.prepare_write", &["change_unit_id"]),
+            ("harness.stage_artifact", &["expected_sha256"]),
+            ("harness.stage_artifact", &["relation_hint"]),
+            ("harness.record_run", &["run_id"]),
+            ("harness.record_run", &["write_authorization_id"]),
+            ("harness.record_run", &["observed_changes", "baseline_ref"]),
+            ("harness.request_user_judgment", &["change_unit_id"]),
+            ("harness.request_user_judgment", &["expires_at"]),
+            ("harness.record_user_judgment", &["note"]),
+            (
+                "harness.record_user_judgment",
+                &["answer", "technical_decision"],
+            ),
+            ("harness.close_task", &["close_reason"]),
+            ("harness.close_task", &["superseding_task_id"]),
+            ("harness.close_task", &["user_note"]),
+        ]
+    }
+
+    fn sample_for_method(method_name: &str) -> Value {
+        public_request_json_samples()
+            .into_iter()
+            .find(|(candidate, _)| *candidate == method_name)
+            .map(|(_, value)| value)
+            .unwrap_or_else(|| panic!("missing sample for {method_name}"))
+    }
+
+    fn set_path(value: &mut Value, path: &[&str], replacement: Value) {
+        let pointer = format!("/{}", path.join("/"));
+        *value
+            .pointer_mut(&pointer)
+            .unwrap_or_else(|| panic!("missing path {pointer}")) = replacement;
+    }
+
+    fn remove_path(value: &mut Value, path: &[&str]) {
+        let (field, parent_path) = path
+            .split_last()
+            .expect("path should contain at least one segment");
+        let pointer = if parent_path.is_empty() {
+            String::new()
+        } else {
+            format!("/{}", parent_path.join("/"))
+        };
+        value
+            .pointer_mut(&pointer)
+            .unwrap_or_else(|| panic!("missing parent path {pointer}"))
+            .as_object_mut()
+            .expect("parent should be an object")
+            .remove(*field);
+    }
+
+    fn reversed_object_value(value: &Value) -> Value {
+        match value {
+            Value::Array(items) => Value::Array(items.iter().map(reversed_object_value).collect()),
+            Value::Object(map) => Value::Object(
+                map.iter()
+                    .rev()
+                    .map(|(key, value)| (key.clone(), reversed_object_value(value)))
+                    .collect(),
+            ),
+            scalar => scalar.clone(),
+        }
+    }
+
+    fn typed_request_hash(method_name: &str, value: Value) -> RequestHash {
+        match method_name {
+            "harness.intake" => canonical_request_hash(
+                &serde_json::from_value::<IntakeRequest>(value).expect("intake request"),
+            ),
+            "harness.update_scope" => canonical_request_hash(
+                &serde_json::from_value::<UpdateScopeRequest>(value).expect("update request"),
+            ),
+            "harness.status" => canonical_request_hash(
+                &serde_json::from_value::<StatusRequest>(value).expect("status request"),
+            ),
+            "harness.prepare_write" => canonical_request_hash(
+                &serde_json::from_value::<PrepareWriteRequest>(value).expect("prepare request"),
+            ),
+            "harness.stage_artifact" => canonical_request_hash(
+                &serde_json::from_value::<StageArtifactRequest>(value).expect("stage request"),
+            ),
+            "harness.record_run" => canonical_request_hash(
+                &serde_json::from_value::<RecordRunRequest>(value).expect("record run request"),
+            ),
+            "harness.request_user_judgment" => canonical_request_hash(
+                &serde_json::from_value::<RequestUserJudgmentRequest>(value)
+                    .expect("request judgment request"),
+            ),
+            "harness.record_user_judgment" => canonical_request_hash(
+                &serde_json::from_value::<RecordUserJudgmentRequest>(value)
+                    .expect("record judgment request"),
+            ),
+            "harness.close_task" => canonical_request_hash(
+                &serde_json::from_value::<CloseTaskRequest>(value).expect("close request"),
+            ),
+            other => panic!("unsupported method: {other}"),
+        }
+        .expect("typed request hash should compute")
     }
 
     fn first_required_field(method_name: &str) -> &'static str {

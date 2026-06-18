@@ -12,12 +12,12 @@ use harness_mcp::{
 use harness_store::bootstrap::{register_surface, SurfaceRegistration};
 use harness_test_support::core_fixtures::{
     answer_payload, artifact_input_for_handle, CloseTaskFixture, CoreFixture,
-    RecordJudgmentFixture, UpdateScopeFixture, UserJudgmentFixture,
+    RecordJudgmentFixture, UpdateScopeFixture, UserJudgmentFixture, DEFAULT_PRODUCT_PATH,
 };
 use harness_types::{
-    AccessClass, ChangeUnitOperation, CloseIntent, JudgmentKind, StagedArtifactHandle, SurfaceId,
-    SurfaceInstanceId, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    AccessClass, ChangeUnitOperation, CloseIntent, CloseReason, JudgmentKind, StagedArtifactHandle,
+    SurfaceId, SurfaceInstanceId, WriteAuthorizationId,
+    VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{json, Value};
 
@@ -193,6 +193,10 @@ fn one_mcp_session_with_baseline_workflow_surface_runs_full_access_workflow(
         ))?,
     )?;
     assert_eq!(prepare.response_value["decision"], "allowed");
+    let write_authorization_id = prepare.response_value["write_authorization_ref"]["record_id"]
+        .as_str()
+        .expect("write authorization id")
+        .to_owned();
     assert_eq!(
         prepare
             .verified_surface
@@ -230,8 +234,16 @@ fn one_mcp_session_with_baseline_workflow_surface_runs_full_access_workflow(
         Some("workflow_trace"),
         Some("MCP workflow trace recorded."),
     )];
+    run_request.observed_changes.product_file_write_observed = true;
+    run_request.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
+    run_request.write_authorization_id =
+        Some(WriteAuthorizationId::new(&write_authorization_id)).into();
     let run = adapter.call_tool("harness.record_run", serde_json::to_value(run_request)?)?;
     assert_eq!(run.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        fixture.write_authorization_status(&write_authorization_id)?,
+        "consumed"
+    );
     assert_eq!(
         run.verified_surface
             .as_ref()
@@ -296,6 +308,121 @@ fn one_mcp_session_with_baseline_workflow_surface_runs_full_access_workflow(
             .expect("close check verified surface")
             .access_class,
         AccessClass::ReadStatus
+    );
+
+    fixture.set_task_close_summary(
+        &task_id,
+        json!({
+            "close_reason": "none",
+            "visible_risks": [
+                {
+                    "risk_id": "risk_visible_001",
+                    "summary": "Manual MCP workflow verification remains visible."
+                }
+            ]
+        }),
+    )?;
+
+    let final_judgment = adapter.call_tool(
+        "harness.request_user_judgment",
+        serde_json::to_value(fixture.user_judgment_request(UserJudgmentFixture {
+            request_id: "req_mcp_full_final",
+            idempotency_key: "idem_mcp_full_final",
+            dry_run: false,
+            expected_state_version: Some(6),
+            task_id: &task_id,
+            change_unit_id: Some(&change_unit_id),
+            judgment_kind: JudgmentKind::FinalAcceptance,
+        }))?,
+    )?;
+    assert_eq!(
+        final_judgment.response_value["base"]["response_kind"],
+        "result"
+    );
+    let final_judgment_id = final_judgment.response_value["user_judgment_ref"]["record_id"]
+        .as_str()
+        .expect("final judgment id")
+        .to_owned();
+    let final_recorded = adapter.call_tool(
+        "harness.record_user_judgment",
+        serde_json::to_value(fixture.record_judgment_request(RecordJudgmentFixture {
+            request_id: "req_mcp_full_final_record",
+            idempotency_key: "idem_mcp_full_final_record",
+            expected_state_version: Some(7),
+            task_id: &task_id,
+            user_judgment_id: &final_judgment_id,
+            judgment_kind: JudgmentKind::FinalAcceptance,
+            answer: answer_payload(JudgmentKind::FinalAcceptance),
+        }))?,
+    )?;
+    assert_eq!(
+        final_recorded.response_value["base"]["response_kind"],
+        "result"
+    );
+
+    let risk_judgment = adapter.call_tool(
+        "harness.request_user_judgment",
+        serde_json::to_value(fixture.user_judgment_request(UserJudgmentFixture {
+            request_id: "req_mcp_full_risk",
+            idempotency_key: "idem_mcp_full_risk",
+            dry_run: false,
+            expected_state_version: Some(8),
+            task_id: &task_id,
+            change_unit_id: Some(&change_unit_id),
+            judgment_kind: JudgmentKind::ResidualRiskAcceptance,
+        }))?,
+    )?;
+    assert_eq!(
+        risk_judgment.response_value["base"]["response_kind"],
+        "result"
+    );
+    let risk_judgment_id = risk_judgment.response_value["user_judgment_ref"]["record_id"]
+        .as_str()
+        .expect("risk judgment id")
+        .to_owned();
+    let risk_recorded = adapter.call_tool(
+        "harness.record_user_judgment",
+        serde_json::to_value(fixture.record_judgment_request(RecordJudgmentFixture {
+            request_id: "req_mcp_full_risk_record",
+            idempotency_key: "idem_mcp_full_risk_record",
+            expected_state_version: Some(9),
+            task_id: &task_id,
+            user_judgment_id: &risk_judgment_id,
+            judgment_kind: JudgmentKind::ResidualRiskAcceptance,
+            answer: answer_payload(JudgmentKind::ResidualRiskAcceptance),
+        }))?,
+    )?;
+    assert_eq!(
+        risk_recorded.response_value["base"]["response_kind"],
+        "result"
+    );
+
+    let complete = adapter.call_tool(
+        "harness.close_task",
+        serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
+            request_id: "req_mcp_full_close_complete",
+            idempotency_key: Some("idem_mcp_full_close_complete"),
+            dry_run: false,
+            expected_state_version: Some(10),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedWithRiskAccepted),
+            superseding_task_id: None,
+        }))?,
+    )?;
+    assert_eq!(complete.response_value["base"]["response_kind"], "result");
+    assert_eq!(complete.response_value["close_state"], "closed");
+    assert_eq!(
+        fixture.task_terminal_fields(&task_id)?.result.as_deref(),
+        Some("completed")
+    );
+    assert_eq!(
+        complete
+            .verified_surface
+            .as_ref()
+            .expect("complete verified surface")
+            .access_class,
+        AccessClass::CoreMutation
     );
     Ok(())
 }
@@ -371,6 +498,7 @@ fn missing_run_recording_grant_blocks_only_record_run() -> Result<(), Box<dyn Er
     )?;
     assert_eq!(stage.response_value["base"]["response_kind"], "result");
 
+    let before_run = fixture.counts()?;
     let run = adapter.call_tool(
         "harness.record_run",
         serde_json::to_value(fixture.record_run_request(
@@ -384,6 +512,7 @@ fn missing_run_recording_grant_blocks_only_record_run() -> Result<(), Box<dyn Er
     )?;
     assert_rejected_code(&run.response_value, "LOCAL_ACCESS_MISMATCH");
     assert!(run.verified_surface.is_none());
+    assert_eq!(fixture.counts()?, before_run);
     Ok(())
 }
 
@@ -434,6 +563,7 @@ fn missing_write_authorization_grant_blocks_prepare_write() -> Result<(), Box<dy
         .current_change_unit_id(&task_id)?
         .expect("Change Unit should be current");
 
+    let before_prepare = fixture.counts()?;
     let prepare = adapter.call_tool(
         "harness.prepare_write",
         serde_json::to_value(fixture.prepare_write_request(
@@ -446,6 +576,276 @@ fn missing_write_authorization_grant_blocks_prepare_write() -> Result<(), Box<dy
     )?;
     assert_rejected_code(&prepare.response_value, "LOCAL_ACCESS_MISMATCH");
     assert!(prepare.verified_surface.is_none());
+    assert_eq!(fixture.counts()?, before_prepare);
+    Ok(())
+}
+
+#[test]
+fn removed_read_status_grant_blocks_read_methods_only() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp_missing_read")?;
+    let core = CoreService::new(fixture.runtime_home_path());
+    let intake = core.intake(
+        fixture.intake_request(
+            "req_missing_read_task",
+            "idem_missing_read_task",
+            false,
+            Some(0),
+        ),
+        invocation(&fixture, AccessClass::CoreMutation),
+    )?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .expect("task id")
+        .to_owned();
+    core.update_scope(
+        fixture.update_scope_request(UpdateScopeFixture {
+            request_id: "req_missing_read_scope",
+            idempotency_key: "idem_missing_read_scope",
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "Read-status grant reduction scope.",
+        }),
+        invocation(&fixture, AccessClass::CoreMutation),
+    )?;
+    fixture.set_surface_capability(default_capability_profile())?;
+    fixture.set_surface_local_access(local_access_without(&["read_status"]))?;
+    let adapter = adapter(&fixture);
+    let before_read = fixture.counts()?;
+
+    let status = adapter.call_tool(
+        "harness.status",
+        serde_json::to_value(fixture.status_request("req_missing_read_status", Some(&task_id)))?,
+    )?;
+    assert_rejected_code(&status.response_value, "LOCAL_ACCESS_MISMATCH");
+    assert!(status.verified_surface.is_none());
+    let close_check = adapter.call_tool(
+        "harness.close_task",
+        serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
+            request_id: "req_missing_read_close_check",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }))?,
+    )?;
+    assert_rejected_code(&close_check.response_value, "LOCAL_ACCESS_MISMATCH");
+    assert!(close_check.verified_surface.is_none());
+    assert_eq!(fixture.counts()?, before_read);
+
+    let mutation = adapter.call_tool(
+        "harness.intake",
+        serde_json::to_value(fixture.intake_request(
+            "req_missing_read_mutation",
+            "idem_missing_read_mutation",
+            false,
+            Some(before_read.state_version),
+        ))?,
+    )?;
+    assert_eq!(mutation.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        mutation
+            .verified_surface
+            .as_ref()
+            .expect("core grant should remain usable")
+            .access_class,
+        AccessClass::CoreMutation
+    );
+    Ok(())
+}
+
+#[test]
+fn removed_core_mutation_grant_blocks_mutating_core_methods_only() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp_missing_core")?;
+    let core = CoreService::new(fixture.runtime_home_path());
+    let intake = core.intake(
+        fixture.intake_request(
+            "req_missing_core_task",
+            "idem_missing_core_task",
+            false,
+            Some(0),
+        ),
+        invocation(&fixture, AccessClass::CoreMutation),
+    )?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .expect("task id")
+        .to_owned();
+    core.update_scope(
+        fixture.update_scope_request(UpdateScopeFixture {
+            request_id: "req_missing_core_scope",
+            idempotency_key: "idem_missing_core_scope",
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "Core-mutation grant reduction scope.",
+        }),
+        invocation(&fixture, AccessClass::CoreMutation),
+    )?;
+    let change_unit_id = fixture
+        .current_change_unit_id(&task_id)?
+        .expect("Change Unit should be current");
+    fixture.set_surface_capability(default_capability_profile())?;
+    fixture.set_surface_local_access(local_access_without(&["core_mutation"]))?;
+    let adapter = adapter(&fixture);
+
+    for (tool_name, params) in [
+        (
+            "harness.intake",
+            serde_json::to_value(fixture.intake_request(
+                "req_missing_core_intake",
+                "idem_missing_core_intake",
+                false,
+                Some(2),
+            ))?,
+        ),
+        (
+            "harness.update_scope",
+            serde_json::to_value(fixture.update_scope_request(UpdateScopeFixture {
+                request_id: "req_missing_core_update",
+                idempotency_key: "idem_missing_core_update",
+                dry_run: false,
+                expected_state_version: Some(2),
+                task_id: &task_id,
+                operation: ChangeUnitOperation::KeepCurrent,
+                scope_summary: "This should not update without core_mutation.",
+            }))?,
+        ),
+        (
+            "harness.request_user_judgment",
+            serde_json::to_value(fixture.user_judgment_request(UserJudgmentFixture {
+                request_id: "req_missing_core_judgment",
+                idempotency_key: "idem_missing_core_judgment",
+                dry_run: false,
+                expected_state_version: Some(2),
+                task_id: &task_id,
+                change_unit_id: Some(&change_unit_id),
+                judgment_kind: JudgmentKind::TechnicalDecision,
+            }))?,
+        ),
+        (
+            "harness.close_task",
+            serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
+                request_id: "req_missing_core_close",
+                idempotency_key: Some("idem_missing_core_close"),
+                dry_run: false,
+                expected_state_version: Some(2),
+                task_id: &task_id,
+                intent: CloseIntent::Complete,
+                close_reason: Some(CloseReason::CompletedSelfChecked),
+                superseding_task_id: None,
+            }))?,
+        ),
+    ] {
+        let before = fixture.counts()?;
+        let response = adapter.call_tool(tool_name, params)?;
+        assert_rejected_code(&response.response_value, "LOCAL_ACCESS_MISMATCH");
+        assert!(response.verified_surface.is_none());
+        assert_eq!(
+            fixture.counts()?,
+            before,
+            "{tool_name} should have no effect"
+        );
+    }
+
+    let before_prepare = fixture.counts()?;
+    let prepare = adapter.call_tool(
+        "harness.prepare_write",
+        serde_json::to_value(fixture.prepare_write_request(
+            "req_missing_core_prepare",
+            "idem_missing_core_prepare",
+            Some(before_prepare.state_version),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ))?,
+    )?;
+    assert_eq!(prepare.response_value["decision"], "allowed");
+    assert_eq!(
+        prepare
+            .verified_surface
+            .as_ref()
+            .expect("write_authorization grant should remain usable")
+            .access_class,
+        AccessClass::WriteAuthorization
+    );
+    Ok(())
+}
+
+#[test]
+fn removed_artifact_registration_grant_blocks_stage_only() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp_missing_artifact")?;
+    let core = CoreService::new(fixture.runtime_home_path());
+    let intake = core.intake(
+        fixture.intake_request(
+            "req_missing_artifact_task",
+            "idem_missing_artifact_task",
+            false,
+            Some(0),
+        ),
+        invocation(&fixture, AccessClass::CoreMutation),
+    )?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .expect("task id")
+        .to_owned();
+    core.update_scope(
+        fixture.update_scope_request(UpdateScopeFixture {
+            request_id: "req_missing_artifact_scope",
+            idempotency_key: "idem_missing_artifact_scope",
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "Artifact grant reduction scope.",
+        }),
+        invocation(&fixture, AccessClass::CoreMutation),
+    )?;
+    let change_unit_id = fixture
+        .current_change_unit_id(&task_id)?
+        .expect("Change Unit should be current");
+    fixture.set_surface_capability(default_capability_profile())?;
+    fixture.set_surface_local_access(local_access_without(&["artifact_registration"]))?;
+    let adapter = adapter(&fixture);
+    let before_stage = fixture.counts()?;
+
+    let stage = adapter.call_tool(
+        "harness.stage_artifact",
+        serde_json::to_value(fixture.stage_artifact_request(
+            "req_missing_artifact_stage",
+            None,
+            false,
+            Some(before_stage.state_version),
+            &task_id,
+        ))?,
+    )?;
+    assert_rejected_code(&stage.response_value, "LOCAL_ACCESS_MISMATCH");
+    assert!(stage.verified_surface.is_none());
+    assert_eq!(fixture.counts()?, before_stage);
+
+    let run = adapter.call_tool(
+        "harness.record_run",
+        serde_json::to_value(fixture.record_run_request(
+            "req_missing_artifact_run",
+            "idem_missing_artifact_run",
+            false,
+            Some(before_stage.state_version),
+            &task_id,
+            &change_unit_id,
+        ))?,
+    )?;
+    assert_eq!(run.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        run.verified_surface
+            .as_ref()
+            .expect("run_recording grant should remain usable")
+            .access_class,
+        AccessClass::RunRecording
+    );
     Ok(())
 }
 
@@ -1010,6 +1410,155 @@ fn legacy_single_access_class_grant_remains_readable() -> Result<(), Box<dyn Err
     Ok(())
 }
 
+#[test]
+fn replay_surface_foreign_key_is_physical_restrictive_and_legacy_safe() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("replay_fk")?;
+    register_surface(
+        fixture.runtime_home_path(),
+        SurfaceRegistration {
+            project_id: fixture.project_id().to_owned(),
+            surface_id: "surface_replay_fk".to_owned(),
+            surface_instance_id: "surface_instance_replay_fk".to_owned(),
+            surface_kind: "local_test".to_owned(),
+            display_name: Some("Replay FK surface".to_owned()),
+            capability_profile_json: default_capability_profile().to_string(),
+            local_access_json: local_access_without(&[]).to_string(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let conn = fixture.conn()?;
+    assert_replay_surface_foreign_key(&conn)?;
+
+    conn.execute(
+        "INSERT INTO tool_invocations (
+            project_id,
+            tool_name,
+            idempotency_key,
+            request_hash,
+            basis_state_version,
+            committed_state_version,
+            surface_id,
+            surface_instance_id,
+            access_class,
+            verification_basis,
+            replay_context_status,
+            response_json,
+            created_at
+        )
+        VALUES (
+            ?1,
+            'harness.status',
+            'idem_verified_replay_fk',
+            'sha256:verified-replay-fk',
+            0,
+            1,
+            'surface_replay_fk',
+            'surface_instance_replay_fk',
+            'read_status',
+            'local_admin_registration:mcp_stdio_surface_binding',
+            'verified',
+            '{\"stored\":\"verified\"}',
+            '2026-01-01T00:00:00.000Z'
+        )",
+        rusqlite::params![fixture.project_id()],
+    )?;
+
+    let restrictive_delete = conn.execute(
+        "DELETE FROM surfaces
+          WHERE project_id = ?1
+            AND surface_id = 'surface_replay_fk'
+            AND surface_instance_id = 'surface_instance_replay_fk'",
+        rusqlite::params![fixture.project_id()],
+    );
+    assert!(
+        restrictive_delete.is_err(),
+        "verified replay rows should restrict deleting their registered surface"
+    );
+
+    let dangling_verified = conn.execute(
+        "INSERT INTO tool_invocations (
+            project_id,
+            tool_name,
+            idempotency_key,
+            request_hash,
+            basis_state_version,
+            committed_state_version,
+            surface_id,
+            surface_instance_id,
+            access_class,
+            verification_basis,
+            replay_context_status,
+            response_json,
+            created_at
+        )
+        VALUES (
+            ?1,
+            'harness.status',
+            'idem_dangling_verified_replay',
+            'sha256:dangling-replay',
+            0,
+            1,
+            'missing_surface',
+            'missing_surface_instance',
+            'read_status',
+            'local_admin_registration:mcp_stdio_surface_binding',
+            'verified',
+            '{\"stored\":\"dangling\"}',
+            '2026-01-01T00:00:00.000Z'
+        )",
+        rusqlite::params![fixture.project_id()],
+    );
+    assert!(
+        dangling_verified.is_err(),
+        "dangling verified replay rows should fail physical FK insertion"
+    );
+
+    conn.execute(
+        "INSERT INTO tool_invocations (
+            project_id,
+            tool_name,
+            idempotency_key,
+            request_hash,
+            basis_state_version,
+            committed_state_version,
+            response_json,
+            created_at
+        )
+        VALUES (
+            ?1,
+            'harness.intake',
+            'idem_legacy_replay_fk',
+            'sha256:legacy-replay-fk',
+            0,
+            1,
+            '{\"stored\":\"legacy\"}',
+            '2026-01-01T00:00:00.000Z'
+        )",
+        rusqlite::params![fixture.project_id()],
+    )?;
+    drop(conn);
+
+    let before = fixture.counts()?;
+    let legacy = CoreService::new(fixture.runtime_home_path()).intake(
+        fixture.intake_request(
+            "req_legacy_replay_fk",
+            "idem_legacy_replay_fk",
+            false,
+            Some(0),
+        ),
+        invocation(&fixture, AccessClass::CoreMutation),
+    )?;
+    assert_rejected_code(&legacy.response_value, "LOCAL_ACCESS_MISMATCH");
+    assert!(!legacy.response_json.contains("legacy"));
+    assert_eq!(fixture.counts()?, before);
+
+    let conn = fixture.conn()?;
+    assert_integrity_check_clean(&conn)?;
+    assert_foreign_key_check_clean(&conn)?;
+    Ok(())
+}
+
 fn adapter(fixture: &CoreFixture) -> McpAdapter {
     McpAdapter::new(
         fixture.runtime_home_path(),
@@ -1017,6 +1566,38 @@ fn adapter(fixture: &CoreFixture) -> McpAdapter {
             .with_surface_instance_id(SurfaceInstanceId::new(fixture.surface_instance_id()))
             .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING),
     )
+}
+
+fn local_access_without(removed: &[&str]) -> Value {
+    let authorized_access_classes = [
+        "read_status",
+        "core_mutation",
+        "write_authorization",
+        "run_recording",
+        "artifact_registration",
+    ]
+    .into_iter()
+    .filter(|access_class| !removed.contains(access_class))
+    .collect::<Vec<_>>();
+    json!({
+        "access_class": authorized_access_classes.first().copied().unwrap_or("read_status"),
+        "authorized_access_classes": authorized_access_classes,
+        "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
+    })
+}
+
+fn default_capability_profile() -> Value {
+    json!({
+        "supported_access_classes": [
+            "read_status",
+            "core_mutation",
+            "write_authorization",
+            "run_recording",
+            "artifact_registration"
+        ],
+        "write_authorization": true,
+        "manual_artifact_attachment_supported": true
+    })
 }
 
 fn invocation(fixture: &CoreFixture, access_class: AccessClass) -> InvocationContext {
@@ -1030,4 +1611,61 @@ fn invocation(fixture: &CoreFixture, access_class: AccessClass) -> InvocationCon
 fn assert_rejected_code(response: &Value, code: &str) {
     assert_eq!(response["base"]["response_kind"], "rejected");
     assert_eq!(response["errors"][0]["code"], code);
+}
+
+fn assert_replay_surface_foreign_key(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare("PRAGMA foreign_key_list(tool_invocations)")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(6)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut matching_ids = rows
+        .iter()
+        .filter(|(_, _, table, _, _, on_delete)| table == "surfaces" && on_delete == "RESTRICT")
+        .map(|(id, _, _, _, _, _)| *id)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(matching_ids.len(), 1);
+    let id = matching_ids.pop_first().expect("matching FK id");
+    let mut columns = rows
+        .iter()
+        .filter(|(candidate_id, _, table, _, _, on_delete)| {
+            *candidate_id == id && table == "surfaces" && on_delete == "RESTRICT"
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    columns.sort_by_key(|(_, seq, _, _, _, _)| *seq);
+    let actual = columns
+        .iter()
+        .map(|(_, _, _, from, to, _)| (from.as_str(), to.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        vec![
+            ("project_id", "project_id"),
+            ("surface_id", "surface_id"),
+            ("surface_instance_id", "surface_instance_id"),
+        ]
+    );
+    Ok(())
+}
+
+fn assert_integrity_check_clean(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let result: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+    assert_eq!(result, "ok");
+    Ok(())
+}
+
+fn assert_foreign_key_check_clean(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare("PRAGMA foreign_key_check")?;
+    let mut rows = stmt.query([])?;
+    assert!(rows.next()?.is_none());
+    Ok(())
 }

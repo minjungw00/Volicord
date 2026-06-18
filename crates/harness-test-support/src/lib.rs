@@ -738,6 +738,46 @@ pub mod core_fixtures {
             Ok(())
         }
 
+        /// Replaces a Task owner JSON column with raw text for controlled corruption fixtures.
+        pub fn set_task_owner_json_raw(
+            &self,
+            task_id: &str,
+            logical_column: TaskOwnerJsonColumn,
+            raw_json: &str,
+        ) -> Result<(), StoreError> {
+            let column = logical_column.as_str();
+            let sql = format!(
+                "UPDATE tasks
+                    SET {column} = ?3
+                  WHERE project_id = ?1
+                    AND task_id = ?2"
+            );
+            self.conn()?
+                .execute(&sql, rusqlite::params![self.project_id, task_id, raw_json])?;
+            Ok(())
+        }
+
+        /// Replaces a Change Unit owner JSON column with raw text for controlled corruption fixtures.
+        pub fn set_change_unit_owner_json_raw(
+            &self,
+            change_unit_id: &str,
+            logical_column: ChangeUnitOwnerJsonColumn,
+            raw_json: &str,
+        ) -> Result<(), StoreError> {
+            let column = logical_column.as_str();
+            let sql = format!(
+                "UPDATE change_units
+                    SET {column} = ?3
+                  WHERE project_id = ?1
+                    AND change_unit_id = ?2"
+            );
+            self.conn()?.execute(
+                &sql,
+                rusqlite::params![self.project_id, change_unit_id, raw_json],
+            )?;
+            Ok(())
+        }
+
         /// Updates a persistent artifact availability status.
         pub fn set_artifact_status(
             &self,
@@ -752,6 +792,78 @@ pub mod core_fixtures {
                 rusqlite::params![self.project_id, artifact_id, status],
             )?;
             Ok(())
+        }
+
+        /// Replaces a user-owned judgment resolution JSON value with SQL NULL or raw text.
+        pub fn set_user_judgment_resolution_raw(
+            &self,
+            judgment_id: &str,
+            raw_json: Option<&str>,
+        ) -> Result<(), StoreError> {
+            self.conn()?.execute(
+                "UPDATE user_judgments
+                    SET resolution_json = ?3,
+                        status = 'resolved',
+                        resolved_at = 't_corrupt_fixture'
+                  WHERE project_id = ?1
+                    AND judgment_id = ?2",
+                rusqlite::params![self.project_id, judgment_id, raw_json],
+            )?;
+            Ok(())
+        }
+
+        /// Replaces a Write Authorization attempt-scope JSON value with raw text.
+        pub fn set_write_authorization_attempt_scope_raw(
+            &self,
+            write_authorization_id: &str,
+            raw_json: &str,
+        ) -> Result<(), StoreError> {
+            self.conn()?.execute(
+                "UPDATE write_authorizations
+                    SET attempt_scope_json = ?3
+                  WHERE project_id = ?1
+                    AND write_authorization_id = ?2",
+                rusqlite::params![self.project_id, write_authorization_id, raw_json],
+            )?;
+            Ok(())
+        }
+
+        /// Replaces Write Authorization authority timestamps for fixed-clock tests.
+        pub fn set_write_authorization_timestamps(
+            &self,
+            write_authorization_id: &str,
+            created_at: &str,
+            expires_at: &str,
+        ) -> Result<(), StoreError> {
+            self.conn()?.execute(
+                "UPDATE write_authorizations
+                    SET created_at = ?3,
+                        expires_at = ?4
+                  WHERE project_id = ?1
+                    AND write_authorization_id = ?2",
+                rusqlite::params![
+                    self.project_id,
+                    write_authorization_id,
+                    created_at,
+                    expires_at
+                ],
+            )?;
+            Ok(())
+        }
+
+        /// Reads Write Authorization `created_at` and `expires_at` timestamp strings.
+        pub fn write_authorization_timestamps(
+            &self,
+            write_authorization_id: &str,
+        ) -> Result<(String, String), StoreError> {
+            Ok(self.conn()?.query_row(
+                "SELECT created_at, expires_at
+                   FROM write_authorizations
+                  WHERE project_id = ?1
+                    AND write_authorization_id = ?2",
+                rusqlite::params![self.project_id, write_authorization_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?)
         }
 
         /// Reads terminal lifecycle fields for a Task.
@@ -797,6 +909,50 @@ pub mod core_fixtures {
                 event_payload: serde_json::from_str(&event_payload_text)?,
                 state_version: u64::try_from(state_version)?,
             })
+        }
+    }
+
+    /// Task owner JSON columns intentionally exposed for corruption fixtures.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum TaskOwnerJsonColumn {
+        ShapingSummary,
+        BoundedContext,
+        AutonomyBoundary,
+        CloseSummary,
+        CompletionPolicy,
+    }
+
+    impl TaskOwnerJsonColumn {
+        fn as_str(self) -> &'static str {
+            match self {
+                Self::ShapingSummary => "shaping_summary_json",
+                Self::BoundedContext => "bounded_context_json",
+                Self::AutonomyBoundary => "autonomy_boundary_json",
+                Self::CloseSummary => "close_summary_json",
+                Self::CompletionPolicy => "completion_policy_json",
+            }
+        }
+    }
+
+    /// Change Unit owner JSON columns intentionally exposed for corruption fixtures.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ChangeUnitOwnerJsonColumn {
+        ScopeSummary,
+        BoundedPaths,
+        WriteBasis,
+        CloseBasis,
+        Lifecycle,
+    }
+
+    impl ChangeUnitOwnerJsonColumn {
+        fn as_str(self) -> &'static str {
+            match self {
+                Self::ScopeSummary => "scope_summary_json",
+                Self::BoundedPaths => "bounded_paths_json",
+                Self::WriteBasis => "write_basis_json",
+                Self::CloseBasis => "close_basis_json",
+                Self::Lifecycle => "lifecycle_json",
+            }
         }
     }
 
