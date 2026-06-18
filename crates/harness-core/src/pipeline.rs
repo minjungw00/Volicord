@@ -2,6 +2,7 @@ use std::{
     error::Error,
     fmt,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use harness_store::{
@@ -14,10 +15,11 @@ use harness_store::{
     StoreError,
 };
 use harness_types::{
-    canonical_request_hash, AccessClass, ChangeUnitId, DryRunSummary, EffectKind, ErrorCode,
-    EventId, EventRef, IdempotencyKey, JsonObject, MethodName, ProjectId, RequestHash,
-    ResponseKind, SurfaceId, SurfaceInstanceId, TaskId, ToolDryRunResponse, ToolEnvelope,
-    ToolError, ToolRejectedResponse, ToolResultBase,
+    canonical_request_hash, AccessClass, ChangeUnitId, DryRunSummary, DurableIdError,
+    DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode, EventId, EventRef, IdempotencyKey,
+    JsonObject, MethodName, ProjectId, RandomDurableIdGenerator, RequestHash, ResponseKind,
+    SurfaceId, SurfaceInstanceId, TaskId, ToolDryRunResponse, ToolEnvelope, ToolError,
+    ToolRejectedResponse, ToolResultBase, DURABLE_ID_RETRY_LIMIT,
 };
 use serde_json::{Map, Value};
 
@@ -29,7 +31,14 @@ pub type CoreResult<T> = Result<T, CorePipelineError>;
 pub enum CorePipelineError {
     Store(StoreError),
     Json(serde_json::Error),
-    InvalidDispatch { detail: String },
+    DurableId(DurableIdError),
+    GeneratedIdCollision {
+        kind: DurableIdKind,
+        attempts: usize,
+    },
+    InvalidDispatch {
+        detail: String,
+    },
 }
 
 impl fmt::Display for CorePipelineError {
@@ -37,6 +46,11 @@ impl fmt::Display for CorePipelineError {
         match self {
             Self::Store(error) => write!(formatter, "store error: {error}"),
             Self::Json(error) => write!(formatter, "json error: {error}"),
+            Self::DurableId(error) => write!(formatter, "{error}"),
+            Self::GeneratedIdCollision { kind, attempts } => write!(
+                formatter,
+                "could not allocate unique generated {kind} id after {attempts} attempts"
+            ),
             Self::InvalidDispatch { detail } => {
                 write!(formatter, "invalid pipeline dispatch: {detail}")
             }
@@ -49,7 +63,8 @@ impl Error for CorePipelineError {
         match self {
             Self::Store(error) => Some(error),
             Self::Json(error) => Some(error),
-            Self::InvalidDispatch { .. } => None,
+            Self::DurableId(error) => Some(error),
+            Self::GeneratedIdCollision { .. } | Self::InvalidDispatch { .. } => None,
         }
     }
 }
@@ -63,6 +78,12 @@ impl From<StoreError> for CorePipelineError {
 impl From<serde_json::Error> for CorePipelineError {
     fn from(error: serde_json::Error) -> Self {
         Self::Json(error)
+    }
+}
+
+impl From<DurableIdError> for CorePipelineError {
+    fn from(error: DurableIdError) -> Self {
+        Self::DurableId(error)
     }
 }
 
@@ -283,17 +304,63 @@ pub struct PipelineResponse {
 }
 
 /// Core request pipeline service bound to a local Runtime Home.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct CoreService {
     runtime_home: PathBuf,
+    id_generator: Arc<dyn DurableIdGenerator>,
 }
+
+impl fmt::Debug for CoreService {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CoreService")
+            .field("runtime_home", &self.runtime_home)
+            .field("id_generator", &self.id_generator)
+            .finish()
+    }
+}
+
+impl PartialEq for CoreService {
+    fn eq(&self, other: &Self) -> bool {
+        self.runtime_home == other.runtime_home
+    }
+}
+
+impl Eq for CoreService {}
 
 impl CoreService {
     /// Creates a service that reads and writes Core records under `runtime_home`.
     pub fn new(runtime_home: impl AsRef<Path>) -> Self {
+        Self::with_id_generator(runtime_home, RandomDurableIdGenerator)
+    }
+
+    /// Creates a service with an injected durable ID generator.
+    pub fn with_id_generator(
+        runtime_home: impl AsRef<Path>,
+        id_generator: impl DurableIdGenerator + 'static,
+    ) -> Self {
         Self {
             runtime_home: runtime_home.as_ref().to_path_buf(),
+            id_generator: Arc::new(id_generator),
         }
+    }
+
+    pub(crate) fn allocate_generated_id(
+        &self,
+        kind: DurableIdKind,
+        mut exists: impl FnMut(&str) -> CoreResult<bool>,
+    ) -> CoreResult<String> {
+        for _ in 0..DURABLE_ID_RETRY_LIMIT {
+            let candidate = self.id_generator.generate(kind)?;
+            if !exists(&candidate)? {
+                return Ok(candidate);
+            }
+        }
+
+        Err(CorePipelineError::GeneratedIdCollision {
+            kind,
+            attempts: DURABLE_ID_RETRY_LIMIT,
+        })
     }
 
     /// Runs the shared envelope, context, freshness, replay, and effect pipeline.
@@ -532,12 +599,19 @@ impl CoreService {
                         );
                     }
                 };
+                let event_id = self.allocate_generated_id(DurableIdKind::Event, |candidate| {
+                    prepared
+                        .store
+                        .event_id_exists(candidate)
+                        .map_err(CorePipelineError::from)
+                })?;
                 commit_mutation(
                     &mut prepared.store,
                     CommitPipelineArgs {
                         envelope: &prepared.envelope,
                         method_name: prepared.method_name,
                         request_hash: &prepared.request_hash,
+                        event_id,
                         result_fields,
                         event_kind,
                         event_payload,
@@ -1060,6 +1134,7 @@ struct CommitPipelineArgs<'a> {
     envelope: &'a ToolEnvelope,
     method_name: MethodName,
     request_hash: &'a RequestHash,
+    event_id: String,
     result_fields: JsonObject,
     event_kind: String,
     event_payload: JsonObject,
@@ -1077,6 +1152,7 @@ fn commit_mutation(
         envelope,
         method_name,
         request_hash,
+        event_id,
         result_fields,
         event_kind,
         event_payload,
@@ -1097,7 +1173,7 @@ fn commit_mutation(
             .map(|_| replay_context_from_verified_surface(&verified_surface)),
         envelope.expected_state_version,
         vec![PendingTaskEvent {
-            event_id: format!("evt_{}", envelope.request_id.as_str()),
+            event_id,
             task_id: task_id.as_str().to_owned(),
             change_unit_id: change_unit_id.map(|id| id.into_inner()),
             event_kind,

@@ -433,7 +433,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
     let original_scope = fixture.current_change_unit_scope(&task_id)?;
     let original_current = fixture.current_change_unit_id(&task_id)?;
 
-    service.request_user_judgment(
+    let scope_judgment = service.request_user_judgment(
         fixture.user_judgment_request(UserJudgmentFixture {
             request_id: "req_scope_decision",
             idempotency_key: "idem_scope_decision",
@@ -445,6 +445,10 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
         }),
         invocation(&fixture, AccessClass::CoreMutation),
     )?;
+    let scope_judgment_id = scope_judgment.response_value["user_judgment_ref"]["record_id"]
+        .as_str()
+        .expect("scope judgment id should be present")
+        .to_owned();
     let before_scope_record = fixture.counts()?;
     let scope_recorded = service.record_user_judgment(
         fixture.record_judgment_request(RecordJudgmentFixture {
@@ -452,7 +456,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
             idempotency_key: "idem_scope_decision_record",
             expected_state_version: Some(3),
             task_id: &task_id,
-            user_judgment_id: "uj_req_scope_decision",
+            user_judgment_id: &scope_judgment_id,
             judgment_kind: JudgmentKind::ScopeDecision,
             answer: answer_payload(JudgmentKind::ScopeDecision),
         }),
@@ -469,7 +473,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
         before_scope_record.change_units
     );
 
-    service.request_user_judgment(
+    let sensitive_judgment = service.request_user_judgment(
         fixture.user_judgment_request(UserJudgmentFixture {
             request_id: "req_sensitive_only",
             idempotency_key: "idem_sensitive_only",
@@ -481,6 +485,10 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
         }),
         invocation(&fixture, AccessClass::CoreMutation),
     )?;
+    let sensitive_judgment_id = sensitive_judgment.response_value["user_judgment_ref"]["record_id"]
+        .as_str()
+        .expect("sensitive judgment id should be present")
+        .to_owned();
     let before_sensitive = fixture.counts()?;
     let sensitive = service.record_user_judgment(
         fixture.record_judgment_request(RecordJudgmentFixture {
@@ -488,7 +496,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
             idempotency_key: "idem_sensitive_only_record",
             expected_state_version: Some(5),
             task_id: &task_id,
-            user_judgment_id: "uj_req_sensitive_only",
+            user_judgment_id: &sensitive_judgment_id,
             judgment_kind: JudgmentKind::SensitiveApproval,
             answer: answer_payload(JudgmentKind::SensitiveApproval),
         }),
@@ -500,7 +508,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
         before_sensitive.write_authorizations
     );
 
-    service.request_user_judgment(
+    let risk_judgment = service.request_user_judgment(
         fixture.user_judgment_request(UserJudgmentFixture {
             request_id: "req_risk_judgment",
             idempotency_key: "idem_risk_judgment",
@@ -512,6 +520,10 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
         }),
         invocation(&fixture, AccessClass::CoreMutation),
     )?;
+    let risk_judgment_id = risk_judgment.response_value["user_judgment_ref"]["record_id"]
+        .as_str()
+        .expect("risk judgment id should be present")
+        .to_owned();
     let before_wrong_kind = fixture.counts()?;
     let wrong_kind = service.record_user_judgment(
         fixture.record_judgment_request(RecordJudgmentFixture {
@@ -519,7 +531,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
             idempotency_key: "idem_risk_wrong_answer",
             expected_state_version: Some(7),
             task_id: &task_id,
-            user_judgment_id: "uj_req_risk_judgment",
+            user_judgment_id: &risk_judgment_id,
             judgment_kind: JudgmentKind::ResidualRiskAcceptance,
             answer: answer_payload(JudgmentKind::FinalAcceptance),
         }),
@@ -527,10 +539,7 @@ fn user_judgment_kinds_remain_separate_from_scope_and_write_authority() -> Resul
     )?;
     assert_rejected_code(&wrong_kind.response_value, "VALIDATION_FAILED");
     assert_eq!(fixture.counts()?, before_wrong_kind);
-    assert_eq!(
-        fixture.user_judgment_status("uj_req_risk_judgment")?,
-        "pending"
-    );
+    assert_eq!(fixture.user_judgment_status(&risk_judgment_id)?, "pending");
     Ok(())
 }
 
@@ -924,7 +933,7 @@ fn record_final_acceptance(
     expected_state_version: u64,
     suffix: &str,
 ) -> Result<u64, Box<dyn Error>> {
-    service.request_user_judgment(
+    let judgment = service.request_user_judgment(
         fixture.user_judgment_request(UserJudgmentFixture {
             request_id: &format!("req_final_{suffix}"),
             idempotency_key: &format!("idem_final_{suffix}"),
@@ -936,13 +945,17 @@ fn record_final_acceptance(
         }),
         invocation(fixture, AccessClass::CoreMutation),
     )?;
+    let judgment_id = judgment.response_value["user_judgment_ref"]["record_id"]
+        .as_str()
+        .expect("final acceptance judgment id should be present")
+        .to_owned();
     let response = service.record_user_judgment(
         fixture.record_judgment_request(RecordJudgmentFixture {
             request_id: &format!("req_final_record_{suffix}"),
             idempotency_key: &format!("idem_final_record_{suffix}"),
             expected_state_version: Some(expected_state_version + 1),
             task_id,
-            user_judgment_id: &format!("uj_req_final_{suffix}"),
+            user_judgment_id: &judgment_id,
             judgment_kind: JudgmentKind::FinalAcceptance,
             answer: answer_payload(JudgmentKind::FinalAcceptance),
         }),

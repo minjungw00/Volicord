@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use rusqlite::{params, OptionalExtension, Transaction};
+use rusqlite::{params, Transaction};
 use serde_json::{json, Value};
 
 use crate::{
@@ -34,7 +34,7 @@ impl StagedPayloadKind {
 /// Input for creating one transient artifact staging row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactStagingInsert {
-    pub handle_prefix: String,
+    pub handle_id: String,
     pub task_id: String,
     pub created_by_surface_id: String,
     pub created_by_surface_instance_id: String,
@@ -104,7 +104,7 @@ fn insert_artifact_staging_tx(
     tmp_dir: &std::path::Path,
     input: ArtifactStagingInsert,
 ) -> StoreResult<(ArtifactStagingRecord, PathBuf)> {
-    let handle_id = unique_handle_id(tx, project_id, &input.handle_prefix)?;
+    let handle_id = input.handle_id;
     let file_name = format!("{}.txt", path_component(&handle_id));
     let relative_tmp_path = format!("{ARTIFACTS_DIR}/{ARTIFACTS_TMP_DIR}/{file_name}");
     let write_path = tmp_dir.join(&file_name);
@@ -209,7 +209,7 @@ fn insert_artifact_staging_tx(
 }
 
 fn validate_insert(input: &ArtifactStagingInsert) -> StoreResult<()> {
-    validate_identifier("handle_prefix", &input.handle_prefix)?;
+    validate_identifier("handle_id", &input.handle_id)?;
     validate_identifier("task_id", &input.task_id)?;
     validate_identifier("created_by_surface_id", &input.created_by_surface_id)?;
     validate_identifier(
@@ -226,39 +226,6 @@ fn validate_insert(input: &ArtifactStagingInsert) -> StoreResult<()> {
         });
     }
     Ok(())
-}
-
-fn unique_handle_id(
-    tx: &Transaction<'_>,
-    project_id: &str,
-    handle_prefix: &str,
-) -> StoreResult<String> {
-    let base = path_component(handle_prefix);
-    for suffix in 0..1000 {
-        let candidate = if suffix == 0 {
-            base.clone()
-        } else {
-            format!("{base}_{suffix}")
-        };
-        let exists = tx
-            .query_row(
-                "SELECT 1
-                   FROM artifact_staging
-                  WHERE project_id = ?1
-                    AND handle_id = ?2",
-                params![project_id, candidate],
-                |row| row.get::<_, i64>(0),
-            )
-            .optional()?
-            .is_some();
-        if !exists {
-            return Ok(candidate);
-        }
-    }
-
-    Err(StoreError::InvalidInput {
-        detail: "could not allocate a unique staged artifact handle_id".to_owned(),
-    })
 }
 
 fn staging_timestamps(tx: &Transaction<'_>) -> StoreResult<(String, String)> {

@@ -594,6 +594,17 @@ impl CoreProjectStore {
         )
     }
 
+    /// Returns whether a Change Unit id already exists in this project.
+    pub fn change_unit_id_exists(&self, change_unit_id: &str) -> StoreResult<bool> {
+        row_exists(
+            &self.conn,
+            &self.project.project_id,
+            "change_units",
+            "change_unit_id",
+            change_unit_id,
+        )
+    }
+
     /// Lists active Write Authorizations for a Task.
     pub fn active_write_authorizations(
         &self,
@@ -610,6 +621,17 @@ impl CoreProjectStore {
         write_authorization_record(&self.conn, &self.project.project_id, write_authorization_id)
     }
 
+    /// Returns whether a Run id already exists in this project.
+    pub fn run_id_exists(&self, run_id: &str) -> StoreResult<bool> {
+        row_exists(
+            &self.conn,
+            &self.project.project_id,
+            "runs",
+            "run_id",
+            run_id,
+        )
+    }
+
     /// Reads one staged artifact row by exact project-local handle identity.
     pub fn artifact_staging_record(
         &self,
@@ -618,9 +640,31 @@ impl CoreProjectStore {
         artifact_staging_record(&self.conn, &self.project.project_id, handle_id)
     }
 
+    /// Returns whether a committed event id already exists in this project.
+    pub fn event_id_exists(&self, event_id: &str) -> StoreResult<bool> {
+        row_exists(
+            &self.conn,
+            &self.project.project_id,
+            "task_events",
+            "event_id",
+            event_id,
+        )
+    }
+
     /// Reads one persistent artifact row by exact project-local artifact identity.
     pub fn artifact_record(&self, artifact_id: &str) -> StoreResult<Option<StoredArtifactRecord>> {
         artifact_record(&self.conn, &self.project.project_id, artifact_id)
+    }
+
+    /// Returns whether an evidence summary id already exists in this project.
+    pub fn evidence_summary_exists(&self, evidence_summary_id: &str) -> StoreResult<bool> {
+        row_exists(
+            &self.conn,
+            &self.project.project_id,
+            "evidence_summaries",
+            "evidence_summary_id",
+            evidence_summary_id,
+        )
     }
 
     /// Returns whether a persistent artifact already has an owner link for a Task.
@@ -2793,6 +2837,27 @@ fn table_count(conn: &Connection, table: &str, project_id: &str) -> StoreResult<
     let sql = format!("SELECT COUNT(*) FROM \"{escaped_table}\" WHERE project_id = ?1");
     let count: i64 = conn.query_row(&sql, params![project_id], |row| row.get(0))?;
     nonnegative_i64_to_u64("table count", count).map_err(StoreError::from)
+}
+
+fn row_exists(
+    conn: &Connection,
+    project_id: &str,
+    table: &str,
+    id_column: &str,
+    id: &str,
+) -> StoreResult<bool> {
+    let sql = format!(
+        "SELECT COUNT(*)
+           FROM {}
+          WHERE project_id = ?1
+            AND {} = ?2",
+        escape_sql_identifier(table),
+        escape_sql_identifier(id_column),
+    );
+    conn.query_row(&sql, params![project_id, id], |row| {
+        Ok(row.get::<_, i64>(0)? > 0)
+    })
+    .map_err(StoreError::from)
 }
 
 fn escape_sql_identifier(identifier: &str) -> String {

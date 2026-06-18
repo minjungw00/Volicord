@@ -809,8 +809,10 @@ mod tests {
             .intake(request.clone(), invocation(AccessClass::CoreMutation))?;
         let adapted = adapter.call_tool("harness.intake", serde_json::to_value(request)?)?;
 
-        assert_eq!(adapted.response_value, direct.response_value);
-        assert_eq!(adapted.response_json, direct.response_json);
+        assert_eq!(
+            normalize_dry_run_required_ref_ids(adapted.response_value),
+            normalize_dry_run_required_ref_ids(direct.response_value)
+        );
         Ok(())
     }
 
@@ -874,14 +876,14 @@ mod tests {
             "access_class": "artifact_registration",
             "supported_access_classes": ["artifact_registration"]
         }))?;
-        create_task(&harness, "req_stage_task", "idem_stage_task")?;
+        let task_id = create_task(&harness, "req_stage_task", "idem_stage_task")?;
         let adapter = harness.adapter(AccessClass::ArtifactRegistration);
 
         let response = adapter.call_tool(
             "harness.stage_artifact",
             serde_json::to_value(stage_artifact_request(
                 "req_stage_missing_capability",
-                "task_req_stage_task",
+                &task_id,
             ))?,
         )?;
 
@@ -900,12 +902,10 @@ mod tests {
             "supported_access_classes": ["artifact_registration"],
             "manual_artifact_attachment_supported": true
         }))?;
-        create_task(&harness, "req_stage_task_forged", "idem_stage_task_forged")?;
+        let task_id = create_task(&harness, "req_stage_task_forged", "idem_stage_task_forged")?;
         let adapter = harness.adapter(AccessClass::ArtifactRegistration);
-        let mut params = serde_json::to_value(stage_artifact_request(
-            "req_stage_forged",
-            "task_req_stage_task_forged",
-        ))?;
+        let mut params =
+            serde_json::to_value(stage_artifact_request("req_stage_forged", &task_id))?;
         params["surface_instance_id"] = json!("forged_surface_instance");
         let before = harness.counts()?;
 
@@ -1046,13 +1046,36 @@ mod tests {
         harness: &TestHarness,
         request_id: &str,
         idempotency_key: &str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<String, Box<dyn Error>> {
         let response = harness.core().intake(
             intake_request(request_id, false, Some(idempotency_key)),
             invocation(AccessClass::CoreMutation),
         )?;
         assert_eq!(response.response_value["base"]["response_kind"], "result");
-        Ok(())
+        Ok(response.response_value["task_ref"]["record_id"]
+            .as_str()
+            .expect("task id should be present")
+            .to_owned())
+    }
+
+    fn normalize_dry_run_required_ref_ids(mut value: Value) -> Value {
+        let Some(next_actions) = value["dry_run_summary"]["next_actions"].as_array_mut() else {
+            return value;
+        };
+        for action in next_actions {
+            let Some(required_refs) = action["required_refs"].as_array_mut() else {
+                continue;
+            };
+            for required_ref in required_refs {
+                if required_ref["record_id"].is_string() {
+                    required_ref["record_id"] = json!("<opaque-record-id>");
+                }
+                if required_ref["task_id"].is_string() {
+                    required_ref["task_id"] = json!("<opaque-task-id>");
+                }
+            }
+        }
+        value
     }
 
     fn status_request(request_id: &str) -> StatusRequest {

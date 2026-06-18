@@ -21,19 +21,20 @@ use harness_types::{
     ArtifactRef, AuthorizationEffect, AuthorizedAttemptScope, BaselineRef, ChangeUnitId,
     ChangeUnitOperation, CloseIntent, CloseReadinessBlocker, CloseReadinessBlockerCategory,
     CloseReason, CloseState, CloseTaskRequest, CloseTaskResult, CompletionPolicy, DryRunSummary,
-    EffectKind, ErrorCode, EvidenceCoverageItem, EvidenceCoverageState, EvidenceStatus,
-    EvidenceSummary, GuaranteeDisplay, GuaranteeLevel, JsonObject, JudgmentKind, MethodName,
-    NextActionKind, NextActionSummary, ObservedChanges, PlannedBlocker, PlannedBlockerSourceKind,
-    PlannedEffect, PrepareWriteDecision, PrepareWriteRequest, PrepareWriteResult, ProjectId,
-    RecordId, RecordRunRequest, RecordRunResult, RecordUserJudgmentPayload,
-    RecordUserJudgmentRequest, RedactionState, RequestedMode, ResumePolicy, RunId, RunSummary,
-    SensitiveActionScope, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
-    StagedArtifactHandleId, StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude,
-    StatusRequest, StorageRef, SurfaceId, SurfaceInstanceId, TaskId, TaskLifecyclePhase,
-    TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope, ToolResultBase, UpdateScopeRequest,
-    UserJudgment, UserJudgmentContext, UserJudgmentOption, UserJudgmentResolution,
-    UserJudgmentStatus, WriteAuthoritySummary, WriteAuthorizationId, WriteAuthorizationStatus,
-    WriteAuthorizationSummary, WriteDecisionCategory, WriteDecisionReason,
+    DurableIdKind, EffectKind, ErrorCode, EvidenceCoverageItem, EvidenceCoverageState,
+    EvidenceStatus, EvidenceSummary, GuaranteeDisplay, GuaranteeLevel, JsonObject, JudgmentKind,
+    MethodName, NextActionKind, NextActionSummary, ObservedChanges, PlannedBlocker,
+    PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision, PrepareWriteRequest,
+    PrepareWriteResult, ProjectId, RecordId, RecordRunRequest, RecordRunResult,
+    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestedMode,
+    ResumePolicy, RunId, RunSummary, SensitiveActionScope, StageArtifactRequest,
+    StageArtifactResult, StagedArtifactHandle, StagedArtifactHandleId, StateRecordKind,
+    StateRecordRef, StatusCloseState, StatusInclude, StatusRequest, StorageRef, SurfaceId,
+    SurfaceInstanceId, TaskId, TaskLifecyclePhase, TaskLifecycleState, TaskMode, TaskResult,
+    ToolEnvelope, ToolResultBase, UpdateScopeRequest, UserJudgment, UserJudgmentContext,
+    UserJudgmentOption, UserJudgmentResolution, UserJudgmentStatus, WriteAuthoritySummary,
+    WriteAuthorizationId, WriteAuthorizationStatus, WriteAuthorizationSummary,
+    WriteDecisionCategory, WriteDecisionReason,
 };
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -124,6 +125,7 @@ impl CoreService {
         }
 
         let plan = plan_intake(
+            self,
             store,
             project_state,
             request.clone(),
@@ -191,6 +193,7 @@ impl CoreService {
             Err(response) => return Ok(response),
         };
         let plan = match plan_update_scope(
+            self,
             &prepared.store,
             &prepared.context.project_state,
             request.clone(),
@@ -261,6 +264,7 @@ impl CoreService {
             Err(response) => return Ok(response),
         };
         let plan = match plan_prepare_write(
+            self,
             &prepared.store,
             &prepared.context.project_state,
             request.clone(),
@@ -380,10 +384,11 @@ impl CoreService {
             });
         }
 
+        let handle_id = allocate_staged_artifact_handle_id(self, &prepared.store)?;
         let staging_record = prepared
             .store
             .create_artifact_staging(ArtifactStagingInsert {
-                handle_prefix: format!("staged_{}", request.envelope.request_id.as_str()),
+                handle_id: handle_id.into_inner(),
                 task_id: request.task_id.as_str().to_owned(),
                 created_by_surface_id: verified_surface.surface_id.as_str().to_owned(),
                 created_by_surface_instance_id: verified_surface
@@ -470,6 +475,7 @@ impl CoreService {
             Err(response) => return Ok(response),
         };
         let plan = match plan_record_run(
+            self,
             &prepared.store,
             &prepared.context.project_state,
             request.clone(),
@@ -540,6 +546,7 @@ impl CoreService {
             Err(response) => return Ok(response),
         };
         let plan = match plan_request_user_judgment(
+            self,
             &prepared.store,
             &prepared.context.project_state,
             request.clone(),
@@ -811,6 +818,103 @@ impl From<serde_json::Error> for PlanError {
     fn from(error: serde_json::Error) -> Self {
         Self::Core(CorePipelineError::from(error))
     }
+}
+
+fn allocate_task_id(service: &CoreService, store: &CoreProjectStore) -> CoreResult<TaskId> {
+    service
+        .allocate_generated_id(DurableIdKind::Task, |candidate| {
+            store
+                .task_exists(&TaskId::new(candidate))
+                .map_err(CorePipelineError::from)
+        })
+        .map(TaskId::new)
+}
+
+fn allocate_change_unit_id(
+    service: &CoreService,
+    store: &CoreProjectStore,
+) -> CoreResult<ChangeUnitId> {
+    service
+        .allocate_generated_id(DurableIdKind::ChangeUnit, |candidate| {
+            store
+                .change_unit_id_exists(candidate)
+                .map_err(CorePipelineError::from)
+        })
+        .map(ChangeUnitId::new)
+}
+
+fn allocate_user_judgment_id(
+    service: &CoreService,
+    store: &CoreProjectStore,
+) -> CoreResult<harness_types::UserJudgmentId> {
+    service
+        .allocate_generated_id(DurableIdKind::UserJudgment, |candidate| {
+            store
+                .user_judgment_record(candidate)
+                .map(|record| record.is_some())
+                .map_err(CorePipelineError::from)
+        })
+        .map(harness_types::UserJudgmentId::new)
+}
+
+fn allocate_write_authorization_id(
+    service: &CoreService,
+    store: &CoreProjectStore,
+) -> CoreResult<WriteAuthorizationId> {
+    service
+        .allocate_generated_id(DurableIdKind::WriteAuthorization, |candidate| {
+            store
+                .write_authorization_record(candidate)
+                .map(|record| record.is_some())
+                .map_err(CorePipelineError::from)
+        })
+        .map(WriteAuthorizationId::new)
+}
+
+fn allocate_run_id(service: &CoreService, store: &CoreProjectStore) -> CoreResult<RunId> {
+    service
+        .allocate_generated_id(DurableIdKind::Run, |candidate| {
+            store
+                .run_id_exists(candidate)
+                .map_err(CorePipelineError::from)
+        })
+        .map(RunId::new)
+}
+
+fn allocate_staged_artifact_handle_id(
+    service: &CoreService,
+    store: &CoreProjectStore,
+) -> CoreResult<StagedArtifactHandleId> {
+    service
+        .allocate_generated_id(DurableIdKind::StagedArtifact, |candidate| {
+            store
+                .artifact_staging_record(candidate)
+                .map(|record| record.is_some())
+                .map_err(CorePipelineError::from)
+        })
+        .map(StagedArtifactHandleId::new)
+}
+
+fn allocate_artifact_id(service: &CoreService, store: &CoreProjectStore) -> CoreResult<ArtifactId> {
+    service
+        .allocate_generated_id(DurableIdKind::Artifact, |candidate| {
+            store
+                .artifact_record(candidate)
+                .map(|record| record.is_some())
+                .map_err(CorePipelineError::from)
+        })
+        .map(ArtifactId::new)
+}
+
+fn allocate_evidence_summary_id(
+    service: &CoreService,
+    store: &CoreProjectStore,
+) -> CoreResult<String> {
+    service.allocate_generated_id(DurableIdKind::Evidence, |candidate| {
+        store
+            .evidence_summary_exists(candidate)
+            .map_err(CorePipelineError::from)
+    })
 }
 
 fn prepare_or_response(
@@ -2221,6 +2325,7 @@ fn close_next_action(label: &str, required_refs: Vec<StateRecordRef>) -> NextAct
 }
 
 fn plan_intake(
+    service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: harness_types::IntakeRequest,
@@ -2236,9 +2341,10 @@ fn plan_intake(
         ResumePolicy::SupersedeActive => true,
     };
     let task_id = if create_new {
-        request.envelope.task_id.clone().unwrap_or_else(|| {
-            TaskId::new(format!("task_{}", request.envelope.request_id.as_str()))
-        })
+        match request.envelope.task_id.clone() {
+            Some(task_id) => task_id,
+            None => allocate_task_id(service, store)?,
+        }
     } else {
         TaskId::new(
             active_task
@@ -2361,6 +2467,7 @@ fn plan_intake(
 }
 
 fn plan_update_scope(
+    service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: UpdateScopeRequest,
@@ -2474,7 +2581,8 @@ fn plan_update_scope(
                     .map_err(PlanError::Core)?;
                     return Err(PlanError::Response(Box::new(response)));
                 }
-                let change_unit_id = generated_change_unit_id(&request.envelope);
+                let change_unit_id =
+                    allocate_change_unit_id(service, store).map_err(PlanError::Core)?;
                 let insert = change_unit_insert(&request, &change_unit_id)?;
                 let record = synthetic_change_unit_record(
                     &request.envelope.project_id,
@@ -2509,7 +2617,8 @@ fn plan_update_scope(
                     .map_err(PlanError::Core)?;
                     return Err(PlanError::Response(Box::new(response)));
                 }
-                let change_unit_id = generated_change_unit_id(&request.envelope);
+                let change_unit_id =
+                    allocate_change_unit_id(service, store).map_err(PlanError::Core)?;
                 let insert = change_unit_insert(&request, &change_unit_id)?;
                 let record = synthetic_change_unit_record(
                     &request.envelope.project_id,
@@ -2606,6 +2715,7 @@ fn plan_update_scope(
 }
 
 fn plan_prepare_write(
+    service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: PrepareWriteRequest,
@@ -2788,7 +2898,7 @@ fn plan_prepare_write(
     let decision = prepare_write_decision(&reasons);
     let allowed = reasons.is_empty();
     let write_authorization_id =
-        WriteAuthorizationId::new(format!("wa_{}", request.envelope.request_id.as_str()));
+        allocate_write_authorization_id(service, store).map_err(PlanError::Core)?;
     let authorized_attempt_scope = AuthorizedAttemptScope {
         task_id: task_id.clone(),
         change_unit_id: scope_change_unit_id.clone(),
@@ -3361,6 +3471,7 @@ struct RecordRunArtifactContext<'a> {
 }
 
 fn plan_record_run(
+    service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: RecordRunRequest,
@@ -3501,10 +3612,28 @@ fn plan_record_run(
     }
 
     let planned_state_version = project_state.state_version + 1;
-    let run_id = request
-        .run_id
-        .clone()
-        .unwrap_or_else(|| RunId::new(format!("run_{}", request.envelope.request_id.as_str())));
+    let run_id = match request.run_id.clone() {
+        Some(run_id) => run_id,
+        None => allocate_run_id(service, store).map_err(PlanError::Core)?,
+    };
+    if request.run_id.is_some()
+        && store.run_id_exists(run_id.as_str()).map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                &request.envelope,
+                project_state,
+                error,
+            )))
+        })?
+    {
+        let response = validation_rejected(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "run_id",
+            "run_id already identifies an existing Run",
+        )
+        .map_err(PlanError::Core)?;
+        return Err(PlanError::Response(Box::new(response)));
+    }
     let run_ref = state_ref(
         StateRecordKind::Run,
         run_id.as_str(),
@@ -3520,6 +3649,7 @@ fn plan_record_run(
     };
 
     let artifact_plans = plan_record_run_artifacts(
+        service,
         store,
         project_state,
         &request,
@@ -3677,7 +3807,8 @@ fn plan_record_run(
         storage_mutations.push(plan.run_link.clone());
     }
     if let Some(evidence_summary) = &evidence_summary {
-        let evidence_summary_id = record_run_evidence_summary_id(&request.task_id);
+        let evidence_summary_id =
+            allocate_evidence_summary_id(service, store).map_err(PlanError::Core)?;
         storage_mutations.push(CoreStorageMutation::UpsertEvidenceSummary(
             EvidenceSummaryUpsert {
                 evidence_summary_id: evidence_summary_id.clone(),
@@ -3744,6 +3875,7 @@ fn plan_record_run(
 }
 
 fn plan_record_run_artifacts(
+    service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: &RecordRunRequest,
@@ -3805,7 +3937,9 @@ fn plan_record_run_artifacts(
                         "a staged artifact handle can be consumed at most once",
                     );
                 }
-                plans.push(plan_staged_artifact_input(&context, input, handle)?);
+                plans.push(plan_staged_artifact_input(
+                    service, &context, input, handle,
+                )?);
             }
             ArtifactInputSourceKind::ExistingArtifact => {
                 if input.existing_artifact_ref.is_none() || input.staged_artifact_handle.is_some() {
@@ -3832,6 +3966,7 @@ fn plan_record_run_artifacts(
 }
 
 fn plan_staged_artifact_input(
+    service: &CoreService,
     context: &RecordRunArtifactContext<'_>,
     input: &ArtifactInput,
     handle: &StagedArtifactHandle,
@@ -3898,11 +4033,7 @@ fn plan_staged_artifact_input(
         &record,
     )?;
 
-    let artifact_id = ArtifactId::new(format!(
-        "artifact_{}_{}",
-        storage_id_component(run_id.as_str()),
-        storage_id_component(input.artifact_input_id.as_str())
-    ));
+    let artifact_id = allocate_artifact_id(service, store).map_err(PlanError::Core)?;
     let uri = format!(
         "harness-artifact://{}/{}",
         request.envelope.project_id.as_str(),
@@ -4474,36 +4605,12 @@ fn artifact_link_metadata(input: &ArtifactInput) -> CoreResult<String> {
     }))?)
 }
 
-fn record_run_evidence_summary_id(task_id: &TaskId) -> String {
-    format!(
-        "evidence_summary_{}",
-        storage_id_component(task_id.as_str())
-    )
-}
-
 fn sorted_unique(values: Vec<String>) -> Vec<String> {
     values
         .into_iter()
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
-}
-
-fn storage_id_component(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
-            output.push(ch);
-        } else {
-            output.push('_');
-        }
-    }
-    let trimmed = output.trim_matches(['_', '.', '-']);
-    if trimmed.is_empty() {
-        "record".to_owned()
-    } else {
-        trimmed.chars().take(80).collect()
-    }
 }
 
 fn artifact_input_validation_plan_error<T>(
@@ -4681,6 +4788,7 @@ fn no_active_change_unit_response(
 }
 
 fn plan_request_user_judgment(
+    service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: harness_types::RequestUserJudgmentRequest,
@@ -4766,7 +4874,7 @@ fn plan_request_user_judgment(
             error,
         )))
     })?;
-    let judgment_id = generated_user_judgment_id(&request.envelope);
+    let judgment_id = allocate_user_judgment_id(service, store).map_err(PlanError::Core)?;
     let user_judgment_ref = state_ref(
         StateRecordKind::UserJudgment,
         judgment_id.as_str(),
@@ -5955,14 +6063,6 @@ fn store_unavailable_error(error: StoreError) -> harness_types::ToolError {
     )
 }
 
-fn generated_change_unit_id(envelope: &ToolEnvelope) -> ChangeUnitId {
-    ChangeUnitId::new(format!("cu_{}", envelope.request_id.as_str()))
-}
-
-fn generated_user_judgment_id(envelope: &ToolEnvelope) -> harness_types::UserJudgmentId {
-    harness_types::UserJudgmentId::new(format!("uj_{}", envelope.request_id.as_str()))
-}
-
 fn resolve_requested_mode(requested_mode: RequestedMode) -> TaskMode {
     match requested_mode {
         RequestedMode::Advisor => TaskMode::Advisor,
@@ -6082,7 +6182,7 @@ mod tests {
     use harness_test_support::TempRuntimeHome;
     use harness_types::{
         ActorKind, ChangeUnitUpdate, IdempotencyKey, InitialScope, RequestId, ScopeUpdate,
-        SurfaceId,
+        SequenceDurableIdGenerator, SurfaceId,
     };
     use serde_json::{json, Map, Value};
 
@@ -6167,6 +6267,243 @@ mod tests {
                     .join("state.sqlite"),
             )?)
         }
+    }
+
+    #[test]
+    fn reused_request_id_does_not_collide_for_core_generated_records() -> Result<(), Box<dyn Error>>
+    {
+        let harness = MethodHarness::new()?;
+        let request_id = "req_reused_for_generated_ids";
+
+        let first_intake = harness.service.intake(
+            intake_request(
+                request_id,
+                "idem_reused_intake_1",
+                false,
+                Some(0),
+                RequestedMode::Work,
+            ),
+            invocation(AccessClass::CoreMutation),
+        )?;
+        let first_task_id = response_record_id(&first_intake.response_value, "task_ref");
+        let first_event_id = response_event_id(&first_intake.response_value);
+
+        let second_intake = harness.service.intake(
+            intake_request(
+                request_id,
+                "idem_reused_intake_2",
+                false,
+                Some(1),
+                RequestedMode::Work,
+            ),
+            invocation(AccessClass::CoreMutation),
+        )?;
+        let second_task_id = response_record_id(&second_intake.response_value, "task_ref");
+        let second_event_id = response_event_id(&second_intake.response_value);
+        assert_ne!(first_task_id, second_task_id);
+        assert_ne!(first_event_id, second_event_id);
+
+        let first_scope = harness.service.update_scope(
+            update_scope_request(
+                request_id,
+                "idem_reused_scope_1",
+                false,
+                Some(2),
+                &second_task_id,
+                ChangeUnitOperation::CreateCurrent,
+                "First reused request scope.",
+            ),
+            invocation(AccessClass::CoreMutation),
+        )?;
+        let first_change_unit_id =
+            response_record_id(&first_scope.response_value, "change_unit_ref");
+        let first_scope_event_id = response_event_id(&first_scope.response_value);
+
+        let second_scope = harness.service.update_scope(
+            update_scope_request(
+                request_id,
+                "idem_reused_scope_2",
+                false,
+                Some(3),
+                &second_task_id,
+                ChangeUnitOperation::ReplaceCurrent,
+                "Second reused request scope.",
+            ),
+            invocation(AccessClass::CoreMutation),
+        )?;
+        let second_change_unit_id =
+            response_record_id(&second_scope.response_value, "change_unit_ref");
+        let second_scope_event_id = response_event_id(&second_scope.response_value);
+        assert_ne!(first_change_unit_id, second_change_unit_id);
+        assert_ne!(first_scope_event_id, second_scope_event_id);
+
+        let first_write = harness.service.prepare_write(
+            prepare_write_request(
+                request_id,
+                "idem_reused_write_1",
+                Some(4),
+                Some(&second_task_id),
+                Some(&second_change_unit_id),
+            ),
+            invocation(AccessClass::WriteAuthorization),
+        )?;
+        let first_write_id =
+            response_record_id(&first_write.response_value, "write_authorization_ref");
+        let first_write_event_id = response_event_id(&first_write.response_value);
+
+        let second_write = harness.service.prepare_write(
+            prepare_write_request(
+                request_id,
+                "idem_reused_write_2",
+                Some(5),
+                Some(&second_task_id),
+                Some(&second_change_unit_id),
+            ),
+            invocation(AccessClass::WriteAuthorization),
+        )?;
+        let second_write_id =
+            response_record_id(&second_write.response_value, "write_authorization_ref");
+        let second_write_event_id = response_event_id(&second_write.response_value);
+        assert_ne!(first_write_id, second_write_id);
+        assert_ne!(first_write_event_id, second_write_event_id);
+
+        let first_judgment = harness.service.request_user_judgment(
+            user_judgment_request(
+                request_id,
+                "idem_reused_judgment_1",
+                false,
+                Some(6),
+                &second_task_id,
+                Some(&second_change_unit_id),
+                JudgmentKind::ProductDecision,
+            ),
+            invocation(AccessClass::CoreMutation),
+        )?;
+        let first_judgment_id =
+            response_record_id(&first_judgment.response_value, "user_judgment_ref");
+        let first_judgment_event_id = response_event_id(&first_judgment.response_value);
+
+        let second_judgment = harness.service.request_user_judgment(
+            user_judgment_request(
+                request_id,
+                "idem_reused_judgment_2",
+                false,
+                Some(7),
+                &second_task_id,
+                Some(&second_change_unit_id),
+                JudgmentKind::TechnicalDecision,
+            ),
+            invocation(AccessClass::CoreMutation),
+        )?;
+        let second_judgment_id =
+            response_record_id(&second_judgment.response_value, "user_judgment_ref");
+        let second_judgment_event_id = response_event_id(&second_judgment.response_value);
+        assert_ne!(first_judgment_id, second_judgment_id);
+        assert_ne!(first_judgment_event_id, second_judgment_event_id);
+
+        Ok(())
+    }
+
+    #[test]
+    fn reused_request_id_stage_artifact_returns_distinct_handles() -> Result<(), Box<dyn Error>> {
+        let harness = MethodHarness::new()?;
+        enable_stage_artifact_capability(&harness)?;
+        let (task_id, _) = create_task_with_change_unit(&harness, "stage_reused_request")?;
+
+        let first = harness.service.stage_artifact(
+            stage_artifact_request("req_stage_reused", None, false, None, &task_id),
+            invocation(AccessClass::ArtifactRegistration),
+        )?;
+        let second = harness.service.stage_artifact(
+            stage_artifact_request("req_stage_reused", None, false, None, &task_id),
+            invocation(AccessClass::ArtifactRegistration),
+        )?;
+
+        let first_handle = first.response_value["staged_artifact_handle"]["handle_id"]
+            .as_str()
+            .expect("first handle should be present");
+        let second_handle = second.response_value["staged_artifact_handle"]["handle_id"]
+            .as_str()
+            .expect("second handle should be present");
+        assert_ne!(first_handle, second_handle);
+        assert_eq!(harness.counts()?.artifact_staging, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn idempotent_replay_returns_original_generated_ids() -> Result<(), Box<dyn Error>> {
+        let harness = MethodHarness::new()?;
+        let request = intake_request(
+            "req_replay_generated_ids",
+            "idem_replay_generated_ids",
+            false,
+            Some(0),
+            RequestedMode::Work,
+        );
+
+        let first = harness
+            .service
+            .intake(request.clone(), invocation(AccessClass::CoreMutation))?;
+        let second = harness
+            .service
+            .intake(request, invocation(AccessClass::CoreMutation))?;
+
+        assert!(second.replayed);
+        assert_eq!(
+            response_record_id(&first.response_value, "task_ref"),
+            response_record_id(&second.response_value, "task_ref")
+        );
+        assert_eq!(
+            response_event_id(&first.response_value),
+            response_event_id(&second.response_value)
+        );
+        assert_eq!(harness.counts()?.tasks, 1);
+        assert_eq!(harness.counts()?.task_events, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn deterministic_generated_id_collision_retries_bounded_candidates(
+    ) -> Result<(), Box<dyn Error>> {
+        let mut harness = MethodHarness::new()?;
+        insert_superseding_task(&harness, "task_collision")?;
+        harness.service = CoreService::with_id_generator(
+            &harness.runtime_home_path,
+            SequenceDurableIdGenerator::new(["collision", "fresh", "event"]),
+        );
+
+        let response = harness.service.intake(
+            intake_request(
+                "req_collision_retry",
+                "idem_collision_retry",
+                false,
+                Some(0),
+                RequestedMode::Work,
+            ),
+            invocation(AccessClass::CoreMutation),
+        )?;
+
+        assert_eq!(
+            response_record_id(&response.response_value, "task_ref"),
+            "task_fresh"
+        );
+        assert_eq!(response_event_id(&response.response_value), "evt_event");
+        assert_eq!(harness.counts()?.tasks, 2);
+        Ok(())
+    }
+
+    fn response_record_id(response_value: &Value, field: &str) -> String {
+        response_value[field]["record_id"]
+            .as_str()
+            .expect("record_id should be present")
+            .to_owned()
+    }
+
+    fn response_event_id(response_value: &Value) -> String {
+        response_value["base"]["events"][0]["event_id"]
+            .as_str()
+            .expect("event_id should be present")
+            .to_owned()
     }
 
     #[test]
@@ -6302,7 +6639,7 @@ mod tests {
         )?;
         assert_verified_surface(&request_judgment, AccessClass::CoreMutation);
 
-        harness.service.request_user_judgment(
+        let pending_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_verified_judgment_pending",
                 "idem_verified_judgment_pending",
@@ -6314,12 +6651,14 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
         let mut record_judgment = record_judgment_request(
             "req_verified_record_judgment",
             "idem_verified_record_judgment",
             Some(3),
             &task_id,
-            "uj_req_verified_judgment_pending",
+            &pending_judgment_id,
             JudgmentKind::ProductDecision,
             answer_payload(JudgmentKind::ProductDecision),
         );
@@ -6625,7 +6964,7 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let harness = MethodHarness::new()?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_allowed")?;
-        harness.service.request_user_judgment(
+        let sensitive_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_prepare_allowed_sensitive",
                 "idem_prepare_allowed_sensitive",
@@ -6637,13 +6976,15 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let sensitive_judgment_id =
+            response_record_id(&sensitive_judgment.response_value, "user_judgment_ref");
         harness.service.record_user_judgment(
             record_judgment_request(
                 "req_prepare_allowed_record",
                 "idem_prepare_allowed_record",
                 Some(3),
                 &task_id,
-                "uj_req_prepare_allowed_sensitive",
+                &sensitive_judgment_id,
                 JudgmentKind::SensitiveApproval,
                 answer_payload(JudgmentKind::SensitiveApproval),
             ),
@@ -6687,8 +7028,10 @@ mod tests {
         assert_eq!(after.write_authorizations, before.write_authorizations + 1);
         assert_eq!(after.task_events, before.task_events + 1);
         assert_eq!(after.tool_invocations, before.tool_invocations + 1);
+        let write_authorization_id =
+            response_record_id(&response.response_value, "write_authorization_ref");
         assert_eq!(
-            write_authorization_basis(&harness, "wa_req_prepare_allowed")?,
+            write_authorization_basis(&harness, &write_authorization_id)?,
             5
         );
         Ok(())
@@ -7708,6 +8051,7 @@ mod tests {
         enable_record_run_capabilities(&harness)?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_artifact")?;
         let handle = stage_artifact_for_record_run(&harness, &task_id, "run_artifact", 2)?;
+        let handle_id = handle.handle_id.as_str().to_owned();
         let before = harness.counts()?;
 
         let mut request = record_run_request(
@@ -7751,10 +8095,7 @@ mod tests {
         assert_eq!(after.artifacts, before.artifacts + 1);
         assert_eq!(after.artifact_links, before.artifact_links + 2);
         assert_eq!(after.evidence_summaries, before.evidence_summaries + 1);
-        assert_eq!(
-            artifact_staging_status(&harness, "staged_req_stage_run_artifact")?,
-            "consumed"
-        );
+        assert_eq!(artifact_staging_status(&harness, &handle_id)?, "consumed");
         assert!(artifact_owner_link_exists(&harness, &artifact_id, "run")?);
         assert!(artifact_owner_link_exists(
             &harness,
@@ -7846,6 +8187,7 @@ mod tests {
         enable_record_run_capabilities(&harness)?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stage_sha")?;
         let handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_sha", 2)?;
+        let handle_id = handle.handle_id.as_str().to_owned();
         let before = harness.counts()?;
 
         let mut input = artifact_input_for_handle("artifact_input_sha", handle, None, None);
@@ -7869,10 +8211,7 @@ mod tests {
             "staged_handle_checksum_mismatch"
         );
         assert_eq!(harness.counts()?, before);
-        assert_eq!(
-            artifact_staging_status(&harness, "staged_req_stage_run_stage_sha")?,
-            "staged"
-        );
+        assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
         Ok(())
     }
 
@@ -7938,6 +8277,7 @@ mod tests {
             invocation(AccessClass::CoreMutation),
         )?;
         let after = harness.counts()?;
+        let judgment_id = response_record_id(&response.response_value, "user_judgment_ref");
 
         assert_eq!(response.response_value["base"]["response_kind"], "result");
         assert_eq!(response.response_value["base"]["state_version"], 3);
@@ -7958,10 +8298,7 @@ mod tests {
         );
         assert_eq!(after.state_version, before.state_version + 1);
         assert_eq!(after.user_judgments, before.user_judgments + 1);
-        assert_eq!(
-            user_judgment_status(&harness, "uj_req_judgment_pending")?,
-            "pending"
-        );
+        assert_eq!(user_judgment_status(&harness, &judgment_id)?, "pending");
         Ok(())
     }
 
@@ -7969,7 +8306,7 @@ mod tests {
     fn record_user_judgment_resolves_pending_record() -> Result<(), Box<dyn Error>> {
         let harness = MethodHarness::new()?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "resolve")?;
-        harness.service.request_user_judgment(
+        let pending_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_judgment_resolve",
                 "idem_judgment_resolve",
@@ -7981,6 +8318,8 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
         let before = harness.counts()?;
 
         let response = harness.service.record_user_judgment(
@@ -7989,7 +8328,7 @@ mod tests {
                 "idem_record_resolve",
                 Some(3),
                 &task_id,
-                "uj_req_judgment_resolve",
+                &pending_judgment_id,
                 JudgmentKind::ProductDecision,
                 answer_payload(JudgmentKind::ProductDecision),
             ),
@@ -8017,11 +8356,11 @@ mod tests {
         assert_eq!(after.state_version, before.state_version + 1);
         assert_eq!(after.user_judgments, before.user_judgments);
         assert_eq!(
-            user_judgment_status(&harness, "uj_req_judgment_resolve")?,
+            user_judgment_status(&harness, &pending_judgment_id)?,
             "resolved"
         );
         assert!(
-            resolution_json(&harness, "uj_req_judgment_resolve")?["answer"]["product_decision"]
+            resolution_json(&harness, &pending_judgment_id)?["answer"]["product_decision"]
                 .is_object()
         );
         Ok(())
@@ -8031,7 +8370,7 @@ mod tests {
     fn incompatible_judgment_kind_is_rejected_without_effect() -> Result<(), Box<dyn Error>> {
         let harness = MethodHarness::new()?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "kind")?;
-        harness.service.request_user_judgment(
+        let pending_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_judgment_kind",
                 "idem_judgment_kind",
@@ -8043,6 +8382,8 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
         let before = harness.counts()?;
 
         let response = harness.service.record_user_judgment(
@@ -8051,7 +8392,7 @@ mod tests {
                 "idem_record_wrong_kind",
                 Some(3),
                 &task_id,
-                "uj_req_judgment_kind",
+                &pending_judgment_id,
                 JudgmentKind::TechnicalDecision,
                 answer_payload(JudgmentKind::TechnicalDecision),
             ),
@@ -8065,7 +8406,7 @@ mod tests {
         );
         assert_eq!(harness.counts()?, before);
         assert_eq!(
-            user_judgment_status(&harness, "uj_req_judgment_kind")?,
+            user_judgment_status(&harness, &pending_judgment_id)?,
             "pending"
         );
         Ok(())
@@ -8076,7 +8417,7 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let harness = MethodHarness::new()?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "risk")?;
-        harness.service.request_user_judgment(
+        let pending_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_judgment_risk",
                 "idem_judgment_risk",
@@ -8088,6 +8429,8 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
         let before = harness.counts()?;
 
         let response = harness.service.record_user_judgment(
@@ -8096,7 +8439,7 @@ mod tests {
                 "idem_record_final_for_risk",
                 Some(3),
                 &task_id,
-                "uj_req_judgment_risk",
+                &pending_judgment_id,
                 JudgmentKind::ResidualRiskAcceptance,
                 answer_payload(JudgmentKind::FinalAcceptance),
             ),
@@ -8110,7 +8453,7 @@ mod tests {
         );
         assert_eq!(harness.counts()?, before);
         assert_eq!(
-            user_judgment_status(&harness, "uj_req_judgment_risk")?,
+            user_judgment_status(&harness, &pending_judgment_id)?,
             "pending"
         );
         Ok(())
@@ -8120,7 +8463,7 @@ mod tests {
     fn sensitive_action_scope_does_not_create_write_authorization() -> Result<(), Box<dyn Error>> {
         let harness = MethodHarness::new()?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "sensitive")?;
-        harness.service.request_user_judgment(
+        let pending_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_judgment_sensitive",
                 "idem_judgment_sensitive",
@@ -8132,6 +8475,8 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
         let before = harness.counts()?;
 
         let response = harness.service.record_user_judgment(
@@ -8140,7 +8485,7 @@ mod tests {
                 "idem_record_sensitive",
                 Some(3),
                 &task_id,
-                "uj_req_judgment_sensitive",
+                &pending_judgment_id,
                 JudgmentKind::SensitiveApproval,
                 answer_payload(JudgmentKind::SensitiveApproval),
             ),
@@ -8164,7 +8509,7 @@ mod tests {
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "scope_judgment")?;
         let original_scope = current_change_unit_scope(&harness, &task_id)?;
         let original_current = current_change_unit_id(&harness, &task_id)?;
-        harness.service.request_user_judgment(
+        let pending_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_judgment_scope",
                 "idem_judgment_scope",
@@ -8176,6 +8521,8 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
         let before = harness.counts()?;
 
         let response = harness.service.record_user_judgment(
@@ -8184,7 +8531,7 @@ mod tests {
                 "idem_record_scope",
                 Some(3),
                 &task_id,
-                "uj_req_judgment_scope",
+                &pending_judgment_id,
                 JudgmentKind::ScopeDecision,
                 answer_payload(JudgmentKind::ScopeDecision),
             ),
@@ -8234,7 +8581,7 @@ mod tests {
         );
         assert_eq!(harness.counts()?, before_request);
 
-        harness.service.request_user_judgment(
+        let pending_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_judgment_dry_record",
                 "idem_judgment_dry_record",
@@ -8246,6 +8593,8 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
         let before_record = harness.counts()?;
 
         let mut record_preview_request = record_judgment_request(
@@ -8253,7 +8602,7 @@ mod tests {
             "idem_record_dry",
             Some(3),
             &task_id,
-            "uj_req_judgment_dry_record",
+            &pending_judgment_id,
             JudgmentKind::ProductDecision,
             answer_payload(JudgmentKind::ProductDecision),
         );
@@ -8269,7 +8618,7 @@ mod tests {
         );
         assert_eq!(harness.counts()?, before_record);
         assert_eq!(
-            user_judgment_status(&harness, "uj_req_judgment_dry_record")?,
+            user_judgment_status(&harness, &pending_judgment_id)?,
             "pending"
         );
         Ok(())
@@ -8279,7 +8628,7 @@ mod tests {
     fn stale_state_rejects_record_user_judgment_without_effect() -> Result<(), Box<dyn Error>> {
         let harness = MethodHarness::new()?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "stale_judgment")?;
-        harness.service.request_user_judgment(
+        let pending_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_judgment_stale",
                 "idem_judgment_stale",
@@ -8291,6 +8640,8 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
         let before = harness.counts()?;
 
         let response = harness.service.record_user_judgment(
@@ -8299,7 +8650,7 @@ mod tests {
                 "idem_record_stale",
                 Some(2),
                 &task_id,
-                "uj_req_judgment_stale",
+                &pending_judgment_id,
                 JudgmentKind::ProductDecision,
                 answer_payload(JudgmentKind::ProductDecision),
             ),
@@ -8313,7 +8664,7 @@ mod tests {
         );
         assert_eq!(harness.counts()?, before);
         assert_eq!(
-            user_judgment_status(&harness, "uj_req_judgment_stale")?,
+            user_judgment_status(&harness, &pending_judgment_id)?,
             "pending"
         );
         Ok(())
@@ -8323,7 +8674,7 @@ mod tests {
     fn record_user_judgment_idempotency_replays_without_effect() -> Result<(), Box<dyn Error>> {
         let harness = MethodHarness::new()?;
         let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "replay_judgment")?;
-        harness.service.request_user_judgment(
+        let pending_judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 "req_judgment_replay",
                 "idem_judgment_replay",
@@ -8335,12 +8686,14 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let pending_judgment_id =
+            response_record_id(&pending_judgment.response_value, "user_judgment_ref");
         let request = record_judgment_request(
             "req_record_replay",
             "idem_record_replay",
             Some(3),
             &task_id,
-            "uj_req_judgment_replay",
+            &pending_judgment_id,
             JudgmentKind::ProductDecision,
             answer_payload(JudgmentKind::ProductDecision),
         );
@@ -8980,7 +9333,7 @@ mod tests {
     ) -> Result<u64, Box<dyn Error>> {
         let request_id = format!("req_close_final_{suffix}");
         let idempotency_key = format!("idem_close_final_{suffix}");
-        harness.service.request_user_judgment(
+        let judgment = harness.service.request_user_judgment(
             user_judgment_request(
                 &request_id,
                 &idempotency_key,
@@ -8992,6 +9345,10 @@ mod tests {
             ),
             invocation(AccessClass::CoreMutation),
         )?;
+        let judgment_id = judgment.response_value["user_judgment_ref"]["record_id"]
+            .as_str()
+            .expect("user judgment ref should be present")
+            .to_owned();
         let record_request_id = format!("req_close_final_record_{suffix}");
         let record_idempotency_key = format!("idem_close_final_record_{suffix}");
         let response = harness.service.record_user_judgment(
@@ -9000,7 +9357,7 @@ mod tests {
                 &record_idempotency_key,
                 Some(expected_state_version + 1),
                 task_id,
-                &format!("uj_{request_id}"),
+                &judgment_id,
                 JudgmentKind::FinalAcceptance,
                 answer_payload(JudgmentKind::FinalAcceptance),
             ),
