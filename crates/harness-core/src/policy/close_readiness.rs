@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use harness_types::{
-    BaselineRef, ChangeUnitId, CloseReadinessBlocker, CloseReadinessBlockerCategory,
+    ActorKind, BaselineRef, ChangeUnitId, CloseReadinessBlocker, CloseReadinessBlockerCategory,
     CurrentCloseBasis, JsonObject, JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentKind,
     JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionSummary, ProjectId,
     RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RiskId, StateRecordKind,
@@ -96,15 +96,7 @@ pub(crate) fn current_final_acceptance(
     judgment: &JudgmentAuthority,
     requirement: &FinalAcceptanceRequirement<'_>,
 ) -> bool {
-    if !judgment_has_current_basis(judgment)
-        || judgment.status != UserJudgmentStatus::Resolved
-        || judgment.resolution_outcome != Some(JudgmentResolutionOutcome::Accepted)
-        || judgment.judgment_kind != JudgmentKind::FinalAcceptance
-        || judgment
-            .resolution
-            .as_ref()
-            .is_none_or(|resolution| resolution.answer.final_acceptance.is_none())
-    {
+    if !accepted_current_user_authority(judgment, JudgmentKind::FinalAcceptance) {
         return false;
     }
     judgment
@@ -177,11 +169,7 @@ pub(crate) fn current_residual_risk_acceptance_covers(
     current_close_basis: &CurrentCloseBasis,
     risk_id: &RiskId,
 ) -> bool {
-    if !judgment_has_current_basis(judgment)
-        || judgment.status != UserJudgmentStatus::Resolved
-        || judgment.resolution_outcome != Some(JudgmentResolutionOutcome::Accepted)
-        || judgment.judgment_kind != JudgmentKind::ResidualRiskAcceptance
-    {
+    if !accepted_current_user_authority(judgment, JudgmentKind::ResidualRiskAcceptance) {
         return false;
     }
     let Some(basis) = judgment.basis.as_ref() else {
@@ -255,11 +243,45 @@ pub(crate) fn current_scope_decision(
         && basis.change_unit_id.as_ref() == current_change_unit_id
 }
 
+pub(crate) fn accepted_current_user_authority(
+    judgment: &JudgmentAuthority,
+    required_kind: JudgmentKind,
+) -> bool {
+    if !judgment_has_current_basis(judgment)
+        || judgment.status != UserJudgmentStatus::Resolved
+        || judgment.judgment_kind != required_kind
+        || judgment.resolution_outcome != Some(JudgmentResolutionOutcome::Accepted)
+    {
+        return false;
+    }
+    let Some(resolution) = judgment.resolution.as_ref() else {
+        return false;
+    };
+    resolution.resolution_outcome == Some(JudgmentResolutionOutcome::Accepted)
+        && resolution.resolved_by_actor_kind == ActorKind::User
+        && resolution_answer_matches_kind(required_kind, &resolution.answer)
+}
+
 pub(crate) fn judgment_has_current_basis(judgment: &JudgmentAuthority) -> bool {
     judgment.basis_status == JudgmentBasisCompatibilityStatus::Current
         && judgment.basis.as_ref().is_some_and(|basis| {
             basis.compatibility_status == JudgmentBasisCompatibilityStatus::Current
         })
+}
+
+fn resolution_answer_matches_kind(
+    judgment_kind: JudgmentKind,
+    answer: &RecordUserJudgmentPayload,
+) -> bool {
+    match judgment_kind {
+        JudgmentKind::ProductDecision => answer.product_decision.is_some(),
+        JudgmentKind::TechnicalDecision => answer.technical_decision.is_some(),
+        JudgmentKind::ScopeDecision => answer.scope_decision.is_some(),
+        JudgmentKind::SensitiveApproval => answer.sensitive_action_scope.is_some(),
+        JudgmentKind::FinalAcceptance => answer.final_acceptance.is_some(),
+        JudgmentKind::ResidualRiskAcceptance => answer.residual_risk_acceptance.is_some(),
+        JudgmentKind::Cancellation => answer.cancellation.is_some(),
+    }
 }
 
 pub(crate) fn current_acceptance_required_risk_ids(

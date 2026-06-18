@@ -3921,6 +3921,240 @@ fn non_user_actor_cannot_resolve_authority_bearing_judgment() -> Result<(), Box<
 }
 
 #[test]
+fn stored_final_acceptance_negative_outcomes_do_not_authorize_close() -> Result<(), Box<dyn Error>>
+{
+    for outcome in ["rejected", "deferred", "blocked"] {
+        let harness = MethodHarness::new()?;
+        let suffix = format!("final_negative_{outcome}");
+        let (task_id, change_unit_id) = create_task_with_change_unit(&harness, &suffix)?;
+        let after_basis =
+            record_close_evidence(&harness, &task_id, &change_unit_id, 2, &suffix, true)?;
+        let (after_final, final_judgment_id) = record_final_acceptance_with_id(
+            &harness,
+            &task_id,
+            &change_unit_id,
+            after_basis,
+            &suffix,
+        )?;
+        set_user_judgment_resolution_outcome(&harness, &final_judgment_id, outcome)?;
+        let before = harness.counts()?;
+
+        let response = harness.service.close_task(
+            close_task_request(CloseTaskFixture {
+                request_id: &format!("req_close_{suffix}"),
+                idempotency_key: Some(&format!("idem_close_{suffix}")),
+                dry_run: false,
+                expected_state_version: Some(after_final),
+                task_id: &task_id,
+                intent: CloseIntent::Complete,
+                close_reason: Some(CloseReason::CompletedSelfChecked),
+                superseding_task_id: None,
+            }),
+            invocation(AccessClass::CoreMutation),
+        )?;
+
+        assert_eq!(response.response_value["close_state"], "blocked");
+        assert_close_blocker(&response.response_value, "missing_final_acceptance");
+        assert_eq!(
+            user_judgment_resolution_outcome(&harness, &final_judgment_id)?,
+            Some(outcome.to_owned())
+        );
+        assert_eq!(
+            user_judgment_status(&harness, &final_judgment_id)?,
+            "resolved"
+        );
+        assert_eq!(harness.counts()?, before);
+    }
+    Ok(())
+}
+
+#[test]
+fn stored_final_acceptance_non_user_actor_does_not_authorize_close_or_status(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "final_non_user")?;
+    let after_basis = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "final_non_user",
+        true,
+    )?;
+    let (after_final, final_judgment_id) = record_final_acceptance_with_id(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_basis,
+        "final_non_user",
+    )?;
+    set_user_judgment_resolution_actor(&harness, &final_judgment_id, "agent")?;
+    let before = harness.counts()?;
+
+    let close = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_final_non_user",
+            idempotency_key: Some("idem_close_final_non_user"),
+            dry_run: false,
+            expected_state_version: Some(after_final),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_final_non_user",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_eq!(close.response_value["close_state"], "blocked");
+    assert_close_blocker(&close.response_value, "missing_final_acceptance");
+    assert_eq!(status.response_value["close_state"], "blocked");
+    assert_close_blocker(&status.response_value, "missing_final_acceptance");
+    assert_eq!(
+        user_judgment_resolution_outcome(&harness, &final_judgment_id)?,
+        Some("accepted".to_owned())
+    );
+    assert_eq!(
+        user_judgment_status(&harness, &final_judgment_id)?,
+        "resolved"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn stored_residual_risk_acceptance_non_user_actor_covers_no_risks() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "risk_non_user")?;
+    let (after_basis, risk_ids) = record_close_basis_with_risks(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "risk_non_user",
+        vec![residual_risk_input("Risk needing user acceptance.")],
+    )?;
+    let pending_judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_risk_non_user",
+            "idem_risk_non_user",
+            false,
+            Some(after_basis),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ResidualRiskAcceptance,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let judgment_id = response_record_id(&pending_judgment.response_value, "user_judgment_ref");
+    let accepted = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_risk_non_user_record",
+            "idem_risk_non_user_record",
+            Some(after_basis + 1),
+            &task_id,
+            &judgment_id,
+            JudgmentKind::ResidualRiskAcceptance,
+            residual_risk_acceptance_payload(&risk_ids),
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let after_risk = accepted.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state version should be present");
+    set_user_judgment_resolution_actor(&harness, &judgment_id, "agent")?;
+    record_final_acceptance(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_risk,
+        "risk_non_user",
+    )?;
+    let before = harness.counts()?;
+
+    let status = harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                "req_status_risk_non_user",
+                None,
+                false,
+                None,
+                Some(&task_id),
+            ),
+            include: status_include(),
+        },
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    let coverage = status.response_value["risk_acceptance_coverage"]
+        .as_array()
+        .expect("risk coverage should be an array");
+    assert_eq!(coverage.len(), 1);
+    assert_eq!(coverage[0]["risk_id"], risk_ids[0]);
+    assert_eq!(coverage[0]["accepted"], false);
+    assert_eq!(coverage[0]["accepted_by_judgment_refs"], json!([]));
+    assert_close_blocker(&status.response_value, "missing_residual_risk_acceptance");
+    assert_eq!(
+        user_judgment_resolution_outcome(&harness, &judgment_id)?,
+        Some("accepted".to_owned())
+    );
+    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "resolved");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn stored_sensitive_approval_non_user_actor_does_not_authorize_write() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "sensitive_non_user")?;
+    let (after_approval, judgment_id) =
+        record_sensitive_approval(&harness, &task_id, &change_unit_id, 2, "sensitive_non_user")?;
+    set_user_judgment_resolution_actor(&harness, &judgment_id, "agent")?;
+    let before = harness.counts()?;
+
+    let mut request = prepare_write_request(
+        "req_prepare_sensitive_non_user",
+        "idem_prepare_sensitive_non_user",
+        Some(after_approval),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    request.sensitive_categories = vec!["network".to_owned()];
+    let response = harness
+        .service
+        .prepare_write(request, invocation(AccessClass::WriteAuthorization))?;
+    let after = harness.counts()?;
+
+    assert_eq!(response.response_value["decision"], "approval_required");
+    assert_prepare_reason(&response.response_value, "sensitive_approval_missing");
+    assert_eq!(
+        response.response_value["active_user_judgment_refs"],
+        json!([])
+    );
+    assert!(response.response_value["write_authorization"].is_null());
+    assert_eq!(after.write_authorizations, before.write_authorizations);
+    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "resolved");
+    assert_eq!(
+        user_judgment_resolution_outcome(&harness, &judgment_id)?,
+        Some("accepted".to_owned())
+    );
+    Ok(())
+}
+
+#[test]
 fn incompatible_judgment_kind_is_rejected_without_effect() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "kind")?;
@@ -8036,6 +8270,41 @@ fn set_user_judgment_resolution_json(
           WHERE project_id = ?1
             AND judgment_id = ?2",
         rusqlite::params![PROJECT_ID, judgment_id, value],
+    )?;
+    Ok(())
+}
+
+fn set_user_judgment_resolution_outcome(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    outcome: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut resolution = resolution_json(harness, judgment_id)?;
+    resolution["resolution_outcome"] = json!(outcome);
+    harness.conn()?.execute(
+        "UPDATE user_judgments
+            SET resolution_outcome = ?3,
+                resolution_json = ?4
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, judgment_id, outcome, resolution.to_string()],
+    )?;
+    Ok(())
+}
+
+fn set_user_judgment_resolution_actor(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    actor_kind: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut resolution = resolution_json(harness, judgment_id)?;
+    resolution["resolved_by_actor_kind"] = json!(actor_kind);
+    harness.conn()?.execute(
+        "UPDATE user_judgments
+            SET resolution_json = ?3
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, judgment_id, resolution.to_string()],
     )?;
     Ok(())
 }

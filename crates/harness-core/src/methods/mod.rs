@@ -406,6 +406,12 @@ fn user_judgment_authority_from_record(
         "basis_json",
         record.basis_json.as_deref(),
     )?;
+    let _request: PersistedUserJudgmentRequest = decode_required_json(
+        "user_judgments",
+        record.judgment_id.clone(),
+        "request_json",
+        Some(&record.request_json),
+    )?;
     if let Some(basis) = &mut basis {
         basis.compatibility_status = basis_status;
     }

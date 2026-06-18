@@ -3,16 +3,15 @@ use std::{collections::BTreeSet, path::Path};
 use chrono::{DateTime, Duration, Utc};
 use harness_store::{core_pipeline::WriteAuthorizationRecord, StoreError};
 use harness_types::{
-    BaselineRef, ChangeUnitId, DryRunSummary, GuaranteeDisplay, GuaranteeLevel,
-    JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentResolutionOutcome, PlannedBlocker,
-    PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision, SensitiveActionScope,
-    StateRecordRef, TaskId, UserJudgmentStatus, UtcTimestamp, WriteDecisionCategory,
+    BaselineRef, ChangeUnitId, DryRunSummary, GuaranteeDisplay, GuaranteeLevel, JudgmentKind,
+    PlannedBlocker, PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision,
+    SensitiveActionScope, StateRecordRef, TaskId, UtcTimestamp, WriteDecisionCategory,
     WriteDecisionReason,
 };
 use serde_json::Value;
 
 use crate::policy::{
-    close_readiness::{judgment_has_current_basis, JudgmentAuthority},
+    close_readiness::{accepted_current_user_authority, JudgmentAuthority},
     path::{normalize_product_paths, path_is_within, ProductPathError},
 };
 
@@ -197,18 +196,13 @@ pub(crate) fn current_sensitive_approval(
     judgment: &JudgmentAuthority,
     requirement: &SensitiveApprovalRequirement<'_>,
 ) -> bool {
-    if !judgment_has_current_basis(judgment)
-        || judgment.status != UserJudgmentStatus::Resolved
-        || judgment.resolution_outcome != Some(JudgmentResolutionOutcome::Accepted)
-        || judgment.judgment_kind != JudgmentKind::SensitiveApproval
-    {
+    if !accepted_current_user_authority(judgment, JudgmentKind::SensitiveApproval) {
         return false;
     }
     let Some(basis) = judgment.basis.as_ref() else {
         return false;
     };
-    if basis.compatibility_status != JudgmentBasisCompatibilityStatus::Current
-        || basis.task_id != *requirement.task_id
+    if basis.task_id != *requirement.task_id
         || basis.change_unit_id.as_ref() != Some(requirement.change_unit_id)
         || basis.scope_revision != requirement.scope_revision
         || basis.baseline_ref.as_ref() != requirement.baseline_ref
