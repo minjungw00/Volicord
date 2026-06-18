@@ -1390,6 +1390,7 @@ mod tests {
                 "observed_changes",
                 "artifact_inputs",
                 "evidence_updates",
+                "close_assessment",
             ],
             "harness.request_user_judgment" => &[
                 "envelope",

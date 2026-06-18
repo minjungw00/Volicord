@@ -431,6 +431,27 @@ pub struct ObservedChanges {
     pub baseline_ref: RequiredNullable<BaselineRef>,
 }
 
+/// Public close assessment input supplied by `harness.record_run`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CloseAssessmentInput {
+    pub result_summary: String,
+    pub result_refs: Vec<StateRecordRef>,
+    pub residual_risks: Vec<ResidualRiskInput>,
+    pub sensitive_categories: Vec<String>,
+    pub recovery_constraints: Vec<String>,
+}
+
+/// Public residual-risk input supplied inside `CloseAssessmentInput`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ResidualRiskInput {
+    pub summary: String,
+    pub consequence: String,
+    pub acceptance_required: bool,
+    pub source_refs: Vec<StateRecordRef>,
+}
+
 /// Current result and residual-risk state used for close-readiness responses.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

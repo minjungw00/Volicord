@@ -554,6 +554,28 @@ mod tests {
         assert_schema_allows_null_property(&stage, "expected_sha256");
 
         let record = public_request_schema("harness.record_run").expect("record_run schema");
+        assert_schema_allows_null_property(&record, "close_assessment");
+        assert_required(
+            definition(&record, "CloseAssessmentInput"),
+            &[
+                "result_summary",
+                "result_refs",
+                "residual_risks",
+                "sensitive_categories",
+                "recovery_constraints",
+            ],
+            "CloseAssessmentInput",
+        );
+        assert_required(
+            definition(&record, "ResidualRiskInput"),
+            &[
+                "summary",
+                "consequence",
+                "acceptance_required",
+                "source_refs",
+            ],
+            "ResidualRiskInput",
+        );
         assert_required(
             definition(&record, "ObservedChanges"),
             &[
@@ -608,6 +630,8 @@ mod tests {
             "ArtifactRef",
             "StagedArtifactHandle",
             "EvidenceCoverageItem",
+            "CloseAssessmentInput",
+            "ResidualRiskInput",
         ] {
             assert_eq!(
                 definition(&record, definition_name)["additionalProperties"],
@@ -946,6 +970,7 @@ mod tests {
             ("harness.record_run", &["run_id"]),
             ("harness.record_run", &["write_authorization_id"]),
             ("harness.record_run", &["observed_changes", "baseline_ref"]),
+            ("harness.record_run", &["close_assessment"]),
             ("harness.request_user_judgment", &["change_unit_id"]),
             ("harness.request_user_judgment", &["expires_at"]),
             ("harness.record_user_judgment", &["note"]),
@@ -1101,6 +1126,7 @@ mod tests {
                 "observed_changes",
                 "artifact_inputs",
                 "evidence_updates",
+                "close_assessment",
             ],
             "harness.request_user_judgment" => &[
                 "envelope",
@@ -1269,7 +1295,8 @@ mod tests {
                 "baseline_ref": "baseline_empty_001"
             },
             "artifact_inputs": [],
-            "evidence_updates": []
+            "evidence_updates": [],
+            "close_assessment": null
         })
     }
 

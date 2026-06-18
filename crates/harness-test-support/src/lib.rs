@@ -439,6 +439,7 @@ pub mod core_fixtures {
                 },
                 artifact_inputs: Vec::new(),
                 evidence_updates: Vec::new(),
+                close_assessment: None.into(),
             }
         }
 
@@ -718,22 +719,6 @@ pub mod core_fixtures {
                     self.surface_id,
                     self.surface_instance_id
                 ],
-            )?;
-            Ok(())
-        }
-
-        /// Updates a Task close-summary JSON object for close-readiness fixtures.
-        pub fn set_task_close_summary(
-            &self,
-            task_id: &str,
-            close_summary: Value,
-        ) -> Result<(), StoreError> {
-            self.conn()?.execute(
-                "UPDATE tasks
-                    SET close_summary_json = ?3
-                  WHERE project_id = ?1
-                    AND task_id = ?2",
-                rusqlite::params![self.project_id, task_id, close_summary.to_string()],
             )?;
             Ok(())
         }

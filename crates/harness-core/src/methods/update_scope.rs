@@ -115,6 +115,16 @@ fn plan_update_scope(
     let scope_changed = current_scope != next_scope
         || request.change_unit.operation == ChangeUnitOperation::CreateCurrent
         || request.change_unit.operation == ChangeUnitOperation::ReplaceCurrent;
+    let next_scope_revision = if scope_changed {
+        task.scope_revision + 1
+    } else {
+        task.scope_revision
+    };
+    let next_close_basis_revision = if scope_changed {
+        task.close_basis_revision + 1
+    } else {
+        task.close_basis_revision
+    };
 
     let active_write_authorizations = store
         .active_write_authorizations(&request.task_id)
@@ -150,6 +160,21 @@ fn plan_update_scope(
         close_summary_json: None,
         completion_policy_json: None,
     })];
+    if scope_changed {
+        storage_mutations.push(CoreStorageMutation::UpdateTaskScopeRevision(
+            TaskScopeRevisionUpdate {
+                task_id: task.task_id.clone(),
+                scope_revision: next_scope_revision,
+            },
+        ));
+        storage_mutations.push(CoreStorageMutation::UpdateTaskCloseBasis(
+            TaskCloseBasisUpdate {
+                task_id: task.task_id.clone(),
+                close_basis_revision: next_close_basis_revision,
+                close_basis_json: None,
+            },
+        ));
+    }
 
     let mut synthetic_task = task.clone();
     synthetic_task.title = next_scope.goal_summary.clone();
@@ -314,7 +339,9 @@ fn plan_update_scope(
     let event_payload = object_from_value(json!({
         "task_id": request.task_id.clone(),
         "change_unit_operation": request.change_unit.operation,
-        "scope_changed": scope_changed
+        "scope_changed": scope_changed,
+        "scope_revision": next_scope_revision,
+        "close_basis_revision": next_close_basis_revision
     }))?;
 
     Ok(MethodPlan {

@@ -11,7 +11,7 @@ use harness_store::{
         initialize_runtime_home, register_project, register_surface, ProjectRegistration,
         SurfaceRegistration, ACTIVE_PROJECT_STATUS,
     },
-    core_pipeline::{CoreProjectStore, StorageEffectCounts},
+    core_pipeline::{CoreProjectStore, StorageEffectCounts, TaskRevisionRecord},
     sqlite::open_project_state_database,
 };
 use harness_test_support::TempRuntimeHome;
@@ -820,6 +820,10 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
     assert_eq!(active_current_change_units(&harness, &task_id)?, 1);
+    let revision = task_revision(&harness, &task_id)?;
+    assert_eq!(revision.scope_revision, 1);
+    assert_eq!(revision.close_basis_revision, 1);
+    assert!(revision.current_close_basis.is_none());
     Ok(())
 }
 
@@ -886,6 +890,87 @@ fn update_scope_replaces_current_and_marks_write_authorization_stale() -> Result
     assert_eq!(after.change_units, before.change_units + 1);
     assert_eq!(active_current_change_units(&harness, &task_id)?, 1);
     assert_eq!(write_authorization_status(&harness, "wa_replace")?, "stale");
+    Ok(())
+}
+
+#[test]
+fn material_scope_change_increments_revision_and_invalidates_basis() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "scope_invalidates")?;
+    let mut record = record_run_request(
+        "req_scope_basis_run",
+        "idem_scope_basis_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    record.close_assessment = Some(close_assessment_with_risks(
+        "Established close basis.",
+        Vec::new(),
+    ))
+    .into();
+    harness
+        .service
+        .record_run(record, invocation(AccessClass::RunRecording))?;
+    let before = task_revision(&harness, &task_id)?;
+    assert!(before.current_close_basis.is_some());
+
+    let response = harness.service.update_scope(
+        update_scope_request(
+            "req_scope_material_change",
+            "idem_scope_material_change",
+            false,
+            Some(3),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Materially changed current scope.",
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let after = task_revision(&harness, &task_id)?;
+    let (_, event_payload, _) = latest_task_event(&harness)?;
+
+    assert_eq!(response.response_value["base"]["state_version"], 4);
+    assert_eq!(after.scope_revision, before.scope_revision + 1);
+    assert_eq!(after.close_basis_revision, before.close_basis_revision + 1);
+    assert!(after.current_close_basis.is_none());
+    assert_eq!(event_payload["scope_changed"], true);
+    assert_eq!(event_payload["scope_revision"], after.scope_revision);
+    assert_eq!(
+        event_payload["close_basis_revision"],
+        after.close_basis_revision
+    );
+    Ok(())
+}
+
+#[test]
+fn semantic_noop_scope_update_does_not_increment_revisions() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "scope_noop")?;
+    let before = task_revision(&harness, &task_id)?;
+
+    let response = harness.service.update_scope(
+        update_scope_request(
+            "req_scope_noop",
+            "idem_scope_noop",
+            false,
+            Some(2),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "  Initial current scope.  ",
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let after = task_revision(&harness, &task_id)?;
+    let (_, event_payload, _) = latest_task_event(&harness)?;
+
+    assert_eq!(response.response_value["base"]["state_version"], 3);
+    assert_eq!(after.scope_revision, before.scope_revision);
+    assert_eq!(after.close_basis_revision, before.close_basis_revision);
+    assert_eq!(after.current_close_basis, before.current_close_basis);
+    assert_eq!(event_payload["scope_changed"], false);
     Ok(())
 }
 
@@ -2067,6 +2152,7 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_no_write")?;
     let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
 
     let response = harness.service.record_run(
         record_run_request(
@@ -2093,6 +2179,197 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
     assert_eq!(after.artifacts, before.artifacts);
     assert_eq!(after.task_events, before.task_events + 1);
     assert_eq!(after.tool_invocations, before.tool_invocations + 1);
+    let after_revision = task_revision(&harness, &task_id)?;
+    assert_eq!(
+        after_revision.close_basis_revision,
+        before_revision.close_basis_revision + 1
+    );
+    assert!(after_revision.current_close_basis.is_none());
+    assert!(response.response_value["current_close_basis"].is_null());
+    Ok(())
+}
+
+#[test]
+fn record_run_non_null_close_assessment_creates_current_basis() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_basis")?;
+    let generator = CountingDurableIdGenerator::new(["run_basis", "event_basis"]);
+    let clock = ManualClock::at("2026-06-18T12:00:00Z");
+    harness.use_generator_and_clock(generator, clock);
+
+    let mut request = record_run_request(
+        "req_run_basis",
+        "idem_run_basis",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Recorded close basis.",
+        Vec::new(),
+    ))
+    .into();
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+    let revision = task_revision(&harness, &task_id)?;
+    let basis = revision
+        .current_close_basis
+        .expect("current close basis should be stored");
+
+    assert_eq!(response.response_value["base"]["state_version"], 3);
+    assert_eq!(basis.task_id.as_str(), task_id);
+    assert_eq!(basis.change_unit_id.as_str(), change_unit_id);
+    assert_eq!(basis.scope_revision, 1);
+    assert_eq!(basis.close_basis_revision, revision.close_basis_revision);
+    assert_eq!(basis.result_summary, "Recorded close basis.");
+    assert!(basis.residual_risks.is_empty());
+    assert_eq!(basis.updated_at, "2026-06-18T12:00:00.000Z");
+    assert_eq!(
+        response.response_value["current_close_basis"]["residual_risks"],
+        json!([])
+    );
+    assert_eq!(
+        response.response_value["current_close_basis"]["result_refs"][0]["record_kind"],
+        "run"
+    );
+    Ok(())
+}
+
+#[test]
+fn record_run_generates_opaque_residual_risk_ids_on_commit() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_risks")?;
+    let generator = CountingDurableIdGenerator::new(["risk_alpha", "risk_beta", "event_risks"]);
+    let clock = ManualClock::at("2026-06-18T12:30:00Z");
+    harness.use_generator_and_clock(generator.clone(), clock);
+
+    let mut request = record_run_request(
+        "req_run_risks",
+        "idem_run_risks",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.run_id = Some(RunId::new("run_risks_supplied")).into();
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Recorded close basis with risks.",
+        vec![
+            residual_risk_input("First residual risk."),
+            residual_risk_input("Second residual risk."),
+        ],
+    ))
+    .into();
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+    let risk_ids = response.response_value["current_close_basis"]["residual_risks"]
+        .as_array()
+        .expect("residual risks should be an array")
+        .iter()
+        .map(|risk| {
+            risk["risk_id"]
+                .as_str()
+                .expect("risk id should be present")
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    let (_, event_payload, _) = latest_task_event(&harness)?;
+
+    assert_eq!(risk_ids, vec!["risk_risk_alpha", "risk_risk_beta"]);
+    assert_eq!(generator.count(DurableIdKind::Risk), 2);
+    assert_eq!(event_payload["residual_risk_ids"], json!(risk_ids));
+    assert_eq!(
+        event_payload["source_run_ref"]["record_id"],
+        "run_risks_supplied"
+    );
+    assert_eq!(event_payload["scope_revision"], 1);
+    assert_eq!(event_payload["close_basis_revision"], 2);
+    Ok(())
+}
+
+#[test]
+fn record_run_null_close_assessment_invalidates_existing_basis() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_clear_basis")?;
+
+    let mut establish = record_run_request(
+        "req_run_establish_basis",
+        "idem_run_establish_basis",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    establish.close_assessment = Some(close_assessment_with_risks(
+        "Established basis.",
+        Vec::new(),
+    ))
+    .into();
+    harness
+        .service
+        .record_run(establish, invocation(AccessClass::RunRecording))?;
+    assert!(task_revision(&harness, &task_id)?
+        .current_close_basis
+        .is_some());
+
+    let clear = record_run_request(
+        "req_run_clear_basis",
+        "idem_run_clear_basis",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    let response = harness
+        .service
+        .record_run(clear, invocation(AccessClass::RunRecording))?;
+    let revision = task_revision(&harness, &task_id)?;
+
+    assert!(response.response_value["current_close_basis"].is_null());
+    assert_eq!(revision.close_basis_revision, 3);
+    assert!(revision.current_close_basis.is_none());
+    Ok(())
+}
+
+#[test]
+fn record_run_dry_run_allocates_no_residual_risk_ids() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_dry_risk")?;
+    let generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    let clock = ManualClock::at("2026-06-18T13:00:00Z");
+    harness.use_generator_and_clock(generator.clone(), clock);
+    let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
+
+    let mut request = record_run_request(
+        "req_run_dry_risk",
+        "idem_run_dry_risk",
+        true,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.run_id = Some(RunId::new("run_dry_risk_supplied")).into();
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Dry-run close basis.",
+        vec![residual_risk_input("Dry-run residual risk.")],
+    ))
+    .into();
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "dry_run");
+    assert_eq!(generator.count(DurableIdKind::Risk), 0);
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(task_revision(&harness, &task_id)?, before_revision);
     Ok(())
 }
 
@@ -2711,6 +2988,7 @@ fn record_run_checksum_mismatch_rejects_and_rolls_back_all_effects() -> Result<(
     let handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_sha", 2)?;
     let handle_id = handle.handle_id.as_str().to_owned();
     let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
 
     let mut input = artifact_input_for_handle("artifact_input_sha", handle, None, None);
     input.expected_sha256 = Some("sha256:0000".to_owned()).into();
@@ -2723,6 +3001,11 @@ fn record_run_checksum_mismatch_rejects_and_rolls_back_all_effects() -> Result<(
         &change_unit_id,
     );
     request.artifact_inputs = vec![input];
+    request.close_assessment = Some(close_assessment_with_risks(
+        "Rejected close basis.",
+        Vec::new(),
+    ))
+    .into();
     let response = harness
         .service
         .record_run(request, invocation(AccessClass::RunRecording))?;
@@ -2733,6 +3016,7 @@ fn record_run_checksum_mismatch_rejects_and_rolls_back_all_effects() -> Result<(
         "staged_handle_checksum_mismatch"
     );
     assert_eq!(harness.counts()?, before);
+    assert_eq!(task_revision(&harness, &task_id)?, before_revision);
     assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
     Ok(())
 }
@@ -3289,6 +3573,42 @@ fn close_task_check_dry_run_is_read_only() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn close_task_does_not_use_terminal_summary_as_current_basis() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "terminal_summary_not_basis")?;
+    set_task_owner_json(
+        &harness,
+        &task_id,
+        "close_summary_json",
+        Some(
+            r#"{"close_reason":"none","visible_risks":[{"risk_id":"risk_summary_only","summary":"Terminal summary risk."}]}"#,
+        ),
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_terminal_summary_not_basis",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert!(response.response_value["current_close_basis"].is_null());
+    assert_close_blocker(&response.response_value, "missing_current_close_basis");
+    assert_no_close_blocker(&response.response_value, "missing_residual_risk_acceptance");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn malformed_completion_policy_rejects_close_check_without_effect() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, _) = create_task_with_change_unit(&harness, "bad_policy_check")?;
@@ -3404,10 +3724,10 @@ fn schema_invalid_close_summary_rejects_instead_of_hiding_residual_risk(
 #[test]
 fn malformed_close_basis_stops_close_readiness_without_effect() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_close_basis")?;
-    set_change_unit_owner_json(
+    let (task_id, _) = create_task_with_change_unit(&harness, "bad_close_basis")?;
+    set_task_owner_json(
         &harness,
-        &change_unit_id,
+        &task_id,
         "close_basis_json",
         Some(corrupt_owner_json()),
     )?;
@@ -3429,8 +3749,8 @@ fn malformed_close_basis_stops_close_readiness_without_effect() -> Result<(), Bo
 
     assert_owner_state_rejection(
         &response,
-        "change_units",
-        &change_unit_id,
+        "tasks",
+        &task_id,
         "close_basis_json",
         &harness.runtime_home_path,
     );
@@ -4263,6 +4583,7 @@ fn record_run_request(
         },
         artifact_inputs: Vec::new(),
         evidence_updates: Vec::new(),
+        close_assessment: None.into(),
     }
 }
 
@@ -4342,6 +4663,14 @@ fn record_close_evidence(
     } else {
         unsupported_evidence_update("Close claim supported.")
     }];
+    request.close_assessment = Some(harness_types::CloseAssessmentInput {
+        result_summary: "Close claim supported.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
     let response = harness
         .service
         .record_run(request, invocation(AccessClass::RunRecording))?;
@@ -4486,6 +4815,28 @@ fn unsupported_evidence_update(claim: &str) -> EvidenceCoverageItem {
         supporting_refs: Vec::new(),
         supporting_artifact_refs: Vec::new(),
         gap_refs: Vec::new(),
+    }
+}
+
+fn close_assessment_with_risks(
+    summary: &str,
+    residual_risks: Vec<harness_types::ResidualRiskInput>,
+) -> harness_types::CloseAssessmentInput {
+    harness_types::CloseAssessmentInput {
+        result_summary: summary.to_owned(),
+        result_refs: Vec::new(),
+        residual_risks,
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    }
+}
+
+fn residual_risk_input(summary: &str) -> harness_types::ResidualRiskInput {
+    harness_types::ResidualRiskInput {
+        summary: summary.to_owned(),
+        consequence: "The user must decide whether this remaining risk is acceptable.".to_owned(),
+        acceptance_required: true,
+        source_refs: Vec::new(),
     }
 }
 
@@ -5146,6 +5497,16 @@ fn current_change_unit_id(
     )?)
 }
 
+fn task_revision(
+    harness: &MethodHarness,
+    task_id: &str,
+) -> Result<TaskRevisionRecord, Box<dyn Error>> {
+    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    store
+        .task_revision_record(&TaskId::new(task_id))?
+        .ok_or_else(|| format!("missing task revision for {task_id}").into())
+}
+
 fn current_change_unit_scope(
     harness: &MethodHarness,
     task_id: &str,
@@ -5184,6 +5545,12 @@ fn set_task_owner_json(
         "autonomy_boundary_json" => {
             "UPDATE tasks
                 SET autonomy_boundary_json = ?3
+              WHERE project_id = ?1
+                AND task_id = ?2"
+        }
+        "close_basis_json" => {
+            "UPDATE tasks
+                SET close_basis_json = ?3
               WHERE project_id = ?1
                 AND task_id = ?2"
         }

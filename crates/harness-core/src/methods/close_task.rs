@@ -260,6 +260,8 @@ fn plan_close_task(
     request: CloseTaskRequest,
 ) -> Result<CloseTaskPlan, PlanError> {
     let context = load_close_task_context(store, project_state, &request)?;
+    let risk_acceptance_coverage =
+        risk_acceptance_coverage(store, project_state, &request, &context)?;
     let mut blockers = terminal_close_blockers(store, project_state, &request, &context)?;
     if matches!(request.intent, CloseIntent::Check | CloseIntent::Complete) {
         blockers.extend(completion_close_blockers(
@@ -267,6 +269,7 @@ fn plan_close_task(
             project_state,
             &request,
             &context,
+            &risk_acceptance_coverage,
         )?);
     }
 
@@ -373,6 +376,8 @@ fn plan_close_task(
     let result = CloseTaskResult {
         base: placeholder_base(),
         close_state,
+        current_close_basis: context.current_close_basis.clone(),
+        risk_acceptance_coverage,
         state,
         blockers: blockers.clone(),
         evidence_summary: context.evidence_summary.clone(),
@@ -494,6 +499,22 @@ fn load_close_task_context(
                 error,
             )))
         })?;
+    let task_revision = store
+        .task_revision_record(&request.task_id)
+        .map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                &request.envelope,
+                project_state,
+                error,
+            )))
+        })?
+        .ok_or_else(|| {
+            PlanError::Response(Box::new(no_active_task_response(
+                &request.envelope,
+                project_state,
+            )))
+        })?;
+    let current_close_basis = task_revision.current_close_basis;
     let pending_user_judgment_refs = store
         .pending_user_judgment_refs(&request.task_id, project_state.state_version)
         .map_err(|error| {
@@ -518,15 +539,22 @@ fn load_close_task_context(
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
-    let evidence_record = store
-        .latest_evidence_summary(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+    let evidence_record = current_close_basis
+        .as_ref()
+        .and_then(|basis| basis.evidence_summary_ref.as_ref())
+        .map(|evidence_ref| {
+            store
+                .evidence_summary_record(evidence_ref.record_id.as_str())
+                .map_err(|error| {
+                    PlanError::Response(Box::new(store_error_response(
+                        &request.envelope,
+                        project_state,
+                        error,
+                    )))
+                })
+        })
+        .transpose()?
+        .flatten();
     let evidence_summary = close_evidence_summary(
         evidence_record.as_ref(),
         &task,
@@ -542,6 +570,7 @@ fn load_close_task_context(
     Ok(CloseTaskContext {
         task,
         current_change_unit,
+        current_close_basis,
         pending_user_judgment_refs,
         blocker_refs,
         evidence_summary,
@@ -635,6 +664,7 @@ fn completion_close_blockers(
     project_state: &ProjectStateHeader,
     request: &CloseTaskRequest,
     context: &CloseTaskContext,
+    risk_acceptance_coverage: &[RiskAcceptanceCoverage],
 ) -> Result<Vec<CloseReadinessBlocker>, PlanError> {
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
@@ -666,6 +696,10 @@ fn completion_close_blockers(
                 required_refs: vec![task_ref.clone()],
             }],
         ));
+    }
+
+    if let Some(blocker) = current_close_basis_blocker(request, project_state, context)? {
+        blockers.push(blocker);
     }
 
     if !context.pending_user_judgment_refs.is_empty() {
@@ -733,7 +767,7 @@ fn completion_close_blockers(
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::Baseline,
             "baseline_stale",
-            "The close basis marks the baseline as stale.",
+            "The current close basis is stale against the current baseline.",
             change_unit_ref.clone().into_iter().collect(),
             vec![NextActionSummary {
                 action_kind: NextActionKind::UpdateScope,
@@ -744,6 +778,21 @@ fn completion_close_blockers(
                 required_refs: vec![task_ref.clone()],
             }],
         ));
+    }
+
+    if let Some(basis) = context.current_close_basis.as_ref() {
+        if !basis.recovery_constraints.is_empty() {
+            blockers.push(close_blocker(
+                CloseReadinessBlockerCategory::Recovery,
+                "recovery_required",
+                "The current close basis records recovery constraints that must be resolved.",
+                vec![task_ref.clone()],
+                vec![close_next_action(
+                    "Resolve recovery constraints before completing the Task.",
+                    vec![task_ref.clone()],
+                )],
+            ));
+        }
     }
 
     let unsupported_items = unsupported_close_evidence_items(context.evidence_summary.as_ref());
@@ -766,12 +815,8 @@ fn completion_close_blockers(
         ));
     }
 
-    let unavailable_artifacts = unavailable_close_artifact_refs(
-        store,
-        project_state,
-        request,
-        context.evidence_summary.as_ref(),
-    )?;
+    let unavailable_artifacts =
+        unavailable_close_artifact_refs(store, project_state, request, context)?;
     if !unavailable_artifacts.is_empty() {
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::ArtifactAvailability,
@@ -810,7 +855,7 @@ fn completion_close_blockers(
         ));
     }
 
-    let residual_risk = residual_risk_state(context)?;
+    let residual_risk = residual_risk_state(context);
     if residual_risk.known && !residual_risk.visible {
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::ResidualRiskVisibility,
@@ -828,7 +873,9 @@ fn completion_close_blockers(
     }
     if residual_risk.known
         && residual_risk.visible
-        && !has_residual_risk_acceptance(store, project_state, request)?
+        && risk_acceptance_coverage
+            .iter()
+            .any(|coverage| !coverage.accepted)
     {
         blockers.push(close_blocker(
             CloseReadinessBlockerCategory::ResidualRiskAcceptance,
@@ -934,6 +981,56 @@ fn close_evidence_summary(
     }))
 }
 
+fn current_close_basis_blocker(
+    request: &CloseTaskRequest,
+    project_state: &ProjectStateHeader,
+    context: &CloseTaskContext,
+) -> CoreResult<Option<CloseReadinessBlocker>> {
+    let task_ref = task_ref_for_close(request, project_state.state_version);
+    let Some(basis) = context.current_close_basis.as_ref() else {
+        return Ok(Some(close_blocker(
+            CloseReadinessBlockerCategory::Task,
+            "missing_current_close_basis",
+            "Completion requires a current close basis recorded by harness.record_run.",
+            vec![task_ref.clone()],
+            vec![NextActionSummary {
+                action_kind: NextActionKind::RecordRun,
+                owner_method: Some(MethodName::RecordRun),
+                label: "Record the current result and close basis.".to_owned(),
+                blocking_question: None,
+                required_refs: vec![task_ref],
+            }],
+        )));
+    };
+    let current_change_unit_id = context
+        .current_change_unit
+        .as_ref()
+        .map(|record| record.change_unit_id.as_str());
+    let current_baseline = StoredScope::from_task(&context.task)?.baseline_ref;
+    let stale = basis.task_id != request.task_id
+        || current_change_unit_id != Some(basis.change_unit_id.as_str())
+        || basis.scope_revision != context.task.scope_revision
+        || basis.close_basis_revision != context.task.close_basis_revision
+        || basis.baseline_ref.as_ref().map(BaselineRef::as_str) != current_baseline.as_deref();
+    if stale {
+        Ok(Some(close_blocker(
+            CloseReadinessBlockerCategory::Scope,
+            "stale_current_close_basis",
+            "The current close basis is stale against current Task scope.",
+            vec![task_ref.clone()],
+            vec![NextActionSummary {
+                action_kind: NextActionKind::RecordRun,
+                owner_method: Some(MethodName::RecordRun),
+                label: "Record a fresh close basis for the current scope.".to_owned(),
+                blocking_question: None,
+                required_refs: vec![task_ref],
+            }],
+        )))
+    } else {
+        Ok(None)
+    }
+}
+
 fn task_completion_policy(task: &TaskRecord) -> CoreResult<CompletionPolicy> {
     let persisted: PersistedCompletionPolicy = decode_required_json(
         "tasks",
@@ -971,70 +1068,124 @@ fn unavailable_close_artifact_refs(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: &CloseTaskRequest,
-    evidence_summary: Option<&EvidenceSummary>,
+    context: &CloseTaskContext,
 ) -> Result<Vec<StateRecordRef>, PlanError> {
     let mut seen = BTreeSet::new();
     let mut unavailable = Vec::new();
-    let Some(evidence_summary) = evidence_summary else {
-        return Ok(unavailable);
-    };
-    for artifact_ref in evidence_summary
-        .coverage_items
-        .iter()
-        .filter(|item| item.required_for_close)
-        .flat_map(|item| item.supporting_artifact_refs.iter())
-    {
-        if !seen.insert(artifact_ref.artifact_id.as_str().to_owned()) {
-            continue;
-        }
-        let state_ref = state_ref(
-            StateRecordKind::Artifact,
-            artifact_ref.artifact_id.as_str(),
-            &request.envelope.project_id,
-            Some(&request.task_id),
-            Some(project_state.state_version),
-        );
-        if artifact_ref.availability != ArtifactAvailability::Available {
-            unavailable.push(state_ref);
-            continue;
-        }
-        let stored = store
-            .artifact_record(artifact_ref.artifact_id.as_str())
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?;
-        let Some(stored) = stored else {
-            unavailable.push(state_ref);
-            continue;
-        };
-        let owner_link_exists = store
-            .artifact_has_task_owner_link(
-                artifact_ref.artifact_id.as_str(),
-                request.task_id.as_str(),
-            )
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?;
-        if stored.project_id != request.envelope.project_id.as_str()
-            || stored.task_id != request.task_id.as_str()
-            || stored.status != "available"
-            || stored.sha256.as_deref() != Some(artifact_ref.sha256.as_str())
-            || stored.size_bytes != Some(artifact_ref.size_bytes)
-            || stored.redaction_state != redaction_state_value(artifact_ref.redaction_state)
-            || !owner_link_exists
+    if let Some(evidence_summary) = context.evidence_summary.as_ref() {
+        for artifact_ref in evidence_summary
+            .coverage_items
+            .iter()
+            .filter(|item| item.required_for_close)
+            .flat_map(|item| item.supporting_artifact_refs.iter())
         {
-            unavailable.push(state_ref);
+            if !seen.insert(artifact_ref.artifact_id.as_str().to_owned()) {
+                continue;
+            }
+            let state_ref = state_ref(
+                StateRecordKind::Artifact,
+                artifact_ref.artifact_id.as_str(),
+                &request.envelope.project_id,
+                Some(&request.task_id),
+                Some(project_state.state_version),
+            );
+            if artifact_ref.availability != ArtifactAvailability::Available {
+                unavailable.push(state_ref);
+                continue;
+            }
+            let stored = store
+                .artifact_record(artifact_ref.artifact_id.as_str())
+                .map_err(|error| {
+                    PlanError::Response(Box::new(store_error_response(
+                        &request.envelope,
+                        project_state,
+                        error,
+                    )))
+                })?;
+            let Some(stored) = stored else {
+                unavailable.push(state_ref);
+                continue;
+            };
+            let owner_link_exists = store
+                .artifact_has_task_owner_link(
+                    artifact_ref.artifact_id.as_str(),
+                    request.task_id.as_str(),
+                )
+                .map_err(|error| {
+                    PlanError::Response(Box::new(store_error_response(
+                        &request.envelope,
+                        project_state,
+                        error,
+                    )))
+                })?;
+            if stored.project_id != request.envelope.project_id.as_str()
+                || stored.task_id != request.task_id.as_str()
+                || stored.status != "available"
+                || stored.sha256.as_deref() != Some(artifact_ref.sha256.as_str())
+                || stored.size_bytes != Some(artifact_ref.size_bytes)
+                || stored.redaction_state != redaction_state_value(artifact_ref.redaction_state)
+                || !owner_link_exists
+            {
+                unavailable.push(state_ref);
+            }
+        }
+    }
+    if let Some(basis) = context.current_close_basis.as_ref() {
+        for record_ref in basis
+            .result_refs
+            .iter()
+            .chain(
+                basis
+                    .residual_risks
+                    .iter()
+                    .flat_map(|risk| risk.source_refs.iter()),
+            )
+            .filter(|record_ref| record_ref.record_kind == StateRecordKind::Artifact)
+        {
+            if !seen.insert(record_ref.record_id.as_str().to_owned()) {
+                continue;
+            }
+            if close_basis_artifact_ref_unavailable(store, request, record_ref, project_state)? {
+                unavailable.push(record_ref.clone());
+            }
         }
     }
     Ok(unavailable)
+}
+
+fn close_basis_artifact_ref_unavailable(
+    store: &CoreProjectStore,
+    request: &CloseTaskRequest,
+    record_ref: &StateRecordRef,
+    project_state: &ProjectStateHeader,
+) -> Result<bool, PlanError> {
+    let stored = store
+        .artifact_record(record_ref.record_id.as_str())
+        .map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                &request.envelope,
+                project_state,
+                error,
+            )))
+        })?;
+    let owner_link_exists = store
+        .artifact_has_task_owner_link(record_ref.record_id.as_str(), request.task_id.as_str())
+        .map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                &request.envelope,
+                project_state,
+                error,
+            )))
+        })?;
+    Ok(stored
+        .as_ref()
+        .map(|record| {
+            record.project_id != request.envelope.project_id.as_str()
+                || record.task_id != request.task_id.as_str()
+                || record.status != "available"
+                || !owner_link_exists
+        })
+        .unwrap_or(true))
 }
 
 fn has_resolved_judgment(
@@ -1082,97 +1233,110 @@ where
     Ok(false)
 }
 
-fn has_residual_risk_acceptance(
+fn risk_acceptance_coverage(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     request: &CloseTaskRequest,
-) -> Result<bool, PlanError> {
-    has_resolved_judgment_with_answer(
-        store,
-        project_state,
-        request,
-        "residual_risk_acceptance",
-        |resolution| {
-            resolution.answer.residual_risk_acceptance.is_some()
-                || resolution
-                    .accepted_risks
+    context: &CloseTaskContext,
+) -> Result<Vec<RiskAcceptanceCoverage>, PlanError> {
+    let Some(basis) = context.current_close_basis.as_ref() else {
+        return Ok(Vec::new());
+    };
+    let records = store
+        .resolved_user_judgment_records(&request.task_id, "residual_risk_acceptance")
+        .map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                &request.envelope,
+                project_state,
+                error,
+            )))
+        })?;
+    let mut coverage = Vec::new();
+    for risk in &basis.residual_risks {
+        let mut accepted_by = Vec::new();
+        if risk.acceptance_required {
+            for record in &records {
+                let Some(resolution) = decode_optional_json::<UserJudgmentResolution>(
+                    "user_judgments",
+                    record.judgment_id.clone(),
+                    "resolution_json",
+                    record.resolution_json.as_deref(),
+                )?
+                else {
+                    continue;
+                };
+                if residual_risk_resolution_accepts(&resolution, &risk.risk_id) {
+                    accepted_by.push(state_ref(
+                        StateRecordKind::UserJudgment,
+                        &record.judgment_id,
+                        &request.envelope.project_id,
+                        Some(&request.task_id),
+                        Some(project_state.state_version),
+                    ));
+                }
+            }
+        }
+        let accepted = !risk.acceptance_required || !accepted_by.is_empty();
+        coverage.push(RiskAcceptanceCoverage {
+            risk_id: risk.risk_id.clone(),
+            accepted,
+            accepted_by_judgment_refs: accepted_by,
+            missing_reason: if accepted {
+                None.into()
+            } else {
+                Some("acceptance_required".to_owned()).into()
+            },
+        });
+    }
+    Ok(coverage)
+}
+
+fn residual_risk_resolution_accepts(resolution: &UserJudgmentResolution, risk_id: &RiskId) -> bool {
+    resolution
+        .accepted_risks
+        .iter()
+        .any(|risk| risk.accepted_for_close && risk.risk_id == *risk_id)
+        || resolution
+            .answer
+            .residual_risk_acceptance
+            .as_ref()
+            .is_some_and(|answer| residual_risk_answer_names(answer, risk_id))
+}
+
+fn residual_risk_answer_names(answer: &JsonObject, risk_id: &RiskId) -> bool {
+    answer
+        .get("risk_id")
+        .and_then(Value::as_str)
+        .is_some_and(|value| value == risk_id.as_str())
+        || answer
+            .get("risk_ids")
+            .and_then(Value::as_array)
+            .is_some_and(|values| {
+                values
                     .iter()
-                    .any(|risk| risk.accepted_for_close)
-        },
-    )
+                    .filter_map(Value::as_str)
+                    .any(|value| value == risk_id.as_str())
+            })
 }
 
 fn sensitive_approval_required(context: &CloseTaskContext) -> CoreResult<bool> {
-    let close_summary: PersistedCloseSummary = decode_required_json(
-        "tasks",
-        context.task.task_id.clone(),
-        "close_summary_json",
-        Some(&context.task.close_summary_json),
-    )?;
-    if !close_summary.required_sensitive_categories.is_empty()
-        || !close_summary.sensitive_categories.is_empty()
-    {
-        return Ok(true);
-    }
-    context
-        .current_change_unit
+    Ok(context
+        .current_close_basis
         .as_ref()
-        .map(|record| {
-            decode_required_json::<PersistedCloseBasis>(
-                "change_units",
-                record.change_unit_id.clone(),
-                "close_basis_json",
-                Some(&record.close_basis_json),
-            )
-            .map(|close_basis| {
-                !close_basis.required_sensitive_categories.is_empty()
-                    || !close_basis.sensitive_categories.is_empty()
-            })
-        })
-        .transpose()
-        .map(|value| value.unwrap_or(false))
+        .map(|basis| !basis.sensitive_categories.is_empty())
+        .unwrap_or(false))
 }
 
 fn baseline_stale_for_close(context: &CloseTaskContext) -> CoreResult<bool> {
-    let close_summary: PersistedCloseSummary = decode_required_json(
-        "tasks",
-        context.task.task_id.clone(),
-        "close_summary_json",
-        Some(&context.task.close_summary_json),
-    )?;
-    if close_summary.baseline_stale || close_summary.baseline_status.as_deref() == Some("stale") {
-        return Ok(true);
-    }
-    context
-        .current_change_unit
-        .as_ref()
-        .map(|record| {
-            decode_required_json::<PersistedCloseBasis>(
-                "change_units",
-                record.change_unit_id.clone(),
-                "close_basis_json",
-                Some(&record.close_basis_json),
-            )
-            .map(|close_basis| {
-                close_basis.baseline_stale
-                    || close_basis.baseline_status.as_deref() == Some("stale")
-            })
-        })
-        .transpose()
-        .map(|value| value.unwrap_or(false))
+    let Some(basis) = context.current_close_basis.as_ref() else {
+        return Ok(false);
+    };
+    let current_baseline = StoredScope::from_task(&context.task)?.baseline_ref;
+    Ok(basis.baseline_ref.as_ref().map(BaselineRef::as_str) != current_baseline.as_deref())
 }
 
 fn recovery_required(context: &CloseTaskContext) -> CoreResult<bool> {
     if !context.blocker_refs.is_empty() {
-        return Ok(true);
-    }
-    let close_summary: PersistedCloseSummary = decode_required_json(
-        "tasks",
-        context.task.task_id.clone(),
-        "close_summary_json",
-        Some(&context.task.close_summary_json),
-    )?;
-    if close_summary.recovery_required {
         return Ok(true);
     }
     context
@@ -1185,13 +1349,7 @@ fn recovery_required(context: &CloseTaskContext) -> CoreResult<bool> {
                 "lifecycle_json",
                 Some(&record.lifecycle_json),
             )?;
-            let close_basis: PersistedCloseBasis = decode_required_json(
-                "change_units",
-                record.change_unit_id.clone(),
-                "close_basis_json",
-                Some(&record.close_basis_json),
-            )?;
-            Ok(lifecycle.recovery_required || close_basis.recovery_required)
+            Ok(lifecycle.recovery_required)
         })
         .transpose()
         .map(|value| value.unwrap_or(false))
@@ -1203,17 +1361,16 @@ struct ResidualRiskState {
     visible: bool,
 }
 
-fn residual_risk_state(context: &CloseTaskContext) -> CoreResult<ResidualRiskState> {
-    let close_summary: PersistedCloseSummary = decode_required_json(
-        "tasks",
-        context.task.task_id.clone(),
-        "close_summary_json",
-        Some(&context.task.close_summary_json),
-    )?;
-    let visible = !close_summary.visible_risks.is_empty() || close_summary.residual_risk_visible;
-    let known =
-        visible || !close_summary.residual_risks.is_empty() || close_summary.residual_risk_present;
-    Ok(ResidualRiskState { known, visible })
+fn residual_risk_state(context: &CloseTaskContext) -> ResidualRiskState {
+    let known = context
+        .current_close_basis
+        .as_ref()
+        .map(|basis| !basis.residual_risks.is_empty())
+        .unwrap_or(false);
+    ResidualRiskState {
+        known,
+        visible: known,
+    }
 }
 
 fn task_ref_for_close(request: &CloseTaskRequest, state_version: u64) -> StateRecordRef {

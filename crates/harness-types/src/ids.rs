@@ -115,6 +115,8 @@ pub enum DurableIdKind {
     Artifact,
     /// Core-generated evidence summary ids.
     Evidence,
+    /// Core-generated residual-risk ids for current close bases.
+    Risk,
 }
 
 impl DurableIdKind {
@@ -130,6 +132,7 @@ impl DurableIdKind {
             Self::StagedArtifact => "staged_",
             Self::Artifact => "artifact_",
             Self::Evidence => "evidence_",
+            Self::Risk => "risk_",
         }
     }
 }
@@ -146,6 +149,7 @@ impl fmt::Display for DurableIdKind {
             Self::StagedArtifact => "staged_artifact",
             Self::Artifact => "artifact",
             Self::Evidence => "evidence",
+            Self::Risk => "risk",
         })
     }
 }

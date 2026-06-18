@@ -11,9 +11,9 @@ use harness_test_support::core_fixtures::{
     DEFAULT_PRODUCT_PATH,
 };
 use harness_types::{
-    AccessClass, ChangeUnitOperation, CloseIntent, CloseReason, EffectKind, ErrorCode,
-    JudgmentKind, ResponseKind, StagedArtifactHandle, StatusRequest, WriteAuthorizationId,
-    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    AccessClass, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, EffectKind,
+    ErrorCode, JudgmentKind, ResidualRiskInput, ResponseKind, StagedArtifactHandle, StatusRequest,
+    WriteAuthorizationId, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{json, Value};
 
@@ -775,6 +775,14 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
         Some("Close claim supported."),
     )];
     run.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
+    run.close_assessment = Some(CloseAssessmentInput {
+        result_summary: "Close claim supported by an artifact.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
     let artifact_run = artifact_service.record_run(
         run,
         invocation(&artifact_fixture, AccessClass::RunRecording),
@@ -811,14 +819,35 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
     let risk_service = core(&risk_fixture);
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&risk_fixture, &risk_service, "risk")?;
-    let after_evidence = record_close_evidence(
-        &risk_fixture,
-        &risk_service,
+    let mut risk_run = risk_fixture.record_run_request(
+        "req_close_risk_basis",
+        "idem_close_risk_basis",
+        false,
+        Some(2),
         &task_id,
         &change_unit_id,
-        2,
-        true,
+    );
+    risk_run.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
+    risk_run.close_assessment = Some(CloseAssessmentInput {
+        result_summary: "Close claim supported with a visible residual risk.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: vec![ResidualRiskInput {
+            summary: "Manual verification remains partial.".to_owned(),
+            consequence: "The user must accept the remaining manual verification risk.".to_owned(),
+            acceptance_required: true,
+            source_refs: Vec::new(),
+        }],
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+    let risk_run = risk_service.record_run(
+        risk_run,
+        invocation(&risk_fixture, AccessClass::RunRecording),
     )?;
+    let after_evidence = risk_run.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("risk basis state version should be present");
     let after_final = record_final_acceptance(
         &risk_fixture,
         &risk_service,
@@ -826,18 +855,6 @@ fn close_readiness_reports_distinct_blockers_without_substitution() -> Result<()
         &change_unit_id,
         after_evidence,
         "risk",
-    )?;
-    risk_fixture.set_task_close_summary(
-        &task_id,
-        json!({
-            "close_reason": "none",
-            "visible_risks": [
-                {
-                    "risk_id": "risk_visible_001",
-                    "summary": "Manual verification remains partial."
-                }
-            ]
-        }),
     )?;
     let risk_blocked = risk_service.close_task(
         risk_fixture.close_task_request(CloseTaskFixture {
@@ -1011,13 +1028,8 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
 
     let fixture = CoreFixture::new("corrupt_close_basis")?;
     let service = core(&fixture);
-    let (task_id, change_unit_id) =
-        create_task_with_change_unit(&fixture, &service, "corrupt_close_basis")?;
-    fixture.set_change_unit_owner_json_raw(
-        &change_unit_id,
-        ChangeUnitOwnerJsonColumn::CloseBasis,
-        "{",
-    )?;
+    let (task_id, _) = create_task_with_change_unit(&fixture, &service, "corrupt_close_basis")?;
+    fixture.set_task_owner_json_raw(&task_id, TaskOwnerJsonColumn::CurrentCloseBasis, "{")?;
     let before = fixture.counts()?;
     let check = service.close_task(
         fixture.close_task_request(CloseTaskFixture {
@@ -1032,7 +1044,7 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
         }),
         invocation(&fixture, AccessClass::ReadStatus),
     )?;
-    assert_owner_state_unavailable(&check.response_value, "change_units", "close_basis_json");
+    assert_owner_state_unavailable(&check.response_value, "tasks", "close_basis_json");
     assert_eq!(fixture.counts()?, before);
 
     let fixture = CoreFixture::new("corrupt_write_basis")?;
@@ -1596,6 +1608,14 @@ fn record_close_evidence(
     } else {
         unsupported_evidence_update("Close claim supported.")
     }];
+    request.close_assessment = Some(CloseAssessmentInput {
+        result_summary: "Close claim supported.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
     let response = service.record_run(request, invocation(fixture, AccessClass::RunRecording))?;
     Ok(response.response_value["base"]["state_version"]
         .as_u64()

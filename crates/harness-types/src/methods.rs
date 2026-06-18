@@ -7,10 +7,11 @@ use crate::ids::{
     WriteAuthorizationId,
 };
 use crate::schema::{
-    AcceptedRiskInput, ArtifactInput, ArtifactRef, CloseReadinessBlocker, EvidenceCoverageItem,
-    EvidenceSummary, GuaranteeDisplay, JsonObject, NextActionSummary, ObservedChanges,
-    RecordUserJudgmentPayload, RequiredNullable, RunSummary, StagedArtifactHandle, StateRecordRef,
-    StateSummary, ToolEnvelope, ToolResponse, ToolResultBase, UserJudgment, UserJudgmentCandidate,
+    AcceptedRiskInput, ArtifactInput, ArtifactRef, CloseAssessmentInput, CloseReadinessBlocker,
+    CurrentCloseBasis, EvidenceCoverageItem, EvidenceSummary, GuaranteeDisplay, JsonObject,
+    NextActionSummary, ObservedChanges, RecordUserJudgmentPayload, RequiredNullable,
+    RiskAcceptanceCoverage, RunSummary, StagedArtifactHandle, StateRecordRef, StateSummary,
+    ToolEnvelope, ToolResponse, ToolResultBase, UserJudgment, UserJudgmentCandidate,
     UserJudgmentContext, UserJudgmentOption, WriteAuthorizationSummary, WriteDecisionReason,
 };
 use crate::values::{
@@ -283,6 +284,7 @@ pub struct RecordRunRequest {
     pub observed_changes: ObservedChanges,
     pub artifact_inputs: Vec<ArtifactInput>,
     pub evidence_updates: Vec<EvidenceCoverageItem>,
+    pub close_assessment: RequiredNullable<CloseAssessmentInput>,
 }
 
 impl MethodAccessClass for RecordRunRequest {
@@ -302,6 +304,7 @@ pub struct RecordRunResult {
     pub run_summary: RunSummary,
     pub registered_artifacts: Vec<ArtifactRef>,
     pub evidence_summary: Option<EvidenceSummary>,
+    pub current_close_basis: Option<CurrentCloseBasis>,
     pub blocker_refs: Vec<StateRecordRef>,
     pub state: StateSummary,
 }
@@ -409,6 +412,8 @@ impl MethodAccessClass for CloseTaskRequest {
 pub struct CloseTaskResult {
     pub base: ToolResultBase,
     pub close_state: CloseState,
+    pub current_close_basis: Option<CurrentCloseBasis>,
+    pub risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
     pub state: StateSummary,
     pub blockers: Vec<CloseReadinessBlocker>,
     pub evidence_summary: Option<EvidenceSummary>,

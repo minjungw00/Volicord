@@ -22,9 +22,10 @@ use harness_test_support::core_fixtures::{
     RecordJudgmentFixture, UpdateScopeFixture, UserJudgmentFixture, DEFAULT_PRODUCT_PATH,
 };
 use harness_types::{
-    AccessClass, ChangeUnitOperation, CloseIntent, CloseReason, JudgmentKind, ProjectId,
-    StagedArtifactHandle, SurfaceId, SurfaceInstanceId, WriteAuthorizationId,
-    VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    AccessClass, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, JudgmentKind,
+    ProjectId, ResidualRiskInput, StagedArtifactHandle, SurfaceId, SurfaceInstanceId,
+    WriteAuthorizationId, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{json, Value};
 
@@ -511,8 +512,25 @@ fn one_mcp_session_with_baseline_workflow_surface_runs_full_access_workflow(
     run_request.observed_changes.changed_paths = vec![DEFAULT_PRODUCT_PATH.to_owned()];
     run_request.write_authorization_id =
         Some(WriteAuthorizationId::new(&write_authorization_id)).into();
+    run_request.close_assessment = Some(CloseAssessmentInput {
+        result_summary: "MCP workflow trace recorded.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: vec![ResidualRiskInput {
+            summary: "Manual MCP workflow verification remains visible.".to_owned(),
+            consequence: "The user must accept the remaining manual verification risk.".to_owned(),
+            acceptance_required: true,
+            source_refs: Vec::new(),
+        }],
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
     let run = adapter.call_tool("harness.record_run", serde_json::to_value(run_request)?)?;
     assert_eq!(run.response_value["base"]["response_kind"], "result");
+    let risk_id = run.response_value["current_close_basis"]["residual_risks"][0]["risk_id"]
+        .as_str()
+        .expect("generated risk id should be present")
+        .to_owned();
     assert_eq!(
         fixture.write_authorization_status(&write_authorization_id)?,
         "consumed"
@@ -583,19 +601,6 @@ fn one_mcp_session_with_baseline_workflow_surface_runs_full_access_workflow(
         AccessClass::ReadStatus
     );
 
-    fixture.set_task_close_summary(
-        &task_id,
-        json!({
-            "close_reason": "none",
-            "visible_risks": [
-                {
-                    "risk_id": "risk_visible_001",
-                    "summary": "Manual MCP workflow verification remains visible."
-                }
-            ]
-        }),
-    )?;
-
     let final_judgment = adapter.call_tool(
         "harness.request_user_judgment",
         serde_json::to_value(fixture.user_judgment_request(UserJudgmentFixture {
@@ -662,7 +667,15 @@ fn one_mcp_session_with_baseline_workflow_surface_runs_full_access_workflow(
             task_id: &task_id,
             user_judgment_id: &risk_judgment_id,
             judgment_kind: JudgmentKind::ResidualRiskAcceptance,
-            answer: answer_payload(JudgmentKind::ResidualRiskAcceptance),
+            answer: {
+                let mut answer = answer_payload(JudgmentKind::ResidualRiskAcceptance);
+                answer.residual_risk_acceptance = Some(serde_json::from_value(json!({
+                    "risk_id": risk_id,
+                    "decision": "accepted"
+                }))?)
+                .into();
+                answer
+            },
         }))?,
     )?;
     assert_eq!(

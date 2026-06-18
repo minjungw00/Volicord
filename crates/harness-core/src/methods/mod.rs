@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 use chrono::{DateTime, Utc};
 use harness_store::{
@@ -7,9 +10,10 @@ use harness_store::{
         ArtifactLinkInsert, ArtifactPromotion, ChangeUnitInsert, ChangeUnitRecord,
         CoreProjectStore, CoreStorageMutation, EvidenceSummaryRecord, EvidenceSummaryUpsert,
         ProjectStateHeader, RunInsert, StoredArtifactRecord, StoredArtifactStagingRecord,
-        StoredRecordRef, TaskCloseUpdate, TaskInsert, TaskRecord, TaskScopeUpdate,
-        UserJudgmentInsert, UserJudgmentRecord, UserJudgmentResolutionUpdate,
-        WriteAuthorizationConsumption, WriteAuthorizationInsert, WriteAuthorizationRecord,
+        StoredRecordRef, TaskCloseBasisUpdate, TaskCloseUpdate, TaskInsert, TaskRecord,
+        TaskScopeRevisionUpdate, TaskScopeUpdate, UserJudgmentInsert, UserJudgmentRecord,
+        UserJudgmentResolutionUpdate, WriteAuthorizationConsumption, WriteAuthorizationInsert,
+        WriteAuthorizationRecord,
     },
     StoreError,
 };
@@ -17,20 +21,20 @@ use harness_types::{
     AccessClass, ArtifactAvailability, ArtifactId, ArtifactInput, ArtifactInputSourceKind,
     ArtifactRef, AuthorizationEffect, AuthorizedAttemptScope, BaselineRef, ChangeUnitId,
     ChangeUnitOperation, CloseIntent, CloseReadinessBlocker, CloseReadinessBlockerCategory,
-    CloseReason, CloseState, CloseTaskRequest, CloseTaskResult, CompletionPolicy, DryRunSummary,
-    DurableIdKind, EffectKind, ErrorCode, EvidenceCoverageItem, EvidenceCoverageState,
-    EvidenceStatus, EvidenceSummary, JsonObject, JudgmentKind, MethodAccessClass, MethodName,
-    NextActionKind, NextActionSummary, ObservedChanges, PlannedEffect, PrepareWriteRequest,
-    PrepareWriteResult, ProjectId, RecordId, RecordRunRequest, RecordRunResult,
-    RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState, RequestedMode,
-    ResumePolicy, RunId, RunSummary, SensitiveActionScope, StageArtifactRequest,
-    StageArtifactResult, StagedArtifactHandle, StagedArtifactHandleId, StateRecordKind,
-    StateRecordRef, StatusCloseState, StatusInclude, StatusRequest, StorageRef, SurfaceId,
-    SurfaceInstanceId, TaskId, TaskLifecyclePhase, TaskLifecycleState, TaskMode, TaskResult,
-    ToolEnvelope, ToolResultBase, UpdateScopeRequest, UserJudgment, UserJudgmentContext,
-    UserJudgmentOption, UserJudgmentResolution, UserJudgmentStatus, WriteAuthoritySummary,
-    WriteAuthorizationId, WriteAuthorizationStatus, WriteAuthorizationSummary,
-    WriteDecisionCategory, WriteDecisionReason,
+    CloseReason, CloseState, CloseTaskRequest, CloseTaskResult, CompletionPolicy,
+    CurrentCloseBasis, DryRunSummary, DurableIdKind, EffectKind, ErrorCode, EvidenceCoverageItem,
+    EvidenceCoverageState, EvidenceStatus, EvidenceSummary, JsonObject, JudgmentKind,
+    MethodAccessClass, MethodName, NextActionKind, NextActionSummary, ObservedChanges,
+    PlannedEffect, PrepareWriteRequest, PrepareWriteResult, ProjectId, RecordId, RecordRunRequest,
+    RecordRunResult, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState,
+    RequestedMode, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunSummary,
+    SensitiveActionScope, StageArtifactRequest, StageArtifactResult, StagedArtifactHandle,
+    StagedArtifactHandleId, StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude,
+    StatusRequest, StorageRef, SurfaceId, SurfaceInstanceId, TaskId, TaskLifecyclePhase,
+    TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope, ToolResultBase, UpdateScopeRequest,
+    UserJudgment, UserJudgmentContext, UserJudgmentOption, UserJudgmentResolution,
+    UserJudgmentStatus, WriteAuthoritySummary, WriteAuthorizationId, WriteAuthorizationStatus,
+    WriteAuthorizationSummary, WriteDecisionCategory, WriteDecisionReason,
 };
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -97,6 +101,7 @@ struct CloseTaskPlan {
 struct CloseTaskContext {
     task: TaskRecord,
     current_change_unit: Option<ChangeUnitRecord>,
+    current_close_basis: Option<CurrentCloseBasis>,
     pending_user_judgment_refs: Vec<StateRecordRef>,
     blocker_refs: Vec<StateRecordRef>,
     evidence_summary: Option<EvidenceSummary>,
@@ -224,6 +229,17 @@ fn allocate_evidence_summary_id(
             .evidence_summary_exists(candidate)
             .map_err(CorePipelineError::from)
     })
+}
+
+fn allocate_risk_id(
+    service: &CoreService,
+    allocated_in_basis: &BTreeSet<String>,
+) -> CoreResult<RiskId> {
+    service
+        .allocate_generated_id(DurableIdKind::Risk, |candidate| {
+            Ok(allocated_in_basis.contains(candidate))
+        })
+        .map(RiskId::new)
 }
 
 fn prepare_or_response(
@@ -865,21 +881,6 @@ struct PersistedWriteBasis {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PersistedCloseBasis {
-    #[serde(default)]
-    required_sensitive_categories: Vec<String>,
-    #[serde(default)]
-    sensitive_categories: Vec<String>,
-    #[serde(default)]
-    baseline_stale: bool,
-    #[serde(default)]
-    baseline_status: Option<String>,
-    #[serde(default)]
-    recovery_required: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct PersistedLifecycleState {
     #[serde(default)]
     recovery_required: bool,
@@ -968,14 +969,14 @@ impl StoredScope {
             "autonomy_boundary_json",
             Some(&task.autonomy_boundary_json),
         )?;
-        Ok(Self {
+        Ok(Self::normalized(Self {
             goal_summary: shaping.goal_summary.or_else(|| task.summary.clone()),
             scope_summary: shaping.scope_summary,
             non_goals: shaping.non_goals,
             acceptance_criteria: shaping.acceptance_criteria,
             autonomy_boundary: autonomy.autonomy_boundary.or(shaping.autonomy_boundary),
             baseline_ref: shaping.baseline_ref,
-        })
+        }))
     }
 
     fn apply_request(&self, request: &UpdateScopeRequest) -> Self {
@@ -1006,6 +1007,17 @@ impl StoredScope {
                 .map(|value| value.as_str().to_owned())
                 .or_else(|| self.baseline_ref.clone()),
         }
+        .normalized()
+    }
+
+    fn normalized(mut self) -> Self {
+        self.goal_summary = normalize_scope_text_option(self.goal_summary);
+        self.scope_summary = normalize_scope_text_option(self.scope_summary);
+        self.non_goals = normalize_scope_string_list(self.non_goals);
+        self.acceptance_criteria = normalize_scope_string_list(self.acceptance_criteria);
+        self.autonomy_boundary = normalize_scope_text_option(self.autonomy_boundary);
+        self.baseline_ref = normalize_scope_text_option(self.baseline_ref);
+        self
     }
 
     fn to_json(&self) -> Value {
@@ -1019,6 +1031,21 @@ impl StoredScope {
             None,
         )
     }
+}
+
+fn normalize_scope_text_option(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalize_scope_string_list(values: Vec<String>) -> Vec<String> {
+    values
+        .into_iter()
+        .filter_map(|value| normalize_scope_text_option(Some(value)))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]

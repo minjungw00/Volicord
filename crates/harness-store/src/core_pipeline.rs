@@ -707,6 +707,18 @@ impl CoreProjectStore {
         )
     }
 
+    /// Returns whether a Run belongs to a Task in this project.
+    pub fn run_belongs_to_task(&self, run_id: &str, task_id: &str) -> StoreResult<bool> {
+        row_exists_with_task(
+            &self.conn,
+            &self.project.project_id,
+            "runs",
+            "run_id",
+            run_id,
+            task_id,
+        )
+    }
+
     /// Reads one staged artifact row by exact project-local handle identity.
     pub fn artifact_staging_record(
         &self,
@@ -838,6 +850,14 @@ impl CoreProjectStore {
         task_id: &TaskId,
     ) -> StoreResult<Option<EvidenceSummaryRecord>> {
         latest_evidence_summary(&self.conn, &self.project.project_id, task_id.as_str())
+    }
+
+    /// Reads one evidence summary row by exact project-local evidence identity.
+    pub fn evidence_summary_record(
+        &self,
+        evidence_summary_id: &str,
+    ) -> StoreResult<Option<EvidenceSummaryRecord>> {
+        evidence_summary_record(&self.conn, &self.project.project_id, evidence_summary_id)
     }
 
     /// Reads a committed replay row without creating storage effects.
@@ -2775,6 +2795,32 @@ fn latest_evidence_summary(
     .map_err(StoreError::from)
 }
 
+fn evidence_summary_record(
+    conn: &Connection,
+    project_id: &str,
+    evidence_summary_id: &str,
+) -> StoreResult<Option<EvidenceSummaryRecord>> {
+    conn.query_row(
+        "SELECT
+            project_id,
+            evidence_summary_id,
+            task_id,
+            change_unit_id,
+            status,
+            coverage_json,
+            supporting_refs_json,
+            gap_refs_json,
+            metadata_json
+         FROM evidence_summaries
+         WHERE project_id = ?1
+           AND evidence_summary_id = ?2",
+        params![project_id, evidence_summary_id],
+        evidence_summary_record_from_row,
+    )
+    .optional()
+    .map_err(StoreError::from)
+}
+
 fn evidence_summary_record_from_row(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<EvidenceSummaryRecord> {
@@ -3183,6 +3229,29 @@ fn row_exists(
         escape_sql_identifier(id_column),
     );
     conn.query_row(&sql, params![project_id, id], |row| {
+        Ok(row.get::<_, i64>(0)? > 0)
+    })
+    .map_err(StoreError::from)
+}
+
+fn row_exists_with_task(
+    conn: &Connection,
+    project_id: &str,
+    table: &str,
+    id_column: &str,
+    id: &str,
+    task_id: &str,
+) -> StoreResult<bool> {
+    let sql = format!(
+        "SELECT COUNT(*)
+           FROM {}
+          WHERE project_id = ?1
+            AND {} = ?2
+            AND task_id = ?3",
+        escape_sql_identifier(table),
+        escape_sql_identifier(id_column),
+    );
+    conn.query_row(&sql, params![project_id, id, task_id], |row| {
         Ok(row.get::<_, i64>(0)? > 0)
     })
     .map_err(StoreError::from)
