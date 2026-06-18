@@ -15,7 +15,7 @@ impl CoreService {
             request_json,
             invocation,
             MethodPolicy::exact(
-                AccessClass::ReadStatus,
+                request.requested_access_class(),
                 TaskRequirement::Optional,
                 ReplayPolicy::None,
                 FreshnessPolicy::None,

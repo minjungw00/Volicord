@@ -9,6 +9,7 @@ use harness_test_support::core_fixtures::{
 use harness_types::{
     AccessClass, ChangeUnitOperation, CloseIntent, CloseReason, EffectKind, ErrorCode,
     JudgmentKind, ResponseKind, StagedArtifactHandle, StatusRequest, WriteAuthorizationId,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{json, Value};
 
@@ -103,7 +104,7 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
                 "missing_surface_instance",
             )),
             requested_access_class: AccessClass::ReadStatus,
-            invocation_binding_basis: "conformance_wrong_surface".to_owned(),
+            invocation_binding_basis: VERIFICATION_BASIS_TEST_FIXTURE_BINDING.to_owned(),
         },
     )?;
     assert_rejected_code(&surface_mismatch.response_value, "LOCAL_ACCESS_MISMATCH");
@@ -947,7 +948,7 @@ fn invocation(fixture: &CoreFixture, access_class: AccessClass) -> InvocationCon
             fixture.surface_instance_id(),
         )),
         requested_access_class: access_class,
-        invocation_binding_basis: "conformance_fixture".to_owned(),
+        invocation_binding_basis: VERIFICATION_BASIS_TEST_FIXTURE_BINDING.to_owned(),
     }
 }
 

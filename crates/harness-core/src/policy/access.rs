@@ -3,8 +3,9 @@ use harness_store::{
     StoreError,
 };
 use harness_types::{
-    AccessClass, ErrorCode, JsonObject, ProjectId, SurfaceId, SurfaceInstanceId, ToolEnvelope,
-    ToolError,
+    AccessClass, ErrorCode, ProjectId, SurfaceId, SurfaceInstanceId, ToolEnvelope, ToolError,
+    VERIFICATION_BASIS_CLI_DIRECT_SURFACE_BINDING, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+    VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{Map, Value};
 
@@ -20,12 +21,12 @@ pub(crate) fn method_access_error(
         MethodAccessPolicy::Exact(required_access_class)
             if verified_surface.access_class != required_access_class =>
         {
-            Some(capability_insufficient_error(
+            Some(access_class_mismatch_error(
                 required_access_class,
                 verified_surface.access_class,
             ))
         }
-        MethodAccessPolicy::Exact(_) | MethodAccessPolicy::VerifiedGrantOnly => None,
+        MethodAccessPolicy::Exact(_) => None,
     }
 }
 
@@ -149,7 +150,7 @@ pub(crate) fn parse_registered_local_access_grant(
     let verification_basis = match object.get("verification_basis") {
         Some(Value::String(value)) if !value.trim().is_empty() => value.clone(),
         Some(_) => return Err(RegisteredLocalAccessGrantError::InvalidShape),
-        None => "registered_local_access".to_owned(),
+        None => VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION.to_owned(),
     };
 
     Ok(RegisteredLocalAccessGrant {
@@ -194,23 +195,35 @@ fn parse_access_class_field(value: &Value) -> Result<AccessClass, RegisteredLoca
 }
 
 fn verified_surface_basis(registered_basis: &str, invocation_binding_basis: &str) -> String {
-    let invocation_binding_basis = invocation_binding_basis.trim();
-    if invocation_binding_basis.is_empty() {
-        registered_basis.to_owned()
-    } else {
-        format!("{registered_basis}; invocation_binding_basis={invocation_binding_basis}")
+    let registered_basis = controlled_registration_basis(registered_basis);
+    match controlled_binding_basis(invocation_binding_basis) {
+        Some(invocation_binding_basis) => format!("{registered_basis}:{invocation_binding_basis}"),
+        None => registered_basis.to_owned(),
+    }
+}
+
+fn controlled_registration_basis(value: &str) -> &'static str {
+    match value.trim() {
+        VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION => VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+        _ => VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+    }
+}
+
+fn controlled_binding_basis(value: &str) -> Option<&'static str> {
+    match value.trim() {
+        VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING => {
+            Some(VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING)
+        }
+        VERIFICATION_BASIS_CLI_DIRECT_SURFACE_BINDING => {
+            Some(VERIFICATION_BASIS_CLI_DIRECT_SURFACE_BINDING)
+        }
+        VERIFICATION_BASIS_TEST_FIXTURE_BINDING => Some(VERIFICATION_BASIS_TEST_FIXTURE_BINDING),
+        _ => None,
     }
 }
 
 pub(crate) fn access_class_value(access_class: AccessClass) -> &'static str {
-    match access_class {
-        AccessClass::ReadStatus => "read_status",
-        AccessClass::CoreMutation => "core_mutation",
-        AccessClass::WriteAuthorization => "write_authorization",
-        AccessClass::RunRecording => "run_recording",
-        AccessClass::ArtifactRegistration => "artifact_registration",
-        AccessClass::ArtifactRead => "artifact_read",
-    }
+    access_class.as_str()
 }
 
 pub(crate) fn local_access_mismatch_error(field: &'static str) -> ToolError {
@@ -224,11 +237,15 @@ pub(crate) fn local_access_mismatch_error(field: &'static str) -> ToolError {
     )
 }
 
-fn capability_insufficient_error(
+fn access_class_mismatch_error(
     required_access_class: AccessClass,
     actual_access_class: AccessClass,
 ) -> ToolError {
-    let mut details = JsonObject::new();
+    let mut details = Map::new();
+    details.insert(
+        "field".to_owned(),
+        Value::String("invocation.access_class".to_owned()),
+    );
     details.insert(
         "required_access_class".to_owned(),
         serde_json::to_value(required_access_class).unwrap_or(Value::Null),
@@ -238,8 +255,8 @@ fn capability_insufficient_error(
         serde_json::to_value(actual_access_class).unwrap_or(Value::Null),
     );
     tool_error(
-        ErrorCode::CapabilityInsufficient,
-        "surface access class is insufficient for this request",
+        ErrorCode::LocalAccessMismatch,
+        "local surface context does not match the method-derived access class",
         false,
         Some(details),
     )

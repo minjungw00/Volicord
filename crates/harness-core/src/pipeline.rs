@@ -111,7 +111,7 @@ pub struct VerifiedSurfaceContext {
 
 /// Task selector behavior required by the owner-selected branch.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TaskRequirement {
+pub(crate) enum TaskRequirement {
     None,
     Optional,
     Required,
@@ -136,13 +136,13 @@ pub(crate) enum FreshnessPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MethodAccessPolicy {
     Exact(AccessClass),
-    VerifiedGrantOnly,
 }
 
 /// Storage/effect family selected before method-specific planning runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MethodEffectPolicy {
     ReadOnly,
+    #[cfg(test)]
     NoEffect,
     Staging,
     DryRunPreview,
@@ -176,21 +176,7 @@ impl MethodPolicy {
         }
     }
 
-    pub(crate) fn verified_grant_only(
-        task: TaskRequirement,
-        replay: ReplayPolicy,
-        freshness: FreshnessPolicy,
-        effect: MethodEffectPolicy,
-    ) -> Self {
-        Self {
-            access: MethodAccessPolicy::VerifiedGrantOnly,
-            task,
-            replay,
-            freshness,
-            effect,
-        }
-    }
-
+    #[cfg(test)]
     fn for_branch(
         access_class: AccessClass,
         task: TaskRequirement,
@@ -231,7 +217,7 @@ impl MethodPolicy {
 
 /// Owner-selected branch shape used by the shared pipeline.
 #[derive(Debug, Clone, PartialEq)]
-pub enum OwnerPipelineBranch {
+pub(crate) enum OwnerPipelineBranch {
     ReadOnly {
         result_fields: JsonObject,
     },
@@ -252,8 +238,9 @@ pub enum OwnerPipelineBranch {
 }
 
 /// Input to the shared Core request pipeline.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
-pub struct PipelineRequest {
+pub(crate) struct PipelineRequest {
     pub method_name: MethodName,
     pub envelope: ToolEnvelope,
     pub request_json: Value,
@@ -367,7 +354,11 @@ impl CoreService {
     }
 
     /// Runs the shared envelope, context, freshness, replay, and effect pipeline.
-    pub fn execute_pipeline(&self, request: PipelineRequest) -> CoreResult<PipelineResponse> {
+    #[cfg(test)]
+    pub(crate) fn execute_pipeline(
+        &self,
+        request: PipelineRequest,
+    ) -> CoreResult<PipelineResponse> {
         validate_branch_shape(&request.branch, request.envelope.dry_run)?;
         let policy = MethodPolicy::for_branch(
             request.required_access_class,
@@ -1396,7 +1387,8 @@ mod tests {
     use harness_test_support::TempRuntimeHome;
     use harness_types::{
         ActorKind, IdempotencyKey, PlannedEffect, ProjectId, RequestId, SurfaceId,
-        SurfaceInstanceId,
+        SurfaceInstanceId, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+        VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
     use serde_json::{json, Map, Value};
 
@@ -1439,7 +1431,7 @@ mod tests {
                     local_access_json: json!({
                         "access_class": "core_mutation",
                         "authorized_access_classes": ["read_status", "core_mutation"],
-                        "verification_basis": "pipeline_test_registration"
+                        "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
                     })
                     .to_string(),
                     metadata_json: "{}".to_owned(),
@@ -1508,7 +1500,7 @@ mod tests {
                     capability_profile_json: "{}".to_owned(),
                     local_access_json: json!({
                         "authorized_access_classes": authorized_access_classes,
-                        "verification_basis": "pipeline_test_registration"
+                        "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
                     })
                     .to_string(),
                     metadata_json: "{}".to_owned(),
@@ -2218,7 +2210,7 @@ mod tests {
         assert_eq!(response.response_value["base"]["response_kind"], "rejected");
         assert_eq!(
             response.response_value["errors"][0]["code"],
-            "CAPABILITY_INSUFFICIENT"
+            "LOCAL_ACCESS_MISMATCH"
         );
         assert_eq!(harness.counts()?, before);
         Ok(())
@@ -2251,7 +2243,7 @@ mod tests {
         InvocationContext {
             surface_instance_id: surface_instance_id.map(SurfaceInstanceId::new),
             requested_access_class: access_class,
-            invocation_binding_basis: "pipeline_test_invocation".to_owned(),
+            invocation_binding_basis: VERIFICATION_BASIS_TEST_FIXTURE_BINDING.to_owned(),
         }
     }
 

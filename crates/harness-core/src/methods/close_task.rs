@@ -124,14 +124,18 @@ fn close_task_policy(request: &CloseTaskRequest) -> MethodPolicy {
     let task = TaskRequirement::Exact(request.task_id.clone());
     if request.intent == CloseIntent::Check {
         MethodPolicy::exact(
-            AccessClass::ReadStatus,
+            request.requested_access_class(),
             task,
             ReplayPolicy::None,
             FreshnessPolicy::None,
             MethodEffectPolicy::ReadOnly,
         )
     } else {
-        mutation_method_policy(AccessClass::CoreMutation, task, request.envelope.dry_run)
+        mutation_method_policy(
+            request.requested_access_class(),
+            task,
+            request.envelope.dry_run,
+        )
     }
 }
 

@@ -15,7 +15,7 @@ use harness_store::{
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
     sqlite::open_project_state_database,
 };
-use harness_types::TypeBoundary;
+use harness_types::{TypeBoundary, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION};
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
@@ -168,7 +168,7 @@ pub mod core_fixtures {
                             "artifact_registration",
                             "artifact_read"
                         ],
-                        "verification_basis": "shared_test_registration"
+                        "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
                     })
                     .to_string(),
                     metadata_json: "{}".to_owned(),

@@ -93,6 +93,41 @@ pub enum AccessClass {
     ArtifactRead,
 }
 
+impl AccessClass {
+    /// Returns the stable public value name for this access class.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadStatus => "read_status",
+            Self::CoreMutation => "core_mutation",
+            Self::WriteAuthorization => "write_authorization",
+            Self::RunRecording => "run_recording",
+            Self::ArtifactRegistration => "artifact_registration",
+            Self::ArtifactRead => "artifact_read",
+        }
+    }
+}
+
+/// Explicit grants expanded by the local baseline-workflow registration profile.
+pub const BASELINE_WORKFLOW_ACCESS_CLASSES: [AccessClass; 5] = [
+    AccessClass::ReadStatus,
+    AccessClass::CoreMutation,
+    AccessClass::WriteAuthorization,
+    AccessClass::ArtifactRegistration,
+    AccessClass::RunRecording,
+];
+
+/// Controlled registration-basis value for local administrative registration.
+pub const VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION: &str = "local_admin_registration";
+
+/// Controlled adapter-binding basis value for MCP stdio sessions.
+pub const VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING: &str = "mcp_stdio_surface_binding";
+
+/// Controlled adapter-binding basis value for direct CLI invocation.
+pub const VERIFICATION_BASIS_CLI_DIRECT_SURFACE_BINDING: &str = "cli_direct_surface_binding";
+
+/// Controlled binding basis value for repository tests and fixtures.
+pub const VERIFICATION_BASIS_TEST_FIXTURE_BINDING: &str = "test_fixture_binding";
+
 /// State reference discriminator values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

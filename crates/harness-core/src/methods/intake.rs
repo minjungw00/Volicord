@@ -9,7 +9,7 @@ impl CoreService {
     ) -> CoreResult<PipelineResponse> {
         let request_json = serde_json::to_value(&request)?;
         let policy = mutation_method_policy(
-            AccessClass::CoreMutation,
+            request.requested_access_class(),
             TaskRequirement::None,
             request.envelope.dry_run,
         );

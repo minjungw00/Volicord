@@ -15,8 +15,8 @@ mod policy;
 
 pub use pipeline::{
     dry_run_response, method_result_base, method_result_value, rejected_response, tool_error,
-    CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
-    PipelineRequest, PipelineResponse, TaskRequirement, VerifiedSurfaceContext,
+    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
+    VerifiedSurfaceContext,
 };
 
 /// Minimal Core service marker for validating crate boundaries.

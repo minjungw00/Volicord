@@ -95,6 +95,7 @@ mod tests {
             "verified_surface_context",
             "access_class",
             "capability_profile",
+            "verification_basis",
         ] {
             let mut request = status_request_json();
             request[field] = json!({ "forged": true });
@@ -111,6 +112,61 @@ mod tests {
                 error.to_string().contains("ordinary_unknown_field"),
                 "unexpected error for {method_name}: {error}"
             );
+        }
+    }
+
+    #[test]
+    fn typed_requests_derive_documented_access_classes() {
+        assert_eq!(
+            serde_json::from_value::<StatusRequest>(status_request_json())
+                .expect("status request")
+                .requested_access_class(),
+            AccessClass::ReadStatus
+        );
+        assert_eq!(
+            serde_json::from_value::<IntakeRequest>(intake_request_json())
+                .expect("intake request")
+                .requested_access_class(),
+            AccessClass::CoreMutation
+        );
+        assert_eq!(
+            serde_json::from_value::<PrepareWriteRequest>(prepare_write_request_json())
+                .expect("prepare request")
+                .requested_access_class(),
+            AccessClass::WriteAuthorization
+        );
+        assert_eq!(
+            serde_json::from_value::<StageArtifactRequest>(stage_artifact_request_json())
+                .expect("stage request")
+                .requested_access_class(),
+            AccessClass::ArtifactRegistration
+        );
+        assert_eq!(
+            serde_json::from_value::<RecordRunRequest>(record_run_request_json())
+                .expect("record run request")
+                .requested_access_class(),
+            AccessClass::RunRecording
+        );
+
+        let check = serde_json::from_value::<CloseTaskRequest>(close_task_request_json())
+            .expect("close check request");
+        assert_eq!(check.requested_access_class(), AccessClass::ReadStatus);
+
+        for intent in ["complete", "cancel", "supersede"] {
+            let mut request = close_task_request_json();
+            request["intent"] = json!(intent);
+            request["close_reason"] = json!(match intent {
+                "complete" => "completed_self_checked",
+                "cancel" => "cancelled",
+                "supersede" => "superseded",
+                _ => unreachable!(),
+            });
+            if intent == "supersede" {
+                request["superseding_task_id"] = json!("task_replacement_001");
+            }
+            let request = serde_json::from_value::<CloseTaskRequest>(request)
+                .expect("mutating close request should decode");
+            assert_eq!(request.requested_access_class(), AccessClass::CoreMutation);
         }
     }
 

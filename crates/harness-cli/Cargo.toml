@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 harness-store = { path = "../harness-store" }
+harness-types = { path = "../harness-types" }
 serde_json = "1"
 
 [dev-dependencies]

@@ -25,7 +25,7 @@ impl CoreService {
             request_json,
             invocation,
             mutation_method_policy(
-                AccessClass::RunRecording,
+                request.requested_access_class(),
                 TaskRequirement::Exact(request.task_id.clone()),
                 request.envelope.dry_run,
             ),

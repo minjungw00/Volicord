@@ -83,14 +83,16 @@ fn prepare_write_policy(request: &PrepareWriteRequest) -> MethodPolicy {
         .unwrap_or(TaskRequirement::Required);
 
     if request.envelope.dry_run {
-        MethodPolicy::verified_grant_only(
+        MethodPolicy::exact(
+            request.requested_access_class(),
             task,
             ReplayPolicy::None,
             FreshnessPolicy::IfPresent,
             MethodEffectPolicy::DryRunPreview,
         )
     } else {
-        MethodPolicy::verified_grant_only(
+        MethodPolicy::exact(
+            request.requested_access_class(),
             task,
             ReplayPolicy::Committed,
             FreshnessPolicy::IfPresent,

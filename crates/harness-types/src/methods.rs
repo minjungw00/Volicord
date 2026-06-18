@@ -14,10 +14,19 @@ use crate::schema::{
     UserJudgmentContext, UserJudgmentOption, WriteAuthorizationSummary, WriteDecisionReason,
 };
 use crate::values::{
-    AuthorizationEffect, ChangeUnitOperation, CloseIntent, CloseReason, CloseState, JudgmentKind,
-    JudgmentPresentation, JudgmentRequiredFor, PrepareWriteDecision, RedactionState, RequestedMode,
-    ResumePolicy, RunKind, StatusCloseState,
+    AccessClass, AuthorizationEffect, ChangeUnitOperation, CloseIntent, CloseReason, CloseState,
+    JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, MethodName, PrepareWriteDecision,
+    RedactionState, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
 };
+
+/// Shared typed mapping from a public request to its request-level access class.
+pub trait MethodAccessClass {
+    /// Returns the public method name for this typed request.
+    fn method_name(&self) -> MethodName;
+
+    /// Returns the access class requested by this typed request.
+    fn requested_access_class(&self) -> AccessClass;
+}
 
 /// Response branch type for `harness.intake`.
 pub type IntakeResponse = ToolResponse<IntakeResult>;
@@ -58,6 +67,16 @@ pub struct IntakeRequest {
     pub initial_context_refs: Vec<StateRecordRef>,
 }
 
+impl MethodAccessClass for IntakeRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::Intake
+    }
+
+    fn requested_access_class(&self) -> AccessClass {
+        AccessClass::CoreMutation
+    }
+}
+
 /// Intake initial scope object.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -92,6 +111,16 @@ pub struct UpdateScopeRequest {
     pub baseline_ref: Option<BaselineRef>,
     pub change_unit: ChangeUnitUpdate,
     pub related_scope_decision_refs: Vec<StateRecordRef>,
+}
+
+impl MethodAccessClass for UpdateScopeRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::UpdateScope
+    }
+
+    fn requested_access_class(&self) -> AccessClass {
+        AccessClass::CoreMutation
+    }
 }
 
 /// Include/exclude scope-update object.
@@ -129,6 +158,16 @@ pub struct UpdateScopeResult {
 pub struct StatusRequest {
     pub envelope: ToolEnvelope,
     pub include: StatusInclude,
+}
+
+impl MethodAccessClass for StatusRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::Status
+    }
+
+    fn requested_access_class(&self) -> AccessClass {
+        AccessClass::ReadStatus
+    }
 }
 
 /// Status include flags shown by the method owner.
@@ -171,6 +210,16 @@ pub struct PrepareWriteRequest {
     pub baseline_ref: BaselineRef,
 }
 
+impl MethodAccessClass for PrepareWriteRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::PrepareWrite
+    }
+
+    fn requested_access_class(&self) -> AccessClass {
+        AccessClass::WriteAuthorization
+    }
+}
+
 /// `harness.prepare_write` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct PrepareWriteResult {
@@ -201,6 +250,16 @@ pub struct StageArtifactRequest {
     pub relation_hint: Option<String>,
 }
 
+impl MethodAccessClass for StageArtifactRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::StageArtifact
+    }
+
+    fn requested_access_class(&self) -> AccessClass {
+        AccessClass::ArtifactRegistration
+    }
+}
+
 /// `harness.stage_artifact` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct StageArtifactResult {
@@ -224,6 +283,16 @@ pub struct RecordRunRequest {
     pub observed_changes: ObservedChanges,
     pub artifact_inputs: Vec<ArtifactInput>,
     pub evidence_updates: Vec<EvidenceCoverageItem>,
+}
+
+impl MethodAccessClass for RecordRunRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::RecordRun
+    }
+
+    fn requested_access_class(&self) -> AccessClass {
+        AccessClass::RunRecording
+    }
 }
 
 /// `harness.record_run` method result branch.
@@ -254,6 +323,16 @@ pub struct RequestUserJudgmentRequest {
     pub expires_at: Option<String>,
 }
 
+impl MethodAccessClass for RequestUserJudgmentRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::RequestUserJudgment
+    }
+
+    fn requested_access_class(&self) -> AccessClass {
+        AccessClass::CoreMutation
+    }
+}
+
 /// `harness.request_user_judgment` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RequestUserJudgmentResult {
@@ -277,6 +356,16 @@ pub struct RecordUserJudgmentRequest {
     pub accepted_risks: Vec<AcceptedRiskInput>,
 }
 
+impl MethodAccessClass for RecordUserJudgmentRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::RecordUserJudgment
+    }
+
+    fn requested_access_class(&self) -> AccessClass {
+        AccessClass::CoreMutation
+    }
+}
+
 /// `harness.record_user_judgment` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RecordUserJudgmentResult {
@@ -298,6 +387,21 @@ pub struct CloseTaskRequest {
     pub close_reason: Option<CloseReason>,
     pub superseding_task_id: Option<TaskId>,
     pub user_note: Option<String>,
+}
+
+impl MethodAccessClass for CloseTaskRequest {
+    fn method_name(&self) -> MethodName {
+        MethodName::CloseTask
+    }
+
+    fn requested_access_class(&self) -> AccessClass {
+        match self.intent {
+            CloseIntent::Check => AccessClass::ReadStatus,
+            CloseIntent::Complete | CloseIntent::Cancel | CloseIntent::Supersede => {
+                AccessClass::CoreMutation
+            }
+        }
+    }
 }
 
 /// `harness.close_task` method result branch.

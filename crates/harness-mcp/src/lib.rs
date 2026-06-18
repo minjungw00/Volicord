@@ -18,17 +18,17 @@ use harness_core::{
     CoreBoundary, CorePipelineError, CoreService, InvocationContext, PipelineResponse,
 };
 use harness_types::{
-    public_request_schema, AccessClass, CloseTaskRequest, IntakeRequest, PrepareWriteRequest,
-    ProjectId, RecordRunRequest, RecordUserJudgmentRequest, RequestUserJudgmentRequest,
-    StageArtifactRequest, StatusRequest, SurfaceId, SurfaceInstanceId, ToolEnvelope,
-    UpdateScopeRequest,
+    public_request_schema, AccessClass, CloseTaskRequest, IntakeRequest, MethodAccessClass,
+    PrepareWriteRequest, ProjectId, RecordRunRequest, RecordUserJudgmentRequest,
+    RequestUserJudgmentRequest, StageArtifactRequest, StatusRequest, SurfaceId, SurfaceInstanceId,
+    ToolEnvelope, UpdateScopeRequest, VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
 
 const DEFAULT_PROTOCOL_VERSION: &str = "2024-11-05";
 const SERVER_NAME: &str = "harness-mcp";
-const DEFAULT_VERIFICATION_BASIS: &str = "mcp_stdio_local_session";
+const DEFAULT_INVOCATION_BINDING_BASIS: &str = VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING;
 
 /// The exact public Harness method tools exposed through MCP.
 pub const PUBLIC_METHOD_TOOL_NAMES: [&str; 9] = [
@@ -75,17 +75,15 @@ pub struct McpToolDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpSessionContext {
     pub surface_instance_id: Option<SurfaceInstanceId>,
-    pub requested_access_class: AccessClass,
     pub invocation_binding_basis: String,
 }
 
 impl McpSessionContext {
-    /// Creates a local session context for the given request-level access class.
-    pub fn new(requested_access_class: AccessClass) -> Self {
+    /// Creates a local session context without a session-wide access class.
+    pub fn new() -> Self {
         Self {
             surface_instance_id: None,
-            requested_access_class,
-            invocation_binding_basis: DEFAULT_VERIFICATION_BASIS.to_owned(),
+            invocation_binding_basis: DEFAULT_INVOCATION_BINDING_BASIS.to_owned(),
         }
     }
 
@@ -95,9 +93,9 @@ impl McpSessionContext {
         self
     }
 
-    /// Replaces the verification basis carried into Core for this local session.
-    pub fn with_verification_basis(mut self, verification_basis: impl Into<String>) -> Self {
-        self.invocation_binding_basis = verification_basis.into();
+    /// Replaces the controlled adapter-binding basis carried into Core.
+    pub fn with_invocation_binding_basis(mut self, basis: impl Into<String>) -> Self {
+        self.invocation_binding_basis = basis.into();
         self
     }
 
@@ -106,20 +104,19 @@ impl McpSessionContext {
     where
         F: Fn(&str) -> Option<OsString>,
     {
-        let requested_access_class = match env_string(&env_var, "HARNESS_ACCESS_CLASS")? {
-            Some(value) => parse_access_class(&value)?,
-            None => AccessClass::ReadStatus,
-        };
         let surface_instance_id =
             env_string(&env_var, "HARNESS_SURFACE_INSTANCE_ID")?.map(SurfaceInstanceId::new);
-        let invocation_binding_basis = env_string(&env_var, "HARNESS_VERIFICATION_BASIS")?
-            .unwrap_or_else(|| DEFAULT_VERIFICATION_BASIS.to_owned());
 
         Ok(Self {
             surface_instance_id,
-            requested_access_class,
-            invocation_binding_basis,
+            invocation_binding_basis: DEFAULT_INVOCATION_BINDING_BASIS.to_owned(),
         })
+    }
+}
+
+impl Default for McpSessionContext {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -168,12 +165,13 @@ impl McpAdapter {
     pub fn derive_invocation_context(
         &self,
         envelope: &ToolEnvelope,
+        requested_access_class: AccessClass,
     ) -> McpDerivedInvocationContext {
         McpDerivedInvocationContext {
             project_id: envelope.project_id.clone(),
             surface_id: envelope.surface_id.clone(),
             surface_instance_id: self.session.surface_instance_id.clone(),
-            requested_access_class: self.session.requested_access_class,
+            requested_access_class,
             invocation_binding_basis: self.session.invocation_binding_basis.clone(),
         }
     }
@@ -187,81 +185,63 @@ impl McpAdapter {
         match tool_name {
             "harness.intake" => {
                 let request: IntakeRequest = self.decode_params(tool_name, params)?;
-                let invocation = self
-                    .derive_invocation_context(&request.envelope)
-                    .core_invocation();
+                let invocation = self.typed_invocation(&request).core_invocation();
                 self.core
                     .intake(request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.update_scope" => {
                 let request: UpdateScopeRequest = self.decode_params(tool_name, params)?;
-                let invocation = self
-                    .derive_invocation_context(&request.envelope)
-                    .core_invocation();
+                let invocation = self.typed_invocation(&request).core_invocation();
                 self.core
                     .update_scope(request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.status" => {
                 let request: StatusRequest = self.decode_params(tool_name, params)?;
-                let invocation = self
-                    .derive_invocation_context(&request.envelope)
-                    .core_invocation();
+                let invocation = self.typed_invocation(&request).core_invocation();
                 self.core
                     .status(request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.prepare_write" => {
                 let request: PrepareWriteRequest = self.decode_params(tool_name, params)?;
-                let invocation = self
-                    .derive_invocation_context(&request.envelope)
-                    .core_invocation();
+                let invocation = self.typed_invocation(&request).core_invocation();
                 self.core
                     .prepare_write(request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.stage_artifact" => {
                 let request: StageArtifactRequest = self.decode_params(tool_name, params)?;
-                let invocation = self
-                    .derive_invocation_context(&request.envelope)
-                    .core_invocation();
+                let invocation = self.typed_invocation(&request).core_invocation();
                 self.core
                     .stage_artifact(request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.record_run" => {
                 let request: RecordRunRequest = self.decode_params(tool_name, params)?;
-                let invocation = self
-                    .derive_invocation_context(&request.envelope)
-                    .core_invocation();
+                let invocation = self.typed_invocation(&request).core_invocation();
                 self.core
                     .record_run(request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.request_user_judgment" => {
                 let request: RequestUserJudgmentRequest = self.decode_params(tool_name, params)?;
-                let invocation = self
-                    .derive_invocation_context(&request.envelope)
-                    .core_invocation();
+                let invocation = self.typed_invocation(&request).core_invocation();
                 self.core
                     .request_user_judgment(request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.record_user_judgment" => {
                 let request: RecordUserJudgmentRequest = self.decode_params(tool_name, params)?;
-                let invocation = self
-                    .derive_invocation_context(&request.envelope)
-                    .core_invocation();
+                let invocation = self.typed_invocation(&request).core_invocation();
                 self.core
                     .record_user_judgment(request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.close_task" => {
                 let request: CloseTaskRequest = self.decode_params(tool_name, params)?;
-                let invocation = self
-                    .derive_invocation_context(&request.envelope)
-                    .core_invocation();
+                let invocation = self.typed_invocation(&request).core_invocation();
                 self.core
                     .close_task(request, invocation)
                     .map_err(McpAdapterError::Core)
@@ -279,7 +259,42 @@ impl McpAdapter {
             source,
         })
     }
+
+    fn typed_invocation<T>(&self, request: &T) -> McpDerivedInvocationContext
+    where
+        T: MethodAccessClass + HasEnvelope,
+    {
+        self.derive_invocation_context(request.envelope(), request.requested_access_class())
+    }
 }
+
+trait HasEnvelope {
+    fn envelope(&self) -> &ToolEnvelope;
+}
+
+macro_rules! impl_has_envelope {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl HasEnvelope for $ty {
+                fn envelope(&self) -> &ToolEnvelope {
+                    &self.envelope
+                }
+            }
+        )+
+    };
+}
+
+impl_has_envelope!(
+    IntakeRequest,
+    UpdateScopeRequest,
+    StatusRequest,
+    PrepareWriteRequest,
+    StageArtifactRequest,
+    RecordRunRequest,
+    RequestUserJudgmentRequest,
+    RecordUserJudgmentRequest,
+    CloseTaskRequest,
+);
 
 /// Returns the exact public Harness method tool definitions.
 pub fn public_method_tools() -> Vec<McpToolDefinition> {
@@ -502,15 +517,6 @@ fn tool_description(name: &str) -> &'static str {
     }
 }
 
-fn parse_access_class(value: &str) -> Result<AccessClass, McpAdapterError> {
-    serde_json::from_value(Value::String(value.to_owned())).map_err(|source| {
-        McpAdapterError::InvalidParams {
-            tool_name: "HARNESS_ACCESS_CLASS".to_owned(),
-            source,
-        }
-    })
-}
-
 fn env_string<F>(env_var: &F, name: &str) -> Result<Option<String>, McpAdapterError>
 where
     F: Fn(&str) -> Option<OsString>,
@@ -586,6 +592,7 @@ mod tests {
     use harness_test_support::TempRuntimeHome;
     use harness_types::{
         ActorKind, InitialScope, RedactionState, RequestedMode, ResumePolicy, StatusInclude,
+        VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
     use serde_json::json;
 
@@ -614,7 +621,7 @@ mod tests {
                         "artifact_registration",
                         "artifact_read"
                     ],
-                    "verification_basis": "bootstrap_test_registration"
+                    "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
                 }),
             )
         }
@@ -657,12 +664,12 @@ mod tests {
             })
         }
 
-        fn adapter(&self, access_class: AccessClass) -> McpAdapter {
+        fn adapter(&self) -> McpAdapter {
             McpAdapter::new(
                 &self.runtime_home_path,
-                McpSessionContext::new(access_class)
+                McpSessionContext::new()
                     .with_surface_instance_id(SurfaceInstanceId::new(SURFACE_INSTANCE_ID))
-                    .with_verification_basis("mcp_test_session"),
+                    .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING),
             )
         }
 
@@ -714,6 +721,7 @@ mod tests {
                 "verified_surface_context",
                 "access_class",
                 "capability_profile",
+                "verification_basis",
             ] {
                 assert!(
                     !schema_has_property(&tool.input_schema, forbidden),
@@ -727,7 +735,7 @@ mod tests {
     #[test]
     fn stdio_tools_list_exposes_exactly_public_method_tools() -> Result<(), Box<dyn Error>> {
         let harness = TestHarness::new(json!({}))?;
-        let adapter = harness.adapter(AccessClass::ReadStatus);
+        let adapter = harness.adapter();
         let input = Cursor::new(
             br#"{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
 "#
@@ -755,7 +763,7 @@ mod tests {
             "access_class": "read_status",
             "supported_access_classes": ["read_status"]
         }))?;
-        let adapter = harness.adapter(AccessClass::ReadStatus);
+        let adapter = harness.adapter();
         let request = status_request("req_status_adapter");
 
         let response = adapter.call_tool("harness.status", serde_json::to_value(request)?)?;
@@ -771,7 +779,7 @@ mod tests {
         assert_eq!(verified.surface_instance_id.as_str(), SURFACE_INSTANCE_ID);
         assert_eq!(
             verified.verification_basis,
-            "bootstrap_test_registration; invocation_binding_basis=mcp_test_session"
+            "local_admin_registration:test_fixture_binding"
         );
         Ok(())
     }
@@ -789,7 +797,7 @@ mod tests {
                 .join(PROJECT_ID)
                 .join("state.sqlite"),
         )?;
-        let adapter = harness.adapter(AccessClass::ReadStatus);
+        let adapter = harness.adapter();
 
         let response = adapter.call_tool(
             "harness.status",
@@ -820,7 +828,7 @@ mod tests {
             "access_class": "read_status",
             "supported_access_classes": ["read_status"]
         }))?;
-        let adapter = harness.adapter(AccessClass::ReadStatus);
+        let adapter = harness.adapter();
         let request = status_request("req_status_equiv");
         let direct = harness
             .core()
@@ -839,7 +847,7 @@ mod tests {
             "access_class": "core_mutation",
             "supported_access_classes": ["core_mutation"]
         }))?;
-        let adapter = harness.adapter(AccessClass::CoreMutation);
+        let adapter = harness.adapter();
         let request = intake_request("req_intake_equiv", true, None);
         let direct = harness
             .core()
@@ -854,22 +862,18 @@ mod tests {
     }
 
     #[test]
-    fn adapter_does_not_bypass_access_class_checks() -> Result<(), Box<dyn Error>> {
+    fn adapter_derives_access_class_per_method_call() -> Result<(), Box<dyn Error>> {
         let harness = TestHarness::new(json!({
             "access_class": "read_status",
             "supported_access_classes": ["read_status"]
         }))?;
-        let adapter = harness.adapter(AccessClass::CoreMutation);
+        let adapter = harness.adapter();
         let response = adapter.call_tool(
             "harness.status",
-            serde_json::to_value(status_request("req_status_wrong_access"))?,
+            serde_json::to_value(status_request("req_status_derived_read"))?,
         )?;
 
-        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-        assert_eq!(
-            response.response_value["errors"][0]["code"],
-            "CAPABILITY_INSUFFICIENT"
-        );
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
         Ok(())
     }
 
@@ -883,7 +887,7 @@ mod tests {
             json!({
                 "access_class": "read_status",
                 "authorized_access_classes": ["read_status"],
-                "verification_basis": "bootstrap_test_registration"
+                "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
             }),
         )?;
         let session = McpSessionContext::from_env(|name| match name {
@@ -914,7 +918,7 @@ mod tests {
             "supported_access_classes": ["artifact_registration"]
         }))?;
         let task_id = create_task(&harness, "req_stage_task", "idem_stage_task")?;
-        let adapter = harness.adapter(AccessClass::ArtifactRegistration);
+        let adapter = harness.adapter();
 
         let response = adapter.call_tool(
             "harness.stage_artifact",
@@ -940,7 +944,7 @@ mod tests {
             "manual_artifact_attachment_supported": true
         }))?;
         let task_id = create_task(&harness, "req_stage_task_forged", "idem_stage_task_forged")?;
-        let adapter = harness.adapter(AccessClass::ArtifactRegistration);
+        let adapter = harness.adapter();
         let mut params =
             serde_json::to_value(stage_artifact_request("req_stage_forged", &task_id))?;
         params["surface_instance_id"] = json!("forged_surface_instance");
@@ -1186,7 +1190,7 @@ mod tests {
         InvocationContext {
             surface_instance_id: Some(SurfaceInstanceId::new(SURFACE_INSTANCE_ID)),
             requested_access_class: access_class,
-            invocation_binding_basis: "mcp_test_session".to_owned(),
+            invocation_binding_basis: VERIFICATION_BASIS_TEST_FIXTURE_BINDING.to_owned(),
         }
     }
 

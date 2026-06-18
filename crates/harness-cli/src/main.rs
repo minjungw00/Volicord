@@ -12,11 +12,17 @@ use harness_store::bootstrap::{
     initialize_runtime_home, list_projects, list_surfaces, register_project, register_surface,
     ProjectRegistration, SurfaceRegistration, ACTIVE_PROJECT_STATUS,
 };
+use harness_types::{
+    AccessClass, BASELINE_WORKFLOW_ACCESS_CLASSES, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+};
 use serde_json::{json, Map, Value};
 
 const DEFAULT_SURFACE_KIND: &str = "cli";
-const DEFAULT_ACCESS_CLASS: &str = "read_status";
+const DEFAULT_ACCESS_CLASS: AccessClass = AccessClass::ReadStatus;
+const BASELINE_WORKFLOW_PROFILE: &str = "baseline-workflow";
 const ADMIN_METADATA_JSON: &str = r#"{"created_by":"harness_cli_admin"}"#;
+
+type CliOptions = BTreeMap<String, Vec<String>>;
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
@@ -69,8 +75,7 @@ where
     let options = parse_options(args, &["runtime-home-id"])?;
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let runtime_home_id = options
-        .get("runtime-home-id")
-        .cloned()
+        .value("runtime-home-id")
         .unwrap_or_else(|| generated_id("runtime_home"));
     let record = initialize_runtime_home(&runtime_home, &runtime_home_id, ADMIN_METADATA_JSON)?;
 
@@ -97,8 +102,7 @@ where
             let project_id = required_option(&options, "project-id")?;
             let repo_root = required_option(&options, "repo-root")?;
             let status = options
-                .get("status")
-                .cloned()
+                .value("status")
                 .unwrap_or_else(|| ACTIVE_PROJECT_STATUS.to_owned());
             let repo_root = canonical_existing_dir(current_dir, repo_root, "repo-root")?;
 
@@ -157,7 +161,7 @@ where
 
     match subcommand {
         "register" => {
-            let options = parse_options(
+            let options = parse_options_with_repeatable(
                 &args[1..],
                 &[
                     "project-id",
@@ -166,28 +170,24 @@ where
                     "kind",
                     "name",
                     "access-class",
+                    "profile",
                     "capability-profile",
                 ],
+                &["access-class"],
             )?;
             let project_id = required_option(&options, "project-id")?;
             let surface_id = required_option(&options, "surface-id")?;
             let surface_instance_id = options
-                .get("surface-instance-id")
-                .cloned()
+                .value("surface-instance-id")
                 .unwrap_or_else(|| generated_id("surface_instance"));
             let surface_kind = options
-                .get("kind")
-                .cloned()
+                .value("kind")
                 .unwrap_or_else(|| DEFAULT_SURFACE_KIND.to_owned());
-            let display_name = options.get("name").cloned();
-            let access_class = options
-                .get("access-class")
-                .cloned()
-                .unwrap_or_else(|| DEFAULT_ACCESS_CLASS.to_owned());
-            validate_access_class(&access_class)?;
+            let display_name = options.value("name");
+            let access_classes = surface_access_classes(&options)?;
             let capability_profile_json =
-                capability_profile_json(&access_class, options.get("capability-profile"))?;
-            let local_access_json = local_access_json(&access_class)?;
+                capability_profile_json(&access_classes, options.value_ref("capability-profile"))?;
+            let local_access_json = local_access_json(&access_classes)?;
 
             let record = register_surface(
                 &runtime_home,
@@ -203,7 +203,7 @@ where
                 },
             )?;
             let access_class = access_class_from_local_access(&record.local_access_json)
-                .unwrap_or_else(|| DEFAULT_ACCESS_CLASS.to_owned());
+                .unwrap_or_else(|| DEFAULT_ACCESS_CLASS.as_str().to_owned());
 
             Ok(format!(
                 "surface registered\nproject_id: {}\nsurface_id: {}\nsurface_instance_id: {}\nsurface_kind: {}\naccess_class: {}\n",
@@ -245,7 +245,15 @@ where
     }
 }
 
-fn parse_options(args: &[String], allowed: &[&str]) -> Result<BTreeMap<String, String>, CliError> {
+fn parse_options(args: &[String], allowed: &[&str]) -> Result<CliOptions, CliError> {
+    parse_options_with_repeatable(args, allowed, &[])
+}
+
+fn parse_options_with_repeatable(
+    args: &[String],
+    allowed: &[&str],
+    repeatable: &[&str],
+) -> Result<CliOptions, CliError> {
     let mut options = BTreeMap::new();
     let mut index = 0;
 
@@ -274,9 +282,15 @@ fn parse_options(args: &[String], allowed: &[&str]) -> Result<BTreeMap<String, S
         if !allowed.iter().any(|allowed_name| *allowed_name == name) {
             return Err(CliError::usage(format!("unknown option: --{name}")));
         }
-        if options.insert(name.clone(), value).is_some() {
+        let values = options.entry(name.clone()).or_insert_with(Vec::new);
+        if !values.is_empty()
+            && !repeatable
+                .iter()
+                .any(|repeatable_name| *repeatable_name == name)
+        {
             return Err(CliError::usage(format!("duplicate option: --{name}")));
         }
+        values.push(value);
 
         index += 1;
     }
@@ -284,15 +298,30 @@ fn parse_options(args: &[String], allowed: &[&str]) -> Result<BTreeMap<String, S
     Ok(options)
 }
 
-fn required_option(options: &BTreeMap<String, String>, name: &str) -> Result<String, CliError> {
+trait CliOptionsExt {
+    fn value(&self, name: &str) -> Option<String>;
+    fn value_ref(&self, name: &str) -> Option<&String>;
+}
+
+impl CliOptionsExt for CliOptions {
+    fn value(&self, name: &str) -> Option<String> {
+        self.value_ref(name).cloned()
+    }
+
+    fn value_ref(&self, name: &str) -> Option<&String> {
+        self.get(name).and_then(|values| values.first())
+    }
+}
+
+fn required_option(options: &CliOptions, name: &str) -> Result<String, CliError> {
     options
-        .get(name)
+        .value_ref(name)
         .filter(|value| !value.trim().is_empty())
         .cloned()
         .ok_or_else(|| CliError::usage(format!("missing required option: --{name}")))
 }
 
-fn reject_options(options: &BTreeMap<String, String>) -> Result<(), CliError> {
+fn reject_options(options: &CliOptions) -> Result<(), CliError> {
     if options.is_empty() {
         Ok(())
     } else {
@@ -364,7 +393,7 @@ fn absolute_path(current_dir: &Path, path: PathBuf) -> PathBuf {
 }
 
 fn capability_profile_json(
-    access_class: &str,
+    access_classes: &[AccessClass],
     provided: Option<&String>,
 ) -> Result<String, CliError> {
     let mut value = match provided {
@@ -379,60 +408,96 @@ fn capability_profile_json(
             "--capability-profile must be a JSON object",
         ));
     };
-    object.insert("access_class".to_owned(), json!(access_class));
+    let primary = primary_access_class(access_classes)?;
+    object.insert("access_class".to_owned(), json!(primary.as_str()));
     object
         .entry("supported_access_classes".to_owned())
-        .or_insert_with(|| json!([access_class]));
+        .or_insert_with(|| json!(access_class_strings(access_classes)));
 
     serde_json::to_string(&value)
         .map_err(|error| CliError::runtime(format!("failed to encode capability profile: {error}")))
 }
 
-fn local_access_json(access_class: &str) -> Result<String, CliError> {
+fn local_access_json(access_classes: &[AccessClass]) -> Result<String, CliError> {
+    let primary = primary_access_class(access_classes)?;
     serde_json::to_string(&json!({
-        "access_class": access_class,
-        "authorized_access_classes": [access_class],
-        "verification_basis": "local_admin_registration"
+        "access_class": primary.as_str(),
+        "authorized_access_classes": access_class_strings(access_classes),
+        "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
     }))
     .map_err(|error| CliError::runtime(format!("failed to encode local access metadata: {error}")))
 }
 
 fn access_class_from_local_access(text: &str) -> Option<String> {
     let value = serde_json::from_str::<Value>(text).ok()?;
-    if let Some(access_class) = value.get("access_class").and_then(Value::as_str) {
-        return Some(access_class.to_owned());
+    let access_classes = value
+        .get("authorized_access_classes")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+        .unwrap_or_default();
+    if !access_classes.is_empty() {
+        return Some(access_classes.join(","));
+    }
+    value
+        .get("access_class")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+fn surface_access_classes(options: &CliOptions) -> Result<Vec<AccessClass>, CliError> {
+    let mut access_classes = Vec::new();
+    if let Some(values) = options.get("access-class") {
+        for value in values {
+            push_access_class(&mut access_classes, parse_access_class(value)?);
+        }
     }
 
-    let access_classes = value
-        .get("authorized_access_classes")?
-        .as_array()?
-        .iter()
-        .filter_map(Value::as_str)
-        .collect::<Vec<_>>();
+    if let Some(profile) = options.value_ref("profile") {
+        if profile != BASELINE_WORKFLOW_PROFILE {
+            return Err(CliError::usage(format!("unknown profile: {profile}")));
+        }
+        push_access_classes(&mut access_classes, BASELINE_WORKFLOW_ACCESS_CLASSES);
+    }
+
+    if access_classes.is_empty() && !options.contains_key("profile") {
+        push_access_class(&mut access_classes, DEFAULT_ACCESS_CLASS);
+    }
+
     if access_classes.is_empty() {
-        None
+        Err(CliError::usage(
+            "surface registration requires at least one access class",
+        ))
     } else {
-        Some(access_classes.join(","))
+        Ok(access_classes)
     }
 }
 
-fn validate_access_class(access_class: &str) -> Result<(), CliError> {
-    const ACCESS_CLASSES: &[&str] = &[
-        "read_status",
-        "core_mutation",
-        "write_authorization",
-        "run_recording",
-        "artifact_registration",
-        "artifact_read",
-    ];
+fn parse_access_class(value: &str) -> Result<AccessClass, CliError> {
+    serde_json::from_value(Value::String(value.to_owned()))
+        .map_err(|_| CliError::usage(format!("unknown access class: {value}")))
+}
 
-    if ACCESS_CLASSES.contains(&access_class) {
-        Ok(())
-    } else {
-        Err(CliError::usage(format!(
-            "unknown access class: {access_class}"
-        )))
+fn push_access_classes<const N: usize>(target: &mut Vec<AccessClass>, values: [AccessClass; N]) {
+    for value in values {
+        push_access_class(target, value);
     }
+}
+
+fn push_access_class(target: &mut Vec<AccessClass>, value: AccessClass) {
+    if !target.contains(&value) {
+        target.push(value);
+    }
+}
+
+fn primary_access_class(access_classes: &[AccessClass]) -> Result<AccessClass, CliError> {
+    access_classes
+        .first()
+        .copied()
+        .ok_or_else(|| CliError::usage("surface registration requires at least one access class"))
+}
+
+fn access_class_strings(access_classes: &[AccessClass]) -> Vec<&'static str> {
+    access_classes.iter().map(|value| value.as_str()).collect()
 }
 
 fn generated_id(prefix: &str) -> String {
@@ -461,7 +526,7 @@ fn project_usage() -> String {
 }
 
 fn surface_usage() -> String {
-    "harness surface register --project-id ID --surface-id ID [--surface-instance-id ID] [--kind KIND] [--name NAME] [--access-class ACCESS_CLASS] [--capability-profile JSON]\nharness surface list --project-id ID\n"
+    "harness surface register --project-id ID --surface-id ID [--surface-instance-id ID] [--kind KIND] [--name NAME] [--access-class ACCESS_CLASS ...] [--profile baseline-workflow] [--capability-profile JSON]\nharness surface list --project-id ID\n"
         .to_owned()
 }
 
@@ -729,6 +794,235 @@ mod tests {
             local_access["verification_basis"],
             "local_admin_registration"
         );
+    }
+
+    #[test]
+    fn surface_register_repeatable_access_classes_are_deduplicated_in_order() {
+        let runtime_home = TempRuntimeHome::new("cli-surface-repeat").expect("temp runtime home");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "init",
+                "--runtime-home-id",
+                "runtime_home_surface_repeat",
+            ],
+        )
+        .expect("init should succeed");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "project",
+                "register",
+                "--project-id",
+                "project_repeat",
+                "--repo-root",
+                ".",
+            ],
+        )
+        .expect("project register should succeed");
+
+        let output = run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "surface",
+                "register",
+                "--project-id",
+                "project_repeat",
+                "--surface-id",
+                "surface_repeat",
+                "--surface-instance-id",
+                "surface_instance_repeat",
+                "--access-class",
+                "core_mutation",
+                "--access-class",
+                "read_status",
+                "--access-class",
+                "core_mutation",
+            ],
+        )
+        .expect("surface register should succeed");
+
+        assert!(output.contains("access_class: core_mutation,read_status\n"));
+        let conn = Connection::open(project_state_db_path(runtime_home.path(), "project_repeat"))
+            .expect("state database should open");
+        let (capability_profile, local_access): (String, String) = conn
+            .query_row(
+                "SELECT capability_profile_json, local_access_json
+                   FROM surfaces
+                  WHERE project_id = 'project_repeat'
+                    AND surface_id = 'surface_repeat'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("surface metadata should exist");
+        let capability = serde_json::from_str::<Value>(&capability_profile)
+            .expect("capability profile should be JSON");
+        assert_eq!(capability["access_class"], "core_mutation");
+        assert_eq!(
+            capability["supported_access_classes"],
+            json!(["core_mutation", "read_status"])
+        );
+        let local_access =
+            serde_json::from_str::<Value>(&local_access).expect("local access should be JSON");
+        assert_eq!(local_access["access_class"], "core_mutation");
+        assert_eq!(
+            local_access["authorized_access_classes"],
+            json!(["core_mutation", "read_status"])
+        );
+    }
+
+    #[test]
+    fn surface_register_baseline_workflow_profile_persists_explicit_grants() {
+        let runtime_home = TempRuntimeHome::new("cli-surface-profile").expect("temp runtime home");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "init",
+                "--runtime-home-id",
+                "runtime_home_surface_profile",
+            ],
+        )
+        .expect("init should succeed");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "project",
+                "register",
+                "--project-id",
+                "project_profile",
+                "--repo-root",
+                ".",
+            ],
+        )
+        .expect("project register should succeed");
+
+        let output = run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "surface",
+                "register",
+                "--project-id",
+                "project_profile",
+                "--surface-id",
+                "surface_profile",
+                "--surface-instance-id",
+                "surface_instance_profile",
+                "--profile",
+                "baseline-workflow",
+            ],
+        )
+        .expect("surface register should succeed");
+
+        let expected = json!([
+            "read_status",
+            "core_mutation",
+            "write_authorization",
+            "artifact_registration",
+            "run_recording"
+        ]);
+        assert!(output.contains(
+            "access_class: read_status,core_mutation,write_authorization,artifact_registration,run_recording\n"
+        ));
+        let conn = Connection::open(project_state_db_path(
+            runtime_home.path(),
+            "project_profile",
+        ))
+        .expect("state database should open");
+        let local_access: String = conn
+            .query_row(
+                "SELECT local_access_json
+                   FROM surfaces
+                  WHERE project_id = 'project_profile'
+                    AND surface_id = 'surface_profile'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("surface metadata should exist");
+        let local_access =
+            serde_json::from_str::<Value>(&local_access).expect("local access should be JSON");
+        assert_eq!(local_access["access_class"], "read_status");
+        assert_eq!(local_access["authorized_access_classes"], expected);
+        assert!(local_access.get("profile").is_none());
+    }
+
+    #[test]
+    fn surface_register_profile_and_explicit_classes_use_deterministic_union() {
+        let runtime_home = TempRuntimeHome::new("cli-surface-union").expect("temp runtime home");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "init",
+                "--runtime-home-id",
+                "runtime_home_surface_union",
+            ],
+        )
+        .expect("init should succeed");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "project",
+                "register",
+                "--project-id",
+                "project_union",
+                "--repo-root",
+                ".",
+            ],
+        )
+        .expect("project register should succeed");
+
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "surface",
+                "register",
+                "--project-id",
+                "project_union",
+                "--surface-id",
+                "surface_union",
+                "--surface-instance-id",
+                "surface_instance_union",
+                "--access-class",
+                "run_recording",
+                "--profile",
+                "baseline-workflow",
+            ],
+        )
+        .expect("surface register should succeed");
+
+        let conn = Connection::open(project_state_db_path(runtime_home.path(), "project_union"))
+            .expect("state database should open");
+        let local_access: String = conn
+            .query_row(
+                "SELECT local_access_json
+                   FROM surfaces
+                  WHERE project_id = 'project_union'
+                    AND surface_id = 'surface_union'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("surface metadata should exist");
+        let local_access =
+            serde_json::from_str::<Value>(&local_access).expect("local access should be JSON");
+        assert_eq!(
+            local_access["authorized_access_classes"],
+            json!([
+                "run_recording",
+                "read_status",
+                "core_mutation",
+                "write_authorization",
+                "artifact_registration"
+            ])
+        );
+        assert_eq!(local_access["access_class"], "run_recording");
     }
 
     #[test]

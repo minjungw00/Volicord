@@ -20,7 +20,7 @@ impl CoreService {
         }
 
         let policy = MethodPolicy::exact(
-            AccessClass::ArtifactRegistration,
+            request.requested_access_class(),
             TaskRequirement::Exact(request.task_id.clone()),
             ReplayPolicy::None,
             FreshnessPolicy::IfPresent,

@@ -15,7 +15,8 @@ use harness_store::{
 use harness_test_support::TempRuntimeHome;
 use harness_types::{
     ActorKind, ChangeUnitUpdate, IdempotencyKey, InitialScope, RequestId, ScopeUpdate,
-    SequenceDurableIdGenerator, SurfaceId,
+    SequenceDurableIdGenerator, SurfaceId, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{json, Map, Value};
 
@@ -70,7 +71,7 @@ impl MethodHarness {
                         "artifact_registration",
                         "artifact_read"
                     ],
-                    "verification_basis": "method_test_registration"
+                    "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
                 })
                 .to_string(),
                 metadata_json: "{}".to_owned(),
@@ -1159,7 +1160,7 @@ fn prepare_write_baseline_mismatch_blocks_authorization() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn prepare_write_surface_access_mismatch_is_method_decision() -> Result<(), Box<dyn Error>> {
+fn prepare_write_surface_access_mismatch_is_access_rejection() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_surface")?;
     let before = harness.counts()?;
@@ -1176,9 +1177,15 @@ fn prepare_write_surface_access_mismatch_is_method_decision() -> Result<(), Box<
         .prepare_write(request, invocation(AccessClass::CoreMutation))?;
     let after = harness.counts()?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "result");
-    assert_eq!(response.response_value["decision"], "blocked");
-    assert_prepare_reason(&response.response_value, "surface_access_class_mismatch");
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "LOCAL_ACCESS_MISMATCH"
+    );
+    assert!(response
+        .response_value
+        .get("write_decision_reasons")
+        .is_none());
     assert_eq!(after.write_authorizations, before.write_authorizations);
     Ok(())
 }
@@ -1191,7 +1198,7 @@ fn prepare_write_unregistered_grant_fails_before_method_decision() -> Result<(),
         &harness,
         json!({
             "authorized_access_classes": ["core_mutation"],
-            "verification_basis": "method_test_registration"
+            "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
         }),
     )?;
     let before = harness.counts()?;
@@ -1515,7 +1522,7 @@ fn prepare_write_replay_requires_current_verified_grant() -> Result<(), Box<dyn 
         &harness,
         json!({
             "authorized_access_classes": ["core_mutation"],
-            "verification_basis": "method_test_registration"
+            "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
         }),
     )?;
 
@@ -1812,7 +1819,7 @@ fn stage_artifact_invalid_input_does_not_bypass_access_preflight() -> Result<(),
     assert_eq!(response.response_value["base"]["response_kind"], "rejected");
     assert_eq!(
         response.response_value["errors"][0]["code"],
-        "CAPABILITY_INSUFFICIENT"
+        "LOCAL_ACCESS_MISMATCH"
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -3562,7 +3569,7 @@ fn invocation(access_class: AccessClass) -> InvocationContext {
     InvocationContext {
         surface_instance_id: Some(SurfaceInstanceId::new(SURFACE_INSTANCE_ID)),
         requested_access_class: access_class,
-        invocation_binding_basis: "method_test_invocation".to_owned(),
+        invocation_binding_basis: VERIFICATION_BASIS_TEST_FIXTURE_BINDING.to_owned(),
     }
 }
 
@@ -3577,10 +3584,10 @@ fn assert_verified_surface(response: &PipelineResponse, access_class: AccessClas
     assert_eq!(verified.access_class, access_class);
     assert!(verified
         .verification_basis
-        .contains("method_test_registration"));
+        .contains(VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION));
     assert!(verified
         .verification_basis
-        .contains("method_test_invocation"));
+        .contains(VERIFICATION_BASIS_TEST_FIXTURE_BINDING));
 }
 
 fn assert_store_rejection(

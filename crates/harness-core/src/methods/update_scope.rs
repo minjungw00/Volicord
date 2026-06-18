@@ -19,7 +19,7 @@ impl CoreService {
             }
         }
         let policy = mutation_method_policy(
-            AccessClass::CoreMutation,
+            request.requested_access_class(),
             TaskRequirement::Exact(request.task_id.clone()),
             request.envelope.dry_run,
         );
