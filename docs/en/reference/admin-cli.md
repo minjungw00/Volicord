@@ -30,6 +30,7 @@ Supported baseline commands:
 
 ```text
 harness --help
+harness --version
 harness init [--runtime-home-id ID]
 harness project register --project-id ID --repo-root PATH [--status active]
 harness project list
@@ -40,6 +41,7 @@ harness surface list --project-id ID
 Exit and stream behavior:
 
 - Successful commands write success output to stdout and exit with code `0`.
+- `harness --version` writes `harness <version>` to stdout and does not require Runtime Home resolution.
 - Usage errors write diagnostics to stderr and exit with code `2`.
 - Runtime, environment, or storage errors write diagnostics to stderr and exit with code `1`.
 

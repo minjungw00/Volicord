@@ -19,7 +19,9 @@ use harness_core::{
     CoreService, InvocationContext, PipelineResponse,
 };
 use harness_store::{
-    bootstrap::{list_surfaces, project_record, SurfaceRecord, ACTIVE_PROJECT_STATUS},
+    bootstrap::{
+        list_surfaces, project_record, runtime_home_record, SurfaceRecord, ACTIVE_PROJECT_STATUS,
+    },
     core_pipeline::CoreProjectStore,
     runtime_home::{
         resolve_runtime_home as resolve_shared_runtime_home, RuntimeHomeResolutionError,
@@ -30,7 +32,8 @@ use harness_types::{
     public_request_schema, AccessClass, CloseTaskRequest, ErrorCode, IntakeRequest,
     MethodAccessClass, PrepareWriteRequest, ProjectId, RecordRunRequest, RecordUserJudgmentRequest,
     RequestUserJudgmentRequest, StageArtifactRequest, StatusRequest, SurfaceId, SurfaceInstanceId,
-    ToolEnvelope, ToolError, UpdateScopeRequest, VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING,
+    SurfaceInteractionRole, ToolEnvelope, ToolError, UpdateScopeRequest,
+    BASELINE_WORKFLOW_ACCESS_CLASSES, VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde::Serialize;
@@ -117,6 +120,44 @@ impl McpSessionContext {
     where
         F: Fn(&str) -> Option<OsString>,
     {
+        McpStartupInspection::from_env(runtime_home, env_var)
+            .map(|inspection| inspection.session_context())
+    }
+
+    /// Resolves and validates one configured MCP session binding.
+    pub fn resolve(
+        runtime_home: impl AsRef<Path>,
+        project_id: ProjectId,
+        surface_id: SurfaceId,
+        configured_surface_instance_id: Option<SurfaceInstanceId>,
+    ) -> Result<Self, McpAdapterError> {
+        McpStartupInspection::resolve(
+            runtime_home,
+            project_id,
+            surface_id,
+            configured_surface_instance_id,
+        )
+        .map(|inspection| inspection.session_context())
+    }
+}
+
+/// Resolved MCP startup facts shared by stdio startup and preflight checks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpStartupInspection {
+    pub runtime_home: PathBuf,
+    pub project_id: ProjectId,
+    pub surface_id: SurfaceId,
+    pub surface_instance_id: SurfaceInstanceId,
+    pub interaction_role: SurfaceInteractionRole,
+    pub access_classes: Vec<AccessClass>,
+}
+
+impl McpStartupInspection {
+    /// Resolves process environment and validates one configured MCP binding.
+    pub fn from_env<F>(runtime_home: impl AsRef<Path>, env_var: F) -> Result<Self, McpAdapterError>
+    where
+        F: Fn(&str) -> Option<OsString>,
+    {
         let project_id = required_env_string(&env_var, "HARNESS_PROJECT_ID")?;
         let surface_id = required_env_string(&env_var, "HARNESS_SURFACE_ID")?;
         let surface_instance_id = env_string(&env_var, "HARNESS_SURFACE_INSTANCE_ID")?;
@@ -129,15 +170,21 @@ impl McpSessionContext {
         )
     }
 
-    /// Resolves and validates one configured MCP session binding.
+    /// Resolves and validates one configured MCP startup binding.
     pub fn resolve(
         runtime_home: impl AsRef<Path>,
         project_id: ProjectId,
         surface_id: SurfaceId,
         configured_surface_instance_id: Option<SurfaceInstanceId>,
     ) -> Result<Self, McpAdapterError> {
-        let runtime_home = runtime_home.as_ref();
-        let project = project_record(runtime_home, project_id.as_str())
+        let runtime_home = runtime_home.as_ref().to_path_buf();
+        runtime_home_record(&runtime_home)
+            .map_err(McpAdapterError::Store)?
+            .ok_or_else(|| {
+                McpAdapterError::Environment("Runtime Home is not initialized".to_owned())
+            })?;
+
+        let project = project_record(&runtime_home, project_id.as_str())
             .map_err(McpAdapterError::Store)?
             .ok_or_else(|| {
                 McpAdapterError::Environment("configured project is not registered".to_owned())
@@ -149,13 +196,21 @@ impl McpSessionContext {
         }
 
         let store =
-            CoreProjectStore::open(runtime_home, &project_id).map_err(McpAdapterError::Store)?;
+            CoreProjectStore::open(&runtime_home, &project_id).map_err(McpAdapterError::Store)?;
         let project_state = store.project_state().map_err(McpAdapterError::Store)?;
         let surfaces =
-            list_surfaces(runtime_home, project_id.as_str()).map_err(McpAdapterError::Store)?;
-        let candidates = surfaces
+            list_surfaces(&runtime_home, project_id.as_str()).map_err(McpAdapterError::Store)?;
+        let matching_surfaces = surfaces
             .into_iter()
             .filter(|surface| surface.surface_id == surface_id.as_str())
+            .collect::<Vec<_>>();
+        if matching_surfaces.is_empty() {
+            return Err(McpAdapterError::Environment(
+                "configured surface is not registered".to_owned(),
+            ));
+        }
+        let candidates = matching_surfaces
+            .into_iter()
             .map(valid_startup_surface)
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -189,11 +244,67 @@ impl McpSessionContext {
             }
         };
 
-        Ok(Self::new(
-            ProjectId::new(selected.project_id),
-            SurfaceId::new(selected.surface_id),
-            SurfaceInstanceId::new(selected.surface_instance_id),
-        ))
+        Ok(Self {
+            runtime_home,
+            project_id: ProjectId::new(selected.project_id),
+            surface_id: SurfaceId::new(selected.surface_id),
+            surface_instance_id: SurfaceInstanceId::new(selected.surface_instance_id),
+            interaction_role: selected.interaction_role,
+            access_classes: selected.access_classes,
+        })
+    }
+
+    /// Returns the public session context consumed by the stdio adapter.
+    pub fn session_context(&self) -> McpSessionContext {
+        McpSessionContext::new(
+            self.project_id.clone(),
+            self.surface_id.clone(),
+            self.surface_instance_id.clone(),
+        )
+    }
+
+    /// Formats the deterministic operator preflight report.
+    pub fn preflight_report(&self) -> String {
+        let access_classes = self
+            .access_classes
+            .iter()
+            .map(|access_class| access_class.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        let missing = self.missing_baseline_workflow_access_classes();
+        let missing_access_classes = missing
+            .iter()
+            .map(|access_class| access_class.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        let baseline_workflow_access = match self.interaction_role {
+            SurfaceInteractionRole::Agent if missing.is_empty() => "full",
+            SurfaceInteractionRole::Agent => "partial",
+            SurfaceInteractionRole::UserInteraction => "not_applicable",
+        };
+
+        format!(
+            "configuration: valid\ntransport: stdio\nruntime_home: {}\nproject_id: {}\nsurface_id: {}\nsurface_instance_id: {}\ninteraction_role: {}\naccess_classes: {}\nbaseline_workflow_access: {}\nmissing_access_classes: {}\n",
+            self.runtime_home.display(),
+            self.project_id.as_str(),
+            self.surface_id.as_str(),
+            self.surface_instance_id.as_str(),
+            self.interaction_role.as_str(),
+            access_classes,
+            baseline_workflow_access,
+            missing_access_classes
+        )
+    }
+
+    fn missing_baseline_workflow_access_classes(&self) -> Vec<AccessClass> {
+        if self.interaction_role == SurfaceInteractionRole::UserInteraction {
+            return Vec::new();
+        }
+        BASELINE_WORKFLOW_ACCESS_CLASSES
+            .iter()
+            .copied()
+            .filter(|access_class| !self.access_classes.contains(access_class))
+            .collect()
     }
 }
 
@@ -476,12 +587,30 @@ where
 
 /// Runs the MCP stdio adapter from process environment and stdin/stdout.
 pub fn run_stdio_from_env() -> Result<(), McpAdapterError> {
-    let runtime_home = resolve_runtime_home_from_env(|name| std::env::var_os(name))?;
-    let session = McpSessionContext::from_env(&runtime_home, |name| std::env::var_os(name))?;
+    let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
+    let runtime_home = resolve_runtime_home(process_env_var, &current_dir)?;
+    let inspection = McpStartupInspection::from_env(&runtime_home, process_env_var)?;
+    let session = inspection.session_context();
     let adapter = McpAdapter::new(runtime_home, session);
     let stdin = io::stdin();
     let stdout = io::stdout();
     run_stdio(adapter, stdin.lock(), stdout.lock())
+}
+
+/// Runs MCP startup validation from process environment and returns a report.
+pub fn run_preflight_check_from_env() -> Result<String, McpAdapterError> {
+    let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
+    preflight_check(process_env_var, &current_dir)
+}
+
+/// Runs MCP startup validation from injected process inputs and returns a report.
+pub fn preflight_check<F>(env_var: F, current_dir: &Path) -> Result<String, McpAdapterError>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+    let inspection = McpStartupInspection::from_env(&runtime_home, &env_var)?;
+    Ok(inspection.preflight_report())
 }
 
 /// Resolves the Runtime Home used by the stdio entry point.
@@ -505,15 +634,29 @@ fn current_dir_environment_error(error: io::Error) -> McpAdapterError {
     McpAdapterError::Environment(format!("failed to read current directory: {error}"))
 }
 
-fn valid_startup_surface(surface: SurfaceRecord) -> Result<SurfaceRecord, McpAdapterError> {
-    match surface.interaction_role.as_str() {
-        "agent" | "user_interaction" => (),
+fn process_env_var(name: &str) -> Option<OsString> {
+    std::env::var_os(name)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StartupSurface {
+    project_id: String,
+    surface_id: String,
+    surface_instance_id: String,
+    interaction_role: SurfaceInteractionRole,
+    access_classes: Vec<AccessClass>,
+}
+
+fn valid_startup_surface(surface: SurfaceRecord) -> Result<StartupSurface, McpAdapterError> {
+    let interaction_role = match surface.interaction_role.as_str() {
+        "agent" => SurfaceInteractionRole::Agent,
+        "user_interaction" => SurfaceInteractionRole::UserInteraction,
         _ => {
             return Err(McpAdapterError::Environment(
                 "registered surface interaction role is not recognized".to_owned(),
             ));
         }
-    }
+    };
     match serde_json::from_str::<Value>(&surface.capability_profile_json) {
         Ok(Value::Object(_)) => (),
         Ok(_) => {
@@ -532,13 +675,23 @@ fn valid_startup_surface(surface: SurfaceRecord) -> Result<SurfaceRecord, McpAda
         }
         Err(error) => return Err(McpAdapterError::Json(error)),
     };
-    match startup_authorized_access_classes(&surface.local_access_json) {
-        Ok(access_classes) if !access_classes.is_empty() => Ok(surface),
-        Ok(_) => Err(McpAdapterError::Environment(
-            "registered surface local access grant is empty".to_owned(),
-        )),
-        Err(error) => Err(error),
-    }
+    let access_classes = match startup_authorized_access_classes(&surface.local_access_json) {
+        Ok(access_classes) if !access_classes.is_empty() => access_classes,
+        Ok(_) => {
+            return Err(McpAdapterError::Environment(
+                "registered surface local access grant is empty".to_owned(),
+            ))
+        }
+        Err(error) => return Err(error),
+    };
+
+    Ok(StartupSurface {
+        project_id: surface.project_id,
+        surface_id: surface.surface_id,
+        surface_instance_id: surface.surface_instance_id,
+        interaction_role,
+        access_classes,
+    })
 }
 
 fn startup_authorized_access_classes(text: &str) -> Result<Vec<AccessClass>, McpAdapterError> {
@@ -595,8 +748,8 @@ fn startup_access_class(value: &Value) -> Result<AccessClass, McpAdapterError> {
 }
 
 fn select_single_startup_candidate(
-    candidates: Vec<SurfaceRecord>,
-) -> Result<SurfaceRecord, McpAdapterError> {
+    candidates: Vec<StartupSurface>,
+) -> Result<StartupSurface, McpAdapterError> {
     match candidates.as_slice() {
         [candidate] => Ok(candidate.clone()),
         [] => Err(McpAdapterError::Environment(
@@ -877,7 +1030,7 @@ mod tests {
         collections::BTreeSet,
         fs,
         io::{BufReader, Cursor},
-        path::PathBuf,
+        path::{Path, PathBuf},
     };
 
     use harness_core::{AdapterSessionBinding, CoreBoundary, CoreService, InvocationContext};
@@ -888,6 +1041,10 @@ mod tests {
         },
         core_pipeline::{CoreProjectStore, StorageEffectCounts},
         runtime_home::resolve_runtime_home as resolve_store_runtime_home,
+        sqlite::{
+            open_project_state_database, open_registry_database, project_state_db_path,
+            registry_db_path,
+        },
     };
     use harness_test_support::TempRuntimeHome;
     use harness_types::{
@@ -931,6 +1088,18 @@ mod tests {
             capability_profile: Value,
             local_access: Value,
         ) -> Result<Self, Box<dyn Error>> {
+            Self::with_role_and_local_access(
+                capability_profile,
+                local_access,
+                SurfaceInteractionRole::UserInteraction,
+            )
+        }
+
+        fn with_role_and_local_access(
+            capability_profile: Value,
+            local_access: Value,
+            interaction_role: SurfaceInteractionRole,
+        ) -> Result<Self, Box<dyn Error>> {
             let runtime_home = TempRuntimeHome::new("mcp")?;
             let repo_root = runtime_home.path().join("repo");
             fs::create_dir_all(&repo_root)?;
@@ -952,7 +1121,7 @@ mod tests {
                     surface_id: SURFACE_ID.to_owned(),
                     surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
                     surface_kind: "mcp_test".to_owned(),
-                    interaction_role: SurfaceInteractionRole::UserInteraction,
+                    interaction_role,
                     display_name: Some("MCP Test Surface".to_owned()),
                     capability_profile_json: capability_profile.to_string(),
                     local_access_json: local_access.to_string(),
@@ -987,6 +1156,39 @@ mod tests {
                 CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?
                     .effect_counts()?,
             )
+        }
+
+        fn set_surface_text_column(&self, column: &str, value: &str) -> Result<(), Box<dyn Error>> {
+            let sql = match column {
+                "capability_profile_json" => {
+                    "UPDATE surfaces
+                        SET capability_profile_json = ?1
+                      WHERE project_id = ?2
+                        AND surface_id = ?3
+                        AND surface_instance_id = ?4"
+                }
+                "metadata_json" => {
+                    "UPDATE surfaces
+                        SET metadata_json = ?1
+                      WHERE project_id = ?2
+                        AND surface_id = ?3
+                        AND surface_instance_id = ?4"
+                }
+                "local_access_json" => {
+                    "UPDATE surfaces
+                        SET local_access_json = ?1
+                      WHERE project_id = ?2
+                        AND surface_id = ?3
+                        AND surface_instance_id = ?4"
+                }
+                other => panic!("unexpected test column: {other}"),
+            };
+            let conn = open_project_state_database(project_state_db_path(
+                &self.runtime_home_path,
+                PROJECT_ID,
+            ))?;
+            conn.execute(sql, [value, PROJECT_ID, SURFACE_ID, SURFACE_INSTANCE_ID])?;
+            Ok(())
         }
     }
 
@@ -1668,6 +1870,292 @@ mod tests {
     }
 
     #[test]
+    fn preflight_check_reports_full_agent_surface_without_core_state_changes(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES),
+            SurfaceInteractionRole::Agent,
+        )?;
+        let before = harness.counts()?;
+
+        let report = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))?;
+
+        assert_eq!(
+            report,
+            format!(
+                "configuration: valid\ntransport: stdio\nruntime_home: {}\nproject_id: project_mcp\nsurface_id: surface_mcp\nsurface_instance_id: surface_instance_mcp\ninteraction_role: agent\naccess_classes: read_status,core_mutation,write_authorization,artifact_registration,run_recording\nbaseline_workflow_access: full\nmissing_access_classes: \n",
+                harness.runtime_home_path.display()
+            )
+        );
+        assert_eq!(harness.counts()?, before);
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_reports_partial_read_only_agent_surface() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&[AccessClass::ReadStatus]),
+            SurfaceInteractionRole::Agent,
+        )?;
+
+        let report = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))?;
+
+        assert!(report.contains("interaction_role: agent\n"));
+        assert!(report.contains("access_classes: read_status\n"));
+        assert!(report.contains("baseline_workflow_access: partial\n"));
+        assert!(report.contains(
+            "missing_access_classes: core_mutation,write_authorization,artifact_registration,run_recording\n"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_reports_user_interaction_surface() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&[AccessClass::CoreMutation, AccessClass::ReadStatus]),
+            SurfaceInteractionRole::UserInteraction,
+        )?;
+
+        let report = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))?;
+
+        assert!(report.contains("interaction_role: user_interaction\n"));
+        assert!(report.contains("access_classes: core_mutation,read_status\n"));
+        assert!(report.contains("baseline_workflow_access: not_applicable\n"));
+        assert!(report.contains("missing_access_classes: \n"));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_preserves_deterministic_access_and_missing_order(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            json!({
+                "access_class": "run_recording",
+                "authorized_access_classes": [
+                    "run_recording",
+                    "read_status",
+                    "run_recording"
+                ],
+                "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
+            }),
+            SurfaceInteractionRole::Agent,
+        )?;
+
+        let report = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))?;
+
+        assert!(report.contains("access_classes: run_recording,read_status\n"));
+        assert!(report.contains(
+            "missing_access_classes: core_mutation,write_authorization,artifact_registration\n"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_missing_runtime_home_initialization_fails() -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("mcp-check-missing-init")?;
+
+        let error = preflight_for_binding(
+            runtime_home.path(),
+            PROJECT_ID,
+            SURFACE_ID,
+            Some(SURFACE_INSTANCE_ID),
+        )
+        .expect_err("missing Runtime Home initialization should fail");
+
+        assert!(error
+            .to_string()
+            .contains("Runtime Home is not initialized"));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_unregistered_project_fails() -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("mcp-check-unregistered-project")?;
+        initialize_runtime_home(runtime_home.path(), "runtime_home_check_unregistered", "{}")?;
+
+        let error = preflight_for_binding(
+            runtime_home.path(),
+            PROJECT_ID,
+            SURFACE_ID,
+            Some(SURFACE_INSTANCE_ID),
+        )
+        .expect_err("unregistered project should fail");
+
+        assert!(error
+            .to_string()
+            .contains("configured project is not registered"));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_inactive_project_fails() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&[AccessClass::ReadStatus]),
+            SurfaceInteractionRole::Agent,
+        )?;
+        let conn = open_registry_database(registry_db_path(&harness.runtime_home_path))?;
+        conn.pragma_update(None, "ignore_check_constraints", "ON")?;
+        conn.execute(
+            "UPDATE projects SET status = 'inactive' WHERE project_id = ?1",
+            [PROJECT_ID],
+        )?;
+
+        let error = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))
+            .expect_err("inactive project should fail");
+
+        assert!(error
+            .to_string()
+            .contains("configured project is not active"));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_unregistered_surface_fails() -> Result<(), Box<dyn Error>> {
+        let runtime_home = runtime_home_with_project("mcp-check-no-surface", PROJECT_ID)?;
+
+        let error = preflight_for_binding(
+            runtime_home.path(),
+            PROJECT_ID,
+            SURFACE_ID,
+            Some(SURFACE_INSTANCE_ID),
+        )
+        .expect_err("unregistered surface should fail");
+
+        assert!(error
+            .to_string()
+            .contains("configured surface is not registered"));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_unknown_explicit_instance_fails() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&[AccessClass::ReadStatus]),
+            SurfaceInteractionRole::Agent,
+        )?;
+
+        let error = preflight_for(&harness, Some("surface_instance_missing"))
+            .expect_err("unknown explicit instance should fail");
+
+        assert!(error
+            .to_string()
+            .contains("configured surface instance is not registered"));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_ambiguous_implicit_instance_fails() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&[AccessClass::ReadStatus]),
+            SurfaceInteractionRole::Agent,
+        )?;
+        for instance_id in [
+            "surface_instance_ambiguous_a",
+            "surface_instance_ambiguous_b",
+        ] {
+            register_surface(
+                &harness.runtime_home_path,
+                SurfaceRegistration {
+                    project_id: PROJECT_ID.to_owned(),
+                    surface_id: "surface_ambiguous".to_owned(),
+                    surface_instance_id: instance_id.to_owned(),
+                    surface_kind: "mcp_test".to_owned(),
+                    interaction_role: SurfaceInteractionRole::Agent,
+                    display_name: None,
+                    capability_profile_json: "{}".to_owned(),
+                    local_access_json: local_access(&[AccessClass::ReadStatus]).to_string(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+        }
+
+        let error = preflight_for_binding(
+            &harness.runtime_home_path,
+            PROJECT_ID,
+            "surface_ambiguous",
+            None,
+        )
+        .expect_err("ambiguous implicit instance should fail");
+
+        assert!(error.to_string().contains("multiple usable"));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_invalid_capability_json_fails() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&[AccessClass::ReadStatus]),
+            SurfaceInteractionRole::Agent,
+        )?;
+        harness.set_surface_text_column("capability_profile_json", "[")?;
+
+        let error = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))
+            .expect_err("invalid capability JSON should fail");
+
+        assert!(matches!(error, McpAdapterError::Json(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_invalid_metadata_json_fails() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&[AccessClass::ReadStatus]),
+            SurfaceInteractionRole::Agent,
+        )?;
+        harness.set_surface_text_column("metadata_json", "[")?;
+
+        let error = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))
+            .expect_err("invalid metadata JSON should fail");
+
+        assert!(matches!(error, McpAdapterError::Json(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_invalid_local_access_json_fails() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&[AccessClass::ReadStatus]),
+            SurfaceInteractionRole::Agent,
+        )?;
+        harness.set_surface_text_column("local_access_json", "[")?;
+
+        let error = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))
+            .expect_err("invalid local-access JSON should fail");
+
+        assert!(matches!(error, McpAdapterError::Json(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_empty_access_grant_fails() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&[AccessClass::ReadStatus]),
+            SurfaceInteractionRole::Agent,
+        )?;
+        harness
+            .set_surface_text_column("local_access_json", r#"{"authorized_access_classes":[]}"#)?;
+
+        let error = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))
+            .expect_err("empty access grant should fail");
+
+        assert!(error
+            .to_string()
+            .contains("registered surface local access grant is empty"));
+        Ok(())
+    }
+
+    #[test]
     fn runtime_home_env_resolution_matches_shared_resolver() -> Result<(), Box<dyn Error>> {
         let current_dir = TempRuntimeHome::new("mcp-current-dir")?;
         fn env_var(name: &str) -> Option<OsString> {
@@ -1743,5 +2231,73 @@ mod tests {
 
         assert_eq!(resolved, explicit);
         Ok(())
+    }
+
+    fn local_access(access_classes: &[AccessClass]) -> Value {
+        let names = access_classes
+            .iter()
+            .map(|access_class| access_class.as_str())
+            .collect::<Vec<_>>();
+        let primary = names.first().copied().unwrap_or("read_status");
+        json!({
+            "access_class": primary,
+            "authorized_access_classes": names,
+            "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
+        })
+    }
+
+    fn preflight_for(
+        harness: &TestHarness,
+        surface_instance_id: Option<&str>,
+    ) -> Result<String, McpAdapterError> {
+        preflight_for_binding(
+            &harness.runtime_home_path,
+            PROJECT_ID,
+            SURFACE_ID,
+            surface_instance_id,
+        )
+    }
+
+    fn preflight_for_binding(
+        runtime_home: &Path,
+        project_id: &str,
+        surface_id: &str,
+        surface_instance_id: Option<&str>,
+    ) -> Result<String, McpAdapterError> {
+        preflight_check(
+            |name| match name {
+                "HARNESS_HOME" => Some(OsString::from(runtime_home)),
+                "HARNESS_PROJECT_ID" => Some(OsString::from(project_id)),
+                "HARNESS_SURFACE_ID" => Some(OsString::from(surface_id)),
+                "HARNESS_SURFACE_INSTANCE_ID" => surface_instance_id.map(OsString::from),
+                _ => None,
+            },
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+    }
+
+    fn runtime_home_with_project(
+        prefix: &str,
+        project_id: &str,
+    ) -> Result<TempRuntimeHome, Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new(prefix)?;
+        let repo_root = runtime_home.path().join("repo");
+        fs::create_dir_all(&repo_root)?;
+        initialize_runtime_home(
+            runtime_home.path(),
+            &format!("runtime_home_{prefix}").replace('-', "_"),
+            "{}",
+        )?;
+        register_project(
+            runtime_home.path(),
+            ProjectRegistration {
+                project_id: project_id.to_owned(),
+                repo_root,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        Ok(runtime_home)
     }
 }

@@ -60,6 +60,16 @@ where
 
     match command {
         "-h" | "--help" | "help" => Ok(usage()),
+        "-V" | "--version" => {
+            if args.len() == 2 {
+                Ok(version())
+            } else {
+                Err(CliError::usage(format!(
+                    "unexpected argument for {command}\n\n{}",
+                    usage()
+                )))
+            }
+        }
         "init" => command_init(&args[2..], env_var, current_dir),
         "project" => command_project(&args[2..], env_var, current_dir),
         "surface" => command_surface(&args[2..], env_var, current_dir),
@@ -520,10 +530,14 @@ fn display_path(path: &Path) -> String {
 
 fn usage() -> String {
     format!(
-        "Usage:\n  harness init [--runtime-home-id ID]\n  {}\n  {}\n\nEnvironment:\n  HARNESS_HOME  Override Runtime Home path (default: $HOME/.harness)\n\nThese are local administrative setup commands, not public Harness API methods.\n",
+        "Usage:\n  harness --help\n  harness --version\n  harness init [--runtime-home-id ID]\n  {}\n  {}\n\nEnvironment:\n  HARNESS_HOME  Override Runtime Home path (default: $HOME/.harness)\n\nThese are local administrative setup commands, not public Harness API methods.\n",
         project_usage().trim_end(),
         surface_usage().trim_end()
     )
+}
+
+fn version() -> String {
+    format!("harness {}\n", env!("CARGO_PKG_VERSION"))
 }
 
 fn project_usage() -> String {
@@ -586,6 +600,42 @@ mod tests {
     use rusqlite::Connection;
 
     use super::*;
+
+    #[test]
+    fn version_does_not_require_runtime_home_environment() {
+        let output = run_cli(
+            ["harness", "--version"],
+            |_| None,
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect("version should not need Runtime Home");
+
+        assert_eq!(output, format!("harness {}\n", env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn short_version_is_exact_alias() {
+        let output = run_cli(
+            ["harness", "-V"],
+            |_| None,
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect("short version should not need Runtime Home");
+
+        assert_eq!(output, version());
+    }
+
+    #[test]
+    fn help_mentions_version_discovery() {
+        let output = run_cli(
+            ["harness", "--help"],
+            |_| None,
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .expect("help should not need Runtime Home");
+
+        assert!(output.contains("harness --version"));
+    }
 
     #[test]
     fn init_respects_harness_home_override() {

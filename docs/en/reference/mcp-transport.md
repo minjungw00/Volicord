@@ -30,13 +30,17 @@ This document does not own:
 
 Command-line behavior:
 
-- Launch `harness-mcp` without command-line arguments.
-- No command-line flag mode is baseline-implemented for help, version, server startup, or preflight.
-- The current Rust entry point does not use command-line arguments as a supported mode selector.
+- Launch `harness-mcp` without command-line arguments for the line-delimited MCP stdio loop.
+- `-h` and `--help` print usage and environment summary, then exit with code `0`.
+- `-V` and `--version` print `harness-mcp <version>`, then exit with code `0`.
+- `--check` runs startup validation and prints a deterministic diagnostic report without reading stdin.
+- Unknown options, combined command-line modes, and extra positional arguments write usage diagnostics to stderr and exit with code `2`.
+- Help and version handling happen before Runtime Home or binding environment lookup.
 
 Exit and stream behavior:
 
 - Normal stdin EOF shutdown flushes stdout and exits with code `0`.
+- Successful `--check` writes its report to stdout and exits with code `0`.
 - Startup environment, JSON, or storage failures write diagnostics to stderr and exit with code `1`.
 - Once the stdio loop is running, malformed JSON and unsupported JSON-RPC requests return JSON-RPC errors when a response can be written.
 
@@ -52,14 +56,17 @@ Optional:
 - `HARNESS_HOME`
 - `HARNESS_SURFACE_INSTANCE_ID`
 
-The stdio process uses these variables before entering the stdin loop.
+The stdio process and `--check` use these variables before entering startup validation. Help and version modes do not use them.
 
 Current MCP Runtime Home resolution:
 
-1. If `HARNESS_HOME` is present, use it as supplied.
-2. If `HARNESS_HOME` is absent, require `HOME` and use `HOME/.harness`.
-3. The MCP process does not use `USERPROFILE`, `HOMEDRIVE`, or `HOMEPATH` fallback rules.
-4. The MCP process does not canonicalize the selected Runtime Home before startup validation.
+1. A present but empty `HARNESS_HOME` is an error.
+2. An absolute `HARNESS_HOME` is used as supplied.
+3. A relative `HARNESS_HOME` is resolved against the process current working directory without requiring the path to exist.
+4. When `HARNESS_HOME` is absent, use the first non-empty home source in this order: `HOME`, `USERPROFILE`, then `HOMEDRIVE` plus `HOMEPATH`.
+5. Append `.harness` to the selected user home.
+6. Resolve a relative selected home against the process current working directory.
+7. Do not require canonicalization before startup validation.
 
 ## Startup validation
 
@@ -97,13 +104,28 @@ The public `ToolEnvelope.project_id` and `ToolEnvelope.surface_id` values in eac
 
 ## Configuration preflight
 
-The current Rust executable does not implement a separate `harness-mcp --check` preflight mode. Startup validation happens as part of process startup before entering the stdin loop.
+`harness-mcp --check` runs the same Runtime Home, project, surface, instance, role, JSON, and local-access startup validation used before entering the stdio loop. It does not read stdin.
+
+On success, `--check` writes these stdout lines in this order:
+
+```text
+configuration: valid
+transport: stdio
+runtime_home: <absolute path>
+project_id: <value>
+surface_id: <value>
+surface_instance_id: <value>
+interaction_role: <agent or user_interaction>
+access_classes: <comma-separated registered grants>
+baseline_workflow_access: <full, partial, or not_applicable>
+missing_access_classes: <comma-separated values or empty>
+```
 
 Startup validation failure:
 
 - writes a diagnostic to stderr through the process entry point
 - exits with code `1`
-- does not enter the stdio loop
+- does not enter the stdio loop or wait on stdin
 
 Startup validation may perform already-defined storage schema validation or migration as part of normal database opening. It does not by itself register a project or surface, create a `Task`, increment `state_version`, or create application records.
 

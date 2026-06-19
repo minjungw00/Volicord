@@ -30,6 +30,7 @@
 
 ```text
 harness --help
+harness --version
 harness init [--runtime-home-id ID]
 harness project register --project-id ID --repo-root PATH [--status active]
 harness project list
@@ -40,6 +41,7 @@ harness surface list --project-id ID
 종료 코드와 스트림 동작:
 
 - 성공한 명령은 성공 출력을 stdout에 쓰고 종료 코드 `0`으로 끝납니다.
+- `harness --version`은 stdout에 `harness <version>`을 쓰며 Runtime Home 해석을 요구하지 않습니다.
 - 사용법 오류는 진단을 stderr에 쓰고 종료 코드 `2`로 끝납니다.
 - 런타임, 환경, 저장소 오류는 진단을 stderr에 쓰고 종료 코드 `1`로 끝납니다.
 
