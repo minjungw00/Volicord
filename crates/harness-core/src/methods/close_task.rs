@@ -1034,7 +1034,7 @@ fn completion_close_blockers(
         ));
     }
 
-    if let Some(blocker) = current_close_basis_blocker(request, project_state, context)? {
+    if let Some(blocker) = current_close_basis_blocker(store, request, project_state, context)? {
         blockers.push(blocker);
     }
 
@@ -1442,10 +1442,11 @@ fn unavailable_artifact_ref_from_raw(
 }
 
 fn current_close_basis_blocker(
+    store: &CoreProjectStore,
     request: &CloseTaskRequest,
     project_state: &ProjectStateHeader,
     context: &CloseTaskContext,
-) -> CoreResult<Option<CloseReadinessBlocker>> {
+) -> Result<Option<CloseReadinessBlocker>, PlanError> {
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let Some(basis) = context.current_close_basis.as_ref() else {
         return Ok(Some(close_blocker(
@@ -1488,6 +1489,15 @@ fn current_close_basis_blocker(
                 required_refs: vec![task_ref],
             }],
         )))
+    } else if let Some(blocker) = incompatible_close_basis_run_refs_blocker(
+        store,
+        request,
+        project_state,
+        context,
+        basis,
+        current_baseline.as_deref(),
+    )? {
+        Ok(Some(blocker))
     } else if legacy_category_only_sensitive_basis(basis) {
         Ok(Some(close_blocker(
             CloseReadinessBlockerCategory::Scope,
@@ -1506,6 +1516,105 @@ fn current_close_basis_blocker(
     } else {
         Ok(None)
     }
+}
+
+fn incompatible_close_basis_run_refs_blocker(
+    store: &CoreProjectStore,
+    request: &CloseTaskRequest,
+    project_state: &ProjectStateHeader,
+    context: &CloseTaskContext,
+    basis: &CurrentCloseBasis,
+    current_baseline: Option<&str>,
+) -> Result<Option<CloseReadinessBlocker>, PlanError> {
+    let Some(current_change_unit) = context.current_change_unit.as_ref() else {
+        return Ok(None);
+    };
+    let current_change_unit_id = current_change_unit.change_unit_id.as_str();
+    let mut seen = BTreeSet::new();
+    let mut incompatible_refs = Vec::new();
+    for record_ref in close_basis_run_refs(basis) {
+        let record_id = record_ref.record_id.as_str();
+        if !seen.insert(record_id.to_owned()) {
+            continue;
+        }
+        if record_ref.project_id != request.envelope.project_id
+            || record_ref.task_id.as_ref() != Some(&request.task_id)
+        {
+            incompatible_refs.push(record_ref.clone());
+            continue;
+        }
+        let record = store.run_record(record_id).map_err(|error| {
+            PlanError::Response(Box::new(store_error_response(
+                &request.envelope,
+                project_state,
+                error,
+            )))
+        })?;
+        if record.as_ref().is_none_or(|record| {
+            stored_run_is_not_current_close_basis_compatible(
+                record,
+                request,
+                current_change_unit_id,
+                context.task.scope_revision,
+                current_baseline,
+            )
+        }) {
+            incompatible_refs.push(record_ref.clone());
+        }
+    }
+
+    if incompatible_refs.is_empty() {
+        Ok(None)
+    } else {
+        let task_ref = task_ref_for_close(request, project_state.state_version);
+        Ok(Some(close_blocker(
+            CloseReadinessBlockerCategory::Scope,
+            "stale_current_close_basis",
+            "The current close basis contains Run refs that are not current for the Task scope.",
+            incompatible_refs,
+            vec![NextActionSummary {
+                action_kind: NextActionKind::RecordRun,
+                owner_method: Some(MethodName::RecordRun),
+                label: "Record a fresh close basis for the current Run context.".to_owned(),
+                blocking_question: None,
+                required_refs: vec![task_ref],
+            }],
+        )))
+    }
+}
+
+fn close_basis_run_refs(basis: &CurrentCloseBasis) -> Vec<&StateRecordRef> {
+    let mut refs = Vec::new();
+    refs.push(&basis.source_run_ref);
+    refs.extend(
+        basis
+            .result_refs
+            .iter()
+            .filter(|record_ref| record_ref.record_kind == StateRecordKind::Run),
+    );
+    refs.extend(
+        basis
+            .residual_risks
+            .iter()
+            .flat_map(|risk| risk.source_refs.iter())
+            .filter(|record_ref| record_ref.record_kind == StateRecordKind::Run),
+    );
+    refs
+}
+
+fn stored_run_is_not_current_close_basis_compatible(
+    record: &RunRecord,
+    request: &CloseTaskRequest,
+    current_change_unit_id: &str,
+    current_scope_revision: u64,
+    current_baseline: Option<&str>,
+) -> bool {
+    record.project_id != request.envelope.project_id.as_str()
+        || record.task_id != request.task_id.as_str()
+        || record.change_unit_id.as_deref() != Some(current_change_unit_id)
+        || record.scope_revision != Some(current_scope_revision)
+        || record.baseline_ref.as_deref() != current_baseline
+        || record.status != "recorded"
 }
 
 fn legacy_category_only_sensitive_basis(basis: &CurrentCloseBasis) -> bool {

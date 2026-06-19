@@ -253,6 +253,18 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     require_column_spec(
         conn,
         PROJECT_STATE_DATABASE_KIND,
+        "runs",
+        ColumnSpec {
+            name: "scope_revision",
+            type_name: "INTEGER",
+            not_null: false,
+            default_value: None,
+            primary_key_position: 0,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
         "user_judgments",
         ColumnSpec {
             name: "basis_json",
@@ -1010,7 +1022,7 @@ mod tests {
             &conn,
             PROJECT_STATE_DATABASE_KIND,
             PROJECT_STATE_SCHEMA_VERSION,
-            "project_state_surface_role_actor_provenance_v7"
+            "project_state_run_scope_revision_v8"
         )?);
         drop(conn);
 

@@ -6,11 +6,11 @@ use std::{
 use harness_types::{
     BaselineRef, ChangeUnitId, CurrentCloseBasis, EvidenceCoverageItem, IdempotencyKey,
     JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentResolutionOutcome, MethodName,
-    PersistedArtifactProducer, PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata,
-    PersistedEvidenceMetadata, PersistedJudgmentBasis, PersistedUserJudgmentOptions,
-    PersistedUserJudgmentRequest, PersistedUserJudgmentResolution, ProjectId, RequestHash,
-    RequiredNullable, ResidualRisk, RunId, StagedArtifactHandleId, StateRecordRef, SurfaceId,
-    TaskId, UtcTimestamp,
+    ObservedChanges, PersistedArtifactProducer, PersistedArtifactProvenance,
+    PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata, PersistedJudgmentBasis,
+    PersistedUserJudgmentOptions, PersistedUserJudgmentRequest, PersistedUserJudgmentResolution,
+    ProjectId, RequestHash, RequiredNullable, ResidualRisk, RunId, StagedArtifactHandleId,
+    StateRecordRef, SurfaceId, TaskId, UtcTimestamp,
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
@@ -275,6 +275,7 @@ pub struct RunInsert {
     pub run_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
+    pub scope_revision: u64,
     pub write_authorization_id: Option<String>,
     pub kind: String,
     pub status: String,
@@ -294,6 +295,8 @@ pub struct RunRecord {
     pub run_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
+    pub scope_revision: Option<u64>,
+    pub baseline_ref: Option<String>,
     pub status: String,
 }
 
@@ -1885,6 +1888,7 @@ impl ProjectMutation<'_> {
         if let Some(change_unit_id) = &input.change_unit_id {
             validate_identifier("change_unit_id", change_unit_id)?;
         }
+        let scope_revision = u64_to_i64("runs.scope_revision", input.scope_revision)?;
         if let Some(write_authorization_id) = &input.write_authorization_id {
             validate_identifier("write_authorization_id", write_authorization_id)?;
         }
@@ -1910,6 +1914,7 @@ impl ProjectMutation<'_> {
                 run_id,
                 task_id,
                 change_unit_id,
+                scope_revision,
                 write_authorization_id,
                 kind,
                 status,
@@ -1938,16 +1943,18 @@ impl ProjectMutation<'_> {
                 ?11,
                 ?12,
                 ?13,
+                ?14,
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                ?14
+                ?15
             )",
             params![
                 self.project_id,
                 input.run_id,
                 input.task_id,
                 input.change_unit_id,
+                scope_revision,
                 input.write_authorization_id,
                 input.kind,
                 input.status,
@@ -2924,31 +2931,76 @@ fn write_authorization_record_from_row(
 }
 
 fn run_record(conn: &Connection, project_id: &str, run_id: &str) -> StoreResult<Option<RunRecord>> {
-    conn.query_row(
-        "SELECT
+    let row = conn
+        .query_row(
+            "SELECT
             project_id,
             run_id,
             task_id,
             change_unit_id,
+            scope_revision,
+            observed_changes_json,
             status
          FROM runs
          WHERE project_id = ?1
            AND run_id = ?2",
-        params![project_id, run_id],
-        run_record_from_row,
-    )
-    .optional()
-    .map_err(StoreError::from)
-}
+            params![project_id, run_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            },
+        )
+        .optional()?;
 
-fn run_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunRecord> {
-    Ok(RunRecord {
-        project_id: row.get(0)?,
-        run_id: row.get(1)?,
-        task_id: row.get(2)?,
-        change_unit_id: row.get(3)?,
-        status: row.get(4)?,
-    })
+    row.map(
+        |(
+            project_id,
+            run_id,
+            task_id,
+            change_unit_id,
+            scope_revision,
+            observed_changes_json,
+            status,
+        )| {
+            let scope_revision = scope_revision
+                .map(|value| {
+                    u64::try_from(value).map_err(|_| {
+                        StoreError::corrupt_owner_state_value(
+                            "runs",
+                            run_id.clone(),
+                            "scope_revision",
+                        )
+                    })
+                })
+                .transpose()?;
+            let observed_changes = decode_owner_json_text::<ObservedChanges>(
+                "runs",
+                run_id.clone(),
+                "observed_changes_json",
+                &observed_changes_json,
+            )?;
+            Ok(RunRecord {
+                project_id,
+                run_id,
+                task_id,
+                change_unit_id,
+                scope_revision,
+                baseline_ref: observed_changes
+                    .baseline_ref
+                    .as_ref()
+                    .map(|baseline_ref| baseline_ref.as_str().to_owned()),
+                status,
+            })
+        },
+    )
+    .transpose()
 }
 
 fn artifact_staging_record(
@@ -4732,6 +4784,7 @@ mod tests {
             run_id: "run_missing_task".to_owned(),
             task_id: "missing_task".to_owned(),
             change_unit_id: None,
+            scope_revision: 0,
             write_authorization_id: None,
             kind: "implementation".to_owned(),
             status: "completed".to_owned(),

@@ -21,7 +21,7 @@ pub const BASELINE_SCHEMA_VERSION: i64 = 1;
 pub const REGISTRY_SCHEMA_VERSION: i64 = 1;
 
 /// Latest schema version for project `state.sqlite`.
-pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 7;
+pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 8;
 
 const PROJECT_STATE_REPLAY_CONTEXT_SCHEMA_VERSION: i64 = 2;
 const PROJECT_STATE_REPLAY_SURFACE_FK_SCHEMA_VERSION: i64 = 3;
@@ -29,6 +29,7 @@ const PROJECT_STATE_CLOSE_BASIS_JUDGMENT_BASIS_SCHEMA_VERSION: i64 = 4;
 const PROJECT_STATE_JUDGMENT_RESOLUTION_OUTCOME_SCHEMA_VERSION: i64 = 5;
 const PROJECT_STATE_ARTIFACT_INTEGRITY_SCHEMA_VERSION: i64 = 6;
 const PROJECT_STATE_SURFACE_ROLE_ACTOR_PROVENANCE_SCHEMA_VERSION: i64 = 7;
+const PROJECT_STATE_RUN_SCOPE_REVISION_SCHEMA_VERSION: i64 = 8;
 
 /// `schema_migrations.database_kind` for `registry.sqlite`.
 pub const REGISTRY_DATABASE_KIND: &str = "registry";
@@ -85,6 +86,12 @@ const PROJECT_STATE_MIGRATIONS: &[Migration] = &[
         version: PROJECT_STATE_SURFACE_ROLE_ACTOR_PROVENANCE_SCHEMA_VERSION,
         name: "project_state_surface_role_actor_provenance_v7",
         kind: MigrationKind::Sql(PROJECT_STATE_SURFACE_ROLE_ACTOR_PROVENANCE_V7_SQL),
+    },
+    Migration {
+        database_kind: PROJECT_STATE_DATABASE_KIND,
+        version: PROJECT_STATE_RUN_SCOPE_REVISION_SCHEMA_VERSION,
+        name: "project_state_run_scope_revision_v8",
+        kind: MigrationKind::Sql(PROJECT_STATE_RUN_SCOPE_REVISION_V8_SQL),
     },
 ];
 
@@ -1335,6 +1342,16 @@ UPDATE project_state
  WHERE schema_version < 7;
 "#;
 
+const PROJECT_STATE_RUN_SCOPE_REVISION_V8_SQL: &str = r#"
+ALTER TABLE runs
+  ADD COLUMN scope_revision INTEGER CHECK (scope_revision IS NULL OR scope_revision >= 0);
+
+UPDATE project_state
+   SET schema_version = 8,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+ WHERE schema_version < 8;
+"#;
+
 #[cfg(test)]
 mod tests {
     use std::{error::Error, fs, path::Path};
@@ -1873,6 +1890,7 @@ mod tests {
             ("tasks", "scope_revision"),
             ("tasks", "close_basis_revision"),
             ("tasks", "close_basis_json"),
+            ("runs", "scope_revision"),
             ("user_judgments", "basis_json"),
             ("user_judgments", "basis_status"),
             ("user_judgments", "resolution_outcome"),
@@ -1889,6 +1907,9 @@ mod tests {
         ));
         assert!(table_sql(&conn, "user_judgments")?.contains(
             "resolution_outcome IS NULL OR resolution_outcome IN ('accepted', 'rejected', 'deferred', 'blocked')"
+        ));
+        assert!(table_sql(&conn, "runs")?.contains(
+            "scope_revision INTEGER CHECK (scope_revision IS NULL OR scope_revision >= 0)"
         ));
         assert_eq!(
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
@@ -2211,6 +2232,68 @@ mod tests {
             |row| row.get(0),
         )?;
         assert_eq!(interaction_role, "agent");
+        assert_integrity_check_clean(&conn)?;
+        assert_foreign_key_check_clean(&conn)?;
+        Ok(())
+    }
+
+    #[test]
+    fn run_scope_revision_migration_preserves_legacy_runs_as_null() -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("migration-v7-run-scope")?;
+        let path = project_state_db_path(runtime_home.path(), "project_v7_run_scope");
+        fs::create_dir_all(path.parent().expect("state db path has parent"))?;
+        let mut conn = Connection::open(&path)?;
+        enable_foreign_keys(&conn)?;
+        create_project_state_v5(&conn, "project_v7_run_scope")?;
+        insert_surface(&conn, "project_v7_run_scope")?;
+        insert_task_current(&conn, "project_v7_run_scope", "task_legacy_run")?;
+        conn.execute(
+            "UPDATE tasks
+                SET scope_revision = 9
+              WHERE project_id = 'project_v7_run_scope'
+                AND task_id = 'task_legacy_run'",
+            [],
+        )?;
+        insert_run_v5(
+            &conn,
+            "project_v7_run_scope",
+            "task_legacy_run",
+            "run_legacy_scope_unknown",
+        )?;
+
+        apply_project_state_migrations(&mut conn)?;
+        validate_project_state_schema(&conn)?;
+
+        assert_eq!(
+            latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
+        assert_eq!(
+            migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
+        assert_eq!(
+            project_schema_version(&conn, "project_v7_run_scope")?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
+        let row: (Option<i64>, String, String, String) = conn.query_row(
+            "SELECT
+                scope_revision,
+                summary_json,
+                observed_changes_json,
+                evidence_updates_json
+               FROM runs
+              WHERE run_id = 'run_legacy_scope_unknown'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        assert_eq!(row.0, None);
+        assert_eq!(row.1, "{\"summary\":\"legacy\"}");
+        assert_eq!(
+            row.2,
+            "{\"changed_paths\":[],\"product_file_write_observed\":false,\"sensitive_categories\":[],\"baseline_ref\":\"baseline_legacy\"}"
+        );
+        assert_eq!(row.3, "[]");
         assert_integrity_check_clean(&conn)?;
         assert_foreign_key_check_clean(&conn)?;
         Ok(())
@@ -2742,6 +2825,44 @@ mod tests {
                 't0'
             )",
             params![project_id, run_id],
+        )?;
+        Ok(())
+    }
+
+    fn insert_run_v5(
+        conn: &Connection,
+        project_id: &str,
+        task_id: &str,
+        run_id: &str,
+    ) -> rusqlite::Result<()> {
+        conn.execute(
+            "INSERT INTO runs (
+                project_id,
+                run_id,
+                task_id,
+                kind,
+                status,
+                summary_json,
+                observed_changes_json,
+                evidence_updates_json,
+                created_by_surface_id,
+                created_by_surface_instance_id,
+                created_at
+            )
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                'implementation',
+                'recorded',
+                '{\"summary\":\"legacy\"}',
+                '{\"changed_paths\":[],\"product_file_write_observed\":false,\"sensitive_categories\":[],\"baseline_ref\":\"baseline_legacy\"}',
+                '[]',
+                'surface_main',
+                'surface_instance_1',
+                't0'
+            )",
+            params![project_id, run_id, task_id],
         )?;
         Ok(())
     }

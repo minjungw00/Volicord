@@ -3325,6 +3325,8 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
         response.response_value["run_summary"]["observed_changes"]["product_file_write_observed"],
         false
     );
+    let run_id = run_id_from_record_run(&response.response_value);
+    assert_eq!(run_scope_revision(&harness, &run_id)?, Some(1));
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.runs, before.runs + 1);
     assert_eq!(after.write_authorizations, before.write_authorizations);
@@ -3391,6 +3393,363 @@ fn record_run_non_null_close_assessment_creates_current_basis() -> Result<(), Bo
             .filter_map(|record_ref| record_ref["record_kind"].as_str())
             .any(|kind| kind == "run")
     );
+    Ok(())
+}
+
+#[test]
+fn current_compatible_run_ref_can_enter_close_basis() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "current_run_ref")?;
+
+    let mut first = record_run_request(
+        "req_current_run_ref_first",
+        "idem_current_run_ref_first",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    first.run_id = Some(RunId::new("run_current_ref_first")).into();
+    let first_response = harness
+        .service
+        .record_run(first, invocation(AccessClass::RunRecording))?;
+    assert_eq!(first_response.response_value["base"]["state_version"], 3);
+
+    let mut second = record_run_request(
+        "req_current_run_ref_second",
+        "idem_current_run_ref_second",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    second.run_id = Some(RunId::new("run_current_ref_second")).into();
+    second.close_assessment = Some(harness_types::CloseAssessmentInput {
+        result_summary: "Current prior Run can support this close basis.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Run,
+            "run_current_ref_first",
+            PROJECT_ID,
+            &task_id,
+            Some(999),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(second, invocation(AccessClass::RunRecording))?;
+    let basis = task_revision(&harness, &task_id)?
+        .current_close_basis
+        .expect("current basis should be stored");
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert!(basis.result_refs.iter().any(|record_ref| {
+        record_ref.record_kind == StateRecordKind::Run
+            && record_ref.record_id.as_str() == "run_current_ref_first"
+            && record_ref.state_version.as_ref() == Some(&4)
+    }));
+    assert!(basis.result_refs.iter().any(|record_ref| {
+        record_ref.record_kind == StateRecordKind::Run
+            && record_ref.record_id.as_str() == "run_current_ref_second"
+            && record_ref.state_version.as_ref() == Some(&4)
+    }));
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_superseded_change_unit_run_ref_without_effect() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "old_unit_run_ref")?;
+
+    let mut old = record_run_request(
+        "req_old_unit_run",
+        "idem_old_unit_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    old.run_id = Some(RunId::new("run_old_unit")).into();
+    harness
+        .service
+        .record_run(old, invocation(AccessClass::RunRecording))?;
+
+    let replace = harness.service.update_scope(
+        update_scope_request(
+            "req_old_unit_replace",
+            "idem_old_unit_replace",
+            false,
+            Some(3),
+            &task_id,
+            ChangeUnitOperation::ReplaceCurrent,
+            "Replacement current scope.",
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let replacement_change_unit_id = response_record_id(&replace.response_value, "change_unit_ref");
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_old_unit_rejected",
+        "idem_old_unit_rejected",
+        false,
+        Some(4),
+        &task_id,
+        &replacement_change_unit_id,
+    );
+    request.close_assessment = Some(harness_types::CloseAssessmentInput {
+        result_summary: "Old unit Run must not become current.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Run,
+            "run_old_unit",
+            PROJECT_ID,
+            &task_id,
+            Some(3),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_legacy_null_scope_revision_run_ref_without_effect(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_run_ref")?;
+
+    let mut legacy = record_run_request(
+        "req_legacy_run",
+        "idem_legacy_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    legacy.run_id = Some(RunId::new("run_legacy_null_revision")).into();
+    harness
+        .service
+        .record_run(legacy, invocation(AccessClass::RunRecording))?;
+    set_run_scope_revision(&harness, "run_legacy_null_revision", None)?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_legacy_ref_rejected",
+        "idem_legacy_ref_rejected",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    request.close_assessment = Some(harness_types::CloseAssessmentInput {
+        result_summary: "Legacy-null Run must remain audit-only.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Run,
+            "run_legacy_null_revision",
+            PROJECT_ID,
+            &task_id,
+            Some(3),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn record_run_rejects_baseline_incompatible_run_ref_without_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "baseline_run_ref")?;
+
+    let mut baseline = record_run_request(
+        "req_baseline_run",
+        "idem_baseline_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    baseline.run_id = Some(RunId::new("run_baseline_mismatch")).into();
+    harness
+        .service
+        .record_run(baseline, invocation(AccessClass::RunRecording))?;
+    set_run_observed_baseline(&harness, "run_baseline_mismatch", "baseline_other")?;
+    let before = harness.counts()?;
+
+    let mut request = record_run_request(
+        "req_baseline_ref_rejected",
+        "idem_baseline_ref_rejected",
+        false,
+        Some(3),
+        &task_id,
+        &change_unit_id,
+    );
+    request.close_assessment = Some(harness_types::CloseAssessmentInput {
+        result_summary: "Baseline-mismatched Run must not become current.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Run,
+            "run_baseline_mismatch",
+            PROJECT_ID,
+            &task_id,
+            Some(3),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "VALIDATION_FAILED"
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn historical_verified_artifact_reuse_requires_new_current_run() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "artifact_reuse")?;
+    let (artifact_state_version, artifact_ref) =
+        promote_artifact_for_record_run(&harness, &task_id, &change_unit_id, 2, "artifact_reuse")?;
+    let old_run_id = latest_run_id(&harness, &task_id)?;
+
+    let replace = harness.service.update_scope(
+        update_scope_request(
+            "req_artifact_reuse_replace",
+            "idem_artifact_reuse_replace",
+            false,
+            Some(artifact_state_version),
+            &task_id,
+            ChangeUnitOperation::ReplaceCurrent,
+            "Replacement scope for artifact reuse.",
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let replacement_change_unit_id = response_record_id(&replace.response_value, "change_unit_ref");
+
+    let mut direct_old_run = record_run_request(
+        "req_artifact_reuse_old_run",
+        "idem_artifact_reuse_old_run",
+        false,
+        Some(artifact_state_version + 1),
+        &task_id,
+        &replacement_change_unit_id,
+    );
+    direct_old_run.close_assessment = Some(harness_types::CloseAssessmentInput {
+        result_summary: "Old Run must not be reused directly.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Run,
+            &old_run_id,
+            PROJECT_ID,
+            &task_id,
+            Some(artifact_state_version),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+    let before_reject = harness.counts()?;
+    let rejected = harness
+        .service
+        .record_run(direct_old_run, invocation(AccessClass::RunRecording))?;
+    assert_eq!(rejected.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before_reject);
+
+    let mut current_reuse = record_run_request(
+        "req_artifact_reuse_current",
+        "idem_artifact_reuse_current",
+        false,
+        Some(artifact_state_version + 1),
+        &task_id,
+        &replacement_change_unit_id,
+    );
+    current_reuse.run_id = Some(RunId::new("run_artifact_reuse_current")).into();
+    current_reuse.artifact_inputs = vec![existing_artifact_input(
+        "artifact_input_reuse_current",
+        artifact_ref.clone(),
+    )];
+    current_reuse.evidence_updates = vec![supported_evidence_update(
+        "Historical verified artifact reused by a current Run.",
+    )];
+    current_reuse.close_assessment = Some(harness_types::CloseAssessmentInput {
+        result_summary: "Artifact reuse is recorded by a current Run.".to_owned(),
+        result_refs: vec![test_state_record_ref(
+            StateRecordKind::Artifact,
+            artifact_ref.artifact_id.as_str(),
+            PROJECT_ID,
+            &task_id,
+            Some(artifact_state_version),
+        )],
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+
+    let response = harness
+        .service
+        .record_run(current_reuse, invocation(AccessClass::RunRecording))?;
+    let basis = task_revision(&harness, &task_id)?
+        .current_close_basis
+        .expect("current basis should be stored");
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        run_scope_revision(&harness, "run_artifact_reuse_current")?,
+        Some(2)
+    );
+    assert!(basis.result_refs.iter().any(|record_ref| {
+        record_ref.record_kind == StateRecordKind::Run
+            && record_ref.record_id.as_str() == "run_artifact_reuse_current"
+    }));
+    assert!(basis.result_refs.iter().all(|record_ref| {
+        record_ref.record_kind != StateRecordKind::Run
+            || record_ref.record_id.as_str() != old_run_id
+    }));
     Ok(())
 }
 
@@ -11596,6 +11955,84 @@ fn task_revision(
     store
         .task_revision_record(&TaskId::new(task_id))?
         .ok_or_else(|| format!("missing task revision for {task_id}").into())
+}
+
+fn run_id_from_record_run(response_value: &Value) -> String {
+    response_value["run_summary"]["run_ref"]["record_id"]
+        .as_str()
+        .expect("run_ref.record_id should be present")
+        .to_owned()
+}
+
+fn latest_run_id(harness: &MethodHarness, task_id: &str) -> Result<String, Box<dyn Error>> {
+    let conn = harness.conn()?;
+    Ok(conn.query_row(
+        "SELECT run_id
+               FROM runs
+              WHERE project_id = ?1
+                AND task_id = ?2
+              ORDER BY rowid DESC
+              LIMIT 1",
+        rusqlite::params![PROJECT_ID, task_id],
+        |row| row.get(0),
+    )?)
+}
+
+fn run_scope_revision(
+    harness: &MethodHarness,
+    run_id: &str,
+) -> Result<Option<u64>, Box<dyn Error>> {
+    let conn = harness.conn()?;
+    let scope_revision: Option<i64> = conn.query_row(
+        "SELECT scope_revision
+               FROM runs
+              WHERE project_id = ?1
+                AND run_id = ?2",
+        rusqlite::params![PROJECT_ID, run_id],
+        |row| row.get(0),
+    )?;
+    Ok(scope_revision.map(u64::try_from).transpose()?)
+}
+
+fn set_run_scope_revision(
+    harness: &MethodHarness,
+    run_id: &str,
+    scope_revision: Option<u64>,
+) -> Result<(), Box<dyn Error>> {
+    let scope_revision = scope_revision.map(i64::try_from).transpose()?;
+    harness.conn()?.execute(
+        "UPDATE runs
+            SET scope_revision = ?3
+          WHERE project_id = ?1
+            AND run_id = ?2",
+        rusqlite::params![PROJECT_ID, run_id, scope_revision],
+    )?;
+    Ok(())
+}
+
+fn set_run_observed_baseline(
+    harness: &MethodHarness,
+    run_id: &str,
+    baseline_ref: &str,
+) -> Result<(), Box<dyn Error>> {
+    harness.conn()?.execute(
+        "UPDATE runs
+            SET observed_changes_json = ?3
+          WHERE project_id = ?1
+            AND run_id = ?2",
+        rusqlite::params![
+            PROJECT_ID,
+            run_id,
+            json!({
+                "changed_paths": [],
+                "product_file_write_observed": false,
+                "sensitive_categories": [],
+                "baseline_ref": baseline_ref
+            })
+            .to_string()
+        ],
+    )?;
+    Ok(())
 }
 
 fn current_change_unit_scope(

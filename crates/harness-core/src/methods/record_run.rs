@@ -474,6 +474,7 @@ fn plan_record_run(
         run_id: run_id.as_str().to_owned(),
         task_id: request.task_id.as_str().to_owned(),
         change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
+        scope_revision: task.scope_revision,
         write_authorization_id: request
             .write_authorization_id
             .as_ref()
@@ -668,6 +669,7 @@ struct CloseBasisRefResolutionContext<'a> {
     store: &'a CoreProjectStore,
     project_state: &'a ProjectStateHeader,
     request: &'a RecordRunRequest,
+    current_scope_revision: u64,
     field: &'static str,
     run_ref: &'a StateRecordRef,
     evidence_summary_ref: Option<&'a StateRecordRef>,
@@ -721,6 +723,7 @@ fn build_record_run_close_basis(
             store,
             project_state,
             request,
+            current_scope_revision: task.scope_revision,
             field: "close_assessment.result_refs",
             run_ref,
             evidence_summary_ref: evidence_summary_ref.as_ref(),
@@ -737,6 +740,7 @@ fn build_record_run_close_basis(
                     store,
                     project_state,
                     request,
+                    current_scope_revision: task.scope_revision,
                     field: "close_assessment.residual_risks[].source_refs",
                     run_ref,
                     evidence_summary_ref: evidence_summary_ref.as_ref(),
@@ -757,6 +761,7 @@ fn build_record_run_close_basis(
                 store,
                 project_state,
                 request,
+                current_scope_revision: task.scope_revision,
                 field: "close_assessment.residual_risks[].source_refs",
                 run_ref,
                 evidence_summary_ref: evidence_summary_ref.as_ref(),
@@ -1097,7 +1102,7 @@ fn resolve_close_basis_run_ref(
             request.envelope.dry_run,
             Some(context.project_state.state_version),
             context.field,
-            "Run refs in close_assessment must exist for the request Task and compatible Change Unit",
+            "Run refs in close_assessment must exist for the request Task, current Change Unit, current scope revision, and current baseline",
         )?;
         unreachable!("validation_plan_error always returns Err");
     }
@@ -1119,13 +1124,16 @@ fn run_record_is_close_basis_compatible(
     };
     if record.project_id != context.request.envelope.project_id.as_str()
         || record.task_id != context.request.task_id.as_str()
+        || change_unit_id != context.request.change_unit_id.as_str()
+        || record.scope_revision != Some(context.current_scope_revision)
+        || record.baseline_ref.as_deref() != Some(context.request.baseline_ref.as_str())
         || record.status != "recorded"
     {
         return Ok(false);
     }
     Ok(context
         .store
-        .change_unit_record(&context.request.task_id, change_unit_id)
+        .current_change_unit(&context.request.task_id)
         .map_err(|error| {
             PlanError::Response(Box::new(store_error_response(
                 &context.request.envelope,
@@ -1133,7 +1141,12 @@ fn run_record_is_close_basis_compatible(
                 error,
             )))
         })?
-        .is_some())
+        .as_ref()
+        .is_some_and(|record| {
+            record.change_unit_id == change_unit_id
+                && record.status == "active"
+                && record.is_current
+        }))
 }
 
 fn resolve_close_basis_change_unit_ref(
