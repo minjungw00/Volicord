@@ -724,6 +724,33 @@ mod tests {
     }
 
     #[test]
+    fn request_user_judgment_option_input_exposes_no_authority_outcome_mapping() {
+        let schema =
+            public_request_schema("harness.request_user_judgment").expect("judgment schema");
+        let option_input = definition(&schema, "UserJudgmentOptionInput");
+        assert!(
+            option_input["properties"].get("machine_action").is_none(),
+            "request option input must not expose machine_action"
+        );
+        assert!(
+            option_input["properties"]
+                .get("resolution_outcome")
+                .is_none(),
+            "request option input must not expose resolution_outcome"
+        );
+
+        let mut request = request_user_judgment_request_json();
+        request["judgment_kind"] = json!("cancellation");
+        request["options"][0]["resolution_outcome"] = json!("accepted");
+        assert_schema_and_serde("harness.request_user_judgment", request, false);
+
+        let mut request = request_user_judgment_request_json();
+        request["judgment_kind"] = json!("cancellation");
+        request["options"][0]["machine_action"] = json!("reject");
+        assert_schema_and_serde("harness.request_user_judgment", request, false);
+    }
+
+    #[test]
     fn timestamp_json_schemas_are_date_time_strings() {
         let judgment =
             public_request_schema("harness.request_user_judgment").expect("judgment schema");
@@ -1298,7 +1325,6 @@ mod tests {
                 "judgment_kind",
                 "presentation",
                 "question",
-                "options",
                 "context",
                 "affected_refs",
                 "required_for",
@@ -1503,7 +1529,6 @@ mod tests {
                     "label": "Use concise copy",
                     "description": "Record the focused product decision.",
                     "consequence": "The pending decision can be resolved.",
-                    "resolution_outcome": "accepted",
                     "is_default": true
                 }
             ],

@@ -12,7 +12,7 @@ use crate::schema::{
     NextActionSummary, ObservedChanges, RecordUserJudgmentPayload, RequiredNullable,
     RiskAcceptanceCoverage, RunSummary, SensitiveActionScope, StagedArtifactHandle, StateRecordRef,
     StateSummary, ToolEnvelope, ToolResponse, ToolResultBase, UserJudgment, UserJudgmentCandidate,
-    UserJudgmentContext, UserJudgmentOption, WriteAuthoritySummary, WriteAuthorizationSummary,
+    UserJudgmentContext, UserJudgmentOptionInput, WriteAuthoritySummary, WriteAuthorizationSummary,
     WriteDecisionReason,
 };
 use crate::values::{
@@ -326,7 +326,8 @@ pub struct RequestUserJudgmentRequest {
     pub judgment_kind: JudgmentKind,
     pub presentation: JudgmentPresentation,
     pub question: String,
-    pub options: Vec<UserJudgmentOption>,
+    #[serde(default)]
+    pub options: RequiredNullable<Vec<UserJudgmentOptionInput>>,
     pub context: UserJudgmentContext,
     pub affected_refs: Vec<StateRecordRef>,
     pub required_for: Vec<JudgmentRequiredFor>,

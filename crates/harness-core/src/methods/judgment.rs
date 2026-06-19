@@ -159,12 +159,13 @@ fn plan_request_user_judgment(
     verified_surface: &VerifiedSurfaceContext,
 ) -> Result<MethodPlan, PlanError> {
     let requested_at = utc_timestamp(service.now());
+    let caller_options = request.options.as_ref().map(Vec::as_slice).unwrap_or(&[]);
     validate_user_judgment_request_fields(UserJudgmentRequestValidation {
         dry_run: request.envelope.dry_run,
         state_version: Some(project_state.state_version),
         judgment_kind: request.judgment_kind,
         question: &request.question,
-        options: &request.options,
+        options: caller_options,
         context: &request.context,
         affected_refs: &request.affected_refs,
         required_for: &request.required_for,
@@ -244,6 +245,11 @@ fn plan_request_user_judgment(
         .map(serde_json::to_string)
         .transpose()?
         .unwrap_or_else(|| "{}".to_owned());
+    let options = current_options_for_request(
+        request.judgment_kind,
+        caller_options,
+        request.envelope.locale.as_ref().map(String::as_str),
+    );
 
     let judgment_id = allocate_user_judgment_id(service, store).map_err(PlanError::Core)?;
     let user_judgment_ref = state_ref(
@@ -262,7 +268,7 @@ fn plan_request_user_judgment(
         status: UserJudgmentStatus::Pending,
         presentation: request.presentation,
         question: request.question.clone(),
-        options: request.options.clone(),
+        options: options.clone(),
         context: judgment_context.clone(),
         affected_refs: request.affected_refs.clone(),
         basis: Some(basis.clone()),
@@ -398,7 +404,9 @@ fn plan_request_user_judgment(
                 "expires_at": request.expires_at
             }))?,
             context_json: serde_json::to_string(&judgment_context)?,
-            options_json: serde_json::to_string(&request.options)?,
+            options_json: serde_json::to_string(&PersistedUserJudgmentOptions::current(
+                options.clone(),
+            ))?,
             affected_refs_json: serde_json::to_string(&request.affected_refs)?,
             artifact_refs_json: serde_json::to_string(&judgment_context.artifact_refs)?,
             sensitive_action_scope_json: stored_sensitive_action_scope_json,
@@ -1024,13 +1032,23 @@ fn plan_record_user_judgment(
         .map_err(PlanError::Core)?;
         return Err(PlanError::Response(Box::new(response)));
     };
-    let Some(resolution_outcome) = selected_option.resolution_outcome else {
+    let Some(machine_action) = selected_option.machine_action else {
         return Err(PlanError::Response(Box::new(decision_rejected_response(
             &request.envelope,
             Some(project_state.state_version),
-            "pending user-owned judgment option lacks a machine-readable resolution outcome",
+            "pending user-owned judgment option lacks a machine-readable action",
         ))));
     };
+    let resolution_outcome = machine_action.resolution_outcome();
+    if selected_option.resolution_outcome != Some(resolution_outcome) {
+        return Err(PlanError::Core(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "options_json",
+            ),
+        )));
+    }
     if is_authority_bearing_judgment(request.judgment_kind)
         && request.envelope.actor_kind != ActorKind::User
     {
@@ -1089,6 +1107,7 @@ fn plan_record_user_judgment(
     )?;
     let resolution = UserJudgmentResolution {
         selected_option_id: request.selected_option_id.clone(),
+        machine_action: Some(machine_action),
         resolution_outcome: Some(resolution_outcome),
         answer,
         note: request.note.clone().into_option(),
@@ -1247,6 +1266,7 @@ fn plan_record_user_judgment(
         "judgment_id": request.user_judgment_id,
         "judgment_kind": request.judgment_kind,
         "selected_option_id": request.selected_option_id,
+        "machine_action": machine_action,
         "resolution_outcome": resolution_outcome
     }))?;
 
@@ -1260,12 +1280,322 @@ fn plan_record_user_judgment(
     })
 }
 
+fn current_options_for_request(
+    judgment_kind: JudgmentKind,
+    caller_options: &[UserJudgmentOptionInput],
+    locale: Option<&str>,
+) -> Vec<UserJudgmentOption> {
+    if is_authority_bearing_judgment(judgment_kind) {
+        return canonical_authority_options(judgment_kind, locale);
+    }
+
+    caller_options
+        .iter()
+        .map(|option| UserJudgmentOption {
+            option_id: option.option_id.clone(),
+            label: option.label.clone(),
+            description: option.description.clone(),
+            consequence: option.consequence.clone(),
+            machine_action: Some(UserJudgmentOptionAction::Accept),
+            resolution_outcome: Some(JudgmentResolutionOutcome::Accepted),
+            is_default: option.is_default,
+        })
+        .collect()
+}
+
+fn canonical_authority_options(
+    judgment_kind: JudgmentKind,
+    locale: Option<&str>,
+) -> Vec<UserJudgmentOption> {
+    let mut options = vec![
+        canonical_authority_option(
+            judgment_kind,
+            UserJudgmentOptionAction::Accept,
+            locale,
+            true,
+        ),
+        canonical_authority_option(
+            judgment_kind,
+            UserJudgmentOptionAction::Reject,
+            locale,
+            false,
+        ),
+    ];
+    if authority_defer_supported(judgment_kind) {
+        options.push(canonical_authority_option(
+            judgment_kind,
+            UserJudgmentOptionAction::Defer,
+            locale,
+            false,
+        ));
+    }
+    options
+}
+
+fn authority_defer_supported(_judgment_kind: JudgmentKind) -> bool {
+    false
+}
+
+fn canonical_authority_option(
+    judgment_kind: JudgmentKind,
+    action: UserJudgmentOptionAction,
+    locale: Option<&str>,
+    is_default: bool,
+) -> UserJudgmentOption {
+    let template = authority_option_template(judgment_kind, action, locale);
+    UserJudgmentOption {
+        option_id: UserJudgmentOptionId::new(match action {
+            UserJudgmentOptionAction::Accept => "accept",
+            UserJudgmentOptionAction::Reject => "reject",
+            UserJudgmentOptionAction::Defer => "defer",
+        }),
+        label: template.label.to_owned(),
+        description: template.description.to_owned(),
+        consequence: template.consequence.to_owned(),
+        machine_action: Some(action),
+        resolution_outcome: Some(action.resolution_outcome()),
+        is_default,
+    }
+}
+
+struct AuthorityOptionTemplate {
+    label: &'static str,
+    description: &'static str,
+    consequence: &'static str,
+}
+
+fn authority_option_template(
+    judgment_kind: JudgmentKind,
+    action: UserJudgmentOptionAction,
+    locale: Option<&str>,
+) -> AuthorityOptionTemplate {
+    match authority_option_locale(locale) {
+        AuthorityOptionLocale::English => english_authority_option_template(judgment_kind, action),
+        AuthorityOptionLocale::Korean => korean_authority_option_template(judgment_kind, action),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AuthorityOptionLocale {
+    English,
+    Korean,
+}
+
+fn authority_option_locale(locale: Option<&str>) -> AuthorityOptionLocale {
+    let Some(locale) = locale.map(str::trim).filter(|locale| !locale.is_empty()) else {
+        return AuthorityOptionLocale::English;
+    };
+    let normalized = locale.to_ascii_lowercase().replace('_', "-");
+    if normalized == "ko" || normalized.starts_with("ko-") {
+        AuthorityOptionLocale::Korean
+    } else {
+        AuthorityOptionLocale::English
+    }
+}
+
+fn english_authority_option_template(
+    judgment_kind: JudgmentKind,
+    action: UserJudgmentOptionAction,
+) -> AuthorityOptionTemplate {
+    match (judgment_kind, action) {
+        (JudgmentKind::ScopeDecision, UserJudgmentOptionAction::Accept) => AuthorityOptionTemplate {
+            label: "Accept scope decision",
+            description: "Record the user's accepted scope decision for this exact request.",
+            consequence: "The accepted scope decision can be used only for the matching scope update.",
+        },
+        (JudgmentKind::ScopeDecision, UserJudgmentOptionAction::Reject) => AuthorityOptionTemplate {
+            label: "Reject scope decision",
+            description: "Record that the user rejected this scope decision.",
+            consequence: "The requested scope update remains unauthorized.",
+        },
+        (JudgmentKind::ScopeDecision, UserJudgmentOptionAction::Defer) => AuthorityOptionTemplate {
+            label: "Defer scope decision",
+            description: "Record that the user deferred this scope decision.",
+            consequence: "The requested scope update remains unauthorized until a current accepted decision exists.",
+        },
+        (JudgmentKind::SensitiveApproval, UserJudgmentOptionAction::Accept) => AuthorityOptionTemplate {
+            label: "Approve sensitive action",
+            description: "Record the user's approval for the named sensitive action only.",
+            consequence: "The approval can satisfy only the matching sensitive-action requirement.",
+        },
+        (JudgmentKind::SensitiveApproval, UserJudgmentOptionAction::Reject) => AuthorityOptionTemplate {
+            label: "Reject sensitive action",
+            description: "Record that the user rejected the named sensitive action.",
+            consequence: "The sensitive action remains unauthorized.",
+        },
+        (JudgmentKind::SensitiveApproval, UserJudgmentOptionAction::Defer) => AuthorityOptionTemplate {
+            label: "Defer sensitive action",
+            description: "Record that the user deferred the named sensitive action.",
+            consequence: "The sensitive action remains unauthorized until a current approval exists.",
+        },
+        (JudgmentKind::FinalAcceptance, UserJudgmentOptionAction::Accept) => AuthorityOptionTemplate {
+            label: "Accept result",
+            description: "Record the user's final acceptance for the current close basis.",
+            consequence: "Final acceptance can satisfy close only while the captured close basis remains current.",
+        },
+        (JudgmentKind::FinalAcceptance, UserJudgmentOptionAction::Reject) => AuthorityOptionTemplate {
+            label: "Reject result",
+            description: "Record that the user rejected final acceptance for the current close basis.",
+            consequence: "The Task cannot close as complete from this judgment.",
+        },
+        (JudgmentKind::FinalAcceptance, UserJudgmentOptionAction::Defer) => AuthorityOptionTemplate {
+            label: "Defer result",
+            description: "Record that the user deferred final acceptance.",
+            consequence: "The Task cannot close as complete until current final acceptance exists.",
+        },
+        (JudgmentKind::ResidualRiskAcceptance, UserJudgmentOptionAction::Accept) => AuthorityOptionTemplate {
+            label: "Accept residual risk",
+            description: "Record the user's acceptance of the named residual risks for this close basis.",
+            consequence: "Residual-risk acceptance can satisfy close only for the matching current risks.",
+        },
+        (JudgmentKind::ResidualRiskAcceptance, UserJudgmentOptionAction::Reject) => AuthorityOptionTemplate {
+            label: "Reject residual risk",
+            description: "Record that the user rejected accepting the named residual risks.",
+            consequence: "The Task cannot close with those residual risks accepted.",
+        },
+        (JudgmentKind::ResidualRiskAcceptance, UserJudgmentOptionAction::Defer) => AuthorityOptionTemplate {
+            label: "Defer residual risk",
+            description: "Record that the user deferred residual-risk acceptance.",
+            consequence: "The Task cannot close with those residual risks until current acceptance exists.",
+        },
+        (JudgmentKind::Cancellation, UserJudgmentOptionAction::Accept) => AuthorityOptionTemplate {
+            label: "Confirm cancellation",
+            description: "Record the user's decision to cancel this Task.",
+            consequence: "Cancellation can proceed only for the matching current Task and Change Unit.",
+        },
+        (JudgmentKind::Cancellation, UserJudgmentOptionAction::Reject) => AuthorityOptionTemplate {
+            label: "Reject cancellation",
+            description: "Record that the user rejected cancelling this Task.",
+            consequence: "The Task remains open and cancellation is unauthorized.",
+        },
+        (JudgmentKind::Cancellation, UserJudgmentOptionAction::Defer) => AuthorityOptionTemplate {
+            label: "Defer cancellation",
+            description: "Record that the user deferred the cancellation decision.",
+            consequence: "The Task remains open until current cancellation authority exists.",
+        },
+        (JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision, _) => {
+            unreachable!("non-authority judgments do not use authority option templates")
+        }
+    }
+}
+
+fn korean_authority_option_template(
+    judgment_kind: JudgmentKind,
+    action: UserJudgmentOptionAction,
+) -> AuthorityOptionTemplate {
+    match (judgment_kind, action) {
+        (JudgmentKind::ScopeDecision, UserJudgmentOptionAction::Accept) => {
+            AuthorityOptionTemplate {
+                label: "범위 결정 수락",
+                description: "이 정확한 요청에 대한 사용자의 범위 결정 수락을 기록합니다.",
+                consequence: "수락된 범위 결정은 일치하는 범위 업데이트에만 사용할 수 있습니다.",
+            }
+        }
+        (JudgmentKind::ScopeDecision, UserJudgmentOptionAction::Reject) => {
+            AuthorityOptionTemplate {
+                label: "범위 결정 거부",
+                description: "사용자가 이 범위 결정을 거부했음을 기록합니다.",
+                consequence: "요청된 범위 업데이트는 계속 권한이 없습니다.",
+            }
+        }
+        (JudgmentKind::ScopeDecision, UserJudgmentOptionAction::Defer) => AuthorityOptionTemplate {
+            label: "범위 결정 보류",
+            description: "사용자가 이 범위 결정을 보류했음을 기록합니다.",
+            consequence: "현재 수락된 결정이 생길 때까지 요청된 범위 업데이트는 권한이 없습니다.",
+        },
+        (JudgmentKind::SensitiveApproval, UserJudgmentOptionAction::Accept) => {
+            AuthorityOptionTemplate {
+                label: "민감 작업 승인",
+                description: "지정된 민감 작업에 대한 사용자의 승인만 기록합니다.",
+                consequence: "이 승인은 일치하는 민감 작업 요구 사항만 충족할 수 있습니다.",
+            }
+        }
+        (JudgmentKind::SensitiveApproval, UserJudgmentOptionAction::Reject) => {
+            AuthorityOptionTemplate {
+                label: "민감 작업 거부",
+                description: "사용자가 지정된 민감 작업을 거부했음을 기록합니다.",
+                consequence: "민감 작업은 계속 권한이 없습니다.",
+            }
+        }
+        (JudgmentKind::SensitiveApproval, UserJudgmentOptionAction::Defer) => {
+            AuthorityOptionTemplate {
+                label: "민감 작업 보류",
+                description: "사용자가 지정된 민감 작업을 보류했음을 기록합니다.",
+                consequence: "현재 승인이 생길 때까지 민감 작업은 권한이 없습니다.",
+            }
+        }
+        (JudgmentKind::FinalAcceptance, UserJudgmentOptionAction::Accept) => {
+            AuthorityOptionTemplate {
+                label: "결과 수락",
+                description: "현재 닫기 기준에 대한 사용자의 최종 수락을 기록합니다.",
+                consequence:
+                    "캡처된 닫기 기준이 현재 상태일 때만 최종 수락이 닫기를 충족할 수 있습니다.",
+            }
+        }
+        (JudgmentKind::FinalAcceptance, UserJudgmentOptionAction::Reject) => {
+            AuthorityOptionTemplate {
+                label: "결과 거부",
+                description: "사용자가 현재 닫기 기준에 대한 최종 수락을 거부했음을 기록합니다.",
+                consequence: "이 판단으로는 Task를 완료로 닫을 수 없습니다.",
+            }
+        }
+        (JudgmentKind::FinalAcceptance, UserJudgmentOptionAction::Defer) => {
+            AuthorityOptionTemplate {
+                label: "결과 보류",
+                description: "사용자가 최종 수락을 보류했음을 기록합니다.",
+                consequence: "현재 최종 수락이 생길 때까지 Task를 완료로 닫을 수 없습니다.",
+            }
+        }
+        (JudgmentKind::ResidualRiskAcceptance, UserJudgmentOptionAction::Accept) => {
+            AuthorityOptionTemplate {
+                label: "잔여 위험 수락",
+                description: "이 닫기 기준에 명시된 잔여 위험에 대한 사용자의 수락을 기록합니다.",
+                consequence:
+                    "잔여 위험 수락은 일치하는 현재 위험에 대해서만 닫기를 충족할 수 있습니다.",
+            }
+        }
+        (JudgmentKind::ResidualRiskAcceptance, UserJudgmentOptionAction::Reject) => {
+            AuthorityOptionTemplate {
+                label: "잔여 위험 거부",
+                description: "사용자가 명시된 잔여 위험 수락을 거부했음을 기록합니다.",
+                consequence: "Task는 해당 잔여 위험을 수락한 상태로 닫힐 수 없습니다.",
+            }
+        }
+        (JudgmentKind::ResidualRiskAcceptance, UserJudgmentOptionAction::Defer) => {
+            AuthorityOptionTemplate {
+                label: "잔여 위험 보류",
+                description: "사용자가 잔여 위험 수락을 보류했음을 기록합니다.",
+                consequence:
+                    "현재 수락이 생길 때까지 Task는 해당 잔여 위험을 포함해 닫힐 수 없습니다.",
+            }
+        }
+        (JudgmentKind::Cancellation, UserJudgmentOptionAction::Accept) => AuthorityOptionTemplate {
+            label: "취소 확정",
+            description: "이 Task를 취소하려는 사용자의 결정을 기록합니다.",
+            consequence: "취소는 일치하는 현재 Task와 Change Unit에 대해서만 진행될 수 있습니다.",
+        },
+        (JudgmentKind::Cancellation, UserJudgmentOptionAction::Reject) => AuthorityOptionTemplate {
+            label: "취소 거부",
+            description: "사용자가 이 Task 취소를 거부했음을 기록합니다.",
+            consequence: "Task는 계속 열려 있으며 취소 권한은 없습니다.",
+        },
+        (JudgmentKind::Cancellation, UserJudgmentOptionAction::Defer) => AuthorityOptionTemplate {
+            label: "취소 보류",
+            description: "사용자가 취소 결정을 보류했음을 기록합니다.",
+            consequence: "현재 취소 권한이 생길 때까지 Task는 계속 열려 있습니다.",
+        },
+        (JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision, _) => {
+            unreachable!("non-authority judgments do not use authority option templates")
+        }
+    }
+}
+
 struct UserJudgmentRequestValidation<'a> {
     dry_run: bool,
     state_version: Option<u64>,
     judgment_kind: JudgmentKind,
     question: &'a str,
-    options: &'a [UserJudgmentOption],
+    options: &'a [UserJudgmentOptionInput],
     context: &'a UserJudgmentContext,
     affected_refs: &'a [StateRecordRef],
     required_for: &'a [JudgmentRequiredFor],
@@ -1286,7 +1616,15 @@ fn validate_user_judgment_request_fields(
             "question must not be empty",
         );
     }
-    if input.options.is_empty() {
+    if is_authority_bearing_judgment(input.judgment_kind) && !input.options.is_empty() {
+        return validation_plan_error(
+            input.dry_run,
+            input.state_version,
+            "options",
+            "authority-bearing judgment options must be absent, null, or empty",
+        );
+    }
+    if !is_authority_bearing_judgment(input.judgment_kind) && input.options.is_empty() {
         return validation_plan_error(
             input.dry_run,
             input.state_version,
@@ -1295,8 +1633,6 @@ fn validate_user_judgment_request_fields(
         );
     }
     let mut option_ids = BTreeSet::new();
-    let mut accepted_options = 0usize;
-    let mut rejected_options = 0usize;
     for option in input.options {
         if option.option_id.as_str().trim().is_empty() {
             return validation_plan_error(
@@ -1322,44 +1658,20 @@ fn validate_user_judgment_request_fields(
                 "option label must not be empty",
             );
         }
-        let Some(outcome) = option.resolution_outcome else {
+        if option.description.trim().is_empty() {
             return validation_plan_error(
                 input.dry_run,
                 input.state_version,
-                "options.resolution_outcome",
-                "each judgment option must include a machine-readable resolution_outcome",
-            );
-        };
-        match outcome {
-            JudgmentResolutionOutcome::Accepted => accepted_options += 1,
-            JudgmentResolutionOutcome::Rejected => rejected_options += 1,
-            JudgmentResolutionOutcome::Deferred | JudgmentResolutionOutcome::Blocked => {
-                if is_authority_bearing_judgment(input.judgment_kind) {
-                    return validation_plan_error(
-                        input.dry_run,
-                        input.state_version,
-                        "options.resolution_outcome",
-                        "authority-bearing judgment options may only use accepted or rejected outcomes",
-                    );
-                }
-            }
-        }
-    }
-    if is_authority_bearing_judgment(input.judgment_kind) {
-        if accepted_options == 0 || rejected_options == 0 {
-            return validation_plan_error(
-                input.dry_run,
-                input.state_version,
-                "options.resolution_outcome",
-                "authority-bearing judgment options must include accepted and rejected paths",
+                "options.description",
+                "option description must not be empty",
             );
         }
-        if accepted_options > 1 || rejected_options > 1 {
+        if option.consequence.trim().is_empty() {
             return validation_plan_error(
                 input.dry_run,
                 input.state_version,
-                "options.resolution_outcome",
-                "authority-bearing judgment options must not duplicate accepted or rejected machine outcomes",
+                "options.consequence",
+                "option consequence must not be empty",
             );
         }
     }
@@ -1525,7 +1837,8 @@ fn outcome_from_str(raw: &str) -> Option<JudgmentResolutionOutcome> {
 fn is_authority_bearing_judgment(judgment_kind: JudgmentKind) -> bool {
     matches!(
         judgment_kind,
-        JudgmentKind::FinalAcceptance
+        JudgmentKind::ScopeDecision
+            | JudgmentKind::FinalAcceptance
             | JudgmentKind::ResidualRiskAcceptance
             | JudgmentKind::SensitiveApproval
             | JudgmentKind::Cancellation
@@ -1598,12 +1911,13 @@ fn user_judgment_from_record(record: &UserJudgmentRecord) -> CoreResult<UserJudg
         status: authority.status,
         presentation: request.presentation,
         question: request.question,
-        options: decode_required_json(
+        options: decode_required_json::<PersistedUserJudgmentOptions>(
             "user_judgments",
             record.judgment_id.clone(),
             "options_json",
             Some(&record.options_json),
-        )?,
+        )?
+        .into_options(),
         context: decode_required_json(
             "user_judgments",
             record.judgment_id.clone(),

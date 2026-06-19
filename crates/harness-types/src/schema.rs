@@ -15,8 +15,9 @@ use crate::values::{
     EvidenceCoverageState, EvidenceStatus, GuaranteeLevel, JudgmentBasisCompatibilityStatus,
     JudgmentKind, JudgmentPresentation, JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName,
     NextActionKind, PlannedBlockerSourceKind, RedactionState, ResponseKind, RunKind,
-    StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult, UserJudgmentStatus, UtcTimestamp,
-    ValidatorSeverity, ValidatorStatus, WriteAuthorizationStatus, WriteDecisionCategory,
+    StateRecordKind, TaskLifecyclePhase, TaskMode, TaskResult, UserJudgmentOptionAction,
+    UserJudgmentStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WriteAuthorizationStatus,
+    WriteDecisionCategory,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -701,7 +702,76 @@ pub struct UserJudgmentCandidate {
     pub expires_at: Option<UtcTimestamp>,
 }
 
-/// User judgment option.
+/// Caller-authored request input for a non-authority judgment option.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserJudgmentOptionInput {
+    pub option_id: UserJudgmentOptionId,
+    pub label: String,
+    pub description: String,
+    pub consequence: String,
+    pub is_default: bool,
+}
+
+/// Stored representation for `user_judgments.options_json`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedUserJudgmentOptions {
+    pub schema_version: u32,
+    pub options: Vec<UserJudgmentOption>,
+}
+
+impl PersistedUserJudgmentOptions {
+    /// Creates the current persisted option representation.
+    pub fn current(options: Vec<UserJudgmentOption>) -> Self {
+        Self {
+            schema_version: 1,
+            options,
+        }
+    }
+
+    /// Consumes the persisted wrapper and returns its public option set.
+    pub fn into_options(self) -> Vec<UserJudgmentOption> {
+        self.options
+    }
+}
+
+impl<'de> Deserialize<'de> for PersistedUserJudgmentOptions {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        if let Value::Array(_) = value {
+            let options =
+                Vec::<UserJudgmentOption>::deserialize(value).map_err(serde::de::Error::custom)?;
+            return Ok(Self {
+                schema_version: 0,
+                options,
+            });
+        }
+
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            schema_version: u32,
+            options: Vec<UserJudgmentOption>,
+        }
+
+        let wire = Wire::deserialize(value).map_err(serde::de::Error::custom)?;
+        if wire.schema_version != 1 {
+            return Err(serde::de::Error::custom(
+                "persisted user judgment options schema_version must be 1",
+            ));
+        }
+        Ok(Self {
+            schema_version: wire.schema_version,
+            options: wire.options,
+        })
+    }
+}
+
+/// Current Core-owned user judgment option.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UserJudgmentOption {
@@ -709,6 +779,8 @@ pub struct UserJudgmentOption {
     pub label: String,
     pub description: String,
     pub consequence: String,
+    #[serde(default)]
+    pub machine_action: Option<UserJudgmentOptionAction>,
     #[serde(default)]
     pub resolution_outcome: Option<JudgmentResolutionOutcome>,
     pub is_default: bool,
@@ -729,6 +801,8 @@ pub struct UserJudgmentContext {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct UserJudgmentResolution {
     pub selected_option_id: UserJudgmentOptionId,
+    #[serde(default)]
+    pub machine_action: Option<UserJudgmentOptionAction>,
     pub resolution_outcome: Option<JudgmentResolutionOutcome>,
     pub answer: RecordUserJudgmentPayload,
     pub note: Option<String>,
@@ -740,6 +814,7 @@ pub struct UserJudgmentResolution {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PersistedUserJudgmentResolution {
     pub selected_option_id: UserJudgmentOptionId,
+    pub machine_action: Option<UserJudgmentOptionAction>,
     pub resolution_outcome: Option<JudgmentResolutionOutcome>,
     pub answer: RecordUserJudgmentPayload,
     pub note: Option<String>,
@@ -751,6 +826,7 @@ impl From<PersistedUserJudgmentResolution> for UserJudgmentResolution {
     fn from(resolution: PersistedUserJudgmentResolution) -> Self {
         Self {
             selected_option_id: resolution.selected_option_id,
+            machine_action: resolution.machine_action,
             resolution_outcome: resolution.resolution_outcome,
             answer: resolution.answer,
             note: resolution.note,
@@ -770,6 +846,8 @@ impl<'de> Deserialize<'de> for PersistedUserJudgmentResolution {
         struct Wire {
             selected_option_id: UserJudgmentOptionId,
             #[serde(default)]
+            machine_action: Option<UserJudgmentOptionAction>,
+            #[serde(default)]
             resolution_outcome: Option<JudgmentResolutionOutcome>,
             answer: RecordUserJudgmentPayload,
             note: Option<String>,
@@ -785,6 +863,7 @@ impl<'de> Deserialize<'de> for PersistedUserJudgmentResolution {
         }
         Ok(Self {
             selected_option_id: wire.selected_option_id,
+            machine_action: wire.machine_action,
             resolution_outcome: wire.resolution_outcome,
             answer: wire.answer,
             note: wire.note,

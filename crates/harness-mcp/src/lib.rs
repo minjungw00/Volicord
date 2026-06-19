@@ -1009,6 +1009,16 @@ mod tests {
                 );
             }
         }
+        let request_judgment = tools
+            .iter()
+            .find(|tool| tool.name == "harness.request_user_judgment")
+            .expect("request_user_judgment tool should be registered");
+        for forbidden in ["machine_action", "resolution_outcome"] {
+            assert!(
+                !schema_has_property(&request_judgment.input_schema, forbidden),
+                "request_user_judgment schema should not expose caller option {forbidden}"
+            );
+        }
     }
 
     #[test]
@@ -1412,7 +1422,6 @@ mod tests {
                 "judgment_kind",
                 "presentation",
                 "question",
-                "options",
                 "context",
                 "affected_refs",
                 "required_for",

@@ -579,6 +579,26 @@ pub enum JudgmentResolutionOutcome {
     Blocked,
 }
 
+/// Core-owned machine action for current user judgment options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UserJudgmentOptionAction {
+    Accept,
+    Reject,
+    Defer,
+}
+
+impl UserJudgmentOptionAction {
+    /// Returns the resolution outcome owned by this option action.
+    pub const fn resolution_outcome(self) -> JudgmentResolutionOutcome {
+        match self {
+            Self::Accept => JudgmentResolutionOutcome::Accepted,
+            Self::Reject => JudgmentResolutionOutcome::Rejected,
+            Self::Defer => JudgmentResolutionOutcome::Deferred,
+        }
+    }
+}
+
 /// Judgment-basis compatibility status values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

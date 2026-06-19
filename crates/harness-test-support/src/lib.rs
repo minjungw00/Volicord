@@ -90,13 +90,13 @@ pub mod core_fixtures {
         BaselineRef, ChangeUnitId, ChangeUnitOperation, ChangeUnitUpdate, CloseIntent, CloseReason,
         CloseTaskRequest, EvidenceCoverageItem, EvidenceCoverageState, IdempotencyKey,
         InitialScope, IntakeRequest, JsonObject, JudgmentKind, JudgmentPresentation,
-        JudgmentRequiredFor, JudgmentResolutionOutcome, ObservedChanges, PrepareWriteRequest,
-        ProjectId, RecordId, RecordRunRequest, RecordUserJudgmentPayload,
-        RecordUserJudgmentRequest, RedactionState, RequestId, RequestUserJudgmentRequest,
-        RequestedMode, ResumePolicy, RunKind, ScopeUpdate, SensitiveActionScope,
-        StageArtifactRequest, StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusInclude,
-        StatusRequest, SurfaceId, TaskId, ToolEnvelope, UpdateScopeRequest, UserJudgmentId,
-        UserJudgmentOption, UserJudgmentOptionId, WriteAuthorizationId,
+        JudgmentRequiredFor, ObservedChanges, PrepareWriteRequest, ProjectId, RecordId,
+        RecordRunRequest, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState,
+        RequestId, RequestUserJudgmentRequest, RequestedMode, ResumePolicy, RunKind, ScopeUpdate,
+        SensitiveActionScope, StageArtifactRequest, StagedArtifactHandle, StateRecordKind,
+        StateRecordRef, StatusInclude, StatusRequest, SurfaceId, TaskId, ToolEnvelope,
+        UpdateScopeRequest, UserJudgmentId, UserJudgmentOptionId, UserJudgmentOptionInput,
+        WriteAuthorizationId,
     };
 
     use super::*;
@@ -453,6 +453,31 @@ pub mod core_fixtures {
             &self,
             input: UserJudgmentFixture<'_>,
         ) -> RequestUserJudgmentRequest {
+            let options = if matches!(
+                input.judgment_kind,
+                JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision
+            ) {
+                vec![
+                    UserJudgmentOptionInput {
+                        option_id: UserJudgmentOptionId::new("accept"),
+                        label: "Accept".to_owned(),
+                        description: "Record the focused user-owned judgment.".to_owned(),
+                        consequence: "Only this judgment record is resolved.".to_owned(),
+                        is_default: true,
+                    },
+                    UserJudgmentOptionInput {
+                        option_id: UserJudgmentOptionId::new("decline"),
+                        label: "Decline".to_owned(),
+                        description: "Record that the focused judgment was not accepted."
+                            .to_owned(),
+                        consequence: "The Task remains unresolved for this question.".to_owned(),
+                        is_default: false,
+                    },
+                ]
+            } else {
+                Vec::new()
+            };
+
             RequestUserJudgmentRequest {
                 envelope: self.envelope(
                     input.request_id,
@@ -466,25 +491,7 @@ pub mod core_fixtures {
                 judgment_kind: input.judgment_kind,
                 presentation: JudgmentPresentation::Short,
                 question: "Choose the focused test judgment outcome.".to_owned(),
-                options: vec![
-                    UserJudgmentOption {
-                        option_id: UserJudgmentOptionId::new("accept"),
-                        label: "Accept".to_owned(),
-                        description: "Record the focused user-owned judgment.".to_owned(),
-                        consequence: "Only this judgment record is resolved.".to_owned(),
-                        resolution_outcome: Some(JudgmentResolutionOutcome::Accepted),
-                        is_default: true,
-                    },
-                    UserJudgmentOption {
-                        option_id: UserJudgmentOptionId::new("decline"),
-                        label: "Decline".to_owned(),
-                        description: "Record that the focused judgment was not accepted."
-                            .to_owned(),
-                        consequence: "The Task remains unresolved for this question.".to_owned(),
-                        resolution_outcome: Some(JudgmentResolutionOutcome::Rejected),
-                        is_default: false,
-                    },
-                ],
+                options: Some(options).into(),
                 context: harness_types::UserJudgmentContext {
                     summary: "A focused test judgment needs a user-owned answer.".to_owned(),
                     related_refs: Vec::new(),
@@ -896,6 +903,15 @@ pub mod core_fixtures {
                     value["resolution_outcome"] = outcome
                         .map(|value| Value::String(value.to_owned()))
                         .unwrap_or(Value::Null);
+                    value["machine_action"] = match outcome {
+                        Some("accepted") => Value::String("accept".to_owned()),
+                        Some("rejected") => Value::String("reject".to_owned()),
+                        Some("deferred") => Value::String("defer".to_owned()),
+                        Some("blocked") | None => Value::Null,
+                        Some(value) => {
+                            return Err(format!("unsupported test outcome {value}").into());
+                        }
+                    };
                     Ok(serde_json::to_string(&value)?)
                 })
                 .transpose()?;

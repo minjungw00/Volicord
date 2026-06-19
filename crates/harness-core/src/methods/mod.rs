@@ -27,18 +27,20 @@ use harness_types::{
     EvidenceStatus, EvidenceSummary, GuaranteeDisplay, GuaranteeLevel, JsonObject, JudgmentBasis,
     JudgmentBasisCompatibilityStatus, JudgmentKind, JudgmentRequiredFor, JudgmentResolutionOutcome,
     MethodAccessClass, MethodName, NextActionKind, NextActionSummary, ObservedChanges,
-    PersistedEvidenceMetadata, PersistedJudgmentBasis, PersistedUserJudgmentRequest,
-    PersistedUserJudgmentResolution, PlannedEffect, PrepareWriteRequest, PrepareWriteResult,
-    ProjectId, RecordId, RecordRunRequest, RecordRunResult, RecordUserJudgmentPayload,
-    RecordUserJudgmentRequest, RedactionState, RequestedMode, RequiredNullable, ResidualRisk,
-    ResumePolicy, RiskAcceptanceCoverage, RiskId, RunId, RunSummary, SensitiveActionRequirement,
-    StageArtifactRequest, StageArtifactResult, StagedArtifactHandle, StagedArtifactHandleId,
-    StateRecordKind, StateRecordRef, StatusCloseState, StatusInclude, StatusRequest, StorageRef,
-    SurfaceId, SurfaceInstanceId, TaskId, TaskLifecyclePhase, TaskLifecycleState, TaskMode,
-    TaskResult, ToolEnvelope, ToolResultBase, UpdateScopeRequest, UserJudgment,
-    UserJudgmentContext, UserJudgmentOption, UserJudgmentResolution, UserJudgmentStatus,
-    UtcTimestamp, WriteAuthoritySummary, WriteAuthorizationId, WriteAuthorizationStatus,
-    WriteAuthorizationSummary, WriteDecisionCategory, WriteDecisionReason,
+    PersistedEvidenceMetadata, PersistedJudgmentBasis, PersistedUserJudgmentOptions,
+    PersistedUserJudgmentRequest, PersistedUserJudgmentResolution, PlannedEffect,
+    PrepareWriteRequest, PrepareWriteResult, ProjectId, RecordId, RecordRunRequest,
+    RecordRunResult, RecordUserJudgmentPayload, RecordUserJudgmentRequest, RedactionState,
+    RequestedMode, RequiredNullable, ResidualRisk, ResumePolicy, RiskAcceptanceCoverage, RiskId,
+    RunId, RunSummary, SensitiveActionRequirement, StageArtifactRequest, StageArtifactResult,
+    StagedArtifactHandle, StagedArtifactHandleId, StateRecordKind, StateRecordRef,
+    StatusCloseState, StatusInclude, StatusRequest, StorageRef, SurfaceId, SurfaceInstanceId,
+    TaskId, TaskLifecyclePhase, TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope,
+    ToolResultBase, UpdateScopeRequest, UserJudgment, UserJudgmentContext, UserJudgmentOption,
+    UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
+    UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WriteAuthoritySummary,
+    WriteAuthorizationId, WriteAuthorizationStatus, WriteAuthorizationSummary,
+    WriteDecisionCategory, WriteDecisionReason,
 };
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -384,6 +386,14 @@ fn decode_optional_persisted_resolution(
             StoreError::corrupt_owner_state_value(table, record_ref, "resolution_outcome"),
         ));
     }
+    if resolution
+        .machine_action
+        .is_some_and(|action| Some(action.resolution_outcome()) != stored_resolution_outcome)
+    {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(table, record_ref, "machine_action"),
+        ));
+    }
     resolution.resolution_outcome = stored_resolution_outcome;
     Ok(Some(resolution.into()))
 }
@@ -476,6 +486,9 @@ fn user_judgment_authority_from_record(
         status,
         required_for: request.required_for,
         affected_refs,
+        machine_action: resolution
+            .as_ref()
+            .and_then(|resolution| resolution.machine_action),
         resolution_outcome,
         basis_status,
         basis,
@@ -491,6 +504,10 @@ fn user_judgment_authority_from_state(judgment: &UserJudgment) -> JudgmentAuthor
         status: judgment.status,
         required_for: judgment.required_for.clone(),
         affected_refs: judgment.affected_refs.clone(),
+        machine_action: judgment
+            .resolution
+            .as_ref()
+            .and_then(|resolution| resolution.machine_action),
         resolution_outcome: judgment
             .resolution
             .as_ref()

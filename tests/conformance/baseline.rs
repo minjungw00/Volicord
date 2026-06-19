@@ -2275,7 +2275,7 @@ fn negative_authority_judgment_outcomes_remain_non_authoritative() -> Result<(),
             expected_state_version: Some(2),
             task_id: &task_id,
             change_unit_id: Some(&change_unit_id),
-            judgment_kind: JudgmentKind::ProductDecision,
+            judgment_kind: JudgmentKind::ScopeDecision,
         }),
         invocation(&conflict_fixture, AccessClass::CoreMutation),
     )?;
@@ -2286,10 +2286,10 @@ fn negative_authority_judgment_outcomes_remain_non_authoritative() -> Result<(),
         expected_state_version: Some(3),
         task_id: &task_id,
         user_judgment_id: &judgment_id,
-        judgment_kind: JudgmentKind::ProductDecision,
-        answer: answer_payload(JudgmentKind::ProductDecision),
+        judgment_kind: JudgmentKind::ScopeDecision,
+        answer: answer_payload(JudgmentKind::ScopeDecision),
     });
-    request.selected_option_id = harness_types::UserJudgmentOptionId::new("decline");
+    request.selected_option_id = harness_types::UserJudgmentOptionId::new("reject");
     let before = conflict_fixture.counts()?;
     let rejected = conflict_service.record_user_judgment(
         request,

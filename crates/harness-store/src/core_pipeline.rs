@@ -7,9 +7,10 @@ use harness_types::{
     BaselineRef, ChangeUnitId, CurrentCloseBasis, EvidenceCoverageItem, IdempotencyKey,
     JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentResolutionOutcome, MethodName,
     PersistedArtifactProducer, PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata,
-    PersistedEvidenceMetadata, PersistedJudgmentBasis, PersistedUserJudgmentRequest,
-    PersistedUserJudgmentResolution, ProjectId, RequestHash, RequiredNullable, ResidualRisk, RunId,
-    StagedArtifactHandleId, StateRecordRef, SurfaceId, TaskId, UtcTimestamp,
+    PersistedEvidenceMetadata, PersistedJudgmentBasis, PersistedUserJudgmentOptions,
+    PersistedUserJudgmentRequest, PersistedUserJudgmentResolution, ProjectId, RequestHash,
+    RequiredNullable, ResidualRisk, RunId, StagedArtifactHandleId, StateRecordRef, SurfaceId,
+    TaskId, UtcTimestamp,
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
@@ -3813,19 +3814,27 @@ fn validate_user_judgment_request_json(field: &'static str, text: &str) -> Store
 }
 
 fn validate_user_judgment_options_json(field: &'static str, text: &str) -> StoreResult<()> {
-    let options =
-        serde_json::from_str::<Vec<harness_types::UserJudgmentOption>>(text).map_err(|error| {
+    let persisted =
+        serde_json::from_str::<PersistedUserJudgmentOptions>(text).map_err(|error| {
             StoreError::InvalidInput {
                 detail: format!("{field} must be persisted user judgment option JSON: {error}"),
             }
         })?;
-    if options
-        .iter()
-        .any(|option| option.resolution_outcome.is_none())
-    {
-        return Err(StoreError::InvalidInput {
-            detail: format!("{field} options must include resolution_outcome"),
-        });
+    if persisted.schema_version == 1 {
+        for option in &persisted.options {
+            let Some(action) = option.machine_action else {
+                return Err(StoreError::InvalidInput {
+                    detail: format!("{field} current options must include machine_action"),
+                });
+            };
+            if option.resolution_outcome != Some(action.resolution_outcome()) {
+                return Err(StoreError::InvalidInput {
+                    detail: format!(
+                        "{field} current option resolution_outcome must match machine_action"
+                    ),
+                });
+            }
+        }
     }
     Ok(())
 }
@@ -3846,6 +3855,14 @@ fn validate_user_judgment_resolution_json(
             detail: format!(
                 "{field} resolution_outcome must match user_judgments.resolution_outcome"
             ),
+        });
+    }
+    if resolution
+        .machine_action
+        .is_some_and(|action| action.resolution_outcome() != expected_outcome)
+    {
+        return Err(StoreError::InvalidInput {
+            detail: format!("{field} machine_action must match resolution_outcome"),
         });
     }
     Ok(())

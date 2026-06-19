@@ -5,7 +5,8 @@ use harness_types::{
     CurrentCloseBasis, JsonObject, JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentKind,
     JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionSummary,
     ProjectId, RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RiskId,
-    StateRecordKind, StateRecordRef, TaskId, UserJudgmentResolution, UserJudgmentStatus,
+    StateRecordKind, StateRecordRef, TaskId, UserJudgmentOptionAction, UserJudgmentResolution,
+    UserJudgmentStatus,
 };
 use serde_json::Value;
 
@@ -50,6 +51,7 @@ pub(crate) struct JudgmentAuthority {
     pub(crate) status: UserJudgmentStatus,
     pub(crate) required_for: Vec<JudgmentRequiredFor>,
     pub(crate) affected_refs: Vec<StateRecordRef>,
+    pub(crate) machine_action: Option<UserJudgmentOptionAction>,
     pub(crate) resolution_outcome: Option<JudgmentResolutionOutcome>,
     pub(crate) basis_status: JudgmentBasisCompatibilityStatus,
     pub(crate) basis: Option<JudgmentBasis>,
@@ -266,9 +268,7 @@ pub(crate) fn current_scope_decision(
     scope_revision: u64,
     current_change_unit_id: Option<&ChangeUnitId>,
 ) -> bool {
-    if !judgment_has_current_basis(judgment)
-        || judgment.status != UserJudgmentStatus::Resolved
-        || judgment.judgment_kind != JudgmentKind::ScopeDecision
+    if !accepted_current_user_authority(judgment, JudgmentKind::ScopeDecision)
         || judgment
             .resolution
             .as_ref()
@@ -291,6 +291,7 @@ pub(crate) fn accepted_current_user_authority(
     if !judgment_has_current_basis(judgment)
         || judgment.status != UserJudgmentStatus::Resolved
         || judgment.judgment_kind != required_kind
+        || judgment.machine_action != Some(UserJudgmentOptionAction::Accept)
         || judgment.resolution_outcome != Some(JudgmentResolutionOutcome::Accepted)
     {
         return false;
@@ -298,7 +299,8 @@ pub(crate) fn accepted_current_user_authority(
     let Some(resolution) = judgment.resolution.as_ref() else {
         return false;
     };
-    resolution.resolution_outcome == Some(JudgmentResolutionOutcome::Accepted)
+    resolution.machine_action == Some(UserJudgmentOptionAction::Accept)
+        && resolution.resolution_outcome == Some(JudgmentResolutionOutcome::Accepted)
         && resolution.resolved_by_actor_kind == ActorKind::User
         && resolution_answer_matches_kind(required_kind, &resolution.answer)
 }
