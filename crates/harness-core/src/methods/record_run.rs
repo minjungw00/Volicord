@@ -1273,7 +1273,7 @@ fn resolve_close_basis_artifact_ref(
     if record
         .as_ref()
         .map(|record| {
-            let available = stored_artifact_is_verified_available(record)?;
+            let available = persistent_artifact_is_verified_current(context.store, record)?;
             Ok::<_, CorePipelineError>(
                 record.project_id == request.envelope.project_id.as_str()
                     && record.task_id == request.task_id.as_str()
@@ -1750,7 +1750,7 @@ fn plan_existing_artifact_input(
                 "existing artifact cannot be found",
             )))
         })?;
-    let artifact_available = stored_artifact_is_verified_available(&record)?;
+    let artifact_available = persistent_artifact_is_verified_current(store, &record)?;
     if record.task_id != request.task_id.as_str()
         || record.project_id != request.envelope.project_id.as_str()
         || !artifact_available
@@ -1863,8 +1863,12 @@ fn plan_existing_artifact_input(
             "existing artifact redaction_state does not match the stored artifact",
         );
     }
-    let artifact_ref =
-        artifact_ref_from_stored_record(&record, Some(existing_ref.display_name.clone()))?;
+    let artifact_ref = artifact_ref_from_verified_record(
+        store,
+        &record,
+        Some(existing_ref.display_name.clone()),
+        None,
+    )?;
     let run_link = CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
         artifact_id: existing_ref.artifact_id.as_str().to_owned(),
         task_id: request.task_id.as_str().to_owned(),
@@ -2041,136 +2045,12 @@ fn build_record_run_evidence_summary(
     })
 }
 
-fn artifact_ref_from_stored_record(
-    record: &StoredArtifactRecord,
-    display_name: Option<String>,
-) -> CoreResult<ArtifactRef> {
-    let task_id = TaskId::new(record.task_id.clone());
-    let integrity_status = artifact_integrity_status_from_stored_record(record)?;
-    Ok(ArtifactRef {
-        artifact_id: ArtifactId::new(record.artifact_id.clone()),
-        project_id: ProjectId::new(record.project_id.clone()),
-        task_id: task_id.clone(),
-        display_name: display_name
-            .or_else(|| record.producer.display_name.clone())
-            .unwrap_or_else(|| record.artifact_id.clone()),
-        content_type: sanitized_content_type(record, integrity_status).into(),
-        sha256: sanitized_sha256(record, integrity_status).into(),
-        size_bytes: record.size_bytes.into(),
-        integrity_status,
-        redaction_state: parse_owner_storage_value(
-            "artifacts",
-            record.artifact_id.clone(),
-            "redaction_state",
-            &record.redaction_state,
-        )?,
-        availability: artifact_availability_from_stored_record(record)?,
-        created_by_run_ref: Some(state_ref(
-            StateRecordKind::Run,
-            record.provenance.producer_run_id.as_str(),
-            &ProjectId::new(record.project_id.clone()),
-            Some(&task_id),
-            None,
-        ))
-        .into(),
-        created_by_surface_id: Some(record.producer.created_by_surface_id.clone()).into(),
-        created_by_surface_instance_id: Some(
-            record.producer.created_by_surface_instance_id.clone(),
-        )
-        .into(),
-        storage_ref: Some(StorageRef::new(record.uri.clone())).into(),
-    })
-}
-
-fn sanitized_content_type(
-    record: &StoredArtifactRecord,
-    integrity_status: ArtifactIntegrityStatus,
-) -> Option<String> {
-    match integrity_status {
-        ArtifactIntegrityStatus::Verified => record.content_type.clone(),
-        ArtifactIntegrityStatus::LegacyUnknown | ArtifactIntegrityStatus::Corrupt => record
-            .content_type
-            .as_ref()
-            .filter(|value| !value.trim().is_empty())
-            .cloned(),
-    }
-}
-
-fn sanitized_sha256(
-    record: &StoredArtifactRecord,
-    integrity_status: ArtifactIntegrityStatus,
-) -> Option<String> {
-    match integrity_status {
-        ArtifactIntegrityStatus::Verified => record.sha256.clone(),
-        ArtifactIntegrityStatus::LegacyUnknown | ArtifactIntegrityStatus::Corrupt => record
-            .sha256
-            .as_ref()
-            .filter(|value| is_lowercase_sha256_hex(value))
-            .cloned(),
-    }
-}
-
 fn staged_artifact_display_name(record: &StoredArtifactStagingRecord) -> String {
     string_member(
         &display_only_json_object_lossy(&record.artifact_json),
         "display_name",
     )
     .unwrap_or_else(|| record.handle_id.clone())
-}
-
-fn artifact_availability_from_stored_record(
-    record: &StoredArtifactRecord,
-) -> CoreResult<ArtifactAvailability> {
-    match record.status.as_str() {
-        "available" => Ok(ArtifactAvailability::Available),
-        "missing" => Ok(ArtifactAvailability::Missing),
-        "integrity_failed" => Ok(ArtifactAvailability::IntegrityFailed),
-        "unavailable" => Ok(ArtifactAvailability::Unavailable),
-        _ => Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_value(
-                "artifacts",
-                record.artifact_id.clone(),
-                "status",
-            ),
-        )),
-    }
-}
-
-fn artifact_integrity_status_from_stored_record(
-    record: &StoredArtifactRecord,
-) -> CoreResult<ArtifactIntegrityStatus> {
-    parse_owner_storage_value(
-        "artifacts",
-        record.artifact_id.clone(),
-        "integrity_status",
-        &record.integrity_status,
-    )
-}
-
-fn stored_artifact_is_verified_available(record: &StoredArtifactRecord) -> CoreResult<bool> {
-    let available =
-        artifact_availability_from_stored_record(record)? == ArtifactAvailability::Available;
-    let verified =
-        artifact_integrity_status_from_stored_record(record)? == ArtifactIntegrityStatus::Verified;
-    if !available || !verified {
-        return Ok(false);
-    }
-    Ok(record
-        .content_type
-        .as_ref()
-        .is_some_and(|value| !value.trim().is_empty())
-        && record
-            .sha256
-            .as_ref()
-            .is_some_and(|value| is_lowercase_sha256_hex(value))
-        && record.size_bytes.is_some())
-}
-
-fn is_lowercase_sha256_hex(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn artifact_link_metadata(input: &ArtifactInput) -> CoreResult<String> {

@@ -1,8 +1,14 @@
-use std::{fs, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    fs::{self, File},
+    io::{self, Read},
+    path::{Component, Path, PathBuf},
+};
 
 use harness_types::UtcTimestamp;
 use rusqlite::{params, Transaction};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use crate::{
     core_pipeline::CoreProjectStore,
@@ -13,6 +19,42 @@ use crate::{
 /// Placement marker for future artifact-store plumbing.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ArtifactStoreBoundary;
+
+/// Current-byte verification outcome for a persistent artifact body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PersistentArtifactVerificationStatus {
+    /// Stored integrity facts and current artifact bytes match.
+    VerifiedCurrent,
+    /// The stored availability or body path indicates a missing artifact.
+    Missing,
+    /// Current bytes are present but no longer match stored integrity facts.
+    IntegrityFailed,
+    /// The artifact body could not be accessed as a usable regular file.
+    Unavailable,
+    /// Legacy rows or incomplete facts cannot establish current integrity.
+    LegacyUnknown,
+    /// The stored path or resolved body escapes the artifact-store boundary.
+    BoundaryViolation,
+}
+
+/// Result of verifying a persistent artifact body without mutating storage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersistentArtifactVerification {
+    pub status: PersistentArtifactVerificationStatus,
+    pub actual_sha256: Option<String>,
+    pub actual_size_bytes: Option<u64>,
+}
+
+/// Stored facts needed for persistent artifact body verification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PersistentArtifactBodySpec<'a> {
+    pub body_path: Option<&'a str>,
+    pub sha256: Option<&'a str>,
+    pub size_bytes: Option<u64>,
+    pub content_type: Option<&'a str>,
+    pub integrity_status: &'a str,
+    pub availability_status: &'a str,
+}
 
 /// Storage representation for a staged payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +141,233 @@ impl CoreProjectStore {
             Err(error) => Err(error),
         }
     }
+}
+
+/// Verifies the current bytes for a persistent artifact under the artifact store.
+///
+/// The supplied `body_path` may be either artifact-store-relative or the
+/// historical project-home-relative `artifacts/...` form. The verifier resolves
+/// symlinks with `canonicalize`, requires the final target to remain inside the
+/// artifact store, and hashes the current regular-file bytes without mutating
+/// any artifact row.
+pub fn verify_persistent_artifact_body(
+    artifact_store_root: &Path,
+    spec: &PersistentArtifactBodySpec<'_>,
+) -> StoreResult<PersistentArtifactVerification> {
+    match spec.integrity_status {
+        "verified" => {}
+        "legacy_unknown" => {
+            return Ok(verification(
+                PersistentArtifactVerificationStatus::LegacyUnknown,
+            ))
+        }
+        "corrupt" => {
+            return Ok(verification(
+                PersistentArtifactVerificationStatus::IntegrityFailed,
+            ))
+        }
+        _ => {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "artifact integrity_status is outside the owner-defined value set",
+            ));
+        }
+    }
+
+    match spec.availability_status {
+        "available" => {}
+        "missing" => return Ok(verification(PersistentArtifactVerificationStatus::Missing)),
+        "integrity_failed" => {
+            return Ok(verification(
+                PersistentArtifactVerificationStatus::IntegrityFailed,
+            ));
+        }
+        "unavailable" => {
+            return Ok(verification(
+                PersistentArtifactVerificationStatus::Unavailable,
+            ))
+        }
+        _ => {
+            return Err(StoreError::schema_invariant(
+                "project_state",
+                "artifact status is outside the owner-defined value set",
+            ));
+        }
+    }
+
+    if spec
+        .content_type
+        .is_none_or(|value| value.trim().is_empty())
+        || spec
+            .sha256
+            .is_none_or(|value| !is_lowercase_sha256_hex(value))
+        || spec.size_bytes.is_none()
+    {
+        return Ok(verification(
+            PersistentArtifactVerificationStatus::LegacyUnknown,
+        ));
+    }
+
+    let Some(body_path) = spec.body_path.filter(|value| !value.trim().is_empty()) else {
+        return Ok(verification(
+            PersistentArtifactVerificationStatus::Unavailable,
+        ));
+    };
+    let Some(candidate) = persistent_body_candidate_path(artifact_store_root, body_path) else {
+        return Ok(verification(
+            PersistentArtifactVerificationStatus::BoundaryViolation,
+        ));
+    };
+    let Some(canonical_root) = canonicalize_store_root(artifact_store_root)? else {
+        return Ok(verification(
+            PersistentArtifactVerificationStatus::Unavailable,
+        ));
+    };
+    let canonical_body = match candidate.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(verification(PersistentArtifactVerificationStatus::Missing));
+        }
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+            return Ok(verification(
+                PersistentArtifactVerificationStatus::Unavailable,
+            ));
+        }
+        Err(error) => return Err(StoreError::Io(error)),
+    };
+
+    if !canonical_body.starts_with(&canonical_root) {
+        return Ok(verification(
+            PersistentArtifactVerificationStatus::BoundaryViolation,
+        ));
+    }
+
+    let metadata = match fs::metadata(&canonical_body) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(verification(PersistentArtifactVerificationStatus::Missing));
+        }
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+            return Ok(verification(
+                PersistentArtifactVerificationStatus::Unavailable,
+            ));
+        }
+        Err(error) => return Err(StoreError::Io(error)),
+    };
+    if !metadata.is_file() {
+        return Ok(verification(
+            PersistentArtifactVerificationStatus::Unavailable,
+        ));
+    }
+
+    let (actual_sha256, actual_size_bytes) = match hash_file(&canonical_body) {
+        Ok(result) => result,
+        Err(StoreError::Io(error)) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(verification(PersistentArtifactVerificationStatus::Missing));
+        }
+        Err(StoreError::Io(error)) if error.kind() == io::ErrorKind::PermissionDenied => {
+            return Ok(verification(
+                PersistentArtifactVerificationStatus::Unavailable,
+            ));
+        }
+        Err(error) => return Err(error),
+    };
+    let expected_sha256 = spec.sha256.expect("validated sha256 is present");
+    let expected_size_bytes = spec.size_bytes.expect("validated size is present");
+    if actual_size_bytes != expected_size_bytes || actual_sha256 != expected_sha256 {
+        return Ok(PersistentArtifactVerification {
+            status: PersistentArtifactVerificationStatus::IntegrityFailed,
+            actual_sha256: Some(actual_sha256),
+            actual_size_bytes: Some(actual_size_bytes),
+        });
+    }
+
+    Ok(PersistentArtifactVerification {
+        status: PersistentArtifactVerificationStatus::VerifiedCurrent,
+        actual_sha256: Some(actual_sha256),
+        actual_size_bytes: Some(actual_size_bytes),
+    })
+}
+
+fn verification(status: PersistentArtifactVerificationStatus) -> PersistentArtifactVerification {
+    PersistentArtifactVerification {
+        status,
+        actual_sha256: None,
+        actual_size_bytes: None,
+    }
+}
+
+fn canonicalize_store_root(artifact_store_root: &Path) -> StoreResult<Option<PathBuf>> {
+    match artifact_store_root.canonicalize() {
+        Ok(path) => Ok(Some(path)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => Ok(None),
+        Err(error) => Err(StoreError::Io(error)),
+    }
+}
+
+fn persistent_body_candidate_path(
+    artifact_store_root: &Path,
+    stored_body_path: &str,
+) -> Option<PathBuf> {
+    let stored = Path::new(stored_body_path);
+    if stored.is_absolute()
+        || stored
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+    {
+        return None;
+    }
+    let relative = artifact_store_relative_path(stored);
+    if relative.as_os_str().is_empty() {
+        return None;
+    }
+    Some(artifact_store_root.join(relative))
+}
+
+fn artifact_store_relative_path(stored: &Path) -> PathBuf {
+    let mut components = stored.components();
+    match components.next() {
+        Some(Component::Normal(component)) if component == OsStr::new(ARTIFACTS_DIR) => {
+            components.as_path().to_path_buf()
+        }
+        _ => stored.to_path_buf(),
+    }
+}
+
+fn hash_file(path: &Path) -> StoreResult<(String, u64)> {
+    let mut file = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut size_bytes = 0u64;
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        size_bytes = size_bytes
+            .checked_add(u64::try_from(read).map_err(|_| StoreError::InvalidInput {
+                detail: "artifact body read size does not fit in u64".to_owned(),
+            })?)
+            .ok_or_else(|| StoreError::InvalidInput {
+                detail: "artifact body size does not fit in u64".to_owned(),
+            })?;
+    }
+
+    let digest = hasher.finalize();
+    Ok((lowercase_sha256_digest(&digest), size_bytes))
+}
+
+fn lowercase_sha256_digest(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
 }
 
 fn insert_artifact_staging_tx(
@@ -277,16 +546,19 @@ fn validate_nonempty_text(field: &'static str, value: &str) -> StoreResult<()> {
 }
 
 fn validate_artifact_sha256(field: &'static str, value: &str) -> StoreResult<()> {
-    if value.len() != 64
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    {
+    if !is_lowercase_sha256_hex(value) {
         return Err(StoreError::InvalidInput {
             detail: format!("{field} must be a lowercase 64-character SHA-256 hex string"),
         });
     }
     Ok(())
+}
+
+fn is_lowercase_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn json_text(value: Value) -> StoreResult<String> {

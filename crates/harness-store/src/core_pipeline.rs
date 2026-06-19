@@ -17,8 +17,12 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{
+    artifacts::{
+        verify_persistent_artifact_body as verify_persistent_artifact_body_in_store,
+        PersistentArtifactBodySpec, PersistentArtifactVerification,
+    },
     bootstrap::{project_record, ProjectRecord, SurfaceRecord},
-    sqlite::{begin_immediate_transaction, open_project_state_database},
+    sqlite::{begin_immediate_transaction, open_project_state_database, ARTIFACTS_DIR},
     StoreError, StoreResult,
 };
 
@@ -858,6 +862,25 @@ impl CoreProjectStore {
     /// Reads one persistent artifact row by exact project-local artifact identity.
     pub fn artifact_record(&self, artifact_id: &str) -> StoreResult<Option<StoredArtifactRecord>> {
         artifact_record(&self.conn, &self.project.project_id, artifact_id)
+    }
+
+    /// Verifies the current persistent body bytes for an artifact row.
+    pub fn verify_persistent_artifact_body(
+        &self,
+        record: &StoredArtifactRecord,
+    ) -> StoreResult<PersistentArtifactVerification> {
+        let artifact_store_root = self.project.project_home.join(ARTIFACTS_DIR);
+        verify_persistent_artifact_body_in_store(
+            &artifact_store_root,
+            &PersistentArtifactBodySpec {
+                body_path: record.body_path.as_deref(),
+                sha256: record.sha256.as_deref(),
+                size_bytes: record.size_bytes,
+                content_type: record.content_type.as_deref(),
+                integrity_status: &record.integrity_status,
+                availability_status: &record.status,
+            },
+        )
     }
 
     /// Returns whether an evidence summary id already exists in this project.

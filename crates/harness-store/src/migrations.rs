@@ -1,7 +1,13 @@
+use std::path::{Path, PathBuf};
+
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
 use crate::{
-    sqlite::{begin_immediate_transaction, foreign_keys_enabled, set_foreign_keys},
+    artifacts::{
+        verify_persistent_artifact_body, PersistentArtifactBodySpec,
+        PersistentArtifactVerificationStatus,
+    },
+    sqlite::{begin_immediate_transaction, foreign_keys_enabled, set_foreign_keys, ARTIFACTS_DIR},
     StoreError, StoreResult,
 };
 
@@ -270,13 +276,290 @@ fn rebuild_artifacts_with_integrity_status_v6(
     conn: &mut Connection,
     migration: &Migration,
 ) -> StoreResult<()> {
+    let project_home = project_home_from_connection(conn)?;
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     tx.execute_batch(PROJECT_STATE_ARTIFACT_INTEGRITY_V6_CREATE_COPY_SQL)?;
+    copy_artifacts_with_integrity_status_v6(&tx, project_home.as_deref())?;
     validate_no_foreign_key_violations(&tx, PROJECT_STATE_DATABASE_KIND, Some("artifacts_v6"))?;
     tx.execute_batch(PROJECT_STATE_ARTIFACT_INTEGRITY_V6_SWAP_SQL)?;
     insert_schema_migration(&tx, migration)?;
     tx.commit()?;
     Ok(())
+}
+
+#[derive(Debug)]
+struct ArtifactIntegrityMigrationRow {
+    project_id: String,
+    artifact_id: String,
+    task_id: String,
+    producer_run_id: Option<String>,
+    source_staging_handle_id: Option<String>,
+    uri: String,
+    body_path: Option<String>,
+    sha256: Option<String>,
+    size_bytes_i64: Option<i64>,
+    size_bytes_u64: Option<u64>,
+    content_type: Option<String>,
+    redaction_state: String,
+    status: String,
+    retention_json: String,
+    producer_json: String,
+    created_at: String,
+    updated_at: String,
+    metadata_json: String,
+    staging_tmp_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArtifactIntegrityMigrationClassification {
+    integrity_status: &'static str,
+    status: String,
+}
+
+fn project_home_from_connection(conn: &Connection) -> StoreResult<Option<PathBuf>> {
+    let mut stmt = conn.prepare("PRAGMA database_list")?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        let file: String = row.get(2)?;
+        if name == "main" {
+            if file.trim().is_empty() {
+                return Ok(None);
+            }
+            return Ok(Path::new(&file).parent().map(Path::to_path_buf));
+        }
+    }
+    Ok(None)
+}
+
+fn copy_artifacts_with_integrity_status_v6(
+    tx: &Transaction<'_>,
+    project_home: Option<&Path>,
+) -> StoreResult<()> {
+    let rows = artifact_integrity_migration_rows(tx)?;
+    let mut insert = tx.prepare(
+        "INSERT INTO artifacts_v6 (
+            project_id,
+            artifact_id,
+            task_id,
+            producer_run_id,
+            source_staging_handle_id,
+            uri,
+            body_path,
+            sha256,
+            size_bytes,
+            content_type,
+            integrity_status,
+            redaction_state,
+            status,
+            retention_json,
+            producer_json,
+            created_at,
+            updated_at,
+            metadata_json
+        )
+        VALUES (
+            ?1,
+            ?2,
+            ?3,
+            ?4,
+            ?5,
+            ?6,
+            ?7,
+            ?8,
+            ?9,
+            ?10,
+            ?11,
+            ?12,
+            ?13,
+            ?14,
+            ?15,
+            ?16,
+            ?17,
+            ?18
+        )",
+    )?;
+
+    for row in rows {
+        let classification = classify_artifact_integrity_for_v6(&row, project_home)?;
+        insert.execute(params![
+            row.project_id,
+            row.artifact_id,
+            row.task_id,
+            row.producer_run_id,
+            row.source_staging_handle_id,
+            row.uri,
+            row.body_path,
+            row.sha256,
+            row.size_bytes_i64,
+            row.content_type,
+            classification.integrity_status,
+            row.redaction_state,
+            classification.status,
+            row.retention_json,
+            row.producer_json,
+            row.created_at,
+            row.updated_at,
+            row.metadata_json
+        ])?;
+    }
+
+    Ok(())
+}
+
+fn artifact_integrity_migration_rows(
+    tx: &Transaction<'_>,
+) -> StoreResult<Vec<ArtifactIntegrityMigrationRow>> {
+    let mut stmt = tx.prepare(
+        "SELECT
+            a.project_id,
+            a.artifact_id,
+            a.task_id,
+            a.producer_run_id,
+            a.source_staging_handle_id,
+            a.uri,
+            a.body_path,
+            a.sha256,
+            a.size_bytes,
+            a.content_type,
+            a.redaction_state,
+            a.status,
+            a.retention_json,
+            a.producer_json,
+            a.created_at,
+            a.updated_at,
+            a.metadata_json,
+            s.tmp_path
+         FROM artifacts AS a
+         LEFT JOIN artifact_staging AS s
+           ON s.project_id = a.project_id
+          AND s.handle_id = a.source_staging_handle_id
+         ORDER BY a.project_id, a.artifact_id",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut artifacts = Vec::new();
+    while let Some(row) = rows.next()? {
+        let size_bytes_i64 = row.get::<_, Option<i64>>(8)?;
+        let size_bytes_u64 = size_bytes_i64
+            .map(|value| migration_nonnegative_i64_to_u64("artifacts.size_bytes", value))
+            .transpose()?;
+        artifacts.push(ArtifactIntegrityMigrationRow {
+            project_id: row.get(0)?,
+            artifact_id: row.get(1)?,
+            task_id: row.get(2)?,
+            producer_run_id: row.get(3)?,
+            source_staging_handle_id: row.get(4)?,
+            uri: row.get(5)?,
+            body_path: row.get(6)?,
+            sha256: row.get(7)?,
+            size_bytes_i64,
+            size_bytes_u64,
+            content_type: row.get(9)?,
+            redaction_state: row.get(10)?,
+            status: row.get(11)?,
+            retention_json: row.get(12)?,
+            producer_json: row.get(13)?,
+            created_at: row.get(14)?,
+            updated_at: row.get(15)?,
+            metadata_json: row.get(16)?,
+            staging_tmp_path: row.get(17)?,
+        });
+    }
+    Ok(artifacts)
+}
+
+fn classify_artifact_integrity_for_v6(
+    row: &ArtifactIntegrityMigrationRow,
+    project_home: Option<&Path>,
+) -> StoreResult<ArtifactIntegrityMigrationClassification> {
+    if !artifact_migration_has_complete_facts(row) {
+        return Ok(ArtifactIntegrityMigrationClassification {
+            integrity_status: "legacy_unknown",
+            status: row.status.clone(),
+        });
+    }
+
+    let Some(project_home) = project_home else {
+        return Ok(legacy_unknown_unavailable_classification(row));
+    };
+    let Some(body_path) = row
+        .body_path
+        .as_deref()
+        .or(row.staging_tmp_path.as_deref())
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Ok(legacy_unknown_unavailable_classification(row));
+    };
+    let artifact_store_root = project_home.join(ARTIFACTS_DIR);
+    let verification = verify_persistent_artifact_body(
+        &artifact_store_root,
+        &PersistentArtifactBodySpec {
+            body_path: Some(body_path),
+            sha256: row.sha256.as_deref(),
+            size_bytes: row.size_bytes_u64,
+            content_type: row.content_type.as_deref(),
+            integrity_status: "verified",
+            availability_status: "available",
+        },
+    )?;
+
+    Ok(match verification.status {
+        PersistentArtifactVerificationStatus::VerifiedCurrent => {
+            ArtifactIntegrityMigrationClassification {
+                integrity_status: "verified",
+                status: row.status.clone(),
+            }
+        }
+        PersistentArtifactVerificationStatus::IntegrityFailed
+        | PersistentArtifactVerificationStatus::BoundaryViolation => {
+            ArtifactIntegrityMigrationClassification {
+                integrity_status: "corrupt",
+                status: "integrity_failed".to_owned(),
+            }
+        }
+        PersistentArtifactVerificationStatus::Missing
+        | PersistentArtifactVerificationStatus::Unavailable
+        | PersistentArtifactVerificationStatus::LegacyUnknown => {
+            legacy_unknown_unavailable_classification(row)
+        }
+    })
+}
+
+fn artifact_migration_has_complete_facts(row: &ArtifactIntegrityMigrationRow) -> bool {
+    row.content_type
+        .as_ref()
+        .is_some_and(|value| !value.trim().is_empty())
+        && row
+            .sha256
+            .as_ref()
+            .is_some_and(|value| migration_sha256_is_lowercase_hex(value))
+        && row.size_bytes_u64.is_some()
+}
+
+fn legacy_unknown_unavailable_classification(
+    row: &ArtifactIntegrityMigrationRow,
+) -> ArtifactIntegrityMigrationClassification {
+    ArtifactIntegrityMigrationClassification {
+        integrity_status: "legacy_unknown",
+        status: if row.status == "available" {
+            "unavailable".to_owned()
+        } else {
+            row.status.clone()
+        },
+    }
+}
+
+fn migration_sha256_is_lowercase_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn migration_nonnegative_i64_to_u64(field: &'static str, value: i64) -> StoreResult<u64> {
+    u64::try_from(value).map_err(|_| {
+        StoreError::schema_invariant(PROJECT_STATE_DATABASE_KIND, format!("{field} is negative"))
+    })
 }
 
 fn rebuild_tool_invocations_with_surface_fk(
@@ -1001,57 +1284,6 @@ CREATE TABLE artifacts_v6 (
     REFERENCES artifact_staging (project_id, handle_id)
     DEFERRABLE INITIALLY DEFERRED
 );
-
-INSERT INTO artifacts_v6 (
-  project_id,
-  artifact_id,
-  task_id,
-  producer_run_id,
-  source_staging_handle_id,
-  uri,
-  body_path,
-  sha256,
-  size_bytes,
-  content_type,
-  integrity_status,
-  redaction_state,
-  status,
-  retention_json,
-  producer_json,
-  created_at,
-  updated_at,
-  metadata_json
-)
-SELECT
-  project_id,
-  artifact_id,
-  task_id,
-  producer_run_id,
-  source_staging_handle_id,
-  uri,
-  body_path,
-  sha256,
-  size_bytes,
-  content_type,
-  CASE
-    WHEN content_type IS NOT NULL
-      AND length(trim(content_type)) > 0
-      AND sha256 IS NOT NULL
-      AND length(sha256) = 64
-      AND sha256 NOT GLOB '*[^0-9a-f]*'
-      AND size_bytes IS NOT NULL
-      AND size_bytes >= 0
-    THEN 'verified'
-    ELSE 'legacy_unknown'
-  END,
-  redaction_state,
-  status,
-  retention_json,
-  producer_json,
-  created_at,
-  updated_at,
-  metadata_json
-FROM artifacts;
 "#;
 
 const PROJECT_STATE_ARTIFACT_INTEGRITY_V6_SWAP_SQL: &str = r#"
@@ -1105,10 +1337,11 @@ UPDATE project_state
 
 #[cfg(test)]
 mod tests {
-    use std::{error::Error, fs};
+    use std::{error::Error, fs, path::Path};
 
     use harness_test_support::TempRuntimeHome;
     use rusqlite::{params, Connection, Error as SqliteError, ErrorCode};
+    use sha2::{Digest, Sha256};
 
     use super::*;
     use crate::sqlite::{
@@ -1116,12 +1349,13 @@ mod tests {
         project_state_db_path, validate_project_state_schema,
     };
 
-    type ArtifactIntegrityRow = (String, Option<String>, Option<i64>, Option<String>);
+    type ArtifactIntegrityRow = (String, Option<String>, Option<i64>, Option<String>, String);
 
     struct V5ArtifactFixture<'a> {
         artifact_id: &'a str,
         producer_run_id: Option<&'a str>,
         source_staging_handle_id: Option<&'a str>,
+        body_path: Option<&'a str>,
         sha256: Option<&'a str>,
         size_bytes: Option<i64>,
         content_type: Option<&'a str>,
@@ -1754,9 +1988,23 @@ mod tests {
 
     #[test]
     fn artifact_integrity_migration_preserves_legacy_rows() -> Result<(), Box<dyn Error>> {
-        const VALID_SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
         let runtime_home = TempRuntimeHome::new("migration-v5-artifacts")?;
+        let verified_bytes = b"verified legacy artifact";
+        let verified_sha = lowercase_sha256_hex_for_migration_test(verified_bytes);
+        let verified_body_path = write_legacy_artifact_body(
+            runtime_home.path(),
+            "project_v5_artifacts",
+            "verified.txt",
+            verified_bytes,
+        )?;
+        let mismatch_body_path = write_legacy_artifact_body(
+            runtime_home.path(),
+            "project_v5_artifacts",
+            "mismatch.txt",
+            b"current legacy bytes",
+        )?;
+        let mismatch_expected_sha =
+            lowercase_sha256_hex_for_migration_test(b"expected legacy body");
         let path = project_state_db_path(runtime_home.path(), "project_v5_artifacts");
         fs::create_dir_all(path.parent().expect("state db path has parent"))?;
         let mut conn = Connection::open(&path)?;
@@ -1776,6 +2024,12 @@ mod tests {
             "project_v5_artifacts",
             "staged_invalid_hash",
         )?;
+        insert_staging_for_artifact_migration(
+            &conn,
+            "project_v5_artifacts",
+            "staged_missing_body",
+        )?;
+        insert_staging_for_artifact_migration(&conn, "project_v5_artifacts", "staged_mismatch")?;
         insert_v5_artifact(
             &conn,
             "project_v5_artifacts",
@@ -1783,8 +2037,35 @@ mod tests {
                 artifact_id: "artifact_verified",
                 producer_run_id: Some("run_artifacts"),
                 source_staging_handle_id: Some("staged_verified"),
-                sha256: Some(VALID_SHA),
-                size_bytes: Some(0),
+                body_path: Some(&verified_body_path),
+                sha256: Some(&verified_sha),
+                size_bytes: Some(i64::try_from(verified_bytes.len())?),
+                content_type: Some("text/plain"),
+            },
+        )?;
+        insert_v5_artifact(
+            &conn,
+            "project_v5_artifacts",
+            V5ArtifactFixture {
+                artifact_id: "artifact_missing_body",
+                producer_run_id: Some("run_artifacts"),
+                source_staging_handle_id: Some("staged_missing_body"),
+                body_path: Some("artifacts/tmp/missing-body.txt"),
+                sha256: Some(&verified_sha),
+                size_bytes: Some(i64::try_from(verified_bytes.len())?),
+                content_type: Some("text/plain"),
+            },
+        )?;
+        insert_v5_artifact(
+            &conn,
+            "project_v5_artifacts",
+            V5ArtifactFixture {
+                artifact_id: "artifact_mismatch",
+                producer_run_id: Some("run_artifacts"),
+                source_staging_handle_id: Some("staged_mismatch"),
+                body_path: Some(&mismatch_body_path),
+                sha256: Some(&mismatch_expected_sha),
+                size_bytes: Some(i64::try_from(b"expected legacy body".len())?),
                 content_type: Some("text/plain"),
             },
         )?;
@@ -1795,6 +2076,7 @@ mod tests {
                 artifact_id: "artifact_missing_facts",
                 producer_run_id: Some("run_artifacts"),
                 source_staging_handle_id: Some("staged_missing_facts"),
+                body_path: None,
                 sha256: None,
                 size_bytes: None,
                 content_type: None,
@@ -1807,6 +2089,7 @@ mod tests {
                 artifact_id: "artifact_invalid_hash",
                 producer_run_id: Some("run_artifacts"),
                 source_staging_handle_id: Some("staged_invalid_hash"),
+                body_path: None,
                 sha256: Some("sha256:legacy"),
                 size_bytes: Some(12),
                 content_type: Some("text/plain"),
@@ -1814,6 +2097,8 @@ mod tests {
         )?;
         for artifact_id in [
             "artifact_verified",
+            "artifact_missing_body",
+            "artifact_mismatch",
             "artifact_missing_facts",
             "artifact_invalid_hash",
         ] {
@@ -1839,14 +2124,41 @@ mod tests {
             artifact_integrity_row(&conn, "artifact_verified")?,
             (
                 "verified".to_owned(),
-                Some(VALID_SHA.to_owned()),
-                Some(0),
-                Some("text/plain".to_owned())
+                Some(verified_sha),
+                Some(i64::try_from(verified_bytes.len())?),
+                Some("text/plain".to_owned()),
+                "available".to_owned()
+            )
+        );
+        assert_eq!(
+            artifact_integrity_row(&conn, "artifact_missing_body")?,
+            (
+                "legacy_unknown".to_owned(),
+                Some(lowercase_sha256_hex_for_migration_test(verified_bytes)),
+                Some(i64::try_from(verified_bytes.len())?),
+                Some("text/plain".to_owned()),
+                "unavailable".to_owned()
+            )
+        );
+        assert_eq!(
+            artifact_integrity_row(&conn, "artifact_mismatch")?,
+            (
+                "corrupt".to_owned(),
+                Some(mismatch_expected_sha),
+                Some(i64::try_from(b"expected legacy body".len())?),
+                Some("text/plain".to_owned()),
+                "integrity_failed".to_owned()
             )
         );
         assert_eq!(
             artifact_integrity_row(&conn, "artifact_missing_facts")?,
-            ("legacy_unknown".to_owned(), None, None, None)
+            (
+                "legacy_unknown".to_owned(),
+                None,
+                None,
+                None,
+                "available".to_owned()
+            )
         );
         assert_eq!(
             artifact_integrity_row(&conn, "artifact_invalid_hash")?,
@@ -1854,10 +2166,11 @@ mod tests {
                 "legacy_unknown".to_owned(),
                 Some("sha256:legacy".to_owned()),
                 Some(12),
-                Some("text/plain".to_owned())
+                Some("text/plain".to_owned()),
+                "available".to_owned()
             )
         );
-        assert_eq!(artifact_link_count(&conn)?, 3);
+        assert_eq!(artifact_link_count(&conn)?, 5);
         assert_integrity_check_clean(&conn)?;
         assert_foreign_key_check_clean(&conn)?;
         Ok(())
@@ -2479,6 +2792,7 @@ mod tests {
                 producer_run_id,
                 source_staging_handle_id,
                 uri,
+                body_path,
                 sha256,
                 size_bytes,
                 content_type,
@@ -2497,6 +2811,7 @@ mod tests {
                 ?5,
                 ?6,
                 ?7,
+                ?8,
                 'none',
                 'available',
                 't0',
@@ -2507,6 +2822,7 @@ mod tests {
                 fixture.artifact_id,
                 fixture.producer_run_id,
                 fixture.source_staging_handle_id,
+                fixture.body_path,
                 fixture.sha256,
                 fixture.size_bytes,
                 fixture.content_type
@@ -2542,16 +2858,51 @@ mod tests {
         Ok(())
     }
 
+    fn write_legacy_artifact_body(
+        runtime_home: &Path,
+        project_id: &str,
+        file_name: &str,
+        bytes: &[u8],
+    ) -> Result<String, Box<dyn Error>> {
+        let relative_path = format!("artifacts/tmp/{file_name}");
+        let body_path = runtime_home
+            .join("projects")
+            .join(project_id)
+            .join(&relative_path);
+        fs::create_dir_all(body_path.parent().expect("body path has parent"))?;
+        fs::write(body_path, bytes)?;
+        Ok(relative_path)
+    }
+
+    fn lowercase_sha256_hex_for_migration_test(bytes: &[u8]) -> String {
+        let digest = Sha256::digest(bytes);
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut output = String::with_capacity(digest.len() * 2);
+        for byte in digest {
+            output.push(HEX[(byte >> 4) as usize] as char);
+            output.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+        output
+    }
+
     fn artifact_integrity_row(
         conn: &Connection,
         artifact_id: &str,
     ) -> rusqlite::Result<ArtifactIntegrityRow> {
         conn.query_row(
-            "SELECT integrity_status, sha256, size_bytes, content_type
+            "SELECT integrity_status, sha256, size_bytes, content_type, status
                FROM artifacts
               WHERE artifact_id = ?1",
             [artifact_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
     }
 

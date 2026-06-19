@@ -5,7 +5,7 @@ use std::{
 
 use chrono::{DateTime, Duration, Utc};
 use harness_store::{
-    artifacts::{ArtifactStagingInsert, StagedPayloadKind},
+    artifacts::{ArtifactStagingInsert, PersistentArtifactVerificationStatus, StagedPayloadKind},
     core_pipeline::{
         ArtifactLinkInsert, ArtifactPromotion, ChangeUnitInsert, ChangeUnitRecord,
         CoreProjectStore, CoreStorageMutation, EvidenceSummaryRecord, EvidenceSummaryUpsert,
@@ -318,6 +318,159 @@ where
             logical_column,
         ))
     })
+}
+
+fn artifact_ref_from_verified_record(
+    store: &CoreProjectStore,
+    record: &StoredArtifactRecord,
+    display_name: Option<String>,
+    created_by_run_state_version: Option<u64>,
+) -> CoreResult<ArtifactRef> {
+    let verification_status = persistent_artifact_verification_status(store, record)?;
+    let task_id = TaskId::new(record.task_id.clone());
+    let integrity_status = effective_artifact_integrity_status(record, verification_status)?;
+    Ok(ArtifactRef {
+        artifact_id: ArtifactId::new(record.artifact_id.clone()),
+        project_id: ProjectId::new(record.project_id.clone()),
+        task_id: task_id.clone(),
+        display_name: display_name
+            .or_else(|| record.producer.display_name.clone())
+            .unwrap_or_else(|| record.artifact_id.clone()),
+        content_type: sanitized_artifact_content_type(record, integrity_status).into(),
+        sha256: sanitized_artifact_sha256(record, integrity_status).into(),
+        size_bytes: record.size_bytes.into(),
+        integrity_status,
+        redaction_state: parse_owner_storage_value(
+            "artifacts",
+            record.artifact_id.clone(),
+            "redaction_state",
+            &record.redaction_state,
+        )?,
+        availability: artifact_availability_for_verification_status(record, verification_status)?,
+        created_by_run_ref: Some(state_ref(
+            StateRecordKind::Run,
+            record.provenance.producer_run_id.as_str(),
+            &ProjectId::new(record.project_id.clone()),
+            Some(&task_id),
+            created_by_run_state_version,
+        ))
+        .into(),
+        created_by_surface_id: Some(record.producer.created_by_surface_id.clone()).into(),
+        created_by_surface_instance_id: Some(
+            record.producer.created_by_surface_instance_id.clone(),
+        )
+        .into(),
+        storage_ref: Some(StorageRef::new(record.uri.clone())).into(),
+    })
+}
+
+fn persistent_artifact_is_verified_current(
+    store: &CoreProjectStore,
+    record: &StoredArtifactRecord,
+) -> CoreResult<bool> {
+    Ok(persistent_artifact_verification_status(store, record)?
+        == PersistentArtifactVerificationStatus::VerifiedCurrent)
+}
+
+fn persistent_artifact_verification_status(
+    store: &CoreProjectStore,
+    record: &StoredArtifactRecord,
+) -> CoreResult<PersistentArtifactVerificationStatus> {
+    store
+        .verify_persistent_artifact_body(record)
+        .map(|verification| verification.status)
+        .map_err(CorePipelineError::from)
+}
+
+fn artifact_availability_for_verification_status(
+    record: &StoredArtifactRecord,
+    verification_status: PersistentArtifactVerificationStatus,
+) -> CoreResult<ArtifactAvailability> {
+    match verification_status {
+        PersistentArtifactVerificationStatus::VerifiedCurrent => {
+            Ok(ArtifactAvailability::Available)
+        }
+        PersistentArtifactVerificationStatus::Missing => Ok(ArtifactAvailability::Missing),
+        PersistentArtifactVerificationStatus::IntegrityFailed => {
+            Ok(ArtifactAvailability::IntegrityFailed)
+        }
+        PersistentArtifactVerificationStatus::Unavailable
+        | PersistentArtifactVerificationStatus::LegacyUnknown => match record.status.as_str() {
+            "missing" => Ok(ArtifactAvailability::Missing),
+            "integrity_failed" => Ok(ArtifactAvailability::IntegrityFailed),
+            "available" | "unavailable" => Ok(ArtifactAvailability::Unavailable),
+            _ => Err(CorePipelineError::Store(
+                StoreError::corrupt_owner_state_value(
+                    "artifacts",
+                    record.artifact_id.clone(),
+                    "status",
+                ),
+            )),
+        },
+        PersistentArtifactVerificationStatus::BoundaryViolation => {
+            Ok(ArtifactAvailability::Unusable)
+        }
+    }
+}
+
+fn effective_artifact_integrity_status(
+    record: &StoredArtifactRecord,
+    verification_status: PersistentArtifactVerificationStatus,
+) -> CoreResult<ArtifactIntegrityStatus> {
+    match verification_status {
+        PersistentArtifactVerificationStatus::VerifiedCurrent => {
+            Ok(ArtifactIntegrityStatus::Verified)
+        }
+        PersistentArtifactVerificationStatus::IntegrityFailed
+        | PersistentArtifactVerificationStatus::BoundaryViolation => {
+            Ok(ArtifactIntegrityStatus::Corrupt)
+        }
+        PersistentArtifactVerificationStatus::LegacyUnknown => {
+            Ok(ArtifactIntegrityStatus::LegacyUnknown)
+        }
+        PersistentArtifactVerificationStatus::Missing
+        | PersistentArtifactVerificationStatus::Unavailable => parse_owner_storage_value(
+            "artifacts",
+            record.artifact_id.clone(),
+            "integrity_status",
+            &record.integrity_status,
+        ),
+    }
+}
+
+fn sanitized_artifact_content_type(
+    record: &StoredArtifactRecord,
+    integrity_status: ArtifactIntegrityStatus,
+) -> Option<String> {
+    match integrity_status {
+        ArtifactIntegrityStatus::Verified => record.content_type.clone(),
+        ArtifactIntegrityStatus::LegacyUnknown | ArtifactIntegrityStatus::Corrupt => record
+            .content_type
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+            .cloned(),
+    }
+}
+
+fn sanitized_artifact_sha256(
+    record: &StoredArtifactRecord,
+    integrity_status: ArtifactIntegrityStatus,
+) -> Option<String> {
+    match integrity_status {
+        ArtifactIntegrityStatus::Verified => record.sha256.clone(),
+        ArtifactIntegrityStatus::LegacyUnknown | ArtifactIntegrityStatus::Corrupt => record
+            .sha256
+            .as_ref()
+            .filter(|value| artifact_sha256_is_lowercase_hex(value))
+            .cloned(),
+    }
+}
+
+fn artifact_sha256_is_lowercase_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn decode_required_json<T>(

@@ -4742,6 +4742,182 @@ fn corrupt_artifact_is_not_linkable_as_existing_artifact() -> Result<(), Box<dyn
 }
 
 #[test]
+fn missing_persistent_artifact_body_blocks_evidence_and_close_without_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let fixture = current_artifact_evidence_and_close_fixture(&harness, "missing_body")?;
+    let before_counts = harness.counts()?;
+    let before_row = persistent_artifact_row(&harness, fixture.artifact_id())?;
+
+    fs::remove_file(&fixture.body_path)?;
+
+    let status = status_with_evidence_and_close(&harness, &fixture.task_id)?;
+    let artifact_ref = status_evidence_artifact_ref(&status.response_value);
+
+    assert_eq!(
+        status.response_value["evidence_summary"]["status"],
+        "blocked"
+    );
+    assert_eq!(artifact_ref["availability"], "missing");
+    assert_close_blocker(&status.response_value, "artifact_unavailable");
+    assert_public_response_has_no_internal_leak(&status, &harness.runtime_home_path);
+
+    let check = close_check(&harness, &fixture.task_id)?;
+    assert_close_blocker(&check.response_value, "artifact_unavailable");
+    assert_public_response_has_no_internal_leak(&check, &harness.runtime_home_path);
+    assert_eq!(harness.counts()?, before_counts);
+    assert_eq!(
+        persistent_artifact_row(&harness, fixture.artifact_id())?,
+        before_row
+    );
+    Ok(())
+}
+
+#[test]
+fn modified_persistent_artifact_body_blocks_existing_link_before_authorization(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "modified_existing")?;
+    let (state_version, artifact_ref) = promote_artifact_for_record_run(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "modified_existing",
+    )?;
+    let artifact_id = artifact_ref.artifact_id.as_str().to_owned();
+    let write_authorization_id = prepare_write_authorization(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        state_version,
+        "modified_existing",
+    )?;
+    let before = harness.counts()?;
+    let before_row = persistent_artifact_row(&harness, &artifact_id)?;
+    let body_path = persistent_artifact_body_path(&harness, &artifact_id)?;
+    fs::write(&body_path, b"{\"fixture\":\"changed_bytes\"}")?;
+
+    let mut request = product_write_record_run_request(
+        "req_run_modified_existing",
+        "idem_run_modified_existing",
+        state_version + 1,
+        &task_id,
+        &change_unit_id,
+        &write_authorization_id,
+        "run_modified_existing",
+    );
+    request.artifact_inputs = vec![existing_artifact_input(
+        "artifact_input_modified_existing",
+        artifact_ref,
+    )];
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "ARTIFACT_MISSING"
+    );
+    assert_eq!(
+        write_authorization_status(&harness, &write_authorization_id)?,
+        "active"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(persistent_artifact_row(&harness, &artifact_id)?, before_row);
+    assert_public_response_has_no_internal_leak(&response, &harness.runtime_home_path);
+    Ok(())
+}
+
+#[test]
+fn changed_persistent_artifact_body_blocks_evidence_and_close_without_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let fixture = current_artifact_evidence_and_close_fixture(&harness, "changed_body")?;
+    let before_counts = harness.counts()?;
+    let before_row = persistent_artifact_row(&harness, fixture.artifact_id())?;
+
+    fs::write(&fixture.body_path, b"{\"fixture\":\"changed\"}")?;
+
+    let status = status_with_evidence_and_close(&harness, &fixture.task_id)?;
+    let artifact_ref = status_evidence_artifact_ref(&status.response_value);
+
+    assert_eq!(
+        status.response_value["evidence_summary"]["status"],
+        "blocked"
+    );
+    assert_eq!(artifact_ref["availability"], "integrity_failed");
+    assert_eq!(artifact_ref["integrity_status"], "corrupt");
+    assert_close_blocker(&status.response_value, "artifact_unavailable");
+
+    let check = close_check(&harness, &fixture.task_id)?;
+    assert_close_blocker(&check.response_value, "artifact_unavailable");
+    assert_eq!(harness.counts()?, before_counts);
+    assert_eq!(
+        persistent_artifact_row(&harness, fixture.artifact_id())?,
+        before_row
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_escape_persistent_artifact_body_is_unusable_without_path_leak(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let fixture = current_artifact_evidence_and_close_fixture(&harness, "symlink_escape")?;
+    let before_counts = harness.counts()?;
+    let outside_path = harness
+        .runtime_home_path
+        .join("projects")
+        .join(PROJECT_ID)
+        .join("outside-artifact-store.json");
+    fs::write(&outside_path, b"{\"fixture\":\"symlink_escape\"}")?;
+    fs::remove_file(&fixture.body_path)?;
+    std::os::unix::fs::symlink(&outside_path, &fixture.body_path)?;
+
+    let status = status_with_evidence_and_close(&harness, &fixture.task_id)?;
+    let artifact_ref = status_evidence_artifact_ref(&status.response_value);
+
+    assert_eq!(artifact_ref["availability"], "unusable");
+    assert_eq!(artifact_ref["integrity_status"], "corrupt");
+    assert_close_blocker(&status.response_value, "artifact_unavailable");
+    assert_public_response_has_no_internal_leak(&status, &harness.runtime_home_path);
+
+    let check = close_check(&harness, &fixture.task_id)?;
+    assert_close_blocker(&check.response_value, "artifact_unavailable");
+    assert_public_response_has_no_internal_leak(&check, &harness.runtime_home_path);
+    assert_eq!(harness.counts()?, before_counts);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_within_artifact_store_keeps_persistent_artifact_usable() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let fixture = current_artifact_evidence_and_close_fixture(&harness, "symlink_inside")?;
+    let original_bytes = fs::read(&fixture.body_path)?;
+    let inside_target = fixture
+        .body_path
+        .parent()
+        .expect("artifact body has parent")
+        .join("symlink-inside-target.json");
+    fs::write(&inside_target, original_bytes)?;
+    fs::remove_file(&fixture.body_path)?;
+    std::os::unix::fs::symlink(&inside_target, &fixture.body_path)?;
+
+    let status = status_with_evidence_and_close(&harness, &fixture.task_id)?;
+    let artifact_ref = status_evidence_artifact_ref(&status.response_value);
+
+    assert_eq!(artifact_ref["availability"], "available");
+    assert_eq!(artifact_ref["integrity_status"], "verified");
+    assert_no_close_blocker(&status.response_value, "artifact_unavailable");
+    Ok(())
+}
+
+#[test]
 fn record_run_staged_artifact_surface_mismatch_rejects_without_effect() -> Result<(), Box<dyn Error>>
 {
     let harness = MethodHarness::new()?;
@@ -10664,6 +10840,26 @@ fn persistent_artifact_row(
     )?)
 }
 
+fn persistent_artifact_body_path(
+    harness: &MethodHarness,
+    artifact_id: &str,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let conn = harness.conn()?;
+    let body_path: String = conn.query_row(
+        "SELECT body_path
+             FROM artifacts
+            WHERE project_id = ?1
+              AND artifact_id = ?2",
+        rusqlite::params![PROJECT_ID, artifact_id],
+        |row| row.get(0),
+    )?;
+    Ok(harness
+        .runtime_home_path
+        .join("projects")
+        .join(PROJECT_ID)
+        .join(body_path))
+}
+
 fn staged_artifact_body_path(
     harness: &MethodHarness,
     handle_id: &str,
@@ -11904,6 +12100,109 @@ fn existing_artifact_input(artifact_input_id: &str, artifact_ref: ArtifactRef) -
         expected_size_bytes: artifact_ref.size_bytes.as_ref().copied().into(),
         redaction_state: Some(artifact_ref.redaction_state).into(),
     }
+}
+
+struct ArtifactAuthorityFixture {
+    task_id: String,
+    artifact_ref: ArtifactRef,
+    body_path: PathBuf,
+}
+
+impl ArtifactAuthorityFixture {
+    fn artifact_id(&self) -> &str {
+        self.artifact_ref.artifact_id.as_str()
+    }
+}
+
+fn current_artifact_evidence_and_close_fixture(
+    harness: &MethodHarness,
+    suffix: &str,
+) -> Result<ArtifactAuthorityFixture, Box<dyn Error>> {
+    enable_record_run_capabilities(harness)?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(harness, suffix)?;
+    let (state_version, artifact_ref) =
+        promote_artifact_for_record_run(harness, &task_id, &change_unit_id, 2, suffix)?;
+    let mut request = record_run_request(
+        &format!("req_artifact_authority_{suffix}"),
+        &format!("idem_artifact_authority_{suffix}"),
+        false,
+        Some(state_version),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![existing_artifact_input(
+        &format!("artifact_input_authority_{suffix}"),
+        artifact_ref.clone(),
+    )];
+    request.evidence_updates = vec![supported_evidence_update(
+        "Reused artifact for corruption coverage.",
+    )];
+    let mut close_assessment =
+        close_assessment_with_risks("Reused artifact for corruption coverage.", Vec::new());
+    close_assessment.result_refs = vec![state_ref(
+        StateRecordKind::Artifact,
+        artifact_ref.artifact_id.as_str(),
+        &ProjectId::new(PROJECT_ID),
+        Some(&TaskId::new(&task_id)),
+        Some(state_version),
+    )];
+    request.close_assessment = Some(close_assessment).into();
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    let body_path = persistent_artifact_body_path(harness, artifact_ref.artifact_id.as_str())?;
+    Ok(ArtifactAuthorityFixture {
+        task_id,
+        artifact_ref,
+        body_path,
+    })
+}
+
+fn status_with_evidence_and_close(
+    harness: &MethodHarness,
+    task_id: &str,
+) -> CoreResult<PipelineResponse> {
+    harness.service.status(
+        StatusRequest {
+            envelope: envelope(
+                &format!("req_status_artifact_authority_{task_id}"),
+                None,
+                false,
+                None,
+                Some(task_id),
+            ),
+            include: StatusInclude {
+                task: true,
+                pending_user_judgments: false,
+                write_authority: false,
+                evidence: true,
+                close: true,
+                guarantees: false,
+            },
+        },
+        invocation(AccessClass::ReadStatus),
+    )
+}
+
+fn close_check(harness: &MethodHarness, task_id: &str) -> CoreResult<PipelineResponse> {
+    harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: &format!("req_close_check_artifact_authority_{task_id}"),
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::ReadStatus),
+    )
+}
+
+fn status_evidence_artifact_ref(response_value: &Value) -> &Value {
+    &response_value["evidence_summary"]["coverage_items"][0]["supporting_artifact_refs"][0]
 }
 
 fn active_current_change_units(
