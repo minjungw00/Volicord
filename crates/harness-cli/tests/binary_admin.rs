@@ -7,6 +7,12 @@ use std::{
     process::{Command, Output},
 };
 
+use harness_cli::setup::{
+    AGENT_SURFACE_ID as SETUP_AGENT_SURFACE_ID,
+    AGENT_SURFACE_INSTANCE_ID as SETUP_AGENT_SURFACE_INSTANCE_ID,
+    USER_INTERACTION_SURFACE_ID as SETUP_USER_SURFACE_ID,
+    USER_INTERACTION_SURFACE_INSTANCE_ID as SETUP_USER_INSTANCE_ID,
+};
 use harness_store::{
     bootstrap::{list_projects, list_surfaces},
     sqlite::{project_state_db_path, registry_db_path},
@@ -31,6 +37,7 @@ fn harness_binary_runs_administrative_initialization_and_registration() -> Resul
     let help = run_without_home(["--help"])?;
     assert_success(&help);
     assert!(stdout(&help).contains("harness init"));
+    assert!(stdout(&help).contains("harness setup local-mcp"));
 
     let version = run_without_home(["--version"])?;
     assert_success(&version);
@@ -170,6 +177,215 @@ fn harness_binary_runs_administrative_initialization_and_registration() -> Resul
     Ok(())
 }
 
+#[test]
+fn harness_binary_setup_help_and_usage_errors() -> Result<(), Box<dyn Error>> {
+    let setup_help = run_without_home(["setup", "--help"])?;
+    assert_success(&setup_help);
+    assert!(stdout(&setup_help).contains("harness setup local-mcp"));
+
+    let local_help = run_without_home(["setup", "local-mcp", "--help"])?;
+    assert_success(&local_help);
+    assert!(stdout(&local_help).contains("--runtime-home PATH"));
+    assert!(stdout(&local_help).contains("--dry-run"));
+
+    let invalid = run_without_home(["setup", "local-mcp", "--not-real"])?;
+    assert_eq!(invalid.status.code(), Some(2));
+    assert!(stderr(&invalid).contains("unknown option"));
+
+    Ok(())
+}
+
+#[test]
+fn harness_binary_json_dry_run_is_parseable_and_does_not_register() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-setup-dry-run")?;
+    let repo_root = runtime_home.path().join("product-repo");
+    let mcp_command = runtime_home.path().join("harness-mcp");
+    fs::create_dir_all(&repo_root)?;
+    fs::write(&mcp_command, "not executed during dry run")?;
+
+    let output = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+        "--dry-run",
+        "--output",
+        "json",
+    ])?;
+    assert_success(&output);
+    let value: Value = serde_json::from_str(&stdout(&output))?;
+
+    assert_eq!(value["status"], "dry_run");
+    assert_eq!(value["preflight"][0]["status"], "planned");
+    assert!(!registry_db_path(runtime_home.path()).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn harness_binary_local_mcp_setup_flow() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-setup-real")?;
+    let repo_root = runtime_home.path().join("product-repo");
+    let config_dir = runtime_home.path().join("configs");
+    let marker = runtime_home.path().join("preflight-marker.txt");
+    fs::create_dir_all(&repo_root)?;
+    let mcp_command = write_test_mcp(runtime_home.path(), &marker)?;
+
+    let first = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+    ])?;
+    assert_success(&first);
+    assert!(stdout(&first).contains("setup: complete"));
+    assert!(stdout(&first).contains("preflight: passed"));
+    assert!(stdout(&first).contains("agent_surface: created"));
+    assert_eq!(fs::read_to_string(&marker)?.lines().count(), 1);
+
+    let state_version_before = state_version(runtime_home.path(), "product-repo")?;
+    let repeated = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+    ])?;
+    assert_success(&repeated);
+    assert!(stdout(&repeated).contains("project: reused"));
+    assert!(stdout(&repeated).contains("agent_surface: reused"));
+    assert_eq!(
+        state_version(runtime_home.path(), "product-repo")?,
+        state_version_before
+    );
+
+    let with_user_and_files = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+        "--with-user-interaction",
+        "--config-dir",
+        path_text(&config_dir).as_str(),
+    ])?;
+    assert_success(&with_user_and_files);
+    assert!(stdout(&with_user_and_files).contains("user_interaction_preflight: passed"));
+    let agent_config = config_dir.join("harness-agent.mcp.json");
+    let user_config = config_dir.join("harness-user-interaction.mcp.json");
+    assert!(agent_config.exists());
+    assert!(user_config.exists());
+    assert!(temporary_files(&config_dir)?.is_empty());
+    let agent_json: Value = serde_json::from_str(&fs::read_to_string(&agent_config)?)?;
+    let user_json: Value = serde_json::from_str(&fs::read_to_string(&user_config)?)?;
+    assert_eq!(
+        agent_json["mcpServers"]["harness-agent"]["env"]["HARNESS_SURFACE_ID"],
+        SETUP_AGENT_SURFACE_ID
+    );
+    assert_eq!(
+        user_json["mcpServers"]["harness-user-interaction"]["env"]["HARNESS_SURFACE_ID"],
+        SETUP_USER_SURFACE_ID
+    );
+    assert!(agent_json["mcpServers"]
+        .as_object()
+        .expect("servers object")
+        .get("harness-user-interaction")
+        .is_none());
+    assert!(user_json["mcpServers"]
+        .as_object()
+        .expect("servers object")
+        .get("harness-agent")
+        .is_none());
+
+    let collision = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+        "--with-user-interaction",
+        "--config-dir",
+        path_text(&config_dir).as_str(),
+    ])?;
+    assert_eq!(collision.status.code(), Some(1));
+    assert!(stderr(&collision).contains("already exists"));
+
+    let overwrite = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+        "--with-user-interaction",
+        "--config-dir",
+        path_text(&config_dir).as_str(),
+        "--overwrite-config",
+    ])?;
+    assert_success(&overwrite);
+    assert!(temporary_files(&config_dir)?.is_empty());
+
+    let surfaces = list_surfaces(runtime_home.path(), "product-repo")?;
+    assert!(surfaces.iter().any(|surface| {
+        surface.surface_id == SETUP_AGENT_SURFACE_ID
+            && surface.surface_instance_id == SETUP_AGENT_SURFACE_INSTANCE_ID
+    }));
+    assert!(surfaces.iter().any(|surface| {
+        surface.surface_id == SETUP_USER_SURFACE_ID
+            && surface.surface_instance_id == SETUP_USER_INSTANCE_ID
+    }));
+
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn harness_binary_preflight_failure_writes_no_configuration() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-setup-preflight-fail")?;
+    let repo_root = runtime_home.path().join("product-repo");
+    let config_dir = runtime_home.path().join("configs");
+    fs::create_dir_all(&repo_root)?;
+    let mcp_command = write_failing_mcp(runtime_home.path())?;
+
+    let failed = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+        "--config-dir",
+        path_text(&config_dir).as_str(),
+    ])?;
+
+    assert_eq!(failed.status.code(), Some(1));
+    assert!(stderr(&failed).contains("preflight failed for agent"));
+    assert!(stderr(&failed).contains("completed registration actions"));
+    assert!(!config_dir.join("harness-agent.mcp.json").exists());
+    Ok(())
+}
+
 fn run_without_home<const N: usize>(args: [&str; N]) -> Result<Output, Box<dyn Error>> {
     let mut command = base_command();
     command.args(args);
@@ -218,4 +434,92 @@ fn stderr(output: &Output) -> String {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
+}
+
+fn state_version(runtime_home: &Path, project_id: &str) -> Result<i64, Box<dyn Error>> {
+    let conn = rusqlite::Connection::open(project_state_db_path(runtime_home, project_id))?;
+    Ok(conn.query_row(
+        "SELECT state_version FROM project_state WHERE project_id = ?1",
+        [project_id],
+        |row| row.get(0),
+    )?)
+}
+
+fn temporary_files(dir: &Path) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut files = Vec::new();
+    if !dir.exists() {
+        return Ok(files);
+    }
+    for entry in fs::read_dir(dir)? {
+        let name = entry?.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            files.push(name);
+        }
+    }
+    Ok(files)
+}
+
+#[cfg(unix)]
+fn write_test_mcp(dir: &Path, marker: &Path) -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let path = dir.join("test-harness-mcp");
+    fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" != \"--check\" ]; then\n\
+             printf 'unexpected argument\\n' >&2\n\
+             exit 2\n\
+             fi\n\
+             printf '%s\\n' \"$HARNESS_SURFACE_ID\" >> {}\n\
+             if [ \"$HARNESS_SURFACE_ID\" = \"{}\" ]; then\n\
+             role='user_interaction'\n\
+             baseline='not_applicable'\n\
+             access='read_status,core_mutation'\n\
+             else\n\
+             role='agent'\n\
+             baseline='full'\n\
+             access='read_status,core_mutation,write_authorization,artifact_registration,run_recording'\n\
+             fi\n\
+             printf 'configuration: valid\\n'\n\
+             printf 'transport: stdio\\n'\n\
+             printf 'runtime_home: %s\\n' \"$HARNESS_HOME\"\n\
+             printf 'project_id: %s\\n' \"$HARNESS_PROJECT_ID\"\n\
+             printf 'surface_id: %s\\n' \"$HARNESS_SURFACE_ID\"\n\
+             printf 'surface_instance_id: %s\\n' \"$HARNESS_SURFACE_INSTANCE_ID\"\n\
+             printf 'interaction_role: %s\\n' \"$role\"\n\
+             printf 'access_classes: %s\\n' \"$access\"\n\
+             printf 'baseline_workflow_access: %s\\n' \"$baseline\"\n\
+             printf 'missing_access_classes: \\n'\n",
+            shell_quote(marker),
+            SETUP_USER_SURFACE_ID
+        ),
+    )?;
+    make_executable(&path)?;
+    Ok(path)
+}
+
+#[cfg(unix)]
+fn write_failing_mcp(dir: &Path) -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let path = dir.join("failing-harness-mcp");
+    fs::write(
+        &path,
+        "#!/bin/sh\nprintf 'forced preflight failure\\n' >&2\nexit 1\n",
+    )?;
+    make_executable(&path)?;
+    Ok(path)
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn shell_quote(path: &Path) -> String {
+    format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
 }

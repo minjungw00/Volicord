@@ -8,11 +8,16 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use harness_cli::registration::{
-    access_class_from_local_access, capability_profile_json, local_access_json, parse_access_class,
-    push_access_class, push_access_classes, validate_role_access_classes,
-    RegistrationMetadataError, ADMIN_METADATA_JSON, BASELINE_WORKFLOW_PROFILE,
-    DEFAULT_ACCESS_CLASS, DEFAULT_SURFACE_KIND,
+use harness_cli::{
+    local_mcp_command::{
+        run_setup_command, setup_usage, LocalMcpCommandError, ProductionLocalMcpProcess,
+    },
+    registration::{
+        access_class_from_local_access, capability_profile_json, local_access_json,
+        parse_access_class, push_access_class, push_access_classes, validate_role_access_classes,
+        RegistrationMetadataError, ADMIN_METADATA_JSON, BASELINE_WORKFLOW_PROFILE,
+        DEFAULT_ACCESS_CLASS, DEFAULT_SURFACE_KIND,
+    },
 };
 use harness_store::bootstrap::{
     initialize_runtime_home, list_projects, list_surfaces, register_project, register_surface,
@@ -53,6 +58,21 @@ where
     S: Into<String>,
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
+    let mut setup_process = ProductionLocalMcpProcess;
+    run_cli_with_setup_process(args, env_var, current_dir, &mut setup_process)
+}
+
+fn run_cli_with_setup_process<I, S, F>(
+    args: I,
+    env_var: F,
+    current_dir: &Path,
+    setup_process: &mut impl harness_cli::local_mcp_command::LocalMcpProcess,
+) -> Result<String, CliError>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+    F: Fn(&str) -> Option<std::ffi::OsString>,
+{
     let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
     let command = args.get(1).map(String::as_str).unwrap_or("--help");
 
@@ -69,6 +89,9 @@ where
             }
         }
         "init" => command_init(&args[2..], env_var, current_dir),
+        "setup" => {
+            run_setup_command(&args[2..], current_dir, setup_process).map_err(CliError::from)
+        }
         "project" => command_project(&args[2..], env_var, current_dir),
         "surface" => command_surface(&args[2..], env_var, current_dir),
         other => Err(CliError::usage(format!(
@@ -425,7 +448,8 @@ fn display_path(path: &Path) -> String {
 
 fn usage() -> String {
     format!(
-        "Usage:\n  harness --help\n  harness --version\n  harness init [--runtime-home-id ID]\n  {}\n  {}\n\nEnvironment:\n  HARNESS_HOME  Override Runtime Home path (default: $HOME/.harness)\n\nThese are local administrative setup commands, not public Harness API methods.\n",
+        "Usage:\n  harness --help\n  harness --version\n  harness init [--runtime-home-id ID]\n  {}\n  {}\n  {}\n\nEnvironment:\n  HARNESS_HOME  Override Runtime Home path (default: $HOME/.harness)\n\nThese are local administrative setup commands, not public Harness API methods.\n",
+        setup_usage().trim_end(),
         project_usage().trim_end(),
         surface_usage().trim_end()
     )
@@ -489,6 +513,15 @@ impl From<RegistrationMetadataError> for CliError {
 impl From<RuntimeHomeResolutionError> for CliError {
     fn from(error: RuntimeHomeResolutionError) -> Self {
         Self::Runtime(error.to_string())
+    }
+}
+
+impl From<LocalMcpCommandError> for CliError {
+    fn from(error: LocalMcpCommandError) -> Self {
+        match error {
+            LocalMcpCommandError::Usage(message) => Self::Usage(message),
+            LocalMcpCommandError::Runtime(message) => Self::Runtime(message),
+        }
     }
 }
 
