@@ -25,41 +25,49 @@
 
 대기 중인 판단은 결정을 요청하는 기록입니다. 결정 자체가 아니며, 증거를 만들거나, 현재 적용 범위를 바꾸거나, `Write Authorization`을 만들거나, `Task`를 닫지 않습니다.
 
-이 메서드가 대기 판단을 만들 때 Core는 현재 상태에서 `JudgmentBasis`를 파생합니다. 호출자는 `scope_revision`, `close_basis_revision`, 세션 바인딩 필드, 접근 등급 필드, 현재 닫기 근거 권한 필드를 제출하지 않습니다.
+이 메서드가 대기 판단을 만들 때 Core는 현재 상태에서 `JudgmentBasis`를 파생합니다. 호출자는 `basis`, `scope_revision`, `close_basis_revision`, 세션 바인딩 필드, 접근 등급 필드, 확인된 행위자 맥락, 기계 동작, 해결 결과, 현재 닫기 근거 권한 필드를 제출하지 않습니다.
 
 ## 필수 입력
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
-- `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `question`, `options`, `context`, `affected_refs`, `required_for`, `expires_at`.
+- `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `question`, `context`, `affected_refs`, `required_for`, `expires_at`.
 - 서로 이해할 수 있는 `options`를 가진 초점이 분명한 `question`.
 - 사용자가 숨은 대화 상태에 기대지 않고 정확한 사안을 판단할 수 있는 충분한 `context`.
-- 권한을 지니지 않는 판단 종류에서는 호출자가 작성한 각 선택지가 기계 판독 가능한 `resolution_outcome`을 가져야 합니다. 담당 문서가 더 좁은 선택지 집합을 정의하지 않는 한 `machine_action`은 null입니다.
-- 권한을 지니는 판단 종류에서는 요청 입력에 호출자가 작성한 `machine_action` 또는 `resolution_outcome` 매핑이 들어가지 않습니다. 메서드 담당 문서가 권한이 아닌 표시 후보를 정의하지 않는 한 호출자는 `options: []`를 사용하며, Core가 기준 권한 선택지, 현지화된 라벨, 결과 설명, `machine_action`, `resolution_outcome`을 만듭니다.
+- 권한을 지니지 않는 판단 종류에서는 전송 필드가 선택-null 허용이더라도 Core 검증상 `options`가 필요합니다. 호출자가 작성한 `UserJudgmentOptionInput[]`에는 선택지가 하나 이상 있어야 하며, 각 선택지는 `option_id`, `label`, `description`, `consequence`, `is_default`만 가집니다.
+- 권한을 지니는 판단 종류에서는 `options`를 생략하거나 `null` 또는 `[]`로 보낼 수 있습니다. 호출자가 작성한 선택지가 비어 있지 않으면 거절됩니다. Core가 기준 권한 선택지, 현지화된 라벨, 결과 설명, `machine_action`, `resolution_outcome`을 만듭니다.
+- `judgment_kind=sensitive_approval`에서는 `sensitive_action_scope`가 `null`이 아닌 `SensitiveActionScope`로 있어야 합니다. `product_decision`, `technical_decision`, `scope_decision`, `cancellation`에서는 `null`이 아닌 `sensitive_action_scope`가 거절됩니다. `final_acceptance`와 `residual_risk_acceptance`는 현재 닫기 근거에서 근거를 파생하며, `sensitive_action_scope`를 호출자 제출 권한으로 사용하지 않습니다.
 
 ## 요청 스키마
 
 이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
 
-이 메서드 소유 요청 블록에 표시된 모든 필드는 필드 참고가 명시적으로 선택 필드라고 표시하지 않는 한 `params`의 필수 멤버입니다. `T | null`은 멤버가 반드시 있어야 하며 JSON `null`을 담을 수 있다는 뜻입니다.
+이 메서드 소유 요청 블록에 표시된 모든 필드는 `?`로 표시되지 않는 한 `params`의 필수 멤버입니다. `T | null`은 있는 멤버가 JSON `null`을 담을 수 있다는 뜻입니다. `field?: T | null`은 호출자가 멤버를 생략하거나 `null`로 보낼 수 있고, 생략과 명시적 `null`이 같은 의미로 디코드된다는 뜻입니다.
 
 ```yaml
 RequestUserJudgmentRequest:
   envelope: ToolEnvelope
   task_id: string
   change_unit_id: string | null
+  sensitive_action_scope?: SensitiveActionScope | null
   judgment_kind: string
   presentation: string
   question: string
-  options: UserJudgmentOption[]
+  options?: UserJudgmentOptionInput[] | null
   context: UserJudgmentContext
   affected_refs: StateRecordRef[]
   required_for: string[]
   expires_at: string | null
 ```
 
+요청 필드 참고:
+- `options`와 `sensitive_action_scope`는 선택-null 허용 공개 요청 필드입니다. 생략과 명시적 `null`은 같은 의미입니다.
+- `basis`, `scope_revision`, `close_basis_revision`, 확인된 행위자 맥락, `machine_action`, `resolution_outcome`은 공개 요청 필드가 아닙니다.
+- 권한을 지니는 판단 종류는 `scope_decision`, `sensitive_approval`, `final_acceptance`, `residual_risk_acceptance`, `cancellation`입니다. Core는 이 판단 종류에 대해 기준 권한 선택지를 생성합니다.
+- 호출자가 작성한 선택지는 `product_decision`과 `technical_decision`에서만 허용됩니다.
+
 중첩 형태 담당 문서:
-- 판단 후보 필드는 `UserJudgmentCandidate`와 맞습니다. 선택지와 맥락 형태는 [API 판단 스키마](schema-judgment.md#userjudgmentcandidate)가 담당합니다.
-- `affected_refs`는 `StateRecordRef[]`를 사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md)가 담당합니다.
+- 판단 후보 필드는 `UserJudgmentCandidate`와 맞습니다. 요청 선택지 입력, 출력 선택지, 맥락, `JudgmentBasis`, `SensitiveActionScope` 형태는 [API 판단 스키마](schema-judgment.md#userjudgmentoptioninput)가 담당합니다.
+- `affected_refs`는 `StateRecordRef[]`를 사용합니다. 중첩 형태는 [API 상태 스키마](schema-state.md#state-references)가 담당합니다.
 - `judgment_kind`, `presentation`, `required_for` 값은 [API 값 집합의 판단 값](schema-value-sets.md#judgment-values)이 담당합니다.
 
 ## 접근 요구사항
@@ -150,7 +158,7 @@ RequestUserJudgmentRequest:
 
 커밋 시 대기 중인 `user_judgments` 행과 관련 차단 사유 상태를 지속할 수 있습니다. 정확한 저장 효과는 아래 저장 담당 문서가 담당합니다.
 
-## 최소 유효 요청
+## 호출자가 작성한 선택지를 쓰는 비권한 요청
 
 메서드 안의 전제: `task_banner_001`과 `cu_banner_001`은 `proj_banner_001`에 이미 있으며, 현재 프로젝트 `state_version`은 `51`입니다.
 
@@ -171,29 +179,25 @@ params:
   change_unit_id: cu_banner_001
   judgment_kind: product_decision
   presentation: short
-  question: "Should the dashboard banner use concise copy?"
+  question: "대시보드 배너에 간결한 문구를 사용할까요?"
   options:
     - option_id: concise
-      label: "Use concise copy"
-      description: "Record the user-owned product decision to keep the shorter banner copy."
-      consequence: "The pending banner-copy decision can be treated as resolved."
-      machine_action: null
-      resolution_outcome: accepted
+      label: "간결한 문구 사용"
+      description: "더 짧은 배너 문구를 유지한다는 사용자 소유 제품 결정을 기록합니다."
+      consequence: "선택되면 Core는 간결한 문구 제품 결정을 기록합니다."
       is_default: true
     - option_id: expanded
-      label: "Use expanded copy"
-      description: "Record that the banner copy should include a longer explanation."
-      consequence: "The Task remains open for the expanded banner-copy change."
-      machine_action: null
-      resolution_outcome: rejected
+      label: "확장 문구 사용"
+      description: "배너 문구에 더 긴 설명을 포함한다는 사용자 소유 제품 결정을 기록합니다."
+      consequence: "선택되면 Core는 확장 문구 제품 결정을 기록합니다."
       is_default: false
   context:
-    summary: "The dashboard banner has two candidate copy lengths and needs a user-owned product decision."
+    summary: "대시보드 배너에는 두 가지 문구 길이 후보가 있으며 사용자 소유 제품 결정이 필요합니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
     constraints:
-      - "Only banner copy length is in scope for this judgment request."
+      - "이 판단 요청은 배너 문구 길이만 다룹니다."
   affected_refs:
     - record_kind: task
       record_id: task_banner_001
@@ -202,6 +206,102 @@ params:
       state_version: 51
   required_for:
     - close_complete
+  expires_at: null
+```
+
+## Core 생성 선택지를 쓰는 권한 요청
+
+메서드 안의 전제: `task_scope_001`과 `cu_scope_001`은 `proj_scope_001`에 이미 있으며, 현재 프로젝트 `state_version`은 `17`입니다.
+
+```yaml
+method: harness.request_user_judgment
+params:
+  envelope:
+    project_id: proj_scope_001
+    task_id: task_scope_001
+    actor_kind: agent
+    surface_id: surface_scope
+    request_id: req_scope_decision_001
+    idempotency_key: idem_scope_decision_001
+    expected_state_version: 17
+    dry_run: false
+    locale: ko-KR
+  task_id: task_scope_001
+  change_unit_id: cu_scope_001
+  judgment_kind: scope_decision
+  presentation: short
+  question: "이 Change Unit의 Task 범위를 이메일 전용 로그인으로 좁혀도 됩니까?"
+  options: null
+  context:
+    summary: "제안된 범위 변경은 이 Change Unit에서 소셜 로그인을 제외합니다."
+    related_refs: []
+    artifact_refs: []
+    visible_risks: []
+    constraints:
+      - "이 판단은 요청된 범위 변경만 다룹니다."
+  affected_refs:
+    - record_kind: task
+      record_id: task_scope_001
+      project_id: proj_scope_001
+      task_id: task_scope_001
+      state_version: 17
+  required_for:
+    - scope_update
+  expires_at: null
+```
+
+커밋되면 Core가 `scope_decision`의 기준 권한 선택지를 생성합니다. 호출자는 `machine_action`, `resolution_outcome`, `basis`를 제출하지 않습니다.
+
+## 민감 동작 승인 요청
+
+메서드 안의 전제: `task_export_001`과 현재 적용 Change Unit `cu_export_001`은 `proj_export_001`에 이미 있으며, 현재 프로젝트 `state_version`은 `28`입니다.
+
+```yaml
+method: harness.request_user_judgment
+params:
+  envelope:
+    project_id: proj_export_001
+    task_id: task_export_001
+    actor_kind: agent
+    surface_id: surface_export
+    request_id: req_sensitive_export_001
+    idempotency_key: idem_sensitive_export_001
+    expected_state_version: 28
+    dry_run: false
+    locale: ko-KR
+  task_id: task_export_001
+  change_unit_id: cu_export_001
+  sensitive_action_scope:
+    action_kind: export_customer_report
+    description: "지원 인계를 위한 고객 보고서를 내보냅니다."
+    intended_paths:
+      - reports/customer-handoff.csv
+    sensitive_categories:
+      - customer_data
+    command_or_tool_summary: "보고서 내보내기 도구를 한 번 실행합니다."
+    network_or_host_summary: null
+    secret_or_credential_summary: null
+    capability_claim: "내보내기는 지정된 보고서 경로로 제한됩니다."
+    expires_at: null
+  judgment_kind: sensitive_approval
+  presentation: short
+  question: "이 특정 고객 보고서 내보내기를 승인합니까?"
+  options: null
+  context:
+    summary: "내보내기에는 고객 데이터가 포함되므로 실행 전에 명시적인 사용자 승인이 필요합니다."
+    related_refs: []
+    artifact_refs: []
+    visible_risks: []
+    constraints:
+      - "승인은 sensitive_action_scope에 설명된 보고서 경로와 내보내기에만 적용됩니다."
+  affected_refs:
+    - record_kind: change_unit
+      record_id: cu_export_001
+      project_id: proj_export_001
+      task_id: task_export_001
+      state_version: 28
+  required_for:
+    - prepare_write
   expires_at: null
 ```
 
@@ -232,29 +332,29 @@ user_judgment:
   judgment_kind: product_decision
   status: pending
   presentation: short
-  question: "Should the dashboard banner use concise copy?"
+  question: "대시보드 배너에 간결한 문구를 사용할까요?"
   options:
     - option_id: concise
-      label: "Use concise copy"
-      description: "Record the user-owned product decision to keep the shorter banner copy."
-      consequence: "The pending banner-copy decision can be treated as resolved."
-      machine_action: null
+      label: "간결한 문구 사용"
+      description: "더 짧은 배너 문구를 유지한다는 사용자 소유 제품 결정을 기록합니다."
+      consequence: "선택되면 Core는 간결한 문구 제품 결정을 기록합니다."
+      machine_action: accept
       resolution_outcome: accepted
       is_default: true
     - option_id: expanded
-      label: "Use expanded copy"
-      description: "Record that the banner copy should include a longer explanation."
-      consequence: "The Task remains open for the expanded banner-copy change."
-      machine_action: null
-      resolution_outcome: rejected
+      label: "확장 문구 사용"
+      description: "배너 문구에 더 긴 설명을 포함한다는 사용자 소유 제품 결정을 기록합니다."
+      consequence: "선택되면 Core는 확장 문구 제품 결정을 기록합니다."
+      machine_action: accept
+      resolution_outcome: accepted
       is_default: false
   context:
-    summary: "The dashboard banner has two candidate copy lengths and needs a user-owned product decision."
+    summary: "대시보드 배너에는 두 가지 문구 길이 후보가 있으며 사용자 소유 제품 결정이 필요합니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
     constraints:
-      - "Only banner copy length is in scope for this judgment request."
+      - "이 판단 요청은 배너 문구 길이만 다룹니다."
   affected_refs:
     - record_kind: task
       record_id: task_banner_001
@@ -294,13 +394,13 @@ state:
     close_reason: none
     result: none
     closed_at: null
-  goal_summary: "Decide dashboard banner copy length."
-  scope_summary: "Dashboard banner copy length decision."
+  goal_summary: "대시보드 배너 문구 길이를 결정합니다."
+  scope_summary: "대시보드 배너 문구 길이 결정."
   non_goals:
-    - "Changing dashboard layout."
+    - "대시보드 레이아웃 변경."
   acceptance_criteria:
-    - "The banner copy length matches the user's product decision."
-  autonomy_boundary: "Stay within dashboard banner copy."
+    - "배너 문구 길이가 사용자의 제품 결정과 일치합니다."
+  autonomy_boundary: "대시보드 배너 문구 안에서만 작업합니다."
   active_change_unit_ref:
     record_kind: change_unit
     record_id: cu_banner_001

@@ -522,7 +522,7 @@ legacy_unbound
 - 민감 승인 질문은 민감 동작 범위가 현재 민감 동작 요구사항과 겹칠 때만 관련됩니다.
 - `informational` 판단은 감사 또는 표시 맥락이며 그 자체로 쓰기, 실행 기록, 닫기를 차단하지 않습니다.
 
-`UserJudgmentOption.option_id`의 범위는 그 판단 안으로 제한되며 전역 값 집합이 아닙니다. 화면에 보이는 선택지 라벨은 기준 값이 아니라 표시 텍스트일 뿐입니다. `UserJudgmentOption.machine_action`은 값이 있을 때 위의 권한 선택지 동작 값을 사용합니다. `UserJudgmentOption.resolution_outcome`은 `JudgmentResolutionOutcome`을 사용합니다. 선택지 라벨과 설명 문구가 기계 판독 가능한 동작이나 결과를 뒤집으면 안 됩니다.
+`UserJudgmentOption.option_id`의 범위는 그 판단 안으로 제한되며 전역 값 집합이 아닙니다. 화면에 보이는 선택지 라벨은 기준 값이 아니라 표시 텍스트일 뿐입니다. 현재 공개 `UserJudgmentOption.machine_action`은 위의 권한 선택지 동작 값을 사용합니다. `UserJudgmentOption.resolution_outcome`은 `JudgmentResolutionOutcome`을 사용합니다. 선택지 라벨과 설명 문구가 기계 판독 가능한 동작이나 결과를 뒤집으면 안 됩니다.
 
 ## 오류 세부사항 보조 값
 

@@ -25,40 +25,48 @@ This document does not own:
 
 The pending judgment is a request for a decision. It is not the decision itself, does not create evidence, does not change current scope, does not create `Write Authorization`, and does not close a `Task`.
 
-When this method creates a pending judgment, Core derives a `JudgmentBasis` from current state. Callers do not submit `scope_revision`, `close_basis_revision`, session-binding fields, access-class fields, or current close-basis authority fields.
+When this method creates a pending judgment, Core derives a `JudgmentBasis` from current state. Callers do not submit `basis`, `scope_revision`, `close_basis_revision`, session-binding fields, access-class fields, verified actor context, machine action, resolution outcome, or current close-basis authority fields.
 
 ## Required inputs
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
-- `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `question`, `options`, `context`, `affected_refs`, `required_for`, and `expires_at`.
+- `task_id`, `change_unit_id`, `judgment_kind`, `presentation`, `question`, `context`, `affected_refs`, `required_for`, and `expires_at`.
 - A focused `question` with mutually understandable `options`.
-- For non-authority judgment kinds, each caller-authored option must carry a machine-readable `resolution_outcome`; `machine_action` is null unless an owner defines a narrower option set.
-- For authority-bearing judgment kinds, request input does not contain caller-authored `machine_action` or `resolution_outcome` mappings. Callers use `options: []` unless a method owner defines non-authoritative display candidates, and Core creates the canonical authority options, localized labels, consequences, `machine_action`, and `resolution_outcome`.
+- For non-authority judgment kinds, `options` is required by Core validation even though the wire field is optional-nullable. The caller-authored `UserJudgmentOptionInput[]` must contain at least one option, and each option has only `option_id`, `label`, `description`, `consequence`, and `is_default`.
+- For authority-bearing judgment kinds, `options` may be omitted, `null`, or `[]`. Non-empty caller-authored options reject. Core creates the canonical authority options, localized labels, consequences, `machine_action`, and `resolution_outcome`.
+- For `judgment_kind=sensitive_approval`, `sensitive_action_scope` must be present with a non-null `SensitiveActionScope`. For `product_decision`, `technical_decision`, `scope_decision`, and `cancellation`, a non-null `sensitive_action_scope` rejects. `final_acceptance` and `residual_risk_acceptance` derive their basis from the current close basis and do not use `sensitive_action_scope` as caller-submitted authority.
 - Enough `context` for the user to judge the exact issue without relying on hidden chat state.
 
 ## Request schema
 
 This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
 
-All fields shown in this method-owned request block are required members of `params` unless a field note explicitly marks a member optional; `T | null` means the member must be present and may contain JSON `null`.
+All fields shown in this method-owned request block are required members of `params` unless marked with `?`. `T | null` means a present member may contain JSON `null`; `field?: T | null` means callers may omit the member or send `null`, and omission and explicit `null` decode to the same semantic value.
 
 ```yaml
 RequestUserJudgmentRequest:
   envelope: ToolEnvelope
   task_id: string
   change_unit_id: string | null
+  sensitive_action_scope?: SensitiveActionScope | null
   judgment_kind: string
   presentation: string
   question: string
-  options: UserJudgmentOption[]
+  options?: UserJudgmentOptionInput[] | null
   context: UserJudgmentContext
   affected_refs: StateRecordRef[]
   required_for: string[]
   expires_at: string | null
 ```
 
+Request field notes:
+- `options` and `sensitive_action_scope` are optional-nullable public request fields. Omission and explicit `null` have the same meaning.
+- `basis`, `scope_revision`, `close_basis_revision`, verified actor context, `machine_action`, and `resolution_outcome` are not public request fields.
+- Authority-bearing judgment kinds are `scope_decision`, `sensitive_approval`, `final_acceptance`, `residual_risk_acceptance`, and `cancellation`. Core generates canonical authority options for those kinds.
+- Caller-authored options are allowed only for `product_decision` and `technical_decision`.
+
 Nested owner links:
-- The judgment-candidate fields align with `UserJudgmentCandidate`; option and context shapes are owned by [API Judgment Schemas](schema-judgment.md#userjudgmentcandidate).
+- The judgment-candidate fields align with `UserJudgmentCandidate`; request option input, output option, context, `JudgmentBasis`, and `SensitiveActionScope` shapes are owned by [API Judgment Schemas](schema-judgment.md#userjudgmentoptioninput).
 - `affected_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
 - `judgment_kind`, `presentation`, and `required_for` values are owned by [API Value Sets judgment values](schema-value-sets.md#judgment-values).
 
@@ -150,7 +158,7 @@ For `dry_run=true`, a valid preview:
 
 On commit, the method may persist a pending `user_judgments` row and related blocker state. Exact storage effects are owned by the storage documents linked below.
 
-## Minimal valid request
+## Non-authority request with caller-authored options
 
 Method-local precondition: `task_banner_001` and `cu_banner_001` already exist in `proj_banner_001`; the current project `state_version` is `51`.
 
@@ -176,16 +184,12 @@ params:
     - option_id: concise
       label: "Use concise copy"
       description: "Record the user-owned product decision to keep the shorter banner copy."
-      consequence: "The pending banner-copy decision can be treated as resolved."
-      machine_action: null
-      resolution_outcome: accepted
+      consequence: "If selected, Core records the concise-copy product decision."
       is_default: true
     - option_id: expanded
       label: "Use expanded copy"
       description: "Record that the banner copy should include a longer explanation."
-      consequence: "The Task remains open for the expanded banner-copy change."
-      machine_action: null
-      resolution_outcome: rejected
+      consequence: "If selected, Core records the expanded-copy product decision."
       is_default: false
   context:
     summary: "The dashboard banner has two candidate copy lengths and needs a user-owned product decision."
@@ -200,19 +204,104 @@ params:
       project_id: proj_banner_001
       task_id: task_banner_001
       state_version: 51
-  basis:
-    task_id: task_banner_001
-    change_unit_id: cu_banner_001
-    scope_revision: 1
-    close_basis_revision: null
-    baseline_ref: baseline_banner_001
-    result_refs: []
-    residual_risk_ids: []
-    sensitive_action_scope: null
-    created_at_state_version: 51
-    compatibility_status: current
   required_for:
     - close_complete
+  expires_at: null
+```
+
+## Authority-bearing request with Core-generated options
+
+Method-local precondition: `task_scope_001` and `cu_scope_001` already exist in `proj_scope_001`; the current project `state_version` is `17`.
+
+```yaml
+method: harness.request_user_judgment
+params:
+  envelope:
+    project_id: proj_scope_001
+    task_id: task_scope_001
+    actor_kind: agent
+    surface_id: surface_scope
+    request_id: req_scope_decision_001
+    idempotency_key: idem_scope_decision_001
+    expected_state_version: 17
+    dry_run: false
+    locale: en-US
+  task_id: task_scope_001
+  change_unit_id: cu_scope_001
+  judgment_kind: scope_decision
+  presentation: short
+  question: "Should the Task scope narrow to email-only sign-in for this Change Unit?"
+  options: null
+  context:
+    summary: "The proposed scope update removes social sign-in from this Change Unit."
+    related_refs: []
+    artifact_refs: []
+    visible_risks: []
+    constraints:
+      - "Only the requested scope change is covered by this judgment."
+  affected_refs:
+    - record_kind: task
+      record_id: task_scope_001
+      project_id: proj_scope_001
+      task_id: task_scope_001
+      state_version: 17
+  required_for:
+    - scope_update
+  expires_at: null
+```
+
+If committed, Core generates the canonical authority options for `scope_decision`; the caller does not submit `machine_action`, `resolution_outcome`, or `basis`.
+
+## Sensitive-approval request
+
+Method-local precondition: `task_export_001` and the current Change Unit `cu_export_001` already exist in `proj_export_001`; the current project `state_version` is `28`.
+
+```yaml
+method: harness.request_user_judgment
+params:
+  envelope:
+    project_id: proj_export_001
+    task_id: task_export_001
+    actor_kind: agent
+    surface_id: surface_export
+    request_id: req_sensitive_export_001
+    idempotency_key: idem_sensitive_export_001
+    expected_state_version: 28
+    dry_run: false
+    locale: en-US
+  task_id: task_export_001
+  change_unit_id: cu_export_001
+  sensitive_action_scope:
+    action_kind: export_customer_report
+    description: "Export a customer report for the support handoff."
+    intended_paths:
+      - reports/customer-handoff.csv
+    sensitive_categories:
+      - customer_data
+    command_or_tool_summary: "Run the report export tool once."
+    network_or_host_summary: null
+    secret_or_credential_summary: null
+    capability_claim: "The export is limited to the named report path."
+    expires_at: null
+  judgment_kind: sensitive_approval
+  presentation: short
+  question: "Do you approve this specific customer-report export?"
+  options: null
+  context:
+    summary: "The export contains customer data and needs explicit user approval before the action runs."
+    related_refs: []
+    artifact_refs: []
+    visible_risks: []
+    constraints:
+      - "Approval covers only the report path and export described in sensitive_action_scope."
+  affected_refs:
+    - record_kind: change_unit
+      record_id: cu_export_001
+      project_id: proj_export_001
+      task_id: task_export_001
+      state_version: 28
+  required_for:
+    - prepare_write
   expires_at: null
 ```
 
@@ -248,16 +337,16 @@ user_judgment:
     - option_id: concise
       label: "Use concise copy"
       description: "Record the user-owned product decision to keep the shorter banner copy."
-      consequence: "The pending banner-copy decision can be treated as resolved."
-      machine_action: null
+      consequence: "If selected, Core records the concise-copy product decision."
+      machine_action: accept
       resolution_outcome: accepted
       is_default: true
     - option_id: expanded
       label: "Use expanded copy"
       description: "Record that the banner copy should include a longer explanation."
-      consequence: "The Task remains open for the expanded banner-copy change."
-      machine_action: null
-      resolution_outcome: rejected
+      consequence: "If selected, Core records the expanded-copy product decision."
+      machine_action: accept
+      resolution_outcome: accepted
       is_default: false
   context:
     summary: "The dashboard banner has two candidate copy lengths and needs a user-owned product decision."

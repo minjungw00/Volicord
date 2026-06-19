@@ -520,7 +520,7 @@ Pending-judgment relevance:
 - For sensitive approval, the pending question is relevant only when its sensitive-action scope overlaps the current sensitive action requirement.
 - `informational` judgments are audit or display context and do not block write, run, or close operations by themselves.
 
-`UserJudgmentOption.option_id` is scoped to the judgment and is not a global value set. Rendered option labels are display text only. `UserJudgmentOption.machine_action` uses the authority option action values above when present. `UserJudgmentOption.resolution_outcome` uses `JudgmentResolutionOutcome`; option labels and explanatory text must not invert the machine-readable action or outcome.
+`UserJudgmentOption.option_id` is scoped to the judgment and is not a global value set. Rendered option labels are display text only. Current public `UserJudgmentOption.machine_action` uses the authority option action values above. `UserJudgmentOption.resolution_outcome` uses `JudgmentResolutionOutcome`; option labels and explanatory text must not invert the machine-readable action or outcome.
 
 ## Error detail helper values
 

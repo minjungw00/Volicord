@@ -231,16 +231,16 @@ user_judgment:
     - option_id: keep
       label: "Keep illustration"
       description: "Record the user-owned product decision to keep the illustration."
-      consequence: "The pending empty-state decision can be treated as resolved."
-      machine_action: null
+      consequence: "If selected, Core records the keep-illustration product decision."
+      machine_action: accept
       resolution_outcome: accepted
       is_default: true
     - option_id: replace
       label: "Replace illustration"
       description: "Record that the illustration should be replaced."
-      consequence: "The Task remains open for an illustration replacement."
-      machine_action: null
-      resolution_outcome: rejected
+      consequence: "If selected, Core records the replace-illustration product decision."
+      machine_action: accept
+      resolution_outcome: accepted
       is_default: false
   context:
     summary: "The empty-state screen has a proposed illustration and needs a user-owned product decision."
@@ -270,7 +270,7 @@ user_judgment:
     - close_complete
   resolution:
     selected_option_id: keep
-    machine_action: null
+    machine_action: accept
     resolution_outcome: accepted
     answer:
       product_decision:

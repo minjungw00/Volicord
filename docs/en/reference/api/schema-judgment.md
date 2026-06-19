@@ -8,6 +8,7 @@ This document owns:
 
 - `UserJudgment`
 - `UserJudgmentCandidate`
+- `UserJudgmentOptionInput`
 - `UserJudgmentOption`
 - `UserJudgmentContext`
 - `JudgmentBasis`
@@ -34,6 +35,8 @@ Judgment schemas preserve the field structure of a user-owned choice. They are n
 `UserJudgmentCandidate` is not a pending judgment.
 
 `UserJudgment` and `UserJudgmentCandidate` are distinct shapes. Method owners define when each shape appears in a response.
+
+`UserJudgmentOptionInput` and `UserJudgmentOption` are distinct shapes. `UserJudgmentOptionInput` is caller request input only where a method allows caller-authored options; `UserJudgmentOption` is Core-owned state or output.
 
 A `RecordUserJudgmentPayload` is not the schema for current scope, evidence, `Write Authorization`, a close result, or a broad approval.
 
@@ -87,7 +90,7 @@ JudgmentBasis:
   compatibility_status: string
 ```
 
-Core creates `JudgmentBasis` from current state when it creates the judgment. Callers do not submit `scope_revision`, `close_basis_revision`, current close-basis data, or session-binding data.
+Core creates `JudgmentBasis` from current state when it creates the judgment. `JudgmentBasis` is server-derived persisted state, not a public request field. Callers do not submit `basis`, `scope_revision`, `close_basis_revision`, current close-basis data, or session-binding data.
 
 `compatibility_status` values are owned by [judgment values](schema-value-sets.md#judgment-values). `legacy_unbound` marks a preserved judgment without a basis. `stale` and `superseded` judgments remain stored when needed for audit but are not eligible to satisfy current close, write, or sensitive-approval requirements.
 
@@ -108,16 +111,24 @@ UserJudgmentCandidate:
   expires_at: string | null
 ```
 
+<a id="userjudgmentoptioninput"></a>
 ## Option and context shapes
 
 ```yaml
+UserJudgmentOptionInput:
+  option_id: string
+  label: string
+  description: string
+  consequence: string
+  is_default: boolean
+
 UserJudgmentOption:
   option_id: string
   label: string
   description: string
   consequence: string
-  machine_action: string | null
-  resolution_outcome: string | null
+  machine_action: string
+  resolution_outcome: string
   is_default: boolean
 
 UserJudgmentContext:
@@ -130,9 +141,13 @@ UserJudgmentContext:
 
 `option_id` is scoped to the judgment. `label`, `description`, `consequence`, `summary`, and `constraints` entries are free-form display strings. Rendered labels are display text, not canonical schema values.
 
-`machine_action` is the canonical authority action for authority-bearing options. For current Core-returned authority options it is required, and `resolution_outcome` is also required. Null `resolution_outcome` is only for legacy ambiguous audit options. `machine_action=accept` maps to `resolution_outcome=accepted`; `machine_action=reject` maps to `resolution_outcome=rejected`; `machine_action=defer` maps to `resolution_outcome=deferred` only where the method or semantic owner permits deferral. `blocked` is not a caller-selected authority option unless the method owner explicitly defines that path.
+`UserJudgmentOptionInput` is the caller request shape for custom options where the method owner allows caller-authored options. It does not contain `machine_action` or `resolution_outcome`; public requests that include those fields inside `options` are invalid.
+
+`UserJudgmentOption` is the current Core-owned option state/output shape. Current public options include non-null `machine_action` and non-null `resolution_outcome`. `machine_action=accept` maps to `resolution_outcome=accepted`; `machine_action=reject` maps to `resolution_outcome=rejected`; `machine_action=defer` maps to `resolution_outcome=deferred` only where the method or semantic owner permits deferral. `blocked` is not a caller-selected authority option unless the method owner explicitly defines that path.
 
 For authority-bearing judgment kinds, callers do not author visible-label-to-machine-outcome mappings in request input. Core creates the authority option actions, outcomes, localized labels, and consequences. Option labels or explanatory text must not invert the machine-readable action or outcome. Existing legacy options without an outcome are audit-only.
+
+Legacy persisted option representations are compatibility data, not public request schemas. They must not be used to infer request fields.
 
 ## Resolution and answer payload
 
@@ -140,7 +155,7 @@ For authority-bearing judgment kinds, callers do not author visible-label-to-mac
 UserJudgmentResolution:
   selected_option_id: string
   machine_action: string | null
-  resolution_outcome: string | null
+  resolution_outcome: string
   answer: RecordUserJudgmentPayload
   note: string | null
   accepted_risks: AcceptedRiskInput[]
@@ -158,7 +173,7 @@ RecordUserJudgmentPayload:
 
 `selected_option_id` and `note` are request-level and resolution-level fields. `selected_option_id` is scoped to the judgment option set. `note` is a free-form display string.
 
-`machine_action` and `resolution_outcome` are copied from the selected `UserJudgmentOption`. The selected option's stored action and outcome are authoritative. New `status=resolved` judgments have non-null `resolution_outcome`; null is used only when projecting legacy ambiguous audit rows. Any outcome, decision, or acceptance field inside `answer` must agree with the selected option; free-form answer text cannot grant authority.
+`machine_action` and `resolution_outcome` are copied from the selected `UserJudgmentOption`. The selected option's stored action and outcome are authoritative. New `status=resolved` judgments have non-null `machine_action` and non-null `resolution_outcome`; nullable `machine_action` only preserves legacy audit projection. Any outcome, decision, or acceptance field inside `answer` must agree with the selected option; free-form answer text cannot grant authority.
 
 `resolved_by_actor_kind` uses the same controlled value set as `ToolEnvelope.actor_kind`; see [actor values](schema-value-sets.md#actor-values). It is attribution, not proof of user authority. Authority-bearing resolution additionally requires compatible internal `VerifiedActorContext` provenance from a bound `user_interaction` surface.
 
@@ -198,6 +213,8 @@ SensitiveActionScope:
 The presence of `SensitiveActionScope` does not define where sensitive-action approval is required. Method owners define where this shape appears, and it does not replace the `harness.prepare_write` path for product-file writes.
 
 `SensitiveActionScope.action_kind` and `sensitive_categories[]` are opaque sensitive-action classification strings unless an affected method or profile owner publishes a narrower local list. `description`, `command_or_tool_summary`, `network_or_host_summary`, `secret_or_credential_summary`, and `capability_claim` are display or claim strings; they are not canonical value sets or security authority.
+
+In `harness.request_user_judgment`, `sensitive_action_scope` is an optional-nullable public request field whose non-null requirement is owned by the method owner for `judgment_kind=sensitive_approval`. When `SensitiveActionScope` appears inside `JudgmentBasis`, it is server-derived persisted state, not caller-submitted basis data.
 
 <a id="acceptedriskinput"></a>
 ## `AcceptedRiskInput`

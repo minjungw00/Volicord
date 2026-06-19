@@ -226,29 +226,29 @@ user_judgment:
   judgment_kind: product_decision
   status: resolved
   presentation: short
-  question: "Should the empty-state illustration be kept?"
+  question: "빈 상태 일러스트를 유지할까요?"
   options:
     - option_id: keep
-      label: "Keep illustration"
-      description: "Record the user-owned product decision to keep the illustration."
-      consequence: "The pending empty-state decision can be treated as resolved."
-      machine_action: null
+      label: "일러스트 유지"
+      description: "일러스트를 유지한다는 사용자 소유 제품 결정을 기록합니다."
+      consequence: "선택되면 Core는 일러스트 유지 제품 결정을 기록합니다."
+      machine_action: accept
       resolution_outcome: accepted
       is_default: true
     - option_id: replace
-      label: "Replace illustration"
-      description: "Record that the illustration should be replaced."
-      consequence: "The Task remains open for an illustration replacement."
-      machine_action: null
-      resolution_outcome: rejected
+      label: "일러스트 교체"
+      description: "일러스트를 교체한다는 사용자 소유 제품 결정을 기록합니다."
+      consequence: "선택되면 Core는 일러스트 교체 제품 결정을 기록합니다."
+      machine_action: accept
+      resolution_outcome: accepted
       is_default: false
   context:
-    summary: "The empty-state screen has a proposed illustration and needs a user-owned product decision."
+    summary: "빈 상태 화면에 제안된 일러스트가 있으며 사용자 소유 제품 결정이 필요합니다."
     related_refs: []
     artifact_refs: []
     visible_risks: []
     constraints:
-      - "Only the empty-state illustration choice is covered by this judgment."
+      - "이 판단은 빈 상태 일러스트 선택만 다룹니다."
   affected_refs:
     - record_kind: task
       record_id: task_empty_001
@@ -270,13 +270,13 @@ user_judgment:
     - close_complete
   resolution:
     selected_option_id: keep
-    machine_action: null
+    machine_action: accept
     resolution_outcome: accepted
     answer:
       product_decision:
         judgment:
           decision: accepted
-          rationale: "The empty-state illustration is suitable for this Task."
+          rationale: "빈 상태 일러스트가 이 Task에 적합합니다."
       technical_decision: null
       scope_decision: null
       sensitive_action_scope: null
