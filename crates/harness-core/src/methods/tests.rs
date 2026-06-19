@@ -1551,6 +1551,444 @@ fn scope_decision_ref_alone_does_not_change_current_scope() -> Result<(), Box<dy
 }
 
 #[test]
+fn accepted_current_user_scope_decision_links_scope_update() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "scope_link_accept")?;
+    let (state_version, decision_ref, decision_id) = record_scope_decision_authority(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "link_accept",
+        true,
+    )?;
+
+    let mut request = update_scope_request(
+        "req_scope_link_accept_update",
+        "idem_scope_link_accept_update",
+        false,
+        Some(state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Decision-backed material scope.",
+    );
+    request.related_scope_decision_refs = vec![decision_ref.clone()];
+    let response = harness
+        .service
+        .update_scope(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        response.response_value["linked_scope_decision_refs"],
+        json!([decision_ref])
+    );
+    assert_eq!(user_judgment_status(&harness, &decision_id)?, "stale");
+    assert_eq!(user_judgment_basis_status(&harness, &decision_id)?, "stale");
+    Ok(())
+}
+
+#[test]
+fn negative_scope_decision_outcomes_cannot_be_linked() -> Result<(), Box<dyn Error>> {
+    for outcome in ["rejected", "deferred", "blocked"] {
+        let harness = MethodHarness::new()?;
+        let suffix = format!("scope_link_{outcome}");
+        let (task_id, change_unit_id) = create_task_with_change_unit(&harness, &suffix)?;
+        let (state_version, decision_ref, decision_id) = record_scope_decision_authority(
+            &harness,
+            &task_id,
+            &change_unit_id,
+            2,
+            &suffix,
+            outcome != "rejected",
+        )?;
+        if outcome != "rejected" {
+            set_user_judgment_resolution_outcome(&harness, &decision_id, outcome)?;
+        }
+        let before = harness.counts()?;
+        let mut request = update_scope_request(
+            &format!("req_{suffix}_update"),
+            &format!("idem_{suffix}_update"),
+            false,
+            Some(state_version),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Rejected scope decision must not link.",
+        );
+        request.related_scope_decision_refs = vec![decision_ref];
+
+        let response = harness
+            .service
+            .update_scope(request, invocation(AccessClass::CoreMutation))?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(
+            response.response_value["errors"][0]["code"],
+            "DECISION_UNRESOLVED"
+        );
+        assert_eq!(harness.counts()?, before);
+        assert_eq!(
+            user_judgment_resolution_outcome(&harness, &decision_id)?,
+            Some(outcome.to_owned())
+        );
+        assert_eq!(user_judgment_status(&harness, &decision_id)?, "resolved");
+    }
+    Ok(())
+}
+
+#[test]
+fn agent_or_unverified_scope_decision_cannot_be_linked() -> Result<(), Box<dyn Error>> {
+    for case in ["agent_actor", "agent_surface", "missing_provenance"] {
+        let harness = MethodHarness::new()?;
+        let (task_id, change_unit_id) =
+            create_task_with_change_unit(&harness, &format!("scope_{case}"))?;
+        let (state_version, decision_ref, decision_id) =
+            record_scope_decision_authority(&harness, &task_id, &change_unit_id, 2, case, true)?;
+        match case {
+            "agent_actor" => set_user_judgment_resolution_actor(&harness, &decision_id, "agent")?,
+            "agent_surface" => {
+                set_user_judgment_resolved_actor_role(&harness, &decision_id, "agent")?;
+            }
+            "missing_provenance" => {
+                clear_user_judgment_actor_provenance(&harness, &decision_id)?;
+            }
+            _ => unreachable!("covered cases are exhaustive"),
+        }
+        let before = harness.counts()?;
+        let mut request = update_scope_request(
+            &format!("req_{case}_scope_link"),
+            &format!("idem_{case}_scope_link"),
+            false,
+            Some(state_version),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Agent-recorded scope decision must not link.",
+        );
+        request.related_scope_decision_refs = vec![decision_ref];
+
+        let response = harness
+            .service
+            .update_scope(request, invocation(AccessClass::CoreMutation))?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+        assert_eq!(harness.counts()?, before);
+        assert_eq!(user_judgment_status(&harness, &decision_id)?, "resolved");
+    }
+    Ok(())
+}
+
+#[test]
+fn scope_decision_for_other_operation_cannot_authorize_scope_update() -> Result<(), Box<dyn Error>>
+{
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "scope_required_for")?;
+    let (state_version, decision_ref, decision_id) = record_scope_decision_authority(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "required_for",
+        true,
+    )?;
+    set_user_judgment_required_for(
+        &harness,
+        &decision_id,
+        &[harness_types::JudgmentRequiredFor::PrepareWrite],
+    )?;
+    let before = harness.counts()?;
+    let mut request = update_scope_request(
+        "req_scope_required_for_update",
+        "idem_scope_required_for_update",
+        false,
+        Some(state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Prepare-write decision must not authorize scope update.",
+    );
+    request.related_scope_decision_refs = vec![decision_ref];
+
+    let response = harness
+        .service
+        .update_scope(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(user_judgment_status(&harness, &decision_id)?, "resolved");
+    Ok(())
+}
+
+#[test]
+fn old_revision_scope_decision_cannot_be_reused() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "scope_old_revision")?;
+    let (state_version, decision_ref, decision_id) = record_scope_decision_authority(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "old_revision",
+        true,
+    )?;
+    let autonomous = harness.service.update_scope(
+        update_scope_request(
+            "req_scope_old_revision_first",
+            "idem_scope_old_revision_first",
+            false,
+            Some(state_version),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Autonomous material scope change before reuse.",
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let next_state_version = autonomous.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state version should be present");
+    assert_eq!(user_judgment_status(&harness, &decision_id)?, "stale");
+
+    let before = harness.counts()?;
+    let mut request = update_scope_request(
+        "req_scope_old_revision_reuse",
+        "idem_scope_old_revision_reuse",
+        false,
+        Some(next_state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Attempt to reuse stale scope decision.",
+    );
+    request.related_scope_decision_refs = vec![decision_ref];
+    let response = harness
+        .service
+        .update_scope(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn scope_decision_for_another_change_unit_cannot_be_linked() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "scope_other_cu")?;
+    let (state_version, decision_ref, decision_id) =
+        record_scope_decision_authority(&harness, &task_id, &change_unit_id, 2, "other_cu", true)?;
+    mutate_user_judgment_basis_json(&harness, &decision_id, |basis| {
+        basis["change_unit_id"] = json!("cu_not_current");
+    })?;
+    let before = harness.counts()?;
+    let mut request = update_scope_request(
+        "req_scope_other_cu_update",
+        "idem_scope_other_cu_update",
+        false,
+        Some(state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Other Change Unit decision must not link.",
+    );
+    request.related_scope_decision_refs = vec![decision_ref];
+
+    let response = harness
+        .service
+        .update_scope(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn scope_decision_with_incompatible_affected_refs_cannot_be_linked() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "scope_bad_affected_refs")?;
+    let (state_version, decision_ref, decision_id) = record_scope_decision_authority(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "bad_affected_refs",
+        true,
+    )?;
+    let incompatible_ref = test_state_record_ref(
+        StateRecordKind::ChangeUnit,
+        "cu_not_current",
+        PROJECT_ID,
+        &task_id,
+        Some(2),
+    );
+    set_user_judgment_affected_refs(&harness, &decision_id, &[incompatible_ref])?;
+    let before = harness.counts()?;
+    let mut request = update_scope_request(
+        "req_scope_bad_affected_refs_update",
+        "idem_scope_bad_affected_refs_update",
+        false,
+        Some(state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Incompatible affected refs must not link.",
+    );
+    request.related_scope_decision_refs = vec![decision_ref];
+
+    let response = harness
+        .service
+        .update_scope(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn expired_scope_decision_cannot_be_linked() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "scope_expired")?;
+    let (state_version, decision_ref, decision_id) =
+        record_scope_decision_authority(&harness, &task_id, &change_unit_id, 2, "expired", true)?;
+    set_user_judgment_expires_at(&harness, &decision_id, "2000-01-01T00:00:00Z")?;
+    let before = harness.counts()?;
+    let mut request = update_scope_request(
+        "req_scope_expired_update",
+        "idem_scope_expired_update",
+        false,
+        Some(state_version),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Expired scope decision must not link.",
+    );
+    request.related_scope_decision_refs = vec![decision_ref];
+
+    let response = harness
+        .service
+        .update_scope(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn invalid_related_scope_decision_ref_has_no_update_scope_effect() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "scope_invalid_ref")?;
+    let original_scope = current_change_unit_scope(&harness, &task_id)?;
+    let before = harness.counts()?;
+    let mut request = update_scope_request(
+        "req_scope_invalid_ref_update",
+        "idem_scope_invalid_ref_update",
+        false,
+        Some(2),
+        &task_id,
+        ChangeUnitOperation::KeepCurrent,
+        "Invalid ref must not update scope.",
+    );
+    request.related_scope_decision_refs = vec![test_state_record_ref(
+        StateRecordKind::UserJudgment,
+        "uj_missing_scope_decision",
+        PROJECT_ID,
+        &task_id,
+        Some(2),
+    )];
+
+    let response = harness
+        .service
+        .update_scope(request, invocation(AccessClass::CoreMutation))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(
+        current_change_unit_scope(&harness, &task_id)?,
+        original_scope
+    );
+    Ok(())
+}
+
+#[test]
+fn autonomous_scope_update_still_succeeds_without_scope_decision() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "scope_autonomous")?;
+    let before = harness.counts()?;
+
+    let response = harness.service.update_scope(
+        update_scope_request(
+            "req_scope_autonomous_update",
+            "idem_scope_autonomous_update",
+            false,
+            Some(2),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Autonomous scope update with no decision ref.",
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(harness.counts()?.state_version, before.state_version + 1);
+    assert_eq!(
+        response.response_value["linked_scope_decision_refs"],
+        json!([])
+    );
+    Ok(())
+}
+
+#[test]
+fn material_scope_update_invalidates_scope_decisions_atomically() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "scope_atomic_invalidation")?;
+    let (after_resolved, _, resolved_decision_id) = record_scope_decision_authority(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "atomic_resolved",
+        true,
+    )?;
+    let pending = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_scope_atomic_pending",
+            "idem_scope_atomic_pending",
+            false,
+            Some(after_resolved),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let pending_decision_id = response_record_id(&pending.response_value, "user_judgment_ref");
+    let response = harness.service.update_scope(
+        update_scope_request(
+            "req_scope_atomic_update",
+            "idem_scope_atomic_update",
+            false,
+            Some(after_resolved + 1),
+            &task_id,
+            ChangeUnitOperation::KeepCurrent,
+            "Material scope change invalidates scope decisions.",
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        user_judgment_status(&harness, &resolved_decision_id)?,
+        "stale"
+    );
+    assert_eq!(
+        user_judgment_basis_status(&harness, &resolved_decision_id)?,
+        "stale"
+    );
+    assert_eq!(
+        user_judgment_status(&harness, &pending_decision_id)?,
+        "superseded"
+    );
+    assert_eq!(
+        user_judgment_basis_status(&harness, &pending_decision_id)?,
+        "superseded"
+    );
+    Ok(())
+}
+
+#[test]
 fn prepare_write_allowed_creates_one_authorization_with_post_commit_basis(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
@@ -9651,6 +10089,54 @@ fn record_cancellation_authority(
     Ok((state_version, judgment_id))
 }
 
+fn record_scope_decision_authority(
+    harness: &MethodHarness,
+    task_id: &str,
+    change_unit_id: &str,
+    expected_state_version: u64,
+    suffix: &str,
+    accepted: bool,
+) -> Result<(u64, StateRecordRef, String), Box<dyn Error>> {
+    let request_id = format!("req_scope_authority_{suffix}");
+    let idempotency_key = format!("idem_scope_authority_{suffix}");
+    let judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            &request_id,
+            &idempotency_key,
+            false,
+            Some(expected_state_version),
+            task_id,
+            Some(change_unit_id),
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let decision_ref: StateRecordRef =
+        serde_json::from_value(judgment.response_value["user_judgment_ref"].clone())?;
+    let judgment_id = decision_ref.record_id.as_str().to_owned();
+    let record_request_id = format!("req_scope_authority_record_{suffix}");
+    let record_idempotency_key = format!("idem_scope_authority_record_{suffix}");
+    let mut request = record_judgment_request(
+        &record_request_id,
+        &record_idempotency_key,
+        Some(expected_state_version + 1),
+        task_id,
+        &judgment_id,
+        JudgmentKind::ScopeDecision,
+        scope_decision_payload(if accepted { "accepted" } else { "rejected" }),
+    );
+    if !accepted {
+        request.selected_option_id = harness_types::UserJudgmentOptionId::new("reject");
+    }
+    let response = harness
+        .service
+        .record_user_judgment(request, invocation(AccessClass::CoreMutation))?;
+    let state_version = response.response_value["base"]["state_version"]
+        .as_u64()
+        .expect("state_version should be present");
+    Ok((state_version, decision_ref, judgment_id))
+}
+
 fn record_sensitive_approval(
     harness: &MethodHarness,
     task_id: &str,
@@ -10348,6 +10834,24 @@ fn cancellation_payload_with_decision(decision: &str) -> RecordUserJudgmentPaylo
     payload.cancellation = Some(json_object(json!({
         "decision": decision,
         "reason": "The user selected this cancellation outcome."
+    })))
+    .into();
+    payload
+}
+
+fn scope_decision_payload(decision: &str) -> RecordUserJudgmentPayload {
+    let mut payload = RecordUserJudgmentPayload {
+        product_decision: None.into(),
+        technical_decision: None.into(),
+        scope_decision: None.into(),
+        sensitive_action_scope: None.into(),
+        final_acceptance: None.into(),
+        residual_risk_acceptance: None.into(),
+        cancellation: None.into(),
+    };
+    payload.scope_decision = Some(json_object(json!({
+        "requested_scope_summary": "Expanded scope that must not apply silently.",
+        "decision": decision
     })))
     .into();
     payload
@@ -11070,6 +11574,78 @@ fn set_user_judgment_resolution_actor(
     Ok(())
 }
 
+fn set_user_judgment_resolved_actor_role(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    role: &str,
+) -> Result<(), Box<dyn Error>> {
+    harness.conn()?.execute(
+        "UPDATE user_judgments
+            SET resolved_actor_role = ?3
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, judgment_id, role],
+    )?;
+    Ok(())
+}
+
+fn set_user_judgment_required_for(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    required_for: &[harness_types::JudgmentRequiredFor],
+) -> Result<(), Box<dyn Error>> {
+    let conn = harness.conn()?;
+    let text: String = conn.query_row(
+        "SELECT request_json
+           FROM user_judgments
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, judgment_id],
+        |row| row.get(0),
+    )?;
+    let mut value: Value = serde_json::from_str(&text)?;
+    value["required_for"] = serde_json::to_value(required_for)?;
+    set_user_judgment_owner_json(
+        harness,
+        judgment_id,
+        "request_json",
+        Some(&value.to_string()),
+    )
+}
+
+fn set_user_judgment_affected_refs(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    affected_refs: &[StateRecordRef],
+) -> Result<(), Box<dyn Error>> {
+    let value = serde_json::to_string(affected_refs)?;
+    set_user_judgment_owner_json(harness, judgment_id, "affected_refs_json", Some(&value))
+}
+
+fn set_user_judgment_expires_at(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    expires_at: &str,
+) -> Result<(), Box<dyn Error>> {
+    let conn = harness.conn()?;
+    let text: String = conn.query_row(
+        "SELECT request_json
+           FROM user_judgments
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, judgment_id],
+        |row| row.get(0),
+    )?;
+    let mut value: Value = serde_json::from_str(&text)?;
+    value["expires_at"] = json!(expires_at);
+    set_user_judgment_owner_json(
+        harness,
+        judgment_id,
+        "request_json",
+        Some(&value.to_string()),
+    )
+}
+
 fn set_user_judgment_owner_json(
     harness: &MethodHarness,
     judgment_id: &str,
@@ -11104,6 +11680,12 @@ fn set_user_judgment_owner_json(
         "artifact_refs_json" => {
             "UPDATE user_judgments
                 SET artifact_refs_json = ?3
+              WHERE project_id = ?1
+                AND judgment_id = ?2"
+        }
+        "affected_refs_json" => {
+            "UPDATE user_judgments
+                SET affected_refs_json = ?3
               WHERE project_id = ?1
                 AND judgment_id = ?2"
         }

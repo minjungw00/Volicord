@@ -87,6 +87,7 @@ fn plan_update_scope(
     verified_surface: &VerifiedSurfaceContext,
 ) -> Result<MethodPlan, PlanError> {
     let planned_state_version = project_state.state_version + 1;
+    let plan_now = utc_timestamp(service.now());
     let task = store
         .task_record(&request.task_id)
         .map_err(|error| {
@@ -111,12 +112,13 @@ fn plan_update_scope(
                 error,
             )))
         })?;
-    validate_related_scope_decisions(
+    let linked_scope_decision_refs = validate_related_scope_decisions(
         store,
         project_state,
         &request,
         current_change_unit.as_ref(),
         task.scope_revision,
+        &plan_now,
     )?;
 
     let current_scope = StoredScope::from_task(&task)?;
@@ -376,7 +378,7 @@ fn plan_update_scope(
             blocker_refs.clone(),
             evidence_summary.clone(),
         ),
-        service.now(),
+        *plan_now.as_datetime(),
     )?;
     let state = build_state_summary(SummaryBuild {
         project_id: &request.envelope.project_id,
@@ -395,7 +397,7 @@ fn plan_update_scope(
         base: placeholder_base(),
         task_ref,
         change_unit_ref,
-        linked_scope_decision_refs: request.related_scope_decision_refs.clone(),
+        linked_scope_decision_refs,
         stale_write_authorization_refs,
         blocker_refs,
         state,
@@ -425,9 +427,34 @@ fn validate_related_scope_decisions(
     request: &UpdateScopeRequest,
     current_change_unit: Option<&ChangeUnitRecord>,
     scope_revision: u64,
-) -> Result<(), PlanError> {
+    now: &UtcTimestamp,
+) -> Result<Vec<StateRecordRef>, PlanError> {
     let current_change_unit_id =
         current_change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
+    let mut transition_refs = vec![state_ref(
+        StateRecordKind::Task,
+        request.task_id.as_str(),
+        &request.envelope.project_id,
+        Some(&request.task_id),
+        Some(project_state.state_version),
+    )];
+    if let Some(current_change_unit) = current_change_unit {
+        transition_refs.push(state_ref(
+            StateRecordKind::ChangeUnit,
+            &current_change_unit.change_unit_id,
+            &request.envelope.project_id,
+            Some(&request.task_id),
+            current_change_unit.basis_state_version,
+        ));
+    }
+    let requirement = ScopeDecisionAuthorityRequirement {
+        task_id: &request.task_id,
+        scope_revision,
+        current_change_unit_id: current_change_unit_id.as_ref(),
+        affected_refs: &transition_refs,
+        now,
+    };
+    let mut linked_scope_decision_refs = Vec::new();
     for related_ref in &request.related_scope_decision_refs {
         if related_ref.record_kind != StateRecordKind::UserJudgment
             || related_ref.project_id != request.envelope.project_id
@@ -438,7 +465,8 @@ fn validate_related_scope_decisions(
                 Some(project_state.state_version),
                 "related_scope_decision_refs",
                 "related scope decision refs must identify user judgments for this Task",
-            );
+            )
+            .map(|()| Vec::new());
         }
         let record = store
             .user_judgment_record(related_ref.record_id.as_str())
@@ -457,18 +485,14 @@ fn validate_related_scope_decisions(
                 )))
             })?;
         let authority = user_judgment_authority_from_record(&record)?;
-        if !current_scope_decision(
-            &authority,
-            &request.task_id,
-            scope_revision,
-            current_change_unit_id.as_ref(),
-        ) {
+        if !accepted_current_scope_decision_authority(&authority, &requirement) {
             return Err(PlanError::Response(Box::new(decision_rejected_response(
                 &request.envelope,
                 Some(project_state.state_version),
                 "related scope decision judgment is not current",
             ))));
         }
+        linked_scope_decision_refs.push(related_ref.clone());
     }
-    Ok(())
+    Ok(linked_scope_decision_refs)
 }

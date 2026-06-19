@@ -6,7 +6,7 @@ use harness_types::{
     JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionSummary,
     ProjectId, RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RiskId,
     StateRecordKind, StateRecordRef, SurfaceId, SurfaceInstanceId, SurfaceInteractionRole, TaskId,
-    UserJudgmentOptionAction, UserJudgmentResolution, UserJudgmentStatus,
+    UserJudgmentOptionAction, UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp,
     ACTOR_ASSURANCE_REGISTERED_SURFACE_COOPERATIVE,
 };
 use serde_json::Value;
@@ -62,6 +62,7 @@ pub(crate) struct JudgmentAuthority {
     pub(crate) basis_status: JudgmentBasisCompatibilityStatus,
     pub(crate) basis: Option<JudgmentBasis>,
     pub(crate) resolution: Option<UserJudgmentResolution>,
+    pub(crate) expires_at: Option<UtcTimestamp>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +80,15 @@ pub(crate) struct CancellationAuthorityRequirement<'a> {
     pub(crate) task_id: &'a TaskId,
     pub(crate) change_unit_id: Option<&'a ChangeUnitId>,
     pub(crate) scope_revision: u64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScopeDecisionAuthorityRequirement<'a> {
+    pub(crate) task_id: &'a TaskId,
+    pub(crate) scope_revision: u64,
+    pub(crate) current_change_unit_id: Option<&'a ChangeUnitId>,
+    pub(crate) affected_refs: &'a [StateRecordRef],
+    pub(crate) now: &'a UtcTimestamp,
 }
 
 pub(crate) fn close_basis_is_current(
@@ -268,26 +278,32 @@ pub(crate) fn accepted_risk_ids_within_basis(
         .is_subset(&risk_id_set(&basis.residual_risk_ids))
 }
 
-pub(crate) fn current_scope_decision(
+pub(crate) fn accepted_current_scope_decision_authority(
     judgment: &JudgmentAuthority,
-    task_id: &TaskId,
-    scope_revision: u64,
-    current_change_unit_id: Option<&ChangeUnitId>,
+    requirement: &ScopeDecisionAuthorityRequirement<'_>,
 ) -> bool {
     if !accepted_current_user_authority(judgment, JudgmentKind::ScopeDecision)
+        || !judgment
+            .required_for
+            .contains(&JudgmentRequiredFor::ScopeUpdate)
         || judgment
-            .resolution
+            .expires_at
             .as_ref()
-            .is_none_or(|resolution| resolution.answer.scope_decision.is_none())
+            .is_some_and(|expires_at| requirement.now >= expires_at)
     {
         return false;
     }
     let Some(basis) = judgment.basis.as_ref() else {
         return false;
     };
-    basis.task_id == *task_id
-        && basis.scope_revision == scope_revision
-        && basis.change_unit_id.as_ref() == current_change_unit_id
+    basis.task_id == *requirement.task_id
+        && basis.scope_revision == requirement.scope_revision
+        && basis.change_unit_id.as_ref() == requirement.current_change_unit_id
+        && scope_decision_refs_are_compatible(
+            &judgment.affected_refs,
+            requirement.affected_refs,
+            requirement.task_id,
+        )
 }
 
 pub(crate) fn accepted_current_user_authority(
@@ -394,4 +410,49 @@ fn state_ref_identity_key(record_ref: &StateRecordRef) -> (String, String, Strin
             .as_ref()
             .map(|task_id| task_id.as_str().to_owned()),
     )
+}
+
+fn scope_decision_refs_are_compatible(
+    judgment_refs: &[StateRecordRef],
+    transition_refs: &[StateRecordRef],
+    task_id: &TaskId,
+) -> bool {
+    let Some(first_transition_ref) = transition_refs.first() else {
+        return judgment_refs.is_empty();
+    };
+    if judgment_refs.iter().any(|record_ref| {
+        record_ref.project_id != first_transition_ref.project_id
+            || !record_ref_task_matches(record_ref, task_id)
+    }) {
+        return false;
+    }
+    judgment_refs.is_empty()
+        || judgment_refs.iter().any(|judgment_ref| {
+            transition_refs
+                .iter()
+                .any(|transition_ref| state_refs_overlap(judgment_ref, transition_ref))
+        })
+}
+
+fn record_ref_task_matches(record_ref: &StateRecordRef, task_id: &TaskId) -> bool {
+    if record_ref.record_kind == StateRecordKind::Task
+        && record_ref.record_id.as_str() != task_id.as_str()
+    {
+        return false;
+    }
+    record_ref
+        .task_id
+        .as_ref()
+        .is_none_or(|record_task_id| record_task_id == task_id)
+}
+
+fn state_refs_overlap(left: &StateRecordRef, right: &StateRecordRef) -> bool {
+    if left.project_id != right.project_id {
+        return false;
+    }
+    if left.record_kind == StateRecordKind::Task && right.task_id.as_ref() == left.task_id.as_ref()
+    {
+        return true;
+    }
+    left.record_kind == right.record_kind && left.record_id == right.record_id
 }

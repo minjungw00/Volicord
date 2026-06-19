@@ -55,13 +55,14 @@ use crate::pipeline::{
 };
 use crate::policy::{
     close_readiness::{
-        accepted_risk_ids_within_basis, close_basis_is_current, close_blocker, close_next_action,
+        accepted_current_scope_decision_authority, accepted_risk_ids_within_basis,
+        close_basis_is_current, close_blocker, close_next_action,
         current_acceptance_required_risk_ids, current_cancellation_authority,
         current_final_acceptance, current_residual_risk_acceptance_coverage,
-        current_scope_decision, final_acceptance_basis_matches_current,
-        final_acceptance_requirement, is_terminal_lifecycle, judgment_has_current_basis,
-        residual_risk_basis_matches_current, verified_user_interaction_provenance,
-        CancellationAuthorityRequirement, JudgmentAuthority,
+        final_acceptance_basis_matches_current, final_acceptance_requirement,
+        is_terminal_lifecycle, judgment_has_current_basis, residual_risk_basis_matches_current,
+        verified_user_interaction_provenance, CancellationAuthorityRequirement, JudgmentAuthority,
+        ScopeDecisionAuthorityRequirement,
     },
     evidence::{evidence_status_for_items, unique_artifact_refs},
     judgment_relevance::{
@@ -542,6 +543,7 @@ fn user_judgment_authority_from_record(
         basis_status,
         basis,
         resolution,
+        expires_at: request.expires_at.into_option(),
     })
 }
 
@@ -578,6 +580,7 @@ fn user_judgment_authority_from_state(
             .unwrap_or(JudgmentBasisCompatibilityStatus::Current),
         basis: judgment.basis.clone(),
         resolution: judgment.resolution.clone(),
+        expires_at: judgment.expires_at.clone(),
     }
 }
 
