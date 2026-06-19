@@ -204,6 +204,19 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
     require_column_spec(
         conn,
         PROJECT_STATE_DATABASE_KIND,
+        "surfaces",
+        ColumnSpec {
+            name: "interaction_role",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: Some("'agent'"),
+            primary_key_position: 0,
+        },
+    )?;
+    validate_surfaces_interaction_role_constraint(conn)?;
+    require_column_spec(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
         "tasks",
         ColumnSpec {
             name: "scope_revision",
@@ -275,6 +288,40 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
         },
     )?;
     validate_user_judgments_resolution_outcome_constraint(conn)?;
+    require_column_spec(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
+        "user_judgments",
+        ColumnSpec {
+            name: "resolved_by_actor_kind",
+            type_name: "TEXT",
+            not_null: false,
+            default_value: None,
+            primary_key_position: 0,
+        },
+    )?;
+    validate_user_judgments_resolved_by_actor_kind_constraint(conn)?;
+    require_column_spec(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
+        "user_judgments",
+        ColumnSpec {
+            name: "resolved_actor_role",
+            type_name: "TEXT",
+            not_null: false,
+            default_value: None,
+            primary_key_position: 0,
+        },
+    )?;
+    validate_user_judgments_resolved_actor_role_constraint(conn)?;
+    for column in [
+        "resolved_by_surface_id",
+        "resolved_by_surface_instance_id",
+        "resolved_verification_basis",
+        "resolved_assurance_level",
+    ] {
+        require_column(conn, PROJECT_STATE_DATABASE_KIND, "user_judgments", column)?;
+    }
     reject_column(conn, PROJECT_STATE_DATABASE_KIND, "tasks", "state_version")?;
     require_column(
         conn,
@@ -653,6 +700,70 @@ fn validate_user_judgments_resolution_outcome_constraint(conn: &Connection) -> S
     }
 }
 
+fn validate_surfaces_interaction_role_constraint(conn: &Connection) -> StoreResult<()> {
+    let table_sql = normalized_table_sql(conn, "surfaces")?;
+    let has_constraint = table_sql.contains("interaction_role in ('agent', 'user_interaction')")
+        || table_sql.contains("interaction_role in('agent', 'user_interaction')");
+    if has_constraint {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            PROJECT_STATE_DATABASE_KIND,
+            "surfaces.interaction_role constraint is missing or malformed",
+        ))
+    }
+}
+
+fn validate_user_judgments_resolved_actor_role_constraint(conn: &Connection) -> StoreResult<()> {
+    let table_sql = normalized_table_sql(conn, "user_judgments")?;
+    let has_constraint = table_sql.contains(
+        "resolved_actor_role is null or resolved_actor_role in ('agent', 'user_interaction')",
+    ) || table_sql.contains(
+        "resolved_actor_role is null or resolved_actor_role in('agent', 'user_interaction')",
+    );
+    if has_constraint {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            PROJECT_STATE_DATABASE_KIND,
+            "user_judgments.resolved_actor_role constraint is missing or malformed",
+        ))
+    }
+}
+
+fn validate_user_judgments_resolved_by_actor_kind_constraint(conn: &Connection) -> StoreResult<()> {
+    let table_sql = normalized_table_sql(conn, "user_judgments")?;
+    let has_constraint = table_sql
+        .contains("resolved_by_actor_kind is null or resolved_by_actor_kind in ('agent', 'user')")
+        || table_sql.contains(
+            "resolved_by_actor_kind is null or resolved_by_actor_kind in('agent', 'user')",
+        );
+    if has_constraint {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            PROJECT_STATE_DATABASE_KIND,
+            "user_judgments.resolved_by_actor_kind constraint is missing or malformed",
+        ))
+    }
+}
+
+fn normalized_table_sql(conn: &Connection, table: &str) -> StoreResult<String> {
+    let table_sql: String = conn.query_row(
+        "SELECT sql
+           FROM sqlite_master
+          WHERE type = 'table'
+            AND name = ?1",
+        [table],
+        |row| row.get(0),
+    )?;
+    Ok(table_sql
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase())
+}
+
 fn validate_tool_invocations_primary_key(conn: &Connection) -> StoreResult<()> {
     let mut stmt = conn.prepare("PRAGMA table_info(tool_invocations)")?;
     let mut rows = stmt.query([])?;
@@ -884,7 +995,7 @@ mod tests {
         let path = project_state_db_path(runtime_home.path(), "PRJ-0001");
 
         let conn = open_project_state_database(&path)?;
-        assert_eq!(migration_count(&conn)?, 6);
+        assert_eq!(migration_count(&conn)?, PROJECT_STATE_SCHEMA_VERSION);
         assert_eq!(
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
@@ -899,12 +1010,12 @@ mod tests {
             &conn,
             PROJECT_STATE_DATABASE_KIND,
             PROJECT_STATE_SCHEMA_VERSION,
-            "project_state_artifact_integrity_v6"
+            "project_state_surface_role_actor_provenance_v7"
         )?);
         drop(conn);
 
         let conn = open_project_state_database(&path)?;
-        assert_eq!(migration_count(&conn)?, 6);
+        assert_eq!(migration_count(&conn)?, PROJECT_STATE_SCHEMA_VERSION);
         assert!(foreign_keys_enabled(&conn)?);
         assert!(sqlite_object_exists(&conn, "table", "tool_invocations")?);
         assert!(column_exists(

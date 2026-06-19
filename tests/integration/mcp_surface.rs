@@ -25,7 +25,7 @@ use harness_test_support::core_fixtures::{
 use harness_types::{
     AccessClass, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, JudgmentKind,
     ProjectId, ResidualRiskInput, StagedArtifactHandle, SurfaceId, SurfaceInstanceId,
-    WriteAuthorizationId, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+    SurfaceInteractionRole, WriteAuthorizationId, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{json, Value};
@@ -170,6 +170,7 @@ fn bound_session_rejects_different_request_surface_without_effect() -> Result<()
             surface_id: "surface_other_binding".to_owned(),
             surface_instance_id: "surface_instance_other_binding".to_owned(),
             surface_kind: "local_test".to_owned(),
+            interaction_role: SurfaceInteractionRole::Agent,
             display_name: Some("Other binding surface".to_owned()),
             capability_profile_json: default_capability_profile().to_string(),
             local_access_json: local_access_without(&[]).to_string(),
@@ -259,6 +260,7 @@ fn deleted_bound_surface_fails_later_calls_closed_without_effect() -> Result<(),
             surface_id: "surface_deleted_binding".to_owned(),
             surface_instance_id: "surface_instance_deleted_binding".to_owned(),
             surface_kind: "local_test".to_owned(),
+            interaction_role: SurfaceInteractionRole::Agent,
             display_name: Some("Deleted binding surface".to_owned()),
             capability_profile_json: default_capability_profile().to_string(),
             local_access_json: local_access_without(&[]).to_string(),
@@ -307,6 +309,7 @@ fn missing_configured_instance_resolves_single_valid_candidate() -> Result<(), B
             surface_id: "surface_single_candidate".to_owned(),
             surface_instance_id: "surface_instance_single_candidate".to_owned(),
             surface_kind: "local_test".to_owned(),
+            interaction_role: SurfaceInteractionRole::Agent,
             display_name: Some("Single candidate surface".to_owned()),
             capability_profile_json: default_capability_profile().to_string(),
             local_access_json: local_access_without(&[]).to_string(),
@@ -345,6 +348,7 @@ fn missing_configured_instance_with_multiple_candidates_fails_startup() -> Resul
                 surface_id: "surface_multi_candidate".to_owned(),
                 surface_instance_id: instance_id.to_owned(),
                 surface_kind: "local_test".to_owned(),
+                interaction_role: SurfaceInteractionRole::Agent,
                 display_name: None,
                 capability_profile_json: default_capability_profile().to_string(),
                 local_access_json: local_access_without(&[]).to_string(),
@@ -748,6 +752,118 @@ fn one_mcp_session_with_baseline_workflow_surface_runs_full_access_workflow(
             .access_class,
         AccessClass::CoreMutation
     );
+    Ok(())
+}
+
+#[test]
+fn capability_profile_text_cannot_override_registered_agent_role_for_authority(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp_role_capability")?;
+    let adapter = adapter(&fixture);
+
+    let intake = adapter.call_tool(
+        "harness.intake",
+        serde_json::to_value(fixture.intake_request(
+            "req_mcp_role_task",
+            "idem_mcp_role_task",
+            false,
+            Some(0),
+        ))?,
+    )?;
+    let task_id = intake.response_value["task_ref"]["record_id"]
+        .as_str()
+        .expect("task id")
+        .to_owned();
+    let scope = adapter.call_tool(
+        "harness.update_scope",
+        serde_json::to_value(fixture.update_scope_request(UpdateScopeFixture {
+            request_id: "req_mcp_role_scope",
+            idempotency_key: "idem_mcp_role_scope",
+            dry_run: false,
+            expected_state_version: Some(1),
+            task_id: &task_id,
+            operation: ChangeUnitOperation::CreateCurrent,
+            scope_summary: "MCP role derivation scope.",
+        }))?,
+    )?;
+    assert_eq!(scope.response_value["base"]["response_kind"], "result");
+    let change_unit_id = fixture
+        .current_change_unit_id(&task_id)?
+        .expect("Change Unit should be current");
+    let mut run_request = fixture.record_run_request(
+        "req_mcp_role_run",
+        "idem_mcp_role_run",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    run_request.evidence_updates = vec![supported_evidence_update("MCP role basis recorded.")];
+    run_request.close_assessment = Some(CloseAssessmentInput {
+        result_summary: "MCP role basis recorded.".to_owned(),
+        result_refs: Vec::new(),
+        residual_risks: Vec::new(),
+        sensitive_categories: Vec::new(),
+        recovery_constraints: Vec::new(),
+    })
+    .into();
+    let run = adapter.call_tool("harness.record_run", serde_json::to_value(run_request)?)?;
+    assert_eq!(run.response_value["base"]["response_kind"], "result");
+    let final_judgment = adapter.call_tool(
+        "harness.request_user_judgment",
+        serde_json::to_value(fixture.user_judgment_request(UserJudgmentFixture {
+            request_id: "req_mcp_role_final",
+            idempotency_key: "idem_mcp_role_final",
+            dry_run: false,
+            expected_state_version: Some(3),
+            task_id: &task_id,
+            change_unit_id: Some(&change_unit_id),
+            judgment_kind: JudgmentKind::FinalAcceptance,
+        }))?,
+    )?;
+    let judgment_id = final_judgment.response_value["user_judgment_ref"]["record_id"]
+        .as_str()
+        .expect("judgment id")
+        .to_owned();
+    fixture.conn()?.execute(
+        "UPDATE surfaces
+            SET interaction_role = 'agent'
+          WHERE project_id = ?1
+            AND surface_id = ?2
+            AND surface_instance_id = ?3",
+        rusqlite::params![
+            fixture.project_id(),
+            fixture.surface_id(),
+            fixture.surface_instance_id()
+        ],
+    )?;
+    fixture.set_surface_capability(json!({
+        "access_class": "core_mutation",
+        "supported_access_classes": ["core_mutation"],
+        "interaction_role": "user_interaction"
+    }))?;
+    let before = fixture.counts()?;
+
+    let record = adapter.call_tool(
+        "harness.record_user_judgment",
+        serde_json::to_value(fixture.record_judgment_request(RecordJudgmentFixture {
+            request_id: "req_mcp_role_final_record",
+            idempotency_key: "idem_mcp_role_final_record",
+            expected_state_version: Some(4),
+            task_id: &task_id,
+            user_judgment_id: &judgment_id,
+            judgment_kind: JudgmentKind::FinalAcceptance,
+            answer: answer_payload(JudgmentKind::FinalAcceptance),
+        }))?,
+    )?;
+
+    assert_rejected_code(&record.response_value, "LOCAL_ACCESS_MISMATCH");
+    assert_eq!(
+        record.response_value["errors"][0]["details"]["field"],
+        "surfaces.interaction_role"
+    );
+    assert_eq!(fixture.user_judgment_status(&judgment_id)?, "pending");
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
@@ -1742,6 +1858,7 @@ fn replay_surface_foreign_key_is_physical_restrictive_and_legacy_safe() -> Resul
             surface_id: "surface_replay_fk".to_owned(),
             surface_instance_id: "surface_instance_replay_fk".to_owned(),
             surface_kind: "local_test".to_owned(),
+            interaction_role: SurfaceInteractionRole::Agent,
             display_name: Some("Replay FK surface".to_owned()),
             capability_profile_json: default_capability_profile().to_string(),
             local_access_json: local_access_without(&[]).to_string(),
@@ -1919,6 +2036,7 @@ fn register_extra_project_surface(
             surface_id: surface_id.to_owned(),
             surface_instance_id: surface_instance_id.to_owned(),
             surface_kind: "local_test".to_owned(),
+            interaction_role: SurfaceInteractionRole::Agent,
             display_name: Some(format!("Extra project surface {surface_instance_id}")),
             capability_profile_json: default_capability_profile().to_string(),
             local_access_json: local_access_without(&[]).to_string(),

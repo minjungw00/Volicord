@@ -945,6 +945,7 @@ fn cancellation_authority_blocker(
                 .resolution
                 .as_ref()
                 .is_some_and(|resolution| resolution.resolved_by_actor_kind == ActorKind::User)
+            && verified_user_interaction_provenance(authority)
         {
             rejected_refs.push(judgment_ref);
         }

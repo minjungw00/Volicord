@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use harness_types::SurfaceInteractionRole;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
@@ -54,6 +55,7 @@ pub struct SurfaceRegistration {
     pub surface_id: String,
     pub surface_instance_id: String,
     pub surface_kind: String,
+    pub interaction_role: SurfaceInteractionRole,
     pub display_name: Option<String>,
     pub capability_profile_json: String,
     pub local_access_json: String,
@@ -67,6 +69,7 @@ pub struct SurfaceRecord {
     pub surface_id: String,
     pub surface_instance_id: String,
     pub surface_kind: String,
+    pub interaction_role: String,
     pub display_name: Option<String>,
     pub capability_profile_json: String,
     pub local_access_json: String,
@@ -307,6 +310,7 @@ pub fn register_surface(
     validate_identifier("surface_id", &registration.surface_id)?;
     validate_identifier("surface_instance_id", &registration.surface_instance_id)?;
     validate_identifier("surface_kind", &registration.surface_kind)?;
+    validate_surface_interaction_role(registration.interaction_role)?;
     validate_json_object(
         "surfaces.capability_profile_json",
         &registration.capability_profile_json,
@@ -333,6 +337,7 @@ pub fn register_surface(
                 surface_id,
                 surface_instance_id,
                 surface_kind,
+                interaction_role,
                 display_name,
                 capability_profile_json,
                 local_access_json,
@@ -348,12 +353,14 @@ pub fn register_surface(
                 ?5,
                 ?6,
                 ?7,
+                ?8,
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-                ?8
+                ?9
             )
             ON CONFLICT(project_id, surface_id, surface_instance_id) DO UPDATE SET
                 surface_kind = excluded.surface_kind,
+                interaction_role = excluded.interaction_role,
                 display_name = excluded.display_name,
                 capability_profile_json = excluded.capability_profile_json,
                 local_access_json = excluded.local_access_json,
@@ -364,6 +371,7 @@ pub fn register_surface(
                 registration.surface_id,
                 registration.surface_instance_id,
                 registration.surface_kind,
+                registration.interaction_role.as_str(),
                 registration.display_name,
                 registration.capability_profile_json,
                 registration.local_access_json,
@@ -428,6 +436,7 @@ pub fn list_surfaces(
             surface_id,
             surface_instance_id,
             surface_kind,
+            interaction_role,
             display_name,
             capability_profile_json,
             local_access_json,
@@ -502,6 +511,7 @@ fn surface_record_from_conn(
             surface_id,
             surface_instance_id,
             surface_kind,
+            interaction_role,
             display_name,
             capability_profile_json,
             local_access_json,
@@ -535,11 +545,18 @@ fn surface_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SurfaceR
         surface_id: row.get(1)?,
         surface_instance_id: row.get(2)?,
         surface_kind: row.get(3)?,
-        display_name: row.get(4)?,
-        capability_profile_json: row.get(5)?,
-        local_access_json: row.get(6)?,
-        metadata_json: row.get(7)?,
+        interaction_role: row.get(4)?,
+        display_name: row.get(5)?,
+        capability_profile_json: row.get(6)?,
+        local_access_json: row.get(7)?,
+        metadata_json: row.get(8)?,
     })
+}
+
+fn validate_surface_interaction_role(role: SurfaceInteractionRole) -> StoreResult<()> {
+    match role {
+        SurfaceInteractionRole::Agent | SurfaceInteractionRole::UserInteraction => Ok(()),
+    }
 }
 
 fn validate_identifier(field: &'static str, value: &str) -> StoreResult<()> {

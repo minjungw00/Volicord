@@ -496,6 +496,14 @@ where
 }
 
 fn valid_startup_surface(surface: SurfaceRecord) -> Result<SurfaceRecord, McpAdapterError> {
+    match surface.interaction_role.as_str() {
+        "agent" | "user_interaction" => (),
+        _ => {
+            return Err(McpAdapterError::Environment(
+                "registered surface interaction role is not recognized".to_owned(),
+            ));
+        }
+    }
     match serde_json::from_str::<Value>(&surface.capability_profile_json) {
         Ok(Value::Object(_)) => (),
         Ok(_) => {
@@ -867,7 +875,7 @@ mod tests {
     use harness_test_support::TempRuntimeHome;
     use harness_types::{
         ActorKind, ChangeUnitOperation, InitialScope, RedactionState, RequestedMode, ResumePolicy,
-        StatusInclude, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+        StatusInclude, SurfaceInteractionRole, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
         VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
     use serde_json::json;
@@ -927,6 +935,7 @@ mod tests {
                     surface_id: SURFACE_ID.to_owned(),
                     surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
                     surface_kind: "mcp_test".to_owned(),
+                    interaction_role: SurfaceInteractionRole::UserInteraction,
                     display_name: Some("MCP Test Surface".to_owned()),
                     capability_profile_json: capability_profile.to_string(),
                     local_access_json: local_access.to_string(),

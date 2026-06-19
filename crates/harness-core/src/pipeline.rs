@@ -18,8 +18,9 @@ use harness_types::{
     canonical_request_hash, AccessClass, ChangeUnitId, DryRunSummary, DurableIdError,
     DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode, EventId, EventRef, IdempotencyKey,
     JsonObject, MethodName, ProjectId, RandomDurableIdGenerator, RequestHash, ResponseKind,
-    SurfaceId, SurfaceInstanceId, TaskId, ToolDryRunResponse, ToolEnvelope, ToolError,
-    ToolRejectedResponse, ToolResultBase, DURABLE_ID_RETRY_LIMIT,
+    SurfaceId, SurfaceInstanceId, SurfaceInteractionRole, TaskId, ToolDryRunResponse, ToolEnvelope,
+    ToolError, ToolRejectedResponse, ToolResultBase,
+    ACTOR_ASSURANCE_REGISTERED_SURFACE_COOPERATIVE, DURABLE_ID_RETRY_LIMIT,
 };
 use serde_json::{json, Map, Value};
 
@@ -134,6 +135,30 @@ pub struct VerifiedSurfaceContext {
     pub access_class: AccessClass,
     pub capability_profile: Value,
     pub verification_basis: String,
+    pub interaction_role: SurfaceInteractionRole,
+}
+
+/// Internal verified actor-provenance context derived for authority-bearing resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedActorContext {
+    pub role: SurfaceInteractionRole,
+    pub surface_id: SurfaceId,
+    pub surface_instance_id: SurfaceInstanceId,
+    pub verification_basis: String,
+    pub assurance_level: String,
+}
+
+impl VerifiedActorContext {
+    /// Derives actor provenance from the verified registered surface context.
+    pub fn from_verified_surface(surface: &VerifiedSurfaceContext) -> Self {
+        Self {
+            role: surface.interaction_role,
+            surface_id: surface.surface_id.clone(),
+            surface_instance_id: surface.surface_instance_id.clone(),
+            verification_basis: surface.verification_basis.clone(),
+            assurance_level: ACTOR_ASSURANCE_REGISTERED_SURFACE_COOPERATIVE.to_owned(),
+        }
+    }
 }
 
 /// Task selector behavior required by the owner-selected branch.
@@ -292,6 +317,7 @@ pub(crate) struct PipelinePreflightRequest {
 pub(crate) struct VerifiedRequestContext {
     pub project_state: ProjectStateHeader,
     pub verified_surface: VerifiedSurfaceContext,
+    pub verified_actor: VerifiedActorContext,
     pub resolved_task_id: Option<TaskId>,
 }
 
@@ -586,6 +612,8 @@ impl CoreService {
             );
         }
 
+        let verified_actor = VerifiedActorContext::from_verified_surface(&verified_surface);
+
         Ok(PipelinePreflightOutcome::Prepared(Box::new(
             PreparedRequest {
                 method_name: request.method_name,
@@ -595,6 +623,7 @@ impl CoreService {
                 context: VerifiedRequestContext {
                     project_state,
                     verified_surface,
+                    verified_actor,
                     resolved_task_id,
                 },
             },
@@ -1481,7 +1510,7 @@ mod tests {
     use harness_test_support::TempRuntimeHome;
     use harness_types::{
         ActorKind, IdempotencyKey, PlannedEffect, ProjectId, RequestId, SurfaceId,
-        SurfaceInstanceId, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+        SurfaceInstanceId, SurfaceInteractionRole, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
         VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
     use serde_json::{json, Map, Value};
@@ -1520,6 +1549,7 @@ mod tests {
                     surface_id: SURFACE_ID.to_owned(),
                     surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
                     surface_kind: "local_test".to_owned(),
+                    interaction_role: SurfaceInteractionRole::Agent,
                     display_name: Some("Pipeline Test Surface".to_owned()),
                     capability_profile_json: "{}".to_owned(),
                     local_access_json: json!({
@@ -1590,6 +1620,7 @@ mod tests {
                     surface_id: SURFACE_ID.to_owned(),
                     surface_instance_id: surface_instance_id.to_owned(),
                     surface_kind: "local_test".to_owned(),
+                    interaction_role: SurfaceInteractionRole::Agent,
                     display_name: Some(format!("Pipeline Test Surface {surface_instance_id}")),
                     capability_profile_json: "{}".to_owned(),
                     local_access_json: json!({

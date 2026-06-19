@@ -15,13 +15,14 @@ pub const BASELINE_SCHEMA_VERSION: i64 = 1;
 pub const REGISTRY_SCHEMA_VERSION: i64 = 1;
 
 /// Latest schema version for project `state.sqlite`.
-pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 6;
+pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 7;
 
 const PROJECT_STATE_REPLAY_CONTEXT_SCHEMA_VERSION: i64 = 2;
 const PROJECT_STATE_REPLAY_SURFACE_FK_SCHEMA_VERSION: i64 = 3;
 const PROJECT_STATE_CLOSE_BASIS_JUDGMENT_BASIS_SCHEMA_VERSION: i64 = 4;
 const PROJECT_STATE_JUDGMENT_RESOLUTION_OUTCOME_SCHEMA_VERSION: i64 = 5;
 const PROJECT_STATE_ARTIFACT_INTEGRITY_SCHEMA_VERSION: i64 = 6;
+const PROJECT_STATE_SURFACE_ROLE_ACTOR_PROVENANCE_SCHEMA_VERSION: i64 = 7;
 
 /// `schema_migrations.database_kind` for `registry.sqlite`.
 pub const REGISTRY_DATABASE_KIND: &str = "registry";
@@ -72,6 +73,12 @@ const PROJECT_STATE_MIGRATIONS: &[Migration] = &[
         version: PROJECT_STATE_ARTIFACT_INTEGRITY_SCHEMA_VERSION,
         name: "project_state_artifact_integrity_v6",
         kind: MigrationKind::Custom(apply_project_state_artifact_integrity_v6),
+    },
+    Migration {
+        database_kind: PROJECT_STATE_DATABASE_KIND,
+        version: PROJECT_STATE_SURFACE_ROLE_ACTOR_PROVENANCE_SCHEMA_VERSION,
+        name: "project_state_surface_role_actor_provenance_v7",
+        kind: MigrationKind::Sql(PROJECT_STATE_SURFACE_ROLE_ACTOR_PROVENANCE_V7_SQL),
     },
 ];
 
@@ -1065,6 +1072,37 @@ UPDATE project_state
  WHERE schema_version < 6;
 "#;
 
+const PROJECT_STATE_SURFACE_ROLE_ACTOR_PROVENANCE_V7_SQL: &str = r#"
+ALTER TABLE surfaces
+  ADD COLUMN interaction_role TEXT NOT NULL DEFAULT 'agent'
+    CHECK (interaction_role IN ('agent', 'user_interaction'));
+
+ALTER TABLE user_judgments
+  ADD COLUMN resolved_by_actor_kind TEXT
+    CHECK (resolved_by_actor_kind IS NULL OR resolved_by_actor_kind IN ('agent', 'user'));
+
+ALTER TABLE user_judgments
+  ADD COLUMN resolved_actor_role TEXT
+    CHECK (resolved_actor_role IS NULL OR resolved_actor_role IN ('agent', 'user_interaction'));
+
+ALTER TABLE user_judgments
+  ADD COLUMN resolved_by_surface_id TEXT;
+
+ALTER TABLE user_judgments
+  ADD COLUMN resolved_by_surface_instance_id TEXT;
+
+ALTER TABLE user_judgments
+  ADD COLUMN resolved_verification_basis TEXT;
+
+ALTER TABLE user_judgments
+  ADD COLUMN resolved_assurance_level TEXT;
+
+UPDATE project_state
+   SET schema_version = 7,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+ WHERE schema_version < 7;
+"#;
+
 #[cfg(test)]
 mod tests {
     use std::{error::Error, fs};
@@ -1265,7 +1303,10 @@ mod tests {
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
         );
-        assert_eq!(migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?, 6);
+        assert_eq!(
+            migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
         assert_integrity_check_clean(&conn)?;
         assert_tool_invocations_surface_foreign_key(&conn)?;
         assert_foreign_key_check_clean(&conn)?;
@@ -1444,7 +1485,10 @@ mod tests {
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
         );
-        assert_eq!(migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?, 6);
+        assert_eq!(
+            migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
         assert_integrity_check_clean(&conn)?;
         assert_foreign_key_check_clean(&conn)?;
 
@@ -1574,7 +1618,10 @@ mod tests {
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
         );
-        assert_eq!(migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?, 6);
+        assert_eq!(
+            migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
         assert_integrity_check_clean(&conn)?;
         assert_tool_invocations_surface_foreign_key(&conn)?;
         assert_foreign_key_check_clean(&conn)?;
@@ -1613,7 +1660,10 @@ mod tests {
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
         );
-        assert_eq!(migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?, 6);
+        assert_eq!(
+            migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
         assert_integrity_check_clean(&conn)?;
         assert_foreign_key_check_clean(&conn)?;
         Ok(())
@@ -1652,7 +1702,10 @@ mod tests {
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
         );
-        assert_eq!(migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?, 6);
+        assert_eq!(
+            migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
         assert_judgment_status_and_outcome(&conn, "judgment_pending", "pending", None)?;
         assert_judgment_status_and_outcome(&conn, "judgment_resolved_ambiguous", "resolved", None)?;
         assert_judgment_status_and_outcome(
@@ -1774,8 +1827,14 @@ mod tests {
             latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
             PROJECT_STATE_SCHEMA_VERSION
         );
-        assert_eq!(migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?, 6);
-        assert_eq!(project_schema_version(&conn, "project_v5_artifacts")?, 6);
+        assert_eq!(
+            migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
+        assert_eq!(
+            project_schema_version(&conn, "project_v5_artifacts")?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
         assert_eq!(
             artifact_integrity_row(&conn, "artifact_verified")?,
             (
@@ -1799,6 +1858,46 @@ mod tests {
             )
         );
         assert_eq!(artifact_link_count(&conn)?, 3);
+        assert_integrity_check_clean(&conn)?;
+        assert_foreign_key_check_clean(&conn)?;
+        Ok(())
+    }
+
+    #[test]
+    fn surface_role_migration_defaults_existing_surfaces_to_agent() -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("migration-v7-surface-role")?;
+        let path = project_state_db_path(runtime_home.path(), "project_v7_surface_role");
+        fs::create_dir_all(path.parent().expect("state db path has parent"))?;
+        let mut conn = Connection::open(&path)?;
+        enable_foreign_keys(&conn)?;
+        create_project_state_v5(&conn, "project_v7_surface_role")?;
+        insert_surface(&conn, "project_v7_surface_role")?;
+
+        apply_project_state_migrations(&mut conn)?;
+        validate_project_state_schema(&conn)?;
+
+        assert_eq!(
+            latest_migration_version(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
+        assert_eq!(
+            migration_count(&conn, PROJECT_STATE_DATABASE_KIND)?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
+        assert_eq!(
+            project_schema_version(&conn, "project_v7_surface_role")?,
+            PROJECT_STATE_SCHEMA_VERSION
+        );
+        let interaction_role: String = conn.query_row(
+            "SELECT interaction_role
+               FROM surfaces
+              WHERE project_id = 'project_v7_surface_role'
+                AND surface_id = 'surface_main'
+                AND surface_instance_id = 'surface_instance_1'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(interaction_role, "agent");
         assert_integrity_check_clean(&conn)?;
         assert_foreign_key_check_clean(&conn)?;
         Ok(())
@@ -1936,6 +2035,128 @@ mod tests {
             )
             .expect_err("resolution_outcome must be constrained");
         assert_constraint_error(error);
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_surface_interaction_role_is_rejected() -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("migration-invalid-surface-role")?;
+        let conn =
+            open_project_state_database(runtime_home.project_state_db_path("project_bad_role"))?;
+        insert_project_state(&conn, "project_bad_role")?;
+
+        let error = conn
+            .execute(
+                "INSERT INTO surfaces (
+                    project_id,
+                    surface_id,
+                    surface_instance_id,
+                    surface_kind,
+                    interaction_role,
+                    registered_at
+                )
+                VALUES (
+                    'project_bad_role',
+                    'surface_bad',
+                    'surface_instance_bad',
+                    'cli',
+                    'operator',
+                    't0'
+                )",
+                [],
+            )
+            .expect_err("surface interaction_role must be constrained");
+        assert_constraint_error(error);
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_user_judgment_actor_provenance_is_rejected() -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("migration-invalid-actor-provenance")?;
+        let conn = open_project_state_database(
+            runtime_home.project_state_db_path("project_bad_actor_provenance"),
+        )?;
+        insert_project_state(&conn, "project_bad_actor_provenance")?;
+        insert_surface(&conn, "project_bad_actor_provenance")?;
+        insert_task_current(
+            &conn,
+            "project_bad_actor_provenance",
+            "task_actor_provenance",
+        )?;
+
+        let actor_error = conn
+            .execute(
+                "INSERT INTO user_judgments (
+                    project_id,
+                    judgment_id,
+                    task_id,
+                    judgment_kind,
+                    status,
+                    resolution_json,
+                    resolution_outcome,
+                    resolved_by_actor_kind,
+                    resolved_actor_role,
+                    requested_by_surface_id,
+                    requested_by_surface_instance_id,
+                    requested_at,
+                    resolved_at
+                )
+                VALUES (
+                    'project_bad_actor_provenance',
+                    'judgment_bad_actor',
+                    'task_actor_provenance',
+                    'final_acceptance',
+                    'resolved',
+                    '{}',
+                    'accepted',
+                    'system',
+                    'user_interaction',
+                    'surface_main',
+                    'surface_instance_1',
+                    't0',
+                    't1'
+                )",
+                [],
+            )
+            .expect_err("resolved_by_actor_kind must be constrained");
+        assert_constraint_error(actor_error);
+
+        let role_error = conn
+            .execute(
+                "INSERT INTO user_judgments (
+                    project_id,
+                    judgment_id,
+                    task_id,
+                    judgment_kind,
+                    status,
+                    resolution_json,
+                    resolution_outcome,
+                    resolved_by_actor_kind,
+                    resolved_actor_role,
+                    requested_by_surface_id,
+                    requested_by_surface_instance_id,
+                    requested_at,
+                    resolved_at
+                )
+                VALUES (
+                    'project_bad_actor_provenance',
+                    'judgment_bad_role',
+                    'task_actor_provenance',
+                    'final_acceptance',
+                    'resolved',
+                    '{}',
+                    'accepted',
+                    'user',
+                    'operator',
+                    'surface_main',
+                    'surface_instance_1',
+                    't0',
+                    't1'
+                )",
+                [],
+            )
+            .expect_err("resolved_actor_role must be constrained");
+        assert_constraint_error(role_error);
         Ok(())
     }
 

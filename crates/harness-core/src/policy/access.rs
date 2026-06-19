@@ -3,9 +3,10 @@ use harness_store::{
     StoreError,
 };
 use harness_types::{
-    AccessClass, ErrorCode, ProjectId, SurfaceId, SurfaceInstanceId, ToolEnvelope, ToolError,
-    VERIFICATION_BASIS_CLI_DIRECT_SURFACE_BINDING, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
-    VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+    AccessClass, ErrorCode, ProjectId, SurfaceId, SurfaceInstanceId, SurfaceInteractionRole,
+    ToolEnvelope, ToolError, VERIFICATION_BASIS_CLI_DIRECT_SURFACE_BINDING,
+    VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION, VERIFICATION_BASIS_MCP_STDIO_SURFACE_BINDING,
+    VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{Map, Value};
 
@@ -76,6 +77,13 @@ pub(crate) fn verified_surface_from_registered_surface(
     {
         return Err(local_access_mismatch_error("surfaces.local_access_json"));
     }
+    let interaction_role =
+        parse_surface_interaction_role(&surface.interaction_role).map_err(|_| {
+            store_failure_error(StoreError::corrupt_stored_value(
+                "project_state",
+                "surfaces.interaction_role",
+            ))
+        })?;
 
     Ok(VerifiedSurfaceContext {
         project_id: ProjectId::new(surface.project_id),
@@ -87,6 +95,7 @@ pub(crate) fn verified_surface_from_registered_surface(
             &grant.verification_basis,
             &invocation.binding.invocation_binding_basis,
         ),
+        interaction_role,
     })
 }
 
@@ -171,6 +180,14 @@ fn parse_access_class_field(value: &Value) -> Result<AccessClass, RegisteredLoca
         "artifact_registration" => Ok(AccessClass::ArtifactRegistration),
         "artifact_read" => Ok(AccessClass::ArtifactRead),
         _ => Err(RegisteredLocalAccessGrantError::InvalidShape),
+    }
+}
+
+fn parse_surface_interaction_role(value: &str) -> Result<SurfaceInteractionRole, ()> {
+    match value {
+        "agent" => Ok(SurfaceInteractionRole::Agent),
+        "user_interaction" => Ok(SurfaceInteractionRole::UserInteraction),
+        _ => Err(()),
     }
 }
 

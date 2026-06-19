@@ -35,9 +35,9 @@ use harness_types::{
     RunId, RunSummary, SensitiveActionRequirement, StageArtifactRequest, StageArtifactResult,
     StagedArtifactHandle, StagedArtifactHandleId, StateRecordKind, StateRecordRef,
     StatusCloseState, StatusInclude, StatusRequest, StorageRef, SurfaceId, SurfaceInstanceId,
-    TaskId, TaskLifecyclePhase, TaskLifecycleState, TaskMode, TaskResult, ToolEnvelope,
-    ToolResultBase, UpdateScopeRequest, UserJudgment, UserJudgmentContext, UserJudgmentOption,
-    UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
+    SurfaceInteractionRole, TaskId, TaskLifecyclePhase, TaskLifecycleState, TaskMode, TaskResult,
+    ToolEnvelope, ToolResultBase, UpdateScopeRequest, UserJudgment, UserJudgmentContext,
+    UserJudgmentOption, UserJudgmentOptionAction, UserJudgmentOptionId, UserJudgmentOptionInput,
     UserJudgmentResolution, UserJudgmentStatus, UtcTimestamp, WriteAuthoritySummary,
     WriteAuthorizationId, WriteAuthorizationStatus, WriteAuthorizationSummary,
     WriteDecisionCategory, WriteDecisionReason,
@@ -51,7 +51,7 @@ use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
     MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelinePreflightOutcome,
     PipelinePreflightRequest, PipelineResponse, PreparedRequest, ReplayPolicy, TaskRequirement,
-    VerifiedSurfaceContext,
+    VerifiedActorContext, VerifiedSurfaceContext,
 };
 use crate::policy::{
     close_readiness::{
@@ -60,7 +60,8 @@ use crate::policy::{
         current_final_acceptance, current_residual_risk_acceptance_coverage,
         current_scope_decision, final_acceptance_basis_matches_current,
         final_acceptance_requirement, is_terminal_lifecycle, judgment_has_current_basis,
-        residual_risk_basis_matches_current, CancellationAuthorityRequirement, JudgmentAuthority,
+        residual_risk_basis_matches_current, verified_user_interaction_provenance,
+        CancellationAuthorityRequirement, JudgmentAuthority,
     },
     evidence::{evidence_status_for_items, unique_artifact_refs},
     judgment_relevance::{
@@ -468,6 +469,29 @@ fn user_judgment_authority_from_record(
         record.resolution_json.as_deref(),
         resolution_outcome,
     )?;
+    let resolved_by_actor_kind: Option<ActorKind> = record
+        .resolved_by_actor_kind
+        .as_deref()
+        .map(|actor_kind| {
+            parse_owner_storage_value(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "resolved_by_actor_kind",
+                actor_kind,
+            )
+        })
+        .transpose()?;
+    if let (Some(stored_actor), Some(resolution)) = (resolved_by_actor_kind, resolution.as_ref()) {
+        if stored_actor != resolution.resolved_by_actor_kind {
+            return Err(CorePipelineError::Store(
+                StoreError::corrupt_owner_state_value(
+                    "user_judgments",
+                    record.judgment_id.clone(),
+                    "resolved_by_actor_kind",
+                ),
+            ));
+        }
+    }
     if resolution.as_ref().is_some_and(|resolution| {
         !stored_answer_branch_matches_kind(judgment_kind, &resolution.answer)
     }) {
@@ -479,6 +503,26 @@ fn user_judgment_authority_from_record(
             ),
         ));
     }
+    let resolved_actor_role = record
+        .resolved_actor_role
+        .as_deref()
+        .map(|role| {
+            parse_owner_storage_value(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "resolved_actor_role",
+                role,
+            )
+        })
+        .transpose()?;
+    let resolved_by_surface_id = record
+        .resolved_by_surface_id
+        .as_ref()
+        .map(|value| SurfaceId::new(value.clone()));
+    let resolved_by_surface_instance_id = record
+        .resolved_by_surface_instance_id
+        .as_ref()
+        .map(|value| SurfaceInstanceId::new(value.clone()));
     Ok(JudgmentAuthority {
         judgment_id: record.judgment_id.clone(),
         task_id: TaskId::new(record.task_id.clone()),
@@ -490,13 +534,21 @@ fn user_judgment_authority_from_record(
             .as_ref()
             .and_then(|resolution| resolution.machine_action),
         resolution_outcome,
+        resolved_actor_role,
+        resolved_by_surface_id,
+        resolved_by_surface_instance_id,
+        resolved_verification_basis: record.resolved_verification_basis.clone(),
+        resolved_assurance_level: record.resolved_assurance_level.clone(),
         basis_status,
         basis,
         resolution,
     })
 }
 
-fn user_judgment_authority_from_state(judgment: &UserJudgment) -> JudgmentAuthority {
+fn user_judgment_authority_from_state(
+    judgment: &UserJudgment,
+    actor_context: Option<&VerifiedActorContext>,
+) -> JudgmentAuthority {
     JudgmentAuthority {
         judgment_id: judgment.judgment_id.as_str().to_owned(),
         task_id: judgment.task_id.clone(),
@@ -512,6 +564,13 @@ fn user_judgment_authority_from_state(judgment: &UserJudgment) -> JudgmentAuthor
             .resolution
             .as_ref()
             .and_then(|resolution| resolution.resolution_outcome),
+        resolved_actor_role: actor_context.map(|context| context.role),
+        resolved_by_surface_id: actor_context.map(|context| context.surface_id.clone()),
+        resolved_by_surface_instance_id: actor_context
+            .map(|context| context.surface_instance_id.clone()),
+        resolved_verification_basis: actor_context
+            .map(|context| context.verification_basis.clone()),
+        resolved_assurance_level: actor_context.map(|context| context.assurance_level.clone()),
         basis_status: judgment
             .basis
             .as_ref()

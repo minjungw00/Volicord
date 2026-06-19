@@ -18,7 +18,8 @@ use harness_test_support::TempRuntimeHome;
 use harness_types::{
     prefixed_durable_id, ActorKind, ChangeUnitUpdate, DurableIdError, DurableIdGenerator,
     DurableIdKind, IdempotencyKey, InitialScope, RequestId, ScopeUpdate,
-    SequenceDurableIdGenerator, SurfaceId, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+    SequenceDurableIdGenerator, SurfaceId, SurfaceInteractionRole,
+    ACTOR_ASSURANCE_REGISTERED_SURFACE_COOPERATIVE, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{json, Map, Value};
@@ -136,6 +137,7 @@ impl MethodHarness {
                 surface_id: SURFACE_ID.to_owned(),
                 surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
                 surface_kind: "local_test".to_owned(),
+                interaction_role: SurfaceInteractionRole::UserInteraction,
                 display_name: Some("Method Test Surface".to_owned()),
                 capability_profile_json: json!({
                     "access_class": "write_authorization",
@@ -194,6 +196,16 @@ impl MethodHarness {
     fn use_clock(&mut self, clock: ManualClock) {
         self.service = CoreService::with_clock(&self.runtime_home_path, clock);
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct UserJudgmentActorProvenance {
+    resolved_by_actor_kind: Option<String>,
+    resolved_actor_role: Option<String>,
+    resolved_by_surface_id: Option<String>,
+    resolved_by_surface_instance_id: Option<String>,
+    resolved_verification_basis: Option<String>,
+    resolved_assurance_level: Option<String>,
 }
 
 #[test]
@@ -4954,6 +4966,23 @@ fn record_user_judgment_resolves_pending_record() -> Result<(), Box<dyn Error>> 
         user_judgment_resolution_outcome(&harness, &pending_judgment_id)?,
         Some("accepted".to_owned())
     );
+    assert_eq!(
+        user_judgment_actor_provenance(&harness, &pending_judgment_id)?,
+        UserJudgmentActorProvenance {
+            resolved_by_actor_kind: Some("user".to_owned()),
+            resolved_actor_role: Some("user_interaction".to_owned()),
+            resolved_by_surface_id: Some(SURFACE_ID.to_owned()),
+            resolved_by_surface_instance_id: Some(SURFACE_INSTANCE_ID.to_owned()),
+            resolved_verification_basis: Some(format!(
+                "{}:{}",
+                VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+                VERIFICATION_BASIS_TEST_FIXTURE_BINDING
+            )),
+            resolved_assurance_level: Some(
+                ACTOR_ASSURANCE_REGISTERED_SURFACE_COOPERATIVE.to_owned()
+            ),
+        }
+    );
     let (event_kind, event_payload, _) = latest_task_event(&harness)?;
     assert_eq!(event_kind, "user_judgment_recorded");
     assert_eq!(event_payload["resolution_outcome"], "accepted");
@@ -5246,6 +5275,147 @@ fn non_user_actor_cannot_resolve_authority_bearing_judgment() -> Result<(), Box<
         user_judgment_status(&harness, &pending_judgment_id)?,
         "pending"
     );
+    Ok(())
+}
+
+#[test]
+fn user_actor_on_agent_surface_cannot_resolve_authority_bearing_judgment(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "authority_role")?;
+    let pending_judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_authority_role",
+            "idem_judgment_authority_role",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ScopeDecision,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let pending_judgment_id =
+        response_record_id(&pending_judgment.response_value, "user_judgment_ref");
+    set_surface_interaction_role(&harness, SurfaceInteractionRole::Agent)?;
+    let before = harness.counts()?;
+
+    let response = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_record_authority_role",
+            "idem_record_authority_role",
+            Some(3),
+            &task_id,
+            &pending_judgment_id,
+            JudgmentKind::ScopeDecision,
+            answer_payload(JudgmentKind::ScopeDecision),
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "LOCAL_ACCESS_MISMATCH"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["field"],
+        "surfaces.interaction_role"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(
+        user_judgment_status(&harness, &pending_judgment_id)?,
+        "pending"
+    );
+    Ok(())
+}
+
+#[test]
+fn agent_surface_can_resolve_non_authority_judgment() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "agent_non_authority")?;
+    let pending_judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_judgment_agent_non_authority",
+            "idem_judgment_agent_non_authority",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let pending_judgment_id =
+        response_record_id(&pending_judgment.response_value, "user_judgment_ref");
+    set_surface_interaction_role(&harness, SurfaceInteractionRole::Agent)?;
+
+    let response = harness.service.record_user_judgment(
+        record_judgment_request(
+            "req_record_agent_non_authority",
+            "idem_record_agent_non_authority",
+            Some(3),
+            &task_id,
+            &pending_judgment_id,
+            JudgmentKind::ProductDecision,
+            answer_payload(JudgmentKind::ProductDecision),
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(
+        user_judgment_actor_provenance(&harness, &pending_judgment_id)?.resolved_actor_role,
+        Some("agent".to_owned())
+    );
+    assert_eq!(
+        user_judgment_resolution_outcome(&harness, &pending_judgment_id)?,
+        Some("accepted".to_owned())
+    );
+    Ok(())
+}
+
+#[test]
+fn stored_final_acceptance_without_actor_provenance_does_not_authorize_close(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "final_legacy_provenance")?;
+    let after_basis = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "final_legacy_provenance",
+        true,
+    )?;
+    let (after_final, final_judgment_id) = record_final_acceptance_with_id(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_basis,
+        "final_legacy_provenance",
+    )?;
+    clear_user_judgment_actor_provenance(&harness, &final_judgment_id)?;
+    let before = harness.counts()?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_close_final_legacy_provenance",
+            idempotency_key: Some("idem_close_final_legacy_provenance"),
+            dry_run: false,
+            expected_state_version: Some(after_final),
+            task_id: &task_id,
+            intent: CloseIntent::Complete,
+            close_reason: Some(CloseReason::CompletedSelfChecked),
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::CoreMutation),
+    )?;
+
+    assert_eq!(response.response_value["close_state"], "blocked");
+    assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    assert_eq!(harness.counts()?, before);
     Ok(())
 }
 
@@ -10465,6 +10635,21 @@ fn set_surface_local_access(
     Ok(())
 }
 
+fn set_surface_interaction_role(
+    harness: &MethodHarness,
+    role: SurfaceInteractionRole,
+) -> Result<(), Box<dyn Error>> {
+    let conn = harness.conn()?;
+    conn.execute(
+        "UPDATE surfaces
+                SET interaction_role = ?3
+              WHERE project_id = ?1
+                AND surface_id = ?2",
+        rusqlite::params![PROJECT_ID, SURFACE_ID, role.as_str()],
+    )?;
+    Ok(())
+}
+
 fn write_authorization_count(harness: &MethodHarness) -> Result<u64, Box<dyn Error>> {
     let conn = harness.conn()?;
     let count: i64 = conn.query_row(
@@ -10606,6 +10791,55 @@ fn user_judgment_resolution_outcome(
         rusqlite::params![PROJECT_ID, user_judgment_id],
         |row| row.get(0),
     )?)
+}
+
+fn user_judgment_actor_provenance(
+    harness: &MethodHarness,
+    user_judgment_id: &str,
+) -> Result<UserJudgmentActorProvenance, Box<dyn Error>> {
+    let conn = harness.conn()?;
+    Ok(conn.query_row(
+        "SELECT
+                resolved_by_actor_kind,
+                resolved_actor_role,
+                resolved_by_surface_id,
+                resolved_by_surface_instance_id,
+                resolved_verification_basis,
+                resolved_assurance_level
+           FROM user_judgments
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, user_judgment_id],
+        |row| {
+            Ok(UserJudgmentActorProvenance {
+                resolved_by_actor_kind: row.get(0)?,
+                resolved_actor_role: row.get(1)?,
+                resolved_by_surface_id: row.get(2)?,
+                resolved_by_surface_instance_id: row.get(3)?,
+                resolved_verification_basis: row.get(4)?,
+                resolved_assurance_level: row.get(5)?,
+            })
+        },
+    )?)
+}
+
+fn clear_user_judgment_actor_provenance(
+    harness: &MethodHarness,
+    user_judgment_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    harness.conn()?.execute(
+        "UPDATE user_judgments
+            SET resolved_by_actor_kind = NULL,
+                resolved_actor_role = NULL,
+                resolved_by_surface_id = NULL,
+                resolved_by_surface_instance_id = NULL,
+                resolved_verification_basis = NULL,
+                resolved_assurance_level = NULL
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, user_judgment_id],
+    )?;
+    Ok(())
 }
 
 fn mark_user_judgment_legacy_unbound(
@@ -10827,10 +11061,11 @@ fn set_user_judgment_resolution_actor(
     resolution["resolved_by_actor_kind"] = json!(actor_kind);
     harness.conn()?.execute(
         "UPDATE user_judgments
-            SET resolution_json = ?3
+            SET resolution_json = ?3,
+                resolved_by_actor_kind = ?4
           WHERE project_id = ?1
             AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id, resolution.to_string()],
+        rusqlite::params![PROJECT_ID, judgment_id, resolution.to_string(), actor_kind],
     )?;
     Ok(())
 }

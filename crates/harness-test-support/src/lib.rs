@@ -15,7 +15,9 @@ use harness_store::{
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
     sqlite::open_project_state_database,
 };
-use harness_types::{TypeBoundary, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION};
+use harness_types::{
+    SurfaceInteractionRole, TypeBoundary, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+};
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
@@ -156,6 +158,7 @@ pub mod core_fixtures {
                     surface_id: surface_id.clone(),
                     surface_instance_id: surface_instance_id.clone(),
                     surface_kind: "local_test".to_owned(),
+                    interaction_role: SurfaceInteractionRole::UserInteraction,
                     display_name: Some("Shared Test Surface".to_owned()),
                     capability_profile_json: default_capability_profile().to_string(),
                     local_access_json: json!({
@@ -944,10 +947,16 @@ pub mod core_fixtures {
             value["resolved_by_actor_kind"] = Value::String(actor_kind.to_owned());
             self.conn()?.execute(
                 "UPDATE user_judgments
-                    SET resolution_json = ?3
+                    SET resolution_json = ?3,
+                        resolved_by_actor_kind = ?4
                   WHERE project_id = ?1
                     AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id, serde_json::to_string(&value)?],
+                rusqlite::params![
+                    self.project_id,
+                    judgment_id,
+                    serde_json::to_string(&value)?,
+                    actor_kind
+                ],
             )?;
             Ok(())
         }

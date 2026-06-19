@@ -5,8 +5,9 @@ use harness_types::{
     CurrentCloseBasis, JsonObject, JudgmentBasis, JudgmentBasisCompatibilityStatus, JudgmentKind,
     JudgmentRequiredFor, JudgmentResolutionOutcome, MethodName, NextActionKind, NextActionSummary,
     ProjectId, RecordUserJudgmentPayload, RequiredNullable, RiskAcceptanceCoverage, RiskId,
-    StateRecordKind, StateRecordRef, TaskId, UserJudgmentOptionAction, UserJudgmentResolution,
-    UserJudgmentStatus,
+    StateRecordKind, StateRecordRef, SurfaceId, SurfaceInstanceId, SurfaceInteractionRole, TaskId,
+    UserJudgmentOptionAction, UserJudgmentResolution, UserJudgmentStatus,
+    ACTOR_ASSURANCE_REGISTERED_SURFACE_COOPERATIVE,
 };
 use serde_json::Value;
 
@@ -53,6 +54,11 @@ pub(crate) struct JudgmentAuthority {
     pub(crate) affected_refs: Vec<StateRecordRef>,
     pub(crate) machine_action: Option<UserJudgmentOptionAction>,
     pub(crate) resolution_outcome: Option<JudgmentResolutionOutcome>,
+    pub(crate) resolved_actor_role: Option<SurfaceInteractionRole>,
+    pub(crate) resolved_by_surface_id: Option<SurfaceId>,
+    pub(crate) resolved_by_surface_instance_id: Option<SurfaceInstanceId>,
+    pub(crate) resolved_verification_basis: Option<String>,
+    pub(crate) resolved_assurance_level: Option<String>,
     pub(crate) basis_status: JudgmentBasisCompatibilityStatus,
     pub(crate) basis: Option<JudgmentBasis>,
     pub(crate) resolution: Option<UserJudgmentResolution>,
@@ -302,7 +308,20 @@ pub(crate) fn accepted_current_user_authority(
     resolution.machine_action == Some(UserJudgmentOptionAction::Accept)
         && resolution.resolution_outcome == Some(JudgmentResolutionOutcome::Accepted)
         && resolution.resolved_by_actor_kind == ActorKind::User
+        && verified_user_interaction_provenance(judgment)
         && resolution_answer_matches_kind(required_kind, &resolution.answer)
+}
+
+pub(crate) fn verified_user_interaction_provenance(judgment: &JudgmentAuthority) -> bool {
+    judgment.resolved_actor_role == Some(SurfaceInteractionRole::UserInteraction)
+        && judgment.resolved_by_surface_id.is_some()
+        && judgment.resolved_by_surface_instance_id.is_some()
+        && judgment
+            .resolved_verification_basis
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        && judgment.resolved_assurance_level.as_deref()
+            == Some(ACTOR_ASSURANCE_REGISTERED_SURFACE_COOPERATIVE)
 }
 
 pub(crate) fn judgment_has_current_basis(judgment: &JudgmentAuthority) -> bool {

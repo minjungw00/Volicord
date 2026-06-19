@@ -154,6 +154,24 @@ pub enum ActorKind {
     User,
 }
 
+/// Controlled registered surface role for actor-provenance derivation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfaceInteractionRole {
+    Agent,
+    UserInteraction,
+}
+
+impl SurfaceInteractionRole {
+    /// Returns the stable storage value name for this interaction role.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Agent => "agent",
+            Self::UserInteraction => "user_interaction",
+        }
+    }
+}
+
 /// Controlled next-action category.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -232,6 +250,9 @@ pub const VERIFICATION_BASIS_CLI_DIRECT_SURFACE_BINDING: &str = "cli_direct_surf
 
 /// Controlled binding basis value for repository tests and fixtures.
 pub const VERIFICATION_BASIS_TEST_FIXTURE_BINDING: &str = "test_fixture_binding";
+
+/// Baseline actor assurance level for cooperative registered-surface provenance.
+pub const ACTOR_ASSURANCE_REGISTERED_SURFACE_COOPERATIVE: &str = "registered_surface_cooperative";
 
 /// State reference discriminator values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]

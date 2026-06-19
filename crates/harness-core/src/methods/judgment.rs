@@ -112,6 +112,7 @@ impl CoreService {
             &prepared.context.project_state,
             request.clone(),
             &prepared.context.verified_surface,
+            &prepared.context.verified_actor,
         ) {
             Ok(plan) => plan,
             Err(error) => {
@@ -341,7 +342,7 @@ fn plan_request_user_judgment(
         &request.envelope,
         &request.task_id,
     )?;
-    pending_authorities.push(user_judgment_authority_from_state(&user_judgment));
+    pending_authorities.push(user_judgment_authority_from_state(&user_judgment, None));
     let projected_project_state = project_state_projection(
         project_state,
         planned_state_version,
@@ -960,6 +961,7 @@ fn plan_record_user_judgment(
     project_state: &ProjectStateHeader,
     request: RecordUserJudgmentRequest,
     verified_surface: &VerifiedSurfaceContext,
+    verified_actor: &VerifiedActorContext,
 ) -> Result<MethodPlan, PlanError> {
     let planned_state_version = project_state.state_version + 1;
     let now = utc_timestamp(service.now());
@@ -1059,6 +1061,19 @@ fn plan_record_user_judgment(
             "authority-bearing judgments must be resolved by actor_kind=user",
         )
         .map(|()| unreachable!());
+    }
+    if is_authority_bearing_judgment(request.judgment_kind)
+        && verified_actor.role != SurfaceInteractionRole::UserInteraction
+    {
+        let response = rejected_pipeline_response(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            vec![crate::policy::access::local_access_mismatch_error(
+                "surfaces.interaction_role",
+            )],
+        )
+        .map_err(PlanError::Core)?;
+        return Err(PlanError::Response(Box::new(response)));
     }
     validate_answer_payload(
         request.envelope.dry_run,
@@ -1192,7 +1207,10 @@ fn plan_record_user_judgment(
         &request.envelope,
         &task_id,
     )?;
-    resolved_authorities.push(user_judgment_authority_from_state(&user_judgment));
+    resolved_authorities.push(user_judgment_authority_from_state(
+        &user_judgment,
+        Some(verified_actor),
+    ));
     let projected_project_state = project_state_projection(
         project_state,
         planned_state_version,
@@ -1257,6 +1275,12 @@ fn plan_record_user_judgment(
             resolution_outcome,
             resolution_json: serde_json::to_string(&resolution)?,
             sensitive_action_scope_json,
+            resolved_by_actor_kind: storage_value(request.envelope.actor_kind)?,
+            resolved_actor_role: storage_value(verified_actor.role)?,
+            resolved_by_surface_id: verified_actor.surface_id.as_str().to_owned(),
+            resolved_by_surface_instance_id: verified_actor.surface_instance_id.as_str().to_owned(),
+            resolved_verification_basis: verified_actor.verification_basis.clone(),
+            resolved_assurance_level: verified_actor.assurance_level.clone(),
             resolved_at: now.to_string(),
         },
     )];

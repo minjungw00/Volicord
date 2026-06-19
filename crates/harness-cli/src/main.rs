@@ -13,7 +13,8 @@ use harness_store::bootstrap::{
     ProjectRegistration, SurfaceRegistration, ACTIVE_PROJECT_STATUS,
 };
 use harness_types::{
-    AccessClass, BASELINE_WORKFLOW_ACCESS_CLASSES, VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
+    AccessClass, SurfaceInteractionRole, BASELINE_WORKFLOW_ACCESS_CLASSES,
+    VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION,
 };
 use serde_json::{json, Map, Value};
 
@@ -172,6 +173,7 @@ where
                     "access-class",
                     "profile",
                     "capability-profile",
+                    "interaction-role",
                 ],
                 &["access-class"],
             )?;
@@ -184,7 +186,9 @@ where
                 .value("kind")
                 .unwrap_or_else(|| DEFAULT_SURFACE_KIND.to_owned());
             let display_name = options.value("name");
+            let interaction_role = surface_interaction_role(&options)?;
             let access_classes = surface_access_classes(&options)?;
+            validate_role_access_classes(interaction_role, &access_classes)?;
             let capability_profile_json =
                 capability_profile_json(&access_classes, options.value_ref("capability-profile"))?;
             let local_access_json = local_access_json(&access_classes)?;
@@ -196,6 +200,7 @@ where
                     surface_id,
                     surface_instance_id,
                     surface_kind,
+                    interaction_role,
                     display_name,
                     capability_profile_json,
                     local_access_json,
@@ -206,11 +211,12 @@ where
                 .unwrap_or_else(|| DEFAULT_ACCESS_CLASS.as_str().to_owned());
 
             Ok(format!(
-                "surface registered\nproject_id: {}\nsurface_id: {}\nsurface_instance_id: {}\nsurface_kind: {}\naccess_class: {}\n",
+                "surface registered\nproject_id: {}\nsurface_id: {}\nsurface_instance_id: {}\nsurface_kind: {}\ninteraction_role: {}\naccess_class: {}\n",
                 record.project_id,
                 record.surface_id,
                 record.surface_instance_id,
                 record.surface_kind,
+                record.interaction_role,
                 access_class
             ))
         }
@@ -219,18 +225,19 @@ where
             let project_id = required_option(&options, "project-id")?;
             let surfaces = list_surfaces(&runtime_home, &project_id)?;
             let mut output = String::from(
-                "project_id\tsurface_id\tsurface_instance_id\tsurface_kind\taccess_class\tdisplay_name\n",
+                "project_id\tsurface_id\tsurface_instance_id\tsurface_kind\tinteraction_role\taccess_class\tdisplay_name\n",
             );
             for surface in surfaces {
                 let access_class = access_class_from_local_access(&surface.local_access_json)
                     .unwrap_or_else(|| String::from(""));
                 let display_name = surface.display_name.unwrap_or_default();
                 output.push_str(&format!(
-                    "{}\t{}\t{}\t{}\t{}\t{}\n",
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
                     surface.project_id,
                     surface.surface_id,
                     surface.surface_instance_id,
                     surface.surface_kind,
+                    surface.interaction_role,
                     access_class,
                     display_name
                 ));
@@ -472,6 +479,39 @@ fn surface_access_classes(options: &CliOptions) -> Result<Vec<AccessClass>, CliE
     }
 }
 
+fn surface_interaction_role(options: &CliOptions) -> Result<SurfaceInteractionRole, CliError> {
+    match options.value_ref("interaction-role") {
+        Some(value) => serde_json::from_value(Value::String(value.to_owned()))
+            .map_err(|_| CliError::usage(format!("unknown interaction role: {value}"))),
+        None => Ok(SurfaceInteractionRole::Agent),
+    }
+}
+
+fn validate_role_access_classes(
+    role: SurfaceInteractionRole,
+    access_classes: &[AccessClass],
+) -> Result<(), CliError> {
+    if role != SurfaceInteractionRole::UserInteraction {
+        return Ok(());
+    }
+    if !access_classes.contains(&AccessClass::CoreMutation) {
+        return Err(CliError::usage(
+            "user_interaction surfaces require core_mutation access",
+        ));
+    }
+    if access_classes.iter().any(|access_class| {
+        !matches!(
+            access_class,
+            AccessClass::ReadStatus | AccessClass::CoreMutation
+        )
+    }) {
+        return Err(CliError::usage(
+            "user_interaction surfaces may grant only read_status and core_mutation access",
+        ));
+    }
+    Ok(())
+}
+
 fn parse_access_class(value: &str) -> Result<AccessClass, CliError> {
     serde_json::from_value(Value::String(value.to_owned()))
         .map_err(|_| CliError::usage(format!("unknown access class: {value}")))
@@ -526,7 +566,7 @@ fn project_usage() -> String {
 }
 
 fn surface_usage() -> String {
-    "harness surface register --project-id ID --surface-id ID [--surface-instance-id ID] [--kind KIND] [--name NAME] [--access-class ACCESS_CLASS ...] [--profile baseline-workflow] [--capability-profile JSON]\nharness surface list --project-id ID\n"
+    "harness surface register --project-id ID --surface-id ID [--surface-instance-id ID] [--kind KIND] [--name NAME] [--interaction-role agent|user_interaction] [--access-class ACCESS_CLASS ...] [--profile baseline-workflow] [--capability-profile JSON]\nharness surface list --project-id ID\n"
         .to_owned()
 }
 
@@ -744,7 +784,7 @@ mod tests {
 
         assert_eq!(
             output,
-            "surface registered\nproject_id: project_surface\nsurface_id: surface_cli\nsurface_instance_id: surface_instance_test\nsurface_kind: cli\naccess_class: core_mutation\n"
+            "surface registered\nproject_id: project_surface\nsurface_id: surface_cli\nsurface_instance_id: surface_instance_test\nsurface_kind: cli\ninteraction_role: agent\naccess_class: core_mutation\n"
         );
 
         let list_output = run_with_home(
@@ -760,7 +800,7 @@ mod tests {
         .expect("surface list should succeed");
         assert_eq!(
             list_output,
-            "project_id\tsurface_id\tsurface_instance_id\tsurface_kind\taccess_class\tdisplay_name\nproject_surface\tsurface_cli\tsurface_instance_test\tcli\tcore_mutation\tLocal CLI\n"
+            "project_id\tsurface_id\tsurface_instance_id\tsurface_kind\tinteraction_role\taccess_class\tdisplay_name\nproject_surface\tsurface_cli\tsurface_instance_test\tcli\tagent\tcore_mutation\tLocal CLI\n"
         );
 
         let conn = Connection::open(project_state_db_path(
@@ -768,17 +808,23 @@ mod tests {
             "project_surface",
         ))
         .expect("state database should open");
-        let (default_surface_id, capability_profile, local_access): (String, String, String) = conn
+        let (default_surface_id, interaction_role, capability_profile, local_access): (
+            String,
+            String,
+            String,
+            String,
+        ) = conn
             .query_row(
-                "SELECT default_surface_id, capability_profile_json, local_access_json
+                "SELECT default_surface_id, interaction_role, capability_profile_json, local_access_json
                    FROM project_state
                    JOIN surfaces USING (project_id)
                   WHERE project_id = 'project_surface'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .expect("surface metadata should exist");
         assert_eq!(default_surface_id, "surface_cli");
+        assert_eq!(interaction_role, "agent");
         let capability = serde_json::from_str::<Value>(&capability_profile)
             .expect("capability profile should be JSON");
         assert_eq!(capability["access_class"], "core_mutation");
@@ -793,6 +839,131 @@ mod tests {
         assert_eq!(
             local_access["verification_basis"],
             "local_admin_registration"
+        );
+    }
+
+    #[test]
+    fn surface_register_explicit_user_interaction_role_is_stored() {
+        let runtime_home =
+            TempRuntimeHome::new("cli-surface-user-role").expect("temp runtime home");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "init",
+                "--runtime-home-id",
+                "runtime_home_surface_user_role",
+            ],
+        )
+        .expect("init should succeed");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "project",
+                "register",
+                "--project-id",
+                "project_user_role",
+                "--repo-root",
+                ".",
+            ],
+        )
+        .expect("project register should succeed");
+
+        let output = run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "surface",
+                "register",
+                "--project-id",
+                "project_user_role",
+                "--surface-id",
+                "surface_user_role",
+                "--surface-instance-id",
+                "surface_instance_user_role",
+                "--interaction-role",
+                "user_interaction",
+                "--access-class",
+                "core_mutation",
+                "--access-class",
+                "read_status",
+            ],
+        )
+        .expect("user-interaction surface register should succeed");
+
+        assert!(output.contains("interaction_role: user_interaction\n"));
+        assert!(output.contains("access_class: core_mutation,read_status\n"));
+        let conn = Connection::open(project_state_db_path(
+            runtime_home.path(),
+            "project_user_role",
+        ))
+        .expect("state database should open");
+        let interaction_role: String = conn
+            .query_row(
+                "SELECT interaction_role
+                   FROM surfaces
+                  WHERE project_id = 'project_user_role'
+                    AND surface_id = 'surface_user_role'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("surface role should exist");
+        assert_eq!(interaction_role, "user_interaction");
+    }
+
+    #[test]
+    fn surface_register_user_interaction_rejects_broad_grants() {
+        let runtime_home =
+            TempRuntimeHome::new("cli-surface-user-role-broad").expect("temp runtime home");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "init",
+                "--runtime-home-id",
+                "runtime_home_surface_user_role_broad",
+            ],
+        )
+        .expect("init should succeed");
+        run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "project",
+                "register",
+                "--project-id",
+                "project_user_role_broad",
+                "--repo-root",
+                ".",
+            ],
+        )
+        .expect("project register should succeed");
+
+        let error = run_with_home(
+            runtime_home.path(),
+            [
+                "harness",
+                "surface",
+                "register",
+                "--project-id",
+                "project_user_role_broad",
+                "--surface-id",
+                "surface_user_role_broad",
+                "--interaction-role",
+                "user_interaction",
+                "--profile",
+                "baseline-workflow",
+            ],
+        )
+        .expect_err("user-interaction role should reject broad baseline profile grants");
+
+        assert_eq!(
+            error,
+            CliError::Usage(
+                "user_interaction surfaces may grant only read_status and core_mutation access"
+                    .to_owned()
+            )
         );
     }
 

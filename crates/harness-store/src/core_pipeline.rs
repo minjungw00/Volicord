@@ -211,6 +211,12 @@ pub struct UserJudgmentResolutionUpdate {
     pub resolution_outcome: JudgmentResolutionOutcome,
     pub resolution_json: String,
     pub sensitive_action_scope_json: Option<String>,
+    pub resolved_by_actor_kind: String,
+    pub resolved_actor_role: String,
+    pub resolved_by_surface_id: String,
+    pub resolved_by_surface_instance_id: String,
+    pub resolved_verification_basis: String,
+    pub resolved_assurance_level: String,
     pub resolved_at: String,
 }
 
@@ -597,6 +603,12 @@ pub struct UserJudgmentRecord {
     pub basis_status: String,
     pub resolution_outcome: Option<String>,
     pub resolution_json: Option<String>,
+    pub resolved_by_actor_kind: Option<String>,
+    pub resolved_actor_role: Option<String>,
+    pub resolved_by_surface_id: Option<String>,
+    pub resolved_by_surface_instance_id: Option<String>,
+    pub resolved_verification_basis: Option<String>,
+    pub resolved_assurance_level: Option<String>,
     pub requested_by_surface_id: String,
     pub requested_by_surface_instance_id: String,
     pub requested_at: String,
@@ -684,6 +696,7 @@ impl CoreProjectStore {
                 surface_id,
                 surface_instance_id,
                 surface_kind,
+                interaction_role,
                 display_name,
                 capability_profile_json,
                 local_access_json,
@@ -2287,6 +2300,18 @@ impl ProjectMutation<'_> {
         if let Some(value) = &input.sensitive_action_scope_json {
             validate_json_text("user_judgments.sensitive_action_scope_json", value)?;
         }
+        validate_actor_kind_value("resolved_by_actor_kind", &input.resolved_by_actor_kind)?;
+        validate_interaction_role_value("resolved_actor_role", &input.resolved_actor_role)?;
+        validate_identifier("resolved_by_surface_id", &input.resolved_by_surface_id)?;
+        validate_identifier(
+            "resolved_by_surface_instance_id",
+            &input.resolved_by_surface_instance_id,
+        )?;
+        validate_identifier(
+            "resolved_verification_basis",
+            &input.resolved_verification_basis,
+        )?;
+        validate_identifier("resolved_assurance_level", &input.resolved_assurance_level)?;
         validate_identifier("resolved_at", &input.resolved_at)?;
 
         let changed = self.tx.execute(
@@ -2295,7 +2320,13 @@ impl ProjectMutation<'_> {
                     resolution_outcome = ?4,
                     resolution_json = ?5,
                     sensitive_action_scope_json = COALESCE(?6, sensitive_action_scope_json),
-                    resolved_at = ?7
+                    resolved_by_actor_kind = ?7,
+                    resolved_actor_role = ?8,
+                    resolved_by_surface_id = ?9,
+                    resolved_by_surface_instance_id = ?10,
+                    resolved_verification_basis = ?11,
+                    resolved_assurance_level = ?12,
+                    resolved_at = ?13
               WHERE project_id = ?1
                 AND judgment_id = ?2
                 AND status = 'pending'",
@@ -2306,6 +2337,12 @@ impl ProjectMutation<'_> {
                 resolution_outcome,
                 input.resolution_json,
                 input.sensitive_action_scope_json,
+                input.resolved_by_actor_kind,
+                input.resolved_actor_role,
+                input.resolved_by_surface_id,
+                input.resolved_by_surface_instance_id,
+                input.resolved_verification_basis,
+                input.resolved_assurance_level,
                 input.resolved_at
             ],
         )?;
@@ -3198,6 +3235,12 @@ fn user_judgment_record(
             basis_status,
             resolution_outcome,
             resolution_json,
+            resolved_by_actor_kind,
+            resolved_actor_role,
+            resolved_by_surface_id,
+            resolved_by_surface_instance_id,
+            resolved_verification_basis,
+            resolved_assurance_level,
             requested_by_surface_id,
             requested_by_surface_instance_id,
             requested_at,
@@ -3237,6 +3280,12 @@ fn resolved_user_judgment_records(
             basis_status,
             resolution_outcome,
             resolution_json,
+            resolved_by_actor_kind,
+            resolved_actor_role,
+            resolved_by_surface_id,
+            resolved_by_surface_instance_id,
+            resolved_verification_basis,
+            resolved_assurance_level,
             requested_by_surface_id,
             requested_by_surface_instance_id,
             requested_at,
@@ -3283,6 +3332,12 @@ fn pending_user_judgment_records(
             basis_status,
             resolution_outcome,
             resolution_json,
+            resolved_by_actor_kind,
+            resolved_actor_role,
+            resolved_by_surface_id,
+            resolved_by_surface_instance_id,
+            resolved_verification_basis,
+            resolved_assurance_level,
             requested_by_surface_id,
             requested_by_surface_instance_id,
             requested_at,
@@ -3320,11 +3375,17 @@ fn user_judgment_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Us
         basis_status: row.get(13)?,
         resolution_outcome: row.get(14)?,
         resolution_json: row.get(15)?,
-        requested_by_surface_id: row.get(16)?,
-        requested_by_surface_instance_id: row.get(17)?,
-        requested_at: row.get(18)?,
-        resolved_at: row.get(19)?,
-        metadata_json: row.get(20)?,
+        resolved_by_actor_kind: row.get(16)?,
+        resolved_actor_role: row.get(17)?,
+        resolved_by_surface_id: row.get(18)?,
+        resolved_by_surface_instance_id: row.get(19)?,
+        resolved_verification_basis: row.get(20)?,
+        resolved_assurance_level: row.get(21)?,
+        requested_by_surface_id: row.get(22)?,
+        requested_by_surface_instance_id: row.get(23)?,
+        requested_at: row.get(24)?,
+        resolved_at: row.get(25)?,
+        metadata_json: row.get(26)?,
     })
 }
 
@@ -3490,6 +3551,7 @@ fn surface_by_instance(
             surface_id,
             surface_instance_id,
             surface_kind,
+            interaction_role,
             display_name,
             capability_profile_json,
             local_access_json,
@@ -3511,10 +3573,11 @@ fn surface_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SurfaceR
         surface_id: row.get(1)?,
         surface_instance_id: row.get(2)?,
         surface_kind: row.get(3)?,
-        display_name: row.get(4)?,
-        capability_profile_json: row.get(5)?,
-        local_access_json: row.get(6)?,
-        metadata_json: row.get(7)?,
+        interaction_role: row.get(4)?,
+        display_name: row.get(5)?,
+        capability_profile_json: row.get(6)?,
+        local_access_json: row.get(7)?,
+        metadata_json: row.get(8)?,
     })
 }
 
@@ -3700,6 +3763,24 @@ fn validate_identifier(field: &'static str, value: &str) -> StoreResult<()> {
         })
     } else {
         Ok(())
+    }
+}
+
+fn validate_actor_kind_value(field: &'static str, value: &str) -> StoreResult<()> {
+    match value {
+        "agent" | "user" => Ok(()),
+        _ => Err(StoreError::InvalidInput {
+            detail: format!("{field} must be agent or user"),
+        }),
+    }
+}
+
+fn validate_interaction_role_value(field: &'static str, value: &str) -> StoreResult<()> {
+    match value {
+        "agent" | "user_interaction" => Ok(()),
+        _ => Err(StoreError::InvalidInput {
+            detail: format!("{field} must be agent or user_interaction"),
+        }),
     }
 }
 
@@ -4021,7 +4102,7 @@ mod tests {
     use harness_types::{
         BaselineRef, ChangeUnitId, IdempotencyKey, JudgmentBasisCompatibilityStatus, MethodName,
         ProjectId, RecordId, RequestHash, RequiredNullable, RiskId, StateRecordKind,
-        StateRecordRef, TaskId,
+        StateRecordRef, SurfaceInteractionRole, TaskId,
     };
     use serde_json::{json, Value};
 
@@ -4061,6 +4142,7 @@ mod tests {
                     surface_id: SURFACE_ID.to_owned(),
                     surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
                     surface_kind: "local_test".to_owned(),
+                    interaction_role: SurfaceInteractionRole::Agent,
                     display_name: None,
                     capability_profile_json: "{}".to_owned(),
                     local_access_json: json!({
