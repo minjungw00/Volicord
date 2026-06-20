@@ -37,11 +37,13 @@
 |---|---|---|
 | 하네스 | AI 지원 제품 작업을 위한 로컬 작업 권한 제품이자 시스템입니다. | [기준 범위](../reference/scope.md) |
 | Core | 하네스 상태를 위한 로컬 기준 기록입니다. | [Core 모델](../reference/core-model.md) |
-| `Harness Server` | 하네스 전체를 뜻하는 말이 아니라, 하네스의 서버/런타임 구성 요소입니다. | [런타임 경계](../reference/runtime-boundaries.md) |
+| `Harness Server` | 이 저장소가 유지하는 서버 구현 집합이며, 하네스 전체와 같은 말은 아닙니다. | [런타임 경계](../reference/runtime-boundaries.md) |
 | `Harness Runtime Home` | 저장소/런타임 담당 문서가 정의하는 하네스 운영 데이터의 로컬 런타임 데이터 공간입니다. | [런타임 경계](../reference/runtime-boundaries.md) |
 | `Product Repository` | 사용자의 프로젝트 작업 공간과 제품 파일입니다. | [런타임 경계](../reference/runtime-boundaries.md) |
 
-현재 로컬 Rust 구현에서 사용할 수 있는 MCP 런타임은 `harness-mcp` stdio 프로세스입니다. MCP 호스트가 로컬 자식 프로세스로 시작하고 stdin/stdout으로 통신합니다. 기준 프로세스는 네트워크 리스너가 아닙니다.
+`Harness Server` 소스 저장소는 구현 크레이트, `harness` 관리 CLI, `harness-mcp` 로컬 MCP 어댑터, 테스트, 문서, 검증 도구, 저장소 설정을 담은 체크아웃입니다. `Harness Server` 설치는 배포된 실행 파일과 필요한 런타임 리소스의 부분집합이며, 모든 소스 저장소 파일이 설치된다는 뜻은 아닙니다.
+
+현재 로컬 Rust 구현에서 `harness`와 `harness-mcp`는 `Harness Server` 안의 서로 다른 실행 파일 역할입니다. `harness`는 로컬 관리 설정을 수행합니다. `harness-mcp`는 MCP 호스트가 로컬 자식 프로세스로 시작하고 stdin/stdout으로 통신하는 stdio MCP 어댑터 프로세스입니다. 기준 프로세스는 네트워크 리스너가 아닙니다.
 
 ## 처음 알아둘 권한 개념
 

@@ -165,7 +165,7 @@ Use these owner routes for exact contracts:
 - [API error codes](../reference/api/error-codes.md), [API error routing](../reference/api/error-routing.md): public error codes and recovery routing.
 - [Artifact Storage](../reference/storage-artifacts.md): artifact access, staging, and storage-effect detail.
 - [Security](../reference/security.md): guarantee wording and non-claims.
-- [Runtime Boundaries](../reference/runtime-boundaries.md): `Product Repository`, Harness Server, and `Harness Runtime Home` separation.
+- [Runtime Boundaries](../reference/runtime-boundaries.md): Harness Server source/installation files, executable processes, `Product Repository`, `Harness Runtime Home`, and external MCP host configuration separation.
 - [Scope](../reference/scope.md): baseline, profile-gated, and out-of-scope boundaries.
 
 ## Where to go next

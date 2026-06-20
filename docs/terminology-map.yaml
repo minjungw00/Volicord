@@ -19,7 +19,7 @@ canonical_for:
   - "Terminology boundaries between stable supported documentation contracts and runtime-active or currently applied context."
   - "Terminology boundaries between documentation owner routing and product behavior or storage persistence conditions."
   - "Terminology distinction that Harness is the local work-authority product/system for AI-assisted product work, while Core is the local authority record for Harness state."
-  - "Terminology boundaries among Harness, Core, Harness Server, `Harness Runtime Home`, and `Product Repository`."
+  - "Terminology boundaries among Harness, Core, Harness Server, Harness Server source repository, Harness Server installation, `harness`, `harness-mcp`, `Harness Runtime Home`, and `Product Repository`."
   - "Preferred current-runtime-context wording for current scope, currently applied scope, current Change Unit, and current surface context."
   - "Terminology boundaries among `Write Authorization`, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
   - "Preferred verification criteria wording for user-visible criteria used to check work."
@@ -183,6 +183,8 @@ identifier_preservation:
     - "status=active"
     - "Task.lifecycle_phase"
     - "artifact_staging.status"
+    - "harness"
+    - "harness-mcp"
   product_labels:
     - "Product Repository"
     - "Harness Runtime Home"
@@ -194,7 +196,7 @@ avoid:
     - phrase: "Harness is a local authority record"
       use: "Harness is the local work-authority product/system for AI-assisted product work; Core is the local authority record for Harness state."
     - phrase: "local work-authority server"
-      use: "local work-authority product/system when referring to Harness; `Harness Server` only when referring to the serving/runtime component."
+      use: "local work-authority product/system when referring to Harness; `Harness Server` only when referring to the repository-managed server implementation set."
     - phrase: "active scope"
       use: "current scope or currently applied scope, except when preserving an exact identifier or status value."
     - phrase: "active Change Unit"
@@ -286,7 +288,7 @@ terms:
     notes:
       - "Harness is the local work-authority product/system for AI-assisted product work."
       - "Do not describe Harness itself as the authority record; Core is the local authority record for Harness state."
-      - "Do not use `Harness Server` as a synonym for Harness; `Harness Server` names only a serving/runtime component."
+      - "Do not use `Harness Server` as a synonym for Harness; `Harness Server` names the server implementation set maintained by this repository."
   core:
     category: "product_concept"
     en: "Core"
@@ -361,11 +363,88 @@ terms:
       en: "docs/en/reference/runtime-boundaries.md"
       ko: "docs/ko/reference/runtime-boundaries.md"
     related_references:
+      - en: "docs/en/development/architecture.md"
+        ko: "docs/ko/development/architecture.md"
+      - en: "docs/en/reference/admin-cli.md"
+        ko: "docs/ko/reference/admin-cli.md"
+      - en: "docs/en/reference/mcp-transport.md"
+        ko: "docs/ko/reference/mcp-transport.md"
       - en: "docs/en/reference/security.md"
         ko: "docs/ko/reference/security.md"
     notes:
-      - "`Harness Server` refers only to a serving/runtime component."
-      - "Do not use `Harness Server` to mean the Harness product/system, Core, `Harness Runtime Home`, or the `Product Repository`."
+      - "`Harness Server` refers to the server implementation set maintained by this repository."
+      - "The Harness Server source repository contains implementation crates, the `harness` administrative CLI, the `harness-mcp` local MCP adapter, tests, documentation, validation tooling, and repository configuration."
+      - "A Harness Server installation is the deployed subset of executables and required runtime resources; do not imply that every source-repository file is installed."
+      - "`harness` and `harness-mcp` are distinct executable roles within Harness Server; name the process when describing behavior performed by one process."
+      - "Do not use `Harness Server` to mean the Harness product/system as a whole, Core, `Harness Runtime Home`, the `Product Repository`, a single daemon, or a network listener."
+  harness_server_source_repository:
+    category: "product_concept"
+    en: "Harness Server source repository"
+    ko_reference: "`Harness Server` 소스 저장소"
+    ko_user: "`Harness Server` 소스 저장소"
+    primary_owner:
+      en: "docs/en/reference/runtime-boundaries.md"
+      ko: "docs/ko/reference/runtime-boundaries.md"
+    related_references:
+      - en: "docs/en/development/architecture.md"
+        ko: "docs/ko/development/architecture.md"
+    notes:
+      - "Use for the checked-out source artifact containing implementation crates, executables, tests, documentation, validation tooling, and repository configuration."
+      - "Do not use for a deployed installation, running process, Runtime Home, Product Repository, or MCP host configuration."
+  harness_server_installation:
+    category: "product_concept"
+    en: "Harness Server installation"
+    ko_reference: "`Harness Server` 설치"
+    ko_user: "`Harness Server` 설치"
+    primary_owner:
+      en: "docs/en/reference/runtime-boundaries.md"
+      ko: "docs/ko/reference/runtime-boundaries.md"
+    related_references:
+      - en: "docs/en/getting-started/installation.md"
+        ko: "docs/ko/getting-started/installation.md"
+      - en: "docs/en/reference/admin-cli.md"
+        ko: "docs/ko/reference/admin-cli.md"
+      - en: "docs/en/reference/mcp-transport.md"
+        ko: "docs/ko/reference/mcp-transport.md"
+    notes:
+      - "Use for deployed Harness Server executables and required runtime resources."
+      - "Do not imply that documentation, tests, source files, repository metadata, Runtime Home data, Product Repository files, or MCP host configuration are installed by definition."
+  harness_administrative_process:
+    category: "identifier"
+    en: "`harness` administrative process"
+    ko_reference: "`harness` 관리 프로세스"
+    ko_user: "`harness` 관리 프로세스"
+    preserve_identifier: true
+    preserve_as_identifier:
+      - "harness"
+    primary_owner:
+      en: "docs/en/reference/admin-cli.md"
+      ko: "docs/ko/reference/admin-cli.md"
+    related_references:
+      - en: "docs/en/reference/runtime-boundaries.md"
+        ko: "docs/ko/reference/runtime-boundaries.md"
+    notes:
+      - "`harness` is the administrative CLI executable/process within Harness Server."
+      - "Do not use `harness` as a synonym for Harness or Harness Server as a whole."
+  harness_mcp_process:
+    category: "identifier"
+    en: "`harness-mcp` MCP adapter process"
+    ko_reference: "`harness-mcp` MCP 어댑터 프로세스"
+    ko_user: "`harness-mcp` MCP 어댑터 프로세스"
+    preserve_identifier: true
+    preserve_as_identifier:
+      - "harness-mcp"
+    primary_owner:
+      en: "docs/en/reference/mcp-transport.md"
+      ko: "docs/ko/reference/mcp-transport.md"
+    related_references:
+      - en: "docs/en/reference/runtime-boundaries.md"
+        ko: "docs/ko/reference/runtime-boundaries.md"
+      - en: "docs/en/reference/agent-integration.md"
+        ko: "docs/ko/reference/agent-integration.md"
+    notes:
+      - "`harness-mcp` is the local stdio MCP adapter executable/process within Harness Server."
+      - "Do not describe `harness-mcp` as an actor separate from Harness Server or as the whole Harness Server."
   documentation:
     category: "general_prose"
     en: "documentation"

@@ -37,11 +37,13 @@ These names are related, but they are not interchangeable.
 |---|---|---|
 | Harness | The local work-authority product/system for AI-assisted product work. | [Scope](../reference/scope.md) |
 | Core | The local authority record for Harness state. | [Core Model](../reference/core-model.md) |
-| `Harness Server` | A serving/runtime component of Harness, not a synonym for Harness as a whole. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
+| `Harness Server` | The server implementation set maintained by this repository, not a synonym for Harness as a whole. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 | `Harness Runtime Home` | The local runtime data space for Harness operational data as storage/runtime owners define it. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 | `Product Repository` | The user's project workspace and product files. | [Runtime Boundaries](../reference/runtime-boundaries.md) |
 
-In the current local Rust implementation, the available MCP runtime is the `harness-mcp` stdio process. An MCP host starts it as a local child process and communicates through stdin/stdout. The baseline process is not a network listener.
+The Harness Server source repository is the checkout that contains implementation crates, the `harness` administrative CLI, the `harness-mcp` local MCP adapter, tests, documentation, validation tooling, and repository configuration. A Harness Server installation is the deployed subset of executables and required runtime resources; it does not imply that every source-repository file is installed.
+
+In the current local Rust implementation, `harness` and `harness-mcp` are distinct executable roles within Harness Server. `harness` performs local administrative setup. `harness-mcp` is the stdio MCP adapter process that an MCP host starts as a local child process and communicates with through stdin/stdout. The baseline process is not a network listener.
 
 ## First-Read Authority Concepts
 

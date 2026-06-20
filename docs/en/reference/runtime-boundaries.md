@@ -1,28 +1,47 @@
 # Runtime boundaries reference
 
-This document owns the boundary among `Product Repository`, `Harness Server` or other Harness runtime process resources, and `Harness Runtime Home`. It defines local access assumptions for those locations and routes storage and security details to their owners.
+This document owns the component and location boundaries among `Harness Server`, `Product Repository`, `Harness Runtime Home`, and external MCP host configuration. It defines local access assumptions for those locations and routes storage and security details to their owners.
 
-`Harness Server` is a serving/runtime component. It is not Harness as a whole, not Core, and not the local authority record for Harness state.
+`Harness Server` is the server implementation set maintained by this repository. It is not Harness as a whole, not Core, not one running process, and not the local authority record for Harness state.
 
 ## Owns / does not own
 
 | This document owns | This document does not own |
 |---|---|
+| The distinction between Harness as the product/system and `Harness Server` as the repository-maintained server implementation set. | Public API behavior, public schema shapes, or method-specific effects. |
+| The distinction among Harness Server source repository, Harness Server installation, and running executable roles. | Release packaging policy or a mandatory installation-root layout. |
 | The definition of `Product Repository` and Product Repository API path normalization. | Storage record layout, locks, migrations, versioning, or artifact lifecycle details. |
 | The definition of `Harness Runtime Home`. | API method behavior or public schema shapes. |
-| The separation between product files, `Harness Server` or other installation/runtime files, and runtime data. | Detailed security guarantee meanings or security non-guarantees. |
+| The separation between Harness Server files, product files, runtime data, and external MCP host configuration. | Detailed security guarantee meanings or security non-guarantees. |
 | Local access and location non-authority rules. | Projection authority, template bodies, or rendered display freshness. |
 | The rule that runtime location does not by itself prove Harness authority, security authority, or isolation. | Product scope, close readiness, evidence sufficiency, or user-owned judgment meaning. |
 
-## Location model
+## Component and artifact model
 
-Harness keeps product-file, server/runtime, and runtime-data boundaries distinct.
+Harness keeps product, server implementation, executable-role, and authority-record concepts distinct.
 
-| Boundary | Definition | Must not infer |
+| Term | Definition | Must not infer |
 |---|---|---|
+| Harness | The broader local work-authority product/system for AI-assisted product work. | It is not Core, not a source repository, and not a single executable process. |
+| Core | The local authority record for Harness state. | It is not the whole Harness product/system and not an adapter or CLI executable. |
+| `Harness Server` | The server implementation set maintained by this repository. At source level, it includes implementation crates, the `harness` administrative CLI, the `harness-mcp` local MCP adapter, tests, documentation, validation tooling, and repository configuration. | It is not every possible Harness product surface, not Core by itself, not `Harness Runtime Home`, not the `Product Repository`, and not one daemon or network service. |
+| Harness Server source repository | The checked-out source artifact for this repository. | It is not the same thing as a deployed installation, running process, Runtime Home, Product Repository, or MCP host configuration. |
+| Harness Server installation | The deployed subset of Harness Server executables and required runtime resources. | It does not imply that documentation, tests, source files, or repository metadata are present in every installation. |
+| `harness` administrative process | The administrative CLI executable/process within Harness Server. | It is not a synonym for Harness or for all of Harness Server. |
+| `harness-mcp` MCP adapter process | The local stdio MCP adapter executable/process within Harness Server. | It is not separate from Harness Server and not the whole Harness Server by itself. |
+
+When a behavior is performed by one executable role, name that role. Bare `Harness Server` should be reserved for the implementation set or for statements that apply to the set as a whole.
+
+## Filesystem-location model
+
+Harness keeps server files, product files, runtime data, and external host configuration distinct. There is no single mandatory filesystem root for the whole Harness Server implementation set.
+
+| Location role | Definition | Must not infer |
+|---|---|---|
+| Harness Server source or installation files | A source checkout, or deployed executable files and required runtime resources for Harness Server. | This is not automatically `Harness Runtime Home`, not the `Product Repository`, not MCP host configuration, not proof of Harness authority, and not inherently a network listener. |
 | `Product Repository` | The user's product-file boundary: project source, product documentation, tests, configuration, and other project files. | It is not Harness runtime state, not `Harness Runtime Home`, and not proof of Harness authority. |
-| `Harness Server` or other runtime process resources | The serving/runtime component, process, package, application resources, and configuration used to run Harness behavior. | It is not Harness as a whole, not Core, not the local authority record, not automatically the runtime data location, and not inherently a network listener. |
-| `Harness Runtime Home` | The runtime storage location for Harness-owned records, local runtime metadata, and artifact data as storage/runtime owners define them. | It is not the `Product Repository`, not automatically a security boundary, and not isolation by default. |
+| `Harness Runtime Home` | The runtime storage location for Harness-owned records, local runtime metadata, and artifact data as storage/runtime owners define them. | It is not the `Product Repository`, not server installation storage by default, not automatically a security boundary, and not isolation by default. |
+| External MCP host configuration | Configuration owned by the external MCP host that may name a `harness-mcp` command, process environment, or host-specific binding. | It is not Harness runtime state, not `Harness Runtime Home`, not the `Product Repository`, and not Harness Server source or installation files by definition. |
 
 <a id="runtime-location-product-repository"></a>
 ### `Product Repository`
@@ -57,18 +76,22 @@ Does not imply:
 - Method-specific authorization decisions stay with API method owners.
 
 <a id="runtime-location-server-installation"></a>
-### `Harness Server` and runtime process
+### Harness Server source, installation, and processes
 
-`Harness Server` is a Harness runtime/server component. Its installation or runtime process location is where Harness executable code, packages, application resources, or process configuration may live.
+`Harness Server` names the server implementation set maintained by this repository. Use `Harness Server source repository` for the checkout that contains code, documentation, tests, validation tooling, and repository configuration. Use `Harness Server installation` for deployed executables and required runtime resources.
 
 May claim:
-- The runtime process mediates Harness API behavior and Harness records through documented owner contracts.
-- Installation resources and runtime data can live in different locations.
+- `harness` is the administrative CLI/process within Harness Server.
+- `harness-mcp` is the local stdio MCP adapter process within Harness Server.
+- A Harness Server installation can be separate from the source repository, `Harness Runtime Home`, `Product Repository`, and MCP host configuration.
+- A Harness Server installation does not need to include every source-repository file.
 - In the baseline local Rust implementation, an MCP host starts `harness-mcp` as a child process and communicates through stdio.
 
 Must not claim:
 - `Harness Server` is the Harness product/system as a whole.
 - `Harness Server` is Core or the local authority record for Harness state.
+- `Harness Server` is only `harness`, only `harness-mcp`, one long-running daemon, or one network service.
+- `harness-mcp` is separate from Harness Server rather than an executable role within it.
 - Installing or running Harness from a directory makes that directory `Harness Runtime Home`.
 - The installation location proves that runtime data exists there.
 - The installation path grants Harness authority, security authority, or product-file write authority.
@@ -76,9 +99,22 @@ Must not claim:
 
 ### Baseline local MCP process
 
-The current local Rust MCP runtime is the `harness-mcp` stdio process. An MCP host starts it as a child process, passes configuration through process environment, and exchanges line-delimited JSON-RPC through stdin/stdout. The baseline process opens no TCP, HTTP, Unix-domain socket, or other network listener.
+The current local Rust MCP adapter is the `harness-mcp` stdio process, an executable role within Harness Server. An MCP host starts it as a child process, passes configuration through process environment, and exchanges line-delimited JSON-RPC through stdin/stdout. The baseline process opens no TCP, HTTP, Unix-domain socket, or other network listener.
 
 Exact executable behavior, environment variables, framing, startup validation or preflight behavior, response wrapping, shutdown, and reconnection rules belong to [MCP Transport](mcp-transport.md). This runtime-boundaries owner only keeps the process, location, and non-inference boundaries distinct.
+
+### External MCP host configuration
+
+MCP host configuration belongs to the external MCP host. Harness setup may render host-neutral configuration text or files when an administrative command owner defines that behavior, but this document only owns the location boundary.
+
+May claim:
+- Host configuration can name a `harness-mcp` executable and environment values needed by that host.
+- Host configuration can live outside the source repository, installation files, `Harness Runtime Home`, and `Product Repository`.
+
+Must not claim:
+- MCP host configuration is Harness runtime state by definition.
+- MCP host configuration is the local authority record, a Product Repository file, or proof of Harness authority.
+- A host configuration directory is automatically `Harness Runtime Home`.
 
 <a id="runtime-location-runtime-home"></a>
 ### `Harness Runtime Home`
@@ -100,7 +136,7 @@ Must not claim:
 Local access to a file or directory is not the same as Harness authority.
 
 May claim:
-- A local actor may have filesystem access to product files, installation files, or runtime data locations according to the host environment.
+- A local actor may have filesystem access to product files, installation files, MCP host configuration, or runtime data locations according to the host environment.
 - Harness authority depends on documented API, storage, runtime, security, and user-judgment contracts.
 
 Must not claim:
@@ -131,6 +167,7 @@ Do not infer Harness authority, security authority, runtime state, or isolation 
 
 - `Product Repository` text or project files.
 - The directory where Harness is installed or started.
+- External MCP host configuration.
 - The directory selected as `Harness Runtime Home`.
 - A copied `surface_id`.
 - A displayed `ArtifactRef`.
@@ -141,6 +178,7 @@ Do not infer that:
 
 - `Product Repository` is `Harness Runtime Home`.
 - Installation location and runtime data location are the same.
+- MCP host configuration is Harness runtime state or Harness authority.
 - `Harness Runtime Home` is a security boundary.
 - Product files are Harness records.
 - Generated displays replace source-record authority.

@@ -7,6 +7,10 @@ Harness에는 Runtime Home 기록, 프로젝트 상태, registry 메타데이터
 파일은 `Product Repository`에 있습니다. 두 위치를 섞으면 구현 경로를
 이해하기 어려워지고 생성된 런타임 상태가 제품 작업처럼 보일 수 있습니다.
 
+`Harness Server` 소스와 설치 파일은 별도의 구현 아티팩트 역할입니다. 그 안에
+`harness`와 `harness-mcp` 실행 파일이 있거나 배포될 수 있지만, 정의상 Runtime
+Home이나 Product Repository는 아닙니다.
+
 ## 결정
 
 구현은 `Harness Runtime Home`과 `Product Repository`를 별도 위치 개념으로
@@ -17,6 +21,8 @@ Harness에는 Runtime Home 기록, 프로젝트 상태, registry 메타데이터
   데이터를 맡습니다.
 - CLI 설정은 Product Repository 경로를 Runtime Home 기록에 등록하지만 그
   저장소를 런타임 상태로 만들지 않습니다.
+- CLI 설정과 MCP 시작은 `Harness Server` 설치 파일을 참조할 수 있지만, 설치
+  위치가 Runtime Home이나 Product Repository가 되지는 않습니다.
 - Core 메서드 코드는 메서드 담당 문서가 그런 입력을 정의할 때 Product
   Repository 경로를 정규화하고 판단할 수 있지만, 공개 API 실행이 제품
   파일을 직접 쓰지는 않습니다.
@@ -26,7 +32,7 @@ Harness에는 Runtime Home 기록, 프로젝트 상태, registry 메타데이터
 - 폐기 가능한 테스트는 유지 문서나 사용자 제품 데이터에 쓰지 않고 임시
   디렉터리 아래 Runtime Home 상태를 만들 수 있습니다.
 - Store와 CLI 설정 코드는 Runtime Home 상태를 Product Repository 파일
-  경로와 별도로 검증할 수 있습니다.
+  경로와 `Harness Server` 실행 파일 경로와 별도로 검증할 수 있습니다.
 - 제품 파일 쓰기는 공개 Harness API 경로 밖에 남고, Core는 담당 문서가
   정의한 동작으로 호환성, 관찰 사실, 아티팩트 링크, 권한 상태를 기록할 수
   있습니다.
@@ -37,6 +43,7 @@ Harness에는 Runtime Home 기록, 프로젝트 상태, registry 메타데이터
 
 - 이 결정은 보안 격리를 정의하지 않습니다.
 - Runtime Home 위치가 권한 증거가 된다고 정의하지 않습니다.
+- 필수 `Harness Server` 설치 루트를 정의하지 않습니다.
 - Product Repository 경로 정규화 규칙을 정의하지 않습니다. 그 규칙은
   런타임 경계 담당 문서가 맡습니다.
 - 저장소 기록 배치, DDL, 아티팩트 생명주기 규칙을 정의하지 않습니다.

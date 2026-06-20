@@ -215,7 +215,7 @@
 ## 관련 담당 문서
 
 - [범위](scope.md): 기준 범위 포함/제외와 지원되는 보장 경계.
-- [런타임 경계](runtime-boundaries.md): `Product Repository`, `Harness Server` 또는 그 밖의 런타임 프로세스 리소스, `Harness Runtime Home` 경계.
+- [런타임 경계](runtime-boundaries.md): `Harness Server` 소스/설치 파일, 실행 파일 프로세스, `Product Repository`, `Harness Runtime Home`, 외부 MCP 호스트 설정 경계.
 - [에이전트 통합](agent-integration.md): 접점 등록, 역량 프로필, 확인된 접점 맥락.
 - [API 값 집합](api/schema-value-sets.md): `GuaranteeDisplay.level`, `access_class`, 그 밖의 값 이름.
 - [API 오류 처리 경로](api/error-routing.md): `CAPABILITY_INSUFFICIENT` 같은 공개 오류 처리 경로.

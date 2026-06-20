@@ -23,7 +23,7 @@
 |---|---|---|---|
 | Harness | 하네스 | AI 지원 제품 작업에서 로컬 작업 권한을 다루는 제품이자 시스템입니다. | [기준 범위](scope.md) |
 | Core | Core | 하네스 상태를 위한 로컬 기준 기록입니다. | [Core 모델](core-model.md) |
-| `Harness Server` | Harness Server | 하네스의 서버/런타임 구성 요소입니다. 하네스 전체와 같은 말이 아닙니다. | [런타임 경계](runtime-boundaries.md) |
+| `Harness Server` | Harness Server | 이 저장소가 유지하는 서버 구현 집합입니다. 소스 수준의 크레이트, 실행 파일 역할, 테스트, 문서, 검증 도구, 저장소 설정을 포함하며 하네스 전체와 같은 말은 아닙니다. | [런타임 경계](runtime-boundaries.md) |
 | `Product Repository` | 제품 저장소 | 하네스 런타임 상태와 구분되는 사용자의 프로젝트 작업 공간과 제품 파일입니다. | [런타임 경계](runtime-boundaries.md) |
 | `Harness Runtime Home` | 런타임 홈 | 저장소/런타임 담당 문서가 정의한 하네스 운영 데이터의 로컬 런타임 데이터 공간입니다. | [런타임 경계](runtime-boundaries.md) |
 | runtime | 런타임 | 하네스의 운영 실행과 데이터 맥락입니다. | [런타임 경계](runtime-boundaries.md) |

@@ -44,7 +44,7 @@ Agent must not:
 
 Owner links:
 - [Core Model](core-model.md) owns Core authority, user-owned judgment, close readiness, acceptance, and residual-risk boundaries.
-- [Runtime Boundaries](runtime-boundaries.md) owns `Product Repository`, Harness Server, and `Harness Runtime Home` separation.
+- [Runtime Boundaries](runtime-boundaries.md) owns `Product Repository`, Harness Server source/installation, executable-process, `Harness Runtime Home`, and external MCP host configuration separation.
 - [Projection and template display boundaries](projection-and-templates.md) owns authority versus projected display rules.
 
 ## Surface registration
@@ -79,7 +79,7 @@ Owner links:
 
 ## Current surface context
 
-`VerifiedSurfaceContext` is the internal, derived context for one invocation. A `Harness Server` or local adapter derives it from registered surface records, adapter-derived invocation context, and the requested invocation access, then method owners decide whether the derived context is compatible with the request. It is not a public request payload.
+`VerifiedSurfaceContext` is the internal, derived context for one invocation. A Harness Server executable role such as the `harness-mcp` local adapter process derives it from registered surface records, adapter-derived invocation context, and the requested invocation access, then method owners decide whether the derived context is compatible with the request. It is not a public request payload.
 
 An MCP session is bound at adapter startup to exactly one `project_id`, one `surface_id`, and one `surface_instance_id`. Those binding values remain fixed for the lifetime of the session. The public `ToolEnvelope.project_id` and `ToolEnvelope.surface_id` fields remain present for protocol consistency, but each request value must exactly match the session binding. A request cannot switch project, surface, or surface instance.
 

@@ -215,7 +215,7 @@ Harness does not allow readers or agents to infer authority from:
 ## Related owners
 
 - [Scope](scope.md): baseline inclusion, exclusions, and supported guarantee boundary.
-- [Runtime Boundaries](runtime-boundaries.md): `Product Repository`, `Harness Server` or other runtime process resources, and `Harness Runtime Home` boundaries.
+- [Runtime Boundaries](runtime-boundaries.md): Harness Server source/installation files, executable processes, `Product Repository`, `Harness Runtime Home`, and external MCP host configuration boundaries.
 - [Agent Integration](agent-integration.md): surface registration, capability profiles, and verified surface context.
 - [API Value Sets](api/schema-value-sets.md): `GuaranteeDisplay.level`, `access_class`, and other value names.
 - [API error routing](api/error-routing.md): public error routing such as `CAPABILITY_INSUFFICIENT`.

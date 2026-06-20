@@ -44,7 +44,7 @@ API 스키마, 메서드 동작, 저장 효과, 보안 보장 의미, 상태 보
 
 담당 문서 링크:
 - [Core 모델](core-model.md)은 Core 권한, 사용자 소유 판단, 닫기 준비 상태, 수락, 잔여 위험 경계를 담당합니다.
-- [런타임 경계](runtime-boundaries.md)는 `Product Repository`, Harness Server, `Harness Runtime Home` 분리를 담당합니다.
+- [런타임 경계](runtime-boundaries.md)는 `Product Repository`, `Harness Server` 소스/설치, 실행 파일 프로세스, `Harness Runtime Home`, 외부 MCP 호스트 설정의 분리를 담당합니다.
 - [상태 보기와 템플릿 표시 경계](projection-and-templates.md)는 권한과 파생 표시의 구분 규칙을 담당합니다.
 
 ## 접점 등록
@@ -80,7 +80,7 @@ API 스키마, 메서드 동작, 저장 효과, 보안 보장 의미, 상태 보
 <a id="current-surface-context"></a>
 ## 현재 적용 접점 맥락
 
-`VerifiedSurfaceContext`는 한 번의 호출에 대해 내부에서 파생되는 맥락입니다. `Harness Server` 또는 로컬 어댑터는 등록된 접점 기록, 어댑터가 파생한 호출 맥락, 요청된 호출 접근에서 이를 파생하고, 그 뒤 메서드 담당 문서가 파생된 맥락이 요청과 호환되는지 판단합니다. 이는 공개 요청 페이로드가 아닙니다.
+`VerifiedSurfaceContext`는 한 번의 호출에 대해 내부에서 파생되는 맥락입니다. `harness-mcp` 로컬 어댑터 프로세스 같은 `Harness Server` 실행 파일 역할은 등록된 접점 기록, 어댑터가 파생한 호출 맥락, 요청된 호출 접근에서 이를 파생하고, 그 뒤 메서드 담당 문서가 파생된 맥락이 요청과 호환되는지 판단합니다. 이는 공개 요청 페이로드가 아닙니다.
 
 MCP 세션은 어댑터 시작 시 정확히 하나의 `project_id`, 하나의 `surface_id`, 하나의 `surface_instance_id`에 묶입니다. 이 바인딩 값은 세션 수명 동안 고정됩니다. 공개 `ToolEnvelope.project_id`와 `ToolEnvelope.surface_id` 필드는 프로토콜 일관성을 위해 남아 있지만, 각 요청 값은 세션 바인딩과 정확히 일치해야 합니다. 요청은 프로젝트, 접점, 접점 인스턴스를 바꿀 수 없습니다.
 

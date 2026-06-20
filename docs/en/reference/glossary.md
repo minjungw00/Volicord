@@ -23,7 +23,7 @@ Contract detail stays in the focused owner documents. Translation and style rule
 |---|---|---|---|
 | Harness | 하네스 | The local work-authority product/system for AI-assisted product work. | [Scope](scope.md) |
 | Core | Core | The local authority record for Harness state. | [Core Model](core-model.md) |
-| `Harness Server` | Harness Server | A Harness serving/runtime component. Not a synonym for Harness as a whole. | [Runtime Boundaries](runtime-boundaries.md) |
+| `Harness Server` | Harness Server | The server implementation set maintained by this repository, including source-level crates, executable roles, tests, documentation, validation tooling, and repository configuration. Not a synonym for Harness as a whole. | [Runtime Boundaries](runtime-boundaries.md) |
 | `Product Repository` | 제품 저장소 | The user's project workspace and product files, separate from Harness runtime state. | [Runtime Boundaries](runtime-boundaries.md) |
 | `Harness Runtime Home` | 런타임 홈 | The local runtime data space for Harness operational data, as storage/runtime owners define it. | [Runtime Boundaries](runtime-boundaries.md) |
 | runtime | 런타임 | The operational Harness execution and data context. | [Runtime Boundaries](runtime-boundaries.md) |

@@ -165,7 +165,7 @@ IDE/편집기 통합은 에이전트가 절차를 지키도록 도울 수 있습
 - [API 오류 코드](../reference/api/error-codes.md), [API 오류 처리 경로](../reference/api/error-routing.md): 공개 오류 코드와 복구 경로.
 - [아티팩트 저장소](../reference/storage-artifacts.md): 아티팩트 접근, 스테이징, 저장 효과 세부사항.
 - [보안](../reference/security.md): 보장 표현과 비주장.
-- [런타임 경계](../reference/runtime-boundaries.md): `Product Repository`, Harness Server, `Harness Runtime Home` 분리.
+- [런타임 경계](../reference/runtime-boundaries.md): `Harness Server` 소스/설치 파일, 실행 파일 프로세스, `Product Repository`, `Harness Runtime Home`, 외부 MCP 호스트 설정의 분리.
 - [기준 범위](../reference/scope.md): 기준 범위, 프로필 조건부, 지원 범위 밖 기능 경계.
 
 ## 다음 읽기 경로

@@ -8,6 +8,8 @@
 
 이 가이드에서 직접 열 수 있는 코드와 테스트 경로는 저장소 루트 기준으로 씁니다.
 
+이 체크아웃은 `Harness Server` 소스 저장소입니다. 하네스를 위한 유지되는 서버 구현 집합이며, 구현 크레이트, `harness` 관리 CLI, `harness-mcp` 로컬 MCP 어댑터, 테스트, 문서, 검증 도구, 저장소 설정을 담습니다. `Harness Server` 설치는 배포된 실행 파일과 필요한 런타임 리소스의 부분집합이므로, 이 소스 지도는 설치 매니페스트처럼 읽으면 안 됩니다.
+
 ## 운영 경로
 
 ```mermaid
@@ -41,7 +43,7 @@ flowchart LR
   host -. 공개 API 밖의 제품 파일 도구 .-> product
 ```
 
-저장소 구현에는 두 운영 경로가 있습니다.
+이 저장소의 `Harness Server` 구현에는 두 운영 경로가 있습니다.
 
 - MCP 호스트 -> `harness-mcp` -> `harness-core` -> `Harness Runtime Home` 아래의 Store와 아티팩트 기능.
 - 운영자 -> `harness` 관리 CLI -> 부트스트랩과 등록 시설 -> `Harness Runtime Home`과 호스트 설정 파일.

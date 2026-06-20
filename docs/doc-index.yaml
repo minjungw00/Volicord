@@ -643,7 +643,7 @@ documents:
   canonical_for:
   - Product Repository boundary
   - Harness Runtime Home boundary
-  - Harness Server and runtime process boundary
+  - Harness Server source, installation, and executable process boundaries
   - runtime, server, and repository separation
 - doc_id: reference.admin-cli
   path_en: docs/en/reference/admin-cli.md
