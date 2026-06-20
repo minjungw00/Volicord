@@ -20,7 +20,7 @@ Owner documents define durable meaning for the specific concern they own. A prod
 
 Classify route-only pages and indexes from `doc-index.yaml` metadata such as `role`, `owner_for`, and `normative_level`, not from a broad page-family label. `reference.scope` is a contract owner for baseline scope, the supported boundary, the out-of-scope boundary, the profile-gated boundary, and reserved behavior; treat it as the owner for those questions while routing API, storage, security, and other focused details to their own owners.
 
-Route documents help readers choose the next document. README files, Start pages, Use pages, Build pages, Maintain pages, and reference indexes may state purpose, audience, and next steps, but they should not become technical contracts.
+Reader-oriented documents include landing pages, tutorials, how-to guides, explanations, reference documents, maintenance documents, indexes, and route-only pages. README, Start, Use, Build, and Maintain pages are not automatically route-only; use `doc-index.yaml` metadata and the document's durable reader purpose to identify the role. Landing, tutorial, how-to, and explanation documents may own substantial reader-facing content within their guide-level scope, but they should not become technical contracts.
 
 Maintain documents guide authors, translators, and reviewers. They may explain how to find owners, preserve terminology, and run checks. They must not become secondary sources for API behavior, storage effects, schemas, security guarantees, access boundaries, runtime state, close-readiness contracts, or product implementation.
 
@@ -30,7 +30,7 @@ Check documents describe read-only documentation checks. `PASS`, `WARN`, `FAIL`,
 
 Edit the canonical owner when a change affects normative meaning. This includes baseline scope, API behavior, schema meaning, error meaning, storage effects, security wording, access boundaries, close-readiness meaning, product terminology, out-of-scope promotion rules, and value-set meaning.
 
-Non-owner documents should usually give a short reader consequence and link to the owner. If a duplicate explanation is stale, shrink it to that summary and link instead of refreshing a second contract body.
+Non-owner documents may summarize, explain, teach, or sequence contract material for a reader, but they should link precisely to the owner when exact behavior matters. If a duplicate explanation is stale, shrink it to a reader-facing summary and link instead of refreshing a second contract body.
 
 When a question crosses owner boundaries, choose the focused owner from `doc-index.yaml` or the Reference Index, then read only the owner sections needed for the edit. If no focused owner exists, name the owner gap or route to the closest applicable owner. Do not fill the gap with contract prose in a README, route page, or Maintain page.
 
@@ -40,9 +40,9 @@ Keep baseline behavior separate from reserved, profile-gated, and out-of-scope m
 
 Keep reference meaning units reviewable. Conditions, results, exceptions, non-claims, and owner boundaries should not be hidden inside dense paragraphs or oversized table cells. When paired English and Korean sections use a meaning-unit structure, keep the same structure by meaning rather than by line count.
 
-## 4. Route Pages
+## 4. Index And Route-Only Pages
 
-Keep route-only and index pages short and navigational. If a route-only page or index starts to need field tables, status-value tables, storage-effect detail, error behavior, guarantee levels, or long lists of prohibitions and exceptions, move that material to the applicable owner and leave a short route link.
+Keep index and route-only pages short and navigational. If an index or route-only page starts to need field tables, status-value tables, storage-effect detail, error behavior, guarantee levels, or long lists of prohibitions and exceptions, move that material to the applicable owner and leave a short route link.
 
 Contract owner pages may contain the contract detail that belongs to their `owner_for` scope. They should still avoid duplicating other owners' API behavior, schema fields, storage effects, security guarantees, or adjacent contracts.
 

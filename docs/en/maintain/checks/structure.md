@@ -209,15 +209,18 @@ Check sources:
 
 Evidence to inspect:
 - For API, schema, storage, security, access-boundary, projection, template, close-readiness, judgment, error, and runtime-boundary statements, confirm the strict definition lives in one canonical owner.
-- Confirm non-owner documents use only a short reader consequence plus an owner link.
+- Confirm non-owner documents explain only within their guide, example, or
+  maintenance scope and link to the owner when exact behavior matters.
 
 Failure:
 - `README`, Start, Use, Build, Maintain, example, or non-owner Reference text creates a second normative definition.
-- A non-owner repeats field lists, response branches, storage details, guarantee levels, blocker details, access-class rules, or template bodies instead of linking to the owner.
+- A non-owner presents field lists, response branches, storage details,
+  guarantee levels, blocker details, access-class rules, or template bodies as
+  contract detail instead of reader-facing explanation with an owner link.
 
 Fix:
 - Keep the owner definition.
-- Shrink duplicates to a short consequence and owner link.
+- Shrink contract duplicates to reader-facing explanation and an owner link.
 
 ## CHK-OWNER-002: route-page over-detailing
 
@@ -229,7 +232,11 @@ Check sources:
 Evidence to inspect:
 - Classify pages from `doc-index.yaml` metadata such as `role`, `owner_for`, and `normative_level` before applying route-page checks.
 - Treat `reference.scope` (`docs/en/reference/scope.md` and `docs/ko/reference/scope.md`) as a contract owner for baseline scope, the supported boundary, the out-of-scope boundary, the profile-gated boundary, and the reserved behavior boundary.
-- Inspect route-only and index pages, such as `README` files, Start pages, Use pages, Build pages, Maintain pages, and reference indexes, for contract tables, long field explanations, status-value lists, security guarantee details, storage-effect details, and API branch summaries.
+- Inspect documents classified by metadata as route-only or index pages,
+  including any `README`, Start, Use, Build, Maintain, or reference-index page
+  with that actual role, for contract tables, long field explanations,
+  status-value lists, security guarantee details, storage-effect details, and
+  API branch summaries.
 - Confirm method-level owner maps appear only in [API Methods](../../reference/api/methods.md).
 - Confirm route-only and index pages route readers instead of defining contracts.
 - Confirm a route or index page does not become the broad contract document for several focused owners.
