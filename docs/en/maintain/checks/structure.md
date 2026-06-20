@@ -164,6 +164,41 @@ Fix:
 - When a conditional prohibition is unclear, split it into `Conditions`, `Not allowed`, and `Owner boundary` units.
 - If the content defines a contract, route it to the canonical owner and leave non-owner pages with a short consequence plus owner link.
 
+## CHK-STRUCT-007: implementation-architecture alignment
+
+Check sources:
+- The paired [Implementation architecture](../../build/architecture.md) page
+- Root `Cargo.toml`
+- Relevant `crates/*/Cargo.toml` and `tests/*/Cargo.toml` files
+- Major `lib.rs` and `main.rs` entry points
+- Documented module and test paths
+
+Evidence to inspect:
+- Confirm every current Cargo workspace member appears in the architecture map, including crate packages and test packages.
+- Confirm internal dependency arrows match the Cargo manifests, and normal implementation dependencies are not confused with test-only or dev dependencies.
+- Confirm documented major module paths, entry points, binary-test paths, integration-test paths, and conformance-test paths exist.
+- Confirm MCP direct Store access is described only for its actual bounded startup and session-validation responsibilities.
+- Confirm administrative CLI boundaries and public Core method boundaries match the implementation dependency shape.
+- Confirm common Core preflight, method-specific planning, staging, and mutation commit remain separate execution stages.
+- Confirm artifact staging is not described as a normal Core mutation commit.
+- Confirm test packages and binary tests are represented with accurate responsibilities and are not treated as product-contract owners.
+- Confirm the architecture page routes exact product behavior to canonical owners instead of defining it itself.
+- Confirm the page remains a durable guide-level map, not a function-level or exhaustive source inventory.
+
+Failure:
+- The architecture page omits a workspace member or test package, or names one that is no longer present.
+- It invents, omits, or reverses internal dependency edges, or merges normal implementation dependencies with test-only dependencies.
+- It names stale module, entry-point, or test paths.
+- It misrepresents MCP, CLI, Core, Store, staging, or mutation-commit boundaries.
+- It treats tests, fixtures, or scenarios as product-contract owners.
+- It uses fragile source line numbers, function-level coverage, or exhaustive file inventory as architecture guidance.
+- It duplicates product-contract detail that belongs in a Reference owner.
+
+Fix:
+- Correct the guide-level workspace map, dependency map, source path references, execution-stage descriptions, or owner-routing links.
+- Move exact product behavior, storage effects, API behavior, security guarantees, and Core authority semantics to the applicable Reference owner instead of adding them to Maintain guidance or the architecture guide.
+- Remove line-number, exhaustive-inventory, implementation-history, and test-as-contract wording.
+
 ## CHK-OWNER-001: canonical owner violations
 
 Documentation boundary: owner findings are documentation placement findings, not product behavior findings.

@@ -10,7 +10,7 @@ Run the checks that match the edit. For most documentation batches, start with [
 
 ## Check pages
 
-[Structure checks](checks/structure.md) cover owner placement and document shape. Use them for owner boundaries and granularity, route-page over-detailing, index-as-owner errors, check-card labels, semantic label/content consistency, display wording boundaries, storage-record references, baseline/out-of-scope wording, implementation wording, reference-claim placement, residue search patterns, readability, and final reports.
+[Structure checks](checks/structure.md) cover owner placement and document shape. Use them for owner boundaries and granularity, route-page over-detailing, index-as-owner errors, check-card labels, semantic label/content consistency, implementation-architecture alignment with workspace membership, dependencies, durable module paths, execution boundaries, and tests. They also cover display wording boundaries, storage-record references, baseline/out-of-scope wording, implementation wording, reference-claim placement, residue search patterns, readability, and final reports.
 
 [Language parity checks](checks/language-parity.md) cover paired English/Korean meaning. Use them for semantic-strength parity, meaning-unit skeletons, headings, tables, lists, negative clauses, removed-concept residue, identifier preservation, Korean structure, Korean technical style, and cases where both languages share the same wrong label or structure.
 

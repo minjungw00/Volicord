@@ -50,7 +50,13 @@ Do not repeat the same owner map in multiple places. Keep the full machine-reada
 
 Treat documentation routes, path allowlists, check scopes, and batch boundaries as maintainer controls. Do not describe them as Harness runtime behavior, product override capability, persisted Core state, or product implementation output.
 
-## 5. Examples
+## 5. Implementation architecture
+
+Review [Implementation architecture](../build/architecture.md) whenever a change alters durable implementation structure. Triggers include adding, removing, renaming, or changing the guide-level role of a Cargo workspace member; changing an internal crate dependency direction; moving a durable module responsibility between files, modules, or crates; changing a major MCP, Core, Store, or administrative CLI execution flow; changing the distinction among startup validation, method execution, staging, and mutation commit; or changing a test package, binary test, integration surface, or conformance-test responsibility.
+
+When an update is needed, keep architecture guidance at map level. Document crates, stable module areas, entry points, execution stages, and responsibility boundaries. Do not document every function, private helper, SQL statement, structure field, test case, or source line number. Keep exact product behavior in its canonical Reference owner. Use architecture pages for durable structure and routing, not implementation history.
+
+## 6. Examples
 
 Examples in API and Reference documentation should be stable, self-contained product or user scenarios. They should illustrate the documented shape without creating product policy.
 
@@ -68,7 +74,7 @@ Do not use documentation maintenance, migration, refactoring, route reshaping, o
 
 Use [API examples checks](checks/api-examples.md) for detailed example review, including field-name consistency, required and nullable fields, enum-like values, `NextActionSummary`, response branches, refs and `state_version`, artifact refs, judgment refs, close-readiness blockers, and cross-method scenario spine detection.
 
-## 6. Terminology And Language
+## 7. Terminology And Language
 
 English and Korean documentation are both maintained. Do not finish a meaning-changing edit with only one language updated when the document has a maintained paired path.
 
@@ -82,7 +88,7 @@ Apply these terminology decisions from `terminology-map.yaml`:
 - Keep `Write Authorization` distinct from ordinary write approval, sensitive-action approval, final acceptance, residual-risk acceptance, and broad user-owned judgment.
 - In Korean reference prose, close readiness is "닫기 준비 상태".
 
-## 7. Validation
+## 8. Validation
 
 After documentation edits, run or perform the checks that match the changed files. Start from [Checks](checks.md), then use focused pages such as Structure checks, Links and indexes checks, Language parity checks, Terminology checks, and API examples checks as applicable.
 
