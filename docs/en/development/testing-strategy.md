@@ -20,6 +20,7 @@ change workflow, use the [Implementation Guide](change-guide.md).
 | MCP integration tests | [`tests/integration/mcp_surface.rs`](../../../tests/integration/mcp_surface.rs), target `mcp_surface`, package `harness-integration-tests`. | Cross-layer MCP, Core, Store, surface binding, access derivation, tool exposure, replay-context binding, and storage no-effect checks visible through MCP. | A replacement for focused method tests or Reference owners. |
 | Conformance implementation tests | [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs), target `baseline`, package `harness-conformance-tests`. | Baseline cross-method scenarios through Core-facing APIs, including replay, write authorization, artifacts, judgments, close readiness, error routing, and corruption handling. | Product acceptance, security proof, close readiness, or the sole source of a product rule. |
 | Shared test support | [`crates/harness-test-support/src/lib.rs`](../../../crates/harness-test-support/src/lib.rs), package `harness-test-support`. | Disposable Runtime Home fixtures, registered project and surface setup, request builders, Store inspection helpers, and shared fixture composition. | Production behavior or a durable runtime home. |
+| Documentation maintenance tooling tests | [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs), package `xtask`. | The read-only documentation validator, metadata parsing, bilingual coverage, local link and anchor checks, terminology path checks, retired-path detection, and temporary fixture behavior. | Semantic translation review, technical-accuracy review, or a product contract source. |
 
 ## Choosing A Layer
 
@@ -32,7 +33,8 @@ change workflow, use the [Implementation Guide](change-guide.md).
 | MCP adapter startup, tool schema, `tools/call`, or stdio transport | `crates/harness-mcp/src/lib.rs` tests and `binary_transport`. | Add `tests/integration/mcp_surface.rs` for cross-layer Core/Store behavior through MCP. |
 | Administrative setup behavior | `binary_admin` and colocated CLI module tests. | Add Store tests when bootstrap, inspection, or migration behavior changes. |
 | Test fixture behavior | `harness-test-support` tests or the consuming package's tests. | Add owner-focused documentation checks if the fixture exposes a missing contract owner. |
-| Developer documentation only | Documentation checks for structure, links, indexes, parity, and terminology. | Run Cargo tests only when requested or when the documentation change depends on source behavior that needs fresh validation. |
+| Documentation validator behavior | `xtask` tests and `cargo run -p xtask -- docs-check`. | Add fixture cases when a new deterministic structural rule is introduced. |
+| Developer documentation only | `cargo run -p xtask -- docs-check` plus manual semantic parity, owner-routing, and terminology review. | Run Cargo tests only when requested or when the documentation change depends on source behavior that needs fresh validation. |
 
 ## Tests That Demonstrate Boundaries
 
@@ -71,3 +73,12 @@ For documentation-only edits, use the applicable documentation checks. When a
 documentation task asks for source verification, `cargo metadata --no-deps
 --format-version 1`, repository search, and the requested test command are
 appropriate implementation checks.
+
+For maintained documentation structural checks, run:
+
+```sh
+cargo run -p xtask -- docs-check
+```
+
+Then complete the manual semantic bilingual review, contract-owner review, and
+technical-accuracy review that match the changed documents.

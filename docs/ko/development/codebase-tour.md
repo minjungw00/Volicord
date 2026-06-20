@@ -26,6 +26,9 @@ Core 권한 의미는 참조 문서에 남습니다.
 관리 설정 동작은 `harness-store` 뒤에 `harness-cli`를 읽습니다. CLI 경로는
 로컬 설정과 등록이며 공개 Core 메서드 동작이 아닙니다.
 
+저장소 문서 검증은 Maintain 정책 뒤에 `xtask`를 읽습니다. 이 패키지는
+유지보수 도구이며 공개 메서드 경로의 일부가 아닙니다.
+
 ## 의존 형태
 
 현재 Cargo manifest에서 확인되는 일반 내부 의존 방향은 아래와 같습니다.
@@ -36,6 +39,8 @@ Core 권한 의미는 참조 문서에 남습니다.
 - `harness-cli`는 `harness-store`와 `harness-types`에 의존합니다.
 - `harness-mcp`는 `harness-core`, `harness-store`, `harness-types`에 의존합니다.
 - `harness-test-support`는 `harness-store`와 `harness-types`에 의존합니다.
+- `xtask`는 내부 제품 크레이트에 의존하지 않습니다. 문서 파서 의존성은
+  유지보수 패키지 안에 격리됩니다.
 
 테스트 전용 조합은 구현 크레이트에 `harness-test-support`를 더하고,
 `tests/conformance`와 `tests/integration`이 자신이 실행하는 구현 크레이트를
@@ -572,3 +577,42 @@ Core 변이 원자 커밋이 여기에 속합니다.
 
 - 테스트 대상 어댑터 경로는 `harness-mcp`에서 본 뒤, 성공 호출 뒤의 동작은
   `harness-core`와 `harness-store`에서 봅니다.
+
+## `xtask`
+
+존재 이유:
+
+`xtask`는 결정적 문서 검증을 위한 저장소 유지보수 패키지입니다.
+`cargo run -p xtask -- docs-check`를 제공하며, 문서 도구 의존성이 제품
+크레이트나 테스트 지원 크레이트에 들어가지 않게 합니다.
+
+구현에서 담당하는 것:
+
+- 버전 2 `docs/doc-index.yaml` 구조 검증.
+- `docs/en/`과 `docs/ko/`의 유지 Markdown 대응 범위 점검.
+- 숨김 앵커를 포함한 로컬 Markdown 링크와 조각 검증.
+- `docs/terminology-map.yaml`의 저장소 문서 경로 검증.
+- 유지 Markdown과 YAML 경로 메타데이터의 폐기된 문서 경로 감지.
+
+담당하지 않는 것:
+
+- Harness 런타임 동작.
+- 공개 API, 스키마, 저장소, 보안, Core 권한 계약.
+- 의미 번역 검토나 계약 담당 문서의 기술 검토.
+- 자동 파일 재작성.
+
+추천 첫 파일:
+
+- [`xtask/src/lib.rs`](../../../xtask/src/lib.rs), 그다음
+  [`xtask/src/main.rs`](../../../xtask/src/main.rs)
+
+가장 관련 있는 테스트:
+
+- [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs)는 작은 임시
+  픽스처 트리로 메타데이터, 대응, 링크, 조각, 폐기 경로, 용어 경로 사례를
+  점검합니다.
+
+다음에 읽을 컴포넌트:
+
+- 명령을 이름 붙이고 자동 구조 점검과 사람이 하는 검토를 구분하는 유지보수
+  정책은 [검증](../maintain/validation.md)에서 봅니다.

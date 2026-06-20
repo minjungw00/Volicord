@@ -27,6 +27,9 @@ Read in this order when you are learning the public method path:
 For administrative setup behavior, read `harness-cli` after `harness-store`.
 The CLI path is local setup and registration, not public Core method behavior.
 
+For repository documentation validation, read `xtask` after the Maintain
+policies. It is maintenance tooling and not part of the public method path.
+
 ## Dependency shape
 
 Normal internal dependency direction from the current Cargo manifests:
@@ -38,6 +41,8 @@ Normal internal dependency direction from the current Cargo manifests:
 - `harness-mcp` depends on `harness-core`, `harness-store`, and
   `harness-types`.
 - `harness-test-support` depends on `harness-store` and `harness-types`.
+- `xtask` has no internal product-crate dependencies; its documentation-parser
+  dependencies stay isolated in the maintenance package.
 
 Test-only composition adds `harness-test-support` to implementation crates and
 lets `tests/conformance` and `tests/integration` compose the implementation
@@ -582,3 +587,43 @@ Recommended next component:
 
 - Read `harness-mcp` for the adapter path under test, then `harness-core` and
   `harness-store` for the behavior behind successful calls.
+
+## `xtask`
+
+Why it exists:
+
+`xtask` is a repository maintenance package for deterministic documentation
+validation. It exposes `cargo run -p xtask -- docs-check` and keeps
+documentation-tooling dependencies out of product and test-support crates.
+
+Owns in the implementation:
+
+- Version 2 `docs/doc-index.yaml` structural validation.
+- Bilingual maintained Markdown coverage checks for `docs/en/` and `docs/ko/`.
+- Local Markdown link and fragment validation, including hidden anchors.
+- `docs/terminology-map.yaml` repository-document path validation.
+- Retired documentation path detection in maintained Markdown and YAML route
+  metadata.
+
+Does not own:
+
+- Harness runtime behavior.
+- Public API, schema, storage, security, or Core authority contracts.
+- Semantic translation review or contract-owner technical review.
+- Automatic file rewriting.
+
+Recommended first file:
+
+- [`xtask/src/lib.rs`](../../../xtask/src/lib.rs), then
+  [`xtask/src/main.rs`](../../../xtask/src/main.rs)
+
+Most relevant tests:
+
+- [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs) uses small
+  temporary fixture trees for metadata, pairing, link, fragment, retired-path,
+  and terminology-path cases.
+
+Recommended next component:
+
+- Read [Validation](../maintain/validation.md) for the maintenance policy that
+  names the command and separates automated structure checks from manual review.

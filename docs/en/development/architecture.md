@@ -64,6 +64,7 @@ The Cargo workspace contains these members:
 | `crates/harness-test-support` | `harness-test-support` | Library | Disposable Runtime Home, Store, Core, and fixture helpers shared by implementation tests. |
 | `tests/conformance` | `harness-conformance-tests` | `baseline` test target | Baseline cross-method scenarios that exercise owner-defined behavior through Core-facing APIs. |
 | `tests/integration` | `harness-integration-tests` | `mcp_surface` test target | Cross-layer MCP, Core, Store, surface-binding, and access-path verification. |
+| `xtask` | `xtask` | Library and `xtask` binary | Repository maintenance tooling for read-only documentation validation. It is not part of Harness runtime architecture. |
 
 Internal dependency direction from the Cargo manifests:
 
@@ -77,6 +78,7 @@ Internal dependency direction from the Cargo manifests:
 | `harness-test-support` | `harness-store`, `harness-types` | None |
 | `tests/conformance` | None; the package contains only test targets | `harness-core`, `harness-test-support`, `harness-types` |
 | `tests/integration` | None; the package contains only test targets | `harness-core`, `harness-mcp`, `harness-store`, `harness-test-support`, `harness-types` |
+| `xtask` | None | None |
 
 ```mermaid
 flowchart TD
@@ -88,6 +90,7 @@ flowchart TD
   support["harness-test-support"]
   conformance["tests/conformance"]
   integration["tests/integration"]
+  xtask["xtask"]
 
   store --> types
   core --> store
@@ -121,6 +124,7 @@ The durable dependency boundaries are:
 - The administrative CLI uses Store and shared types for local setup and registration rather than invoking public Core methods.
 - Store depends on shared types.
 - Test-support and test packages compose implementation crates only for disposable fixtures and cross-layer verification.
+- `xtask` has no internal product-crate dependencies. Documentation-tooling dependencies stay isolated in the maintenance crate.
 
 ## Source module map
 

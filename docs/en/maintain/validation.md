@@ -6,13 +6,17 @@ reporting.
 
 This is maintenance validation. It is not Harness runtime conformance, product
 acceptance, QA completion, close readiness, a security proof, or residual-risk
-acceptance. This repository does not currently define a single automated
-documentation-validator command.
+acceptance. The repository-local automated documentation validator is:
+
+```sh
+cargo run -p xtask -- docs-check
+```
 
 ## Structural Checks
 
-For documentation metadata and route changes, verify the machine-checkable
-shape:
+For documentation metadata, route, link, and terminology-path changes, run
+`cargo run -p xtask -- docs-check` from the repository root. The command is
+read-only and verifies the machine-checkable shape:
 
 - `docs/doc-index.yaml` parses as YAML and has `version: 2`.
 - Every shared entry uses only `doc_id`, `path`, `kind`, `summary`,
@@ -35,15 +39,15 @@ shape:
 - Every `depends_on` value resolves to an indexed `doc_id`.
 - Every maintained paired Markdown file under `docs/en/` and `docs/ko/` is
   represented in the index with matching relative structure.
-
-For link and path changes, verify:
-
 - Relative links resolve to existing files.
 - Fragment links and hidden anchors resolve where they are used.
 - `docs/terminology-map.yaml` primary-owner and related-reference paths exist
   and are represented in `doc-index.yaml`.
 - README, route-page, Reference, Development, `AGENTS.md`, and terminology
-  links do not point to retired Maintain paths.
+  links do not point to retired documentation paths.
+
+After automated structural validation, manually confirm repository hygiene:
+
 - No generated records, runtime homes, SQLite files, generated logs, archive
   copies, conversion notes, scratch notes, temporary inventories, or work logs
   remain in maintained documentation.
@@ -74,6 +78,11 @@ For developer-learning changes caused by code movement, confirm the relevant
 Development documents describe durable crates, modules, entry points, execution
 stages, and responsibility boundaries without turning implementation detail into
 product contract text.
+
+The automated `docs-check` command does not perform semantic bilingual review,
+contract-owner review, technical-accuracy review, translation judgment, API
+example consistency review, or product meaning review. Those checks remain
+manual and owner-routed.
 
 ## Rust Implementation Validation
 

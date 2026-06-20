@@ -20,6 +20,7 @@
 | MCP 통합 테스트 | `harness-integration-tests` 패키지의 `mcp_surface` 대상인 [`tests/integration/mcp_surface.rs`](../../../tests/integration/mcp_surface.rs). | MCP, Core, Store, 접점 바인딩, 접근 파생, 도구 노출, 재실행 맥락 바인딩, MCP를 통해 보이는 저장소 효과 없음 점검. | 집중 메서드 테스트나 참조 담당 문서의 대체물. |
 | 적합성 구현 테스트 | `harness-conformance-tests` 패키지의 `baseline` 대상인 [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs). | Core 쪽 API를 통한 기준 범위 교차 메서드 시나리오. 재실행, 쓰기 권한 부여, 아티팩트, 판단, 닫기 준비 상태, 오류 처리 경로, 손상 처리 등을 포함합니다. | 제품 수락, 보안 증명, 닫기 준비 상태, 또는 제품 규칙의 유일한 출처. |
 | 공유 테스트 지원 | `harness-test-support` 패키지의 [`crates/harness-test-support/src/lib.rs`](../../../crates/harness-test-support/src/lib.rs). | 폐기 가능한 Runtime Home 픽스처, 등록된 프로젝트와 접점 설정, 요청 빌더, Store 검사 도우미, 공유 픽스처 구성. | 프로덕션 동작이나 오래 유지될 Runtime Home. |
+| 문서 유지보수 도구 테스트 | `xtask` 패키지의 [`xtask/tests/docs_check.rs`](../../../xtask/tests/docs_check.rs). | 읽기 전용 문서 검증기, 메타데이터 파싱, 한영 대응 범위, 로컬 링크와 앵커 점검, 용어 경로 점검, 폐기 경로 감지, 임시 픽스처 동작. | 의미 번역 검토, 기술 정확성 검토, 제품 계약 출처. |
 
 ## 계층 선택
 
@@ -32,7 +33,8 @@
 | MCP 어댑터 시작, 도구 스키마, `tools/call`, stdio 전송 | `crates/harness-mcp/src/lib.rs` 테스트와 `binary_transport`. | MCP를 통과한 Core/Store 계층 간 동작은 `tests/integration/mcp_surface.rs`를 추가합니다. |
 | 관리 설정 동작 | `binary_admin`과 CLI 모듈 테스트. | 부트스트랩, 검사, 마이그레이션 동작이 바뀌면 Store 테스트를 추가합니다. |
 | 테스트 픽스처 동작 | `harness-test-support` 테스트 또는 소비 패키지의 테스트. | 픽스처가 빠진 계약 담당 문서를 드러내면 담당 문서 중심 문서 점검을 추가합니다. |
-| 개발자 문서만 바뀐 경우 | 구조, 링크, 색인, 언어 일치, 용어 문서 점검. | 사용자가 요청했거나 문서 변경이 새 소스 검증에 의존하면 Cargo 테스트를 실행합니다. |
+| 문서 검증기 동작 | `xtask` 테스트와 `cargo run -p xtask -- docs-check`. | 새 결정적 구조 규칙을 도입하면 픽스처 사례를 추가합니다. |
+| 개발자 문서만 바뀐 경우 | `cargo run -p xtask -- docs-check`와 사람이 하는 의미 일치, 담당 경로, 용어 검토. | 사용자가 요청했거나 문서 변경이 새 소스 검증에 의존하면 Cargo 테스트를 실행합니다. |
 
 ## 경계를 보여 주는 테스트
 
@@ -69,3 +71,12 @@ cargo test --all-targets --all-features
 문서만 편집했다면 적용되는 문서 점검을 사용합니다. 문서 작업이 소스
 검증을 요구하면 `cargo metadata --no-deps --format-version 1`, 저장소 검색,
 요청된 테스트 명령이 적절한 구현 점검입니다.
+
+유지 문서 구조 점검은 아래 명령으로 실행합니다.
+
+```sh
+cargo run -p xtask -- docs-check
+```
+
+그다음 바뀐 문서에 맞는 한영 의미 검토, 계약 담당 문서 검토, 기술 정확성
+검토를 사람이 완료합니다.

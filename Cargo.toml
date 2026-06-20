@@ -8,6 +8,7 @@ members = [
     "crates/harness-test-support",
     "tests/conformance",
     "tests/integration",
+    "xtask",
 ]
 resolver = "2"
 

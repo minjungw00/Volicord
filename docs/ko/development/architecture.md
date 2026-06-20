@@ -64,6 +64,7 @@ Cargo 워크스페이스는 아래 멤버로 구성됩니다.
 | `crates/harness-test-support` | `harness-test-support` | 라이브러리 | 구현 테스트가 공유하는 폐기 가능한 Runtime Home, Store, Core, 픽스처 도우미. |
 | `tests/conformance` | `harness-conformance-tests` | `baseline` 테스트 대상 | Core 쪽 API를 통해 담당 문서가 정의한 동작을 실행하는 기준 범위 교차 메서드 시나리오. |
 | `tests/integration` | `harness-integration-tests` | `mcp_surface` 테스트 대상 | MCP, Core, Store, 접점 바인딩, 접근 경로를 가로지르는 검증. |
+| `xtask` | `xtask` | 라이브러리와 `xtask` 바이너리 | 읽기 전용 문서 검증을 위한 저장소 유지보수 도구. Harness 런타임 아키텍처의 일부가 아닙니다. |
 
 Cargo manifest에서 확인되는 내부 의존 방향은 아래와 같습니다.
 
@@ -77,6 +78,7 @@ Cargo manifest에서 확인되는 내부 의존 방향은 아래와 같습니다
 | `harness-test-support` | `harness-store`, `harness-types` | 없음 |
 | `tests/conformance` | 없음. 이 패키지는 테스트 대상만 포함합니다. | `harness-core`, `harness-test-support`, `harness-types` |
 | `tests/integration` | 없음. 이 패키지는 테스트 대상만 포함합니다. | `harness-core`, `harness-mcp`, `harness-store`, `harness-test-support`, `harness-types` |
+| `xtask` | 없음 | 없음 |
 
 ```mermaid
 flowchart TD
@@ -88,6 +90,7 @@ flowchart TD
   support["harness-test-support"]
   conformance["tests/conformance"]
   integration["tests/integration"]
+  xtask["xtask"]
 
   store --> types
   core --> store
@@ -121,6 +124,7 @@ flowchart TD
 - 관리 CLI는 공개 Core 메서드를 호출하는 대신 Store와 공유 타입으로 로컬 설정과 등록을 수행합니다.
 - Store는 공유 타입에 의존합니다.
 - 테스트 지원 크레이트와 테스트 패키지는 폐기 가능한 픽스처와 계층 간 검증을 위해서만 구현 크레이트를 조합합니다.
+- `xtask`는 내부 제품 크레이트에 의존하지 않습니다. 문서 도구 의존성은 유지보수 크레이트 안에 격리됩니다.
 
 ## 소스 모듈 지도
 
