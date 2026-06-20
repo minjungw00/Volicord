@@ -1,87 +1,71 @@
 # 구현 가이드
 
-이 가이드는 구현자를 위한 읽기 경로입니다. 구현 질문을 계약을 정의하는 참조 담당 문서로 연결합니다.
+이 가이드는 구현자가 구현 변경을 분류하고, 적용되는 계약 담당 문서를 찾고, 구현 경계를 확인하고, 검증을 고를 수 있게 돕습니다. 제품 의미는 기준 참조 담당 문서에 남습니다.
 
-이 문서는 기준 범위, API 동작, 스키마, 저장 효과, 보안 보장, 런타임 경계, 오류 동작, 닫기 준비 상태 규칙, 커넥터 동작, 적합성 권한, 예시 유효성을 정의하거나 덮어쓰지 않습니다. 그런 계약은 참조 담당 문서에 있습니다.
+이 문서는 가이드 수준의 읽기 경로입니다. 기준 범위, API 동작, 스키마, 저장 효과, 보안 보장, 런타임 경계, 오류 동작, 닫기 준비 상태 규칙, 커넥터 동작, 적합성 권한, Core 권한 의미를 정의하거나 덮어쓰지 않습니다. 기계가 읽는 정확한 담당 경로는 [`docs/doc-index.yaml`](../../doc-index.yaml)을 사용하고, 사람이 읽는 담당 문서 안내는 [참조 색인](../reference/README.md)을 사용합니다.
 
-이 가이드는 구현 읽기 경로, 구현 질문에 대한 담당 문서 해석, 가이드 수준에서 지원되는 구현 형태를 설명할 수 있습니다. API 동작, 저장 효과, 보안 보장, 범위 경계, 스키마 형태, 오류 동작, Core 권한 의미를 바꾸는 결정은 이 문서가 아니라 관련 참조 담당 문서가 맡습니다.
+하네스는 AI 지원 제품 작업을 위한 로컬 작업 권한 제품이자 시스템입니다. Core는 하네스 상태를 위한 로컬 기준 기록입니다.
 
-하네스는 AI 지원 제품 작업에서 로컬 작업 권한을 다루는 제품이자 시스템입니다. Core는 하네스 상태의 로컬 기준 기록입니다.
+## 구현 변경 분류
 
-## 기준 범위 구현을 위한 읽기 경로
+가장 가까운 행에서 시작하고, 변경이 API, 저장소, 런타임, 보안, Core 권한 경계를 건너면 인접 담당 문서를 추가합니다. 이 표는 경로 안내일 뿐이며 전체 담당 문서 등록부가 아닙니다.
 
-제품 범위를 구현 작업으로 옮길 때는 아래 순서로 읽습니다.
+| 변경 유형 | 첫 계약 담당 경로 | 아키텍처 또는 코드 경로 | 유용한 검증 위치 |
+|---|---|---|---|
+| 공개 API 메서드 구현 | [범위](../reference/scope.md), 그다음 [API 메서드](../reference/api/methods.md)와 연결된 메서드 담당 문서. 스키마, 오류, 저장소, 보안 관심사가 있으면 해당 담당 문서를 추가합니다. | [구현 아키텍처](architecture.md)의 Core 파이프라인, Store 경계, 효과 경로, 코드에서 담당 문서로 가는 경로 절. `crates/harness-core/src/methods/`, `crates/harness-core/src/pipeline.rs`, `crates/harness-core/src/policy/`. | `crates/harness-core/src/methods/tests.rs`의 메서드와 Core 테스트, `tests/conformance/baseline.rs`, 어댑터 노출이 영향을 받을 때 `tests/integration/mcp_surface.rs`. |
+| 공통 Core 파이프라인 또는 Core 정책 | [Core 모델](../reference/core-model.md), [API 코어 스키마](../reference/api/schema-core.md), [API 오류](../reference/api/errors.md), 지속 효과가 있으면 [저장 효과](../reference/storage-effects.md). 접근이나 보장 표현이 걸리면 [에이전트 통합](../reference/agent-integration.md)이나 [보안](../reference/security.md)을 추가합니다. | 구현 아키텍처의 Core 파이프라인과 Store 경계, 효과와 커밋 경계, 구현 불변식 절. `crates/harness-core/src/pipeline.rs`, `crates/harness-core/src/policy/`. | Core 메서드 테스트, 변경된 담당 문서 사실을 주장하는 적합성 시나리오, MCP 또는 Store 경계가 영향을 받을 때 통합 테스트. |
+| 공유 타입, 스키마 표현, 식별자, 값 집합 | API 스키마 담당 문서 묶음: [API 코어 스키마](../reference/api/schema-core.md), [상태 스키마](../reference/api/schema-state.md), [아티팩트 스키마](../reference/api/schema-artifacts.md), [판단 스키마](../reference/api/schema-judgment.md), [값 집합](../reference/api/schema-value-sets.md). 메서드별 요청이나 결과 의미는 메서드 담당 문서를 사용합니다. | [구현 아키텍처](architecture.md)의 워크스페이스 형태와 소스 모듈 지도. `crates/harness-types/src/methods.rs`, `schema.rs`, `values.rs`, `ids.rs`, `canonical.rs`. | 타입과 직렬화 단위 테스트, 해당 형태를 쓰는 메서드 테스트, 담당 문서가 정의한 값 동작의 적합성 범위. |
+| 저장 효과, 기록, 트랜잭션, 마이그레이션 | 저장소 담당 문서 묶음: [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md), [저장소 기록](../reference/storage-records.md), [저장소 DDL](../reference/storage-ddl.md), [아티팩트 저장소](../reference/storage-artifacts.md), [저장소 버전 관리](../reference/storage-versioning.md). | 구현 아키텍처의 Store 경계, 효과와 커밋 경계, 소스 모듈 지도. `crates/harness-store/src/`, 특히 `core_pipeline.rs`, `migrations.rs`, `sqlite.rs`, `artifacts.rs`. | Store 단위 테스트, 커밋된 효과를 다루는 Core 메서드 테스트, `tests/conformance/baseline.rs`, 계층 간 저장 효과를 다룰 때 `tests/integration/mcp_surface.rs`. |
+| MCP 시작, 바인딩, 전송, 도구 디스패치 | [MCP 전송](../reference/mcp-transport.md). 검증된 접점 맥락은 [에이전트 통합](../reference/agent-integration.md)을 추가하고, 도구로 노출되는 지원 공개 메서드 집합은 [API 메서드](../reference/api/methods.md)를 확인합니다. | 구현 아키텍처의 운영 경로와 MCP/Core 실행 흐름. `crates/harness-mcp/src/lib.rs`, `crates/harness-mcp/src/main.rs`. | `crates/harness-mcp/tests/binary_transport.rs`, `tests/integration/mcp_surface.rs`. |
+| 관리 CLI 설정, 등록, 호스트 설정 | [관리 CLI](../reference/admin-cli.md). Runtime Home, Product Repository, 프로세스, 호스트 설정 경계에는 [런타임 경계](../reference/runtime-boundaries.md)와 [MCP 전송](../reference/mcp-transport.md)을 추가합니다. | 구현 아키텍처의 관리 CLI 설정 흐름. `crates/harness-cli/src/`, 특히 `local_mcp_command.rs`, `setup.rs`, `wizard.rs`, `host_config.rs`, `registration.rs`. | `crates/harness-cli/tests/binary_admin.rs`, 부트스트랩이나 마이그레이션 동작이 영향을 받을 때 Store 설정 테스트. |
+| 테스트, 픽스처, 테스트 지원 기능 | 각 주장 사실의 담당 문서. [적합성](../reference/conformance.md)은 문서 수준 적합성 시나리오 의미와 주장 경로만 담당합니다. | 구현 아키텍처의 테스트 구조. `crates/harness-test-support/`, `tests/conformance/`, `tests/integration/`, 구현 크레이트 안의 테스트. | 변경된 테스트 패키지나 크레이트 테스트, 테스트가 빠진 계약 담당 문서를 드러낼 때 담당 문서 중심 문서 점검. |
 
-1. [범위](../reference/scope.md)에서 기준 범위와 지원 동작의 경계를 확인합니다.
-2. [구현 아키텍처](architecture.md)에서 가이드 수준의 계층 분리와 현재 Rust 워크스페이스 형태를 확인합니다.
-3. 계약 질문마다 [참조 색인](../reference/README.md)과 [`docs/doc-index.yaml`](../../doc-index.yaml)에서 적용되는 담당 문서를 찾습니다.
-4. API, 저장소, 현재 적용 범위, 사용자 소유 판단, 닫기 준비 상태를 가로지르는 권한 개념은 [Core 모델](../reference/core-model.md)에서 확인합니다.
-5. 지원되는 공개 메서드 목록과 메서드 담당 문서 경로는 [API 메서드](../reference/api/methods.md)를 사용합니다.
-6. 구현 질문이 스키마, 저장소, 런타임, 보안, 오류, 적합성을 건드릴 때만 해당 집중 담당 문서를 추가로 읽습니다.
-7. 커넥터 경계는 [에이전트 통합](../reference/agent-integration.md)에서 확인하고, 접점별 사용 워크플로는 [접점별 사용 레시피](../use/surface-recipes.md)에서 확인합니다.
-8. 사용자 소유 판단, 증거, 검증 기준, 일반 승인, 쓰기 승인, 민감 동작 승인, `Write Authorization`(쓰기 권한 부여), 최종 수락, 닫기 준비 상태, 잔여 위험 수락은 서로 다른 개념으로 둡니다. 이 구분은 Core 모델이 담당합니다.
+## 기본 구현 읽기 순서
 
-## 담당 문서 빠른 경로
+변경에 더 좁은 담당 경로가 이미 정해져 있지 않다면 아래 순서를 사용합니다.
 
-아래 표는 첫 경로만 알려 줍니다. 각 경로는 첫 확인 지점이며, 실제 세부사항은 집중 담당 문서에 있습니다.
+1. [범위](../reference/scope.md)에서 지원 범위를 확인합니다.
+2. 계약 질문마다 [`docs/doc-index.yaml`](../../doc-index.yaml)에서 기준 담당 문서를 찾습니다.
+3. 정확한 의미는 집중 참조 담당 문서에서 읽습니다.
+4. [구현 아키텍처](architecture.md)에서 구현 경계와 실행 흐름을 찾습니다.
+5. 관련 소스와 테스트를 확인합니다.
+6. 코드, 테스트, 문서를 담당 문서가 정의한 계약과 비교합니다.
+7. 변경된 계층에 맞는 검증을 실행합니다.
 
-| 관심사 | 첫 경로 |
-|---|---|
-| 기준 범위와 지원 범위 밖 경계 | [범위](../reference/scope.md) |
-| API 동작과 지원되는 공개 메서드 | [API 메서드](../reference/api/methods.md), 그 안에 나열된 메서드 담당 문서 |
-| 스키마 형태와 값 이름 | [API 코어 스키마](../reference/api/schema-core.md), [API 상태 스키마](../reference/api/schema-state.md), [API 아티팩트 스키마](../reference/api/schema-artifacts.md), [API 판단 스키마](../reference/api/schema-judgment.md), [API 값 집합](../reference/api/schema-value-sets.md) |
-| 저장 효과, 기록, 아티팩트, 버전 | [저장 효과](../reference/storage-effects.md), 그다음 [저장소](../reference/storage.md), [저장소 기록](../reference/storage-records.md), [아티팩트 저장소](../reference/storage-artifacts.md), [저장소 버전 관리](../reference/storage-versioning.md) |
-| 런타임과 파일 위치 경계 | [런타임 경계](../reference/runtime-boundaries.md) |
-| 보안 경계와 보장 표현 | [보안](../reference/security.md). 지원 여부는 범위 문서, 정확한 값 이름은 API 값 집합을 함께 봅니다. |
-| 오류 동작과 차단 사유 처리 경로 | [API 오류 문서 묶음 색인](../reference/api/errors.md), 그다음 [API 오류 코드](../reference/api/error-codes.md), [API 오류 우선순위](../reference/api/error-precedence.md), [API 오류 처리 경로](../reference/api/error-routing.md), [API 차단 사유 처리 경로](../reference/api/blocker-routing.md), [API 오류 세부사항](../reference/api/error-details.md) |
-| 적합성 주장 권한 | [적합성](../reference/conformance.md), 그다음 각 주장 사실의 담당 문서 |
-| 커넥터 경계와 접점 워크플로 | [에이전트 통합](../reference/agent-integration.md), [접점별 사용 레시피](../use/surface-recipes.md) |
-| 읽기 전용 표시와 템플릿 | [상태 보기 권한](../reference/projection-and-templates.md), [템플릿 본문](../reference/template-bodies.md) |
+하나의 구현 변경이 둘 이상의 담당 문서를 필요로 할 수 있습니다. 예를 들어 메서드 변경은 메서드 동작, 스키마 형태, 저장 효과, 런타임 경계, 오류 처리 경로, 보안 표현, 적합성 주장을 함께 건드릴 수 있습니다. 각 질문을 집중 담당 문서에 두고 이 가이드를 합쳐진 계약처럼 사용하지 않습니다.
 
-담당 문서들이 어긋나 보이면 그것은 담당 문서 공백입니다. 범위 문서는 지원 여부를 제한하고, 집중 담당 문서는 메서드 동작, 스키마 형태, 저장 효과, 런타임 위치, 보안 표현, 공개 오류 의미, 차단 사유 처리 경로, 주장 권한을 정의합니다.
+## 코드와 문서의 불일치
 
-## 범위 해석
+구현과 문서가 어긋나 보이면 무엇을 고칠지 결정하기 전에 불일치의 종류를 분류합니다.
 
-어떤 기능을 기준 범위 구현 대상으로 보려면 [범위](../reference/scope.md)가 그 기능을 포함하고, 영향받는 담당 문서가 필요한 동작, 형태, 저장 효과, 런타임 경계, 보안 경계, 오류 동작, 적합성 근거를 정의해야 합니다.
+- 가이드 수준의 소스 구조 설명이 현재 안정적인 코드와 다르면 [구현 아키텍처](architecture.md)를 고쳐 구현 구조와 맞춥니다.
+- 코드가 API, 스키마, 저장소, 보안, 오류, 범위, Core 권한 담당 문서와 다르면 코드를 새 계약으로 취급하지 않습니다.
+- 제품 의미의 차이는 적용되는 담당 문서와 구현을 통해 해결합니다. 경로 문서, README, 사용 문서, 이 가이드에서 해결하지 않습니다.
+- 테스트, 픽스처, 예시, 적합성 시나리오 산문만 동작을 표현한다면 계약 담당 문서 공백으로 다룹니다.
+- 담당 문서를 식별할 수 없으면 계약을 이 가이드에 넣지 말고 담당 문서 공백을 보고합니다.
 
-값 집합, 예시, 적합성 시나리오 ID, 경로 요약, 스키마 어휘에 이름이 있다는 사실만으로는 충분하지 않습니다. 범위 문서와 관련 담당 문서가 지원을 정의하기 전까지는 어휘나 예약된 여지로 읽습니다.
+불일치 자체에서 제품 결정을 추론하지 않습니다. 담당 경로는 그 결정이 어디에 속하는지 알려 줍니다.
 
-## 사용 문서와 참조 계약
+## 계약 담당 문서가 아닌 입력
 
-사용 문서는 워크플로, 독자 판단, 기대 결과를 설명합니다. 사용자나 에이전트가 하네스 안에서 어떻게 움직여야 하는지 이해하는 데 유용하지만, 참조 계약을 덮어쓰지는 않습니다.
+아래 입력은 구현할 때 유용하지만 제품 계약을 정의하지 않습니다.
 
-구현자는 [사용자 가이드](../use/user-guide.md), [에이전트 가이드](../use/agent-guide.md), [판단 예시](../use/judgment-examples.md), [접점별 사용 레시피](../use/surface-recipes.md)로 독자 의도, 접점별 워크플로 기대, 판단 경계를 이해할 수 있습니다. API 페이로드, 저장 효과, 보안 보장, 닫기 준비 상태 규칙, 접근 경계, 오류 동작은 적용되는 참조 담당 문서로 돌아가 확인합니다.
+| 입력 | 정당한 사용 | 담당 문서 경계 |
+|---|---|---|
+| [사용자 가이드](../use/user-guide.md), [에이전트 가이드](../use/agent-guide.md), [판단 예시](../use/judgment-examples.md), [접점별 사용 레시피](../use/surface-recipes.md) 같은 사용 문서 | 워크플로 의도, 독자 판단, 커넥터 맥락, 접점 기대를 이해합니다. | API 페이로드, 저장 효과, 접근 경계, 보안 보장, 닫기 준비 상태 규칙, 오류 동작은 참조 담당 문서로 돌아갑니다. |
+| 예시 | 대표 분기, 간결한 형태, 시나리오를 이해합니다. | 예시는 완전한 스키마, 값 집합 정의, 저장 효과 정의, 구현 지름길이 아닙니다. |
+| 적합성 시나리오 | 점검 범위 입력과 주장 경로를 확인합니다. | 시나리오 산문과 시나리오 ID는 주장되는 제품 사실을 담당하지 않습니다. 그 사실은 범위 문서나 집중 참조 담당 문서로 갑니다. |
+| 테스트, 픽스처, 테스트 지원 도우미 | 담당 문서가 정의한 동작을 검증하고, 폐기 가능한 Runtime Home 상태를 구성하며, 계층 간 경로를 실행합니다. | 테스트 단언, 픽스처 형태, 도우미 API가 제품 계약의 유일한 출처가 되면 안 됩니다. |
+| 생성된 출력, 로그, 렌더링된 보고서, 현재 구현 동작 | 동작을 진단하고 관찰된 구현을 담당 문서와 비교합니다. | 런타임 출력과 관찰된 코드 동작은 API, 저장소, 보안, Core 권한, 적합성 계약이 되지 않으며, 생성물이나 부수 파일은 유지 문서에 두지 않습니다. |
 
-사용 문서와 참조 담당 문서가 다르게 보이면 권한은 참조 담당 문서에 있습니다. 경로나 가이드의 불일치는 문서 유지보수 이슈입니다.
+## 구현 완료 점검
 
-## 지원 범위 밖 동작
+이 목록은 구현과 문서 유지보수 점검입니다. 제품 수락, 런타임 적합성, 닫기 준비 상태, QA 완료, 보안 증명, 잔여 위험 수락이 아닙니다.
 
-이름이 있는 기능도 기준 범위 지원 밖에 남아 있을 수 있습니다. 그 기능이 기준 범위 동작이 되는 시점은 범위 문서와 영향받는 담당 문서가 정합니다.
-
-영향받는 담당 문서가 지원을 정의하기 전까지 이 가이드는 질문을 [범위](../reference/scope.md)와 그 담당 문서로 되돌려 보낼 뿐입니다. 세부 처리는 이 가이드가 아니라 해당 담당 문서에서 정의합니다.
-
-## 적합성 시나리오
-
-[적합성](../reference/conformance.md)은 문서 수준의 적합성 의미, 주장 권한, 간결한 시나리오 경로를 담당합니다. 시나리오는 점검 범위를 떠올리기 위한 입력일 뿐입니다. 테스트나 점검의 권한은 담당 문서가 정의한 사실에서 나옵니다.
-
-시나리오 산문, 생성된 요약, 렌더링된 보고서, 문서 점검 라벨, 상태 표시 문구는 런타임 권한이 아닙니다.
-
-## 구현 입력으로서의 예시
-
-예시는 계약을 읽기 쉽게 만드는 보조 자료이지 완전한 스키마나 동작 출처가 아닙니다. 대표 분기, 시나리오, 간결한 요청/응답 형태를 이해하는 데만 사용합니다.
-
-필드, 선택 여부, 저장 효과, 보안 보장, 지원 범위 밖 동작, 구현 지름길은 예시가 아니라 담당 문서에서 나옵니다. 예시가 메서드, 스키마, 저장소, 보안, 런타임, 적합성, 오류 담당 문서와 충돌하면 관련 담당 문서가 권한을 가집니다.
-
-## 작은 기준 범위 구현 형태
-
-작은 기준 범위 구현은 좁게 잡을 수 있습니다. 평범한 사용자 작업 하나를 대상으로 삼고, 포함 기능은 [범위](../reference/scope.md)에서 확인하며, 요청, 응답, 저장 효과, 오류, 차단 사유, 보안 표현, 적합성 주장은 관련 담당 문서에서 확인합니다.
-
-작은 기준 범위 구현 형태는 별도 계약이 아닙니다.
-
-## 저장소 경계
-
-런타임 상태, 생성된 아티팩트, 증거 산출물, QA 결과, 수락 판단, 닫기 준비 상태, 잔여 위험 판단, 픽스처 출력, 제품 구현 파일은 이 문서 트리에 저장하지 않습니다.
-
-구현 로그, PR 메모, 일회성 마이그레이션 기록, 개별 편집 결정 기록은 유지 문서에 두지 않습니다.
-
-이 문서의 경로 허용 목록, 경로 표, 문서 변경 경계는 문서 세트를 관리하기 위한 유지보수 편집 통제입니다. 하네스 런타임 권한, `Write Authorization`(쓰기 권한 부여), 샌드박스 보장, 집행 증명이 아닙니다.
+- 변경된 각 동작에 대해 범위와 기준 담당 문서 또는 담당 문서 묶음을 식별했습니다.
+- [구현 아키텍처](architecture.md)를 통해 아키텍처 경계와 코드 영역을 식별했습니다.
+- 코드, 테스트, 문서가 담당 문서가 정의한 계약과 맞거나, 담당 문서 공백을 보고했습니다.
+- 제품 의미가 바뀌었을 때 대응 영어와 한국어 문서를 함께 갱신했습니다.
+- 계층에 맞는 테스트나 문서 점검을 실행했거나, 건너뛴 이유를 남겼습니다.
+- 코드, 테스트, 픽스처, 예시, 생성된 출력, 이 가이드에만 정의된 동작이 없습니다.
+- 스크래치 메모, 생성된 보고서, 런타임 홈, SQLite 파일, 픽스처 출력, 로그, 그 밖의 부수 파일을 유지 문서에 남기지 않았습니다.

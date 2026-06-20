@@ -1,87 +1,71 @@
 # Implementation guide
 
-This guide is a reading path for implementers. It connects implementation questions to the Reference owners that define the contracts.
+This guide helps implementers classify an implementation change, locate the applicable contract owner, find the implementation boundary, and select validation. Product meaning remains in the canonical Reference owners.
 
-It does not define or override baseline scope, API behavior, schemas, storage effects, security guarantees, runtime boundaries, error behavior, close-readiness rules, connector behavior, conformance authority, or example validity. Those contracts stay in the Reference owners.
-
-This guide may describe implementation reading paths, owner-document interpretation for implementation questions, and guide-level supported implementation shape. Decisions that change API behavior, storage effects, security guarantees, scope boundaries, schema shapes, error behavior, or Core authority semantics belong in the relevant Reference owner, not here.
+This is a guide-level reading path. It does not define or override baseline scope, API behavior, schemas, storage effects, security guarantees, runtime boundaries, error behavior, close-readiness rules, connector behavior, conformance authority, or Core authority semantics. Use [`docs/doc-index.yaml`](../../doc-index.yaml) for the exact machine-readable owner route and the [Reference Index](../reference/README.md) for reader-facing owner navigation.
 
 Harness is the local work-authority product/system for AI-assisted product work. Core is the local authority record for Harness state.
 
-## Baseline implementation reading path
+## Implementation Change Classification
 
-Use this path when turning product scope into implementation work:
+Start with the closest row, then add adjacent owners when the change crosses API, storage, runtime, security, or Core authority boundaries. The table is a routing aid, not a full owner registry.
 
-1. Confirm the baseline scope and supported behavior boundary in [Scope](../reference/scope.md).
-2. Read [Implementation Architecture](architecture.md) for guide-level layer separation and the current Rust workspace shape.
-3. Use the [Reference Index](../reference/README.md) and [`docs/doc-index.yaml`](../../doc-index.yaml) to choose the applicable owner for each contract question.
-4. Read [Core Model](../reference/core-model.md) for authority concepts that cross APIs, storage, current scope, user-owned judgment, and close readiness.
-5. Use [API Methods](../reference/api/methods.md) for the supported public method list and method-owner routing.
-6. Add the focused schema, storage, runtime, security, error, and conformance owners only when the implementation question touches those concerns.
-7. Use [Agent Integration](../reference/agent-integration.md) for connector boundaries and [Surface Recipes](../use/surface-recipes.md) for surface-specific usage workflows.
-8. Keep user-owned judgment, evidence, verification criteria, ordinary approval, write approval, sensitive-action approval, `Write Authorization`, final acceptance, close readiness, and residual-risk acceptance as distinct concepts. Core Model owns those distinctions.
+| Change type | First contract owner route | Architecture or code route | Useful validation area |
+|---|---|---|---|
+| Public API method implementation | [Scope](../reference/scope.md), then [API Methods](../reference/api/methods.md) and the linked method owner; add schema, error, storage, and security owners as touched. | [Implementation Architecture](architecture.md) sections on Core pipeline, Store boundary, effect paths, and code-to-owner routing; `crates/harness-core/src/methods/`, `crates/harness-core/src/pipeline.rs`, and `crates/harness-core/src/policy/`. | Method and Core tests in `crates/harness-core/src/methods/tests.rs`; `tests/conformance/baseline.rs`; `tests/integration/mcp_surface.rs` when adapter exposure is affected. |
+| Common Core pipeline or Core policy | [Core Model](../reference/core-model.md), [API Schema Core](../reference/api/schema-core.md), [API Errors](../reference/api/errors.md), and [Storage Effects](../reference/storage-effects.md) when persistence is involved; add [Agent Integration](../reference/agent-integration.md) or [Security](../reference/security.md) when access or guarantee wording is involved. | Architecture sections on Core pipeline and Store boundary, effect and commit boundaries, and implementation invariants; `crates/harness-core/src/pipeline.rs` and `crates/harness-core/src/policy/`. | Core method tests, conformance scenarios that assert the touched owner-defined fact, and integration tests when MCP or Store boundaries are affected. |
+| Shared types, schema representations, identifiers, or value sets | API schema owners: [Schema Core](../reference/api/schema-core.md), [State Schemas](../reference/api/schema-state.md), [Artifact Schemas](../reference/api/schema-artifacts.md), [Judgment Schemas](../reference/api/schema-judgment.md), and [Value Sets](../reference/api/schema-value-sets.md); use method owners for method-specific request or result meaning. | The workspace shape and source-module map in [Implementation Architecture](architecture.md); `crates/harness-types/src/methods.rs`, `schema.rs`, `values.rs`, `ids.rs`, and `canonical.rs`. | Type and serialization unit tests, method tests using the shape, and conformance coverage for owner-defined value behavior. |
+| Storage effects, records, transactions, or migrations | Storage owner family: [Storage](../reference/storage.md), [Storage Effects](../reference/storage-effects.md), [Storage Records](../reference/storage-records.md), [Storage DDL](../reference/storage-ddl.md), [Artifact Storage](../reference/storage-artifacts.md), and [Storage Versioning](../reference/storage-versioning.md). | Architecture sections on Store boundary, effect and commit boundaries, and source-module map; `crates/harness-store/src/`, especially `core_pipeline.rs`, `migrations.rs`, `sqlite.rs`, and `artifacts.rs`. | Store unit tests, Core method tests for committed effects, `tests/conformance/baseline.rs`, and `tests/integration/mcp_surface.rs` for cross-layer storage effects. |
+| MCP startup, binding, transport, or tool dispatch | [MCP Transport](../reference/mcp-transport.md); add [Agent Integration](../reference/agent-integration.md) for verified surface context and [API Methods](../reference/api/methods.md) for the supported public method set exposed through tools. | Architecture operational paths and MCP/Core execution flow; `crates/harness-mcp/src/lib.rs` and `crates/harness-mcp/src/main.rs`. | `crates/harness-mcp/tests/binary_transport.rs` and `tests/integration/mcp_surface.rs`. |
+| Administrative CLI setup, registration, or host configuration | [Administrative CLI](../reference/admin-cli.md); add [Runtime Boundaries](../reference/runtime-boundaries.md) and [MCP Transport](../reference/mcp-transport.md) for Runtime Home, Product Repository, process, and host configuration boundaries. | Architecture administrative CLI setup flow; `crates/harness-cli/src/`, especially `local_mcp_command.rs`, `setup.rs`, `wizard.rs`, `host_config.rs`, and `registration.rs`. | `crates/harness-cli/tests/binary_admin.rs`; Store setup tests when bootstrap or migration behavior is touched. |
+| Tests, fixtures, and test-support facilities | The owner of each asserted fact; [Conformance](../reference/conformance.md) only for documentation-level conformance scenario meaning and assertion routing. | Architecture test topology; `crates/harness-test-support/`, `tests/conformance/`, `tests/integration/`, and colocated crate tests. | The touched test package or crate tests, plus owner-focused documentation checks when the test exposes a missing contract owner. |
 
-## Owner route shortcuts
+## Default Implementation Reading Order
 
-Use these as first-hop routes. Each route is a first stop; the focused owner carries the behavior.
+Use this order unless the change has a narrower owner route already selected:
 
-| Concern | First-hop owner route |
-|---|---|
-| Baseline scope and out-of-scope boundaries | [Scope](../reference/scope.md) |
-| API behavior and supported public methods | [API Methods](../reference/api/methods.md), then the method owner listed there |
-| Schema shapes and value names | [API Schema Core](../reference/api/schema-core.md), [API State Schemas](../reference/api/schema-state.md), [API Artifact Schemas](../reference/api/schema-artifacts.md), [API Judgment Schemas](../reference/api/schema-judgment.md), and [API Value Sets](../reference/api/schema-value-sets.md) |
-| Storage effects, records, artifacts, and versions | [Storage Effects](../reference/storage-effects.md), then [Storage](../reference/storage.md), [Storage Records](../reference/storage-records.md), [Artifact Storage](../reference/storage-artifacts.md), or [Storage Versioning](../reference/storage-versioning.md) |
-| Runtime and file-location boundaries | [Runtime Boundaries](../reference/runtime-boundaries.md) |
-| Security boundaries and guarantee wording | [Security](../reference/security.md), with Scope for supported availability and API Value Sets for exact names |
-| Error behavior and blocker routing | [API Error Family Index](../reference/api/errors.md), then [API Error Codes](../reference/api/error-codes.md), [API Error Precedence](../reference/api/error-precedence.md), [API Error Routing](../reference/api/error-routing.md), [API Blocker Routing](../reference/api/blocker-routing.md), or [API Error Details](../reference/api/error-details.md) |
-| Conformance assertion authority | [Conformance](../reference/conformance.md), then the owner of each asserted fact |
-| Connector boundaries and surface workflows | [Agent Integration](../reference/agent-integration.md) and [Surface Recipes](../use/surface-recipes.md) |
-| Read-only display and templates | [Projection Authority](../reference/projection-and-templates.md) and [Template Bodies](../reference/template-bodies.md) |
+1. Check supported scope in [Scope](../reference/scope.md).
+2. Use [`docs/doc-index.yaml`](../../doc-index.yaml) to locate the canonical owner for each contract question.
+3. Read the focused Reference owner for exact meaning.
+4. Use [Implementation Architecture](architecture.md) to locate the implementation boundary and execution flow.
+5. Inspect the relevant source and tests.
+6. Compare code, tests, and documentation against the owner-defined contract.
+7. Run validation appropriate to the changed layer.
 
-If owners appear to disagree, the mismatch is an owner gap. Scope gates supported availability; focused owners define method behavior, schema shapes, storage effects, runtime locations, security wording, public error meanings, blocker routing, and assertion authority.
+An implementation change may require more than one owner. For example, a method change can touch method behavior, schema shape, storage effect, runtime boundary, error routing, security wording, and conformance assertions. Keep each question with its focused owner instead of treating this guide as a combined contract.
 
-## Scope interpretation
+## Code And Document Disagreement
 
-A capability is ready for baseline implementation only when Scope includes it and the affected owners define the behavior, shape, storage effect, runtime boundary, security boundary, error behavior, and conformance basis the work needs.
+When implementation and documentation appear to disagree, classify the disagreement before deciding what to edit:
 
-Names in value sets, examples, conformance scenario IDs, route summaries, or schema vocabulary are not enough by themselves. Treat them as vocabulary or reserved surface area until Scope and the relevant owners define support.
+- If a guide-level source-structure description differs from current stable code, correct [Implementation Architecture](architecture.md) to match the implementation structure.
+- If code differs from API, schema, storage, security, error, scope, or Core authority owners, do not treat code as the new contract.
+- Resolve product-meaning differences through the applicable owner and implementation, not in a route page, README, Use page, or this guide.
+- If tests, fixtures, examples, or conformance scenario prose are the only place a behavior is expressed, treat that as a contract-owner gap.
+- If no owner can be identified, report the owner gap rather than placing the contract in this guide.
 
-## Use documents and reference contracts
+Do not infer a product decision from the mismatch itself. The owner route identifies where the decision belongs.
 
-Use documents explain workflows, reader decisions, and expected outcomes. They are useful for understanding how a user or agent should move through Harness, but they do not override Reference contracts.
+## Inputs That Are Not Contract Owners
 
-Implementers may use [User Guide](../use/user-guide.md), [Agent Guide](../use/agent-guide.md), [Judgment Examples](../use/judgment-examples.md), and [Surface Recipes](../use/surface-recipes.md) to understand reader intent, surface workflow expectations, and judgment boundaries. For API payloads, storage effects, security guarantees, close-readiness rules, access boundaries, or error behavior, route back to the applicable Reference owner.
+These inputs are useful while implementing, but they do not define product contracts.
 
-If a use document and a Reference owner seem to differ, the Reference owner is the authority. The route or guide mismatch is a documentation maintenance issue.
+| Input | Legitimate use | Owner boundary |
+|---|---|---|
+| Use pages, including [User Guide](../use/user-guide.md), [Agent Guide](../use/agent-guide.md), [Judgment Examples](../use/judgment-examples.md), and [Surface Recipes](../use/surface-recipes.md) | Understand workflow intent, reader decisions, connector context, and surface expectations. | API payloads, storage effects, access boundaries, security guarantees, close-readiness rules, and error behavior route back to Reference owners. |
+| Examples | Understand a representative branch, compact shape, or scenario. | Examples are not full schemas, value-set definitions, storage-effect definitions, or implementation shortcuts. |
+| Conformance scenarios | Identify coverage prompts and assertion routing. | Scenario prose and scenario IDs do not own the asserted product fact; the fact routes to Scope or the focused Reference owner. |
+| Tests, fixtures, and test-support helpers | Verify owner-defined behavior, set up disposable Runtime Home state, and exercise cross-layer paths. | A test assertion, fixture shape, or helper API must not be the only source for a product contract. |
+| Generated output, logs, rendered reports, and current implementation behavior | Diagnose behavior and compare observed implementation against owners. | Runtime output and observed code behavior do not become API, storage, security, Core authority, or conformance contracts, and generated or scratch artifacts do not belong in maintained documentation. |
 
-## Out-of-scope behavior
+## Implementation Completion Check
 
-A named capability can remain outside baseline support. Scope and the affected owners decide when that capability becomes supported baseline behavior.
+Use this as an implementation and documentation-maintenance check. It is not product acceptance, runtime conformance, close readiness, QA completion, security proof, or residual-risk acceptance.
 
-Until the affected owner documents define support, this guide only routes the question back to [Scope](../reference/scope.md) and those owners. Detailed handling is defined there, not in this guide.
-
-## Conformance scenarios
-
-[Conformance](../reference/conformance.md) owns documentation-level conformance meaning, assertion authority, and compact scenario routing. Scenarios are coverage prompts only; tests and checks get authority from owner-defined facts.
-
-Scenario prose, generated summaries, rendered reports, documentation-check labels, and status display text are not runtime authority.
-
-## Examples as implementation inputs
-
-Examples are reading aids, not complete schemas or behavior sources. Use them to understand a representative branch, scenario, or compact request/response shape.
-
-Fields, optionality, storage effects, security guarantees, out-of-scope behavior, and implementation shortcuts come from owners, not examples. If an example conflicts with a method, schema, storage, security, runtime, conformance, or error owner, the relevant owner is authoritative.
-
-## Small baseline build shape
-
-A small baseline build can stay narrow: one ordinary user task, [Scope](../reference/scope.md) for included capabilities, and the relevant owners for requests, responses, storage effects, errors, blockers, security wording, and conformance assertions.
-
-This is an implementation shape, not a separate contract.
-
-## Repository boundary
-
-Runtime state, generated artifacts, evidence outputs, QA results, acceptance decisions, close-readiness state, residual-risk decisions, fixture outputs, and product implementation files are not stored in this documentation tree.
-
-Implementation logs, PR notes, transient migration records, and one-off decision records do not belong in maintained documentation.
-
-Path allowlists, route tables, and documentation batch boundaries in these docs are maintainer editing controls for the documentation set. They are not Harness runtime permissions, `Write Authorization`, sandbox guarantees, or proof of enforcement.
+- Scope and the canonical owner or owner family are identified for each changed behavior.
+- The architecture boundary and code area are identified through [Implementation Architecture](architecture.md).
+- Code, tests, and documentation are aligned with the owner-defined contract, or an owner gap is reported.
+- Paired English and Korean documentation are updated when product meaning changes.
+- Appropriate tests or documentation checks are run, or skipped with a reason.
+- No behavior is defined only in code, a test, a fixture, an example, generated output, or this guide.
+- No scratch notes, generated reports, runtime homes, SQLite files, fixture output, logs, or other transient artifacts are left in maintained documentation.
