@@ -14,6 +14,13 @@ pub enum StoreError {
     Sqlite(rusqlite::Error),
     /// Local administrative setup input is not valid for the storage record.
     InvalidInput { detail: String },
+    /// A stored project registration is not valid for execution.
+    InvalidProjectRegistration {
+        project_id: String,
+        field: &'static str,
+        relationship: &'static str,
+        detail: String,
+    },
     /// A required local setup record was not found.
     NotFound { entity: &'static str, id: String },
     /// Stored owner JSON could not be parsed or validated.
@@ -124,6 +131,15 @@ impl StoreError {
                 database_kind: None,
                 entity: None,
                 field: None,
+                owner_state_error: None,
+            },
+            Self::InvalidProjectRegistration { field, .. } => StoreFailureClassification {
+                route: StoreFailureRoute::OperationalUnavailable,
+                category: "invalid_project_registration",
+                retryable: false,
+                database_kind: Some("registry"),
+                entity: Some("project"),
+                field: Some(field),
                 owner_state_error: None,
             },
             Self::NotFound { entity, .. } => {
@@ -350,6 +366,22 @@ impl fmt::Display for StoreError {
             Self::Io(error) => write!(formatter, "filesystem error: {error}"),
             Self::Sqlite(error) => write!(formatter, "sqlite error: {error}"),
             Self::InvalidInput { detail } => write!(formatter, "invalid setup input: {detail}"),
+            Self::InvalidProjectRegistration {
+                project_id,
+                field,
+                relationship,
+                detail,
+            } => {
+                let subject = if *field == "repo_root" {
+                    "registered Product Repository conflicts with Runtime Home"
+                } else {
+                    "registered project paths conflict with Runtime Home or Product Repository"
+                };
+                write!(
+                    formatter,
+                    "{subject} for project {project_id}: field {field}, relationship {relationship}: {detail}"
+                )
+            }
             Self::NotFound { entity, id } => write!(formatter, "{entity} not found: {id}"),
             Self::CorruptStoredJson {
                 database_kind,
@@ -411,6 +443,7 @@ impl Error for StoreError {
             Self::Io(error) => Some(error),
             Self::Sqlite(error) => Some(error),
             Self::InvalidInput { .. }
+            | Self::InvalidProjectRegistration { .. }
             | Self::NotFound { .. }
             | Self::CorruptStoredJson { .. }
             | Self::CorruptOwnerStateJson { .. }

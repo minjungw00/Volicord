@@ -7,8 +7,8 @@ use std::{
 use harness_store::{
     bootstrap::{
         initialize_runtime_home, project_record, register_project, register_surface,
-        validate_project_id, ProjectRecord, ProjectRegistration, SurfaceRecord,
-        SurfaceRegistration, ACTIVE_PROJECT_STATUS,
+        validate_project_id, validate_project_record_for_execution, ProjectRecord,
+        ProjectRegistration, SurfaceRecord, SurfaceRegistration, ACTIVE_PROJECT_STATUS,
     },
     inspection::{
         inspect_project_state_database, inspect_runtime_home, DatabaseInspection,
@@ -223,6 +223,7 @@ pub enum SetupConflictKind {
     AmbiguousRepositoryProjects,
     ExplicitProjectIdRequired,
     DerivedProjectIdCollision,
+    ProjectPathBoundaryInvalid,
     ProjectSelectionChanged,
     SurfaceKindMismatch,
     SurfaceRoleMalformed,
@@ -448,7 +449,12 @@ pub fn plan_local_mcp_setup(
     let projects = registry_snapshot
         .map(project_records_from_registry_inspection)
         .unwrap_or_default();
-    let project_plan = plan_project(&projects, &repo_root, options.project_id.as_deref());
+    let project_plan = plan_project(
+        &runtime_home,
+        &projects,
+        &repo_root,
+        options.project_id.as_deref(),
+    );
     let mut conflicts = project_plan.conflicts;
     let project_action = project_plan.action;
 
@@ -672,6 +678,8 @@ fn prepare_selected_existing_project_state(
                 completed_actions.as_slice(),
             )
         })?;
+    validate_project_record_for_execution(&plan.runtime_home, &project)
+        .map_err(|source| operation_failed(Box::new(source), completed_actions.as_slice()))?;
     if !project.state_db_path.exists() {
         return Err(operation_failed(
             Box::new(StoreError::NotFound {
@@ -911,12 +919,13 @@ struct ProjectPlan {
 }
 
 fn plan_project(
+    runtime_home: &Path,
     projects: &[ProjectRecord],
     repo_root: &Path,
     explicit_project_id: Option<&str>,
 ) -> ProjectPlan {
     if let Some(project_id) = explicit_project_id {
-        return plan_explicit_project(projects, repo_root, project_id);
+        return plan_explicit_project(runtime_home, projects, repo_root, project_id);
     }
 
     let matches = projects
@@ -926,6 +935,17 @@ fn plan_project(
 
     match matches.as_slice() {
         [project] if project.status == ACTIVE_PROJECT_STATUS => {
+            if let Some(conflict) = project_reuse_path_conflict(runtime_home, project) {
+                return ProjectPlan {
+                    selected_project_id: Some(project.project_id.clone()),
+                    action: SetupAction::project(
+                        SetupActionKind::Conflict,
+                        Some(project.project_id.clone()),
+                        repo_root.to_path_buf(),
+                    ),
+                    conflicts: vec![conflict],
+                };
+            }
             let project_id = project.project_id.clone();
             ProjectPlan {
                 selected_project_id: Some(project_id.clone()),
@@ -982,6 +1002,7 @@ fn plan_project(
 }
 
 fn plan_explicit_project(
+    runtime_home: &Path,
     projects: &[ProjectRecord],
     repo_root: &Path,
     project_id: &str,
@@ -1038,6 +1059,18 @@ fn plan_explicit_project(
         };
     }
 
+    if let Some(conflict) = project_reuse_path_conflict(runtime_home, project) {
+        return ProjectPlan {
+            selected_project_id: Some(project_id.to_owned()),
+            action: SetupAction::project(
+                SetupActionKind::Conflict,
+                Some(project_id.to_owned()),
+                repo_root.to_path_buf(),
+            ),
+            conflicts: vec![conflict],
+        };
+    }
+
     ProjectPlan {
         selected_project_id: Some(project_id.to_owned()),
         action: SetupAction::project(
@@ -1047,6 +1080,21 @@ fn plan_explicit_project(
         ),
         conflicts: Vec::new(),
     }
+}
+
+fn project_reuse_path_conflict(
+    runtime_home: &Path,
+    project: &ProjectRecord,
+) -> Option<SetupConflict> {
+    validate_project_record_for_execution(runtime_home, project)
+        .err()
+        .map(|error| {
+            SetupConflict::project(
+                SetupConflictKind::ProjectPathBoundaryInvalid,
+                Some(project.project_id.clone()),
+                error.to_string(),
+            )
+        })
 }
 
 fn plan_derived_project(projects: &[ProjectRecord], repo_root: &Path) -> ProjectPlan {
@@ -1597,6 +1645,66 @@ mod tests {
         );
         assert_eq!(plan.project_action.kind, SetupActionKind::Reuse);
         assert_eq!(plan.surface_actions[0].kind, SetupActionKind::Create);
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_existing_project_home_registration_is_not_reused() -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("setup-reuse-invalid-project")?;
+        initialize(runtime_home.path())?;
+        let repo_root = repo_dir(runtime_home.path(), "product-invalid-reuse")?;
+        register_test_project(runtime_home.path(), "project_invalid", &repo_root)?;
+        replace_project_home(
+            runtime_home.path(),
+            "project_invalid",
+            &repo_root.join(".harness-project"),
+        )?;
+
+        let plan =
+            plan_local_mcp_setup(LocalMcpSetupOptions::new(runtime_home.path(), &repo_root))?;
+
+        assert_eq!(plan.project_action.kind, SetupActionKind::Conflict);
+        assert_eq!(
+            conflict_kinds(&plan),
+            vec![SetupConflictKind::ProjectPathBoundaryInvalid]
+        );
+        assert!(plan.conflicts[0]
+            .message
+            .contains("registered project paths conflict"));
+        assert!(plan.conflicts[0]
+            .message
+            .contains("project_home_overlaps_product_repository"));
+        assert!(plan.surface_actions.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn setup_preparation_rechecks_reused_project_registration_before_mutation(
+    ) -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("setup-prepare-invalid-project")?;
+        initialize(runtime_home.path())?;
+        let repo_root = repo_dir(runtime_home.path(), "product-invalid-prepare")?;
+        register_test_project(runtime_home.path(), "project_prepare", &repo_root)?;
+        let plan =
+            plan_local_mcp_setup(LocalMcpSetupOptions::new(runtime_home.path(), &repo_root))?;
+        assert_eq!(plan.project_action.kind, SetupActionKind::Reuse);
+
+        replace_project_repo_root(runtime_home.path(), "project_prepare", runtime_home.path())?;
+        let error = prepare_local_mcp_setup_storage(&plan)
+            .expect_err("preparation should reject changed invalid registration");
+
+        assert!(error
+            .to_string()
+            .contains("registered Product Repository conflicts with Runtime Home"));
+        assert!(error.to_string().contains("same_path"));
+        assert_eq!(
+            error.completed_actions(),
+            std::slice::from_ref(&plan.runtime_home_action)
+        );
+        assert_eq!(
+            project_metadata(runtime_home.path(), "project_prepare")?,
+            "{}"
+        );
         Ok(())
     }
 
@@ -2481,6 +2589,40 @@ mod tests {
         conn.execute(
             "UPDATE projects SET status = ?2 WHERE project_id = ?1",
             params![project_id, status],
+        )?;
+        Ok(())
+    }
+
+    fn replace_project_repo_root(
+        runtime_home: &Path,
+        project_id: &str,
+        repo_root: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        let conn = Connection::open(registry_db_path(runtime_home))?;
+        conn.execute(
+            "UPDATE projects SET repo_root = ?2 WHERE project_id = ?1",
+            params![project_id, repo_root.to_string_lossy().as_ref()],
+        )?;
+        Ok(())
+    }
+
+    fn replace_project_home(
+        runtime_home: &Path,
+        project_id: &str,
+        project_home: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        let state_db_path = project_home.join("state.sqlite");
+        let conn = Connection::open(registry_db_path(runtime_home))?;
+        conn.execute(
+            "UPDATE projects
+                SET project_home = ?2,
+                    state_db_path = ?3
+              WHERE project_id = ?1",
+            params![
+                project_id,
+                project_home.to_string_lossy().as_ref(),
+                state_db_path.to_string_lossy().as_ref()
+            ],
         )?;
         Ok(())
     }

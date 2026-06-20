@@ -22,7 +22,7 @@ use crate::{
         verify_persistent_artifact_body as verify_persistent_artifact_body_in_store,
         PersistentArtifactBodySpec, PersistentArtifactVerification,
     },
-    bootstrap::{project_record, ProjectRecord, SurfaceRecord},
+    bootstrap::{project_record_for_execution, ProjectRecord, SurfaceRecord},
     sqlite::{begin_immediate_transaction, open_project_state_database, ARTIFACTS_DIR},
     StoreError, StoreResult,
 };
@@ -662,12 +662,13 @@ pub struct ProjectMutation<'tx> {
 impl CoreProjectStore {
     /// Opens the registered project-local state store for Core pipeline work.
     pub fn open(runtime_home: impl AsRef<Path>, project_id: &ProjectId) -> StoreResult<Self> {
-        let project = project_record(runtime_home, project_id.as_str())?.ok_or_else(|| {
-            StoreError::NotFound {
-                entity: "project",
-                id: project_id.as_str().to_owned(),
-            }
-        })?;
+        let project =
+            project_record_for_execution(runtime_home, project_id.as_str())?.ok_or_else(|| {
+                StoreError::NotFound {
+                    entity: "project",
+                    id: project_id.as_str().to_owned(),
+                }
+            })?;
 
         if !project.state_db_path.exists() {
             return Err(StoreError::NotFound {

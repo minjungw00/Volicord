@@ -1415,6 +1415,21 @@ pub(crate) fn store_failure_error(error: StoreError) -> ToolError {
     if let Some(field) = classification.field {
         details.insert("field".to_owned(), Value::String(field.to_owned()));
     }
+    if let StoreError::InvalidProjectRegistration {
+        project_id,
+        relationship,
+        ..
+    } = &error
+    {
+        details.insert(
+            "project_id".to_owned(),
+            Value::String(project_id.to_owned()),
+        );
+        details.insert(
+            "path_relationship".to_owned(),
+            Value::String((*relationship).to_owned()),
+        );
+    }
     if let Some(owner_state_error) = classification.owner_state_error {
         details.insert(
             "owner_state_error".to_owned(),
@@ -1505,7 +1520,7 @@ mod tests {
             SurfaceRegistration, ACTIVE_PROJECT_STATUS,
         },
         core_pipeline::{ChangeUnitInsert, CoreProjectStore, StorageEffectCounts},
-        sqlite::open_project_state_database,
+        sqlite::{open_project_state_database, open_registry_database, registry_db_path},
     };
     use harness_test_support::TempRuntimeHome;
     use harness_types::{
@@ -1653,6 +1668,15 @@ mod tests {
                 .join(PROJECT_ID)
                 .join("state.sqlite")
         }
+
+        fn replace_project_repo_root(&self, repo_root: &Path) -> Result<(), Box<dyn Error>> {
+            let conn = open_registry_database(registry_db_path(&self.runtime_home_path))?;
+            conn.execute(
+                "UPDATE projects SET repo_root = ?2 WHERE project_id = ?1",
+                rusqlite::params![PROJECT_ID, repo_root.to_string_lossy().as_ref()],
+            )?;
+            Ok(())
+        }
     }
 
     #[test]
@@ -1737,6 +1761,32 @@ mod tests {
         assert_eq!(response.response_value["base"]["response_kind"], "result");
         assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
         assert_eq!(harness.counts()?, before);
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_legacy_project_registration_rejects_core_execution() -> Result<(), Box<dyn Error>> {
+        let harness = PipelineHarness::new()?;
+        harness.replace_project_repo_root(&harness.runtime_home_path)?;
+        let envelope = envelope("req_invalid_project_path", None, false, None, None);
+
+        let response = harness.execute(PipelineRequest {
+            method_name: MethodName::Status,
+            request_json: request_json(MethodName::Status, &envelope, "invalid-project-path"),
+            envelope,
+            invocation: invocation(AccessClass::ReadStatus, Some(SURFACE_INSTANCE_ID)),
+            required_access_class: AccessClass::ReadStatus,
+            task_requirement: TaskRequirement::Optional,
+            branch: OwnerPipelineBranch::ReadOnly {
+                result_fields: result_fields("invalid_project_path"),
+            },
+        })?;
+
+        assert_store_rejection(&response, "MCP_UNAVAILABLE", "invalid_project_registration");
+        assert_eq!(
+            response.response_value["errors"][0]["details"]["path_relationship"],
+            "same_path"
+        );
         Ok(())
     }
 

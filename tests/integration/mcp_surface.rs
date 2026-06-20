@@ -4,6 +4,7 @@ use std::{
     ffi::OsString,
     fs,
     io::{BufReader, Cursor},
+    path::Path,
 };
 
 use harness_core::{AdapterSessionBinding, CoreService, InvocationContext};
@@ -12,10 +13,11 @@ use harness_mcp::{
 };
 use harness_store::{
     bootstrap::{
-        register_project, register_surface, ProjectRegistration, SurfaceRegistration,
-        ACTIVE_PROJECT_STATUS,
+        list_projects, register_project, register_surface, ProjectRegistration,
+        SurfaceRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
+    sqlite::registry_db_path,
 };
 use harness_test_support::core_fixtures::{
     answer_payload, artifact_input_for_handle, supported_evidence_update, CloseTaskFixture,
@@ -382,6 +384,51 @@ fn unknown_configured_instance_fails_startup() -> Result<(), Box<dyn Error>> {
     .expect_err("unknown configured instance should fail startup");
 
     assert!(error.to_string().contains("not registered"));
+    Ok(())
+}
+
+#[test]
+fn invalid_legacy_project_registration_blocks_startup_and_core_execution_but_remains_listed(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp_invalid_legacy_registration")?;
+    let adapter = adapter(&fixture);
+    replace_project_repo_root(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.runtime_home_path(),
+    )?;
+
+    let projects = list_projects(fixture.runtime_home_path())?;
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].project_id, fixture.project_id());
+    assert_eq!(projects[0].repo_root, fixture.runtime_home_path());
+
+    let startup = McpSessionContext::resolve(
+        fixture.runtime_home_path(),
+        ProjectId::new(fixture.project_id()),
+        SurfaceId::new(fixture.surface_id()),
+        Some(SurfaceInstanceId::new(fixture.surface_instance_id())),
+    )
+    .expect_err("invalid legacy project registration should fail MCP startup");
+    assert!(startup
+        .to_string()
+        .contains("registered Product Repository conflicts with Runtime Home"));
+    assert!(startup.to_string().contains("same_path"));
+
+    let response = adapter.call_tool(
+        "harness.status",
+        serde_json::to_value(fixture.status_request("req_invalid_legacy_registration", None))?,
+    )?;
+    assert_rejected_code(&response.response_value, "MCP_UNAVAILABLE");
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["store_failure_category"],
+        "invalid_project_registration"
+    );
+    assert_eq!(
+        response.response_value["errors"][0]["details"]["path_relationship"],
+        "same_path"
+    );
+    assert!(response.verified_surface.is_none());
     Ok(())
 }
 
@@ -2358,6 +2405,19 @@ fn counts_for_project(
         CoreProjectStore::open(fixture.runtime_home_path(), &ProjectId::new(project_id))?
             .effect_counts()?,
     )
+}
+
+fn replace_project_repo_root(
+    runtime_home: &Path,
+    project_id: &str,
+    repo_root: &Path,
+) -> Result<(), Box<dyn Error>> {
+    let conn = rusqlite::Connection::open(registry_db_path(runtime_home))?;
+    conn.execute(
+        "UPDATE projects SET repo_root = ?2 WHERE project_id = ?1",
+        rusqlite::params![project_id, repo_root.to_string_lossy().as_ref()],
+    )?;
+    Ok(())
 }
 
 fn local_access_without(removed: &[&str]) -> Value {

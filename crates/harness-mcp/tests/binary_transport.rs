@@ -3,9 +3,8 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
-    fs,
     io::{self, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Output, Stdio},
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -18,6 +17,7 @@ use harness_store::{
         SurfaceRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
+    sqlite::{open_registry_database, registry_db_path},
 };
 use harness_test_support::TempRuntimeHome;
 use harness_types::{
@@ -100,6 +100,33 @@ fn harness_mcp_binary_reports_help_version_and_preflight() -> Result<(), Box<dyn
     assert_eq!(unknown.status.code(), Some(2));
     assert!(stderr(&unknown).contains("unknown option"));
 
+    Ok(())
+}
+
+#[test]
+fn harness_mcp_binary_rejects_invalid_legacy_project_registration() -> Result<(), Box<dyn Error>> {
+    let fixture = McpFixture::new("mcp-bin-invalid-registration")?;
+    fixture.replace_project_repo_root(&fixture.runtime_home_path)?;
+
+    let check = run_child(
+        fixture.bound_command(AGENT_SURFACE_ID, AGENT_INSTANCE_ID, ["--check"]),
+        ChildStdin::KeepOpen,
+    )?;
+    assert_eq!(check.status.code(), Some(1));
+    assert!(captured_stderr(&check)
+        .contains("registered Product Repository conflicts with Runtime Home"));
+    assert!(captured_stderr(&check).contains("same_path"));
+    assert_eq!(captured_stdout(&check), "");
+
+    let stdio = run_child(
+        fixture.bound_command(AGENT_SURFACE_ID, AGENT_INSTANCE_ID, []),
+        ChildStdin::KeepOpen,
+    )?;
+    assert_eq!(stdio.status.code(), Some(1));
+    assert!(captured_stderr(&stdio)
+        .contains("registered Product Repository conflicts with Runtime Home"));
+    assert!(captured_stderr(&stdio).contains("same_path"));
+    assert_eq!(captured_stdout(&stdio), "");
     Ok(())
 }
 
@@ -293,6 +320,16 @@ impl McpFixture {
             CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?
                 .effect_counts()?,
         )
+    }
+
+    fn replace_project_repo_root(&self, repo_root: &Path) -> Result<(), Box<dyn Error>> {
+        let conn = open_registry_database(registry_db_path(&self.runtime_home_path))?;
+        let repo_root = repo_root.to_string_lossy();
+        conn.execute(
+            "UPDATE projects SET repo_root = ?2 WHERE project_id = ?1",
+            [PROJECT_ID, repo_root.as_ref()],
+        )?;
+        Ok(())
     }
 }
 

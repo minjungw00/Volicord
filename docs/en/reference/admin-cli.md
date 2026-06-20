@@ -212,6 +212,8 @@ When `--project-id` is absent:
 
 No setup option may forcibly rebind an existing project ID to another repository.
 
+Before setup reuses an existing project registration, the stored `Product Repository` must still satisfy the Runtime Home/Product Repository separation contract with the selected `Harness Runtime Home`. A legacy registration that violates that relationship fails before storage preparation, surface registration, MCP preflight, or configuration output. Setup does not repair, update, delete, or replace that registry row; supported recovery is to select a separate `Harness Runtime Home` and set up the `Product Repository` there.
+
 ### Surface compatibility and conflicts
 
 For each target surface instance, setup:

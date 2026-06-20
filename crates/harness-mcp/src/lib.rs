@@ -1189,6 +1189,16 @@ mod tests {
             conn.execute(sql, [value, PROJECT_ID, SURFACE_ID, SURFACE_INSTANCE_ID])?;
             Ok(())
         }
+
+        fn replace_project_repo_root(&self, repo_root: &Path) -> Result<(), Box<dyn Error>> {
+            let conn = open_registry_database(registry_db_path(&self.runtime_home_path))?;
+            let repo_root = repo_root.to_string_lossy();
+            conn.execute(
+                "UPDATE projects SET repo_root = ?2 WHERE project_id = ?1",
+                [PROJECT_ID, repo_root.as_ref()],
+            )?;
+            Ok(())
+        }
     }
 
     #[test]
@@ -2010,6 +2020,26 @@ mod tests {
         assert!(error
             .to_string()
             .contains("configured project is not active"));
+        Ok(())
+    }
+
+    #[test]
+    fn preflight_check_invalid_legacy_project_registration_fails() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES),
+            SurfaceInteractionRole::Agent,
+        )?;
+        harness.replace_project_repo_root(&harness.runtime_home_path)?;
+
+        let error = preflight_for(&harness, Some(SURFACE_INSTANCE_ID))
+            .expect_err("invalid legacy project registration should fail preflight");
+
+        assert!(matches!(error, McpAdapterError::Store(_)));
+        assert!(error
+            .to_string()
+            .contains("registered Product Repository conflicts with Runtime Home"));
+        assert!(error.to_string().contains("same_path"));
         Ok(())
     }
 

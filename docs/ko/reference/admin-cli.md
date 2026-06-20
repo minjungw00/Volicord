@@ -215,6 +215,8 @@ harness surface list --project-id ID
 
 기존 프로젝트 ID를 다른 저장소로 강제 재바인딩하는 설정 옵션은 없습니다.
 
+설정이 기존 프로젝트 등록을 재사용하기 전에는 저장된 `Product Repository`가 선택된 `Harness Runtime Home`과의 Runtime Home/Product Repository 분리 계약을 계속 만족해야 합니다. 이 관계를 위반하는 이력 등록은 저장소 준비, 접점 등록, MCP 사전 점검, 설정 출력 전에 실패합니다. 설정은 해당 registry 행을 복구하거나, 갱신하거나, 삭제하거나, 다른 행으로 대체하지 않습니다. 지원되는 복구 사실은 별도의 `Harness Runtime Home`을 선택하고 그곳에서 `Product Repository`를 설정하는 것입니다.
+
 ### 접점 호환성과 충돌
 
 각 대상 접점 인스턴스에 대해 설정 명령은 아래처럼 동작합니다.

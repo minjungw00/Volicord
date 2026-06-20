@@ -549,6 +549,55 @@ fn harness_binary_preflight_failure_writes_no_configuration() -> Result<(), Box<
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn harness_binary_setup_rejects_invalid_existing_project_before_preflight_and_config(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-setup-invalid-existing")?;
+    let repo_root = runtime_home.create_product_repo("product-repo")?;
+    let marker = runtime_home.path().join("preflight-marker.txt");
+    let config_dir = runtime_home.path().join("configs");
+    let mcp_command = write_test_mcp(runtime_home.path(), &marker)?;
+    initialize_runtime_home(runtime_home.path(), "runtime_home_invalid_existing", "{}")?;
+    register_project(
+        runtime_home.path(),
+        ProjectRegistration {
+            project_id: "product-repo".to_owned(),
+            repo_root: repo_root.clone(),
+            project_home: None,
+            status: ACTIVE_PROJECT_STATUS.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    replace_project_home(
+        runtime_home.path(),
+        "product-repo",
+        &repo_root.join(".harness-project"),
+    )?;
+
+    let output = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+        "--config-dir",
+        path_text(&config_dir).as_str(),
+    ])?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).contains("project_home_overlaps_product_repository"));
+    assert!(!marker.exists());
+    assert!(!config_dir.join("harness-agent.mcp.json").exists());
+    let projects = list_projects(runtime_home.path())?;
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].project_home, repo_root.join(".harness-project"));
+    Ok(())
+}
+
 fn initialize_historical_setup(
     runtime_home: &Path,
     repo_root: &Path,
@@ -667,6 +716,27 @@ fn state_version(runtime_home: &Path, project_id: &str) -> Result<i64, Box<dyn E
         [project_id],
         |row| row.get(0),
     )?)
+}
+
+fn replace_project_home(
+    runtime_home: &Path,
+    project_id: &str,
+    project_home: &Path,
+) -> Result<(), Box<dyn Error>> {
+    let state_db_path = project_home.join("state.sqlite");
+    let conn = Connection::open(registry_db_path(runtime_home))?;
+    conn.execute(
+        "UPDATE projects
+            SET project_home = ?2,
+                state_db_path = ?3
+          WHERE project_id = ?1",
+        params![
+            project_id,
+            project_home.to_string_lossy().as_ref(),
+            state_db_path.to_string_lossy().as_ref()
+        ],
+    )?;
+    Ok(())
 }
 
 fn temporary_files(dir: &Path) -> Result<Vec<String>, Box<dyn Error>> {

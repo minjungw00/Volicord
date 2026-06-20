@@ -6,7 +6,10 @@ use serde_json::Value;
 
 use crate::{
     migrations::{PROJECT_STATE_SCHEMA_VERSION, REGISTRY_SCHEMA_VERSION, STORAGE_PROFILE},
-    runtime_home::{validate_project_home_boundary, validate_runtime_home_product_repository},
+    runtime_home::{
+        validate_project_home_boundary, validate_runtime_home_product_repository,
+        RuntimePathBoundaryError,
+    },
     sqlite::{
         open_project_state_database, open_registry_database, project_home_path, registry_db_path,
         with_immediate_transaction, PROJECT_STATE_DB_FILE,
@@ -312,6 +315,52 @@ pub fn project_record(
 
     let conn = open_registry_database(registry_path)?;
     project_record_from_conn(&conn, project_id)
+}
+
+/// Reads one registered project and validates it before execution use.
+pub fn project_record_for_execution(
+    runtime_home: impl AsRef<Path>,
+    project_id: &str,
+) -> StoreResult<Option<ProjectRecord>> {
+    let runtime_home = runtime_home.as_ref();
+    let project = project_record(runtime_home, project_id)?;
+    if let Some(project) = project.as_ref() {
+        validate_project_record_for_execution(runtime_home, project)?;
+    }
+    Ok(project)
+}
+
+/// Validates a stored project registration before execution use.
+pub fn validate_project_record_for_execution(
+    runtime_home: impl AsRef<Path>,
+    project: &ProjectRecord,
+) -> StoreResult<()> {
+    validate_runtime_home_product_repository(runtime_home.as_ref(), &project.repo_root)
+        .map_err(|error| registered_project_path_error(project, "repo_root", error))?;
+    validate_project_home_boundary(
+        runtime_home.as_ref(),
+        &project.repo_root,
+        &project.project_home,
+    )
+    .map_err(|error| registered_project_path_error(project, "project_home", error))?;
+    Ok(())
+}
+
+fn registered_project_path_error(
+    project: &ProjectRecord,
+    field: &'static str,
+    error: RuntimePathBoundaryError,
+) -> StoreError {
+    let relationship = error
+        .violation()
+        .map(|violation| violation.as_str())
+        .unwrap_or("invalid_path");
+    StoreError::InvalidProjectRegistration {
+        project_id: project.project_id.clone(),
+        field,
+        relationship,
+        detail: error.to_string(),
+    }
 }
 
 /// Registers or updates a local surface for a project.
@@ -648,9 +697,15 @@ fn path_to_text(field: &'static str, path: &Path) -> StoreResult<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::{error::Error, fs};
+    use std::{
+        error::Error,
+        fs,
+        path::{Path, PathBuf},
+    };
 
+    use crate::core_pipeline::CoreProjectStore;
     use harness_test_support::TempRuntimeHome;
+    use harness_types::ProjectId;
 
     use super::*;
 
@@ -858,5 +913,154 @@ mod tests {
             .contains("project_home must not overlap Product Repository"));
         assert!(!project_home.exists());
         Ok(())
+    }
+
+    #[test]
+    fn checked_project_record_accepts_valid_existing_registration() -> Result<(), Box<dyn Error>> {
+        let (runtime_home, repo_root) = registered_project("store-checked-valid", "project_valid")?;
+
+        let project = project_record_for_execution(runtime_home.path(), "project_valid")?
+            .expect("project should be registered");
+        let store = CoreProjectStore::open(runtime_home.path(), &ProjectId::new("project_valid"))?;
+
+        assert_eq!(project.repo_root, fs::canonicalize(repo_root)?);
+        assert_eq!(store.project_record().project_id, "project_valid");
+        Ok(())
+    }
+
+    #[test]
+    fn checked_project_record_rejects_legacy_same_path_registration_but_keeps_listing(
+    ) -> Result<(), Box<dyn Error>> {
+        let (runtime_home, _) = registered_project("store-checked-same", "project_same_legacy")?;
+        replace_project_repo_root(
+            runtime_home.path(),
+            "project_same_legacy",
+            runtime_home.path(),
+        )?;
+
+        let error = project_record_for_execution(runtime_home.path(), "project_same_legacy")
+            .expect_err("same-path legacy registration should be rejected for execution");
+        assert_invalid_project_registration(error, "same_path");
+        let open_error =
+            CoreProjectStore::open(runtime_home.path(), &ProjectId::new("project_same_legacy"))
+                .expect_err("Core store open should reject same-path legacy registration");
+        assert_invalid_project_registration(open_error, "same_path");
+
+        let projects = list_projects(runtime_home.path())?;
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].project_id, "project_same_legacy");
+        assert_eq!(projects[0].repo_root, runtime_home.path());
+        assert!(project_record(runtime_home.path(), "project_same_legacy")?.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn checked_project_record_rejects_legacy_repository_inside_runtime_home(
+    ) -> Result<(), Box<dyn Error>> {
+        let (runtime_home, _) =
+            registered_project("store-checked-repo-inside", "project_repo_inside_legacy")?;
+        let repo_root = runtime_home.path().join("legacy-product-repo");
+        fs::create_dir_all(&repo_root)?;
+        replace_project_repo_root(
+            runtime_home.path(),
+            "project_repo_inside_legacy",
+            &repo_root,
+        )?;
+
+        let error = CoreProjectStore::open(
+            runtime_home.path(),
+            &ProjectId::new("project_repo_inside_legacy"),
+        )
+        .expect_err("repository under Runtime Home should be rejected for execution");
+
+        assert_invalid_project_registration(error, "runtime_home_contains_product_repository");
+        assert_eq!(
+            project_record(runtime_home.path(), "project_repo_inside_legacy")?
+                .expect("record remains readable")
+                .repo_root,
+            repo_root
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn checked_project_record_rejects_legacy_runtime_home_inside_repository(
+    ) -> Result<(), Box<dyn Error>> {
+        let (runtime_home, _) = registered_project(
+            "store-checked-runtime-inside",
+            "project_runtime_inside_legacy",
+        )?;
+        let repo_root = runtime_home
+            .path()
+            .parent()
+            .expect("runtime home has parent")
+            .to_path_buf();
+        replace_project_repo_root(
+            runtime_home.path(),
+            "project_runtime_inside_legacy",
+            &repo_root,
+        )?;
+
+        let error = CoreProjectStore::open(
+            runtime_home.path(),
+            &ProjectId::new("project_runtime_inside_legacy"),
+        )
+        .expect_err("Runtime Home under repository should be rejected for execution");
+
+        assert_invalid_project_registration(error, "product_repository_contains_runtime_home");
+        assert!(project_record(runtime_home.path(), "project_runtime_inside_legacy")?.is_some());
+        Ok(())
+    }
+
+    fn registered_project(
+        prefix: &str,
+        project_id: &str,
+    ) -> Result<(TempRuntimeHome, PathBuf), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new(prefix)?;
+        let repo_root = runtime_home.create_product_repo("repo")?;
+        initialize_runtime_home(
+            runtime_home.path(),
+            &format!("runtime_home_{project_id}"),
+            "{}",
+        )?;
+        register_project(
+            runtime_home.path(),
+            ProjectRegistration {
+                project_id: project_id.to_owned(),
+                repo_root: repo_root.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        Ok((runtime_home, repo_root))
+    }
+
+    fn replace_project_repo_root(
+        runtime_home: &Path,
+        project_id: &str,
+        repo_root: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        let conn = open_registry_database(registry_db_path(runtime_home))?;
+        conn.execute(
+            "UPDATE projects SET repo_root = ?2 WHERE project_id = ?1",
+            rusqlite::params![project_id, repo_root.to_string_lossy().as_ref()],
+        )?;
+        Ok(())
+    }
+
+    fn assert_invalid_project_registration(error: StoreError, relationship: &str) {
+        match error {
+            StoreError::InvalidProjectRegistration {
+                relationship: actual,
+                detail,
+                ..
+            } => {
+                assert_eq!(actual, relationship);
+                assert!(detail.contains("Harness Runtime Home"));
+                assert!(detail.contains("Product Repository"));
+            }
+            other => panic!("unexpected error: {other}"),
+        }
     }
 }

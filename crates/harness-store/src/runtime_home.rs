@@ -50,6 +50,24 @@ pub enum RuntimePathBoundaryViolation {
     ProjectHomeOverlapsProductRepository,
 }
 
+impl RuntimePathBoundaryViolation {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SamePath => "same_path",
+            Self::RuntimeHomeContainsProductRepository => {
+                "runtime_home_contains_product_repository"
+            }
+            Self::ProductRepositoryContainsRuntimeHome => {
+                "product_repository_contains_runtime_home"
+            }
+            Self::ProjectHomeOutsideRuntimeHome => "project_home_outside_runtime_home",
+            Self::ProjectHomeOverlapsProductRepository => {
+                "project_home_overlaps_product_repository"
+            }
+        }
+    }
+}
+
 /// Normalized Runtime Home and Product Repository paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeProductPathValidation {
