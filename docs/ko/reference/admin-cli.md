@@ -109,7 +109,7 @@ harness surface list --project-id ID
 - 비대화식 설정에는 `--repo-root`가 필수입니다. 현재 `Product Repository`를 선택하려면 명시 형식인 `--repo-root .`을 사용합니다.
 - 대화형 설정에서 `--repo-root`가 없으면 `Product Repository`를 입력하라는 프롬프트를 표시합니다.
 - 설정에서 명시한 `--runtime-home` 값은 절대 경로여야 합니다. `--runtime-home`을 생략하면 [Runtime Home 설정 선택](#runtime-home-setup-selection)에서 설명하는 `HARNESS_HOME` 또는 공유 사용자 홈 대체 경로를 계속 사용합니다.
-- 선택된 `Harness Runtime Home`과 `Product Repository`는 [런타임 경계](runtime-boundaries.md)가 담당하는 경로 분리 계약을 만족해야 합니다.
+- 선택된 `Harness Runtime Home`과 `Product Repository`는 [런타임 경계](runtime-boundaries.md#runtime-home-product-repository-separation)가 담당하는 경로 분리 계약을 만족해야 합니다.
 
 ### 대화형 설정 프런트엔드
 
@@ -215,7 +215,7 @@ harness surface list --project-id ID
 
 기존 프로젝트 ID를 다른 저장소로 강제 재바인딩하는 설정 옵션은 없습니다.
 
-설정이 기존 프로젝트 등록을 재사용하기 전에는 저장된 `Product Repository`가 선택된 `Harness Runtime Home`과의 Runtime Home/Product Repository 분리 계약을 계속 만족해야 합니다. 이 관계를 위반하는 이력 등록은 저장소 준비, 접점 등록, MCP 사전 점검, 설정 출력 전에 실패합니다. 설정은 해당 registry 행을 복구하거나, 갱신하거나, 삭제하거나, 다른 행으로 대체하지 않습니다. 지원되는 복구 사실은 별도의 `Harness Runtime Home`을 선택하고 그곳에서 `Product Repository`를 설정하는 것입니다.
+설정이 기존 프로젝트 등록을 재사용하기 전에는 저장된 `Product Repository`가 선택된 `Harness Runtime Home`과의 [Runtime Home/Product Repository 분리 계약](runtime-boundaries.md#runtime-home-product-repository-separation)을 계속 만족해야 합니다. 이 관계를 위반하는 이력 등록은 저장소 준비, 접점 등록, MCP 사전 점검, 설정 출력 전에 실패합니다. 설정은 해당 registry 행을 복구하거나, 갱신하거나, 삭제하거나, 다른 행으로 대체하지 않습니다. 지원되는 복구 사실은 별도의 `Harness Runtime Home`을 선택하고 그곳에서 `Product Repository`를 설정하는 것입니다.
 
 ### 접점 호환성과 충돌
 
@@ -498,14 +498,19 @@ warnings
 - `--status`의 기본값은 `active`입니다.
 - 기준 등록은 `status=active`를 받습니다.
 - `--repo-root`는 프로젝트 등록에 쓰는 로컬 저장소 루트를 식별합니다.
+- 선택된 Runtime Home과 `--repo-root`는 등록이 기록되기 전에 [Runtime Home/Product Repository 분리 계약](runtime-boundaries.md#runtime-home-product-repository-separation)을 만족해야 합니다.
 
 `harness project list`는 선택된 Runtime Home의 등록된 프로젝트를 나열합니다.
 
-`Product Repository`와 `Harness Runtime Home`의 구분을 포함한 런타임 위치 경계는 [런타임 경계](runtime-boundaries.md)가 담당합니다.
+`harness project list`는 registry 수준 검사입니다. Runtime Home/Product Repository 분리 계약을 위반하는 이력 프로젝트 기록을 진단 목적으로 보여 줄 수 있습니다. 목록에 보인다는 사실만으로 그 기록이 프로젝트 상태 데이터베이스 접근, 접점 관리, Core 실행, 설정 재사용, MCP 시작에 적격해지지는 않습니다.
+
+`Product Repository`와 `Harness Runtime Home`의 구분을 포함한 런타임 위치 경계는 [런타임 경계](runtime-boundaries.md#runtime-home-product-repository-separation)가 담당합니다.
 
 ## 접점 등록
 
 `harness surface register`는 등록된 프로젝트에 로컬 접점 인스턴스 하나를 기록합니다.
+
+접점 등록과 목록 조회는 프로젝트 등록이 [런타임 경계](runtime-boundaries.md#runtime-home-product-repository-separation)가 담당하는 Runtime Home/Product Repository 분리 계약에 따라 계속 적격해야 합니다.
 
 기본값:
 

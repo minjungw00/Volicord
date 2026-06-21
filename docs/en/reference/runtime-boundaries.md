@@ -12,7 +12,7 @@ This document owns the component and location boundaries among `Harness Server`,
 | The distinction among Harness Server source repository, Harness Server installation, and running executable roles. | Release packaging policy or a mandatory installation-root layout. |
 | The definition of `Product Repository` and Product Repository API path normalization. | Storage record layout, locks, migrations, versioning, or artifact lifecycle details. |
 | The definition of `Harness Runtime Home`. | API method behavior or public schema shapes. |
-| The separation between Harness Server files, product files, runtime data, and external MCP host configuration. | Detailed security guarantee meanings or security non-guarantees. |
+| The separation between Harness Server files, product files, runtime data, and external MCP host configuration, including the exact Runtime Home/Product Repository path relationship contract. | Detailed security guarantee meanings or security non-guarantees. |
 | Local access and location non-authority rules. | Projection authority, template bodies, or rendered display freshness. |
 | The rule that runtime location does not by itself prove Harness authority, security authority, or isolation. | Product scope, close readiness, evidence sufficiency, or user-owned judgment meaning. |
 
@@ -130,6 +130,27 @@ Must not claim:
 - `Harness Runtime Home` is server installation storage by default.
 - `Harness Runtime Home` is automatically a security boundary.
 - `Harness Runtime Home` provides isolation by default.
+
+<a id="runtime-home-product-repository-separation"></a>
+### Runtime Home/Product Repository path separation
+
+A valid registered project must use a `Harness Runtime Home` and `Product Repository` whose resolved filesystem paths are separate and have no ancestor-descendant relationship.
+
+Prohibited relationships:
+
+| Relationship | Contract |
+|---|---|
+| Same resolved path | `Harness Runtime Home` and `Product Repository` must not resolve to the same path. |
+| `Product Repository` inside `Harness Runtime Home` | A `Product Repository` must not be located within `Harness Runtime Home`. |
+| `Harness Runtime Home` inside `Product Repository` | `Harness Runtime Home` must not be located within a `Product Repository`. |
+
+Permitted relationship:
+- Separate resolved paths with no ancestor-descendant relationship are permitted.
+- This rule does not prohibit intentionally selecting the `Harness Server` source repository as a `Product Repository` when that source repository remains separate from `Harness Runtime Home`.
+
+This separation contract is an eligibility rule. New project registration, setup reuse, project-state administrative access, Core execution entry, and MCP project-session startup must require the selected `Harness Runtime Home` and registered `Product Repository` to satisfy it.
+
+Registry-level inspection may still show a stored legacy project record that violates this contract so the record can be diagnosed. Registry visibility does not make the record eligible to open the project-state database, perform surface administration, enter Core execution, or start an MCP project session. The system does not automatically move paths, repair the registry row, or delete that record solely because it remains visible.
 
 ## Local access boundaries
 

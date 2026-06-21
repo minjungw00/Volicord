@@ -77,7 +77,7 @@ Startup validation requires:
 - the Runtime Home registry exists and is valid
 - the configured project is registered
 - the project status is `active`
-- the registered `Product Repository` still satisfies the Runtime Home/Product Repository separation contract with the selected Runtime Home
+- the registered `Product Repository` still satisfies the [Runtime Home/Product Repository separation contract](runtime-boundaries.md#runtime-home-product-repository-separation) with the selected Runtime Home
 - the project state database is valid
 - the configured surface is registered
 - the configured surface instance exists, or can be selected unambiguously
@@ -128,7 +128,7 @@ Startup validation failure:
 - exits with code `1`
 - does not enter the stdio loop or wait on stdin
 
-When a stored project registration fails the Runtime Home/Product Repository separation check, the diagnostic identifies the path relationship category. Startup validation may perform already-defined storage schema validation or migration as part of normal database opening. It does not by itself register a project or surface, repair a registry row, create a `Task`, increment `state_version`, or create application records.
+When a stored project registration fails the [Runtime Home/Product Repository separation check](runtime-boundaries.md#runtime-home-product-repository-separation), the diagnostic identifies the path relationship category. Startup validation may perform already-defined storage schema validation or migration as part of normal database opening. It does not by itself register a project or surface, repair a registry row, create a `Task`, increment `state_version`, or create application records.
 
 ## MCP wire behavior
 

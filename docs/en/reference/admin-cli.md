@@ -107,7 +107,7 @@ Selection rules:
 - Non-interactive setup requires `--repo-root`. Use `--repo-root .` as the explicit form for selecting the current `Product Repository`.
 - Interactive setup prompts for `Product Repository` when `--repo-root` is absent.
 - An explicit `--runtime-home` value for setup must be an absolute path. Omitting `--runtime-home` still uses `HARNESS_HOME` or the shared user-home fallback described in [Runtime Home setup selection](#runtime-home-setup-selection).
-- The selected `Harness Runtime Home` and `Product Repository` must satisfy the path-separation contract owned by [Runtime Boundaries](runtime-boundaries.md).
+- The selected `Harness Runtime Home` and `Product Repository` must satisfy the path-separation contract owned by [Runtime Boundaries](runtime-boundaries.md#runtime-home-product-repository-separation).
 
 ### Interactive setup frontend
 
@@ -212,7 +212,7 @@ When `--project-id` is absent:
 
 No setup option may forcibly rebind an existing project ID to another repository.
 
-Before setup reuses an existing project registration, the stored `Product Repository` must still satisfy the Runtime Home/Product Repository separation contract with the selected `Harness Runtime Home`. A legacy registration that violates that relationship fails before storage preparation, surface registration, MCP preflight, or configuration output. Setup does not repair, update, delete, or replace that registry row; supported recovery is to select a separate `Harness Runtime Home` and set up the `Product Repository` there.
+Before setup reuses an existing project registration, the stored `Product Repository` must still satisfy the [Runtime Home/Product Repository separation contract](runtime-boundaries.md#runtime-home-product-repository-separation) with the selected `Harness Runtime Home`. A legacy registration that violates that relationship fails before storage preparation, surface registration, MCP preflight, or configuration output. Setup does not repair, update, delete, or replace that registry row; supported recovery is to select a separate `Harness Runtime Home` and set up the `Product Repository` there.
 
 ### Surface compatibility and conflicts
 
@@ -494,14 +494,19 @@ Rules:
 - `--status` defaults to `active`.
 - Baseline registration accepts `status=active`.
 - `--repo-root` identifies the local repository root for the project registration.
+- The selected Runtime Home and `--repo-root` must satisfy the [Runtime Home/Product Repository separation contract](runtime-boundaries.md#runtime-home-product-repository-separation) before registration is recorded.
 
 `harness project list` lists registered projects for the selected Runtime Home.
 
-Runtime location boundaries, including the distinction between `Product Repository` and `Harness Runtime Home`, are owned by [Runtime Boundaries](runtime-boundaries.md).
+`harness project list` is registry-level inspection. It may show a legacy project record that violates the Runtime Home/Product Repository separation contract for diagnosis. Listing visibility does not make that record eligible for project-state database access, surface administration, Core execution, setup reuse, or MCP startup.
+
+Runtime location boundaries, including the distinction between `Product Repository` and `Harness Runtime Home`, are owned by [Runtime Boundaries](runtime-boundaries.md#runtime-home-product-repository-separation).
 
 ## Surface registration
 
 `harness surface register` records one local surface instance for a registered project.
+
+Surface registration and listing require the project registration to remain eligible under the Runtime Home/Product Repository separation contract owned by [Runtime Boundaries](runtime-boundaries.md#runtime-home-product-repository-separation).
 
 Defaults:
 
