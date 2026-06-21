@@ -751,6 +751,185 @@ fn harness_binary_preflight_failure_writes_no_configuration() -> Result<(), Box<
 
 #[cfg(unix)]
 #[test]
+fn harness_binary_setup_rejects_existing_alternate_state_db_path_before_preflight_and_config(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-setup-state-db-existing")?;
+    let repo_root = runtime_home.create_product_repo("product-repo")?;
+    let marker = runtime_home.path().join("preflight-marker.txt");
+    let config_dir = runtime_home.path().join("configs");
+    let mcp_command = write_test_mcp(runtime_home.path(), &marker)?;
+    initialize_runtime_home(runtime_home.path(), "runtime_home_state_db_existing", "{}")?;
+    register_project(
+        runtime_home.path(),
+        ProjectRegistration {
+            project_id: "product-repo".to_owned(),
+            repo_root: repo_root.clone(),
+            project_home: None,
+            status: ACTIVE_PROJECT_STATUS.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let original = single_project_record(runtime_home.path(), "product-repo")?;
+    let alternate_state_path = runtime_home
+        .path()
+        .join("alternate/historical-state.sqlite");
+    fs::create_dir_all(
+        alternate_state_path
+            .parent()
+            .expect("alternate state path has parent"),
+    )?;
+    let mut alternate = Connection::open(&alternate_state_path)?;
+    create_project_state_fixture_version(
+        &mut alternate,
+        "alternate_project_state",
+        LEGACY_PROJECT_STATE_SCHEMA_VERSION,
+    )?;
+    drop(alternate);
+    let migrations_before = migration_count(&alternate_state_path)?;
+    let surface_count_before = surface_count(&alternate_state_path)?;
+    replace_project_state_db_path(runtime_home.path(), "product-repo", &alternate_state_path)?;
+    let damaged = single_project_record(runtime_home.path(), "product-repo")?;
+    assert_only_state_db_path_changed(&original, &damaged, &alternate_state_path);
+
+    let output = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+        "--config-dir",
+        path_text(&config_dir).as_str(),
+    ])?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stdout(&output).is_empty());
+    assert_state_db_path_mismatch_stderr(&stderr(&output));
+    assert!(!marker.exists());
+    assert!(!config_dir.join("harness-agent.mcp.json").exists());
+    assert!(!config_dir.exists());
+    assert_historical_project_state_unchanged(
+        &alternate_state_path,
+        migrations_before,
+        surface_count_before,
+    )?;
+    assert_registry_unchanged_and_cli_visible(runtime_home.path(), "product-repo", &damaged)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn harness_binary_setup_rejects_missing_alternate_state_db_path_without_creating_it(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-setup-state-db-missing")?;
+    let repo_root = runtime_home.create_product_repo("product-repo")?;
+    let marker = runtime_home.path().join("preflight-marker.txt");
+    let config_dir = runtime_home.path().join("configs");
+    let mcp_command = write_test_mcp(runtime_home.path(), &marker)?;
+    initialize_runtime_home(runtime_home.path(), "runtime_home_state_db_missing", "{}")?;
+    register_project(
+        runtime_home.path(),
+        ProjectRegistration {
+            project_id: "product-repo".to_owned(),
+            repo_root: repo_root.clone(),
+            project_home: None,
+            status: ACTIVE_PROJECT_STATUS.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let original = single_project_record(runtime_home.path(), "product-repo")?;
+    let alternate_state_path = runtime_home.path().join("missing/alternate-state.sqlite");
+    let alternate_parent = alternate_state_path
+        .parent()
+        .expect("alternate state path has parent");
+    assert!(!alternate_state_path.exists());
+    assert!(!alternate_parent.exists());
+    replace_project_state_db_path(runtime_home.path(), "product-repo", &alternate_state_path)?;
+    let damaged = single_project_record(runtime_home.path(), "product-repo")?;
+    assert_only_state_db_path_changed(&original, &damaged, &alternate_state_path);
+
+    let output = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+        "--config-dir",
+        path_text(&config_dir).as_str(),
+    ])?;
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stdout(&output).is_empty());
+    assert_state_db_path_mismatch_stderr(&stderr(&output));
+    assert!(!alternate_state_path.exists());
+    assert!(!alternate_parent.exists());
+    assert!(!marker.exists());
+    assert!(!config_dir.join("harness-agent.mcp.json").exists());
+    assert!(!config_dir.exists());
+    assert_registry_unchanged_and_cli_visible(runtime_home.path(), "product-repo", &damaged)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn harness_binary_setup_reuses_valid_custom_project_home() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-setup-custom-home")?;
+    let repo_root = runtime_home.create_product_repo("product-repo")?;
+    let marker = runtime_home.path().join("preflight-marker.txt");
+    let mcp_command = write_test_mcp(runtime_home.path(), &marker)?;
+    let custom_project_home = runtime_home.path().join("custom-projects/product-repo");
+    initialize_runtime_home(
+        runtime_home.path(),
+        "runtime_home_custom_project_home",
+        "{}",
+    )?;
+    register_project(
+        runtime_home.path(),
+        ProjectRegistration {
+            project_id: "product-repo".to_owned(),
+            repo_root: repo_root.clone(),
+            project_home: Some(custom_project_home.clone()),
+            status: ACTIVE_PROJECT_STATUS.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )?;
+    let custom_state_path = custom_project_home.join("state.sqlite");
+    assert!(custom_state_path.exists());
+    assert!(!project_state_db_path(runtime_home.path(), "product-repo").exists());
+
+    let output = run_without_home([
+        "setup",
+        "local-mcp",
+        "--runtime-home",
+        path_text(runtime_home.path()).as_str(),
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+    ])?;
+
+    assert_success(&output);
+    assert!(stdout(&output).contains("project: reused"));
+    assert!(stdout(&output).contains("agent_surface: created"));
+    assert!(stdout(&output).contains("preflight: passed"));
+    assert_eq!(fs::read_to_string(&marker)?.lines().count(), 1);
+    let record = single_project_record(runtime_home.path(), "product-repo")?;
+    assert_eq!(record.project_home, custom_project_home);
+    assert_eq!(record.state_db_path, custom_state_path);
+    assert!(list_surfaces(runtime_home.path(), "product-repo")?
+        .iter()
+        .any(|surface| surface.surface_id == SETUP_AGENT_SURFACE_ID
+            && surface.surface_instance_id == SETUP_AGENT_SURFACE_INSTANCE_ID));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn harness_binary_setup_rejects_invalid_existing_project_before_preflight_and_config(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-setup-invalid-existing")?;
@@ -964,6 +1143,21 @@ fn assert_registry_unchanged_and_cli_visible(
     Ok(())
 }
 
+fn assert_only_state_db_path_changed(
+    original: &ProjectRecord,
+    damaged: &ProjectRecord,
+    alternate_state_path: &Path,
+) {
+    assert_eq!(damaged.project_id, original.project_id);
+    assert_eq!(damaged.runtime_home_id, original.runtime_home_id);
+    assert_eq!(damaged.repo_root, original.repo_root);
+    assert_eq!(damaged.project_home, original.project_home);
+    assert_eq!(damaged.status, original.status);
+    assert_eq!(damaged.metadata_json, original.metadata_json);
+    assert_eq!(damaged.state_db_path, alternate_state_path);
+    assert_ne!(damaged.state_db_path, original.state_db_path);
+}
+
 fn assert_invalid_project_path_error(output: &Output, relationship: &str) {
     assert_eq!(output.status.code(), Some(1));
     let stderr = stderr(output);
@@ -972,6 +1166,12 @@ fn assert_invalid_project_path_error(output: &Output, relationship: &str) {
     assert!(stderr.contains(&format!("relationship {relationship}")));
     assert!(stderr.contains("Harness Runtime Home"));
     assert!(stderr.contains("Product Repository"));
+}
+
+fn assert_state_db_path_mismatch_stderr(stderr: &str) {
+    assert!(stderr.contains("registered project state database path conflicts with project_home"));
+    assert!(stderr.contains("field state_db_path"));
+    assert!(stderr.contains("relationship state_db_path_mismatch"));
 }
 
 fn surface_rows(state_path: &Path) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
@@ -1075,6 +1275,19 @@ fn replace_project_home(
             project_home.to_string_lossy().as_ref(),
             state_db_path.to_string_lossy().as_ref()
         ],
+    )?;
+    Ok(())
+}
+
+fn replace_project_state_db_path(
+    runtime_home: &Path,
+    project_id: &str,
+    state_db_path: &Path,
+) -> Result<(), Box<dyn Error>> {
+    let conn = Connection::open(registry_db_path(runtime_home))?;
+    conn.execute(
+        "UPDATE projects SET state_db_path = ?2 WHERE project_id = ?1",
+        params![project_id, state_db_path.to_string_lossy().as_ref()],
     )?;
     Ok(())
 }

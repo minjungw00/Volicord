@@ -3,6 +3,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
+    fs,
     io::{self, Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Output, Stdio},
@@ -13,11 +14,14 @@ use std::{
 use harness_mcp::PUBLIC_METHOD_TOOL_NAMES;
 use harness_store::{
     bootstrap::{
-        initialize_runtime_home, register_project, register_surface, ProjectRegistration,
-        SurfaceRegistration, ACTIVE_PROJECT_STATUS,
+        initialize_runtime_home, project_record, register_project, register_surface, ProjectRecord,
+        ProjectRegistration, SurfaceRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
-    sqlite::{open_registry_database, registry_db_path},
+    migrations::PROJECT_STATE_DATABASE_KIND,
+    sqlite::{
+        open_read_only_database, open_registry_database, project_state_db_path, registry_db_path,
+    },
 };
 use harness_test_support::TempRuntimeHome;
 use harness_types::{
@@ -127,6 +131,41 @@ fn harness_mcp_binary_rejects_invalid_legacy_project_registration() -> Result<()
         .contains("registered Product Repository conflicts with Runtime Home"));
     assert!(captured_stderr(&stdio).contains("same_path"));
     assert_eq!(captured_stdout(&stdio), "");
+    Ok(())
+}
+
+#[test]
+fn harness_mcp_binary_rejects_state_db_path_mismatch_before_startup_io_or_alternate_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = McpFixture::new("mcp-bin-state-db-mismatch")?;
+    let original = fixture.project_record(PROJECT_ID)?;
+    let alternate_state_path =
+        fixture.register_alternate_project("project_binary_mcp_alternate")?;
+    let alternate_before = ProjectStateSnapshot::read(&alternate_state_path)?;
+    fixture.replace_project_state_db_path(&alternate_state_path)?;
+    let damaged = fixture.project_record(PROJECT_ID)?;
+    assert_only_state_db_path_changed(&original, &damaged, &alternate_state_path);
+
+    let check = run_child(
+        fixture.bound_command(AGENT_SURFACE_ID, AGENT_INSTANCE_ID, ["--check"]),
+        ChildStdin::KeepOpen,
+    )?;
+    assert_invalid_state_db_path_mismatch_process(&check);
+    assert_eq!(
+        ProjectStateSnapshot::read(&alternate_state_path)?,
+        alternate_before
+    );
+
+    let stdio = run_child(
+        fixture.bound_command(AGENT_SURFACE_ID, AGENT_INSTANCE_ID, []),
+        ChildStdin::KeepOpen,
+    )?;
+    assert_invalid_state_db_path_mismatch_process(&stdio);
+    assert_eq!(
+        ProjectStateSnapshot::read(&alternate_state_path)?,
+        alternate_before
+    );
+    assert_eq!(fixture.project_record(PROJECT_ID)?, damaged);
     Ok(())
 }
 
@@ -269,7 +308,7 @@ fn harness_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<(
 }
 
 struct McpFixture {
-    _runtime_home: TempRuntimeHome,
+    runtime_home: TempRuntimeHome,
     runtime_home_path: PathBuf,
 }
 
@@ -310,7 +349,7 @@ impl McpFixture {
 
         Ok(Self {
             runtime_home_path: runtime_home.path().to_path_buf(),
-            _runtime_home: runtime_home,
+            runtime_home,
         })
     }
 
@@ -344,12 +383,54 @@ impl McpFixture {
         )
     }
 
+    fn project_record(&self, project_id: &str) -> Result<ProjectRecord, Box<dyn Error>> {
+        Ok(project_record(&self.runtime_home_path, project_id)?
+            .expect("project should remain registry-visible"))
+    }
+
+    fn register_alternate_project(&self, project_id: &str) -> Result<PathBuf, Box<dyn Error>> {
+        let repo_root = self
+            .runtime_home
+            .create_product_repo(format!("repo-{project_id}"))?;
+        register_project(
+            &self.runtime_home_path,
+            ProjectRegistration {
+                project_id: project_id.to_owned(),
+                repo_root,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        register_surface(
+            &self.runtime_home_path,
+            surface_registration_for_project(
+                project_id,
+                "surface_alternate",
+                "surface_instance_alternate",
+                SurfaceInteractionRole::Agent,
+                &BASELINE_ACCESS_CLASSES,
+            ),
+        )?;
+        Ok(project_state_db_path(&self.runtime_home_path, project_id))
+    }
+
     fn replace_project_repo_root(&self, repo_root: &Path) -> Result<(), Box<dyn Error>> {
         let conn = open_registry_database(registry_db_path(&self.runtime_home_path))?;
         let repo_root = repo_root.to_string_lossy();
         conn.execute(
             "UPDATE projects SET repo_root = ?2 WHERE project_id = ?1",
             [PROJECT_ID, repo_root.as_ref()],
+        )?;
+        Ok(())
+    }
+
+    fn replace_project_state_db_path(&self, state_db_path: &Path) -> Result<(), Box<dyn Error>> {
+        let conn = open_registry_database(registry_db_path(&self.runtime_home_path))?;
+        let state_db_path = state_db_path.to_string_lossy();
+        conn.execute(
+            "UPDATE projects SET state_db_path = ?2 WHERE project_id = ?1",
+            [PROJECT_ID, state_db_path.as_ref()],
         )?;
         Ok(())
     }
@@ -361,8 +442,24 @@ fn surface_registration(
     interaction_role: SurfaceInteractionRole,
     access_classes: &[&str],
 ) -> SurfaceRegistration {
+    surface_registration_for_project(
+        PROJECT_ID,
+        surface_id,
+        surface_instance_id,
+        interaction_role,
+        access_classes,
+    )
+}
+
+fn surface_registration_for_project(
+    project_id: &str,
+    surface_id: &str,
+    surface_instance_id: &str,
+    interaction_role: SurfaceInteractionRole,
+    access_classes: &[&str],
+) -> SurfaceRegistration {
     SurfaceRegistration {
-        project_id: PROJECT_ID.to_owned(),
+        project_id: project_id.to_owned(),
         surface_id: surface_id.to_owned(),
         surface_instance_id: surface_instance_id.to_owned(),
         surface_kind: "mcp".to_owned(),
@@ -382,6 +479,62 @@ fn surface_registration(
         .to_string(),
         metadata_json: "{}".to_owned(),
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProjectStateSnapshot {
+    migration_count: i64,
+    project_state_count: i64,
+    surface_count: i64,
+    file_size: u64,
+}
+
+impl ProjectStateSnapshot {
+    fn read(path: &Path) -> Result<Self, Box<dyn Error>> {
+        let conn = open_read_only_database(path)?;
+        let migration_count = conn.query_row(
+            "SELECT COUNT(*)
+               FROM schema_migrations
+              WHERE database_kind = ?1",
+            [PROJECT_STATE_DATABASE_KIND],
+            |row| row.get(0),
+        )?;
+        let project_state_count =
+            conn.query_row("SELECT COUNT(*) FROM project_state", [], |row| row.get(0))?;
+        let surface_count =
+            conn.query_row("SELECT COUNT(*) FROM surfaces", [], |row| row.get(0))?;
+        let file_size = fs::metadata(path)?.len();
+        Ok(Self {
+            migration_count,
+            project_state_count,
+            surface_count,
+            file_size,
+        })
+    }
+}
+
+fn assert_only_state_db_path_changed(
+    original: &ProjectRecord,
+    damaged: &ProjectRecord,
+    alternate_state_path: &Path,
+) {
+    assert_eq!(damaged.project_id, original.project_id);
+    assert_eq!(damaged.runtime_home_id, original.runtime_home_id);
+    assert_eq!(damaged.repo_root, original.repo_root);
+    assert_eq!(damaged.project_home, original.project_home);
+    assert_eq!(damaged.status, original.status);
+    assert_eq!(damaged.metadata_json, original.metadata_json);
+    assert_eq!(damaged.state_db_path, alternate_state_path);
+    assert_ne!(damaged.state_db_path, original.state_db_path);
+}
+
+fn assert_invalid_state_db_path_mismatch_process(output: &CapturedChildOutput) {
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(captured_stdout(output), "");
+    let stderr = captured_stderr(output);
+    assert!(stderr.contains("registered project state database path conflicts with project_home"));
+    assert!(stderr.contains("field state_db_path"));
+    assert!(stderr.contains("relationship state_db_path_mismatch"));
 }
 
 fn run_without_binding<const N: usize>(args: [&str; N]) -> Result<Output, Box<dyn Error>> {
