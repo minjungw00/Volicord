@@ -4,8 +4,14 @@ use std::{fmt, process};
 
 fn main() {
     match dispatch_args(std::env::args()) {
-        Ok(McpCommand::Stdio) => {
+        Ok(McpCommand::StdioLegacy) => {
             if let Err(error) = harness_mcp::run_stdio_from_env() {
+                eprintln!("error: {error}");
+                process::exit(1);
+            }
+        }
+        Ok(McpCommand::Stdio { integration_id }) => {
+            if let Err(error) = harness_mcp::run_stdio_from_env_for_integration(&integration_id) {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
@@ -16,13 +22,28 @@ fn main() {
         Ok(McpCommand::Version) => {
             print!("{}", version());
         }
-        Ok(McpCommand::Check) => match harness_mcp::run_preflight_check_from_env() {
+        Ok(McpCommand::CheckLegacy) => match harness_mcp::run_preflight_check_from_env() {
             Ok(report) => print!("{report}"),
             Err(error) => {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
         },
+        Ok(McpCommand::Check {
+            integration_id,
+            project_id,
+        }) => {
+            match harness_mcp::run_preflight_check_from_env_for_integration(
+                &integration_id,
+                project_id.as_deref(),
+            ) {
+                Ok(report) => print!("{report}"),
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    process::exit(1);
+                }
+            }
+        }
         Err(error) => {
             eprintln!("error: {error}\n\n{}", usage());
             process::exit(2);
@@ -30,12 +51,19 @@ fn main() {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum McpCommand {
-    Stdio,
+    Stdio {
+        integration_id: String,
+    },
+    StdioLegacy,
     Help,
     Version,
-    Check,
+    Check {
+        integration_id: String,
+        project_id: Option<String>,
+    },
+    CheckLegacy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,34 +85,96 @@ where
     let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
     let options = &args[1..];
     match options {
-        [] => Ok(McpCommand::Stdio),
+        [] => Ok(McpCommand::StdioLegacy),
         [option] if option == "-h" || option == "--help" => Ok(McpCommand::Help),
         [option] if option == "-V" || option == "--version" => Ok(McpCommand::Version),
-        [option] if option == "--check" => Ok(McpCommand::Check),
-        [first, rest @ ..]
-            if is_mode_option(first)
-                && rest.iter().any(|option| is_mode_option(option.as_str())) =>
-        {
-            Err(McpCommandError(
-                "cannot combine harness-mcp command-line modes".to_owned(),
-            ))
-        }
-        [first, extra, ..] if is_mode_option(first) => {
-            Err(McpCommandError(format!("unexpected argument: {extra}")))
-        }
-        [option, ..] if option.starts_with('-') => {
-            Err(McpCommandError(format!("unknown option: {option}")))
-        }
-        [argument, ..] => Err(McpCommandError(format!("unexpected argument: {argument}"))),
+        [option] if option == "--check" => Ok(McpCommand::CheckLegacy),
+        _ => parse_operational_options(options),
     }
 }
 
-fn is_mode_option(option: &str) -> bool {
-    matches!(option, "-h" | "--help" | "-V" | "--version" | "--check")
+fn parse_operational_options(options: &[String]) -> Result<McpCommand, McpCommandError> {
+    let mut check = false;
+    let mut integration_id = None;
+    let mut project_id = None;
+    let mut index = 0;
+
+    while index < options.len() {
+        match options[index].as_str() {
+            "--check" => {
+                if check {
+                    return Err(McpCommandError(
+                        "--check was supplied more than once".to_owned(),
+                    ));
+                }
+                check = true;
+                index += 1;
+            }
+            "--integration" => {
+                if integration_id.is_some() {
+                    return Err(McpCommandError(
+                        "--integration was supplied more than once".to_owned(),
+                    ));
+                }
+                index += 1;
+                let value = options
+                    .get(index)
+                    .ok_or_else(|| McpCommandError("--integration requires a value".to_owned()))?;
+                if value.starts_with('-') {
+                    return Err(McpCommandError("--integration requires a value".to_owned()));
+                }
+                integration_id = Some(value.clone());
+                index += 1;
+            }
+            "--project" => {
+                if project_id.is_some() {
+                    return Err(McpCommandError(
+                        "--project was supplied more than once".to_owned(),
+                    ));
+                }
+                index += 1;
+                let value = options
+                    .get(index)
+                    .ok_or_else(|| McpCommandError("--project requires a value".to_owned()))?;
+                if value.starts_with('-') {
+                    return Err(McpCommandError("--project requires a value".to_owned()));
+                }
+                project_id = Some(value.clone());
+                index += 1;
+            }
+            "-h" | "--help" | "-V" | "--version" => {
+                return Err(McpCommandError(
+                    "cannot combine harness-mcp command-line modes".to_owned(),
+                ))
+            }
+            option if option.starts_with('-') => {
+                return Err(McpCommandError(format!("unknown option: {option}")));
+            }
+            argument => return Err(McpCommandError(format!("unexpected argument: {argument}"))),
+        }
+    }
+
+    if project_id.is_some() && !check {
+        return Err(McpCommandError(
+            "--project is only valid with --check".to_owned(),
+        ));
+    }
+    let integration_id = integration_id.ok_or_else(|| {
+        McpCommandError("--integration is required for integration-bound startup".to_owned())
+    })?;
+
+    if check {
+        Ok(McpCommand::Check {
+            integration_id,
+            project_id,
+        })
+    } else {
+        Ok(McpCommand::Stdio { integration_id })
+    }
 }
 
 fn usage() -> String {
-    "Usage:\n  harness-mcp\n  harness-mcp --check\n  harness-mcp --help\n  harness-mcp --version\n\nEnvironment:\n  HARNESS_PROJECT_ID           Required project binding for stdio and --check\n  HARNESS_SURFACE_ID           Required surface binding for stdio and --check\n  HARNESS_HOME                 Optional Runtime Home path (default: $HOME/.harness)\n  HARNESS_SURFACE_INSTANCE_ID  Optional explicit surface instance binding\n\nNo arguments starts the line-delimited MCP stdio loop.\n"
+    "Usage:\n  harness-mcp --integration <integration_id>\n  harness-mcp --check --integration <integration_id>\n  harness-mcp --check --integration <integration_id> --project <project_id>\n  harness-mcp --help\n  harness-mcp --version\n\nEnvironment:\n  HARNESS_HOME                 Optional Runtime Home path (default: $HOME/.harness)\n\nThe selected Agent Integration Profile supplies the MCP surface binding. Project selection happens per public Harness tool call.\n"
         .to_owned()
 }
 
@@ -100,7 +190,7 @@ mod tests {
     fn no_argument_dispatch_selects_stdio() {
         assert_eq!(
             dispatch_args(["harness-mcp"]).expect("no args should dispatch"),
-            McpCommand::Stdio
+            McpCommand::StdioLegacy
         );
     }
 
@@ -110,7 +200,8 @@ mod tests {
             dispatch_args(["harness-mcp", "--help"]).expect("help should dispatch"),
             McpCommand::Help
         );
-        assert!(usage().contains("HARNESS_PROJECT_ID"));
+        assert!(usage().contains("--integration <integration_id>"));
+        assert!(!usage().contains("HARNESS_PROJECT_ID"));
         assert_eq!(
             version(),
             format!("harness-mcp {}\n", env!("CARGO_PKG_VERSION"))
@@ -118,6 +209,40 @@ mod tests {
         assert_eq!(
             dispatch_args(["harness-mcp", "-V"]).expect("version should dispatch"),
             McpCommand::Version
+        );
+    }
+
+    #[test]
+    fn integration_startup_forms_dispatch() {
+        assert_eq!(
+            dispatch_args(["harness-mcp", "--integration", "agent_main"])
+                .expect("integration stdio should dispatch"),
+            McpCommand::Stdio {
+                integration_id: "agent_main".to_owned()
+            }
+        );
+        assert_eq!(
+            dispatch_args(["harness-mcp", "--check", "--integration", "agent_main"])
+                .expect("integration check should dispatch"),
+            McpCommand::Check {
+                integration_id: "agent_main".to_owned(),
+                project_id: None
+            }
+        );
+        assert_eq!(
+            dispatch_args([
+                "harness-mcp",
+                "--check",
+                "--integration",
+                "agent_main",
+                "--project",
+                "project_a",
+            ])
+            .expect("project check should dispatch"),
+            McpCommand::Check {
+                integration_id: "agent_main".to_owned(),
+                project_id: Some("project_a".to_owned())
+            }
         );
     }
 
@@ -137,6 +262,22 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "cannot combine harness-mcp command-line modes"
+        );
+    }
+
+    #[test]
+    fn missing_integration_is_usage_classified() {
+        let error = dispatch_args(["harness-mcp", "--project", "project_a"])
+            .expect_err("project without check should be rejected");
+
+        assert_eq!(error.to_string(), "--project is only valid with --check");
+
+        let error = dispatch_args(["harness-mcp", "--check", "--project", "project_a"])
+            .expect_err("check without integration should be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "--integration is required for integration-bound startup"
         );
     }
 

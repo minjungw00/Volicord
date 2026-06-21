@@ -48,7 +48,7 @@ The Harness Server implementation in this repository has two distinct operationa
 - MCP host -> `harness-mcp` -> `harness-core` -> Store and artifact facilities under `Harness Runtime Home`.
 - Operator -> `harness` administrative CLI -> bootstrap and registration facilities -> `Harness Runtime Home` and host configuration files.
 
-`harness-mcp` also uses `harness-store` directly during startup and session-binding validation. That Store use checks Runtime Home, project, surface, surface instance, role, and local-access registration before stdio begins. It is not an alternate implementation path for public Harness method semantics, which route through `harness-core`.
+`harness-mcp` also uses `harness-store` directly during startup and request routing. That Store use checks Runtime Home, Agent Integration Profile state, integration project membership, project availability, surface, surface instance, role, and local-access registration before dispatching a public method to Core. It is not an alternate implementation path for public Harness method semantics, which route through `harness-core`.
 
 `Product Repository` remains a separate product-file boundary. The public Harness API records owner-defined compatibility, observations, and artifact links; product-file writes themselves happen through a connected surface or local tooling outside the public API path.
 
@@ -122,7 +122,7 @@ flowchart TD
 The durable dependency boundaries are:
 
 - Core does not depend on CLI or MCP adapter crates.
-- MCP may depend on Core, Store, and shared types for distinct responsibilities: transport and dispatch, startup/session validation, and typed request handling.
+- MCP may depend on Core, Store, and shared types for distinct responsibilities: transport and dispatch, integration startup validation, request-time project routing, and typed request handling.
 - The administrative CLI uses Store and shared types for local setup and registration rather than invoking public Core methods.
 - Store depends on shared types.
 - Test-support and test packages compose implementation crates only for disposable fixtures and cross-layer verification.
@@ -136,7 +136,7 @@ The durable dependency boundaries are:
 | `crates/harness-store` | `crates/harness-store/src/runtime_home.rs`, `crates/harness-store/src/bootstrap.rs`, `crates/harness-store/src/sqlite.rs`, `crates/harness-store/src/migrations.rs`, `crates/harness-store/src/core_pipeline.rs`, `crates/harness-store/src/artifacts.rs`, `crates/harness-store/src/inspection.rs`, `crates/harness-store/src/error.rs` | `runtime_home.rs` resolves Runtime Home paths. `bootstrap.rs` initializes Runtime Home metadata and registers projects and surfaces. `sqlite.rs` opens and validates registry/project SQLite databases. `migrations.rs` applies baseline migrations. `core_pipeline.rs` exposes `CoreProjectStore`, read helpers, replay rows, storage mutation types, and the atomic Core mutation commit boundary. `artifacts.rs` handles transient staging and persistent artifact body verification. `inspection.rs` supports read-only setup inspection. `error.rs` classifies storage failures for higher layers. |
 | `crates/harness-core` | `crates/harness-core/src/pipeline.rs`, `crates/harness-core/src/methods/`, `crates/harness-core/src/policy/` | `pipeline.rs` owns common request preflight, validated request context preparation, effect-path selection, response construction, replay handling, and Core commit orchestration. `methods/` owns method-specific validation, planning, storage mutation lists, event payloads, dry-run summaries, and result fields. `policy/` owns reusable Core policy helpers for access, replay context, product paths, write authorization, close readiness, evidence, and judgment relevance. |
 | `crates/harness-cli` | `crates/harness-cli/src/main.rs`, `crates/harness-cli/src/local_mcp_command.rs`, `crates/harness-cli/src/setup.rs`, `crates/harness-cli/src/wizard.rs`, `crates/harness-cli/src/host_config.rs`, `crates/harness-cli/src/registration.rs` | `main.rs` dispatches administrative commands and binary exit behavior. `local_mcp_command.rs` parses and orchestrates `harness setup local-mcp`, preflight checks, config destination checks, output rendering, and config-file writing. `setup.rs` plans, prepares, revalidates, and applies Runtime Home/project/surface setup. `wizard.rs` is the interactive frontend for the same setup path. `host_config.rs` renders host-neutral MCP configuration JSON. `registration.rs` builds deterministic capability-profile and local-access metadata. |
-| `crates/harness-mcp` | `crates/harness-mcp/src/main.rs`, `crates/harness-mcp/src/lib.rs` | `main.rs` handles command modes such as stdio, `--check`, help, and version. `lib.rs` owns MCP tool metadata, startup inspection, session context, typed `tools/call` decoding, invocation-context derivation, JSON-RPC stdio framing, and response wrapping. |
+| `crates/harness-mcp` | `crates/harness-mcp/src/main.rs`, `crates/harness-mcp/src/lib.rs` | `main.rs` handles command modes such as stdio, `--check`, help, and version. `lib.rs` owns MCP tool metadata, integration startup inspection, request-time project routing, the adapter-owned `harness.list_projects` utility, typed public `tools/call` decoding, invocation-context derivation, initialization instructions, JSON-RPC stdio framing, and response wrapping. |
 | `crates/harness-test-support` | `crates/harness-test-support/src/lib.rs` | Provides disposable Runtime Home helpers, fixture setup for Core and Store tests, shared request builders, and fixture-only helpers used by conformance and integration tests. |
 
 These module descriptions are implementation placement guidance. Exact API fields, method behavior, storage records, storage effects, security wording, and Core authority semantics stay with the Reference owners.
@@ -164,10 +164,10 @@ sequenceDiagram
   participant Core as harness-core
   participant Method as harness-core methods
 
-  Host->>MCP: start process with binding environment
-  MCP->>Store: validate Runtime Home, project, surface, instance, role, local access
+  Host->>MCP: start process with integration binding
+  MCP->>Store: validate Runtime Home, integration, surface, instance, role, membership
   Host->>MCP: tools/call(name, arguments)
-  MCP->>MCP: decode typed request and derive invocation context
+  MCP->>MCP: select project, inject adapter facts, decode typed request
   MCP->>Core: CoreService method(request, invocation)
   Core->>Core: common preflight in crates/harness-core/src/pipeline.rs
   Core->>Store: open project, read state, validate surface, replay, task, freshness
@@ -188,16 +188,17 @@ sequenceDiagram
 
 Implementation flow:
 
-1. `harness-mcp` resolves Runtime Home and fixed binding inputs from process environment or configured registration data.
-2. `McpStartupInspection` validates Runtime Home metadata, project registration and status, project state availability, surface registration, usable surface instance selection, role, capability-profile JSON, metadata JSON, and local-access grants through Store-facing facilities.
+1. `harness-mcp` resolves Runtime Home and one integration-bound process context from `--integration <integration_id>` and optional `HARNESS_HOME`; the legacy fixed-project environment binding remains only a compatibility path.
+2. `McpIntegrationStartupInspection` validates Runtime Home metadata, Agent Integration Profile state, surface and surface-instance binding, role, project membership readability, and registry JSON needed before stdio begins. It does not select one project for all calls.
 3. The stdio loop accepts line-delimited JSON-RPC and dispatches `initialize`, `ping`, `tools/list`, and `tools/call`.
-4. `tools/call` reads the tool name, decodes `arguments` into the matching typed request from `harness-types`, and derives an `InvocationContext` from the fixed MCP session plus the typed request's method-derived access class.
-5. `McpAdapter::call_tool` dispatches to the matching `CoreService` method.
-6. Each `CoreService` method selects a `MethodPolicy` and calls common preflight before method-specific planning.
-7. Common preflight validates request-envelope shape, rejects adapter binding mismatches, validates committed-effect envelope requirements, computes the canonical request hash, opens the project Store, reads `project_state`, derives the verified surface context, handles idempotency replay for committed branches, resolves the Task according to the method policy, checks `state_version` freshness where applicable, checks registered access for the method-derived access class, and prepares a validated request context.
-8. The method module performs method-specific validation, policy evaluation, and plan or result construction.
-9. The selected branch returns a read-only result, no-persistence result, dry-run preview, Core mutation commit, or transient artifact staging result.
-10. Core returns a `PipelineResponse`; MCP wraps the exact Harness response JSON as MCP `tools/call` content text.
+4. `tools/list` exposes the nine public Harness method tools plus the adapter-owned `harness.list_projects` utility. For a public `tools/call`, the adapter reads the raw `envelope`, deterministically selects an allowed project, validates the integration surface for that project, injects adapter-managed project and surface facts, then decodes `arguments` into the matching typed request from `harness-types`.
+5. `tools/call` derives an `InvocationContext` from the selected project, integration-bound surface instance, and method-derived access class before dispatching to Core.
+6. `McpAdapter::call_tool` dispatches to the matching `CoreService` method.
+7. Each `CoreService` method selects a `MethodPolicy` and calls common preflight before method-specific planning.
+8. Common preflight validates request-envelope shape, rejects adapter binding mismatches, validates committed-effect envelope requirements, computes the canonical request hash, opens the project Store, reads `project_state`, derives the verified surface context, handles idempotency replay for committed branches, resolves the Task according to the method policy, checks `state_version` freshness where applicable, checks registered access for the method-derived access class, and prepares a validated request context.
+9. The method module performs method-specific validation, policy evaluation, and plan or result construction.
+10. The selected branch returns a read-only result, no-persistence result, dry-run preview, Core mutation commit, or transient artifact staging result.
+11. Core returns a `PipelineResponse`; MCP wraps the exact Harness response JSON as MCP `tools/call` content text.
 
 This flow is an implementation map. Exact public method contracts, error precedence, response schemas, and storage effects remain with the focused Reference owners.
 

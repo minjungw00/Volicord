@@ -19,6 +19,10 @@ use harness_core::{
     CoreService, InvocationContext, PipelineResponse,
 };
 use harness_store::{
+    agent_integrations::{
+        agent_integration_project_access, agent_integration_record, list_integration_projects,
+        AgentIntegrationRecord, IntegrationProjectRecord, AGENT_INTERACTION_ROLE,
+    },
     bootstrap::{
         list_surfaces, project_record, runtime_home_record, SurfaceRecord, ACTIVE_PROJECT_STATUS,
     },
@@ -56,6 +60,12 @@ pub const PUBLIC_METHOD_TOOL_NAMES: [&str; 9] = [
     "harness.close_task",
 ];
 
+/// Adapter-owned MCP utility tools that are not public Harness Core methods.
+pub const ADAPTER_UTILITY_TOOL_NAMES: [&str; 1] = ["harness.list_projects"];
+
+const LIST_PROJECTS_TOOL_NAME: &str = "harness.list_projects";
+const SERVER_INSTRUCTIONS: &str = "Harness records task scope, write readiness, evidence, runs, user-owned judgments, artifacts, and close readiness for explicitly registered Product Repositories. If project selection is unclear, call harness.list_projects and use one listed project_id; do not guess from folders, roots, labels, or memory. Harness state management is separate from permission to edit product files: product-file edits still require the host/user path and any required Write Authorization. These instructions are guidance, not access control or a promise of automatic tool use.";
+
 /// Minimal MCP adapter marker for validating dependency direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct McpAdapterBoundary {
@@ -84,7 +94,37 @@ pub struct McpToolDefinition {
     pub input_schema: Value,
 }
 
-/// Local adapter session facts that are not accepted from tool arguments.
+/// Integration-bound adapter facts that are not accepted from tool arguments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpIntegrationContext {
+    pub runtime_home: PathBuf,
+    pub integration_id: String,
+    pub interaction_role: SurfaceInteractionRole,
+    pub surface_id: SurfaceId,
+    pub surface_instance_id: SurfaceInstanceId,
+    pub invocation_binding_basis: String,
+}
+
+impl McpIntegrationContext {
+    /// Resolves and validates one Agent Integration Profile startup binding.
+    pub fn resolve(
+        runtime_home: impl AsRef<Path>,
+        integration_id: impl Into<String>,
+    ) -> Result<Self, McpAdapterError> {
+        let integration_id = integration_id.into();
+        let (context, _, _) = resolve_integration_context(runtime_home, &integration_id)?;
+        Ok(context)
+    }
+
+    /// Replaces the controlled adapter-binding basis carried into Core.
+    pub fn with_invocation_binding_basis(mut self, basis: impl Into<String>) -> Self {
+        let basis = basis.into();
+        self.invocation_binding_basis = controlled_invocation_binding_basis(&basis).to_owned();
+        self
+    }
+}
+
+/// Legacy fixed-project adapter session facts retained only for compatibility.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpSessionContext {
     pub project_id: ProjectId,
@@ -138,6 +178,25 @@ impl McpSessionContext {
             configured_surface_instance_id,
         )
         .map(|inspection| inspection.session_context())
+    }
+}
+
+/// Adapter binding mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpAdapterContext {
+    Integration(McpIntegrationContext),
+    LegacyFixedProject(McpSessionContext),
+}
+
+impl From<McpIntegrationContext> for McpAdapterContext {
+    fn from(context: McpIntegrationContext) -> Self {
+        Self::Integration(context)
+    }
+}
+
+impl From<McpSessionContext> for McpAdapterContext {
+    fn from(context: McpSessionContext) -> Self {
+        Self::LegacyFixedProject(context)
     }
 }
 
@@ -308,6 +367,153 @@ impl McpStartupInspection {
     }
 }
 
+/// Integration-bound startup facts shared by stdio startup and preflight checks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpIntegrationStartupInspection {
+    pub runtime_home: PathBuf,
+    pub integration_id: String,
+    pub interaction_role: SurfaceInteractionRole,
+    pub surface_id: SurfaceId,
+    pub surface_instance_id: SurfaceInstanceId,
+    pub enabled: bool,
+    pub allowed_project_count: usize,
+    pub default_project_id: Option<ProjectId>,
+    pub projects: Vec<McpProjectAvailability>,
+}
+
+impl McpIntegrationStartupInspection {
+    /// Resolves process inputs and validates one integration-bound MCP binding.
+    pub fn resolve(
+        runtime_home: impl AsRef<Path>,
+        integration_id: impl Into<String>,
+        detail_project_id: Option<ProjectId>,
+    ) -> Result<Self, McpAdapterError> {
+        let integration_id = integration_id.into();
+        let (context, integration, projects) =
+            resolve_integration_context(runtime_home, &integration_id)?;
+        let selected_projects = if let Some(project_id) = detail_project_id {
+            if !projects
+                .iter()
+                .any(|project| project.project_id == project_id.as_str())
+            {
+                return Err(McpAdapterError::Environment(format!(
+                    "project {} is not allowed for integration {}",
+                    project_id.as_str(),
+                    integration.integration_id
+                )));
+            }
+            projects
+                .iter()
+                .filter(|project| project.project_id == project_id.as_str())
+                .cloned()
+                .collect::<Vec<_>>()
+        } else {
+            projects.clone()
+        };
+        let project_reports = selected_projects
+            .iter()
+            .map(|project| inspect_allowed_project(&context, &integration, project, None))
+            .collect::<Vec<_>>();
+
+        Ok(Self {
+            runtime_home: context.runtime_home.clone(),
+            integration_id: integration.integration_id,
+            interaction_role: context.interaction_role,
+            surface_id: context.surface_id,
+            surface_instance_id: context.surface_instance_id,
+            enabled: integration.enabled,
+            allowed_project_count: projects.len(),
+            default_project_id: integration.default_project_id.map(ProjectId::new),
+            projects: project_reports,
+        })
+    }
+
+    /// Returns the public integration context consumed by the stdio adapter.
+    pub fn integration_context(&self) -> McpIntegrationContext {
+        McpIntegrationContext {
+            runtime_home: self.runtime_home.clone(),
+            integration_id: self.integration_id.clone(),
+            interaction_role: self.interaction_role,
+            surface_id: self.surface_id.clone(),
+            surface_instance_id: self.surface_instance_id.clone(),
+            invocation_binding_basis: DEFAULT_INVOCATION_BINDING_BASIS.to_owned(),
+        }
+    }
+
+    /// Formats the deterministic operator preflight report.
+    pub fn preflight_report(&self) -> String {
+        let available_projects = self
+            .projects
+            .iter()
+            .filter(|project| project.available)
+            .count();
+        let default_project_id = self
+            .default_project_id
+            .as_ref()
+            .map(ProjectId::as_str)
+            .unwrap_or("");
+        let mut report = format!(
+            "configuration: valid\ntransport: stdio\nruntime_home: {}\nintegration_id: {}\ninteraction_role: {}\nsurface_id: {}\nsurface_instance_id: {}\nenabled: {}\nallowed_projects: {}\navailable_projects: {}\ndefault_project_id: {}\nverification_scope: startup_check_only\n",
+            self.runtime_home.display(),
+            self.integration_id,
+            self.interaction_role.as_str(),
+            self.surface_id.as_str(),
+            self.surface_instance_id.as_str(),
+            self.enabled,
+            self.allowed_project_count,
+            available_projects,
+            default_project_id
+        );
+        for (index, project) in self.projects.iter().enumerate() {
+            let missing = project
+                .missing_access_classes
+                .iter()
+                .map(|access_class| access_class.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
+            report.push_str(&format!(
+                "project[{index}].project_id: {}\nproject[{index}].default: {}\nproject[{index}].available: {}\nproject[{index}].unavailable_reason: {}\nproject[{index}].repo_root: {}\nproject[{index}].baseline_workflow_access: {}\nproject[{index}].missing_access_classes: {}\n",
+                project.project_id,
+                project.is_default,
+                project.available,
+                project.unavailable_reason.as_deref().unwrap_or(""),
+                project.repo_root_display,
+                project.baseline_workflow_access,
+                missing
+            ));
+        }
+        report
+    }
+}
+
+/// MCP-visible availability facts for one integration-allowed project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpProjectAvailability {
+    pub project_id: String,
+    pub is_default: bool,
+    pub available: bool,
+    pub unavailable_reason: Option<String>,
+    pub repo_root_display: String,
+    pub baseline_workflow_access: String,
+    pub missing_access_classes: Vec<AccessClass>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ListProjectsResult {
+    integration_id: String,
+    default_project_id: Option<String>,
+    projects: Vec<ListProjectItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ListProjectItem {
+    project_id: String,
+    is_default: bool,
+    available: bool,
+    unavailable_reason: Option<String>,
+    repo_root: String,
+}
+
 /// Invocation context derived for one tool call before entering Core.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpDerivedInvocationContext {
@@ -336,21 +542,27 @@ impl McpDerivedInvocationContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpAdapter {
     core: CoreService,
-    session: McpSessionContext,
+    runtime_home: PathBuf,
+    context: McpAdapterContext,
 }
 
 impl McpAdapter {
-    /// Creates an adapter for a Runtime Home and local session context.
-    pub fn new(runtime_home: impl AsRef<Path>, session: McpSessionContext) -> Self {
+    /// Creates an adapter for a Runtime Home and local adapter context.
+    pub fn new<C>(runtime_home: impl AsRef<Path>, context: C) -> Self
+    where
+        C: Into<McpAdapterContext>,
+    {
+        let runtime_home = runtime_home.as_ref().to_path_buf();
         Self {
-            core: CoreService::new(runtime_home),
-            session,
+            core: CoreService::new(&runtime_home),
+            runtime_home,
+            context: context.into(),
         }
     }
 
-    /// Returns the exact public Harness method tools exposed by this adapter.
+    /// Returns the public Harness method tools and adapter utility tools exposed by this adapter.
     pub fn tools(&self) -> Vec<McpToolDefinition> {
-        public_method_tools()
+        mcp_tools()
     }
 
     /// Derives local invocation facts for one request envelope.
@@ -359,20 +571,37 @@ impl McpAdapter {
         envelope: &ToolEnvelope,
         requested_access_class: AccessClass,
     ) -> Result<McpDerivedInvocationContext, ToolError> {
-        if envelope.project_id != self.session.project_id {
-            return Err(local_access_mismatch_error("envelope.project_id"));
-        }
-        if envelope.surface_id != self.session.surface_id {
-            return Err(local_access_mismatch_error("envelope.surface_id"));
-        }
+        match &self.context {
+            McpAdapterContext::LegacyFixedProject(session) => {
+                if envelope.project_id != session.project_id {
+                    return Err(local_access_mismatch_error("envelope.project_id"));
+                }
+                if envelope.surface_id != session.surface_id {
+                    return Err(local_access_mismatch_error("envelope.surface_id"));
+                }
 
-        Ok(McpDerivedInvocationContext {
-            project_id: self.session.project_id.clone(),
-            surface_id: self.session.surface_id.clone(),
-            surface_instance_id: self.session.surface_instance_id.clone(),
-            requested_access_class,
-            invocation_binding_basis: self.session.invocation_binding_basis.clone(),
-        })
+                Ok(McpDerivedInvocationContext {
+                    project_id: session.project_id.clone(),
+                    surface_id: session.surface_id.clone(),
+                    surface_instance_id: session.surface_instance_id.clone(),
+                    requested_access_class,
+                    invocation_binding_basis: session.invocation_binding_basis.clone(),
+                })
+            }
+            McpAdapterContext::Integration(context) => {
+                if envelope.surface_id != context.surface_id {
+                    return Err(local_access_mismatch_error("envelope.surface_id"));
+                }
+
+                Ok(McpDerivedInvocationContext {
+                    project_id: envelope.project_id.clone(),
+                    surface_id: context.surface_id.clone(),
+                    surface_instance_id: context.surface_instance_id.clone(),
+                    requested_access_class,
+                    invocation_binding_basis: context.invocation_binding_basis.clone(),
+                })
+            }
+        }
     }
 
     /// Calls one public Harness method tool and returns Core's response.
@@ -383,115 +612,356 @@ impl McpAdapter {
     ) -> Result<PipelineResponse, McpAdapterError> {
         match tool_name {
             "harness.intake" => {
-                let request: IntakeRequest = self.decode_params(tool_name, params)?;
-                let invocation = match self.typed_invocation(&request) {
+                let prepared: PreparedCoreRequest<IntakeRequest> =
+                    self.prepare_typed_request(tool_name, params)?;
+                let invocation = match prepared.invocation {
                     Ok(invocation) => invocation.core_invocation(),
                     Err(error) => {
-                        return rejected_pipeline_response(request.envelope.dry_run, error)
+                        return rejected_pipeline_response(prepared.request.envelope.dry_run, error)
                     }
                 };
                 self.core
-                    .intake(request, invocation)
+                    .intake(prepared.request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.update_scope" => {
-                let request: UpdateScopeRequest = self.decode_params(tool_name, params)?;
-                let invocation = match self.typed_invocation(&request) {
+                let prepared: PreparedCoreRequest<UpdateScopeRequest> =
+                    self.prepare_typed_request(tool_name, params)?;
+                let invocation = match prepared.invocation {
                     Ok(invocation) => invocation.core_invocation(),
                     Err(error) => {
-                        return rejected_pipeline_response(request.envelope.dry_run, error)
+                        return rejected_pipeline_response(prepared.request.envelope.dry_run, error)
                     }
                 };
                 self.core
-                    .update_scope(request, invocation)
+                    .update_scope(prepared.request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.status" => {
-                let request: StatusRequest = self.decode_params(tool_name, params)?;
-                let invocation = match self.typed_invocation(&request) {
+                let prepared: PreparedCoreRequest<StatusRequest> =
+                    self.prepare_typed_request(tool_name, params)?;
+                let invocation = match prepared.invocation {
                     Ok(invocation) => invocation.core_invocation(),
                     Err(error) => {
-                        return rejected_pipeline_response(request.envelope.dry_run, error)
+                        return rejected_pipeline_response(prepared.request.envelope.dry_run, error)
                     }
                 };
                 self.core
-                    .status(request, invocation)
+                    .status(prepared.request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.prepare_write" => {
-                let request: PrepareWriteRequest = self.decode_params(tool_name, params)?;
-                let invocation = match self.typed_invocation(&request) {
+                let prepared: PreparedCoreRequest<PrepareWriteRequest> =
+                    self.prepare_typed_request(tool_name, params)?;
+                let invocation = match prepared.invocation {
                     Ok(invocation) => invocation.core_invocation(),
                     Err(error) => {
-                        return rejected_pipeline_response(request.envelope.dry_run, error)
+                        return rejected_pipeline_response(prepared.request.envelope.dry_run, error)
                     }
                 };
                 self.core
-                    .prepare_write(request, invocation)
+                    .prepare_write(prepared.request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.stage_artifact" => {
-                let request: StageArtifactRequest = self.decode_params(tool_name, params)?;
-                let invocation = match self.typed_invocation(&request) {
+                let prepared: PreparedCoreRequest<StageArtifactRequest> =
+                    self.prepare_typed_request(tool_name, params)?;
+                let invocation = match prepared.invocation {
                     Ok(invocation) => invocation.core_invocation(),
                     Err(error) => {
-                        return rejected_pipeline_response(request.envelope.dry_run, error)
+                        return rejected_pipeline_response(prepared.request.envelope.dry_run, error)
                     }
                 };
                 self.core
-                    .stage_artifact(request, invocation)
+                    .stage_artifact(prepared.request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.record_run" => {
-                let request: RecordRunRequest = self.decode_params(tool_name, params)?;
-                let invocation = match self.typed_invocation(&request) {
+                let prepared: PreparedCoreRequest<RecordRunRequest> =
+                    self.prepare_typed_request(tool_name, params)?;
+                let invocation = match prepared.invocation {
                     Ok(invocation) => invocation.core_invocation(),
                     Err(error) => {
-                        return rejected_pipeline_response(request.envelope.dry_run, error)
+                        return rejected_pipeline_response(prepared.request.envelope.dry_run, error)
                     }
                 };
                 self.core
-                    .record_run(request, invocation)
+                    .record_run(prepared.request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.request_user_judgment" => {
-                let request: RequestUserJudgmentRequest = self.decode_params(tool_name, params)?;
-                let invocation = match self.typed_invocation(&request) {
+                let prepared: PreparedCoreRequest<RequestUserJudgmentRequest> =
+                    self.prepare_typed_request(tool_name, params)?;
+                let invocation = match prepared.invocation {
                     Ok(invocation) => invocation.core_invocation(),
                     Err(error) => {
-                        return rejected_pipeline_response(request.envelope.dry_run, error)
+                        return rejected_pipeline_response(prepared.request.envelope.dry_run, error)
                     }
                 };
                 self.core
-                    .request_user_judgment(request, invocation)
+                    .request_user_judgment(prepared.request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.record_user_judgment" => {
-                let request: RecordUserJudgmentRequest = self.decode_params(tool_name, params)?;
-                let invocation = match self.typed_invocation(&request) {
+                let prepared: PreparedCoreRequest<RecordUserJudgmentRequest> =
+                    self.prepare_typed_request(tool_name, params)?;
+                let invocation = match prepared.invocation {
                     Ok(invocation) => invocation.core_invocation(),
                     Err(error) => {
-                        return rejected_pipeline_response(request.envelope.dry_run, error)
+                        return rejected_pipeline_response(prepared.request.envelope.dry_run, error)
                     }
                 };
                 self.core
-                    .record_user_judgment(request, invocation)
+                    .record_user_judgment(prepared.request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             "harness.close_task" => {
-                let request: CloseTaskRequest = self.decode_params(tool_name, params)?;
-                let invocation = match self.typed_invocation(&request) {
+                let prepared: PreparedCoreRequest<CloseTaskRequest> =
+                    self.prepare_typed_request(tool_name, params)?;
+                let invocation = match prepared.invocation {
                     Ok(invocation) => invocation.core_invocation(),
                     Err(error) => {
-                        return rejected_pipeline_response(request.envelope.dry_run, error)
+                        return rejected_pipeline_response(prepared.request.envelope.dry_run, error)
                     }
                 };
                 self.core
-                    .close_task(request, invocation)
+                    .close_task(prepared.request, invocation)
                     .map_err(McpAdapterError::Core)
             }
             other => Err(McpAdapterError::UnknownTool(other.to_owned())),
         }
+    }
+
+    fn call_adapter_tool(&self, tool_name: &str, params: Value) -> Result<Value, McpAdapterError> {
+        match tool_name {
+            LIST_PROJECTS_TOOL_NAME => {
+                let object = params
+                    .as_object()
+                    .ok_or_else(|| McpAdapterError::ToolExecution {
+                        tool_name: tool_name.to_owned(),
+                        message: "harness.list_projects arguments must be an object".to_owned(),
+                    })?;
+                if !object.is_empty() {
+                    return Err(McpAdapterError::ToolExecution {
+                        tool_name: tool_name.to_owned(),
+                        message: "harness.list_projects does not accept arguments".to_owned(),
+                    });
+                }
+                let result = self.list_projects_result()?;
+                serde_json::to_value(result).map_err(McpAdapterError::Json)
+            }
+            other => Err(McpAdapterError::UnknownTool(other.to_owned())),
+        }
+    }
+
+    fn list_projects_result(&self) -> Result<ListProjectsResult, McpAdapterError> {
+        let McpAdapterContext::Integration(context) = &self.context else {
+            return Err(McpAdapterError::ToolExecution {
+                tool_name: LIST_PROJECTS_TOOL_NAME.to_owned(),
+                message: "harness.list_projects requires integration-bound MCP startup".to_owned(),
+            });
+        };
+        let integration = current_enabled_integration(&self.runtime_home, &context.integration_id)?;
+        let projects = list_integration_projects(&self.runtime_home, &context.integration_id)
+            .map_err(McpAdapterError::Store)?;
+        let items = projects
+            .iter()
+            .map(|project| inspect_allowed_project(context, &integration, project, None))
+            .map(|project| ListProjectItem {
+                project_id: project.project_id,
+                is_default: project.is_default,
+                available: project.available,
+                unavailable_reason: project.unavailable_reason,
+                repo_root: project.repo_root_display,
+            })
+            .collect::<Vec<_>>();
+
+        Ok(ListProjectsResult {
+            integration_id: context.integration_id.clone(),
+            default_project_id: integration.default_project_id,
+            projects: items,
+        })
+    }
+
+    fn prepare_typed_request<T>(
+        &self,
+        tool_name: &str,
+        params: Value,
+    ) -> Result<PreparedCoreRequest<T>, McpAdapterError>
+    where
+        T: serde::de::DeserializeOwned + MethodAccessClass + HasEnvelope,
+    {
+        match &self.context {
+            McpAdapterContext::LegacyFixedProject(_) => {
+                let request: T = self.decode_params(tool_name, params)?;
+                let invocation = self.derive_invocation_context(
+                    request.envelope(),
+                    request.requested_access_class(),
+                );
+                Ok(PreparedCoreRequest {
+                    request,
+                    invocation,
+                })
+            }
+            McpAdapterContext::Integration(_) => {
+                let requested_access_class = raw_requested_access_class(tool_name, &params)?;
+                let (prepared_params, invocation) =
+                    self.prepare_integration_arguments(tool_name, params, requested_access_class)?;
+                let request: T = self.decode_params(tool_name, prepared_params)?;
+                Ok(PreparedCoreRequest {
+                    request,
+                    invocation: Ok(invocation),
+                })
+            }
+        }
+    }
+
+    fn prepare_integration_arguments(
+        &self,
+        tool_name: &str,
+        mut params: Value,
+        requested_access_class: AccessClass,
+    ) -> Result<(Value, McpDerivedInvocationContext), McpAdapterError> {
+        let McpAdapterContext::Integration(context) = &self.context else {
+            unreachable!("integration argument preparation is only used by integration context");
+        };
+        let object = params
+            .as_object_mut()
+            .ok_or_else(|| McpAdapterError::ToolExecution {
+                tool_name: tool_name.to_owned(),
+                message: "tool arguments must be an object containing an envelope object"
+                    .to_owned(),
+            })?;
+        let envelope = object
+            .get_mut("envelope")
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| McpAdapterError::ToolExecution {
+                tool_name: tool_name.to_owned(),
+                message: "public Harness tool arguments require an envelope object".to_owned(),
+            })?;
+        let requested_project_id = optional_string_field(envelope, "project_id", tool_name)?;
+        if let Some(surface_id) = optional_string_field(envelope, "surface_id", tool_name)? {
+            if surface_id != context.surface_id.as_str() {
+                return Err(McpAdapterError::ToolExecution {
+                    tool_name: tool_name.to_owned(),
+                    message: "envelope.surface_id does not match the integration-bound surface"
+                        .to_owned(),
+                });
+            }
+        }
+
+        let selected = self.select_project(
+            context,
+            requested_project_id.as_deref(),
+            requested_access_class,
+        )?;
+        envelope.insert(
+            "project_id".to_owned(),
+            Value::String(selected.project_id.as_str().to_owned()),
+        );
+        envelope.insert(
+            "surface_id".to_owned(),
+            Value::String(context.surface_id.as_str().to_owned()),
+        );
+
+        Ok((params, selected))
+    }
+
+    fn select_project(
+        &self,
+        context: &McpIntegrationContext,
+        requested_project_id: Option<&str>,
+        requested_access_class: AccessClass,
+    ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
+        let integration = current_enabled_integration(&self.runtime_home, &context.integration_id)?;
+
+        if let Some(project_id) = requested_project_id {
+            let access = agent_integration_project_access(
+                &self.runtime_home,
+                &context.integration_id,
+                project_id,
+            )
+            .map_err(McpAdapterError::Store)?
+            .ok_or_else(|| McpAdapterError::ToolExecution {
+                tool_name: "project routing".to_owned(),
+                message: format!("integration {} is not registered", context.integration_id),
+            })?;
+            if !access.integration_enabled {
+                return Err(routing_error("integration is disabled"));
+            }
+            if !access.project_allowed {
+                return Err(routing_error(format!(
+                    "project {project_id} is not allowed for this integration"
+                )));
+            }
+            let project = access
+                .project
+                .ok_or_else(|| routing_error(format!("project {project_id} is not registered")))?;
+            let project_record = IntegrationProjectRecord {
+                integration_id: context.integration_id.clone(),
+                project_id: project_id.to_owned(),
+                created_at: String::new(),
+                is_default: access.is_default,
+                project,
+            };
+            let availability = inspect_allowed_project(
+                context,
+                &integration,
+                &project_record,
+                Some(requested_access_class),
+            );
+            return selected_project_from_availability(
+                context,
+                availability,
+                requested_access_class,
+            );
+        }
+
+        let projects = list_integration_projects(&self.runtime_home, &context.integration_id)
+            .map_err(McpAdapterError::Store)?;
+        if projects.is_empty() {
+            return Err(routing_error(
+                "integration has no allowed projects; ask the operator to add one",
+            ));
+        }
+        let availabilities = projects
+            .iter()
+            .map(|project| {
+                inspect_allowed_project(
+                    context,
+                    &integration,
+                    project,
+                    Some(requested_access_class),
+                )
+            })
+            .collect::<Vec<_>>();
+        let available = availabilities
+            .iter()
+            .filter(|project| project.available)
+            .collect::<Vec<_>>();
+        if available.len() == 1 {
+            return selected_project_from_availability(
+                context,
+                (*available[0]).clone(),
+                requested_access_class,
+            );
+        }
+        if let Some(default_project_id) = &integration.default_project_id {
+            if let Some(default) = availabilities
+                .iter()
+                .find(|project| project.project_id == *default_project_id && project.available)
+            {
+                return selected_project_from_availability(
+                    context,
+                    default.clone(),
+                    requested_access_class,
+                );
+            }
+        }
+
+        Err(routing_error(
+            "project selection is ambiguous; call harness.list_projects and retry with envelope.project_id",
+        ))
     }
 
     fn decode_params<T>(&self, tool_name: &str, params: Value) -> Result<T, McpAdapterError>
@@ -503,13 +973,11 @@ impl McpAdapter {
             source,
         })
     }
+}
 
-    fn typed_invocation<T>(&self, request: &T) -> Result<McpDerivedInvocationContext, ToolError>
-    where
-        T: MethodAccessClass + HasEnvelope,
-    {
-        self.derive_invocation_context(request.envelope(), request.requested_access_class())
-    }
+struct PreparedCoreRequest<T> {
+    request: T,
+    invocation: Result<McpDerivedInvocationContext, ToolError>,
 }
 
 trait HasEnvelope {
@@ -547,9 +1015,33 @@ pub fn public_method_tools() -> Vec<McpToolDefinition> {
         .map(|name| McpToolDefinition {
             name,
             description: tool_description(name),
-            input_schema: public_request_schema(name).expect("public method schema should exist"),
+            input_schema: mcp_visible_request_schema(name)
+                .expect("public method schema should exist"),
         })
         .collect()
+}
+
+/// Returns adapter utility tool definitions.
+pub fn adapter_utility_tools() -> Vec<McpToolDefinition> {
+    ADAPTER_UTILITY_TOOL_NAMES
+        .iter()
+        .map(|name| McpToolDefinition {
+            name,
+            description: tool_description(name),
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+        })
+        .collect()
+}
+
+/// Returns all MCP-visible tools.
+pub fn mcp_tools() -> Vec<McpToolDefinition> {
+    let mut tools = public_method_tools();
+    tools.extend(adapter_utility_tools());
+    tools
 }
 
 /// Runs a line-delimited JSON-RPC MCP stdio loop.
@@ -597,10 +1089,30 @@ pub fn run_stdio_from_env() -> Result<(), McpAdapterError> {
     run_stdio(adapter, stdin.lock(), stdout.lock())
 }
 
+/// Runs the integration-bound MCP stdio adapter from process environment and stdin/stdout.
+pub fn run_stdio_from_env_for_integration(integration_id: &str) -> Result<(), McpAdapterError> {
+    let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
+    let runtime_home = resolve_runtime_home(process_env_var, &current_dir)?;
+    let context = McpIntegrationContext::resolve(&runtime_home, integration_id)?;
+    let adapter = McpAdapter::new(runtime_home, context);
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    run_stdio(adapter, stdin.lock(), stdout.lock())
+}
+
 /// Runs MCP startup validation from process environment and returns a report.
 pub fn run_preflight_check_from_env() -> Result<String, McpAdapterError> {
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
     preflight_check(process_env_var, &current_dir)
+}
+
+/// Runs integration-bound MCP startup validation from process environment.
+pub fn run_preflight_check_from_env_for_integration(
+    integration_id: &str,
+    project_id: Option<&str>,
+) -> Result<String, McpAdapterError> {
+    let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
+    preflight_check_for_integration(process_env_var, &current_dir, integration_id, project_id)
 }
 
 /// Runs MCP startup validation from injected process inputs and returns a report.
@@ -610,6 +1122,23 @@ where
 {
     let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
     let inspection = McpStartupInspection::from_env(&runtime_home, &env_var)?;
+    Ok(inspection.preflight_report())
+}
+
+/// Runs integration-bound MCP startup validation from injected process inputs.
+pub fn preflight_check_for_integration<F>(
+    env_var: F,
+    current_dir: &Path,
+    integration_id: &str,
+    project_id: Option<&str>,
+) -> Result<String, McpAdapterError>
+where
+    F: Fn(&str) -> Option<OsString>,
+{
+    let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+    let detail_project_id = project_id.map(ProjectId::new);
+    let inspection =
+        McpIntegrationStartupInspection::resolve(&runtime_home, integration_id, detail_project_id)?;
     Ok(inspection.preflight_report())
 }
 
@@ -636,6 +1165,284 @@ fn current_dir_environment_error(error: io::Error) -> McpAdapterError {
 
 fn process_env_var(name: &str) -> Option<OsString> {
     std::env::var_os(name)
+}
+
+fn resolve_integration_context(
+    runtime_home: impl AsRef<Path>,
+    integration_id: &str,
+) -> Result<
+    (
+        McpIntegrationContext,
+        AgentIntegrationRecord,
+        Vec<IntegrationProjectRecord>,
+    ),
+    McpAdapterError,
+> {
+    let runtime_home = runtime_home.as_ref().to_path_buf();
+    runtime_home_record(&runtime_home)
+        .map_err(McpAdapterError::Store)?
+        .ok_or_else(|| {
+            McpAdapterError::Environment("Runtime Home is not initialized".to_owned())
+        })?;
+    validate_identifier_text("integration_id", integration_id)?;
+    let integration = agent_integration_record(&runtime_home, integration_id)
+        .map_err(McpAdapterError::Store)?
+        .ok_or_else(|| {
+            McpAdapterError::Environment(format!("integration {integration_id} is not registered"))
+        })?;
+    let interaction_role = validate_integration_record(&integration)?;
+    let projects =
+        list_integration_projects(&runtime_home, integration_id).map_err(McpAdapterError::Store)?;
+    if projects.is_empty() {
+        return Err(McpAdapterError::Environment(format!(
+            "integration {integration_id} has no allowed projects"
+        )));
+    }
+
+    let context = McpIntegrationContext {
+        runtime_home,
+        integration_id: integration.integration_id.clone(),
+        interaction_role,
+        surface_id: SurfaceId::new(integration.surface_id.clone()),
+        surface_instance_id: SurfaceInstanceId::new(integration.surface_instance_id.clone()),
+        invocation_binding_basis: DEFAULT_INVOCATION_BINDING_BASIS.to_owned(),
+    };
+    Ok((context, integration, projects))
+}
+
+fn validate_integration_record(
+    integration: &AgentIntegrationRecord,
+) -> Result<SurfaceInteractionRole, McpAdapterError> {
+    if !integration.enabled {
+        return Err(McpAdapterError::Environment(format!(
+            "integration {} is disabled",
+            integration.integration_id
+        )));
+    }
+    validate_identifier_text("surface_id", &integration.surface_id)?;
+    validate_identifier_text("surface_instance_id", &integration.surface_instance_id)?;
+    match serde_json::from_str::<Value>(&integration.metadata_json) {
+        Ok(Value::Object(_)) => (),
+        Ok(_) => {
+            return Err(McpAdapterError::Environment(
+                "registered integration metadata is not an object".to_owned(),
+            ))
+        }
+        Err(error) => return Err(McpAdapterError::Json(error)),
+    }
+    match integration.interaction_role.as_str() {
+        AGENT_INTERACTION_ROLE => Ok(SurfaceInteractionRole::Agent),
+        _ => Err(McpAdapterError::Environment(format!(
+            "integration role {} is not supported for MCP agent startup",
+            integration.interaction_role
+        ))),
+    }
+}
+
+fn current_enabled_integration(
+    runtime_home: &Path,
+    integration_id: &str,
+) -> Result<AgentIntegrationRecord, McpAdapterError> {
+    let integration = agent_integration_record(runtime_home, integration_id)
+        .map_err(McpAdapterError::Store)?
+        .ok_or_else(|| McpAdapterError::ToolExecution {
+            tool_name: "project routing".to_owned(),
+            message: format!("integration {integration_id} is not registered"),
+        })?;
+    validate_integration_record(&integration).map_err(|error| McpAdapterError::ToolExecution {
+        tool_name: "project routing".to_owned(),
+        message: error.to_string(),
+    })?;
+    Ok(integration)
+}
+
+fn inspect_allowed_project(
+    context: &McpIntegrationContext,
+    integration: &AgentIntegrationRecord,
+    project: &IntegrationProjectRecord,
+    requested_access_class: Option<AccessClass>,
+) -> McpProjectAvailability {
+    let repo_root_display = project.project.repo_root.display().to_string();
+    if project.project.status != ACTIVE_PROJECT_STATUS {
+        return unavailable_project(
+            project,
+            repo_root_display,
+            "project is not active",
+            Vec::new(),
+        );
+    }
+    let store =
+        match CoreProjectStore::open(&context.runtime_home, &ProjectId::new(&project.project_id)) {
+            Ok(store) => store,
+            Err(error) => {
+                return unavailable_project(
+                    project,
+                    repo_root_display,
+                    format!(
+                        "project is not executable: {}",
+                        concise_store_reason(&error)
+                    ),
+                    Vec::new(),
+                )
+            }
+        };
+    if let Err(error) = store.project_state() {
+        return unavailable_project(
+            project,
+            repo_root_display,
+            format!(
+                "project state is unavailable: {}",
+                concise_store_reason(&error)
+            ),
+            Vec::new(),
+        );
+    }
+    let surface = match store.surface(&context.surface_id, context.surface_instance_id.as_str()) {
+        Ok(Some(surface)) => surface,
+        Ok(None) => {
+            return unavailable_project(
+                project,
+                repo_root_display,
+                "integration surface instance is not registered for this project",
+                Vec::new(),
+            )
+        }
+        Err(error) => {
+            return unavailable_project(
+                project,
+                repo_root_display,
+                format!("surface lookup failed: {}", concise_store_reason(&error)),
+                Vec::new(),
+            )
+        }
+    };
+    let startup_surface = match valid_startup_surface(surface) {
+        Ok(surface) => surface,
+        Err(error) => {
+            return unavailable_project(
+                project,
+                repo_root_display,
+                format!("integration surface is invalid: {error}"),
+                Vec::new(),
+            )
+        }
+    };
+    if startup_surface.interaction_role != SurfaceInteractionRole::Agent
+        || integration.interaction_role != AGENT_INTERACTION_ROLE
+    {
+        return unavailable_project(
+            project,
+            repo_root_display,
+            "integration surface role is not agent",
+            startup_surface.access_classes,
+        );
+    }
+    if let Some(access_class) = requested_access_class {
+        if !startup_surface.access_classes.contains(&access_class) {
+            return unavailable_project(
+                project,
+                repo_root_display,
+                format!(
+                    "requested access class {} is not authorized for this surface instance",
+                    access_class.as_str()
+                ),
+                startup_surface.access_classes,
+            );
+        }
+    }
+    let missing = missing_baseline_access(&startup_surface.access_classes);
+    McpProjectAvailability {
+        project_id: project.project_id.clone(),
+        is_default: project.is_default,
+        available: true,
+        unavailable_reason: None,
+        repo_root_display,
+        baseline_workflow_access: if missing.is_empty() {
+            "full".to_owned()
+        } else {
+            "partial".to_owned()
+        },
+        missing_access_classes: missing,
+    }
+}
+
+fn unavailable_project(
+    project: &IntegrationProjectRecord,
+    repo_root_display: String,
+    reason: impl Into<String>,
+    access_classes: Vec<AccessClass>,
+) -> McpProjectAvailability {
+    McpProjectAvailability {
+        project_id: project.project_id.clone(),
+        is_default: project.is_default,
+        available: false,
+        unavailable_reason: Some(reason.into()),
+        repo_root_display,
+        baseline_workflow_access: "unavailable".to_owned(),
+        missing_access_classes: missing_baseline_access(&access_classes),
+    }
+}
+
+fn missing_baseline_access(access_classes: &[AccessClass]) -> Vec<AccessClass> {
+    BASELINE_WORKFLOW_ACCESS_CLASSES
+        .iter()
+        .copied()
+        .filter(|access_class| !access_classes.contains(access_class))
+        .collect()
+}
+
+fn selected_project_from_availability(
+    context: &McpIntegrationContext,
+    project: McpProjectAvailability,
+    requested_access_class: AccessClass,
+) -> Result<McpDerivedInvocationContext, McpAdapterError> {
+    if !project.available {
+        return Err(routing_error(format!(
+            "project {} is unavailable: {}",
+            project.project_id,
+            project
+                .unavailable_reason
+                .unwrap_or_else(|| "unavailable".to_owned())
+        )));
+    }
+    Ok(McpDerivedInvocationContext {
+        project_id: ProjectId::new(project.project_id),
+        surface_id: context.surface_id.clone(),
+        surface_instance_id: context.surface_instance_id.clone(),
+        requested_access_class,
+        invocation_binding_basis: context.invocation_binding_basis.clone(),
+    })
+}
+
+fn routing_error(message: impl Into<String>) -> McpAdapterError {
+    McpAdapterError::ToolExecution {
+        tool_name: "project routing".to_owned(),
+        message: message.into(),
+    }
+}
+
+fn concise_store_reason(error: &StoreError) -> String {
+    match error {
+        StoreError::NotFound { entity, .. } => format!("{entity} not found"),
+        StoreError::InvalidProjectRegistration {
+            field,
+            relationship,
+            ..
+        } => format!("invalid project registration ({field}, {relationship})"),
+        StoreError::InvalidInput { detail } => detail.clone(),
+        StoreError::Conflict { entity, .. } => format!("{entity} conflict"),
+        StoreError::CorruptStoredJson { field, .. }
+        | StoreError::CorruptStoredValue { field, .. } => format!("corrupt stored field {field}"),
+        StoreError::CorruptOwnerStateJson { logical_column, .. }
+        | StoreError::CorruptOwnerStateValue { logical_column, .. } => {
+            format!("corrupt owner state field {logical_column}")
+        }
+        StoreError::MigrationConflict { database_kind, .. }
+        | StoreError::SchemaInvariant { database_kind, .. } => {
+            format!("{database_kind} schema is invalid")
+        }
+        StoreError::Sqlite(_) | StoreError::Io(_) => "storage access failed".to_owned(),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1017,7 +1824,8 @@ fn initialize_result() -> Value {
         "serverInfo": {
             "name": SERVER_NAME,
             "version": env!("CARGO_PKG_VERSION")
-        }
+        },
+        "instructions": SERVER_INSTRUCTIONS
     })
 }
 
@@ -1102,7 +1910,7 @@ fn call_tool_result(
         .get("name")
         .and_then(Value::as_str)
         .ok_or_else(|| invalid_params_response(id, "tools/call params.name must be a string"))?;
-    if !PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
+    if !is_known_mcp_tool(tool_name) {
         return Err(json_rpc_error(
             id.clone(),
             -32602,
@@ -1124,29 +1932,54 @@ fn call_tool_result(
             ))
         }
     };
-    let response = match adapter.call_tool(tool_name, arguments) {
-        Ok(response) => response,
-        Err(error @ McpAdapterError::InvalidParams { .. }) => {
-            return Ok(tool_execution_error_result(&error));
+    let text = if PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) {
+        match adapter.call_tool(tool_name, arguments) {
+            Ok(response) => response.response_json,
+            Err(error @ McpAdapterError::InvalidParams { .. })
+            | Err(error @ McpAdapterError::ToolExecution { .. }) => {
+                return Ok(tool_execution_error_result(&error));
+            }
+            Err(error) => return Err(json_rpc_error_for_adapter(id.clone(), error)),
         }
-        Err(error) => return Err(json_rpc_error_for_adapter(id.clone(), error)),
+    } else {
+        let response = match adapter.call_adapter_tool(tool_name, arguments) {
+            Ok(response) => response,
+            Err(error @ McpAdapterError::InvalidParams { .. })
+            | Err(error @ McpAdapterError::ToolExecution { .. }) => {
+                return Ok(tool_execution_error_result(&error));
+            }
+            Err(error) => return Err(json_rpc_error_for_adapter(id.clone(), error)),
+        };
+        serde_json::to_string(&response)
+            .map_err(McpAdapterError::Json)
+            .map_err(|error| json_rpc_error_for_adapter(id.clone(), error))?
     };
 
     Ok(json!({
         "content": [
             {
                 "type": "text",
-                "text": response.response_json
+                "text": text
             }
         ],
         "isError": false
     }))
 }
 
+fn is_known_mcp_tool(tool_name: &str) -> bool {
+    PUBLIC_METHOD_TOOL_NAMES.contains(&tool_name) || ADAPTER_UTILITY_TOOL_NAMES.contains(&tool_name)
+}
+
 fn tool_execution_error_result(error: &McpAdapterError) -> Value {
     let text = match error {
         McpAdapterError::InvalidParams { tool_name, source } => {
             format!("Invalid arguments for {tool_name}: {source}. Check the tool input schema and retry.")
+        }
+        McpAdapterError::ToolExecution { tool_name, message } if tool_name == "project routing" => {
+            format!("{message}. Use harness.list_projects when project selection is unclear.")
+        }
+        McpAdapterError::ToolExecution { tool_name, message } => {
+            format!("{tool_name} failed before reaching Harness Core: {message}")
         }
         _ => "Tool execution failed before reaching Harness Core.".to_owned(),
     };
@@ -1167,9 +2000,9 @@ fn json_rpc_error_for_adapter(id: Value, error: McpAdapterError) -> Value {
         McpAdapterError::UnknownTool(_) | McpAdapterError::InvalidParams { .. } => {
             (-32602, "Invalid params")
         }
-        McpAdapterError::Protocol(_) | McpAdapterError::Environment(_) => {
-            (-32602, "Invalid params")
-        }
+        McpAdapterError::Protocol(_)
+        | McpAdapterError::Environment(_)
+        | McpAdapterError::ToolExecution { .. } => (-32602, "Invalid params"),
         McpAdapterError::Core(_)
         | McpAdapterError::Json(_)
         | McpAdapterError::Io(_)
@@ -1227,8 +2060,111 @@ fn tool_description(name: &str) -> &'static str {
         "harness.request_user_judgment" => "Create one pending focused user-owned judgment.",
         "harness.record_user_judgment" => "Record the user's answer to one pending judgment.",
         "harness.close_task" => "Check or perform a selected Task close path.",
+        LIST_PROJECTS_TOOL_NAME => "List projects explicitly allowed for this MCP integration.",
         _ => "Unsupported Harness method.",
     }
+}
+
+fn raw_requested_access_class(
+    tool_name: &str,
+    params: &Value,
+) -> Result<AccessClass, McpAdapterError> {
+    let access_class = match tool_name {
+        "harness.status" => AccessClass::ReadStatus,
+        "harness.intake"
+        | "harness.update_scope"
+        | "harness.request_user_judgment"
+        | "harness.record_user_judgment" => AccessClass::CoreMutation,
+        "harness.prepare_write" => AccessClass::WriteAuthorization,
+        "harness.stage_artifact" => AccessClass::ArtifactRegistration,
+        "harness.record_run" => AccessClass::RunRecording,
+        "harness.close_task" => {
+            if params
+                .get("intent")
+                .and_then(Value::as_str)
+                .is_some_and(|intent| intent == "check")
+            {
+                AccessClass::ReadStatus
+            } else {
+                AccessClass::CoreMutation
+            }
+        }
+        other => return Err(McpAdapterError::UnknownTool(other.to_owned())),
+    };
+    Ok(access_class)
+}
+
+fn optional_string_field(
+    object: &Map<String, Value>,
+    field: &'static str,
+    tool_name: &str,
+) -> Result<Option<String>, McpAdapterError> {
+    match object.get(field) {
+        None => Ok(None),
+        Some(Value::String(value)) if !value.trim().is_empty() => Ok(Some(value.clone())),
+        Some(_) => Err(McpAdapterError::ToolExecution {
+            tool_name: tool_name.to_owned(),
+            message: format!("envelope.{field} must be a non-empty string when supplied"),
+        }),
+    }
+}
+
+fn mcp_visible_request_schema(method_name: &str) -> Option<Value> {
+    let mut schema = public_request_schema(method_name)?;
+    mark_adapter_managed_envelope_fields(&mut schema);
+    Some(schema)
+}
+
+fn mark_adapter_managed_envelope_fields(schema: &mut Value) {
+    match schema {
+        Value::Object(object) => {
+            if is_tool_envelope_schema(object) {
+                if let Some(Value::Array(required)) = object.get_mut("required") {
+                    required.retain(|value| {
+                        !matches!(value.as_str(), Some("project_id") | Some("surface_id"))
+                    });
+                }
+            }
+            for value in object.values_mut() {
+                mark_adapter_managed_envelope_fields(value);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                mark_adapter_managed_envelope_fields(value);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+fn is_tool_envelope_schema(object: &Map<String, Value>) -> bool {
+    let Some(Value::Object(properties)) = object.get("properties") else {
+        return false;
+    };
+    [
+        "project_id",
+        "surface_id",
+        "request_id",
+        "actor_kind",
+        "dry_run",
+    ]
+    .iter()
+    .all(|field| properties.contains_key(*field))
+}
+
+fn validate_identifier_text(field: &'static str, value: &str) -> Result<(), McpAdapterError> {
+    if value.trim().is_empty() {
+        return Err(McpAdapterError::Environment(format!(
+            "{field} must not be empty"
+        )));
+    }
+    if value.contains('\0') {
+        return Err(McpAdapterError::Environment(format!(
+            "{field} must not contain NUL bytes"
+        )));
+    }
+    Ok(())
 }
 
 fn env_string<F>(env_var: &F, name: &str) -> Result<Option<String>, McpAdapterError>
@@ -1261,6 +2197,10 @@ pub enum McpAdapterError {
         tool_name: String,
         source: serde_json::Error,
     },
+    ToolExecution {
+        tool_name: String,
+        message: String,
+    },
     Core(CorePipelineError),
     Store(StoreError),
     Io(io::Error),
@@ -1275,6 +2215,9 @@ impl fmt::Display for McpAdapterError {
             Self::UnknownTool(tool_name) => write!(formatter, "unknown MCP tool: {tool_name}"),
             Self::InvalidParams { tool_name, source } => {
                 write!(formatter, "invalid params for {tool_name}: {source}")
+            }
+            Self::ToolExecution { tool_name, message } => {
+                write!(formatter, "{tool_name}: {message}")
             }
             Self::Core(error) => write!(formatter, "{error}"),
             Self::Store(error) => write!(formatter, "store error: {error}"),
@@ -1293,7 +2236,10 @@ impl Error for McpAdapterError {
             Self::Store(error) => Some(error),
             Self::Io(error) => Some(error),
             Self::Json(error) => Some(error),
-            Self::UnknownTool(_) | Self::Protocol(_) | Self::Environment(_) => None,
+            Self::UnknownTool(_)
+            | Self::ToolExecution { .. }
+            | Self::Protocol(_)
+            | Self::Environment(_) => None,
         }
     }
 }
@@ -1315,6 +2261,11 @@ mod tests {
 
     use harness_core::{AdapterSessionBinding, CoreBoundary, CoreService, InvocationContext};
     use harness_store::{
+        agent_integrations::{
+            add_integration_project, register_agent_integration, remove_integration_project,
+            set_agent_integration_default_project, set_agent_integration_enabled,
+            AgentIntegrationRegistration, IntegrationProjectRegistration,
+        },
         bootstrap::{
             initialize_runtime_home, register_project, register_surface, ProjectRegistration,
             SurfaceRegistration, ACTIVE_PROJECT_STATUS,
@@ -1339,6 +2290,7 @@ mod tests {
     const PROJECT_ID: &str = "project_mcp";
     const SURFACE_ID: &str = "surface_mcp";
     const SURFACE_INSTANCE_ID: &str = "surface_instance_mcp";
+    const INTEGRATION_ID: &str = "agent_integration_mcp";
 
     struct TestHarness {
         _runtime_home: TempRuntimeHome,
@@ -1426,6 +2378,94 @@ mod tests {
             )
         }
 
+        fn integration_adapter(&self) -> McpAdapter {
+            self.register_integration(INTEGRATION_ID, SURFACE_ID, SURFACE_INSTANCE_ID)
+                .expect("integration registration should succeed");
+            let context = McpIntegrationContext::resolve(&self.runtime_home_path, INTEGRATION_ID)
+                .expect("integration context should resolve")
+                .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+            McpAdapter::new(&self.runtime_home_path, context)
+        }
+
+        fn register_integration(
+            &self,
+            integration_id: &str,
+            surface_id: &str,
+            surface_instance_id: &str,
+        ) -> Result<(), Box<dyn Error>> {
+            register_agent_integration(
+                &self.runtime_home_path,
+                AgentIntegrationRegistration {
+                    integration_id: integration_id.to_owned(),
+                    interaction_role: "agent".to_owned(),
+                    surface_id: surface_id.to_owned(),
+                    surface_instance_id: surface_instance_id.to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            add_integration_project(
+                &self.runtime_home_path,
+                IntegrationProjectRegistration {
+                    integration_id: integration_id.to_owned(),
+                    project_id: PROJECT_ID.to_owned(),
+                },
+            )?;
+            Ok(())
+        }
+
+        fn add_project_with_surface(
+            &self,
+            project_id: &str,
+            register_bound_surface: bool,
+        ) -> Result<(), Box<dyn Error>> {
+            let repo_root = self
+                ._runtime_home
+                .create_product_repo(format!("repo-{project_id}"))?;
+            register_project(
+                &self.runtime_home_path,
+                ProjectRegistration {
+                    project_id: project_id.to_owned(),
+                    repo_root,
+                    project_home: None,
+                    status: ACTIVE_PROJECT_STATUS.to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            if register_bound_surface {
+                register_surface(
+                    &self.runtime_home_path,
+                    SurfaceRegistration {
+                        project_id: project_id.to_owned(),
+                        surface_id: SURFACE_ID.to_owned(),
+                        surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
+                        surface_kind: "mcp_test".to_owned(),
+                        interaction_role: SurfaceInteractionRole::Agent,
+                        display_name: Some("MCP Test Surface".to_owned()),
+                        capability_profile_json: "{}".to_owned(),
+                        local_access_json: local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES)
+                            .to_string(),
+                        metadata_json: "{}".to_owned(),
+                    },
+                )?;
+            }
+            Ok(())
+        }
+
+        fn add_integration_project(
+            &self,
+            integration_id: &str,
+            project_id: &str,
+        ) -> Result<(), Box<dyn Error>> {
+            add_integration_project(
+                &self.runtime_home_path,
+                IntegrationProjectRegistration {
+                    integration_id: integration_id.to_owned(),
+                    project_id: project_id.to_owned(),
+                },
+            )?;
+            Ok(())
+        }
+
         fn core(&self) -> CoreService {
             CoreService::new(&self.runtime_home_path)
         }
@@ -1433,6 +2473,16 @@ mod tests {
         fn counts(&self) -> Result<StorageEffectCounts, Box<dyn Error>> {
             Ok(
                 CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?
+                    .effect_counts()?,
+            )
+        }
+
+        fn counts_for_project(
+            &self,
+            project_id: &str,
+        ) -> Result<StorageEffectCounts, Box<dyn Error>> {
+            Ok(
+                CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(project_id))?
                     .effect_counts()?,
             )
         }
@@ -1501,6 +2551,38 @@ mod tests {
     }
 
     #[test]
+    fn mcp_tools_keep_public_methods_and_adapter_utilities_separate() {
+        let tools = mcp_tools();
+        let names = tools.iter().map(|tool| tool.name).collect::<Vec<_>>();
+
+        assert_eq!(
+            &names[..PUBLIC_METHOD_TOOL_NAMES.len()],
+            PUBLIC_METHOD_TOOL_NAMES
+        );
+        assert_eq!(
+            &names[PUBLIC_METHOD_TOOL_NAMES.len()..],
+            ADAPTER_UTILITY_TOOL_NAMES
+        );
+        assert_eq!(public_method_tools().len(), 9);
+        assert_eq!(adapter_utility_tools().len(), 1);
+        assert_eq!(tools.len(), 10);
+    }
+
+    #[test]
+    fn initialization_result_includes_concise_server_instructions() {
+        let result = initialize_result();
+        let instructions = result["instructions"]
+            .as_str()
+            .expect("initialize result should include instructions");
+
+        assert!(instructions.len() < 2048);
+        assert!(instructions[..instructions.len().min(512)].contains("Harness records"));
+        assert!(instructions.contains("harness.list_projects"));
+        assert!(instructions.contains("do not guess"));
+        assert!(instructions.contains("separate from permission to edit product files"));
+    }
+
+    #[test]
     fn public_method_tool_schemas_are_closed_request_shapes() {
         let tools = public_method_tools();
 
@@ -1536,6 +2618,288 @@ mod tests {
                 "request_user_judgment schema should not expose caller option {forbidden}"
             );
         }
+    }
+
+    #[test]
+    fn mcp_visible_schemas_make_project_and_surface_adapter_managed() {
+        for tool in public_method_tools() {
+            let required = envelope_required_fields(&tool.input_schema)
+                .expect("tool schema should contain ToolEnvelope schema");
+            assert!(
+                !required.contains(&"project_id".to_owned()),
+                "{} should not require envelope.project_id from MCP callers",
+                tool.name
+            );
+            assert!(
+                !required.contains(&"surface_id".to_owned()),
+                "{} should not require envelope.surface_id from MCP callers",
+                tool.name
+            );
+            assert!(
+                schema_has_property(&tool.input_schema, "project_id"),
+                "{} should still expose envelope.project_id as an optional selector",
+                tool.name
+            );
+            assert!(
+                schema_has_property(&tool.input_schema, "surface_id"),
+                "{} should still expose envelope.surface_id for compatibility",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn integration_adapter_implicitly_routes_single_project_and_injects_surface(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES),
+            SurfaceInteractionRole::Agent,
+        )?;
+        let adapter = harness.integration_adapter();
+        let mut params = serde_json::to_value(status_request("req_integration_single"))?;
+        let envelope = params["envelope"]
+            .as_object_mut()
+            .expect("envelope should be an object");
+        envelope.remove("project_id");
+        envelope.remove("surface_id");
+
+        let response = adapter.call_tool("harness.status", params)?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
+        let verified = response
+            .verified_surface
+            .as_ref()
+            .expect("Core should verify injected surface");
+        assert_eq!(verified.project_id.as_str(), PROJECT_ID);
+        assert_eq!(verified.surface_id.as_str(), SURFACE_ID);
+        assert_eq!(verified.surface_instance_id.as_str(), SURFACE_INSTANCE_ID);
+        Ok(())
+    }
+
+    #[test]
+    fn integration_adapter_routes_explicit_project_and_isolates_state() -> Result<(), Box<dyn Error>>
+    {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES),
+            SurfaceInteractionRole::Agent,
+        )?;
+        let other_project_id = "project_mcp_other";
+        harness.register_integration(INTEGRATION_ID, SURFACE_ID, SURFACE_INSTANCE_ID)?;
+        harness.add_project_with_surface(other_project_id, true)?;
+        harness.add_integration_project(INTEGRATION_ID, other_project_id)?;
+        let context = McpIntegrationContext::resolve(&harness.runtime_home_path, INTEGRATION_ID)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&harness.runtime_home_path, context);
+        let before_bound = harness.counts()?;
+        let before_other = harness.counts_for_project(other_project_id)?;
+        let mut params = serde_json::to_value(intake_request(
+            "req_integration_route_b",
+            false,
+            Some("idem_integration_route_b"),
+        ))?;
+        params["envelope"]["project_id"] = json!(other_project_id);
+        params["envelope"]
+            .as_object_mut()
+            .expect("envelope object")
+            .remove("surface_id");
+
+        let response = adapter.call_tool("harness.intake", params)?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
+        assert_eq!(harness.counts()?, before_bound);
+        let after_other = harness.counts_for_project(other_project_id)?;
+        assert_eq!(after_other.state_version, before_other.state_version + 1);
+        assert_eq!(after_other.tasks, before_other.tasks + 1);
+        Ok(())
+    }
+
+    #[test]
+    fn integration_adapter_uses_default_project_when_selection_is_implicit(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES),
+            SurfaceInteractionRole::Agent,
+        )?;
+        let default_project_id = "project_mcp_default";
+        harness.register_integration(INTEGRATION_ID, SURFACE_ID, SURFACE_INSTANCE_ID)?;
+        harness.add_project_with_surface(default_project_id, true)?;
+        harness.add_integration_project(INTEGRATION_ID, default_project_id)?;
+        set_agent_integration_default_project(
+            &harness.runtime_home_path,
+            INTEGRATION_ID,
+            default_project_id,
+        )?;
+        let context = McpIntegrationContext::resolve(&harness.runtime_home_path, INTEGRATION_ID)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&harness.runtime_home_path, context);
+        let mut params = serde_json::to_value(status_request("req_integration_default"))?;
+        params["envelope"]
+            .as_object_mut()
+            .expect("envelope object")
+            .remove("project_id");
+
+        let response = adapter.call_tool("harness.status", params)?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
+        assert_eq!(
+            response
+                .verified_surface
+                .as_ref()
+                .expect("verified surface")
+                .project_id
+                .as_str(),
+            default_project_id
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn integration_adapter_rejects_ambiguous_project_and_lists_allowed_only(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES),
+            SurfaceInteractionRole::Agent,
+        )?;
+        let allowed_project_id = "project_mcp_allowed";
+        let unrelated_project_id = "project_mcp_unrelated";
+        harness.register_integration(INTEGRATION_ID, SURFACE_ID, SURFACE_INSTANCE_ID)?;
+        harness.add_project_with_surface(allowed_project_id, true)?;
+        harness.add_integration_project(INTEGRATION_ID, allowed_project_id)?;
+        harness.add_project_with_surface(unrelated_project_id, true)?;
+        let context = McpIntegrationContext::resolve(&harness.runtime_home_path, INTEGRATION_ID)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&harness.runtime_home_path, context);
+        let mut params = serde_json::to_value(status_request("req_integration_ambiguous"))?;
+        params["envelope"]
+            .as_object_mut()
+            .expect("envelope object")
+            .remove("project_id");
+
+        let error = adapter
+            .call_tool("harness.status", params)
+            .expect_err("ambiguous routing should be rejected before Core");
+
+        assert!(matches!(error, McpAdapterError::ToolExecution { .. }));
+        assert!(error.to_string().contains("ambiguous"));
+        let list = adapter.call_adapter_tool(LIST_PROJECTS_TOOL_NAME, json!({}))?;
+        let project_ids = list["projects"]
+            .as_array()
+            .expect("projects should be an array")
+            .iter()
+            .map(|project| project["project_id"].as_str().expect("project id"))
+            .collect::<Vec<_>>();
+        assert_eq!(project_ids, vec![PROJECT_ID, allowed_project_id]);
+        assert!(!project_ids.contains(&unrelated_project_id));
+        Ok(())
+    }
+
+    #[test]
+    fn integration_adapter_rechecks_membership_for_running_process() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES),
+            SurfaceInteractionRole::Agent,
+        )?;
+        harness.register_integration(INTEGRATION_ID, SURFACE_ID, SURFACE_INSTANCE_ID)?;
+        let context = McpIntegrationContext::resolve(&harness.runtime_home_path, INTEGRATION_ID)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&harness.runtime_home_path, context);
+        let response = adapter.call_tool(
+            "harness.status",
+            serde_json::to_value(status_request("req_integration_before_revoke"))?,
+        )?;
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
+
+        remove_integration_project(&harness.runtime_home_path, INTEGRATION_ID, PROJECT_ID)?;
+
+        let error = adapter
+            .call_tool(
+                "harness.status",
+                serde_json::to_value(status_request("req_integration_after_revoke"))?,
+            )
+            .expect_err("revoked project should be rejected by running process");
+
+        assert!(error.to_string().contains("not allowed"));
+        Ok(())
+    }
+
+    #[test]
+    fn list_projects_reports_inactive_and_missing_surface_without_exposing_unrelated(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES),
+            SurfaceInteractionRole::Agent,
+        )?;
+        let inactive_project_id = "project_mcp_inactive";
+        let missing_surface_project_id = "project_mcp_missing_surface";
+        harness.register_integration(INTEGRATION_ID, SURFACE_ID, SURFACE_INSTANCE_ID)?;
+        harness.add_project_with_surface(inactive_project_id, true)?;
+        harness.add_integration_project(INTEGRATION_ID, inactive_project_id)?;
+        harness.add_project_with_surface(missing_surface_project_id, false)?;
+        harness.add_integration_project(INTEGRATION_ID, missing_surface_project_id)?;
+        let conn = open_registry_database(registry_db_path(&harness.runtime_home_path))?;
+        conn.pragma_update(None, "ignore_check_constraints", "ON")?;
+        conn.execute(
+            "UPDATE projects SET status = 'inactive' WHERE project_id = ?1",
+            [inactive_project_id],
+        )?;
+        let context = McpIntegrationContext::resolve(&harness.runtime_home_path, INTEGRATION_ID)?
+            .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+        let adapter = McpAdapter::new(&harness.runtime_home_path, context);
+
+        let list = adapter.call_adapter_tool(LIST_PROJECTS_TOOL_NAME, json!({}))?;
+
+        let projects = list["projects"].as_array().expect("projects array");
+        let inactive = projects
+            .iter()
+            .find(|project| project["project_id"] == inactive_project_id)
+            .expect("inactive project should be listed");
+        assert_eq!(inactive["available"], false);
+        assert!(inactive["unavailable_reason"]
+            .as_str()
+            .expect("reason")
+            .contains("not active"));
+        let missing_surface = projects
+            .iter()
+            .find(|project| project["project_id"] == missing_surface_project_id)
+            .expect("missing surface project should be listed");
+        assert_eq!(missing_surface["available"], false);
+        assert!(missing_surface["unavailable_reason"]
+            .as_str()
+            .expect("reason")
+            .contains("surface instance"));
+
+        let mut params = serde_json::to_value(status_request("req_inactive_rejected"))?;
+        params["envelope"]["project_id"] = json!(inactive_project_id);
+        let error = adapter
+            .call_tool("harness.status", params)
+            .expect_err("inactive project should be rejected before Core");
+        assert!(error.to_string().contains("unavailable"));
+        Ok(())
+    }
+
+    #[test]
+    fn disabled_or_missing_integration_startup_is_rejected() -> Result<(), Box<dyn Error>> {
+        let harness = TestHarness::with_role_and_local_access(
+            json!({}),
+            local_access(&BASELINE_WORKFLOW_ACCESS_CLASSES),
+            SurfaceInteractionRole::Agent,
+        )?;
+        let missing = McpIntegrationContext::resolve(&harness.runtime_home_path, "missing_agent")
+            .expect_err("missing integration should fail startup");
+        assert!(missing.to_string().contains("not registered"));
+
+        harness.register_integration(INTEGRATION_ID, SURFACE_ID, SURFACE_INSTANCE_ID)?;
+        set_agent_integration_enabled(&harness.runtime_home_path, INTEGRATION_ID, false)?;
+        let disabled = McpIntegrationContext::resolve(&harness.runtime_home_path, INTEGRATION_ID)
+            .expect_err("disabled integration should fail startup");
+        assert!(disabled.to_string().contains("disabled"));
+        Ok(())
     }
 
     #[test]
@@ -1576,7 +2940,15 @@ mod tests {
                 tool["name"].as_str().expect("tool name")
             })
             .collect::<Vec<_>>();
-        assert_eq!(names, PUBLIC_METHOD_TOOL_NAMES);
+        assert_eq!(
+            &names[..PUBLIC_METHOD_TOOL_NAMES.len()],
+            PUBLIC_METHOD_TOOL_NAMES
+        );
+        assert_eq!(
+            names[PUBLIC_METHOD_TOOL_NAMES.len()],
+            LIST_PROJECTS_TOOL_NAME
+        );
+        assert_eq!(names.len(), 10);
         Ok(())
     }
 
@@ -1635,7 +3007,7 @@ mod tests {
                 .as_array()
                 .expect("tools should be an array")
                 .len(),
-            9
+            10
         );
         assert_eq!(responses[7]["id"], 6);
         assert_eq!(responses[7]["result"]["isError"], false);
@@ -1650,7 +3022,7 @@ mod tests {
                 .as_array()
                 .expect("tools should be an array")
                 .len(),
-            9
+            10
         );
         Ok(())
     }
@@ -1683,7 +3055,7 @@ mod tests {
                 .as_array()
                 .expect("tools should be an array")
                 .len(),
-            9
+            10
         );
         Ok(())
     }
@@ -1723,7 +3095,7 @@ mod tests {
                 .as_array()
                 .expect("tools should be an array")
                 .len(),
-            9
+            10
         );
         Ok(())
     }
@@ -2403,6 +3775,28 @@ mod tests {
                 .iter()
                 .any(|child| schema_has_property(child, property_name)),
             Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => false,
+        }
+    }
+
+    fn envelope_required_fields(schema: &Value) -> Option<Vec<String>> {
+        match schema {
+            Value::Object(object) => {
+                if is_tool_envelope_schema(object) {
+                    return object
+                        .get("required")
+                        .and_then(Value::as_array)
+                        .map(|required| {
+                            required
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_owned)
+                                .collect::<Vec<_>>()
+                        });
+                }
+                object.values().find_map(envelope_required_fields)
+            }
+            Value::Array(items) => items.iter().find_map(envelope_required_fields),
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => None,
         }
     }
 

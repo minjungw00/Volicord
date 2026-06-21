@@ -13,6 +13,10 @@ use std::{
 
 use harness_mcp::PUBLIC_METHOD_TOOL_NAMES;
 use harness_store::{
+    agent_integrations::{
+        add_integration_project, register_agent_integration, AgentIntegrationRegistration,
+        IntegrationProjectRegistration,
+    },
     bootstrap::{
         initialize_runtime_home, project_record, register_project, register_surface, ProjectRecord,
         ProjectRegistration, SurfaceRegistration, ACTIVE_PROJECT_STATUS,
@@ -30,6 +34,7 @@ use harness_types::{
 use serde_json::{json, Value};
 
 const PROJECT_ID: &str = "project_binary_mcp";
+const INTEGRATION_ID: &str = "agent_binary_mcp";
 const AGENT_SURFACE_ID: &str = "surface_binary_agent";
 const AGENT_INSTANCE_ID: &str = "surface_instance_binary_agent";
 const USER_SURFACE_ID: &str = "surface_binary_user";
@@ -50,7 +55,8 @@ fn harness_mcp_binary_reports_help_version_and_preflight() -> Result<(), Box<dyn
 
     let help = run_without_binding(["--help"])?;
     assert_success(&help);
-    assert!(stdout(&help).contains("HARNESS_PROJECT_ID"));
+    assert!(stdout(&help).contains("--integration <integration_id>"));
+    assert!(!stdout(&help).contains("HARNESS_PROJECT_ID"));
 
     let version = run_without_binding(["--version"])?;
     assert_success(&version);
@@ -58,7 +64,7 @@ fn harness_mcp_binary_reports_help_version_and_preflight() -> Result<(), Box<dyn
 
     let before = fixture.counts()?;
     let agent_check = run_child(
-        fixture.bound_command(AGENT_SURFACE_ID, AGENT_INSTANCE_ID, ["--check"]),
+        fixture.integration_command(["--check", "--integration", INTEGRATION_ID]),
         ChildStdin::KeepOpen,
     )?;
     assert_success_captured(&agent_check);
@@ -69,36 +75,42 @@ fn harness_mcp_binary_reports_help_version_and_preflight() -> Result<(), Box<dyn
         &report,
         &format!("runtime_home: {}", fixture.runtime_home_path.display()),
     );
-    assert_report_line(&report, &format!("project_id: {PROJECT_ID}"));
+    assert_report_line(&report, &format!("integration_id: {INTEGRATION_ID}"));
     assert_report_line(&report, &format!("surface_id: {AGENT_SURFACE_ID}"));
     assert_report_line(
         &report,
         &format!("surface_instance_id: {AGENT_INSTANCE_ID}"),
     );
     assert_report_line(&report, "interaction_role: agent");
-    assert_report_line(
-        &report,
-        "access_classes: read_status,core_mutation,write_authorization,artifact_registration,run_recording",
-    );
-    assert_report_line(&report, "baseline_workflow_access: full");
+    assert_report_line(&report, "allowed_projects: 1");
+    assert_report_line(&report, "available_projects: 1");
+    assert_report_line(&report, "default_project_id: ");
+    assert_report_line(&report, "project[0].project_id: project_binary_mcp");
+    assert_report_line(&report, "project[0].available: true");
+    assert_report_line(&report, "project[0].baseline_workflow_access: full");
     assert_eq!(fixture.counts()?, before);
 
-    let user_check = run_child(
-        fixture.bound_command(USER_SURFACE_ID, USER_INSTANCE_ID, ["--check"]),
+    let project_check = run_child(
+        fixture.integration_command([
+            "--check",
+            "--integration",
+            INTEGRATION_ID,
+            "--project",
+            PROJECT_ID,
+        ]),
         ChildStdin::KeepOpen,
     )?;
-    assert_success_captured(&user_check);
-    let user_report = captured_stdout(&user_check);
-    assert_report_line(&user_report, "interaction_role: user_interaction");
-    assert_report_line(&user_report, "access_classes: read_status,core_mutation");
-    assert_report_line(&user_report, "baseline_workflow_access: not_applicable");
+    assert_success_captured(&project_check);
+    let project_report = captured_stdout(&project_check);
+    assert_report_line(&project_report, "allowed_projects: 1");
+    assert_report_line(&project_report, "project[0].project_id: project_binary_mcp");
 
-    let missing_surface = run_child(
-        fixture.command_missing_surface(["--check"]),
+    let missing_integration = run_child(
+        fixture.integration_command(["--check", "--integration", "missing_agent"]),
         ChildStdin::KeepOpen,
     )?;
-    assert_eq!(missing_surface.status.code(), Some(1));
-    assert!(captured_stderr(&missing_surface).contains("HARNESS_SURFACE_ID"));
+    assert_eq!(missing_integration.status.code(), Some(1));
+    assert!(captured_stderr(&missing_integration).contains("not registered"));
 
     let unknown = run_without_binding(["--not-a-real-option"])?;
     assert_eq!(unknown.status.code(), Some(2));
@@ -177,6 +189,7 @@ fn harness_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<(
         initialized_notification(),
         request(2, "ping", json!({})),
         request(3, "tools/list", json!({})),
+        tools_call(30, "harness.list_projects", json!({})),
         tools_call(
             4,
             "harness.status",
@@ -201,7 +214,7 @@ fn harness_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<(
     ])?;
 
     let first = run_child(
-        fixture.bound_command(AGENT_SURFACE_ID, AGENT_INSTANCE_ID, []),
+        fixture.integration_command(["--integration", INTEGRATION_ID]),
         ChildStdin::WriteAndClose(first_messages),
     )?;
     assert_success_captured(&first);
@@ -210,7 +223,7 @@ fn harness_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<(
     let responses = responses_by_id(&first.stdout)?;
     assert_eq!(
         responses.len(),
-        7,
+        8,
         "notifications must not produce responses"
     );
 
@@ -229,8 +242,24 @@ fn harness_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<(
         .iter()
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect::<Vec<_>>();
-    assert_eq!(tool_names, PUBLIC_METHOD_TOOL_NAMES);
-    assert_eq!(tool_names.iter().copied().collect::<BTreeSet<_>>().len(), 9);
+    assert_eq!(
+        &tool_names[..PUBLIC_METHOD_TOOL_NAMES.len()],
+        PUBLIC_METHOD_TOOL_NAMES
+    );
+    assert_eq!(
+        tool_names[PUBLIC_METHOD_TOOL_NAMES.len()],
+        "harness.list_projects"
+    );
+    assert_eq!(
+        tool_names.iter().copied().collect::<BTreeSet<_>>().len(),
+        10
+    );
+
+    assert_eq!(responses[&30]["result"]["isError"], json!(false));
+    let project_list = adapter_tool_response(&responses[&30])?;
+    assert_eq!(project_list["integration_id"], INTEGRATION_ID);
+    assert_eq!(project_list["projects"][0]["project_id"], PROJECT_ID);
+    assert_eq!(project_list["projects"][0]["available"], true);
 
     assert_eq!(responses[&4]["result"]["isError"], json!(false));
     let status = harness_response(&responses[&4])?;
@@ -245,23 +274,21 @@ fn harness_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<(
         .expect("intake response should include a task ref")
         .to_owned();
 
-    assert_eq!(responses[&6]["result"]["isError"], json!(false));
-    let domain_rejected = harness_response(&responses[&6])?;
-    assert_eq!(domain_rejected["base"]["response_kind"], "rejected");
-    assert_eq!(
-        domain_rejected["errors"][0]["code"],
-        "LOCAL_ACCESS_MISMATCH"
-    );
+    assert_eq!(responses[&6]["result"]["isError"], json!(true));
+    let surface_mismatch = responses[&6]["result"]["content"][0]["text"]
+        .as_str()
+        .expect("surface mismatch should be text");
+    assert!(surface_mismatch.contains("envelope.surface_id"));
 
     assert!(responses[&7].get("error").is_none());
     assert_eq!(responses[&7]["result"]["isError"], json!(true));
     let tool_error = responses[&7]["result"]["content"][0]["text"]
         .as_str()
         .expect("invalid known-tool arguments should return text content");
-    assert!(tool_error.contains("Invalid arguments for harness.status"));
+    assert!(tool_error.contains("envelope object"));
 
     let reconnect_before_handshake = run_child(
-        fixture.bound_command(AGENT_SURFACE_ID, AGENT_INSTANCE_ID, []),
+        fixture.integration_command(["--integration", INTEGRATION_ID]),
         ChildStdin::WriteAndClose(json_lines(&[request(10, "tools/list", json!({}))])?),
     )?;
     assert_success_captured(&reconnect_before_handshake);
@@ -281,7 +308,7 @@ fn harness_mcp_stdio_uses_line_delimited_json_and_reconnects_state() -> Result<(
         ),
     ])?;
     let reconnect = run_child(
-        fixture.bound_command(AGENT_SURFACE_ID, AGENT_INSTANCE_ID, []),
+        fixture.integration_command(["--integration", INTEGRATION_ID]),
         ChildStdin::WriteAndClose(reconnect_messages),
     )?;
     assert_success_captured(&reconnect);
@@ -346,11 +373,35 @@ impl McpFixture {
                 &USER_ACCESS_CLASSES,
             ),
         )?;
+        register_agent_integration(
+            runtime_home.path(),
+            AgentIntegrationRegistration {
+                integration_id: INTEGRATION_ID.to_owned(),
+                interaction_role: "agent".to_owned(),
+                surface_id: AGENT_SURFACE_ID.to_owned(),
+                surface_instance_id: AGENT_INSTANCE_ID.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        add_integration_project(
+            runtime_home.path(),
+            IntegrationProjectRegistration {
+                integration_id: INTEGRATION_ID.to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
 
         Ok(Self {
             runtime_home_path: runtime_home.path().to_path_buf(),
             runtime_home,
         })
+    }
+
+    fn integration_command<const N: usize>(&self, args: [&str; N]) -> Command {
+        let mut command = base_command();
+        command.env("HARNESS_HOME", &self.runtime_home_path);
+        command.args(args);
+        command
     }
 
     fn bound_command<const N: usize>(
@@ -364,14 +415,6 @@ impl McpFixture {
         command.env("HARNESS_PROJECT_ID", PROJECT_ID);
         command.env("HARNESS_SURFACE_ID", surface_id);
         command.env("HARNESS_SURFACE_INSTANCE_ID", surface_instance_id);
-        command.args(args);
-        command
-    }
-
-    fn command_missing_surface<const N: usize>(&self, args: [&str; N]) -> Command {
-        let mut command = base_command();
-        command.env("HARNESS_HOME", &self.runtime_home_path);
-        command.env("HARNESS_PROJECT_ID", PROJECT_ID);
         command.args(args);
         command
     }
@@ -688,6 +731,14 @@ fn harness_response(response: &Value) -> Result<Value, Box<dyn Error>> {
     let text = response["result"]["content"][0]["text"]
         .as_str()
         .ok_or("tools/call response should contain text content")?;
+    Ok(serde_json::from_str(text)?)
+}
+
+fn adapter_tool_response(response: &Value) -> Result<Value, Box<dyn Error>> {
+    assert_eq!(response["result"]["isError"], json!(false));
+    let text = response["result"]["content"][0]["text"]
+        .as_str()
+        .ok_or("adapter tools/call response should contain text content")?;
     Ok(serde_json::from_str(text)?)
 }
 

@@ -48,7 +48,7 @@ flowchart LR
 - MCP 호스트 -> `harness-mcp` -> `harness-core` -> `Harness Runtime Home` 아래의 Store와 아티팩트 기능.
 - 운영자 -> `harness` 관리 CLI -> 부트스트랩과 등록 시설 -> `Harness Runtime Home`과 호스트 설정 파일.
 
-`harness-mcp`는 시작과 세션 바인딩 검증 중에도 `harness-store`를 직접 사용합니다. 이 Store 사용은 stdio가 시작되기 전에 Runtime Home, 프로젝트, 접점, 접점 인스턴스, 역할, 로컬 접근 등록을 확인합니다. 공개 Harness 메서드 의미를 구현하는 다른 경로가 아니며, 공개 메서드 실행은 `harness-core`를 통과합니다.
+`harness-mcp`는 시작과 요청 라우팅 중에도 `harness-store`를 직접 사용합니다. 이 Store 사용은 공개 메서드를 Core로 디스패치하기 전에 Runtime Home, Agent Integration Profile 상태, 통합 프로젝트 멤버십, 프로젝트 사용 가능 여부, 접점, 접점 인스턴스, 역할, 로컬 접근 등록을 확인합니다. 공개 Harness 메서드 의미를 구현하는 다른 경로가 아니며, 공개 메서드 실행은 `harness-core`를 통과합니다.
 
 `Product Repository`는 별도의 제품 파일 경계로 남습니다. 공개 Harness API는 담당 문서가 정의한 호환성, 관찰 사실, 아티팩트 링크를 기록합니다. 제품 파일 쓰기 자체는 공개 API 경로 밖에서 연결된 접점이나 로컬 도구가 수행합니다.
 
@@ -122,7 +122,7 @@ flowchart TD
 오래 유지될 의존 경계는 아래와 같습니다.
 
 - Core는 CLI나 MCP 어댑터 크레이트에 의존하지 않습니다.
-- MCP는 서로 다른 책임을 위해 Core, Store, 공유 타입에 의존할 수 있습니다. 각각 전송과 디스패치, 시작과 세션 검증, 타입 지정 요청 처리를 위한 의존입니다.
+- MCP는 서로 다른 책임을 위해 Core, Store, 공유 타입에 의존할 수 있습니다. 각각 전송과 디스패치, 통합 시작 검증, 요청 시점 프로젝트 라우팅, 타입 지정 요청 처리를 위한 의존입니다.
 - 관리 CLI는 공개 Core 메서드를 호출하는 대신 Store와 공유 타입으로 로컬 설정과 등록을 수행합니다.
 - Store는 공유 타입에 의존합니다.
 - 테스트 지원 크레이트와 테스트 패키지는 폐기 가능한 픽스처와 계층 간 검증을 위해서만 구현 크레이트를 조합합니다.
@@ -136,7 +136,7 @@ flowchart TD
 | `crates/harness-store` | `crates/harness-store/src/runtime_home.rs`, `crates/harness-store/src/bootstrap.rs`, `crates/harness-store/src/sqlite.rs`, `crates/harness-store/src/migrations.rs`, `crates/harness-store/src/core_pipeline.rs`, `crates/harness-store/src/artifacts.rs`, `crates/harness-store/src/inspection.rs`, `crates/harness-store/src/error.rs` | `runtime_home.rs`는 Runtime Home 경로를 해석합니다. `bootstrap.rs`는 Runtime Home 메타데이터를 초기화하고 프로젝트와 접점을 등록합니다. `sqlite.rs`는 registry/project SQLite 데이터베이스를 열고 검증합니다. `migrations.rs`는 기준 마이그레이션을 적용합니다. `core_pipeline.rs`는 `CoreProjectStore`, 읽기 도우미, 재실행 기록 행, 저장소 변이 타입, 원자적 Core 변이 커밋 경계를 제공합니다. `artifacts.rs`는 일시적 스테이징과 영구 아티팩트 본문 검증을 처리합니다. `inspection.rs`는 읽기 전용 설정 검사를 지원합니다. `error.rs`는 상위 계층에서 사용할 저장소 실패 분류를 제공합니다. |
 | `crates/harness-core` | `crates/harness-core/src/pipeline.rs`, `crates/harness-core/src/methods/`, `crates/harness-core/src/policy/` | `pipeline.rs`는 공통 요청 사전 점검, 검증된 요청 맥락 준비, 효과 경로 선택, 응답 구성, 재실행 처리, Core 커밋 조율을 담당합니다. `methods/`는 메서드별 검증, 계획, 저장소 변이 목록, 이벤트 페이로드, dry-run 요약, 결과 필드를 담당합니다. `policy/`는 등록된 접점 접근, 재실행 맥락, Product Repository 경로 정규화, 쓰기 권한 부여 호환성, 증거 상태, 판단 관련성, 닫기 준비 상태 계산에 쓰는 재사용 Core 정책 도우미를 담당합니다. |
 | `crates/harness-cli` | `crates/harness-cli/src/main.rs`, `crates/harness-cli/src/local_mcp_command.rs`, `crates/harness-cli/src/setup.rs`, `crates/harness-cli/src/wizard.rs`, `crates/harness-cli/src/host_config.rs`, `crates/harness-cli/src/registration.rs` | `main.rs`는 관리 명령과 바이너리 종료 동작을 디스패치합니다. `local_mcp_command.rs`는 `harness setup local-mcp` 파싱과 오케스트레이션, 사전 점검, 설정 대상 검사, 출력 렌더링, 설정 파일 쓰기를 맡습니다. `setup.rs`는 Runtime Home, 프로젝트, 접점 설정을 계획, 준비, 재검증, 적용합니다. `wizard.rs`는 같은 설정 경로 위의 대화형 프런트엔드입니다. `host_config.rs`는 호스트 중립 MCP 설정 JSON을 렌더링합니다. `registration.rs`는 결정적 역량 프로필과 로컬 접근 메타데이터를 만듭니다. |
-| `crates/harness-mcp` | `crates/harness-mcp/src/main.rs`, `crates/harness-mcp/src/lib.rs` | `main.rs`는 stdio, `--check`, help, version 같은 명령 모드를 처리합니다. `lib.rs`는 MCP 도구 메타데이터, 시작 검사, 세션 맥락, 타입 지정 `tools/call` 디코딩, 호출 맥락 파생, JSON-RPC stdio 프레이밍, 응답 래핑을 담당합니다. |
+| `crates/harness-mcp` | `crates/harness-mcp/src/main.rs`, `crates/harness-mcp/src/lib.rs` | `main.rs`는 stdio, `--check`, help, version 같은 명령 모드를 처리합니다. `lib.rs`는 MCP 도구 메타데이터, 통합 시작 검사, 요청 시점 프로젝트 라우팅, 어댑터 소유 `harness.list_projects` 유틸리티, 타입 지정 공개 `tools/call` 디코딩, 호출 맥락 파생, 초기화 instructions, JSON-RPC stdio 프레이밍, 응답 래핑을 담당합니다. |
 | `crates/harness-test-support` | `crates/harness-test-support/src/lib.rs` | 테스트 패키지와 크레이트 테스트가 쓰는 폐기 가능한 Runtime Home 도우미, Core와 Store용 픽스처 설정, 공유 요청 빌더, 픽스처 전용 도우미를 제공합니다. |
 
 이 모듈 설명은 구현 배치 지침입니다. 정확한 API 필드, 메서드 동작, 저장소 기록, 저장 효과, 보안 표현, Core 권한 의미는 참조 담당 문서에 둡니다.
@@ -164,10 +164,10 @@ sequenceDiagram
   participant Core as harness-core
   participant Method as harness-core methods
 
-  Host->>MCP: 바인딩 환경으로 프로세스 시작
-  MCP->>Store: Runtime Home, 프로젝트, 접점, 인스턴스, 역할, 로컬 접근 검증
+  Host->>MCP: 통합 바인딩으로 프로세스 시작
+  MCP->>Store: Runtime Home, 통합, 접점, 인스턴스, 역할, 멤버십 검증
   Host->>MCP: tools/call(name, arguments)
-  MCP->>MCP: 타입 지정 요청 디코딩과 호출 맥락 파생
+  MCP->>MCP: 프로젝트 선택, 어댑터 사실 주입, 타입 지정 요청 디코딩
   MCP->>Core: CoreService method(request, invocation)
   Core->>Core: crates/harness-core/src/pipeline.rs 공통 사전 점검
   Core->>Store: 프로젝트 열기, 상태 읽기, 접점, 재실행, Task, 최신성 검증
@@ -188,16 +188,17 @@ sequenceDiagram
 
 구현 흐름은 아래와 같습니다.
 
-1. `harness-mcp`는 프로세스 환경이나 구성된 등록 데이터에서 Runtime Home과 고정 바인딩 입력을 해석합니다.
-2. `McpStartupInspection`은 Store 쪽 기능을 통해 Runtime Home 메타데이터, 프로젝트 등록과 상태, 프로젝트 상태 사용 가능 여부, 접점 등록, 사용할 수 있는 접점 인스턴스 선택, 역할, 역량 프로필 JSON, 메타데이터 JSON, 등록된 로컬 접근 허용을 검증합니다.
+1. `harness-mcp`는 `--integration <integration_id>`와 선택적 `HARNESS_HOME`에서 Runtime Home과 통합에 묶인 프로세스 맥락 하나를 해석합니다. 레거시 고정 프로젝트 환경 바인딩은 호환 경로로만 남습니다.
+2. `McpIntegrationStartupInspection`은 Runtime Home 메타데이터, Agent Integration Profile 상태, 접점과 접점 인스턴스 바인딩, 역할, 프로젝트 멤버십 읽기 가능성, stdio 시작 전에 필요한 registry JSON을 검증합니다. 모든 호출에 쓸 프로젝트 하나를 시작 시점에 선택하지 않습니다.
 3. stdio 루프는 줄 단위 JSON-RPC를 받아 `initialize`, `ping`, `tools/list`, `tools/call`을 디스패치합니다.
-4. `tools/call`은 도구 이름을 읽고, `arguments`를 `harness-types`의 해당 타입 지정 요청으로 디코딩하며, 고정 MCP 세션과 타입 지정 요청의 메서드 파생 접근 등급에서 `InvocationContext`를 파생합니다.
-5. `McpAdapter::call_tool`은 해당 `CoreService` 메서드로 디스패치합니다.
-6. 각 `CoreService` 메서드는 `MethodPolicy`를 고르고, 메서드별 계획 전에 공통 사전 점검을 호출합니다.
-7. 공통 사전 점검은 요청 래퍼 형태를 검증하고, 어댑터 바인딩 불일치를 거부하고, 커밋 효과 요청 래퍼 요구사항을 검증하고, 정규 요청 해시를 계산하고, 프로젝트 Store를 열고, `project_state`를 읽고, 검증된 접점 맥락을 파생하고, 커밋 분기의 idempotency 재실행을 처리하고, 메서드 정책에 따라 Task를 해석하고, 적용되는 경우 `state_version` 최신성을 점검하고, 메서드 파생 접근 등급에 대한 등록 접근을 점검하고, 검증된 요청 맥락을 준비합니다.
-8. 메서드 모듈은 메서드별 검증, 정책 평가, 계획 또는 결과 구성을 수행합니다.
-9. 선택된 분기는 읽기 전용 결과, 지속 효과 없는 결과, dry-run 미리보기, Core 변이 커밋, 일시적 아티팩트 스테이징 결과 중 하나를 반환합니다.
-10. Core는 `PipelineResponse`를 반환하고, MCP는 정확한 Harness 응답 JSON을 MCP `tools/call`의 `content` 텍스트로 래핑합니다.
+4. `tools/list`는 공개 Harness 메서드 도구 아홉 개와 어댑터 소유 `harness.list_projects` 유틸리티를 노출합니다. 공개 `tools/call`에 대해 어댑터는 원시 `envelope`를 읽고, 허용된 프로젝트를 결정적으로 선택하고, 그 프로젝트에서 통합 접점을 검증하고, 어댑터가 관리하는 프로젝트와 접점 사실을 주입한 뒤, `arguments`를 `harness-types`의 해당 타입 지정 요청으로 디코딩합니다.
+5. `tools/call`은 선택된 프로젝트, 통합에 묶인 접점 인스턴스, 메서드에서 파생한 접근 등급으로 `InvocationContext`를 만든 뒤 Core로 디스패치합니다.
+6. `McpAdapter::call_tool`은 해당 `CoreService` 메서드로 디스패치합니다.
+7. 각 `CoreService` 메서드는 `MethodPolicy`를 고르고, 메서드별 계획 전에 공통 사전 점검을 호출합니다.
+8. 공통 사전 점검은 요청 래퍼 형태를 검증하고, 어댑터 바인딩 불일치를 거부하고, 커밋 효과 요청 래퍼 요구사항을 검증하고, 정규 요청 해시를 계산하고, 프로젝트 Store를 열고, `project_state`를 읽고, 검증된 접점 맥락을 파생하고, 커밋 분기의 idempotency 재실행을 처리하고, 메서드 정책에 따라 Task를 해석하고, 적용되는 경우 `state_version` 최신성을 점검하고, 메서드 파생 접근 등급에 대한 등록 접근을 점검하고, 검증된 요청 맥락을 준비합니다.
+9. 메서드 모듈은 메서드별 검증, 정책 평가, 계획 또는 결과 구성을 수행합니다.
+10. 선택된 분기는 읽기 전용 결과, 지속 효과 없는 결과, dry-run 미리보기, Core 변이 커밋, 일시적 아티팩트 스테이징 결과 중 하나를 반환합니다.
+11. Core는 `PipelineResponse`를 반환하고, MCP는 정확한 Harness 응답 JSON을 MCP `tools/call`의 `content` 텍스트로 래핑합니다.
 
 이 흐름은 구현 지도입니다. 정확한 공개 메서드 계약, 오류 우선순위, 응답 스키마, 저장 효과는 집중 참조 담당 문서에 남습니다.
 

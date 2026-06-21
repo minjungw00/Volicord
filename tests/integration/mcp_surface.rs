@@ -9,7 +9,8 @@ use std::{
 
 use harness_core::{AdapterSessionBinding, CoreService, InvocationContext};
 use harness_mcp::{
-    public_method_tools, run_stdio, McpAdapter, McpSessionContext, PUBLIC_METHOD_TOOL_NAMES,
+    public_method_tools, run_stdio, McpAdapter, McpSessionContext, ADAPTER_UTILITY_TOOL_NAMES,
+    PUBLIC_METHOD_TOOL_NAMES,
 };
 use harness_store::{
     bootstrap::{
@@ -67,7 +68,15 @@ fn stdio_tools_list_exposes_exactly_the_public_method_set() -> Result<(), Box<dy
         .iter()
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect::<Vec<_>>();
-    assert_eq!(names, PUBLIC_METHOD_TOOL_NAMES);
+    assert_eq!(
+        &names[..PUBLIC_METHOD_TOOL_NAMES.len()],
+        PUBLIC_METHOD_TOOL_NAMES
+    );
+    assert_eq!(
+        &names[PUBLIC_METHOD_TOOL_NAMES.len()..],
+        ADAPTER_UTILITY_TOOL_NAMES
+    );
+    assert_eq!(names.len(), 10);
     Ok(())
 }
 
