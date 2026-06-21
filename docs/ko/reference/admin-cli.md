@@ -42,15 +42,17 @@ harness project register --project-id ID --repo-root PATH [--status active]
 harness project list
 harness surface register --project-id ID --surface-id ID [--surface-instance-id ID] [--kind KIND] [--name NAME] [--interaction-role agent|user_interaction] [--access-class ACCESS_CLASS ...] [--profile baseline-workflow] [--capability-profile JSON]
 harness surface list --project-id ID
-harness agent install --host codex|claude_code|generic --scope user|project|local|export --server-name NAME --project-id ID [--integration-id ID] [--default-project-id ID] [--repo-root PATH] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--guidance none|codex|claude_code|both] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
-harness agent project add --integration-id ID --project-id ID [--default] [--output text|json] [--dry-run]
-harness agent project remove --integration-id ID --project-id ID [--output text|json] [--dry-run]
-harness agent status --integration-id ID [--output text|json]
-harness agent verify --integration-id ID [--installation-id ID] [--output text|json]
-harness agent uninstall --integration-id ID [--installation-id ID] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
-harness agent guidance apply --integration-id ID --project-id ID --host codex|claude_code [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
-harness agent guidance status --integration-id ID --project-id ID [--output text|json]
-harness agent guidance remove --integration-id ID --project-id ID [--host codex|claude_code] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
+harness agent install --host codex|claude_code|claude-code|generic --scope user|project|local|export --project-id ID [--repo-root PATH] [--integration-id ID] [--default-project-id ID] [--server-name NAME] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--export-path PATH|--export-dir PATH] [--guidance none|codex|claude_code|claude-code|both] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
+harness agent project add --integration-id ID --project-id ID [--repo-root PATH] [--default] [--runtime-home PATH] [--output text|json] [--dry-run]
+harness agent project remove --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
+harness agent project default set --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
+harness agent project default clear --integration-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
+harness agent status --integration-id ID [--runtime-home PATH] [--output text|json]
+harness agent verify --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json]
+harness agent uninstall --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
+harness agent guidance apply --integration-id ID --project-id ID --host codex|claude_code|claude-code [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
+harness agent guidance status --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json]
+harness agent guidance remove --integration-id ID --project-id ID [--host codex|claude_code|claude-code] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
 ```
 
 종료 코드와 스트림 동작:
@@ -66,6 +68,7 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 지원하지 않는 것:
 
 - CLI에는 `serve`, `server`, `connect` 명령이 없습니다.
+- 공개 `harness agent` 계약에는 `--yes` 플래그가 없습니다. 포괄적 yes/assume-yes 스위치는 이 계약이 요구하는 명시적 플래그를 대신하면 안 됩니다.
 - 관리 명령은 공개 하네스 API 메서드가 아니며 공개 메서드 목록에 추가되면 안 됩니다.
 
 <a id="runtime-home-selection"></a>
@@ -94,7 +97,7 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 | `--host` | 지원되는 `--scope` 값 | 기준 대상 |
 |---|---|---|
 | `codex` | `user`, `project` | 사용자 설정은 Codex 사용자 `config.toml`입니다. 프로젝트 설정은 연결된 `Product Repository` 안의 `.codex/config.toml`입니다. |
-| `claude_code` | `local`, `project`, `user` | local과 user 설정은 Claude Code 사용자 소유 설정 대상입니다. 프로젝트 설정은 연결된 `Product Repository` 안의 `.mcp.json`입니다. |
+| `claude_code` | `local`, `project`, `user` | local과 user 설정은 Claude Code 사용자 소유 설정 대상입니다. 프로젝트 설정은 연결된 `Product Repository` 안의 `.mcp.json`입니다. CLI는 `claude-code`를 별칭으로 받을 수 있지만 저장 기록은 `claude_code`를 사용합니다. |
 | `generic` | `export` | 직접 설치를 주장하지 않고 명시적 MCP 설정 객체를 내보냅니다. |
 
 범위 규칙:
@@ -109,6 +112,9 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 - Codex 설치는 `command`, `args = ["--integration", "<integration_id>"]`, 선택적 `env.HARNESS_HOME`을 가진 `[mcp_servers.<server_name>]`과 동등한 MCP 서버 테이블을 씁니다.
 - Claude Code 설치는 `command`, `args`, 선택적 `env.HARNESS_HOME`을 가진 `mcpServers.<server_name>` MCP 서버 항목을 씁니다.
 - Generic export는 같은 command, args, environment 값을 호스트 중립 JSON 객체로 출력합니다.
+- user와 local 범위는 정식으로 확인된 `harness-mcp` 실행 파일 경로나 명시적이고 유효한 절대 경로를 사용할 수 있습니다.
+- 프로젝트 범위 공유 설정은 호스트 환경의 `PATH`에서 찾을 수 있는 이식 가능한 `harness-mcp` 명령을 사용해야 합니다. 개인 빌드 경로, 홈 디렉터리 경로, 개인 `HARNESS_HOME`을 넣으면 안 됩니다.
+- Generic export는 명시적으로 선택한 절대 명령 경로를 내보낼 수 있지만, 내보낸 설정은 사용자가 관리하는 호스트가 로드하고 검증하기 전까지 계속 `action_required`입니다.
 - 새 기준 호스트 설정은 `HARNESS_PROJECT_ID`, `HARNESS_SURFACE_ID`, `HARNESS_SURFACE_INSTANCE_ID`를 요구하면 안 됩니다.
 
 호스트 신뢰 경계:
@@ -125,14 +131,21 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 
 | 상태 | 의미 |
 |---|---|
-| `complete` | 오래 유지되는 통합 상태가 있고, 호스트 설정이 설치되었고, MCP 초기화가 성공했고, 도구 탐색이 성공했습니다. |
+| `complete` | 오래 유지되는 통합 상태가 있고, 관리되는 호스트 설정이 존재하며 예상 관리 지문과 일치하고, 호스트별 loadability gate가 충족되고, 필요한 신뢰나 승인 동작이 남아 있지 않고, 통합 사전 점검이 성공하고, MCP 초기화가 성공하고, `tools/list`가 필요한 도구를 노출합니다. |
 | `action_required` | 오래 유지되는 통합 상태와 호스트 설정은 있지만 호스트 신뢰, 프로젝트 승인, OAuth, reload, restart, 또는 그와 비슷한 사용자 통제 호스트 동작이 남아 있습니다. |
-| `partial_failure` | 일부 오래 유지되는 관리 동작은 성공했지만 이후 설치, 검증, 호스트 대상, 정리 단계가 실패했습니다. 결과는 완료된 동작과 실패한 동작을 식별해야 하며 다시 실행할 수 있어야 합니다. |
+| `partial_failure` | 일부 오래 유지되는 관리 동작은 성공했지만 이후 설치, 검증, 호스트 대상, 롤백, 정리 단계가 실패했습니다. 결과는 적용된 효과, 롤백된 효과, 잔류 효과를 식별해야 하며 다시 실행할 수 있어야 합니다. |
 | `failed` | 요청한 설치나 검증이 사용할 수 있는 오래 유지되는 통합 상태 또는 호스트 설정을 만들지 못했습니다. |
 
 `dry_run`은 출력 상태이며 설정 결과 상태가 아닙니다.
 
 성공한 `harness-mcp --check --integration <integration_id>`만으로는 전체 호스트 통합을 `complete`로 설명하면 안 됩니다. 이는 MCP 프로세스의 시작 검증일 뿐입니다.
+
+호스트별 상태 규칙:
+
+- Codex project 범위는 Codex 프로젝트 신뢰를 확인할 수 없는 동안 `action_required`로 남습니다.
+- Claude Code project 범위는 프로젝트 MCP 승인이 대기 중인 동안 `action_required`로 남습니다.
+- 거절됨, 없음, 변경됨, 사용할 수 없음, 알 수 없음 호스트 상태는 `complete`가 되면 안 됩니다.
+- Generic export는 하네스가 외부 호스트가 내보낸 설정을 로드했다는 사실을 증명할 수 없으므로 `action_required`로 남습니다.
 
 ## `harness agent install`
 
@@ -142,16 +155,16 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 
 - `--host`
 - `--scope`
-- `--server-name`
 - `--project-id`
 
 선택 동작:
 
 - `--integration-id`는 기존 통합 또는 새 통합에 원하는 식별자를 선택합니다.
 - `--default-project-id`는 기본값을 설정하며 허용된 프로젝트를 이름으로 가리켜야 합니다.
+- `--server-name`은 호스트 MCP 서버 이름을 선택합니다. 생략하면 CLI는 `integration_id`에서 안정적인 기본값을 파생합니다. 기본값은 `harness-`로 시작하고, ASCII 영문자, 숫자, 하이픈, 밑줄에 맞게 정리되며, 필요하면 해시를 붙여 짧게 만듭니다.
 - `--repo-root`는 호스트 대상이 project/local 범위로 그곳에 쓸 때 연결된 `Product Repository`를 검증합니다.
 - `--surface-id`와 `--surface-instance-id`는 통합 접점 바인딩을 선택합니다. 생략하면 CLI가 안정적인 불투명 식별자를 생성하고 보고합니다.
-- `--mcp-command`는 설치할 `harness-mcp` 실행 파일 경로를 선택합니다. 설치된 경로는 절대 경로여야 합니다.
+- `--mcp-command`는 명시적 명령 경로가 허용되는 범위에서 `harness-mcp` 실행 파일을 선택합니다. user와 local 범위는 이 옵션이 지정되면 존재하는 절대 경로를 요구합니다. project 범위는 `PATH`의 `harness-mcp`를 사용합니다. generic export는 명시적 명령을 지정할 때 절대 경로를 요구합니다.
 - `--runtime-home`은 호스트 설정에 `HARNESS_HOME`으로 쓸 Runtime Home 경로를 선택합니다.
 - `--guidance none|codex|claude_code|both`는 선택한 프로젝트의 선택적 `Product Repository` 지침을 미리 보여 주고 적용합니다. 생략하거나 `none`이면 지침을 쓰지 않으며, 비대화식 지침 쓰기에는 여전히 `--allow-repository-write`가 필요합니다.
 
@@ -165,13 +178,14 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 - 호스트 설정 쓰기는 관리 소유 마커 또는 동등한 관리 지문을 사용합니다.
 - 같은 호스트 대상과 서버 이름에 대한 기존 비관리 설정은 충돌입니다. `--replace-managed`는 소유 마커가 맞는 이전 관리 블록에만 적용됩니다.
 - 프로젝트 범위 호스트 설정 쓰기는 비대화식 실행에서 `--allow-repository-write`를 요구합니다.
-- `--dry-run`은 SQLite 데이터베이스, 호스트 설정, `Product Repository` 파일을 만들거나 바꾸지 않고 모든 저장소 및 파일 동작을 미리 보여 줍니다.
+- `--dry-run`은 [Dry-run과 기계 판독 출력](#dry-run)이 정한 zero-write 계약에 따라 모든 저장소 및 파일 동작을 미리 보여 줍니다.
 
 검증:
 
 - 설치된 설정에서 호스트를 시작할 수 있으면 검증은 MCP 초기화와 `tools/list` 탐색을 시도해야 합니다.
 - 설정은 설치되었지만 호스트 신뢰나 승인이 로드를 막으면 결과는 `failed`가 아니라 `action_required`입니다.
 - `harness-mcp --check`는 통과했지만 MCP 초기화나 도구 탐색이 성공하지 않았다면 결과는 `complete`가 될 수 없습니다.
+- 하네스가 직접 시작한 MCP handshake는 Codex 또는 Claude Code가 서버를 로드, 신뢰, 승인, 노출했다는 사실을 증명하지 않습니다.
 
 ## 통합 프로젝트 멤버십 명령
 
@@ -194,6 +208,25 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 - 설치된 통합에서 유일한 프로젝트를 제거하는 것은 명령이 프로젝트가 다시 추가될 때까지 통합을 실행할 수 없다고 보고할 때만 허용됩니다.
 - 멤버십 제거는 프로젝트 상태, 접점 기록, Core 기록, 호스트 설정, 지침 파일을 삭제하지 않습니다.
 
+`harness agent project default set`은 기존 통합의 기본 프로젝트를 설정합니다.
+
+규칙:
+
+- `--integration-id`와 `--project-id`는 필수입니다.
+- 프로젝트는 해당 통합에 이미 허용되어 있어야 합니다.
+- 현재 기본값을 다시 설정하는 작업은 멱등적입니다.
+- 이미 허용된 다른 프로젝트로 설정하면 호스트 설정을 다시 쓰지 않고 기본값만 바꿉니다.
+
+`harness agent project default clear`는 기존 통합의 기본 프로젝트를 지웁니다.
+
+규칙:
+
+- `--integration-id`는 필수입니다.
+- 이미 기본값이 없을 때 clear를 반복해도 멱등적입니다.
+- 현재 기본 프로젝트는 기본값을 바꾸거나 지우기 전까지 제거할 수 없습니다.
+- 기본값을 지운 뒤에는 마지막 프로젝트 멤버십도 제거할 수 있습니다.
+- 허용 프로젝트가 없는 통합은 저장된 상태로 남을 수 있지만, 프로젝트가 다시 추가되기 전까지 실행할 수 없습니다.
+
 ## 상태와 검증 명령
 
 `harness agent status`는 호스트 담당 문서가 가벼운 상태 점검을 정의하지 않는 한 호스트를 시작하지 않고 레지스트리와 호스트 인벤토리 상태를 보고합니다.
@@ -211,6 +244,13 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 
 `harness agent verify`는 하나의 통합 또는 하나의 설치에 대한 검증 상태를 갱신합니다.
 
+선택 규칙:
+
+- `harness agent verify --installation-id <id>`는 정확히 그 Host Installation 하나를 검증하며, 그 설치가 다른 통합에 속하면 실패합니다.
+- `--installation-id`가 없으면 `--integration-id`에 연결된 모든 Host Installation을 선택해 검증합니다.
+- 선택된 각 설치는 자기 자신의 `host_kind`, `host_scope`, `config_target`, 저장소 루트, 명령, 인자, 환경, 관리 지문, 호스트별 상태 점검을 사용합니다.
+- 한 설치의 결과가 다른 설치의 검증 상태를 덮어쓰면 안 됩니다. 설치별 출력은 `installation_id`와 결과 `last_verified_status`를 식별해야 합니다.
+
 검증해야 하는 항목:
 
 - 통합이 존재하고 활성화되어 있습니다.
@@ -221,7 +261,18 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 - MCP 초기화가 성공합니다.
 - `tools/list`가 공개 하네스 도구 아홉 개와 `harness.list_projects`를 노출합니다.
 
-Host Installation 기록이 있으면 검증은 `complete`, `action_required`, `partial_failure`, `failed` 중 하나를 `last_verified_status`에 기록합니다.
+검증은 선택된 각 Host Installation의 `last_verified_status`에 `complete`, `action_required`, `partial_failure`, `failed` 중 하나를 기록합니다.
+
+집계 결과 상태:
+
+| 선택된 설치 결과 | 집계 명령 상태 |
+|---|---|
+| 선택된 모든 설치가 `complete` | `complete` |
+| 하나 이상의 선택된 설치가 `action_required`이고 `partial_failure` 또는 `failed`가 없음 | `action_required` |
+| 하나 이상의 선택된 설치가 `partial_failure`이고 `failed`가 없음 | `partial_failure` |
+| 하나 이상의 선택된 설치가 `failed` | `failed` |
+
+선택된 설치 중 하나라도 `complete`가 아니면 집계 상태는 절대 `complete`가 아닙니다.
 
 ## 제거
 
@@ -264,13 +315,18 @@ Host Installation 기록이 있으면 검증은 `complete`, `action_required`, `
 
 Dry-run이 하지 않는 것:
 
+- `Harness Runtime Home` 생성
 - SQLite 데이터베이스 생성 또는 수정
-- 마이그레이션 적용
-- 프로젝트, 접점, 통합, 멤버십, 설치 등록 또는 갱신
+- SQLite WAL 또는 SHM 파일 생성
+- 레지스트리 또는 프로젝트 상태 마이그레이션 적용
+- 프로젝트, 접점, 통합, 멤버십, 설치, 검증 상태 행 등록 또는 갱신
 - 호스트 설정 파일 생성, 수정, 제거
-- `Product Repository` 지침 생성, 수정, 제거
+- 지침 파일을 포함한 `Product Repository` 파일이나 디렉터리 생성, 수정, 제거
+- generic export 파일 생성, 수정, 제거
 - `harness-mcp --check` 호출
 - MCP 초기화 또는 도구 탐색 수행
+
+선택된 Runtime Home이 스키마 버전 1 레지스트리를 가지고 있으면 dry-run은 마이그레이션 없이 이를 검사할 수 있고, apply 중 마이그레이션이 일어날 것이라고 보고할 수 있습니다. 레지스트리를 마이그레이션하거나, 새 레지스트리 테이블을 만들거나, 프로젝트 상태 데이터베이스를 만들거나, 마이그레이션 메타데이터를 쓰면 안 됩니다.
 
 Text 출력은 사람이 읽을 수 있어야 하며 각 리소스 작업을 `created`, `reused`, `updated`, `removed`, `skipped`, `conflict`, `planned` 중 하나로 식별해야 합니다.
 
@@ -279,12 +335,17 @@ JSON 성공 출력은 아래 최상위 키를 갖습니다.
 
 ```text
 status
+runtime
+project
 integration
 allowed_projects
 installations
 guidance
+host
 verification
 actions
+effects
+action_required
 warnings
 ```
 
@@ -296,6 +357,14 @@ warnings
 - `last_verified_status`: `not_verified`, `complete`, `action_required`, `partial_failure`, 또는 `failed`
 
 JSON 출력은 관리 CLI 출력이지 공개 하네스 API 응답 스키마가 아닙니다.
+
+`partial_failure` 출력:
+
+- 사람용 text 출력은 적용된 효과, 롤백된 효과, 잔류 효과를 각각 식별해야 합니다.
+- JSON 출력은 같은 사실을 기계 판독 가능한 항목으로 노출해야 합니다.
+- 각 효과 항목에는 대상 위치 또는 기록 식별자, 효과 분류, 대상 재실행 또는 검사에 충분한 세부사항이 있어야 합니다.
+- 각 잔류 효과에는 롤백을 수행하지 않은 이유 또는 롤백 실패 이유와 권장 운영자 동작이 있어야 합니다.
+- `registry changes may remain` 같은 일반 문장은 정확한 잔류 효과 항목과 함께 제공되지 않는 한 충분하지 않습니다.
 
 <a id="noninteractive-approval-behavior"></a>
 ## 비대화식 승인 동작

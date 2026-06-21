@@ -42,15 +42,17 @@ harness project register --project-id ID --repo-root PATH [--status active]
 harness project list
 harness surface register --project-id ID --surface-id ID [--surface-instance-id ID] [--kind KIND] [--name NAME] [--interaction-role agent|user_interaction] [--access-class ACCESS_CLASS ...] [--profile baseline-workflow] [--capability-profile JSON]
 harness surface list --project-id ID
-harness agent install --host codex|claude_code|generic --scope user|project|local|export --server-name NAME --project-id ID [--integration-id ID] [--default-project-id ID] [--repo-root PATH] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--guidance none|codex|claude_code|both] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
-harness agent project add --integration-id ID --project-id ID [--default] [--output text|json] [--dry-run]
-harness agent project remove --integration-id ID --project-id ID [--output text|json] [--dry-run]
-harness agent status --integration-id ID [--output text|json]
-harness agent verify --integration-id ID [--installation-id ID] [--output text|json]
-harness agent uninstall --integration-id ID [--installation-id ID] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
-harness agent guidance apply --integration-id ID --project-id ID --host codex|claude_code [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
-harness agent guidance status --integration-id ID --project-id ID [--output text|json]
-harness agent guidance remove --integration-id ID --project-id ID [--host codex|claude_code] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
+harness agent install --host codex|claude_code|claude-code|generic --scope user|project|local|export --project-id ID [--repo-root PATH] [--integration-id ID] [--default-project-id ID] [--server-name NAME] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--export-path PATH|--export-dir PATH] [--guidance none|codex|claude_code|claude-code|both] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
+harness agent project add --integration-id ID --project-id ID [--repo-root PATH] [--default] [--runtime-home PATH] [--output text|json] [--dry-run]
+harness agent project remove --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
+harness agent project default set --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
+harness agent project default clear --integration-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
+harness agent status --integration-id ID [--runtime-home PATH] [--output text|json]
+harness agent verify --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json]
+harness agent uninstall --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
+harness agent guidance apply --integration-id ID --project-id ID --host codex|claude_code|claude-code [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
+harness agent guidance status --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json]
+harness agent guidance remove --integration-id ID --project-id ID [--host codex|claude_code|claude-code] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
 ```
 
 Exit and stream behavior:
@@ -66,6 +68,7 @@ Exit and stream behavior:
 Not supported:
 
 - The CLI has no `serve`, `server`, or `connect` command.
+- The public `harness agent` contract has no `--yes` flag. A broad yes/assume-yes switch must not substitute for the explicit flags this contract requires.
 - Administrative commands are not public Harness API methods and must not be added to the public method list.
 
 ## Runtime Home selection
@@ -93,7 +96,7 @@ Supported host and scope values:
 | `--host` | Supported `--scope` values | Baseline target |
 |---|---|---|
 | `codex` | `user`, `project` | User config is Codex user `config.toml`. Project config is `.codex/config.toml` in the associated `Product Repository`. |
-| `claude_code` | `local`, `project`, `user` | Local and user config are Claude Code user-owned configuration targets. Project config is `.mcp.json` in the associated `Product Repository`. |
+| `claude_code` | `local`, `project`, `user` | Local and user config are Claude Code user-owned configuration targets. Project config is `.mcp.json` in the associated `Product Repository`. The CLI may accept `claude-code` as an alias, but stored records use `claude_code`. |
 | `generic` | `export` | Export an explicit MCP configuration object without claiming direct installation. |
 
 Scope rules:
@@ -108,6 +111,9 @@ Host configuration shape:
 - Codex installation writes an MCP server table equivalent to `[mcp_servers.<server_name>]` with `command`, `args = ["--integration", "<integration_id>"]`, and optional `env.HARNESS_HOME`.
 - Claude Code installation writes an MCP server entry under `mcpServers.<server_name>` with `command`, `args`, and optional `env.HARNESS_HOME`.
 - Generic export emits the same command, args, and environment values in a host-neutral JSON object.
+- User and local scopes may use a discovered canonical `harness-mcp` executable path or an explicit valid absolute path.
+- Project-scoped shared configuration must use the portable command `harness-mcp` and rely on `PATH` in the host environment. It must not embed a personal build path, home-directory path, or personal `HARNESS_HOME`.
+- Generic export may emit an explicitly selected absolute command path, but exported configuration is still `action_required` until a user-managed host loads and verifies it.
 - New baseline host configuration must not require `HARNESS_PROJECT_ID`, `HARNESS_SURFACE_ID`, or `HARNESS_SURFACE_INSTANCE_ID`.
 
 Host trust boundary:
@@ -123,14 +129,21 @@ The agent command family uses these setup result states:
 
 | State | Meaning |
 |---|---|
-| `complete` | Durable integration state exists, host configuration was installed, MCP initialization succeeded, and tool discovery succeeded. |
+| `complete` | Durable integration state exists, managed host configuration exists and matches its expected fingerprint, the host-specific loadability gate is satisfied, no required trust or approval action remains, integration preflight succeeds, MCP initialization succeeds, and `tools/list` succeeds with the required tools. |
 | `action_required` | Durable integration state and host configuration are present, but host trust, project approval, OAuth, reload, restart, or a comparable user-controlled host action remains. |
-| `partial_failure` | Some durable administrative action succeeded, but a later installation, verification, host target, or cleanup step failed. The result must identify completed and failed actions and be rerunnable. |
+| `partial_failure` | Some durable administrative action succeeded, but a later installation, verification, host target, rollback, or cleanup step failed. The result must identify applied, rolled-back, and residual effects and be rerunnable. |
 | `failed` | The requested installation or verification did not establish usable durable integration state or host configuration. |
 
 `dry_run` is an output status, not a setup result state.
 
 A successful `harness-mcp --check --integration <integration_id>` alone must not be described as `complete` host integration. It is only startup validation for the MCP process.
+
+Host-specific state rules:
+
+- Codex project scope remains `action_required` while Codex project trust cannot be confirmed.
+- Claude Code project scope remains `action_required` while project MCP approval is pending.
+- Rejected, missing, changed, unavailable, and unknown host states must not become `complete`.
+- Generic export remains `action_required` because Harness cannot prove that an external host loaded the exported configuration.
 
 ## `harness agent install`
 
@@ -140,16 +153,16 @@ Required options:
 
 - `--host`
 - `--scope`
-- `--server-name`
 - `--project-id`
 
 Optional behavior:
 
 - `--integration-id` selects an existing integration or the desired id for a new integration.
 - `--default-project-id` sets the default and must name an allowed project.
+- `--server-name` selects the host MCP server name. When omitted, the CLI derives a stable default from `integration_id`, prefixed with `harness-`, sanitized to ASCII letters, numbers, hyphen, and underscore, and shortened with a hash when needed.
 - `--repo-root` validates the associated `Product Repository` for project/local scope when a host target writes there.
 - `--surface-id` and `--surface-instance-id` select the integration surface binding. When omitted, the CLI generates stable opaque ids and reports them.
-- `--mcp-command` selects the `harness-mcp` executable path to install. The installed path must be absolute.
+- `--mcp-command` selects the `harness-mcp` executable for scopes that permit an explicit command path. User and local scopes require an existing absolute path when specified. Project scope uses `harness-mcp` from `PATH`; generic export requires an absolute command path when the command is explicit.
 - `--runtime-home` selects the Runtime Home path to write into host configuration as `HARNESS_HOME`.
 - `--guidance none|codex|claude_code|both` previews and applies optional `Product Repository` guidance for the selected project. Omitted or `none` writes no guidance, and noninteractive guidance writes still require `--allow-repository-write`.
 
@@ -163,13 +176,14 @@ Installation rules:
 - Host configuration writes use managed ownership markers or an equivalent managed fingerprint.
 - Existing unmanaged configuration for the same host target and server name is a conflict unless `--replace-managed` applies to a previously managed block with a matching ownership marker.
 - Project-scoped host configuration writes require `--allow-repository-write` in noninteractive execution.
-- `--dry-run` previews every storage and file action without creating or modifying SQLite databases, host configuration, or `Product Repository` files.
+- `--dry-run` previews every storage and file action under the zero-write contract in [Dry run and machine-readable output](#dry-run).
 
 Verification:
 
 - Verification must attempt MCP initialization and `tools/list` discovery when the host can be launched from the installed configuration.
 - If configuration is installed but host trust or approval prevents loading, the result is `action_required`, not `failed`.
 - If `harness-mcp --check` passes but MCP initialization or tool discovery has not succeeded, the result cannot be `complete`.
+- A direct Harness-spawned MCP handshake does not prove that Codex or Claude Code loaded, trusted, approved, or exposed the server.
 
 ## Integration project membership commands
 
@@ -192,6 +206,25 @@ Rules:
 - Removing the only project from an installed integration is allowed only when the command reports the integration as not executable until a project is added again.
 - Removing membership does not delete project state, surface records, Core records, host configuration, or guidance files.
 
+`harness agent project default set` sets the default project for an existing integration.
+
+Rules:
+
+- `--integration-id` and `--project-id` are required.
+- The project must already be allowed for that integration.
+- Repeating a set operation for the current default is idempotent.
+- Setting a different already allowed project changes the default without rewriting host configuration.
+
+`harness agent project default clear` clears the default project for an existing integration.
+
+Rules:
+
+- `--integration-id` is required.
+- Clearing an already absent default is idempotent.
+- A current default project cannot be removed until the default is changed or cleared.
+- After the default is cleared, the final project membership may be removed.
+- An integration with no allowed projects may remain stored, but it is not executable until a project is added again.
+
 ## Status and verification commands
 
 `harness agent status` reports registry and host-inventory state without launching the host unless a host owner defines a cheap status check.
@@ -209,6 +242,13 @@ It reports at least:
 
 `harness agent verify` refreshes verification state for one integration or one installation.
 
+Selection rules:
+
+- `harness agent verify --installation-id <id>` verifies exactly that Host Installation and fails if it belongs to another integration.
+- Without `--installation-id`, verification selects every Host Installation associated with `--integration-id`.
+- Each selected installation uses its own `host_kind`, `host_scope`, `config_target`, repository root, command, arguments, environment, managed fingerprint, and host-specific status checks.
+- One installation's result must not overwrite another installation's verification state. Per-installation output must identify the `installation_id` and resulting `last_verified_status`.
+
 Verification must check:
 
 - integration exists and is enabled
@@ -219,7 +259,18 @@ Verification must check:
 - MCP initialization succeeds
 - `tools/list` exposes the nine public Harness tools and `harness.list_projects`
 
-Verification records one of `complete`, `action_required`, `partial_failure`, or `failed` into `last_verified_status` when a Host Installation record exists.
+Verification records one of `complete`, `action_required`, `partial_failure`, or `failed` into each selected Host Installation's `last_verified_status`.
+
+Aggregate result status:
+
+| Selected installation results | Aggregate command status |
+|---|---|
+| Every selected installation is `complete` | `complete` |
+| At least one selected installation is `action_required`, and none is `partial_failure` or `failed` | `action_required` |
+| At least one selected installation is `partial_failure`, and none is `failed` | `partial_failure` |
+| At least one selected installation is `failed` | `failed` |
+
+The aggregate status is never `complete` while any selected installation is not `complete`.
 
 ## Uninstall
 
@@ -262,13 +313,18 @@ Exact `Product Repository` write boundaries belong to [Runtime Boundaries](runti
 
 Dry-run does not:
 
+- create a `Harness Runtime Home`
 - create or modify SQLite databases
-- apply migrations
-- register or update projects, surfaces, integrations, memberships, or installations
+- create SQLite WAL or SHM files
+- apply registry or project-state migrations
+- register or update projects, surfaces, integrations, memberships, installations, or verification status rows
 - create, modify, or remove host configuration files
-- create, modify, or remove `Product Repository` guidance
+- create, modify, or remove `Product Repository` files or directories, including guidance files
+- create, modify, or remove generic export files
 - invoke `harness-mcp --check`
 - perform MCP initialization or tool discovery
+
+When a selected Runtime Home has a schema version 1 registry, dry-run may inspect it without migration and may report that migration would occur during apply. It must not migrate the registry, create new registry tables, create project-state databases, or write migration metadata.
 
 Text output must be human-readable and identify each resource action using `created`, `reused`, `updated`, `removed`, `skipped`, `conflict`, or `planned`.
 
@@ -277,12 +333,17 @@ JSON success output has these top-level keys:
 
 ```text
 status
+runtime
+project
 integration
 allowed_projects
 installations
 guidance
+host
 verification
 actions
+effects
+action_required
 warnings
 ```
 
@@ -294,6 +355,14 @@ Required JSON values:
 - `last_verified_status`: `not_verified`, `complete`, `action_required`, `partial_failure`, or `failed`
 
 JSON output is administrative CLI output, not a public Harness API response schema.
+
+Partial-failure output:
+
+- Human-readable text output must identify each applied effect, rolled-back effect, and residual effect.
+- JSON output must expose the same facts in machine-readable entries.
+- Each effect entry must include the target location or record identity, the effect classification, and enough detail to rerun or inspect the target.
+- Each residual effect must include why rollback was not performed or why rollback failed, plus the recommended operator action.
+- A generic statement such as `registry changes may remain` is insufficient unless paired with exact residual-effect entries.
 
 <a id="noninteractive-approval-behavior"></a>
 ## Noninteractive approval behavior

@@ -70,6 +70,7 @@ Rules:
 - Project membership does not bypass project status, path separation, storage executability, surface registration, or local access grants.
 - Inactive, invalid, or execution-ineligible projects remain unavailable at execution time even if a stale membership row exists.
 - Revoking membership or disabling the integration must take effect without requiring host configuration to be rewritten.
+- An integration with no allowed projects may remain stored, but it is not executable until a project is added again.
 
 ## Host Installation
 
@@ -101,6 +102,10 @@ Rules:
 - User scope may permit multiple explicitly added `Product Repository` registrations.
 - Host trust, project trust, project MCP approval, OAuth, or any comparable host-controlled approval cannot be bypassed by Harness.
 - A host installation can be successful as a file operation while the result state remains `action_required` because the host has not yet trusted, approved, loaded, initialized, or exposed the server.
+- `last_verified_status=complete` may be stored only for an administrative verification result that satisfied the operational gates owned by [Administrative CLI](admin-cli.md#agent-setup-result-states). A direct Harness-spawned MCP handshake is not enough by itself.
+- `last_verified_status=action_required` is the expected state when Harness can manage or export configuration but a host-owned trust, approval, OAuth, reload, or restart action remains.
+- `generic` export Host Installations remain user-managed configuration inventory. They do not prove external host loading and must not become `complete` unless a host-specific owner later defines an observable loadability gate.
+- Rejected, missing, changed, unavailable, and unknown host states are not `complete` Host Installation states.
 - Agent guidance can improve tool selection, but it is not an enforcement mechanism and cannot guarantee that a model will choose Harness tools.
 
 ## Integration boundary
