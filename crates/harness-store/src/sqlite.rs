@@ -136,13 +136,100 @@ pub fn validate_registry_schema(conn: &Connection) -> StoreResult<()> {
     require_tables(
         conn,
         REGISTRY_DATABASE_KIND,
-        &["schema_migrations", "runtime_home", "projects"],
+        &[
+            "schema_migrations",
+            "runtime_home",
+            "projects",
+            "agent_integrations",
+            "integration_projects",
+            "host_installations",
+        ],
     )?;
     require_indexes(
         conn,
         REGISTRY_DATABASE_KIND,
-        &["idx_projects_repo_root", "idx_projects_status"],
+        &[
+            "idx_projects_repo_root",
+            "idx_projects_status",
+            "idx_integration_projects_project",
+            "idx_agent_integrations_enabled",
+            "idx_host_installations_integration",
+            "idx_host_installations_target",
+        ],
     )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "agent_integrations",
+        ColumnSpec {
+            name: "enabled",
+            type_name: "INTEGER",
+            not_null: true,
+            default_value: Some("1"),
+            primary_key_position: 0,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "agent_integrations",
+        ColumnSpec {
+            name: "metadata_json",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: Some("'{}'"),
+            primary_key_position: 0,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "integration_projects",
+        ColumnSpec {
+            name: "integration_id",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: None,
+            primary_key_position: 1,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "integration_projects",
+        ColumnSpec {
+            name: "project_id",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: None,
+            primary_key_position: 2,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "host_installations",
+        ColumnSpec {
+            name: "last_verified_status",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: Some("'not_verified'"),
+            primary_key_position: 0,
+        },
+    )?;
+    require_column_spec(
+        conn,
+        REGISTRY_DATABASE_KIND,
+        "host_installations",
+        ColumnSpec {
+            name: "metadata_json",
+            type_name: "TEXT",
+            not_null: true,
+            default_value: Some("'{}'"),
+            primary_key_position: 0,
+        },
+    )?;
+    validate_registry_versions(conn)?;
     validate_foreign_key_check(conn, REGISTRY_DATABASE_KIND)?;
     Ok(())
 }
@@ -599,6 +686,24 @@ fn validate_project_state_versions(conn: &Connection) -> StoreResult<()> {
     }
 }
 
+fn validate_registry_versions(conn: &Connection) -> StoreResult<()> {
+    let stale_count: i64 = conn.query_row(
+        "SELECT COUNT(*)
+           FROM runtime_home
+          WHERE schema_version != ?1",
+        [REGISTRY_SCHEMA_VERSION],
+        |row| row.get(0),
+    )?;
+    if stale_count == 0 {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            REGISTRY_DATABASE_KIND,
+            "runtime_home.schema_version does not match the latest applied migration",
+        ))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ColumnSpec {
     name: &'static str,
@@ -1006,7 +1111,8 @@ mod tests {
 
     use super::*;
     use crate::migrations::{
-        BASELINE_SCHEMA_VERSION, PROJECT_STATE_SCHEMA_VERSION, STORAGE_PROFILE,
+        BASELINE_SCHEMA_VERSION, PROJECT_STATE_SCHEMA_VERSION, REGISTRY_SCHEMA_VERSION,
+        STORAGE_PROFILE,
     };
 
     #[test]
@@ -1015,13 +1121,24 @@ mod tests {
         let path = registry_db_path(runtime_home.path());
 
         let conn = open_registry_database(&path)?;
-        assert_eq!(migration_count(&conn)?, 1);
+        assert_eq!(migration_count(&conn)?, REGISTRY_SCHEMA_VERSION);
+        assert_eq!(
+            latest_migration_version(&conn, REGISTRY_DATABASE_KIND)?,
+            REGISTRY_SCHEMA_VERSION
+        );
         drop(conn);
 
         let conn = open_registry_database(&path)?;
-        assert_eq!(migration_count(&conn)?, 1);
+        assert_eq!(migration_count(&conn)?, REGISTRY_SCHEMA_VERSION);
         assert!(foreign_keys_enabled(&conn)?);
         assert!(sqlite_object_exists(&conn, "table", "runtime_home")?);
+        assert!(sqlite_object_exists(&conn, "table", "agent_integrations")?);
+        assert!(sqlite_object_exists(
+            &conn,
+            "table",
+            "integration_projects"
+        )?);
+        assert!(sqlite_object_exists(&conn, "table", "host_installations")?);
         Ok(())
     }
 

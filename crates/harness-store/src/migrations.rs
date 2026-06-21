@@ -18,12 +18,13 @@ pub const STORAGE_PROFILE: &str = "baseline_sqlite";
 pub const BASELINE_SCHEMA_VERSION: i64 = 1;
 
 /// Latest schema version for `registry.sqlite`.
-pub const REGISTRY_SCHEMA_VERSION: i64 = 1;
+pub const REGISTRY_SCHEMA_VERSION: i64 = 2;
 
 /// Latest schema version for project `state.sqlite`.
 pub const PROJECT_STATE_SCHEMA_VERSION: i64 = 9;
 
 const PROJECT_STATE_REPLAY_CONTEXT_SCHEMA_VERSION: i64 = 2;
+const REGISTRY_AGENT_INTEGRATIONS_SCHEMA_VERSION: i64 = 2;
 const PROJECT_STATE_REPLAY_SURFACE_FK_SCHEMA_VERSION: i64 = 3;
 const PROJECT_STATE_CLOSE_BASIS_JUDGMENT_BASIS_SCHEMA_VERSION: i64 = 4;
 const PROJECT_STATE_JUDGMENT_RESOLUTION_OUTCOME_SCHEMA_VERSION: i64 = 5;
@@ -38,12 +39,20 @@ pub const REGISTRY_DATABASE_KIND: &str = "registry";
 /// `schema_migrations.database_kind` for project `state.sqlite`.
 pub const PROJECT_STATE_DATABASE_KIND: &str = "project_state";
 
-const REGISTRY_MIGRATIONS: &[Migration] = &[Migration {
-    database_kind: REGISTRY_DATABASE_KIND,
-    version: BASELINE_SCHEMA_VERSION,
-    name: "registry_baseline_v1",
-    kind: MigrationKind::Sql(REGISTRY_BASELINE_SQL),
-}];
+const REGISTRY_MIGRATIONS: &[Migration] = &[
+    Migration {
+        database_kind: REGISTRY_DATABASE_KIND,
+        version: BASELINE_SCHEMA_VERSION,
+        name: "registry_baseline_v1",
+        kind: MigrationKind::Sql(REGISTRY_BASELINE_SQL),
+    },
+    Migration {
+        database_kind: REGISTRY_DATABASE_KIND,
+        version: REGISTRY_AGENT_INTEGRATIONS_SCHEMA_VERSION,
+        name: "registry_agent_integrations_v2",
+        kind: MigrationKind::Custom(apply_registry_agent_integrations_v2),
+    },
+];
 
 const PROJECT_STATE_MIGRATIONS: &[Migration] = &[
     Migration {
@@ -236,6 +245,168 @@ fn insert_schema_migration(tx: &Transaction<'_>, migration: &Migration) -> rusql
         ],
     )?;
     Ok(())
+}
+
+fn apply_registry_agent_integrations_v2(
+    conn: &mut Connection,
+    migration: &Migration,
+) -> StoreResult<()> {
+    validate_no_foreign_key_violations(conn, REGISTRY_DATABASE_KIND, None)?;
+
+    let tx = begin_immediate_transaction(conn)?;
+    validate_registry_v1_rows_for_agent_integrations_v2(&tx)?;
+    tx.execute_batch(REGISTRY_AGENT_INTEGRATIONS_V2_SQL)?;
+    tx.execute(
+        "UPDATE runtime_home
+            SET schema_version = ?1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          WHERE singleton_id = 1",
+        [migration.version],
+    )?;
+    insert_schema_migration(&tx, migration)?;
+    tx.commit()?;
+
+    validate_no_foreign_key_violations(conn, REGISTRY_DATABASE_KIND, None)?;
+    Ok(())
+}
+
+fn validate_registry_v1_rows_for_agent_integrations_v2(conn: &Connection) -> StoreResult<()> {
+    let runtime_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM runtime_home", [], |row| row.get(0))?;
+    if runtime_count > 1 {
+        return Err(StoreError::schema_invariant(
+            REGISTRY_DATABASE_KIND,
+            format!("runtime_home has {runtime_count} rows, expected at most 1"),
+        ));
+    }
+
+    if runtime_count == 0 {
+        let project_count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))?;
+        if project_count != 0 {
+            return Err(StoreError::schema_invariant(
+                REGISTRY_DATABASE_KIND,
+                "projects exist without a runtime_home singleton",
+            ));
+        }
+        return Ok(());
+    }
+
+    let runtime = conn
+        .query_row(
+            "SELECT runtime_home_id, storage_profile, schema_version, metadata_json
+               FROM runtime_home
+              WHERE singleton_id = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or_else(|| {
+            StoreError::schema_invariant(
+                REGISTRY_DATABASE_KIND,
+                "runtime_home singleton row with singleton_id=1 is missing",
+            )
+        })?;
+
+    validate_migration_nonempty("runtime_home.runtime_home_id", &runtime.0)?;
+    if runtime.1 != STORAGE_PROFILE {
+        return Err(StoreError::schema_invariant(
+            REGISTRY_DATABASE_KIND,
+            format!(
+                "runtime_home.storage_profile is {}, expected {STORAGE_PROFILE}",
+                runtime.1
+            ),
+        ));
+    }
+    if !(BASELINE_SCHEMA_VERSION..=REGISTRY_AGENT_INTEGRATIONS_SCHEMA_VERSION).contains(&runtime.2)
+    {
+        return Err(StoreError::schema_invariant(
+            REGISTRY_DATABASE_KIND,
+            format!(
+                "runtime_home.schema_version is {}, expected {}..={}",
+                runtime.2, BASELINE_SCHEMA_VERSION, REGISTRY_AGENT_INTEGRATIONS_SCHEMA_VERSION
+            ),
+        ));
+    }
+    validate_migration_json_object("runtime_home.metadata_json", &runtime.3)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT
+            project_id,
+            runtime_home_id,
+            repo_root,
+            project_home,
+            state_db_path,
+            status,
+            metadata_json
+         FROM projects
+         ORDER BY project_id",
+    )?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let project_id = row.get::<_, String>(0)?;
+        let runtime_home_id = row.get::<_, String>(1)?;
+        let repo_root = row.get::<_, String>(2)?;
+        let project_home = row.get::<_, String>(3)?;
+        let state_db_path = row.get::<_, String>(4)?;
+        let status = row.get::<_, String>(5)?;
+        let metadata_json = row.get::<_, String>(6)?;
+
+        validate_migration_nonempty("projects.project_id", &project_id)?;
+        if runtime_home_id != runtime.0 {
+            return Err(StoreError::schema_invariant(
+                REGISTRY_DATABASE_KIND,
+                format!("projects.runtime_home_id for {project_id} does not match runtime_home"),
+            ));
+        }
+        validate_migration_nonempty("projects.repo_root", &repo_root)?;
+        validate_migration_nonempty("projects.project_home", &project_home)?;
+        validate_migration_nonempty("projects.state_db_path", &state_db_path)?;
+        if status != "active" {
+            return Err(StoreError::schema_invariant(
+                REGISTRY_DATABASE_KIND,
+                format!("projects.status for {project_id} is {status}, expected active"),
+            ));
+        }
+        validate_migration_json_object("projects.metadata_json", &metadata_json)?;
+    }
+
+    Ok(())
+}
+
+fn validate_migration_nonempty(field: &'static str, value: &str) -> StoreResult<()> {
+    if value.trim().is_empty() {
+        Err(StoreError::schema_invariant(
+            REGISTRY_DATABASE_KIND,
+            format!("{field} must not be empty"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_migration_json_object(field: &'static str, text: &str) -> StoreResult<()> {
+    let value = serde_json::from_str::<serde_json::Value>(text).map_err(|error| {
+        StoreError::schema_invariant(
+            REGISTRY_DATABASE_KIND,
+            format!("{field} must be JSON object text: {error}"),
+        )
+    })?;
+    if value.is_object() {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            REGISTRY_DATABASE_KIND,
+            format!("{field} must be a JSON object"),
+        ))
+    }
 }
 
 fn apply_project_state_replay_surface_fk_v3(
@@ -665,6 +836,65 @@ CREATE TABLE projects (
 
 CREATE INDEX idx_projects_repo_root ON projects (repo_root);
 CREATE INDEX idx_projects_status ON projects (status);
+"#;
+
+const REGISTRY_AGENT_INTEGRATIONS_V2_SQL: &str = r#"
+CREATE TABLE agent_integrations (
+  integration_id TEXT PRIMARY KEY,
+  interaction_role TEXT NOT NULL CHECK (interaction_role = 'agent'),
+  surface_id TEXT NOT NULL,
+  surface_instance_id TEXT NOT NULL,
+  default_project_id TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (integration_id, default_project_id)
+    REFERENCES integration_projects (integration_id, project_id)
+    DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE TABLE integration_projects (
+  integration_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (integration_id, project_id),
+  FOREIGN KEY (integration_id)
+    REFERENCES agent_integrations (integration_id)
+    ON DELETE RESTRICT
+    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE RESTRICT
+);
+
+CREATE TABLE host_installations (
+  installation_id TEXT PRIMARY KEY,
+  integration_id TEXT NOT NULL,
+  host_kind TEXT NOT NULL CHECK (host_kind IN ('codex', 'claude_code', 'generic')),
+  host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project', 'local', 'export')),
+  server_name TEXT NOT NULL,
+  config_target TEXT NOT NULL,
+  managed_fingerprint TEXT NOT NULL,
+  last_verified_status TEXT NOT NULL DEFAULT 'not_verified'
+    CHECK (last_verified_status IN ('not_verified', 'complete', 'action_required', 'partial_failure', 'failed')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  CHECK (
+    (host_kind = 'codex' AND host_scope IN ('user', 'project'))
+    OR (host_kind = 'claude_code' AND host_scope IN ('local', 'project', 'user'))
+    OR (host_kind = 'generic' AND host_scope = 'export')
+  ),
+  FOREIGN KEY (integration_id) REFERENCES agent_integrations (integration_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_integration_projects_project
+  ON integration_projects (project_id);
+CREATE INDEX idx_agent_integrations_enabled
+  ON agent_integrations (enabled);
+CREATE INDEX idx_host_installations_integration
+  ON host_installations (integration_id);
+CREATE UNIQUE INDEX idx_host_installations_target
+  ON host_installations (host_kind, host_scope, config_target, server_name);
 "#;
 
 const PROJECT_STATE_BASELINE_SQL: &str = r#"
@@ -1497,7 +1727,8 @@ mod tests {
     use super::*;
     use crate::sqlite::{
         enable_foreign_keys, foreign_keys_enabled, open_project_state_database,
-        project_state_db_path, validate_project_state_schema,
+        open_registry_database, project_state_db_path, registry_db_path,
+        validate_project_state_schema, validate_registry_schema,
     };
 
     type ArtifactIntegrityRow = (String, Option<String>, Option<i64>, Option<String>, String);
@@ -1510,6 +1741,122 @@ mod tests {
         sha256: Option<&'a str>,
         size_bytes: Option<i64>,
         content_type: Option<&'a str>,
+    }
+
+    #[test]
+    fn version_one_registry_migrates_to_agent_integrations_v2() -> Result<(), Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new("migration-registry-v1")?;
+        let path = registry_db_path(runtime_home.path());
+        fs::create_dir_all(path.parent().expect("registry path has parent"))?;
+        let conn = Connection::open(&path)?;
+        conn.execute_batch(REGISTRY_BASELINE_SQL)?;
+        conn.execute(
+            "INSERT INTO schema_migrations (
+                database_kind,
+                version,
+                name,
+                storage_profile,
+                applied_at
+            )
+            VALUES (?1, ?2, 'registry_baseline_v1', ?3, 't0')",
+            params![
+                REGISTRY_DATABASE_KIND,
+                BASELINE_SCHEMA_VERSION,
+                STORAGE_PROFILE
+            ],
+        )?;
+        conn.execute(
+            "INSERT INTO runtime_home (
+                singleton_id,
+                runtime_home_id,
+                storage_profile,
+                schema_version,
+                created_at,
+                updated_at,
+                metadata_json
+            )
+            VALUES (1, 'runtime_home_v1', ?1, 1, 'created', 'updated', '{\"kept\":true}')",
+            [STORAGE_PROFILE],
+        )?;
+        conn.execute(
+            "INSERT INTO projects (
+                project_id,
+                runtime_home_id,
+                repo_root,
+                project_home,
+                state_db_path,
+                status,
+                created_at,
+                updated_at,
+                metadata_json
+            )
+            VALUES (
+                'project_v1',
+                'runtime_home_v1',
+                '/tmp/product-repo',
+                '/tmp/runtime/projects/project_v1',
+                '/tmp/runtime/projects/project_v1/state.sqlite',
+                'active',
+                'project_created',
+                'project_updated',
+                '{\"project\":true}'
+            )",
+            [],
+        )?;
+        drop(conn);
+
+        let conn = open_registry_database(&path)?;
+        validate_registry_schema(&conn)?;
+
+        let runtime: (i64, String, String) = conn.query_row(
+            "SELECT schema_version, created_at, metadata_json
+               FROM runtime_home
+              WHERE singleton_id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(
+            runtime,
+            (
+                REGISTRY_SCHEMA_VERSION,
+                "created".to_owned(),
+                "{\"kept\":true}".to_owned(),
+            )
+        );
+        let project: (String, String, String, String, String) = conn.query_row(
+            "SELECT repo_root, project_home, state_db_path, status, metadata_json
+               FROM projects
+              WHERE project_id = 'project_v1'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )?;
+        assert_eq!(
+            project,
+            (
+                "/tmp/product-repo".to_owned(),
+                "/tmp/runtime/projects/project_v1".to_owned(),
+                "/tmp/runtime/projects/project_v1/state.sqlite".to_owned(),
+                "active".to_owned(),
+                "{\"project\":true}".to_owned(),
+            )
+        );
+        assert_eq!(
+            migration_count(&conn, REGISTRY_DATABASE_KIND)?,
+            REGISTRY_SCHEMA_VERSION
+        );
+        assert_eq!(table_count(&conn, "agent_integrations")?, 0);
+        assert_eq!(table_count(&conn, "integration_projects")?, 0);
+        assert_eq!(table_count(&conn, "host_installations")?, 0);
+        assert_foreign_key_check_clean(&conn)?;
+        Ok(())
     }
 
     #[test]
@@ -3394,5 +3741,11 @@ mod tests {
             [database_kind],
             |row| row.get(0),
         )
+    }
+
+    fn table_count(conn: &Connection, table: &str) -> rusqlite::Result<i64> {
+        let escaped_table = table.replace('"', "\"\"");
+        let sql = format!("SELECT COUNT(*) FROM \"{escaped_table}\"");
+        conn.query_row(&sql, [], |row| row.get(0))
     }
 }

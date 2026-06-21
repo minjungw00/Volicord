@@ -23,6 +23,12 @@ pub enum StoreError {
     },
     /// A required local setup record was not found.
     NotFound { entity: &'static str, id: String },
+    /// A local setup identity is already bound to incompatible facts.
+    Conflict {
+        entity: &'static str,
+        id: String,
+        detail: String,
+    },
     /// Stored owner JSON could not be parsed or validated.
     CorruptStoredJson {
         database_kind: &'static str,
@@ -191,6 +197,15 @@ impl StoreError {
                     owner_state_error: None,
                 }
             }
+            Self::Conflict { entity, .. } => StoreFailureClassification {
+                route: StoreFailureRoute::OperationalUnavailable,
+                category: "store_conflict",
+                retryable: false,
+                database_kind: Some("registry"),
+                entity: Some(entity),
+                field: None,
+                owner_state_error: None,
+            },
             Self::CorruptStoredJson {
                 database_kind,
                 field,
@@ -385,6 +400,9 @@ impl fmt::Display for StoreError {
                 )
             }
             Self::NotFound { entity, id } => write!(formatter, "{entity} not found: {id}"),
+            Self::Conflict { entity, id, detail } => {
+                write!(formatter, "{entity} conflict for {id}: {detail}")
+            }
             Self::CorruptStoredJson {
                 database_kind,
                 field,
@@ -447,6 +465,7 @@ impl Error for StoreError {
             Self::InvalidInput { .. }
             | Self::InvalidProjectRegistration { .. }
             | Self::NotFound { .. }
+            | Self::Conflict { .. }
             | Self::CorruptStoredJson { .. }
             | Self::CorruptOwnerStateJson { .. }
             | Self::CorruptOwnerStateValue { .. }

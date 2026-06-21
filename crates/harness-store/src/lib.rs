@@ -7,6 +7,7 @@
 
 use harness_types::TypeBoundary;
 
+pub mod agent_integrations;
 pub mod artifacts;
 pub mod bootstrap;
 pub mod core_pipeline;

@@ -228,7 +228,7 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
         Err(issue) => return issue.into_database_inspection(path, REGISTRY_SCHEMA_VERSION),
     };
 
-    if let Err(issue) = validate_registry_required_schema(&conn) {
+    if let Err(issue) = validate_registry_required_schema(&conn, schema.detected_version()) {
         return issue.into_database_inspection(path, REGISTRY_SCHEMA_VERSION);
     }
 
@@ -511,7 +511,10 @@ fn inspect_migration_history(
     }
 }
 
-fn validate_registry_required_schema(conn: &Connection) -> Result<(), InspectionIssue> {
+fn validate_registry_required_schema(
+    conn: &Connection,
+    detected_version: i64,
+) -> Result<(), InspectionIssue> {
     require_tables(conn, REGISTRY_DATABASE_KIND, &["runtime_home", "projects"])?;
     require_columns(
         conn,
@@ -541,6 +544,57 @@ fn validate_registry_required_schema(conn: &Connection) -> Result<(), Inspection
             "metadata_json",
         ],
     )?;
+    if detected_version >= 2 {
+        require_tables(
+            conn,
+            REGISTRY_DATABASE_KIND,
+            &[
+                "agent_integrations",
+                "integration_projects",
+                "host_installations",
+            ],
+        )?;
+        require_columns(
+            conn,
+            REGISTRY_DATABASE_KIND,
+            "agent_integrations",
+            &[
+                "integration_id",
+                "interaction_role",
+                "surface_id",
+                "surface_instance_id",
+                "default_project_id",
+                "enabled",
+                "created_at",
+                "updated_at",
+                "metadata_json",
+            ],
+        )?;
+        require_columns(
+            conn,
+            REGISTRY_DATABASE_KIND,
+            "integration_projects",
+            &["integration_id", "project_id", "created_at"],
+        )?;
+        require_columns(
+            conn,
+            REGISTRY_DATABASE_KIND,
+            "host_installations",
+            &[
+                "installation_id",
+                "integration_id",
+                "host_kind",
+                "host_scope",
+                "server_name",
+                "config_target",
+                "managed_fingerprint",
+                "last_verified_status",
+                "created_at",
+                "updated_at",
+                "metadata_json",
+            ],
+        )?;
+    }
     Ok(())
 }
 
