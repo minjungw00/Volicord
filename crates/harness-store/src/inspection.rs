@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 
@@ -7,6 +7,12 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
 use crate::{
+    agent_integrations::{
+        AGENT_INTERACTION_ROLE, HOST_KIND_CLAUDE_CODE, HOST_KIND_CODEX, HOST_KIND_GENERIC,
+        HOST_SCOPE_EXPORT, HOST_SCOPE_LOCAL, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
+        VERIFIED_STATUS_ACTION_REQUIRED, VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED,
+        VERIFIED_STATUS_NOT_VERIFIED, VERIFIED_STATUS_PARTIAL_FAILURE,
+    },
     bootstrap::{validate_project_record_for_execution, ProjectRecord},
     migrations::{
         expected_project_state_migrations, expected_registry_migrations,
@@ -83,6 +89,9 @@ pub struct RegistryInspectionSnapshot {
     pub schema: InspectionSchemaState,
     pub runtime_home: RuntimeHomeInspectionRecord,
     pub projects: Vec<ProjectInspectionRecord>,
+    pub agent_integrations: Vec<AgentIntegrationInspectionRecord>,
+    pub integration_projects: Vec<IntegrationProjectInspectionRecord>,
+    pub host_installations: Vec<HostInstallationInspectionRecord>,
 }
 
 /// Runtime Home singleton row read from `registry.sqlite`.
@@ -107,6 +116,45 @@ pub struct ProjectInspectionRecord {
     pub status: String,
     pub metadata_json: String,
     pub project_state: ProjectStateDatabaseInspection,
+}
+
+/// Agent Integration Profile row read from a schema version 2 registry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentIntegrationInspectionRecord {
+    pub integration_id: String,
+    pub interaction_role: String,
+    pub surface_id: String,
+    pub surface_instance_id: String,
+    pub default_project_id: Option<String>,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+    pub metadata_json: String,
+}
+
+/// Integration project membership row read from a schema version 2 registry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntegrationProjectInspectionRecord {
+    pub integration_id: String,
+    pub project_id: String,
+    pub created_at: String,
+    pub is_default: bool,
+}
+
+/// Host Installation inventory row read from a schema version 2 registry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostInstallationInspectionRecord {
+    pub installation_id: String,
+    pub integration_id: String,
+    pub host_kind: String,
+    pub host_scope: String,
+    pub server_name: String,
+    pub config_target: String,
+    pub managed_fingerprint: String,
+    pub last_verified_status: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub metadata_json: String,
 }
 
 /// Current or supported historical project-state data.
@@ -266,13 +314,35 @@ fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDat
                 project_state,
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
+
+    let agent_integrations = match read_agent_integration_rows(&conn, schema.detected_version()) {
+        Ok(records) => records,
+        Err(issue) => return issue.into_database_inspection(path, REGISTRY_SCHEMA_VERSION),
+    };
+    let integration_projects = match read_integration_project_rows(
+        &conn,
+        schema.detected_version(),
+        &agent_integrations,
+        &projects,
+    ) {
+        Ok(records) => records,
+        Err(issue) => return issue.into_database_inspection(path, REGISTRY_SCHEMA_VERSION),
+    };
+    let host_installations =
+        match read_host_installation_rows(&conn, schema.detected_version(), &agent_integrations) {
+            Ok(records) => records,
+            Err(issue) => return issue.into_database_inspection(path, REGISTRY_SCHEMA_VERSION),
+        };
 
     DatabaseInspection::Present(RegistryInspectionSnapshot {
         path: path.to_path_buf(),
         schema,
         runtime_home: runtime_home_record,
         projects,
+        agent_integrations,
+        integration_projects,
+        host_installations,
     })
 }
 
@@ -855,6 +925,172 @@ fn read_project_rows(
     Ok(projects)
 }
 
+fn read_agent_integration_rows(
+    conn: &Connection,
+    detected_version: i64,
+) -> Result<Vec<AgentIntegrationInspectionRecord>, InspectionIssue> {
+    if detected_version < 2 {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                integration_id,
+                interaction_role,
+                surface_id,
+                surface_instance_id,
+                default_project_id,
+                enabled,
+                created_at,
+                updated_at,
+                metadata_json
+             FROM agent_integrations
+             ORDER BY integration_id",
+        )
+        .map_err(sqlite_unreadable)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(AgentIntegrationInspectionRecord {
+                integration_id: row.get(0)?,
+                interaction_role: row.get(1)?,
+                surface_id: row.get(2)?,
+                surface_instance_id: row.get(3)?,
+                default_project_id: row.get(4)?,
+                enabled: row.get::<_, i64>(5)? == 1,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+                metadata_json: row.get(8)?,
+            })
+        })
+        .map_err(sqlite_unreadable)?;
+
+    let mut integrations = Vec::new();
+    for row in rows {
+        let integration = row.map_err(registration_decode_error)?;
+        validate_agent_integration_row(&integration)?;
+        integrations.push(integration);
+    }
+    Ok(integrations)
+}
+
+fn read_integration_project_rows(
+    conn: &Connection,
+    detected_version: i64,
+    integrations: &[AgentIntegrationInspectionRecord],
+    projects: &[ProjectInspectionRecord],
+) -> Result<Vec<IntegrationProjectInspectionRecord>, InspectionIssue> {
+    if detected_version < 2 {
+        return Ok(Vec::new());
+    }
+
+    let integration_ids = integrations
+        .iter()
+        .map(|record| record.integration_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let project_ids = projects
+        .iter()
+        .map(|record| record.project_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let default_projects = integrations
+        .iter()
+        .filter_map(|record| {
+            record
+                .default_project_id
+                .as_deref()
+                .map(|project_id| ((record.integration_id.as_str(), project_id), true))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT integration_id, project_id, created_at
+               FROM integration_projects
+              ORDER BY integration_id, project_id",
+        )
+        .map_err(sqlite_unreadable)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(IntegrationProjectInspectionRecord {
+                integration_id: row.get(0)?,
+                project_id: row.get(1)?,
+                created_at: row.get(2)?,
+                is_default: false,
+            })
+        })
+        .map_err(sqlite_unreadable)?;
+
+    let mut memberships = Vec::new();
+    for row in rows {
+        let mut membership = row.map_err(registration_decode_error)?;
+        validate_integration_project_row(&membership, &integration_ids, &project_ids)?;
+        membership.is_default = default_projects.contains_key(&(
+            membership.integration_id.as_str(),
+            membership.project_id.as_str(),
+        ));
+        memberships.push(membership);
+    }
+    Ok(memberships)
+}
+
+fn read_host_installation_rows(
+    conn: &Connection,
+    detected_version: i64,
+    integrations: &[AgentIntegrationInspectionRecord],
+) -> Result<Vec<HostInstallationInspectionRecord>, InspectionIssue> {
+    if detected_version < 2 {
+        return Ok(Vec::new());
+    }
+
+    let integration_ids = integrations
+        .iter()
+        .map(|record| record.integration_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                installation_id,
+                integration_id,
+                host_kind,
+                host_scope,
+                server_name,
+                config_target,
+                managed_fingerprint,
+                last_verified_status,
+                created_at,
+                updated_at,
+                metadata_json
+             FROM host_installations
+             ORDER BY installation_id",
+        )
+        .map_err(sqlite_unreadable)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(HostInstallationInspectionRecord {
+                installation_id: row.get(0)?,
+                integration_id: row.get(1)?,
+                host_kind: row.get(2)?,
+                host_scope: row.get(3)?,
+                server_name: row.get(4)?,
+                config_target: row.get(5)?,
+                managed_fingerprint: row.get(6)?,
+                last_verified_status: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+                metadata_json: row.get(10)?,
+            })
+        })
+        .map_err(sqlite_unreadable)?;
+
+    let mut installations = Vec::new();
+    for row in rows {
+        let installation = row.map_err(registration_decode_error)?;
+        validate_host_installation_row(&installation, &integration_ids)?;
+        installations.push(installation);
+    }
+    Ok(installations)
+}
+
 fn read_project_state_record(
     conn: &Connection,
     project_id: &str,
@@ -927,6 +1163,140 @@ fn read_project_state_record(
     }
     validate_json_object("project_state.metadata_json", &record.metadata_json)?;
     Ok(record)
+}
+
+fn validate_agent_integration_row(
+    integration: &AgentIntegrationInspectionRecord,
+) -> Result<(), InspectionIssue> {
+    require_nonempty(
+        "agent_integrations.integration_id",
+        &integration.integration_id,
+    )?;
+    require_nonempty(
+        "agent_integrations.interaction_role",
+        &integration.interaction_role,
+    )?;
+    if integration.interaction_role != AGENT_INTERACTION_ROLE {
+        return Err(InspectionIssue::Malformed(format!(
+            "agent_integrations.interaction_role is {}, expected {AGENT_INTERACTION_ROLE}",
+            integration.interaction_role
+        )));
+    }
+    require_nonempty("agent_integrations.surface_id", &integration.surface_id)?;
+    require_nonempty(
+        "agent_integrations.surface_instance_id",
+        &integration.surface_instance_id,
+    )?;
+    if let Some(default_project_id) = &integration.default_project_id {
+        require_nonempty("agent_integrations.default_project_id", default_project_id)?;
+    }
+    require_nonempty("agent_integrations.created_at", &integration.created_at)?;
+    require_nonempty("agent_integrations.updated_at", &integration.updated_at)?;
+    validate_json_object(
+        "agent_integrations.metadata_json",
+        &integration.metadata_json,
+    )?;
+    Ok(())
+}
+
+fn validate_integration_project_row(
+    membership: &IntegrationProjectInspectionRecord,
+    integration_ids: &BTreeSet<&str>,
+    project_ids: &BTreeSet<&str>,
+) -> Result<(), InspectionIssue> {
+    require_nonempty(
+        "integration_projects.integration_id",
+        &membership.integration_id,
+    )?;
+    require_nonempty("integration_projects.project_id", &membership.project_id)?;
+    require_nonempty("integration_projects.created_at", &membership.created_at)?;
+    if !integration_ids.contains(membership.integration_id.as_str()) {
+        return Err(InspectionIssue::Malformed(format!(
+            "integration_projects references missing integration_id {}",
+            membership.integration_id
+        )));
+    }
+    if !project_ids.contains(membership.project_id.as_str()) {
+        return Err(InspectionIssue::Malformed(format!(
+            "integration_projects references missing project_id {}",
+            membership.project_id
+        )));
+    }
+    Ok(())
+}
+
+fn validate_host_installation_row(
+    installation: &HostInstallationInspectionRecord,
+    integration_ids: &BTreeSet<&str>,
+) -> Result<(), InspectionIssue> {
+    require_nonempty(
+        "host_installations.installation_id",
+        &installation.installation_id,
+    )?;
+    require_nonempty(
+        "host_installations.integration_id",
+        &installation.integration_id,
+    )?;
+    if !integration_ids.contains(installation.integration_id.as_str()) {
+        return Err(InspectionIssue::Malformed(format!(
+            "host_installations references missing integration_id {}",
+            installation.integration_id
+        )));
+    }
+    validate_host_kind_scope(&installation.host_kind, &installation.host_scope)?;
+    require_nonempty("host_installations.server_name", &installation.server_name)?;
+    require_nonempty(
+        "host_installations.config_target",
+        &installation.config_target,
+    )?;
+    require_nonempty(
+        "host_installations.managed_fingerprint",
+        &installation.managed_fingerprint,
+    )?;
+    validate_verification_status(&installation.last_verified_status)?;
+    require_nonempty("host_installations.created_at", &installation.created_at)?;
+    require_nonempty("host_installations.updated_at", &installation.updated_at)?;
+    validate_json_object(
+        "host_installations.metadata_json",
+        &installation.metadata_json,
+    )?;
+    Ok(())
+}
+
+fn validate_host_kind_scope(host_kind: &str, host_scope: &str) -> Result<(), InspectionIssue> {
+    let valid = matches!(
+        (host_kind, host_scope),
+        (HOST_KIND_CODEX, HOST_SCOPE_USER)
+            | (HOST_KIND_CODEX, HOST_SCOPE_PROJECT)
+            | (HOST_KIND_CLAUDE_CODE, HOST_SCOPE_LOCAL)
+            | (HOST_KIND_CLAUDE_CODE, HOST_SCOPE_PROJECT)
+            | (HOST_KIND_CLAUDE_CODE, HOST_SCOPE_USER)
+            | (HOST_KIND_GENERIC, HOST_SCOPE_EXPORT)
+    );
+    if valid {
+        Ok(())
+    } else {
+        Err(InspectionIssue::Malformed(format!(
+            "host_installations host_kind={host_kind} host_scope={host_scope} is not supported"
+        )))
+    }
+}
+
+fn validate_verification_status(status: &str) -> Result<(), InspectionIssue> {
+    if matches!(
+        status,
+        VERIFIED_STATUS_NOT_VERIFIED
+            | VERIFIED_STATUS_COMPLETE
+            | VERIFIED_STATUS_ACTION_REQUIRED
+            | VERIFIED_STATUS_PARTIAL_FAILURE
+            | VERIFIED_STATUS_FAILED
+    ) {
+        Ok(())
+    } else {
+        Err(InspectionIssue::Malformed(format!(
+            "host_installations.last_verified_status is not supported: {status}"
+        )))
+    }
 }
 
 fn read_surface_rows(
@@ -1067,11 +1437,20 @@ mod tests {
 
     use super::*;
     use crate::{
+        agent_integrations::{
+            add_integration_project, register_agent_integration, register_host_installation,
+            AgentIntegrationRegistration, HostInstallationRegistration,
+            IntegrationProjectRegistration, AGENT_INTERACTION_ROLE, HOST_KIND_CODEX,
+            HOST_SCOPE_USER, VERIFIED_STATUS_COMPLETE,
+        },
         bootstrap::{
             initialize_runtime_home, register_project, register_surface, ProjectRecord,
             ProjectRegistration, SurfaceRegistration, ACTIVE_PROJECT_STATUS,
         },
-        migrations::test_support::create_project_state_fixture_version,
+        migrations::test_support::{
+            create_project_state_fixture_version, create_registry_fixture_version,
+            RegistryFixtureProject,
+        },
         sqlite::{open_read_only_database, project_state_db_path, registry_db_path},
         StoreResult,
     };
@@ -1133,6 +1512,95 @@ mod tests {
         assert_eq!(snapshot.projects.len(), 1);
         assert_eq!(snapshot.projects[0].project_id, PROJECT_ID);
         assert_eq!(snapshot.projects[0].status, ACTIVE_PROJECT_STATUS);
+        assert!(snapshot.agent_integrations.is_empty());
+        assert!(snapshot.integration_projects.is_empty());
+        assert!(snapshot.host_installations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn supported_historical_registry_schema_is_read_without_migration() -> Result<(), Box<dyn Error>>
+    {
+        let fixture = historical_registry_fixture("inspect-historical-registry", 1)?;
+        let registry_path = fixture.runtime_home.registry_db_path();
+        let registry_hash_before = file_hash(&registry_path)?;
+        let migrations_before = migration_count(&registry_path, REGISTRY_DATABASE_KIND)?;
+        let sidecars_before = existing_sidecars(std::slice::from_ref(&registry_path));
+
+        let inspection = inspect_runtime_home(fixture.runtime_home.path());
+        let snapshot = present_registry(&inspection.registry);
+
+        assert_eq!(
+            snapshot.schema,
+            InspectionSchemaState::MigrationRequired {
+                detected_version: 1,
+                latest_supported_version: REGISTRY_SCHEMA_VERSION,
+            }
+        );
+        assert_eq!(snapshot.projects.len(), 1);
+        assert!(snapshot.agent_integrations.is_empty());
+        assert!(snapshot.integration_projects.is_empty());
+        assert!(snapshot.host_installations.is_empty());
+        assert!(!table_exists(&registry_path, "agent_integrations")?);
+        assert_eq!(file_hash(&registry_path)?, registry_hash_before);
+        assert_eq!(
+            migration_count(&registry_path, REGISTRY_DATABASE_KIND)?,
+            migrations_before
+        );
+        assert_eq!(existing_sidecars(&[registry_path]), sidecars_before);
+        Ok(())
+    }
+
+    #[test]
+    fn current_registry_agent_integration_rows_are_inspected() -> Result<(), Box<dyn Error>> {
+        let fixture = current_fixture("inspect-agent-integration-rows")?;
+        register_agent_integration(
+            fixture.runtime_home.path(),
+            AgentIntegrationRegistration {
+                integration_id: "agent_inspected".to_owned(),
+                interaction_role: AGENT_INTERACTION_ROLE.to_owned(),
+                surface_id: SURFACE_ID.to_owned(),
+                surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        add_integration_project(
+            fixture.runtime_home.path(),
+            IntegrationProjectRegistration {
+                integration_id: "agent_inspected".to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        register_host_installation(
+            fixture.runtime_home.path(),
+            HostInstallationRegistration {
+                installation_id: "install_inspected".to_owned(),
+                integration_id: "agent_inspected".to_owned(),
+                host_kind: HOST_KIND_CODEX.to_owned(),
+                host_scope: HOST_SCOPE_USER.to_owned(),
+                server_name: "harness-inspected".to_owned(),
+                config_target: "/tmp/harness-inspected-config.toml".to_owned(),
+                managed_fingerprint: "fingerprint-inspected".to_owned(),
+                last_verified_status: VERIFIED_STATUS_COMPLETE.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+
+        let inspection = inspect_runtime_home(fixture.runtime_home.path());
+        let snapshot = present_registry(&inspection.registry);
+
+        assert_eq!(snapshot.agent_integrations.len(), 1);
+        assert_eq!(
+            snapshot.agent_integrations[0].integration_id,
+            "agent_inspected"
+        );
+        assert_eq!(snapshot.integration_projects.len(), 1);
+        assert_eq!(snapshot.integration_projects[0].project_id, PROJECT_ID);
+        assert_eq!(snapshot.host_installations.len(), 1);
+        assert_eq!(
+            snapshot.host_installations[0].installation_id,
+            "install_inspected"
+        );
         Ok(())
     }
 
@@ -1451,6 +1919,52 @@ mod tests {
         Ok(fixture)
     }
 
+    fn historical_registry_fixture(
+        prefix: &str,
+        version: i64,
+    ) -> Result<InspectionFixture, Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new(prefix)?;
+        let repo_root = runtime_home.create_product_repo("repo")?;
+        let project_home = runtime_home.path().join("projects").join(PROJECT_ID);
+        fs::create_dir_all(&project_home)?;
+        let state_db_path = project_home.join("state.sqlite");
+        let mut state = Connection::open(&state_db_path)?;
+        create_project_state_fixture_version(&mut state, PROJECT_ID, PROJECT_STATE_SCHEMA_VERSION)?;
+        drop(state);
+
+        let repo_root_text = path_text(&repo_root);
+        let project_home_text = path_text(&project_home);
+        let state_db_path_text = path_text(&state_db_path);
+        let mut registry = Connection::open(runtime_home.registry_db_path())?;
+        create_registry_fixture_version(
+            &mut registry,
+            RUNTIME_HOME_ID,
+            version,
+            &[RegistryFixtureProject {
+                project_id: PROJECT_ID,
+                repo_root: &repo_root_text,
+                project_home: &project_home_text,
+                state_db_path: &state_db_path_text,
+                status: ACTIVE_PROJECT_STATUS,
+                metadata_json: "{}",
+            }],
+        )?;
+        drop(registry);
+
+        Ok(InspectionFixture {
+            runtime_home,
+            project: ProjectRecord {
+                project_id: PROJECT_ID.to_owned(),
+                runtime_home_id: RUNTIME_HOME_ID.to_owned(),
+                repo_root,
+                project_home,
+                state_db_path,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        })
+    }
+
     fn replace_project_state_db_path(
         runtime_home: &Path,
         project_id: &str,
@@ -1539,6 +2053,24 @@ mod tests {
 
     fn file_hash(path: &Path) -> Result<Vec<u8>, Box<dyn Error>> {
         Ok(Sha256::digest(fs::read(path)?).to_vec())
+    }
+
+    fn path_text(path: &Path) -> String {
+        path.display().to_string()
+    }
+
+    fn table_exists(path: &Path, table: &str) -> Result<bool, Box<dyn Error>> {
+        let conn = open_read_only_database(path)?;
+        Ok(conn.query_row(
+            "SELECT EXISTS (
+                SELECT 1
+                  FROM sqlite_master
+                 WHERE type = 'table'
+                   AND name = ?1
+            )",
+            [table],
+            |row| row.get::<_, i64>(0),
+        )? == 1)
     }
 
     fn existing_sidecars(paths: &[PathBuf]) -> Vec<PathBuf> {

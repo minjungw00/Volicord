@@ -29,6 +29,12 @@ use harness_store::{
         register_project, register_surface, runtime_home_record, validate_project_id,
         ProjectRecord, ProjectRegistration, SurfaceRegistration, ACTIVE_PROJECT_STATUS,
     },
+    inspection::{
+        inspect_runtime_home, AgentIntegrationInspectionRecord, DatabaseInspection,
+        HostInstallationInspectionRecord, InspectionSchemaState,
+        IntegrationProjectInspectionRecord, ProjectInspectionRecord, RegistryInspectionSnapshot,
+    },
+    migrations::REGISTRY_SCHEMA_VERSION,
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
@@ -308,6 +314,28 @@ impl AgentAction {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RegistrySchemaPlan {
+    current_version: i64,
+    latest_supported_version: i64,
+    migration_planned: bool,
+}
+
+#[derive(Debug, Clone)]
+struct AgentRegistryPlan {
+    schema: Option<RegistrySchemaPlan>,
+    projects: Vec<ProjectInspectionRecord>,
+    integrations: Vec<AgentIntegrationInspectionRecord>,
+    integration_projects: Vec<IntegrationProjectInspectionRecord>,
+    host_installations: Vec<HostInstallationInspectionRecord>,
+}
+
+#[derive(Debug, Clone)]
+struct IntegrationProjectPlanRecord {
+    project_id: String,
+    project: ProjectRecord,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpVerification {
     pub status: VerificationStatus,
@@ -455,6 +483,17 @@ fn command_install(
 
     let runtime_home = resolve_agent_runtime_home(&parsed, current_dir, process)?;
     let repo_root = resolve_optional_repo_root(parsed.repo_root.as_deref(), current_dir)?;
+    if parsed.dry_run {
+        return command_install_dry_run(
+            parsed,
+            host_kind,
+            host_scope,
+            runtime_home,
+            repo_root,
+            current_dir,
+            process,
+        );
+    }
     let project_plan =
         resolve_install_project(&runtime_home, parsed.project_id.as_deref(), repo_root)?;
     let integration_id = parsed.integration_id.clone().unwrap_or_else(|| {
@@ -611,31 +650,6 @@ fn command_install(
             format!("{} {}", plan.target.as_str(), path_text(&plan.path)),
         ));
     }
-    let guidance = guidance_plans
-        .iter()
-        .map(|plan| plan.status.clone())
-        .collect::<Vec<_>>();
-
-    if parsed.dry_run {
-        let output = AgentOutput {
-            status: AgentResultStatus::DryRun,
-            runtime_home: runtime_home.clone(),
-            integration_id,
-            host_plan: Some(host_plan),
-            allowed_projects: vec![project_plan.project_id],
-            installations: expected_installation.into_iter().collect(),
-            guidance,
-            verification: McpVerification::skipped(
-                "dry run does not run preflight or MCP verification",
-            ),
-            actions,
-            warnings: Vec::new(),
-            action_required: Vec::new(),
-            output: parsed.output,
-        };
-        return render_agent_output(&output);
-    }
-
     initialize_runtime_home(&runtime_home, AGENT_RUNTIME_HOME_ID, AGENT_METADATA_JSON)?;
     let project = if let Some(existing) = project_plan.existing_project {
         existing
@@ -851,6 +865,7 @@ fn command_install(
     let output = AgentOutput {
         status,
         runtime_home,
+        registry_schema: None,
         integration_id,
         host_plan: Some(host_plan),
         allowed_projects: vec![project.project_id],
@@ -869,6 +884,199 @@ fn command_install(
         ),
         _ => render_agent_output(&output),
     }
+}
+
+fn command_install_dry_run(
+    parsed: ParsedAgentOptions,
+    host_kind: HostKind,
+    host_scope: HostScope,
+    runtime_home: PathBuf,
+    repo_root: Option<PathBuf>,
+    current_dir: &Path,
+    process: &mut impl AgentProcess,
+) -> Result<String, AgentCommandError> {
+    let registry = inspect_agent_registry_for_planning(&runtime_home)?;
+    let project_plan = resolve_install_project_from_registry(
+        &registry,
+        &runtime_home,
+        parsed.project_id.as_deref(),
+        repo_root,
+    )?;
+    let integration_id = parsed.integration_id.clone().unwrap_or_else(|| {
+        deterministic_integration_id(host_kind, host_scope, &project_plan.project_id)
+    });
+    let existing_integration = registry.integration(&integration_id);
+    let surface_id = parsed
+        .surface_id
+        .clone()
+        .or_else(|| existing_integration.map(|record| record.surface_id.clone()))
+        .unwrap_or_else(|| stable_identifier("agent_surface", &integration_id));
+    let surface_instance_id = parsed
+        .surface_instance_id
+        .clone()
+        .or_else(|| existing_integration.map(|record| record.surface_instance_id.clone()))
+        .unwrap_or_else(|| stable_identifier("agent_surface_instance", &integration_id));
+    let default_project_id = parsed
+        .default_project_id
+        .clone()
+        .or_else(|| existing_integration.and_then(|record| record.default_project_id.clone()))
+        .unwrap_or_else(|| project_plan.project_id.clone());
+    let surface_exists = registry.project_surface_exists(
+        &project_plan.project_id,
+        &surface_id,
+        &surface_instance_id,
+    )?;
+    let membership_exists = registry.is_project_member(&integration_id, &project_plan.project_id);
+    let mcp_command = resolve_mcp_command(&parsed, host_scope, current_dir, process)?;
+    let expected_installation = registry
+        .find_installation_for_target_hint(
+            &integration_id,
+            host_kind,
+            host_scope,
+            parsed.server_name.as_deref(),
+        )
+        .map(host_installation_record_from_inspection);
+    let host_plan = build_host_plan(
+        HostPlanInputs {
+            host_kind,
+            host_scope,
+            integration_id: &integration_id,
+            server_name: parsed.server_name.as_deref(),
+            repo_root: project_plan.repo_root.as_deref(),
+            mcp_command: &mcp_command,
+            runtime_home: runtime_home_for_host_config(host_scope, &runtime_home),
+            expected_fingerprint: expected_installation
+                .as_ref()
+                .map(|record| record.managed_fingerprint.as_str()),
+            parsed: &parsed,
+            current_dir,
+        },
+        process,
+    )?;
+    if host_plan.has_conflicts() {
+        return Err(AgentCommandError::runtime(
+            host_plan.conflicts[0].message.clone(),
+        ));
+    }
+    validate_project_scope_membership_from_registry(
+        &registry,
+        &integration_id,
+        host_scope,
+        &project_plan.project_id,
+    )?;
+
+    if default_project_id != project_plan.project_id
+        && !registry.is_project_member(&integration_id, &default_project_id)
+    {
+        return Err(AgentCommandError::runtime(
+            "--default-project-id must name an allowed integration project",
+        ));
+    }
+
+    let mut actions = Vec::new();
+    if let Some(schema) = registry.schema {
+        actions.push(AgentAction::new(
+            "runtime_home",
+            ActionState::Reused,
+            path_text(&runtime_home),
+        ));
+        if schema.migration_planned {
+            actions.push(AgentAction::new(
+                "registry_migration",
+                ActionState::Planned,
+                format!(
+                    "registry schema {} -> {}",
+                    schema.current_version, schema.latest_supported_version
+                ),
+            ));
+        }
+    } else {
+        actions.push(AgentAction::new(
+            "runtime_home",
+            ActionState::Planned,
+            path_text(&runtime_home),
+        ));
+    }
+    actions.push(AgentAction::new(
+        "project",
+        project_plan.action,
+        project_plan.project_id.clone(),
+    ));
+    actions.push(AgentAction::new(
+        "surface",
+        if surface_exists {
+            ActionState::Reused
+        } else {
+            ActionState::Planned
+        },
+        format!("{surface_id}/{surface_instance_id}"),
+    ));
+    actions.push(AgentAction::new(
+        "integration",
+        if existing_integration.is_some() {
+            ActionState::Reused
+        } else {
+            ActionState::Planned
+        },
+        integration_id.clone(),
+    ));
+    actions.push(AgentAction::new(
+        "project_allowlist",
+        if membership_exists {
+            ActionState::Reused
+        } else {
+            ActionState::Planned
+        },
+        project_plan.project_id.clone(),
+    ));
+    actions.push(AgentAction::new(
+        "host",
+        planned_change_action(host_plan.change),
+        host_target_text(&host_plan.target),
+    ));
+
+    let guidance_plans = if parsed.guidance.targets().is_empty() {
+        Vec::new()
+    } else {
+        let repo_root = project_plan.repo_root.as_deref().ok_or_else(|| {
+            AgentCommandError::runtime("repository guidance requires a Product Repository root")
+        })?;
+        plan_guidance_for_targets(
+            repo_root,
+            &integration_id,
+            &project_plan.project_id,
+            parsed.guidance.targets(),
+        )?
+    };
+    for plan in &guidance_plans {
+        actions.push(AgentAction::new(
+            "guidance",
+            planned_change_action(plan.change),
+            format!("{} {}", plan.target.as_str(), path_text(&plan.path)),
+        ));
+    }
+
+    let output = AgentOutput {
+        status: AgentResultStatus::DryRun,
+        runtime_home,
+        registry_schema: registry.schema,
+        integration_id,
+        host_plan: Some(host_plan),
+        allowed_projects: vec![project_plan.project_id],
+        installations: expected_installation.into_iter().collect(),
+        guidance: guidance_plans
+            .iter()
+            .map(|plan| plan.status.clone())
+            .collect(),
+        verification: McpVerification::skipped(
+            "dry run does not run preflight or MCP verification",
+        ),
+        actions,
+        warnings: Vec::new(),
+        action_required: Vec::new(),
+        output: parsed.output,
+    };
+    render_agent_output(&output)
 }
 
 fn command_project(
@@ -903,9 +1111,62 @@ fn command_project_add(
     let project_id = required_text(parsed.project_id.as_deref(), "--project-id")?;
     validate_project_id(project_id)?;
     let runtime_home = resolve_agent_runtime_home(&parsed, current_dir, process)?;
+    let repo_root = resolve_optional_repo_root(parsed.repo_root.as_deref(), current_dir)?;
+    if parsed.dry_run {
+        let registry = inspect_agent_registry_for_planning(&runtime_home)?;
+        let _integration = registry.required_integration(integration_id)?;
+        validate_add_membership_scope_from_registry(&registry, integration_id, project_id)?;
+        let existing_project = registry.executable_project(project_id)?;
+        if existing_project.is_none() && repo_root.is_none() {
+            return Err(AgentCommandError::runtime(
+                "project is not registered; pass --repo-root to register it before adding membership",
+            ));
+        }
+        let installations = registry.host_installations_for_integration(integration_id);
+        let actions = vec![
+            AgentAction::new(
+                "integration",
+                ActionState::Reused,
+                integration_id.to_owned(),
+            ),
+            AgentAction::new(
+                "project",
+                if existing_project.is_some() {
+                    ActionState::Reused
+                } else {
+                    ActionState::Planned
+                },
+                project_id.to_owned(),
+            ),
+            AgentAction::new(
+                "project_allowlist",
+                if registry.is_project_member(integration_id, project_id) {
+                    ActionState::Reused
+                } else {
+                    ActionState::Planned
+                },
+                project_id.to_owned(),
+            ),
+        ];
+        let output = AgentOutput {
+            status: AgentResultStatus::DryRun,
+            runtime_home,
+            registry_schema: registry.schema,
+            integration_id: integration_id.to_owned(),
+            host_plan: None,
+            allowed_projects: vec![project_id.to_owned()],
+            installations,
+            guidance: Vec::new(),
+            verification: McpVerification::skipped("dry run does not run project preflight"),
+            actions,
+            warnings: Vec::new(),
+            action_required: Vec::new(),
+            output: parsed.output,
+        };
+        return render_agent_output(&output);
+    }
     let integration = required_integration(&runtime_home, integration_id)?;
     validate_add_membership_scope(&runtime_home, integration_id, project_id)?;
-    let repo_root = resolve_optional_repo_root(parsed.repo_root.as_deref(), current_dir)?;
     let existing_project = project_record_for_execution(&runtime_home, project_id)?;
     if existing_project.is_none() && repo_root.is_none() {
         return Err(AgentCommandError::runtime(
@@ -937,26 +1198,6 @@ fn command_project_add(
             project_id.to_owned(),
         ),
     ];
-
-    if parsed.dry_run {
-        let installations = list_host_installations_for_integration(&runtime_home, integration_id)?;
-        let output = AgentOutput {
-            status: AgentResultStatus::DryRun,
-            runtime_home,
-            integration_id: integration_id.to_owned(),
-            host_plan: None,
-            allowed_projects: vec![project_id.to_owned()],
-            installations,
-            guidance: Vec::new(),
-            verification: McpVerification::skipped("dry run does not run project preflight"),
-            actions,
-            warnings: Vec::new(),
-            action_required: Vec::new(),
-            output: parsed.output,
-        };
-        return render_agent_output(&output);
-    }
-
     let project = if let Some(project) = existing_project {
         project
     } else {
@@ -1019,6 +1260,7 @@ fn command_project_add(
             AgentResultStatus::Complete
         },
         runtime_home,
+        registry_schema: None,
         integration_id: integration_id.to_owned(),
         host_plan: None,
         allowed_projects,
@@ -1050,25 +1292,27 @@ fn command_project_remove(
     let integration_id = required_text(parsed.integration_id.as_deref(), "--integration-id")?;
     let project_id = required_text(parsed.project_id.as_deref(), "--project-id")?;
     let runtime_home = resolve_agent_runtime_home(&parsed, current_dir, &no_process)?;
-    let integration = required_integration(&runtime_home, integration_id)?;
-    if integration.default_project_id.as_deref() == Some(project_id) {
-        return Err(AgentCommandError::runtime(
-            "cannot remove the integration default project; change or clear the default first",
-        ));
-    }
-    let actions = vec![AgentAction::new(
-        "project_allowlist",
-        if is_project_member(&runtime_home, integration_id, project_id)? {
-            ActionState::Planned
-        } else {
-            ActionState::Skipped
-        },
-        project_id.to_owned(),
-    )];
     if parsed.dry_run {
+        let registry = inspect_agent_registry_for_planning(&runtime_home)?;
+        let integration = registry.required_integration(integration_id)?;
+        if integration.default_project_id.as_deref() == Some(project_id) {
+            return Err(AgentCommandError::runtime(
+                "cannot remove the integration default project; change or clear the default first",
+            ));
+        }
+        let actions = vec![AgentAction::new(
+            "project_allowlist",
+            if registry.is_project_member(integration_id, project_id) {
+                ActionState::Planned
+            } else {
+                ActionState::Skipped
+            },
+            project_id.to_owned(),
+        )];
         let output = AgentOutput {
             status: AgentResultStatus::DryRun,
             runtime_home,
+            registry_schema: registry.schema,
             integration_id: integration_id.to_owned(),
             host_plan: None,
             allowed_projects: Vec::new(),
@@ -1082,6 +1326,22 @@ fn command_project_remove(
         };
         return render_agent_output(&output);
     }
+    let integration = required_integration(&runtime_home, integration_id)?;
+    if integration.default_project_id.as_deref() == Some(project_id) {
+        return Err(AgentCommandError::runtime(
+            "cannot remove the integration default project; change or clear the default first",
+        ));
+    }
+    let membership_exists = is_project_member(&runtime_home, integration_id, project_id)?;
+    let actions = vec![AgentAction::new(
+        "project_allowlist",
+        if membership_exists {
+            ActionState::Removed
+        } else {
+            ActionState::Skipped
+        },
+        project_id.to_owned(),
+    )];
     remove_integration_project(&runtime_home, integration_id, project_id)?;
     let remaining = list_integration_projects(&runtime_home, integration_id)?;
     let mut warnings = Vec::new();
@@ -1095,6 +1355,7 @@ fn command_project_remove(
     let output = AgentOutput {
         status: AgentResultStatus::Complete,
         runtime_home,
+        registry_schema: None,
         integration_id: integration_id.to_owned(),
         host_plan: None,
         allowed_projects: remaining
@@ -1106,11 +1367,7 @@ fn command_project_remove(
         verification: McpVerification::skipped(
             "project membership removed; host configuration was not rewritten",
         ),
-        actions: vec![AgentAction::new(
-            "project_allowlist",
-            ActionState::Removed,
-            project_id.to_owned(),
-        )],
+        actions,
         warnings,
         action_required: Vec::new(),
         output: parsed.output,
@@ -1153,6 +1410,7 @@ fn command_status(
     let output = AgentOutput {
         status: AgentResultStatus::Complete,
         runtime_home,
+        registry_schema: None,
         integration_id: integration_id.to_owned(),
         host_plan: None,
         allowed_projects,
@@ -1221,6 +1479,7 @@ fn command_verify(
     let output = AgentOutput {
         status,
         runtime_home,
+        registry_schema: None,
         integration_id: integration_id.to_owned(),
         host_plan: None,
         allowed_projects,
@@ -1255,6 +1514,88 @@ fn command_uninstall(
     let parsed = parse_agent_options(args, uninstall_allowed_options())?;
     let integration_id = required_text(parsed.integration_id.as_deref(), "--integration-id")?;
     let runtime_home = resolve_agent_runtime_home(&parsed, current_dir, process)?;
+    if parsed.dry_run {
+        let registry = inspect_agent_registry_for_planning(&runtime_home)?;
+        let _integration = registry.required_integration(integration_id)?;
+        let installations = selected_installations_from_registry(
+            &registry,
+            integration_id,
+            parsed.installation_id.as_deref(),
+        )?;
+        for installation in &installations {
+            let scope = parse_host_scope(&installation.host_scope)?;
+            validate_repository_write_authorization(&parsed, scope)?;
+        }
+        if parsed.remove_managed {
+            validate_guidance_remove_authorization(&parsed)?;
+        }
+        let projects = registry.integration_project_plan_records(integration_id)?;
+        let guidance = guidance_statuses_for_plan_projects(integration_id, &projects)?;
+        let mut warnings = Vec::new();
+        let mut actions = installations
+            .iter()
+            .map(|installation| {
+                AgentAction::new(
+                    "host",
+                    ActionState::Planned,
+                    installation.config_target.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        if parsed.remove_managed {
+            for project in &projects {
+                for target in [GuidanceTarget::Codex, GuidanceTarget::ClaudeCode] {
+                    match plan_guidance_remove(
+                        &project.project.repo_root,
+                        integration_id,
+                        &project.project_id,
+                        target,
+                    ) {
+                        Ok(plan) => {
+                            actions.push(AgentAction::new(
+                                "guidance",
+                                planned_change_action(plan.change),
+                                format!("{} {}", target.as_str(), path_text(&plan.path)),
+                            ));
+                        }
+                        Err(HostConfigError::Conflict(conflict)) => {
+                            actions.push(AgentAction::new(
+                                "guidance",
+                                ActionState::Conflict,
+                                format!("{}: {}", target.as_str(), conflict.message),
+                            ));
+                            warnings.push(format!(
+                                "residual guidance preserved for project {} {}: {}",
+                                project.project_id,
+                                target.as_str(),
+                                conflict.message
+                            ));
+                        }
+                        Err(error) => return Err(AgentCommandError::from(error)),
+                    }
+                }
+            }
+        }
+        let output = AgentOutput {
+            status: AgentResultStatus::DryRun,
+            runtime_home,
+            registry_schema: registry.schema,
+            integration_id: integration_id.to_owned(),
+            host_plan: None,
+            allowed_projects: projects
+                .iter()
+                .map(|project| project.project_id.clone())
+                .collect(),
+            installations,
+            guidance,
+            verification: McpVerification::skipped("dry run does not remove host configuration"),
+            actions,
+            warnings,
+            action_required: Vec::new(),
+            output: parsed.output,
+        };
+        return render_agent_output(&output);
+    }
     let _integration = required_integration(&runtime_home, integration_id)?;
     let installations = selected_installations(
         &runtime_home,
@@ -1269,7 +1610,6 @@ fn command_uninstall(
         validate_guidance_remove_authorization(&parsed)?;
     }
     let projects = list_integration_projects(&runtime_home, integration_id)?;
-    let mut guidance = guidance_statuses_for_projects(integration_id, &projects)?;
     let mut guidance_remove_plans = Vec::new();
     let mut warnings = Vec::new();
     let mut actions = installations
@@ -1277,11 +1617,7 @@ fn command_uninstall(
         .map(|installation| {
             AgentAction::new(
                 "host",
-                if parsed.dry_run {
-                    ActionState::Planned
-                } else {
-                    ActionState::Removed
-                },
+                ActionState::Removed,
                 installation.config_target.clone(),
             )
         })
@@ -1321,26 +1657,6 @@ fn command_uninstall(
             }
         }
     }
-    if parsed.dry_run {
-        let output = AgentOutput {
-            status: AgentResultStatus::DryRun,
-            runtime_home,
-            integration_id: integration_id.to_owned(),
-            host_plan: None,
-            allowed_projects: projects
-                .iter()
-                .map(|project| project.project_id.clone())
-                .collect(),
-            installations,
-            guidance,
-            verification: McpVerification::skipped("dry run does not remove host configuration"),
-            actions,
-            warnings,
-            action_required: Vec::new(),
-            output: parsed.output,
-        };
-        return render_agent_output(&output);
-    }
     for installation in &installations {
         remove_host_configuration(&runtime_home, installation, current_dir, process)?;
         remove_host_installation(&runtime_home, &installation.installation_id)?;
@@ -1355,7 +1671,7 @@ fn command_uninstall(
             ));
         }
     }
-    guidance = guidance_statuses_for_projects(integration_id, &projects)?;
+    let guidance = guidance_statuses_for_projects(integration_id, &projects)?;
     let remaining = list_host_installations_for_integration(&runtime_home, integration_id)?;
     if remaining.is_empty() {
         set_agent_integration_enabled(&runtime_home, integration_id, false)?;
@@ -1370,6 +1686,7 @@ fn command_uninstall(
             AgentResultStatus::Complete
         },
         runtime_home,
+        registry_schema: None,
         integration_id: integration_id.to_owned(),
         host_plan: None,
         allowed_projects: projects
@@ -1427,17 +1744,20 @@ fn command_guidance_apply(
     let integration_id = required_text(parsed.integration_id.as_deref(), "--integration-id")?;
     let project_id = required_text(parsed.project_id.as_deref(), "--project-id")?;
     let runtime_home = resolve_agent_runtime_home(&parsed, current_dir, process)?;
-    let project = required_guidance_project(&runtime_home, integration_id, project_id)?;
-    let plan = plan_guidance_apply(&project.repo_root, integration_id, project_id, target)?;
-    let actions = vec![AgentAction::new(
-        "guidance",
-        planned_change_action(plan.change),
-        format!("{} {}", target.as_str(), path_text(&plan.path)),
-    )];
     if parsed.dry_run {
+        let registry = inspect_agent_registry_for_planning(&runtime_home)?;
+        let project =
+            required_guidance_project_from_registry(&registry, integration_id, project_id)?;
+        let plan = plan_guidance_apply(&project.repo_root, integration_id, project_id, target)?;
+        let actions = vec![AgentAction::new(
+            "guidance",
+            planned_change_action(plan.change),
+            format!("{} {}", target.as_str(), path_text(&plan.path)),
+        )];
         let output = AgentOutput {
             status: AgentResultStatus::DryRun,
             runtime_home,
+            registry_schema: registry.schema,
             integration_id: integration_id.to_owned(),
             host_plan: None,
             allowed_projects: vec![project_id.to_owned()],
@@ -1451,6 +1771,8 @@ fn command_guidance_apply(
         };
         return render_agent_output(&output);
     }
+    let project = required_guidance_project(&runtime_home, integration_id, project_id)?;
+    let plan = plan_guidance_apply(&project.repo_root, integration_id, project_id, target)?;
     let effect = apply_guidance_plan(&plan)?;
     let guidance = guidance_statuses_for_project(
         Some(&project.repo_root),
@@ -1461,6 +1783,7 @@ fn command_guidance_apply(
     let output = AgentOutput {
         status: AgentResultStatus::Complete,
         runtime_home,
+        registry_schema: None,
         integration_id: integration_id.to_owned(),
         host_plan: None,
         allowed_projects: vec![project_id.to_owned()],
@@ -1491,6 +1814,48 @@ fn command_guidance_status(
     let integration_id = required_text(parsed.integration_id.as_deref(), "--integration-id")?;
     let project_id = required_text(parsed.project_id.as_deref(), "--project-id")?;
     let runtime_home = resolve_agent_runtime_home(&parsed, current_dir, process)?;
+    if parsed.dry_run {
+        let registry = inspect_agent_registry_for_planning(&runtime_home)?;
+        let project =
+            required_guidance_project_from_registry(&registry, integration_id, project_id)?;
+        let targets = if let Some(host_kind) = parsed.host_kind {
+            vec![guidance_target_from_host_kind(host_kind)?]
+        } else {
+            vec![GuidanceTarget::Codex, GuidanceTarget::ClaudeCode]
+        };
+        let plans = plan_guidance_remove_for_targets(
+            &project.repo_root,
+            integration_id,
+            project_id,
+            &targets,
+        )?;
+        let actions = plans
+            .iter()
+            .map(|plan| {
+                AgentAction::new(
+                    "guidance",
+                    planned_change_action(plan.change),
+                    format!("{} {}", plan.target.as_str(), path_text(&plan.path)),
+                )
+            })
+            .collect::<Vec<_>>();
+        let output = AgentOutput {
+            status: AgentResultStatus::DryRun,
+            runtime_home,
+            registry_schema: registry.schema,
+            integration_id: integration_id.to_owned(),
+            host_plan: None,
+            allowed_projects: vec![project_id.to_owned()],
+            installations: Vec::new(),
+            guidance: plans.iter().map(|plan| plan.status.clone()).collect(),
+            verification: McpVerification::skipped("dry run does not remove repository guidance"),
+            actions,
+            warnings: Vec::new(),
+            action_required: Vec::new(),
+            output: parsed.output,
+        };
+        return render_agent_output(&output);
+    }
     let project = required_guidance_project(&runtime_home, integration_id, project_id)?;
     let guidance = guidance_statuses_for_project(
         Some(&project.repo_root),
@@ -1510,6 +1875,7 @@ fn command_guidance_status(
             AgentResultStatus::Complete
         },
         runtime_home,
+        registry_schema: None,
         integration_id: integration_id.to_owned(),
         host_plan: None,
         allowed_projects: vec![project_id.to_owned()],
@@ -1542,28 +1908,35 @@ fn command_guidance_remove(
     let integration_id = required_text(parsed.integration_id.as_deref(), "--integration-id")?;
     let project_id = required_text(parsed.project_id.as_deref(), "--project-id")?;
     let runtime_home = resolve_agent_runtime_home(&parsed, current_dir, process)?;
-    let project = required_guidance_project(&runtime_home, integration_id, project_id)?;
-    let targets = if let Some(host_kind) = parsed.host_kind {
-        vec![guidance_target_from_host_kind(host_kind)?]
-    } else {
-        vec![GuidanceTarget::Codex, GuidanceTarget::ClaudeCode]
-    };
-    let plans =
-        plan_guidance_remove_for_targets(&project.repo_root, integration_id, project_id, &targets)?;
-    let actions = plans
-        .iter()
-        .map(|plan| {
-            AgentAction::new(
-                "guidance",
-                planned_change_action(plan.change),
-                format!("{} {}", plan.target.as_str(), path_text(&plan.path)),
-            )
-        })
-        .collect::<Vec<_>>();
     if parsed.dry_run {
+        let registry = inspect_agent_registry_for_planning(&runtime_home)?;
+        let project =
+            required_guidance_project_from_registry(&registry, integration_id, project_id)?;
+        let targets = if let Some(host_kind) = parsed.host_kind {
+            vec![guidance_target_from_host_kind(host_kind)?]
+        } else {
+            vec![GuidanceTarget::Codex, GuidanceTarget::ClaudeCode]
+        };
+        let plans = plan_guidance_remove_for_targets(
+            &project.repo_root,
+            integration_id,
+            project_id,
+            &targets,
+        )?;
+        let actions = plans
+            .iter()
+            .map(|plan| {
+                AgentAction::new(
+                    "guidance",
+                    planned_change_action(plan.change),
+                    format!("{} {}", plan.target.as_str(), path_text(&plan.path)),
+                )
+            })
+            .collect::<Vec<_>>();
         let output = AgentOutput {
             status: AgentResultStatus::DryRun,
             runtime_home,
+            registry_schema: registry.schema,
             integration_id: integration_id.to_owned(),
             host_plan: None,
             allowed_projects: vec![project_id.to_owned()],
@@ -1577,6 +1950,14 @@ fn command_guidance_remove(
         };
         return render_agent_output(&output);
     }
+    let project = required_guidance_project(&runtime_home, integration_id, project_id)?;
+    let targets = if let Some(host_kind) = parsed.host_kind {
+        vec![guidance_target_from_host_kind(host_kind)?]
+    } else {
+        vec![GuidanceTarget::Codex, GuidanceTarget::ClaudeCode]
+    };
+    let plans =
+        plan_guidance_remove_for_targets(&project.repo_root, integration_id, project_id, &targets)?;
     let mut effects = Vec::new();
     for plan in &plans {
         effects.push(apply_guidance_remove(plan)?);
@@ -1590,6 +1971,7 @@ fn command_guidance_remove(
     let output = AgentOutput {
         status: AgentResultStatus::Complete,
         runtime_home,
+        registry_schema: None,
         integration_id: integration_id.to_owned(),
         host_plan: None,
         allowed_projects: vec![project_id.to_owned()],
@@ -2221,6 +2603,448 @@ fn resolve_install_project(
     })
 }
 
+impl AgentRegistryPlan {
+    fn from_snapshot(snapshot: RegistryInspectionSnapshot) -> Self {
+        Self {
+            schema: Some(registry_schema_plan(&snapshot.schema)),
+            projects: snapshot.projects,
+            integrations: snapshot.agent_integrations,
+            integration_projects: snapshot.integration_projects,
+            host_installations: snapshot.host_installations,
+        }
+    }
+
+    fn integration(&self, integration_id: &str) -> Option<&AgentIntegrationInspectionRecord> {
+        self.integrations
+            .iter()
+            .find(|record| record.integration_id == integration_id)
+    }
+
+    fn required_integration(
+        &self,
+        integration_id: &str,
+    ) -> Result<AgentIntegrationRecord, AgentCommandError> {
+        self.integration(integration_id)
+            .map(agent_integration_record_from_inspection)
+            .ok_or_else(|| {
+                AgentCommandError::runtime(format!(
+                    "Agent Integration Profile not found: {integration_id}"
+                ))
+            })
+    }
+
+    fn project(&self, project_id: &str) -> Option<&ProjectInspectionRecord> {
+        self.projects
+            .iter()
+            .find(|record| record.project_id == project_id)
+    }
+
+    fn executable_project(
+        &self,
+        project_id: &str,
+    ) -> Result<Option<ProjectRecord>, AgentCommandError> {
+        let Some(project) = self.project(project_id) else {
+            return Ok(None);
+        };
+        executable_project_record_from_inspection(project).map(Some)
+    }
+
+    fn is_project_member(&self, integration_id: &str, project_id: &str) -> bool {
+        self.integration_projects.iter().any(|record| {
+            record.integration_id == integration_id && record.project_id == project_id
+        })
+    }
+
+    fn host_installations_for_integration(
+        &self,
+        integration_id: &str,
+    ) -> Vec<HostInstallationRecord> {
+        self.host_installations
+            .iter()
+            .filter(|record| record.integration_id == integration_id)
+            .map(host_installation_record_from_inspection)
+            .collect()
+    }
+
+    fn find_installation_for_target_hint(
+        &self,
+        integration_id: &str,
+        host_kind: HostKind,
+        host_scope: HostScope,
+        server_name: Option<&str>,
+    ) -> Option<&HostInstallationInspectionRecord> {
+        self.host_installations.iter().find(|record| {
+            record.integration_id == integration_id
+                && record.host_kind == host_kind.as_str()
+                && record.host_scope == host_scope.as_str()
+                && server_name
+                    .map(|name| record.server_name == name)
+                    .unwrap_or(true)
+        })
+    }
+
+    fn integration_project_plan_records(
+        &self,
+        integration_id: &str,
+    ) -> Result<Vec<IntegrationProjectPlanRecord>, AgentCommandError> {
+        let mut records = Vec::new();
+        for membership in self
+            .integration_projects
+            .iter()
+            .filter(|record| record.integration_id == integration_id)
+        {
+            let project = self
+                .executable_project(&membership.project_id)?
+                .ok_or_else(|| {
+                    AgentCommandError::runtime(format!(
+                        "project is not executable: {}",
+                        membership.project_id
+                    ))
+                })?;
+            records.push(IntegrationProjectPlanRecord {
+                project_id: membership.project_id.clone(),
+                project,
+            });
+        }
+        Ok(records)
+    }
+
+    fn project_surface_exists(
+        &self,
+        project_id: &str,
+        surface_id: &str,
+        surface_instance_id: &str,
+    ) -> Result<bool, AgentCommandError> {
+        let Some(project) = self.project(project_id) else {
+            return Ok(false);
+        };
+        match &project.project_state {
+            DatabaseInspection::Missing { .. } => Ok(false),
+            DatabaseInspection::Present(snapshot) => Ok(snapshot.surfaces.iter().any(|surface| {
+                surface.surface_id == surface_id
+                    && surface.surface_instance_id == surface_instance_id
+            })),
+            DatabaseInspection::Unsupported {
+                detected_version,
+                latest_supported_version,
+                detail,
+                ..
+            } => Err(AgentCommandError::runtime(format!(
+                "project state schema version {detected_version} is not supported (latest supported {latest_supported_version}): {detail}"
+            ))),
+            DatabaseInspection::Malformed { detail, .. }
+            | DatabaseInspection::Unreadable { detail, .. } => Err(AgentCommandError::runtime(
+                format!("project state inspection failed: {detail}"),
+            )),
+        }
+    }
+}
+
+fn inspect_agent_registry_for_planning(
+    runtime_home: &Path,
+) -> Result<AgentRegistryPlan, AgentCommandError> {
+    match inspect_runtime_home(runtime_home).registry {
+        DatabaseInspection::Missing { .. } => Ok(AgentRegistryPlan {
+            schema: None,
+            projects: Vec::new(),
+            integrations: Vec::new(),
+            integration_projects: Vec::new(),
+            host_installations: Vec::new(),
+        }),
+        DatabaseInspection::Present(snapshot) => Ok(AgentRegistryPlan::from_snapshot(snapshot)),
+        DatabaseInspection::Unsupported {
+            detected_version,
+            latest_supported_version,
+            detail,
+            ..
+        } => Err(AgentCommandError::runtime(format!(
+            "registry schema version {detected_version} is not supported (latest supported {latest_supported_version}): {detail}"
+        ))),
+        DatabaseInspection::Malformed { detail, .. }
+        | DatabaseInspection::Unreadable { detail, .. } => Err(AgentCommandError::runtime(
+            format!("registry inspection failed: {detail}"),
+        )),
+    }
+}
+
+fn registry_schema_plan(schema: &InspectionSchemaState) -> RegistrySchemaPlan {
+    match schema {
+        InspectionSchemaState::Current { version } => RegistrySchemaPlan {
+            current_version: *version,
+            latest_supported_version: REGISTRY_SCHEMA_VERSION,
+            migration_planned: false,
+        },
+        InspectionSchemaState::MigrationRequired {
+            detected_version,
+            latest_supported_version,
+        } => RegistrySchemaPlan {
+            current_version: *detected_version,
+            latest_supported_version: *latest_supported_version,
+            migration_planned: true,
+        },
+    }
+}
+
+fn resolve_install_project_from_registry(
+    registry: &AgentRegistryPlan,
+    _runtime_home: &Path,
+    project_id: Option<&str>,
+    repo_root: Option<PathBuf>,
+) -> Result<InstallProjectPlan, AgentCommandError> {
+    let selected = match project_id {
+        Some(project_id) => {
+            validate_project_id(project_id)?;
+            let existing = registry.executable_project(project_id)?;
+            if let (Some(existing), Some(repo_root)) = (&existing, &repo_root) {
+                if !project_repo_matches(existing, repo_root) {
+                    return Err(AgentCommandError::runtime(
+                        "project is registered to another repo_root",
+                    ));
+                }
+            }
+            let repo_root =
+                repo_root.or_else(|| existing.as_ref().map(|project| project.repo_root.clone()));
+            if existing.is_none() && repo_root.is_none() {
+                return Err(AgentCommandError::usage(
+                    "--repo-root is required when --project-id is not already registered",
+                ));
+            }
+            (project_id.to_owned(), repo_root, existing)
+        }
+        None => {
+            let repo_root = repo_root.ok_or_else(|| {
+                AgentCommandError::usage(
+                    "--project-id or --repo-root is required; omitted --project-id resolves only an existing unique registration",
+                )
+            })?;
+            let matches = registry
+                .projects
+                .iter()
+                .filter(|project| {
+                    project_repo_matches(&project_record_from_inspection(project), &repo_root)
+                })
+                .collect::<Vec<_>>();
+            match matches.as_slice() {
+                [project] => (
+                    project.project_id.clone(),
+                    Some(project_record_from_inspection(project).repo_root),
+                    Some(
+                        registry
+                            .executable_project(&project.project_id)?
+                            .ok_or_else(|| {
+                                AgentCommandError::runtime("matched project is not executable")
+                            })?,
+                    ),
+                ),
+                [] => {
+                    return Err(AgentCommandError::usage(
+                        "--project-id is required when --repo-root has no existing unique registration",
+                    ));
+                }
+                _ => {
+                    return Err(AgentCommandError::runtime(
+                        "multiple projects are registered for repo_root; pass --project-id",
+                    ));
+                }
+            }
+        }
+    };
+    let (project_id, repo_root, existing_project) = selected;
+    Ok(InstallProjectPlan {
+        action: if existing_project.is_some() {
+            ActionState::Reused
+        } else {
+            ActionState::Planned
+        },
+        project_id,
+        repo_root,
+        existing_project,
+    })
+}
+
+fn executable_project_record_from_inspection(
+    project: &ProjectInspectionRecord,
+) -> Result<ProjectRecord, AgentCommandError> {
+    match &project.project_state {
+        DatabaseInspection::Present(_) => Ok(project_record_from_inspection(project)),
+        DatabaseInspection::Missing { path } => Err(AgentCommandError::runtime(format!(
+            "project is not executable: missing project state database {}",
+            path.display()
+        ))),
+        DatabaseInspection::Unsupported {
+            detected_version,
+            latest_supported_version,
+            detail,
+            ..
+        } => Err(AgentCommandError::runtime(format!(
+            "project state schema version {detected_version} is not supported (latest supported {latest_supported_version}): {detail}"
+        ))),
+        DatabaseInspection::Malformed { detail, .. }
+        | DatabaseInspection::Unreadable { detail, .. } => Err(AgentCommandError::runtime(
+            format!("project is not executable: {detail}"),
+        )),
+    }
+}
+
+fn project_record_from_inspection(project: &ProjectInspectionRecord) -> ProjectRecord {
+    ProjectRecord {
+        project_id: project.project_id.clone(),
+        runtime_home_id: project.runtime_home_id.clone(),
+        repo_root: project.repo_root.clone(),
+        project_home: project.project_home.clone(),
+        state_db_path: project.state_db_path.clone(),
+        status: project.status.clone(),
+        metadata_json: project.metadata_json.clone(),
+    }
+}
+
+fn agent_integration_record_from_inspection(
+    integration: &AgentIntegrationInspectionRecord,
+) -> AgentIntegrationRecord {
+    AgentIntegrationRecord {
+        integration_id: integration.integration_id.clone(),
+        interaction_role: integration.interaction_role.clone(),
+        surface_id: integration.surface_id.clone(),
+        surface_instance_id: integration.surface_instance_id.clone(),
+        default_project_id: integration.default_project_id.clone(),
+        enabled: integration.enabled,
+        created_at: integration.created_at.clone(),
+        updated_at: integration.updated_at.clone(),
+        metadata_json: integration.metadata_json.clone(),
+    }
+}
+
+fn host_installation_record_from_inspection(
+    installation: &HostInstallationInspectionRecord,
+) -> HostInstallationRecord {
+    HostInstallationRecord {
+        installation_id: installation.installation_id.clone(),
+        integration_id: installation.integration_id.clone(),
+        host_kind: installation.host_kind.clone(),
+        host_scope: installation.host_scope.clone(),
+        server_name: installation.server_name.clone(),
+        config_target: installation.config_target.clone(),
+        managed_fingerprint: installation.managed_fingerprint.clone(),
+        last_verified_status: installation.last_verified_status.clone(),
+        created_at: installation.created_at.clone(),
+        updated_at: installation.updated_at.clone(),
+        metadata_json: installation.metadata_json.clone(),
+    }
+}
+
+fn selected_installations_from_registry(
+    registry: &AgentRegistryPlan,
+    integration_id: &str,
+    installation_id: Option<&str>,
+) -> Result<Vec<HostInstallationRecord>, AgentCommandError> {
+    if let Some(installation_id) = installation_id {
+        let record = registry
+            .host_installations
+            .iter()
+            .find(|record| record.installation_id == installation_id)
+            .ok_or_else(|| {
+                AgentCommandError::runtime(format!(
+                    "Host Installation not found: {installation_id}"
+                ))
+            })?;
+        if record.integration_id != integration_id {
+            return Err(AgentCommandError::runtime(
+                "installation_id belongs to another integration",
+            ));
+        }
+        Ok(vec![host_installation_record_from_inspection(record)])
+    } else {
+        let records = registry.host_installations_for_integration(integration_id);
+        if records.is_empty() {
+            Err(AgentCommandError::runtime(
+                "no Host Installation records are registered for this integration",
+            ))
+        } else {
+            Ok(records)
+        }
+    }
+}
+
+fn validate_project_scope_membership_from_registry(
+    registry: &AgentRegistryPlan,
+    integration_id: &str,
+    scope: HostScope,
+    project_id: &str,
+) -> Result<(), AgentCommandError> {
+    if !matches!(scope, HostScope::Project | HostScope::Local) {
+        return Ok(());
+    }
+    if registry
+        .integration_projects
+        .iter()
+        .any(|project| project.integration_id == integration_id && project.project_id != project_id)
+    {
+        return Err(AgentCommandError::runtime(
+            "project and local scoped integrations may allow only their associated Product Repository",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_add_membership_scope_from_registry(
+    registry: &AgentRegistryPlan,
+    integration_id: &str,
+    project_id: &str,
+) -> Result<(), AgentCommandError> {
+    if registry
+        .host_installations
+        .iter()
+        .filter(|installation| installation.integration_id == integration_id)
+        .any(|installation| {
+            matches!(
+                installation.host_scope.as_str(),
+                HOST_SCOPE_PROJECT | HOST_SCOPE_LOCAL
+            )
+        })
+        && registry.integration_projects.iter().any(|project| {
+            project.integration_id == integration_id && project.project_id != project_id
+        })
+    {
+        return Err(AgentCommandError::runtime(
+            "project and local scoped integrations cannot add a second project",
+        ));
+    }
+    Ok(())
+}
+
+fn required_guidance_project_from_registry(
+    registry: &AgentRegistryPlan,
+    integration_id: &str,
+    project_id: &str,
+) -> Result<ProjectRecord, AgentCommandError> {
+    let _integration = registry.required_integration(integration_id)?;
+    validate_project_id(project_id)?;
+    if !registry.is_project_member(integration_id, project_id) {
+        return Err(AgentCommandError::runtime(
+            "project is not allowed for this Agent Integration Profile",
+        ));
+    }
+    registry.executable_project(project_id)?.ok_or_else(|| {
+        AgentCommandError::runtime(format!("project is not executable: {project_id}"))
+    })
+}
+
+fn guidance_statuses_for_plan_projects(
+    integration_id: &str,
+    projects: &[IntegrationProjectPlanRecord],
+) -> Result<Vec<GuidanceStatus>, AgentCommandError> {
+    let mut statuses = Vec::new();
+    for project in projects {
+        statuses.extend(guidance_statuses_for_project(
+            Some(&project.project.repo_root),
+            integration_id,
+            &project.project_id,
+            &[GuidanceTarget::Codex, GuidanceTarget::ClaudeCode],
+        )?);
+    }
+    Ok(statuses)
+}
+
 fn resolve_mcp_command(
     parsed: &ParsedAgentOptions,
     scope: HostScope,
@@ -2788,6 +3612,7 @@ fn terminate_child(child: &mut Child, deadline: Instant) -> Result<(), String> {
 struct AgentOutput {
     status: AgentResultStatus,
     runtime_home: PathBuf,
+    registry_schema: Option<RegistrySchemaPlan>,
     integration_id: String,
     host_plan: Option<HostPlan>,
     allowed_projects: Vec<String>,
@@ -2814,6 +3639,20 @@ fn render_agent_text(output: &AgentOutput) -> Result<String, AgentCommandError> 
         "runtime_home: {}\n",
         output.runtime_home.display()
     ));
+    if let Some(schema) = output.registry_schema {
+        text.push_str(&format!(
+            "registry_schema_version: {}\n",
+            schema.current_version
+        ));
+        if schema.migration_planned {
+            text.push_str(&format!(
+                "registry_migration: planned ({} -> {})\n",
+                schema.current_version, schema.latest_supported_version
+            ));
+        } else {
+            text.push_str("registry_migration: not_required\n");
+        }
+    }
     text.push_str(&format!("integration_id: {}\n", output.integration_id));
     if let Some(plan) = &output.host_plan {
         text.push_str(&format!("host_kind: {}\n", plan.host_kind.as_str()));
@@ -2899,6 +3738,15 @@ fn render_agent_text(output: &AgentOutput) -> Result<String, AgentCommandError> 
 }
 
 fn render_agent_json(output: &AgentOutput) -> Result<String, AgentCommandError> {
+    let registry_schema_version = output.registry_schema.map(|schema| schema.current_version);
+    let registry_latest_supported_schema_version = output
+        .registry_schema
+        .map(|schema| schema.latest_supported_version)
+        .unwrap_or(REGISTRY_SCHEMA_VERSION);
+    let registry_migration_planned = output
+        .registry_schema
+        .map(|schema| schema.migration_planned)
+        .unwrap_or(false);
     let host = output.host_plan.as_ref().map(|plan| {
         json!({
             "host_kind": plan.host_kind.as_str(),
@@ -2956,6 +3804,9 @@ fn render_agent_json(output: &AgentOutput) -> Result<String, AgentCommandError> 
         "status": output.status.as_str(),
         "runtime": {
             "runtime_home": path_text(&output.runtime_home),
+            "registry_schema_version": registry_schema_version,
+            "registry_latest_supported_schema_version": registry_latest_supported_schema_version,
+            "registry_migration_planned": registry_migration_planned,
         },
         "project": {
             "allowed_project_ids": output.allowed_projects,
@@ -3045,6 +3896,7 @@ fn partial_install_output(
     AgentOutput {
         status: AgentResultStatus::PartialFailure,
         runtime_home,
+        registry_schema: None,
         integration_id,
         host_plan: Some(host_plan),
         allowed_projects,

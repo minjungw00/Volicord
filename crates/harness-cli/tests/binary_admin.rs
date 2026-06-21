@@ -2,9 +2,10 @@
 
 use std::{
     error::Error,
+    ffi::OsString,
     fs,
     hash::{Hash, Hasher},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Output},
 };
 
@@ -27,8 +28,12 @@ use harness_store::{
         ProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     migrations::{
-        test_support::create_project_state_fixture_version, PROJECT_STATE_DATABASE_KIND,
-        PROJECT_STATE_SCHEMA_VERSION,
+        test_support::{
+            create_project_state_fixture_version, create_registry_fixture_version,
+            RegistryFixtureProject,
+        },
+        PROJECT_STATE_DATABASE_KIND, PROJECT_STATE_SCHEMA_VERSION, REGISTRY_DATABASE_KIND,
+        REGISTRY_SCHEMA_VERSION, STORAGE_PROFILE,
     },
     sqlite::{open_read_only_database, project_state_db_path, registry_db_path},
 };
@@ -1166,6 +1171,298 @@ fn harness_binary_agent_dry_run_writes_nothing_and_rejects_invalid_scope(
 
 #[cfg(unix)]
 #[test]
+fn harness_binary_agent_dry_run_missing_runtime_home_creates_nothing() -> Result<(), Box<dyn Error>>
+{
+    let scratch = TempRuntimeHome::new("cli-bin-agent-dry-run-missing-home")?;
+    let selected_runtime_home = scratch.path().join("missing-runtime-home");
+    let repo_root = scratch.create_product_repo("product-repo")?;
+    let codex_home = scratch.path().join("codex-home");
+    let mcp_command = scratch.path().join("harness-mcp-dry-missing");
+    fs::write(&mcp_command, "not executed")?;
+
+    let dry_run = run_without_home_and_env(
+        [
+            "agent",
+            "install",
+            "--runtime-home",
+            path_text(&selected_runtime_home).as_str(),
+            "--host",
+            "codex",
+            "--scope",
+            "user",
+            "--integration-id",
+            "agent_missing_runtime_dry",
+            "--project-id",
+            "project_missing_runtime_dry",
+            "--repo-root",
+            path_text(&repo_root).as_str(),
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+
+    assert_success(&dry_run);
+    let value: Value = serde_json::from_str(&stdout(&dry_run))?;
+    assert_eq!(value["status"], "dry_run");
+    assert!(value["runtime"]["registry_schema_version"].is_null());
+    assert_eq!(value["runtime"]["registry_migration_planned"], false);
+    assert!(!selected_runtime_home.exists());
+    assert!(!registry_db_path(&selected_runtime_home).exists());
+    assert!(!codex_home.exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn harness_binary_agent_generic_export_dry_run_creates_no_export_files(
+) -> Result<(), Box<dyn Error>> {
+    let scratch = TempRuntimeHome::new("cli-bin-agent-generic-export-dry")?;
+    let selected_runtime_home = scratch.path().join("missing-runtime-home");
+    let repo_root = scratch.create_product_repo("product-repo")?;
+    let export_dir = scratch.path().join("missing-export-dir").join("nested");
+    let mcp_command = scratch.path().join("harness-mcp-generic-dry");
+    fs::write(&mcp_command, "not executed")?;
+
+    let dry_run = run_without_home([
+        "agent",
+        "install",
+        "--runtime-home",
+        path_text(&selected_runtime_home).as_str(),
+        "--host",
+        "generic",
+        "--scope",
+        "export",
+        "--integration-id",
+        "agent_generic_export_dry",
+        "--project-id",
+        "project_generic_export_dry",
+        "--repo-root",
+        path_text(&repo_root).as_str(),
+        "--mcp-command",
+        path_text(&mcp_command).as_str(),
+        "--export-dir",
+        path_text(&export_dir).as_str(),
+        "--dry-run",
+        "--output",
+        "json",
+    ])?;
+
+    assert_success(&dry_run);
+    let value: Value = serde_json::from_str(&stdout(&dry_run))?;
+    assert_eq!(value["status"], "dry_run");
+    assert_eq!(value["host"]["host_kind"], "generic");
+    assert!(!selected_runtime_home.exists());
+    assert!(!export_dir.exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn harness_binary_agent_dry_run_historical_registry_is_read_only_and_reports_migration(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-agent-registry-v1-dry")?;
+    let repo_root = runtime_home.create_product_repo("product-repo")?;
+    create_registry_fixture_with_project(
+        runtime_home.path(),
+        &repo_root,
+        "project_registry_v1_dry",
+        1,
+    )?;
+    let codex_home = runtime_home.path().join("codex-home");
+    let mcp_command = runtime_home.path().join("harness-mcp-v1-dry");
+    fs::write(&mcp_command, "not executed")?;
+    let registry_path = registry_db_path(runtime_home.path());
+    let hash_before = file_hash(&registry_path)?;
+    let migrations_before = migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?;
+    let sidecars_before = existing_sidecars(std::slice::from_ref(&registry_path));
+
+    let dry_run = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "install",
+            "--host",
+            "codex",
+            "--scope",
+            "user",
+            "--integration-id",
+            "agent_registry_v1_dry",
+            "--project-id",
+            "project_registry_v1_dry",
+            "--repo-root",
+            path_text(&repo_root).as_str(),
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+
+    assert_success(&dry_run);
+    let value: Value = serde_json::from_str(&stdout(&dry_run))?;
+    assert_eq!(value["runtime"]["registry_schema_version"], 1);
+    assert_eq!(
+        value["runtime"]["registry_latest_supported_schema_version"],
+        REGISTRY_SCHEMA_VERSION
+    );
+    assert_eq!(value["runtime"]["registry_migration_planned"], true);
+    assert!(value["actions"]
+        .as_array()
+        .expect("actions array")
+        .iter()
+        .any(|action| action["target"] == "registry_migration" && action["action"] == "planned"));
+    assert_eq!(file_hash(&registry_path)?, hash_before);
+    assert_eq!(
+        migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?,
+        migrations_before
+    );
+    assert_eq!(registry_schema_version(&registry_path)?, 1);
+    assert!(!table_exists(&registry_path, "agent_integrations")?);
+    assert_eq!(existing_sidecars(&[registry_path]), sidecars_before);
+    assert!(!codex_home.join("config.toml").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn harness_binary_agent_dry_run_current_registry_is_byte_identical() -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-agent-registry-v2-dry")?;
+    let repo_root = runtime_home.create_product_repo("product-repo")?;
+    let codex_home = runtime_home.path().join("codex-home");
+    let mcp_command = write_agent_mcp(runtime_home.path(), AgentMcpFixture::Complete)?;
+
+    let install = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "install",
+            "--host",
+            "codex",
+            "--scope",
+            "user",
+            "--integration-id",
+            "agent_registry_v2_dry",
+            "--server-name",
+            "harness-registry-v2-dry",
+            "--project-id",
+            "project_registry_v2_dry",
+            "--repo-root",
+            path_text(&repo_root).as_str(),
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&install);
+
+    let registry_path = registry_db_path(runtime_home.path());
+    let hash_before = file_hash(&registry_path)?;
+    let migrations_before = migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?;
+    let sidecars_before = existing_sidecars(std::slice::from_ref(&registry_path));
+    let codex_config_before = fs::read(codex_home.join("config.toml"))?;
+
+    let dry_run = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "install",
+            "--host",
+            "codex",
+            "--scope",
+            "user",
+            "--integration-id",
+            "agent_registry_v2_dry",
+            "--server-name",
+            "harness-registry-v2-dry",
+            "--project-id",
+            "project_registry_v2_dry",
+            "--repo-root",
+            path_text(&repo_root).as_str(),
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+
+    assert_success(&dry_run);
+    let value: Value = serde_json::from_str(&stdout(&dry_run))?;
+    assert_eq!(
+        value["runtime"]["registry_schema_version"],
+        REGISTRY_SCHEMA_VERSION
+    );
+    assert_eq!(value["runtime"]["registry_migration_planned"], false);
+    assert_eq!(file_hash(&registry_path)?, hash_before);
+    assert_eq!(
+        migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?,
+        migrations_before
+    );
+    assert!(table_exists(&registry_path, "agent_integrations")?);
+    assert_eq!(existing_sidecars(&[registry_path]), sidecars_before);
+    assert_eq!(
+        fs::read(codex_home.join("config.toml"))?,
+        codex_config_before
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn harness_binary_agent_dry_run_unsupported_future_registry_is_read_only(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-agent-registry-future-dry")?;
+    let repo_root = runtime_home.create_product_repo("product-repo")?;
+    create_registry_fixture_with_project(
+        runtime_home.path(),
+        &repo_root,
+        "project_registry_future_dry",
+        REGISTRY_SCHEMA_VERSION,
+    )?;
+    insert_future_registry_migration(runtime_home.path())?;
+    let registry_path = registry_db_path(runtime_home.path());
+    let hash_before = file_hash(&registry_path)?;
+    let migrations_before = migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?;
+
+    let dry_run = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "install",
+            "--host",
+            "codex",
+            "--scope",
+            "user",
+            "--integration-id",
+            "agent_registry_future_dry",
+            "--project-id",
+            "project_registry_future_dry",
+            "--repo-root",
+            path_text(&repo_root).as_str(),
+            "--dry-run",
+        ],
+    )?;
+
+    assert_eq!(dry_run.status.code(), Some(1));
+    assert!(stdout(&dry_run).is_empty());
+    assert!(stderr(&dry_run).contains("not supported"));
+    assert_eq!(file_hash(&registry_path)?, hash_before);
+    assert_eq!(
+        migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?,
+        migrations_before
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn harness_binary_agent_guidance_apply_status_and_remove_flow() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-agent-guidance-flow")?;
     let repo_root = runtime_home.create_product_repo("product-repo")?;
@@ -1621,6 +1918,158 @@ fn harness_binary_agent_user_scope_project_membership_is_single_host_entry(
 
 #[cfg(unix)]
 #[test]
+fn harness_binary_agent_project_and_uninstall_dry_runs_are_read_only() -> Result<(), Box<dyn Error>>
+{
+    let runtime_home = TempRuntimeHome::new("cli-bin-agent-project-uninstall-dry")?;
+    let repo_a = runtime_home.create_product_repo("repo-a")?;
+    let repo_b = runtime_home.create_product_repo("repo-b")?;
+    let codex_home = runtime_home.path().join("codex-home");
+    let mcp_command = write_agent_mcp(runtime_home.path(), AgentMcpFixture::Complete)?;
+
+    let install = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "install",
+            "--host",
+            "codex",
+            "--scope",
+            "user",
+            "--integration-id",
+            "agent_project_uninstall_dry",
+            "--server-name",
+            "harness-project-uninstall-dry",
+            "--project-id",
+            "project_dry_a",
+            "--repo-root",
+            path_text(&repo_a).as_str(),
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&install);
+
+    let registry_path = registry_db_path(runtime_home.path());
+    let hash_before_add = file_hash(&registry_path)?;
+    let migrations_before_add = migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?;
+    let config_before_add = fs::read(codex_home.join("config.toml"))?;
+
+    let add_dry_run = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "add",
+            "--integration-id",
+            "agent_project_uninstall_dry",
+            "--project-id",
+            "project_dry_b",
+            "--repo-root",
+            path_text(&repo_b).as_str(),
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&add_dry_run);
+    let add_json: Value = serde_json::from_str(&stdout(&add_dry_run))?;
+    assert_eq!(add_json["status"], "dry_run");
+    assert_eq!(file_hash(&registry_path)?, hash_before_add);
+    assert_eq!(
+        migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?,
+        migrations_before_add
+    );
+    assert_eq!(fs::read(codex_home.join("config.toml"))?, config_before_add);
+    assert_eq!(list_projects(runtime_home.path())?.len(), 1);
+
+    let add = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "add",
+            "--integration-id",
+            "agent_project_uninstall_dry",
+            "--project-id",
+            "project_dry_b",
+            "--repo-root",
+            path_text(&repo_b).as_str(),
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&add);
+    let hash_before_remove = file_hash(&registry_path)?;
+    let migrations_before_remove = migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?;
+    let config_before_remove = fs::read(codex_home.join("config.toml"))?;
+
+    let remove_dry_run = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "remove",
+            "--integration-id",
+            "agent_project_uninstall_dry",
+            "--project-id",
+            "project_dry_b",
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+    )?;
+    assert_success(&remove_dry_run);
+    let remove_json: Value = serde_json::from_str(&stdout(&remove_dry_run))?;
+    assert_eq!(remove_json["status"], "dry_run");
+    assert_eq!(file_hash(&registry_path)?, hash_before_remove);
+    assert_eq!(
+        migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?,
+        migrations_before_remove
+    );
+    assert_eq!(
+        fs::read(codex_home.join("config.toml"))?,
+        config_before_remove
+    );
+
+    let uninstall_dry_run = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "uninstall",
+            "--integration-id",
+            "agent_project_uninstall_dry",
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&uninstall_dry_run);
+    let uninstall_json: Value = serde_json::from_str(&stdout(&uninstall_dry_run))?;
+    assert_eq!(uninstall_json["status"], "dry_run");
+    assert_eq!(file_hash(&registry_path)?, hash_before_remove);
+    assert_eq!(
+        migration_count_for(&registry_path, REGISTRY_DATABASE_KIND)?,
+        migrations_before_remove
+    );
+    assert_eq!(
+        fs::read(codex_home.join("config.toml"))?,
+        config_before_remove
+    );
+    assert_eq!(
+        list_host_installations_for_integration(
+            runtime_home.path(),
+            "agent_project_uninstall_dry"
+        )?
+        .len(),
+        1
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 fn harness_binary_agent_claude_project_install_reports_action_required(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("cli-bin-agent-claude-project")?;
@@ -1762,15 +2211,106 @@ fn initialize_historical_setup(
     Ok(())
 }
 
+fn create_registry_fixture_with_project(
+    runtime_home: &Path,
+    repo_root: &Path,
+    project_id: &str,
+    registry_version: i64,
+) -> Result<ProjectRecord, Box<dyn Error>> {
+    let repo_root = fs::canonicalize(repo_root)?;
+    let project_home = runtime_home.join("projects").join(project_id);
+    fs::create_dir_all(&project_home)?;
+    let state_db_path = project_home.join("state.sqlite");
+    let mut state = Connection::open(&state_db_path)?;
+    create_project_state_fixture_version(&mut state, project_id, PROJECT_STATE_SCHEMA_VERSION)?;
+    drop(state);
+
+    let repo_root_text = path_text(&repo_root);
+    let project_home_text = path_text(&project_home);
+    let state_db_path_text = path_text(&state_db_path);
+    let mut registry = Connection::open(registry_db_path(runtime_home))?;
+    create_registry_fixture_version(
+        &mut registry,
+        "runtime_home_binary_agent_fixture",
+        registry_version,
+        &[RegistryFixtureProject {
+            project_id,
+            repo_root: &repo_root_text,
+            project_home: &project_home_text,
+            state_db_path: &state_db_path_text,
+            status: ACTIVE_PROJECT_STATUS,
+            metadata_json: "{}",
+        }],
+    )?;
+    drop(registry);
+
+    Ok(ProjectRecord {
+        project_id: project_id.to_owned(),
+        runtime_home_id: "runtime_home_binary_agent_fixture".to_owned(),
+        repo_root,
+        project_home,
+        state_db_path,
+        status: ACTIVE_PROJECT_STATUS.to_owned(),
+        metadata_json: "{}".to_owned(),
+    })
+}
+
+fn insert_future_registry_migration(runtime_home: &Path) -> Result<(), Box<dyn Error>> {
+    let conn = Connection::open(registry_db_path(runtime_home))?;
+    conn.execute(
+        "INSERT INTO schema_migrations (
+            database_kind,
+            version,
+            name,
+            storage_profile,
+            applied_at
+        )
+        VALUES (?1, ?2, 'registry_future_v999', ?3, 't_future')",
+        params![
+            REGISTRY_DATABASE_KIND,
+            REGISTRY_SCHEMA_VERSION + 997,
+            STORAGE_PROFILE
+        ],
+    )?;
+    Ok(())
+}
+
 fn migration_count(path: &Path) -> Result<i64, Box<dyn Error>> {
+    migration_count_for(path, PROJECT_STATE_DATABASE_KIND)
+}
+
+fn migration_count_for(path: &Path, database_kind: &str) -> Result<i64, Box<dyn Error>> {
     let conn = open_read_only_database(path)?;
     Ok(conn.query_row(
         "SELECT COUNT(*)
            FROM schema_migrations
           WHERE database_kind = ?1",
-        [PROJECT_STATE_DATABASE_KIND],
+        [database_kind],
         |row| row.get(0),
     )?)
+}
+
+fn registry_schema_version(path: &Path) -> Result<i64, Box<dyn Error>> {
+    let conn = open_read_only_database(path)?;
+    Ok(conn.query_row(
+        "SELECT schema_version FROM runtime_home WHERE singleton_id = 1",
+        [],
+        |row| row.get(0),
+    )?)
+}
+
+fn table_exists(path: &Path, table: &str) -> Result<bool, Box<dyn Error>> {
+    let conn = open_read_only_database(path)?;
+    Ok(conn.query_row(
+        "SELECT EXISTS (
+            SELECT 1
+              FROM sqlite_master
+             WHERE type = 'table'
+               AND name = ?1
+        )",
+        [table],
+        |row| row.get::<_, i64>(0),
+    )? == 1)
 }
 
 fn file_hash(path: &Path) -> Result<u64, Box<dyn Error>> {
@@ -1779,8 +2319,44 @@ fn file_hash(path: &Path) -> Result<u64, Box<dyn Error>> {
     Ok(hasher.finish())
 }
 
+fn existing_sidecars(paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut sidecars = Vec::new();
+    for path in paths {
+        for sidecar in sqlite_sidecar_paths(path) {
+            if sidecar.exists() {
+                sidecars.push(sidecar);
+            }
+        }
+    }
+    sidecars.sort();
+    sidecars
+}
+
+fn sqlite_sidecar_paths(path: &Path) -> Vec<PathBuf> {
+    ["-wal", "-shm", "-journal"]
+        .iter()
+        .map(|suffix| {
+            let mut raw = OsString::from(path.as_os_str());
+            raw.push(suffix);
+            PathBuf::from(raw)
+        })
+        .collect()
+}
+
 fn run_without_home<const N: usize>(args: [&str; N]) -> Result<Output, Box<dyn Error>> {
     let mut command = base_command();
+    command.args(args);
+    Ok(command.output()?)
+}
+
+fn run_without_home_and_env<const N: usize>(
+    args: [&str; N],
+    envs: &[(&str, String)],
+) -> Result<Output, Box<dyn Error>> {
+    let mut command = base_command();
+    for (name, value) in envs {
+        command.env(name, value);
+    }
     command.args(args);
     Ok(command.output()?)
 }
