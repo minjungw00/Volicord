@@ -6,6 +6,7 @@
 //! setup planning and orchestration can be tested without invoking the binary.
 
 pub mod host_config;
+pub mod host_integration;
 pub mod local_mcp_command;
 pub mod registration;
 pub mod setup;
