@@ -47,6 +47,10 @@
 | close readiness | 닫기 준비 상태 | 현재 상태에서 `Task`를 닫을 준비가 되었는지를 나타내는 Core 개념입니다. | [Core 모델](core-model.md) |
 | close-readiness blocker | 닫기 차단 사유 | 닫기 준비 상태가 진행되지 못할 때 드러나는 닫기 관련 사유입니다. | [API 차단 사유 처리 경로](api/blocker-routing.md) |
 | `Projection` | 상태 보기 | 읽기 전용 상태 보기를 뜻하는 정확한 제품 라벨입니다. 상태 보기 출력은 표시이지 `Core` 권한이 아닙니다. | [상태 보기 권한 참조](projection-and-templates.md) |
+| `Agent Integration Profile` | 에이전트 통합 프로필 | 코딩 에이전트 통합 하나와 묶인 접점 맥락을 위한 지속되는 레지스트리 식별 정보입니다. | [에이전트 통합](agent-integration.md) |
+| integration project membership | 통합 프로젝트 멤버십 | Agent Integration Profile과 등록된 프로젝트 사이의 명시적 허용 목록 관계입니다. | [에이전트 통합](agent-integration.md) |
+| `Host Installation` | 호스트 설치 | 코딩 에이전트 통합을 위해 관리되는 호스트 setup 인벤토리입니다. 외부 호스트가 서버를 신뢰하거나 로드했다는 증명은 아닙니다. | [에이전트 통합](agent-integration.md) |
+| `harness.list_projects` | `harness.list_projects` | 묶인 통합에 허용된 프로젝트를 나열하는 MCP 어댑터 유틸리티입니다. 공개 Core API 메서드가 아닙니다. | [MCP 전송](mcp-transport.md) |
 | surface | 접점 | 맥락이 드러나는 통합 또는 상호작용 접점입니다. | [에이전트 통합](agent-integration.md) |
 | access class | 접근 등급 | 검증된 접점과 접근 맥락을 분류하는 값 범주입니다. | [API 값 집합](api/schema-value-sets.md) |
 | baseline guarantee | 기준 범위 보장 | 기준 범위에서 지원되는 보장을 말할 때 쓰는 보안 표현입니다. | [보안](security.md) |

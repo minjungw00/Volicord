@@ -58,6 +58,27 @@ Must not claim:
 - `Product Repository` content proves Harness authority.
 - A `Product Repository` is automatically `Harness Runtime Home`.
 
+<a id="explicit-integration-files-in-product-repositories"></a>
+### Explicit integration files in Product Repositories
+
+Harness runtime state, SQLite databases, generated records, runtime homes, logs, projections, QA results, acceptance records, close-readiness state, and residual-risk records must not be written into a `Product Repository`.
+
+The only baseline exceptions are explicitly requested integration files:
+
+- project-scoped host configuration, such as Codex `.codex/config.toml` or Claude Code `.mcp.json`
+- a Harness-managed block in `AGENTS.md`
+- a Harness-managed Claude Code rule file under `.claude/rules/`
+
+Rules:
+
+- The administrative command must preview the exact target path and content before applying the write.
+- Noninteractive execution must include explicit repository-write authorization as defined by [Administrative CLI](admin-cli.md#noninteractive-approval-behavior).
+- The write must use Harness ownership markers or a managed fingerprint.
+- Existing unmanaged content must be reported as a conflict rather than overwritten.
+- Replacement may apply only to matching Harness-managed content.
+- Safe removal may remove only matching Harness-managed content and must leave unrelated project files intact.
+- These files are host configuration or guidance. They are not Harness runtime state, Core authority, evidence, acceptance, close readiness, residual-risk acceptance, or a security guarantee.
+
 <a id="product-repository-api-path-normalization"></a>
 ### Product Repository API path normalization
 
@@ -105,7 +126,7 @@ Exact executable behavior, environment variables, framing, startup validation or
 
 ### External MCP host configuration
 
-MCP host configuration belongs to the external MCP host. Harness setup may render host-neutral configuration text or files when an administrative command owner defines that behavior, but this document only owns the location boundary.
+MCP host configuration belongs to the external MCP host. Harness administrative commands may install supported host configuration directly or render explicit exported configuration when [Administrative CLI](admin-cli.md) defines that behavior, but this document only owns the location boundary.
 
 May claim:
 - Host configuration can name a `harness-mcp` executable and environment values needed by that host.
@@ -115,6 +136,7 @@ Must not claim:
 - MCP host configuration is Harness runtime state by definition.
 - MCP host configuration is the local authority record, a Product Repository file, or proof of Harness authority.
 - A host configuration directory is automatically `Harness Runtime Home`.
+- Installing host configuration means the host has trusted, approved, loaded, initialized, or exposed the MCP server.
 
 <a id="runtime-location-runtime-home"></a>
 ### `Harness Runtime Home`

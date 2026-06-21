@@ -11,6 +11,7 @@ Core 권한 의미, 제품 수락, 닫기 준비 상태, 적합성 결과를 정
 
 | 결정 | 사용할 때 |
 |---|---|
+| [Agent Integration Profile과 호스트 라우팅](agent-integration-profile.md) | 왜 코딩 에이전트 MCP setup이 고정된 Product Repository 하나가 아니라 통합 프로필, 명시적 프로젝트 멤버십, 호스트 설정 인벤토리에 묶이는지 확인합니다. |
 | [Core와 어댑터 의존 경계](core-adapter-boundary.md) | 왜 Core가 MCP나 CLI 어댑터에 의존하지 않는지, 그리고 어댑터 코드가 Core 호출 전에 무엇을 할 수 있는지 확인합니다. |
 | [원자적 변이 커밋 전 계획](plan-and-atomic-commit.md) | 왜 메서드가 Store 커밋 전에 효과를 계획하고, 왜 Store가 원자적 트랜잭션 경계를 소유하는지 확인합니다. |
 | [Runtime Home과 Product Repository 분리](runtime-home-and-product-repository.md) | 런타임 상태와 제품 파일이 왜 별도 위치에 남아야 하는지, 구현 코드가 그 분리를 어떻게 반영하는지 확인합니다. |

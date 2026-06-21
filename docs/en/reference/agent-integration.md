@@ -8,9 +8,12 @@ It does not define API schemas, method behavior, storage effects, security guara
 
 This document owns:
 
+- Agent Integration Profile meaning and integration project membership rules
+- Host Installation inventory meaning and host trust boundary
 - surface registration inputs and selector meaning for agent integration
 - current surface and actor context boundaries, including `surface_id`, `surface_instance_id`, request-level `VerifiedSurfaceContext`, and authority-resolution `VerifiedActorContext`
 - capability declaration boundaries for `capability_profile`
+- MCP project selection and per-project execution validation boundaries
 - agent context transfer rules between owner results and a surface
 - fallback display when the selected surface or current surface context is unavailable, mismatched, stale, or capability-limited
 - one-language-per-`doc_id` retrieval guidance for agent context
@@ -24,6 +27,81 @@ This document does not own:
 - security guarantee meanings or access-boundary wording; see [Security](security.md)
 - authority versus projected display rules; see [Projection and template display boundaries](projection-and-templates.md)
 - rendered body wording, public display labels, or template phrasing; see [Template Bodies](template-bodies.md)
+
+## Agent Integration Profile
+
+An Agent Integration Profile is the durable registry record for one coding-agent integration. One `harness-mcp` process is bound to one integration, not to one fixed `Product Repository`.
+
+Stored profile fields:
+
+- `integration_id`
+- `interaction_role`
+- `surface_id`
+- `surface_instance_id`
+- optional `default_project_id`
+- `enabled`
+- creation and update timestamps
+
+Rules:
+
+- The coding-agent integration role is `agent`.
+- The profile supplies the surface and surface-instance binding for MCP calls.
+- A profile can be enabled or disabled without editing host configuration.
+- Registering a profile does not automatically grant access to every project in the `Harness Runtime Home`.
+- An integration has access only to projects that are explicitly present in its project membership records.
+
+Storage record families and DDL belong to [Storage Records](storage-records.md) and [Storage DDL](storage-ddl.md). Administrative creation, update, verification, and removal commands belong to [Administrative CLI](admin-cli.md).
+
+## Integration project membership
+
+Integration project membership is an explicit many-to-many registry relationship between an Agent Integration Profile and registered projects.
+
+Membership fields:
+
+- `integration_id`
+- `project_id`
+- creation timestamp
+- a composite primary key over `integration_id` and `project_id`
+
+Rules:
+
+- A default project must also be an allowed project.
+- Removing a project that is still the integration default must fail until the default is cleared or changed.
+- Project membership does not bypass project status, path separation, storage executability, surface registration, or local access grants.
+- Inactive, invalid, or execution-ineligible projects remain unavailable at execution time even if a stale membership row exists.
+- Revoking membership or disabling the integration must take effect without requiring host configuration to be rewritten.
+
+## Host Installation
+
+A Host Installation is a registry inventory record for Harness-managed host configuration and verification state. The host configuration file remains the operational source of truth for the host. The registry record is management inventory and last-known verification state, not a substitute for the host configuration.
+
+Stored installation fields:
+
+- `installation_id`
+- `integration_id`
+- `host_kind`
+- `host_scope`
+- `server_name`
+- `config_target`
+- `managed_fingerprint`
+- `last_verified_status`
+- creation and update timestamps
+
+Supported host and scope matrix:
+
+| Host kind | Baseline scopes | Scope meaning |
+|---|---|---|
+| `codex` | `user`, `project` | User scope may load across the user's Codex projects. Project scope writes project-scoped Codex MCP configuration and depends on Codex project trust before the host loads it. |
+| `claude_code` | `local`, `project`, `user` | Local and project scopes load only for the associated project. User scope may load across the user's Claude Code projects. |
+| `generic` | `export` | Harness exports explicit configuration for a user-managed host and does not claim direct installation. |
+
+Rules:
+
+- Project and local scopes permit exactly the associated `Product Repository`.
+- User scope may permit multiple explicitly added `Product Repository` registrations.
+- Host trust, project trust, project MCP approval, OAuth, or any comparable host-controlled approval cannot be bypassed by Harness.
+- A host installation can be successful as a file operation while the result state remains `action_required` because the host has not yet trusted, approved, loaded, initialized, or exposed the server.
+- Agent guidance can improve tool selection, but it is not an enforcement mechanism and cannot guarantee that a model will choose Harness tools.
 
 ## Integration boundary
 
@@ -79,13 +157,30 @@ Owner links:
 
 ## Current surface context
 
-`VerifiedSurfaceContext` is the internal, derived context for one invocation. A Harness Server executable role such as the `harness-mcp` local adapter process derives it from registered surface records, adapter-derived invocation context, and the requested invocation access, then method owners decide whether the derived context is compatible with the request. It is not a public request payload.
+`VerifiedSurfaceContext` is the internal, derived context for one invocation. A Harness Server executable role such as the `harness-mcp` local adapter process derives it from the selected Agent Integration Profile, selected project, registered surface records, adapter-derived invocation context, and the requested invocation access. Method owners then decide whether the derived context is compatible with the request. It is not a public request payload.
 
-An MCP session is bound at adapter startup to exactly one `project_id`, one `surface_id`, and one `surface_instance_id`. Those binding values remain fixed for the lifetime of the session. The public `ToolEnvelope.project_id` and `ToolEnvelope.surface_id` fields remain present for protocol consistency, but each request value must exactly match the session binding. A request cannot switch project, surface, or surface instance.
+An MCP session is bound at adapter startup to exactly one `integration_id`. The integration supplies `surface_id` and `surface_instance_id`. The selected project is determined per public MCP tool call, not fixed for the process lifetime.
 
-When `surface_instance_id` is not configured explicitly, adapter startup may select a registered default for the bound project and surface, or a single unambiguous registered candidate. Absence or ambiguity is a startup failure. Identical `surface_instance_id` values in different projects do not weaken project binding; the bound `project_id` remains part of the session identity and every request must match it.
+Project selection for public MCP method calls is deterministic:
 
-An MCP session does not bind one fixed access class for the whole process. The MCP adapter derives the requested invocation access from the public method name and typed params for the current call. Public request params never contain an invocation access class, invocation `surface_instance_id`, capability profile, verification basis, or `VerifiedSurfaceContext`. Core independently verifies both the session binding and that the method-derived requested access is included in the registered grant in `surfaces.local_access_json` before it derives `VerifiedSurfaceContext`.
+1. Use `ToolEnvelope.project_id` when supplied.
+2. If it is absent and the integration permits exactly one available project, use that project.
+3. If it is absent and a valid explicit `default_project_id` exists, use that default.
+4. Otherwise reject the call as ambiguous and instruct the agent to call `harness.list_projects`.
+
+The adapter must not guess a project from folder names, process current working directory, host roots, host labels, or the first row returned by storage. MCP roots may be used only as optional future or host-provided hints. Roots do not change the deterministic selection order above.
+
+`harness.list_projects` is a read-only MCP adapter utility tool. It lists only projects explicitly allowed for the integration, shows project availability and default status, and provides enough project identity information for an agent to choose a valid `project_id`. It is outside the nine public Harness Core API methods and must not be added to the public method list.
+
+Before a public tool call enters Core, the MCP adapter must verify:
+
+- the integration exists and is enabled
+- the selected project is explicitly allowed for that integration
+- the selected project is active and executable
+- the integration's `surface_id` and `surface_instance_id` are registered for that project
+- the requested access class is authorized for that surface instance
+
+The MCP session does not bind one fixed access class for the whole process. The MCP adapter derives the requested invocation access from the public method name and typed params for the current call. Public request params never contain an invocation access class, invocation `surface_instance_id`, capability profile, verification basis, or `VerifiedSurfaceContext`. Core independently verifies both the selected integration/project binding and that the method-derived requested access is included in the registered grant in `surfaces.local_access_json` before it derives `VerifiedSurfaceContext`.
 
 Method-derived requested access:
 
@@ -104,7 +199,7 @@ Method-derived requested access:
 
 `InvocationContext.access_class`, or an equivalent implementation concept, is the requested invocation access for the current call. It is not authority and cannot grant an access class. `VerifiedSurfaceContext` can be derived only when the requested invocation access is included in the registered grant in `surfaces.local_access_json`.
 
-Verification basis for newly derived contexts is composed only from controlled registration and adapter-binding values. Environment variables and public request fields cannot supply arbitrary verification-basis text. Controlled examples include `local_admin_registration`, `mcp_stdio_surface_binding`, `cli_direct_surface_binding`, and `test_fixture_binding`. Existing stored arbitrary basis strings may remain historical data, but newly written values use the controlled vocabulary. Verification basis is diagnostic metadata and never grants access.
+Verification basis for newly derived contexts is composed only from controlled registration and adapter-binding values. Environment variables and public request fields cannot supply arbitrary verification-basis text. Controlled examples include `local_admin_registration`, `agent_integration_binding`, `mcp_stdio_surface_binding`, `cli_direct_surface_binding`, and `test_fixture_binding`. Existing stored arbitrary basis strings may remain historical data, but newly written values use the controlled vocabulary. Verification basis is diagnostic metadata and never grants access.
 
 Internal surface shape, not a public API schema:
 
@@ -136,7 +231,8 @@ Baseline `assurance_level` means cooperative registered-surface provenance, not 
 Condition:
 - A public API request has exactly one request-level `VerifiedSurfaceContext.access_class`.
 - A public API request has at most one authority-relevant `VerifiedActorContext`, and only authority-resolution method owners consume it.
-- Public `ToolEnvelope.project_id` and `ToolEnvelope.surface_id` are request echoes of the fixed session binding. They are not caller-selected authority and cannot change the session.
+- Public `ToolEnvelope.project_id`, when present, is a deterministic project selector constrained by the integration project membership. It is not caller authority and cannot grant access to an unlisted, inactive, or invalid project.
+- Public `ToolEnvelope.surface_id` remains an API envelope field where schema owners define it. The MCP adapter derives invocation surface identity from the selected integration and must not let caller text override the integration's `surface_id` or `surface_instance_id`.
 - `surface_instance_id` remains adapter-derived invocation context. `ToolEnvelope` does not gain `surface_instance_id`; the shared request envelope stays with [API Schema Core](api/schema-core.md#tool-envelope).
 - Nested payloads such as `ArtifactInput` or `StagedArtifactHandle` do not add a second request-level access class.
 - Staged artifact provenance fields such as `created_by_surface_id` and `created_by_surface_instance_id` come from the derived `VerifiedSurfaceContext` at staging time, not caller text or nested artifact input.
@@ -162,7 +258,20 @@ Agent must not:
 Owner links:
 - Exact request envelopes and response shapes belong to [API Schema Core](api/schema-core.md), [API Methods](api/methods.md), and method owners.
 - Access-class values belong to [API Value Sets](api/schema-value-sets.md).
-- `harness-mcp` startup, environment variables, stdio framing, startup validation, response wrapping, and shutdown belong to [MCP Transport](mcp-transport.md).
+- `harness-mcp` startup, integration binding, environment variables, stdio framing, startup validation, response wrapping, and shutdown belong to [MCP Transport](mcp-transport.md).
+
+## Agent behavior guidance
+
+Agent behavior guidance has two layers:
+
+- MCP server instructions are always supplied by the server during MCP initialization.
+- Optional `Product Repository` guidance is installed only with explicit user authorization.
+
+Rules:
+
+- MCP server instructions may describe cross-tool workflows, project selection rules, and limitations that apply across Harness tools.
+- Optional repository guidance may add a Harness-managed block or host-specific rule file inside a `Product Repository` only under the boundary owned by [Runtime Boundaries](runtime-boundaries.md#explicit-integration-files-in-product-repositories).
+- Guidance can improve tool selection, but it is not authority, access control, user judgment, security enforcement, or proof that a model will choose Harness tools.
 
 ## Capability declaration
 

@@ -476,6 +476,24 @@ The baseline migration boundary is:
 - When adding or validating the replay surface constraint, inspect the actual SQLite foreign-key definition, including the physical composite key and restrictive deletion behavior, not only column presence.
 - Migration from an older replay schema must preserve historical rows and fail rather than silently downgrade an invalid verified replay row.
 
+### Registry schema version 2
+
+Registry schema version 2 is the supported additive migration from the registry layout that stored only Runtime Home identity and project registrations to the registry layout that also stores Agent Integration Profile, integration project membership, and Host Installation inventory records.
+
+Migration behavior:
+
+- The migration validates the existing `runtime_home` singleton and all `projects` rows before adding the new registry tables and indexes defined by [Storage DDL](storage-ddl.md).
+- Existing project registrations, `repo_root`, `project_home`, `state_db_path`, status, timestamps, and metadata are preserved unchanged.
+- The new `agent_integrations`, `integration_projects`, and `host_installations` tables start empty. Migration does not create an Agent Integration Profile, does not grant any project membership, and does not create Host Installation inventory from existing files or environment variables.
+- Legacy fixed-project MCP environment setup, exported host-neutral configuration, or host files are not imported as trusted integration records by migration. Administrative setup or verification commands must create or reconcile those records through [Administrative CLI](admin-cli.md).
+- No project `state.sqlite` migration is required for this registry migration, and no public `project_state.state_version` increment, Core event, or replay row is created.
+- The registry `runtime_home.schema_version` and `schema_migrations` registry row are updated only after all new tables, indexes, and constraints are created successfully.
+
+Failure and retry behavior:
+
+- A failed registry version 2 migration must roll back partial DDL and metadata changes or leave a detectable failed migration state that cannot be used for adapter startup.
+- Retrying the migration must be safe when the previous attempt made no committed schema change. If a committed partial or unknown registry schema is detected, startup must fail with a structured storage/runtime unavailable diagnostic rather than guessing record meaning.
+
 This document intentionally excludes DDL bundles, migration catalogs, and profile-specific migration details outside the supported baseline.
 
 ## Failures and retry

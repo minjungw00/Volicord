@@ -446,6 +446,7 @@ documents:
   - learn
   - implement
   depends_on:
+  - development.decision.agent-integration-profile
   - development.decision.core-adapter-boundary
   - development.decision.plan-and-atomic-commit
   - development.decision.runtime-home-and-product-repository
@@ -510,6 +511,31 @@ documents:
   - reference.storage
   - reference.storage-artifacts
   - reference.admin-cli
+  - reference.security
+- doc_id: development.decision.agent-integration-profile
+  path_en: docs/en/development/decisions/agent-integration-profile.md
+  path_ko: docs/ko/development/decisions/agent-integration-profile.md
+  kind: explanation
+  summary: Architecture decision explaining Agent Integration Profile, host routing, and explicit project membership for coding-agent integrations.
+  normative_level: guide
+  translation_policy: semantic_parity
+  primary_audience:
+  - implementers
+  - agent integrators
+  - reviewers
+  journeys:
+  - learn
+  - implement
+  depends_on:
+  - development.design-patterns
+  - build.architecture
+  - reference.agent-integration
+  - reference.mcp-transport
+  - reference.admin-cli
+  - reference.runtime-boundaries
+  - reference.storage-records
+  - reference.storage-ddl
+  - reference.storage-versioning
   - reference.security
 - doc_id: build.implementation-guide
   path_en: docs/en/development/change-guide.md
@@ -645,6 +671,7 @@ documents:
   - Harness Runtime Home boundary
   - Harness Server source, installation, and executable process boundaries
   - runtime, server, and repository separation
+  - explicit integration files allowed in Product Repositories
 - doc_id: reference.admin-cli
   path_en: docs/en/reference/admin-cli.md
   path_ko: docs/ko/reference/admin-cli.md
@@ -665,19 +692,12 @@ documents:
   - Runtime Home path selection rules for `harness` administrative commands
   - administrative project registration command behavior
   - administrative surface registration command behavior
-  - local MCP setup orchestration
-  - local MCP interactive setup orchestration
-  - local MCP setup option defaults
-  - local MCP setup project and surface conflict behavior
-  - local MCP setup dry-run behavior
-  - local MCP setup preview and cancellation guarantees
-  - local MCP setup storage preparation and migration sequencing
-  - local MCP setup post-preparation revalidation
-  - local MCP setup project-ID validation
-  - local MCP setup generated-configuration path validation
-  - local MCP setup partial-failure reporting
-  - local MCP setup output formats
-  - local MCP setup host-neutral configuration generation
+  - agent integration install, status, verify, uninstall, and project membership commands
+  - Codex, Claude Code, and generic host setup scope support
+  - Host Installation setup result states and verification reporting
+  - administrative dry-run, machine output, and noninteractive approval behavior
+  - repository guidance apply, status, and remove commands
+  - compatibility behavior for legacy local MCP setup orchestration
   - '`baseline-workflow` local registration profile expansion'
   - administrative command boundary from public Harness API methods
   depends_on:
@@ -703,9 +723,11 @@ documents:
   canonical_for:
   - local `harness-mcp` process command contract
   - MCP stdio process startup and exit behavior
-  - MCP process environment variables
-  - MCP startup validation and fixed process binding
+  - MCP process environment variables and integration-bound startup
+  - MCP startup validation and integration process binding
   - MCP Runtime Home environment resolution
+  - per-call MCP project selection and validation
+  - '`harness.list_projects` MCP adapter utility'
   - line-delimited JSON-RPC over stdio
   - MCP supported request method set
   - '`tools/call` Harness response wrapping'
@@ -736,6 +758,7 @@ documents:
   - security guarantee wording
   - access-boundary non-claims
   - guarantee semantics
+  - host trust, host approval, and guidance non-guarantees
 - doc_id: reference.glossary
   path_en: docs/en/reference/glossary.md
   path_ko: docs/ko/reference/glossary.md
@@ -1197,6 +1220,7 @@ documents:
   - table overview
   - storage-owned record values
   - storage-owned JSON placement
+  - Agent Integration Profile, integration project membership, and Host Installation record families
 - doc_id: reference.storage-ddl
   path_en: docs/en/reference/storage-ddl.md
   path_ko: docs/ko/reference/storage-ddl.md
@@ -1215,6 +1239,7 @@ documents:
   - baseline SQLite DDL
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
+  - Agent Integration Profile, integration project membership, and Host Installation registry tables
   - baseline SQLite indexes, foreign keys, migration tables, and constraints
   - storage constraints for state clock columns, replay rows, current Change Unit uniqueness, Write Authorization basis versions, and staged artifact provenance
 - doc_id: reference.storage-effects
@@ -1272,6 +1297,7 @@ documents:
   - idempotency and replay rows
   - storage locking
   - migration boundaries
+  - registry schema version 2 Agent Integration Profile migration
 - doc_id: reference.agent-integration
   path_en: docs/en/reference/agent-integration.md
   path_ko: docs/ko/reference/agent-integration.md
@@ -1293,6 +1319,10 @@ documents:
   - '`VerifiedSurfaceContext` integration boundaries'
   - '`capability_profile` declaration boundaries'
   - agent context transfer boundaries
+  - Agent Integration Profile meaning and project membership rules
+  - Host Installation meaning and host trust boundary
+  - per-call MCP project selection authority
+  - agent guidance and MCP server instruction boundaries
 - doc_id: reference.projection-and-templates
   path_en: docs/en/reference/projection-and-templates.md
   path_ko: docs/ko/reference/projection-and-templates.md

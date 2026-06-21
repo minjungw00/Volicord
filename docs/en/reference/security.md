@@ -11,6 +11,7 @@ This document owns Harness security guarantee wording, local-access assumptions,
 | Local-access assumptions and access-boundary non-claims. | Connector implementation or surface-specific operating recipes. |
 | Sensitive-action approval as a security-adjacent user-owned judgment boundary. | OS permissions, deployment controls, arbitrary-tool sandboxing, or host policy. |
 | Non-authority rules for local files, generated displays, copied identifiers, chat text, and agent memory. | Runtime location definitions; see [Runtime Boundaries](runtime-boundaries.md). |
+| Host trust, host approval, and guidance non-guarantees for coding-agent integrations. | Codex or Claude Code host configuration syntax; see [Administrative CLI](admin-cli.md). |
 
 ## Supported security guarantees
 
@@ -103,6 +104,8 @@ Must not claim:
 - `Harness Runtime Home` is automatically an OS security boundary, sandbox, or isolation layer.
 - A caller-supplied `verified` flag, requested `access_class`, `capability_profile`, copied `verification_basis`, public request field, or environment variable grants local access or supplies trusted verification-basis text.
 - `ToolEnvelope.actor_kind=user` proves human identity or supplies user authority without a compatible `VerifiedActorContext`.
+- Host configuration installation proves that a host has trusted, approved, loaded, initialized, or exposed the MCP server.
+- Repository guidance, MCP server instructions, or host rule files enforce model behavior or guarantee that an agent will choose Harness tools.
 
 ## Authority boundaries
 
@@ -158,6 +161,19 @@ Must not claim:
 - `verification_basis` is a caller authority token.
 - `ToolEnvelope.actor_kind` is proof of identity or authority.
 - Environment-controlled labels, public request fields, or arbitrary caller text are trusted authority, audit facts, or verification-basis inputs.
+
+### Host trust and guidance
+
+Host trust and approval decisions belong to the external host and the user. Harness can install supported configuration and report whether further user action appears required, but it does not control the host trust decision.
+
+May claim:
+- Host Installation verification can distinguish `complete` from `action_required`, `partial_failure`, and `failed` when the administrative CLI can observe the required checks.
+- MCP server instructions and optional repository guidance can describe how an agent should select projects and tools.
+
+Must not claim:
+- Installing Codex or Claude Code configuration bypasses project trust, project MCP approval, OAuth, restart, reload, or comparable host-controlled actions.
+- `action_required` is a failed installation when configuration was installed but the host still requires user-controlled trust or approval.
+- Agent instructions, `AGENTS.md` blocks, `CLAUDE.md`, `.claude/rules/` files, or MCP server instructions are access control, security enforcement, user judgment, `Write Authorization`, or proof that a model will follow them.
 
 ### Generated displays and text
 

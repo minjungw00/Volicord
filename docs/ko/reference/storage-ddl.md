@@ -39,7 +39,7 @@ PRAGMA foreign_keys = ON;
 
 ## `registry.sqlite`
 
-`registry.sqlite`는 런타임 홈 식별 정보와 프로젝트 등록만 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
+`registry.sqlite`는 런타임 홈 식별 정보, 프로젝트 등록, 코딩 에이전트 통합 레지스트리 기록, 호스트 설정 인벤토리를 저장합니다. 프로젝트별 Core 상태는 저장하지 않습니다.
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -78,6 +78,63 @@ CREATE TABLE projects (
 
 CREATE INDEX idx_projects_repo_root ON projects (repo_root);
 CREATE INDEX idx_projects_status ON projects (status);
+
+CREATE TABLE agent_integrations (
+  integration_id TEXT PRIMARY KEY,
+  interaction_role TEXT NOT NULL CHECK (interaction_role = 'agent'),
+  surface_id TEXT NOT NULL,
+  surface_instance_id TEXT NOT NULL,
+  default_project_id TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (integration_id, default_project_id)
+    REFERENCES integration_projects (integration_id, project_id)
+    DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE TABLE integration_projects (
+  integration_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (integration_id, project_id),
+  FOREIGN KEY (integration_id)
+    REFERENCES agent_integrations (integration_id)
+    ON DELETE RESTRICT
+    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE RESTRICT
+);
+
+CREATE TABLE host_installations (
+  installation_id TEXT PRIMARY KEY,
+  integration_id TEXT NOT NULL,
+  host_kind TEXT NOT NULL CHECK (host_kind IN ('codex', 'claude_code', 'generic')),
+  host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project', 'local', 'export')),
+  server_name TEXT NOT NULL,
+  config_target TEXT NOT NULL,
+  managed_fingerprint TEXT NOT NULL,
+  last_verified_status TEXT NOT NULL DEFAULT 'not_verified'
+    CHECK (last_verified_status IN ('not_verified', 'complete', 'action_required', 'partial_failure', 'failed')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  CHECK (
+    (host_kind = 'codex' AND host_scope IN ('user', 'project'))
+    OR (host_kind = 'claude_code' AND host_scope IN ('local', 'project', 'user'))
+    OR (host_kind = 'generic' AND host_scope = 'export')
+  ),
+  FOREIGN KEY (integration_id) REFERENCES agent_integrations (integration_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_integration_projects_project
+  ON integration_projects (project_id);
+CREATE INDEX idx_agent_integrations_enabled
+  ON agent_integrations (enabled);
+CREATE INDEX idx_host_installations_integration
+  ON host_installations (integration_id);
+CREATE UNIQUE INDEX idx_host_installations_target
+  ON host_installations (host_kind, host_scope, config_target, server_name);
 ```
 
 레지스트리 제약:
@@ -86,6 +143,11 @@ CREATE INDEX idx_projects_status ON projects (status);
 - `projects.project_home`은 고유합니다. `repo_root`는 조회를 위해 인덱스를 두지만 프로젝트 식별을 대신하지 않습니다.
 - `projects.state_db_path`는 저장 열로 유지됩니다. SQL 열 정의는 이 값이 `project_home/state.sqlite`와 같은지를 강제하지 않습니다. 그 관계는 프로젝트 상태 검사, 마이그레이션, 쓰기 가능 열기, 접점 관리, Core 실행, setup 재사용, MCP 프로젝트 시작 전에 Store의 애플리케이션 수준 실행 검증이 강제합니다. 일치하지 않는 레지스트리 행은 진단을 위해 계속 읽을 수 있지만 실행에는 적격하지 않습니다.
 - `projects.status`는 저장소 소유 값이며 기준 범위에서 유효한 값은 `active`뿐입니다.
+- `agent_integrations`는 통합에 묶인 MCP 프로세스 식별 정보와 묶인 접점 식별자를 저장합니다. 레지스트리 데이터베이스는 이 접점 식별자를 프로젝트별 `state.sqlite`에 외래 키로 연결할 수 없습니다. 따라서 어댑터 호출이 Core에 들어가기 전에 프로젝트별 실행 검증이 호환되는 접점 등록을 확인해야 합니다.
+- `agent_integrations.default_project_id`는 값이 있으면 같은 `integration_id`의 `integration_projects` 행으로 물리적으로 제한됩니다. 외래 키는 지연 가능하므로 생성 과정에서 프로필과 멤버십을 한 트랜잭션으로 삽입할 수 있습니다.
+- `integration_projects`는 하나의 Agent Integration Profile에 대한 명시적 프로젝트 허용 목록입니다. 아직 멤버십이 남은 프로젝트나 통합 삭제는 제한됩니다.
+- `host_installations`는 관리되는 호스트 설정 인벤토리와 마지막 검증 상태를 기록합니다. Codex, Claude Code, generic 호스트 설정 파일의 운영 원천은 아닙니다.
+- `host_installations.host_kind`와 `host_installations.host_scope`는 [관리 CLI](admin-cli.md)가 정의하는 지원 호스트/범위 행렬로 제한됩니다.
 - `schema_migrations`는 적용된 레지스트리 스키마 버전을 기록합니다. 마이그레이션 실행 의미는 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 ## 프로젝트 `state.sqlite`

@@ -47,6 +47,10 @@ Contract detail stays in the focused owner documents. Translation and style rule
 | close readiness | 닫기 준비 상태 | The Core concept for whether a `Task` is ready to close from its current state. | [Core Model](core-model.md) |
 | close-readiness blocker | 닫기 차단 사유 | A close-relevant reason surfaced when close readiness cannot proceed. | [API blocker routing](api/blocker-routing.md) |
 | `Projection` | 상태 보기 | The exact product label for a read-only state view. Projection output is display, not Core authority. | [Projection Authority Reference](projection-and-templates.md) |
+| `Agent Integration Profile` | 에이전트 통합 프로필 | The durable registry identity for one coding-agent integration and its bound surface context. | [Agent Integration](agent-integration.md) |
+| integration project membership | 통합 프로젝트 멤버십 | The explicit allowlist relation between an Agent Integration Profile and registered projects. | [Agent Integration](agent-integration.md) |
+| `Host Installation` | 호스트 설치 | Managed host setup inventory for a coding-agent integration. Not proof that the external host trusted or loaded the server. | [Agent Integration](agent-integration.md) |
+| `harness.list_projects` | `harness.list_projects` | MCP adapter utility for listing projects allowed for the bound integration. Not a public Core API method. | [MCP Transport](mcp-transport.md) |
 | surface | 접점 | An integration or interaction boundary where context appears. | [Agent Integration](agent-integration.md) |
 | access class | 접근 등급 | A value category for verified surface and access context. | [API Value Sets](api/schema-value-sets.md) |
 | baseline guarantee | 기준 범위 보장 | Security wording for a guarantee supported in the baseline scope. | [Security](security.md) |

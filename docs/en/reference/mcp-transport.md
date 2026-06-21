@@ -1,18 +1,20 @@
 # MCP transport reference
 
-This document owns the local `harness-mcp` process contract: process startup, process environment, MCP protocol-version negotiation, initialization lifecycle, stdio transport framing, JSON-RPC message validation, startup binding and validation, MCP response wrapping, and shutdown/reconnection behavior.
+This document owns the local `harness-mcp` process contract: process startup, process environment, MCP protocol-version negotiation, initialization lifecycle, stdio transport framing, JSON-RPC message validation, integration-bound startup validation, MCP response wrapping, and shutdown/reconnection behavior.
 
-It does not define public Harness API method behavior, public request or response schemas, access-class meanings, surface registration meaning, storage record layout, security guarantees, or Core authority semantics.
+It does not define public Harness API method behavior, public request or response schemas, access-class meanings, Agent Integration Profile meaning, storage record layout, security guarantees, or Core authority semantics.
 
 ## Owns / does not own
 
 This document owns:
 
 - `harness-mcp` process startup and exit behavior
-- required and optional process environment variables, including MCP Runtime Home resolution
+- required and optional process configuration for integration-bound startup
+- MCP Runtime Home environment resolution
 - MCP protocol-version negotiation and initialization lifecycle
 - stdio JSON-RPC framing, message validation, and supported MCP methods
-- MCP startup validation, fixed process binding, and instance selection
+- MCP startup validation for one `integration_id`
+- MCP `tools/list`, `tools/call`, and `harness.list_projects` adapter utility behavior at the transport boundary
 - MCP `tools/call` response wrapping
 - process shutdown and reconnection behavior
 
@@ -21,43 +23,50 @@ This document does not own:
 - the public Harness method list or method owner table; see [API Methods](api/methods.md)
 - public Harness request and response schemas; see [API Schema Core](api/schema-core.md)
 - access-class value meanings; see [API Value Sets](api/schema-value-sets.md#access-class-values)
-- surface registration meaning, access derivation, fixed surface-context meaning, and actor provenance; see [Agent Integration](agent-integration.md)
-- administrative Runtime Home commands, project registration, and surface registration; see [Administrative CLI](admin-cli.md)
+- Agent Integration Profile, Host Installation, project selection meaning, verified surface context, and actor provenance; see [Agent Integration](agent-integration.md)
+- administrative Runtime Home, agent installation, project membership, and verification commands; see [Administrative CLI](admin-cli.md)
 - storage layout, migrations, and storage effects; see the storage owners through [Storage](storage.md)
 
 ## Process model
 
 `harness-mcp` is a local MCP stdio process. An MCP host starts it as a child process and communicates through stdin/stdout. It is not a TCP listener, HTTP listener, Unix-domain socket listener, or other network listener.
 
-Command-line behavior:
+Baseline command-line behavior:
 
-- Launch `harness-mcp` without command-line arguments for the line-delimited MCP stdio loop.
+- Launch the stdio loop with `harness-mcp --integration <integration_id>`.
+- Run startup validation without reading stdin with `harness-mcp --check --integration <integration_id>`.
 - `-h` and `--help` print usage and environment summary, then exit with code `0`.
 - `-V` and `--version` print `harness-mcp <version>`, then exit with code `0`.
-- `--check` runs startup validation and prints a deterministic diagnostic report without reading stdin.
-- Unknown options, combined command-line modes, and extra positional arguments write usage diagnostics to stderr and exit with code `2`.
-- Help and version handling happen before Runtime Home or binding environment lookup.
+- Unknown options, combined command-line modes, missing required option values, and extra positional arguments write usage diagnostics to stderr and exit with code `2`.
+- Help and version handling happen before Runtime Home or integration lookup.
 
 Exit and stream behavior:
 
 - Normal stdin EOF shutdown flushes stdout and exits with code `0`.
 - Successful `--check` writes its report to stdout and exits with code `0`.
-- Startup environment, JSON, or storage failures write diagnostics to stderr and exit with code `1`.
+- Startup configuration, JSON, or storage failures write diagnostics to stderr and exit with code `1`.
 - Once the stdio loop is running, malformed JSON and unsupported JSON-RPC requests return JSON-RPC errors when a response can be written.
 
+Compatibility:
+
+- A legacy fixed-project startup mode that uses `HARNESS_PROJECT_ID`, `HARNESS_SURFACE_ID`, and `HARNESS_SURFACE_INSTANCE_ID` may be retained only as a compatibility path.
+- New setup, new examples, and baseline Host Installation records must not generate the legacy fixed-project startup form.
+
 ## Process environment
-
-Required:
-
-- `HARNESS_PROJECT_ID`
-- `HARNESS_SURFACE_ID`
 
 Optional:
 
 - `HARNESS_HOME`
+
+The stdio process and `--check` use `HARNESS_HOME` before entering startup validation. Help and version modes do not use it.
+
+New baseline host configuration must not require:
+
+- `HARNESS_PROJECT_ID`
+- `HARNESS_SURFACE_ID`
 - `HARNESS_SURFACE_INSTANCE_ID`
 
-The stdio process and `--check` use these variables before entering startup validation. Help and version modes do not use them.
+The selected Agent Integration Profile supplies the surface and surface-instance binding. The selected project is determined per public MCP tool call.
 
 Current MCP Runtime Home resolution:
 
@@ -71,42 +80,39 @@ Current MCP Runtime Home resolution:
 
 ## Startup validation
 
-Before entering the stdio loop, `harness-mcp` validates the fixed process binding and the local registration records it depends on.
+Before entering the stdio loop, `harness-mcp` validates the integration binding and the local registry records it depends on.
 
 Startup validation requires:
 
 - the Runtime Home registry exists and is valid
-- the configured project is registered
-- the project status is `active`
-- the registered `Product Repository` still satisfies the [Runtime Home/Product Repository separation contract](runtime-boundaries.md#runtime-home-product-repository-separation) with the selected Runtime Home
-- the project state database is valid
-- the configured surface is registered
-- the configured surface instance exists, or can be selected unambiguously
-- the registered `interaction_role` is recognized
-- `capability_profile` and metadata are JSON objects
-- local access metadata is valid and grants at least one access class
+- the configured `integration_id` exists
+- the integration is enabled
+- the integration role is recognized and is valid for MCP agent integration
+- the integration `surface_id` and `surface_instance_id` are present
+- the integration project membership rows are readable
+- `default_project_id`, when present, is also a membership row
+- registry JSON and metadata needed for startup are valid
 
-Instance selection when `HARNESS_SURFACE_INSTANCE_ID` is absent:
+Startup validation does not select a project for all calls. Project availability, project status, path separation, surface registration, and access-class grants are verified per call as defined by [Agent Integration](agent-integration.md#current-surface-context).
 
-1. Use the registered project default only when it belongs to the configured `surface_id`.
-2. Otherwise use one usable candidate only when exactly one exists.
-3. Fail on no candidate or multiple candidates.
-
-## Fixed process binding
+## Integration-bound process
 
 One `harness-mcp` process is bound to:
 
-- one `project_id`
+- one `integration_id`
+
+The integration supplies:
+
 - one `surface_id`
 - one `surface_instance_id`
+- an explicit allowlist of project memberships
+- an optional `default_project_id`
 
-These values remain fixed for the process lifetime. Changing project, surface, or surface instance requires another process.
-
-The public `ToolEnvelope.project_id` and `ToolEnvelope.surface_id` values in each public Harness request must match the fixed binding. They are request echoes for protocol consistency, not caller-selected authority. The fixed surface-context meaning, access derivation, and actor provenance boundaries are owned by [Agent Integration](agent-integration.md#current-surface-context).
+The process binding remains fixed for the process lifetime. Changing integration requires another process or host configuration update. Changing project membership or disabling the integration takes effect through registry state without requiring the host configuration to be rewritten.
 
 ## Configuration preflight
 
-`harness-mcp --check` runs the same Runtime Home, project, surface, instance, role, JSON, and local-access startup validation used before entering the stdio loop. It does not read stdin.
+`harness-mcp --check --integration <integration_id>` runs the same Runtime Home, integration, membership, and registry-shape startup validation used before entering the stdio loop. It does not read stdin.
 
 On success, `--check` writes these stdout lines in this order:
 
@@ -114,13 +120,15 @@ On success, `--check` writes these stdout lines in this order:
 configuration: valid
 transport: stdio
 runtime_home: <absolute path>
-project_id: <value>
+integration_id: <value>
+interaction_role: agent
 surface_id: <value>
 surface_instance_id: <value>
-interaction_role: <agent or user_interaction>
-access_classes: <comma-separated registered grants>
-baseline_workflow_access: <full, partial, or not_applicable>
-missing_access_classes: <comma-separated values or empty>
+enabled: true
+allowed_projects: <count>
+available_projects: <count>
+default_project_id: <value or empty>
+verification_scope: startup_check_only
 ```
 
 Startup validation failure:
@@ -129,11 +137,13 @@ Startup validation failure:
 - exits with code `1`
 - does not enter the stdio loop or wait on stdin
 
-When a stored project registration fails the [Runtime Home/Product Repository separation check](runtime-boundaries.md#runtime-home-product-repository-separation), the diagnostic identifies the path relationship category. Startup validation may perform already-defined storage schema validation or migration as part of normal database opening. It does not by itself register a project or surface, repair a registry row, create a `Task`, increment `state_version`, or create application records.
+A successful `--check` is not a complete host integration result. Complete host integration requires durable integration state, host configuration installation, successful MCP initialization, and successful tool discovery, as defined by [Administrative CLI](admin-cli.md#agent-setup-result-states).
 
 ## MCP wire behavior
 
 `harness-mcp` supports MCP protocol version `2025-11-25` over stdio. It does not advertise simultaneous compatibility with older MCP protocol versions. Each new process or stdio connection starts a new MCP lifecycle and must complete its own initialization sequence.
+
+The server initialization response includes MCP server instructions. Those instructions may describe Harness tool selection, deterministic project routing, and limitations, but they are guidance only; they are not access control or a guarantee of model behavior.
 
 ### Framing and JSON-RPC validation
 
@@ -205,7 +215,12 @@ The supported lifecycle notification is `notifications/initialized`.
 
 ## Tool discovery and `tools/call` response wrapping
 
-After the connection is ready, `tools/list` exposes exactly the nine public Harness tools owned by [API Methods](api/methods.md). This document does not create a second independently owned method list.
+After the connection is ready, `tools/list` exposes:
+
+- the nine public Harness tools owned by [API Methods](api/methods.md)
+- the read-only MCP adapter utility tool `harness.list_projects`
+
+This document does not create a second independently owned public Core method list. `harness.list_projects` is not a public Harness Core API method.
 
 A structurally valid `tools/call` request has object `params` with:
 
@@ -214,11 +229,15 @@ A structurally valid `tools/call` request has object `params` with:
 
 Missing `arguments` are treated as an empty object. `arguments: null` and non-object `arguments` are malformed method parameters and return JSON-RPC `-32602`. Unknown tool names are protocol errors and return JSON-RPC `-32602`.
 
-For a known tool, object `arguments` that fail the tool input schema return a `CallToolResult` with `isError: true` and actionable text content. They are tool execution errors, not JSON-RPC protocol errors.
+For a known public Harness tool, object `arguments` that fail the tool input schema return a `CallToolResult` with `isError: true` and actionable text content. They are tool execution errors, not JSON-RPC protocol errors.
+
+For `harness.list_projects`, the adapter returns a read-only project list for the bound integration only. It must not enter Core, create storage effects, mutate project membership, or expose projects outside the integration allowlist.
+
+For a public Harness tool call, the adapter first performs deterministic project selection and per-project validation owned by [Agent Integration](agent-integration.md#current-surface-context). Ambiguous project selection is rejected before Core execution and the actionable text must instruct the agent to call `harness.list_projects`.
 
 `harness-mcp` does not advertise or implement MCP task-augmented tool execution. A `tools/call` request does not return `CreateTaskResult`, and a `task` parameter is not a supported baseline feature.
 
-For known tool calls that reach Harness, `tools/call` wraps the Harness response JSON inside the MCP result:
+For known public Harness tool calls that reach Harness, `tools/call` wraps the Harness response JSON inside the MCP result:
 
 - Harness response JSON is serialized as the string in `result.content[0].text`.
 - Clients must parse that string as JSON to inspect the Harness response.
@@ -240,7 +259,7 @@ Closing stdin or terminating the child process ends the MCP session.
 Shutdown and reconnection rules:
 
 - SQLite state remains in the Runtime Home.
-- Restarting with the same binding reconnects to the same stored project state.
-- Changing binding values requires a new process.
+- Restarting with the same `integration_id` reconnects to the same integration and current registry state.
+- Changing integration requires a new process or host configuration update.
 
 Runtime data location boundaries are owned by [Runtime Boundaries](runtime-boundaries.md), and storage record details are owned by the storage owners routed from [Storage](storage.md).

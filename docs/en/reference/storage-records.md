@@ -42,7 +42,7 @@ Harness stores baseline records in one local `Harness Runtime Home` and one proj
 
 Storage placement:
 
-- `registry.sqlite` stores Runtime Home identity and project registration mapping, including the registered `repo_root`, `project_home`, project `state.sqlite` path, status, and storage metadata.
+- `registry.sqlite` stores Runtime Home identity, project registration mapping, Agent Integration Profile records, integration project membership, Host Installation inventory, and registry metadata. Project registration includes the registered `repo_root`, `project_home`, project `state.sqlite` path, and status.
 - `projects/{project_id}/` is the Harness project home for one registered project. It is not the same location or authority as `repo_root`.
 - `state.sqlite` stores project-local Core state for the registered project.
 - `artifacts/` is the project artifact store when artifact storage is used. `artifacts/tmp/` is transient staging space when artifact staging requires it, not evidence authority. These directories need not exist immediately after project registration.
@@ -71,6 +71,9 @@ Baseline storage persists only the record families defined by this baseline stor
 |---|---|---|---|
 | `registry.sqlite` | Runtime Home identity | Runtime identity | One stored `runtime_home_id`, schema/storage profile, and local registry metadata. |
 | `registry.sqlite` | Project registration | Project mapping | Registered project identity mapped to `repo_root`, location-owning `project_home`, and stored `state_db_path` that must match `project_home/state.sqlite` for execution. |
+| `registry.sqlite` | Agent Integration Profile | Coding-agent integration binding | Durable integration identity, interaction role, bound surface identifiers, enabled state, optional default project, and integration metadata. |
+| `registry.sqlite` | Integration project membership | Integration project allowlist | Explicit many-to-many membership between an Agent Integration Profile and registered projects. |
+| `registry.sqlite` | Host Installation | Host setup inventory | Host kind, host scope, server name, config target, managed fingerprint, last verification status, and installation metadata for a configured or exported coding-agent host entry. |
 | `state.sqlite` | `project_state` | Project state header | Storage profile, `state_version`, current `Task` pointer, and default surface pointer. |
 | `state.sqlite` | `surfaces` | Surface facts | Registered local surface facts needed for API envelope compatibility, actor-provenance role, capability display, and local-access posture. |
 | `state.sqlite` | `tasks` | Work-unit state | User-value work unit, shaping summary, scope and close-basis revisions, nullable current close basis, lifecycle/result/terminal close summary, current `CompletionPolicy`, and current Change Unit pointer. |
@@ -94,6 +97,9 @@ Baseline records use opaque stable ids as primary keys or equivalent unique keys
 
 - Runtime Home identity stores one `runtime_home_id` for the Runtime Home.
 - Project registration requires unique project identity and a unique project home.
+- Agent Integration Profile identity is unique by `integration_id` and binds one registered coding-agent surface identity for adapter calls.
+- Integration project membership is unique by `(integration_id, project_id)`. A profile default project, when present, must also be present in that membership set.
+- Host Installation inventory is unique for the managed host target, host scope, and server name. It records managed setup state; it is not the external host configuration source of truth.
 - Project-scoped rows belong to a registered project.
 - Task-scoped rows belong to the same project and `Task` as their owning `tasks` row.
 - Current pointers, default surface pointers, and owner references must point to same-project records.
@@ -115,6 +121,8 @@ Storage must validate stored relationships before commit, including:
 - compatible `Write Authorization` consumption
 - artifact staging consumption and promotion targets
 - artifact owner relations
+- Agent Integration Profile default-project membership and enabled-state consistency
+- Host Installation references to an existing Agent Integration Profile
 - JSON reference arrays that SQLite cannot express as direct foreign keys
 
 ### Authority row preservation
@@ -140,6 +148,11 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | Stored field | Baseline values |
 |---|---|
 | Project registration `status` | `active` |
+| Agent Integration Profile `interaction_role` | `agent` |
+| Agent Integration Profile `enabled` | `0`, `1` |
+| Host Installation `host_kind` | `codex`, `claude_code`, `generic` |
+| Host Installation `host_scope` | `user`, `project`, `local`, `export` |
+| Host Installation `last_verified_status` | `not_verified`, `complete`, `action_required`, `partial_failure`, `failed` |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` |
 | `write_authorizations.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
 | `user_judgments.basis_status` | `current`, `stale`, `superseded`, `legacy_unbound` |
@@ -167,6 +180,8 @@ Rules:
 
 | Record family | JSON `TEXT` category |
 |---|---|
+| Agent Integration Profile | Integration metadata that is not used as authority, access grant, project selection, or host trust proof. |
+| Host Installation | Installation metadata that is not used as authority, host trust proof, or replacement for the external host configuration. |
 | `surfaces` | Surface capability profile data. |
 | `tasks` | Shaping summary, bounded lists, autonomy boundary, current close basis, terminal close summary, lifecycle summary, and `CompletionPolicy`. |
 | `change_units` | Scope summaries, bounded lists, write basis summaries, and lifecycle support data. |

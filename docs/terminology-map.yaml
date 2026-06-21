@@ -178,6 +178,18 @@ identifier_preservation:
     - "VerifiedSurfaceContext"
     - "VerifiedSurfaceContext.access_class"
     - "access_class"
+    - "integration_id"
+    - "default_project_id"
+    - "installation_id"
+    - "host_kind"
+    - "host_scope"
+    - "server_name"
+    - "config_target"
+    - "managed_fingerprint"
+    - "last_verified_status"
+    - "agent_integrations"
+    - "integration_projects"
+    - "host_installations"
     - "active_change_unit_ref"
     - "state_version"
     - "status=active"
@@ -185,10 +197,14 @@ identifier_preservation:
     - "artifact_staging.status"
     - "harness"
     - "harness-mcp"
+    - "harness.list_projects"
+    - "harness agent install"
   product_labels:
     - "Product Repository"
     - "Harness Runtime Home"
     - "Harness Server"
+    - "Agent Integration Profile"
+    - "Host Installation"
     - "Projection"
     - "Write Authorization"
 avoid:
@@ -1349,6 +1365,98 @@ terms:
       - "Do not use the discouraged active wording for this runtime-context meaning."
       - "Do not use current surface context as proof of authority, access, binding, or capability by itself."
       - "In Korean, use 현재 적용 접점 맥락; preserve exact surface identifiers."
+  agent_integration_profile:
+    category: "product_label"
+    en: "Agent Integration Profile"
+    ko_reference: "Agent Integration Profile"
+    ko_user: "에이전트 통합 프로필"
+    ko_reference_first_reference: "`Agent Integration Profile`(에이전트 통합 프로필)"
+    preserve_as_label:
+      - "Agent Integration Profile"
+    preserve_as_identifier:
+      - "integration_id"
+      - "agent_integrations"
+    primary_owner:
+      en: "docs/en/reference/agent-integration.md"
+      ko: "docs/ko/reference/agent-integration.md"
+    related_references:
+      - en: "docs/en/reference/admin-cli.md"
+        ko: "docs/ko/reference/admin-cli.md"
+      - en: "docs/en/reference/mcp-transport.md"
+        ko: "docs/ko/reference/mcp-transport.md"
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+    notes:
+      - "Use the exact product label when naming the durable coding-agent integration profile."
+      - "Do not use as a synonym for a Product Repository, Host Installation, or MCP session."
+  integration_project_membership:
+    category: "product_concept"
+    en: "integration project membership"
+    ko_reference: "통합 프로젝트 멤버십"
+    ko_user: "통합 프로젝트 멤버십"
+    preserve_as_identifier:
+      - "integration_id"
+      - "project_id"
+      - "integration_projects"
+    primary_owner:
+      en: "docs/en/reference/agent-integration.md"
+      ko: "docs/ko/reference/agent-integration.md"
+    related_references:
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+      - en: "docs/en/reference/storage-ddl.md"
+        ko: "docs/ko/reference/storage-ddl.md"
+    notes:
+      - "Use for the explicit allowlist relation between an Agent Integration Profile and registered projects."
+      - "Do not imply all registered projects are included unless the owner explicitly says so."
+  host_installation:
+    category: "product_label"
+    en: "Host Installation"
+    ko_reference: "Host Installation"
+    ko_user: "호스트 설치"
+    ko_reference_first_reference: "`Host Installation`(호스트 설치)"
+    preserve_as_label:
+      - "Host Installation"
+    preserve_as_identifier:
+      - "installation_id"
+      - "host_installations"
+      - "host_kind"
+      - "host_scope"
+      - "last_verified_status"
+    primary_owner:
+      en: "docs/en/reference/agent-integration.md"
+      ko: "docs/ko/reference/agent-integration.md"
+    related_references:
+      - en: "docs/en/reference/admin-cli.md"
+        ko: "docs/ko/reference/admin-cli.md"
+      - en: "docs/en/reference/runtime-boundaries.md"
+        ko: "docs/ko/reference/runtime-boundaries.md"
+      - en: "docs/en/reference/security.md"
+        ko: "docs/ko/reference/security.md"
+      - en: "docs/en/reference/storage-records.md"
+        ko: "docs/ko/reference/storage-records.md"
+    notes:
+      - "Use the exact product label when naming the managed host setup inventory record."
+      - "Do not treat Host Installation as proof that the external host trusted, approved, loaded, or exposed the MCP server."
+  harness_list_projects:
+    category: "identifier"
+    en: "harness.list_projects"
+    ko_reference: "`harness.list_projects`"
+    ko_user: "`harness.list_projects`"
+    preserve_identifier: true
+    preserve_as_identifier:
+      - "harness.list_projects"
+    primary_owner:
+      en: "docs/en/reference/mcp-transport.md"
+      ko: "docs/ko/reference/mcp-transport.md"
+    related_references:
+      - en: "docs/en/reference/agent-integration.md"
+        ko: "docs/ko/reference/agent-integration.md"
+      - en: "docs/en/reference/api/methods.md"
+        ko: "docs/ko/reference/api/methods.md"
+    notes:
+      - "`harness.list_projects` is an MCP adapter utility, not a public Core API method."
+      - "Preserve the exact tool name in English and Korean."
   state_version:
     category: "identifier"
     en: "state_version"

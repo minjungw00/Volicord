@@ -39,7 +39,7 @@ SQLite `TEXT` columns ending in `_json` store JSON as a representation choice. J
 
 ## `registry.sqlite`
 
-`registry.sqlite` stores Runtime Home identity and project registration only. It does not store project-local Core state.
+`registry.sqlite` stores Runtime Home identity, project registration, coding-agent integration registry records, and host setup inventory. It does not store project-local Core state.
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -78,6 +78,63 @@ CREATE TABLE projects (
 
 CREATE INDEX idx_projects_repo_root ON projects (repo_root);
 CREATE INDEX idx_projects_status ON projects (status);
+
+CREATE TABLE agent_integrations (
+  integration_id TEXT PRIMARY KEY,
+  interaction_role TEXT NOT NULL CHECK (interaction_role = 'agent'),
+  surface_id TEXT NOT NULL,
+  surface_instance_id TEXT NOT NULL,
+  default_project_id TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (integration_id, default_project_id)
+    REFERENCES integration_projects (integration_id, project_id)
+    DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE TABLE integration_projects (
+  integration_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (integration_id, project_id),
+  FOREIGN KEY (integration_id)
+    REFERENCES agent_integrations (integration_id)
+    ON DELETE RESTRICT
+    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE RESTRICT
+);
+
+CREATE TABLE host_installations (
+  installation_id TEXT PRIMARY KEY,
+  integration_id TEXT NOT NULL,
+  host_kind TEXT NOT NULL CHECK (host_kind IN ('codex', 'claude_code', 'generic')),
+  host_scope TEXT NOT NULL CHECK (host_scope IN ('user', 'project', 'local', 'export')),
+  server_name TEXT NOT NULL,
+  config_target TEXT NOT NULL,
+  managed_fingerprint TEXT NOT NULL,
+  last_verified_status TEXT NOT NULL DEFAULT 'not_verified'
+    CHECK (last_verified_status IN ('not_verified', 'complete', 'action_required', 'partial_failure', 'failed')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  CHECK (
+    (host_kind = 'codex' AND host_scope IN ('user', 'project'))
+    OR (host_kind = 'claude_code' AND host_scope IN ('local', 'project', 'user'))
+    OR (host_kind = 'generic' AND host_scope = 'export')
+  ),
+  FOREIGN KEY (integration_id) REFERENCES agent_integrations (integration_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_integration_projects_project
+  ON integration_projects (project_id);
+CREATE INDEX idx_agent_integrations_enabled
+  ON agent_integrations (enabled);
+CREATE INDEX idx_host_installations_integration
+  ON host_installations (integration_id);
+CREATE UNIQUE INDEX idx_host_installations_target
+  ON host_installations (host_kind, host_scope, config_target, server_name);
 ```
 
 Registry constraints:
@@ -86,6 +143,11 @@ Registry constraints:
 - `projects.project_home` is unique. `repo_root` is indexed for lookup but does not replace project identity.
 - `projects.state_db_path` is retained as a stored column. The SQL column definition does not enforce its equality with `project_home/state.sqlite`; Store application-level execution validation enforces that relationship before project-state inspection, migration, writable open, surface management, Core execution, setup reuse, or MCP project startup. A mismatching registry row remains readable for diagnosis but is execution-ineligible.
 - `projects.status` is storage-owned and baseline-valid only as `active`.
+- `agent_integrations` stores the integration-bound MCP process identity and bound surface identifiers. The registry database cannot foreign-key these surface identifiers into project-local `state.sqlite`; per-project execution validation must verify compatible surface registration before adapter calls enter Core.
+- `agent_integrations.default_project_id`, when present, is physically constrained to an `integration_projects` row for the same `integration_id`. The foreign key is deferrable so creation can insert the profile and membership in one transaction.
+- `integration_projects` is the explicit project allowlist for one Agent Integration Profile. Deleting a project or integration that still has membership is restricted.
+- `host_installations` records managed host setup inventory and last verification status. It is not the operational source of truth for Codex, Claude Code, or any generic host configuration file.
+- `host_installations.host_kind` and `host_installations.host_scope` are constrained to the supported host/scope matrix defined by [Administrative CLI](admin-cli.md).
 - `schema_migrations` records applied registry schema versions. Migration execution semantics stay with [Storage Versioning](storage-versioning.md).
 
 ## Project `state.sqlite`
