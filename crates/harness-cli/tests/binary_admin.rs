@@ -2078,6 +2078,7 @@ fn harness_binary_agent_claude_project_install_reports_action_required(
     fs::create_dir_all(&bin_dir)?;
     let mcp = write_agent_mcp(&bin_dir, AgentMcpFixture::Complete)?;
     fs::rename(&mcp, bin_dir.join("harness-mcp"))?;
+    write_fake_claude_mcp_get(&bin_dir, "⏸ Pending approval")?;
 
     let install = run_with_home_and_env(
         runtime_home.path(),
@@ -2838,6 +2839,27 @@ fn write_agent_mcp(
              fi\n\
              printf 'unexpected invocation\\n' >&2\n\
              exit 2\n"
+        ),
+    )?;
+    make_executable(&path)?;
+    Ok(path)
+}
+
+#[cfg(unix)]
+fn write_fake_claude_mcp_get(dir: &Path, status: &str) -> Result<PathBuf, Box<dyn Error>> {
+    fs::create_dir_all(dir)?;
+    let path = dir.join("claude");
+    fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = \"mcp\" ] && [ \"$2\" = \"get\" ]; then\n\
+             printf '%s\\n' '{}'\n\
+             exit 0\n\
+             fi\n\
+             printf 'unexpected claude invocation\\n' >&2\n\
+             exit 2\n",
+            status
         ),
     )?;
     make_executable(&path)?;

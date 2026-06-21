@@ -1,6 +1,8 @@
 use std::{
     collections::BTreeMap,
+    ffi::OsString,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
 use toml_edit::{value, Array, DocumentMut, Item, Table};
@@ -12,12 +14,15 @@ use super::{
     HostRemoveRequest, HostScope, HostTarget, ManagedServerEntry, PlannedChange, UserAction,
     UserActionKind,
 };
-use crate::host_integration::verification::{Verification, VerificationStatus};
+use crate::host_integration::verification::{
+    HostExecutableStatus, HostGateStatus, ManagedConfigStatus, Verification,
+};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodexEnvironment {
     pub home: Option<PathBuf>,
     pub codex_home: Option<PathBuf>,
+    pub path: Option<OsString>,
 }
 
 #[derive(Debug, Clone)]
@@ -158,10 +163,70 @@ impl CodexAdapter {
 impl HostAdapter for CodexAdapter {
     fn detect(&self) -> Result<HostDetection, HostConfigError> {
         let path = self.codex_home()?.join("config.toml");
+        let Some(executable) = find_executable_in_path("codex", self.env.path.as_ref()) else {
+            return Ok(HostDetection {
+                host_kind: HostKind::Codex,
+                available: false,
+                details: format!(
+                    "Codex executable was not found on PATH; configuration target: {}",
+                    path.display()
+                ),
+            });
+        };
+        let output = Command::new(&executable)
+            .arg("--version")
+            .stdin(Stdio::null())
+            .output();
+        let details = match output {
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout);
+                let version = version.trim();
+                if version.starts_with("codex ") || version.chars().any(|ch| ch.is_ascii_digit()) {
+                    format!(
+                        "Codex executable: {}; configuration target: {}",
+                        executable.display(),
+                        path.display()
+                    )
+                } else {
+                    format!(
+                        "Codex executable ran but version output is unsupported for interpretation: {}; configuration target: {}",
+                        executable.display(),
+                        path.display()
+                    )
+                }
+            }
+            Ok(output) => {
+                return Ok(HostDetection {
+                    host_kind: HostKind::Codex,
+                    available: false,
+                    details: format!(
+                        "Codex executable could not be executed successfully: {} exited {}; configuration target: {}",
+                        executable.display(),
+                        output
+                            .status
+                            .code()
+                            .map(|code| code.to_string())
+                            .unwrap_or_else(|| "without status".to_owned()),
+                        path.display()
+                    ),
+                });
+            }
+            Err(error) => {
+                return Ok(HostDetection {
+                    host_kind: HostKind::Codex,
+                    available: false,
+                    details: format!(
+                        "Codex executable could not be executed: {}: {error}; configuration target: {}",
+                        executable.display(),
+                        path.display()
+                    ),
+                });
+            }
+        };
         Ok(HostDetection {
             host_kind: HostKind::Codex,
             available: true,
-            details: format!("Codex user configuration target: {}", path.display()),
+            details,
         })
     }
 
@@ -195,21 +260,32 @@ impl HostAdapter for CodexAdapter {
 
     fn verify(&mut self, plan: &HostPlan) -> Result<Verification, HostConfigError> {
         if let Some(conflict) = plan.conflicts.first() {
-            return Ok(Verification::new(
-                VerificationStatus::Failed,
-                conflict.message.clone(),
+            return Ok(Verification::changed(conflict.message.clone()));
+        }
+        let managed = verify_codex_entry(plan)?;
+        if managed != ManagedConfigStatus::Match {
+            return Ok(verification_from_managed_status(
+                managed,
+                format!(
+                    "Codex managed MCP server entry is {} for {}",
+                    managed.as_str(),
+                    plan.server_name
+                ),
             ));
         }
         if plan.host_scope == HostScope::Project {
-            return Ok(Verification::new(
-                VerificationStatus::ActionRequired,
+            return Ok(Verification::action_required(
                 "Codex project trust was not confirmed by this structural configuration check",
-            ));
+            )
+            .with_host_executable(HostExecutableStatus::NotChecked)
+            .with_host_gate(HostGateStatus::ActionRequired)
+            .with_mcp_handshake_allowed(true));
         }
-        Ok(Verification::new(
-            VerificationStatus::NotVerified,
-            "Codex host loading was not launched by this adapter",
-        ))
+        Ok(Verification::configured_ready(
+            "Codex managed configuration is present and no separate project trust gate applies",
+        )
+        .with_host_executable(HostExecutableStatus::NotRequired)
+        .with_mcp_handshake_allowed(true))
     }
 
     fn remove(&mut self, request: HostRemoveRequest) -> Result<HostEffect, HostConfigError> {
@@ -390,6 +466,64 @@ fn codex_entry_fingerprint(scope: HostScope, server_name: &str, item: &Item) -> 
     ))
 }
 
+fn verify_codex_entry(plan: &HostPlan) -> Result<ManagedConfigStatus, HostConfigError> {
+    let HostTarget::File(target) = &plan.target else {
+        return Ok(ManagedConfigStatus::Unknown);
+    };
+    let (_, text) = read_text_snapshot(target)?;
+    let Some(text) = text else {
+        return Ok(ManagedConfigStatus::Missing);
+    };
+    let document = match parse_document(Some(&text), target) {
+        Ok(document) => document,
+        Err(error) => {
+            return match error {
+                HostConfigError::Malformed(_) => Ok(ManagedConfigStatus::Malformed),
+                other => Err(other),
+            };
+        }
+    };
+    let Some(item) = document
+        .get("mcp_servers")
+        .and_then(Item::as_table)
+        .and_then(|servers| servers.get(&plan.server_name))
+    else {
+        return Ok(ManagedConfigStatus::Missing);
+    };
+    match codex_entry_fingerprint(plan.host_scope, &plan.server_name, item) {
+        Some(fingerprint) if fingerprint == plan.fingerprint => Ok(ManagedConfigStatus::Match),
+        Some(_) => Ok(ManagedConfigStatus::Changed),
+        None => Ok(ManagedConfigStatus::Malformed),
+    }
+}
+
+fn verification_from_managed_status(status: ManagedConfigStatus, details: String) -> Verification {
+    match status {
+        ManagedConfigStatus::Missing => Verification::missing(details),
+        ManagedConfigStatus::Changed => Verification::changed(details),
+        ManagedConfigStatus::Malformed => Verification::failed(details)
+            .with_managed_config(ManagedConfigStatus::Malformed)
+            .with_host_configuration(
+                crate::host_integration::verification::HostConfigurationStatus::Malformed,
+            ),
+        ManagedConfigStatus::Match => Verification::configured_ready(details),
+        ManagedConfigStatus::NotApplicable | ManagedConfigStatus::Unknown => {
+            Verification::unknown(details)
+        }
+    }
+}
+
+fn find_executable_in_path(program: &str, path: Option<&OsString>) -> Option<PathBuf> {
+    let path = path.cloned().or_else(|| std::env::var_os("PATH"))?;
+    for directory in std::env::split_paths(&path) {
+        let candidate = directory.join(program);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 fn effect_from_plan(plan: &HostPlan) -> HostEffect {
     HostEffect {
         host_kind: plan.host_kind,
@@ -452,6 +586,7 @@ mod tests {
         let adapter = CodexAdapter::new(CodexEnvironment {
             home: Some(dir.clone()),
             codex_home: None,
+            path: None,
         });
 
         let plan = adapter.plan(request(
@@ -474,6 +609,7 @@ mod tests {
         let adapter = CodexAdapter::new(CodexEnvironment {
             home: Some(dir),
             codex_home: Some(codex_home.clone()),
+            path: None,
         });
 
         let plan = adapter.plan(request(
@@ -525,6 +661,7 @@ mod tests {
         let mut adapter = CodexAdapter::new(CodexEnvironment {
             home: None,
             codex_home: Some(codex_home),
+            path: None,
         });
 
         let plan = adapter.plan(request(
@@ -550,6 +687,7 @@ mod tests {
         let mut adapter = CodexAdapter::new(CodexEnvironment {
             home: None,
             codex_home: Some(codex_home),
+            path: None,
         });
         let first = adapter.plan(request(
             HostScope::User,
@@ -586,6 +724,7 @@ mod tests {
         let adapter = CodexAdapter::new(CodexEnvironment {
             home: None,
             codex_home: Some(codex_home),
+            path: None,
         });
 
         let plan = adapter.plan(request(
@@ -611,6 +750,7 @@ mod tests {
         let adapter = CodexAdapter::new(CodexEnvironment {
             home: None,
             codex_home: Some(codex_home),
+            path: None,
         });
 
         let error = adapter
@@ -666,6 +806,7 @@ mod tests {
         let mut adapter = CodexAdapter::new(CodexEnvironment {
             home: None,
             codex_home: Some(codex_home),
+            path: None,
         });
         let plan = adapter.plan(request(
             HostScope::User,
@@ -692,6 +833,71 @@ mod tests {
             .expect_err("manual edits should block removal");
 
         assert!(matches!(error, HostConfigError::Conflict(_)));
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn detect_requires_executable_on_path() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = temp_dir("codex-detect")?;
+        let codex_home = dir.join("codex");
+        let adapter = CodexAdapter::new(CodexEnvironment {
+            home: None,
+            codex_home: Some(codex_home),
+            path: Some(dir.join("empty").into_os_string()),
+        });
+
+        let detection = adapter.detect()?;
+
+        assert!(!detection.available);
+        assert!(detection.details.contains("not found on PATH"));
+        Ok(())
+    }
+
+    #[test]
+    fn verify_distinguishes_missing_changed_and_project_trust(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = temp_dir("codex-verify")?;
+        let codex_home = dir.join("codex");
+        let mut adapter = CodexAdapter::new(CodexEnvironment {
+            home: None,
+            codex_home: Some(codex_home),
+            path: None,
+        });
+        let plan = adapter.plan(request(
+            HostScope::User,
+            None,
+            Path::new("/bin/harness-mcp"),
+        ))?;
+        assert_eq!(adapter.verify(&plan)?.status.as_str(), "missing");
+        adapter.apply(&plan)?;
+        assert_eq!(
+            adapter.verify(&plan)?.host_state.as_str(),
+            "configured_ready"
+        );
+        let HostTarget::File(target) = plan.target.clone() else {
+            unreachable!("codex target");
+        };
+        fs::write(
+            &target,
+            fs::read_to_string(&target)?.replace("/bin/harness-mcp", "/tmp/manual"),
+        )?;
+        assert_eq!(adapter.verify(&plan)?.status.as_str(), "changed");
+
+        let repo = temp_dir("codex-project-verify")?;
+        let project = adapter.plan(CodexPlanRequest {
+            scope: HostScope::Project,
+            integration_id: "int_alpha",
+            explicit_server_name: None,
+            repo_root: Some(&repo),
+            mcp_command: Path::new("harness-mcp"),
+            runtime_home: None,
+            expected_fingerprint: None,
+        })?;
+        adapter.apply(&project)?;
+        let verification = adapter.verify(&project)?;
+        assert_eq!(verification.status.as_str(), "action_required");
+        assert!(verification.mcp_handshake_allowed);
         Ok(())
     }
 

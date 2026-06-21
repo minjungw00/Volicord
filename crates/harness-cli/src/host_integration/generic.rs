@@ -9,7 +9,10 @@ use super::{
     HostDetection, HostEffect, HostKind, HostPlan, HostRemoveRequest, HostScope, HostTarget,
     ManagedServerEntry, PlannedChange,
 };
-use crate::host_integration::verification::{Verification, VerificationStatus};
+use crate::host_integration::verification::{
+    HostConfigurationStatus, HostExecutableStatus, HostGateStatus, ManagedConfigStatus,
+    Verification,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct GenericAdapter;
@@ -141,17 +144,26 @@ impl HostAdapter for GenericAdapter {
     }
 
     fn verify(&mut self, plan: &HostPlan) -> Result<Verification, HostConfigError> {
-        if plan.conflicts.is_empty() {
-            Ok(Verification::new(
-                VerificationStatus::NotVerified,
-                "generic export does not claim direct host loading",
-            ))
-        } else {
-            Ok(Verification::new(
-                VerificationStatus::Failed,
-                plan.conflicts[0].message.clone(),
-            ))
+        if let Some(conflict) = plan.conflicts.first() {
+            return Ok(Verification::changed(conflict.message.clone()));
         }
+        let managed = verify_generic_export(plan)?;
+        if managed != ManagedConfigStatus::Match {
+            return Ok(verification_from_managed_status(
+                managed,
+                format!(
+                    "generic export managed MCP entry is {} for {}",
+                    managed.as_str(),
+                    plan.server_name
+                ),
+            ));
+        }
+        Ok(Verification::action_required(
+            "generic export is valid, but external host loading remains user-managed and unverified",
+        )
+        .with_host_executable(HostExecutableStatus::NotRequired)
+        .with_host_gate(HostGateStatus::ActionRequired)
+        .with_mcp_handshake_allowed(true))
     }
 
     fn remove(&mut self, request: HostRemoveRequest) -> Result<HostEffect, HostConfigError> {
@@ -213,6 +225,49 @@ pub fn export_object(server_name: &str, entry: &ManagedServerEntry) -> Map<Strin
     let mut root = Map::new();
     root.insert("mcpServers".to_owned(), Value::Object(servers));
     root
+}
+
+fn verify_generic_export(plan: &HostPlan) -> Result<ManagedConfigStatus, HostConfigError> {
+    let HostTarget::Export(target) = &plan.target else {
+        return Ok(ManagedConfigStatus::Unknown);
+    };
+    let (_, object) = match read_json_object(target) {
+        Ok(result) => result,
+        Err(HostConfigError::Malformed(_)) => return Ok(ManagedConfigStatus::Malformed),
+        Err(error) => return Err(error),
+    };
+    let Some(existing) = object
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .and_then(|servers| servers.get(&plan.server_name))
+    else {
+        return Ok(ManagedConfigStatus::Missing);
+    };
+    let current = current_entry_fingerprint_from_json(
+        HostKind::Generic,
+        HostScope::Export,
+        &plan.server_name,
+        existing,
+    );
+    match current {
+        Some(fingerprint) if fingerprint == plan.fingerprint => Ok(ManagedConfigStatus::Match),
+        Some(_) => Ok(ManagedConfigStatus::Changed),
+        None => Ok(ManagedConfigStatus::Malformed),
+    }
+}
+
+fn verification_from_managed_status(status: ManagedConfigStatus, details: String) -> Verification {
+    match status {
+        ManagedConfigStatus::Missing => Verification::missing(details),
+        ManagedConfigStatus::Changed => Verification::changed(details),
+        ManagedConfigStatus::Malformed => Verification::failed(details)
+            .with_managed_config(ManagedConfigStatus::Malformed)
+            .with_host_configuration(HostConfigurationStatus::Malformed),
+        ManagedConfigStatus::Match => Verification::action_required(details),
+        ManagedConfigStatus::NotApplicable | ManagedConfigStatus::Unknown => {
+            Verification::unknown(details)
+        }
+    }
 }
 
 fn effect_from_plan(plan: &HostPlan) -> HostEffect {
@@ -347,6 +402,34 @@ mod tests {
             .expect_err("manual modification should block removal");
 
         assert!(matches!(error, HostConfigError::Conflict(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn verify_valid_export_remains_action_required_and_detects_changes(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = temp_dir("generic-verify")?;
+        let mut adapter = GenericAdapter;
+        let plan = adapter.plan(request(&dir, None, Path::new("/bin/harness-mcp")))?;
+        assert_eq!(adapter.verify(&plan)?.status.as_str(), "missing");
+        adapter.apply(&plan)?;
+        let verification = adapter.verify(&plan)?;
+        assert_eq!(verification.status.as_str(), "action_required");
+        assert_eq!(
+            verification.host_state.as_str(),
+            "configured_action_required"
+        );
+        assert!(verification.mcp_handshake_allowed);
+        let HostTarget::Export(target) = plan.target.clone() else {
+            unreachable!("generic target");
+        };
+        fs::write(
+            &target,
+            fs::read_to_string(&target)?.replace("/bin/harness-mcp", "/tmp/manual"),
+        )?;
+        assert_eq!(adapter.verify(&plan)?.status.as_str(), "changed");
+        fs::write(&target, "{")?;
+        assert_eq!(adapter.verify(&plan)?.status.as_str(), "failed");
         Ok(())
     }
 

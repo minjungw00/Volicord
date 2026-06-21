@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -13,7 +14,8 @@ use super::{
     UserActionKind,
 };
 use crate::host_integration::verification::{
-    classify_claude_mcp_status, Verification, VerificationStatus,
+    HostConfigurationStatus, HostExecutableStatus, HostGateStatus, ManagedConfigStatus,
+    Verification,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +31,26 @@ pub struct CommandOutput {
     pub status_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClaudeMcpState {
+    Connected,
+    PendingApproval,
+    Rejected,
+    Missing,
+    CommandFailed,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ClaudeMcpInspection {
+    state: ClaudeMcpState,
+    scope: Option<HostScope>,
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    env: BTreeMap<String, String>,
+    diagnostic: Option<String>,
 }
 
 pub trait CommandRunner {
@@ -221,25 +243,35 @@ impl<R: CommandRunner> ClaudeCodeAdapter<R> {
         ));
         let mut conflicts = Vec::new();
         let change = match status {
-            Ok(output)
-                if classify_claude_mcp_status(&output.stdout, &output.stderr, output.success)
-                    .status
-                    == VerificationStatus::Missing =>
-            {
+            Ok(output) if parse_claude_mcp_get_output(&output).state == ClaudeMcpState::Missing => {
                 PlannedChange::ExternalCommand
             }
             Ok(output) if output.success => {
-                let current =
-                    fingerprint_from_claude_get_output(request.scope, &server_name, &output.stdout);
-                if current.as_deref() == Some(fingerprint.as_str()) {
-                    PlannedChange::Noop
-                } else if current.as_deref() == request.expected_fingerprint {
-                    PlannedChange::ExternalCommand
+                let inspection = parse_claude_mcp_get_output(&output);
+                if inspection.state == ClaudeMcpState::Connected {
+                    let current = fingerprint_from_claude_inspection(
+                        request.scope,
+                        &server_name,
+                        &inspection,
+                    );
+                    if current.as_deref() == Some(fingerprint.as_str()) {
+                        PlannedChange::Noop
+                    } else if current.as_deref() == request.expected_fingerprint {
+                        PlannedChange::ExternalCommand
+                    } else {
+                        conflicts.push(HostConflict::new(
+                            HostConflictKind::UnmanagedNameCollision,
+                            format!(
+                                "Claude Code MCP server name is already configured by an unrelated entry: {server_name}"
+                            ),
+                        ));
+                        PlannedChange::Noop
+                    }
                 } else {
                     conflicts.push(HostConflict::new(
                         HostConflictKind::UnmanagedNameCollision,
                         format!(
-                            "Claude Code MCP server name is already configured by an unrelated entry: {server_name}"
+                            "Claude Code MCP server name could not be safely interpreted for update: {server_name}"
                         ),
                     ));
                     PlannedChange::Noop
@@ -326,28 +358,53 @@ impl<R: CommandRunner> HostAdapter for ClaudeCodeAdapter<R> {
     }
 
     fn verify(&mut self, plan: &HostPlan) -> Result<Verification, HostConfigError> {
+        if let Some(conflict) = plan.conflicts.first() {
+            return Ok(Verification::changed(conflict.message.clone()));
+        }
         match &plan.target {
-            HostTarget::File(_) if plan.host_scope == HostScope::Project => Ok(Verification::new(
-                VerificationStatus::ActionRequired,
-                "Claude Code project-scoped .mcp.json servers require project MCP approval before loading",
-            )),
-            HostTarget::ExternalCli { cwd, .. } => {
-                let output = self
-                    .runner
-                    .run(&build_get_command(
-                        &self.claude_command,
-                        &plan.server_name,
-                        cwd.clone(),
+            HostTarget::File(target) if plan.host_scope == HostScope::Project => {
+                let managed = verify_claude_project_entry(plan)?;
+                if managed != ManagedConfigStatus::Match {
+                    return Ok(verification_from_managed_status(
+                        managed,
+                        format!(
+                            "Claude Code managed project MCP entry is {} for {}",
+                            managed.as_str(),
+                            plan.server_name
+                        ),
+                    ));
+                }
+                let cwd = target.parent().map(Path::to_path_buf);
+                let output = self.runner.run(&build_get_command(
+                    &self.claude_command,
+                    &plan.server_name,
+                    cwd,
+                ));
+                Ok(match output {
+                    Ok(output) => verification_from_claude_output(plan, &output),
+                    Err(error) => Verification::unavailable(format!(
+                        "Claude Code executable is unavailable for `{} mcp get {}`: {error}",
+                        self.claude_command, plan.server_name
                     ))
-                    .map_err(HostConfigError::ExternalCommand)?;
-                Ok(classify_claude_mcp_status(
-                    &output.stdout,
-                    &output.stderr,
-                    output.success,
-                ))
+                    .with_managed_config(ManagedConfigStatus::Match)
+                    .with_host_configuration(HostConfigurationStatus::Discovered),
+                })
             }
-            _ => Ok(Verification::new(
-                VerificationStatus::Failed,
+            HostTarget::ExternalCli { cwd, .. } => {
+                let output = self.runner.run(&build_get_command(
+                    &self.claude_command,
+                    &plan.server_name,
+                    cwd.clone(),
+                ));
+                Ok(match output {
+                    Ok(output) => verification_from_claude_output(plan, &output),
+                    Err(error) => Verification::unavailable(format!(
+                        "Claude Code executable is unavailable for `{} mcp get {}`: {error}",
+                        self.claude_command, plan.server_name
+                    )),
+                })
+            }
+            _ => Ok(Verification::failed(
                 "Claude Code verification target is invalid",
             )),
         }
@@ -398,10 +455,11 @@ impl<R: CommandRunner> HostAdapter for ClaudeCodeAdapter<R> {
                         cwd.clone(),
                     ))
                     .map_err(HostConfigError::ExternalCommand)?;
-                let current = fingerprint_from_claude_get_output(
+                let inspection = parse_claude_mcp_get_output(&output);
+                let current = fingerprint_from_claude_inspection(
                     request.host_scope,
                     &request.server_name,
-                    &output.stdout,
+                    &inspection,
                 );
                 if current.as_deref() != Some(request.expected_fingerprint.as_str()) {
                     return Err(HostConfigError::Conflict(HostConflict::new(
@@ -563,39 +621,284 @@ fn remove_project_entry(
     Ok(())
 }
 
-fn fingerprint_from_claude_get_output(
+fn verify_claude_project_entry(plan: &HostPlan) -> Result<ManagedConfigStatus, HostConfigError> {
+    let HostTarget::File(target) = &plan.target else {
+        return Ok(ManagedConfigStatus::Unknown);
+    };
+    let (_, object) = match read_json_object(target) {
+        Ok(result) => result,
+        Err(HostConfigError::Malformed(_)) => return Ok(ManagedConfigStatus::Malformed),
+        Err(error) => return Err(error),
+    };
+    let Some(existing) = object
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .and_then(|servers| servers.get(&plan.server_name))
+    else {
+        return Ok(ManagedConfigStatus::Missing);
+    };
+    let current = current_entry_fingerprint_from_json(
+        HostKind::ClaudeCode,
+        HostScope::Project,
+        &plan.server_name,
+        existing,
+    );
+    match current {
+        Some(fingerprint) if fingerprint == plan.fingerprint => Ok(ManagedConfigStatus::Match),
+        Some(_) => Ok(ManagedConfigStatus::Changed),
+        None => Ok(ManagedConfigStatus::Malformed),
+    }
+}
+
+fn verification_from_claude_output(plan: &HostPlan, output: &CommandOutput) -> Verification {
+    let inspection = parse_claude_mcp_get_output(output);
+    match inspection.state {
+        ClaudeMcpState::Connected => {
+            let Some(current) =
+                fingerprint_from_claude_inspection(plan.host_scope, &plan.server_name, &inspection)
+            else {
+                return Verification::unknown(format!(
+                    "Claude Code command `claude mcp get {}` returned connected output, but command, args, env, or scope could not be parsed reliably",
+                    plan.server_name
+                ))
+                .with_managed_config(ManagedConfigStatus::Match)
+                .with_host_executable(HostExecutableStatus::Available)
+                .with_host_configuration(HostConfigurationStatus::Discovered)
+                .with_diagnostic(inspection.diagnostic.unwrap_or_default());
+            };
+            if current == plan.fingerprint {
+                Verification::configured_ready(
+                    "Claude Code reports the managed MCP server is connected and matches Harness configuration",
+                )
+                .with_host_executable(HostExecutableStatus::Available)
+                .with_host_gate(HostGateStatus::Ready)
+                .with_mcp_handshake_allowed(true)
+            } else {
+                Verification::changed(
+                    "Claude Code reports an MCP server with that name, but command, args, env, or scope differ from Harness-managed configuration",
+                )
+                .with_host_executable(HostExecutableStatus::Available)
+                .with_host_configuration(HostConfigurationStatus::Changed)
+            }
+        }
+        ClaudeMcpState::PendingApproval => Verification::action_required(
+            "Claude Code reports the MCP server is pending project approval",
+        )
+        .with_host_executable(HostExecutableStatus::Available)
+        .with_host_gate(HostGateStatus::ActionRequired)
+        .with_mcp_handshake_allowed(true),
+        ClaudeMcpState::Rejected => {
+            Verification::rejected("Claude Code reports the MCP server was rejected")
+        }
+        ClaudeMcpState::Missing => Verification::missing(
+            "Claude Code did not report a configured MCP server with that name",
+        )
+        .with_host_executable(HostExecutableStatus::Available),
+        ClaudeMcpState::CommandFailed => Verification::failed(format!(
+            "Claude Code command `claude mcp get {}` failed with status {}; host output was not echoed",
+            plan.server_name,
+            output
+                .status_code
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "unknown".to_owned())
+        ))
+        .with_host_executable(HostExecutableStatus::Available),
+        ClaudeMcpState::Unknown => Verification::unknown(format!(
+            "Claude Code command `claude mcp get {}` returned unsupported output; cannot interpret host state",
+            plan.server_name
+        ))
+        .with_host_executable(HostExecutableStatus::Available)
+        .with_diagnostic(inspection.diagnostic.unwrap_or_default()),
+    }
+}
+
+fn verification_from_managed_status(status: ManagedConfigStatus, details: String) -> Verification {
+    match status {
+        ManagedConfigStatus::Missing => Verification::missing(details),
+        ManagedConfigStatus::Changed => Verification::changed(details),
+        ManagedConfigStatus::Malformed => Verification::failed(details)
+            .with_managed_config(ManagedConfigStatus::Malformed)
+            .with_host_configuration(HostConfigurationStatus::Malformed),
+        ManagedConfigStatus::Match => Verification::configured_ready(details),
+        ManagedConfigStatus::NotApplicable | ManagedConfigStatus::Unknown => {
+            Verification::unknown(details)
+        }
+    }
+}
+
+fn fingerprint_from_claude_inspection(
     scope: HostScope,
     server_name: &str,
-    stdout: &str,
+    inspection: &ClaudeMcpInspection,
 ) -> Option<String> {
-    let mut command = None;
-    let mut args = None;
-    let mut env = std::collections::BTreeMap::new();
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if let Some(value) = trimmed.strip_prefix("command:") {
-            command = Some(value.trim().to_owned());
-        } else if let Some(value) = trimmed.strip_prefix("args:") {
-            args = Some(
-                value
-                    .split_whitespace()
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>(),
-            );
-        } else if let Some(value) = trimmed.strip_prefix("HARNESS_HOME=") {
-            env.insert("HARNESS_HOME".to_owned(), value.trim().to_owned());
-        }
+    if inspection.scope.is_some_and(|actual| actual != scope) {
+        return Some(managed_fingerprint(
+            HostKind::ClaudeCode,
+            inspection.scope.unwrap(),
+            server_name,
+            &ManagedServerEntry {
+                command: inspection.command.clone()?,
+                args: inspection.args.clone()?,
+                env: inspection.env.clone(),
+            },
+        ));
     }
     Some(managed_fingerprint(
         HostKind::ClaudeCode,
         scope,
         server_name,
         &ManagedServerEntry {
-            command: command?,
-            args: args.unwrap_or_default(),
-            env,
+            command: inspection.command.clone()?,
+            args: inspection.args.clone()?,
+            env: inspection.env.clone(),
         },
     ))
+}
+
+fn parse_claude_mcp_get_output(output: &CommandOutput) -> ClaudeMcpInspection {
+    let combined = format!("{}\n{}", output.stdout, output.stderr);
+    let mut state = None;
+    let mut scope = None;
+    let mut command = None;
+    let mut args = None;
+    let mut env = BTreeMap::new();
+    let mut in_env = false;
+
+    for line in combined.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if is_pending_marker(trimmed) {
+            state = Some(ClaudeMcpState::PendingApproval);
+        } else if is_rejected_marker(trimmed) {
+            state = Some(ClaudeMcpState::Rejected);
+        } else if is_missing_marker(trimmed) {
+            state = Some(ClaudeMcpState::Missing);
+        } else if is_connected_marker(trimmed) && state.is_none() {
+            state = Some(ClaudeMcpState::Connected);
+        }
+
+        if let Some(value) = field_value(trimmed, "scope") {
+            scope = parse_scope(value);
+            in_env = false;
+        } else if let Some(value) = field_value(trimmed, "command") {
+            command = Some(value.to_owned());
+            in_env = false;
+        } else if let Some(value) = field_value(trimmed, "args") {
+            args = parse_args(value);
+            in_env = false;
+        } else if let Some(value) = field_value(trimmed, "environment") {
+            in_env = true;
+            parse_env_assignment(value, &mut env);
+        } else if let Some(value) = field_value(trimmed, "env") {
+            in_env = true;
+            parse_env_assignment(value, &mut env);
+        } else if in_env {
+            parse_env_assignment(trimmed, &mut env);
+        }
+    }
+
+    let state = state.unwrap_or({
+        if output.success {
+            ClaudeMcpState::Unknown
+        } else {
+            ClaudeMcpState::CommandFailed
+        }
+    });
+    ClaudeMcpInspection {
+        state,
+        scope,
+        command,
+        args,
+        env,
+        diagnostic: Some(host_output_summary(output)),
+    }
+}
+
+fn host_output_summary(output: &CommandOutput) -> String {
+    format!(
+        "claude mcp get output summary: stdout_lines={}, stderr_lines={}, stderr_present={}",
+        output.stdout.lines().count(),
+        output.stderr.lines().count(),
+        !output.stderr.trim().is_empty()
+    )
+}
+
+fn field_value<'a>(line: &'a str, label: &str) -> Option<&'a str> {
+    let (actual, value) = line.split_once(':')?;
+    if actual.trim().eq_ignore_ascii_case(label) {
+        Some(value.trim())
+    } else {
+        None
+    }
+}
+
+fn parse_scope(value: &str) -> Option<HostScope> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "local" => Some(HostScope::Local),
+        "project" => Some(HostScope::Project),
+        "user" => Some(HostScope::User),
+        _ => None,
+    }
+}
+
+fn parse_args(value: &str) -> Option<Vec<String>> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Some(Vec::new());
+    }
+    if value.starts_with('[') {
+        return serde_json::from_str::<Vec<String>>(value).ok();
+    }
+    if value.contains('"') || value.contains('\'') {
+        return None;
+    }
+    Some(value.split_whitespace().map(str::to_owned).collect())
+}
+
+fn parse_env_assignment(value: &str, env: &mut BTreeMap<String, String>) {
+    let value = value.trim().trim_start_matches('-').trim();
+    let Some((key, value)) = value.split_once('=') else {
+        return;
+    };
+    let key = key.trim();
+    if key.is_empty()
+        || !key
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
+    {
+        return;
+    }
+    env.insert(key.to_owned(), value.trim().to_owned());
+}
+
+fn is_pending_marker(line: &str) -> bool {
+    line == "⏸ Pending approval"
+        || line == "Pending approval"
+        || line == "Status: ⏸ Pending approval"
+        || line.eq_ignore_ascii_case("Status: Pending approval")
+}
+
+fn is_rejected_marker(line: &str) -> bool {
+    line == "✗ Rejected"
+        || line == "Rejected"
+        || line == "Status: ✗ Rejected"
+        || line.eq_ignore_ascii_case("Status: Rejected")
+}
+
+fn is_missing_marker(line: &str) -> bool {
+    line == "Server not found"
+        || line == "No MCP server found"
+        || line == "MCP server not found"
+        || line.eq_ignore_ascii_case("Error: Server not found")
+}
+
+fn is_connected_marker(line: &str) -> bool {
+    line == "✓ Connected"
+        || line == "Connected"
+        || line == "Status: ✓ Connected"
+        || line.eq_ignore_ascii_case("Status: Connected")
 }
 
 fn effect_from_plan(plan: &HostPlan) -> HostEffect {
@@ -728,10 +1031,7 @@ mod tests {
             Some(&repo),
             Path::new("/bin/harness-mcp"),
         ))?;
-        assert_eq!(
-            pending.verify(&plan)?.status,
-            VerificationStatus::ActionRequired
-        );
+        assert_eq!(pending.verify(&plan)?.status.as_str(), "action_required");
 
         let mut rejected = ClaudeCodeAdapter::new(FakeRunner::new(vec![
             missing_output(),
@@ -747,7 +1047,111 @@ mod tests {
             None,
             Path::new("/bin/harness-mcp"),
         ))?;
-        assert_eq!(rejected.verify(&plan)?.status, VerificationStatus::Rejected);
+        assert_eq!(rejected.verify(&plan)?.status.as_str(), "rejected");
+        Ok(())
+    }
+
+    #[test]
+    fn parser_distinguishes_supported_claude_mcp_outputs() {
+        let connected = parse_claude_mcp_get_output(&CommandOutput {
+            success: true,
+            status_code: Some(0),
+            stdout: "Status: ✓ Connected\nScope: local\nCommand: /bin/harness-mcp\nArgs: [\"--integration\",\"int_alpha\"]\nEnvironment:\n  HARNESS_HOME=/runtime\n".to_owned(),
+            stderr: String::new(),
+        });
+        assert_eq!(connected.state, ClaudeMcpState::Connected);
+        assert_eq!(connected.scope, Some(HostScope::Local));
+        assert_eq!(connected.command.as_deref(), Some("/bin/harness-mcp"));
+        assert_eq!(
+            connected.args,
+            Some(vec!["--integration".to_owned(), "int_alpha".to_owned()])
+        );
+        assert_eq!(
+            connected.env.get("HARNESS_HOME"),
+            Some(&"/runtime".to_owned())
+        );
+
+        for (text, state, success) in [
+            ("⏸ Pending approval", ClaudeMcpState::PendingApproval, true),
+            ("✗ Rejected", ClaudeMcpState::Rejected, true),
+            ("Server not found", ClaudeMcpState::Missing, false),
+            ("unexpected traceback", ClaudeMcpState::CommandFailed, false),
+            ("all quiet", ClaudeMcpState::Unknown, true),
+        ] {
+            let parsed = parse_claude_mcp_get_output(&CommandOutput {
+                success,
+                status_code: if success { Some(0) } else { Some(1) },
+                stdout: text.to_owned(),
+                stderr: String::new(),
+            });
+            assert_eq!(parsed.state, state, "output: {text}");
+        }
+
+        let unknown = parse_claude_mcp_get_output(&CommandOutput {
+            success: true,
+            status_code: Some(0),
+            stdout: "SECRET_TOKEN=should-not-leak".to_owned(),
+            stderr: String::new(),
+        });
+        assert!(!unknown
+            .diagnostic
+            .as_deref()
+            .unwrap_or_default()
+            .contains("should-not-leak"));
+    }
+
+    #[test]
+    fn verify_connected_requires_reliable_command_args_env_and_scope(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-connected")?;
+        let mut adapter = ClaudeCodeAdapter::new(FakeRunner::new(vec![
+            missing_output(),
+            ok_output(
+                "Status: ✓ Connected\nScope: local\nCommand: /bin/harness-mcp\nArgs: --integration int_alpha\nEnvironment:\n  HARNESS_HOME=/runtime\n",
+            ),
+        ]));
+        let plan = adapter.plan(request(
+            HostScope::Local,
+            Some(&repo),
+            Path::new("/bin/harness-mcp"),
+        ))?;
+        let verification = adapter.verify(&plan)?;
+        assert_eq!(verification.status.as_str(), "complete");
+        assert_eq!(verification.host_state.as_str(), "configured_ready");
+
+        let mut unknown = ClaudeCodeAdapter::new(FakeRunner::new(vec![
+            missing_output(),
+            ok_output("Status: ✓ Connected\nCommand: /bin/harness-mcp\n"),
+        ]));
+        let plan = unknown.plan(request(
+            HostScope::Local,
+            Some(&repo),
+            Path::new("/bin/harness-mcp"),
+        ))?;
+        assert_eq!(unknown.verify(&plan)?.status.as_str(), "unknown");
+        Ok(())
+    }
+
+    #[test]
+    fn verify_project_file_runs_get_from_repo_root() -> Result<(), Box<dyn std::error::Error>> {
+        let repo = temp_dir("claude-project-verify")?;
+        let mut adapter =
+            ClaudeCodeAdapter::new(FakeRunner::new(vec![ok_output("⏸ Pending approval")]));
+        let plan = adapter.plan(request(
+            HostScope::Project,
+            Some(&repo),
+            Path::new("harness-mcp"),
+        ))?;
+        adapter.apply(&plan)?;
+
+        let verification = adapter.verify(&plan)?;
+
+        assert_eq!(verification.status.as_str(), "action_required");
+        assert_eq!(adapter.runner.calls[0].cwd, Some(repo));
+        assert_eq!(
+            adapter.runner.calls[0].args,
+            ["mcp", "get", "harness-int_alpha"]
+        );
         Ok(())
     }
 

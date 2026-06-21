@@ -47,7 +47,10 @@ use crate::{
         claude_code::{ClaudeCodeAdapter, ProductionCommandRunner},
         codex::{CodexAdapter, CodexEnvironment},
         generic::GenericAdapter,
-        verification::VerificationStatus,
+        verification::{
+            HostConfigurationStatus, HostExecutableStatus, HostGateStatus, HostVerificationState,
+            ManagedConfigStatus, Verification, VerificationStatus,
+        },
         HostAdapter, HostConfigError, HostKind, HostPlan, HostRemoveRequest, HostScope, HostTarget,
         PlannedChange,
     },
@@ -339,7 +342,14 @@ struct IntegrationProjectPlanRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpVerification {
     pub status: VerificationStatus,
+    pub host_state: HostVerificationState,
+    pub managed_config: ManagedConfigStatus,
+    pub host_executable: HostExecutableStatus,
+    pub host_gate: HostGateStatus,
+    pub host_configuration: HostConfigurationStatus,
+    pub mcp_handshake_allowed: bool,
     pub details: String,
+    pub host_diagnostic: Option<String>,
     pub instructions_present: bool,
     pub tools: Vec<String>,
 }
@@ -348,7 +358,30 @@ impl McpVerification {
     fn skipped(details: impl Into<String>) -> Self {
         Self {
             status: VerificationStatus::NotVerified,
+            host_state: HostVerificationState::NotVerified,
+            managed_config: ManagedConfigStatus::NotApplicable,
+            host_executable: HostExecutableStatus::NotChecked,
+            host_gate: HostGateStatus::NotApplicable,
+            host_configuration: HostConfigurationStatus::NotApplicable,
+            mcp_handshake_allowed: false,
             details: details.into(),
+            host_diagnostic: None,
+            instructions_present: false,
+            tools: Vec::new(),
+        }
+    }
+
+    fn failed(details: impl Into<String>) -> Self {
+        Self {
+            status: VerificationStatus::Failed,
+            host_state: HostVerificationState::Failed,
+            managed_config: ManagedConfigStatus::Unknown,
+            host_executable: HostExecutableStatus::NotChecked,
+            host_gate: HostGateStatus::Unknown,
+            host_configuration: HostConfigurationStatus::Unknown,
+            mcp_handshake_allowed: false,
+            details: details.into(),
+            host_diagnostic: None,
             instructions_present: false,
             tools: Vec::new(),
         }
@@ -792,40 +825,13 @@ fn command_install(
     }
 
     let host_status = verify_host_plan(host_kind, &host_plan, process)?;
-    let mcp_verification = if host_plan.host_kind == HostKind::Generic {
-        McpVerification {
-            status: VerificationStatus::ActionRequired,
-            details: "generic export must be installed into a user-managed host before host loading can be verified".to_owned(),
-            instructions_present: false,
-            tools: Vec::new(),
-        }
-    } else if !host_plan.user_actions.is_empty()
-        && matches!(
-            host_status.status,
-            VerificationStatus::ActionRequired | VerificationStatus::NotVerified
-        )
-    {
-        McpVerification {
-            status: VerificationStatus::ActionRequired,
-            details: host_plan
-                .user_actions
-                .iter()
-                .map(|action| action.message.clone())
-                .collect::<Vec<_>>()
-                .join("; "),
-            instructions_present: false,
-            tools: Vec::new(),
+    let mcp_verification = if should_run_diagnostic_mcp_handshake(&host_status) {
+        match process.verify_mcp_stdio(&mcp_command, &runtime_home, &integration_id) {
+            Ok(verification) => merge_mcp_verification_with_host(verification, &host_status),
+            Err(message) => mcp_failure_from_host(&host_status, message),
         }
     } else {
-        match process.verify_mcp_stdio(&mcp_command, &runtime_home, &integration_id) {
-            Ok(verification) => verification,
-            Err(message) => McpVerification {
-                status: VerificationStatus::Failed,
-                details: message,
-                instructions_present: false,
-                tools: Vec::new(),
-            },
-        }
+        mcp_verification_from_host(host_status.clone())
     };
     let status = setup_status_from_verification(&mcp_verification);
     let mut warnings = Vec::new();
@@ -1238,12 +1244,7 @@ fn command_project_add(
             Some(&project.project_id),
         ) {
             Ok(()) => McpVerification::skipped("project-specific startup preflight passed"),
-            Err(message) => McpVerification {
-                status: VerificationStatus::Failed,
-                details: message,
-                instructions_present: false,
-                tools: Vec::new(),
-            },
+            Err(message) => McpVerification::failed(message),
         },
         None => McpVerification::skipped("no Host Installation inventory contains an MCP command"),
     };
@@ -1442,26 +1443,46 @@ fn command_verify(
         integration_id,
         parsed.installation_id.as_deref(),
     )?;
-    let Some(command) = command_for_existing_installation(&runtime_home, integration_id)? else {
-        return Err(AgentCommandError::runtime(
-            "no Host Installation inventory contains an MCP command for verification",
-        ));
-    };
-    run_integration_preflight(process, &command, &runtime_home, integration_id, None)
-        .map_err(AgentCommandError::runtime)?;
-    let mut verification = process
-        .verify_mcp_stdio(&command, &runtime_home, integration_id)
-        .map_err(AgentCommandError::runtime)?;
-    let mut status = setup_status_from_verification(&verification);
+    let mut host_verifications = Vec::new();
     for installation in &installations {
-        let state =
-            inspect_installation_host_state(&runtime_home, installation, current_dir, process)?;
-        if state != "present" && installation.host_kind != HOST_KIND_GENERIC {
-            verification.status = VerificationStatus::Failed;
-            verification.details = format!("host configuration state is {state}");
-            status = AgentResultStatus::Failed;
-        }
+        host_verifications.push(verify_installation_host_state(
+            &runtime_home,
+            installation,
+            current_dir,
+            process,
+        )?);
     }
+    let first_blocking_host = host_verifications
+        .iter()
+        .find(|verification| !should_run_diagnostic_mcp_handshake(verification))
+        .cloned();
+    let verification = if let Some(host_status) = first_blocking_host {
+        mcp_verification_from_host(host_status)
+    } else {
+        let Some(command) = command_for_existing_installation(&runtime_home, integration_id)?
+        else {
+            return Err(AgentCommandError::runtime(
+                "no Host Installation inventory contains an MCP command for verification",
+            ));
+        };
+        run_integration_preflight(process, &command, &runtime_home, integration_id, None)
+            .map_err(AgentCommandError::runtime)?;
+        match process.verify_mcp_stdio(&command, &runtime_home, integration_id) {
+            Ok(mcp) => merge_mcp_verification_with_host(
+                mcp,
+                host_verifications
+                    .first()
+                    .expect("selected installations are not empty"),
+            ),
+            Err(message) => mcp_failure_from_host(
+                host_verifications
+                    .first()
+                    .expect("selected installations are not empty"),
+                message,
+            ),
+        }
+    };
+    let status = setup_status_from_verification(&verification);
     let store_status = store_status_from_setup_status(status);
     let mut updated = Vec::new();
     for installation in installations {
@@ -3135,6 +3156,7 @@ fn build_host_plan(
             let adapter = CodexAdapter::new(CodexEnvironment {
                 home: process.env_var("HOME").map(PathBuf::from),
                 codex_home: process.env_var("CODEX_HOME").map(PathBuf::from),
+                path: process.env_var(PATH_ENV),
             });
             Ok(
                 adapter.plan(crate::host_integration::codex::CodexPlanRequest {
@@ -3513,17 +3535,31 @@ fn verify_mcp_stdio_process(
     if !stderr.trim().is_empty() {
         return Ok(McpVerification {
             status: VerificationStatus::Complete,
+            host_state: HostVerificationState::NotVerified,
+            managed_config: ManagedConfigStatus::NotApplicable,
+            host_executable: HostExecutableStatus::NotChecked,
+            host_gate: HostGateStatus::NotApplicable,
+            host_configuration: HostConfigurationStatus::NotApplicable,
+            mcp_handshake_allowed: false,
             details: format!(
                 "MCP initialize and tools/list succeeded; stderr: {}",
                 compact_stream(&stderr)
             ),
+            host_diagnostic: None,
             instructions_present: true,
             tools: tool_names,
         });
     }
     Ok(McpVerification {
         status: VerificationStatus::Complete,
+        host_state: HostVerificationState::NotVerified,
+        managed_config: ManagedConfigStatus::NotApplicable,
+        host_executable: HostExecutableStatus::NotChecked,
+        host_gate: HostGateStatus::NotApplicable,
+        host_configuration: HostConfigurationStatus::NotApplicable,
+        mcp_handshake_allowed: false,
         details: "MCP initialize and tools/list succeeded".to_owned(),
+        host_diagnostic: None,
         instructions_present: true,
         tools: tool_names,
     })
@@ -3711,6 +3747,35 @@ fn render_agent_text(output: &AgentOutput) -> Result<String, AgentCommandError> 
         "verification_detail: {}\n",
         output.verification.details
     ));
+    text.push_str(&format!(
+        "host_state: {}\n",
+        output.verification.host_state.as_str()
+    ));
+    text.push_str(&format!(
+        "managed_config: {}\n",
+        output.verification.managed_config.as_str()
+    ));
+    text.push_str(&format!(
+        "host_executable: {}\n",
+        output.verification.host_executable.as_str()
+    ));
+    text.push_str(&format!(
+        "host_gate: {}\n",
+        output.verification.host_gate.as_str()
+    ));
+    text.push_str(&format!(
+        "host_configuration: {}\n",
+        output.verification.host_configuration.as_str()
+    ));
+    text.push_str(&format!(
+        "mcp_handshake_diagnostic: {}\n",
+        output.verification.mcp_handshake_allowed
+    ));
+    if let Some(diagnostic) = &output.verification.host_diagnostic {
+        if !diagnostic.is_empty() {
+            text.push_str(&format!("host_diagnostic: {diagnostic}\n"));
+        }
+    }
     if !output.action_required.is_empty() {
         text.push_str("action_required:\n");
         for action in &output.action_required {
@@ -3824,6 +3889,13 @@ fn render_agent_json(output: &AgentOutput) -> Result<String, AgentCommandError> 
         "verification": {
             "status": output.verification.status.as_str(),
             "details": output.verification.details,
+            "host_state": output.verification.host_state.as_str(),
+            "managed_config": output.verification.managed_config.as_str(),
+            "host_executable": output.verification.host_executable.as_str(),
+            "host_gate": output.verification.host_gate.as_str(),
+            "host_configuration": output.verification.host_configuration.as_str(),
+            "mcp_handshake_diagnostic": output.verification.mcp_handshake_allowed,
+            "host_diagnostic": &output.verification.host_diagnostic,
             "instructions_present": output.verification.instructions_present,
             "tools": output.verification.tools,
         },
@@ -3868,10 +3940,60 @@ fn setup_status_from_verification(verification: &McpVerification) -> AgentResult
         VerificationStatus::ActionRequired | VerificationStatus::NotVerified => {
             AgentResultStatus::ActionRequired
         }
-        VerificationStatus::Missing | VerificationStatus::Rejected | VerificationStatus::Failed => {
-            AgentResultStatus::PartialFailure
-        }
+        VerificationStatus::Missing
+        | VerificationStatus::Changed
+        | VerificationStatus::Rejected
+        | VerificationStatus::Unavailable
+        | VerificationStatus::Unknown
+        | VerificationStatus::Failed => AgentResultStatus::PartialFailure,
     }
+}
+
+fn should_run_diagnostic_mcp_handshake(verification: &Verification) -> bool {
+    verification.host_state == HostVerificationState::ConfiguredReady
+        && verification.mcp_handshake_allowed
+}
+
+fn mcp_verification_from_host(verification: Verification) -> McpVerification {
+    McpVerification {
+        status: verification.status,
+        host_state: verification.host_state,
+        managed_config: verification.managed_config,
+        host_executable: verification.host_executable,
+        host_gate: verification.host_gate,
+        host_configuration: verification.host_configuration,
+        mcp_handshake_allowed: verification.mcp_handshake_allowed,
+        details: verification.details,
+        host_diagnostic: verification.diagnostic,
+        instructions_present: false,
+        tools: Vec::new(),
+    }
+}
+
+fn merge_mcp_verification_with_host(
+    mut mcp: McpVerification,
+    host: &Verification,
+) -> McpVerification {
+    mcp.host_state = host.host_state;
+    mcp.managed_config = host.managed_config;
+    mcp.host_executable = host.host_executable;
+    mcp.host_gate = host.host_gate;
+    mcp.host_configuration = host.host_configuration;
+    mcp.mcp_handshake_allowed = host.mcp_handshake_allowed;
+    mcp.host_diagnostic = host.diagnostic.clone();
+    mcp
+}
+
+fn mcp_failure_from_host(host: &Verification, details: String) -> McpVerification {
+    let mut verification = McpVerification::failed(details);
+    verification.host_state = host.host_state;
+    verification.managed_config = host.managed_config;
+    verification.host_executable = host.host_executable;
+    verification.host_gate = host.host_gate;
+    verification.host_configuration = host.host_configuration;
+    verification.mcp_handshake_allowed = host.mcp_handshake_allowed;
+    verification.host_diagnostic = host.diagnostic.clone();
+    verification
 }
 
 fn store_status_from_setup_status(status: AgentResultStatus) -> &'static str {
@@ -3902,12 +4024,7 @@ fn partial_install_output(
         allowed_projects,
         installations: Vec::new(),
         guidance: Vec::new(),
-        verification: McpVerification {
-            status: VerificationStatus::Failed,
-            details: message,
-            instructions_present: false,
-            tools: Vec::new(),
-        },
+        verification: McpVerification::failed(message),
         actions,
         warnings: vec![
             "durable registry changes may remain; rerun install after fixing the error".to_owned(),
@@ -3950,6 +4067,7 @@ fn remove_host_configuration(
             let mut adapter = CodexAdapter::new(CodexEnvironment {
                 home: process.env_var("HOME").map(PathBuf::from),
                 codex_home: process.env_var("CODEX_HOME").map(PathBuf::from),
+                path: process.env_var(PATH_ENV),
             });
             adapter.remove(request)?;
         }
@@ -3973,6 +4091,25 @@ fn inspect_installation_host_state(
     current_dir: &Path,
     process: &mut impl AgentProcess,
 ) -> Result<String, AgentCommandError> {
+    let verification =
+        verify_installation_host_state(runtime_home, installation, current_dir, process)?;
+    if verification.details.is_empty() {
+        Ok(verification.host_state.as_str().to_owned())
+    } else {
+        Ok(format!(
+            "{}: {}",
+            verification.host_state.as_str(),
+            verification.details
+        ))
+    }
+}
+
+fn verify_installation_host_state(
+    runtime_home: &Path,
+    installation: &HostInstallationRecord,
+    current_dir: &Path,
+    process: &mut impl AgentProcess,
+) -> Result<Verification, AgentCommandError> {
     let host_kind = parse_host_kind(&installation.host_kind)?;
     let host_scope = parse_host_scope(&installation.host_scope)?;
     let metadata = parse_metadata(&installation.metadata_json);
@@ -3996,14 +4133,12 @@ fn inspect_installation_host_state(
             current_dir,
         },
         process,
-    )?;
-    if plan.conflicts.is_empty() && plan.fingerprint == installation.managed_fingerprint {
-        Ok("present".to_owned())
-    } else if let Some(conflict) = plan.conflicts.first() {
-        Ok(format!("conflict: {}", conflict.message))
-    } else {
-        Ok("changed".to_owned())
-    }
+    );
+    let plan = match plan {
+        Ok(plan) => plan,
+        Err(error) => return Ok(Verification::failed(error.to_string())),
+    };
+    Ok(verify_host_plan(host_kind, &plan, process)?)
 }
 
 fn selected_installations(
