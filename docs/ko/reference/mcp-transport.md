@@ -35,9 +35,10 @@
 
 - stdio 루프는 `harness-mcp --integration <integration_id>`로 시작합니다.
 - stdin을 읽지 않는 시작 검증은 `harness-mcp --check --integration <integration_id>`로 실행합니다.
+- 프로젝트별 시작 검증은 `harness-mcp --check --integration <integration_id> --project <project_id>`로 실행합니다.
 - `-h`와 `--help`는 사용법과 환경 요약을 출력한 뒤 종료 코드 `0`으로 끝납니다.
 - `-V`와 `--version`은 `harness-mcp <version>`을 출력한 뒤 종료 코드 `0`으로 끝납니다.
-- 알 수 없는 옵션, 결합된 명령줄 모드, 필요한 옵션 값 누락, 추가 위치 인자는 사용법 진단을 stderr에 쓰고 종료 코드 `2`로 끝납니다.
+- 인자 없음, `--integration` 없는 `--check`, 알 수 없는 옵션, 결합된 명령줄 모드, 필요한 옵션 값 누락, 잘못된 `--project` 사용, 추가 위치 인자는 사용법 진단을 stderr에 쓰고 종료 코드 `2`로 끝납니다.
 - help와 version 처리는 Runtime Home이나 통합 조회보다 먼저 일어납니다.
 
 종료 코드와 스트림 동작:
@@ -46,11 +47,6 @@
 - 성공한 `--check`는 보고서를 stdout에 쓰고 종료 코드 `0`으로 끝납니다.
 - 시작 중 설정, JSON, 저장소 오류는 진단을 stderr에 쓰고 종료 코드 `1`로 끝납니다.
 - stdio 루프가 실행 중일 때 잘못된 JSON과 지원하지 않는 JSON-RPC 요청은 응답을 쓸 수 있으면 JSON-RPC 오류를 반환합니다.
-
-호환성:
-
-- `HARNESS_PROJECT_ID`, `HARNESS_SURFACE_ID`, `HARNESS_SURFACE_INSTANCE_ID`를 사용하는 레거시 고정 프로젝트 시작 모드는 호환 경로로만 남길 수 있습니다.
-- 새 설정, 새 예시, 기준 Host Installation 기록은 레거시 고정 프로젝트 시작 형식을 생성하면 안 됩니다.
 
 <a id="process-environment"></a>
 ## 프로세스 환경
@@ -61,13 +57,13 @@
 
 stdio 프로세스와 `--check`는 시작 검증에 들어가기 전에 `HARNESS_HOME`을 사용합니다. help와 version 모드는 이를 사용하지 않습니다.
 
-새 기준 호스트 설정은 아래 값을 요구하면 안 됩니다.
+`harness-mcp` 시작은 고정 프로젝트 환경 입력을 읽거나 지원하지 않습니다.
 
 - `HARNESS_PROJECT_ID`
 - `HARNESS_SURFACE_ID`
 - `HARNESS_SURFACE_INSTANCE_ID`
 
-선택된 Agent Integration Profile이 접점과 접점 인스턴스 바인딩을 제공합니다. 선택 프로젝트는 공개 MCP 도구 호출마다 결정됩니다.
+이 변수들은 `harness-mcp`의 프로젝트, 접점, 접점 인스턴스를 선택하지 않습니다. 선택된 Agent Integration Profile이 접점과 접점 인스턴스 바인딩을 제공합니다. 선택 프로젝트는 공개 MCP 도구 호출마다 결정됩니다.
 
 현재 MCP Runtime Home 경로 해석:
 
@@ -114,7 +110,7 @@ stdio 프로세스와 `--check`는 시작 검증에 들어가기 전에 `HARNESS
 <a id="configuration-preflight"></a>
 ## 설정 사전 점검
 
-`harness-mcp --check --integration <integration_id>`는 stdio 루프에 들어가기 전에 쓰는 것과 같은 Runtime Home, 통합, 멤버십, 레지스트리 형태 시작 검증을 실행합니다. stdin은 읽지 않습니다.
+`harness-mcp --check --integration <integration_id>`는 stdio 루프에 들어가기 전에 쓰는 것과 같은 Runtime Home, 통합, 멤버십, 레지스트리 형태 시작 검증을 실행합니다. `harness-mcp --check --integration <integration_id> --project <project_id>`는 프로젝트 세부 구간을 프로젝트 하나로 제한하고, 선택된 통합에 허용되지 않은 프로젝트를 거절합니다. 두 형식 모두 stdin을 읽지 않습니다.
 
 성공하면 `--check`는 stdout에 아래 줄들을 이 순서로 씁니다.
 

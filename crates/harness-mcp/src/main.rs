@@ -4,14 +4,8 @@ use std::{fmt, process};
 
 fn main() {
     match dispatch_args(std::env::args()) {
-        Ok(McpCommand::StdioLegacy) => {
-            if let Err(error) = harness_mcp::run_stdio_from_env() {
-                eprintln!("error: {error}");
-                process::exit(1);
-            }
-        }
         Ok(McpCommand::Stdio { integration_id }) => {
-            if let Err(error) = harness_mcp::run_stdio_from_env_for_integration(&integration_id) {
+            if let Err(error) = harness_mcp::run_stdio_from_env(&integration_id) {
                 eprintln!("error: {error}");
                 process::exit(1);
             }
@@ -22,21 +16,12 @@ fn main() {
         Ok(McpCommand::Version) => {
             print!("{}", version());
         }
-        Ok(McpCommand::CheckLegacy) => match harness_mcp::run_preflight_check_from_env() {
-            Ok(report) => print!("{report}"),
-            Err(error) => {
-                eprintln!("error: {error}");
-                process::exit(1);
-            }
-        },
         Ok(McpCommand::Check {
             integration_id,
             project_id,
         }) => {
-            match harness_mcp::run_preflight_check_from_env_for_integration(
-                &integration_id,
-                project_id.as_deref(),
-            ) {
+            match harness_mcp::run_preflight_check_from_env(&integration_id, project_id.as_deref())
+            {
                 Ok(report) => print!("{report}"),
                 Err(error) => {
                     eprintln!("error: {error}");
@@ -56,14 +41,12 @@ enum McpCommand {
     Stdio {
         integration_id: String,
     },
-    StdioLegacy,
     Help,
     Version,
     Check {
         integration_id: String,
         project_id: Option<String>,
     },
-    CheckLegacy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,10 +68,8 @@ where
     let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
     let options = &args[1..];
     match options {
-        [] => Ok(McpCommand::StdioLegacy),
         [option] if option == "-h" || option == "--help" => Ok(McpCommand::Help),
         [option] if option == "-V" || option == "--version" => Ok(McpCommand::Version),
-        [option] if option == "--check" => Ok(McpCommand::CheckLegacy),
         _ => parse_operational_options(options),
     }
 }
@@ -187,10 +168,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_argument_dispatch_selects_stdio() {
+    fn no_argument_dispatch_is_usage_classified() {
+        let error = dispatch_args(["harness-mcp"]).expect_err("no args should be rejected");
+
         assert_eq!(
-            dispatch_args(["harness-mcp"]).expect("no args should dispatch"),
-            McpCommand::StdioLegacy
+            error.to_string(),
+            "--integration is required for integration-bound startup"
         );
     }
 
@@ -273,6 +256,14 @@ mod tests {
         assert_eq!(error.to_string(), "--project is only valid with --check");
 
         let error = dispatch_args(["harness-mcp", "--check", "--project", "project_a"])
+            .expect_err("check without integration should be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "--integration is required for integration-bound startup"
+        );
+
+        let error = dispatch_args(["harness-mcp", "--check"])
             .expect_err("check without integration should be rejected");
 
         assert_eq!(

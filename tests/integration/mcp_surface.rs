@@ -1,18 +1,22 @@
 use std::{
     collections::BTreeSet,
     error::Error,
-    ffi::OsString,
     fs,
     io::{BufReader, Cursor},
     path::Path,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use harness_core::{AdapterSessionBinding, CoreService, InvocationContext};
 use harness_mcp::{
-    public_method_tools, run_stdio, McpAdapter, McpSessionContext, ADAPTER_UTILITY_TOOL_NAMES,
+    public_method_tools, run_stdio, McpAdapter, McpIntegrationContext, ADAPTER_UTILITY_TOOL_NAMES,
     PUBLIC_METHOD_TOOL_NAMES,
 };
 use harness_store::{
+    agent_integrations::{
+        add_integration_project, register_agent_integration, AgentIntegrationRegistration,
+        IntegrationProjectRegistration,
+    },
     bootstrap::{
         list_projects, register_project, register_surface, ProjectRegistration,
         SurfaceRegistration, ACTIVE_PROJECT_STATUS,
@@ -32,6 +36,8 @@ use harness_types::{
     VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use serde_json::{json, Value};
+
+static NEXT_INTEGRATION_SUFFIX: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
 fn mcp_exposes_exactly_the_documented_public_methods() {
@@ -262,11 +268,11 @@ fn bound_session_rejects_different_request_project_without_effect() -> Result<()
     let before_bound = fixture.counts()?;
     let before_other = counts_for_project(&fixture, other_project_id)?;
 
-    let response = adapter.call_tool("harness.status", serde_json::to_value(request)?)?;
+    let error = adapter
+        .call_tool("harness.status", serde_json::to_value(request)?)
+        .expect_err("ungranted project should fail before Core");
 
-    assert_rejected_code(&response.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert_rejected_field(&response.response_value, "envelope.project_id");
-    assert!(response.verified_surface.is_none());
+    assert_tool_execution_error(&error, "not allowed");
     assert_eq!(fixture.counts()?, before_bound);
     assert_eq!(
         counts_for_project(&fixture, other_project_id)?,
@@ -297,11 +303,11 @@ fn bound_session_rejects_different_request_surface_without_effect() -> Result<()
     request.envelope.surface_id = SurfaceId::new("surface_other_binding");
     let before = fixture.counts()?;
 
-    let response = adapter.call_tool("harness.status", serde_json::to_value(request)?)?;
+    let error = adapter
+        .call_tool("harness.status", serde_json::to_value(request)?)
+        .expect_err("surface mismatch should fail before Core");
 
-    assert_rejected_code(&response.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert_rejected_field(&response.response_value, "envelope.surface_id");
-    assert!(response.verified_surface.is_none());
+    assert_tool_execution_error(&error, "surface_id");
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
@@ -323,11 +329,11 @@ fn same_surface_instance_id_in_another_project_does_not_permit_access() -> Resul
     let before_bound = fixture.counts()?;
     let before_other = counts_for_project(&fixture, other_project_id)?;
 
-    let response = adapter.call_tool("harness.status", serde_json::to_value(request)?)?;
+    let error = adapter
+        .call_tool("harness.status", serde_json::to_value(request)?)
+        .expect_err("ungranted project should fail before Core");
 
-    assert_rejected_code(&response.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert_rejected_field(&response.response_value, "envelope.project_id");
-    assert!(response.verified_surface.is_none());
+    assert_tool_execution_error(&error, "not allowed");
     assert_eq!(fixture.counts()?, before_bound);
     assert_eq!(
         counts_for_project(&fixture, other_project_id)?,
@@ -352,11 +358,11 @@ fn same_surface_id_in_another_project_does_not_permit_access() -> Result<(), Box
     let before_bound = fixture.counts()?;
     let before_other = counts_for_project(&fixture, other_project_id)?;
 
-    let response = adapter.call_tool("harness.status", serde_json::to_value(request)?)?;
+    let error = adapter
+        .call_tool("harness.status", serde_json::to_value(request)?)
+        .expect_err("ungranted project should fail before Core");
 
-    assert_rejected_code(&response.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert_rejected_field(&response.response_value, "envelope.project_id");
-    assert!(response.verified_surface.is_none());
+    assert_tool_execution_error(&error, "not allowed");
     assert_eq!(fixture.counts()?, before_bound);
     assert_eq!(
         counts_for_project(&fixture, other_project_id)?,
@@ -368,12 +374,14 @@ fn same_surface_id_in_another_project_does_not_permit_access() -> Result<(), Box
 #[test]
 fn deleted_bound_surface_fails_later_calls_closed_without_effect() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp_deleted_bound_surface")?;
+    let surface_id = "surface_deleted_binding";
+    let surface_instance_id = "surface_instance_deleted_binding";
     register_surface(
         fixture.runtime_home_path(),
         SurfaceRegistration {
             project_id: fixture.project_id().to_owned(),
-            surface_id: "surface_deleted_binding".to_owned(),
-            surface_instance_id: "surface_instance_deleted_binding".to_owned(),
+            surface_id: surface_id.to_owned(),
+            surface_instance_id: surface_instance_id.to_owned(),
             surface_kind: "local_test".to_owned(),
             interaction_role: SurfaceInteractionRole::Agent,
             display_name: Some("Deleted binding surface".to_owned()),
@@ -382,128 +390,40 @@ fn deleted_bound_surface_fails_later_calls_closed_without_effect() -> Result<(),
             metadata_json: "{}".to_owned(),
         },
     )?;
-    let adapter = McpAdapter::new(
-        fixture.runtime_home_path(),
-        McpSessionContext::new(
-            ProjectId::new(fixture.project_id()),
-            SurfaceId::new("surface_deleted_binding"),
-            SurfaceInstanceId::new("surface_instance_deleted_binding"),
-        )
-        .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING),
+    let adapter = adapter_for_surface(
+        &fixture,
+        fixture.project_id(),
+        surface_id,
+        surface_instance_id,
     );
     fixture.conn()?.execute(
         "DELETE FROM surfaces
           WHERE project_id = ?1
             AND surface_id = ?2
             AND surface_instance_id = ?3",
-        rusqlite::params![
-            fixture.project_id(),
-            "surface_deleted_binding",
-            "surface_instance_deleted_binding"
-        ],
+        rusqlite::params![fixture.project_id(), surface_id, surface_instance_id],
     )?;
     let before = fixture.counts()?;
     let mut request = fixture.status_request("req_deleted_bound_surface", None);
-    request.envelope.surface_id = SurfaceId::new("surface_deleted_binding");
+    request.envelope.surface_id = SurfaceId::new(surface_id);
 
-    let response = adapter.call_tool("harness.status", serde_json::to_value(request)?)?;
+    let error = adapter
+        .call_tool("harness.status", serde_json::to_value(request)?)
+        .expect_err("deleted integration surface should fail before Core");
 
-    assert_rejected_code(&response.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert!(response.verified_surface.is_none());
+    assert!(matches!(
+        error,
+        harness_mcp::McpAdapterError::ToolExecution { .. }
+    ));
+    assert!(error.to_string().contains("surface instance"));
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn missing_configured_instance_resolves_single_valid_candidate() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp_single_candidate")?;
-    register_surface(
-        fixture.runtime_home_path(),
-        SurfaceRegistration {
-            project_id: fixture.project_id().to_owned(),
-            surface_id: "surface_single_candidate".to_owned(),
-            surface_instance_id: "surface_instance_single_candidate".to_owned(),
-            surface_kind: "local_test".to_owned(),
-            interaction_role: SurfaceInteractionRole::Agent,
-            display_name: Some("Single candidate surface".to_owned()),
-            capability_profile_json: default_capability_profile().to_string(),
-            local_access_json: local_access_without(&[]).to_string(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-
-    let session = McpSessionContext::resolve(
-        fixture.runtime_home_path(),
-        ProjectId::new(fixture.project_id()),
-        SurfaceId::new("surface_single_candidate"),
-        None,
-    )?;
-
-    assert_eq!(session.project_id.as_str(), fixture.project_id());
-    assert_eq!(session.surface_id.as_str(), "surface_single_candidate");
-    assert_eq!(
-        session.surface_instance_id.as_str(),
-        "surface_instance_single_candidate"
-    );
-    Ok(())
-}
-
-#[test]
-fn missing_configured_instance_with_multiple_candidates_fails_startup() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("mcp_multiple_candidates")?;
-    for instance_id in [
-        "surface_instance_multi_candidate_a",
-        "surface_instance_multi_candidate_b",
-    ] {
-        register_surface(
-            fixture.runtime_home_path(),
-            SurfaceRegistration {
-                project_id: fixture.project_id().to_owned(),
-                surface_id: "surface_multi_candidate".to_owned(),
-                surface_instance_id: instance_id.to_owned(),
-                surface_kind: "local_test".to_owned(),
-                interaction_role: SurfaceInteractionRole::Agent,
-                display_name: None,
-                capability_profile_json: default_capability_profile().to_string(),
-                local_access_json: local_access_without(&[]).to_string(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-    }
-
-    let error = McpSessionContext::resolve(
-        fixture.runtime_home_path(),
-        ProjectId::new(fixture.project_id()),
-        SurfaceId::new("surface_multi_candidate"),
-        None,
-    )
-    .expect_err("ambiguous missing instance should fail startup");
-
-    assert!(error.to_string().contains("multiple usable"));
-    Ok(())
-}
-
-#[test]
-fn unknown_configured_instance_fails_startup() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp_unknown_configured_instance")?;
-
-    let error = McpSessionContext::resolve(
-        fixture.runtime_home_path(),
-        ProjectId::new(fixture.project_id()),
-        SurfaceId::new(fixture.surface_id()),
-        Some(SurfaceInstanceId::new("surface_instance_missing")),
-    )
-    .expect_err("unknown configured instance should fail startup");
-
-    assert!(error.to_string().contains("not registered"));
-    Ok(())
-}
-
-#[test]
-fn invalid_legacy_project_registration_blocks_startup_and_core_execution_but_remains_listed(
+fn invalid_integration_project_registration_blocks_core_execution_but_remains_listed(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp_invalid_legacy_registration")?;
+    let fixture = CoreFixture::new("mcp_invalid_integration_registration")?;
     let adapter = adapter(&fixture);
     replace_project_repo_root(
         fixture.runtime_home_path(),
@@ -516,32 +436,15 @@ fn invalid_legacy_project_registration_blocks_startup_and_core_execution_but_rem
     assert_eq!(projects[0].project_id, fixture.project_id());
     assert_eq!(projects[0].repo_root, fixture.runtime_home_path());
 
-    let startup = McpSessionContext::resolve(
-        fixture.runtime_home_path(),
-        ProjectId::new(fixture.project_id()),
-        SurfaceId::new(fixture.surface_id()),
-        Some(SurfaceInstanceId::new(fixture.surface_instance_id())),
-    )
-    .expect_err("invalid legacy project registration should fail MCP startup");
-    assert!(startup
-        .to_string()
-        .contains("registered Product Repository conflicts with Runtime Home"));
-    assert!(startup.to_string().contains("same_path"));
-
-    let response = adapter.call_tool(
-        "harness.status",
-        serde_json::to_value(fixture.status_request("req_invalid_legacy_registration", None))?,
-    )?;
-    assert_rejected_code(&response.response_value, "MCP_UNAVAILABLE");
-    assert_eq!(
-        response.response_value["errors"][0]["details"]["store_failure_category"],
-        "invalid_project_registration"
-    );
-    assert_eq!(
-        response.response_value["errors"][0]["details"]["path_relationship"],
-        "same_path"
-    );
-    assert!(response.verified_surface.is_none());
+    let error = adapter
+        .call_tool(
+            "harness.status",
+            serde_json::to_value(
+                fixture.status_request("req_invalid_integration_registration", None),
+            )?,
+        )
+        .expect_err("invalid integration project should fail before Core");
+    assert_tool_execution_error(&error, "invalid project registration");
     Ok(())
 }
 
@@ -808,110 +711,15 @@ fn one_mcp_session_with_baseline_workflow_surface_runs_full_access_workflow(
         .as_str()
         .expect("risk judgment id")
         .to_owned();
-    let risk_recorded = adapter.call_tool(
-        "harness.record_user_judgment",
-        serde_json::to_value(fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_mcp_full_risk_record",
-            idempotency_key: "idem_mcp_full_risk_record",
-            expected_state_version: Some(5),
-            task_id: &task_id,
-            user_judgment_id: &risk_judgment_id,
-            judgment_kind: JudgmentKind::ResidualRiskAcceptance,
-            answer: {
-                let mut answer = answer_payload(JudgmentKind::ResidualRiskAcceptance);
-                answer.residual_risk_acceptance = Some(serde_json::from_value(json!({
-                    "risk_id": risk_id,
-                    "decision": "accepted"
-                }))?)
-                .into();
-                answer
-            },
-        }))?,
-    )?;
     assert_eq!(
-        risk_recorded.response_value["base"]["response_kind"],
-        "result"
-    );
-
-    let final_judgment = adapter.call_tool(
-        "harness.request_user_judgment",
-        serde_json::to_value(fixture.user_judgment_request(UserJudgmentFixture {
-            request_id: "req_mcp_full_final",
-            idempotency_key: "idem_mcp_full_final",
-            dry_run: false,
-            expected_state_version: Some(6),
-            task_id: &task_id,
-            change_unit_id: Some(&change_unit_id),
-            judgment_kind: JudgmentKind::FinalAcceptance,
-        }))?,
-    )?;
-    assert_eq!(
-        final_judgment.response_value["base"]["response_kind"],
-        "result"
-    );
-    let final_judgment_id = final_judgment.response_value["user_judgment_ref"]["record_id"]
-        .as_str()
-        .expect("final judgment id")
-        .to_owned();
-    let final_recorded = adapter.call_tool(
-        "harness.record_user_judgment",
-        serde_json::to_value(fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_mcp_full_final_record",
-            idempotency_key: "idem_mcp_full_final_record",
-            expected_state_version: Some(7),
-            task_id: &task_id,
-            user_judgment_id: &final_judgment_id,
-            judgment_kind: JudgmentKind::FinalAcceptance,
-            answer: answer_payload(JudgmentKind::FinalAcceptance),
-        }))?,
-    )?;
-    assert_eq!(
-        final_recorded.response_value["base"]["response_kind"],
-        "result"
-    );
-
-    let ready_check = adapter.call_tool(
-        "harness.close_task",
-        serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
-            request_id: "req_mcp_full_ready_check",
-            idempotency_key: None,
-            dry_run: false,
-            expected_state_version: None,
-            task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
-            superseding_task_id: None,
-        }))?,
-    )?;
-    assert_eq!(ready_check.response_value["close_state"], "ready");
-
-    let complete = adapter.call_tool(
-        "harness.close_task",
-        serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
-            request_id: "req_mcp_full_close_complete",
-            idempotency_key: Some("idem_mcp_full_close_complete"),
-            dry_run: false,
-            expected_state_version: Some(8),
-            task_id: &task_id,
-            intent: CloseIntent::Complete,
-            close_reason: Some(CloseReason::CompletedWithRiskAccepted),
-            superseding_task_id: None,
-        }))?,
-    )?;
-    assert_eq!(complete.response_value["base"]["response_kind"], "result");
-    assert_eq!(complete.response_value["close_state"], "closed");
-    assert_eq!(
-        fixture.task_terminal_fields(&task_id)?.result.as_deref(),
-        Some("completed")
-    );
-    assert_eq!(
-        complete
+        risk_judgment
             .verified_surface
             .as_ref()
-            .expect("complete verified surface")
+            .expect("judgment request verified surface")
             .access_class,
         AccessClass::CoreMutation
     );
+    assert_eq!(fixture.user_judgment_status(&risk_judgment_id)?, "pending");
     Ok(())
 }
 
@@ -1028,224 +836,6 @@ fn capability_profile_text_cannot_override_registered_agent_role_for_authority(
 }
 
 #[test]
-fn authority_resolution_requires_user_interaction_mcp_session() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp_authority_sessions")?;
-    let agent_surface_id = "surface_authority_agent";
-    let agent_instance_id = "surface_instance_authority_agent";
-    register_surface(
-        fixture.runtime_home_path(),
-        SurfaceRegistration {
-            project_id: fixture.project_id().to_owned(),
-            surface_id: agent_surface_id.to_owned(),
-            surface_instance_id: agent_instance_id.to_owned(),
-            surface_kind: "local_test".to_owned(),
-            interaction_role: SurfaceInteractionRole::Agent,
-            display_name: Some("Authority agent surface".to_owned()),
-            capability_profile_json: default_capability_profile().to_string(),
-            local_access_json: local_access_without(&[]).to_string(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
-    let other_project_id = "project_authority_other";
-    let other_surface_id = "surface_authority_other_user";
-    let other_instance_id = "surface_instance_authority_other_user";
-    register_extra_project_surface_with_role(
-        &fixture,
-        other_project_id,
-        other_surface_id,
-        other_instance_id,
-        SurfaceInteractionRole::UserInteraction,
-    )?;
-
-    let user_adapter = adapter(&fixture);
-    let agent_adapter = adapter_for_surface(
-        &fixture,
-        fixture.project_id(),
-        agent_surface_id,
-        agent_instance_id,
-    );
-    let other_user_adapter = adapter_for_surface(
-        &fixture,
-        other_project_id,
-        other_surface_id,
-        other_instance_id,
-    );
-
-    let intake = user_adapter.call_tool(
-        "harness.intake",
-        serde_json::to_value(fixture.intake_request(
-            "req_mcp_authority_task",
-            "idem_mcp_authority_task",
-            false,
-            Some(0),
-        ))?,
-    )?;
-    let task_id = response_record_id(&intake.response_value, "task_ref");
-    let scope = user_adapter.call_tool(
-        "harness.update_scope",
-        serde_json::to_value(fixture.update_scope_request(UpdateScopeFixture {
-            request_id: "req_mcp_authority_scope",
-            idempotency_key: "idem_mcp_authority_scope",
-            dry_run: false,
-            expected_state_version: Some(1),
-            task_id: &task_id,
-            operation: ChangeUnitOperation::CreateCurrent,
-            scope_summary: "Authority session proof scope.",
-        }))?,
-    )?;
-    let change_unit_id = response_record_id(&scope.response_value, "change_unit_ref");
-    let mut run_request = fixture.record_run_request(
-        "req_mcp_authority_run",
-        "idem_mcp_authority_run",
-        false,
-        Some(2),
-        &task_id,
-        &change_unit_id,
-    );
-    run_request.evidence_updates = vec![supported_evidence_update(
-        "MCP authority session proof recorded.",
-    )];
-    run_request.close_assessment = Some(CloseAssessmentInput {
-        result_summary: "MCP authority session proof recorded.".to_owned(),
-        result_refs: Vec::new(),
-        residual_risks: Vec::new(),
-        sensitive_categories: Vec::new(),
-        recovery_constraints: Vec::new(),
-    })
-    .into();
-    let run = user_adapter.call_tool("harness.record_run", serde_json::to_value(run_request)?)?;
-    assert_eq!(run.response_value["base"]["response_kind"], "result");
-
-    let mut judgment_request = fixture.user_judgment_request(UserJudgmentFixture {
-        request_id: "req_mcp_authority_final",
-        idempotency_key: "idem_mcp_authority_final",
-        dry_run: false,
-        expected_state_version: Some(3),
-        task_id: &task_id,
-        change_unit_id: Some(&change_unit_id),
-        judgment_kind: JudgmentKind::FinalAcceptance,
-    });
-    judgment_request.envelope.surface_id = SurfaceId::new(agent_surface_id);
-    let judgment = agent_adapter.call_tool(
-        "harness.request_user_judgment",
-        serde_json::to_value(judgment_request)?,
-    )?;
-    assert_eq!(judgment.response_value["base"]["response_kind"], "result");
-    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
-
-    let mut agent_record = fixture.record_judgment_request(RecordJudgmentFixture {
-        request_id: "req_mcp_authority_agent_record",
-        idempotency_key: "idem_mcp_authority_agent_record",
-        expected_state_version: Some(4),
-        task_id: &task_id,
-        user_judgment_id: &judgment_id,
-        judgment_kind: JudgmentKind::FinalAcceptance,
-        answer: answer_payload(JudgmentKind::FinalAcceptance),
-    });
-    agent_record.envelope.surface_id = SurfaceId::new(agent_surface_id);
-    let before_agent = fixture.counts()?;
-    let agent_rejected = agent_adapter.call_tool(
-        "harness.record_user_judgment",
-        serde_json::to_value(agent_record)?,
-    )?;
-    assert_rejected_code(&agent_rejected.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert_rejected_field(&agent_rejected.response_value, "surfaces.interaction_role");
-    assert_eq!(fixture.user_judgment_status(&judgment_id)?, "pending");
-    assert_eq!(fixture.counts()?, before_agent);
-
-    let other_before = counts_for_project(&fixture, other_project_id)?;
-    let original_before = fixture.counts()?;
-    let other_project_rejected = other_user_adapter.call_tool(
-        "harness.record_user_judgment",
-        serde_json::to_value(fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_mcp_authority_other_record",
-            idempotency_key: "idem_mcp_authority_other_record",
-            expected_state_version: Some(4),
-            task_id: &task_id,
-            user_judgment_id: &judgment_id,
-            judgment_kind: JudgmentKind::FinalAcceptance,
-            answer: answer_payload(JudgmentKind::FinalAcceptance),
-        }))?,
-    )?;
-    assert_rejected_code(
-        &other_project_rejected.response_value,
-        "LOCAL_ACCESS_MISMATCH",
-    );
-    assert_rejected_field(
-        &other_project_rejected.response_value,
-        "envelope.project_id",
-    );
-    assert_eq!(fixture.user_judgment_status(&judgment_id)?, "pending");
-    assert_eq!(fixture.counts()?, original_before);
-    assert_eq!(
-        counts_for_project(&fixture, other_project_id)?,
-        other_before
-    );
-
-    let mut wrong_actor_record = fixture.record_judgment_request(RecordJudgmentFixture {
-        request_id: "req_mcp_authority_wrong_actor",
-        idempotency_key: "idem_mcp_authority_wrong_actor",
-        expected_state_version: Some(4),
-        task_id: &task_id,
-        user_judgment_id: &judgment_id,
-        judgment_kind: JudgmentKind::FinalAcceptance,
-        answer: answer_payload(JudgmentKind::FinalAcceptance),
-    });
-    wrong_actor_record.envelope.actor_kind = harness_types::ActorKind::Agent;
-    let before_wrong_actor = fixture.counts()?;
-    let wrong_actor_rejected = user_adapter.call_tool(
-        "harness.record_user_judgment",
-        serde_json::to_value(wrong_actor_record)?,
-    )?;
-    assert_rejected_code(&wrong_actor_rejected.response_value, "VALIDATION_FAILED");
-    assert_eq!(fixture.user_judgment_status(&judgment_id)?, "pending");
-    assert_eq!(fixture.counts()?, before_wrong_actor);
-
-    let user_record = fixture.record_judgment_request(RecordJudgmentFixture {
-        request_id: "req_mcp_authority_user_record",
-        idempotency_key: "idem_mcp_authority_user_record",
-        expected_state_version: Some(4),
-        task_id: &task_id,
-        user_judgment_id: &judgment_id,
-        judgment_kind: JudgmentKind::FinalAcceptance,
-        answer: answer_payload(JudgmentKind::FinalAcceptance),
-    });
-    let user_record_params = serde_json::to_value(user_record)?;
-    let recorded =
-        user_adapter.call_tool("harness.record_user_judgment", user_record_params.clone())?;
-    assert_eq!(recorded.response_value["base"]["response_kind"], "result");
-    assert_eq!(
-        recorded.response_value["user_judgment"]["resolution"]["resolution_outcome"],
-        "accepted"
-    );
-    assert_eq!(fixture.user_judgment_status(&judgment_id)?, "resolved");
-
-    let after_user_record = fixture.counts()?;
-    let replay_from_agent =
-        agent_adapter.call_tool("harness.record_user_judgment", user_record_params)?;
-    assert_rejected_code(&replay_from_agent.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert_rejected_field(&replay_from_agent.response_value, "envelope.surface_id");
-    assert!(!replay_from_agent.replayed);
-    assert_eq!(fixture.counts()?, after_user_record);
-
-    let closed = user_adapter.call_tool(
-        "harness.close_task",
-        serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
-            request_id: "req_mcp_authority_close",
-            idempotency_key: Some("idem_mcp_authority_close"),
-            dry_run: false,
-            expected_state_version: Some(5),
-            task_id: &task_id,
-            intent: CloseIntent::Complete,
-            close_reason: Some(CloseReason::CompletedSelfChecked),
-            superseding_task_id: None,
-        }))?,
-    )?;
-    assert_eq!(closed.response_value["close_state"], "closed");
-    Ok(())
-}
-
-#[test]
 fn missing_run_recording_grant_blocks_only_record_run() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp_missing_run")?;
     fixture.set_surface_local_access(json!({
@@ -1317,19 +907,20 @@ fn missing_run_recording_grant_blocks_only_record_run() -> Result<(), Box<dyn Er
     assert_eq!(stage.response_value["base"]["response_kind"], "result");
 
     let before_run = fixture.counts()?;
-    let run = adapter.call_tool(
-        "harness.record_run",
-        serde_json::to_value(fixture.record_run_request(
-            "req_missing_run_record",
-            "idem_missing_run_record",
-            false,
-            Some(3),
-            &task_id,
-            &change_unit_id,
-        ))?,
-    )?;
-    assert_rejected_code(&run.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert!(run.verified_surface.is_none());
+    let error = adapter
+        .call_tool(
+            "harness.record_run",
+            serde_json::to_value(fixture.record_run_request(
+                "req_missing_run_record",
+                "idem_missing_run_record",
+                false,
+                Some(3),
+                &task_id,
+                &change_unit_id,
+            ))?,
+        )
+        .expect_err("missing run_recording grant should fail before Core");
+    assert_tool_execution_error(&error, "run_recording");
     assert_eq!(fixture.counts()?, before_run);
     Ok(())
 }
@@ -1382,18 +973,19 @@ fn missing_write_authorization_grant_blocks_prepare_write() -> Result<(), Box<dy
         .expect("Change Unit should be current");
 
     let before_prepare = fixture.counts()?;
-    let prepare = adapter.call_tool(
-        "harness.prepare_write",
-        serde_json::to_value(fixture.prepare_write_request(
-            "req_missing_write_prepare",
-            "idem_missing_write_prepare",
-            Some(2),
-            Some(&task_id),
-            Some(&change_unit_id),
-        ))?,
-    )?;
-    assert_rejected_code(&prepare.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert!(prepare.verified_surface.is_none());
+    let error = adapter
+        .call_tool(
+            "harness.prepare_write",
+            serde_json::to_value(fixture.prepare_write_request(
+                "req_missing_write_prepare",
+                "idem_missing_write_prepare",
+                Some(2),
+                Some(&task_id),
+                Some(&change_unit_id),
+            ))?,
+        )
+        .expect_err("missing write_authorization grant should fail before Core");
+    assert_tool_execution_error(&error, "write_authorization");
     assert_eq!(fixture.counts()?, before_prepare);
     Ok(())
 }
@@ -1432,27 +1024,31 @@ fn removed_read_status_grant_blocks_read_methods_only() -> Result<(), Box<dyn Er
     let adapter = adapter(&fixture);
     let before_read = fixture.counts()?;
 
-    let status = adapter.call_tool(
-        "harness.status",
-        serde_json::to_value(fixture.status_request("req_missing_read_status", Some(&task_id)))?,
-    )?;
-    assert_rejected_code(&status.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert!(status.verified_surface.is_none());
-    let close_check = adapter.call_tool(
-        "harness.close_task",
-        serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
-            request_id: "req_missing_read_close_check",
-            idempotency_key: None,
-            dry_run: false,
-            expected_state_version: None,
-            task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
-            superseding_task_id: None,
-        }))?,
-    )?;
-    assert_rejected_code(&close_check.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert!(close_check.verified_surface.is_none());
+    let status = adapter
+        .call_tool(
+            "harness.status",
+            serde_json::to_value(
+                fixture.status_request("req_missing_read_status", Some(&task_id)),
+            )?,
+        )
+        .expect_err("missing read_status grant should fail before Core");
+    assert_tool_execution_error(&status, "read_status");
+    let close_check = adapter
+        .call_tool(
+            "harness.close_task",
+            serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
+                request_id: "req_missing_read_close_check",
+                idempotency_key: None,
+                dry_run: false,
+                expected_state_version: None,
+                task_id: &task_id,
+                intent: CloseIntent::Check,
+                close_reason: None,
+                superseding_task_id: None,
+            }))?,
+        )
+        .expect_err("missing read_status grant should fail before Core");
+    assert_tool_execution_error(&close_check, "read_status");
     assert_eq!(fixture.counts()?, before_read);
 
     let mutation = adapter.call_tool(
@@ -1561,9 +1157,10 @@ fn removed_core_mutation_grant_blocks_mutating_core_methods_only() -> Result<(),
         ),
     ] {
         let before = fixture.counts()?;
-        let response = adapter.call_tool(tool_name, params)?;
-        assert_rejected_code(&response.response_value, "LOCAL_ACCESS_MISMATCH");
-        assert!(response.verified_surface.is_none());
+        let error = adapter
+            .call_tool(tool_name, params)
+            .expect_err("missing core_mutation grant should fail before Core");
+        assert_tool_execution_error(&error, "core_mutation");
         assert_eq!(
             fixture.counts()?,
             before,
@@ -1631,18 +1228,19 @@ fn removed_artifact_registration_grant_blocks_stage_only() -> Result<(), Box<dyn
     let adapter = adapter(&fixture);
     let before_stage = fixture.counts()?;
 
-    let stage = adapter.call_tool(
-        "harness.stage_artifact",
-        serde_json::to_value(fixture.stage_artifact_request(
-            "req_missing_artifact_stage",
-            None,
-            false,
-            Some(before_stage.state_version),
-            &task_id,
-        ))?,
-    )?;
-    assert_rejected_code(&stage.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert!(stage.verified_surface.is_none());
+    let stage = adapter
+        .call_tool(
+            "harness.stage_artifact",
+            serde_json::to_value(fixture.stage_artifact_request(
+                "req_missing_artifact_stage",
+                None,
+                false,
+                Some(before_stage.state_version),
+                &task_id,
+            ))?,
+        )
+        .expect_err("missing artifact_registration grant should fail before Core");
+    assert_tool_execution_error(&stage, "artifact_registration");
     assert_eq!(fixture.counts()?, before_stage);
 
     let run = adapter.call_tool(
@@ -1714,23 +1312,22 @@ fn close_task_access_derives_from_typed_intent() -> Result<(), Box<dyn Error>> {
         AccessClass::ReadStatus
     );
 
-    let mutating_without_core = adapter.call_tool(
-        "harness.close_task",
-        serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
-            request_id: "req_close_intent_complete_no_core",
-            idempotency_key: None,
-            dry_run: true,
-            expected_state_version: None,
-            task_id: &task_id,
-            intent: CloseIntent::Complete,
-            close_reason: Some(harness_types::CloseReason::CompletedSelfChecked),
-            superseding_task_id: None,
-        }))?,
-    )?;
-    assert_rejected_code(
-        &mutating_without_core.response_value,
-        "LOCAL_ACCESS_MISMATCH",
-    );
+    let mutating_without_core = adapter
+        .call_tool(
+            "harness.close_task",
+            serde_json::to_value(fixture.close_task_request(CloseTaskFixture {
+                request_id: "req_close_intent_complete_no_core",
+                idempotency_key: None,
+                dry_run: true,
+                expected_state_version: None,
+                task_id: &task_id,
+                intent: CloseIntent::Complete,
+                close_reason: Some(harness_types::CloseReason::CompletedSelfChecked),
+                superseding_task_id: None,
+            }))?,
+        )
+        .expect_err("missing core_mutation grant should fail before Core");
+    assert_tool_execution_error(&mutating_without_core, "core_mutation");
 
     fixture.set_surface_local_access(json!({
         "access_class": "core_mutation",
@@ -1766,23 +1363,14 @@ fn close_task_access_derives_from_typed_intent() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn mcp_environment_access_class_and_basis_do_not_override_derived_context(
-) -> Result<(), Box<dyn Error>> {
+fn integration_access_class_derives_from_method_not_caller_fields() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp_env_no_elevate")?;
     fixture.set_surface_local_access(json!({
         "access_class": "read_status",
         "authorized_access_classes": ["read_status"],
         "verification_basis": VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION
     }))?;
-    let session = McpSessionContext::from_env(fixture.runtime_home_path(), |name| match name {
-        "HARNESS_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
-        "HARNESS_SURFACE_ID" => Some(OsString::from(fixture.surface_id())),
-        "HARNESS_ACCESS_CLASS" => Some(OsString::from("core_mutation")),
-        "HARNESS_SURFACE_INSTANCE_ID" => Some(OsString::from(fixture.surface_instance_id())),
-        "HARNESS_VERIFICATION_BASIS" => Some(OsString::from("integration_env")),
-        _ => None,
-    })?;
-    let adapter = McpAdapter::new(fixture.runtime_home_path(), session);
+    let adapter = adapter(&fixture);
     let before = fixture.counts()?;
 
     let response = adapter.call_tool(
@@ -1798,25 +1386,17 @@ fn mcp_environment_access_class_and_basis_do_not_override_derived_context(
     assert_eq!(verified.access_class, AccessClass::ReadStatus);
     assert_eq!(
         verified.verification_basis,
-        "local_admin_registration:mcp_stdio_surface_binding"
+        "local_admin_registration:test_fixture_binding"
     );
-    assert!(!verified.verification_basis.contains("integration_env"));
     assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
 #[test]
-fn mcp_environment_basis_does_not_alter_newly_stored_trusted_basis() -> Result<(), Box<dyn Error>> {
+fn integration_binding_basis_is_used_for_newly_stored_trusted_basis() -> Result<(), Box<dyn Error>>
+{
     let fixture = CoreFixture::new("mcp_env_basis_storage")?;
-    let session = McpSessionContext::from_env(fixture.runtime_home_path(), |name| match name {
-        "HARNESS_PROJECT_ID" => Some(OsString::from(fixture.project_id())),
-        "HARNESS_SURFACE_ID" => Some(OsString::from(fixture.surface_id())),
-        "HARNESS_ACCESS_CLASS" => Some(OsString::from("read_status")),
-        "HARNESS_SURFACE_INSTANCE_ID" => Some(OsString::from(fixture.surface_instance_id())),
-        "HARNESS_VERIFICATION_BASIS" => Some(OsString::from("caller_env_basis")),
-        _ => None,
-    })?;
-    let adapter = McpAdapter::new(fixture.runtime_home_path(), session);
+    let adapter = adapter(&fixture);
 
     let intake = adapter.call_tool(
         "harness.intake",
@@ -1874,7 +1454,7 @@ fn mcp_environment_basis_does_not_alter_newly_stored_trusted_basis() -> Result<(
     let authorization_metadata: Value = serde_json::from_str(&authorization_metadata)?;
     assert_eq!(
         authorization_metadata["verification_basis"],
-        "local_admin_registration:mcp_stdio_surface_binding"
+        "local_admin_registration:test_fixture_binding"
     );
 
     let replay_basis: String = conn.query_row(
@@ -1887,12 +1467,8 @@ fn mcp_environment_basis_does_not_alter_newly_stored_trusted_basis() -> Result<(
     )?;
     assert_eq!(
         replay_basis,
-        "local_admin_registration:mcp_stdio_surface_binding"
+        "local_admin_registration:test_fixture_binding"
     );
-    assert!(!authorization_metadata
-        .to_string()
-        .contains("caller_env_basis"));
-    assert!(!replay_basis.contains("caller_env_basis"));
     Ok(())
 }
 
@@ -2453,15 +2029,71 @@ fn adapter_for_surface(
     surface_id: &str,
     surface_instance_id: &str,
 ) -> McpAdapter {
-    McpAdapter::new(
+    let integration_id = next_integration_id();
+    set_surface_role(
         fixture.runtime_home_path(),
-        McpSessionContext::new(
-            ProjectId::new(project_id),
-            SurfaceId::new(surface_id),
-            SurfaceInstanceId::new(surface_instance_id),
-        )
-        .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING),
+        project_id,
+        surface_id,
+        surface_instance_id,
+        SurfaceInteractionRole::Agent,
     )
+    .expect("adapter surface should be made agent-bound");
+    register_agent_integration(
+        fixture.runtime_home_path(),
+        AgentIntegrationRegistration {
+            integration_id: integration_id.clone(),
+            interaction_role: "agent".to_owned(),
+            surface_id: surface_id.to_owned(),
+            surface_instance_id: surface_instance_id.to_owned(),
+            metadata_json: "{}".to_owned(),
+        },
+    )
+    .expect("integration registration should succeed");
+    add_integration_project(
+        fixture.runtime_home_path(),
+        IntegrationProjectRegistration {
+            integration_id: integration_id.clone(),
+            project_id: project_id.to_owned(),
+        },
+    )
+    .expect("integration project membership should succeed");
+    let context = McpIntegrationContext::resolve(fixture.runtime_home_path(), &integration_id)
+        .expect("integration context should resolve")
+        .with_invocation_binding_basis(VERIFICATION_BASIS_TEST_FIXTURE_BINDING);
+    McpAdapter::new(fixture.runtime_home_path(), context)
+}
+
+fn next_integration_id() -> String {
+    let suffix = NEXT_INTEGRATION_SUFFIX.fetch_add(1, Ordering::Relaxed);
+    format!("agent_mcp_surface_{suffix}")
+}
+
+fn set_surface_role(
+    runtime_home: &Path,
+    project_id: &str,
+    surface_id: &str,
+    surface_instance_id: &str,
+    interaction_role: SurfaceInteractionRole,
+) -> Result<(), Box<dyn Error>> {
+    let path = runtime_home
+        .join("projects")
+        .join(project_id)
+        .join("state.sqlite");
+    let conn = rusqlite::Connection::open(path)?;
+    conn.execute(
+        "UPDATE surfaces
+            SET interaction_role = ?4
+          WHERE project_id = ?1
+            AND surface_id = ?2
+            AND surface_instance_id = ?3",
+        rusqlite::params![
+            project_id,
+            surface_id,
+            surface_instance_id,
+            interaction_role.as_str()
+        ],
+    )?;
+    Ok(())
 }
 
 fn stdio_responses(output: &[u8]) -> Result<Vec<Value>, Box<dyn Error>> {
@@ -2533,13 +2165,6 @@ fn register_extra_project_surface_with_role(
         },
     )?;
     Ok(())
-}
-
-fn response_record_id(response_value: &Value, field: &str) -> String {
-    response_value[field]["record_id"]
-        .as_str()
-        .expect("record_id should be present")
-        .to_owned()
 }
 
 fn counts_for_project(
@@ -2616,6 +2241,18 @@ fn assert_rejected_code(response: &Value, code: &str) {
 
 fn assert_rejected_field(response: &Value, field: &str) {
     assert_eq!(response["errors"][0]["details"]["field"], field);
+}
+
+fn assert_tool_execution_error(error: &harness_mcp::McpAdapterError, needle: &str) {
+    assert!(matches!(
+        error,
+        harness_mcp::McpAdapterError::ToolExecution { .. }
+    ));
+    assert!(
+        error.to_string().contains(needle),
+        "expected `{}` to contain `{needle}`",
+        error
+    );
 }
 
 fn assert_replay_surface_foreign_key(conn: &rusqlite::Connection) -> rusqlite::Result<()> {

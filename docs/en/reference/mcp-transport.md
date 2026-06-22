@@ -35,9 +35,10 @@ Baseline command-line behavior:
 
 - Launch the stdio loop with `harness-mcp --integration <integration_id>`.
 - Run startup validation without reading stdin with `harness-mcp --check --integration <integration_id>`.
+- Run project-specific startup validation with `harness-mcp --check --integration <integration_id> --project <project_id>`.
 - `-h` and `--help` print usage and environment summary, then exit with code `0`.
 - `-V` and `--version` print `harness-mcp <version>`, then exit with code `0`.
-- Unknown options, combined command-line modes, missing required option values, and extra positional arguments write usage diagnostics to stderr and exit with code `2`.
+- No arguments, `--check` without `--integration`, unknown options, combined command-line modes, missing required option values, invalid `--project` use, and extra positional arguments write usage diagnostics to stderr and exit with code `2`.
 - Help and version handling happen before Runtime Home or integration lookup.
 
 Exit and stream behavior:
@@ -47,11 +48,6 @@ Exit and stream behavior:
 - Startup configuration, JSON, or storage failures write diagnostics to stderr and exit with code `1`.
 - Once the stdio loop is running, malformed JSON and unsupported JSON-RPC requests return JSON-RPC errors when a response can be written.
 
-Compatibility:
-
-- A legacy fixed-project startup mode that uses `HARNESS_PROJECT_ID`, `HARNESS_SURFACE_ID`, and `HARNESS_SURFACE_INSTANCE_ID` may be retained only as a compatibility path.
-- New setup, new examples, and baseline Host Installation records must not generate the legacy fixed-project startup form.
-
 ## Process environment
 
 Optional:
@@ -60,13 +56,13 @@ Optional:
 
 The stdio process and `--check` use `HARNESS_HOME` before entering startup validation. Help and version modes do not use it.
 
-New baseline host configuration must not require:
+`harness-mcp` startup does not read or support fixed-project environment inputs:
 
 - `HARNESS_PROJECT_ID`
 - `HARNESS_SURFACE_ID`
 - `HARNESS_SURFACE_INSTANCE_ID`
 
-The selected Agent Integration Profile supplies the surface and surface-instance binding. The selected project is determined per public MCP tool call.
+Those variables do not select a project, surface, or surface instance for `harness-mcp`. The selected Agent Integration Profile supplies the surface and surface-instance binding. The selected project is determined per public MCP tool call.
 
 Current MCP Runtime Home resolution:
 
@@ -112,7 +108,7 @@ The process binding remains fixed for the process lifetime. Changing integration
 
 ## Configuration preflight
 
-`harness-mcp --check --integration <integration_id>` runs the same Runtime Home, integration, membership, and registry-shape startup validation used before entering the stdio loop. It does not read stdin.
+`harness-mcp --check --integration <integration_id>` runs the same Runtime Home, integration, membership, and registry-shape startup validation used before entering the stdio loop. `harness-mcp --check --integration <integration_id> --project <project_id>` limits the project detail section to one project and rejects a project that is not granted to the selected integration. Neither form reads stdin.
 
 On success, `--check` writes these stdout lines in this order:
 
