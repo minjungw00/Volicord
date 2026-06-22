@@ -19,6 +19,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     artifacts::{
+        persistent_body_path_from_staging_tmp_path,
         verify_persistent_artifact_body as verify_persistent_artifact_body_in_store,
         PersistentArtifactBodySpec, PersistentArtifactVerification,
     },
@@ -1982,9 +1983,18 @@ impl ProjectMutation<'_> {
                 detail: "staged artifact changed before promotion".to_owned(),
             });
         }
+        let staging_tmp_path =
+            staging
+                .tmp_path
+                .as_deref()
+                .ok_or_else(|| StoreError::SchemaInvariant {
+                    database_kind: "project_state",
+                    detail: "staged artifact body path is missing before promotion".to_owned(),
+                })?;
+        let body_path = persistent_body_path_from_staging_tmp_path(staging_tmp_path)?;
         verify_staged_artifact_body(
             self.project_home,
-            staging.tmp_path.as_deref(),
+            Some(staging_tmp_path),
             &input.expected_sha256,
             input.expected_size_bytes,
         )?;
@@ -2038,7 +2048,7 @@ impl ProjectMutation<'_> {
                 input.run_id,
                 input.handle_id,
                 input.uri,
-                staging.tmp_path,
+                body_path,
                 input.expected_sha256,
                 size_bytes,
                 staging.content_type,

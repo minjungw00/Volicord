@@ -49,6 +49,11 @@
 - `state.sqlite`는 등록된 프로젝트의 프로젝트별 로컬 Core 상태를 저장합니다.
 - `artifacts/`는 아티팩트 저장소를 사용할 때의 프로젝트 아티팩트 저장소입니다. `artifacts/tmp/`는 아티팩트 스테이징에 필요할 때 쓰는 임시 스테이징 공간이며 증거 권한이 아닙니다. 이 디렉터리들은 프로젝트 등록 직후에 반드시 존재할 필요가 없습니다.
 
+아티팩트 경로 기준은 아래와 같습니다.
+
+- `artifact_staging.tmp_path`는 `project_home` 기준 상대 경로로 저장합니다. 임시 스테이징 영역 아래의 스테이징 바이트 또는 알림은 `artifacts/tmp/<file>` 같은 형태를 사용합니다.
+- `artifacts.body_path`는 보통 `project_home/artifacts`인 아티팩트 저장소 루트 기준 상대 경로로 저장합니다. 지속 본문은 `tmp/<file>` 같은 형태를 사용하며 `artifact_store_root.join(body_path)`로 해석합니다.
+
 프로젝트 실행에서는 `project_home`이 프로젝트별 로컬 런타임 상태 위치를 담당합니다. 실행 가능한 프로젝트 상태 데이터베이스 경로는 검증된 프로젝트 홈에서 `project_home/state.sqlite`로 파생합니다. 저장된 `state_db_path`는 영속성과 진단을 위해 `registry.sqlite`에 남지만, Store 실행이 프로젝트별 상태를 열거나, 검사하거나, 마이그레이션하거나, 사용하기 전에 이 파생 경로와 일치해야 합니다. 일치하지 않는 등록은 진단을 위한 레지스트리 수준 조회와 목록에서는 계속 읽을 수 있지만 Core 실행, 접점 관리, setup 재사용, MCP 프로젝트 시작에는 적격하지 않습니다.
 
 기준 SQLite 테이블 형태, 인덱스, 외래 키, 마이그레이션 테이블, 제약은 [저장소 DDL](storage-ddl.md)이 담당합니다. 이 기록들의 현재 기준 SQLite 저장소 프로필은 `baseline_sqlite_v2`이며, 프로필/버전 경계 동작은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.

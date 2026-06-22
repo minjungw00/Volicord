@@ -132,6 +132,7 @@ Allowed:
 
 - A successful `harness.stage_artifact` returns `StageArtifactResult` with `base.effect_kind=staging_created`.
 - It may write safe bytes or a safe notice under `artifacts/tmp/`.
+- The stored `artifact_staging.tmp_path` for staged bytes or notices is `project_home`-relative, with a shape such as `artifacts/tmp/<file>`.
 - It may create the transient staging row.
 
 Baseline staging defaults:
@@ -236,10 +237,20 @@ The consuming transaction must validate:
 The consuming transaction may commit only after validation:
 
 - promote only validated staged handles
+- derive `artifacts.body_path` from `artifact_staging.tmp_path` as an artifact-store-relative path, such as `tmp/<file>`
 - mark promoted handles `consumed`
 - set the consuming Run and promoted artifact ids
 - commit the durable `artifacts` row and required `artifact_links`
 - update evidence coverage only as allowed by the method owner
+
+Persistent path rules:
+
+- `artifacts.body_path` is relative to the artifact-store root, normally `project_home/artifacts`.
+- Persistent body use resolves the stored value as `artifact_store_root.join(body_path)`.
+- Promotion must not copy `artifact_staging.tmp_path` unchanged into `artifacts.body_path`.
+- Promotion must validate that `artifact_staging.tmp_path` is a safe `project_home`-relative path beneath the expected `artifacts/` component, then store the non-empty remainder as `artifacts.body_path`.
+- Persistent validation rejects an empty `body_path`, absolute paths, parent traversal, platform-specific path prefixes, and stored values beginning with `artifacts/`.
+- Persistent validation must not convert an invalid stored path into another stored representation.
 
 ## Existing artifacts
 
@@ -366,7 +377,7 @@ Rules:
 
 - New persistent artifacts must use `integrity_status=verified`.
 - `verified` requires a non-empty `content_type`, a valid lowercase hexadecimal SHA-256 string, and nonnegative `size_bytes`.
-- Authority-bearing artifact use also requires current-byte verification at use time: the body or safe notice exists inside the artifact-store boundary, no symlink or path escape is followed, the stored target is a regular file or owner-approved safe representation, `artifacts.status=available`, current byte size equals stored `size_bytes`, current SHA-256 equals stored `sha256`, and the stored content-type and integrity facts remain valid.
+- Authority-bearing artifact use also requires current-byte verification at use time: `artifacts.body_path` resolves from the artifact-store root, the body or safe notice exists inside the artifact-store boundary, no symlink or path escape is followed, the stored target is a regular file or owner-approved safe representation, `artifacts.status=available`, current byte size equals stored `size_bytes`, current SHA-256 equals stored `sha256`, and the stored content-type and integrity facts remain valid.
 - Missing facts must not be represented as an empty hash, zero-byte size, or invented content type.
 - Missing, unreadable, unavailable, or unusable backing bytes are represented through availability handling, not by changing `integrity_status`.
 - `corrupt`, deleted, missing, unavailable, or modified artifacts cannot satisfy evidence or close authority requirements.

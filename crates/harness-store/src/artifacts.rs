@@ -1,5 +1,4 @@
 use std::{
-    ffi::OsStr,
     fs::{self, File},
     io::{self, Read},
     path::{Component, Path, PathBuf},
@@ -143,8 +142,7 @@ impl CoreProjectStore {
 
 /// Verifies the current bytes for a persistent artifact under the artifact store.
 ///
-/// The supplied `body_path` may be either artifact-store-relative or the
-/// historical project-home-relative `artifacts/...` form. The verifier resolves
+/// The supplied `body_path` is artifact-store-relative. The verifier resolves
 /// symlinks with `canonicalize`, requires the final target to remain inside the
 /// artifact store, and hashes the current regular-file bytes without mutating
 /// any artifact row.
@@ -201,11 +199,16 @@ pub fn verify_persistent_artifact_body(
         ));
     }
 
-    let Some(body_path) = spec.body_path.filter(|value| !value.trim().is_empty()) else {
+    let Some(body_path) = spec.body_path else {
         return Ok(verification(
             PersistentArtifactVerificationStatus::Unavailable,
         ));
     };
+    if body_path.trim().is_empty() {
+        return Ok(verification(
+            PersistentArtifactVerificationStatus::BoundaryViolation,
+        ));
+    }
     let Some(candidate) = persistent_body_candidate_path(artifact_store_root, body_path) else {
         return Ok(verification(
             PersistentArtifactVerificationStatus::BoundaryViolation,
@@ -290,6 +293,37 @@ fn verification(status: PersistentArtifactVerificationStatus) -> PersistentArtif
     }
 }
 
+pub(crate) fn persistent_body_path_from_staging_tmp_path(tmp_path: &str) -> StoreResult<String> {
+    let components = normal_relative_path_components(tmp_path).ok_or_else(|| {
+        StoreError::schema_invariant(
+            "project_state",
+            "staged artifact body path is not a safe relative path",
+        )
+    })?;
+    if components.first().map(String::as_str) != Some(ARTIFACTS_DIR) {
+        return Err(StoreError::schema_invariant(
+            "project_state",
+            "staged artifact body path is outside the artifact store",
+        ));
+    }
+
+    let persistent_components = &components[1..];
+    if persistent_components.is_empty() {
+        return Err(StoreError::schema_invariant(
+            "project_state",
+            "staged artifact body path does not name a persistent artifact-store path",
+        ));
+    }
+    if persistent_components.first().map(String::as_str) == Some(ARTIFACTS_DIR) {
+        return Err(StoreError::schema_invariant(
+            "project_state",
+            "persistent artifact body path uses the project-home artifact-store prefix",
+        ));
+    }
+
+    Ok(persistent_components.join("/"))
+}
+
 fn canonicalize_store_root(artifact_store_root: &Path) -> StoreResult<Option<PathBuf>> {
     match artifact_store_root.canonicalize() {
         Ok(path) => Ok(Some(path)),
@@ -303,29 +337,48 @@ fn persistent_body_candidate_path(
     artifact_store_root: &Path,
     stored_body_path: &str,
 ) -> Option<PathBuf> {
-    let stored = Path::new(stored_body_path);
-    if stored.is_absolute()
-        || stored
-            .components()
-            .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
-    {
+    let components = normal_relative_path_components(stored_body_path)?;
+    if components.first().map(String::as_str) == Some(ARTIFACTS_DIR) {
         return None;
     }
-    let relative = artifact_store_relative_path(stored);
-    if relative.as_os_str().is_empty() {
-        return None;
-    }
+    let relative = path_buf_from_components(&components);
     Some(artifact_store_root.join(relative))
 }
 
-fn artifact_store_relative_path(stored: &Path) -> PathBuf {
-    let mut components = stored.components();
-    match components.next() {
-        Some(Component::Normal(component)) if component == OsStr::new(ARTIFACTS_DIR) => {
-            components.as_path().to_path_buf()
-        }
-        _ => stored.to_path_buf(),
+fn normal_relative_path_components(value: &str) -> Option<Vec<String>> {
+    if value.trim().is_empty() || value.contains('\\') || has_windows_drive_prefix(value) {
+        return None;
     }
+
+    let mut components = Vec::new();
+    for component in Path::new(value).components() {
+        match component {
+            Component::Normal(value) => components.push(value.to_str()?.to_owned()),
+            Component::CurDir
+            | Component::ParentDir
+            | Component::Prefix(_)
+            | Component::RootDir => return None,
+        }
+    }
+
+    if components.is_empty() {
+        None
+    } else {
+        Some(components)
+    }
+}
+
+fn has_windows_drive_prefix(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+fn path_buf_from_components(components: &[String]) -> PathBuf {
+    let mut path = PathBuf::new();
+    for component in components {
+        path.push(component);
+    }
+    path
 }
 
 fn hash_file(path: &Path) -> StoreResult<(String, u64)> {
@@ -564,4 +617,142 @@ fn u64_to_i64(field: &'static str, value: u64) -> StoreResult<i64> {
     i64::try_from(value).map_err(|_| StoreError::InvalidInput {
         detail: format!("{field} does not fit in SQLite integer"),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{error::Error, fs};
+
+    use harness_test_support::TempRuntimeHome;
+
+    use super::*;
+
+    #[test]
+    fn staging_tmp_path_converts_to_artifact_store_relative_body_path() -> Result<(), Box<dyn Error>>
+    {
+        assert_eq!(
+            persistent_body_path_from_staging_tmp_path("artifacts/tmp/body.txt")?,
+            "tmp/body.txt"
+        );
+        assert_eq!(
+            persistent_body_path_from_staging_tmp_path("artifacts/tmp/nested/body.txt")?,
+            "tmp/nested/body.txt"
+        );
+
+        for invalid in [
+            "",
+            "tmp/body.txt",
+            "artifacts",
+            "artifacts/../tmp/body.txt",
+            "artifacts/artifacts/tmp/body.txt",
+            "/artifacts/tmp/body.txt",
+            "C:artifacts/tmp/body.txt",
+            "artifacts\\tmp\\body.txt",
+        ] {
+            assert!(
+                persistent_body_path_from_staging_tmp_path(invalid).is_err(),
+                "{invalid:?} should not convert"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn persistent_body_verifier_uses_artifact_store_relative_path() -> Result<(), Box<dyn Error>> {
+        let fixture = TempRuntimeHome::new("persistent-body-canonical")?;
+        let artifact_store_root = fixture.path().join("artifacts");
+        let body_dir = artifact_store_root.join("tmp");
+        fs::create_dir_all(&body_dir)?;
+        let bytes = b"{\"result\":\"ok\"}";
+        fs::write(body_dir.join("body.txt"), bytes)?;
+        let sha256 = sha256_hex(bytes);
+
+        let verification = verify_persistent_artifact_body(
+            &artifact_store_root,
+            &verified_body_spec("tmp/body.txt", &sha256, bytes.len() as u64),
+        )?;
+
+        assert_eq!(
+            verification.status,
+            PersistentArtifactVerificationStatus::VerifiedCurrent
+        );
+        assert_eq!(verification.actual_sha256.as_deref(), Some(sha256.as_str()));
+        assert_eq!(verification.actual_size_bytes, Some(bytes.len() as u64));
+        Ok(())
+    }
+
+    #[test]
+    fn persistent_body_verifier_rejects_project_home_relative_prefix() -> Result<(), Box<dyn Error>>
+    {
+        let fixture = TempRuntimeHome::new("persistent-body-obsolete-prefix")?;
+        let artifact_store_root = fixture.path().join("artifacts");
+        let body_dir = artifact_store_root.join("tmp");
+        fs::create_dir_all(&body_dir)?;
+        let bytes = b"{\"result\":\"ok\"}";
+        fs::write(body_dir.join("body.txt"), bytes)?;
+        let sha256 = sha256_hex(bytes);
+
+        let verification = verify_persistent_artifact_body(
+            &artifact_store_root,
+            &verified_body_spec("artifacts/tmp/body.txt", &sha256, bytes.len() as u64),
+        )?;
+
+        assert_eq!(
+            verification.status,
+            PersistentArtifactVerificationStatus::BoundaryViolation
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn persistent_body_verifier_rejects_unsafe_stored_path_shapes() -> Result<(), Box<dyn Error>> {
+        let fixture = TempRuntimeHome::new("persistent-body-invalid-paths")?;
+        let artifact_store_root = fixture.path().join("artifacts");
+        fs::create_dir_all(artifact_store_root.join("tmp"))?;
+        let bytes = b"{\"result\":\"ok\"}";
+        let sha256 = sha256_hex(bytes);
+
+        for invalid in [
+            "",
+            "/tmp/body.txt",
+            "../tmp/body.txt",
+            "tmp/../body.txt",
+            "tmp/body\\name.txt",
+            "C:tmp/body.txt",
+            "artifacts/tmp/body.txt",
+        ] {
+            let verification = verify_persistent_artifact_body(
+                &artifact_store_root,
+                &verified_body_spec(invalid, &sha256, bytes.len() as u64),
+            )?;
+            assert_eq!(
+                verification.status,
+                PersistentArtifactVerificationStatus::BoundaryViolation,
+                "{invalid:?} should be rejected"
+            );
+        }
+
+        Ok(())
+    }
+
+    fn verified_body_spec<'a>(
+        body_path: &'a str,
+        sha256: &'a str,
+        size_bytes: u64,
+    ) -> PersistentArtifactBodySpec<'a> {
+        PersistentArtifactBodySpec {
+            body_path: Some(body_path),
+            sha256: Some(sha256),
+            size_bytes: Some(size_bytes),
+            content_type: Some("application/json"),
+            integrity_status: "verified",
+            availability_status: "available",
+        }
+    }
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        let digest = Sha256::digest(bytes);
+        lowercase_sha256_digest(&digest)
+    }
 }

@@ -508,6 +508,21 @@ CREATE TABLE artifacts (
       AND size_bytes >= 0
     )
   ),
+  CHECK (
+    body_path IS NULL
+    OR (
+      length(trim(body_path)) > 0
+      AND body_path NOT GLOB '/*'
+      AND body_path NOT GLOB '[A-Za-z]:*'
+      AND instr(body_path, '\') = 0
+      AND body_path <> '..'
+      AND body_path NOT GLOB '../*'
+      AND body_path NOT GLOB '*/../*'
+      AND body_path NOT GLOB '*/..'
+      AND body_path <> 'artifacts'
+      AND body_path NOT GLOB 'artifacts/*'
+    )
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, producer_run_id) REFERENCES runs (project_id, run_id),
   FOREIGN KEY (project_id, source_staging_handle_id)
@@ -736,6 +751,12 @@ Task 리비전과 닫기 근거:
 - `artifacts.integrity_status='verified'`는 비어 있지 않은 `content_type`, 소문자 16진수 64자 `sha256`, 음수가 아닌 `size_bytes`를 요구합니다.
 - `integrity_status='corrupt'`는 알려진 무결성 실패나 유효하지 않은 `verified` 사실 관계를 기록합니다. `corrupt` 아티팩트는 증거 또는 닫기 권한 요구사항을 만족할 수 없습니다.
 - DDL 제약은 메타데이터 형태만 검증합니다. 권한 사용 전 현재 바이트 검증은 아티팩트 저장소가 담당합니다. 본문 바이트가 없거나, 읽을 수 없거나, 사용할 수 없거나, 사용에 부적합한 상태는 계속 가용성 조건이며 다른 지속 무결성 값을 추가하지 않습니다.
+
+지속 아티팩트 본문 경로:
+
+- `artifacts.body_path`가 있으면 비어 있지 않은 아티팩트 저장소 기준 상대 경로입니다.
+- DDL 제약은 슬래시로 시작하는 절대 경로, 드라이브 문자 접두사, 백슬래시로 구분된 문자열, 단순 상위 디렉터리 이동 컴포넌트, `project_home` 기준 `artifacts` 컴포넌트 또는 `artifacts/` 접두사를 거절합니다.
+- 권한 사용 전 전체 현재 바이트 검증, 아티팩트 저장소 경계 검증, 심볼릭 링크 검증은 아티팩트 저장소가 담당합니다.
 
 마이그레이션 기록:
 

@@ -132,6 +132,7 @@ Core는 성공한 `harness.stage_artifact` 요청의 `VerifiedSurfaceContext`에
 
 - 성공한 `harness.stage_artifact`는 `base.effect_kind=staging_created`인 `StageArtifactResult`를 반환합니다.
 - 저장소는 `artifacts/tmp/` 아래 안전한 아티팩트 바이트 또는 안전한 알림을 둘 수 있습니다.
+- 스테이징 바이트 또는 알림에 대해 저장되는 `artifact_staging.tmp_path`는 `project_home` 기준 상대 경로이며 `artifacts/tmp/<file>` 같은 형태를 사용합니다.
 - 저장소는 `artifact_staging` 행이나 그에 해당하는 임시 스테이징 기록을 만들 수 있습니다.
 
 기준 스테이징 기본값:
@@ -236,10 +237,20 @@ expires_at: "<future-expiration-timestamp>"
 소비 트랜잭션은 검증 뒤에만 아래 효과를 커밋할 수 있습니다.
 
 - 검증된 스테이징 핸들만 승격합니다.
+- `artifact_staging.tmp_path`에서 `tmp/<file>` 같은 아티팩트 저장소 기준 상대 경로를 파생해 `artifacts.body_path`로 저장합니다.
 - 승격된 핸들을 `consumed`로 표시합니다.
 - 소비한 실행 기록과 승격된 아티팩트 식별자를 기록합니다.
 - 지속 `artifacts` 행과 필요한 `artifact_links`를 커밋합니다.
 - 메서드 담당 문서가 허용한 경우에만 증거 범위를 갱신합니다.
+
+지속 경로 규칙:
+
+- `artifacts.body_path`는 보통 `project_home/artifacts`인 아티팩트 저장소 루트 기준 상대 경로입니다.
+- 지속 본문 사용은 저장된 값을 `artifact_store_root.join(body_path)`로 해석합니다.
+- 승격은 `artifact_staging.tmp_path`를 그대로 `artifacts.body_path`에 복사하면 안 됩니다.
+- 승격은 `artifact_staging.tmp_path`가 예상되는 `artifacts/` 컴포넌트 아래의 안전한 `project_home` 기준 상대 경로인지 검증한 뒤, 비어 있지 않은 나머지 경로를 `artifacts.body_path`로 저장해야 합니다.
+- 지속 검증은 빈 `body_path`, 절대 경로, 상위 디렉터리 이동, 플랫폼별 경로 접두사, `artifacts/`로 시작하는 저장 값을 거절합니다.
+- 지속 검증은 유효하지 않은 저장 경로를 다른 저장 표현으로 변환하면 안 됩니다.
 
 ## 기존 아티팩트 참조
 
@@ -366,7 +377,7 @@ expires_at: "<future-expiration-timestamp>"
 
 - 새 지속 아티팩트는 `integrity_status=verified`를 사용해야 합니다.
 - `verified`는 비어 있지 않은 `content_type`, 유효한 소문자 16진수 SHA-256 문자열, 음수가 아닌 `size_bytes`를 요구합니다.
-- 권한을 지니는 아티팩트 사용은 사용 시점의 현재 바이트 검증도 요구합니다. 본문이나 안전 알림이 아티팩트 저장소 경계 안에 있어야 하고, 심볼릭 링크나 경로 이탈을 따라가면 안 되며, 저장된 대상은 일반 파일 또는 담당 문서가 승인한 안전 표현이어야 하고, `artifacts.status=available`이어야 하며, 현재 바이트 크기가 저장된 `size_bytes`와 같고, 현재 SHA-256이 저장된 `sha256`과 같고, 저장된 콘텐츠 타입과 무결성 사실이 계속 유효해야 합니다.
+- 권한을 지니는 아티팩트 사용은 사용 시점의 현재 바이트 검증도 요구합니다. `artifacts.body_path`는 아티팩트 저장소 루트에서 해석하며, 본문이나 안전 알림이 아티팩트 저장소 경계 안에 있어야 하고, 심볼릭 링크나 경로 이탈을 따라가면 안 되며, 저장된 대상은 일반 파일 또는 담당 문서가 승인한 안전 표현이어야 하고, `artifacts.status=available`이어야 하며, 현재 바이트 크기가 저장된 `size_bytes`와 같고, 현재 SHA-256이 저장된 `sha256`과 같고, 저장된 콘텐츠 타입과 무결성 사실이 계속 유효해야 합니다.
 - 빠진 사실을 빈 해시, 0바이트 크기, 만들어 낸 콘텐츠 타입으로 표현하면 안 됩니다.
 - 본문 바이트가 없거나, 읽을 수 없거나, 사용할 수 없거나, 사용에 부적합한 상태는 `integrity_status`를 바꾸는 대신 가용성 처리로 표현합니다.
 - `corrupt`, 삭제됨, 없음, 사용 불가, 수정된 아티팩트는 증거 또는 닫기 권한 요구사항을 만족할 수 없습니다.

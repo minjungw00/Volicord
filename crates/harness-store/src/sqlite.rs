@@ -524,6 +524,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
         },
     )?;
     validate_artifacts_integrity_status_constraint(conn)?;
+    validate_artifacts_body_path_constraint(conn)?;
     validate_project_state_versions(conn)?;
     validate_foreign_key_check(conn, PROJECT_STATE_DATABASE_KIND)?;
     Ok(())
@@ -1258,6 +1259,41 @@ fn validate_artifacts_integrity_status_constraint(conn: &Connection) -> StoreRes
         Err(StoreError::schema_invariant(
             PROJECT_STATE_DATABASE_KIND,
             "artifacts.integrity_status constraint is missing or malformed",
+        ))
+    }
+}
+
+fn validate_artifacts_body_path_constraint(conn: &Connection) -> StoreResult<()> {
+    let table_sql: String = conn.query_row(
+        "SELECT sql
+           FROM sqlite_master
+          WHERE type = 'table'
+            AND name = 'artifacts'",
+        [],
+        |row| row.get(0),
+    )?;
+    let normalized = table_sql
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    let has_body_path_shape = normalized.contains("body_path is null")
+        && normalized.contains("length(trim(body_path)) > 0")
+        && normalized.contains("body_path not glob '/*'")
+        && normalized.contains("body_path not glob '[a-za-z]:*'")
+        && normalized.contains(r"and instr(body_path, '\') = 0")
+        && normalized.contains("body_path <> '..'")
+        && normalized.contains("body_path not glob '../*'")
+        && normalized.contains("body_path not glob '*/../*'")
+        && normalized.contains("body_path not glob '*/..'")
+        && normalized.contains("body_path <> 'artifacts'")
+        && normalized.contains("body_path not glob 'artifacts/*'");
+    if has_body_path_shape {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            PROJECT_STATE_DATABASE_KIND,
+            "artifacts.body_path constraint is missing or malformed",
         ))
     }
 }

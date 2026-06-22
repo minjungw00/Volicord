@@ -714,6 +714,21 @@ CREATE TABLE artifacts (
       AND size_bytes >= 0
     )
   ),
+  CHECK (
+    body_path IS NULL
+    OR (
+      length(trim(body_path)) > 0
+      AND body_path NOT GLOB '/*'
+      AND body_path NOT GLOB '[A-Za-z]:*'
+      AND instr(body_path, '\') = 0
+      AND body_path <> '..'
+      AND body_path NOT GLOB '../*'
+      AND body_path NOT GLOB '*/../*'
+      AND body_path NOT GLOB '*/..'
+      AND body_path <> 'artifacts'
+      AND body_path NOT GLOB 'artifacts/*'
+    )
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, producer_run_id) REFERENCES runs (project_id, run_id),
   FOREIGN KEY (project_id, source_staging_handle_id)

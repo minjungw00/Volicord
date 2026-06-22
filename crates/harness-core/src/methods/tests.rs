@@ -3241,6 +3241,7 @@ fn stage_artifact_creates_transient_handle_without_core_commit() -> Result<(), B
     assert_eq!(row.redaction_state, "none");
     assert_eq!(row.created_by_surface_id, SURFACE_ID);
     assert_eq!(row.created_by_surface_instance_id, SURFACE_INSTANCE_ID);
+    assert!(row.tmp_path.starts_with("artifacts/tmp/"));
     assert!(row.tmp_path.ends_with(".txt"));
     assert!(harness
         .runtime_home_path
@@ -5126,6 +5127,20 @@ fn record_run_promotes_staged_artifact_and_updates_evidence() -> Result<(), Box<
         artifact_row.content_type.as_deref(),
         Some(expected_content_type.as_str())
     );
+    let body_path = artifact_row
+        .body_path
+        .as_deref()
+        .expect("promoted artifact should store a body path");
+    let staging_row = staged_artifact_row(&harness, &handle_id)?;
+    assert!(
+        body_path.starts_with("tmp/"),
+        "persistent body_path should be artifact-store-relative: {body_path}"
+    );
+    assert!(
+        !body_path.starts_with("artifacts/"),
+        "persistent body_path must not include the project-home artifact prefix"
+    );
+    assert_eq!(staging_row.tmp_path, format!("artifacts/{body_path}"));
     assert_eq!(
         artifact_row.sha256.as_deref(),
         Some(expected_sha256.as_str())
@@ -5910,6 +5925,52 @@ fn record_run_body_size_mismatch_rolls_back_all_effects() -> Result<(), Box<dyn 
         Vec::new(),
     ))
     .into();
+
+    let response = harness
+        .service
+        .record_run(request, invocation(AccessClass::RunRecording))?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
+    assert_eq!(
+        response.response_value["errors"][0]["code"],
+        "MCP_UNAVAILABLE"
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(task_revision(&harness, &task_id)?, before_revision);
+    assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
+    Ok(())
+}
+
+#[test]
+fn record_run_staging_path_outside_artifact_store_rolls_back_all_effects(
+) -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "run_body_path_outside")?;
+    let handle = stage_artifact_for_record_run(&harness, &task_id, "run_body_path_outside", 2)?;
+    let handle_id = handle.handle_id.as_str().to_owned();
+    set_artifact_staging_tmp_path(&harness, &handle_id, "tmp/not-under-artifacts.txt")?;
+    let before = harness.counts()?;
+    let before_revision = task_revision(&harness, &task_id)?;
+
+    let mut request = record_run_request(
+        "req_run_body_path_outside",
+        "idem_run_body_path_outside",
+        false,
+        Some(2),
+        &task_id,
+        &change_unit_id,
+    );
+    request.artifact_inputs = vec![artifact_input_for_handle(
+        "artifact_input_body_path_outside",
+        handle,
+        Some("validation_report"),
+        Some("Invalid staging path should not promote."),
+    )];
+    request.evidence_updates = vec![supported_evidence_update(
+        "Invalid staging path should not promote.",
+    )];
 
     let response = harness
         .service
@@ -11669,6 +11730,7 @@ struct StagedArtifactRow {
 
 #[derive(Debug, PartialEq)]
 struct PersistentArtifactRow {
+    body_path: Option<String>,
     content_type: Option<String>,
     sha256: Option<String>,
     size_bytes: Option<u64>,
@@ -11725,6 +11787,7 @@ fn persistent_artifact_row(
     let conn = harness.conn()?;
     Ok(conn.query_row(
         "SELECT
+                body_path,
                 content_type,
                 sha256,
                 size_bytes,
@@ -11735,13 +11798,14 @@ fn persistent_artifact_row(
                AND artifact_id = ?2",
         rusqlite::params![PROJECT_ID, artifact_id],
         |row| {
-            let size_bytes = row.get::<_, Option<i64>>(2)?.map(|value| value as u64);
+            let size_bytes = row.get::<_, Option<i64>>(3)?.map(|value| value as u64);
             Ok(PersistentArtifactRow {
-                content_type: row.get(0)?,
-                sha256: row.get(1)?,
+                body_path: row.get(0)?,
+                content_type: row.get(1)?,
+                sha256: row.get(2)?,
                 size_bytes,
-                integrity_status: row.get(3)?,
-                status: row.get(4)?,
+                integrity_status: row.get(4)?,
+                status: row.get(5)?,
             })
         },
     )?)
@@ -11764,6 +11828,7 @@ fn persistent_artifact_body_path(
         .runtime_home_path
         .join("projects")
         .join(PROJECT_ID)
+        .join("artifacts")
         .join(body_path))
 }
 
@@ -13028,6 +13093,21 @@ fn set_artifact_staging_artifact_json(
     harness.conn()?.execute(
         "UPDATE artifact_staging
             SET artifact_json = ?3
+          WHERE project_id = ?1
+            AND handle_id = ?2",
+        rusqlite::params![PROJECT_ID, handle_id, value],
+    )?;
+    Ok(())
+}
+
+fn set_artifact_staging_tmp_path(
+    harness: &MethodHarness,
+    handle_id: &str,
+    value: &str,
+) -> Result<(), Box<dyn Error>> {
+    harness.conn()?.execute(
+        "UPDATE artifact_staging
+            SET tmp_path = ?3
           WHERE project_id = ?1
             AND handle_id = ?2",
         rusqlite::params![PROJECT_ID, handle_id, value],

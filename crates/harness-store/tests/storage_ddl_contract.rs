@@ -830,6 +830,7 @@ fn assert_project_contract_behavior(label: &str, conn: &Connection) -> Result<()
     assert_one_active_current_change_unit(label, conn);
     assert_artifacts_integrity_status_is_closed(label, conn);
     assert_verified_artifacts_require_integrity_facts(label, conn);
+    assert_artifacts_body_path_shape(label, conn);
     Ok(())
 }
 
@@ -1249,6 +1250,95 @@ fn assert_verified_artifacts_require_integrity_facts(label: &str, conn: &Connect
         )
         .unwrap_err();
     assert_constraint_error(label, error);
+}
+
+fn assert_artifacts_body_path_shape(label: &str, conn: &Connection) {
+    conn.execute(
+        "INSERT INTO artifacts (
+            project_id,
+            artifact_id,
+            task_id,
+            uri,
+            body_path,
+            sha256,
+            size_bytes,
+            content_type,
+            integrity_status,
+            redaction_state,
+            status,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            'project_a',
+            'artifact_canonical_body_path',
+            'task_a',
+            'harness-artifact://project_a/artifact_canonical_body_path',
+            'tmp/canonical.txt',
+            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            0,
+            'text/plain',
+            'verified',
+            'none',
+            'available',
+            't1',
+            't1'
+        )",
+        [],
+    )
+    .expect("canonical artifact-store-relative body_path should insert");
+
+    for (artifact_id, body_path) in [
+        ("artifact_empty_body_path", ""),
+        ("artifact_absolute_body_path", "/tmp/absolute.txt"),
+        ("artifact_parent_body_path", "../tmp/parent.txt"),
+        ("artifact_nested_parent_body_path", "tmp/../parent.txt"),
+        ("artifact_terminal_parent_body_path", "tmp/parent/.."),
+        ("artifact_drive_prefix_body_path", "C:tmp/drive.txt"),
+        ("artifact_backslash_body_path", r"tmp\backslash.txt"),
+        ("artifact_project_home_dir_body_path", "artifacts"),
+        (
+            "artifact_project_home_body_path",
+            "artifacts/tmp/obsolete.txt",
+        ),
+    ] {
+        let error = conn
+            .execute(
+                "INSERT INTO artifacts (
+                    project_id,
+                    artifact_id,
+                    task_id,
+                    uri,
+                    body_path,
+                    sha256,
+                    size_bytes,
+                    content_type,
+                    integrity_status,
+                    redaction_state,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    'project_a',
+                    ?1,
+                    'task_a',
+                    'harness-artifact://project_a/bad_body_path',
+                    ?2,
+                    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+                    0,
+                    'text/plain',
+                    'verified',
+                    'none',
+                    'available',
+                    't1',
+                    't1'
+                )",
+                params![artifact_id, body_path],
+            )
+            .unwrap_err();
+        assert_constraint_error(label, error);
+    }
 }
 
 fn assert_constraint_error(label: &str, error: RusqliteError) {

@@ -508,6 +508,21 @@ CREATE TABLE artifacts (
       AND size_bytes >= 0
     )
   ),
+  CHECK (
+    body_path IS NULL
+    OR (
+      length(trim(body_path)) > 0
+      AND body_path NOT GLOB '/*'
+      AND body_path NOT GLOB '[A-Za-z]:*'
+      AND instr(body_path, '\') = 0
+      AND body_path <> '..'
+      AND body_path NOT GLOB '../*'
+      AND body_path NOT GLOB '*/../*'
+      AND body_path NOT GLOB '*/..'
+      AND body_path <> 'artifacts'
+      AND body_path NOT GLOB 'artifacts/*'
+    )
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, producer_run_id) REFERENCES runs (project_id, run_id),
   FOREIGN KEY (project_id, source_staging_handle_id)
@@ -736,6 +751,12 @@ Persistent artifact integrity:
 - `artifacts.integrity_status='verified'` requires a non-empty `content_type`, a lowercase hexadecimal 64-character `sha256`, and nonnegative `size_bytes`.
 - `integrity_status='corrupt'` records a known integrity failure or invalid verified-fact relationship. `corrupt` artifacts cannot satisfy evidence or close authority requirements.
 - The DDL check validates metadata shape only. Artifact Storage owns current-byte validation before authority use. Missing, unreadable, unavailable, or unusable backing bytes remain availability conditions and do not add another persisted integrity value.
+
+Persistent artifact body paths:
+
+- `artifacts.body_path`, when present, is a non-empty artifact-store-relative path.
+- The DDL check rejects slash-absolute paths, drive-letter prefixes, backslash-separated strings, simple parent-traversal components, and the project-home-relative `artifacts` component or `artifacts/` prefix.
+- Artifact Storage owns full current-byte, artifact-store boundary, and symlink validation before authority use.
 
 Migration records:
 

@@ -47,6 +47,11 @@ Storage placement:
 - `state.sqlite` stores project-local Core state for the registered project.
 - `artifacts/` is the project artifact store when artifact storage is used. `artifacts/tmp/` is transient staging space when artifact staging requires it, not evidence authority. These directories need not exist immediately after project registration.
 
+Artifact path bases:
+
+- `artifact_staging.tmp_path` is stored relative to `project_home`; staged bytes or notices under the transient staging area use a shape such as `artifacts/tmp/<file>`.
+- `artifacts.body_path` is stored relative to the artifact-store root, normally `project_home/artifacts`; persistent bodies use a shape such as `tmp/<file>` and are resolved as `artifact_store_root.join(body_path)`.
+
 For project execution, `project_home` is the location owner for project-local runtime state. The executable project state database path is derived from the validated project home as `project_home/state.sqlite`. The stored `state_db_path` remains in `registry.sqlite` for persistence and diagnostics, but it must match that derived path before Store execution opens, inspects, migrates, or uses project-local state. A mismatching registration remains readable through registry-level lookup and listing for diagnosis, but it is not eligible for Core execution, surface management, setup reuse, or MCP project startup.
 
 Baseline SQLite table shape, indexes, foreign keys, migration tables, and constraints belong to [Storage DDL](storage-ddl.md). The current baseline SQLite storage profile for these records is `baseline_sqlite_v2`; profile/version boundary behavior belongs to [Storage Versioning](storage-versioning.md).
