@@ -13,7 +13,7 @@ The examples use:
 | `/Users/alex/.harness` | `Harness Runtime Home` |
 | `/work/acme-api` | Product Repository A |
 | `acme-api` | project ID for Product Repository A |
-| `harness-main` | host MCP server name |
+| `harness-int-codex-team`, `harness-int-claude-acme` | stable host MCP server names derived from `integration_id` |
 
 ## Stage 1: Prepare Harness Server
 
@@ -47,7 +47,6 @@ Command:
 /opt/harness/bin/harness agent install \
   --host codex \
   --scope user \
-  --server-name harness-main \
   --integration-id int-codex-team \
   --project-id acme-api \
   --repo-root /work/acme-api \
@@ -61,8 +60,10 @@ Locations that may change:
 | Location | What may change |
 |---|---|
 | `/Users/alex/.harness` | Runtime Home registry, integration, project, surface, Host Installation, and project state records. |
-| Codex user config, normally `~/.codex/config.toml` or `CODEX_HOME/config.toml` | A `[mcp_servers.harness-main]` table. |
+| Codex user config, normally `~/.codex/config.toml` or `CODEX_HOME/config.toml` | A `[mcp_servers.harness-int-codex-team]` table. |
 | `/work/acme-api` | No file change unless repository guidance is selected separately. |
+
+Because `--server-name` is omitted, the CLI derives a stable host MCP server name from `integration_id`. Use `--server-name` only when you need to pin a specific host configuration key.
 
 Expected result:
 
@@ -71,7 +72,7 @@ status: complete
 integration_id: int-codex-team
 host_kind: codex
 host_scope: user
-server_name: harness-main
+server_name: harness-int-codex-team
 verification: complete
 verification_detail: MCP initialize and tools/list succeeded
 ```
@@ -79,11 +80,11 @@ verification_detail: MCP initialize and tools/list succeeded
 The generated Codex entry has this shape:
 
 ```toml
-[mcp_servers.harness-main]
+[mcp_servers.harness-int-codex-team]
 command = "/opt/harness/bin/harness-mcp"
 args = ["--integration", "int-codex-team"]
 
-[mcp_servers.harness-main.env]
+[mcp_servers.harness-int-codex-team.env]
 HARNESS_HOME = "/Users/alex/.harness"
 ```
 
@@ -101,7 +102,7 @@ Verify later:
 
 Recognize success:
 
-- `status: complete` on install or verify means durable integration state exists, host configuration was installed, MCP initialization succeeded, and tool discovery succeeded.
+- `status: complete` on install or verify means durable integration state exists, host configuration was installed, host-owned trust or approval gates are satisfied or not applicable, MCP initialization succeeded, and tool discovery succeeded.
 - `harness agent status` is inventory/status reporting. Its verification section may say it does not prove host loading.
 
 ## Path B: Claude Code Project-Scope Setup
@@ -123,7 +124,6 @@ PATH="/opt/harness/bin:$PATH" \
 /opt/harness/bin/harness agent install \
   --host claude-code \
   --scope project \
-  --server-name harness-main \
   --integration-id int-claude-acme \
   --project-id acme-api \
   --repo-root /work/acme-api \
@@ -152,7 +152,7 @@ The generated `.mcp.json` entry has this shape:
 ```json
 {
   "mcpServers": {
-    "harness-main": {
+    "harness-int-claude-acme": {
       "command": "harness-mcp",
       "args": ["--integration", "int-claude-acme"]
     }
@@ -176,7 +176,6 @@ Use `--dry-run --output json` before writing project-scoped configuration or rep
 /opt/harness/bin/harness agent install \
   --host codex \
   --scope user \
-  --server-name harness-main \
   --integration-id int-codex-team \
   --project-id acme-api \
   --repo-root /work/acme-api \
@@ -186,13 +185,13 @@ Use `--dry-run --output json` before writing project-scoped configuration or rep
   --output json
 ```
 
-Dry-run output reports `status: dry_run`, planned actions, host target paths, guidance target paths when selected, and no persistent writes.
+Dry-run output reports `status: dry_run`, planned actions, host target paths, and guidance target paths when selected. It creates or modifies no Runtime Home directories, SQLite files or rows, WAL or SHM files, registry migrations, host configuration, `Product Repository` guidance, or generic export files.
 
 ## Setup State Meanings
 
 | State | What to do next |
 |---|---|
-| `complete` | The administrative setup and MCP verification path succeeded. Use the host and confirm the server appears in its MCP UI or tool list. |
+| `complete` | The administrative setup, host-owned gates, and MCP verification path succeeded. Use the host and confirm the server appears in its MCP UI or tool list. |
 | `action_required` | Complete the host-owned action named in the output, such as Codex project trust or Claude Code project MCP approval, then run `harness agent verify`. |
 | `partial_failure` | Some durable action may have succeeded before a later step failed. Fix the reported issue and rerun the same command. |
 | `failed` | The requested setup did not establish usable durable integration state or host configuration. Fix the reported error before retrying. |

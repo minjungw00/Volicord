@@ -13,7 +13,7 @@
 | `/Users/alex/.harness` | `Harness Runtime Home` |
 | `/work/acme-api` | Product Repository A |
 | `acme-api` | Product Repository A의 프로젝트 ID |
-| `harness-main` | 호스트 MCP 서버 이름 |
+| `harness-int-codex-team`, `harness-int-claude-acme` | `integration_id`에서 파생되는 안정적인 호스트 MCP 서버 이름 |
 
 ## 1단계: Harness Server 준비
 
@@ -47,7 +47,6 @@ cargo build -p harness-cli -p harness-mcp
 /opt/harness/bin/harness agent install \
   --host codex \
   --scope user \
-  --server-name harness-main \
   --integration-id int-codex-team \
   --project-id acme-api \
   --repo-root /work/acme-api \
@@ -61,8 +60,10 @@ cargo build -p harness-cli -p harness-mcp
 | 위치 | 변경 가능 내용 |
 |---|---|
 | `/Users/alex/.harness` | Runtime Home registry, 통합, 프로젝트, 접점, Host Installation, 프로젝트 상태 기록. |
-| 일반적으로 `~/.codex/config.toml` 또는 `CODEX_HOME/config.toml`인 Codex 사용자 설정 | `[mcp_servers.harness-main]` 테이블. |
+| 일반적으로 `~/.codex/config.toml` 또는 `CODEX_HOME/config.toml`인 Codex 사용자 설정 | `[mcp_servers.harness-int-codex-team]` 테이블. |
 | `/work/acme-api` | 저장소 guidance를 별도로 선택하지 않는 한 파일 변경 없음. |
+
+`--server-name`을 생략했으므로 CLI는 `integration_id`에서 안정적인 호스트 MCP 서버 이름을 파생합니다. 특정 호스트 설정 키를 고정해야 할 때만 `--server-name`을 사용합니다.
 
 예상 결과:
 
@@ -71,7 +72,7 @@ status: complete
 integration_id: int-codex-team
 host_kind: codex
 host_scope: user
-server_name: harness-main
+server_name: harness-int-codex-team
 verification: complete
 verification_detail: MCP initialize and tools/list succeeded
 ```
@@ -79,11 +80,11 @@ verification_detail: MCP initialize and tools/list succeeded
 생성되는 Codex 항목은 아래 형태입니다.
 
 ```toml
-[mcp_servers.harness-main]
+[mcp_servers.harness-int-codex-team]
 command = "/opt/harness/bin/harness-mcp"
 args = ["--integration", "int-codex-team"]
 
-[mcp_servers.harness-main.env]
+[mcp_servers.harness-int-codex-team.env]
 HARNESS_HOME = "/Users/alex/.harness"
 ```
 
@@ -101,7 +102,7 @@ HARNESS_HOME = "/Users/alex/.harness"
 
 성공을 알아보는 기준:
 
-- 설치 또는 verify에서 `status: complete`이면 지속 통합 상태가 있고, 호스트 설정이 설치되었고, MCP 초기화와 도구 발견이 성공했다는 뜻입니다.
+- 설치 또는 verify에서 `status: complete`이면 지속 통합 상태가 있고, 호스트 설정이 설치되었고, 호스트 소유 신뢰나 승인 gate가 충족되었거나 해당하지 않으며, MCP 초기화와 도구 발견이 성공했다는 뜻입니다.
 - `harness agent status`는 inventory와 상태 보고입니다. 그 verification 섹션은 호스트 로딩을 증명하지 않는다고 말할 수 있습니다.
 
 ## 경로 B: Claude Code 프로젝트 범위 설정
@@ -123,7 +124,6 @@ PATH="/opt/harness/bin:$PATH" \
 /opt/harness/bin/harness agent install \
   --host claude-code \
   --scope project \
-  --server-name harness-main \
   --integration-id int-claude-acme \
   --project-id acme-api \
   --repo-root /work/acme-api \
@@ -152,7 +152,7 @@ verification_detail: Claude Code requires user approval before project-scoped .m
 ```json
 {
   "mcpServers": {
-    "harness-main": {
+    "harness-int-claude-acme": {
       "command": "harness-mcp",
       "args": ["--integration", "int-claude-acme"]
     }
@@ -176,7 +176,6 @@ HARNESS_HOME=/Users/alex/.harness \
 /opt/harness/bin/harness agent install \
   --host codex \
   --scope user \
-  --server-name harness-main \
   --integration-id int-codex-team \
   --project-id acme-api \
   --repo-root /work/acme-api \
@@ -186,13 +185,13 @@ HARNESS_HOME=/Users/alex/.harness \
   --output json
 ```
 
-Dry-run 출력은 `status: dry_run`, 계획된 동작, 호스트 대상 경로, 선택한 경우 guidance 대상 경로를 보고하며 지속 쓰기를 하지 않습니다.
+Dry-run 출력은 `status: dry_run`, 계획된 동작, 호스트 대상 경로, 선택한 경우 guidance 대상 경로를 보고합니다. Runtime Home 디렉터리, SQLite 파일이나 행, WAL 또는 SHM 파일, registry 마이그레이션, 호스트 설정, `Product Repository` guidance, generic export 파일을 만들거나 수정하지 않습니다.
 
 ## 설정 상태 의미
 
 | 상태 | 다음 행동 |
 |---|---|
-| `complete` | 관리 설정과 MCP 검증 경로가 성공했습니다. 호스트를 열어 서버가 MCP UI나 도구 목록에 보이는지 확인합니다. |
+| `complete` | 관리 설정, 호스트 소유 gate, MCP 검증 경로가 성공했습니다. 호스트를 열어 서버가 MCP UI나 도구 목록에 보이는지 확인합니다. |
 | `action_required` | 출력이 이름 붙인 호스트 소유 동작을 완료합니다. 예를 들어 Codex 프로젝트 신뢰나 Claude Code 프로젝트 MCP 승인을 마친 뒤 `harness agent verify`를 실행합니다. |
 | `partial_failure` | 나중 단계가 실패하기 전에 일부 지속 동작이 성공했을 수 있습니다. 보고된 문제를 고치고 같은 명령을 다시 실행합니다. |
 | `failed` | 요청한 설정이 사용할 수 있는 지속 통합 상태나 호스트 설정을 만들지 못했습니다. 보고된 오류를 고친 뒤 다시 시도합니다. |

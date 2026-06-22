@@ -37,6 +37,8 @@ flowchart LR
   --mcp-command /opt/harness/bin/harness-mcp
 ```
 
+이 예시는 호스트 항목이 짧고 예측 가능한 키를 갖도록 `--server-name harness-main`을 고정합니다. 이 옵션은 필수가 아닙니다. 생략하면 `integration_id`에서 안정적인 이름을 파생합니다.
+
 호스트 설정에는 서버 항목 하나가 있습니다.
 
 ```toml
@@ -177,11 +179,52 @@ project selection is ambiguous; call harness.list_projects and retry with envelo
 
 사용자 요청이 저장소를 이름 붙이면, 에이전트는 그래도 일치하는 `project_id`를 명시적으로 사용해야 합니다. 명시적 프로젝트 선택은 다중 저장소 작업에서 가장 분명하며, 실수로 기본 프로젝트에 대해 작업하는 일을 막습니다.
 
-## 프로젝트 하나 제거
-
-통합과 호스트 MCP 항목은 유지하면서 Product Repository B를 제거합니다.
+호스트 설정을 다시 쓰지 않고 기본값을 설정하거나 바꿉니다.
 
 ```sh
+/opt/harness/bin/harness agent project default set \
+  --integration-id int-codex-team \
+  --project-id billing-api \
+  --runtime-home /Users/alex/.harness
+```
+
+예상 결과:
+
+```text
+status: complete
+prior_default_project_id: acme-api
+resulting_default_project_id: billing-api
+```
+
+여러 프로젝트가 남아 있는 동안 기본값을 지우면 생략된 `project_id` 호출은 모호해집니다. 에이전트는 `harness.list_projects`를 호출한 뒤 명시적 `envelope.project_id`로 다시 시도해야 합니다.
+
+## 프로젝트 제거와 재추가
+
+기본값을 `billing-api`로 옮긴 뒤 Product Repository A는 예전에 기본값이던 프로젝트일 뿐입니다. 통합과 호스트 MCP 항목은 유지하면서 제거합니다.
+
+```sh
+/opt/harness/bin/harness agent project remove \
+  --integration-id int-codex-team \
+  --project-id acme-api \
+  --runtime-home /Users/alex/.harness
+```
+
+예상 결과:
+
+```text
+status: complete
+allowed_projects:
+  billing-api
+verification_detail: project membership removed; host configuration was not rewritten
+```
+
+마지막으로 남은 프로젝트를 제거하려면, 기본값이 아직 그 프로젝트를 가리킬 때 먼저 기본값을 지운 뒤 멤버십을 제거합니다.
+
+```sh
+/opt/harness/bin/harness agent project default clear \
+  --integration-id int-codex-team \
+  --runtime-home /Users/alex/.harness
+
 /opt/harness/bin/harness agent project remove \
   --integration-id int-codex-team \
   --project-id billing-api \
@@ -192,12 +235,45 @@ project selection is ambiguous; call harness.list_projects and retry with envelo
 
 ```text
 status: complete
-allowed_projects:
-  acme-api
-verification_detail: project membership removed; host configuration was not rewritten
+allowed_project_count: 0
+not executable until one is added
 ```
 
-제거 뒤 `harness.list_projects`는 더 이상 `int-codex-team`에 대해 `billing-api`를 노출하지 않습니다. 바뀌지 않은 호스트 항목은 같은 통합을 계속 시작하지만, registry allowlist가 현재 프로젝트 접근을 강제합니다.
+제거 뒤 `harness.list_projects`는 `int-codex-team`에 대해 프로젝트를 노출하지 않습니다. 바뀌지 않은 호스트 항목은 같은 통합을 계속 시작하고 Host Installation inventory도 남을 수 있지만, 프로젝트가 다시 추가되기 전까지 공개 도구 호출은 실행될 수 없습니다.
+
+프로젝트가 없는 상태를 확인합니다.
+
+```sh
+/opt/harness/bin/harness agent status \
+  --integration-id int-codex-team \
+  --runtime-home /Users/alex/.harness
+```
+
+예상 상태에는 아래 내용이 포함됩니다.
+
+```text
+allowed_project_count: 0
+not executable
+```
+
+호스트 항목을 다시 설치하지 않고 프로젝트를 다시 추가합니다.
+
+```sh
+/opt/harness/bin/harness agent project add \
+  --integration-id int-codex-team \
+  --project-id billing-api \
+  --repo-root /work/billing-api \
+  --runtime-home /Users/alex/.harness
+```
+
+다시 추가한 프로젝트를 편의 기본값으로 삼아야 한다면, 추가한 뒤 기본값으로 설정합니다.
+
+```sh
+/opt/harness/bin/harness agent project default set \
+  --integration-id int-codex-team \
+  --project-id billing-api \
+  --runtime-home /Users/alex/.harness
+```
 
 ## 전체 uninstall
 

@@ -42,7 +42,7 @@ harness project register --project-id ID --repo-root PATH [--status active]
 harness project list
 harness surface register --project-id ID --surface-id ID [--surface-instance-id ID] [--kind KIND] [--name NAME] [--interaction-role agent|user_interaction] [--access-class ACCESS_CLASS ...] [--profile baseline-workflow] [--capability-profile JSON]
 harness surface list --project-id ID
-harness agent install --host codex|claude_code|claude-code|generic --scope user|project|local|export --project-id ID [--repo-root PATH] [--integration-id ID] [--default-project-id ID] [--server-name NAME] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--export-path PATH|--export-dir PATH] [--guidance none|codex|claude_code|claude-code|both] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
+harness agent install --host codex|claude-code|claude_code|generic --scope user|project|local|export --project-id ID [--repo-root PATH] [--integration-id ID] [--default-project-id ID] [--server-name NAME] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--export-path PATH|--export-dir PATH] [--guidance none|codex|claude-code|claude_code|both] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
 harness agent project add --integration-id ID --project-id ID [--repo-root PATH] [--default] [--runtime-home PATH] [--output text|json] [--dry-run]
 harness agent project remove --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
 harness agent project default set --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
@@ -50,9 +50,9 @@ harness agent project default clear --integration-id ID [--runtime-home PATH] [-
 harness agent status --integration-id ID [--runtime-home PATH] [--output text|json]
 harness agent verify --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json]
 harness agent uninstall --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
-harness agent guidance apply --integration-id ID --project-id ID --host codex|claude_code|claude-code [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
+harness agent guidance apply --integration-id ID --project-id ID --host codex|claude-code|claude_code [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
 harness agent guidance status --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json]
-harness agent guidance remove --integration-id ID --project-id ID [--host codex|claude_code|claude-code] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
+harness agent guidance remove --integration-id ID --project-id ID [--host codex|claude-code|claude_code] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
 ```
 
 Exit and stream behavior:
@@ -68,7 +68,7 @@ Exit and stream behavior:
 Not supported:
 
 - The CLI has no `serve`, `server`, or `connect` command.
-- The public `harness agent` contract has no `--yes` flag. A broad yes/assume-yes switch must not substitute for the explicit flags this contract requires.
+- The public `harness agent` contract has no broad automatic-confirmation flag. Use the explicit approval and replacement flags this contract requires.
 - Administrative commands are not public Harness API methods and must not be added to the public method list.
 
 ## Runtime Home selection
@@ -164,7 +164,7 @@ Optional behavior:
 - `--surface-id` and `--surface-instance-id` select the integration surface binding. When omitted, the CLI generates stable opaque ids and reports them.
 - `--mcp-command` selects the `harness-mcp` executable for scopes that permit an explicit command path. User and local scopes require an existing absolute path when specified. Project scope uses `harness-mcp` from `PATH`; generic export requires an absolute command path when the command is explicit.
 - `--runtime-home` selects the Runtime Home path to write into host configuration as `HARNESS_HOME`.
-- `--guidance none|codex|claude_code|both` previews and applies optional `Product Repository` guidance for the selected project. Omitted or `none` writes no guidance, and noninteractive guidance writes still require `--allow-repository-write`.
+- `--guidance none|codex|claude-code|claude_code|both` previews and applies optional `Product Repository` guidance for the selected project. Omitted or `none` writes no guidance, and noninteractive guidance writes still require `--allow-repository-write`.
 
 Installation rules:
 

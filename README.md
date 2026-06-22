@@ -71,7 +71,6 @@ Codex user-scope example for Product Repository A:
 /opt/harness/bin/harness agent install \
   --host codex \
   --scope user \
-  --server-name harness-main \
   --integration-id int-codex-team \
   --project-id acme-api \
   --repo-root /work/acme-api \
@@ -87,9 +86,12 @@ status: complete
 integration_id: int-codex-team
 host_kind: codex
 host_scope: user
-server_name: harness-main
+server_name: harness-int-codex-team
 verification: complete
 ```
+
+`--server-name` is optional. When it is omitted, the CLI derives a stable
+host MCP server name from `integration_id` and reports it in the result.
 
 Claude Code project-scope example for Product Repository A:
 
@@ -99,7 +101,6 @@ PATH="/opt/harness/bin:$PATH" \
 /opt/harness/bin/harness agent install \
   --host claude-code \
   --scope project \
-  --server-name harness-main \
   --integration-id int-claude-acme \
   --project-id acme-api \
   --repo-root /work/acme-api \

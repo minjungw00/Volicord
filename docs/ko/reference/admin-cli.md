@@ -42,7 +42,7 @@ harness project register --project-id ID --repo-root PATH [--status active]
 harness project list
 harness surface register --project-id ID --surface-id ID [--surface-instance-id ID] [--kind KIND] [--name NAME] [--interaction-role agent|user_interaction] [--access-class ACCESS_CLASS ...] [--profile baseline-workflow] [--capability-profile JSON]
 harness surface list --project-id ID
-harness agent install --host codex|claude_code|claude-code|generic --scope user|project|local|export --project-id ID [--repo-root PATH] [--integration-id ID] [--default-project-id ID] [--server-name NAME] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--export-path PATH|--export-dir PATH] [--guidance none|codex|claude_code|claude-code|both] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
+harness agent install --host codex|claude-code|claude_code|generic --scope user|project|local|export --project-id ID [--repo-root PATH] [--integration-id ID] [--default-project-id ID] [--server-name NAME] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--export-path PATH|--export-dir PATH] [--guidance none|codex|claude-code|claude_code|both] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
 harness agent project add --integration-id ID --project-id ID [--repo-root PATH] [--default] [--runtime-home PATH] [--output text|json] [--dry-run]
 harness agent project remove --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
 harness agent project default set --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]
@@ -50,9 +50,9 @@ harness agent project default clear --integration-id ID [--runtime-home PATH] [-
 harness agent status --integration-id ID [--runtime-home PATH] [--output text|json]
 harness agent verify --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json]
 harness agent uninstall --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
-harness agent guidance apply --integration-id ID --project-id ID --host codex|claude_code|claude-code [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
+harness agent guidance apply --integration-id ID --project-id ID --host codex|claude-code|claude_code [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]
 harness agent guidance status --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json]
-harness agent guidance remove --integration-id ID --project-id ID [--host codex|claude_code|claude-code] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
+harness agent guidance remove --integration-id ID --project-id ID [--host codex|claude-code|claude_code] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]
 ```
 
 종료 코드와 스트림 동작:
@@ -68,7 +68,7 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 지원하지 않는 것:
 
 - CLI에는 `serve`, `server`, `connect` 명령이 없습니다.
-- 공개 `harness agent` 계약에는 `--yes` 플래그가 없습니다. 포괄적 yes/assume-yes 스위치는 이 계약이 요구하는 명시적 플래그를 대신하면 안 됩니다.
+- 공개 `harness agent` 계약에는 포괄적 자동 확인 플래그가 없습니다. 이 계약이 요구하는 명시적 승인 및 교체 플래그를 사용해야 합니다.
 - 관리 명령은 공개 하네스 API 메서드가 아니며 공개 메서드 목록에 추가되면 안 됩니다.
 
 <a id="runtime-home-selection"></a>
@@ -166,7 +166,7 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 - `--surface-id`와 `--surface-instance-id`는 통합 접점 바인딩을 선택합니다. 생략하면 CLI가 안정적인 불투명 식별자를 생성하고 보고합니다.
 - `--mcp-command`는 명시적 명령 경로가 허용되는 범위에서 `harness-mcp` 실행 파일을 선택합니다. user와 local 범위는 이 옵션이 지정되면 존재하는 절대 경로를 요구합니다. project 범위는 `PATH`의 `harness-mcp`를 사용합니다. generic export는 명시적 명령을 지정할 때 절대 경로를 요구합니다.
 - `--runtime-home`은 호스트 설정에 `HARNESS_HOME`으로 쓸 Runtime Home 경로를 선택합니다.
-- `--guidance none|codex|claude_code|both`는 선택한 프로젝트의 선택적 `Product Repository` 지침을 미리 보여 주고 적용합니다. 생략하거나 `none`이면 지침을 쓰지 않으며, 비대화식 지침 쓰기에는 여전히 `--allow-repository-write`가 필요합니다.
+- `--guidance none|codex|claude-code|claude_code|both`는 선택한 프로젝트의 선택적 `Product Repository` 지침을 미리 보여 주고 적용합니다. 생략하거나 `none`이면 지침을 쓰지 않으며, 비대화식 지침 쓰기에는 여전히 `--allow-repository-write`가 필요합니다.
 
 설치 규칙:
 

@@ -37,6 +37,8 @@ Project and local host scopes remain single-repository scopes. Use user scope fo
   --mcp-command /opt/harness/bin/harness-mcp
 ```
 
+This example pins `--server-name harness-main` so the host entry has a short predictable key. The option is not required; omitting it derives a stable name from `integration_id`.
+
 The host config has one server entry:
 
 ```toml
@@ -177,11 +179,52 @@ A valid explicit `default_project_id` lets the adapter route an omitted `project
 
 When the user's request names a repository, the agent should still use the matching `project_id` explicitly. Explicit project selection is clearest in multi-repository work and prevents accidental work against the default project.
 
-## Remove One Project
-
-Remove Product Repository B while retaining the integration and the host MCP entry:
+Set or change the default without rewriting host configuration:
 
 ```sh
+/opt/harness/bin/harness agent project default set \
+  --integration-id int-codex-team \
+  --project-id billing-api \
+  --runtime-home /Users/alex/.harness
+```
+
+Expected result:
+
+```text
+status: complete
+prior_default_project_id: acme-api
+resulting_default_project_id: billing-api
+```
+
+If the default is cleared while multiple projects remain available, omitted `project_id` calls become ambiguous. The agent should call `harness.list_projects` and retry with an explicit `envelope.project_id`.
+
+## Remove Projects And Re-Add Later
+
+After the default has moved to `billing-api`, Product Repository A is only a formerly default project. Remove it while retaining the integration and host MCP entry:
+
+```sh
+/opt/harness/bin/harness agent project remove \
+  --integration-id int-codex-team \
+  --project-id acme-api \
+  --runtime-home /Users/alex/.harness
+```
+
+Expected result:
+
+```text
+status: complete
+allowed_projects:
+  billing-api
+verification_detail: project membership removed; host configuration was not rewritten
+```
+
+To remove the final remaining project, clear the default first if it still names that project, then remove the membership:
+
+```sh
+/opt/harness/bin/harness agent project default clear \
+  --integration-id int-codex-team \
+  --runtime-home /Users/alex/.harness
+
 /opt/harness/bin/harness agent project remove \
   --integration-id int-codex-team \
   --project-id billing-api \
@@ -192,12 +235,45 @@ Expected result:
 
 ```text
 status: complete
-allowed_projects:
-  acme-api
-verification_detail: project membership removed; host configuration was not rewritten
+allowed_project_count: 0
+not executable until one is added
 ```
 
-After removal, `harness.list_projects` no longer exposes `billing-api` for `int-codex-team`. The unchanged host entry still starts the same integration, but the registry allowlist enforces current project access.
+After removal, `harness.list_projects` exposes no projects for `int-codex-team`. The unchanged host entry still starts the same integration, and Host Installation inventory can remain, but public tool calls are not executable until a project is added again.
+
+Observe the zero-project state:
+
+```sh
+/opt/harness/bin/harness agent status \
+  --integration-id int-codex-team \
+  --runtime-home /Users/alex/.harness
+```
+
+Expected status includes:
+
+```text
+allowed_project_count: 0
+not executable
+```
+
+Add a project again without reinstalling the host entry:
+
+```sh
+/opt/harness/bin/harness agent project add \
+  --integration-id int-codex-team \
+  --project-id billing-api \
+  --repo-root /work/billing-api \
+  --runtime-home /Users/alex/.harness
+```
+
+If the re-added project should be the convenience default again, set it after adding it:
+
+```sh
+/opt/harness/bin/harness agent project default set \
+  --integration-id int-codex-team \
+  --project-id billing-api \
+  --runtime-home /Users/alex/.harness
+```
 
 ## Full Uninstall
 
