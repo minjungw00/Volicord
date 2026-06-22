@@ -397,21 +397,21 @@ Recommended first file:
 Important modules:
 
 - [`crates/harness-mcp/src/lib.rs`](../../../crates/harness-mcp/src/lib.rs)
-  for `PUBLIC_METHOD_TOOL_NAMES`, `McpStartupInspection`,
-  `McpSessionContext`, `McpAdapter`, `McpAdapter::call_tool`,
-  `public_method_tools`, `run_stdio`, `handle_json_rpc_request`, and
-  `call_tool_result`.
+  for `PUBLIC_METHOD_TOOL_NAMES`, `McpIntegrationStartupInspection`,
+  `McpIntegrationContext`, `McpAdapter`, `McpAdapter::call_tool`,
+  `prepare_integration_arguments`, `public_method_tools`, `run_stdio`,
+  `handle_json_rpc_request`, and `call_tool_result`.
 - [`crates/harness-mcp/src/main.rs`](../../../crates/harness-mcp/src/main.rs)
   for process-mode dispatch through `dispatch_args`.
 
 Important current symbols:
 
 - `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, `public_method_tools`
-- `McpStartupInspection`, `McpSessionContext`,
+- `McpIntegrationStartupInspection`, `McpIntegrationContext`,
   `McpDerivedInvocationContext`
 - `McpAdapter`, `McpAdapter::derive_invocation_context`,
   `McpAdapter::call_tool`
-- `HasEnvelope`, `decode_params`, `typed_invocation`
+- `prepare_typed_request`, `prepare_integration_arguments`, `decode_params`
 - `run_stdio`, `run_stdio_from_env`, `run_preflight_check_from_env`,
   `preflight_check`
 - `McpAdapterError`, `call_tool_result`, `json_rpc_error_for_adapter`

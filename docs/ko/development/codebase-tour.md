@@ -387,21 +387,21 @@ Integration Profile 설치, 호스트별 MCP 설정, 선택적 저장소 guidanc
 중요 모듈:
 
 - [`crates/harness-mcp/src/lib.rs`](../../../crates/harness-mcp/src/lib.rs):
-  `PUBLIC_METHOD_TOOL_NAMES`, `McpStartupInspection`,
-  `McpSessionContext`, `McpAdapter`, `McpAdapter::call_tool`,
-  `public_method_tools`, `run_stdio`, `handle_json_rpc_request`,
-  `call_tool_result`.
+  `PUBLIC_METHOD_TOOL_NAMES`, `McpIntegrationStartupInspection`,
+  `McpIntegrationContext`, `McpAdapter`, `McpAdapter::call_tool`,
+  `prepare_integration_arguments`, `public_method_tools`, `run_stdio`,
+  `handle_json_rpc_request`, `call_tool_result`.
 - [`crates/harness-mcp/src/main.rs`](../../../crates/harness-mcp/src/main.rs):
   `dispatch_args`를 통한 프로세스 모드 디스패치.
 
 중요한 현재 심볼:
 
 - `PUBLIC_METHOD_TOOL_NAMES`, `McpToolDefinition`, `public_method_tools`
-- `McpStartupInspection`, `McpSessionContext`,
+- `McpIntegrationStartupInspection`, `McpIntegrationContext`,
   `McpDerivedInvocationContext`
 - `McpAdapter`, `McpAdapter::derive_invocation_context`,
   `McpAdapter::call_tool`
-- `HasEnvelope`, `decode_params`, `typed_invocation`
+- `prepare_typed_request`, `prepare_integration_arguments`, `decode_params`
 - `run_stdio`, `run_stdio_from_env`, `run_preflight_check_from_env`,
   `preflight_check`
 - `McpAdapterError`, `call_tool_result`, `json_rpc_error_for_adapter`

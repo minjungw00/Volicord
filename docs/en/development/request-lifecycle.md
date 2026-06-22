@@ -25,8 +25,10 @@ sequenceDiagram
 
   Host->>MCP: JSON-RPC tools/call
   MCP->>MCP: call_tool_result extracts name and arguments
-  MCP->>MCP: McpAdapter::call_tool decodes typed request
-  MCP->>MCP: typed_invocation derives InvocationContext
+  MCP->>MCP: McpAdapter::call_tool routes tool
+  MCP->>MCP: prepare_integration_arguments selects project and fills envelope
+  MCP->>MCP: decode_params decodes typed request
+  MCP->>MCP: McpDerivedInvocationContext::core_invocation derives InvocationContext
   MCP->>Core: CoreService method(request, invocation)
   Core->>Core: prepare_or_response -> CoreService::prepare_request
   Core->>Store: CoreProjectStore::open and shared reads
@@ -46,21 +48,29 @@ The shared adapter path lives in
 - `call_tool_result` extracts `params.name` and `params.arguments`, calls
   `McpAdapter::call_tool`, and wraps `PipelineResponse.response_json` as MCP
   text content.
-- `McpAdapter::call_tool` matches the tool name, calls `decode_params<T>`, and
-  dispatches to the matching `CoreService` method.
-- `typed_invocation` combines `HasEnvelope` and `MethodAccessClass` so the
-  adapter derives the request's method-level access class from the typed
-  request, not from caller-supplied authority fields.
-- `McpAdapter::derive_invocation_context` checks the request envelope against
-  `McpSessionContext` and produces `McpDerivedInvocationContext`.
+- `McpAdapter::call_tool` matches the tool name, calls
+  `prepare_typed_request<T>`, and dispatches to the matching `CoreService`
+  method.
+- `prepare_typed_request<T>` derives the request's method-level access class
+  from the adapter-controlled tool/method mapping, rather than caller-supplied
+  authority fields, then decodes the prepared arguments with
+  `decode_params<T>`.
+- `prepare_integration_arguments` checks the request envelope against
+  `McpIntegrationContext`, selects one permitted project for the call, and
+  fills the trusted envelope fields before typed decoding.
+- Project selection creates `McpDerivedInvocationContext` for the selected
+  project, bound surface, surface instance, requested access class, and
+  adapter-binding basis.
 - `McpDerivedInvocationContext::core_invocation` creates the Core
   `InvocationContext`.
 
 Startup and session validation also live in `harness-mcp`, especially
-`McpStartupInspection::resolve`. That startup path reads Store directly through
-Runtime Home, project, surface, surface instance, role, capability-profile,
-metadata, and local-access checks. It is not an alternate implementation of
-public method behavior; public method execution routes through `harness-core`.
+`McpIntegrationStartupInspection::resolve`. That startup path reads Store
+directly through Runtime Home, Agent Integration Profile state, surface and
+surface-instance binding, role, membership, metadata, and local registry JSON
+checks. It does not select one project for all calls, and it is not an
+alternate implementation of public method behavior; public method execution
+routes through `harness-core`.
 
 The shared Core path lives mainly in
 [`crates/harness-core/src/pipeline.rs`](../../../crates/harness-core/src/pipeline.rs)
@@ -138,10 +148,10 @@ Lifecycle:
 
 1. The MCP host sends `tools/call` with `name="harness.status"`.
 2. `call_tool_result` extracts the tool name and arguments.
-3. `McpAdapter::call_tool` decodes the arguments as `StatusRequest`.
-4. `typed_invocation` uses `StatusRequest::requested_access_class` and the
-   request envelope to derive `InvocationContext` from the fixed
-   `McpSessionContext`.
+3. `McpAdapter::call_tool` routes the call to the status branch.
+4. `prepare_typed_request` derives the status access class, selects an allowed
+   project from the `McpIntegrationContext`, fills the trusted envelope fields,
+   decodes `StatusRequest`, and produces the Core `InvocationContext`.
 5. `CoreService::status` serializes the typed request to request JSON and calls
    `prepare_or_response` with `MethodPolicy::exact`,
    `TaskRequirement::Optional`, `ReplayPolicy::None`,

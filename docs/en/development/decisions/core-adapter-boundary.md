@@ -46,8 +46,9 @@ only the structure visible in the repository.
 - [`crates/harness-core/src/pipeline.rs`](../../../../crates/harness-core/src/pipeline.rs):
   `CoreService`, `MethodPolicy`, `OwnerPipelineBranch`, and common preflight.
 - [`crates/harness-mcp/src/lib.rs`](../../../../crates/harness-mcp/src/lib.rs):
-  `PUBLIC_METHOD_TOOL_NAMES`, `McpStartupInspection`, `McpAdapter`,
-  `McpAdapter::call_tool`, and `typed_invocation`.
+  `PUBLIC_METHOD_TOOL_NAMES`, `McpIntegrationStartupInspection`,
+  `McpIntegrationContext`, `McpAdapter`, `McpAdapter::call_tool`, and
+  `prepare_integration_arguments`.
 - [`crates/harness-cli/src/agent_command.rs`](../../../../crates/harness-cli/src/agent_command.rs):
   administrative host setup orchestration outside the Core/MCP adapter path.
 - [`crates/harness-cli/src/registration.rs`](../../../../crates/harness-cli/src/registration.rs):

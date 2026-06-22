@@ -4,10 +4,10 @@
 
 Harness needs direct coding-agent integration for hosts such as Codex and
 Claude Code while still supporting more than one registered Product Repository.
-The older fixed-project MCP setup model tied a server process to one project
-through environment variables. That model does not fit user-scoped host
-configuration, explicit multi-project allowlists, or host-specific trust and
-approval flows.
+The integration-bound MCP startup model binds a server process to one Agent
+Integration Profile rather than to one Product Repository. That shape supports
+user-scoped host configuration, explicit multi-project allowlists, and
+host-specific trust and approval flows.
 
 MCP clients may provide roots or launch-directory context, but those values are
 host hints. They are not Harness authority and cannot safely select a project
@@ -45,8 +45,9 @@ The design keeps these responsibilities separate:
   projects.
 - Host setup status can distinguish configured-but-awaiting-host-action from
   complete verification.
-- Existing fixed-project MCP setup is compatibility behavior, not the baseline
-  setup model for new documentation or generated host config.
+- Generated host configuration uses `harness-mcp --integration
+  <integration_id>` and does not require project, surface, or surface-instance
+  environment variables.
 
 ## Non-Goals
 
@@ -80,7 +81,7 @@ Implementation work that conforms to this decision belongs in:
 
 Tests for this design should cover startup validation, project selection,
 membership revocation, host setup status, repository-write approval, managed
-marker replacement, and compatibility behavior for legacy fixed-project setup.
+marker replacement, and rejection of unsupported startup forms.
 
 Reference owners:
 
