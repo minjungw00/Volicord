@@ -154,6 +154,8 @@ CREATE UNIQUE INDEX idx_host_installations_target
 
 등록된 프로젝트마다 프로젝트별 `state.sqlite`가 하나 있습니다. 이 데이터베이스는 그 프로젝트의 Core 상태를 저장하며, 외래 키와 인덱스가 같은 프로젝트 관계를 강제할 수 있도록 프로젝트 범위 행에 `project_id`를 반복해 저장합니다.
 
+아래 DDL은 지원되는 프로젝트 상태 스키마 버전 10까지 적용된 뒤의 의도된 최신 물리 프로젝트 상태 스키마를 나타냅니다. 더 오래된 물리 데이터베이스가 이 형태에 도달하는 지원 마이그레이션은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+
 ```sql
 CREATE TABLE schema_migrations (
   database_kind TEXT NOT NULL CHECK (database_kind = 'project_state'),
@@ -174,6 +176,7 @@ CREATE TABLE project_state (
   active_task_id TEXT,
   default_surface_id TEXT,
   default_surface_instance_id TEXT,
+  enforcement_profile_json TEXT NOT NULL DEFAULT '{"profile_id":"baseline_cooperative","guarantee_level":"cooperative","enabled_mechanisms":[],"source":"baseline_scope","status":"active"}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -247,6 +250,7 @@ CREATE TABLE change_units (
   scope_summary_json TEXT NOT NULL DEFAULT '{}',
   bounded_paths_json TEXT NOT NULL DEFAULT '[]',
   write_basis_json TEXT NOT NULL DEFAULT '{}',
+  close_basis_json TEXT NOT NULL DEFAULT '{}',
   lifecycle_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -349,6 +353,7 @@ CREATE TABLE runs (
   observed_changes_json TEXT NOT NULL DEFAULT '{}',
   evidence_updates_json TEXT NOT NULL DEFAULT '[]',
   authorization_effect_json TEXT NOT NULL DEFAULT '{}',
+  scope_revision INTEGER CHECK (scope_revision IS NULL OR scope_revision >= 0),
   created_by_surface_id TEXT NOT NULL,
   created_by_surface_instance_id TEXT NOT NULL,
   started_at TEXT,
@@ -534,7 +539,8 @@ CREATE TABLE tool_invocations (
   surface_instance_id TEXT,
   access_class TEXT,
   verification_basis TEXT,
-  replay_context_status TEXT NOT NULL CHECK (replay_context_status IN ('verified', 'legacy_unverified')),
+  replay_context_status TEXT NOT NULL DEFAULT 'legacy_unverified'
+    CHECK (replay_context_status IN ('verified', 'legacy_unverified')),
   response_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, tool_name, idempotency_key),
@@ -554,6 +560,32 @@ CREATE TABLE tool_invocations (
     ON DELETE RESTRICT,
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
+
+CREATE TRIGGER tool_invocations_verified_context_insert
+BEFORE INSERT ON tool_invocations
+FOR EACH ROW
+WHEN NEW.replay_context_status = 'verified'
+  AND (
+    NEW.surface_id IS NULL
+    OR NEW.surface_instance_id IS NULL
+    OR NEW.access_class IS NULL
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
+END;
+
+CREATE TRIGGER tool_invocations_verified_context_update
+BEFORE UPDATE ON tool_invocations
+FOR EACH ROW
+WHEN NEW.replay_context_status = 'verified'
+  AND (
+    NEW.surface_id IS NULL
+    OR NEW.surface_instance_id IS NULL
+    OR NEW.access_class IS NULL
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
+END;
 ```
 
 프로젝트 상태의 기준 인덱스:
@@ -622,11 +654,13 @@ CREATE INDEX idx_task_events_task_seq
 Task 리비전과 닫기 근거:
 
 - `tasks.scope_revision`과 `tasks.close_basis_revision`은 내부 현재 상태 좌표이며 공개 상태 시계나 호출자가 선택하는 권한이 아닙니다.
+- `runs.scope_revision`은 값이 있을 때 실행이 관찰한 현재 적용 범위 리비전을 저장합니다. 레거시 행이나 범위와 무관한 행은 null로 둘 수 있습니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경은 `tasks.scope_revision`을 증가시킵니다. 의미가 같은 정규화된 갱신은 증가시키지 않습니다.
 - 커밋된 `harness.record_run`은 `tasks.close_basis_revision`을 정확히 한 번 증가시킵니다.
 - 실질적 범위 변경은 `tasks.close_basis_json`을 무효화하고, `tasks.close_basis_revision`을 증가시키며, 담당 문서에 따라 판단 근거 행을 오래됨 또는 대체됨으로 만들 수 있습니다.
 - 사용자 판단 기록은 어느 Task 리비전도 증가시키지 않습니다.
 - `tasks.close_basis_json`은 nullable 현재 `CurrentCloseBasis` 저장소입니다. SQL `NULL`은 사용할 수 있는 현재 닫기 근거가 없다는 뜻입니다.
+- `change_units.close_basis_json`은 물리 호환성 저장소로 유지됩니다. 현재 닫기 근거 권한이 아니며, 현재 `CurrentCloseBasis` 권한은 `tasks.close_basis_json`에 있습니다.
 - `tasks.close_summary_json`은 성공한 종료 닫기 결과를 위해 보존됩니다. 기존 열린 Task는 종료 또는 레거시 요약 JSON을 현재 닫기 근거로 자동 변환하지 않습니다.
 
 판단 근거 저장:
@@ -634,6 +668,7 @@ Task 리비전과 닫기 근거:
 - `user_judgments.basis_json`은 있을 때 API `JudgmentBasis` 스냅샷을 저장합니다.
 - `user_judgments.basis_status`는 판단 근거의 저장소 소유 호환 상태인 `current`, `stale`, `superseded`, `legacy_unbound`를 저장합니다.
 - 근거가 없는 기존 판단은 `basis_json IS NULL`과 `basis_status='legacy_unbound'`로 표현합니다. 이 판단은 감사 기록으로 남으며 현재 닫기, 쓰기, 민감 승인 요구사항을 만족할 수 없습니다.
+- 닫힌 `user_judgments.status` 집합, nullable `resolution_outcome`, nullable `resolution_machine_action`, 행위자 출처 열, 해결 접점 출처 열, 복합 해결 접점 외래 키는 의도된 프로젝트 상태 스키마 버전 10의 일부입니다.
 - `user_judgments.resolution_outcome`은 있을 때 선택된 선택지의 기계 판독 가능 결과를 저장합니다. `resolution_outcome`이 null인 `status='resolved'`는 권한을 지니는 요구사항에서는 이력 감사 기록이며 수락으로 해석할 수 없습니다.
 - `user_judgments.resolution_machine_action`은 있을 때 선택된 Core 생성 권한 동작을 저장합니다. 현재 권한을 지니는 해결은 null이 아닌 `resolution_machine_action`과 null이 아닌 `resolution_outcome`을 요구합니다. 레거시 행은 감사 전용 읽기를 위해 둘 중 하나를 null로 둘 수 있습니다.
 - `resolved_by_actor_kind`, `resolved_actor_role`, `resolved_by_surface_id`, `resolved_by_surface_instance_id`, `resolved_verification_basis`, `resolved_assurance_level`은 해결 시점에 파생된 `VerifiedActorContext` 출처를 저장합니다. 권한을 지니는 행은 `resolved_by_actor_kind='user'`, `resolved_actor_role='user_interaction'`, 유효한 해결 접점/인스턴스 참조, null이 아닌 출처 필드가 필요합니다. 그 출처가 없는 행은 읽을 수 있는 이력 기록일 뿐입니다.
@@ -652,7 +687,9 @@ Task 리비전과 닫기 근거:
 - `request_hash`는 공개 요청 충돌 판별자로 저장하지만 고유 키의 일부가 아니며 호출 맥락을 흡수하지 않습니다.
 - `tool_invocations.response_json`은 [저장 효과](storage-effects.md)가 재실행 행 생성을 정의한 커밋된 재실행 응답만 저장합니다.
 - 새로 쓰는 재실행 행은 `replay_context_status='verified'`를 사용하고 파생된 `VerifiedSurfaceContext`의 완전하고 null이 아닌 `surface_id`, `surface_instance_id`, `access_class` 값을 저장합니다.
+- `tool_invocations.replay_context_status`의 기본값은 레거시 삽입 호환성을 위한 `legacy_unverified`입니다. 그래도 현재 재실행 행 생성은 완전한 맥락과 함께 `verified`를 써야 합니다.
 - 확인된 재실행 행은 `surfaces(project_id, surface_id, surface_instance_id)`를 참조하는 물리 복합 외래 키 `(project_id, surface_id, surface_instance_id)`를 통해 유효한 참조 접점을 요구합니다.
+- `tool_invocations` 테이블 제약과 `tool_invocations_verified_context_insert`, `tool_invocations_verified_context_update` 두 트리거는 `surface_id`, `surface_instance_id`, `access_class`가 없는 `verified` 행을 거부합니다.
 - 재실행 접점 외래 키는 제한적 삭제 동작을 사용합니다. 스키마 검증은 열의 존재만이 아니라 실제 SQLite 외래 키 정의를 검사해야 합니다.
 - `verification_basis`는 진단용으로 재실행 행에 저장할 수 있지만 호출자 권한이 아닙니다.
 - 확인된 맥락이 없는 기존 재실행 행은 `replay_context_status='legacy_unverified'`와 null 또는 불완전한 맥락 필드로 표현할 수 있습니다. 재실행 적격성은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.

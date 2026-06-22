@@ -1336,6 +1336,7 @@ documents:
   - idempotency and replay rows
   - storage locking
   - migration boundaries
+  - supported project-state migration semantics
   - registry schema version 2 Agent Integration Profile migration
 - doc_id: reference.agent-integration
   path_en: docs/en/reference/agent-integration.md
