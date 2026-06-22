@@ -6316,6 +6316,10 @@ fn record_user_judgment_persists_authority_accept_action() -> Result<(), Box<dyn
         "accept"
     );
     assert_eq!(
+        user_judgment_resolution_machine_action(&harness, &pending_judgment_id)?,
+        Some("accept".to_owned())
+    );
+    assert_eq!(
         user_judgment_resolution_outcome(&harness, &pending_judgment_id)?,
         Some("accepted".to_owned())
     );
@@ -6365,6 +6369,10 @@ fn record_user_judgment_persists_rejected_option_outcome() -> Result<(), Box<dyn
         Some("rejected".to_owned())
     );
     assert_eq!(
+        user_judgment_resolution_machine_action(&harness, &pending_judgment_id)?,
+        Some("reject".to_owned())
+    );
+    assert_eq!(
         resolution_json(&harness, &pending_judgment_id)?["resolution_outcome"],
         "rejected"
     );
@@ -6377,6 +6385,125 @@ fn record_user_judgment_persists_rejected_option_outcome() -> Result<(), Box<dyn
     assert_eq!(event_kind, "user_judgment_recorded");
     assert_eq!(event_payload["resolution_outcome"], "rejected");
     Ok(())
+}
+
+#[test]
+fn legacy_judgment_without_machine_action_remains_audit_only() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_no_action")?;
+    let after_basis = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        "legacy_no_action",
+        true,
+    )?;
+    let judgment = harness.service.request_user_judgment(
+        user_judgment_request(
+            "req_legacy_no_action_judgment",
+            "idem_legacy_no_action_judgment",
+            false,
+            Some(after_basis),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::FinalAcceptance,
+        ),
+        invocation(AccessClass::CoreMutation),
+    )?;
+    let judgment_id = response_record_id(&judgment.response_value, "user_judgment_ref");
+    set_user_judgment_resolution_json(
+        &harness,
+        &judgment_id,
+        Some(
+            &json!({
+                "selected_option_id": "accept",
+                "answer": {
+                    "product_decision": null,
+                    "technical_decision": null,
+                    "scope_decision": null,
+                    "sensitive_action_scope": null,
+                    "final_acceptance": { "judgment": { "decision": "accepted" } },
+                    "residual_risk_acceptance": null,
+                    "cancellation": null
+                },
+                "note": null,
+                "accepted_risks": [],
+                "resolved_by_actor_kind": "user"
+            })
+            .to_string(),
+        ),
+    )?;
+    let before = harness.counts()?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: "req_legacy_no_action_close",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    assert_eq!(
+        user_judgment_resolution_machine_action(&harness, &judgment_id)?,
+        None
+    );
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn stored_judgment_null_action_column_with_json_action_is_corrupt() -> Result<(), Box<dyn Error>> {
+    assert_final_acceptance_action_corruption("null_action_column", |harness, judgment_id| {
+        set_user_judgment_resolution_machine_action(harness, judgment_id, None)
+    })
+}
+
+#[test]
+fn stored_judgment_action_column_with_missing_json_action_is_corrupt() -> Result<(), Box<dyn Error>>
+{
+    assert_final_acceptance_action_corruption("missing_json_action", |harness, judgment_id| {
+        let mut resolution = resolution_json(harness, judgment_id)?;
+        resolution
+            .as_object_mut()
+            .expect("resolution JSON should be an object")
+            .remove("machine_action");
+        set_user_judgment_resolution_json_value(harness, judgment_id, &resolution)
+    })
+}
+
+#[test]
+fn stored_judgment_differing_action_values_are_corrupt() -> Result<(), Box<dyn Error>> {
+    assert_final_acceptance_action_corruption("differing_action", |harness, judgment_id| {
+        let mut resolution = resolution_json(harness, judgment_id)?;
+        resolution["machine_action"] = json!("reject");
+        set_user_judgment_resolution_json_value(harness, judgment_id, &resolution)
+    })
+}
+
+#[test]
+fn stored_judgment_action_outcome_mismatch_is_corrupt() -> Result<(), Box<dyn Error>> {
+    assert_final_acceptance_action_corruption("action_outcome_mismatch", |harness, judgment_id| {
+        set_user_judgment_resolution_machine_action(harness, judgment_id, Some("reject"))?;
+        let mut resolution = resolution_json(harness, judgment_id)?;
+        resolution["machine_action"] = json!("reject");
+        set_user_judgment_resolution_json_value(harness, judgment_id, &resolution)
+    })
+}
+
+#[test]
+fn stored_judgment_unsupported_action_string_is_corrupt() -> Result<(), Box<dyn Error>> {
+    assert_final_acceptance_action_corruption("unsupported_action", |harness, judgment_id| {
+        set_user_judgment_resolution_machine_action_raw(harness, judgment_id, Some("approve"))
+    })
 }
 
 #[test]
@@ -10864,6 +10991,60 @@ fn record_final_acceptance_with_id(
     Ok((state_version, judgment_id))
 }
 
+fn assert_final_acceptance_action_corruption<F>(
+    suffix: &str,
+    mutate: F,
+) -> Result<(), Box<dyn Error>>
+where
+    F: FnOnce(&MethodHarness, &str) -> Result<(), Box<dyn Error>>,
+{
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, &format!("bad_action_{suffix}"))?;
+    let after_basis = record_close_evidence(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        2,
+        &format!("bad_action_{suffix}"),
+        true,
+    )?;
+    let (_, judgment_id) = record_final_acceptance_with_id(
+        &harness,
+        &task_id,
+        &change_unit_id,
+        after_basis,
+        &format!("bad_action_{suffix}"),
+    )?;
+    mutate(&harness, &judgment_id)?;
+    let before = harness.counts()?;
+
+    let response = harness.service.close_task(
+        close_task_request(CloseTaskFixture {
+            request_id: &format!("req_close_bad_action_{suffix}"),
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(AccessClass::ReadStatus),
+    )?;
+
+    assert_owner_state_value_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "resolution_machine_action",
+        &harness.runtime_home_path,
+    );
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(user_judgment_status(&harness, &judgment_id)?, "resolved");
+    Ok(())
+}
+
 fn record_cancellation_authority(
     harness: &MethodHarness,
     task_id: &str,
@@ -12174,6 +12355,21 @@ fn user_judgment_resolution_outcome(
     )?)
 }
 
+fn user_judgment_resolution_machine_action(
+    harness: &MethodHarness,
+    user_judgment_id: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let conn = harness.conn()?;
+    Ok(conn.query_row(
+        "SELECT resolution_machine_action
+               FROM user_judgments
+              WHERE project_id = ?1
+                AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, user_judgment_id],
+        |row| row.get(0),
+    )?)
+}
+
 fn user_judgment_actor_provenance(
     harness: &MethodHarness,
     user_judgment_id: &str,
@@ -12484,6 +12680,48 @@ fn set_user_judgment_resolution_json(
         rusqlite::params![PROJECT_ID, judgment_id, value],
     )?;
     Ok(())
+}
+
+fn set_user_judgment_resolution_machine_action(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    value: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    harness.conn()?.execute(
+        "UPDATE user_judgments
+            SET resolution_machine_action = ?3
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, judgment_id, value],
+    )?;
+    Ok(())
+}
+
+fn set_user_judgment_resolution_machine_action_raw(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    value: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let conn = harness.conn()?;
+    conn.pragma_update(None, "ignore_check_constraints", true)?;
+    conn.execute(
+        "UPDATE user_judgments
+            SET resolution_machine_action = ?3
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, judgment_id, value],
+    )?;
+    conn.pragma_update(None, "ignore_check_constraints", false)?;
+    Ok(())
+}
+
+fn set_user_judgment_resolution_json_value(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    value: &Value,
+) -> Result<(), Box<dyn Error>> {
+    let text = serde_json::to_string(value)?;
+    set_user_judgment_resolution_json(harness, judgment_id, Some(&text))
 }
 
 fn set_user_judgment_resolution_actor(

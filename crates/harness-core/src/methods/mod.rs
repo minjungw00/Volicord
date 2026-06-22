@@ -522,6 +522,7 @@ fn decode_optional_persisted_resolution(
     record_ref: impl Into<String>,
     logical_column: &'static str,
     raw: Option<&str>,
+    stored_resolution_machine_action: Option<UserJudgmentOptionAction>,
     stored_resolution_outcome: Option<JudgmentResolutionOutcome>,
 ) -> CoreResult<Option<UserJudgmentResolution>> {
     let record_ref = record_ref.into();
@@ -534,6 +535,28 @@ fn decode_optional_persisted_resolution(
     let Some(resolution) = resolution else {
         return Ok(None);
     };
+    if resolution.machine_action != stored_resolution_machine_action {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                table,
+                record_ref.clone(),
+                "resolution_machine_action",
+            ),
+        ));
+    }
+    if let (Some(machine_action), Some(outcome)) =
+        (stored_resolution_machine_action, stored_resolution_outcome)
+    {
+        if machine_action.resolution_outcome() != outcome {
+            return Err(CorePipelineError::Store(
+                StoreError::corrupt_owner_state_value(
+                    table,
+                    record_ref.clone(),
+                    "resolution_machine_action",
+                ),
+            ));
+        }
+    }
     let Some(stored_resolution_outcome) = stored_resolution_outcome else {
         return Ok(None);
     };
@@ -541,7 +564,7 @@ fn decode_optional_persisted_resolution(
         && resolution.resolution_outcome != Some(stored_resolution_outcome)
     {
         return Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_value(table, record_ref, "resolution_outcome"),
+            StoreError::corrupt_owner_state_value(table, record_ref.clone(), "resolution_outcome"),
         ));
     }
     if resolution
@@ -549,7 +572,7 @@ fn decode_optional_persisted_resolution(
         .is_some_and(|action| action.resolution_outcome() != stored_resolution_outcome)
     {
         return Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_value(table, record_ref, "machine_action"),
+            StoreError::corrupt_owner_state_value(table, record_ref.clone(), "machine_action"),
         ));
     }
     resolution
@@ -644,23 +667,10 @@ fn user_judgment_authority_from_record(
         record.judgment_id.clone(),
         "resolution_json",
         record.resolution_json.as_deref(),
+        resolution_machine_action,
         resolution_outcome,
     )?;
-    let authority_machine_action = if let Some(resolution) = resolution.as_ref() {
-        let json_machine_action = resolution.machine_action.as_ref().copied();
-        if resolution_machine_action != json_machine_action {
-            return Err(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_value(
-                    "user_judgments",
-                    record.judgment_id.clone(),
-                    "resolution_machine_action",
-                ),
-            ));
-        }
-        resolution_machine_action
-    } else {
-        None
-    };
+    let authority_machine_action = resolution_machine_action;
     if let (Some(machine_action), Some(outcome)) = (authority_machine_action, resolution_outcome) {
         if machine_action.resolution_outcome() != outcome {
             return Err(CorePipelineError::Store(

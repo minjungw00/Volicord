@@ -2351,6 +2351,7 @@ impl ProjectMutation<'_> {
         validate_user_judgment_resolution_json(
             "user_judgments.resolution_json",
             &input.resolution_json,
+            input.resolution_machine_action,
             input.resolution_outcome,
         )?;
         if let Some(value) = &input.sensitive_action_scope_json {
@@ -4100,6 +4101,7 @@ fn validate_user_judgment_options_json(field: &'static str, text: &str) -> Store
 fn validate_user_judgment_resolution_json(
     field: &'static str,
     text: &str,
+    expected_action: UserJudgmentOptionAction,
     expected_outcome: JudgmentResolutionOutcome,
 ) -> StoreResult<()> {
     let resolution =
@@ -4108,6 +4110,13 @@ fn validate_user_judgment_resolution_json(
                 detail: format!("{field} must be persisted user judgment resolution JSON: {error}"),
             }
         })?;
+    if resolution.machine_action != Some(expected_action) {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "{field} machine_action must match user_judgments.resolution_machine_action"
+            ),
+        });
+    }
     if resolution.resolution_outcome != Some(expected_outcome) {
         return Err(StoreError::InvalidInput {
             detail: format!(
@@ -4634,6 +4643,171 @@ mod tests {
     }
 
     #[test]
+    fn resolve_user_judgment_writes_deferred_action_outcome_pair() -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_deferred_judgment";
+        let judgment_id = "judgment_deferred_pair";
+
+        let insert_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RequestUserJudgment,
+            Some(&IdempotencyKey::new("idem_store_defer_insert")),
+            &RequestHash::new("sha256:defer-insert"),
+            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(0),
+            vec![pending_event_for_task("defer_insert", task_id)],
+        );
+        let inserted = store.commit_mutation(
+            insert_input,
+            |mutation, facts| {
+                for storage_mutation in [
+                    CoreStorageMutation::InsertTask(task_insert(task_id)),
+                    CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
+                        judgment_id,
+                        task_id,
+                        None,
+                        JudgmentBasisCompatibilityStatus::Current,
+                    )),
+                ] {
+                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                }
+                Ok(())
+            },
+            response_json,
+        )?;
+        assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
+
+        let resolve_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RecordUserJudgment,
+            Some(&IdempotencyKey::new("idem_store_defer_resolve")),
+            &RequestHash::new("sha256:defer-resolve"),
+            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(1),
+            vec![pending_event_for_task("defer_resolve", task_id)],
+        );
+        let resolved = store.commit_mutation(
+            resolve_input,
+            |mutation, facts| {
+                CoreStorageMutation::ResolveUserJudgment(user_judgment_resolution_update(
+                    judgment_id,
+                    UserJudgmentOptionAction::Defer,
+                    JudgmentResolutionOutcome::Deferred,
+                ))
+                .apply(mutation, facts.committed_state_version)
+            },
+            response_json,
+        )?;
+        assert!(matches!(resolved, MutationCommitOutcome::Committed { .. }));
+
+        let record = store
+            .user_judgment_record(judgment_id)?
+            .expect("resolved judgment should be readable");
+        assert_eq!(record.resolution_machine_action, Some("defer".to_owned()));
+        assert_eq!(record.resolution_outcome, Some("deferred".to_owned()));
+        assert_eq!(
+            serde_json::from_str::<Value>(
+                record
+                    .resolution_json
+                    .as_deref()
+                    .expect("resolution JSON should be stored"),
+            )?["machine_action"],
+            "defer"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_user_judgment_requires_resolution_json_action() -> Result<(), Box<dyn Error>> {
+        let harness = StoreHarness::new()?;
+        let mut store = harness.store()?;
+        let task_id = "task_missing_json_action";
+        let judgment_id = "judgment_missing_json_action";
+
+        let insert_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RequestUserJudgment,
+            Some(&IdempotencyKey::new("idem_store_missing_action_insert")),
+            &RequestHash::new("sha256:missing-action-insert"),
+            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(0),
+            vec![pending_event_for_task("missing_action_insert", task_id)],
+        );
+        let inserted = store.commit_mutation(
+            insert_input,
+            |mutation, facts| {
+                for storage_mutation in [
+                    CoreStorageMutation::InsertTask(task_insert(task_id)),
+                    CoreStorageMutation::InsertUserJudgment(user_judgment_insert(
+                        judgment_id,
+                        task_id,
+                        None,
+                        JudgmentBasisCompatibilityStatus::Current,
+                    )),
+                ] {
+                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                }
+                Ok(())
+            },
+            response_json,
+        )?;
+        assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
+        let before = store.effect_counts()?;
+
+        let resolve_input = commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RecordUserJudgment,
+            Some(&IdempotencyKey::new("idem_store_missing_action_resolve")),
+            &RequestHash::new("sha256:missing-action-resolve"),
+            Some(replay_context(SURFACE_INSTANCE_ID, "core_mutation")),
+            Some(1),
+            vec![pending_event_for_task("missing_action_resolve", task_id)],
+        );
+        let mut update = user_judgment_resolution_update(
+            judgment_id,
+            UserJudgmentOptionAction::Accept,
+            JudgmentResolutionOutcome::Accepted,
+        );
+        update.resolution_json = json!({
+            "selected_option_id": "accept",
+            "resolution_outcome": "accepted",
+            "answer": {
+                "product_decision": null,
+                "technical_decision": null,
+                "scope_decision": null,
+                "sensitive_action_scope": null,
+                "final_acceptance": { "judgment": { "decision": "accepted" } },
+                "residual_risk_acceptance": null,
+                "cancellation": null
+            },
+            "note": null,
+            "accepted_risks": [],
+            "resolved_by_actor_kind": "user"
+        })
+        .to_string();
+
+        let error = store
+            .commit_mutation(
+                resolve_input,
+                |mutation, facts| {
+                    CoreStorageMutation::ResolveUserJudgment(update)
+                        .apply(mutation, facts.committed_state_version)
+                },
+                response_json,
+            )
+            .expect_err("resolution JSON without machine_action should reject");
+        assert!(matches!(error, StoreError::InvalidInput { .. }));
+        assert_eq!(store.effect_counts()?, before);
+        let record = store
+            .user_judgment_record(judgment_id)?
+            .expect("pending judgment should remain readable");
+        assert_eq!(record.status, "pending");
+        assert_eq!(record.resolution_machine_action, None);
+        Ok(())
+    }
+
+    #[test]
     fn malformed_stored_judgment_basis_json_is_store_data_error() -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
@@ -4809,6 +4983,49 @@ mod tests {
             requested_by_surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
             requested_at: "t0".to_owned(),
             metadata_json: "{}".to_owned(),
+        }
+    }
+
+    fn user_judgment_resolution_update(
+        judgment_id: &str,
+        action: UserJudgmentOptionAction,
+        outcome: JudgmentResolutionOutcome,
+    ) -> UserJudgmentResolutionUpdate {
+        UserJudgmentResolutionUpdate {
+            judgment_id: judgment_id.to_owned(),
+            status: "resolved".to_owned(),
+            resolution_outcome: outcome,
+            resolution_machine_action: action,
+            resolution_json: json!({
+                "selected_option_id": match action {
+                    UserJudgmentOptionAction::Accept => "accept",
+                    UserJudgmentOptionAction::Reject => "reject",
+                    UserJudgmentOptionAction::Defer => "defer",
+                },
+                "machine_action": action,
+                "resolution_outcome": outcome,
+                "answer": {
+                    "product_decision": null,
+                    "technical_decision": null,
+                    "scope_decision": null,
+                    "sensitive_action_scope": null,
+                    "final_acceptance": { "judgment": { "decision": outcome } },
+                    "residual_risk_acceptance": null,
+                    "cancellation": null
+                },
+                "note": null,
+                "accepted_risks": [],
+                "resolved_by_actor_kind": "user"
+            })
+            .to_string(),
+            sensitive_action_scope_json: None,
+            resolved_by_actor_kind: "user".to_owned(),
+            resolved_actor_role: "user_interaction".to_owned(),
+            resolved_by_surface_id: SURFACE_ID.to_owned(),
+            resolved_by_surface_instance_id: SURFACE_INSTANCE_ID.to_owned(),
+            resolved_verification_basis: "store_test_registration".to_owned(),
+            resolved_assurance_level: "registered_surface_cooperative".to_owned(),
+            resolved_at: "t1".to_owned(),
         }
     }
 

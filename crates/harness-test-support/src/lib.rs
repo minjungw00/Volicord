@@ -708,6 +708,21 @@ pub mod core_fixtures {
             )?)
         }
 
+        /// Reads the stored machine-readable resolution action for a user-owned judgment row.
+        pub fn user_judgment_resolution_machine_action(
+            &self,
+            judgment_id: &str,
+        ) -> Result<Option<String>, StoreError> {
+            Ok(self.conn()?.query_row(
+                "SELECT resolution_machine_action
+                   FROM user_judgments
+                  WHERE project_id = ?1
+                    AND judgment_id = ?2",
+                rusqlite::params![self.project_id, judgment_id],
+                |row| row.get(0),
+            )?)
+        }
+
         /// Reads the currently applied Change Unit id for a Task.
         pub fn current_change_unit_id(&self, task_id: &str) -> Result<Option<String>, StoreError> {
             Ok(self.conn()?.query_row(
@@ -979,13 +994,29 @@ pub mod core_fixtures {
                     Ok(serde_json::to_string(&value)?)
                 })
                 .transpose()?;
+            let machine_action = match outcome {
+                Some("accepted") => Some("accept"),
+                Some("rejected") => Some("reject"),
+                Some("deferred") => Some("defer"),
+                Some("blocked") | None => None,
+                Some(value) => {
+                    return Err(format!("unsupported test outcome {value}").into());
+                }
+            };
             self.conn()?.execute(
                 "UPDATE user_judgments
                     SET resolution_outcome = ?3,
-                        resolution_json = ?4
+                        resolution_machine_action = ?4,
+                        resolution_json = ?5
                   WHERE project_id = ?1
                     AND judgment_id = ?2",
-                rusqlite::params![self.project_id, judgment_id, outcome, updated_json],
+                rusqlite::params![
+                    self.project_id,
+                    judgment_id,
+                    outcome,
+                    machine_action,
+                    updated_json
+                ],
             )?;
             Ok(())
         }
