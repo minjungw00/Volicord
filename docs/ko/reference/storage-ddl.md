@@ -274,13 +274,13 @@ CREATE TABLE user_judgments (
   status TEXT NOT NULL CHECK (status IN ('pending', 'resolved', 'stale', 'superseded', 'expired')),
   request_json TEXT NOT NULL DEFAULT '{}',
   context_json TEXT NOT NULL DEFAULT '{}',
-  options_json TEXT NOT NULL DEFAULT '[]',
+  options_json TEXT NOT NULL DEFAULT '{"schema_version":1,"options":[]}',
   affected_refs_json TEXT NOT NULL DEFAULT '[]',
   artifact_refs_json TEXT NOT NULL DEFAULT '[]',
   sensitive_action_scope_json TEXT NOT NULL DEFAULT '{}',
-  basis_json TEXT,
-  basis_status TEXT NOT NULL DEFAULT 'legacy_unbound'
-    CHECK (basis_status IN ('current', 'stale', 'superseded', 'legacy_unbound')),
+  basis_json TEXT NOT NULL,
+  basis_status TEXT NOT NULL DEFAULT 'current'
+    CHECK (basis_status IN ('current', 'stale', 'superseded')),
   resolution_outcome TEXT
     CHECK (resolution_outcome IS NULL OR resolution_outcome IN ('accepted', 'rejected', 'deferred', 'blocked')),
   resolution_machine_action TEXT
@@ -298,6 +298,71 @@ CREATE TABLE user_judgments (
   resolved_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, judgment_id),
+  CHECK (
+    (
+      status IN ('pending', 'expired')
+      AND resolution_outcome IS NULL
+      AND resolution_machine_action IS NULL
+      AND resolution_json IS NULL
+      AND resolved_by_actor_kind IS NULL
+      AND resolved_actor_role IS NULL
+      AND resolved_by_surface_id IS NULL
+      AND resolved_by_surface_instance_id IS NULL
+      AND resolved_verification_basis IS NULL
+      AND resolved_assurance_level IS NULL
+      AND resolved_at IS NULL
+    )
+    OR (
+      status = 'resolved'
+      AND resolution_outcome IS NOT NULL
+      AND resolution_machine_action IS NOT NULL
+      AND resolution_json IS NOT NULL
+      AND resolved_by_actor_kind IS NOT NULL
+      AND resolved_actor_role IS NOT NULL
+      AND resolved_by_surface_id IS NOT NULL
+      AND resolved_by_surface_instance_id IS NOT NULL
+      AND resolved_verification_basis IS NOT NULL
+      AND resolved_assurance_level IS NOT NULL
+      AND resolved_at IS NOT NULL
+    )
+    OR (
+      status IN ('stale', 'superseded')
+      AND (
+        (
+          resolution_outcome IS NULL
+          AND resolution_machine_action IS NULL
+          AND resolution_json IS NULL
+          AND resolved_by_actor_kind IS NULL
+          AND resolved_actor_role IS NULL
+          AND resolved_by_surface_id IS NULL
+          AND resolved_by_surface_instance_id IS NULL
+          AND resolved_verification_basis IS NULL
+          AND resolved_assurance_level IS NULL
+          AND resolved_at IS NULL
+        )
+        OR (
+          resolution_outcome IS NOT NULL
+          AND resolution_machine_action IS NOT NULL
+          AND resolution_json IS NOT NULL
+          AND resolved_by_actor_kind IS NOT NULL
+          AND resolved_actor_role IS NOT NULL
+          AND resolved_by_surface_id IS NOT NULL
+          AND resolved_by_surface_instance_id IS NOT NULL
+          AND resolved_verification_basis IS NOT NULL
+          AND resolved_assurance_level IS NOT NULL
+          AND resolved_at IS NOT NULL
+        )
+      )
+    )
+  ),
+  CHECK (
+    resolution_machine_action IS NULL
+    OR (
+      (resolution_machine_action = 'accept' AND resolution_outcome = 'accepted')
+      OR (resolution_machine_action = 'reject' AND resolution_outcome = 'rejected')
+      OR (resolution_machine_action = 'defer' AND resolution_outcome = 'deferred')
+    )
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
@@ -353,7 +418,7 @@ CREATE TABLE runs (
   observed_changes_json TEXT NOT NULL DEFAULT '{}',
   evidence_updates_json TEXT NOT NULL DEFAULT '[]',
   authorization_effect_json TEXT NOT NULL DEFAULT '{}',
-  scope_revision INTEGER CHECK (scope_revision IS NULL OR scope_revision >= 0),
+  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   created_by_surface_id TEXT NOT NULL,
   created_by_surface_instance_id TEXT NOT NULL,
   started_at TEXT,
@@ -535,57 +600,18 @@ CREATE TABLE tool_invocations (
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   committed_state_version INTEGER NOT NULL CHECK (committed_state_version > basis_state_version),
   status TEXT NOT NULL DEFAULT 'committed' CHECK (status = 'committed'),
-  surface_id TEXT,
-  surface_instance_id TEXT,
-  access_class TEXT,
+  surface_id TEXT NOT NULL,
+  surface_instance_id TEXT NOT NULL,
+  access_class TEXT NOT NULL,
   verification_basis TEXT,
-  replay_context_status TEXT NOT NULL DEFAULT 'legacy_unverified'
-    CHECK (replay_context_status IN ('verified', 'legacy_unverified')),
   response_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, tool_name, idempotency_key),
-  CHECK (
-    (
-      replay_context_status = 'verified'
-      AND surface_id IS NOT NULL
-      AND surface_instance_id IS NOT NULL
-      AND access_class IS NOT NULL
-    )
-    OR (
-      replay_context_status = 'legacy_unverified'
-    )
-  ),
   FOREIGN KEY (project_id, surface_id, surface_instance_id)
     REFERENCES surfaces (project_id, surface_id, surface_instance_id)
     ON DELETE RESTRICT,
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
-
-CREATE TRIGGER tool_invocations_verified_context_insert
-BEFORE INSERT ON tool_invocations
-FOR EACH ROW
-WHEN NEW.replay_context_status = 'verified'
-  AND (
-    NEW.surface_id IS NULL
-    OR NEW.surface_instance_id IS NULL
-    OR NEW.access_class IS NULL
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
-END;
-
-CREATE TRIGGER tool_invocations_verified_context_update
-BEFORE UPDATE ON tool_invocations
-FOR EACH ROW
-WHEN NEW.replay_context_status = 'verified'
-  AND (
-    NEW.surface_id IS NULL
-    OR NEW.surface_instance_id IS NULL
-    OR NEW.access_class IS NULL
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
-END;
 ```
 
 프로젝트 상태의 기준 인덱스:
@@ -654,7 +680,7 @@ CREATE INDEX idx_task_events_task_seq
 Task 리비전과 닫기 근거:
 
 - `tasks.scope_revision`과 `tasks.close_basis_revision`은 내부 현재 상태 좌표이며 공개 상태 시계나 호출자가 선택하는 권한이 아닙니다.
-- `runs.scope_revision`은 값이 있을 때 실행이 관찰한 현재 적용 범위 리비전을 저장합니다. 레거시 행이나 범위와 무관한 행은 null로 둘 수 있습니다.
+- `runs.scope_revision`은 실행이 관찰한 현재 적용 범위 리비전을 저장하며 모든 실행 행에 필요합니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경은 `tasks.scope_revision`을 증가시킵니다. 의미가 같은 정규화된 갱신은 증가시키지 않습니다.
 - 커밋된 `harness.record_run`은 `tasks.close_basis_revision`을 정확히 한 번 증가시킵니다.
 - 실질적 범위 변경은 `tasks.close_basis_json`을 무효화하고, `tasks.close_basis_revision`을 증가시키며, 담당 문서에 따라 판단 근거 행을 오래됨 또는 대체됨으로 만들 수 있습니다.
@@ -665,13 +691,14 @@ Task 리비전과 닫기 근거:
 
 판단 근거 저장:
 
-- `user_judgments.basis_json`은 있을 때 API `JudgmentBasis` 스냅샷을 저장합니다.
-- `user_judgments.basis_status`는 판단 근거의 저장소 소유 호환 상태인 `current`, `stale`, `superseded`, `legacy_unbound`를 저장합니다.
-- 근거가 없는 기존 판단은 `basis_json IS NULL`과 `basis_status='legacy_unbound'`로 표현합니다. 이 판단은 감사 기록으로 남으며 현재 닫기, 쓰기, 민감 승인 요구사항을 만족할 수 없습니다.
-- 닫힌 `user_judgments.status` 집합, nullable `resolution_outcome`, nullable `resolution_machine_action`, 행위자 출처 열, 해결 접점 출처 열, 복합 해결 접점 외래 키는 `baseline_sqlite_v2` 프로젝트 상태 스키마 버전 `1`의 일부입니다.
-- `user_judgments.resolution_outcome`은 있을 때 선택된 선택지의 기계 판독 가능 결과를 저장합니다. `resolution_outcome`이 null인 `status='resolved'`는 권한을 지니는 요구사항에서는 이력 감사 기록이며 수락으로 해석할 수 없습니다.
-- `user_judgments.resolution_machine_action`은 있을 때 선택된 Core 생성 권한 동작을 저장합니다. 현재 권한을 지니는 해결은 null이 아닌 `resolution_machine_action`과 null이 아닌 `resolution_outcome`을 요구합니다. 레거시 행은 감사 전용 읽기를 위해 둘 중 하나를 null로 둘 수 있습니다.
-- `resolved_by_actor_kind`, `resolved_actor_role`, `resolved_by_surface_id`, `resolved_by_surface_instance_id`, `resolved_verification_basis`, `resolved_assurance_level`은 해결 시점에 파생된 `VerifiedActorContext` 출처를 저장합니다. 권한을 지니는 행은 `resolved_by_actor_kind='user'`, `resolved_actor_role='user_interaction'`, 유효한 해결 접점/인스턴스 참조, null이 아닌 출처 필드가 필요합니다. 그 출처가 없는 행은 읽을 수 있는 이력 기록일 뿐입니다.
+- `user_judgments.basis_json`은 필수 API `JudgmentBasis` 스냅샷을 저장합니다.
+- `user_judgments.basis_status`는 판단 근거의 저장소 소유 호환 상태인 `current`, `stale`, `superseded`를 저장합니다.
+- 닫힌 `user_judgments.status` 집합, 필수 `basis_json`, 구조화된 `options_json`, 해결 완전성 제약, 행위자 출처 열, 해결 접점 출처 열, 복합 해결 접점 외래 키는 `baseline_sqlite_v2` 프로젝트 상태 스키마 버전 `1`의 일부입니다.
+- `status='resolved'` 행은 null이 아닌 `resolution_outcome`, `resolution_machine_action`, `resolution_json`, 해결 행위자 출처, 해결 접점 출처, `resolved_at`을 요구합니다.
+- `status='pending'`과 `status='expired'` 행은 모든 해결 열과 해결 출처 열이 null이어야 합니다.
+- `status='stale'`과 `status='superseded'` 행은 완전한 해결 그룹을 갖거나 해결 그룹을 전혀 갖지 않을 수 있습니다.
+- `user_judgments.resolution_outcome`은 선택된 선택지의 기계 판독 가능 결과를 저장합니다. `user_judgments.resolution_machine_action`은 선택된 Core 생성 권한 동작을 저장합니다. SQL 동작/결과 제약은 `accept`와 `accepted`, `reject`와 `rejected`, `defer`와 `deferred`의 짝을 유지합니다. `blocked`는 지속 선택지 동작 결과가 아닙니다.
+- `resolved_by_actor_kind`, `resolved_actor_role`, `resolved_by_surface_id`, `resolved_by_surface_instance_id`, `resolved_verification_basis`, `resolved_assurance_level`은 해결 시점에 파생된 `VerifiedActorContext` 출처를 저장합니다. 권한을 지니는 행은 여전히 `resolved_by_actor_kind='user'`, `resolved_actor_role='user_interaction'`, 유효한 해결 접점/인스턴스 참조, null이 아닌 출처 필드가 필요합니다.
 
 접점 로컬 접근 허용:
 
@@ -687,13 +714,12 @@ Task 리비전과 닫기 근거:
 - 재실행 고유 키는 정확히 `(project_id, tool_name, idempotency_key)`입니다.
 - `request_hash`는 공개 요청 충돌 판별자로 저장하지만 고유 키의 일부가 아니며 호출 맥락을 흡수하지 않습니다.
 - `tool_invocations.response_json`은 [저장 효과](storage-effects.md)가 재실행 행 생성을 정의한 커밋된 재실행 응답만 저장합니다.
-- 새로 쓰는 재실행 행은 `replay_context_status='verified'`를 사용하고 파생된 `VerifiedSurfaceContext`의 완전하고 null이 아닌 `surface_id`, `surface_instance_id`, `access_class` 값을 저장합니다.
-- `tool_invocations.replay_context_status`의 기본값은 레거시 삽입 호환성을 위한 `legacy_unverified`입니다. 그래도 현재 재실행 행 생성은 완전한 맥락과 함께 `verified`를 써야 합니다.
+- 재실행 행은 파생된 `VerifiedSurfaceContext`의 완전하고 null이 아닌 `surface_id`, `surface_instance_id`, `access_class` 값을 저장합니다.
 - 확인된 재실행 행은 `surfaces(project_id, surface_id, surface_instance_id)`를 참조하는 물리 복합 외래 키 `(project_id, surface_id, surface_instance_id)`를 통해 유효한 참조 접점을 요구합니다.
-- `tool_invocations` 테이블 제약과 `tool_invocations_verified_context_insert`, `tool_invocations_verified_context_update` 두 트리거는 `surface_id`, `surface_instance_id`, `access_class`가 없는 `verified` 행을 거부합니다.
+- `tool_invocations` 테이블 정의는 `surface_id`, `surface_instance_id`, `access_class`가 없는 재실행 행을 거부합니다.
 - 재실행 접점 외래 키는 제한적 삭제 동작을 사용합니다. 스키마 검증은 열의 존재만이 아니라 실제 SQLite 외래 키 정의를 검사해야 합니다.
 - `verification_basis`는 진단용으로 재실행 행에 저장할 수 있지만 호출자 권한이 아닙니다.
-- 확인된 맥락이 없는 기존 재실행 행은 `replay_context_status='legacy_unverified'`와 null 또는 불완전한 맥락 필드로 표현할 수 있습니다. 재실행 적격성은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
+- 완전한 호출 맥락을 가진 저장 행의 재실행 적격성은 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 `Write Authorization` 기준 버전:
 

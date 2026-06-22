@@ -967,6 +967,7 @@ pub mod core_fixtures {
             judgment_id: &str,
             outcome: Option<&str>,
         ) -> Result<(), Box<dyn Error>> {
+            let outcome = outcome.ok_or("resolution outcome is required for current fixtures")?;
             let current_json: Option<String> = self.conn()?.query_row(
                 "SELECT resolution_json
                    FROM user_judgments
@@ -978,15 +979,15 @@ pub mod core_fixtures {
             let updated_json = current_json
                 .map(|text| -> Result<String, Box<dyn Error>> {
                     let mut value: Value = serde_json::from_str(&text)?;
-                    value["resolution_outcome"] = outcome
-                        .map(|value| Value::String(value.to_owned()))
-                        .unwrap_or(Value::Null);
+                    value["resolution_outcome"] = Value::String(outcome.to_owned());
                     value["machine_action"] = match outcome {
-                        Some("accepted") => Value::String("accept".to_owned()),
-                        Some("rejected") => Value::String("reject".to_owned()),
-                        Some("deferred") => Value::String("defer".to_owned()),
-                        Some("blocked") | None => Value::Null,
-                        Some(value) => {
+                        "accepted" => Value::String("accept".to_owned()),
+                        "rejected" => Value::String("reject".to_owned()),
+                        "deferred" => Value::String("defer".to_owned()),
+                        "blocked" => {
+                            return Err("blocked has no current machine action".into());
+                        }
+                        value => {
                             return Err(format!("unsupported test outcome {value}").into());
                         }
                     };
@@ -994,11 +995,13 @@ pub mod core_fixtures {
                 })
                 .transpose()?;
             let machine_action = match outcome {
-                Some("accepted") => Some("accept"),
-                Some("rejected") => Some("reject"),
-                Some("deferred") => Some("defer"),
-                Some("blocked") | None => None,
-                Some(value) => {
+                "accepted" => "accept",
+                "rejected" => "reject",
+                "deferred" => "defer",
+                "blocked" => {
+                    return Err("blocked has no current machine action".into());
+                }
+                value => {
                     return Err(format!("unsupported test outcome {value}").into());
                 }
             };
@@ -1084,15 +1087,11 @@ pub mod core_fixtures {
             Ok(())
         }
 
-        /// Converts an existing judgment to a legacy-unbound audit row.
-        pub fn set_user_judgment_legacy_unbound(
-            &self,
-            judgment_id: &str,
-        ) -> Result<(), StoreError> {
+        /// Attempts to clear the required user-owned judgment basis JSON value.
+        pub fn clear_user_judgment_basis(&self, judgment_id: &str) -> Result<(), StoreError> {
             self.conn()?.execute(
                 "UPDATE user_judgments
-                    SET basis_json = NULL,
-                        basis_status = 'legacy_unbound'
+                    SET basis_json = NULL
                   WHERE project_id = ?1
                     AND judgment_id = ?2",
                 rusqlite::params![self.project_id, judgment_id],

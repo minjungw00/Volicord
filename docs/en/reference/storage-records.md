@@ -78,7 +78,7 @@ Baseline storage persists only the record families defined by this baseline stor
 | `state.sqlite` | `surfaces` | Surface facts | Registered local surface facts needed for API envelope compatibility, actor-provenance role, capability display, and local-access posture. |
 | `state.sqlite` | `tasks` | Work-unit state | User-value work unit, shaping summary, scope and close-basis revisions, nullable current close basis, lifecycle/result/terminal close summary, current `CompletionPolicy`, and current Change Unit pointer. |
 | `state.sqlite` | `change_units` | Scoped work boundary | Scope summaries, write basis, compatibility close-basis storage, Change Unit lifecycle, and owning `Task` relation. |
-| `state.sqlite` | `user_judgments` | User-owned judgment state | Pending, resolved, stale, superseded, expired, and legacy-unbound user-owned judgments, including basis snapshot, basis status, selected option, machine action, resolution outcome, resolution actor, verified actor provenance when present, and sensitive-action approval scope when relevant. |
+| `state.sqlite` | `user_judgments` | User-owned judgment state | Pending, resolved, stale, superseded, and expired user-owned judgments, including required basis snapshot, basis status, selected option, machine action, resolution outcome, resolution actor, verified actor provenance for resolved rows, and sensitive-action approval scope when relevant. |
 | `state.sqlite` | `write_authorizations` | Cooperative write authority | Single-use `Write Authorization`, basis version, attempt scope, expiration, and consumption state. |
 | `state.sqlite` | `runs` | Execution or observation record | Committed execution or observation record, compatible authorization consumption, and compact evidence updates. |
 | `state.sqlite` plus `artifacts/tmp/` | `artifact_staging` | Transient artifact staging | Staged handle metadata, safe staging facts, and transient bytes or notices. |
@@ -139,9 +139,9 @@ The authoritative current `CurrentCloseBasis` record is `tasks.close_basis_json`
 
 Existing open Tasks do not automatically convert terminal close summary JSON or legacy summary JSON into a current close basis. Absence of a current close basis is represented as absence in `tasks.close_basis_json`, not as an empty generated basis. Presence, absence, or content in `change_units.close_basis_json` does not satisfy current `CurrentCloseBasis` authority.
 
-Judgments without a stored basis, without a machine-readable resolution outcome, or without required verified actor provenance are preserved for audit. They remain addressable historical judgment records but cannot satisfy current close, write, scope-decision, sensitive-approval, cancellation, final-acceptance, or residual-risk-acceptance requirements.
+Stored judgments require a `JudgmentBasis`. Resolved stored judgments require a complete machine-readable resolution, actor provenance, and verified resolved surface provenance. Rows missing those facts are invalid owner state, not audit-compatible authority records.
 
-For stored judgment authority, `user_judgments.status='resolved'` records that an answer exists. It does not mean the user approved. Current authority-bearing judgment use requires the selected option, stored `resolution_machine_action`, stored `resolution_outcome`, applicable actor provenance, and applicable verified resolved surface provenance. Legacy rows may retain missing authority facts for audit-only reads. Absence of an outcome, machine action, applicable actor provenance, or verified resolved surface provenance is never acceptance.
+For stored judgment authority, `user_judgments.status='resolved'` records that an answer exists. It does not mean the user approved. Current authority-bearing judgment use requires the selected option, stored `resolution_machine_action`, stored `resolution_outcome`, applicable actor provenance, and applicable verified resolved surface provenance. Absence of an outcome, machine action, applicable actor provenance, or verified resolved surface provenance is invalid owner state and is never acceptance.
 
 ## Storage-owned values
 
@@ -157,16 +157,15 @@ Closed storage-owned value sets are persistence constraints. Unknown values must
 | Host Installation `last_verified_status` | `not_verified`, `complete`, `action_required`, `partial_failure`, `failed` |
 | `change_units.status` | `proposed`, `active`, `replaced`, `closed` |
 | `write_authorizations.status` | `active`, `consumed`, `expired`, `stale`, `revoked` |
-| `user_judgments.basis_status` | `current`, `stale`, `superseded`, `legacy_unbound` |
-| `user_judgments.resolution_machine_action` | `accept`, `reject`, `defer` when present |
-| `user_judgments.resolution_outcome` | `accepted`, `rejected`, `deferred`, `blocked` when present |
+| `user_judgments.basis_status` | `current`, `stale`, `superseded` |
+| `user_judgments.resolution_machine_action` | `accept`, `reject`, `defer` in complete resolution groups |
+| `user_judgments.resolution_outcome` | `accepted`, `rejected`, `deferred` in complete resolution groups |
 | `artifact_staging.status` | `staged`, `consumed`, `expired`, `discarded` |
 | `artifacts.status` | `available`, `missing`, `integrity_failed`, `unavailable` |
 | `artifacts.integrity_status` | `verified`, `legacy_unknown`, `corrupt` |
 | `artifact_links.owner_record_kind` | `task`, `change_unit`, `run`, `user_judgment`, `evidence_summary`, `blocker` |
 | `blockers.status` | `active`, `resolved`, `superseded` |
 | `tool_invocations.status` | `committed` |
-| `tool_invocations.replay_context_status` | `verified`, `legacy_unverified` |
 
 Rows that mirror public API values must match [API Value Sets](api/schema-value-sets.md), the relevant schema owner, and the method owner exactly. This document does not redefine public API values for fields such as `tasks.mode`, `tasks.lifecycle_phase`, `tasks.result`, `runs.kind`, `runs.status`, `user_judgments.status`, or `evidence_summaries.status`; see [API Value Sets](api/schema-value-sets.md), [API State Schemas](api/schema-state.md), and method owners.
 

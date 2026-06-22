@@ -1849,8 +1849,8 @@ fn obsolete_single_access_class_grant_fails_closed() -> Result<(), Box<dyn Error
 }
 
 #[test]
-fn replay_surface_foreign_key_is_physical_restrictive_and_legacy_safe() -> Result<(), Box<dyn Error>>
-{
+fn replay_surface_foreign_key_is_physical_restrictive_and_requires_identity(
+) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("replay_fk")?;
     register_surface(
         fixture.runtime_home_path(),
@@ -1881,7 +1881,6 @@ fn replay_surface_foreign_key_is_physical_restrictive_and_legacy_safe() -> Resul
             surface_instance_id,
             access_class,
             verification_basis,
-            replay_context_status,
             response_json,
             created_at
         )
@@ -1896,7 +1895,6 @@ fn replay_surface_foreign_key_is_physical_restrictive_and_legacy_safe() -> Resul
             'surface_instance_replay_fk',
             'read_status',
             'local_admin_registration:mcp_stdio_surface_binding',
-            'verified',
             '{\"stored\":\"verified\"}',
             '2026-01-01T00:00:00.000Z'
         )",
@@ -1927,7 +1925,6 @@ fn replay_surface_foreign_key_is_physical_restrictive_and_legacy_safe() -> Resul
             surface_instance_id,
             access_class,
             verification_basis,
-            replay_context_status,
             response_json,
             created_at
         )
@@ -1942,7 +1939,6 @@ fn replay_surface_foreign_key_is_physical_restrictive_and_legacy_safe() -> Resul
             'missing_surface_instance',
             'read_status',
             'local_admin_registration:mcp_stdio_surface_binding',
-            'verified',
             '{\"stored\":\"dangling\"}',
             '2026-01-01T00:00:00.000Z'
         )",
@@ -1953,7 +1949,7 @@ fn replay_surface_foreign_key_is_physical_restrictive_and_legacy_safe() -> Resul
         "dangling verified replay rows should fail physical FK insertion"
     );
 
-    conn.execute(
+    let missing_identity = conn.execute(
         "INSERT INTO tool_invocations (
             project_id,
             tool_name,
@@ -1967,30 +1963,20 @@ fn replay_surface_foreign_key_is_physical_restrictive_and_legacy_safe() -> Resul
         VALUES (
             ?1,
             'harness.intake',
-            'idem_legacy_replay_fk',
-            'sha256:legacy-replay-fk',
+            'idem_missing_identity_replay_fk',
+            'sha256:missing-identity-replay-fk',
             0,
             1,
             '{\"stored\":\"legacy\"}',
             '2026-01-01T00:00:00.000Z'
         )",
         rusqlite::params![fixture.project_id()],
-    )?;
+    );
+    assert!(
+        missing_identity.is_err(),
+        "replay rows without surface identity should fail insertion"
+    );
     drop(conn);
-
-    let before = fixture.counts()?;
-    let legacy = CoreService::new(fixture.runtime_home_path()).intake(
-        fixture.intake_request(
-            "req_legacy_replay_fk",
-            "idem_legacy_replay_fk",
-            false,
-            Some(0),
-        ),
-        invocation(&fixture, AccessClass::CoreMutation),
-    )?;
-    assert_rejected_code(&legacy.response_value, "LOCAL_ACCESS_MISMATCH");
-    assert!(!legacy.response_json.contains("legacy"));
-    assert_eq!(fixture.counts()?, before);
 
     let conn = fixture.conn()?;
     assert_integrity_check_clean(&conn)?;

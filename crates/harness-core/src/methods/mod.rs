@@ -502,21 +502,6 @@ where
     })
 }
 
-fn decode_optional_json<T>(
-    table: &'static str,
-    record_ref: impl Into<String>,
-    logical_column: &'static str,
-    raw: Option<&str>,
-) -> CoreResult<Option<T>>
-where
-    T: serde::de::DeserializeOwned,
-{
-    match raw {
-        Some(raw) => decode_required_json(table, record_ref, logical_column, Some(raw)).map(Some),
-        None => Ok(None),
-    }
-}
-
 fn decode_optional_persisted_resolution(
     table: &'static str,
     record_ref: impl Into<String>,
@@ -526,15 +511,34 @@ fn decode_optional_persisted_resolution(
     stored_resolution_outcome: Option<JudgmentResolutionOutcome>,
 ) -> CoreResult<Option<UserJudgmentResolution>> {
     let record_ref = record_ref.into();
-    let resolution = decode_optional_json::<PersistedUserJudgmentResolution>(
+    let Some(raw) = raw else {
+        if stored_resolution_machine_action.is_none() && stored_resolution_outcome.is_none() {
+            return Ok(None);
+        }
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(table, record_ref, logical_column),
+        ));
+    };
+    let Some(stored_resolution_machine_action) = stored_resolution_machine_action else {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                table,
+                record_ref.clone(),
+                "resolution_machine_action",
+            ),
+        ));
+    };
+    let Some(stored_resolution_outcome) = stored_resolution_outcome else {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(table, record_ref.clone(), "resolution_outcome"),
+        ));
+    };
+    let resolution = decode_required_json::<PersistedUserJudgmentResolution>(
         table,
         record_ref.clone(),
         logical_column,
-        raw,
+        Some(raw),
     )?;
-    let Some(resolution) = resolution else {
-        return Ok(None);
-    };
     if resolution.machine_action != stored_resolution_machine_action {
         return Err(CorePipelineError::Store(
             StoreError::corrupt_owner_state_value(
@@ -544,33 +548,21 @@ fn decode_optional_persisted_resolution(
             ),
         ));
     }
-    if let (Some(machine_action), Some(outcome)) =
-        (stored_resolution_machine_action, stored_resolution_outcome)
-    {
-        if machine_action.resolution_outcome() != outcome {
-            return Err(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_value(
-                    table,
-                    record_ref.clone(),
-                    "resolution_machine_action",
-                ),
-            ));
-        }
+    if stored_resolution_machine_action.resolution_outcome() != stored_resolution_outcome {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                table,
+                record_ref.clone(),
+                "resolution_machine_action",
+            ),
+        ));
     }
-    let Some(stored_resolution_outcome) = stored_resolution_outcome else {
-        return Ok(None);
-    };
-    if resolution.resolution_outcome.is_some()
-        && resolution.resolution_outcome != Some(stored_resolution_outcome)
-    {
+    if resolution.resolution_outcome != stored_resolution_outcome {
         return Err(CorePipelineError::Store(
             StoreError::corrupt_owner_state_value(table, record_ref.clone(), "resolution_outcome"),
         ));
     }
-    if resolution
-        .machine_action
-        .is_some_and(|action| action.resolution_outcome() != stored_resolution_outcome)
-    {
+    if resolution.machine_action.resolution_outcome() != stored_resolution_outcome {
         return Err(CorePipelineError::Store(
             StoreError::corrupt_owner_state_value(table, record_ref.clone(), "machine_action"),
         ));
@@ -605,11 +597,11 @@ fn user_judgment_authority_from_record(
         "basis_status",
         &record.basis_status,
     )?;
-    let mut basis: Option<JudgmentBasis> = decode_optional_json::<PersistedJudgmentBasis>(
+    let mut basis: JudgmentBasis = decode_required_json::<PersistedJudgmentBasis>(
         "user_judgments",
         record.judgment_id.clone(),
         "basis_json",
-        record.basis_json.as_deref(),
+        Some(&record.basis_json),
     )?;
     let request: PersistedUserJudgmentRequest = decode_required_json(
         "user_judgments",
@@ -623,9 +615,7 @@ fn user_judgment_authority_from_record(
         "affected_refs_json",
         Some(&record.affected_refs_json),
     )?;
-    if let Some(basis) = &mut basis {
-        basis.compatibility_status = basis_status;
-    }
+    basis.compatibility_status = basis_status;
     let judgment_kind = parse_owner_storage_value(
         "user_judgments",
         record.judgment_id.clone(),
@@ -670,6 +660,15 @@ fn user_judgment_authority_from_record(
         resolution_machine_action,
         resolution_outcome,
     )?;
+    if status == UserJudgmentStatus::Resolved && resolution.is_none() {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "resolution_json",
+            ),
+        ));
+    }
     let authority_machine_action = resolution_machine_action;
     if let (Some(machine_action), Some(outcome)) = (authority_machine_action, resolution_outcome) {
         if machine_action.resolution_outcome() != outcome {
@@ -705,6 +704,15 @@ fn user_judgment_authority_from_record(
             ));
         }
     }
+    if resolution.is_some() && resolved_by_actor_kind.is_none() {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "resolved_by_actor_kind",
+            ),
+        ));
+    }
     if resolution.as_ref().is_some_and(|resolution| {
         !stored_answer_branch_matches_kind(judgment_kind, &resolution.answer)
     }) {
@@ -736,6 +744,21 @@ fn user_judgment_authority_from_record(
         .resolved_by_surface_instance_id
         .as_ref()
         .map(|value| SurfaceInstanceId::new(value.clone()));
+    if resolution.is_some()
+        && (resolved_actor_role.is_none()
+            || resolved_by_surface_id.is_none()
+            || resolved_by_surface_instance_id.is_none()
+            || record.resolved_verification_basis.is_none()
+            || record.resolved_assurance_level.is_none())
+    {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_value(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "resolution_json",
+            ),
+        ));
+    }
     Ok(JudgmentAuthority {
         judgment_id: record.judgment_id.clone(),
         task_id: TaskId::new(record.task_id.clone()),
@@ -751,7 +774,7 @@ fn user_judgment_authority_from_record(
         resolved_verification_basis: record.resolved_verification_basis.clone(),
         resolved_assurance_level: record.resolved_assurance_level.clone(),
         basis_status,
-        basis,
+        basis: Some(basis),
         resolution,
         expires_at: request.expires_at.into_option(),
     })
@@ -771,7 +794,7 @@ fn user_judgment_authority_from_state(
         machine_action: judgment
             .resolution
             .as_ref()
-            .and_then(|resolution| resolution.machine_action.as_ref().copied()),
+            .map(|resolution| resolution.machine_action),
         resolution_outcome: judgment
             .resolution
             .as_ref()
@@ -783,12 +806,8 @@ fn user_judgment_authority_from_state(
         resolved_verification_basis: actor_context
             .map(|context| context.verification_basis.clone()),
         resolved_assurance_level: actor_context.map(|context| context.assurance_level.clone()),
-        basis_status: judgment
-            .basis
-            .as_ref()
-            .map(|basis| basis.compatibility_status)
-            .unwrap_or(JudgmentBasisCompatibilityStatus::Current),
-        basis: judgment.basis.clone(),
+        basis_status: judgment.basis.compatibility_status,
+        basis: Some(judgment.basis.clone()),
         resolution: judgment.resolution.clone(),
         expires_at: judgment.expires_at.clone(),
     }

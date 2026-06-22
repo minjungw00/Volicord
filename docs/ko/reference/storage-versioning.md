@@ -385,7 +385,7 @@
 
 - 현재 호출이 유효한 `VerifiedSurfaceContext`를 만들기 전에는 저장된 응답을 반환하면 안 됩니다.
 - 재실행 행이 있으면 Core는 요청 해시 호환성보다 먼저 맥락 호환성을 확인합니다.
-- 맥락 호환성에는 `replay_context_status='verified'`, 완전하고 null이 아닌 재실행 맥락, 유효한 참조 접점, `surface_id`, `surface_instance_id`, `access_class`의 정확한 일치가 필요합니다.
+- 맥락 호환성에는 완전하고 null이 아닌 재실행 맥락, 유효한 참조 접점, `surface_id`, `surface_instance_id`, `access_class`의 정확한 일치가 필요합니다.
 - 맥락이 호환되지 않으면 문서화된 로컬 접근 불일치 거절인 `LOCAL_ACCESS_MISMATCH`를 반환하고 저장된 응답을 노출하면 안 됩니다.
 - 적격 재실행은 `expected_state_version`보다 먼저 확인하므로 유효한 재시도는 상태가 진행된 뒤에도 원래 응답을 반환할 수 있습니다.
 
@@ -395,7 +395,7 @@
 - 재실행은 저장된 응답 본문을 사용하며, `authorization_effect`, `base.state_version`, `base.events`나 다른 응답 필드를 다시 계산하거나 재분류하지 않습니다.
 - 재실행은 이벤트를 추가하거나, 아티팩트를 승격 또는 연결하거나, `Write Authorization`을 새로 만들거나 소비하거나, 재실행 행을 추가로 만들거나, 상태를 다시 바꾸지 않습니다.
 - 호환되는 맥락과 같은 `idempotency_key`, 다른 `request_hash`가 함께 있으면 Core는 [상태 버전 충돌](api/error-precedence.md#state-conflict-behavior)이 정의한 `STATE_VERSION_CONFLICT`를 반환합니다.
-- `replay_context_status='legacy_unverified'`인 행이나 완전한 확인 맥락이 없는 동등한 레거시 행은 보존되지만 재실행 적격이 아닙니다.
+- 완전한 저장 호출 맥락이 없는 행은 현재 재실행 스키마에서 유효하지 않으며 재실행 적격이 아닙니다.
 
 담당 문서 링크:
 

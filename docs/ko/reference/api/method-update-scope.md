@@ -41,7 +41,7 @@
 - `change_unit.operation`과 그 작업에 필요한 필드. 지원되는 작업 값과 그 의미는 [API 값 집합](schema-value-sets.md#method-local-values)이 담당합니다.
 - 해결된 `judgment_kind=scope_decision`을 적용한다면 `related_scope_decision_refs`.
 
-범위 갱신이 `scope_decision`을 적용할 때, 각 참조 판단은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `basis.compatibility_status=current`, scope update를 포함하는 `required_for`, `user_interaction`에 대한 확인된 행위자 출처, 현재 Task, Change Unit, `scope_revision`, 영향받는 참조와 호환되는 근거가 필요합니다. 거절, 연기, 차단, 오래됨, 대체됨, 만료됨, 레거시 미결속, 에이전트가 기록한 범위 결정은 범위 전이를 허가하지 않습니다.
+범위 갱신이 `scope_decision`을 적용할 때, 각 참조 판단은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `basis.compatibility_status=current`, scope update를 포함하는 `required_for`, `user_interaction`에 대한 확인된 행위자 출처, 현재 Task, Change Unit, `scope_revision`, 영향받는 참조와 호환되는 근거가 필요합니다. 거절, 연기, 차단, 오래됨, 대체됨, 만료됨, 근거 상태가 유효하지 않은 판단, 에이전트가 기록한 범위 결정은 범위 전이를 허가하지 않습니다.
 
 ## 요청 스키마
 

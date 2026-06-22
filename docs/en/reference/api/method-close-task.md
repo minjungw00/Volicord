@@ -255,7 +255,7 @@ Non-claims:
 - `STATE_VERSION_CONFLICT` is never a `CloseReadinessBlocker.code`.
 - `STATE_VERSION_CONFLICT` is a rejected-response `ErrorCode`, not a method-local blocker or decision code.
 - A blocker category does not create the underlying user judgment, approval, evidence, artifact availability, final acceptance, residual-risk acceptance, or recovery state.
-- Rejected, deferred, blocked, stale, superseded, expired, legacy-unbound, agent-recorded, provenance-missing, or outcome-absent cancellation judgments do not permit cancellation.
+- Rejected, deferred, blocked, stale, superseded, expired, judgments with invalid basis state, agent-recorded, provenance-missing, or outcome-absent cancellation judgments do not permit cancellation.
 
 ## Rejected result
 

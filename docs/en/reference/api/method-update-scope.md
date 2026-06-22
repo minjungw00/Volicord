@@ -41,7 +41,7 @@ This method is the supported path that turns shaping into a first safe Change Un
 - `change_unit.operation` and the fields needed by that operation; supported operation values and their meanings are owned by [API Value Sets](schema-value-sets.md#method-local-values).
 - `related_scope_decision_refs` when the update applies a resolved `judgment_kind=scope_decision`.
 
-When a scope update applies a `scope_decision`, each referenced judgment must have `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `basis.compatibility_status=current`, `required_for` that includes scope update, verified actor provenance for `user_interaction`, and a basis compatible with the current Task, Change Unit, `scope_revision`, and affected refs. Rejected, deferred, blocked, stale, superseded, expired, legacy-unbound, or agent-recorded scope decisions do not authorize a scope transition.
+When a scope update applies a `scope_decision`, each referenced judgment must have `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, `basis.compatibility_status=current`, `required_for` that includes scope update, verified actor provenance for `user_interaction`, and a basis compatible with the current Task, Change Unit, `scope_revision`, and affected refs. Rejected, deferred, blocked, stale, superseded, expired, judgments with invalid basis state, or agent-recorded scope decisions do not authorize a scope transition.
 
 ## Request schema
 

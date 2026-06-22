@@ -495,24 +495,23 @@ blocked
 current
 stale
 superseded
-legacy_unbound
 ```
 
 Meaning:
 - `current` means the basis currently matches the requirement it may satisfy.
 - `stale` means the stored basis no longer matches current state; a resolved row may remain for audit but is ineligible for current requirements.
 - `superseded` means a pending judgment has been replaced by a newer question or basis and cannot be answered successfully.
-- `legacy_unbound` means a preserved judgment has no state basis and cannot satisfy current close, write, scope-decision, or sensitive-approval requirements.
 
 Authority option action values:
 - `accept` maps to `accepted`.
 - `reject` maps to `rejected`.
 - `defer` maps to `deferred` only where the method or semantic owner permits deferral.
-- `blocked` is not a caller-selected authority option unless the method owner explicitly defines that path.
+- `blocked` has no current persisted selected-option action mapping.
 
 Resolution outcome meaning:
 - `accepted` is the only outcome that can satisfy an authority-bearing judgment requirement when the judgment kind, basis, verified actor provenance, selected option, and `machine_action=accept` are otherwise compatible.
-- `rejected`, `deferred`, and `blocked` are durable user decisions but do not approve, accept, authorize, waive, or close anything.
+- `rejected` and `deferred` are durable user decisions but do not approve, accept, authorize, waive, or close anything.
+- `blocked` is part of the broader outcome vocabulary, but current persisted selected-option resolutions cannot use it because no `machine_action` maps to `blocked`.
 - Absence of a machine-readable outcome must never be interpreted as `accepted`.
 
 Pending-judgment relevance:

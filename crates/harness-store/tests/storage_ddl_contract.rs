@@ -154,15 +154,15 @@ fn schema_comparison_detects_contract_critical_drift() -> Result<(), Box<dyn Err
         &read_database_schema(&build_schema_from_sql(&without_enforcement_profile)?)?,
     );
 
-    let changed_replay_default = replace_required(
+    let weakened_replay_identity = replace_required(
         &english.project_state,
-        "  replay_context_status TEXT NOT NULL DEFAULT 'legacy_unverified'",
-        "  replay_context_status TEXT NOT NULL DEFAULT 'verified'",
+        "  surface_id TEXT NOT NULL,\n  surface_instance_id TEXT NOT NULL,\n  access_class TEXT NOT NULL,\n",
+        "  surface_id TEXT,\n  surface_instance_id TEXT,\n  access_class TEXT,\n",
     );
     assert_schema_differs(
-        "changing tool_invocations.replay_context_status default",
+        "weakening tool_invocations replay identity requiredness",
         &expected,
-        &read_database_schema(&build_schema_from_sql(&changed_replay_default)?)?,
+        &read_database_schema(&build_schema_from_sql(&weakened_replay_identity)?)?,
     );
 
     let weakened_replay_foreign_key = replace_required(
@@ -176,12 +176,15 @@ fn schema_comparison_detects_contract_critical_drift() -> Result<(), Box<dyn Err
         &read_database_schema(&build_schema_from_sql(&weakened_replay_foreign_key)?)?,
     );
 
-    let missing_trigger = build_schema_from_sql(&english.project_state)?;
-    missing_trigger.execute("DROP TRIGGER tool_invocations_verified_context_update", [])?;
+    let weakened_resolution_group = replace_required(
+        &english.project_state,
+        "      status = 'resolved'\n      AND resolution_outcome IS NOT NULL",
+        "      status = 'resolved'\n      AND resolution_outcome IS NULL",
+    );
     assert_schema_differs(
-        "dropping verified replay-context update trigger",
+        "weakening resolved user_judgments resolution completeness",
         &expected,
-        &read_database_schema(&missing_trigger)?,
+        &read_database_schema(&build_schema_from_sql(&weakened_resolution_group)?)?,
     );
 
     Ok(())
@@ -820,8 +823,9 @@ fn assert_project_contract_behavior(label: &str, conn: &Connection) -> Result<()
     assert_user_judgments_status_is_closed(label, conn);
     assert_resolution_machine_action_is_closed(label, conn);
     assert_resolved_surface_foreign_key_is_enforced(label, conn);
-    assert_replay_context_default(label, conn)?;
-    assert_verified_replay_context_requires_identity(label, conn);
+    assert_user_judgments_require_basis(label, conn);
+    assert_resolved_user_judgments_require_complete_resolution(label, conn);
+    assert_tool_invocation_requires_identity(label, conn);
     assert_one_active_current_change_unit(label, conn);
     Ok(())
 }
@@ -884,6 +888,7 @@ fn assert_user_judgments_status_is_closed(label: &str, conn: &Connection) {
                 task_id,
                 judgment_kind,
                 status,
+                basis_json,
                 requested_by_surface_id,
                 requested_by_surface_instance_id,
                 requested_at
@@ -894,6 +899,7 @@ fn assert_user_judgments_status_is_closed(label: &str, conn: &Connection) {
                 'task_a',
                 'approval',
                 'accepted',
+                '{\"task_id\":\"task_a\",\"change_unit_id\":null,\"scope_revision\":0,\"close_basis_revision\":null,\"baseline_ref\":null,\"result_refs\":[],\"residual_risk_ids\":[],\"sensitive_action_scope\":null,\"created_at_state_version\":0,\"compatibility_status\":\"current\"}',
                 'surface_main',
                 'surface_instance_1',
                 't1'
@@ -913,10 +919,19 @@ fn assert_resolution_machine_action_is_closed(label: &str, conn: &Connection) {
                 task_id,
                 judgment_kind,
                 status,
+                basis_json,
                 resolution_outcome,
                 resolution_machine_action,
+                resolution_json,
                 requested_by_surface_id,
                 requested_by_surface_instance_id,
+                resolved_by_actor_kind,
+                resolved_actor_role,
+                resolved_by_surface_id,
+                resolved_by_surface_instance_id,
+                resolved_verification_basis,
+                resolved_assurance_level,
+                resolved_at,
                 requested_at
             )
             VALUES (
@@ -925,10 +940,19 @@ fn assert_resolution_machine_action_is_closed(label: &str, conn: &Connection) {
                 'task_a',
                 'approval',
                 'resolved',
+                '{\"task_id\":\"task_a\",\"change_unit_id\":null,\"scope_revision\":0,\"close_basis_revision\":null,\"baseline_ref\":null,\"result_refs\":[],\"residual_risk_ids\":[],\"sensitive_action_scope\":null,\"created_at_state_version\":0,\"compatibility_status\":\"current\"}',
                 'accepted',
                 'approve',
+                '{\"selected_option_id\":\"accept\",\"machine_action\":\"accept\",\"resolution_outcome\":\"accepted\",\"answer\":{\"product_decision\":{\"judgment\":{\"decision\":\"accepted\"}},\"technical_decision\":null,\"scope_decision\":null,\"sensitive_action_scope\":null,\"final_acceptance\":null,\"residual_risk_acceptance\":null,\"cancellation\":null},\"note\":null,\"accepted_risks\":[],\"resolved_by_actor_kind\":\"user\"}',
                 'surface_main',
                 'surface_instance_1',
+                'user',
+                'user_interaction',
+                'surface_main',
+                'surface_instance_1',
+                'fixture',
+                'cooperative',
+                't1',
                 't1'
             )",
             [],
@@ -946,12 +970,19 @@ fn assert_resolved_surface_foreign_key_is_enforced(label: &str, conn: &Connectio
                 task_id,
                 judgment_kind,
                 status,
+                basis_json,
                 resolution_outcome,
                 resolution_machine_action,
+                resolution_json,
                 requested_by_surface_id,
                 requested_by_surface_instance_id,
+                resolved_by_actor_kind,
+                resolved_actor_role,
                 resolved_by_surface_id,
                 resolved_by_surface_instance_id,
+                resolved_verification_basis,
+                resolved_assurance_level,
+                resolved_at,
                 requested_at
             )
             VALUES (
@@ -960,12 +991,19 @@ fn assert_resolved_surface_foreign_key_is_enforced(label: &str, conn: &Connectio
                 'task_a',
                 'approval',
                 'resolved',
+                '{\"task_id\":\"task_a\",\"change_unit_id\":null,\"scope_revision\":0,\"close_basis_revision\":null,\"baseline_ref\":null,\"result_refs\":[],\"residual_risk_ids\":[],\"sensitive_action_scope\":null,\"created_at_state_version\":0,\"compatibility_status\":\"current\"}',
                 'accepted',
                 'accept',
+                '{\"selected_option_id\":\"accept\",\"machine_action\":\"accept\",\"resolution_outcome\":\"accepted\",\"answer\":{\"product_decision\":{\"judgment\":{\"decision\":\"accepted\"}},\"technical_decision\":null,\"scope_decision\":null,\"sensitive_action_scope\":null,\"final_acceptance\":null,\"residual_risk_acceptance\":null,\"cancellation\":null},\"note\":null,\"accepted_risks\":[],\"resolved_by_actor_kind\":\"user\"}',
                 'surface_main',
                 'surface_instance_1',
+                'user',
+                'user_interaction',
                 'missing_surface',
                 'missing_surface_instance',
+                'fixture',
+                'cooperative',
+                't1',
                 't1'
             )",
             [],
@@ -974,47 +1012,67 @@ fn assert_resolved_surface_foreign_key_is_enforced(label: &str, conn: &Connectio
     assert_foreign_key_error(label, error);
 }
 
-fn assert_replay_context_default(label: &str, conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute(
-        "INSERT INTO tool_invocations (
-            project_id,
-            tool_name,
-            idempotency_key,
-            request_hash,
-            basis_state_version,
-            committed_state_version,
-            response_json,
-            created_at
+fn assert_user_judgments_require_basis(label: &str, conn: &Connection) {
+    let error = conn
+        .execute(
+            "INSERT INTO user_judgments (
+                project_id,
+                judgment_id,
+                task_id,
+                judgment_kind,
+                status,
+                requested_by_surface_id,
+                requested_by_surface_instance_id,
+                requested_at
+            )
+            VALUES (
+                'project_a',
+                'judgment_missing_basis',
+                'task_a',
+                'approval',
+                'pending',
+                'surface_main',
+                'surface_instance_1',
+                't1'
+            )",
+            [],
         )
-        VALUES (
-            'project_a',
-            'harness.intake',
-            'idem_default',
-            'sha256:first',
-            0,
-            1,
-            '{}',
-            't1'
-        )",
-        [],
-    )?;
-    let status: String = conn.query_row(
-        "SELECT replay_context_status
-           FROM tool_invocations
-          WHERE project_id = 'project_a'
-            AND tool_name = 'harness.intake'
-            AND idempotency_key = 'idem_default'",
-        [],
-        |row| row.get(0),
-    )?;
-    assert_eq!(
-        status, "legacy_unverified",
-        "{label}: tool_invocations.replay_context_status default changed"
-    );
-    Ok(())
+        .unwrap_err();
+    assert_constraint_error(label, error);
 }
 
-fn assert_verified_replay_context_requires_identity(label: &str, conn: &Connection) {
+fn assert_resolved_user_judgments_require_complete_resolution(label: &str, conn: &Connection) {
+    let error = conn
+        .execute(
+            "INSERT INTO user_judgments (
+                project_id,
+                judgment_id,
+                task_id,
+                judgment_kind,
+                status,
+                basis_json,
+                requested_by_surface_id,
+                requested_by_surface_instance_id,
+                requested_at
+            )
+            VALUES (
+                'project_a',
+                'judgment_incomplete_resolution',
+                'task_a',
+                'approval',
+                'resolved',
+                '{\"task_id\":\"task_a\",\"change_unit_id\":null,\"scope_revision\":0,\"close_basis_revision\":null,\"baseline_ref\":null,\"result_refs\":[],\"residual_risk_ids\":[],\"sensitive_action_scope\":null,\"created_at_state_version\":0,\"compatibility_status\":\"current\"}',
+                'surface_main',
+                'surface_instance_1',
+                't1'
+            )",
+            [],
+        )
+        .unwrap_err();
+    assert_constraint_error(label, error);
+}
+
+fn assert_tool_invocation_requires_identity(label: &str, conn: &Connection) {
     let error = conn
         .execute(
             "INSERT INTO tool_invocations (
@@ -1024,7 +1082,6 @@ fn assert_verified_replay_context_requires_identity(label: &str, conn: &Connecti
                 request_hash,
                 basis_state_version,
                 committed_state_version,
-                replay_context_status,
                 response_json,
                 created_at
             )
@@ -1035,7 +1092,6 @@ fn assert_verified_replay_context_requires_identity(label: &str, conn: &Connecti
                 'sha256:second',
                 0,
                 2,
-                'verified',
                 '{}',
                 't2'
             )",

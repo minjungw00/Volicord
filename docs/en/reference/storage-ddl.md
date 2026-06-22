@@ -274,13 +274,13 @@ CREATE TABLE user_judgments (
   status TEXT NOT NULL CHECK (status IN ('pending', 'resolved', 'stale', 'superseded', 'expired')),
   request_json TEXT NOT NULL DEFAULT '{}',
   context_json TEXT NOT NULL DEFAULT '{}',
-  options_json TEXT NOT NULL DEFAULT '[]',
+  options_json TEXT NOT NULL DEFAULT '{"schema_version":1,"options":[]}',
   affected_refs_json TEXT NOT NULL DEFAULT '[]',
   artifact_refs_json TEXT NOT NULL DEFAULT '[]',
   sensitive_action_scope_json TEXT NOT NULL DEFAULT '{}',
-  basis_json TEXT,
-  basis_status TEXT NOT NULL DEFAULT 'legacy_unbound'
-    CHECK (basis_status IN ('current', 'stale', 'superseded', 'legacy_unbound')),
+  basis_json TEXT NOT NULL,
+  basis_status TEXT NOT NULL DEFAULT 'current'
+    CHECK (basis_status IN ('current', 'stale', 'superseded')),
   resolution_outcome TEXT
     CHECK (resolution_outcome IS NULL OR resolution_outcome IN ('accepted', 'rejected', 'deferred', 'blocked')),
   resolution_machine_action TEXT
@@ -298,6 +298,71 @@ CREATE TABLE user_judgments (
   resolved_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, judgment_id),
+  CHECK (
+    (
+      status IN ('pending', 'expired')
+      AND resolution_outcome IS NULL
+      AND resolution_machine_action IS NULL
+      AND resolution_json IS NULL
+      AND resolved_by_actor_kind IS NULL
+      AND resolved_actor_role IS NULL
+      AND resolved_by_surface_id IS NULL
+      AND resolved_by_surface_instance_id IS NULL
+      AND resolved_verification_basis IS NULL
+      AND resolved_assurance_level IS NULL
+      AND resolved_at IS NULL
+    )
+    OR (
+      status = 'resolved'
+      AND resolution_outcome IS NOT NULL
+      AND resolution_machine_action IS NOT NULL
+      AND resolution_json IS NOT NULL
+      AND resolved_by_actor_kind IS NOT NULL
+      AND resolved_actor_role IS NOT NULL
+      AND resolved_by_surface_id IS NOT NULL
+      AND resolved_by_surface_instance_id IS NOT NULL
+      AND resolved_verification_basis IS NOT NULL
+      AND resolved_assurance_level IS NOT NULL
+      AND resolved_at IS NOT NULL
+    )
+    OR (
+      status IN ('stale', 'superseded')
+      AND (
+        (
+          resolution_outcome IS NULL
+          AND resolution_machine_action IS NULL
+          AND resolution_json IS NULL
+          AND resolved_by_actor_kind IS NULL
+          AND resolved_actor_role IS NULL
+          AND resolved_by_surface_id IS NULL
+          AND resolved_by_surface_instance_id IS NULL
+          AND resolved_verification_basis IS NULL
+          AND resolved_assurance_level IS NULL
+          AND resolved_at IS NULL
+        )
+        OR (
+          resolution_outcome IS NOT NULL
+          AND resolution_machine_action IS NOT NULL
+          AND resolution_json IS NOT NULL
+          AND resolved_by_actor_kind IS NOT NULL
+          AND resolved_actor_role IS NOT NULL
+          AND resolved_by_surface_id IS NOT NULL
+          AND resolved_by_surface_instance_id IS NOT NULL
+          AND resolved_verification_basis IS NOT NULL
+          AND resolved_assurance_level IS NOT NULL
+          AND resolved_at IS NOT NULL
+        )
+      )
+    )
+  ),
+  CHECK (
+    resolution_machine_action IS NULL
+    OR (
+      (resolution_machine_action = 'accept' AND resolution_outcome = 'accepted')
+      OR (resolution_machine_action = 'reject' AND resolution_outcome = 'rejected')
+      OR (resolution_machine_action = 'defer' AND resolution_outcome = 'deferred')
+    )
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
@@ -353,7 +418,7 @@ CREATE TABLE runs (
   observed_changes_json TEXT NOT NULL DEFAULT '{}',
   evidence_updates_json TEXT NOT NULL DEFAULT '[]',
   authorization_effect_json TEXT NOT NULL DEFAULT '{}',
-  scope_revision INTEGER CHECK (scope_revision IS NULL OR scope_revision >= 0),
+  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   created_by_surface_id TEXT NOT NULL,
   created_by_surface_instance_id TEXT NOT NULL,
   started_at TEXT,
@@ -535,57 +600,18 @@ CREATE TABLE tool_invocations (
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   committed_state_version INTEGER NOT NULL CHECK (committed_state_version > basis_state_version),
   status TEXT NOT NULL DEFAULT 'committed' CHECK (status = 'committed'),
-  surface_id TEXT,
-  surface_instance_id TEXT,
-  access_class TEXT,
+  surface_id TEXT NOT NULL,
+  surface_instance_id TEXT NOT NULL,
+  access_class TEXT NOT NULL,
   verification_basis TEXT,
-  replay_context_status TEXT NOT NULL DEFAULT 'legacy_unverified'
-    CHECK (replay_context_status IN ('verified', 'legacy_unverified')),
   response_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, tool_name, idempotency_key),
-  CHECK (
-    (
-      replay_context_status = 'verified'
-      AND surface_id IS NOT NULL
-      AND surface_instance_id IS NOT NULL
-      AND access_class IS NOT NULL
-    )
-    OR (
-      replay_context_status = 'legacy_unverified'
-    )
-  ),
   FOREIGN KEY (project_id, surface_id, surface_instance_id)
     REFERENCES surfaces (project_id, surface_id, surface_instance_id)
     ON DELETE RESTRICT,
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
-
-CREATE TRIGGER tool_invocations_verified_context_insert
-BEFORE INSERT ON tool_invocations
-FOR EACH ROW
-WHEN NEW.replay_context_status = 'verified'
-  AND (
-    NEW.surface_id IS NULL
-    OR NEW.surface_instance_id IS NULL
-    OR NEW.access_class IS NULL
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
-END;
-
-CREATE TRIGGER tool_invocations_verified_context_update
-BEFORE UPDATE ON tool_invocations
-FOR EACH ROW
-WHEN NEW.replay_context_status = 'verified'
-  AND (
-    NEW.surface_id IS NULL
-    OR NEW.surface_instance_id IS NULL
-    OR NEW.access_class IS NULL
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
-END;
 ```
 
 Baseline indexes for project state:
@@ -654,7 +680,7 @@ Current Change Unit:
 Task revisions and close basis:
 
 - `tasks.scope_revision` and `tasks.close_basis_revision` are internal current-state coordinates, not public state clocks and not caller-selected authority.
-- `runs.scope_revision` stores the current-scope revision observed by the run when one is available; legacy or scope-independent rows may leave it null.
+- `runs.scope_revision` stores the current-scope revision observed by the run and is required for every run row.
 - Material current-scope or current Change Unit changes increment `tasks.scope_revision`; semantically identical normalized updates do not.
 - A committed `harness.record_run` increments `tasks.close_basis_revision` exactly once.
 - A material scope change invalidates `tasks.close_basis_json`, increments `tasks.close_basis_revision`, and may make judgment basis rows stale or superseded under their owners.
@@ -665,13 +691,14 @@ Task revisions and close basis:
 
 Judgment basis storage:
 
-- `user_judgments.basis_json` stores the API `JudgmentBasis` snapshot when one exists.
-- `user_judgments.basis_status` stores the storage-owned compatibility state for the judgment basis: `current`, `stale`, `superseded`, or `legacy_unbound`.
-- Existing judgments without a basis are represented as `basis_json IS NULL` and `basis_status='legacy_unbound'`. They remain audit records and cannot satisfy current close, write, or sensitive-approval requirements.
-- The closed `user_judgments.status` set, nullable `resolution_outcome`, nullable `resolution_machine_action`, actor provenance columns, resolved-surface provenance columns, and composite resolved-surface foreign key are part of the `baseline_sqlite_v2` project-state schema version `1`.
-- `user_judgments.resolution_outcome` stores the selected option's machine-readable outcome when one exists. `status='resolved'` without a non-null `resolution_outcome` remains a historical audit record for authority-bearing requirements and cannot be interpreted as acceptance.
-- `user_judgments.resolution_machine_action` stores the selected Core-created authority action when one exists. Current authority-bearing resolutions require a non-null `resolution_machine_action` and non-null `resolution_outcome`; legacy rows may leave either null for audit-only reads.
-- `resolved_by_actor_kind`, `resolved_actor_role`, `resolved_by_surface_id`, `resolved_by_surface_instance_id`, `resolved_verification_basis`, and `resolved_assurance_level` store derived `VerifiedActorContext` provenance for resolution. Authority-bearing rows require `resolved_by_actor_kind='user'`, `resolved_actor_role='user_interaction'`, a valid resolved surface/instance reference, and non-null provenance fields. Rows without that provenance are readable historical records only.
+- `user_judgments.basis_json` stores the required API `JudgmentBasis` snapshot.
+- `user_judgments.basis_status` stores the storage-owned compatibility state for the judgment basis: `current`, `stale`, or `superseded`.
+- The closed `user_judgments.status` set, required `basis_json`, structured `options_json`, resolution completeness checks, actor provenance columns, resolved-surface provenance columns, and composite resolved-surface foreign key are part of the `baseline_sqlite_v2` project-state schema version `1`.
+- `status='resolved'` rows require non-null `resolution_outcome`, `resolution_machine_action`, `resolution_json`, resolved actor provenance, resolved surface provenance, and `resolved_at`.
+- `status='pending'` and `status='expired'` rows require all resolution and resolved-provenance columns to be null.
+- `status='stale'` and `status='superseded'` rows may carry either a complete resolution group or no resolution group.
+- `user_judgments.resolution_outcome` stores the selected option's machine-readable outcome. `user_judgments.resolution_machine_action` stores the selected Core-created authority action. The SQL action/outcome check keeps `accept` with `accepted`, `reject` with `rejected`, and `defer` with `deferred`; `blocked` is not a persisted option action outcome.
+- `resolved_by_actor_kind`, `resolved_actor_role`, `resolved_by_surface_id`, `resolved_by_surface_instance_id`, `resolved_verification_basis`, and `resolved_assurance_level` store derived `VerifiedActorContext` provenance for resolution. Authority-bearing rows still require `resolved_by_actor_kind='user'`, `resolved_actor_role='user_interaction'`, a valid resolved surface/instance reference, and non-null provenance fields.
 
 Surface local access grants:
 
@@ -687,13 +714,12 @@ Idempotency replay rows:
 - The replay uniqueness key is exactly `(project_id, tool_name, idempotency_key)`.
 - `request_hash` is stored as the public-request conflict discriminator, but it is not part of a unique key and does not absorb invocation context.
 - `tool_invocations.response_json` stores only committed replay responses that [Storage Effects](storage-effects.md) says create replay rows.
-- Newly written replay rows use `replay_context_status='verified'` and store complete non-null `surface_id`, `surface_instance_id`, and `access_class` values from the derived `VerifiedSurfaceContext`.
-- The `tool_invocations.replay_context_status` default is `legacy_unverified` for legacy insert compatibility; current replay-row creation must still write `verified` with complete context.
+- Replay rows store complete non-null `surface_id`, `surface_instance_id`, and `access_class` values from the derived `VerifiedSurfaceContext`.
 - Verified replay rows require a valid referenced surface through the physical composite foreign key `(project_id, surface_id, surface_instance_id)` referencing `surfaces(project_id, surface_id, surface_instance_id)`.
-- The `tool_invocations` table constraint and both `tool_invocations_verified_context_insert` and `tool_invocations_verified_context_update` triggers reject `verified` rows that lack `surface_id`, `surface_instance_id`, or `access_class`.
+- The `tool_invocations` table definition rejects replay rows that lack `surface_id`, `surface_instance_id`, or `access_class`.
 - The replay surface foreign key uses restrictive deletion behavior. Schema validation must inspect the actual SQLite foreign-key definition, not only the presence of the columns.
 - `verification_basis` may be stored on replay rows for diagnostics, but it is not caller authority.
-- Existing replay rows that lack verified context may be represented with `replay_context_status='legacy_unverified'` and null or incomplete context fields; [Storage Versioning](storage-versioning.md) owns replay eligibility.
+- [Storage Versioning](storage-versioning.md) owns replay eligibility for stored rows with complete invocation context.
 
 `Write Authorization` basis versions:
 

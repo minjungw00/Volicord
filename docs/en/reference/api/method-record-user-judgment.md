@@ -26,7 +26,7 @@ This document does not own:
 
 The method updates the addressed pending judgment according to the user's answer. It does not broaden the answer into unrelated approval, current scope expansion, final acceptance, residual-risk acceptance, sensitive-action approval, or `Write Authorization`.
 
-Before recording the answer, Core checks the pending judgment's `JudgmentBasis` against current state. A stale, superseded, incompatible, or legacy-unbound basis cannot be answered successfully.
+Before recording the answer, Core checks the pending judgment's `JudgmentBasis` against current state. A stale, superseded, incompatible, or invalid stored basis cannot be answered successfully.
 
 ## Required inputs
 
@@ -94,7 +94,7 @@ Compatibility requirements:
 - Sensitive approval must match current `scope_revision`, Change Unit, operation, normalized paths, sensitive categories, and baseline.
 - Scope decision authority for a later scope update requires `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, current basis, `required_for` that includes scope update, verified `user_interaction` actor provenance, and compatible Task, Change Unit, `scope_revision`, and affected refs.
 - Authority-bearing judgments require `resolved_by_actor_kind=user`, compatible verified actor provenance, `machine_action=accept`, and `resolution_outcome=accepted` to satisfy the authority requirement.
-- Rejected, deferred, blocked, stale, superseded, expired, legacy-unbound, or agent-recorded authority-bearing judgments remain audit or decision records but cannot authorize a current transition.
+- Rejected, deferred, blocked, stale, superseded, expired, judgments with invalid basis state, or agent-recorded authority-bearing judgments remain audit or decision records but cannot authorize a current transition.
 - Scope or Run changes do not delete historical judgments; they make incompatible judgments ineligible for current close, write, scope-decision, or sensitive-approval requirements.
 
 ## Success result
@@ -109,7 +109,7 @@ Returns `RecordUserJudgmentResult` with:
 - current `state`
 - `next_actions`
 
-The method commits the addressed judgment as `status=resolved` when an answer is recorded successfully. The recorded `machine_action` is copied from the selected option when present. The recorded `resolution_outcome` may be `accepted`, `rejected`, `deferred`, or `blocked`.
+The method commits the addressed judgment as `status=resolved` when an answer is recorded successfully. The recorded `machine_action` and `resolution_outcome` are copied from the selected option and must match the option's action/outcome mapping.
 
 The result updates only covered blockers and judgment-dependent summaries. It does not create unrelated approvals, evidence, scope updates, `Write Authorization`, close state, final acceptance, residual-risk acceptance, sensitive approval, or cancellation authority beyond an accepted, compatible authority-bearing judgment itself.
 
@@ -144,7 +144,7 @@ Returns `ToolRejectedResponse` for pre-commit failures, including:
 - invalid selected option
 - invalid answer payload
 - expired pending judgment
-- stale, superseded, incompatible, or legacy-unbound judgment basis
+- stale, superseded, incompatible, or invalid stored judgment basis
 - answer incompatible with the pending judgment
 - missing or non-current residual-risk `risk_id`
 - local access failure

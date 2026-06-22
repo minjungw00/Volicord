@@ -792,8 +792,8 @@ mod tests {
     }
 
     #[test]
-    fn legacy_persisted_option_without_outcome_decodes_but_does_not_emit_current() {
-        let legacy: PersistedUserJudgmentOptions = serde_json::from_value(json!([
+    fn persisted_options_reject_bare_array_and_missing_current_fields() {
+        let bare_array = serde_json::from_value::<PersistedUserJudgmentOptions>(json!([
             {
                 "option_id": "legacy_accept",
                 "label": "Accept",
@@ -802,19 +802,34 @@ mod tests {
                 "machine_action": "accept",
                 "is_default": true
             }
-        ]))
-        .expect("legacy option array should decode internally");
+        ]));
+        assert!(bare_array.is_err());
 
-        assert_eq!(legacy.schema_version, 0);
-        assert_eq!(
-            legacy.options[0].machine_action,
-            Some(UserJudgmentOptionAction::Accept)
-        );
-        assert_eq!(legacy.options[0].resolution_outcome, None);
-        assert_eq!(
-            legacy.into_current_options().unwrap_err(),
-            PersistedUserJudgmentCompatibilityError::MissingResolutionOutcome
-        );
+        let missing_action = serde_json::from_value::<PersistedUserJudgmentOptions>(json!({
+            "schema_version": 1,
+            "options": [{
+                "option_id": "accept",
+                "label": "Accept",
+                "description": "Accept the current close basis.",
+                "consequence": "The judgment can be resolved.",
+                "resolution_outcome": "accepted",
+                "is_default": true
+            }]
+        }));
+        assert!(missing_action.is_err());
+
+        let missing_outcome = serde_json::from_value::<PersistedUserJudgmentOptions>(json!({
+            "schema_version": 1,
+            "options": [{
+                "option_id": "accept",
+                "label": "Accept",
+                "description": "Accept the current close basis.",
+                "consequence": "The judgment can be resolved.",
+                "machine_action": "accept",
+                "is_default": true
+            }]
+        }));
+        assert!(missing_outcome.is_err());
     }
 
     #[test]
@@ -844,8 +859,13 @@ mod tests {
         assert!(validate_json_schema(&schema, &valid).is_ok());
 
         let blocked = user_judgment_resolution_json(Value::Null, json!("blocked"));
-        assert!(serde_json::from_value::<UserJudgmentResolution>(blocked.clone()).is_ok());
-        assert!(validate_json_schema(&schema, &blocked).is_ok());
+        assert!(serde_json::from_value::<UserJudgmentResolution>(blocked.clone()).is_err());
+        assert!(validate_json_schema(&schema, &blocked).is_err());
+
+        let mut missing_action = user_judgment_resolution_json(json!("accept"), json!("accepted"));
+        remove_path(&mut missing_action, &["machine_action"]);
+        assert!(serde_json::from_value::<UserJudgmentResolution>(missing_action.clone()).is_err());
+        assert!(validate_json_schema(&schema, &missing_action).is_err());
 
         let mut missing_outcome = user_judgment_resolution_json(json!("accept"), json!("accepted"));
         remove_path(&mut missing_outcome, &["resolution_outcome"]);

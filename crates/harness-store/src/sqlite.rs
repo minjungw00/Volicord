@@ -370,7 +370,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
         ColumnSpec {
             name: "scope_revision",
             type_name: "INTEGER",
-            not_null: false,
+            not_null: true,
             default_value: None,
             primary_key_position: 0,
         },
@@ -382,7 +382,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
         ColumnSpec {
             name: "basis_json",
             type_name: "TEXT",
-            not_null: false,
+            not_null: true,
             default_value: None,
             primary_key_position: 0,
         },
@@ -395,7 +395,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
             name: "basis_status",
             type_name: "TEXT",
             not_null: true,
-            default_value: Some("'legacy_unbound'"),
+            default_value: Some("'current'"),
             primary_key_position: 0,
         },
     )?;
@@ -465,6 +465,7 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
         },
     )?;
     validate_user_judgments_resolved_actor_role_constraint(conn)?;
+    validate_user_judgments_resolution_group_constraint(conn)?;
     for column in [
         "resolved_by_surface_id",
         "resolved_by_surface_instance_id",
@@ -481,20 +482,32 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
         "tool_invocations",
         "request_hash",
     )?;
-    for column in [
-        "surface_id",
-        "surface_instance_id",
-        "access_class",
-        "verification_basis",
-        "replay_context_status",
-    ] {
-        require_column(
+    for column in ["surface_id", "surface_instance_id", "access_class"] {
+        require_column_spec(
             conn,
             PROJECT_STATE_DATABASE_KIND,
             "tool_invocations",
-            column,
+            ColumnSpec {
+                name: column,
+                type_name: "TEXT",
+                not_null: true,
+                default_value: None,
+                primary_key_position: 0,
+            },
         )?;
     }
+    require_column(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
+        "tool_invocations",
+        "verification_basis",
+    )?;
+    reject_column(
+        conn,
+        PROJECT_STATE_DATABASE_KIND,
+        "tool_invocations",
+        "replay_context_status",
+    )?;
     validate_tool_invocations_primary_key(conn)?;
     validate_tool_invocations_replay_surface_foreign_key(conn)?;
     require_column_spec(
@@ -510,14 +523,6 @@ pub fn validate_project_state_schema(conn: &Connection) -> StoreResult<()> {
         },
     )?;
     validate_artifacts_integrity_status_constraint(conn)?;
-    require_triggers(
-        conn,
-        PROJECT_STATE_DATABASE_KIND,
-        &[
-            "tool_invocations_verified_context_insert",
-            "tool_invocations_verified_context_update",
-        ],
-    )?;
     validate_project_state_versions(conn)?;
     validate_foreign_key_check(conn, PROJECT_STATE_DATABASE_KIND)?;
     Ok(())
@@ -578,23 +583,6 @@ fn require_indexes(
             return Err(StoreError::schema_invariant(
                 database_kind,
                 format!("missing index {name}"),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn require_triggers(
-    conn: &Connection,
-    database_kind: &'static str,
-    names: &[&str],
-) -> StoreResult<()> {
-    for name in names {
-        if !sqlite_object_exists(conn, "trigger", name)? {
-            return Err(StoreError::schema_invariant(
-                database_kind,
-                format!("missing trigger {name}"),
             ));
         }
     }
@@ -863,10 +851,8 @@ fn validate_user_judgments_basis_status_constraint(conn: &Connection) -> StoreRe
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase();
-    let has_constraint = normalized
-        .contains("basis_status in ('current', 'stale', 'superseded', 'legacy_unbound')")
-        || normalized
-            .contains("basis_status in('current', 'stale', 'superseded', 'legacy_unbound')");
+    let has_constraint = normalized.contains("basis_status in ('current', 'stale', 'superseded')")
+        || normalized.contains("basis_status in('current', 'stale', 'superseded')");
     if has_constraint {
         Ok(())
     } else {
@@ -936,6 +922,40 @@ fn validate_user_judgments_resolution_machine_action_constraint(
         Err(StoreError::schema_invariant(
             PROJECT_STATE_DATABASE_KIND,
             "user_judgments.resolution_machine_action constraint is missing or malformed",
+        ))
+    }
+}
+
+fn validate_user_judgments_resolution_group_constraint(conn: &Connection) -> StoreResult<()> {
+    let table_sql = normalized_table_sql(conn, "user_judgments")?;
+    let has_resolved_requirement = table_sql.contains("status = 'resolved'")
+        && table_sql.contains("resolution_outcome is not null")
+        && table_sql.contains("resolution_machine_action is not null")
+        && table_sql.contains("resolution_json is not null")
+        && table_sql.contains("resolved_by_actor_kind is not null")
+        && table_sql.contains("resolved_actor_role is not null")
+        && table_sql.contains("resolved_by_surface_id is not null")
+        && table_sql.contains("resolved_by_surface_instance_id is not null")
+        && table_sql.contains("resolved_verification_basis is not null")
+        && table_sql.contains("resolved_assurance_level is not null")
+        && table_sql.contains("resolved_at is not null");
+    let has_unresolved_requirement = table_sql.contains("status in ('pending', 'expired')")
+        && table_sql.contains("resolution_outcome is null")
+        && table_sql.contains("resolution_machine_action is null")
+        && table_sql.contains("resolution_json is null")
+        && table_sql.contains("resolved_by_actor_kind is null")
+        && table_sql.contains("resolved_actor_role is null")
+        && table_sql.contains("resolved_by_surface_id is null")
+        && table_sql.contains("resolved_by_surface_instance_id is null")
+        && table_sql.contains("resolved_verification_basis is null")
+        && table_sql.contains("resolved_assurance_level is null")
+        && table_sql.contains("resolved_at is null");
+    if has_resolved_requirement && has_unresolved_requirement {
+        Ok(())
+    } else {
+        Err(StoreError::schema_invariant(
+            PROJECT_STATE_DATABASE_KIND,
+            "user_judgments resolution completeness constraint is missing or malformed",
         ))
     }
 }
@@ -1317,7 +1337,7 @@ mod tests {
         assert_eq!(migration_count(&conn)?, PROJECT_STATE_SCHEMA_VERSION);
         assert!(foreign_keys_enabled(&conn)?);
         assert!(sqlite_object_exists(&conn, "table", "tool_invocations")?);
-        assert!(column_exists(
+        assert!(!column_exists(
             &conn,
             "tool_invocations",
             "replay_context_status"
@@ -1419,7 +1439,6 @@ mod tests {
                     surface_id,
                     surface_instance_id,
                     access_class,
-                    replay_context_status,
                     response_json,
                     created_at
                 )
@@ -1433,7 +1452,6 @@ mod tests {
                     'surface_main',
                     'surface_instance_1',
                     'core_mutation',
-                    'verified',
                     '{}',
                     't2'
                 )",
@@ -1463,7 +1481,6 @@ mod tests {
                     surface_id,
                     surface_instance_id,
                     access_class,
-                    replay_context_status,
                     response_json,
                     created_at
                 )
@@ -1477,7 +1494,6 @@ mod tests {
                     'missing_surface',
                     'missing_surface_instance',
                     'core_mutation',
-                    'verified',
                     '{}',
                     't0'
                 )",
@@ -1521,7 +1537,7 @@ mod tests {
     }
 
     #[test]
-    fn verified_tool_invocation_requires_complete_replay_context() -> StoreResult<()> {
+    fn tool_invocation_requires_complete_replay_context() -> StoreResult<()> {
         let runtime_home = TempRuntimeHome::new("tool-invocations-context")?;
         let conn =
             open_project_state_database(runtime_home.project_state_db_path("PRJ-tools-context"))?;
@@ -1536,7 +1552,6 @@ mod tests {
                     request_hash,
                     basis_state_version,
                     committed_state_version,
-                    replay_context_status,
                     response_json,
                     created_at
                 )
@@ -1547,26 +1562,28 @@ mod tests {
                     'sha256:first',
                     0,
                     1,
-                    'verified',
                     '{}',
                     't0'
                 )",
                 [],
             )
-            .expect_err("verified replay context must include identity fields");
+            .expect_err("replay context must include identity fields");
         assert_constraint_error(err);
         Ok(())
     }
 
     #[test]
-    fn project_state_schema_validation_routes_missing_replay_context_trigger() -> StoreResult<()> {
-        let runtime_home = TempRuntimeHome::new("schema-validation-trigger")?;
+    fn project_state_schema_validation_rejects_replay_context_status_column() -> StoreResult<()> {
+        let runtime_home = TempRuntimeHome::new("schema-validation-replay-status")?;
         let conn =
             open_project_state_database(runtime_home.project_state_db_path("PRJ-validation"))?;
-        conn.execute("DROP TRIGGER tool_invocations_verified_context_insert", [])?;
+        conn.execute(
+            "ALTER TABLE tool_invocations ADD COLUMN replay_context_status TEXT",
+            [],
+        )?;
 
         let error = validate_project_state_schema(&conn)
-            .expect_err("missing replay context trigger should fail schema validation");
+            .expect_err("legacy replay context status column should fail schema validation");
         let classification = error.classification();
 
         assert!(matches!(error, StoreError::SchemaInvariant { .. }));
@@ -1733,7 +1750,6 @@ mod tests {
                 surface_id,
                 surface_instance_id,
                 access_class,
-                replay_context_status,
                 response_json,
                 created_at
             )
@@ -1747,7 +1763,6 @@ mod tests {
                 'surface_main',
                 'surface_instance_1',
                 'core_mutation',
-                'verified',
                 '{}',
                 't0'
             )",

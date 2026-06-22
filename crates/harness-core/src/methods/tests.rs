@@ -3597,7 +3597,7 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
         false
     );
     let run_id = run_id_from_record_run(&response.response_value);
-    assert_eq!(run_scope_revision(&harness, &run_id)?, Some(1));
+    assert_eq!(run_scope_revision(&harness, &run_id)?, 1);
     assert_eq!(after.state_version, before.state_version + 1);
     assert_eq!(after.runs, before.runs + 1);
     assert_eq!(after.write_authorizations, before.write_authorizations);
@@ -3804,59 +3804,36 @@ fn record_run_rejects_superseded_change_unit_run_ref_without_effect() -> Result<
 }
 
 #[test]
-fn record_run_rejects_legacy_null_scope_revision_run_ref_without_effect(
-) -> Result<(), Box<dyn Error>> {
+fn record_run_scope_revision_is_required_by_storage_constraint() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_run_ref")?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_scope_required")?;
 
-    let mut legacy = record_run_request(
-        "req_legacy_run",
-        "idem_legacy_run",
+    let mut request = record_run_request(
+        "req_scope_required_run",
+        "idem_scope_required_run",
         false,
         Some(2),
         &task_id,
         &change_unit_id,
     );
-    legacy.run_id = Some(RunId::new("run_legacy_null_revision")).into();
+    request.run_id = Some(RunId::new("run_scope_required")).into();
     harness
         .service
-        .record_run(legacy, invocation(AccessClass::RunRecording))?;
-    set_run_scope_revision(&harness, "run_legacy_null_revision", None)?;
+        .record_run(request, invocation(AccessClass::RunRecording))?;
     let before = harness.counts()?;
 
-    let mut request = record_run_request(
-        "req_legacy_ref_rejected",
-        "idem_legacy_ref_rejected",
-        false,
-        Some(3),
-        &task_id,
-        &change_unit_id,
-    );
-    request.close_assessment = Some(harness_types::CloseAssessmentInput {
-        result_summary: "Legacy-null Run must remain audit-only.".to_owned(),
-        result_refs: vec![test_state_record_ref(
-            StateRecordKind::Run,
-            "run_legacy_null_revision",
-            PROJECT_ID,
-            &task_id,
-            Some(3),
-        )],
-        residual_risks: Vec::new(),
-        sensitive_categories: Vec::new(),
-        recovery_constraints: Vec::new(),
-    })
-    .into();
-
-    let response = harness
-        .service
-        .record_run(request, invocation(AccessClass::RunRecording))?;
-
-    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        response.response_value["errors"][0]["code"],
-        "VALIDATION_FAILED"
-    );
+    let error = harness
+        .conn()?
+        .execute(
+            "UPDATE runs
+                SET scope_revision = NULL
+              WHERE project_id = ?1
+                AND run_id = 'run_scope_required'",
+            rusqlite::params![PROJECT_ID],
+        )
+        .expect_err("runs.scope_revision is required");
+    assert_constraint_error(error);
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -4011,7 +3988,7 @@ fn historical_verified_artifact_reuse_requires_new_current_run() -> Result<(), B
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(
         run_scope_revision(&harness, "run_artifact_reuse_current")?,
-        Some(2)
+        2
     );
     assert!(basis.result_refs.iter().any(|record_ref| {
         record_ref.record_kind == StateRecordKind::Run
@@ -6387,7 +6364,8 @@ fn record_user_judgment_persists_rejected_option_outcome() -> Result<(), Box<dyn
 }
 
 #[test]
-fn legacy_judgment_without_machine_action_remains_audit_only() -> Result<(), Box<dyn Error>> {
+fn resolved_judgment_without_machine_action_is_owner_state_corruption() -> Result<(), Box<dyn Error>>
+{
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_no_action")?;
     let after_basis = record_close_evidence(
@@ -6449,11 +6427,12 @@ fn legacy_judgment_without_machine_action_remains_audit_only() -> Result<(), Box
         invocation(AccessClass::ReadStatus),
     )?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "result");
-    assert_close_blocker(&response.response_value, "missing_final_acceptance");
-    assert_eq!(
-        user_judgment_resolution_machine_action(&harness, &judgment_id)?,
-        None
+    assert_owner_state_value_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "resolution_machine_action",
+        &harness.runtime_home_path,
     );
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -6469,14 +6448,19 @@ fn stored_judgment_null_action_column_with_json_action_is_corrupt() -> Result<()
 #[test]
 fn stored_judgment_action_column_with_missing_json_action_is_corrupt() -> Result<(), Box<dyn Error>>
 {
-    assert_final_acceptance_action_corruption("missing_json_action", |harness, judgment_id| {
-        let mut resolution = resolution_json(harness, judgment_id)?;
-        resolution
-            .as_object_mut()
-            .expect("resolution JSON should be an object")
-            .remove("machine_action");
-        set_user_judgment_resolution_json_value(harness, judgment_id, &resolution)
-    })
+    assert_final_acceptance_action_corruption_with(
+        "missing_json_action",
+        "resolution_json",
+        "corrupt_stored_json",
+        |harness, judgment_id| {
+            let mut resolution = resolution_json(harness, judgment_id)?;
+            resolution
+                .as_object_mut()
+                .expect("resolution JSON should be an object")
+                .remove("machine_action");
+            set_user_judgment_resolution_json_only_value(harness, judgment_id, &resolution)
+        },
+    )
 }
 
 #[test]
@@ -6484,7 +6468,7 @@ fn stored_judgment_differing_action_values_are_corrupt() -> Result<(), Box<dyn E
     assert_final_acceptance_action_corruption("differing_action", |harness, judgment_id| {
         let mut resolution = resolution_json(harness, judgment_id)?;
         resolution["machine_action"] = json!("reject");
-        set_user_judgment_resolution_json_value(harness, judgment_id, &resolution)
+        set_user_judgment_resolution_json_only_value(harness, judgment_id, &resolution)
     })
 }
 
@@ -6820,8 +6804,13 @@ fn stored_final_acceptance_without_actor_provenance_does_not_authorize_close(
         invocation(AccessClass::CoreMutation),
     )?;
 
-    assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    assert_owner_state_value_rejection(
+        &response,
+        "user_judgments",
+        &final_judgment_id,
+        "resolved_by_actor_kind",
+        &harness.runtime_home_path,
+    );
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -7317,22 +7306,21 @@ fn final_acceptance_for_old_close_basis_revision_is_rejected_for_close(
 }
 
 #[test]
-fn ambiguous_legacy_resolved_judgment_is_outcome_null_and_non_authoritative(
-) -> Result<(), Box<dyn Error>> {
+fn resolved_judgment_without_outcome_is_owner_state_corruption() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_ambiguous")?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "missing_outcome")?;
     let after_basis = record_close_evidence(
         &harness,
         &task_id,
         &change_unit_id,
         2,
-        "legacy_ambiguous",
+        "missing_outcome",
         true,
     )?;
     let judgment = harness.service.request_user_judgment(
         user_judgment_request(
-            "req_legacy_ambiguous_judgment",
-            "idem_legacy_ambiguous_judgment",
+            "req_missing_outcome_judgment",
+            "idem_missing_outcome_judgment",
             false,
             Some(after_basis),
             &task_id,
@@ -7363,16 +7351,12 @@ fn ambiguous_legacy_resolved_judgment_is_outcome_null_and_non_authoritative(
             }"#,
         ),
     )?;
-    assert_eq!(
-        user_judgment_resolution_outcome(&harness, &judgment_id)?,
-        None
-    );
     let before_close = harness.counts()?;
 
     let response = harness.service.close_task(
         close_task_request(CloseTaskFixture {
-            request_id: "req_legacy_ambiguous_close",
-            idempotency_key: Some("idem_legacy_ambiguous_close"),
+            request_id: "req_missing_outcome_close",
+            idempotency_key: Some("idem_missing_outcome_close"),
             dry_run: false,
             expected_state_version: Some(after_basis + 1),
             task_id: &task_id,
@@ -7383,8 +7367,13 @@ fn ambiguous_legacy_resolved_judgment_is_outcome_null_and_non_authoritative(
         invocation(AccessClass::CoreMutation),
     )?;
 
-    assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    assert_owner_state_value_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "resolution_machine_action",
+        &harness.runtime_home_path,
+    );
     assert_eq!(harness.counts()?, before_close);
     Ok(())
 }
@@ -8240,15 +8229,15 @@ fn scope_change_supersedes_pending_judgment_and_stale_pending_answer_has_no_effe
 }
 
 #[test]
-fn legacy_unbound_resolved_judgment_remains_audit_only() -> Result<(), Box<dyn Error>> {
+fn basisless_resolved_judgment_is_rejected_by_storage_constraint() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_final")?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "basis_required")?;
     let after_basis = record_close_evidence(
         &harness,
         &task_id,
         &change_unit_id,
         2,
-        "legacy_final_basis",
+        "basis_required",
         true,
     )?;
     let (after_final, final_judgment_id) = record_final_acceptance_with_id(
@@ -8256,34 +8245,28 @@ fn legacy_unbound_resolved_judgment_remains_audit_only() -> Result<(), Box<dyn E
         &task_id,
         &change_unit_id,
         after_basis,
-        "legacy",
+        "basis_required",
     )?;
-    mark_user_judgment_legacy_unbound(&harness, &final_judgment_id)?;
     let before = harness.counts()?;
 
-    let response = harness.service.close_task(
-        close_task_request(CloseTaskFixture {
-            request_id: "req_legacy_final_close",
-            idempotency_key: Some("idem_legacy_final_close"),
-            dry_run: false,
-            expected_state_version: Some(after_final),
-            task_id: &task_id,
-            intent: CloseIntent::Complete,
-            close_reason: Some(CloseReason::CompletedSelfChecked),
-            superseding_task_id: None,
-        }),
-        invocation(AccessClass::CoreMutation),
-    )?;
-
-    assert_eq!(response.response_value["close_state"], "blocked");
-    assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    let error = harness
+        .conn()?
+        .execute(
+            "UPDATE user_judgments
+                SET basis_json = NULL
+              WHERE project_id = ?1
+                AND judgment_id = ?2",
+            rusqlite::params![PROJECT_ID, final_judgment_id],
+        )
+        .expect_err("basis_json is required for stored judgments");
+    assert_constraint_error(error);
     assert_eq!(harness.counts()?, before);
+    assert_eq!(after_final, before.state_version);
     Ok(())
 }
 
 #[test]
-fn legacy_authority_options_without_action_cannot_resolve_current_authority(
-) -> Result<(), Box<dyn Error>> {
+fn bare_array_authority_options_are_owner_state_corruption() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "legacy_options")?;
     let pending_judgment = harness.service.request_user_judgment(
@@ -8308,8 +8291,8 @@ fn legacy_authority_options_without_action_cannot_resolve_current_authority(
             r#"[{
                 "option_id":"accept",
                 "label":"Accept",
-                "description":"Legacy option without machine action.",
-                "consequence":"Legacy ambiguity must not become current authority.",
+                "description":"Bare array option without machine action.",
+                "consequence":"Ambiguity must not become current authority.",
                 "is_default":true
             }]"#,
         ),
@@ -8329,10 +8312,12 @@ fn legacy_authority_options_without_action_cannot_resolve_current_authority(
         invocation(AccessClass::CoreMutation),
     )?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        response.response_value["errors"][0]["code"],
-        "DECISION_UNRESOLVED"
+    assert_owner_state_rejection(
+        &response,
+        "user_judgments",
+        &pending_judgment_id,
+        "options_json",
+        &harness.runtime_home_path,
     );
     assert_eq!(harness.counts()?, before);
     assert_eq!(
@@ -9063,7 +9048,8 @@ fn status_read_only_rejects_corrupt_owner_state_without_effect() -> Result<(), B
 }
 
 #[test]
-fn optional_resolution_null_remains_absent_not_corrupt() -> Result<(), Box<dyn Error>> {
+fn resolved_judgment_null_resolution_json_is_owner_state_corruption() -> Result<(), Box<dyn Error>>
+{
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "null_resolution")?;
     let after_basis = record_close_evidence(
@@ -9104,8 +9090,13 @@ fn optional_resolution_null_remains_absent_not_corrupt() -> Result<(), Box<dyn E
         invocation(AccessClass::ReadStatus),
     )?;
 
-    assert_eq!(response.response_value["base"]["response_kind"], "result");
-    assert_close_blocker(&response.response_value, "missing_final_acceptance");
+    assert_owner_state_value_rejection(
+        &response,
+        "user_judgments",
+        &judgment_id,
+        "resolution_json",
+        &harness.runtime_home_path,
+    );
     assert_eq!(harness.counts()?, before);
     Ok(())
 }
@@ -9478,6 +9469,8 @@ fn stored_judgment_resolution_incompatible_branches_rejects_close_without_effect
         Some(
             r#"{
                 "selected_option_id":"accept",
+                "machine_action":"accept",
+                "resolution_outcome":"accepted",
                 "answer":{
                     "product_decision":{"judgment":{"decision":"accepted"}},
                     "technical_decision":null,
@@ -9617,6 +9610,8 @@ fn stored_accepted_risk_missing_risk_id_rejects_close_without_effect() -> Result
         Some(
             &json!({
                 "selected_option_id": "accept",
+                "machine_action": "accept",
+                "resolution_outcome": "accepted",
                 "answer": {
                     "product_decision": null,
                     "technical_decision": null,
@@ -10597,6 +10592,17 @@ fn assert_public_response_omits(response: &PipelineResponse, fragment: &str) {
     );
 }
 
+fn assert_constraint_error(error: rusqlite::Error) {
+    match error {
+        rusqlite::Error::SqliteFailure(err, _) => assert_eq!(
+            err.code,
+            rusqlite::ErrorCode::ConstraintViolation,
+            "expected SQLite constraint error, got {err:?}"
+        ),
+        other => panic!("expected SQLite constraint error, got {other:?}"),
+    }
+}
+
 fn assert_public_response_has_no_internal_leak(
     response: &PipelineResponse,
     runtime_home_path: &Path,
@@ -10997,6 +11003,23 @@ fn assert_final_acceptance_action_corruption<F>(
 where
     F: FnOnce(&MethodHarness, &str) -> Result<(), Box<dyn Error>>,
 {
+    assert_final_acceptance_action_corruption_with(
+        suffix,
+        "resolution_machine_action",
+        "corrupt_stored_value",
+        mutate,
+    )
+}
+
+fn assert_final_acceptance_action_corruption_with<F>(
+    suffix: &str,
+    logical_column: &str,
+    corruption_category: &str,
+    mutate: F,
+) -> Result<(), Box<dyn Error>>
+where
+    F: FnOnce(&MethodHarness, &str) -> Result<(), Box<dyn Error>>,
+{
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, &format!("bad_action_{suffix}"))?;
@@ -11032,11 +11055,12 @@ where
         invocation(AccessClass::ReadStatus),
     )?;
 
-    assert_owner_state_value_rejection(
+    assert_owner_state_rejection_with_category(
         &response,
         "user_judgments",
         &judgment_id,
-        "resolution_machine_action",
+        logical_column,
+        corruption_category,
         &harness.runtime_home_path,
     );
     assert_eq!(harness.counts()?, before);
@@ -12403,7 +12427,9 @@ fn clear_user_judgment_actor_provenance(
     harness: &MethodHarness,
     user_judgment_id: &str,
 ) -> Result<(), Box<dyn Error>> {
-    harness.conn()?.execute(
+    let conn = harness.conn()?;
+    conn.pragma_update(None, "ignore_check_constraints", true)?;
+    conn.execute(
         "UPDATE user_judgments
             SET resolved_by_actor_kind = NULL,
                 resolved_actor_role = NULL,
@@ -12415,21 +12441,7 @@ fn clear_user_judgment_actor_provenance(
             AND judgment_id = ?2",
         rusqlite::params![PROJECT_ID, user_judgment_id],
     )?;
-    Ok(())
-}
-
-fn mark_user_judgment_legacy_unbound(
-    harness: &MethodHarness,
-    user_judgment_id: &str,
-) -> Result<(), Box<dyn Error>> {
-    harness.conn()?.execute(
-        "UPDATE user_judgments
-                SET basis_json = NULL,
-                    basis_status = 'legacy_unbound'
-              WHERE project_id = ?1
-                AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, user_judgment_id],
-    )?;
+    conn.pragma_update(None, "ignore_check_constraints", false)?;
     Ok(())
 }
 
@@ -12495,12 +12507,9 @@ fn latest_run_id(harness: &MethodHarness, task_id: &str) -> Result<String, Box<d
     )?)
 }
 
-fn run_scope_revision(
-    harness: &MethodHarness,
-    run_id: &str,
-) -> Result<Option<u64>, Box<dyn Error>> {
+fn run_scope_revision(harness: &MethodHarness, run_id: &str) -> Result<u64, Box<dyn Error>> {
     let conn = harness.conn()?;
-    let scope_revision: Option<i64> = conn.query_row(
+    let scope_revision: i64 = conn.query_row(
         "SELECT scope_revision
                FROM runs
               WHERE project_id = ?1
@@ -12508,23 +12517,7 @@ fn run_scope_revision(
         rusqlite::params![PROJECT_ID, run_id],
         |row| row.get(0),
     )?;
-    Ok(scope_revision.map(u64::try_from).transpose()?)
-}
-
-fn set_run_scope_revision(
-    harness: &MethodHarness,
-    run_id: &str,
-    scope_revision: Option<u64>,
-) -> Result<(), Box<dyn Error>> {
-    let scope_revision = scope_revision.map(i64::try_from).transpose()?;
-    harness.conn()?.execute(
-        "UPDATE runs
-            SET scope_revision = ?3
-          WHERE project_id = ?1
-            AND run_id = ?2",
-        rusqlite::params![PROJECT_ID, run_id, scope_revision],
-    )?;
-    Ok(())
+    Ok(u64::try_from(scope_revision)?)
 }
 
 fn set_run_observed_baseline(
@@ -12669,15 +12662,42 @@ fn set_user_judgment_resolution_json(
     judgment_id: &str,
     value: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
-    harness.conn()?.execute(
+    let (machine_action, resolution_outcome) = match value {
+        Some(text) => match serde_json::from_str::<Value>(text) {
+            Ok(value) => (
+                value
+                    .get("machine_action")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                value
+                    .get("resolution_outcome")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            ),
+            Err(_) => (Some("accept".to_owned()), Some("accepted".to_owned())),
+        },
+        None => (None, None),
+    };
+    let conn = harness.conn()?;
+    conn.pragma_update(None, "ignore_check_constraints", true)?;
+    conn.execute(
         "UPDATE user_judgments
             SET status = 'resolved',
                 resolution_json = ?3,
+                resolution_machine_action = ?4,
+                resolution_outcome = ?5,
                 resolved_at = 't1'
           WHERE project_id = ?1
             AND judgment_id = ?2",
-        rusqlite::params![PROJECT_ID, judgment_id, value],
+        rusqlite::params![
+            PROJECT_ID,
+            judgment_id,
+            value,
+            machine_action,
+            resolution_outcome
+        ],
     )?;
+    conn.pragma_update(None, "ignore_check_constraints", false)?;
     Ok(())
 }
 
@@ -12686,13 +12706,16 @@ fn set_user_judgment_resolution_machine_action(
     judgment_id: &str,
     value: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
-    harness.conn()?.execute(
+    let conn = harness.conn()?;
+    conn.pragma_update(None, "ignore_check_constraints", true)?;
+    conn.execute(
         "UPDATE user_judgments
             SET resolution_machine_action = ?3
           WHERE project_id = ?1
             AND judgment_id = ?2",
         rusqlite::params![PROJECT_ID, judgment_id, value],
     )?;
+    conn.pragma_update(None, "ignore_check_constraints", false)?;
     Ok(())
 }
 
@@ -12721,6 +12744,22 @@ fn set_user_judgment_resolution_json_value(
 ) -> Result<(), Box<dyn Error>> {
     let text = serde_json::to_string(value)?;
     set_user_judgment_resolution_json(harness, judgment_id, Some(&text))
+}
+
+fn set_user_judgment_resolution_json_only_value(
+    harness: &MethodHarness,
+    judgment_id: &str,
+    value: &Value,
+) -> Result<(), Box<dyn Error>> {
+    let text = serde_json::to_string(value)?;
+    harness.conn()?.execute(
+        "UPDATE user_judgments
+            SET resolution_json = ?3
+          WHERE project_id = ?1
+            AND judgment_id = ?2",
+        rusqlite::params![PROJECT_ID, judgment_id, text],
+    )?;
+    Ok(())
 }
 
 fn set_user_judgment_resolution_actor(

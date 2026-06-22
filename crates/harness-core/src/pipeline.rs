@@ -1825,9 +1825,9 @@ mod tests {
         let harness = PipelineHarness::new()?;
         harness.conn()?.execute(
             "UPDATE schema_migrations
-                SET name = 'conflicting_project_state_replay_context'
+                SET name = 'conflicting_project_state_initial'
               WHERE database_kind = 'project_state'
-                AND version = 2",
+                AND version = 1",
             [],
         )?;
 
@@ -2150,19 +2150,12 @@ mod tests {
     }
 
     #[test]
-    fn legacy_replay_row_is_preserved_but_not_replayed() -> Result<(), Box<dyn Error>> {
+    fn replay_row_without_identity_is_rejected_by_storage() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
-        let envelope = envelope(
-            "req_legacy_replay",
-            Some("idem_legacy_replay"),
-            false,
-            Some(0),
-            Some(TASK_ID),
-        );
-        let request_json = request_json(MethodName::UpdateScope, &envelope, "legacy-attempt");
-        let request_hash = canonical_request_hash(&request_json)?;
-        harness.conn()?.execute(
-            "INSERT INTO tool_invocations (
+        let error = harness
+            .conn()?
+            .execute(
+                "INSERT INTO tool_invocations (
                 project_id,
                 tool_name,
                 idempotency_key,
@@ -2175,34 +2168,17 @@ mod tests {
             VALUES (
                 ?1,
                 'harness.update_scope',
-                'idem_legacy_replay',
-                ?2,
+                'idem_missing_identity_replay',
+                'sha256:missing-identity-replay',
                 0,
                 1,
-                '{\"stored\":\"legacy-secret\"}',
+                '{\"stored\":\"missing-identity\"}',
                 't0'
             )",
-            rusqlite::params![PROJECT_ID, request_hash.as_str()],
-        )?;
-        let before = harness.counts()?;
-
-        let response = harness.execute(PipelineRequest {
-            method_name: MethodName::UpdateScope,
-            request_json,
-            envelope,
-            invocation: invocation(AccessClass::CoreMutation, Some(SURFACE_INSTANCE_ID)),
-            required_access_class: AccessClass::CoreMutation,
-            task_requirement: TaskRequirement::Required,
-            branch: commit_branch("legacy-attempt"),
-        })?;
-
-        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-        assert_eq!(
-            response.response_value["errors"][0]["code"],
-            "LOCAL_ACCESS_MISMATCH"
-        );
-        assert!(!response.response_json.contains("legacy-secret"));
-        assert_eq!(harness.counts()?, before);
+                rusqlite::params![PROJECT_ID],
+            )
+            .expect_err("replay rows require surface identity");
+        assert_constraint_error(error);
         Ok(())
     }
 
@@ -2487,6 +2463,17 @@ mod tests {
             response.response_value["errors"][0]["details"]["store_failure_category"],
             expected_category
         );
+    }
+
+    fn assert_constraint_error(error: rusqlite::Error) {
+        match error {
+            rusqlite::Error::SqliteFailure(err, _) => assert_eq!(
+                err.code,
+                rusqlite::ErrorCode::ConstraintViolation,
+                "expected SQLite constraint error, got {err:?}"
+            ),
+            other => panic!("expected SQLite constraint error, got {other:?}"),
+        }
     }
 
     fn assert_public_response_has_no_internal_leak(

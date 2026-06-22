@@ -646,7 +646,6 @@ pub enum JudgmentBasisCompatibilityStatus {
     Current,
     Stale,
     Superseded,
-    LegacyUnbound,
 }
 
 /// Public API error code values.

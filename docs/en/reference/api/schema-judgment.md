@@ -56,7 +56,7 @@ UserJudgment:
   options: UserJudgmentOption[]
   context: UserJudgmentContext
   affected_refs: StateRecordRef[]
-  basis: JudgmentBasis | null
+  basis: JudgmentBasis
   required_for: string[]
   resolution: UserJudgmentResolution | null
   expires_at: string | null
@@ -66,11 +66,11 @@ UserJudgment:
 
 `judgment_kind`, `status`, `presentation`, `required_for`, `machine_action`, and `resolution_outcome` values are owned by [judgment values](schema-value-sets.md#judgment-values). Product meaning is owned by [Core Model user-owned judgment](../core-model.md#4-user-owned-judgment).
 
-`status=resolved` means an answer was recorded. It does not by itself mean approval, acceptance, authorization, scope-decision authority, final acceptance, residual-risk acceptance, sensitive approval, or cancellation authority. Only the stored `resolution.machine_action` and `resolution.resolution_outcome` from the selected option can carry a machine-readable authority result, and outcome absence must never be interpreted as acceptance.
+`status=resolved` means an answer was recorded. It does not by itself mean approval, acceptance, authorization, scope-decision authority, final acceptance, residual-risk acceptance, sensitive approval, or cancellation authority. Only the stored `resolution.machine_action` and `resolution.resolution_outcome` from the selected option can carry a machine-readable authority result.
 
 `judgment_id`, `project_id`, `task_id`, and `change_unit_id` are opaque identifiers. `question` is a free-form display string.
 
-`basis` is populated for newly created judgments. `basis=null` is only for preserved legacy or imported rows that lack a state basis; those rows are audit records and cannot satisfy current close, write, scope-decision, or sensitive-approval requirements.
+`basis` is required for stored and returned judgments. A stored judgment without a basis is invalid owner state.
 
 ## `JudgmentBasis`
 
@@ -92,7 +92,7 @@ JudgmentBasis:
 
 Core creates `JudgmentBasis` from current state when it creates the judgment. `JudgmentBasis` is server-derived persisted state, not a public request field. Callers do not submit `basis`, `scope_revision`, `close_basis_revision`, current close-basis data, or session-binding data.
 
-`compatibility_status` values are owned by [judgment values](schema-value-sets.md#judgment-values). `legacy_unbound` marks a preserved judgment without a basis. `stale` and `superseded` judgments remain stored when needed for audit but are not eligible to satisfy current close, write, or sensitive-approval requirements.
+`compatibility_status` values are owned by [judgment values](schema-value-sets.md#judgment-values). `stale` and `superseded` judgments remain stored when needed for audit but are not eligible to satisfy current close, write, or sensitive-approval requirements.
 
 <a id="userjudgmentcandidate"></a>
 ## `UserJudgmentCandidate`
@@ -143,18 +143,16 @@ UserJudgmentContext:
 
 `UserJudgmentOptionInput` is the caller request shape for custom options where the method owner allows caller-authored options. It does not contain `machine_action` or `resolution_outcome`; public requests that include those fields inside `options` are invalid.
 
-`UserJudgmentOption` is the current Core-owned option state/output shape. Current public options include non-null `machine_action` and non-null `resolution_outcome`. `machine_action=accept` maps to `resolution_outcome=accepted`; `machine_action=reject` maps to `resolution_outcome=rejected`; `machine_action=defer` maps to `resolution_outcome=deferred` only where the method or semantic owner permits deferral. `blocked` is not a caller-selected authority option unless the method owner explicitly defines that path.
+`UserJudgmentOption` is the current Core-owned option state/output shape. Current public options include non-null `machine_action` and non-null `resolution_outcome`. `machine_action=accept` maps to `resolution_outcome=accepted`; `machine_action=reject` maps to `resolution_outcome=rejected`; `machine_action=defer` maps to `resolution_outcome=deferred` only where the method or semantic owner permits deferral. `blocked` is not a persisted selected-option outcome under the current action mapping.
 
-For authority-bearing judgment kinds, callers do not author visible-label-to-machine-outcome mappings in request input. Core creates the authority option actions, outcomes, localized labels, and consequences. Option labels or explanatory text must not invert the machine-readable action or outcome. Existing legacy options without an outcome are audit-only.
-
-Legacy persisted option representations are compatibility data, not public request schemas. They must not be used to infer request fields.
+For authority-bearing judgment kinds, callers do not author visible-label-to-machine-outcome mappings in request input. Core creates the authority option actions, outcomes, localized labels, and consequences. Option labels or explanatory text must not invert the machine-readable action or outcome. Persisted option state uses the current structured option object with explicit action and outcome fields.
 
 ## Resolution and answer payload
 
 ```yaml
 UserJudgmentResolution:
   selected_option_id: string
-  machine_action: string | null
+  machine_action: string
   resolution_outcome: string
   answer: RecordUserJudgmentPayload
   note: string | null
@@ -173,14 +171,14 @@ RecordUserJudgmentPayload:
 
 `selected_option_id` and `note` are request-level and resolution-level fields. `selected_option_id` is scoped to the judgment option set. `note` is a free-form display string.
 
-`machine_action` and `resolution_outcome` are copied from the selected `UserJudgmentOption`. The selected option's stored action and outcome are authoritative. New `status=resolved` judgments have non-null `machine_action` and non-null `resolution_outcome`; nullable `machine_action` only preserves legacy audit projection. Any outcome, decision, or acceptance field inside `answer` must agree with the selected option; free-form answer text cannot grant authority.
+`machine_action` and `resolution_outcome` are copied from the selected `UserJudgmentOption`. The selected option's stored action and outcome are authoritative and must match the action/outcome mapping. Any outcome, decision, or acceptance field inside `answer` must agree with the selected option; free-form answer text cannot grant authority.
 
 `resolved_by_actor_kind` uses the same controlled value set as `ToolEnvelope.actor_kind`; see [actor values](schema-value-sets.md#actor-values). It is attribution, not proof of user authority. Authority-bearing resolution additionally requires compatible internal `VerifiedActorContext` provenance from a bound `user_interaction` surface.
 
 Authority-bearing resolution rule:
 - `judgment_kind=scope_decision`, `final_acceptance`, `residual_risk_acceptance`, `sensitive_approval`, or `cancellation` requires a selected Core-created authority option, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_kind=user`, compatible internal `VerifiedActorContext.role=user_interaction`, and a compatible current basis before it can satisfy an authority requirement.
-- `resolution_outcome=rejected`, `deferred`, or `blocked` remains a durable user decision but does not approve, accept, authorize, waive, or close anything.
-- Existing resolved judgments without a machine-readable `resolution_outcome` or without required verified actor provenance are historical audit records and cannot satisfy current authority requirements.
+- `resolution_outcome=rejected` or `deferred` remains a durable user decision but does not approve, accept, authorize, waive, or close anything. `blocked` has no current persisted selected-option action mapping and cannot satisfy an authority requirement.
+- A resolved judgment without machine-readable action/outcome or required verified actor provenance is invalid owner state and cannot satisfy current authority requirements.
 
 Shape rule:
 - Exactly one decision-specific payload branch is populated for the selected `judgment_kind`.

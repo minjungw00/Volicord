@@ -1096,6 +1096,12 @@ fn concise_store_reason(error: &StoreError) -> String {
         | StoreError::SchemaInvariant { database_kind, .. } => {
             format!("{database_kind} schema is invalid")
         }
+        StoreError::UnsupportedStorageProfile {
+            actual_storage_profile,
+            ..
+        } => {
+            format!("unsupported storage profile {actual_storage_profile}")
+        }
         StoreError::Sqlite(_) | StoreError::Io(_) => "storage access failed".to_owned(),
     }
 }

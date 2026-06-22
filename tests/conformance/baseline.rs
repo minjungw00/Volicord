@@ -1166,12 +1166,12 @@ fn persisted_owner_state_corruption_fails_closed_without_effects() -> Result<(),
 }
 
 #[test]
-fn optional_owner_json_null_is_absent_but_malformed_text_fails_closed() -> Result<(), Box<dyn Error>>
-{
-    let null_fixture = CoreFixture::new("optional_null")?;
+fn required_resolution_json_null_is_rejected_and_malformed_text_fails_closed(
+) -> Result<(), Box<dyn Error>> {
+    let null_fixture = CoreFixture::new("required_resolution_null")?;
     let null_service = core(&null_fixture);
     let (task_id, change_unit_id) =
-        create_task_with_change_unit(&null_fixture, &null_service, "optional_null")?;
+        create_task_with_change_unit(&null_fixture, &null_service, "required_resolution_null")?;
     let after_basis = record_close_evidence(
         &null_fixture,
         &null_service,
@@ -1180,35 +1180,24 @@ fn optional_owner_json_null_is_absent_but_malformed_text_fails_closed() -> Resul
         2,
         true,
     )?;
-    let final_version = record_final_acceptance(
+    record_final_acceptance(
         &null_fixture,
         &null_service,
         &task_id,
         &change_unit_id,
         after_basis,
-        "optional_null",
+        "required_resolution_null",
     )?;
     let final_judgment_id = latest_judgment_id(&null_fixture)?;
-    null_fixture.set_user_judgment_resolution_raw(&final_judgment_id, None)?;
     let before = null_fixture.counts()?;
-
-    let check = null_service.close_task(
-        null_fixture.close_task_request(CloseTaskFixture {
-            request_id: "req_optional_null_check",
-            idempotency_key: None,
-            dry_run: false,
-            expected_state_version: None,
-            task_id: &task_id,
-            intent: CloseIntent::Check,
-            close_reason: None,
-            superseding_task_id: None,
-        }),
-        invocation(&null_fixture, AccessClass::ReadStatus),
-    )?;
-    assert_eq!(check.response_value["base"]["response_kind"], "result");
-    assert_close_blocker(&check.response_value, "missing_final_acceptance");
+    let error = null_fixture
+        .set_user_judgment_resolution_raw(&final_judgment_id, None)
+        .expect_err("resolved judgment rows require resolution_json");
+    assert!(
+        format!("{error:?}").contains("ConstraintViolation"),
+        "expected SQLite constraint error, got {error:?}"
+    );
     assert_eq!(null_fixture.counts()?, before);
-    assert_eq!(before.state_version, final_version);
 
     let malformed_fixture = CoreFixture::new("optional_malformed")?;
     let malformed_service = core(&malformed_fixture);
@@ -1867,87 +1856,28 @@ fn judgment_compatibility_is_exact_for_close_and_write_requirements() -> Result<
 }
 
 #[test]
-fn legacy_unbound_judgments_do_not_satisfy_current_close_or_write_requirements(
-) -> Result<(), Box<dyn Error>> {
-    let legacy_fixture = CoreFixture::new("compat_legacy_unbound")?;
-    let legacy_service = core(&legacy_fixture);
+fn basisless_user_judgments_are_rejected_by_storage_constraints() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("basis_required")?;
+    let service = core(&fixture);
     let (task_id, change_unit_id) =
-        create_task_with_change_unit(&legacy_fixture, &legacy_service, "compat_legacy_unbound")?;
-    let after_basis = record_close_evidence(
-        &legacy_fixture,
-        &legacy_service,
-        &task_id,
-        &change_unit_id,
-        2,
-        true,
-    )?;
-    let (after_final, final_id) = record_final_acceptance_with_id(
-        &legacy_fixture,
-        &legacy_service,
+        create_task_with_change_unit(&fixture, &service, "basis_required")?;
+    let after_basis =
+        record_close_evidence(&fixture, &service, &task_id, &change_unit_id, 2, true)?;
+    let (_, final_id) = record_final_acceptance_with_id(
+        &fixture,
+        &service,
         &task_id,
         &change_unit_id,
         after_basis,
-        "compat_legacy",
+        "basis_required",
     )?;
-    legacy_fixture.set_user_judgment_legacy_unbound(&final_id)?;
-    let close = legacy_service.close_task(
-        legacy_fixture.close_task_request(CloseTaskFixture {
-            request_id: "req_compat_legacy_close",
-            idempotency_key: Some("idem_compat_legacy_close"),
-            dry_run: false,
-            expected_state_version: Some(after_final),
-            task_id: &task_id,
-            intent: CloseIntent::Complete,
-            close_reason: Some(CloseReason::CompletedSelfChecked),
-            superseding_task_id: None,
-        }),
-        invocation(&legacy_fixture, AccessClass::CoreMutation),
-    )?;
-    assert_close_blocker(&close.response_value, "missing_final_acceptance");
+    let before = fixture.counts()?;
 
-    let sensitive = legacy_service.request_user_judgment(
-        legacy_fixture.user_judgment_request(UserJudgmentFixture {
-            request_id: "req_compat_legacy_sensitive",
-            idempotency_key: "idem_compat_legacy_sensitive",
-            dry_run: false,
-            expected_state_version: Some(after_final),
-            task_id: &task_id,
-            change_unit_id: Some(&change_unit_id),
-            judgment_kind: JudgmentKind::SensitiveApproval,
-        }),
-        invocation(&legacy_fixture, AccessClass::CoreMutation),
-    )?;
-    let sensitive_id = response_record_id(&sensitive.response_value, "user_judgment_ref");
-    let sensitive_recorded = legacy_service.record_user_judgment(
-        legacy_fixture.record_judgment_request(RecordJudgmentFixture {
-            request_id: "req_compat_legacy_sensitive_record",
-            idempotency_key: "idem_compat_legacy_sensitive_record",
-            expected_state_version: Some(after_final + 1),
-            task_id: &task_id,
-            user_judgment_id: &sensitive_id,
-            judgment_kind: JudgmentKind::SensitiveApproval,
-            answer: answer_payload(JudgmentKind::SensitiveApproval),
-        }),
-        invocation(&legacy_fixture, AccessClass::CoreMutation),
-    )?;
-    let after_sensitive = sensitive_recorded.response_value["base"]["state_version"]
-        .as_u64()
-        .expect("state version");
-    legacy_fixture.set_user_judgment_legacy_unbound(&sensitive_id)?;
-    let mut prepare = legacy_fixture.prepare_write_request(
-        "req_compat_legacy_prepare",
-        "idem_compat_legacy_prepare",
-        Some(after_sensitive),
-        Some(&task_id),
-        Some(&change_unit_id),
-    );
-    prepare.sensitive_categories = vec!["network".to_owned()];
-    let write = legacy_service.prepare_write(
-        prepare,
-        invocation(&legacy_fixture, AccessClass::WriteAuthorization),
-    )?;
-    assert_eq!(write.response_value["decision"], "approval_required");
-    assert_prepare_reason(&write.response_value, "sensitive_approval_missing");
+    let error = fixture
+        .clear_user_judgment_basis(&final_id)
+        .expect_err("basis_json is required for stored judgments");
+    assert_constraint_error(error);
+    assert_eq!(fixture.counts()?, before);
     Ok(())
 }
 
@@ -4408,6 +4338,14 @@ fn assert_owner_state_unavailable(response_value: &Value, table: &str, logical_c
             Some("corrupt_stored_json" | "corrupt_stored_value")
         ),
         "unexpected owner-state corruption details: {error:?}"
+    );
+}
+
+fn assert_constraint_error(error: impl std::fmt::Debug) {
+    let details = format!("{error:?}");
+    assert!(
+        details.contains("ConstraintViolation"),
+        "expected SQLite constraint error, got {details}"
     );
 }
 

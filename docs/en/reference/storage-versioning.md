@@ -387,7 +387,7 @@ Replay eligibility:
 
 - A stored response must never be returned before the current invocation has produced a valid `VerifiedSurfaceContext`.
 - When a replay row exists, Core checks context compatibility before request-hash compatibility.
-- Context compatibility requires `replay_context_status='verified'`, complete non-null replay context, a valid referenced surface, and an exact match for `surface_id`, `surface_instance_id`, and `access_class`.
+- Context compatibility requires complete non-null replay context, a valid referenced surface, and an exact match for `surface_id`, `surface_instance_id`, and `access_class`.
 - Incompatible context returns `LOCAL_ACCESS_MISMATCH` as the documented local-access mismatch rejection and must not expose the stored response.
 - Eligible replay is checked before `expected_state_version`, so a valid retry can return the original response after state has advanced.
 
@@ -397,7 +397,7 @@ Retry behavior:
 - Replay uses the stored response body; it does not recompute or reclassify `authorization_effect`, `base.state_version`, `base.events`, or any other response field.
 - Replay does not append events, promote or link artifacts, create or consume `Write Authorization`, create another replay row, or change state again.
 - Compatible context plus the same `idempotency_key` and a different `request_hash` returns `STATE_VERSION_CONFLICT` as defined by [state version conflict](api/error-precedence.md#state-conflict-behavior).
-- A row with `replay_context_status='legacy_unverified'`, or an equivalent legacy row without complete verified context, is preserved but is not replay eligible.
+- Rows without complete stored invocation context are invalid under the current replay schema and are not replay eligible.
 
 Owner links:
 

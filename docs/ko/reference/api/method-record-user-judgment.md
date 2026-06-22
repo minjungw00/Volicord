@@ -26,7 +26,7 @@
 
 이 메서드는 사용자의 답에 따라 지정된 대기 판단을 갱신합니다. 답변을 관련 없는 승인, 현재 적용 범위 확장, 최종 수락, 잔여 위험 수락, 민감 동작 승인, `Write Authorization`으로 넓히지 않습니다.
 
-답변을 기록하기 전에 Core는 대기 판단의 `JudgmentBasis`를 현재 상태와 비교합니다. 오래됨, 대체됨, 비호환, `legacy_unbound` 근거에는 성공적으로 답할 수 없습니다.
+답변을 기록하기 전에 Core는 대기 판단의 `JudgmentBasis`를 현재 상태와 비교합니다. 오래됨, 대체됨, 비호환, 저장 근거가 유효하지 않은 판단에는 성공적으로 답할 수 없습니다.
 
 ## 필수 입력
 
@@ -94,7 +94,7 @@ RecordUserJudgmentRequest:
 - 민감 승인은 현재 `scope_revision`, Change Unit, 동작, 정규화된 경로, 민감 범주, 기준선과 일치해야 합니다.
 - 나중의 범위 갱신에 쓰이는 범위 결정 권한은 `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, 현재 근거, scope update를 포함하는 `required_for`, 확인된 `user_interaction` 행위자 출처, 호환되는 Task, Change Unit, `scope_revision`, 영향받는 참조가 필요합니다.
 - 권한을 지니는 판단은 권한 요구사항을 만족하려면 `resolved_by_actor_kind=user`, 호환되는 확인된 행위자 출처, `machine_action=accept`, `resolution_outcome=accepted`가 필요합니다.
-- 거절, 연기, 차단, 오래됨, 대체됨, 만료됨, 레거시 미결속, 에이전트가 기록한 권한 판단은 감사 또는 결정 기록으로 남지만 현재 전이를 허가할 수 없습니다.
+- 거절, 연기, 차단, 오래됨, 대체됨, 만료됨, 근거 상태가 유효하지 않은 판단, 에이전트가 기록한 권한 판단은 감사 또는 결정 기록으로 남지만 현재 전이를 허가할 수 없습니다.
 - 범위 변경이나 실행 기록 변경은 이력 판단을 삭제하지 않습니다. 다만 호환되지 않는 판단은 현재 닫기, 쓰기, 범위 결정, 민감 승인 요구사항에 사용할 수 없게 됩니다.
 
 ## 성공 결과
@@ -109,7 +109,7 @@ RecordUserJudgmentRequest:
 - 현재 `state`
 - `next_actions`
 
-답변이 성공적으로 기록되면 이 메서드는 지정된 판단을 `status=resolved`로 커밋합니다. 기록된 `machine_action`은 값이 있을 때 선택된 선택지에서 복사됩니다. 기록된 `resolution_outcome`은 `accepted`, `rejected`, `deferred`, `blocked`일 수 있습니다.
+답변이 성공적으로 기록되면 이 메서드는 지정된 판단을 `status=resolved`로 커밋합니다. 기록된 `machine_action`과 `resolution_outcome`은 선택된 선택지에서 복사되며 선택지의 동작/결과 매핑과 일치해야 합니다.
 
 결과는 포함된 차단 사유와 판단에 의존하는 요약만 갱신합니다. `accepted`이고 호환되는 권한 판단 자체를 넘어 관련 없는 승인, 증거, 범위 갱신, `Write Authorization`, 닫기 상태, 최종 수락, 잔여 위험 수락, 민감 승인, 취소 권한을 만들지 않습니다.
 
@@ -144,7 +144,7 @@ RecordUserJudgmentRequest:
 - 유효하지 않은 선택지
 - 유효하지 않은 답변 요청 본문
 - 만료된 대기 판단
-- 오래됨, 대체됨, 비호환, `legacy_unbound` 판단 근거
+- 오래됨, 대체됨, 비호환, 유효하지 않은 저장 판단 근거
 - 대기 판단과 호환되지 않는 답변
 - 누락되었거나 현재와 일치하지 않는 잔여 위험 `risk_id`
 - 로컬 접근 실패

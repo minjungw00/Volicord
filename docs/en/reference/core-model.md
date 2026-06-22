@@ -199,13 +199,13 @@ Judgment compatibility:
 - Final acceptance must match the current `Task`, current Change Unit, `scope_revision`, `close_basis_revision`, baseline, and result references.
 - Residual-risk acceptance must match the current `close_basis_revision` and exact current `risk_id` values.
 - Sensitive-action approval must match the current `scope_revision`, current Change Unit, operation, normalized paths, sensitive categories, baseline, and Change Unit-linked sensitive action requirement.
-- Scope decision authority for a scope update must have `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, a current basis, `required_for` that includes scope update, verified actor provenance for `user_interaction`, and compatible `Task`, Change Unit, `scope_revision`, and affected refs. Rejected, deferred, blocked, stale, superseded, expired, legacy-unbound, or agent-recorded scope decisions do not authorize a scope transition.
-- Cancellation authority must have `machine_action=accept`, `resolution_outcome=accepted`, and match the current `Task`, current scope revision, current Change Unit, and verified `user_interaction` actor provenance. Rejected, deferred, stale, superseded, legacy-unbound, or agent-recorded cancellation judgments do not permit cancellation.
+- Scope decision authority for a scope update must have `judgment_kind=scope_decision`, `status=resolved`, `machine_action=accept`, `resolution_outcome=accepted`, a current basis, `required_for` that includes scope update, verified actor provenance for `user_interaction`, and compatible `Task`, Change Unit, `scope_revision`, and affected refs. Rejected, deferred, blocked, stale, superseded, expired, judgments with invalid basis state, or agent-recorded scope decisions do not authorize a scope transition.
+- Cancellation authority must have `machine_action=accept`, `resolution_outcome=accepted`, and match the current `Task`, current scope revision, current Change Unit, and verified `user_interaction` actor provenance. Rejected, deferred, stale, superseded, judgments with invalid basis state, or agent-recorded cancellation judgments do not permit cancellation.
 - A scope decision records the user's decision but does not mutate current scope by itself.
 - A stale pending judgment cannot be answered successfully.
 - Scope changes and Run changes do not delete historical judgments; they make incompatible judgments ineligible for current close, write, or sensitive-approval requirements.
 
-Legacy judgments without a basis are preserved for audit as `legacy_unbound`. They cannot satisfy current close, write, scope-decision, sensitive-approval, cancellation, final-acceptance, or residual-risk-acceptance requirements. Pending judgments may become `superseded`; resolved judgments may remain stored while becoming `stale`.
+Judgments without a stored basis are invalid owner state. Pending judgments may become `superseded`; resolved judgments may remain stored while becoming `stale`.
 
 Pending-judgment relevance:
 

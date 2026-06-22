@@ -1126,7 +1126,7 @@ fn run_record_is_close_basis_compatible(
     if record.project_id != context.request.envelope.project_id.as_str()
         || record.task_id != context.request.task_id.as_str()
         || change_unit_id != context.request.change_unit_id.as_str()
-        || record.scope_revision != Some(context.current_scope_revision)
+        || record.scope_revision != context.current_scope_revision
         || record.baseline_ref.as_deref() != Some(context.request.baseline_ref.as_str())
         || record.status != "recorded"
     {

@@ -56,7 +56,7 @@ UserJudgment:
   options: UserJudgmentOption[]
   context: UserJudgmentContext
   affected_refs: StateRecordRef[]
-  basis: JudgmentBasis | null
+  basis: JudgmentBasis
   required_for: string[]
   resolution: UserJudgmentResolution | null
   expires_at: string | null
@@ -66,11 +66,11 @@ UserJudgment:
 
 `judgment_kind`, `status`, `presentation`, `required_for`, `machine_action`, `resolution_outcome` 값은 [판단 값](schema-value-sets.md#judgment-values)이 담당합니다. 제품 의미는 [Core 모델의 사용자 소유 판단](../core-model.md#4-user-owned-judgment)이 담당합니다.
 
-`status=resolved`는 답변이 기록되었다는 뜻입니다. 그 자체로 승인, 수락, 권한 부여, 범위 결정 권한, 최종 수락, 잔여 위험 수락, 민감 승인, 취소 권한을 뜻하지 않습니다. 선택된 선택지에서 저장된 `resolution.machine_action`과 `resolution.resolution_outcome`만 기계 판독 가능한 권한 결과를 지닐 수 있으며, 결과 부재를 절대 수락으로 해석하면 안 됩니다.
+`status=resolved`는 답변이 기록되었다는 뜻입니다. 그 자체로 승인, 수락, 권한 부여, 범위 결정 권한, 최종 수락, 잔여 위험 수락, 민감 승인, 취소 권한을 뜻하지 않습니다. 선택된 선택지에서 저장된 `resolution.machine_action`과 `resolution.resolution_outcome`만 기계 판독 가능한 권한 결과를 지닐 수 있습니다.
 
 `judgment_id`, `project_id`, `task_id`, `change_unit_id`는 불투명 식별자입니다. `question`은 자유 형식 표시 문자열입니다.
 
-새로 만들어지는 판단에는 `basis`가 채워집니다. `basis=null`은 상태 근거가 없는 보존된 레거시 행이나 가져온 행에만 사용됩니다. 그런 행은 감사 기록이며 현재 닫기, 쓰기, 범위 결정, 민감 승인 요구사항을 만족할 수 없습니다.
+저장되고 반환되는 판단에는 `basis`가 필요합니다. 근거가 없는 저장 판단은 유효하지 않은 소유자 상태입니다.
 
 ## `JudgmentBasis`
 
@@ -92,7 +92,7 @@ JudgmentBasis:
 
 Core는 판단을 만들 때 현재 상태에서 `JudgmentBasis`를 만듭니다. `JudgmentBasis`는 서버가 파생한 지속 상태이며 공개 요청 필드가 아닙니다. 호출자는 `basis`, `scope_revision`, `close_basis_revision`, 현재 닫기 근거 데이터, 세션 바인딩 데이터를 제출하지 않습니다.
 
-`compatibility_status` 값은 [판단 값](schema-value-sets.md#judgment-values)이 담당합니다. `legacy_unbound`는 근거가 없는 보존 판단을 표시합니다. `stale`과 `superseded` 판단은 감사에 필요할 때 저장된 채 남을 수 있지만 현재 닫기, 쓰기, 민감 승인 요구사항을 만족하는 데 사용할 수 없습니다.
+`compatibility_status` 값은 [판단 값](schema-value-sets.md#judgment-values)이 담당합니다. `stale`과 `superseded` 판단은 감사에 필요할 때 저장된 채 남을 수 있지만 현재 닫기, 쓰기, 민감 승인 요구사항을 만족하는 데 사용할 수 없습니다.
 
 <a id="userjudgmentcandidate"></a>
 ## `UserJudgmentCandidate`
@@ -143,11 +143,9 @@ UserJudgmentContext:
 
 `UserJudgmentOptionInput`은 메서드 담당 문서가 호출자 작성 선택지를 허용할 때 쓰는 사용자 지정 선택지 요청 형태입니다. 이 형태에는 `machine_action`이나 `resolution_outcome`이 없습니다. 공개 요청이 `options` 안에 이 필드를 담으면 유효하지 않습니다.
 
-`UserJudgmentOption`은 현재 Core가 소유한 선택지 상태/출력 형태입니다. 현재 공개 선택지는 `null`이 아닌 `machine_action`과 `null`이 아닌 `resolution_outcome`을 포함합니다. `machine_action=accept`는 `resolution_outcome=accepted`로, `machine_action=reject`는 `resolution_outcome=rejected`로 매핑되고, `machine_action=defer`는 메서드나 의미 담당 문서가 연기를 허용하는 곳에서만 `resolution_outcome=deferred`로 매핑됩니다. `blocked`는 메서드 담당 문서가 그 경로를 명시적으로 정의하지 않는 한 호출자가 선택하는 권한 선택지가 아닙니다.
+`UserJudgmentOption`은 현재 Core가 소유한 선택지 상태/출력 형태입니다. 현재 공개 선택지는 `null`이 아닌 `machine_action`과 `null`이 아닌 `resolution_outcome`을 포함합니다. `machine_action=accept`는 `resolution_outcome=accepted`로, `machine_action=reject`는 `resolution_outcome=rejected`로 매핑되고, `machine_action=defer`는 메서드나 의미 담당 문서가 연기를 허용하는 곳에서만 `resolution_outcome=deferred`로 매핑됩니다. `blocked`는 현재 동작 매핑에서 지속 선택지 결과가 아닙니다.
 
-권한을 지니는 판단 종류에서 호출자는 요청 입력에 보이는 라벨과 기계 결과 사이의 매핑을 작성하지 않습니다. Core가 권한 선택지의 동작, 결과, 현지화된 라벨, 결과 설명을 만듭니다. 선택지 라벨이나 설명 문구가 기계 판독 가능한 동작이나 결과를 뒤집으면 안 됩니다. 결과가 없는 기존 선택지는 감사 전용입니다.
-
-레거시 지속 선택지 표현은 호환성 데이터이며 공개 요청 스키마가 아닙니다. 이 표현에서 요청 필드를 추론하면 안 됩니다.
+권한을 지니는 판단 종류에서 호출자는 요청 입력에 보이는 라벨과 기계 결과 사이의 매핑을 작성하지 않습니다. Core가 권한 선택지의 동작, 결과, 현지화된 라벨, 결과 설명을 만듭니다. 선택지 라벨이나 설명 문구가 기계 판독 가능한 동작이나 결과를 뒤집으면 안 됩니다. 지속 선택지 상태는 명시적인 동작과 결과 필드가 있는 현재 구조화된 선택지 객체를 사용합니다.
 
 <a id="resolution-and-answer-payload"></a>
 ## 해결과 답변 요청 본문
@@ -155,7 +153,7 @@ UserJudgmentContext:
 ```yaml
 UserJudgmentResolution:
   selected_option_id: string
-  machine_action: string | null
+  machine_action: string
   resolution_outcome: string
   answer: RecordUserJudgmentPayload
   note: string | null
@@ -174,14 +172,14 @@ RecordUserJudgmentPayload:
 
 `selected_option_id`와 `note`는 요청 수준이자 해결 수준의 필드입니다. `selected_option_id`는 판단 선택지 집합 안에서만 유효합니다. `note`는 자유 형식 표시 문자열입니다.
 
-`machine_action`과 `resolution_outcome`은 선택된 `UserJudgmentOption`에서 복사됩니다. 선택된 선택지의 저장 동작과 결과가 기준입니다. 새 `status=resolved` 판단은 `null`이 아닌 `machine_action`과 `null`이 아닌 `resolution_outcome`을 가집니다. `machine_action`의 null 허용은 레거시 감사 상태 보기만 보존합니다. `answer` 안의 결과, 결정, 수락 필드는 선택된 선택지와 일치해야 합니다. 자유 형식 답변 텍스트는 권한을 부여할 수 없습니다.
+`machine_action`과 `resolution_outcome`은 선택된 `UserJudgmentOption`에서 복사됩니다. 선택된 선택지의 저장 동작과 결과가 기준이며 동작/결과 매핑과 일치해야 합니다. `answer` 안의 결과, 결정, 수락 필드는 선택된 선택지와 일치해야 합니다. 자유 형식 답변 텍스트는 권한을 부여할 수 없습니다.
 
 `resolved_by_actor_kind`는 `ToolEnvelope.actor_kind`와 같은 제어 값 집합을 사용합니다. [행위자 값](schema-value-sets.md#actor-values)을 보세요. 이는 귀속이지 사용자 권한의 증명이 아닙니다. 권한을 지니는 해결은 묶인 `user_interaction` 접점에서 온 호환되는 내부 `VerifiedActorContext` 출처도 요구합니다.
 
 권한을 지니는 해결 규칙:
 - `judgment_kind=scope_decision`, `final_acceptance`, `residual_risk_acceptance`, `sensitive_approval`, `cancellation`은 현재 권한 요구사항을 만족하려면 선택된 Core 생성 권한 선택지, `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_kind=user`, 호환되는 내부 `VerifiedActorContext.role=user_interaction`, 호환되는 현재 근거가 필요합니다.
-- `resolution_outcome=rejected`, `deferred`, `blocked`는 지속되는 사용자 결정이지만 어떤 것도 승인, 수락, 권한 부여, 면제, 닫기를 만들지 않습니다.
-- 기계 판독 가능한 `resolution_outcome`이 없거나 필요한 확인된 행위자 출처가 없는 기존 `resolved` 판단은 이력 감사 기록이며 현재 권한 요구사항을 만족할 수 없습니다.
+- `resolution_outcome=rejected` 또는 `deferred`는 지속되는 사용자 결정이지만 어떤 것도 승인, 수락, 권한 부여, 면제, 닫기를 만들지 않습니다. `blocked`에는 현재 지속 선택지 동작 매핑이 없으며 권한 요구사항을 만족할 수 없습니다.
+- 기계 판독 가능한 동작/결과나 필요한 확인된 행위자 출처가 없는 해결 판단은 유효하지 않은 소유자 상태이며 현재 권한 요구사항을 만족할 수 없습니다.
 
 형태 규칙:
 - 선택된 `judgment_kind`에 맞는 판단별 요청 본문 분기 하나만 채웁니다.

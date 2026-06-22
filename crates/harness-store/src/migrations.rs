@@ -480,13 +480,13 @@ CREATE TABLE user_judgments (
   status TEXT NOT NULL CHECK (status IN ('pending', 'resolved', 'stale', 'superseded', 'expired')),
   request_json TEXT NOT NULL DEFAULT '{}',
   context_json TEXT NOT NULL DEFAULT '{}',
-  options_json TEXT NOT NULL DEFAULT '[]',
+  options_json TEXT NOT NULL DEFAULT '{"schema_version":1,"options":[]}',
   affected_refs_json TEXT NOT NULL DEFAULT '[]',
   artifact_refs_json TEXT NOT NULL DEFAULT '[]',
   sensitive_action_scope_json TEXT NOT NULL DEFAULT '{}',
-  basis_json TEXT,
-  basis_status TEXT NOT NULL DEFAULT 'legacy_unbound'
-    CHECK (basis_status IN ('current', 'stale', 'superseded', 'legacy_unbound')),
+  basis_json TEXT NOT NULL,
+  basis_status TEXT NOT NULL DEFAULT 'current'
+    CHECK (basis_status IN ('current', 'stale', 'superseded')),
   resolution_outcome TEXT
     CHECK (resolution_outcome IS NULL OR resolution_outcome IN ('accepted', 'rejected', 'deferred', 'blocked')),
   resolution_machine_action TEXT
@@ -504,6 +504,71 @@ CREATE TABLE user_judgments (
   resolved_at TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, judgment_id),
+  CHECK (
+    (
+      status IN ('pending', 'expired')
+      AND resolution_outcome IS NULL
+      AND resolution_machine_action IS NULL
+      AND resolution_json IS NULL
+      AND resolved_by_actor_kind IS NULL
+      AND resolved_actor_role IS NULL
+      AND resolved_by_surface_id IS NULL
+      AND resolved_by_surface_instance_id IS NULL
+      AND resolved_verification_basis IS NULL
+      AND resolved_assurance_level IS NULL
+      AND resolved_at IS NULL
+    )
+    OR (
+      status = 'resolved'
+      AND resolution_outcome IS NOT NULL
+      AND resolution_machine_action IS NOT NULL
+      AND resolution_json IS NOT NULL
+      AND resolved_by_actor_kind IS NOT NULL
+      AND resolved_actor_role IS NOT NULL
+      AND resolved_by_surface_id IS NOT NULL
+      AND resolved_by_surface_instance_id IS NOT NULL
+      AND resolved_verification_basis IS NOT NULL
+      AND resolved_assurance_level IS NOT NULL
+      AND resolved_at IS NOT NULL
+    )
+    OR (
+      status IN ('stale', 'superseded')
+      AND (
+        (
+          resolution_outcome IS NULL
+          AND resolution_machine_action IS NULL
+          AND resolution_json IS NULL
+          AND resolved_by_actor_kind IS NULL
+          AND resolved_actor_role IS NULL
+          AND resolved_by_surface_id IS NULL
+          AND resolved_by_surface_instance_id IS NULL
+          AND resolved_verification_basis IS NULL
+          AND resolved_assurance_level IS NULL
+          AND resolved_at IS NULL
+        )
+        OR (
+          resolution_outcome IS NOT NULL
+          AND resolution_machine_action IS NOT NULL
+          AND resolution_json IS NOT NULL
+          AND resolved_by_actor_kind IS NOT NULL
+          AND resolved_actor_role IS NOT NULL
+          AND resolved_by_surface_id IS NOT NULL
+          AND resolved_by_surface_instance_id IS NOT NULL
+          AND resolved_verification_basis IS NOT NULL
+          AND resolved_assurance_level IS NOT NULL
+          AND resolved_at IS NOT NULL
+        )
+      )
+    )
+  ),
+  CHECK (
+    resolution_machine_action IS NULL
+    OR (
+      (resolution_machine_action = 'accept' AND resolution_outcome = 'accepted')
+      OR (resolution_machine_action = 'reject' AND resolution_outcome = 'rejected')
+      OR (resolution_machine_action = 'defer' AND resolution_outcome = 'deferred')
+    )
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id),
   FOREIGN KEY (project_id, task_id, change_unit_id)
     REFERENCES change_units (project_id, task_id, change_unit_id),
@@ -559,7 +624,7 @@ CREATE TABLE runs (
   observed_changes_json TEXT NOT NULL DEFAULT '{}',
   evidence_updates_json TEXT NOT NULL DEFAULT '[]',
   authorization_effect_json TEXT NOT NULL DEFAULT '{}',
-  scope_revision INTEGER CHECK (scope_revision IS NULL OR scope_revision >= 0),
+  scope_revision INTEGER NOT NULL CHECK (scope_revision >= 0),
   created_by_surface_id TEXT NOT NULL,
   created_by_surface_instance_id TEXT NOT NULL,
   started_at TEXT,
@@ -741,57 +806,18 @@ CREATE TABLE tool_invocations (
   basis_state_version INTEGER NOT NULL CHECK (basis_state_version >= 0),
   committed_state_version INTEGER NOT NULL CHECK (committed_state_version > basis_state_version),
   status TEXT NOT NULL DEFAULT 'committed' CHECK (status = 'committed'),
-  surface_id TEXT,
-  surface_instance_id TEXT,
-  access_class TEXT,
+  surface_id TEXT NOT NULL,
+  surface_instance_id TEXT NOT NULL,
+  access_class TEXT NOT NULL,
   verification_basis TEXT,
-  replay_context_status TEXT NOT NULL DEFAULT 'legacy_unverified'
-    CHECK (replay_context_status IN ('verified', 'legacy_unverified')),
   response_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (project_id, tool_name, idempotency_key),
-  CHECK (
-    (
-      replay_context_status = 'verified'
-      AND surface_id IS NOT NULL
-      AND surface_instance_id IS NOT NULL
-      AND access_class IS NOT NULL
-    )
-    OR (
-      replay_context_status = 'legacy_unverified'
-    )
-  ),
   FOREIGN KEY (project_id, surface_id, surface_instance_id)
     REFERENCES surfaces (project_id, surface_id, surface_instance_id)
     ON DELETE RESTRICT,
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
-
-CREATE TRIGGER tool_invocations_verified_context_insert
-BEFORE INSERT ON tool_invocations
-FOR EACH ROW
-WHEN NEW.replay_context_status = 'verified'
-  AND (
-    NEW.surface_id IS NULL
-    OR NEW.surface_instance_id IS NULL
-    OR NEW.access_class IS NULL
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
-END;
-
-CREATE TRIGGER tool_invocations_verified_context_update
-BEFORE UPDATE ON tool_invocations
-FOR EACH ROW
-WHEN NEW.replay_context_status = 'verified'
-  AND (
-    NEW.surface_id IS NULL
-    OR NEW.surface_instance_id IS NULL
-    OR NEW.access_class IS NULL
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'verified replay context requires surface_id, surface_instance_id, and access_class');
-END;
 
 CREATE INDEX idx_project_state_active_task
   ON project_state (project_id, active_task_id);

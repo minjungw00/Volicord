@@ -1644,7 +1644,7 @@ fn stored_run_is_not_current_close_basis_compatible(
     record.project_id != request.envelope.project_id.as_str()
         || record.task_id != request.task_id.as_str()
         || record.change_unit_id.as_deref() != Some(current_change_unit_id)
-        || record.scope_revision != Some(current_scope_revision)
+        || record.scope_revision != current_scope_revision
         || record.baseline_ref.as_deref() != current_baseline
         || record.status != "recorded"
 }

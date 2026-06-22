@@ -62,11 +62,10 @@ pub struct ToolInvocationRecord {
     pub request_hash: String,
     pub basis_state_version: u64,
     pub committed_state_version: u64,
-    pub surface_id: Option<String>,
-    pub surface_instance_id: Option<String>,
-    pub access_class: Option<String>,
+    pub surface_id: String,
+    pub surface_instance_id: String,
+    pub access_class: String,
     pub verification_basis: Option<String>,
-    pub replay_context_status: String,
     pub response_json: String,
 }
 
@@ -82,10 +81,9 @@ pub struct VerifiedReplayContext {
 impl ToolInvocationRecord {
     /// Returns whether this replay row is eligible for the supplied verified context.
     pub fn matches_verified_replay_context(&self, context: &VerifiedReplayContext) -> bool {
-        self.replay_context_status == "verified"
-            && self.surface_id.as_deref() == Some(context.surface_id.as_str())
-            && self.surface_instance_id.as_deref() == Some(context.surface_instance_id.as_str())
-            && self.access_class.as_deref() == Some(context.access_class.as_str())
+        self.surface_id == context.surface_id.as_str()
+            && self.surface_instance_id == context.surface_instance_id.as_str()
+            && self.access_class == context.access_class.as_str()
     }
 }
 
@@ -209,7 +207,7 @@ pub struct UserJudgmentInsert {
     pub affected_refs_json: String,
     pub artifact_refs_json: String,
     pub sensitive_action_scope_json: String,
-    pub basis_json: Option<String>,
+    pub basis_json: String,
     pub basis_status: JudgmentBasisCompatibilityStatus,
     pub requested_by_surface_id: String,
     pub requested_by_surface_instance_id: String,
@@ -239,7 +237,7 @@ pub struct UserJudgmentResolutionUpdate {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserJudgmentBasisUpdate {
     pub judgment_id: String,
-    pub basis_json: Option<String>,
+    pub basis_json: String,
     pub basis_status: JudgmentBasisCompatibilityStatus,
 }
 
@@ -306,7 +304,7 @@ pub struct RunRecord {
     pub run_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
-    pub scope_revision: Option<u64>,
+    pub scope_revision: u64,
     pub baseline_ref: Option<String>,
     pub status: String,
 }
@@ -617,7 +615,7 @@ pub struct UserJudgmentRecord {
     pub affected_refs_json: String,
     pub artifact_refs_json: String,
     pub sensitive_action_scope_json: String,
-    pub basis_json: Option<String>,
+    pub basis_json: String,
     pub basis_status: String,
     pub resolution_outcome: Option<String>,
     pub resolution_machine_action: Option<String>,
@@ -640,9 +638,9 @@ pub struct UserJudgmentRecord {
 pub struct UserJudgmentBasisRecord {
     pub project_id: String,
     pub judgment_id: String,
-    pub basis_json: Option<String>,
+    pub basis_json: String,
     pub basis_status: JudgmentBasisCompatibilityStatus,
-    pub basis: Option<JudgmentBasis>,
+    pub basis: JudgmentBasis,
 }
 
 /// Public record reference facts read from storage rows.
@@ -1299,7 +1297,6 @@ impl CoreProjectStore {
                     surface_instance_id,
                     access_class,
                     verification_basis,
-                    replay_context_status,
                     response_json,
                     created_at
                 )
@@ -1314,7 +1311,6 @@ impl CoreProjectStore {
                     ?8,
                     ?9,
                     ?10,
-                    'verified',
                     ?11,
                     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 )",
@@ -2255,9 +2251,7 @@ impl ProjectMutation<'_> {
             "user_judgments.sensitive_action_scope_json",
             &input.sensitive_action_scope_json,
         )?;
-        if let Some(value) = &input.basis_json {
-            validate_judgment_basis_json("user_judgments.basis_json", value)?;
-        }
+        validate_judgment_basis_json("user_judgments.basis_json", &input.basis_json)?;
         validate_identifier("requested_by_surface_id", &input.requested_by_surface_id)?;
         validate_identifier(
             "requested_by_surface_instance_id",
@@ -2417,9 +2411,7 @@ impl ProjectMutation<'_> {
 
     fn update_user_judgment_basis(&mut self, input: &UserJudgmentBasisUpdate) -> StoreResult<()> {
         validate_identifier("judgment_id", &input.judgment_id)?;
-        if let Some(value) = &input.basis_json {
-            validate_judgment_basis_json("user_judgments.basis_json", value)?;
-        }
+        validate_judgment_basis_json("user_judgments.basis_json", &input.basis_json)?;
         let changed = self.tx.execute(
             "UPDATE user_judgments
                 SET basis_json = ?3,
@@ -3045,7 +3037,7 @@ fn run_record(conn: &Connection, project_id: &str, run_id: &str) -> StoreResult<
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, Option<String>>(3)?,
-                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, i64>(4)?,
                     row.get::<_, String>(5)?,
                     row.get::<_, String>(6)?,
                 ))
@@ -3063,17 +3055,9 @@ fn run_record(conn: &Connection, project_id: &str, run_id: &str) -> StoreResult<
             observed_changes_json,
             status,
         )| {
-            let scope_revision = scope_revision
-                .map(|value| {
-                    u64::try_from(value).map_err(|_| {
-                        StoreError::corrupt_owner_state_value(
-                            "runs",
-                            run_id.clone(),
-                            "scope_revision",
-                        )
-                    })
-                })
-                .transpose()?;
+            let scope_revision = u64::try_from(scope_revision).map_err(|_| {
+                StoreError::corrupt_owner_state_value("runs", run_id.clone(), "scope_revision")
+            })?;
             let observed_changes = decode_owner_json_text::<ObservedChanges>(
                 "runs",
                 run_id.clone(),
@@ -3582,7 +3566,7 @@ fn user_judgment_basis_record(
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                 ))
             },
@@ -3594,7 +3578,7 @@ fn user_judgment_basis_record(
     };
     let basis_status =
         parse_judgment_basis_status(&judgment_id, "user_judgments.basis_status", &basis_status)?;
-    let basis = decode_judgment_basis_column(&judgment_id, basis_json.as_deref())?;
+    let basis = decode_judgment_basis_column(&judgment_id, &basis_json)?;
 
     Ok(Some(UserJudgmentBasisRecord {
         project_id,
@@ -3772,7 +3756,6 @@ fn tool_invocation_tx(
             surface_instance_id,
             access_class,
             verification_basis,
-            replay_context_status,
             response_json
          FROM tool_invocations
          WHERE project_id = ?1
@@ -3803,7 +3786,6 @@ fn tool_invocation(
             surface_instance_id,
             access_class,
             verification_basis,
-            replay_context_status,
             response_json
          FROM tool_invocations
          WHERE project_id = ?1
@@ -3836,8 +3818,7 @@ fn tool_invocation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ToolInv
         surface_instance_id: row.get(7)?,
         access_class: row.get(8)?,
         verification_basis: row.get(9)?,
-        replay_context_status: row.get(10)?,
-        response_json: row.get(11)?,
+        response_json: row.get(10)?,
     })
 }
 
@@ -4074,25 +4055,13 @@ fn validate_user_judgment_options_json(field: &'static str, text: &str) -> Store
                 detail: format!("{field} must be persisted user judgment option JSON: {error}"),
             }
         })?;
-    if persisted.schema_version == 1 {
-        for option in &persisted.options {
-            let Some(action) = option.machine_action else {
-                return Err(StoreError::InvalidInput {
-                    detail: format!("{field} current options must include machine_action"),
-                });
-            };
-            let Some(outcome) = option.resolution_outcome else {
-                return Err(StoreError::InvalidInput {
-                    detail: format!("{field} current options must include resolution_outcome"),
-                });
-            };
-            if outcome != action.resolution_outcome() {
-                return Err(StoreError::InvalidInput {
-                    detail: format!(
-                        "{field} current option resolution_outcome must match machine_action"
-                    ),
-                });
-            }
+    for option in &persisted.options {
+        if option.resolution_outcome != option.machine_action.resolution_outcome() {
+            return Err(StoreError::InvalidInput {
+                detail: format!(
+                    "{field} current option resolution_outcome must match machine_action"
+                ),
+            });
         }
     }
     Ok(())
@@ -4110,24 +4079,21 @@ fn validate_user_judgment_resolution_json(
                 detail: format!("{field} must be persisted user judgment resolution JSON: {error}"),
             }
         })?;
-    if resolution.machine_action != Some(expected_action) {
+    if resolution.machine_action != expected_action {
         return Err(StoreError::InvalidInput {
             detail: format!(
                 "{field} machine_action must match user_judgments.resolution_machine_action"
             ),
         });
     }
-    if resolution.resolution_outcome != Some(expected_outcome) {
+    if resolution.resolution_outcome != expected_outcome {
         return Err(StoreError::InvalidInput {
             detail: format!(
                 "{field} resolution_outcome must match user_judgments.resolution_outcome"
             ),
         });
     }
-    if resolution
-        .machine_action
-        .is_some_and(|action| action.resolution_outcome() != expected_outcome)
-    {
+    if resolution.machine_action.resolution_outcome() != expected_outcome {
         return Err(StoreError::InvalidInput {
             detail: format!("{field} machine_action must match resolution_outcome"),
         });
@@ -4213,19 +4179,13 @@ fn decode_current_close_basis_text(record_ref: &str, text: &str) -> StoreResult<
     }
 }
 
-fn decode_judgment_basis_column(
-    record_ref: &str,
-    text: Option<&str>,
-) -> StoreResult<Option<JudgmentBasis>> {
-    text.map(|value| {
-        decode_owner_json_text::<PersistedJudgmentBasis>(
-            "user_judgments",
-            record_ref,
-            "basis_json",
-            value,
-        )
-    })
-    .transpose()
+fn decode_judgment_basis_column(record_ref: &str, text: &str) -> StoreResult<JudgmentBasis> {
+    decode_owner_json_text::<PersistedJudgmentBasis>(
+        "user_judgments",
+        record_ref,
+        "basis_json",
+        text,
+    )
 }
 
 fn judgment_basis_status_as_str(status: JudgmentBasisCompatibilityStatus) -> &'static str {
@@ -4233,7 +4193,6 @@ fn judgment_basis_status_as_str(status: JudgmentBasisCompatibilityStatus) -> &'s
         JudgmentBasisCompatibilityStatus::Current => "current",
         JudgmentBasisCompatibilityStatus::Stale => "stale",
         JudgmentBasisCompatibilityStatus::Superseded => "superseded",
-        JudgmentBasisCompatibilityStatus::LegacyUnbound => "legacy_unbound",
     }
 }
 
@@ -4263,7 +4222,6 @@ fn parse_judgment_basis_status(
         "current" => Ok(JudgmentBasisCompatibilityStatus::Current),
         "stale" => Ok(JudgmentBasisCompatibilityStatus::Stale),
         "superseded" => Ok(JudgmentBasisCompatibilityStatus::Superseded),
-        "legacy_unbound" => Ok(JudgmentBasisCompatibilityStatus::LegacyUnbound),
         _ => Err(StoreError::corrupt_owner_state_value(
             "user_judgments",
             record_ref,
@@ -4577,7 +4535,7 @@ mod tests {
             basis_record.basis_status,
             JudgmentBasisCompatibilityStatus::Current
         );
-        assert_eq!(basis_record.basis, Some(judgment_basis));
+        assert_eq!(basis_record.basis, judgment_basis);
 
         let stale_input = commit_input(
             &ProjectId::new(PROJECT_ID),
@@ -4952,6 +4910,10 @@ mod tests {
         basis_json: Option<String>,
         basis_status: JudgmentBasisCompatibilityStatus,
     ) -> UserJudgmentInsert {
+        let basis_json = basis_json.unwrap_or_else(|| {
+            serde_json::to_string(&judgment_basis(task_id, 0, None))
+                .expect("test judgment basis should serialize")
+        });
         UserJudgmentInsert {
             judgment_id: judgment_id.to_owned(),
             task_id: task_id.to_owned(),
@@ -4965,14 +4927,18 @@ mod tests {
             })
             .to_string(),
             context_json: "{}".to_owned(),
-            options_json: json!([{
+            options_json: json!({
+                "schema_version": 1,
+                "options": [{
                 "option_id": "accept",
                 "label": "Accept",
                 "description": "Accept the current close basis.",
                 "consequence": "The judgment can be resolved.",
+                "machine_action": "accept",
                 "resolution_outcome": "accepted",
                 "is_default": true
-            }])
+                }]
+            })
             .to_string(),
             affected_refs_json: "[]".to_owned(),
             artifact_refs_json: "[]".to_owned(),

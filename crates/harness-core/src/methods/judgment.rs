@@ -272,7 +272,7 @@ fn plan_request_user_judgment(
         options: options.clone(),
         context: judgment_context.clone(),
         affected_refs: request.affected_refs.clone(),
-        basis: Some(basis.clone()),
+        basis: basis.clone(),
         required_for: request.required_for.clone(),
         resolution: None,
         expires_at: request.expires_at.clone().into_option(),
@@ -412,7 +412,7 @@ fn plan_request_user_judgment(
             affected_refs_json: serde_json::to_string(&request.affected_refs)?,
             artifact_refs_json: serde_json::to_string(&judgment_context.artifact_refs)?,
             sensitive_action_scope_json: stored_sensitive_action_scope_json,
-            basis_json: Some(serde_json::to_string(&basis)?),
+            basis_json: serde_json::to_string(&basis)?,
             basis_status: harness_types::JudgmentBasisCompatibilityStatus::Current,
             requested_by_surface_id: verified_surface.surface_id.as_str().to_owned(),
             requested_by_surface_instance_id: verified_surface
@@ -1044,16 +1044,6 @@ fn plan_record_user_judgment(
     let selected_option = match persisted_selected_option.clone().into_current() {
         Ok(option) => option,
         Err(
-            harness_types::PersistedUserJudgmentCompatibilityError::MissingMachineAction
-            | harness_types::PersistedUserJudgmentCompatibilityError::MissingResolutionOutcome,
-        ) => {
-            return Err(PlanError::Response(Box::new(decision_rejected_response(
-                &request.envelope,
-                Some(project_state.state_version),
-                "pending user-owned judgment option lacks current machine-readable authority facts",
-            ))));
-        }
-        Err(
             harness_types::PersistedUserJudgmentCompatibilityError::MismatchedResolutionOutcome,
         ) => {
             return Err(PlanError::Core(CorePipelineError::Store(
@@ -1148,7 +1138,7 @@ fn plan_record_user_judgment(
     let mut user_judgment = user_judgment_from_record(&record)?;
     let resolution = UserJudgmentResolution {
         selected_option_id: request.selected_option_id.clone(),
-        machine_action: Some(machine_action).into(),
+        machine_action,
         resolution_outcome,
         answer,
         note: request.note.clone(),
@@ -1989,7 +1979,13 @@ fn user_judgment_from_record(record: &UserJudgmentRecord) -> CoreResult<UserJudg
             "affected_refs_json",
             Some(&record.affected_refs_json),
         )?,
-        basis: authority.basis,
+        basis: authority.basis.ok_or_else(|| {
+            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
+                "user_judgments",
+                record.judgment_id.clone(),
+                "basis_json",
+            ))
+        })?,
         required_for: request.required_for,
         resolution: authority.resolution,
         expires_at: request.expires_at.into_option(),

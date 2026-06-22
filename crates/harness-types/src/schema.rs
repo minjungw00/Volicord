@@ -682,7 +682,7 @@ pub struct UserJudgment {
     pub options: Vec<UserJudgmentOption>,
     pub context: UserJudgmentContext,
     pub affected_refs: Vec<StateRecordRef>,
-    pub basis: Option<JudgmentBasis>,
+    pub basis: JudgmentBasis,
     pub required_for: Vec<JudgmentRequiredFor>,
     pub resolution: Option<UserJudgmentResolution>,
     pub expires_at: Option<UtcTimestamp>,
@@ -779,16 +779,6 @@ impl<'de> Deserialize<'de> for PersistedUserJudgmentOptions {
     where
         D: Deserializer<'de>,
     {
-        let value = Value::deserialize(deserializer)?;
-        if let Value::Array(_) = value {
-            let options = Vec::<PersistedUserJudgmentOption>::deserialize(value)
-                .map_err(serde::de::Error::custom)?;
-            return Ok(Self {
-                schema_version: 0,
-                options,
-            });
-        }
-
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Wire {
@@ -796,6 +786,7 @@ impl<'de> Deserialize<'de> for PersistedUserJudgmentOptions {
             options: Vec<PersistedUserJudgmentOption>,
         }
 
+        let value = Value::deserialize(deserializer)?;
         let wire = Wire::deserialize(value).map_err(serde::de::Error::custom)?;
         if wire.schema_version != 1 {
             return Err(serde::de::Error::custom(
@@ -809,7 +800,7 @@ impl<'de> Deserialize<'de> for PersistedUserJudgmentOptions {
     }
 }
 
-/// Versioned internal compatibility representation for `user_judgments.options_json`.
+/// Versioned internal representation for `user_judgments.options_json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PersistedUserJudgmentOption {
@@ -817,23 +808,21 @@ pub struct PersistedUserJudgmentOption {
     pub label: String,
     pub description: String,
     pub consequence: String,
-    #[serde(default)]
-    pub machine_action: Option<UserJudgmentOptionAction>,
-    #[serde(default)]
-    pub resolution_outcome: Option<JudgmentResolutionOutcome>,
+    pub machine_action: UserJudgmentOptionAction,
+    pub resolution_outcome: JudgmentResolutionOutcome,
     pub is_default: bool,
 }
 
 impl PersistedUserJudgmentOption {
-    /// Creates a persisted compatibility option from a current public option.
+    /// Creates a persisted option from a current public option.
     pub fn from_current(option: UserJudgmentOption) -> Self {
         Self {
             option_id: option.option_id,
             label: option.label,
             description: option.description,
             consequence: option.consequence,
-            machine_action: Some(option.machine_action),
-            resolution_outcome: Some(option.resolution_outcome),
+            machine_action: option.machine_action,
+            resolution_outcome: option.resolution_outcome,
             is_default: option.is_default,
         }
     }
@@ -842,13 +831,7 @@ impl PersistedUserJudgmentOption {
     pub fn into_current(
         self,
     ) -> Result<UserJudgmentOption, PersistedUserJudgmentCompatibilityError> {
-        let machine_action = self
-            .machine_action
-            .ok_or(PersistedUserJudgmentCompatibilityError::MissingMachineAction)?;
-        let resolution_outcome = self
-            .resolution_outcome
-            .ok_or(PersistedUserJudgmentCompatibilityError::MissingResolutionOutcome)?;
-        if resolution_outcome != machine_action.resolution_outcome() {
+        if self.resolution_outcome != self.machine_action.resolution_outcome() {
             return Err(PersistedUserJudgmentCompatibilityError::MismatchedResolutionOutcome);
         }
         Ok(UserJudgmentOption {
@@ -856,26 +839,22 @@ impl PersistedUserJudgmentOption {
             label: self.label,
             description: self.description,
             consequence: self.consequence,
-            machine_action,
-            resolution_outcome,
+            machine_action: self.machine_action,
+            resolution_outcome: self.resolution_outcome,
             is_default: self.is_default,
         })
     }
 }
 
-/// Reason a legacy persisted judgment shape cannot be emitted as current public data.
+/// Reason a persisted judgment shape cannot be emitted as current public data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PersistedUserJudgmentCompatibilityError {
-    MissingMachineAction,
-    MissingResolutionOutcome,
     MismatchedResolutionOutcome,
 }
 
 impl fmt::Display for PersistedUserJudgmentCompatibilityError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
-            Self::MissingMachineAction => "persisted judgment option lacks machine_action",
-            Self::MissingResolutionOutcome => "persisted judgment option lacks resolution_outcome",
             Self::MismatchedResolutionOutcome => {
                 "persisted judgment option outcome does not match machine_action"
             }
@@ -915,7 +894,7 @@ pub struct UserJudgmentContext {
 #[serde(deny_unknown_fields)]
 pub struct UserJudgmentResolution {
     pub selected_option_id: UserJudgmentOptionId,
-    pub machine_action: RequiredNullable<UserJudgmentOptionAction>,
+    pub machine_action: UserJudgmentOptionAction,
     pub resolution_outcome: JudgmentResolutionOutcome,
     pub answer: RecordUserJudgmentPayload,
     pub note: RequiredNullable<String>,
@@ -927,8 +906,8 @@ pub struct UserJudgmentResolution {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PersistedUserJudgmentResolution {
     pub selected_option_id: UserJudgmentOptionId,
-    pub machine_action: Option<UserJudgmentOptionAction>,
-    pub resolution_outcome: Option<JudgmentResolutionOutcome>,
+    pub machine_action: UserJudgmentOptionAction,
+    pub resolution_outcome: JudgmentResolutionOutcome,
     pub answer: RecordUserJudgmentPayload,
     pub note: Option<String>,
     pub accepted_risks: Vec<AcceptedRiskInput>,
@@ -940,8 +919,8 @@ impl PersistedUserJudgmentResolution {
     pub fn current(resolution: UserJudgmentResolution) -> Self {
         Self {
             selected_option_id: resolution.selected_option_id,
-            machine_action: resolution.machine_action.into_option(),
-            resolution_outcome: Some(resolution.resolution_outcome),
+            machine_action: resolution.machine_action,
+            resolution_outcome: resolution.resolution_outcome,
             answer: resolution.answer,
             note: resolution.note.into_option(),
             accepted_risks: resolution.accepted_risks,
@@ -954,19 +933,15 @@ impl PersistedUserJudgmentResolution {
         self,
         resolution_outcome: JudgmentResolutionOutcome,
     ) -> Result<UserJudgmentResolution, PersistedUserJudgmentCompatibilityError> {
-        if let Some(stored_json_outcome) = self.resolution_outcome {
-            if stored_json_outcome != resolution_outcome {
-                return Err(PersistedUserJudgmentCompatibilityError::MismatchedResolutionOutcome);
-            }
+        if self.resolution_outcome != resolution_outcome {
+            return Err(PersistedUserJudgmentCompatibilityError::MismatchedResolutionOutcome);
         }
-        if let Some(machine_action) = self.machine_action {
-            if machine_action.resolution_outcome() != resolution_outcome {
-                return Err(PersistedUserJudgmentCompatibilityError::MismatchedResolutionOutcome);
-            }
+        if self.machine_action.resolution_outcome() != resolution_outcome {
+            return Err(PersistedUserJudgmentCompatibilityError::MismatchedResolutionOutcome);
         }
         Ok(UserJudgmentResolution {
             selected_option_id: self.selected_option_id,
-            machine_action: self.machine_action.into(),
+            machine_action: self.machine_action,
             resolution_outcome,
             answer: self.answer,
             note: self.note.into(),
@@ -985,10 +960,8 @@ impl<'de> Deserialize<'de> for PersistedUserJudgmentResolution {
         #[serde(deny_unknown_fields)]
         struct Wire {
             selected_option_id: UserJudgmentOptionId,
-            #[serde(default)]
-            machine_action: Option<UserJudgmentOptionAction>,
-            #[serde(default)]
-            resolution_outcome: Option<JudgmentResolutionOutcome>,
+            machine_action: UserJudgmentOptionAction,
+            resolution_outcome: JudgmentResolutionOutcome,
             answer: RecordUserJudgmentPayload,
             note: Option<String>,
             accepted_risks: Vec<AcceptedRiskInput>,
