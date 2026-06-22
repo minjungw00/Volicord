@@ -647,7 +647,6 @@ struct ParsedAgentOptions {
     output: OutputFormat,
     guidance: GuidanceSelection,
     dry_run: bool,
-    yes: bool,
     allow_repository_write: bool,
     replace_managed: bool,
     remove_managed: bool,
@@ -674,7 +673,6 @@ impl Default for ParsedAgentOptions {
             output: OutputFormat::Text,
             guidance: GuidanceSelection::None,
             dry_run: false,
-            yes: false,
             allow_repository_write: false,
             replace_managed: false,
             remove_managed: false,
@@ -684,9 +682,11 @@ impl Default for ParsedAgentOptions {
 }
 
 pub fn agent_usage() -> String {
-    "harness agent install --host codex|claude-code|claude_code|generic --scope user|project|local|export --project-id ID [--repo-root PATH] [--integration-id ID] [--default-project-id ID] [--server-name NAME] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--export-path PATH|--export-dir PATH] [--guidance none|codex|claude-code|claude_code|both] [--output text|json] [--dry-run] [--yes] [--allow-repository-write] [--replace-managed]\n\
+    "harness agent install --host codex|claude-code|claude_code|generic --scope user|project|local|export --project-id ID [--repo-root PATH] [--integration-id ID] [--default-project-id ID] [--server-name NAME] [--surface-id ID] [--surface-instance-id ID] [--mcp-command PATH] [--runtime-home PATH] [--export-path PATH|--export-dir PATH] [--guidance none|codex|claude-code|claude_code|both] [--output text|json] [--dry-run] [--allow-repository-write] [--replace-managed]\n\
      harness agent project add --integration-id ID --project-id ID [--repo-root PATH] [--default] [--runtime-home PATH] [--output text|json] [--dry-run]\n\
      harness agent project remove --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]\n\
+     harness agent project default set --integration-id ID --project-id ID [--runtime-home PATH] [--output text|json] [--dry-run]\n\
+     harness agent project default clear --integration-id ID [--runtime-home PATH] [--output text|json] [--dry-run]\n\
      harness agent status --integration-id ID [--runtime-home PATH] [--output text|json]\n\
      harness agent verify --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json]\n\
      harness agent uninstall --integration-id ID [--installation-id ID] [--runtime-home PATH] [--output text|json] [--dry-run] [--allow-repository-write] [--remove-managed]\n\
@@ -1702,6 +1702,7 @@ fn command_project(
     match subcommand {
         "add" => command_project_add(&args[1..], current_dir, process),
         "remove" => command_project_remove(&args[1..], current_dir),
+        "default" => command_project_default(&args[1..], current_dir),
         "-h" | "--help" | "help" => Ok(agent_usage()),
         other => Err(AgentCommandError::usage(format!(
             "unknown agent project command: {other}\n\n{}",
@@ -1910,8 +1911,23 @@ fn command_project_remove(
         let integration = registry.required_integration(integration_id)?;
         if integration.default_project_id.as_deref() == Some(project_id) {
             return Err(AgentCommandError::runtime(
-                "cannot remove the integration default project; change or clear the default first",
+                default_project_blocking_message(integration_id),
             ));
+        }
+        let remaining = registry
+            .integration_projects
+            .iter()
+            .filter(|record| {
+                record.integration_id == integration_id && record.project_id != project_id
+            })
+            .map(|record| record.project_id.clone())
+            .collect::<Vec<_>>();
+        let mut warnings = Vec::new();
+        if remaining.is_empty() && registry.is_project_member(integration_id, project_id) {
+            warnings.push(
+                "integration would have no allowed projects and would not be executable until one is added"
+                    .to_owned(),
+            );
         }
         let actions = vec![AgentAction::new(
             "project_allowlist",
@@ -1928,7 +1944,7 @@ fn command_project_remove(
             registry_schema: registry.schema,
             integration_id: integration_id.to_owned(),
             host_plan: None,
-            allowed_projects: Vec::new(),
+            allowed_projects: remaining,
             installations: Vec::new(),
             guidance: Vec::new(),
             verification: McpVerification::skipped("dry run does not change project membership"),
@@ -1936,7 +1952,7 @@ fn command_project_remove(
             actions,
             effects: Vec::new(),
             residual_effects: Vec::new(),
-            warnings: Vec::new(),
+            warnings,
             action_required: Vec::new(),
             output: parsed.output,
         };
@@ -1945,7 +1961,7 @@ fn command_project_remove(
     let integration = required_integration(&runtime_home, integration_id)?;
     if integration.default_project_id.as_deref() == Some(project_id) {
         return Err(AgentCommandError::runtime(
-            "cannot remove the integration default project; change or clear the default first",
+            default_project_blocking_message(integration_id),
         ));
     }
     let membership_exists = is_project_member(&runtime_home, integration_id, project_id)?;
@@ -1994,6 +2010,155 @@ fn command_project_remove(
     render_agent_output(&output)
 }
 
+fn command_project_default(
+    args: &[String],
+    current_dir: &Path,
+) -> Result<String, AgentCommandError> {
+    let Some(subcommand) = args.first().map(String::as_str) else {
+        return Err(AgentCommandError::usage(agent_usage()));
+    };
+    match subcommand {
+        "set" => command_project_default_set(&args[1..], current_dir),
+        "clear" => command_project_default_clear(&args[1..], current_dir),
+        "-h" | "--help" | "help" => Ok(agent_usage()),
+        other => Err(AgentCommandError::usage(format!(
+            "unknown agent project default command: {other}\n\n{}",
+            agent_usage()
+        ))),
+    }
+}
+
+fn command_project_default_set(
+    args: &[String],
+    current_dir: &Path,
+) -> Result<String, AgentCommandError> {
+    if is_help_request(args) {
+        return Ok(agent_usage());
+    }
+    let no_process = EnvOnlyProcess;
+    let parsed = parse_agent_options(args, project_default_set_allowed_options())?;
+    let integration_id = required_text(parsed.integration_id.as_deref(), "--integration-id")?;
+    let project_id = required_text(parsed.project_id.as_deref(), "--project-id")?;
+    validate_project_id(project_id)?;
+    let runtime_home = resolve_agent_runtime_home(&parsed, current_dir, &no_process)?;
+    let registry = inspect_agent_registry_for_planning(&runtime_home)?;
+    let integration = registry.required_integration(integration_id)?;
+    if !integration.enabled {
+        return Err(AgentCommandError::runtime(
+            "Agent Integration Profile is disabled; enable it before setting a default project",
+        ));
+    }
+    if registry.project(project_id).is_none() {
+        return Err(AgentCommandError::runtime(format!(
+            "project is not registered in this Runtime Home: {project_id}"
+        )));
+    }
+    if !registry.is_project_member(integration_id, project_id) {
+        return Err(AgentCommandError::runtime(
+            "project is not allowed for this Agent Integration Profile",
+        ));
+    }
+
+    let prior_default = integration.default_project_id.clone();
+    let result = if prior_default.as_deref() == Some(project_id) {
+        "reused"
+    } else if prior_default.is_some() {
+        "changed"
+    } else {
+        "created"
+    };
+    if !parsed.dry_run && result != "reused" {
+        set_agent_integration_default_project(&runtime_home, integration_id, project_id)?;
+    }
+    let allowed_projects = if parsed.dry_run {
+        allowed_project_ids_from_registry(&registry, integration_id)
+    } else {
+        allowed_project_ids(&runtime_home, integration_id)?
+    };
+    render_default_project_output(&DefaultProjectCommandOutput {
+        status: if parsed.dry_run {
+            AgentResultStatus::DryRun
+        } else {
+            AgentResultStatus::Complete
+        },
+        runtime_home,
+        integration_id: integration_id.to_owned(),
+        prior_default_project_id: prior_default,
+        resulting_default_project_id: Some(project_id.to_owned()),
+        result: result.to_owned(),
+        dry_run: parsed.dry_run,
+        allowed_projects,
+        effects: vec![DefaultProjectEffect::new(
+            "default_project",
+            result,
+            default_project_storage_effect(parsed.dry_run, result),
+            false,
+            false,
+        )],
+        warnings: Vec::new(),
+        output: parsed.output,
+    })
+}
+
+fn command_project_default_clear(
+    args: &[String],
+    current_dir: &Path,
+) -> Result<String, AgentCommandError> {
+    if is_help_request(args) {
+        return Ok(agent_usage());
+    }
+    let no_process = EnvOnlyProcess;
+    let parsed = parse_agent_options(args, project_default_clear_allowed_options())?;
+    let integration_id = required_text(parsed.integration_id.as_deref(), "--integration-id")?;
+    let runtime_home = resolve_agent_runtime_home(&parsed, current_dir, &no_process)?;
+    let registry = inspect_agent_registry_for_planning(&runtime_home)?;
+    let integration = registry.required_integration(integration_id)?;
+    let prior_default = integration.default_project_id.clone();
+    let result = if prior_default.is_some() {
+        "cleared"
+    } else {
+        "reused"
+    };
+    if !parsed.dry_run && prior_default.is_some() {
+        clear_agent_integration_default_project(&runtime_home, integration_id)?;
+    }
+    let allowed_projects = if parsed.dry_run {
+        allowed_project_ids_from_registry(&registry, integration_id)
+    } else {
+        allowed_project_ids(&runtime_home, integration_id)?
+    };
+    let mut warnings = Vec::new();
+    if allowed_projects.len() > 1 {
+        warnings.push(
+            "default cleared; calls may require an explicit project_id when more than one project remains"
+                .to_owned(),
+        );
+    }
+    render_default_project_output(&DefaultProjectCommandOutput {
+        status: if parsed.dry_run {
+            AgentResultStatus::DryRun
+        } else {
+            AgentResultStatus::Complete
+        },
+        runtime_home,
+        integration_id: integration_id.to_owned(),
+        prior_default_project_id: prior_default,
+        resulting_default_project_id: None,
+        result: result.to_owned(),
+        dry_run: parsed.dry_run,
+        allowed_projects,
+        effects: vec![DefaultProjectEffect::new(
+            "default_project",
+            result,
+            default_project_storage_effect(parsed.dry_run, result),
+            false,
+            false,
+        )],
+        warnings,
+        output: parsed.output,
+    })
+}
+
 fn command_status(
     args: &[String],
     current_dir: &Path,
@@ -2009,6 +2174,12 @@ fn command_status(
     let installations = list_host_installations_for_integration(&runtime_home, integration_id)?;
     let projects = list_integration_projects(&runtime_home, integration_id)?;
     let mut warnings = Vec::new();
+    if projects.is_empty() {
+        warnings.push(
+            "integration has no allowed projects and is not executable until one is added"
+                .to_owned(),
+        );
+    }
     for installation in &installations {
         match inspect_installation_host_state(&runtime_home, installation, current_dir, process) {
             Ok(state) => warnings.push(format!(
@@ -2092,6 +2263,107 @@ fn command_verify(
         )?));
     }
 
+    let project_records = list_integration_projects(&runtime_home, integration_id)?;
+    if project_records.is_empty() {
+        let mut results = Vec::new();
+        for installation in installations {
+            let verification = McpVerification::failed(
+                "integration has no allowed projects and is not executable until one is added",
+            );
+            let mut result = InstallationVerificationResult {
+                installation: installation.clone(),
+                verification,
+                preflight: VerificationStep::skipped(
+                    "preflight skipped because integration has no allowed projects",
+                ),
+                mcp_handshake: VerificationStep::skipped(
+                    "MCP handshake skipped because integration has no allowed projects",
+                ),
+                tool_discovery: VerificationStep::skipped(
+                    "tool discovery skipped because integration has no allowed projects",
+                ),
+                final_status: AgentResultStatus::Failed,
+                required_action: vec![format!(
+                    "add an allowed project with `harness agent project add --integration-id {integration_id} --project-id <project_id>`"
+                )],
+                persistence: VerificationStep::skipped("last_verified_status not updated yet"),
+            };
+            match update_host_installation_verification(
+                &runtime_home,
+                &installation.installation_id,
+                VERIFIED_STATUS_FAILED,
+                &installation.managed_fingerprint,
+            ) {
+                Ok(updated) => {
+                    result.installation = updated;
+                    result.persistence = VerificationStep::complete("last_verified_status updated");
+                }
+                Err(error) => {
+                    result.persistence = VerificationStep::failed(format!(
+                        "failed to update Host Installation {}: {error}",
+                        installation.installation_id
+                    ));
+                    result.final_status = AgentResultStatus::PartialFailure;
+                }
+            }
+            results.push(result);
+        }
+        let status = aggregate_verification_status(&results);
+        let verification = aggregate_verification(&results, status);
+        let updated = results
+            .iter()
+            .map(|result| result.installation.clone())
+            .collect::<Vec<_>>();
+        let mut warnings = vec![
+            "integration has no allowed projects and is not executable until one is added"
+                .to_owned(),
+        ];
+        for result in &results {
+            if result.persistence.status == VerificationStepStatus::Failed {
+                warnings.push(result.persistence.details.clone());
+            }
+        }
+        let action_required = results
+            .iter()
+            .flat_map(|result| result.required_action.clone())
+            .collect::<Vec<_>>();
+        let actions = results
+            .iter()
+            .map(|result| {
+                AgentAction::new(
+                    "verification",
+                    if result.persistence.status == VerificationStepStatus::Complete {
+                        ActionState::Updated
+                    } else {
+                        ActionState::Conflict
+                    },
+                    result.installation.installation_id.clone(),
+                )
+            })
+            .collect();
+        let output = AgentOutput {
+            status,
+            runtime_home,
+            registry_schema: None,
+            integration_id: integration_id.to_owned(),
+            host_plan: None,
+            allowed_projects: Vec::new(),
+            installations: updated,
+            guidance: Vec::new(),
+            verification,
+            installation_verifications: results,
+            actions,
+            effects: Vec::new(),
+            residual_effects: Vec::new(),
+            warnings,
+            action_required,
+            output: parsed.output,
+        };
+        return Err(AgentCommandError::failure_output(render_agent_output(
+            &output,
+        )?));
+    }
+
     let mut results = Vec::new();
     for installation in installations {
         let mut result = verify_one_installation(
@@ -2127,7 +2399,7 @@ fn command_verify(
         }
         results.push(result);
     }
-    let allowed_projects = list_integration_projects(&runtime_home, integration_id)?
+    let allowed_projects = project_records
         .into_iter()
         .map(|project| project.project_id)
         .collect();
@@ -2870,7 +3142,6 @@ fn install_allowed_options() -> &'static [&'static str] {
         "guidance",
         "output",
         "dry-run",
-        "yes",
         "allow-repository-write",
         "replace-managed",
     ]
@@ -2896,6 +3167,20 @@ fn project_remove_allowed_options() -> &'static [&'static str] {
         "output",
         "dry-run",
     ]
+}
+
+fn project_default_set_allowed_options() -> &'static [&'static str] {
+    &[
+        "runtime-home",
+        "project-id",
+        "integration-id",
+        "output",
+        "dry-run",
+    ]
+}
+
+fn project_default_clear_allowed_options() -> &'static [&'static str] {
+    &["runtime-home", "integration-id", "output", "dry-run"]
 }
 
 fn status_allowed_options() -> &'static [&'static str] {
@@ -2956,19 +3241,13 @@ fn guidance_remove_allowed_options() -> &'static [&'static str] {
 fn is_boolean_agent_option(name: &str) -> bool {
     matches!(
         name,
-        "dry-run"
-            | "yes"
-            | "allow-repository-write"
-            | "replace-managed"
-            | "remove-managed"
-            | "default"
+        "dry-run" | "allow-repository-write" | "replace-managed" | "remove-managed" | "default"
     )
 }
 
 fn set_agent_boolean(parsed: &mut ParsedAgentOptions, name: &str) {
     match name {
         "dry-run" => parsed.dry_run = true,
-        "yes" => parsed.yes = true,
         "allow-repository-write" => parsed.allow_repository_write = true,
         "replace-managed" => parsed.replace_managed = true,
         "remove-managed" => parsed.remove_managed = true,
@@ -3661,7 +3940,9 @@ fn resolve_mcp_command(
             if command == Path::new(DEFAULT_MCP_COMMAND) {
                 return Ok(command.clone());
             }
-            return Ok(absolute_path(current_dir, command.clone()));
+            return Err(AgentCommandError::usage(
+                "project-scoped host configuration must use portable `harness-mcp` from PATH; omit --mcp-command or pass --mcp-command harness-mcp",
+            ));
         }
         return Ok(PathBuf::from(DEFAULT_MCP_COMMAND));
     }
@@ -4219,6 +4500,161 @@ fn terminate_child(child: &mut Child, deadline: Instant) -> Result<(), String> {
 }
 
 #[derive(Debug)]
+struct DefaultProjectCommandOutput {
+    status: AgentResultStatus,
+    runtime_home: PathBuf,
+    integration_id: String,
+    prior_default_project_id: Option<String>,
+    resulting_default_project_id: Option<String>,
+    result: String,
+    dry_run: bool,
+    allowed_projects: Vec<String>,
+    effects: Vec<DefaultProjectEffect>,
+    warnings: Vec<String>,
+    output: OutputFormat,
+}
+
+#[derive(Debug)]
+struct DefaultProjectEffect {
+    target: &'static str,
+    action: String,
+    storage_effect: String,
+    host_configuration_rewritten: bool,
+    memberships_changed: bool,
+}
+
+impl DefaultProjectEffect {
+    fn new(
+        target: &'static str,
+        action: impl Into<String>,
+        storage_effect: impl Into<String>,
+        host_configuration_rewritten: bool,
+        memberships_changed: bool,
+    ) -> Self {
+        Self {
+            target,
+            action: action.into(),
+            storage_effect: storage_effect.into(),
+            host_configuration_rewritten,
+            memberships_changed,
+        }
+    }
+}
+
+fn render_default_project_output(
+    output: &DefaultProjectCommandOutput,
+) -> Result<String, AgentCommandError> {
+    match output.output {
+        OutputFormat::Text => render_default_project_text(output),
+        OutputFormat::Json => render_default_project_json(output),
+    }
+}
+
+fn render_default_project_text(
+    output: &DefaultProjectCommandOutput,
+) -> Result<String, AgentCommandError> {
+    let mut text = String::new();
+    text.push_str(&format!("status: {}\n", output.status.as_str()));
+    text.push_str(&format!(
+        "runtime_home: {}\n",
+        output.runtime_home.display()
+    ));
+    text.push_str(&format!("integration_id: {}\n", output.integration_id));
+    text.push_str("default_project:\n");
+    text.push_str(&format!(
+        "  prior_default_project_id: {}\n",
+        display_optional_text(output.prior_default_project_id.as_deref())
+    ));
+    text.push_str(&format!(
+        "  resulting_default_project_id: {}\n",
+        display_optional_text(output.resulting_default_project_id.as_deref())
+    ));
+    text.push_str(&format!("  result: {}\n", output.result));
+    text.push_str(&format!("  dry_run: {}\n", output.dry_run));
+    text.push_str(&format!(
+        "allowed_project_count: {}\n",
+        output.allowed_projects.len()
+    ));
+    if !output.allowed_projects.is_empty() {
+        text.push_str("allowed_projects:\n");
+        for project in &output.allowed_projects {
+            text.push_str(&format!("  {project}\n"));
+        }
+    }
+    if !output.effects.is_empty() {
+        text.push_str("effects:\n");
+        for effect in &output.effects {
+            text.push_str(&format!("  {}: {}\n", effect.target, effect.action));
+            text.push_str(&format!("    storage_effect: {}\n", effect.storage_effect));
+            text.push_str(&format!(
+                "    host_configuration_rewritten: {}\n",
+                effect.host_configuration_rewritten
+            ));
+            text.push_str(&format!(
+                "    memberships_changed: {}\n",
+                effect.memberships_changed
+            ));
+        }
+    }
+    if !output.warnings.is_empty() {
+        text.push_str("warnings:\n");
+        for warning in &output.warnings {
+            text.push_str(&format!("  {warning}\n"));
+        }
+    }
+    Ok(text)
+}
+
+fn render_default_project_json(
+    output: &DefaultProjectCommandOutput,
+) -> Result<String, AgentCommandError> {
+    let effects = output
+        .effects
+        .iter()
+        .map(|effect| {
+            json!({
+                "target": effect.target,
+                "action": effect.action,
+                "storage_effect": effect.storage_effect,
+                "host_configuration_rewritten": effect.host_configuration_rewritten,
+                "memberships_changed": effect.memberships_changed,
+            })
+        })
+        .collect::<Vec<_>>();
+    let value = json!({
+        "status": output.status.as_str(),
+        "runtime": {
+            "runtime_home": path_text(&output.runtime_home),
+        },
+        "integration": {
+            "integration_id": &output.integration_id,
+        },
+        "default_project": {
+            "integration_id": &output.integration_id,
+            "prior_default_project_id": &output.prior_default_project_id,
+            "resulting_default_project_id": &output.resulting_default_project_id,
+            "result": &output.result,
+            "dry_run": output.dry_run,
+        },
+        "project": {
+            "allowed_project_ids": &output.allowed_projects,
+            "allowed_project_count": output.allowed_projects.len(),
+        },
+        "allowed_projects": &output.allowed_projects,
+        "effects": effects,
+        "warnings": &output.warnings,
+    });
+    let mut text = serde_json::to_string_pretty(&value)
+        .map_err(|error| AgentCommandError::runtime(format!("failed to render JSON: {error}")))?;
+    text.push('\n');
+    Ok(text)
+}
+
+fn display_optional_text(value: Option<&str>) -> &str {
+    value.unwrap_or("none")
+}
+
+#[derive(Debug)]
 struct AgentOutput {
     status: AgentResultStatus,
     runtime_home: PathBuf,
@@ -4276,6 +4712,10 @@ fn render_agent_text(output: &AgentOutput) -> Result<String, AgentCommandError> 
             host_target_text(&plan.target)
         ));
     }
+    text.push_str(&format!(
+        "allowed_project_count: {}\n",
+        output.allowed_projects.len()
+    ));
     if !output.allowed_projects.is_empty() {
         text.push_str("allowed_projects:\n");
         for project in &output.allowed_projects {
@@ -4590,6 +5030,7 @@ fn render_agent_json(output: &AgentOutput) -> Result<String, AgentCommandError> 
         },
         "project": {
             "allowed_project_ids": output.allowed_projects,
+            "allowed_project_count": output.allowed_projects.len(),
         },
         "integration": {
             "integration_id": output.integration_id,
@@ -5747,6 +6188,28 @@ fn required_integration(
     })
 }
 
+fn allowed_project_ids(
+    runtime_home: &Path,
+    integration_id: &str,
+) -> Result<Vec<String>, AgentCommandError> {
+    Ok(list_integration_projects(runtime_home, integration_id)?
+        .into_iter()
+        .map(|record| record.project_id)
+        .collect())
+}
+
+fn allowed_project_ids_from_registry(
+    registry: &AgentRegistryPlan,
+    integration_id: &str,
+) -> Vec<String> {
+    registry
+        .integration_projects
+        .iter()
+        .filter(|record| record.integration_id == integration_id)
+        .map(|record| record.project_id.clone())
+        .collect()
+}
+
 fn is_project_member(
     runtime_home: &Path,
     integration_id: &str,
@@ -5756,6 +6219,24 @@ fn is_project_member(
         .unwrap_or_default()
         .iter()
         .any(|record| record.project_id == project_id))
+}
+
+fn default_project_storage_effect(dry_run: bool, result: &str) -> &'static str {
+    if dry_run {
+        "dry_run_no_write"
+    } else if result == "reused" {
+        "none_idempotent"
+    } else if result == "cleared" {
+        "default_project_cleared"
+    } else {
+        "default_project_updated"
+    }
+}
+
+fn default_project_blocking_message(integration_id: &str) -> String {
+    format!(
+        "cannot remove the integration default project; run `harness agent project default set --integration-id {integration_id} --project-id <project_id>` to choose another default or `harness agent project default clear --integration-id {integration_id}` to clear it first"
+    )
 }
 
 fn project_repo_matches(project: &ProjectRecord, repo_root: &Path) -> bool {

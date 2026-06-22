@@ -21,8 +21,8 @@ use harness_cli::{
 use harness_store::{
     agent_integrations::{
         agent_integration_record, list_host_installations_for_integration,
-        update_host_installation_verification, VERIFIED_STATUS_ACTION_REQUIRED,
-        VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED,
+        list_integration_projects, update_host_installation_verification,
+        VERIFIED_STATUS_ACTION_REQUIRED, VERIFIED_STATUS_COMPLETE, VERIFIED_STATUS_FAILED,
     },
     bootstrap::{
         initialize_runtime_home, list_projects, list_surfaces, register_project, register_surface,
@@ -1003,6 +1003,127 @@ fn harness_binary_agent_help_covers_nested_commands() -> Result<(), Box<dyn Erro
     assert_agent_help(["agent", "guidance", "apply", "--help"])?;
     assert_agent_help(["agent", "guidance", "status", "--help"])?;
     assert_agent_help(["agent", "guidance", "remove", "--help"])?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn harness_binary_agent_option_alignment_for_server_name_and_mcp_command(
+) -> Result<(), Box<dyn Error>> {
+    let runtime_home = TempRuntimeHome::new("cli-bin-agent-options")?;
+    let repo_user = runtime_home.create_product_repo("repo-user")?;
+    let repo_project = runtime_home.create_product_repo("repo-project")?;
+    let repo_local = runtime_home.create_product_repo("repo-local")?;
+    let codex_home = runtime_home.path().join("codex-home");
+    let mcp_command = write_agent_mcp(runtime_home.path(), AgentMcpFixture::Complete)?;
+
+    let omitted_server = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "install",
+            "--host",
+            "codex",
+            "--scope",
+            "user",
+            "--integration-id",
+            "agent_server_name_default",
+            "--project-id",
+            "project_server_name",
+            "--repo-root",
+            path_text(&repo_user).as_str(),
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&omitted_server);
+    let omitted_server_json: Value = serde_json::from_str(&stdout(&omitted_server))?;
+    assert_eq!(
+        omitted_server_json["host"]["server_name"],
+        "harness-agent_server_name_default"
+    );
+
+    let project_absolute = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "install",
+            "--host",
+            "codex",
+            "--scope",
+            "project",
+            "--integration-id",
+            "agent_project_absolute",
+            "--project-id",
+            "project_absolute",
+            "--repo-root",
+            path_text(&repo_project).as_str(),
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--dry-run",
+        ],
+    )?;
+    assert_eq!(project_absolute.status.code(), Some(2));
+    assert!(stderr(&project_absolute).contains("project-scoped host configuration"));
+    assert!(stderr(&project_absolute).contains("harness-mcp"));
+
+    let project_portable = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "install",
+            "--host",
+            "codex",
+            "--scope",
+            "project",
+            "--integration-id",
+            "agent_project_portable",
+            "--project-id",
+            "project_portable",
+            "--repo-root",
+            path_text(&repo_project).as_str(),
+            "--mcp-command",
+            "harness-mcp",
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+    )?;
+    assert_success(&project_portable);
+    let project_portable_json: Value = serde_json::from_str(&stdout(&project_portable))?;
+    assert_eq!(project_portable_json["status"], "dry_run");
+    assert_eq!(project_portable_json["host"]["host_scope"], "project");
+
+    let local_absolute = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "install",
+            "--host",
+            "claude_code",
+            "--scope",
+            "local",
+            "--integration-id",
+            "agent_local_absolute",
+            "--project-id",
+            "project_local_absolute",
+            "--repo-root",
+            path_text(&repo_local).as_str(),
+            "--mcp-command",
+            path_text(&mcp_command).as_str(),
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+    )?;
+    assert_success(&local_absolute);
+    let local_absolute_json: Value = serde_json::from_str(&stdout(&local_absolute))?;
+    assert_eq!(local_absolute_json["status"], "dry_run");
+    assert_eq!(local_absolute_json["host"]["host_scope"], "local");
     Ok(())
 }
 
@@ -2140,6 +2261,7 @@ fn harness_binary_agent_user_scope_project_membership_is_single_host_entry(
     let runtime_home = TempRuntimeHome::new("cli-bin-agent-project-add")?;
     let repo_a = runtime_home.create_product_repo("repo-a")?;
     let repo_b = runtime_home.create_product_repo("repo-b")?;
+    let repo_c = runtime_home.create_product_repo("repo-c")?;
     let codex_home = runtime_home.path().join("codex-home");
     let mcp_command = write_agent_mcp(runtime_home.path(), AgentMcpFixture::Complete)?;
 
@@ -2166,6 +2288,13 @@ fn harness_binary_agent_user_scope_project_membership_is_single_host_entry(
         &[("CODEX_HOME", path_text(&codex_home))],
     )?;
     assert_success(&install);
+    assert_eq!(
+        agent_integration_record(runtime_home.path(), "agent_multi_project")?
+            .expect("integration should exist")
+            .default_project_id
+            .as_deref(),
+        Some("project_a")
+    );
 
     let add = run_with_home_and_env(
         runtime_home.path(),
@@ -2188,7 +2317,162 @@ fn harness_binary_agent_user_scope_project_membership_is_single_host_entry(
         1
     );
 
-    let remove_default = run_with_home_and_env(
+    let register_c = run_with_home(
+        runtime_home.path(),
+        [
+            "project",
+            "register",
+            "--project-id",
+            "project_c",
+            "--repo-root",
+            path_text(&repo_c).as_str(),
+        ],
+    )?;
+    assert_success(&register_c);
+
+    let non_member_default = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "default",
+            "set",
+            "--integration-id",
+            "agent_multi_project",
+            "--project-id",
+            "project_c",
+        ],
+    )?;
+    assert_eq!(non_member_default.status.code(), Some(1));
+    assert!(stderr(&non_member_default).contains("not allowed"));
+
+    let unregistered_default = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "default",
+            "set",
+            "--integration-id",
+            "agent_multi_project",
+            "--project-id",
+            "project_missing",
+        ],
+    )?;
+    assert_eq!(unregistered_default.status.code(), Some(1));
+    assert!(stderr(&unregistered_default).contains("not registered"));
+
+    let same_default = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "default",
+            "set",
+            "--integration-id",
+            "agent_multi_project",
+            "--project-id",
+            "project_a",
+            "--output",
+            "json",
+        ],
+    )?;
+    assert_success(&same_default);
+    let same_default_json: Value = serde_json::from_str(&stdout(&same_default))?;
+    assert_eq!(same_default_json["default_project"]["result"], "reused");
+    assert_eq!(
+        same_default_json["default_project"]["prior_default_project_id"],
+        "project_a"
+    );
+    assert_eq!(
+        same_default_json["default_project"]["resulting_default_project_id"],
+        "project_a"
+    );
+
+    let registry_path = registry_db_path(runtime_home.path());
+    let hash_before_dry_set = file_hash(&registry_path)?;
+    let dry_set = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "default",
+            "set",
+            "--integration-id",
+            "agent_multi_project",
+            "--project-id",
+            "project_b",
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+    )?;
+    assert_success(&dry_set);
+    let dry_set_json: Value = serde_json::from_str(&stdout(&dry_set))?;
+    assert_eq!(dry_set_json["status"], "dry_run");
+    assert_eq!(dry_set_json["default_project"]["result"], "changed");
+    assert_eq!(file_hash(&registry_path)?, hash_before_dry_set);
+    assert_eq!(
+        agent_integration_record(runtime_home.path(), "agent_multi_project")?
+            .expect("integration should exist")
+            .default_project_id
+            .as_deref(),
+        Some("project_a")
+    );
+
+    let set_b = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "default",
+            "set",
+            "--integration-id",
+            "agent_multi_project",
+            "--project-id",
+            "project_b",
+            "--output",
+            "json",
+        ],
+    )?;
+    assert_success(&set_b);
+    let set_b_json: Value = serde_json::from_str(&stdout(&set_b))?;
+    assert_eq!(set_b_json["default_project"]["result"], "changed");
+    assert_eq!(
+        set_b_json["default_project"]["prior_default_project_id"],
+        "project_a"
+    );
+    assert_eq!(
+        set_b_json["default_project"]["resulting_default_project_id"],
+        "project_b"
+    );
+    assert_eq!(
+        agent_integration_record(runtime_home.path(), "agent_multi_project")?
+            .expect("integration should exist")
+            .default_project_id
+            .as_deref(),
+        Some("project_b")
+    );
+
+    let remove_current_default = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "remove",
+            "--integration-id",
+            "agent_multi_project",
+            "--project-id",
+            "project_b",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_eq!(remove_current_default.status.code(), Some(1));
+    assert!(stderr(&remove_current_default).contains("default project"));
+    assert!(stderr(&remove_current_default).contains("agent project default set"));
+    assert!(stderr(&remove_current_default).contains("agent project default clear"));
+
+    let remove_a_after_change = run_with_home_and_env(
         runtime_home.path(),
         [
             "agent",
@@ -2201,8 +2485,109 @@ fn harness_binary_agent_user_scope_project_membership_is_single_host_entry(
         ],
         &[("CODEX_HOME", path_text(&codex_home))],
     )?;
-    assert_eq!(remove_default.status.code(), Some(1));
-    assert!(stderr(&remove_default).contains("default project"));
+    assert_success(&remove_a_after_change);
+
+    let add_a_again = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "add",
+            "--integration-id",
+            "agent_multi_project",
+            "--project-id",
+            "project_a",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&add_a_again);
+
+    let hash_before_dry_clear = file_hash(&registry_path)?;
+    let dry_clear = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "default",
+            "clear",
+            "--integration-id",
+            "agent_multi_project",
+            "--dry-run",
+            "--output",
+            "json",
+        ],
+    )?;
+    assert_success(&dry_clear);
+    let dry_clear_json: Value = serde_json::from_str(&stdout(&dry_clear))?;
+    assert_eq!(dry_clear_json["status"], "dry_run");
+    assert_eq!(dry_clear_json["default_project"]["result"], "cleared");
+    assert_eq!(file_hash(&registry_path)?, hash_before_dry_clear);
+    assert_eq!(
+        agent_integration_record(runtime_home.path(), "agent_multi_project")?
+            .expect("integration should exist")
+            .default_project_id
+            .as_deref(),
+        Some("project_b")
+    );
+
+    let clear = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "default",
+            "clear",
+            "--integration-id",
+            "agent_multi_project",
+            "--output",
+            "json",
+        ],
+    )?;
+    assert_success(&clear);
+    let clear_json: Value = serde_json::from_str(&stdout(&clear))?;
+    assert_eq!(clear_json["default_project"]["result"], "cleared");
+    assert_eq!(
+        clear_json["default_project"]["prior_default_project_id"],
+        "project_b"
+    );
+    assert!(clear_json["default_project"]["resulting_default_project_id"].is_null());
+    assert!(clear_json["warnings"]
+        .as_array()
+        .expect("warnings array")
+        .iter()
+        .any(|warning| warning
+            .as_str()
+            .unwrap_or_default()
+            .contains("explicit project_id")));
+
+    let repeated_clear = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "default",
+            "clear",
+            "--integration-id",
+            "agent_multi_project",
+        ],
+    )?;
+    assert_success(&repeated_clear);
+    assert!(stdout(&repeated_clear).contains("result: reused"));
+
+    let remove_a_after_clear = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "remove",
+            "--integration-id",
+            "agent_multi_project",
+            "--project-id",
+            "project_a",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&remove_a_after_clear);
 
     let remove_b = run_with_home_and_env(
         runtime_home.path(),
@@ -2218,6 +2603,96 @@ fn harness_binary_agent_user_scope_project_membership_is_single_host_entry(
         &[("CODEX_HOME", path_text(&codex_home))],
     )?;
     assert_success(&remove_b);
+    assert!(stdout(&remove_b).contains("allowed_project_count: 0"));
+    assert!(stdout(&remove_b).contains("not executable until one is added"));
+    assert!(list_integration_projects(runtime_home.path(), "agent_multi_project")?.is_empty());
+    assert_eq!(
+        list_host_installations_for_integration(runtime_home.path(), "agent_multi_project")?.len(),
+        1
+    );
+
+    let status = run_with_home(
+        runtime_home.path(),
+        [
+            "agent",
+            "status",
+            "--integration-id",
+            "agent_multi_project",
+            "--output",
+            "json",
+        ],
+    )?;
+    assert_success(&status);
+    let status_json: Value = serde_json::from_str(&stdout(&status))?;
+    assert_eq!(status_json["project"]["allowed_project_count"], 0);
+    assert_eq!(
+        status_json["allowed_projects"]
+            .as_array()
+            .expect("allowed projects array")
+            .len(),
+        0
+    );
+    assert!(status_json["warnings"]
+        .as_array()
+        .expect("warnings array")
+        .iter()
+        .any(|warning| warning
+            .as_str()
+            .unwrap_or_default()
+            .contains("not executable")));
+
+    let verify_empty = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "verify",
+            "--integration-id",
+            "agent_multi_project",
+            "--output",
+            "json",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_eq!(verify_empty.status.code(), Some(1));
+    let verify_empty_json: Value = serde_json::from_str(&stdout(&verify_empty))?;
+    assert_eq!(verify_empty_json["status"], "failed");
+    assert_eq!(verify_empty_json["verification"]["status"], "failed");
+    assert!(verify_empty_json["verification"]["details"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("no allowed projects"));
+    assert_eq!(
+        list_host_installations_for_integration(runtime_home.path(), "agent_multi_project")?[0]
+            .last_verified_status,
+        VERIFIED_STATUS_FAILED
+    );
+
+    let add_b_again = run_with_home_and_env(
+        runtime_home.path(),
+        [
+            "agent",
+            "project",
+            "add",
+            "--integration-id",
+            "agent_multi_project",
+            "--project-id",
+            "project_b",
+        ],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&add_b_again);
+    assert_eq!(
+        list_host_installations_for_integration(runtime_home.path(), "agent_multi_project")?.len(),
+        1
+    );
+
+    let verify_restored = run_with_home_and_env(
+        runtime_home.path(),
+        ["agent", "verify", "--integration-id", "agent_multi_project"],
+        &[("CODEX_HOME", path_text(&codex_home))],
+    )?;
+    assert_success(&verify_restored);
+    assert!(stdout(&verify_restored).contains("status: complete"));
     Ok(())
 }
 
@@ -3213,11 +3688,14 @@ fn assert_agent_help<const N: usize>(args: [&str; N]) -> Result<(), Box<dyn Erro
     assert_success(&output);
     assert!(stdout(&output).contains("harness agent install"));
     assert!(stdout(&output).contains("harness agent guidance apply"));
+    assert!(stdout(&output).contains("harness agent project default set"));
+    assert!(stdout(&output).contains("harness agent project default clear"));
     assert!(stdout(&output).contains("--guidance none|codex"));
     assert!(stdout(&output).contains("--default-project-id ID"));
     assert!(stdout(&output).contains("--surface-id ID"));
     assert!(stdout(&output).contains("--export-path PATH"));
     assert!(stdout(&output).contains("--remove-managed"));
+    assert!(!stdout(&output).contains("--yes"));
     Ok(())
 }
 
