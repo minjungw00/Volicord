@@ -1,5 +1,7 @@
 # Harness
 
+**[English](README.md)** | [한국어](README.ko.md)
+
 Harness is the local work-authority product/system for AI-assisted product work.
 It helps a user and an agent keep the important parts of the work visible:
 scope, user-owned judgment, evidence, verification criteria, final acceptance,

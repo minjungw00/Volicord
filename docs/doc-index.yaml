@@ -199,41 +199,6 @@ shared_documents:
   - implementation test and fixture placement guidance
   - contract-first implementation routing guidance
   - Rust implementation validation expectations
-- doc_id: readme.root
-  path: README.md
-  kind: landing
-  summary: Comprehensive first-user Harness onboarding route for product orientation, environment fit,
-    executable setup, host setup, first use, and documentation navigation.
-  normative_level: guide
-  owner_area: onboarding
-  created_on: '2026-04-23'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
-  applies_to:
-  - harness_server_0_1
-  primary_audience:
-  - new users
-  - operators
-  - agent integrators
-  - source-code learners
-  journeys:
-  - evaluate
-  - install
-  - operate
-  - learn
-  depends_on:
-  - start
-  - start.installation
-  - use.local-mcp-quickstart
-  - use.user-guide
-  - use.agent-host-setup
-  - use.agent-host-troubleshooting
-  - reference.system-requirements
-  - reference.core-model
-  - reference.runtime-boundaries
-  - reference.admin-cli
-  - reference.mcp-transport
-  - reference.agent-integration
 - doc_id: docs.root
   path: docs/README.md
   kind: landing
@@ -301,6 +266,43 @@ shared_documents:
     and verification-criteria terminology distinctions
   - Korean mixed-language expressions to avoid
 documents:
+- doc_id: readme.root
+  path_en: README.md
+  path_ko: README.ko.md
+  kind: landing
+  summary: Bilingual first-user Harness onboarding route for product orientation, environment fit,
+    executable setup, host setup, first use, and documentation navigation.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: onboarding
+  created_on: '2026-04-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
+  applies_to:
+  - harness_server_0_1
+  primary_audience:
+  - new users
+  - operators
+  - agent integrators
+  - source-code learners
+  journeys:
+  - evaluate
+  - install
+  - operate
+  - learn
+  depends_on:
+  - start
+  - start.installation
+  - use.local-mcp-quickstart
+  - use.user-guide
+  - use.agent-host-setup
+  - use.agent-host-troubleshooting
+  - reference.system-requirements
+  - reference.core-model
+  - reference.runtime-boundaries
+  - reference.admin-cli
+  - reference.mcp-transport
+  - reference.agent-integration
 - doc_id: docs.index
   path_en: docs/en/README.md
   path_ko: docs/ko/README.md
