@@ -55,9 +55,24 @@ product labels, or Korean mixed-language controls.
 
 Preserve exact identifiers unchanged in English and Korean. Put code-like,
 schema-like, route-like, or search-critical values in backticks when they appear
-in prose. Do not translate exact strings inside code blocks, schema examples,
-API examples, file paths, field lists, literal-value tables, or machine-readable
-metadata.
+in prose. Translation decisions depend on the content's function, not only on
+whether Markdown presents it as inline code or a fenced block.
+
+Do not translate executable commands, command arguments, flags, environment
+variables, executable names, API methods or routes, schema field names, literal
+schema values, enum and status values, file and directory paths, integration
+IDs, project IDs, JSON, YAML, TOML, machine-readable metadata, or machine
+output where exact matching matters. Preserve those exact strings inside code
+blocks, schema examples, API examples, field lists, literal-value tables, and
+fenced `text` blocks.
+
+Translate natural-language user requests, dialogue, sample prompts, and
+explanatory prose naturally when the wording is not an executable input,
+machine output that requires exact matching, identifier, or contract literal. A
+fenced block can contain different semantic roles, so preserve exact content
+that tools or products must read or match while translating human-facing natural
+language, including ordinary dialogue or explanatory sentences inside fenced
+`text` blocks.
 
 Apply the terminology map's distinctions, including:
 
