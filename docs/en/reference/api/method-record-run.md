@@ -1,10 +1,10 @@
-<a id="harnessrecord_run"></a>
+<a id="volicordrecord_run"></a>
 
-# `harness.record_run` reference
+# `volicord.record_run` reference
 
 ## What this document owns
 
-This document owns baseline method behavior for `harness.record_run`:
+This document owns baseline method behavior for `volicord.record_run`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
 - run recording, current close-basis update, evidence update, blocker update, and artifact promotion method behavior
@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`harness.record_run` records:
+`volicord.record_run` records:
 
 - shaping work
 - a direct answer or result
@@ -33,8 +33,8 @@ The method may also update the current close basis, update compact evidence cove
 
 - A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_authorization_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, and `close_assessment`.
-- Product-write runs require a compatible `status=active` `Write Authorization` from `harness.prepare_write`.
-- New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `harness.record_run` does not stage new bytes.
+- Product-write runs require a compatible `status=active` `Write Authorization` from `volicord.prepare_write`.
+- New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `volicord.record_run` does not stage new bytes.
 
 ## Request schema
 
@@ -126,7 +126,7 @@ Product-write recording consumes the `Write Authorization` only when:
 - the authorization is not expired under the effective expiration rule: the earlier of stored `expires_at` and `created_at + 15 minutes`
 - observed changed paths, after Product Repository path normalization, are compatible with the authorized attempt
 
-An authorization created by `harness.prepare_write` is not stale immediately after creation when no intervening project state change has occurred. If `harness.prepare_write` commits from version `19` to version `20`, `harness.record_run` may consume that authorization while the current `project_state.state_version` and `WriteAuthorization.basis_state_version` are both `20`.
+An authorization created by `volicord.prepare_write` is not stale immediately after creation when no intervening project state change has occurred. If `volicord.prepare_write` commits from version `19` to version `20`, `volicord.record_run` may consume that authorization while the current `project_state.state_version` and `WriteAuthorization.basis_state_version` are both `20`.
 
 The method rejects stale `expected_state_version` and stale authorization basis before consuming the `Write Authorization`. A stale `WriteAuthorization.basis_state_version` retains higher-priority `STATE_VERSION_CONFLICT` routing even if the same authorization is also expired.
 
@@ -214,7 +214,7 @@ The examples are intentionally compact and method-local. The representative resp
 This example records validation output from a method-local staged handle. Method-local precondition: `staged_runprobe_001` is unexpired, unconsumed, and belongs to `proj_runprobe_001` / `task_runprobe_001`; its recorded surface provenance, captured at staging time, is `surface_run_probe` and `surface_instance_run_probe_01`. The precondition is local to this document and does not reuse any other method example.
 
 ```yaml
-method: harness.record_run
+method: volicord.record_run
 params:
   envelope:
     project_id: proj_runprobe_001

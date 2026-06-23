@@ -1,6 +1,6 @@
 # Scope reference
 
-This reference owns the Harness supported baseline scope boundary. Harness is the local work-authority product/system for AI-assisted product work. This page defines which capability families are inside the baseline, which remain outside it, and how reserved or profile-gated values affect scope.
+This reference owns the Volicord supported baseline scope boundary. Volicord is the local work-authority product/system for AI-assisted product work. This page defines which capability families are inside the baseline, which remain outside it, and how reserved or profile-gated values affect scope.
 
 This page is a stable reference contract rather than project narration or implementation planning.
 
@@ -57,12 +57,12 @@ Supported does not mean:
 | Plain-language intake and `Task` creation | A local `Task` can be started from plain-language user intent through the supported intake path. | [Intake method](api/method-intake.md), [Core Model](core-model.md) |
 | Scope updates | `Task` and Change Unit scope can be updated through the supported scope-update path. | [Update-scope method](api/method-update-scope.md), [Core Model](core-model.md) |
 | Status and close-readiness review | Status, evidence sufficiency, known blockers, and close-readiness state can be read through supported read paths. | [Status method](api/method-status.md), [Close-task method](api/method-close-task.md), [API State Schemas](api/schema-state.md), [Core Model](core-model.md) |
-| Prepare-write authorization | `harness.prepare_write` can create an owner-scoped, single-use `Write Authorization` for one compatible product-file write attempt. | [Prepare-write method](api/method-prepare-write.md), [Storage Effects](storage-effects.md), [Security](security.md) |
+| Prepare-write authorization | `volicord.prepare_write` can create an owner-scoped, single-use `Write Authorization` for one compatible product-file write attempt. | [Prepare-write method](api/method-prepare-write.md), [Storage Effects](storage-effects.md), [Security](security.md) |
 | Local surface registration | Registered local surfaces can identify the selected surface and supported capabilities for scope checks. | [Agent Integration](agent-integration.md), [Surface Recipes](../guides/surface-recipes.md), [Security](security.md) |
 | Artifact staging and compatible artifact linking | New artifact bytes can enter the baseline through the supported staging path; compatible persisted artifact references can be linked when artifact owners allow it. | See [Artifact staging owners](#artifact-staging-owners). |
 | Run and evidence recording | Runs and compact evidence summaries can be recorded for baseline work. | [Record-run method](api/method-record-run.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
 | Focused user-owned judgment capture | User-owned judgments can be requested and recorded through supported judgment paths without substituting for Core-owned state, evidence, or close-readiness rules. | See [User-owned judgment owners](#user-judgment-owners). |
-| Close attempts | `harness.close_task` can evaluate close readiness and attempt supported close outcomes while preserving evidence, final acceptance, residual-risk, and non-substitution boundaries. | [Close-task method](api/method-close-task.md), [Core Model](core-model.md), [API blocker routing](api/blocker-routing.md) |
+| Close attempts | `volicord.close_task` can evaluate close readiness and attempt supported close outcomes while preserving evidence, final acceptance, residual-risk, and non-substitution boundaries. | [Close-task method](api/method-close-task.md), [Core Model](core-model.md), [API blocker routing](api/blocker-routing.md) |
 | Read-time status display | Read-only status or derived display can summarize source state when the projection and template owners allow it. | [Projection Authority Reference](projection-and-templates.md), [Template Bodies](template-bodies.md), [API State Schemas](api/schema-state.md) |
 
 <a id="artifact-staging-owners"></a>
@@ -171,7 +171,7 @@ Baseline scope uses the guarantee level defined by [Security](security.md). Scop
 Supported boundary:
 
 - The baseline guarantee boundary is `cooperative` unless this page and [Security](security.md) define another supported guarantee.
-- `harness.prepare_write` and `Write Authorization` are product-file write compatibility mechanisms, not isolation or sandboxing guarantees.
+- `volicord.prepare_write` and `Write Authorization` are product-file write compatibility mechanisms, not isolation or sandboxing guarantees.
 
 Not included:
 

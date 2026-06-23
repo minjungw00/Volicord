@@ -1,10 +1,10 @@
-<a id="harnessupdate_scope"></a>
+<a id="volicordupdate_scope"></a>
 
-# `harness.update_scope` reference
+# `volicord.update_scope` reference
 
 ## What this document owns
 
-This document owns baseline method behavior for `harness.update_scope`:
+This document owns baseline method behavior for `volicord.update_scope`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
 - scope and Change Unit update behavior after intake
@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`harness.update_scope` updates current Task and currently applied Change Unit fields after intake:
+`volicord.update_scope` updates current Task and currently applied Change Unit fields after intake:
 
 - goal summary
 - scope boundary
@@ -175,7 +175,7 @@ Method-local precondition: `task_filter_001` already exists in `proj_filter_001`
 ## Minimal valid request
 
 ```yaml
-method: harness.update_scope
+method: volicord.update_scope
 params:
   envelope:
     project_id: proj_filter_001
@@ -284,7 +284,7 @@ state:
   guarantee_display: null
 next_actions:
   - action_kind: prepare_write
-    owner_method: harness.prepare_write
+    owner_method: volicord.prepare_write
     label: "Check the saved-filter change against current scope."
     blocking_question: null
     required_refs:

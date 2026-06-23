@@ -696,7 +696,7 @@ Task 리비전과 닫기 근거:
 - `tasks.scope_revision`과 `tasks.close_basis_revision`은 내부 현재 상태 좌표이며 공개 상태 시계나 호출자가 선택하는 권한이 아닙니다.
 - `runs.scope_revision`은 실행이 관찰한 현재 적용 범위 리비전을 저장하며 모든 실행 행에 필요합니다.
 - 현재 적용 범위나 현재 적용 Change Unit의 실질적 변경은 `tasks.scope_revision`을 증가시킵니다. 의미가 같은 정규화된 갱신은 증가시키지 않습니다.
-- 커밋된 `harness.record_run`은 `tasks.close_basis_revision`을 정확히 한 번 증가시킵니다.
+- 커밋된 `volicord.record_run`은 `tasks.close_basis_revision`을 정확히 한 번 증가시킵니다.
 - 실질적 범위 변경은 `tasks.close_basis_json`을 무효화하고, `tasks.close_basis_revision`을 증가시키며, 담당 문서에 따라 판단 근거 행을 오래됨 또는 대체됨으로 만들 수 있습니다.
 - 사용자 판단 기록은 어느 Task 리비전도 증가시키지 않습니다.
 - `tasks.close_basis_json`은 nullable 현재 `CurrentCloseBasis` 저장소입니다. SQL `NULL`은 사용할 수 있는 현재 닫기 근거가 없다는 뜻입니다.

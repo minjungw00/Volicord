@@ -1,8 +1,8 @@
 # Storage records
 
-This document owns the baseline persistent storage record families, placement, and storage-owned values. Persistent records are local records committed by Core for later reads inside the `Harness Runtime Home`.
+This document owns the baseline persistent storage record families, placement, and storage-owned values. Persistent records are local records committed by Core for later reads inside the `Volicord Runtime Home`.
 
-Persistent records are the local Core storage authority for Harness records. Security guarantees, external audit guarantees, anti-forgery claims, and `Product Repository` write authority remain with their owners.
+Persistent records are the local Core storage authority for Volicord records. Security guarantees, external audit guarantees, anti-forgery claims, and `Product Repository` write authority remain with their owners.
 
 ## Owner boundaries
 
@@ -28,10 +28,10 @@ This document does not own:
 
 ## Storage locations
 
-Harness stores baseline records in one local `Harness Runtime Home` and one project-local state database per registered project. The default reference root is `~/.harness`; an implementation may choose an equivalent configured root.
+Volicord stores baseline records in one local `Volicord Runtime Home` and one project-local state database per registered project. The default reference root is `~/.volicord`; an implementation may choose an equivalent configured root.
 
 ```text
-~/.harness/
+~/.volicord/
   registry.sqlite
   projects/
     PRJ-0001/
@@ -43,7 +43,7 @@ Harness stores baseline records in one local `Harness Runtime Home` and one proj
 Storage placement:
 
 - `registry.sqlite` stores Runtime Home identity, project registration mapping, Agent Integration Profile records, integration project membership, Host Installation inventory, and registry metadata. Project registration includes the registered `repo_root`, `project_home`, project `state.sqlite` path, and status.
-- `projects/{project_id}/` is the Harness project home for one registered project. It is not the same location or authority as `repo_root`.
+- `projects/{project_id}/` is the Volicord project home for one registered project. It is not the same location or authority as `repo_root`.
 - `state.sqlite` stores project-local Core state for the registered project.
 - `artifacts/` is the project artifact store when artifact storage is used. `artifacts/tmp/` is transient staging space when artifact staging requires it, not evidence authority. These directories need not exist immediately after project registration.
 
@@ -210,6 +210,6 @@ Task and Change Unit shaping JSON stores compact summaries and bounded lists onl
 - [Storage Versioning](storage-versioning.md) defines state versioning, idempotency, replay, events, locks, and migration contracts.
 - [API Schema Core](api/schema-core.md), [API State Schemas](api/schema-state.md), [API Artifact Schemas](api/schema-artifacts.md), [API Judgment Schemas](api/schema-judgment.md), and [API Value Sets](api/schema-value-sets.md) define API shape and public API values.
 - [API Methods](api/methods.md) and method owner documents define public method behavior that uses records.
-- [Runtime Boundaries](runtime-boundaries.md) defines `Product Repository`, Harness installation or runtime process, and `Harness Runtime Home` location boundaries.
+- [Runtime Boundaries](runtime-boundaries.md) defines `Product Repository`, Volicord installation or runtime process, and `Volicord Runtime Home` location boundaries.
 - [Projection Authority Reference](projection-and-templates.md) and [Template Bodies](template-bodies.md) define read-time projection authority and rendered template bodies.
 - [Security](security.md) defines security boundaries and guarantee levels.

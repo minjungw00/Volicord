@@ -1,13 +1,13 @@
-<a id="harnessclose_task"></a>
+<a id="volicordclose_task"></a>
 
-# `harness.close_task` 참조
+# `volicord.close_task` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `harness.close_task` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `volicord.close_task` 메서드 동작을 담당합니다.
 
 - 메서드별 요청 조건, `intent` 처리, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
-- `harness.close_task` 요청에 적용되는 메서드별 평가 순서
+- `volicord.close_task` 요청에 적용되는 메서드별 평가 순서
 - `CloseTaskResult.blockers`를 만드는 메서드별 차단 사유 분기
 - 메서드별 `CloseReadinessBlocker.code` 생성 동작
 - Task 닫기 예시
@@ -25,7 +25,7 @@
 
 ## 목적
 
-`harness.close_task`는 선택된 `Task`의 닫기 준비 상태를 평가하고, 선택한 닫기 의도가 허용할 때 요청된 종료 경로를 수행합니다.
+`volicord.close_task`는 선택된 `Task`의 닫기 준비 상태를 평가하고, 선택한 닫기 의도가 허용할 때 요청된 종료 경로를 수행합니다.
 
 이 메서드는 다음 결과를 낼 수 있습니다.
 
@@ -41,7 +41,7 @@
 
 메서드 담당 블록:
 
-- `harness.close_task`의 요청 검증과 `intent` 필드 조합
+- `volicord.close_task`의 요청 검증과 `intent` 필드 조합
 - 이 메서드가 확인, 상태 변경, 차단, 거절, `dry_run` 분기에 도달하는 순서
 - 유효한 상태 변경 분기가 종료 결과나 커밋된 차단 결과를 커밋할 수 있는지 여부
 - `CloseTaskResult.blockers`에서 생성할 수 있는 메서드별 차단 사유 코드
@@ -150,12 +150,12 @@ CloseTaskRequest:
 
 ## 메서드 흐름
 
-구현은 `harness.close_task`를 아래 순서로 평가합니다.
+구현은 `volicord.close_task`를 아래 순서로 평가합니다.
 
 1. 요청 래퍼, 메서드 필드, `intent` 필드 조합, 같은 프로젝트의 `Task` 식별자를 검증합니다. 형태 오류, 잘못된 프로젝트 식별자, 읽을 수 없는 `Task` 식별자는 `ToolRejectedResponse`를 반환합니다.
 2. 접점 맥락, 접근 등급, 로컬 역량, 요청한 종료 경로의 선행조건을 확인합니다.
 3. `dry_run=false`인 상태 변경 `intent`에서는 `idempotency_key`, 현재 `expected_state_version`, 멱등 요청 해시, 닫기 관련 `WriteAuthorization.basis_state_version`을 확인합니다. 오래되었거나 충돌하는 값은 `ToolRejectedResponse`를 반환합니다.
-4. `intent=check`는 [`harness.status`](method-status.md)의 `include.close=true`와 같은 계산으로 현재 닫기 준비 상태를 계산하고 읽기 전용 `CloseTaskResult`를 반환합니다.
+4. `intent=check`는 [`volicord.status`](method-status.md)의 `include.close=true`와 같은 계산으로 현재 닫기 준비 상태를 계산하고 읽기 전용 `CloseTaskResult`를 반환합니다.
 5. 상태 변경 `intent`와 `dry_run=true` 조합은 유효한 사전 확인 뒤 공통 미리보기 분기를 반환합니다.
 6. `intent=complete`는 현재 `CurrentCloseBasis`에 대한 닫기 준비 상태 평가를 실행합니다. 차단 사유가 남아 있으면 차단 분기를 반환하고, 없으면 `close_state=closed`와 종료 닫기 결과를 커밋합니다.
 7. `intent=cancel`은 `machine_action=accept`, `resolution_outcome=accepted`, 확인된 `user_interaction` 행위자 출처를 가지며 현재 `Task`, 범위 리비전, Change Unit과 호환되는 현재 수락된 `judgment_kind=cancellation`을 요구합니다. 취소 권한이 없거나 호환되지 않으면 차단 분기를 반환합니다.
@@ -305,7 +305,7 @@ CloseTaskRequest:
 ### 최소 유효 요청
 
 ```yaml
-method: harness.close_task
+method: volicord.close_task
 params:
   envelope:
     project_id: proj_close_001
@@ -375,7 +375,7 @@ state:
       related_refs: []
       next_actions:
         - action_kind: request_user_judgment
-          owner_method: harness.request_user_judgment
+          owner_method: volicord.request_user_judgment
           label: "Request final acceptance from the user."
           blocking_question: "Has the user given final acceptance for the completed Task?"
           required_refs:
@@ -392,7 +392,7 @@ blockers:
     related_refs: []
     next_actions:
       - action_kind: request_user_judgment
-        owner_method: harness.request_user_judgment
+        owner_method: volicord.request_user_judgment
         label: "Request final acceptance from the user."
         blocking_question: "Has the user given final acceptance for the completed Task?"
         required_refs:

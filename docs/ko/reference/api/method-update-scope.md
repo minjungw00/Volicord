@@ -1,13 +1,13 @@
-<a id="harnessupdate_scope"></a>
+<a id="volicordupdate_scope"></a>
 
-# `harness.update_scope` 참조
+# `volicord.update_scope` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `harness.update_scope` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `volicord.update_scope` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
-- `harness.intake` 이후 범위와 Change Unit을 갱신하는 동작
+- `volicord.intake` 이후 범위와 Change Unit을 갱신하는 동작
 - 범위 갱신 예시
 
 ## 담당하지 않는 것
@@ -21,7 +21,7 @@
 
 ## 목적
 
-`harness.update_scope`는 `harness.intake` 이후 현재 `Task`와 현재 적용 Change Unit 필드를 갱신합니다.
+`volicord.update_scope`는 `volicord.intake` 이후 현재 `Task`와 현재 적용 Change Unit 필드를 갱신합니다.
 
 - 목표 요약
 - 범위 경계
@@ -175,7 +175,7 @@ UpdateScopeRequest:
 ## 최소 유효 요청
 
 ```yaml
-method: harness.update_scope
+method: volicord.update_scope
 params:
   envelope:
     project_id: proj_filter_001
@@ -284,7 +284,7 @@ state:
   guarantee_display: null
 next_actions:
   - action_kind: prepare_write
-    owner_method: harness.prepare_write
+    owner_method: volicord.prepare_write
     label: "Check the saved-filter change against current scope."
     blocking_question: null
     required_refs:

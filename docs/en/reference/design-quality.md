@@ -39,7 +39,7 @@ This reference does not define neighboring authority:
 - API, storage, and schemas: API method behavior, method-specific blocker production, storage effects, SQLite DDL, persisted tables, or supported validator families
 - evidence and reporting: evidence authority, QA results, operations reports, conformance catalogs, projection authority, rendered reports, or template bodies
 
-Reference text documents the design-quality boundary and owner routing. It does not create Harness runtime state, user-owned judgment, `Write Authorization`, sensitive-action approval, evidence, QA, final acceptance, residual-risk acceptance, or close-readiness state.
+Reference text documents the design-quality boundary and owner routing. It does not create Volicord runtime state, user-owned judgment, `Write Authorization`, sensitive-action approval, evidence, QA, final acceptance, residual-risk acceptance, or close-readiness state.
 
 ## 2. Baseline design-quality role
 

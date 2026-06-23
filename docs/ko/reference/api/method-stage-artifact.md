@@ -1,10 +1,10 @@
-<a id="harnessstage_artifact"></a>
+<a id="volicordstage_artifact"></a>
 
-# `harness.stage_artifact` 참조
+# `volicord.stage_artifact` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `harness.stage_artifact` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `volicord.stage_artifact` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - 임시 스테이징 핸들을 만드는 동작
@@ -21,7 +21,7 @@
 
 ## 목적
 
-`harness.stage_artifact`는 호출자가 제공한 안전한 아티팩트 바이트 또는 안전한 알림을 같은 프로젝트와 `Task`에 대한 임시 `StagedArtifactHandle`로 스테이징합니다.
+`volicord.stage_artifact`는 호출자가 제공한 안전한 아티팩트 바이트 또는 안전한 알림을 같은 프로젝트와 `Task`에 대한 임시 `StagedArtifactHandle`로 스테이징합니다.
 
 스테이징은 입력 준비일 뿐입니다. 증거, 지속 아티팩트 연결, 수락, 잔여 위험, 닫기 준비 상태 효과는 관련 메서드와 저장소 담당 문서가 담당합니다.
 
@@ -148,7 +148,7 @@ StageArtifactRequest:
 ## 최소 유효 요청
 
 ```yaml
-method: harness.stage_artifact
+method: volicord.stage_artifact
 params:
   envelope:
     project_id: proj_trace_001

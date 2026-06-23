@@ -38,7 +38,7 @@
 
 의미:
 
-- `harness.stage_artifact`가 임시 아티팩트 바이트나 안전한 알림을 저장하고 스테이징 핸들을 반환하는 단계입니다.
+- `volicord.stage_artifact`가 임시 아티팩트 바이트나 안전한 알림을 저장하고 스테이징 핸들을 반환하는 단계입니다.
 
 증거와의 관계:
 
@@ -84,7 +84,7 @@
 
 허용되는 것:
 
-- `StagedArtifactHandle`은 성공한 `harness.stage_artifact`가 반환한 임시 핸들입니다.
+- `StagedArtifactHandle`은 성공한 `volicord.stage_artifact`가 반환한 임시 핸들입니다.
 - `existing_artifact`는 기존 지속 아티팩트를 연결합니다.
 
 조건:
@@ -116,7 +116,7 @@
 - `expires_at`
 - `consumed_by_run_id`, `promoted_artifact_id`, `consumed_at` 같은 소비 사실
 
-Core는 성공한 `harness.stage_artifact` 요청의 `VerifiedSurfaceContext`에서 `created_by_surface_*` 필드를 기록합니다.
+Core는 성공한 `volicord.stage_artifact` 요청의 `VerifiedSurfaceContext`에서 `created_by_surface_*` 필드를 기록합니다.
 
 조건:
 
@@ -130,7 +130,7 @@ Core는 성공한 `harness.stage_artifact` 요청의 `VerifiedSurfaceContext`에
 
 허용되는 것:
 
-- 성공한 `harness.stage_artifact`는 `base.effect_kind=staging_created`인 `StageArtifactResult`를 반환합니다.
+- 성공한 `volicord.stage_artifact`는 `base.effect_kind=staging_created`인 `StageArtifactResult`를 반환합니다.
 - 저장소는 `artifacts/tmp/` 아래 안전한 아티팩트 바이트 또는 안전한 알림을 둘 수 있습니다.
 - 스테이징 바이트 또는 알림에 대해 저장되는 `artifact_staging.tmp_path`는 `project_home` 기준 상대 경로이며 `artifacts/tmp/<file>` 같은 형태를 사용합니다.
 - 저장소는 `artifact_staging` 행이나 그에 해당하는 임시 스테이징 기록을 만들 수 있습니다.
@@ -387,7 +387,7 @@ expires_at: "<future-expiration-timestamp>"
 허용되는 것:
 
 - 커밋된 안전 알림이나 가림 처리된 아티팩트 바이트가 존재하고 무결성 확인이 가능하면 `blocked`, `secret_omitted`, `redacted` 아티팩트도 `artifacts.status=available`일 수 있습니다.
-- `uri`는 보통 `harness-artifact://{project_id}/{artifact_id}`처럼 하네스 저장소를 통해 해석됩니다.
+- `uri`는 보통 `volicord-artifact://{project_id}/{artifact_id}`처럼 Volicord 저장소를 통해 해석됩니다.
 - 가림 처리된 아티팩트 바이트, `secret_omitted` 또는 `blocked` 알림, 안전 핸들, 담당 문서가 승인한 다른 안전 표현을 저장합니다.
 
 허용되지 않는 것:
@@ -494,7 +494,7 @@ expires_at: "<future-expiration-timestamp>"
 ## 관련 담당 문서
 
 - [API 아티팩트 스키마](api/schema-artifacts.md): `ArtifactRef`, `ArtifactInput`, `StagedArtifactHandle` 형태.
-- [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [API 메서드](api/methods.md): `harness.stage_artifact`, `harness.record_run`, 아티팩트 읽기 API 동작.
+- [아티팩트 스테이징 메서드](api/method-stage-artifact.md), [실행 기록 메서드](api/method-record-run.md), [API 메서드](api/methods.md): `volicord.stage_artifact`, `volicord.record_run`, 아티팩트 읽기 API 동작.
 - [저장 효과](storage-effects.md): 응답 분기가 저장 효과를 만드는지 여부.
 - [저장소 기록](storage-records.md): `artifact_staging`, `artifacts`, `artifact_links` 테이블 개요.
 - [보안](security.md): 접근 등급, 역량 경계, 보장 비주장.

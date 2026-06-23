@@ -90,7 +90,7 @@ Meaning:
 - `idempotency_key` is a nullable opaque identifier; method owners define when a non-null value is required.
 - `expected_state_version` is nullable; method and storage owners define when a non-null value is required.
 - `project_id`, `task_id`, `surface_id`, `request_id`, and `idempotency_key` are opaque identifiers when non-null.
-- `locale` is a nullable locale tag string, not a Harness-controlled value set.
+- `locale` is a nullable locale tag string, not a Volicord-controlled value set.
 - `surface_id` is a registered surface selector. The current invocation `surface_instance_id` and requested access class are derived by adapter/Core logic described by [Agent Integration](../agent-integration.md), not by public request fields.
 
 Does not imply:

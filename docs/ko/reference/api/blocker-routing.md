@@ -12,7 +12,7 @@
 
 이웃 담당 문서:
 
-- 메서드별 동작: [`harness.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
+- 메서드별 동작: [`volicord.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
 - 데이터 형태와 값: [API 상태 스키마](schema-state.md), [API 값 집합](schema-value-sets.md#state-and-blocker-values).
 - 공개 오류 의미와 우선순위: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md).
 - Core 닫기 준비 상태 권한: [Core 모델](../core-model.md#close_task).
@@ -46,7 +46,7 @@
 
 | 담당 관심사 | 처리 경로에서의 사용 | 경계 |
 |---|---|---|
-| Core 상태, 종료 전이, 기준 상태, 복구, 쓰기 호환성 | 차단 사유 범주가 붙은 데이터는 Core 또는 메서드가 담당하는 상태 요구사항을 가리킬 수 있습니다. | Core 의미는 [Core 모델](../core-model.md)이, 메서드 동작은 [`harness.close_task`](method-close-task.md)가 담당합니다. |
+| Core 상태, 종료 전이, 기준 상태, 복구, 쓰기 호환성 | 차단 사유 범주가 붙은 데이터는 Core 또는 메서드가 담당하는 상태 요구사항을 가리킬 수 있습니다. | Core 의미는 [Core 모델](../core-model.md)이, 메서드 동작은 [`volicord.close_task`](method-close-task.md)가 담당합니다. |
 | 범위, 사용자 소유 판단, 민감 동작 승인, 접점 역량 | 차단 사유 범주가 붙은 데이터는 닫기가 사용자, 범위, 민감 동작 승인, 접점 역량 담당 문서에 의존함을 보여 줄 수 있습니다. | 차단 사유는 사용자 결정, 민감 동작 승인, 범위 변경, 역량 선언을 기록하지 않습니다. |
 | 증거와 아티팩트 근거 | 차단 사유 범주가 붙은 데이터는 닫기가 증거 충분성이나 지속 아티팩트 가용성에 의존함을 보여 줄 수 있습니다. | 증거와 아티팩트 의미는 각 담당 문서에 남습니다. 차단 사유 처리 경로는 충분성이나 가용성을 증명하지 않습니다. |
 | 최종 수락과 잔여 위험 | 차단 사유 범주가 붙은 데이터는 닫기가 최종 수락, 잔여 위험 표시, 잔여 위험 수락에 의존함을 보여 줄 수 있습니다. | 차단 사유는 수락이나 위험 수락을 만들지 않습니다. |
@@ -64,15 +64,15 @@
 
 | 공개 오류 코드와의 관계 | 차단 사유 쪽 경로 | 경계 |
 |---|---|---|
-| 증거, 아티팩트, 수락, 사용자 소유 판단, 민감 동작 승인, 범위, 자율성 경계, 기준 상태, 역량 묶음 | 담당 문서가 정의한 `CloseReadinessBlocker.category`와 `CloseReadinessBlocker.code`를 통해 보냅니다. | 공개 오류 코드 의미는 [API 오류 코드](error-codes.md)에 남습니다. 닫기 차단 사유 형태는 [API 상태 스키마](schema-state.md)가 담당합니다. 차단 사유 범주 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. 메서드별 차단 사유 생성은 [`harness.close_task`](method-close-task.md)가 담당합니다. |
+| 증거, 아티팩트, 수락, 사용자 소유 판단, 민감 동작 승인, 범위, 자율성 경계, 기준 상태, 역량 묶음 | 담당 문서가 정의한 `CloseReadinessBlocker.category`와 `CloseReadinessBlocker.code`를 통해 보냅니다. | 공개 오류 코드 의미는 [API 오류 코드](error-codes.md)에 남습니다. 닫기 차단 사유 형태는 [API 상태 스키마](schema-state.md)가 담당합니다. 차단 사유 범주 값은 [API 값 집합](schema-value-sets.md#state-and-blocker-values)이 담당합니다. 메서드별 차단 사유 생성은 [`volicord.close_task`](method-close-task.md)가 담당합니다. |
 | 읽기용 보기 최신성 묶음 | 담당 문서가 허용할 때 관련 진단으로 이름 붙일 수 있습니다. | 최신성 진단만으로는 닫기 차단 사유가 아닙니다. |
 | 상태 버전 또는 멱등성 충돌 묶음 | 닫기 차단 사유 표현이 없습니다. | 이 실패는 닫기 준비 상태 평가 전에 거부되며 [API 오류 우선순위](error-precedence.md)에 남습니다. |
 
-## `harness.close_task` 메서드 경로
+## `volicord.close_task` 메서드 경로
 
-메서드별 닫기 동작은 [`harness.close_task`](method-close-task.md)가 담당합니다. 요청 검증, `intent` 처리, 종료 상태 변경, 상태 버전 동작, 커밋된 차단 결과는 그 메서드 담당 문서로 보냅니다.
+메서드별 닫기 동작은 [`volicord.close_task`](method-close-task.md)가 담당합니다. 요청 검증, `intent` 처리, 종료 상태 변경, 상태 버전 동작, 커밋된 차단 결과는 그 메서드 담당 문서로 보냅니다.
 
-이 문서는 `harness.close_task`가 반환하는 닫기 차단 사유 데이터와 이웃 API 오류, 스키마, 값 집합, Core, 저장소, 표시 담당 문서 사이의 경계만 정의합니다.
+이 문서는 `volicord.close_task`가 반환하는 닫기 차단 사유 데이터와 이웃 API 오류, 스키마, 값 집합, Core, 저장소, 표시 담당 문서 사이의 경계만 정의합니다.
 
 ## 권한 경계
 

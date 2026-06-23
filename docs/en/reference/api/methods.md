@@ -1,6 +1,6 @@
 # API methods
 
-Use this human-readable method-family router to find the owner document for public Harness API method behavior. For the exact machine-readable owner route, use [`docs/doc-index.yaml`](../../../doc-index.yaml).
+Use this human-readable method-family router to find the owner document for public Volicord API method behavior. For the exact machine-readable owner route, use [`docs/doc-index.yaml`](../../../doc-index.yaml).
 
 This page does not define method behavior, request or response bodies, shared schemas, storage effects, error semantics, security guarantees, or Core authority semantics.
 
@@ -8,27 +8,27 @@ This page does not define method behavior, request or response bodies, shared sc
 
 ## Method Owners
 
-<a id="harnessintake"></a>
-<a id="harnessupdate_scope"></a>
-<a id="harnessstatus"></a>
-<a id="harnessprepare_write"></a>
-<a id="harnessstage_artifact"></a>
-<a id="harnessrecord_run"></a>
-<a id="harnessrequest_user_judgment"></a>
-<a id="harnessrecord_user_judgment"></a>
-<a id="harnessclose_task"></a>
+<a id="volicordintake"></a>
+<a id="volicordupdate_scope"></a>
+<a id="volicordstatus"></a>
+<a id="volicordprepare_write"></a>
+<a id="volicordstage_artifact"></a>
+<a id="volicordrecord_run"></a>
+<a id="volicordrequest_user_judgment"></a>
+<a id="volicordrecord_user_judgment"></a>
+<a id="volicordclose_task"></a>
 
 | Method | Owner |
 |---|---|
-| `harness.intake` | [Intake method](method-intake.md) |
-| `harness.update_scope` | [Update-scope method](method-update-scope.md) |
-| `harness.status` | [Status method](method-status.md) |
-| `harness.prepare_write` | [Prepare-write method](method-prepare-write.md) |
-| `harness.stage_artifact` | [Stage-artifact method](method-stage-artifact.md) |
-| `harness.record_run` | [Record-run method](method-record-run.md) |
-| `harness.request_user_judgment` | [Request-user-judgment method](method-request-user-judgment.md#harnessrequest_user_judgment) |
-| `harness.record_user_judgment` | [Record-user-judgment method](method-record-user-judgment.md#harnessrecord_user_judgment) |
-| `harness.close_task` | [Close-task method](method-close-task.md) |
+| `volicord.intake` | [Intake method](method-intake.md) |
+| `volicord.update_scope` | [Update-scope method](method-update-scope.md) |
+| `volicord.status` | [Status method](method-status.md) |
+| `volicord.prepare_write` | [Prepare-write method](method-prepare-write.md) |
+| `volicord.stage_artifact` | [Stage-artifact method](method-stage-artifact.md) |
+| `volicord.record_run` | [Record-run method](method-record-run.md) |
+| `volicord.request_user_judgment` | [Request-user-judgment method](method-request-user-judgment.md#volicordrequest_user_judgment) |
+| `volicord.record_user_judgment` | [Record-user-judgment method](method-record-user-judgment.md#volicordrecord_user_judgment) |
+| `volicord.close_task` | [Close-task method](method-close-task.md) |
 
 ## Nearby Routes
 

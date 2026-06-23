@@ -1,10 +1,10 @@
-<a id="harnessrecord_user_judgment"></a>
+<a id="volicordrecord_user_judgment"></a>
 
-# `harness.record_user_judgment` reference
+# `volicord.record_user_judgment` reference
 
 ## What this document owns
 
-This document owns baseline method behavior for `harness.record_user_judgment`:
+This document owns baseline method behavior for `volicord.record_user_judgment`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
 - recording the user's answer to one existing pending `UserJudgment`
@@ -22,7 +22,7 @@ This document does not own:
 
 ## Purpose
 
-`harness.record_user_judgment` records the user's answer to one existing pending `UserJudgment`.
+`volicord.record_user_judgment` records the user's answer to one existing pending `UserJudgment`.
 
 The method updates the addressed pending judgment according to the user's answer. It does not broaden the answer into unrelated approval, current scope expansion, final acceptance, residual-risk acceptance, sensitive-action approval, or `Write Authorization`.
 
@@ -85,7 +85,7 @@ A committed non-dry-run result:
 Non-claims:
 
 - Dry run and rejection create no judgment resolution, blocker update, event, replay row, or state-version increment.
-- A recorded `scope_decision` does not silently change current scope or currently applied Change Unit records. Those records still require the scope owner-defined transition, such as `harness.update_scope`.
+- A recorded `scope_decision` does not silently change current scope or currently applied Change Unit records. Those records still require the scope owner-defined transition, such as `volicord.update_scope`.
 
 Compatibility requirements:
 
@@ -169,7 +169,7 @@ On commit, the method may persist judgment resolution and dependent blocker or s
 Method-local precondition: `uj_empty_001` is an existing pending `product_decision` for `task_empty_001` and `cu_empty_001` in `proj_empty_001`; the current project `state_version` is `62`, and `keep` is one of its option IDs.
 
 ```yaml
-method: harness.record_user_judgment
+method: volicord.record_user_judgment
 params:
   envelope:
     project_id: proj_empty_001
@@ -334,7 +334,7 @@ state:
   guarantee_display: null
 next_actions:
   - action_kind: close_task
-    owner_method: harness.close_task
+    owner_method: volicord.close_task
     label: "Evaluate close readiness after recording the user's product decision."
     blocking_question: null
     required_refs:
@@ -352,6 +352,6 @@ next_actions:
 - State refs and summaries: [API State Schemas](schema-state.md).
 - Judgment values and supported method-local values: [API Value Sets](schema-value-sets.md).
 - User-owned judgment, final acceptance, residual-risk acceptance, and non-substitution rules: [Core Model](../core-model.md).
-- Exact storage effects: [Storage Effects](../storage-effects.md#harnessrecord_user_judgment).
+- Exact storage effects: [Storage Effects](../storage-effects.md#volicordrecord_user_judgment).
 - Public errors, precedence, and rejected-response routing: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [API error routing](error-routing.md).
-- Creating the pending judgment request: [`harness.request_user_judgment`](method-request-user-judgment.md).
+- Creating the pending judgment request: [`volicord.request_user_judgment`](method-request-user-judgment.md).

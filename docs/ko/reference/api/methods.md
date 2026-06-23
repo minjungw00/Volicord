@@ -1,6 +1,6 @@
 # API 메서드
 
-이 문서는 공개 하네스 API 메서드 동작의 담당 문서를 찾기 위한 읽기용 메서드 경로 안내입니다. 기계가 읽는 정확한 담당 경로는 [`docs/doc-index.yaml`](../../../doc-index.yaml)을 사용합니다.
+이 문서는 공개 Volicord API 메서드 동작의 담당 문서를 찾기 위한 읽기용 메서드 경로 안내입니다. 기계가 읽는 정확한 담당 경로는 [`docs/doc-index.yaml`](../../../doc-index.yaml)을 사용합니다.
 
 이 문서는 메서드 동작, 요청이나 응답 본문, 공통 스키마, 저장 효과, 오류 의미, 보안 보장, Core 권한 의미를 정의하지 않습니다.
 
@@ -8,27 +8,27 @@
 
 ## 메서드 담당 문서
 
-<a id="harnessintake"></a>
-<a id="harnessupdate_scope"></a>
-<a id="harnessstatus"></a>
-<a id="harnessprepare_write"></a>
-<a id="harnessstage_artifact"></a>
-<a id="harnessrecord_run"></a>
-<a id="harnessrequest_user_judgment"></a>
-<a id="harnessrecord_user_judgment"></a>
-<a id="harnessclose_task"></a>
+<a id="volicordintake"></a>
+<a id="volicordupdate_scope"></a>
+<a id="volicordstatus"></a>
+<a id="volicordprepare_write"></a>
+<a id="volicordstage_artifact"></a>
+<a id="volicordrecord_run"></a>
+<a id="volicordrequest_user_judgment"></a>
+<a id="volicordrecord_user_judgment"></a>
+<a id="volicordclose_task"></a>
 
 | 메서드 | 담당 문서 |
 |---|---|
-| `harness.intake` | [접수 메서드 담당 문서](method-intake.md) |
-| `harness.update_scope` | [범위 갱신 메서드 담당 문서](method-update-scope.md) |
-| `harness.status` | [상태 메서드 담당 문서](method-status.md) |
-| `harness.prepare_write` | [쓰기 준비 메서드 담당 문서](method-prepare-write.md) |
-| `harness.stage_artifact` | [아티팩트 스테이징 메서드 담당 문서](method-stage-artifact.md) |
-| `harness.record_run` | [실행 기록 메서드 담당 문서](method-record-run.md) |
-| `harness.request_user_judgment` | [사용자 소유 판단 요청 메서드 담당 문서](method-request-user-judgment.md#harnessrequest_user_judgment) |
-| `harness.record_user_judgment` | [사용자 소유 판단 기록 메서드 담당 문서](method-record-user-judgment.md#harnessrecord_user_judgment) |
-| `harness.close_task` | [Task 닫기 메서드 담당 문서](method-close-task.md) |
+| `volicord.intake` | [접수 메서드 담당 문서](method-intake.md) |
+| `volicord.update_scope` | [범위 갱신 메서드 담당 문서](method-update-scope.md) |
+| `volicord.status` | [상태 메서드 담당 문서](method-status.md) |
+| `volicord.prepare_write` | [쓰기 준비 메서드 담당 문서](method-prepare-write.md) |
+| `volicord.stage_artifact` | [아티팩트 스테이징 메서드 담당 문서](method-stage-artifact.md) |
+| `volicord.record_run` | [실행 기록 메서드 담당 문서](method-record-run.md) |
+| `volicord.request_user_judgment` | [사용자 소유 판단 요청 메서드 담당 문서](method-request-user-judgment.md#volicordrequest_user_judgment) |
+| `volicord.record_user_judgment` | [사용자 소유 판단 기록 메서드 담당 문서](method-record-user-judgment.md#volicordrecord_user_judgment) |
+| `volicord.close_task` | [Task 닫기 메서드 담당 문서](method-close-task.md) |
 
 ## 가까운 경로
 

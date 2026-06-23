@@ -527,7 +527,7 @@ API 메서드 예시는 자신이 설명하는 개념을 밝히기 위해 적합
 ### `BASELINE-close-task-check-read-only`
 
 기대 동작:
-- `harness.close_task intent=check`는 읽기 전용입니다.
+- `volicord.close_task intent=check`는 읽기 전용입니다.
 
 담당 문서 링크:
 - [Task 닫기 메서드](api/method-close-task.md)

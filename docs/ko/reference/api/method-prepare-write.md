@@ -1,10 +1,10 @@
-<a id="harnessprepare_write"></a>
+<a id="volicordprepare_write"></a>
 
-# `harness.prepare_write` 참조
+# `volicord.prepare_write` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `harness.prepare_write` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `volicord.prepare_write` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - `PrepareWriteResult` 결정 동작
@@ -24,7 +24,7 @@
 
 ## 목적
 
-`harness.prepare_write`는 제안된 제품 파일 쓰기 하나를 아래 항목과 비교합니다.
+`volicord.prepare_write`는 제안된 제품 파일 쓰기 하나를 아래 항목과 비교합니다.
 
 - 현재 `Task`
 - 현재 적용 Change Unit
@@ -143,7 +143,7 @@ PrepareWriteRequest:
 - `write_decision_reasons`는 비어 있으면 안 됩니다.
 - 유효하게 커밋된 `dry_run=false` 비허용 결과는 구조화된 `write_decision_reasons`를 담은 태스크 이벤트를 하나 추가하고, 멱등성 키가 있으면 재실행 행을 만들며, `project_state.state_version`을 정확히 한 번 증가시킵니다.
 - 소비 가능한 `Write Authorization`, 별도 공개 이력 메서드, 새 공개 응답 필드를 만들지 않습니다.
-- `harness.status`는 과거 비허용 판단을 노출할 필요가 없습니다.
+- `volicord.status`는 과거 비허용 판단을 노출할 필요가 없습니다.
 - 각 항목은 `WriteDecisionReason`입니다.
 - `category`는 제어되는 `WriteDecisionReason.category` 값 집합을 사용합니다.
 - `code`는 아래에 있는 이 메서드의 로컬 v1 코드 목록을 사용합니다.
@@ -211,7 +211,7 @@ PrepareWriteRequest:
 이 예시는 `account_preference_update`를 `sensitive_categories`의 예시 문자열로 사용합니다. 민감 범주의 값 집합을 정의하지 않습니다.
 
 ```yaml
-method: harness.prepare_write
+method: volicord.prepare_write
 params:
   envelope:
     project_id: proj_pref_001
@@ -301,14 +301,14 @@ state:
       - src/preferences/profile-save.test.ts
     guarantee_display:
       level: cooperative
-      basis: "Write Authorization is a Harness compatibility record, not OS permission."
+      basis: "Write Authorization is a Volicord compatibility record, not OS permission."
       capability_refs: []
   evidence_summary: null
   close_state: null
   close_blockers: []
   guarantee_display:
     level: cooperative
-    basis: "Write Authorization is a Harness compatibility record, not OS permission."
+    basis: "Write Authorization is a Volicord compatibility record, not OS permission."
     capability_refs: []
 write_authorization_ref:
   record_kind: write_authorization
@@ -348,7 +348,7 @@ write_decision_reasons: []
 user_judgment_candidate: null
 guarantee_display:
   level: cooperative
-  basis: "Write Authorization is a Harness compatibility record, not OS permission."
+  basis: "Write Authorization is a Volicord compatibility record, not OS permission."
   capability_refs: []
 ```
 
@@ -378,7 +378,7 @@ active_user_judgment_refs: []
 user_judgment_candidate: null
 guarantee_display:
   level: cooperative
-  basis: "Write Authorization is a Harness compatibility record, not OS permission."
+  basis: "Write Authorization is a Volicord compatibility record, not OS permission."
   capability_refs: []
 ```
 

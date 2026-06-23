@@ -22,7 +22,7 @@
 상태 보기는 계산된 상태를 정직하게 드러내야 합니다.
 - `null` 또는 생략된 필드는 메서드가 값을 선택하지 않았거나, 값을 사용할 수 없거나, 담당 스키마가 부재를 명시적으로 허용한다는 뜻입니다. "계산했고 없음"을 암시하는 빈 값으로 바꾸면 안 됩니다.
 - `close_blockers: []`나 `risk_acceptance_coverage: []` 같은 빈 배열은 관련 계산을 실행했고 항목이 없었다는 뜻입니다.
-- 변경 결과와 `harness.status` 상태 보기는 겹치는 스키마 영역에서 같은 현재 상태를 설명해야 합니다.
+- 변경 결과와 `volicord.status` 상태 보기는 겹치는 스키마 영역에서 같은 현재 상태를 설명해야 합니다.
 - 계산된 차단 사유는 공유 닫기 준비 상태 엔진과 같은 계산을 사용합니다. 메서드 담당 문서는 분기가 효과를 지속하는지만 결정합니다.
 
 담당 문서 링크:
@@ -235,8 +235,8 @@ WriteDecisionReason:
 - `WriteAuthoritySummary.status`와 `WriteAuthorizationSummary.status` 값: [메서드 내부 값](schema-value-sets.md#method-local-values)
 - `WriteDecisionReason.category` 값: [상태와 차단 사유 값](schema-value-sets.md#state-and-blocker-values)
 - `WriteDecisionReason.code` 값 집합 경계: [불투명 문자열과 메서드 범위 문자열 필드](schema-value-sets.md#opaque-and-method-scoped-string-fields)
-- `WriteDecisionReason.code` 생성과 로컬 의미: [`harness.prepare_write`](method-prepare-write.md)를 포함한 메서드 담당 문서
-- `Write Authorization` 생성 동작: [`harness.prepare_write`](method-prepare-write.md)
+- `WriteDecisionReason.code` 생성과 로컬 의미: [`volicord.prepare_write`](method-prepare-write.md)를 포함한 메서드 담당 문서
+- `Write Authorization` 생성 동작: [`volicord.prepare_write`](method-prepare-write.md)
 - `Write Authorization`의 제품 의미와 승인 경계: [Core 모델](../core-model.md)
 - 공개 `ErrorCode` 값은 별도입니다: [API 오류 코드](error-codes.md)
 
@@ -386,9 +386,9 @@ GuaranteeDisplay:
 
 담당 문서 링크:
 - 닫기 준비 상태 의미와 대체 금지 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task)
-- 현재 닫기 근거 생성: [`harness.record_run`](method-record-run.md)
+- 현재 닫기 근거 생성: [`volicord.record_run`](method-record-run.md)
 - 판단 호환성과 수락된 위험 입력: [API 판단 스키마](schema-judgment.md)
-- 응답 분기 동작, 닫기 준비 상태 평가 순서, 커밋된 차단 결과: [`harness.close_task`](method-close-task.md)
+- 응답 분기 동작, 닫기 준비 상태 평가 순서, 커밋된 차단 결과: [`volicord.close_task`](method-close-task.md)
 - 닫기 차단 사유와 API 응답 분기 사이의 차단 사유 처리 경로: [API 차단 사유 처리 경로](blocker-routing.md)
 - 차단 사유 범주 값(`CloseReadinessBlocker.category`)과 지원되는 `ValidatorResult.status`, `ValidatorResult.severity`, `GuaranteeDisplay.level` 값: [API 값 집합](schema-value-sets.md#state-and-blocker-values)
 - 보안 보장 의미: [보안](../security.md)

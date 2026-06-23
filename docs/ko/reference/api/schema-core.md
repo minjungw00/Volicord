@@ -90,7 +90,7 @@ ToolEnvelope:
 - `idempotency_key`는 null 허용 불투명 식별자입니다. 메서드 담당 문서가 null이 아닌 값이 필요한 때를 정의합니다.
 - `expected_state_version`은 null 허용입니다. 메서드와 저장소 담당 문서가 null이 아닌 값이 필요한 때를 정의합니다.
 - `project_id`, `task_id`, `surface_id`, `request_id`, `idempotency_key`는 null이 아닐 때 불투명 식별자입니다.
-- `locale`은 null 허용 로캘 태그 문자열이며 하네스가 제어하는 값 집합이 아닙니다.
+- `locale`은 null 허용 로캘 태그 문자열이며 Volicord가 제어하는 값 집합이 아닙니다.
 - `surface_id`는 등록된 접점 선택자입니다. 현재 호출 `surface_instance_id`와 요청 접근 등급은 공개 요청 필드가 아니라 [에이전트 통합](../agent-integration.md)이 설명하는 어댑터/Core 로직에서 파생됩니다.
 
 의미하지 않는 것:

@@ -66,7 +66,7 @@ This summary table shows branch-level outcomes. Detail blocks keep conditions, r
 
 Meaning:
 
-- A read-only call such as `harness.status` observes current state.
+- A read-only call such as `volicord.status` observes current state.
 
 Increments when:
 
@@ -191,7 +191,7 @@ Increments when:
 
 - A new `dry_run=false` call commits an actual state change.
 - `project_state.state_version` increments by exactly 1.
-- Example: `harness.close_task intent=supersede` may update both `tasks.lifecycle_phase` and `project_state.active_task_id` in the same commit.
+- Example: `volicord.close_task intent=supersede` may update both `tasks.lifecycle_phase` and `project_state.active_task_id` in the same commit.
 
 Does not increment when:
 
@@ -218,9 +218,9 @@ Increments when:
 
 Does not increment when:
 
-- `harness.status`
-- `harness.close_task intent=check`
-- `harness.close_task intent=check` with `dry_run=true`
+- `volicord.status`
+- `volicord.close_task intent=check`
+- `volicord.close_task intent=check` with `dry_run=true`
 - `ToolDryRunResponse` preview calls
 - malformed requests
 - pre-commit validation failures

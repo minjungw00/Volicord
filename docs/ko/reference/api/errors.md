@@ -19,7 +19,7 @@
 | 어떤 API 응답 분기를 쓰는지 | [API 오류 처리 경로](error-routing.md) |
 | 닫기 차단 사유가 API 응답과 만나는 지점 | [API 차단 사유 처리 경로](blocker-routing.md) |
 | 오류를 설명하는 기계 판독 필드 | [API 오류 세부사항](error-details.md) |
-| `harness.close_task`가 만드는 메서드별 차단 사유 | [Task 닫기 메서드](method-close-task.md) |
+| `volicord.close_task`가 만드는 메서드별 차단 사유 | [Task 닫기 메서드](method-close-task.md) |
 
 ## 가까운 경로
 

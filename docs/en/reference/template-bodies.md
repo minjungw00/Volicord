@@ -189,7 +189,7 @@ Suggested label:
 - missing or unusable pre-write check
 
 Recovery cue:
-- Call or retry `harness.prepare_write` for the exact operation, current scope, and current state.
+- Call or retry `volicord.prepare_write` for the exact operation, current scope, and current state.
 
 <a id="label-judgment"></a>
 ### Judgment
@@ -293,7 +293,7 @@ Recovery cue:
 
 ### Input state
 
-- Current read-only state returned by `harness.status`.
+- Current read-only state returned by `volicord.status`.
 - Display inputs such as `StateSummary`, blockers, pending `UserJudgment` items, evidence summary, close-readiness observations, guarantee display, and next safe action.
 - Freshness cues such as source refs, `state_version`, observation time, stale markers, unavailable markers, or capability-limited markers when present.
 - Artifact availability only through owner-approved `ArtifactRef` display data or an owner-approved unavailable/redacted note.
@@ -343,7 +343,7 @@ Otherwise, avoid those words.
 
 ### Input state
 
-- One pending user-owned judgment request returned by `harness.request_user_judgment`.
+- One pending user-owned judgment request returned by `volicord.request_user_judgment`.
 - Exact question and bounded options.
 - Rationale, uncertainty, affected scope, consequence of deferral, and non-substitution notes.
 - Any linked source refs, `state_version`, and freshness or capability-limited notes.
@@ -440,7 +440,7 @@ Otherwise, avoid those words.
 
 ### Input state
 
-- `CloseTaskResult` or close-readiness observations returned by `harness.close_task`.
+- `CloseTaskResult` or close-readiness observations returned by `volicord.close_task`.
 - `CloseReadinessBlocker[]`, evidence summary, and pending user judgments.
 - Final-acceptance state, residual-risk state, and artifact availability.
 - Source refs, freshness cues, and the requested close intent.
@@ -472,12 +472,12 @@ Use close-position wording:
 - `Ready to attempt close, but not closed by this check.`
 - `Closed by owner result: {close_ref}.`
 
-Use `Closed by owner result` only when `harness.close_task` returned an actual state-changing close result.
+Use `Closed by owner result` only when `volicord.close_task` returned an actual state-changing close result.
 
 ### Owner links
 
 - [Core Model](core-model.md) for close readiness, close honesty, final acceptance, and residual-risk boundaries.
-- [Close-task method](api/method-close-task.md) for `harness.close_task` behavior.
+- [Close-task method](api/method-close-task.md) for `volicord.close_task` behavior.
 - [API State Schemas](api/schema-state.md) for `CloseReadinessBlocker`.
 - [API Judgment Schemas](api/schema-judgment.md) for final acceptance and accepted-risk input shapes.
 - [API error routing](api/error-routing.md) for close rejection response branch routing.

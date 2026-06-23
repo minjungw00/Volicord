@@ -1,6 +1,6 @@
 # Security reference
 
-This document owns Harness security guarantee wording, local-access assumptions, sensitive-action approval boundaries, and explicit security non-guarantees.
+This document owns Volicord security guarantee wording, local-access assumptions, sensitive-action approval boundaries, and explicit security non-guarantees.
 
 ## Owns / does not own
 
@@ -16,7 +16,7 @@ This document owns Harness security guarantee wording, local-access assumptions,
 ## Supported security guarantees
 
 <a id="honest-guarantee-display"></a>
-Harness may describe a guarantee only when [Scope](scope.md) and this security owner both support the guarantee level. Guarantee display is derived from the project enforcement profile, verified bound surface registration, enabled enforcement mechanisms, and supported baseline scope. If the claim depends on a surface capability, the relevant surface capability check must also pass for the named surface and observed scope.
+Volicord may describe a guarantee only when [Scope](scope.md) and this security owner both support the guarantee level. Guarantee display is derived from the project enforcement profile, verified bound surface registration, enabled enforcement mechanisms, and supported baseline scope. If the claim depends on a surface capability, the relevant surface capability check must also pass for the named surface and observed scope.
 
 The supported guarantee display labels are `cooperative` and `detective`; the value names are owned by [API Value Sets](api/schema-value-sets.md).
 
@@ -25,15 +25,15 @@ The supported guarantee display labels are `cooperative` and `detective`; the va
 `cooperative` is the default baseline security guarantee.
 
 Conditions:
-- The caller, agent, surface, or connector follows the documented Harness paths.
+- The caller, agent, surface, or connector follows the documented Volicord paths.
 - The claim stays inside documented Core, API, storage, runtime, and user-judgment boundaries.
 
 May claim:
-- Harness records, write compatibility, evidence summaries, user-owned judgments, and close-readiness results are governed by their owner contracts.
-- Harness may reject, block, or require a focused user-owned judgment when the relevant owner contract says the current state is not compatible.
+- Volicord records, write compatibility, evidence summaries, user-owned judgments, and close-readiness results are governed by their owner contracts.
+- Volicord may reject, block, or require a focused user-owned judgment when the relevant owner contract says the current state is not compatible.
 
 Must not claim:
-- `cooperative` blocks arbitrary tool behavior, host commands, network access, secret access, or product-file edits outside Harness-owned paths.
+- `cooperative` blocks arbitrary tool behavior, host commands, network access, secret access, or product-file edits outside Volicord-owned paths.
 - `cooperative` provides OS permission enforcement, sandboxing, tamper-proof isolation, or full security isolation.
 
 ### Capability-gated `detective`
@@ -62,10 +62,10 @@ Must not claim:
 The baseline contract does not define a supported preventive guarantee.
 
 Must not claim:
-- Harness prevents arbitrary tool execution.
-- Harness provides universal pre-tool blocking.
-- Harness observes or blocks command, network, or secret access by default.
-- Harness provides OS sandboxing, host permission enforcement, or stronger isolation.
+- Volicord prevents arbitrary tool execution.
+- Volicord provides universal pre-tool blocking.
+- Volicord observes or blocks command, network, or secret access by default.
+- Volicord provides OS sandboxing, host permission enforcement, or stronger isolation.
 
 ## Sensitive-action approval boundary
 
@@ -83,14 +83,14 @@ Must not claim:
 Owner links:
 - [Core Model](core-model.md) owns user-owned judgment and non-substitution rules.
 - [API Judgment Schemas](api/schema-judgment.md) owns `SensitiveActionScope` shape.
-- [Prepare-write method](api/method-prepare-write.md) owns `harness.prepare_write` behavior.
+- [Prepare-write method](api/method-prepare-write.md) owns `volicord.prepare_write` behavior.
 
 ## Local access assumptions
 
-Harness security claims assume local actors use the documented Harness contracts for Harness state, records, artifacts, write compatibility, and user-owned judgments.
+Volicord security claims assume local actors use the documented Volicord contracts for Volicord state, records, artifacts, write compatibility, and user-owned judgments.
 
 May claim:
-- Local product files can be inputs to Harness checks or user-owned judgments.
+- Local product files can be inputs to Volicord checks or user-owned judgments.
 - Local runtime data location can be defined by storage/runtime owners.
 - Local surfaces can provide verified capability context when [Agent Integration](agent-integration.md) and this security owner allow the claim.
 - The baseline local access grant for a registered surface instance is the grant stored in `surfaces.local_access_json`.
@@ -98,24 +98,24 @@ May claim:
 - Baseline verified actor assurance is cooperative registered-surface provenance, not cryptographic human identity.
 
 Must not claim:
-- Local filesystem access proves Harness authority.
+- Local filesystem access proves Volicord authority.
 - A local path, directory name, copied identifier, displayed identifier, or rendered text is a security token.
-- Direct local modification outside those documented Harness contracts creates valid Harness records, evidence, acceptance, residual-risk acceptance, `Write Authorization`, or artifact authority.
-- `Harness Runtime Home` is automatically an OS security boundary, sandbox, or isolation layer.
+- Direct local modification outside those documented Volicord contracts creates valid Volicord records, evidence, acceptance, residual-risk acceptance, `Write Authorization`, or artifact authority.
+- `Volicord Runtime Home` is automatically an OS security boundary, sandbox, or isolation layer.
 - A caller-supplied `verified` flag, requested `access_class`, `capability_profile`, copied `verification_basis`, public request field, or environment variable grants local access or supplies trusted verification-basis text.
 - `ToolEnvelope.actor_kind=user` proves human identity or supplies user authority without a compatible `VerifiedActorContext`.
 - Host configuration installation proves that a host has trusted, approved, loaded, initialized, or exposed the MCP server.
-- Repository guidance, MCP server instructions, or host rule files enforce model behavior or guarantee that an agent will choose Harness tools.
+- Repository guidance, MCP server instructions, or host rule files enforce model behavior or guarantee that an agent will choose Volicord tools.
 
 ## Authority boundaries
 
-### Harness records
+### Volicord records
 
-Harness records carry authority only through the owner contracts that create, validate, or update them.
+Volicord records carry authority only through the owner contracts that create, validate, or update them.
 
 Must not claim:
-- Local file contents are tamper-proof because they describe or store Harness data.
-- Product text, generated text, or copied record-looking text directly mutates Harness records.
+- Local file contents are tamper-proof because they describe or store Volicord data.
+- Product text, generated text, or copied record-looking text directly mutates Volicord records.
 
 ### `Product Repository` files
 
@@ -126,23 +126,23 @@ May claim:
 - Compatible product-file writes can be governed by current scope, current Change Unit compatibility, user-owned judgments, and `Write Authorization` when the write owner requires them.
 
 Must not claim:
-- Product files are Harness state.
-- Product files prove Harness authority.
-- Product files become Harness records because Harness metadata is nearby.
+- Product files are Volicord state.
+- Product files prove Volicord authority.
+- Product files become Volicord records because Volicord metadata is nearby.
 
-### `Harness Runtime Home`
+### `Volicord Runtime Home`
 
-For security wording, treat `Harness Runtime Home` as the runtime/storage-owned operational data location.
+For security wording, treat `Volicord Runtime Home` as the runtime/storage-owned operational data location.
 
 Runtime location is defined by [Runtime Boundaries](runtime-boundaries.md). This section owns only the security non-claims for that location.
 
 May claim:
-- Storage/runtime owners define which Harness operational data belongs there and how it is validated.
+- Storage/runtime owners define which Volicord operational data belongs there and how it is validated.
 
 Must not claim:
-- `Harness Runtime Home` is the `Product Repository`.
-- `Harness Runtime Home` is automatically a security boundary.
-- Placing data under `Harness Runtime Home` proves security authority or isolation.
+- `Volicord Runtime Home` is the `Product Repository`.
+- `Volicord Runtime Home` is automatically a security boundary.
+- Placing data under `Volicord Runtime Home` proves security authority or isolation.
 
 ### Surfaces and capability context
 
@@ -164,7 +164,7 @@ Must not claim:
 
 ### Host trust and guidance
 
-Host trust and approval decisions belong to the external host and the user. Harness can install supported configuration and report whether further user action appears required, but it does not control the host trust decision.
+Host trust and approval decisions belong to the external host and the user. Volicord can install supported configuration and report whether further user action appears required, but it does not control the host trust decision.
 
 May claim:
 - Host Installation verification can distinguish `complete` from `action_required`, `partial_failure`, and `failed` when the administrative CLI can observe the required checks.
@@ -187,7 +187,7 @@ Must not claim:
 
 ### Operating system and isolation
 
-Harness does not guarantee:
+Volicord does not guarantee:
 
 - OS-level sandboxing.
 - OS permission enforcement.
@@ -197,18 +197,18 @@ Harness does not guarantee:
 
 ### Monitoring and prevention
 
-Harness does not guarantee:
+Volicord does not guarantee:
 
 - Full filesystem monitoring.
 - Command monitoring by default.
 - Network monitoring by default.
 - Secret-access monitoring by default.
 - Universal pre-tool blocking.
-- Prevention of malicious agent behavior outside Harness-owned paths.
+- Prevention of malicious agent behavior outside Volicord-owned paths.
 
 ### Storage and artifact authority
 
-Harness does not guarantee:
+Volicord does not guarantee:
 
 - Tamper-proof storage.
 - Native artifact capture from surfaces as a baseline guarantee.
@@ -217,7 +217,7 @@ Harness does not guarantee:
 
 ### Broad authority inference
 
-Harness does not allow readers or agents to infer authority from:
+Volicord does not allow readers or agents to infer authority from:
 
 - Broad approval.
 - Local path names.
@@ -231,7 +231,7 @@ Harness does not allow readers or agents to infer authority from:
 ## Related owners
 
 - [Scope](scope.md): baseline inclusion, exclusions, and supported guarantee boundary.
-- [Runtime Boundaries](runtime-boundaries.md): Harness Server source/installation files, executable processes, `Product Repository`, `Harness Runtime Home`, and external MCP host configuration boundaries.
+- [Runtime Boundaries](runtime-boundaries.md): Volicord source repository/installation files, executable processes, `Product Repository`, `Volicord Runtime Home`, and external MCP host configuration boundaries.
 - [Agent Integration](agent-integration.md): surface registration, capability profiles, and verified surface context.
 - [API Value Sets](api/schema-value-sets.md): `GuaranteeDisplay.level`, `access_class`, and other value names.
 - [API error routing](api/error-routing.md): public error routing such as `CAPABILITY_INSUFFICIENT`.

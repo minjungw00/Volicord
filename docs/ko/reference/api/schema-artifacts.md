@@ -17,7 +17,7 @@
 이 문서는 담당하지 않습니다.
 
 - 아티팩트 저장소 배치, 스테이징 기록, 승격 지속 효과, 보존, 본문 읽기 저장소 자격: [아티팩트 저장소](../storage-artifacts.md)
-- `harness.stage_artifact`, `harness.record_run` 메서드 동작: [아티팩트 스테이징 메서드](method-stage-artifact.md), [실행 기록 메서드](method-record-run.md), [API 메서드](methods.md)
+- `volicord.stage_artifact`, `volicord.record_run` 메서드 동작: [아티팩트 스테이징 메서드](method-stage-artifact.md), [실행 기록 메서드](method-record-run.md), [API 메서드](methods.md)
 - 지원되는 아티팩트 값 집합: [API 값 집합](schema-value-sets.md)
 - 증거 충분성: [Core 모델](../core-model.md), [API 상태 스키마](schema-state.md)
 - 접근, 차단, 격리에 대한 보안 주장: [보안](../security.md)
@@ -64,7 +64,7 @@ ArtifactRef:
 
 ## `StagedArtifactHandle`
 
-`StagedArtifactHandle`은 `harness.stage_artifact` 결과와 연결되는 임시 핸들 형태입니다. 지속 아티팩트의 `ArtifactRef` 형태가 아닙니다.
+`StagedArtifactHandle`은 `volicord.stage_artifact` 결과와 연결되는 임시 핸들 형태입니다. 지속 아티팩트의 `ArtifactRef` 형태가 아닙니다.
 
 ```yaml
 StagedArtifactHandle:

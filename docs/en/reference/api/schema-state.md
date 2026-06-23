@@ -22,7 +22,7 @@ State schemas describe API data shapes only. A state-shaped field does not choos
 State projections must be truthful about computed state:
 - A `null` or omitted field means the method did not select a value, the value is unavailable, or the owning schema explicitly allows absence. It must not be replaced with an empty value that implies "computed and none."
 - Empty arrays such as `close_blockers: []` or `risk_acceptance_coverage: []` mean the relevant computation ran and found no entries.
-- Mutation results and `harness.status` projections must describe the same current state where their schemas overlap.
+- Mutation results and `volicord.status` projections must describe the same current state where their schemas overlap.
 - Computed blockers use the same close-readiness calculation as the shared close-readiness engine; method owners decide only whether a branch persists an effect.
 
 Owner links:
@@ -235,8 +235,8 @@ Owner links:
 - `WriteAuthoritySummary.status` and `WriteAuthorizationSummary.status` values: [method-local values](schema-value-sets.md#method-local-values)
 - `WriteDecisionReason.category` values: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - `WriteDecisionReason.code` value-set boundary: [opaque and method-scoped string fields](schema-value-sets.md#opaque-and-method-scoped-string-fields)
-- `WriteDecisionReason.code` production and local meaning: method owner documents, including [`harness.prepare_write`](method-prepare-write.md)
-- `Write Authorization` creation behavior: [`harness.prepare_write`](method-prepare-write.md)
+- `WriteDecisionReason.code` production and local meaning: method owner documents, including [`volicord.prepare_write`](method-prepare-write.md)
+- `Write Authorization` creation behavior: [`volicord.prepare_write`](method-prepare-write.md)
 - `Write Authorization` product meaning and approval boundaries: [Core Model](../core-model.md)
 - Public `ErrorCode` values are separate: [API error codes](error-codes.md)
 
@@ -385,9 +385,9 @@ Guarantee display rules:
 
 Owner links:
 - Close-readiness meaning and non-substitution rules: [Core Model close readiness](../core-model.md#close_task)
-- Current close basis creation: [`harness.record_run`](method-record-run.md)
+- Current close basis creation: [`volicord.record_run`](method-record-run.md)
 - Judgment compatibility and accepted-risk input: [API Judgment Schemas](schema-judgment.md)
-- Response branch behavior, close-readiness evaluation order, and committed blocked outcomes: [`harness.close_task`](method-close-task.md)
+- Response branch behavior, close-readiness evaluation order, and committed blocked outcomes: [`volicord.close_task`](method-close-task.md)
 - Close-readiness blocker/API response routing semantics: [API blocker routing](blocker-routing.md)
 - Supported `CloseReadinessBlocker.category`, `ValidatorResult.status`, `ValidatorResult.severity`, and `GuaranteeDisplay.level` values: [API Value Sets](schema-value-sets.md#state-and-blocker-values)
 - Security guarantee meaning: [Security](../security.md)

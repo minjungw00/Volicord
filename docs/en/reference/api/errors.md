@@ -19,7 +19,7 @@ It routes to owners for:
 | Which API response branch is used | [API Error Routing](error-routing.md) |
 | Where close-readiness blockers meet API responses | [API Blocker Routing](blocker-routing.md) |
 | Which machine-readable fields describe an error | [API Error Details](error-details.md) |
-| How `harness.close_task` produces method-specific blockers | [Close-Task Method](method-close-task.md) |
+| How `volicord.close_task` produces method-specific blockers | [Close-Task Method](method-close-task.md) |
 
 ## Nearby Routes
 

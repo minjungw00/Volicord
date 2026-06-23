@@ -46,15 +46,15 @@ Only values listed as supported in this document are supported API values.
 The supported public method-name set is:
 
 ```text
-harness.intake
-harness.update_scope
-harness.status
-harness.prepare_write
-harness.stage_artifact
-harness.record_run
-harness.request_user_judgment
-harness.record_user_judgment
-harness.close_task
+volicord.intake
+volicord.update_scope
+volicord.status
+volicord.prepare_write
+volicord.stage_artifact
+volicord.record_run
+volicord.request_user_judgment
+volicord.record_user_judgment
+volicord.close_task
 ```
 
 Method behavior is owned by method owner documents routed from [API Methods](methods.md). Method names are not Task lifecycle values.
@@ -78,13 +78,13 @@ These values classify the API actor named by the request or resolution shape. Th
 
 | `action_kind` value | `owner_method` when one method owns the next step |
 |---|---|
-| `update_scope` | `harness.update_scope` |
-| `prepare_write` | `harness.prepare_write` |
-| `stage_artifact` | `harness.stage_artifact` |
-| `record_run` | `harness.record_run` |
-| `request_user_judgment` | `harness.request_user_judgment` |
-| `record_user_judgment` | `harness.record_user_judgment` |
-| `close_task` | `harness.close_task` |
+| `update_scope` | `volicord.update_scope` |
+| `prepare_write` | `volicord.prepare_write` |
+| `stage_artifact` | `volicord.stage_artifact` |
+| `record_run` | `volicord.record_run` |
+| `request_user_judgment` | `volicord.request_user_judgment` |
+| `record_user_judgment` | `volicord.record_user_judgment` |
+| `close_task` | `volicord.close_task` |
 
 `action_kind` is not a method-name value. `NextActionSummary.owner_method` uses the [method-name value set](#method-name-values) when one supported public method owns the next step, and it is `null` when no single owner method applies. Method behavior for the next step stays with the method owner document routed from [API Methods](methods.md). The full `NextActionSummary` shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes).
 
@@ -118,7 +118,7 @@ The fields below are intentionally not global closed value sets:
 | Field | Classification | Owner route |
 |---|---|---|
 | `EventRef.event_kind` | Opaque event classification string. Method examples may show event-kind strings, but this document does not publish an exhaustive public event-kind value set. | Shape owner: [API Schema Core](schema-core.md#shared-support-shapes). Event-producing behavior: method owner documents. |
-| `WriteDecisionReason.code` | Method-scoped opaque reason code. Method owners may show example codes without creating a global exhaustive code list. | Shape owner: [API State Schemas](schema-state.md#current-position-display-shapes). Production and local meaning: [`harness.prepare_write`](method-prepare-write.md) and other affected method owners. |
+| `WriteDecisionReason.code` | Method-scoped opaque reason code. Method owners may show example codes without creating a global exhaustive code list. | Shape owner: [API State Schemas](schema-state.md#current-position-display-shapes). Production and local meaning: [`volicord.prepare_write`](method-prepare-write.md) and other affected method owners. |
 
 Public `ErrorCode` values are separate and are owned by [API error codes](error-codes.md).
 
@@ -131,12 +131,12 @@ Public `ErrorCode` values are separate and are owned by [API error codes](error-
 |---|---|
 | `read_status` | Status and close-check read access-class value. |
 | `core_mutation` | Core-mutation access-class value. |
-| `write_authorization` | Access-class value associated with `harness.prepare_write`. |
-| `run_recording` | Access-class value associated with `harness.record_run`. |
-| `artifact_registration` | Access-class value associated with `harness.stage_artifact`. |
+| `write_authorization` | Access-class value associated with `volicord.prepare_write`. |
+| `run_recording` | Access-class value associated with `volicord.record_run`. |
+| `artifact_registration` | Access-class value associated with `volicord.stage_artifact`. |
 | `artifact_read` | Artifact-read access-class value; artifact body-read support is owned by [Artifact Storage](../storage-artifacts.md). |
 
-Access classes are Harness API compatibility classes, not OS permission classes. Method access requirements stay with method owner documents routed from [API Methods](methods.md); local surface verification behavior stays with [Agent Integration](../agent-integration.md) and [Security](../security.md).
+Access classes are Volicord API compatibility classes, not OS permission classes. Method access requirements stay with method owner documents routed from [API Methods](methods.md); local surface verification behavior stays with [Agent Integration](../agent-integration.md) and [Security](../security.md).
 
 <a id="record-and-reference-values"></a>
 ## Record and reference values
@@ -170,7 +170,7 @@ direct
 work
 ```
 
-`requested_mode` for `harness.intake` also accepts `auto` as an input-only value. Output `Task.mode` fields use `advisor`, `direct`, or `work`; intake resolution behavior is owned by [Intake method](method-intake.md).
+`requested_mode` for `volicord.intake` also accepts `auto` as an input-only value. Output `Task.mode` fields use `advisor`, `direct`, or `work`; intake resolution behavior is owned by [Intake method](method-intake.md).
 
 `Task.lifecycle_phase` uses:
 
@@ -222,7 +222,7 @@ Run failures, violations, blocked closes, and evidence gaps are not terminal `Ta
 <a id="method-local-values"></a>
 ## Method-local values
 
-`resume_policy` for `harness.intake` uses:
+`resume_policy` for `volicord.intake` uses:
 
 ```text
 resume_active
@@ -244,9 +244,9 @@ Value meanings:
 - `create_current` creates the current Change Unit when there is no suitable current Change Unit.
 - `replace_current` replaces the current Change Unit with a new work boundary.
 
-Method behavior for each operation is owned by [`harness.update_scope`](method-update-scope.md). The supported value set stays here so API examples and schema readers have one canonical value owner.
+Method behavior for each operation is owned by [`volicord.update_scope`](method-update-scope.md). The supported value set stays here so API examples and schema readers have one canonical value owner.
 
-`harness.close_task.intent` uses:
+`volicord.close_task.intent` uses:
 
 ```text
 check
@@ -313,7 +313,7 @@ close_readiness
 | `baseline` | Baseline compatibility reason. |
 | `surface_capability` | Verified surface capability reason. |
 
-These categories classify `harness.prepare_write` decision reasons. They are not `CloseReadinessBlocker` objects and do not evaluate close readiness. Method-specific decision behavior and reason production stay with [`harness.prepare_write`](method-prepare-write.md).
+These categories classify `volicord.prepare_write` decision reasons. They are not `CloseReadinessBlocker` objects and do not evaluate close readiness. Method-specific decision behavior and reason production stay with [`volicord.prepare_write`](method-prepare-write.md).
 
 This value set controls `category` only. `WriteDecisionReason.code` is not a global closed enum. It is a method-scoped opaque reason code; method owners may show example codes without adding them to a global supported list. `message` is a free-form display string, and `related_refs` uses `StateRecordRef`.
 

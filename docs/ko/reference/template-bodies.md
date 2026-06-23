@@ -191,7 +191,7 @@
 - 쓰기 전 확인 필요 또는 사용 불가
 
 해결 안내:
-- 정확한 동작, 현재 적용 범위, 현재 상태로 `harness.prepare_write`를 호출하거나 다시 시도합니다.
+- 정확한 동작, 현재 적용 범위, 현재 상태로 `volicord.prepare_write`를 호출하거나 다시 시도합니다.
 
 <a id="label-judgment"></a>
 ### 판단
@@ -295,7 +295,7 @@
 
 ### 입력 상태
 
-- `harness.status`가 반환한 현재 읽기 전용 상태입니다.
+- `volicord.status`가 반환한 현재 읽기 전용 상태입니다.
 - `StateSummary`, 차단 사유, 대기 중인 `UserJudgment` 항목, 증거 요약, 닫기 준비 상태 관찰, 보장 표시, 다음 안전한 행동 같은 표시 입력입니다.
 - 원천 참조, `state_version`, 관찰 시각, 오래됨 표시, 사용할 수 없음 표시, 역량 제한 표시 같은 최신성 단서가 있으면 함께 사용합니다.
 - 아티팩트 가용성은 담당 문서가 허용한 `ArtifactRef` 표시 데이터나 사용할 수 없음/가림 처리 메모로만 표시합니다.
@@ -346,7 +346,7 @@
 
 ### 입력 상태
 
-- `harness.request_user_judgment`가 반환한 대기 중인 사용자 소유 판단 요청 하나.
+- `volicord.request_user_judgment`가 반환한 대기 중인 사용자 소유 판단 요청 하나.
 - 정확한 질문과 제한된 선택지.
 - 근거, 불확실성, 영향을 받는 범위, 미룰 때의 결과, 대체 불가 메모.
 - 연결된 출처 참조, `state_version`, 최신성 또는 역량 제한 메모가 있으면 함께 사용합니다.
@@ -444,7 +444,7 @@
 
 ### 입력 상태
 
-- `harness.close_task`가 반환한 `CloseTaskResult` 또는 닫기 준비 상태 관찰.
+- `volicord.close_task`가 반환한 `CloseTaskResult` 또는 닫기 준비 상태 관찰.
 - `CloseReadinessBlocker[]`, 증거 요약, 대기 중인 사용자 판단.
 - 최종 수락 상태, 잔여 위험 상태, 아티팩트 가용성.
 - 출처 참조, 최신성 단서, 요청한 닫기 의도.
@@ -476,12 +476,12 @@
 - `닫기 시도를 할 준비는 되었지만, 이 확인으로 닫힌 것은 아닙니다.`
 - `담당 결과로 닫힘: {close_ref}.`
 
-`harness.close_task`가 실제 상태 변경 닫기 결과를 반환했을 때만 `담당 결과로 닫힘`을 씁니다.
+`volicord.close_task`가 실제 상태 변경 닫기 결과를 반환했을 때만 `담당 결과로 닫힘`을 씁니다.
 
 ### 담당 문서 링크
 
 - [Core 모델](core-model.md): 닫기 준비 상태, 정직한 닫기, 최종 수락, 잔여 위험 경계.
-- [Task 닫기 메서드](api/method-close-task.md): `harness.close_task` 동작.
+- [Task 닫기 메서드](api/method-close-task.md): `volicord.close_task` 동작.
 - [API 상태 스키마](api/schema-state.md): `CloseReadinessBlocker`.
 - [API 판단 스키마](api/schema-judgment.md): 최종 수락과 수락된 위험 입력 형태.
 - [API 오류 처리 경로](api/error-routing.md): 닫기 거부 응답 분기 경로.

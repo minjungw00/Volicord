@@ -17,7 +17,7 @@ This document owns:
 This document does not own:
 
 - artifact storage layout, staging records, promotion persistence, retention, or body-read storage eligibility; see [Artifact Storage](../storage-artifacts.md)
-- method behavior for `harness.stage_artifact` and `harness.record_run`; see [Stage-artifact method](method-stage-artifact.md), [Record-run method](method-record-run.md), and the [API Methods](methods.md)
+- method behavior for `volicord.stage_artifact` and `volicord.record_run`; see [Stage-artifact method](method-stage-artifact.md), [Record-run method](method-record-run.md), and the [API Methods](methods.md)
 - supported artifact value sets; see [API Value Sets](schema-value-sets.md)
 - evidence sufficiency; see [Core Model](../core-model.md) and [API State Schemas](schema-state.md)
 - security claims about access, blocking, or isolation; see [Security](../security.md)
@@ -64,7 +64,7 @@ For `integrity_status=verified`, `content_type` is non-empty, `sha256` is a vali
 
 ## `StagedArtifactHandle`
 
-`StagedArtifactHandle` is the transient-handle shape associated with `harness.stage_artifact` results. It is not the persistent `ArtifactRef` shape.
+`StagedArtifactHandle` is the transient-handle shape associated with `volicord.stage_artifact` results. It is not the persistent `ArtifactRef` shape.
 
 ```yaml
 StagedArtifactHandle:

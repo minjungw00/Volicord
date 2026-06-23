@@ -1,10 +1,10 @@
-<a id="harnessstatus"></a>
+<a id="volicordstatus"></a>
 
-# `harness.status` 참조
+# `volicord.status` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `harness.status` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `volicord.status` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - 현재 Core 상태에 대한 읽기 전용 상태 조회 동작
@@ -21,7 +21,7 @@
 
 ## 목적
 
-`harness.status`는 Core 상태의 읽기 전용 현재 위치 보기를 반환합니다. 현재 `Task` 요약, 차단 사유, 대기 중인 사용자 판단, `Write Authorization` 요약, 증거 요약, 닫기 상태, 닫기 준비 상태 발견 사항, 보장 표시, 다음 안전한 행동을 포함할 수 있습니다.
+`volicord.status`는 Core 상태의 읽기 전용 현재 위치 보기를 반환합니다. 현재 `Task` 요약, 차단 사유, 대기 중인 사용자 판단, `Write Authorization` 요약, 증거 요약, 닫기 상태, 닫기 준비 상태 발견 사항, 보장 표시, 다음 안전한 행동을 포함할 수 있습니다.
 
 ## 필수 입력
 
@@ -85,7 +85,7 @@ StatusRequest:
 - `include.pending_user_judgments`는 현재 대기 판단 참조를 반환하며, 관련 있는 오래됨 또는 대체됨 판단 상태는 `blocker_refs`, `next_actions.required_refs` 같은 기존 결과 필드로 나타납니다.
 - `include.write_authority`는 유효한 활성, 만료, 오래됨, 소비됨 쓰기 권한 상태를 `write_authority_summary`로 반환합니다.
 - `include.evidence`는 사용할 수 있을 때 현재 `EvidenceSummary`와 범위를 반환합니다.
-- `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 관련 다음 행동을 반환합니다. 차단 사유는 `harness.close_task intent=check`와 같은 닫기 준비 상태 계산을 사용합니다.
+- `include.close`는 `CurrentCloseBasis | null`, 닫기 상태, 계산된 차단 사유, 위험 수락 범위, 관련 다음 행동을 반환합니다. 차단 사유는 `volicord.close_task intent=check`와 같은 닫기 준비 상태 계산을 사용합니다.
 - `include.guarantees`는 프로젝트 강제 프로필, 확인된 묶인 접점 등록, 활성화된 강제 메커니즘, 지원되는 기준 범위에서 파생된 보장만 반환합니다.
 - `include.evidence=false`는 증거 요약, 범위, 아티팩트 증거 참조, 증거 전용 다음 행동을 계산하지도 반환하지도 않는다는 뜻입니다.
 - `include.close=false`는 닫기 준비 상태를 계산하지 않고 `CurrentCloseBasis`, 닫기 상태, 닫기 차단 사유, 잔여 위험 범위, 닫기 전용 다음 행동을 반환하지 않는다는 뜻입니다.
@@ -97,7 +97,7 @@ StatusRequest:
 - 역량 선언만으로 보장이 생기지 않습니다. 협력형 전용 배포는 `detective`를 주장하면 안 됩니다.
 - `GuaranteeDisplay.capability_refs`는 해당 참조를 사용할 수 있을 때 실제 프로필이나 접점 사실을 식별해야 합니다.
 
-`include.close=true`와 [`harness.close_task`](method-close-task.md)의 `intent=check`는 같은 닫기 준비 상태 계산을 사용합니다. `harness.status`는 읽기 전용으로 남으며 재실행 행, 이벤트, 상태 변경, 닫기 변경, 상태 버전 증가를 만들지 않습니다.
+`include.close=true`와 [`volicord.close_task`](method-close-task.md)의 `intent=check`는 같은 닫기 준비 상태 계산을 사용합니다. `volicord.status`는 읽기 전용으로 남으며 재실행 행, 이벤트, 상태 변경, 닫기 변경, 상태 버전 증가를 만들지 않습니다.
 
 ## 메서드 결과 필드
 
@@ -157,7 +157,7 @@ StatusRequest:
 ## 최소 유효 요청
 
 ```yaml
-method: harness.status
+method: volicord.status
 params:
   envelope:
     project_id: proj_export_001
@@ -241,7 +241,7 @@ active_task:
           state_version: 42
       next_actions:
         - action_kind: record_user_judgment
-          owner_method: harness.record_user_judgment
+          owner_method: volicord.record_user_judgment
           label: "Record the user's answer for the pending CSV column decision."
           blocking_question: "What is the user's answer for the pending CSV column decision?"
           required_refs:
@@ -257,7 +257,7 @@ active_task:
 status_summary: "A user-owned product decision about CSV column order is pending."
 next_actions:
   - action_kind: record_user_judgment
-    owner_method: harness.record_user_judgment
+    owner_method: volicord.record_user_judgment
     label: "Record the user's answer for the pending CSV column decision."
     blocking_question: "What is the user's answer for the pending CSV column decision?"
     required_refs:
@@ -288,7 +288,7 @@ close_blockers:
         state_version: 42
     next_actions:
       - action_kind: record_user_judgment
-        owner_method: harness.record_user_judgment
+        owner_method: volicord.record_user_judgment
         label: "Record the user's answer for the pending CSV column decision."
         blocking_question: "What is the user's answer for the pending CSV column decision?"
         required_refs:

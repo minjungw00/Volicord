@@ -1,6 +1,6 @@
 # Agent integration reference
 
-This document owns how agent-facing surfaces are registered, selected for current surface context, and described by capability declarations. It also defines the boundary for carrying owner-result Harness context into an agent surface.
+This document owns how agent-facing surfaces are registered, selected for current surface context, and described by capability declarations. It also defines the boundary for carrying owner-result Volicord context into an agent surface.
 
 It does not define API schemas, method behavior, storage effects, security guarantee meanings, projection/display authority boundaries, or rendered template wording.
 
@@ -22,7 +22,7 @@ This document does not own:
 
 - surface-specific workflows; see [Surface Recipes](../guides/surface-recipes.md)
 - API request envelopes, response branches, schema shapes, method access requirements, or access-class value names; see [API Schema Core](api/schema-core.md), [API Methods](api/methods.md), method owners, and [API Value Sets](api/schema-value-sets.md)
-- `harness-mcp` executable startup, process environment, stdio framing, startup validation, response wrapping, or shutdown; see [MCP Transport](mcp-transport.md)
+- `volicord-mcp` executable startup, process environment, stdio framing, startup validation, response wrapping, or shutdown; see [MCP Transport](mcp-transport.md)
 - storage layout, artifact lifecycle, or staged-handle validation; see storage and artifact owners through [Reference Index](README.md)
 - security guarantee meanings or access-boundary wording; see [Security](security.md)
 - authority versus projected display rules; see [Projection and template display boundaries](projection-and-templates.md)
@@ -30,7 +30,7 @@ This document does not own:
 
 ## Agent Integration Profile
 
-An Agent Integration Profile is the durable registry record for one coding-agent integration. One `harness-mcp` process is bound to one integration, not to one fixed `Product Repository`.
+An Agent Integration Profile is the durable registry record for one coding-agent integration. One `volicord-mcp` process is bound to one integration, not to one fixed `Product Repository`.
 
 Stored profile fields:
 
@@ -47,7 +47,7 @@ Rules:
 - The coding-agent integration role is `agent`.
 - The profile supplies the surface and surface-instance binding for MCP calls.
 - A profile can be enabled or disabled without editing host configuration.
-- Registering a profile does not automatically grant access to every project in the `Harness Runtime Home`.
+- Registering a profile does not automatically grant access to every project in the `Volicord Runtime Home`.
 - An integration has access only to projects that are explicitly present in its project membership records.
 
 Storage record families and DDL belong to [Storage Records](storage-records.md) and [Storage DDL](storage-ddl.md). Administrative creation, update, verification, and removal commands belong to [Administrative CLI](admin-cli.md).
@@ -71,14 +71,14 @@ Rules:
 - Invalid current project registrations must be rejected by integration project listing and access resolution instead of returned as allowed project records.
 - Inactive or otherwise execution-ineligible valid projects remain unavailable at execution time even if a stale membership row exists.
 - Revoking membership or disabling the integration must take effect without requiring host configuration to be rewritten.
-- An Agent Integration Profile with no allowed projects may remain stored, and Host Installation inventory or host configuration may also remain on disk. That stored state does not mean a new `harness-mcp` process can start successfully.
-- New MCP stdio startup and `harness-mcp --check` fail startup validation when the integration has zero allowed projects. Administrative verification that depends on that same startup path cannot succeed in that state.
-- A `harness-mcp` process that already started while at least one project was allowed can observe later membership changes without host configuration being rewritten. After the last membership is removed, `harness.list_projects` may return an empty project list, but project-routed public tools cannot proceed normally because no allowed project remains.
+- An Agent Integration Profile with no allowed projects may remain stored, and Host Installation inventory or host configuration may also remain on disk. That stored state does not mean a new `volicord-mcp` process can start successfully.
+- New MCP stdio startup and `volicord-mcp --check` fail startup validation when the integration has zero allowed projects. Administrative verification that depends on that same startup path cannot succeed in that state.
+- A `volicord-mcp` process that already started while at least one project was allowed can observe later membership changes without host configuration being rewritten. After the last membership is removed, `volicord.list_projects` may return an empty project list, but project-routed public tools cannot proceed normally because no allowed project remains.
 - The integration is executable again only after an allowed project is added and the startup or per-call project checks can validate the required project state.
 
 ## Host Installation
 
-A Host Installation is a registry inventory record for Harness-managed host configuration and verification state. The host configuration file remains the operational source of truth for the host. The registry record is management inventory and last-known verification state, not a substitute for the host configuration.
+A Host Installation is a registry inventory record for Volicord-managed host configuration and verification state. The host configuration file remains the operational source of truth for the host. The registry record is management inventory and last-known verification state, not a substitute for the host configuration.
 
 Stored installation fields:
 
@@ -98,23 +98,23 @@ Supported host and scope matrix:
 |---|---|---|
 | `codex` | `user`, `project` | User scope may load across the user's Codex projects. Project scope writes project-scoped Codex MCP configuration and depends on Codex project trust before the host loads it. |
 | `claude_code` | `local`, `project`, `user` | Local and project scopes load only for the associated project. User scope may load across the user's Claude Code projects. |
-| `generic` | `export` | Harness exports explicit configuration for a user-managed host and does not claim direct installation. |
+| `generic` | `export` | Volicord exports explicit configuration for a user-managed host and does not claim direct installation. |
 
 Rules:
 
 - Project and local scopes permit exactly the associated `Product Repository`.
 - User scope may permit multiple explicitly added `Product Repository` registrations.
-- Host trust, project trust, project MCP approval, OAuth, or any comparable host-controlled approval cannot be bypassed by Harness.
+- Host trust, project trust, project MCP approval, OAuth, or any comparable host-controlled approval cannot be bypassed by Volicord.
 - A host installation can be successful as a file operation while the result state remains `action_required` because the host has not yet trusted, approved, loaded, initialized, or exposed the server.
-- `last_verified_status=complete` may be stored only for an administrative verification result that satisfied the operational gates owned by [Administrative CLI](admin-cli.md#agent-setup-result-states). A direct Harness-spawned MCP handshake is not enough by itself.
-- `last_verified_status=action_required` is the expected state when Harness can manage or export configuration but a host-owned trust, approval, OAuth, reload, or restart action remains.
+- `last_verified_status=complete` may be stored only for an administrative verification result that satisfied the operational gates owned by [Administrative CLI](admin-cli.md#agent-setup-result-states). A direct Volicord-spawned MCP handshake is not enough by itself.
+- `last_verified_status=action_required` is the expected state when Volicord can manage or export configuration but a host-owned trust, approval, OAuth, reload, or restart action remains.
 - `generic` export Host Installations remain user-managed configuration inventory. They do not prove external host loading and must not become `complete` unless a host-specific owner later defines an observable loadability gate.
 - Rejected, missing, changed, unavailable, and unknown host states are not `complete` Host Installation states.
-- Agent guidance can improve tool selection, but it is not an enforcement mechanism and cannot guarantee that a model will choose Harness tools.
+- Agent guidance can improve tool selection, but it is not an enforcement mechanism and cannot guarantee that a model will choose Volicord tools.
 
 ## Integration boundary
 
-Agent-facing surfaces carry context between Harness owner results and an agent. They do not create Harness authority.
+Agent-facing surfaces carry context between Volicord owner results and an agent. They do not create Volicord authority.
 
 Condition:
 - An agent may rely on a surface only through owner-returned state or a compatible current surface context.
@@ -131,7 +131,7 @@ Agent must not:
 
 Owner links:
 - [Core Model](core-model.md) owns Core authority, user-owned judgment, close readiness, acceptance, and residual-risk boundaries.
-- [Runtime Boundaries](runtime-boundaries.md) owns `Product Repository`, Harness Server source/installation, executable-process, `Harness Runtime Home`, and external MCP host configuration separation.
+- [Runtime Boundaries](runtime-boundaries.md) owns `Product Repository`, Volicord source repository/installation, executable-process, `Volicord Runtime Home`, and external MCP host configuration separation.
 - [Projection and template display boundaries](projection-and-templates.md) owns authority versus projected display rules.
 
 ## Surface registration
@@ -167,7 +167,7 @@ Owner links:
 
 ## Current surface context
 
-`VerifiedSurfaceContext` is the internal, derived context for one invocation. A Harness Server executable role such as the `harness-mcp` local adapter process derives it from the selected Agent Integration Profile, selected project, registered surface records, adapter-derived invocation context, and the requested invocation access. Method owners then decide whether the derived context is compatible with the request. It is not a public request payload.
+`VerifiedSurfaceContext` is the internal, derived context for one invocation. A Volicord executable role such as the `volicord-mcp` local adapter process derives it from the selected Agent Integration Profile, selected project, registered surface records, adapter-derived invocation context, and the requested invocation access. Method owners then decide whether the derived context is compatible with the request. It is not a public request payload.
 
 An MCP session is bound at adapter startup to exactly one `integration_id`. The integration supplies `surface_id` and `surface_instance_id`. The selected project is determined per public MCP tool call, not fixed for the process lifetime.
 
@@ -176,11 +176,11 @@ Project selection for public MCP method calls is deterministic:
 1. Use `ToolEnvelope.project_id` when supplied.
 2. If it is absent and the integration permits exactly one available project, use that project.
 3. If it is absent and a valid explicit `default_project_id` exists, use that default.
-4. Otherwise reject the call as ambiguous and instruct the agent to call `harness.list_projects`.
+4. Otherwise reject the call as ambiguous and instruct the agent to call `volicord.list_projects`.
 
 The adapter must not guess a project from folder names, process current working directory, host roots, host labels, or the first row returned by storage. MCP roots may be used only as optional future or host-provided hints. Roots do not change the deterministic selection order above.
 
-`harness.list_projects` is a read-only MCP adapter utility tool. It lists only projects explicitly allowed for the integration whose current registration can be validated, shows project availability and default status, and provides enough project identity information for an agent to choose a valid `project_id`. If an allowed project has an invalid current registration, the adapter fails the utility call instead of returning that project as a normal available or unavailable entry. It is outside the nine public Harness Core API methods and must not be added to the public method list.
+`volicord.list_projects` is a read-only MCP adapter utility tool. It lists only projects explicitly allowed for the integration whose current registration can be validated, shows project availability and default status, and provides enough project identity information for an agent to choose a valid `project_id`. If an allowed project has an invalid current registration, the adapter fails the utility call instead of returning that project as a normal available or unavailable entry. It is outside the nine public Volicord Core API methods and must not be added to the public method list.
 
 Before a public tool call enters Core, the MCP adapter must verify:
 
@@ -196,16 +196,16 @@ Method-derived requested access:
 
 | Public method and typed params | Requested access |
 |---|---|
-| `harness.status` | `read_status` |
-| `harness.intake` | `core_mutation` |
-| `harness.update_scope` | `core_mutation` |
-| `harness.prepare_write` | `write_authorization` |
-| `harness.stage_artifact` | `artifact_registration` |
-| `harness.record_run` | `run_recording` |
-| `harness.request_user_judgment` | `core_mutation` |
-| `harness.record_user_judgment` | `core_mutation` |
-| `harness.close_task` with `intent=check` | `read_status` |
-| Other `harness.close_task` intents | `core_mutation` |
+| `volicord.status` | `read_status` |
+| `volicord.intake` | `core_mutation` |
+| `volicord.update_scope` | `core_mutation` |
+| `volicord.prepare_write` | `write_authorization` |
+| `volicord.stage_artifact` | `artifact_registration` |
+| `volicord.record_run` | `run_recording` |
+| `volicord.request_user_judgment` | `core_mutation` |
+| `volicord.record_user_judgment` | `core_mutation` |
+| `volicord.close_task` with `intent=check` | `read_status` |
+| Other `volicord.close_task` intents | `core_mutation` |
 
 `InvocationContext.access_class`, or an equivalent implementation concept, is the requested invocation access for the current call. It is not authority and cannot grant an access class. `VerifiedSurfaceContext` can be derived only when the requested invocation access is included in the registered grant in `surfaces.local_access_json`.
 
@@ -242,7 +242,7 @@ Condition:
 - A public API request has exactly one request-level `VerifiedSurfaceContext.access_class`.
 - A public API request has at most one authority-relevant `VerifiedActorContext`, and only authority-resolution method owners consume it.
 - Public `ToolEnvelope.project_id`, when present, is a deterministic project selector constrained by the integration project membership. It is not caller authority and cannot grant access to an unlisted, inactive, or invalid project.
-- `ToolEnvelope.surface_id` remains part of the shared Harness request envelope where schema owners define it for the common request model.
+- `ToolEnvelope.surface_id` remains part of the shared Volicord request envelope where schema owners define it for the common request model.
 - The MCP-visible tool input schema does not expose `envelope.surface_id`. MCP callers must not submit surface identity; if raw arguments include `envelope.surface_id`, the adapter rejects the call before Core execution. After MCP-visible input validation, the adapter injects the selected integration's `surface_id` into the internal typed request and must not let caller text override the integration's `surface_id` or `surface_instance_id`.
 - `surface_instance_id` remains adapter-derived invocation context. `ToolEnvelope` does not gain `surface_instance_id`; the shared request envelope stays with [API Schema Core](api/schema-core.md#tool-envelope).
 - Nested payloads such as `ArtifactInput` or `StagedArtifactHandle` do not add a second request-level access class.
@@ -269,7 +269,7 @@ Agent must not:
 Owner links:
 - Exact request envelopes and response shapes belong to [API Schema Core](api/schema-core.md), [API Methods](api/methods.md), and method owners.
 - Access-class values belong to [API Value Sets](api/schema-value-sets.md).
-- `harness-mcp` startup, integration binding, environment variables, stdio framing, startup validation, response wrapping, and shutdown belong to [MCP Transport](mcp-transport.md).
+- `volicord-mcp` startup, integration binding, environment variables, stdio framing, startup validation, response wrapping, and shutdown belong to [MCP Transport](mcp-transport.md).
 
 ## Agent behavior guidance
 
@@ -280,9 +280,9 @@ Agent behavior guidance has two layers:
 
 Rules:
 
-- MCP server instructions may describe cross-tool workflows, project selection rules, and limitations that apply across Harness tools.
-- Optional repository guidance may add a Harness-managed block or host-specific rule file inside a `Product Repository` only under the boundary owned by [Runtime Boundaries](runtime-boundaries.md#explicit-integration-files-in-product-repositories).
-- Guidance can improve tool selection, but it is not authority, access control, user judgment, security enforcement, or proof that a model will choose Harness tools.
+- MCP server instructions may describe cross-tool workflows, project selection rules, and limitations that apply across Volicord tools.
+- Optional repository guidance may add a Volicord-managed block or host-specific rule file inside a `Product Repository` only under the boundary owned by [Runtime Boundaries](runtime-boundaries.md#explicit-integration-files-in-product-repositories).
+- Guidance can improve tool selection, but it is not authority, access control, user judgment, security enforcement, or proof that a model will choose Volicord tools.
 
 ## Capability declaration
 
@@ -341,7 +341,7 @@ Agent may:
 - move to a capable surface
 - narrow the operation
 - request the missing user-owned judgment
-- continue outside Harness only when the user explicitly chooses that mode
+- continue outside Volicord only when the user explicitly chooses that mode
 
 Agent must:
 - expose the limitation in support or display text
@@ -351,4 +351,4 @@ Agent must:
 Agent must not:
 - fabricate authority
 - hide unavailable, mismatched, stale, or insufficient capability states inside ordinary success text
-- continue outside Harness without the user's explicit choice
+- continue outside Volicord without the user's explicit choice

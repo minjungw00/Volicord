@@ -1,10 +1,10 @@
-<a id="harnessrequest_user_judgment"></a>
+<a id="volicordrequest_user_judgment"></a>
 
-# `harness.request_user_judgment` reference
+# `volicord.request_user_judgment` reference
 
 ## What this document owns
 
-This document owns baseline method behavior for `harness.request_user_judgment`:
+This document owns baseline method behavior for `volicord.request_user_judgment`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
 - creation of one pending `UserJudgment` for a focused user-owned judgment
@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`harness.request_user_judgment` creates one pending `UserJudgment` for a focused user-owned judgment. It asks the user; the agent must not answer, infer, broaden, or decide the judgment for the user.
+`volicord.request_user_judgment` creates one pending `UserJudgment` for a focused user-owned judgment. It asks the user; the agent must not answer, infer, broaden, or decide the judgment for the user.
 
 The pending judgment is a request for a decision. It is not the decision itself, does not create evidence, does not change current scope, does not create `Write Authorization`, and does not close a `Task`.
 
@@ -90,7 +90,7 @@ A committed non-dry-run result:
 
 Non-claims:
 
-- A `UserJudgmentCandidate` returned by another method is not durable until `harness.request_user_judgment` commits.
+- A `UserJudgmentCandidate` returned by another method is not durable until `volicord.request_user_judgment` commits.
 - For `judgment_kind=final_acceptance` or `judgment_kind=residual_risk_acceptance`, Core captures the current close basis in the judgment basis. If the required current close basis or current residual-risk IDs are unavailable, the request rejects before commit.
 - For authority-bearing judgment kinds, the Core-created option set must include `machine_action=accept` and `machine_action=reject`. `machine_action=defer` appears only where an owner permits deferral. Labels and explanatory text do not override `machine_action` or `resolution_outcome`.
 - For residual-risk acceptance, visible risks in the request context must carry exact current `risk_id` values.
@@ -163,7 +163,7 @@ On commit, the method may persist a pending `user_judgments` row and related blo
 Method-local precondition: `task_banner_001` and `cu_banner_001` already exist in `proj_banner_001`; the current project `state_version` is `51`.
 
 ```yaml
-method: harness.request_user_judgment
+method: volicord.request_user_judgment
 params:
   envelope:
     project_id: proj_banner_001
@@ -214,7 +214,7 @@ params:
 Method-local precondition: `task_scope_001` and `cu_scope_001` already exist in `proj_scope_001`; the current project `state_version` is `17`.
 
 ```yaml
-method: harness.request_user_judgment
+method: volicord.request_user_judgment
 params:
   envelope:
     project_id: proj_scope_001
@@ -257,7 +257,7 @@ If committed, Core generates the canonical authority options for `scope_decision
 Method-local precondition: `task_export_001` and the current Change Unit `cu_export_001` already exist in `proj_export_001`; the current project `state_version` is `28`.
 
 ```yaml
-method: harness.request_user_judgment
+method: volicord.request_user_judgment
 params:
   envelope:
     project_id: proj_export_001
@@ -419,6 +419,6 @@ state:
 - State refs and summaries: [API State Schemas](schema-state.md).
 - Judgment kinds and supported values: [API Value Sets](schema-value-sets.md).
 - User-owned judgment and non-substitution rules: [Core Model](../core-model.md).
-- Exact storage effects: [Storage Effects](../storage-effects.md#harnessrequest_user_judgment).
+- Exact storage effects: [Storage Effects](../storage-effects.md#volicordrequest_user_judgment).
 - Public errors, precedence, and rejected-response routing: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [API error routing](error-routing.md).
-- Recording the user's answer to a pending judgment: [`harness.record_user_judgment`](method-record-user-judgment.md).
+- Recording the user's answer to a pending judgment: [`volicord.record_user_judgment`](method-record-user-judgment.md).

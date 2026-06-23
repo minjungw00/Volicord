@@ -1,6 +1,6 @@
 # API error details
 
-This document owns machine-readable `ToolError.details` semantics, detail fields, helper values, and detail constraints for Harness API errors.
+This document owns machine-readable `ToolError.details` semantics, detail fields, helper values, and detail constraints for Volicord API errors.
 
 Use it for diagnostic keys and helper values under `ToolError.details`. Use adjacent owners for branch routing, public code meaning, schema shape, and display wording.
 

@@ -19,7 +19,7 @@ Adjacent owners:
 - `CloseReadinessBlocker`, `WriteDecisionReason`, `PlannedBlocker`, and common branch shapes; see [API State Schemas](schema-state.md) and [API Schema Core](schema-core.md). Category and enum-like values are owned by [API Value Sets](schema-value-sets.md).
 - Close-readiness meaning and non-substitution rules; see [Core Model close readiness](../core-model.md#close_task).
 - Close-readiness blocker/API response boundary and the public-code-to-blocker boundary; see [API blocker routing](blocker-routing.md).
-- Method-specific behavior; see [`harness.close_task`](method-close-task.md) and other method owners.
+- Method-specific behavior; see [`volicord.close_task`](method-close-task.md) and other method owners.
 - Display wording only; see [Template Bodies](../template-bodies.md).
 
 ## Error vs blocker
@@ -156,7 +156,7 @@ Result boundary:
 ### `CloseTaskResult(close_state=blocked)`
 
 Branch condition:
-- A valid `CloseTaskResult(close_state=blocked)` is returned under the `harness.close_task` method contract.
+- A valid `CloseTaskResult(close_state=blocked)` is returned under the `volicord.close_task` method contract.
 
 Response branch:
 - The method result carries `blockers: CloseReadinessBlocker[]`.

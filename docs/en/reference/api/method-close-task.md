@@ -1,13 +1,13 @@
-<a id="harnessclose_task"></a>
+<a id="volicordclose_task"></a>
 
-# `harness.close_task` reference
+# `volicord.close_task` reference
 
 ## What this document owns
 
-This document owns baseline method behavior for `harness.close_task`:
+This document owns baseline method behavior for `volicord.close_task`:
 
 - method-specific request conditions, intent handling, access requirements, state-version behavior, result branches, and `dry_run` behavior
-- method-specific evaluation order for the `harness.close_task` request
+- method-specific evaluation order for the `volicord.close_task` request
 - method-specific blocker-producing branches for `CloseTaskResult.blockers`
 - method-specific `CloseReadinessBlocker.code` production behavior
 - close-task examples
@@ -25,7 +25,7 @@ This document does not own:
 
 ## Purpose
 
-`harness.close_task` evaluates close readiness for a selected `Task` and, when the selected close intent permits it, performs the requested terminal path.
+`volicord.close_task` evaluates close readiness for a selected `Task` and, when the selected close intent permits it, performs the requested terminal path.
 
 The method can:
 
@@ -41,7 +41,7 @@ Close is a Core state transition, not a report. This method evaluates the curren
 
 Method-owned block:
 
-- request validation and intent-field combinations for `harness.close_task`
+- request validation and intent-field combinations for `volicord.close_task`
 - the order in which this method reaches check, mutation, blocked, rejected, and dry-run branches
 - whether a valid mutating branch may commit a terminal result or committed blocked result
 - which method-specific blocker codes may be produced in `CloseTaskResult.blockers`
@@ -150,12 +150,12 @@ Access to call this method is separate from user-owned judgment, final acceptanc
 
 ## Method flow
 
-Implementations evaluate `harness.close_task` in this order:
+Implementations evaluate `volicord.close_task` in this order:
 
 1. Validate the envelope, method fields, intent-field combination, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
 2. Verify the surface context, access class, local capability, and requested terminal-path preconditions.
 3. For `dry_run=false` mutating intents, check `idempotency_key`, current `expected_state_version`, idempotency request hash, and close-relevant `WriteAuthorization.basis_state_version`. Stale or conflicting values return `ToolRejectedResponse`.
-4. For `intent=check`, compute current close readiness with the same calculation used by [`harness.status`](method-status.md) when `include.close=true`, and return read-only `CloseTaskResult`.
+4. For `intent=check`, compute current close readiness with the same calculation used by [`volicord.status`](method-status.md) when `include.close=true`, and return read-only `CloseTaskResult`.
 5. For mutating intents with `dry_run=true`, return the common preview branch after valid preflight.
 6. For `intent=complete`, run the close readiness evaluation over the current `CurrentCloseBasis`. If blockers remain, return the blocked branch; otherwise commit `close_state=closed` and the terminal close result.
 7. For `intent=cancel`, require a current accepted `judgment_kind=cancellation` with `machine_action=accept`, `resolution_outcome=accepted`, verified `user_interaction` actor provenance, and compatibility with the current Task, scope revision, and Change Unit. Missing or incompatible cancellation authority returns the blocked branch.
@@ -305,7 +305,7 @@ The examples are intentionally compact. They illustrate the method branch and ke
 ### Minimal valid request
 
 ```yaml
-method: harness.close_task
+method: volicord.close_task
 params:
   envelope:
     project_id: proj_close_001
@@ -375,7 +375,7 @@ state:
       related_refs: []
       next_actions:
         - action_kind: request_user_judgment
-          owner_method: harness.request_user_judgment
+          owner_method: volicord.request_user_judgment
           label: "Request final acceptance from the user."
           blocking_question: "Has the user given final acceptance for the completed Task?"
           required_refs:
@@ -392,7 +392,7 @@ blockers:
     related_refs: []
     next_actions:
       - action_kind: request_user_judgment
-        owner_method: harness.request_user_judgment
+        owner_method: volicord.request_user_judgment
         label: "Request final acceptance from the user."
         blocking_question: "Has the user given final acceptance for the completed Task?"
         required_refs:

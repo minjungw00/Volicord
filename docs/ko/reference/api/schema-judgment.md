@@ -209,11 +209,11 @@ SensitiveActionScope:
   expires_at: string | null
 ```
 
-`SensitiveActionScope`의 존재는 민감 동작 승인이 필요한 위치를 정의하지 않습니다. 이 형태가 나타나는 위치는 메서드 담당 문서가 정의하며, 제품 파일 쓰기에 대한 `harness.prepare_write` 경로를 대신하지 않습니다.
+`SensitiveActionScope`의 존재는 민감 동작 승인이 필요한 위치를 정의하지 않습니다. 이 형태가 나타나는 위치는 메서드 담당 문서가 정의하며, 제품 파일 쓰기에 대한 `volicord.prepare_write` 경로를 대신하지 않습니다.
 
 `SensitiveActionScope.action_kind`와 `sensitive_categories[]`는 영향받는 메서드나 프로필 담당 문서가 더 좁은 로컬 목록을 공개하지 않는 한 불투명 민감 동작 분류 문자열입니다. `description`, `command_or_tool_summary`, `network_or_host_summary`, `secret_or_credential_summary`, `capability_claim`은 표시 또는 주장 문자열입니다. 기준 값 집합이나 보안 권한이 아닙니다.
 
-`harness.request_user_judgment`에서 `sensitive_action_scope`는 선택-null 허용 공개 요청 필드이며, `judgment_kind=sensitive_approval`에서 `null`이 아닌 값이 필요하다는 조건은 메서드 담당 문서가 담당합니다. `SensitiveActionScope`가 `JudgmentBasis` 안에 나타날 때는 서버 파생 지속 상태이며 호출자가 제출한 근거 데이터가 아닙니다.
+`volicord.request_user_judgment`에서 `sensitive_action_scope`는 선택-null 허용 공개 요청 필드이며, `judgment_kind=sensitive_approval`에서 `null`이 아닌 값이 필요하다는 조건은 메서드 담당 문서가 담당합니다. `SensitiveActionScope`가 `JudgmentBasis` 안에 나타날 때는 서버 파생 지속 상태이며 호출자가 제출한 근거 데이터가 아닙니다.
 
 <a id="acceptedriskinput"></a>
 ## `AcceptedRiskInput`
@@ -236,8 +236,8 @@ AcceptedRiskInput:
 ## 관련 담당 문서
 
 - [Core 모델](../core-model.md): 사용자 소유 판단 의미와 비대체 규칙.
-- [사용자 소유 판단 요청 메서드](method-request-user-judgment.md): `harness.request_user_judgment`.
-- [사용자 소유 판단 기록 메서드](method-record-user-judgment.md): `harness.record_user_judgment`.
+- [사용자 소유 판단 요청 메서드](method-request-user-judgment.md): `volicord.request_user_judgment`.
+- [사용자 소유 판단 기록 메서드](method-record-user-judgment.md): `volicord.record_user_judgment`.
 - [API 값 집합](schema-value-sets.md): `judgment_kind`, `presentation`, `required_for`, 상태, 행위자 값, 선택지 표시 경계.
 - [API 상태 스키마](schema-state.md): `StateRecordRef`.
 - [API 아티팩트 스키마](schema-artifacts.md): `ArtifactRef`.

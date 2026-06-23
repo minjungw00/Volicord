@@ -1,10 +1,10 @@
-<a id="harnessintake"></a>
+<a id="volicordintake"></a>
 
-# `harness.intake` 참조
+# `volicord.intake` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `harness.intake` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `volicord.intake` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - 사용자 작업 루프를 시작, 재개, 대체, 거절하는 접수 처리
@@ -21,7 +21,7 @@
 
 ## 목적
 
-`harness.intake`는 일반 사용자 작업 루프를 시작, 재개, 대체, 거절합니다.
+`volicord.intake`는 일반 사용자 작업 루프를 시작, 재개, 대체, 거절합니다.
 
 이 메서드는 요청된 모드를 구체적인 `Task` 모드로 확정합니다.
 
@@ -31,8 +31,8 @@
 
 범위 경계:
 
-- `harness.intake`는 쓰기 가능한 작업의 첫 범위 후보를 만들 수 있습니다.
-- 이후 범위 변경은 `harness.update_scope`가 담당합니다.
+- `volicord.intake`는 쓰기 가능한 작업의 첫 범위 후보를 만들 수 있습니다.
+- 이후 범위 변경은 `volicord.update_scope`가 담당합니다.
 
 ## 필수 입력
 
@@ -145,14 +145,14 @@ IntakeRequest:
 
 ## 저장 효과
 
-커밋 시 `harness.intake`가 담당하는 `Task` 또는 Change Unit 상태를 지속할 수 있습니다. 정확한 저장 효과와 저장 기록 형태는 아래 저장 담당 문서가 담당합니다.
+커밋 시 `volicord.intake`가 담당하는 `Task` 또는 Change Unit 상태를 지속할 수 있습니다. 정확한 저장 효과와 저장 기록 형태는 아래 저장 담당 문서가 담당합니다.
 
 아래 예시는 메서드 안에서만 성립하도록 짧게 구성했습니다. 대표 응답은 접수 결과 분기, 참조, 상태 버전, 생명주기, 현재 적용 범위, 현재 적용 Change Unit, 다음 행동을 보여 주는 데 필요한 필드로 축약했습니다.
 
 ## 최소 유효 요청
 
 ```yaml
-method: harness.intake
+method: volicord.intake
 params:
   envelope:
     project_id: proj_onboard_001
@@ -230,7 +230,7 @@ state:
   guarantee_display: null
 next_actions:
   - action_kind: update_scope
-    owner_method: harness.update_scope
+    owner_method: volicord.update_scope
     label: "Create the first currently applied Change Unit before write checking."
     blocking_question: null
     required_refs:

@@ -1,6 +1,6 @@
 # API 오류 코드
 
-이 문서는 하네스 API 응답의 공개 `ErrorCode` 식별자, 의미, 발생 위치 요약을 담당합니다.
+이 문서는 Volicord API 응답의 공개 `ErrorCode` 식별자, 의미, 발생 위치 요약을 담당합니다.
 
 공개 코드가 무엇을 뜻하고 어디에 나타날 수 있는지 확인할 때 이 문서를 사용합니다. 선택 순서, 분기 경로, 스키마, 저장 효과, 보안 보장, 표시 문구는 이웃 담당 문서를 사용합니다.
 
@@ -17,7 +17,7 @@
 - 주 코드 선택과 상태 버전 충돌 동작: [API 오류 우선순위](error-precedence.md).
 - 거부 응답, 차단 결과, `dry_run` 분기 경로: [API 오류 처리 경로](error-routing.md).
 - 닫기 차단 사유와 API 응답 사이의 경계: [API 차단 사유 처리 경로](blocker-routing.md).
-- 메서드별 동작: [`harness.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
+- 메서드별 동작: [`volicord.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
 - `ToolError.details` 필드와 보조 값: [API 오류 세부사항](error-details.md).
 - 공통 응답 분기 형태: [API 코어 스키마](schema-core.md).
 - 표시 문구만: [템플릿 본문](../template-bodies.md).

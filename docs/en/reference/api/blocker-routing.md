@@ -12,7 +12,7 @@ Owned here:
 
 Adjacent owners:
 
-- Method-specific behavior: [`harness.close_task`](method-close-task.md) and other method owners.
+- Method-specific behavior: [`volicord.close_task`](method-close-task.md) and other method owners.
 - Data shapes and values: [API State Schemas](schema-state.md) and [API Value Sets](schema-value-sets.md#state-and-blocker-values).
 - Public error meanings and precedence: [API error codes](error-codes.md) and [API error precedence](error-precedence.md).
 - Core close-readiness authority: [Core Model](../core-model.md#close_task).
@@ -46,7 +46,7 @@ This page is not a full blocker taxonomy, schema field table, or close-task eval
 
 | Owner concern | Routing use | Boundary |
 |---|---|---|
-| Core state, terminal transition, baseline, recovery, and write compatibility | A category-bearing blocker can point readers to Core or method-owned state requirements. | Core meaning stays with [Core Model](../core-model.md); method behavior stays with [`harness.close_task`](method-close-task.md). |
+| Core state, terminal transition, baseline, recovery, and write compatibility | A category-bearing blocker can point readers to Core or method-owned state requirements. | Core meaning stays with [Core Model](../core-model.md); method behavior stays with [`volicord.close_task`](method-close-task.md). |
 | Scope, user-owned judgment, sensitive-action approval, and surface capability | A category-bearing blocker can show that close depends on a user, scope, approval, or surface-capability owner. | The blocker does not record the user decision, sensitive-action approval, scope change, or capability declaration. |
 | Evidence and artifact basis | A category-bearing blocker can show that close depends on evidence sufficiency or persistent artifact availability. | Evidence and artifact semantics stay with their owners; the route does not prove sufficiency or availability. |
 | Final acceptance and residual risk | A category-bearing blocker can show that close depends on final acceptance, residual-risk visibility, or residual-risk acceptance. | The blocker does not create acceptance or risk acceptance. |
@@ -64,13 +64,13 @@ Not allowed:
 
 | Public-code relationship | Blocker-side route | Boundary |
 |---|---|---|
-| Evidence, artifact, acceptance, user-judgment, sensitive-action approval, scope, autonomy-boundary, baseline, or capability families | Route through the owner-defined `CloseReadinessBlocker.category` and `CloseReadinessBlocker.code`. | Public code meanings stay with [API error codes](error-codes.md); blocker shape stays with [API State Schemas](schema-state.md), category values stay with [API Value Sets](schema-value-sets.md#state-and-blocker-values), and method-specific blocker production stays with [`harness.close_task`](method-close-task.md). |
+| Evidence, artifact, acceptance, user-judgment, sensitive-action approval, scope, autonomy-boundary, baseline, or capability families | Route through the owner-defined `CloseReadinessBlocker.category` and `CloseReadinessBlocker.code`. | Public code meanings stay with [API error codes](error-codes.md); blocker shape stays with [API State Schemas](schema-state.md), category values stay with [API Value Sets](schema-value-sets.md#state-and-blocker-values), and method-specific blocker production stays with [`volicord.close_task`](method-close-task.md). |
 | Readable-view freshness families | May be named as related diagnostics when the owner allows it. | A freshness diagnostic by itself is not a close-readiness blocker. |
 | State-version or idempotency conflict families | No close-readiness blocker representation. | These failures are rejected before close-readiness evaluation and stay with [API error precedence](error-precedence.md). |
 
-## `harness.close_task` method route
+## `volicord.close_task` method route
 
-Method-specific close behavior belongs to [`harness.close_task`](method-close-task.md). Route request validation, intent handling, terminal mutation, state-version behavior, and committed blocked outcomes to that method owner.
+Method-specific close behavior belongs to [`volicord.close_task`](method-close-task.md). Route request validation, intent handling, terminal mutation, state-version behavior, and committed blocked outcomes to that method owner.
 
 This document only defines the boundary between the blocker data returned by that method and the neighboring API error, schema, value-set, Core, storage, and display owners.
 

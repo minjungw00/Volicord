@@ -1,6 +1,6 @@
 # API error codes
 
-This document owns public `ErrorCode` identifiers, meanings, and occurrence summaries for Harness API responses.
+This document owns public `ErrorCode` identifiers, meanings, and occurrence summaries for Volicord API responses.
 
 Use it to answer what a public code means and where that code may appear. Use adjacent owners for selection order, branch routing, schemas, storage effects, security guarantees, and display wording.
 
@@ -17,7 +17,7 @@ Adjacent owners:
 - Primary-code selection and state-version conflict behavior; see [API error precedence](error-precedence.md).
 - Rejected-response, blocked-result, and `dry_run` branch routing; see [API error routing](error-routing.md).
 - Close-readiness blocker/API response boundary; see [API blocker routing](blocker-routing.md).
-- Method-specific behavior; see [`harness.close_task`](method-close-task.md) and other method owners.
+- Method-specific behavior; see [`volicord.close_task`](method-close-task.md) and other method owners.
 - `ToolError.details` fields and helper values; see [API error details](error-details.md).
 - Common response branch shapes; see [API Schema Core](schema-core.md).
 - Display wording only; see [Template Bodies](../template-bodies.md).

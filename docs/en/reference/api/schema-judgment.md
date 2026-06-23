@@ -208,11 +208,11 @@ SensitiveActionScope:
   expires_at: string | null
 ```
 
-The presence of `SensitiveActionScope` does not define where sensitive-action approval is required. Method owners define where this shape appears, and it does not replace the `harness.prepare_write` path for product-file writes.
+The presence of `SensitiveActionScope` does not define where sensitive-action approval is required. Method owners define where this shape appears, and it does not replace the `volicord.prepare_write` path for product-file writes.
 
 `SensitiveActionScope.action_kind` and `sensitive_categories[]` are opaque sensitive-action classification strings unless an affected method or profile owner publishes a narrower local list. `description`, `command_or_tool_summary`, `network_or_host_summary`, `secret_or_credential_summary`, and `capability_claim` are display or claim strings; they are not canonical value sets or security authority.
 
-In `harness.request_user_judgment`, `sensitive_action_scope` is an optional-nullable public request field whose non-null requirement is owned by the method owner for `judgment_kind=sensitive_approval`. When `SensitiveActionScope` appears inside `JudgmentBasis`, it is server-derived persisted state, not caller-submitted basis data.
+In `volicord.request_user_judgment`, `sensitive_action_scope` is an optional-nullable public request field whose non-null requirement is owned by the method owner for `judgment_kind=sensitive_approval`. When `SensitiveActionScope` appears inside `JudgmentBasis`, it is server-derived persisted state, not caller-submitted basis data.
 
 <a id="acceptedriskinput"></a>
 ## `AcceptedRiskInput`
@@ -235,8 +235,8 @@ This shape is not verification, evidence sufficiency, QA, final acceptance, or p
 ## Related owners
 
 - [Core Model](../core-model.md) for user-owned judgment meaning and non-substitution rules.
-- [Request-user-judgment method](method-request-user-judgment.md) for `harness.request_user_judgment`.
-- [Record-user-judgment method](method-record-user-judgment.md) for `harness.record_user_judgment`.
+- [Request-user-judgment method](method-request-user-judgment.md) for `volicord.request_user_judgment`.
+- [Record-user-judgment method](method-record-user-judgment.md) for `volicord.record_user_judgment`.
 - [API Value Sets](schema-value-sets.md) for `judgment_kind`, `presentation`, `required_for`, status, actor values, and option display boundaries.
 - [API State Schemas](schema-state.md) for `StateRecordRef`.
 - [API Artifact Schemas](schema-artifacts.md) for `ArtifactRef`.

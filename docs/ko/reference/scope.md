@@ -1,6 +1,6 @@
 # 범위 참조
 
-이 참조 문서는 하네스의 지원되는 기준 범위 경계를 담당합니다. 하네스는 AI 지원 제품 작업에서 로컬 작업 권한을 다루는 제품이자 시스템입니다. 이 문서는 기준 범위 안에 있는 기능 묶음, 기준 범위 밖에 남는 기능, 예약된 값과 프로필 조건부 값이 범위에 미치는 영향을 정의합니다.
+이 참조 문서는 Volicord의 지원되는 기준 범위 경계를 담당합니다. Volicord는 AI 지원 제품 작업에서 로컬 작업 권한을 다루는 제품이자 시스템입니다. 이 문서는 기준 범위 안에 있는 기능 묶음, 기준 범위 밖에 남는 기능, 예약된 값과 프로필 조건부 값이 범위에 미치는 영향을 정의합니다.
 
 이 페이지는 안정적인 참조 계약이며, 프로젝트 경과 서술이나 구현 계획이 아닙니다.
 
@@ -57,12 +57,12 @@
 | 자연어 접수와 `Task` 생성 | 지원되는 접수 경로로 사용자의 자연어 의도에서 로컬 `Task`를 시작할 수 있습니다. | [접수 메서드](api/method-intake.md), [Core 모델](core-model.md) |
 | 범위 업데이트 | 지원되는 범위 업데이트 경로로 `Task`와 Change Unit 범위를 갱신할 수 있습니다. | [범위 업데이트 메서드](api/method-update-scope.md), [Core 모델](core-model.md) |
 | 상태와 닫기 준비 상태 확인 | 지원되는 읽기 경로로 상태, 증거 충분성, 알려진 차단 사유, 닫기 준비 상태를 읽을 수 있습니다. | [상태 메서드](api/method-status.md), [Task 닫기 메서드](api/method-close-task.md), [API 상태 스키마](api/schema-state.md), [Core 모델](core-model.md) |
-| 쓰기 준비 권한 부여 | `harness.prepare_write`는 호환되는 제품 파일 쓰기 시도 하나를 위해 담당 범위의 1회용 `Write Authorization`을 만들 수 있습니다. | [쓰기 준비 메서드](api/method-prepare-write.md), [저장 효과](storage-effects.md), [보안](security.md) |
+| 쓰기 준비 권한 부여 | `volicord.prepare_write`는 호환되는 제품 파일 쓰기 시도 하나를 위해 담당 범위의 1회용 `Write Authorization`을 만들 수 있습니다. | [쓰기 준비 메서드](api/method-prepare-write.md), [저장 효과](storage-effects.md), [보안](security.md) |
 | 로컬 접점 등록 | 등록된 로컬 접점은 범위 확인에 쓸 선택된 접점과 지원 역량을 식별할 수 있습니다. | [에이전트 통합](agent-integration.md), [접점별 사용 레시피](../guides/surface-recipes.md), [보안](security.md) |
 | 아티팩트 스테이징과 호환되는 아티팩트 연결 | 새 아티팩트 바이트는 지원되는 스테이징 경로로 기준 범위에 들어올 수 있고, 호환되는 지속 아티팩트 참조는 아티팩트 담당 문서가 허용할 때 연결할 수 있습니다. | [아티팩트 스테이징 담당 문서](#artifact-staging-owners)를 봅니다. |
 | 실행 및 증거 기록 | 기준 범위 작업에 대해 실행 기록과 간결한 증거 요약을 남길 수 있습니다. | [실행 기록 메서드](api/method-record-run.md), [저장 효과](storage-effects.md), [Core 모델](core-model.md) |
 | 집중된 사용자 소유 판단 기록 | 지원되는 판단 경로로 사용자 소유 판단을 요청하고 기록할 수 있습니다. 이 판단은 Core 소유 상태, 증거, 닫기 준비 상태 규칙을 대체하지 않습니다. | [사용자 소유 판단 담당 문서](#user-judgment-owners)를 봅니다. |
-| 닫기 시도 | `harness.close_task`는 증거, 최종 수락, 잔여 위험, 대체 불가 경계를 유지하면서 닫기 준비 상태를 평가하고 지원되는 닫기 결과를 시도할 수 있습니다. | [Task 닫기 메서드](api/method-close-task.md), [Core 모델](core-model.md), [API 차단 사유 처리 경로](api/blocker-routing.md) |
+| 닫기 시도 | `volicord.close_task`는 증거, 최종 수락, 잔여 위험, 대체 불가 경계를 유지하면서 닫기 준비 상태를 평가하고 지원되는 닫기 결과를 시도할 수 있습니다. | [Task 닫기 메서드](api/method-close-task.md), [Core 모델](core-model.md), [API 차단 사유 처리 경로](api/blocker-routing.md) |
 | 읽기 시점 상태 표시 | 읽기 전용 상태 또는 파생 표시는 상태 보기와 템플릿 담당 문서가 허용할 때 원천 상태를 요약할 수 있습니다. | [상태 보기 권한 참조](projection-and-templates.md), [템플릿 본문](template-bodies.md), [API 상태 스키마](api/schema-state.md) |
 
 <a id="artifact-staging-owners"></a>
@@ -171,7 +171,7 @@
 지원되는 경계:
 
 - 이 문서와 [보안](security.md)이 다른 지원 보장을 정의하지 않는 한 기준 범위의 보장 경계는 `cooperative`입니다.
-- `harness.prepare_write`와 `Write Authorization`은 제품 파일 쓰기 호환성 메커니즘이며 격리나 샌드박싱 보장이 아닙니다.
+- `volicord.prepare_write`와 `Write Authorization`은 제품 파일 쓰기 호환성 메커니즘이며 격리나 샌드박싱 보장이 아닙니다.
 
 포함되지 않는 것:
 

@@ -1,10 +1,10 @@
-<a id="harnessstage_artifact"></a>
+<a id="volicordstage_artifact"></a>
 
-# `harness.stage_artifact` reference
+# `volicord.stage_artifact` reference
 
 ## What this document owns
 
-This document owns baseline method behavior for `harness.stage_artifact`:
+This document owns baseline method behavior for `volicord.stage_artifact`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
 - transient staged-handle creation behavior
@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`harness.stage_artifact` stages caller-provided safe artifact bytes or a safe notice into a transient `StagedArtifactHandle` for the same project and Task.
+`volicord.stage_artifact` stages caller-provided safe artifact bytes or a safe notice into a transient `StagedArtifactHandle` for the same project and Task.
 
 Staging is input preparation only. Evidence, persistent artifact links, acceptance, residual-risk, and close-readiness effects are owned by the relevant method and storage owners.
 
@@ -148,7 +148,7 @@ The examples are intentionally compact and method-local. The representative resp
 ## Minimal valid request
 
 ```yaml
-method: harness.stage_artifact
+method: volicord.stage_artifact
 params:
   envelope:
     project_id: proj_trace_001

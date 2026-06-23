@@ -1,6 +1,6 @@
 # Projection and template display boundaries
 
-This document owns the distinction between authoritative Harness records and read-only projected, status, or template views. A `Projection` is a view or rendered state surface; it does not create authority. Current rendered body guidance, display phrasing, and user-facing labels live in [Template Bodies](template-bodies.md).
+This document owns the distinction between authoritative Volicord records and read-only projected, status, or template views. A `Projection` is a view or rendered state surface; it does not create authority. Current rendered body guidance, display phrasing, and user-facing labels live in [Template Bodies](template-bodies.md).
 
 ## Owns / Does not own
 

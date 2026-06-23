@@ -1,6 +1,6 @@
 version: 3
 metadata:
-  purpose: Machine-readable documentation metadata for maintained Harness paths, reader purpose, maintenance
+  purpose: Machine-readable documentation metadata for maintained Volicord paths, reader purpose, maintenance
     responsibility, version applicability, and bilingual maintenance.
   default_language: en
   documentation_metadata: true
@@ -49,13 +49,13 @@ owner_areas:
   documentation_maintenance:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
-  harness_server_0_1:
-    description: Harness Server workspace package version 0.1.0, as declared by the workspace `Cargo.toml`.
+  volicord_workspace_0_1:
+    description: Volicord workspace package version 0.1.0, as declared by the workspace `Cargo.toml`.
   rust_workspace_1_85:
     description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
       `Cargo.toml`.
   mcp_protocol_2025_11_25:
-    description: MCP protocol version 2025-11-25 supported by the local `harness-mcp` stdio process.
+    description: MCP protocol version 2025-11-25 supported by the local `volicord-mcp` stdio process.
   storage_baseline_sqlite_v2_schema_v1:
     description: '`baseline_sqlite_v2` storage profile with registry and project-state schema version
       1.'
@@ -132,7 +132,7 @@ shared_documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -145,7 +145,7 @@ shared_documents:
   - repository priority order for onboarding, developer learning, reference contracts, and maintenance
     metadata
   - global contract-first workflow guidance
-  - global Harness/Core terminology distinction
+  - global Volicord/Core terminology distinction
   - global bilingual semantic-parity requirement
   - repository output and scratch artifact placement guidance
   - repository validation and reporting expectations
@@ -159,7 +159,7 @@ shared_documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -185,7 +185,7 @@ shared_documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - agents
   - implementers
@@ -209,7 +209,7 @@ shared_documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - all readers
   journeys:
@@ -226,7 +226,7 @@ shared_documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -245,10 +245,10 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-22'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - terminology_map_v1
   primary_audience:
   - maintainers
@@ -261,7 +261,7 @@ shared_documents:
   - bilingual terminology controls
   - identifier preservation rules
   - English and Korean discouraged-expression metadata
-  - Harness, Core, Harness Server, Harness Runtime Home, and Product Repository terminology routing
+  - Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, Volicord Runtime Home, and Product Repository terminology routing
   - Write Authorization, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
     and verification-criteria terminology distinctions
   - Korean mixed-language expressions to avoid
@@ -270,7 +270,7 @@ documents:
   path_en: README.md
   path_ko: README.ko.md
   kind: landing
-  summary: Bilingual first-user Harness onboarding route for product orientation, environment fit,
+  summary: Bilingual first-user Volicord onboarding route for product orientation, environment fit,
     executable setup, host setup, first use, and documentation navigation.
   normative_level: guide
   translation_policy: semantic_parity
@@ -279,7 +279,7 @@ documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - new users
   - operators
@@ -315,7 +315,7 @@ documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - all readers
   journeys:
@@ -325,15 +325,15 @@ documents:
   path_en: docs/en/getting-started/overview.md
   path_ko: docs/ko/getting-started/overview.md
   kind: landing
-  summary: First-read product orientation for Harness, Core, and the local authority model.
+  summary: First-read product orientation for Volicord, Core, and the local authority model.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-07'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - new users
   - agents
@@ -353,7 +353,7 @@ documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - new users
@@ -374,10 +374,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
   primary_audience:
   - new users
@@ -395,15 +395,15 @@ documents:
   path_en: docs/en/guides/user-workflow.md
   path_ko: docs/ko/guides/user-workflow.md
   kind: how_to
-  summary: How-to guidance for user workflow and authority-aware work with Harness.
+  summary: How-to guidance for user workflow and authority-aware work with Volicord.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-06-20'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - users
   - agents
@@ -413,15 +413,15 @@ documents:
   path_en: docs/en/guides/agent-workflow.md
   path_ko: docs/ko/guides/agent-workflow.md
   kind: how_to
-  summary: How-to guidance for agents operating against Harness authority boundaries.
+  summary: How-to guidance for agents operating against Volicord authority boundaries.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: user_workflow
   created_on: '2026-05-22'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - agents
   - agent operators
@@ -436,10 +436,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: user_workflow
   created_on: '2026-06-07'
-  last_updated_on: '2026-06-20'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - users
   - agents
@@ -450,15 +450,15 @@ documents:
   path_en: docs/en/guides/surface-recipes.md
   path_ko: docs/ko/guides/surface-recipes.md
   kind: how_to
-  summary: How-to recipes for using Harness surfaces and connector contexts.
+  summary: How-to recipes for using Volicord surfaces and connector contexts.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: user_workflow
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - users
   - agents
@@ -478,7 +478,7 @@ documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
   primary_audience:
   - operators
@@ -504,10 +504,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_integration
   created_on: '2026-06-23'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
   primary_audience:
   - operators
@@ -534,10 +534,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_integration
   created_on: '2026-06-22'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
   primary_audience:
   - operators
@@ -561,10 +561,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -592,10 +592,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   - doc_index_schema_v3
   primary_audience:
@@ -617,10 +617,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -647,10 +647,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-20'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -676,10 +676,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   - storage_baseline_sqlite_v2_schema_v1
   primary_audience:
@@ -710,10 +710,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -737,10 +737,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-22'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -763,10 +763,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -790,10 +790,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-20'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -817,10 +817,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -846,10 +846,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-22'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   - mcp_protocol_2025_11_25
   primary_audience:
@@ -879,10 +879,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-12'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -909,10 +909,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: developer_documentation
   created_on: '2026-06-17'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - implementers
@@ -946,10 +946,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-02'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -975,7 +975,7 @@ documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - rust_workspace_1_85
   primary_audience:
   - new users
@@ -991,7 +991,7 @@ documents:
   - supported, verified, unverified, and out-of-scope environment status distinctions
   - Rust and Cargo prerequisite boundary separate from operating-system support claims
   - maintained shell example applicability
-  - executable layout and discovery prerequisites for `harness` and `harness-mcp`
+  - executable layout and discovery prerequisites for `volicord` and `volicord-mcp`
   - Runtime Home, Product Repository, and host configuration access prerequisites
   - host compatibility check policy when no stable Codex or Claude Code minimum version is defined
   - stop criteria for unsupported or unverified installation environments
@@ -1009,10 +1009,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-20'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - agents
   - implementers
@@ -1036,10 +1036,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - agents
   - implementers
@@ -1048,7 +1048,7 @@ documents:
   - operate
   - implement
   canonical_for:
-  - Core local authority record model for Harness state
+  - Core local authority record model for Volicord state
   - current scope and current Change Unit authority context
   - lifecycle meaning
   - close-readiness authority concepts
@@ -1064,10 +1064,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - agents
   - implementers
@@ -1077,8 +1077,8 @@ documents:
   - implement
   canonical_for:
   - Product Repository boundary
-  - Harness Runtime Home boundary
-  - Harness Server source, installation, and executable process boundaries
+  - Volicord Runtime Home boundary
+  - Volicord source repository, installation, and executable process boundaries
   - runtime, server, and repository separation
   - explicit integration files allowed in Product Repositories
 - doc_id: reference.admin-cli
@@ -1090,10 +1090,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_integration
   created_on: '2026-06-19'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
   - storage_baseline_sqlite_v2_schema_v1
   primary_audience:
@@ -1104,9 +1104,9 @@ documents:
   - operate
   - implement
   canonical_for:
-  - local `harness` administrative and bootstrap CLI command contract
-  - '`harness` command-line arguments, defaults, stdout and stderr routing, and exit codes'
-  - Runtime Home path selection rules for `harness` administrative commands
+  - local `volicord` administrative and bootstrap CLI command contract
+  - '`volicord` command-line arguments, defaults, stdout and stderr routing, and exit codes'
+  - Runtime Home path selection rules for `volicord` administrative commands
   - administrative project registration command behavior
   - administrative surface registration command behavior
   - agent integration install, status, verify, uninstall, and project membership commands
@@ -1114,9 +1114,9 @@ documents:
   - Host Installation setup result states and verification reporting
   - administrative dry-run, machine output, and noninteractive approval behavior
   - repository guidance apply, status, and remove commands
-  - unsupported `harness setup` command-family rejection behavior
+  - unsupported `volicord setup` command-family rejection behavior
   - '`baseline-workflow` local registration profile expansion'
-  - administrative command boundary from public Harness API methods
+  - administrative command boundary from public Volicord API methods
   depends_on:
   - reference.runtime-boundaries
   - reference.agent-integration
@@ -1132,10 +1132,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_integration
   created_on: '2026-06-19'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
   primary_audience:
   - agent integrators
@@ -1145,16 +1145,16 @@ documents:
   - operate
   - implement
   canonical_for:
-  - local `harness-mcp` process command contract
+  - local `volicord-mcp` process command contract
   - MCP stdio process startup and exit behavior
   - MCP process environment variables and integration-bound startup
   - MCP startup validation and integration process binding
   - MCP Runtime Home environment resolution
   - per-call MCP project selection and validation
-  - '`harness.list_projects` MCP adapter utility'
+  - '`volicord.list_projects` MCP adapter utility'
   - line-delimited JSON-RPC over stdio
   - MCP supported request method set
-  - '`tools/call` Harness response wrapping'
+  - '`tools/call` Volicord response wrapping'
   - MCP process shutdown and reconnection behavior
   depends_on:
   - reference.admin-cli
@@ -1172,10 +1172,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-06-22'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - agents
   - implementers
@@ -1193,15 +1193,15 @@ documents:
   path_en: docs/en/reference/glossary.md
   path_ko: docs/ko/reference/glossary.md
   kind: reference
-  summary: Curated reader-facing glossary for selected Harness terms and owner routes.
+  summary: Curated reader-facing glossary for selected Volicord terms and owner routes.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-05-06'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - terminology_map_v1
   primary_audience:
   - readers
@@ -1220,15 +1220,15 @@ documents:
   path_en: docs/en/reference/api/methods.md
   path_ko: docs/ko/reference/api/methods.md
   kind: reference
-  summary: Reference contract for the supported public Harness API method list.
+  summary: Reference contract for the supported public Volicord API method list.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-06-16'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1243,15 +1243,15 @@ documents:
   path_en: docs/en/reference/api/method-intake.md
   path_ko: docs/ko/reference/api/method-intake.md
   kind: reference
-  summary: Reference contract for `harness.intake` behavior.
+  summary: Reference contract for `volicord.intake` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1260,22 +1260,22 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`harness.intake` behavior'
+  - '`volicord.intake` behavior'
   - '`IntakeResult` branch behavior'
   - intake examples
 - doc_id: reference.api.method-update-scope
   path_en: docs/en/reference/api/method-update-scope.md
   path_ko: docs/ko/reference/api/method-update-scope.md
   kind: reference
-  summary: Reference contract for `harness.update_scope` behavior.
+  summary: Reference contract for `volicord.update_scope` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1284,22 +1284,22 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`harness.update_scope` behavior'
+  - '`volicord.update_scope` behavior'
   - '`UpdateScopeResult` branch behavior'
   - update-scope examples
 - doc_id: reference.api.method-status
   path_en: docs/en/reference/api/method-status.md
   path_ko: docs/ko/reference/api/method-status.md
   kind: reference
-  summary: Reference contract for `harness.status` behavior.
+  summary: Reference contract for `volicord.status` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-06-19'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1308,7 +1308,7 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`harness.status` behavior'
+  - '`volicord.status` behavior'
   - '`StatusResult` branch behavior'
   - status read-only behavior
   - status examples
@@ -1316,15 +1316,15 @@ documents:
   path_en: docs/en/reference/api/method-prepare-write.md
   path_ko: docs/ko/reference/api/method-prepare-write.md
   kind: reference
-  summary: Reference contract for `harness.prepare_write` behavior.
+  summary: Reference contract for `volicord.prepare_write` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1333,7 +1333,7 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`harness.prepare_write` behavior'
+  - '`volicord.prepare_write` behavior'
   - '`PrepareWriteResult` branch behavior'
   - Write Authorization creation behavior
   - method-specific sensitive-action approval handling
@@ -1341,15 +1341,15 @@ documents:
   path_en: docs/en/reference/api/method-stage-artifact.md
   path_ko: docs/ko/reference/api/method-stage-artifact.md
   kind: reference
-  summary: Reference contract for `harness.stage_artifact` behavior.
+  summary: Reference contract for `volicord.stage_artifact` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-06-18'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1358,22 +1358,22 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`harness.stage_artifact` behavior'
+  - '`volicord.stage_artifact` behavior'
   - '`StageArtifactResult` branch behavior'
   - staged handle result behavior
 - doc_id: reference.api.method-record-run
   path_en: docs/en/reference/api/method-record-run.md
   path_ko: docs/ko/reference/api/method-record-run.md
   kind: reference
-  summary: Reference contract for `harness.record_run` behavior.
+  summary: Reference contract for `volicord.record_run` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1382,7 +1382,7 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`harness.record_run` behavior'
+  - '`volicord.record_run` behavior'
   - '`RecordRunResult` branch behavior'
   - run and evidence method behavior
   - artifact promotion method behavior
@@ -1390,15 +1390,15 @@ documents:
   path_en: docs/en/reference/api/method-request-user-judgment.md
   path_ko: docs/ko/reference/api/method-request-user-judgment.md
   kind: reference
-  summary: Reference contract for `harness.request_user_judgment` behavior.
+  summary: Reference contract for `volicord.request_user_judgment` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-15'
-  last_updated_on: '2026-06-19'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1407,22 +1407,22 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`harness.request_user_judgment` behavior'
+  - '`volicord.request_user_judgment` behavior'
   - '`RequestUserJudgmentResult` branch behavior'
   - pending user-owned judgment request behavior
 - doc_id: reference.api.method-record-user-judgment
   path_en: docs/en/reference/api/method-record-user-judgment.md
   path_ko: docs/ko/reference/api/method-record-user-judgment.md
   kind: reference
-  summary: Reference contract for `harness.record_user_judgment` behavior.
+  summary: Reference contract for `volicord.record_user_judgment` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-15'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1431,22 +1431,22 @@ documents:
   - implement
   - operate
   canonical_for:
-  - '`harness.record_user_judgment` behavior'
+  - '`volicord.record_user_judgment` behavior'
   - '`RecordUserJudgmentResult` branch behavior'
   - user-owned judgment answer recording behavior
 - doc_id: reference.api.method-close-task
   path_en: docs/en/reference/api/method-close-task.md
   path_ko: docs/ko/reference/api/method-close-task.md
   kind: reference
-  summary: Reference contract for `harness.close_task` behavior.
+  summary: Reference contract for `volicord.close_task` behavior.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1456,8 +1456,8 @@ documents:
   - operate
   canonical_for:
   - close task API method term
-  - '`harness.close_task` public method identifier'
-  - '`harness.close_task` method-specific behavior'
+  - '`volicord.close_task` public method identifier'
+  - '`volicord.close_task` method-specific behavior'
   - '`CloseTaskResult` method result branch behavior'
   - method-specific close-readiness evaluation order
   - method-specific blocker-producing branches
@@ -1472,10 +1472,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-06-19'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1497,10 +1497,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1522,10 +1522,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1546,10 +1546,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1571,10 +1571,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1598,10 +1598,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-06-16'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1632,10 +1632,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1654,10 +1654,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-06-18'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1680,10 +1680,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-06-15'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1705,10 +1705,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-06-15'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1731,10 +1731,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-06-18'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - API implementers
   - agent integrators
@@ -1756,10 +1756,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-05-06'
-  last_updated_on: '2026-06-17'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - storage_baseline_sqlite_v2_schema_v1
   primary_audience:
   - implementers
@@ -1780,10 +1780,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - storage_baseline_sqlite_v2_schema_v1
   primary_audience:
   - storage implementers
@@ -1807,10 +1807,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - storage_baseline_sqlite_v2_schema_v1
   primary_audience:
   - storage implementers
@@ -1836,10 +1836,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - storage_baseline_sqlite_v2_schema_v1
   primary_audience:
   - storage implementers
@@ -1861,10 +1861,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - storage_baseline_sqlite_v2_schema_v1
   primary_audience:
   - storage implementers
@@ -1887,10 +1887,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - storage_baseline_sqlite_v2_schema_v1
   primary_audience:
   - storage implementers
@@ -1914,10 +1914,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_integration
   created_on: '2026-05-23'
-  last_updated_on: '2026-06-23'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - mcp_protocol_2025_11_25
   primary_audience:
   - agent integrators
@@ -1946,10 +1946,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-06-15'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - implementers
   - agent integrators
@@ -1971,10 +1971,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-06-15'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - implementers
   - maintainers
@@ -1998,10 +1998,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: quality_conformance
   created_on: '2026-06-07'
-  last_updated_on: '2026-06-15'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - implementers
   - reviewers
@@ -2022,10 +2022,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: quality_conformance
   created_on: '2026-06-07'
-  last_updated_on: '2026-06-21'
-  last_verified_on: '2026-06-23'
+  last_updated_on: '2026-06-24'
+  last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   primary_audience:
   - agents
   - reviewers
@@ -2051,7 +2051,7 @@ documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - doc_index_schema_v3
   primary_audience:
   - agents
@@ -2081,7 +2081,7 @@ documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - doc_index_schema_v3
   - terminology_map_v1
   primary_audience:
@@ -2120,7 +2120,7 @@ documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - doc_index_schema_v3
   - terminology_map_v1
   primary_audience:
@@ -2149,7 +2149,7 @@ documents:
   last_updated_on: '2026-06-24'
   last_verified_on: '2026-06-24'
   applies_to:
-  - harness_server_0_1
+  - volicord_workspace_0_1
   - doc_index_schema_v3
   primary_audience:
   - agents

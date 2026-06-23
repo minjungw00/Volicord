@@ -1,10 +1,10 @@
-<a id="harnessstatus"></a>
+<a id="volicordstatus"></a>
 
-# `harness.status` reference
+# `volicord.status` reference
 
 ## What this document owns
 
-This document owns baseline method behavior for `harness.status`:
+This document owns baseline method behavior for `volicord.status`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
 - read-only status behavior for current Core state
@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`harness.status` returns a read-only current-position view over Core state. The view can include current Task summary, blockers, pending user judgments, `Write Authorization` summary, evidence summary, close state, close-readiness findings, guarantee display, and next safe actions.
+`volicord.status` returns a read-only current-position view over Core state. The view can include current Task summary, blockers, pending user judgments, `Write Authorization` summary, evidence summary, close state, close-readiness findings, guarantee display, and next safe actions.
 
 ## Required inputs
 
@@ -85,7 +85,7 @@ Include projection contract:
 - `include.pending_user_judgments` returns current pending judgment refs, and relevant stale or superseded judgment state appears through existing result fields such as `blocker_refs` and `next_actions.required_refs`.
 - `include.write_authority` returns effective active, expired, stale, and consumed write-authority states through `write_authority_summary`.
 - `include.evidence` returns current `EvidenceSummary` and coverage when available.
-- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, and relevant next actions. The blockers use the same close-readiness calculation as `harness.close_task intent=check`.
+- `include.close` returns `CurrentCloseBasis | null`, close state, computed blockers, risk acceptance coverage, and relevant next actions. The blockers use the same close-readiness calculation as `volicord.close_task intent=check`.
 - `include.guarantees` returns only guarantees derived from the project enforcement profile, verified bound surface registration, enabled enforcement mechanisms, and supported baseline scope.
 - `include.evidence=false` means evidence summaries, coverage, artifact evidence refs, and evidence-only next actions are not computed and not returned.
 - `include.close=false` means close readiness is not computed and `CurrentCloseBasis`, close state, close blockers, residual-risk coverage, and close-only next actions are not returned.
@@ -97,7 +97,7 @@ Truthful projection rules:
 - Capability declarations alone do not create guarantees. A cooperative-only deployment must not claim `detective`.
 - `GuaranteeDisplay.capability_refs` should identify actual profile or surface facts when those refs are available.
 
-`include.close=true` and [`harness.close_task`](method-close-task.md) with `intent=check` use the same close-readiness calculation. `harness.status` remains read-only and creates no replay row, event, state mutation, close mutation, or state-version increment.
+`include.close=true` and [`volicord.close_task`](method-close-task.md) with `intent=check` use the same close-readiness calculation. `volicord.status` remains read-only and creates no replay row, event, state mutation, close mutation, or state-version increment.
 
 ## Method result fields
 
@@ -157,7 +157,7 @@ Method-local precondition: `task_export_001`, `cu_export_001`, and `uj_export_co
 ## Minimal valid request
 
 ```yaml
-method: harness.status
+method: volicord.status
 params:
   envelope:
     project_id: proj_export_001
@@ -241,7 +241,7 @@ active_task:
           state_version: 42
       next_actions:
         - action_kind: record_user_judgment
-          owner_method: harness.record_user_judgment
+          owner_method: volicord.record_user_judgment
           label: "Record the user's answer for the pending CSV column decision."
           blocking_question: "What is the user's answer for the pending CSV column decision?"
           required_refs:
@@ -257,7 +257,7 @@ active_task:
 status_summary: "A user-owned product decision about CSV column order is pending."
 next_actions:
   - action_kind: record_user_judgment
-    owner_method: harness.record_user_judgment
+    owner_method: volicord.record_user_judgment
     label: "Record the user's answer for the pending CSV column decision."
     blocking_question: "What is the user's answer for the pending CSV column decision?"
     required_refs:
@@ -288,7 +288,7 @@ close_blockers:
         state_version: 42
     next_actions:
       - action_kind: record_user_judgment
-        owner_method: harness.record_user_judgment
+        owner_method: volicord.record_user_judgment
         label: "Record the user's answer for the pending CSV column decision."
         blocking_question: "What is the user's answer for the pending CSV column decision?"
         required_refs:

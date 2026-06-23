@@ -189,7 +189,7 @@ Valid dry-run previews may include `DryRunSummary.would_blockers: PlannedBlocker
 
 Read-only results are response-only and not replay rows.
 
-For response computation, `harness.status` and `harness.close_task intent=check` may compute `CurrentCloseBasis`, close state, risk acceptance coverage, blockers, `CloseReadinessBlocker[]`, evidence summaries, artifact refs, diagnostics, and next actions for the response when the method owner selects those projections.
+For response computation, `volicord.status` and `volicord.close_task intent=check` may compute `CurrentCloseBasis`, close state, risk acceptance coverage, blockers, `CloseReadinessBlocker[]`, evidence summaries, artifact refs, diagnostics, and next actions for the response when the method owner selects those projections.
 
 Storage must not persist those computed values merely because the read occurred.
 
@@ -197,7 +197,7 @@ Read-time projections must distinguish uncomputed, unavailable, empty, and verif
 
 Read-time artifact checks may compute an effective missing, unavailable, or integrity-failed state for evidence, close, or status output when the current body cannot be verified against stored facts. That response computation does not mutate `artifacts.status`, `artifacts.integrity_status`, artifact links, or stored lifecycle rows unless a separate owner-defined mutation occurs.
 
-`harness.status` with `close_blockers: CloseReadinessBlocker[]` is a read-only observation. It does not create:
+`volicord.status` with `close_blockers: CloseReadinessBlocker[]` is a read-only observation. It does not create:
 
 - `task_event` or `task_events` append
 - replay row or `tool_invocations.response_json`
@@ -208,20 +208,20 @@ Read-time artifact checks may compute an effective missing, unavailable, or inte
 - evidence update
 - `project_state.state_version` increment
 
-For `harness.close_task intent=check`, the response branch is owned by [`harness.close_task`](api/method-close-task.md). This storage page only asserts that the check remains read-only, including with `dry_run=true` and with `blockers: CloseReadinessBlocker[]`.
+For `volicord.close_task intent=check`, the response branch is owned by [`volicord.close_task`](api/method-close-task.md). This storage page only asserts that the check remains read-only, including with `dry_run=true` and with `blockers: CloseReadinessBlocker[]`.
 
 ## Committed blocked effects
 
 Committed blocked outcomes are distinct from rejected responses.
 
-Condition: a committed blocked `harness.prepare_write` or `harness.close_task` outcome is a `MethodResult` only when the relevant method owner allows the blocked commit.
+Condition: a committed blocked `volicord.prepare_write` or `volicord.close_task` outcome is a `MethodResult` only when the relevant method owner allows the blocked commit.
 
 Owner links:
 - [Prepare-write method](api/method-prepare-write.md)
 - [Close-task method](api/method-close-task.md)
 
-<a id="harnessprepare_write-committed-non-allow-decision"></a>
-### `harness.prepare_write` committed non-allow decision
+<a id="volicordprepare_write-committed-non-allow-decision"></a>
+### `volicord.prepare_write` committed non-allow decision
 
 Conditions:
 
@@ -240,7 +240,7 @@ Disallowed effects:
 - creating consumable `Write Authorization`
 - creating a separate public history method
 - adding a new public response field for historical non-allow decisions
-- requiring `harness.status` to expose historical non-allow decisions
+- requiring `volicord.status` to expose historical non-allow decisions
 - changing `close_state`
 - evaluating close readiness
 - storing `CloseReadinessBlocker`
@@ -251,8 +251,8 @@ Disallowed effects:
 
 Persistence boundary:
 
-- Request-side `harness.prepare_write` payload fields belong to the [`harness.prepare_write` reference](api/method-prepare-write.md).
-- Stored `write_decision_reasons` remain `harness.prepare_write` decision reasons.
+- Request-side `volicord.prepare_write` payload fields belong to the [`volicord.prepare_write` reference](api/method-prepare-write.md).
+- Stored `write_decision_reasons` remain `volicord.prepare_write` decision reasons.
 - The durable audit location for a valid committed non-allow decision is the committed task event and, when keyed, the replay row.
 
 Those stored reasons are not:
@@ -261,13 +261,13 @@ Those stored reasons are not:
 - `CloseReadinessBlocker[]`
 - close-readiness blocker records
 
-<a id="harnessclose_task-committed-blocked-result"></a>
-### `harness.close_task` committed blocked result
+<a id="volicordclose_task-committed-blocked-result"></a>
+### `volicord.close_task` committed blocked result
 
 Conditions:
 
 - Close readiness evaluation has run.
-- The `harness.close_task` method contract permits committing the blocked result.
+- The `volicord.close_task` method contract permits committing the blocked result.
 
 Allowed effects:
 
@@ -292,21 +292,21 @@ This table summarizes persistence effects. Method behavior and response unions r
 
 | Method | Primary storage effect | Details |
 |---|---|---|
-| `harness.intake` | creates task and shaping records | See [`harness.intake`](#harnessintake) |
-| `harness.update_scope` | updates current scope records | See [`harness.update_scope`](#harnessupdate_scope) |
-| `harness.status` | read-only response | See [`harness.status`](#harnessstatus) |
-| `harness.prepare_write` | records write decision effects | See [`harness.prepare_write`](#harnessprepare_write) |
-| `harness.stage_artifact` | creates transient staging only | See [`harness.stage_artifact`](#harnessstage_artifact) |
-| `harness.record_run` | records run, current close-basis, and evidence effects | See [`harness.record_run`](#harnessrecord_run) |
-| `harness.request_user_judgment` | creates pending judgment request | See [`harness.request_user_judgment`](#harnessrequest_user_judgment) |
-| `harness.record_user_judgment` | resolves user judgment | See [`harness.record_user_judgment`](#harnessrecord_user_judgment) |
-| `harness.close_task intent=check` | read-only close-readiness check | See [`harness.close_task intent=check`](#harnessclose_task-intentcheck) |
-| `harness.close_task intent=complete` | persists method-selected `complete` terminal or blocked effect | See [`harness.close_task intent=complete`](#harnessclose_task-intentcomplete) |
-| `harness.close_task intent=cancel` | persists method-selected cancellation terminal or blocked effect | See [`harness.close_task intent=cancel`](#harnessclose_task-intentcancel) |
-| `harness.close_task intent=supersede` | persists method-selected supersession terminal or blocked effect | See [`harness.close_task intent=supersede`](#harnessclose_task-intentsupersede) |
+| `volicord.intake` | creates task and shaping records | See [`volicord.intake`](#volicordintake) |
+| `volicord.update_scope` | updates current scope records | See [`volicord.update_scope`](#volicordupdate_scope) |
+| `volicord.status` | read-only response | See [`volicord.status`](#volicordstatus) |
+| `volicord.prepare_write` | records write decision effects | See [`volicord.prepare_write`](#volicordprepare_write) |
+| `volicord.stage_artifact` | creates transient staging only | See [`volicord.stage_artifact`](#volicordstage_artifact) |
+| `volicord.record_run` | records run, current close-basis, and evidence effects | See [`volicord.record_run`](#volicordrecord_run) |
+| `volicord.request_user_judgment` | creates pending judgment request | See [`volicord.request_user_judgment`](#volicordrequest_user_judgment) |
+| `volicord.record_user_judgment` | resolves user judgment | See [`volicord.record_user_judgment`](#volicordrecord_user_judgment) |
+| `volicord.close_task intent=check` | read-only close-readiness check | See [`volicord.close_task intent=check`](#volicordclose_task-intentcheck) |
+| `volicord.close_task intent=complete` | persists method-selected `complete` terminal or blocked effect | See [`volicord.close_task intent=complete`](#volicordclose_task-intentcomplete) |
+| `volicord.close_task intent=cancel` | persists method-selected cancellation terminal or blocked effect | See [`volicord.close_task intent=cancel`](#volicordclose_task-intentcancel) |
+| `volicord.close_task intent=supersede` | persists method-selected supersession terminal or blocked effect | See [`volicord.close_task intent=supersede`](#volicordclose_task-intentsupersede) |
 
-<a id="harnessintake"></a>
-### `harness.intake`
+<a id="volicordintake"></a>
+### `volicord.intake`
 
 Committed `dry_run=false` may:
 
@@ -326,12 +326,12 @@ Those branches create no Task, refs, event, replay row, or state-version increme
 
 Owner links:
 
-- [`harness.intake` method](api/method-intake.md)
+- [`volicord.intake` method](api/method-intake.md)
 - [Storage Records](storage-records.md)
 - [Storage Versioning](storage-versioning.md)
 
-<a id="harnessupdate_scope"></a>
-### `harness.update_scope`
+<a id="volicordupdate_scope"></a>
+### `volicord.update_scope`
 
 Committed `dry_run=false` may:
 
@@ -356,12 +356,12 @@ Semantically identical normalized updates do not increment `tasks.scope_revision
 
 Owner links:
 
-- [`harness.update_scope` method](api/method-update-scope.md)
+- [`volicord.update_scope` method](api/method-update-scope.md)
 - [Storage Records](storage-records.md)
 - [Storage Versioning](storage-versioning.md)
 
-<a id="harnessstatus"></a>
-### `harness.status`
+<a id="volicordstatus"></a>
+### `volicord.status`
 
 Read-only calls:
 
@@ -378,10 +378,10 @@ No-effect branches:
 
 Owner links:
 
-- [`harness.status` method](api/method-status.md)
+- [`volicord.status` method](api/method-status.md)
 
-<a id="harnessprepare_write"></a>
-### `harness.prepare_write`
+<a id="volicordprepare_write"></a>
+### `volicord.prepare_write`
 
 An original committed `dry_run=false` call with `decision=allowed` may:
 
@@ -394,10 +394,10 @@ Idempotent replay returns the stored original response under [Storage Versioning
 
 Committed non-allowed decisions:
 
-- See [`harness.prepare_write` committed non-allow decision](#harnessprepare_write-committed-non-allow-decision).
+- See [`volicord.prepare_write` committed non-allow decision](#volicordprepare_write-committed-non-allow-decision).
 - They append exactly one task event, create a replay row when keyed, and increment `project_state.state_version` exactly once.
 - They do not create consumable `Write Authorization`, a separate public history method, or a new public response field.
-- `harness.status` is not required to expose historical non-allow decisions.
+- `volicord.status` is not required to expose historical non-allow decisions.
 
 No-effect branches:
 
@@ -415,12 +415,12 @@ Those branches do not create:
 
 Owner links:
 
-- [`harness.prepare_write` method](api/method-prepare-write.md)
+- [`volicord.prepare_write` method](api/method-prepare-write.md)
 - [Storage Records](storage-records.md)
 - [Storage Versioning](storage-versioning.md)
 
-<a id="harnessstage_artifact"></a>
-### `harness.stage_artifact`
+<a id="volicordstage_artifact"></a>
+### `volicord.stage_artifact`
 
 Successful staging may:
 
@@ -451,11 +451,11 @@ Valid `dry_run=true` does not create:
 
 Owner links:
 
-- [`harness.stage_artifact` method](api/method-stage-artifact.md)
+- [`volicord.stage_artifact` method](api/method-stage-artifact.md)
 - [Artifact Storage](storage-artifacts.md)
 
-<a id="harnessrecord_run"></a>
-### `harness.record_run`
+<a id="volicordrecord_run"></a>
+### `volicord.record_run`
 
 Committed `dry_run=false` may:
 
@@ -499,11 +499,11 @@ Product file write persistence boundary:
 
 - When the method owner allows a committed run that records a product file write, storage may consume a compatible `write_authorizations` row in the same commit.
 - Test evidence persistence can promote staged artifacts and update evidence without implying a product file write observation.
-- Exact run classification belongs to the [`harness.record_run` method](api/method-record-run.md).
+- Exact run classification belongs to the [`volicord.record_run` method](api/method-record-run.md).
 
 Current close-basis persistence boundary:
 
-- A committed `harness.record_run` increments `tasks.close_basis_revision` exactly once.
+- A committed `volicord.record_run` increments `tasks.close_basis_revision` exactly once.
 - A non-null `close_assessment` writes a new current `CurrentCloseBasis` in `tasks.close_basis_json` and stores Core-generated opaque residual-risk IDs.
 - Sensitive action requirements stored in that `CurrentCloseBasis` are derived by Core from the committed Run and any consumed `Write Authorization`, preserving operation, normalized paths, sensitive categories, baseline, Change Unit, source Run ref, and source `Write Authorization` ref through close.
 - Category-only caller input cannot establish, satisfy, or erase a sensitive action requirement.
@@ -512,12 +512,12 @@ Current close-basis persistence boundary:
 
 Owner links:
 
-- [`harness.record_run` method](api/method-record-run.md)
+- [`volicord.record_run` method](api/method-record-run.md)
 - [Artifact Storage](storage-artifacts.md)
 - [Storage Records](storage-records.md)
 
-<a id="harnessrequest_user_judgment"></a>
-### `harness.request_user_judgment`
+<a id="volicordrequest_user_judgment"></a>
+### `volicord.request_user_judgment`
 
 Committed `dry_run=false` may:
 
@@ -544,11 +544,11 @@ Valid dry-run previews do not create:
 
 Owner links:
 
-- [`harness.request_user_judgment` method](api/method-request-user-judgment.md#harnessrequest_user_judgment)
+- [`volicord.request_user_judgment` method](api/method-request-user-judgment.md#volicordrequest_user_judgment)
 - [Storage Records](storage-records.md)
 
-<a id="harnessrecord_user_judgment"></a>
-### `harness.record_user_judgment`
+<a id="volicordrecord_user_judgment"></a>
+### `volicord.record_user_judgment`
 
 Committed `dry_run=false` may:
 
@@ -578,16 +578,16 @@ Recording a user judgment does not increment `tasks.scope_revision` or `tasks.cl
 
 Owner links:
 
-- [`harness.record_user_judgment` method](api/method-record-user-judgment.md#harnessrecord_user_judgment)
+- [`volicord.record_user_judgment` method](api/method-record-user-judgment.md#volicordrecord_user_judgment)
 - [Storage Records](storage-records.md)
 
-<a id="harnessclose_task-intentcheck"></a>
-### `harness.close_task intent=check`
+<a id="volicordclose_task-intentcheck"></a>
+### `volicord.close_task intent=check`
 
 Read-only calls:
 
 - return computed close readiness
-- use the same close-readiness calculation as `harness.status include.close=true`
+- use the same close-readiness calculation as `volicord.status include.close=true`
 - do not create replay rows
 - do not append events
 - do not create blocker rows
@@ -603,10 +603,10 @@ No-effect branches:
 
 Owner links:
 
-- [`harness.close_task` method](api/method-close-task.md)
+- [`volicord.close_task` method](api/method-close-task.md)
 
-<a id="harnessclose_task-intentcomplete"></a>
-### `harness.close_task intent=complete`
+<a id="volicordclose_task-intentcomplete"></a>
+### `volicord.close_task intent=complete`
 
 Committed `dry_run=false` may:
 
@@ -626,11 +626,11 @@ Valid `dry_run=true` returns `ToolDryRunResponse`. Preflight failures are no-eff
 
 Owner links:
 
-- [`harness.close_task` method](api/method-close-task.md)
+- [`volicord.close_task` method](api/method-close-task.md)
 - [Storage Versioning](storage-versioning.md)
 
-<a id="harnessclose_task-intentcancel"></a>
-### `harness.close_task intent=cancel`
+<a id="volicordclose_task-intentcancel"></a>
+### `volicord.close_task intent=cancel`
 
 Committed `dry_run=false` may:
 
@@ -651,11 +651,11 @@ Cancellation effects require the method-owned current cancellation judgment with
 
 Owner links:
 
-- [`harness.close_task` method](api/method-close-task.md)
+- [`volicord.close_task` method](api/method-close-task.md)
 - [Storage Versioning](storage-versioning.md)
 
-<a id="harnessclose_task-intentsupersede"></a>
-### `harness.close_task intent=supersede`
+<a id="volicordclose_task-intentsupersede"></a>
+### `volicord.close_task intent=supersede`
 
 Committed `dry_run=false` may:
 
@@ -675,7 +675,7 @@ Valid `dry_run=true` returns `ToolDryRunResponse`.
 
 Owner links:
 
-- [`harness.close_task` method](api/method-close-task.md)
+- [`volicord.close_task` method](api/method-close-task.md)
 - [Storage Versioning](storage-versioning.md)
 
 ## Related owners

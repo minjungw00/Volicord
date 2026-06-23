@@ -19,7 +19,7 @@ API 응답 분기를 고를 때 이 문서를 사용합니다. 개별 닫기 차
 - `CloseReadinessBlocker`, `WriteDecisionReason`, `PlannedBlocker`, 공통 분기 형태: [API 상태 스키마](schema-state.md), [API 코어 스키마](schema-core.md). 범주와 enum 형태 값은 [API 값 집합](schema-value-sets.md)이 담당합니다.
 - 닫기 준비 상태 의미와 대체 불가 규칙: [Core 모델의 닫기 준비 상태](../core-model.md#close_task).
 - 닫기 차단 사유와 API 응답 사이의 경계, 공개 오류 코드가 차단 사유로 표현되는 경우의 경계: [API 차단 사유 처리 경로](blocker-routing.md).
-- 메서드별 동작: [`harness.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
+- 메서드별 동작: [`volicord.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
 - 표시 문구만: [템플릿 본문](../template-bodies.md).
 
 ## 오류와 차단 사유
@@ -156,7 +156,7 @@ API 응답 분기를 고를 때 이 문서를 사용합니다. 개별 닫기 차
 ### `CloseTaskResult(close_state=blocked)`
 
 분기 조건:
-- `harness.close_task` 메서드 계약에 따라 유효한 `CloseTaskResult(close_state=blocked)`가 반환되는 경우입니다.
+- `volicord.close_task` 메서드 계약에 따라 유효한 `CloseTaskResult(close_state=blocked)`가 반환되는 경우입니다.
 
 응답 분기:
 - 메서드 결과가 `blockers: CloseReadinessBlocker[]`를 담습니다.

@@ -1,8 +1,8 @@
 # Core model reference
 
-This reference owns the Core authority model for Harness state. It defines how Core, a `Task`, a Change Unit, user-owned judgment, evidence, artifact references, `Write Authorization`, close readiness, blockers, acceptance, and residual risk relate to each other.
+This reference owns the Core authority model for Volicord state. It defines how Core, a `Task`, a Change Unit, user-owned judgment, evidence, artifact references, `Write Authorization`, close readiness, blockers, acceptance, and residual risk relate to each other.
 
-Core is the local authority record for Harness state. It is not chat memory, generated Markdown, a status report, a tutorial, a storage layout, or an API response shape.
+Core is the local authority record for Volicord state. It is not chat memory, generated Markdown, a status report, a tutorial, a storage layout, or an API response shape.
 
 ## 1. Owner boundary
 
@@ -26,12 +26,12 @@ When this page names an exact identifier, it names the authority concept only. T
 
 Core-owned state is authority.
 
-- Core state is the local record Harness authority checks use to decide current scope, required judgment, evidence support, write compatibility, blockers, close readiness, and residual risk.
+- Core state is the local record Volicord authority checks use to decide current scope, required judgment, evidence support, write compatibility, blockers, close readiness, and residual risk.
 - Chat, reports, generated Markdown, projections, template output, and summaries can describe Core state, but they do not replace it.
 
-Harness governs Harness records.
+Volicord governs Volicord records.
 
-- Core authority applies to Harness records and Harness state transitions.
+- Core authority applies to Volicord records and Volicord state transitions.
 - It is not a general security-control surface and does not claim OS-level enforcement.
 
 Scope bounds work.
@@ -48,7 +48,7 @@ User-owned judgment stays user-owned.
 
 `Write Authorization` is narrow.
 
-- `Write Authorization` authorizes one compatible product-file write attempt under current Harness state.
+- `Write Authorization` authorizes one compatible product-file write attempt under current Volicord state.
 - It is not reusable scope, ordinary write approval, command approval, shell permission, sensitive-action approval, user-owned judgment, OS permission, deployment approval, final acceptance, residual-risk acceptance, evidence, or proof that the write occurred.
 
 Runs and evidence record support, not authority substitutes.
@@ -79,9 +79,9 @@ Scope and close-basis revisions are internal current-state coordinates.
 
 ### Core
 
-Core is the local authority record for Harness state within a project. It records current authority state and applies changes through owner-defined transitions.
+Core is the local authority record for Volicord state within a project. It records current authority state and applies changes through owner-defined transitions.
 
-Core authority is about Harness records. Security guarantee levels, local-access posture, and stronger isolation non-claims belong to [Security](security.md).
+Core authority is about Volicord records. Security guarantee levels, local-access posture, and stronger isolation non-claims belong to [Security](security.md).
 
 ### `Task`
 
@@ -243,7 +243,7 @@ Sensitive-action approval does not substitute for `Write Authorization`.
 
 `Write Authorization` does not substitute for acceptance.
 
-- `Write Authorization` makes one product-file write attempt compatible with Harness state. It does not prove the write occurred, record evidence, accept the result, accept risk, close the `Task`, or grant system access.
+- `Write Authorization` makes one product-file write attempt compatible with Volicord state. It does not prove the write occurred, record evidence, accept the result, accept risk, close the `Task`, or grant system access.
 
 Blocker data does not substitute across authority questions.
 
@@ -293,9 +293,9 @@ Separate QA and external verification workflows are not separate baseline author
 It has these authority properties:
 
 - Scope-limited: it covers the intended product-file write attempt, not subsequent attempts or a broader project area.
-- State-bound: it is based on current Harness state and can become stale when relevant state changes.
+- State-bound: it is based on current Volicord state and can become stale when relevant state changes.
 - Single-use: one compatible product-write Run consumes it once.
-- Cooperative: it tells a connected agent or surface what is compatible with Harness state; it does not claim OS-level prevention or sandboxing.
+- Cooperative: it tells a connected agent or surface what is compatible with Volicord state; it does not claim OS-level prevention or sandboxing.
 
 It is not:
 

@@ -527,7 +527,7 @@ Owner links:
 ### `BASELINE-close-task-check-read-only`
 
 Expected behavior:
-- `harness.close_task intent=check` is read-only.
+- `volicord.close_task intent=check` is read-only.
 
 Owner links:
 - [Close-task method](api/method-close-task.md)

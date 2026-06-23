@@ -1,10 +1,10 @@
-<a id="harnessintake"></a>
+<a id="volicordintake"></a>
 
-# `harness.intake` reference
+# `volicord.intake` reference
 
 ## What this document owns
 
-This document owns baseline method behavior for `harness.intake`:
+This document owns baseline method behavior for `volicord.intake`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
 - intake handling for starting, resuming, superseding, or rejecting a user work loop
@@ -21,7 +21,7 @@ This document does not own:
 
 ## Purpose
 
-`harness.intake` starts, resumes, supersedes, or rejects an ordinary user work loop.
+`volicord.intake` starts, resumes, supersedes, or rejects an ordinary user work loop.
 
 The method resolves the requested mode to a concrete Task mode:
 
@@ -31,8 +31,8 @@ The method resolves the requested mode to a concrete Task mode:
 
 Scope boundary:
 
-- `harness.intake` may create the first scope candidate for write-capable work.
-- Later scope changes belong to `harness.update_scope`.
+- `volicord.intake` may create the first scope candidate for write-capable work.
+- Later scope changes belong to `volicord.update_scope`.
 
 ## Required inputs
 
@@ -152,7 +152,7 @@ The examples are intentionally compact and method-local. The representative resp
 ## Minimal valid request
 
 ```yaml
-method: harness.intake
+method: volicord.intake
 params:
   envelope:
     project_id: proj_onboard_001
@@ -230,7 +230,7 @@ state:
   guarantee_display: null
 next_actions:
   - action_kind: update_scope
-    owner_method: harness.update_scope
+    owner_method: volicord.update_scope
     label: "Create the first currently applied Change Unit before write checking."
     blocking_question: null
     required_refs:

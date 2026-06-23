@@ -1,10 +1,10 @@
-<a id="harnessrecord_user_judgment"></a>
+<a id="volicordrecord_user_judgment"></a>
 
-# `harness.record_user_judgment` 참조
+# `volicord.record_user_judgment` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `harness.record_user_judgment` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `volicord.record_user_judgment` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - 기존 대기 중인 `UserJudgment` 하나에 대한 사용자의 답을 기록하는 동작
@@ -22,7 +22,7 @@
 
 ## 목적
 
-`harness.record_user_judgment`는 기존 대기 중인 `UserJudgment` 하나에 대한 사용자의 답을 기록합니다.
+`volicord.record_user_judgment`는 기존 대기 중인 `UserJudgment` 하나에 대한 사용자의 답을 기록합니다.
 
 이 메서드는 사용자의 답에 따라 지정된 대기 판단을 갱신합니다. 답변을 관련 없는 승인, 현재 적용 범위 확장, 최종 수락, 잔여 위험 수락, 민감 동작 승인, `Write Authorization`으로 넓히지 않습니다.
 
@@ -85,7 +85,7 @@ RecordUserJudgmentRequest:
 비주장:
 
 - `dry_run`과 거절은 판단 해결, 차단 사유 갱신, 이벤트, 재실행 행, 상태 버전 증가를 만들지 않습니다.
-- 기록된 `scope_decision`은 현재 적용 범위나 현재 적용 Change Unit 기록을 조용히 바꾸지 않습니다. 그 기록은 여전히 `harness.update_scope` 같은 범위 담당 문서가 정의한 전이가 필요합니다.
+- 기록된 `scope_decision`은 현재 적용 범위나 현재 적용 Change Unit 기록을 조용히 바꾸지 않습니다. 그 기록은 여전히 `volicord.update_scope` 같은 범위 담당 문서가 정의한 전이가 필요합니다.
 
 호환성 요구사항:
 
@@ -169,7 +169,7 @@ RecordUserJudgmentRequest:
 메서드 안의 전제: `uj_empty_001`은 `proj_empty_001`의 `task_empty_001`과 `cu_empty_001`에 속한 기존 대기 `product_decision`입니다. 현재 프로젝트 `state_version`은 `62`이고, `keep`은 그 선택지 ID 중 하나입니다.
 
 ```yaml
-method: harness.record_user_judgment
+method: volicord.record_user_judgment
 params:
   envelope:
     project_id: proj_empty_001
@@ -334,7 +334,7 @@ state:
   guarantee_display: null
 next_actions:
   - action_kind: close_task
-    owner_method: harness.close_task
+    owner_method: volicord.close_task
     label: "Evaluate close readiness after recording the user's product decision."
     blocking_question: null
     required_refs:
@@ -352,6 +352,6 @@ next_actions:
 - 상태 참조와 요약: [API 상태 스키마](schema-state.md).
 - 판단 값과 지원되는 메서드 내부 값: [API 값 집합](schema-value-sets.md).
 - 사용자 소유 판단, 최종 수락, 잔여 위험 수락, 비대체 규칙: [Core 모델](../core-model.md).
-- 정확한 저장 효과: [저장 효과](../storage-effects.md#harnessrecord_user_judgment).
+- 정확한 저장 효과: [저장 효과](../storage-effects.md#volicordrecord_user_judgment).
 - 공개 오류, 우선순위, 거절 응답 처리 경로: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md), [API 오류 처리 경로](error-routing.md).
-- 대기 중인 판단 요청 생성: [`harness.request_user_judgment`](method-request-user-judgment.md).
+- 대기 중인 판단 요청 생성: [`volicord.request_user_judgment`](method-request-user-judgment.md).

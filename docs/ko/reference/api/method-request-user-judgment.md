@@ -1,10 +1,10 @@
-<a id="harnessrequest_user_judgment"></a>
+<a id="volicordrequest_user_judgment"></a>
 
-# `harness.request_user_judgment` 참조
+# `volicord.request_user_judgment` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `harness.request_user_judgment` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `volicord.request_user_judgment` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - 초점이 분명한 사용자 소유 판단 하나에 대해 대기 중인 `UserJudgment`를 만드는 동작
@@ -21,7 +21,7 @@
 
 ## 목적
 
-`harness.request_user_judgment`는 초점이 분명한 사용자 소유 판단 하나에 대해 대기 중인 `UserJudgment`를 만듭니다. 이 메서드는 사용자에게 묻는 경로입니다. 에이전트는 사용자를 대신해 답하거나, 추론하거나, 판단 범위를 넓히거나, 결정해서는 안 됩니다.
+`volicord.request_user_judgment`는 초점이 분명한 사용자 소유 판단 하나에 대해 대기 중인 `UserJudgment`를 만듭니다. 이 메서드는 사용자에게 묻는 경로입니다. 에이전트는 사용자를 대신해 답하거나, 추론하거나, 판단 범위를 넓히거나, 결정해서는 안 됩니다.
 
 대기 중인 판단은 결정을 요청하는 기록입니다. 결정 자체가 아니며, 증거를 만들거나, 현재 적용 범위를 바꾸거나, `Write Authorization`을 만들거나, `Task`를 닫지 않습니다.
 
@@ -90,7 +90,7 @@ RequestUserJudgmentRequest:
 
 비주장:
 
-- 다른 메서드가 반환한 `UserJudgmentCandidate`는 `harness.request_user_judgment`가 커밋하기 전까지 지속 판단이 아닙니다.
+- 다른 메서드가 반환한 `UserJudgmentCandidate`는 `volicord.request_user_judgment`가 커밋하기 전까지 지속 판단이 아닙니다.
 - `judgment_kind=final_acceptance` 또는 `judgment_kind=residual_risk_acceptance`에서는 Core가 현재 닫기 근거를 판단 근거에 캡처합니다. 필요한 현재 닫기 근거 또는 현재 잔여 위험 ID를 사용할 수 없으면 요청은 커밋 전에 거절됩니다.
 - 권한을 지니는 판단 종류에서는 Core가 생성하는 선택지 집합에 `machine_action=accept`와 `machine_action=reject`가 있어야 합니다. `machine_action=defer`는 담당 문서가 연기를 허용하는 곳에서만 나타납니다. 라벨과 설명 문구는 `machine_action`이나 `resolution_outcome`을 덮어쓰지 않습니다.
 - 잔여 위험 수락의 경우 요청 맥락의 보이는 위험은 정확한 현재 `risk_id` 값을 담아야 합니다.
@@ -163,7 +163,7 @@ RequestUserJudgmentRequest:
 메서드 안의 전제: `task_banner_001`과 `cu_banner_001`은 `proj_banner_001`에 이미 있으며, 현재 프로젝트 `state_version`은 `51`입니다.
 
 ```yaml
-method: harness.request_user_judgment
+method: volicord.request_user_judgment
 params:
   envelope:
     project_id: proj_banner_001
@@ -214,7 +214,7 @@ params:
 메서드 안의 전제: `task_scope_001`과 `cu_scope_001`은 `proj_scope_001`에 이미 있으며, 현재 프로젝트 `state_version`은 `17`입니다.
 
 ```yaml
-method: harness.request_user_judgment
+method: volicord.request_user_judgment
 params:
   envelope:
     project_id: proj_scope_001
@@ -257,7 +257,7 @@ params:
 메서드 안의 전제: `task_export_001`과 현재 적용 Change Unit `cu_export_001`은 `proj_export_001`에 이미 있으며, 현재 프로젝트 `state_version`은 `28`입니다.
 
 ```yaml
-method: harness.request_user_judgment
+method: volicord.request_user_judgment
 params:
   envelope:
     project_id: proj_export_001
@@ -430,6 +430,6 @@ state:
 - 상태 참조와 요약: [API 상태 스키마](schema-state.md).
 - 판단 종류와 지원 값: [API 값 집합](schema-value-sets.md).
 - 사용자 소유 판단과 비대체 규칙: [Core 모델](../core-model.md).
-- 정확한 저장 효과: [저장 효과](../storage-effects.md#harnessrequest_user_judgment).
+- 정확한 저장 효과: [저장 효과](../storage-effects.md#volicordrequest_user_judgment).
 - 공개 오류, 우선순위, 거절 응답 처리 경로: [API 오류 코드](error-codes.md), [API 오류 우선순위](error-precedence.md), [API 오류 처리 경로](error-routing.md).
-- 대기 중인 판단에 대한 사용자 답변 기록: [`harness.record_user_judgment`](method-record-user-judgment.md).
+- 대기 중인 판단에 대한 사용자 답변 기록: [`volicord.record_user_judgment`](method-record-user-judgment.md).

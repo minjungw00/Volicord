@@ -4,7 +4,7 @@ role: "Machine-readable terminology metadata and bilingual wording controls."
 documentation_metadata_only: true
 runtime_config: false
 canonical_for:
-  - "Complete structured term inventory under `terms` for Harness documentation; glossary pages are curated reader-facing subsets and do not need rows for every structured term."
+  - "Complete structured term inventory under `terms` for Volicord documentation; glossary pages are curated reader-facing subsets and do not need rows for every structured term."
   - "Korean term forms through `ko_reference`, `ko_user`, `ko_contextual`, `ko_explanation`, and first-reference wording fields."
   - "Term type through each entry's `category` value."
   - "Identifier preservation rules for bilingual documentation."
@@ -18,8 +18,8 @@ canonical_for:
   - "Terminology boundaries for reserved/profile-gated value presence versus supported behavior."
   - "Terminology boundaries between stable supported documentation contracts and runtime-active or currently applied context."
   - "Terminology boundaries between documentation owner routing and product behavior or storage persistence conditions."
-  - "Terminology distinction that Harness is the local work-authority product/system for AI-assisted product work, while Core is the local authority record for Harness state."
-  - "Terminology boundaries among Harness, Core, Harness Server, Harness Server source repository, Harness Server installation, `harness`, `harness-mcp`, `Harness Runtime Home`, and `Product Repository`."
+  - "Terminology distinction that Volicord is the local work-authority product/system for AI-assisted product work, while Core is the local authority record for Volicord state."
+  - "Terminology boundaries among Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, `volicord`, `volicord-mcp`, `Volicord Runtime Home`, `test harness`, and `Product Repository`."
   - "Preferred current-runtime-context wording for current scope, currently applied scope, current Change Unit, and current surface context."
   - "Terminology boundaries among `Write Authorization`, write approval, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
   - "Preferred verification criteria wording for user-visible criteria used to check work."
@@ -127,7 +127,7 @@ identifier_preservation:
     - "schema names, schema fields, and object names"
     - "enum values, status values, error codes, validator IDs, and table names"
     - "DDL, column names, storage identifiers, template names, and code literals"
-    - "intentional Harness product labels"
+    - "intentional Volicord product labels"
   backtick_contexts:
     - "prose mentions of code-like, schema-like, route-like, or search-critical values"
     - "exact product labels when the label itself is being named"
@@ -195,24 +195,49 @@ identifier_preservation:
     - "status=active"
     - "Task.lifecycle_phase"
     - "artifact_staging.status"
-    - "harness"
-    - "harness-mcp"
-    - "harness.list_projects"
-    - "harness agent install"
+    - "volicord.intake"
+    - "volicord.update_scope"
+    - "volicord.status"
+    - "volicord.prepare_write"
+    - "volicord.stage_artifact"
+    - "volicord.record_run"
+    - "volicord.request_user_judgment"
+    - "volicord.record_user_judgment"
+    - "volicord.close_task"
+    - "volicord"
+    - "volicord-mcp"
+    - "volicord.list_projects"
+    - "volicord agent install"
+    - "VOLICORD_BIN"
+    - "VOLICORD_PROJECT_ID"
+    - "VOLICORD_SURFACE_ID"
+    - "VOLICORD_SURFACE_INSTANCE_ID"
+    - "VOLICORD_HOME"
+    - "~/.volicord"
+    - "volicord-artifact://{project_id}/{artifact_id}"
+    - "volicord-<integration>"
+    - "volicord-<integration>.mcp.json"
+    - "volicord-host-entry-v1"
+    - "volicord-repository-guidance-v1"
+    - "<!-- BEGIN VOLICORD MANAGED GUIDANCE v1 -->"
+    - "<!-- END VOLICORD MANAGED GUIDANCE v1 -->"
+    - ".claude/rules/volicord.md"
   product_labels:
+    - "Volicord"
     - "Product Repository"
-    - "Harness Runtime Home"
-    - "Harness Server"
+    - "Volicord Runtime Home"
     - "Agent Integration Profile"
     - "Host Installation"
     - "Projection"
     - "Write Authorization"
 avoid:
   en:
-    - phrase: "Harness is a local authority record"
-      use: "Harness is the local work-authority product/system for AI-assisted product work; Core is the local authority record for Harness state."
+    - phrase: "Volicord is a local authority record"
+      use: "Volicord is the local work-authority product/system for AI-assisted product work; Core is the local authority record for Volicord state."
     - phrase: "local work-authority server"
-      use: "local work-authority product/system when referring to Harness; `Harness Server` only when referring to the repository-managed server implementation set."
+      use: "local work-authority product/system for Volicord; for implementation context use Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord-mcp` as applicable."
+    - phrase: "Volicord Server"
+      use: "Volicord, Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord-mcp` according to context."
     - phrase: "active scope"
       use: "current scope or currently applied scope, except when preserving an exact identifier or status value."
     - phrase: "active Change Unit"
@@ -287,12 +312,15 @@ avoid:
     - phrase: "migration = 이전 선택"
       use: "기술 마이그레이션 문맥에서는 마이그레이션"
 terms:
-  harness:
+  volicord:
     category: "product_concept"
-    en: "Harness"
+    en: "Volicord"
     en_preferred_prose: "local work-authority product/system"
-    ko_reference: "하네스"
-    ko_user: "하네스"
+    ko_reference: "Volicord"
+    ko_user: "Volicord"
+    ko_reference_first_reference: "Volicord(볼리코드)"
+    preserve_as_label:
+      - "Volicord"
     primary_owner:
       en: "docs/en/reference/scope.md"
       ko: "docs/ko/reference/scope.md"
@@ -302,9 +330,21 @@ terms:
       - en: "docs/en/reference/runtime-boundaries.md"
         ko: "docs/ko/reference/runtime-boundaries.md"
     notes:
-      - "Harness is the local work-authority product/system for AI-assisted product work."
-      - "Do not describe Harness itself as the authority record; Core is the local authority record for Harness state."
-      - "Do not use `Harness Server` as a synonym for Harness; `Harness Server` names the server implementation set maintained by this repository."
+      - "Volicord is the local work-authority product/system for AI-assisted product work."
+      - "Do not describe Volicord itself as the authority record; Core is the local authority record for Volicord state."
+      - "Do not create or use the product label `Volicord Server`; use Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord-mcp` according to context."
+  test_harness:
+    category: "technical_concept"
+    en: "test harness"
+    ko_reference: "테스트 하네스"
+    ko_user: "테스트 하네스"
+    primary_owner:
+      en: "docs/en/maintain/brand-guidelines.md"
+      ko: "docs/ko/maintain/brand-guidelines.md"
+    related_references: []
+    notes:
+      - "`test harness` is an ordinary technical term for a testing fixture, runner, or execution apparatus."
+      - "`test harness` and `테스트 하네스` are not product names, product aliases, or translations of Volicord."
   core:
     category: "product_concept"
     en: "Core"
@@ -321,9 +361,9 @@ terms:
       - en: "docs/en/reference/storage-effects.md"
         ko: "docs/ko/reference/storage-effects.md"
     notes:
-      - "Core is the local authority record for Harness state."
-      - "Core authority applies to Harness records and Harness state transitions, not to OS-level security control by itself."
-      - "Use Core when discussing the authority record; use Harness for the broader product/system."
+      - "Core is the local authority record for Volicord state."
+      - "Core authority applies to Volicord records and Volicord state transitions, not to OS-level security control by itself."
+      - "Use Core when discussing the authority record; use Volicord for the broader product/system."
   local_authority_record:
     category: "product_concept"
     en: "local authority record"
@@ -336,7 +376,7 @@ terms:
       - en: "docs/en/reference/runtime-boundaries.md"
         ko: "docs/ko/reference/runtime-boundaries.md"
     notes:
-      - "Use this concept for Core, not Harness as a whole."
+      - "Use this concept for Core, not Volicord as a whole."
       - "A location, rendered view, chat answer, documentation route, or product repository file is not the local authority record."
   product_repository:
     category: "product_label"
@@ -352,29 +392,28 @@ terms:
     related_references: []
     notes:
       - "`Product Repository` is the product files/repository boundary."
-      - "Do not treat `Product Repository` content as Harness runtime state, `Harness Runtime Home`, or proof of Harness authority."
-  harness_runtime_home:
+      - "Do not treat `Product Repository` content as Volicord runtime state, `Volicord Runtime Home`, or proof of Volicord authority."
+  volicord_runtime_home:
     category: "product_label"
-    en: "Harness Runtime Home"
-    ko_reference: "Harness Runtime Home"
+    en: "Volicord Runtime Home"
+    ko_reference: "Volicord Runtime Home"
     ko_user: "런타임 홈"
-    ko_reference_first_reference: "`Harness Runtime Home`(런타임 홈)"
+    ko_reference_first_reference: "`Volicord Runtime Home`(런타임 홈)"
     preserve_as_label:
-      - "Harness Runtime Home"
+      - "Volicord Runtime Home"
     primary_owner:
       en: "docs/en/reference/runtime-boundaries.md"
       ko: "docs/ko/reference/runtime-boundaries.md"
     related_references: []
     notes:
-      - "`Harness Runtime Home` is the local runtime storage location for Harness operational data as storage/runtime owners define it."
-      - "Do not treat `Harness Runtime Home` as `Product Repository`, server installation storage by default, a security boundary, or isolation by default."
-  harness_server:
-    category: "product_label"
-    en: "Harness Server"
-    ko_reference: "Harness Server"
-    ko_user: "Harness Server"
-    preserve_as_label:
-      - "Harness Server"
+      - "`Volicord Runtime Home` is the local runtime storage location for Volicord operational data as storage/runtime owners define it."
+      - "Do not treat `Volicord Runtime Home` as `Product Repository`, server installation storage by default, a security boundary, or isolation by default."
+  volicord_implementation:
+    category: "product_concept"
+    en: "Volicord implementation"
+    en_preferred_prose: "Volicord implementation"
+    ko_reference: "Volicord 구현"
+    ko_user: "Volicord 구현"
     primary_owner:
       en: "docs/en/reference/runtime-boundaries.md"
       ko: "docs/ko/reference/runtime-boundaries.md"
@@ -388,16 +427,20 @@ terms:
       - en: "docs/en/reference/security.md"
         ko: "docs/ko/reference/security.md"
     notes:
-      - "`Harness Server` refers to the server implementation set maintained by this repository."
-      - "The Harness Server source repository contains implementation crates, the `harness` administrative CLI, the `harness-mcp` local MCP adapter, tests, documentation, validation tooling, and repository configuration."
-      - "A Harness Server installation is the deployed subset of executables and required runtime resources; do not imply that every source-repository file is installed."
-      - "`harness` and `harness-mcp` are distinct executable roles within Harness Server; name the process when describing behavior performed by one process."
-      - "Do not use `Harness Server` to mean the Harness product/system as a whole, Core, `Harness Runtime Home`, the `Product Repository`, a single daemon, or a network listener."
-  harness_server_source_repository:
+      - "Use Volicord implementation for the implementation set maintained by this repository."
+      - "The Volicord implementation includes implementation crates, the `volicord` administrative CLI, the `volicord-mcp` local MCP adapter, tests, documentation, validation tooling, and repository configuration at source level."
+      - "A Volicord installation is the deployed subset of executables and required runtime resources; do not imply that every source-repository file is installed."
+      - "`volicord` and `volicord-mcp` are distinct executable roles within the Volicord implementation; name the process when describing behavior performed by one process."
+      - "Do not use Volicord implementation to mean Volicord as a whole, Core, `Volicord Runtime Home`, the `Product Repository`, a single daemon, or a network listener."
+      - "Do not create the product label `Volicord Server`."
+  volicord_source_repository:
     category: "product_concept"
-    en: "Harness Server source repository"
-    ko_reference: "`Harness Server` 소스 저장소"
-    ko_user: "`Harness Server` 소스 저장소"
+    en: "Volicord source repository"
+    aliases_en:
+      - "Volicord Rust workspace"
+    en_preferred_prose: "Volicord source repository or Volicord Rust workspace, according to context"
+    ko_reference: "Volicord 소스 저장소"
+    ko_user: "Volicord 소스 저장소"
     primary_owner:
       en: "docs/en/reference/runtime-boundaries.md"
       ko: "docs/ko/reference/runtime-boundaries.md"
@@ -406,12 +449,13 @@ terms:
         ko: "docs/ko/development/architecture.md"
     notes:
       - "Use for the checked-out source artifact containing implementation crates, executables, tests, documentation, validation tooling, and repository configuration."
+      - "Use Volicord Rust workspace when the context specifically means the Rust workspace inside the source repository."
       - "Do not use for a deployed installation, running process, Runtime Home, Product Repository, or MCP host configuration."
-  harness_server_installation:
+  volicord_installation:
     category: "product_concept"
-    en: "Harness Server installation"
-    ko_reference: "`Harness Server` 설치"
-    ko_user: "`Harness Server` 설치"
+    en: "Volicord installation"
+    ko_reference: "Volicord 설치"
+    ko_user: "Volicord 설치"
     primary_owner:
       en: "docs/en/reference/runtime-boundaries.md"
       ko: "docs/ko/reference/runtime-boundaries.md"
@@ -423,16 +467,16 @@ terms:
       - en: "docs/en/reference/mcp-transport.md"
         ko: "docs/ko/reference/mcp-transport.md"
     notes:
-      - "Use for deployed Harness Server executables and required runtime resources."
+      - "Use for deployed Volicord executables and required runtime resources."
       - "Do not imply that documentation, tests, source files, repository metadata, Runtime Home data, Product Repository files, or MCP host configuration are installed by definition."
-  harness_administrative_process:
+  volicord_administrative_process:
     category: "identifier"
-    en: "`harness` administrative process"
-    ko_reference: "`harness` 관리 프로세스"
-    ko_user: "`harness` 관리 프로세스"
+    en: "`volicord` administrative process"
+    ko_reference: "`volicord` 관리 프로세스"
+    ko_user: "`volicord` 관리 프로세스"
     preserve_identifier: true
     preserve_as_identifier:
-      - "harness"
+      - "volicord"
     primary_owner:
       en: "docs/en/reference/admin-cli.md"
       ko: "docs/ko/reference/admin-cli.md"
@@ -440,16 +484,16 @@ terms:
       - en: "docs/en/reference/runtime-boundaries.md"
         ko: "docs/ko/reference/runtime-boundaries.md"
     notes:
-      - "`harness` is the administrative CLI executable/process within Harness Server."
-      - "Do not use `harness` as a synonym for Harness or Harness Server as a whole."
-  harness_mcp_process:
+      - "`volicord` is the administrative CLI executable/process within the Volicord implementation."
+      - "Do not use `volicord` as a synonym for Volicord or the whole Volicord implementation."
+  volicord_mcp_process:
     category: "identifier"
-    en: "`harness-mcp` MCP adapter process"
-    ko_reference: "`harness-mcp` MCP 어댑터 프로세스"
-    ko_user: "`harness-mcp` MCP 어댑터 프로세스"
+    en: "`volicord-mcp` MCP adapter process"
+    ko_reference: "`volicord-mcp` MCP 어댑터 프로세스"
+    ko_user: "`volicord-mcp` MCP 어댑터 프로세스"
     preserve_identifier: true
     preserve_as_identifier:
-      - "harness-mcp"
+      - "volicord-mcp"
     primary_owner:
       en: "docs/en/reference/mcp-transport.md"
       ko: "docs/ko/reference/mcp-transport.md"
@@ -459,8 +503,8 @@ terms:
       - en: "docs/en/reference/agent-integration.md"
         ko: "docs/ko/reference/agent-integration.md"
     notes:
-      - "`harness-mcp` is the local stdio MCP adapter executable/process within Harness Server."
-      - "Do not describe `harness-mcp` as an actor separate from Harness Server or as the whole Harness Server."
+      - "`volicord-mcp` is the local stdio MCP adapter executable/process within the Volicord implementation."
+      - "Do not describe `volicord-mcp` as an actor separate from the Volicord implementation or as the whole Volicord implementation."
   documentation:
     category: "general_prose"
     en: "documentation"
@@ -756,7 +800,7 @@ terms:
       - en: "docs/en/reference/api/schema-value-sets.md"
         ko: "docs/ko/reference/api/schema-value-sets.md"
     notes:
-      - "Preserve `Task` when naming the Harness entity."
+      - "Preserve `Task` when naming the Volicord entity."
       - "Use 작업 only when exact entity identity is not needed."
   scope:
     category: "product_concept"
@@ -931,7 +975,7 @@ terms:
     ko_reference: "닫기 준비 상태 평가"
     ko_user: "닫기 준비 상태 평가"
     preserve_as_identifier:
-      - "harness.close_task"
+      - "volicord.close_task"
       - "CloseTaskResult"
       - "CloseReadinessBlocker"
     primary_owner:
@@ -956,7 +1000,7 @@ terms:
     ko_reference: "Task 닫기"
     ko_user: "Task 닫기"
     preserve_as_identifier:
-      - "harness.close_task"
+      - "volicord.close_task"
     primary_owner:
       en: "docs/en/reference/api/method-close-task.md"
       ko: "docs/ko/reference/api/method-close-task.md"
@@ -968,19 +1012,19 @@ terms:
       - en: "docs/en/reference/api/blocker-routing.md"
         ko: "docs/ko/reference/api/blocker-routing.md"
     notes:
-      - "Use `harness.close_task` when naming the exact public API method."
+      - "Use `volicord.close_task` when naming the exact public API method."
       - "Core close-readiness authority belongs to `reference/core-model.md`."
       - "Close-readiness blocker routing belongs to `api/blocker-routing.md`."
   close_task_behavior:
     category: "api_concept"
     en: "close task behavior"
     aliases_en:
-      - "`harness.close_task` behavior"
+      - "`volicord.close_task` behavior"
       - "close-task method behavior"
     ko_reference: "Task 닫기 동작"
     ko_user: "Task 닫기 동작"
     preserve_as_identifier:
-      - "harness.close_task"
+      - "volicord.close_task"
       - "CloseTaskResult"
       - "CloseReadinessBlocker"
     primary_owner:
@@ -1000,14 +1044,14 @@ terms:
       - "Core close-readiness meaning belongs to `reference/core-model.md`."
       - "Close-readiness blocker/API response routing belongs to `api/blocker-routing.md`."
       - "`CloseReadinessBlocker` schema shape belongs to `api/schema-state.md`."
-  harness_close_task:
+  volicord_close_task:
     category: "identifier"
-    en: "harness.close_task"
+    en: "volicord.close_task"
     preserve_identifier: true
-    ko_reference: "`harness.close_task`"
-    ko_user: "`harness.close_task`"
+    ko_reference: "`volicord.close_task`"
+    ko_user: "`volicord.close_task`"
     preserve_as_identifier:
-      - "harness.close_task"
+      - "volicord.close_task"
     primary_owner:
       en: "docs/en/reference/api/method-close-task.md"
       ko: "docs/ko/reference/api/method-close-task.md"
@@ -1286,7 +1330,7 @@ terms:
         ko: "docs/ko/reference/template-bodies.md"
     notes:
       - "Use 상태 보기 in user-facing prose."
-      - "Use `Projection`(읽기 전용 상태 보기) on first reference in reference prose when the exact Harness label helps."
+      - "Use `Projection`(읽기 전용 상태 보기) on first reference in reference prose when the exact Volicord label helps."
   projection_label:
     category: "product_label"
     en: "Projection"
@@ -1305,7 +1349,7 @@ terms:
       - en: "docs/en/reference/api/schema-state.md"
         ko: "docs/ko/reference/api/schema-state.md"
     notes:
-      - "Use 상태 보기 in prose unless the exact Harness label matters."
+      - "Use 상태 보기 in prose unless the exact Volicord label matters."
   surface:
     category: "product_concept"
     en: "surface"
@@ -1438,14 +1482,14 @@ terms:
     notes:
       - "Use the exact product label when naming the managed host setup inventory record."
       - "Do not treat Host Installation as proof that the external host trusted, approved, loaded, or exposed the MCP server."
-  harness_list_projects:
+  volicord_list_projects:
     category: "identifier"
-    en: "harness.list_projects"
-    ko_reference: "`harness.list_projects`"
-    ko_user: "`harness.list_projects`"
+    en: "volicord.list_projects"
+    ko_reference: "`volicord.list_projects`"
+    ko_user: "`volicord.list_projects`"
     preserve_identifier: true
     preserve_as_identifier:
-      - "harness.list_projects"
+      - "volicord.list_projects"
     primary_owner:
       en: "docs/en/reference/mcp-transport.md"
       ko: "docs/ko/reference/mcp-transport.md"
@@ -1455,7 +1499,7 @@ terms:
       - en: "docs/en/reference/api/methods.md"
         ko: "docs/ko/reference/api/methods.md"
     notes:
-      - "`harness.list_projects` is an MCP adapter utility, not a public Core API method."
+      - "`volicord.list_projects` is an MCP adapter utility, not a public Core API method."
       - "Preserve the exact tool name in English and Korean."
   state_version:
     category: "identifier"
@@ -1484,7 +1528,7 @@ terms:
     ko_reference: "런타임"
     ko_user: "런타임"
     preserve_as_identifier:
-      - "Harness Runtime Home"
+      - "Volicord Runtime Home"
     primary_owner:
       en: "docs/en/reference/runtime-boundaries.md"
       ko: "docs/ko/reference/runtime-boundaries.md"
@@ -1492,7 +1536,7 @@ terms:
       - en: "docs/en/reference/security.md"
         ko: "docs/ko/reference/security.md"
     notes:
-      - "This documentation repository is not a Harness runtime or Runtime Home."
+      - "This documentation repository is not a Volicord runtime or Runtime Home."
   lifecycle:
     category: "general_prose"
     en: "lifecycle"
@@ -1527,7 +1571,7 @@ terms:
       - en: "docs/en/reference/api/method-prepare-write.md"
         ko: "docs/ko/reference/api/method-prepare-write.md"
     notes:
-      - "Use for ordinary user approval or prose summaries about approving a write, not for the exact Harness product label."
+      - "Use for ordinary user approval or prose summaries about approving a write, not for the exact Volicord product label."
       - "When naming the exact product label, preserve `Write Authorization`."
       - "Do not use the discouraged Korean parenthetical form as the standard expression for the exact product label."
       - "Keep ordinary write approval distinct from `Write Authorization`, sensitive-action approval, final acceptance, residual-risk acceptance, and user-owned judgment."
@@ -1553,7 +1597,7 @@ terms:
       - en: "docs/en/reference/api/method-prepare-write.md"
         ko: "docs/ko/reference/api/method-prepare-write.md"
     notes:
-      - "Use the exact label when naming the Harness concept."
+      - "Use the exact label when naming the Volicord concept."
       - "In Korean explanatory prose, use 쓰기 권한 부여 rather than 쓰기 승인 for the exact product label."
       - "Do not treat write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or broad user-owned judgment as `Write Authorization`."
   sensitive_approval:
@@ -1840,7 +1884,7 @@ terms:
     notes:
       - "Blocker routing covers the routing boundary between close-readiness blockers and API response branches, including the error/blocker boundary and public error as blocker wording."
       - "The owner document is `api/blocker-routing.md`."
-      - "Method-specific `harness.close_task` behavior belongs to `api/method-close-task.md`."
+      - "Method-specific `volicord.close_task` behavior belongs to `api/method-close-task.md`."
       - "`CloseReadinessBlocker` schema shape belongs to `api/schema-state.md`."
       - "The close-readiness authority concept belongs to `reference/core-model.md`."
   error_blocker_boundary:

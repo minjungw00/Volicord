@@ -1,27 +1,27 @@
 # MCP transport reference
 
-This document owns the local `harness-mcp` process contract: process startup, process environment, MCP protocol-version negotiation, initialization lifecycle, stdio transport framing, JSON-RPC message validation, integration-bound startup validation, MCP response wrapping, and shutdown/reconnection behavior.
+This document owns the local `volicord-mcp` process contract: process startup, process environment, MCP protocol-version negotiation, initialization lifecycle, stdio transport framing, JSON-RPC message validation, integration-bound startup validation, MCP response wrapping, and shutdown/reconnection behavior.
 
-It does not define public Harness API method behavior, public request or response schemas, access-class meanings, Agent Integration Profile meaning, storage record layout, security guarantees, or Core authority semantics.
+It does not define public Volicord API method behavior, public request or response schemas, access-class meanings, Agent Integration Profile meaning, storage record layout, security guarantees, or Core authority semantics.
 
 ## Owns / does not own
 
 This document owns:
 
-- `harness-mcp` process startup and exit behavior
+- `volicord-mcp` process startup and exit behavior
 - required and optional process configuration for integration-bound startup
 - MCP Runtime Home environment resolution
 - MCP protocol-version negotiation and initialization lifecycle
 - stdio JSON-RPC framing, message validation, and supported MCP methods
 - MCP startup validation for one `integration_id`
-- MCP `tools/list`, `tools/call`, and `harness.list_projects` adapter utility behavior at the transport boundary
+- MCP `tools/list`, `tools/call`, and `volicord.list_projects` adapter utility behavior at the transport boundary
 - MCP `tools/call` response wrapping
 - process shutdown and reconnection behavior
 
 This document does not own:
 
-- the public Harness method list or method owner table; see [API Methods](api/methods.md)
-- public Harness request and response schemas; see [API Schema Core](api/schema-core.md)
+- the public Volicord method list or method owner table; see [API Methods](api/methods.md)
+- public Volicord request and response schemas; see [API Schema Core](api/schema-core.md)
 - access-class value meanings; see [API Value Sets](api/schema-value-sets.md#access-class-values)
 - Agent Integration Profile, Host Installation, project selection meaning, verified surface context, and actor provenance; see [Agent Integration](agent-integration.md)
 - administrative Runtime Home, agent installation, project membership, and verification commands; see [Administrative CLI](admin-cli.md)
@@ -29,15 +29,15 @@ This document does not own:
 
 ## Process model
 
-`harness-mcp` is a local MCP stdio process. An MCP host starts it as a child process and communicates through stdin/stdout. It is not a TCP listener, HTTP listener, Unix-domain socket listener, or other network listener.
+`volicord-mcp` is a local MCP stdio process. An MCP host starts it as a child process and communicates through stdin/stdout. It is not a TCP listener, HTTP listener, Unix-domain socket listener, or other network listener.
 
 Baseline command-line behavior:
 
-- Launch the stdio loop with `harness-mcp --integration <integration_id>`.
-- Run startup validation without reading stdin with `harness-mcp --check --integration <integration_id>`.
-- Run project-specific startup validation with `harness-mcp --check --integration <integration_id> --project <project_id>`.
+- Launch the stdio loop with `volicord-mcp --integration <integration_id>`.
+- Run startup validation without reading stdin with `volicord-mcp --check --integration <integration_id>`.
+- Run project-specific startup validation with `volicord-mcp --check --integration <integration_id> --project <project_id>`.
 - `-h` and `--help` print usage and environment summary, then exit with code `0`.
-- `-V` and `--version` print `harness-mcp <version>`, then exit with code `0`.
+- `-V` and `--version` print `volicord-mcp <version>`, then exit with code `0`.
 - No arguments, `--check` without `--integration`, unknown options, combined command-line modes, missing required option values, invalid `--project` use, and extra positional arguments write usage diagnostics to stderr and exit with code `2`.
 - Help and version handling happen before Runtime Home or integration lookup.
 
@@ -52,31 +52,31 @@ Exit and stream behavior:
 
 Optional:
 
-- `HARNESS_HOME`
+- `VOLICORD_HOME`
 
-The stdio process and `--check` use `HARNESS_HOME` before entering startup validation. Help and version modes do not use it.
+The stdio process and `--check` use `VOLICORD_HOME` before entering startup validation. Help and version modes do not use it.
 
-`harness-mcp` startup does not read or support fixed-project environment inputs:
+`volicord-mcp` startup does not read or support fixed-project environment inputs:
 
-- `HARNESS_PROJECT_ID`
-- `HARNESS_SURFACE_ID`
-- `HARNESS_SURFACE_INSTANCE_ID`
+- `VOLICORD_PROJECT_ID`
+- `VOLICORD_SURFACE_ID`
+- `VOLICORD_SURFACE_INSTANCE_ID`
 
-Those variables do not select a project, surface, or surface instance for `harness-mcp`. The selected Agent Integration Profile supplies the surface and surface-instance binding. The selected project is determined per public MCP tool call.
+Those variables do not select a project, surface, or surface instance for `volicord-mcp`. The selected Agent Integration Profile supplies the surface and surface-instance binding. The selected project is determined per public MCP tool call.
 
 Current MCP Runtime Home resolution:
 
-1. A present but empty `HARNESS_HOME` is an error.
-2. An absolute `HARNESS_HOME` is used as supplied.
-3. A relative `HARNESS_HOME` is resolved against the process current working directory without requiring the path to exist.
-4. When `HARNESS_HOME` is absent, use the first non-empty home source in this order: `HOME`, `USERPROFILE`, then `HOMEDRIVE` plus `HOMEPATH`.
-5. Append `.harness` to the selected user home.
+1. A present but empty `VOLICORD_HOME` is an error.
+2. An absolute `VOLICORD_HOME` is used as supplied.
+3. A relative `VOLICORD_HOME` is resolved against the process current working directory without requiring the path to exist.
+4. When `VOLICORD_HOME` is absent, use the first non-empty home source in this order: `HOME`, `USERPROFILE`, then `HOMEDRIVE` plus `HOMEPATH`.
+5. Append `.volicord` to the selected user home.
 6. Resolve a relative selected home against the process current working directory.
 7. Do not require canonicalization before startup validation.
 
 ## Startup validation
 
-Before entering the stdio loop, `harness-mcp` validates the integration binding and the local registry records it depends on.
+Before entering the stdio loop, `volicord-mcp` validates the integration binding and the local registry records it depends on.
 
 Startup validation requires:
 
@@ -92,13 +92,13 @@ Startup validation requires:
 
 Startup validation does not select a project for all calls. Project availability, project status, path separation, surface registration, and access-class grants are verified per call as defined by [Agent Integration](agent-integration.md#current-surface-context).
 
-A stored Agent Integration Profile or Host Installation record can remain after the integration reaches zero allowed projects. That persistence is not startup eligibility: a new stdio process and `harness-mcp --check` fail startup validation while there are no allowed projects.
+A stored Agent Integration Profile or Host Installation record can remain after the integration reaches zero allowed projects. That persistence is not startup eligibility: a new stdio process and `volicord-mcp --check` fail startup validation while there are no allowed projects.
 
-An already running process is different from a new process. A process that passed startup while at least one project was allowed refreshes registry state for `harness.list_projects` and project routing. After the last membership is removed, `harness.list_projects` may return an empty project list, but public tools that require project routing reject because no allowed project remains.
+An already running process is different from a new process. A process that passed startup while at least one project was allowed refreshes registry state for `volicord.list_projects` and project routing. After the last membership is removed, `volicord.list_projects` may return an empty project list, but public tools that require project routing reject because no allowed project remains.
 
 ## Integration-bound process
 
-One `harness-mcp` process is bound to:
+One `volicord-mcp` process is bound to:
 
 - one `integration_id`
 
@@ -113,7 +113,7 @@ The process binding remains fixed for the process lifetime. Changing integration
 
 ## Configuration preflight
 
-`harness-mcp --check --integration <integration_id>` runs the same Runtime Home, integration, membership, and registry-shape startup validation used before entering the stdio loop. `harness-mcp --check --integration <integration_id> --project <project_id>` limits the project detail section to one project and rejects a project that is not granted to the selected integration. Neither form reads stdin.
+`volicord-mcp --check --integration <integration_id>` runs the same Runtime Home, integration, membership, and registry-shape startup validation used before entering the stdio loop. `volicord-mcp --check --integration <integration_id> --project <project_id>` limits the project detail section to one project and rejects a project that is not granted to the selected integration. Neither form reads stdin.
 
 On success, `--check` writes the fixed summary lines, then one repeated project-detail block for each selected project, in this order:
 
@@ -158,19 +158,19 @@ A successful `--check` is not a complete host integration result. Complete host 
 
 ## MCP wire behavior
 
-`harness-mcp` supports MCP protocol version `2025-11-25` over stdio. It does not advertise simultaneous compatibility with older MCP protocol versions. Each new process or stdio connection starts a new MCP lifecycle and must complete its own initialization sequence.
+`volicord-mcp` supports MCP protocol version `2025-11-25` over stdio. It does not advertise simultaneous compatibility with older MCP protocol versions. Each new process or stdio connection starts a new MCP lifecycle and must complete its own initialization sequence.
 
-The server initialization response includes MCP server instructions. Those instructions may describe Harness tool selection, deterministic project routing, and limitations, but they are guidance only; they are not access control or a guarantee of model behavior.
+The server initialization response includes MCP server instructions. Those instructions may describe Volicord tool selection, deterministic project routing, and limitations, but they are guidance only; they are not access control or a guarantee of model behavior.
 
 ### Framing and JSON-RPC validation
 
 Framing rules:
 
 - Each non-empty stdin line contains exactly one UTF-8 JSON-RPC message object.
-- The JSON root must be one JSON-RPC message object. For the Harness client-to-server baseline, the supported message objects are requests and the `notifications/initialized` notification. Arrays, primitive JSON roots, and `null` are invalid MCP stdio messages.
+- The JSON root must be one JSON-RPC message object. For the Volicord client-to-server baseline, the supported message objects are requests and the `notifications/initialized` notification. Arrays, primitive JSON roots, and `null` are invalid MCP stdio messages.
 - JSON-RPC batches are not supported. An array input receives one Invalid Request response, not one response per array element.
 - Messages are delimited by newlines and must not contain embedded newlines.
-- Each output line contains one JSON-RPC response object. `harness-mcp` writes no readiness message before `initialize`.
+- Each output line contains one JSON-RPC response object. `volicord-mcp` writes no readiness message before `initialize`.
 - Stdin EOF ends the process after stdout is flushed.
 
 JSON-RPC validation rules:
@@ -209,8 +209,8 @@ Additional MCP `Implementation` metadata allowed by the 2025-11-25 schema, such 
 
 Protocol-version negotiation:
 
-- If the client requests `2025-11-25`, `harness-mcp` returns `2025-11-25`.
-- If the client sends another syntactically valid protocol-version string, `harness-mcp` returns the version it supports: `2025-11-25`.
+- If the client requests `2025-11-25`, `volicord-mcp` returns `2025-11-25`.
+- If the client sends another syntactically valid protocol-version string, `volicord-mcp` returns the version it supports: `2025-11-25`.
 - The server response does not claim simultaneous compatibility with older MCP protocol versions.
 
 Lifecycle states:
@@ -236,10 +236,10 @@ The supported lifecycle notification is `notifications/initialized`.
 
 After the connection is ready, `tools/list` exposes:
 
-- the nine public Harness tools owned by [API Methods](api/methods.md)
-- the read-only MCP adapter utility tool `harness.list_projects`
+- the nine public Volicord tools owned by [API Methods](api/methods.md)
+- the read-only MCP adapter utility tool `volicord.list_projects`
 
-This document does not create a second independently owned public Core method list. `harness.list_projects` is not a public Harness Core API method.
+This document does not create a second independently owned public Core method list. `volicord.list_projects` is not a public Volicord Core API method.
 
 A structurally valid `tools/call` request has object `params` with:
 
@@ -248,25 +248,25 @@ A structurally valid `tools/call` request has object `params` with:
 
 Missing `arguments` are treated as an empty object. `arguments: null` and non-object `arguments` are malformed method parameters and return JSON-RPC `-32602`. Unknown tool names are protocol errors and return JSON-RPC `-32602`.
 
-For public Harness tools, `tools/list` exposes MCP-visible input schemas derived from the shared Harness request schemas with the MCP integration binding applied. `envelope.project_id` remains an optional caller selector. `envelope.surface_id` is not exposed in the MCP-visible schema and is not accepted in raw `tools/call` arguments. If raw public-tool arguments include `envelope.surface_id`, the adapter rejects the call before Core execution. After MCP-visible input validation, the adapter injects the selected Agent Integration Profile's `surface_id` into the internal typed request.
+For public Volicord tools, `tools/list` exposes MCP-visible input schemas derived from the shared Volicord request schemas with the MCP integration binding applied. `envelope.project_id` remains an optional caller selector. `envelope.surface_id` is not exposed in the MCP-visible schema and is not accepted in raw `tools/call` arguments. If raw public-tool arguments include `envelope.surface_id`, the adapter rejects the call before Core execution. After MCP-visible input validation, the adapter injects the selected Agent Integration Profile's `surface_id` into the internal typed request.
 
-For a known public Harness tool, object `arguments` that fail the tool input schema return a `CallToolResult` with `isError: true` and actionable text content. They are tool execution errors, not JSON-RPC protocol errors.
+For a known public Volicord tool, object `arguments` that fail the tool input schema return a `CallToolResult` with `isError: true` and actionable text content. They are tool execution errors, not JSON-RPC protocol errors.
 
-For `harness.list_projects`, the adapter returns a read-only project list for the bound integration only. It must not enter Core, create storage effects, mutate project membership, or expose projects outside the integration allowlist. If an allowlisted project has an invalid current registration, the adapter fails the utility call instead of returning that project as a normal available or unavailable entry.
+For `volicord.list_projects`, the adapter returns a read-only project list for the bound integration only. It must not enter Core, create storage effects, mutate project membership, or expose projects outside the integration allowlist. If an allowlisted project has an invalid current registration, the adapter fails the utility call instead of returning that project as a normal available or unavailable entry.
 
-For a public Harness tool call, the adapter first performs deterministic project selection and per-project validation owned by [Agent Integration](agent-integration.md#current-surface-context). Ambiguous project selection is rejected before Core execution and the actionable text must instruct the agent to call `harness.list_projects`.
+For a public Volicord tool call, the adapter first performs deterministic project selection and per-project validation owned by [Agent Integration](agent-integration.md#current-surface-context). Ambiguous project selection is rejected before Core execution and the actionable text must instruct the agent to call `volicord.list_projects`.
 
-`harness-mcp` does not advertise or implement MCP task-augmented tool execution. A `tools/call` request does not return `CreateTaskResult`, and a `task` parameter is not a supported baseline feature.
+`volicord-mcp` does not advertise or implement MCP task-augmented tool execution. A `tools/call` request does not return `CreateTaskResult`, and a `task` parameter is not a supported baseline feature.
 
-For known public Harness tool calls that reach Harness, `tools/call` wraps the Harness response JSON inside the MCP result:
+For known public Volicord tool calls that reach Volicord, `tools/call` wraps the Volicord response JSON inside the MCP result:
 
-- Harness response JSON is serialized as the string in `result.content[0].text`.
-- Clients must parse that string as JSON to inspect the Harness response.
-- Successful MCP transport returns `isError: false`, including Harness domain-level rejected responses.
-- Harness domain success or rejection is determined from the parsed Harness response, especially `base.response_kind` and `errors`.
-- JSON-RPC `error` is reserved for protocol, invalid-parameter, or adapter/internal failures; it is not used for Harness domain-level rejection.
+- Volicord response JSON is serialized as the string in `result.content[0].text`.
+- Clients must parse that string as JSON to inspect the Volicord response.
+- Successful MCP transport returns `isError: false`, including Volicord domain-level rejected responses.
+- Volicord domain success or rejection is determined from the parsed Volicord response, especially `base.response_kind` and `errors`.
+- JSON-RPC `error` is reserved for protocol, invalid-parameter, or adapter/internal failures; it is not used for Volicord domain-level rejection.
 
-Harness response branch shapes and error meanings stay with their owners:
+Volicord response branch shapes and error meanings stay with their owners:
 
 - shared response branches: [API Schema Core](api/schema-core.md#common-response)
 - response branch routing: [API Error Routing](api/error-routing.md)

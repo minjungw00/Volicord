@@ -17,7 +17,7 @@
 - 우선순위 선택 밖의 공개 오류 코드 의미: [API 오류 코드](error-codes.md).
 - API 응답 분기 경로: [API 오류 처리 경로](error-routing.md).
 - 닫기 차단 사유와 API 응답 사이의 경계: [API 차단 사유 처리 경로](blocker-routing.md).
-- 메서드별 동작: [`harness.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
+- 메서드별 동작: [`volicord.close_task`](method-close-task.md)와 다른 메서드 담당 문서.
 - 기계 판독용 충돌 세부 필드: [API 오류 세부사항](error-details.md#state-conflict-detail-fields).
 - 저장소 재실행 행과 상태 시계: [저장소 버전 관리](../storage-versioning.md).
 - 표시 문구만: [템플릿 본문](../template-bodies.md).
@@ -85,7 +85,7 @@
 |---|---|---|
 | 충돌 선택 | 아래 충돌 경우에는 `STATE_VERSION_CONFLICT`를 선택합니다. | 공개 오류 코드 의미: [API 오류 코드](error-codes.md). |
 | 응답 경로 | 이 충돌은 `ToolRejectedResponse.errors[]`를 사용합니다. | 응답 분기 경로: [API 오류 처리 경로](error-routing.md). |
-| 결과, 차단 사유, 닫기 준비 상태 경계 경로 | `STATE_VERSION_CONFLICT`를 차단 사유 코드, `dry_run` 미리보기, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`로 사용하지 않습니다. | 경계 처리: [API 차단 사유 처리 경로](blocker-routing.md). 메서드 동작: [`harness.close_task`](method-close-task.md). |
+| 결과, 차단 사유, 닫기 준비 상태 경계 경로 | `STATE_VERSION_CONFLICT`를 차단 사유 코드, `dry_run` 미리보기, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, `PlannedBlocker.code`로 사용하지 않습니다. | 경계 처리: [API 차단 사유 처리 경로](blocker-routing.md). 메서드 동작: [`volicord.close_task`](method-close-task.md). |
 | 세부 필드 | 이 충돌에는 상태 충돌 세부 필드 묶음을 사용합니다. | 기계 판독용 필드: [API 오류 세부사항](error-details.md#state-conflict-detail-fields). |
 
 <a id="state-conflict-expected-state-version"></a>
@@ -125,7 +125,7 @@
 ### 만료된 `Write Authorization`
 
 조건:
-- 소비 전에 권한이 [`harness.record_run`](method-record-run.md)과 [`harness.prepare_write`](method-prepare-write.md)가 담당하는 유효 만료 규칙에 따라 만료되었고, `WriteAuthorization.basis_state_version`은 오래되지 않았습니다.
+- 소비 전에 권한이 [`volicord.record_run`](method-record-run.md)과 [`volicord.prepare_write`](method-prepare-write.md)가 담당하는 유효 만료 규칙에 따라 만료되었고, `WriteAuthorization.basis_state_version`은 오래되지 않았습니다.
 
 공개 오류 코드:
 - `WRITE_AUTHORIZATION_INVALID`

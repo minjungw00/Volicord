@@ -696,7 +696,7 @@ Task revisions and close basis:
 - `tasks.scope_revision` and `tasks.close_basis_revision` are internal current-state coordinates, not public state clocks and not caller-selected authority.
 - `runs.scope_revision` stores the current-scope revision observed by the run and is required for every run row.
 - Material current-scope or current Change Unit changes increment `tasks.scope_revision`; semantically identical normalized updates do not.
-- A committed `harness.record_run` increments `tasks.close_basis_revision` exactly once.
+- A committed `volicord.record_run` increments `tasks.close_basis_revision` exactly once.
 - A material scope change invalidates `tasks.close_basis_json`, increments `tasks.close_basis_revision`, and may make judgment basis rows stale or superseded under their owners.
 - Recording a user judgment does not increment either task revision.
 - `tasks.close_basis_json` is nullable current `CurrentCloseBasis` storage. SQL `NULL` means no current close basis is available.

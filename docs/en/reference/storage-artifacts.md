@@ -38,7 +38,7 @@ Artifact storage distinguishes staging, promotion, persistent linking, and body 
 
 Meaning:
 
-- `harness.stage_artifact` stores transient artifact bytes or a safe notice and returns a staged handle.
+- `volicord.stage_artifact` stores transient artifact bytes or a safe notice and returns a staged handle.
 
 Evidence relationship:
 
@@ -84,7 +84,7 @@ Owner boundary:
 
 Allowed:
 
-- `StagedArtifactHandle` is a transient handle returned by successful `harness.stage_artifact`.
+- `StagedArtifactHandle` is a transient handle returned by successful `volicord.stage_artifact`.
 - `existing_artifact` links an existing persistent artifact.
 
 Conditions:
@@ -116,7 +116,7 @@ Tracked facts:
 - `expires_at`
 - consumption facts such as `consumed_by_run_id`, `promoted_artifact_id`, and `consumed_at`
 
-Core records the `created_by_surface_*` fields from the successful `harness.stage_artifact` request's `VerifiedSurfaceContext`.
+Core records the `created_by_surface_*` fields from the successful `volicord.stage_artifact` request's `VerifiedSurfaceContext`.
 
 Conditions:
 
@@ -130,7 +130,7 @@ Not allowed:
 
 Allowed:
 
-- A successful `harness.stage_artifact` returns `StageArtifactResult` with `base.effect_kind=staging_created`.
+- A successful `volicord.stage_artifact` returns `StageArtifactResult` with `base.effect_kind=staging_created`.
 - It may write safe bytes or a safe notice under `artifacts/tmp/`.
 - The stored `artifact_staging.tmp_path` for staged bytes or notices is `project_home`-relative, with a shape such as `artifacts/tmp/<file>`.
 - It may create the transient staging row.
@@ -387,7 +387,7 @@ Rules:
 Allowed:
 
 - A `blocked`, `secret_omitted`, or `redacted` artifact may still have `artifacts.status=available` when the committed safe notice or redacted bytes are present and integrity-aware.
-- `uri` resolves through Harness storage, normally as `harness-artifact://{project_id}/{artifact_id}`.
+- `uri` resolves through Volicord storage, normally as `volicord-artifact://{project_id}/{artifact_id}`.
 - Store redacted bytes, `secret_omitted` or `blocked` notices, safe handles, or other owner-approved safe representations instead of unsafe evidence bytes.
 
 Not allowed:
@@ -494,7 +494,7 @@ Not allowed:
 ## Related owners
 
 - [API Artifact Schemas](api/schema-artifacts.md) for `ArtifactRef`, `ArtifactInput`, and `StagedArtifactHandle` shapes.
-- [Stage-artifact method](api/method-stage-artifact.md), [Record-run method](api/method-record-run.md), and [API Methods](api/methods.md) for `harness.stage_artifact`, `harness.record_run`, and artifact read behavior.
+- [Stage-artifact method](api/method-stage-artifact.md), [Record-run method](api/method-record-run.md), and [API Methods](api/methods.md) for `volicord.stage_artifact`, `volicord.record_run`, and artifact read behavior.
 - [Storage Effects](storage-effects.md) for whether a response branch creates storage effects.
 - [Storage Records](storage-records.md) for `artifact_staging`, `artifacts`, and `artifact_links` table overview.
 - [Security](security.md) for access and guarantee non-claims.

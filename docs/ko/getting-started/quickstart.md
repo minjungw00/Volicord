@@ -287,7 +287,7 @@ PATH="$HARNESS_BIN:$PATH" \
   [다중 저장소 에이전트 설정](../guides/multi-repository-agent-setup.md)
 - 에이전트 작업 흐름: [에이전트 가이드](../guides/agent-workflow.md)
 - 정확한 `harness` agent 명령 동작:
-  [관리 CLI](../reference/admin-cli.md#harness-agent-install)
+  [관리 CLI](../reference/admin-cli.md#volicord-agent-install)
 - 정확한 프로젝트 선택과 지침 경계:
   [에이전트 통합](../reference/agent-integration.md)
 - 정확한 `harness-mcp` 프로세스 동작:

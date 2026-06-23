@@ -46,15 +46,15 @@
 지원되는 공개 메서드 이름 집합은 아래와 같습니다.
 
 ```text
-harness.intake
-harness.update_scope
-harness.status
-harness.prepare_write
-harness.stage_artifact
-harness.record_run
-harness.request_user_judgment
-harness.record_user_judgment
-harness.close_task
+volicord.intake
+volicord.update_scope
+volicord.status
+volicord.prepare_write
+volicord.stage_artifact
+volicord.record_run
+volicord.request_user_judgment
+volicord.record_user_judgment
+volicord.close_task
 ```
 
 메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 담당합니다. 메서드 이름은 `Task` 생명주기 값이 아닙니다.
@@ -78,13 +78,13 @@ harness.close_task
 
 | `action_kind` 값 | 메서드 하나가 다음 단계를 담당할 때의 `owner_method` |
 |---|---|
-| `update_scope` | `harness.update_scope` |
-| `prepare_write` | `harness.prepare_write` |
-| `stage_artifact` | `harness.stage_artifact` |
-| `record_run` | `harness.record_run` |
-| `request_user_judgment` | `harness.request_user_judgment` |
-| `record_user_judgment` | `harness.record_user_judgment` |
-| `close_task` | `harness.close_task` |
+| `update_scope` | `volicord.update_scope` |
+| `prepare_write` | `volicord.prepare_write` |
+| `stage_artifact` | `volicord.stage_artifact` |
+| `record_run` | `volicord.record_run` |
+| `request_user_judgment` | `volicord.request_user_judgment` |
+| `record_user_judgment` | `volicord.record_user_judgment` |
+| `close_task` | `volicord.close_task` |
 
 `action_kind`는 메서드 이름 값이 아닙니다. 지원되는 공개 메서드 하나가 다음 단계를 담당할 때 `NextActionSummary.owner_method`는 [메서드 이름 값 집합](#method-name-values)을 사용하고, 단일 담당 메서드가 없으면 `null`입니다. 다음 단계의 메서드 동작은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서에 둡니다. 전체 `NextActionSummary` 형태는 [API 상태 스키마](schema-state.md#current-position-display-shapes)가 담당합니다.
 
@@ -118,7 +118,7 @@ no_effect
 | 필드 | 분류 | 담당 문서 경로 |
 |---|---|---|
 | `EventRef.event_kind` | 불투명 이벤트 분류 문자열입니다. 메서드 예시가 `event_kind` 문자열을 보여 줄 수 있지만, 이 문서는 빠짐없는 공개 `event_kind` 값 집합을 공개하지 않습니다. | 형태 담당 문서: [API 코어 스키마](schema-core.md#shared-support-shapes). 이벤트를 만드는 동작: 메서드 담당 문서. |
-| `WriteDecisionReason.code` | 메서드 범위의 불투명 사유 코드입니다. 메서드 담당 문서는 전역의 빠짐없는 코드 목록을 만들지 않고 예시 코드를 보여 줄 수 있습니다. | 형태 담당 문서: [API 상태 스키마](schema-state.md#current-position-display-shapes). 생성과 로컬 의미: [`harness.prepare_write`](method-prepare-write.md)와 영향받는 메서드 담당 문서. |
+| `WriteDecisionReason.code` | 메서드 범위의 불투명 사유 코드입니다. 메서드 담당 문서는 전역의 빠짐없는 코드 목록을 만들지 않고 예시 코드를 보여 줄 수 있습니다. | 형태 담당 문서: [API 상태 스키마](schema-state.md#current-position-display-shapes). 생성과 로컬 의미: [`volicord.prepare_write`](method-prepare-write.md)와 영향받는 메서드 담당 문서. |
 
 공개 `ErrorCode` 값은 별도이며 [API 오류 코드](error-codes.md)가 담당합니다.
 
@@ -131,12 +131,12 @@ no_effect
 |---|---|
 | `read_status` | 상태와 닫기 확인 읽기의 접근 등급 값. |
 | `core_mutation` | Core 변경 접근 등급 값. |
-| `write_authorization` | `harness.prepare_write`와 연결되는 접근 등급 값. |
-| `run_recording` | `harness.record_run`과 연결되는 접근 등급 값. |
-| `artifact_registration` | `harness.stage_artifact`와 연결되는 접근 등급 값. |
+| `write_authorization` | `volicord.prepare_write`와 연결되는 접근 등급 값. |
+| `run_recording` | `volicord.record_run`과 연결되는 접근 등급 값. |
+| `artifact_registration` | `volicord.stage_artifact`와 연결되는 접근 등급 값. |
 | `artifact_read` | 아티팩트 읽기 접근 등급 값입니다. 아티팩트 본문 읽기 지원은 [아티팩트 저장소](../storage-artifacts.md)가 담당합니다. |
 
-접근 등급은 하네스 API 호환성 분류이지 OS 권한 분류가 아닙니다. 메서드별 접근 요구사항은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 담당하고, 로컬 접점 확인 동작은 [에이전트 통합](../agent-integration.md)과 [보안](../security.md)이 담당합니다.
+접근 등급은 Volicord API 호환성 분류이지 OS 권한 분류가 아닙니다. 메서드별 접근 요구사항은 [API 메서드](methods.md)가 안내하는 메서드 담당 문서가 담당하고, 로컬 접점 확인 동작은 [에이전트 통합](../agent-integration.md)과 [보안](../security.md)이 담당합니다.
 
 <a id="record-and-reference-values"></a>
 ## 기록과 참조 값
@@ -170,7 +170,7 @@ direct
 work
 ```
 
-`harness.intake`의 `requested_mode`는 입력 전용 값으로 `auto`도 받습니다. 출력 `Task.mode` 필드는 `advisor`, `direct`, `work`를 사용합니다. 접수 확정 동작은 [접수 메서드](method-intake.md)가 담당합니다.
+`volicord.intake`의 `requested_mode`는 입력 전용 값으로 `auto`도 받습니다. 출력 `Task.mode` 필드는 `advisor`, `direct`, `work`를 사용합니다. 접수 확정 동작은 [접수 메서드](method-intake.md)가 담당합니다.
 
 `Task.lifecycle_phase`는 아래 값을 사용합니다.
 
@@ -222,7 +222,7 @@ superseded
 <a id="method-local-values"></a>
 ## 메서드 내부 값
 
-`harness.intake`의 `resume_policy`는 아래 값을 사용합니다.
+`volicord.intake`의 `resume_policy`는 아래 값을 사용합니다.
 
 ```text
 resume_active
@@ -244,9 +244,9 @@ replace_current
 - `create_current`는 알맞은 현재 적용 Change Unit이 없을 때 현재 적용 Change Unit을 만듭니다.
 - `replace_current`는 현재 적용 Change Unit을 새 작업 경계로 교체합니다.
 
-각 `operation` 값의 메서드 동작은 [`harness.update_scope`](method-update-scope.md)가 담당합니다. API 예시와 스키마 독자가 하나의 기준 값 담당 문서를 볼 수 있도록 지원 값 집합은 이 문서에 둡니다.
+각 `operation` 값의 메서드 동작은 [`volicord.update_scope`](method-update-scope.md)가 담당합니다. API 예시와 스키마 독자가 하나의 기준 값 담당 문서를 볼 수 있도록 지원 값 집합은 이 문서에 둡니다.
 
-`harness.close_task.intent`는 아래 값을 사용합니다.
+`volicord.close_task.intent`는 아래 값을 사용합니다.
 
 ```text
 check
@@ -315,7 +315,7 @@ close_readiness
 | `baseline` | 기준선 호환성 사유. |
 | `surface_capability` | 확인된 접점 역량 사유. |
 
-이 범주는 `harness.prepare_write` 결정 사유를 분류합니다. `CloseReadinessBlocker` 객체가 아니며 닫기 준비 상태를 평가하지 않습니다. 메서드별 결정 동작과 사유 생성은 [`harness.prepare_write`](method-prepare-write.md)에 둡니다.
+이 범주는 `volicord.prepare_write` 결정 사유를 분류합니다. `CloseReadinessBlocker` 객체가 아니며 닫기 준비 상태를 평가하지 않습니다. 메서드별 결정 동작과 사유 생성은 [`volicord.prepare_write`](method-prepare-write.md)에 둡니다.
 
 이 값 집합은 `category`만 제어합니다. `WriteDecisionReason.code`는 전역 닫힌 enum이 아닙니다. 메서드 범위의 불투명 사유 코드이며, 메서드 담당 문서는 예시 코드를 보여 주더라도 전역 지원 목록에 추가하지 않을 수 있습니다. `message`는 자유 형식 표시 문자열이고, `related_refs`는 `StateRecordRef`를 사용합니다.
 

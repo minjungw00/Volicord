@@ -304,7 +304,7 @@ integration.
   [Multi-Repository Agent Setup](../guides/multi-repository-agent-setup.md)
 - Agent workflow: [Agent Guide](../guides/agent-workflow.md)
 - Exact `harness` agent command behavior:
-  [Administrative CLI](../reference/admin-cli.md#harness-agent-install)
+  [Administrative CLI](../reference/admin-cli.md#volicord-agent-install)
 - Exact project selection and guidance boundaries:
   [Agent Integration](../reference/agent-integration.md)
 - Exact `harness-mcp` process behavior:

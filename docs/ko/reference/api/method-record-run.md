@@ -1,10 +1,10 @@
-<a id="harnessrecord_run"></a>
+<a id="volicordrecord_run"></a>
 
-# `harness.record_run` 참조
+# `volicord.record_run` 참조
 
 ## 담당하는 것
 
-이 문서는 기준 범위의 `harness.record_run` 메서드 동작을 담당합니다.
+이 문서는 기준 범위의 `volicord.record_run` 메서드 동작을 담당합니다.
 
 - 메서드별 필수 입력, 접근 요구사항, 상태 버전 동작, 결과 분기, `dry_run` 동작
 - 실행 기록, 현재 닫기 근거 갱신, 증거 갱신, 차단 사유 갱신, 아티팩트 승격 메서드 동작
@@ -21,7 +21,7 @@
 
 ## 목적
 
-`harness.record_run`은 아래 작업을 기록합니다.
+`volicord.record_run`은 아래 작업을 기록합니다.
 
 - 구체화 작업
 - 직접 응답 또는 결과
@@ -33,8 +33,8 @@
 
 - 유효한 `ToolEnvelope`. 커밋되는 `dry_run`이 아닌 요청에는 `null`이 아닌 `idempotency_key`와 현재 `expected_state_version`이 필요합니다.
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_authorization_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `close_assessment`.
-- 제품 쓰기 실행은 `harness.prepare_write`가 만든 호환되는 `status=active` `Write Authorization`이 필요합니다.
-- 새 아티팩트 바이트는 이미 유효한 `StagedArtifactHandle`로 표현되어 있어야 합니다. `harness.record_run`은 새 바이트를 스테이징하지 않습니다.
+- 제품 쓰기 실행은 `volicord.prepare_write`가 만든 호환되는 `status=active` `Write Authorization`이 필요합니다.
+- 새 아티팩트 바이트는 이미 유효한 `StagedArtifactHandle`로 표현되어 있어야 합니다. `volicord.record_run`은 새 바이트를 스테이징하지 않습니다.
 
 ## 요청 스키마
 
@@ -126,7 +126,7 @@ ResidualRiskInput:
 - 권한이 유효 만료 규칙, 즉 저장된 `expires_at`과 `created_at + 15 minutes` 중 더 이른 시점에 따라 만료되지 않았습니다.
 - `Product Repository` 경로 정규화 뒤의 관찰된 변경 경로가 권한 부여된 시도와 호환됩니다.
 
-`harness.prepare_write`가 만든 `Write Authorization`은 사이에 다른 프로젝트 상태 변경이 없으면 생성 직후 오래되지 않습니다. 예를 들어 `harness.prepare_write`가 버전 `19`에서 버전 `20`으로 커밋하면 현재 `project_state.state_version`과 `WriteAuthorization.basis_state_version`이 모두 `20`인 동안 `harness.record_run`이 그 권한을 소비할 수 있습니다.
+`volicord.prepare_write`가 만든 `Write Authorization`은 사이에 다른 프로젝트 상태 변경이 없으면 생성 직후 오래되지 않습니다. 예를 들어 `volicord.prepare_write`가 버전 `19`에서 버전 `20`으로 커밋하면 현재 `project_state.state_version`과 `WriteAuthorization.basis_state_version`이 모두 `20`인 동안 `volicord.record_run`이 그 권한을 소비할 수 있습니다.
 
 오래된 `expected_state_version`과 오래된 `Write Authorization` 근거는 `Write Authorization`을 소비하기 전에 거절됩니다. 오래된 `WriteAuthorization.basis_state_version`은 같은 권한이 함께 만료되었더라도 더 높은 우선순위의 `STATE_VERSION_CONFLICT` 경로를 유지합니다.
 
@@ -214,7 +214,7 @@ ResidualRiskInput:
 이 예시는 이 메서드 문서 안에서 전제로 둔 스테이징된 핸들의 검증 출력을 기록합니다. 메서드 안의 전제: `staged_runprobe_001`은 만료되지 않았고 소비되지 않았으며 `proj_runprobe_001` / `task_runprobe_001`에 속합니다. 스테이징 시점에 캡처된 기록된 접점 출처는 `surface_run_probe`와 `surface_instance_run_probe_01`입니다. 이 전제는 이 문서의 예시 안에서만 성립하며 다른 메서드 예시를 재사용하지 않습니다.
 
 ```yaml
-method: harness.record_run
+method: volicord.record_run
 params:
   envelope:
     project_id: proj_runprobe_001

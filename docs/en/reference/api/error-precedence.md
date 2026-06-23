@@ -17,7 +17,7 @@ Adjacent owners:
 - Public code meanings outside precedence selection; see [API error codes](error-codes.md).
 - API response branch routing; see [API error routing](error-routing.md).
 - Close-readiness blocker/API response boundary; see [API blocker routing](blocker-routing.md).
-- Method-specific behavior; see [`harness.close_task`](method-close-task.md) and other method owners.
+- Method-specific behavior; see [`volicord.close_task`](method-close-task.md) and other method owners.
 - Machine-readable conflict detail fields; see [API error details](error-details.md#state-conflict-detail-fields).
 - Storage replay rows and state clocks; see [Storage Versioning](../storage-versioning.md).
 - Display wording only; see [Template Bodies](../template-bodies.md).
@@ -86,7 +86,7 @@ Conflict routing boundary:
 |---|---|---|
 | Conflict selection | Select `STATE_VERSION_CONFLICT` for the conflict cases below. | Public code meanings: [API error codes](error-codes.md). |
 | Response path | Use `ToolRejectedResponse.errors[]` for these conflicts. | Response branch routing: [API error routing](error-routing.md). |
-| Result, blocker, and close-readiness boundary paths | Do not use `STATE_VERSION_CONFLICT` as a blocker code, dry-run preview, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`. | Boundary routing: [API blocker routing](blocker-routing.md). Method behavior: [`harness.close_task`](method-close-task.md). |
+| Result, blocker, and close-readiness boundary paths | Do not use `STATE_VERSION_CONFLICT` as a blocker code, dry-run preview, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`. | Boundary routing: [API blocker routing](blocker-routing.md). Method behavior: [`volicord.close_task`](method-close-task.md). |
 | Detail fields | Use the state-conflict detail-field family for these conflicts. | Machine-readable fields: [API error details](error-details.md#state-conflict-detail-fields). |
 
 <a id="state-conflict-expected-state-version"></a>
@@ -126,7 +126,7 @@ Detail fields:
 ### Expired `Write Authorization`
 
 Condition:
-- Before consumption, the authorization is expired under the effective expiration rule owned by [`harness.record_run`](method-record-run.md) and [`harness.prepare_write`](method-prepare-write.md), and `WriteAuthorization.basis_state_version` is not stale.
+- Before consumption, the authorization is expired under the effective expiration rule owned by [`volicord.record_run`](method-record-run.md) and [`volicord.prepare_write`](method-prepare-write.md), and `WriteAuthorization.basis_state_version` is not stale.
 
 Public code:
 - `WRITE_AUTHORIZATION_INVALID`

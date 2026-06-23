@@ -66,7 +66,7 @@
 
 의미:
 
-- `harness.status`처럼 현재 상태를 관찰하는 읽기 전용 호출입니다.
+- `volicord.status`처럼 현재 상태를 관찰하는 읽기 전용 호출입니다.
 
 증가하는 경우:
 
@@ -189,7 +189,7 @@
 
 - 새 `dry_run=false` 호출이 실제 상태 변경을 커밋합니다.
 - `project_state.state_version`은 정확히 1 증가합니다.
-- 예: `harness.close_task intent=supersede`가 `tasks.lifecycle_phase`와 `project_state.active_task_id`를 같은 커밋에서 바꾸면 프로젝트 전체 버전은 한 번 증가합니다.
+- 예: `volicord.close_task intent=supersede`가 `tasks.lifecycle_phase`와 `project_state.active_task_id`를 같은 커밋에서 바꾸면 프로젝트 전체 버전은 한 번 증가합니다.
 
 증가하지 않는 경우:
 
@@ -216,9 +216,9 @@
 
 증가하지 않는 경우:
 
-- `harness.status`.
-- `harness.close_task intent=check`.
-- `harness.close_task intent=check`의 `dry_run=true`.
+- `volicord.status`.
+- `volicord.close_task intent=check`.
+- `volicord.close_task intent=check`의 `dry_run=true`.
 - `ToolDryRunResponse` 미리보기 호출.
 - 잘못된 요청.
 - 커밋 전 검증 실패.
