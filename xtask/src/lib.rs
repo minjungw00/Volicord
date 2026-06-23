@@ -106,11 +106,13 @@ const READER_JOURNEYS: &[&str] = &[
 ];
 const NORMATIVE_LEVELS: &[&str] = &["contract", "guide", "example", "maintenance"];
 const TRANSLATION_POLICIES: &[&str] = &["semantic_parity"];
+const ROOT_README_EN_PATH: &str = "README.md";
+const ROOT_README_KO_PATH: &str = "README.ko.md";
 const REQUIRED_SHARED_PATHS: &[&str] = &[
     "AGENTS.md",
     "docs/AGENTS.md",
     "crates/AGENTS.md",
-    "README.md",
+    ROOT_README_EN_PATH,
     "docs/README.md",
     "docs/doc-index.yaml",
     "docs/terminology-map.yaml",
@@ -731,7 +733,7 @@ fn validate_entries(
                 let path_en = string_field(entry, "path_en", &label, errors);
                 let path_ko = string_field(entry, "path_ko", &label, errors);
                 if let (Some(path_en), Some(path_ko)) = (&path_en, &path_ko) {
-                    validate_mirrored_pair(&doc_id, path_en, path_ko, errors);
+                    validate_paired_paths(&doc_id, path_en, path_ko, errors);
                     paired_paths.insert(path_en.clone(), (path_en.clone(), path_ko.clone()));
                     paired_paths.insert(path_ko.clone(), (path_en.clone(), path_ko.clone()));
                     paired_document = Some(PairedDocument {
@@ -885,24 +887,31 @@ fn validate_applies_to(
     }
 }
 
-fn validate_mirrored_pair(
+fn validate_paired_paths(
     doc_id: &str,
     path_en: &str,
     path_ko: &str,
     errors: &mut Vec<ValidationError>,
 ) {
+    if is_mirrored_docs_pair(path_en, path_ko) || is_root_readme_pair(path_en, path_ko) {
+        return;
+    }
+
+    errors.push(ValidationError::new(
+        DOC_INDEX_PATH,
+        "coverage.unmirrored_pair",
+        format!("{doc_id} does not use mirrored language-relative paths: {path_en} <-> {path_ko}"),
+    ));
+}
+
+fn is_mirrored_docs_pair(path_en: &str, path_ko: &str) -> bool {
     let en_relative = path_en.strip_prefix("docs/en/");
     let ko_relative = path_ko.strip_prefix("docs/ko/");
-    match (en_relative, ko_relative) {
-        (Some(en_relative), Some(ko_relative)) if en_relative == ko_relative => {}
-        _ => errors.push(ValidationError::new(
-            DOC_INDEX_PATH,
-            "coverage.unmirrored_pair",
-            format!(
-                "{doc_id} does not use mirrored language-relative paths: {path_en} <-> {path_ko}"
-            ),
-        )),
-    }
+    matches!((en_relative, ko_relative), (Some(en), Some(ko)) if en == ko)
+}
+
+fn is_root_readme_pair(path_en: &str, path_ko: &str) -> bool {
+    path_en == ROOT_README_EN_PATH && path_ko == ROOT_README_KO_PATH
 }
 
 fn validate_indexed_path(
@@ -1014,6 +1023,32 @@ fn validate_document_coverage(root: &Path, index: &DocIndex, errors: &mut Vec<Va
                 format!("Korean maintained Markdown file is not indexed with pair {en_path}"),
             ));
         }
+    }
+
+    validate_root_readme_pair_coverage(root, index, errors);
+}
+
+fn validate_root_readme_pair_coverage(
+    root: &Path,
+    index: &DocIndex,
+    errors: &mut Vec<ValidationError>,
+) {
+    if !root.join(ROOT_README_KO_PATH).exists() {
+        return;
+    }
+
+    let indexed_as_root_pair = matches!(
+        index.paired_paths.get(ROOT_README_KO_PATH),
+        Some((path_en, path_ko)) if is_root_readme_pair(path_en, path_ko)
+    );
+    if !indexed_as_root_pair {
+        errors.push(ValidationError::new(
+            ROOT_README_KO_PATH,
+            "coverage.unindexed_pair",
+            format!(
+                "{ROOT_README_KO_PATH} must be indexed with root README pair {ROOT_README_EN_PATH} <-> {ROOT_README_KO_PATH}"
+            ),
+        ));
     }
 }
 

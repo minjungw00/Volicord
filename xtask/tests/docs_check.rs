@@ -185,6 +185,44 @@ documents:
     .to_string()
 }
 
+fn valid_doc_index_with_root_readme_pair() -> String {
+    let mut index = valid_doc_index().replace(root_readme_shared_entry(), "");
+    index.push_str(root_readme_paired_entry());
+    index
+}
+
+fn root_readme_shared_entry() -> &'static str {
+    r#"- doc_id: readme.root
+  path: README.md
+  kind: landing
+  summary: Root README.
+  normative_level: guide
+  owner_area: onboarding
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
+  applies_to:
+  - harness_server_0_1
+"#
+}
+
+fn root_readme_paired_entry() -> &'static str {
+    r#"- doc_id: readme.root
+  path_en: README.md
+  path_ko: README.ko.md
+  kind: landing
+  summary: Root README pair.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: onboarding
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
+  applies_to:
+  - harness_server_0_1
+"#
+}
+
 fn valid_terminology_map() -> String {
     r##"version: 1
 related_documents:
@@ -236,6 +274,156 @@ fn accepts_valid_version_3_metadata() {
     let report = report(fixture.path());
 
     assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn accepts_shared_root_readme_without_korean_readme() {
+    let fixture = valid_fixture();
+
+    assert!(!fixture.path().join("README.ko.md").exists());
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn accepts_registered_root_readme_pair() {
+    let fixture = valid_fixture();
+    write(fixture.path(), "README.ko.md", "# Harness Korean\n");
+    write(
+        fixture.path(),
+        "docs/doc-index.yaml",
+        &valid_doc_index_with_root_readme_pair(),
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn accepts_normal_mirrored_docs_pair() {
+    let fixture = valid_fixture();
+    write(fixture.path(), "docs/en/extra.md", "# Extra\n");
+    write(fixture.path(), "docs/ko/extra.md", "# Extra\n");
+    let mut index = valid_doc_index();
+    index.push_str(
+        r#"- doc_id: extra
+  path_en: docs/en/extra.md
+  path_ko: docs/ko/extra.md
+  kind: explanation
+  summary: Extra mirrored pair.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: developer_documentation
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
+  applies_to:
+  - harness_server_0_1
+"#,
+    );
+    write(fixture.path(), "docs/doc-index.yaml", &index);
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn rejects_arbitrary_root_level_pair() {
+    let fixture = valid_fixture();
+    write(fixture.path(), "GUIDE.md", "# Guide\n");
+    write(fixture.path(), "GUIDE.ko.md", "# Guide Korean\n");
+    let mut index = valid_doc_index();
+    index.push_str(
+        r#"- doc_id: guide.root
+  path_en: GUIDE.md
+  path_ko: GUIDE.ko.md
+  kind: explanation
+  summary: Arbitrary root pair.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: developer_documentation
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
+  applies_to:
+  - harness_server_0_1
+"#,
+    );
+    write(fixture.path(), "docs/doc-index.yaml", &index);
+
+    let report = report(fixture.path());
+
+    assert!(has_category(&report, "coverage.unmirrored_pair"));
+}
+
+#[test]
+fn rejects_reversed_root_readme_pair() {
+    let fixture = valid_fixture();
+    write(fixture.path(), "README.ko.md", "# Harness Korean\n");
+    let index = valid_doc_index()
+        .replace(root_readme_shared_entry(), "")
+        .replace("path_en: docs/en/README.md", "path_en: README.ko.md")
+        .replace("path_ko: docs/ko/README.md", "path_ko: README.md");
+    write(fixture.path(), "docs/doc-index.yaml", &index);
+
+    let report = report(fixture.path());
+
+    assert!(has_category(&report, "coverage.unmirrored_pair"));
+}
+
+#[test]
+fn reports_unindexed_korean_root_readme() {
+    let fixture = valid_fixture();
+    write(fixture.path(), "README.ko.md", "# Harness Korean\n");
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "coverage.unindexed_pair");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert_eq!(errors[0].file(), "README.ko.md");
+    assert!(
+        errors[0].message().contains("README.md <-> README.ko.md"),
+        "{:#?}",
+        report.errors()
+    );
+}
+
+#[test]
+fn reports_missing_file_in_registered_root_readme_pair() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/doc-index.yaml",
+        &valid_doc_index_with_root_readme_pair(),
+    );
+
+    let report = report(fixture.path());
+
+    assert!(has_category(&report, "metadata.missing_path"));
+}
+
+#[test]
+fn reports_bilingual_link_mismatch_in_registered_root_readme_pair() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "README.md",
+        "# Harness\n\n[Docs](docs/en/README.md)\n",
+    );
+    write(fixture.path(), "README.ko.md", "# Harness Korean\n");
+    write(
+        fixture.path(),
+        "docs/doc-index.yaml",
+        &valid_doc_index_with_root_readme_pair(),
+    );
+
+    let report = report(fixture.path());
+
+    assert!(has_category(&report, "bilingual_link.only_en"));
 }
 
 #[test]
