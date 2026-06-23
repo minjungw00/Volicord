@@ -340,7 +340,7 @@ allowed_project_count: 0
 not executable until one is added
 ```
 
-The Agent Integration Profile, Host Installation inventory, and host configuration can remain while no projects are allowed. Verification is not executable in that state. Add a project again without reinstalling the host entry:
+The Agent Integration Profile, Host Installation inventory, and host configuration can remain while no projects are allowed, but that retained state is not startup eligibility. An already running MCP process can refresh membership and `harness.list_projects` may return an empty list, but project-routed public tools cannot proceed. New MCP startup, `harness-mcp --check`, and verification paths that require new startup fail until a project is added again and normal configuration checks pass. Add a project again without reinstalling the host entry:
 
 ```sh
 "$HARNESS_BIN/harness" agent project add \
@@ -359,7 +359,7 @@ Fully remove managed host configuration and managed guidance:
   --remove-managed
 ```
 
-Uninstall removes only Harness-managed host entries, blocks, files, or fingerprints. It does not delete a `Product Repository`, Runtime Home, project state, Core records, artifact store, or unrelated host configuration.
+Uninstall removes selected Harness-managed host entries, blocks, files, or fingerprints only when ownership and safety checks permit removal. With `--remove-managed`, managed `Product Repository` guidance is removed only when selected and safely owned. A successful uninstall also removes the corresponding Host Installation inventory; if no Host Installations remain for the Agent Integration Profile, the profile can be disabled, which is not deletion. It preserves `Product Repository` contents, project registration and project state, Core task, evidence, decision, run, and artifact-related records, artifact storage, and unrelated host configuration. User-modified or unmanaged host entries are reported or preserved rather than removed.
 
 ## Generic Export Fallback
 

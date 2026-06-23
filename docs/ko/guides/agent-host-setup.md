@@ -340,7 +340,7 @@ allowed_project_count: 0
 not executable until one is added
 ```
 
-허용 프로젝트가 없어도 Agent Integration Profile, Host Installation inventory, 호스트 설정은 남을 수 있습니다. 이 상태에서는 검증을 실행할 수 없습니다. 호스트 항목을 다시 설치하지 않고 프로젝트를 다시 추가합니다.
+허용 프로젝트가 없어도 Agent Integration Profile, Host Installation inventory, 호스트 설정은 남을 수 있지만, 이 저장 상태는 시작 자격이 아닙니다. 이미 실행 중인 MCP 프로세스는 멤버십을 새로 읽을 수 있고 `harness.list_projects`가 빈 목록을 반환할 수 있지만, 프로젝트 라우팅이 필요한 공개 도구는 진행할 수 없습니다. 새 MCP 시작, `harness-mcp --check`, 새 시작이 필요한 검증 경로는 프로젝트가 다시 추가되고 일반 설정 점검을 통과하기 전까지 실패합니다. 호스트 항목을 다시 설치하지 않고 프로젝트를 다시 추가합니다.
 
 ```sh
 "$HARNESS_BIN/harness" agent project add \
@@ -359,7 +359,7 @@ not executable until one is added
   --remove-managed
 ```
 
-Uninstall은 하네스가 관리하는 호스트 항목, 블록, 파일, fingerprint만 제거합니다. `Product Repository`, Runtime Home, 프로젝트 상태, Core 기록, 아티팩트 저장소, 관련 없는 호스트 설정은 삭제하지 않습니다.
+Uninstall은 소유권과 안전 점검이 허용할 때 선택된 하네스 관리 호스트 항목, 블록, 파일, fingerprint만 제거합니다. `--remove-managed`를 사용하면 선택되어 있고 안전하게 소유된 관리 `Product Repository` guidance도 제거합니다. 성공한 제거는 해당 Host Installation inventory도 제거합니다. Agent Integration Profile에 남은 Host Installation이 없으면 프로필이 비활성화될 수 있으며, 비활성화는 삭제가 아닙니다. `Product Repository` 내용, 프로젝트 등록과 프로젝트 상태, Core의 작업, 증거, 판단, 실행, 아티팩트 관련 기록, 아티팩트 저장소, 관련 없는 호스트 설정은 보존됩니다. 사용자가 수정했거나 관리되지 않는 호스트 항목은 제거하지 않고 보고하거나 보존합니다.
 
 ## Generic export fallback
 

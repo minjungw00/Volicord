@@ -80,6 +80,8 @@ HARNESS_HOME = "/Users/alex/.harness"
   --runtime-home /Users/alex/.harness
 ```
 
+`harness agent project add`는 선택된 Runtime Home에 `billing-api`가 이미 등록되어 있으면 그 등록을 재사용합니다. 아직 등록되어 있지 않다면 필요한 `--repo-root /work/billing-api` 값이 제공되었으므로 이 명령이 프로젝트를 등록한 뒤 통합 멤버십을 추가할 수 있습니다. 이 명령은 호스트 설정을 다시 쓰지 않습니다. 자세한 명령 계약은 [관리 CLI](../reference/admin-cli.md)에 있습니다.
+
 예상 결과:
 
 ```text
@@ -259,7 +261,7 @@ allowed_project_count: 0
 not executable until one is added
 ```
 
-제거 뒤 `harness.list_projects`는 `int-codex-team`에 대해 프로젝트를 노출하지 않습니다. 바뀌지 않은 호스트 항목은 같은 통합을 계속 시작하고 Host Installation inventory도 남을 수 있지만, 프로젝트가 다시 추가되기 전까지 공개 도구 호출은 실행될 수 없습니다.
+제거 뒤 Host Installation inventory와 호스트 설정은 남을 수 있지만, 이 저장 상태는 새 시작이 가능하다는 증명이 아닙니다. 이미 실행 중이던 `harness-mcp` 프로세스는 registry 상태를 새로 읽을 수 있으므로 `harness.list_projects`가 `int-codex-team`에 대해 빈 목록을 반환할 수 있습니다. 그래도 허용 프로젝트가 없으므로 프로젝트 라우팅이 필요한 공개 도구는 진행할 수 없습니다. 새로 시작하는 `harness-mcp` 프로세스, `harness-mcp --check`, 새 MCP 시작이 필요한 검증 경로는 프로젝트가 다시 추가되고 일반 설정 점검을 통과하기 전까지 실패합니다.
 
 프로젝트가 없는 상태를 확인합니다.
 
@@ -276,7 +278,7 @@ allowed_project_count: 0
 not executable
 ```
 
-호스트 항목을 다시 설치하지 않고 프로젝트를 다시 추가합니다.
+호스트 항목을 다시 설치하지 않고 프로젝트를 다시 추가합니다. 이렇게 하면 일반 설정 점검을 전제로 새 시작 자격이 복구됩니다.
 
 ```sh
 "$HARNESS_BIN/harness" agent project add \
@@ -307,7 +309,7 @@ not executable
   --remove-managed
 ```
 
-Uninstall은 하네스가 관리하는 호스트 설정과 관리되는 guidance만 제거합니다. Product Repository, Runtime Home 데이터, 프로젝트 상태, Core 기록, 아티팩트 저장소, 관련 없는 호스트 항목은 삭제하지 않습니다.
+Uninstall은 소유권과 안전 점검이 허용할 때 선택된 하네스 관리 호스트 설정을 제거합니다. `--remove-managed`를 사용하면 선택되어 있고 안전하게 소유된 관리 `Product Repository` guidance도 제거합니다. 성공한 관리 제거는 해당 Host Installation inventory를 제거합니다. Agent Integration Profile에 남은 Host Installation이 없으면 프로필이 비활성화될 수 있으며, 비활성화는 삭제가 아닙니다. `Product Repository` 내용, 프로젝트 등록과 프로젝트 상태, Core의 작업, 증거, 판단, 실행, 아티팩트 관련 기록, 아티팩트 저장소, 관련 없는 호스트 항목은 담당 계약에 따라 보존됩니다.
 
 ## 참조 링크
 

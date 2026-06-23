@@ -80,6 +80,8 @@ The actual generated `command` value is the resolved absolute path selected thro
   --runtime-home /Users/alex/.harness
 ```
 
+`harness agent project add` reuses `billing-api` if that project is already registered in the selected Runtime Home. If it is not registered, this command can register it because the required `--repo-root /work/billing-api` value is supplied, then add the integration membership. The command does not rewrite host configuration; the detailed command contract stays in [Administrative CLI](../reference/admin-cli.md).
+
 Expected result:
 
 ```text
@@ -259,7 +261,7 @@ allowed_project_count: 0
 not executable until one is added
 ```
 
-After removal, `harness.list_projects` exposes no projects for `int-codex-team`. The unchanged host entry still starts the same integration, and Host Installation inventory can remain, but public tool calls are not executable until a project is added again.
+After removal, Host Installation inventory and host configuration can remain, but that stored state is not proof of new startup eligibility. A `harness-mcp` process that was already running can refresh registry state, so `harness.list_projects` may return an empty list for `int-codex-team`; project-routed public tools cannot proceed because no allowed project remains. A newly started `harness-mcp` process, `harness-mcp --check`, and verification paths that need new MCP startup fail until a project is added again and normal configuration checks pass.
 
 Observe the zero-project state:
 
@@ -276,7 +278,7 @@ allowed_project_count: 0
 not executable
 ```
 
-Add a project again without reinstalling the host entry:
+Add a project again without reinstalling the host entry. This restores eligibility for new startup, subject to normal configuration checks:
 
 ```sh
 "$HARNESS_BIN/harness" agent project add \
@@ -307,7 +309,7 @@ Remove managed host configuration and managed guidance for the integration:
   --remove-managed
 ```
 
-Uninstall removes only Harness-managed host configuration and managed guidance. It does not delete Product Repositories, Runtime Home data, project state, Core records, artifact storage, or unrelated host entries.
+Uninstall removes selected Harness-managed host configuration when ownership and safety checks allow it. With `--remove-managed`, it also removes managed repository guidance only when selected and safely owned. A successful managed uninstall removes the corresponding Host Installation inventory; if no Host Installations remain for the Agent Integration Profile, the profile can be disabled, which is not deletion. Product Repositories, project registration and project state, Core task, evidence, decision, run, and artifact-related records, artifact storage, and unrelated host entries are preserved according to their owners.
 
 ## Reference Links
 
