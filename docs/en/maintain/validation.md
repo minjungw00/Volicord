@@ -53,6 +53,11 @@ read-only and verifies the machine-checkable shape:
   represented in the index with matching relative structure.
 - Relative links resolve to existing files.
 - Fragment links and hidden anchors resolve where they are used.
+- Maintained English/Korean pairs use equivalent local Markdown reader links
+  after indexed targets are normalized to `doc_id`, valid non-indexed
+  repository targets are normalized to repository-relative paths, and fragments
+  are preserved. External links, images, and fenced-code text are ignored for
+  this parity check.
 - `docs/terminology-map.yaml` primary-owner and related-reference paths exist
   and are represented in `doc-index.yaml`.
 - README, route-page, Reference, Development, `AGENTS.md`, and terminology
@@ -91,10 +96,12 @@ Development documents describe durable crates, modules, entry points, execution
 stages, and responsibility boundaries without turning implementation detail into
 product contract text.
 
-The automated `docs-check` command does not perform semantic bilingual review,
-contract-owner review, technical-accuracy review, translation judgment, API
-example consistency review, or product meaning review. Those checks remain
-manual and owner-routed.
+The automated `docs-check` command includes local documentation-link parity for
+maintained English/Korean pairs, but it does not perform semantic bilingual
+review, contract-owner review, technical-accuracy review, translation judgment,
+API example consistency review, or product meaning review. A passing local-link
+parity check only confirms the machine-comparable local reader routes. The
+remaining checks stay manual and owner-routed.
 
 ## Rust Implementation Validation
 

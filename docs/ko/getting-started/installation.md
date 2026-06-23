@@ -127,10 +127,10 @@ test -x "$HARNESS_BIN/harness-mcp"
 
 | 증상 | 안전한 다음 행동 | 경로 |
 |---|---|---|
-| `cargo` 또는 `rustc`를 사용할 수 없습니다. | Cargo가 포함된 Rust 1.85 이상을 설치하거나 선택한 뒤 사전 점검을 다시 실행합니다. | [시스템 요구사항](../reference/system-requirements.md) |
-| Rust가 1.85보다 오래되었습니다. | `cargo build`를 실행하기 전에 Rust 1.85 이상 도구 체인을 선택합니다. | [시스템 요구사항](../reference/system-requirements.md) |
-| `cargo build`가 실패합니다. | Cargo 진단을 읽고 보고된 도구 체인, 의존성, 소스 문제를 고친 뒤 같은 빌드 명령을 다시 실행합니다. 첫 대응으로 Runtime Home이나 Product Repository를 삭제하지 않습니다. | [시스템 요구사항](../reference/system-requirements.md) |
-| `target/debug` 또는 `target/release`에 두 실행 파일이 모두 없습니다. | 성공한 빌드 명령을 확인하고 그에 맞는 산출물 디렉터리를 선택한 뒤 `test -x` 점검을 다시 실행합니다. | [시스템 요구사항](../reference/system-requirements.md) |
+| `cargo` 또는 `rustc`를 사용할 수 없습니다. | Cargo가 포함된 Rust 1.85 이상을 설치하거나 선택한 뒤 사전 점검을 다시 실행합니다. | [시스템 요구사항](../reference/system-requirements.md#toolchain-requirements) |
+| Rust가 1.85보다 오래되었습니다. | `cargo build`를 실행하기 전에 Rust 1.85 이상 도구 체인을 선택합니다. | [시스템 요구사항](../reference/system-requirements.md#toolchain-requirements) |
+| `cargo build`가 실패합니다. | Cargo 진단을 읽고 보고된 도구 체인, 의존성, 소스 문제를 고친 뒤 같은 빌드 명령을 다시 실행합니다. 첫 대응으로 Runtime Home이나 Product Repository를 삭제하지 않습니다. | [시스템 요구사항](../reference/system-requirements.md#toolchain-requirements) |
+| `target/debug` 또는 `target/release`에 두 실행 파일이 모두 없습니다. | 성공한 빌드 명령을 확인하고 그에 맞는 산출물 디렉터리를 선택한 뒤 `test -x` 점검을 다시 실행합니다. | [시스템 요구사항](../reference/system-requirements.md#executable-layout-and-discovery) |
 | `test -x` 또는 도움말/버전 명령이 실패합니다. | 실제로 실행 가능한 `harness`와 `harness-mcp`가 들어 있는 디렉터리를 선택하거나 선택된 사용자의 실행 권한을 고칩니다. | [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md#missing-harness-mcp) |
 | `HARNESS_BIN`이 잘못된 디렉터리를 가리킵니다. | 같은 셸에서 올바른 절대 디렉터리를 내보낸 뒤 모든 확인 명령을 다시 실행합니다. | [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md#wrong-absolute-mcp-command) |
 | 이후 프로젝트 범위 호스트가 `harness-mcp`를 찾지 못합니다. | 프로젝트 파일은 이식 가능한 형태로 유지하고 호스트 시작 환경의 `PATH`를 고칩니다. | [에이전트 호스트 문제 해결](../guides/agent-host-troubleshooting.md#portable-project-command-not-on-path) |

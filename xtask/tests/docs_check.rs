@@ -35,7 +35,7 @@ fn valid_fixture() -> TempDir {
     write(
         root,
         "docs/ko/example.md",
-        "<a id=\"overview\"></a>\n<a id=\"explicit-anchor\"></a>\n# 개요\n",
+        "<a id=\"overview\"></a>\n<a id=\"explicit-anchor\"></a>\n# 개요\n\n[자체](#overview), [앵커](#explicit-anchor), [README](README.md)를 참조합니다.\n",
     );
 
     write(root, "docs/doc-index.yaml", &valid_doc_index());
@@ -216,6 +216,17 @@ fn has_category(report: &xtask::CheckReport, category: &str) -> bool {
         .errors()
         .iter()
         .any(|error| error.category() == category)
+}
+
+fn category_errors<'a>(
+    report: &'a xtask::CheckReport,
+    category: &str,
+) -> Vec<&'a xtask::ValidationError> {
+    report
+        .errors()
+        .iter()
+        .filter(|error| error.category() == category)
+        .collect()
 }
 
 #[test]
@@ -500,10 +511,237 @@ fn accepts_explicit_html_anchor() {
         "docs/en/example.md",
         "# Overview\n\n<a id=\"explicit-anchor\"></a>\n\n[Anchor](#explicit-anchor)\n",
     );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n<a id=\"explicit-anchor\"></a>\n# 개요\n\n[앵커](#explicit-anchor)\n",
+    );
 
     let report = report(fixture.path());
 
     assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn accepts_language_specific_paths_to_same_doc_id() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n[Language index](README.md)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n\n[언어 색인](README.md)\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn reports_bilingual_link_only_in_english() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n[Language index](README.md)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(has_category(&report, "bilingual_link.only_en"));
+}
+
+#[test]
+fn reports_bilingual_link_different_maintained_target() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n[Language index](README.md)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n\n[예시](example.md)\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(has_category(&report, "bilingual_link.target_mismatch"));
+}
+
+#[test]
+fn reports_bilingual_link_different_fragment_on_same_target() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n<a id=\"explicit-anchor\"></a>\n\n[Anchor](#explicit-anchor)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n<a id=\"explicit-anchor\"></a>\n# 개요\n\n[앵커](#overview)\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(has_category(&report, "bilingual_link.fragment_mismatch"));
+}
+
+#[test]
+fn accepts_english_heading_anchor_with_explicit_korean_anchor() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n[Self](#overview)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n\n[자체](#overview)\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn ignores_external_links_for_bilingual_parity() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n[External](https://example.com/path)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn ignores_image_links_for_bilingual_parity() {
+    let fixture = valid_fixture();
+    write(fixture.path(), "docs/en/figure.png", "");
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n![Diagram](figure.png)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn ignores_fenced_code_links_for_bilingual_parity() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n```md\n[Language index](README.md)\n```\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn accepts_shared_document_links_for_bilingual_parity() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n[Repository README](../../README.md)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n\n[저장소 README](../../README.md)\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn accepts_non_indexed_repository_file_links_for_bilingual_parity() {
+    let fixture = valid_fixture();
+    write(fixture.path(), "support.txt", "fixture support\n");
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n[Support file](../../support.txt)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n\n[지원 파일](../../support.txt)\n",
+    );
+
+    let report = report(fixture.path());
+
+    assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn reports_repeated_bilingual_links_deterministically() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/example.md",
+        "# Overview\n\n[Language index](README.md)\n\n[Again](README.md)\n",
+    );
+    write(
+        fixture.path(),
+        "docs/ko/example.md",
+        "<a id=\"overview\"></a>\n# 개요\n\n[언어 색인](README.md)\n",
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "bilingual_link.only_en");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert!(
+        errors[0].message().contains("1 more English occurrence"),
+        "{:#?}",
+        report.errors()
+    );
+    assert!(
+        errors[0].message().contains("docs.index"),
+        "{:#?}",
+        report.errors()
+    );
 }
 
 #[test]

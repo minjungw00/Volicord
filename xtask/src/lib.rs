@@ -193,6 +193,15 @@ impl CheckReport {
 struct DocIndex {
     indexed_paths: BTreeSet<String>,
     paired_paths: BTreeMap<String, (String, String)>,
+    path_doc_ids: BTreeMap<String, String>,
+    paired_documents: BTreeMap<String, PairedDocument>,
+}
+
+#[derive(Debug, Clone)]
+struct PairedDocument {
+    doc_id: String,
+    path_en: String,
+    path_ko: String,
 }
 
 #[derive(Debug, Clone)]
@@ -218,6 +227,18 @@ struct DateError {
 struct LinkFailure {
     category: &'static str,
     message: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct SemanticLinkKey {
+    target: SemanticLinkTarget,
+    fragment: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+enum SemanticLinkTarget {
+    DocId(String),
+    RepositoryPath(String),
 }
 
 #[derive(Debug, Clone)]
@@ -246,6 +267,7 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
     if let Some(index) = index.as_ref() {
         validate_document_coverage(&root, index, &mut errors);
         validate_markdown_links(&root, index, &mut errors);
+        validate_bilingual_link_parity(&root, index, &mut errors);
         validate_terminology_paths(&root, index, &mut errors);
         validate_retired_paths(&root, index, &mut errors);
     }
@@ -340,6 +362,8 @@ fn validate_doc_index(root: &Path, errors: &mut Vec<ValidationError>) -> Option<
     let mut doc_ids = BTreeSet::new();
     let mut indexed_paths = BTreeSet::new();
     let mut paired_paths = BTreeMap::new();
+    let mut path_doc_ids = BTreeMap::new();
+    let mut paired_documents = BTreeMap::new();
 
     validate_entries(
         root,
@@ -350,6 +374,8 @@ fn validate_doc_index(root: &Path, errors: &mut Vec<ValidationError>) -> Option<
         &mut doc_ids,
         &mut indexed_paths,
         &mut paired_paths,
+        &mut path_doc_ids,
+        &mut paired_documents,
         &owner_areas,
         &applicability,
         errors,
@@ -363,6 +389,8 @@ fn validate_doc_index(root: &Path, errors: &mut Vec<ValidationError>) -> Option<
         &mut doc_ids,
         &mut indexed_paths,
         &mut paired_paths,
+        &mut path_doc_ids,
+        &mut paired_documents,
         &owner_areas,
         &applicability,
         errors,
@@ -400,6 +428,8 @@ fn validate_doc_index(root: &Path, errors: &mut Vec<ValidationError>) -> Option<
     Some(DocIndex {
         indexed_paths,
         paired_paths,
+        path_doc_ids,
+        paired_documents,
     })
 }
 
@@ -517,6 +547,8 @@ fn validate_entries(
     doc_ids: &mut BTreeSet<String>,
     indexed_paths: &mut BTreeSet<String>,
     paired_paths: &mut BTreeMap<String, (String, String)>,
+    path_doc_ids: &mut BTreeMap<String, String>,
+    paired_documents: &mut BTreeMap<String, PairedDocument>,
     owner_areas: &BTreeSet<String>,
     applicability: &BTreeSet<String>,
     errors: &mut Vec<ValidationError>,
@@ -690,6 +722,7 @@ fn validate_entries(
 
         validate_applies_to(entry, &doc_id, applicability, errors);
 
+        let mut paired_document = None;
         let paths = match mode {
             EntryMode::Shared => string_field(entry, "path", &label, errors)
                 .into_iter()
@@ -701,6 +734,11 @@ fn validate_entries(
                     validate_mirrored_pair(&doc_id, path_en, path_ko, errors);
                     paired_paths.insert(path_en.clone(), (path_en.clone(), path_ko.clone()));
                     paired_paths.insert(path_ko.clone(), (path_en.clone(), path_ko.clone()));
+                    paired_document = Some(PairedDocument {
+                        doc_id: doc_id.clone(),
+                        path_en: path_en.clone(),
+                        path_ko: path_ko.clone(),
+                    });
                 }
                 path_en.into_iter().chain(path_ko).collect::<Vec<_>>()
             }
@@ -708,6 +746,11 @@ fn validate_entries(
 
         for path in &paths {
             validate_indexed_path(root, &doc_id, path, indexed_paths, errors);
+            path_doc_ids.insert(path.clone(), doc_id.clone());
+        }
+
+        if let Some(paired_document) = paired_document {
+            paired_documents.insert(doc_id.clone(), paired_document);
         }
 
         let depends_on = mapping_get(entry, "depends_on")
@@ -1060,13 +1103,279 @@ fn validate_markdown_links(root: &Path, index: &DocIndex, errors: &mut Vec<Valid
     }
 }
 
+fn validate_bilingual_link_parity(
+    root: &Path,
+    index: &DocIndex,
+    errors: &mut Vec<ValidationError>,
+) {
+    for paired in index.paired_documents.values() {
+        let en_links = match collect_semantic_links(root, index, &paired.path_en) {
+            Ok(links) => links,
+            Err(error) => {
+                errors.push(ValidationError::new(
+                    &paired.path_en,
+                    "bilingual_link.read",
+                    error,
+                ));
+                continue;
+            }
+        };
+        let ko_links = match collect_semantic_links(root, index, &paired.path_ko) {
+            Ok(links) => links,
+            Err(error) => {
+                errors.push(ValidationError::new(
+                    &paired.path_ko,
+                    "bilingual_link.read",
+                    error,
+                ));
+                continue;
+            }
+        };
+
+        compare_semantic_link_multisets(paired, en_links, ko_links, errors);
+    }
+}
+
+fn collect_semantic_links(
+    root: &Path,
+    index: &DocIndex,
+    path: &str,
+) -> std::result::Result<BTreeMap<SemanticLinkKey, usize>, String> {
+    let contents = fs::read_to_string(root.join(path))
+        .map_err(|error| format!("failed to read Markdown file: {error}"))?;
+    let mut links = BTreeMap::new();
+    for link in markdown_reader_links(&contents) {
+        if is_ignored_link(&link) {
+            continue;
+        }
+        if let Some(key) = normalize_semantic_link(root, index, path, &link) {
+            *links.entry(key).or_insert(0) += 1;
+        }
+    }
+    Ok(links)
+}
+
+fn normalize_semantic_link(
+    root: &Path,
+    index: &DocIndex,
+    source: &str,
+    link: &str,
+) -> Option<SemanticLinkKey> {
+    let resolved = resolve_link_target(root, source, link).ok()?;
+    let target_absolute = root.join(&resolved.path);
+    if !target_absolute.exists() {
+        return None;
+    }
+
+    let indexed_lookup_path = indexed_target_lookup_path(root, &resolved.path);
+    let target = index
+        .path_doc_ids
+        .get(&indexed_lookup_path)
+        .cloned()
+        .map(SemanticLinkTarget::DocId)
+        .unwrap_or_else(|| SemanticLinkTarget::RepositoryPath(resolved.path));
+
+    Some(SemanticLinkKey {
+        target,
+        fragment: resolved.fragment,
+    })
+}
+
+fn indexed_target_lookup_path(root: &Path, path: &str) -> String {
+    let absolute = root.join(path);
+    if absolute.is_dir() {
+        let readme = absolute.join("README.md");
+        if readme.exists() {
+            return repo_relative(root, &readme);
+        }
+    }
+    path.to_string()
+}
+
+fn compare_semantic_link_multisets(
+    paired: &PairedDocument,
+    en_links: BTreeMap<SemanticLinkKey, usize>,
+    ko_links: BTreeMap<SemanticLinkKey, usize>,
+    errors: &mut Vec<ValidationError>,
+) {
+    let mut only_en = multiset_difference(&en_links, &ko_links);
+    let mut only_ko = multiset_difference(&ko_links, &en_links);
+
+    report_fragment_mismatches(paired, &mut only_en, &mut only_ko, errors);
+    report_target_mismatches(paired, &mut only_en, &mut only_ko, errors);
+    report_unpaired_semantic_links(paired, "bilingual_link.only_en", true, only_en, errors);
+    report_unpaired_semantic_links(paired, "bilingual_link.only_ko", false, only_ko, errors);
+}
+
+fn multiset_difference(
+    left: &BTreeMap<SemanticLinkKey, usize>,
+    right: &BTreeMap<SemanticLinkKey, usize>,
+) -> BTreeMap<SemanticLinkKey, usize> {
+    let mut difference = BTreeMap::new();
+    for (key, left_count) in left {
+        let right_count = right.get(key).copied().unwrap_or(0);
+        if *left_count > right_count {
+            difference.insert(key.clone(), left_count - right_count);
+        }
+    }
+    difference
+}
+
+fn report_fragment_mismatches(
+    paired: &PairedDocument,
+    only_en: &mut BTreeMap<SemanticLinkKey, usize>,
+    only_ko: &mut BTreeMap<SemanticLinkKey, usize>,
+    errors: &mut Vec<ValidationError>,
+) {
+    let en_keys = only_en.keys().cloned().collect::<Vec<_>>();
+    for en_key in en_keys {
+        while count_for(only_en, &en_key) > 0 {
+            let Some(ko_key) = only_ko
+                .keys()
+                .find(|ko_key| ko_key.target == en_key.target && ko_key.fragment != en_key.fragment)
+                .cloned()
+            else {
+                break;
+            };
+            let count = count_for(only_en, &en_key).min(count_for(only_ko, &ko_key));
+            consume_count(only_en, &en_key, count);
+            consume_count(only_ko, &ko_key, count);
+            errors.push(ValidationError::new(
+                &paired.path_en,
+                "bilingual_link.fragment_mismatch",
+                format!(
+                    "{} has {count} paired local semantic link occurrence(s) to {} but different fragments: English {}, Korean {} ({} <-> {})",
+                    paired.doc_id,
+                    en_key.target.describe(),
+                    describe_fragment(&en_key.fragment),
+                    describe_fragment(&ko_key.fragment),
+                    paired.path_en,
+                    paired.path_ko
+                ),
+            ));
+        }
+    }
+}
+
+fn report_target_mismatches(
+    paired: &PairedDocument,
+    only_en: &mut BTreeMap<SemanticLinkKey, usize>,
+    only_ko: &mut BTreeMap<SemanticLinkKey, usize>,
+    errors: &mut Vec<ValidationError>,
+) {
+    let en_keys = only_en.keys().cloned().collect::<Vec<_>>();
+    for en_key in en_keys {
+        while count_for(only_en, &en_key) > 0 {
+            let Some(ko_key) = only_ko
+                .keys()
+                .find(|ko_key| ko_key.fragment == en_key.fragment && ko_key.target != en_key.target)
+                .cloned()
+            else {
+                break;
+            };
+            let count = count_for(only_en, &en_key).min(count_for(only_ko, &ko_key));
+            consume_count(only_en, &en_key, count);
+            consume_count(only_ko, &ko_key, count);
+            errors.push(ValidationError::new(
+                &paired.path_en,
+                "bilingual_link.target_mismatch",
+                format!(
+                    "{} has {count} paired local semantic link occurrence(s) with {} but different normalized targets: English {}, Korean {} ({} <-> {})",
+                    paired.doc_id,
+                    describe_fragment(&en_key.fragment),
+                    en_key.target.describe(),
+                    ko_key.target.describe(),
+                    paired.path_en,
+                    paired.path_ko
+                ),
+            ));
+        }
+    }
+}
+
+fn report_unpaired_semantic_links(
+    paired: &PairedDocument,
+    category: &'static str,
+    english_surplus: bool,
+    links: BTreeMap<SemanticLinkKey, usize>,
+    errors: &mut Vec<ValidationError>,
+) {
+    for (key, count) in links {
+        let language = if english_surplus { "English" } else { "Korean" };
+        let paired_language = if english_surplus { "Korean" } else { "English" };
+        errors.push(ValidationError::new(
+            &paired.path_en,
+            category,
+            format!(
+                "{} has {count} more {language} occurrence(s) of local semantic link to {} than {paired_language} ({} <-> {})",
+                paired.doc_id,
+                key.describe(),
+                paired.path_en,
+                paired.path_ko
+            ),
+        ));
+    }
+}
+
+fn count_for(links: &BTreeMap<SemanticLinkKey, usize>, key: &SemanticLinkKey) -> usize {
+    links.get(key).copied().unwrap_or(0)
+}
+
+fn consume_count(
+    links: &mut BTreeMap<SemanticLinkKey, usize>,
+    key: &SemanticLinkKey,
+    count: usize,
+) {
+    if let Some(current) = links.get_mut(key) {
+        *current -= count;
+        if *current == 0 {
+            links.remove(key);
+        }
+    }
+}
+
+impl SemanticLinkKey {
+    fn describe(&self) -> String {
+        match &self.fragment {
+            Some(fragment) => format!("{}#{fragment}", self.target.describe()),
+            None => format!("{} without fragment", self.target.describe()),
+        }
+    }
+}
+
+impl SemanticLinkTarget {
+    fn describe(&self) -> String {
+        match self {
+            SemanticLinkTarget::DocId(doc_id) => format!("target {doc_id}"),
+            SemanticLinkTarget::RepositoryPath(path) => format!("repository path {path}"),
+        }
+    }
+}
+
+fn describe_fragment(fragment: &Option<String>) -> String {
+    match fragment {
+        Some(fragment) => format!("#{fragment}"),
+        None => "no fragment".to_string(),
+    }
+}
+
 fn markdown_links(contents: &str) -> Vec<String> {
+    markdown_destinations(contents, true)
+}
+
+fn markdown_reader_links(contents: &str) -> Vec<String> {
+    markdown_destinations(contents, false)
+}
+
+fn markdown_destinations(contents: &str, include_images: bool) -> Vec<String> {
     let mut links = Vec::new();
     let parser = Parser::new_ext(contents, markdown_options());
     for event in parser {
         match event {
-            Event::Start(Tag::Link { dest_url, .. })
-            | Event::Start(Tag::Image { dest_url, .. }) => {
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                links.push(dest_url.to_string());
+            }
+            Event::Start(Tag::Image { dest_url, .. }) if include_images => {
                 links.push(dest_url.to_string());
             }
             _ => {}
