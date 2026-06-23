@@ -236,7 +236,7 @@ avoid:
       use: "Volicord is the local work-authority product/system for AI-assisted product work; Core is the local authority record for Volicord state."
     - phrase: "local work-authority server"
       use: "local work-authority product/system for Volicord; for implementation context use Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord-mcp` as applicable."
-    - phrase: "Volicord Server"
+    - phrase: "Volicord-as-server product label"
       use: "Volicord, Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord-mcp` according to context."
     - phrase: "active scope"
       use: "current scope or currently applied scope, except when preserving an exact identifier or status value."
@@ -332,7 +332,7 @@ terms:
     notes:
       - "Volicord is the local work-authority product/system for AI-assisted product work."
       - "Do not describe Volicord itself as the authority record; Core is the local authority record for Volicord state."
-      - "Do not create or use the product label `Volicord Server`; use Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord-mcp` according to context."
+      - "Do not create or use a product label that combines `Volicord` with `Server`; use Volicord implementation, Volicord source repository, Volicord Rust workspace, Volicord installation, `volicord`, or `volicord-mcp` according to context."
   test_harness:
     category: "technical_concept"
     en: "test harness"
@@ -432,7 +432,7 @@ terms:
       - "A Volicord installation is the deployed subset of executables and required runtime resources; do not imply that every source-repository file is installed."
       - "`volicord` and `volicord-mcp` are distinct executable roles within the Volicord implementation; name the process when describing behavior performed by one process."
       - "Do not use Volicord implementation to mean Volicord as a whole, Core, `Volicord Runtime Home`, the `Product Repository`, a single daemon, or a network listener."
-      - "Do not create the product label `Volicord Server`."
+      - "Do not create a product label that combines `Volicord` with `Server`."
   volicord_source_repository:
     category: "product_concept"
     en: "Volicord source repository"

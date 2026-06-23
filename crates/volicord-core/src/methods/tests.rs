@@ -10675,7 +10675,7 @@ fn assert_owner_state_rejection_with_category(
     assert!(!response.response_json.contains(corrupt_owner_json()));
     assert!(!response
         .response_json
-        .contains("/home/minjungw00/Projects/Harness_Project/secret"));
+        .contains("/tmp/volicord-redaction-secret"));
     assert_public_response_has_no_internal_leak(response, runtime_home_path);
 }
 
@@ -10721,7 +10721,7 @@ fn assert_public_response_has_no_internal_leak(
 }
 
 fn corrupt_owner_json() -> &'static str {
-    "{not-json /home/minjungw00/Projects/Harness_Project/secret"
+    "{not-json /tmp/volicord-redaction-secret"
 }
 
 fn status_include() -> StatusInclude {
