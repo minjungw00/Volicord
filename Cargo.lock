@@ -180,105 +180,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "harness-cli"
-version = "0.1.0"
-dependencies = [
- "harness-store",
- "harness-test-support",
- "harness-types",
- "rusqlite",
- "serde_json",
- "sha2",
- "toml_edit",
-]
-
-[[package]]
-name = "harness-conformance-tests"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "harness-core",
- "harness-test-support",
- "harness-types",
- "serde_json",
-]
-
-[[package]]
-name = "harness-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "harness-store",
- "harness-test-support",
- "harness-types",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
-name = "harness-integration-tests"
-version = "0.1.0"
-dependencies = [
- "harness-core",
- "harness-mcp",
- "harness-store",
- "harness-test-support",
- "harness-types",
- "rusqlite",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "harness-mcp"
-version = "0.1.0"
-dependencies = [
- "harness-core",
- "harness-store",
- "harness-test-support",
- "harness-types",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "harness-store"
-version = "0.1.0"
-dependencies = [
- "harness-test-support",
- "harness-types",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
-name = "harness-test-support"
-version = "0.1.0"
-dependencies = [
- "harness-store",
- "harness-types",
- "rusqlite",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "harness-types"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "getrandom",
- "schemars",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -704,6 +605,105 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "volicord-cli"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "toml_edit",
+ "volicord-store",
+ "volicord-test-support",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-conformance-tests"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+ "volicord-core",
+ "volicord-test-support",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "volicord-store",
+ "volicord-test-support",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "volicord-core",
+ "volicord-mcp",
+ "volicord-store",
+ "volicord-test-support",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-mcp"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "volicord-core",
+ "volicord-store",
+ "volicord-test-support",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-store"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "volicord-test-support",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-test-support"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+ "volicord-store",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-types"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "getrandom",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2",
+]
 
 [[package]]
 name = "wasip2"

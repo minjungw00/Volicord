@@ -1,16 +1,16 @@
 [package]
-name = "harness-integration-tests"
+name = "volicord-integration-tests"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish = false
 
 [dev-dependencies]
-harness-core = { path = "../../crates/harness-core" }
-harness-mcp = { path = "../../crates/harness-mcp" }
-harness-store = { path = "../../crates/harness-store" }
-harness-test-support = { path = "../../crates/harness-test-support" }
-harness-types = { path = "../../crates/harness-types" }
+volicord-core = { path = "../../crates/volicord-core" }
+volicord-mcp = { path = "../../crates/volicord-mcp" }
+volicord-store = { path = "../../crates/volicord-store" }
+volicord-test-support = { path = "../../crates/volicord-test-support" }
+volicord-types = { path = "../../crates/volicord-types" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = "1"
 serde_json = "1"

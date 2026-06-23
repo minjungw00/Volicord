@@ -1,23 +1,23 @@
 use std::{error::Error, fs, path::Path};
 
 use chrono::{DateTime, Duration, Utc};
-use harness_core::{
+use serde_json::{json, Value};
+use volicord_core::{
     rejected_response, tool_error, AdapterSessionBinding, Clock, CoreService, InvocationContext,
 };
-use harness_test_support::core_fixtures::{
+use volicord_test_support::core_fixtures::{
     answer_payload, artifact_input_for_handle, supported_evidence_update,
     unsupported_evidence_update, ArtifactOwnerJsonColumn, ChangeUnitOwnerJsonColumn,
     CloseTaskFixture, CoreFixture, EvidenceSummaryOwnerJsonColumn, RecordJudgmentFixture,
     TaskOwnerJsonColumn, UpdateScopeFixture, UserJudgmentFixture, DEFAULT_PRODUCT_PATH,
 };
-use harness_types::{
+use volicord_types::{
     AccessClass, ArtifactInput, ArtifactInputId, ArtifactInputSourceKind, ArtifactRef,
     ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, EffectKind, ErrorCode,
     JudgmentKind, ResidualRiskInput, ResponseKind, RunId, StagedArtifactHandle, StateRecordKind,
     StateRecordRef, StatusRequest, UtcTimestamp, WriteAuthorizationId,
     VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
-use serde_json::{json, Value};
 
 #[test]
 fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), Box<dyn Error>> {
@@ -107,9 +107,9 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
         fixture.status_request("req_status_wrong_surface", Some(&task_id)),
         InvocationContext {
             binding: AdapterSessionBinding::new(
-                harness_types::ProjectId::new(fixture.project_id()),
-                harness_types::SurfaceId::new(fixture.surface_id()),
-                harness_types::SurfaceInstanceId::new("missing_surface_instance"),
+                volicord_types::ProjectId::new(fixture.project_id()),
+                volicord_types::SurfaceId::new(fixture.surface_id()),
+                volicord_types::SurfaceInstanceId::new("missing_surface_instance"),
                 VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
             ),
             requested_access_class: AccessClass::ReadStatus,
@@ -2071,7 +2071,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         judgment_kind: JudgmentKind::FinalAcceptance,
         answer: answer_payload(JudgmentKind::FinalAcceptance),
     });
-    agent_record.envelope.actor_kind = harness_types::ActorKind::Agent;
+    agent_record.envelope.actor_kind = volicord_types::ActorKind::Agent;
     let before_agent_record = actor_fixture.counts()?;
     let agent_rejected = actor_service.record_user_judgment(
         agent_record,
@@ -2237,7 +2237,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         judgment_kind: JudgmentKind::ScopeDecision,
         answer: answer_payload(JudgmentKind::ScopeDecision),
     });
-    request.selected_option_id = harness_types::UserJudgmentOptionId::new("reject");
+    request.selected_option_id = volicord_types::UserJudgmentOptionId::new("reject");
     let before = conflict_fixture.counts()?;
     let rejected = conflict_service.record_user_judgment(
         request,
@@ -2266,7 +2266,7 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         .expect("record judgment request should be an object")
         .remove("selected_option_id");
     assert!(
-        serde_json::from_value::<harness_types::RecordUserJudgmentRequest>(missing_selected)
+        serde_json::from_value::<volicord_types::RecordUserJudgmentRequest>(missing_selected)
             .is_err()
     );
     Ok(())
@@ -2655,7 +2655,7 @@ fn cancellation_and_pending_relevance_are_operation_specific() -> Result<(), Box
         change_unit_id: Some(&change_unit_id),
         judgment_kind: JudgmentKind::TechnicalDecision,
     });
-    info_request.required_for = vec![harness_types::JudgmentRequiredFor::Informational];
+    info_request.required_for = vec![volicord_types::JudgmentRequiredFor::Informational];
     info_service.request_user_judgment(
         info_request,
         invocation(&info_fixture, AccessClass::CoreMutation),
@@ -3509,9 +3509,9 @@ fn core(fixture: &CoreFixture) -> CoreService {
 fn invocation(fixture: &CoreFixture, access_class: AccessClass) -> InvocationContext {
     InvocationContext {
         binding: AdapterSessionBinding::new(
-            harness_types::ProjectId::new(fixture.project_id()),
-            harness_types::SurfaceId::new(fixture.surface_id()),
-            harness_types::SurfaceInstanceId::new(fixture.surface_instance_id()),
+            volicord_types::ProjectId::new(fixture.project_id()),
+            volicord_types::SurfaceId::new(fixture.surface_id()),
+            volicord_types::SurfaceInstanceId::new(fixture.surface_instance_id()),
             VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
         ),
         requested_access_class: access_class,
@@ -3650,7 +3650,7 @@ fn product_write_run(
     task_id: &str,
     change_unit_id: &str,
     write_authorization_id: &str,
-) -> harness_types::RecordRunRequest {
+) -> volicord_types::RecordRunRequest {
     let mut request = fixture.record_run_request(
         request_id,
         idempotency_key,
@@ -3849,7 +3849,7 @@ fn record_authority_judgment_with_option(
     suffix: &str,
     judgment_kind: JudgmentKind,
     selected_option_id: &str,
-    answer: harness_types::RecordUserJudgmentPayload,
+    answer: volicord_types::RecordUserJudgmentPayload,
 ) -> Result<(u64, String), Box<dyn Error>> {
     let judgment = service.request_user_judgment(
         fixture.user_judgment_request(UserJudgmentFixture {
@@ -3874,7 +3874,7 @@ fn record_authority_judgment_with_option(
         judgment_kind,
         answer,
     });
-    request.selected_option_id = harness_types::UserJudgmentOptionId::new(selected_option_id);
+    request.selected_option_id = volicord_types::UserJudgmentOptionId::new(selected_option_id);
     let response =
         service.record_user_judgment(request, invocation(fixture, AccessClass::CoreMutation))?;
     assert_eq!(response.response_value["base"]["response_kind"], "result");
@@ -3961,7 +3961,7 @@ fn residual_risk_input(summary: &str) -> ResidualRiskInput {
 
 fn residual_risk_acceptance_payload(
     risk_ids: &[String],
-) -> harness_types::RecordUserJudgmentPayload {
+) -> volicord_types::RecordUserJudgmentPayload {
     let mut payload = answer_payload(JudgmentKind::ResidualRiskAcceptance);
     payload.residual_risk_acceptance = Some(json_object(json!({ "risk_ids": risk_ids }))).into();
     payload
@@ -3970,7 +3970,7 @@ fn residual_risk_acceptance_payload(
 fn rejected_authority_answer_payload(
     judgment_kind: JudgmentKind,
     risk_ids: &[String],
-) -> harness_types::RecordUserJudgmentPayload {
+) -> volicord_types::RecordUserJudgmentPayload {
     let mut payload = answer_payload(judgment_kind);
     match judgment_kind {
         JudgmentKind::ScopeDecision => {
@@ -4013,7 +4013,7 @@ fn rejected_authority_answer_payload(
 
 fn assert_sensitive_approval_mismatch<F>(suffix: &str, mutate: F) -> Result<(), Box<dyn Error>>
 where
-    F: FnOnce(&mut harness_types::PrepareWriteRequest),
+    F: FnOnce(&mut volicord_types::PrepareWriteRequest),
 {
     let fixture = CoreFixture::new(&format!("compat_sensitive_{suffix}"))?;
     let service = core(&fixture);
@@ -4186,12 +4186,12 @@ fn artifact_state_ref(
     task_id: &str,
     artifact_id: &str,
     state_version: u64,
-) -> harness_types::StateRecordRef {
-    harness_types::StateRecordRef {
-        record_kind: harness_types::StateRecordKind::Artifact,
-        record_id: harness_types::RecordId::new(artifact_id),
-        project_id: harness_types::ProjectId::new(fixture.project_id()),
-        task_id: Some(harness_types::TaskId::new(task_id)).into(),
+) -> volicord_types::StateRecordRef {
+    volicord_types::StateRecordRef {
+        record_kind: volicord_types::StateRecordKind::Artifact,
+        record_id: volicord_types::RecordId::new(artifact_id),
+        project_id: volicord_types::ProjectId::new(fixture.project_id()),
+        task_id: Some(volicord_types::TaskId::new(task_id)).into(),
         state_version: Some(state_version).into(),
     }
 }
@@ -4223,9 +4223,9 @@ fn state_record_ref_with_project(
 ) -> StateRecordRef {
     StateRecordRef {
         record_kind,
-        record_id: harness_types::RecordId::new(record_id),
-        project_id: harness_types::ProjectId::new(project_id),
-        task_id: Some(harness_types::TaskId::new(task_id)).into(),
+        record_id: volicord_types::RecordId::new(record_id),
+        project_id: volicord_types::ProjectId::new(project_id),
+        task_id: Some(volicord_types::TaskId::new(task_id)).into(),
         state_version: state_version.into(),
     }
 }

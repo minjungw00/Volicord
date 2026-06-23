@@ -1,0 +1,19 @@
+[package]
+name = "volicord-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+volicord-core = { path = "../volicord-core" }
+volicord-store = { path = "../volicord-store" }
+volicord-types = { path = "../volicord-types" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+volicord-test-support = { path = "../volicord-test-support" }
+
+[lib]
+path = "src/lib.rs"

@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "crates/harness-types",
-    "crates/harness-store",
-    "crates/harness-core",
-    "crates/harness-cli",
-    "crates/harness-mcp",
-    "crates/harness-test-support",
+    "crates/volicord-types",
+    "crates/volicord-store",
+    "crates/volicord-core",
+    "crates/volicord-cli",
+    "crates/volicord-mcp",
+    "crates/volicord-test-support",
     "tests/conformance",
     "tests/integration",
     "xtask",

@@ -1,0 +1,22 @@
+[package]
+name = "volicord-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+volicord-store = { path = "../volicord-store" }
+volicord-types = { path = "../volicord-types" }
+serde_json = "1"
+sha2 = "0.10"
+toml_edit = "0.22"
+
+[dev-dependencies]
+volicord-store = { path = "../volicord-store", features = ["test-support"] }
+volicord-test-support = { path = "../volicord-test-support" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[[bin]]
+name = "volicord"
+path = "src/main.rs"

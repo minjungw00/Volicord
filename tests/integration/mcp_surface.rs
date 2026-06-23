@@ -7,12 +7,13 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use harness_core::{AdapterSessionBinding, CoreService, InvocationContext};
-use harness_mcp::{
+use serde_json::{json, Value};
+use volicord_core::{AdapterSessionBinding, CoreService, InvocationContext};
+use volicord_mcp::{
     public_method_tools, run_stdio, McpAdapter, McpIntegrationContext, ADAPTER_UTILITY_TOOL_NAMES,
     PUBLIC_METHOD_TOOL_NAMES,
 };
-use harness_store::{
+use volicord_store::{
     agent_integrations::{
         add_integration_project, register_agent_integration, AgentIntegrationRegistration,
         IntegrationProjectRegistration,
@@ -24,18 +25,17 @@ use harness_store::{
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
     sqlite::registry_db_path,
 };
-use harness_test_support::core_fixtures::{
+use volicord_test_support::core_fixtures::{
     answer_payload, artifact_input_for_handle, supported_evidence_update, CloseTaskFixture,
     CoreFixture, RecordJudgmentFixture, UpdateScopeFixture, UserJudgmentFixture,
     DEFAULT_PRODUCT_PATH,
 };
-use harness_types::{
+use volicord_types::{
     AccessClass, ChangeUnitOperation, CloseAssessmentInput, CloseIntent, CloseReason, JudgmentKind,
     ProjectId, ResidualRiskInput, StagedArtifactHandle, StatusInclude, SurfaceId,
     SurfaceInstanceId, SurfaceInteractionRole, WriteAuthorizationId,
     VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION, VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
-use serde_json::{json, Value};
 
 static NEXT_INTEGRATION_SUFFIX: AtomicUsize = AtomicUsize::new(0);
 
@@ -437,7 +437,7 @@ fn deleted_bound_surface_fails_later_calls_closed_without_effect() -> Result<(),
 
     assert!(matches!(
         error,
-        harness_mcp::McpAdapterError::ToolExecution { .. }
+        volicord_mcp::McpAdapterError::ToolExecution { .. }
     ));
     assert!(error.to_string().contains("surface instance"));
     assert_eq!(fixture.counts()?, before);
@@ -1367,7 +1367,7 @@ fn close_task_access_derives_from_typed_intent() -> Result<(), Box<dyn Error>> {
                 expected_state_version: None,
                 task_id: &task_id,
                 intent: CloseIntent::Complete,
-                close_reason: Some(harness_types::CloseReason::CompletedSelfChecked),
+                close_reason: Some(volicord_types::CloseReason::CompletedSelfChecked),
                 superseding_task_id: None,
             }))?,
         )
@@ -1387,7 +1387,7 @@ fn close_task_access_derives_from_typed_intent() -> Result<(), Box<dyn Error>> {
             expected_state_version: None,
             task_id: &task_id,
             intent: CloseIntent::Complete,
-            close_reason: Some(harness_types::CloseReason::CompletedSelfChecked),
+            close_reason: Some(volicord_types::CloseReason::CompletedSelfChecked),
             superseding_task_id: None,
         }))?,
     )?;
@@ -1563,7 +1563,7 @@ fn invalid_mcp_authority_fields_are_rejected_before_core() -> Result<(), Box<dyn
 
         assert!(matches!(
             error,
-            harness_mcp::McpAdapterError::InvalidParams { .. }
+            volicord_mcp::McpAdapterError::InvalidParams { .. }
         ));
         assert_eq!(
             fixture.counts()?,
@@ -2266,10 +2266,10 @@ fn assert_rejected_field(response: &Value, field: &str) {
     assert_eq!(response["errors"][0]["details"]["field"], field);
 }
 
-fn assert_tool_execution_error(error: &harness_mcp::McpAdapterError, needle: &str) {
+fn assert_tool_execution_error(error: &volicord_mcp::McpAdapterError, needle: &str) {
     assert!(matches!(
         error,
-        harness_mcp::McpAdapterError::ToolExecution { .. }
+        volicord_mcp::McpAdapterError::ToolExecution { .. }
     ));
     assert!(
         error.to_string().contains(needle),
