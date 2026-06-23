@@ -24,7 +24,9 @@ export HARNESS_BIN="$(pwd)/target/debug"
 
 관리 명령은 `"$HARNESS_BIN/harness"`를 사용합니다. 사용자 범위 Codex, 로컬 범위 Claude Code, generic export 예시는 `--mcp-command "$HARNESS_BIN/harness-mcp"`를 전달해 생성 설정이 해석된 절대 실행 파일 경로를 저장하게 합니다. 프로젝트 범위 예시는 생성되는 프로젝트 파일이 이식 가능하도록 `PATH="$HARNESS_BIN:$PATH"`와 `--mcp-command harness-mcp`를 사용합니다.
 
-아래 생성 설정 예시에서 `/absolute/path/to/selected/bin/harness-mcp`는 선택한 경로가 해석된 값을 나타내는 자리표시자입니다. 실제 생성 설정에는 사용자, 로컬, export 범위에서는 확장된 경로가, 프로젝트 범위에서는 이식 가능한 명령이 들어가며 문자 그대로의 `HARNESS_BIN` 변수는 들어가지 않습니다.
+관리용 `harness agent install` 또는 `harness agent verify` 명령에 붙인 인라인 `PATH`와 `HARNESS_HOME` 값은 그 명령 실행과 그 명령의 점검에만 적용됩니다. 이후 Codex나 Claude Code 프로세스에 저장되지 않습니다. 프로젝트 범위 호스트 프로세스는 나중에 `harness-mcp`를 `PATH`에서 찾을 수 있는 셸, 실행기, 서비스 설정, 사용자 환경, 또는 그에 준하는 실행 환경에서 시작해야 합니다. 기본값이 아닌 `Harness Runtime Home`이 필요하면 같은 호스트 프로세스 환경이 `HARNESS_HOME`도 제공해야 합니다.
+
+아래 생성 설정 예시에서 `/absolute/path/to/selected/bin/harness-mcp`는 선택한 경로가 해석된 값을 나타내는 자리표시자입니다. 실제 생성 설정에는 사용자, 로컬, export 범위에서는 확장된 경로가, 프로젝트 범위에서는 이식 가능한 명령이 들어가며 문자 그대로의 `HARNESS_BIN` 변수는 들어가지 않습니다. 프로젝트 범위 공유 설정은 개인 빌드 경로와 개인 `HARNESS_HOME`을 의도적으로 생략합니다.
 
 ## 책임
 
@@ -33,7 +35,7 @@ export HARNESS_BIN="$(pwd)/target/debug"
 | 하네스 설치 | `harness`와 `harness-mcp` 실행 파일. | 소스 빌드는 `target/` 아래에 쓰고, 설치된 실행 파일은 다른 위치에 있을 수 있습니다. |
 | `Harness Runtime Home` | 프로젝트 registry, Agent Integration Profile, integration project membership, Host Installation inventory, 하네스 런타임 데이터. | 모든 `Product Repository`와 분리해 둡니다. |
 | `Product Repository` | 제품 파일과 명시적으로 선택한 프로젝트 범위 통합 파일. | 하네스 런타임 데이터베이스와 런타임 기록은 여기에 저장하지 않습니다. |
-| Codex 또는 Claude Code | 호스트 설정, 프로젝트 신뢰, 프로젝트 MCP 승인, 재로드/재시작 동작, 모델의 도구 선택. | 하네스는 호스트가 소유한 결정을 우회할 수 없습니다. |
+| Codex 또는 Claude Code | 호스트 설정, 프로젝트 신뢰, 프로젝트 MCP 승인, 재로드/재시작 동작, MCP 서버를 시작할 때 쓰는 환경, 모델의 도구 선택. | 하네스는 호스트가 소유한 결정을 우회할 수 없습니다. |
 | `harness-mcp` 프로세스 | `--integration <integration_id>`로 시작되는 하나의 통합 바인딩 stdio 서버. | 프로젝트 선택은 공개 도구 호출마다 일어납니다. |
 
 ## 설정 순서
@@ -122,7 +124,7 @@ HARNESS_HOME = "/Users/alex/.harness"
 
 실제 생성되는 `command` 값은 `HARNESS_BIN`으로 선택한 경로가 해석된 절대 경로입니다. 생성된 TOML에는 `HARNESS_BIN`이 들어가지 않습니다.
 
-Codex 프로젝트 범위도 지원되지만 `/work/acme-api/.codex/config.toml`에 쓰고, 비대화형 실행에서는 `--allow-repository-write`가 필요하며, `PATH`의 `harness-mcp`를 사용합니다. Codex가 프로젝트를 신뢰할 때까지 `action_required`를 보고할 수 있습니다.
+Codex 프로젝트 범위도 지원되지만 `/work/acme-api/.codex/config.toml`에 쓰고, 비대화형 실행에서는 `--allow-repository-write`가 필요하며, `PATH`의 `harness-mcp`를 사용합니다. Codex가 프로젝트를 신뢰할 때까지 `action_required`를 보고할 수 있습니다. 생성되는 프로젝트 항목은 `command = "harness-mcp"`와 개인 `HARNESS_HOME` 없는 이식 가능한 형태로 남습니다. 해당 프로젝트의 Codex는 `PATH`에서 `harness-mcp`를 찾을 수 있는 환경에서 시작하거나 재시작하고, 통합이 기본값이 아닌 Runtime Home을 사용한다면 그 환경에서 `HARNESS_HOME`을 제공해야 합니다. 이 값을 `harness agent install` 또는 `harness agent verify`에만 설정하면 그 관리 명령 실행에만 영향을 주며 나중의 Codex 프로세스에는 적용되지 않습니다.
 
 ## Claude Code 프로젝트 또는 로컬 설치
 
@@ -154,6 +156,8 @@ PATH="$HARNESS_BIN:$PATH" \
   }
 }
 ```
+
+`.mcp.json` 항목은 의도적으로 이식 가능하게 유지됩니다. `harness-mcp`를 저장하고 개인 `HARNESS_HOME`은 저장하지 않습니다. 설치 명령의 인라인 `HARNESS_HOME`과 `PATH`는 그 관리 명령이 `/Users/alex/.harness`를 선택하고 사전 점검에서 소스 빌드 `harness-mcp`를 찾게 해 줍니다. 이 값들은 Claude Code에 지속되지 않습니다. Claude Code는 `harness-mcp`를 찾을 수 있는 환경에서 시작하거나 재시작해야 하며, 이 기본값이 아닌 Runtime Home에는 `HARNESS_HOME=/Users/alex/.harness`도 같은 환경에서 제공해야 합니다.
 
 Claude Code는 보통 프로젝트 범위 `.mcp.json` 서버를 로드하기 전에 프로젝트 MCP 승인을 요구합니다. 이 결과는 `action_required`입니다.
 
@@ -235,7 +239,7 @@ Registry와 host inventory를 점검합니다.
   --runtime-home /Users/alex/.harness
 ```
 
-검증을 새로고침합니다. 호스트 설정이 이식 가능한 `harness-mcp` 명령을 저장한 설치를 검증할 때는 선택한 디렉터리를 `PATH`에 둡니다.
+검증을 새로고침합니다. 이것도 별도의 관리 명령 실행입니다. Runtime Home은 `--runtime-home`이나 `HARNESS_HOME`으로 이 명령에 제공하고, 호스트 설정이 이식 가능한 `harness-mcp` 명령을 저장한 설치를 검증할 때는 선택한 디렉터리를 `PATH`에 둡니다. 이 값들은 검증 명령이 자체 점검을 시작하게 해 주지만, 이후 Codex나 Claude Code 시작 환경을 갱신하지는 않습니다.
 
 ```sh
 PATH="$HARNESS_BIN:$PATH" \

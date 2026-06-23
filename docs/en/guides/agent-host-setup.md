@@ -24,7 +24,9 @@ Replace `/absolute/path/to/selected/bin` with your real selected directory; do n
 
 Administrative commands use `"$HARNESS_BIN/harness"`. User-scope Codex, local-scope Claude Code, and generic export examples pass `--mcp-command "$HARNESS_BIN/harness-mcp"` so generated configuration stores the resolved absolute executable path. Project-scope examples keep generated project files portable by running with `PATH="$HARNESS_BIN:$PATH"` and `--mcp-command harness-mcp`.
 
-Generated configuration examples below use `/absolute/path/to/selected/bin/harness-mcp` to stand in for the resolved selected path. Actual generated configuration contains the expanded path for user, local, and export scope, or the portable command for project scope, not the literal `HARNESS_BIN` variable.
+The inline `PATH` and `HARNESS_HOME` values on an administrative `harness agent install` or `harness agent verify` command apply to that command invocation and its checks. They are not persisted for later Codex or Claude Code processes. A project-scoped host process must later start from a shell, launcher, service configuration, user environment, or equivalent execution environment whose `PATH` resolves `harness-mcp`; when a non-default `Harness Runtime Home` is required, that same host process environment must provide `HARNESS_HOME`.
+
+Generated configuration examples below use `/absolute/path/to/selected/bin/harness-mcp` to stand in for the resolved selected path. Actual generated configuration contains the expanded path for user, local, and export scope, or the portable command for project scope, not the literal `HARNESS_BIN` variable. Project-scoped shared configuration intentionally omits personal build paths and personal `HARNESS_HOME`.
 
 ## Responsibilities
 
@@ -33,7 +35,7 @@ Generated configuration examples below use `/absolute/path/to/selected/bin/harne
 | Harness installation | `harness` and `harness-mcp` executables. | Source builds write under `target/`; installed executables may live elsewhere. |
 | `Harness Runtime Home` | Project registry, Agent Integration Profiles, integration project memberships, Host Installation inventory, and Harness runtime data. | Keep it separate from every `Product Repository`. |
 | `Product Repository` | Product files and explicitly selected project-scoped integration files. | Harness runtime databases and runtime records are never stored there. |
-| Codex or Claude Code | Host configuration, project trust, project MCP approval, reload/restart behavior, and model tool choice. | Harness cannot bypass host-owned decisions. |
+| Codex or Claude Code | Host configuration, project trust, project MCP approval, reload/restart behavior, the environment used when starting MCP servers, and model tool choice. | Harness cannot bypass host-owned decisions. |
 | `harness-mcp` process | One integration-bound stdio server started with `--integration <integration_id>`. | Project selection happens per public tool call. |
 
 ## Setup Sequence
@@ -122,7 +124,7 @@ HARNESS_HOME = "/Users/alex/.harness"
 
 The actual generated `command` value is the resolved absolute path selected through `HARNESS_BIN`; generated TOML does not contain `HARNESS_BIN`.
 
-Codex project scope is also supported, but it writes `/work/acme-api/.codex/config.toml`, requires `--allow-repository-write` in noninteractive execution, uses `harness-mcp` from `PATH`, and may report `action_required` until Codex trusts the project.
+Codex project scope is also supported, but it writes `/work/acme-api/.codex/config.toml`, requires `--allow-repository-write` in noninteractive execution, uses `harness-mcp` from `PATH`, and may report `action_required` until Codex trusts the project. The generated project entry stays portable with `command = "harness-mcp"` and no personal `HARNESS_HOME`. Launch or restart Codex for that project from an environment whose `PATH` resolves `harness-mcp`, and provide `HARNESS_HOME` there when the integration uses a non-default Runtime Home. Setting those values only on `harness agent install` or `harness agent verify` affects those administrative invocations, not later Codex processes.
 
 ## Claude Code Project Or Local Install
 
@@ -154,6 +156,8 @@ Expected `.mcp.json` shape:
   }
 }
 ```
+
+The `.mcp.json` entry intentionally stays portable: it stores `harness-mcp` and no personal `HARNESS_HOME`. The inline `HARNESS_HOME` and `PATH` on the install command let that administrative command select `/Users/alex/.harness` and find a source-built `harness-mcp` for preflight. They do not persist into Claude Code. Start or restart Claude Code from an environment that can resolve `harness-mcp`, and for this non-default Runtime Home also provides `HARNESS_HOME=/Users/alex/.harness`.
 
 Claude Code normally requires project MCP approval before it loads a project-scoped `.mcp.json` server. That result is `action_required`.
 
@@ -235,7 +239,7 @@ Inspect registry and host inventory:
   --runtime-home /Users/alex/.harness
 ```
 
-Refresh verification. Keep the selected directory on `PATH` when verifying an installation whose host configuration stores the portable `harness-mcp` command:
+Refresh verification. This is another administrative invocation: provide its Runtime Home with `--runtime-home` or `HARNESS_HOME`, and keep the selected directory on `PATH` when verifying an installation whose host configuration stores the portable `harness-mcp` command. These values let verification launch its own check; they do not update future Codex or Claude Code startup environments.
 
 ```sh
 PATH="$HARNESS_BIN:$PATH" \

@@ -123,9 +123,14 @@ status: action_required
 verification_detail: Claude Code requires user approval before project-scoped .mcp.json servers load
 ```
 
-`action_required` is a successful administrative result. Complete the named
-host action in Codex or Claude Code, then verify with the selected directory
-still on `PATH`:
+`action_required` is a successful administrative result. The inline
+`HARNESS_HOME` and `PATH` values above apply to the install command only. The
+shared project configuration stays portable: it stores `harness-mcp` and does
+not embed a personal `HARNESS_HOME`. When Claude Code later starts the MCP
+server, its own launch environment must find `harness-mcp` on `PATH` and, for
+this non-default Runtime Home, provide `HARNESS_HOME=/Users/alex/.harness`.
+Complete the named host action in Codex or Claude Code, then verify with those
+values available to the verification command:
 
 ```sh
 HARNESS_HOME=/Users/alex/.harness \
