@@ -109,8 +109,8 @@ Scope rules:
 
 Host configuration shape:
 
-- Codex installation writes an MCP server table equivalent to `[mcp_servers.<server_name>]` with `command`, `args = ["--integration", "<integration_id>"]`, and optional `env.HARNESS_HOME`.
-- Claude Code installation writes an MCP server entry under `mcpServers.<server_name>` with `command`, `args`, and optional `env.HARNESS_HOME`.
+- Codex installation writes an MCP server table equivalent to `[mcp_servers.<server_name>]` with `command`, `args = ["--integration", "<integration_id>"]`, and optional `env.HARNESS_HOME` when the selected host scope permits persisting the selected Runtime Home path.
+- Claude Code installation writes an MCP server entry under `mcpServers.<server_name>` with `command`, `args`, and optional `env.HARNESS_HOME` when the selected host scope permits persisting the selected Runtime Home path.
 - Generic export emits the same command, args, and environment values in a host-neutral JSON object.
 - User and local scopes may use a discovered canonical `harness-mcp` executable path or an explicit valid absolute path.
 - Project-scoped shared configuration must use the portable command `harness-mcp` and rely on `PATH` in the host environment. It must not embed a personal build path, home-directory path, or personal `HARNESS_HOME`.
@@ -164,7 +164,7 @@ Optional behavior:
 - `--repo-root` validates the associated `Product Repository` for project/local scope when a host target writes there.
 - `--surface-id` and `--surface-instance-id` select the integration surface binding. When omitted, the CLI generates stable opaque ids and reports them.
 - `--mcp-command` selects the `harness-mcp` executable for scopes that permit an explicit command path. User and local scopes require an existing absolute path when specified. Project scope uses `harness-mcp` from `PATH`; generic export requires an absolute command path when the command is explicit.
-- `--runtime-home` selects the Runtime Home path to write into host configuration as `HARNESS_HOME`.
+- `--runtime-home` selects the `Harness Runtime Home` used by the administrative command. For non-project host scopes, the selected Runtime Home may be persisted in managed host configuration as `HARNESS_HOME`. For project scope, shared host configuration must not embed a developer-specific Runtime Home path; a project-scoped host process that must use a non-default Runtime Home must receive `HARNESS_HOME` through its actual execution environment. An environment variable set only for the administrative installation command is not automatically inherited by future host processes.
 - `--guidance none|codex|claude-code|claude_code|both` previews and applies optional `Product Repository` guidance for the selected project. Omitted or `none` writes no guidance, and noninteractive guidance writes still require `--allow-repository-write`.
 
 Installation rules:
@@ -188,12 +188,14 @@ Verification:
 
 ## Integration project membership commands
 
-`harness agent project add` adds one allowed project to an existing integration.
+`harness agent project add` adds or restores one allowed project for an existing integration.
 
 Rules:
 
 - `--integration-id` and `--project-id` are required.
-- The project must already be registered in the selected Runtime Home with a valid current project registration.
+- If the project is already registered in the selected Runtime Home with a valid current project registration, the command reuses that registration.
+- If the project is not registered, the command can register it when the required `--repo-root` value is supplied, then add the integration membership and required project-facing state.
+- If the project is not registered and the required repository information is absent, the command fails instead of inventing a repository location.
 - Adding a project does not make inactive or otherwise execution-ineligible projects available at execution time.
 - `--default` sets the integration default to the added project.
 - Adding a second project to a `project` or `local` scoped integration is a conflict.
@@ -275,13 +277,15 @@ The aggregate status is never `complete` while any selected installation is not 
 
 ## Uninstall
 
-`harness agent uninstall` removes Harness-managed host configuration and optionally disables or removes registry inventory for the integration.
+`harness agent uninstall` removes the selected managed Host Installation or installations. A successful uninstall removes matching managed host configuration when ownership and safety checks permit removal, removes each corresponding Host Installation inventory record, and may disable the Agent Integration Profile when no Host Installations remain for that profile.
 
 Rules:
 
 - Uninstall must preview managed file edits before applying them.
 - It must remove only blocks, files, or entries with matching Harness ownership markers or managed fingerprints.
-- It must not delete a `Product Repository`, project state, Core records, Runtime Home, artifact store, or unrelated host configuration.
+- Each Host Installation inventory record for the selected managed installation or installations is removed when uninstall completes successfully.
+- If no Host Installations remain for the Agent Integration Profile after successful removal, the integration may be disabled. Disabling an Agent Integration Profile does not delete it.
+- It must not delete a `Product Repository`, project state, Core records, the `Harness Runtime Home` location itself, artifact storage, or unrelated host configuration.
 - Project-scoped file edits require `--allow-repository-write` in noninteractive execution.
 - `--remove-managed` is required for noninteractive removal of managed `Product Repository` guidance.
 - If host files were already changed by the user, uninstall must report the conflict rather than removing unrelated content.

@@ -110,8 +110,8 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 
 호스트 설정 형태:
 
-- Codex 설치는 `command`, `args = ["--integration", "<integration_id>"]`, 선택적 `env.HARNESS_HOME`을 가진 `[mcp_servers.<server_name>]`과 동등한 MCP 서버 테이블을 씁니다.
-- Claude Code 설치는 `command`, `args`, 선택적 `env.HARNESS_HOME`을 가진 `mcpServers.<server_name>` MCP 서버 항목을 씁니다.
+- Codex 설치는 선택한 호스트 범위가 선택된 Runtime Home 경로 저장을 허용할 때 선택적 `env.HARNESS_HOME`과 함께, `command`, `args = ["--integration", "<integration_id>"]`를 가진 `[mcp_servers.<server_name>]`와 동등한 MCP 서버 테이블을 씁니다.
+- Claude Code 설치는 선택한 호스트 범위가 선택된 Runtime Home 경로 저장을 허용할 때 선택적 `env.HARNESS_HOME`과 함께, `command`, `args`를 가진 `mcpServers.<server_name>` MCP 서버 항목을 씁니다.
 - Generic export는 같은 command, args, environment 값을 호스트 중립 JSON 객체로 출력합니다.
 - user와 local 범위는 정식으로 확인된 `harness-mcp` 실행 파일 경로나 명시적이고 유효한 절대 경로를 사용할 수 있습니다.
 - 프로젝트 범위 공유 설정은 호스트 환경의 `PATH`에서 찾을 수 있는 이식 가능한 `harness-mcp` 명령을 사용해야 합니다. 개인 빌드 경로, 홈 디렉터리 경로, 개인 `HARNESS_HOME`을 넣으면 안 됩니다.
@@ -166,7 +166,7 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 - `--repo-root`는 호스트 대상이 project/local 범위로 그곳에 쓸 때 연결된 `Product Repository`를 검증합니다.
 - `--surface-id`와 `--surface-instance-id`는 통합 접점 바인딩을 선택합니다. 생략하면 CLI가 안정적인 불투명 식별자를 생성하고 보고합니다.
 - `--mcp-command`는 명시적 명령 경로가 허용되는 범위에서 `harness-mcp` 실행 파일을 선택합니다. user와 local 범위는 이 옵션이 지정되면 존재하는 절대 경로를 요구합니다. project 범위는 `PATH`의 `harness-mcp`를 사용합니다. generic export는 명시적 명령을 지정할 때 절대 경로를 요구합니다.
-- `--runtime-home`은 호스트 설정에 `HARNESS_HOME`으로 쓸 Runtime Home 경로를 선택합니다.
+- `--runtime-home`은 관리 명령이 사용할 `Harness Runtime Home`을 선택합니다. `project`가 아닌 호스트 범위에서는 선택된 Runtime Home이 관리 호스트 설정에 `HARNESS_HOME`으로 저장될 수 있습니다. `project` 범위에서는 공유 호스트 설정에 개발자별 Runtime Home 경로를 넣으면 안 됩니다. 기본값이 아닌 Runtime Home을 사용해야 하는 `project` 범위 호스트 프로세스는 실제 실행 환경을 통해 `HARNESS_HOME`을 받아야 합니다. 관리 설치 명령에만 설정된 환경 변수는 이후 호스트 프로세스에 자동으로 상속되지 않습니다.
 - `--guidance none|codex|claude-code|claude_code|both`는 선택한 프로젝트의 선택적 `Product Repository` 지침을 미리 보여 주고 적용합니다. 생략하거나 `none`이면 지침을 쓰지 않으며, 비대화식 지침 쓰기에는 여전히 `--allow-repository-write`가 필요합니다.
 
 설치 규칙:
@@ -190,12 +190,14 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 
 ## 통합 프로젝트 멤버십 명령
 
-`harness agent project add`는 기존 통합에 허용 프로젝트 하나를 추가합니다.
+`harness agent project add`는 기존 통합에 허용 프로젝트 하나를 추가하거나 복원합니다.
 
 규칙:
 
 - `--integration-id`와 `--project-id`는 필수입니다.
-- 프로젝트는 선택된 Runtime Home에 유효한 현재 프로젝트 등록으로 이미 등록되어 있어야 합니다.
+- 프로젝트가 선택된 Runtime Home에 유효한 현재 프로젝트 등록으로 이미 등록되어 있으면 명령은 그 등록을 재사용합니다.
+- 프로젝트가 등록되어 있지 않으면, 필요한 `--repo-root` 값이 제공될 때 명령이 프로젝트를 등록한 뒤 통합 멤버십과 프로젝트 쪽에 필요한 상태를 추가할 수 있습니다.
+- 프로젝트가 등록되어 있지 않고 필요한 저장소 정보가 없으면 명령은 저장소 위치를 만들어 내지 않고 실패합니다.
 - 프로젝트를 추가해도 inactive이거나 그 밖의 이유로 실행 부적격인 프로젝트가 실행 시점에 사용 가능해지는 것은 아닙니다.
 - `--default`는 통합 기본값을 추가된 프로젝트로 설정합니다.
 - `project` 또는 `local` 범위 통합에 두 번째 프로젝트를 추가하는 것은 충돌입니다.
@@ -277,13 +279,15 @@ harness agent guidance remove --integration-id ID --project-id ID [--host codex|
 
 ## 제거
 
-`harness agent uninstall`은 하네스가 관리하는 호스트 설정을 제거하고, 선택적으로 통합의 레지스트리 인벤토리를 비활성화하거나 제거합니다.
+`harness agent uninstall`은 선택된 관리 Host Installation 하나 이상을 제거합니다. 성공한 제거는 소유권과 안전 점검이 허용할 때 일치하는 관리 호스트 설정을 제거하고, 해당하는 각 Host Installation 인벤토리 기록을 제거하며, 그 Agent Integration Profile에 남은 Host Installation이 없으면 Agent Integration Profile을 비활성화할 수 있습니다.
 
 규칙:
 
 - 제거는 적용 전에 관리 파일 편집을 미리 보여 줘야 합니다.
 - 일치하는 하네스 소유 마커 또는 관리 지문을 가진 블록, 파일, 항목만 제거해야 합니다.
-- `Product Repository`, 프로젝트 상태, Core 기록, Runtime Home, 아티팩트 저장소, 관련 없는 호스트 설정을 삭제하면 안 됩니다.
+- 선택된 관리 Host Installation의 각 인벤토리 기록은 제거가 성공적으로 끝날 때 제거됩니다.
+- 성공한 제거 뒤 Agent Integration Profile에 남은 Host Installation이 없으면 통합이 비활성화될 수 있습니다. Agent Integration Profile을 비활성화하는 것은 삭제하는 것이 아닙니다.
+- `Product Repository`, 프로젝트 상태, Core 기록, `Harness Runtime Home` 위치 자체, 아티팩트 저장소, 관련 없는 호스트 설정을 삭제하면 안 됩니다.
 - 프로젝트 범위 파일 편집은 비대화식 실행에서 `--allow-repository-write`를 요구합니다.
 - 관리되는 `Product Repository` 지침을 비대화식으로 제거하려면 `--remove-managed`가 필요합니다.
 - 사용자가 호스트 파일을 이미 바꾼 경우 제거는 관련 없는 내용을 제거하지 말고 충돌을 보고해야 합니다.
