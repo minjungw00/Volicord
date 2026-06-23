@@ -115,7 +115,7 @@ Prerequisites:
 
 - `HARNESS_BIN` names an absolute directory containing both executables.
 - `harness-mcp` will be available on the `PATH` that Claude Code will use when it starts MCP servers.
-- Because this example uses `/Users/alex/.harness` instead of the default Runtime Home, the Claude Code launch environment will provide `HARNESS_HOME=/Users/alex/.harness`.
+- If Claude Code would not otherwise resolve `/Users/alex/.harness` as its Runtime Home, its launch environment must provide `HARNESS_HOME=/Users/alex/.harness`.
 - Product Repository A is at `/work/acme-api`.
 - `/Users/alex/.harness` is separate from `/work/acme-api`.
 - You are willing to write `.mcp.json` in Product Repository A.
@@ -164,7 +164,7 @@ The generated `.mcp.json` entry has this shape:
 }
 ```
 
-The generated `.mcp.json` intentionally omits `HARNESS_HOME` and keeps the portable `harness-mcp` command. The `HARNESS_HOME` and `PATH` assignments on the install command apply only to that administrative invocation; when Claude Code later starts the server, its own launch environment must provide the non-default Runtime Home and must be able to find `harness-mcp` on `PATH`. If you use the default Runtime Home and `harness-mcp` is already on Claude Code's normal `PATH`, no extra explicit environment setup may be required.
+The generated `.mcp.json` intentionally omits `HARNESS_HOME` and keeps the portable `harness-mcp` command. The `HARNESS_HOME` and `PATH` assignments on the install command apply only to that administrative invocation; when Claude Code later starts the server, its own launch environment must be able to find `harness-mcp` on `PATH` and must provide `HARNESS_HOME` if it would otherwise resolve a different Runtime Home. If normal default resolution already selects the intended Runtime Home and `harness-mcp` is already on Claude Code's normal `PATH`, no extra explicit environment setup may be required.
 
 `action_required` is not a setup failure. Start or restart Claude Code in `/work/acme-api` from that environment, review and approve the project-scoped MCP server, then run a separate verification command with the same values available to that command:
 

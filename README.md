@@ -127,8 +127,9 @@ verification_detail: Claude Code requires user approval before project-scoped .m
 `HARNESS_HOME` and `PATH` values above apply to the install command only. The
 shared project configuration stays portable: it stores `harness-mcp` and does
 not embed a personal `HARNESS_HOME`. When Claude Code later starts the MCP
-server, its own launch environment must find `harness-mcp` on `PATH` and, for
-this non-default Runtime Home, provide `HARNESS_HOME=/Users/alex/.harness`.
+server, its own launch environment must find `harness-mcp` on `PATH`. If that
+environment would not otherwise resolve `/Users/alex/.harness` as the Runtime
+Home, provide `HARNESS_HOME=/Users/alex/.harness`.
 Complete the named host action in Codex or Claude Code, then verify with those
 values available to the verification command:
 
