@@ -6,6 +6,8 @@ Codex, Claude Code, 또는 아직 직접 지원하지 않는 호스트를 위한
 
 정확한 명령 동작은 [관리 CLI](../reference/admin-cli.md)가 담당합니다. 정확한 Agent Integration Profile, Host Installation, 프로젝트 선택, guidance 경계는 [에이전트 통합](../reference/agent-integration.md)이 담당합니다. 정확한 프로세스 동작은 [MCP 전송](../reference/mcp-transport.md)이 담당합니다. Runtime Home과 Product Repository 쓰기 경계는 [런타임 경계](../reference/runtime-boundaries.md)가 담당합니다.
 
+증상별 복구는 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md)을 사용합니다. 이 설정 가이드는 일반 운영 흐름을 먼저 유지합니다.
+
 ## 실행 파일 선택 규칙
 
 아래 명령 예시는 `harness`와 `harness-mcp`가 함께 들어 있는 절대 디렉터리 하나를 선택하고 현재 셸에서 내보냈다고 가정합니다.
@@ -64,6 +66,8 @@ export HARNESS_BIN="$(pwd)/target/debug"
 Codex project 범위는 Codex 프로젝트 신뢰를 확인할 수 없는 동안 `action_required`로 남습니다. Claude Code project 범위는 프로젝트 MCP 승인이 대기 중인 동안 `action_required`로 남습니다. 거절됨, 없음, 변경됨, 사용할 수 없음, 알 수 없음 호스트 상태는 `complete`가 아닙니다. Generic export는 하네스가 사용자가 관리하는 호스트가 내보낸 설정을 로드했다는 사실을 증명할 수 없으므로 `action_required`로 남습니다.
 
 `harness-mcp --check --integration <integration_id>`는 MCP 시작 검증일 뿐입니다. 하네스가 직접 시작한 MCP handshake는 Codex 또는 Claude Code가 서버를 로드, 신뢰, 승인, 노출했다는 증명이 아닙니다. 도구 발견이 성공해도 이후 모델이 매번 하네스 도구를 선택한다는 보장은 아닙니다. 저장소 guidance는 발견 가능성을 높이지만, 강제 장치가 아니라 조언 맥락입니다.
+
+결과가 `complete`가 아니면 쓰기 명령을 반복하기 전에 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md#status-action_required)에서 해당 상태나 관찰된 호스트 상태를 확인합니다.
 
 ## 쓰기 전 dry-run
 
@@ -272,16 +276,16 @@ HARNESS_HOME=/Users/alex/.harness \
 
 `--check`는 `configuration: valid`, `transport: stdio`, `integration_id`, 허용 프로젝트 수, `verification_scope: startup_check_only`를 보고해야 합니다. 호스트가 도구를 로드하거나 노출했다는 증명은 아닙니다.
 
-## 실패와 보상
+## 문제 해결 경로
 
-일부 지속 동작이 이미 일어난 뒤 설치나 검증이 실패하면 출력은 `failed`와 `partial_failure`를 구분합니다.
+설정이나 검증이 `complete`에 도달하지 않으면 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md)을 사용합니다.
 
-- `failed`는 요청한 동작이 사용할 수 있는 지속 통합 상태나 호스트 설정을 남기지 못했다는 뜻입니다.
-- `partial_failure`는 일부 지속 관리 동작은 성공했지만 뒤따르는 설치, 검증, 호스트 대상, 롤백, 정리 단계가 실패했다는 뜻입니다.
+- `action_required`는 보통 호스트 소유 trust, 승인, reload, restart, 실행 파일 가용성이 남았다는 뜻입니다. [`status: action_required`](agent-host-troubleshooting.md#status-action_required)에서 시작합니다.
+- `partial_failure`는 일부 지속 관리 동작이 성공한 뒤 나중 단계가 실패했다는 뜻입니다. [`status: partial_failure`](agent-host-troubleshooting.md#status-partial_failure)에서 시작하고 `effects`와 `residual_effects`를 확인합니다.
+- `failed`는 요청한 install 또는 verify가 사용할 수 있는 지속 통합 상태나 호스트 설정을 만들지 못했다는 뜻입니다. [`status: failed`](agent-host-troubleshooting.md#status-failed)에서 시작합니다.
+- 없는 실행 파일, 경로 실수, 호스트 파일 충돌, 빈 allowlist, 모호한 프로젝트 선택, 관리 fingerprint 충돌은 문제 해결 가이드에 각각 집중 복구 경로가 있습니다.
 
-사람용 출력은 `effects`와 `residual_effects`를 이름 붙이고, JSON 출력은 같은 사실을 기계 판독 항목으로 노출합니다. `effects`는 통합 기록, 프로젝트 allowlist, 기본 프로젝트, Host Installation inventory, 관리되는 호스트 설정, 관리되는 guidance 같은 적용 또는 롤백 대상들을 식별합니다. `residual_effects`는 남아 있는 정확한 대상과 운영자가 해야 할 일을 식별합니다.
-
-하네스는 새로 적용한 관리 효과를 안전하게 되돌릴 수 있을 때 되돌리려고 시도합니다. 하지만 스키마 마이그레이션, 기존 프로젝트 상태, Core 기록, 아티팩트 저장소, `Product Repository`, 사용자가 바꾼 호스트/guidance 내용은 자동 롤백하지 않습니다. 지문 또는 소유 마커 충돌은 수동으로 바뀐 호스트 설정과 guidance를 보호합니다. 하네스는 관련 없는 내용을 제거하지 않고 충돌을 보고합니다.
+Status inventory나 `harness-mcp --check`를 외부 호스트가 서버를 로드했다는 증거로 취급하지 않습니다. 호스트 소유 복구 동작을 끝낸 뒤 `harness agent verify`를 사용합니다.
 
 ## 안전한 제거
 
@@ -342,14 +346,7 @@ allowed_project_count: 0
 not executable until one is added
 ```
 
-허용 프로젝트가 없어도 Agent Integration Profile, Host Installation inventory, 호스트 설정은 남을 수 있지만, 이 저장 상태는 시작 자격이 아닙니다. 이미 실행 중인 MCP 프로세스는 멤버십을 새로 읽을 수 있고 `harness.list_projects`가 빈 목록을 반환할 수 있지만, 프로젝트 라우팅이 필요한 공개 도구는 진행할 수 없습니다. 새 MCP 시작, `harness-mcp --check`, 새 시작이 필요한 검증 경로는 프로젝트가 다시 추가되고 일반 설정 점검을 통과하기 전까지 실패합니다. 호스트 항목을 다시 설치하지 않고 프로젝트를 다시 추가합니다.
-
-```sh
-"$HARNESS_BIN/harness" agent project add \
-  --integration-id int-codex-team \
-  --project-id billing-api \
-  --runtime-home /Users/alex/.harness
-```
+허용 프로젝트가 없어도 Agent Integration Profile, Host Installation inventory, 호스트 설정은 남을 수 있지만, 이 저장 상태는 시작 자격이 아닙니다. 이 상태에서 복구하려면 [현재 허용 프로젝트가 없지만 호스트 설정이 남아 있음](agent-host-troubleshooting.md#host-config-remains-zero-projects)을 봅니다.
 
 관리되는 호스트 설정과 관리되는 guidance를 완전히 제거합니다.
 

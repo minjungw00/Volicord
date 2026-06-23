@@ -6,6 +6,8 @@ Start with [Installation](../getting-started/installation.md) to build or locate
 
 Exact command behavior belongs to [Administrative CLI](../reference/admin-cli.md). Exact Agent Integration Profile, Host Installation, project selection, and guidance boundaries belong to [Agent Integration](../reference/agent-integration.md). Exact process behavior belongs to [MCP Transport](../reference/mcp-transport.md). Runtime and Product Repository write boundaries belong to [Runtime Boundaries](../reference/runtime-boundaries.md).
 
+For symptom-specific recovery, use [Agent host troubleshooting](agent-host-troubleshooting.md). This setup guide keeps the normal operator flow first.
+
 ## Executable Convention
 
 The command examples assume you have selected one absolute directory containing both `harness` and `harness-mcp`, then exported it in the current shell:
@@ -64,6 +66,8 @@ For operators, `harness agent install` follows this durable order. The detailed 
 Codex project scope remains `action_required` while Codex project trust cannot be confirmed. Claude Code project scope remains `action_required` while project MCP approval is pending. Rejected, missing, changed, unavailable, and unknown host states are not `complete`. Generic export remains `action_required` because Harness cannot prove that a user-managed host loaded the exported configuration.
 
 `harness-mcp --check --integration <integration_id>` is only MCP startup validation. A direct Harness-spawned MCP handshake is not proof that Codex or Claude Code loaded, trusted, approved, or exposed the server. Tool discovery does not guarantee every future model decision will choose Harness tools. Repository guidance improves discoverability, but it is advisory context rather than enforcement.
+
+When a result is not `complete`, use [Agent host troubleshooting](agent-host-troubleshooting.md#status-action_required) for the matching status or observed host state before repeating a write command.
 
 ## Dry-Run Before Writes
 
@@ -272,16 +276,16 @@ HARNESS_HOME=/Users/alex/.harness \
 
 `--check` should report `configuration: valid`, `transport: stdio`, the `integration_id`, allowed project counts, and `verification_scope: startup_check_only`. It does not prove the host loaded or exposed tools.
 
-## Failure And Compensation
+## Troubleshooting Routing
 
-When installation or verification fails after some durable action has already happened, output distinguishes `failed` from `partial_failure`.
+Use [Agent host troubleshooting](agent-host-troubleshooting.md) when setup or verification does not reach `complete`.
 
-- `failed` means the requested operation did not leave usable durable integration state or host configuration.
-- `partial_failure` means some durable administrative action succeeded but a later install, verify, host target, rollback, or cleanup step failed.
+- `action_required` usually means host-owned trust, approval, reload, restart, or executable availability remains. Start with [`status: action_required`](agent-host-troubleshooting.md#status-action_required).
+- `partial_failure` means a durable administrative action succeeded before a later step failed. Start with [`status: partial_failure`](agent-host-troubleshooting.md#status-partial_failure) and inspect `effects` and `residual_effects`.
+- `failed` means the requested install or verification did not establish usable durable integration state or host configuration. Start with [`status: failed`](agent-host-troubleshooting.md#status-failed).
+- Missing executables, path mistakes, host file conflicts, empty allowlists, ambiguous project selection, and managed fingerprint conflicts each have focused recovery paths in the troubleshooting guide.
 
-Human-readable output names `effects` and `residual_effects`; JSON output exposes the same facts as machine-readable entries. `effects` identify applied or rolled-back targets such as the integration record, project allowlist, default project, Host Installation inventory, managed host configuration, or managed guidance. `residual_effects` identify exact targets that remain and the operator action to take.
-
-Harness attempts to reverse newly applied managed effects when it can do so safely. It deliberately does not roll back schema migrations, pre-existing project state, Core records, artifact storage, a `Product Repository`, or user-owned host/guidance edits. Fingerprint or ownership-marker conflicts protect manually changed host configuration and guidance; Harness reports the conflict instead of removing unrelated content.
+Do not treat status inventory or `harness-mcp --check` as proof that the external host loaded the server. Use `harness agent verify` after the host-owned recovery action has been completed.
 
 ## Safe Removal
 
@@ -342,14 +346,7 @@ allowed_project_count: 0
 not executable until one is added
 ```
 
-The Agent Integration Profile, Host Installation inventory, and host configuration can remain while no projects are allowed, but that retained state is not startup eligibility. An already running MCP process can refresh membership and `harness.list_projects` may return an empty list, but project-routed public tools cannot proceed. New MCP startup, `harness-mcp --check`, and verification paths that require new startup fail until a project is added again and normal configuration checks pass. Add a project again without reinstalling the host entry:
-
-```sh
-"$HARNESS_BIN/harness" agent project add \
-  --integration-id int-codex-team \
-  --project-id billing-api \
-  --runtime-home /Users/alex/.harness
-```
+The Agent Integration Profile, Host Installation inventory, and host configuration can remain while no projects are allowed, but that retained state is not startup eligibility. For recovery from this state, see [Host configuration remains while no project is currently allowed](agent-host-troubleshooting.md#host-config-remains-zero-projects).
 
 Fully remove managed host configuration and managed guidance:
 

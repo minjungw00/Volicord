@@ -22,6 +22,12 @@ flowchart LR
 
 프로젝트 및 로컬 호스트 범위는 단일 저장소 범위로 남습니다. 이 토폴로지에는 사용자 범위를 사용합니다.
 
+## 전제 조건과 완료 상태
+
+두 번째 저장소를 추가하기 전에 Product Repository A에 대한 사용자 범위 호스트 설정을 [에이전트 호스트 설정](agent-host-setup.md)에 따라 완료합니다. 통합은 `complete`일 수 있습니다. 또는 남은 동작이 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md#status-action_required)이 설명하는 호스트 소유 trust, 승인, reload, restart, 또는 그에 준하는 후속 조치일 때만 `action_required`일 수 있습니다.
+
+이 가이드는 하나의 사용자 범위 호스트 항목이 하나의 `integration_id`를 가리키고, 통합 allowlist가 의도한 저장소들을 포함하고, 에이전트가 다중 저장소 호출에 `harness.list_projects` 또는 명시적 `project_id`를 사용하고, 제거와 재추가가 호스트 파일 편집이 아니라 프로젝트 멤버십 명령으로 수행될 때 완료됩니다.
+
 ## 실행 파일 선택 규칙
 
 아래 명령 예시는 `harness`와 `harness-mcp`가 함께 들어 있는 절대 디렉터리 하나를 선택하고 현재 셸에서 내보냈다고 가정합니다.
@@ -220,6 +226,8 @@ resulting_default_project_id: billing-api
 
 여러 프로젝트가 남아 있는 동안 기본값을 지우면 생략된 `project_id` 호출은 모호해집니다. 에이전트는 `harness.list_projects`를 호출한 뒤 명시적 `envelope.project_id`로 다시 시도해야 합니다.
 
+이미 모호한 호출이 발생했다면 [여러 허용 프로젝트가 있지만 쓸 수 있는 selector나 default가 없음](agent-host-troubleshooting.md#ambiguous-project-selection)을 봅니다.
+
 ## 프로젝트 제거와 재추가
 
 기본값을 `billing-api`로 옮긴 뒤 Product Repository A는 예전에 기본값이던 프로젝트일 뿐입니다. 통합과 호스트 MCP 항목은 유지하면서 제거합니다.
@@ -262,6 +270,8 @@ not executable until one is added
 ```
 
 제거 뒤 Host Installation inventory와 호스트 설정은 남을 수 있지만, 이 저장 상태는 새 시작이 가능하다는 증명이 아닙니다. 이미 실행 중이던 `harness-mcp` 프로세스는 registry 상태를 새로 읽을 수 있으므로 `harness.list_projects`가 `int-codex-team`에 대해 빈 목록을 반환할 수 있습니다. 그래도 허용 프로젝트가 없으므로 프로젝트 라우팅이 필요한 공개 도구는 진행할 수 없습니다. 새로 시작하는 `harness-mcp` 프로세스, `harness-mcp --check`, 새 MCP 시작이 필요한 검증 경로는 프로젝트가 다시 추가되고 일반 설정 점검을 통과하기 전까지 실패합니다.
+
+이 상태의 문제 해결은 [현재 허용 프로젝트가 없지만 호스트 설정이 남아 있음](agent-host-troubleshooting.md#host-config-remains-zero-projects)을 봅니다.
 
 프로젝트가 없는 상태를 확인합니다.
 
@@ -310,6 +320,8 @@ not executable
 ```
 
 Uninstall은 소유권과 안전 점검이 허용할 때 선택된 하네스 관리 호스트 설정을 제거합니다. `--remove-managed`를 사용하면 선택되어 있고 안전하게 소유된 관리 `Product Repository` guidance도 제거합니다. 성공한 관리 제거는 해당 Host Installation inventory를 제거합니다. Agent Integration Profile에 남은 Host Installation이 없으면 프로필이 비활성화될 수 있으며, 비활성화는 삭제가 아닙니다. `Product Repository` 내용, 프로젝트 등록과 프로젝트 상태, Core의 작업, 증거, 판단, 실행, 아티팩트 관련 기록, 아티팩트 저장소, 관련 없는 호스트 항목은 담당 계약에 따라 보존됩니다.
+
+Uninstall이 `partial_failure`를 보고하면 정리를 다시 시도하기 전에 [제거가 일부만 완료됨](agent-host-troubleshooting.md#partial-removal)을 사용합니다.
 
 ## 참조 링크
 

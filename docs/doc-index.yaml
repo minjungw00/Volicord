@@ -302,6 +302,29 @@ documents:
   - reference.runtime-boundaries
   - reference.agent-integration
   - reference.api.methods
+  - use.agent-host-troubleshooting
+- doc_id: use.agent-host-troubleshooting
+  path_en: docs/en/guides/agent-host-troubleshooting.md
+  path_ko: docs/ko/guides/agent-host-troubleshooting.md
+  kind: how_to
+  summary: Symptom-oriented recovery guidance for Codex, Claude Code, and generic agent host integration failures.
+  normative_level: guide
+  translation_policy: semantic_parity
+  primary_audience:
+  - operators
+  - agent integrators
+  - agents
+  journeys:
+  - operate
+  depends_on:
+  - reference.system-requirements
+  - reference.admin-cli
+  - reference.mcp-transport
+  - reference.runtime-boundaries
+  - reference.agent-integration
+  - reference.storage
+  - reference.storage-records
+  - reference.storage-versioning
 - doc_id: use.multi-repository-agent-setup
   path_en: docs/en/guides/multi-repository-agent-setup.md
   path_ko: docs/ko/guides/multi-repository-agent-setup.md
@@ -317,6 +340,7 @@ documents:
   - operate
   depends_on:
   - use.agent-host-setup
+  - use.agent-host-troubleshooting
   - reference.admin-cli
   - reference.mcp-transport
   - reference.runtime-boundaries

@@ -22,6 +22,12 @@ There is one host MCP entry, one `harness-mcp --integration <integration_id>` pr
 
 Project and local host scopes remain single-repository scopes. Use user scope for this topology.
 
+## Prerequisites And Completion State
+
+Before adding a second repository, complete the user-scope host setup for Product Repository A through [Agent host setup](agent-host-setup.md). The integration can be `complete`, or it can be `action_required` only when the remaining action is host-owned trust, approval, reload, restart, or comparable follow-up documented by [Agent host troubleshooting](agent-host-troubleshooting.md#status-action_required).
+
+This guide is complete when one user-scope host entry points at one `integration_id`, the integration allowlist contains the intended repositories, the agent uses `harness.list_projects` or an explicit `project_id` for multi-repository calls, and removal or re-addition is performed through project membership commands rather than host-file edits.
+
 ## Executable Convention
 
 The command examples assume you have selected one absolute directory containing both `harness` and `harness-mcp`, then exported it in the current shell:
@@ -220,6 +226,8 @@ resulting_default_project_id: billing-api
 
 If the default is cleared while multiple projects remain available, omitted `project_id` calls become ambiguous. The agent should call `harness.list_projects` and retry with an explicit `envelope.project_id`.
 
+For recovery from an already ambiguous call, see [More than one allowed project exists without a usable selector or default](agent-host-troubleshooting.md#ambiguous-project-selection).
+
 ## Remove Projects And Re-Add Later
 
 After the default has moved to `billing-api`, Product Repository A is only a formerly default project. Remove it while retaining the integration and host MCP entry:
@@ -262,6 +270,8 @@ not executable until one is added
 ```
 
 After removal, Host Installation inventory and host configuration can remain, but that stored state is not proof of new startup eligibility. A `harness-mcp` process that was already running can refresh registry state, so `harness.list_projects` may return an empty list for `int-codex-team`; project-routed public tools cannot proceed because no allowed project remains. A newly started `harness-mcp` process, `harness-mcp --check`, and verification paths that need new MCP startup fail until a project is added again and normal configuration checks pass.
+
+For troubleshooting this state, see [Host configuration remains while no project is currently allowed](agent-host-troubleshooting.md#host-config-remains-zero-projects).
 
 Observe the zero-project state:
 
@@ -310,6 +320,8 @@ Remove managed host configuration and managed guidance for the integration:
 ```
 
 Uninstall removes selected Harness-managed host configuration when ownership and safety checks allow it. With `--remove-managed`, it also removes managed repository guidance only when selected and safely owned. A successful managed uninstall removes the corresponding Host Installation inventory; if no Host Installations remain for the Agent Integration Profile, the profile can be disabled, which is not deletion. Product Repositories, project registration and project state, Core task, evidence, decision, run, and artifact-related records, artifact storage, and unrelated host entries are preserved according to their owners.
+
+If uninstall reports `partial_failure`, use [Removal completed only partially](agent-host-troubleshooting.md#partial-removal) before retrying cleanup.
 
 ## Reference Links
 
