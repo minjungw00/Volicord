@@ -5,14 +5,14 @@ This is the English entry point for the Harness documentation set. Start with th
 ## Start Here
 
 - Understand the product: [Getting Started Overview](getting-started/overview.md)
-- Build the executables: [Installation](getting-started/installation.md)
+- Check the environment: [System Requirements](reference/system-requirements.md), then build the executables with [Installation](getting-started/installation.md)
 - Install a real agent host integration: [Quickstart](getting-started/quickstart.md), then [Agent Host Setup](guides/agent-host-setup.md)
 - Serve multiple explicitly allowed repositories: [Multi-Repository Agent Setup](guides/multi-repository-agent-setup.md)
 
 ## Reader Paths
 
 - Product users: [Getting Started Overview](getting-started/overview.md), then [User Guide](guides/user-workflow.md), [Judgment Examples](guides/judgment-examples.md), and [Surface Recipes](guides/surface-recipes.md)
-- Agent host operators: [Installation](getting-started/installation.md), [Quickstart](getting-started/quickstart.md), then [Agent Host Setup](guides/agent-host-setup.md)
+- Agent host operators: [System Requirements](reference/system-requirements.md), [Installation](getting-started/installation.md), [Quickstart](getting-started/quickstart.md), then [Agent Host Setup](guides/agent-host-setup.md)
 - Multi-repository operators: [Multi-Repository Agent Setup](guides/multi-repository-agent-setup.md)
 - Agents: [Agent Guide](guides/agent-workflow.md), with repository working rules in [AGENTS.md](../../AGENTS.md)
 - Source-code learners: [Developer Documentation](development/README.md), then [Codebase Tour](development/codebase-tour.md), [Request Lifecycle](development/request-lifecycle.md), and [Architecture](development/architecture.md)

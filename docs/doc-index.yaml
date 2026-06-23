@@ -210,6 +210,7 @@ documents:
   journeys:
   - install
   depends_on:
+  - reference.system-requirements
   - reference.admin-cli
   - reference.mcp-transport
 - doc_id: use.local-mcp-quickstart
@@ -629,6 +630,36 @@ documents:
   - reader-facing reference navigation
   - human-readable route to common reference owners
   - reference family navigation
+- doc_id: reference.system-requirements
+  path_en: docs/en/reference/system-requirements.md
+  path_ko: docs/ko/reference/system-requirements.md
+  kind: reference
+  summary: Reference contract for pre-installation environment applicability and system prerequisites.
+  normative_level: contract
+  translation_policy: semantic_parity
+  primary_audience:
+  - new users
+  - operators
+  - agent integrators
+  - implementers
+  journeys:
+  - evaluate
+  - install
+  - operate
+  canonical_for:
+  - pre-installation environment applicability classification
+  - supported, verified, unverified, and out-of-scope environment status distinctions
+  - Rust and Cargo prerequisite boundary separate from operating-system support claims
+  - maintained shell example applicability
+  - executable layout and discovery prerequisites for `harness` and `harness-mcp`
+  - Runtime Home, Product Repository, and host configuration access prerequisites
+  - host compatibility check policy when no stable Codex or Claude Code minimum version is defined
+  - stop criteria for unsupported or unverified installation environments
+  depends_on:
+  - reference.runtime-boundaries
+  - reference.admin-cli
+  - reference.mcp-transport
+  - reference.agent-integration
 - doc_id: reference.scope
   path_en: docs/en/reference/scope.md
   path_ko: docs/ko/reference/scope.md

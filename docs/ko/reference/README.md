@@ -6,6 +6,7 @@
 
 ## 먼저 볼 곳
 
+- 설치 전 환경 전제 조건: [시스템 요구사항](system-requirements.md).
 - 제품/시스템 경계: [범위](scope.md), [Core 모델](core-model.md), [런타임 경계](runtime-boundaries.md), [보안](security.md).
 - 첫 에이전트 호스트 설정: 가장 짧은 성공 경로는 [빠른 시작](../getting-started/quickstart.md)에, 전체 운영자 가이드는 [에이전트 호스트 설정](../guides/agent-host-setup.md)에, 하나의 사용자 범위 통합이 여러 저장소를 처리하는 경로는 [다중 저장소 에이전트 설정](../guides/multi-repository-agent-setup.md)에 있습니다.
 - 로컬 실행 파일 계약: `harness` 관리 명령과 Runtime Home 선택은 [관리 CLI](admin-cli.md), `harness-mcp` stdio 시작, 사전 점검, 응답 래핑, 종료는 [MCP 전송](mcp-transport.md)에 있습니다.

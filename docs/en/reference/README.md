@@ -6,6 +6,7 @@ This README is route-only. It does not define term meanings, terminology metadat
 
 ## Start Here
 
+- Environment prerequisites before installation: [System Requirements](system-requirements.md).
 - Product/system boundaries: [Scope](scope.md), [Core Model](core-model.md), [Runtime Boundaries](runtime-boundaries.md), and [Security](security.md).
 - First-run agent host setup: [Quickstart](../getting-started/quickstart.md) for the shortest success path, then [Agent Host Setup](../guides/agent-host-setup.md) for the complete operator guide and [Multi-Repository Agent Setup](../guides/multi-repository-agent-setup.md) for one user-scope integration serving multiple repositories.
 - Local executable contracts: [Administrative CLI](admin-cli.md) for `harness` administrative commands and Runtime Home selection, and [MCP Transport](mcp-transport.md) for `harness-mcp` stdio startup, preflight, response wrapping, and shutdown.

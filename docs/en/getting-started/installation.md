@@ -4,6 +4,8 @@ This page owns the first setup stage: preparing the Harness Server executables. 
 
 ## Prerequisites
 
+For the authoritative pre-installation environment classification, read [System Requirements](../reference/system-requirements.md).
+
 For the source build path, you need:
 
 - a local checkout of this repository
