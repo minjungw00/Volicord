@@ -35,45 +35,58 @@ Before running these commands:
   not inside or above it.
 - Replace every example path and ID below with your real value.
 
-The examples use:
+Before choosing values, check the focused command help:
 
-| Example value | Meaning |
-|---|---|
-| `VOLICORD_BIN="/absolute/path/to/selected/bin"` | Selected absolute directory containing both `volicord` and `volicord-mcp`. |
-| `"$VOLICORD_BIN/volicord"` | `volicord` administrative CLI invocation. |
-| `"$VOLICORD_BIN/volicord-mcp"` | Absolute `volicord-mcp` command used for user/local-scope host configuration. |
-| `/Users/alex/.volicord` | `Volicord Runtime Home`. |
-| `/work/acme-api` | Product Repository A. |
-| `acme-api` | Stable logical project ID you choose for Product Repository A; it is not automatically derived from the directory name. |
-| `int-codex-team`, `int-claude-acme` | Example `integration_id` values. |
-| `volicord-int-codex-team`, `volicord-int-claude-acme` | Stable host MCP server names derived from `integration_id` when `--server-name` is omitted. |
+```sh
+"$VOLICORD_BIN/volicord" agent install --help
+```
 
-`VOLICORD_BIN` is a tutorial shell variable. Volicord does not read it as
-configuration. `VOLICORD_HOME` is different: it is a real Runtime Home selection
-input for the administrative command and for later `volicord-mcp` process
-startup when the default Runtime Home is not the intended one.
-
-How to choose install arguments in this tutorial:
-
-| Argument choice | Why it appears here |
-|---|---|
-| `--host` and `--scope` | Required for every `volicord agent install` command. |
-| `--project-id acme-api` and `--repo-root /work/acme-api` | Required here because the examples introduce a new project registration. |
-| `--integration-id ...` | Optional, but pinned so later verify, status, generated configuration, and multi-repository examples can refer to the same identifier. |
-| `--runtime-home /Users/alex/.volicord` or `VOLICORD_HOME=/Users/alex/.volicord` | Optional in general, but explicit here because the tutorial intentionally uses that Runtime Home instead of relying on environment or home-directory defaults. |
-| `--mcp-command "$VOLICORD_BIN/volicord-mcp"` | Optional and kept only for Path A, which intentionally pins the verified absolute executable in generated Codex configuration. Project scope omits `--mcp-command` because omission uses portable `volicord-mcp`. |
-| `--default-project-id` | Omitted. For a new integration, the selected project becomes the default project. |
-| `--dry-run`, `--output json`, and `--allow-repository-write` | `--dry-run` is an optional zero-write preview, `--output json` is optional output formatting, and `--allow-repository-write` appears only on the real project-scoped apply command that writes `.mcp.json`. |
-
-For complete requiredness, defaults, and edge cases, use the
+That help shows the current command-specific contract for required arguments,
+conditional project selection, conditional repository-write authorization,
+optional values, and omission defaults. For the complete rules and edge cases,
+use the
 [Administrative CLI reference](../reference/admin-cli.md#volicord-agent-install).
+
+The examples use these non-argument values:
+
+| Value | Kind | How this walkthrough uses it |
+|---|---|---|
+| `VOLICORD_BIN="/absolute/path/to/selected/bin"` | Tutorial shell variable | Selected absolute directory containing both `volicord` and `volicord-mcp`. Volicord does not read `VOLICORD_BIN` as configuration. |
+| `"$VOLICORD_BIN/volicord"` | Command invocation | Runs the `volicord` administrative CLI from the verified directory. |
+| `"$VOLICORD_BIN/volicord-mcp"` | Executable path value | Supplies the verified absolute `volicord-mcp` path to Path A's `--mcp-command`. |
+| `VOLICORD_HOME=/Users/alex/.volicord` | Environment variable assignment | Selects the Runtime Home for the administrative command when it appears before the command. It is not a CLI option. A later project-scoped host process also needs `VOLICORD_HOME` in its own launch environment if its default Runtime Home would differ. |
+| `PATH="$VOLICORD_BIN:$PATH"` | Environment variable assignment | Lets the project-scope examples resolve the selected executables during the administrative command. A later Claude Code launch environment must still be able to find `volicord-mcp` on `PATH`. |
+| `/Users/alex/.volicord` | Example path | `Volicord Runtime Home`; keep it distinct from the `Product Repository`. |
+| `/work/acme-api` | Example path | Product Repository A. |
+| `acme-api` | Example identifier | Stable logical project ID you choose or reuse for Product Repository A; it is not automatically derived from the directory name. |
+| `int-codex-team`, `int-claude-acme` | Example identifiers | Predictable `integration_id` values used by later verify, status, configuration, and related commands. |
+| `volicord-int-codex-team`, `volicord-int-claude-acme` | Derived identifiers | Stable host MCP server names derived from `integration_id` when `--server-name` is omitted. |
+
+The table below covers every `volicord agent install` option used in the command
+blocks and the two omitted options whose omission affects visible tutorial
+output. It is not the complete option list.
+
+| Argument | Example value | Meaning | Status in this walkthrough | Selection or omission rule |
+|---|---|---|---|---|
+| `--host` | Path A: `codex`; Path B: `claude-code` | Selects the host integration. | Always required. | Use `codex` with `--scope user` for Path A or `claude-code` with `--scope project` for Path B. Other host/scope combinations belong in the full setup guide and reference. |
+| `--scope` | Path A: `user`; Path B: `project` | Selects where the host configuration is written or exported. | Always required. | Use `user` for the personal Codex config path. Use `project` for the repository-managed Claude Code `.mcp.json` path. The selected value must be compatible with `--host`. |
+| `--project-id` | `acme-api` | Names the selected project with a stable logical project identifier chosen or reused by the operator. | Required for this new-project walkthrough. | Supply a stable ID for Product Repository A. It does not need to equal the directory name. Registered-project selection edge cases are in the Administrative CLI reference. |
+| `--repo-root` | `/work/acme-api` | Identifies the `Product Repository` path associated with the selected project. | Required for this new-project walkthrough. | Supply the Product Repository path for Product Repository A. Do not use the `Volicord Runtime Home` path as the repository root. |
+| `--integration-id` | Path A: `int-codex-team`; Path B: `int-claude-acme` | Selects an existing integration or the desired ID for a new integration. | Optional but pinned for reproducibility. | Keep the explicit IDs so later `verify`, `status`, generated configuration, and related commands have predictable identifiers. If omitted, the CLI derives a stable ID. |
+| `--runtime-home` | Path A only: `/Users/alex/.volicord` | Selects the `Volicord Runtime Home` used by the administrative command. | Optional when normal Runtime Home resolution is acceptable; explicit in Path A. | Path A supplies the path so the tutorial does not rely on defaults. Path B uses the separate `VOLICORD_HOME` environment assignment for the administrative command because project-scoped host configuration must not persist a developer-specific Runtime Home path. |
+| `--mcp-command` | Path A only: `"$VOLICORD_BIN/volicord-mcp"` | Selects the `volicord-mcp` command where an explicit command is allowed. | Optional; pinned only for the Codex user-scope example. | Path A pins the verified absolute executable in generated Codex configuration. Path B omits `--mcp-command` because project scope uses the portable `volicord-mcp` command when this option is omitted. |
+| `--dry-run` | Path B preview command: present | Controls execution mode. | Optional execution control. | Include it to preview the install plan without performing the real write. Omit it for the apply command that performs the real installation. The corresponding dry run does not require `--allow-repository-write`. |
+| `--output` | Path B preview command: `json` | Selects output formatting. | Optional output formatting. | `json` is chosen so the preview output is easy to inspect or compare during the tutorial. When omitted, output defaults to `text`. |
+| `--allow-repository-write` | Path B apply command: present | Authorizes a repository-managed write. | Conditionally required for the real repository write. | Required for the non-dry-run project-scoped install that writes `/work/acme-api/.mcp.json`. Do not include it for the corresponding dry run. |
+| `--default-project-id` | Omitted | Selects the integration default project. | Optional and intentionally omitted. | For a new integration in this walkthrough, omission makes the selected project the default project. |
+| `--server-name` | Omitted | Selects the host MCP server name. | Optional and intentionally omitted. | Omission derives a stable `volicord-<integration>` server name, which is why the expected output and generated configuration use `volicord-int-codex-team` and `volicord-int-claude-acme`. |
 
 ## Choose One Host Path
 
 | Path | Choose when | Consequence |
 |---|---|---|
 | Path A: Codex `user` scope | One personal Codex MCP entry should serve this repository now and may later serve more explicitly allowed repositories. | Host configuration lives in the Codex user config and stores an absolute `volicord-mcp` command path plus `VOLICORD_HOME`. |
-| Path B: Claude Code `project` scope | Product Repository A should carry a team-shared Claude Code `.mcp.json` entry. | The project file uses portable `volicord-mcp`, omits personal `VOLICORD_HOME`, requires `--allow-repository-write`, and may remain `action_required` until Claude Code approval is complete. |
+| Path B: Claude Code `project` scope | Product Repository A should carry a team-shared Claude Code `.mcp.json` entry. | The project file uses portable `volicord-mcp`, omits personal `VOLICORD_HOME`, requires `--allow-repository-write` on the real apply command, and may remain `action_required` until Claude Code approval is complete. |
 
 If you need another host or scope, use [Agent Host Setup](../guides/agent-host-setup.md).
 If one user-scope integration should serve multiple repositories, complete Path A

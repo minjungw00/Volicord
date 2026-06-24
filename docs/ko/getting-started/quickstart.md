@@ -32,44 +32,55 @@
   선택합니다.
 - 아래의 모든 예시 경로와 ID를 실제 값으로 바꿉니다.
 
-예시는 아래 값을 사용합니다.
+값을 고르기 전에 이 명령에 초점을 맞춘 도움말을 확인합니다.
 
-| 예시 값 | 의미 |
-|---|---|
-| `VOLICORD_BIN="/absolute/path/to/selected/bin"` | `volicord`와 `volicord-mcp`가 함께 들어 있는 선택한 절대 디렉터리. |
-| `"$VOLICORD_BIN/volicord"` | `volicord` 관리 CLI 호출. |
-| `"$VOLICORD_BIN/volicord-mcp"` | 사용자/로컬 범위 호스트 설정에 쓰는 절대 `volicord-mcp` 명령. |
-| `/Users/alex/.volicord` | `Volicord Runtime Home`. |
-| `/work/acme-api` | Product Repository A. |
-| `acme-api` | Product Repository A에 대해 사용자가 선택하는 안정적인 논리 프로젝트 ID입니다. 디렉터리 이름에서 자동으로 파생되는 값이 아닙니다. |
-| `int-codex-team`, `int-claude-acme` | 예시 `integration_id` 값. |
-| `volicord-int-codex-team`, `volicord-int-claude-acme` | `--server-name`을 생략했을 때 `integration_id`에서 파생되는 안정적인 호스트 MCP 서버 이름. |
+```sh
+"$VOLICORD_BIN/volicord" agent install --help
+```
 
-`VOLICORD_BIN`은 튜토리얼용 셸 변수입니다. Volicord는 이를 설정으로 읽지 않습니다.
-`VOLICORD_HOME`은 다릅니다. 기본 Runtime Home이 의도한 위치가 아닐 때 관리 명령과 이후
-`volicord-mcp` 프로세스 시작에 쓰이는 실제 Runtime Home 선택 입력입니다.
-
-이 튜토리얼에서 설치 인자를 고르는 방법은 아래와 같습니다.
-
-| 인자 선택 | 여기 나타나는 이유 |
-|---|---|
-| `--host`와 `--scope` | 모든 `volicord agent install` 명령에 필수입니다. |
-| `--project-id acme-api`와 `--repo-root /work/acme-api` | 예시가 새 프로젝트 등록을 도입하므로 여기서는 필수입니다. |
-| `--integration-id ...` | 선택 사항이지만, 이후 verify, status, 생성 구성, 다중 저장소 예시가 같은 식별자를 가리킬 수 있도록 고정합니다. |
-| `--runtime-home /Users/alex/.volicord` 또는 `VOLICORD_HOME=/Users/alex/.volicord` | 일반적으로는 선택 사항이지만, 이 튜토리얼은 환경이나 홈 디렉터리 기본값에 기대지 않고 해당 Runtime Home을 의도적으로 사용하므로 명시합니다. |
-| `--mcp-command "$VOLICORD_BIN/volicord-mcp"` | 선택 사항이며, 검증된 절대 실행 파일을 생성되는 Codex 구성에 고정하려는 경로 A에만 유지합니다. 프로젝트 범위는 생략하면 이식 가능한 `volicord-mcp`를 사용하므로 `--mcp-command`를 생략합니다. |
-| `--default-project-id` | 생략합니다. 새 통합에서는 선택한 프로젝트가 기본 프로젝트가 됩니다. |
-| `--dry-run`, `--output json`, `--allow-repository-write` | `--dry-run`은 선택적인 zero-write 미리보기이고, `--output json`은 선택적 출력 형식이며, `--allow-repository-write`는 `.mcp.json`을 쓰는 실제 프로젝트 범위 적용 명령에만 나타납니다. |
-
-전체 필수성, 기본값, 예외는
+이 도움말은 필수 인자, 조건부 프로젝트 선택, 조건부 저장소 쓰기 권한 부여,
+선택 값, 생략 기본값에 대한 현재 명령별 계약을 보여 줍니다. 전체 규칙과 예외는
 [관리 CLI 참조](../reference/admin-cli.md#volicord-agent-install)를 사용합니다.
+
+예시는 아래의 CLI 인자가 아닌 값을 사용합니다.
+
+| 값 | 종류 | 이 튜토리얼에서 쓰는 방식 |
+|---|---|---|
+| `VOLICORD_BIN="/absolute/path/to/selected/bin"` | 튜토리얼용 셸 변수 | `volicord`와 `volicord-mcp`가 함께 들어 있는 선택한 절대 디렉터리입니다. Volicord는 `VOLICORD_BIN`을 설정으로 읽지 않습니다. |
+| `"$VOLICORD_BIN/volicord"` | 명령 호출 | 확인된 디렉터리의 `volicord` 관리 CLI를 실행합니다. |
+| `"$VOLICORD_BIN/volicord-mcp"` | 실행 파일 경로 값 | 경로 A의 `--mcp-command`에 확인된 절대 `volicord-mcp` 경로를 제공합니다. |
+| `VOLICORD_HOME=/Users/alex/.volicord` | 환경 변수 할당 | 명령 앞에 있을 때 관리 명령이 사용할 Runtime Home을 선택합니다. CLI 옵션이 아닙니다. 이후 `project` 범위 호스트 프로세스의 기본 Runtime Home이 다르다면 그 호스트의 시작 환경에도 `VOLICORD_HOME`이 필요합니다. |
+| `PATH="$VOLICORD_BIN:$PATH"` | 환경 변수 할당 | `project` 범위 예시의 관리 명령 실행 중 선택한 실행 파일을 해석할 수 있게 합니다. 이후 Claude Code 시작 환경도 `PATH`에서 `volicord-mcp`를 찾을 수 있어야 합니다. |
+| `/Users/alex/.volicord` | 예시 경로 | `Volicord Runtime Home`입니다. `Product Repository`와 구분해서 둡니다. |
+| `/work/acme-api` | 예시 경로 | Product Repository A. |
+| `acme-api` | 예시 식별자 | Product Repository A에 대해 사용자가 선택하거나 재사용하는 안정적인 논리 프로젝트 ID입니다. 디렉터리 이름에서 자동으로 파생되는 값이 아닙니다. |
+| `int-codex-team`, `int-claude-acme` | 예시 식별자 | 이후 verify, status, 생성 구성, 관련 명령에서 쓰는 예측 가능한 `integration_id` 값입니다. |
+| `volicord-int-codex-team`, `volicord-int-claude-acme` | 파생 식별자 | `--server-name`을 생략했을 때 `integration_id`에서 파생되는 안정적인 호스트 MCP 서버 이름입니다. |
+
+아래 표는 명령 블록에 쓰인 모든 `volicord agent install` 옵션과, 생략이 튜토리얼의
+보이는 출력에 영향을 주는 두 옵션을 다룹니다. 전체 옵션 목록은 아닙니다.
+
+| 인자 | 예시 값 | 의미 | 이 튜토리얼에서의 상태 | 선택 또는 생략 규칙 |
+|---|---|---|---|---|
+| `--host` | 경로 A: `codex`; 경로 B: `claude-code` | 호스트 통합을 선택합니다. | 항상 필수입니다. | 경로 A에서는 `--scope user`와 함께 `codex`를 사용합니다. 경로 B에서는 `--scope project`와 함께 `claude-code`를 사용합니다. 다른 호스트/범위 조합은 전체 설정 가이드와 참조 문서에서 다룹니다. |
+| `--scope` | 경로 A: `user`; 경로 B: `project` | 호스트 설정을 쓰거나 내보낼 위치를 선택합니다. | 항상 필수입니다. | 개인 Codex 설정 경로에는 `user`를 사용합니다. 저장소 관리 Claude Code `.mcp.json` 경로에는 `project`를 사용합니다. 선택한 값은 `--host`와 호환되어야 합니다. |
+| `--project-id` | `acme-api` | 운영자가 선택하거나 재사용하는 안정적인 논리 프로젝트 식별자로 선택된 프로젝트를 이름 붙입니다. | 이 새 프로젝트 튜토리얼에서는 필수입니다. | Product Repository A에 사용할 안정적인 ID를 제공합니다. 디렉터리 이름과 같을 필요는 없습니다. 등록된 프로젝트 선택 예외는 관리 CLI 참조에 있습니다. |
+| `--repo-root` | `/work/acme-api` | 선택된 프로젝트와 연결된 `Product Repository` 경로를 식별합니다. | 이 새 프로젝트 튜토리얼에서는 필수입니다. | Product Repository A의 경로를 제공합니다. `Volicord Runtime Home` 경로를 저장소 루트로 사용하지 않습니다. |
+| `--integration-id` | 경로 A: `int-codex-team`; 경로 B: `int-claude-acme` | 기존 통합 또는 새 통합에 원하는 ID를 선택합니다. | 선택 사항이지만 재현성을 위해 고정합니다. | 이후 `verify`, `status`, 생성 구성, 관련 명령이 예측 가능한 식별자를 쓰도록 명시 ID를 유지합니다. 생략하면 CLI가 안정적인 ID를 파생합니다. |
+| `--runtime-home` | 경로 A만: `/Users/alex/.volicord` | 관리 명령이 사용할 `Volicord Runtime Home`을 선택합니다. | 일반 Runtime Home 해석으로 충분하면 선택 사항입니다. 경로 A에서는 명시합니다. | 경로 A는 튜토리얼이 기본값에 기대지 않도록 이 경로를 제공합니다. 경로 B는 `project` 범위 호스트 설정에 개발자별 Runtime Home 경로를 저장하면 안 되므로, 관리 명령에는 별도의 `VOLICORD_HOME` 환경 변수 할당을 사용합니다. |
+| `--mcp-command` | 경로 A만: `"$VOLICORD_BIN/volicord-mcp"` | 명시적 명령이 허용되는 곳에서 `volicord-mcp` 명령을 선택합니다. | 선택 사항입니다. Codex `user` 범위 예시에만 고정합니다. | 경로 A는 생성되는 Codex 설정에 확인된 절대 실행 파일을 고정합니다. 경로 B는 이 옵션을 생략했을 때 `project` 범위가 이식 가능한 `volicord-mcp` 명령을 사용하므로 `--mcp-command`를 생략합니다. |
+| `--dry-run` | 경로 B 미리보기 명령: 있음 | 실행 모드를 제어합니다. | 선택적 실행 제어입니다. | 실제 쓰기 없이 설치 계획을 미리 보려면 포함합니다. 실제 설치를 수행하는 적용 명령에서는 생략합니다. 해당 dry-run에는 `--allow-repository-write`가 필요하지 않습니다. |
+| `--output` | 경로 B 미리보기 명령: `json` | 출력 형식을 선택합니다. | 선택적 출력 형식입니다. | 튜토리얼에서 미리보기 출력을 검사하거나 비교하기 쉽도록 `json`을 선택합니다. 생략하면 출력 기본값은 `text`입니다. |
+| `--allow-repository-write` | 경로 B 적용 명령: 있음 | 저장소 관리 쓰기를 승인합니다. | 실제 저장소 쓰기에 조건부로 필수입니다. | `/work/acme-api/.mcp.json`을 쓰는 dry-run이 아닌 `project` 범위 설치에 필요합니다. 해당 dry-run에는 포함하지 않습니다. |
+| `--default-project-id` | 생략 | 통합 기본 프로젝트를 선택합니다. | 선택 사항이며 의도적으로 생략합니다. | 이 튜토리얼의 새 통합에서는 생략하면 선택한 프로젝트가 기본 프로젝트가 됩니다. |
+| `--server-name` | 생략 | 호스트 MCP 서버 이름을 선택합니다. | 선택 사항이며 의도적으로 생략합니다. | 생략하면 안정적인 `volicord-<integration>` 서버 이름을 파생합니다. 그래서 예상 출력과 생성 구성에 `volicord-int-codex-team`, `volicord-int-claude-acme`가 나타납니다. |
 
 ## 호스트 경로 선택
 
 | 경로 | 선택할 때 | 결과 |
 |---|---|---|
 | 경로 A: Codex `user` 범위 | 개인 Codex MCP 항목 하나가 지금 이 저장소를 처리하고, 나중에 명시적으로 허용된 저장소를 더 처리할 수 있어야 할 때. | 호스트 설정은 Codex 사용자 설정에 있고 절대 `volicord-mcp` 명령 경로와 `VOLICORD_HOME`을 저장합니다. |
-| 경로 B: Claude Code `project` 범위 | Product Repository A가 팀 공유 Claude Code `.mcp.json` 항목을 가져야 할 때. | 프로젝트 파일은 이식 가능한 `volicord-mcp`를 사용하고 개인 `VOLICORD_HOME`을 생략하며, `--allow-repository-write`가 필요하고, Claude Code 승인이 끝날 때까지 `action_required`로 남을 수 있습니다. |
+| 경로 B: Claude Code `project` 범위 | Product Repository A가 팀 공유 Claude Code `.mcp.json` 항목을 가져야 할 때. | 프로젝트 파일은 이식 가능한 `volicord-mcp`를 사용하고 개인 `VOLICORD_HOME`을 생략하며, 실제 적용 명령에서는 `--allow-repository-write`가 필요하고, Claude Code 승인이 끝날 때까지 `action_required`로 남을 수 있습니다. |
 
 다른 호스트나 범위가 필요하면 [에이전트 호스트 설정](../guides/agent-host-setup.md)을
 사용합니다. 하나의 사용자 범위 통합이 여러 저장소를 처리해야 하면 첫 저장소에 대해
