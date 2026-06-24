@@ -477,8 +477,11 @@ Use generic export only for a host that Volicord does not install directly. This
 path renders configuration for you to apply in the external host's own setup
 flow.
 
-The required selection is the host, scope, project ID, and repository root. The
-optional `--integration-id`, `--runtime-home`, explicit `--mcp-command`, and
+The required choices are the host and scope. This example also supplies both
+`--project-id acme-api` and `--repo-root /work/acme-api` to make project
+selection explicit; the full omission rules stay in
+[Administrative CLI](docs/en/reference/admin-cli.md#volicord-agent-install).
+The optional `--integration-id`, `--runtime-home`, explicit `--mcp-command`, and
 `--export-dir` are kept so the exported server name, Runtime Home environment,
 command path, and destination are reproducible.
 

@@ -468,10 +468,12 @@ PATH="$VOLICORD_BIN:$PATH" \
 Generic export는 Volicord가 직접 설치하지 않는 호스트에만 사용합니다. 이 경로는
 외부 호스트 자체의 설정 흐름에 적용할 구성을 렌더링합니다.
 
-필수 선택은 호스트, 범위, 프로젝트 ID, 저장소 루트입니다. 선택 사항인
-`--integration-id`, `--runtime-home`, 명시적 `--mcp-command`, `--export-dir`는
-내보낸 서버 이름, Runtime Home 환경, 명령 경로, 대상 위치를 재현 가능하게 하려고
-유지합니다.
+필수 선택은 호스트와 범위입니다. 이 예시는 프로젝트 선택을 명시적으로 만들려고
+`--project-id acme-api`와 `--repo-root /work/acme-api`를 모두 제공합니다. 전체 생략
+규칙은 [관리 CLI](docs/ko/reference/admin-cli.md#volicord-agent-install)에 남아
+있습니다. 선택 사항인 `--integration-id`, `--runtime-home`, 명시적 `--mcp-command`,
+`--export-dir`는 내보낸 서버 이름, Runtime Home 환경, 명령 경로, 대상 위치를 재현
+가능하게 하려고 유지합니다.
 
 ```sh
 "$VOLICORD_BIN/volicord" agent install \
