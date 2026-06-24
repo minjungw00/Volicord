@@ -41,13 +41,28 @@
 | `"$VOLICORD_BIN/volicord-mcp"` | 사용자/로컬 범위 호스트 설정에 쓰는 절대 `volicord-mcp` 명령. |
 | `/Users/alex/.volicord` | `Volicord Runtime Home`. |
 | `/work/acme-api` | Product Repository A. |
-| `acme-api` | Product Repository A의 프로젝트 ID. |
+| `acme-api` | Product Repository A에 대해 사용자가 선택하는 안정적인 논리 프로젝트 ID입니다. 디렉터리 이름에서 자동으로 파생되는 값이 아닙니다. |
 | `int-codex-team`, `int-claude-acme` | 예시 `integration_id` 값. |
 | `volicord-int-codex-team`, `volicord-int-claude-acme` | `--server-name`을 생략했을 때 `integration_id`에서 파생되는 안정적인 호스트 MCP 서버 이름. |
 
 `VOLICORD_BIN`은 튜토리얼용 셸 변수입니다. Volicord는 이를 설정으로 읽지 않습니다.
 `VOLICORD_HOME`은 다릅니다. 기본 Runtime Home이 의도한 위치가 아닐 때 관리 명령과 이후
 `volicord-mcp` 프로세스 시작에 쓰이는 실제 Runtime Home 선택 입력입니다.
+
+이 튜토리얼에서 설치 인자를 고르는 방법은 아래와 같습니다.
+
+| 인자 선택 | 여기 나타나는 이유 |
+|---|---|
+| `--host`와 `--scope` | 모든 `volicord agent install` 명령에 필수입니다. |
+| `--project-id acme-api`와 `--repo-root /work/acme-api` | 예시가 새 프로젝트 등록을 도입하므로 여기서는 필수입니다. |
+| `--integration-id ...` | 선택 사항이지만, 이후 verify, status, 생성 구성, 다중 저장소 예시가 같은 식별자를 가리킬 수 있도록 고정합니다. |
+| `--runtime-home /Users/alex/.volicord` 또는 `VOLICORD_HOME=/Users/alex/.volicord` | 일반적으로는 선택 사항이지만, 이 튜토리얼은 환경이나 홈 디렉터리 기본값에 기대지 않고 해당 Runtime Home을 의도적으로 사용하므로 명시합니다. |
+| `--mcp-command "$VOLICORD_BIN/volicord-mcp"` | 선택 사항이며, 검증된 절대 실행 파일을 생성되는 Codex 구성에 고정하려는 경로 A에만 유지합니다. 프로젝트 범위는 생략하면 이식 가능한 `volicord-mcp`를 사용하므로 `--mcp-command`를 생략합니다. |
+| `--default-project-id` | 생략합니다. 새 통합에서는 선택한 프로젝트가 기본 프로젝트가 됩니다. |
+| `--dry-run`, `--output json`, `--allow-repository-write` | `--dry-run`은 선택적인 zero-write 미리보기이고, `--output json`은 선택적 출력 형식이며, `--allow-repository-write`는 `.mcp.json`을 쓰는 실제 프로젝트 범위 적용 명령에만 나타납니다. |
+
+전체 필수성, 기본값, 예외는
+[관리 CLI 참조](../reference/admin-cli.md#volicord-agent-install)를 사용합니다.
 
 ## 호스트 경로 선택
 
@@ -83,7 +98,6 @@
   --integration-id int-codex-team \
   --project-id acme-api \
   --repo-root /work/acme-api \
-  --default-project-id acme-api \
   --runtime-home /Users/alex/.volicord \
   --mcp-command "$VOLICORD_BIN/volicord-mcp"
 ```
@@ -96,7 +110,8 @@
 | 일반적으로 `~/.codex/config.toml` 또는 `CODEX_HOME/config.toml`인 Codex 사용자 설정 | `[mcp_servers.volicord-int-codex-team]` 테이블. |
 | `/work/acme-api` | 저장소 지침을 별도로 선택하지 않는 한 파일 변경 없음. |
 
-`--server-name`을 생략했으므로 CLI는 `integration_id`에서 안정적인 호스트 MCP 서버 이름을
+`--default-project-id`와 `--server-name`을 생략했으므로 새 통합은 선택한 프로젝트를
+기본값으로 사용하고, CLI는 `integration_id`에서 안정적인 호스트 MCP 서버 이름을
 파생합니다. 특정 호스트 설정 키를 고정해야 할 때만 `--server-name`을 사용합니다.
 
 첫 예상 결과:
@@ -164,7 +179,6 @@ PATH="$VOLICORD_BIN:$PATH" \
   --integration-id int-claude-acme \
   --project-id acme-api \
   --repo-root /work/acme-api \
-  --mcp-command volicord-mcp \
   --dry-run \
   --output json
 ```
@@ -180,7 +194,6 @@ PATH="$VOLICORD_BIN:$PATH" \
   --integration-id int-claude-acme \
   --project-id acme-api \
   --repo-root /work/acme-api \
-  --mcp-command volicord-mcp \
   --allow-repository-write
 ```
 
@@ -220,7 +233,8 @@ verification: action_required
 ```
 
 생성되는 `.mcp.json`은 의도적으로 `VOLICORD_HOME`을 생략하고 이식 가능한
-`volicord-mcp` 명령을 유지합니다. 설치 명령에 붙은 `VOLICORD_HOME`과 `PATH` 할당은 그
+`volicord-mcp` 명령을 유지합니다. 이 이식 가능한 명령은 `--mcp-command`를 생략했을
+때의 프로젝트 범위 기본값입니다. 설치 명령에 붙은 `VOLICORD_HOME`과 `PATH` 할당은 그
 관리 명령 실행에만 적용됩니다. 나중에 Claude Code가 서버를 시작할 때는 Claude Code의
 시작 환경이 `PATH`에서 `volicord-mcp`를 찾을 수 있어야 하며, 기본 Runtime Home이
 다르다면 `VOLICORD_HOME`을 제공해야 합니다.

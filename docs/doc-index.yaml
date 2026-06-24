@@ -223,8 +223,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-06-25'
+  last_verified_on: '2026-06-25'
   applies_to:
   - volicord_workspace_0_1
   - doc_index_schema_v3
@@ -276,8 +276,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-04-23'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-06-25'
+  last_verified_on: '2026-06-25'
   applies_to:
   - volicord_workspace_0_1
   primary_audience:
@@ -375,8 +375,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-06-24'
-  last_verified_on: '2026-06-24'
+  last_updated_on: '2026-06-25'
+  last_verified_on: '2026-06-25'
   applies_to:
   - volicord_workspace_0_1
   - mcp_protocol_2025_11_25

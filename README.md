@@ -331,6 +331,13 @@ Before running it:
 - The `codex` executable is available on the administrative command `PATH` for
   the compatibility check.
 - `/Users/alex/.volicord` and `/work/acme-api` are separate paths.
+- This first install introduces `/work/acme-api` as a new project registration,
+  so it provides both `--project-id acme-api` and `--repo-root /work/acme-api`.
+  The project ID is a stable logical identifier you choose.
+- `--integration-id`, `--runtime-home`, and the absolute `--mcp-command` are
+  optional in general, but this example pins them so follow-up commands and
+  generated host configuration use predictable values. For full argument rules,
+  see [Administrative CLI](docs/en/reference/admin-cli.md#volicord-agent-install).
 
 Install:
 
@@ -341,14 +348,14 @@ Install:
   --integration-id int-codex-team \
   --project-id acme-api \
   --repo-root /work/acme-api \
-  --default-project-id acme-api \
   --runtime-home /Users/alex/.volicord \
   --mcp-command "$VOLICORD_BIN/volicord-mcp"
 ```
 
-Because `--server-name` is omitted, the CLI derives a stable host MCP server
-name from `integration_id`, such as `volicord-int-codex-team`, and reports it in
-the result.
+Because `--default-project-id` and `--server-name` are omitted, the new
+integration uses the selected project as its default and the CLI derives a
+stable host MCP server name from `integration_id`, such as
+`volicord-int-codex-team`.
 
 Expected first result includes:
 
@@ -393,6 +400,12 @@ Before running it:
   Claude Code launch environment must provide `VOLICORD_HOME=/Users/alex/.volicord`.
 - You intentionally allow the administrative command to write
   `/work/acme-api/.mcp.json`.
+- `--integration-id` is optional but pinned so the verify command and generated
+  server name are predictable. Project scope omits `--mcp-command` because the
+  default is the portable `volicord-mcp` command.
+- `--dry-run` is an optional zero-write preview and `--output json` only changes
+  preview formatting. The real apply command keeps `--allow-repository-write`
+  because it authorizes the intended project-file write.
 
 Optional dry-run:
 
@@ -405,7 +418,6 @@ PATH="$VOLICORD_BIN:$PATH" \
   --integration-id int-claude-acme \
   --project-id acme-api \
   --repo-root /work/acme-api \
-  --mcp-command volicord-mcp \
   --dry-run \
   --output json
 ```
@@ -421,7 +433,6 @@ PATH="$VOLICORD_BIN:$PATH" \
   --integration-id int-claude-acme \
   --project-id acme-api \
   --repo-root /work/acme-api \
-  --mcp-command volicord-mcp \
   --allow-repository-write
 ```
 
@@ -465,6 +476,11 @@ selected Host Installation reports `final_status: complete`.
 Use generic export only for a host that Volicord does not install directly. This
 path renders configuration for you to apply in the external host's own setup
 flow.
+
+The required selection is the host, scope, project ID, and repository root. The
+optional `--integration-id`, `--runtime-home`, explicit `--mcp-command`, and
+`--export-dir` are kept so the exported server name, Runtime Home environment,
+command path, and destination are reproducible.
 
 ```sh
 "$VOLICORD_BIN/volicord" agent install \

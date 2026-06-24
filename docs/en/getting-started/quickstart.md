@@ -44,7 +44,7 @@ The examples use:
 | `"$VOLICORD_BIN/volicord-mcp"` | Absolute `volicord-mcp` command used for user/local-scope host configuration. |
 | `/Users/alex/.volicord` | `Volicord Runtime Home`. |
 | `/work/acme-api` | Product Repository A. |
-| `acme-api` | Project ID for Product Repository A. |
+| `acme-api` | Stable logical project ID you choose for Product Repository A; it is not automatically derived from the directory name. |
 | `int-codex-team`, `int-claude-acme` | Example `integration_id` values. |
 | `volicord-int-codex-team`, `volicord-int-claude-acme` | Stable host MCP server names derived from `integration_id` when `--server-name` is omitted. |
 
@@ -52,6 +52,21 @@ The examples use:
 configuration. `VOLICORD_HOME` is different: it is a real Runtime Home selection
 input for the administrative command and for later `volicord-mcp` process
 startup when the default Runtime Home is not the intended one.
+
+How to choose install arguments in this tutorial:
+
+| Argument choice | Why it appears here |
+|---|---|
+| `--host` and `--scope` | Required for every `volicord agent install` command. |
+| `--project-id acme-api` and `--repo-root /work/acme-api` | Required here because the examples introduce a new project registration. |
+| `--integration-id ...` | Optional, but pinned so later verify, status, generated configuration, and multi-repository examples can refer to the same identifier. |
+| `--runtime-home /Users/alex/.volicord` or `VOLICORD_HOME=/Users/alex/.volicord` | Optional in general, but explicit here because the tutorial intentionally uses that Runtime Home instead of relying on environment or home-directory defaults. |
+| `--mcp-command "$VOLICORD_BIN/volicord-mcp"` | Optional and kept only for Path A, which intentionally pins the verified absolute executable in generated Codex configuration. Project scope omits `--mcp-command` because omission uses portable `volicord-mcp`. |
+| `--default-project-id` | Omitted. For a new integration, the selected project becomes the default project. |
+| `--dry-run`, `--output json`, and `--allow-repository-write` | `--dry-run` is an optional zero-write preview, `--output json` is optional output formatting, and `--allow-repository-write` appears only on the real project-scoped apply command that writes `.mcp.json`. |
+
+For complete requiredness, defaults, and edge cases, use the
+[Administrative CLI reference](../reference/admin-cli.md#volicord-agent-install).
 
 ## Choose One Host Path
 
@@ -90,7 +105,6 @@ Command:
   --integration-id int-codex-team \
   --project-id acme-api \
   --repo-root /work/acme-api \
-  --default-project-id acme-api \
   --runtime-home /Users/alex/.volicord \
   --mcp-command "$VOLICORD_BIN/volicord-mcp"
 ```
@@ -103,9 +117,10 @@ Locations that may change:
 | Codex user config, normally `~/.codex/config.toml` or `CODEX_HOME/config.toml` | A `[mcp_servers.volicord-int-codex-team]` table. |
 | `/work/acme-api` | No file change unless repository guidance is selected separately. |
 
-Because `--server-name` is omitted, the CLI derives a stable host MCP server
-name from `integration_id`. Use `--server-name` only when you need to pin a
-specific host configuration key.
+Because `--default-project-id` and `--server-name` are omitted, the new
+integration uses the selected project as its default and the CLI derives a
+stable host MCP server name from `integration_id`. Use `--server-name` only when
+you need to pin a specific host configuration key.
 
 Expected first result:
 
@@ -176,7 +191,6 @@ PATH="$VOLICORD_BIN:$PATH" \
   --integration-id int-claude-acme \
   --project-id acme-api \
   --repo-root /work/acme-api \
-  --mcp-command volicord-mcp \
   --dry-run \
   --output json
 ```
@@ -192,7 +206,6 @@ PATH="$VOLICORD_BIN:$PATH" \
   --integration-id int-claude-acme \
   --project-id acme-api \
   --repo-root /work/acme-api \
-  --mcp-command volicord-mcp \
   --allow-repository-write
 ```
 
@@ -233,11 +246,12 @@ The generated `.mcp.json` entry has this shape:
 ```
 
 The generated `.mcp.json` intentionally omits `VOLICORD_HOME` and keeps the
-portable `volicord-mcp` command. The `VOLICORD_HOME` and `PATH` assignments on the
-install command apply only to that administrative invocation. When Claude Code
-later starts the server, Claude Code's own launch environment must be able to
-find `volicord-mcp` on `PATH` and must provide `VOLICORD_HOME` if its default
-Runtime Home would be different.
+portable `volicord-mcp` command. That portable command is the project-scope
+default when `--mcp-command` is omitted. The `VOLICORD_HOME` and `PATH`
+assignments on the install command apply only to that administrative invocation.
+When Claude Code later starts the server, Claude Code's own launch environment
+must be able to find `volicord-mcp` on `PATH` and must provide `VOLICORD_HOME` if
+its default Runtime Home would be different.
 
 Complete the host-owned action: start or restart Claude Code in
 `/work/acme-api` from the intended environment, review the project MCP server,
